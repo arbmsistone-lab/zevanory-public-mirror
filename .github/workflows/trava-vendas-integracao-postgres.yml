@@ -114,6 +114,16 @@ jobs:
           grep -qx "# tests 2" r.txt && grep -qx "# pass 2" r.txt && grep -qx "# skipped 0" r.txt && grep -qx "# fail 0" r.txt
           grep -cE '^# W[0-9] .*: KILLED' r.txt | grep -qx 3 || { echo "::error::esperados 3 mutantes W mortos"; exit 1; }
           echo "::notice title=REFUND_WINDOW_MUTANTS::$(grep -E '^# W[0-9]' r.txt | sed 's/^# //' | paste -sd'|' - | sed 's/|/%0A/g')"
+      - name: Outbox do formulário de atendimento (AVAL Sol #892; queda, recuperação, dead-letter, lease, cotas concorrentes)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/atendimento-outbox-postgres.test.mjs | tee at.txt
+          grep -qx "# tests 11" at.txt && grep -qx "# pass 11" at.txt && grep -qx "# skipped 0" at.txt && grep -qx "# fail 0" at.txt
+          grep -oE '(Q1|Q2|I1|D1|T1|L1) [^|]*: KILLED' at.txt | wc -l | grep -qx 6 || { echo "::error::esperados 6 mutantes da outbox mortos"; exit 1; }
+          echo "::notice title=ATENDIMENTO_OUTBOX::$(grep -E '^# (tests|pass|fail|skipped) ' at.txt | paste -sd' ' -)"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail

@@ -1,14 +1,15 @@
 // Formulário de atendimento com protocolo (worker/atendimento.mjs), complementar ao mailto oficial
 // suporte@zevanory.api.br. Decreto 7.962/2013, art. 4º: confirmação imediata (tela + e-mail) e resposta
 // em até 5 dias; arrependimento continua pela mesma ferramenta da compra (/pedir-reembolso).
-// Prova: acessibilidade estrutural, protocolo idempotente, confirmação na tela e por e-mail, dados mínimos
-// (sem e-mail completo nem mensagem guardados quando o alerta ao proprietário sai), isca anti-robô,
-// limite por IP, nenhum log com dado pessoal e nenhuma oferta de resposta por WhatsApp.
+// Prova (unidade): acessibilidade estrutural, fail-closed de configuração, protocolo por HMAC, estrutura
+// atômica da outbox, isca anti-robô, nenhum log e nenhuma oferta de resposta por WhatsApp. Os cenários com
+// estado rodam contra PostgreSQL real (tests/integration/atendimento-outbox-postgres.test.mjs).
 // Mutantes: protocolo ausente, e-mail oficial ausente, resposta por WhatsApp, wa.me/número banido,
 // telephone — todos mortos pelos verificadores deste arquivo.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleAtendimento, formPage, confirmationPage, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
+import { readFileSync } from "node:fs";
+import { handleAtendimento, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, ATENDIMENTO_SQL, MAX_ATTEMPTS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
 
 const PROTO = /ZEV-\d{8}-[0-9A-F]{10}/;
@@ -87,75 +88,69 @@ test("GET /atendimento: formulário acessível, e-mail oficial, 4 tipos, isca, s
   assert.deepEqual(formContract(await viaRefund.text()), []);
 });
 
-test("POST: protocolo imediato na tela e por e-mail, prazo de 5 dias, dados mínimos, sem log", withMail(async (sent) => {
-  const kv = fakeKv();
-  const logs = [];
-  const saved = {};
-  for (const k of ["log", "info", "warn", "error", "debug"]) { saved[k] = console[k]; console[k] = (...a) => logs.push(a); }
-  let r;
-  try { r = await handleAtendimento(form(VALID), env(kv), { now: NOW }); } finally { Object.assign(console, saved); }
-  assert.equal(r.status, 200);
-  const html = await r.text();
-  assert.deepEqual(confirmationContract(html), []);
-  const proto = html.match(PROTO)[0];
-  assert.match(proto, /^ZEV-20261023-/);
-  assert.match(html, new RegExp(`até <strong>28/10/2026</strong>`), RESPONSE_DAYS + " dias");
-  assert.equal(logs.length, 0, "nenhum log (sem dado pessoal em log)");
-  assert.equal(sent.length, 2);
-  const [owner, customer] = sent;
-  assert.equal(owner.to[0], "dono@example.com");
-  assert.equal(owner.reply_to, "cliente.teste@example.com", "proprietário responde direto ao cliente por e-mail");
-  assert.ok(owner.subject.includes(proto) && owner.text.includes(VALID.mensagem));
-  assert.equal(customer.to[0], "cliente.teste@example.com");
-  assert.ok(customer.subject.includes(proto) && customer.text.includes("28/10/2026"));
-  assert.equal(customer.from, "ZEVANORY <suporte@zevanory.api.br>");
-  assert.deepEqual(replyChannelViolations(customer.text + owner.text), []);
-  // Dados mínimos: nada de e-mail completo nem mensagem no armazenamento.
-  const stored = [...kv.m.entries()].filter(([k]) => !k.includes(":rate:"));
-  assert.ok(stored.some(([k]) => k === `atendimento:protocolo:${proto}`));
-  for (const [k, { v, ttl }] of stored) {
-    assert.ok(!v.includes("cliente.teste@example.com") && !v.includes("download não abriu"), "sem PII/conteúdo em " + k);
-    assert.ok(ttl > 0, "com prazo de retenção: " + k);
+// Os cenários com estado (queda após o protocolo, falha e recuperação, teto de tentativas, dead-letter,
+// drenos simultâneos e cotas concorrentes) rodam contra PostgreSQL REAL em
+// tests/integration/atendimento-outbox-postgres.test.mjs (gate trava-vendas-integracao-postgres).
+const CFG = { DATABASE_URL: "postgres://x", RESEND_API_KEY: "re_test", LEAD_PRIVACY_SECRET: "k".repeat(40), SUPPORT_FORWARD_TO: "dono@example.com" };
+const noDb = () => ({ query: async () => { throw new Error("o banco não pode ser tocado"); } });
+
+test("fail-closed (503, banco intocado): sem segredo, sem destino, destino no próprio domínio, sem banco ou sem Resend", withMail(async (sent) => {
+  for (const env of [
+    { ...CFG, LEAD_PRIVACY_SECRET: "" }, { ...CFG, LEAD_PRIVACY_SECRET: "x".repeat(31) },
+    { ...CFG, SUPPORT_FORWARD_TO: "" }, { ...CFG, SUPPORT_FORWARD_TO: "contato@zevanory.api.br" }, { ...CFG, SUPPORT_FORWARD_TO: "não-é-email" },
+    { ...CFG, DATABASE_URL: "" }, { ...CFG, RESEND_API_KEY: "" },
+  ]) {
+    const r = await handleAtendimento(form(VALID), env, { sqlFactory: noDb, now: NOW });
+    assert.equal(r.status, 503, JSON.stringify(Object.keys(env).filter((k) => !env[k])));
+    assert.deepEqual(replyChannelViolations(await r.text()), []);
   }
-  assert.ok(!kv.m.has(`atendimento:alerta-pendente:${proto}`));
+  const j = await handleAtendimento(new Request("https://zevanory.api.br/api/atendimento", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(VALID) }), { ...CFG, LEAD_PRIVACY_SECRET: "" }, { sqlFactory: noDb });
+  assert.deepEqual(Object.keys(await j.json()).sort(), ["error", "message"], "503 não expõe o que falta");
+  assert.equal(sent.length, 0);
 }));
 
-test("protocolo idempotente: reenvio idêntico devolve o mesmo protocolo e não reenvia e-mails", withMail(async (sent) => {
-  const kv = fakeKv();
-  const a = await (await handleAtendimento(form(VALID), env(kv), { now: NOW })).text();
-  const b = await (await handleAtendimento(form({ ...VALID, email: "cliente.teste@example.com" }), env(kv), { now: NOW + 60000 })).text();
-  assert.equal(a.match(PROTO)[0], b.match(PROTO)[0]);
-  assert.equal(sent.length, 2, "e-mails só no primeiro envio");
-  const c = await (await handleAtendimento(form({ ...VALID, mensagem: VALID.mensagem + " Segue o erro." }), env(kv), { now: NOW })).text();
-  assert.notEqual(c.match(PROTO)[0], a.match(PROTO)[0], "solicitação diferente => protocolo novo");
-}));
+test("protocolo por HMAC com segredo: mesmo envio e dia => mesmo protocolo; outro segredo, dia ou conteúdo => outro", async () => {
+  const i = parseInput(VALID);
+  const a = await protocolFor("k".repeat(40), i, NOW);
+  assert.match(a, /^ZEV-20261023-[0-9A-F]{10}$/);
+  assert.equal(await protocolFor("k".repeat(40), { ...i, mensagem: i.mensagem.replace(" ", "   ") }, NOW + 3600e3), a, "espaços e mesmo dia");
+  assert.notEqual(await protocolFor("j".repeat(40), i, NOW), a, "sem o segredo não se reproduz o protocolo");
+  assert.notEqual(await protocolFor("k".repeat(40), i, NOW + 86400e3), a);
+  assert.notEqual(await protocolFor("k".repeat(40), { ...i, tipo: "suporte" }, NOW), a);
+});
 
-test("JSON: protocolo, prazo e canal de resposta por e-mail", withMail(async () => {
-  const r = await handleAtendimento(new Request("https://zevanory.api.br/api/atendimento", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...VALID, tipo: "cancelamento" }) }), env(), { now: NOW });
-  const j = await r.json();
-  assert.equal(r.status, 200);
-  assert.match(j.protocolo, PROTO);
-  assert.equal(j.canal_resposta, "email");
-  assert.equal(j.email_confirmacao, "enviado");
-  assert.equal(new Date(j.responder_ate) - new Date(j.recebido_em), RESPONSE_DAYS * 86400000);
-}));
+test("estrutura da outbox: cota e gravação num único comando atômico, chaves de idempotência estáveis, sem log", () => {
+  const src = readFileSync(new URL("../worker/atendimento.mjs", import.meta.url), "utf8");
+  const admit = ATENDIMENTO_SQL.admit;
+  assert.equal((admit.match(/on conflict \(bucket\) do update set n = zevanory_atendimento_quota\.n \+ 1 where zevanory_atendimento_quota\.n < \$\d/g) || []).length, 2, "duas cotas com teto no ON CONFLICT");
+  assert.match(admit, /insert into zevanory_atendimento_outbox[\s\S]*from q2/, "linha só entra se as duas cotas passaram, no mesmo comando");
+  assert.doesNotMatch(src, /ZEVANORY_PRIVATE_ARTIFACTS\.put|kv\.put/, "nada de cota/estado em KV (get/put não atômico)");
+  assert.match(src, /idempotencyKey: `atendimento-owner\/\$\{protocolo\}`/);
+  assert.match(src, /idempotencyKey: `atendimento-ack\/\$\{protocolo\}`/);
+  assert.match(src, /idempotencyKey: `atendimento-dead\/\$\{d\.protocolo\}`/);
+  assert.doesNotMatch(src, /console\./, "nenhum log (sem dado pessoal em log)");
+  assert.ok(MAX_ATTEMPTS >= 3 && MAX_ATTEMPTS <= 12);
+  assert.match(ATENDIMENTO_SQL.lease, /lease_until is null or lease_until < now\(\)/);
+  assert.match(ATENDIMENTO_SQL.release, /payload = case when owner_status = 'sent' and customer_status = 'sent' then null/);
+});
 
-test("reembolso: confirmação aponta para a mesma ferramenta da compra (/pedir-reembolso)", withMail(async (sent) => {
-  const html = await (await handleAtendimento(form({ ...VALID, tipo: "reembolso" }), env(), { now: NOW })).text();
-  assert.match(html, /href="\/pedir-reembolso"/);
-  assert.ok(sent[1].text.includes("https://zevanory.api.br/pedir-reembolso"));
-}));
+test("cron sem configuração: verde se não há envio parado, vermelho se houver", async () => {
+  const stuck = (n) => () => ({ query: async (s) => (s.includes("/*atendimento:stuck*/") ? [{ n }] : []) });
+  assert.equal((await drainAtendimentoOutbox({ DATABASE_URL: "x" }, { sqlFactory: stuck(0) })).ok, true);
+  const red = await drainAtendimentoOutbox({ DATABASE_URL: "x" }, { sqlFactory: stuck(2) });
+  assert.equal(red.ok, false);
+  assert.ok(red.missing.includes("LEAD_PRIVACY_SECRET") && red.missing.includes("support-config:forward-to"));
+  assert.equal((await drainAtendimentoOutbox({}, {})).ok, true, "sem banco não há outbox");
+});
 
-test("isca preenchida (robô): nada gravado, nenhum e-mail", withMail(async (sent) => {
-  const kv = fakeKv();
-  const r = await handleAtendimento(form({ ...VALID, website: "http://spam.example" }), env(kv), { now: NOW });
+test("isca preenchida (robô): nada gravado, nenhum e-mail, nem configuração consultada", withMail(async (sent) => {
+  const r = await handleAtendimento(form({ ...VALID, website: "http://spam.example" }), CFG, { sqlFactory: noDb, now: NOW });
   assert.equal(r.status, 200);
   assert.equal(sent.length, 0);
-  assert.equal(kv.m.size, 0);
 }));
 
-test("validação acessível: erros com aria-invalid/aria-describedby, sem e-mail enviado", withMail(async (sent) => {
-  const r = await handleAtendimento(form({ tipo: "", email: "x", pedido: "123", mensagem: "oi" }), env(), { now: NOW });
+test("validação acessível: erros com aria-invalid/aria-describedby, sem e-mail enviado nem banco", withMail(async (sent) => {
+  const r = await handleAtendimento(form({ tipo: "", email: "x", pedido: "123", mensagem: "oi" }), CFG, { sqlFactory: noDb, now: NOW });
   assert.equal(r.status, 400);
   const html = await r.text();
   assert.match(html, /role="alert"/);
@@ -164,22 +159,16 @@ test("validação acessível: erros com aria-invalid/aria-describedby, sem e-mai
   assert.equal(sent.length, 0);
 }));
 
-test("limite por IP (anti-spam) e alerta ao proprietário que falha guarda o conteúdo só por 14 dias", withMail(async (sent) => {
-  const kv = fakeKv();
-  for (let i = 0; i < 5; i++) assert.equal((await handleAtendimento(form({ ...VALID, email: `c${i}@example.com` }), env(kv), { now: NOW })).status, 200);
-  const r = await handleAtendimento(form({ ...VALID, email: "c6@example.com" }), env(kv), { now: NOW });
-  assert.equal(r.status, 429, "6º envio do mesmo IP na mesma hora");
-  // limite por e-mail (4/dia), vindo de IPs diferentes
-  const kv2 = fakeKv();
-  for (let i = 0; i < 4; i++) assert.equal((await handleAtendimento(form({ ...VALID, mensagem: VALID.mensagem + " #" + i }, "198.51.100." + i), env(kv2), { now: NOW })).status, 200);
-  assert.equal((await handleAtendimento(form({ ...VALID, mensagem: VALID.mensagem + " #9" }, "198.51.100.9"), env(kv2), { now: NOW })).status, 429, "5º envio do mesmo e-mail no dia");
-  assert.equal(r.status, 429);
-  assert.deepEqual(replyChannelViolations(await r.text()), []);
-  const pend = [...kv.m.entries()].filter(([k]) => k.startsWith("atendimento:alerta-pendente:"));
-  assert.equal(pend.length, 5);
-  for (const [, { ttl }] of pend) assert.equal(ttl, 14 * 24 * 3600);
-  assert.equal(sent.filter((s) => /^c\d@example\.com$/.test(s.to[0])).length, 5, "cliente confirmado mesmo com o alerta falhando");
-}, { ownerFails: true }));
+test("confirmação: protocolo, prazo de 5 dias, aviso de reenvio automático quando o e-mail ainda não saiu", () => {
+  const v = { protocolo: "ZEV-20261023-ABCDEF0123", tipo: "reembolso", recebido_em: new Date(NOW).toISOString(), responder_ate: new Date(NOW + RESPONSE_DAYS * 86400000).toISOString() };
+  const sentHtml = confirmationPage(v, { emailSent: true });
+  assert.deepEqual(confirmationContract(sentHtml), []);
+  assert.match(sentHtml, /até <strong>28\/10\/2026<\/strong>/);
+  assert.match(sentHtml, /href="\/pedir-reembolso"/);
+  const pend = confirmationPage(v, { emailSent: false });
+  assert.deepEqual(confirmationContract(pend), []);
+  assert.match(pend, /reenviada automaticamente/);
+});
 
 test("mutantes: protocolo ausente, e-mail oficial ausente, resposta por WhatsApp, wa.me, número banido, telephone — mortos", () => {
   const formHtml = formPage();
