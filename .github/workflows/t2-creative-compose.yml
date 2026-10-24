@@ -30,7 +30,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Compose, upload and finalize five creatives
         env:
-          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+          ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
           T2_OUT: ${{ github.workspace }}/t2-output
         run: |
           set -euo pipefail

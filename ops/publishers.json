@@ -11,6 +11,7 @@
         "channel-production-bootstrap.yml",
         "gemini-key-to-worker.yml",
         "lead-privacy-secret-to-worker.yml",
+        "production-test-secret-cleanup.yml",
         "sandbox-worker-secret-audit.yml",
         "voice-gemini-auth-key-probe.yml",
         "voice-gemini-production-provision.yml",

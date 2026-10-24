@@ -115,7 +115,7 @@ test("live proof refreshes stats through a private token and then reads the KV a
  assert.match(worker,/POST[\s\S]*\/api\/internal\/whatsapp\/stats-refresh/);
  assert.match(worker,/x-certification-e2e-token/);
  assert.match(worker,/publishWhatsappOpsStats\(globalThis\.__ZEVANORY_WHATSAPP_OPS_STORE__, env\.ZEVANORY_PRIVATE_ARTIFACTS\)/);
- assert.match(workflow,/secrets\.CERTIFICATION_E2E_TOKEN/);
+ assert.match(workflow,/secrets\.ZEVANORY_OPERATOR_TOKEN \|\| secrets\.CERTIFICATION_E2E_TOKEN/);
  assert.match(workflow,/POST https:\/\/zevanory\.api\.br\/api\/internal\/whatsapp\/stats-refresh/);
  assert.match(workflow,/storage\/kv\/namespaces\/\$KV_NAMESPACE_ID\/values\/zpc-whatsapp-ops:v1:stats/);
  assert.doesNotMatch(workflow,/DATABASE_URL/);

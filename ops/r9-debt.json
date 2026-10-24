@@ -1,0 +1,114 @@
+{
+  "schema": "zevanory-r9-debt/v1",
+  "rule": "F2 item 9 (roteiro 3.1 seção 7; incidente I4). Fonte única da dívida de separação sandbox x produção e dos workflows aposentados. 'pending': cada item aberto, com dono, motivo e PR planejado; enquanto a lista não estiver vazia, o readback estrito (production-test-secret-readback.yml, strict_certification=true) FALHA. As exceções do gate (scripts/ci/credential_separation_gate.py) e do readback (scripts/ci/production-secret-names.mjs) são derivadas daqui: tirar um item torna os dois mais estritos. 'retired_workflows': todo job desses arquivos fica 'if: ${{ false }} # Permanently retired: ...'; o gate falha se o marcador ou o if: false sumir, se o arquivo sumir sem atualizar esta lista, ou se um workflow com o marcador não estiver aqui.",
+  "pending": [
+    {
+      "id": "R9-D1",
+      "name": "CERTIFICATION_E2E_TOKEN",
+      "kind": "worker_secret",
+      "github_secret_exception": true,
+      "deploy_config": false,
+      "owner": "proprietário (Renan): renomear segredo no GitHub e no Worker",
+      "reason": "Token de operador da PRODUÇÃO apesar do nome: backup, voz, auditoria financeira e WhatsApp autenticam com ele; central-production-deploy.yml recusa o deploy sem ele; o Worker de certificação recebe o mesmo nome (valor por Environment não verificável daqui).",
+      "planned_pr": "#912 (R9 A): ZEVANORY_OPERATOR_TOKEN no Worker (resolvedor único, dual-read com queda registrada) e nos workflows de produção; seguimento R9 A2 retira a queda depois do readback primary e então este item sai",
+      "status": "OPEN",
+      "prs": [
+        "#912"
+      ],
+      "next_step": "proprietário cria ZEVANORY_OPERATOR_TOKEN (mesmo valor) no Worker zevanory e nos Environments producao-critica e gh-pages-automacao; production-credential-identity.yml com require_primary=true; depois PR R9 A2 (queda off, gate --strict)"
+    },
+    {
+      "id": "R9-D2",
+      "name": "CERTIFICATION_PILOT_ENABLED",
+      "kind": "worker_var",
+      "github_secret_exception": false,
+      "deploy_config": false,
+      "owner": "proprietário (Renan): decisão de desligar o piloto sandbox dentro da produção",
+      "reason": "Var de texto do painel que liga o piloto sandbox no Worker de produção (resolveCheckoutProviderRequest, certificationPilotPolicy). Ausente = false (FAIL_CLOSED_RUNTIME_FLAGS), mas `wrangler secret delete` não a remove e financial-e2e-stripe ainda usa o piloto em produção.",
+      "planned_pr": "R9-B2: remover o piloto sandbox do Worker de produção (sandbox só no Worker de certificação) e apagar a var por PATCH de settings com prova antes/depois (classe B)",
+      "status": "OPEN"
+    },
+    {
+      "id": "R9-D3",
+      "name": "CERTIFICATION_PILOT_ENV",
+      "kind": "worker_var",
+      "github_secret_exception": false,
+      "deploy_config": true,
+      "owner": "proprietário (Renan): mudança do contrato de deploy",
+      "reason": "Gravada =sandbox a cada deploy por scripts/deploy/prepare-central-candidate.py e EXIGIDA por scripts/deploy/verify-financial-boundary.py; apagar no painel volta no próximo deploy.",
+      "planned_pr": "R9-B2: tirar do prepare-central-candidate e do verify-financial-boundary junto com a remoção do piloto em produção",
+      "status": "OPEN"
+    },
+    {
+      "id": "R9-D4",
+      "name": "CERTIFICATION_PILOT_PRODUCTION_ALLOWED",
+      "kind": "worker_var",
+      "github_secret_exception": false,
+      "deploy_config": true,
+      "owner": "proprietário (Renan): mudança do contrato de deploy",
+      "reason": "Trava explícita =false gravada a cada deploy e EXIGIDA por verify-financial-boundary.py.",
+      "planned_pr": "R9-B2: substituir a trava pela ausência do piloto no Worker de produção",
+      "status": "OPEN"
+    },
+    {
+      "id": "R9-D5",
+      "name": "CERTIFICATION_PILOT_APPROVER",
+      "kind": "worker_var",
+      "github_secret_exception": false,
+      "deploy_config": true,
+      "owner": "proprietário (Renan): mudança do contrato de deploy",
+      "reason": "Gravada a cada deploy por prepare-central-candidate.py; lida pelas operações de convite do piloto.",
+      "planned_pr": "R9-B2: remover com as operações de convite do piloto em produção",
+      "status": "OPEN"
+    },
+    {
+      "id": "R9-D6",
+      "name": "STRIPE_SECRET_KEY",
+      "kind": "workflow",
+      "workflow": "financial-e2e-stripe.yml",
+      "github_secret_exception": false,
+      "deploy_config": false,
+      "owner": "proprietário (Renan): pendente de autorização (ops/publishers.json pending_owner_authorization)",
+      "reason": "Até o #910 (4b73b1ee), financial-e2e-stripe.yml gravava STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET de TESTE (sk_test_) no Worker de PRODUÇÃO (secret bulk --name zevanory). O #910 passou a gravar só em zevanory-certification, mas a presença de segredos Stripe de teste deixados no Worker de produção por runs anteriores não foi lida, e o job ainda roda no Environment producao-critica.",
+      "planned_pr": "R9-B3: readback de nomes STRIPE_* no zevanory (remoção dirigida com allowlist se presentes) e mover financial-e2e-stripe.yml para sandbox-financial-approved",
+      "status": "OPEN",
+      "prs": [
+        "#910",
+        "#912"
+      ],
+      "next_step": "#912 adiciona o readback STRIPE_KEY_MODE (live|test|absent) do Worker de produção no deploy e em production-credential-identity.yml (reprova se test) e o modo da STRIPE_SECRET_KEY visível em producao-critica; falta mover financial-e2e-stripe.yml para sandbox-financial-approved com STRIPE_TEST_SECRET_KEY"
+    }
+  ],
+  "retired_workflows": [
+    {
+      "file": "financial-e2e-closure.yml",
+      "reason": "ciclo sandbox contra o Worker de produção; caía para o token de produção",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "mercadopago-buyer-diagnostic.yml",
+      "reason": "substituído por sandbox-identity-attest.yml",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "mercadopago-checkout-pro-manual-payment.yml",
+      "reason": "pedido piloto sandbox no Worker de produção",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "mercadopago-exact-sha-recovery.yml",
+      "reason": "usava credenciais sandbox em nomes de produção",
+      "since": "2026-10-19"
+    },
+    {
+      "file": "mercadopago-post-payment-verification.yml",
+      "reason": "pagamento sandbox verificado no Worker de produção",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "sandbox-worker-secret-audit.yml",
+      "reason": "origem do run 37365806405 (secret put de MERCADOPAGO_TEST_* no zevanory)",
+      "since": "2026-10-24"
+    }
+  ]
+}
