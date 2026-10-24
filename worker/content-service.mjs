@@ -12,7 +12,7 @@
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { recordHotmartSale } from "./sales-ledger.mjs";
-import { CONTEUDO_PRONTO } from "./politica-unica.mjs";
+import { BANNED_NUMBERS, CONTEUDO_PRONTO } from "./politica-unica.mjs";
 
 // Contrato versionado da oferta (data/politica-unica.json, conteudo_pronto): a página
 // /conteudo-pronto, o resumo da oferta e este gerador leem as mesmas quantidades, objetivos e
@@ -28,6 +28,22 @@ const CANAIS_TEXTO = CANAIS.slice(0, -1).join(", ") + " ou " + CANAIS[CANAIS.len
 // Canal banido e disparo em massa nunca entram num roteiro (termos em conteudo_pronto.termos_proibidos_regex);
 // \b evita falso positivo em palavras como "zapier".
 const ROTEIRO_PROIBIDO = new RegExp("\\b(?:" + CONTEUDO_PRONTO.termos_proibidos_regex.join("|") + ")\\b", "i");
+// Número banido de contato_publico.numeros_banidos em qualquer grafia: completo, formatado ("(88) 9 9254-5413")
+// ou mascarado ("88 9****-5413"). Corridas com cara de telefone são comparadas só pelos dígitos.
+const PHONE_RUN = /[+(]?\d[\d\s().*•#-]{6,}\d/g;
+// Máscara: DDD do número banido, de 2 a 6 posições com ao menos um caractere de máscara, e os 4 últimos dígitos.
+const MASKED_RES = BANNED_NUMBERS.map((n) => new RegExp(`(?<!\\d)(?:\\+?55[\\s().-]*)?\\(?${n.slice(2, 4)}\\)?[\\s.-]*(?=[\\d\\s.*•#-]*[*•#])[\\d*•#][\\d\\s*•#]{1,6}[\\s.-]*${n.slice(-4)}(?!\\d)`));
+export function bannedNumberIn(text) {
+  const str = String(text ?? "");
+  if (MASKED_RES.some((re) => re.test(str))) return true;
+  for (const run of str.match(PHONE_RUN) || []) {
+    const d = run.replace(/\D/g, "");
+    if (BANNED_NUMBERS.some((n) => d.includes(n.slice(-8)))) return true;
+  }
+  return false;
+}
+// Canal banido, disparo em massa ou número banido: nada disso é gerado, exibido ou reenviado.
+export const contaminated = (text) => ROTEIRO_PROIBIDO.test(String(text ?? "")) || bannedNumberIn(text);
 
 export const SERVICE_PRODUCT_NAME = "ZEVANORY Conteúdo Pronto";
 const SUB = "zpc:cp:sub:";        // subscriber record
@@ -198,6 +214,7 @@ export function validatePosts(list, n) {
     const hashtags = (Array.isArray(p?.hashtags) ? p.hashtags : String(p?.hashtags || "").split(/[\s,]+/)).map((h) => String(h).trim()).filter(Boolean).map((h) => h.startsWith("#") ? h : "#" + h).slice(0, 8);
     const imagem = String(p?.imagem || "").trim();
     if (tema.length < 3 || legenda.length < 120 || legenda.length > 1600 || cta.length < 3 || FORBIDDEN.test(legenda + " " + cta)) return null;
+    if (contaminated([tema, legenda, cta, ...hashtags, imagem].join(" "))) return null;
     out.push({ tema, legenda, cta, hashtags, imagem });
   }
   return out;
@@ -218,7 +235,7 @@ export function validateRoteiros(list) {
     if (curta.length < 60 || curta.length > 600) return null;
     if (assunto.length < 5 || assunto.length > 120 || corpo.length < 200 || corpo.length > 1600) return null;
     const all = [curta, assunto, corpo].join(" ");
-    if (FORBIDDEN.test(all) || ROTEIRO_PROIBIDO.test(all)) return null;
+    if (FORBIDDEN.test(all) || contaminated(all)) return null;
     out.push({ objetivo_id: obj.id, objetivo: obj.titulo, curta, email: { assunto, corpo } });
   }
   return out;
@@ -270,11 +287,24 @@ function roteirosOf(pkg) {
   if (Array.isArray(pkg?.roteiros)) return pkg.roteiros;
   return (Array.isArray(pkg?.mensagens) ? pkg.mensagens : []).map((m) => ({ objetivo: String(m?.objetivo || ""), curta: String(m?.texto || ""), email: null }));
 }
+// Tudo o que a leitura exibe ou reenvia (o "tipo" do calendário nunca é exibido: vira Post/Roteiro).
+export function displayedText(pkg) {
+  const posts = (Array.isArray(pkg?.posts) ? pkg.posts : []).flatMap((p) => [p?.tema, p?.legenda, p?.cta, ...(Array.isArray(p?.hashtags) ? p.hashtags : [p?.hashtags]), p?.imagem]);
+  const rots = roteirosOf(pkg).flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo]);
+  const cal = (Array.isArray(pkg?.calendario) ? pkg.calendario : []).map((c) => c?.tema);
+  return [...posts, ...rots, ...cal].filter((x) => x != null).map(String).join("\n");
+}
+// Decisão (AVAL Sol #898): pacote gravado que cita canal banido ou o número banido NÃO é saneado nem exibido —
+// é bloqueado na leitura; os bytes gravados ficam intactos e o assinante ativo pode gerar, sem custo, uma versão
+// nova no formato atual (chave nova). Sanear texto de IA trocaria o sentido das mensagens sem revisão humana.
+export const packageBlocked = (pkg) => contaminated(displayedText(pkg));
+export const BLOQUEIO_TEXTO = "Este pacote foi gerado no formato anterior e cita um canal de contato que a ZEVANORY não usa mais. Por segurança ele não é exibido nem reenviado; a versão gravada fica guardada sem alteração. Você pode gerar, sem custo, uma versão nova no formato atual (roteiros multicanal, cada um com versão curta e versão de e-mail).";
 const CAL_LABEL = { post: "Post", roteiro: "Roteiro" };
 const calLabel = (tipo) => CAL_LABEL[tipo] || "Roteiro";
 export const ROTEIROS_TITULO = `${N_ROTEIROS} ROTEIROS MULTICANAL DE VENDA E ACOMPANHAMENTO`;
 export const ROTEIROS_AVISO = `Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}. Use a reativação só com relacionamento ativo ou consentimento registrado. Você revisa antes de usar; não há disparo automático.`;
 export function packageText(pkg, name = "") {
+  if (packageBlocked(pkg)) return `Seu pacote Conteúdo Pronto — mês ${pkg?.cycle ?? ""}\n\n${BLOQUEIO_TEXTO}\nPeça a versão nova pelo link privado do pacote ou em suporte@zevanory.api.br.`;
   const lines = [`Seu pacote Conteúdo Pronto — mês ${pkg.cycle}${name ? ` (${name})` : ""}`, "", "CALENDÁRIO DE 30 DIAS"];
   for (const c of pkg.calendario) lines.push(`Dia ${String(c.dia).padStart(2, "0")} · ${calLabel(c.tipo)} · ${c.tema}`);
   lines.push("", `${pkg.posts.length} POSTS`);
@@ -299,7 +329,8 @@ export async function generateAndDeliver(env, key, fetchImpl = fetch) {
     await ownerAlert(env, "geração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido agora; nova tentativa automática em até 1 hora.", fetchImpl);
     return { ok: false, reason: "generation_failed_retry_scheduled" };
   }
-  const pkgKey = PKG + key.slice(SUB.length) + ":" + record.cycles;
+  // Chave com a versão do schema: uma regeneração nunca sobrescreve um pacote antigo gravado.
+  const pkgKey = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION;
   await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });
   const token = rand();
   await kv.put(TOKEN + token, key, { expirationTtl: 120 * DAY });
@@ -324,11 +355,50 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2) {
   for (const key of pending.slice(0, limit)) results.push(await generateAndDeliver(env, key, fetchImpl));
   return { ok: true, tried: results.length, delivered: results.filter((r) => r.ok).length };
 }
-export async function handlePackageView(request, env) {
+// Regeneração gratuita de um pacote bloqueado na leitura: só assinante ativo com briefing, só se o pacote
+// atual estiver bloqueado (idempotente: depois da troca, nova chamada não gera nada).
+export async function regenerateBlockedPackage(env, key, fetchImpl = fetch) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
-  const found = kv?.get ? await resolveToken(kv, new URL(request.url).searchParams.get("t")) : null;
+  const record = await readJson(kv, key, null);
+  if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_eligible" };
+  const current = record.lastPackage ? await readJson(kv, record.lastPackage, null) : null;
+  if (!current || !packageBlocked(current)) return { ok: true, reason: "not_blocked" };
+  const pkg = await generatePackage(env, record.briefing, record.cycles);
+  if (!pkg || packageBlocked(pkg)) {
+    await ownerAlert(env, "regeneração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido para substituir um pacote antigo bloqueado; o assinante pode tentar de novo.", fetchImpl);
+    return { ok: false, reason: "generation_failed" };
+  }
+  const pkgKey = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION;
+  await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });
+  const token = rand();
+  await kv.put(TOKEN + token, key, { expirationTtl: 120 * DAY });
+  const text = packageText(pkg, record.briefing.negocio) + `\n\nVersão para consulta online: ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
+  await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${record.cycles} — nova versão`, text, fetchImpl);
+  await kv.put(key, JSON.stringify({ ...record, lastPackage: pkgKey, blockedPackage: record.lastPackage, regeneratedAt: new Date().toISOString() }), { expirationTtl: 400 * DAY });
+  await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_regenerated", ref: "cp-regen:" + key.slice(-16) + ":" + record.cycles }).catch(() => null);
+  return { ok: true, reason: "regenerated" };
+}
+export async function handlePackageView(request, env, ctx, fetchImpl = fetch) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const token = new URL(request.url).searchParams.get("t") || "";
+  const found = kv?.get ? await resolveToken(kv, token) : null;
   const pkg = found?.record?.lastPackage ? await readJson(kv, found.record.lastPackage, null) : null;
   if (!pkg) return page("Pacote não encontrado", "<h1>Pacote não encontrado ou link expirado.</h1>", 404);
+  const eligible = found.record.status === "active" && Boolean(found.record.briefing);
+  if (request.method === "POST") {
+    if (!packageBlocked(pkg)) return page("Pacote atualizado", "<h1>Este pacote já está no formato atual.</h1>");
+    if (!eligible) return page("Versão nova", `<h1>Versão nova sem custo</h1><p>${esc(BLOQUEIO_TEXTO)}</p><p>Peça em suporte@zevanory.api.br.</p>`, 409);
+    const out = await regenerateBlockedPackage(env, found.key, fetchImpl);
+    if (!out.ok) return page("Tente de novo", "<h1>Não foi possível gerar agora.</h1><p>Tente de novo em instantes ou escreva para suporte@zevanory.api.br.</p>", 503);
+    return page("Versão nova", "<h1>Pronto! A versão nova chegou no seu e-mail.</h1><p>A versão antiga continua guardada sem alteração.</p>");
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") return page("Método inválido", "<h1>Método inválido.</h1>", 405);
+  if (packageBlocked(pkg)) {
+    const offer = eligible
+      ? `<form method="post" action="?t=${esc(token)}"><input type="hidden" name="acao" value="regenerar"><button type="submit">Gerar versão nova sem custo</button></form>`
+      : "<p>Para receber a versão nova sem custo, escreva para suporte@zevanory.api.br.</p>";
+    return page("Pacote no formato anterior", `<h1>Conteúdo Pronto · mês ${esc(pkg.cycle)}</h1><p>${esc(BLOQUEIO_TEXTO)}</p>${offer}`);
+  }
   const posts = pkg.posts.map((p, i) => `<article><h2>Post ${i + 1} — ${esc(p.tema)}</h2><p style="white-space:pre-wrap">${esc(p.legenda)}</p><p><b>Chamada:</b> ${esc(p.cta)}</p><p>${esc(p.hashtags.join(" "))}</p><small>Imagem sugerida: ${esc(p.imagem)}</small></article>`).join("");
   const rots = roteirosOf(pkg).map((r, i) => `<article><h2>Roteiro ${i + 1} — ${esc(r.objetivo)}</h2><h3>Versão curta</h3><p style="white-space:pre-wrap">${esc(r.curta)}</p>${r.email ? `<h3>Versão de e-mail</h3><p><b>Assunto:</b> ${esc(r.email.assunto)}</p><p style="white-space:pre-wrap">${esc(r.email.corpo)}</p>` : ""}</article>`).join("");
   const cal = pkg.calendario.map((c) => `<li>Dia ${c.dia} · ${calLabel(c.tipo)} · ${esc(c.tema)}</li>`).join("");

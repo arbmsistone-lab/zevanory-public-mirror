@@ -42,7 +42,7 @@ test("full automatic flow: purchase -> briefing email -> form -> AI package -> d
   assert.match(delivery.text, /12 POSTS/);
   assert.equal((delivery.text.match(/^POST \d+/gm) || []).length, 12);
   assert.equal((delivery.text.match(/^ROTEIRO \d+/gm) || []).length, 4);
-  assert.equal((delivery.text.match(/^Versão de e-mail:$/gm) || []).length, 4);
+  assert.equal((delivery.text.match(/^Versão de e-mail:$/gm) || []).length, 4, "[texto-versao-email]");
   const view = delivery.text.match(/pacote\?t=([A-Za-z0-9_-]+)/);
   const page = await handlePackageView(new Request("https://zevanory.api.br/conteudo-pronto/pacote?t=" + view[1]), e);
   assert.equal(page.status, 200);

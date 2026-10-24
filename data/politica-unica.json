@@ -196,7 +196,7 @@
     }
   },
   "conteudo_pronto": {
-    "nota": "Conteúdo Pronto (2026-10-23): contrato único entre a oferta (resumo_oferta.assinatura.caracteristicas, /conteudo-pronto, /solucoes, suporte) e o gerador (worker/content-service.mjs). A conta WhatsApp Business da ZEVANORY foi banida pela Meta; o pacote deixou de prometer ou gerar mensagens de WhatsApp e passou a entregar roteiros multicanal para canais autorizados pelo cliente, revisados por ele, sem disparo automático. Qualquer mudança de quantidade, objetivo, canal ou formato exige subir content_schema_version (e package_schema) aqui, no data-content-schema da página e no gerador ao mesmo tempo; tests/conteudo-pronto-roteiros.test.mjs falha se página, oferta e saída do gerador divergirem ou se 'WhatsApp' voltar a aparecer na oferta, no prompt ou no pacote entregue.",
+    "nota": "Conteúdo Pronto (2026-10-23): contrato único entre a oferta (resumo_oferta.assinatura.caracteristicas, /conteudo-pronto, /solucoes, suporte) e o gerador (worker/content-service.mjs). A conta WhatsApp Business da ZEVANORY foi banida pela Meta; o pacote deixou de prometer ou gerar mensagens de WhatsApp e passou a entregar roteiros multicanal para canais autorizados pelo cliente, revisados por ele, sem disparo automático. Qualquer mudança de quantidade, objetivo, canal ou formato exige subir content_schema_version (e package_schema) aqui, no data-content-schema da página e no gerador ao mesmo tempo; tests/conteudo-pronto-roteiros.test.mjs falha se página, oferta e saída do gerador divergirem ou se 'WhatsApp' voltar a aparecer na oferta, no prompt ou no pacote entregue. Leitura de pacotes já gravados (inclusive zpc.cp.package.v1): os bytes ficam como estão; se qualquer campo exibido (posts, mensagens/roteiros, calendário) citar canal banido (termos_proibidos_regex) ou o número banido de contato_publico.numeros_banidos (completo, formatado ou mascarado), o pacote NÃO é exibido nem reenviado e o assinante ativo recebe a oferta de gerar, sem custo, uma versão nova no formato atual (gravada em chave nova; a antiga fica intacta).",
     "content_schema_version": 2,
     "package_schema": "zpc.cp.package.v2",
     "posts": 12,
@@ -237,6 +237,7 @@
     "termos_proibidos_regex": [
       "whats\\s*app",
       "zap",
+      "wa\\.me",
       "disparo\\s+em\\s+massa"
     ]
   },
