@@ -22,8 +22,8 @@ import mutant_classifier as mc  # noqa: E402
 PROBE = ROOT / "tests" / "fixtures" / "mutant_classifier" / "probe.mjs"
 BASELINE = 6
 TAP = ["--test", "--test-reporter=tap", "--test-reporter-destination=stdout"]
-E_T1 = [{"test_pattern": "T1", "assertion_pattern": "A1"}]
-E_T2 = [{"test_pattern": "T2", "assertion_pattern": "A2a"}]
+E_T1 = {"primary": [{"test_pattern": "T1", "assertion_pattern": "A1"}]}
+E_T2 = {"primary": [{"test_pattern": "T2", "assertion_pattern": "A2a"}]}
 AL_T3 = [{"id": "AL_probe_T3_duplicate_key", "test_pattern": "T3", "regex": r"Command failed: psql duplicate key",
           "why": "probe: the error mode makes T3 throw this exact psql error"}]
 NODE = shutil.which("node")

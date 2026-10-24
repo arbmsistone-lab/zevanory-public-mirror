@@ -19,7 +19,8 @@ import mutant_classifier as mc  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "mutant_classifier"
 SCRIPT = ROOT / "scripts" / "ci" / "mutant_classifier.py"
-E_T1 = [{"test_pattern": "T1", "assertion_pattern": "A1"}]
+E_T1 = {"primary": [{"test_pattern": "T1", "assertion_pattern": "A1"}]}
+E_T2 = {"primary": [{"test_pattern": "T2", "assertion_pattern": "A2a"}]}
 
 
 # ------------------------------------------------------------------ synthetic TAP builder
@@ -67,7 +68,7 @@ class Rule01Killed(unittest.TestCase):
         t = tap([ok("T1 alpha", 1), notok("T2a sub", 1, "A2a nested", indent=4) + "    1..1\n"
                  + notok("T2 gamma", 2, "1 subtest failed", "Error", "ERR_TEST_FAILURE", "subtestsFailed"),
                  ok("T3 x", 3)], 4, 2, 2, plan=3)
-        r = run(t, 1, [{"test_pattern": "T2", "assertion_pattern": "A2a"}], baseline=4)
+        r = run(t, 1, E_T2, baseline=4)
         self.assertEqual((r["verdict"], r["killing_tests"]), (mc.KILLED, ["T2 gamma > T2a sub"]), r)
 
     def test_runner_supplied_assertion_id(self):
@@ -130,8 +131,16 @@ class Rule04ExtraUnexpectedFailure(unittest.TestCase):
 
     def test_both_expected_is_killed(self):
         t = tap([notok("T1 alpha", 1, "A1 alpha value"), ok("T10 beta", 2), notok("T2 gamma", 3, "A3 x")], 3, 1, 2)
-        exp = E_T1 + [{"test_pattern": "T2", "assertion_pattern": "A3"}]
+        exp = {"primary": E_T1["primary"] + [{"test_pattern": "T2", "assertion_pattern": "A3"}]}
         self.assertEqual(run(t, 1, exp)["verdict"], mc.KILLED)
+
+    def test_primary_plus_justified_secondary_is_killed(self):
+        t = tap([notok("T1 alpha", 1, "A1 alpha value"), ok("T10 beta", 2), notok("T2 gamma", 3, "A3 x")], 3, 1, 2)
+        exp = {"primary": E_T1["primary"],
+               "secondary": [{"test_pattern": "T2", "assertion_pattern": "A3", "justification": "T2 reuses the rule"}]}
+        r = run(t, 1, exp)
+        self.assertEqual((r["verdict"], r["killing_tests"], r["secondary_tests"]),
+                         (mc.KILLED, ["T1 alpha"], ["T2 gamma"]), r)
 
 
 class Rule05InfraAndProcess(unittest.TestCase):
@@ -272,8 +281,8 @@ class Rule08PrefixCollision(unittest.TestCase):
 CASES = {  # case -> (return code, expected entries, allowlist, verdict, reason prefix)
     "clean": (0, E_T1, [], mc.SURVIVED, "suite_passed"),
     "baseline": (0, E_T1, [], mc.SURVIVED, "suite_passed"),
-    "kill": (1, E_T1, [], mc.KILLED, "expected_assertion"),
-    "kill_nested": (1, [{"test_pattern": "T2", "assertion_pattern": "A2a"}], [], mc.KILLED, "expected_assertion"),
+    "kill": (1, E_T1, [], mc.KILLED, "primary_assertion"),
+    "kill_nested": (1, E_T2, [], mc.KILLED, "primary_assertion"),
     "label_ok_extra": (1, E_T1, [], mc.INCONCLUSIVE, "label_outside_block"),
     "kill_extra": (1, E_T1, [], mc.INCONCLUSIVE, "unexpected_failure"),
     "collide": (1, E_T1, [], mc.INCONCLUSIVE, "label_outside_block"),
@@ -285,7 +294,7 @@ CASES = {  # case -> (return code, expected entries, allowlist, verdict, reason 
     "slow": (1, E_T1, [], mc.INCONCLUSIVE, "unexpected_skip_todo_cancelled"),
     "kill_error": (1, E_T1, [{"id": "AL_probe_T3_duplicate_key", "test_pattern": "T3",
                               "regex": "Command failed: psql duplicate key", "why": "probe error mode"}],
-                   mc.KILLED, "expected_assertion"),
+                   mc.KILLED, "primary_assertion"),
 }
 VARIANTS = ("node22/{}.tap", "node22/{}.crlf.tap", "node24/{}.tap", "node24/{}.crlf.tap")
 
@@ -358,12 +367,68 @@ class AggregateAndCli(unittest.TestCase):
         self.assertEqual(mc.aggregate([{"verdict": "MAYBE"}])[0], 3)
 
     def test_config_validation(self):
-        with self.assertRaises(ValueError):
-            run(KILL, 1, [{"assertion_pattern": "A1"}])
-        with self.assertRaises(ValueError):
+        with self.assertRaises(mc.ConfigError):
+            run(KILL, 1, {"primary": [{"assertion_pattern": "A1"}]})
+        with self.assertRaises(mc.ConfigError):
+            run(KILL, 1, [{"test_pattern": "T1", "assertion_pattern": "A1"}])  # role-less legacy list
+        with self.assertRaises(mc.ConfigError):
             run(KILL, 1, allowlist=[{"id": "x", "test_pattern": "T2", "regex": "y", "why": "z", "kinds": ["type_error"]}])
-        with self.assertRaises(ValueError):
+        with self.assertRaises(mc.ConfigError):
             run(KILL, 1, allowlist=[{"id": "x", "test_pattern": "T2", "regex": "y"}])
+
+
+def P(t, a=None):
+    return {"test_pattern": t, "assertion_pattern": a}
+
+
+def S(t, a=None, why="collateral: the mutated rule also feeds this assertion"):
+    return {"test_pattern": t, "assertion_pattern": a, "justification": why}
+
+
+class Audit128PrimarySecondary(unittest.TestCase):
+    """Sol audit 128: PRIMARY vs justified SECONDARY expectations, validated before any mutant runs."""
+
+    def test_failure_only_in_secondary_is_inconclusive(self):
+        t = tap([ok("T1 alpha", 1), ok("T10 beta", 2), notok("T2 gamma", 3, "A3 x")], 3, 2, 1)
+        r = run(t, 1, {"primary": [P("T1", "A1")], "secondary": [S("T2", "A3")]})
+        self.assertEqual(r["verdict"], mc.INCONCLUSIVE, r)
+        self.assertTrue(r["reason"].startswith("only_secondary_failures:T2 gamma"), r)
+        self.assertEqual(r["killing_tests"], [])
+
+    def test_secondary_without_justification_is_a_load_error(self):
+        for bad in ({"test_pattern": "T2", "assertion_pattern": "A3"}, S("T2", "A3", why=""), S("T2", "A3", why="  "),
+                    S("T2", "A3", why=None)):
+            with self.assertRaises(mc.ConfigError, msg=bad):
+                mc.load_mutant_config({"M1": {"primary": [P("T1", "A1")], "secondary": [bad]}})
+
+    def test_over_broad_entry_without_broad_reason_is_a_load_error(self):
+        spec = {"primary": [P("T1", "A1"), P("T2")], "secondary": [S("T3"), S("T4"), S("T5")]}
+        with self.assertRaises(mc.ConfigError):
+            mc.load_mutant_config({"M1": spec})
+        with self.assertRaises(mc.ConfigError):
+            mc.load_mutant_config({"M1": dict(spec, broad_reason=" ")})
+        ok_cfg = mc.load_mutant_config({"M1": dict(spec, broad_reason="the mutation disables the whole signature check")})
+        self.assertEqual(len(ok_cfg["M1"]["secondary"]), 3)
+        # 4 distinct tests is still fine without broad_reason; several assertions of one test count once
+        mc.load_mutant_config({"M1": {"primary": [P("T1", "A1"), P("T1", "A2")], "secondary": [S("T2"), S("T3"), S("T4")]}})
+
+    def test_primary_count_bounds_and_shape(self):
+        for spec in ({"primary": []}, {"secondary": [S("T2")]}, {"primary": [P("T1"), P("T2"), P("T3"), P("T4")]},
+                     {"primary": [P("T1")], "extra": 1}, {"primary": [P("T1", 5)]}, {"primary": "T1"}):
+            with self.assertRaises(mc.ConfigError, msg=spec):
+                mc.load_mutant_config({"M1": spec})
+        with self.assertRaises(mc.ConfigError):
+            mc.load_mutant_config({})
+
+    def test_loader_validates_allowlists_and_every_mutant(self):
+        good = {"primary": [P("T1", "A1")]}
+        with self.assertRaises(mc.ConfigError):
+            mc.load_mutant_config({"M1": good, "M2": dict(good, allowlist=[{"id": "a", "test_pattern": "T2", "regex": "x"}])})
+        with self.assertRaises(mc.ConfigError):
+            mc.load_mutant_config({"M1": dict(good, allowlist=[{"id": "a", "test_pattern": "T2", "regex": "(", "why": "w"}])})
+        cfg = mc.load_mutant_config({"M1": good})
+        r = run(KILL, 1, cfg["M1"], allowlist=cfg["M1"]["allowlist"])
+        self.assertEqual(r["verdict"], mc.KILLED, r)
 
     def test_cli_classify_and_aggregate(self):
         tmp = FIX / "node22"

@@ -8,14 +8,27 @@ third-party dependencies, needs no network or secrets, and behaves the same on L
 
 Verdicts (``classify``)
   KILLED       complete TAP; ``# tests`` equals the baseline; rc consistent with the summary; no skip/todo/cancelled;
-               no infrastructure signal; at least one ASSERTION failure inside the `not ok` block of an expected test,
-               carrying the expected assertion label; every other failure is also expected, or is in the narrow
-               causal allowlist (test + regex over the block + written reason; never for infra kinds).
+               no infrastructure signal; at least one ASSERTION failure inside the `not ok` block of a PRIMARY expected
+               test, carrying its assertion label; every other failure is primary, a justified SECONDARY, or in the
+               narrow causal allowlist (test + regex over the block + written reason; never for infra kinds).
+               Failures only in secondary assertions are INCONCLUSIVE (audit 128).
   SURVIVED     rc 0; complete TAP; tests == pass == baseline; fail == skipped == todo == cancelled == 0.
   INCONCLUSIVE everything else: timeout, signal, crash, SyntaxError/TypeError/ReferenceError, missing module or tool,
                process-level failure, non-unique anchor, truncated TAP, count mismatch or inconsistent summary,
                unexpected failure, expected label found only outside the expected block, rc inconsistent with summary.
   INCONCLUSIVE is never promoted to KILLED. Retrying is the runner's decision; a persistent INCONCLUSIVE fails the job.
+
+Expected assertions (audit 128, binding)
+  Per mutant: {"primary": [1-3 entries], "secondary": [entries, each with a non-empty "justification"],
+  "broad_reason": "..." (mandatory when primary+secondary name more than 4 distinct tests)}; an entry is
+  {"test_pattern", "assertion_pattern"}. PRIMARY entries are the assertions that directly test the mutated rule;
+  SECONDARY entries are collateral failures the mutation causally implies, each explained.
+  Expected assertions MUST be derived by reasoning about the mutation (which rule it breaks and which assertions encode
+  that rule) BEFORE running it, never by recording the failures observed when the mutant runs: copying observed
+  failures turns any regression, flake or harness defect into a "kill".
+  ``load_mutant_config`` validates every mutant's expectations and allowlist and raises ``ConfigError`` (missing
+  justification, missing broad_reason, 0 or >3 primaries, unknown keys, allowlist without reason or covering infra);
+  runners MUST call it before running any mutant. ``classify`` re-validates and raises on a malformed spec.
 
 Matching rules
   test_pattern       literal prefix of a test name with a token boundary ("T1" matches "T1 alpha" and "T1", never
@@ -29,18 +42,21 @@ Exit codes (``aggregate``; also the CLI): 0 all KILLED; 1 any SURVIVED; 2 invali
   Precedence when several apply: 2 > 3 > 1 > 0 (an untrustworthy run outranks a survivor; both are listed in JSON).
 
 How a runner adopts it
+  0. Config: declare every mutant's expectations and allowlist in one mapping and call ``load_mutant_config``
+     before anything runs (it raises ConfigError on any defect).
   1. Baseline: run the suite unmutated with ``run_command`` and require ``validate_baseline(...)["ok"]``; otherwise
      exit 2 without running mutants. Pin the baseline total (``# tests``) as a literal or a manifest entry.
   2. Per mutant: apply the edit; if the anchor is missing or not unique pass ``anchor_ok=False`` (do not skip). Run
      ``run_command([... "node", "--test", "--test-reporter=tap", "--test-reporter-destination=stdout", ...])``,
      restore the source (verify its hash), then
-         res = classify_run(baseline_total, run, expected=[{"test_pattern": "T1", "assertion_pattern": "A1"}],
-                            allowlist=[...], anchor_ok=True, mutant_id="M1_x")
+         spec = config["M1_x"]   # {"primary": [...], "secondary": [...], "broad_reason": ..., "allowlist": [...]}
+         res = classify_run(baseline_total, run, expected=spec, allowlist=spec["allowlist"], anchor_ok=True,
+                            mutant_id="M1_x")
      and print ``json.dumps(res)`` (one line per mutant; JSON Lines).
   3. Finish with ``code, summary = aggregate(results, baseline_valid=True)`` and ``sys.exit(code)``.
   Non-Python runners (.mjs) can write the TAP to a file and call the CLI:
       python scripts/ci/mutant_classifier.py classify --baseline-total 25 --rc 1 --tap out.tap \
-          --expected '[{"test_pattern":"kill-switch:","assertion_pattern":null}]' --mutant-id M01 >> results.jsonl
+          --expected '{"primary":[{"test_pattern":"kill-switch:","assertion_pattern":null}]}' --mutant-id M01 >> results.jsonl
       python scripts/ci/mutant_classifier.py aggregate results.jsonl
   Gates that emit structured decisions instead of TAP (the #875 audiovisual gate) use ``classify_structured_events``.
   ``python scripts/ci/mutant_classifier.py self-check`` exercises the classifier on embedded fixtures.
@@ -318,16 +334,85 @@ def _label_matches(pattern, failure):
     return _label_in(pattern, failure.get("error") or failure.get("block") or "")
 
 
-def _validate_config(expected, allowlist):
-    for e in expected:
-        if not isinstance(e, dict) or not e.get("test_pattern"):
-            raise ValueError(f"expected entry needs a non-empty test_pattern: {e!r}")
+class ConfigError(ValueError):
+    """A mutant's expectations or allowlist are malformed; runners must stop before running any mutant."""
+
+
+MAX_PRIMARY, MAX_TESTS_WITHOUT_BROAD_REASON = 3, 4
+_SPEC_KEYS = {"primary", "secondary", "broad_reason", "allowlist"}
+
+
+def _nonempty_str(v):
+    return isinstance(v, str) and v.strip() != ""
+
+
+def validate_expected(spec, mutant_id="?"):
+    """Validate one mutant's expectations -> normalised {"primary", "secondary", "broad_reason"}; raises ConfigError."""
+    if not isinstance(spec, dict):
+        raise ConfigError(f"{mutant_id}: expected must be a dict with primary/secondary (got {type(spec).__name__})")
+    unknown = set(spec) - _SPEC_KEYS
+    if unknown:
+        raise ConfigError(f"{mutant_id}: unknown expected keys {sorted(unknown)}")
+    prim, sec = spec.get("primary"), spec.get("secondary") or []
+    if not isinstance(prim, list) or not 1 <= len(prim) <= MAX_PRIMARY:
+        raise ConfigError(f"{mutant_id}: primary needs 1-{MAX_PRIMARY} assertions that directly test the mutated rule")
+    if not isinstance(sec, list):
+        raise ConfigError(f"{mutant_id}: secondary must be a list")
+    for role, entries in (("primary", prim), ("secondary", sec)):
+        for e in entries:
+            if not isinstance(e, dict) or not _nonempty_str(e.get("test_pattern")):
+                raise ConfigError(f"{mutant_id}: {role} entry needs a non-empty test_pattern: {e!r}")
+            ap = e.get("assertion_pattern")
+            if ap is not None and not isinstance(ap, str):
+                raise ConfigError(f"{mutant_id}: {role} assertion_pattern must be a string or null: {e!r}")
+            if role == "secondary" and not _nonempty_str(e.get("justification")):
+                raise ConfigError(f"{mutant_id}: secondary entry without justification: {e!r}")
+    tests = {e["test_pattern"] for e in prim + sec}
+    broad = spec.get("broad_reason")
+    if broad is not None and not _nonempty_str(broad):
+        raise ConfigError(f"{mutant_id}: broad_reason must be a non-empty string")
+    if len(tests) > MAX_TESTS_WITHOUT_BROAD_REASON and not _nonempty_str(broad):
+        raise ConfigError(f"{mutant_id}: {len(tests)} expected tests (> {MAX_TESTS_WITHOUT_BROAD_REASON}) "
+                          f"without an explicit broad_reason")
+    return {"primary": [dict(e, role="primary") for e in prim],
+            "secondary": [dict(e, role="secondary") for e in sec], "broad_reason": broad}
+
+
+def validate_allowlist(allowlist, mutant_id="?"):
+    if not isinstance(allowlist, list):
+        raise ConfigError(f"{mutant_id}: allowlist must be a list")
     for a in allowlist:
-        if not (isinstance(a, dict) and a.get("id") and a.get("test_pattern") and a.get("regex") and a.get("why")):
-            raise ValueError(f"allowlist entry needs id, test_pattern, regex and why: {a!r}")
+        if not (isinstance(a, dict) and _nonempty_str(a.get("id")) and _nonempty_str(a.get("test_pattern"))
+                and _nonempty_str(a.get("regex")) and _nonempty_str(a.get("why"))):
+            raise ConfigError(f"{mutant_id}: allowlist entry needs id, test_pattern, regex and a written why: {a!r}")
+        try:
+            re.compile(a["regex"])
+        except re.error as e:
+            raise ConfigError(f"{mutant_id}: allowlist {a['id']} regex invalid: {e}") from None
         bad = set(a.get("kinds") or ALLOWLISTABLE_KINDS) - ALLOWLISTABLE_KINDS
         if bad:
-            raise ValueError(f"allowlist entry {a['id']} cannot cover infra kinds {sorted(bad)}")
+            raise ConfigError(f"{mutant_id}: allowlist entry {a['id']} cannot cover infra kinds {sorted(bad)}")
+    return list(allowlist)
+
+
+def load_mutant_config(config):
+    """Validate {mutant_id: {primary, secondary, broad_reason?, allowlist?}} for a whole runner, before any mutant
+    runs. Returns the normalised config; raises ConfigError on the first defect (missing justification, unjustified
+    breadth, bad primary count, malformed allowlist)."""
+    if not isinstance(config, dict) or not config:
+        raise ConfigError("mutant config must be a non-empty {mutant_id: spec} mapping")
+    out = {}
+    for mid, spec in config.items():
+        norm = validate_expected(spec, mid)
+        norm["allowlist"] = validate_allowlist(spec.get("allowlist") or [], mid)
+        out[mid] = norm
+    return out
+
+
+def _validate_config(expected, allowlist):
+    norm = validate_expected(expected) if expected else {"primary": [], "secondary": [], "broad_reason": None}
+    validate_allowlist(list(allowlist))
+    return norm
 
 
 def _result(verdict, reason, **kw):
@@ -342,11 +427,14 @@ def classify(baseline_total, return_code, tap_summary, failures=(), expected=(),
     """-> dict {verdict: KILLED|SURVIVED|INCONCLUSIVE, reason, killing_tests, assertion_ids, counts, ...}.
 
     ``tap_summary`` and ``failures`` normally come from ``parse_tap``. A runner may pre-label failures with
-    ``assertion_id``. ``expected`` = [{test_pattern, assertion_pattern}]; ``allowlist`` = [{id, test_pattern, regex,
-    why, kinds?}]. Never raises on bad run data (only on malformed configuration).
+    ``assertion_id``. ``expected`` = {primary: [...], secondary: [{..., justification}], broad_reason?} (empty only
+    for a baseline); ``allowlist`` = [{id, test_pattern, regex, why, kinds?}]. Never raises on bad run data, only
+    (ConfigError) on a malformed spec.
     """
-    expected, allowlist, failures = list(expected or ()), list(allowlist or ()), list(failures or ())
-    _validate_config(expected, allowlist)
+    allowlist, failures = list(allowlist or ()), list(failures or ())
+    norm = _validate_config(expected, allowlist)
+    primary, secondary = norm["primary"], norm["secondary"]
+    expected = primary + secondary
     s = dict(tap_summary or {})
     counts = {k: s.get(k, -1) for k in COUNT_KEYS}
     base = {"mutant_id": mutant_id, "counts": counts, "baseline_total": baseline_total, "return_code": return_code,
@@ -405,17 +493,20 @@ def classify(baseline_total, return_code, tap_summary, failures=(), expected=(),
             if not any(r.get("path", [])[:len(pref)] == pref and len(r.get("path", [])) > len(pref) for r in real):
                 return inc(f"orphan_subtests_failure:{f.get('test_id', '?')[:60]}")
 
-    killing, ids, used, unexpected = [], [], [], []
+    killing, ids, used, unexpected, sec_hits = [], [], [], [], []
     for f in real:
         hit = None
         if f.get("kind") == ASSERTION:
-            for e in expected:
+            for e in expected:  # primary first: a failure matching both counts as primary
                 if _path_matches(e["test_pattern"], f) and _label_matches(e.get("assertion_pattern"), f):
                     hit = e
                     break
-        if hit:
+        if hit and hit["role"] == "primary":
             killing.append(f.get("test_id"))
             ids.append(f.get("assertion_id") or hit.get("assertion_pattern") or hit["test_pattern"])
+            continue
+        if hit:
+            sec_hits.append(f.get("test_id"))
             continue
         al = next((a for a in allowlist if f.get("kind") in set(a.get("kinds") or ALLOWLISTABLE_KINDS)
                    and _path_matches(a["test_pattern"], f) and re.search(a["regex"], f.get("block") or "")), None)
@@ -438,17 +529,20 @@ def classify(baseline_total, return_code, tap_summary, failures=(), expected=(),
         return None
 
     extra = {"killing_tests": sorted(set(killing)), "assertion_ids": sorted(set(map(str, ids))),
-             "allowlist_used": sorted(set(used)), "unexpected_failures": unexpected}
+             "allowlist_used": sorted(set(used)), "unexpected_failures": unexpected,
+             "secondary_tests": sorted(set(sec_hits))}
     if not killing:
         where = label_outside()
         if where:
             return inc("label_outside_block:" + where, **extra)
         if unexpected:
             return inc("unexpected_failure:" + ";".join(unexpected)[:240], **extra)
+        if sec_hits:
+            return inc("only_secondary_failures:" + ";".join(sorted(set(sec_hits)))[:200], **extra)
         return inc("no_expected_assertion", **extra)
     if unexpected:
         return inc("unexpected_failure:" + ";".join(unexpected)[:240], **extra)
-    return _result(KILLED, "expected_assertion:" + ",".join(extra["killing_tests"])[:200]
+    return _result(KILLED, "primary_assertion:" + ",".join(extra["killing_tests"])[:200]
                    + f" allowlist={','.join(extra['allowlist_used']) or 'none'}", **base, **extra)
 
 
@@ -560,7 +654,7 @@ _SELF_TAP = ("TAP version 13\n# Subtest: T1 a\nnot ok 1 - T1 a\n  ---\n  type: '
 
 
 def self_check():
-    exp = [{"test_pattern": "T1", "assertion_pattern": "A1"}]
+    exp = {"primary": [{"test_pattern": "T1", "assertion_pattern": "A1"}]}
     checks = []
     p = parse_tap(_SELF_TAP)
     checks.append(("killed", classify(2, 1, p["summary"], p["failures"], exp)["verdict"] == KILLED))
@@ -568,7 +662,15 @@ def self_check():
     checks.append(("killed_crlf", classify(2, 1, p["summary"], p["failures"], exp)["verdict"] == KILLED))
     p = parse_tap(_SELF_TAP)
     checks.append(("prefix_T10", classify(2, 1, p["summary"], p["failures"],
-                                          [{"test_pattern": "T10", "assertion_pattern": "A1"}])["verdict"] == INCONCLUSIVE))
+                                          {"primary": [{"test_pattern": "T10", "assertion_pattern": "A1"}]})["verdict"] == INCONCLUSIVE))
+    sec = {"primary": [{"test_pattern": "T2", "assertion_pattern": "A2"}],
+           "secondary": [{"test_pattern": "T1", "assertion_pattern": "A1", "justification": "self-check"}]}
+    checks.append(("only_secondary", classify(2, 1, p["summary"], p["failures"], sec)["verdict"] == INCONCLUSIVE))
+    try:
+        load_mutant_config({"m": {"primary": exp["primary"], "secondary": [{"test_pattern": "T2"}]}})
+        checks.append(("unjustified_secondary_refused", False))
+    except ConfigError:
+        checks.append(("unjustified_secondary_refused", True))
     p = parse_tap(_SELF_TAP[: len(_SELF_TAP) // 2])
     checks.append(("truncated", classify(2, 1, p["summary"], p["failures"], exp)["verdict"] == INCONCLUSIVE))
     clean = _SELF_TAP.replace("not ok 1 - T1 a", "ok 1 - T1 a").replace("# pass 1\n# fail 1", "# pass 2\n# fail 0")
@@ -599,7 +701,7 @@ def main(argv=None):
     c.add_argument("--rc", type=int)
     c.add_argument("--tap", required=True)
     c.add_argument("--stderr")
-    c.add_argument("--expected", required=True, help="JSON list or @file")
+    c.add_argument("--expected", required=True, help='JSON {"primary":[...],"secondary":[...]} or @file')
     c.add_argument("--allowlist", help="JSON list or @file")
     c.add_argument("--anchor-not-unique", action="store_true")
     c.add_argument("--timed-out", action="store_true")
@@ -632,7 +734,7 @@ def main(argv=None):
         print(json.dumps(r, ensure_ascii=False))
         return 0 if r["ok"] else EXIT_BAD_BASELINE
     r = classify(args.baseline_total, args.rc, parsed["summary"], parsed["failures"],
-                 _load_json_arg(args.expected, []), anchor_ok=not args.anchor_not_unique, timed_out=args.timed_out,
+                 _load_json_arg(args.expected, {}), anchor_ok=not args.anchor_not_unique, timed_out=args.timed_out,
                  signal=args.signal, allowlist=_load_json_arg(args.allowlist, []), mutant_id=args.mutant_id)
     print(json.dumps(r, ensure_ascii=False))
     return aggregate([r])[0]
