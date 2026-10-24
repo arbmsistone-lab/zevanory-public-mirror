@@ -143,7 +143,7 @@ test("G7 reprodução do incidente de 05/10 (run 37365806405, sandbox-worker-sec
   assert.equal(r.code, 1, "[G7.2] gate falha");
 });
 
-test("G8 configuração de produção não ganha var de teste/certificação (dívida congelada) nem --var no deploy", () => {
+test("G8 configuração de produção não ganha var de teste/certificação (nem as antigas do piloto) nem --var no deploy", () => {
   const r = fixtures({
     "w.yml": job({ steps: run("npx wrangler deploy --config wrangler.central-fix.jsonc --var CERTIFICATION_PILOT_ENABLED:true\nnpx wrangler deploy --config wrangler.certification.generated.jsonc --var CERTIFICATION_X:1\nnpx wrangler deploy --var PUBLIC_FLAG:1") }),
     "scripts/deploy/prepare-central-candidate.py": 'c={"vars":{}}\nc["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"\nc["vars"]["CERTIFICATION_PILOT_APPROVER"]="x"\nc["vars"]["CERTIFICATION_PILOT_PRODUCTION_ALLOWED"]="false"\nc["vars"]["CERTIFICATION_PILOT_ENABLED"]="true"\nruntime={}\nruntime["MERCADOPAGO_TEST_ACCESS_TOKEN"]="x"\nc["vars"]["CHECKOUT_ENABLED"]="true"\n',
@@ -152,7 +152,9 @@ test("G8 configuração de produção não ganha var de teste/certificação (d�
     "wrangler.extra.jsonc": '{ "name": "zevanory", "vars": { "STRIPE_TEST_FLAG": "1", "OK": "1" } }\n',
   });
   assert.deepEqual(of(r, "w.yml"), ["TEST_SECRET_PUT_TO_PRODUCTION:CERTIFICATION_PILOT_ENABLED"], "[G8.1] --var para produção; certificação e nome comum passam");
-  assert.deepEqual(of(r, "scripts/deploy/prepare-central-candidate.py"), ["PRODUCTION_CONFIG_TEST_BINDING:CERTIFICATION_PILOT_ENABLED", "PRODUCTION_CONFIG_TEST_BINDING:MERCADOPAGO_TEST_ACCESS_TOKEN"], "[G8.2] só a dívida congelada (3 vars) passa no prepare-central-candidate");
+  // R9 (Sol 164 §4): a dívida congelada foi zerada; nenhuma CERTIFICATION_PILOT_* passa na configuração de produção.
+  assert.deepEqual(of(r, "scripts/deploy/prepare-central-candidate.py"), ["PRODUCTION_CONFIG_TEST_BINDING:CERTIFICATION_PILOT_APPROVER", "PRODUCTION_CONFIG_TEST_BINDING:CERTIFICATION_PILOT_ENABLED",
+    "PRODUCTION_CONFIG_TEST_BINDING:CERTIFICATION_PILOT_ENV", "PRODUCTION_CONFIG_TEST_BINDING:CERTIFICATION_PILOT_PRODUCTION_ALLOWED", "PRODUCTION_CONFIG_TEST_BINDING:MERCADOPAGO_TEST_ACCESS_TOKEN"], "[G8.2] nenhuma var de piloto passa no prepare-central-candidate (dívida zerada)");
   assert.deepEqual([...of(r, "wrangler.prod.toml"), ...of(r, "wrangler.extra.jsonc")], ["PRODUCTION_CONFIG_TEST_BINDING:SANDBOX_MODE", "PRODUCTION_CONFIG_TEST_BINDING:STRIPE_TEST_FLAG"], "[G8.3] wrangler toml/jsonc de produção");
   assert.deepEqual(of(r, "wrangler.certification.toml"), [], "[G8.3] config de certificação fora do escopo");
 });

@@ -76,7 +76,9 @@ function probed() {
   assert.deepEqual(probe.blocked, [], "[T2.0] chamada externa inesperada");
   return probe.out;
 }
-const ROUTES = ["backup_run", "funnel_run", "voice_eval_run", "certification_invite", "audit_credential_identity", "telegram_proof",
+// certification_invite saiu desta lista com o R9 B: na produção o convite do piloto é recusado (409) ANTES da autenticação,
+// com qualquer credencial (provado em T2c e em tests/production-pilot-removal.test.mjs).
+const ROUTES = ["backup_run", "funnel_run", "voice_eval_run", "audit_credential_identity", "telegram_proof",
   "channel_evidence", "whatsapp_stats_refresh", "voice_audit", "node_e2e_status"];
 
 test("T2 Worker de produção: toda rota de operador aceita o nome novo e o prefere ao antigo", () => {
@@ -88,6 +90,16 @@ test("T2 Worker de produção: toda rota de operador aceita o nome novo e o pref
       const good = r[ACCEPTS[variant]], bad = r[ACCEPTS[variant] === "new" ? "old" : "new"];
       assert.notEqual(good.status, 401, `[T2.1] ${variant}/${route}: credencial esperada autentica (status ${good.status} ${good.error})`);
       assert.equal(bad.status, 401, `[T2.2] ${variant}/${route}: a outra credencial é recusada (status ${bad.status})`);
+    }
+  }
+});
+
+test("T2c R9 B: convite do piloto recusado na produção com qualquer credencial", () => {
+  const out = probed();
+  for (const variant of Object.keys(VARIANTS)) {
+    for (const who of ["new", "old"]) {
+      const r = out[variant].certification_invite[who];
+      assert.deepEqual([r.status, r.error], [409, "certification_e2e_not_fail_closed"], `[T2c.1] ${variant}/${who}: piloto inexistente na produção`);
     }
   }
 });

@@ -52,7 +52,8 @@ const { default: certification } = await import("../../certification-worker.mjs"
 const TOKEN_KEY = /^(ZEVANORY_OPERATOR_TOKEN|CERTIFICATION_|OPERATOR_TOKEN$|MERCADOPAGO_|DATABASE_URL$)/;
 function resetProcessEnv() { for (const k of Object.keys(process.env)) if (TOKEN_KEY.test(k)) delete process.env[k]; }
 
-// Produção como o deploy de hoje a grava (antes do PR B): piloto sandbox, vendas fechadas. Nenhum DATABASE_URL.
+// Produção com o piloto ainda ligado no binding (como o deploy gravava antes do R9 B): desde o R9 B o Worker de produção
+// não o enxerga (worker/production-pilot-guard.mjs). Vendas fechadas. Nenhum DATABASE_URL.
 const BASE = { ZEVANORY_DEPLOYMENT_ENV: "production", CERTIFICATION_PILOT_ENV: "sandbox", MERCADOPAGO_ENV: "sandbox",
   SALE_GLOBALLY_ENABLED: "false", CHECKOUT_ENABLED: "true", FINANCIAL_EVENTS_ENABLED: "true", ZEVANORY_PRIVATE_ARTIFACTS: kv };
 export const VARIANTS = {
