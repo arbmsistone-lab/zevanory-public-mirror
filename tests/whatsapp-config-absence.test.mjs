@@ -145,7 +145,9 @@ test("generated public assets: wa.me injector and JSON-LD telephone of the froze
   assert.match(r.output, /^PUBLIC_WHATSAPP_FREE=PASS$/m);
   assert.deepEqual(hits(r.publicText), [], "public assets must not expose the banned WhatsApp account");
   assert.match(r.publicText, /"@type":"ContactPoint","email":"suporte@zevanory\.api\.br"/);
-  assert.match(r.publicText, /const EMAIL='suporte@zevanory\.api\.br'/);
+  // The contact script is retired on the apex: not published, no page references it (worker tombstone).
+  assert.match(r.output, /^PUBLIC_RETIRED_CONTACT_SCRIPT=ABSENT$/m);
+  assert.doesNotMatch(r.publicText, /whatsapp-contact/, "[WR-PUB-RETIRED] no generated asset names the retired script");
 });
 
 test("fail-closed: any leftover wa.me, api.whatsapp.com or number (any format) in public assets aborts the generator", () => {

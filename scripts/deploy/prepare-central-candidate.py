@@ -167,22 +167,24 @@ recovered.write_text(recovered_src,encoding="utf-8")
 # format. The apex public/ tree is the FROZEN 83620c6 snapshot (not the page sources in this repo), so the
 # generator neutralizes its two known WhatsApp surfaces here and then fails closed on anything left
 # (scripts/deploy/public_whatsapp_scan.py, after the overlay below; scanned again after the full build in central-candidate-dryrun).
-#  * whatsapp-contact.js (wa.me CTA injector, loaded by most pages) -> the inert e-mail-only script that
-#    PR #892 ships for the same path (no WhatsApp CTA; rewrites contato@ mailto to suporte@).
+#  * whatsapp-contact.js (wa.me CTA injector, loaded by 19 snapshot pages) -> RETIRED: the file is no
+#    longer published and every reference is stripped from the pages, because browsers kept OLD copies
+#    of it (cached with a long lifetime) and a cached page that still references it would run them.
+#    The central Worker answers the old path with an inert no-store tombstone
+#    (worker/retired-public-assets.mjs); docs/evidence/sales-ux/legacy-cache.md has the measurement.
 #  * index.html JSON-LD Organization telephone/ContactPoint -> e-mail only.
-WHATSAPP_FREE_CONTACT_JS = (
-    "(()=>{\n"
-    "  // Contato público: a conta WhatsApp Business da ZEVANORY foi desativada permanentemente pela Meta\n"
-    "  // (2026-10-10) e o número está banido. O único endereço eletrônico oficial é o e-mail; este script\n"
-    "  // não injeta nenhum CTA de WhatsApp (data/politica-unica.json, contato_publico) e só troca o\n"
-    "  // endereço antigo pelo e-mail oficial.\n"
-    "  const EMAIL='suporte@zevanory.api.br';\n"
-    "  document.querySelectorAll('a[href^=\"mailto:contato@zevanory.api.br\"]').forEach(a=>{a.href='mailto:'+EMAIL;});\n"
-    "})();\n"
-)
-contact_js = Path("public/whatsapp-contact.js")
-if contact_js.exists():
-    contact_js.write_bytes(WHATSAPP_FREE_CONTACT_JS.encode("utf-8"))
+RETIRED_CONTACT_SCRIPT = "whatsapp-contact.js"
+RETIRED_CONTACT_TAG = re.compile(r'[ \t]*<script\b[^>]*\bsrc="/whatsapp-contact\.js"[^>]*>\s*</script>[ \t]*\n?')
+# Build-time parity with what the e-mail-only copy did at runtime on those pages: every
+# a[href^="mailto:contato@zevanory.api.br"] became href="mailto:suporte@zevanory.api.br".
+LEGACY_CONTACT_MAILTO = re.compile(r'href="mailto:contato@zevanory\.api\.br[^"]*"')
+Path("public", RETIRED_CONTACT_SCRIPT).unlink(missing_ok=True)
+for page in sorted(Path("public").rglob("*.html")):
+    raw = page.read_bytes().decode("utf-8")
+    stripped = RETIRED_CONTACT_TAG.sub("", raw)
+    if stripped != raw:
+        stripped = LEGACY_CONTACT_MAILTO.sub('href="mailto:suporte@zevanory.api.br"', stripped)
+        page.write_bytes(stripped.encode("utf-8"))
 home = Path("public/index.html")
 if home.exists():
     raw = home.read_bytes().decode("utf-8")
@@ -220,6 +222,15 @@ _wa_hits = public_whatsapp_hits("public")
 if _wa_hits:
     raise SystemExit("PUBLIC_WHATSAPP_CONTACT_PRESENT " + " ".join(_wa_hits))
 print("PUBLIC_WHATSAPP_FREE=PASS")
+# Fail closed: no published text asset may name the retired script (a tag the regex above did not
+# match, a preload, a JS loader...). Runs after the WhatsApp scan so a leftover injector is reported there.
+_retired_refs = sorted(
+    p.as_posix() for p in Path("public").rglob("*")
+    if p.is_file() and (p.name == RETIRED_CONTACT_SCRIPT or RETIRED_CONTACT_SCRIPT.encode() in p.read_bytes())
+)
+if _retired_refs:
+    raise SystemExit("PUBLIC_RETIRED_CONTACT_SCRIPT_REFERENCED " + " ".join(_retired_refs))
+print("PUBLIC_RETIRED_CONTACT_SCRIPT=ABSENT")
 
 c["vars"]["VOICE_TTS_PROVIDER"]="gemini"
 c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"

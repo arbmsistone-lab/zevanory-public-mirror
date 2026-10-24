@@ -1,4 +1,5 @@
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
+import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
 import { legacyTrustProjection, guardTrustChain } from "./trust-projection.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
@@ -98,6 +99,9 @@ const wrapped = {
     return wrapped.processFetch(request, withMeteredKv(env, "fetch:" + path), ctx);
   },
   async processFetch(request, env, ctx) {
+    // Retired public assets (old contact script): inert, no-store tombstone before any env/KV access.
+    const retiredAsset = retiredPublicAssetResponse(request);
+    if (retiredAsset) return retiredAsset;
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;

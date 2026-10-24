@@ -89,7 +89,7 @@ const MUTANTS = [
   ["M42_toml_support_channel_back", [[TOML, "\n[vars]\n", '\n[vars]\nSUPPORT_CHANNEL = "WhatsApp +55 88 99254-5413"\n']]],
   // Follow-up on #896: retired channel re-enabled; public assets keep / regain the banned account.
   ["M43_whatsapp_sales_reenabled", [[GEN, GEN_SALES, 'c["vars"]["WHATSAPP_SALES_ENABLED"]="true"\n']]],
-  ["M44_contact_js_not_neutralized", [[GEN, '    contact_js.write_bytes(WHATSAPP_FREE_CONTACT_JS.encode("utf-8"))\n', "    pass\n"]]],
+  ["M44_contact_js_not_neutralized", [[GEN, 'Path("public", RETIRED_CONTACT_SCRIPT).unlink(missing_ok=True)\n', "pass\n"]]],
   ["M45_public_scan_disabled", [[GEN, "if _wa_hits:\n", "if False:\n"]]],
   ["M46_number_pattern_weakened", [[SCAN, '("number 9234-0423", _number_pattern("92340423")),', '("number 9234-0423", re.compile(r"9234-0423")),']]],
   ["M47_jsonld_telephone_kept", [[GEN, '    new_home = re.sub(r\',"telephone":"[^"]*"\', "", new_home)\n', ""]]],
