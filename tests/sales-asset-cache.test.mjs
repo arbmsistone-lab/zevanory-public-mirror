@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { readTextNormalized } from "./helpers/text.mjs";
 import worker, { RETIRED_CONTACT_BODY, assetCacheControl, PAGE_CACHE_CONTROL } from "../worker/sales-public-worker.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -48,7 +49,7 @@ test("(a) every published page loads only content-hashed CSS/JS that exists and 
   assert.ok(pages.length > 60, "full surface");
   let refs = 0;
   for (const f of pages) {
-    const html = readFileSync(join(PUB, f), "utf8");
+    const html = readTextNormalized(join(PUB, f));
     refs += (html.match(/<link rel="stylesheet"|<script\b[^>]*\bsrc=/g) || []).length;
     assert.deepEqual(assetViolations(f, html), [], f);
   }
@@ -58,14 +59,14 @@ test("(a) every published page loads only content-hashed CSS/JS that exists and 
 test("(b) nothing published or built references the retired contact script", () => {
   for (const p of walk(PUB)) {
     if (!/\.(html|js|css|txt|xml|json)$/.test(p)) continue;
-    assert.ok(!readFileSync(p, "utf8").includes(RETIRED), p);
+    assert.ok(!readTextNormalized(p).includes(RETIRED), p);
   }
   assert.ok(!existsSync(join(PUB, RETIRED + ".js")), "no published copy");
   assert.ok(!existsSync(join(ROOT, "sales-overlay", RETIRED + ".js")), "no overlay source");
-  for (const p of walk(join(ROOT, "sales-overlay"))) if (/\.(html|js|txt|json)$/.test(p)) assert.ok(!readFileSync(p, "utf8").includes(RETIRED), p);
+  for (const p of walk(join(ROOT, "sales-overlay"))) if (/\.(html|js|txt|json)$/.test(p)) assert.ok(!readTextNormalized(p).includes(RETIRED), p);
   for (const f of pages) {
     const src = join(ROOT, f.replace(/\.html$/, ""), "index.html");
-    if (existsSync(src)) assert.ok(!readFileSync(src, "utf8").includes(RETIRED), src);
+    if (existsSync(src)) assert.ok(!readTextNormalized(src).includes(RETIRED), src);
   }
 });
 
@@ -140,7 +141,7 @@ test("(c) Worker: hashed assets immutable, unhashed CSS/JS revalidate, pages wit
 });
 
 test("mutants: unhashed script/stylesheet, retired script tag, stale hash, external CDN — all killed", async () => {
-  const page = readFileSync(join(PUB, "calculadora-cmv.html"), "utf8");
+  const page = readTextNormalized(join(PUB, "calculadora-cmv.html"));
   const js = page.match(/src="(\/assets\/ferramentas\.[0-9a-f]{10}\.js)"/)[1];
   const mutants = {
     "A1 unhashed script": page.replace(js, "/ferramentas.js"),
