@@ -1,0 +1,75 @@
+name: r9-pilot-removal
+
+# R9 B (roteiro v4.7; auditoria Sol 164 §4): o piloto de certificação não existe no Worker de produção. Testes
+# comportamentais do Worker real com o piloto inteiro ligado (B1-B7), gate de separação (G1-G8) e mutantes causais pelo
+# classificador compartilhado. Só pull_request: nunca dispara no merge, nenhum segredo, sem rede além do checkout e da
+# instalação do PyYAML.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/r9-pilot-removal.yml"
+      - "worker/**"
+      - "certification-worker.mjs"
+      - "scripts/deploy/**"
+      - "scripts/ci/**"
+      - "tests/production-pilot-removal.test.mjs"
+      - "tests/production-order-lookup.test.mjs"
+      - "scripts/mercadopago_readonly_payments_audit.py"
+      - "tests/ci/credential-separation-gate.test.mjs"
+      - "tests/helpers/**"
+      - "tests/t4_sim/**"
+
+permissions:
+  contents: read
+
+jobs:
+  pilot-removal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: PyYAML (o gate lê YAML como dado)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+      - name: Testes (contagem exata 18, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/production-pilot-removal.test.mjs tests/ci/credential-separation-gate.test.mjs | tee /tmp/t.txt
+          for l in "# tests 18" "# pass 18" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes causais (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_pilot_removal.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=R9_PILOT_REMOVAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=21 killed=21 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Leitura de pedidos de produção somente leitura sem piloto (auditoria Sol 174; contagem exata 7)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          node --test tests/production-order-lookup.test.mjs | tee /tmp/l.txt
+          for l in "# tests 7" "# pass 7" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/l.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes da leitura de pedidos (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_order_lookup.py < /dev/null | tee /tmp/mutl.txt
+          echo "::notice title=R9_ORDER_LOOKUP_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mutl.txt)"
+          grep -qx "MUTANTS total=12 killed=12 survived=0 inconclusive=0" /tmp/mutl.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"
