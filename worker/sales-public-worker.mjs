@@ -46,11 +46,13 @@ function carryUtm(response,url){
   if(!q||typeof HTMLRewriter==="undefined")return response;
   return new HTMLRewriter().on('a[href^="/comprar/"],a[href^="/hotmart/"],a[href^="/assinar/"],a[href^="/material-gratuito"]',{element(el){const h=el.getAttribute("href")||"";if(!/utm_source=/.test(h))el.setAttribute("href",h+(h.includes("?")?"&":"?")+q);}}).transform(response);
 }
-function countView(request,env,ctx,page,metric="views"){
+function countView(request,env,ctx,page,metric="views",extra=null){
   // Aggregated, cookie-free view counting through the private service binding (never blocks the page).
-  if(request.method!=="GET"||!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil||!isFunnelPage(page)) return;
+  // extra: {cta:"buy"|"waitlist"} on a switch-dependent page view (exposure), {provider} on a real
+  // checkout session (own_checkout_started, sent from the POST that created it). Counted on the core.
+  if((request.method!=="GET"&&!(request.method==="POST"&&metric==="own_checkout_started"))||!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil||!isFunnelPage(page)) return;
   const url=new URL(request.url),{src,camp}=attribution(request,url);
-  const body=JSON.stringify({page,metric,src,camp,asn:Number(request.cf?.asn)||0,al:request.headers.get("accept-language")?1:0,cty:String(request.cf?.country||"").slice(0,2),ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
+  const body=JSON.stringify({page,metric,...(extra||{}),src,camp,asn:Number(request.cf?.asn)||0,al:request.headers.get("accept-language")?1:0,cty:String(request.cf?.country||"").slice(0,2),ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
   ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body}).catch(()=>null));
 }
 const BUY_SKUS={"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"};
@@ -137,7 +139,6 @@ async function handleBuy(request,env,sku,ctx){
   const open=await salesOpen(env);
   if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="${contactHref("Olá! Tenho interesse no "+name+".").replace(/&/g,"&amp;")}">${CONTACT_LABEL}</a></p>`);
   if(request.method!=="POST"){
-    countView(request,env,ctx,slug,"checkout_intent");
     return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. ${DELIVERY_TEXT} ${RULE_LINE}</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
   }
   const ua=request.headers.get("user-agent")||"";
@@ -304,7 +305,13 @@ export async function noindexComprar(response){
 async function comprarRoute(request,env,ctx,match){
   try{
     const buy=match.routable&&match.path.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
-    if(buy) return await handleBuy(request,env,buy[1].toUpperCase(),ctx);
+    if(buy){
+      // Real transactional intent (taxonomy v2): counted ONLY when the server created a payment session —
+      // the POST answered 303 to the provider checkout. Opening the buy page counts nothing.
+      const sku=buy[1].toUpperCase(),res=await handleBuy(request,env,sku,ctx);
+      if(request.method==="POST"&&res.status===303&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(res.headers.get("location")||""))countView(request,env,ctx,BUY_SKUS[sku],"own_checkout_started",{provider:"mercadopago"});
+      return res;
+    }
     return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
   }catch(e){
     console.error("buy_route_error",String(e&&e.message||e).slice(0,80));
@@ -350,9 +357,11 @@ export default{async fetch(request,env,ctx){
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
   let response=await env.ASSETS.fetch(new Request(url,request));
-  if(response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)&&await salesOpenForPages(env))
+  // Switch state of this response (null = not a switch-dependent page): drives the open HTML and the exposure count.
+  const toggleOpen=response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)?await salesOpenForPages(env):null;
+  if(toggleOpen)
     {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page),{status:200,statusText:response.statusText,headers:h});}
-  if(response.status===200&&page) countView(request,env,ctx,page);
+  if(response.status===200&&page) countView(request,env,ctx,page,"views",toggleOpen===null?null:{cta:toggleOpen?"buy":"waitlist"});
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");
   // Static assets (css/js/svg/images) are cached by browsers and the edge; pages revalidate.

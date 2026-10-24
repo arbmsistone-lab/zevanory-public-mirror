@@ -106,7 +106,9 @@ test("unknown, malformed or nested /comprar paths never fall through to an index
 test("an unexpected exception inside the buy flow still answers 5xx with the noindex headers", async () => {
   const throwingCtx = {waitUntil() { throw new Error("boom"); }};
   let r;
-  try { r = await call("/comprar/ZEV-IA-011", {env: makeEnv({sales: "open"}), ctx: throwingCtx}); }
+  // The GET no longer counts anything (funil v2: intent only after the server created the session, #893), so
+  // the throwing waitUntil is reached by the POST that created the session (own_checkout_started).
+  try { r = await call("/comprar/ZEV-IA-011", {method: "POST", env: makeEnv({sales: "open"}), ctx: throwingCtx}); }
   catch (e) { assert.fail("[exception] buy flow threw instead of answering 503: " + e.message); }
   const body = await assertNoindex(r, "exception", 503);
   assert.match(body, /Checkout indisponível/, "[exception]");
