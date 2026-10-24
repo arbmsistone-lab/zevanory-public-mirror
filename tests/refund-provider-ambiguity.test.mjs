@@ -24,7 +24,7 @@ function fixture(initial = {}) {
     list: async () => ({ keys: [...state.keys()].filter((k) => k.startsWith("refund:req:")).map((name) => ({ name })), list_complete: true }),
   };
   const env = {
-    CERTIFICATION_E2E_TOKEN: TOKEN,
+    ZEVANORY_OPERATOR_TOKEN: TOKEN,
     MERCADOPAGO_TEST_ACCESS_TOKEN: "TEST-FAKE-NONSECRET",
     ZEVANORY_PRIVATE_ARTIFACTS: kv,
     DATABASE_URL: "postgres://mock.invalid/test"

@@ -48,6 +48,7 @@ import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
 import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch, PROOF_INVALIDATION_KV_KEY, PROOF_INVALIDATION_REASONS } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
+import { operatorToken as operatorCredential } from "./operator-credential.mjs";
 
 async function loadWhatsappBrokerState(binding, env) {
   // Retired channel (Meta disabled the WABA on 2026-10-10): never call the broker.
@@ -338,7 +339,7 @@ const wrapped = {
     // WhatsApp proof route. No message, no Meta call, no WhatsApp data.
     if (url.pathname === "/api/admin/voice/audit") {
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
-      const expected = String(normalized.CERTIFICATION_E2E_TOKEN || normalized.OPERATOR_TOKEN || "");
+      const expected = String(operatorCredential(normalized) || normalized.OPERATOR_TOKEN || "");
       const presented = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
       let diff = expected.length < 24 || presented.length !== expected.length ? 1 : 0;
       for (let i = 0; !diff && i < expected.length; i++) diff |= expected.charCodeAt(i) ^ presented.charCodeAt(i);
@@ -467,7 +468,7 @@ const wrapped = {
           headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
         });
       }
-      const expected = String(normalized.CERTIFICATION_E2E_TOKEN || "");
+      const expected = String(operatorCredential(normalized) || "");
       const provided = String(request.headers.get("x-certification-e2e-token") || "");
       const sandbox = String(normalized.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";
       const salesClosed = String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" && globalThis.__ZEVANORY_SALES_SWITCH__ !== true;
@@ -505,7 +506,7 @@ const wrapped = {
       // Runs the backup and restore drill; returns only counts and hashes (never data).
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
       const report = url.searchParams.get("finalize") === "1"
         ? await finalizeBackup(normalized, { parts })
@@ -517,7 +518,7 @@ const wrapped = {
       // Funnel consolidation in its own invocation (own subrequest budget). Aggregates only.
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const beat = { at: new Date().toISOString(), source: "http", tasks: {} };
       try {
         const salesOpenNow = applySalesSwitch(await readSalesSwitch(normalized).catch(() => null));
@@ -534,7 +535,7 @@ const wrapped = {
       // End-to-end voice evaluation on the production models; returns and stores scores only.
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       let apiKey = String(normalized.GEMINI_API_KEY || "").trim();
       // Presence flags only (never values): where the production voice key can come from.
       const diag = { geminiEnv: Boolean(apiKey), vaultRecord: false, vaultMaster: Boolean(normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN), vaultDecrypted: false, freeOnly: String(normalized.VOICE_TTS_FREE_ONLY || "") === "true", router: null };

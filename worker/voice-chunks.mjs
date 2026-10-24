@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { downsamplePcmMono, encodePcmRemotely } from "./voice-pcm.mjs";
+import { operatorToken as operatorCredential } from "./operator-credential.mjs";
 const E=new TextEncoder(), FRAME=576, CORE=FRAME*21, WARM=FRAME*2, MAX=3*1024*1024;
 const hex=b=>Buffer.from(b).toString("hex");
 let cachedSecret,cachedKey;
@@ -136,7 +137,7 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
 }
 
 export async function handleVoiceEncodeAudit(request,env){
- const expected=String(env.CERTIFICATION_E2E_TOKEN||env.OPERATOR_TOKEN||"");
+ const expected=String(operatorCredential(env)||env.OPERATOR_TOKEN||"");
  const supplied=(request.headers.get("authorization")||"").replace(/^Bearer /,"");
  let diff=expected.length^supplied.length;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^(supplied.charCodeAt(i)||0);
  if(expected.length<24||diff)return Response.json({error:"unauthorized"},{status:401});
