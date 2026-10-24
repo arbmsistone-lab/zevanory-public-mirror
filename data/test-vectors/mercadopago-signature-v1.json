@@ -1,0 +1,624 @@
+{
+  "schema": "zevanory.test-vectors.mercadopago-signature.v1",
+  "title": "Vetores de teste reproduzíveis pelo auditor: x-signature Mercado Pago (Roteiro v4.4, seção 7)",
+  "secret": "FICTITIOUS-TEST-SECRET-do-not-use",
+  "secret_label": "FICTITIOUS secret for test vectors only. Not a Mercado Pago credential, never used in any environment. Do not use.",
+  "secret_is_fictitious": true,
+  "now_iso": "2026-10-24T12:00:00.000Z",
+  "now_ms": 1792843200000,
+  "window_ms": 600000,
+  "production_function": "verifyMercadoPagoSignature in worker/cloudflare-worker.recovered.mjs (extracted from the source text by tests/mercadopago-signature-vectors.test.mjs; no copy)",
+  "spec": {
+    "consulted": "2026-10-24",
+    "sources": [
+      "https://www.mercadopago.com.uy/developers/en/docs/checkout-pro/payment-notifications.md",
+      "https://www.mercadopago.com.br/developers/en/docs/qr-code/notifications",
+      "https://www.mercadopago.com/developers/en/docs/your-integrations/notifications/webhooks"
+    ],
+    "header": "x-signature: ts=<ts>,v1=<hex>; extract ts and v1 by splitting on ','",
+    "manifest_template": "id:<data.id>;request-id:<x-request-id>;ts:<ts>;",
+    "absent_values": "a pair whose value is absent from the request is removed from the manifest",
+    "data_id_case": "alphanumeric data.id is lowercased (official samples); payment ids here are numeric",
+    "hmac": "HMAC-SHA256(secret, manifest) in lowercase hex, compared with v1 in constant time",
+    "timestamp_tolerance": "not specified by the documentation; the Worker uses |now - ts| <= 10 min (symmetric)",
+    "replay": "not specified by the documentation"
+  },
+  "fields": {
+    "manifest": "canonical manifest per the official template built from the RECEIVED request (query data.id, x-request-id, ts parsed per spec), absent pairs removed",
+    "expected_v1": "printf '%s' \"$manifest\" | openssl dgst -sha256 -hmac \"$secret\"",
+    "sha256_manifest": "printf '%s' \"$manifest\" | openssl dgst -sha256",
+    "sha256_expected_v1": "printf '%s' \"$expected_v1\" | openssl dgst -sha256",
+    "signed_manifest": "manifest the presented v1 was computed over (null when v1 was not produced by HMAC)",
+    "presented_v1": "v1 carried in x-signature",
+    "hmac_matches": "presented_v1 (lowercased) == expected_v1",
+    "expected": "result of verifyMercadoPagoSignature: accept | refuse"
+  },
+  "vectors": [
+    {
+      "id": "V01",
+      "name": "valid",
+      "description": "Assinatura válida: x-signature, x-request-id e data.id coerentes, ts = now.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "expected_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "sha256_manifest": "4741509e514f554d23afc22584abac4c656a7ce4507d23e28f098bdb7d159a3e",
+      "sha256_expected_v1": "53e84ac206c41ae1b58f0f890e6b76d2bd37d15843c294f73d137cd893d13a70",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "accept",
+      "why": "HMAC confere e ts dentro da janela de 10 min."
+    },
+    {
+      "id": "V02",
+      "name": "v1_altered_one_char",
+      "description": "v1 com o último caractere hexadecimal trocado.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d2512410",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d2512410"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "expected_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "sha256_manifest": "4741509e514f554d23afc22584abac4c656a7ce4507d23e28f098bdb7d159a3e",
+      "sha256_expected_v1": "53e84ac206c41ae1b58f0f890e6b76d2bd37d15843c294f73d137cd893d13a70",
+      "signed_manifest": null,
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d2512410",
+      "presented_v1_derivation": "expected_v1 with the last hex char replaced (exactly 1 char differs)",
+      "hmac_matches": false,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "HMAC diverge em 1 caractere; a comparação é completa (timingSafeEqual sobre os 64)."
+    },
+    {
+      "id": "V03",
+      "name": "data_id_altered",
+      "description": "data.id (query e corpo) trocado; v1 é o original assinado para 123456789.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456780&type=payment",
+        "query": {
+          "data.id": "123456780"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456780"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b"
+      },
+      "manifest": "id:123456780;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "expected_v1": "d76c5891761c4e55dfc23766be6fb366c93da45d791aa1986ecfddd118e2edfb",
+      "sha256_manifest": "2eef615870137de7d666f9286d593896f9eaa915c6d98c7c0e0369604e080944",
+      "sha256_expected_v1": "8623aed434eeaee5b10f860be3e690282a98147a58ca0fa43256951420dbcaa5",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": false,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "o manifesto recalculado usa o data.id recebido; o HMAC não confere."
+    },
+    {
+      "id": "V04",
+      "name": "x_request_id_altered",
+      "description": "x-request-id trocado; v1 é o original.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious02"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious02;ts:1792843200;",
+      "expected_v1": "06ef051be900d3925f1be75c95c4ae16f97ca408622b615586ebe1e2a04f7da2",
+      "sha256_manifest": "aa94671ebcbd05314c3c3187ef86ec4271d6b2d5663e9098f81816b489457e70",
+      "sha256_expected_v1": "1fc5a3e593396a156971018769214bc5faa3efb3836f37f130a46dd40775cc90",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": false,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "o manifesto recalculado usa o x-request-id recebido; o HMAC não confere."
+    },
+    {
+      "id": "V05",
+      "name": "x_request_id_missing",
+      "description": "x-request-id ausente; v1 calculado sobre o manifesto oficial SEM a parte request-id (regra: valor ausente é removido).",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2"
+      },
+      "manifest": "id:123456789;ts:1792843200;",
+      "expected_v1": "cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2",
+      "sha256_manifest": "5cc75beff1f0fee9d867f702386f6327c9ecb86c595849eb4507607604c000f5",
+      "sha256_expected_v1": "bc040ebde8b77bde456141dee2cbd4881ee995cfa535fd402b2b746ccc27789b",
+      "signed_manifest": "id:123456789;ts:1792843200;",
+      "presented_v1": "cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "o Worker exige x-request-id (safeText2) e recusa antes do HMAC, mesmo com HMAC válido pela regra oficial.",
+      "spec_divergence": "D1 (fail-closed, já registrada em S8): a documentação manda remover o valor ausente do manifesto; o Worker recusa. Efeito: notificação legítima sem x-request-id recebe 401 e cai na reconciliação pelo provedor."
+    },
+    {
+      "id": "V06",
+      "name": "x_request_id_missing_signed_with_empty_value",
+      "description": "x-request-id ausente; v1 calculado sobre 'request-id:;' (valor vazio mantido).",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=fc40670418c762f2e6d8d877ee281dd4d30f723d404cdbe4bfaa4a88a1f7d452"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "fc40670418c762f2e6d8d877ee281dd4d30f723d404cdbe4bfaa4a88a1f7d452"
+      },
+      "manifest": "id:123456789;ts:1792843200;",
+      "expected_v1": "cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2",
+      "sha256_manifest": "5cc75beff1f0fee9d867f702386f6327c9ecb86c595849eb4507607604c000f5",
+      "sha256_expected_v1": "bc040ebde8b77bde456141dee2cbd4881ee995cfa535fd402b2b746ccc27789b",
+      "signed_manifest": "id:123456789;request-id:;ts:1792843200;",
+      "presented_v1": "fc40670418c762f2e6d8d877ee281dd4d30f723d404cdbe4bfaa4a88a1f7d452",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": false,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "x-request-id é obrigatório no Worker; sem ele recusa mesmo com HMAC de 'request-id:;'."
+    },
+    {
+      "id": "V07",
+      "name": "ts_out_of_window_past",
+      "description": "ts 601 s ANTES do now injetado (janela 600 s). HMAC correto para esse ts.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792842599,v1=279f638cf69a815d9541fa5c53e830f483de9fe6ed53cfc0d0b0988eb1072777",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792842599",
+        "v1": "279f638cf69a815d9541fa5c53e830f483de9fe6ed53cfc0d0b0988eb1072777"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792842599;",
+      "expected_v1": "279f638cf69a815d9541fa5c53e830f483de9fe6ed53cfc0d0b0988eb1072777",
+      "sha256_manifest": "8c368ca93c523de767c25b03ced4f8d0e14fd3c33f8247bf8eca4894e0fa6f16",
+      "sha256_expected_v1": "9d67379081a66c800b9e7e362688896ffda17db2b70cdad875b7f1d39965445e",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792842599;",
+      "presented_v1": "279f638cf69a815d9541fa5c53e830f483de9fe6ed53cfc0d0b0988eb1072777",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "|now - ts| > 10 min; o HMAC confere mas a janela recusa."
+    },
+    {
+      "id": "V08",
+      "name": "ts_out_of_window_future",
+      "description": "ts 601 s DEPOIS do now injetado (janela simétrica). HMAC correto para esse ts.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843801,v1=659280355a52c6cf5fde2ecc11c49b56116365a51b74d33a129af91ca15d5877",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843801",
+        "v1": "659280355a52c6cf5fde2ecc11c49b56116365a51b74d33a129af91ca15d5877"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843801;",
+      "expected_v1": "659280355a52c6cf5fde2ecc11c49b56116365a51b74d33a129af91ca15d5877",
+      "sha256_manifest": "0525d88ec24805909dab12b547d43ecd042a7fee69dd6edf94b42ecc986fe782",
+      "sha256_expected_v1": "26ff7c4fd05b459c27db9d324b349bd2085dfb4a7de49427dd37e74109fe6ef5",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843801;",
+      "presented_v1": "659280355a52c6cf5fde2ecc11c49b56116365a51b74d33a129af91ca15d5877",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "|now - ts| > 10 min; o HMAC confere mas a janela recusa."
+    },
+    {
+      "id": "V09",
+      "name": "ts_window_edge_600s_past",
+      "description": "ts exatamente 600 s antes do now (borda da janela, inclusiva).",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792842600,v1=a3464c87c7dc3321d061b4c7cb7d48570e90903645e5f92b79d667d27104ccc8",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792842600",
+        "v1": "a3464c87c7dc3321d061b4c7cb7d48570e90903645e5f92b79d667d27104ccc8"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792842600;",
+      "expected_v1": "a3464c87c7dc3321d061b4c7cb7d48570e90903645e5f92b79d667d27104ccc8",
+      "sha256_manifest": "324ae0aaadeb18d77eaa16e6f711ecb8f3d68ce6910d8b86096e7c727e34e96a",
+      "sha256_expected_v1": "55820f4cbab878b3faa2fe34275fbbabab44cc532a62ecc281354311efcce91d",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792842600;",
+      "presented_v1": "a3464c87c7dc3321d061b4c7cb7d48570e90903645e5f92b79d667d27104ccc8",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "accept",
+      "why": "|now - ts| = 10 min não é > 10 min."
+    },
+    {
+      "id": "V10",
+      "name": "x_signature_missing",
+      "description": "Header x-signature ausente (x-request-id e data.id presentes).",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": null,
+        "v1": null
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;",
+      "expected_v1": "07b855761901a541a6f489de8ecc804eb778fc7cf1d8dc7f9bef5922c33fb840",
+      "sha256_manifest": "fd7424c55279ad12eadb6618b72ad69333789687f10299ecbd8003d6c90395f8",
+      "sha256_expected_v1": "adcc3337eec0b46ac8f0497a464dcc0a64fdcad3f5b4a8480663ef0360c18eb2",
+      "signed_manifest": null,
+      "presented_v1": null,
+      "presented_v1_derivation": "none (header absent)",
+      "hmac_matches": false,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "sem ts e sem v1 não há o que verificar."
+    },
+    {
+      "id": "V11",
+      "name": "header_parts_swapped_and_padded",
+      "description": "x-signature com as partes invertidas e espaços ao redor das vírgulas: ' v1=<hex> ,  ts=<ts> '.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": " v1=08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b ,  ts=1792843200 ",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "expected_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "sha256_manifest": "4741509e514f554d23afc22584abac4c656a7ce4507d23e28f098bdb7d159a3e",
+      "sha256_expected_v1": "53e84ac206c41ae1b58f0f890e6b76d2bd37d15843c294f73d137cd893d13a70",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "accept",
+      "why": "o parser separa por ',' e faz trim de cada parte; as chaves são nomeadas, então a ordem não importa (comportamento do exemplo oficial). Não é malformação para o Worker."
+    },
+    {
+      "id": "V12",
+      "name": "header_space_around_equals",
+      "description": "x-signature com espaços ao redor de '=': 'ts = <ts>, v1 = <hex>'.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts = 1792843200, v1 = 08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "expected_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "sha256_manifest": "4741509e514f554d23afc22584abac4c656a7ce4507d23e28f098bdb7d159a3e",
+      "sha256_expected_v1": "53e84ac206c41ae1b58f0f890e6b76d2bd37d15843c294f73d137cd893d13a70",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "o Worker não faz trim de chave/valor; 'ts ' e ' v1 ' não são reconhecidos.",
+      "spec_divergence": "D2 (fail-closed, já registrada em S7): o exemplo oficial em Node aplica trim em chave e valor e aceitaria."
+    },
+    {
+      "id": "V13",
+      "name": "header_semicolon_separator",
+      "description": "x-signature com ';' no lugar de ',': 'ts=<ts>;v1=<hex>'.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200;v1=08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": null,
+        "v1": null
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;",
+      "expected_v1": "07b855761901a541a6f489de8ecc804eb778fc7cf1d8dc7f9bef5922c33fb840",
+      "sha256_manifest": "fd7424c55279ad12eadb6618b72ad69333789687f10299ecbd8003d6c90395f8",
+      "sha256_expected_v1": "adcc3337eec0b46ac8f0497a464dcc0a64fdcad3f5b4a8480663ef0360c18eb2",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": false,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "separador oficial é ','; a parte única 'ts=..;v1=..' não vira ts nem v1. Pela especificação também não há ts/v1 extraíveis."
+    },
+    {
+      "id": "V14",
+      "name": "request_id_not_bound_by_signature",
+      "description": "x-request-id presente, mas v1 foi calculado sobre um manifesto sem a parte request-id.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "expected_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "sha256_manifest": "4741509e514f554d23afc22584abac4c656a7ce4507d23e28f098bdb7d159a3e",
+      "sha256_expected_v1": "53e84ac206c41ae1b58f0f890e6b76d2bd37d15843c294f73d137cd893d13a70",
+      "signed_manifest": "id:123456789;ts:1792843200;",
+      "presented_v1": "cd941ef4237c0d4b3d4084da5184be9b772d7baff69af639f8edd513dfa513d2",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": false,
+      "now_ms": 1792843200000,
+      "expected": "refuse",
+      "why": "com x-request-id presente o manifesto oficial inclui request-id; assinatura que não o cobre não confere."
+    },
+    {
+      "id": "V15",
+      "name": "replay_same_request_twice",
+      "description": "A MESMA notificação (mesmo corpo, mesmos headers, mesmo ts) entregue duas vezes: no now injetado e 60 s depois.",
+      "request": {
+        "method": "POST",
+        "url": "/api/webhooks/mercadopago?data.id=123456789&type=payment",
+        "query": {
+          "data.id": "123456789"
+        },
+        "headers": {
+          "x-signature": "ts=1792843200,v1=08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+          "x-request-id": "a1b2c3d4-0000-4000-8000-fictitious01"
+        },
+        "body": {
+          "type": "payment",
+          "action": "payment.updated",
+          "data": {
+            "id": "123456789"
+          }
+        }
+      },
+      "parsed_per_spec": {
+        "ts": "1792843200",
+        "v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b"
+      },
+      "manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "expected_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "sha256_manifest": "4741509e514f554d23afc22584abac4c656a7ce4507d23e28f098bdb7d159a3e",
+      "sha256_expected_v1": "53e84ac206c41ae1b58f0f890e6b76d2bd37d15843c294f73d137cd893d13a70",
+      "signed_manifest": "id:123456789;request-id:a1b2c3d4-0000-4000-8000-fictitious01;ts:1792843200;",
+      "presented_v1": "08c6893d04a68044f9fb01e4850af83f9a8b2e3fd9042d31d154f909d251241b",
+      "presented_v1_derivation": "hmac(signed_manifest)",
+      "hmac_matches": true,
+      "now_ms": 1792843200000,
+      "expected": "accept",
+      "why": "verifyMercadoPagoSignature é pura e sem estado: não guarda ts/x-request-id já vistos, então aceita a repetição dentro da janela.",
+      "calls": [
+        {
+          "now_ms": 1792843200000,
+          "expected": "accept"
+        },
+        {
+          "now_ms": 1792843260000,
+          "expected": "accept"
+        }
+      ],
+      "gap": {
+        "id": "GAP-MP-SIG-REPLAY",
+        "status": "open",
+        "statement": "Não há proteção contra replay na verificação de assinatura: uma notificação capturada é aceita de novo enquanto |now - ts| <= 10 min. O vetor registra o comportamento REAL (aceita 2x); não é proteção fingida.",
+        "existing_mitigation": "Efeito financeiro idempotente a jusante: o handler consulta o pagamento na API do provedor (fonte da verdade) e grava financial_events com provider_event_id + ON CONFLICT DO NOTHING (provado em tests/integration/mercadopago-payment-dedupe-postgres.test.mjs D1-D3 e mutantes M6a/M6b/M10). A repetição não cria transição nem entrega duplicada, mas gera nova consulta ao provedor e novo registro de assinatura.",
+        "not_proven_here": "Esta suíte não prova o comportamento do handler HTTP sob replay; só a camada de assinatura."
+      }
+    }
+  ]
+}
