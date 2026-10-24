@@ -1,0 +1,39 @@
+name: probe retired asset headers (read-only, PR-only evidence)
+
+# Evidência pontual pedida no AVAL SOL 206–207 (item 206.08): lê, SEM credencial e só com GET/HEAD públicos,
+# os cabeçalhos HTTP crus de /whatsapp-contact.js nos dois domínios, para saber se Clear-Site-Data chega à borda.
+# Não escreve nada, não usa segredos, não roda em push. PR de evidência: não destinado a merge.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/probe-retired-asset-headers.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Raw response headers (GET and HEAD)
+        shell: bash
+        run: |
+          set -u
+          for host in zevanory.api.br vendas.zevanory.api.br; do
+            for method in GET HEAD; do
+              echo "=== $method https://$host/whatsapp-contact.js ($(date -u +%FT%TZ))"
+              if [ "$method" = HEAD ]; then
+                curl -sS -I --max-time 20 -H 'Cache-Control: no-cache' "https://$host/whatsapp-contact.js" | tr -d '\r'
+              else
+                curl -sS -D - -o /tmp/body --max-time 20 -H 'Cache-Control: no-cache' "https://$host/whatsapp-contact.js" | tr -d '\r'
+                echo "--- body (first 200 bytes, $(wc -c < /tmp/body) bytes total):"; head -c 200 /tmp/body; echo
+              fi
+            done
+          done | tee "$RUNNER_TEMP/headers.txt"
+          {
+            echo '### Clear-Site-Data / Cache-Control observados'
+            echo '```'
+            grep -iE '^(=== |clear-site-data|cache-control|x-deployment-sha|cf-ray|HTTP/)' "$RUNNER_TEMP/headers.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
