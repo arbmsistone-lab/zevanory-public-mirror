@@ -54,7 +54,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -euo pipefail
-          python -m unittest tests.test_financial_e2e_mercadopago_isolation -v < /dev/null 2>&1 | tee /tmp/r4-fin.txt
+          python -m unittest tests.test_financial_e2e_isolation -v < /dev/null 2>&1 | tee /tmp/r4-fin.txt
           grep -qx "Ran 3 tests in .*" /tmp/r4-fin.txt || { echo "::error::expected exactly 3 isolation tests"; exit 1; }
           if grep -q "skipped" /tmp/r4-fin.txt; then echo "::error::skipped isolation tests"; exit 1; fi
           grep -qx "OK" /tmp/r4-fin.txt || { echo "::error::isolation tests did not end in OK"; exit 1; }
