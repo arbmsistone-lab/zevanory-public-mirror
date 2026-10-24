@@ -20,14 +20,17 @@ required_worker=[
 for token in required_worker:
     assert token in worker, f"missing_worker_contract:{token}"
 
+# WhatsApp channel retired (Meta disabled WABA 4019600665012911 on 2026-10-10): the broker is a
+# 410 tombstone. The contract is now that it can never send, upload or reach the Graph API.
 required_broker=[
-  'whatsapp_opt_in_required',
-  'authorization.support_context!==true&&authorization.opt_in!==true',
-  'opt_in:body.opt_in===true',
-  'support_context:body.support_context===true'
+  'whatsapp_channel_retired',
+  'meta_account_permanently_disabled',
+  'status: 410'
 ]
 for token in required_broker:
     assert token in broker, f"missing_broker_contract:{token}"
+for forbidden in ('graph.facebook.com','/broker/send','/messages','env.DB','META_APP_SECRET'):
+    assert forbidden not in broker, f"retired_broker_must_not_contain:{forbidden}"
 
 def commercial_contact_allowed(event):
     destination=str(event.get("destination",""))

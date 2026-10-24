@@ -1,0 +1,59 @@
+name: WhatsApp retirement mutants
+# Fail-closed WhatsApp retirement + Meta social auto-reply kill-switch: every mutant (Graph/broker call
+# re-enabled, automated reply re-enabled, webhook processing/storage re-enabled, onboarding/proof/broker
+# alive, WhatsApp counted in status/quorum, forged-webhook generator reintroduced, social reply limits
+# removed) must be KILLED by an assertion in an EXPECTED test. Exact count 39; any SURVIVED or
+# INCONCLUSIVE fails. Offline, no secrets, read-only.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/whatsapp-retirement.mjs"
+      - "worker/whatsapp-onboarding.mjs"
+      - "worker/whatsapp-credential-broker.mjs"
+      - "worker/inbound-autonomy.mjs"
+      - "worker/live-runtime-status.mjs"
+      - "worker/continuity-router.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "tests/whatsapp-retirement.test.mjs"
+      - "tests/meta-social-autoreply.test.mjs"
+      - "tests/fixtures/forged-webhook-generator.txt"
+      - "tests/t4_sim/hooks.mjs"
+      - ".github/workflows/voice-render-proof.yml"
+      - ".github/workflows/whatsapp-delivery-recovery.yml"
+      - "scripts/ci/mutants_whatsapp_retirement.mjs"
+      - ".github/workflows/whatsapp-retirement-mutants.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-retirement-mutants-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Mutants (exact 39 KILLED by expected assertion)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rc=0
+          node scripts/ci/mutants_whatsapp_retirement.mjs < /dev/null | tee mut.txt || rc=$?
+          killed=$(grep -cE '^MUTANT [A-Za-z0-9_]+ KILLED by=\[".+' mut.txt || true)
+          bad=$(grep -cE '^MUTANT [A-Za-z0-9_]+ (SURVIVED|INCONCLUSIVE)' mut.txt || true)
+          echo "::notice title=WA_RETIREMENT_MUTANTS::killed=${killed} not_killed=${bad} rc=${rc}"
+          grep -qx 'BASELINE PASS tests=22' mut.txt || { echo "::error title=WA_RETIREMENT_BASELINE::baseline not exact (22 tests)"; exit 1; }
+          [ "$bad" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::SURVIVED/INCONCLUSIVE present"; exit 1; }
+          [ "$killed" = "39" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::expected exactly 39 KILLED, got ${killed}"; exit 1; }
+          grep -qx 'MUTANTS PASS killed=39/39' mut.txt || { echo "::error title=WA_RETIREMENT_MUTANTS::summary line missing"; exit 1; }
+          [ "$rc" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::script exit ${rc}"; exit 1; }
+          git diff --exit-code -- worker tests scripts .github || { echo "::error title=WA_RETIREMENT_RESTORE::source not restored"; exit 1; }
+          test -z "$(git status --porcelain --untracked-files=all -- scripts worker tests .github)" || { echo "::error title=WA_RETIREMENT_RESTORE::stray files"; exit 1; }

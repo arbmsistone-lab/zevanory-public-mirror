@@ -10,7 +10,9 @@ import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./v
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
-import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
+import { handleWhatsappOnboarding, isWhatsappOnboardingPath, loadVoiceGeminiKey } from "./whatsapp-onboarding.mjs";
+import { whatsappChannelRetired, whatsappInstantReplyEnabled, whatsappGoneResponse, whatsappWebhookAckResponse, isWhatsappWebhookBody, retiredWhatsappStatus } from "./whatsapp-retirement.mjs";
+import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
@@ -47,7 +49,9 @@ import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinanci
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 
-async function loadWhatsappBrokerState(binding) {
+async function loadWhatsappBrokerState(binding, env) {
+  // Retired channel (Meta disabled the WABA on 2026-10-10): never call the broker.
+  if (whatsappChannelRetired(env)) return null;
   if (!binding?.fetch) return null;
   try {
     const r = await binding.fetch(new Request("https://whatsapp-broker.internal/broker/status", {
@@ -233,29 +237,28 @@ const wrapped = {
       url.pathname === "/api/continuity" ||
       url.pathname === "/api/control-plane" ||
       (url.pathname === "/api/config" && /^(channel_identity_health|closure_status)$/.test(url.searchParams.get("view") || ""));
+    const whatsappRetired = whatsappChannelRetired(normalized);
+    if (whatsappRetired) {
+      // WhatsApp channel retired (Meta permanently disabled WABA 4019600665012911 on 2026-10-10):
+      // no WhatsApp credential is loaded, no broker binding is exposed and no broker status is read,
+      // on any route. Stale isolate globals are cleared so no legacy code path can pick them up.
+      globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = {};
+      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = null;
+      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = null;
+    }
     if (whatsappPath) {
-      const [whatsappRuntime, whatsappBrokerState] = await Promise.all([
-        loadWhatsappRuntimeCredentials(normalized).catch(()=>null),
-        loadWhatsappBrokerState(normalized.WHATSAPP_BROKER).catch(()=>null)
+      // Only the Gemini voice key may come from the old encrypted onboarding record (voice support);
+      // the WhatsApp credentials stored next to it are never read.
+      const [voiceGeminiKey, whatsappBrokerState] = await Promise.all([
+        loadVoiceGeminiKey(normalized).catch(()=>""),
+        whatsappRetired ? Promise.resolve(null) : loadWhatsappBrokerState(normalized.WHATSAPP_BROKER, normalized).catch(()=>null)
       ]);
-      globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
-      // Credentials verified live by the official onboarding win over legacy Worker vars,
-      // which may belong to a previous number/app (Meta answered HTTP 400 with them).
+      if (!whatsappRetired) globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = {};
+      globalThis.__ZEVANORY_VOICE_GEMINI_FROM_RECORD__ = Boolean(voiceGeminiKey);
       const overrides = {};
-      if (whatsappRuntime?.identity_verified === true && whatsappRuntime.access_token && whatsappRuntime.phone_number_id) {
+      if (voiceGeminiKey) {
         Object.assign(overrides, {
-          WHATSAPP_ACCESS_TOKEN: whatsappRuntime.access_token,
-          WHATSAPP_PHONE_NUMBER_ID: whatsappRuntime.phone_number_id,
-          WHATSAPP_BUSINESS_ACCOUNT_ID: whatsappRuntime.waba_id || "",
-          META_APP_SECRET: whatsappRuntime.app_secret,
-          META_VERIFY_TOKEN: whatsappRuntime.verify_token,
-          META_WEBHOOK_VERIFY_TOKEN: whatsappRuntime.verify_token,
-          META_GRAPH_VERSION: whatsappRuntime.graph_version || "v26.0"
-        });
-      }
-      if (whatsappRuntime?.gemini_api_key) {
-        Object.assign(overrides, {
-          GEMINI_API_KEY: whatsappRuntime.gemini_api_key,
+          GEMINI_API_KEY: voiceGeminiKey,
           GEMINI_FREE_TIER_CONFIRMED: "true",
           VOICE_TTS_PROVIDER_CHAIN: "gemini,piper-relay"
         });
@@ -275,8 +278,8 @@ const wrapped = {
           }
         });
       }
-      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
-      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappBrokerState;
+      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = whatsappRetired ? null : (normalized.WHATSAPP_BROKER || null);
+      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappRetired ? null : whatsappBrokerState;
       const whatsappOpsStore = getWhatsappOpsStore(normalized, whatsappProofDatabase);
       globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
       globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
@@ -287,7 +290,7 @@ const wrapped = {
       const mode = url.searchParams.get("hub.mode") || "";
       const token = url.searchParams.get("hub.verify_token") || "";
       const challenge = url.searchParams.get("hub.challenge") || "";
-      const rt = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+      const rt = whatsappRetired ? {} : (globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {});
       const candidates = [rt.verify_token, normalized.META_VERIFY_TOKEN, normalized.META_WEBHOOK_VERIFY_TOKEN].map((v) => String(v || "").trim()).filter(Boolean);
       const matched = mode === "subscribe" && Boolean(token) && candidates.includes(token);
       try {
@@ -298,41 +301,49 @@ const wrapped = {
       return new Response(JSON.stringify({ error: "webhook_verification_failed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     }
 
+    // Retired channel: a WhatsApp Business delivery to the Meta webhook is acknowledged with 200 and
+    // nothing else (Meta retries non-2xx for days and flags failing subscriptions; 410 has no special
+    // meaning for it). No signature check against stored secrets, no parsing beyond the object type,
+    // no storage of message content, no reply. Instagram/Facebook deliveries continue to the legacy
+    // handler, where META_SOCIAL_AUTOREPLY (default off) gates any automated answer.
+    if (whatsappRetired && request.method === "POST" && (
+      url.pathname === "/api/webhooks/meta" || url.pathname.startsWith("/webhooks/whatsapp") || url.pathname.startsWith("/api/whatsapp") ||
+      (url.pathname === "/api/webhooks" && String(url.searchParams.get("provider") || "") === "meta")
+    )) {
+      if (url.pathname.startsWith("/webhooks/whatsapp") || url.pathname.startsWith("/api/whatsapp")) return whatsappWebhookAckResponse();
+      const declared = Number(request.headers.get("content-length") || 0);
+      if (declared > 256 * 1024) return whatsappWebhookAckResponse();
+      const raw = await request.text().catch(() => "");
+      if (raw.length > 256 * 1024 || isWhatsappWebhookBody(raw)) return whatsappWebhookAckResponse();
+      request = new Request(request.url, { method: "POST", headers: request.headers, body: raw });
+    }
+
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
 
     const asaasAuthResponse = await handleAsaasPixRefundAuthorization(request, normalized);
     if (asaasAuthResponse) return asaasAuthResponse;
 
-    if (
-      url.pathname === "/admin/whatsapp-onboard/callback" ||
-      (url.pathname === "/admin/whatsapp-onboard/embedded-complete" && request.method === "POST")
-    ) {
-      const response = await handleWhatsappOnboarding(request, normalized);
-      if (response) return response;
-    }
-    // Narrow public launcher for Meta Embedded Signup. It creates a short-lived
-    // broker-backed CSRF state and renders the official Meta JS SDK flow. No
-    // credentials are disclosed, and all other onboarding/admin routes remain protected.
-    if (url.pathname === "/admin/whatsapp-onboard/start" && request.method === "GET") {
-      const response = await handleWhatsappOnboarding(request, normalized);
-      if (response) return response;
-    }
-    // Synthetic signed inbound webhooks made the bot send real WhatsApp messages; retired for good
-    // (WhatsApp Business account disabled by Meta on 2026-10-10, owner order: no message without opt-in).
-    if (url.pathname === "/api/admin/whatsapp-onboard/delivery-proof") {
-      // Only the read-only voice/cache audits stay (no message, no Meta write). Every operation
-      // that built a signed fake inbound or touched the Meta account remains retired.
-      let op = "";
-      try { op = String((await request.clone().json())?.operation || ""); } catch {}
-      const READ_ONLY_AUDITS = new Set(["audit-cache", "audit-encode", "audit-transcribe", "audit-encoder-key", "audit-source", "audit-observe"]);
-      if (!READ_ONLY_AUDITS.has(op)) return Response.json({ ok: false, error: "synthetic_whatsapp_proof_retired" }, { status: 410, headers: { "cache-control": "no-store" } });
-      return handleWhatsappOnboarding(request, normalized, { proofSql: () => whatsappProofDatabase(normalized.DATABASE_URL) });
-    }
-    if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
-      if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
-      const response = await handleWhatsappOnboarding(request, normalized);
-      if (response) return response;
+    // Former WhatsApp onboarding surface (Embedded Signup start/callback/complete, bootstrap,
+    // finalize and its automatic retry, voice-key, status) and the synthetic "delivery proof"
+    // endpoint that built app-secret-signed fake inbound webhooks: removed, 410 Gone for any
+    // method and any credential.
+    if (isWhatsappOnboardingPath(url.pathname)) return (await handleWhatsappOnboarding(request)) || whatsappGoneResponse(url.pathname);
+    // Read-only voice audits (cache/encode/transcribe/encoder-key/source) moved off the retired
+    // WhatsApp proof route. No message, no Meta call, no WhatsApp data.
+    if (url.pathname === "/api/admin/voice/audit") {
+      const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+      const expected = String(normalized.CERTIFICATION_E2E_TOKEN || normalized.OPERATOR_TOKEN || "");
+      const presented = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
+      let diff = expected.length < 24 || presented.length !== expected.length ? 1 : 0;
+      for (let i = 0; !diff && i < expected.length; i++) diff |= expected.charCodeAt(i) ^ presented.charCodeAt(i);
+      if (diff) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (request.method !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
+      const raw = await request.text();
+      if (raw.length > 4300000) return new Response(JSON.stringify({ error: "payload_too_large" }), { status: 413, headers });
+      let input; try { input = JSON.parse(raw); } catch { return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400, headers }); }
+      if (!["audit-cache", "audit-encode", "audit-transcribe", "audit-encoder-key", "audit-source"].includes(input?.operation)) return new Response(JSON.stringify({ error: "invalid_operation" }), { status: 400, headers });
+      return handleVoiceAudit(input, normalized);
     }
 
     if (url.pathname === "/api/support/instant-status" && request.method === "GET") {
@@ -350,7 +361,7 @@ const wrapped = {
         const salesStatus = await handleSalesControl(new Request(new URL("/api/sales/status", url), { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
         salesEffective = (await salesStatus?.json?.())?.open === true;
       } catch { salesEffective = false; }
-      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", ai_binding_present: Boolean(normalized.AI?.run), broker_binding_present: Boolean(normalized.WHATSAPP_BROKER?.fetch), voice_free_only: normalized.VOICE_TTS_FREE_ONLY === "true", gemini_voice_configured: Boolean(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.gemini_api_key), sales_globally_enabled: salesEffective, sales_state_source: "/api/sales/status", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: whatsappInstantReplyEnabled(normalized), whatsapp_channel: whatsappRetired ? retiredWhatsappStatus() : { state: "active" }, ai_binding_present: Boolean(normalized.AI?.run), broker_binding_present: !whatsappRetired && Boolean(normalized.WHATSAPP_BROKER?.fetch), voice_free_only: normalized.VOICE_TTS_FREE_ONLY === "true", gemini_voice_configured: Boolean(globalThis.__ZEVANORY_VOICE_GEMINI_FROM_RECORD__ || String(normalized.GEMINI_API_KEY || "").trim()), sales_globally_enabled: salesEffective, sales_state_source: "/api/sales/status", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
 
     if (url.pathname === "/api/support/knowledge") {
@@ -559,7 +570,8 @@ const wrapped = {
         String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production";
       const projected = projectProductionOnlyStatus(projectLiveStatus(body, {
         salesOpen: safeRelease,
-        whatsappTransportOperational: whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__)
+        whatsappTransportOperational: !whatsappRetired && whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__),
+        whatsappRetired
       }), snapshot, { env: normalized, salesRelease: safeRelease });
       projected.sales_authorization = salesSwitch.enabled === true && salesSwitch.authorized === true
         ? { state: safeRelease ? "open_authorized" : "open_authorized_proof_pending", authorized_by_owner: true, at: String(salesSwitch.at || ""), revision: salesSwitch.revision || null }

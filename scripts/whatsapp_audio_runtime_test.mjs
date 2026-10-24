@@ -3,6 +3,7 @@ import { whatsappInboundSafety } from "../worker/whatsapp-inbound-safety.mjs";
 import assert from "node:assert/strict";
 import { hasVoiceDeliveryProof } from "../worker/whatsapp-proof-gate.mjs";
 import { createHash, createHmac } from "node:crypto";
+import * as retirement from "../worker/whatsapp-retirement.mjs";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { deferMetaWebhook, whatsappStageRecorder, handleNodeWebhookFetch, latestWhatsappStage } from "../worker/whatsapp-background.mjs";
@@ -125,13 +126,14 @@ console.log("GEMINI_38_8KHZ_REMOTE_STAGES_SIGNATURE_PRESERVED=PASS");
 console.log("WHATSAPP_AUDIO_RUNTIME=PASS");
 
 const handlerSource = workerSource.slice(workerSource.indexOf("async function handler18(req, res) {"), workerSource.indexOf('__name(handler18, "handler")'));
-async function exerciseInbound(database, blocked = null) {
+async function exerciseInbound(database, blocked = null, mode = "unretired_reply_on") {
   const order = [], captured = [], kv = { async put(_key, value) { if (_key.startsWith("whatsapp:instant:stage:")) captured.push(JSON.parse(value)); } };
   const item = { from: blocked === "self" ? "558892545413" : blocked === "self9" ? "5588992545413" : "5511999991234", phone_number_id: blocked === "phone" ? "other" : "1300972319774588", type: "audio", media_id: "synthetic-media", message_id: "synthetic-message" };
   const sandbox = {
-    process: { env: { DATABASE_URL: database ? "synthetic-database" : "" } },
+    process: { env: { DATABASE_URL: database ? "synthetic-database" : "", ...(mode === "retired_default" ? {} : { WHATSAPP_CHANNEL_RETIRED: "false" }), ...(mode === "unretired_reply_on" ? { WHATSAPP_INSTANT_REPLY: "true" } : {}) } },
+    whatsappChannelRetired: retirement.whatsappChannelRetired, whatsappInstantReplyEnabled: retirement.whatsappInstantReplyEnabled, isWhatsappWebhookBody: retirement.isWhatsappWebhookBody, WHATSAPP_RETIRED_REASON: retirement.WHATSAPP_RETIRED_REASON,
     globalThis: { __ZEVANORY_PRIVATE_KV__: kv, __ZEVANORY_WHATSAPP_OPS_STORE__: kv, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
-    rawText: () => '{}', verifyMetaSignature: () => true, whatsappBrokerSignatureValid: async () => false,
+    rawText: () => '{"object":"whatsapp_business_account","entry":[]}', verifyMetaSignature: () => { order.push("signature"); return true; }, whatsappBrokerSignatureValid: async () => false,
     extractWhatsappInboundMessages: () => [item], cs: () => ({ query: async () => [] }),
     handleMetaSocialInbound: async () => ({ handled: false, received: 0, replied: 0 }),
     whatsappStageRecorder, whatsappInboundSafety, Date,
@@ -144,26 +146,37 @@ async function exerciseInbound(database, blocked = null) {
   vm.createContext(sandbox); vm.runInContext(handlerSource, sandbox);
   const result = await sandbox.handler18({ method: "POST", headers: {} }, { setHeader() {} });
   assert.equal(result.code, 200);
+  if (mode === "retired_default") { assert.equal(JSON.stringify(result.body), JSON.stringify({ accepted: true, processed: false, stored: false, reason: "meta_account_permanently_disabled" })); assert.deepEqual(order, []); assert.deepEqual(captured, []); return; }
+  order.splice(order.indexOf("signature"), 1);
+  if (mode === "unretired_reply_off") { assert.equal(result.body.instant_replies, 0); assert.ok(!order.includes("reply")); return; }
   if (blocked) { assert.equal(result.body.instant_replies, 0); assert.deepEqual(order, []); assert.deepEqual(captured, []); return; }
   assert.equal(result.body.instant_replies, 1);
   assert.deepEqual(captured.map(x => x.stage), ["received", "stt_start", "stt_done", "voice_sent"]);
   assert.equal(order.includes("archive"), database);
   assert.equal(captured.at(-1).voice_sent, true);
 }
+// Default (no env): channel retired -> 200 acknowledgement only; no signature check, STT, reply, CRM or evidence.
+await exerciseInbound(true, null, "retired_default"); await exerciseInbound(false, null, "retired_default");
+console.log("RETIRED_WHATSAPP_WEBHOOK_ACK_ONLY=PASS");
+// Un-retired but WHATSAPP_INSTANT_REPLY unset: no automated reply (default false).
+await exerciseInbound(true, null, "unretired_reply_off");
+console.log("INSTANT_REPLY_DEFAULT_OFF=PASS");
 await exerciseInbound(true); await exerciseInbound(false);
 for (const blocked of ["self", "self9", "phone"]) await exerciseInbound(true, blocked);
 console.log("IGNORED_WEBHOOK_NO_STT_REPLY_CRM_OR_EVIDENCE=PASS");
 console.log("INBOUND_CHECKPOINT_BEFORE_STT_REPLY_BEFORE_CRM_NO_DATABASE=PASS");
 
+// Byte preservation only (no signing here: generating Meta signatures is forbidden outside tests).
 const signedBody = JSON.stringify({ text: "áudio em português", entry: [] });
-const signature = "sha256=" + createHmac("sha256", "synthetic-meta-secret").update(signedBody).digest("hex");
-const signedRequest = new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "x-hub-signature-256": signature }, body: signedBody });
+const opaqueHeader = "opaque-header-value";
+const signedRequest = new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "x-hub-signature-256": opaqueHeader }, body: signedBody });
 const directResult = await handleNodeWebhookFetch(signedRequest, async (req, res) => {
   const chunks = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
   const raw = Buffer.concat(chunks);
   assert.equal(raw.toString(), signedBody);
   assert.equal(req.query.provider, "meta");
-  assert.equal(req.headers["x-hub-signature-256"], "sha256=" + createHmac("sha256", "synthetic-meta-secret").update(raw).digest("hex"));
+  assert.equal(req.headers["x-hub-signature-256"], opaqueHeader);
+  assert.equal(createHash("sha256").update(raw).digest("hex"), createHash("sha256").update(signedBody).digest("hex"));
   res.setHeader("content-type", "application/json"); res.statusCode = 200; res.end('{"accepted":true}');
 });
 assert.equal(directResult.status, 200); assert.equal((await directResult.json()).accepted, true);

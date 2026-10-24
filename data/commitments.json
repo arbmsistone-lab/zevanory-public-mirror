@@ -584,7 +584,26 @@
       "source": "Dono, 12/10 16:37 (comunicado Meta de 10/10)",
       "text": "Conta WhatsApp Business ZEVANORY (2510918296075444) desativada pela Meta em 10/10 por \"violação dos termos de uso aceitável\". Causa provável encontrada no próprio sistema: provas de entrega que forjavam mensagens recebidas assinadas para o robô responder de verdade a um número real (whatsapp-delivery-recovery: execuções reais em 07/10 e 08/10; voice-render-proof em 05/10). Recurso é ato do dono.",
       "status": "owner_reserved",
-      "evidence": "Execuções reais: runs 37697590184, 37702381335, 37813017349 (production-proof concluído). Contenção: provas sintéticas desligadas e endpoint retirado (410). Recurso enviado pelo dono em 12/10 18:02 BRT (conta 4019600665012911, faixa \"Análise solicitada\"). Limites de resposta e fim do consentimento implícito: aguardando publicação após o reset da cota KV."
+      "evidence": "Execuções reais: runs 37697590184, 37702381335, 37813017349 (production-proof concluído). Contenção: provas sintéticas desligadas e endpoint retirado (410). Recurso enviado pelo dono em 12/10 18:02 BRT (conta 4019600665012911, faixa \"Análise solicitada\"). Limites de resposta e fim do consentimento implícito: aguardando publicação após o reset da cota KV.",
+      "corrections": [
+        {
+          "at": "2026-10-23",
+          "by": "Claude (comando), sem reescrever o registro acima",
+          "facts": "Conta desativada pela Meta: WABA 4019600665012911 (phone_number_id 1300972319774588), em 10/10/2026, por violação da Política de Uso Aceitável; desativação PERMANENTE (fato registrado pelo comando em 23/10; o recurso de 12/10 não reverteu a decisão).",
+          "fixes": [
+            "O identificador 2510918296075444 citado no texto não é o da conta desativada; a conta é a WABA 4019600665012911.",
+            "O run 37697590184 (07/10 22:39Z) NÃO executou a prova em produção: o job production-proof foi pulado (skipped) e só o job validate rodou. As provas reais que enviaram mensagens foram os runs 37702381335 (07/10 23:27Z) e 37813017349 (08/10 16:59Z) de whatsapp-delivery-recovery, e o run 37292205572 (05/10 09:46Z) de voice-render-proof."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "whatsapp-retired-code",
+      "kind": "decisão",
+      "source": "Comando, 23/10 (conta Meta desativada permanentemente)",
+      "text": "WhatsApp aposentado no código: interruptor WHATSAPP_CHANNEL_RETIRED (padrão verdadeiro), nenhuma chamada à Graph API nem ao broker, webhook da Meta só confirma (200) sem processar nem guardar conteúdo, onboarding e prova sintética 410, broker 410, WhatsApp fora de health/quórum (whatsapp_mode=disabled_permanent), autorresposta social META_SOCIAL_AUTOREPLY desligada por padrão.",
+      "status": "in_progress",
+      "evidence": "PR 'WhatsApp aposentado: interruptor global, sem chamadas à Meta, sem prova forjada, autorresposta social desligada' (rascunho); passos do dono em docs/WHATSAPP_APOSENTADO.md (revogar token do usuário do sistema, apagar segredos, desassinar webhook, apagar Worker giro-whatsapp-bridge)."
     },
     {
       "id": "kv-quota-exhausted",

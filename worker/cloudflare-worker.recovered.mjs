@@ -16,6 +16,7 @@ import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveH
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { CONTACT_TEXT, CONTACT_TEXT_OR, CUSTOMER_RULE_7D, SHORT_RULE_LABEL } from "./politica-unica.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
+import { whatsappChannelRetired, whatsappInstantReplyEnabled, retiredWhatsappChannelEntry, isWhatsappWebhookBody, WHATSAPP_RETIRED_MODE, WHATSAPP_RETIRED_REASON } from "./whatsapp-retirement.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1339,7 +1340,7 @@ function runtimeReleaseModes(env = process.env) {
     salesMode,
     checkoutMode: yes3(env.CHECKOUT_ENABLED) ? "enabled" : "globally-blocked",
     financialMode: yes3(env.FINANCIAL_EVENTS_ENABLED) ? "enabled" : "disabled",
-    whatsappMode: whatsappTransport ? "enabled" : "disabled"
+    whatsappMode: whatsappChannelRetired(env) ? WHATSAPP_RETIRED_MODE : whatsappTransport ? "enabled" : "disabled"
   });
 }
 __name(runtimeReleaseModes, "runtimeReleaseModes");
@@ -1780,6 +1781,9 @@ function publicChannelStatus(env = process.env) {
     })];
   }));
   const standby = Object.fromEntries(Object.keys(EXCLUDED_COMMERCIAL_FRONTS).map((name) => [name, standbyEntry(name, env, all)]));
+  // WhatsApp retired (Meta permanently disabled the WABA on 2026-10-10): never configured, never
+  // operational, never counted toward the active total or any quorum.
+  if (whatsappChannelRetired(env) && active.whatsapp) active.whatsapp = retiredWhatsappChannelEntry({ provider: active.whatsapp.provider, implemented: active.whatsapp.implemented, commercial: active.whatsapp.commercial, role: active.whatsapp.role, profile_url: null });
   return Object.freeze({ ...active, ...standby });
 }
 __name(publicChannelStatus, "publicChannelStatus");
@@ -1801,8 +1805,10 @@ __name(publicChannelReadinessSummary, "publicChannelReadinessSummary");
 function publicCommercialChannelReadinessSummary(env = process.env) {
   const salesMode = runtimeReleaseModes(env).salesMode;
   const globallyEnabled = salesMode === "enabled";
+  const whatsappRetired = whatsappChannelRetired(env);
   return Object.freeze(Object.fromEntries(ACTIVE_COMMERCIAL_FRONTS.map((name) => {
     const def = CHANNELS[name];
+    if (whatsappRetired && name === "whatsapp") return [name, Object.freeze({ commercial: Boolean(def.commercial), commercial_execution: WHATSAPP_RETIRED_MODE, release_gate: WHATSAPP_RETIRED_MODE, role: def.role, scope_status: "retired", retired: true, retired_reason: WHATSAPP_RETIRED_REASON })];
     return [name, Object.freeze({
       commercial: Boolean(def.commercial),
       commercial_execution: def.commercial ? globallyEnabled ? "enabled" : "blocked" : "not_applicable",
@@ -7577,7 +7583,9 @@ var COMMERCIAL_DISTRIBUTION_CANONICAL = Object.freeze({
 var REQUIRED_DISTRIBUTION_FRONTS = ACTIVE_COMMERCIAL_FRONTS;
 function commercialDistributionReadiness(env = process.env, runtimeOAuth = {}) {
   const baseChannels = channelReadiness(env), channels2 = Object.fromEntries(Object.entries(baseChannels).map(([k, v2]) => [k, runtimeOAuth[k] === true || runtimeOAuth[k]?.ready === true ? { ...v2, configured: true, missing: [] } : v2])), affiliate = evaluateAffiliateProgramReadiness(env);
-  const fronts = Object.fromEntries(REQUIRED_DISTRIBUTION_FRONTS.map((key) => {
+  // Provider independence: the retired WhatsApp front never counts toward distribution readiness.
+  const distributionRetired = whatsappChannelRetired(env) ? ["whatsapp"] : [];
+  const fronts = Object.fromEntries(REQUIRED_DISTRIBUTION_FRONTS.filter((key) => !distributionRetired.includes(key)).map((key) => {
     const policy = COMMERCIAL_DISTRIBUTION_CANONICAL[key], state2 = channels2[key] || { configured: false, implemented: false, missing: ["channel_contract_missing"] };
     const fallback = assistedFallbackReadiness(key, env), alternate = alternateAutomationReadiness(key, env), contingency = key === "nuvemshop" ? nuvemshopCsvFallbackReadiness(env) : { ready: false, mode: null, provider: null }, blockers2 = [...state2.missing];
     if (key === "affiliate") blockers2.push(...affiliate.blockers);
@@ -7587,7 +7595,7 @@ function commercialDistributionReadiness(env = process.env, runtimeOAuth = {}) {
   }));
   const values = Object.values(fronts), technicalReady = values.every((x2) => x2.policy_complete && x2.implemented), operationalReady = values.every((x2) => x2.operational_ready);
   const blockers = Object.freeze(Object.entries(fronts).flatMap(([key, state2]) => state2.blockers.map((code) => `${key}:${code}`)));
-  return Object.freeze({ version: "commercial-distribution-canonical-v2", technical_ready: technicalReady, operational_ready: operationalReady, total_fronts: values.length, implemented_fronts: values.filter((x2) => x2.implemented).length, configured_fronts: values.filter((x2) => x2.operational_ready).length, automation_ready_fronts: values.filter((x2) => x2.automation_ready).length, fronts: Object.freeze(fronts), blockers });
+  return Object.freeze({ version: "commercial-distribution-canonical-v2", retired_fronts: Object.freeze(distributionRetired), technical_ready: technicalReady, operational_ready: operationalReady, total_fronts: values.length, implemented_fronts: values.filter((x2) => x2.implemented).length, configured_fronts: values.filter((x2) => x2.operational_ready).length, automation_ready_fronts: values.filter((x2) => x2.automation_ready).length, fronts: Object.freeze(fronts), blockers });
 }
 __name(commercialDistributionReadiness, "commercialDistributionReadiness");
 
@@ -7611,6 +7619,7 @@ async function remoteRuntimeChannelTruth(env = process.env, fetchImpl = globalTh
     const body = await r.json(), out = {};
     for (const name of ACTIVE_REMOTE_PROVIDERS) {
       const x2 = body?.channels?.[name];
+      if (name === "whatsapp" && whatsappChannelRetired(env)) continue;
       if (x2?.api_configured === true && x2?.operational_ready === true) out[name] = Object.freeze({ ready: true, mode: "provider_api_secondary_runtime" });
     }
     return Object.freeze(out);
@@ -7980,7 +7989,7 @@ function brandIdentityReadiness(env = process.env) {
     nuvemshop: front2(anyFlag(env, "NUVEMSHOP_BRAND_IDENTITY_VERIFIED", "NUVEMSHOP_STOREFRONT_VERIFIED"), "verified_storefront", "NUVEMSHOP_BRAND_IDENTITY_NOT_VERIFIED"),
     mercado_livre: front2(flag(env, "MERCADOLIVRE_BRAND_IDENTITY_VERIFIED"), "provider_marketplace", "MERCADOLIVRE_BRAND_IDENTITY_NOT_VERIFIED")
   };
-  const fronts = Object.fromEntries(ACTIVE_COMMERCIAL_FRONTS.map((name) => [name, all[name]]));
+  const fronts = Object.fromEntries(ACTIVE_COMMERCIAL_FRONTS.filter((name) => !(name === "whatsapp" && whatsappChannelRetired(env))).map((name) => [name, all[name]]));
   const values = Object.values(fronts), verified = values.filter((x2) => x2.verified).length;
   return Object.freeze({ version: "brand-identity-v4-full-scope", ready: verified === values.length, verified_fronts: verified, total_fronts: values.length, fronts: Object.freeze(fronts), blockers: Object.freeze(values.filter((x2) => !x2.verified).map((x2) => x2.blocker)) });
 }
@@ -8588,6 +8597,8 @@ async function getJson(fetchImpl, url, token) {
 }
 __name(getJson, "getJson");
 async function whatsappBrokerCall(path, { method = "GET", body = null, headers = {} } = {}) {
+  // Retired channel: the broker is never contacted (signature/token checks, media, send).
+  if (whatsappChannelRetired(process.env)) return { ok: false, status: 410, body: { error: "whatsapp_channel_retired", reason: WHATSAPP_RETIRED_REASON } };
   const broker = globalThis.__ZEVANORY_WHATSAPP_BROKER__;
   if (!broker?.fetch) return { ok: false, status: 503, body: { error: "whatsapp_broker_unavailable" } };
   const init = { method, headers: { "x-zevanory-internal": "service-binding", ...headers } };
@@ -8615,7 +8626,7 @@ async function whatsappBrokerVerifyToken(token) {
 }
 __name(whatsappBrokerVerifyToken, "whatsappBrokerVerifyToken");
 function resolveMetaVerifyToken(env = process.env) {
-  const runtime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  const runtime = whatsappChannelRetired(env) ? {} : globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   return clean7(env.META_VERIFY_TOKEN, 4e3) || clean7(env.META_WEBHOOK_VERIFY_TOKEN, 4e3) || clean7(runtime.verify_token, 4e3);
 }
 __name(resolveMetaVerifyToken, "resolveMetaVerifyToken");
@@ -8668,6 +8679,8 @@ function sameBrazilMobile(a, b) {
   return Boolean(x) && strip(x) === strip(y);
 }
 async function verifyWhatsappIdentity({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
+  // Retired channel: no Graph call, no broker state. Not attempted, so it is not an identity blocker.
+  if (whatsappChannelRetired(env)) return result(false, false, WHATSAPP_RETIRED_REASON, { retired: true, mode: WHATSAPP_RETIRED_MODE });
   const runtime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   const brokerState = globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ || {};
   const token = clean7(env.WHATSAPP_ACCESS_TOKEN || runtime.access_token, 4e3), id = clean7(env.WHATSAPP_PHONE_NUMBER_ID || runtime.phone_number_id), version = clean7(env.META_GRAPH_VERSION || runtime.graph_version || "v26.0", 20);
@@ -8937,12 +8950,14 @@ async function handler(req, res) {
     }
   }
   if (view === "meta-migration-probe") {
-    const raw = String(process.env.META_ACCESS_TOKEN || "").trim(), fallback = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+    // The retired WhatsApp token is never used as a fallback for Page/Instagram reads.
+    const raw = String(process.env.META_ACCESS_TOKEN || "").trim(), fallback = whatsappChannelRetired(process.env) ? "" : String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
     const token = raw && raw !== "[SENSITIVE]" ? raw : fallback;
     const pageId = /^\d{8,30}$/.test(String(process.env.META_PAGE_ID || "")) ? String(process.env.META_PAGE_ID) : "1249902628211703";
     const version = /^v\d+\.\d+$/.test(String(process.env.META_GRAPH_VERSION || "")) ? String(process.env.META_GRAPH_VERSION) : "v26.0";
     let out = { facebook: false, instagram: false, token_source: raw && raw !== "[SENSITIVE]" ? "meta" : "whatsapp", reason: "provider_unavailable" };
     try {
+      if (!token || token === "[SENSITIVE]") throw new Error("meta_token_missing");
       const r = await fetch(`https://graph.facebook.com/${version}/${pageId}?fields=id,name,instagram_business_account{id,username}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(7e3) });
       const b2 = await r.json().catch(() => ({}));
       const facebook = r.ok && String(b2?.id || "") === pageId && String(b2?.name || "").trim().toUpperCase() === "ZEVANORY";
@@ -13054,6 +13069,7 @@ async function stageVoiceTemporarily(audio, env = process.env) {
 }
 __name(stageVoiceTemporarily, "stageVoiceTemporarily");
 async function uploadVoiceToWhatsapp({ audio, phoneId, token, version, env = process.env, fetchImpl = globalThis.fetch } = {}) {
+  if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");
   const staged = await stageVoiceTemporarily(audio, env);
   try {
     if ((!token || !phoneId) && globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__?.identity_verified === true) {
@@ -13083,6 +13099,8 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
   const metaBase = /* @__PURE__ */ __name(() => `https://graph.facebook.com/${required3(env.META_GRAPH_VERSION, "meta_graph_version_missing")}`, "metaBase");
   const directAdapters = Object.freeze({
     "channel:whatsapp": /* @__PURE__ */ __name(async (event) => {
+      // Retired channel (Meta disabled the WABA on 2026-10-10): refuse before any gate, token or fetch.
+      if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");
       ensureOutboundAllowed(event, env, commercialGate);
       if (!supportEventAllowed(event) && env.WHATSAPP_SALES_ENABLED !== "true") throw new Error("whatsapp_sales_disabled");
       const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
@@ -15190,6 +15208,7 @@ function whatsappTransport(item = {}) {
 }
 __name(whatsappTransport, "whatsappTransport");
 async function postWhatsappMessage(t, message) {
+  if (whatsappChannelRetired(process.env)) return { ok: false, status: 410, provider_message_id: null, error: "whatsapp_channel_retired" };
   const res = await fetch(`https://graph.facebook.com/${t.version}/${encodeURIComponent(t.phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${t.token}`, "content-type": "application/json" }, body: JSON.stringify(message), signal: AbortSignal.timeout(15e3) });
   const data = await res.json().catch(() => ({}));
   const id = String(data?.messages?.[0]?.id || "");
@@ -15197,6 +15216,9 @@ async function postWhatsappMessage(t, message) {
 }
 __name(postWhatsappMessage, "postWhatsappMessage");
 async function replyWhatsappConversation(item, question, { inboundAudio = false, status: inboundStatus, checkpoint: inboundCheckpoint } = {}) {
+  // Automated replies are off unless the channel is explicitly un-retired AND WHATSAPP_INSTANT_REPLY=true.
+  if (whatsappChannelRetired(process.env)) return { sent: false, reason: "whatsapp_channel_retired" };
+  if (!whatsappInstantReplyEnabled(process.env)) return { sent: false, reason: "whatsapp_instant_reply_disabled" };
   const safetyReason = whatsappInboundSafety(item);
   if (safetyReason) return { sent: false, reason: safetyReason };
   const t = whatsappTransport(item);
@@ -15410,6 +15432,7 @@ var base64 = /* @__PURE__ */ __name((bytes) => {
   return btoa(s);
 }, "base64");
 async function fetchWhatsappMedia(item, env, fetchImpl = globalThis.fetch) {
+  if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");
   const rtMedia = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   const id = clean29(item?.media_id, 240), token = clean29((rtMedia.identity_verified === true && rtMedia.access_token) || env.WHATSAPP_ACCESS_TOKEN, 5e3), version = clean29(rtMedia.graph_version || env.META_GRAPH_VERSION || "v26.0", 20);
   if (!id || !token) throw new Error("whatsapp_media_credentials_missing");
@@ -15514,7 +15537,7 @@ async function handler18(req, res) {
     const mode = String(hubParams.get("hub.mode") || req.query?.["hub.mode"] || ""), token = String(hubParams.get("hub.verify_token") || req.query?.["hub.verify_token"] || ""), challenge = String(hubParams.get("hub.challenge") || req.query?.["hub.challenge"] || "");
     // Accept the onboarding-issued token as well as configured env tokens: legacy vars must not
     // shadow the verify token Meta was just given by /admin/whatsapp-onboard.
-    const runtimeVerify = String((globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {}).verify_token || "").trim();
+    const runtimeVerify = whatsappChannelRetired(process.env) ? "" : String((globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {}).verify_token || "").trim();
     const verifyCandidates = [resolveMetaVerifyToken(process.env), String(process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim(), runtimeVerify].filter(Boolean);
     const directValid = mode === "subscribe" && Boolean(token) && verifyCandidates.includes(token);
     try {
@@ -15534,7 +15557,11 @@ async function handler18(req, res) {
   }
   if (req.method !== "POST") return json14(res, 405, { error: "method_not_allowed" });
   const raw = rawText(req);
-  const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  // Retired channel: a WhatsApp Business delivery is acknowledged (200, Meta retries non-2xx) and
+  // nothing else happens: no signature check against stored secrets, no parsing of messages, no
+  // storage of content, no CRM job, no evidence, no reply.
+  if (whatsappChannelRetired(process.env) && isWhatsappWebhookBody(raw)) return json14(res, 200, { accepted: true, processed: false, stored: false, reason: WHATSAPP_RETIRED_REASON });
+  const whatsappRuntime = whatsappChannelRetired(process.env) ? {} : globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   const metaAppSecret = process.env.META_APP_SECRET || whatsappRuntime.app_secret || "";
   const localSignatureValid = verifyMetaSignature({ payload: raw, signature: req.headers?.["x-hub-signature-256"], appSecret: metaAppSecret });
   const brokerSignatureValid = !localSignatureValid ? await whatsappBrokerSignatureValid(raw, req.headers?.["x-hub-signature-256"]) : false;
@@ -15551,7 +15578,7 @@ async function handler18(req, res) {
     const social = await handleMetaSocialInbound(payload, socialEnv).catch((error)=>({handled:true,received:0,replied:0,error:String(error?.message||"meta_social_failed")}));
     if (social.handled) return json14(res, 200, {accepted:true,inbound_received:social.received,replies_sent:social.replied});
   }
-  const inbound = extractWhatsappInboundMessages(payload);
+  const inbound = whatsappChannelRetired(process.env) ? [] : extractWhatsappInboundMessages(payload);
   if (inbound.length) {
     const sql = process.env.DATABASE_URL ? cs(process.env.DATABASE_URL) : null;
     let queued = 0, support = 0, commercial = 0, media_review = 0, instant = 0;
@@ -15570,7 +15597,7 @@ async function handler18(req, res) {
       await checkpoint(item.type === "audio" ? "stt_done" : "understanding_done", { heard: Boolean(enriched.transcript || enriched.text) });
       const text = String(enriched.understanding || enriched.text || "").trim();
       let sent = { sent: false };
-      if (process.env.WHATSAPP_INSTANT_REPLY !== "false" && (item.type === "text" || item.type === "audio")) {
+      if (whatsappInstantReplyEnabled(process.env) && (item.type === "text" || item.type === "audio")) {
         try {
           const question = item.type === "audio" ? String(enriched.transcript || "").trim() : text;
           sent = await replyWhatsappConversation(item, question, { inboundAudio: item.type === "audio", status, checkpoint });
@@ -18551,7 +18578,7 @@ var cloudflare_worker_default = {
         provider_vault_supported: true,
         provider_secretless_origin_auth: activeProvider === "piper-relay",
         relay_https_configured: /^https:\/\//i.test(relayUrl),
-        whatsapp_transport_configured: Boolean(String(env.WHATSAPP_ACCESS_TOKEN || globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.access_token || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.phone_number_id || "").trim()),
+        whatsapp_transport_configured: !whatsappChannelRetired(env) && Boolean(String(env.WHATSAPP_ACCESS_TOKEN || globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.access_token || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.phone_number_id || "").trim()),
         sales_independent_support: true,
         naturality_certified: env.VOICE_NATURALITY_CERTIFIED === "true",
         e2e_official_number_certified: env.VOICE_WHATSAPP_E2E_CERTIFIED === "true",
