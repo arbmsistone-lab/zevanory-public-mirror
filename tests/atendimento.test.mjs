@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { fileURLToPath } from "node:url";
-import { handleAtendimento, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, ATENDIMENTO_SQL, MAX_ATTEMPTS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
+import { handleAtendimento, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, resendFailureIsTransient, ATENDIMENTO_SQL, MAX_ATTEMPTS, SEND_WINDOW_HOURS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
 import { FORWARD_TO_KV_KEY as SUPPORT_FORWARD_KEY } from "../worker/support-email-forward.mjs";
 import { FORWARD_TO_KV_KEY } from "../worker/atendimento.mjs";
@@ -128,14 +128,22 @@ test("estrutura da outbox: cota e gravação num único comando atômico, chaves
   assert.equal((admit.match(/on conflict \(bucket\) do update set n = zevanory_atendimento_quota\.n \+ 1 where zevanory_atendimento_quota\.n < \$\d/g) || []).length, 2, "duas cotas com teto no ON CONFLICT");
   assert.match(admit, /insert into zevanory_atendimento_outbox[\s\S]*from q2/, "linha só entra se as duas cotas passaram, no mesmo comando");
   assert.doesNotMatch(src, /ZEVANORY_PRIVATE_ARTIFACTS\.put|kv\.put/, "nada de cota/estado em KV (get/put não atômico)");
-  assert.match(src, /idempotencyKey: `atendimento-owner\/\$\{protocolo\}`/);
-  assert.match(src, /idempotencyKey: `atendimento-ack\/\$\{protocolo\}`/);
-  assert.match(src, /idempotencyKey: `atendimento-dead\/\$\{d\.protocolo\}`/);
+  assert.match(src, /`atendimento-owner\/\$\{protocolo\}`/);
+  assert.match(src, /`atendimento-ack\/\$\{protocolo\}`/);
+  assert.match(src, /`atendimento-dead\/\$\{d\.protocolo\}`/);
+  assert.match(ATENDIMENTO_SQL.lease, /> now\(\) - interval '23 hours'\) as owner_window_ok/);
+  assert.match(ATENDIMENTO_SQL.alertLease, /> now\(\) - interval '23 hours'\) as alert_window_ok/);
+  assert.equal(SEND_WINDOW_HOURS, 23);
   assert.doesNotMatch(src, /console\./, "nenhum log (sem dado pessoal em log)");
   assert.ok(MAX_ATTEMPTS >= 3 && MAX_ATTEMPTS <= 12);
   assert.equal(FORWARD_TO_KV_KEY, SUPPORT_FORWARD_KEY, "mesmo destino do proprietário do suporte@ (#894)");
   assert.match(ATENDIMENTO_SQL.lease, /lease_until is null or lease_until < now\(\)/);
   assert.match(ATENDIMENTO_SQL.release, /payload = case when owner_status = 'sent' and customer_status = 'sent' then null/);
+});
+
+test("Resend: só rede/tempo esgotado, 429 e 5xx são temporários; 400/401/403/404/409/422 são permanentes", () => {
+  for (const s of [0, 429, 500, 502, 503, 504, 599]) assert.equal(resendFailureIsTransient(s), true, String(s));
+  for (const s of [400, 401, 403, 404, 405, 409, 410, 413, 422, 451]) assert.equal(resendFailureIsTransient(s), false, String(s));
 });
 
 test("cron sem configuração: verde se não há envio parado, vermelho se houver", async () => {

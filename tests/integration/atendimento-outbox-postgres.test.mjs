@@ -65,12 +65,18 @@ const post = (fields, { ip = "203.0.113.10" } = {}) => new Request("https://zeva
 let seq = 0;
 const fields = (over = {}) => ({ tipo: "reclamacao", email: `cliente${++seq}@example.com`, pedido: "", mensagem: "O arquivo do produto veio corrompido, preciso de ajuda.", ...over });
 const submit = async (f, opts = {}) => {
-  const r = await handleAtendimento(post(f, opts), opts.env || ENV, { sqlFactory: opts.sqlFactory || sqlFactory, fetchImpl: opts.fetchImpl, q: opts.q });
+  const r = await handleAtendimento(post(f, opts), opts.env || ENV, { sqlFactory: opts.sqlFactory || sqlFactory, fetchImpl: opts.fetchImpl, q: opts.q, transient: opts.transient });
   return { status: r.status, body: await r.json() };
 };
 const row = (protocolo) => JSON.parse(psqlSync(`select coalesce(row_to_json(o), 'null') from zevanory_atendimento_outbox o where protocolo = ${lit(protocolo)}`) || "null");
 const makeDue = (protocolo) => psqlSync(`update zevanory_atendimento_outbox set next_attempt_at = now() - interval '1 second' where protocolo = ${lit(protocolo)}`);
-const reset = () => psqlSync("truncate zevanory_atendimento_outbox, zevanory_atendimento_quota");
+const reset = () => psqlSync("truncate zevanory_atendimento_outbox, zevanory_atendimento_quota, zevanory_atendimento_monitor");
+const makeAlertDue = (protocolo) => psqlSync(`update zevanory_atendimento_outbox set alert_next_at = now() - interval '1 second', alert_lease_until = null where protocolo = ${lit(protocolo)}`);
+const drain = (fetchImpl, extra = {}) => drainAtendimentoOutbox(ENV, { sqlFactory, fetchImpl, ...extra });
+const ALERT = "alerta@example.com";
+// Aviso e confirmação com erro permanente (422); dead-letter com erro temporário (500).
+const permanentThenAlertDown = async (u, init) => new Response("{}", { status: JSON.parse(init.body).to[0] === ALERT ? 500 : 422 });
+
 
 before(async () => {
   if (SKIP) return;
@@ -196,18 +202,129 @@ test("teto de tentativas: envio vira dead, nenhum efeito externo depois, dead-le
   const d = await drainAtendimentoOutbox(ENV, { sqlFactory, fetchImpl: after.fetchImpl });
   assert.equal(after.calls.length, 0, "dead: nenhum envio novo, nenhum alerta repetido");
   assert.equal(d.ok, true);
+  assert.equal(row(r.body.protocolo).alert_status, "sent");
   assert.notEqual(row(r.body.protocolo).dead_alerted_at, null);
 });
 
-test("dead-letter sem conseguir avisar deixa o cron vermelho", { skip: SKIP }, async () => {
+test("dead-letter que não sai: estado, tentativas e lease próprios; esgotado => cron vermelho até reconhecimento manual", { skip: SKIP }, async () => {
+  reset();
+  const down = resend({ fail: () => true });
+  const r = await submit(fields(), { fetchImpl: down.fetchImpl });
+  const p = r.body.protocolo;
+  for (let i = 1; i < MAX_ATTEMPTS; i++) { makeDue(p); await drain(down.fetchImpl); }
+  let o = row(p);
+  assert.deepEqual([o.owner_status, o.customer_status, o.alert_status], ["dead", "dead", "pending"]);
+  assert.ok(o.alert_attempts >= 1, "dead-letter já tentou (lease próprio)");
+  let d;
+  for (let i = 0; i < MAX_ATTEMPTS + 1; i++) { makeAlertDue(p); d = await drain(down.fetchImpl); }
+  o = row(p);
+  assert.equal(o.alert_status, "dead");
+  assert.equal(o.alert_attempts, MAX_ATTEMPTS);
+  assert.equal(down.calls.filter((c) => c.to === ALERT).length, MAX_ATTEMPTS, "teto também para o dead-letter");
+  assert.equal(d.ok, false);
+  assert.equal(d.alert_dead, 1);
+  psqlSync(`update zevanory_atendimento_outbox set alert_ack_at = now() where protocolo = ${lit(p)}`);
+  assert.equal((await drain(down.fetchImpl)).ok, true, "intervenção manual registrada => verde");
+});
+
+test("janela < 23 h: retomada 23h01 depois da primeira tentativa faz ZERO chamadas de aviso/confirmação", { skip: SKIP }, async () => {
   reset();
   const f = fields();
   const down = resend({ fail: () => true });
   const r = await submit(f, { fetchImpl: down.fetchImpl });
-  for (let i = 1; i <= MAX_ATTEMPTS; i++) { makeDue(r.body.protocolo); await drainAtendimentoOutbox(ENV, { sqlFactory, fetchImpl: down.fetchImpl }); }
-  const d = await drainAtendimentoOutbox(ENV, { sqlFactory, fetchImpl: down.fetchImpl });
-  assert.equal(d.ok, false);
-  assert.ok(d.dead_unalerted >= 1);
+  const p = r.body.protocolo;
+  psqlSync(`update zevanory_atendimento_outbox set owner_first_attempt_at = now() - interval '23 hours 1 minute', customer_first_attempt_at = now() - interval '23 hours 1 minute', next_attempt_at = now() - interval '1 second' where protocolo = ${lit(p)}`);
+  const up = resend();
+  await drain(up.fetchImpl);
+  assert.equal(up.calls.filter((c) => c.to === OWNER || c.to === f.email).length, 0, "nenhuma chamada fora da janela");
+  const o = row(p);
+  assert.deepEqual([o.owner_status, o.customer_status, o.last_error], ["dead", "dead", "window_expired"]);
+  assert.equal(up.sentTo(ALERT).length, 1, "o dead-letter (efeito próprio, janela própria) avisa o proprietário");
+  assert.equal(up.calls.length, 1);
+});
+
+test("janela < 23 h do dead-letter: expirado => dead sem chamada e cron vermelho", { skip: SKIP }, async () => {
+  reset();
+  const f = fields();
+  const r = await submit(f, { fetchImpl: permanentThenAlertDown });
+  const p = r.body.protocolo;
+  let o = row(p);
+  assert.deepEqual([o.owner_status, o.customer_status, o.alert_status], ["dead", "dead", "pending"], "erro permanente: dead e dead-letter armado na hora (o próprio dead-letter falhou)");
+  psqlSync(`update zevanory_atendimento_outbox set alert_first_attempt_at = now() - interval '23 hours 1 minute' where protocolo = ${lit(p)}`);
+  makeAlertDue(p);
+  const up = resend();
+  const d = await drain(up.fetchImpl);
+  assert.equal(up.calls.length, 0, "dead-letter fora da janela: nenhuma chamada");
+  o = row(p);
+  assert.equal(o.alert_status, "dead");
+  assert.equal(d.ok, false, "intervenção manual necessária");
+});
+
+test("erros permanentes do Resend (400/401/403/422): dead na hora, dead-letter na hora, nenhuma nova tentativa", { skip: SKIP }, async () => {
+  for (const status of [400, 401, 403, 422]) {
+    reset();
+    const f = fields();
+    const calls = [];
+    const m = resend();
+    const fetchImpl = async (u, init) => {
+      const b = JSON.parse(init.body);
+      calls.push(b.to[0]);
+      if (b.to[0] === f.email) return new Response(JSON.stringify({ message: "x" }), { status });
+      return m.fetchImpl(u, init);
+    };
+    const r = await submit(f, { fetchImpl });
+    const p = r.body.protocolo;
+    let o = row(p);
+    assert.deepEqual([o.customer_status, o.customer_attempts, o.owner_status], ["dead", 1, "sent"], String(status));
+    assert.equal(o.alert_status, "sent", status + ": dead-letter na mesma requisição");
+    assert.equal(m.sentTo(ALERT).length, 1);
+    makeDue(p);
+    await drain(fetchImpl);
+    assert.equal(calls.filter((x) => x === f.email).length, 1, status + ": nenhuma nova tentativa");
+  }
+});
+
+test("429 e 5xx são temporários: nova tentativa com recuo e recuperação", { skip: SKIP }, async () => {
+  for (const status of [429, 500, 503]) {
+    reset();
+    const f = fields();
+    let first = true;
+    const m = resend();
+    const fetchImpl = async (u, init) => {
+      if (first && JSON.parse(init.body).to[0] === f.email) { first = false; return new Response("{}", { status }); }
+      return m.fetchImpl(u, init);
+    };
+    const r = await submit(f, { fetchImpl });
+    let o = row(r.body.protocolo);
+    assert.deepEqual([o.customer_status, o.customer_attempts, o.alert_status], ["pending", 1, "none"], String(status));
+    makeDue(r.body.protocolo);
+    await drain(fetchImpl);
+    o = row(r.body.protocolo);
+    assert.equal(o.customer_status, "sent", String(status));
+    assert.equal(m.sentTo(f.email).length, 1);
+  }
+});
+
+test("monitor: pendência >= 2 h gera alerta só com contagem (um a cada 6 h); >= 6 h deixa o cron vermelho", { skip: SKIP }, async () => {
+  reset();
+  const f = fields();
+  const down = resend({ fail: () => true });
+  const r = await submit(f, { fetchImpl: down.fetchImpl });
+  const p = r.body.protocolo;
+  psqlSync(`update zevanory_atendimento_outbox set recebido_em = now() - interval '2 hours 5 minutes', next_attempt_at = now() + interval '1 hour' where protocolo = ${lit(p)}`);
+  const m = resend();
+  let d = await drain(m.fetchImpl);
+  assert.equal(d.monitor_alert, "sent");
+  assert.equal(d.ok, true, "abaixo do prazo operacional");
+  const alert = m.sentTo(ALERT)[0];
+  assert.ok(alert && /1 solicitação/.test(alert.text));
+  assert.ok(!alert.text.includes(p) && !alert.text.includes(f.email) && !alert.text.includes(f.mensagem), "só contagem, sem dado pessoal");
+  d = await drain(m.fetchImpl);
+  assert.equal(d.monitor_alert, "throttled");
+  assert.equal(m.sentTo(ALERT).length, 1);
+  psqlSync(`update zevanory_atendimento_outbox set recebido_em = now() - interval '6 hours 5 minutes' where protocolo = ${lit(p)}`);
+  d = await drain(m.fetchImpl);
+  assert.equal(d.ok, false, "além do prazo operacional de 6 h");
 });
 
 test("drenos simultâneos: o lease garante uma única tentativa por e-mail", { skip: SKIP }, async () => {
@@ -328,6 +445,58 @@ test("mutantes: cota lida-e-escrita, sem teto, chave instável, duplicata sem pr
     const slow = async (u, i) => { await new Promise((d) => setTimeout(d, 400)); return m.fetchImpl(u, i); };
     await Promise.all([1, 2, 3, 4].map(() => drainAtendimentoOutbox(ENV, { sqlFactory, fetchImpl: slow, q: noLease })));
     killed("L1 sem lease", m.calls.filter((c) => c.to === OWNER).length > 1);
+  }
+  // W1: sem a janela de < 23 h (chama o Resend depois de 23h01).
+  reset();
+  {
+    const noWindow = { ...ATENDIMENTO_SQL, lease: ATENDIMENTO_SQL.lease.replace("(owner_first_attempt_at > now() - interval '23 hours')", "true").replace("(customer_first_attempt_at > now() - interval '23 hours')", "true") };
+    assert.notEqual(noWindow.lease, ATENDIMENTO_SQL.lease);
+    const f = fields();
+    const down = resend({ fail: () => true });
+    const r = await submit(f, { fetchImpl: down.fetchImpl, q: noWindow });
+    psqlSync(`update zevanory_atendimento_outbox set owner_first_attempt_at = now() - interval '23 hours 1 minute', customer_first_attempt_at = now() - interval '23 hours 1 minute', next_attempt_at = now() - interval '1 second' where protocolo = ${lit(r.body.protocolo)}`);
+    const up = resend();
+    await drain(up.fetchImpl, { q: noWindow });
+    killed("W1 sem janela de 23 h", up.calls.some((c) => c.to === OWNER || c.to === f.email));
+  }
+
+  // W2: dead-letter sem janela própria.
+  reset();
+  {
+    const noAlertWindow = { ...ATENDIMENTO_SQL, alertLease: ATENDIMENTO_SQL.alertLease.replace("(coalesce(alert_first_attempt_at, now()) > now() - interval '23 hours')", "true") };
+    assert.notEqual(noAlertWindow.alertLease, ATENDIMENTO_SQL.alertLease);
+    const r = await submit(fields(), { fetchImpl: permanentThenAlertDown, q: noAlertWindow });
+    psqlSync(`update zevanory_atendimento_outbox set alert_first_attempt_at = now() - interval '23 hours 1 minute' where protocolo = ${lit(r.body.protocolo)}`);
+    makeAlertDue(r.body.protocolo);
+    const up = resend();
+    await drain(up.fetchImpl, { q: noAlertWindow });
+    killed("W2 dead-letter sem janela", up.calls.length > 0);
+  }
+
+  // P1: 4xx tratado como temporário (continua tentando; sem dead-letter imediato).
+  reset();
+  {
+    const f = fields();
+    const calls = [];
+    const fetchImpl = async (u, init) => { const b = JSON.parse(init.body); calls.push(b.to[0]); return b.to[0] === f.email ? new Response("{}", { status: 422 }) : new Response(JSON.stringify({ id: "x" }), { status: 200 }); };
+    const all4xx = (s) => s === 0 || s >= 400;
+    const r = await submit(f, { fetchImpl, transient: all4xx });
+    makeDue(r.body.protocolo);
+    await drain(fetchImpl, { transient: all4xx });
+    killed("P1 4xx como temporário", calls.filter((x) => x === f.email).length > 1 || row(r.body.protocolo).customer_status !== "dead");
+  }
+
+  // O1: monitor de pendência antiga desligado.
+  reset();
+  {
+    const noMonitor = { ...ATENDIMENTO_SQL, health: ATENDIMENTO_SQL.health.replace(/\(select count\(\*\) from zevanory_atendimento_outbox where [^)]*\) and recebido_em <= now\(\) - make_interval\(hours => \$1::int\)\)::int as old_alert/, "0 as old_alert") };
+    assert.notEqual(noMonitor.health, ATENDIMENTO_SQL.health);
+    const down = resend({ fail: () => true });
+    const r = await submit(fields(), { fetchImpl: down.fetchImpl });
+    psqlSync(`update zevanory_atendimento_outbox set recebido_em = now() - interval '2 hours 5 minutes', next_attempt_at = now() + interval '1 hour' where protocolo = ${lit(r.body.protocolo)}`);
+    const m = resend();
+    const d = await drain(m.fetchImpl, { q: noMonitor });
+    killed("O1 monitor de pendência antiga desligado", d.monitor_alert !== "sent" && m.sentTo(ALERT).length === 0);
   }
   console.log("ATENDIMENTO_OUTBOX_MUTANTS " + report.join(" | "));
 });

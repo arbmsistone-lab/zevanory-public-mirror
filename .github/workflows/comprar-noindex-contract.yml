@@ -11,6 +11,8 @@ on:
       - "tests/comprar-noindex.test.mjs"
       - "scripts/ci/mutants_comprar_noindex.py"
       - "worker/sales-public-worker.mjs"
+      - "worker/politica-unica.mjs"
+      - "data/politica-unica.json"
       - "sales-worker.mjs"
       - "sales-public/**"
       - "sales-overlay/**"
@@ -89,7 +91,7 @@ jobs:
           if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
-          [ "$n" = "18" ] || { echo "::error::esperados 18 mutantes mortos, obtidos $n"; exit 1; }
+          [ "$n" = "21" ] || { echo "::error::esperados 21 mutantes mortos, obtidos $n"; exit 1; }
           if grep -qE '^MUTANT M[0-9]* (SURVIVED|INCONCLUSIVE)' mutants.txt; then echo "::error::mutante sobrevivente ou inconclusivo"; exit 1; fi
           rm -f mutants.txt mutants.raw
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

@@ -58,6 +58,8 @@ const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const numberPattern = (n) => { const local = n.slice(4); return `${reEsc(n)}|${reEsc(local.slice(0, -4))}[-\\s.]?${reEsc(local.slice(-4))}`; };
 export const BANNED_NUMBER_RE = new RegExp(BANNED_NUMBERS.map(numberPattern).join("|") || "(?!)");
 export const WHATSAPP_PUBLIC_RE = new RegExp(`wa\\.me/|api\\.whatsapp\\.com/|whatsapp://|${BANNED_NUMBER_RE.source}`, "i");
+// WhatsApp citado como canal de contato/suporte da ZEVANORY (o uso do WhatsApp pelo cliente do produto é conteúdo, não canal).
+export const WHATSAPP_CHANNEL_RE = /(suporte|atendimento) humano (no|pelo) WhatsApp|Falar no WhatsApp|Fale (com a gente )?no WhatsApp|Avise-me pelo WhatsApp|WhatsApp:? \+?55|WhatsApp oficial|nosso WhatsApp|WhatsApp da ZEVANORY|nos envia por e-mail, WhatsApp|whatsapp-(header|hero|footer)-cta|data-whatsapp-official/i;
 
 // Redação ao cliente (derivada do sol_text; ver customer_wording.fragmentos_sol).
 export const CUSTOMER_RULE_7D = W.rule_7d;

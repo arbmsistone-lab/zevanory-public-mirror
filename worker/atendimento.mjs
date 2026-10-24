@@ -7,16 +7,25 @@
 // disponível pela mesma ferramenta usada na contratação (/pedir-reembolso, worker/refund-flow.mjs).
 //
 // Outbox durável em PostgreSQL (mesmo estilo de zevanory_support_inbound, PR #894, sem depender dele):
-//   uma linha por protocolo em zevanory_atendimento_outbox, com DOIS envios independentes:
-//     owner_status    pending -> sent | dead   (aviso ao destino configurado em support-config:forward-to)
-//     customer_status pending -> sent | dead   (confirmação ao cliente, com o protocolo)
-//   A linha é gravada ANTES de qualquer envio (registro durável = protocolo). Cada execução pega a linha sob
-//   lease (2 min), tenta os envios pendentes com Idempotency-Key própria no Resend
-//   (atendimento-owner/<protocolo>, atendimento-ack/<protocolo>), marca o que saiu e agenda o resto com
-//   recuo exponencial; após MAX_ATTEMPTS o envio vira "dead" e nenhum efeito externo é tentado de novo.
-//   Retomada: (1) o reenvio do mesmo formulário (mesmo protocolo) processa os envios pendentes; (2) o cron
-//   horário (runRefundWatchdog -> drainAtendimentoOutbox). Linha "dead" gera alerta (dead-letter) ao
-//   OWNER_ALERT_EMAIL, uma vez, e deixa o cron vermelho até o alerta sair.
+//   uma linha por protocolo em zevanory_atendimento_outbox, com TRÊS efeitos externos independentes, cada um
+//   com estado, tentativas, primeira tentativa e Idempotency-Key própria no Resend:
+//     owner_status    pending -> sent | dead         aviso ao destino (support-config:forward-to)  atendimento-owner/<p>
+//     customer_status pending -> sent | dead         confirmação ao cliente, com o protocolo       atendimento-ack/<p>
+//     alert_status    none -> pending -> sent | dead  dead-letter ao OWNER_ALERT_EMAIL               atendimento-dead/<p>
+//   A linha é gravada ANTES de qualquer envio (registro durável = protocolo). Envios sob lease (2 min; o
+//   dead-letter tem lease próprio), recuo exponencial e teto de MAX_ATTEMPTS.
+// * Janela de envio < 23 h (SEND_WINDOW_HOURS): a Idempotency-Key do Resend vale 24 h; cada efeito só chama o
+//   Resend até 23 h depois da SUA primeira tentativa. Passou disso => "dead" sem nenhuma chamada (aviso e
+//   confirmação armam o dead-letter; dead-letter expirado/esgotado => cron vermelho até intervenção manual:
+//   `update zevanory_atendimento_outbox set alert_ack_at = now() where protocolo = '<p>'` depois de tratar).
+// * Erros do Resend: só rede/tempo esgotado, 429 e 5xx são temporários (nova tentativa com recuo); qualquer
+//   outra resposta não-2xx (400, 401, 403, 404, 409, 422…) é permanente => dead na hora + dead-letter na hora.
+// * Retomada: (1) o reenvio do mesmo formulário (mesmo protocolo) processa os envios pendentes; (2) o cron
+//   horário (runRefundWatchdog -> drainAtendimentoOutbox).
+// * Monitor de pendências antigas: pendência mais antiga com >= 2 h (OLD_PENDING_ALERT_HOURS) gera alerta SÓ
+//   com contagem (sem protocolo, e-mail ou conteúdo; no máximo um a cada 6 h). Prazo operacional: 6 h
+//   (OLD_PENDING_DEADLINE_HOURS) — pendência mais antiga que isso deixa o cron vermelho. O prazo legal de
+//   resposta conclusiva (5 dias) não muda; o operacional garante que a confirmação "imediata" não fique parada.
 // * Protocolo idempotente: HMAC-SHA256(LEAD_PRIVACY_SECRET) do envio (tipo + e-mail + pedido + mensagem +
 //   dia de Brasília) => o mesmo envio no mesmo dia devolve o MESMO protocolo e não duplica e-mails.
 // * Cotas ATÔMICAS num único comando SQL (INSERT…ON CONFLICT DO UPDATE … WHERE n < teto) que também grava a
@@ -25,7 +34,7 @@
 //   ou sem destino do proprietário válido (SUPPORT_FORWARD_TO ou KV support-config:forward-to, fora de
 //   @zevanory.api.br).
 // * LGPD / dados mínimos: e-mail, pedido e mensagem ficam em payload só enquanto há envio pendente; com os
-//   dois envios feitos o payload é apagado; linha "dead" guarda o payload até 30 dias após o alerta.
+//   dois envios feitos o payload é apagado; linha com dead-letter guarda o payload até 30 dias após o alerta.
 //   Nenhum log com dado pessoal (o módulo não escreve log). Isca anti-robô; sem captcha de terceiros.
 // * Sem JavaScript: POST HTML e confirmação na tela na mesma resposta.
 import { LEGAL_IDENTITY, SLA_TEXT, SUPPORT_EMAIL } from "./politica-unica.mjs";
@@ -35,6 +44,10 @@ export const ATENDIMENTO_API = "/api/atendimento";
 export const FORWARD_TO_KV_KEY = "support-config:forward-to";
 export const RESPONSE_DAYS = 5;
 export const MAX_ATTEMPTS = 8;
+export const SEND_WINDOW_HOURS = 23;
+export const OLD_PENDING_ALERT_HOURS = 2;
+export const OLD_PENDING_DEADLINE_HOURS = 6;
+const MONITOR_EVERY_HOURS = 6;
 export const IP_HOURLY_CAP = 5;
 export const EMAIL_DAILY_CAP = 4;
 export const TIPOS = Object.freeze({
@@ -83,7 +96,7 @@ export async function ownerTarget(env) {
   return v;
 }
 // Contexto de execução; `missing` lista o que falta (fail-closed).
-export async function atendimentoContext(env = {}, { sqlFactory, fetchImpl = globalThis.fetch, q = ATENDIMENTO_SQL } = {}) {
+export async function atendimentoContext(env = {}, { sqlFactory, fetchImpl = globalThis.fetch, q = ATENDIMENTO_SQL, transient = resendFailureIsTransient } = {}) {
   const missing = [];
   const secret = privacySecret(env);
   if (!secret) missing.push("LEAD_PRIVACY_SECRET");
@@ -92,11 +105,12 @@ export async function atendimentoContext(env = {}, { sqlFactory, fetchImpl = glo
   const owner = await ownerTarget(env);
   if (!owner) missing.push(FORWARD_TO_KV_KEY);
   if (missing.length) return { missing };
-  return { env, secret, owner, sql: sqlFactory(env.DATABASE_URL), fetchImpl, q, alertTo: String(env.OWNER_ALERT_EMAIL || owner) };
+  return { env, secret, owner, sql: sqlFactory(env.DATABASE_URL), fetchImpl, q, transient, alertTo: String(env.OWNER_ALERT_EMAIL || owner) };
 }
 
 // ---------- outbox (PostgreSQL) ----------
 const PENDING = "(owner_status = 'pending' or customer_status = 'pending')";
+const WINDOW = `interval '${SEND_WINDOW_HOURS} hours'`;
 export const ATENDIMENTO_SQL = Object.freeze({
   schema: [
     `/*atendimento:schema*/ create table if not exists zevanory_atendimento_outbox (
@@ -106,14 +120,21 @@ export const ATENDIMENTO_SQL = Object.freeze({
       owner_status text not null default 'pending' check (owner_status in ('pending','sent','dead')),
       customer_status text not null default 'pending' check (customer_status in ('pending','sent','dead')),
       owner_attempts integer not null default 0, customer_attempts integer not null default 0,
+      owner_first_attempt_at timestamptz, customer_first_attempt_at timestamptz,
       owner_message_id text, customer_message_id text, last_error text,
       next_attempt_at timestamptz not null default now(), lease_until timestamptz,
-      payload jsonb, dead_alerted_at timestamptz,
+      alert_status text not null default 'none' check (alert_status in ('none','pending','sent','dead')),
+      alert_attempts integer not null default 0, alert_first_attempt_at timestamptz, alert_next_at timestamptz,
+      alert_lease_until timestamptz, alert_error text, alert_ack_at timestamptz, dead_alerted_at timestamptz,
+      payload jsonb,
       recebido_em timestamptz not null default now(), responder_ate timestamptz not null,
       updated_at timestamptz not null default now())`,
     `/*atendimento:schema*/ create table if not exists zevanory_atendimento_quota (
       bucket text primary key, n integer not null default 0, expires_at timestamptz not null)`,
+    `/*atendimento:schema*/ create table if not exists zevanory_atendimento_monitor (
+      key text primary key, last_alert_at timestamptz not null)`,
     "/*atendimento:schema*/ create index if not exists zevanory_atendimento_outbox_due_idx on zevanory_atendimento_outbox (next_attempt_at) where owner_status = 'pending' or customer_status = 'pending'",
+    "/*atendimento:schema*/ create index if not exists zevanory_atendimento_outbox_alert_idx on zevanory_atendimento_outbox (alert_next_at) where alert_status = 'pending'",
   ],
   find: `/*atendimento:find*/ select protocolo, tipo, owner_status, customer_status, recebido_em, responder_ate from zevanory_atendimento_outbox where protocolo = $1`,
   // Cota por IP (q1) e por e-mail (q2) e gravação da linha (ins) num ÚNICO comando: concorrência resolvida
@@ -134,32 +155,60 @@ export const ATENDIMENTO_SQL = Object.freeze({
     ) select (select count(*) from q1)::int as ip_ok, (select count(*) from q2)::int as email_ok,
         ins.protocolo, ins.recebido_em, ins.responder_ate
       from (select 1) one left join ins on true`,
-  lease: `/*atendimento:lease*/ update zevanory_atendimento_outbox set lease_until = now() + interval '2 minutes', updated_at = now()
+  // Lease + marca da PRIMEIRA tentativa de cada envio pendente; *_window_ok = ainda dentro de < 23 h dela.
+  lease: `/*atendimento:lease*/ update zevanory_atendimento_outbox set lease_until = now() + interval '2 minutes', updated_at = now(),
+      owner_first_attempt_at = case when owner_status = 'pending' then coalesce(owner_first_attempt_at, now()) else owner_first_attempt_at end,
+      customer_first_attempt_at = case when customer_status = 'pending' then coalesce(customer_first_attempt_at, now()) else customer_first_attempt_at end
     where protocolo = $1 and ${PENDING} and next_attempt_at <= now() and (lease_until is null or lease_until < now())
-    returning protocolo, tipo, owner_status, customer_status, owner_attempts, customer_attempts, payload, recebido_em, responder_ate`,
+    returning protocolo, tipo, owner_status, customer_status, owner_attempts, customer_attempts, payload, recebido_em, responder_ate,
+      (owner_first_attempt_at > now() - ${WINDOW}) as owner_window_ok, (customer_first_attempt_at > now() - ${WINDOW}) as customer_window_ok`,
   ownerSent: `/*atendimento:owner_sent*/ update zevanory_atendimento_outbox set owner_status = 'sent', owner_message_id = $2, updated_at = now()
     where protocolo = $1 and owner_status = 'pending'`,
   customerSent: `/*atendimento:customer_sent*/ update zevanory_atendimento_outbox set customer_status = 'sent', customer_message_id = $2, updated_at = now()
     where protocolo = $1 and customer_status = 'pending'`,
+  // $2 teto, $3 motivo, $4 permanente (erro permanente ou janela expirada => dead já).
   ownerFailed: `/*atendimento:owner_failed*/ update zevanory_atendimento_outbox set owner_attempts = owner_attempts + 1,
-      owner_status = case when owner_attempts + 1 >= $2 then 'dead' else 'pending' end, last_error = $3, updated_at = now()
+      owner_status = case when $4::boolean or owner_attempts + 1 >= $2 then 'dead' else 'pending' end, last_error = $3, updated_at = now()
     where protocolo = $1 and owner_status = 'pending' returning owner_status, owner_attempts`,
   customerFailed: `/*atendimento:customer_failed*/ update zevanory_atendimento_outbox set customer_attempts = customer_attempts + 1,
-      customer_status = case when customer_attempts + 1 >= $2 then 'dead' else 'pending' end, last_error = $3, updated_at = now()
+      customer_status = case when $4::boolean or customer_attempts + 1 >= $2 then 'dead' else 'pending' end, last_error = $3, updated_at = now()
     where protocolo = $1 and customer_status = 'pending' returning customer_status, customer_attempts`,
-  // Solta o lease e agenda; com os dois envios feitos, apaga o conteúdo (dados mínimos).
+  // Solta o lease e agenda; com os dois envios feitos apaga o conteúdo; com algum dead arma na hora o
+  // dead-letter (alert_status none -> pending), que tem estado, lease e janela próprios.
   release: `/*atendimento:release*/ update zevanory_atendimento_outbox set lease_until = null, updated_at = now(),
       next_attempt_at = now() + make_interval(mins => $2::int),
-      payload = case when owner_status = 'sent' and customer_status = 'sent' then null else payload end
+      payload = case when owner_status = 'sent' and customer_status = 'sent' then null else payload end,
+      alert_status = case when alert_status = 'none' and (owner_status = 'dead' or customer_status = 'dead') then 'pending' else alert_status end,
+      alert_next_at = case when alert_status = 'none' and (owner_status = 'dead' or customer_status = 'dead') then now() else alert_next_at end
     where protocolo = $1
-    returning owner_status, customer_status`,
+    returning owner_status, customer_status, alert_status`,
   due: `/*atendimento:due*/ select protocolo from zevanory_atendimento_outbox where ${PENDING} and next_attempt_at <= now()
       and (lease_until is null or lease_until < now()) order by next_attempt_at limit $1`,
-  stuck: `/*atendimento:stuck*/ select count(*)::int as n from zevanory_atendimento_outbox where ${PENDING} or ((owner_status = 'dead' or customer_status = 'dead') and dead_alerted_at is null)`,
-  deadUnalerted: `/*atendimento:dead_unalerted*/ select protocolo, tipo, owner_status, customer_status, recebido_em, payload
-    from zevanory_atendimento_outbox where (owner_status = 'dead' or customer_status = 'dead') and not ${PENDING} and dead_alerted_at is null
-    order by recebido_em limit $1`,
-  deadAlerted: `/*atendimento:dead_alerted*/ update zevanory_atendimento_outbox set dead_alerted_at = now(), updated_at = now() where protocolo = $1 and dead_alerted_at is null`,
+  alertDue: `/*atendimento:alert_due*/ select protocolo from zevanory_atendimento_outbox where alert_status = 'pending' and alert_next_at <= now()
+      and (alert_lease_until is null or alert_lease_until < now()) order by alert_next_at limit $1`,
+  alertLease: `/*atendimento:alert_lease*/ update zevanory_atendimento_outbox set alert_lease_until = now() + interval '2 minutes',
+      alert_first_attempt_at = coalesce(alert_first_attempt_at, now()), updated_at = now()
+    where protocolo = $1 and alert_status = 'pending' and alert_next_at <= now() and (alert_lease_until is null or alert_lease_until < now())
+    returning protocolo, tipo, owner_status, customer_status, recebido_em, payload, alert_attempts,
+      (coalesce(alert_first_attempt_at, now()) > now() - ${WINDOW}) as alert_window_ok`,
+  alertSent: `/*atendimento:alert_sent*/ update zevanory_atendimento_outbox set alert_status = 'sent', dead_alerted_at = now(), alert_lease_until = null, updated_at = now()
+    where protocolo = $1 and alert_status = 'pending'`,
+  alertFailed: `/*atendimento:alert_failed*/ update zevanory_atendimento_outbox set alert_attempts = alert_attempts + 1, alert_error = $3, alert_lease_until = null,
+      alert_status = case when $4::boolean or alert_attempts + 1 >= $2 then 'dead' else 'pending' end,
+      alert_next_at = now() + make_interval(mins => $5::int), updated_at = now()
+    where protocolo = $1 and alert_status = 'pending' returning alert_status, alert_attempts`,
+  // Vermelho: dead-letter esgotado sem reconhecimento manual, ou pendência além do prazo operacional.
+  health: `/*atendimento:health*/ select
+      (select count(*) from zevanory_atendimento_outbox where alert_status = 'dead' and alert_ack_at is null)::int as alert_dead,
+      (select count(*) from zevanory_atendimento_outbox where ${PENDING})::int as pending,
+      (select count(*) from zevanory_atendimento_outbox where ${PENDING} and recebido_em <= now() - make_interval(hours => $1::int))::int as old_alert,
+      (select count(*) from zevanory_atendimento_outbox where ${PENDING} and recebido_em <= now() - make_interval(hours => $2::int))::int as old_deadline,
+      coalesce(extract(epoch from now() - (select min(recebido_em) from zevanory_atendimento_outbox where ${PENDING})) / 3600, 0)::float as oldest_hours`,
+  // Monitor: no máximo um alerta de contagem a cada 6 h (reserva atômica).
+  monitorClaim: `/*atendimento:monitor_claim*/ insert into zevanory_atendimento_monitor (key, last_alert_at) values ('old_pending', now())
+    on conflict (key) do update set last_alert_at = now() where zevanory_atendimento_monitor.last_alert_at < now() - make_interval(hours => $1::int)
+    returning to_char(last_alert_at at time zone 'UTC', 'YYYYMMDDHH24') as bucket`,
+  stuck: `/*atendimento:stuck*/ select count(*)::int as n from zevanory_atendimento_outbox where ${PENDING} or alert_status = 'pending' or (alert_status = 'dead' and alert_ack_at is null)`,
   housekeeping: `/*atendimento:housekeeping*/ with a as (delete from zevanory_atendimento_quota where expires_at < now() returning 1),
       b as (update zevanory_atendimento_outbox set payload = null where payload is not null and dead_alerted_at < now() - interval '30 days' returning 1)
     select (select count(*) from a)::int as quotas, (select count(*) from b)::int as purged`,
@@ -171,7 +220,12 @@ export async function ensureAtendimentoSchema(sql, q = ATENDIMENTO_SQL) {
   schemaReady.add(sql);
 }
 const backoffMinutes = (attempts) => Math.min(360, 2 ** Math.max(1, Math.min(9, attempts)));
+const truthy = (v) => v === true || v === "t" || v === "true" || v === 1;
 
+// Só rede/tempo esgotado, 429 e 5xx são temporários; qualquer outra resposta não-2xx é permanente.
+export function resendFailureIsTransient(status) {
+  return status === 0 || status === 429 || (status >= 500 && status <= 599);
+}
 async function resendSend(c, { idempotencyKey, to, subject, text, replyTo }) {
   try {
     const r = await c.fetchImpl(RESEND, {
@@ -182,8 +236,9 @@ async function resendSend(c, { idempotencyKey, to, subject, text, replyTo }) {
     });
     let data = null;
     try { data = await r.json(); } catch {}
-    return r.ok ? { ok: true, id: String(data?.id || "") } : { ok: false, reason: `resend_${r.status}` };
-  } catch { return { ok: false, reason: "resend_network" }; }
+    if (r.ok) return { ok: true, id: String(data?.id || "") };
+    return { ok: false, permanent: !c.transient(r.status), reason: `resend_${r.status}` };
+  } catch { return { ok: false, permanent: false, reason: "resend_network" }; }
 }
 
 function ownerMessage(row, p) {
@@ -202,6 +257,18 @@ function customerMessage(row) {
   };
 }
 
+// Um envio: fora da janela de < 23 h => dead sem chamar o Resend; senão chama e classifica o erro.
+async function sendStep(c, protocolo, { pending, windowOk, key, to, replyTo, message, sentQ, failedQ, statusCol, attemptsCol, hasPayload }) {
+  if (!pending) return null;
+  let r;
+  if (!truthy(windowOk)) r = { ok: false, permanent: true, reason: "window_expired" };
+  else if (!hasPayload) r = { ok: false, permanent: true, reason: "payload_missing" };
+  else r = await resendSend(c, { idempotencyKey: key, to, replyTo, ...message });
+  if (r.ok) { await c.sql.query(sentQ, [protocolo, r.id]); return { status: "sent", attempts: 0 }; }
+  const f = (await c.sql.query(failedQ, [protocolo, MAX_ATTEMPTS, r.reason, Boolean(r.permanent)]))?.[0];
+  return { status: f?.[statusCol] || "pending", attempts: Number(f?.[attemptsCol] || 0), reason: r.reason };
+}
+
 // Processa UMA linha sob lease: tenta cada envio pendente uma vez. Ocupada, em recuo ou concluída => nada.
 export async function processAtendimento(c, protocolo) {
   const rows = await c.sql.query(c.q.lease, [protocolo]);
@@ -209,21 +276,33 @@ export async function processAtendimento(c, protocolo) {
   if (!row) return { leased: false };
   const p = asObj(row.payload) || {};
   const out = { leased: true, owner: row.owner_status, customer: row.customer_status };
-  if (row.owner_status === "pending") {
-    const m = ownerMessage(row, p);
-    const r = p.email ? await resendSend(c, { idempotencyKey: `atendimento-owner/${protocolo}`, to: c.owner, replyTo: p.email, ...m }) : { ok: false, reason: "payload_missing" };
-    if (r.ok) { await c.sql.query(c.q.ownerSent, [protocolo, r.id]); out.owner = "sent"; }
-    else { const f = (await c.sql.query(c.q.ownerFailed, [protocolo, MAX_ATTEMPTS, r.reason]))?.[0]; out.owner = f?.owner_status || "pending"; out.owner_attempts = Number(f?.owner_attempts || 0); }
-  }
-  if (row.customer_status === "pending") {
-    const m = customerMessage(row);
-    const r = p.email ? await resendSend(c, { idempotencyKey: `atendimento-ack/${protocolo}`, to: p.email, ...m }) : { ok: false, reason: "payload_missing" };
-    if (r.ok) { await c.sql.query(c.q.customerSent, [protocolo, r.id]); out.customer = "sent"; }
-    else { const f = (await c.sql.query(c.q.customerFailed, [protocolo, MAX_ATTEMPTS, r.reason]))?.[0]; out.customer = f?.customer_status || "pending"; out.customer_attempts = Number(f?.customer_attempts || 0); }
-  }
+  const o = await sendStep(c, protocolo, { pending: row.owner_status === "pending", windowOk: row.owner_window_ok, key: `atendimento-owner/${protocolo}`, to: c.owner, replyTo: p.email, message: ownerMessage(row, p), sentQ: c.q.ownerSent, failedQ: c.q.ownerFailed, statusCol: "owner_status", attemptsCol: "owner_attempts", hasPayload: Boolean(p.email) });
+  if (o) { out.owner = o.status; out.owner_attempts = o.attempts; if (o.reason) out.owner_reason = o.reason; }
+  const k = await sendStep(c, protocolo, { pending: row.customer_status === "pending", windowOk: row.customer_window_ok, key: `atendimento-ack/${protocolo}`, to: p.email, message: customerMessage(row), sentQ: c.q.customerSent, failedQ: c.q.customerFailed, statusCol: "customer_status", attemptsCol: "customer_attempts", hasPayload: Boolean(p.email) });
+  if (k) { out.customer = k.status; out.customer_attempts = k.attempts; if (k.reason) out.customer_reason = k.reason; }
   const attempts = Math.max(out.owner === "pending" ? out.owner_attempts || 0 : 0, out.customer === "pending" ? out.customer_attempts || 0 : 0);
-  await c.sql.query(c.q.release, [protocolo, backoffMinutes(attempts)]);
+  const rel = (await c.sql.query(c.q.release, [protocolo, backoffMinutes(attempts)]))?.[0];
+  out.alert = rel?.alert_status;
   return out;
+}
+
+// Dead-letter de UMA linha: estado, lease, tentativas e janela de < 23 h próprios.
+export async function processDeadLetter(c, protocolo) {
+  const d = (await c.sql.query(c.q.alertLease, [protocolo]))?.[0];
+  if (!d) return { leased: false };
+  const p = asObj(d.payload) || {};
+  let r;
+  if (!truthy(d.alert_window_ok)) r = { ok: false, permanent: true, reason: "window_expired" };
+  else {
+    const lines = [`Protocolo: ${d.protocolo}`, `Tipo: ${TIPOS[d.tipo] || d.tipo}`, `Recebido em: ${new Date(toMs(d.recebido_em)).toISOString()}`,
+      `Aviso ao proprietário: ${d.owner_status}`, `Confirmação ao cliente: ${d.customer_status}`];
+    if (d.owner_status === "dead" && p.email) lines.push("", `Responder para: ${p.email}`, `Pedido: ${p.pedido || "não informado"}`, "", String(p.mensagem || ""));
+    if (d.customer_status === "dead") lines.push("", "O cliente NÃO recebeu a confirmação por e-mail: confirme o recebimento ao responder.");
+    r = await resendSend(c, { idempotencyKey: `atendimento-dead/${d.protocolo}`, to: c.alertTo, replyTo: p.email || SUPPORT_EMAIL, subject: `ZEVANORY atendimento ${d.protocolo} — envio esgotado (dead-letter)`, text: lines.join("\n") });
+  }
+  if (r.ok) { await c.sql.query(c.q.alertSent, [protocolo]); return { leased: true, alert: "sent" }; }
+  const f = (await c.sql.query(c.q.alertFailed, [protocolo, MAX_ATTEMPTS, r.reason, Boolean(r.permanent), backoffMinutes(Number(d.alert_attempts || 0) + 1)]))?.[0];
+  return { leased: true, alert: f?.alert_status || "pending", reason: r.reason };
 }
 
 export function parseInput(raw = {}) {
@@ -250,11 +329,11 @@ export function validate(input) {
 const view = (r) => ({ protocolo: String(r.protocolo), tipo: String(r.tipo), recebido_em: new Date(toMs(r.recebido_em)).toISOString(), responder_ate: new Date(toMs(r.responder_ate)).toISOString(), canal_resposta: "email" });
 
 // Registra (ou reencontra) a solicitação e tenta os envios na hora. Retorna {status, body}.
-export async function registerRequest(env, input, { ip = "unknown", now = Date.now(), sqlFactory, fetchImpl, q } = {}) {
+export async function registerRequest(env, input, { ip = "unknown", now = Date.now(), sqlFactory, fetchImpl, q, transient } = {}) {
   if (input.isca) return { status: 200, body: { received: true, ignored: true } };
   const errors = validate(input);
   if (Object.keys(errors).length) return { status: 400, body: { error: "dados_invalidos", errors } };
-  const c = await atendimentoContext(env, { sqlFactory, fetchImpl, q });
+  const c = await atendimentoContext(env, { sqlFactory, fetchImpl, q, transient });
   if (c.missing) return { status: 503, body: { error: "atendimento_indisponivel", missing: c.missing } };
   await ensureAtendimentoSchema(c.sql, c.q);
   const protocolo = await protocolFor(c.secret, input, now);
@@ -274,15 +353,22 @@ export async function registerRequest(env, input, { ip = "unknown", now = Date.n
   // Registro durável feito: tenta os envios pendentes agora (inclusive de um envio anterior interrompido).
   let customer = String(row.customer_status);
   if (row.owner_status === "pending" || row.customer_status === "pending") {
-    try { const res = await processAtendimento(c, protocolo); if (res.leased) customer = res.customer; } catch {}
+    try {
+      const res = await processAtendimento(c, protocolo);
+      if (res.leased) customer = res.customer;
+      // Erro permanente (ou janela expirada): dead-letter na hora, sem esperar o cron.
+      if (res.alert === "pending") await processDeadLetter(c, protocolo);
+    } catch {}
   }
   return { status: 200, body: { received: true, duplicate, ...view(row), email_confirmacao: customer === "sent" ? "enviado" : "pendente" } };
 }
 
-// Cron horário: retoma envios pendentes, alerta linhas "dead" (uma vez) e faz a limpeza de retenção.
-export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl = globalThis.fetch, limit = 3, q } = {}) {
+// Cron horário: retoma envios pendentes, processa dead-letters, monitora pendências antigas e faz a limpeza.
+// ok=false (cron vermelho) com: dead-letter esgotado sem reconhecimento manual, pendência além do prazo
+// operacional (OLD_PENDING_DEADLINE_HOURS) ou alerta de pendência antiga que não saiu.
+export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl = globalThis.fetch, limit = 3, q, transient } = {}) {
   if (!env.DATABASE_URL || typeof sqlFactory !== "function") return { ok: true, skipped: "no_database" };
-  const c = await atendimentoContext(env, { sqlFactory, fetchImpl, q });
+  const c = await atendimentoContext(env, { sqlFactory, fetchImpl, q, transient });
   if (c.missing) {
     // Sem configuração o formulário recusa (503) e nada novo entra; só fica vermelho se houver envio parado.
     let stuck = 0;
@@ -290,8 +376,9 @@ export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl =
     return { ok: stuck === 0, skipped: "unconfigured", missing: c.missing, stuck };
   }
   await ensureAtendimentoSchema(c.sql, c.q);
-  const out = { ok: true, checked: 0, done: 0, pending: 0, dead: 0, dead_alerted: 0, dead_unalerted: 0 };
-  for (const r of (await c.sql.query(c.q.due, [Math.max(1, Math.min(10, limit))])) || []) {
+  const n = Math.max(1, Math.min(10, limit));
+  const out = { ok: true, checked: 0, done: 0, pending: 0, dead: 0, dead_alerted: 0, alert_pending: 0, alert_dead: 0, old_pending: 0, oldest_hours: 0, monitor_alert: null };
+  for (const r of (await c.sql.query(c.q.due, [n])) || []) {
     out.checked++;
     const res = await processAtendimento(c, String(r.protocolo));
     if (!res.leased) continue;
@@ -299,20 +386,26 @@ export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl =
     else if (res.owner === "pending" || res.customer === "pending") out.pending++;
     else out.done++;
   }
-  // Dead-letter: avisa o proprietário (OWNER_ALERT_EMAIL) com o protocolo; se o aviso ao destino morreu,
-  // leva o conteúdo para que a solicitação seja respondida. Sem aviso enviado, o cron fica vermelho.
-  for (const d of (await c.sql.query(c.q.deadUnalerted, [5])) || []) {
-    const p = asObj(d.payload) || {};
-    const lines = [`Protocolo: ${d.protocolo}`, `Tipo: ${TIPOS[d.tipo] || d.tipo}`, `Recebido em: ${new Date(toMs(d.recebido_em)).toISOString()}`,
-      `Aviso ao proprietário: ${d.owner_status}`, `Confirmação ao cliente: ${d.customer_status}`];
-    if (d.owner_status === "dead" && p.email) lines.push("", `Responder para: ${p.email}`, `Pedido: ${p.pedido || "não informado"}`, "", String(p.mensagem || ""));
-    if (d.customer_status === "dead") lines.push("", "O cliente NÃO recebeu a confirmação por e-mail: confirme o recebimento ao responder.");
-    const r = await resendSend(c, { idempotencyKey: `atendimento-dead/${d.protocolo}`, to: c.alertTo, replyTo: p.email || SUPPORT_EMAIL, subject: `ZEVANORY atendimento ${d.protocolo} — envio esgotado (dead-letter)`, text: lines.join("\n") });
-    if (r.ok) { await c.sql.query(c.q.deadAlerted, [String(d.protocolo)]); out.dead_alerted++; }
-    else out.dead_unalerted++;
+  for (const r of (await c.sql.query(c.q.alertDue, [n])) || []) {
+    const res = await processDeadLetter(c, String(r.protocolo));
+    if (res.alert === "sent") out.dead_alerted++;
+    else if (res.alert === "pending") out.alert_pending++;
+  }
+  const h = (await c.sql.query(c.q.health, [OLD_PENDING_ALERT_HOURS, OLD_PENDING_DEADLINE_HOURS]))?.[0] || {};
+  out.alert_dead = Number(h.alert_dead || 0);
+  out.old_pending = Number(h.old_alert || 0);
+  out.oldest_hours = Math.round(Number(h.oldest_hours || 0) * 10) / 10;
+  if (out.old_pending > 0) {
+    // Alerta só com contagem (sem protocolo, e-mail ou conteúdo), no máximo um a cada 6 h.
+    const claim = (await c.sql.query(c.q.monitorClaim, [MONITOR_EVERY_HOURS]))?.[0];
+    if (claim?.bucket) {
+      const r = await resendSend(c, { idempotencyKey: `atendimento-monitor/${claim.bucket}`, to: c.alertTo, subject: "ZEVANORY atendimento — envios pendentes há mais de 2 h",
+        text: `Há ${out.old_pending} solicitação(ões) de atendimento com envio pendente há ${OLD_PENDING_ALERT_HOURS} h ou mais (a mais antiga há ${out.oldest_hours} h). Prazo operacional: ${OLD_PENDING_DEADLINE_HOURS} h. Verifique RESEND_API_KEY, o destino support-config:forward-to e o painel do Resend.` });
+      out.monitor_alert = r.ok ? "sent" : "failed";
+    } else out.monitor_alert = "throttled";
   }
   try { await c.sql.query(c.q.housekeeping, []); } catch {}
-  if (out.dead_unalerted) out.ok = false;
+  if (out.alert_dead > 0 || Number(h.old_deadline || 0) > 0 || out.monitor_alert === "failed") out.ok = false;
   return out;
 }
 
@@ -360,7 +453,7 @@ function errorPage(status) {
   return ERROR_PAGES[status] || ERROR_PAGES[503];
 }
 
-export async function handleAtendimento(request, env = {}, { sqlFactory, fetchImpl, now = Date.now(), q } = {}) {
+export async function handleAtendimento(request, env = {}, { sqlFactory, fetchImpl, now = Date.now(), q, transient } = {}) {
   const url = new URL(request.url);
   if (url.pathname !== ATENDIMENTO_PATH && url.pathname !== ATENDIMENTO_API) return null;
   if (url.pathname === ATENDIMENTO_PATH) {
@@ -377,7 +470,7 @@ export async function handleAtendimento(request, env = {}, { sqlFactory, fetchIm
   } catch {}
   const input = parseInput(raw);
   let out;
-  try { out = await registerRequest(env, input, { ip: request.headers.get("cf-connecting-ip") || "unknown", now, sqlFactory, fetchImpl, q }); }
+  try { out = await registerRequest(env, input, { ip: request.headers.get("cf-connecting-ip") || "unknown", now, sqlFactory, fetchImpl, q, transient }); }
   catch { out = { status: 503, body: { error: "atendimento_indisponivel" } }; }
   if (wantsJson) {
     const body = out.status === 503 ? { error: "atendimento_indisponivel", message: ERROR_TEXT[503] } : out.status === 429 ? { error: "muitas_tentativas", message: ERROR_TEXT[429] } : out.body;

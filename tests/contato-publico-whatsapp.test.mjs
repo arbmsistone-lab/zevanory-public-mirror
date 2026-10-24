@@ -35,8 +35,8 @@ const ENABLED = enabledFlag(C);
 // Mesmo padrão de scripts/sales_policy.py (WHATSAPP_PUBLIC_RE) e worker/politica-unica.mjs.
 const BANNED_RE = new RegExp((C.numeros_banidos || []).map((n) => `${n}|${n.slice(4, -4)}[-\\s.]?${n.slice(-4)}`).join("|") || "(?!)");
 const WA_RE = new RegExp(`wa\\.me/|api\\.whatsapp\\.com/|whatsapp://|${BANNED_RE.source}`, "i");
-// WhatsApp citado como canal de contato/suporte da ZEVANORY (o uso do WhatsApp pelo cliente do produto é conteúdo, não canal).
-const CHANNEL_RE = /(suporte|atendimento) humano (no|pelo) WhatsApp|Falar no WhatsApp|Fale (com a gente )?no WhatsApp|Avise-me pelo WhatsApp|WhatsApp:? \+?55|WhatsApp oficial|nosso WhatsApp|WhatsApp da ZEVANORY|nos envia por e-mail, WhatsApp|whatsapp-(header|hero|footer)-cta|data-whatsapp-official/i;
+// Fonte única do padrão de menção de canal: worker/politica-unica.mjs (também usado em tests/comprar-noindex.test.mjs).
+const CHANNEL_RE = PU.WHATSAPP_CHANNEL_RE;
 const PRODUCTS = { "ZEV-IA-011": "IA na Prática", "ZEV-VEN-011": "Vendas na Prática", "ZEV-LCX-011": "Lucro & Caixa", "ZEV-CMB-011": "Combo IA + Vendas", "ZEV-NGC-011": "Negócio Completo" };
 const SUBS = { "conteudo-pronto": "Conteúdo Pronto" };
 const decodeHtml = (s) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&lt;/g, "<");
@@ -185,6 +185,7 @@ const ALLOWLIST = new Map(Object.entries({
   "scripts/voice_support_gate.py": "gate interno",
   "scripts/whatsapp_audio_runtime_test.mjs": "teste interno",
   "scripts/whatsapp_delivery_proof_test.mjs": "teste interno",
+  "scripts/ci/mutants_comprar_noindex.py": "mutantes de CI que reinjetam o número para provar o oráculo de /comprar",
   ".github/workflows/mercadopago-exact-sha-recovery.yml": "CI interno",
   ".github/workflows/whatsapp-closure-probe.yml": "CI interno",
   ".github/workflows/whatsapp-zero-spend-broker.yml": "CI interno",

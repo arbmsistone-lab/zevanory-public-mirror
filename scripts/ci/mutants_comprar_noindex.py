@@ -62,6 +62,13 @@ M = {
     "M16 multi-encoded aliases not covered": (W, 'for(let i=0;i<3;i++){const n=percentDecodeOnce(p);', 'for(let i=0;i<0;i++){const n=percentDecodeOnce(p);', "[double]"),
     "M17 uppercase hex escapes not decoded": (W, 'const hex=b=>(b>=48&&b<=57)||(b>=65&&b<=70)||(b>=97&&b<=102);', 'const hex=b=>(b>=48&&b<=57)||(b>=97&&b<=102);', "[alias]"),
     "M18 double-encoded alias routed to the buy flow": (W, 'return {path:p,routable:false};', 'return {path:p,routable:true};', "[double]"),
+    # AVAL Sol #892 (WhatsApp banido): oráculo cruzado no corpo de /comprar.
+    "M19 wa.me injected only in the alias/unknown-path 404": (W, '    return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");\n  }catch(e){',
+        '    return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado. <a href=\\"https://wa.me/5588992545413\\">WhatsApp</a></p>");\n  }catch(e){', "[whatsapp]"),
+    "M20 masked banned number only in the unknown-SKU 404": (W, 'if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");',
+        'if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado. Ligue (88) 99254-5413.</p>");', "[whatsapp]"),
+    "M21 WhatsApp channel phrase only in the exception 503": (W, 'return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes.</p>");',
+        'return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale no WhatsApp: suporte humano no WhatsApp.</p>");', "[whatsapp]"),
 }
 
 

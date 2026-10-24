@@ -6,7 +6,7 @@
 tests/acquisition-engine.test.mjs 16
 tests/activity-ledger.test.mjs 6
 tests/affiliate-program.test.mjs 3
-tests/atendimento.test.mjs 9
+tests/atendimento.test.mjs 10
 tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
