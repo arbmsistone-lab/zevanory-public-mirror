@@ -85,6 +85,28 @@ jobs:
           PY
       - name: Wrangler dry-run (strict, no authentication, no publication)
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun"
+      - name: Final binding set WITHOUT --keep-vars (what the real deploy publishes; PR #896, AVAL Sol 125)
+        # central-production-deploy.yml deploys WITHOUT --keep-vars, so the Worker ends with exactly the vars of
+        # wrangler.central-fix.jsonc. Bundle that exact set and inspect it: WHATSAPP_SALES_ENABLED must be "false"
+        # and no SUPPORT_CHANNEL / ZEVANORY_WHATSAPP_* binding may exist (top level or compact runtime config).
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun-nokeep" 2>&1 | tee bindings.txt
+          line="$(grep -E 'WHATSAPP_SALES_ENABLED' bindings.txt || true)"
+          echo "WHATSAPP_SALES_ENABLED binding: ${line:-<absent>}"
+          [ -n "$line" ] || { echo "::error title=FINAL_BINDINGS::WHATSAPP_SALES_ENABLED absent from the final binding set"; exit 1; }
+          echo "$line" | grep -q 'false' && ! echo "$line" | grep -qi 'true' || { echo "::error title=FINAL_BINDINGS::WHATSAPP_SALES_ENABLED is not \"false\": $line"; exit 1; }
+          if grep -nE 'SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_' bindings.txt; then echo "::error title=FINAL_BINDINGS::retired WhatsApp alias in the final binding set"; exit 1; fi
+          python3 - <<'PY'
+          import json
+          v = json.load(open("wrangler.central-fix.jsonc"))["vars"]
+          rt = v.get("ZEVANORY_RUNTIME_CONFIG") or {}
+          assert v.get("WHATSAPP_SALES_ENABLED") == "false", ("WHATSAPP_SALES_ENABLED", v.get("WHATSAPP_SALES_ENABLED"))
+          assert "WHATSAPP_SALES_ENABLED" not in rt, "WHATSAPP_SALES_ENABLED must not hide in the runtime config"
+          bad = [k for bag in (v, rt) for k in bag if k == "SUPPORT_CHANNEL" or k.startswith("ZEVANORY_WHATSAPP_")]
+          assert not bad, ("retired WhatsApp alias in final vars", bad)
+          print("FINAL_BINDINGS_WHATSAPP=PASS WHATSAPP_SALES_ENABLED=false aliases=none")
+          PY
       - name: Evidence of the bundled candidate (fails if nothing was built)
         run: |
           set -euo pipefail
