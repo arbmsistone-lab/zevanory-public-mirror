@@ -12,6 +12,8 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { fileURLToPath } from "node:url";
 import { handleAtendimento, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, ATENDIMENTO_SQL, MAX_ATTEMPTS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
+import { FORWARD_TO_KV_KEY as SUPPORT_FORWARD_KEY } from "../worker/support-email-forward.mjs";
+import { FORWARD_TO_KV_KEY } from "../worker/atendimento.mjs";
 
 const PROTO = /ZEV-\d{8}-[0-9A-F]{10}/;
 const WA = /wa\.me\/|api\.whatsapp\.com\/|whatsapp:\/\/|5588992545413|99254[-\s.]?5413/i;
@@ -131,6 +133,7 @@ test("estrutura da outbox: cota e gravação num único comando atômico, chaves
   assert.match(src, /idempotencyKey: `atendimento-dead\/\$\{d\.protocolo\}`/);
   assert.doesNotMatch(src, /console\./, "nenhum log (sem dado pessoal em log)");
   assert.ok(MAX_ATTEMPTS >= 3 && MAX_ATTEMPTS <= 12);
+  assert.equal(FORWARD_TO_KV_KEY, SUPPORT_FORWARD_KEY, "mesmo destino do proprietário do suporte@ (#894)");
   assert.match(ATENDIMENTO_SQL.lease, /lease_until is null or lease_until < now\(\)/);
   assert.match(ATENDIMENTO_SQL.release, /payload = case when owner_status = 'sent' and customer_status = 'sent' then null/);
 });
