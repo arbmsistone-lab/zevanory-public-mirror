@@ -2,6 +2,7 @@
 """Static guard of an owner-gated, NOT-MERGED launch candidate."""
 from pathlib import Path
 import ast
+import re
 s=Path("scripts/deploy/prepare-central-candidate.py").read_text(encoding="utf-8")
 ast.parse(s)
 required=[
@@ -13,7 +14,6 @@ required=[
   'LAUNCH_PRODUCTION_WEBHOOK_UNVERIFIED',
   'c["vars"]["MERCADOPAGO_ENV"]="production"',
   'c["vars"]["MERCADOPAGO_ENV"]="sandbox"',
-  'c["vars"]["CERTIFICATION_PILOT_PRODUCTION_ALLOWED"]="false"',
   'c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="false"',
   'c["vars"]["SALE_GLOBALLY_ENABLED"]="false"',
   'c["vars"]["PRE_SALE_GATES_APPROVED"]="false"',
@@ -32,6 +32,9 @@ for field in ('ABSOLUTE_RELEASE_APPROVED','PRE_SALE_GATES_APPROVED'):
     assert s.index(off)<s.index(on), "LAUNCH_FLAG_OVERRIDE_ORDER_INVALID:"+field
     assert s.index('if launch_authorized:',s.index(off))<s.index(on), "LAUNCH_OVERRIDE_NOT_GATED:"+field
 assert 'c["vars"]["SALE_GLOBALLY_ENABLED"]="true"' not in s, "DEPLOY_MUST_NOT_OPEN_SALES"
+# R9 (Sol 164 §4): o piloto de certificação não existe na produção; o preparador não grava nenhuma CERTIFICATION_PILOT_*.
+assert not re.search(r'\[\s*["\']vars["\']\s*\]\s*\[\s*["\']CERTIFICATION_PILOT_', s), "PRODUCTION_PILOT_VAR_WRITTEN"
+assert 'NO_PRODUCTION_PILOT_BINDING' in Path("scripts/deploy/verify-financial-boundary.py").read_text(encoding="utf-8"), "PILOT_ABSENCE_PROOF_MISSING"
 wf=Path(".github/workflows/central-production-deploy.yml").read_text(encoding="utf-8")
 reconstruct=wf.split('- name: Reconstruct exact production candidate',1)[1].split('run: |',1)[0]
 for var in ('ZEVANORY_LAUNCH_AUTHORIZATION','MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16','MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED'):
