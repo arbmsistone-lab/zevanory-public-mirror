@@ -77,7 +77,7 @@ Rules:
 
 ### Type
 
-- **Display: Archivo** (variable, `wdth` 75–112, `wght` 500–800). A grotesque with a real width
+- **Display: Archivo** (variable, `wdth` 75–100, `wght` 600–800; display use only, so the light weights and wide widths were cut to keep the file at 34 KB). A grotesque with a real width
   axis. Condensed widths echo price tags and receipt headers; it stays sturdy on cheap screens.
 - **Body: Atkinson Hyperlegible Next** (variable, `wght` 400–700). Designed by the Braille
   Institute for low-vision legibility: open apertures, distinct `Il1` and `0O`. That is the right
@@ -86,7 +86,7 @@ Rules:
 - Both are SIL OFL, **self-hosted as woff2** (`font-src 'self'`), subset to Basic Latin, Latin-1
   (all Portuguese diacritics: á â ã à ç é ê í ó ô õ ú ü) and typographic punctuation
   (– — ‘ ’ “ ” • …). Axis ranges are trimmed to what the CSS uses. Budget: under 90 KB for both
-  files. Both are preloaded, `font-display: swap`, and fallback faces carry `size-adjust` so the
+  files (shipped: 34 KB + 18 KB). Both are preloaded, `font-display: swap`, and fallback faces carry `size-adjust` so the
   swap barely moves the layout.
 - Tabular numbers (`font-variant-numeric: tabular-nums`) for prices and the receipt.
 
@@ -254,3 +254,21 @@ asserting them.
 - The closed build has no checkout link and no `InStock` (P13 grep gate).
 - Budgets enforced in CI (`sales-ux-quality.yml`): Lighthouse ≥ 95 / 100 / 100 / 100, zero
   serious/critical axe findings, 44 px targets, visible and unobscured focus, reduced motion.
+
+## 9. Self-critique after the first screenshots (what changed)
+
+- **Removed decoration:** the 4 px blue stripe I had put on the left of every `.feature` block. It
+  repeated the "accent bar on a card" cliché this plan rejects and added nothing a reader needs.
+  Feature blocks are now plain paper.
+- The receipt's dotted leaders collapsed when a problem wrapped to two lines; problems were cut to
+  the reader's own short words ("caixa sem conferir") and the leader keeps a 24 px minimum.
+- On phones the receipt first sat above the headline only through CSS `order`, which put the
+  focus order out of step with what you see (WCAG 1.3.2 / 2.4.3). The DOM order is now
+  headline, receipt, intro, and grid areas place them in two columns on wide screens.
+- The closed-sales notice first sat outside every landmark (axe `region`); it is now the first
+  element of `<main>`, read right after the skip link.
+- The first font subset had lost the capital "A" (Archivo swaps it through a `rvrn` feature
+  variation). The fonts were re-cut, instancing before subsetting, and every glyph in the range
+  was checked.
+- Known trade-off: Atkinson Hyperlegible Next draws zero with a slash, on purpose, so it can't be
+  confused with "O". Prices and the receipt use Archivo's plain tabular figures.
