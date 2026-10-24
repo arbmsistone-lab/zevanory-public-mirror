@@ -10,6 +10,7 @@ tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
 tests/autonomy-inventory.test.mjs 6
+tests/av-gate-wiring.test.mjs 16
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
 tests/blog-editorial-uniqueness.test.mjs 1
@@ -87,7 +88,7 @@ tests/sales-ledger.test.mjs 3
 tests/sales-public-gzip.test.mjs 2
 tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
-tests/short-crosspost.test.mjs 8
+tests/short-crosspost.test.mjs 9
 tests/signed-audit-probe.test.mjs 2
 tests/start-guide-touch-target.test.mjs 3
 tests/support-email-forward.test.mjs 19
@@ -99,5 +100,5 @@ tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
 tests/voice-eval.test.mjs 6
 tests/whatsapp-neon-store.test.mjs 6
-tests/youtube-daily-short.test.mjs 14
+tests/youtube-daily-short.test.mjs 12
 tests/zees16-evidence-honesty.test.mjs 2

@@ -1,0 +1,30 @@
+{
+  "_doc": "P05 — 12 roteiros CONGELADOS da prova cega de voz (pt-BR). Não editar: o SHA-256 de cada texto e o do arquivo estão em roteiros.sha256. Material de teste (não é publicação): os preços aparecem em contexto de cálculo, sem CTA de compra (vendas fechadas).",
+  "versao": "p05-prova-cega-1",
+  "roteiros": [
+    {"id": "R01", "cobre": ["marca", "pergunta", "URL"],
+     "texto": "Você já perdeu uma venda porque demorou para responder no WhatsApp? Na ZEVANORY, a gente separou três mensagens prontas para o primeiro contato. Estão no site zevanory ponto api ponto br, na página de material gratuito."},
+    {"id": "R02", "cobre": ["preço", "número decimal", "porcentagem"],
+     "texto": "Se o seu produto custa trinta e sete reais e cinquenta centavos, e a maquininha cobra quatro vírgula noventa e nove por cento, sobram trinta e cinco reais e sessenta e três centavos. Faça essa conta antes de dar desconto."},
+    {"id": "R03", "cobre": ["siglas", "lista"],
+     "texto": "Para quem é MEI, três coisas não podem atrasar: o DAS todo mês, a nota fiscal com o CNPJ certo e o controle do Pix recebido. Anote as três numa folha e confira toda sexta-feira."},
+    {"id": "R04", "cobre": ["emoção: empatia", "negação"],
+     "texto": "Eu sei como é chegar no fim do mês e não saber para onde foi o dinheiro. Não é falta de esforço. Na maioria das vezes, falta só um lugar único para anotar o que entra e o que sai."},
+    {"id": "R05", "cobre": ["emoção: entusiasmo", "exclamação"],
+     "texto": "Deu certo! A dona Cida, que faz bolo de pote em Belo Horizonte, passou a responder os pedidos com uma mensagem pronta e ganhou quase uma hora por dia. Pequena mudança, resultado de verdade."},
+    {"id": "R06", "cobre": ["palavras regionais", "lista"],
+     "texto": "Mandioca, aipim ou macaxeira: o nome muda de Porto Alegre a Belém, mas o cliente quer a mesma coisa. Use no cardápio a palavra que a sua freguesia fala, seja biscoito ou bolacha, sacolé ou geladinho."},
+    {"id": "R07", "cobre": ["números grandes", "datas", "horário"],
+     "texto": "Em dois mil e vinte e seis, a padaria do seu Antônio vendeu mil duzentos e quarenta pães por semana. O pico era às sete e meia da manhã, de segunda a sábado, menos no feriado de quinze de novembro."},
+    {"id": "R08", "cobre": ["pergunta", "IA", "estrangeirismo"],
+     "texto": "Dá para usar inteligência artificial sem complicar? Dá. Peça para a IA resumir as perguntas que mais chegam no Instagram e no WhatsApp, e revise cada resposta antes de enviar. O controle continua com você."},
+    {"id": "R09", "cobre": ["instrução técnica", "sequência numerada"],
+     "texto": "Primeiro, some todos os custos do serviço. Segundo, divida pelo número de horas trabalhadas no mês. Terceiro, acrescente a margem que você quer. Pronto: esse é o seu preço por hora, sem chute."},
+    {"id": "R10", "cobre": ["marca", "negação", "aviso legal"],
+     "texto": "A ZEVANORY não promete faturamento nem resultado garantido. O que a gente entrega é método: calculadoras gratuitas e guias revisados por pessoas. Cada negócio tem a sua realidade, e o seu julgamento vem primeiro."},
+    {"id": "R11", "cobre": ["diálogo", "ênfase", "pergunta retórica"],
+     "texto": "O cliente perguntou: tem desconto no Pix? E agora? Em vez de responder só sim ou não, explique o que está incluso, mostre o valor e, se fizer sentido, ofereça uma condição que caiba na sua margem."},
+    {"id": "R12", "cobre": ["URL com barra", "chamada para conteúdo gratuito", "números ordinais"],
+     "texto": "Quer testar agora? Abra zevanory ponto api ponto br barra calculadora taxa maquininha, digite o valor da venda e compare as bandeiras. É a primeira ferramenta da lista e não precisa de cadastro."}
+  ]
+}

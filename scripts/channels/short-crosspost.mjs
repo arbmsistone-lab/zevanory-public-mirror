@@ -5,8 +5,9 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen } from "./youtube-daily-short.mjs";
+import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, avGateSealed, CANDIDATE_PREFIX } from "./youtube-daily-short.mjs";
 import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta } from "../../worker/politica-unica.mjs";
+import { createHash } from "node:crypto";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { getPublisherAccessToken } from "./publisher-access.mjs";
 
@@ -15,13 +16,16 @@ const sleepMs = ms => new Promise(r => setTimeout(r, ms));
 // P13c: the offer line follows the single policy (data/politica-unica.json) and the commercial lock:
 // closed (default, fail-closed) => no price, no rule pitch, no checkout link, only "vendas fechadas".
 export function captionFor(plan, channel, { salesOpen = false } = {}) {
-  const caption = captionText(plan, channel, salesOpen === true);
+  // Publish phase: the caption approved in the bundle is used verbatim (never recomputed from current code).
+  const caption = plan.persistedCaptions?.[channel] ?? captionText(plan, channel, salesOpen === true);
   if (salesOpen !== true && hasCheckoutCta(caption)) throw new Error("caption_checkout_cta_while_closed");
   return caption;
 }
 function captionText(plan, channel, open) {
   const tags = "#pequenosnegocios #empreendedorismo #ia #zevanory";
-  const offer = plan.slot && plan.slot !== "oferta" ? plan.screen.product + " · " + plan.screen.offer + "." : plan.entry.product.name + " · " + (open ? SHORT_RULE : CLOSED_LABEL) + ".";
+  // oferta OPEN (owner switch): product + single 7-day rule. oferta CLOSED (default): free material only + "vendas fechadas".
+  const offer = plan.slot && plan.slot !== "oferta" ? plan.screen.product + " · " + plan.screen.offer + "."
+    : (open ? plan.entry.product.name : plan.screen.product + " · " + plan.screen.offer) + " · " + (open ? SHORT_RULE : CLOSED_LABEL) + ".";
   const base = plan.title.replace(/ #shorts$/i, "") + "\n\n" + plan.screen.tip + "\n\n" + offer;
   if (channel === "tiktok") return (base + "\n" + (plan.slot && plan.slot !== "oferta" ? "No site: vendas.zevanory.api.br" : "Guia completo: vendas.zevanory.api.br") + "\n\n" + tags).slice(0, 2200);
   return (base + "\nGuia completo: " + plan.link.replace("utm_source=youtube", "utm_source=" + channel) + "\n\n" + tags).slice(0, 2200);
@@ -92,9 +96,9 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
   return { provider_post_id: String(j.result.message_id), url: handle ? `https://t.me/${handle}/${j.result.message_id}` : null };
 }
 
-export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen }) {
-  const open = typeof salesOpen === "boolean" ? salesOpen : await channelSalesOpen(kv);
-  const plan = { ...planSlot(day, slot, { salesOpen: open }), salesOpen: open }, report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
+export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, approvedPlan = null }) {
+  const open = approvedPlan ? approvedPlan.salesOpen === true : typeof salesOpen === "boolean" ? salesOpen : await channelSalesOpen(kv);
+  const plan = approvedPlan || { ...planSlot(day, slot, { salesOpen: open }), salesOpen: open }, report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
   const done = async ch => { const v = await kv.get(`zpc:acquisition:daily:${day}:${ch}${sfx}`); return v ? JSON.parse(v) : null; };
   const record = async (ch, r) => {
     await kv.put(`zpc:acquisition:daily:${day}:${ch}${sfx}`, JSON.stringify({ channel: ch, day, status: "publicado", provider_post_id: r.provider_post_id, url: r.url, privacy: r.privacy || "public", product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 400 * 86400 });
@@ -144,8 +148,21 @@ if (isMain) {
   for (const slot of slotArg === "all" ? ["dica", "oferta", "calc"] : [slotArg]) {
     const window = publicationWindow({ day, slot, now: Date.now() });
     if (window.action !== "publish") { console.log(`::notice title=SHORT_CROSSPOST::${slot}=skipped_${window.reason}`); continue; }
-    let mp4; try { mp4 = await readFile("/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot) + ".mp4"); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
-    const report = await crosspost({ day, slot, mp4, kv });
+    const file = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot) + ".mp4";
+    // P05: only a file sealed by a PASS of zevanory-av-gate for exactly these bytes may be cross-posted.
+    if (!(await avGateSealed(file))) { console.log(`::warning title=SHORT_CROSSPOST::${slot}=not_sealed_by_av_gate (not posted)`); continue; }
+    let mp4; try { mp4 = await readFile(file); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
+    // P05: cross-post with the APPROVED bundle metadata (title, description, captions), verified by hash.
+    let approvedPlan = null;
+    try {
+      const seal = JSON.parse(await readFile(file.replace(/\.mp4$/, ".av-gate.json"), "utf8"));
+      const bb = await kv.getBinary(CANDIDATE_PREFIX + "bundle:" + seal.bundle_sha256);
+      if (!bb || createHash("sha256").update(bb).digest("hex") !== seal.bundle_sha256) throw new Error("bundle_unverified");
+      const b = JSON.parse(Buffer.from(bb).toString("utf8"));
+      approvedPlan = { day: b.day, slot: b.slot, marker: b.marker, title: b.title, description: b.description, tags: b.tags, privacyStatus: b.privacy, link: b.link, salesOpen: b.sales_open === true,
+        entry: { theme_id: b.theme_id, product: { sku: b.product_sku, name: b.product_name } }, screen: b.screen || {}, persistedCaptions: b.captions || {} };
+    } catch (e) { console.log(`::warning title=SHORT_CROSSPOST::${slot}=approved_bundle_unavailable (not posted)`); continue; }
+    const report = await crosspost({ day, slot, mp4, kv, approvedPlan });
     for (const [ch, v] of Object.entries(report)) { if (v.startsWith("error")) errors++; console.log(`::${v.startsWith("error") ? "error" : "notice"} title=SHORT_CROSSPOST::${slot}:${ch}=${String(v).replace(/[\r\n]+/g, " ")}`); }
   }
   if (errors) process.exit(1);

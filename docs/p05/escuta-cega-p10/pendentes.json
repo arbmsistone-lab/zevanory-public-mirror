@@ -1,0 +1,24 @@
+{
+ "_doc": "P05 — positivos humanos PENDENTES DE REVISÃO HUMANA (pré-registrado, AVAL 098 do Sol, opção b: escuta cega primeiro). Um positivo listado aqui NÃO conta como aprovado nem é retirado: o controle continua não resolvido (job vermelho) até o resultado da escuta cega ser registrado por revisão.",
+ "registrado_em": "2026-10-23",
+ "arquivos": [
+  "10010073088196743714.wav"
+ ],
+ "casos": [
+  {
+   "controle": "P10",
+   "arquivo": "10010073088196743714.wav",
+   "fonte": "google/fleurs pt_br train (CC BY 4.0)",
+   "roteiro": "… desta … podem …",
+   "motor_a": "dessa / pode",
+   "motor_b": "essa / pode",
+   "hipotese": "o leitor desviou da transcrição (dois motores independentes concordam)",
+   "decisao_possivel": [
+    "VERDADEIRO_NEGATIVO: ≥4/5 avaliadores válidos marcam desta/podem e os controles se comportam como esperado → o P10 sai dos positivos por transcrição incorreta",
+    "FALLBACK_REPETIR_COM_NOVOS_AVALIADORES: <4 avaliadores válidos → repetir uma vez com 5 novos e sal novo",
+    "FALLBACK_FALSE_DENY_PROVAVEL: caso contrário → FALSE_DENY do gate; o gate precisa de correção"
+   ]
+  }
+ ],
+ "protocolo": "v2 (5 avaliadores, fontes distintas, pacotes por avaliador, selo HMAC-SHA256 com sal secreto)"
+}

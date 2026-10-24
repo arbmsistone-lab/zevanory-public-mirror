@@ -25,10 +25,14 @@ on:
         description: "dica | oferta | calc | all"
         required: false
         default: "oferta"
-      force_local_voice:
-        description: "true = skip Gemini and narrate with the free local voice (test)"
+      phase:
+        description: "render = render+gate+candidato imutável (nunca publica) | publish = publica SÓ candidatos aprovados por humano"
         required: false
-        default: "false"
+        default: "render"
+      candidates:
+        description: "phase=publish: sha256 dos candidatos aprovados (separados por vírgula)"
+        required: false
+        default: ""
 
 concurrency:
   group: youtube-autonomous-short
@@ -60,22 +64,27 @@ jobs:
           node-version: "22"
       - name: Install media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter && fc-match -f "%{file}\n" "Inter:style=ExtraBold"
-      - name: Free local voice (Piper, open source) for the zero-cost fallback
-        continue-on-error: true
+      # P05: no fallback voice. The brand voice is the only voice; the FINAL MP4 must pass zevanory-av-gate.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: zevanory-av-gate (pinned deps + pinned models)
         run: |
-          python3 -m pip install --quiet --user piper-tts
-          mkdir -p "$HOME/piper" && cd "$HOME/piper"
-          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium
-          curl -fsSL -o pt_BR-faber-medium.onnx "$base/pt_BR-faber-medium.onnx"
-          curl -fsSL -o pt_BR-faber-medium.onnx.json "$base/pt_BR-faber-medium.onnx.json"
-          echo "PIPER_MODEL=$HOME/piper/pt_BR-faber-medium.onnx" >> "$GITHUB_ENV"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet -r scripts/av_gate/requirements.txt
+          echo "AV_GATE_MODELS=$RUNNER_TEMP/av-models" >> "$GITHUB_ENV"
+          AV_GATE_MODELS="$RUNNER_TEMP/av-models" bash scripts/av_gate/fetch_models.sh
       - name: Unit tests (plan, idempotency, recording)
-        run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs
+        run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs tests/av-gate-wiring.test.mjs
       - name: Render, gate and publish today's Short
         env:
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
-          FORCE_LOCAL_VOICE: ${{ inputs.force_local_voice || 'false' }}
+          # Owner-recorded reference of the approved brand voice (V4 identity). Absent => gate BLOCKED => no publish.
+          AV_GATE_BRAND_REFERENCE: ${{ github.workspace }}/assets/brand/voice/brand-reference.wav
+          # Human approvals (reviewed in a PR): {"approvals":[{"mp4_sha256","approver","at"}]}
+          AV_GATE_HUMAN_APPROVALS: ${{ github.workspace }}/evidence/p05/human-approvals.json
+          PHASE: ${{ inputs.phase || 'render' }}
+          CANDIDATES: ${{ inputs.candidates }}
           SCHEDULE: ${{ github.event.schedule }}
           SLOT_INPUT: ${{ inputs.slot }}
         run: |
@@ -91,9 +100,13 @@ jobs:
           if [ "$SCHEDULE" = "30 23 * * *" ]; then DAY="$(TZ=America/Sao_Paulo date -d '-6 hours' +%F)"; fi
           echo "SHORT_DAY=$DAY" >> "$GITHUB_ENV"
           echo "::notice title=SHORT_TARGET::slot=$SLOT day=$DAY schedule=${SCHEDULE:-dispatch}"
-          if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT" --day="$DAY"; else node scripts/channels/youtube-daily-short.mjs --slot="$SLOT" --day="$DAY"; fi
+          # P05 two-phase: schedules only RENDER candidates; publishing is a separate dispatch with approved sha256s.
+          if [ "${PHASE:-render}" = "publish" ]; then
+            node scripts/channels/youtube-daily-short.mjs --phase=publish --candidates="$CANDIDATES"
+          elif [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT" --day="$DAY"
+          else node scripts/channels/youtube-daily-short.mjs --phase=render --slot="$SLOT" --day="$DAY"; fi
       - name: Cross-post the Short (TikTok, Instagram Reels, Facebook, Telegram)
-        if: ${{ !cancelled() && inputs.dry_run != 'true' }}
+        if: ${{ !cancelled() && inputs.dry_run != 'true' && inputs.phase == 'publish' }}
         env:
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           TIKTOK_AUDIT_APPROVED: ${{ vars.TIKTOK_AUDIT_APPROVED }}
@@ -103,13 +116,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: node scripts/channels/short-crosspost.mjs --slot="$SLOT" --day="${SHORT_DAY:-}"
-      - name: Keep the dry-run preview for the owner to watch (3 days)
-        if: ${{ inputs.dry_run == 'true' }}
+      - name: Keep the render candidates (MP4 + gate report) for human review (7 days)
+        if: ${{ !cancelled() && inputs.phase != 'publish' }}
         uses: actions/upload-artifact@v4
         with:
           name: short-preview
           path: |
             /tmp/zevanory-daily-short*.mp4
-            /tmp/zevanory-daily-short*.mp3
+            /tmp/zevanory-daily-short*.av-gate.json
+            /tmp/zevanory-daily-short*.av/av-gate.json
+            /tmp/zevanory-daily-short*.av/final.mp4
           if-no-files-found: warn
-          retention-days: 3
+          retention-days: 7  # P05: review + publish within 7 days (same as the candidate TTL)

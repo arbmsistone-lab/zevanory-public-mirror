@@ -52,18 +52,21 @@ test("captions carry the product, the single 7-day rule (open) and channel UTM; 
   for (const ch of ["instagram", "facebook", "telegram", "tiktok"]) assert.deepEqual(bannedPolicyHits(captionFor(p, ch, { salesOpen: true })), [], ch);
 });
 
-test("P13c: com vendas fechadas (padrão) legenda e descrição não têm /comprar/, preço nem regra como chamada", () => {
+test("P13c + P05: com vendas fechadas (padrão) legenda e descrição só têm material gratuito — sem /comprar/, preço, garantia nem regra como chamada", () => {
   const p = planShort("2026-10-12");
-  assert.doesNotMatch(p.link + p.description, /\/comprar\//, "link vai para a página do produto");
+  assert.doesNotMatch(p.link + p.description, /\/comprar\//);
   assert.ok(p.description.includes(CLOSED_LABEL));
   for (const ch of ["instagram", "facebook", "telegram", "tiktok"]) {
     const c = captionFor(p, ch);
     assert.equal(hasCheckoutCta(c), false, ch);
     assert.ok(c.includes(CLOSED_LABEL), ch);
-    assert.doesNotMatch(c, /R\$/, ch);
+    assert.match(c, /Material gratuito/, ch);
+    assert.doesNotMatch(c, /R\$|garantia de 7 dias/i, ch);
   }
   // Plano aberto com legenda fechada (mutante: link /comprar/ vazando com vendas fechadas) é barrado.
   assert.throws(() => captionFor(planShort("2026-10-12", { salesOpen: true }), "instagram"), /caption_checkout_cta_while_closed/);
+  // publish phase: the persisted (approved) caption is used verbatim
+  assert.equal(captionFor({ ...p, persistedCaptions: { instagram: "legenda aprovada" } }, "instagram"), "legenda aprovada");
 });
 
 test("pack renders the tip and the offer for each day with ready captions", async (t) => {
@@ -75,16 +78,17 @@ test("pack renders the tip and the offer for each day with ready captions", asyn
   const out = await mkdtemp(join(tmpdir(), "zevanory-pack-"));
   t.after(() => rm(out, { recursive: true, force: true }));
   const n = await buildPack({ start: "2026-10-12", days: 3, out, render: async (plan, base) => ({ duration: 14.2, voice: "test", file: base + ".mp4" }) });
-  assert.equal(n, 6);
+  assert.equal(n.produced.length, 6);
   const txt = await readFile(join(out, "legendas.txt"), "utf8");
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
-  assert.ok(txt.includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(txt), false); assert.match(txt, /Guia gratuito/);
+  assert.ok(txt.includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(txt), false); assert.match(txt, /Guia gratuito/); assert.match(txt, /Material gratuito/);
+  assert.doesNotMatch(txt, /garantia de 7 dias|R\$ ?\d/i);
 });
 test("Telegram channel receives the day's video once, with caption and a provider-confirmed message id", async () => {
   const kv = memKv(); let sent = 0;
   const fetchImpl = async (url, o = {}) => {
     if (url.includes("tiktok-access")) return ok({ connected: false });
-    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.ok(o.body.get("caption").includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(o.body.get("caption")), false); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
+    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.ok(o.body.get("caption").includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(o.body.get("caption")), false); assert.match(o.body.get("caption"), /Material gratuito/); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
     return ok({});
   };
   const env = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHANNEL_ID: "@zevanory" };
@@ -100,4 +104,33 @@ test("pack produces the executor command ZEVANORY e-mails to the owner: 2 per da
   const cmd = executorCommand("2026-10-22", 10);
   for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}-dica\\.mp4`)); assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 12:00`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 19:00`)); }
   assert.match(cmd, /A tua marca/); assert.match(cmd, /Conteúdo gerado por IA/); assert.match(cmd, /Nunca publique na hora/);
+});
+test("P05: rejected videos stay out; render phase stores candidates and hosts nothing; publish phase materialises only approved bytes", async (t) => {
+  const { buildPack, materializeApproved } = await import("../scripts/channels/short-pack.mjs");
+  const { fsCandidateStore } = await import("../scripts/channels/youtube-daily-short.mjs");
+  const { readFile, rm, mkdtemp, readdir } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const out = await mkdtemp(join(tmpdir(), "zevanory-pack-gate-"));
+  t.after(() => rm(out, { recursive: true, force: true }));
+  const store = fsCandidateStore(join(out, "store"));
+  const r = await buildPack({ start: "2026-10-12", days: 2, out, store, render: async (plan) => {
+    if (plan.slot === "dica" && plan.day === "2026-10-13") throw new Error("av_gate_FAIL:v3.stream_tp");
+    if (plan.slot === "oferta" && plan.day === "2026-10-12") throw new Error("brand_voice_BLOCKED:brand_voice_key_missing");
+    return { duration: 14, voice: "test", bytes: Buffer.from("mp4-" + plan.day + plan.slot), gate: { verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [] } };
+  } });
+  assert.deepEqual(r.produced.sort(), ["2026-10-12-dica", "2026-10-13"]);
+  assert.equal(r.rejected.length, 2);
+  assert.equal(Object.keys(r.candidates).length, 2);
+  assert.equal((await readdir(out)).filter(f => f.endsWith(".mp4")).length, 0, "render phase hosts nothing");
+  assert.match(await readFile(join(out, "legendas.txt"), "utf8"), /PULADO \(zevanory-av-gate: av_gate_FAIL:v3.stream_tp\)/);
+  const approved = r.candidates["2026-10-13"];
+  const approvals = async sha => {
+    if (sha !== approved) return null;
+    const bnd = JSON.parse(await store.get("zpc:short:candidate:bundle:" + sha));
+    return { bundle_sha256: sha, mp4_sha256: bnd.mp4_sha256, gate_report_sha256: bnd.gate_report_sha256, approver: "dono", approved_at: bnd.candidate_created_at };
+  };
+  const m = await materializeApproved(Object.values(r.candidates), { store, out, approvals });
+  assert.deepEqual(m.ok.map(x => x.id), ["2026-10-13"]); assert.equal(m.refused.length, 1);
+  assert.equal(await readFile(join(out, "2026-10-13.mp4"), "utf8"), "mp4-2026-10-13oferta");
 });

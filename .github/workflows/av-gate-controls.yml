@@ -1,0 +1,116 @@
+name: zevanory-av-gate controls (P05 V8)
+
+# P05: prova do gate perceptivo/técnico de vídeo com narração (V1–V8 do Sol). Gera no runner os controles
+# negativos (sinais sintéticos + fala humana com UM defeito injetado) e positivos (fala humana pt-BR licenciada,
+# Google FLEURS pt_br CC BY 4.0), roda o MESMO gate usado antes do upload e os mutantes da camada de decisão.
+# Sem segredos, só leitura, só em pull_request (não dispara em merge/push). Não publica nada.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/av_gate/**"
+      - "scripts/channels/youtube-daily-short.mjs"
+      - "scripts/channels/short-pack.mjs"
+      - "scripts/channels/short-crosspost.mjs"
+      - "tests/av-gate-wiring.test.mjs"
+      - "docs/p05/**"
+      - ".github/workflows/av-gate-controls.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: av-gate-controls-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  controls:
+    name: av-gate / controls + mutants
+    runs-on: ubuntu-24.04  # fixed image: ubuntu-latest is migrating to Ubuntu 26 and apt hung there 3×
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Media tools
+        timeout-minutes: 20
+        run: |
+          set -u
+          opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=180"
+          for i in 1 2 3; do
+            if timeout 300 sudo apt-get $opts update -qq && timeout 400 sudo apt-get $opts install -y -qq --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core unzip >/dev/null; then break; fi
+            echo "::warning title=APT::tentativa $i falhou; repetindo"; sleep 15
+          done
+          ffmpeg -version | head -1 && espeak-ng --version | head -1
+      - name: Wiring tests (publisher + pack fail-closed, single voice, sales closed)
+        run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs tests/av-gate-wiring.test.mjs
+      - name: Python deps (pinned)
+        run: |
+          python -m pip install --disable-pip-version-check --quiet -r scripts/av_gate/requirements.txt
+          echo "AV_GATE_MODELS=$RUNNER_TEMP/av-models" >> "$GITHUB_ENV"
+          echo "PYTHONDONTWRITEBYTECODE=1" >> "$GITHUB_ENV"
+      - name: Gate unit tests (decision logic, normalisation, fail-closed policy)
+        run: |
+          python -m unittest -v scripts/av_gate/test_av_gate.py
+          python -m unittest -v docs/p05/escuta-cega-p10/test_montar_kit.py
+      - name: Restore model cache
+        id: models-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/av-models
+          key: av-models-v2-${{ hashFiles('scripts/av_gate/fetch_models.sh') }}
+      - name: Models (pinned SHA-256)
+        run: bash scripts/av_gate/fetch_models.sh
+      # Saved right after a verified download (the job itself is red while any control is misclassified).
+      - name: Save model cache
+        if: steps.models-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/av-models
+          key: av-models-v2-${{ hashFiles('scripts/av_gate/fetch_models.sh') }}
+      - name: Generate controls and run the gate + mutants
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/avg"
+          python scripts/av_gate/controls.py run --work "$RUNNER_TEMP/avg" --out "$RUNNER_TEMP/avg/results.json"
+      - name: Report — positives
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what positives
+      - name: Report — word-by-word ASR alignment of the positives (engine A, engine B, consensus)
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what alignment
+      - name: Report — negatives
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what negatives
+      - name: Report — fail-closed infra controls
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what infra
+      - name: Report — deterministic metric fixtures (one field out of range)
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what fixtures
+      - name: Report — physical isolated near-limit samples
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what isolated
+      - name: Report — mutants
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what mutants
+      - name: Report — ASR transcripts
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what asr
+      - name: Verdict (all controls classified, all mutants killed, human positives present)
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what summary
+      - name: Keep results (no audio)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: av-gate-controls-results
+          path: ${{ runner.temp }}/avg/results.json
+          retention-days: 14
+          if-no-files-found: warn

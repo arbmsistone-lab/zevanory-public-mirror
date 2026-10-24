@@ -1,0 +1,9 @@
+# zevanory-av-gate (P05) — Python 3.12, CPU only, everything offline after install (models via fetch_models.sh).
+numpy==1.26.4
+faster-whisper==1.1.1        # motor A: família Whisper (CTranslate2), modelo "small" int8
+vosk==0.3.45                 # motor B: família Kaldi (Vosk), modelo pt-BR + x-vector de locutor
+webrtcvad-wheels==2.0.14     # VAD
+praat-parselmouth==0.4.5     # F0, HNR, monotonização PSOLA (controle negativo)
+onnxruntime==1.20.1          # DNSMOS P.835 (MOS preditivo, só filtro)
+pyarrow==18.1.0              # leitura de fallback do FLEURS (parquet) nos controles
+setuptools==75.8.0           # pkg_resources (webrtcvad)

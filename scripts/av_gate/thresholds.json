@@ -1,0 +1,38 @@
+{
+  "_doc": "zevanory-av-gate (P05, critérios V1–V8 do Sol). Limiar ausente = BLOCKED. Valores marcados 'provisional' foram calibrados só com referências humanas públicas (FLEURS pt_br, CC BY 4.0) e controles sintéticos; a calibração definitiva exige gravações humanas de referência do proprietário.",
+  "version": "p05-av-gate-1",
+  "brand_voice": {"provider": "gemini", "model": "gemini-3.8-flash-tts", "voice": "Achird"},
+  "control_voices": [{"provider": "human-reference", "model": "fleurs-pt_br", "voice": "*"}],
+  "V1": {"master_min_rate": 44100, "duration_match_s": 0.5, "trailing_silence_max_s": 2.0, "required_manifest": ["script_sha256", "master_sha256", "mp4_sha256", "voice", "sales_mode", "gate_version"]},
+  "V2": {
+    "wer_max": 0.03, "cer_max": 0.01, "corpus_min_words": 200,
+    "_corpus_doc": "WER ≤ 3% e CER ≤ 1% valem sobre o CORPUS AGREGADO pré-registrado (≥ 200 palavras; os 12 roteiros da prova cega concatenados na homologação da voz; no CI, todos os positivos humanos). Por clipe: no máximo 1 erro NÃO crítico no consenso e ZERO erro crítico.",
+    "clip_noncritical_max": 1,
+    "critical_promise_cta": ["garantia", "garantido", "garantida", "gratis", "gratuito", "gratuita", "compre", "comprar", "desconto", "link", "descricao", "cadastro", "promocao", "oferta"],
+    "per_engine_wer_sanity_max": 0.35,
+    "critical_negations": ["nao", "nunca", "nem", "sem", "jamais", "nenhum", "nenhuma"],
+    "instruction_markers": ["fale em portugues", "fale com", "voz natural", "ritmo de conversa", "tom amigavel", "sotaque brasileiro", "leia o texto", "leia em voz", "com voz", "em tom de", "speech metadata", "style"],
+    "sales_closed_text_patterns": ["/comprar", "R\\$\\s?\\d", "\\bcompre\\b", "\\bcomprar\\b", "garantia de (7|sete) dias", "checkout", "\\bpor apenas\\b", "desconto", "\\bpague\\b", "\\bpix\\b"],
+    "sales_closed_spoken_patterns": ["\\bcompre\\b", "comprar agora", "garantia de sete dias", "por apenas", "cento e noventa e sete reais", "duzentos e quarenta e sete reais", "duzentos e noventa e sete reais", "trezentos e noventa e sete reais", "link de compra"]
+  },
+  "V3": {
+    "master_lufs": -23.0, "master_lufs_tol": 0.5, "master_tp_max": -1.0,
+    "stream_lufs_min": -20.0, "stream_lufs_max": -16.0, "stream_tp_max": -2.0,
+    "clipped_samples_max": 0, "clip_level": 0.9999,
+    "clip_spike_max": 3.0,
+    "noise_floor_max_dbfs": -50.0, "snr_min_db": 30.0,
+    "speech_ratio_min": 0.55, "leading_silence_max_s": 0.5,
+    "spectral_flatness_max": 0.30, "tonal_persistence_max": 0.5, "voiced_fraction_min": 0.25
+  },
+  "V4": {
+    "wpm_min": 130, "wpm_max": 175, "win_wpm_min": 105, "win_wpm_max": 195, "window_s": 10.0,
+    "pause_min_ms": 150, "pause_median_max_ms": 900, "pause_max_ms": 1500,
+    "f0_sd_st_min": 1.5, "f0_sd_st_max": 8.0,
+    "energy_sd_db_min": 3.0, "energy_sd_db_max": 18.0,
+    "hnr_min_db": 4.0,
+    "speaker_cos_min": 0.75, "speaker_self_cos": 0.97, "speaker_status": "provisional"
+  },
+  "V5": {"dnsmos_ovrl_min": 2.2, "dnsmos_sig_min": 2.8, "status": "provisional", "_doc": "MOS preditivo só filtra; nunca homologa. A decisão é do painel humano cego (docs/p05)."},
+  "V6": {"drift_p95_ms": 80, "drift_max_ms": 120, "caption_delta_max_ms": 100, "measurable_cues_min_ratio": 0.5},
+  "V7": {"frame": [1080, 1920], "safe_area": [60, 220, 960, 1440], "contrast_min": 4.5, "text_luma_diff": 25, "caption_script_wer_max": 0.02, "max_chars_line": 42, "max_lines": 2, "mean_cps_max": 25.0, "black_max_s": 0.6}
+}
