@@ -12,17 +12,17 @@ Escopo: todo caminho que pode alterar o Worker de produção `zevanory`, seja c�
 | `channel-production-bootstrap.yml` | `secret put` | `deploy-zevanory` | sim | ativo (manual) |
 | `gemini-key-to-worker.yml` | `secret delete` + `secret put` | `deploy-zevanory` | sim | ativo (manual) |
 | `lead-privacy-secret-to-worker.yml` | `worker_secret_rotate.py --apply` (`versions secret bulk` + `versions deploy`) | `deploy-zevanory` | sim | ativo (manual) |
+| `mercadopago-production-token-rotate.yml` | `secret put MERCADOPAGO_ACCESS_TOKEN`, `rollback`, `worker-version-recover.sh` | `deploy-zevanory` | sim | ativo (manual) |
 | `production-test-secret-cleanup.yml` | `secret delete` | `deploy-zevanory` | sim | ativo (manual) |
 | `sandbox-worker-secret-audit.yml` | `PATCH .../settings` | `deploy-zevanory` | sim | aposentado (`if: false`) |
 | `voice-gemini-auth-key-probe.yml` | `secret put` | `deploy-zevanory` | sim | ativo (manual) |
 | `voice-gemini-production-provision.yml` | `secret put` | `deploy-zevanory` | sim | ativo (manual) |
 | `voice-zero-spend-enable.yml` | `secret put` | `deploy-zevanory` | sim | ativo (manual) |
 | `mercadopago-exact-sha-recovery.yml` | `wrangler deploy` (config gerada, name `zevanory`) | `mercadopago-exact-sha-recovery` | **não** | aposentado (`if: false`) |
-| `mercadopago-production-token-rotate.yml` | `secret put MERCADOPAGO_ACCESS_TOKEN`, `rollback`, `worker-version-recover.sh` | `mercadopago-production-token-rotate` | **não** | ativo (manual) |
 
 O workflow `financial-e2e-stripe.yml` está registrado em `ops/publishers.json` sob o `zevanory`, mas só escreve no Worker isolado `zevanory-certification`. A remoção dirigida vigia esse workflow mesmo assim.
 
-Os dois financeiros fora do grupo seguem a regra do proprietário em `ops/publishers.json` (`unserialized_known`): qualquer mudança em workflow de pagamento exige autorização escrita dele. Por isso este PR **não** os altera. Para serializar o `mercadopago-production-token-rotate.yml`, bastam três linhas: `group: deploy-zevanory` e `queue: max`. A mudança fica pendente da autorização. Enquanto isso, `production-test-secret-cleanup.yml` recusa quando há run ativo desses workflows e detecta qualquer movimento de versão. O teste N13 fixa essa lista de exceções, e um workflow novo que escreva no `zevanory` fora do grupo reprova.
+O único financeiro fora do grupo é o `mercadopago-exact-sha-recovery.yml`, aposentado (`if: false`). Ele segue a regra do proprietário em `ops/publishers.json` (`unserialized_known`): qualquer mudança em workflow de pagamento exige autorização escrita dele. O `mercadopago-production-token-rotate.yml` entrou no grupo `deploy-zevanory` (`cancel-in-progress: false`, `queue: max`, no topo do workflow, igual aos outros) por autorização escrita do proprietário ("AUTORIZO SERIALIZAR mercadopago-production-token-rotate.yml NO GRUPO deploy-zevanory", #919). A análise de recuperabilidade está em `docs/ops/ROTACAO_MERCADOPAGO.md`, seção 1.1. `production-test-secret-cleanup.yml` continua recusando quando há run ativo de qualquer workflow da matriz, inclusive os do grupo, e detecta qualquer movimento de versão. O teste N13 fixa a lista de exceções, e um workflow novo que escreva no `zevanory` fora do grupo reprova.
 
 ## Caminhos externos (não serializáveis)
 

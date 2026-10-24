@@ -270,7 +270,7 @@ test("N10 C3/A1 serialização: run ativo de publicador do zevanory ou versão m
   assert.equal(ev([{ total_count: 101, workflow_runs: [] }]).ok, false, "[N10.4] lista truncada recusa");
   const moved = ev([listing()], snapOf(state({ chain: [V1, V0] })).effective);
   assert.deepEqual([moved.ok, moved.versionChanged], [false, true], "[N10.5] versão efetiva mudou depois do plano: recusa");
-  assert.ok(matrix.files.includes("mercadopago-production-token-rotate.yml") && matrix.files.includes("central-production-deploy.yml"), "[N10.6] a matriz vigia também os publicadores fora do grupo");
+  assert.ok(matrix.files.includes("mercadopago-production-token-rotate.yml") && matrix.files.includes("central-production-deploy.yml"), "[N10.6] a matriz vigia todos os publicadores, dentro e fora do grupo");
   const cli1 = runCli(["preflight", "--plan", "@p", "--deployments", "@d", "--runs", "@a", "--runs", "@b", "--self-run-id", "42"], { p: plan, d: deployments(V0), a: listing(), b: listing(run(5, "voice-zero-spend-enable.yml", "queued")) });
   assert.ok(cli1.code === 1 && /CLEANUP_REFUSED_CONCURRENT::voice-zero-spend-enable\.yml run 5 queued/.test(cli1.out), "[N10.7] CLI soma todas as listas de status");
   assert.equal(runCli(["preflight", "--plan", "@p", "--deployments", "@d", "--runs", "@a", "--self-run-id", "42"], { p: plan, d: deployments(V0), a: listing() }).code, 0, "[N10.7] CLI sem concorrência passa");
@@ -380,7 +380,7 @@ test("N13 A1 matriz: todo workflow que escreve no zevanory está na matriz e no 
     assert.equal(g.group, group(t), `[N13.4] grupo na matriz = grupo real: ${g.workflow}`);
   }
   const publishers = JSON.parse(readTextNormalized(new URL("ops/publishers.json", ROOT)));
-  assert.deepEqual(matrix.unserialized, ["mercadopago-exact-sha-recovery.yml", "mercadopago-production-token-rotate.yml"], "[N13.3] exceções fixadas: só os 2 financeiros (autorização escrita do proprietário)");
+  assert.deepEqual(matrix.unserialized, ["mercadopago-exact-sha-recovery.yml"], "[N13.3] exceção fixada: só o financeiro aposentado (a rotação do token MP entrou no grupo por autorização escrita do proprietário, #919)");
   for (const f of matrix.unserialized) assert.ok(publishers.unserialized_known[f], "[N13.3] exceção também registrada em ops/publishers.json: " + f);
   for (const f of Object.keys(raw.registered_not_touching)) assert.equal(writesZevanory(text(f)), false, "[N13.5] registrado mas não escreve no zevanory: " + f);
   for (const f of raw.readers_only) assert.equal(writesZevanory(text(f)), false, "[N13.5] leitor não escreve: " + f);
