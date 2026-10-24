@@ -22,6 +22,7 @@ on:
       - "scripts/deploy/prepare-certification-config.py"
       - "scripts/deploy/verify-signature-region-binding.py"
       - "scripts/deploy/verify-live-build-info.py"
+      - "scripts/deploy/public_whatsapp_scan.py"
       - "scripts/ci/cloudflare-build.sh"
       - "scripts/ci/mutant_classifier.py"
       - "scripts/ci/mutants_mp_signature_binding.py"

@@ -22,7 +22,7 @@ const WORKER_SRC = readTextNormalized(rel(WORKER_REL));
 const TESTED = extractMpSignatureRegion(WORKER_SRC).sha256;
 const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 const DEPLOY = ["build_provenance.py", "mp-signature-region.json", "write-build-info.py", "prepare-central-candidate.py",
-  "verify-signature-region-binding.py", "verify-live-build-info.py", "prepare-certification-config.py"];
+  "verify-signature-region-binding.py", "verify-live-build-info.py", "prepare-certification-config.py", "public_whatsapp_scan.py"];
 
 requireTool("python3");
 

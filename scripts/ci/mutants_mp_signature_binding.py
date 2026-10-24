@@ -30,7 +30,8 @@ CW, CB = "certification-worker.mjs", "scripts/ci/cloudflare-build.sh"
 PROD, DRY, CERT = (".github/workflows/central-production-deploy.yml", ".github/workflows/central-candidate-dryrun.yml",
                    ".github/workflows/certification-isolated-deploy.yml")
 COPY = [*TESTS, "tests/helpers/text.mjs", "tests/helpers/toolchain.mjs", "tests/helpers/mp-signature-region.mjs",
-        "worker/cloudflare-worker.recovered.mjs", "worker/binding-aliases.mjs", SPEC, P, WBI, G, RB, PCC, PREP, CW, CB,
+        "worker/cloudflare-worker.recovered.mjs", "worker/binding-aliases.mjs", SPEC, P, WBI, G, RB, PCC, PREP,
+        D + "public_whatsapp_scan.py", CW, CB,
         PROD, DRY, CERT]
 NODE = shutil.which("node") or "node"
 TIMEOUT = 300
