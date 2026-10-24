@@ -12,6 +12,9 @@ on:
       - "worker/politica-unica.mjs"
       - "data/politica-unica.json"
       - "tests/integration/support-outbox-postgres.test.mjs"
+      - "scripts/ci/mutants_support_email.py"
+      - "scripts/ci/mutant_classifier.py"
+      - "scripts/ci/mutants_support_email_pg_allow.json"
 
 permissions:
   contents: read
@@ -23,7 +26,7 @@ concurrency:
 jobs:
   support-outbox-postgres:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16
@@ -42,7 +45,7 @@ jobs:
           v="$(psql -h localhost -U postgres -tAc 'show server_version_num')"
           echo "::notice title=POSTGRES::server_version_num=$v"
           [ "${v:0:2}" = "16" ] || { echo "::error::PostgreSQL diferente de 16 ($v)"; exit 1; }
-      - name: Outbox suporte@ (O1–O11, contagem exata, sem skip)
+      - name: Outbox suporte@ (O1–O18, contagem exata, sem skip)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -50,4 +53,14 @@ jobs:
           set -eo pipefail
           node --test tests/integration/support-outbox-postgres.test.mjs | tee o.txt
           echo "::notice title=COUNTS_OUTBOX::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' o.txt | paste -sd' ' -)"
-          grep -qx "# tests 11" o.txt && grep -qx "# pass 11" o.txt && grep -qx "# skipped 0" o.txt && grep -qx "# todo 0" o.txt && grep -qx "# fail 0" o.txt && grep -qx "# cancelled 0" o.txt
+          grep -qx "# tests 18" o.txt && grep -qx "# pass 18" o.txt && grep -qx "# skipped 0" o.txt && grep -qx "# todo 0" o.txt && grep -qx "# fail 0" o.txt && grep -qx "# cancelled 0" o.txt
+      - name: Mutantes de SQL contra PostgreSQL 16 real (lista causal; todos KILLED)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -eo pipefail
+          python3 scripts/ci/mutants_support_email.py --suite pg < /dev/null | tee pgm.txt
+          echo "::notice title=SUPPORT_PG_MUTANTS::$(grep -E '^MUTANTS ' pgm.txt)"
+          grep -qx "MUTANTS suite=pg total=8 killed=8 survived=0 inconclusive=0" pgm.txt
