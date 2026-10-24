@@ -1,0 +1,386 @@
+{
+  "schema": "r4-allow/v2",
+  "allowed": [
+    {
+      "file": "scripts/ops/data-backup.mjs",
+      "line_pattern": "await call\\(`(?:part=\\$\\{p\\}&parts=\\$\\{PARTS\\}|finalize=1&parts=\\$\\{PARTS\\})`\\)",
+      "endpoint": "/api/internal/backup/run",
+      "method": "POST",
+      "identity": {
+        "principal": "ZEVANORY",
+        "impersonates": [],
+        "credential": "x-backup-token (CERTIFICATION_E2E_TOKEN, ZEVANORY-issued)"
+      },
+      "purpose": "Daily backup of critical KV keys and public Neon tables into ZEVANORY-owned backup copies, plus an integrity drill, triggered by data-backup.yml.",
+      "least_privilege": "Endpoint accepts only POST with the backup token, returns counts and hashes only (never data), parts bounded to 1..6; no other route is reachable with this call.",
+      "effects": {
+        "synthetic_financial_transaction": false,
+        "opens_sales": false,
+        "commercial_effect": false,
+        "triggers_webhook_or_checkout": false,
+        "changes_credentials_or_config": false
+      },
+      "data_scope": {
+        "alters_production_data": false,
+        "deletes_production_data": false,
+        "restores_into_production": false
+      },
+      "payload": {
+        "controlled": true,
+        "writes": true,
+        "idempotent": true,
+        "audit_trail": "per-part and final report at zpc:backup:v1:report (counts, hashes, manifest hash; no PII, no secrets)",
+        "secrets_in_audit": false
+      },
+      "handler_evidence": [
+        "worker/cloudflare-worker.compat.mjs:504-514",
+        "worker/data-backup.mjs:1-13",
+        "worker/data-backup.mjs:22",
+        "worker/data-backup.mjs:85",
+        "worker/data-backup.mjs:154",
+        "worker/data-backup.mjs:156-181",
+        "worker/data-backup.mjs:168",
+        "worker/data-backup.mjs:199",
+        "worker/data-backup.mjs:202-213",
+        "worker/data-backup.mjs:249"
+      ],
+      "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
+      "risk_acceptance": {
+        "status": "PENDING_OWNER",
+        "by": "",
+        "at": "",
+        "reference": ""
+      },
+      "notes": "Policy is in backup_policy (schema). Restore drill only in the isolated schema zevanory_restore_drill, dropped after comparison; retention deletes only own zevanory_kv_backup rows older than 14 days and only after today's copy is proven (manifest + integrity + drill), never the newest valid copy (planRetention). Residual: the Neon->KV bundles expire by KV TTL (8 days); if backups stop for 8 days those expire passively.",
+      "backup_policy": {
+        "allowed_operations": [
+          "export_to_own_copies_source_unmodified",
+          "manifest_and_hashes",
+          "restore_drill_isolated_schema:zevanory_restore_drill",
+          "delete_own_copies_older_than_14_days"
+        ],
+        "blocked_operations": [
+          "restore_over_operational_tables",
+          "delete_operational_data",
+          "modify_operational_data"
+        ],
+        "retention": {
+          "own_copies_only": true,
+          "max_age_days": 14,
+          "never_delete_last_valid_copy": true,
+          "proof_before_delete": [
+            "manifest",
+            "integrity",
+            "drill"
+          ]
+        },
+        "enforced_by": [
+          "worker/data-backup.mjs:36-46",
+          "worker/data-backup.mjs:202-213"
+        ],
+        "tests": [
+          "tests/data-backup.test.mjs::retention with only expired copies keeps the newest valid one",
+          "tests/data-backup.test.mjs::a corrupt newest copy blocks deletion of older ones"
+        ]
+      }
+    },
+    {
+      "file": "scripts/ops/voice-eval.mjs",
+      "line_pattern": "await fetch\\(url, \\{ method: \"POST\", headers: \\{ \"x-backup-token\": token \\}",
+      "endpoint": "/api/internal/voice-eval/run",
+      "method": "POST",
+      "identity": {
+        "principal": "ZEVANORY",
+        "impersonates": [],
+        "credential": "x-backup-token (CERTIFICATION_E2E_TOKEN, ZEVANORY-issued)"
+      },
+      "purpose": "Weekly internal monitoring of the voice pipeline (transcription, answer quality, synthesis) inside the production Worker; scores only.",
+      "least_privilege": "POST plus backup token only; the handler runs a fixed in-memory sample set, delivers nothing to any customer channel and stores one report key.",
+      "effects": {
+        "synthetic_financial_transaction": false,
+        "opens_sales": false,
+        "commercial_effect": false,
+        "triggers_webhook_or_checkout": false,
+        "changes_credentials_or_config": false
+      },
+      "data_scope": {
+        "alters_production_data": false,
+        "deletes_production_data": false,
+        "restores_into_production": false
+      },
+      "payload": {
+        "controlled": true,
+        "writes": true,
+        "idempotent": true,
+        "audit_trail": "report overwritten at VOICE_EVAL_KEY (scores, providers, presence flags; no key values)",
+        "secrets_in_audit": false
+      },
+      "handler_evidence": [
+        "worker/cloudflare-worker.compat.mjs:533-553",
+        "worker/voice-eval.mjs:65-100"
+      ],
+      "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
+      "risk_acceptance": {
+        "status": "PENDING_OWNER",
+        "by": "",
+        "at": "",
+        "reference": ""
+      },
+      "notes": "salesOpen:true at voice-eval.mjs:78 is an in-memory scoring parameter; the generated reply is never sent. Consumes AI/TTS quota."
+    },
+    {
+      "file": ".github/workflows/command-center-snapshot.yml",
+      "line_pattern": "-X POST -H \"x-backup-token: \\$CERTIFICATION_E2E_TOKEN\" --max-time 120 https://zevanory\\.api\\.br/api/internal/funnel/run ",
+      "endpoint": "/api/internal/funnel/run",
+      "method": "POST",
+      "identity": {
+        "principal": "ZEVANORY",
+        "impersonates": [],
+        "credential": "x-backup-token (CERTIFICATION_E2E_TOKEN, ZEVANORY-issued)"
+      },
+      "purpose": "Hourly consolidation of funnel aggregates for the Command Center snapshot, in its own Worker invocation.",
+      "least_privilege": "POST plus backup token only; reads the sales switch without changing it and writes only the aggregate summary and a heartbeat key.",
+      "effects": {
+        "synthetic_financial_transaction": false,
+        "opens_sales": false,
+        "commercial_effect": false,
+        "triggers_webhook_or_checkout": false,
+        "changes_credentials_or_config": false
+      },
+      "data_scope": {
+        "alters_production_data": false,
+        "deletes_production_data": false,
+        "restores_into_production": false
+      },
+      "payload": {
+        "controlled": true,
+        "writes": true,
+        "idempotent": true,
+        "audit_trail": "heartbeat zpc:cron:v1:funnel and the funnel summary key (aggregates only)",
+        "secrets_in_audit": false
+      },
+      "handler_evidence": [
+        "worker/cloudflare-worker.compat.mjs:516-531",
+        "worker/funnel.mjs:248-252"
+      ],
+      "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
+      "risk_acceptance": {
+        "status": "PENDING_OWNER",
+        "by": "",
+        "at": "",
+        "reference": ""
+      }
+    },
+    {
+      "file": "scripts/channels/prove-youtube.mjs",
+      "line_pattern": "fetch\\(\"https://zevanory\\.api\\.br/api/internal/channels/evidence\",\\{method:\"POST\"",
+      "endpoint": "/api/internal/channels/evidence",
+      "method": "POST",
+      "identity": {
+        "principal": "ZEVANORY",
+        "impersonates": [],
+        "credential": "x-certification-e2e-token (ZEVANORY-issued)"
+      },
+      "purpose": "Records the YouTube publication evidence (video id and URL) produced by the bootstrap workflow, so the panel can show it.",
+      "least_privilege": "POST plus certification token only; recordChannelProof accepts only channel telegram|youtube with a provider post id and writes one proof row per channel.",
+      "effects": {
+        "synthetic_financial_transaction": false,
+        "opens_sales": false,
+        "commercial_effect": false,
+        "triggers_webhook_or_checkout": false,
+        "changes_credentials_or_config": false
+      },
+      "data_scope": {
+        "alters_production_data": false,
+        "deletes_production_data": false,
+        "restores_into_production": false
+      },
+      "payload": {
+        "controlled": true,
+        "writes": true,
+        "idempotent": true,
+        "audit_trail": "proof row keyed by channel (provider_post_id, url, publishedAt), 370-day TTL",
+        "secrets_in_audit": false
+      },
+      "handler_evidence": [
+        "worker/cloudflare-worker.recovered.mjs:18386-18390",
+        "worker/multichannel-autonomy.mjs:149"
+      ],
+      "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
+      "risk_acceptance": {
+        "status": "PENDING_OWNER",
+        "by": "",
+        "at": "",
+        "reference": ""
+      }
+    },
+    {
+      "file": ".github/workflows/whatsapp-neon-live-proof.yml",
+      "line_pattern": "refresh_code=\"\\$\\(curl -sS -o /tmp/whatsapp-ops-refresh\\.json -w '%\\{http_code\\}' \\\\$",
+      "endpoint": "/api/internal/whatsapp/stats-refresh",
+      "method": "POST",
+      "identity": {
+        "principal": "ZEVANORY",
+        "impersonates": [],
+        "credential": "x-certification-e2e-token (ZEVANORY-issued)"
+      },
+      "purpose": "Internal monitoring: recompute the cached WhatsApp operations statistics before reading them back from KV (workflow disabled since I1).",
+      "least_privilege": "POST plus certification token only; the handler computes aggregate stats from the ops store and overwrites one KV key; it sends no message.",
+      "effects": {
+        "synthetic_financial_transaction": false,
+        "opens_sales": false,
+        "commercial_effect": false,
+        "triggers_webhook_or_checkout": false,
+        "changes_credentials_or_config": false
+      },
+      "data_scope": {
+        "alters_production_data": false,
+        "deletes_production_data": false,
+        "restores_into_production": false
+      },
+      "payload": {
+        "controlled": true,
+        "writes": true,
+        "idempotent": true,
+        "audit_trail": "stats payload at WHATSAPP_OPS_STATS_KEY (counts and timestamps only)",
+        "secrets_in_audit": false
+      },
+      "handler_evidence": [
+        "worker/cloudflare-worker.recovered.mjs:18392-18398",
+        "worker/whatsapp-neon-store.mjs:131-137"
+      ],
+      "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
+      "risk_acceptance": {
+        "status": "PENDING_OWNER",
+        "by": "",
+        "at": "",
+        "reference": ""
+      }
+    }
+  ],
+  "open_real_risks": [
+    {
+      "file": ".github/workflows/channel-production-bootstrap.yml",
+      "line_pattern": "https://zevanory\\.api\\.br/api/internal/channels/telegram-proof ",
+      "classification": "REAL_RISK",
+      "status": "OPEN_NOT_HOMOLOGATED",
+      "reason": "The Telegram proof publishes a real promotional post with the product price through runMultichannelAutonomy: a commercial effect, so it fails Sol's R4 conditions.",
+      "evidence": [
+        "worker/cloudflare-worker.recovered.mjs:18373-18385"
+      ],
+      "required_fix": "Prove the Telegram channel without publishing a commercial post (or owner accepts the risk explicitly).",
+      "independent_control": {
+        "type": "owner-approval-gate",
+        "variable": "R4_TELEGRAM_PROOF_OWNER_APPROVAL",
+        "workflows": [
+          ".github/workflows/channel-production-bootstrap.yml"
+        ]
+      },
+      "risk_acceptance": {
+        "status": "NOT_ACCEPTED",
+        "by": "",
+        "at": "",
+        "reference": ""
+      }
+    },
+    {
+      "file": ".github/workflows/t2-regenerate-ia-clean.yml",
+      "line_pattern": "const response = await fetch\\(endpoint, \\{",
+      "classification": "REAL_RISK",
+      "status": "OPEN_NOT_HOMOLOGATED",
+      "reason": "x-commercial-signature factory HMAC is path-agnostic with no nonce replay store; the same verifier authorizes /api/commercial/publish/tick (publishes to Meta) and /publish/status (Meta side effects): not least privilege.",
+      "evidence": [
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:192-205",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:1031-1045",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:1048-1060",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:386-460"
+      ],
+      "required_fix": "Bind method+path (+body hash) into the factory HMAC, add a nonce replay store and a factory-only secret in zevanory-product-control-edge.",
+      "independent_control": {
+        "type": "owner-approval-gate",
+        "variable": "R4_T2_COMMERCIAL_SIGNED_CALLS_OWNER_APPROVAL",
+        "workflows": [
+          ".github/workflows/t2-regenerate-ia-clean.yml"
+        ]
+      },
+      "risk_acceptance": {
+        "status": "NOT_ACCEPTED",
+        "by": "",
+        "at": "",
+        "reference": ""
+      }
+    },
+    {
+      "file": ".github/workflows/t2-workers-ai-creative-factory.yml",
+      "line_pattern": "fetch\\('https://controle\\.zevanory\\.api\\.br/api/commercial/creative/factory/tick', \\{",
+      "classification": "REAL_RISK",
+      "status": "OPEN_NOT_HOMOLOGATED",
+      "reason": "Same path-agnostic factory HMAC as t2-regenerate-ia-clean: the signature it sends would also authorize commercial publishing to Meta within its 5-minute window.",
+      "evidence": [
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:192-205",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:1031-1045",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:1048-1060"
+      ],
+      "required_fix": "Same fix as t2-regenerate-ia-clean (path-bound HMAC, replay store, factory-only secret).",
+      "independent_control": {
+        "type": "owner-approval-gate",
+        "variable": "R4_T2_COMMERCIAL_SIGNED_CALLS_OWNER_APPROVAL",
+        "workflows": [
+          ".github/workflows/t2-workers-ai-creative-factory.yml"
+        ]
+      },
+      "risk_acceptance": {
+        "status": "NOT_ACCEPTED",
+        "by": "",
+        "at": "",
+        "reference": ""
+      }
+    },
+    {
+      "file": "scripts/t2/compose-creatives.mjs",
+      "line_pattern": "fetch\\(`\\$\\{ORIGIN\\}/api/commercial/creative/(?:upload\\?product=\\$\\{slug\\}&angle=\\$\\{ANGLE\\}`, \\{|background\\?product=|factory/tick\\?finalize=1`)",
+      "classification": "REAL_RISK",
+      "status": "OPEN_NOT_HOMOLOGATED",
+      "reason": "Signed calls to the control plane: upload (upload-v1 HMAC bound to slug and body hash; stores creatives for approval and archives duplicate drafts) and background + factory finalize (factoryHeaders(): the path-agnostic factory HMAC that also authorizes /api/commercial/publish/*). Signed calls are never allow-listable under R4.",
+      "evidence": [
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:286-299",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:332-385",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:1011-1027",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:192-205",
+        "scripts/t2/compose-creatives.mjs:108",
+        "scripts/t2/compose-creatives.mjs:143"
+      ],
+      "required_fix": "Upload-only secret and replay store in zevanory-product-control-edge; then re-review.",
+      "independent_control": {
+        "type": "owner-approval-gate",
+        "variable": "R4_T2_COMMERCIAL_SIGNED_CALLS_OWNER_APPROVAL",
+        "workflows": [
+          ".github/workflows/t2-content-calendar.yml",
+          ".github/workflows/t2-creative-compose.yml"
+        ]
+      },
+      "risk_acceptance": {
+        "status": "NOT_ACCEPTED",
+        "by": "",
+        "at": "",
+        "reference": ""
+      }
+    }
+  ],
+  "financial_gates": [
+    {
+      "workflow": ".github/workflows/mercadopago-exact-sha-recovery.yml",
+      "variable": "R4_MP_EXACT_SHA_RECOVERY_OWNER_APPROVAL",
+      "require_job_if_false": true,
+      "status": "ENFORCED",
+      "reference": "#904"
+    },
+    {
+      "workflow": ".github/workflows/financial-e2e-stripe.yml",
+      "variable": "R4_FINANCIAL_E2E_STRIPE_OWNER_APPROVAL",
+      "require_job_if_false": false,
+      "status": "ENFORCED",
+      "reference": "#910 (merged 4b73b1ee)"
+    }
+  ]
+}

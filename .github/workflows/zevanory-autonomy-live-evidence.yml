@@ -44,7 +44,7 @@ jobs:
           for u in https://vendas.zevanory.api.br/ferramentas https://vendas.zevanory.api.br/calculadora-cmv https://vendas.zevanory.api.br/ia-para-padaria https://vendas.zevanory.api.br/ferramentas.js https://zevanory.api.br/ia-por-ramo https://zevanory.api.br/media/short/2000-01-01.mp4; do
             note "GROWTH $u" "http=$(curl -sS -A "$UA" -o /dev/null -w '%{http_code}' "$u")"
           done
-          note "GROWTH tiktok-access unsigned" "http=$(curl -sS -A "$UA" -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' https://zevanory.api.br/api/internal/owner/oauth/tiktok-access)"
+          # R4: the forged unsigned POST probe to the production /api/internal/owner/oauth/tiktok-access was removed.
           note "GROWTH guides on hub" "$(curl -sS -A "$UA" https://vendas.zevanory.api.br/ia-por-ramo | grep -o 'href="/ia-para-[a-z-]*"' | sort -u | wc -l)"
           # YouTube channel public
           code=$(curl -sS -A "$UA" -o /tmp/yt.html -w '%{http_code}' https://www.youtube.com/@ZEVANORY/videos)
