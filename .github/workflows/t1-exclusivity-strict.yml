@@ -1,0 +1,98 @@
+name: T1 exclusivity STRICT (non-required)
+
+# T1 roadmap: exclusivity of publication must be PROVEN, not assumed. Two NON-REQUIRED checks, separate from
+# t1-publisher-guard.yml (whose jobs and outputs are unchanged):
+#   write-paths  every path that can change a Worker (workflows, scripts they run, other CI, Workers Builds,
+#                standalone scripts) is registered in ops/publishers.json and every production code path passes
+#                promotion_guard.py BEFORE the write. Static, no credentials; runs on PRs, schedule and dispatch.
+#   verdict      T1_EXCLUSIVITY=PROVEN|NOT_PROVEN from the inventory plus read-only Cloudflare evidence (per-Worker
+#                tokens, shared tokens, account/user token audit, live SHA by two sources). Never on PRs
+#                (credentials live in the gh-pages Environment): daily schedule or dispatch. Fails while NOT_PROVEN.
+# Both are expected to be RED until the known gaps are closed; they are not branch-protection requirements.
+on:
+  pull_request:
+    branches: [gh-pages]
+  # Post-merge verdict on a schedule (and on demand) instead of on push: the verdict reads live Cloudflare state,
+  # which changes without commits, and a merge never fires this workflow.
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: t1-exclusivity-strict-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  write-paths:
+    name: T1 write-path inventory STRICT (non-required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: PyYAML
+        run: python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+      - name: Unit and negative tests (fixtures; no network, no production effect)
+        run: |
+          set -euo pipefail
+          node --test tests/t1_exclusivity/t1-exclusivity.test.mjs | tee /tmp/t1x.tap
+          grep -qx "# tests 32" /tmp/t1x.tap || { echo "::error::test count changed (expected 32)"; exit 1; }
+          grep -qx "# fail 0" /tmp/t1x.tap
+      - name: Causal mutants (shared classifier)
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_t1_exclusivity.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=T1_EXCLUSIVITY_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=29 killed=29 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::a mutant survived, was inconclusive, or the count changed"; exit 1; }
+      - name: Inventory of this repository (fails on any finding)
+        run: |
+          set -uo pipefail
+          python3 scripts/deploy/worker_write_paths.py | tee /tmp/inv.txt; rc=${PIPESTATUS[0]}
+          { echo "## T1 write-path inventory (strict)"; echo; grep -v '^T1_WRITE_PATH' /tmp/inv.txt; echo; echo '```'; grep '^T1_WRITE_PATH' /tmp/inv.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          grep '^T1_WRITE_PATH_FINDING' /tmp/inv.txt | while read -r _ code path _; do echo "::error title=T1_$code::$path"; done
+          exit "$rc"
+
+  verdict:
+    name: T1 exclusivity verdict STRICT (non-required)
+    environment: gh-pages-automacao
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      T_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      T_CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+      T_CF_TOKEN_ZEVANORY: ${{ secrets.CF_TOKEN_ZEVANORY }}
+      T_CF_TOKEN_SALES: ${{ secrets.CF_TOKEN_SALES }}
+      T_CF_TOKEN_ROUTER: ${{ secrets.CF_TOKEN_ROUTER }}
+      T_CF_TOKEN_PANEL: ${{ secrets.CF_TOKEN_PANEL }}
+      T_CF_TOKEN_AUDIT: ${{ secrets.CF_TOKEN_AUDIT }}
+      T_CF_PROBE_TOKEN: ${{ secrets.CF_PROBE_TOKEN }}
+      T_CF_PROBE_TOKEN_NO_ROUTES: ${{ secrets.CF_PROBE_TOKEN_NO_ROUTES }}
+      T_CLOUDFLARE_SANDBOX_PROBE_TOKEN: ${{ secrets.CLOUDFLARE_SANDBOX_PROBE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: PyYAML
+        run: python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+      - name: Inventory (input of the verdict)
+        run: python3 scripts/deploy/worker_write_paths.py --json > /tmp/inventory.json || true
+      - name: T1_EXCLUSIVITY (read-only; fails while NOT_PROVEN)
+        run: |
+          set -uo pipefail
+          python3 scripts/deploy/t1_exclusivity_verdict.py --inventory /tmp/inventory.json | tee /tmp/verdict.txt; rc=${PIPESTATUS[0]}
+          { echo "## T1 exclusivity (strict)"; echo '```'; cat /tmp/verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          state="$(sed -n 's/^T1_EXCLUSIVITY=//p' /tmp/verdict.txt)"
+          if [ "$state" = "PROVEN" ] && [ "$rc" = "0" ]; then echo "::notice title=T1_EXCLUSIVITY::PROVEN"; exit 0; fi
+          echo "::error title=T1_EXCLUSIVITY::NOT_PROVEN ($(grep -c '^T1_EXCLUSIVITY_REASON' /tmp/verdict.txt) reasons)"
+          exit 1
