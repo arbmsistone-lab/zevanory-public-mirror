@@ -50,4 +50,5 @@ PY
 
 # 4. Final dry-run with the exact deploy flags.
 npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
+python3 scripts/deploy/write-build-info.py --bundle-dir /tmp/central-final
 echo "ZEVANORY_RESERVE_BUILD=PASS $SHA"

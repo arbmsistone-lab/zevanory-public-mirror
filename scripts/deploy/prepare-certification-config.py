@@ -53,8 +53,21 @@ def generate(source,env):
     for key in ("assets","services","ai","queues","r2_buckets"):
         if config.get(key):raise ValueError("NON_CERTIFICATION_BINDING_DENIED")
     return config
+def mp_signature_region():
+    """Roteiro secao 7: hash da regiao de assinatura MP do Worker que este config publica (scripts/deploy/
+    build_provenance.py). Quando o build-info do candidato existe (gravado antes do prepare), tem de ser o mesmo."""
+    sys.dont_write_bytecode=True
+    sys.path.insert(0,str(Path(__file__).resolve().parent))
+    import build_provenance as bp
+    region=bp.region_sha256_file()
+    info=Path("public/build-info.json")
+    if info.exists() and json.loads(info.read_text(encoding="utf-8")).get("mp_signature_region_sha256")!=region:
+        raise ValueError("MP_SIGNATURE_REGION_BUILD_INFO_MISMATCH")
+    return region
 if __name__=="__main__":
-    try: config=generate(json.loads(BASE.read_text()),os.environ)
+    try:
+        config=generate(json.loads(BASE.read_text()),os.environ)
+        config["vars"]["CERTIFICATION_MP_SIGNATURE_REGION_SHA256"]=mp_signature_region()
     except (ValueError,KeyError,FileNotFoundError) as e:sys.exit("CERTIFICATION_CONFIG_FAIL_CLOSED: "+str(e))
     Path("wrangler.certification.generated.jsonc").write_text(json.dumps(config,indent=2)+"\n")
     print("ISOLATED_WORKER_CONFIG=PASS no production storage, service, route or secrets")

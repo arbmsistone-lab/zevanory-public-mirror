@@ -1,0 +1,315 @@
+{
+ "_doc": "Expectativas por raciocínio sobre cada mutação (escritas antes de rodá-las): primary = asserção que codifica a regra mutada; secondary = falha colateral causal, com o mecanismo. Formato de scripts/ci/mutant_classifier.py load_mutant_config.",
+ "mutants": {
+  "R1 spec joiner changed": {
+   "primary": [
+    {
+     "test_pattern": "S12",
+     "assertion_pattern": "[S12.1]"
+    }
+   ]
+  },
+  "R2 python skips CRLF normalization": {
+   "primary": [
+    {
+     "test_pattern": "B2",
+     "assertion_pattern": "[B2.1]"
+    }
+   ]
+  },
+  "R3 python joins parts without separator": {
+   "primary": [
+    {
+     "test_pattern": "B1",
+     "assertion_pattern": "[B1.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "B2",
+     "assertion_pattern": "[B2.1]",
+     "justification": "B2.1 compara o hash Python (agora sem o separador) do Worker CRLF com o hash JS testado"
+    },
+    {
+     "test_pattern": "S13",
+     "assertion_pattern": "[S13.2]",
+     "justification": "write-build-info grava o hash Python, que deixa de ser o sha256 do CODIGO executado (JS)"
+    },
+    {
+     "test_pattern": "B4",
+     "assertion_pattern": "[B4.3]",
+     "justification": "o build-info gravado usa o mesmo hash Python divergente do hash JS testado"
+    },
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.1]",
+     "justification": "a guarda calcula region_after_patch e build_info em Python; B6.1 os compara com o hash JS testado"
+    },
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.1]",
+     "justification": "o readback recalcula a região testada em Python; o fixture vivo carrega o hash JS, então o caso correto vira divergência"
+    },
+    {
+     "test_pattern": "B9",
+     "assertion_pattern": "[B9.2]",
+     "justification": "a var da certificação é calculada em Python e B9.2 a compara com o hash JS testado"
+    }
+   ],
+   "broad_reason": "a função de hash Python é compartilhada por todos os produtores (build-info, guarda, readback, certificação); divergir do hash JS testado precisa quebrar cada consumidor que compara com ele"
+  },
+  "R4 python accepts duplicated anchors": {
+   "primary": [
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.1]"
+    }
+   ]
+  },
+  "W1 build-info omits the region": {
+   "primary": [
+    {
+     "test_pattern": "B4",
+     "assertion_pattern": "[B4.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "S13",
+     "assertion_pattern": "[S13.2]",
+     "justification": "S13 lê mp_signature_region_sha256 do build-info, agora ausente"
+    },
+    {
+     "test_pattern": "B5",
+     "assertion_pattern": "[B5.0]",
+     "justification": "--bundle-dir exige o campo da região e recusa o build-info incompleto (BUILD_INFO_INCOMPLETE), então o passo válido falha"
+    },
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.1]",
+     "justification": "a guarda roda write-build-info e compara o campo gravado (ausente) com a região testada"
+    }
+   ]
+  },
+  "W2 build-info hashes the whole worker": {
+   "primary": [
+    {
+     "test_pattern": "B4",
+     "assertion_pattern": "[B4.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "S13",
+     "assertion_pattern": "[S13.2]",
+     "justification": "S13 compara o campo gravado (hash do arquivo inteiro) com o hash da região executada"
+    },
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.1]",
+     "justification": "a guarda compara o campo gravado com a região testada (BUILD_INFO_REGION_DIFFERS_FROM_TESTED)"
+    }
+   ]
+  },
+  "W3 bundle hash takes the largest output file": {
+   "primary": [
+    {
+     "test_pattern": "B5",
+     "assertion_pattern": "[B5.1]"
+    }
+   ]
+  },
+  "W4 bundle with two modules accepted": {
+   "primary": [
+    {
+     "test_pattern": "B5",
+     "assertion_pattern": "[B5.3]"
+    }
+   ]
+  },
+  "W5 bundle-dir drops the other fields": {
+   "primary": [
+    {
+     "test_pattern": "B5",
+     "assertion_pattern": "[B5.2]"
+    }
+   ]
+  },
+  "G1 guard compares tested with itself": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.2]"
+    }
+   ]
+  },
+  "G2 guard hashes the pre-patch worker": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.2]"
+    }
+   ]
+  },
+  "G3 guard drops the free-identifier check": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.3]"
+    }
+   ]
+  },
+  "G4 guard drops the vacuous-comparison check": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.4]"
+    }
+   ]
+  },
+  "G5 guard ignores the recorded build-info": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.5]"
+    }
+   ]
+  },
+  "G6 deploy patch edits the signature region": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.1]"
+    }
+   ]
+  },
+  "G7 deploy patch rebinds crypto5": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.1]"
+    }
+   ]
+  },
+  "K1 readback ignores the region": {
+   "primary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.2]"
+    }
+   ]
+  },
+  "K2 readback treats a missing region as match": {
+   "primary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.3]"
+    }
+   ]
+  },
+  "K3 readback ignores the sha": {
+   "primary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.4]"
+    }
+   ]
+  },
+  "K4 readback ignores the bundle": {
+   "primary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.5]"
+    }
+   ]
+  },
+  "K5 readback uses POST": {
+   "primary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.6]"
+    }
+   ]
+  },
+  "F1 production bundle step removed": {
+   "primary": [
+    {
+     "test_pattern": "B8",
+     "assertion_pattern": "[B8.2]"
+    }
+   ]
+  },
+  "F2 production readback never fails": {
+   "primary": [
+    {
+     "test_pattern": "B8",
+     "assertion_pattern": "[B8.3]"
+    }
+   ]
+  },
+  "F3 production readback runs after failures": {
+   "primary": [
+    {
+     "test_pattern": "B8",
+     "assertion_pattern": "[B8.3]"
+    }
+   ]
+  },
+  "F4 dry-run guard removed": {
+   "primary": [
+    {
+     "test_pattern": "B8",
+     "assertion_pattern": "[B8.1]"
+    }
+   ]
+  },
+  "F5 dry-run determinism check removed": {
+   "primary": [
+    {
+     "test_pattern": "B8",
+     "assertion_pattern": "[B8.1]"
+    }
+   ]
+  },
+  "F6 reserve build bundle step removed": {
+   "primary": [
+    {
+     "test_pattern": "B8",
+     "assertion_pattern": "[B8.4]"
+    }
+   ]
+  },
+  "C1 certification worker does not echo the region": {
+   "primary": [
+    {
+     "test_pattern": "B9",
+     "assertion_pattern": "[B9.1]"
+    }
+   ]
+  },
+  "C2 certification config skips the build-info check": {
+   "primary": [
+    {
+     "test_pattern": "B9",
+     "assertion_pattern": "[B9.3]"
+    }
+   ]
+  },
+  "C3 certification config omits the region var": {
+   "primary": [
+    {
+     "test_pattern": "B9",
+     "assertion_pattern": "[B9.2]"
+    }
+   ]
+  },
+  "C4 certification workflow does not check the echo": {
+   "primary": [
+    {
+     "test_pattern": "B9",
+     "assertion_pattern": "[B9.4]"
+    }
+   ]
+  }
+ }
+}

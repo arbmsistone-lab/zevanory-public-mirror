@@ -72,7 +72,8 @@ export default {
      if(!payload||typeof payload!=="object")return reply(503,"certification_status_invalid");
      const headers=new Headers(res.headers);
      headers.set("cache-control","no-store");
-     return new Response(JSON.stringify({...payload,certification_worker_source_sha:env.CERTIFICATION_SOURCE_SHA}),{status:res.status,headers});
+     return new Response(JSON.stringify({...payload,certification_worker_source_sha:env.CERTIFICATION_SOURCE_SHA,
+       mp_signature_region_sha256:env.CERTIFICATION_MP_SIGNATURE_REGION_SHA256}),{status:res.status,headers});
    }
    return res;
  },

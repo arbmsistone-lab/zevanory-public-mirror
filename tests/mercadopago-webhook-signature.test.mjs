@@ -13,7 +13,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { readTextNormalized } from "./helpers/text.mjs";
+import { requireTool } from "./helpers/toolchain.mjs";
+import { extractMpSignatureRegion } from "./helpers/mp-signature-region.mjs";
 
 const SRC = readTextNormalized(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url));
 function trecho(inicio, fim) {
@@ -22,11 +28,10 @@ function trecho(inicio, fim) {
   assert.ok(a > 0 && b > a, `trecho não encontrado no Worker: ${inicio}`);
   return SRC.slice(a, b);
 }
-const CODIGO = [
-  trecho("var safeText2 = ", "function buildMercadoPagoPreference("),
-  trecho("function normalizeMercadoPagoWebhook(", "__name(normalizeMercadoPagoWebhook"),
-  trecho("function verifyMercadoPagoSignature(", "__name(verifyMercadoPagoSignature"),
-].join("\n");
+// Roteiro seção 7: o código executado aqui é a "região de assinatura" (tests/helpers/mp-signature-region.mjs, definição
+// em scripts/deploy/mp-signature-region.json). Seu SHA-256 é o mp_signature_region_sha256 do build-info (S12, S13).
+const REGIAO = extractMpSignatureRegion(SRC);
+const CODIGO = REGIAO.code;
 const { verify, normalize } = new Function("crypto5", "Buffer", "__name",
   `${CODIGO}\nreturn { verify: verifyMercadoPagoSignature, normalize: normalizeMercadoPagoWebhook };`)(crypto, Buffer, (f) => f);
 
@@ -126,4 +131,36 @@ test("S11 comparação em tempo constante (timingSafeEqual) sobre o HMAC SHA256 
   assert.match(fn, /`id:\$\{dataId\};request-id:\$\{requestId\};ts:\$\{ts2\};`/);
   assert.match(fn, /timingSafeEqual\(a2, b2\)/);
   assert.doesNotMatch(fn, /expected\s*===?\s*v1|v1[^;]*===?\s*expected/);
+});
+
+test("S12 a região executada é a extração literal do teste (mesmas três fatias, unidas por \\n)", () => {
+  const literal = [
+    trecho("var safeText2 = ", "function buildMercadoPagoPreference("),
+    trecho("function normalizeMercadoPagoWebhook(", "__name(normalizeMercadoPagoWebhook"),
+    trecho("function verifyMercadoPagoSignature(", "__name(verifyMercadoPagoSignature"),
+  ].join("\n");
+  assert.equal(CODIGO, literal, "[S12.1] região do helper difere da extração literal do teste");
+  assert.equal(REGIAO.sha256, crypto.createHash("sha256").update(literal, "utf8").digest("hex"), "[S12.2] sha256 da região");
+});
+
+test("S13 o hash da região testada é o mp_signature_region_sha256 que write-build-info.py grava para a mesma árvore", () => {
+  requireTool("python3");
+  const tmp = mkdtempSync(join(tmpdir(), "zev-mpsig-s13-"));
+  try {
+    for (const rel of ["scripts/deploy/write-build-info.py", "scripts/deploy/build_provenance.py",
+      "scripts/deploy/mp-signature-region.json", "worker/cloudflare-worker.recovered.mjs"]) {
+      mkdirSync(join(tmp, ...rel.split("/").slice(0, -1)), { recursive: true });
+      copyFileSync(new URL(`../${rel}`, import.meta.url), join(tmp, ...rel.split("/")));
+    }
+    mkdirSync(join(tmp, "public"));
+    const r = spawnSync("python3", ["scripts/deploy/write-build-info.py"], { cwd: tmp, encoding: "utf8", windowsHide: true,
+      env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", TARGET_RUNTIME_SHA: "0".repeat(40), GITHUB_REPOSITORY: "o/r" } });
+    assert.equal(r.status, 0, `[S13.1] write-build-info.py falhou: ${r.stderr}`);
+    const info = JSON.parse(readTextNormalized(join(tmp, "public", "build-info.json")));
+    const testado = crypto.createHash("sha256").update(CODIGO, "utf8").digest("hex");
+    assert.equal(info.mp_signature_region_sha256, testado, "[S13.2] build-info difere do hash da região testada");
+    assert.deepEqual(Object.keys(info).slice(0, 3), ["sha", "source", "repository"], "[S13.3] campos anteriores preservados");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
