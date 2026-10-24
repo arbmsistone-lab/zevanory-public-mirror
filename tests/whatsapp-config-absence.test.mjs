@@ -13,7 +13,9 @@
 // api.whatsapp.com, 99254-5413 / 992545413 / 92545413, 9234-0423 / 92340423, WHATSAPP_SALES_ENABLED=true.
 // Allow-list: none. Only this test file (seed fixtures below) and scripts/ci mutant definitions contain the
 // literals; neither is a wrangler* config nor generated output, so nothing is exempted from the scan.
-// Causal mutants: scripts/ci/mutants_whatsapp_retirement.mjs M39-M46.
+//   * every .github/workflows/*.yml: no assignment of SUPPORT_CHANNEL / ZEVANORY_WHATSAPP_* and neither number in any
+//     format (scripts/deploy/public_whatsapp_scan.py --workflows; mercadopago-exact-sha-recovery.yml used to assign).
+// Causal mutants: scripts/ci/mutants_whatsapp_retirement.mjs M39-M49.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -114,4 +116,28 @@ test("generator source: never assigns SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_* nor re
   assert.doesNotMatch(src, /setdefault\(\s*"(SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_[A-Z0-9_]*)"/);
   assert.doesNotMatch(src, /WHATSAPP_SALES_ENABLED"\]\s*=\s*"true"/);
   assert.doesNotMatch(src, /"558892340423"\s*:\s*"5588992545413"/, "public number rewrite is gone");
+});
+
+test("workflows: no .github/workflows/*.yml assigns SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_* or carries either number", () => {
+  requireTool(PYTHON);
+  const scan = (dir) => spawnSync(PYTHON, ["-B", join(ROOT, "scripts/deploy/public_whatsapp_scan.py"), "--workflows", dir], { encoding: "utf8", timeout: 60000, windowsHide: true });
+  const repo = scan(join(ROOT, ".github/workflows"));
+  assert.equal(repo.status, 0, "workflows must be free of retired WhatsApp aliases/numbers: " + String(repo.stdout) + String(repo.stderr));
+  assert.match(String(repo.stdout), /^WORKFLOWS_WHATSAPP_FREE=PASS\r?$/m);
+  // The scanner itself is not vacuous: each reintroduction shape is caught.
+  const dir = mkdtempSync(join(tmpdir(), "zev-wa-wf-"));
+  try {
+    for (const [name, text] of [["sub.yml", '      v["ZEVANORY_WHATSAPP_DISPLAY"]="x"\n'], ["env.yml", "    env:\n      SUPPORT_CHANNEL: x\n"],
+      ["num.yml", "      run: echo +55 (88) 9234 0423\n"], ["e164.yml", '      run: echo "5588992545413"\n']]) {
+      for (const f of ["sub.yml", "env.yml", "num.yml", "e164.yml"]) rmSync(join(dir, f), { force: true });
+      writeFileSync(join(dir, name), "on: push\njobs:\n  a:\n    steps:\n" + text);
+      const r = scan(dir);
+      assert.equal(r.status, 1, "scanner must flag " + name + ": " + r.stdout);
+    }
+    for (const f of ["sub.yml", "env.yml", "num.yml", "e164.yml"]) rmSync(join(dir, f), { force: true });
+    writeFileSync(join(dir, "guard.yml"), "      run: grep -nE 'SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_' x; v.pop(\"SUPPORT_CHANNEL\")\n");
+    assert.equal(scan(dir).status, 0, "guards that only name the aliases are allowed");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

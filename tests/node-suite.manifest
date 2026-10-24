@@ -60,6 +60,7 @@ tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
+tests/mutant-expectations.test.mjs 8
 tests/operational-activity.test.mjs 7
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
 tests/order7-whatsapp-commercial.test.mjs 11
@@ -102,7 +103,7 @@ tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
 tests/voice-eval.test.mjs 6
-tests/whatsapp-config-absence.test.mjs 5
+tests/whatsapp-config-absence.test.mjs 6
 tests/whatsapp-neon-store.test.mjs 6
 tests/whatsapp-retirement.test.mjs 17
 tests/youtube-daily-short.test.mjs 14

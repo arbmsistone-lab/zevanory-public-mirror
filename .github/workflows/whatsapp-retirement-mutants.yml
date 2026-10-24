@@ -6,7 +6,10 @@ name: WhatsApp retirement mutants
 # must be KILLED by an assertion in an EXPECTED test. M39-M48: a WhatsApp alias back in the generated
 # central candidate config or a tracked wrangler* config, WHATSAPP_SALES_ENABLED re-enabled, the banned account
 # left in / rewritten into the public assets, the fail-closed public scan disabled or weakened
-# (tests/whatsapp-config-absence.test.mjs). Exact count 48; any SURVIVED or INCONCLUSIVE fails.
+# (tests/whatsapp-config-absence.test.mjs); M49: a workflow assigns a WhatsApp alias again.
+# Expectations (Sol audit 128): scripts/ci/mutants_whatsapp_retirement.expected.json, PRIMARY by reasoning, SECONDARY
+# only with a written justification; KILLED needs a primary assertion failure; the runner refuses to start (exit 4) on
+# an invalid config. Exact count 49; any SURVIVED or INCONCLUSIVE fails.
 # Matrix: Linux and Windows (CRLF checkout) x Node 22 and 24. Offline, no secrets, read-only.
 on:
   pull_request:
@@ -25,6 +28,10 @@ on:
       - "tests/whatsapp-config-absence.test.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/deploy/public_whatsapp_scan.py"
+      - "scripts/ci/mutant_expectations.mjs"
+      - "scripts/ci/mutants_whatsapp_retirement.expected.json"
+      - "tests/mutant-expectations.test.mjs"
+      - ".github/workflows/mercadopago-exact-sha-recovery.yml"
       - "**/wrangler*.toml"
       - "wrangler*.toml"
       - "tests/helpers/text.mjs"
@@ -61,7 +68,14 @@ jobs:
         shell: bash
         run: |
           if grep -q $'\r' worker/whatsapp-retirement.mjs; then echo "::notice title=EOL::CRLF checkout"; else echo "::notice title=EOL::LF checkout"; fi
-      - name: Mutants (exact 48 KILLED by expected assertion)
+      - name: Meta-tests of the verdict/config rules (Sol audit 128; exactly 8)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --test tests/mutant-expectations.test.mjs < /dev/null | tr -d '\r' | tee meta.txt
+          grep -qx '# tests 8' meta.txt && grep -qx '# pass 8' meta.txt && grep -qx '# fail 0' meta.txt && grep -qx '# skipped 0' meta.txt
+          rm -f meta.txt
+      - name: Mutants (exact 49 KILLED by expected assertion)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -71,10 +85,10 @@ jobs:
           killed=$(grep -cE '^MUTANT [A-Za-z0-9_]+ KILLED by=\[".+' mut.txt || true)
           bad=$(grep -cE '^MUTANT [A-Za-z0-9_]+ (SURVIVED|INCONCLUSIVE)' mut.txt || true)
           echo "::notice title=WA_RETIREMENT_MUTANTS::killed=${killed} not_killed=${bad} rc=${rc}"
-          grep -qx 'BASELINE PASS tests=25' mut.txt || { echo "::error title=WA_RETIREMENT_BASELINE::baseline not exact (25 tests)"; exit 1; }
+          grep -qx 'BASELINE PASS tests=26' mut.txt || { echo "::error title=WA_RETIREMENT_BASELINE::baseline not exact (26 tests)"; exit 1; }
           [ "$bad" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::SURVIVED/INCONCLUSIVE present"; exit 1; }
-          [ "$killed" = "48" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::expected exactly 48 KILLED, got ${killed}"; exit 1; }
-          grep -qx 'MUTANTS PASS killed=48/48' mut.txt || { echo "::error title=WA_RETIREMENT_MUTANTS::summary line missing"; exit 1; }
+          [ "$killed" = "49" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::expected exactly 49 KILLED, got ${killed}"; exit 1; }
+          grep -qx 'MUTANTS PASS killed=49/49' mut.txt || { echo "::error title=WA_RETIREMENT_MUTANTS::summary line missing"; exit 1; }
           [ "$rc" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::script exit ${rc}"; exit 1; }
           git diff --exit-code -- worker tests scripts .github wrangler.sales.toml || { echo "::error title=WA_RETIREMENT_RESTORE::source not restored"; exit 1; }
           test -z "$(git status --porcelain --untracked-files=all -- scripts worker tests .github)" || { echo "::error title=WA_RETIREMENT_RESTORE::stray files"; exit 1; }
