@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # AVAL Sol (portabilidade, #873): os testes que EXECUTAM os passos bash do workflow com curl/npx falsos são
 # Linux-only por natureza: os falsos são scripts com shebang POSIX, dependem de bash/jq/node como no runner e o
-# workflow real só roda em ubuntu-latest. No Linux eles rodam sempre (o mp-rotation-contract exige 71 e zero
+# workflow real só roda em ubuntu-latest. No Linux eles rodam sempre (o mp-rotation-contract exige 73 e zero
 # pulados); fora do Linux aparecem como pulados com esta razão explícita, nunca como verde silencioso.
 LINUX_ONLY = unittest.skipUnless(
     sys.platform.startswith("linux"),
@@ -303,10 +303,60 @@ open(out, 'w').write('{}'); print('404', end='')
         rc, out, _ = self._run_step(needle, ok, {})
         self.assertEqual(rc, 0, out)
 
-    def test_single_dispatch_on_gh_pages_and_no_concurrency(self):
+    def test_single_dispatch_on_gh_pages_in_the_deploy_zevanory_queue(self):
+        # Autorização escrita do proprietário: "AUTORIZO SERIALIZAR mercadopago-production-token-rotate.yml NO GRUPO
+        # deploy-zevanory". Só a concorrência muda; o guarda de execução única fica igual.
         doc = yaml.safe_load(self.text)
-        self.assertEqual(doc["concurrency"], {"group": "mercadopago-production-token-rotate", "cancel-in-progress": False})
+        self.assertEqual(doc["concurrency"], {"group": "deploy-zevanory", "cancel-in-progress": False, "queue": "max"})
         self.assertEqual(self.job["if"], "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1")
+
+    def test_concurrency_is_declared_like_every_other_deploy_zevanory_publisher(self):
+        # Mesmo bloco, no mesmo nível (workflow), que os outros 10 publicadores do zevanory em ops/publishers.json.
+        reg = json.loads((ROOT / "ops/publishers.json").read_text(encoding="utf-8"))["services"]["zevanory"]
+        members = [reg["canonical"], *reg["config_publishers"]]
+        self.assertIn(WORKFLOW.name, members)
+        others = [m for m in members if m != WORKFLOW.name]
+        self.assertEqual(len(others), 10)
+        mine = yaml.safe_load(self.text)["concurrency"]
+        for m in others:
+            theirs = yaml.safe_load((ROOT / ".github/workflows" / m).read_text(encoding="utf-8")).get("concurrency")
+            self.assertEqual(theirs, mine, m)
+        # Nenhuma concorrência de job: uma só vaga, que cobre a gravação E o retorno automático.
+        self.assertNotIn("concurrency", self.job)
+        # queue: max com cancel-in-progress: true é inválido no GitHub; e cancelar um run em andamento
+        # poderia separar o secret put do retorno automático.
+        self.assertIs(mine["cancel-in-progress"], False)
+
+    def test_queue_wait_cannot_break_a_time_window(self):
+        # Recuperabilidade (Sol 204): esperar na fila não pode vencer nenhum prazo. Todo prazo é medido DENTRO do job,
+        # depois de ele ganhar a vaga; nada calculado no dispatch envelhece na fila.
+        doc = yaml.safe_load(self.text)
+        on = doc.get("on", doc.get(True))
+        self.assertEqual(sorted(on["workflow_dispatch"]["inputs"]), ["mode", "rollback_point", "target_version"],
+                         "nenhuma entrada com horário/prazo")
+        self.assertEqual(self.job["timeout-minutes"], 100, "o timeout conta a execução, não a espera na fila")
+        put = step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")
+        wait_i = step_index(self.steps, "deadline=$((SECONDS")
+        back = step_index(self.steps, "wrangler@4.143.0 rollback")
+        self.assertLess(put, wait_i)
+        self.assertLess(wait_i, back)
+        # Espera do preflight: relógio do próprio passo (SECONDS) e referência gravada no mesmo job.
+        wait = self.steps[wait_i]["run"]
+        self.assertIn("deadline=$((SECONDS + 4800))", wait)
+        self.assertIn('PREFLIGHT_AFTER="$PREFLIGHT_AFTER"', wait)
+        self.assertIn('echo "PREFLIGHT_AFTER=$now" >> "$GITHUB_ENV"', self.steps[put]["run"])
+        # Frescor do check-only: medido na hora do passo (Date.now()), não no dispatch.
+        self.assertIn("Date.now()-t", self.steps[step_index(self.steps, "CHECK_ONLY=PASS")]["run"])
+        # Token MP e versão ativa são lidos/validados no próprio run, antes da gravação.
+        self.assertLess(step_index(self.steps, "api.mercadopago.com/users/me"), put)
+        self.assertLess(step_index(self.steps, "MP_LATEST_VERSION_NOT_DEPLOYED_10215"), put)
+        # Retorno automático: mesmo job, sem passo de espera entre a falha e ele.
+        self.assertEqual(self.steps[back]["if"], "failure() && env.WRITE_ATTEMPTED_AT != '' && env.PREV_VERSION_ID != ''")
+        # recover com entradas que envelheceram na fila: o script recusa ANTES de implantar (falha fechada).
+        rec = (ROOT / "scripts/ops/worker-version-recover.sh").read_text(encoding="utf-8")
+        deploy_at = rec.index("versions deploy")
+        for refusal in ("RECOVER_TARGET_NOT_LATEST", "RECOVER_ACTIVE_NOT_ROLLBACK_POINT"):
+            self.assertLess(rec.index(refusal), deploy_at, refusal)
 
     def test_10215_precondition_runs_before_the_write(self):
         put = step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")
