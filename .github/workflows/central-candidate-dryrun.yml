@@ -89,6 +89,18 @@ jobs:
         # central-production-deploy.yml deploys WITHOUT --keep-vars, so the Worker ends with exactly the vars of
         # wrangler.central-fix.jsonc. Bundle that exact set and inspect it: WHATSAPP_SALES_ENABLED must be "false"
         # and no SUPPORT_CHANNEL / ZEVANORY_WHATSAPP_* binding may exist (top level or compact runtime config).
+        # The three retired WhatsApp Cloud API settings the base ships in ZEVANORY_RUNTIME_CONFIG
+        # (WHATSAPP_PHONE_NUMBER_ID, META_WHATSAPP_IDENTITY_VERIFIED, WHATSAPP_BRAND_IDENTITY_VERIFIED) must be absent;
+        # META_GRAPH_VERSION and every META_/FACEBOOK_/INSTAGRAM_ key of the base must survive. META_VERIFY_TOKEN (shared
+        # Instagram/Facebook verify token) is a Worker SECRET, not a var of the pinned base, so the real candidate cannot
+        # show it; the pinned base seeded with a placeholder META_VERIFY_TOKEN (vars + runtime config) goes through the
+        # same generator and the token must come out PRESENT (no over-stripping), bundled again without --keep-vars.
+        env:
+          PUBLIC_OWNER_ACCOUNT_ID: "00000000000000000000000000000000"
+          TARGET_RUNTIME_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          ZEVANORY_LAUNCH_AUTHORIZATION: ""
+          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ""
+          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ""
         run: |
           set -euo pipefail
           npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun-nokeep" 2>&1 | tee bindings.txt
@@ -107,6 +119,57 @@ jobs:
           assert not bad, ("retired WhatsApp alias in final vars", bad)
           print("FINAL_BINDINGS_WHATSAPP=PASS WHATSAPP_SALES_ENABLED=false aliases=none")
           PY
+          retired='WHATSAPP_PHONE_NUMBER_ID|META_WHATSAPP_IDENTITY_VERIFIED|WHATSAPP_BRAND_IDENTITY_VERIFIED'
+          if grep -nE "$retired" bindings.txt wrangler.central-fix.jsonc; then echo "::error title=FINAL_BINDINGS::retired WhatsApp Cloud API setting in the final binding set"; exit 1; fi
+          git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > "$RUNNER_TEMP/base-83620c6.jsonc"
+          python3 - "$RUNNER_TEMP/base-83620c6.jsonc" <<'PY'
+          import json, re, sys
+          RETIRED = ("WHATSAPP_PHONE_NUMBER_ID", "META_WHATSAPP_IDENTITY_VERIFIED", "WHATSAPP_BRAND_IDENTITY_VERIFIED")
+          KEEP = re.compile(r"^(META_|FACEBOOK_|INSTAGRAM_)")
+          base = json.load(open(sys.argv[1]))["vars"]; brt = base.get("ZEVANORY_RUNTIME_CONFIG") or {}
+          v = json.load(open("wrangler.central-fix.jsonc"))["vars"]; rt = v.get("ZEVANORY_RUNTIME_CONFIG") or {}
+          assert all(k in brt for k in RETIRED), ("the pinned base no longer carries the retired settings; revisit this check", [k for k in RETIRED if k not in brt])
+          leaked = [k for bag in (v, rt) for k in bag if k in RETIRED]
+          assert not leaked, ("retired WhatsApp Cloud API setting in final vars", leaked)
+          keep = [(n, k, b[k]) for n, b in (("vars", base), ("runtime", brt)) for k in b if KEEP.match(k) and k not in RETIRED]
+          assert any(k == "META_GRAPH_VERSION" for _, k, _ in keep), "META_GRAPH_VERSION expected in the base"
+          lost = [n + ":" + k for n, k, val in keep if (v if n == "vars" else rt).get(k) != val]
+          assert not lost, ("over-stripped META_/FACEBOOK_/INSTAGRAM_ keys", lost)
+          print("FINAL_BINDINGS_RETIRED_META=PASS absent=" + ",".join(RETIRED) + " kept=" + ",".join(n + ":" + k for n, k, _ in keep))
+          PY
+          seed="$RUNNER_TEMP/seeded-verify-token"
+          rm -rf "$seed" && mkdir -p "$seed"
+          git archive HEAD worker | tar -x -C "$seed"
+          git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x -C "$seed"
+          python3 - "$RUNNER_TEMP/base-83620c6.jsonc" "$seed/wrangler.central-fix.jsonc" <<'PY'
+          import json, sys
+          c = json.load(open(sys.argv[1]))
+          c["vars"]["META_VERIFY_TOKEN"] = "dryrun-placeholder-verify-token"
+          c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG", {})["META_VERIFY_TOKEN"] = "dryrun-placeholder-verify-token"
+          open(sys.argv[2], "w").write(json.dumps(c, indent=2) + "\n")
+          PY
+          (cd "$seed" && python3 -B "$GITHUB_WORKSPACE/scripts/deploy/prepare-central-candidate.py" >/dev/null)
+          python3 - "$seed/wrangler.central-fix.jsonc" <<'PY'
+          import json, sys
+          v = json.load(open(sys.argv[1]))["vars"]; rt = v.get("ZEVANORY_RUNTIME_CONFIG") or {}
+          assert v.get("META_VERIFY_TOKEN") == "dryrun-placeholder-verify-token", "META_VERIFY_TOKEN stripped from vars"
+          assert rt.get("META_VERIFY_TOKEN") == "dryrun-placeholder-verify-token", "META_VERIFY_TOKEN stripped from ZEVANORY_RUNTIME_CONFIG"
+          assert not [k for bag in (v, rt) for k in bag if k in ("WHATSAPP_PHONE_NUMBER_ID", "META_WHATSAPP_IDENTITY_VERIFIED", "WHATSAPP_BRAND_IDENTITY_VERIFIED")]
+          PY
+          # Same candidate config + seeded token, bundled WITHOUT --keep-vars: the token must be in the final binding set.
+          python3 - "$seed/wrangler.central-fix.jsonc" <<'PY'
+          import json, sys
+          s = json.load(open(sys.argv[1]))["vars"]
+          c = json.load(open("wrangler.central-fix.jsonc"))
+          c["vars"]["META_VERIFY_TOKEN"] = s["META_VERIFY_TOKEN"]
+          c["vars"]["ZEVANORY_RUNTIME_CONFIG"]["META_VERIFY_TOKEN"] = s["ZEVANORY_RUNTIME_CONFIG"]["META_VERIFY_TOKEN"]
+          open("wrangler.verify-token-probe.jsonc", "w").write(json.dumps(c, indent=2) + "\n")
+          PY
+          npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.verify-token-probe.jsonc --outdir "$RUNNER_TEMP/central-dryrun-verify" 2>&1 | tee bindings-verify.txt
+          grep -nE '(^|[^A-Z_])META_VERIFY_TOKEN([^A-Z_]|$)' bindings-verify.txt || { echo "::error title=FINAL_BINDINGS::META_VERIFY_TOKEN absent from the final binding set (over-stripping)"; exit 1; }
+          if grep -nE "$retired" bindings-verify.txt; then echo "::error title=FINAL_BINDINGS::retired WhatsApp Cloud API setting in the probe binding set"; exit 1; fi
+          rm -f wrangler.verify-token-probe.jsonc
+          echo "FINAL_BINDINGS_META_VERIFY_TOKEN=PASS present (seeded pinned base, generator + dry-run without --keep-vars)"
       - name: Evidence of the bundled candidate (fails if nothing was built)
         run: |
           set -euo pipefail

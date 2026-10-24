@@ -1,7 +1,7 @@
 # WhatsApp retirement mutants — causality table
 
 Runner: `scripts/ci/mutants_whatsapp_retirement.mjs` (suites `tests/whatsapp-retirement.test.mjs`,
-`tests/meta-social-manual-only.test.mjs`, `tests/whatsapp-config-absence.test.mjs`; baseline 26 tests).
+`tests/meta-social-manual-only.test.mjs`, `tests/whatsapp-config-absence.test.mjs`; baseline 27 tests).
 Expectations: `scripts/ci/mutants_whatsapp_retirement.expected.json`. Config validation (`load_mutant_config`) and
 verdicts (`classify` CLI) come from the shared classifier `scripts/ci/mutant_classifier.py` (PR #901, merged); the
 runner writes each run's TAP to a file and calls the CLI.
@@ -72,9 +72,11 @@ synthetic `+55 (88) 9234 0423` workflow. That is recorded as a justified seconda
 | M41 | generator emits ZEVANORY_WHATSAPP_DISPLAY | `generated candidate config:` / `WR-CFG-ALIAS`<br>`generator source:` / `WR-SRC-ALIAS` | — | — |
 | M42 | wrangler.toml regains SUPPORT_CHANNEL | `wrangler configs:` / `WR-TOML` | — | — |
 | M43 | WHATSAPP_SALES_ENABLED back to "true" | `generated candidate config:` / `WR-CFG-SALES`<br>`generator source:` / `WR-SRC-SALES` | — | — |
-| M44 | wa.me injector not neutralized | `generated public assets:` / `re:WR-PUB-NEUTRAL[\s\S]*whatsapp-contact\.js:wa\.me` | `generated candidate config:`: the leftover wa.me makes the generator abort fail-closed, so the config test's exit-status assertion fails | — |
+| M44 | wa.me injector not neutralized | `generated public assets:` / `re:WR-PUB-NEUTRAL[\s\S]*whatsapp-contact\.js:wa\.me` | `generated candidate config:`: the leftover wa.me makes the generator abort fail-closed, so the config test's exit-status assertion fails<br>`no over-stripping:`: the leftover wa.me makes the generator abort fail-closed, so the over-stripping guard's exit-status assertion fails before it can inspect the kept keys | — |
 | M45 | public fail-closed scan disabled | `fail-closed: any leftover` / `re:WR-FAILCLOSED\] generator must fail closed on: <a href=\"https://wa\.me/` | — | — |
 | M46 | 9234-0423 number pattern weakened | `fail-closed: any leftover` / `re:WR-FAILCLOSED\] generator must fail closed on: Atendimento \(88\) 9234 0423` | `workflows:`: the --workflows scan reuses PUBLIC_WHATSAPP_PATTERNS, so the weakened 9234-0423 pattern also stops flagging the synthetic '+55 (88) 9234 0423' workflow | — |
-| M47 | JSON-LD telephone kept | `generated public assets:` / `re:WR-PUB-NEUTRAL[\s\S]*index\.html:number 9234-0423` | `generated candidate config:`: the leftover telephone makes the generator abort fail-closed, so the config test's exit-status assertion fails | — |
+| M47 | JSON-LD telephone kept | `generated public assets:` / `re:WR-PUB-NEUTRAL[\s\S]*index\.html:number 9234-0423` | `generated candidate config:`: the leftover telephone makes the generator abort fail-closed, so the config test's exit-status assertion fails<br>`no over-stripping:`: the leftover telephone makes the generator abort fail-closed, so the over-stripping guard's exit-status assertion fails before it can inspect the kept keys | — |
 | M48 | public number rewrite map back | `generator source:` / `WR-SRC-REWRITE` | — | — |
 | M49 | a workflow assigns ZEVANORY_WHATSAPP_DISPLAY again | `workflows:` / `WR-WF-ASSIGN` | — | — |
+| M50 | generator ships WHATSAPP_PHONE_NUMBER_ID again (dropped from RETIRED_WHATSAPP_META_KEYS) | `generated candidate config:` / `WR-CFG-META` | — | — |
+| M51 | strip over-reaches META_VERIFY_TOKEN (shared Instagram/Facebook verify token) | `no over-stripping:` / `WR-CFG-KEEP` | — | — |
