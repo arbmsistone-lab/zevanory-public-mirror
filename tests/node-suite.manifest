@@ -92,6 +92,10 @@ tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
 tests/short-crosspost.test.mjs 8
 tests/signed-audit-probe.test.mjs 2
+tests/site-chat-eval.test.mjs 2
+tests/site-chat-no-synthetic-traffic.test.mjs 5
+tests/site-chat-widget.test.mjs 8
+tests/site-chat.test.mjs 18
 tests/start-guide-touch-target.test.mjs 3
 tests/support-drain-scheduled.test.mjs 2
 tests/support-email-forward.test.mjs 37

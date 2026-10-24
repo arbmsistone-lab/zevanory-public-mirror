@@ -312,6 +312,46 @@ async function comprarRoute(request,env,ctx,match){
   }
 }
 
+// Chat do site "Fale com a ZEVANORY" (worker/site-chat.mjs, no Worker central). Desligado por padrão:
+// sem SITE_CHAT_ENABLED="true" neste Worker as rotas /api/chat* respondem 503 aqui mesmo (sem chamar o
+// central) e nenhuma página recebe o widget. Ligado: o widget (CSS/JS próprios, sem script de terceiros,
+// sem inline, compatível com a CSP) só é anexado às páginas abaixo e só abre por ação da pessoa.
+export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto","termos","privacidade","reembolso"]));
+export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";
+export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
+export function injectSiteChatHtml(html){
+  let out=String(html);
+  if(out.includes('src="/site-chat.js"'))return out;
+  out=out.replace("</head>",'<link rel="stylesheet" href="/site-chat.css"></head>');
+  return out.replace("</body>",'<script src="/site-chat.js" defer></script></body>');
+}
+const CHAT_ROUTES=new Set(["/api/chat","/api/chat/session","/api/chat/handoff","/api/chat/status"]);
+const CHAT_FALLBACK={contact_email:"suporte@zevanory.api.br",refund_form:"https://zevanory.api.br/pedir-reembolso",delivery_form:"https://zevanory.api.br/entrega/reenviar"};
+export async function handleSiteChatProxy(request,env){
+  const url=new URL(request.url);
+  const headers=applySecurityHeaders(new Headers({"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}));
+  const reply=(status,body)=>new Response(JSON.stringify(body),{status,headers});
+  if(!siteChatEnabled(env)||!env?.CORE||typeof env.CORE.fetch!=="function")return reply(503,{error:"site_chat_disabled",fallback:CHAT_FALLBACK});
+  const isStatus=url.pathname==="/api/chat/status";
+  if(isStatus?request.method!=="GET":request.method!=="POST"){headers.set("allow",isStatus?"GET":"POST");return reply(405,{error:"method_not_allowed"});}
+  if(isAutomationUA(request.headers.get("user-agent")||""))return reply(403,{error:"automation_not_allowed"});
+  let body;
+  if(!isStatus){
+    // Mesma origem (o widget é servido daqui): bloqueia POST de outros sites.
+    if(request.headers.get("origin")!==url.origin)return reply(403,{error:"origin_not_allowed"});
+    if(!/^application\/json\b/i.test(request.headers.get("content-type")||""))return reply(415,{error:"json_required"});
+    if(Number(request.headers.get("content-length")||0)>4096)return reply(413,{error:"too_large"});
+    body=await request.text();
+    if(body.length>4096)return reply(413,{error:"too_large"});
+  }
+  try{
+    const res=await env.CORE.fetch("https://chat.internal"+url.pathname,{method:request.method,headers:{"content-type":"application/json","x-zev-client-ip":request.headers.get("cf-connecting-ip")||""},body});
+    const text=await res.text();
+    if(res.headers.get("retry-after"))headers.set("retry-after",res.headers.get("retry-after"));
+    return new Response(text,{status:res.status,headers});
+  }catch{return reply(503,{error:"site_chat_unavailable",fallback:CHAT_FALLBACK});}
+}
+
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
   const comprar=comprarMatch(url.pathname);
@@ -341,6 +381,7 @@ export default{async fetch(request,env,ctx){
     }),{status:200,headers:applySecurityHeaders(new Headers({"content-type":"application/json; charset=utf-8","cache-control":"no-store"}))});
   }
   if(retired.has(url.pathname)) return new Response("Produto retirado da superficie publica ZEVANORY.",{status:410,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"no-store"}))});
+  if(CHAT_ROUTES.has(url.pathname)) return handleSiteChatProxy(request,env);
   if(url.pathname.startsWith("/api/")||url.pathname.startsWith("/admin")) return new Response("Not found",{status:404,headers:applySecurityHeaders(new Headers())});
   if((url.pathname==="/solucoes"||url.pathname==="/solucoes/")&&(request.method==="GET"||request.method==="HEAD")&&url.searchParams.has("pagamento")){
     const back=paymentReturnPage(url.searchParams.get("pagamento"));
@@ -352,6 +393,8 @@ export default{async fetch(request,env,ctx){
   let response=await env.ASSETS.fetch(new Request(url,request));
   if(response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)&&await salesOpenForPages(env))
     {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page),{status:200,statusText:response.statusText,headers:h});}
+  if(response.status===200&&request.method==="GET"&&shouldInjectSiteChat(page,env))
+    {const h=new Headers(response.headers);h.delete("content-length");response=new Response(injectSiteChatHtml(await response.text()),{status:200,statusText:response.statusText,headers:h});}
   if(response.status===200&&page) countView(request,env,ctx,page);
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");
