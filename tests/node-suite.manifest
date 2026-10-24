@@ -78,6 +78,7 @@ tests/politica-honrar-pagamento.test.mjs 2
 tests/post-sale.test.mjs 6
 tests/product-consistency.test.mjs 3
 tests/production-activity-sync.test.mjs 3
+tests/production-order-lookup.test.mjs 7
 tests/production-payment-credential-isolation.test.mjs 7
 tests/production-pilot-removal.test.mjs 7
 tests/production-secret-names.test.mjs 7

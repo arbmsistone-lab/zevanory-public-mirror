@@ -150,7 +150,8 @@ const wrapped = {
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
-      if (audit && audit.status === 200) {
+      // order-lookup (conciliação somente leitura) devolve só o resultado do SELECT: nada é persistido nem anexado.
+      if (audit && audit.status === 200 && url.pathname !== "/api/internal/audit/order-lookup") {
         // Authenticated read-only audit already computed the provider-verified classification:
         // persist the derived snapshot (fail-closed validation) and expose its diagnostic state.
         try {
