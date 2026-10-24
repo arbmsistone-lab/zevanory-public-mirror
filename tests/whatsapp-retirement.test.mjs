@@ -14,7 +14,8 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import vm from "node:vm";
 import { register } from "node:module";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { execFileSync } from "node:child_process";
 import * as R from "../worker/whatsapp-retirement.mjs";
 import { projectLiveStatus } from "../worker/live-runtime-status.mjs";
@@ -23,7 +24,7 @@ import brokerWorker from "../worker/whatsapp-credential-broker.mjs";
 import { handleWhatsappOnboarding } from "../worker/whatsapp-onboarding.mjs";
 
 const ROOT = new URL("../", import.meta.url);
-const read = (p) => readFileSync(new URL(p, ROOT), "utf8");
+const read = (p) => readTextNormalized(new URL(p, ROOT));
 const BUNDLE = read("worker/cloudflare-worker.recovered.mjs");
 const WA_TEXT = "quanto custa o combo retirement-probe";
 const WA_FROM = "5511987650000";
@@ -360,7 +361,7 @@ export function forgedWebhookGenerators(files, readFile) {
 test("static: no forged/self-signed Meta webhook generator anywhere outside tests/", () => {
   const files = repoFiles();
   assert.ok(files.length > 100 && files.includes("worker/cloudflare-worker.recovered.mjs"), "repository listing incomplete");
-  assert.deepEqual(forgedWebhookGenerators(files, (f) => readFileSync(new URL(f, ROOT), "utf8")), []);
+  assert.deepEqual(forgedWebhookGenerators(files, (f) => readTextNormalized(new URL(f, ROOT))), []);
   // The detector itself must catch the historical generators (recorded verbatim shapes).
   const legacyProof = 'const payload={object:"whatsapp_business_account",entry:[{id:wabaId,changes:[{field:"messages",value:{messages:[message]}}]}]};const key=await crypto.subtle.importKey("raw",encoder.encode(record.app_secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const signature="sha256="+hex(await crypto.subtle.sign("HMAC",key,encoder.encode(body)));return responseJson({signed_body:body,signature});';
   const legacyWorkflow = "const r=await fetch(base+'/api/webhooks/meta?voice_proof=1',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':ack.signature},body:ack.signed_body});";
