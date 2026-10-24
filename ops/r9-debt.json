@@ -65,17 +65,41 @@
       "github_secret_exception": false,
       "deploy_config": false,
       "owner": "proprietário (Renan): pendente de autorização (ops/publishers.json pending_owner_authorization)",
-      "reason": "financial-e2e-stripe.yml exige sk_test_ e grava STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET de TESTE no Worker de PRODUÇÃO (secret bulk --name zevanory) e usa o piloto em produção; Stripe não é provedor da ZEVANORY (data/retired-workflows.json).",
-      "planned_pr": "R9-B3: aposentar financial-e2e-stripe.yml (if: false, registrar aqui) e remover os segredos Stripe de teste do Worker de produção com readback",
+      "reason": "Até o #910 (4b73b1ee), financial-e2e-stripe.yml gravava STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET de TESTE (sk_test_) no Worker de PRODUÇÃO (secret bulk --name zevanory). O #910 passou a gravar só em zevanory-certification, mas a presença de segredos Stripe de teste deixados no Worker de produção por runs anteriores não foi lida, e o job ainda roda no Environment producao-critica.",
+      "planned_pr": "R9-B3: readback de nomes STRIPE_* no zevanory (remoção dirigida com allowlist se presentes) e mover financial-e2e-stripe.yml para sandbox-financial-approved",
       "status": "OPEN"
     }
   ],
   "retired_workflows": [
-    {"file": "financial-e2e-closure.yml", "reason": "ciclo sandbox contra o Worker de produção; caía para o token de produção", "since": "2026-10-24"},
-    {"file": "mercadopago-buyer-diagnostic.yml", "reason": "substituído por sandbox-identity-attest.yml", "since": "2026-10-24"},
-    {"file": "mercadopago-checkout-pro-manual-payment.yml", "reason": "pedido piloto sandbox no Worker de produção", "since": "2026-10-24"},
-    {"file": "mercadopago-exact-sha-recovery.yml", "reason": "usava credenciais sandbox em nomes de produção", "since": "2026-10-19"},
-    {"file": "mercadopago-post-payment-verification.yml", "reason": "pagamento sandbox verificado no Worker de produção", "since": "2026-10-24"},
-    {"file": "sandbox-worker-secret-audit.yml", "reason": "origem do run 37365806405 (secret put de MERCADOPAGO_TEST_* no zevanory)", "since": "2026-10-24"}
+    {
+      "file": "financial-e2e-closure.yml",
+      "reason": "ciclo sandbox contra o Worker de produção; caía para o token de produção",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "mercadopago-buyer-diagnostic.yml",
+      "reason": "substituído por sandbox-identity-attest.yml",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "mercadopago-checkout-pro-manual-payment.yml",
+      "reason": "pedido piloto sandbox no Worker de produção",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "mercadopago-exact-sha-recovery.yml",
+      "reason": "usava credenciais sandbox em nomes de produção",
+      "since": "2026-10-19"
+    },
+    {
+      "file": "mercadopago-post-payment-verification.yml",
+      "reason": "pagamento sandbox verificado no Worker de produção",
+      "since": "2026-10-24"
+    },
+    {
+      "file": "sandbox-worker-secret-audit.yml",
+      "reason": "origem do run 37365806405 (secret put de MERCADOPAGO_TEST_* no zevanory)",
+      "since": "2026-10-24"
+    }
   ]
 }
