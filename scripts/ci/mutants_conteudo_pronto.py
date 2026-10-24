@@ -4,24 +4,27 @@
 Cada mutante altera UMA CÓPIA temporária da árvore (oferta, contrato, gerador, páginas-fonte ou geradas), roda
 tests/conteudo-pronto-roteiros.test.mjs e tests/content-service.test.mjs contra a cópia e classifica o resultado
 com o classificador estrito scripts/ci/mutant_tap.py (auditoria Sol #898; meta-testes em scripts/ci/test_mutant_tap.py):
-  KILLED       rc == 1, resumo TAP completo e coerente com a baseline, toda falha em teste da allowlist do mutante
-               (ALLOW) e o rótulo esperado DENTRO do campo `error` de um bloco `not ok`;
+  KILLED       rc == 1, resumo TAP completo e coerente com a baseline, ao menos uma falha numa asserção PRIMARY do
+               mapa causal (scripts/ci/mutants_conteudo_pronto_causality.py, por raciocínio) e toda outra falha em
+               PRIMARY ou em SECONDARY justificada;
   SURVIVED     rc == 0 e resumo TAP completo igual à baseline;
   INCONCLUSIVE qualquer outra coisa (queda, erro de sintaxe/módulo, tempo esgotado, contagem incompleta, falha fora
                da allowlist, rótulo fora do bloco `not ok`, trecho não encontrado). Repetido uma vez; persistindo, o
                job falha.
 Texto lido em UTF-8 com CRLF normalizado para LF; arquivo mutado gravado em UTF-8/LF; reporter TAP explícito.
 Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 1 sobrevivente; 3 inconclusivo;
-2 baseline falhou. Uso: python3 scripts/ci/mutants_conteudo_pronto.py [raiz-do-repo]
+2 baseline falhou; 4 mapa causal inválido (o runner não começa). Uso: python3 scripts/ci/mutants_conteudo_pronto.py [raiz-do-repo]
 """
 import os, re, shutil, subprocess, sys, tempfile
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mutant_tap  # noqa: E402  (classificador estrito compartilhável; meta-testes em scripts/ci/test_mutant_tap.py)
+from mutants_conteudo_pronto_causality import CAUSALITY  # noqa: E402  (mapa causal por raciocínio; auditoria Sol 128)
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
+_ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+REPO = Path(_ARGS[0] if _ARGS else Path(__file__).resolve().parents[2])
 TESTS = [Path("tests", "conteudo-pronto-roteiros.test.mjs"), Path("tests", "content-service.test.mjs")]
 J = "data/politica-unica.json"
 CS = "worker/content-service.mjs"
@@ -194,91 +197,6 @@ M = {
         "  if (false) {\n    await applyRegenDelivered(", "[regen-converge] promovido na retomada"),
 }
 
-# Testes que cada mutante pode derrubar (ids do classificador: prefixo "(g1)" ou, sem prefixo, o nome inteiro).
-# Levantados executando cada mutante e revisados um a um: todos exercitam o trecho mutado. Falha fora daqui = INCONCLUSIVE.
-FLOW = "full automatic flow: purchase -> briefing email -> form -> AI package -> delivery email -> renewal regenerates -> cancel stops"
-ALLOW = {
-    "M01": ("(a)",),
-    "M02": ("(b)",),
-    "M03": ("(b)",),
-    "M04": ("(b)",),
-    "M05": ("(b)",),
-    "M06": ("(a)", "(b)",),
-    "M07": ("(a)",),
-    "M08": ("(a)", "(c)",),
-    "M09": ("(c)", "(d)",),
-    "M10": ("(c)",),
-    "M11": ("(c2)",),
-    "M12": ("(c2)", "(f3)",),
-    "M13": ("(c2)",),
-    "M14": ("(c)",),
-    "M15": ("(c)",),
-    "M16": ("(d)", "(f2)",),
-    "M17": ("(d)", "(f2)",),
-    "M18": (FLOW,),
-    "M19": ("(d)", "(f2)",),
-    "M20": ("(d)",),
-    "M21": ("(c)", "(d)",),
-    "M22": ("(b)",),
-    "M23": ("(b)", "(e)",),
-    "M24": ("(b)",),
-    "M25": ("(b)", "(e)",),
-    "M26": ("(b)", "(e)",),
-    "M27": ("(c)",),
-    "M28": ("(c)",),
-    "M29": ("(d)", "(f2)",),
-    "M30": ("(d)",),
-    "M31": ("(e)",),
-    "M32": ("(e)",),
-    "M33": ("(e)",),
-    "M34": ("(e)",),
-    "M35": ("(b)", "(e)",),
-    "M36": ("(f)", "(f2)", "(g1)", "(g6)",),
-    "M37": ("(f)",),
-    "M38": ("(f)",),
-    "M39": ("(f)",),
-    "M40": ("(f)", "(f3)", "(g6)",),
-    "M41": ("(f)", "(f3)", "(g6)",),
-    "M42": ("(a)", "(f)", "(f3)", "(g6)",),
-    "M43": ("(f2)", "(g1)", "(g2)", "(g3)", "(g4)", "(g5)", "(g6)",),
-    "M44": ("(f2)",),
-    "M45": ("(f)",),
-    "M46": ("(f)", "(g6)",),
-    "M47": ("(f3)",),
-    "M48": ("(f)", "(g1)", "(g6)",),
-    "M49": ("(f2)", "(g1)", "(g2)", "(g3)", "(g6)",),
-    "M50": ("(f3)",),
-    "M51": ("(g1)", "(g2)", "(g5)",),
-    "M52": ("(f2)", "(g1)", "(g2)", "(g3)", "(g5)",),
-    "M53": ("(g1)", "(g3)",),
-    "M54": ("(g1)", "(g3)",),
-    "M55": ("(g1)", "(g5)",),
-    "M56": ("(g2)",),
-    "M57": ("(g2)", "(g5)",),
-    "M58": ("(g2)",),
-    "M59": ("(g3)",),
-    "M60": ("(f2)", "(g2)", "(g5)",),
-    "M61": ("(f2)",),
-    "M62": ("(g3)",),
-    "M63": ("(f2)", "(g4)", "(g6)",),
-    "M64": ("(f2)", "(g1)", "(g2)", "(g3)", "(g4)", "(g5)",),
-    "M65": ("(g5)",),
-    "M66": ("(g5)",),
-    "M67": ("(g2)",),
-    "M68": ("(g2)",),
-    "M69": ("(g4)",),
-    "M70": ("(g4)",),
-    "M71": ("(f2)", "(g7)",),
-    "M72": ("(g1)", "(g5)", "(g7)",),
-    "M73": ("(g3)",),
-    "M74": ("(f2)", "(g1)", "(g2)", "(g3)", "(g4)", "(g6)",),
-    "M75": ("(g6)",),
-    "M76": ("(g6)",),
-    "M77": ("(g6)",),
-    "M78": ("(g1)",),
-    "M79": ("(g3)",),
-    "M80": ("(f2)", "(g2)", "(g3)", "(g4)", "(g6)", "(g7)",),
-}
 
 
 def read_text_normalized(path):
@@ -313,9 +231,7 @@ def summary(out):
 
 
 def attempt(name, fname, old, new, expect, total):
-    allowed = set(ALLOW.get(name.split()[0], ()))
-    if not allowed:
-        return "INCONCLUSIVE", "mutante sem allowlist", False
+    spec = CAUSALITY[name.split()[0]]
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         d = Path(tmp)
         stage(d)
@@ -325,8 +241,48 @@ def attempt(name, fname, old, new, expect, total):
             return "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", False
         write_lf(f, text.replace(old, new, 1))
         rc, out = run(d)
-    verdict, why = mutant_tap.classify(rc, out, expect, total, allowed)
+    verdict, why = mutant_tap.classify(rc, out, total, spec["p"], spec.get("s"))
     return verdict, why, True
+
+
+def causality_problems():
+    """Mapa causal inválido => o runner não começa (sem justificativa, PRIMARY fora de 1..3, >4 testes sem broad)."""
+    ids = [k.split()[0] for k in M]
+    probs = [f"{m}: sem mapa causal" for m in ids if m not in CAUSALITY]
+    probs += [f"{m}: mapa causal sem mutante" for m in CAUSALITY if m not in ids]
+    for m in ids:
+        if m in CAUSALITY:
+            probs += mutant_tap.validate_spec(m, CAUSALITY[m])
+    return probs
+
+
+def causality_md():
+    cell = lambda x: str(x).replace("|", "\\|").replace("\n", " ")
+    rows = ["# Conteúdo Pronto — causalidade dos mutantes",
+            "",
+            "Gerado de `scripts/ci/mutants_conteudo_pronto_causality.py` por `python3 -B scripts/ci/mutants_conteudo_pronto.py --causality-md`",
+            "(o CI confere que este arquivo está em dia). Regra (Sol, auditoria 128): a asserção esperada vem do raciocínio sobre a",
+            "mutação; KILLED exige falha numa asserção PRIMARY e qualquer outra falha em PRIMARY ou em SECONDARY justificada",
+            "(`scripts/ci/mutant_tap.py`); qualquer outra coisa é INCONCLUSIVE. Contraprova: sem a mutação a baseline passa (20/20)",
+            "e a asserção primária é exatamente a que a mutação viola.",
+            "",
+            "| mutant_id | change | primary assertion | justification | counter-proof |",
+            "|---|---|---|---|---|"]
+    for name, (fname, old, new, expect) in M.items():
+        mid = name.split()[0]
+        spec = CAUSALITY[mid]
+        prim = "; ".join(f"`{t if t.startswith('(') else 'fluxo completo'}` ⟶ `{label}`" for t, label in spec["p"])
+        just = spec["why"]
+        if spec.get("s"):
+            just += " — SECONDARY: " + "; ".join(f"`{t}`: {w}" for t, w in spec["s"].items())
+        if spec.get("broad"):
+            just += f" — broad_reason: {spec['broad']}"
+        # Sem citar o trecho mutado literalmente: o texto mutado da oferta não pode entrar numa página do repositório
+        # (tests/conteudo-pronto-roteiros.test.mjs (e) varre todo .md que descreve o produto).
+        counter = (f"sem a mutação a asserção `{spec['p'][0][1]}` passa (baseline 20/20); aplicando a troca \"{name[len(mid) + 1:]}\" "
+                   f"em `{fname}` (trecho exato em `M[\"{name}\"]`), ela falha")
+        rows.append(f"| {mid} | {cell(name[len(mid) + 1:])} | {cell(prim)} | {cell(just)} | {cell(counter)} |")
+    return "\n".join(rows) + "\n"
 
 
 def one(item, total):
@@ -346,6 +302,15 @@ def one(item, total):
 
 
 def main():
+    if "--causality-md" in sys.argv[1:]:
+        sys.stdout.write(causality_md())
+        return 0
+    probs = causality_problems()
+    if probs:
+        for pr in probs:
+            print(f"MUTANT CAUSALITY INVALID {pr}")
+        print("MUTANT RUNNER REFUSED (mapa causal inválido: corrija a justificativa; não amplie a allowlist)")
+        return 4
     if not NODE:
         print("MUTANT BASELINE INCONCLUSIVE (node ausente no PATH)")
         return 3
@@ -357,15 +322,11 @@ def main():
         print(f"MUTANT BASELINE INCONCLUSIVE ({type(e).__name__}: {e})")
         return 3
     s = summary(out)
-    if rc != 0 or not s["tests"] or mutant_tap.classify(rc, out, "", s["tests"], {"-"})[0] != "SURVIVED":
+    if rc != 0 or not s["tests"] or mutant_tap.classify(rc, out, s["tests"], [("-", "-")])[0] != "SURVIVED":
         print(out[-3000:])
         print(f"MUTANT BASELINE FAILED (suíte sem mutação não passa) rc={rc} resumo={s}")
         return 2
     total = s["tests"]
-    missing = sorted(set(k.split()[0] for k in M) ^ set(ALLOW))
-    if missing:
-        print(f"MUTANT BASELINE INCONCLUSIVE (mutantes sem allowlist ou allowlist órfã: {missing})")
-        return 3
     print(f"MUTANT BASELINE PASS tests={total} node={subprocess.run([NODE, '--version'], capture_output=True, text=True).stdout.strip()} os={os.name}", flush=True)
     counts = {"KILLED": 0, "SURVIVED": 0, "INCONCLUSIVE": 0}
     with ThreadPoolExecutor(max_workers=max(2, min(8, os.cpu_count() or 2))) as ex:

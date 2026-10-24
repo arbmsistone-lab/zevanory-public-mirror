@@ -38,76 +38,125 @@ def tap(results, *, tests=None, pass_=None, fail=None, cancelled=0, skipped=0, t
 GREEN = [(True, "(a) contrato", None), (True, "(g1) envio", None), (True, "(g2) dead", None)]
 
 
+P1 = [("(g1)", "[regen-idem]")]
+
+
 class Classifier(unittest.TestCase):
-    def test_killed_label_inside_allowlisted_not_ok(self):
+    def test_killed_primary_failure(self):
         out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "[regen-idem] chave presente"), (True, "(g2) dead", None)])
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.KILLED)
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.KILLED)
+
+    def test_killed_primary_plus_justified_secondary(self):
+        out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "[regen-idem] chave presente"), (False, "(g2) dead", "outra asserção")])
+        self.assertEqual(T.classify(1, out, 3, P1, {"(g2)": "o fluxo do dead depende da mesma chave de envio"})[0], T.KILLED)
+
+    def test_failure_only_in_secondary_is_inconclusive(self):
+        out = tap([(True, "(a) contrato", None), (True, "(g1) envio", None), (False, "(g2) dead", "[regen-idem] também aqui")])
+        verdict, why = T.classify(1, out, 3, P1, {"(g2)": "o fluxo do dead depende da mesma chave de envio"})
+        self.assertEqual(verdict, T.INCONCLUSIVE)
+        self.assertIn("PRIMARY", why)
+
+    def test_primary_test_failing_on_other_assertion_is_inconclusive(self):
+        out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "outra asserção do mesmo teste"), (True, "(g2) dead", None)])
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
 
     def test_survived_all_green(self):
-        self.assertEqual(T.classify(0, tap(GREEN), "[x]", 3, {"(g1)"})[0], T.SURVIVED)
+        self.assertEqual(T.classify(0, tap(GREEN), 3, P1)[0], T.SURVIVED)
 
-    def test_unrelated_failure_with_label_on_ok_line_is_inconclusive(self):
-        # Rótulo aparece só no nome de um teste que passou; quem falhou foi outro teste, sem o rótulo.
-        out = tap([(True, "(a) contrato [regen-idem]", None), (False, "(g2) dead", "[regen-dead] alerta"), (True, "(g1) envio", None)])
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)", "(g2)"})[0], T.INCONCLUSIVE)
-
-    def test_unrelated_failure_outside_allowlist_is_inconclusive(self):
+    def test_unrelated_failure_is_inconclusive(self):
+        # Primária falhou, mas outro teste fora de PRIMARY/SECONDARY também falhou.
         out = tap([(False, "(a) contrato", "quebrou outra coisa"), (False, "(g1) envio", "[regen-idem] chave presente"), (True, "(g2) dead", None)])
-        verdict, why = T.classify(1, out, "[regen-idem]", 3, {"(g1)"})
+        verdict, why = T.classify(1, out, 3, P1)
         self.assertEqual(verdict, T.INCONCLUSIVE)
-        self.assertIn("allowlist", why)
+        self.assertIn("fora de PRIMARY/SECONDARY", why)
+        # Rótulo só numa linha `ok` (nome de teste que passou); a falha é de outro teste.
+        out = tap([(True, "(a) contrato [regen-idem]", None), (False, "(g2) dead", "[regen-dead] alerta"), (True, "(g1) envio", None)])
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
 
     def test_label_in_test_name_but_not_in_error_is_inconclusive(self):
         out = tap([(True, "(a) contrato", None), (False, "(g1) envio [regen-idem]", "outra asserção"), (True, "(g2) dead", None)])
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
 
     def test_crash_is_inconclusive(self):
         crash = "file:///x/worker/content-service.mjs:10\n  if (true {\n          ^\nSyntaxError: Unexpected token '{'\n[regen-idem]\n"
-        self.assertEqual(T.classify(1, crash, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
-        # Queda com resumo do runner (arquivo não carregou: um único "not ok" com o nome do arquivo).
+        self.assertEqual(T.classify(1, crash, 3, P1)[0], T.INCONCLUSIVE)
         out = tap([(False, "tests/x.test.mjs", "SyntaxError [regen-idem]")], tests=1)
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
-        # Sinal/abort: rc diferente de 0/1.
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
         out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "[regen-idem]"), (True, "(g2) dead", None)])
-        self.assertEqual(T.classify(134, out, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
+        self.assertEqual(T.classify(134, out, 3, P1)[0], T.INCONCLUSIVE)
 
     def test_timeout_is_inconclusive(self):
         partial = tap([(False, "(g1) envio", "[regen-idem] chave presente")], tail=False)
-        self.assertEqual(T.classify(None, partial, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
+        self.assertEqual(T.classify(None, partial, 3, P1)[0], T.INCONCLUSIVE)
 
     def test_incomplete_count_is_inconclusive(self):
-        # Resumo com menos testes que a baseline (um arquivo não rodou).
         out = tap([(False, "(g1) envio", "[regen-idem] chave presente"), (True, "(g2) dead", None)])
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
-        # Contagem certa no resumo, mas cancelado/pulado.
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
         out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "[regen-idem]"), (True, "(g2) dead", None)], cancelled=1)
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
-        # Resumo ausente.
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
         out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "[regen-idem]"), (True, "(g2) dead", None)], tail=False)
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
-        # Resumo diz 3, mas só 2 resultados de topo.
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
         out = tap([(False, "(g1) envio", "[regen-idem]"), (True, "(g2) dead", None)], tests=3, pass_=2)
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
 
     def test_green_with_nonzero_exit_is_inconclusive(self):
-        self.assertEqual(T.classify(1, tap(GREEN), "[x]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
+        self.assertEqual(T.classify(1, tap(GREEN), 3, P1)[0], T.INCONCLUSIVE)
 
     def test_multiline_error_block(self):
         out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "linha 1"), (True, "(g2) dead", None)])
         out = out.replace("    linha 1", "    linha 1\n    [regen-fail] tempo esgotado #1: 202\n  expected: 202\n  actual: 200")
-        self.assertEqual(T.classify(1, out, "[regen-fail] tempo esgotado #1: 202", 3, {"(g1)"})[0], T.KILLED)
-        # O mesmo texto em `expected:`/`actual:` (fora de `error`) não conta.
+        self.assertEqual(T.classify(1, out, 3, [("(g1)", "[regen-fail] tempo esgotado #1: 202")])[0], T.KILLED)
         out2 = tap([(True, "(a) contrato", None), (False, "(g1) envio", "linha 1"), (True, "(g2) dead", None)])
         out2 = out2.replace("    linha 1", "    linha 1\n  expected: '[regen-fail]'")
-        self.assertEqual(T.classify(1, out2, "[regen-fail]", 3, {"(g1)"})[0], T.INCONCLUSIVE)
+        self.assertEqual(T.classify(1, out2, 3, [("(g1)", "[regen-fail]")])[0], T.INCONCLUSIVE)
 
     def test_real_node_tap_shape(self):
-        # Trecho real do node 22 (--test-reporter=tap) com erro em linha única entre aspas.
         out = tap(GREEN)
         out = out.replace("ok 2 - (g1) envio\n  ---\n  duration_ms: 1.0\n",
                           "not ok 2 - (g1) envio\n  ---\n  duration_ms: 1.0\n  location: '/x/t.mjs:1:1'\n  failureType: 'testCodeFailure'\n  error: '[regen-idem] chave presente'\n  code: 'ERR_ASSERTION'\n")
         out = out.replace("# pass 3", "# pass 2").replace("# fail 0", "# fail 1")
-        self.assertEqual(T.classify(1, out, "[regen-idem]", 3, {"(g1)"})[0], T.KILLED)
+        self.assertEqual(T.classify(1, out, 3, P1)[0], T.KILLED)
+
+
+class SpecGuards(unittest.TestCase):
+    GOOD = {"p": [("(g1)", "[regen-idem]")], "why": "(g1) exige a chave do candidato em toda chamada"}
+
+    def test_valid_spec(self):
+        self.assertEqual(T.validate_spec("MX", self.GOOD), [])
+
+    def test_unjustified_secondary_is_rejected(self):
+        self.assertTrue(T.validate_spec("MX", {**self.GOOD, "s": {"(g2)": ""}}))
+        self.assertTrue(T.validate_spec("MX", {**self.GOOD, "s": {"(g2)": "porque sim"}}))
+
+    def test_primary_bounds_and_why(self):
+        self.assertTrue(T.validate_spec("MX", {**self.GOOD, "p": []}))
+        self.assertTrue(T.validate_spec("MX", {**self.GOOD, "p": [("(a)", "x"), ("(b)", "y"), ("(c)", "z"), ("(d)", "w")]}))
+        self.assertTrue(T.validate_spec("MX", {**self.GOOD, "why": ""}))
+
+    def test_more_than_four_tests_needs_broad_reason(self):
+        sec = {t: "este teste usa o mesmo trecho mutado no fluxo" for t in ("(a)", "(b)", "(c)", "(d)")}
+        self.assertTrue(T.validate_spec("MX", {**self.GOOD, "s": sec}))
+        self.assertEqual(T.validate_spec("MX", {**self.GOOD, "s": sec, "broad": "a mutação muda a identidade de toda a máquina de estados"}), [])
+
+    def test_runner_refuses_to_start_with_unjustified_entry(self):
+        import importlib.util, io, contextlib
+        here = Path(__file__).resolve().parent
+        spec = importlib.util.spec_from_file_location("mcp_runner", here / "mutants_conteudo_pronto.py")
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        first = next(iter(runner.CAUSALITY))
+        saved = runner.CAUSALITY[first]
+        try:
+            runner.CAUSALITY[first] = {**saved, "s": {**saved.get("s", {}), "(zz)": ""}}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = runner.main()
+            self.assertEqual(rc, 4)
+            self.assertIn("MUTANT RUNNER REFUSED", buf.getvalue())
+            self.assertNotIn("MUTANT BASELINE", buf.getvalue())
+        finally:
+            runner.CAUSALITY[first] = saved
+        self.assertEqual(runner.causality_problems(), [], "o mapa causal versionado é válido")
 
 
 if __name__ == "__main__":
