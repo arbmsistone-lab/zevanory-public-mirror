@@ -56,17 +56,17 @@ test("V1 venda = 1 por sessão de compra no dia BRT do 1º pagamento confirmado;
   confirmed(null, { pay: "orfao" });                       // evento sem pedido
   confirmed(order({ status: "checkout_ready" }), { at: "2026-10-22 12:00:00+00" }); // status divergente
   const out = await buildOwnCheckoutSales(factory(), { production: true });
-  assert.equal(out.counted, true);
-  assert.deepEqual(out.byDay["2026-10-19"], { mercadopago: { confirmed: 1, grossCents: 19700 } }, "02:30 UTC de 20/10 = 19/10 em São Paulo");
-  assert.deepEqual(out.byDay["2026-10-21"], { mercadopago: { confirmed: 1, grossCents: 19700 }, asaas: { confirmed: 1, grossCents: 19700 } }, "failover na mesma sessão conta 1 (provedor do 1º pagamento)");
-  assert.deepEqual(out.integrity, { statusMismatch: 1, extraOrdersSameSession: 1, paidWithoutConfirmedEvent: 1, confirmedEventWithoutOrder: 1 });
-  assert.ok(!JSON.stringify(out).match(/[0-9a-f]{8}-[0-9a-f]{4}-/), "sem ids no resumo");
+  assert.equal(out.counted, true, "[FP1.1]");
+  assert.deepEqual(out.byDay["2026-10-19"], { mercadopago: { confirmed: 1, grossCents: 19700 } }, "[FP1.2] 02:30 UTC de 20/10 = 19/10 em São Paulo");
+  assert.deepEqual(out.byDay["2026-10-21"], { mercadopago: { confirmed: 1, grossCents: 19700 }, asaas: { confirmed: 1, grossCents: 19700 } }, "[FP1.3] failover na mesma sessão conta 1 (provedor do 1º pagamento)");
+  assert.deepEqual(out.integrity, { statusMismatch: 1, extraOrdersSameSession: 1, paidWithoutConfirmedEvent: 1, confirmedEventWithoutOrder: 1 }, "[FP1.4]");
+  assert.ok(!JSON.stringify(out).match(/[0-9a-f]{8}-[0-9a-f]{4}-/), "[FP1.5] sem ids no resumo");
 });
 
 test("V2 modo teste nunca consulta pedidos e não conta nada", { skip: SKIP }, async () => {
   let asked = false;
   const out = await buildOwnCheckoutSales({ query: async () => { asked = true; return []; } }, { production: false });
-  assert.equal(out.counted, false); assert.equal(out.mode, "test"); assert.equal(asked, false);
+  assert.equal(out.counted, false, "[FP2.1]"); assert.equal(out.mode, "test", "[FP2.2]"); assert.equal(asked, false, "[FP2.3]");
 });
 
 test("V3 sinais deduplicados no servidor: exposição por visitante/dia/página, visitor-days, intenção por janela de 30 min", { skip: SKIP }, async () => {
@@ -82,20 +82,20 @@ test("V3 sinais deduplicados no servidor: exposição por visitante/dia/página,
   await recordSignal(env, { ...v, page: "ia-na-pratica", metric: "waitlist_click", now: t0 });
   await recordSignal(env, { ...v, page: "ia-na-pratica", metric: "waitlist_click", now: t0 + 5e3 });
   const n = (page, metric) => Number(psql(`select coalesce(sum(n),0) from zevanory_funnel_daily where day='2026-10-22' and page=${lit(page)} and metric=${lit(metric)}`));
-  assert.equal(n("ia-na-pratica", "visitors"), 1, "legado visitor-page-days");
-  assert.equal(n("lucro-e-caixa", "visitors"), 1, "mesma pessoa em outra página conta de novo no legado");
-  assert.equal(n("__site__", "site_visitors"), 2, "visitor-days do site: 2 pessoas, não 3 páginas");
-  assert.equal(n("ia-na-pratica", "waitlist_cta_view"), 2);
-  assert.equal(n("lucro-e-caixa", "waitlist_cta_view"), 1);
-  assert.equal(n("ia-na-pratica", "own_checkout_started"), 2, "10:01 e 10:02 na mesma janela; 10:32 é nova tentativa");
-  assert.equal(n("ia-na-pratica", "own_checkout_started_raw"), 3, "contador bruto à parte; sem provedor não conta");
-  assert.equal(n("ia-na-pratica", "own_checkout_started:prov:mercadopago"), 2);
-  assert.equal(n("ia-na-pratica", "waitlist_click"), 1); assert.equal(n("ia-na-pratica", "waitlist_click_raw"), 2);
-  assert.doesNotMatch(psql("select string_agg(page || vhash, ',') from zevanory_funnel_visitors"), /203\.0\.113/, "sem IP armazenado");
+  assert.equal(n("ia-na-pratica", "visitors"), 1, "[FP3.1] legado visitor-page-days");
+  assert.equal(n("lucro-e-caixa", "visitors"), 1, "[FP3.2] mesma pessoa em outra página conta de novo no legado");
+  assert.equal(n("__site__", "site_visitors"), 2, "[FP3.3] visitor-days do site: 2 pessoas, não 3 páginas");
+  assert.equal(n("ia-na-pratica", "waitlist_cta_view"), 2, "[FP3.4]");
+  assert.equal(n("lucro-e-caixa", "waitlist_cta_view"), 1, "[FP3.5]");
+  assert.equal(n("ia-na-pratica", "own_checkout_started"), 2, "[FP3.6] 10:01 e 10:02 na mesma janela; 10:32 é nova tentativa");
+  assert.equal(n("ia-na-pratica", "own_checkout_started_raw"), 3, "[FP3.7] contador bruto à parte; sem provedor não conta");
+  assert.equal(n("ia-na-pratica", "own_checkout_started:prov:mercadopago"), 2, "[FP3.8]");
+  assert.equal(n("ia-na-pratica", "waitlist_click"), 1, "[FP3.9]"); assert.equal(n("ia-na-pratica", "waitlist_click_raw"), 2, "[FP3.10]");
+  assert.doesNotMatch(psql("select string_agg(page || vhash, ',') from zevanory_funnel_visitors"), /203\.0\.113/, "[FP3.11] sem IP armazenado");
   // v2 rows use the America/Sao_Paulo day (same calendar as own-checkout sales): 01:30 UTC of 23/10 is 22/10.
   await recordExposure(env, { ...v, ip: "203.0.113.77", page: "ia-na-pratica", cta: "waitlist", now: Date.parse("2026-10-23T01:30:00Z") });
-  assert.equal(n("__site__", "site_visitors"), 3);
-  assert.equal(Number(psql("select coalesce(sum(n),0) from zevanory_funnel_daily where day='2026-10-23' and page='__site__'")), 0);
+  assert.equal(n("__site__", "site_visitors"), 3, "[FP3.12]");
+  assert.equal(Number(psql("select coalesce(sum(n),0) from zevanory_funnel_daily where day='2026-10-23' and page='__site__'")), 0, "[FP3.13]");
 });
 
 test("V4 resumo publica daily v2 só das páginas de produto, separa leads pendentes/confirmados e esconde a página reservada", { skip: SKIP }, async () => {
@@ -107,12 +107,12 @@ test("V4 resumo publica daily v2 só das páginas de produto, separa leads pende
         on conflict (day, page, metric) do update set n = excluded.n`);
   const s = await buildFunnelSummary(env, { sqlFactory: factory, production: false });
   const today = v2Day(); // v2 rows are keyed by the São Paulo day
-  assert.equal(s.taxonomy, "zevanory-funnel/v2");
-  assert.equal(s.daily[today].site_visitors, 3);
-  assert.equal(s.daily[today].buy_cta_view, 2);
-  assert.equal(s.daily[today].waitlist_cta_view ?? 0, 0, "página que não é produto fica fora do numerador/denominador");
-  assert.equal(s.last7Days.leadsPending, 1); assert.equal(s.last7Days.leadsConfirmed, 1, "confirmado hoje conta pela data da confirmação; o de 20 dias não");
-  assert.equal(s.last7Days.leads, 1, "legado: cadastros criados em 7 dias (pendentes + confirmados)");
-  assert.ok(!("__site__" in s.pages) && !("__site__" in s.clean.pages));
-  assert.equal(s.ownCheckout.mode, "test");
+  assert.equal(s.taxonomy, "zevanory-funnel/v2", "[FP4.1]");
+  assert.equal(s.daily[today].site_visitors, 3, "[FP4.2]");
+  assert.equal(s.daily[today].buy_cta_view, 2, "[FP4.3]");
+  assert.equal(s.daily[today].waitlist_cta_view ?? 0, 0, "[FP4.4] página que não é produto fica fora do numerador/denominador");
+  assert.equal(s.last7Days.leadsPending, 1, "[FP4.5]"); assert.equal(s.last7Days.leadsConfirmed, 1, "[FP4.6] confirmado hoje conta pela data da confirmação; o de 20 dias não");
+  assert.equal(s.last7Days.leads, 1, "[FP4.7] legado: cadastros criados em 7 dias (pendentes + confirmados)");
+  assert.ok(!("__site__" in s.pages) && !("__site__" in s.clean.pages), "[FP4.8]");
+  assert.equal(s.ownCheckout.mode, "test", "[FP4.9]");
 });

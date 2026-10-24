@@ -1,8 +1,9 @@
 name: funnel-v2
 # Funil v2 do painel (AVAL Sol 23/10): vendas checkout próprio + Hotmart, lista de espera separada,
 # intenção real, cinco conversões e estado Hotmart derivado. PostgreSQL EFÊMERO com o esquema de
-# db/migrations e dados sintéticos; sem segredos, sem rede externa, sem deploy. Contagens exatas,
-# zero pulados e mutantes causais (só asserção mata).
+# db/migrations e dados sintéticos; sem segredos, sem rede externa, sem deploy. Contagens exatas e zero
+# pulados conferidos pelo classificador compartilhado (scripts/ci/mutant_classifier.py, lê '# x' e 'ℹ x');
+# mutantes causais: KILLED só com a asserção PRIMÁRIA da config (teste + marcador), resto INCONCLUSIVE.
 on:
   pull_request:
     branches: [gh-pages]
@@ -19,6 +20,10 @@ on:
       - "tests/funnel-counting.test.mjs"
       - "tests/integration/funnel-own-sales-postgres.test.mjs"
       - "scripts/ci/mutants_funnel_v2.py"
+      - "scripts/ci/mutants_funnel_v2_config.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/test_mutants_funnel_v2_classifier.py"
+      - "docs/evidence/funnel-v2-mutant-causality.md"
       - ".github/workflows/funnel-v2.yml"
 permissions:
   contents: read
@@ -47,28 +52,45 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Regras de contagem (unitário, 21 testes)
+      - name: Regras de contagem (unitário, 21 testes, classificador compartilhado)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
         run: |
-          set -eo pipefail
+          set -euo pipefail
           node --version
-          node --test --test-reporter=tap tests/funnel-counting.test.mjs | tee u.txt
-          grep -qx "# tests 21" u.txt && grep -qx "# pass 21" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt
+          rc=0; node --test --test-reporter=tap --test-reporter-destination=stdout tests/funnel-counting.test.mjs < /dev/null > u.txt || rc=$?
+          cat u.txt
+          python3 scripts/ci/mutant_classifier.py classify --baseline --baseline-total 21 --rc "$rc" --tap u.txt --expected '{}' | tee ub.json
       - name: PostgreSQL real com o esquema de produção (4 testes)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
         run: |
-          set -eo pipefail
-          node --test --test-reporter=tap tests/integration/funnel-own-sales-postgres.test.mjs | tee p.txt
-          grep -qx "# tests 4" p.txt && grep -qx "# pass 4" p.txt && grep -qx "# skipped 0" p.txt && grep -qx "# fail 0" p.txt
-      - name: Mutantes causais (40/40)
+          set -euo pipefail
+          rc=0; node --test --test-reporter=tap --test-reporter-destination=stdout tests/integration/funnel-own-sales-postgres.test.mjs < /dev/null > p.txt || rc=$?
+          cat p.txt
+          python3 scripts/ci/mutant_classifier.py classify --baseline --baseline-total 4 --rc "$rc" --tap p.txt --expected '{}' | tee pb.json
+      - name: Contraprovas do runner (classificador compartilhado, Node real)
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -eo pipefail
-          python3 scripts/ci/mutants_funnel_v2.py | tee m.txt
-          grep -qx "MUTANTS_FUNNEL_V2 killed=40/40" m.txt
-          echo "::notice title=FUNNEL_V2::$(grep -E '^# (tests|pass|fail|skipped) ' u.txt p.txt | paste -sd' ' -) $(tail -1 m.txt)"
+          python3 -m unittest tests.test_mutants_funnel_v2_classifier -v < /dev/null 2>&1 | tee meta.txt
+          grep -qE '^Ran 23 tests' meta.txt && grep -qx 'OK' meta.txt
+      - name: Mutantes causais (33 unit + 7 PostgreSQL, primária obrigatória)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -eo pipefail
+          python3 scripts/ci/mutants_funnel_v2.py < /dev/null | tee m.txt
+          grep -qx "MUTANTS_FUNNEL_V2 suite=unit total=33 killed=33 survived=0 inconclusive=0" m.txt
+          grep -qx "MUTANTS_FUNNEL_V2 suite=pg total=7 killed=7 survived=0 inconclusive=0" m.txt
+          grep -qx "MUTANTS_FUNNEL_V2 total=40 killed=40 survived=0 inconclusive=0 exit=0" m.txt
+          echo "::notice title=FUNNEL_V2::unit=$(python3 -c 'import json;d=json.load(open("ub.json"));print(d["counts"])') pg=$(python3 -c 'import json;d=json.load(open("pb.json"));print(d["counts"])') $(grep '^RETRIES=' m.txt) $(tail -1 m.txt)"
+          test -z "$(git status --porcelain --ignored -- '*.pyc' '**/__pycache__')"
 
   # Portabilidade (AVAL Sol): Node 24 (reporter padrão "spec") em Linux e Windows. Sem PostgreSQL aqui, só
-  # o unitário e os mutantes unitários; o runner força TAP e aceita os dois formatos de resumo.
+  # o unitário, as contraprovas e os mutantes unitários; o runner força TAP e o parser compartilhado aceita
+  # os dois formatos de resumo ('# skipped 0' e 'ℹ skipped 0').
   funil-node24:
     strategy:
       fail-fast: false
@@ -89,19 +111,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Unitário (21 testes, Node 24)
+      - name: Unitário (21 testes, Node 24, classificador compartilhado)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: utf-8
+        run: |
+          set -euo pipefail
+          node --version | grep -q '^v24\.'
+          rc=0; node --test --test-reporter=tap --test-reporter-destination=stdout tests/funnel-counting.test.mjs < /dev/null > u.txt || rc=$?
+          cat u.txt
+          python scripts/ci/mutant_classifier.py classify --baseline --baseline-total 21 --rc "$rc" --tap u.txt --expected '{}'
+          # Same file through the spec-style summary ("ℹ skipped 0"), the Windows/Node 24 form that broke the old grep.
+          sed -E 's/^# (tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) /ℹ \1 /' u.txt > u_spec.txt
+          grep -q "^ℹ skipped 0" u_spec.txt
+          python scripts/ci/mutant_classifier.py classify --baseline --baseline-total 21 --rc "$rc" --tap u_spec.txt --expected '{}'
+      - name: Contraprovas do runner (Node 24)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: utf-8
         run: |
           set -eo pipefail
-          node --version | grep -q '^v24\.'
-          node --test --test-reporter=tap tests/funnel-counting.test.mjs | tee u.txt
-          grep -qx "# tests 21" u.txt && grep -qx "# pass 21" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt
-      - name: Mutantes unitários (33/33, Node 24)
+          python -m unittest tests.test_mutants_funnel_v2_classifier -v < /dev/null 2>&1 | tr -d '\r' | tee meta.txt
+          grep -qE '^Ran 23 tests' meta.txt && grep -qx 'OK' meta.txt
+      - name: Mutantes unitários (33, Node 24)
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           FUNNEL_MUTANTS_UNIT_ONLY: "1"
           PYTHONIOENCODING: utf-8
         run: |
           set -eo pipefail
-          python scripts/ci/mutants_funnel_v2.py | tee m.txt
+          python scripts/ci/mutants_funnel_v2.py < /dev/null | tr -d '\r' | tee m.txt
           grep -q "^NODE_VERSION=v24\." m.txt
-          grep -qx "MUTANTS_FUNNEL_V2_UNIT killed=33/33" m.txt
+          grep -qx "MUTANTS_FUNNEL_V2 suite=unit total=33 killed=33 survived=0 inconclusive=0" m.txt
+          grep -qx "MUTANTS_FUNNEL_V2 total=33 killed=33 survived=0 inconclusive=0 exit=0" m.txt
