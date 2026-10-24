@@ -11,6 +11,7 @@
   var API = "/api/chat";
   var MAX = 600;
   var EMAIL = "suporte@zevanory.api.br";
+  var FORM = "https://zevanory.api.br/atendimento";
   var LINK_HOSTS = ["vendas.zevanory.api.br", "zevanory.api.br"];
   var KEY = "zevSiteChatSession";
   var state = { session: "", idleMinutes: 30, idleTimer: 0, warnTimer: 0, busy: false, opener: null, started: false, notice: null };
@@ -128,10 +129,10 @@
 
   // Indisponível: e-mail e formulários continuam valendo.
   var down = el("div", { className: "zc-down", hidden: true });
-  var downText = el("p", null, "O chat está indisponível agora. Escreva para " + EMAIL + " ou use os formulários de reembolso e de novo link de acesso.");
+  var downText = el("p", null, "O chat está indisponível agora. Escreva para " + EMAIL + ", use o formulário de atendimento ou os formulários de reembolso e de novo link de acesso.");
   down.appendChild(downText);
   var downLinks = el("ul", { className: "zc-notice-list" });
-  [["mailto:" + EMAIL, "Escrever para " + EMAIL], ["https://zevanory.api.br/pedir-reembolso", "Pedir reembolso"], ["https://zevanory.api.br/entrega/reenviar", "Pedir novo link de acesso"]].forEach(function (x) {
+  [["mailto:" + EMAIL, "Escrever para " + EMAIL], [FORM, "Formulário de atendimento"], ["https://zevanory.api.br/pedir-reembolso", "Pedir reembolso"], ["https://zevanory.api.br/entrega/reenviar", "Pedir novo link de acesso"]].forEach(function (x) {
     var li = el("li"); li.appendChild(el("a", { href: x[0] }, x[1])); downLinks.appendChild(li);
   });
   down.appendChild(downLinks);
@@ -229,6 +230,7 @@
     (actions || []).forEach(function (a) {
       if (a.type === "waitlist" && /^mailto:/.test(a.href || "")) extra.appendChild(el("a", { className: "zc-button zc-secondary", href: a.href }, a.label || "Entrar na lista de espera por e-mail"));
       if (a.type === "email") extra.appendChild(el("a", { className: "zc-button zc-secondary", href: "mailto:" + EMAIL }, "Escrever para " + EMAIL));
+      if (a.type === "form") extra.appendChild(el("a", { className: "zc-button zc-secondary", href: FORM }, "Formulário de atendimento"));
     });
   }
   function showHandoff() {

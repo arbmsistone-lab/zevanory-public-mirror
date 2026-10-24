@@ -1,6 +1,10 @@
 // Chat do site "Fale com a ZEVANORY": atendimento próprio em HTTPS no nosso domínio, no lugar do
 // WhatsApp (conta banida pela Meta em 2026-10-10 depois que webhooks forjados pelo CI fizeram o robô
 // enviar mensagens reais). Critérios de aceite: AVAL Sol 111 (2026-10-23).
+// Escalonamento (#892): o único canal humano é suporte@zevanory.api.br e o formulário com protocolo
+// https://zevanory.api.br/atendimento (contato_publico em data/politica-unica.json). Nenhuma resposta do chat
+// cita WhatsApp, wa.me ou número de telefone: validateSiteReply reprova ("whatsapp"/"phone") e a guarda final
+// troca a resposta pela segura.
 //
 // Caminho: página de vendas (vendas.zevanory.api.br, mesma origem) -> Worker de vendas (POST /api/chat*,
 // proxy) -> service binding CORE -> https://chat.internal/api/chat* -> este módulo, no Worker central,
@@ -37,7 +41,8 @@ import { validateReply } from "./whatsapp-conversation.mjs";
 import {
   CLOSED_LABEL, CONFIRMATION_TEXT, DELIVERY_TEXT, LEGAL_IDENTITY, REFUND_TEXT, RULE_LINE, SLA_TEXT, SUPPLIER,
   SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER,
-  SUBSCRIPTION_DELIVERY_TEXT, SUBSCRIPTION_REFUND_TEXT, hasCheckoutCta
+  SUBSCRIPTION_DELIVERY_TEXT, SUBSCRIPTION_REFUND_TEXT, hasCheckoutCta,
+  SUPPORT_EMAIL as PUBLIC_SUPPORT_EMAIL, SUPPORT_FORM_URL, WHATSAPP_PUBLIC_RE, BANNED_NUMBER_RE
 } from "./politica-unica.mjs";
 
 export const CHAT = CHAT_POLICY;
@@ -47,7 +52,11 @@ export const KILL_KV_KEY = "site-chat:kill:v1";
 export const CATEGORIES_OFF_KV_KEY = "site-chat:categories-off:v1";
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const CORE_ORIGIN = "https://zevanory.api.br";
-const SUPPORT_EMAIL = SUPPLIER.email;
+const SUPPORT_EMAIL = PUBLIC_SUPPORT_EMAIL;
+// Formulário de atendimento com protocolo (worker/atendimento.mjs, #892), alternativa ao e-mail.
+export const ATENDIMENTO_URL = SUPPORT_FORM_URL;
+if (SUPPORT_EMAIL !== SUPPLIER.email || SUPPORT_EMAIL !== CHAT.owner_queue_to || CHAT.fallback?.contact_form !== ATENDIMENTO_URL)
+  throw new Error("site-chat: e-mail/formulário divergentes de contato_publico (data/politica-unica.json)");
 const FROM = "ZEVANORY suporte <suporte@zevanory.api.br>";
 export const FALLBACK = Object.freeze({ ...CHAT.fallback });
 export const ESCALATION_CATEGORIES = Object.freeze([
@@ -126,7 +135,17 @@ function sourceTexts(catalog) {
 
 // ---------- validador do site (somado ao validador do atendente WhatsApp) ----------
 const ALLOWED_URL_SET = new Set([SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/termos`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/reembolso`,
-  `${CORE_ORIGIN}/pedir-reembolso`, `${CORE_ORIGIN}/entrega/reenviar`, ...Object.keys(SUPPORT_PRODUCTS).map((s) => `${SALES_ORIGIN}/${s}`)]);
+  `${CORE_ORIGIN}/pedir-reembolso`, `${CORE_ORIGIN}/entrega/reenviar`, ATENDIMENTO_URL, ...Object.keys(SUPPORT_PRODUCTS).map((s) => `${SALES_ORIGIN}/${s}`)]);
+const WHATSAPP_RE = /whats\s*-?\s*app|\bzap\b|wa\.me\b|wa\.link\b/i;
+// Telefone: sequência com 10 a 13 dígitos (DDD + número, com ou sem +55), separadores comuns; protocolo (8 dígitos)
+// e CNPJ (com "/") não casam.
+export function hasPhoneNumber(text) {
+  for (const m of String(text || "").matchAll(/(?:\+\s*)?\(?\d[\d\s().-]{7,}\d/g)) {
+    const digits = m[0].replace(/\D/g, "");
+    if (digits.length >= 10 && digits.length <= 13) return true;
+  }
+  return false;
+}
 const CHECKOUT_RE = /\/comprar\b|\/assinar\b|checkout|pay\.[a-z]|mercadopago\.com|mpago\.la|hotmart|kiwify|eduzz|monetizze|stripe|asaas|pagseguro|paypal|picpay/i;
 export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG } = {}) {
   const body = String(text || "").trim();
@@ -134,6 +153,10 @@ export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG }
   if (!body) issues.push("empty");
   if (body.length > 1500) issues.push("too_long");
   if (hasCheckoutCta(body) || CHECKOUT_RE.test(body)) issues.push("checkout");
+  // WhatsApp foi banido (#892): nenhuma menção, link curto (wa.me) ou da API do WhatsApp, nem o número banido. O validador base
+  // (whatsapp-conversation.mjs) DESCONTA o número banido antes de procurar telefone; aqui ele reprova sempre.
+  if (WHATSAPP_RE.test(body) || WHATSAPP_PUBLIC_RE.test(body) || BANNED_NUMBER_RE.test(body)) issues.push("whatsapp");
+  if (hasPhoneNumber(body)) issues.push("phone");
   for (const m of body.matchAll(/https?:\/\/[^\s)>\]]+/gi)) {
     const url = m[0].replace(/[.,;!?]+$/, "");
     if (!ALLOWED_URL_SET.has(url)) issues.push("url");
@@ -263,7 +286,8 @@ const PRODUCT_LIST = "IA na Prática, Vendas na Prática, Lucro & Caixa, Combo I
 const MENU = `Olá! Sou o assistente automático da ZEVANORY. Posso explicar ${PRODUCT_LIST}, comparar os materiais e as políticas de entrega e arrependimento. Sobre o que você quer saber?`;
 const INJECTION_REPLY = `Só posso ajudar com os produtos e as políticas oficiais da ZEVANORY. Quer saber sobre ${PRODUCT_LIST}?`;
 const CORRECTION_REPLY = "Desculpe se não entendi. Pode me dizer de outro jeito o que você quer saber? Se preferir, uma pessoa da equipe continua por e-mail.";
-const HANDOFF_ASK = "Informe seu e-mail abaixo para receber a confirmação e a resposta da equipe.";
+const HANDOFF_ASK = `Informe seu e-mail abaixo para receber a confirmação e a resposta da equipe. Se preferir, escreva para ${SUPPORT_EMAIL} ou use o formulário ${ATENDIMENTO_URL}`;
+export const EMAIL_ONLY_ACTIONS = Object.freeze([{ type: "email", href: `mailto:${SUPPORT_EMAIL}` }, { type: "form", href: ATENDIMENTO_URL }]);
 const PROTO = "{protocolo}";
 const ESC_TEXT = {
   human_request: `Certo, encaminhei para uma pessoa da equipe da ZEVANORY (protocolo ${PROTO}). ${SLA_TEXT}`,
@@ -295,7 +319,7 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   const c = classify(message, session);
   const slug = c.slug || resolveProduct(norm(message));
   const off = (cat) => categoriesOff.has(cat);
-  const emailOnly = { body: FALLBACK.message, mode: "category_off", category: "category_off", actions: [{ type: "email", href: `mailto:${SUPPORT_EMAIL}` }] };
+  const emailOnly = { body: FALLBACK.message, mode: "category_off", category: "category_off", actions: [...EMAIL_ONLY_ACTIONS] };
   const escalate = (category) => {
     if (off("handoff")) return { ...emailOnly, category, escalate: null };
     const known = slug ? catalog.items[slug] : null;
@@ -534,7 +558,8 @@ function customerConfirmation(t) {
   return {
     subject: `Recebemos seu pedido de atendimento — protocolo ${t.protocol}`,
     text: ["Olá,", "", `Recebemos seu pedido de atendimento pelo chat do site da ZEVANORY. Protocolo: ${t.protocol}.`, `${SLA_TEXT} Prazo: até ${dueLabel(t.due_at)}.`, "",
-      `Para reembolso ou arrependimento, você também pode usar ${CORE_ORIGIN}/pedir-reembolso. Para um novo link de acesso, ${CORE_ORIGIN}/entrega/reenviar.`, "",
+      `Para reembolso ou arrependimento, você também pode usar ${CORE_ORIGIN}/pedir-reembolso. Para um novo link de acesso, ${CORE_ORIGIN}/entrega/reenviar.`,
+      `Para falar com a equipe: ${SUPPORT_EMAIL} ou o formulário de atendimento ${ATENDIMENTO_URL}.`, "",
       "Esta é uma confirmação automática. Não responda com senha, cartão ou documentos.", "", "ZEVANORY", LEGAL_IDENTITY].join("\n"),
   };
 }
@@ -633,7 +658,7 @@ async function messageRoute(sql, env, body, deps, { ip, now, flags }) {
   ]);
   if (over) { siteChatLog("rate_limited", { reason: over }); return json(429, { error: "rate_limited", fallback: FALLBACK }, { "retry-after": "60" }); }
   if (s.row.turns >= L.turns_max) {
-    return json(200, { reply: `Esta conversa chegou ao limite de mensagens. Para continuar, fale com uma pessoa da equipe ou escreva para ${SUPPORT_EMAIL}.`, category: "turn_limit", actions: [{ type: "handoff" }] });
+    return json(200, { reply: `Esta conversa chegou ao limite de mensagens. Para continuar, fale com uma pessoa da equipe, escreva para ${SUPPORT_EMAIL} ou use o formulário ${ATENDIMENTO_URL}`, category: "turn_limit", actions: [{ type: "handoff" }] });
   }
   // Autoridade canônica a CADA resposta; erro/timeout = fechado.
   const salesOpen = await salesOpenNow(deps);
@@ -671,7 +696,7 @@ async function handoffRoute(sql, env, body, deps, { ip, now, flags }) {
   if (!EMAIL_RE.test(email) || email.length > 254) return json(400, { error: "email_invalid" });
   const s = await loadSession(sql, body.session, now);
   if (s.error) return s.error;
-  if (flags.categoriesOff.has("handoff")) return json(200, { reply: FALLBACK.message, category: "category_off", actions: [{ type: "email", href: `mailto:${SUPPORT_EMAIL}` }] });
+  if (flags.categoriesOff.has("handoff")) return json(200, { reply: FALLBACK.message, category: "category_off", actions: [...EMAIL_ONLY_ACTIONS] });
   const known = await sessionHasTicket(sql, s.sess);
   const over = await hitLimits(sql, [[`s:${s.sess}:m`, minuteWin(now), L.per_session_per_minute], ...(known ? [] : [[`i:${ip}:h:d`, dayWin(now), L.handoffs_per_ip_per_day], ["g:h:d", dayWin(now), L.handoffs_global_per_day]])]);
   if (over) { siteChatLog("rate_limited", { reason: over }); return json(429, { error: "rate_limited", fallback: FALLBACK }, { "retry-after": "3600" }); }

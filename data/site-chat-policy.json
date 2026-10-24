@@ -1,6 +1,6 @@
 {
   "schema": "zevanory-site-chat-policy/v1",
-  "nota": "Chat do site 'Fale com a ZEVANORY' (substitui o WhatsApp, banido pela Meta em 2026-10-10). Fonte única do aviso pré-chat, dos limites, da retenção e das respostas fixas do chat (worker/site-chat.mjs e sales-overlay/site-chat.js). Critérios de aceite: AVAL Sol 111 (2026-10-23). DESLIGADO por padrão: só liga com SITE_CHAT_ENABLED=true nos dois Workers (central e vendas) após aval do Sol e decisão escrita do proprietário. O chat é OPCIONAL: compra, entrega, cancelamento, reembolso e suporte funcionam sem ele (e-mail e formulários, sem JavaScript). Textos jurídicos sujeitos à revisão do proprietário antes da ativação.",
+  "nota": "Chat do site 'Fale com a ZEVANORY' (canal próprio de atendimento; o canal de mensagens anterior foi encerrado em 2026-10-10). Escalonamento só para suporte@zevanory.api.br e o formulário com protocolo zevanory.api.br/atendimento (contato_publico em data/politica-unica.json, #892); nenhuma resposta cita aplicativo de mensagens, link curto de conversa ou número de telefone. Fonte única do aviso pré-chat, dos limites, da retenção e das respostas fixas do chat (worker/site-chat.mjs e sales-overlay/site-chat.js). Critérios de aceite: AVAL Sol 111 (2026-10-23). DESLIGADO por padrão (enabled_default=false; tests/site-chat-no-synthetic-traffic.test.mjs reprova qualquer padrão ligado): só liga quando SITE_CHAT_ENABLED receber o valor \"true\" nos dois Workers (central e vendas) após aval do Sol e decisão escrita do proprietário. O chat é OPCIONAL: compra, entrega, cancelamento, reembolso e suporte funcionam sem ele (e-mail e formulários, sem JavaScript). Textos jurídicos sujeitos à revisão do proprietário antes da ativação.",
   "enabled_default": false,
   "closed_price_answer": "As vendas estão fechadas; não há preço ou condição disponível para contratação agora.",
   "owner_queue_to": "suporte@zevanory.api.br",
@@ -64,14 +64,15 @@
     "transfer": "Transferência internacional: esses operadores podem processar os dados fora do Brasil (LGPD, art. 33), conforme os termos de tratamento de dados de cada um.",
     "retention": "Retenção: conversa não escalada, até 30 dias; atendimento escalado, 180 dias após o encerramento (salvo obrigação legal ou disputa); logs técnicos sem conteúdo, até 30 dias.",
     "rights": "Seus direitos (LGPD, art. 18): acesso, correção, eliminação, informação sobre compartilhamento e oposição, pelo e-mail suporte@zevanory.api.br. Detalhes na Política de Privacidade.",
-    "optional": "O chat é opcional: você pode escrever direto para suporte@zevanory.api.br, pedir reembolso em zevanory.api.br/pedir-reembolso ou um novo link de acesso em zevanory.api.br/entrega/reenviar.",
+    "optional": "O chat é opcional: você pode escrever direto para suporte@zevanory.api.br, usar o formulário de atendimento em zevanory.api.br/atendimento, pedir reembolso em zevanory.api.br/pedir-reembolso ou um novo link de acesso em zevanory.api.br/entrega/reenviar.",
     "privacy_href": "/privacidade",
     "start_label": "Começar conversa",
     "email_label": "Prefiro e-mail"
   },
   "fallback": {
-    "message": "O chat está indisponível agora. Escreva para suporte@zevanory.api.br ou use os formulários de reembolso e de novo link de acesso.",
+    "message": "O chat está indisponível agora. Escreva para suporte@zevanory.api.br, use o formulário de atendimento em https://zevanory.api.br/atendimento ou os formulários de reembolso e de novo link de acesso.",
     "contact_email": "suporte@zevanory.api.br",
+    "contact_form": "https://zevanory.api.br/atendimento",
     "refund_form": "https://zevanory.api.br/pedir-reembolso",
     "delivery_form": "https://zevanory.api.br/entrega/reenviar"
   }

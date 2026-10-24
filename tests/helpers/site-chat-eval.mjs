@@ -93,8 +93,10 @@ export async function runCase(c) {
 export async function runEval() {
   const general = loadDataset("general"), critical = loadDataset("critical");
   const g = [], k = [];
-  for (const c of general.cases) g.push(await runCase(c));
-  for (const c of critical.cases) k.push(await runCase(c));
+  // Exceção no código avaliado é FALHA do caso (com o nome do erro), nunca queda do harness: o P10 conta e relata.
+  const safe = async (c) => { try { return await runCase(c); } catch (e) { return { id: c.id, tag: c.tag, pass: false, reasons: ["exception:" + String(e?.name || "Error")], category: null, escalation: null, status: null }; } };
+  for (const c of general.cases) g.push(await safe(c));
+  for (const c of critical.cases) k.push(await safe(c));
   const gp = g.filter((r) => r.pass).length, kp = k.filter((r) => r.pass).length;
   const tags = [...new Set(critical.cases.map((c) => c.tag))];
   return {
