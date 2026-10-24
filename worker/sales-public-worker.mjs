@@ -260,6 +260,20 @@ async function handleHotmart(request,env,slug,ctx){
 // "noindex, nofollow", Cache-Control "no-store" and, in HTML, <meta name="robots" content="noindex,nofollow">.
 // robots.txt does NOT disallow /comprar/ on purpose: a blocked URL is never fetched, so the crawler would
 // never see the noindex (https://developers.google.com/search/docs/crawling-indexing/block-indexing).
+export const RETIRED_CONTACT_SCRIPT="/whatsapp-contact.js";
+export const RETIRED_CONTACT_BODY="/* retired: intentionally empty */\n";
+export const HASHED_ASSET=/^\/assets\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[0-9a-f]{10}\.(?:css|js|woff2)$/;
+export const IMMUTABLE_CACHE_CONTROL="public, max-age=31536000, immutable";
+export const REVALIDATE_CACHE_CONTROL="no-cache";
+// Pages: short max-age and must-revalidate (no stale-while-revalidate window), so HTML never
+// outlives the hashed assets it points to by more than five minutes.
+export const PAGE_CACHE_CONTROL="public, max-age=300, must-revalidate, no-transform";
+export function assetCacheControl(pathname){
+  if(HASHED_ASSET.test(pathname)) return IMMUTABLE_CACHE_CONTROL;
+  if(/\.(css|m?js)$/i.test(pathname)) return REVALIDATE_CACHE_CONTROL;
+  if(/\.(svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(pathname)) return "public, max-age=86400";
+  return "";
+}
 export const COMPRAR_PATH=/^\/comprar(?:\/|$)/i;
 // Percent-encoded aliases (/%63omprar/, /comp%72ar/, /co%6Dprar/ or /co%6dprar/): the pathname is decoded ONCE
 // with the URL Standard percent-decode (bytes, then UTF-8 with replacement; never throws) before matching, so an
@@ -340,6 +354,10 @@ export default{async fetch(request,env,ctx){
       commercial_surface:"fail-closed"
     }),{status:200,headers:applySecurityHeaders(new Headers({"content-type":"application/json; charset=utf-8","cache-control":"no-store"}))});
   }
+  // E2: the retired contact script (old, unhashed URL). Browsers that cached the old copy for a day
+  // (plus a week of stale-while-revalidate) could still run it; this answer is an inert no-op that is
+  // never stored, so a revalidation replaces the cached copy with nothing harmful.
+  if(url.pathname===RETIRED_CONTACT_SCRIPT) return new Response(request.method==="HEAD"?null:RETIRED_CONTACT_BODY,{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/javascript; charset=utf-8","cache-control":"no-store"}))});
   if(retired.has(url.pathname)) return new Response("Produto retirado da superficie publica ZEVANORY.",{status:410,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"no-store"}))});
   if(url.pathname.startsWith("/api/")||url.pathname.startsWith("/admin")) return new Response("Not found",{status:404,headers:applySecurityHeaders(new Headers())});
   if((url.pathname==="/solucoes"||url.pathname==="/solucoes/")&&(request.method==="GET"||request.method==="HEAD")&&url.searchParams.has("pagamento")){
@@ -355,14 +373,16 @@ export default{async fetch(request,env,ctx){
   if(response.status===200&&page) countView(request,env,ctx,page);
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");
-  // Static assets (css/js/svg/images) are cached by browsers and the edge; pages revalidate.
-  if(response.status===200&&!page&&/\.(css|js|svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(url.pathname)) headers.set("cache-control","public, max-age=86400, stale-while-revalidate=604800");
+  // E2 cache policy: content-hashed files under /assets/ never change -> immutable for a year;
+  // unhashed CSS/JS must revalidate on every use (a stale script/stylesheet is how the retired
+  // contact script kept running); unhashed images get a plain day; pages revalidate (below).
+  if(response.status===200&&!page) {const cc=assetCacheControl(url.pathname);if(cc)headers.set("cache-control",cc);}
   // no-transform: the edge must not inject third-party scripts (Web Analytics beacon) into sales
   // pages — it was the only F5 performance offender and contradicts "no invasive tracking".
   // Pages whose HTML depends on the sales switch (open AND closed) are never cached: a cached open
   // page would keep showing buy CTAs after the owner closes sales.
   else if(page&&SALES_TOGGLE_PAGES.has(page)) headers.set("cache-control",SWITCH_DEPENDENT_CACHE_CONTROL);
-  else if(response.status===200&&page) headers.set("cache-control","public, max-age=300, stale-while-revalidate=3600, no-transform");
+  else if(response.status===200&&page) headers.set("cache-control",PAGE_CACHE_CONTROL);
   applySecurityHeaders(headers);
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);
   if(response.status===200&&sku&&env?.CORE&&typeof HTMLRewriter!=="undefined"){

@@ -185,9 +185,16 @@ def check_solutions():
 def check_css():
     css = (ROOT / "product.css").read_text(encoding="utf-8")
     errors = 0
-    for token in ("prefers-reduced-motion", "content-visibility", ":focus", "@media"):
+    # E3 (2026-10-24): "content-visibility" deixou de ser exigido. Em .section ele fazia o Tab levar o
+    # foco para FORA da tela (a rolagem do foco usa a altura estimada do contain-intrinsic-size e a
+    # seção muda de tamanho ao renderizar): falha de WCAG 2.4.11, medida em scripts/audit/
+    # sales-quality-budget.mjs. Agora é proibido em seções com conteúdo focável e exigimos
+    # scroll-padding (o cabeçalho fixo nunca cobre o foco).
+    for token in ("prefers-reduced-motion", ":focus-visible", "scroll-padding", "@media"):
         if token not in css:
             errors += fail(f"product.css: requisito ausente: {token}")
+    if "content-visibility" in css:
+        errors += fail("product.css: content-visibility tira o foco do teclado da tela (WCAG 2.4.11)")
     if "javascript:" in css.lower():
         errors += fail("product.css: conteúdo inválido")
     if errors == 0:
