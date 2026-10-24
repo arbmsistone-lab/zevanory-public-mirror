@@ -4,7 +4,8 @@
 // chat por padrão. Testes do chat usam só fakes locais (tests/helpers/site-chat-fakes.mjs).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readdirSync, statSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,7 +43,7 @@ export function scanSyntheticChatTraffic(root) {
       const r = rel(f);
       if (ALLOW.has(r)) continue;
       let text = "";
-      try { text = readFileSync(f, "utf8"); } catch { continue; }
+      try { text = readTextNormalized(f); } catch { continue; }
       for (const [id, re] of rules) if (re.test(text)) findings.push(`${r}: ${id}`);
     }
   };
@@ -74,7 +75,7 @@ test("a guarda pega cada padrão proibido (autoteste em diretório temporário)"
 
 test("testes do chat só usam fakes locais: nenhum alvo de produção fora do handler/worker local, nenhum fetch real", () => {
   for (const f of ["tests/site-chat.test.mjs", "tests/site-chat-eval.test.mjs", "tests/helpers/site-chat-fakes.mjs", "tests/helpers/site-chat-eval.mjs"]) {
-    const text = readFileSync(join(ROOT, f), "utf8");
+    const text = readTextNormalized(join(ROOT, f));
     assert.doesNotMatch(text, /\bfetch\(\s*["'`]https?:/, f + ": fetch real");
     assert.doesNotMatch(text, /api\.resend\.com|DATABASE_URL\s*:\s*["']postgres/i, f + ": serviço real");
   }

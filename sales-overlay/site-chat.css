@@ -24,13 +24,13 @@
 .zc-entry :focus-visible,.zc-panel :focus-visible{outline:3px solid var(--zc-focus);outline-offset:2px}
 .zc-title:focus,.zc-subtitle:focus{outline:3px solid var(--zc-focus);outline-offset:2px}
 .zc-log{list-style:none;margin:0 0 8px;padding:4px;max-height:40vh;overflow-y:auto;border:1px solid var(--zc-line);border-radius:8px}
-.zc-msg{margin:6px 0;padding:8px 10px;border-radius:8px;max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+.zc-msg{margin:8px 0;padding:8px 12px;border-radius:8px;max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
 .zc-user{background:var(--zc-user);color:var(--zc-fg)}
 .zc-bot{background:var(--zc-bg);color:var(--zc-fg);border:1px solid var(--zc-line)}
-.zc-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.zc-sr{position:absolute;width:4px;height:4px;padding:0;margin:-4px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .zc-status{min-height:1.5em;margin:0;color:var(--zc-muted)}
 .zc-label{display:block;margin:8px 0 4px;font-weight:700;color:var(--zc-fg)}
-.zc-input{display:block;width:100%;max-width:100%;min-height:44px;padding:8px 10px;border-radius:8px;border:2px solid var(--zc-line);background:var(--zc-bg);color:var(--zc-fg);font:inherit;resize:vertical}
+.zc-input{display:block;width:100%;max-width:100%;min-height:44px;padding:8px 12px;border-radius:8px;border:2px solid var(--zc-line);background:var(--zc-bg);color:var(--zc-fg);font:inherit;resize:vertical}
 .zc-error{min-height:1.2em;margin:4px 0;color:var(--zc-error)}
 .zc-timeout{margin:8px 0;padding:8px;border:2px solid var(--zc-focus);border-radius:8px}
 .zc-timeout p{margin:0 0 8px}
