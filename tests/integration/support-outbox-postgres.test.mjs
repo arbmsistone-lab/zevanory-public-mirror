@@ -99,16 +99,23 @@ function assertAlertPrivate(a, ids, { category, count, oldest }) {
   assert.deepEqual(others, [], "nenhum endereço de remetente no alerta");
   for (const id of ids) assert.ok(!visible.includes(id), "email_id ausente: " + id);
   for (const bad of ["Assunto", "corpo", "@example.com", "<", "message"]) assert.ok(!visible.includes(bad), "conteúdo ausente: " + bad);
-  if (category === "dead") {
-    assert.equal(b.subject, "[ZEVANORY suporte] ALERTA: mensagens de clientes não entregues");
-    assert.match(b.text, new RegExp(`^${count} mensagem\\(ns\\) para suporte@/contato@ esgotaram as tentativas`));
-  } else {
-    assert.equal(b.subject, "[ZEVANORY suporte] ALERTA: fila de suporte atrasada");
-    assert.match(b.text, new RegExp(`^${count} mensagem\\(ns\\) ainda pendente\\(s\\); a mais antiga chegou há ${oldest} min\\.`));
-  }
-  const digits = visible.match(/\d+/g) || [];
-  assert.ok(digits.every((n) => [String(count), String(oldest ?? count)].includes(n)), "só contagens numéricas: " + digits.join(","));
+  // Igualdade EXATA com o modelo canônico: só contagem/categoria substituídas. Qualquer campo ou palavra a mais falha.
+  const expected = ALERT_TEMPLATES[category]({ count, oldest });
+  assert.deepEqual({ to: b.to, from: b.from, subject: b.subject, text: b.text }, { to: [OWNER], from: "ZEVANORY suporte <suporte@zevanory.api.br>", ...expected });
+  assert.deepEqual(b, { to: [OWNER], from: "ZEVANORY suporte <suporte@zevanory.api.br>", ...expected });
 }
+// Modelos canônicos dos alertas (escritos aqui de forma independente do módulo).
+const ALERT_FOOTER = "\n\nVeja as mensagens no painel Resend > Receiving e o passo a passo em docs/ops/EMAIL_SUPORTE.md.";
+const ALERT_TEMPLATES = {
+  dead: ({ count }) => ({
+    subject: "[ZEVANORY suporte] ALERTA: mensagens de clientes não entregues",
+    text: `${count} mensagem(ns) para suporte@/contato@ esgotaram as tentativas (encaminhamento ou confirmação) e não serão mais tentadas.` + ALERT_FOOTER
+  }),
+  backlog: ({ count, oldest }) => ({
+    subject: "[ZEVANORY suporte] ALERTA: fila de suporte atrasada",
+    text: `${count} mensagem(ns) ainda pendente(s); a mais antiga chegou há ${oldest} min.` + ALERT_FOOTER
+  })
+};
 
 before(() => {
   if (SKIP) return;
@@ -276,7 +283,7 @@ test("O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: u
   // Fila atrasada: 5 pendentes com encaminhamento falhando, drenos concorrentes => um único alerta de atraso, privado.
   await sql.query("truncate zevanory_support_inbound, zevanory_support_alerts");
   const q = ["b1", "b2", "b3", "b4", "b5"];
-  await seed(q, { age: "3 minutes" });
+  await seed(q, { age: "3 minutes 5 seconds" });
   const rb = resend({ failForward: () => true });
   await Promise.all([drain(rb), drain(rb), drain(rb)]);
   const backlog = rb.calls.filter((c) => c.kind === "alert" && /atrasada/.test(c.subject));
