@@ -1,8 +1,7 @@
 name: probe retired asset headers (read-only, PR-only evidence)
 
-# Evidência pontual pedida no AVAL SOL 206–207 (item 206.08): lê, SEM credencial e só com GET/HEAD públicos,
-# os cabeçalhos HTTP crus de /whatsapp-contact.js nos dois domínios, para saber se Clear-Site-Data chega à borda.
-# Não escreve nada, não usa segredos, não roda em push. PR de evidência: não destinado a merge.
+# Evidência pontual pedida pelo AVAL SOL (206.08, 211): lê, SEM credencial e só com GET/HEAD públicos, cabeçalhos
+# crus e referências nas páginas públicas. Não escreve nada, não usa segredos, não roda em push. Não destinado a merge.
 on:
   pull_request:
     paths:
@@ -14,35 +13,31 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
-      - name: Raw response headers (GET and HEAD)
+      - name: vendas tombstone (GET)
         shell: bash
         run: |
-          set -u
-          for host in zevanory.api.br vendas.zevanory.api.br; do
-            for method in GET HEAD; do
-              echo "=== $method https://$host/whatsapp-contact.js ($(date -u +%FT%TZ))"
-              if [ "$method" = HEAD ]; then
-                curl -sS -I --max-time 20 -H 'Cache-Control: no-cache' "https://$host/whatsapp-contact.js" | tr -d '\r'
-              else
-                curl -sS -D - -o /tmp/body --max-time 20 -H 'Cache-Control: no-cache' "https://$host/whatsapp-contact.js" | tr -d '\r'
-                echo "--- body (first 200 bytes, $(wc -c < /tmp/body) bytes total):"; head -c 200 /tmp/body; echo
-              fi
-            done
-          done | tee "$RUNNER_TEMP/headers.txt"
-          {
-            echo '### Clear-Site-Data / Cache-Control observados'
-            echo '```'
-            grep -iE '^(=== |clear-site-data|cache-control|x-deployment-sha|cf-ray|HTTP/)' "$RUNNER_TEMP/headers.txt"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          # Anotações legíveis pela API de check-runs (logs brutos não são acessíveis ao executor).
-          cur=""
-          while IFS= read -r line; do
-            case "$line" in
-              "=== "*) cur="${line#=== }";;
-              HTTP/*|[Cc]lear-[Ss]ite-[Dd]ata:*|[Cc]ache-[Cc]ontrol:*|x-deployment-sha:*|cf-ray:*|"--- body"*) echo "::notice title=${cur}::${line}";;
-            esac
-          done < "$RUNNER_TEMP/headers.txt"
-          grep -E '^/\*|^\(\(' "$RUNNER_TEMP/headers.txt" | head -4 | while IFS= read -r b; do echo "::notice title=body::${b:0:150}"; done
+          h=$(curl -sS -D - -o /tmp/b --max-time 20 -H 'Cache-Control: no-cache' https://vendas.zevanory.api.br/whatsapp-contact.js | tr -d '\r')
+          echo "$h" | grep -iE '^(HTTP/|cache-control|clear-site-data|cf-ray|content-type)' | while IFS= read -r l; do echo "::notice title=vendas GET /whatsapp-contact.js $(date -u +%FT%TZ)::$l"; done
+          echo "::notice title=vendas GET /whatsapp-contact.js body::$(wc -c < /tmp/b) bytes: $(head -c 120 /tmp/b | tr '\n' ' ')"
+      - name: vendas tombstone (HEAD)
+        shell: bash
+        run: |
+          curl -sS -I --max-time 20 https://vendas.zevanory.api.br/whatsapp-contact.js | tr -d '\r' | grep -iE '^(HTTP/|cache-control|clear-site-data|cf-ray)' | while IFS= read -r l; do echo "::notice title=vendas HEAD /whatsapp-contact.js::$l"; done
+      - name: vendas pages (cache, references)
+        shell: bash
+        run: |
+          for p in solucoes lucro-e-caixa termos; do
+            h=$(curl -sS -D - -o /tmp/p.html --max-time 20 "https://vendas.zevanory.api.br/$p" | tr -d '\r')
+            cc=$(echo "$h" | grep -i '^cache-control' | head -1); st=$(echo "$h" | grep '^HTTP/' | tail -1)
+            refs=$(grep -c 'whatsapp-contact' /tmp/p.html || true); wa=$(grep -ciE 'wa\.me|api\.whatsapp' /tmp/p.html || true)
+            asset=$(grep -oE '/assets/[A-Za-z0-9._-]+\.(css|js)' /tmp/p.html | head -1)
+            echo "::notice title=vendas /$p::$st | $cc | refs whatsapp-contact=$refs | wa.me=$wa | asset=$asset"
+          done
+          echo "$asset" > /tmp/asset
+      - name: vendas hashed asset cache
+        shell: bash
+        run: |
+          a=$(grep -oE '/assets/[A-Za-z0-9._-]+\.(css|js)' <(curl -sS https://vendas.zevanory.api.br/solucoes) | head -1)
+          curl -sS -I --max-time 20 "https://vendas.zevanory.api.br$a" | tr -d '\r' | grep -iE '^(HTTP/|cache-control)' | while IFS= read -r l; do echo "::notice title=vendas $a::$l"; done
