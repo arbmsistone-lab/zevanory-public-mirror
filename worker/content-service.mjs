@@ -13,6 +13,7 @@ import { brandedEmailHtml } from "./brand-email.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { recordHotmartSale } from "./sales-ledger.mjs";
 import { BANNED_NUMBERS, CONTEUDO_PRONTO } from "./politica-unica.mjs";
+import { resendFailureIsTransient } from "./atendimento.mjs";
 
 // Contrato versionado da oferta (data/politica-unica.json, conteudo_pronto): a página
 // /conteudo-pronto, o resumo da oferta e este gerador leem as mesmas quantidades, objetivos e
@@ -353,30 +354,223 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2) {
   const pending = await readJson(kv, PENDING, []);
   const results = [];
   for (const key of pending.slice(0, limit)) results.push(await generateAndDeliver(env, key, fetchImpl));
-  return { ok: true, tried: results.length, delivered: results.filter((r) => r.ok).length };
+  // Mesmo cron: candidatos de regeneração (nova tentativa com a mesma chave; confirmação de entrega pelo email_id).
+  const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
+  return { ok: true, tried: results.length + Number(regen.tried || 0), delivered: results.filter((r) => r.ok).length, regen };
 }
-// Regeneração gratuita de um pacote bloqueado na leitura: só assinante ativo com briefing, só se o pacote
-// atual estiver bloqueado (idempotente: depois da troca, nova chamada não gera nada).
-export async function regenerateBlockedPackage(env, key, fetchImpl = fetch) {
+// ---------- Regeneração de pacote bloqueado (critério de aceite Sol #898) ----------
+// Estados do PACOTE (separados dos estados de ENTREGA):
+//   bloqueado — o pacote antigo contaminado: imutável, nunca exibido, nunca reenviado, nunca volta a ser atual;
+//   candidato — a versão nova válida, imutável (candidate_key nova, hash SHA-256, protocolo, email_id e estado de
+//               entrega próprio); UM candidato ativo por pacote bloqueado + ciclo + versão de schema (chave
+//               determinística), reaproveitado em toda tentativa com a MESMA Idempotency-Key;
+//   atual     — record.lastPackage. O candidato só vira atual com entrega CONFIRMADA: evento `delivered` obtido
+//               do Resend pelo MESMO email_id (reconciliação no cron, reconcileRegenCandidates; o projeto ainda
+//               não tem webhook assinado de eventos de envio — o de suporte@ só aceita email.received).
+// Entrega: pending -> accepted -> delivered, ou pending/accepted -> dead.
+//   pending  : candidato e outbox gravados ANTES de qualquer envio. Falha de rede, tempo esgotado, 429, 5xx, 2xx
+//              sem id ou envio não configurado => continua pending (202), cron tenta de novo com a mesma chave.
+//   accepted : 2xx + id do Resend. NÃO promove e NÃO registra delivery_sent: 2xx só diz que o envio foi aceito.
+//   delivered: last_event delivered/opened/clicked/complained ("email.delivered: Resend handed the email off to the
+//              recipient's mail server"). Promove UMA vez (evento duplicado não promove nem notifica de novo).
+//   dead     : 4xx permanente (mesma regra de worker/atendimento.mjs, PR #892), last_event bounced/failed/
+//              suppressed/canceled, janela de 23 h da Idempotency-Key esgotada em pending ou 72 h sem confirmação
+//              em accepted => alerta ao proprietário. Candidato dead nunca vira atual sem uma operação nova
+//              registrada (reopenDeadRegenCandidate, com operador e motivo).
+// Resend: Idempotency-Key até 256 caracteres, retida 24 h; mesma chave + mesmo payload => resposta original sem
+// reenviar; payload diferente => 409 invalid_idempotent_request (https://resend.com/docs/dashboard/emails/idempotency-keys).
+// Por isso destinatário, assunto e texto ficam gravados no candidato. Consulta: GET https://api.resend.com/emails/{id}
+// devolve last_event (https://resend.com/docs/api-reference/emails/retrieve-email); eventos em
+// https://resend.com/docs/dashboard/webhooks/event-types.
+// Queda entre o envio e a gravação do estado: a nova tentativa repete chave + payload e o Resend devolve o mesmo id
+// sem enviar outro e-mail; queda entre "delivered" e a promoção: a reconciliação seguinte promove (converge).
+export const REGEN_SEND_WINDOW_HOURS = 23;
+export const REGEN_ACCEPTED_MAX_HOURS = 72;
+const REGEN = "zpc:cp:regen:";               // candidato (estado de entrega) por pacote bloqueado + ciclo + schema
+const REGEN_OUTBOX = "zpc:cp:regen-outbox";  // candidatos pending/accepted para o cron
+const RESEND_URL = "https://api.resend.com/emails";
+const DELIVERED_EVENTS = new Set(["delivered", "opened", "clicked", "complained"]);
+const DEAD_EVENTS = new Set(["bounced", "failed", "suppressed", "canceled"]);
+export const REGEN_MSG = Object.freeze({
+  delivered: "Pronto! A entrega da versão nova foi confirmada no seu e-mail.",
+  accepted: "A versão nova foi gerada e o provedor aceitou o envio. A entrega ao seu e-mail ainda está sendo confirmada.",
+  pending: (p) => `A versão nova foi gerada, mas o envio ainda está pendente. Continuaremos tentando sem gerar outra cópia nem fazer qualquer cobrança. Use o protocolo ${p} para acompanhar pelo suporte.`,
+  persist: "Não foi possível registrar a regeneração com segurança agora. A versão antiga continua bloqueada e não foi exibida nem alterada. Tente novamente mais tarde ou escreva para suporte@zevanory.api.br. Nenhuma nova entrega foi confirmada.",
+  dead: (p) => `Não foi possível concluir o envio da versão nova. A versão antiga continua bloqueada e não foi exibida nem alterada, e a equipe da ZEVANORY foi avisada. Use o protocolo ${p} para acompanhar pelo suporte.`,
+});
+const putJson = (kv, k, v) => kv.put(k, JSON.stringify(v), { expirationTtl: 400 * DAY });
+export async function regenCandidateKey(key, record) {
+  return REGEN + (await sha(key + "|" + record.lastPackage + "|" + record.cycles + "|v" + CONTENT_SCHEMA_VERSION)).slice(0, 40);
+}
+async function resendIdempotent(env, { to, subject, text, idempotencyKey }, fetchImpl) {
+  if (!env.RESEND_API_KEY || !to) return { ok: false, transient: true, reason: "resend_not_configured" };
+  try {
+    const r = await fetchImpl(RESEND_URL, {
+      method: "POST",
+      headers: { authorization: "Bearer " + String(env.RESEND_API_KEY), "content-type": "application/json", "idempotency-key": idempotencyKey },
+      body: JSON.stringify({ from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], reply_to: "suporte@zevanory.api.br", subject, text, html: brandedEmailHtml(text) }),
+      signal: AbortSignal.timeout(10000),
+    });
+    let data = null;
+    try { data = await r.json(); } catch {}
+    if (r.ok && data?.id) return { ok: true, id: String(data.id) };
+    if (r.ok) return { ok: false, transient: true, reason: "resend_no_id" };
+    return { ok: false, transient: resendFailureIsTransient(r.status), reason: "resend_" + r.status };
+  } catch { return { ok: false, transient: true, reason: "resend_network" }; }
+}
+async function resendLastEvent(env, emailId, fetchImpl) {
+  if (!env.RESEND_API_KEY || !emailId) return null;
+  try {
+    const r = await fetchImpl(RESEND_URL + "/" + encodeURIComponent(emailId), { method: "GET", headers: { authorization: "Bearer " + String(env.RESEND_API_KEY) }, signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return null;
+    const data = await r.json().catch(() => null);
+    return data && String(data.id || "") === String(emailId) ? String(data.last_event || "") : null;
+  } catch { return null; }
+}
+async function outboxAdd(kv, candKey) {
+  const list = await readJson(kv, REGEN_OUTBOX, []);
+  if (!list.includes(candKey)) await kv.put(REGEN_OUTBOX, JSON.stringify([...list, candKey].slice(-500)));
+}
+async function outboxRemove(kv, candKey) {
+  const list = await readJson(kv, REGEN_OUTBOX, []);
+  if (list.includes(candKey)) await kv.put(REGEN_OUTBOX, JSON.stringify(list.filter((k) => k !== candKey)));
+}
+async function markDead(env, kv, candKey, cand, reason, fetchImpl) {
+  const dead = { ...cand, delivery: "dead", deadReason: reason, deadAt: new Date().toISOString() };
+  await putJson(kv, candKey, dead);
+  await outboxRemove(kv, candKey).catch(() => null);
+  await ownerAlert(env, "regeneração do Conteúdo Pronto sem entrega", `Protocolo ${cand.protocolo}: o envio da versão nova terminou em dead (${reason}). O pacote antigo continua bloqueado e nada foi promovido. Tratar manualmente; reabrir só com operação registrada (reopenDeadRegenCandidate).`, fetchImpl).catch(() => null);
+  return dead;
+}
+// Uma tentativa de envio de um candidato pending (página ou cron).
+async function attemptSend(env, kv, candKey, cand, fetchImpl, now) {
+  if (!(now - Date.parse(cand.firstAttemptAt) < REGEN_SEND_WINDOW_HOURS * 3600000)) return markDead(env, kv, candKey, cand, "window_expired", fetchImpl);
+  const r = await resendIdempotent(env, { to: cand.to, subject: cand.subject, text: cand.text, idempotencyKey: cand.idempotencyKey }, fetchImpl);
+  if (r.ok) {
+    const accepted = { ...cand, delivery: "accepted", email_id: r.id, acceptedAt: new Date(now).toISOString(), attempts: Number(cand.attempts || 0) + 1, lastError: null };
+    await putJson(kv, candKey, accepted);
+    return accepted;
+  }
+  if (!r.transient) return markDead(env, kv, candKey, { ...cand, attempts: Number(cand.attempts || 0) + 1, lastError: r.reason }, r.reason, fetchImpl);
+  const pending = { ...cand, attempts: Number(cand.attempts || 0) + 1, lastError: r.reason };
+  await putJson(kv, candKey, pending);
+  return pending;
+}
+// Entrega confirmada pelo MESMO email_id: promove uma única vez; dead nunca promove; duplicado não promove nem notifica.
+export async function applyRegenDelivered(env, candKey, emailId, fetchImpl = fetch) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const cand = await readJson(kv, candKey, null);
+  if (!cand || !cand.email_id || String(emailId) !== String(cand.email_id)) return { promoted: false, reason: "unknown_email_id" };
+  if (cand.delivery === "dead") return { promoted: false, reason: "dead_not_promoted" };
+  if (cand.delivery === "delivered" && cand.promotedAt) return { promoted: false, reason: "duplicate" };
+  let c = cand;
+  if (c.delivery !== "delivered") { c = { ...c, delivery: "delivered", deliveredAt: new Date().toISOString() }; await putJson(kv, candKey, c); }
+  const record = await readJson(kv, cand.sub, null);
+  const notify = () => emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_regenerated", ref: "cp-regen:" + cand.protocolo }).catch(() => null);
+  if (record?.lastPackage === cand.candidate_key) {
+    // Queda depois da promoção e antes de fechar o candidato: converge sem nova promoção (o ledger deduplica a ref).
+    await notify();
+    await putJson(kv, candKey, { ...c, promotedAt: record.regeneratedAt || new Date().toISOString() });
+    await outboxRemove(kv, candKey);
+    return { promoted: false, reason: "already_promoted" };
+  }
+  if (!record || record.lastPackage !== cand.blockedPackage || record.cycles !== cand.cycle) {
+    await putJson(kv, candKey, { ...c, promotedAt: null, superseded: true });
+    await outboxRemove(kv, candKey);
+    return { promoted: false, reason: "superseded" };
+  }
+  const stored = await kv.get(cand.candidate_key);
+  if (!stored || (await sha(stored)) !== cand.hash) { await markDead(env, kv, candKey, c, "candidate_hash_mismatch", fetchImpl); return { promoted: false, reason: "candidate_hash_mismatch" }; }
+  const at = new Date().toISOString();
+  await putJson(kv, cand.sub, { ...record, lastPackage: cand.candidate_key, blockedPackage: cand.blockedPackage, regeneratedAt: at, regenProtocolo: cand.protocolo, regenEmailId: cand.email_id });
+  await notify();
+  await putJson(kv, candKey, { ...c, promotedAt: at });
+  await outboxRemove(kv, candKey);
+  return { promoted: true, reason: "delivered" };
+}
+// Reconciliação (cron): pending => nova tentativa com a mesma chave; accepted => consulta pelo email_id.
+export async function reconcileRegenCandidates(env, fetchImpl = fetch, { limit = 10, now = Date.now() } = {}) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  if (!kv?.get) return { ok: false };
+  const out = { ok: true, tried: 0, promoted: 0, accepted: 0, dead: 0, pending: 0 };
+  for (const candKey of (await readJson(kv, REGEN_OUTBOX, [])).slice(0, limit)) {
+    out.tried++;
+    const cand = await readJson(kv, candKey, null);
+    if (!cand || cand.delivery === "dead" || cand.promotedAt || cand.superseded) { await outboxRemove(kv, candKey); continue; }
+    if (cand.delivery === "pending") { const c = await attemptSend(env, kv, candKey, cand, fetchImpl, now); out[c.delivery === "dead" ? "dead" : c.delivery === "accepted" ? "accepted" : "pending"]++; continue; }
+    if (cand.delivery === "delivered") { if ((await applyRegenDelivered(env, candKey, cand.email_id, fetchImpl)).promoted) out.promoted++; continue; }
+    const ev = await resendLastEvent(env, cand.email_id, fetchImpl);
+    if (ev && DELIVERED_EVENTS.has(ev)) { if ((await applyRegenDelivered(env, candKey, cand.email_id, fetchImpl)).promoted) out.promoted++; }
+    else if (ev && DEAD_EVENTS.has(ev)) { await markDead(env, kv, candKey, cand, "resend_" + ev, fetchImpl); out.dead++; }
+    else if (!(now - Date.parse(cand.acceptedAt) < REGEN_ACCEPTED_MAX_HOURS * 3600000)) { await markDead(env, kv, candKey, cand, "delivery_unconfirmed", fetchImpl); out.dead++; }
+    else out.accepted++;
+  }
+  return out;
+}
+// Operação explícita e registrada para reabrir um candidato dead (nova Idempotency-Key, mesmo pacote imutável).
+export async function reopenDeadRegenCandidate(env, candKey, { operator, reason, now = Date.now() } = {}) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const cand = await readJson(kv, candKey, null);
+  if (!cand || cand.delivery !== "dead") return { ok: false, reason: "not_dead" };
+  if (!String(operator || "").trim() || !String(reason || "").trim()) return { ok: false, reason: "operation_must_be_recorded" };
+  const operations = [...(cand.operations || []), { at: new Date(now).toISOString(), op: "reopen", operator: String(operator).slice(0, 80), reason: String(reason).slice(0, 300), previous: { idempotencyKey: cand.idempotencyKey, email_id: cand.email_id || null, deadReason: cand.deadReason } }];
+  const reopened = { ...cand, delivery: "pending", email_id: null, deadReason: null, idempotencyKey: cand.baseIdempotencyKey + "/op" + operations.length, firstAttemptAt: new Date(now).toISOString(), attempts: 0, operations };
+  await putJson(kv, candKey, reopened);
+  await outboxAdd(kv, candKey);
+  return { ok: true, idempotencyKey: reopened.idempotencyKey };
+}
+// Pedido do cliente (POST da página): cria ou reaproveita o candidato e faz UMA tentativa de envio.
+export async function regenerateBlockedPackage(env, key, fetchImpl = fetch, { now = Date.now() } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const record = await readJson(kv, key, null);
   if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_eligible" };
   const current = record.lastPackage ? await readJson(kv, record.lastPackage, null) : null;
   if (!current || !packageBlocked(current)) return { ok: true, reason: "not_blocked" };
-  const pkg = await generatePackage(env, record.briefing, record.cycles);
-  if (!pkg || packageBlocked(pkg)) {
-    await ownerAlert(env, "regeneração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido para substituir um pacote antigo bloqueado; o assinante pode tentar de novo.", fetchImpl);
-    return { ok: false, reason: "generation_failed" };
+  const candKey = await regenCandidateKey(key, record);
+  let cand = await readJson(kv, candKey, null);
+  if (!cand) {
+    const h = candKey.slice(REGEN.length);
+    const candidate_key = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION + ":c" + h.slice(0, 12);
+    let stored = await kv.get(candidate_key);
+    if (!stored) {
+      const pkg = await generatePackage(env, record.briefing, record.cycles);
+      if (!pkg || packageBlocked(pkg)) {
+        await ownerAlert(env, "regeneração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido para substituir um pacote antigo bloqueado; o assinante pode tentar de novo.", fetchImpl);
+        return { ok: false, reason: "generation_failed" };
+      }
+      stored = JSON.stringify(pkg);
+    }
+    const protocolo = "CPR-" + h.slice(0, 10).toUpperCase();
+    const baseIdempotencyKey = "cp-regen/" + h;
+    try {
+      const token = rand();
+      const text = packageText(JSON.parse(stored), record.briefing.negocio) + `\n\nProtocolo: ${protocolo}\nVersão para consulta online (fica disponível assim que a entrega for confirmada): ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
+      if (!(await kv.get(candidate_key))) await kv.put(candidate_key, stored, { expirationTtl: 400 * DAY });
+      await kv.put(TOKEN + token, key, { expirationTtl: 120 * DAY });
+      cand = { schema: "zpc.cp.regen.v1", sub: key, blockedPackage: record.lastPackage, cycle: record.cycles, content_schema_version: CONTENT_SCHEMA_VERSION,
+        candidate_key, hash: await sha(stored), protocolo, baseIdempotencyKey, idempotencyKey: baseIdempotencyKey, email_id: null, delivery: "pending",
+        to: record.email, subject: `Seu Conteúdo Pronto do mês ${record.cycles} — nova versão (protocolo ${protocolo})`, text,
+        firstAttemptAt: new Date(now).toISOString(), attempts: 0, operations: [] };
+      await putJson(kv, candKey, cand);
+      await outboxAdd(kv, candKey);
+    } catch { return { ok: false, reason: "persist_failed" }; }
+  } else if (cand.delivery === "pending" || cand.delivery === "accepted") {
+    try { await outboxAdd(kv, candKey); } catch { return { ok: false, reason: "persist_failed" }; }
   }
-  const pkgKey = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION;
-  await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });
-  const token = rand();
-  await kv.put(TOKEN + token, key, { expirationTtl: 120 * DAY });
-  const text = packageText(pkg, record.briefing.negocio) + `\n\nVersão para consulta online: ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
-  await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${record.cycles} — nova versão`, text, fetchImpl);
-  await kv.put(key, JSON.stringify({ ...record, lastPackage: pkgKey, blockedPackage: record.lastPackage, regeneratedAt: new Date().toISOString() }), { expirationTtl: 400 * DAY });
-  await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_regenerated", ref: "cp-regen:" + key.slice(-16) + ":" + record.cycles }).catch(() => null);
-  return { ok: true, reason: "regenerated" };
+  if (cand.delivery === "pending") {
+    try { cand = await attemptSend(env, kv, candKey, cand, fetchImpl, now); }
+    catch { return { ok: false, reason: "persist_failed" }; }
+  }
+  return { ok: cand.delivery !== "dead", reason: cand.delivery, protocolo: cand.protocolo };
+}
+// Mensagem e status HTTP de cada estado: o 2xx do envio nunca vira afirmação de entrega (teste g7).
+export function regenResponse(out) {
+  if (out.reason === "delivered") return [200, REGEN_MSG.delivered];
+  if (out.reason === "accepted") return [200, REGEN_MSG.accepted];
+  if (out.reason === "pending") return [202, REGEN_MSG.pending(out.protocolo)];
+  if (out.reason === "dead") return [409, REGEN_MSG.dead(out.protocolo)];
+  if (out.reason === "persist_failed") return [503, REGEN_MSG.persist];
+  return [503, "Não foi possível gerar a versão nova agora. A versão antiga continua bloqueada e não foi exibida nem alterada. Tente novamente mais tarde ou escreva para suporte@zevanory.api.br."];
 }
 export async function handlePackageView(request, env, ctx, fetchImpl = fetch) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
@@ -386,17 +580,18 @@ export async function handlePackageView(request, env, ctx, fetchImpl = fetch) {
   if (!pkg) return page("Pacote não encontrado", "<h1>Pacote não encontrado ou link expirado.</h1>", 404);
   const eligible = found.record.status === "active" && Boolean(found.record.briefing);
   if (request.method === "POST") {
-    if (!packageBlocked(pkg)) return page("Pacote atualizado", "<h1>Este pacote já está no formato atual.</h1>");
+    if (!packageBlocked(pkg)) return page("Pacote atualizado", found.record.regenProtocolo ? `<h1>${esc(REGEN_MSG.delivered)}</h1>` : "<h1>Este pacote já está no formato atual.</h1>");
     if (!eligible) return page("Versão nova", `<h1>Versão nova sem custo</h1><p>${esc(BLOQUEIO_TEXTO)}</p><p>Peça em suporte@zevanory.api.br.</p>`, 409);
-    const out = await regenerateBlockedPackage(env, found.key, fetchImpl);
-    if (!out.ok) return page("Tente de novo", "<h1>Não foi possível gerar agora.</h1><p>Tente de novo em instantes ou escreva para suporte@zevanory.api.br.</p>", 503);
-    return page("Versão nova", "<h1>Pronto! A versão nova chegou no seu e-mail.</h1><p>A versão antiga continua guardada sem alteração.</p>");
+    const [status, msg] = regenResponse(await regenerateBlockedPackage(env, found.key, fetchImpl));
+    return page("Versão nova", `<h1>Conteúdo Pronto · versão nova</h1><p>${esc(msg)}</p>`, status);
   }
   if (request.method !== "GET" && request.method !== "HEAD") return page("Método inválido", "<h1>Método inválido.</h1>", 405);
   if (packageBlocked(pkg)) {
-    const offer = eligible
-      ? `<form method="post" action="?t=${esc(token)}"><input type="hidden" name="acao" value="regenerar"><button type="submit">Gerar versão nova sem custo</button></form>`
-      : "<p>Para receber a versão nova sem custo, escreva para suporte@zevanory.api.br.</p>";
+    const cand = eligible ? await readJson(kv, await regenCandidateKey(found.key, found.record), null) : null;
+    const button = `<form method="post" action="?t=${esc(token)}"><input type="hidden" name="acao" value="regenerar"><button type="submit">Gerar versão nova sem custo</button></form>`;
+    const offer = !eligible ? "<p>Para receber a versão nova sem custo, escreva para suporte@zevanory.api.br.</p>"
+      : !cand ? button
+      : `<p>${esc(regenResponse({ reason: cand.delivery, protocolo: cand.protocolo })[1])}</p>${cand.delivery === "pending" ? button : ""}`;
     return page("Pacote no formato anterior", `<h1>Conteúdo Pronto · mês ${esc(pkg.cycle)}</h1><p>${esc(BLOQUEIO_TEXTO)}</p>${offer}`);
   }
   const posts = pkg.posts.map((p, i) => `<article><h2>Post ${i + 1} — ${esc(p.tema)}</h2><p style="white-space:pre-wrap">${esc(p.legenda)}</p><p><b>Chamada:</b> ${esc(p.cta)}</p><p>${esc(p.hashtags.join(" "))}</p><small>Imagem sugerida: ${esc(p.imagem)}</small></article>`).join("");
