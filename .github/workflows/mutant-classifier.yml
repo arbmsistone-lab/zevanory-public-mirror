@@ -1,0 +1,89 @@
+name: mutant-classifier
+
+# Meta-tests for the shared mutation-test classifier (scripts/ci/mutant_classifier.py). pull_request only: it never
+# runs on merge, uses no secrets and only a read token. Offline fixtures on Linux and Windows, plus live `node --test`
+# runs of the probe suite on Node 22 and Node 24 (Linux and Windows). The live job uploads the TAP it captured so the
+# committed fixtures (tests/fixtures/mutant_classifier/node22, node24) can be refreshed from real runner output.
+on:
+  pull_request:
+    paths:
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/test_mutant_classifier.py"
+      - "tests/test_mutant_classifier_live.py"
+      - "tests/fixtures/mutant_classifier/**"
+      - ".github/workflows/mutant-classifier.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    name: mutant-classifier / fixtures (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Self-check and meta-tests (exact count, no skips)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -euo pipefail
+          echo "RUNNER_OS=$RUNNER_OS python=$(python --version 2>&1)"
+          # The CRLF fixtures must reach the runner byte-exact (tests/fixtures/mutant_classifier/.gitattributes).
+          python scripts/ci/mutant_classifier.py self-check
+          python -m unittest tests.test_mutant_classifier -v < /dev/null 2>&1 | tr -d '\r' | tee /tmp/mc.txt
+          grep -qx "Ran 54 tests in .*" /tmp/mc.txt || { echo "::error::expected exactly 54 meta-tests"; exit 1; }
+          if grep -q "skipped" /tmp/mc.txt; then echo "::error::skipped meta-tests"; exit 1; fi
+          grep -qx "OK" /tmp/mc.txt || { echo "::error::meta-tests did not end in OK"; exit 1; }
+          echo "::notice title=MUTANT_CLASSIFIER_FIXTURES ($RUNNER_OS)::Ran 54, OK, skipped 0"
+
+  live:
+    name: mutant-classifier / live node ${{ matrix.node }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22", "24"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Live probe runs classified (exact count, no skips)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+          MUTANT_CLASSIFIER_CAPTURE_DIR: ${{ runner.temp }}/mc-capture
+        run: |
+          set -euo pipefail
+          echo "RUNNER_OS=$RUNNER_OS node=$(node --version) python=$(python --version 2>&1)"
+          python -m unittest tests.test_mutant_classifier_live -v < /dev/null 2>&1 | tr -d '\r' | tee /tmp/live.txt
+          grep -qx "Ran 14 tests in .*" /tmp/live.txt || { echo "::error::expected exactly 14 live meta-tests"; exit 1; }
+          if grep -q "skipped" /tmp/live.txt; then echo "::error::skipped live meta-tests"; exit 1; fi
+          grep -qx "OK" /tmp/live.txt || { echo "::error::live meta-tests did not end in OK"; exit 1; }
+          echo "::notice title=MUTANT_CLASSIFIER_LIVE (node $(node --version), $RUNNER_OS)::Ran 14, OK, skipped 0"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutant-classifier-tap-node${{ matrix.node }}-${{ runner.os }}
+          path: ${{ runner.temp }}/mc-capture
+          retention-days: 14
