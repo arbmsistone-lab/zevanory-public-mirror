@@ -108,7 +108,7 @@ M = {
     # padrão desligado em todas as fontes (política, wrangler, gerador, Workers)
     "D1 policy enabled by default": (POLICY, '"enabled_default": false,', '"enabled_default": true,'),
     "D2 wrangler enables chat": ("wrangler.sales.toml", "[vars]\nZEVANORY_SALES_PUBLIC_RELEASE_SHA", "[vars]\nSITE_CHAT_ENABLED = \"true\"\nZEVANORY_SALES_PUBLIC_RELEASE_SHA"),
-    "D3 generator injects widget": ("scripts/build_sales_public.py", "        if 'src=\"/whatsapp-contact.js\"' not in html:", "        html = html.replace(\"</body>\", '<script src=\"/site-chat.js\" defer></script></body>', 1)\n        if 'src=\"/whatsapp-contact.js\"' not in html:"),
+    "D3 generator injects widget": ("scripts/build_sales_public.py", "        path.write_text(html, encoding=\"utf-8\")\n    shutil.copy2(ROOT / \"legal.css\"", "        html = html.replace(\"</body>\", '<script src=\"/site-chat.js\" defer></script></body>', 1)\n        path.write_text(html, encoding=\"utf-8\")\n    shutil.copy2(ROOT / \"legal.css\""),
     "D4 sales worker defaults on": (SALES, 'export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";', 'export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"true").toLowerCase()==="true";'),
     "D5 central worker defaults on": (CHAT, 'const enabledEnv = String(env.SITE_CHAT_ENABLED || "").toLowerCase() === "true";', 'const enabledEnv = String(env.SITE_CHAT_ENABLED || "true").toLowerCase() === "true";'),
 }
