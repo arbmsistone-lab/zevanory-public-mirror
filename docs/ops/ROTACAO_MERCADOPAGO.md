@@ -94,7 +94,9 @@ concurrency:
 
 **Semântica do GitHub.** Numa fila de concorrência roda um item por vez. `queue` aceita `single` (padrão) e
 `max`. Com `single`, só um item fica pendente: um pendente novo **cancela** o anterior. Com `max`, até 100
-ficam pendentes, em ordem FIFO pela hora em que entraram na espera, e nenhum é cancelado. `queue: max`
+ficam pendentes, em ordem FIFO pela hora em que entraram na espera (não pela hora do disparo), e nenhum
+pendente é substituído. **Limite:** se já houver 100 pendentes, um run novo é cancelado ao entrar; não há
+prioridade para a rotação financeira. `queue: max`
 com `cancel-in-progress: true` é rejeitado na validação, e aqui `cancel-in-progress` é `false`. Assim, nenhum run
 em andamento é interrompido, nem o desta rotação nem o de outro publicador. Fontes: documentação "Control the
 concurrency of workflows and jobs" e changelog do GitHub de 07/05/2026 ("concurrency groups now allow larger queues").
@@ -124,7 +126,8 @@ Gravação, espera do preflight e retorno automático acontecem no mesmo job e n
 | `channel-credentials-sync.yml`, `gemini-key-to-worker.yml`, `production-test-secret-cleanup.yml`, `voice-zero-spend-enable.yml` | 10 min cada |
 | `sandbox-worker-secret-audit.yml` (aposentado, `if: false`) | 5 min (na prática, pulado) |
 
-Execução: no máximo **160 min** (155 sem o aposentado). Somam-se o tempo de fila do runner e o tempo de
+Execução: orçamento de **160 min** (155 sem o aposentado). É um orçamento dos jobs, **não** um limite
+absoluto de espera: aprovação humana, falta de runner ou outras interferências não têm teto garantido. Somam-se o tempo de fila do runner e o tempo de
 aprovação: todos os membros, inclusive esta rotação, usam o Environment `producao-critica`, que exige revisor.
 Um run que espera aprovação **segura a vaga**, porque a concorrência fica no topo do run. O próprio proprietário
 aprova esses runs e pode rejeitar ou cancelar os que ainda estão pendentes ou aguardando aprovação. Um run
