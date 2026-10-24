@@ -18,13 +18,14 @@ import { normalizeEol } from "../../tests/helpers/text.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITES = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-manual-only.test.mjs", "tests/whatsapp-config-absence.test.mjs"];
-const BASE_COUNT = 23;
+const BASE_COUNT = 25;
 const T = {
   sw: "kill-switch: retirement is a code constant", paths: "retired: no fetch", surf: "status surfaces:", proj: "projection:", quorum: "provider independence:",
   hook: "Meta webhook: WhatsApp deliveries", nonwa: "Meta webhook: Instagram/Facebook", bhook: "bundle layer", gone: "onboarding routes", broker: "broker tombstone:", prims: "sender primitives",
   adapter: "outbound adapter", reply: "instant reply:", h18: "webhook handler:", forger: "static: no forged", wf: "static: retired workflows", onb: "static: retired onboarding",
   sManual: "keyword comments, Page feed", sNon: "non-social payloads", sStatic: "static: no social automation",
-  cfgToml: "wrangler configs:", cfgGen: "generated candidate config:"
+  cfgToml: "wrangler configs:", cfgGen: "generated candidate config:", pubGen: "generated public assets:",
+  failClosed: "fail-closed: any leftover", genSrc: "generator source:"
 };
 const RET = "worker/whatsapp-retirement.mjs", COMPAT = "worker/cloudflare-worker.compat.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
 const LIVE = "worker/live-runtime-status.mjs", CONT = "worker/continuity-router.mjs", ONB = "worker/whatsapp-onboarding.mjs";
@@ -32,7 +33,8 @@ const BROKER = "worker/whatsapp-credential-broker.mjs", INB = "worker/inbound-au
 const FORGER = "scripts/ci/_mutant_forger.mjs";
 const GEN = "scripts/deploy/prepare-central-candidate.py", TOML = "wrangler.sales.toml";
 const GEN_STRIP = 'for _bag in (c["vars"], runtime):\n    for _key in [k for k in _bag if _retired_whatsapp_alias(k)]:\n        _bag.pop(_key)\n';
-const GEN_SALES = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="true"  # Inbound-only owner-authorized support and catalog sales; KV controls checkout\n';
+const GEN_SALES = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"  # WhatsApp retired (PR #896): channel closed for good, never "true"\n';
+const SCAN = "scripts/deploy/public_whatsapp_scan.py";
 // The generator shape lives under tests/ (outside the static scan) and is copied in only for M28.
 const FORGER_SRC = normalizeEol(readFileSync(resolve(ROOT, "tests/fixtures/forged-webhook-generator.txt"), "utf8"));
 
@@ -81,6 +83,13 @@ const MUTANTS = [
   ["M40_generator_keeps_legacy_base_alias", [[GEN, GEN_STRIP, ""]], [T.cfgGen]],
   ["M41_generator_emits_whatsapp_display", [[GEN, GEN_STRIP, GEN_STRIP + 'runtime["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"\n']], [T.cfgGen]],
   ["M42_toml_support_channel_back", [[TOML, "\n[vars]\n", '\n[vars]\nSUPPORT_CHANNEL = "WhatsApp +55 88 99254-5413"\n']], [T.cfgToml]],
+  // Follow-up on #896: retired channel re-enabled; public assets keep / regain the banned account.
+  ["M43_whatsapp_sales_reenabled", [[GEN, GEN_SALES, 'c["vars"]["WHATSAPP_SALES_ENABLED"]="true"\n']], [T.cfgGen]],
+  ["M44_contact_js_not_neutralized", [[GEN, '    contact_js.write_bytes(WHATSAPP_FREE_CONTACT_JS.encode("utf-8"))\n', "    pass\n"]], [T.cfgGen, T.pubGen]],
+  ["M45_public_scan_disabled", [[GEN, "if _wa_hits:\n", "if False:\n"]], [T.failClosed]],
+  ["M46_number_pattern_weakened", [[SCAN, '("number 9234-0423", _number_pattern("92340423")),', '("number 9234-0423", re.compile(r"9234-0423")),']], [T.failClosed]],
+  ["M47_jsonld_telephone_kept", [[GEN, '    new_home = re.sub(r\',"telephone":"[^"]*"\', "", new_home)\n', ""]], [T.cfgGen, T.pubGen]],
+  ["M48_public_number_rewrite_back", [[GEN, "home = Path(\"public/index.html\")\n", 'replacements = {"558892340423": "5588992545413"}\nhome = Path("public/index.html")\n']], [T.genSrc]],
 ];
 
 const sha = (s) => createHash("sha256").update(s).digest("hex");

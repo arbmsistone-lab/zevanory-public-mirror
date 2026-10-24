@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-import json,os,re
+import json,os,re,sys
 from pathlib import Path
+sys.dont_write_bytecode = True  # never leave __pycache__/*.pyc in the checkout
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from public_whatsapp_scan import public_whatsapp_hits  # noqa: E402  (fail-closed public asset scan)
 p="wrangler.central-fix.jsonc"
 c=json.load(open(p))
 c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
@@ -74,7 +77,7 @@ c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
 if launch_authorized:
     c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="true"
     c["vars"]["PRE_SALE_GATES_APPROVED"]="true"
-c["vars"]["WHATSAPP_SALES_ENABLED"]="true"  # Inbound-only owner-authorized support and catalog sales; KV controls checkout
+c["vars"]["WHATSAPP_SALES_ENABLED"]="false"  # WhatsApp retired (PR #896): channel closed for good, never "true"
 runtime=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
 if not isinstance(runtime,dict):
     runtime={}
@@ -145,29 +148,33 @@ recovered_src = (
     )
 )
 recovered.write_text(recovered_src,encoding="utf-8")
-# Replace every legacy public contact reference in the reconstructed production snapshot.
-replacements = {
-    "+55 88 9234-0423": "+55 88 99254-5413",
-    "558892340423": "5588992545413",
-}
-changed = []
-for asset in Path("public").rglob("*"):
-    if not asset.is_file():
-        continue
-    try:
-        raw = asset.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):
-        continue
-    new = raw
-    for old, value in replacements.items():
-        new = new.replace(old, value)
-    if new != raw:
-        asset.write_text(new, encoding="utf-8")
-        changed.append(str(asset))
-if not changed:
-    print("WHATSAPP_NUMBER_CUTOVER_FILES none_needed")
-else:
-    print("WHATSAPP_NUMBER_CUTOVER_FILES", *changed)
+# WhatsApp retired (PR #896): the banned account's number must not appear on any public page, in any
+# format. The apex public/ tree is the FROZEN 83620c6 snapshot (not the page sources in this repo), so the
+# generator neutralizes its two known WhatsApp surfaces here and then fails closed on anything left
+# (scripts/deploy/public_whatsapp_scan.py, after the overlay below; scanned again after the full build in central-candidate-dryrun).
+#  * whatsapp-contact.js (wa.me CTA injector, loaded by most pages) -> the inert e-mail-only script that
+#    PR #892 ships for the same path (no WhatsApp CTA; rewrites contato@ mailto to suporte@).
+#  * index.html JSON-LD Organization telephone/ContactPoint -> e-mail only.
+WHATSAPP_FREE_CONTACT_JS = (
+    "(()=>{\n"
+    "  // Contato público: a conta WhatsApp Business da ZEVANORY foi desativada permanentemente pela Meta\n"
+    "  // (2026-10-10) e o número está banido. O único endereço eletrônico oficial é o e-mail; este script\n"
+    "  // não injeta nenhum CTA de WhatsApp (data/politica-unica.json, contato_publico) e só troca o\n"
+    "  // endereço antigo pelo e-mail oficial.\n"
+    "  const EMAIL='suporte@zevanory.api.br';\n"
+    "  document.querySelectorAll('a[href^=\"mailto:contato@zevanory.api.br\"]').forEach(a=>{a.href='mailto:'+EMAIL;});\n"
+    "})();\n"
+)
+contact_js = Path("public/whatsapp-contact.js")
+if contact_js.exists():
+    contact_js.write_bytes(WHATSAPP_FREE_CONTACT_JS.encode("utf-8"))
+home = Path("public/index.html")
+if home.exists():
+    raw = home.read_bytes().decode("utf-8")
+    new_home = re.sub(r'"@type":"ContactPoint","telephone":"[^"]*"', '"@type":"ContactPoint","email":"suporte@zevanory.api.br"', raw)
+    new_home = re.sub(r',"telephone":"[^"]*"', "", new_home)
+    if new_home != raw:
+        home.write_bytes(new_home.encode("utf-8"))
 
 retired_slugs=("zevanory-one","arbm-sist")
 for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/arbm-sist.html"):
@@ -194,6 +201,10 @@ for slug in retired_slugs:
 for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/arbm-sist.html"):
     assert not Path(retired_asset).exists()
 print("COMMERCIAL_RETIREMENT_OVERLAY=PASS")
+_wa_hits = public_whatsapp_hits("public")
+if _wa_hits:
+    raise SystemExit("PUBLIC_WHATSAPP_CONTACT_PRESENT " + " ".join(_wa_hits))
+print("PUBLIC_WHATSAPP_FREE=PASS")
 
 c["vars"]["VOICE_TTS_PROVIDER"]="gemini"
 c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"

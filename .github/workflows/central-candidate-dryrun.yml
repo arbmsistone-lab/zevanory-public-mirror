@@ -65,6 +65,10 @@ jobs:
             echo "::error title=WHATSAPP_ALIAS_IN_CANDIDATE::generated wrangler.central-fix.jsonc carries a retired WhatsApp alias"; exit 1
           fi
           echo "::notice title=WHATSAPP_ALIAS_IN_CANDIDATE::absent"
+      - name: No WhatsApp contact in the built public assets (frozen 83620c6 snapshot + overlays; PR #896)
+        # Strict from #896 on: the apex public/ tree is the frozen snapshot, not the page sources #892 cleans,
+        # and the generator already neutralized it. Re-scans the FINAL tree (after copy-brand-export.py).
+        run: python3 -B scripts/deploy/public_whatsapp_scan.py public
       - name: Crons of the candidate (declared list, at most 5 per account)
         run: |
           python3 - <<'PY'

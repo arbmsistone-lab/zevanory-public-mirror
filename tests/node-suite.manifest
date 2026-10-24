@@ -102,7 +102,7 @@ tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
 tests/voice-eval.test.mjs 6
-tests/whatsapp-config-absence.test.mjs 3
+tests/whatsapp-config-absence.test.mjs 5
 tests/whatsapp-neon-store.test.mjs 6
 tests/whatsapp-retirement.test.mjs 17
 tests/youtube-daily-short.test.mjs 14
