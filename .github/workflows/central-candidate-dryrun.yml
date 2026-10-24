@@ -69,6 +69,18 @@ jobs:
         # Strict from #896 on: the apex public/ tree is the frozen snapshot, not the page sources #892 cleans,
         # and the generator already neutralized it. Re-scans the FINAL tree (after copy-brand-export.py).
         run: python3 -B scripts/deploy/public_whatsapp_scan.py public
+      - name: Signature region identical before and after the deploy patches (roteiro seção 7, fail closed)
+        run: |
+          set -euo pipefail
+          # In place: Worker as patched above vs. build-info written BEFORE the patches, and vs. the committed source.
+          python3 scripts/deploy/build_provenance.py region --file worker/cloudflare-worker.recovered.mjs --expect-build-info public/build-info.json
+          git show HEAD:worker/cloudflare-worker.recovered.mjs > "$RUNNER_TEMP/recovered.committed.mjs"
+          python3 scripts/deploy/build_provenance.py region --file "$RUNNER_TEMP/recovered.committed.mjs" --expect-build-info public/build-info.json
+          python3 scripts/deploy/build_provenance.py identifiers --before "$RUNNER_TEMP/recovered.committed.mjs" --after worker/cloudflare-worker.recovered.mjs
+          # Independent reconstruction on the real pinned base, both prepare modes, from the COMMITTED sources (the
+          # working tree was already patched by the reconstruction above).
+          python3 scripts/deploy/verify-signature-region-binding.py --base 83620c680958d726fc4b0fd16e2574cdcc362a6d --source-ref HEAD | tee "$RUNNER_TEMP/binding.json"
+          echo "::notice title=MP_SIGNATURE_REGION::$(python3 -c 'import json,sys;j=json.load(open(sys.argv[1]));print(j["MP_SIGNATURE_REGION_BINDING"], j["tested_region"])' "$RUNNER_TEMP/binding.json")"
       - name: Crons of the candidate (declared list, at most 5 per account)
         run: |
           python3 - <<'PY'
@@ -115,3 +127,22 @@ jobs:
           bytes="${bundle%% *}"
           test "$bytes" -gt 100000
           echo "::notice title=CENTRAL_DRYRUN::{\"sha\":\"${{ github.event.pull_request.head.sha || github.sha }}\",\"crons\":$(cat central-crons.json),\"bundleBytes\":$bytes,\"bundle\":\"$(basename "${bundle#* }")\"}"
+      - name: bundle_sha256 is deterministic and recorded in build-info (roteiro seção 7)
+        run: |
+          set -euo pipefail
+          # Second, independent dry-run of the same tree: the single bundled module must be byte-identical.
+          npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun-2" > /dev/null
+          a="$(python3 scripts/deploy/build_provenance.py bundle "$RUNNER_TEMP/central-dryrun")"
+          b="$(python3 scripts/deploy/build_provenance.py bundle "$RUNNER_TEMP/central-dryrun-2")"
+          echo "$a"; echo "$b"
+          test "$a" = "$b" || { echo "::error title=BUNDLE_NOT_DETERMINISTIC::$a vs $b"; exit 1; }
+          python3 scripts/deploy/write-build-info.py --bundle-dir "$RUNNER_TEMP/central-dryrun"
+          cat public/build-info.json
+          python3 - <<'PY'
+          import json, re
+          j = json.load(open("public/build-info.json"))
+          assert list(j)[:3] == ["sha", "source", "repository"], j
+          assert all(re.fullmatch(r"[0-9a-f]{64}", j[k]) for k in ("mp_signature_region_sha256", "bundle_sha256")), j
+          print("BUILD_INFO_PROVENANCE=PASS")
+          PY
+          echo "::notice title=BUILD_INFO_PROVENANCE::$(tr -d '\n ' < public/build-info.json)"
