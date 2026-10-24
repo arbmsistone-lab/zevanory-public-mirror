@@ -58,7 +58,12 @@ jobs:
           set -uo pipefail
           python3 scripts/deploy/worker_write_paths.py | tee /tmp/inv.txt; rc=${PIPESTATUS[0]}
           { echo "## T1 write-path inventory (strict)"; echo; grep -v '^T1_WRITE_PATH' /tmp/inv.txt; echo; echo '```'; grep '^T1_WRITE_PATH' /tmp/inv.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          grep '^T1_WRITE_PATH_FINDING' /tmp/inv.txt | while read -r _ code path _; do echo "::error title=T1_$code::$path"; done
+          echo "::warning title=T1_WRITE_PATHS (rc=$rc)::$(sed -n 's/^T1_WRITE_PATHS=//p' /tmp/inv.txt)"
+          # One annotation per finding code (GitHub keeps at most 10 error annotations per step); the full list is
+          # in the step summary and the log.
+          for code in $(sed -n 's/^T1_WRITE_PATH_FINDING \([A-Z_]*\) .*/\1/p' /tmp/inv.txt | sort -u); do
+            echo "::error title=T1_$code::$(grep "^T1_WRITE_PATH_FINDING $code " /tmp/inv.txt | awk '{print $3}' | paste -sd' ' -)"
+          done
           exit "$rc"
 
   verdict:
