@@ -13,6 +13,7 @@ on:
       - "data/politica-unica.json"
       - "tests/integration/support-outbox-postgres.test.mjs"
       - "scripts/ci/mutants_support_email.py"
+      - "scripts/ci/mutant_classifier.py"
       - "scripts/ci/mutants_support_email_pg_allow.json"
 
 permissions:

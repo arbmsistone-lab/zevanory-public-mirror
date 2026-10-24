@@ -1,135 +1,159 @@
 {
- "PA1 alert rate limit dropped (SQL)": {
-  "change": "limite atômico do alerta removido",
-  "primary": [
-   {
-    "test": "O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: um por tipo, só categoria e contagens",
-    "why": "afirma um único alerta com 3 drenos concorrentes"
-   }
-  ],
-  "secondary": [
-   {
-    "test": "O16 orçamento global por mensagem: 9 falhas de envio no encaminhamento + falhas na confirmação => ack_dead, encaminhamento preservado",
-    "why": "afirma alerta de morte exatamente uma vez"
-   },
-   {
-    "test": "O18 orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado",
-    "why": "afirma alerta de morte exatamente uma vez"
-   },
-   {
-    "test": "O10 zero leitura, encaminhamento ou confirmação associada à mensagem após estouro, mesmo com consumidores concorrentes repetidos; alerta só com contagens",
-    "why": "afirma no máximo 1 alerta operacional em 3 rodadas de drenos concorrentes"
-   }
-  ]
+ "changes": {
+  "PA1 alert rate limit dropped (SQL)": "limite atômico do alerta removido",
+  "PG6 shared read/send budget (retry SQL)": "falha de leitura também incrementa send_failures",
+  "PL1 lease exclusivity dropped": "lease sem exclusividade",
+  "PN1 nonce replay not rejected atomically": "nonce sem ON CONFLICT",
+  "PQ1 sender quota not enforced": "vaga do remetente reservada mais de uma vez",
+  "PQ2 daily cap not enforced": "teto global ignorado",
+  "PR1 reap removed": "reap removido",
+  "PU1 counters reset at ack transition (SQL)": "zera read_failures/send_failures na transição para ack_pending"
  },
- "PG6 shared read/send budget (retry SQL)": {
-  "change": "falha de leitura também incrementa send_failures",
-  "primary": [
-   {
-    "test": "O14 orçamentos separados com 404 transitório: leituras falhando não consomem envios; depois encaminha e confirma uma vez",
-    "why": "afirma read_failures 3 e send_failures 0 depois de 3 falhas de leitura"
-   }
-  ],
-  "secondary": []
- },
- "PL1 lease exclusivity dropped": {
-  "broad_reason": "o lease é a única guarda de concorrência; todo teste que roda consumidores simultâneos e afirma exatamente-uma-vez o observa",
-  "change": "lease sem exclusividade",
-  "primary": [
-   {
-    "test": "O3 oito consumidores disputando o MESMO e-mail: um lease só, um encaminhamento, uma confirmação",
-    "why": "afirma 1 lease, 1 encaminhamento e 1 confirmação com 8 consumidores"
-   },
-   {
-    "test": "O2 dois consumidores concorrentes nas mesmas linhas: cada e-mail encaminhado e confirmado exatamente uma vez",
-    "why": "afirma 1 encaminhamento por e-mail com 2 drenos"
-   }
-  ],
-  "secondary": [
-   {
-    "test": "O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o reap mata sem leitura/encaminhamento/confirmação",
-    "why": "afirma not_due com lease ativo"
-   },
-   {
-    "test": "O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 23h01 vira dead sem leitura/encaminhamento/confirmação",
-    "why": "roda 2 drenos simultâneos e afirma 1 encaminhamento para a linha de 22h59"
-   },
-   {
-    "test": "O12 provedor automático: webhook duplicado + 2 drenos concorrentes => 1 encaminhamento (Reply-To do ticket), 0 confirmação, skipped_automated_provider",
-    "why": "webhook duplicado + 2 drenos simultâneos e afirma 1 encaminhamento"
-   }
-  ]
- },
- "PN1 nonce replay not rejected atomically": {
-  "change": "nonce sem ON CONFLICT (replay vira erro de PK em vez de 409)",
-  "primary": [
-   {
-    "test": "O17 dreno interno: nonce consumido atomicamente no PostgreSQL — pedidos simultâneos com o mesmo nonce => um 200, os demais 409; minuto velho 401",
-    "why": "afirma [200, 409, 409, 409, 409] e 409 no replay"
-   }
-  ],
-  "secondary": []
- },
- "PQ1 sender quota not enforced": {
-  "change": "vaga do remetente reservada mais de uma vez",
-  "primary": [
-   {
-    "test": "O4 cota por remetente reservada sob concorrência: 6 e-mails do mesmo remetente => 6 encaminhamentos, 1 confirmação",
-    "why": "afirma 1 confirmação para 6 e-mails do mesmo remetente"
-   }
-  ],
-  "secondary": []
- },
- "PQ2 daily cap not enforced": {
-  "change": "teto global ignorado",
-  "primary": [
-   {
-    "test": "O5 teto global sob concorrência: 36 remetentes distintos => exatamente 30 confirmações",
-    "why": "afirma exatamente 30 confirmações para 36 remetentes"
-   }
-  ],
-  "secondary": []
- },
- "PR1 reap removed": {
-  "broad_reason": "o reap é o único caminho de linha pendente fora do orçamento para *_dead; todo teste que afirma essa transição terminal o observa",
-  "change": "reap removido",
-  "primary": [
-   {
-    "test": "O7 limites: 10 falhas de envio, 10 de leitura e 20 leases; estourado => nenhuma leitura/encaminhamento/confirmação da mensagem e vira dead",
-    "why": "afirma *_dead pelo dreno para linhas com contadores/leases estourados (ramo de orçamento)"
-   },
-   {
-    "test": "O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 23h01 vira dead sem leitura/encaminhamento/confirmação",
-    "why": "afirma forward_dead para a linha de 23h01 (ramo de janela)"
-   },
-   {
-    "test": "O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o reap mata sem leitura/encaminhamento/confirmação",
-    "why": "afirma forward_dead depois que o lease vence"
-   }
-  ],
-  "secondary": [
-   {
-    "test": "O10 zero leitura, encaminhamento ou confirmação associada à mensagem após estouro, mesmo com consumidores concorrentes repetidos; alerta só com contagens",
-    "why": "afirma *_dead para linhas fora do orçamento após drenos concorrentes"
-   },
-   {
-    "test": "O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: um por tipo, só categoria e contagens",
-    "why": "o alerta de mortas só existe se as linhas virarem dead pelo reap"
-   }
-  ]
- },
- "PU1 counters reset at ack transition (SQL)": {
-  "change": "zera read_failures/send_failures na transição para ack_pending",
-  "primary": [
-   {
-    "test": "O16 orçamento global por mensagem: 9 falhas de envio no encaminhamento + falhas na confirmação => ack_dead, encaminhamento preservado",
-    "why": "afirma send_failures = 10 e ack_dead após 9+1"
-   },
-   {
-    "test": "O18 orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado",
-    "why": "afirma read_failures 9 preservado e ack_dead na 10ª"
-   }
-  ],
-  "secondary": []
+ "mutants": {
+  "PA1 alert rate limit dropped (SQL)": {
+   "primary": [
+    {
+     "assertion_pattern": "[O11.1]",
+     "test_pattern": "O11",
+     "why": "um único alerta com 3 drenos"
+    }
+   ],
+   "secondary": [
+    {
+     "assertion_pattern": null,
+     "justification": "afirma alerta de morte exatamente uma vez",
+     "test_pattern": "O16"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "afirma alerta de morte exatamente uma vez",
+     "test_pattern": "O18"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "afirma no máximo 1 alerta operacional",
+     "test_pattern": "O10"
+    }
+   ]
+  },
+  "PG6 shared read/send budget (retry SQL)": {
+   "primary": [
+    {
+     "assertion_pattern": "[O14.1]",
+     "test_pattern": "O14",
+     "why": "read_failures 3 e send_failures 0 após 3 falhas de leitura"
+    }
+   ],
+   "secondary": []
+  },
+  "PL1 lease exclusivity dropped": {
+   "broad_reason": "o lease é a única guarda de concorrência; todo teste com consumidores simultâneos e exatamente-uma-vez o observa",
+   "primary": [
+    {
+     "assertion_pattern": "[O03.1]",
+     "test_pattern": "O3",
+     "why": "7 consumidores recebem not_due"
+    },
+    {
+     "assertion_pattern": "[O02.1]",
+     "test_pattern": "O2",
+     "why": "1 encaminhamento por e-mail com 2 drenos"
+    }
+   ],
+   "secondary": [
+    {
+     "assertion_pattern": null,
+     "justification": "afirma not_due com lease ativo",
+     "test_pattern": "O9"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "roda 2 drenos simultâneos e afirma 1 encaminhamento",
+     "test_pattern": "O8"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "webhook duplicado + 2 drenos simultâneos e afirma 1 encaminhamento",
+     "test_pattern": "O12"
+    }
+   ]
+  },
+  "PN1 nonce replay not rejected atomically": {
+   "primary": [
+    {
+     "assertion_pattern": "[O17.1]",
+     "test_pattern": "O17",
+     "why": "[200, 409, 409, 409, 409] com o mesmo nonce"
+    }
+   ],
+   "secondary": []
+  },
+  "PQ1 sender quota not enforced": {
+   "primary": [
+    {
+     "assertion_pattern": "[O04.2]",
+     "test_pattern": "O4",
+     "why": "1 confirmação para 6 e-mails do mesmo remetente"
+    }
+   ],
+   "secondary": []
+  },
+  "PQ2 daily cap not enforced": {
+   "primary": [
+    {
+     "assertion_pattern": "[O05.2]",
+     "test_pattern": "O5",
+     "why": "exatamente 30 confirmações"
+    }
+   ],
+   "secondary": []
+  },
+  "PR1 reap removed": {
+   "broad_reason": "o reap é o único caminho de linha pendente fora do orçamento para *_dead",
+   "primary": [
+    {
+     "assertion_pattern": "[O07.5]",
+     "test_pattern": "O7",
+     "why": "*_dead pelo dreno para linhas estouradas"
+    },
+    {
+     "assertion_pattern": "[O08.3]",
+     "test_pattern": "O8",
+     "why": "forward_dead para a linha de 23h01"
+    },
+    {
+     "assertion_pattern": "[O09.3]",
+     "test_pattern": "O9",
+     "why": "forward_dead depois que o lease vence"
+    }
+   ],
+   "secondary": [
+    {
+     "assertion_pattern": null,
+     "justification": "afirma *_dead para linhas fora do orçamento",
+     "test_pattern": "O10"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "o alerta de mortas só existe se as linhas virarem dead pelo reap",
+     "test_pattern": "O11"
+    }
+   ]
+  },
+  "PU1 counters reset at ack transition (SQL)": {
+   "primary": [
+    {
+     "assertion_pattern": "[O16.1]",
+     "test_pattern": "O16",
+     "why": "state ack_dead com send_failures 10 após 9+1"
+    },
+    {
+     "assertion_pattern": "[O18.1]",
+     "test_pattern": "O18",
+     "why": "read_failures 9 preservado na transição"
+    }
+   ],
+   "secondary": []
+  }
  }
 }

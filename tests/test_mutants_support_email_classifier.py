@@ -1,202 +1,174 @@
-"""Meta-testes do classificador de scripts/ci/mutants_support_email.py (auditor Sol 120-6).
-Queda, timeout, contagem TAP incompleta, falha que não é asserção, falha só em teste secundário e falha fora da lista
-causal => INCONCLUSIVE; KILLED exige asserção em teste PRIMÁRIO e nenhuma falha fora de primary ∪ secondary. A lista
-causal é validada antes (entrada sem justificativa, teste inexistente, lista larga sem broad_reason => recusa). Parte sintética (saídas TAP montadas) e parte
-REAL (node roda suítes mínimas que caem, travam, saem no meio ou falham fora da lista). Sem rede, sem segredo.
+"""Contraprovas do runner de mutantes do suporte@ (scripts/ci/mutants_support_email.py) sobre o classificador
+COMPARTILHADO scripts/ci/mutant_classifier.py (#901). Específicas de #900 (auditor Sol):
+  (a) teste primário falhando em OUTRA asserção (marcador diferente)        => INCONCLUSIVE
+  (b) todo / todo inesperado                                                 => INCONCLUSIVE
+  (c) contagem de pontos TAP incoerente com o plano ou com o resumo          => INCONCLUSIVE
+e ainda: falha só em secundário, falha não relacionada, queda/sintaxe/timeout => INCONCLUSIVE; asserção primária
+casada => KILLED. A config é validada antes (sem justificativa, primary sem marcador, teste inexistente => recusa).
+Parte REAL (node roda suítes mínimas com marcadores [Xnn.k]) e parte com TAP real adulterado. Sem rede, sem segredo.
 """
 import importlib.util
 import json
 import os
 import re
-import subprocess
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("mut_support", ROOT / "scripts" / "ci" / "mutants_support_email.py")
 mut = importlib.util.module_from_spec(spec)
-sys.dont_write_bytecode = True
 spec.loader.exec_module(mut)
+mc = mut.mc
 
-OK = "ok {n} - {t}\n  ---\n  duration_ms: 1\n  type: 'test'\n  ...\n"
-FAIL = ("not ok {n} - {t}\n  ---\n  duration_ms: 1\n  type: 'test'\n  failureType: 'testCodeFailure'\n  error: |-\n    x\n"
-        "  code: '{code}'\n  name: '{name}'\n  ...\n")
-
-
-def tap(results, total=None, cancelled=0):
-    body = "TAP version 13\n"
-    for i, (title, kind) in enumerate(results, 1):
-        if kind == "ok":
-            body += OK.format(n=i, t=title)
-        elif kind == "assert":
-            body += FAIL.format(n=i, t=title, code="ERR_ASSERTION", name="AssertionError")
-        else:
-            body += FAIL.format(n=i, t=title, code="ERR_INVALID_ARG_TYPE", name="TypeError")
-    n = len(results) if total is None else total
-    fails = sum(1 for _, k in results if k != "ok")
-    body += f"1..{n}\n# tests {n}\n# suites 0\n# pass {len(results) - fails}\n# fail {fails}\n# cancelled {cancelled}\n# skipped 0\n# todo 0\n"
-    return body
+SUITE = '''import test from "node:test";
+import assert from "node:assert/strict";
+'''
 
 
-def entry(primary=("causal A",), secondary=()):
-    return {"change": "x", "primary": [{"test": t, "why": "direto"} for t in primary], "secondary": [{"test": t, "why": "precondição"} for t in secondary]}
+def spec_for(primary_label="[T01.1]", secondary=()):
+    return mc.load_mutant_config({"m": {
+        "primary": [{"test_pattern": "T01 regra", "assertion_pattern": primary_label}],
+        "secondary": [{"test_pattern": t, "assertion_pattern": None, "justification": "pré-condição"} for t in secondary]}})["m"]
 
 
-class ClassifierSynthetic(unittest.TestCase):
-    ALLOW = entry()
-
-    def test_killed_only_on_causal_assertion(self):
-        out = tap([("causal A", "assert"), ("other", "ok")])
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, self.ALLOW, 2)[0], "KILLED")
-
-    def test_survived_on_clean_complete_run(self):
-        out = tap([("causal A", "ok"), ("other", "ok")])
-        self.assertEqual(mut.classify({"timeout": False, "rc": 0, "out": out}, self.ALLOW, 2)[0], "SURVIVED")
-
-    def test_crash_signal_is_inconclusive(self):
-        self.assertEqual(mut.classify({"timeout": False, "rc": -11, "out": ""}, self.ALLOW, 2)[0], "INCONCLUSIVE")
-
-    def test_timeout_is_inconclusive(self):
-        self.assertEqual(mut.classify({"timeout": True, "rc": None, "out": ""}, self.ALLOW, 2)[0], "INCONCLUSIVE")
-
-    def test_incomplete_tap_is_inconclusive(self):
-        out = tap([("causal A", "assert")])  # 1 de 2
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, self.ALLOW, 2)[0], "INCONCLUSIVE")
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": "TAP version 13\nnot ok 1 - causal A\n"}, self.ALLOW, 1)[0], "INCONCLUSIVE")
-
-    def test_non_causal_failure_is_inconclusive(self):
-        out = tap([("causal A", "ok"), ("other", "assert")])
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, self.ALLOW, 2)[0], "INCONCLUSIVE")
-        out2 = tap([("causal A", "assert"), ("other", "assert")])
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out2}, self.ALLOW, 2)[0], "INCONCLUSIVE")
-
-    def test_non_assertion_failure_is_inconclusive(self):
-        out = tap([("causal A", "typeerror"), ("other", "ok")])
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, self.ALLOW, 2)[0], "INCONCLUSIVE")
-
-    def test_secondary_only_failure_is_inconclusive(self):
-        out = tap([("causal A", "ok"), ("other", "assert")])
-        e = entry(secondary=("other",))
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, e, 2), ("INCONCLUSIVE", "falha só em secundário (nenhuma asserção primária)"))
-
-    def test_primary_plus_justified_secondary_is_killed(self):
-        out = tap([("causal A", "assert"), ("other", "assert")])
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, entry(secondary=("other",)), 2)[0], "KILLED")
-
-    def test_unrelated_failure_is_inconclusive(self):
-        out = tap([("causal A", "assert"), ("unrelated", "assert")])
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, entry(secondary=("other",)), 2)[0], "INCONCLUSIVE")
-
-    def test_cancelled_is_inconclusive(self):
-        out = tap([("causal A", "assert"), ("other", "ok")], cancelled=1)
-        self.assertEqual(mut.classify({"timeout": False, "rc": 1, "out": out}, self.ALLOW, 2)[0], "INCONCLUSIVE")
-
-
-class ClassifierReal(unittest.TestCase):
-    """node de verdade: suítes mínimas no lugar de tests/support-email-forward.test.mjs."""
-
+class RealNode(unittest.TestCase):
     def setUp(self):
-        self.assertTrue(shutil.which("node"), "node ausente: classificador não pode ser provado (falha fechada)")
+        self.assertTrue(shutil.which("node"), "node ausente: contraprova não pode rodar (falha fechada)")
         self.tmp = Path(tempfile.mkdtemp())
         (self.tmp / "tests").mkdir()
+        self._old = mut.TEST
+        mut.TEST = "tests/s.test.mjs"
 
     def tearDown(self):
+        mut.TEST = self._old
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def suite(self, body):
-        (self.tmp / "tests" / "support-email-forward.test.mjs").write_text(
-            'import test from "node:test";\nimport assert from "node:assert/strict";\n' + body, encoding="utf-8")
+    def run_body(self, body):
+        (self.tmp / "tests" / "s.test.mjs").write_text(SUITE + body, encoding="utf-8")
         return mut.run_suite(str(self.tmp))
 
-    def test_real_killed_and_survived(self):
-        res = self.suite('test("causal A", () => { assert.equal(1, 2); });\ntest("other", () => {});\n')
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "KILLED")
-        res = self.suite('test("causal A", () => {});\ntest("other", () => {});\n')
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "SURVIVED")
+    def verdict(self, run, spec, total=2):
+        return mc.classify_run(total, run, expected=spec, allowlist=[], anchor_ok=True, mutant_id="m")
 
-    def test_real_crash_module_error(self):
-        res = self.suite('import "./nao-existe.mjs";\ntest("causal A", () => {});\ntest("other", () => {});\n')
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "INCONCLUSIVE")
+    def test_killed_on_primary_marker(self):
+        run = self.run_body('test("T01 regra", () => { assert.equal(1, 2, "[T01.1]"); });\ntest("T02 outro", () => {});\n')
+        self.assertEqual(self.verdict(run, spec_for())["verdict"], mc.KILLED)
 
-    def test_real_syntax_error(self):
-        res = self.suite('test("causal A", () => { const = 1; });\n')
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "INCONCLUSIVE")
+    def test_a_primary_test_failing_on_other_assertion_is_inconclusive(self):
+        body = 'test("T01 regra", () => { assert.equal(1, 1, "[T01.1]"); assert.equal(1, 2, "[T01.2]"); });\ntest("T02 outro", () => {});\n'
+        r = self.verdict(self.run_body(body), spec_for("[T01.1]"))
+        self.assertEqual(r["verdict"], mc.INCONCLUSIVE, r)
 
-    def test_real_incomplete_count(self):
-        res = self.suite('test("causal A", () => { process.exit(1); });\ntest("other", () => {});\n')
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "INCONCLUSIVE")
+    def test_a_marker_prefix_collision_is_not_a_match(self):
+        body = 'test("T01 regra", () => { assert.equal(1, 2, "[T01.10]"); });\ntest("T02 outro", () => {});\n'
+        self.assertEqual(self.verdict(self.run_body(body), spec_for("[T01.1]"))["verdict"], mc.INCONCLUSIVE)
 
-    def test_real_timeout(self):
-        old = mut.TIMEOUT
-        mut.TIMEOUT = 3
-        try:
-            res = self.suite('test("causal A", () => { for (;;) {} });\ntest("other", () => {});\n')
-        finally:
-            mut.TIMEOUT = old
-        self.assertTrue(res["timeout"])
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "INCONCLUSIVE")
+    def test_b_todo_is_inconclusive(self):
+        body = 'test("T01 regra", { todo: true }, () => { assert.equal(1, 2, "[T01.1]"); });\ntest("T02 outro", () => {});\n'
+        r = self.verdict(self.run_body(body), spec_for())
+        self.assertEqual(r["verdict"], mc.INCONCLUSIVE, r)
+        body2 = 'test("T01 regra", (t) => { t.todo("pendente"); });\ntest("T02 outro", () => {});\n'
+        self.assertEqual(self.verdict(self.run_body(body2), spec_for())["verdict"], mc.INCONCLUSIVE)
 
-    def test_real_non_causal_failure(self):
-        res = self.suite('test("causal A", () => {});\ntest("other", () => { assert.ok(false); });\n')
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "INCONCLUSIVE")
+    def test_secondary_only_and_unrelated_are_inconclusive(self):
+        body = 'test("T01 regra", () => {});\ntest("T02 outro", () => { assert.ok(false, "[T02.1]"); });\n'
+        self.assertEqual(self.verdict(self.run_body(body), spec_for(secondary=("T02 outro",)))["verdict"], mc.INCONCLUSIVE)
+        self.assertEqual(self.verdict(self.run_body(body), spec_for())["verdict"], mc.INCONCLUSIVE)
 
-    def test_real_non_assertion_failure(self):
-        res = self.suite('test("causal A", () => { null.x; });\ntest("other", () => {});\n')
-        self.assertEqual(mut.classify(res, entry(), 2)[0], "INCONCLUSIVE")
+    def test_crash_syntax_and_non_assertion_are_inconclusive(self):
+        for body in ('import "./nao-existe.mjs";\ntest("T01 regra", () => {});\ntest("T02 outro", () => {});\n',
+                     'test("T01 regra", () => { const = 1; });\ntest("T02 outro", () => {});\n',
+                     'test("T01 regra", () => { null.x; });\ntest("T02 outro", () => {});\n',
+                     'test("T01 regra", () => { process.exit(1); });\ntest("T02 outro", () => {});\n'):
+            self.assertEqual(self.verdict(self.run_body(body), spec_for())["verdict"], mc.INCONCLUSIVE, body[:40])
+
+    def test_c_point_count_inconsistent_with_plan_or_summary(self):
+        run = self.run_body('test("T01 regra", () => { assert.equal(1, 2, "[T01.1]"); });\ntest("T02 outro", () => {});\n')
+        self.assertEqual(self.verdict(run, spec_for())["verdict"], mc.KILLED)
+        out = run["stdout"]
+        # (c1) um ponto TAP removido: plano e resumo dizem 2, só 1 ponto de topo.
+        lines = out.split("\n")
+        start = next(i for i, l in enumerate(lines) if l.startswith("ok 2 - T02 outro"))
+        end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith("1.."))
+        cut = "\n".join(lines[:start] + lines[end:])
+        self.assertEqual(self.verdict({**run, "stdout": cut}, spec_for())["verdict"], mc.INCONCLUSIVE)
+        # (c2) plano adulterado (1..3) com resumo/pontos em 2.
+        self.assertEqual(self.verdict({**run, "stdout": re.sub(r"^1\.\.2$", "1..3", out, flags=re.M)}, spec_for())["verdict"], mc.INCONCLUSIVE)
+        # (c3) resumo adulterado (# pass 2) incoerente com os pontos.
+        self.assertEqual(self.verdict({**run, "stdout": re.sub(r"^# pass 1$", "# pass 2", out, flags=re.M)}, spec_for())["verdict"], mc.INCONCLUSIVE)
+        # (c4) resumo ausente.
+        self.assertEqual(self.verdict({**run, "stdout": re.sub(r"^# (tests|pass|fail) \d+$\n", "", out, flags=re.M)}, spec_for())["verdict"], mc.INCONCLUSIVE)
 
 
-def titles_of(rel):
-    return [re.match(r'^test\("((?:[^"\\]|\\.)*)"', l).group(1) for l in (ROOT / rel).read_text(encoding="utf-8").split("\n") if l.startswith('test("')]
+class Config(unittest.TestCase):
+    def titles(self, rel):
+        return [re.match(r'^test\("((?:[^"\\]|\\.)*)"', l).group(1) for l in (ROOT / rel).read_text(encoding="utf-8").split("\n") if l.startswith('test("')]
 
+    def test_shipped_configs_valid_with_markers_on_every_primary(self):
+        unit = mut.load_config(ROOT / "scripts" / "ci" / "mutants_support_email_allow.json", self.titles("tests/support-email-forward.test.mjs"), mut.M)
+        pg = mut.load_config(ROOT / "scripts" / "ci" / "mutants_support_email_pg_allow.json", self.titles("tests/integration/support-outbox-postgres.test.mjs"), mut.M_PG)
+        for cfg in (unit, pg):
+            for mid, s in cfg.items():
+                for e in s["primary"]:
+                    self.assertTrue(re.search(r"\[[UO]\d+\\?\.|U\d+\\\.|O\d+\\\.", e["assertion_pattern"]), (mid, e["assertion_pattern"]))
 
-class AllowlistValidation(unittest.TestCase):
-    def test_shipped_lists_are_valid_and_complete(self):
-        unit = mut.load_allow(ROOT / "scripts" / "ci" / "mutants_support_email_allow.json")
-        self.assertEqual(mut.validate_allow(unit, mut.M, set(titles_of("tests/support-email-forward.test.mjs"))), [])
-        pg = mut.load_allow(ROOT / "scripts" / "ci" / "mutants_support_email_pg_allow.json")
-        self.assertEqual(mut.validate_allow(pg, mut.M_PG, set(titles_of("tests/integration/support-outbox-postgres.test.mjs"))), [])
+    def write(self, data):
+        tmp = Path(tempfile.mkdtemp())
+        f = tmp / "c.json"
+        f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return f
 
-    def test_causality_doc_lists_every_mutant(self):
+    def base(self):
+        return json.loads((ROOT / "scripts" / "ci" / "mutants_support_email_allow.json").read_text(encoding="utf-8"))
+
+    def test_primary_without_marker_rejected(self):
+        d = self.base()
+        first = sorted(d["mutants"])[0]
+        d["mutants"][first]["primary"][0]["assertion_pattern"] = None
+        with self.assertRaises(mc.ConfigError):
+            mut.load_config(self.write(d), None, mut.M)
+
+    def test_secondary_without_justification_rejected(self):
+        d = self.base()
+        mid = next(k for k, v in d["mutants"].items() if v.get("secondary"))
+        d["mutants"][mid]["secondary"][0]["justification"] = ""
+        with self.assertRaises(mc.ConfigError):
+            mut.load_config(self.write(d), None, mut.M)
+
+    def test_unknown_test_and_missing_mutant_rejected(self):
+        d = self.base()
+        first = sorted(d["mutants"])[0]
+        d["mutants"][first]["primary"][0]["test_pattern"] = "teste que não existe"
+        with self.assertRaises(mc.ConfigError):
+            mut.load_config(self.write(d), self.titles("tests/support-email-forward.test.mjs"), mut.M)
+        d = self.base()
+        d["mutants"].pop(sorted(d["mutants"])[0])
+        with self.assertRaises(mc.ConfigError):
+            mut.load_config(self.write(d), None, mut.M)
+
+    def test_runner_refuses_to_start_with_invalid_config(self):
+        d = self.base()
+        first = sorted(d["mutants"])[0]
+        d["mutants"][first]["primary"][0]["assertion_pattern"] = ""
+        f = self.write(d)
+        env = {**os.environ, "SUPPORT_MUTANTS_ALLOW_FILE": str(f), "PYTHONDONTWRITEBYTECODE": "1"}
+        p = subprocess.run([sys.executable, str(ROOT / "scripts" / "ci" / "mutants_support_email.py")], capture_output=True, text=True,
+                           encoding="utf-8", env=env, timeout=300, stdin=subprocess.DEVNULL)
+        self.assertEqual(p.returncode, 2, p.stdout[-400:])
+        self.assertIn("CONFIG_INVALID", p.stdout)
+        self.assertNotIn("MUTANT ", p.stdout)
+
+    def test_causality_doc_lists_every_mutant_and_archives_k3(self):
         doc = (ROOT / "docs" / "evidence" / "support-email-mutant-causality.md").read_text(encoding="utf-8")
         for name in list(mut.M) + list(mut.M_PG):
             self.assertIn(f"| {name.split(' ')[0]} |", doc, name)
-
-    def test_missing_justification_rejected(self):
-        bad = {"m": {"change": "x", "primary": [{"test": "A", "why": ""}], "secondary": []}}
-        self.assertTrue(any("sem justificativa" in e for e in mut.validate_allow(bad, {"m": 1}, {"A"})))
-        bad2 = {"m": {"change": "x", "primary": [{"test": "A", "why": "ok"}], "secondary": [{"test": "B"}]}}
-        self.assertTrue(any("sem justificativa" in e for e in mut.validate_allow(bad2, {"m": 1}, {"A", "B"})))
-
-    def test_broad_list_without_reason_rejected(self):
-        e = {"change": "x", "primary": [{"test": t, "why": "d"} for t in "ABC"], "secondary": [{"test": t, "why": "s"} for t in "DE"]}
-        self.assertTrue(any("sem broad_reason" in x for x in mut.validate_allow({"m": e}, {"m": 1}, set("ABCDE"))))
-        self.assertEqual(mut.validate_allow({"m": {**e, "broad_reason": "pré-condição comum"}}, {"m": 1}, set("ABCDE")), [])
-
-    def test_primary_bounds_unknown_test_and_orphans_rejected(self):
-        self.assertTrue(mut.validate_allow({"m": {"change": "x", "primary": [], "secondary": []}}, {"m": 1}, set()))
-        self.assertTrue(mut.validate_allow({"m": {"change": "x", "primary": [{"test": "Z", "why": "d"}]}}, {"m": 1}, {"A"}))
-        self.assertTrue(mut.validate_allow({}, {"m": 1}, {"A"}))
-        self.assertTrue(mut.validate_allow({"m": entry(primary=("A",)), "orphan": entry(primary=("A",))}, {"m": 1}, {"A"}))
-
-    def test_runner_refuses_to_start_with_unjustified_entry(self):
-        self.assertTrue(shutil.which("node"))
-        allow = json.loads((ROOT / "scripts" / "ci" / "mutants_support_email_allow.json").read_text(encoding="utf-8"))
-        first = sorted(allow)[0]
-        allow[first]["primary"][0]["why"] = ""
-        tmp = Path(tempfile.mkdtemp())
-        try:
-            f = tmp / "allow.json"
-            f.write_text(json.dumps(allow, ensure_ascii=False), encoding="utf-8")
-            env = {**os.environ, "SUPPORT_MUTANTS_ALLOW_FILE": str(f), "PYTHONDONTWRITEBYTECODE": "1"}
-            p = subprocess.run([sys.executable, str(ROOT / "scripts" / "ci" / "mutants_support_email.py")], capture_output=True, text=True, encoding="utf-8", env=env, timeout=300, stdin=subprocess.DEVNULL)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-        self.assertEqual(p.returncode, 2, p.stdout[-400:])
-        self.assertIn("ALLOWLIST_INVALID", p.stdout)
-        self.assertNotIn("MUTANT ", p.stdout, "nenhum mutante roda com lista inválida")
+        self.assertIn("K3 drain token window widened", doc)
+        self.assertIn("K3 drain signature ignores method/path", doc)
 
 
 if __name__ == "__main__":

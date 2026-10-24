@@ -15,6 +15,7 @@ on:
       - "tests/support-email-forward.test.mjs"
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_support_email.py"
+      - "scripts/ci/mutant_classifier.py"
       - "scripts/ci/mutants_support_email_allow.json"
       - "scripts/ci/mutants_support_email_pg_allow.json"
       - "docs/evidence/support-email-mutant-causality.md"
@@ -50,14 +51,14 @@ jobs:
           set -euo pipefail
           node --test tests/support-drain-scheduled.test.mjs | tee /tmp/sched.txt
           grep -qx "# tests 2" /tmp/sched.txt && grep -qx "# pass 2" /tmp/sched.txt && grep -qx "# skipped 0" /tmp/sched.txt
-      - name: Meta-testes do classificador de mutantes (contagem exata)
+      - name: Contraprovas do runner sobre o classificador compartilhado (contagem exata)
         shell: bash
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -euo pipefail
           python3 -m unittest tests.test_mutants_support_email_classifier -v < /dev/null 2>&1 | tee /tmp/meta.txt
-          grep -qE "^Ran 24 tests in " /tmp/meta.txt && grep -qx "OK" /tmp/meta.txt || { echo "::error::meta-testes do classificador"; exit 1; }
+          grep -qE "^Ran 13 tests in " /tmp/meta.txt && grep -qx "OK" /tmp/meta.txt || { echo "::error::meta-testes do classificador"; exit 1; }
       - name: Mutantes (todos precisam morrer)
         shell: bash
         env:

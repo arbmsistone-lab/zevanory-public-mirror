@@ -56,7 +56,7 @@ function resend({ senderOf = (id) => `cliente-${id}@example.com`, failForward = 
   const fetchImpl = async (url, init = {}) => {
     await new Promise((r) => setTimeout(r, 25));
     const u = new URL(url);
-    assert.equal(u.hostname, "api.resend.com");
+    assert.equal(u.hostname, "api.resend.com", "[OH.1]");
     if ((init.method || "GET") === "GET") {
       const id = decodeURIComponent(u.pathname.split("/")[3]);
       calls.push({ kind: "read", id });
@@ -91,20 +91,20 @@ const makeDue = (id) => sql.query(`update zevanory_support_inbound set next_atte
 const SENDER_RE = /[a-z0-9._%+-]+@(?!zevanory\.api\.br\b)[a-z0-9.-]+\.[a-z]{2,}/gi;
 function assertAlertPrivate(a, ids, { category, count, oldest }) {
   const b = a.body;
-  assert.deepEqual(b.to, [OWNER], "destinatário é só o destino configurado");
-  assert.equal(b.from, "ZEVANORY suporte <suporte@zevanory.api.br>");
-  assert.equal(b.reply_to, undefined);
-  assert.equal(b.cc, undefined); assert.equal(b.bcc, undefined); assert.equal(b.headers, undefined); assert.equal(b.attachments, undefined); assert.equal(b.html, undefined);
-  assert.deepEqual(Object.keys(b).sort(), ["from", "subject", "text", "to"]);
+  assert.deepEqual(b.to, [OWNER], "[OH.2] destinatário é só o destino configurado");
+  assert.equal(b.from, "ZEVANORY suporte <suporte@zevanory.api.br>", "[OH.3]");
+  assert.equal(b.reply_to, undefined, "[OH.4]");
+  assert.equal(b.cc, undefined, "[OH.5]"); assert.equal(b.bcc, undefined, "[OH.6]"); assert.equal(b.headers, undefined, "[OH.7]"); assert.equal(b.attachments, undefined, "[OH.8]"); assert.equal(b.html, undefined, "[OH.9]");
+  assert.deepEqual(Object.keys(b).sort(), ["from", "subject", "text", "to"], "[OH.10]");
   const visible = b.subject + "\n" + b.text;
   const others = (visible.match(SENDER_RE) || []);
-  assert.deepEqual(others, [], "nenhum endereço de remetente no alerta");
-  for (const id of ids) assert.ok(!visible.includes(id), "email_id ausente: " + id);
-  for (const bad of ["Assunto", "corpo", "@example.com", "<", "message"]) assert.ok(!visible.includes(bad), "conteúdo ausente: " + bad);
+  assert.deepEqual(others, [], "[OH.11] nenhum endereço de remetente no alerta");
+  for (const id of ids) assert.ok(!visible.includes(id), "[OH.12] " + ("email_id ausente: " + id));
+  for (const bad of ["Assunto", "corpo", "@example.com", "<", "message"]) assert.ok(!visible.includes(bad), "[OH.13] " + ("conteúdo ausente: " + bad));
   // Igualdade EXATA com o modelo canônico: só contagem/categoria substituídas. Qualquer campo ou palavra a mais falha.
   const expected = ALERT_TEMPLATES[category]({ count, oldest });
-  assert.deepEqual({ to: b.to, from: b.from, subject: b.subject, text: b.text }, { to: [OWNER], from: "ZEVANORY suporte <suporte@zevanory.api.br>", ...expected });
-  assert.deepEqual(b, { to: [OWNER], from: "ZEVANORY suporte <suporte@zevanory.api.br>", ...expected });
+  assert.deepEqual({ to: b.to, from: b.from, subject: b.subject, text: b.text }, { to: [OWNER], from: "ZEVANORY suporte <suporte@zevanory.api.br>", ...expected }, "[OH.14]");
+  assert.deepEqual(b, { to: [OWNER], from: "ZEVANORY suporte <suporte@zevanory.api.br>", ...expected }, "[OH.15]");
 }
 // Modelos canônicos dos alertas (escritos aqui de forma independente do módulo).
 const ALERT_FOOTER = "\n\nVeja as mensagens no painel Resend > Receiving e o passo a passo em docs/ops/EMAIL_SUPORTE.md.";
@@ -135,11 +135,11 @@ test("O1 esquema aplicado exatamente como o Worker aplica (idempotente), com est
   fwd.resetSupportSchemaCache();
   await fwd.ensureSupportSchema(sql);
   const cols = (await sql.query("select table_name, column_name from information_schema.columns where table_name like 'zevanory_support_%' order by 1, 2")).map((r) => `${r.table_name}.${r.column_name}`);
-  for (const c of ["zevanory_support_inbound.email_id", "zevanory_support_inbound.sender_ref", "zevanory_support_inbound.state", "zevanory_support_inbound.attempts", "zevanory_support_inbound.next_attempt_at", "zevanory_support_inbound.lease_until", "zevanory_support_inbound.alerted_at", "zevanory_support_ack_quota.bucket", "zevanory_support_ack_quota.day", "zevanory_support_alerts.kind", "zevanory_support_alerts.last_sent_at"]) assert.ok(cols.includes(c), c);
-  assert.ok(!cols.some((c) => /text|html|subject|from_|address|email$/.test(c.split(".")[1]) && c !== "zevanory_support_inbound.email_id"), "nenhuma coluna de conteúdo/endereço: " + cols.join(","));
-  await assert.rejects(sql.query("insert into zevanory_support_inbound (email_id, alias, sender_ref, state) values ('x', 'suporte', 'r', 'inventado')"), "estado fora da lista é recusado");
+  for (const c of ["zevanory_support_inbound.email_id", "zevanory_support_inbound.sender_ref", "zevanory_support_inbound.state", "zevanory_support_inbound.attempts", "zevanory_support_inbound.next_attempt_at", "zevanory_support_inbound.lease_until", "zevanory_support_inbound.alerted_at", "zevanory_support_ack_quota.bucket", "zevanory_support_ack_quota.day", "zevanory_support_alerts.kind", "zevanory_support_alerts.last_sent_at"]) assert.ok(cols.includes(c), "[O01.1] " + (c));
+  assert.ok(!cols.some((c) => /text|html|subject|from_|address|email$/.test(c.split(".")[1]) && c !== "zevanory_support_inbound.email_id"), "[O01.2] " + ("nenhuma coluna de conteúdo/endereço: " + cols.join(",")));
+  await assert.rejects(sql.query("insert into zevanory_support_inbound (email_id, alias, sender_ref, state) values ('x', 'suporte', 'r', 'inventado')"), "[O01.3] estado fora da lista é recusado");
   const pk = await one("select string_agg(a.attname, ',' order by a.attname) as cols from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey) where i.indrelid = 'zevanory_support_ack_quota'::regclass and i.indisprimary");
-  assert.equal(pk.cols, "bucket,day");
+  assert.equal(pk.cols, "bucket,day", "[O01.4]");
 });
 
 test("O2 dois consumidores concorrentes nas mesmas linhas: cada e-mail encaminhado e confirmado exatamente uma vez", { skip: SKIP }, async () => {
@@ -148,22 +148,22 @@ test("O2 dois consumidores concorrentes nas mesmas linhas: cada e-mail encaminha
   const r = resend();
   await Promise.all([drain(r, 5), drain(r, 5)]);
   for (const id of ids) {
-    assert.equal(r.of("forward", id), 1, "forward " + id);
-    assert.equal(r.of("ack", id), 1, "ack " + id);
-    assert.equal((await stateOf(id)).state, "done");
+    assert.equal(r.of("forward", id), 1, "[O02.1] " + ("forward " + id));
+    assert.equal(r.of("ack", id), 1, "[O02.2] " + ("ack " + id));
+    assert.equal((await stateOf(id)).state, "done", "[O02.3]");
   }
   await Promise.all([drain(r, 5), drain(r, 5)]);
-  assert.equal(r.of("forward") + r.of("ack"), 10, "nada se repete depois de done");
+  assert.equal(r.of("forward") + r.of("ack"), 10, "[O02.4] nada se repete depois de done");
 });
 
 test("O3 oito consumidores disputando o MESMO e-mail: um lease só, um encaminhamento, uma confirmação", { skip: SKIP }, async () => {
   await seed(["s1"]);
   const r = resend();
   const results = await Promise.all(Array.from({ length: 8 }, () => fwd.processSupportEmail(ctx(r), "s1")));
-  assert.equal(results.filter((x) => x.state === "not_due").length, 7);
-  assert.equal(r.of("forward", "s1"), 1);
-  assert.equal(r.of("ack", "s1"), 1);
-  assert.equal((await stateOf("s1")).state, "done");
+  assert.equal(results.filter((x) => x.state === "not_due").length, 7, "[O03.1]");
+  assert.equal(r.of("forward", "s1"), 1, "[O03.2]");
+  assert.equal(r.of("ack", "s1"), 1, "[O03.3]");
+  assert.equal((await stateOf("s1")).state, "done", "[O03.4]");
 });
 
 test("O4 cota por remetente reservada sob concorrência: 6 e-mails do mesmo remetente => 6 encaminhamentos, 1 confirmação", { skip: SKIP }, async () => {
@@ -171,11 +171,11 @@ test("O4 cota por remetente reservada sob concorrência: 6 e-mails do mesmo reme
   await seed(ids, { sender: () => "ref-mesmo" });
   const r = resend({ senderOf: () => "mesmo@example.com" });
   await Promise.all(ids.map((id) => fwd.processSupportEmail(ctx(r), id)));
-  assert.equal(r.of("forward"), 6);
-  assert.equal(r.of("ack"), 1);
+  assert.equal(r.of("forward"), 6, "[O04.1]");
+  assert.equal(r.of("ack"), 1, "[O04.2]");
   const st = await sql.query("select ack_status, count(*)::int as n from zevanory_support_inbound group by 1 order by 1");
-  assert.deepEqual(st.map((x) => `${x.ack_status}:${x.n}`), ["rate_limited_sender:5", "sent:1"]);
-  assert.equal((await one("select n from zevanory_support_ack_quota where bucket = 's:ref-mesmo'")).n, "1");
+  assert.deepEqual(st.map((x) => `${x.ack_status}:${x.n}`), ["rate_limited_sender:5", "sent:1"], "[O04.3]");
+  assert.equal((await one("select n from zevanory_support_ack_quota where bucket = 's:ref-mesmo'")).n, "1", "[O04.4]");
 });
 
 test("O5 teto global sob concorrência: 36 remetentes distintos => exatamente 30 confirmações", { skip: SKIP }, async () => {
@@ -183,33 +183,33 @@ test("O5 teto global sob concorrência: 36 remetentes distintos => exatamente 30
   await seed(ids);
   const r = resend();
   await Promise.all(ids.map((id) => fwd.processSupportEmail(ctx(r), id)));
-  assert.equal(r.of("forward"), 36);
-  assert.equal(r.of("ack"), fwd.ACK_DAILY_CAP);
-  assert.equal((await one("select n from zevanory_support_ack_quota where bucket = 'all'")).n, String(fwd.ACK_DAILY_CAP));
-  assert.equal((await one("select count(*)::int as n from zevanory_support_inbound where ack_status = 'rate_limited_daily'")).n, "6");
-  assert.equal((await one("select count(*)::int as n from zevanory_support_inbound where state = 'done'")).n, "36");
+  assert.equal(r.of("forward"), 36, "[O05.1]");
+  assert.equal(r.of("ack"), fwd.ACK_DAILY_CAP, "[O05.2]");
+  assert.equal((await one("select n from zevanory_support_ack_quota where bucket = 'all'")).n, String(fwd.ACK_DAILY_CAP), "[O05.3]");
+  assert.equal((await one("select count(*)::int as n from zevanory_support_inbound where ack_status = 'rate_limited_daily'")).n, "6", "[O05.4]");
+  assert.equal((await one("select count(*)::int as n from zevanory_support_inbound where state = 'done'")).n, "36", "[O05.5]");
 });
 
 test("O6 transições: forward_pending (falha+recuo) -> ack_pending (falha+recuo) -> done, uma confirmação só", { skip: SKIP }, async () => {
   await seed(["t1"]);
   let fwdFail = 1, ackFail = 1;
   const r = resend({ failForward: () => fwdFail-- > 0, failAck: () => ackFail-- > 0 });
-  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "forward_pending");
+  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "forward_pending", "[O06.1]");
   let st = await stateOf("t1");
-  assert.equal(st.state, "forward_pending"); assert.equal(st.attempts, "1"); assert.equal(st.backoff, "t"); assert.equal(st.leased, "f");
-  assert.equal((await one("select last_reason from zevanory_support_inbound where email_id = 't1'")).last_reason, "send_http_5xx", "motivo sem dado pessoal gravado");
-  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "not_due", "recuo respeitado");
+  assert.equal(st.state, "forward_pending", "[O06.2]"); assert.equal(st.attempts, "1", "[O06.3]"); assert.equal(st.backoff, "t", "[O06.4]"); assert.equal(st.leased, "f", "[O06.5]");
+  assert.equal((await one("select last_reason from zevanory_support_inbound where email_id = 't1'")).last_reason, "send_http_5xx", "[O06.6] motivo sem dado pessoal gravado");
+  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "not_due", "[O06.7] recuo respeitado");
   await makeDue("t1");
-  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "ack_pending");
+  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "ack_pending", "[O06.8]");
   st = await stateOf("t1");
-  assert.equal(st.state, "ack_pending"); assert.equal(st.backoff, "t");
+  assert.equal(st.state, "ack_pending", "[O06.9]"); assert.equal(st.backoff, "t", "[O06.10]");
   await makeDue("t1");
-  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "done");
-  assert.equal(r.of("forward", "t1"), 2, "1 falha + 1 sucesso");
-  assert.equal(r.calls.filter((c) => c.kind === "ack" && c.id === "t1").length, 2, "1 falha + 1 sucesso");
+  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "done", "[O06.11]");
+  assert.equal(r.of("forward", "t1"), 2, "[O06.12] 1 falha + 1 sucesso");
+  assert.equal(r.calls.filter((c) => c.kind === "ack" && c.id === "t1").length, 2, "[O06.13] 1 falha + 1 sucesso");
   await makeDue("t1");
-  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "not_due");
-  assert.equal((await stateOf("t1")).ack_status, "sent");
+  assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "not_due", "[O06.14]");
+  assert.equal((await stateOf("t1")).ack_status, "sent", "[O06.15]");
 });
 
 test("O7 limites: 10 falhas de envio, 10 de leitura e 20 leases; estourado => nenhuma leitura/encaminhamento/confirmação da mensagem e vira dead", { skip: SKIP }, async () => {
@@ -220,16 +220,16 @@ test("O7 limites: 10 falhas de envio, 10 de leitura e 20 leases; estourado => ne
   await seed(["a21"], { attempts: 21 });
   await seed(["k10"], { state: "ack_pending", attempts: 10, sendFailures: 10 });
   const r = resend({ failForward: () => true });
-  assert.equal((await fwd.processSupportEmail(ctx(r), "s9")).state, "forward_dead", "a 10ª falha de envio é a última");
-  assert.equal(r.of("forward", "s9"), 1);
+  assert.equal((await fwd.processSupportEmail(ctx(r), "s9")).state, "forward_dead", "[O07.1] a 10ª falha de envio é a última");
+  assert.equal(r.of("forward", "s9"), 1, "[O07.2]");
   const st = await one("select state, send_failures, read_failures from zevanory_support_inbound where email_id = 's9'");
-  assert.deepEqual(st, { state: "forward_dead", send_failures: "10", read_failures: "0" });
+  assert.deepEqual(st, { state: "forward_dead", send_failures: "10", read_failures: "0" }, "[O07.3]");
   const blocked = ["s10", "r10", "a20", "a21", "k10"];
-  for (const id of blocked) assert.equal((await fwd.processSupportEmail(ctx(r), id)).state, "not_due", id);
+  for (const id of blocked) assert.equal((await fwd.processSupportEmail(ctx(r), id)).state, "not_due", "[O07.4] " + (id));
   await drain(r);
-  for (const id of ["s10", "r10", "a20", "a21"]) assert.equal((await stateOf(id)).state, "forward_dead", id);
-  assert.equal((await stateOf("k10")).state, "ack_dead");
-  for (const id of blocked) assert.equal(r.forId(id), 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id);
+  for (const id of ["s10", "r10", "a20", "a21"]) assert.equal((await stateOf(id)).state, "forward_dead", "[O07.5] " + (id));
+  assert.equal((await stateOf("k10")).state, "ack_dead", "[O07.6]");
+  for (const id of blocked) assert.equal(r.forId(id), 0, "[O07.7] " + ("zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id));
 });
 
 test("O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 23h01 vira dead sem leitura/encaminhamento/confirmação", { skip: SKIP }, async () => {
@@ -237,10 +237,10 @@ test("O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 
   await seed(["old"], { age: "23 hours 1 minute" });
   const r = resend();
   await Promise.all([drain(r), drain(r)]);
-  assert.equal((await stateOf("young")).state, "done");
-  assert.equal(r.of("forward", "young"), 1);
-  assert.equal((await stateOf("old")).state, "forward_dead");
-  assert.equal(r.forId("old"), 0);
+  assert.equal((await stateOf("young")).state, "done", "[O08.1]");
+  assert.equal(r.of("forward", "young"), 1, "[O08.2]");
+  assert.equal((await stateOf("old")).state, "forward_dead", "[O08.3]");
+  assert.equal(r.forId("old"), 0, "[O08.4]");
 });
 
 test("O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o reap mata sem leitura/encaminhamento/confirmação", { skip: SKIP }, async () => {
@@ -248,12 +248,12 @@ test("O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o
   await sql.query("update zevanory_support_inbound set lease_until = now() + interval '1 minute' where email_id = 'l1'");
   const r = resend();
   await drain(r);
-  assert.equal((await stateOf("l1")).state, "forward_pending", "lease ativo: reap não mexe");
-  assert.equal((await fwd.processSupportEmail(ctx(r), "l1")).state, "not_due");
+  assert.equal((await stateOf("l1")).state, "forward_pending", "[O09.1] lease ativo: reap não mexe");
+  assert.equal((await fwd.processSupportEmail(ctx(r), "l1")).state, "not_due", "[O09.2]");
   await sql.query("update zevanory_support_inbound set lease_until = now() - interval '1 second' where email_id = 'l1'");
   await drain(r);
-  assert.equal((await stateOf("l1")).state, "forward_dead");
-  assert.equal(r.forId("l1"), 0);
+  assert.equal((await stateOf("l1")).state, "forward_dead", "[O09.3]");
+  assert.equal(r.forId("l1"), 0, "[O09.4]");
 });
 
 test("O10 zero leitura, encaminhamento ou confirmação associada à mensagem após estouro, mesmo com consumidores concorrentes repetidos; alerta só com contagens", { skip: SKIP }, async () => {
@@ -267,12 +267,12 @@ test("O10 zero leitura, encaminhamento ou confirmação associada à mensagem ap
     await Promise.all([drain(r, 5), drain(r, 5), ...ids.map((id) => fwd.processSupportEmail(ctx(r), id))]);
   }
   for (const id of ids) {
-    assert.equal(r.forId(id), 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id);
-    assert.match((await stateOf(id)).state, /_dead$/);
+    assert.equal(r.forId(id), 0, "[O10.1] " + ("zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id));
+    assert.match((await stateOf(id)).state, /_dead$/, "[O10.2]");
   }
-  assert.equal(r.calls.filter((c) => c.kind !== "alert").length, 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro");
+  assert.equal(r.calls.filter((c) => c.kind !== "alert").length, 0, "[O10.3] zero leitura, encaminhamento ou confirmação associada à mensagem após estouro");
   const al = r.calls.filter((c) => c.kind === "alert");
-  assert.ok(al.length <= 1, "no máximo o alerta operacional de linhas mortas");
+  assert.ok(al.length <= 1, "[O10.4] no máximo o alerta operacional de linhas mortas");
   for (const a of al) assertAlertPrivate(a, ids, { category: "dead", count: 3 });
 });
 
@@ -281,11 +281,11 @@ test("O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: u
   const r = resend();
   await Promise.all([drain(r), drain(r), drain(r)]);
   const dead = r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject));
-  assert.equal(dead.length, 1);
-  assert.equal((await one("select count(*)::int as n from zevanory_support_inbound where alerted_at is not null")).n, "2");
+  assert.equal(dead.length, 1, "[O11.1]");
+  assert.equal((await one("select count(*)::int as n from zevanory_support_inbound where alerted_at is not null")).n, "2", "[O11.2]");
   assertAlertPrivate(dead[0], ["d1", "d2"], { category: "dead", count: 2 });
   await Promise.all([drain(r), drain(r)]);
-  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1);
+  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "[O11.3]");
   // Fila atrasada: 5 pendentes com encaminhamento falhando, drenos concorrentes => um único alerta de atraso, privado.
   await sql.query("truncate zevanory_support_inbound, zevanory_support_alerts");
   const q = ["b1", "b2", "b3", "b4", "b5"];
@@ -293,9 +293,9 @@ test("O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: u
   const rb = resend({ failForward: () => true });
   await Promise.all([drain(rb), drain(rb), drain(rb)]);
   const backlog = rb.calls.filter((c) => c.kind === "alert" && /atrasada/.test(c.subject));
-  assert.equal(backlog.length, 1);
+  assert.equal(backlog.length, 1, "[O11.4]");
   assertAlertPrivate(backlog[0], q, { category: "backlog", count: 5, oldest: 3 });
-  assert.equal(rb.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 0);
+  assert.equal(rb.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 0, "[O11.5]");
 });
 
 // Webhook assinado (Svix) para o caminho completo com PostgreSQL real.
@@ -315,17 +315,17 @@ test("O12 provedor automático: webhook duplicado + 2 drenos concorrentes => 1 e
   let failOnce = 1;
   const r = resend({ senderOf: () => WA, detailOf: waDetail, failForward: () => failOnce-- > 0 });
   const first = await webhook(r, "wa1", WA, "msg_a");
-  assert.equal(first.status, 200);
-  assert.equal((await stateOf("wa1")).state, "forward_pending");
+  assert.equal(first.status, 200, "[O12.1]");
+  assert.equal((await stateOf("wa1")).state, "forward_pending", "[O12.2]");
   await makeDue("wa1");
   const results = await Promise.all([webhook(r, "wa1", WA, "msg_b"), drain(r), drain(r)]);
-  assert.equal(results[0].status, 200);
+  assert.equal(results[0].status, 200, "[O12.3]");
   const st = await one("select state, ack_status from zevanory_support_inbound where email_id = 'wa1'");
-  assert.deepEqual(st, { state: "done", ack_status: "skipped_automated_provider" });
-  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "wa1").length, 2, "1 falha + 1 sucesso");
-  assert.equal(r.of("ack"), 0);
+  assert.deepEqual(st, { state: "done", ack_status: "skipped_automated_provider" }, "[O12.4]");
+  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "wa1").length, 2, "[O12.5] 1 falha + 1 sucesso");
+  assert.equal(r.of("ack"), 0, "[O12.6]");
   await Promise.all([webhook(r, "wa1", WA, "msg_c"), drain(r), drain(r)]);
-  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "wa1").length, 2, "nada se repete");
+  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "wa1").length, 2, "[O12.7] nada se repete");
 });
 
 test("O13 encaminhamento obrigatório: com o envio falhando a linha NUNCA vira skipped/done (até morrer como forward_dead)", { skip: SKIP }, async () => {
@@ -333,14 +333,14 @@ test("O13 encaminhamento obrigatório: com o envio falhando a linha NUNCA vira s
   await webhook(r, "wa2", WA, "msg_d");
   for (let i = 0; i < fwd.MAX_SEND_FAILURES + 2; i++) {
     const st = await one("select state, ack_status from zevanory_support_inbound where email_id = 'wa2'");
-    assert.notEqual(st.state, "done");
-    assert.equal(st.ack_status, "", "ack_status continua vazio: " + JSON.stringify(st));
+    assert.notEqual(st.state, "done", "[O13.1]");
+    assert.equal(st.ack_status, "", "[O13.2] " + ("ack_status continua vazio: " + JSON.stringify(st)));
     if (st.state !== "forward_pending") break;
     await makeDue("wa2");
     await drain(r);
   }
-  assert.deepEqual(await one("select state, ack_status, send_failures from zevanory_support_inbound where email_id = 'wa2'"), { state: "forward_dead", ack_status: "", send_failures: String(fwd.MAX_SEND_FAILURES) });
-  assert.equal(r.of("ack"), 0);
+  assert.deepEqual(await one("select state, ack_status, send_failures from zevanory_support_inbound where email_id = 'wa2'"), { state: "forward_dead", ack_status: "", send_failures: String(fwd.MAX_SEND_FAILURES) }, "[O13.3]");
+  assert.equal(r.of("ack"), 0, "[O13.4]");
 });
 
 test("O14 orçamentos separados com 404 transitório: leituras falhando não consomem envios; depois encaminha e confirma uma vez", { skip: SKIP }, async () => {
@@ -349,16 +349,16 @@ test("O14 orçamentos separados com 404 transitório: leituras falhando não con
   await seed(["b1"]);
   for (let i = 0; i < 3; i++) { await makeDue("b1"); await fwd.processSupportEmail(ctx(r), "b1"); }
   let st = await one("select state, read_failures, send_failures, last_reason from zevanory_support_inbound where email_id = 'b1'");
-  assert.deepEqual(st, { state: "forward_pending", read_failures: "3", send_failures: "0", last_reason: "content_http_404_not_found" });
+  assert.deepEqual(st, { state: "forward_pending", read_failures: "3", send_failures: "0", last_reason: "content_http_404_not_found" }, "[O14.1]");
   for (let i = 0; i < fwd.MAX_SEND_FAILURES; i++) {
     await makeDue("b1");
     await fwd.processSupportEmail(ctx(r), "b1");
     if ((await stateOf("b1")).state !== "forward_pending") break;
   }
   st = await one("select state, ack_status from zevanory_support_inbound where email_id = 'b1'");
-  assert.deepEqual(st, { state: "done", ack_status: "sent" }, "9 falhas de envio + 1 sucesso cabem no orçamento de envio apesar das 3 de leitura");
-  assert.equal(r.of("forward", "b1"), 10);
-  assert.equal(r.of("ack", "b1"), 1);
+  assert.deepEqual(st, { state: "done", ack_status: "sent" }, "[O14.2] 9 falhas de envio + 1 sucesso cabem no orçamento de envio apesar das 3 de leitura");
+  assert.equal(r.of("forward", "b1"), 10, "[O14.3]");
+  assert.equal(r.of("ack", "b1"), 1, "[O14.4]");
 });
 
 test("O15 leitura: 400/422 permanentes e 404 depois da janela => dead sem envio; 429/5xx transitórios", { skip: SKIP }, async () => {
@@ -374,8 +374,8 @@ test("O15 leitura: 400/422 permanentes e 404 depois da janela => dead sem envio;
     nf_old: "forward_dead:content_http_404_not_found_permanent",
     t429: "forward_pending:content_http_429_rate_limited",
     t503: "forward_pending:content_http_5xx"
-  });
-  assert.equal(r.of("forward") + r.of("ack"), 0);
+  }, "[O15.1]");
+  assert.equal(r.of("forward") + r.of("ack"), 0, "[O15.2]");
 });
 
 test("O16 orçamento global por mensagem: 9 falhas de envio no encaminhamento + falhas na confirmação => ack_dead, encaminhamento preservado", { skip: SKIP }, async () => {
@@ -388,20 +388,20 @@ test("O16 orçamento global por mensagem: 9 falhas de envio no encaminhamento + 
     if (!/_pending$/.test((await stateOf("g1")).state)) break;
   }
   const st = await one("select state, send_failures, read_failures, forward_id is not null as fwd, ack_status from zevanory_support_inbound where email_id = 'g1'");
-  assert.deepEqual(st, { state: "ack_dead", send_failures: String(fwd.MAX_SEND_FAILURES), read_failures: "0", fwd: "t", ack_status: "pending" });
-  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "g1").length, 10, "9 falhas + 1 entrega");
+  assert.deepEqual(st, { state: "ack_dead", send_failures: String(fwd.MAX_SEND_FAILURES), read_failures: "0", fwd: "t", ack_status: "pending" }, "[O16.1]");
+  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "g1").length, 10, "[O16.2] 9 falhas + 1 entrega");
   const acks = r.calls.filter((c) => c.kind === "ack" && c.id === "g1").length;
-  assert.ok(acks >= 1 && acks <= 2, "teto atingido em no máximo 2 falhas de confirmação: " + acks);
+  assert.ok(acks >= 1 && acks <= 2, "[O16.3] " + ("teto atingido em no máximo 2 falhas de confirmação: " + acks));
   const fwdAt = (await one("select forwarded_at from zevanory_support_inbound where email_id = 'g1'")).forwarded_at;
   await makeDue("g1");
   await Promise.all([drain(r), drain(r)]);
   await drain(r);
-  assert.equal(r.calls.filter((c) => c.kind !== "read" && c.kind !== "alert" && c.id === "g1").length, 10 + acks, "nenhum envio depois do teto");
-  assert.equal((await one("select forwarded_at from zevanory_support_inbound where email_id = 'g1'")).forwarded_at, fwdAt, "forwarded_at preservado");
-  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "alerta de morte exatamente uma vez");
+  assert.equal(r.calls.filter((c) => c.kind !== "read" && c.kind !== "alert" && c.id === "g1").length, 10 + acks, "[O16.4] nenhum envio depois do teto");
+  assert.equal((await one("select forwarded_at from zevanory_support_inbound where email_id = 'g1'")).forwarded_at, fwdAt, "[O16.5] forwarded_at preservado");
+  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "[O16.6] alerta de morte exatamente uma vez");
   const replay = await webhook(r, "g1", "cliente-g1@example.com", "msg_replay_g1");
-  assert.equal((await replay.json()).duplicate, true);
-  assert.equal(r.calls.filter((c) => c.kind !== "read" && c.kind !== "alert" && c.id === "g1").length, 10 + acks, "replay depois de ack_dead sem efeito");
+  assert.equal((await replay.json()).duplicate, true, "[O16.7]");
+  assert.equal(r.calls.filter((c) => c.kind !== "read" && c.kind !== "alert" && c.id === "g1").length, 10 + acks, "[O16.8] replay depois de ack_dead sem efeito");
 });
 
 test("O18 orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado", { skip: SKIP }, async () => {
@@ -410,26 +410,26 @@ test("O18 orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releit
   await seed(["h1"], { readFailures: 9 });
   await fwd.processSupportEmail(ctx(r), "h1");
   let st = await one("select state, read_failures, send_failures from zevanory_support_inbound where email_id = 'h1'");
-  assert.deepEqual(st, { state: "ack_pending", read_failures: "9", send_failures: "1" }, "contadores não zeram na transição");
+  assert.deepEqual(st, { state: "ack_pending", read_failures: "9", send_failures: "1" }, "[O18.1] contadores não zeram na transição");
   readFail = true;
   await makeDue("h1");
   await fwd.processSupportEmail(ctx(r), "h1");
   st = await one("select state, read_failures, forward_id is not null as fwd from zevanory_support_inbound where email_id = 'h1'");
-  assert.deepEqual(st, { state: "ack_dead", read_failures: "10", fwd: "t" });
-  assert.equal(r.of("forward", "h1"), 1);
+  assert.deepEqual(st, { state: "ack_dead", read_failures: "10", fwd: "t" }, "[O18.2]");
+  assert.equal(r.of("forward", "h1"), 1, "[O18.3]");
   const fwdAt = (await one("select forwarded_at from zevanory_support_inbound where email_id = 'h1'")).forwarded_at;
   await makeDue("h1");
   await Promise.all([drain(r), drain(r)]);
   await drain(r);
   // Replay do webhook depois de ack_dead: sem efeito.
   const replay = await webhook(r, "h1", "cliente-h1@example.com", "msg_replay_h1");
-  assert.equal(replay.status, 200);
-  assert.equal((await replay.json()).duplicate, true);
-  assert.equal(r.of("forward", "h1"), 1, "nenhum novo encaminhamento");
-  assert.equal(r.calls.filter((c) => c.kind === "ack" && c.id === "h1").length, 1, "nenhuma confirmação depois do teto");
-  assert.equal((await stateOf("h1")).state, "ack_dead");
-  assert.equal((await one("select forwarded_at from zevanory_support_inbound where email_id = 'h1'")).forwarded_at, fwdAt, "forwarded_at preservado");
-  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "alerta de morte exatamente uma vez");
+  assert.equal(replay.status, 200, "[O18.4]");
+  assert.equal((await replay.json()).duplicate, true, "[O18.5]");
+  assert.equal(r.of("forward", "h1"), 1, "[O18.6] nenhum novo encaminhamento");
+  assert.equal(r.calls.filter((c) => c.kind === "ack" && c.id === "h1").length, 1, "[O18.7] nenhuma confirmação depois do teto");
+  assert.equal((await stateOf("h1")).state, "ack_dead", "[O18.8]");
+  assert.equal((await one("select forwarded_at from zevanory_support_inbound where email_id = 'h1'")).forwarded_at, fwdAt, "[O18.9] forwarded_at preservado");
+  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "[O18.10] alerta de morte exatamente uma vez");
 });
 
 test("O17 dreno interno: nonce consumido atomicamente no PostgreSQL — pedidos simultâneos com o mesmo nonce => um 200, os demais 409; minuto velho 401", { skip: SKIP }, async () => {
@@ -442,11 +442,11 @@ test("O17 dreno interno: nonce consumido atomicamente no PostgreSQL — pedidos 
     "x-support-drain-nonce": n, "x-support-drain-minute": String(min) } });
   const call = async (q) => fwd.handleSupportDrainRequest(q, env, { sqlFactory: () => sql, fetchImpl: r.fetchImpl });
   const statuses = (await Promise.all(Array.from({ length: 5 }, async () => (await call(await mk())).status))).sort();
-  assert.deepEqual(statuses, [200, 409, 409, 409, 409]);
-  assert.equal(r.of("forward", "n1"), 1, "um único dreno efetivo");
+  assert.deepEqual(statuses, [200, 409, 409, 409, 409], "[O17.1]");
+  assert.equal(r.of("forward", "n1"), 1, "[O17.2] um único dreno efetivo");
   const before = r.calls.length;
-  assert.equal((await call(await mk())).status, 409, "replay");
-  assert.equal((await call(await mk(minute - 2, "cd".repeat(16)))).status, 401, "minuto velho");
-  assert.equal(r.calls.length, before, "zero chamada extra ao Resend");
-  assert.equal((await one("select count(*)::int as n from zevanory_support_drain_nonces")).n, "1");
+  assert.equal((await call(await mk())).status, 409, "[O17.3] replay");
+  assert.equal((await call(await mk(minute - 2, "cd".repeat(16)))).status, 401, "[O17.4] minuto velho");
+  assert.equal(r.calls.length, before, "[O17.5] zero chamada extra ao Resend");
+  assert.equal((await one("select count(*)::int as n from zevanory_support_drain_nonces")).n, "1", "[O17.6]");
 });

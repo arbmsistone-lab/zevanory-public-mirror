@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
-"""Mutantes do suporte@ (worker/support-email-forward.mjs + fiação no compat) com certificação CAUSAL (auditor Sol 120-6).
+"""Mutantes do suporte@ (worker/support-email-forward.mjs + fiação no compat), classificados pelo classificador
+COMPARTILHADO scripts/ci/mutant_classifier.py (PR #901: classify com expected primary/secondary, load_mutant_config,
+parser TAP estrito que confere pontos x plano x resumo, todo/skip/cancelled e sinais de infraestrutura).
 
-Cada mutante altera uma CÓPIA temporária e roda a suíte alvo (TAP explícito):
-  --suite unit (padrão)  tests/support-email-forward.test.mjs         lista causal: mutants_support_email_allow.json
+  --suite unit (padrão)  tests/support-email-forward.test.mjs         config: mutants_support_email_allow.json
   --suite pg             tests/integration/support-outbox-postgres.test.mjs (PostgreSQL real; T4_PG_HOST/T4_PG_PORT)
-                                                                       lista causal: mutants_support_email_pg_allow.json
-A lista causal é escrita por RACIOCÍNIO sobre cada mutação (não a partir de falhas observadas): para cada mutante,
-"primary" (1 a 3 testes que verificam diretamente a regra mutada, cada um com "why") e "secondary" opcional (cada
-entrada com justificativa causal de uma linha). Mais de 4 testes no total exige "broad_reason" explícito.
-Classificação:
-  KILLED       saída normal (código 1), contagem TAP completa, TODAS as falhas são asserções (ERR_ASSERTION), pelo
-               menos UMA em teste PRIMÁRIO e nenhuma fora de primary ∪ secondary.
-  SURVIVED     código 0, contagem completa, # fail 0.
-  INCONCLUSIVE todo o resto: queda/sinal, timeout, erro de sintaxe/módulo, contagem incompleta, falha que não é
-               asserção, falha só em secundário, falha fora da lista. Repete UMA vez; se persistir, o job falha.
-A lista é validada ANTES de rodar (mutante sem entrada, teste inexistente, entrada sem justificativa, lista larga sem
-broad_reason => recusa, exit 2). Baseline precisa ser verde. Exit: 0 só se todos KILLED; 1 SURVIVED; 3 INCONCLUSIVE.
+                                                                       config: mutants_support_email_pg_allow.json
+Cada config tem "mutants" no formato de load_mutant_config: por mutante, primary (1-3) com test_pattern E
+assertion_pattern NÃO nulo (marcador [Unn.k]/[Onn.k] da asserção que codifica a regra, conferido dentro do bloco
+`not ok` daquele teste) e secondary com justification; broad_reason quando há mais de 4 testes. As expectativas foram
+escritas por raciocínio sobre cada mutação, antes de rodá-la. Validação antes de qualquer mutante (exit 2): config
+inválida, primary sem assertion_pattern, test_pattern que não casa com nenhum teste da baseline.
+KILLED só com asserção primária casada no bloco do teste primário e nada fora de primary ∪ secondary; todo o resto
+(inclusive outra asserção do mesmo teste primário, todo/skip, contagem incoerente com plano/resumo) é INCONCLUSIVE.
+INCONCLUSIVE repete 1 vez; persistindo, o job falha. Exit: 0 todos KILLED; 1 SURVIVED; 2 baseline/config; 3 INCONCLUSIVE.
 Uso: python3 scripts/ci/mutants_support_email.py [--suite unit|pg] [raiz-do-repo]
 """
 import json, os, re, shutil, subprocess, sys, tempfile
+
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mutant_classifier as mc  # noqa: E402  (PR #901, sem modificação)
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--") and a not in ("unit", "pg")]
 SUITE = "pg" if ("--suite" in sys.argv and sys.argv[sys.argv.index("--suite") + 1] == "pg") else "unit"
@@ -181,33 +183,26 @@ MUTANTS = M_PG if SUITE == "pg" else M
 ALLOW_FILE = Path(os.environ.get("SUPPORT_MUTANTS_ALLOW_FILE") or Path(__file__).with_name(SUITES[SUITE]["allow"]))
 
 
-def load_allow(path=None):
-    return json.loads(Path(path or ALLOW_FILE).read_text(encoding="utf-8"))
-
-
-def validate_allow(allow, mutants, titles):
-    """Erros da lista causal (lista vazia = válida). Puro: coberto pelos meta-testes."""
-    errors = []
-    for name in mutants:
-        if name not in allow:
-            errors.append(f"{name}: sem entrada na lista causal")
-    for name, e in allow.items():
-        if name not in mutants:
-            errors.append(f"{name}: entrada órfã (mutante inexistente)")
-            continue
-        prim, sec = e.get("primary") or [], e.get("secondary") or []
-        if not e.get("change"):
-            errors.append(f"{name}: sem descrição da mudança")
-        if not 1 <= len(prim) <= 3:
-            errors.append(f"{name}: primary precisa de 1 a 3 testes")
-        for item in prim + sec:
-            if not str(item.get("why", "")).strip():
-                errors.append(f"{name}: entrada sem justificativa: {str(item.get('test'))[:50]}")
-            if item.get("test") not in titles:
-                errors.append(f"{name}: teste inexistente: {str(item.get('test'))[:50]}")
-        if len(prim) + len(sec) > MAX_TESTS_WITHOUT_BROAD_REASON and not str(e.get("broad_reason", "")).strip():
-            errors.append(f"{name}: lista larga ({len(prim) + len(sec)} testes) sem broad_reason")
-    return errors
+def load_config(path=None, titles=None, mutants=None):
+    """Lê e valida a config (load_mutant_config + regras deste runner). Levanta mc.ConfigError."""
+    raw = json.loads(Path(path or ALLOW_FILE).read_text(encoding="utf-8"))
+    specs = raw.get("mutants") if isinstance(raw, dict) else None
+    if not isinstance(specs, dict):
+        raise mc.ConfigError("config sem a seção 'mutants'")
+    cfg = mc.load_mutant_config(specs)
+    mutants = MUTANTS if mutants is None else mutants
+    missing, orphan = sorted(set(mutants) - set(cfg)), sorted(set(cfg) - set(mutants))
+    if missing or orphan:
+        raise mc.ConfigError(f"mutantes sem config {missing} / config órfã {orphan}")
+    for mid, spec in cfg.items():
+        for e in spec["primary"]:
+            if not (isinstance(e.get("assertion_pattern"), str) and e["assertion_pattern"].strip()):
+                raise mc.ConfigError(f"{mid}: primary sem assertion_pattern (marcador da asserção é obrigatório)")
+        if titles is not None:
+            for e in spec["primary"] + spec["secondary"]:
+                if not any(mc._test_matches(e["test_pattern"], t) for t in titles):
+                    raise mc.ConfigError(f"{mid}: test_pattern não casa com nenhum teste: {e['test_pattern'][:60]}")
+    return cfg
 
 
 def sub(text, old, new):
@@ -216,6 +211,7 @@ def sub(text, old, new):
 
 
 def build(tmp, mutation=None):
+    """Copia a árvore mínima; aplica a mutação. Devolve False se a âncora não for única (INCONCLUSIVE)."""
     for rel in COPY:
         dst = Path(tmp, *rel.split("/"))
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -224,116 +220,63 @@ def build(tmp, mutation=None):
         rel, old, new = mutation
         f = Path(tmp, *rel.split("/"))
         text = f.read_bytes().decode("utf-8").replace("\r\n", "\n")
+        if text.count(old) != 1:
+            return False
         with open(f, "w", encoding="utf-8", newline="\n") as h:
-            h.write(sub(text, old, new))
+            h.write(text.replace(old, new, 1))
+    return True
 
 
-def run_suite(root, test=None):
+def run_suite(root):
     env = {**os.environ, "NODE_NO_WARNINGS": "1", "NO_COLOR": "1", "FORCE_COLOR": "0", "NODE_OPTIONS": ""}
-    try:
-        p = subprocess.run([NODE, "--test", "--test-reporter=tap", test or TEST], cwd=root, capture_output=True,
-                           timeout=TIMEOUT, env=env, stdin=subprocess.DEVNULL)
-    except subprocess.TimeoutExpired:
-        return {"timeout": True, "rc": None, "out": ""}
-    return {"timeout": False, "rc": p.returncode, "out": (p.stdout + p.stderr).decode("utf-8", "replace").replace("\r\n", "\n")}
+    return mc.run_command([NODE, "--test", "--test-reporter=tap", "--test-reporter-destination=stdout", TEST],
+                          cwd=root, timeout=TIMEOUT, env=env)
 
 
-def parse_tap(out):
-    get = lambda k: (re.search(rf"^# {k} (\d+)$", out, re.M) or [None, None])[1]
-    summary = {k: get(k) for k in ("tests", "pass", "fail", "cancelled", "skipped")}
-    failures, titles = [], []
-    lines = out.split("\n")
-    for i, line in enumerate(lines):
-        ok = re.match(r"^ok \d+ - (.+?)(?: # .*)?$", line)
-        if ok:
-            titles.append(ok.group(1).replace("\\#", "#"))
-        m = re.match(r"^not ok \d+ - (.+?)(?: # .*)?$", line)
-        if not m:
-            continue
-        block = []
-        for nxt in lines[i + 1:]:
-            if re.match(r"^(ok|not ok) \d+ ", nxt) or re.match(r"^# (Subtest|tests) ", nxt) or nxt.startswith("1.."):
-                break
-            block.append(nxt)
-        text = "\n".join(block)
-        title = m.group(1).replace("\\#", "#")
-        titles.append(title)
-        failures.append({"title": title, "assertion": "code: 'ERR_ASSERTION'" in text})
-    return summary, failures, titles
-
-
-def classify(res, entry, baseline_total):
-    """(veredito, motivo). entry = {"primary": [...], "secondary": [...]} da lista causal."""
-    if res.get("timeout"):
-        return "INCONCLUSIVE", "timeout"
-    rc = res.get("rc")
-    if rc not in (0, 1):
-        return "INCONCLUSIVE", f"saída anormal rc={rc}"
-    summary, failures, _ = parse_tap(res.get("out", ""))
-    if summary["tests"] != str(baseline_total) or summary["cancelled"] not in ("0", None) or summary["pass"] is None or summary["fail"] is None:
-        return "INCONCLUSIVE", f"contagem incompleta {summary}"
-    if int(summary["pass"]) + int(summary["fail"]) + int(summary["skipped"] or 0) != baseline_total or summary["skipped"] not in ("0", None):
-        return "INCONCLUSIVE", f"contagem incoerente {summary}"
-    if rc == 0:
-        return ("SURVIVED", "") if summary["fail"] == "0" and not failures else ("INCONCLUSIVE", "rc 0 com falhas")
-    if summary["fail"] == "0" or not failures or len(failures) != int(summary["fail"]):
-        return "INCONCLUSIVE", "rc 1 sem falha de teste reconhecível (erro de módulo/sintaxe?)"
-    if not all(f["assertion"] for f in failures):
-        return "INCONCLUSIVE", "falha que não é asserção"
-    prim = {x["test"] for x in entry.get("primary") or []}
-    sec = {x["test"] for x in entry.get("secondary") or []}
-    outside = [f["title"] for f in failures if f["title"] not in prim | sec]
-    if outside:
-        return "INCONCLUSIVE", "falha fora da lista causal: " + "; ".join(t[:60] for t in outside)
-    if not any(f["title"] in prim for f in failures):
-        return "INCONCLUSIVE", "falha só em secundário (nenhuma asserção primária)"
-    return "KILLED", ""
-
-
-def run_mutant(mutation):
+def run_mutant(name, mutation, total, spec):
     with tempfile.TemporaryDirectory() as tmp:
-        build(tmp, mutation)
-        return run_suite(tmp)
+        ok = build(tmp, mutation)
+        run = run_suite(tmp) if ok else {"return_code": 1, "stdout": "", "stderr": "", "timed_out": False, "signal": None}
+    return mc.classify_run(total, run, expected=spec, allowlist=spec.get("allowlist") or [], anchor_ok=ok, mutant_id=name)
 
 
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp)
         base = run_suite(tmp)
-    summary, failures, titles = parse_tap(base["out"])
-    if base["timeout"] or base["rc"] != 0 or not summary["tests"] or summary["fail"] != "0" or failures or summary["skipped"] not in ("0", None):
-        print("BASELINE FAILED", summary)
-        return 2
-    total = int(summary["tests"])
+    parsed = mc.parse_tap(base.get("stdout", ""), stderr=base.get("stderr", ""))
+    total = parsed["summary"].get("tests")
+    vb = mc.validate_baseline(total if isinstance(total, int) else -1, base.get("return_code"), parsed["summary"], parsed["failures"],
+                              timed_out=base.get("timed_out", False), signal=base.get("signal"))
+    if not vb["ok"]:
+        print("BASELINE FAILED", vb["reason"])
+        return mc.EXIT_BAD_BASELINE
+    titles = [p.get("test_id") for p in parsed["summary"].get("points") or []]
     print(f"BASELINE PASS suite={SUITE} tests={total}")
-    allow = load_allow()
-    errors = validate_allow(allow, MUTANTS, set(titles))
-    if errors:
-        for e in errors:
-            print("ALLOWLIST_INVALID", e)
-        return 2
+    try:
+        cfg = load_config(titles=titles)
+    except mc.ConfigError as e:
+        print("CONFIG_INVALID", e)
+        return mc.EXIT_BAD_BASELINE
 
     def judge(item):
         name, mutation = item
-        verdict, why = classify(run_mutant(mutation), allow[name], total)
-        if verdict == "INCONCLUSIVE":
-            first = why
-            verdict, why = classify(run_mutant(mutation), allow[name], total)
-            why = f"{first} | repetição: {why}" if verdict == "INCONCLUSIVE" else why
-        return name, verdict, why
+        res = run_mutant(name, mutation, total, cfg[name])
+        if res["verdict"] == mc.INCONCLUSIVE:
+            first = res["reason"]
+            res = run_mutant(name, mutation, total, cfg[name])
+            if res["verdict"] == mc.INCONCLUSIVE:
+                res["reason"] = f"{first} | repetição: {res['reason']}"
+        return res
 
     with ThreadPoolExecutor(max_workers=min(SUITES[SUITE]["workers"], os.cpu_count() or 2)) as ex:
         results = list(ex.map(judge, MUTANTS.items()))
-    counts = {"KILLED": 0, "SURVIVED": 0, "INCONCLUSIVE": 0}
-    for name, verdict, why in results:
-        counts[verdict] += 1
-        print(f"MUTANT {name} {verdict}" + (f" ({why})" if why else ""))
-    print(f"MUTANTS suite={SUITE} total={len(results)} killed={counts['KILLED']} survived={counts['SURVIVED']} inconclusive={counts['INCONCLUSIVE']}")
-    if counts["SURVIVED"]:
-        return 1
-    if counts["INCONCLUSIVE"]:
-        return 3
-    return 0
+    for r in results:
+        print(f"MUTANT {r['mutant_id']} {r['verdict']}" + ("" if r["verdict"] == mc.KILLED else f" ({r['reason'][:300]})"))
+        print("RESULT " + json.dumps({k: r.get(k) for k in ("mutant_id", "verdict", "reason", "killing_tests", "assertion_ids", "secondary_tests", "unexpected_failures")}, ensure_ascii=False))
+    code, summary = mc.aggregate(results, baseline_valid=True)
+    print(f"MUTANTS suite={SUITE} total={len(results)} killed={summary['KILLED']} survived={summary['SURVIVED']} inconclusive={summary['INCONCLUSIVE']}")
+    return code
 
 
 if __name__ == "__main__":
