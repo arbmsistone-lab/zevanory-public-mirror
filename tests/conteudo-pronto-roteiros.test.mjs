@@ -8,12 +8,15 @@
 //       ordem do contrato, versão curta + versão de e-mail, calendário — e o prompt da IA;
 //   (d) a guarda: "WhatsApp" não aparece na oferta, nas fontes do produto, no prompt, no e-mail de
 //       boas-vindas, no formulário, no pacote em texto nem no HTML entregue.
+//   (e) TODA página/texto do repositório que descreve o Conteúdo Pronto (guias ia-para-*, kit,
+//       llms.txt, catálogo, fontes e geradas) diz "N posts e N roteiros multicanal", sem mensagens.
 // Qualquer mudança de quantidade, objetivo, canal ou texto exige subir content_schema_version e
 // registrar a impressão digital nova em CONTRACT_FINGERPRINTS (revisão explícita).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
 import * as CS from "../worker/content-service.mjs";
@@ -192,4 +195,45 @@ test("(d) guarda: fonte do gerador, e-mail de boas-vindas, formulário, pacote e
   const legacyText = CS.packageText(legacy);
   assert.doesNotMatch(legacyText, WA, "pacote v1 em texto");
   assert.match(legacyText, /Dia 05 · Roteiro · Oferta/);
+});
+
+// (e) Varredura: nenhum texto que descreve o Conteúdo Pronto pode divergir do contrato.
+const SKIP_DIRS = new Set([".git", "node_modules", "tests"]);
+function* walk(dir) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) yield* walk(join(dir, e.name)); }
+    else if (/\.(html|txt|md)$/.test(e.name)) yield join(dir, e.name);
+  }
+}
+// Linhas, itens/blocos HTML, cartões de catálogo vizinhos (</a><a) e campos de JSON-LD (", ")
+// são segmentos independentes; um link "Conteúdo Pronto</a>: 12 posts..." fica no mesmo segmento.
+const SEGMENT = /\n|<\/?(?:li|dd|div|section|td|article)\b[^>]*>|<\/a>(?=<a\b)|", "/;
+function describingSegments(text) {
+  return text.split(SEGMENT).filter((seg) => seg.includes("Conteúdo Pronto") && /\b\d+ posts\b/.test(seg));
+}
+
+test("(e) toda página que descreve o Conteúdo Pronto (guias ia-para-*, kit, llms, catálogo; fonte e gerada) segue o contrato", () => {
+  const described = new Map();
+  for (const abs of walk(ROOT)) {
+    const rel = relative(ROOT, abs).split(sep).join("/");
+    const segs = describingSegments(readTextNormalized(abs));
+    if (segs.length) described.set(rel, segs);
+  }
+  for (const [rel, segs] of described) {
+    for (const seg of segs) {
+      const where = rel + ": " + seg.replace(/<[^>]+>/g, "").trim().slice(0, 120);
+      assert.ok(seg.includes(`${C.posts} posts`), "quantidade de posts do contrato — " + where);
+      assert.ok(seg.includes(`${C.roteiros} roteiros multicanal`), "roteiros multicanal do contrato — " + where);
+      assert.doesNotMatch(seg, /mensage(?:m|ns)|whats\s*app/i, "sem mensagens/WhatsApp — " + where);
+    }
+  }
+  // Cobertura: cada guia de nicho (fonte e página gerada), kit, llms e catálogo entram na varredura.
+  const niches = readdirSync(ROOT, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith("ia-para-")).map((e) => e.name);
+  assert.ok(niches.length >= 40, "guias de nicho encontrados: " + niches.length);
+  const required = [
+    ...niches.flatMap((n) => [`${n}/index.html`, `sales-public/${n}.html`]),
+    "kit-afiliado/index.html", "sales-public/kit-afiliado.html", "sales-overlay/llms.txt", "sales-public/llms.txt",
+    "solucoes/index.html", "sales-public/solucoes.html", "sales-public/index.html",
+  ];
+  for (const rel of required) assert.ok(described.has(rel), "página descreve o Conteúdo Pronto e entrou na varredura: " + rel);
 });
