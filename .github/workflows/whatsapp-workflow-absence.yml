@@ -32,4 +32,4 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/whatsapp-config-absence.test.mjs < /dev/null | tee t.txt
-          grep -qx '# tests 6' t.txt && grep -qx '# pass 6' t.txt && grep -qx '# fail 0' t.txt && grep -qx '# skipped 0' t.txt
+          grep -qx '# tests 7' t.txt && grep -qx '# pass 7' t.txt && grep -qx '# fail 0' t.txt && grep -qx '# skipped 0' t.txt

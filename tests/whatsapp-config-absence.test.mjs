@@ -15,7 +15,12 @@
 // literals; neither is a wrangler* config nor generated output, so nothing is exempted from the scan.
 //   * every .github/workflows/*.yml: no assignment of SUPPORT_CHANNEL / ZEVANORY_WHATSAPP_* and neither number in any
 //     format (scripts/deploy/public_whatsapp_scan.py --workflows; mercadopago-exact-sha-recovery.yml used to assign).
-// Causal mutants: scripts/ci/mutants_whatsapp_retirement.mjs M39-M49.
+//   * the three WhatsApp Cloud API settings the 83620c6 base still ships inside ZEVANORY_RUNTIME_CONFIG
+//     (WHATSAPP_PHONE_NUMBER_ID, META_WHATSAPP_IDENTITY_VERIFIED, WHATSAPP_BRAND_IDENTITY_VERIFIED) are absent from
+//     every tracked wrangler* config and from the generated candidate (top-level vars AND the runtime config);
+//   * no over-stripping: META_VERIFY_TOKEN (shared Instagram/Facebook webhook verify token), META_APP_SECRET01,
+//     META_GRAPH_VERSION and every other META_* / FACEBOOK_* / INSTAGRAM_* key of the seed survive unchanged.
+// Causal mutants: scripts/ci/mutants_whatsapp_retirement.mjs M39-M51.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -39,6 +44,11 @@ const BANNED = [
   ["WHATSAPP_SALES_ENABLED=true", /WHATSAPP_SALES_ENABLED"?\s*[:=]\s*"?true/i],
 ];
 const hits = (text) => BANNED.filter(([, re]) => re.test(text)).map(([name]) => name);
+// Retired WhatsApp Cloud API settings (83620c6 wrangler.jsonc lines 54/67/69, inside ZEVANORY_RUNTIME_CONFIG).
+const RETIRED_META = ["WHATSAPP_PHONE_NUMBER_ID", "META_WHATSAPP_IDENTITY_VERIFIED", "WHATSAPP_BRAND_IDENTITY_VERIFIED"];
+const retiredMetaHits = (text) => RETIRED_META.filter((k) => new RegExp(`\\b${k}\\b`).test(text));
+// Keys that must NOT be stripped (Instagram/Facebook inbound still uses them).
+const KEEP_PREFIX = /^(META_|FACEBOOK_|INSTAGRAM_)/;
 const HEALTH_ANCHOR = "const commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked || preSaleCutoverSafe || commercialLivePattern;";
 // Same shapes as the frozen 83620c6 public/ snapshot.
 const LEGACY_CONTACT_JS = "(()=>{\n  const NUMBER='558892340423',DISPLAY='+55 88 9234-0423';\n  const href=`https://wa.me/${NUMBER}?text=x`;\n})();\n";
@@ -71,7 +81,23 @@ const LEGACY_BASE = Object.freeze({
   ZEVANORY_WHATSAPP_DISPLAY: "+55 88 99254-5413",
   ZEVANORY_WHATSAPP_E164: "5588992545413",
   ZEVANORY_WHATSAPP_COUNTRY: "BR",
-  ZEVANORY_RUNTIME_CONFIG: { ZEVANORY_WHATSAPP_DISPLAY: "+55 88 99254-5413", SUPPORT_CHANNEL: "WhatsApp +55 88 92340423" },
+  // Retired WhatsApp Cloud API settings, in both bags (the real base carries them in the runtime config).
+  WHATSAPP_PHONE_NUMBER_ID: "000000000000000",
+  META_WHATSAPP_IDENTITY_VERIFIED: "true",
+  WHATSAPP_BRAND_IDENTITY_VERIFIED: "true",
+  // Must survive (fixture placeholders, not credentials).
+  META_VERIFY_TOKEN: "fixture-shared-meta-verify-token",
+  META_APP_SECRET01: "fixture-meta-app-secret01",
+  FACEBOOK_PAGE_ID: "fixture-facebook-page",
+  INSTAGRAM_BUSINESS_ACCOUNT_ID: "fixture-instagram-account",
+  ZEVANORY_RUNTIME_CONFIG: {
+    ZEVANORY_WHATSAPP_DISPLAY: "+55 88 99254-5413", SUPPORT_CHANNEL: "WhatsApp +55 88 92340423",
+    WHATSAPP_BRAND_IDENTITY_VERIFIED: "true", WHATSAPP_PHONE_NUMBER_ID: "000000000000000", META_WHATSAPP_IDENTITY_VERIFIED: "true",
+    META_GRAPH_VERSION: "v26.0", META_VERIFY_TOKEN: "fixture-shared-meta-verify-token",
+    INSTAGRAM_BRAND_IDENTITY_VERIFIED: "true", FACEBOOK_BRAND_IDENTITY_VERIFIED: "true",
+    INSTAGRAM_OPERATOR_ASSISTED_PUBLISHING: "true", INSTAGRAM_PROFILE_URL: "https://www.instagram.com/zevanory_/",
+    FACEBOOK_OPERATOR_ASSISTED_PUBLISHING: "true", FACEBOOK_PROFILE_URL: "https://www.facebook.com/zevanory",
+  },
 });
 
 test("wrangler configs: no tracked wrangler*.toml/json/jsonc carries a WhatsApp alias or retired number", () => {
@@ -80,6 +106,7 @@ test("wrangler configs: no tracked wrangler*.toml/json/jsonc carries a WhatsApp 
     .split("\0").filter(Boolean);
   assert.ok(files.includes("wrangler.sales.toml") && files.includes("wrangler.public-router.toml"), "scan found the known tomls: " + files.join(","));
   for (const file of files) assert.deepEqual(hits(readTextNormalized(join(ROOT, file))), [], "[WR-TOML] " + file);
+  for (const file of files) assert.deepEqual(retiredMetaHits(readTextNormalized(join(ROOT, file))), [], "[WR-TOML-META] " + file);
 });
 
 test("generated candidate config: prepare-central-candidate.py emits no WhatsApp alias, channel closed", () => {
@@ -91,6 +118,25 @@ test("generated candidate config: prepare-central-candidate.py emits no WhatsApp
   assert.equal(cfg.vars.ZEVANORY_RELEASE_SHA, "a".repeat(40), "generator really ran");
   assert.equal(cfg.vars.WHATSAPP_SALES_ENABLED, "false", "[WR-CFG-SALES] retired WhatsApp channel must stay closed");
   assert.deepEqual(hits(r.config), [], "[WR-CFG-ALIAS] generated candidate config must not carry a WhatsApp alias");
+  // The seed really carries the three retired settings in both bags, so their absence below is the generator's work.
+  for (const k of RETIRED_META) assert.ok(k in LEGACY_BASE && k in LEGACY_BASE.ZEVANORY_RUNTIME_CONFIG, "seed carries " + k);
+  const rt = cfg.vars.ZEVANORY_RUNTIME_CONFIG || {};
+  const leaked = RETIRED_META.filter((k) => k in cfg.vars || k in rt).concat(retiredMetaHits(r.config).map((k) => "text:" + k));
+  assert.deepEqual(leaked, [], "[WR-CFG-META] retired WhatsApp settings must be dropped from vars and ZEVANORY_RUNTIME_CONFIG");
+});
+
+test("no over-stripping: META_VERIFY_TOKEN and every other META_/FACEBOOK_/INSTAGRAM_ key survive the generator", () => {
+  const seedRt = LEGACY_BASE.ZEVANORY_RUNTIME_CONFIG;
+  assert.ok(LEGACY_BASE.META_VERIFY_TOKEN && seedRt.META_VERIFY_TOKEN && LEGACY_BASE.META_APP_SECRET01 && seedRt.META_GRAPH_VERSION, "seed carries the keys to keep");
+  const r = runGenerator(LEGACY_BASE);
+  assert.equal(r.status, 0, "generator must succeed: " + r.output.slice(-800));
+  const cfg = JSON.parse(r.config);
+  const rt = cfg.vars.ZEVANORY_RUNTIME_CONFIG || {};
+  const expected = [["vars", LEGACY_BASE, cfg.vars], ["runtime", seedRt, rt]].flatMap(([bag, seed, out]) =>
+    Object.keys(seed).filter((k) => KEEP_PREFIX.test(k) && !RETIRED_META.includes(k)).map((k) => [bag, k, seed[k], out[k]]));
+  assert.ok(expected.length >= 12 && expected.some(([b, k]) => b === "vars" && k === "META_VERIFY_TOKEN") && expected.some(([b, k]) => b === "runtime" && k === "META_VERIFY_TOKEN"), "keep set covers META_VERIFY_TOKEN in both bags");
+  const lost = expected.filter(([, , want, got]) => got !== want).map(([bag, k]) => bag + ":" + k);
+  assert.deepEqual(lost, [], "[WR-CFG-KEEP] generator over-stripped keys that are not WhatsApp settings");
 });
 
 test("generated public assets: wa.me injector and JSON-LD telephone of the frozen snapshot are neutralized", () => {

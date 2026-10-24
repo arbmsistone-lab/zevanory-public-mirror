@@ -28,13 +28,15 @@ import { normalizeEol } from "../../tests/helpers/text.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITES = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-manual-only.test.mjs", "tests/whatsapp-config-absence.test.mjs"];
-const BASE_COUNT = 26;
+const BASE_COUNT = 27;
 const RET = "worker/whatsapp-retirement.mjs", COMPAT = "worker/cloudflare-worker.compat.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
 const LIVE = "worker/live-runtime-status.mjs", CONT = "worker/continuity-router.mjs", ONB = "worker/whatsapp-onboarding.mjs";
 const BROKER = "worker/whatsapp-credential-broker.mjs", INB = "worker/inbound-autonomy.mjs", WF = ".github/workflows/voice-render-proof.yml";
 const FORGER = "scripts/ci/_mutant_forger.mjs";
 const GEN = "scripts/deploy/prepare-central-candidate.py", TOML = "wrangler.sales.toml";
 const GEN_STRIP = 'for _bag in (c["vars"], runtime):\n    for _key in [k for k in _bag if _retired_whatsapp_alias(k)]:\n        _bag.pop(_key)\n';
+const GEN_META_KEY = '    "WHATSAPP_PHONE_NUMBER_ID",\n';
+const GEN_PREDICATE = '    return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_") or key in RETIRED_WHATSAPP_META_KEYS\n';
 const GEN_SALES = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"  # WhatsApp retired (PR #896): channel closed for good, never "true"\n';
 const SCAN = "scripts/deploy/public_whatsapp_scan.py", MPWF = ".github/workflows/mercadopago-exact-sha-recovery.yml";
 // The generator shape lives under tests/ (outside the static scan) and is copied in only for M28.
@@ -94,6 +96,9 @@ const MUTANTS = [
   ["M48_public_number_rewrite_back", [[GEN, "home = Path(\"public/index.html\")\n", 'replacements = {"558892340423": "5588992545413"}\nhome = Path("public/index.html")\n']]],
   // Follow-up on #896: a workflow brings a retired WhatsApp alias back (mercadopago-exact-sha-recovery.yml used to).
   ["M49_workflow_whatsapp_alias_back", [[MPWF, '          v["WHATSAPP_SALES_ENABLED"]="false"\n', '          v["WHATSAPP_SALES_ENABLED"]="false"\n          v["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"\n']]],
+  // Retired WhatsApp Cloud API settings (83620c6 runtime config): one is shipped again; the strip over-reaches META_VERIFY_TOKEN.
+  ["M50_generator_ships_whatsapp_phone_number_id", [[GEN, GEN_META_KEY, ""]]],
+  ["M51_generator_overstrips_meta_verify_token", [[GEN, GEN_PREDICATE, GEN_PREDICATE.replace("\n", ' or key == "META_VERIFY_TOKEN"\n')]]],
 ];
 
 const sha = (s) => createHash("sha256").update(s).digest("hex");

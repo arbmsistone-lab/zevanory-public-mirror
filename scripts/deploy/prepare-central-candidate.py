@@ -98,8 +98,18 @@ for key in (
 # generator never assigns a WhatsApp contact alias, and it strips the legacy ones the base config
 # (83620c6 wrangler.jsonc: SUPPORT_CHANNEL with the old number) still carries. Support channel is
 # the constant suporte@zevanory.api.br in the worker. Guard: tests/whatsapp-config-absence.test.mjs.
+# The same base also ships three WhatsApp Cloud API settings inside ZEVANORY_RUNTIME_CONFIG (83620c6 wrangler.jsonc
+# lines 54/67/69). With the retirement a hard-coded constant (worker/whatsapp-retirement.mjs) nothing reads them for
+# a live path, so they are dropped from `vars` and from the runtime config. Exact names only: META_VERIFY_TOKEN (the
+# shared Instagram/Facebook webhook verify token), META_APP_SECRET01, META_GRAPH_VERSION, FACEBOOK_* and INSTAGRAM_*
+# are NOT WhatsApp settings and must survive (guard test "no over-stripping" in the same file).
+RETIRED_WHATSAPP_META_KEYS = (
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "META_WHATSAPP_IDENTITY_VERIFIED",
+    "WHATSAPP_BRAND_IDENTITY_VERIFIED",
+)
 def _retired_whatsapp_alias(key):
-    return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_")
+    return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_") or key in RETIRED_WHATSAPP_META_KEYS
 for _bag in (c["vars"], runtime):
     for _key in [k for k in _bag if _retired_whatsapp_alias(k)]:
         _bag.pop(_key)

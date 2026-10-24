@@ -6,11 +6,12 @@ name: WhatsApp retirement mutants
 # must be KILLED by an assertion in an EXPECTED test. M39-M48: a WhatsApp alias back in the generated
 # central candidate config or a tracked wrangler* config, WHATSAPP_SALES_ENABLED re-enabled, the banned account
 # left in / rewritten into the public assets, the fail-closed public scan disabled or weakened
-# (tests/whatsapp-config-absence.test.mjs); M49: a workflow assigns a WhatsApp alias again.
+# (tests/whatsapp-config-absence.test.mjs); M49: a workflow assigns a WhatsApp alias again; M50: a retired WhatsApp
+# Cloud API setting (WHATSAPP_PHONE_NUMBER_ID) shipped again; M51: the strip over-reaches META_VERIFY_TOKEN.
 # Expectations (Sol audits 128/131): scripts/ci/mutants_whatsapp_retirement.expected.json, PRIMARY by reasoning with a
 # mandatory assertion label ([WR-...]) checked inside the not-ok block, SECONDARY only with a written justification.
 # Config (load_mutant_config) and verdicts (classify CLI) come from the shared scripts/ci/mutant_classifier.py (#901);
-# the runner refuses to start (exit 4) on an invalid config. Exact count 49; any SURVIVED or INCONCLUSIVE fails.
+# the runner refuses to start (exit 4) on an invalid config. Exact count 51; any SURVIVED or INCONCLUSIVE fails.
 # Matrix: Linux and Windows (CRLF checkout) x Node 22 and 24. Offline, no secrets, read-only.
 on:
   pull_request:
@@ -76,7 +77,7 @@ jobs:
           node --test tests/whatsapp-mutants-classifier.test.mjs < /dev/null | tr -d '\r' | tee meta.txt
           grep -qx '# tests 6' meta.txt && grep -qx '# pass 6' meta.txt && grep -qx '# fail 0' meta.txt && grep -qx '# skipped 0' meta.txt
           rm -f meta.txt
-      - name: Mutants (exact 49 KILLED by expected assertion)
+      - name: Mutants (exact 51 KILLED by expected assertion)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -86,10 +87,10 @@ jobs:
           killed=$(grep -cE '^MUTANT [A-Za-z0-9_]+ KILLED by=\[".+' mut.txt || true)
           bad=$(grep -cE '^MUTANT [A-Za-z0-9_]+ (SURVIVED|INCONCLUSIVE)' mut.txt || true)
           echo "::notice title=WA_RETIREMENT_MUTANTS::killed=${killed} not_killed=${bad} rc=${rc}"
-          grep -qx 'BASELINE PASS tests=26' mut.txt || { echo "::error title=WA_RETIREMENT_BASELINE::baseline not exact (26 tests)"; exit 1; }
+          grep -qx 'BASELINE PASS tests=27' mut.txt || { echo "::error title=WA_RETIREMENT_BASELINE::baseline not exact (27 tests)"; exit 1; }
           [ "$bad" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::SURVIVED/INCONCLUSIVE present"; exit 1; }
-          [ "$killed" = "49" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::expected exactly 49 KILLED, got ${killed}"; exit 1; }
-          grep -qx 'MUTANTS PASS killed=49/49' mut.txt || { echo "::error title=WA_RETIREMENT_MUTANTS::summary line missing"; exit 1; }
+          [ "$killed" = "51" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::expected exactly 51 KILLED, got ${killed}"; exit 1; }
+          grep -qx 'MUTANTS PASS killed=51/51' mut.txt || { echo "::error title=WA_RETIREMENT_MUTANTS::summary line missing"; exit 1; }
           [ "$rc" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::script exit ${rc}"; exit 1; }
           git diff --exit-code -- worker tests scripts .github wrangler.sales.toml || { echo "::error title=WA_RETIREMENT_RESTORE::source not restored"; exit 1; }
           test -z "$(git status --porcelain --untracked-files=all -- scripts worker tests .github)" || { echo "::error title=WA_RETIREMENT_RESTORE::stray files"; exit 1; }

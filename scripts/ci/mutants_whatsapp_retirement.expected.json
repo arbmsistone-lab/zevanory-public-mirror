@@ -545,6 +545,11 @@
      "test_pattern": "generated candidate config:",
      "assertion_pattern": null,
      "justification": "the leftover wa.me makes the generator abort fail-closed, so the config test's exit-status assertion fails"
+    },
+    {
+     "test_pattern": "no over-stripping:",
+     "assertion_pattern": null,
+     "justification": "the leftover wa.me makes the generator abort fail-closed, so the over-stripping guard's exit-status assertion fails before it can inspect the kept keys"
     }
    ]
   },
@@ -583,6 +588,11 @@
      "test_pattern": "generated candidate config:",
      "assertion_pattern": null,
      "justification": "the leftover telephone makes the generator abort fail-closed, so the config test's exit-status assertion fails"
+    },
+    {
+     "test_pattern": "no over-stripping:",
+     "assertion_pattern": null,
+     "justification": "the leftover telephone makes the generator abort fail-closed, so the over-stripping guard's exit-status assertion fails before it can inspect the kept keys"
     }
    ]
   },
@@ -599,6 +609,22 @@
     {
      "test_pattern": "workflows:",
      "assertion_pattern": "WR-WF-ASSIGN"
+    }
+   ]
+  },
+  "M50_generator_ships_whatsapp_phone_number_id": {
+   "primary": [
+    {
+     "test_pattern": "generated candidate config:",
+     "assertion_pattern": "WR-CFG-META"
+    }
+   ]
+  },
+  "M51_generator_overstrips_meta_verify_token": {
+   "primary": [
+    {
+     "test_pattern": "no over-stripping:",
+     "assertion_pattern": "WR-CFG-KEEP"
     }
    ]
   }
