@@ -16,6 +16,10 @@ on:
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_support_email.py"
       - "docs/ops/EMAIL_SUPORTE.md"
+      - "scripts/deploy/prepare-central-candidate.py"
+      - "tests/support-drain-scheduled.test.mjs"
+      - "tests/helpers/support-drain-scheduled-probe.mjs"
+      - "tests/t4_sim/**"
 
 permissions:
   contents: read
@@ -33,8 +37,14 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/support-email-forward.test.mjs | tee /tmp/support.txt
-          grep -qx "# tests 19" /tmp/support.txt || { echo "::error::contagem de testes diferente de 19"; exit 1; }
+          grep -qx "# tests 31" /tmp/support.txt || { echo "::error::contagem de testes diferente de 31"; exit 1; }
           grep -qx "# fail 0" /tmp/support.txt || { echo "::error::falha na suíte"; exit 1; }
+      - name: Entrada scheduled real despacha o dreno (contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/support-drain-scheduled.test.mjs | tee /tmp/sched.txt
+          grep -qx "# tests 2" /tmp/sched.txt && grep -qx "# pass 2" /tmp/sched.txt && grep -qx "# skipped 0" /tmp/sched.txt
       - name: Mutantes (todos precisam morrer)
         shell: bash
         env:
@@ -43,4 +53,4 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_support_email.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=SUPPORT_EMAIL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=63 killed=63 survived=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=96 killed=96 survived=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }

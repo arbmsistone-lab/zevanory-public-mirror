@@ -90,7 +90,8 @@ tests/sandbox_proof_v2.test.mjs 18
 tests/short-crosspost.test.mjs 8
 tests/signed-audit-probe.test.mjs 2
 tests/start-guide-touch-target.test.mjs 3
-tests/support-email-forward.test.mjs 19
+tests/support-drain-scheduled.test.mjs 2
+tests/support-email-forward.test.mjs 31
 tests/support-eval.test.mjs 3
 tests/system-matrix.test.mjs 5
 tests/telegram-inapp-browser.test.mjs 4

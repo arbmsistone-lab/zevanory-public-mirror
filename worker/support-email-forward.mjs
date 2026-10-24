@@ -32,11 +32,24 @@ export const SUPPORT_ALIASES = Object.freeze(["suporte", "contato"]);
 export const FORWARD_SUBJECT_PREFIX = "[ZEVANORY suporte]";
 export const FORWARD_TO_KV_KEY = "support-config:forward-to";
 export const ACK_DAILY_CAP = 30;
-export const MAX_ATTEMPTS = 10;
+// Orçamentos separados por passo: falha de LEITURA do conteúdo não consome tentativas de ENVIO (e vice-versa).
+export const MAX_READ_FAILURES = 10;
+export const MAX_SEND_FAILURES = 10;
+// Teto absoluto de leases por passo (leitura + envio).
+export const MAX_ATTEMPTS = MAX_READ_FAILURES + MAX_SEND_FAILURES;
+// 404 na leitura é transitório por tempo limitado (consistência eventual do provedor); depois disso, permanente.
+export const NOT_FOUND_GRACE_MINUTES = 30;
 // Resend guarda Idempotency-Key por 24 h (https://resend.com/docs/dashboard/emails/idempotency-keys).
 // Nenhuma tentativa acontece depois de 23 h da chegada: toda repetição fica dentro da janela da chave.
 export const RETRY_LIFETIME_HOURS = 23;
 export const ALERT_EVERY_HOURS = 6;
+// Remetentes de plataforma que nunca recebem confirmação automática (lista da aplicação; comparação exata,
+// sem diferenciar maiúsculas). O encaminhamento ao dono continua obrigatório. Não usa a supressão global do Resend.
+export const ACK_SUPPRESSED_SENDERS = Object.freeze(["support@support.whatsapp.com"]);
+// Chamado do suporte do WhatsApp: From fixo + Reply-To numérico do ticket. A resposta humana deve ir ao ticket.
+export const WHATSAPP_SUPPORT_FROM = "support@support.whatsapp.com";
+export const WHATSAPP_TICKET_RE = /^[0-9]{5,20}@support\.whatsapp\.com$/;
+export const DRAIN_PATH = "/api/internal/support/outbox/drain";
 export const BACKLOG_ALERT_COUNT = 5;
 export const BACKLOG_ALERT_AGE_MINUTES = 120;
 export const MAX_ATTACHMENTS = 5;
@@ -116,6 +129,15 @@ export function addressOf(raw) {
   const addr = (m ? m[1] : s).trim();
   return EMAIL_RE.test(addr) ? addr : "";
 }
+// Remetente pela METADADO autenticado do provedor (campo `from` da API do Resend), nunca por cabeçalho do corpo.
+// Normaliza caixa, nome de exibição e espaços; mais de um endereço (ou quebra de linha) => inválido.
+export function providerAddress(raw) {
+  if (Array.isArray(raw)) return raw.length === 1 ? providerAddress(raw[0]) : "";
+  const v = raw && typeof raw === "object" ? (raw.email || raw.address || "") : raw;
+  const s = String(v ?? "");
+  if (/[\r\n\0]/.test(s) || (s.match(/@/g) || []).length !== 1) return "";
+  return addressOf(s.trim());
+}
 const list = (raw) => (Array.isArray(raw) ? raw : raw ? [raw] : []).map(addressOf).filter(Boolean);
 
 export function supportAlias(data) {
@@ -133,8 +155,9 @@ function headerMap(raw) {
 
 // RFC 3834 + práticas comuns: qualquer sinal de mensagem automática => não confirmar (evita laço/backscatter).
 export function isAutomated({ from, subject, headers, forwardTo }) {
-  const addr = addressOf(from);
+  const addr = providerAddress(from);
   if (!addr) return "sender_invalid";
+  if (ACK_SUPPRESSED_SENDERS.includes(addr)) return "automated_provider";
   const [local, domain] = addr.split("@");
   if (domain === SUPPORT_DOMAIN || domain.endsWith("." + SUPPORT_DOMAIN)) return "own_domain";
   if (forwardTo && addr === String(forwardTo).toLowerCase()) return "owner_address";
@@ -234,10 +257,42 @@ async function resendCall(fetchImpl, path, { key, method = "GET", body, idempote
   const headers = { authorization: `Bearer ${key}`, accept: "application/json" };
   if (body) headers["content-type"] = "application/json";
   if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
-  const r = await fetchImpl(RESEND + path, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
-  let data = null;
-  try { data = await r.json(); } catch {}
-  return { status: r.status, ok: r.ok, data };
+  let r;
+  try {
+    r = await fetchImpl(RESEND + path, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
+  } catch (error) {
+    const m = [error?.name, error?.message, error?.code, error?.cause?.code, error?.cause?.message].map((x) => String(x || "")).join(" ");
+    const kind = /timeout|abort/i.test(m) ? "timeout" : /ENOTFOUND|EAI_AGAIN|getaddrinfo|dns/i.test(m) ? "network_dns" : /ECONNRESET|EPIPE|reset|hang up/i.test(m) ? "network_reset" : "network";
+    return { status: 0, ok: false, data: null, error: kind };
+  }
+  let data = null, parsed = true;
+  try { data = await r.json(); } catch { parsed = false; }
+  return { status: r.status, ok: r.ok, data, parsed };
+}
+
+// Classe da falha: transient (repete), config (repete e alerta o dono), permanent (morre já),
+// not_found (transitório por NOT_FOUND_GRACE_MINUTES da chegada, depois permanente).
+export function failureClass(reason) {
+  if (/key_permission/.test(reason)) return "config";
+  if (/^http_404/.test(reason)) return "not_found";
+  if (/^http_(400|422)/.test(reason)) return "permanent";
+  if (/^(http_429|http_5xx|timeout|network|invalid_json|unexpected_body)/.test(reason)) return "transient";
+  if (/^http_4\d\d/.test(reason)) return "permanent";
+  return "transient";
+}
+
+// Código de motivo SEM dado pessoal: distingue permissão da chave, endpoint/id, limite e falha do provedor.
+export function resendReason(res) {
+  const st = Number(res?.status) || 0;
+  if (!st) return ["timeout", "network_dns", "network_reset"].includes(res?.error) ? res.error : "network";
+  if (st === 401 || st === 403) return `http_${st}_key_permission`;
+  if (st === 404) return "http_404_not_found";
+  if (st === 422 || st === 400) return `http_${st}_invalid_request`;
+  if (st === 429) return "http_429_rate_limited";
+  if (st >= 500) return "http_5xx";
+  if (res?.ok && res?.parsed === false) return "invalid_json";
+  if (res?.ok) return "unexpected_body";
+  return `http_${st}`;
 }
 
 // ---------- outbox (PostgreSQL) ----------
@@ -248,11 +303,12 @@ export async function ensureSupportSchema(sql) {
     state text not null default 'forward_pending' check (state in ('forward_pending','ack_pending','done','forward_dead','ack_dead')),
     attempts integer not null default 0, next_attempt_at timestamptz not null default now(), lease_until timestamptz,
     forward_id text, forwarded_at timestamptz, ack_status text, ack_sent_at timestamptz,
-    alerted_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now())`, []);
+    alerted_at timestamptz, last_reason text, read_failures integer not null default 0, send_failures integer not null default 0, created_at timestamptz not null default now(), updated_at timestamptz not null default now())`, []);
   await sql.query(`/*support:schema*/ create table if not exists zevanory_support_alerts (
     kind text primary key, last_sent_at timestamptz not null)`, []);
   await sql.query(`/*support:schema*/ create table if not exists zevanory_support_ack_quota (
     bucket text not null, day date not null, n integer not null default 0, primary key (bucket, day))`, []);
+  await sql.query("/*support:schema*/ alter table zevanory_support_inbound add column if not exists last_reason text, add column if not exists read_failures integer not null default 0, add column if not exists send_failures integer not null default 0", []);
   await sql.query("/*support:schema*/ create index if not exists zevanory_support_inbound_due_idx on zevanory_support_inbound (state, next_attempt_at)", []);
   schemaReady = true;
 }
@@ -265,11 +321,20 @@ const SQL = Object.freeze({
     where email_id = $1 and state in ('forward_pending','ack_pending') and next_attempt_at <= now()
       and (lease_until is null or lease_until < now())
       and attempts < $2 and created_at > now() - make_interval(hours => $3::int)
-    returning state, alias, attempts, sender_ref, floor(extract(epoch from now() - created_at))::int as age_s`,
-  retry: `/*support:retry*/ update zevanory_support_inbound set lease_until = null, updated_at = now(),
+      and read_failures < $4 and send_failures < $5
+    returning state, alias, attempts, sender_ref, read_failures, send_failures, floor(extract(epoch from now() - created_at))::int as age_s`,
+  // Falha de um passo: incrementa SÓ o contador do tipo (leitura ou envio); morre se permanente, se o contador
+  // do tipo atingir o teto ou se o orçamento geral acabou.
+  retry: `/*support:retry*/ update zevanory_support_inbound set lease_until = null, updated_at = now(), last_reason = $4,
+      read_failures = read_failures + case when $5 = 'read' then 1 else 0 end,
+      send_failures = send_failures + case when $5 = 'send' then 1 else 0 end,
       next_attempt_at = now() + make_interval(mins => $2::int),
-      state = case when $3::boolean then (case state when 'forward_pending' then 'forward_dead' else 'ack_dead' end) else state end
-    where email_id = $1 and state in ('forward_pending','ack_pending')`,
+      state = case when $3::boolean
+          or ($5 = 'read' and read_failures + 1 >= $6::int)
+          or ($5 = 'send' and send_failures + 1 >= $7::int)
+        then (case state when 'forward_pending' then 'forward_dead' else 'ack_dead' end) else state end
+    where email_id = $1 and state in ('forward_pending','ack_pending')
+    returning state`,
   // Passo de encaminhamento concluído sem confirmação (auto-resposta, desligada, remetente inválido).
   forwardedNoAck: `/*support:forwarded_no_ack*/ update zevanory_support_inbound set state = 'done', ack_status = $2, forward_id = $3,
       forwarded_at = now(), lease_until = null, attempts = 0, next_attempt_at = now(), updated_at = now()
@@ -293,7 +358,7 @@ const SQL = Object.freeze({
         ack_status = case when exists (select 1 from g) then 'pending' when exists (select 1 from s) then 'rate_limited_daily' else 'rate_limited_sender' end,
         -- com confirmação a fazer, o lease continua com este processo (o passo de confirmação segue na mesma execução)
         lease_until = case when exists (select 1 from g) then now() + interval '2 minutes' else null end,
-        attempts = case when exists (select 1 from g) then 1 else 0 end,
+        attempts = case when exists (select 1 from g) then 1 else 0 end, read_failures = 0, send_failures = 0,
         forward_id = $4, forwarded_at = now(), next_attempt_at = now(), updated_at = now()
       from r where i.email_id = r.email_id returning i.state, i.ack_status
     ) select state, ack_status from u`,
@@ -301,12 +366,13 @@ const SQL = Object.freeze({
     where email_id = $1 and state = 'ack_pending'`,
   due: `/*support:due*/ select email_id from zevanory_support_inbound where state in ('forward_pending','ack_pending') and next_attempt_at <= now()
       and (lease_until is null or lease_until < now())
-      and attempts < $2 and created_at > now() - make_interval(hours => $3::int) order by next_attempt_at limit $1`,
+      and attempts < $2 and created_at > now() - make_interval(hours => $3::int)
+      and read_failures < $4 and send_failures < $5 order by next_attempt_at limit $1`,
   // Linhas fora do orçamento (tentativas ou janela da Idempotency-Key) viram *_dead sem novo efeito externo.
   reap: `/*support:reap*/ update zevanory_support_inbound set state = case state when 'forward_pending' then 'forward_dead' else 'ack_dead' end,
       lease_until = null, updated_at = now()
     where state in ('forward_pending','ack_pending') and (lease_until is null or lease_until < now())
-      and (attempts >= $1 or created_at <= now() - make_interval(hours => $2::int))`,
+      and (attempts >= $1 or created_at <= now() - make_interval(hours => $2::int) or read_failures >= $3 or send_failures >= $4)`,
   stats: `/*support:stats*/ select
       count(*) filter (where state in ('forward_dead','ack_dead') and alerted_at is null)::int as dead_new,
       count(*) filter (where state in ('forward_pending','ack_pending'))::int as pending,
@@ -323,9 +389,25 @@ const SQL = Object.freeze({
 
 // Orçamento conferido antes de TODA chamada externa (além da condição do lease no SQL).
 export function withinBudget(row, nowAgeS = Number(row?.age_s)) {
-  return Number(row?.attempts) >= 1 && Number(row?.attempts) <= MAX_ATTEMPTS && Number.isFinite(nowAgeS) && nowAgeS >= 0 && nowAgeS < RETRY_LIFETIME_HOURS * 3600;
+  return Number(row?.attempts) >= 1 && Number(row?.attempts) <= MAX_ATTEMPTS && Number.isFinite(nowAgeS) && nowAgeS >= 0 && nowAgeS < RETRY_LIFETIME_HOURS * 3600
+    && Number(row?.read_failures || 0) < MAX_READ_FAILURES && Number(row?.send_failures || 0) < MAX_SEND_FAILURES;
 }
 const backoffMinutes = (attempts) => Math.min(360, 2 ** Math.max(0, Math.min(9, attempts)));
+
+// Reply-To do encaminhamento: o cliente (From), exceto chamado do suporte do WhatsApp, cuja resposta humana
+// precisa ir ao endereço numérico do ticket informado no Reply-To original.
+export function forwardReplyTo(detail) {
+  const sender = providerAddress(detail?.from);
+  if (sender === WHATSAPP_SUPPORT_FROM) {
+    // Só o reply_to do METADADO do provedor; exatamente UM endereço, e ele precisa casar com o ticket.
+    const rt = Array.isArray(detail?.reply_to) ? detail.reply_to : detail?.reply_to ? [detail.reply_to] : [];
+    if (rt.length === 1) {
+      const ticket = providerAddress(rt[0]);
+      if (ticket && WHATSAPP_TICKET_RE.test(ticket)) return ticket;
+    }
+  }
+  return sender;
+}
 
 function forwardBody(alias, sender, emailId, detail, notes) {
   const head = [
@@ -360,24 +442,45 @@ function ackText() {
   ].join("\n");
 }
 
+// GET /emails/receiving/{email_id} (docs oficiais: o webhook traz só metadados; corpo, headers e anexos vêm daqui).
 async function readReceived(c, emailId, row) {
-  if (!c.rKey || !withinBudget(row)) return null;
-  const got = await resendCall(c.fetchImpl, `/emails/receiving/${encodeURIComponent(emailId)}`, { key: c.rKey }).catch(() => ({ ok: false }));
-  return got.ok && got.data && typeof got.data === "object" ? got.data : null;
+  if (!c.rKey) return { reason: "receiving_key_missing" };
+  if (!withinBudget(row)) return { reason: "budget_exhausted" };
+  const got = await resendCall(c.fetchImpl, `/emails/receiving/${encodeURIComponent(emailId)}`, { key: c.rKey });
+  if (got.ok && got.data && typeof got.data === "object" && !Array.isArray(got.data)) return { detail: got.data };
+  const reason = resendReason(got);
+  if (/key_permission/.test(reason)) await alertKeyRejected(c, reason).catch(() => null);
+  return { reason };
 }
 
-async function retry(c, emailId, attempts, step, reason, row) {
-  const dead = attempts >= MAX_ATTEMPTS || (row && !withinBudget(row));
-  await c.sql.query(SQL.retry, [emailId, backoffMinutes(attempts), dead]);
-  log(dead ? step + "_dead" : step + "_retry", { reason, attempts });
+// kind: "read" (leitura do conteúdo) ou "send" (envio). permanent: morre sem nova tentativa.
+async function retry(c, emailId, row, step, kind, reason, { permanent = false } = {}) {
+  const failures = Number(kind === "read" ? row?.read_failures : row?.send_failures) || 0;
+  const force = permanent || Number(row?.attempts) >= MAX_ATTEMPTS || !withinBudget(row);
+  const res = await c.sql.query(SQL.retry, [emailId, backoffMinutes(failures + 1), force, String(reason).slice(0, 60), kind, MAX_READ_FAILURES, MAX_SEND_FAILURES]);
+  const state = String(res?.[0]?.state || (force ? step + "_dead" : step + "_pending"));
+  const dead = /_dead$/.test(state);
+  log(dead ? step + "_dead" : step + "_retry", { kind, reason, failures: failures + 1 });
   return { state: dead ? step + "_dead" : step + "_pending", reason };
+}
+// Falha de leitura/envio do Resend -> retry com a classe certa (404 limitado no tempo; 400/422 permanentes).
+function failRead(c, emailId, row, step, reason) {
+  const cls = failureClass(reason);
+  const permanent = cls === "permanent" || (cls === "not_found" && Number(row?.age_s) >= NOT_FOUND_GRACE_MINUTES * 60);
+  return retry(c, emailId, row, step, "read", "content_" + reason + (permanent && cls === "not_found" ? "_permanent" : ""), { permanent });
+}
+function failSend(c, emailId, row, step, res) {
+  const reason = resendReason(res);
+  const cls = failureClass(reason);
+  return retry(c, emailId, row, step, "send", "send_" + reason, { permanent: cls === "permanent" || cls === "not_found" });
 }
 
 async function stepForward(c, emailId, row) {
-  if (!withinBudget(row)) return retry(c, emailId, MAX_ATTEMPTS, "forward", "budget_exhausted");
-  const detail = await readReceived(c, emailId, row);
-  if (!detail) return retry(c, emailId, row.attempts, "forward", "content_unavailable", row);
-  const sender = addressOf(detail.from);
+  if (!withinBudget(row)) return retry(c, emailId, row, "forward", "read", "budget_exhausted", { permanent: true });
+  const read = await readReceived(c, emailId, row);
+  const detail = read.detail;
+  if (!detail) return failRead(c, emailId, row, "forward", read.reason);
+  const sender = providerAddress(detail.from);
   const notes = [];
   let attachments = [];
   const meta = Array.isArray(detail.attachments) ? detail.attachments : [];
@@ -388,19 +491,22 @@ async function stepForward(c, emailId, row) {
     const missing = meta.length - attachments.length;
     if (missing > 0) notes.push(`Atenção: ${missing} anexo(s) não copiados (executável, tamanho desconhecido/excessivo ou acima de ${MAX_ATTACHMENTS}); veja no painel Resend > Receiving.`);
   }
+  const replyTo = forwardReplyTo(detail);
+  if (replyTo && replyTo !== sender) notes.push("Chamado do suporte do WhatsApp: \"Responder\" vai para o endereço do chamado (Reply-To original).");
   const { text, html, htmlDropped } = forwardBody(row.alias, sender, emailId, detail, notes);
   const body = {
     from: FROM, to: [c.forwardTo], subject: `${FORWARD_SUBJECT_PREFIX} ${cleanSubject(detail.subject)}`,
     text: htmlDropped ? text + "\n\n[versão HTML omitida por segurança/tamanho]" : text,
-    ...(html ? { html } : {}), ...(sender ? { reply_to: [sender] } : {}), ...(attachments.length ? { attachments } : {})
+    ...(html ? { html } : {}), ...(replyTo ? { reply_to: [replyTo] } : {}), ...(attachments.length ? { attachments } : {})
   };
-  if (!withinBudget(row)) return retry(c, emailId, MAX_ATTEMPTS, "forward", "budget_exhausted");
-  const sent = await resendCall(c.fetchImpl, "/emails", { key: c.sendKey, method: "POST", body, idempotencyKey: `support-fwd/${emailId}` }).catch(() => ({ ok: false }));
+  if (!withinBudget(row)) return retry(c, emailId, row, "forward", "send", "budget_exhausted", { permanent: true });
+  const sent = await resendCall(c.fetchImpl, "/emails", { key: c.sendKey, method: "POST", body, idempotencyKey: `support-fwd/${emailId}` });
   // 409 invalid_idempotent_request: a mesma chave já foi aceita antes com outro corpo (as URLs temporárias
   // dos anexos mudam a cada leitura). Dentro da janela de 24 h isso significa "já encaminhado": não reenviar.
   const already = sent?.status === 409 && String(sent?.data?.name || "") === "invalid_idempotent_request";
   const forwardId = already ? "idempotent:" + emailId.slice(0, 100) : String(sent?.data?.id || "").slice(0, 128);
-  if (!(sent.ok || already) || !forwardId) return retry(c, emailId, row.attempts, "forward", "send_failed", row);
+  // Encaminhamento ao dono é obrigatório: sem ele a linha NUNCA vira done/skipped (nem para provedor automático).
+  if (!(sent.ok || already) || !forwardId) return failSend(c, emailId, row, "forward", sent);
   const automated = String(c.env.SUPPORT_AUTO_ACK || "").toLowerCase() === "false" ? "disabled"
     : isAutomated({ from: detail.from, subject: detail.subject, headers: detail.headers, forwardTo: c.forwardTo });
   if (automated) {
@@ -413,25 +519,26 @@ async function stepForward(c, emailId, row) {
   const res = await c.sql.query(SQL.forwardedReserveAck, [emailId, day, ACK_DAILY_CAP, forwardId]);
   const st = res?.[0] || {};
   log("forwarded", { alias: row.alias, attachments: attachments.length, ack: st.ack_status || "unknown" });
-  if (st.state === "ack_pending") return stepAck(c, emailId, { ...row, attempts: 1 }, detail);
+  if (st.state === "ack_pending") return stepAck(c, emailId, { ...row, attempts: 1, read_failures: 0, send_failures: 0 }, detail);
   return { state: st.state || "done", ack: st.ack_status };
 }
 
 async function stepAck(c, emailId, row, detailIn) {
-  if (!withinBudget(row)) return retry(c, emailId, MAX_ATTEMPTS, "ack", "budget_exhausted");
-  const detail = detailIn || await readReceived(c, emailId, row);
-  if (!detail) return retry(c, emailId, row.attempts, "ack", "content_unavailable", row);
-  const sender = addressOf(detail.from);
-  if (!sender) return retry(c, emailId, MAX_ATTEMPTS, "ack", "sender_invalid");
+  if (!withinBudget(row)) return retry(c, emailId, row, "ack", "read", "budget_exhausted", { permanent: true });
+  const read = detailIn ? { detail: detailIn } : await readReceived(c, emailId, row);
+  const detail = read.detail;
+  if (!detail) return failRead(c, emailId, row, "ack", read.reason);
+  const sender = providerAddress(detail.from);
+  if (!sender) return retry(c, emailId, row, "ack", "send", "sender_invalid", { permanent: true });
   const messageId = String(detail.message_id || "").trim();
   const headers = { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All" };
   if (/^<[^<>\s]{3,250}>$/.test(messageId)) { headers["In-Reply-To"] = messageId; headers.References = messageId; }
-  if (!withinBudget(row)) return retry(c, emailId, MAX_ATTEMPTS, "ack", "budget_exhausted");
+  if (!withinBudget(row)) return retry(c, emailId, row, "ack", "send", "budget_exhausted", { permanent: true });
   const sent = await resendCall(c.fetchImpl, "/emails", {
     key: c.sendKey, method: "POST", idempotencyKey: `support-ack/${emailId}`,
     body: { from: FROM, to: [sender], reply_to: [SUPPORT_ADDRESS], subject: "Recebemos sua mensagem — ZEVANORY", text: ackText(), headers }
-  }).catch(() => ({ ok: false }));
-  if (!sent.ok) return retry(c, emailId, row.attempts, "ack", "send_failed", row);
+  });
+  if (!sent.ok) return failSend(c, emailId, row, "ack", sent);
   await c.sql.query(SQL.acked, [emailId]);
   log("acked", { alias: row.alias });
   return { state: "done", ack: "sent" };
@@ -439,7 +546,7 @@ async function stepAck(c, emailId, row, detailIn) {
 
 // Executa o passo pendente de UMA linha, sob lease. Linha ocupada, em recuo ou concluída => nada.
 export async function processSupportEmail(c, emailId) {
-  const leased = await c.sql.query(SQL.lease, [emailId, MAX_ATTEMPTS, RETRY_LIFETIME_HOURS]);
+  const leased = await c.sql.query(SQL.lease, [emailId, MAX_ATTEMPTS, RETRY_LIFETIME_HOURS, MAX_READ_FAILURES, MAX_SEND_FAILURES]);
   const row = leased?.[0];
   if (!row) return { state: "not_due" };
   try {
@@ -447,7 +554,7 @@ export async function processSupportEmail(c, emailId) {
     if (row.state === "ack_pending") return await stepAck(c, emailId, row);
     return { state: row.state };
   } catch {
-    return retry(c, emailId, row.attempts, row.state === "ack_pending" ? "ack" : "forward", "exception", row).catch(() => ({ state: "error" }));
+    return retry(c, emailId, row, row.state === "ack_pending" ? "ack" : "forward", "send", "exception").catch(() => ({ state: "error" }));
   }
 }
 
@@ -512,26 +619,65 @@ export async function handleSupportInboundWebhook(request, env, { sqlFactory, fe
 }
 
 // Cron horário: retoma passos pendentes (poucos por execução: limite de 50 subrequisições do Workers Free).
-export async function drainSupportOutbox(env, { sqlFactory, fetchImpl = globalThis.fetch, nowMs = Date.now(), limit = 2 } = {}) {
+export async function drainSupportOutbox(env, opts = {}) {
+  let out;
+  try { out = await drainOnce(env, opts); } catch (error) { out = { ok: false, error: errorClass(error) }; }
+  // Uma linha por execução, só contagens/códigos (sem conteúdo, endereço ou id).
+  log("drain", { source: opts.source || "direct", ...out });
+  return out;
+}
+export function errorClass(error) {
+  const m = String(error?.message || error || "");
+  if (/too many subrequests/i.test(m)) return "too_many_subrequests";
+  if (/timeout|abort/i.test(m)) return "timeout";
+  if (/postgres|neon|sql|relation|syntax|connect/i.test(m)) return "database";
+  return "exception";
+}
+async function drainOnce(env, { sqlFactory, fetchImpl = globalThis.fetch, nowMs = Date.now(), limit = 2 } = {}) {
   const c = await context(env, { sqlFactory, fetchImpl, nowMs });
   if (c.missing) return { ok: true, skipped: "unconfigured", missing: c.missing };
   await ensureSupportSchema(c.sql);
-  await c.sql.query(SQL.reap, [MAX_ATTEMPTS, RETRY_LIFETIME_HOURS]);
-  const due = await c.sql.query(SQL.due, [Math.max(1, Math.min(5, limit)), MAX_ATTEMPTS, RETRY_LIFETIME_HOURS]);
+  await c.sql.query(SQL.reap, [MAX_ATTEMPTS, RETRY_LIFETIME_HOURS, MAX_READ_FAILURES, MAX_SEND_FAILURES]);
+  const due = await c.sql.query(SQL.due, [Math.max(1, Math.min(5, limit)), MAX_ATTEMPTS, RETRY_LIFETIME_HOURS, MAX_READ_FAILURES, MAX_SEND_FAILURES]);
   const out = { ok: true, checked: 0, done: 0, pending: 0, dead: 0 };
   for (const r of Array.isArray(due) ? due : []) {
     out.checked++;
     const res = await processSupportEmail(c, String(r.email_id));
     if (res.state === "done") out.done++; else if (/_dead$/.test(res.state)) out.dead++; else out.pending++;
   }
-  try { out.alerts = await alertOwner(c); } catch { out.alerts = "error"; }
+  let st = {};
+  try { st = (await c.sql.query(SQL.stats, []))?.[0] || {}; } catch {}
+  const pendingNow = Number(st.pending) || 0, oldestNow = Number(st.oldest_min) || 0;
+  out.backlog = pendingNow;
+  out.oldest_min = oldestNow;
+  // Fila vencida (pendente há >= BACKLOG_ALERT_AGE_MINUTES) deixa a execução do cron VERMELHA.
+  out.overdue = pendingNow > 0 && oldestNow >= BACKLOG_ALERT_AGE_MINUTES;
+  try { out.alerts = await alertOwner(c, st); } catch { out.alerts = "error"; }
   return out;
+}
+
+// Chave de leitura recusada pelo Resend (401/403): alerta operacional imediato ao dono (1 a cada 6 h).
+async function alertKeyRejected(c, reason) {
+  const reserved = await c.sql.query(SQL.alertReserve, ["receiving_key", ALERT_EVERY_HOURS]);
+  if (!Array.isArray(reserved) || !reserved.length) return false;
+  const r = await resendCall(c.fetchImpl, "/emails", {
+    key: c.sendKey, method: "POST",
+    body: { from: FROM, to: [c.forwardTo], subject: `${FORWARD_SUBJECT_PREFIX} ALERTA: chave de leitura do Resend recusada`, text: [
+      `O Resend recusou a leitura de mensagens recebidas (${reason.replace(/_key_permission$/, "").replace("http_", "HTTP ")}).`,
+      "A chave guardada em sandbox-config:resend-receiving-key precisa ser uma API key com permissão Full access da MESMA conta Resend que recebe zevanory.api.br.",
+      "",
+      "Veja o passo a passo em docs/ops/EMAIL_SUPORTE.md."
+    ].join("\n") }
+  });
+  if (!r.ok) { await c.sql.query(SQL.alertRelease, ["receiving_key"]).catch(() => null); return false; }
+  log("owner_alert", { kinds: ["receiving_key"], reason });
+  return true;
 }
 
 // Alerta ao destino do dono (só contagens, sem conteúdo, assunto, endereço ou id): linhas mortas e fila
 // acumulada/antiga. No máximo um por tipo a cada ALERT_EVERY_HOURS (reserva atômica em zevanory_support_alerts).
-async function alertOwner(c) {
-  const st = (await c.sql.query(SQL.stats, []))?.[0] || {};
+async function alertOwner(c, stIn) {
+  const st = stIn || (await c.sql.query(SQL.stats, []))?.[0] || {};
   const dead = Number(st.dead_new) || 0, pending = Number(st.pending) || 0, oldest = Number(st.oldest_min) || 0;
   const sent = [];
   const send = async (kind, subject, lines) => {
@@ -553,4 +699,43 @@ async function alertOwner(c) {
   ]);
   if (sent.length) log("owner_alert", { kinds: sent, dead, pending, oldest_min: oldest });
   return sent;
+}
+
+// ---------- dreno em invocação própria ----------
+// O cron horário divide 50 subrequisições (Workers Free) com várias tarefas; o dreno roda numa invocação
+// separada via binding SELF (orçamento próprio), autenticada por HMAC de minuto com LEAD_PRIVACY_SECRET.
+async function drainToken(secret, minute) {
+  const mac = await hmacSign(new TextEncoder().encode("zevanory-support-drain-v1:" + secret), String(minute));
+  return [...mac].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+export async function handleSupportDrainRequest(request, env, { sqlFactory, fetchImpl = globalThis.fetch, nowMs = Date.now() } = {}) {
+  const url = new URL(request.url);
+  if (url.pathname !== DRAIN_PATH) return null;
+  if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
+  const secret = senderSecret(env);
+  const given = String(request.headers.get("x-support-drain-token") || "");
+  const minute = Math.floor(nowMs / 60000);
+  let okToken = false;
+  if (secret && /^[0-9a-f]{64}$/.test(given)) for (let d = -5; d <= 5 && !okToken; d++) okToken = safeEqual(given, await drainToken(secret, minute + d));
+  if (!okToken) return json(401, { error: "unauthorized" });
+  const out = await drainSupportOutbox(env, { sqlFactory, fetchImpl, nowMs, limit: 3, source: "self" });
+  return json(out.ok === false ? 503 : 200, out);
+}
+export async function dispatchSupportDrain(env, { sqlFactory, fetchImpl = globalThis.fetch, nowMs = Date.now() } = {}) {
+  const secret = senderSecret(env);
+  const self = env?.SELF;
+  if (secret && self && typeof self.fetch === "function") {
+    try {
+      const token = await drainToken(secret, Math.floor(nowMs / 60000));
+      const r = await self.fetch(new Request("https://zevanory.api.br" + DRAIN_PATH, { method: "POST", headers: { "x-support-drain-token": token, "x-zevanory-internal": "service-binding" }, signal: AbortSignal.timeout(45000) }));
+      let body = null;
+      try { body = await r.json(); } catch {}
+      log("drain_dispatch", { via: "self", status: r.status });
+      return { via: "self", status: r.status, ...(body && typeof body === "object" ? { result: body } : {}) };
+    } catch (error) {
+      log("drain_dispatch", { via: "self", status: 0, error: errorClass(error) });
+    }
+  }
+  // Sem SELF (ou falhou): dreno na própria invocação do cron.
+  return { via: "inline", result: await drainSupportOutbox(env, { sqlFactory, fetchImpl, nowMs, source: "cron_inline" }) };
 }

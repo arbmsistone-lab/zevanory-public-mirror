@@ -52,6 +52,40 @@ Respostas do webhook (aparecem no log do webhook no Resend):
 
 Para consultar pendências: `select state, count(*) from zevanory_support_inbound group by state;` (sem conteúdo).
 
+## Correções P0 de 24/10/2026 (primeira mensagem real)
+
+Uma mensagem real do suporte do WhatsApp chegou em 24/10 e ficou parada em `forward_retry` com `content_unavailable`, sem novas tentativas. Correções:
+
+1. **Motivo da falha de leitura.** O conteúdo vem de `GET /emails/receiving/{email_id}`; o webhook traz só metadados ("Webhooks do not include the email body, headers, or attachments, only their metadata", https://resend.com/docs/dashboard/receiving/get-email-content e https://resend.com/docs/api-reference/emails/retrieve-received-email). O motivo agora fica no log (`SUPPORT_EMAIL ... "reason"`) e na coluna `last_reason`, sem dado pessoal:
+
+   | Motivo | Causa provável | Ação |
+   |---|---|---|
+   | `content_http_401_key_permission` / `content_http_403_key_permission` | A chave em `sandbox-config:resend-receiving-key` é **só de envio** (Sending access), foi revogada ou é **de outra conta** Resend | Trocar pela chave Full access da conta que recebe o domínio (passo 3). O dono recebe um alerta "chave de leitura do Resend recusada" (1 a cada 6 h) |
+   | `content_http_404_not_found` | Id ou endpoint errado, ou a mensagem é de outra conta | Conferir em Resend → Emails → Receiving se a mensagem existe **na mesma conta da chave** |
+   | `content_http_5xx`, `content_timeout`, `content_network` | Falha temporária do Resend | Nada: o outbox tenta de novo |
+   | `content_http_429_rate_limited` | Limite de requisições | Nada: recuo exponencial |
+
+2. **Retentativas no cron.** O dreno rodava dentro do cron horário, junto com várias tarefas que disputam as 50 subrequisições por invocação do Workers Free, e não registrava a própria execução. Agora ele roda **primeiro** no cron horário (`0 * * * *`), numa **invocação própria** (binding `SELF` → `POST /api/internal/support/outbox/drain`, com token HMAC de minuto derivado de `LEAD_PRIVACY_SECRET`). Cada execução registra uma linha só de contagens: `SUPPORT_EMAIL {"event":"drain",...}` e `support_outbox {...}`.
+3. **Sem confirmação para provedores automáticos.** `support@support.whatsapp.com` (comparação exata, sem diferenciar maiúsculas) está na lista de supressão da aplicação: a mensagem é encaminhada ao dono, mas nunca recebe confirmação automática (`ack_status = skipped_automated_provider`). A supressão global do Resend não é usada.
+4. **Responder ao chamado do WhatsApp.** Quando o remetente (campo `from` do metadado do Resend, nunca um cabeçalho do corpo) é `support@support.whatsapp.com` e o `reply_to` do metadado tem **exatamente um** endereço que casa com `^[0-9]{5,20}@support\.whatsapp\.com$`, o Reply-To do encaminhamento passa a ser esse endereço, e "Responder" no Gmail vai ao chamado. Casos que continuam com o remetente:
+   - domínio parecido ou subdomínio;
+   - `+alias`;
+   - letras no número;
+   - dois destinatários;
+   - quebra de linha (injeção CRLF);
+   - menos de 5 ou mais de 20 dígitos;
+   - Reply-To que só aparece no cabeçalho.
+5. **Remetente normalizado.** Caixa, nome de exibição e espaços são normalizados. Um `from` com mais de um endereço ou com quebra de linha é inválido: o dono recebe a mensagem, mas sem Reply-To e sem confirmação.
+6. **Encaminhamento obrigatório antes de qualquer "skipped".** A linha só vira `done`/`skipped_automated_provider` depois que o encaminhamento ao dono foi aceito pelo Resend.
+7. **Classes de falha e orçamentos separados.**
+   - Leitura e envio têm contadores próprios (`read_failures`, `send_failures`), até 10 cada; falhas de leitura não gastam tentativas de envio.
+   - 404 na leitura é transitório por até 30 min da chegada e depois vira permanente (`content_http_404_not_found_permanent`).
+   - 400/422 são permanentes.
+   - 401/403 indicam configuração: repete e alerta o dono.
+   - 429, 5xx, timeout, DNS (`network_dns`) e conexão derrubada (`network_reset`) são transitórios.
+8. **Cron vermelho com fila vencida.** Se houver mensagem pendente há 2 h ou mais, a execução horária termina com erro `support_backlog_overdue` (depois das demais tarefas). Os logs do cron trazem só contagens e categorias fechadas.
+9. **Corpo não confiável.** Endereços ou "instruções" no texto/HTML da mensagem nunca mudam destinatário, supressão, estado ou fluxo.
+
 ## Passos do proprietário
 
 O código só passa a valer depois do deploy do Worker. O merge em `gh-pages` dispara o workflow `ZEVANORY central production deploy`.
@@ -78,11 +112,19 @@ Um endereço `@zevanory.api.br` é recusado como destino, porque criaria um laç
 
 Ele já existe no Worker (é o mesmo da lista de espera). Confira em Workers & Pages → `zevanory` → **Settings** → **Variables and Secrets** que `LEAD_PRIVACY_SECRET` aparece (tipo Secret, 32+ caracteres). Não crie um novo nem troque o valor.
 
-### 3. Confirmar a chave de recebimento do Resend
+### 3. Confirmar a chave de recebimento do Resend (Full access, mesma conta)
 
 No mesmo namespace KV, a chave `sandbox-config:resend-receiving-key` precisa existir. Não abra o valor.
 
 Se ela não existir, crie no Resend uma API key com permissão **Full access** e guarde-a no secret `RESEND_RECEIVING_KEY` do ambiente GitHub `sandbox-financial-approved`. Depois rode manualmente o workflow **Sandbox receiving key to worker**.
+
+**Se o log mostrar `content_http_401_key_permission` ou `content_http_403_key_permission`** (ou chegar o alerta "chave de leitura do Resend recusada"), a chave guardada não lê mensagens recebidas. Troque-a assim:
+
+1. No Resend, confira no canto superior esquerdo que está na conta **zevanory**, a mesma que lista a mensagem em **Emails → Receiving**.
+2. Abra **API Keys** → **Create API Key**. Nome `zevanory-receiving`, Permission **Full access**, Domain **All domains** → **Add**. Copie a chave (`re_...`); ela só aparece uma vez.
+3. No GitHub, abra o repositório → **Settings** → **Environments** → `sandbox-financial-approved` → **Environment secrets** → `RESEND_RECEIVING_KEY` → **Update** → cole a chave.
+4. Em **Actions**, rode manualmente o workflow **Sandbox receiving key to worker** e aprove o ambiente. O workflow só grava se `GET /emails/receiving?limit=1` responder 200 com essa chave.
+5. Não é preciso deploy: a próxima execução do cron horário relê a chave no KV e retoma as mensagens pendentes (dentro de 23 h da chegada).
 
 ### 4. Confirmar que o Resend recebe para `suporte@` e chama o webhook
 

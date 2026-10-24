@@ -51,7 +51,7 @@ const psqlSync = (q, db = DB) => execFileSync("psql", psqlArgs(q, db), { encodin
 const one = async (q) => (await sql.query(q))[0];
 
 // Resend falso: atraso para alargar a janela de corrida; contadores por id (GET pelo caminho, POST pela Idempotency-Key).
-function resend({ senderOf = (id) => `cliente-${id}@example.com`, failForward = () => false, failAck = () => false } = {}) {
+function resend({ senderOf = (id) => `cliente-${id}@example.com`, failForward = () => false, failAck = () => false, readStatus = () => 0, detailOf = () => ({}) } = {}) {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
     await new Promise((r) => setTimeout(r, 25));
@@ -60,7 +60,9 @@ function resend({ senderOf = (id) => `cliente-${id}@example.com`, failForward = 
     if ((init.method || "GET") === "GET") {
       const id = decodeURIComponent(u.pathname.split("/")[3]);
       calls.push({ kind: "read", id });
-      return Response.json({ id, from: senderOf(id), subject: "Assunto", text: "corpo", headers: {}, attachments: [], created_at: "2026-10-23T12:00:00Z", message_id: `<${id}@example.com>` });
+      const st = readStatus(id);
+      if (st) return new Response("{}", { status: st });
+      return Response.json({ id, from: senderOf(id), subject: "Assunto", text: "corpo", headers: {}, attachments: [], created_at: "2026-10-23T12:00:00Z", message_id: `<${id}@example.com>`, ...detailOf(id) });
     }
     const body = JSON.parse(init.body);
     const idem = String(init.headers["idempotency-key"] || "");
@@ -77,9 +79,9 @@ function resend({ senderOf = (id) => `cliente-${id}@example.com`, failForward = 
 const env = { RESEND_API_KEY: "re_send_only", RESEND_RECEIVING_API_KEY: "re_full_receiving", SUPPORT_FORWARD_TO: OWNER, LEAD_PRIVACY_SECRET: "privacidade-sintetica-de-teste-0123456789abcdef", DATABASE_URL: "postgres://ci" };
 const ctx = (r) => ({ env, forwardTo: OWNER, sendKey: env.RESEND_API_KEY, rKey: env.RESEND_RECEIVING_API_KEY, secret: env.LEAD_PRIVACY_SECRET, sql, fetchImpl: r.fetchImpl, nowMs: Date.now() });
 const drain = (r, limit = 5) => fwd.drainSupportOutbox(env, { sqlFactory: () => sql, fetchImpl: r.fetchImpl, limit });
-async function seed(ids, { sender = (id) => "ref-" + id, state = "forward_pending", attempts = 0, age = "0 seconds" } = {}) {
-  const values = ids.map((id) => `(${lit(id)}, 'suporte', ${lit(sender(id))}, ${lit(state)}, ${attempts}, now() - interval ${lit(age)})`).join(",");
-  await sql.query(`insert into zevanory_support_inbound (email_id, alias, sender_ref, state, attempts, created_at) values ${values}`);
+async function seed(ids, { sender = (id) => "ref-" + id, state = "forward_pending", attempts = 0, age = "0 seconds", readFailures = 0, sendFailures = 0 } = {}) {
+  const values = ids.map((id) => `(${lit(id)}, 'suporte', ${lit(sender(id))}, ${lit(state)}, ${attempts}, now() - interval ${lit(age)}, ${readFailures}, ${sendFailures})`).join(",");
+  await sql.query(`insert into zevanory_support_inbound (email_id, alias, sender_ref, state, attempts, created_at, read_failures, send_failures) values ${values}`);
 }
 const stateOf = async (id) => one(`select state, attempts, ack_status, (next_attempt_at > now()) as backoff, lease_until is not null as leased from zevanory_support_inbound where email_id = ${lit(id)}`);
 const makeDue = (id) => sql.query(`update zevanory_support_inbound set next_attempt_at = now(), lease_until = null where email_id = ${lit(id)}`);
@@ -195,6 +197,7 @@ test("O6 transições: forward_pending (falha+recuo) -> ack_pending (falha+recuo
   assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "forward_pending");
   let st = await stateOf("t1");
   assert.equal(st.state, "forward_pending"); assert.equal(st.attempts, "1"); assert.equal(st.backoff, "t"); assert.equal(st.leased, "f");
+  assert.equal((await one("select last_reason from zevanory_support_inbound where email_id = 't1'")).last_reason, "send_http_5xx", "motivo sem dado pessoal gravado");
   assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "not_due", "recuo respeitado");
   await makeDue("t1");
   assert.equal((await fwd.processSupportEmail(ctx(r), "t1")).state, "ack_pending");
@@ -209,21 +212,24 @@ test("O6 transições: forward_pending (falha+recuo) -> ack_pending (falha+recuo
   assert.equal((await stateOf("t1")).ack_status, "sent");
 });
 
-test("O7 limite de 10 tentativas: a 10ª é a última; com 10 ou 11 registradas nenhuma leitura/encaminhamento/confirmação da mensagem e vira dead", { skip: SKIP }, async () => {
-  await seed(["a9"], { attempts: 9 });
-  await seed(["a10"], { attempts: 10 });
-  await seed(["a11"], { attempts: 11 });
-  await seed(["k9"], { state: "ack_pending", attempts: 10 });
+test("O7 limites: 10 falhas de envio, 10 de leitura e 20 leases; estourado => nenhuma leitura/encaminhamento/confirmação da mensagem e vira dead", { skip: SKIP }, async () => {
+  await seed(["s9"], { attempts: 9, sendFailures: 9 });
+  await seed(["s10"], { attempts: 10, sendFailures: 10 });
+  await seed(["r10"], { attempts: 10, readFailures: 10 });
+  await seed(["a20"], { attempts: 20 });
+  await seed(["a21"], { attempts: 21 });
+  await seed(["k10"], { state: "ack_pending", attempts: 10, sendFailures: 10 });
   const r = resend({ failForward: () => true });
-  assert.equal((await fwd.processSupportEmail(ctx(r), "a9")).state, "forward_dead");
-  assert.equal(r.of("forward", "a9"), 1);
-  const st = await stateOf("a9");
-  assert.equal(st.state, "forward_dead"); assert.equal(st.attempts, "10");
-  for (const id of ["a10", "a11", "k9"]) assert.equal((await fwd.processSupportEmail(ctx(r), id)).state, "not_due", id);
+  assert.equal((await fwd.processSupportEmail(ctx(r), "s9")).state, "forward_dead", "a 10ª falha de envio é a última");
+  assert.equal(r.of("forward", "s9"), 1);
+  const st = await one("select state, send_failures, read_failures from zevanory_support_inbound where email_id = 's9'");
+  assert.deepEqual(st, { state: "forward_dead", send_failures: "10", read_failures: "0" });
+  const blocked = ["s10", "r10", "a20", "a21", "k10"];
+  for (const id of blocked) assert.equal((await fwd.processSupportEmail(ctx(r), id)).state, "not_due", id);
   await drain(r);
-  for (const id of ["a10", "a11"]) assert.equal((await stateOf(id)).state, "forward_dead", id);
-  assert.equal((await stateOf("k9")).state, "ack_dead");
-  for (const id of ["a10", "a11", "k9"]) assert.equal(r.forId(id), 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id);
+  for (const id of ["s10", "r10", "a20", "a21"]) assert.equal((await stateOf(id)).state, "forward_dead", id);
+  assert.equal((await stateOf("k10")).state, "ack_dead");
+  for (const id of blocked) assert.equal(r.forId(id), 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id);
 });
 
 test("O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 23h01 vira dead sem leitura/encaminhamento/confirmação", { skip: SKIP }, async () => {
@@ -238,7 +244,7 @@ test("O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 
 });
 
 test("O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o reap mata sem leitura/encaminhamento/confirmação", { skip: SKIP }, async () => {
-  await seed(["l1"], { attempts: 10 });
+  await seed(["l1"], { attempts: 20 });
   await sql.query("update zevanory_support_inbound set lease_until = now() + interval '1 minute' where email_id = 'l1'");
   const r = resend();
   await drain(r);
@@ -252,9 +258,9 @@ test("O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o
 
 test("O10 zero leitura, encaminhamento ou confirmação associada à mensagem após estouro, mesmo com consumidores concorrentes repetidos; alerta só com contagens", { skip: SKIP }, async () => {
   const ids = ["z1", "z2", "z3"];
-  await seed(["z1"], { attempts: 10 });
+  await seed(["z1"], { attempts: 20 });
   await seed(["z2"], { age: "23 hours 30 minutes" });
-  await seed(["z3"], { state: "ack_pending", attempts: 12 });
+  await seed(["z3"], { state: "ack_pending", attempts: 21 });
   const r = resend();
   for (let i = 0; i < 3; i++) {
     await sql.query("update zevanory_support_inbound set next_attempt_at = now(), lease_until = null");
@@ -271,7 +277,7 @@ test("O10 zero leitura, encaminhamento ou confirmação associada à mensagem ap
 });
 
 test("O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: um por tipo, só categoria e contagens", { skip: SKIP }, async () => {
-  await seed(["d1", "d2"], { attempts: 10 });
+  await seed(["d1", "d2"], { attempts: 20 });
   const r = resend();
   await Promise.all([drain(r), drain(r), drain(r)]);
   const dead = r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject));
@@ -290,4 +296,84 @@ test("O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: u
   assert.equal(backlog.length, 1);
   assertAlertPrivate(backlog[0], q, { category: "backlog", count: 5, oldest: 3 });
   assert.equal(rb.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 0);
+});
+
+// Webhook assinado (Svix) para o caminho completo com PostgreSQL real.
+const WH_SECRET = "whsec_" + Buffer.from("segredo-sintetico-de-teste-32bytes!").toString("base64");
+async function webhook(r, emailId, from, svixId) {
+  const { createHmac } = await import("node:crypto");
+  const body = JSON.stringify({ type: "email.received", data: { email_id: emailId, from, to: ["suporte@zevanory.api.br"], received_for: ["suporte@zevanory.api.br"], subject: "x" } });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = createHmac("sha256", Buffer.from(WH_SECRET.slice(6), "base64")).update(`${svixId}.${ts}.${body}`).digest("base64");
+  const request = new Request("https://zevanory.api.br/api/webhooks/resend", { method: "POST", headers: { "content-type": "application/json", "svix-id": svixId, "svix-timestamp": ts, "svix-signature": `v1,${sig}` }, body });
+  return fwd.handleSupportInboundWebhook(request, { ...env, RESEND_WEBHOOK_SECRET: WH_SECRET }, { sqlFactory: () => sql, fetchImpl: r.fetchImpl });
+}
+const WA = "support@support.whatsapp.com";
+const waDetail = () => ({ from: WA, reply_to: ["987654321@support.whatsapp.com"] });
+
+test("O12 provedor automático: webhook duplicado + 2 drenos concorrentes => 1 encaminhamento (Reply-To do ticket), 0 confirmação, skipped_automated_provider", { skip: SKIP }, async () => {
+  let failOnce = 1;
+  const r = resend({ senderOf: () => WA, detailOf: waDetail, failForward: () => failOnce-- > 0 });
+  const first = await webhook(r, "wa1", WA, "msg_a");
+  assert.equal(first.status, 200);
+  assert.equal((await stateOf("wa1")).state, "forward_pending");
+  await makeDue("wa1");
+  const results = await Promise.all([webhook(r, "wa1", WA, "msg_b"), drain(r), drain(r)]);
+  assert.equal(results[0].status, 200);
+  const st = await one("select state, ack_status from zevanory_support_inbound where email_id = 'wa1'");
+  assert.deepEqual(st, { state: "done", ack_status: "skipped_automated_provider" });
+  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "wa1").length, 2, "1 falha + 1 sucesso");
+  assert.equal(r.of("ack"), 0);
+  await Promise.all([webhook(r, "wa1", WA, "msg_c"), drain(r), drain(r)]);
+  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "wa1").length, 2, "nada se repete");
+});
+
+test("O13 encaminhamento obrigatório: com o envio falhando a linha NUNCA vira skipped/done (até morrer como forward_dead)", { skip: SKIP }, async () => {
+  const r = resend({ senderOf: () => WA, detailOf: waDetail, failForward: () => true });
+  await webhook(r, "wa2", WA, "msg_d");
+  for (let i = 0; i < fwd.MAX_SEND_FAILURES + 2; i++) {
+    const st = await one("select state, ack_status from zevanory_support_inbound where email_id = 'wa2'");
+    assert.notEqual(st.state, "done");
+    assert.equal(st.ack_status, "", "ack_status continua vazio: " + JSON.stringify(st));
+    if (st.state !== "forward_pending") break;
+    await makeDue("wa2");
+    await drain(r);
+  }
+  assert.deepEqual(await one("select state, ack_status, send_failures from zevanory_support_inbound where email_id = 'wa2'"), { state: "forward_dead", ack_status: "", send_failures: String(fwd.MAX_SEND_FAILURES) });
+  assert.equal(r.of("ack"), 0);
+});
+
+test("O14 orçamentos separados com 404 transitório: leituras falhando não consomem envios; depois encaminha e confirma uma vez", { skip: SKIP }, async () => {
+  let reads = 0, sends = 0;
+  const r = resend({ readStatus: () => (reads++ < 3 ? 404 : 0), failForward: () => sends++ < 9 });
+  await seed(["b1"]);
+  for (let i = 0; i < 3; i++) { await makeDue("b1"); await fwd.processSupportEmail(ctx(r), "b1"); }
+  let st = await one("select state, read_failures, send_failures, last_reason from zevanory_support_inbound where email_id = 'b1'");
+  assert.deepEqual(st, { state: "forward_pending", read_failures: "3", send_failures: "0", last_reason: "content_http_404_not_found" });
+  for (let i = 0; i < fwd.MAX_SEND_FAILURES; i++) {
+    await makeDue("b1");
+    await fwd.processSupportEmail(ctx(r), "b1");
+    if ((await stateOf("b1")).state !== "forward_pending") break;
+  }
+  st = await one("select state, ack_status from zevanory_support_inbound where email_id = 'b1'");
+  assert.deepEqual(st, { state: "done", ack_status: "sent" }, "9 falhas de envio + 1 sucesso cabem no orçamento de envio apesar das 3 de leitura");
+  assert.equal(r.of("forward", "b1"), 10);
+  assert.equal(r.of("ack", "b1"), 1);
+});
+
+test("O15 leitura: 400/422 permanentes e 404 depois da janela => dead sem envio; 429/5xx transitórios", { skip: SKIP }, async () => {
+  const status = { p400: 400, p422: 422, nf_old: 404, t429: 429, t503: 503 };
+  const r = resend({ readStatus: (id) => status[id] || 0 });
+  await seed(["p400", "p422", "t429", "t503"]);
+  await seed(["nf_old"], { age: `${fwd.NOT_FOUND_GRACE_MINUTES + 1} minutes` });
+  await Promise.all(Object.keys(status).map((id) => fwd.processSupportEmail(ctx(r), id)));
+  const rows = Object.fromEntries((await sql.query("select email_id, state, last_reason from zevanory_support_inbound")).map((x) => [x.email_id, `${x.state}:${x.last_reason}`]));
+  assert.deepEqual(rows, {
+    p400: "forward_dead:content_http_400_invalid_request",
+    p422: "forward_dead:content_http_422_invalid_request",
+    nf_old: "forward_dead:content_http_404_not_found_permanent",
+    t429: "forward_pending:content_http_429_rate_limited",
+    t503: "forward_pending:content_http_5xx"
+  });
+  assert.equal(r.of("forward") + r.of("ack"), 0);
 });
