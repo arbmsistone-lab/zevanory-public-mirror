@@ -44,7 +44,6 @@ button,input,select,textarea{font:inherit}
 .site-nav a{text-decoration:none;color:var(--muted);font-size:.93rem;font-weight:700}
 .site-nav a:hover,.site-nav a:focus-visible{color:var(--text)}
 .nav-cta{padding:10px 14px;border:1px solid #33445a;border-radius:12px;color:var(--text)!important;background:#0d1520}
-main{overflow:hidden}
 .container{max-width:1220px;margin:auto;padding-left:28px;padding-right:28px}
 .hero{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(320px,.7fr);gap:42px;align-items:center;min-height:690px;padding-top:70px;padding-bottom:70px}
 .eyebrow,.section-kicker{margin:0 0 12px;color:var(--accent);font-size:.76rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
@@ -68,7 +67,7 @@ main{overflow:hidden}
 .trust-item:last-child{border-right:0}
 .trust-item strong{display:block;font-size:.95rem}
 .trust-item span{display:block;margin-top:3px;color:#7f8b9b;font-size:.8rem}
-.section{padding-top:92px;padding-bottom:92px;content-visibility:auto;contain-intrinsic-size:700px}
+.section{padding-top:92px;padding-bottom:92px}
 .section-head{max-width:760px;margin-bottom:34px}
 .section h2{margin:0;font-size:clamp(2rem,4vw,3.8rem);line-height:1.02;letter-spacing:-.045em}
 .section-lead{margin:16px 0 0;color:var(--muted);font-size:1.08rem}
@@ -165,37 +164,13 @@ linear-gradient(140deg,rgba(59,101,161,.18),rgba(47,122,94,.08)),
 }
 
 
-/* ZEVANORY viewport contract: no global page scroll; overflow remains accessible inside main. */
-html,body{
-  box-sizing:border-box!important;
-  margin:0;
-  width:100vw;
-  height:100vh;
-  max-width:100vw!important;
-  max-height:100vh!important;
-  overflow:hidden!important;
-  overscroll-behavior:none!important;
-}
-body{
-  display:grid;
-  grid-template-rows:auto minmax(0,1fr) auto;
-}
-.site-header{
-  position:relative;
-  top:auto;
-}
-main{
-  min-width:0;
-  min-height:0;
-  overflow-x:hidden;
-  overflow-y:auto;
-  overscroll-behavior:contain;
-  scrollbar-gutter:stable;
-}
-.site-footer{
-  min-height:0;
-}
-
+/* E1 (2026-10-24): normal document scroll. The page (html) is the only scroller, so native scroll,
+   anchors, scroll restoration, the mobile address-bar collapse, print and find-in-page all work.
+   overflow-x:clip (not hidden) stops stray horizontal overflow without creating a scroll container,
+   so position:sticky (header, phone buy bar) keeps working against the viewport. */
+html,body{overflow-x:clip}
+main{display:block;overflow:visible;overflow-x:clip}
+.site-header{position:sticky;top:0}
 .footer-legal{padding:12px 16px 28px;font-size:13px;line-height:1.5;opacity:.85}
 .footer-legal a{display:inline-flex;align-items:center;min-height:44px;min-width:44px}
 
@@ -320,3 +295,13 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
 .offer-summary dt{font-weight:700;color:var(--text,inherit)}
 .offer-summary dd{margin:0;color:var(--muted);overflow-wrap:anywhere}
 @media (max-width:560px){.offer-summary div{grid-template-columns:1fr;gap:4px}}
+/* E3 (2026-10-24): WCAG 2.2 AA + internal 44 px target standard on every page, not only in <main>.
+   Inline text links become 44 px inline boxes (same convention as #821; padding tricks were rejected
+   because the padded hit areas of links on consecutive lines overlap); keyboard focus is always a 3 px ring and the sticky header
+   or phone buy bar never hides the focused element (scroll-padding, WCAG 2.4.11). */
+html{scroll-padding-top:88px;scroll-padding-bottom:128px}
+.brand{display:inline-flex;align-items:center;min-height:44px}
+.site-nav a,.footer-nav a,.nav-cta{display:inline-flex;align-items:center;min-height:44px}
+:where(main,footer) :where(p,li,dd,small,figcaption) a:not(.button):not(.nav-cta){display:inline-flex;align-items:center;min-height:44px;min-width:44px;max-width:100%;overflow-wrap:anywhere}
+:focus-visible{outline:3px solid var(--brand-3);outline-offset:3px}
+summary:focus-visible{border-radius:8px}
