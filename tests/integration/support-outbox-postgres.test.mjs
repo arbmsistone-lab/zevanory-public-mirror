@@ -128,7 +128,7 @@ beforeEach(async () => {
   if (SKIP) return;
   fwd.resetSupportSchemaCache();
   await fwd.ensureSupportSchema(sql);
-  await sql.query("truncate zevanory_support_inbound, zevanory_support_ack_quota, zevanory_support_alerts");
+  await sql.query("truncate zevanory_support_inbound, zevanory_support_ack_quota, zevanory_support_alerts, zevanory_support_drain_nonces");
 });
 
 test("O1 esquema aplicado exatamente como o Worker aplica (idempotente), com estados e chaves esperados", { skip: SKIP }, async () => {
@@ -376,4 +376,64 @@ test("O15 leitura: 400/422 permanentes e 404 depois da janela => dead sem envio;
     t503: "forward_pending:content_http_5xx"
   });
   assert.equal(r.of("forward") + r.of("ack"), 0);
+});
+
+test("O16 orçamento global por mensagem: 9 falhas de envio no encaminhamento + falhas na confirmação => ack_dead, encaminhamento preservado", { skip: SKIP }, async () => {
+  let fwdFails = 9;
+  const r = resend({ failForward: () => fwdFails-- > 0, failAck: () => true });
+  await seed(["g1"]);
+  for (let i = 0; i < 12; i++) {
+    await makeDue("g1");
+    await fwd.processSupportEmail(ctx(r), "g1");
+    if (!/_pending$/.test((await stateOf("g1")).state)) break;
+  }
+  const st = await one("select state, send_failures, read_failures, forward_id is not null as fwd, ack_status from zevanory_support_inbound where email_id = 'g1'");
+  assert.deepEqual(st, { state: "ack_dead", send_failures: String(fwd.MAX_SEND_FAILURES), read_failures: "0", fwd: "t", ack_status: "pending" });
+  assert.equal(r.calls.filter((c) => c.kind === "forward" && c.id === "g1").length, 10, "9 falhas + 1 entrega");
+  const acks = r.calls.filter((c) => c.kind === "ack" && c.id === "g1").length;
+  assert.ok(acks >= 1 && acks <= 2, "teto atingido em no máximo 2 falhas de confirmação: " + acks);
+  const fwdAt = (await one("select forwarded_at from zevanory_support_inbound where email_id = 'g1'")).forwarded_at;
+  await makeDue("g1");
+  await Promise.all([drain(r), drain(r)]);
+  await drain(r);
+  assert.equal(r.calls.filter((c) => c.kind !== "read" && c.kind !== "alert" && c.id === "g1").length, 10 + acks, "nenhum envio depois do teto");
+  assert.equal((await one("select forwarded_at from zevanory_support_inbound where email_id = 'g1'")).forwarded_at, fwdAt, "forwarded_at preservado");
+  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "alerta de morte exatamente uma vez");
+});
+
+test("O18 orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado", { skip: SKIP }, async () => {
+  let readFail = false, ackFails = 1;
+  const r = resend({ readStatus: () => (readFail ? 503 : 0), failAck: () => ackFails-- > 0 });
+  await seed(["h1"], { readFailures: 9 });
+  await fwd.processSupportEmail(ctx(r), "h1");
+  let st = await one("select state, read_failures, send_failures from zevanory_support_inbound where email_id = 'h1'");
+  assert.deepEqual(st, { state: "ack_pending", read_failures: "9", send_failures: "1" }, "contadores não zeram na transição");
+  readFail = true;
+  await makeDue("h1");
+  await fwd.processSupportEmail(ctx(r), "h1");
+  st = await one("select state, read_failures, forward_id is not null as fwd from zevanory_support_inbound where email_id = 'h1'");
+  assert.deepEqual(st, { state: "ack_dead", read_failures: "10", fwd: "t" });
+  assert.equal(r.of("forward", "h1"), 1);
+  await makeDue("h1");
+  await drain(r);
+  assert.equal(r.of("forward", "h1"), 1, "nenhum novo encaminhamento");
+});
+
+test("O17 dreno interno: nonce consumido atomicamente no PostgreSQL — pedidos simultâneos com o mesmo nonce => um 200, os demais 409; minuto velho 401", { skip: SKIP }, async () => {
+  await seed(["n1"]);
+  const r = resend();
+  const minute = Math.floor(Date.now() / 60000);
+  const nonce = "ab".repeat(16);
+  const mk = async (min = minute, n = nonce) => new Request("https://zevanory.api.br" + fwd.DRAIN_PATH, { method: "POST", headers: {
+    "x-support-drain-token": await fwd.signDrainRequest({ secret: env.LEAD_PRIVACY_SECRET, method: "POST", path: fwd.DRAIN_PATH, minute: min, nonce: n }),
+    "x-support-drain-nonce": n, "x-support-drain-minute": String(min) } });
+  const call = async (q) => fwd.handleSupportDrainRequest(q, env, { sqlFactory: () => sql, fetchImpl: r.fetchImpl });
+  const statuses = (await Promise.all(Array.from({ length: 5 }, async () => (await call(await mk())).status))).sort();
+  assert.deepEqual(statuses, [200, 409, 409, 409, 409]);
+  assert.equal(r.of("forward", "n1"), 1, "um único dreno efetivo");
+  const before = r.calls.length;
+  assert.equal((await call(await mk())).status, 409, "replay");
+  assert.equal((await call(await mk(minute - 2, "cd".repeat(16)))).status, 401, "minuto velho");
+  assert.equal(r.calls.length, before, "zero chamada extra ao Resend");
+  assert.equal((await one("select count(*)::int as n from zevanory_support_drain_nonces")).n, "1");
 });

@@ -91,7 +91,7 @@ tests/short-crosspost.test.mjs 8
 tests/signed-audit-probe.test.mjs 2
 tests/start-guide-touch-target.test.mjs 3
 tests/support-drain-scheduled.test.mjs 2
-tests/support-email-forward.test.mjs 31
+tests/support-email-forward.test.mjs 33
 tests/support-eval.test.mjs 3
 tests/system-matrix.test.mjs 5
 tests/telegram-inapp-browser.test.mjs 4

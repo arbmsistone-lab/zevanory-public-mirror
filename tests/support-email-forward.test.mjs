@@ -29,7 +29,7 @@ function received({ id = "em-1", to = ["suporte@zevanory.api.br"], from = `Clien
 function fakeSql(clock) {
   const rows = new Map(), quota = new Map(), alerts = new Map();
   const db = {
-    rows, quota, alerts, statements: [], failTag: null,
+    rows, quota, alerts, nonces: new Set(), statements: [], failTag: null,
     async query(text, params = []) {
       const tag = (/\/\*support:([a-z_]+)\*\//.exec(text) || [])[1];
       assert.ok(tag, "comando sem marca: " + text.slice(0, 60));
@@ -70,7 +70,7 @@ function fakeSql(clock) {
           if (s) quota.set(sKey, 1);
           let g = false;
           if (s) { const n = quota.get(gKey); if (n === undefined) { quota.set(gKey, 1); g = true; } else if (n < Number(params[2])) { quota.set(gKey, n + 1); g = true; } }
-          Object.assign(r, { state: g ? "ack_pending" : "done", ack_status: g ? "pending" : s ? "rate_limited_daily" : "rate_limited_sender", lease: g ? now + 120000 : null, attempts: g ? 1 : 0, read_failures: 0, send_failures: 0, forward_id: params[3], next: now });
+          Object.assign(r, { state: g ? "ack_pending" : "done", ack_status: g ? "pending" : s ? "rate_limited_daily" : "rate_limited_sender", lease: g ? now + 120000 : null, attempts: g ? 1 : 0, forward_id: params[3], forwarded_at: now, next: now });
           return [{ state: r.state, ack_status: r.ack_status }];
         }
         case "acked":
@@ -92,6 +92,11 @@ function fakeSql(clock) {
           alerts.set(params[0], now);
           return [{ kind: params[0] }];
         }
+        case "nonce_consume":
+          if (db.nonces.has(params[0])) return [];
+          db.nonces.add(params[0]);
+          return [{ nonce: params[0] }];
+        case "nonce_cleanup": return [];
         case "alert_release": alerts.set(params[0], 0); return [];
         case "dead_alerted": for (const x of rows.values()) if (/_dead$/.test(x.state)) x.alerted = true; return [];
         default: throw new Error("comando não previsto " + tag);
@@ -193,7 +198,9 @@ test("suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e co
 test("contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código", async () => {
   const w = world();
   const kv = { async get(k) { return k === fwd.FORWARD_TO_KV_KEY ? OWNER : null; } };
-  assert.equal((await w.hook(req(received({ to: ["contato@zevanory.api.br"] })), { ...w.env, SUPPORT_FORWARD_TO: "", ZEVANORY_PRIVATE_ARTIFACTS: kv })).status, 200);
+  const viaContato = await w.hook(req(received({ to: ["contato@zevanory.api.br"] })), { ...w.env, SUPPORT_FORWARD_TO: "", ZEVANORY_PRIVATE_ARTIFACTS: kv });
+  assert.ok(viaContato, "contato@ é tratado pelo fluxo");
+  assert.equal(viaContato.status, 200);
   assert.equal(forwards(w).length, 1);
   for (const dest of ["", "suporte@zevanory.api.br"]) {
     const x = world();
@@ -466,6 +473,8 @@ test("lease, recuo e estado fazem parte dos comandos do outbox (concorrência e 
   assert.match(src, /SQL\.lease, \[emailId, MAX_ATTEMPTS, RETRY_LIFETIME_HOURS, MAX_READ_FAILURES, MAX_SEND_FAILURES\]/);
   assert.match(pick("lease"), /set lease_until = now\(\) \+ interval '2 minutes', attempts = attempts \+ 1/);
   assert.match(pick("record"), /on conflict \(email_id\) do nothing returning email_id/);
+  assert.doesNotMatch(src.slice(src.indexOf("forwardedReserveAck:"), src.indexOf("acked:")), /read_failures = 0|send_failures = 0/, "contadores globais: não zeram na confirmação");
+  assert.doesNotMatch(src, /stepAck\(c, emailId, \{ \.\.\.row, attempts: 1, read_failures/, "a cadeia para a confirmação não zera contadores");
   const rq = pick("retry");
   assert.match(rq, /read_failures = read_failures \+ case when \$5 = 'read' then 1 else 0 end/);
   assert.match(rq, /send_failures = send_failures \+ case when \$5 = 'send' then 1 else 0 end/);
@@ -621,33 +630,127 @@ test("dreno: uma linha só de contagens por execução, inclusive sem configura�
   assert.match(lines[0], /"ok":false,"error":"too_many_subrequests"/);
 });
 
-test("dreno em invocação própria: token HMAC de minuto obrigatório; dispatch via SELF e fallback inline", async () => {
+test("dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica", async () => {
   const w = world();
-  const reqDrain = (headers = {}) => new Request("https://zevanory.api.br" + fwd.DRAIN_PATH, { method: "POST", headers });
-  assert.equal((await fwd.handleSupportDrainRequest(reqDrain(), w.env, w.opts())).status, 401);
-  assert.equal((await fwd.handleSupportDrainRequest(reqDrain({ "x-support-drain-token": "0".repeat(64) }), w.env, w.opts())).status, 401);
-  assert.equal((await fwd.handleSupportDrainRequest(new Request("https://zevanory.api.br" + fwd.DRAIN_PATH), w.env, w.opts())).status, 405);
-  assert.equal(await fwd.handleSupportDrainRequest(new Request("https://zevanory.api.br/api/outra", { method: "POST" }), w.env, w.opts()), null);
   w.fail.forward = 1;
   await w.hook(req(received()));
   advance(w, 3);
-  const selfCalls = [];
-  const SELF = { fetch: async (r) => { selfCalls.push(new URL(r.url).pathname); return fwd.handleSupportDrainRequest(r, w.env, w.opts()); } };
-  const viaSelf = await fwd.dispatchSupportDrain({ ...w.env, SELF }, w.opts());
-  assert.deepEqual(selfCalls, [fwd.DRAIN_PATH]);
-  assert.equal(viaSelf.via, "self");
-  assert.equal(viaSelf.status, 200);
-  assert.equal(viaSelf.result.done, 1);
-  assert.equal(forwards(w).length, 1);
-  // Token de outro segredo é recusado (o SELF não aceita qualquer chamador).
-  const other = await fwd.dispatchSupportDrain({ ...w.env, LEAD_PRIVACY_SECRET: "outro-segredo-qualquer-0123456789abcdef", SELF }, w.opts());
-  assert.equal(other.status, 401);
-  // Token velho (> 5 min) é recusado.
-  const old = await fwd.dispatchSupportDrain({ ...w.env, SELF: { fetch: (r) => fwd.handleSupportDrainRequest(r, w.env, { ...w.opts(), nowMs: w.clock.now + 6 * 60000 }) } }, w.opts());
-  assert.equal(old.status, 401);
+  const minute = () => Math.floor(w.clock.now / 60000);
+  const make = async ({ method = "POST", signMethod = method, path = fwd.DRAIN_PATH, signPath = path, min = minute(), nonce = "ab".repeat(16), secret = w.env.LEAD_PRIVACY_SECRET, extra = {} } = {}) => {
+    const token = await fwd.signDrainRequest({ secret, method: signMethod, path: signPath, minute: min, nonce });
+    return new Request("https://zevanory.api.br" + path, { method, headers: { "x-support-drain-token": token, "x-support-drain-nonce": nonce, "x-support-drain-minute": String(min), ...extra } });
+  };
+  const call = (r) => fwd.handleSupportDrainRequest(r, w.env, w.opts());
+  const before = w.attempts.length + w.gets.length;
+  // Rejeições ANTES de qualquer efeito.
+  assert.equal((await call(new Request("https://zevanory.api.br" + fwd.DRAIN_PATH, { method: "POST", headers: { "x-zevanory-internal": "service-binding" } }))).status, 401, "cabeçalho interno não autentica");
+  assert.equal((await call(await make({ min: minute() - 2, nonce: "01".repeat(16) }))).status, 401, "minuto velho");
+  assert.equal((await call(await make({ min: minute() + 1, nonce: "02".repeat(16) }))).status, 401, "minuto futuro");
+  assert.equal((await call(await make({ signPath: "/api/internal/outra", nonce: "03".repeat(16) }))).status, 401, "caminho adulterado");
+  assert.equal((await call(await make({ signMethod: "GET", nonce: "04".repeat(16) }))).status, 401, "método adulterado");
+  assert.equal((await call(await make({ secret: "outro-segredo-qualquer-0123456789abcdef", nonce: "05".repeat(16) }))).status, 401, "segredo errado");
+  assert.equal((await call(await make({ nonce: "curto" }))).status, 401, "nonce inválido");
+  assert.equal((await call(await make({ method: "GET" }))).status, 405);
+  assert.equal(w.attempts.length + w.gets.length, before, "nenhuma chamada ao Resend nas rejeições");
+  assert.equal(w.db.nonces.size, 0, "nenhum nonce consumido nas rejeições");
+  // Primeira chamada válida: 200 e um dreno; replay do MESMO pedido: 409 sem dreno nem chamada extra.
+  const nonce = "cd".repeat(16);
+  const first = await call(await make({ nonce }));
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).done, 1);
+  const afterFirst = w.attempts.length + w.gets.length;
+  const replay = await call(await make({ nonce }));
+  assert.equal(replay.status, 409);
+  assert.equal(w.attempts.length + w.gets.length, afterFirst, "replay sem chamada ao Resend");
+  assert.equal(forwards(w).length, 1, "exatamente um dreno efetivo");
+  // Adulterações de minuto e nonce (assinados com um valor, enviados com outro).
+  const tamper = async (field) => {
+    const n = "aa".repeat(16), m = minute();
+    const token = await fwd.signDrainRequest({ secret: w.env.LEAD_PRIVACY_SECRET, method: "POST", path: fwd.DRAIN_PATH, minute: m, nonce: n });
+    const headers = { "x-support-drain-token": token, "x-support-drain-nonce": field === "nonce" ? "bb".repeat(16) : n, "x-support-drain-minute": String(field === "minute" ? m - 1 : m) };
+    return call(new Request("https://zevanory.api.br" + fwd.DRAIN_PATH, { method: "POST", headers }));
+  };
+  assert.equal((await tamper("minute")).status, 401, "minuto adulterado");
+  assert.equal((await tamper("nonce")).status, 401, "nonce adulterado");
+  assert.equal((await call(await make({ nonce: "AB".repeat(16) }))).status, 401, "nonce fora do formato (maiúsculas)");
+  assert.equal((await call(await make({ nonce: "a".repeat(31) }))).status, 401, "nonce curto (< 128 bits)");
+  const withBody = await make({ nonce: "9a".repeat(16) });
+  const bodyReq = new Request(withBody.url, { method: "POST", headers: withBody.headers, body: "{\"x\":1}" });
+  assert.equal((await call(bodyReq)).status, 400, "corpo não vazio recusado");
+  assert.equal(w.db.nonces.has("9a".repeat(16)), false, "corpo recusado antes de consumir o nonce");
+  assert.equal(fwd.drainCanonical({ method: "POST", path: fwd.DRAIN_PATH, minute: 123, nonce: "ff".repeat(16) }), "v1\nPOST\n/api/internal/support/outbox/drain\n123\n" + "ff".repeat(16));
+  // Dois consumidores simultâneos do mesmo nonce: exatamente um vence.
+  const twin = "7e".repeat(16);
+  const pair = (await Promise.all([call(await make({ nonce: twin })), call(await make({ nonce: twin }))])).map((x) => x.status).sort();
+  assert.deepEqual(pair, [200, 409]);
+  // Replay depois de resposta perdida: ZERO leitura de fila e ZERO chamada ao Resend.
+  const statementsBefore = w.db.statements.length, callsBefore = w.attempts.length + w.gets.length;
+  assert.equal((await call(await make({ nonce: twin }))).status, 409);
+  const replayStatements = w.db.statements.slice(statementsBefore);
+  assert.ok(replayStatements.every((t) => t === "schema" || t === "nonce_consume"), "replay só toca o nonce: " + replayStatements.join(","));
+  assert.equal(w.attempts.length + w.gets.length, callsBefore);
+  // Minuto anterior ainda vale (borda), com nonce novo.
+  assert.equal((await call(await make({ min: minute() - 1, nonce: "ef".repeat(16) }))).status, 200);
+  // dispatch via SELF assina com nonce novo a cada chamada; fallback inline sem SELF.
+  const seen = [];
+  const SELF = { fetch: async (r) => { seen.push(r.headers.get("x-support-drain-nonce")); assert.equal(r.headers.get("x-zevanory-internal"), null); return call(r); } };
+  const a = await fwd.dispatchSupportDrain({ ...w.env, SELF }, w.opts());
+  const b = await fwd.dispatchSupportDrain({ ...w.env, SELF }, w.opts());
+  assert.equal(a.status, 200); assert.equal(b.status, 200);
+  assert.notEqual(seen[0], seen[1]);
   const inline = await fwd.dispatchSupportDrain(w.env, w.opts());
   assert.equal(inline.via, "inline");
-  assert.equal(inline.result.ok, true);
+});
+
+test("orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento", async () => {
+  const w = world();
+  w.fail.forward = fwd.MAX_SEND_FAILURES - 1;
+  w.fail.ack = 1000;
+  await w.hook(req(received()));
+  const row = w.db.rows.get("em-1");
+  for (let i = 0; i < 20 && row.state === "forward_pending"; i++) { w.clock.now = Math.max(w.clock.now, row.next); await w.drain(); }
+  assert.equal(forwards(w).length, 1, "encaminhamento entregue");
+  assert.equal(row.state, "ack_dead", "9 falhas no encaminhamento + 1 na confirmação = teto 10");
+  assert.equal(row.send_failures, fwd.MAX_SEND_FAILURES);
+  assert.ok(row.forward_id, "forward_id preservado");
+  assert.equal(w.attempts.filter((x) => x.kind === "ack").length, 1);
+  const fwdAt = row.forwarded_at;
+  advance(w, 600);
+  await w.drain();
+  await w.drain();
+  await w.hook(req(received(), { id: "replay-after-dead", ts: Math.floor(w.clock.now / 1000) }));
+  assert.equal(forwards(w).length, 1, "nenhum novo encaminhamento");
+  assert.equal(w.attempts.filter((x) => x.kind === "ack").length, 1, "nenhuma confirmação depois do teto (nem com replay)");
+  assert.equal(row.state, "ack_dead");
+  assert.equal(row.forwarded_at, fwdAt, "forwarded_at preservado");
+  assert.equal(alerts(w).filter((a) => /não entregues/.test(a.body.subject)).length, 1, "alerta de morte exatamente uma vez");
+});
+
+test("orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado", async () => {
+  const w = world();
+  w.fail.readStatus = 503;
+  await w.hook(req(received()));
+  const row = w.db.rows.get("em-1");
+  for (let i = 0; i < 8; i++) { w.clock.now = Math.max(w.clock.now, row.next); await w.drain(); }
+  assert.equal(row.read_failures, fwd.MAX_READ_FAILURES - 1);
+  assert.equal(row.state, "forward_pending");
+  // Leitura volta: encaminha; a confirmação falha no envio e, na retentativa, a releitura falha (10ª de leitura).
+  w.fail.readStatus = 0;
+  w.fail.ack = 1;
+  w.clock.now = Math.max(w.clock.now, row.next);
+  await w.drain();
+  assert.equal(forwards(w).length, 1);
+  assert.equal(row.state, "ack_pending");
+  assert.equal(row.read_failures, fwd.MAX_READ_FAILURES - 1, "contador de leitura não zerou na transição");
+  w.fail.readStatus = 503;
+  w.clock.now = Math.max(w.clock.now, row.next);
+  await w.drain();
+  assert.equal(row.state, "ack_dead");
+  assert.equal(row.read_failures, fwd.MAX_READ_FAILURES);
+  assert.ok(row.forward_id);
+  advance(w, 600);
+  await w.drain();
+  assert.equal(forwards(w).length, 1);
 });
 
 test("supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório", async () => {

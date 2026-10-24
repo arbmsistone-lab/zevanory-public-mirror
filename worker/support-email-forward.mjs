@@ -35,7 +35,10 @@ export const ACK_DAILY_CAP = 30;
 // Orçamentos separados por passo: falha de LEITURA do conteúdo não consome tentativas de ENVIO (e vice-versa).
 export const MAX_READ_FAILURES = 10;
 export const MAX_SEND_FAILURES = 10;
-// Teto absoluto de leases por passo (leitura + envio).
+// `attempts` NÃO é orçamento de falhas: conta leases do passo atual e só existe para cortar laços de lease sem
+// conclusão (invocação derrubada antes de registrar o resultado). Toda falha registrada incrementa read_failures ou
+// send_failures (globais por email_id, somados entre encaminhamento e confirmação); como cada lease concluído
+// registra no máximo uma falha, o teto de leases (soma dos dois orçamentos) nunca é atingido antes deles.
 export const MAX_ATTEMPTS = MAX_READ_FAILURES + MAX_SEND_FAILURES;
 // 404 na leitura é transitório por tempo limitado (consistência eventual do provedor); depois disso, permanente.
 export const NOT_FOUND_GRACE_MINUTES = 30;
@@ -309,6 +312,8 @@ export async function ensureSupportSchema(sql) {
   await sql.query(`/*support:schema*/ create table if not exists zevanory_support_ack_quota (
     bucket text not null, day date not null, n integer not null default 0, primary key (bucket, day))`, []);
   await sql.query("/*support:schema*/ alter table zevanory_support_inbound add column if not exists last_reason text, add column if not exists read_failures integer not null default 0, add column if not exists send_failures integer not null default 0", []);
+  await sql.query(`/*support:schema*/ create table if not exists zevanory_support_drain_nonces (
+    nonce text primary key, created_at timestamptz not null default now())`, []);
   await sql.query("/*support:schema*/ create index if not exists zevanory_support_inbound_due_idx on zevanory_support_inbound (state, next_attempt_at)", []);
   schemaReady = true;
 }
@@ -358,12 +363,16 @@ const SQL = Object.freeze({
         ack_status = case when exists (select 1 from g) then 'pending' when exists (select 1 from s) then 'rate_limited_daily' else 'rate_limited_sender' end,
         -- com confirmação a fazer, o lease continua com este processo (o passo de confirmação segue na mesma execução)
         lease_until = case when exists (select 1 from g) then now() + interval '2 minutes' else null end,
-        attempts = case when exists (select 1 from g) then 1 else 0 end, read_failures = 0, send_failures = 0,
+        -- read_failures/send_failures NÃO zeram: o orçamento de cada tipo é global por mensagem (encaminhamento + confirmação).
+        attempts = case when exists (select 1 from g) then 1 else 0 end,
         forward_id = $4, forwarded_at = now(), next_attempt_at = now(), updated_at = now()
       from r where i.email_id = r.email_id returning i.state, i.ack_status
     ) select state, ack_status from u`,
   acked: `/*support:acked*/ update zevanory_support_inbound set state = 'done', ack_status = 'sent', ack_sent_at = now(), lease_until = null, updated_at = now()
     where email_id = $1 and state = 'ack_pending'`,
+  // Nonce do dreno interno: consumo atômico (PK) e limpeza por TTL.
+  nonceConsume: `/*support:nonce_consume*/ insert into zevanory_support_drain_nonces (nonce) values ($1) on conflict (nonce) do nothing returning nonce`,
+  nonceCleanup: `/*support:nonce_cleanup*/ delete from zevanory_support_drain_nonces where created_at < now() - interval '1 hour'`,
   due: `/*support:due*/ select email_id from zevanory_support_inbound where state in ('forward_pending','ack_pending') and next_attempt_at <= now()
       and (lease_until is null or lease_until < now())
       and attempts < $2 and created_at > now() - make_interval(hours => $3::int)
@@ -519,7 +528,8 @@ async function stepForward(c, emailId, row) {
   const res = await c.sql.query(SQL.forwardedReserveAck, [emailId, day, ACK_DAILY_CAP, forwardId]);
   const st = res?.[0] || {};
   log("forwarded", { alias: row.alias, attachments: attachments.length, ack: st.ack_status || "unknown" });
-  if (st.state === "ack_pending") return stepAck(c, emailId, { ...row, attempts: 1, read_failures: 0, send_failures: 0 }, detail);
+  // Encaminhamento já entregue: esgotar o orçamento da confirmação leva a ack_dead, nunca desfaz o encaminhamento.
+  if (st.state === "ack_pending") return stepAck(c, emailId, { ...row, attempts: 1 }, detail);
   return { state: st.state || "done", ack: st.ack_status };
 }
 
@@ -703,9 +713,16 @@ async function alertOwner(c, stIn) {
 
 // ---------- dreno em invocação própria ----------
 // O cron horário divide 50 subrequisições (Workers Free) com várias tarefas; o dreno roda numa invocação
-// separada via binding SELF (orçamento próprio), autenticada por HMAC de minuto com LEAD_PRIVACY_SECRET.
-async function drainToken(secret, minute) {
-  const mac = await hmacSign(new TextEncoder().encode("zevanory-support-drain-v1:" + secret), String(minute));
+// separada via binding SELF (orçamento próprio). Autenticação: HMAC (LEAD_PRIVACY_SECRET, domínio próprio) sobre
+// método + caminho + minuto + nonce aleatório; só o minuto atual ou o anterior; nonce consumido atomicamente no
+// PostgreSQL (replay => 409). Nenhum cabeçalho "interno" conta como autenticação.
+// String canônica assinada: "v1\nPOST\n/api/internal/support/outbox/drain\n<minuto>\n<nonce>".
+export function drainCanonical({ method, path, minute, nonce }) {
+  return `v1\n${String(method)}\n${path}\n${minute}\n${nonce}`;
+}
+export const DRAIN_NONCE_RE = /^[0-9a-f]{32}$/; // 128 bits aleatórios, hexadecimal minúsculo
+export async function signDrainRequest({ secret, method, path, minute, nonce }) {
+  const mac = await hmacSign(new TextEncoder().encode("zevanory-support-drain:" + secret), drainCanonical({ method, path, minute, nonce }));
   return [...mac].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 export async function handleSupportDrainRequest(request, env, { sqlFactory, fetchImpl = globalThis.fetch, nowMs = Date.now() } = {}) {
@@ -714,10 +731,25 @@ export async function handleSupportDrainRequest(request, env, { sqlFactory, fetc
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
   const secret = senderSecret(env);
   const given = String(request.headers.get("x-support-drain-token") || "");
-  const minute = Math.floor(nowMs / 60000);
-  let okToken = false;
-  if (secret && /^[0-9a-f]{64}$/.test(given)) for (let d = -5; d <= 5 && !okToken; d++) okToken = safeEqual(given, await drainToken(secret, minute + d));
-  if (!okToken) return json(401, { error: "unauthorized" });
+  const nonce = String(request.headers.get("x-support-drain-nonce") || "");
+  const minuteText = String(request.headers.get("x-support-drain-minute") || "");
+  const now = Math.floor(nowMs / 60000);
+  const minute = /^\d{1,12}$/.test(minuteText) ? Number(minuteText) : NaN;
+  // Só o minuto atual ou o imediatamente anterior; nunca futuro.
+  const fresh = minute === now || minute === now - 1;
+  if (!secret || !fresh || !DRAIN_NONCE_RE.test(nonce) || !/^[0-9a-f]{64}$/.test(given)
+    || !safeEqual(given, await signDrainRequest({ secret, method: request.method, path: url.pathname, minute, nonce }))) return json(401, { error: "unauthorized" });
+  // Corpo precisa ser vazio (nada fora da assinatura entra no pedido).
+  if ((await request.text()).length > 0) return json(400, { error: "body_not_allowed" });
+  if (!sqlFactory || !env.DATABASE_URL) return json(503, { error: "drain_nonce_store_unavailable" });
+  const sql = sqlFactory(env.DATABASE_URL);
+  let consumed;
+  try {
+    await ensureSupportSchema(sql);
+    consumed = await sql.query(SQL.nonceConsume, [nonce]);
+  } catch { return json(503, { error: "drain_nonce_store_unavailable" }); }
+  if (!Array.isArray(consumed) || !consumed.length) { log("drain_replay_rejected"); return json(409, { error: "replay" }); }
+  try { await sql.query(SQL.nonceCleanup, []); } catch {}
   const out = await drainSupportOutbox(env, { sqlFactory, fetchImpl, nowMs, limit: 3, source: "self" });
   return json(out.ok === false ? 503 : 200, out);
 }
@@ -726,8 +758,10 @@ export async function dispatchSupportDrain(env, { sqlFactory, fetchImpl = global
   const self = env?.SELF;
   if (secret && self && typeof self.fetch === "function") {
     try {
-      const token = await drainToken(secret, Math.floor(nowMs / 60000));
-      const r = await self.fetch(new Request("https://zevanory.api.br" + DRAIN_PATH, { method: "POST", headers: { "x-support-drain-token": token, "x-zevanory-internal": "service-binding" }, signal: AbortSignal.timeout(45000) }));
+      const minute = Math.floor(nowMs / 60000);
+      const nonce = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const token = await signDrainRequest({ secret, method: "POST", path: DRAIN_PATH, minute, nonce });
+      const r = await self.fetch(new Request("https://zevanory.api.br" + DRAIN_PATH, { method: "POST", headers: { "x-support-drain-token": token, "x-support-drain-nonce": nonce, "x-support-drain-minute": String(minute) }, signal: AbortSignal.timeout(45000) }));
       let body = null;
       try { body = await r.json(); } catch {}
       log("drain_dispatch", { via: "self", status: r.status });

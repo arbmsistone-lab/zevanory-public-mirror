@@ -42,7 +42,7 @@ jobs:
           v="$(psql -h localhost -U postgres -tAc 'show server_version_num')"
           echo "::notice title=POSTGRES::server_version_num=$v"
           [ "${v:0:2}" = "16" ] || { echo "::error::PostgreSQL diferente de 16 ($v)"; exit 1; }
-      - name: Outbox suporte@ (O1–O15, contagem exata, sem skip)
+      - name: Outbox suporte@ (O1–O18, contagem exata, sem skip)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -50,4 +50,4 @@ jobs:
           set -eo pipefail
           node --test tests/integration/support-outbox-postgres.test.mjs | tee o.txt
           echo "::notice title=COUNTS_OUTBOX::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' o.txt | paste -sd' ' -)"
-          grep -qx "# tests 15" o.txt && grep -qx "# pass 15" o.txt && grep -qx "# skipped 0" o.txt && grep -qx "# todo 0" o.txt && grep -qx "# fail 0" o.txt && grep -qx "# cancelled 0" o.txt
+          grep -qx "# tests 18" o.txt && grep -qx "# pass 18" o.txt && grep -qx "# skipped 0" o.txt && grep -qx "# todo 0" o.txt && grep -qx "# fail 0" o.txt && grep -qx "# cancelled 0" o.txt

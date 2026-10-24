@@ -5,6 +5,9 @@ const events = [];
 globalThis.fetch = async (u) => { events.push("net"); return new Response("{}", { status: 503 }); };
 const { default: worker } = await import("../../worker/cloudflare-worker.compat.mjs");
 const fwd = await import("../../worker/support-email-forward.mjs");
+const nonces = new Set();
+// PostgreSQL falso mínimo: só o consumo de nonce do dreno (o resto devolve vazio; sem destino o dreno fica "unconfigured").
+const sqlFactory = () => ({ async query(text, params = []) { if (text.includes("/*support:nonce_consume*/")) { if (nonces.has(params[0])) return []; nonces.add(params[0]); return [{ nonce: params[0] }]; } return []; } });
 const env = {
   LEAD_PRIVACY_SECRET: "privacidade-sintetica-de-teste-0123456789abcdef",
   SELF: {
@@ -12,8 +15,8 @@ const env = {
       const path = new URL(request.url).pathname;
       // O próprio endpoint valida o token (sem banco/destino configurado o dreno responde "unconfigured").
       const res = process.argv[3] === "overdue"
-        ? (await fwd.handleSupportDrainRequest(request, env, {}), Response.json({ ok: true, checked: 0, done: 0, pending: 1, dead: 0, backlog: 1, oldest_min: 180, overdue: true }))
-        : await fwd.handleSupportDrainRequest(request, env, {});
+        ? (await fwd.handleSupportDrainRequest(request, { ...env, DATABASE_URL: "postgres://fake" }, { sqlFactory }), Response.json({ ok: true, checked: 0, done: 0, pending: 1, dead: 0, backlog: 1, oldest_min: 180, overdue: true }))
+        : await fwd.handleSupportDrainRequest(request, { ...env, DATABASE_URL: "postgres://fake" }, { sqlFactory });
       events.push(`self:${path}:${res ? res.status : "null"}`);
       return res || new Response("{}", { status: 404 });
     }
