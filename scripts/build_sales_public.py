@@ -386,6 +386,9 @@ def apply_approved_overlay() -> None:
     # Script de contato: só e-mail (WhatsApp banido; ver contato_publico). O gate audit_contact
     # reprova qualquer link de WhatsApp ou número banido no asset publicado.
     shutil.copy2(OVERLAY / "whatsapp-contact.js", OUT / "whatsapp-contact.js")
+    # Chat do site (desligado por padrão: SITE_CHAT_ENABLED=false; o widget só é injetado pelo Worker quando ligado).
+    for asset in ("site-chat.js", "site-chat.css"):
+        shutil.copy2(OVERLAY / asset, OUT / asset)
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
