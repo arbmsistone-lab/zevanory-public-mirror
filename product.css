@@ -2,6 +2,8 @@
    The counter (balcão): receipt paper, ink, the blue of the R$ 100 note, and one cash-register-yellow key. */
 @font-face{font-family:"Archivo";src:url("assets/fonts/archivo.woff2") format("woff2");font-weight:600 800;font-stretch:75% 100%;font-display:swap}
 @font-face{font-family:"Atkinson Hyperlegible Next";src:url("assets/fonts/atkinson-hyperlegible-next.woff2") format("woff2");font-weight:400 700;font-display:swap}
+/* Plain (unslashed) Archivo figures for every digit in the text face: CNPJ, prices, CEP, dates read as Brazilians write them. */
+@font-face{font-family:"Atkinson Hyperlegible Next";src:url("assets/fonts/archivo-numerais.woff2") format("woff2");font-weight:400 700;font-display:swap;unicode-range:U+0030-0039}
 /* Metric-matched fallbacks so the font swap barely moves the layout (CLS). */
 @font-face{font-family:"Archivo fallback";src:local("Arial Narrow"),local("Arial"),local("Liberation Sans");size-adjust:96%;ascent-override:92%;descent-override:22%}
 @font-face{font-family:"Atkinson fallback";src:local("Verdana"),local("DejaVu Sans"),local("Arial");size-adjust:94%;ascent-override:96%;descent-override:24%}
@@ -38,6 +40,8 @@ body{margin:0;background:var(--papel);color:var(--tinta);font-size:var(--t-1);ov
 img,svg{display:block;max-width:100%;height:auto}
 button,input,select,textarea{font:inherit;color:inherit}
 p,li,dd{max-width:var(--medida)}
+p,li,dd,figcaption{hyphens:auto;-webkit-hyphens:auto;text-wrap:pretty}
+h1,h2,h3,.button,.receipt-line,.catalog-price{hyphens:manual}
 h1,h2,h3{font-family:var(--display);font-stretch:87.5%;font-weight:750;line-height:1.08;letter-spacing:-.01em;margin:0;text-wrap:balance}
 h1{font-size:var(--t-5);max-width:22ch}
 h2{font-size:var(--t-4);max-width:24ch}
@@ -177,6 +181,15 @@ main{display:block;overflow:visible;overflow-x:clip}
 .offer-summary dd{margin:0;color:var(--grafite);overflow-wrap:anywhere}
 .review-summary{margin:var(--s-3) 0 0;font-weight:700}
 .hero-trust{margin-top:var(--s-3)}
+.buy-facts{margin-top:var(--s-4)}
+.buy-facts li{font-size:var(--t-0)}
+.trust-mini{display:grid;gap:var(--s-2);margin:var(--s-5) 0 0;padding:var(--s-4) 0 0;border-top:1px solid var(--linha-suave);list-style:none;font-size:var(--t-0);line-height:1.5;color:var(--grafite)}
+.trust-mini li{display:grid;grid-template-columns:7rem minmax(0,1fr);gap:var(--s-3);max-width:none}
+.nowrap{white-space:nowrap}
+.tm-note{display:block}
+.trust-mini strong{color:var(--tinta);font-family:var(--display);font-stretch:87.5%}
+
+.receipt,.offer-summary,.trust-mini,.seller,.footer-legal,.catalog-price,.status-pill,.founder-facts{font-variant-numeric:tabular-nums lining-nums}
 
 /* Fit: two ruled columns. */
 .fit-section{padding-block:var(--s-7) var(--s-4)}
@@ -229,11 +242,28 @@ main{display:block;overflow:visible;overflow-x:clip}
 .catalog-card.lead .catalog-price{font-size:var(--t-3)}
 .catalog-card.soon h3{font-size:var(--t-1)}
 .catalog-card.soon h3 a,.catalog-card.soon .cc-main>p{color:var(--grafite)}
+.cc-match{display:none;margin:0 0 var(--s-2);padding:var(--s-1) var(--s-2);background:var(--azul-claro);color:var(--azul-cedula);font-weight:700;font-size:var(--t-0);width:fit-content}
+.catalog-card:target{outline:3px solid var(--azul-cedula);outline-offset:4px;scroll-margin-top:104px}
+.catalog-card:target .cc-match{display:block}
+.catalog-card:target:not(.lead){background:var(--cupom);padding-inline:var(--s-4)}
 .catalog-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-4)}
 .catalog-pair .catalog-card{grid-template-columns:minmax(0,1fr)}
 .catalog-pair .catalog-price{grid-row:1;text-align:left;padding-top:0}
 .catalog-pair .catalog-price span{display:inline;margin-left:var(--s-2)}
 .catalog-note{margin:var(--s-5) 0 0;max-width:72ch;color:var(--grafite);font-size:var(--t-0);line-height:1.55}
+
+.how-to-buy{padding-block:var(--s-6);border-top:2px solid var(--tinta)}
+.how-to-buy h2{font-size:var(--t-3)}
+.steps{counter-reset:etapa;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s-4);margin:var(--s-5) 0 0;padding:0;list-style:none}
+.steps li{counter-increment:etapa;background:var(--cupom);padding:var(--s-4) var(--s-4) var(--s-5);max-width:none}
+.steps li::before{content:counter(etapa);display:block;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:var(--t-4);line-height:1;color:var(--azul-cedula)}
+.steps strong{display:block;margin-top:var(--s-2);font-family:var(--display);font-stretch:87.5%;font-size:var(--t-2)}
+.steps span{display:block;margin-top:var(--s-1);color:var(--grafite);font-size:var(--t-0);line-height:1.5}
+.steps-note{margin:var(--s-3) 0 0;color:var(--grafite);font-size:var(--t-0)}
+.seller{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s-4);margin:var(--s-5) 0 0;padding-top:var(--s-4);border-top:1px solid var(--linha-suave)}
+.seller dt{font-size:var(--t-0);color:var(--grafite)}
+.seller dd{margin:var(--s-1) 0 0;font-weight:700;overflow-wrap:anywhere}
+.seller dd a{font-weight:700}
 
 /* Founder. */
 .founder-section{display:grid;grid-template-columns:minmax(0,280px) minmax(0,1fr);gap:var(--s-7);align-items:start}
@@ -259,11 +289,12 @@ main{display:block;overflow:visible;overflow-x:clip}
 .footer-nav{display:flex;flex-wrap:wrap;gap:var(--s-5)}
 .footer-nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--cupom)}
 .site-footer :focus-visible{outline-color:var(--amarelo-caixa)}
-.footer-legal{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.2fr);gap:var(--s-5) var(--s-6);margin-top:var(--s-6);padding-block:var(--s-6);border-top:2px solid var(--tinta);font-size:var(--t-0);line-height:1.55;color:var(--tinta)}
+.footer-legal{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,1fr);gap:var(--s-5) var(--s-6);margin-top:var(--s-6);padding-block:var(--s-6);border-top:2px solid var(--tinta);font-size:var(--t-0);line-height:1.55;color:var(--tinta)}
 .fl-title{margin:0 0 var(--s-2);font-family:var(--display);font-stretch:87.5%;font-weight:750;font-size:var(--t-1)}
 .fl-block p{margin:0;color:var(--grafite)}
 .fl-block ul{margin:0;padding:0;list-style:none}
 .fl-social{display:flex;flex-wrap:wrap;gap:0 var(--s-4)}
+.fl-note{color:var(--grafite);max-width:28ch}
 .footer-legal a{display:inline-flex;align-items:center;min-height:44px;min-width:44px}
 
 /* Forms (lead magnet, calculators). */
@@ -295,6 +326,12 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
 /* Phone buy bar: the offer follows the reader; text and CTA shrink and wrap (P13, PR 878). */
 .buy-bar{display:none}
 
+/* Worker info pages and the designed 404 (one quiet column). */
+.wrap{width:min(720px,100% - 32px);margin:0 auto;padding-block:var(--s-7)}
+.wrap h1{font-size:var(--t-4)}
+.not-found{padding-block:var(--s-8)}
+.not-found .receipt{max-width:440px;margin-top:var(--s-5)}
+
 @media(max-width:940px){
   .hero,.catalog-hero,.problem-grid,.offer,.founder-section{grid-template-columns:minmax(0,1fr);gap:var(--s-6)}
   .offer-main,.hero:has(.hero-panel) .hero-panel{position:static}
@@ -305,6 +342,7 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
   .card-grid{grid-template-columns:minmax(0,1fr)}
   .catalog-group{grid-template-columns:minmax(0,1fr)}
   .footer-legal{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .steps,.seller{grid-template-columns:repeat(2,minmax(0,1fr))}
   .founder-page{grid-template-columns:minmax(0,1fr)}
   .founder-page img{max-width:280px}
 }
@@ -320,7 +358,9 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
   .catalog-price,.catalog-status{grid-row:auto;text-align:left;padding-top:0}
   .catalog-price span{display:inline;margin:0 0 0 var(--s-2)}
   .footer-legal{grid-template-columns:minmax(0,1fr)}
+  .trust-mini li{grid-template-columns:minmax(0,1fr);gap:0}
   .founder-facts{grid-template-columns:minmax(0,1fr)}
+  .steps,.seller{grid-template-columns:minmax(0,1fr)}
   .brand img{width:120px}
   .nav-cta{font-size:var(--t-0)}
   .receipt-line{font-size:1rem}
@@ -344,8 +384,18 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 @media print{
-  .site-header{position:static}
-  .skip-link,.buy-bar,.sales-notice{display:none}
-  body,html{background:white}
-  .receipt,.hero-panel,.offer-side{-webkit-mask:none;mask:none}
+  @page{margin:16mm}
+  html,body{background:white}
+  body{font-size:11pt;color:black}
+  .site-header{position:static;background:white;color:black}
+  .site-header .brand img{filter:invert(1)}
+  .site-nav,.skip-link,.buy-bar,.sales-notice,.hero-actions,.faq summary::after,.cc-match{display:none!important}
+  .receipt,.hero-panel,.offer-side,.offer-main{position:static!important;-webkit-mask:none;mask:none;box-shadow:none;border:1px solid black}
+  .faq details{border:0}
+  .faq details>p{display:block}
+  a{color:black}
+  main a[href^="http"]::after{content:" (" attr(href) ")";font-size:9pt}
+  section{break-inside:avoid-page}
+  .site-footer{background:white;color:black}
 }
+

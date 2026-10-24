@@ -294,3 +294,24 @@ asserting them.
 - **Inner pages:** Conteúdo Pronto gets its own monthly receipt; the long legal offer column has a
   sticky companion on wide screens; /quem-criou is rebuilt (one h1, portrait, facts list, two
   sections, one action); the summary heading follows the h1 on Conteúdo Pronto (heading order).
+
+## 11. Third review: read as a hostile buyer
+
+What would still make a salão or oficina owner close the tab, and what was done about it.
+
+| Doubt | Answer on the page now |
+| --- | --- |
+| "Is this a real company or a landing page that disappears?" | Every price sits next to a compact block: legal name, CNPJ, Várzea Alegre (CE), "empresa brasileira". The footer and /quem-criou carry the full block. /quem-criou has the founder's real photo, his own business (ARBM Bebidas) and the CNPJ. |
+| "Who handles my money?" | "Pagamento processado pelo Mercado Pago" (Hotmart for Conteúdo Pronto), as text, with no third-party logos. /termos adds that the ZEVANORY never receives or stores card data, and /solucoes repeats it. |
+| "What happens after I pay?" | "Como a compra funciona": pagamento → e-mail → link pessoal, valid 72 h and for one download (a new one at no cost if it expires) → 7 days to give up, with a full refund. |
+| "If something goes wrong, will anyone answer?" | The support e-mail plus the documented commitment from /termos §8: confirmation on the spot and a conclusive answer within 5 days. The protocol form is in the footer. |
+| "What exactly do I get?" | Each product lists its real files (manual, guia, planilha, comandos) in the hero receipt and the catalogue card. |
+| "Can I see inside?" | **Not yet.** The deliverables (`ZEVANORY_<produto>_v1.1.zip`) live outside this repository, and no generator, template or source data for them exists here or in `zevanory-gestao`. We do not fake previews. The owner must supply the files listed in the PR (§ "Needs the owner"). Until then the gap stays visible: there is no "Veja por dentro" section. |
+| "Why is it closed? Is it a scam collecting e-mails?" | One plain notice says sales are temporarily closed and prices are informative. The only action is a mailto to the official support address with a fixed subject; there is no form that collects data. |
+| "These numbers look odd" (slashed zero) | All digits now use Archivo's plain figures through a `unicode-range` face, so the CNPJ, CEP and prices read as Brazilians write them. |
+| "A 404 makes it look abandoned" | Unknown addresses get a designed 404 ("Cupom não localizado") with the way back to the catalogue, the founder and the terms. |
+
+Signature interaction: on /solucoes each receipt line is an in-page link to the card of the product that
+solves it. The card is marked with `:target` ("Seu problema: caixa sem conferir"), focus lands on it
+(`tabindex="-1"`), and the scroll is instant under `prefers-reduced-motion`. No script is involved, so
+it works with JavaScript off and needs no CSP change. Nothing else on the site moves.

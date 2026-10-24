@@ -82,7 +82,8 @@ test("(b) mesma regra de 7 dias e mesma divulgação 72 h / um download em todas
   assert.ok(read(PUB, "termos").includes(`id="${P.policy_anchor}"`), "âncora citada pelas páginas de produto");
   // A divulgação fica AO LADO da oferta: dentro do mesmo <aside> do CTA.
   for (const slug of PRODUCTS) {
-    const aside = read(PUB, slug).match(/<aside class="offer-side"><div><span class="status-pill">[\s\S]*?<\/aside>/)[0];
+    // Design PR: o bloco da oferta é <div class="offer-side"> (era <aside>) e termina no CTA.
+    const aside = read(PUB, slug).match(/<div class="offer-side"><div><span class="status-pill">[\s\S]*?data-zev-sku="[^"]+"[^>]*>[^<]*<\/a><\/div>/)[0];
     assert.ok(aside.includes(P.delivery_72h) && aside.includes(P.rule_7d), "resumo junto ao CTA: " + slug);
     assert.ok(aside.includes(`data-zev-sku="${SKUS[slug]}"`), "CTA no mesmo bloco: " + slug);
     assert.ok(aside.includes(`/termos#${P.policy_anchor}`), "link para o texto completo: " + slug);

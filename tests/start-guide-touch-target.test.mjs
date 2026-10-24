@@ -17,9 +17,18 @@ test("receipt lines (formerly start-guide links) keep a 44 px touch target", () 
   assert.ok(leader && /min-width:24px/.test(leader[1]), "dotted leader never collapses");
 });
 test("the published sales stylesheet is the built copy of the source", () => assert.equal(built, src));
-test("receipt destinations: each everyday problem links to the product that solves it", () => {
+test("receipt destinations: each everyday problem jumps to the card of the product that solves it", () => {
+  // Signature interaction (design PR, second review): a receipt line is an in-page link to the matching
+  // catalogue card, which :target highlights ("Seu problema: ...") and whose title links to the product.
   const html = readFileSync(new URL("../sales-public/solucoes.html", import.meta.url), "utf8");
   const block = html.slice(html.indexOf('<div class="receipt"'));
   const hrefs = [...block.slice(0, block.indexOf("</section>")).matchAll(/class="receipt-line" href="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(hrefs, ["/lucro-e-caixa", "/vendas-na-pratica", "/conteudo-pronto", "/ia-na-pratica", "/calculadora-preco-de-venda", "/combo-ia-vendas", "/negocio-completo"]);
+  assert.deepEqual(hrefs, ["#p-lucro-e-caixa", "#p-vendas-na-pratica", "#p-conteudo-pronto", "#p-ia-na-pratica", "#p-ferramentas", "#p-combo-ia-vendas", "#p-negocio-completo"]);
+  for (const h of hrefs) {
+    const slug = h.slice(3);
+    const card = html.match(new RegExp(`<article class="catalog-card[^"]*" id="p-${slug}" tabindex="-1"><div class="cc-main"><p class="cc-match">Seu problema: [^<]+</p><h3><a href="/${slug}">`));
+    assert.ok(card, "card target with problem label and product link: " + slug);
+  }
+  assert.match(src, /\.catalog-card:target\{[^}]*outline:3px solid/, "the chosen card is visibly marked");
+  assert.match(src, /\.catalog-card:target \.cc-match\{display:block\}/);
 });

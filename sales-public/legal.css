@@ -2,6 +2,7 @@
    See docs/design/sales-site-identity.md. Every word of the legal text is unchanged; only the presentation is. */
 @font-face{font-family:"Archivo";src:url("assets/fonts/archivo.woff2") format("woff2");font-weight:600 800;font-stretch:75% 100%;font-display:swap}
 @font-face{font-family:"Atkinson Hyperlegible Next";src:url("assets/fonts/atkinson-hyperlegible-next.woff2") format("woff2");font-weight:400 700;font-display:swap}
+@font-face{font-family:"Atkinson Hyperlegible Next";src:url("assets/fonts/archivo-numerais.woff2") format("woff2");font-weight:400 700;font-display:swap;unicode-range:U+0030-0039}
 :root{--papel:#eef2f5;--cupom:#ffffff;--tinta:#0e1a2b;--grafite:#4a5568;--azul-cedula:#1a5a96;--amarelo-caixa:#ffc72c;--linha-suave:#c5cfda}
 :root{color-scheme:light;font-family:"Atkinson Hyperlegible Next",Verdana,sans-serif;line-height:1.65;background:var(--papel);color:var(--tinta)}
 *{box-sizing:border-box}
@@ -12,7 +13,8 @@ a{color:var(--azul-cedula);text-decoration-thickness:1px;text-underline-offset:.
 h1,h2{font-family:"Archivo",Arial,sans-serif;font-stretch:87.5%;font-weight:750;line-height:1.1;letter-spacing:-.01em}
 h1{font-size:clamp(2rem,5vw,3rem);margin:32px 0 16px}
 h2{font-size:1.375rem;margin:40px 0 8px;padding-top:16px;border-top:1px solid var(--linha-suave)}
-p,li{max-width:66ch}
+p,li{max-width:66ch;hyphens:auto;-webkit-hyphens:auto;text-wrap:pretty}
+.footer-legal,.meta,.notice{font-variant-numeric:tabular-nums lining-nums}
 strong{font-weight:700}
 .meta,.notice{background:var(--cupom);border-top:2px solid var(--tinta);padding:16px 20px}
 .notice{margin:24px 0}
@@ -27,11 +29,13 @@ strong{font-weight:700}
 /* 44 px targets, visible focus (WCAG 2.2 AA + internal standard). */
 .nav a,.legal-brand,.footer-legal a,:where(p,li,dd,td) a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;max-width:100%;overflow-wrap:anywhere}
 :focus-visible{outline:3px solid var(--azul-cedula);outline-offset:3px}
-.footer-legal{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 24px;margin:48px 0 0;padding:24px 0 32px;border-top:2px solid var(--tinta);font-size:.9375rem;line-height:1.55}
+.footer-legal{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 24px;margin:48px 0 0;padding:24px 0 32px;border-top:2px solid var(--tinta);font-size:.9375rem;line-height:1.55}
 .fl-title{margin:0 0 8px;padding:0;border:0;font-size:1.0625rem}
 .fl-block p{margin:0;color:var(--grafite)}
 .fl-block ul{margin:0;padding:0;list-style:none}
 .fl-social{display:flex;flex-wrap:wrap;gap:0 16px}
+.fl-note{color:var(--grafite)}
 @media(max-width:760px){.footer-legal{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:560px){.legal-brand{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+@media print{.nav{background:white}.nav a{color:black}.legal-brand img{filter:invert(1)}a[href^="http"]::after{content:" (" attr(href) ")";font-size:9pt}}

@@ -104,8 +104,12 @@ LEGAL_FOOTER = ('<div class="container footer-legal">'
                 '<section class="fl-block" aria-labelledby="fl-contato"><h2 class="fl-title" id="fl-contato">Atendimento</h2><ul>'
                 f'<li><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a></li>'
                 f'<li><a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a></li>'
+                '<li class="fl-note">Confirmação na hora e resposta conclusiva em até 5 dias.</li>'
                 + (f'<li>WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a></li>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
                 '</ul></section>'
+                '<section class="fl-block" aria-labelledby="fl-regras"><h2 class="fl-title" id="fl-regras">Regras da compra</h2><ul>'
+                '<li><a href="/termos">Termos de compra</a></li><li><a href="/privacidade">Privacidade</a></li>'
+                '<li><a href="/reembolso">Arrependimento e reembolso</a></li></ul></section>'
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
                 # confirm the site <-> profile link.
                 '<section class="fl-block" aria-labelledby="fl-perfis"><h2 class="fl-title" id="fl-perfis">Perfis oficiais</h2><ul class="fl-social">'
@@ -137,6 +141,41 @@ DELIVERY_Q = ("Como recebo o produto?", "Após a confirmação do pagamento (Pix
 GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
 MODE = policy.build_mode()
+
+def buy_facts() -> str:
+    return ('<ul class="facts buy-facts"><li>Pagamento processado pelo Mercado Pago (Pix ou cartão)</li>'
+            f'<li>Entrega por e-mail em {policy.DELIVERY_72H}</li>'
+            '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
+
+# Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
+RESPONSE_COMMITMENT = "confirmação na hora e resposta conclusiva em até 5 dias"
+
+def trust_mini(payment: str = "pelo Mercado Pago") -> str:
+    """Compact, factual trust block next to every price (data from data/politica-unica.json)."""
+    f = policy.SUPPLIER
+    return ('<ul class="trust-mini" aria-label="Quem vende e como funciona">'
+            f'<li><strong>Empresa brasileira</strong><span>{f["razao_social"]}, <span class="nowrap">CNPJ {f["cnpj"]}</span>, Várzea Alegre (CE)</span></li>'
+            f'<li><strong>Pagamento</strong><span>processado {payment}</span></li>'
+            f'<li><strong>Suporte</strong><span><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a><span class="tm-note">{RESPONSE_COMMITMENT[0].upper() + RESPONSE_COMMITMENT[1:]}.</span></span></li>'
+            '<li><strong>Regras</strong><span><a href="/termos">Termos</a>, <a href="/privacidade">Privacidade</a> e <a href="/reembolso">Reembolso</a></span></li></ul>')
+
+def how_to_buy() -> str:
+    """Full trust block (solucoes, quem-criou): how a purchase works, step by step, and who sells.
+    Every sentence restates /termos (sections 1, 3, 4, 6 and 8); nothing new is promised."""
+    f = policy.SUPPLIER
+    return ('<section class="container how-to-buy" aria-labelledby="como-compra"><h2 id="como-compra">Como a compra funciona</h2>'
+            '<ol class="steps">'
+            '<li><strong>Pagamento</strong><span>Pix ou cartão, processado pelo Mercado Pago. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
+            '<li><strong>E-mail</strong><span>Depois da confirmação do pagamento, o link chega no e-mail que você informou.</span></li>'
+            f'<li><strong>Link pessoal</strong><span>{policy.DELIVERY_72H[0].upper() + policy.DELIVERY_72H[1:]}. Se expirar, o suporte envia outro sem custo.</span></li>'
+            '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
+            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart.</p>'
+            '<dl class="seller">'
+            f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
+            f'<div><dt>CNPJ</dt><dd>{f["cnpj"]}</dd></div>'
+            '<div><dt>Onde</dt><dd>Várzea Alegre, Ceará</dd></div>'
+            f'<div><dt>Suporte</dt><dd><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a><br>{RESPONSE_COMMITMENT[0].upper() + RESPONSE_COMMITMENT[1:]}</dd></div>'
+            '</dl></section>')
 
 def _faq_html(q, a):
     return f"<details><summary>{q}</summary><p>{a}</p></details>"
@@ -203,7 +242,9 @@ def apply_commerce(slug: str, html: str) -> str:
     html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     # Every primary CTA buys (open) or joins the waiting list (closed).
     html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', lambda m: sales_cta(c, label), html)
-    html = re.sub(r'<p class="microcopy">[^<]*</p>', '<p class="microcopy">Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ' + policy.DELIVERY_72H + ' · arrependimento em 7 dias corridos.</p>', html)
+    # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Each item has an
+    # exact Hotmart counterpart in worker/sales-public-worker.mjs (HOTMART_TEXT).
+    html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
     trust = {
         ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download."),
         ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
@@ -214,21 +255,21 @@ def apply_commerce(slug: str, html: str) -> str:
     items = "".join(f"<li>{i}</li>" for i in c["items"])
     # Design (2026-10-24): "vendas temporariamente fechadas" is said ONCE per page by the site notice
     # (sales_notice); the legal Resumo da oferta keeps its own Disponibilidade field.
-    aside = (f'<aside class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
+    aside = (f'<div class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
              f'<h3>O que você recebe</h3><ul>{items}</ul>'
              + policy.POLICY_SUMMARY
              + offer_summary(slug, "produto_digital", "; ".join(c["items"]) + ".", c["price"]) +
-             '</div>' + sales_cta(c, label) + '</aside>')
+             '</div>' + sales_cta(c, label) + '</div>')
     html = re.sub(r'<aside class="offer-side">.*?</aside>', lambda m: aside, html, count=1, flags=re.S)
     # Hero: the product's name above the claim, and its receipt (what you get, the total) beside it.
     html = re.sub(r'(<section class="container hero"><div>)<p class="eyebrow">[^<]*</p>', lambda m: m.group(1) + f'<p class="kicker">{c["name"]}</p>', html, count=1)
     receipt = (f'<div class="hero-panel receipt"><p class="receipt-head">O que você recebe<span>pagamento único</span></p>'
                f'<ul class="outcome-list">{items}</ul>'
                f'<p class="receipt-total"><span>Total</span><span>R$ {c["price"]}</span></p>'
-               '<p class="receipt-foot">Entrega por e-mail, em link pessoal.</p></div>')
+               + trust_mini() + '</div>')
     html = re.sub(r'<aside class="hero-panel">.*?</aside>', lambda m: receipt, html, count=1, flags=re.S)
-    includes = ('<p class="byline hero-trust">Feito por <a href="/quem-criou">Renan Bitu</a>, empresa brasileira com CNPJ. Suporte humano ' + HUMAN_SUPPORT + '.</p>')
-    html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
+    includes = ('<p class="byline hero-trust">Feito por <a href="/quem-criou">Renan Bitu</a>, em Várzea Alegre (CE). Suporte humano ' + HUMAN_SUPPORT + '.</p>')
+    html = re.sub(r'(<section class="container hero".*?<ul class="facts buy-facts">.*?</ul>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
     yes, no = FIT[slug]
     fit_html = ('<section class="container section fit-section" aria-labelledby="para-quem">'
@@ -290,7 +331,7 @@ def apply_catalog(html: str) -> str:
         if slug in CATALOG_INCLUDES:
             items = [re.sub(r"\s*\([^)]*\)", "", COMMERCE[slug]["items"][k]) for k in CATALOG_INCLUDES[slug]]
             inc = '<ul class="catalog-includes">' + "".join(f"<li>{i}</li>" for i in items) + "</ul>"
-        pat = rf'(<article class="catalog-card[^"]*"><div class="cc-main"><h3><a href="/{slug}">[^<]*</a></h3><p>[^<]*</p>)((?:<ul class="catalog-includes">.*?</ul>)?</div>)'
+        pat = rf'(<article class="catalog-card[^"]*"[^>]*><div class="cc-main">(?:<p class="cc-match">[^<]*</p>)?<h3><a href="/{slug}">[^<]*</a></h3><p>[^<]*</p>)((?:<ul class="catalog-includes">.*?</ul>)?</div>)'
         html, n = re.subn(pat, lambda m: m.group(1) + inc + m.group(2) + f'<p class="catalog-price">{price}<span>{unit}</span></p>', html, count=1, flags=re.S)
         if n != 1:
             raise SystemExit(f"solucoes: catalog card for {slug} missing")
@@ -315,7 +356,7 @@ def apply_subscription(html: str) -> str:
                '<ul class="outcome-list"><li>12 posts com legenda, chamada para ação e hashtags</li>'
                '<li>4 mensagens de venda e acompanhamento</li><li>Calendário de 30 dias</li></ul>'
                '<p class="receipt-total"><span>Total</span><span>R$ 197/mês</span></p>'
-               '<p class="receipt-foot">Você revisa, aprova e publica.</p></div>')
+               + trust_mini("pela Hotmart") + '</div>')
     html, n = re.subn(r'(<section class="container hero"><div>.*?</dl></section></div>)(</section>)', lambda m: m.group(1) + receipt + m.group(2), html, count=1, flags=re.S)
     if n != 1:
         raise SystemExit("conteudo-pronto: hero receipt anchor missing")
@@ -354,8 +395,8 @@ def apply_presentation(slug: str, html: str) -> str:
     html = re.sub(r'(<span class="card-link">[^<]*?)\s*→\s*(</span>)', r"\1\2", html)
     html = html.replace(">Falar com a ZEVANORY</a>", ">Escrever para o suporte</a>")
     # The hero panel is part of the hero, not complementary content (axe landmark-complementary-is-top-level).
-    # The offer aside stays: the Decreto 7.962 tests anchor the "Resumo da oferta" inside it.
-    html = re.sub(r'<aside class="hero-panel">(.*?)</aside>', r'<div class="hero-panel">\1</div>', html, flags=re.S)
+    # The offer block is part of the offer section too (the Decreto 7.962 tests anchor on the div).
+    html = re.sub(r'<aside class="(hero-panel|offer-side)">(.*?)</aside>', r'<div class="\1">\2</div>', html, flags=re.S)
     html = html.replace('<nav class="site-nav"><a ', '<nav class="site-nav" aria-label="Navegação principal"><a ', 1)
     if slug in PRICE_PAGES and "sales-notice" not in html:
         # First thing inside <main> (inside a landmark, read right after the skip link).
@@ -426,6 +467,7 @@ def apply_approved_overlay() -> None:
             html = apply_catalog(html)
         if slug == "conteudo-pronto":
             html = apply_subscription(html)
+        html = html.replace("<!--how-to-buy-->", how_to_buy())
         html = apply_presentation(slug, html)
         html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
         # Source pages may list both addresses ("contato@ ou suporte@"); after the public
@@ -588,6 +630,23 @@ def main() -> int:
         shutil.copy2(png, OUT / "brand" / "export" / png.name)
     if not (OUT / "brand" / "export" / "link-card.png").is_file():
         raise SystemExit("official link-card export missing from sales build")
+
+    # Designed 404 (served by the Worker for unknown page paths; noindex).
+    nf = (ROOT / "solucoes" / "index.html").read_text(encoding="utf-8").replace("/zevanory-public-mirror/", "/")
+    head_tags = re.search(r'(<link rel="icon"[^>]*>)', nf).group(1)
+    header = re.search(r'(<header class="site-header">.*?</header>)', nf, re.S).group(1)
+    header = header.replace(">Falar com a ZEVANORY</a>", ">Escrever para o suporte</a>").replace('<nav class="site-nav"><a ', '<nav class="site-nav" aria-label="Navegação principal"><a ', 1)
+    receipt_404 = ('<div class="receipt" aria-labelledby="nf-cupom"><p class="receipt-head" id="nf-cupom">Cupom não localizado<span>404</span></p><ul>'
+                   + "".join(f'<li><a class="receipt-line" href="{h}"><span class="item">{i}</span><span class="leader" aria-hidden="true"></span><span class="fix">{t}</span></a></li>'
+                             for i, t, h in (("Ver tudo", "Soluções", "/solucoes"), ("Quem está por trás", "Quem criou", "/quem-criou"), ("Regras da compra", "Termos", "/termos")))
+                   + '</ul></div>')
+    page_404 = ('<!doctype html>\n<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                '<meta name="robots" content="noindex"><title>Página não encontrada | ZEVANORY</title>' + head_tags +
+                '<link rel="stylesheet" href="/product.css"></head><body><a class="skip-link" href="#conteudo">Ir para o conteúdo</a>' + header +
+                '<main id="conteudo"><section class="container not-found"><h1>Esta página não existe.</h1>'
+                '<p class="hero-copy">O endereço pode ter mudado ou ter sido digitado com um erro. Escolha por onde seguir:</p>'
+                + receipt_404 + '</section>' + LEGAL_FOOTER + '</main></body></html>')
+    (OUT / "404.html").write_text(page_404, encoding="utf-8")
 
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
     # even though the worker also rewrites / to /solucoes.html.
