@@ -27,9 +27,9 @@ function received({ id = "em-1", to = ["suporte@zevanory.api.br"], from = `Clien
 }
 
 function fakeSql(clock) {
-  const rows = new Map(), quota = new Map();
+  const rows = new Map(), quota = new Map(), alerts = new Map();
   const db = {
-    rows, quota, statements: [], failTag: null,
+    rows, quota, alerts, statements: [], failTag: null,
     async query(text, params = []) {
       const tag = (/\/\*support:([a-z_]+)\*\//.exec(text) || [])[1];
       assert.ok(tag, "comando sem marca: " + text.slice(0, 60));
@@ -42,12 +42,13 @@ function fakeSql(clock) {
         case "schema": return [];
         case "record":
           if (r) return [];
-          rows.set(params[0], { email_id: params[0], alias: params[1], sender_ref: params[2], state: "forward_pending", attempts: 0, next: now, lease: null, ack_status: null });
+          rows.set(params[0], { email_id: params[0], alias: params[1], sender_ref: params[2], state: "forward_pending", attempts: 0, next: now, lease: null, ack_status: null, created: now, alerted: false });
           return [{ email_id: params[0] }];
         case "lease":
           if (!pending(r) || r.next > now || (r.lease !== null && r.lease >= now)) return [];
+          if (!(r.attempts < Number(params[1])) || !(r.created > now - Number(params[2]) * 3600000)) return [];
           r.lease = now + 120000; r.attempts++;
-          return [{ state: r.state, alias: r.alias, attempts: r.attempts, sender_ref: r.sender_ref }];
+          return [{ state: r.state, alias: r.alias, attempts: r.attempts, sender_ref: r.sender_ref, age_s: Math.floor((now - r.created) / 1000) }];
         case "retry":
           if (pending(r)) { r.lease = null; r.next = now + Number(params[1]) * 60000; if (params[2] === true) r.state = r.state === "forward_pending" ? "forward_dead" : "ack_dead"; }
           return [];
@@ -68,7 +69,23 @@ function fakeSql(clock) {
           if (r?.state === "ack_pending") Object.assign(r, { state: "done", ack_status: "sent", lease: null });
           return [];
         case "due":
-          return [...rows.values()].filter((x) => pending(x) && x.next <= now && (x.lease === null || x.lease < now)).sort((a, b) => a.next - b.next).slice(0, Number(params[0])).map((x) => ({ email_id: x.email_id }));
+          return [...rows.values()].filter((x) => pending(x) && x.next <= now && (x.lease === null || x.lease < now) && x.attempts < Number(params[1]) && x.created > now - Number(params[2]) * 3600000).sort((a, b) => a.next - b.next).slice(0, Number(params[0])).map((x) => ({ email_id: x.email_id }));
+        case "reap":
+          for (const x of rows.values()) if (pending(x) && (x.lease === null || x.lease < now) && (x.attempts >= Number(params[0]) || x.created <= now - Number(params[1]) * 3600000)) { x.state = x.state === "forward_pending" ? "forward_dead" : "ack_dead"; x.lease = null; }
+          return [];
+        case "stats": {
+          const all = [...rows.values()];
+          const pend = all.filter(pending);
+          return [{ dead_new: all.filter((x) => /_dead$/.test(x.state) && !x.alerted).length, pending: pend.length, oldest_min: pend.length ? Math.floor((now - Math.min(...pend.map((x) => x.created))) / 60000) : 0 }];
+        }
+        case "alert_reserve": {
+          const last = alerts.get(params[0]);
+          if (last !== undefined && !(last < now - Number(params[1]) * 3600000)) return [];
+          alerts.set(params[0], now);
+          return [{ kind: params[0] }];
+        }
+        case "alert_release": alerts.set(params[0], 0); return [];
+        case "dead_alerted": for (const x of rows.values()) if (/_dead$/.test(x.state)) x.alerted = true; return [];
         default: throw new Error("comando não previsto " + tag);
       }
     }
@@ -80,7 +97,7 @@ function world({ details = {}, attachments = null } = {}) {
   const clock = { now: T0 };
   const db = fakeSql(clock);
   const sent = [], attempts = [], gets = [];
-  const fail = { forward: 0, ack: 0, read: 0 };
+  const fail = { forward: 0, ack: 0, read: 0, alert: 0, forward409: 0 };
   const realNow = Date.now;
   const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
@@ -93,8 +110,9 @@ function world({ details = {}, attachments = null } = {}) {
       return Response.json({ object: "email", id, from: `Cliente <${CUSTOMER}>`, created_at: "2026-10-23T12:00:00Z", subject: "Não recebi o acesso", message_id: "<abc@example.com>", text: "Corpo SECRETO do cliente", html: "<p>Corpo SECRETO do cliente</p>", headers: {}, attachments: attachments ? attachments.map((a) => ({ id: a.id })) : [], ...(details[id] || details["*"] || {}) });
     }
     const body = JSON.parse(init.body);
-    const kind = body.to[0] === OWNER ? "forward" : "ack";
+    const kind = body.to[0] !== OWNER ? "ack" : /^\[ZEVANORY suporte\] ALERTA/.test(body.subject) ? "alert" : "forward";
     attempts.push({ kind, body, idem: init.headers["idempotency-key"] });
+    if (kind === "forward" && fail.forward409 > 0) { fail.forward409--; return Response.json({ name: "invalid_idempotent_request", message: "x" }, { status: 409 }); }
     if (fail[kind] > 0) { fail[kind]--; return new Response("{}", { status: 500 }); }
     sent.push({ kind, body, idem: init.headers["idempotency-key"], auth: init.headers.authorization });
     return Response.json({ id: "out-" + sent.length });
@@ -108,6 +126,7 @@ function world({ details = {}, attachments = null } = {}) {
 }
 const forwards = (w) => w.sent.filter((s) => s.kind === "forward");
 const acks = (w) => w.sent.filter((s) => s.kind === "ack");
+const alerts = (w) => w.sent.filter((s) => s.kind === "alert");
 const advance = (w, minutes) => { w.clock.now += minutes * 60000; };
 
 test.beforeEach(() => fwd.resetSupportSchemaCache());
@@ -256,11 +275,114 @@ test("lease impede processamento concorrente; tentativas esgotadas => forward_de
   const c = { sql: w.db, env: w.env };
   assert.deepEqual(await fwd.processSupportEmail(c, "em-1"), { state: "not_due" });
   row.lease = null;
-  for (let i = 0; i < 40 && row.state === "forward_pending"; i++) { advance(w, 400); await w.drain(); }
+  for (let i = 0; i < 40 && row.state === "forward_pending"; i++) { w.clock.now = Math.max(w.clock.now, row.next); await w.drain(); }
   assert.equal(row.state, "forward_dead");
-  assert.equal(w.attempts.length, fwd.MAX_ATTEMPTS);
+  assert.equal(w.attempts.filter((x) => x.kind === "forward").length, fwd.MAX_ATTEMPTS);
   advance(w, 400);
   assert.equal((await w.drain()).checked, 0);
+});
+
+test("sem a chave de leitura do Resend: 503 ANTES de aceitar (nenhuma linha, nenhuma chamada)", async () => {
+  const w = world();
+  const kv = { async get() { return null; } };
+  const r = await w.hook(req(received()), { ...w.env, RESEND_RECEIVING_API_KEY: "", ZEVANORY_PRIVATE_ARTIFACTS: kv });
+  assert.equal(r.status, 503);
+  assert.ok((await r.json()).missing.includes("receiving_key"));
+  assert.equal(w.db.rows.size + w.attempts.length + w.gets.length, 0);
+  const viaKv = world();
+  const kv2 = { async get(k) { return k === "sandbox-config:resend-receiving-key" ? "re_full_kv" : null; } };
+  assert.equal((await viaKv.hook(req(received()), { ...viaKv.env, RESEND_RECEIVING_API_KEY: "", ZEVANORY_PRIVATE_ARTIFACTS: kv2 })).status, 200);
+  assert.equal(viaKv.gets[0].auth, "Bearer re_full_kv");
+  const d = await world().drain({ ...w.env, RESEND_RECEIVING_API_KEY: "" });
+  assert.equal(d.skipped, "unconfigured");
+});
+
+test("orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)", async () => {
+  const w = world();
+  w.fail.forward = 1;
+  await w.hook(req(received()));
+  const row = w.db.rows.get("em-1");
+  Object.assign(row, { attempts: 11, next: w.clock.now, lease: null });
+  const before = w.attempts.length + w.gets.length;
+  assert.deepEqual(await fwd.processSupportEmail({ sql: w.db, env: w.env }, "em-1"), { state: "not_due" });
+  row.attempts = fwd.MAX_ATTEMPTS;
+  assert.deepEqual(await fwd.processSupportEmail({ sql: w.db, env: w.env }, "em-1"), { state: "not_due" });
+  await w.drain();
+  assert.equal(row.state, "forward_dead", "o cron marca como morta sem tentar");
+  assert.equal(w.attempts.filter((x) => x.kind !== "alert").length + w.gets.length, before);
+  // Mesmo se o SQL deixasse passar (lease devolvendo 11 tentativas ou idade >= 23 h), o código não chama o Resend.
+  for (const leaseRow of [{ attempts: 11, age_s: 10 }, { attempts: 1, age_s: fwd.RETRY_LIFETIME_HOURS * 3600 }]) {
+    let calls = 0;
+    const sql = { async query(text) { if (text.includes("/*support:lease*/")) return [{ state: "forward_pending", alias: "suporte", sender_ref: "x", ...leaseRow }]; return []; } };
+    const c = { sql, env: w.env, rKey: "k", sendKey: "k", forwardTo: OWNER, nowMs: T0, fetchImpl: async () => { calls++; return Response.json({ id: "x" }); } };
+    const res = await fwd.processSupportEmail(c, "em-9");
+    assert.equal(calls, 0, JSON.stringify(leaseRow));
+    assert.equal(res.state, "forward_dead");
+  }
+  assert.equal(fwd.withinBudget({ attempts: 11, age_s: 1 }), false);
+  assert.equal(fwd.withinBudget({ attempts: 3, age_s: 23 * 3600 }), false);
+  assert.equal(fwd.withinBudget({ attempts: 3, age_s: 60 }), true);
+  const old = world();
+  old.fail.forward = 1;
+  await old.hook(req(received()));
+  advance(old, fwd.RETRY_LIFETIME_HOURS * 60 + 1);
+  const n = old.attempts.length;
+  await old.drain();
+  assert.equal(old.db.rows.get("em-1").state, "forward_dead");
+  assert.equal(old.attempts.filter((x) => x.kind !== "alert").length, n, "nenhuma repetição depois de 23 h (janela de 24 h da Idempotency-Key)");
+});
+
+test("409 invalid_idempotent_request no encaminhamento = já encaminhado antes: não reenvia", async () => {
+  const w = world();
+  w.fail.forward409 = 1;
+  const r = await w.hook(req(received()));
+  assert.equal((await r.json()).state, "done");
+  advance(w, 600);
+  await w.drain();
+  assert.equal(w.attempts.filter((x) => x.kind === "forward").length, 1);
+  assert.match(w.db.rows.get("em-1").forward_id, /^idempotent:/);
+});
+
+test("alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar", async () => {
+  const w = world();
+  w.fail.forward = 1000;
+  await w.hook(req(received({ id: "d1" })));
+  const row = w.db.rows.get("d1");
+  for (let i = 0; i < 40 && row.state === "forward_pending"; i++) { w.clock.now = Math.max(w.clock.now, row.next); await w.drain(); }
+  assert.equal(row.state, "forward_dead");
+  const dead = alerts(w).filter((a) => /não entregues/.test(a.body.subject));
+  assert.equal(dead.length, 1);
+  assert.deepEqual(dead[0].body.to, [OWNER]);
+  assert.match(dead[0].body.from, /suporte@zevanory\.api\.br/);
+  assert.ok(!/cliente@example|Não recebi|SECRETO|d1/.test(JSON.stringify(dead[0].body)), "alerta sem conteúdo, endereço, assunto ou id");
+  await w.drain();
+  advance(w, 7 * 60);
+  await w.drain();
+  assert.equal(alerts(w).filter((a) => /não entregues/.test(a.body.subject)).length, 1, "não repete o mesmo morto");
+  // Fila: 5 pendentes => alerta de atraso; repetição limitada a 1 por 6 h; falha de envio libera a vaga.
+  const q = world();
+  q.fail.forward = 1000;
+  q.fail.alert = 1;
+  for (let i = 0; i < fwd.BACKLOG_ALERT_COUNT; i++) await q.hook(req(received({ id: "q" + i })));
+  advance(q, 3);
+  await q.drain();
+  assert.equal(alerts(q).length, 0, "primeiro envio falhou");
+  advance(q, 1);
+  await q.drain();
+  assert.equal(alerts(q).filter((a) => /atrasada/.test(a.body.subject)).length, 1, "vaga liberada após a falha");
+  advance(q, 60);
+  await q.drain();
+  assert.equal(alerts(q).filter((a) => /atrasada/.test(a.body.subject)).length, 1, "limite de 6 h");
+  // Uma única mensagem antiga (>= 2 h) também alerta.
+  const o = world();
+  o.fail.forward = 1000;
+  await o.hook(req(received({ id: "o1" })));
+  advance(o, fwd.BACKLOG_ALERT_AGE_MINUTES - 1);
+  await o.drain();
+  assert.equal(alerts(o).length, 0);
+  advance(o, 2);
+  await o.drain();
+  assert.equal(alerts(o).length, 1);
 });
 
 test("confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável", async () => {
@@ -327,7 +449,11 @@ test("lease, recuo e estado fazem parte dos comandos do outbox (concorrência e 
     assert.match(q, /state in \('forward_pending','ack_pending'\)/, name);
     assert.match(q, /next_attempt_at <= now\(\)/, name);
     assert.match(q, /\(lease_until is null or lease_until < now\(\)\)/, name);
+    assert.match(q, /attempts < \$2 and created_at > now\(\) - make_interval\(hours => \$3::int\)/, name);
   }
+  assert.match(pick("reap"), /attempts >= \$1 or created_at <= now\(\) - make_interval\(hours => \$2::int\)/);
+  assert.match(pick("alertReserve"), /on conflict \(kind\) do update set last_sent_at = now\(\) where zevanory_support_alerts\.last_sent_at < now\(\) - make_interval\(hours => \$2::int\)/);
+  assert.match(src, /SQL\.lease, \[emailId, MAX_ATTEMPTS, RETRY_LIFETIME_HOURS\]/);
   assert.match(pick("lease"), /set lease_until = now\(\) \+ interval '2 minutes', attempts = attempts \+ 1/);
   assert.match(pick("record"), /on conflict \(email_id\) do nothing returning email_id/);
   assert.match(pick("acked"), /where email_id = \$1 and state = 'ack_pending'/);

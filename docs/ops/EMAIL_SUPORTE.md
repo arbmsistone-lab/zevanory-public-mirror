@@ -20,20 +20,24 @@ Com o WhatsApp banido pela Meta, `suporte@zevanory.api.br` passa a ser o único 
 3. **Outbox durável** (PostgreSQL, tabela `zevanory_support_inbound`, uma linha por `email_id` do Resend, **sem conteúdo nem endereço**):
    `forward_pending` → (encaminhou) → `ack_pending` → (confirmou) → `done`; ou `forward_pending` → `done` quando não cabe confirmação.
    - Cada passo roda sob lease de 2 minutos, com recuo exponencial (2, 4, 8… até 360 min) e Idempotency-Key própria no Resend (`support-fwd/<id>`, `support-ack/<id>`).
-   - Uma falha deixa o passo pendente; o reenvio do webhook pelo Resend e o **cron horário** retomam. Depois de 10 tentativas o estado vira `forward_dead`/`ack_dead` (consulte a tabela).
+   - Uma falha deixa o passo pendente; o reenvio do webhook pelo Resend e o **cron horário** retomam.
+   - **Orçamento de tentativas**, conferido no SQL do lease e de novo no código antes de **cada** chamada ao Resend: no máximo 10 tentativas por passo e nenhuma tentativa depois de **23 h** da chegada. O Resend guarda cada Idempotency-Key por **24 horas** ("Idempotency keys are kept in the system for 24 hours", https://resend.com/docs/dashboard/emails/idempotency-keys); assim toda repetição fica dentro da janela e não pode duplicar o envio. Fora do orçamento a linha vira `forward_dead`/`ack_dead` sem nenhum efeito externo.
+   - Se o Resend responder `409 invalid_idempotent_request` ao encaminhamento, a mesma chave já foi aceita antes (as URLs temporárias dos anexos mudam a cada leitura): o encaminhamento é considerado feito e não é repetido.
+   - **Alertas ao dono**, enviados ao mesmo destino do encaminhamento, de `suporte@`, só com contagens (sem conteúdo, assunto, endereço ou id). São dois: (a) mensagens que viraram `*_dead`; (b) fila atrasada, com 5 ou mais pendentes ou a mais antiga pendente há 2 h ou mais. Cada tipo sai no máximo 1 vez a cada 6 h; a vaga é reservada atomicamente e liberada se o envio falhar.
    - O webhook responde **200** assim que o registro durável existe; a partir daí o outbox garante as tentativas.
    - Nenhuma escrita em KV.
-4. **Pseudônimo do remetente** com HMAC-SHA256 usando o secret existente `LEAD_PRIVACY_SECRET` (com separação de domínio própria). Sem esse secret o fluxo responde 503: nunca usa hash simples.
-5. **Conteúdo.** Relido no Resend pelo id com a chave de recebimento (`RESEND_RECEIVING_API_KEY` ou chave KV privada `sandbox-config:resend-receiving-key`).
-6. **Encaminhamento ao dono** (destino só em configuração):
+4. **Configuração obrigatória antes de aceitar.** Faltando destino, chave de envio, **chave de leitura do Resend**, `LEAD_PRIVACY_SECRET` ou banco, o webhook responde 503 **sem** registrar nada, e o Resend tenta de novo depois. Nenhuma mensagem é aceita sem que possa ser lida.
+5. **Pseudônimo do remetente** com HMAC-SHA256 usando o secret existente `LEAD_PRIVACY_SECRET` (com separação de domínio própria). Sem esse secret o fluxo responde 503: nunca usa hash simples.
+6. **Conteúdo.** Relido no Resend pelo id com a chave de recebimento (`RESEND_RECEIVING_API_KEY` ou chave KV privada `sandbox-config:resend-receiving-key`).
+7. **Encaminhamento ao dono** (destino só em configuração):
    - remetente `suporte@zevanory.api.br`, assunto `[ZEVANORY suporte] …`, **Reply-To = o cliente**;
    - HTML higienizado por lista de permissão: sem script, estilo, iframe, formulário, imagem, atributos `on*` ou links `javascript:`/`data:`; HTML acima de 512 KB (entrada) ou 200 KB (saída) é omitido; texto cortado em 100 KB;
    - anexos: no máximo 5, até 10 MB cada e 20 MB no total; tamanho desconhecido e executáveis (`.exe`, `.js`, `.bat`, macros, `.apk`, `.iso`…) são recusados. O que ficar de fora é avisado no corpo e continua visível no painel Resend → Receiving.
-7. **Confirmação ao cliente**, de `suporte@` com Reply-To `suporte@` (o endereço do dono nunca aparece):
+8. **Confirmação ao cliente**, de `suporte@` com Reply-To `suporte@` (o endereço do dono nunca aparece):
    - nunca para auto-resposta, bounce, lista, no-reply, o próprio domínio ou o próprio dono;
    - cota reservada **atomicamente** no mesmo comando SQL que muda o estado: 1 por remetente por dia (UTC) e 30 por dia no total;
    - `SUPPORT_AUTO_ACK=false` desliga.
-8. **Logs** sem conteúdo, assunto nem endereços, apenas o estado.
+9. **Logs** sem conteúdo, assunto nem endereços, apenas o estado.
 
 Respostas do webhook (aparecem no log do webhook no Resend):
 
@@ -43,7 +47,7 @@ Respostas do webhook (aparecem no log do webhook no Resend):
 | 200 | `state: forward_pending` / `ack_pending` | Registrado; o passo falhou e será retomado pelo cron |
 | 200 | `duplicate: true` | Reenvio do mesmo e-mail; nada é repetido |
 | 401 | `webhook_auth_failed` | Segredo do webhook não confere (ver passo 4) |
-| 503 | `support_forward_unconfigured` + `missing` | Falta `forward_to` (passo 1), `privacy_secret` (passo 2), `send_key` ou `database` |
+| 503 | `support_forward_unconfigured` + `missing` | Falta `forward_to` (passo 1), `privacy_secret` (passo 2), `receiving_key` (passo 3), `send_key` ou `database`. Nada foi registrado; o Resend repete |
 | 503 | `support_outbox_unavailable` | PostgreSQL indisponível; o Resend tenta de novo sozinho |
 
 Para consultar pendências: `select state, count(*) from zevanory_support_inbound group by state;` (sem conteúdo).
