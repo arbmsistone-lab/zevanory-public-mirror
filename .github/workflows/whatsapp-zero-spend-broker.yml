@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-giro-whatsapp-bridge' }}
+  group: ${{ format('{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: false
   queue: max
 
@@ -49,108 +49,7 @@ jobs:
           print("WHATSAPP_BROKER_STATIC_GATE=PASS")
           PY
 
-  deploy:
-    environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
-    if: github.event_name == 'push'
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Reconstruct non-secret legacy bindings
-        run: |
-          set -euo pipefail
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge/settings"             -o /tmp/broker-settings.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open("/tmp/broker-settings.json"))
-          assert d.get("success") is True, d.get("errors")
-          bindings=d.get("result",{}).get("bindings",[])
-          db=next((b for b in bindings if b.get("name")=="DB" and b.get("type")=="d1"),None)
-          assert db, "D1 binding DB missing"
-          dbid=db.get("id") or db.get("database_id")
-          assert dbid, "D1 database id missing"
-          names={str(b.get("name") or "") for b in bindings}
-          required={"META_APP_SECRET","WHATSAPP_ACCESS_TOKEN","WHATSAPP_PHONE_NUMBER_ID","WHATSAPP_VERIFY_TOKEN","GRAPH_API_VERSION"}
-          assert required.issubset(names), "legacy credential bindings missing"
-          cfg={
-            "$schema":"node_modules/wrangler/config-schema.json",
-            "name":"giro-whatsapp-bridge",
-            "main":"worker/whatsapp-credential-broker.mjs",
-            "compatibility_date":"2026-09-04",
-            "compatibility_flags":["nodejs_compat"],
-            "workers_dev":True,
-            "d1_databases":[{"binding":"DB","database_id":dbid}],
-            "ai":{"binding":"AI"},
-            "version_metadata":{"binding":"CF_VERSION_METADATA"}
-          }
-          open("wrangler.broker.json","w").write(json.dumps(cfg,indent=2)+"\n")
-          print("BROKER_BINDING_RECONSTRUCTION=PASS")
-          PY
-      - name: Deploy broker while preserving legacy encrypted secrets and vars
-        run: |
-          set -euo pipefail
-          npx --yes wrangler@4.135.0 deploy             --config wrangler.broker.json             --keep-vars             --tag="$GITHUB_SHA"             --message="ZEVANORY zero-spend WhatsApp credential broker $GITHUB_SHA"
-      - name: Prove deployed runtime identity independently
-        run: |
-          set -euo pipefail
-          matched=0
-          for attempt in $(seq 1 24); do
-            curl -fsS https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime -o /tmp/runtime-proof.json || true
-            if GITHUB_SHA="$GITHUB_SHA" python3 - <<'PY'
-          import json, os, sys
-          try:
-              x=json.load(open("/tmp/runtime-proof.json"))
-          except Exception:
-              raise SystemExit(1)
-          ok=(
-              x.get("ok") is True
-              and x.get("runtime_sha")==os.environ["GITHUB_SHA"]
-              and bool(x.get("runtime_version"))
-              and x.get("zero_spend") is True
-              and x.get("legacy_route_bypass")==0
-          )
-          raise SystemExit(0 if ok else 1)
-          PY
-            then
-              matched=1
-              echo "BROKER_PROPAGATION_ATTEMPT=$attempt PASS"
-              break
-            fi
-            echo "BROKER_PROPAGATION_ATTEMPT=$attempt WAIT"
-            sleep 5
-          done
-          test "$matched" = "1"
-          python3 - <<'PY'
-          import json, os
-          x=json.load(open("/tmp/runtime-proof.json"))
-          assert x.get("runtime_sha")==os.environ["GITHUB_SHA"]
-          print("BROKER_RUNTIME_SHA=PASS")
-          print("BROKER_RUNTIME_VERSION=PASS")
-          print("SHA_CONSISTENCY=PASS")
-          print("ZERO_SPEND=PASS")
-          print("WHATSAPP_SAFE_RUNTIME_IDENTITY="+json.dumps(x.get("whatsapp",{}),separators=(",",":")))
-          PY
-      - name: Prove legacy public route is retired
-        run: |
-          set -euo pipefail
-          code="$(curl -sS -o /tmp/legacy.json -w '%{http_code}' https://giro-whatsapp-bridge.girolocal-rb.workers.dev/health)"
-          test "$code" = "410"
-          python3 - <<'PY'
-          import json
-          x=json.load(open("/tmp/legacy.json"))
-          assert x.get("retired") is True
-          assert x.get("old_number_active_route") is False
-          assert x.get("canonical")=="https://zevanory.api.br"
-          print("OLD_NUMBER_ACTIVE_LEGACY_BRIDGE=0")
-          print("ZERO_SPEND=true")
-          print("PAID_ROUTE_USED=false")
-          PY
+  # T1 E4: RETIRED publisher. The deploy job (wrangler deploy of giro-whatsapp-bridge with the shared account
+  # token) was removed: the workflow was disabled_manually, the target Worker is absent from the account
+  # (workers list 13/10/2026) and the path had no promotion guard. Only the static validation remains.
+  # Listed under "retired" in ops/publishers.json; scripts/deploy/worker_write_paths.py fails if a write returns.

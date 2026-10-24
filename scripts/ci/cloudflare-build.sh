@@ -48,6 +48,22 @@ assert c.get("account_id") == "1b26415802588185a86c1d4d3ebf5bdb", "unexpected ac
 print("RESERVE_CANDIDATE_GUARDS=PASS")
 PY
 
-# 4. Final dry-run with the exact deploy flags.
+# 4. T1 pre-promotion guard (registered reserve path, ops/publishers.json "workers_builds"). Workers Builds runs
+#    the dashboard deploy command only after this build command succeeds, so the guard sits BEFORE the write.
+#    Only "promote" (candidate is the live SHA or a descendant of it) lets the build pass: skip-superseded and
+#    refuse both fail the build, so the deploy command never runs. CircleCI runs this script as a test job
+#    without deploying (final step is a dry-run); there the guard is skipped explicitly and visibly.
+if [ "${CIRCLECI:-}" = "true" ]; then
+  echo "T1_RESERVE_GUARD=SKIPPED_CIRCLECI (test job, never deploys)"
+else
+  guard_out="$(mktemp)"
+  GITHUB_OUTPUT="$guard_out" python3 scripts/deploy/promotion_guard.py --service zevanory --candidate "$SHA" \
+    --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
+    --cloudflare-script zevanory
+  grep -qx "decision=promote" "$guard_out" || { echo "T1_RESERVE_GUARD=NOT_PROMOTE $(tr '\n' ' ' < "$guard_out")"; exit 1; }
+  echo "T1_RESERVE_GUARD=PROMOTE"
+fi
+
+# 5. Final dry-run with the exact deploy flags.
 npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
 echo "ZEVANORY_RESERVE_BUILD=PASS $SHA"

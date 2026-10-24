@@ -1,6 +1,6 @@
 {
   "schema": "zevanory-publishers/v1",
-  "rule": "Each production Worker has ONE canonical code publisher. Every workflow that can change a Worker (code, rollback, secrets or settings) runs inside that Worker's single concurrency group, so changes are serialized. A workflow with a publish command that is not listed here fails tests/publisher-inventory.test.mjs.",
+  "rule": "Each production Worker has ONE canonical code publisher. Every workflow that can change a Worker (code, rollback, secrets or settings) runs inside that Worker's single concurrency group, so changes are serialized. A workflow with a publish command that is not listed here fails tests/publisher-inventory.test.mjs. scripts/deploy/worker_write_paths.py is the strict inventory: every write path (workflows, scripts they run, other CI, Workers Builds, standalone scripts) must be registered here and every production code path must pass promotion_guard.py before the write.",
   "services": {
     "zevanory": {
       "group": "deploy-zevanory",
@@ -20,19 +20,28 @@
         "mercadopago-exact-sha-recovery.yml",
         "mercadopago-production-token-rotate.yml",
         "financial-e2e-stripe.yml"
-      ]
+      ],
+      "readback": {
+        "url": "https://zevanory.api.br/api/release",
+        "path": "deployment.commit_sha"
+      }
     },
     "zevanory-sales-public": {
       "group": "deploy-zevanory-sales-public",
       "canonical": "zevanory-sales-public-release.yml",
       "guard": "scripts/deploy/promotion_guard.py (cloudflare tag)",
-      "config_publishers": []
+      "config_publishers": [],
+      "readback": {
+        "url": "https://vendas.zevanory.api.br/health",
+        "path": "release"
+      }
     },
     "zevanory-public-router": {
       "group": "public-router-deploy",
       "canonical": "public-router-deploy.yml",
       "config_publishers": [],
-      "t1_unchanged": "Single publisher, already in its own group. Left byte-identical so merging T1 does not redeploy the router. Known residual risk (pre-existing): its pull-request runs share the deploy group, so with the default queue a PR run can replace a pending deploy; fix (PR-separated group + queue: max + guard with --tag) in a follow-up the owner schedules."
+      "guard": "scripts/deploy/promotion_guard.py (cloudflare tag only; the router has no SHA readback endpoint) + one-time owner bootstrap for the untagged pre-T1 version",
+      "t1_note": "T1 E4: PR runs separated from the deploy group, queue: max, guard before the tagged deploy. Residual: a single SHA source (Cloudflare tag), so post-promotion certification stays NAO_COMPROVADO until the router exposes a SHA readback."
     },
     "zevanory-product-control-portable": {
       "group": "deploy-zevanory-product-control-portable",
@@ -52,13 +61,11 @@
       },
       "exceptions": {
         "rollback": "Single documented backwards path inside the canonical workflow itself (#796/#797): workflow_dispatch with allow_backwards, actor == repository owner, rollback_reason >= 20 chars, audit artifact retained 90 days, same queue, same publish recipe, post-promotion verification. Limitation: the actor check cannot distinguish the owner from an agent using the owner's identity (see ops/t1-activation.md E)."
+      },
+      "readback": {
+        "url": "https://controle.zevanory.api.br/version.json",
+        "path": "sha"
       }
-    },
-    "giro-whatsapp-bridge": {
-      "group": "deploy-giro-whatsapp-bridge",
-      "canonical": "whatsapp-zero-spend-broker.yml",
-      "config_publishers": [],
-      "note": "Worker giro-whatsapp-bridge is NOT present in the Cloudflare account (workers list 13/10/2026). whatsapp-broker-protocol-v2.yml patches it via the API and fails reading it (exit 22, run on PR #799); left unchanged and listed under unserialized_known."
     }
   },
   "isolated": {
@@ -66,7 +73,9 @@
   },
   "retired": [
     "zpc-cloudflare-exact-release.yml",
-    "zpc-owner-promotion-no-portable-health.yml"
+    "zpc-owner-promotion-no-portable-health.yml",
+    "whatsapp-zero-spend-broker.yml",
+    "whatsapp-broker-protocol-v2.yml"
   ],
   "validation_only": [
     "sales-legal-publish.yml"
@@ -75,12 +84,32 @@
     "arbmsistone-lab/zevanory-product-control-edge": "must not publish production; the panel is published only by zpc-control-worker-deploy.yml in this repository"
   },
   "unserialized_known": {
-    "whatsapp-broker-protocol-v2.yml": "target Worker absent from the account; patcher fails before any write",
     "mercadopago-exact-sha-recovery.yml": "financial workflow: changes need the owner's written authorization",
     "mercadopago-production-token-rotate.yml": "financial workflow: changes need the owner's written authorization",
     "financial-e2e-stripe.yml": "financial workflow: changes need the owner's written authorization"
   },
   "rollback_policy": "A deliberate rollback is a git revert merged by the owner: a FORWARD promotion whose authorisation trail is the reviewed pull request. promotion_guard.py has no backwards path. Automatic recovery inside a failed release (central wrangler rollback, sales snapshot restore) only returns to the version that was live before that same run; the sales release never deletes the production script.",
   "recovery_when_production_unreadable": "Not automatic: the guard refuses. The owner dispatches the canonical workflow after confirming the live version manually (Cloudflare dashboard) or after restoring the readback endpoint; the run is recorded.",
-  "credentials": "All 19 publishing workflows use the same account-wide tokens (CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN), so credential-level exclusivity does not exist today. Cloudflare supports account-owned API tokens scoped to Specified Workers with the Editor role (changelog 2026-09-15). Target: one token per Worker held only by that Worker's publishers, then revoke the shared tokens. Owner action."
+  "credentials": "All 19 publishing workflows use the same account-wide tokens (CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN), so credential-level exclusivity does not exist today. Cloudflare supports account-owned API tokens scoped to Specified Workers with the Editor role (changelog 2026-09-15). Target: one token per Worker held only by that Worker's publishers, then revoke the shared tokens. Owner action.",
+  "retired_notes": {
+    "whatsapp-zero-spend-broker.yml": "T1 E4: deploy job removed (disabled_manually; Worker giro-whatsapp-bridge absent from the account; no guard). Static validation only.",
+    "whatsapp-broker-protocol-v2.yml": "T1 E4: all API write steps and credentials removed (disabled_manually; target absent; no guard). workflow_dispatch notice only."
+  },
+  "pre_guard_isolated_steps": {
+    "zevanory-sales-public-release.yml": {
+      "Deploy isolated candidate": "workers.dev candidate named by scripts/ci/materialize_sales_configs.py (wrangler.sales.preview.toml, no routes); never the production script",
+      "Delete isolated candidate": "deletes only $CANDIDATE from /tmp/candidate-name (the preview script above); the production script is never deleted (tests/publisher-inventory.test.mjs)"
+    }
+  },
+  "workers_builds": {
+    "zevanory": {
+      "build_script": "scripts/ci/cloudflare-build.sh",
+      "trigger": "Workers Builds watch path ops/RESERVE_DEPLOY only (docs/ops/DUAL-PIPELINE.md); a reviewed PR that edits that file",
+      "deploy_command": "npx wrangler deploy --strict --keep-vars --config wrangler.central-fix.jsonc (Cloudflare dashboard)",
+      "guard": "scripts/deploy/promotion_guard.py inside the build script; anything but decision=promote fails the build, so the deploy command never runs",
+      "residual": "Reserve kept on purpose (Sol T1 condition 6: failover under verifiable authority). It runs outside the GitHub deploy-zevanory queue and without the producao-critica reviewer; the dashboard deploy command does not pass --tag (owner action: add --tag=$WORKERS_CI_COMMIT_SHA)."
+    }
+  },
+  "manual_operations": {},
+  "manual_operations_rule": "Manual or human paths that no API can enumerate. An entry needs 'owner_written_authorization' (reference to the owner's written decision) to count for T1_EXCLUSIVITY; scripts listed here are accepted by worker_write_paths.py. Expected key for the strict verdict: cloudflare-dashboard-and-global-key (dashboard members and the owner's Global API Key)."
 }
