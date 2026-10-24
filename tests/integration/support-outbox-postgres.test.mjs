@@ -1,7 +1,7 @@
 // Outbox do suporte@ (worker/support-email-forward.mjs) contra PostgreSQL 16 REAL descartável: esquema aplicado
 // exatamente como o Worker aplica (ensureSupportSchema), consumidores concorrentes com conexões separadas,
-// reservas de cota simultâneas, lease/reap, limites de 10 tentativas e 23 h, transições e ZERO chamada externa
-// depois do orçamento esgotado. Resend é falso (contador por id); sem segredo, sem rede.
+// reservas de cota simultâneas, lease/reap, limites de 10 tentativas e 23 h, transições e zero leitura, encaminhamento ou confirmação associada à mensagem após estouro
+// (o único envio permitido é o alerta operacional ao dono, só com contagens). Resend é falso (contador por id); sem segredo, sem rede.
 // Rodar: T4_PG_HOST=localhost T4_PG_PORT=5432 node --test tests/integration/support-outbox-postgres.test.mjs
 import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -66,7 +66,7 @@ function resend({ senderOf = (id) => `cliente-${id}@example.com`, failForward = 
     const idem = String(init.headers["idempotency-key"] || "");
     const kind = idem.startsWith("support-fwd/") ? "forward" : idem.startsWith("support-ack/") ? "ack" : "alert";
     const id = idem.split("/")[1] || "";
-    calls.push({ kind, id, subject: body.subject });
+    calls.push({ kind, id, subject: body.subject, body });
     if ((kind === "forward" && failForward(id)) || (kind === "ack" && failAck(id))) return new Response("{}", { status: 500 });
     return Response.json({ id: "out-" + calls.length });
   };
@@ -83,6 +83,32 @@ async function seed(ids, { sender = (id) => "ref-" + id, state = "forward_pendin
 }
 const stateOf = async (id) => one(`select state, attempts, ack_status, (next_attempt_at > now()) as backoff, lease_until is not null as leased from zevanory_support_inbound where email_id = ${lit(id)}`);
 const makeDue = (id) => sql.query(`update zevanory_support_inbound set next_attempt_at = now(), lease_until = null where email_id = ${lit(id)}`);
+
+// Alerta ao dono: destinatário = só o destino configurado; corpo = só categoria operacional + contagens.
+// Nada do remetente (endereço), assunto, texto da mensagem, message-id ou email_id de nenhuma linha.
+const SENDER_RE = /[a-z0-9._%+-]+@(?!zevanory\.api\.br\b)[a-z0-9.-]+\.[a-z]{2,}/gi;
+function assertAlertPrivate(a, ids, { category, count, oldest }) {
+  const b = a.body;
+  assert.deepEqual(b.to, [OWNER], "destinatário é só o destino configurado");
+  assert.equal(b.from, "ZEVANORY suporte <suporte@zevanory.api.br>");
+  assert.equal(b.reply_to, undefined);
+  assert.equal(b.cc, undefined); assert.equal(b.bcc, undefined); assert.equal(b.headers, undefined); assert.equal(b.attachments, undefined); assert.equal(b.html, undefined);
+  assert.deepEqual(Object.keys(b).sort(), ["from", "subject", "text", "to"]);
+  const visible = b.subject + "\n" + b.text;
+  const others = (visible.match(SENDER_RE) || []);
+  assert.deepEqual(others, [], "nenhum endereço de remetente no alerta");
+  for (const id of ids) assert.ok(!visible.includes(id), "email_id ausente: " + id);
+  for (const bad of ["Assunto", "corpo", "@example.com", "<", "message"]) assert.ok(!visible.includes(bad), "conteúdo ausente: " + bad);
+  if (category === "dead") {
+    assert.equal(b.subject, "[ZEVANORY suporte] ALERTA: mensagens de clientes não entregues");
+    assert.match(b.text, new RegExp(`^${count} mensagem\\(ns\\) para suporte@/contato@ esgotaram as tentativas`));
+  } else {
+    assert.equal(b.subject, "[ZEVANORY suporte] ALERTA: fila de suporte atrasada");
+    assert.match(b.text, new RegExp(`^${count} mensagem\\(ns\\) ainda pendente\\(s\\); a mais antiga chegou há ${oldest} min\\.`));
+  }
+  const digits = visible.match(/\d+/g) || [];
+  assert.ok(digits.every((n) => [String(count), String(oldest ?? count)].includes(n)), "só contagens numéricas: " + digits.join(","));
+}
 
 before(() => {
   if (SKIP) return;
@@ -176,7 +202,7 @@ test("O6 transições: forward_pending (falha+recuo) -> ack_pending (falha+recuo
   assert.equal((await stateOf("t1")).ack_status, "sent");
 });
 
-test("O7 limite de 10 tentativas: a 10ª é a última; com 10 ou 11 registradas nenhuma chamada externa e vira dead", { skip: SKIP }, async () => {
+test("O7 limite de 10 tentativas: a 10ª é a última; com 10 ou 11 registradas nenhuma leitura/encaminhamento/confirmação da mensagem e vira dead", { skip: SKIP }, async () => {
   await seed(["a9"], { attempts: 9 });
   await seed(["a10"], { attempts: 10 });
   await seed(["a11"], { attempts: 11 });
@@ -190,10 +216,10 @@ test("O7 limite de 10 tentativas: a 10ª é a última; com 10 ou 11 registradas 
   await drain(r);
   for (const id of ["a10", "a11"]) assert.equal((await stateOf(id)).state, "forward_dead", id);
   assert.equal((await stateOf("k9")).state, "ack_dead");
-  for (const id of ["a10", "a11", "k9"]) assert.equal(r.forId(id), 0, "zero chamada externa para " + id);
+  for (const id of ["a10", "a11", "k9"]) assert.equal(r.forId(id), 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id);
 });
 
-test("O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 23h01 vira dead sem chamada", { skip: SKIP }, async () => {
+test("O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 23h01 vira dead sem leitura/encaminhamento/confirmação", { skip: SKIP }, async () => {
   await seed(["young"], { age: "22 hours 59 minutes" });
   await seed(["old"], { age: "23 hours 1 minute" });
   const r = resend();
@@ -204,7 +230,7 @@ test("O8 limite de 23 h (janela de 24 h da Idempotency-Key): 22h59 ainda tenta; 
   assert.equal(r.forId("old"), 0);
 });
 
-test("O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o reap mata sem chamada", { skip: SKIP }, async () => {
+test("O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o reap mata sem leitura/encaminhamento/confirmação", { skip: SKIP }, async () => {
   await seed(["l1"], { attempts: 10 });
   await sql.query("update zevanory_support_inbound set lease_until = now() + interval '1 minute' where email_id = 'l1'");
   const r = resend();
@@ -217,7 +243,7 @@ test("O9 lease protege a linha do reap e de outro consumidor; vencido o lease, o
   assert.equal(r.forId("l1"), 0);
 });
 
-test("O10 ZERO chamada externa por linha depois do orçamento esgotado, mesmo com consumidores concorrentes repetidos", { skip: SKIP }, async () => {
+test("O10 zero leitura, encaminhamento ou confirmação associada à mensagem após estouro, mesmo com consumidores concorrentes repetidos; alerta só com contagens", { skip: SKIP }, async () => {
   const ids = ["z1", "z2", "z3"];
   await seed(["z1"], { attempts: 10 });
   await seed(["z2"], { age: "23 hours 30 minutes" });
@@ -228,20 +254,33 @@ test("O10 ZERO chamada externa por linha depois do orçamento esgotado, mesmo co
     await Promise.all([drain(r, 5), drain(r, 5), ...ids.map((id) => fwd.processSupportEmail(ctx(r), id))]);
   }
   for (const id of ids) {
-    assert.equal(r.forId(id), 0, "zero chamada para " + id);
+    assert.equal(r.forId(id), 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro: " + id);
     assert.match((await stateOf(id)).state, /_dead$/);
   }
-  assert.equal(r.calls.filter((c) => c.kind !== "alert").length, 0, "nenhuma leitura, encaminhamento ou confirmação");
-  assert.ok(r.of("alert") <= 1, "no máximo o alerta (sem conteúdo) de linhas mortas");
+  assert.equal(r.calls.filter((c) => c.kind !== "alert").length, 0, "zero leitura, encaminhamento ou confirmação associada à mensagem após estouro");
+  const al = r.calls.filter((c) => c.kind === "alert");
+  assert.ok(al.length <= 1, "no máximo o alerta operacional de linhas mortas");
+  for (const a of al) assertAlertPrivate(a, ids, { category: "dead", count: 3 });
 });
 
-test("O11 alerta de linhas mortas reservado atomicamente: drenos concorrentes enviam um único alerta", { skip: SKIP }, async () => {
+test("O11 alertas (mortas e fila atrasada) reservados atomicamente e privados: um por tipo, só categoria e contagens", { skip: SKIP }, async () => {
   await seed(["d1", "d2"], { attempts: 10 });
   const r = resend();
   await Promise.all([drain(r), drain(r), drain(r)]);
   const dead = r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject));
   assert.equal(dead.length, 1);
   assert.equal((await one("select count(*)::int as n from zevanory_support_inbound where alerted_at is not null")).n, "2");
+  assertAlertPrivate(dead[0], ["d1", "d2"], { category: "dead", count: 2 });
   await Promise.all([drain(r), drain(r)]);
   assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1);
+  // Fila atrasada: 5 pendentes com encaminhamento falhando, drenos concorrentes => um único alerta de atraso, privado.
+  await sql.query("truncate zevanory_support_inbound, zevanory_support_alerts");
+  const q = ["b1", "b2", "b3", "b4", "b5"];
+  await seed(q, { age: "3 minutes" });
+  const rb = resend({ failForward: () => true });
+  await Promise.all([drain(rb), drain(rb), drain(rb)]);
+  const backlog = rb.calls.filter((c) => c.kind === "alert" && /atrasada/.test(c.subject));
+  assert.equal(backlog.length, 1);
+  assertAlertPrivate(backlog[0], q, { category: "backlog", count: 5, oldest: 3 });
+  assert.equal(rb.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 0);
 });
