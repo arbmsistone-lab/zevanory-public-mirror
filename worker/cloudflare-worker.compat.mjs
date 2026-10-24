@@ -15,6 +15,7 @@ import { whatsappChannelRetired, whatsappInstantReplyEnabled, whatsappGoneRespon
 import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
+import { handleSiteChat, handleSiteChatAdmin, runSiteChatRetention } from "./site-chat.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
@@ -199,6 +200,20 @@ const wrapped = {
       const lead = await handleLeadMagnet(request, normalized, { sqlFactory: whatsappProofDatabase });
       if (lead) return lead;
     }
+    // Chat do site (desligado por padrão; worker/site-chat.mjs). Só pelo service binding do Worker de vendas
+    // (host chat.internal); a fila do proprietário exige autenticação de administrador.
+    if (url.hostname === "chat.internal") {
+      const chat = await handleSiteChat(request, normalized, {
+        sqlFactory: whatsappProofDatabase,
+        // Autoridade canônica de vendas (mesmo /api/sales/status público), consultada a cada resposta.
+        salesOpen: async () => {
+          const st = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status", { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
+          return (await st?.json?.())?.open === true;
+        }
+      });
+      return chat || new Response("not_found", { status: 404 });
+    }
+    if (url.pathname.startsWith("/api/admin/site-chat/")) return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
@@ -762,6 +777,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
+  // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.
+  if (new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours() === 6) tasks.push(runSiteChatRetention(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("site_chat_retention", JSON.stringify(out))).catch(() => console.error("site_chat_retention_failed")));
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
