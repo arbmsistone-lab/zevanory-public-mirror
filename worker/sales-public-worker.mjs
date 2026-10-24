@@ -254,8 +254,67 @@ async function handleHotmart(request,env,slug,ctx){
   return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers});
 }
 
+// Auditor Sol (AVAL 100): every response under /comprar/ (any SKU, method, status 2xx/3xx/4xx/5xx,
+// open or closed sales) is kept out of search indexes by the response itself: X-Robots-Tag
+// "noindex, nofollow", Cache-Control "no-store" and, in HTML, <meta name="robots" content="noindex,nofollow">.
+// robots.txt does NOT disallow /comprar/ on purpose: a blocked URL is never fetched, so the crawler would
+// never see the noindex (https://developers.google.com/search/docs/crawling-indexing/block-indexing).
+export const COMPRAR_PATH=/^\/comprar(?:\/|$)/i;
+// Percent-encoded aliases (/%63omprar/, /comp%72ar/, /co%6Dprar/ or /co%6dprar/): the pathname is decoded ONCE
+// with the URL Standard percent-decode (bytes, then UTF-8 with replacement; never throws) before matching, so an
+// alias of /comprar/<SKU> gets the same buy flow and the same noindex/nofollow/no-store as the literal path.
+// Double-encoding policy: /%2563omprar/ is NOT equivalent to /comprar/ under URL rules (one decode gives
+// /%63omprar/), so it is never routed to the buy flow; but if further decodes (at most 3 more) reach /comprar,
+// it still answers a 404 with noindex/nofollow/no-store, because over-applying noindex to a non-page is harmless.
+const URL_DECODER=new TextDecoder("utf-8");
+export function percentDecodeOnce(input){
+  const bytes=new TextEncoder().encode(String(input)),out=[];
+  const hex=b=>(b>=48&&b<=57)||(b>=65&&b<=70)||(b>=97&&b<=102);
+  for(let i=0;i<bytes.length;i++){
+    if(bytes[i]===37&&i+2<bytes.length&&hex(bytes[i+1])&&hex(bytes[i+2])){out.push(parseInt(String.fromCharCode(bytes[i+1],bytes[i+2]),16));i+=2;}
+    else out.push(bytes[i]);
+  }
+  return URL_DECODER.decode(new Uint8Array(out));
+}
+// -> {path, routable} when the request belongs to /comprar (literal, single-encoded or multi-encoded alias), else null.
+export function comprarMatch(pathname){
+  const once=percentDecodeOnce(pathname);
+  if(COMPRAR_PATH.test(once)) return {path:once,routable:true};
+  let p=once;
+  for(let i=0;i<3;i++){const n=percentDecodeOnce(p);if(n===p)break;p=n;if(COMPRAR_PATH.test(p)) return {path:p,routable:false};}
+  return null;
+}
+export const COMPRAR_ROBOTS="noindex, nofollow";
+export const COMPRAR_META='<meta name="robots" content="noindex,nofollow">';
+export async function noindexComprar(response){
+  const headers=new Headers(response.headers);
+  headers.set("x-robots-tag",COMPRAR_ROBOTS);
+  headers.set("cache-control","no-store");
+  applySecurityHeaders(headers);
+  let body=response.body;
+  if(body&&/^text\/html\b/i.test(headers.get("content-type")||"")){
+    let html=await response.text();
+    html=/<meta name="robots"[^>]*>/i.test(html)?html.replace(/<meta name="robots"[^>]*>/gi,COMPRAR_META):html.replace(/<head>/i,"<head>"+COMPRAR_META);
+    headers.delete("content-length");
+    body=html;
+  }
+  return new Response(body,{status:response.status,statusText:response.statusText,headers});
+}
+async function comprarRoute(request,env,ctx,match){
+  try{
+    const buy=match.routable&&match.path.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
+    if(buy) return await handleBuy(request,env,buy[1].toUpperCase(),ctx);
+    return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
+  }catch(e){
+    console.error("buy_route_error",String(e&&e.message||e).slice(0,80));
+    return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes.</p>");
+  }
+}
+
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  const comprar=comprarMatch(url.pathname);
+  if(comprar) return noindexComprar(await comprarRoute(request,env,ctx,comprar));
   // IndexNow ownership proof for the sales host (same public key as the apex).
   if(url.pathname==="/4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922.txt"&&(request.method==="GET"||request.method==="HEAD"))
     return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});
@@ -272,8 +331,6 @@ export default{async fetch(request,env,ctx){
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
   if(url.pathname==="/reembolso/solicitar"||url.pathname==="/reembolso/solicitar/") return new Response(null,{status:308,headers:applySecurityHeaders(new Headers({location:"https://zevanory.api.br/pedir-reembolso","cache-control":"no-store"}))});
   if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env,ctx);
-  const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
-  if(buy) return handleBuy(request,env,buy[1].toUpperCase(),ctx);
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){
     return new Response(request.method==="HEAD"?null:JSON.stringify({
       ok:true,
