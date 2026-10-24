@@ -297,6 +297,7 @@ function fakeResend(delivered = []) {
     const customer = JSON.parse(init.body).to?.[0] === "c@example.com"; // o modo de falha vale para o envio ao cliente
     if (customer && r.mode === "timeout") throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
     if (customer && r.mode === "noid") return new Response("{}", { status: 200 });
+    if (customer && r.mode === "concurrent") return new Response(JSON.stringify({ statusCode: 409, name: "concurrent_idempotent_requests" }), { status: 409 });
     if (customer && typeof r.mode === "number") return new Response(JSON.stringify({ name: "provider_error" }), { status: r.mode });
     if (key && r.byKey.has(key)) {
       const prev = r.byKey.get(key);
@@ -426,7 +427,7 @@ function countingPuts(t) {
   t.kv.put = async (k, v, o) => { puts.push(k); return put(k, v, o); };
   return puts;
 }
-const TRANSIENT = [["tempo esgotado", "timeout"], ["429", 429], ["500", 500], ["502", 502], ["503", 503], ["2xx sem id", "noid"], ["sendEmail=false (sem RESEND_API_KEY)", "nokey"]];
+const TRANSIENT = [["tempo esgotado", "timeout"], ["429", 429], ["500", 500], ["502", 502], ["503", 503], ["2xx sem id", "noid"], ["409 concurrent_idempotent_requests (clique duplo)", "concurrent"], ["sendEmail=false (sem RESEND_API_KEY)", "nokey"]];
 
 test("(g1) tempo esgotado, 429, 5xx ou envio falso: candidato pending, 202 com protocolo, nada promovido; retomada com a mesma chave", async () => {
   for (const [label, mode] of TRANSIENT) {
@@ -540,7 +541,8 @@ test("(g3) queda entre o envio e a gravação: sem segundo e-mail na retomada; q
   await assert.rejects(deliver(t), /isolate killed/);
   assert.equal(recOf(t).lastPackage, t.legacyKey, "[regen-converge] nada promovido na queda");
   assert.equal(candOf(t).delivery, "delivered", "[regen-converge] delivered gravado");
-  await CS.reconcileRegenCandidates(t.env, t.fetchImpl);
+  const conv = await regenPost(t);
+  assert.ok((await conv.text()).includes(CS.REGEN_MSG.delivered), "[regen-converge] POST converge a promoção");
   assert.equal(recOf(t).lastPackage, candOf(t).candidate_key, "[regen-converge] promovido na retomada");
   assert.equal(regenEvents(t.kv), 1, "[regen-converge] um delivery_sent");
   assert.ok(candOf(t).promotedAt, "[regen-converge] candidato fechado");

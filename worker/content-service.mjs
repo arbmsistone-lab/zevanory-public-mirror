@@ -415,6 +415,8 @@ async function resendIdempotent(env, { to, subject, text, idempotencyKey }, fetc
     try { data = await r.json(); } catch {}
     if (r.ok && data?.id) return { ok: true, id: String(data.id) };
     if (r.ok) return { ok: false, transient: true, reason: "resend_no_id" };
+    // 409 concurrent_idempotent_requests = outro pedido com a mesma chave em andamento (clique duplo): temporário.
+    if (r.status === 409 && data?.name === "concurrent_idempotent_requests") return { ok: false, transient: true, reason: "resend_409_concurrent" };
     return { ok: false, transient: resendFailureIsTransient(r.status), reason: "resend_" + r.status };
   } catch { return { ok: false, transient: true, reason: "resend_network" }; }
 }
@@ -556,6 +558,9 @@ export async function regenerateBlockedPackage(env, key, fetchImpl = fetch, { no
     } catch { return { ok: false, reason: "persist_failed" }; }
   } else if (cand.delivery === "pending" || cand.delivery === "accepted") {
     try { await outboxAdd(kv, candKey); } catch { return { ok: false, reason: "persist_failed" }; }
+  }
+  if (cand.delivery === "delivered" && !cand.promotedAt) {
+    await applyRegenDelivered(env, candKey, cand.email_id, fetchImpl); // converge uma promoção interrompida
   }
   if (cand.delivery === "pending") {
     try { cand = await attemptSend(env, kv, candKey, cand, fetchImpl, now); }

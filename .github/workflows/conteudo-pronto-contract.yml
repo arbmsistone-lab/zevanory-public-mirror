@@ -1,7 +1,7 @@
 name: conteudo-pronto-contract
 
 # Conteúdo Pronto (AVAL Sol #898): roteiros multicanal no lugar de mensagens de WhatsApp, contrato versionado em
-# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 77 mutantes (inclui a regeneração com entrega confirmada:
+# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 79 mutantes (inclui a regeneração com entrega confirmada:
 # bloqueado/candidato/atual, pending -> accepted -> delivered | dead),
 # cada um morto pela asserção esperada (rótulo na saída), em Linux e Windows (Git Bash, CRLF), Node 22 e 24.
 # Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Conteúdo Pronto — 77 mutantes
+      - name: Conteúdo Pronto — 79 mutantes
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONIOENCODING: "utf-8"
@@ -97,7 +97,7 @@ jobs:
           if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
-          [ "$n" = "77" ] || { echo "::error::esperados 77 mutantes mortos, obtidos $n"; exit 1; }
-          grep -qx 'MUTANTS_TOTAL=77 KILLED=77 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
+          [ "$n" = "79" ] || { echo "::error::esperados 79 mutantes mortos, obtidos $n"; exit 1; }
+          grep -qx 'MUTANTS_TOTAL=79 KILLED=79 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
           rm -f mutants.txt mutants.raw
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

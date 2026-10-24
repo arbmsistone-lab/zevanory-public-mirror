@@ -180,6 +180,10 @@ M = {
         "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.corpo])", "[v2-detect] roteiros.email.assunto"),
     "M77 detector v2 ignora o corpo do e-mail": (CS, "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo])",
         "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto])", "[v2-detect] roteiros.email.corpo"),
+    "M78 409 concorrente tratado como permanente": (CS, "    if (r.status === 409 && data?.name === \"concurrent_idempotent_requests\") return",
+        "    if (false) return", "[regen-fail] 409 concurrent_idempotent_requests"),
+    "M79 POST não converge delivered interrompido": (CS, "  if (cand.delivery === \"delivered\" && !cand.promotedAt) {\n    await applyRegenDelivered(",
+        "  if (false) {\n    await applyRegenDelivered(", "[regen-converge] promovido na retomada"),
 }
 
 
