@@ -34,7 +34,10 @@ W = "worker/sales-public-worker.mjs"
 NODE = shutil.which("node")
 TIMEOUT = 600
 
-# id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
+# id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo PRIMÁRIO).
+# Regra Sol 128: o rótulo primário vem do raciocínio sobre a mutação (a asserção que testa DIRETAMENTE a regra
+# mutada), nunca de quais testes falharam. Secundários ficam em SECONDARY com justificativa causal de uma linha.
+# Tabela de causalidade: docs/evidence/mutants_comprar_noindex-mutant-causality.md.
 M = {
     "M1 header removed on the 303 redirect path": (W, 'headers.set("x-robots-tag",COMPRAR_ROBOTS);',
         'if(response.status!==303)headers.set("x-robots-tag",COMPRAR_ROBOTS);', "[x-robots-tag]"),
@@ -77,11 +80,43 @@ M = {
         'return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale no WhatsApp: suporte humano no WhatsApp.</p>");', "[whatsapp]"),
 }
 
-# Falhas ADICIONAIS legítimas (outro teste também quebra pelo mesmo motivo): rótulos extra aceitos por mutante.
-# Toda outra falha com rótulo fora desta lista torna o mutante INCONCLUSIVE (falha_nao_esperada).
-EXTRA_LABELS = {
-    "M9": ("[alias]",),  # /COMPRAR sem flag i: o alias percent-encoded maiúsculo também deixa de ser coberto.
+# PRIMÁRIO extra (além do rótulo da tupla em M; total 1–3 por mutante) e SECUNDÁRIOS {rótulo: justificativa}.
+PRIMARY_EXTRA = {}
+SECONDARY = {
+    "M9": {"[alias]": "o alias percent-encoded /%43OMPRAR decodifica para /COMPRAR, que a regex sem flag i deixa de casar; o teste de aliases falha no status antes do cabeçalho"},
 }
+MAP = {}  # preenchido por main() a partir de mutant_map()
+BROAD_REASON = {}  # mutante com mais de 4 asserções listadas precisa de justificativa ampla aqui
+
+
+def mutant_map(m=None, primary_extra=None, secondary=None, broad=None):
+    """-> {id: (primários, {secundário: justificativa})}. Recusa iniciar (ValueError) se o mapa violar a regra Sol 128."""
+    m = M if m is None else m
+    primary_extra = PRIMARY_EXTRA if primary_extra is None else primary_extra
+    secondary = SECONDARY if secondary is None else secondary
+    broad = BROAD_REASON if broad is None else broad
+    ids = {name.split()[0] for name in m}
+    out, problems = {}, []
+    for key in set(primary_extra) | set(secondary) | set(broad):
+        if key not in ids:
+            problems.append(f"{key}: entrada para mutante inexistente")
+    for name, entry in m.items():
+        mid = name.split()[0]
+        prim = (entry[3], *primary_extra.get(mid, ()))
+        sec = dict(secondary.get(mid, {}))
+        if not 1 <= len(prim) <= 3:
+            problems.append(f"{mid}: {len(prim)} primários (exige 1 a 3)")
+        for label, why in sec.items():
+            if not isinstance(why, str) or len(why.strip()) < 15:
+                problems.append(f"{mid}: secundário {label} sem justificativa causal")
+            if label in prim:
+                problems.append(f"{mid}: {label} é primário e secundário")
+        if len(prim) + len(sec) > 4 and not str(broad.get(mid, "")).strip():
+            problems.append(f"{mid}: {len(prim) + len(sec)} asserções listadas sem broad_reason")
+        out[mid] = (prim, sec)
+    if problems:
+        raise ValueError("MAPA_DE_MUTANTES_INVALIDO " + "; ".join(sorted(problems)))
+    return out
 
 
 def read_text_normalized(path):
@@ -128,9 +163,12 @@ def label_in(label, body):
     return label in body if label.startswith("[") and label.endswith("]") else re.search(rf"(?<![\w-]){re.escape(label)}(?![\w-])", body) is not None
 
 
-def classify(rc, out, expect, total):
-    """-> (KILLED|SURVIVED|INCONCLUSIVE, motivo). expect: rótulo esperado ou coleção de rótulos aceitos."""
-    labels = [expect] if isinstance(expect, str) else list(expect)
+def classify(rc, out, expect, total, secondary=()):
+    """-> (KILLED|SURVIVED|INCONCLUSIVE, motivo). expect: rótulo(s) PRIMÁRIO(s); secondary: rótulos justificados.
+    KILLED exige ao menos uma falha de asserção com rótulo primário; toda outra falha precisa ser primária ou
+    secundária justificada."""
+    primary = [expect] if isinstance(expect, str) else list(expect)
+    secondary = list(secondary)
     s = summary(out)
     plan = re.search(r"^1\.\.(\d+)$", out, re.M)
     if rc is None or rc < 0:
@@ -161,12 +199,14 @@ def classify(rc, out, expect, total):
         body = b.group("body")
         if not ASSERT_RE.search(body):
             unexpected.append(b.group("name")[:40] + ":sem_assercao")
-        elif not any(label_in(l, body) for l in labels):
-            unexpected.append(b.group("name")[:40] + ":rotulo_ausente_no_bloco")
-        else:
+        elif any(label_in(l, body) for l in primary):
             killed_by.append(b.group("name")[:40])
+        elif not any(label_in(l, body) for l in secondary):
+            unexpected.append(b.group("name")[:40] + ":rotulo_ausente_no_bloco")
     if unexpected:
         return "INCONCLUSIVE", "falha_nao_esperada:" + ";".join(unexpected)
+    if not killed_by:
+        return "INCONCLUSIVE", "so_falha_secundaria"
     return "KILLED", ""
 
 
@@ -182,7 +222,8 @@ def one(item, total):
                 return name, "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", expect
             write_lf(f, text.replace(old, new, 1))
             rc, out = run(d)
-        verdict, why = classify(rc, out, (expect, *EXTRA_LABELS.get(name.split()[0], ())), total)
+        prim, sec = MAP[name.split()[0]]
+        verdict, why = classify(rc, out, prim, total, tuple(sec))
         return name, verdict, why, expect
     except subprocess.TimeoutExpired:
         return name, "INCONCLUSIVE", f"timeout {TIMEOUT}s", expect
@@ -191,6 +232,12 @@ def one(item, total):
 
 
 def main():
+    global MAP
+    try:
+        MAP = mutant_map()
+    except ValueError as e:
+        print(f"MUTANT MAP REFUSED {e}")
+        return 4
     if not NODE:
         print("MUTANT BASELINE INCONCLUSIVE (node ausente no PATH)")
         return 3

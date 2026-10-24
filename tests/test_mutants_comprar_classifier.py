@@ -111,5 +111,41 @@ class ComprarClassifierTest(unittest.TestCase):
         self.assertEqual(self.verdict(0, out), "INCONCLUSIVE")
 
 
+class ComprarCausalityRuleTest(unittest.TestCase):
+    """Regra Sol 128: PRIMÁRIO por raciocínio, SECUNDÁRIO só com justificativa causal; o runner recusa mapa inválido."""
+
+    def test_failure_only_in_secondary_assertion_is_inconclusive(self):
+        out = tap(run([assert_block(1, "[alias]")]))
+        self.assertEqual(classify(1, out, "[x-robots-tag]", TOTAL, ("[alias]",))[0], "INCONCLUSIVE")
+        both = tap(run([assert_block(1, "[x-robots-tag]"), assert_block(2, "[alias]")]))
+        self.assertEqual(classify(1, both, "[x-robots-tag]", TOTAL, ("[alias]",))[0], "KILLED")
+
+    def test_unrelated_failure_is_inconclusive_even_with_primary(self):
+        out = tap(run([assert_block(1, "[x-robots-tag]"), assert_block(2, "[canonical]")]))
+        self.assertEqual(classify(1, out, "[x-robots-tag]", TOTAL, ("[alias]",))[0], "INCONCLUSIVE")
+
+    def test_unjustified_entry_makes_the_runner_refuse_to_start(self):
+        m = {"M1 x": ("w", "a", "b", "[x-robots-tag]")}
+        self.assertEqual(MOD.mutant_map(m, {}, {"M1": {"[alias]": "o alias decodifica para a mesma rota mutada"}}, {})["M1"][0], ("[x-robots-tag]",))
+        for bad in ({"M1": {"[alias]": ""}}, {"M1": {"[alias]": "porque"}}, {"M1": {"[alias]": None}}):
+            with self.assertRaisesRegex(ValueError, "sem justificativa causal"):
+                MOD.mutant_map(m, {}, bad, {})
+
+    def test_more_than_four_assertions_without_broad_reason_is_refused(self):
+        m = {"M1 x": ("w", "a", "b", "[a]")}
+        prim = {"M1": ("[b]", "[c]")}
+        sec = {"M1": {"[d]": "justificativa causal suficiente aqui", "[e]": "outra justificativa causal suficiente"}}
+        with self.assertRaisesRegex(ValueError, "sem broad_reason"):
+            MOD.mutant_map(m, prim, sec, {})
+        self.assertIn("M1", MOD.mutant_map(m, prim, sec, {"M1": "a mutação desliga o cabeçalho em todas as rotas"}))
+        with self.assertRaisesRegex(ValueError, "primários"):
+            MOD.mutant_map(m, {"M1": ("[b]", "[c]", "[d]")}, {}, {})
+
+    def test_real_map_is_valid(self):
+        mp = MOD.mutant_map()
+        self.assertEqual(len(mp), len(MOD.M))
+        self.assertTrue(all(1 <= len(p) <= 3 for p, _ in mp.values()))
+
+
 if __name__ == "__main__":
     unittest.main()

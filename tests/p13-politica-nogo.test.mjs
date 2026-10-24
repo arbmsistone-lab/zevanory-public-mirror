@@ -170,7 +170,25 @@ test("release: build fixado em modo fechado e grep-gate de /comprar/ no workflow
 // mutante (regex ancorada: "termos:" nunca casa "termos-x:"). SURVIVED só com status 0, P13_AUDIT=PASS e nenhum
 // P13_FAIL. Todo o resto é INCONCLUSIVE: erro de spawn/timeout, sinal, crash/Traceback no stderr, marcador ausente,
 // regra inesperada, status diferente de 0/1.
-function classifyAudit(r, expectRe) {
+// Regra Sol 128: cada mutante tem PRIMÁRIO (1–3 regras P13 que testam DIRETAMENTE a mutação, por raciocínio) e
+// SECUNDÁRIO opcional ({re, why}: justificativa causal de uma linha). KILLED exige ao menos uma linha primária e
+// toda outra linha primária ou secundária justificada. validateMutantMap recusa iniciar com mapa inválido.
+// Tabela de causalidade: docs/evidence/p13-politica-nogo-mutant-causality.md.
+function validateMutantMap(map) {
+  const problems = [];
+  for (const [name, spec] of Object.entries(map)) {
+    const prim = spec.primary || [], sec = spec.secondary || [];
+    if (prim.length < 1 || prim.length > 3) problems.push(`${name}: ${prim.length} primários (exige 1 a 3)`);
+    if (!prim.every((x) => x instanceof RegExp && x.source.startsWith("^") && x.source.endsWith("$"))) problems.push(`${name}: primário sem regex ancorada`);
+    for (const e of sec) if (!(e.re instanceof RegExp) || typeof e.why !== "string" || e.why.trim().length < 15) problems.push(`${name}: secundário sem justificativa causal`);
+    if (prim.length + sec.length > 4 && !String(spec.broad_reason || "").trim()) problems.push(`${name}: ${prim.length + sec.length} regras sem broad_reason`);
+    if (typeof spec.apply !== "function") problems.push(`${name}: sem mutação`);
+  }
+  if (problems.length) throw new Error("MAPA_DE_MUTANTES_INVALIDO " + problems.join("; "));
+  return map;
+}
+function classifyAudit(r, spec) {
+  const primary = spec instanceof RegExp ? [spec] : spec.primary, secondary = spec instanceof RegExp ? [] : (spec.secondary || []).map((e) => e.re);
   if (r.error) return ["INCONCLUSIVE", "spawn_ou_timeout:" + (r.error.code || r.error.message)];
   if (r.signal || r.status === null) return ["INCONCLUSIVE", "sinal:" + r.signal];
   const out = normalizeEol(String(r.stdout || "")), err = String(r.stderr || "");
@@ -181,8 +199,9 @@ function classifyAudit(r, expectRe) {
   if (r.status !== 1) return ["INCONCLUSIVE", "status_" + r.status];
   if (verdict !== "FAIL") return ["INCONCLUSIVE", "marcador_P13_AUDIT_ausente"];
   if (!fails.length) return ["INCONCLUSIVE", "bloco_P13_FAIL_ausente"];
-  const unexpected = fails.filter((l) => !expectRe.test(l));
+  const unexpected = fails.filter((l) => !primary.some((x) => x.test(l)) && !secondary.some((x) => x.test(l)));
   if (unexpected.length) return ["INCONCLUSIVE", "regra_inesperada:" + unexpected.join(";").slice(0, 160)];
+  if (!fails.some((l) => primary.some((x) => x.test(l)))) return ["INCONCLUSIVE", "so_falha_secundaria"];
   return ["KILLED", ""];
 }
 
@@ -202,32 +221,44 @@ test("meta: classificador P13 — só status 1 + P13_FAIL com a regra esperada �
   assert.equal(c({ status: null, signal: "SIGKILL" }), "INCONCLUSIVE", "sinal");
   assert.equal(c({ status: null, error: Object.assign(new Error("t"), { code: "ETIMEDOUT" }) }), "INCONCLUSIVE", "timeout");
   assert.equal(c({ status: 0, stdout: ok(["termos: formulacao divergente '7 dias após o pagamento'"]) }), "INCONCLUSIVE", "status 0 com falha");
+  // Regra Sol 128: só secundário => INCONCLUSIVE; falha não relacionada => INCONCLUSIVE; mapa sem justificativa => recusa.
+  const spec = { primary: [T], secondary: [{ re: /^termos: texto unico \(Sol 079-P13\) ausente ou alterado$/, why: "a frase inserida também altera o texto único exigido em termos" }], apply: () => {} };
+  const cs = (lines) => classifyAudit({ status: 1, signal: null, stdout: ok(lines), stderr: "" }, spec)[0];
+  assert.equal(cs(["termos: texto unico (Sol 079-P13) ausente ou alterado"]), "INCONCLUSIVE", "só secundário");
+  assert.equal(cs(["termos: formulacao divergente '7 dias após o pagamento'", "termos: texto unico (Sol 079-P13) ausente ou alterado"]), "KILLED", "primário + secundário justificado");
+  assert.equal(cs(["termos: formulacao divergente '7 dias após o pagamento'", "solucoes.html: schema.org/InStock em modo fechado"]), "INCONCLUSIVE", "falha não relacionada");
+  assert.throws(() => validateMutantMap({ X: { ...spec, secondary: [{ re: /^a$/, why: "" }] } }), /sem justificativa causal/);
+  assert.throws(() => validateMutantMap({ X: { ...spec, secondary: [{ re: /^a$/ }] } }), /sem justificativa causal/);
+  const many = [1, 2, 3, 4].map((i) => ({ re: new RegExp("^x" + i + "$"), why: "justificativa causal suficiente " + i }));
+  assert.throws(() => validateMutantMap({ X: { ...spec, secondary: many } }), /sem broad_reason/);
+  assert.doesNotThrow(() => validateMutantMap({ X: { ...spec, secondary: many, broad_reason: "a mutação apaga a política em todas as superfícies" } }));
+  assert.throws(() => validateMutantMap({ X: { ...spec, primary: [T, T, T, T] } }), /primários/);
 });
 
 test("mutantes: /comprar/ remanescente, InStock remanescente e 'após o pagamento' são mortos (status 1 + bloco P13_FAIL com a regra esperada)", () => {
-  const mutants = {
-    "M1 produto mantém href /comprar/": [/^ia-na-pratica\.html: href de checkout\/assinatura \(href="\/comprar\/\) em modo fechado$/, (d) => mutate(d, "ia-na-pratica", (h) => h.replace(/href="[^"]*" data-zev-sku="ZEV-IA-011"/, 'href="/comprar/ZEV-IA-011" data-zev-sku="ZEV-IA-011"'))],
-    "M1b href absoluto para /comprar/": [/^solucoes\.html: href de checkout\/assinatura \("https:\/\/vendas\.zevanory\.api\.br\/comprar\/\) em modo fechado$/, (d) => mutate(d, "solucoes", (h) => h.replace("</main>", '<a href="https://vendas.zevanory.api.br/comprar/ZEV-NGC-011">x</a></main>'))],
-    "M2 produto mantém Offer InStock": [/^lucro-e-caixa\.html: (?:schema\.org\/InStock em modo fechado|Offer paga em modo fechado \(.*schema\.org\/InStock.*\))$/, (d) => mutate(d, "lucro-e-caixa", (h) => h.replace('"@type": "Product",', '"@type": "Product", "offers": {"@type": "Offer", "availability": "https://schema.org/InStock"},'))],
-    "M3 termos mantém 'após o pagamento'": [/^termos: formulacao divergente '7 dias após o pagamento'$/, (d) => mutate(d, "termos", (h) => h.replace("</main>", "<p>Você pode desistir da compra em até 7 dias após o pagamento.</p></main>"))],
-    "M3b produto troca a regra por 'após a compra'": [/^vendas-na-pratica: (?:falta '7 dias corridos[^']*'|formulacao divergente 'até 7 dias após a compra')$/, (d) => mutate(d, "vendas-na-pratica", (h) => h.split(P.rule_7d).join("até 7 dias após a compra"))],
-    "M4 reembolso mantém 'em até 2 dias úteis'": [/^reembolso: formulacao divergente 'em até 2 dias úteis'$/, (d) => mutate(d, "reembolso", (h) => h.replace("</main>", "<p>Reembolso em até 2 dias úteis.</p></main>"))],
-    "M5 produto sem 72 h ao lado da oferta": [/^combo-ia-vendas: falta 'link pessoal válido por 72 horas[^']*'$/, (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("link pessoal"))],
-    "M7 assinatura mantém href /assinar/": [/^conteudo-pronto\.html: href de checkout\/assinatura \(href="\/assinar\/\) em modo fechado$/, (d) => mutate(d, "conteudo-pronto", (h) => h.replace(/href="[^"]*" data-zev-sub="conteudo-pronto"/, 'href="/assinar/conteudo-pronto" data-zev-sub="conteudo-pronto"'))],
-    "M7b página com link /hotmart/": [/^ia-por-ramo\.html: href de checkout\/assinatura \(href="\/hotmart\/\) em modo fechado$/, (d) => mutate(d, "ia-por-ramo", (h) => h.replace("</main>", '<a href="/hotmart/ia-na-pratica">x</a></main>'))],
-    "M7c página com checkout pay.hotmart.com": [/^kit-afiliado\.html: href de checkout\/assinatura \(href="https:\/\/pay\.hotmart\.com\) em modo fechado$/, (d) => mutate(d, "kit-afiliado", (h) => h.replace("</main>", '<a href="https://pay.hotmart.com/F107979716H?off=g9knd34r">x</a></main>'))],
-    "M8 calculadora mantém 'garantia de 7 dias'": [/^calculadora-cmv: formulacao divergente 'garantia de 7 dias'$/, (d) => mutate(d, "calculadora-cmv", (h) => h.replace("direito de arrependimento de 7 dias", "garantia de 7 dias"))],
-    "M8b assinatura sem a regra dos 7 dias": [/^conteudo-pronto: falta '7 dias corridos[^']*'$/, (d) => mutate(d, "conteudo-pronto", (h) => h.split(P.rule_7d).join("7 dias"))],
-    "M6 texto único alterado em termos": [/^termos: texto unico \(Sol 079-P13\) ausente ou alterado$/, (d) => mutate(d, "termos", (h) => h.replace(P.sol_text, P.sol_text.replace("receberá imediatamente a confirmação", "receberá a confirmação em 48 horas")))],
-  };
+  const mutants = validateMutantMap({
+    "M1 produto mantém href /comprar/": { primary: [/^ia-na-pratica\.html: href de checkout\/assinatura \(href="\/comprar\/\) em modo fechado$/], apply: (d) => mutate(d, "ia-na-pratica", (h) => h.replace(/href="[^"]*" data-zev-sku="ZEV-IA-011"/, 'href="/comprar/ZEV-IA-011" data-zev-sku="ZEV-IA-011"')) },
+    "M1b href absoluto para /comprar/": { primary: [/^solucoes\.html: href de checkout\/assinatura \("https:\/\/vendas\.zevanory\.api\.br\/comprar\/\) em modo fechado$/], apply: (d) => mutate(d, "solucoes", (h) => h.replace("</main>", '<a href="https://vendas.zevanory.api.br/comprar/ZEV-NGC-011">x</a></main>')) },
+    "M2 produto mantém Offer InStock": { primary: [/^lucro-e-caixa\.html: (?:schema\.org\/InStock em modo fechado|Offer paga em modo fechado \(.*schema\.org\/InStock.*\))$/], apply: (d) => mutate(d, "lucro-e-caixa", (h) => h.replace('"@type": "Product",', '"@type": "Product", "offers": {"@type": "Offer", "availability": "https://schema.org/InStock"},')) },
+    "M3 termos mantém 'após o pagamento'": { primary: [/^termos: formulacao divergente '7 dias após o pagamento'$/], apply: (d) => mutate(d, "termos", (h) => h.replace("</main>", "<p>Você pode desistir da compra em até 7 dias após o pagamento.</p></main>")) },
+    "M3b produto troca a regra por 'após a compra'": { primary: [/^vendas-na-pratica: (?:falta '7 dias corridos[^']*'|formulacao divergente 'até 7 dias após a compra')$/], apply: (d) => mutate(d, "vendas-na-pratica", (h) => h.split(P.rule_7d).join("até 7 dias após a compra")) },
+    "M4 reembolso mantém 'em até 2 dias úteis'": { primary: [/^reembolso: formulacao divergente 'em até 2 dias úteis'$/], apply: (d) => mutate(d, "reembolso", (h) => h.replace("</main>", "<p>Reembolso em até 2 dias úteis.</p></main>")) },
+    "M5 produto sem 72 h ao lado da oferta": { primary: [/^combo-ia-vendas: falta 'link pessoal válido por 72 horas[^']*'$/], apply: (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("link pessoal")) },
+    "M7 assinatura mantém href /assinar/": { primary: [/^conteudo-pronto\.html: href de checkout\/assinatura \(href="\/assinar\/\) em modo fechado$/], apply: (d) => mutate(d, "conteudo-pronto", (h) => h.replace(/href="[^"]*" data-zev-sub="conteudo-pronto"/, 'href="/assinar/conteudo-pronto" data-zev-sub="conteudo-pronto"')) },
+    "M7b página com link /hotmart/": { primary: [/^ia-por-ramo\.html: href de checkout\/assinatura \(href="\/hotmart\/\) em modo fechado$/], apply: (d) => mutate(d, "ia-por-ramo", (h) => h.replace("</main>", '<a href="/hotmart/ia-na-pratica">x</a></main>')) },
+    "M7c página com checkout pay.hotmart.com": { primary: [/^kit-afiliado\.html: href de checkout\/assinatura \(href="https:\/\/pay\.hotmart\.com\) em modo fechado$/], apply: (d) => mutate(d, "kit-afiliado", (h) => h.replace("</main>", '<a href="https://pay.hotmart.com/F107979716H?off=g9knd34r">x</a></main>')) },
+    "M8 calculadora mantém 'garantia de 7 dias'": { primary: [/^calculadora-cmv: formulacao divergente 'garantia de 7 dias'$/], apply: (d) => mutate(d, "calculadora-cmv", (h) => h.replace("direito de arrependimento de 7 dias", "garantia de 7 dias")) },
+    "M8b assinatura sem a regra dos 7 dias": { primary: [/^conteudo-pronto: falta '7 dias corridos[^']*'$/], apply: (d) => mutate(d, "conteudo-pronto", (h) => h.split(P.rule_7d).join("7 dias")) },
+    "M6 texto único alterado em termos": { primary: [/^termos: texto unico \(Sol 079-P13\) ausente ou alterado$/], apply: (d) => mutate(d, "termos", (h) => h.replace(P.sol_text, P.sol_text.replace("receberá imediatamente a confirmação", "receberá a confirmação em 48 horas"))) },
+  });
   const report = [];
-  for (const [name, [expectRe, apply]] of Object.entries(mutants)) {
+  for (const [name, spec] of Object.entries(mutants)) {
     const dir = mkdtempSync(join(tmpdir(), "p13-mut-"));
     try {
       cpSync(PUB, dir, { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
-      apply(dir);
+      spec.apply(dir);
       const r = audit(dir);
-      const [verdict, why] = classifyAudit(r, expectRe);
+      const [verdict, why] = classifyAudit(r, spec);
       report.push(`${name}: ${verdict}${why ? " [" + why + "]" : ""}`);
       assert.equal(verdict, "KILLED", name + ": " + why + " :: " + r.stdout + r.stderr);
     } finally { rmSync(dir, { recursive: true, force: true }); }

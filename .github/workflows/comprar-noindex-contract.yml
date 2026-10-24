@@ -78,14 +78,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Meta-testes do classificador de mutantes (AVAL Sol 125; exatamente 12)
+      - name: Meta-testes do classificador de mutantes (AVAL Sol 125/128; exatamente 17)
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONIOENCODING: "utf-8"
         run: |
           set -euo pipefail
           python3 -m unittest -v tests/test_mutants_comprar_classifier.py < /dev/null 2>&1 | tr -d '\r' | tee meta.txt
-          grep -qx 'Ran 12 tests in [0-9.]*s' meta.txt && grep -qx 'OK' meta.txt || { echo "::error::meta-testes do classificador: esperados 12 OK"; exit 1; }
+          grep -qx 'Ran 17 tests in [0-9.]*s' meta.txt && grep -qx 'OK' meta.txt || { echo "::error::meta-testes do classificador: esperados 17 OK"; exit 1; }
           rm -f meta.txt
       - name: /comprar/ noindex — 18 mutantes
         env:
@@ -99,7 +99,7 @@ jobs:
           tr -d '\r' < mutants.raw | tee mutants.txt
           echo "::notice title=MUTANTS_COMPRAR_NOINDEX ($RUNNER_OS node ${{ matrix.node }})::$(grep '^MUTANT' mutants.txt | sed 's/ — .*//' | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
           if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
-          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo, 4=mapa recusado)"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
           [ "$n" = "21" ] || { echo "::error::esperados 21 mutantes mortos, obtidos $n"; exit 1; }
           if grep -qE '^MUTANT M[0-9]* (SURVIVED|INCONCLUSIVE)' mutants.txt; then echo "::error::mutante sobrevivente ou inconclusivo"; exit 1; fi
