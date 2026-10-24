@@ -187,6 +187,17 @@ export function confirmationPage(view, { emailSent = true } = {}) {
 <p><a href="${ATENDIMENTO_PATH}">Enviar outra solicitação</a></p>`);
 }
 
+// Página de erro com texto fixo por status (nenhum dado da requisição é interpolado).
+const ERROR_TEXT = Object.freeze({
+  429: `Muitas solicitações em pouco tempo. Tente de novo mais tarde ou escreva para ${SUPPORT_EMAIL}.`,
+  503: `Não foi possível registrar agora. Escreva para ${SUPPORT_EMAIL}.`,
+});
+const ERROR_PAGES = Object.freeze(Object.fromEntries(Object.entries(ERROR_TEXT).map(([k, msg]) => [k, shell("Atendimento", `<div role="alert"><h1>Não foi possível registrar agora</h1><p>${esc(msg)}</p></div><p><a href="${ATENDIMENTO_PATH}">Voltar ao formulário</a></p>`)])));
+const IGNORED_PAGE = shell("Atendimento", '<div role="status"><h1>Recebido</h1></div>');
+function errorPage(status) {
+  return ERROR_PAGES[status] || ERROR_PAGES[503];
+}
+
 export async function handleAtendimento(request, env = {}, { now = Date.now() } = {}) {
   const url = new URL(request.url);
   if (url.pathname !== ATENDIMENTO_PATH && url.pathname !== ATENDIMENTO_API) return null;
@@ -208,7 +219,7 @@ export async function handleAtendimento(request, env = {}, { now = Date.now() } 
   catch { out = { status: 503, body: { error: "atendimento_indisponivel", message: `Não foi possível registrar agora. Escreva para ${SUPPORT_EMAIL}.` } }; }
   if (wantsJson) return new Response(JSON.stringify(out.body), { status: out.status, headers: JSON_HEADERS });
   if (out.status === 400) return new Response(formPage({ values: input, errors: out.body.errors }), { status: 400, headers: HTML_HEADERS });
-  if (out.status !== 200) return new Response(shell("Atendimento", `<div role="alert"><h1>Não foi possível registrar agora</h1><p>${esc(out.body.message || "")}</p></div><p><a href="${ATENDIMENTO_PATH}">Voltar ao formulário</a></p>`), { status: out.status, headers: HTML_HEADERS });
-  if (out.body.ignored) return new Response(shell("Atendimento", `<div role="status"><h1>Recebido</h1></div>`), { status: 200, headers: HTML_HEADERS });
+  if (out.status !== 200) return new Response(errorPage(out.status), { status: out.status, headers: HTML_HEADERS });
+  if (out.body.ignored) return new Response(IGNORED_PAGE, { status: 200, headers: HTML_HEADERS });
   return new Response(confirmationPage(out.body, { emailSent: out.body.email_confirmacao !== "pendente" }), { status: 200, headers: HTML_HEADERS });
 }
