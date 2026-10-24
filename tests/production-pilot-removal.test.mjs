@@ -14,7 +14,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { requireTool } from "./helpers/toolchain.mjs";
@@ -93,7 +94,7 @@ test("B3 productionEnvView esconde o piloto em todas as formas e preserva o rest
 });
 
 test("B4 toda entrada do Worker de produção passa pela vista antes do runtime", () => {
-  const src = readFileSync(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url), "utf8");
+  const src = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
   const all = src.match(/normalizeEnv\(/g) || [];
   const wrapped = src.match(/normalizeEnv\(productionEnvView\(/g) || [];
   assert.ok(all.length >= 4, "[B4.1] entradas encontradas: " + all.length);
@@ -106,8 +107,8 @@ test("B4 toda entrada do Worker de produção passa pela vista antes do runtime"
 });
 
 test("B5 deploy de produção: não grava piloto e exige a ausência", () => {
-  const prep = readFileSync(new URL("../scripts/deploy/prepare-central-candidate.py", import.meta.url), "utf8");
-  const verify = readFileSync(new URL("../scripts/deploy/verify-financial-boundary.py", import.meta.url), "utf8");
+  const prep = readTextNormalized(new URL("../scripts/deploy/prepare-central-candidate.py", import.meta.url));
+  const verify = readTextNormalized(new URL("../scripts/deploy/verify-financial-boundary.py", import.meta.url));
   assert.doesNotMatch(prep, /\[\s*["']vars["']\s*\]\s*\[\s*["']CERTIFICATION_PILOT_/, "[B5.1] preparador não grava CERTIFICATION_PILOT_*");
   assert.match(verify, /NO_PRODUCTION_PILOT_BINDING/, "[B5.2] verificador exige ausência");
   assert.doesNotMatch(verify, /CERTIFICATION_PILOT_MUST_BE_SANDBOX|== "sandbox", "CERTIFICATION_PILOT/, "[B5.2] não exige mais sandbox/false");
@@ -157,7 +158,7 @@ test("B7 preparador real: não grava piloto, remove o herdado e keep_vars; a sa�
     const r = spawnSync("python3", [join(ROOT, "scripts", "deploy", "prepare-central-candidate.py")], { cwd: dir, encoding: "utf8",
       env: { ...PYENV, PUBLIC_OWNER_ACCOUNT_ID: "f".repeat(32), TARGET_RUNTIME_SHA: "a".repeat(40), ...LAUNCH } });
     assert.equal(r.status, 0, "[B7.0] preparador roda: " + String(r.stderr).slice(-300));
-    const config = JSON.parse(readFileSync(join(dir, "wrangler.central-fix.jsonc"), "utf8"));
+    const config = JSON.parse(readTextNormalized(join(dir, "wrangler.central-fix.jsonc")));
     assert.deepEqual(Object.keys(config.vars).filter((k) => k.startsWith("CERTIFICATION_PILOT_")), [], "[B7.1] nenhuma CERTIFICATION_PILOT_* nas vars de produção");
     assert.deepEqual(Object.keys(config.vars.ZEVANORY_RUNTIME_CONFIG).filter((k) => k.startsWith("CERTIFICATION_PILOT_")), [], "[B7.2] nem no runtime config");
     assert.equal(config.vars.ZEVANORY_RUNTIME_CONFIG.KEEP, "1", "[B7.2] o resto do runtime config fica");
