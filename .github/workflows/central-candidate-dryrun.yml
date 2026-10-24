@@ -56,6 +56,15 @@ jobs:
           python3 scripts/deploy/prepare-central-candidate.py
           python3 scripts/deploy/copy-brand-export.py
           node --check worker/cloudflare-worker.compat.mjs
+      - name: No WhatsApp alias in the generated candidate (real pinned base 83620c6; PR #896)
+        # The pinned base wrangler.jsonc still carries SUPPORT_CHANNEL with the legacy number; the generator
+        # must strip it. Same banned set as tests/whatsapp-config-absence.test.mjs.
+        run: |
+          set -euo pipefail
+          if grep -nEi 'SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_|wa\.me|9?9254-?5413|9234-?0423' wrangler.central-fix.jsonc; then
+            echo "::error title=WHATSAPP_ALIAS_IN_CANDIDATE::generated wrangler.central-fix.jsonc carries a retired WhatsApp alias"; exit 1
+          fi
+          echo "::notice title=WHATSAPP_ALIAS_IN_CANDIDATE::absent"
       - name: Crons of the candidate (declared list, at most 5 per account)
         run: |
           python3 - <<'PY'

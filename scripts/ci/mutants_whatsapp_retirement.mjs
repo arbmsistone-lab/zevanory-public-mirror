@@ -24,7 +24,7 @@ const T = {
   hook: "Meta webhook: WhatsApp deliveries", nonwa: "Meta webhook: Instagram/Facebook", bhook: "bundle layer", gone: "onboarding routes", broker: "broker tombstone:", prims: "sender primitives",
   adapter: "outbound adapter", reply: "instant reply:", h18: "webhook handler:", forger: "static: no forged", wf: "static: retired workflows", onb: "static: retired onboarding",
   sManual: "keyword comments, Page feed", sNon: "non-social payloads", sStatic: "static: no social automation",
-  cfgToml: "wrangler tomls:", cfgGen: "generated candidate config:"
+  cfgToml: "wrangler configs:", cfgGen: "generated candidate config:"
 };
 const RET = "worker/whatsapp-retirement.mjs", COMPAT = "worker/cloudflare-worker.compat.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
 const LIVE = "worker/live-runtime-status.mjs", CONT = "worker/continuity-router.mjs", ONB = "worker/whatsapp-onboarding.mjs";
