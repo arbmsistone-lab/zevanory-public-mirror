@@ -43,12 +43,12 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/operator_token_gate.py --inventory | tee /tmp/gate.txt
           grep -qx "OPERATOR_TOKEN_GATE=PASS violations=0 errors=0 mode=transition" /tmp/gate.txt
-      - name: Testes (contagem exata 14, zero pulados)
+      - name: Testes (contagem exata 15, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/operator-token-transition.test.mjs tests/ci/operator-token-gate.test.mjs | tee /tmp/t.txt
-          for l in "# tests 14" "# pass 14" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 15" "# pass 15" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Mutantes causais (todos precisam morrer)
         shell: bash
         run: |

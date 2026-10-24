@@ -20,6 +20,7 @@ tests/brand-email.test.mjs 2
 tests/brand-kit.test.mjs 9
 tests/brand-profiles.test.mjs 16
 tests/central-candidate-dryrun.test.mjs 4
+tests/central-retired-contact-script.test.mjs 5
 tests/certification-worker.test.mjs 3
 tests/circuits-adversarial.test.mjs 31
 tests/command-center-main.test.mjs 3
@@ -61,7 +62,7 @@ tests/mercadopago-webhook-signature.test.mjs 11
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
 tests/operational-activity.test.mjs 7
-tests/operator-token-transition.test.mjs 7
+tests/operator-token-transition.test.mjs 8
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
 tests/order7-whatsapp-commercial.test.mjs 11
 tests/owner-alert-policy.test.mjs 2
@@ -78,7 +79,9 @@ tests/politica-honrar-pagamento.test.mjs 2
 tests/post-sale.test.mjs 6
 tests/product-consistency.test.mjs 3
 tests/production-activity-sync.test.mjs 3
+tests/production-order-lookup.test.mjs 7
 tests/production-payment-credential-isolation.test.mjs 7
+tests/production-pilot-removal.test.mjs 7
 tests/production-secret-names.test.mjs 7
 tests/production-staging-health.test.mjs 3
 tests/public-surface-router.test.mjs 3
