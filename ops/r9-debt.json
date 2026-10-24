@@ -10,8 +10,12 @@
       "deploy_config": false,
       "owner": "proprietário (Renan): renomear segredo no GitHub e no Worker",
       "reason": "Token de operador da PRODUÇÃO apesar do nome: backup, voz, auditoria financeira e WhatsApp autenticam com ele; central-production-deploy.yml recusa o deploy sem ele; o Worker de certificação recebe o mesmo nome (valor por Environment não verificável daqui).",
-      "planned_pr": "R9-B1: aceitar OPERATOR_AUDIT_TOKEN no Worker e nos workflows, migrar, depois remover CERTIFICATION_E2E_TOKEN da produção (classe B; segredo novo criado pelo proprietário)",
-      "status": "OPEN"
+      "planned_pr": "#912 (R9 A): ZEVANORY_OPERATOR_TOKEN no Worker (resolvedor único, dual-read com queda registrada) e nos workflows de produção; seguimento R9 A2 retira a queda depois do readback primary e então este item sai",
+      "status": "OPEN",
+      "prs": [
+        "#912"
+      ],
+      "next_step": "proprietário cria ZEVANORY_OPERATOR_TOKEN (mesmo valor) no Worker zevanory e nos Environments producao-critica e gh-pages-automacao; production-credential-identity.yml com require_primary=true; depois PR R9 A2 (queda off, gate --strict)"
     },
     {
       "id": "R9-D2",
@@ -67,7 +71,12 @@
       "owner": "proprietário (Renan): pendente de autorização (ops/publishers.json pending_owner_authorization)",
       "reason": "Até o #910 (4b73b1ee), financial-e2e-stripe.yml gravava STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET de TESTE (sk_test_) no Worker de PRODUÇÃO (secret bulk --name zevanory). O #910 passou a gravar só em zevanory-certification, mas a presença de segredos Stripe de teste deixados no Worker de produção por runs anteriores não foi lida, e o job ainda roda no Environment producao-critica.",
       "planned_pr": "R9-B3: readback de nomes STRIPE_* no zevanory (remoção dirigida com allowlist se presentes) e mover financial-e2e-stripe.yml para sandbox-financial-approved",
-      "status": "OPEN"
+      "status": "OPEN",
+      "prs": [
+        "#910",
+        "#912"
+      ],
+      "next_step": "#912 adiciona o readback STRIPE_KEY_MODE (live|test|absent) do Worker de produção no deploy e em production-credential-identity.yml (reprova se test) e o modo da STRIPE_SECRET_KEY visível em producao-critica; falta mover financial-e2e-stripe.yml para sandbox-financial-approved com STRIPE_TEST_SECRET_KEY"
     }
   ],
   "retired_workflows": [
