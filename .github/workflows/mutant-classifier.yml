@@ -43,10 +43,10 @@ jobs:
           # The CRLF fixtures must reach the runner byte-exact (tests/fixtures/mutant_classifier/.gitattributes).
           python scripts/ci/mutant_classifier.py self-check
           python -m unittest tests.test_mutant_classifier -v < /dev/null 2>&1 | tr -d '\r' | tee /tmp/mc.txt
-          grep -qx "Ran 54 tests in .*" /tmp/mc.txt || { echo "::error::expected exactly 54 meta-tests"; exit 1; }
+          grep -qx "Ran 61 tests in .*" /tmp/mc.txt || { echo "::error::expected exactly 61 meta-tests"; exit 1; }
           if grep -q "skipped" /tmp/mc.txt; then echo "::error::skipped meta-tests"; exit 1; fi
           grep -qx "OK" /tmp/mc.txt || { echo "::error::meta-tests did not end in OK"; exit 1; }
-          echo "::notice title=MUTANT_CLASSIFIER_FIXTURES ($RUNNER_OS)::Ran 54, OK, skipped 0"
+          echo "::notice title=MUTANT_CLASSIFIER_FIXTURES ($RUNNER_OS)::Ran 61, OK, skipped 0"
 
   live:
     name: mutant-classifier / live node ${{ matrix.node }} (${{ matrix.os }})
@@ -77,10 +77,10 @@ jobs:
           set -euo pipefail
           echo "RUNNER_OS=$RUNNER_OS node=$(node --version) python=$(python --version 2>&1)"
           python -m unittest tests.test_mutant_classifier_live -v < /dev/null 2>&1 | tr -d '\r' | tee /tmp/live.txt
-          grep -qx "Ran 14 tests in .*" /tmp/live.txt || { echo "::error::expected exactly 14 live meta-tests"; exit 1; }
+          grep -qx "Ran 16 tests in .*" /tmp/live.txt || { echo "::error::expected exactly 16 live meta-tests"; exit 1; }
           if grep -q "skipped" /tmp/live.txt; then echo "::error::skipped live meta-tests"; exit 1; fi
           grep -qx "OK" /tmp/live.txt || { echo "::error::live meta-tests did not end in OK"; exit 1; }
-          echo "::notice title=MUTANT_CLASSIFIER_LIVE (node $(node --version), $RUNNER_OS)::Ran 14, OK, skipped 0"
+          echo "::notice title=MUTANT_CLASSIFIER_LIVE (node $(node --version), $RUNNER_OS)::Ran 16, OK, skipped 0"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

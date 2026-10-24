@@ -9,7 +9,7 @@ const report={new_synthesis_requests:0,entries:[]};
 const save=()=>writeFileSync(dir+'/summary.json',JSON.stringify(report,null,2));
 const style='Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.';
 async function transcribe(audio){
- const r=await fetch('https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify({operation:'audit-transcribe',audio_base64:Buffer.from(audio).toString('base64')}),signal:AbortSignal.timeout(60000)});
+ const r=await fetch('https://zevanory.api.br/api/admin/voice/audit',{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify({operation:'audit-transcribe',audio_base64:Buffer.from(audio).toString('base64')}),signal:AbortSignal.timeout(60000)});
  if(!r.ok)throw Error('whisper_http_'+r.status);return r.json();
 }
 try{

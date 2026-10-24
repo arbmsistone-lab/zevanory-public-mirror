@@ -244,20 +244,26 @@ def check_official_whatsapp():
             errors += fail(f"WhatsApp oficial: frente comercial não herdando perfil canônico: {front}")
 
     for marker in (
-        'c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)',
-        'c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"',
-        'c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)',
-        '"+55 88 9234-0423": "+55 88 99254-5413"',
-        '"558892340423": "5588992545413"',
+        'return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_")',
+        'from public_whatsapp_scan import public_whatsapp_hits',
+        'raise SystemExit("PUBLIC_WHATSAPP_CONTACT_PRESENT "',
     ):
         if marker not in deploy:
             errors += fail(f"WhatsApp oficial: marcador de cutover/compactação ausente no deploy: {marker}")
+    # WhatsApp retired (PR #896): the generator must never assign a WhatsApp contact alias.
+    if re.search(r'c\["vars"\]\["(SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_[A-Z0-9_]*)"\]\s*=', deploy):
+        errors += fail("WhatsApp aposentado: deploy voltou a atribuir SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_*")
 
-    # Inbound support is allowed only when the owner KV sales lock is still enforced.
+    # WhatsApp retired (PR #896): the public number rewrite is gone and the channel stays closed.
+    for token in ('"558892340423": "5588992545413"', '"+55 88 9234-0423": "+55 88 99254-5413"'):
+        if token in deploy:
+            errors += fail("WhatsApp aposentado: deploy voltou a reescrever páginas públicas com o número banido")
     whatsapp_off = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"' in deploy
     whatsapp_inbound = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="true"' in deploy
     if whatsapp_off == whatsapp_inbound:
         errors += fail("WhatsApp oficial: modo comercial ambiguo")
+    if whatsapp_inbound:
+        errors += fail("WhatsApp aposentado: WHATSAPP_SALES_ENABLED voltou a \"true\"")
     if whatsapp_inbound:
         sales_path = ROOT / "worker" / "sales-control.mjs"
         conversation_path = ROOT / "worker" / "whatsapp-conversation.mjs"
@@ -277,7 +283,7 @@ def check_official_whatsapp():
                 errors += fail("WhatsApp oficial: link SKU sem guarda")
 
     if errors == 0:
-        pass_("WhatsApp oficial: novo número propagado a 12 frentes e legado bloqueado")
+        pass_("WhatsApp: perfis canônicos nas 12 frentes, canal aposentado fechado, sem número público no deploy")
     return errors
 
 def main():
