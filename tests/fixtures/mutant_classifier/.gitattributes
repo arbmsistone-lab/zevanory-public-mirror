@@ -1,0 +1,3 @@
+# Captured TAP fixtures are byte-exact evidence: never convert line endings on checkout (the *.crlf.tap files must
+# keep CRLF and the *.tap files LF on Windows runners too).
+*.tap -text

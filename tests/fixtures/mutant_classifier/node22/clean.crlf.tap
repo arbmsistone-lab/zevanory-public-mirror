@@ -1,0 +1,47 @@
+TAP version 13
+# Subtest: T1 alpha
+ok 1 - T1 alpha
+  ---
+  duration_ms: 0.749766
+  type: 'test'
+  ...
+# Subtest: T10 beta
+ok 2 - T10 beta
+  ---
+  duration_ms: 0.154514
+  type: 'test'
+  ...
+# Subtest: T2 gamma
+    # Subtest: T2a nested
+    ok 1 - T2a nested
+      ---
+      duration_ms: 0.116826
+      type: 'test'
+      ...
+    # Subtest: T2b nested
+    ok 2 - T2b nested
+      ---
+      duration_ms: 0.18945
+      type: 'test'
+      ...
+    1..2
+ok 3 - T2 gamma
+  ---
+  duration_ms: 0.672954
+  type: 'test'
+  ...
+# Subtest: T3 delta
+ok 4 - T3 delta
+  ---
+  duration_ms: 0.115319
+  type: 'test'
+  ...
+1..4
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 74.461188
