@@ -185,6 +185,10 @@ test("G10 remoção só por workflow_dispatch, confirmação obrigatória, só z
   assert.equal(run1(variant("        required: true\n", "        required: false\n")).length, 1, "[G10.3] confirmação opcional é recusada");
   assert.equal(run1(variant('secret delete "$name" --name zevanory', 'secret delete "$name" --name zevanory-sales')).length, 1, "[G10.4] outro Worker é recusado");
   assert.equal(run1(variant("MERCADOPAGO_TEST_ACCESS_TOKEN|MERCADOPAGO_TEST_WEBHOOK_SECRET)", "MERCADOPAGO_TEST_ACCESS_TOKEN|MERCADOPAGO_TEST_WEBHOOK_SECRET|CERTIFICATION_E2E_TOKEN)")).length, 1, "[G10.5] allowlist maior é recusada");
+  assert.equal(run1(variant("      expected_inventory_digest:\n        description: \"INVENTORY_DIGEST (sha256:...) do readback revisado pelo auditor; recusa se o estado mudou\"\n        required: true\n", "      expected_inventory_digest:\n        description: \"x\"\n        required: false\n")).length, 1, "[G10.6] digest autorizado opcional é recusado");
+  assert.equal(run1(variant('--expected-version "$EXPECTED_VERSION_ID"', "")).length, 1, "[G10.6] plano sem a versão autorizada é recusado");
+  assert.equal(run1(variant("production-secret-names.mjs preflight", "production-secret-names.mjs readback")).length, 1, "[G10.7] remoção sem preflight de serialização é recusada");
+  assert.equal(run1(variant("step --phase post", "step --phase pre")).length, 1, "[G10.7] remoção sem prova depois de cada DELETE é recusada");
 });
 
 test("G11 registro de dívida inválido ou ausente falha", () => {
