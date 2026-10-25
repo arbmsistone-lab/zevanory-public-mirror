@@ -3,7 +3,7 @@
 Gerado de `scripts/ci/mutants_conteudo_pronto_causality.py` por `python3 -B scripts/ci/mutants_conteudo_pronto.py --causality-md`
 (o CI confere que este arquivo está em dia). Regra (Sol, auditoria 128): a asserção esperada vem do raciocínio sobre a
 mutação; KILLED exige falha numa asserção PRIMARY e qualquer outra falha em PRIMARY ou em SECONDARY justificada
-(`scripts/ci/mutant_tap.py`); qualquer outra coisa é INCONCLUSIVE. Contraprova: sem a mutação a baseline passa (20/20)
+(`scripts/ci/mutant_classifier.py`, compartilhado); qualquer outra coisa é INCONCLUSIVE. Contraprova: sem a mutação a baseline passa (20/20)
 e a asserção primária é exatamente a que a mutação viola.
 
 | mutant_id | change | primary assertion | justification | counter-proof |

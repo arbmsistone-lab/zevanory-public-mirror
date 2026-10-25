@@ -1,13 +1,39 @@
-"""Meta-testes do classificador de mutantes (scripts/ci/mutant_tap.py; auditoria Sol #898).
-Uso: python3 -B -m unittest scripts/ci/test_mutant_tap.py  (ou: python3 -B scripts/ci/test_mutant_tap.py)
+"""Meta-testes do runner do Conteúdo Pronto sobre o classificador COMPARTILHADO (scripts/ci/mutant_classifier.py).
+
+Os mesmos casos do antigo classificador local (scripts/ci/mutant_tap.py, removido na migração) agora passam pelo
+adaptador do runner (to_expected: mapa causal p/s/broad -> primary/secondary/broad_reason) e por
+mutant_classifier.classify_run, provando que a semântica de KILLED/SURVIVED/INCONCLUSIVE foi preservada.
+Uso: python3 -B scripts/ci/test_mutants_conteudo_pronto_classifier.py
 """
+import importlib.util
 import sys
 import unittest
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import mutant_tap as T  # noqa: E402
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE))
+import mutant_classifier as mc  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location("mcp_runner", _HERE / "mutants_conteudo_pronto.py")
+runner = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(runner)
+
+
+class T:
+    KILLED, SURVIVED, INCONCLUSIVE = mc.KILLED, mc.SURVIVED, mc.INCONCLUSIVE
+
+    @staticmethod
+    def classify(rc, out, total, primary, secondary=None):
+        spec = {"p": primary, "s": secondary or {}, "why": "meta-teste: asserção primária do caso"}
+        exp = runner.to_expected(spec)
+        r = {"return_code": rc, "stdout": out, "stderr": "", "timed_out": rc is None, "signal": None, "missing_tool": None}
+        res = mc.classify_run(total, r, expected=exp, allowlist=exp["allowlist"], anchor_ok=True, mutant_id="MX")
+        return res["verdict"], res["reason"]
+
+    @staticmethod
+    def validate_spec(mid, spec):
+        return runner.spec_problems(mid, spec)
 
 
 def tap(results, *, tests=None, pass_=None, fail=None, cancelled=0, skipped=0, todo=0, tail=True):
@@ -54,7 +80,8 @@ class Classifier(unittest.TestCase):
         out = tap([(True, "(a) contrato", None), (True, "(g1) envio", None), (False, "(g2) dead", "[regen-idem] também aqui")])
         verdict, why = T.classify(1, out, 3, P1, {"(g2)": "o fluxo do dead depende da mesma chave de envio"})
         self.assertEqual(verdict, T.INCONCLUSIVE)
-        self.assertIn("PRIMARY", why)
+        # Shared classifier: the PRIMARY label found only in a SECONDARY block is reported as label_outside_block.
+        self.assertRegex(why, r"only_secondary_failures|label_outside_block")
 
     def test_primary_test_failing_on_other_assertion_is_inconclusive(self):
         out = tap([(True, "(a) contrato", None), (False, "(g1) envio", "outra asserção do mesmo teste"), (True, "(g2) dead", None)])
@@ -68,7 +95,7 @@ class Classifier(unittest.TestCase):
         out = tap([(False, "(a) contrato", "quebrou outra coisa"), (False, "(g1) envio", "[regen-idem] chave presente"), (True, "(g2) dead", None)])
         verdict, why = T.classify(1, out, 3, P1)
         self.assertEqual(verdict, T.INCONCLUSIVE)
-        self.assertIn("fora de PRIMARY/SECONDARY", why)
+        self.assertIn("unexpected_failure", why)
         # Rótulo só numa linha `ok` (nome de teste que passou); a falha é de outro teste.
         out = tap([(True, "(a) contrato [regen-idem]", None), (False, "(g2) dead", "[regen-dead] alerta"), (True, "(g1) envio", None)])
         self.assertEqual(T.classify(1, out, 3, P1)[0], T.INCONCLUSIVE)
@@ -139,11 +166,7 @@ class SpecGuards(unittest.TestCase):
         self.assertEqual(T.validate_spec("MX", {**self.GOOD, "s": sec, "broad": "a mutação muda a identidade de toda a máquina de estados"}), [])
 
     def test_runner_refuses_to_start_with_unjustified_entry(self):
-        import importlib.util, io, contextlib
-        here = Path(__file__).resolve().parent
-        spec = importlib.util.spec_from_file_location("mcp_runner", here / "mutants_conteudo_pronto.py")
-        runner = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(runner)
+        import io, contextlib
         first = next(iter(runner.CAUSALITY))
         saved = runner.CAUSALITY[first]
         try:

@@ -13,8 +13,8 @@ on:
       - "tests/content-service.test.mjs"
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_conteudo_pronto.py"
-      - "scripts/ci/mutant_tap.py"
-      - "scripts/ci/test_mutant_tap.py"
+      - "scripts/ci/mutant_classifier.py"
+      - "scripts/ci/test_mutants_conteudo_pronto_classifier.py"
       - "scripts/ci/mutants_conteudo_pronto_causality.py"
       - "docs/evidence/conteudo-pronto-mutant-causality.md"
       - "worker/content-service.mjs"
@@ -96,13 +96,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Classificador de mutantes — meta-testes (só SECONDARY, falha não relacionada, queda, tempo esgotado, contagem incompleta, mapa sem justificativa)
+      - name: Classificador compartilhado (scripts/ci/mutant_classifier.py) — self-check e meta-testes do adaptador (só SECONDARY, falha não relacionada, queda, tempo esgotado, contagem incompleta, mapa sem justificativa)
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONIOENCODING: "utf-8"
         run: |
           set -euo pipefail
-          python3 -B scripts/ci/test_mutant_tap.py 2>&1 | tr -d '\r' | tee meta.txt
+          python3 -B scripts/ci/mutant_classifier.py self-check
+          python3 -B scripts/ci/test_mutants_conteudo_pronto_classifier.py 2>&1 | tr -d '\r' | tee meta.txt
           grep -qx 'OK' meta.txt || { echo "::error::meta-testes do classificador falharam"; exit 1; }
           n="$(grep -oE '^Ran [0-9]+ tests' meta.txt | grep -oE '[0-9]+')"
           [ "$n" = "18" ] || { echo "::error::esperados 18 meta-testes, obtidos $n"; exit 1; }

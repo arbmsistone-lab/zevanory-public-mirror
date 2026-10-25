@@ -8,7 +8,7 @@ Cada mutante declara:
          código, depende do trecho mutado;
   broad  obrigatório quando primary + secondary somam mais de 4 testes: por que a mutação é ampla.
 KILLED exige falha numa asserção PRIMARY e qualquer outra falha em teste primário ou secundário justificado
-(scripts/ci/mutant_tap.py). docs/evidence/conteudo-pronto-mutant-causality.md é gerado deste arquivo
+(classificador compartilhado scripts/ci/mutant_classifier.py, via to_expected em mutants_conteudo_pronto.py). docs/evidence/conteudo-pronto-mutant-causality.md é gerado deste arquivo
 (`python3 -B scripts/ci/mutants_conteudo_pronto.py --causality-md`) e o CI confere que está em dia.
 """
 

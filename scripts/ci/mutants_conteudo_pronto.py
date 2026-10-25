@@ -3,14 +3,17 @@
 
 Cada mutante altera UMA CÓPIA temporária da árvore (oferta, contrato, gerador, páginas-fonte ou geradas), roda
 tests/conteudo-pronto-roteiros.test.mjs e tests/content-service.test.mjs contra a cópia e classifica o resultado
-com o classificador estrito scripts/ci/mutant_tap.py (auditoria Sol #898; meta-testes em scripts/ci/test_mutant_tap.py):
-  KILLED       rc == 1, resumo TAP completo e coerente com a baseline, ao menos uma falha numa asserção PRIMARY do
-               mapa causal (scripts/ci/mutants_conteudo_pronto_causality.py, por raciocínio) e toda outra falha em
-               PRIMARY ou em SECONDARY justificada;
+com o classificador COMPARTILHADO scripts/ci/mutant_classifier.py (classify_run; meta-testes em
+tests/test_mutant_classifier.py e `mutant_classifier.py self-check`). O mapa causal
+(scripts/ci/mutants_conteudo_pronto_causality.py, por raciocínio) é traduzido para o formato do classificador
+({primary: [{test_pattern, assertion_pattern}], secondary: [{..., justification}], broad_reason}) e validado por
+load_mutant_config antes de qualquer mutante:
+  KILLED       resumo TAP completo e coerente com a baseline, ao menos uma falha de ASSERÇÃO PRIMARY (teste + rótulo
+               dentro do bloco `not ok`) e toda outra falha em PRIMARY ou em SECONDARY justificada;
   SURVIVED     rc == 0 e resumo TAP completo igual à baseline;
   INCONCLUSIVE qualquer outra coisa (queda, erro de sintaxe/módulo, tempo esgotado, contagem incompleta, falha fora
-               da allowlist, rótulo fora do bloco `not ok`, trecho não encontrado). Repetido uma vez; persistindo, o
-               job falha.
+               de PRIMARY/SECONDARY, rótulo fora do bloco `not ok`, trecho não encontrado). Repetido uma vez;
+               persistindo, o job falha.
 Texto lido em UTF-8 com CRLF normalizado para LF; arquivo mutado gravado em UTF-8/LF; reporter TAP explícito.
 Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 1 sobrevivente; 3 inconclusivo;
 2 baseline falhou; 4 mapa causal inválido (o runner não começa). Uso: python3 scripts/ci/mutants_conteudo_pronto.py [raiz-do-repo]
@@ -18,7 +21,7 @@ Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 
 import os, re, shutil, subprocess, sys, tempfile
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import mutant_tap  # noqa: E402  (classificador estrito compartilhável; meta-testes em scripts/ci/test_mutant_tap.py)
+import mutant_classifier as mc  # noqa: E402  (classificador compartilhado; meta-testes em tests/test_mutant_classifier.py)
 from mutants_conteudo_pronto_causality import CAUSALITY  # noqa: E402  (mapa causal por raciocínio; auditoria Sol 128)
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -31,6 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
+BASELINE_TESTS = 20  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -216,33 +220,27 @@ def stage(d):
 
 def run(d):
     env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0", "NODE_OPTIONS": ""}
-    try:
-        p = subprocess.run([NODE, "--test", "--test-reporter=tap", *[t.as_posix() for t in TESTS]], cwd=str(d), env=env,
-                           stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT)
-    except subprocess.TimeoutExpired as e:
-        out = ((e.stdout or b"") + (e.stderr or b"")).decode("utf-8", errors="replace").replace("\r\n", "\n")
-        return None, out
-    out = (p.stdout + p.stderr).decode("utf-8", errors="replace").replace("\r\n", "\n")
-    return p.returncode, out
+    return mc.run_command([NODE, "--test", "--test-reporter=tap", "--test-reporter-destination=stdout",
+                           *[t.as_posix() for t in TESTS]], cwd=str(d), timeout=TIMEOUT, env=env)
 
 
-def summary(out):
-    return mutant_tap.summary(out)
+def _exact(label):
+    # Rótulo do mapa causal = trecho literal do `error` do bloco `not ok` (mesma semântica de antes: substring exata).
+    return "re:" + re.escape(label)
 
 
-def attempt(name, fname, old, new, expect, total):
-    spec = CAUSALITY[name.split()[0]]
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        d = Path(tmp)
-        stage(d)
-        f = d.joinpath(*fname.split("/"))
-        text = read_text_normalized(f)
-        if text.count(old) != 1:
-            return "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", False
-        write_lf(f, text.replace(old, new, 1))
-        rc, out = run(d)
-    verdict, why = mutant_tap.classify(rc, out, total, spec["p"], spec.get("s"))
-    return verdict, why, True
+def to_expected(spec):
+    """Mapa causal (p/s/broad) -> formato do classificador compartilhado (primary/secondary/broad_reason)."""
+    out = {"primary": [{"test_pattern": t, "assertion_pattern": _exact(label)} for t, label in spec.get("p") or []],
+           "secondary": [{"test_pattern": t, "assertion_pattern": None, "justification": why}
+                         for t, why in (spec.get("s") or {}).items()],
+           "allowlist": []}
+    if spec.get("broad"):
+        out["broad_reason"] = spec["broad"]
+    return out
+
+
+MIN_JUSTIFICATION = 20  # mais estrito que o classificador (não vazio): justificativa curta demais não é causal
 
 
 def causality_problems():
@@ -252,8 +250,47 @@ def causality_problems():
     probs += [f"{m}: mapa causal sem mutante" for m in CAUSALITY if m not in ids]
     for m in ids:
         if m in CAUSALITY:
-            probs += mutant_tap.validate_spec(m, CAUSALITY[m])
+            probs += spec_problems(m, CAUSALITY[m])
     return probs
+
+
+def spec_problems(m, spec):
+    """Problemas de UM mapa causal: justificativas (>= MIN_JUSTIFICATION) e load_mutant_config do classificador."""
+    if not isinstance(spec, dict):
+        return [f"{m}: mapa causal deve ser dict"]
+    probs = []
+    if len(str(spec.get("why", "")).strip()) < MIN_JUSTIFICATION:
+        probs.append(f"{m}: PRIMARY sem justificativa (why)")
+    for test, why in (spec.get("s") or {}).items():
+        if len(str(why or "").strip()) < MIN_JUSTIFICATION:
+            probs.append(f"{m}: SECONDARY {test!r} sem justificativa causal")
+    if spec.get("broad") is not None and len(str(spec["broad"]).strip()) < MIN_JUSTIFICATION:
+        probs.append(f"{m}: broad_reason curto demais")
+    try:
+        mc.load_mutant_config({m: to_expected(spec)})
+    except (mc.ConfigError, TypeError, ValueError) as e:
+        probs.append(f"{m}: {e}")
+    return probs
+
+
+CONFIG = None  # preenchido em main() por mc.load_mutant_config, depois de causality_problems() vazio
+
+
+def attempt(name, fname, old, new, expect, total):
+    mid = name.split()[0]
+    spec = CONFIG[mid]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        d = Path(tmp)
+        stage(d)
+        f = d.joinpath(*fname.split("/"))
+        text = read_text_normalized(f)
+        if text.count(old) != 1:
+            res = mc.classify(total, 1, {}, expected=spec, anchor_ok=False, mutant_id=mid)
+            return res["verdict"], f"{res['reason']} (trecho ocorre {text.count(old)} vez(es))", False
+        write_lf(f, text.replace(old, new, 1))
+        r = run(d)
+    res = mc.classify_run(total, r, expected=spec, allowlist=spec["allowlist"], anchor_ok=True, mutant_id=mid)
+    return res["verdict"], ("" if res["verdict"] == "KILLED" else res["reason"]), True
 
 
 def causality_md():
@@ -263,7 +300,7 @@ def causality_md():
             "Gerado de `scripts/ci/mutants_conteudo_pronto_causality.py` por `python3 -B scripts/ci/mutants_conteudo_pronto.py --causality-md`",
             "(o CI confere que este arquivo está em dia). Regra (Sol, auditoria 128): a asserção esperada vem do raciocínio sobre a",
             "mutação; KILLED exige falha numa asserção PRIMARY e qualquer outra falha em PRIMARY ou em SECONDARY justificada",
-            "(`scripts/ci/mutant_tap.py`); qualquer outra coisa é INCONCLUSIVE. Contraprova: sem a mutação a baseline passa (20/20)",
+            "(`scripts/ci/mutant_classifier.py`, compartilhado); qualquer outra coisa é INCONCLUSIVE. Contraprova: sem a mutação a baseline passa (20/20)",
             "e a asserção primária é exatamente a que a mutação viola.",
             "",
             "| mutant_id | change | primary assertion | justification | counter-proof |",
@@ -305,38 +342,45 @@ def main():
     if "--causality-md" in sys.argv[1:]:
         sys.stdout.write(causality_md())
         return 0
+    global CONFIG
     probs = causality_problems()
     if probs:
         for pr in probs:
             print(f"MUTANT CAUSALITY INVALID {pr}")
         print("MUTANT RUNNER REFUSED (mapa causal inválido: corrija a justificativa; não amplie a allowlist)")
         return 4
+    CONFIG = mc.load_mutant_config({k.split()[0]: to_expected(CAUSALITY[k.split()[0]]) for k in M})
     if not NODE:
         print("MUTANT BASELINE INCONCLUSIVE (node ausente no PATH)")
         return 3
     try:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             stage(Path(tmp))
-            rc, out = run(Path(tmp))
+            r = run(Path(tmp))
     except (OSError, subprocess.SubprocessError) as e:
         print(f"MUTANT BASELINE INCONCLUSIVE ({type(e).__name__}: {e})")
         return 3
-    s = summary(out)
-    if rc != 0 or not s["tests"] or mutant_tap.classify(rc, out, s["tests"], [("-", "-")])[0] != "SURVIVED":
-        print(out[-3000:])
-        print(f"MUTANT BASELINE FAILED (suíte sem mutação não passa) rc={rc} resumo={s}")
+    parsed = mc.parse_tap(r.get("stdout", ""), stderr=r.get("stderr", ""))
+    total = parsed["summary"].get("tests")
+    b = mc.validate_baseline(total if isinstance(total, int) else -1, r.get("return_code"), parsed["summary"],
+                             parsed["failures"], timed_out=r.get("timed_out", False), signal=r.get("signal"))
+    if total != BASELINE_TESTS or not b["ok"]:
+        print((r.get("stdout", "") + r.get("stderr", ""))[-3000:])
+        print(f"MUTANT BASELINE FAILED (suíte sem mutação não passa ou contagem != {BASELINE_TESTS}) rc={r.get('return_code')} motivo={b['reason']}")
         return 2
-    total = s["tests"]
     print(f"MUTANT BASELINE PASS tests={total} node={subprocess.run([NODE, '--version'], capture_output=True, text=True).stdout.strip()} os={os.name}", flush=True)
     counts = {"KILLED": 0, "SURVIVED": 0, "INCONCLUSIVE": 0}
+    results = []
     with ThreadPoolExecutor(max_workers=max(2, min(8, os.cpu_count() or 2))) as ex:
         for name, verdict, why, expect in ex.map(lambda it: one(it, total), M.items()):
             mid = name.split()[0]
             counts[verdict] += 1
+            results.append({"mutant_id": mid, "verdict": verdict})
             extra = f" [{why}]" if why else ""
             print(f"MUTANT {mid} {verdict} — {name[len(mid) + 1:]} (asserção: {expect}){extra}", flush=True)
     print(f"MUTANTS_TOTAL={len(M)} KILLED={counts['KILLED']} SURVIVED={counts['SURVIVED']} INCONCLUSIVE={counts['INCONCLUSIVE']}")
-    return 1 if counts["SURVIVED"] else 3 if counts["INCONCLUSIVE"] else 0
+    code, _ = mc.aggregate(results, baseline_valid=True)  # 0 todos KILLED; 1 sobrevivente; 3 inconclusivo (3 > 1)
+    return code
 
 
 if __name__ == "__main__":
