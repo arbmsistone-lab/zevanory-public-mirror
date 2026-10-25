@@ -3,6 +3,7 @@
 // MERCADOPAGO_ENV=sandbox and SALE_GLOBALLY_ENABLED!=true. Orders created here
 // are certification_pilot=true, excluded from revenue and never delivered to a
 // real customer: the delivery mail goes only to the isolated inbox subdomain.
+import { operatorToken as operatorCredential } from "./operator-credential.mjs";
 
 export const SANDBOX_INBOX_DOMAIN = "zevanory.api.br";
 // Apex MX is Resend Receiving (inbound-smtp.sa-east-1.amazonaws.com); any address
@@ -326,7 +327,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     }
     return json(200, { messages, inbox_rows_seen: rows.length, receiving_api_status: listed.status });
   }
-  const expected = String(env.CERTIFICATION_E2E_TOKEN || "");
+  const expected = String(operatorCredential(env) || "");
   const provided = String(request.headers.get("x-certification-e2e-token") || "");
   if (expected.length < 32 || !timingSafeEqualText(expected, provided)) return json(401, { error: "certification_e2e_auth_required" });
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;

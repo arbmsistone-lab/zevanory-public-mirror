@@ -63,8 +63,12 @@ jobs:
 
       - name: Prove exact target lifecycle with sales fail-closed
         shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -euo pipefail
+          # Live surface follows P13 (#878): /api/sales/status open=true -> buy CTA to /comprar/<SKU> required;
+          # open=false -> closed form required (waitlist CTA, no /comprar/, no buy button); unreadable -> fail.
           python3 scripts/portfolio_target_lifecycle.py
 
       - name: Verify immutable P16 evidence
@@ -79,6 +83,9 @@ jobs:
           assert p["runtime_sha"]==os.environ["EXPECTED_RUNTIME_SHA"]
           assert p["sales_mode"]==("enabled" if p["sales_switch_open"] is True else "globally-blocked")
           assert p["checks"]["GLOBAL_SALES_SWITCH_MATCH"]=="PASS"
+          # P13: the live page must show the form that matches the switch (closed: waitlist, no /comprar/).
+          assert p["live_surface"]==("open" if p["sales_switch_open"] is True else "closed")
+          assert p["checks"]["LIVE_SURFACE_MATCHES_SWITCH"]=="PASS"
           assert p["external_provider_proof"] is False
           assert p["final_order_status"]=="refunded"
           assert p["final_entitlement_status"]=="revoked"

@@ -1,0 +1,62 @@
+name: p16-lifecycle-contract
+
+# P16 segue P13 (#878): contrato da superfície ao vivo do scripts/portfolio_target_lifecycle.py com fixtures dos dois
+# estados do interruptor (tests/ci/p16-target-lifecycle.test.mjs, 18 testes, main() real, sem rede) e mutantes causais
+# pelo classificador compartilhado (24, todos KILLED). Só pull_request: nunca dispara no merge, nenhum segredo,
+# nenhuma requisição à produção.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p16-lifecycle-contract.yml"
+      - ".github/workflows/portfolio-five-digital-p16-exact.yml"
+      - "scripts/portfolio_target_lifecycle.py"
+      - "scripts/ci/mutants_p16_lifecycle.py"
+      - "scripts/ci/mutants_p16_lifecycle_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/ci/p16-target-lifecycle.test.mjs"
+      - "tests/helpers/p16_lifecycle_harness.py"
+      - "tests/helpers/toolchain.mjs"
+      - "tests/fixtures/p16/**"
+      - "sales-public/ia-na-pratica.html"
+      - "sales-public/vendas-na-pratica.html"
+      - "sales-public/lucro-e-caixa.html"
+      - "sales-public/combo-ia-vendas.html"
+      - "sales-public/negocio-completo.html"
+      - "worker/sales-public-worker.mjs"
+      - "worker/politica-unica.mjs"
+      - "data/politica-unica.json"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testes (contagem exata 18, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/ci/p16-target-lifecycle.test.mjs | tee /tmp/t.txt
+          for l in "# tests 18" "# pass 18" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes causais (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p16_lifecycle.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P16_LIFECYCLE_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=24 killed=24 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

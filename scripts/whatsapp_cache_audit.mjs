@@ -7,7 +7,7 @@ const dir='/tmp/voice-audit';mkdirSync(dir,{recursive:true});
 const origin='https://zevanory.api.br',results=[];
 const save=()=>writeFileSync(dir+'/cache-audit.json',JSON.stringify({architecture:'render-gemini+cache',new_synthesis_requests:0,results},null,2));
 async function op(body,id){
- const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof?audit_id='+encodeURIComponent(id),{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
+ const r=await fetch(origin+'/api/admin/voice/audit?audit_id='+encodeURIComponent(id),{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
  const raw=await r.text();let j;try{j=JSON.parse(raw);}catch{throw Error(`${id}:http_${r.status}:non_json`);}
  if(!r.ok)throw Error(`${id}:http_${r.status}:${j.error||'unknown'}`);return j;
 }

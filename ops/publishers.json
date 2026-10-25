@@ -11,6 +11,8 @@
         "channel-production-bootstrap.yml",
         "gemini-key-to-worker.yml",
         "lead-privacy-secret-to-worker.yml",
+        "mercadopago-production-token-rotate.yml",
+        "production-test-secret-cleanup.yml",
         "sandbox-worker-secret-audit.yml",
         "voice-gemini-auth-key-probe.yml",
         "voice-gemini-production-provision.yml",
@@ -18,9 +20,11 @@
       ],
       "pending_owner_authorization": [
         "mercadopago-exact-sha-recovery.yml",
-        "mercadopago-production-token-rotate.yml",
         "financial-e2e-stripe.yml"
-      ]
+      ],
+      "owner_authorized_serialization": {
+        "mercadopago-production-token-rotate.yml": "Written owner authorization: \"AUTORIZO SERIALIZAR mercadopago-production-token-rotate.yml NO GRUPO deploy-zevanory\". Only the concurrency block changed (group deploy-zevanory, cancel-in-progress false, queue max, workflow level, same as the other publishers); recoverability analysis in docs/ops/ROTACAO_MERCADOPAGO.md section 1.1."
+      }
     },
     "zevanory-sales-public": {
       "group": "deploy-zevanory-sales-public",
@@ -77,7 +81,6 @@
   "unserialized_known": {
     "whatsapp-broker-protocol-v2.yml": "target Worker absent from the account; patcher fails before any write",
     "mercadopago-exact-sha-recovery.yml": "financial workflow: changes need the owner's written authorization",
-    "mercadopago-production-token-rotate.yml": "financial workflow: changes need the owner's written authorization",
     "financial-e2e-stripe.yml": "financial workflow: changes need the owner's written authorization"
   },
   "rollback_policy": "A deliberate rollback is a git revert merged by the owner: a FORWARD promotion whose authorisation trail is the reviewed pull request. promotion_guard.py has no backwards path. Automatic recovery inside a failed release (central wrangler rollback, sales snapshot restore) only returns to the version that was live before that same run; the sales release never deletes the production script.",
