@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import {
   UA, SITEMAPS, PROCESS_IDS, addDays, measured, na, buildDailyRecord, validateDailyRecord, validateProbe, parseJsonl,
   validateTargets, buildRegister, consecutiveCompleteDays, PROCESSES, parseCommandCenter, parseFunnelDiag, parseDataBackup,
-  parseSitemap, summarizeHttp, parseA11y, aggregateProbes,
+  parseSitemap, summarizeHttp, parseA11y, aggregateProbes, aggregateLatency, validateRun, validateIncident,
 } from "./b0-lib.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -74,17 +74,21 @@ export function readHistory(evidenceDir) {
   const f = join(evidenceDir, "b0", "baseline-v1.jsonl");
   return existsSync(f) ? parseJsonl(readFileSync(f, "utf8"), validateDailyRecord) : [];
 }
-export function readProbes(evidenceDir, days) {
+// Linhas p18/<prefix>-AAAA-MM.jsonl dos meses dos dias pedidos. Malformado derruba (HISTORY_MALFORMED).
+export function readP18(evidenceDir, prefix, days, validate) {
   const dir = join(evidenceDir, "p18");
   if (!existsSync(dir)) return [];
   const months = new Set(days.map((d) => d.slice(0, 7)));
+  const re = new RegExp(`^${prefix}-(\\d{4}-\\d{2})\\.jsonl$`);
   const out = [];
-  for (const f of readdirSync(dir).filter((n) => /^probes-\d{4}-\d{2}\.jsonl$/.test(n)).sort()) {
-    if (!months.has(f.slice(7, 14))) continue;
-    out.push(...parseJsonl(readFileSync(join(dir, f), "utf8"), validateProbe));
+  for (const f of readdirSync(dir).sort()) {
+    const m = re.exec(f);
+    if (!m || !months.has(m[1])) continue;
+    out.push(...parseJsonl(readFileSync(join(dir, f), "utf8"), validate));
   }
   return out;
 }
+export function readProbes(evidenceDir, days) { return readP18(evidenceDir, "probes", days, validateProbe); }
 
 export async function collect({ env = process.env, fetchImpl = fetch, now = new Date(), pause = sleep, log = console.log } = {}) {
   const evidenceDir = env.EVIDENCE_DIR;
@@ -96,7 +100,11 @@ export async function collect({ env = process.env, fetchImpl = fetch, now = new 
   // Fail-closed antes de qualquer rede: metas e histórico precisam estar íntegros.
   const targets = validateTargets(JSON.parse(readFileSync(env.TARGETS_FILE || "docs/b0/metas-propostas.json", "utf8")));
   const history = readHistory(evidenceDir);
-  const probes = readProbes(evidenceDir, [day]);
+  // Vizinhos (dia anterior e seguinte) entram só para medir a lacuna entre verificações que atravessa a meia-noite.
+  const around = [addDays(day, -1), day, addDays(day, 1)];
+  const probes = readProbes(evidenceDir, around);
+  const runs = readP18(evidenceDir, "runs", around, validateRun);
+  const incidents = readP18(evidenceDir, "incidents", around, validateIncident);
 
   const F = Object.fromEntries(PROCESS_IDS.map((p) => [p, {}]));
   const api = gh(env, fetchImpl);
@@ -144,6 +152,9 @@ export async function collect({ env = process.env, fetchImpl = fetch, now = new 
   // P18 e P22: agregação das sondagens do monitor externo gravadas no próprio ramo de evidência.
   const ag = aggregateProbes(probes, day);
   F.P18.sales_availability = ag.enough ? measured("p18-external-monitor (ramo de evidência)", ag.p18) : na("p18-external-monitor", `coverage_insufficient ${ag.p18.probes}/${ag.p18.expected}`);
+  // Seção 9 auditada: latências dos incidentes, atraso do agendador e veredito MET/NOT_MET/NOT_PROVEN do dia.
+  F.P18.alert_latency = ag.enough ? measured("p18-external-monitor: incidentes, execuções e sondagens (ramo de evidência)", aggregateLatency({ probes, runs, incidents, day }))
+    : na("p18-external-monitor", `coverage_insufficient ${ag.p18.probes}/${ag.p18.expected}`);
   F.P22.financial_proof_freshness = ag.enough ? measured("GET /api/status em cada sondagem P18", ag.p22) : na("GET /api/status via P18", `coverage_insufficient ${ag.p22.readings}/${ag.p22.expected}`);
 
   // P20: último run concluído do data-backup no dia D (sucesso OU falha: ambos são medição).
