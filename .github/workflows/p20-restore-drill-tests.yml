@@ -1,0 +1,89 @@
+name: p20-restore-drill-tests
+
+# P20 (Roteiro Mestre v4.7, seção 9.1): testes do ensaio mensal de restauração completa. Evidência SINTETICA.
+# Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à produção, nunca escreve no ramo de
+# evidência. (1) lógica (node, rede falsa, 12 testes); (2) ponta a ponta num PostgreSQL efêmero: o CÓDIGO REAL do Worker
+# (worker/data-backup.mjs) grava o backup num KV em memória e o ensaio restaura TUDO num banco p20_drill* com contagem e
+# hash de conteúdo por tabela; (3) mutantes causais pelo classificador compartilhado (29, todos KILLED).
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p20-restore-drill-tests.yml"
+      - ".github/workflows/p20-monthly-restore-drill.yml"
+      - "scripts/p20/**"
+      - "scripts/b0/**"
+      - "docs/p20/**"
+      - "docs/b0/**"
+      - "tests/p20-restore-drill.test.mjs"
+      - "tests/test_p20_restore_drill.py"
+      - "tests/b0-baseline.test.mjs"
+      - "tests/helpers/p20-backup-fixture.mjs"
+      - "tests/helpers/p20_worker_backup_fixture.mjs"
+      - "scripts/ci/mutants_p20_restore_drill.py"
+      - "scripts/ci/mutants_p20_restore_drill_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "scripts/ops/restore_new_database.py"
+      - "scripts/ops/backup_preserve_archive.py"
+      - "worker/data-backup.mjs"
+      - "db/migrations/**"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: p20-restore-drill / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: p20-ci-local-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lógica do ensaio (contagem exata 12, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p20-restore-drill.test.mjs | tee /tmp/t.txt
+          for l in "# tests 12" "# pass 12" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Ponta a ponta no PostgreSQL efêmero (código real do Worker -> ensaio completo)
+        shell: bash
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
+          PGPASSWORD: p20-ci-local-only
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null || sudo apt-get install -y -qq postgresql-client > /dev/null
+          python -m unittest -v tests/test_p20_restore_drill.py 2>&1 | tee /tmp/py.txt
+          grep -qE '^Ran 5 tests' /tmp/py.txt && grep -qx 'OK' /tmp/py.txt || { echo "::error::esperados 5 testes OK sem pulos"; exit 1; }
+          if grep -q 'skipped' /tmp/py.txt; then echo "::error::teste pulado"; exit 1; fi
+      - name: Mutantes causais (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p20_restore_drill.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P20_RESTORE_DRILL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=29 killed=29 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

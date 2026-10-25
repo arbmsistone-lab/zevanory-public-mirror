@@ -1,0 +1,109 @@
+name: P20 monthly full restore drill
+
+# Roteiro Mestre v4.7, seção 9.1 (P20): ensaio MENSAL de restauração COMPLETA em esquema isolado.
+# drill  : Environment producao-critica (o mesmo que já lê a cópia do backup no KV em backup-preserve-archive.yml);
+#          cada execução espera a APROVAÇÃO do proprietário. Lê do KV de produção SOMENTE com GET (relatório
+#          consolidado, manifestos das 3 partes e os 3 bundles da cópia mais recente), confere o SHA-256 de cada
+#          tabela contra o manifesto, restaura TUDO num Postgres efêmero deste runner (service container; nunca um
+#          banco real) e mede RPO e RTO. Nenhuma escrita em produção; nenhum dado de linha em log ou evidência.
+# publish: job SEM segredos e SEM Environment; acrescenta o registro em p20/restore-drills-v1.jsonl do ramo
+#          evidence/b0-baseline (nunca gh-pages). Registro ausente vira NOT_AVAILABLE explícito.
+# Rótulo: ENSAIO_EM_PRODUCAO só quando a cópia real de produção foi lida; o coletor B0 nunca conta SINTETICA.
+on:
+  schedule:
+    - cron: '23 7 2 * *'   # dia 2 de cada mês, 07:23 UTC (depois do data-backup das 05:10)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p20-monthly-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    environment: producao-critica  # aprovação do proprietário obrigatória; somente leitura (GET) no KV
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: p20-drill-local-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: p20-drill-local-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Testes da lógica do ensaio (sintéticos, sem segredo)
+        run: node --test tests/p20-restore-drill.test.mjs
+      - name: Banco descartável do ensaio
+        run: |
+          command -v psql >/dev/null || sudo apt-get install -y -qq postgresql-client > /dev/null
+          psql -v ON_ERROR_STOP=1 -d postgres -c "create database p20_drill"
+      - name: Ensaio completo com a cópia REAL mais recente (somente GET no KV; restauração só no Postgres local)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PGDATABASE: p20_drill
+        run: node scripts/p20/restore-drill.mjs --mode producao --out "$RUNNER_TEMP/p20/drill.json"
+      - name: Registro do ensaio (só metadados)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p20-restore-drill-${{ github.run_id }}
+          path: ${{ runner.temp }}/p20/drill.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  publish:
+    needs: drill
+    if: ${{ always() && github.ref == 'refs/heads/gh-pages' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # só o ramo evidence/b0-baseline (scripts/b0/evidence-branch.sh recusa qualquer outro)
+    env:
+      EVIDENCE_BRANCH: evidence/b0-baseline
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Baixar o registro do ensaio (ausente = NOT_AVAILABLE)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: p20-restore-drill-${{ github.run_id }}
+          path: ${{ runner.temp }}/p20
+      - name: Preparar o ramo de evidência
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "EVIDENCE_DIR=$RUNNER_TEMP/evidence" >> "$GITHUB_ENV"
+          EVIDENCE_DIR="$RUNNER_TEMP/evidence" bash scripts/b0/evidence-branch.sh prepare
+      - name: Acrescentar o registro (validação estrita; histórico malformado derruba)
+        run: node scripts/p20/publish-drill.mjs --record "$RUNNER_TEMP/p20/drill.json" --mode producao
+      - name: Publicar no ramo de evidência
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/b0/evidence-branch.sh publish "P20 ensaio mensal de restauracao - run ${GITHUB_RUN_ID} (sha ${GITHUB_SHA})"
