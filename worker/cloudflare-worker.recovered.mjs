@@ -17,7 +17,7 @@ import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-rout
 import { CONTACT_TEXT, CONTACT_TEXT_OR, CUSTOMER_RULE_7D, SHORT_RULE_LABEL } from "./politica-unica.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
 import { whatsappChannelRetired, whatsappInstantReplyEnabled, retiredWhatsappChannelEntry, isWhatsappWebhookBody, WHATSAPP_RETIRED_MODE, WHATSAPP_RETIRED_REASON } from "./whatsapp-retirement.mjs";
-import { operatorToken as operatorCredential } from "./operator-credential.mjs";
+import { operatorToken as operatorCredential, verifyOperatorToken } from "./operator-credential.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -18042,9 +18042,8 @@ async function handlerFinancialE2EStatus(req, res) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: "method_not_allowed" }));
   }
-  const expected = String(operatorCredential(process.env) || process.env.OPERATOR_TOKEN || "");
   const provided = String(req.headers?.["x-certification-e2e-token"] || "");
-  if (!secureTokenEqual(expected, provided)) {
+  if (!verifyOperatorToken(process.env, provided, { minLength: 1, fallbackToken: process.env.OPERATOR_TOKEN })) {
     res.statusCode = 401;
     return res.end(JSON.stringify({ error: "certification_e2e_auth_required" }));
   }
@@ -18372,8 +18371,8 @@ var cloudflare_worker_default = {
     const affiliateRef=referralFromRequest(request,env);
     if (affiliateRef && url.pathname.startsWith("/api/checkout")) { const headers=new Headers(request.headers); headers.set("x-zevanory-affiliate-ref",affiliateRef); request=new Request(request,{headers}); }
     if (request.method === "POST" && url.pathname === "/api/internal/channels/telegram-proof") {
-      const expected = String(operatorCredential(env) || operatorCredential(process.env) || ""), provided = String(request.headers.get("x-certification-e2e-token") || "");
-      if (!expected || !secureTokenEqual(expected, provided)) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
+      const provided = String(request.headers.get("x-certification-e2e-token") || "");
+      if (!verifyOperatorToken(operatorCredential(env) ? env : process.env, provided, { minLength: 1 })) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
       const existing=await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:multichannel:proof:telegram");if(existing)return withSecurityHeaders(new Response(String(existing),{status:200,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
       const spec={brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1080,hook:"IA prática para organizar o seu negócio",body:"Organize tarefas repetitivas com clareza e controle. Conheça a ZEVANORY por R$ 197,00. "+SHORT_RULE_LABEL+".",cta:"Acessar material gratuito",price_brl:197};
       const approved=evaluateCreativeWithRewrites(spec,{serverPrice:197,visualScore:1});
@@ -18385,15 +18384,14 @@ var cloudflare_worker_default = {
       return withSecurityHeaders(new Response(JSON.stringify(proof||{error:"telegram_proof_not_published"}),{status:proof?.provider_post_id?200:503,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
     }
     if (request.method === "POST" && url.pathname === "/api/internal/channels/evidence") {
-      const expected = String(operatorCredential(env) || operatorCredential(process.env) || ""), provided = String(request.headers.get("x-certification-e2e-token") || "");
-      if (!expected || !secureTokenEqual(expected, provided)) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
+      const provided = String(request.headers.get("x-certification-e2e-token") || "");
+      if (!verifyOperatorToken(operatorCredential(env) ? env : process.env, provided, { minLength: 1 })) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
       const body=await request.json().catch(()=>null);if(!body)return withSecurityHeaders(new Response(JSON.stringify({error:"invalid_json"}),{status:400,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
       try{return withSecurityHeaders(new Response(JSON.stringify(await recordChannelProof(env,body)),{status:200,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);}catch(error){return withSecurityHeaders(new Response(JSON.stringify({error:String(error?.message||"invalid_proof")}),{status:400,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);}
     }
     if (request.method === "POST" && url.pathname === "/api/internal/whatsapp/stats-refresh") {
-      const expected = String(operatorCredential(env) || operatorCredential(process.env) || "");
       const provided = String(request.headers.get("x-certification-e2e-token") || "");
-      if (!expected || !secureTokenEqual(expected, provided)) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
+      if (!verifyOperatorToken(operatorCredential(env) ? env : process.env, provided, { minLength: 1 })) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
       const stats = await publishWhatsappOpsStats(globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__, env.ZEVANORY_PRIVATE_ARTIFACTS);
       if (!stats) return withSecurityHeaders(new Response(JSON.stringify({ error: "whatsapp_ops_stats_unavailable" }), { status: 503, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
       return withSecurityHeaders(new Response(JSON.stringify(stats), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);

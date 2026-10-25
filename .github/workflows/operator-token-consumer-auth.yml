@@ -1,0 +1,87 @@
+name: R9 operator token consumer authentication (read-only)
+
+# Sol 233, passo (c) do procedimento de docs/ops/operator-token-transition.md: para CADA consumidor de produção do
+# inventário, prova que a credencial NOVA (secrets.ZEVANORY_OPERATOR_TOKEN, sem queda para o nome antigo) autentica no
+# Worker de produção como a PRIMÁRIA, por um endpoint SOMENTE LEITURA (GET /api/internal/audit/credential-identity via
+# scripts/ci/credential_identity_readback.py --require-primary: OPERATOR_TOKEN_SOURCE=primary e
+# OPERATOR_TOKEN_PRESENTED=primary). Segredos resolvem por Environment: cada linha da matriz roda no Environment do
+# consumidor que ela representa (um job por Environment, nome literal: o gate de separação proíbe Environment por
+# expressão). A matriz é conferida contra o inventário por tests/operator-token-inventory.test.mjs.
+# Só workflow_dispatch e só gh-pages: nunca dispara no merge. Saídas: só categorias.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  producao-critica-consumers:
+    name: auth ${{ matrix.consumer }}
+    environment: producao-critica
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        consumer:
+          - "central-production-deploy.yml#deploy"
+          - "channel-production-bootstrap.yml#channels"
+          - "mercadopago-prod-payments-readonly.yml#payments-readonly"
+    env:
+      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Read-only proof that the new credential authenticates as primary
+        shell: bash
+        env:
+          CONSUMER: ${{ matrix.consumer }}
+        run: |
+          set -euo pipefail
+          echo "CONSUMER=$CONSUMER ENVIRONMENT=producao-critica"
+          python3 scripts/ci/credential_identity_readback.py https://zevanory.api.br --require-primary
+
+  gh-pages-automacao-consumers:
+    name: auth ${{ matrix.consumer }}
+    environment: gh-pages-automacao
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        consumer:
+          - "command-center-snapshot.yml#snapshot"
+          - "data-backup.yml#backup"
+          - "order12a-financial-proof-renewal.yml#signed-renewal"
+          - "t2-content-calendar.yml#compose"
+          - "t2-creative-compose.yml#compose"
+          - "t2-regenerate-ia-clean.yml#regenerate"
+          - "t2-workers-ai-creative-factory.yml#generate"
+          - "voice-cache-repair.yml#warm"
+          - "voice-cache-warm.yml#warm"
+          - "voice-eval.yml#eval"
+          - "whatsapp-neon-live-proof.yml#whatsapp-neon-stats"
+          - "whatsapp-operational-audit.yml#audit"
+          - "zevanory-f7-emergency-close-drill.yml#drill"
+          - "zevanory-first-order-watch.yml#first-order-watch"
+    env:
+      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Read-only proof that the new credential authenticates as primary
+        shell: bash
+        env:
+          CONSUMER: ${{ matrix.consumer }}
+        run: |
+          set -euo pipefail
+          echo "CONSUMER=$CONSUMER ENVIRONMENT=gh-pages-automacao"
+          python3 scripts/ci/credential_identity_readback.py https://zevanory.api.br --require-primary

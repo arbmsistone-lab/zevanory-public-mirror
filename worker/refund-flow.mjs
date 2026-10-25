@@ -1,7 +1,7 @@
 import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
 import { drainAtendimentoOutbox, handleAtendimento } from "./atendimento.mjs";
 import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
-import { operatorToken as operatorCredential } from "./operator-credential.mjs";
+import { verifyOperatorToken } from "./operator-credential.mjs";
 export { reconcileRefund } from "./refund-provider-claims.mjs";
 // T5 — Refund flow (CDC art. 49). P13c (FINANCEIRO): o prazo segue a regra publicada
 // (data/politica-unica.json, refund_window via refundWindow): 7 dias corridos a partir da data mais
@@ -271,8 +271,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     try { input = await request.json(); } catch {}
     try {
       const out = await createRequest(env, sql(), kv, { oid: input.order_id, email: input.email });
-      const cert = String(operatorCredential(env) || "");
-      const diagnostic = cert.length >= 32 && timingSafeEqual(cert, request.headers.get("x-certification-e2e-token") || "");
+      const diagnostic = Boolean(verifyOperatorToken(env, request.headers.get("x-certification-e2e-token") || ""));
       if (!diagnostic && out.body?.reason) delete out.body.reason;
       return json(out.status, out.body);
     } catch {
@@ -281,8 +280,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
   }
 
   if (path === "/api/internal/certification/e2e/refund-approve" || path === "/api/internal/certification/e2e/refund-reconcile") {
-    const expected = String(operatorCredential(env) || "");
-    if (request.method !== "POST" || expected.length < 32 || !timingSafeEqual(expected, request.headers.get("x-certification-e2e-token") || "")) return json(401, { error: "certification_e2e_auth_required" });
+    if (request.method !== "POST" || !verifyOperatorToken(env, request.headers.get("x-certification-e2e-token") || "")) return json(401, { error: "certification_e2e_auth_required" });
     const oid = String(url.searchParams.get("order_id") || "").toLowerCase();
     const record = JSON.parse(await kv.get(KEY(oid)) || "null");
     if (!record?.test) return json(403, { error: "certification_refund_only_for_test_orders" });

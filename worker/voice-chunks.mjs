@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { downsamplePcmMono, encodePcmRemotely } from "./voice-pcm.mjs";
-import { operatorToken as operatorCredential } from "./operator-credential.mjs";
+import { verifyOperatorToken } from "./operator-credential.mjs";
 const E=new TextEncoder(), FRAME=576, CORE=FRAME*21, WARM=FRAME*2, MAX=3*1024*1024;
 const hex=b=>Buffer.from(b).toString("hex");
 let cachedSecret,cachedKey;
@@ -137,10 +137,8 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
 }
 
 export async function handleVoiceEncodeAudit(request,env){
- const expected=String(operatorCredential(env)||env.OPERATOR_TOKEN||"");
  const supplied=(request.headers.get("authorization")||"").replace(/^Bearer /,"");
- let diff=expected.length^supplied.length;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^(supplied.charCodeAt(i)||0);
- if(expected.length<24||diff)return Response.json({error:"unauthorized"},{status:401});
+ if(!verifyOperatorToken(env,supplied,{minLength:24,fallbackToken:env.OPERATOR_TOKEN}))return Response.json({error:"unauthorized"},{status:401});
  if(request.method!=="POST")return Response.json({error:"method_not_allowed"},{status:405});
  if(Number(request.headers.get("content-length")||0)>MAX)return Response.json({error:"voice_pcm_size_invalid"},{status:413});
  const pcm=new Uint8Array(await request.arrayBuffer());if(pcm.length>MAX)return Response.json({error:"voice_pcm_size_invalid"},{status:413});

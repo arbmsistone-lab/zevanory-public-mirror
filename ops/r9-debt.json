@@ -15,7 +15,7 @@
       "prs": [
         "#912"
       ],
-      "next_step": "proprietário cria ZEVANORY_OPERATOR_TOKEN (mesmo valor) no Worker zevanory e nos Environments producao-critica e gh-pages-automacao; production-credential-identity.yml com require_primary=true; depois PR R9 A2 (queda off, gate --strict)"
+      "next_step": "Sol 233: valor NOVO (não cópia do antigo) com janela de migração OPERATOR_TOKEN_MIGRATION_UNTIL; procedimento em docs/ops/operator-token-transition.md, ordem (a) merge+deploy com a janela, (d) Worker, (b) Environments producao-critica e gh-pages-automacao, (c) operator-token-consumer-auth.yml, (e) require_primary; depois PR R9 A2 (queda e janela off, gate --strict) e (g) exclusão do antigo com autorização própria"
     },
     {
       "id": "R9-D2",
