@@ -79,3 +79,40 @@ test("public FUNNEL_DIAG notice never singles out a network with fewer than 3 vi
   assert.deepEqual(diag.asnTop, [["28573", 10], ["7738", 3], ["outros", 3]]);
   assert.doesNotMatch(line, /263000|52965/);
 });
+
+test("P19: COMMAND_CENTER publica workersUsage do dia UTC completo anterior (GraphQL só leitura); sem dado = verified:false", async () => {
+  const store = new Map();
+  const realFetch = globalThis.fetch, realLog = console.log, logs = [];
+  const queries = [];
+  globalThis.fetch = async (u, o = {}) => {
+    u = String(u);
+    const res = (status, body) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
+    if (u.includes("/storage/kv/")) {
+      if (u.includes("/keys?")) return res(200, { result: [] });
+      const k = decodeURIComponent(u.match(/values\/([^?]+)/)[1]);
+      if ((o.method || "GET") === "PUT") { store.set(k, o.body); return res(200, {}); }
+      return store.has(k) ? res(200, store.get(k)) : res(404, "");
+    }
+    if (u === "https://api.cloudflare.com/client/v4/graphql") {
+      const q = JSON.parse(o.body); queries.push(q);
+      if (q.query.includes("workersInvocationsAdaptive")) return res(200, { data: { viewer: { accounts: [{ workersInvocationsAdaptive: [{ dimensions: { scriptName: "zevanory" }, sum: { requests: 1234, errors: 1, subrequests: 9 }, quantiles: { cpuTimeP50: 800, cpuTimeP99: 3100 } }] }] } } });
+      return res(200, { data: { viewer: { accounts: [{ kvOperationsAdaptiveGroups: [] }] } } });
+    }
+    return res(200, {});
+  };
+  console.log = (...a) => logs.push(a.join(" "));
+  Object.assign(process.env, { CLOUDFLARE_API_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "a", KV_NAMESPACE_ID: "n" });
+  try {
+    const { main } = await import("../scripts/audit/command-center-snapshot.mjs");
+    await main();
+  } finally { globalThis.fetch = realFetch; console.log = realLog; }
+  const line = logs.find((l) => l.startsWith("::notice title=COMMAND_CENTER::"));
+  const cc = JSON.parse(line.slice("::notice title=COMMAND_CENTER::".length));
+  assert.equal(cc.workersUsage.verified, true);
+  assert.equal(cc.workersUsage.requests, 1234);
+  assert.equal(cc.workersUsage.cpu_p99_ms_worst, 3.1);
+  const wq = queries.find((q) => q.query.includes("workersInvocationsAdaptive"));
+  assert.equal(cc.workersUsage.day, wq.variables.s.slice(0, 10));
+  assert.ok(Date.parse(wq.variables.e) <= Date.now(), "só dia completo (fim no passado)");
+  assert.doesNotMatch(wq.query, /mutation/i);
+});

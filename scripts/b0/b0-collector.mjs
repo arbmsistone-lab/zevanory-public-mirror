@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 import {
   UA, SITEMAPS, PROCESS_IDS, addDays, measured, na, buildDailyRecord, validateDailyRecord, validateProbe, parseJsonl,
   validateTargets, buildRegister, consecutiveCompleteDays, PROCESSES, parseCommandCenter, parseFunnelDiag, parseDataBackup,
-  parseSitemap, summarizeHttp, parseA11y, aggregateProbes, aggregateLatency, validateRun, validateIncident, pickMonthlyDrill,
+  parseSitemap, summarizeHttp, parseA11y, aggregateProbes, aggregateLatency, validateRun, validateIncident, parseWorkersUsage, parsePlanProbe, P19_NEON_STORAGE_MAX_AGE_DAYS, pickMonthlyDrill,
 } from "./b0-lib.mjs";
 import { parseDrillHistory } from "../p20/restore-drill-lib.mjs";
 
@@ -58,6 +58,15 @@ async function latestRun(api, workflowFile, day, { requireSuccess }) {
   const runs = (Array.isArray(d?.workflow_runs) ? d.workflow_runs : [])
     .filter((r) => r && r.head_branch === "gh-pages" && ["schedule", "workflow_dispatch"].includes(r.event) && String(r.path || "").endsWith(".github/workflows/" + workflowFile)
       && typeof r.created_at === "string" && r.created_at.slice(0, 10) === day && r.status === "completed")
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return runs[0] || null;
+}
+// Último run bem-sucedido de um workflow em gh-pages criado entre fromDay e toDay (inclusive).
+async function latestRunInWindow(api, workflowFile, fromDay, toDay) {
+  const d = await api(`/actions/workflows/${workflowFile}/runs?branch=gh-pages&created=${fromDay}..${toDay}&per_page=100&status=success`);
+  const runs = (Array.isArray(d?.workflow_runs) ? d.workflow_runs : [])
+    .filter((r) => r && r.head_branch === "gh-pages" && ["schedule", "workflow_dispatch"].includes(r.event) && String(r.path || "").endsWith(".github/workflows/" + workflowFile)
+      && typeof r.created_at === "string" && r.created_at.slice(0, 10) >= fromDay && r.created_at.slice(0, 10) <= toDay && r.status === "completed" && r.conclusion === "success")
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   return runs[0] || null;
 }
@@ -157,6 +166,25 @@ export async function collect({ env = process.env, fetchImpl = fetch, now = new 
   } catch (e) {
     for (const [p, f] of [["P19", "kv_quota"], ["P15", "funnel_visits"], ["P15", "funnel_origin"], ["P15", "funnel_interest"]]) F[p][f] = na("command-center-snapshot", e.message);
   }
+
+  // P19 Workers: o command-center grava em workersUsage o dia UTC COMPLETO anterior; o dia D vem de um run de D+1.
+  try {
+    const next = addDays(day, 1);
+    if (next > nowIso.slice(0, 10)) throw new Error("next_day_not_started");
+    const run = await latestRun(api, "command-center-snapshot.yml", next, { requireSuccess: true });
+    if (!run) throw new Error("no_successful_run_on_next_day");
+    const w = parseWorkersUsage(pick(await annotations(api, run.id), "COMMAND_CENTER"), day);
+    F.P19.workers_usage = w.ok ? measured(`command-center-snapshot run ${run.id} (workersUsage do dia ${day})`, w.v) : na(`command-center-snapshot run ${run.id}`, w.reason);
+  } catch (e) { F.P19.workers_usage = na("command-center-snapshot (workersUsage)", e.message); }
+  // P19 Neon armazenamento: anotação PLAN_PROBE do plan-probe semanal (até 8 dias antes do fim do dia D).
+  try {
+    const run = await latestRunInWindow(api, "plan-probe.yml", addDays(day, -P19_NEON_STORAGE_MAX_AGE_DAYS), day);
+    if (!run) throw new Error("no_successful_plan_probe_within_8_days");
+    const n = parsePlanProbe(pick(await annotations(api, run.id), "PLAN_PROBE"), run, day);
+    F.P19.neon_storage = n.ok ? measured(`plan-probe run ${run.id}`, n.v) : na(`plan-probe run ${run.id}`, n.reason);
+  } catch (e) { F.P19.neon_storage = na("plan-probe (PLAN_PROBE)", e.message); }
+  // P19 Neon CU-h do mês: sem fonte somente leitura (exige chave de API do Neon, credencial nova). NOT_AVAILABLE explícito.
+  F.P19.neon_compute = na("API de consumo do Neon", "requires_new_credential_neon_api_key");
 
   // P18 e P22: agregação das sondagens do monitor externo gravadas no próprio ramo de evidência.
   const ag = aggregateProbes(probes, day);
