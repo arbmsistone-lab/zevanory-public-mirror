@@ -3,6 +3,7 @@
   "experiments": [
     {
       "id": "short-format",
+      "closed": {"at": "2026-10-25", "outcome": "INCONCLUSIVO", "ref": "data/p16/experiments.json#C-2026-0001"},
       "title": "Formato do Short",
       "hypothesis": "Shorts com dica prática por ramo e com calculadora gratuita atraem mais visualizações do que o Short que apresenta o produto.",
       "metric": "Visualizações por vídeo com 3 dias ou mais de publicação",
@@ -23,6 +24,7 @@
     },
     {
       "id": "product-page-v2",
+      "closed": {"at": "2026-10-25", "outcome": "INCONCLUSIVO", "ref": "data/p16/experiments.json#C-2026-0002"},
       "title": "Página de produto v2",
       "hypothesis": "Mostrar o que vem dentro logo abaixo do botão, para quem é e uma barra de compra no celular aumenta a intenção de compra.",
       "metric": "Intenção de compra ÷ visitas nas 5 páginas de produto",
@@ -36,6 +38,7 @@
     },
     {
       "id": "nurture-match",
+      "closed": {"at": "2026-10-25", "outcome": "INCONCLUSIVO", "ref": "data/p16/experiments.json#C-2026-0003"},
       "title": "E-mail com o produto certo",
       "hypothesis": "Oferecer por e-mail o produto ligado à página onde a pessoa pediu o material gera cliques para a oferta.",
       "metric": "Cliques vindos dos e-mails da sequência (por campanha)",
