@@ -70,6 +70,97 @@ export function operatorToken(env) {
   return resolveOperatorToken(env).token;
 }
 
+// JANELA DE MIGRAÇÃO (Sol 233): o proprietário cria um valor NOVO para ZEVANORY_OPERATOR_TOKEN (não é cópia do antigo,
+// que não pode ser lido em lugar nenhum). Com o nome novo presente o Worker usaria só ele e derrubaria todo cliente que
+// ainda manda o valor antigo. Durante uma janela EXPLÍCITA e com data de fim, a verificação aceita os dois valores
+// (comparação em tempo constante, sempre contra todos os candidatos). Fora da janela, ou sem a flag, vale exatamente o
+// comportamento anterior: o nome novo, se presente, é o único aceito (queda para o antigo só na ausência do novo).
+//   - flag não secreta OPERATOR_TOKEN_MIGRATION_UNTIL=AAAA-MM-DD (var do Worker ou chave de ZEVANORY_RUNTIME_CONFIG,
+//     gravada pelo deploy a partir de vars.OPERATOR_TOKEN_MIGRATION_UNTIL); aberta até 23:59:59.999Z desse dia;
+//   - teto em CÓDIGO (MIGRATION_CODE_CEILING): data acima do teto não abre a janela (o PR A2 apaga a janela inteira);
+//   - flag ausente, malformada, vencida ou acima do teto = janela fechada (comportamento de hoje);
+//   - só categorias são registradas (primary | legacy | legacy_fallback | certification | operator_token | none),
+//     nunca valor, tamanho ou hash.
+export const MIGRATION_FLAG_NAME = "OPERATOR_TOKEN_MIGRATION_UNTIL";
+export const MIGRATION_CODE_CEILING = "2026-12-31";
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function runtimeConfigValue(env, name) {
+  let cfg = env?.ZEVANORY_RUNTIME_CONFIG;
+  if (typeof cfg === "string") {
+    try { cfg = JSON.parse(cfg); } catch { return undefined; }
+  }
+  return cfg && typeof cfg === "object" && !Array.isArray(cfg) ? cfg[name] : undefined;
+}
+
+export function migrationDayEnd(day) {
+  if (!ISO_DAY.test(day)) return NaN;
+  const t = Date.parse(day + "T23:59:59.999Z");
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === day ? t : NaN;
+}
+
+export function operatorTokenMigration(env, { now = Date.now() } = {}) {
+  const direct = env?.[MIGRATION_FLAG_NAME];
+  const value = text(direct !== undefined && direct !== null && String(direct) !== "" ? direct : runtimeConfigValue(env, MIGRATION_FLAG_NAME)).trim();
+  if (!value) return Object.freeze({ open: false, state: "absent" });
+  const until = migrationDayEnd(value);
+  if (!Number.isFinite(until)) return Object.freeze({ open: false, state: "invalid" });
+  if (value > MIGRATION_CODE_CEILING) return Object.freeze({ open: false, state: "beyond_code_ceiling" });
+  if (now > until) return Object.freeze({ open: false, state: "expired" });
+  return Object.freeze({ open: true, state: "open", until: value });
+}
+
+// Candidatos aceitos para VERIFICAR uma credencial recebida (nunca para enviar): o resolvido de sempre e, só dentro da
+// janela e com o nome novo presente, o valor antigo como "legacy".
+export function operatorCredentialCandidates(env, { now = Date.now(), count = true, log = console } = {}) {
+  const resolved = resolveOperatorToken(env, { count, log });
+  if (!resolved.token) return [];
+  const list = [{ token: resolved.token, category: resolved.source }];
+  if (resolved.source === "primary" && operatorTokenMigration(env, { now }).open) {
+    const legacy = text(env[LEGACY_OPERATOR_TOKEN_NAME]);
+    if (legacy && legacy !== resolved.token) list.push({ token: legacy, category: "legacy" });
+  }
+  return list;
+}
+
+export function constantTimeEqual(a, b) {
+  const x = text(a), y = text(b);
+  const n = Math.max(x.length, y.length);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < n; i++) diff |= (x.charCodeAt(i) | 0) ^ (y.charCodeAt(i) | 0);
+  return diff === 0 && x.length > 0;
+}
+
+const authCounts = { primary: 0, legacy: 0, legacy_fallback: 0, certification: 0, operator_token: 0, none: 0 };
+const authLogged = new Set();
+export function recordOperatorAuth(category, { log = console } = {}) {
+  const key = Object.prototype.hasOwnProperty.call(authCounts, category) ? category : "none";
+  authCounts[key] += 1;
+  if (!authLogged.has(key)) {
+    authLogged.add(key);
+    try { (key === "legacy" ? log?.warn : log?.info)?.call(log, "operator_token_auth", JSON.stringify({ category: key })); } catch {}
+  }
+  return key;
+}
+export function operatorAuthCounts() {
+  return { ...authCounts };
+}
+
+// Verifica a credencial recebida contra TODOS os candidatos (sem atalho) e devolve a categoria aceita ou "" (recusa).
+// minLength: comprimento mínimo do valor esperado (cada consumidor mantém o seu de hoje). fallbackToken: credencial
+// alternativa que alguns consumidores já aceitavam SÓ na ausência da de operador (OPERATOR_TOKEN).
+export function verifyOperatorToken(env, provided, { minLength = 32, now = Date.now(), fallbackToken = "", log = console } = {}) {
+  let list = operatorCredentialCandidates(env, { now, log });
+  if (!list.length && text(fallbackToken)) list = [{ token: text(fallbackToken), category: "operator_token" }];
+  let hit = "";
+  for (const c of list) {
+    const ok = c.token.length >= minLength && constantTimeEqual(c.token, provided);
+    if (ok && !hit) hit = c.category;
+  }
+  recordOperatorAuth(hit || "none", { log });
+  return hit;
+}
+
 // Categoria não secreta para o readback (nunca o valor nem o tamanho).
 export function operatorTokenSource(env) {
   return resolveOperatorToken(env, { log: null, count: false }).source;

@@ -199,6 +199,9 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+          # R9-D1: same non-secret window flag as the main Worker; edge >= #211 validates it (ceiling 2026-12-31) and
+          # passes it as --var. Absent => window closed (today's behaviour). Older edge sources ignore it.
+          OPERATOR_TOKEN_MIGRATION_UNTIL: ${{ vars.OPERATOR_TOKEN_MIGRATION_UNTIL }}
         shell: bash
         run: |
           set -euo pipefail
