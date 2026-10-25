@@ -108,7 +108,7 @@ main{display:block;overflow:visible;overflow-x:clip}
 .nav-cta{padding:0 var(--s-4);border:1px solid var(--balcao-texto);border-radius:var(--controle);white-space:nowrap}
 
 /* The one honest site notice (pages with prices). The Worker removes it when sales open. */
-.sales-notice{margin:0;max-width:none;padding:var(--s-3) max(16px,calc((100% - 1120px)/2));background:var(--cupom);border-bottom:1px solid var(--linha-suave);color:var(--tinta);font-size:var(--t-0)}
+.sales-notice{margin:0;max-width:none;padding:var(--s-2) max(16px,calc((100% - 1120px)/2));background:var(--cupom);border-bottom:1px solid var(--linha-suave);color:var(--tinta);font-size:var(--t-0)}
 
 /* Type helpers. */
 .kicker{margin:0 0 var(--s-3);font-family:var(--display);font-stretch:100%;font-weight:700;font-size:var(--t-1);color:var(--azul-cedula)}
@@ -282,6 +282,26 @@ main{display:block;overflow:visible;overflow-x:clip}
 .catalog-card:target{outline:3px solid var(--azul-cedula);outline-offset:4px;scroll-margin-top:104px}
 .catalog-card:target .cc-match{display:block}
 .catalog-card:target:not(.lead){background:var(--cupom);padding-inline:var(--s-4)}
+/* S-02 (site audit 2026-10-25): free-guide and calculator hubs (/ia-por-ramo, /ferramentas). Own component: the paid
+   catalogue's .catalog-card grid (title + 9.5rem price column) squeezed these titles into ~150 px at >=768 px. */
+.guide-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,17rem),1fr));gap:var(--s-4)}
+.guide-card{position:relative;display:flex;flex-direction:column;gap:var(--s-2);margin:0;padding:var(--s-5);background:var(--cupom);border-top:2px solid var(--regua)}
+.guide-card h2{font-size:var(--t-2);max-width:none}
+.guide-card h2 a{color:var(--tinta);text-decoration:none}
+.guide-card h2 a::after{content:"";position:absolute;inset:0}
+.guide-card:hover h2 a{color:var(--azul-cedula);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:.2em}
+.guide-card h2 a:focus-visible{outline:none}
+.guide-card:has(a:focus-visible){outline:3px solid var(--azul-cedula);outline-offset:3px}
+.guide-card p{margin:0;color:var(--grafite)}
+.guide-card .guide-type{font-size:var(--t-0)}
+.status-pill .pill-unit{display:block;margin-top:var(--s-1);font-family:var(--texto);font-stretch:100%;font-weight:400;font-size:var(--t-0);color:var(--grafite)}
+/* S-04: sign-up form and e-mail waiting list side by side (stacked on phones). */
+.waitlist-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:var(--s-6);align-items:start}
+.waitlist-grid h3{font-size:var(--t-2)}
+.waitlist-mail{padding:var(--s-5);border-top:2px solid var(--regua)}
+.waitlist-mail p{color:var(--grafite);overflow-wrap:anywhere}
+@media(max-width:760px){.waitlist-grid{grid-template-columns:minmax(0,1fr)}}
+.guide-cta{margin-top:auto;padding-top:var(--s-2);font-family:var(--display);font-stretch:87.5%;font-weight:700;color:var(--azul-cedula)}
 /* Catalogue thumbnails: the real cover (and, when it is a whole page of the same format, the approved inner
    page behind it as a two-page stack). Not interactive: the card link goes to the product page. */
 .catalog-card:has(.cc-thumb){grid-template-columns:140px minmax(0,1fr) 9.5rem;column-gap:var(--s-5)}
@@ -362,8 +382,9 @@ main{display:block;overflow:visible;overflow-x:clip}
 .lead-form,.calc{display:grid;gap:var(--s-3);background:var(--cupom);padding:var(--s-5);border-top:2px solid var(--regua)}
 .lead-form label,.calc label{font-weight:700}
 input[type=email],input[type=text],input[type=number],select{min-height:48px;padding:0 var(--s-4);border:1px solid var(--linha);border-radius:var(--controle);background:var(--cupom);font-size:1rem}
-.lead-consent{display:flex;gap:var(--s-3);align-items:flex-start;font-weight:400}
-.lead-consent input{width:24px;height:24px;margin-top:var(--s-1);accent-color:var(--azul-cedula)}
+.lead-consent,.lead-form .lead-consent{display:flex;gap:var(--s-3);align-items:flex-start;font-weight:400}
+/* 44x44 CSS px like every other target (internal standard; the site audit found the 24 px box below it). */
+.lead-consent input{flex:0 0 auto;width:44px;height:44px;margin:0;accent-color:var(--azul-cedula)}
 .lead-note,.calc-hint{margin:0;color:var(--grafite);font-size:var(--t-0)}
 .lead-hp{position:absolute;left:-10000px;width:4px;height:4px;overflow:hidden}
 .checklist-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-5)}
@@ -447,6 +468,8 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
   .buy-bar span{display:block;color:var(--grafite);font-size:var(--t-0)}
   .buy-bar>div{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
   .buy-bar .button{width:auto;min-height:44px;padding:var(--s-1) var(--s-4);flex:0 1 auto;min-width:0;max-width:58%;text-align:center;line-height:1.2;overflow-wrap:anywhere}
+  .buy-bar.buy-bar-auto{transition:transform .2s ease,visibility 0s linear 0s}
+  .buy-bar.buy-bar-auto:not(.is-shown){visibility:hidden;transform:translateY(100%);transition:transform .2s ease,visibility 0s linear .2s}
 }
 @media(max-width:560px){.offer-summary div{grid-template-columns:minmax(0,1fr);gap:var(--s-1)}}
 @media(prefers-reduced-motion:reduce){

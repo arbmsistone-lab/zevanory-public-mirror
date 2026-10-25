@@ -72,3 +72,15 @@ variant now target those strings:
     - (d) checkout and purchase routes are identical to gh-pages, closed and open;
     - (e) security headers and CSP are identical.
 - `tests/sales-design.test.mjs` (a): the built `404.html` contract.
+
+## Site audit S-04 (2026-10-25): closed-sales sign-up block
+
+- `openSalesHtml` also removes `<section … data-zev-closed-block>` (no nested section): the block with the
+  lead form (existing `/material-gratuito/inscrever` backend and consent text) and the e-mail waiting list
+  that the build adds to the five product pages and `/conteudo-pronto` while sales are closed. With sales
+  closed nothing changes; with sales open the block disappears together with the closed-sales notice.
+- `tests/sales-worker-differential.test.mjs` reverse-applies this third hunk too (the rebuilt gh-pages Worker
+  stays hash-identical) and accepts one more intended difference: GET with sales open, same status and
+  headers, body equal to the old body minus that block. Any other difference still fails.
+- `tests/p13-politica-nogo.test.mjs` (c): the block exists in the closed build and is gone in the open build
+  and in the runtime restoration, while the final CTA section stays.

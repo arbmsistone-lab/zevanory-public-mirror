@@ -110,6 +110,10 @@ test("(c) modo aberto: build de preview e restauração em tempo de execução d
       assert.deepEqual(buyAnchors(runtime), anchors, "CTAs runtime == build aberto: " + slug);
       assert.deepEqual(productOffer(runtime), productOffer(opened), "Offer runtime == build aberto: " + slug);
       assert.ok(!runtime.includes("data-zev-") && !runtime.includes(P.closed_label), "runtime sem marcadores: " + slug);
+      // Site audit S-04: the closed-sales sign-up block exists only while closed and leaves with the switch.
+      assert.ok(closed.includes('id="lista-de-espera"') && closed.includes('action="/material-gratuito/inscrever"'), "bloco de inscrição no modo fechado: " + slug);
+      assert.ok(!runtime.includes('id="lista-de-espera"') && !opened.includes('id="lista-de-espera"'), "bloco de inscrição some com vendas abertas: " + slug);
+      assert.ok(runtime.includes('class="container final-cta"'), "o resto da página fica: " + slug);
     }
     for (const slug of SUBS) {
       const opened = read(out, slug), closed = read(PUB, slug);

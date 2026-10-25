@@ -35,12 +35,20 @@ const HUNK_404 = `  // Designed 404 for unknown PAGE paths (no file extension); 
     if(nf.status===200) return new Response(request.method==="HEAD"?null:nf.body,{status:404,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
   }
 `;
+// Site audit S-04 (2026-10-25): third intended difference. With sales OPEN the Worker also drops the
+// closed-sales sign-up block (<section data-zev-closed-block>: lead form + e-mail waiting list).
+const HUNK_CLOSED_BLOCK = `  // Site audit S-04: the closed-sales sign-up block (form + e-mail waiting list) is a whole <section> with no
+  // nested section; it disappears with the notice when the owner opens sales.
+  out=out.replace(/<section\\b[^>]*\\sdata-zev-closed-block[^>]*>(?:(?!<section\\b)[\\s\\S])*?<\\/section>/g,"");
+`;
+const CLOSED_BLOCK_RE = /<section\b[^>]*\sdata-zev-closed-block[^>]*>(?:(?!<section\b)[\s\S])*?<\/section>/g;
 const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex"); };
 
 async function loadWorkers() {
   assert.equal(NEW_SRC.split(HUNK_HOTMART_NEW).length, 2, "Hotmart hunk present exactly once");
   assert.equal(NEW_SRC.split(HUNK_404).length, 2, "404 hunk present exactly once");
-  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "");
+  assert.equal(NEW_SRC.split(HUNK_CLOSED_BLOCK).length, 2, "closed-block hunk present exactly once");
+  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "").replace(HUNK_CLOSED_BLOCK, "");
   assert.equal(gitBlob(oldSrc), GH_PAGES_BLOB, "reverse-applied file is byte-identical to the gh-pages Worker (no other change)");
   const tmp = join(ROOT, "worker", `.gh-pages-sales-worker-${process.pid}-${Date.now()}.mjs`);
   writeFileSync(tmp, oldSrc);
@@ -107,10 +115,15 @@ test("differential: gh-pages Worker vs #914 Worker — only the intended differe
       assert.doesNotMatch(html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ""), /Mercado Pago/, key);
       diffs.push("hotmart:" + key); continue;
     }
+    if (open && method === "GET" && a.status === b.status && JSON.stringify(a.headers) === JSON.stringify(b.headers)) {
+      const before = Buffer.from(a.body, "base64").toString(), after = Buffer.from(b.body, "base64").toString();
+      if (/data-zev-closed-block/.test(before) && before.replace(CLOSED_BLOCK_RE, "") === after) { diffs.push("closed-block:" + key); continue; }
+    }
     assert.fail(`unexpected difference at ${key}: status ${a.status}->${b.status}`);
   }
   assert.ok(compared > 300, "matrix size " + compared);
   assert.ok(diffs.some((d) => d.startsWith("404:")) && diffs.some((d) => d.startsWith("hotmart:")), "both intended differences observed");
+  assert.ok(diffs.some((d) => d.startsWith("closed-block:")), "closed-block difference observed (sales open)");
   console.log(`SALES_WORKER_DIFFERENTIAL compared=${compared} intended_differences=${diffs.length}`);
 });
 

@@ -291,6 +291,38 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
     return (f'<section class="offer-summary" data-offer-summary="{slug}" aria-label="Resumo da oferta">'
             f'<h3>Resumo da oferta</h3><dl>{"".join(rows)}</dl></section>')
 
+# S-04 (site audit 2026-10-25). The site's lead backend (POST /material-gratuito/inscrever -> CORE, double
+# opt-in, consent "lead-magnet-v1-2026-10-07") delivers the free checklist and at most 2 e-mails; it is not a
+# waiting list (leads are erased after the sequence, and the product e-mail only goes out if sales reopen
+# within 30 days). So the form says exactly that, with the same consent text as /material-gratuito, and the
+# waiting list itself stays the official e-mail (contato_publico rule 1 in data/politica-unica.json), now
+# with the address in plain text for phones without a mail app. The Worker drops the whole block
+# (data-zev-closed-block) when the owner opens sales.
+LEAD_CONSENT = ('Quero receber o checklist e até 2 e-mails com dicas e os produtos da ZEVANORY. Posso cancelar a qualquer '
+                'momento. Li a <a href="/privacidade">Política de Privacidade</a>.')
+
+def waitlist_block(name: str) -> str:
+    if MODE == policy.OPEN:
+        return ""
+    subject = policy.CONTACT["waitlist_subject"].replace("{produto}", name)
+    return ('<section class="container section waitlist" id="lista-de-espera" aria-labelledby="espera-titulo" data-zev-closed-block>'
+            '<div class="section-head"><h2 id="espera-titulo">Vendas fechadas por enquanto</h2>'
+            f'<p class="section-lead">Duas formas de ficar por perto enquanto o {_esc(name)} não volta à venda.</p></div>'
+            '<div class="waitlist-grid">'
+            '<form class="lead-form" method="post" action="/material-gratuito/inscrever" aria-labelledby="espera-form-titulo">'
+            '<h3 id="espera-form-titulo">Comece grátis: checklist de 15 minutos por dia</h3>'
+            '<label for="espera-email">Seu melhor e-mail</label><input id="espera-email" name="email" type="email" required autocomplete="email" maxlength="254">'
+            '<label for="espera-nome">Seu nome (opcional)</label><input id="espera-nome" name="nome" type="text" autocomplete="given-name" maxlength="60">'
+            '<div class="lead-hp" aria-hidden="true"><label for="espera-site">Não preencha</label><input id="espera-site" name="website" type="text" tabindex="-1" autocomplete="off"></div>'
+            f'<label class="lead-consent"><input type="checkbox" name="consentimento" value="sim" required> <span>{LEAD_CONSENT}</span></label>'
+            '<button class="button primary" type="submit">Receber o checklist grátis</button>'
+            '<p class="lead-note">O checklist abre assim que você enviar. As dicas por e-mail só chegam depois que você confirmar o endereço. Sem spam e sem repasse dos seus dados.</p></form>'
+            '<div class="waitlist-mail"><h3>Lista de espera</h3>'
+            f'<p>Para ser avisado quando o {_esc(name)} voltar à venda, entre na lista de espera por e-mail. Se o botão não abrir o seu aplicativo de e-mail, '
+            f'escreva para <strong>{policy.SUPPORT_EMAIL}</strong> com o assunto “{_esc(subject)}”.</p>'
+            f'<p><a class="button secondary" href="{_attr(policy.waitlist_href(name))}">Entrar na lista de espera por e-mail</a></p></div>'
+            '</div></section>')
+
 def apply_commerce(slug: str, html: str) -> str:
     c = COMMERCE[slug]
     label = f"Comprar agora · R$ {c['price']}"
@@ -310,12 +342,21 @@ def apply_commerce(slug: str, html: str) -> str:
     items = "".join(f"<li>{i}</li>" for i in c["items"])
     # Design (2026-10-24): "vendas temporariamente fechadas" is said ONCE per page by the site notice
     # (sales_notice); the legal Resumo da oferta keeps its own Disponibilidade field.
-    aside = (f'<div class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
-             f'<h3>O que você recebe</h3><ul>{items}</ul>'
+    # S-12: one offer block. The list of items already opens the page (hero receipt) and is repeated by the
+    # Resumo da oferta ("Características essenciais"), so the block no longer lists it a third time. The
+    # "Preço de tabela" line of the old "Condições comerciais" section (removed below) lives here now.
+    aside = (f'<div class="offer-side"><div><span class="status-pill">Preço de tabela: R$ {c["price"]}<span class="pill-unit">pagamento único</span></span>'
              + policy.POLICY_SUMMARY
              + offer_summary(slug, "produto_digital", "; ".join(c["items"]) + ".", c["price"]) +
              '</div>' + sales_cta(c, label) + '</div>')
     html = re.sub(r'<aside class="offer-side">.*?</aside>', lambda m: aside, html, count=1, flags=re.S)
+    # S-12: the approved "Condições comerciais" section repeated price, delivery and withdrawal right after the
+    # offer block that already carries all three (policy summary + Resumo da oferta, Decreto 7.962). It goes.
+    html, n = re.subn(r'<section class="container section"><div class="offer"><div class="offer-main"><p class="section-kicker">Condições comerciais</p>.*?</section>', "", html, count=1, flags=re.S)
+    if n != 1:
+        raise SystemExit(f"{slug}: condições comerciais anchor missing")
+    # S-04: on-site sign-up next to the offer (existing double opt-in backend, existing consent text).
+    html = re.sub(r'(<section class="container final-cta">)', lambda m: waitlist_block(c["name"]) + m.group(1), html, count=1)
     # Hero: the product's name above the claim, and its receipt (what you get, the total) beside it.
     html = re.sub(r'(<section class="container hero"><div>)<p class="eyebrow">[^<]*</p>', lambda m: m.group(1) + f'<p class="kicker">{c["name"]}</p>', html, count=1)
     receipt = (f'<div class="hero-panel receipt"><p class="receipt-head">O que você recebe<span>pagamento único</span></p>'
@@ -335,12 +376,21 @@ def apply_commerce(slug: str, html: str) -> str:
                 '</ul></div><div class="fit-card fit-no"><h3>Não é para você se</h3><ul>'
                 + "".join(f"<li>{x}</li>" for x in no) +
                 '</ul></div></div></section>')
-    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html + preview_section(slug), html, count=1, flags=re.S)
+    # S-12 (site audit 2026-10-25): the trust strip repeated, word for word, the three facts already listed
+    # under the hero CTA (payment, 72 h delivery, 7 days) plus a generic privacy line; it goes, and "Para
+    # quem é" follows the hero directly. The facts stay under the CTA, in the offer block and in the FAQ.
+    html, n = re.subn(r'<section class="trust-strip".*?</section>', lambda m: fit_html + preview_section(slug), html, count=1, flags=re.S)
+    if n != 1:
+        raise SystemExit(f"{slug}: trust strip anchor missing")
     # Conversion: a compact bar that follows the reader on phones (72 h / um download beside the CTA).
-    bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"]}</strong>'
-           + f'<span>R$ {c["price"]} · pagamento único</span>'
+    # "Combo IA + Vendas" breaks as "Combo / IA + Vendas", never with "+" alone at a line end.
+    bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"].replace(" + ", "&nbsp;+&nbsp;")}</strong>'
+           + f'<span>R$ {c["price"]}, pagamento único</span>'
            + '</div>' + sales_cta(c, "Comprar") + '</div>')
     html = html.replace("</main>", bar + "</main>", 1)
+    # S-09: the phone buy bar appears only after the hero CTA has scrolled out of view (buy-bar.js); before
+    # that it would repeat the CTA right above it and cover the hero facts.
+    html = html.replace("</head>", '<script src="/buy-bar.js" defer></script></head>', 1)
     # FAQ: drop "when will sales open" and fix composition answers; add delivery + withdrawal.
     html = re.sub(r'<details><summary>Quando (a compra|o checkout) será liberad[ao]\?</summary><p>[^<]*</p></details>', _faq_html(*DELIVERY_Q) + _faq_html(*GUARANTEE_Q), html)
     if c["faq_q"]:
@@ -420,6 +470,9 @@ def apply_subscription(html: str) -> str:
     html = re.sub(r'(<a class="button primary" )href="[^"]*"( data-zev-sub="conteudo-pronto")',
                   lambda m: m.group(1) + f'href="{_attr(policy.waitlist_href("Conteúdo Pronto"))}"' + m.group(2), html)
     html = re.sub(r'<a class="nav-cta" href="[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
+    if "</main>" not in html:
+        raise SystemExit("conteudo-pronto: </main> anchor missing (waitlist block)")
+    html = html.replace("</main>", waitlist_block("Conteúdo Pronto") + "</main>", 1)
     if MODE == policy.OPEN:
         html = re.sub(r'<a class="button primary" href="[^"]*" data-zev-sub="conteudo-pronto" data-zev-open-text="([^"]*)">[^<]*</a>',
                       r'<a class="button primary" href="/assinar/conteudo-pronto">\1</a>', html)
@@ -439,8 +492,10 @@ def sales_notice() -> str:
     data-zev-closed: the Worker removes it at request time when the owner opens sales."""
     if MODE == policy.OPEN:
         return ""
-    return (f'<p class="sales-notice" data-zev-closed>Aviso: {policy.CLOSED_LABEL}. Os preços são informativos; '
-            'entre na lista de espera e avisamos por e-mail quando abrir.</p>')
+    # S-09: one short line on phones (was ~100 px at 360 px); the same three facts: closed, prices are
+    # informative, how to be told when it opens.
+    return (f'<p class="sales-notice" data-zev-closed>Aviso: {policy.CLOSED_LABEL}. Preços informativos; '
+            'entre na lista de espera.</p>')
 
 def apply_presentation(slug: str, html: str) -> str:
     """Design pass (docs/design/sales-site-identity.md), applied after every content/legal step:
@@ -540,6 +595,7 @@ def apply_approved_overlay() -> None:
     for asset in ("site-chat.js", "site-chat.css"):
         shutil.copy2(OVERLAY / asset, OUT / asset)
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
+    shutil.copy2(OVERLAY / "buy-bar.js", OUT / "buy-bar.js")
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
     controller = (OUT / "privacidade.html").read_text(encoding="utf-8")
@@ -578,7 +634,7 @@ def apply_approved_overlay() -> None:
 # /assets/<name>.<sha256[:10]>.<ext> and served "immutable" by the Worker; HTML revalidates, so a
 # deploy can never leave a returning visitor running a stale script or stylesheet. url() targets
 # inside the CSS (fonts, images under /assets) are hashed first and rewritten to absolute paths.
-FINGERPRINT = ("product.css", "legal.css", "ferramentas.js")
+FINGERPRINT = ("product.css", "legal.css", "ferramentas.js", "buy-bar.js")
 HASHED_RE = re.compile(r"^/assets/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[0-9a-f]{10}\.(?:css|js|woff2)$")
 
 def _hashed_name(rel: str, data: bytes) -> str:
