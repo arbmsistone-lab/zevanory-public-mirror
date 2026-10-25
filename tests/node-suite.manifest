@@ -11,7 +11,7 @@ tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
 tests/autonomy-inventory.test.mjs 6
-tests/b0-baseline.test.mjs 21
+tests/b0-baseline.test.mjs 23
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
 tests/blog-editorial-uniqueness.test.mjs 1
@@ -74,6 +74,7 @@ tests/p13-decreto-oferta-cache.test.mjs 6
 tests/p13-politica-nogo.test.mjs 8
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
+tests/p20-restore-drill.test.mjs 12
 tests/payment-return-page.test.mjs 3
 tests/plan-probe.test.mjs 1
 tests/politica-honrar-pagamento.test.mjs 2

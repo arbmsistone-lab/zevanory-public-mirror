@@ -1,0 +1,288 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Dn.k]/[B0P20.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 hash por tabela não conferido": {
+   "primary": [
+    {
+     "test_pattern": "D2",
+     "assertion_pattern": "[D2.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M02 restaura cópia com falha de integridade": {
+   "primary": [
+    {
+     "test_pattern": "D2",
+     "assertion_pattern": "[D2.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M03 rótulo de produção sem leitura real": {
+   "primary": [
+    {
+     "test_pattern": "D6",
+     "assertion_pattern": "[D6.11]"
+    }
+   ],
+   "secondary": []
+  },
+  "M04 alvo com host não local aceito": {
+   "primary": [
+    {
+     "test_pattern": "D7",
+     "assertion_pattern": "[D7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M05 DATABASE_URL no ambiente aceito": {
+   "primary": [
+    {
+     "test_pattern": "D7",
+     "assertion_pattern": "[D7.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M06 leitor do KV grava (PUT)": {
+   "primary": [
+    {
+     "test_pattern": "D6",
+     "assertion_pattern": "[D6.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "D12",
+     "assertion_pattern": "[D12.9]",
+     "justification": "a guarda estática D12.9 lê o mesmo fonte e proíbe method PUT no leitor; a mutação a viola diretamente"
+    }
+   ]
+  },
+  "M07 leitor de produção lê fora do namespace do backup": {
+   "primary": [
+    {
+     "test_pattern": "D6",
+     "assertion_pattern": "[D6.10]"
+    }
+   ],
+   "secondary": []
+  },
+  "M08 RPO pela parte mais nova": {
+   "primary": [
+    {
+     "test_pattern": "D8",
+     "assertion_pattern": "[D8.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M09 tolerância de idade 72 h em vez de 26 h": {
+   "primary": [
+    {
+     "test_pattern": "D8",
+     "assertion_pattern": "[D8.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M10 RTO publicado com ensaio reprovado": {
+   "primary": [
+    {
+     "test_pattern": "D2",
+     "assertion_pattern": "[D2.5]"
+    },
+    {
+     "test_pattern": "D8",
+     "assertion_pattern": "[D8.10]"
+    }
+   ],
+   "secondary": []
+  },
+  "M11 aprovado com falhas aceito na releitura": {
+   "primary": [
+    {
+     "test_pattern": "D9",
+     "assertion_pattern": "[D9.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "D10",
+     "assertion_pattern": "[D10.3]",
+     "justification": "a publicação usa a mesma releitura estrita: registro APROVADO com falhas deixa de virar NOT_AVAILABLE"
+    }
+   ]
+  },
+  "M12 rótulo ENSAIO_EM_PRODUCAO em modo sintético aceito": {
+   "primary": [
+    {
+     "test_pattern": "D9",
+     "assertion_pattern": "[D9.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M13 restauração parcial aprovada": {
+   "primary": [
+    {
+     "test_pattern": "D9",
+     "assertion_pattern": "[D9.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M14 NOT_AVAILABLE com RPO aceito": {
+   "primary": [
+    {
+     "test_pattern": "D9",
+     "assertion_pattern": "[D9.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M15 publicação aceita registro de outro modo": {
+   "primary": [
+    {
+     "test_pattern": "D10",
+     "assertion_pattern": "[D10.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M16 relatório consolidado não ok ignorado": {
+   "primary": [
+    {
+     "test_pattern": "D4",
+     "assertion_pattern": "[D4.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M17 parte de outro dia aceita": {
+   "primary": [
+    {
+     "test_pattern": "D4",
+     "assertion_pattern": "[D4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M18 parte com falha aceita": {
+   "primary": [
+    {
+     "test_pattern": "D4",
+     "assertion_pattern": "[D4.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M19 bundle ausente sem falha própria": {
+   "primary": [
+    {
+     "test_pattern": "D4",
+     "assertion_pattern": "[D4.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M20 resumo do manifesto não conferido": {
+   "primary": [
+    {
+     "test_pattern": "D3",
+     "assertion_pattern": "[D3.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M21 tabela do manifesto ausente no bundle ignorada": {
+   "primary": [
+    {
+     "test_pattern": "D3",
+     "assertion_pattern": "[D3.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M22 publicação do workflow sem Environment protegido": {
+   "primary": [
+    {
+     "test_pattern": "D12",
+     "assertion_pattern": "[D12.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M23 job de publicação com segredo": {
+   "primary": [
+    {
+     "test_pattern": "D12",
+     "assertion_pattern": "[D12.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M24 B0 conta ensaio SINTETICA": {
+   "primary": [
+    {
+     "test_pattern": "P20 ensaio mensal no B0",
+     "assertion_pattern": "[B0P20.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M25 B0 janela de 400 dias": {
+   "primary": [
+    {
+     "test_pattern": "P20 ensaio mensal no B0",
+     "assertion_pattern": "[B0P20.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M26 B0 conta ensaio posterior ao dia": {
+   "primary": [
+    {
+     "test_pattern": "P20 ensaio mensal no B0",
+     "assertion_pattern": "[B0P20.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "M27 B0 histórico P20 malformado tratado como vazio": {
+   "primary": [
+    {
+     "test_pattern": "P20 ensaio mensal no B0",
+     "assertion_pattern": "[B0P20.15]"
+    }
+   ],
+   "secondary": []
+  },
+  "M28 B0 aprovado com restauração parcial aceito": {
+   "primary": [
+    {
+     "test_pattern": "P20 ensaio mensal no B0",
+     "assertion_pattern": "[B0P20.11]"
+    }
+   ],
+   "secondary": []
+  },
+  "M29 B0 flag complete forjada aceita": {
+   "primary": [
+    {
+     "test_pattern": "evolução do esquema",
+     "assertion_pattern": "[B0P20.18]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "histórico malformado derruba",
+     "assertion_pattern": null,
+     "justification": "o mesmo contrato (flag complete forjada sobre campo presente inválido derruba) é verificado no P06 desse teste"
+    }
+   ]
+  }
+ }
+}
