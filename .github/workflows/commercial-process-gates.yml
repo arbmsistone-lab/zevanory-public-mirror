@@ -57,12 +57,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Testes negativos (contagem exata 17)
+      - name: Testes negativos (contagem exata 19)
         shell: bash
         run: |
           set -euo pipefail
           python3 -I tests/p24/test_product_quality_check.py 2>&1 | tee /tmp/t.txt
-          grep -q "^Ran 17 tests" /tmp/t.txt || { echo "::error::esperado Ran 17 tests"; exit 1; }
+          grep -q "^Ran 19 tests" /tmp/t.txt || { echo "::error::esperado Ran 19 tests"; exit 1; }
           grep -qx "OK" /tmp/t.txt
       - name: Página de venda x material entregue
         shell: bash

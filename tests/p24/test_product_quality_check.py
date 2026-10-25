@@ -59,6 +59,7 @@ class P24CheckTest(unittest.TestCase):
         self.assertEqual(rep["p24_verdict"], "FAIL")
         self.assertEqual(rep["totals"]["promises_without_declared_delivery"], 0)
         self.assertGreater(rep["totals"]["open_defects_pi"], 0)
+        self.assertEqual(rep["totals"]["promises_pending_human_review"], 0)
 
     def test_new_page_promise_without_delivery_fails(self):
         self.edit("sales-public/ia-na-pratica.html", "<li>Guia rápido em PDF</li><li>Arquivo de comandos",
@@ -155,11 +156,17 @@ class P24CheckTest(unittest.TestCase):
 
     def test_human_review_without_finding_fails(self):
         m = self.jload("data/p24/promise-map.json")
-        for p in m["products"]["vendas-na-pratica"]["promises"]:
-            if p.get("review"):
-                p["finding"] = ""
+        m["products"]["vendas-na-pratica"]["promises"][0]["review"] = "REVISAO_HUMANA"
         self.jsave("data/p24/promise-map.json", m)
         self.assertFailsWith("revisão humana sem descrição")
+
+    def test_page_markup_change_fails_closed(self):
+        self.edit("sales-public/combo-ia-vendas.html", '<div class="hero-panel receipt">', '<div class="hero-panel recibo">')
+        self.assertFailsWith("região de promessas 'hero_receipt' não encontrada")
+
+    def test_reintroduced_prospecting_card_fails(self):
+        self.edit("sales-public/vendas-na-pratica.html", "<h3>Oferta que você cumpre</h3>", "<h3>Quem abordar</h3>")
+        self.assertFailsWith("PROMESSA SEM ENTREGA DECLARADA: 'Quem abordar'")
 
 
 if __name__ == "__main__":

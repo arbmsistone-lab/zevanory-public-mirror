@@ -60,12 +60,18 @@ def _li_items(ul_inner: str) -> list[str]:
     return [_strip_tags(x) for x in re.findall(r"<li[^>]*>(.*?)</li>", ul_inner, re.S)]
 
 
+REGIONS = ("hero_receipt", "offer_receives", "essentials", "scope_features", "method_cards", "offer_method")
+# Regiões que toda página de produto precisa ter. Se a marcação mudar e uma delas sumir, o gate reprova em vez de
+# extrair menos promessas sem avisar.
+REQUIRED_REGIONS = ("hero_receipt", "offer_receives", "essentials", "scope_features", "method_cards", "offer_method")
+
+
 def extract_promises(page_html: str) -> dict[str, list[str]]:
-    """Extrai as promessas da página nas cinco regiões declaradas no mapa."""
+    """Extrai as promessas da página nas regiões declaradas no mapa (marcação do #914 em diante)."""
     out: dict[str, list[str]] = {}
-    m = re.search(r'<ul class="hero-includes"[^>]*>(.*?)</ul>', page_html, re.S)
-    out["hero_includes"] = _li_items(m.group(1)) if m else []
-    m = re.search(r'<aside class="offer-side"[^>]*>.*?O que você recebe</h3>\s*<ul[^>]*>(.*?)</ul>', page_html, re.S)
+    m = re.search(r'<(?:aside|div) class="hero-panel receipt"[^>]*>.*?<ul class="outcome-list"[^>]*>(.*?)</ul>', page_html, re.S)
+    out["hero_receipt"] = _li_items(m.group(1)) if m else []
+    m = re.search(r'<div class="offer-side"[^>]*>.*?O que você recebe</h3>\s*<ul[^>]*>(.*?)</ul>', page_html, re.S)
     out["offer_receives"] = _li_items(m.group(1)) if m else []
     m = re.search(r'<div data-field="caracteristicas">.*?<dd>(.*?)</dd>', page_html, re.S)
     if m:
@@ -74,8 +80,9 @@ def extract_promises(page_html: str) -> dict[str, list[str]]:
     else:
         out["essentials"] = []
     out["scope_features"] = [_strip_tags(x) for x in re.findall(r'<article class="feature">.*?<h3>(.*?)</h3>', page_html, re.S)]
-    m = re.search(r'<ul class="outcome-list"[^>]*>(.*?)</ul>', page_html, re.S)
-    out["outcomes"] = _li_items(m.group(1)) if m else []
+    out["method_cards"] = [_strip_tags(x) for x in re.findall(r'<article class="card">.*?<h3>(.*?)</h3>', page_html, re.S)]
+    m = re.search(r'<div class="offer-main">(?:(?!</div>).)*?<ul>(.*?)</ul>', page_html, re.S)
+    out["offer_method"] = _li_items(m.group(1)) if m else []
     return out
 
 
@@ -153,8 +160,11 @@ def evaluate(root: Path, generated_at: str | None = None) -> dict:
 
         page_path = root / prod["page"]
         page_promises = extract_promises(page_path.read_text(encoding="utf-8"))
+        for region in REQUIRED_REGIONS:
+            if not page_promises[region]:
+                errors.append(f"{slug}: região de promessas '{region}' não encontrada na página (a marcação mudou? ajuste a extração antes de confiar no gate)")
         page_texts: list[str] = []
-        for region in ("hero_includes", "offer_receives", "essentials", "scope_features", "outcomes"):
+        for region in REGIONS:
             for t in page_promises[region]:
                 if t not in page_texts:
                     page_texts.append(t)

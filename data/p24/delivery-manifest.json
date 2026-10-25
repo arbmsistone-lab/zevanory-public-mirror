@@ -89,11 +89,12 @@
           },
           "anchors": {
             "briefing": 25,
-            "checklist": 12,
+            "conferir": 22,
             "contexto": 5,
             "criterio": 9,
+            "faca agora": 8,
             "modelo": 9,
-            "pedido": 30,
+            "promessa de faturamento": 1,
             "repet": 2,
             "responsavel": 19,
             "revisao": 30,
@@ -209,14 +210,16 @@
             "acompanhamento": 8,
             "atendimento": 19,
             "escopo": 22,
+            "etapa": 16,
             "funil": 2,
             "indicador": 15,
             "limite": 3,
             "melhoria": 4,
-            "mensage": 20,
+            "objec": 5,
+            "oferta": 27,
+            "oferta que voce consegue cumprir": 2,
             "oportunidade": 33,
             "proposta": 63,
-            "proxima acao": 6,
             "proximo passo": 6,
             "publico": 2,
             "retorno": 26
@@ -233,7 +236,9 @@
             "detail": "TXT UTF-8, 50 linha(s)"
           },
           "anchors": {
+            "entender necessidade": 1,
             "proposta": 9,
+            "recepcao": 1,
             "retorno combinado": 1
           },
           "quality_hits": []
@@ -396,7 +401,6 @@
             "decis": 13,
             "entrada": 7,
             "fixa": 18,
-            "lucro": 17,
             "margem": 35,
             "preco": 31,
             "resultado": 10,
@@ -461,7 +465,10 @@
             "ok": true,
             "detail": "TXT UTF-8, 9 linha(s)"
           },
-          "anchors": {},
+          "anchors": {
+            "forma independente": 1,
+            "ordem sugerida": 1
+          },
           "quality_hits": []
         },
         {
@@ -534,9 +541,9 @@
             "lang": "en-US"
           },
           "anchors": {
+            "briefing": 25,
             "contexto": 5,
-            "orcamento": 29,
-            "pedido": 30,
+            "criterio": 9,
             "revisao": 30
           },
           "quality_hits": []
@@ -639,11 +646,9 @@
           "anchors": {
             "acompanhamento": 8,
             "atendimento": 19,
-            "funil": 2,
             "indicador": 15,
             "melhoria": 4,
-            "proposta": 63,
-            "proxima acao": 6
+            "proposta": 63
           },
           "quality_hits": []
         },
@@ -778,7 +783,6 @@
           },
           "anchors": {
             "briefing": 25,
-            "revisao": 30,
             "rotina": 25
           },
           "quality_hits": []
@@ -1037,8 +1041,7 @@
             "custo": 29,
             "entrada": 7,
             "margem": 35,
-            "saida": 7,
-            "venda": 21
+            "saida": 7
           },
           "quality_hits": []
         },
