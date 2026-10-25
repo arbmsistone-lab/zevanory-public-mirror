@@ -1,0 +1,145 @@
+{
+  "schema": "zevanory-p16-experiments/v1",
+  "schema_version": 1,
+  "note": "Registro prévio de experimentos (P16, Roteiro Mestre v4.7, seções 5, 12 e 14). Só cresce: registro não é editado nem removido. Nada começa sem pré-registro (hipótese, métrica, cálculo amostral explícito, regra de parada, tabela de decisão); todo experimento fecha com decisão ou INCONCLUSIVO. A decisão de oferta fica no P02 (p02_decision). Validação: scripts/p16/experiment_registry_gate.py.",
+  "result_classes": {
+    "VARIANTE_MELHOR": "variante melhor que o controle com p < alfa e n >= mínimo",
+    "SEM_DIFERENCA": "n >= mínimo e p >= alfa",
+    "VARIANTE_PIOR": "variante pior com p < alfa e n >= mínimo",
+    "AMOSTRA_INSUFICIENTE": "n abaixo do mínimo pré-registrado ou janela incompleta: sempre INCONCLUSIVO",
+    "SEM_PRE_REGISTRO_VALIDO": "só legado (iniciado antes do gate): sempre INCONCLUSIVO"
+  },
+  "preregistrations": [
+    {
+      "id": "X-2026-0001",
+      "registered_at": "2026-10-25",
+      "experiment_key": "short-format",
+      "legacy": true,
+      "hypothesis": "Shorts com dica prática por ramo e com calculadora gratuita atraem mais visualizações do que o Short que apresenta o produto.",
+      "metric": {
+        "name": "Visualizações por vídeo com 3 dias ou mais de publicação",
+        "definition": "Média de visualizações por Short com 3+ dias, por formato (braços dica, oferta, calc), lida do YouTube pelo Command Center"
+      },
+      "sample_size": null,
+      "legacy_note": "Registrado depois do início (2026-10-12), sem cálculo amostral: só pode fechar como INCONCLUSIVO (LEGACY_KEYS, lista fechada).",
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "9f6a9f14eaeb281a8d5c680586c3f91f707d5661a615f8bec6c11930f2b0ac6b"
+    },
+    {
+      "id": "X-2026-0002",
+      "registered_at": "2026-10-25",
+      "experiment_key": "product-page-v2",
+      "legacy": true,
+      "hypothesis": "Mostrar o que vem dentro logo abaixo do botão, para quem é e uma barra de compra no celular aumenta a intenção de compra.",
+      "metric": {
+        "name": "Intenção de compra ÷ visitas nas 5 páginas de produto",
+        "definition": "Eventos de intenção de compra divididos por visitas filtradas nas 5 páginas de produto, 14 dias antes x 14 dias depois de 2026-10-12"
+      },
+      "sample_size": null,
+      "legacy_note": "Registrado depois do início (2026-10-12), sem cálculo amostral: só pode fechar como INCONCLUSIVO (LEGACY_KEYS, lista fechada).",
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "2d8f26de9a66d33643c2f181a8996f81ad38676281144c67ed289a767eaf6ec2"
+    },
+    {
+      "id": "X-2026-0003",
+      "registered_at": "2026-10-25",
+      "experiment_key": "nurture-match",
+      "legacy": true,
+      "hypothesis": "Oferecer por e-mail o produto ligado à página onde a pessoa pediu o material gera cliques para a oferta.",
+      "metric": {
+        "name": "Cliques vindos dos e-mails da sequência (por campanha)",
+        "definition": "Cliques com utm_campaign iniciada em s2- (e-mail de oferta da sequência do material gratuito)"
+      },
+      "sample_size": null,
+      "legacy_note": "Registrado depois do início (2026-10-12), sem cálculo amostral: só pode fechar como INCONCLUSIVO (LEGACY_KEYS, lista fechada).",
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "9ec1720b35f753a5a631ca596e7e2a049d99a75276c9d6cd99509c21b58d24a0"
+    }
+  ],
+  "starts": [
+    {
+      "id": "S-2026-0001",
+      "prereg": "X-2026-0001",
+      "started_at": "2026-10-12",
+      "evidence": {
+        "kind": "repo",
+        "ref": "data/experiments.json",
+        "contains": "\"id\": \"short-format\""
+      },
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "d07666cf0b45b2c862fbee1287f64d69afd60246d26bc7d89c98c90506d488da"
+    },
+    {
+      "id": "S-2026-0002",
+      "prereg": "X-2026-0002",
+      "started_at": "2026-10-12",
+      "evidence": {
+        "kind": "repo",
+        "ref": "data/experiments.json",
+        "contains": "\"id\": \"product-page-v2\""
+      },
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "87fc832adec8cff722097aba16e63d7d5f61f2d17807cd37d50b963c31b69c98"
+    },
+    {
+      "id": "S-2026-0003",
+      "prereg": "X-2026-0003",
+      "started_at": "2026-10-12",
+      "evidence": {
+        "kind": "repo",
+        "ref": "data/experiments.json",
+        "contains": "\"id\": \"nurture-match\""
+      },
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "748ce99a4b17f39f63965dee1a29b16bd920650b1804d79c39cf8e55f2120993"
+    }
+  ],
+  "closures": [
+    {
+      "id": "C-2026-0001",
+      "prereg": "X-2026-0001",
+      "closed_at": "2026-10-25",
+      "result": "SEM_PRE_REGISTRO_VALIDO",
+      "observed": {
+        "status": "NOT_AVAILABLE",
+        "reason": "O mínimo de 7 vídeos por braço (minPerArm) foi escolhido sem cálculo amostral; não há registro prévio de efeito mínimo, alfa ou poder. As visualizações do YouTube não foram lidas nesta revisão."
+      },
+      "outcome": "INCONCLUSIVO",
+      "outcome_reason": "Experimento iniciado sem registro prévio com cálculo amostral (efeito mínimo, alfa, poder e n por braço). Pela tabela de decisão de inconclusivos [3.1], nenhum resultado dele pode virar decisão.",
+      "action": "Encerrado no registro vivo (closed) para o avaliador parar de declarar vencedor. Se a pergunta continuar relevante, abrir um experimento novo, com chave nova, pré-registro e cálculo amostral antes do início.",
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "e87d0219f3193ac83c2a82fa4fb3481e42becdf5ecc06980d4c4295e808386d8"
+    },
+    {
+      "id": "C-2026-0002",
+      "prereg": "X-2026-0002",
+      "closed_at": "2026-10-25",
+      "result": "SEM_PRE_REGISTRO_VALIDO",
+      "observed": {
+        "status": "NOT_AVAILABLE",
+        "reason": "Os mínimos (200 visitas por lado, 20 intenções) foram escolhidos sem cálculo amostral, e a janela anterior foi medida antes do filtro de robôs (cleanSince = changeAt = 2026-10-12): antes e depois não são comparáveis. O agregado do funil exige credencial e não foi lido."
+      },
+      "outcome": "INCONCLUSIVO",
+      "outcome_reason": "Experimento iniciado sem registro prévio com cálculo amostral (efeito mínimo, alfa, poder e n por braço). Pela tabela de decisão de inconclusivos [3.1], nenhum resultado dele pode virar decisão.",
+      "action": "Encerrado no registro vivo (closed) para o avaliador parar de declarar vencedor. Se a pergunta continuar relevante, abrir um experimento novo, com chave nova, pré-registro e cálculo amostral antes do início.",
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "p02_decision": "D-2026-0001",
+      "record_sha256": "cfb5b0084efcb430c352db8d7c6c86fe31daf8a545ed28d7328caab56a80ae3d"
+    },
+    {
+      "id": "C-2026-0003",
+      "prereg": "X-2026-0003",
+      "closed_at": "2026-10-25",
+      "result": "SEM_PRE_REGISTRO_VALIDO",
+      "observed": {
+        "status": "NOT_AVAILABLE",
+        "reason": "Acompanhamento sem braço de controle e sem cálculo amostral (regra 'sem cliques após 30 leads' sem registro prévio). Além disso, o e-mail de oferta (passo 2) só sai com vendas abertas, e as vendas estão fechadas globalmente (P22): o e-mail medido não é enviado."
+      },
+      "outcome": "INCONCLUSIVO",
+      "outcome_reason": "Experimento iniciado sem registro prévio com cálculo amostral (efeito mínimo, alfa, poder e n por braço). Pela tabela de decisão de inconclusivos [3.1], nenhum resultado dele pode virar decisão.",
+      "action": "Encerrado no registro vivo (closed) para o avaliador parar de declarar vencedor. Se a pergunta continuar relevante, abrir um experimento novo, com chave nova, pré-registro e cálculo amostral antes do início.",
+      "recorded_by": "executor (Claude), sem autorização operacional; INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "a1732008f80572deeb18dfb667ee8ff1d84edb351b7efe8a25cafa920d707a63"
+    }
+  ]
+}

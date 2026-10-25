@@ -1,0 +1,75 @@
+name: p16-experiment-registry
+
+# P16 Experimentos (Roteiro Mestre v4.7, seções 5, 12 e 14): registro prévio com cálculo amostral, regra de parada,
+# tabela de decisão de inconclusivos [3.1] e fechamento obrigatório (decisão ou INCONCLUSIVO), conferidos contra o
+# registro vivo data/experiments.json (avaliador scripts/audit/experiments.mjs e Command Center).
+# Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à produção, token só de leitura.
+on:
+  pull_request:
+    branches:
+      - gh-pages
+    paths:
+      - ".github/workflows/p16-experiment-registry.yml"
+      - "data/p16/**"
+      - "data/experiments.json"
+      - "data/p02/decisions.json"
+      - "scripts/p16/**"
+      - "scripts/audit/experiments.mjs"
+      - "scripts/audit/command-center-snapshot.mjs"
+      - "scripts/ci/mutants_p16_registry.py"
+      - "scripts/ci/mutants_p16_registry_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/p16-experiment-registry.test.mjs"
+      - "tests/experiments.test.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p16-experiment-registry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  registry:
+    name: p16 / experiment-registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testes (contagem exata 25 + 5 do avaliador, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p16-experiment-registry.test.mjs | tee /tmp/t.txt
+          for l in "# tests 25" "# pass 25" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          node --test tests/experiments.test.mjs | tee /tmp/e.txt
+          for l in "# tests 5" "# pass 5" "# fail 0"; do grep -qx "$l" /tmp/e.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Registro prévio x registro vivo; registro só cresce (comparação com a base)
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git fetch -q --depth 1 origin "$BASE_SHA"
+          git show "$BASE_SHA:data/p16/experiments.json" > /tmp/base-p16.json 2>/dev/null || : > /tmp/base-p16.json
+          python3 -I scripts/p16/experiment_registry_gate.py --base /tmp/base-p16.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Mutantes causais (classificador compartilhado; todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p16_registry.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P16_REGISTRY_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=22 killed=22 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

@@ -1,0 +1,203 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Tn.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 legado fora da lista fechada aceito": {
+   "primary": [
+    {
+     "test_pattern": "T16",
+     "assertion_pattern": "[T16.1]"
+    }
+   ]
+  },
+  "M02 A/B sem cálculo amostral aceito": {
+   "primary": [
+    {
+     "test_pattern": "T4",
+     "assertion_pattern": "[T4.1]"
+    }
+   ]
+  },
+  "M03 n declarado não é recalculado": {
+   "primary": [
+    {
+     "test_pattern": "T5",
+     "assertion_pattern": "[T5.1]"
+    }
+   ]
+  },
+  "M04 mínimo por braço abaixo do n aceito": {
+   "primary": [
+    {
+     "test_pattern": "T6",
+     "assertion_pattern": "[T6.1]"
+    }
+   ]
+  },
+  "M05 início antes do registro aceito": {
+   "primary": [
+    {
+     "test_pattern": "T7",
+     "assertion_pattern": "[T7.1]"
+    }
+   ]
+  },
+  "M06 mínimo do registro vivo não conferido": {
+   "primary": [
+    {
+     "test_pattern": "T8",
+     "assertion_pattern": "[T8.1]"
+    }
+   ]
+  },
+  "M07 aberto vencido aceito": {
+   "primary": [
+    {
+     "test_pattern": "T9",
+     "assertion_pattern": "[T9.1]"
+    }
+   ]
+  },
+  "M08 tabela de decisão ignorada": {
+   "primary": [
+    {
+     "test_pattern": "T10",
+     "assertion_pattern": "[T10.1]"
+    }
+   ]
+  },
+  "M09 decisão com n abaixo do mínimo": {
+   "primary": [
+    {
+     "test_pattern": "T11",
+     "assertion_pattern": "[T11.1]"
+    }
+   ]
+  },
+  "M10 diferença sem p < alfa": {
+   "primary": [
+    {
+     "test_pattern": "T12",
+     "assertion_pattern": "[T12.1]"
+    }
+   ]
+  },
+  "M11 janela mínima ignorada": {
+   "primary": [
+    {
+     "test_pattern": "T13",
+     "assertion_pattern": "[T13.1]"
+    }
+   ]
+  },
+  "M12 fechamento sem decisão aceito": {
+   "primary": [
+    {
+     "test_pattern": "T14",
+     "assertion_pattern": "[T14.1]"
+    }
+   ]
+  },
+  "M13 tabela decide com amostra insuficiente": {
+   "primary": [
+    {
+     "test_pattern": "T15",
+     "assertion_pattern": "[T15.1]"
+    }
+   ]
+  },
+  "M14 legado pode decidir": {
+   "primary": [
+    {
+     "test_pattern": "T17",
+     "assertion_pattern": "[T17.1]"
+    }
+   ]
+  },
+  "M15 fechado segue aberto no registro vivo": {
+   "primary": [
+    {
+     "test_pattern": "T18",
+     "assertion_pattern": "[T18.1]"
+    }
+   ]
+  },
+  "M16 registro alterado em relação à base aceito": {
+   "primary": [
+    {
+     "test_pattern": "T19",
+     "assertion_pattern": "[T19.1]"
+    }
+   ]
+  },
+  "M17 record_sha256 não conferido": {
+   "primary": [
+    {
+     "test_pattern": "T20",
+     "assertion_pattern": "[T20.1]"
+    }
+   ]
+  },
+  "M18 divergência com o P02 aceita": {
+   "primary": [
+    {
+     "test_pattern": "T21",
+     "assertion_pattern": "[T21.2]"
+    }
+   ]
+  },
+  "M19 cálculo amostral sem o poder": {
+   "primary": [
+    {
+     "test_pattern": "T22",
+     "assertion_pattern": "[T22.1]"
+    },
+    {
+     "test_pattern": "T5",
+     "assertion_pattern": "[T5.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]",
+     "justification": "o pré-registro válido declara n=8158 (poder 0,80); sem o termo do poder o n recalculado muda e o caso positivo passa a reprovar"
+    },
+    {
+     "test_pattern": "T21",
+     "assertion_pattern": "[T21.3]",
+     "justification": "o caso coerente [T21.3] usa o mesmo pré-registro com n=8158: passa a reprovar por n divergente"
+    },
+    {
+     "test_pattern": "T25",
+     "assertion_pattern": "[T25.1]",
+     "justification": "fechamento válido usa o mesmo pré-registro com n=8158: passa a reprovar por n divergente"
+    }
+   ],
+   "broad_reason": "o cálculo amostral é premissa de todo pré-registro não legado; os três casos positivos que usam n=8158 reprovam junto, por causa direta da mesma regra"
+  },
+  "M20 métrica por abertura aceita": {
+   "primary": [
+    {
+     "test_pattern": "T23",
+     "assertion_pattern": "[T23.1]"
+    }
+   ]
+  },
+  "M21 avaliador reavalia fechado": {
+   "primary": [
+    {
+     "test_pattern": "T24",
+     "assertion_pattern": "[T24.1]"
+    }
+   ]
+  },
+  "M22 registro vivo sem pré-registro aceito": {
+   "primary": [
+    {
+     "test_pattern": "T3",
+     "assertion_pattern": "[T3.1]"
+    }
+   ]
+  }
+ }
+}
