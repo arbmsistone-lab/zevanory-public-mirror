@@ -1,0 +1,98 @@
+{
+ "pages_before": {
+  "base_kind": "before",
+  "start": "/zevanory-public-mirror/",
+  "crawled": 85,
+  "bad_count": 11,
+  "bad": [
+   {
+    "url": "/zevanory-public-mirror/piloto",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/"
+    ]
+   },
+   {
+    "url": "/assets/renan-bitu.webp",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/solucoes",
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/reembolso",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/termos",
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/privacidade",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/termos",
+     "/zevanory-public-mirror/reembolso",
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/brand/favicon.svg",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/product.css",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/brand/zevanory-logo-dark.svg",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/termos",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/solucoes",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/quem-criou"
+    ]
+   },
+   {
+    "url": "/kit-afiliado",
+    "status": 404,
+    "referrers": [
+     "/zevanory-public-mirror/afiliados"
+    ]
+   }
+  ]
+ },
+ "pages_after": {
+  "base_kind": "after",
+  "start": "/zevanory-public-mirror/",
+  "crawled": 1,
+  "bad_count": 0,
+  "bad": []
+ }
+}
