@@ -69,11 +69,13 @@ tests/order7-whatsapp-commercial.test.mjs 11
 tests/owner-alert-policy.test.mjs 2
 tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
+tests/p09-nurture-sequence.test.mjs 31
 tests/p13-buy-bar-390.test.mjs 3
 tests/p13-decreto-oferta-cache.test.mjs 6
 tests/p13-politica-nogo.test.mjs 8
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
+tests/p16-experiment-registry.test.mjs 30
 tests/p20-restore-drill.test.mjs 12
 tests/payment-return-page.test.mjs 3
 tests/plan-probe.test.mjs 1

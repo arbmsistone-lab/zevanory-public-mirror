@@ -1,0 +1,28 @@
+Assunto: Último e-mail desta sequência: os materiais pagos, se fizerem sentido para você
+
+{{saudacao}}
+
+Este é o último e-mail da sequência do checklist. Depois dele, não envio mais nada sobre o checklist.
+
+Se você quiser ir além do checklist, cada bloco tem um material pago, com pagamento único:
+
+• Caixa: Lucro & Caixa, R$ {{preco:lucro-e-caixa}}. Vem com planilha de caixa e margem (XLSX), checklist financeiro semanal e comandos de IA para análise financeira.
+{{link:lucro_e_caixa}}
+
+• Vendas: Vendas na Prática, R$ {{preco:vendas-na-pratica}}. Vem com modelos de mensagens de venda e follow-up e planilha de acompanhamento comercial (XLSX).
+{{link:vendas_na_pratica}}
+
+• IA: IA na Prática, R$ {{preco:ia-na-pratica}}. Vem com arquivo de comandos prontos para IA e planilha de aplicação (XLSX).
+{{link:ia_na_pratica}}
+
+• Os três juntos: Negócio Completo, R$ {{preco:negocio-completo}}. Reúne os três materiais completos, mais um plano integrado de 30 dias (PDF e DOCX) e um painel de decisão integrada (XLSX).
+{{link:negocio_completo}}
+
+Todos os materiais são enviados por e-mail após a confirmação do pagamento. Você pode desistir em {{regra_7d}}, sem justificativa e com devolução integral.
+
+Se agora não é o momento, tudo bem. O checklist continua sendo seu:
+{{link:checklist}}
+
+{{identificacao}}
+
+{{assinatura}}
