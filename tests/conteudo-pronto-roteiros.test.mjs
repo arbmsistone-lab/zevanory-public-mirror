@@ -27,6 +27,7 @@ import * as CS from "../worker/content-service.mjs";
 import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { openSalesHtml } from "../worker/sales-public-worker.mjs";
 
+const CP_CARD = /<article class="catalog-card[^"]*" id="p-conteudo-pronto"[^>]*>[\s\S]*?<\/article>/;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (rel) => readTextNormalized(join(ROOT, rel));
 const P = JSON.parse(read("data/politica-unica.json"));
@@ -95,7 +96,8 @@ test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato
   for (const k of ["oferta solicitada", "acompanhamento de conversa existente", "reativação só com relacionamento ativo ou consentimento registrado", "pedido de indicação"]) assert.ok(items.includes(k), "objetivo na página: " + k);
   assert.match(hero, /não há disparo automático/);
 
-  const card = read("solucoes/index.html").match(/<a class="catalog-card" href="[^"]*conteudo-pronto">[\s\S]*?<\/a>/)[0];
+  // Catálogo do #914: cada produto é um <article id="p-<slug>"> (antes, um <a class="catalog-card">).
+  const card = read("solucoes/index.html").match(CP_CARD)[0];
   assert.doesNotMatch(card, WA, "[catalogo]");
   assert.ok(card.includes(`${C.roteiros} roteiros multicanal de venda e acompanhamento`));
 
@@ -105,7 +107,7 @@ test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato
 
   for (const slug of ["conteudo-pronto", "solucoes", "index"]) {
     const built = read(`sales-public/${slug}.html`);
-    const block = slug === "conteudo-pronto" ? noAsset(built) : built.match(/<a class="catalog-card" href="\/conteudo-pronto">[\s\S]*?<\/a>/)[0];
+    const block = slug === "conteudo-pronto" ? noAsset(built) : built.match(CP_CARD)[0];
     assert.doesNotMatch(block, WA, "gerado: " + slug);
     assert.ok(block.includes(`${C.roteiros} roteiros multicanal`), "gerado: " + slug);
   }
@@ -212,9 +214,13 @@ function* walk(dir) {
 }
 // Linhas, itens/blocos HTML, cartões de catálogo vizinhos (</a><a) e campos de JSON-LD (", ")
 // são segmentos independentes; um link "Conteúdo Pronto</a>: 12 posts..." fica no mesmo segmento.
+// O cartão do Conteúdo Pronto no catálogo do #914 (<article id="p-conteudo-pronto">, itens em <li>) é UM segmento:
+// o nome fica no <h3> e as quantidades nos <li> do mesmo cartão.
 const SEGMENT = /\n|<\/?(?:li|dd|div|section|td|article)\b[^>]*>|<\/a>(?=<a\b)|", "/;
 function describingSegments(text) {
-  return text.split(SEGMENT).filter((seg) => seg.includes("Conteúdo Pronto") && /\b\d+ posts\b/.test(seg));
+  const cards = text.match(new RegExp(CP_CARD.source, "g")) || [];
+  const rest = cards.reduce((t, c) => t.replace(c, "\n"), text);
+  return [...cards, ...rest.split(SEGMENT)].filter((seg) => seg.includes("Conteúdo Pronto") && /\b\d+ posts\b/.test(seg));
 }
 
 test("(e) toda página que descreve o Conteúdo Pronto (guias ia-para-*, kit, llms, catálogo; fonte e gerada) segue o contrato", () => {
