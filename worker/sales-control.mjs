@@ -1,6 +1,7 @@
 import { readFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { CONTACT_HTML, CONTACT_TEXT_OR, LEGAL_IDENTITY } from "./politica-unica.mjs";
+import { FISCAL_PROCESS, fiscalProcessDefined } from "./fiscal-process.mjs";
 // Sales switch + customer self-service delivery recovery.
 // Deploy note (2026-10-07): first production rollout was rolled back by the CSP smoke (inline footer style on the sales site, fixed in #460).
 //
@@ -135,7 +136,7 @@ async function resendDelivery(env, { sql, worker, ctx }, { orderId, email }) {
   return { sent: Boolean(r?.ok), reason: r?.ok ? "sent" : "email_failed" };
 }
 
-export async function handleSalesControl(request, env, { sqlFactory, worker, ctx } = {}) {
+export async function handleSalesControl(request, env, { sqlFactory, worker, ctx, fiscal = FISCAL_PROCESS } = {}) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (path === "/api/sales/status") {
@@ -146,13 +147,15 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
     // financial proof and the production release gates. This public readback
     // must agree without changing the owner switch or any checkout rule.
     const proof = await readFinancialProofSnapshot(env);
-    const open = sw.enabled === true && sw.authorized === true &&
+    const released = sw.enabled === true && sw.authorized === true &&
       proof?.verified === true &&
       String(env.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
       String(env.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
       String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+    // P23 (F3): sem processo fiscal definido pelo proprietário com o contador, vendas não abrem (mesma regra do checkout).
+    const open = released && fiscalProcessDefined(fiscal);
     return json(200, { open, requested: sw.requested === true,
-      blocked: open ? null : (sw.blocked || (sw.enabled ? "release_or_financial_proof_pending" : null)),
+      blocked: open ? null : (sw.blocked || (sw.enabled ? (released ? "fiscal_process_undefined" : "release_or_financial_proof_pending") : null)),
       revision: sw.revision || null });
   }
   if (path === "/entrega/reenviar") {

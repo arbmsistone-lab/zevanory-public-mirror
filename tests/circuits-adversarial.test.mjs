@@ -182,18 +182,21 @@ test("G1 applySalesSwitch só liga a flag global com enabled===true estrito", ()
 });
 
 // ---------------------------------------------------------------- G2 portão de checkout
-// Tabela de decisão G2: allowed ⇔ os 9 sinais em REQUIRED são true; token só é verificado (rede) quando os
-// outros 8 já são true; preflight fresco ⇔ ok===true ∧ at<=now ∧ now-at<3h.
+// Tabela de decisão G2: allowed ⇔ os 10 sinais em REQUIRED são true; token só é verificado (rede) quando os
+// outros 9 já são true; preflight fresco ⇔ ok===true ∧ at<=now ∧ now-at<3h.
 const checkoutEnv = (pre) => ({
   SALE_GLOBALLY_ENABLED: "true", PRE_SALE_GATES_APPROVED: "true", ABSOLUTE_RELEASE_APPROVED: "true",
   CHECKOUT_ENABLED: "true", FINANCIAL_EVENTS_ENABLED: "true", MERCADOPAGO_ENV: "production",
   ZEVANORY_PRIVATE_ARTIFACTS: kvStore(pre === undefined ? {} : { "zpc-sales-preflight:v1": pre })
 });
+// P23: registro fiscal COMPLETO só de teste; o registro real (data/p23/fiscal-process.json) está NAO_DEFINIDO e fecha o
+// checkout por si só (tests/p23-ecommerce-legal.test.mjs). Aqui ele é injetado para isolar os demais sinais.
+const FISCAL_OK = { status: "DEFINIDO", decision: { regime: "fixture de teste", documento_fiscal: "fixture de teste", emissor: "fixture de teste", decided_by: "proprietario", accountant_ref: "fixture de teste", decided_at: "2026-10-01", procedure_ref: { kind: "repo", ref: "docs/fixture.md", contains: "fixture de teste" }, test_order_ref: "fixture de teste", owner_approval_ref: "fixture de teste" } };
 const countingVerify = (result) => { const f = async () => { f.calls++; return result; }; f.calls = 0; return f; };
 
 test("G2 par positivo/negativo por sinal: cada variável de ambiente isolada fecha e não toca a rede", async () => {
   const ok = countingVerify(true);
-  assert.equal((await evaluateCheckout(checkoutEnv(preflight(T0 - 1000)), { enabled: true }, { now: T0, verify: ok })).allowed, true);
+  assert.equal((await evaluateCheckout(checkoutEnv(preflight(T0 - 1000)), { enabled: true }, { now: T0, fiscal: FISCAL_OK, verify: ok })).allowed, true);
   assert.equal(ok.calls, 1);
   const breaks = {
     PRE_SALE_GATES_APPROVED: "false", ABSOLUTE_RELEASE_APPROVED: "", CHECKOUT_ENABLED: "yes",
@@ -201,27 +204,27 @@ test("G2 par positivo/negativo por sinal: cada variável de ambiente isolada fec
   };
   for (const [k, v] of Object.entries(breaks)) {
     const verify = countingVerify(true);
-    const r = await evaluateCheckout({ ...checkoutEnv(preflight(T0 - 1000)), [k]: v }, { enabled: true }, { now: T0, verify });
+    const r = await evaluateCheckout({ ...checkoutEnv(preflight(T0 - 1000)), [k]: v }, { enabled: true }, { now: T0, fiscal: FISCAL_OK, verify });
     assert.equal(r.allowed, false, k);
     assert.equal(verify.calls, 0, "sem rede quando " + k + " fecha");
   }
   const tokenNo = countingVerify(false);
-  assert.equal((await evaluateCheckout(checkoutEnv(preflight(T0 - 1000)), { enabled: true }, { now: T0, verify: tokenNo })).allowed, false);
+  assert.equal((await evaluateCheckout(checkoutEnv(preflight(T0 - 1000)), { enabled: true }, { now: T0, fiscal: FISCAL_OK, verify: tokenNo })).allowed, false);
 });
 
 test("G2 chave do dono: KV desligado fecha mesmo com SALE_GLOBALLY_ENABLED; authorized sem env abre", async () => {
   const v = countingVerify(true);
   for (const sw of [null, undefined, {}, { enabled: false, authorized: true }, { enabled: "true" }]) {
-    assert.equal((await evaluateCheckout(checkoutEnv(preflight(T0 - 1000)), sw, { now: T0, verify: v })).allowed, false);
+    assert.equal((await evaluateCheckout(checkoutEnv(preflight(T0 - 1000)), sw, { now: T0, fiscal: FISCAL_OK, verify: v })).allowed, false);
   }
   assert.equal(v.calls, 0);
   const env = { ...checkoutEnv(preflight(T0 - 1000)), SALE_GLOBALLY_ENABLED: "false" };
-  assert.equal((await evaluateCheckout(env, { enabled: true }, { now: T0, verify: countingVerify(true) })).allowed, false);
-  assert.equal((await evaluateCheckout(env, { enabled: true, authorized: true }, { now: T0, verify: countingVerify(true) })).allowed, true);
+  assert.equal((await evaluateCheckout(env, { enabled: true }, { now: T0, fiscal: FISCAL_OK, verify: countingVerify(true) })).allowed, false);
+  assert.equal((await evaluateCheckout(env, { enabled: true, authorized: true }, { now: T0, fiscal: FISCAL_OK, verify: countingVerify(true) })).allowed, true);
 });
 
 test("G2 limites do preflight: idade 0 e 3h-1ms abrem; 3h, 3h+1ms, +1ms no futuro, corrompido e KV com erro fecham", async () => {
-  const at = async (pre, env) => (await evaluateCheckout(env || checkoutEnv(pre), { enabled: true }, { now: T0, verify: async () => true })).allowed;
+  const at = async (pre, env) => (await evaluateCheckout(env || checkoutEnv(pre), { enabled: true }, { now: T0, fiscal: FISCAL_OK, verify: async () => true })).allowed;
   assert.equal(await at(preflight(T0)), true);
   assert.equal(await at(preflight(T0 - 3 * H + 1)), true);
   assert.equal(await at(preflight(T0 - 3 * H)), false);
