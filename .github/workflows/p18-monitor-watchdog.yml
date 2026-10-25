@@ -1,0 +1,41 @@
+name: P18 monitor watchdog (read-only)
+
+# Auditoria Sol 246.09/246.14: vigia do monitor P18. Lê p18/heartbeat.json no ramo evidence/b0-baseline e acusa
+# quando a última execução bem-sucedida do monitor tem mais de 15 min (ou o batimento falta/está malformado).
+# Canal distinto do alerta de vendas: issue própria "[P18-VIGIA]" e o job termina com falha (notificação de falha
+# de workflow agendado do GitHub). Não grava em ramo nenhum, não toca a produção, não usa segredo além do GITHUB_TOKEN.
+# Limite: mesmo agendador do GitHub que o monitor; o gatilho independente fora do GitHub é passo do proprietário (PR).
+on:
+  schedule:
+    - cron: '4,14,24,34,44,54 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read    # ler p18/heartbeat.json do ramo de evidência
+  issues: write     # a issue do vigia (título distinto da issue de vendas)
+
+concurrency:
+  group: p18-monitor-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      EVIDENCE_BRANCH: evidence/b0-baseline
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/b0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Conferir o batimento do monitor P18 (falha o job quando velho > 15 min)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/b0/p18-watchdog.mjs
