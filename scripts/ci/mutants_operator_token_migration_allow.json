@@ -1,0 +1,398 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> primeira asserção que a codifica na ordem do teste), escritas antes de rodar.",
+ "mutants": {
+  "A1 window never accepts legacy": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.2]"
+    },
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.2]"
+    },
+    {
+     "test_pattern": "M4",
+     "assertion_pattern": "[M4.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "M2",
+     "assertion_pattern": "[M2.1]",
+     "justification": "sem candidato antigo a categoria legacy nunca é registrada: as linhas de registro mudam"
+    }
+   ]
+  },
+  "A2 window always open": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.3]"
+    },
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.3]"
+    },
+    {
+     "test_pattern": "M4",
+     "assertion_pattern": "[M4.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "A3 expiry ignored": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.3]"
+    },
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "A4 code ceiling ignored": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.3]"
+    },
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "A5 window closes at the start of the day": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "A6 impossible calendar date accepted": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "A7 any value accepted as legacy in the window": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.4]"
+    },
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.4]"
+    },
+    {
+     "test_pattern": "M4",
+     "assertion_pattern": "[M4.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "M2",
+     "assertion_pattern": "[M2.1]",
+     "justification": "o valor desconhecido passa a ser registrado como legacy: as linhas e contadores mudam"
+    }
+   ]
+  },
+  "A8 consumer minimum length ignored": {
+   "primary": [
+    {
+     "test_pattern": "M1",
+     "assertion_pattern": "[M1.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "A9 presented value logged": {
+   "primary": [
+    {
+     "test_pattern": "M2",
+     "assertion_pattern": "[M2.1]"
+    },
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "A10 signed probe checks only the primary": {
+   "primary": [
+    {
+     "test_pattern": "M4",
+     "assertion_pattern": "[M4.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "A11 audit route bypasses the window": {
+   "primary": [
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.2]"
+    },
+    {
+     "test_pattern": "M4",
+     "assertion_pattern": "[M4.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "A12 readback hides the presented category": {
+   "primary": [
+    {
+     "test_pattern": "M3",
+     "assertion_pattern": "[M3.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "G1 presence ignores the window": {
+   "primary": [
+    {
+     "test_pattern": "M5",
+     "assertion_pattern": "[M5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "G2 presence ignores expiry": {
+   "primary": [
+    {
+     "test_pattern": "M5",
+     "assertion_pattern": "[M5.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "G3 presence ignores the code ceiling": {
+   "primary": [
+    {
+     "test_pattern": "M5",
+     "assertion_pattern": "[M5.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "G4 presence drops require_primary": {
+   "primary": [
+    {
+     "test_pattern": "M5",
+     "assertion_pattern": "[M5.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "G5 presence accepts malformed dates": {
+   "primary": [
+    {
+     "test_pattern": "M5",
+     "assertion_pattern": "[M5.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "R1 readback ignores the presented category": {
+   "primary": [
+    {
+     "test_pattern": "M6",
+     "assertion_pattern": "[M6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "R2 readback echoes the raw presented field": {
+   "primary": [
+    {
+     "test_pattern": "M6",
+     "assertion_pattern": "[M6.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "D1 deploy writes the flag as its own var": {
+   "primary": [
+    {
+     "test_pattern": "M7",
+     "assertion_pattern": "[M7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "D2 deploy accepts a flag beyond the ceiling": {
+   "primary": [
+    {
+     "test_pattern": "M7",
+     "assertion_pattern": "[M7.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "D3 deploy keeps an inherited flag": {
+   "primary": [
+    {
+     "test_pattern": "M7",
+     "assertion_pattern": "[M7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "D4 verifier allows the flag as its own var": {
+   "primary": [
+    {
+     "test_pattern": "M7",
+     "assertion_pattern": "[M7.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "D5 verifier allows a flag beyond the ceiling": {
+   "primary": [
+    {
+     "test_pattern": "M7",
+     "assertion_pattern": "[M7.4]"
+    },
+    {
+     "test_pattern": "M8",
+     "assertion_pattern": "[M8.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "V1 inventory drops a production consumer": {
+   "primary": [
+    {
+     "test_pattern": "I1",
+     "assertion_pattern": "[I1.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "I4",
+     "assertion_pattern": "[I4.1]",
+     "justification": "a matriz de prova deriva do inventário: a linha do consumidor removido fica sem correspondente"
+    }
+   ]
+  },
+  "V2 proof matrix drops a consumer": {
+   "primary": [
+    {
+     "test_pattern": "I4",
+     "assertion_pattern": "[I4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "V3 new script reads the credential": {
+   "primary": [
+    {
+     "test_pattern": "I2",
+     "assertion_pattern": "[I2.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "V4 new Worker module imports the resolver": {
+   "primary": [
+    {
+     "test_pattern": "I3",
+     "assertion_pattern": "[I3.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "V5 proof falls back to the legacy secret": {
+   "primary": [
+    {
+     "test_pattern": "I4",
+     "assertion_pattern": "[I4.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "I1",
+     "assertion_pattern": "[I1.1]",
+     "justification": "o gate passa a classificar o job de prova como new+fallback, diferente da forma new do inventário"
+    }
+   ]
+  },
+  "V6 proof without require-primary": {
+   "primary": [
+    {
+     "test_pattern": "I4",
+     "assertion_pattern": "[I4.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "V7 T2 HMAC proof falls back to the legacy secret": {
+   "primary": [
+    {
+     "test_pattern": "I4",
+     "assertion_pattern": "[I4.3]"
+    },
+    {
+     "test_pattern": "I6",
+     "assertion_pattern": "[I6.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "I1",
+     "assertion_pattern": "[I1.1]",
+     "justification": "o gate passa a classificar o job de prova HMAC como new+fallback, diferente da forma new do inventário"
+    }
+   ]
+  },
+  "V8 T2 HMAC proof drops a T2 caller": {
+   "primary": [
+    {
+     "test_pattern": "I6",
+     "assertion_pattern": "[I6.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "V9 T2 HMAC proof without require-primary": {
+   "primary": [
+    {
+     "test_pattern": "I6",
+     "assertion_pattern": "[I6.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "P1 HMAC probe accepts a non-primary category": {
+   "primary": [
+    {
+     "test_pattern": "I7",
+     "assertion_pattern": "[I7.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "P2 HMAC probe sends the credential to any origin": {
+   "primary": [
+    {
+     "test_pattern": "I7",
+     "assertion_pattern": "[I7.4]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

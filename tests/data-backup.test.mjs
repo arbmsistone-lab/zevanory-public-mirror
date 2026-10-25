@@ -81,7 +81,8 @@ test("manifest is order independent; prefixes cover ledger, subscribers and the 
 test("the trigger endpoint is authenticated and never returns data", () => {
   const src = readFileSync(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url), "utf8");
   const block = src.slice(src.indexOf('"/api/internal/backup/run"'), src.indexOf('"/api/zea10/autonomy"'));
-  assert.match(block, /backupTokenOk\(request\.headers\.get\("x-backup-token"\)/);
+  // Sol 233: a verificação passa pelo resolvedor único (janela de migração da credencial de operador).
+  assert.match(block, /verifyOperatorToken\(normalized, request\.headers\.get\("x-backup-token"\)\)/);
   assert.match(block, /method_not_allowed/);
 });
 
