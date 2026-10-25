@@ -272,7 +272,7 @@
   "M29 B0 flag complete forjada aceita": {
    "primary": [
     {
-     "test_pattern": "evolução do esquema",
+     "test_pattern": "evolução do esquema: linha antiga sem o campo novo",
      "assertion_pattern": "[B0P20.18]"
     }
    ],
@@ -281,6 +281,11 @@
      "test_pattern": "histórico malformado derruba",
      "assertion_pattern": null,
      "justification": "o mesmo contrato (flag complete forjada sobre campo presente inválido derruba) é verificado no P06 desse teste"
+    },
+    {
+     "test_pattern": "evolução do esquema: linha antiga de P19",
+     "assertion_pattern": "[P19E.2]",
+     "justification": "mesma regra (flag complete forjada sobre campo PRESENTE inválido derruba a releitura), verificada também no teste de evolução do esquema do outro processo (P19)"
     }
    ]
   }

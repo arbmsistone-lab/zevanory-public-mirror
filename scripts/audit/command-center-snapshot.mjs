@@ -10,6 +10,7 @@ import { getYoutubeAccessToken } from "../channels/youtube-access.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { evaluateExperiments } from "./experiments.mjs";
 import { evaluateInventory } from "./autonomy-inventory.mjs";
+import { workersUsageForDay, prevUtcDay } from "./workers-usage.mjs";
 
 export const SNAPSHOT_KEY = "zpc:command:v1:snapshot";
 export const REACH_HISTORY_KEY = "zpc:command:v1:reach-history";
@@ -388,6 +389,8 @@ export async function main() {
 
   const kvQuota = await kvWritesToday(now);
   const kvForecast = kvQuotaForecast(kvQuota, now);
+  // P19 (B0): uso de Workers da conta no último dia UTC COMPLETO (consulta GraphQL somente leitura; sem escopo = verified:false).
+  const workersUsage = await workersUsageForDay(prevUtcDay(now)).catch(() => ({ verified: false, reason: "error" }));
   if (kvForecast && kvForecast.level !== "ok") console.log("::warning title=KV_QUOTA_" + kvForecast.level.toUpperCase() + "::" + JSON.stringify(kvForecast));
   // Hand-off to the owner-notification step (scripts/audit/kv-quota-issue.mjs); file only, no KV write.
   if (kvForecast && process.env.KV_FORECAST_OUT) { try { writeFileSync(process.env.KV_FORECAST_OUT, JSON.stringify({ day: kvQuota.day, ...kvForecast })); } catch {} }
@@ -396,7 +399,7 @@ export async function main() {
   if (kvQuota?.verified) await kvPut("zpc:kv:v1:budget", { day: kvQuota.day, pct: kvQuota.pct, writes: kvQuota.writes, limit: kvQuota.limit, at: iso(now) }).catch(() => {});
   const snapshot = {
     schema: "zevanory-command-center/v1",
-    platform: { kvQuota, kvForecast },
+    platform: { kvQuota, kvForecast, workersUsage },
     generatedAt: iso(now),
     day,
     goals: [
@@ -485,7 +488,7 @@ export async function main() {
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, workersUsage: workersUsage || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
   // Aggregate-only commercial diagnosis (no PII): clean page/source/campaign/traffic-class counts since
   // the bot filter. Visitor-controlled labels (utm) outside our own naming are masked as "outro" because
   // this notice is public. "visitorDays" = sum of daily uniques (the hash rotates daily), not people.
