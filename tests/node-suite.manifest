@@ -57,6 +57,7 @@ tests/link-vencido-nao-reutilizado.test.mjs 5
 tests/live-runtime-status.test.mjs 5
 tests/market-weekly.test.mjs 2
 tests/mercadopago-preference-expiry.test.mjs 3
+tests/mercadopago-signature-vectors.test.mjs 16
 tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
 tests/meta-social-manual-only.test.mjs 3
