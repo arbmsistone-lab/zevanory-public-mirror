@@ -1,0 +1,312 @@
+{
+  "schema": "zevanory-p24-open-defects/v1",
+  "note": "Defeitos de PI (acessibilidade) encontrados na primeira conferência P24 em 25/10/2026. Registrar aqui NÃO aprova o defeito: enquanto houver registro, o veredito P24 é FAIL. O registro só evita que o gate bloqueie PRs não relacionados; defeito novo (não registrado) reprova o gate, e registro de defeito que não ocorre mais também reprova.",
+  "defects": [
+    {
+      "product": "ia-na-pratica",
+      "file": "ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+      "kind": "pdf_sem_titulo",
+      "wcag": "2.4.2 (A), técnica PDF18",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Definir título descritivo nos metadados do PDF (e DisplayDocTitle), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "ia-na-pratica",
+      "file": "ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "ia-na-pratica",
+      "file": "ZEVANORY_IA_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "ia-na-pratica",
+      "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "vendas-na-pratica",
+      "file": "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+      "kind": "pdf_sem_titulo",
+      "wcag": "2.4.2 (A), técnica PDF18",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Definir título descritivo nos metadados do PDF (e DisplayDocTitle), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "vendas-na-pratica",
+      "file": "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "vendas-na-pratica",
+      "file": "ZEVANORY_Vendas_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "vendas-na-pratica",
+      "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "lucro-e-caixa",
+      "file": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "lucro-e-caixa",
+      "file": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "lucro-e-caixa",
+      "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "lucro-e-caixa",
+      "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+      "kind": "pdf_sem_titulo",
+      "wcag": "2.4.2 (A), técnica PDF18",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Definir título descritivo nos metadados do PDF (e DisplayDocTitle), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+      "kind": "pdf_sem_titulo",
+      "wcag": "2.4.2 (A), técnica PDF18",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Definir título descritivo nos metadados do PDF (e DisplayDocTitle), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "combo-ia-vendas",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+      "kind": "pdf_sem_titulo",
+      "wcag": "2.4.2 (A), técnica PDF18",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Definir título descritivo nos metadados do PDF (e DisplayDocTitle), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+      "kind": "pdf_sem_titulo",
+      "wcag": "2.4.2 (A), técnica PDF18",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Definir título descritivo nos metadados do PDF (e DisplayDocTitle), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.docx",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    },
+    {
+      "product": "negocio-completo",
+      "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+      "kind": "idioma_declarado_incorreto",
+      "wcag": "3.1.1 (A)",
+      "registered_at": "2026-10-25",
+      "detected_by": "scripts/p24/product_quality_check.py sobre data/p24/delivery-manifest.json",
+      "owner_action": "Regerar o arquivo com idioma pt-BR (DOCX: idioma padrão do documento; PDF: /Lang pt-BR na exportação), gerar novo zip e novo SHA-256, atualizar o catálogo do Worker. Mudança de produto: decisão do proprietário (classe D)."
+    }
+  ]
+}
