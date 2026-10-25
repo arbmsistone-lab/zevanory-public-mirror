@@ -12,6 +12,8 @@ on:
     paths:
       - "worker/**"
       - "data/politica-unica.json"
+      # P23: registro fiscal lido pelo portão de checkout (worker/fiscal-process.mjs).
+      - "data/p23/fiscal-process.json"
       - "tests/integration/**"
       - "tests/t4_sim/**"
       - "tests/trava-vendas-gate-paths.test.mjs"

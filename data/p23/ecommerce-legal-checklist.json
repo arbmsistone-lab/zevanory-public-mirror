@@ -1,0 +1,256 @@
+{
+  "schema": "zevanory-p23-ecommerce-checklist/v1",
+  "version": "2026-10-25.1",
+  "note": "Checklist legal do comércio eletrônico (P23, Roteiro Mestre v4.7). Cada item cita a norma; 'verification' diz como é conferido: static = gate de CI sobre as páginas publicadas (sales-public/*.html, servidas em vendas.zevanory.api.br) e as páginas legais; checkout_flow = declarado nos termos, prova real só com pedido de teste na fase F3; processo = fora do alcance estático; codigo = trava no Worker. O executor não é advogado nem contador: o checklist confere presença e coerência das informações, não dá parecer jurídico. Gate: scripts/p23/ecommerce_legal_gate.py.",
+  "sources": {
+    "decreto_7962_2013": {
+      "url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "fetched": "2026-10-25",
+      "note": "Página oficial do Planalto lida nesta sessão (texto com problemas de codificação; artigos 1 a 7 conferidos)."
+    },
+    "cdc_lei_8078_1990": {
+      "url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+      "fetched": null,
+      "note": "A página do Planalto não pôde ser lida nesta sessão (bloqueio de rede); a redação do art. 49 vem do texto legal conhecido e já é a base do texto único da política (data/politica-unica.json, sol_text)."
+    }
+  },
+  "items": [
+    {
+      "id": "D7962-2-I",
+      "basis": "Decreto 7.962/2013, art. 2º, I",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Nome empresarial e número de inscrição no CNPJ do fornecedor, em local de destaque",
+      "verification": "static",
+      "checks": [
+        "identificacao_em_paginas_com_preco",
+        "resumo.fornecedor",
+        "resumo.cnpj",
+        "cnpj_digitos_validos"
+      ]
+    },
+    {
+      "id": "D7962-2-II",
+      "basis": "Decreto 7.962/2013, art. 2º, II",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Endereço físico e eletrônico e demais informações para localização e contato",
+      "verification": "static",
+      "checks": [
+        "identificacao_em_paginas_com_preco",
+        "resumo.endereco_fisico",
+        "resumo.endereco_eletronico",
+        "cep_formato"
+      ]
+    },
+    {
+      "id": "D7962-2-III",
+      "basis": "Decreto 7.962/2013, art. 2º, III",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Características essenciais do produto ou serviço",
+      "verification": "static",
+      "checks": [
+        "resumo.caracteristicas"
+      ]
+    },
+    {
+      "id": "D7962-2-IV",
+      "basis": "Decreto 7.962/2013, art. 2º, IV",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Discriminação, no preço, de despesas adicionais ou acessórias (entrega, seguros)",
+      "verification": "static",
+      "checks": [
+        "resumo.preco_total",
+        "preco_igual_ao_catalogo",
+        "sem_taxas_adicionais"
+      ]
+    },
+    {
+      "id": "D7962-2-V",
+      "basis": "Decreto 7.962/2013, art. 2º, V",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Condições integrais da oferta: modalidades de pagamento, disponibilidade, forma e prazo de entrega",
+      "verification": "static",
+      "checks": [
+        "resumo.pagamento",
+        "resumo.disponibilidade",
+        "resumo.entrega"
+      ]
+    },
+    {
+      "id": "D7962-2-VI",
+      "basis": "Decreto 7.962/2013, art. 2º, VI",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Informações claras e ostensivas sobre restrições à fruição da oferta",
+      "verification": "static",
+      "checks": [
+        "resumo.restricoes"
+      ]
+    },
+    {
+      "id": "D7962-4-I",
+      "basis": "Decreto 7.962/2013, art. 4º, I",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Sumário do contrato antes da contratação, com destaque para cláusulas que limitem direitos",
+      "verification": "static_parcial",
+      "checks": [
+        "resumo_da_oferta_na_pagina_da_oferta",
+        "link_termos"
+      ],
+      "note": "O resumo da oferta está na página; o sumário no fluxo de checkout só se prova com pedido de teste (F3)."
+    },
+    {
+      "id": "D7962-4-II",
+      "basis": "Decreto 7.962/2013, art. 4º, II",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Ferramentas para identificar e corrigir erros de digitação antes de finalizar a contratação",
+      "verification": "checkout_flow",
+      "checks": [
+        "declarado_nos_termos"
+      ],
+      "note": "Declarado nos termos; comportamento real só com pedido de teste (F3)."
+    },
+    {
+      "id": "D7962-4-III",
+      "basis": "Decreto 7.962/2013, art. 4º, III",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Confirmação imediata do recebimento da aceitação da oferta",
+      "verification": "checkout_flow",
+      "checks": [
+        "declarado_nos_termos"
+      ],
+      "note": "Declarado nos termos; comportamento real só com pedido de teste (F3)."
+    },
+    {
+      "id": "D7962-4-IV",
+      "basis": "Decreto 7.962/2013, art. 4º, IV",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Contrato disponível em meio que permita conservação e reprodução, imediatamente após a contratação",
+      "verification": "checkout_flow",
+      "checks": [
+        "declarado_nos_termos"
+      ],
+      "note": "Declarado nos termos; comportamento real só com pedido de teste (F3)."
+    },
+    {
+      "id": "D7962-4-V",
+      "basis": "Decreto 7.962/2013, art. 4º, V",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Serviço adequado e eficaz de atendimento em meio eletrônico",
+      "verification": "static",
+      "checks": [
+        "contato_nas_paginas_legais"
+      ]
+    },
+    {
+      "id": "D7962-4-PU",
+      "basis": "Decreto 7.962/2013, art. 4º, parágrafo único",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Manifestação do fornecedor às demandas em até cinco dias",
+      "verification": "static",
+      "checks": [
+        "prazo_5_dias_declarado"
+      ]
+    },
+    {
+      "id": "D7962-4-VII",
+      "basis": "Decreto 7.962/2013, art. 4º, VII",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Mecanismos de segurança eficazes para pagamento e tratamento de dados",
+      "verification": "processo",
+      "note": "Fora do alcance estático: P11 (pagamento) e P21 (segurança)."
+    },
+    {
+      "id": "D7962-5",
+      "basis": "Decreto 7.962/2013, art. 5º, caput",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Informar, de forma clara e ostensiva, os meios adequados e eficazes para o exercício do direito de arrependimento",
+      "verification": "static",
+      "checks": [
+        "arrependimento_na_pagina_da_oferta",
+        "link_reembolso"
+      ]
+    },
+    {
+      "id": "D7962-5-1",
+      "basis": "Decreto 7.962/2013, art. 5º, § 1º",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Arrependimento pela mesma ferramenta utilizada na contratação, sem prejuízo de outros meios",
+      "verification": "static",
+      "checks": [
+        "declarado_nos_termos"
+      ]
+    },
+    {
+      "id": "D7962-5-2",
+      "basis": "Decreto 7.962/2013, art. 5º, § 2º",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Arrependimento implica rescisão dos contratos acessórios, sem ônus",
+      "verification": "static",
+      "checks": [
+        "declarado_nos_termos"
+      ]
+    },
+    {
+      "id": "D7962-5-3",
+      "basis": "Decreto 7.962/2013, art. 5º, § 3º",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Comunicação imediata à instituição financeira ou administradora do cartão para não lançar ou estornar",
+      "verification": "static",
+      "checks": [
+        "declarado_nos_termos"
+      ]
+    },
+    {
+      "id": "D7962-5-4",
+      "basis": "Decreto 7.962/2013, art. 5º, § 4º",
+      "source_url": "https://planalto.gov.br/ccivil_03/_Ato2011-2014/2013/Decreto/D7962.htm",
+      "requirement": "Confirmação imediata do recebimento da manifestação de arrependimento",
+      "verification": "static",
+      "checks": [
+        "declarado_nos_termos"
+      ]
+    },
+    {
+      "id": "CDC-49",
+      "basis": "Lei 8.078/1990 (CDC), art. 49, caput",
+      "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+      "requirement": "Desistência em 7 dias a contar da assinatura ou do recebimento, em contratação fora do estabelecimento",
+      "verification": "static",
+      "checks": [
+        "regra_7_dias_na_oferta_e_nos_termos"
+      ]
+    },
+    {
+      "id": "CDC-49-PU",
+      "basis": "Lei 8.078/1990 (CDC), art. 49, parágrafo único",
+      "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+      "requirement": "Devolução imediata dos valores pagos durante o prazo de reflexão, monetariamente atualizados",
+      "verification": "static",
+      "checks": [
+        "devolucao_integral_declarada"
+      ]
+    },
+    {
+      "id": "CDC-31",
+      "basis": "Lei 8.078/1990 (CDC), art. 31",
+      "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+      "requirement": "Informações corretas, claras, precisas e ostensivas sobre características e preço",
+      "verification": "static",
+      "checks": [
+        "preco_igual_ao_catalogo"
+      ]
+    },
+    {
+      "id": "P23-F3-FISCAL",
+      "basis": "Roteiro Mestre v4.7, seção 5 (P23, PI) e seção 7 (F3)",
+      "source_url": null,
+      "requirement": "Nenhuma venda direta pelo checkout próprio antes do processo fiscal definido",
+      "verification": "codigo",
+      "checks": [
+        "sinal_fiscal_no_portao_de_checkout",
+        "status_publico_exige_fiscal",
+        "registro_fiscal_valido"
+      ],
+      "note": "Enquadramento: classe D do proprietário com o contador (26/10/2026). O executor não decide."
+    }
+  ]
+}
