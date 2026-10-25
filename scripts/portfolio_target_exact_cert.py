@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-import hashlib, json, os, pathlib, re, time, urllib.request, subprocess
+import hashlib, json, os, pathlib, re, sys, time, urllib.request, subprocess
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent))
+import portfolio_cert_contract as contract
+# Contrato v2: pull_request = pré-merge (produção == base; mudanças candidato x base registradas);
+# qualquer outro evento = pós-publicação (produção == fonte, rigor inalterado). Ver portfolio_cert_contract.py.
+CONTEXT=contract.resolve_context(os.environ.get("GITHUB_EVENT_NAME"),os.environ.get("CERT_CONTEXT"))
 SLUG=os.environ["TARGET_SLUG"]
 SHA=os.environ["EXPECTED_SHA"].lower()
 BASE="https://zevanory.api.br"
@@ -37,13 +42,20 @@ assert code==200
 live_text=live.decode("utf-8","replace")
 # Owner-approved canonical is the domain that serves the page (zevanory.api.br/<slug> 308-redirects there).
 assert f'href="https://vendas.zevanory.api.br/{SLUG}"' in live_text,(SLUG,"canonical_live_mismatch")
-src_title=re.search(r"<title>(.*?)</title>",html,re.I|re.S)
-live_title=re.search(r"<title>(.*?)</title>",live_text,re.I|re.S)
-assert src_title and live_title and src_title.group(1).strip()==live_title.group(1).strip(),(SLUG,"live_title_mismatch")
-src_h1=re.search(r"<h1[^>]*>(.*?)</h1>",html,re.I|re.S)
-live_h1=re.search(r"<h1[^>]*>(.*?)</h1>",live_text,re.I|re.S)
-clean=lambda x: re.sub(r"<[^>]+>","",x).strip()
-assert src_h1 and live_h1 and clean(src_h1.group(1))==clean(live_h1.group(1)),(SLUG,"live_h1_mismatch")
+head_fields=contract.extract_fields(html)
+live_fields=contract.extract_fields(live_text)
+premerge={}
+if CONTEXT==contract.PRE_MERGE:
+    premerge=contract.premerge_inputs(f"{SLUG}/index.html",SHA,os.environ.get("BASE_SHA","").lower(),live_fields)
+try:
+    live_contract=contract.evaluate_live_contract(CONTEXT,head_fields,live_fields,
+        base=premerge.get("base"),merge_base=premerge.get("merge_base"),head_html=html,diff_text=premerge.get("diff_text",""))
+except contract.ContractError as e:
+    print(f"::error title=PORTFOLIO_CERT_CONTRACT::{SLUG} {CONTEXT} {e.code} {json.dumps(e.detail,ensure_ascii=False)[:1500]}")
+    raise AssertionError((SLUG,e.code,e.detail)) from None
+live_contract.update({k:premerge[k] for k in ("base_sha","base_resolution","merge_base_sha") if k in premerge})
+for ch in live_contract["expected_changes"]:
+    print(f"::notice title=EXPECTED_CHANGE {SLUG}::{ch['field']}: {ch['base']!r} -> {ch['candidate']!r} (diff linhas {ch['candidate_lines']})")
 
 # P07: target-source SAST + live DAST/header boundary.
 secret_patterns=[
@@ -124,7 +136,8 @@ pathlib.Path(f"evidence/{SLUG}-sbom.cdx.json").write_text(json.dumps(sbom,indent
 report={
   "schema":"zevanory.portfolio.target-base-cert.v2","target":SLUG,"workflow_sha":SHA,
   "url":f"{BASE}/{SLUG}","source_blob":blob,"source_sha256":source_sha256,
-  "live_binding":"canonical+title+h1","latency_ms":lat,"p95_latency_ms":p95,
+  "live_binding":live_contract["live_binding"],"certification_context":CONTEXT,
+  "contract_version":live_contract["contract_version"],"live_contract":live_contract,"latency_ms":lat,"p95_latency_ms":p95,
   "shared_runtime_release":runtime_sha,"sales_mode":rel.get("sales_mode"),
   "security_headers":required_headers,"data_governance":data_profile,
   "checks":{"P01":"PASS","P05":"PASS","P07":"PASS","P08":"PASS","P09":"PASS","P11":"PASS","P13":"PASS"},
