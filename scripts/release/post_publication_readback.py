@@ -8,6 +8,8 @@ Só faz GET/HEAD públicos: sem credenciais, sem POST, sem efeito colateral.
 Os valores esperados saem da ÁRVORE DESTE CHECKOUT (o SHA publicado), não de constantes:
   title / h1 / canonical / robots de sales-public/<rota>.html e sales-public/404.html.
 Mais as asserções explícitas do Release: vendas fechadas, trava fiscal (P23), página 404, textos de promessa (#927/#898),
+NO-GO pós-publicação (R271-03: vendas fechadas, checkout próprio e API de checkout sem compra, Hotmart/assinatura
+pausados, P12/P15 sem link de pagamento, P09_NURTURE_SEND desligado pela evidência de fonte, fiscal NAO_DEFINIDO),
 cabeçalhos de segurança, redirecionamento 308 da apex para o domínio de vendas, identidade de release dos dois Workers
 e a cópia GitHub Pages como camada noindex de redirecionamento (#935, esperado = pages-mirror/<rota>.html).
 
@@ -16,6 +18,8 @@ Uso:
   python3 scripts/release/post_publication_readback.py --expected-sha <SHA> [--out readback.json]
   (--skip-central-identity se o central-production-deploy não tiver rodado/concluído para esse SHA)
 Sai 0 só se TODAS as verificações passarem; imprime READBACK=PASS|FAIL e grava a evidência JSON.
+Falha => HOMOLOGATION=BLOCKED e procedimento de contenção (docs/release/cadeia-publicacao-release-consolidado.md).
+Pendências preservadas (não certificadas aqui): I4, R9-D1..D6, T1.
 """
 from __future__ import annotations
 
@@ -40,6 +44,9 @@ PRODUCTS = ("ia-na-pratica", "vendas-na-pratica", "combo-ia-vendas", "lucro-e-ca
 ROUTES = PRODUCTS + ("conteudo-pronto", "solucoes", "kit-afiliado", "quem-criou", "termos", "privacidade", "reembolso",
                      "afiliados", "material-gratuito")
 UA = "ZEVANORY-RELEASE-READBACK/1.0"
+BUY_SKUS = ("ZEV-IA-011", "ZEV-VEN-011", "ZEV-LCX-011", "ZEV-CMB-011", "ZEV-NGC-011")
+# Pendências preservadas (não certificadas por esta leitura; continuam abertas para o proprietário).
+PRESERVED_PENDENCIES = ["I4", "R9-D1", "R9-D2", "R9-D3", "R9-D4", "R9-D5", "R9-D6", "T1"]
 CHECKOUT_HREF = re.compile(r'href=["\'][^"\']*(checkout|/comprar|mercadopago|stripe|pagamento\?)', re.I)
 
 # Textos de promessa que o Release tem de servir (fonte: #927 e #898), por rota.
@@ -198,11 +205,61 @@ def main():
         run.check(f"pages/{route}:noindex+refresh->vendas", "noindex" in (got["robots"] or "") and
                   f'url={SALES}/{route}"' in html)
 
+    # 7) NO-GO pós-publicação (Sol AVAL 271, R271-03). Só GET, sem seguir redirecionamentos: nunca chega a um provedor
+    #    de pagamento e nunca cria sessão (o POST de /comprar/<SKU> é o único que cria; não é feito aqui).
+    # 7a) SALE_GLOBALLY_ENABLED=false: a variável não é pública; o estado efetivo dela (com as demais travas) é
+    #     /api/sales/status (open=false) e /api/release sales_mode=globally-blocked, já verificados em (2).
+    run.check("nogo:sales closed (SALE_GLOBALLY_ENABLED effective false)", st.get("open") is False and
+              rel.get("sales_mode") == "globally-blocked", open=st.get("open"), sales_mode=rel.get("sales_mode"))
+    # 7b) checkout próprio bloqueado: página de compra por SKU mostra "vendas abrem em breve", sem formulário POST.
+    for sku in BUY_SKUS:
+        c, html, h, _ = fetch(f"{SALES}/comprar/{sku}", follow=False)
+        run.check(f"nogo:own-checkout /comprar/{sku} closed", c == 200 and "Vendas abrem em breve" in html
+                  and not re.search(r"<form\b[^>]*method=[\"']?post", html, re.I) and "mercadopago" not in html.lower()
+                  and not h.get("location"), status=c, location=h.get("location"))
+    # 7c) API de checkout não atende compra direta (só via binding privado do Worker de vendas).
+    for prov in ("mercadopago", "stripe", "asaas"):
+        c, body, h, _ = fetch(f"{APEX}/api/checkout/{prov}", follow=False)
+        run.check(f"nogo:/api/checkout/{prov} not purchasable", c >= 400 and "init_point" not in body
+                  and "checkout_url" not in body and not h.get("location"), status=c, body=body[:160])
+    # 7d) Hotmart (P12 Conteúdo Pronto e produtos): sem redirecionamento ao pagamento com vendas fechadas.
+    for slug in PRODUCTS:
+        c, html, h, _ = fetch(f"{SALES}/hotmart/{slug}", follow=False)
+        run.check(f"nogo:hotmart/{slug} paused", c == 200 and "pay.hotmart.com" not in (h.get("location") or "")
+                  and "Vendas pausadas" in html, status=c, location=h.get("location"))
+    c, html, h, _ = fetch(f"{SALES}/assinar/conteudo-pronto", follow=False)
+    run.check("nogo:P12 /assinar/conteudo-pronto paused (no Hotmart redirect)", c == 200 and
+              "Assinaturas pausadas" in html and not h.get("location"), status=c, location=h.get("location"))
+    # 7e) P15 (funil v2) e P12 não abrem vendas: nenhuma página publicada tem link de pagamento (verificado em (3) para as
+    #     14 rotas) e o estado efetivo continua fechado (7a). Aqui: nenhuma rota de venda aponta para provedor.
+    pay_link = re.compile(r'href=["\'][^"\']*(pay\.hotmart\.com|mercadopago\.com|checkout\.stripe|/comprar/)', re.I)
+    for route in ("conteudo-pronto", "solucoes", "combo-ia-vendas", "vendas-na-pratica", "negocio-completo"):
+        c, html, _, _ = fetch(f"{SALES}/{route}")
+        run.check(f"nogo:P12/P15 {route} has no payment link", c == 200 and not pay_link.search(html), status=c)
+    # 7f) P09_NURTURE_SEND desligado: a variável vive no Worker e não é exposta publicamente. Evidência disponível:
+    #     árvore publicada (nenhum workflow define a variável; interruptor da sequência com default "off").
+    #     Conferência direta: nomes de variáveis pelo proprietário (passo "R9 credential identity readback" do deploy).
+    wf_defines = [f.name for f in (ROOT / ".github/workflows").glob("*.y*ml")
+                  if re.search(r"P09_NURTURE_SEND\s*[:=]", f.read_text("utf-8", "replace"))]
+    seqs = sorted((ROOT / "content/p09").glob("*/sequence.json"))
+    switches = [json.loads(p.read_text("utf-8")).get("send_switch", {}) for p in seqs]
+    run.check("nogo:P09_NURTURE_SEND off (source evidence; live value not public)", bool(seqs) and not wf_defines and
+              all(sw.get("default") == "off" and sw.get("env") == "P09_NURTURE_SEND" for sw in switches),
+              workflows_defining=wf_defines, switches=switches, live="NOT_PUBLIC_verify_names_via_R9_readback")
+    # 7g) processo fiscal NAO_DEFINIDO (trava P23): verificado em (2) — repetido como NO-GO explícito.
+    run.check("nogo:fiscal process NAO_DEFINIDO", fiscal.get("status") == "NAO_DEFINIDO", status=fiscal.get("status"))
+
     ok = all(x["ok"] for x in run.checks)
     out = {"schema": "zevanory.release.readback.v1", "expected_sha": sha, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
            "checks": run.checks, "total": len(run.checks), "failed": sum(1 for x in run.checks if not x["ok"]),
-           "verdict": "PASS" if ok else "FAIL"}
+           "verdict": "PASS" if ok else "FAIL", "preserved_pendencies": PRESERVED_PENDENCIES,
+           "homologation": "BLOCKED_CONTAINMENT_REQUIRED" if not ok else "READBACK_PASS",
+           "on_fail": "docs/release/cadeia-publicacao-release-consolidado.md#falha-de-leitura"}
     pathlib.Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", "utf-8")
+    print("PRESERVED_PENDENCIES=" + ",".join(PRESERVED_PENDENCIES))
+    if not ok:
+        print("HOMOLOGATION=BLOCKED — seguir o procedimento de contenção autorizado "
+              "(docs/release/cadeia-publicacao-release-consolidado.md, seção 'Falha de leitura')")
     print(f"READBACK={'PASS' if ok else 'FAIL'} total={out['total']} failed={out['failed']} out={a.out}")
     return 0 if ok else 1
 
