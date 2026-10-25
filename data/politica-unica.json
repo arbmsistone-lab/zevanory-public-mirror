@@ -1,7 +1,19 @@
 {
   "schema": "zevanory-politica-unica/v1",
   "nota": "P13 (Ordem 079-P13 / 076-P24): texto único de compra, entrega, suporte e arrependimento proposto pelo auditor Sol, copiado sem alteração. Texto sujeito a revisão jurídica do proprietário. Fonte única para scripts/build_sales_public.py, worker e testes (tests/p13-politica-nogo.test.mjs).",
-  "sol_text": "Compra, entrega, suporte e direito de arrependimento. Antes da contratação, a página e o resumo do pedido informarão fornecedor, características e conteúdo do produto, preço total, forma de pagamento, disponibilidade, prazo e modo de entrega, restrições de uso/download e canais de atendimento. O consumidor poderá corrigir os dados do pedido antes de concluir a compra. Após a contratação, receberá imediatamente a confirmação e uma cópia conservável destes termos. O produto digital será enviado ao e-mail informado após a confirmação do pagamento, por link pessoal válido por 72 horas e para um download; a expiração do link não elimina o direito ao produto, e um novo link poderá ser solicitado sem custo pelo canal de entrega ou pelo suporte. Em contratação online, o consumidor poderá desistir sem justificativa e sem ônus no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço, conforme o evento aplicável; por política mais favorável, se as datas forem diferentes, a ZEVANORY adotará a mais recente. O pedido poderá ser feito pela mesma ferramenta usada na contratação e também em zevanory.api.br/pedir-reembolso, suporte@zevanory.api.br ou WhatsApp +55 88 99254-5413. O recebimento do pedido será confirmado imediatamente. A ZEVANORY comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno e devolverá integralmente os valores pagos; a visualização do crédito em cartão seguirá o prazo do emissor. Contratos acessórios serão cancelados sem custo. Demandas de consumo terão confirmação imediata e resposta conclusiva em até 5 dias; o SLA específico de direitos LGPD permanece separado. Defeito, arquivo corrompido ou falha de entrega será corrigido ou reenviado sem custo, sem limitar outros direitos legais.",
+  "contato_publico": {
+    "nota": "Contato público (2026-10-23). A conta WhatsApp Business da ZEVANORY (4019600665012911) foi desativada PERMANENTEMENTE pela Meta em 2026-10-10 (violação da Política de Uso Aceitável; revisão já negada) e o número que ela usava está BANIDO. Por isso o único endereço eletrônico oficial de contato é o e-mail abaixo: (1) o CTA 'Entrar na lista de espera' abre mailto com assunto e corpo fixos (nenhum dado pessoal na URL além do que a pessoa digitar); data-zev-open-text continua restaurando o CTA de compra quando as vendas abrirem; (2) nenhuma página, rodapé, faixa de confiança, FAQ, JSON-LD (contactPoint/sameAs/telephone), política, e-mail ou página do Worker tem link ou menção de WhatsApp como canal da ZEVANORY; (3) o 'Endereço eletrônico' do Resumo da oferta (Decreto 7.962/2013, art. 2º, II) é o e-mail e o site; (4) os canais de arrependimento do texto único (sol_text/refund_channels) listam só os canais que funcionam (CDC art. 49; Decreto 7.962/2013, art. 5º). whatsapp_public_links_enabled=false é uma trava: links de WhatsApp só voltam por decisão explícita do proprietário, com um NOVO número verificado (campo whatsapp_e164 obrigatório quando true) e revisão do texto único. numeros_banidos nunca podem aparecer em superfície pública, nem com a flag ligada. Gate: tests/contato-publico-whatsapp.test.mjs e scripts/sales_policy.py (audit_contact).",
+    "whatsapp_public_links_enabled": false,
+    "email": "suporte@zevanory.api.br",
+    "formulario": "https://zevanory.api.br/atendimento",
+    "numeros_banidos": [
+      "5588992545413"
+    ],
+    "waitlist_subject": "Lista de espera — {produto}",
+    "waitlist_body": "Olá! Quero entrar na lista de espera do {produto}. Me avisem por este e-mail quando as vendas abrirem.",
+    "contact_subject": "Contato pelo site ZEVANORY"
+  },
+  "sol_text": "Compra, entrega, suporte e direito de arrependimento. Antes da contratação, a página e o resumo do pedido informarão fornecedor, características e conteúdo do produto, preço total, forma de pagamento, disponibilidade, prazo e modo de entrega, restrições de uso/download e canais de atendimento. O consumidor poderá corrigir os dados do pedido antes de concluir a compra. Após a contratação, receberá imediatamente a confirmação e uma cópia conservável destes termos. O produto digital será enviado ao e-mail informado após a confirmação do pagamento, por link pessoal válido por 72 horas e para um download; a expiração do link não elimina o direito ao produto, e um novo link poderá ser solicitado sem custo pelo canal de entrega ou pelo suporte. Em contratação online, o consumidor poderá desistir sem justificativa e sem ônus no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço, conforme o evento aplicável; por política mais favorável, se as datas forem diferentes, a ZEVANORY adotará a mais recente. O pedido poderá ser feito pela mesma ferramenta usada na contratação e também em zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br. O recebimento do pedido será confirmado imediatamente. A ZEVANORY comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno e devolverá integralmente os valores pagos; a visualização do crédito em cartão seguirá o prazo do emissor. Contratos acessórios serão cancelados sem custo. Demandas de consumo terão confirmação imediata e resposta conclusiva em até 5 dias; o SLA específico de direitos LGPD permanece separado. Defeito, arquivo corrompido ou falha de entrega será corrigido ou reenviado sem custo, sem limitar outros direitos legais.",
   "rule_7d": "7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço",
   "delivery_72h": "link pessoal válido por 72 horas e para um download",
   "closed_label": "vendas temporariamente fechadas",
@@ -83,7 +95,7 @@
     "refund": "Direito de arrependimento: em contratação online, você pode desistir sem justificativa e sem ônus em {rule_7d}. Peça pela mesma ferramenta usada na contratação ou em {refund_channels}. O recebimento do pedido é confirmado imediatamente. A ZEVANORY comunica imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno e devolve integralmente os valores pagos; a visualização do crédito em cartão segue o prazo do emissor.",
     "subscription_delivery": "Conteúdo Pronto (assinatura): após a confirmação do pagamento, você recebe por e-mail um link para um formulário curto e, depois, o pacote do mês em link privado. Sem fidelidade: a renovação pode ser cancelada a qualquer momento.",
     "subscription_refund": "Direito de arrependimento: você pode desistir sem justificativa e sem ônus em {rule_7d}, com devolução integral dos valores pagos. Peça pela mesma ferramenta usada na contratação ou em {refund_channels}. O recebimento do pedido é confirmado imediatamente; a visualização do crédito em cartão segue o prazo do emissor.",
-    "refund_channels": "zevanory.api.br/pedir-reembolso, suporte@zevanory.api.br ou WhatsApp +55 88 99254-5413",
+    "refund_channels": "zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br",
     "sla": "Demandas de consumo têm confirmação imediata e resposta conclusiva em até 5 dias.",
     "dias_permitidos": {
       "arrependimento": 7,
@@ -99,7 +111,7 @@
       "comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno",
       "a visualização do crédito em cartão seguirá o prazo do emissor",
       "resposta conclusiva em até 5 dias",
-      "zevanory.api.br/pedir-reembolso, suporte@zevanory.api.br ou WhatsApp +55 88 99254-5413",
+      "zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br",
       "pela mesma ferramenta usada na contratação"
     ]
   },
@@ -111,7 +123,6 @@
       "cnpj": "69.077.233/0001-99",
       "endereco_fisico": "Rua Francisco de Freitas Neto, nº 96, Alto do Tenente, Várzea Alegre – CE",
       "email": "suporte@zevanory.api.br",
-      "whatsapp": "+55 88 99254-5413",
       "site": "vendas.zevanory.api.br",
       "cep": "63540-000"
     },

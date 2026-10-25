@@ -24,6 +24,8 @@ on:
       - "sales-worker.mjs"
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
+      - "tests/sales-asset-cache.test.mjs"
+      - "tests/contato-publico-whatsapp.test.mjs"
       - "wrangler.sales.toml"
       - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
@@ -56,6 +58,8 @@ on:
       - "sales-worker.mjs"
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
+      - "tests/sales-asset-cache.test.mjs"
+      - "tests/contato-publico-whatsapp.test.mjs"
       - "wrangler.sales.toml"
       - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
@@ -115,7 +119,7 @@ jobs:
         run: |
           node --check sales-worker.mjs
           node --check worker/sales-public-worker.mjs
-          node --test tests/automation-traffic-guard.test.mjs tests/attribution.test.mjs tests/p13-politica-nogo.test.mjs tests/product-consistency.test.mjs tests/hotmart-pages.test.mjs
+          node --test tests/automation-traffic-guard.test.mjs tests/attribution.test.mjs tests/p13-politica-nogo.test.mjs tests/product-consistency.test.mjs tests/hotmart-pages.test.mjs tests/sales-asset-cache.test.mjs tests/contato-publico-whatsapp.test.mjs
 
       - name: Cloudflare dry-run
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public
@@ -140,7 +144,9 @@ jobs:
           test -f sales-public/product.css
           test -f sales-public/brand/zevanory-logo-dark.svg
           grep -Fq "ZEVANORY SALES" sales-public/zevanory-sales.html
-          grep -Fq 'href="/product.css"' sales-public/zevanory-sales.html
+          # E2: pages load the content-hashed stylesheet; /product.css stays only for Worker info pages.
+          grep -Eq 'href="/assets/product\.[0-9a-f]{10}\.css"' sales-public/zevanory-sales.html
+          if grep -RIl 'whatsapp-contact' sales-public; then echo "::error::retired contact script referenced"; exit 1; fi
           ! grep -Fq "/zevanory-public-mirror/" sales-public/zevanory-sales.html
           echo "ZEVANORY_SALES_PUBLIC_VERIFY=PASS"
 

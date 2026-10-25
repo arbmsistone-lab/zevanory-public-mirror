@@ -1,5 +1,7 @@
-import { CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
+import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
+import { drainAtendimentoOutbox, handleAtendimento } from "./atendimento.mjs";
 import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
+import { operatorToken as operatorCredential } from "./operator-credential.mjs";
 export { reconcileRefund } from "./refund-provider-claims.mjs";
 // T5 — Refund flow (CDC art. 49). P13c (FINANCEIRO): o prazo segue a regra publicada
 // (data/politica-unica.json, refund_window via refundWindow): 7 dias corridos a partir da data mais
@@ -239,7 +241,7 @@ const FORM_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"
 <body><main><a class="zv-brand" href="https://vendas.zevanory.api.br/"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="224" height="51"></a><h1>Solicitar reembolso</h1><p>${REFUND_TEXT} ${SLA_TEXT}</p>
 <form id="f"><label for="o">Código do pedido</label><input id="o" name="order_id" required placeholder="está no e-mail de entrega" autocomplete="off">
 <label for="e">E-mail usado no pagamento</label><input id="e" name="email" type="email" required autocomplete="email"><button type="submit">Enviar pedido de reembolso</button></form><div id="msg" role="status"></div>
-<p class="zv-help" style="margin-top:28px;font-size:14px">Dúvidas: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · <a href="https://wa.me/5588992545413">WhatsApp +55 88 99254-5413</a></p><p class="zv-legal">${LEGAL_IDENTITY} · <a href="https://vendas.zevanory.api.br/termos">Termos</a> · <a href="https://vendas.zevanory.api.br/privacidade">Privacidade</a> · <a href="https://vendas.zevanory.api.br/reembolso">Reembolso</a></p></main>
+<p class="zv-help" style="margin-top:28px;font-size:14px">Dúvidas, reclamação ou cancelamento: ${CONTACT_HTML}</p><p class="zv-legal">${LEGAL_IDENTITY} · <a href="https://vendas.zevanory.api.br/termos">Termos</a> · <a href="https://vendas.zevanory.api.br/privacidade">Privacidade</a> · <a href="https://vendas.zevanory.api.br/reembolso">Reembolso</a></p></main>
 <script>document.getElementById('f').addEventListener('submit',async(ev)=>{ev.preventDefault();const m=document.getElementById('msg');m.style.display='block';m.textContent='Enviando…';try{const r=await fetch('/api/support/refund-request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_id:document.getElementById('o').value,email:document.getElementById('e').value})});const j=await r.json();m.textContent=j.message||'Não foi possível registrar agora. Tente novamente.';}catch{m.textContent='Não foi possível registrar agora. Tente novamente.';}});</script></body></html>`;
 
 function adminPage(items) {
@@ -250,6 +252,10 @@ function adminPage(items) {
 export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthorized, worker, ctx } = {}) {
   const url = new URL(request.url);
   const path = url.pathname;
+  // Atendimento ao consumidor (suporte, reclamação, cancelamento, reembolso) com protocolo: mesmo ponto
+  // de entrada do reembolso, sem nova rota no despachante central.
+  const atendimento = await handleAtendimento(request, env, { sqlFactory });
+  if (atendimento) return atendimento;
   const isOurs = path === "/reembolso/solicitar" || path === "/pedir-reembolso" || path === "/api/support/refund-request" || path === "/admin/refunds" || path === "/admin/refunds/action" || path === "/api/internal/certification/e2e/refund-approve" || path === "/api/internal/certification/e2e/refund-reconcile";
   if (!isOurs) return null;
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
@@ -265,7 +271,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     try { input = await request.json(); } catch {}
     try {
       const out = await createRequest(env, sql(), kv, { oid: input.order_id, email: input.email });
-      const cert = String(env.CERTIFICATION_E2E_TOKEN || "");
+      const cert = String(operatorCredential(env) || "");
       const diagnostic = cert.length >= 32 && timingSafeEqual(cert, request.headers.get("x-certification-e2e-token") || "");
       if (!diagnostic && out.body?.reason) delete out.body.reason;
       return json(out.status, out.body);
@@ -275,7 +281,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
   }
 
   if (path === "/api/internal/certification/e2e/refund-approve" || path === "/api/internal/certification/e2e/refund-reconcile") {
-    const expected = String(env.CERTIFICATION_E2E_TOKEN || "");
+    const expected = String(operatorCredential(env) || "");
     if (request.method !== "POST" || expected.length < 32 || !timingSafeEqual(expected, request.headers.get("x-certification-e2e-token") || "")) return json(401, { error: "certification_e2e_auth_required" });
     const oid = String(url.searchParams.get("order_id") || "").toLowerCase();
     const record = JSON.parse(await kv.get(KEY(oid)) || "null");
@@ -320,7 +326,17 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
 }
 
 // Hourly watchdog does GET-only reconciliation; never makes refund POST requests.
+// Cron horário: reembolsos + outbox do atendimento (drainAtendimentoOutbox). Falha do atendimento deixa
+// o resultado ok=false (cron vermelho), sem impedir a parte do reembolso.
 export async function runRefundWatchdog(env, now = Date.now(), { sqlFactory } = {}) {
+  const refund = await runRefundWatchdogCore(env, now, { sqlFactory });
+  let atendimento;
+  try { atendimento = await drainAtendimentoOutbox(env, { sqlFactory }); }
+  catch { atendimento = { ok: false, reason: "atendimento_drain_failed" }; }
+  return { ...refund, ok: refund.ok !== false && atendimento.ok !== false, atendimento };
+}
+
+async function runRefundWatchdogCore(env, now = Date.now(), { sqlFactory } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.list) return { ok: false, reason: "kv_unavailable" };
   const pending = [];

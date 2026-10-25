@@ -26,8 +26,7 @@ jobs:
       TARGET_SHA: ${{ inputs.target_sha }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
-      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
-      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+      # F2 item 9: referências a MERCADOPAGO_TEST_* removidas (job já aposentado; continua if: false).
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
     steps:
@@ -113,10 +112,9 @@ jobs:
           v["SALE_GLOBALLY_ENABLED"]="false"
           v["PRE_SALE_GATES_APPROVED"]="false"
           v["WHATSAPP_SALES_ENABLED"]="false"
-          v["ZEVANORY_WHATSAPP_E164"]="+5588992545413"
-          v["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
-          v["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
-          v.pop("SUPPORT_CHANNEL",None)
+          # WhatsApp retired (PR #896): strip every legacy WhatsApp contact alias, never assign one.
+          for k in [k for k in v if k == "SUPPORT_CHANNEL" or k.startswith("ZEVANORY_WHATSAPP_")]:
+              v.pop(k)
           v["VOICE_TTS_PROVIDER"]="piper-relay"
           v["VOICE_TTS_PROVIDER_CHAIN"]="gemini"
           v["VOICE_TTS_FAILOVER_ENABLED"]="true"
@@ -129,15 +127,6 @@ jobs:
           # These bindings are provably unused by the exact TARGET_SHA bundle.
           for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
               v.pop(unused,None)
-          # Replace stale public number references without changing executable source.
-          replacements={"+55 88 9234-0423":"+55 88 99254-5413","558892340423":"5588992545413"}
-          for asset in Path("public").rglob("*"):
-              if not asset.is_file(): continue
-              try: raw=asset.read_text(encoding="utf-8")
-              except (UnicodeDecodeError,OSError): continue
-              new=raw
-              for old,val in replacements.items(): new=new.replace(old,val)
-              if new!=raw: asset.write_text(new,encoding="utf-8")
           open(p,"w").write(json.dumps(c,indent=2)+"\n")
           PY
           node --check worker/cloudflare-worker.compat.mjs
@@ -305,7 +294,7 @@ jobs:
               "description":"ZEVANORY Mercado Pago sandbox E2E",
               "installments":1,
               "payment_method_id":"master",
-              "payer":{"email":"test_user_5588992545413@testuser.com","identification":{"type":"CPF","number":"12345678909"}},
+              "payer":{"email":"test_user_zevanory_recovery@testuser.com","identification":{"type":"CPF","number":"12345678909"}},
               "external_reference":ext,
               "notification_url":APP+"/api/webhooks?provider=mercadopago_test"
           }

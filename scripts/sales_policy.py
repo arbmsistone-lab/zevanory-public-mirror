@@ -52,6 +52,84 @@ PENDING_MARKERS = ("PENDENTE", "PREENCHER", "A CONFIRMAR", "XXX", "PLACEHOLDER")
 for _part in (RULE_7D, DELIVERY_72H):
     assert _part in SOL_TEXT, _part
 
+# Contato publico (data/politica-unica.json, contato_publico). A conta WhatsApp Business da ZEVANORY
+# foi desativada permanentemente pela Meta (2026-10-10) e o numero esta banido: o unico endereco
+# eletronico oficial e o e-mail. Lista de espera e "falar com a ZEVANORY" abrem mailto com assunto/corpo
+# fixos, e nenhuma superficie publica tem link ou numero de WhatsApp. A flag e uma trava: so volta com
+# decisao explicita do proprietario e um NOVO numero (whatsapp_e164), nunca um de numeros_banidos.
+CONTACT = _DATA["contato_publico"]
+WHATSAPP_PUBLIC_LINKS_ENABLED = CONTACT["whatsapp_public_links_enabled"] is True
+SUPPORT_EMAIL = CONTACT["email"]
+BANNED_NUMBERS = tuple(CONTACT.get("numeros_banidos", ()))
+WHATSAPP_E164 = str(CONTACT.get("whatsapp_e164") or "") if WHATSAPP_PUBLIC_LINKS_ENABLED else ""
+if WHATSAPP_PUBLIC_LINKS_ENABLED and (not re.fullmatch(r"\d{12,13}", WHATSAPP_E164) or WHATSAPP_E164 in BANNED_NUMBERS):
+    raise SystemExit("contato_publico: whatsapp_public_links_enabled=true exige whatsapp_e164 novo (nao banido)")
+WHATSAPP_URL = "https://wa.me/" + WHATSAPP_E164 if WHATSAPP_E164 else ""
+WHATSAPP_DISPLAY = str(CONTACT.get("whatsapp_display") or WHATSAPP_E164)
+
+
+def _q(text: str) -> str:
+    from urllib.parse import quote
+    return quote(text, safe="")
+
+
+def mailto(subject: str, body: str | None = None) -> str:
+    """mailto com assunto (e corpo) fixos; texto estatico, sem dado pessoal."""
+    href = f"mailto:{SUPPORT_EMAIL}?subject={_q(subject)}"
+    return href + (f"&body={_q(body)}" if body else "")
+
+
+def waitlist_href(product: str) -> str:
+    """Destino do CTA 'Entrar na lista de espera' com vendas fechadas."""
+    if WHATSAPP_PUBLIC_LINKS_ENABLED:
+        return WHATSAPP_URL + "?text=" + _q("Olá! Quero entrar na lista de espera do " + product + ".")
+    return mailto(CONTACT["waitlist_subject"].replace("{produto}", product),
+                  CONTACT["waitlist_body"].replace("{produto}", product))
+
+
+def contact_href() -> str:
+    """Destino de 'Falar com a ZEVANORY' (nav) e do contato humano."""
+    return WHATSAPP_URL if WHATSAPP_PUBLIC_LINKS_ENABLED else mailto(CONTACT["contact_subject"])
+
+
+def _number_pattern(e164: str) -> str:
+    """5588992545413 -> 5588992545413|99254[-\\s.]?5413 (completo ou na mascara local)."""
+    local = e164[4:]
+    return re.escape(e164) + "|" + re.escape(local[:-4]) + r"[-\s.]?" + re.escape(local[-4:])
+
+
+# Numero banido: proibido sempre, com a flag ligada ou nao.
+BANNED_NUMBER_RE = re.compile("|".join(_number_pattern(n) for n in BANNED_NUMBERS) or r"(?!)")
+# Qualquer link de WhatsApp (wa.me / api.whatsapp.com / whatsapp://) ou numero banido.
+WHATSAPP_PUBLIC_RE = re.compile(r"wa\.me/|api\.whatsapp\.com/|whatsapp://|" + BANNED_NUMBER_RE.pattern, re.I)
+
+
+# Sem telefone publico: a ZEVANORY nao tem linha telefonica de atendimento (o unico numero foi banido).
+PHONE_PUBLIC_RE = re.compile(r'"telephone"\s*:|\b(?:itemprop|property)\s*=\s*["\']?(?:schema:)?telephone\b|href\s*=\s*["\']?tel:', re.I)
+
+
+def audit_contact(out_dir: Path) -> list[str]:
+    """Flag desligada: zero link de WhatsApp e zero numero banido em HTML, JS e textos publicados.
+    Flag ligada: o numero banido continua proibido. Sempre: nenhum telefone publico (JSON-LD/Microdata/
+    RDFa telephone, href tel:) e o e-mail oficial no rodape de toda pagina."""
+    rx = BANNED_NUMBER_RE if WHATSAPP_PUBLIC_LINKS_ENABLED else WHATSAPP_PUBLIC_RE
+    problems = []
+    # E2: scripts and stylesheets are published content-hashed under assets/ (assets/**), so those
+    # are scanned too, not only the top-level files.
+    tops = (p for ext in ("*.html", "*.js", "*.txt", "*.xml") for p in out_dir.glob(ext))
+    hashed = (p for ext in ("assets/**/*.js", "assets/**/*.css") for p in out_dir.glob(ext))
+    for f in sorted(set(tops) | set(hashed)):
+        text = f.read_text(encoding="utf-8")
+        m = rx.search(text)
+        if m:
+            problems.append(f"{f.name}: WhatsApp publico ({m.group(0)}) com whatsapp_public_links_enabled={str(WHATSAPP_PUBLIC_LINKS_ENABLED).lower()}")
+        m = PHONE_PUBLIC_RE.search(text)
+        if m:
+            problems.append(f"{f.name}: telefone publico ({m.group(0)}) sem canal telefonico oficial")
+        if f.suffix == ".html" and f'href="mailto:{SUPPORT_EMAIL}"' not in text:
+            problems.append(f"{f.name}: e-mail oficial {SUPPORT_EMAIL} ausente")
+    return problems
+
 SUBSCRIPTION_SUMMARY = (
     '<p class="policy-summary">Entrega: após a confirmação do pagamento, por e-mail (formulário curto e, depois, o pacote do mês em link privado). '
     f'Arrependimento: {RULE_7D}, com devolução integral (se as datas forem diferentes, vale a mais recente). '
@@ -299,7 +377,7 @@ def main(argv=None) -> int:
     ap.add_argument("--mode", choices=(CLOSED, OPEN), default=CLOSED)
     a = ap.parse_args(argv)
     out = Path(a.audit)
-    problems = audit_policy(out)
+    problems = audit_policy(out) + audit_contact(out)
     if a.mode == CLOSED:
         problems += audit_closed(out)
     for p in problems:

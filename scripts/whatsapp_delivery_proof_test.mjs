@@ -1,55 +1,36 @@
+// WhatsApp channel retired (Meta permanently disabled WABA 4019600665012911 on 2026-10-10).
+// The former "delivery proof" built app-secret-signed fake inbound webhooks so the live bot replied
+// to a real number. This test now proves the opposite: every operation of that route, and every
+// other onboarding route, is 410 Gone for any method/credential and nothing reaches the network.
 import assert from "node:assert/strict";
-import { webcrypto, createHmac } from "node:crypto";
-import {handleWhatsappOnboarding} from "../worker/whatsapp-onboarding.mjs";
+import { webcrypto } from "node:crypto";
+import { handleWhatsappOnboarding } from "../worker/whatsapp-onboarding.mjs";
 globalThis.crypto ||= webcrypto;
-const master="synthetic-master-key-at-least-32-characters",operator="synthetic-operator-at-least-32-characters";
-const record={app_id:"1071149631917061",app_secret:"synthetic-meta-secret",access_token:"synthetic-meta-access",phone_number_id:"1300972319774588",waba_id:"4019600665012911",verify_token:"synthetic-verify"};
-const e=new TextEncoder(),iv=crypto.getRandomValues(new Uint8Array(12));
-const key=await crypto.subtle.importKey("raw",await crypto.subtle.digest("SHA-256",e.encode("zevanory:whatsapp:onboarding:v1:"+master)),{name:"AES-GCM"},false,["encrypt"]);
-const cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,e.encode(JSON.stringify(record)));
-const sealed=Buffer.from(iv).toString("base64url")+"."+Buffer.from(cipher).toString("base64url");
-const env={ELITE_INTERNAL_TOKEN:master,OPERATOR_TOKEN:operator,ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>sealed}};
-const proofOptions={proofSql:()=>({query:async(query)=>{
- if(query.startsWith("select contact_ref"))return [{contact_ref:"5511999991234",updated_at:"2026-10-04T19:55:00Z"}];
- return [{payload:{message_id:"wamid.realtext",inbound_message:"so texto",media_type:"text"},created_at:"2026-10-04T19:55:00Z"},{payload:{message_id:"wamid.realaudio",media_type:"audio"},created_at:"2026-10-04T19:54:00Z"}];
-}})};
-const handle=(req,env)=>handleWhatsappOnboarding(req,env,proofOptions);
-const request=(body,auth=true)=>new Request("https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof",{method:"POST",headers:auth?{authorization:"Bearer "+operator}:{},body:JSON.stringify(body)});
-let calls=0;
-globalThis.fetch=async(url,init={})=>{
-  calls++;
-  if(String(url).endsWith("/subscriptions"))return Response.json({data:[{object:"whatsapp_business_account",callback_url:"https://zevanory.api.br/api/webhooks/meta",active:true,fields:[{name:"messages"}]}]});
-  if(String(url).endsWith("/subscribed_apps"))return Response.json({data:[{whatsapp_business_api_data:{id:"1071149631917061"}}]});
-  if(String(url).endsWith("/media")){assert.ok(init.body instanceof FormData);assert.ok(!init.headers["content-type"]);return Response.json({id:"synthetic-media"});}
-  assert.equal(String(url),"https://zevanory.api.br/api/webhooks/meta");
-  assert.equal(init.headers["x-hub-signature-256"],"sha256="+createHmac("sha256",record.app_secret).update(init.body).digest("hex"));
-  const msg=JSON.parse(init.body).entry[0].changes[0].value.messages[0];
-  assert.equal(msg.from,"5511999991234");assert.match(msg.id,/^internal-(text|audio)-/);
-  if(msg.type==="text")assert.equal(msg.text.body,"teste interno: quanto custa o combo?");
-  else assert.equal(msg.audio.id,"synthetic-media");
-  return Response.json({accepted:true});
-};
-assert.equal((await handle(request({operation:"text"},false),env)).status,401);assert.equal(calls,0);
-assert.equal((await handle(request({operation:"arbitrary-send"}),env)).status,400);assert.equal(calls,0);
-const subscriptions=await handle(request({operation:"subscriptions"}),env);assert.equal((await subscriptions.json()).valid,true);
-const text=await handle(request({operation:"text",recipient:"ignored-attacker-target"}),env);
-const proof=await text.json();assert.equal(proof.signature,"sha256="+createHmac("sha256",record.app_secret).update(proof.signed_body).digest("hex"));assert.equal(JSON.parse(proof.signed_body).entry[0].changes[0].value.messages[0].from,"5511999991234");assert.ok(proof.body_sha256);assert.ok(!JSON.stringify(proof).includes(record.app_secret));
-const audio=await handle(request({operation:"audio",audio_base64:Buffer.from("OggSsynthetic-unit-test").toString("base64")}),env);
-const audioProof=await audio.json();assert.equal(JSON.parse(audioProof.signed_body).entry[0].changes[0].value.messages[0].audio.id,"synthetic-media");
-console.log("DELIVERY_PROOF_AUTH_FIXED_RECIPIENT_HMAC_MEDIA_NO_SECRET_LEAK=PASS");
+const operator="synthetic-operator-at-least-32-characters";
+const env={ELITE_INTERNAL_TOKEN:"synthetic-master-key-at-least-32-characters",OPERATOR_TOKEN:operator,CERTIFICATION_E2E_TOKEN:operator,ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>{throw new Error("must_not_read_kv");}}};
+let calls=0;const realFetch=globalThis.fetch;
+globalThis.fetch=async()=>{calls++;throw new Error("network_forbidden_for_retired_whatsapp");};
+const ops=["subscriptions","owner","text","audio","audit-cache","audit-encode","audit-transcribe","audit-observe","audit-media","audit-encoder-key","audit-source","arbitrary-send"];
+for(const operation of ops)for(const auth of [true,false]){
+  const r=await handleWhatsappOnboarding(new Request("https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof",{method:"POST",headers:auth?{authorization:"Bearer "+operator}:{},body:JSON.stringify({operation,audio_base64:Buffer.from("OggS").toString("base64")})}),env);
+  assert.equal(r.status,410,operation);const body=await r.json();
+  assert.equal(body.error,"whatsapp_channel_retired");assert.equal(body.reason,"meta_account_permanently_disabled");
+  assert.ok(!("signed_body" in body)&&!("signature" in body),"no signed payload is ever returned");
+}
+for(const [path,method] of [["/admin/whatsapp-onboard","GET"],["/admin/whatsapp-onboard/start","GET"],["/admin/whatsapp-onboard/callback?code=x&state=y","GET"],["/admin/whatsapp-onboard/embedded-complete","POST"],["/admin/whatsapp-onboard/bootstrap","POST"],["/admin/whatsapp-onboard/finalize","POST"],["/admin/whatsapp-onboard/voice-key","POST"],["/api/admin/whatsapp-onboard/status","GET"]]){
+  const r=await handleWhatsappOnboarding(new Request("https://zevanory.api.br"+path,{method,headers:{authorization:"Bearer "+operator},body:method==="POST"?"{}":undefined}),env);
+  assert.equal(r.status,410,path);
+}
+assert.equal(await handleWhatsappOnboarding(new Request("https://zevanory.api.br/api/status"),env),null);
+assert.equal(calls,0,"no fetch at all");
+globalThis.fetch=realFetch;
+console.log("DELIVERY_PROOF_AND_ONBOARDING_RETIRED_410_NO_NETWORK_NO_SIGNATURE=PASS");
 
 const {ttsBytesWithFailover}=await import("../worker/voice-provider-router.mjs");
 const attempted=[];
 await assert.rejects(()=>ttsBytesWithFailover("Olá",{VOICE_TTS_FREE_ONLY:"true",GEMINI_API_KEY:"synthetic",GEMINI_FREE_TIER_CONFIRMED:"true",VOICE_TTS_PROVIDER_CHAIN:"gemini",GEMINI_TTS_MODEL:"gemini-2.5-legacy"},async(url,init)=>{const b=JSON.parse(init.body);attempted.push(b.model);assert.ok(init.signal instanceof AbortSignal);return Response.json({error:{code:404}},{status:404});}),/voice_tts_all_providers_failed/);
 assert.deepEqual(attempted,["gemini-3.8-flash-tts","gemini-3.8-flash-lite-tts"]);
 console.log("GEMINI_TWO_CURRENT_MODELS_FAILOVER_NO_LEGACY=PASS");
-
-const certification="synthetic-certification-at-least-32-characters";
-const certEnv={...env,CERTIFICATION_E2E_TOKEN:certification};
-const certRequest=new Request("https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof",{method:"POST",headers:{authorization:"Bearer "+certification},body:JSON.stringify({operation:"subscriptions"})});
-assert.equal((await handle(certRequest,certEnv)).status,200);
-assert.equal((await handle(request({operation:"subscriptions"}),certEnv)).status,401);
-console.log("DEDICATED_CERTIFICATION_AUTHORITY_PRECEDENCE=PASS");
 
 const {whatsappInboundSafety,resolveOwnerProof}=await import("../worker/whatsapp-inbound-safety.mjs");
 for(const from of ["558892545413","5588992545413","+55 (88) 9254-5413"])assert.equal(whatsappInboundSafety({from,phone_number_id:"1300972319774588"}),"self_sender");
@@ -74,9 +55,3 @@ const newerAudioSql={query:async q=>q.startsWith("select contact_ref")?[{contact
 assert.equal((await resolveOwnerProof(newerAudioSql,proofKv)).recipient_suffix,"1234");
 console.log("NEW_REAL_AUDIO_PRESERVES_VERIFIED_OWNER_ANCHOR=PASS");
 
-const cacheOnlyAudio=await handle(request({operation:"audio",voice_cache_only:true,audio_base64:Buffer.from("OggSsynthetic-unit-test").toString("base64")}),env);
-const cacheOnlyProof=await cacheOnlyAudio.json();
-assert.equal(cacheOnlyAudio.status,200);
-assert.equal(JSON.parse(cacheOnlyProof.signed_body).entry[0].changes[0].value.messages[0].audio.voice_cache_only,true);
-assert.equal(cacheOnlyProof.signature,"sha256="+createHmac("sha256",record.app_secret).update(cacheOnlyProof.signed_body).digest("hex"));
-console.log("PROOF_REPEAT_CACHE_ONLY=PASS");

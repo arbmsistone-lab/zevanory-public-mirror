@@ -1,0 +1,905 @@
+{
+ "nota": "Expectativas causais dos mutantes do chat do site (scripts/ci/mutants_site_chat.py), escritas por raciocínio sobre cada mutação antes de rodá-la. Formato de load_mutant_config (scripts/ci/mutant_classifier.py): primary 1-3 com teste + marcador da asserção; secondary com justificativa; broad_reason acima de 4 testes. 'changes' e 'why' são documentação (docs/evidence/site-chat-mutant-causality.md).",
+ "changes": {
+  "K1 env switch ignored": "interruptor do Worker central ignora a variável (sempre ligado)",
+  "K2 KV kill ignored": "valor \"off\" na chave KV de emergência não desliga",
+  "K3 KV error opens chat": "KV ausente ou com erro liga o chat (fail-open)",
+  "K4 sales proxy ignores switch": "o Worker de vendas encaminha as rotas do chat ao central com o chat desligado",
+  "K5 widget injected while off": "o Worker de vendas injeta o widget com o chat desligado",
+  "K6 public host served": "o módulo atende o host público além do host do service binding",
+  "P1 money allowed while closed": "validador deixa passar valor em dinheiro com vendas fechadas",
+  "P2 generated text not validated": "texto gerado pelo modelo aceito sem validateSiteReply",
+  "P3 closed price answer bypassed": "pergunta de preço com vendas fechadas não recebe a frase exata do Sol",
+  "P4 stale catalog trusted": "catálogo com impressão digital vencida tratado como aprovado",
+  "P5 conflicting source answered": "fonte ausente/vencida/conflitante respondida em vez de escalonada",
+  "P6 promise allowed": "validador deixa passar promessa de resultado",
+  "P7 right denial allowed": "validador deixa passar negação de direito do consumidor",
+  "P8 deadline outside source allowed": "validador deixa passar prazo que não vem da fonte",
+  "C1 checkout mention allowed": "validador deixa passar checkout sem esquema https",
+  "C2 ambiguous sales status = open": "resposta ambígua da autoridade de vendas tratada como aberta",
+  "C3 sales status error = open": "erro da autoridade de vendas tratado como aberto",
+  "C4 widget links checkout": "o widget transforma /comprar e /assinar em link",
+  "R1 per-session limit dropped": "limite por sessão/minuto removido",
+  "R2 limits never enforced": "nenhum limite é aplicado",
+  "R3 turn limit removed": "limite de turnos removido",
+  "R4 size limit removed": "mensagem acima do limite de caracteres aceita",
+  "R5 KV write per message": "uma escrita KV por mensagem",
+  "R6 breaker never opens": "disjuntor da geração nunca abre",
+  "E1 escalation without protocol": "escalonamento sem abrir ticket/protocolo",
+  "E2 confirmation resent": "confirmação ao cliente reenviada a cada pedido",
+  "E3 complaint not escalated": "reclamação deixa de ser categoria de escalonamento",
+  "E4 sensitive data not escalated": "dado sensível deixa de escalonar",
+  "E5 second correction ignored": "segunda correção não escalona",
+  "E6 whatsapp mention allowed": "validador do site deixa de marcar menção/link de WhatsApp",
+  "E7 phone number allowed": "validador do site deixa de marcar telefone",
+  "E8 banned number not flagged as whatsapp": "número banido só é pego como telefone genérico (como no validador base)",
+  "E9 escalation without email/form": "texto de escalonamento sem suporte@ e sem /atendimento",
+  "E10 form URL rejected by validator": "o formulário /atendimento fora da lista de URLs permitidas",
+  "L1 message content logged": "conteúdo da mensagem vai para o log",
+  "L2 transcript not redacted": "transcrição guardada sem remover dados sensíveis",
+  "S1 synthetic header accepted": "produção aceita cabeçalho sintético",
+  "S2 sandbox falls back to Resend": "sandbox sem sink usa o Resend",
+  "S3 synthetic email accepted": "produção aceita e-mail de domínio reservado",
+  "A1 aria-live removed": "log sem aria-live",
+  "A2 Escape does not close": "Esc não fecha o diálogo",
+  "A3 new answer steals focus": "nova resposta move o foco",
+  "A4 widget opens by itself": "o widget abre sozinho no carregamento",
+  "A5 dialog unlabeled": "diálogo sem aria-labelledby",
+  "W1 mobile panel not full screen": "painel no celular sem tela cheia",
+  "W2 fixed width breaks 256px": "largura fixa de 400 px na entrada",
+  "W3 panel under the buy-bar": "painel com z-index abaixo da .buy-bar",
+  "W4 small touch targets": "alvo de toque de 32 px",
+  "W5 low contrast": "cor secundária com contraste insuficiente",
+  "G1 synthetic workflow added": "workflow novo com tráfego sintético contra o chat",
+  "G2 guard rule removed": "guarda perde a regra do endpoint do chat",
+  "D1 policy enabled by default": "enabled_default=true na política",
+  "D2 wrangler enables chat": "wrangler.sales.toml liga o chat em [vars]",
+  "D3 generator injects widget": "o gerador das páginas injeta o widget no HTML estático",
+  "D4 sales worker defaults on": "Worker de vendas liga o chat quando a variável falta",
+  "D5 central worker defaults on": "Worker central liga o chat quando a variável falta"
+ },
+ "mutants": {
+  "K1 env switch ignored": {
+   "primary": [
+    {
+     "test_pattern": "SC01",
+     "assertion_pattern": "[SC01.1]",
+     "why": "variável ausente/\"false\"/\"1\" precisa dar 503 em todas as rotas"
+    },
+    {
+     "test_pattern": "SC18",
+     "assertion_pattern": "[SC18.1]",
+     "why": "readSiteChatFlags com variável ausente precisa devolver enabled=false"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.11]",
+     "justification": "SC17 obtém a resposta 503 com a variável em \"false\"; com o interruptor ignorado a sessão abre (200)"
+    }
+   ]
+  },
+  "K2 KV kill ignored": {
+   "primary": [
+    {
+     "test_pattern": "SC02",
+     "assertion_pattern": "[SC02.1]",
+     "why": "primeira iteração: KV com \"off\" precisa dar 503"
+    }
+   ],
+   "secondary": []
+  },
+  "K3 KV error opens chat": {
+   "primary": [
+    {
+     "test_pattern": "SC02",
+     "assertion_pattern": "[SC02.1]",
+     "why": "segunda iteração: KV ausente precisa dar 503"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "o caso crítico dependency_failure com KV ilegível espera 503 com o e-mail; o mutante abre a sessão"
+    }
+   ]
+  },
+  "K4 sales proxy ignores switch": {
+   "primary": [
+    {
+     "test_pattern": "SC15",
+     "assertion_pattern": "[SC15.1]",
+     "why": "desligado precisa responder 503 localmente"
+    },
+    {
+     "test_pattern": "SC15",
+     "assertion_pattern": "[SC15.2]",
+     "why": "desligado não chama o binding do central"
+    }
+   ],
+   "secondary": []
+  },
+  "K5 widget injected while off": {
+   "primary": [
+    {
+     "test_pattern": "SC15",
+     "assertion_pattern": "[SC15.3]",
+     "why": "página com o chat desligado sem widget"
+    },
+    {
+     "test_pattern": "SC15",
+     "assertion_pattern": "[SC15.11]",
+     "why": "shouldInjectSiteChat sem variável é falso"
+    }
+   ],
+   "secondary": []
+  },
+  "K6 public host served": {
+   "primary": [
+    {
+     "test_pattern": "SC03",
+     "assertion_pattern": "[SC03.1]",
+     "why": "requisição ao host público precisa devolver null"
+    }
+   ],
+   "secondary": []
+  },
+  "P1 money allowed while closed": {
+   "primary": [
+    {
+     "test_pattern": "SC04",
+     "assertion_pattern": "[SC04.2]",
+     "why": "texto do modelo com R$ não pode chegar ao cliente com vendas fechadas"
+    },
+    {
+     "test_pattern": "SC14",
+     "assertion_pattern": "[SC14.1]",
+     "why": "as saídas adversariais de preço precisam ser reprovadas"
+    },
+    {
+     "test_pattern": "SC14",
+     "assertion_pattern": "[SC14.2]",
+     "why": "\"Custa R$ 197,00.\" reprovado com vendas fechadas"
+    }
+   ],
+   "secondary": []
+  },
+  "P2 generated text not validated": {
+   "primary": [
+    {
+     "test_pattern": "SC04",
+     "assertion_pattern": "[SC04.2]",
+     "why": "texto gerado com preço não pode ser aceito"
+    },
+    {
+     "test_pattern": "SC04",
+     "assertion_pattern": "[SC04.3]",
+     "why": "texto gerado inválido não vira ai_grounded"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SC09",
+     "assertion_pattern": "[SC09.10]",
+     "justification": "SC09 passa saídas do modelo que negam direito/prometem e exige que não sejam aceitas; sem validação elas viram ai_grounded"
+    },
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "os casos críticos not_generated (modelo adversarial) passam a aceitar o texto gerado"
+    }
+   ]
+  },
+  "P3 closed price answer bypassed": {
+   "primary": [
+    {
+     "test_pattern": "SC04",
+     "assertion_pattern": "[SC04.5]",
+     "why": "frase exata do Sol com vendas fechadas"
+    },
+    {
+     "test_pattern": "SC05",
+     "assertion_pattern": "[SC05.4]",
+     "why": "autoridade com erro/timeout/ambígua = fechado = frase exata"
+    },
+    {
+     "test_pattern": "SC06",
+     "assertion_pattern": "[SC06.3]",
+     "why": "vendas fecham entre duas perguntas: a segunda recebe a frase exata"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "os casos críticos closed_price exigem a frase exata"
+    }
+   ]
+  },
+  "P4 stale catalog trusted": {
+   "primary": [
+    {
+     "test_pattern": "SC13",
+     "assertion_pattern": "[SC13.5]",
+     "why": "catálogo vencido precisa escalonar como source_conflict"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.6]",
+     "justification": "SC17 usa um catálogo vencido para chegar ao escalonamento source_conflict e exige o formulário; o mutante responde o preço"
+    },
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "os casos críticos stale_catalog esperam escalonamento"
+    }
+   ]
+  },
+  "P5 conflicting source answered": {
+   "primary": [
+    {
+     "test_pattern": "SC13",
+     "assertion_pattern": "[SC13.5]",
+     "why": "catálogo vencido/conflitante precisa escalonar como source_conflict"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.6]",
+     "justification": "SC17 usa um catálogo vencido para chegar ao escalonamento source_conflict e exige o formulário; o mutante responde o preço"
+    },
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "os casos críticos stale_catalog/conflicting_policy esperam escalonamento; com o catálogo ausente o caso vira exceção registrada como falha"
+    }
+   ]
+  },
+  "P6 promise allowed": {
+   "primary": [
+    {
+     "test_pattern": "SC14",
+     "assertion_pattern": "[SC14.1]",
+     "why": "a saída adversarial \"promise\" precisa ser reprovada"
+    },
+    {
+     "test_pattern": "SC09",
+     "assertion_pattern": "[SC09.10]",
+     "why": "texto do modelo com promessa não vira ai_grounded"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "o caso crítico deadline com modelo \"promise\" é not_generated"
+    }
+   ]
+  },
+  "P7 right denial allowed": {
+   "primary": [
+    {
+     "test_pattern": "SC14",
+     "assertion_pattern": "[SC14.1]",
+     "why": "a saída adversarial \"deny_right\" precisa ser reprovada"
+    },
+    {
+     "test_pattern": "SC09",
+     "assertion_pattern": "[SC09.10]",
+     "why": "texto do modelo que nega direito não vira ai_grounded"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "o caso crítico withdrawal com modelo \"deny_right\" é not_generated"
+    }
+   ]
+  },
+  "P8 deadline outside source allowed": {
+   "primary": [
+    {
+     "test_pattern": "SC14",
+     "assertion_pattern": "[SC14.5]",
+     "why": "\"Chega em 3 dias úteis.\" reprovado (o validador base só olha dias perto de garantia/reembolso)"
+    }
+   ],
+   "secondary": []
+  },
+  "C1 checkout mention allowed": {
+   "primary": [
+    {
+     "test_pattern": "SC14",
+     "assertion_pattern": "[SC14.6]",
+     "why": "checkout sem esquema reprovado"
+    }
+   ],
+   "secondary": []
+  },
+  "C2 ambiguous sales status = open": {
+   "primary": [
+    {
+     "test_pattern": "SC05",
+     "assertion_pattern": "[SC05.4]",
+     "why": "autoridade devolvendo \"true\" (texto) = fechado = frase exata"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "o caso crítico dependency_failure com autoridade \"garbage\" espera closed_price"
+    }
+   ]
+  },
+  "C3 sales status error = open": {
+   "primary": [
+    {
+     "test_pattern": "SC05",
+     "assertion_pattern": "[SC05.4]",
+     "why": "autoridade com erro = fechado = frase exata"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "os casos críticos dependency_failure com autoridade em erro/timeout esperam closed_price"
+    }
+   ]
+  },
+  "C4 widget links checkout": {
+   "primary": [
+    {
+     "test_pattern": "SW04",
+     "assertion_pattern": "[SW04.4]",
+     "why": "richText precisa excluir /comprar e /assinar"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "R1 per-session limit dropped": {
+   "primary": [
+    {
+     "test_pattern": "SC07",
+     "assertion_pattern": "[SC07.2]",
+     "why": "7ª mensagem no mesmo minuto recebe 429"
+    }
+   ],
+   "secondary": []
+  },
+  "R2 limits never enforced": {
+   "primary": [
+    {
+     "test_pattern": "SC07",
+     "assertion_pattern": "[SC07.2]",
+     "why": "7ª mensagem no mesmo minuto recebe 429"
+    }
+   ],
+   "secondary": []
+  },
+  "R3 turn limit removed": {
+   "primary": [
+    {
+     "test_pattern": "SC07",
+     "assertion_pattern": "[SC07.7]",
+     "why": "sessão no limite de turnos recebe turn_limit"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.14]",
+     "justification": "SC17 exige o formulário na resposta de limite de turnos; sem o limite vem a resposta comum, sem o formulário"
+    }
+   ]
+  },
+  "R4 size limit removed": {
+   "primary": [
+    {
+     "test_pattern": "SC07",
+     "assertion_pattern": "[SC07.4]",
+     "why": "mensagem com 601 caracteres recebe 413"
+    }
+   ],
+   "secondary": []
+  },
+  "R5 KV write per message": {
+   "primary": [
+    {
+     "test_pattern": "SC07",
+     "assertion_pattern": "[SC07.8]",
+     "why": "zero escrita KV por mensagem"
+    }
+   ],
+   "secondary": []
+  },
+  "R6 breaker never opens": {
+   "primary": [
+    {
+     "test_pattern": "SC12",
+     "assertion_pattern": "[SC12.8]",
+     "why": "após 3 falhas o modelo não é chamado"
+    }
+   ],
+   "secondary": []
+  },
+  "E1 escalation without protocol": {
+   "primary": [
+    {
+     "test_pattern": "SC08",
+     "assertion_pattern": "[SC08.2]",
+     "why": "escalonamento devolve protocolo SBX-AAAAMMDD-XXXXXX"
+    }
+   ],
+   "secondary": []
+  },
+  "E2 confirmation resent": {
+   "primary": [
+    {
+     "test_pattern": "SC08",
+     "assertion_pattern": "[SC08.17]",
+     "why": "repetir o pedido não reenvia e-mail"
+    }
+   ],
+   "secondary": []
+  },
+  "E3 complaint not escalated": {
+   "primary": [
+    {
+     "test_pattern": "SC09",
+     "assertion_pattern": "[SC09.1]",
+     "why": "\"isso é um golpe, quero reclamar\" escalona como complaint"
+    },
+    {
+     "test_pattern": "SC08",
+     "assertion_pattern": "[SC08.19]",
+     "why": "categorias do ticket incluem complaint"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "o caso crítico complaint espera escalonamento com a categoria complaint"
+    }
+   ]
+  },
+  "E4 sensitive data not escalated": {
+   "primary": [
+    {
+     "test_pattern": "SC09",
+     "assertion_pattern": "[SC09.1]",
+     "why": "número de cartão escalona como sensitive_data"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "os casos críticos sensitive_data esperam escalonamento com essa categoria"
+    }
+   ]
+  },
+  "E5 second correction ignored": {
+   "primary": [
+    {
+     "test_pattern": "SC09",
+     "assertion_pattern": "[SC09.7]",
+     "why": "segunda correção escalona como repeated_correction"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "o caso crítico repeated_correction espera escalonamento"
+    }
+   ]
+  },
+  "E6 whatsapp mention allowed": {
+   "primary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.15]",
+     "why": "\"Fale com a gente no WhatsApp.\" precisa ter a pendência whatsapp"
+    }
+   ],
+   "secondary": []
+  },
+  "E7 phone number allowed": {
+   "primary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.15]",
+     "why": "\"(11) 98888-7777\" precisa ter a pendência phone"
+    }
+   ],
+   "secondary": []
+  },
+  "E8 banned number not flagged as whatsapp": {
+   "primary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.15]",
+     "why": "o número banido com +55 e separadores precisa ter a pendência whatsapp"
+    }
+   ],
+   "secondary": []
+  },
+  "E9 escalation without email/form": {
+   "primary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.3]",
+     "why": "todo escalonamento cita suporte@ e o formulário /atendimento"
+    }
+   ],
+   "secondary": []
+  },
+  "E10 form URL rejected by validator": {
+   "primary": [
+    {
+     "test_pattern": "SC17",
+     "assertion_pattern": "[SC17.4]",
+     "why": "a resposta de escalonamento, que cita o formulário, passa no validador (modo escalation)"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SC08",
+     "assertion_pattern": "[SC08.1]",
+     "justification": "o escalonamento por reembolso passa pela guarda final, que agora o troca por low_confidence"
+    },
+    {
+     "test_pattern": "SC09",
+     "assertion_pattern": "[SC09.1]",
+     "justification": "as categorias de SC09 passam pela guarda final, que troca toda resposta com o formulário por low_confidence"
+    },
+    {
+     "test_pattern": "SC12",
+     "assertion_pattern": "[SC12.1]",
+     "justification": "a resposta de categoria desligada cita o formulário e a guarda final a troca por low_confidence"
+    },
+    {
+     "test_pattern": "SE02",
+     "assertion_pattern": "[SE02.1]",
+     "justification": "os casos críticos de escalonamento passam pela guarda final e perdem a categoria esperada"
+    }
+   ],
+   "broad_reason": "o formulário aparece em toda resposta de escalonamento e de categoria desligada; recusá-lo na guarda final muda a categoria de todas essas respostas, e cada teste citado verifica uma delas"
+  },
+  "L1 message content logged": {
+   "primary": [
+    {
+     "test_pattern": "SC10",
+     "assertion_pattern": "[SC10.2]",
+     "why": "log sem CPF/e-mail/telefone/senha/conteúdo"
+    }
+   ],
+   "secondary": []
+  },
+  "L2 transcript not redacted": {
+   "primary": [
+    {
+     "test_pattern": "SC10",
+     "assertion_pattern": "[SC10.3]",
+     "why": "transcrição sem CPF/e-mail/telefone/senha"
+    }
+   ],
+   "secondary": []
+  },
+  "S1 synthetic header accepted": {
+   "primary": [
+    {
+     "test_pattern": "SC11",
+     "assertion_pattern": "[SC11.1]",
+     "why": "produção recusa o cabeçalho sintético com 422"
+    }
+   ],
+   "secondary": []
+  },
+  "S2 sandbox falls back to Resend": {
+   "primary": [
+    {
+     "test_pattern": "SC11",
+     "assertion_pattern": "[SC11.10]",
+     "why": "sandbox sem sink não chama a rede"
+    }
+   ],
+   "secondary": []
+  },
+  "S3 synthetic email accepted": {
+   "primary": [
+    {
+     "test_pattern": "SC11",
+     "assertion_pattern": "[SC11.4]",
+     "why": "qa@example.com recusado com 422"
+    },
+    {
+     "test_pattern": "SC11",
+     "assertion_pattern": "[SC11.5]",
+     "why": "x@foo.test recusado com 422"
+    }
+   ],
+   "secondary": []
+  },
+  "A1 aria-live removed": {
+   "primary": [
+    {
+     "test_pattern": "SW01",
+     "assertion_pattern": "[SW01.6]",
+     "why": "o elemento role=log declara aria-live polite (teste direto adicionado: a busca genérica de SW01.1 casava o aria-live do erro do e-mail)"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "A2 Escape does not close": {
+   "primary": [
+    {
+     "test_pattern": "SW01",
+     "assertion_pattern": "[SW01.2]",
+     "why": "Esc fecha"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "A3 new answer steals focus": {
+   "primary": [
+    {
+     "test_pattern": "SW02",
+     "assertion_pattern": "[SW02.1]",
+     "why": "addMessage sem .focus()"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "A4 widget opens by itself": {
+   "primary": [
+    {
+     "test_pattern": "SW03",
+     "assertion_pattern": "[SW03.1]",
+     "why": "open() nunca chamado diretamente"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "A5 dialog unlabeled": {
+   "primary": [
+    {
+     "test_pattern": "SW01",
+     "assertion_pattern": "[SW01.1]",
+     "why": "marcação exige \"aria-labelledby\": \"zc-title\""
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "W1 mobile panel not full screen": {
+   "primary": [
+    {
+     "test_pattern": "SW05",
+     "assertion_pattern": "[SW05.3]",
+     "why": "@media: .zc-panel com inset:0"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "W2 fixed width breaks 256px": {
+   "primary": [
+    {
+     "test_pattern": "SW05",
+     "assertion_pattern": "[SW05.9]",
+     "why": "nenhuma largura fixa acima de 44 px"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "W3 panel under the buy-bar": {
+   "primary": [
+    {
+     "test_pattern": "SW05",
+     "assertion_pattern": "[SW05.2]",
+     "why": "z-index do painel acima do da .buy-bar"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "W4 small touch targets": {
+   "primary": [
+    {
+     "test_pattern": "SW05",
+     "assertion_pattern": "[SW05.10]",
+     "why": "botão com min-height de 44 px"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "W5 low contrast": {
+   "primary": [
+    {
+     "test_pattern": "SW06",
+     "assertion_pattern": "[SW06.1]",
+     "why": "texto com contraste >= 4,5:1"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "SW08",
+     "assertion_pattern": "[SW08.1]",
+     "justification": "a mutação altera só a fonte em sales-overlay/; a cópia publicada em sales-public/ fica igual à original, e SW08 exige as duas idênticas"
+    }
+   ]
+  },
+  "G1 synthetic workflow added": {
+   "primary": [
+    {
+     "test_pattern": "SG01",
+     "assertion_pattern": "[SG01.1]",
+     "why": "varredura do repositório sem achados"
+    }
+   ],
+   "secondary": []
+  },
+  "G2 guard rule removed": {
+   "primary": [
+    {
+     "test_pattern": "SG02",
+     "assertion_pattern": "[SG02.1]",
+     "why": "autoteste exige achar o endpoint no workflow plantado"
+    }
+   ],
+   "secondary": []
+  },
+  "D1 policy enabled by default": {
+   "primary": [
+    {
+     "test_pattern": "SC01",
+     "assertion_pattern": "[SC01.5]",
+     "why": "política com enabled_default=false"
+    },
+    {
+     "test_pattern": "SC18",
+     "assertion_pattern": "[SC18.4]",
+     "why": "política com enabled_default=false"
+    },
+    {
+     "test_pattern": "SG04",
+     "assertion_pattern": "[SG04.1]",
+     "why": "varredura do padrão desligado acusa a política"
+    }
+   ],
+   "secondary": []
+  },
+  "D2 wrangler enables chat": {
+   "primary": [
+    {
+     "test_pattern": "SG04",
+     "assertion_pattern": "[SG04.1]",
+     "why": "varredura do padrão desligado acusa o wrangler"
+    },
+    {
+     "test_pattern": "SG01",
+     "assertion_pattern": "[SG01.1]",
+     "why": "guarda de deploy acusa o chat ligado no wrangler"
+    }
+   ],
+   "secondary": []
+  },
+  "D3 generator injects widget": {
+   "primary": [
+    {
+     "test_pattern": "SG04",
+     "assertion_pattern": "[SG04.1]",
+     "why": "varredura do padrão desligado acusa o gerador"
+    }
+   ],
+   "secondary": []
+  },
+  "D4 sales worker defaults on": {
+   "primary": [
+    {
+     "test_pattern": "SC18",
+     "assertion_pattern": "[SC18.2]",
+     "why": "siteChatEnabled sem variável é falso"
+    },
+    {
+     "test_pattern": "SC15",
+     "assertion_pattern": "[SC15.1]",
+     "why": "Worker de vendas sem variável responde 503"
+    },
+    {
+     "test_pattern": "SG04",
+     "assertion_pattern": "[SG04.1]",
+     "why": "varredura acusa o padrão ligado no código"
+    }
+   ],
+   "secondary": []
+  },
+  "D5 central worker defaults on": {
+   "primary": [
+    {
+     "test_pattern": "SC18",
+     "assertion_pattern": "[SC18.1]",
+     "why": "readSiteChatFlags sem variável devolve enabled=false"
+    },
+    {
+     "test_pattern": "SC01",
+     "assertion_pattern": "[SC01.1]",
+     "why": "variável ausente dá 503"
+    },
+    {
+     "test_pattern": "SG04",
+     "assertion_pattern": "[SG04.1]",
+     "why": "varredura acusa o padrão ligado no código"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

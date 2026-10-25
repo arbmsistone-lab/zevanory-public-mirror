@@ -6,7 +6,6 @@ import os
 import re
 import shutil
 from pathlib import Path
-from urllib.parse import quote
 
 import sales_policy as policy
 
@@ -94,8 +93,11 @@ HTML_ROUTES = (
 LEGAL_FOOTER = ('<div class="container footer-legal">'
                 # P13c: identificação e endereço únicos (data/politica-unica.json, resumo_oferta.fornecedor).
                 f'{policy.SUPPLIER["razao_social"]} · CNPJ {policy.SUPPLIER["cnpj"]} · {policy.ADDRESS_FULL} · '
-                '<a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
-                'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a>'
+                # Contato: e-mail é o único endereço eletrônico oficial (WhatsApp banido pela Meta);
+                # trava contato_publico.whatsapp_public_links_enabled.
+                f'<a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a> · '
+                f'<a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a>'
+                + (f' · WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
                 # confirm the site <-> profile link.
                 '<br>Perfis oficiais: '
@@ -125,6 +127,9 @@ COMMERCE = {
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
 FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA para vender mais no WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 97', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 244'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
+# Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
+HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
+                 else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
 DELIVERY_Q = ("Como recebo o produto?", "Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um " + policy.DELIVERY_72H + " do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.")
 GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
@@ -141,8 +146,9 @@ def sales_cta(c: dict, open_label: str, cls: str = "button primary") -> str:
     original (data-zev-sku + data-zev-open-text) somente quando /api/sales/status abre."""
     if MODE == policy.OPEN:
         return f'<a class="{cls}" href="/comprar/{c["sku"]}" rel="nofollow">{open_label}</a>'
-    wa = "https://wa.me/5588992545413?text=" + quote("Olá! Quero entrar na lista de espera do " + c["name"] + ".")
-    return (f'<a class="{cls}" href="{_attr(wa)}" data-zev-sku="{c["sku"]}" '
+    # Destino da lista de espera: e-mail (mailto com assunto/corpo fixos) enquanto o WhatsApp não
+    # está operacional; ver contato_publico em data/politica-unica.json.
+    return (f'<a class="{cls}" href="{_attr(policy.waitlist_href(c["name"]))}" data-zev-sku="{c["sku"]}" '
             f'data-zev-open-text="{_attr(open_label)}">{policy.WAITLIST_LABEL}</a>')
 
 def mode_text(closed_text: str, open_text: str, tag: str = "span", cls: str = "") -> str:
@@ -170,7 +176,8 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
         "fornecedor": f'{f["razao_social"]} (nome fantasia {f["nome_fantasia"]})',
         "cnpj": f["cnpj"],
         "endereco_fisico": f'{f["endereco_fisico"]}, CEP {f["cep"]}',
-        "endereco_eletronico": f'{f["email"]} · WhatsApp {f["whatsapp"]} · {f["site"]}',
+        # Decreto 7.962/2013, art. 2º, II: só endereços que funcionam (e-mail e site; WhatsApp banido).
+        "endereco_eletronico": " · ".join([f["email"]] + ([f'WhatsApp {policy.WHATSAPP_DISPLAY}'] if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else []) + [f["site"]]),
         "caracteristicas": characteristics,
         "preco_total": terms["preco_total"].replace("{price}", str(price)),
         "pagamento": terms["pagamento"],
@@ -195,7 +202,7 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
 def apply_commerce(slug: str, html: str) -> str:
     c = COMMERCE[slug]
     label = f"Comprar agora · R$ {c['price']}"
-    html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', '<a class="nav-cta" href="https://wa.me/5588992545413">', html)
+    html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     # Every primary CTA buys (open) or joins the waiting list (closed).
     html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', lambda m: sales_cta(c, label), html)
     html = re.sub(r'<p class="microcopy">[^<]*</p>', '<p class="microcopy">Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ' + policy.DELIVERY_72H + ' · arrependimento em 7 dias corridos.</p>', html)
@@ -216,7 +223,7 @@ def apply_commerce(slug: str, html: str) -> str:
     # Conversion: what the buyer gets, right under the first call to action.
     chips = "".join(f"<li>{i}</li>" for i in c["items"][:4])
     includes = (closed_note() + f'<ul class="hero-includes" aria-label="O que está incluído">{chips}</ul>'
-                '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano no <a href="https://wa.me/5588992545413">WhatsApp</a></p>')
+                '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano ' + HUMAN_SUPPORT + '</p>')
     html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
     yes, no = FIT[slug]
@@ -287,6 +294,10 @@ def apply_subscription(html: str) -> str:
                   + offer_summary("conteudo-pronto", "assinatura", policy.RESUMO_OFERTA["assinatura"]["caracteristicas"]), html, count=1)
     if policy.SUBSCRIPTION_SUMMARY not in html:
         raise SystemExit("conteudo-pronto: ancora do CTA principal nao encontrada")
+    # Destino da lista de espera vem do contato público (e-mail enquanto o WhatsApp não opera).
+    html = re.sub(r'(<a class="button primary" )href="[^"]*"( data-zev-sub="conteudo-pronto")',
+                  lambda m: m.group(1) + f'href="{_attr(policy.waitlist_href("Conteúdo Pronto"))}"' + m.group(2), html)
+    html = re.sub(r'<a class="nav-cta" href="[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     if MODE == policy.OPEN:
         html = re.sub(r'<a class="button primary" href="[^"]*" data-zev-sub="conteudo-pronto" data-zev-open-text="([^"]*)">[^<]*</a>',
                       r'<a class="button primary" href="/assinar/conteudo-pronto">\1</a>', html)
@@ -338,7 +349,8 @@ def apply_approved_overlay() -> None:
         # Structured data identity also points to the serving domain (approved).
         html = re.sub(
             r'(<script type="application/ld\+json">)(.*?)(</script>)',
-            lambda m: m.group(1) + m.group(2).replace("https://zevanory.api.br", SALES_ORIGIN) + m.group(3),
+            # O formulário de atendimento é servido pelo Worker central (zevanory.api.br/atendimento).
+            lambda m: m.group(1) + m.group(2).replace("https://zevanory.api.br", SALES_ORIGIN).replace(SALES_ORIGIN + "/atendimento", "https://zevanory.api.br/atendimento") + m.group(3),
             html, flags=re.S)
         if 'name="twitter:card"' not in html and 'property="og:title"' in html:
             def og(prop: str) -> str:
@@ -366,11 +378,15 @@ def apply_approved_overlay() -> None:
         # Source pages may list both addresses ("contato@ ou suporte@"); after the public
         # canonicalization they would read "suporte@ ou suporte@". Collapse the duplicate.
         html = re.sub(r"suporte@zevanory\.api\.br( ou | or |, | e )suporte@zevanory\.api\.br", "suporte@zevanory.api.br", html)
-        if 'src="/whatsapp-contact.js"' not in html:
-            html = html.replace("</body>", '<script src="/whatsapp-contact.js" defer></script></body>', 1)
+        # E2 (2026-10-24): no contact script any more. The retired script only rewrote contato@
+        # mailto links to suporte@, which the line above already does at build time; a returning
+        # visitor's cached copy of its old, unhashed URL could still inject the banned number, so no
+        # page references it (the Worker answers the old path with a no-store no-op).
         path.write_text(html, encoding="utf-8")
     shutil.copy2(ROOT / "legal.css", OUT / "legal.css")
-    for asset in ("robots.txt", "whatsapp-contact.js"):
+    shutil.copy2(OVERLAY / "robots.txt", OUT / "robots.txt")
+    # Chat do site (desligado por padrão: SITE_CHAT_ENABLED=false; o widget só é injetado pelo Worker quando ligado).
+    for asset in ("site-chat.js", "site-chat.css"):
         shutil.copy2(OVERLAY / asset, OUT / asset)
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
@@ -406,6 +422,76 @@ def apply_approved_overlay() -> None:
     if problems:
         raise SystemExit("approved sales overlay contract failed: " + "; ".join(problems))
     print("ZEVANORY_SALES_APPROVED_OVERLAY=PASS")
+
+# E2: content-hashed assets. Every stylesheet and script a page loads is published as
+# /assets/<name>.<sha256[:10]>.<ext> and served "immutable" by the Worker; HTML revalidates, so a
+# deploy can never leave a returning visitor running a stale script or stylesheet. url() targets
+# inside the CSS (fonts, images under /assets) are hashed first and rewritten to absolute paths.
+FINGERPRINT = ("product.css", "legal.css", "ferramentas.js")
+HASHED_RE = re.compile(r"^/assets/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[0-9a-f]{10}\.(?:css|js|woff2)$")
+
+def _hashed_name(rel: str, data: bytes) -> str:
+    import hashlib
+    stem, ext = rel.rsplit(".", 1)
+    return f"assets/{stem}.{hashlib.sha256(data).hexdigest()[:10]}.{ext}"
+
+def fingerprint_assets() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    def css_url(m):
+        ref = m.group(2)
+        if re.match(r"^(data:|https?:|#)", ref):
+            return m.group(0)
+        src = (ROOT / ref.lstrip("/")).resolve()
+        if not src.is_file() or ROOT not in src.parents:
+            raise SystemExit(f"css url() target missing: {ref}")
+        rel = src.relative_to(ROOT).as_posix()
+        rel = rel[len("assets/"):] if rel.startswith("assets/") else rel
+        data = src.read_bytes()
+        out = _hashed_name(rel, data)
+        (OUT / out).parent.mkdir(parents=True, exist_ok=True)
+        (OUT / out).write_bytes(data)
+        mapping["/" + ref.lstrip("/")] = "/" + out
+        return f'url({m.group(1)}/{out}{m.group(1)})'
+    for name in FINGERPRINT:
+        data = (OUT / name).read_bytes()
+        if name.endswith(".css"):
+            text = re.sub(r'url\((["\']?)([^)"\']+)\1\)', css_url, data.decode("utf-8"))
+            data = text.encode("utf-8")
+        out = _hashed_name(name, data)
+        (OUT / out).parent.mkdir(parents=True, exist_ok=True)
+        (OUT / out).write_bytes(data)
+        mapping["/" + name] = "/" + out
+    for html_file in sorted(OUT.glob("*.html")):
+        html = html_file.read_text(encoding="utf-8")
+        for name in FINGERPRINT:
+            attr = "href" if name.endswith(".css") else "src"
+            html = html.replace(f'{attr}="/{name}"', f'{attr}="{mapping["/" + name]}"')
+        html_file.write_text(html, encoding="utf-8")
+    # The unhashed copies stay published but no page loads them: /product.css serves the Worker's
+    # own info pages, and all three keep working for HTML cached before this release (the old page
+    # policy allowed up to 1 h of stale-while-revalidate). They are served "no-cache", never immutable.
+    return mapping
+
+def audit_asset_references() -> list[str]:
+    """Published pages load only content-hashed CSS/JS that exists and matches its hash."""
+    import hashlib
+    problems = []
+    for html_file in sorted(OUT.glob("*.html")):
+        html = html_file.read_text(encoding="utf-8")
+        refs = re.findall(r'<script\b[^>]*\bsrc="([^"]+)"', html) + re.findall(r'<link\b[^>]*\brel="(?:stylesheet|preload|modulepreload)"[^>]*\bhref="([^"]+)"', html)
+        for ref in refs:
+            if re.match(r"^https?://", ref):
+                problems.append(f"{html_file.name}: external asset {ref}")
+                continue
+            if not HASHED_RE.match(ref):
+                problems.append(f"{html_file.name}: unhashed asset {ref}")
+                continue
+            f = OUT / ref.lstrip("/")
+            if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest()[:10] != ref.rsplit(".", 2)[1]:
+                problems.append(f"{html_file.name}: hashed asset missing or stale {ref}")
+        if "whatsapp-contact" in html:
+            problems.append(f"{html_file.name}: references the retired contact script")
+    return problems
 
 def main() -> int:
     if OUT.exists():
@@ -445,11 +531,14 @@ def main() -> int:
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
     # even though the worker also rewrites / to /solucoes.html.
     shutil.copy2(OUT / "solucoes.html", OUT / "index.html")
+    fingerprint_assets()
+    asset_problems = audit_asset_references()
+    if asset_problems:
+        raise SystemExit("hashed asset contract failed: " + "; ".join(asset_problems))
 
     sales = (OUT / "zevanory-sales.html").read_text(encoding="utf-8")
     required = (
         "<title>ZEVANORY SALES",
-        'href="/product.css"',
         'href="/solucoes"',
         "Autonomous Sales Platform",
         "SALES ASSIST",
@@ -459,11 +548,13 @@ def main() -> int:
     missing = [token for token in required if token not in sales]
     if missing:
         raise SystemExit(f"sales build contract missing: {missing}")
+    if not re.search(r'<link rel="stylesheet" href="/assets/product\.[0-9a-f]{10}\.css">', sales):
+        raise SystemExit("sales build contract missing: hashed product stylesheet")
     if "/zevanory-public-mirror/" in sales:
         raise SystemExit("sales build still contains mirror path prefix")
 
     # P13: politica unica em todas as superficies e grep-gate do modo fechado (NO-GO).
-    p13 = policy.audit_policy(OUT, PRODUCTS)
+    p13 = policy.audit_policy(OUT, PRODUCTS) + policy.audit_contact(OUT)
     if MODE == policy.CLOSED:
         p13 += policy.audit_closed(OUT)
     if p13:

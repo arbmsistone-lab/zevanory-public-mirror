@@ -114,24 +114,84 @@ def _unescape(name):
     return re.sub(r"\\(.)", r"\1", name or "")
 
 
-def _yaml_field(block_lines, field):
-    """Value of a scalar field in a node --test YAML diagnostic block (quoted, plain or |- literal)."""
-    for i, ln in enumerate(block_lines):
-        m = re.match(r"^(?P<ind>[ ]*)" + re.escape(field) + r":[ ]?(?P<v>.*)$", ln)
-        if not m:
+# node:test YAML diagnostics (lib/internal/test_runner/reporter/tap.js jsToYaml): one mapping whose keys sit at the
+# block's own indentation (the indentation of `---`); multi-line strings are `|-` literals, objects are nested
+# mappings (arrays become mappings with numeric keys), and `expected:`/`actual:` may be empty (a RegExp). Only
+# TOP-LEVEL keys are fields: a `signal:`/`code:`/`error:` line inside a literal (`actual: |-` holding a dumped source
+# file, `stack: |-`) or inside a nested mapping (`actual:` of a deepStrictEqual) is data, never a field (audit: M09,
+# M16, M20 of #898 were misread as signal failures). Line-based on purpose: no third-party YAML dependency.
+_YAML_KEY = re.compile(r"^(?P<k>'(?:[^']|'')*'|\"(?:[^\"\\]|\\.)*\"|[^\s'\"#\-?:|>!&*%@`{}\[\],][^:]*?|-[^\s:][^:]*?)"
+                       r":(?:[ ]+(?P<v>.*?))?[ ]*$")
+_BLOCK_SCALAR = re.compile(r"^[|>](?:[1-9][+-]?|[+-][1-9]?)?(?:[ ]+#.*)?$")
+
+
+def _indent(ln):
+    return len(ln) - len(ln.lstrip(" "))
+
+
+def _unquote(v):
+    if len(v) >= 2 and v[0] == v[-1] == "'":
+        return v[1:-1].replace("''", "'")
+    if len(v) >= 2 and v[0] == v[-1] == '"':
+        return v[1:-1]
+    return v
+
+
+def _yaml_top_level(block_lines, key_indent=None):
+    """-> {key: value} for the TOP-LEVEL keys of one node --test YAML diagnostic block.
+
+    ``block_lines`` are the lines between `---` and `...` (LF-normalised; the delimiters themselves are ignored if
+    present). ``key_indent`` is the block's key indentation (the indentation of `---`); by default the indentation of
+    its first non-blank line. Values: plain/quoted scalars are unquoted (`~` is kept as "~"); literal and folded
+    block scalars (`|`, `|-`, `|+`, `>`, `>-`, `>+`, with optional indentation indicator) are their content lines,
+    each stripped, joined by newlines; a nested mapping or sequence is "" and its contents are skipped. A line at
+    another indentation that no top-level key owns is ignored. The first occurrence of a key wins.
+    """
+    lines = [ln.rstrip("\r") for ln in block_lines]
+    if key_indent is None:
+        key_indent = next((_indent(ln) for ln in lines if ln.strip()), 0)
+    fields, i, n = {}, 0, len(lines)
+
+    def owned(j, allow_seq=False):
+        # a line belongs to the value of the key above it: blank, deeper, or (nested value) a compact sequence item
+        ln = lines[j]
+        if not ln.strip():
+            return True
+        ind = _indent(ln)
+        return ind > key_indent or (allow_seq and ind == key_indent and ln[ind:ind + 1] == "-"
+                                    and ln[ind:ind + 3] not in ("---",))
+
+    while i < n:
+        ln = lines[i]
+        if not ln.strip() or _indent(ln) != key_indent or ln.strip() in ("---", "..."):
+            i += 1
             continue
-        v = m.group("v").strip()
-        if v in ("|-", "|", ">-", ">"):
-            ind, out = len(m.group("ind")), []
-            for nxt in block_lines[i + 1:]:
-                if nxt.strip() and len(nxt) - len(nxt.lstrip(" ")) <= ind:
-                    break
-                out.append(nxt.strip())
-            return "\n".join(out).strip()
-        if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
-            v = v[1:-1]
-        return v
-    return None
+        m = _YAML_KEY.match(ln[key_indent:])
+        if not m:
+            i += 1
+            continue
+        key, v = _unquote(m.group("k")), (m.group("v") or "").strip()
+        j = i + 1
+        if _BLOCK_SCALAR.match(v):
+            while j < n and owned(j):
+                j += 1
+            value = "\n".join(x.strip() for x in lines[i + 1:j]).strip()
+        elif v == "" or v.startswith(("&", "!")) and " " not in v:
+            while j < n and owned(j, allow_seq=True):
+                j += 1
+            value = ""
+        else:
+            while j < n and owned(j):  # continuation of a multi-line plain/quoted scalar: not keys
+                j += 1
+            value = _unquote(v)
+        fields.setdefault(key, value)
+        i = j
+    return fields
+
+
+def _yaml_field(block_lines, field, key_indent=None):
+    """Value of a TOP-LEVEL scalar field in a node --test YAML diagnostic block, or None (see ``_yaml_top_level``)."""
+    return _yaml_top_level(block_lines, key_indent).get(field)
 
 
 def _failure_kind(f):
@@ -250,7 +310,9 @@ def parse_tap(text, extra_infra=(), stderr=""):
             p = p["parent"]
         pt["path"] = list(reversed(path))
         y = pt["yaml"]
-        fields = {f: _yaml_field(y, f) for f in ("type", "failureType", "name", "code", "error", "exitCode", "signal")}
+        yf = _yaml_top_level(y, pt["indent"] + 2)  # keys at the `---` indentation only
+        fields = {f: yf.get(f) for f in ("type", "failureType", "name", "code", "error", "exitCode", "signal",
+                                          "location")}
         pt.update(fields_=fields)
         if fields["type"] == "suite":
             pt["is_suite"] = True
@@ -677,6 +739,12 @@ def self_check():
     p = parse_tap(clean)
     checks.append(("survived", classify(2, 0, p["summary"], p["failures"], exp)["verdict"] == SURVIVED))
     checks.append(("timeout", classify(2, 1, p["summary"], p["failures"], exp, timed_out=True)["verdict"] == INCONCLUSIVE))
+    dump = _SELF_TAP.replace("  name: 'AssertionError'\n", "  name: 'AssertionError'\n  actual: |-\n"
+                             "    fetch(u, {\n      signal: AbortSignal.timeout(10000),\n    code: 'ERR_MODULE_NOT_FOUND'\n")
+    p = parse_tap(dump)
+    checks.append(("field_lines_in_literal_ignored", classify(2, 1, p["summary"], p["failures"], exp)["verdict"] == KILLED))
+    p = parse_tap(dump.replace("  name: 'AssertionError'\n", "  name: 'AssertionError'\n  signal: 'SIGTERM'\n"))
+    checks.append(("top_level_signal", classify(2, 1, p["summary"], p["failures"], exp)["verdict"] == INCONCLUSIVE))
     checks.append(("av_exception", classify_structured_events("m", [{"control_id": "c", "baseline_correct": True,
                    "mutant_correct": False, "exception": "boom"}])["verdict"] == INCONCLUSIVE))
     for name, ok in checks:

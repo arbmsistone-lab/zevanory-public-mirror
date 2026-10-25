@@ -9,10 +9,12 @@ import { brandedEmailHtml } from "./brand-email.mjs";
 //   * every send is mirrored to the control panel through the shared-activity bridge.
 
 import { reviewLinks } from "./reviews.mjs";
+// Contato da assinatura dos e-mails: fonte única (contato_publico; e-mail enquanto o WhatsApp não opera).
+import { CONTACT_TEXT } from "./politica-unica.mjs";
+import { operatorToken as operatorCredential } from "./operator-credential.mjs";
 
 const ORIGIN = "https://zevanory.api.br";
 const SALES = "https://vendas.zevanory.api.br";
-const WHATSAPP = "https://wa.me/5588992545413";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -81,7 +83,7 @@ async function verifyOptOut(env, id, token) {
 export function renderPostSaleEmail(step, { productName, productSlug, nextOffer, optOutUrl, test = false, ratingLinks = [] }) {
   const prefix = test ? "[TESTE] " : "";
   const productUrl = `${SALES}/${productSlug}`;
-  const sign = `\n\nEquipe ZEVANORY\n${SUPPORT_EMAIL} · WhatsApp: ${WHATSAPP}\n\nNão quer mais receber estes e-mails de acompanhamento? ${optOutUrl}`;
+  const sign = `\n\nEquipe ZEVANORY\n${CONTACT_TEXT}\n\nNão quer mais receber estes e-mails de acompanhamento? ${optOutUrl}`;
   if (step === "d1") {
     return {
       subject: `${prefix}Como tirar o máximo do ${productName}`,
@@ -255,7 +257,7 @@ export async function handlePostSale(request, env, { sqlFactory, isAdminAuthoriz
 
   // Certification: proves the real template + Resend path on a sandbox order, delivered to its controlled inbox.
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
-  const cert = String(env.CERTIFICATION_E2E_TOKEN || "");
+  const cert = String(operatorCredential(env) || "");
   if (cert.length < 32 || !timingSafeEqual(cert, request.headers.get("x-certification-e2e-token") || "")) return json(401, { error: "unauthorized" });
   let input = {};
   try { input = await request.json(); } catch {}

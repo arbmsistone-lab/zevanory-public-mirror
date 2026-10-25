@@ -1,4 +1,5 @@
-import { DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE } from "./politica-unica.mjs";
+import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+// Contato humano nas páginas do Worker vem de contato_publico (e-mail enquanto o WhatsApp não opera).
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto","kit-afiliado","ia-por-ramo","ia-para-salao-de-beleza","ia-para-barbearia","ia-para-restaurante-e-lanchonete","ia-para-loja-de-roupas","ia-para-mercadinho","ia-para-oficina-mecanica","ia-para-clinica-e-consultorio","ia-para-academia","ia-para-pet-shop","ia-para-contabilidade","ia-para-imobiliaria","ia-para-deposito-de-bebidas","ferramentas","calculadora-preco-de-venda","calculadora-margem-de-lucro","calculadora-ponto-de-equilibrio","ia-para-padaria","ia-para-pizzaria","ia-para-hamburgueria","ia-para-acaiteria","ia-para-confeitaria","ia-para-farmacia","ia-para-otica","ia-para-papelaria","ia-para-materiais-de-construcao","ia-para-assistencia-tecnica-de-celular","ia-para-autoescola","ia-para-escola-de-idiomas","ia-para-clinica-odontologica","ia-para-psicologo","ia-para-nutricionista","ia-para-fisioterapia","ia-para-estetica","ia-para-manicure","ia-para-lava-jato","ia-para-eletricista-e-encanador","ia-para-fotografo","ia-para-arquitetura-e-design-de-interiores","ia-para-advocacia","ia-para-agencia-de-viagens","ia-para-floricultura","ia-para-marmitaria","ia-para-pousada","ia-para-distribuidora-de-gas-e-agua","calculadora-fluxo-de-caixa","calculadora-preco-hora-servico","calculadora-taxa-maquininha","calculadora-cmv","mensagem-para-cliente-que-sumiu","como-cobrar-cliente-pelo-whatsapp","como-mandar-orcamento-pelo-whatsapp"]);
 const MP="https://www.mercadopago.com https://www.mercadopago.com.br";
@@ -69,8 +70,8 @@ function infoPage(status,title,body){
 // the text never claims confirmation or absence of charge; access depends only on the webhook.
 const PAYMENT_RETURN={
   aprovado:["Recebemos o seu retorno do pagamento","<p>Assim que o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra. Costuma levar poucos minutos.</p><p>Não chegou? Confira a caixa de spam ou promoções. Você também pode <a href=\"https://zevanory.api.br/entrega/reenviar\">pedir um novo link de acesso</a>.</p>"],
-  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix ou boleto, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a>.</p>"],
-  falhou:["Não conseguimos confirmar o seu pagamento","<p>Esta página não confirma o resultado do pagamento: ele pode ter sido recusado, cancelado ou até concluído. Confira o status no aplicativo ou no e-mail do Mercado Pago antes de tentar de novo, para não pagar duas vezes.</p><p>Se aparecer cobrança e o acesso não chegar no seu e-mail, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a> ou em suporte@zevanory.api.br. Se não houve cobrança, você pode tentar de novo pela página do produto.</p>"]
+  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix ou boleto, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+".</p>"],
+  falhou:["Não conseguimos confirmar o seu pagamento","<p>Esta página não confirma o resultado do pagamento: ele pode ter sido recusado, cancelado ou até concluído. Confira o status no aplicativo ou no e-mail do Mercado Pago antes de tentar de novo, para não pagar duas vezes.</p><p>Se aparecer cobrança e o acesso não chegar no seu e-mail, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+". Se não houve cobrança, você pode tentar de novo pela página do produto.</p>"]
 };
 export function paymentReturnPage(state){
   const entry=Object.prototype.hasOwnProperty.call(PAYMENT_RETURN,state)?PAYMENT_RETURN[state]:null;
@@ -131,10 +132,10 @@ async function handleBuy(request,env,sku,ctx){
   const slug=BUY_SKUS[sku];
   if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
   if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
-  if(!env?.CORE||typeof env.CORE.fetch!=="function") return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a>.</p>");
+  if(!env?.CORE||typeof env.CORE.fetch!=="function") return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale com a gente: "+CONTACT_HTML+".</p>");
   const [name,price]=PRICES[sku];
   const open=await salesOpen(env);
-  if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Tenho interesse no "+name+".")}">Falar no WhatsApp</a></p>`);
+  if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="${contactHref("Olá! Tenho interesse no "+name+".").replace(/&/g,"&amp;")}">${CONTACT_LABEL}</a></p>`);
   if(request.method!=="POST"){
     countView(request,env,ctx,slug,"checkout_intent");
     return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. ${DELIVERY_TEXT} ${RULE_LINE}</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
@@ -150,7 +151,7 @@ async function handleBuy(request,env,sku,ctx){
     if((res.status===201||res.status===200)&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(target)) return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
     console.error("buy_checkout_failed",res.status,String(data?.error||"").slice(0,80));
   }catch(e){console.error("buy_checkout_error",String(e&&e.message||e).slice(0,80))}
-  return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente no <a href="https://wa.me/5588992545413">WhatsApp</a> ou em suporte@zevanory.api.br.</p>`);
+  return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente: ${CONTACT_HTML}.</p>`);
 }
 
 // Lead magnet form (POST, same origin): forwarded to the core Worker through the private binding.
@@ -214,7 +215,7 @@ export const HOTMART_CHECKOUT=Object.freeze({
 });
 // Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
-const SERVICE_WA="https://wa.me/5588992545413?text=Ol%C3%A1!%20Quero%20assinar%20o%20Conte%C3%BAdo%20Pronto.";
+const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
 const HOTMART_TEXT=[
   [`Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ${DELIVERY_72H} · arrependimento em 7 dias corridos.`,"Pagamento pela Hotmart (Pix, cartão ou boleto) · acesso por e-mail após a confirmação · arrependimento em 7 dias corridos."],
   [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
@@ -236,7 +237,7 @@ export function hotmartPage(html,slug,checkout){
 // Owner decision 14/10/2026: sales closed. The Hotmart purchase paths follow the SAME owner switch
 // (/api/sales/status, fail-closed) as the own checkout. Informative pages stay up; existing
 // subscribers are unaffected (Hotmart postbacks and deliveries do not pass through these routes).
-const SALES_PAUSED_HTML=(name,slug)=>`<p>As vendas do ${name.replace(/&/g,"&amp;").replace(/</g,"&lt;")} estão pausadas no momento. Quem já comprou continua com acesso normalmente.</p><p><a class="button" href="/${slug}">Ver detalhes do produto</a></p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Quero ser avisado quando o "+name+" voltar a ser vendido.")}">Avise-me pelo WhatsApp</a></p>`;
+const SALES_PAUSED_HTML=(name,slug)=>`<p>As vendas do ${name.replace(/&/g,"&amp;").replace(/</g,"&lt;")} estão pausadas no momento. Quem já comprou continua com acesso normalmente.</p><p><a class="button" href="/${slug}">Ver detalhes do produto</a></p><p><a class="button primary" href="${waitlistHref(name).replace(/&/g,"&amp;")}">Entrar na lista de espera</a></p>`;
 export const HOTMART_NAMES=Object.freeze({"ia-na-pratica":"IA na Prática","vendas-na-pratica":"Vendas na Prática","lucro-e-caixa":"Lucro & Caixa","combo-ia-vendas":"Combo IA + Vendas","negocio-completo":"Negócio Completo","conteudo-pronto":"Conteúdo Pronto"});
 async function handleHotmart(request,env,slug,ctx){
   if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
@@ -259,6 +260,26 @@ async function handleHotmart(request,env,slug,ctx){
 // "noindex, nofollow", Cache-Control "no-store" and, in HTML, <meta name="robots" content="noindex,nofollow">.
 // robots.txt does NOT disallow /comprar/ on purpose: a blocked URL is never fetched, so the crawler would
 // never see the noindex (https://developers.google.com/search/docs/crawling-indexing/block-indexing).
+export const RETIRED_CONTACT_SCRIPT="/whatsapp-contact.js";
+export const RETIRED_CONTACT_BODY="/* retired: intentionally empty */\n";
+// Transitional eviction (2026-10-24, evidence: docs/evidence/sales-ux/legacy-cache.md): the tombstone
+// is only ever requested by an OLD cached page, so it also tells supporting browsers to drop this
+// origin's HTTP cache (old HTML and the old script bytes). Scoped to this one response on purpose:
+// on pages it would wipe the immutable assets on every navigation. Remove no earlier than 8 days
+// (old script max-age 1 d + stale-while-revalidate 7 d) after this Worker is deployed; review 2026-12-01.
+export const RETIRED_CONTACT_CLEAR_SITE_DATA='"cache"';
+export const HASHED_ASSET=/^\/assets\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[0-9a-f]{10}\.(?:css|js|woff2)$/;
+export const IMMUTABLE_CACHE_CONTROL="public, max-age=31536000, immutable";
+export const REVALIDATE_CACHE_CONTROL="no-cache";
+// Pages: short max-age and must-revalidate (no stale-while-revalidate window), so HTML never
+// outlives the hashed assets it points to by more than five minutes.
+export const PAGE_CACHE_CONTROL="public, max-age=300, must-revalidate, no-transform";
+export function assetCacheControl(pathname){
+  if(HASHED_ASSET.test(pathname)) return IMMUTABLE_CACHE_CONTROL;
+  if(/\.(css|m?js)$/i.test(pathname)) return REVALIDATE_CACHE_CONTROL;
+  if(/\.(svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(pathname)) return "public, max-age=86400";
+  return "";
+}
 export const COMPRAR_PATH=/^\/comprar(?:\/|$)/i;
 // Percent-encoded aliases (/%63omprar/, /comp%72ar/, /co%6Dprar/ or /co%6dprar/): the pathname is decoded ONCE
 // with the URL Standard percent-decode (bytes, then UTF-8 with replacement; never throws) before matching, so an
@@ -311,6 +332,46 @@ async function comprarRoute(request,env,ctx,match){
   }
 }
 
+// Chat do site "Fale com a ZEVANORY" (worker/site-chat.mjs, no Worker central). Desligado por padrão:
+// sem SITE_CHAT_ENABLED="true" neste Worker as rotas /api/chat* respondem 503 aqui mesmo (sem chamar o
+// central) e nenhuma página recebe o widget. Ligado: o widget (CSS/JS próprios, sem script de terceiros,
+// sem inline, compatível com a CSP) só é anexado às páginas abaixo e só abre por ação da pessoa.
+export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto","termos","privacidade","reembolso"]));
+export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";
+export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
+export function injectSiteChatHtml(html){
+  let out=String(html);
+  if(out.includes('src="/site-chat.js"'))return out;
+  out=out.replace("</head>",'<link rel="stylesheet" href="/site-chat.css"></head>');
+  return out.replace("</body>",'<script src="/site-chat.js" defer></script></body>');
+}
+const CHAT_ROUTES=new Set(["/api/chat","/api/chat/session","/api/chat/handoff","/api/chat/status"]);
+const CHAT_FALLBACK={contact_email:"suporte@zevanory.api.br",refund_form:"https://zevanory.api.br/pedir-reembolso",delivery_form:"https://zevanory.api.br/entrega/reenviar"};
+export async function handleSiteChatProxy(request,env){
+  const url=new URL(request.url);
+  const headers=applySecurityHeaders(new Headers({"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}));
+  const reply=(status,body)=>new Response(JSON.stringify(body),{status,headers});
+  if(!siteChatEnabled(env)||!env?.CORE||typeof env.CORE.fetch!=="function")return reply(503,{error:"site_chat_disabled",fallback:CHAT_FALLBACK});
+  const isStatus=url.pathname==="/api/chat/status";
+  if(isStatus?request.method!=="GET":request.method!=="POST"){headers.set("allow",isStatus?"GET":"POST");return reply(405,{error:"method_not_allowed"});}
+  if(isAutomationUA(request.headers.get("user-agent")||""))return reply(403,{error:"automation_not_allowed"});
+  let body;
+  if(!isStatus){
+    // Mesma origem (o widget é servido daqui): bloqueia POST de outros sites.
+    if(request.headers.get("origin")!==url.origin)return reply(403,{error:"origin_not_allowed"});
+    if(!/^application\/json\b/i.test(request.headers.get("content-type")||""))return reply(415,{error:"json_required"});
+    if(Number(request.headers.get("content-length")||0)>4096)return reply(413,{error:"too_large"});
+    body=await request.text();
+    if(body.length>4096)return reply(413,{error:"too_large"});
+  }
+  try{
+    const res=await env.CORE.fetch("https://chat.internal"+url.pathname,{method:request.method,headers:{"content-type":"application/json","x-zev-client-ip":request.headers.get("cf-connecting-ip")||""},body});
+    const text=await res.text();
+    if(res.headers.get("retry-after"))headers.set("retry-after",res.headers.get("retry-after"));
+    return new Response(text,{status:res.status,headers});
+  }catch{return reply(503,{error:"site_chat_unavailable",fallback:CHAT_FALLBACK});}
+}
+
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
   const comprar=comprarMatch(url.pathname);
@@ -320,7 +381,7 @@ export default{async fetch(request,env,ctx){
     return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});
   if(url.pathname==="/assinar/conteudo-pronto"){
     if(request.method!=="GET"&&request.method!=="HEAD")return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, HEAD","cache-control":"no-store"}))});
-    if(!(await salesOpen(env)))return infoPage(200,"Assinaturas pausadas",`<p>Novas assinaturas do Conteúdo Pronto estão pausadas no momento. Quem já é assinante continua recebendo normalmente.</p><p><a class="button" href="/conteudo-pronto">Ver detalhes do serviço</a></p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Quero ser avisado quando o Conteúdo Pronto voltar a aceitar assinaturas.")}">Avise-me pelo WhatsApp</a></p>`);
+    if(!(await salesOpen(env)))return infoPage(200,"Assinaturas pausadas",`<p>Novas assinaturas do Conteúdo Pronto estão pausadas no momento. Quem já é assinante continua recebendo normalmente.</p><p><a class="button" href="/conteudo-pronto">Ver detalhes do serviço</a></p><p><a class="button primary" href="${waitlistHref("Conteúdo Pronto").replace(/&/g,"&amp;")}">Entrar na lista de espera</a></p>`);
     countView(request,env,ctx,"conteudo-pronto","subscribe_click");
     const svc=SERVICE_CHECKOUT+"&src="+attribution(request,url).src;
     const target=/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(svc)?svc:SERVICE_WA;
@@ -339,7 +400,12 @@ export default{async fetch(request,env,ctx){
       commercial_surface:"fail-closed"
     }),{status:200,headers:applySecurityHeaders(new Headers({"content-type":"application/json; charset=utf-8","cache-control":"no-store"}))});
   }
+  // E2: the retired contact script (old, unhashed URL). Browsers that cached the old copy for a day
+  // (plus a week of stale-while-revalidate) could still run it; this answer is an inert no-op that is
+  // never stored, so a revalidation replaces the cached copy with nothing harmful.
+  if(url.pathname===RETIRED_CONTACT_SCRIPT) return new Response(request.method==="HEAD"?null:RETIRED_CONTACT_BODY,{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/javascript; charset=utf-8","cache-control":"no-store","clear-site-data":RETIRED_CONTACT_CLEAR_SITE_DATA}))});
   if(retired.has(url.pathname)) return new Response("Produto retirado da superficie publica ZEVANORY.",{status:410,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"no-store"}))});
+  if(CHAT_ROUTES.has(url.pathname)) return handleSiteChatProxy(request,env);
   if(url.pathname.startsWith("/api/")||url.pathname.startsWith("/admin")) return new Response("Not found",{status:404,headers:applySecurityHeaders(new Headers())});
   if((url.pathname==="/solucoes"||url.pathname==="/solucoes/")&&(request.method==="GET"||request.method==="HEAD")&&url.searchParams.has("pagamento")){
     const back=paymentReturnPage(url.searchParams.get("pagamento"));
@@ -351,17 +417,21 @@ export default{async fetch(request,env,ctx){
   let response=await env.ASSETS.fetch(new Request(url,request));
   if(response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)&&await salesOpenForPages(env))
     {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page),{status:200,statusText:response.statusText,headers:h});}
+  if(response.status===200&&request.method==="GET"&&shouldInjectSiteChat(page,env))
+    {const h=new Headers(response.headers);h.delete("content-length");response=new Response(injectSiteChatHtml(await response.text()),{status:200,statusText:response.statusText,headers:h});}
   if(response.status===200&&page) countView(request,env,ctx,page);
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");
-  // Static assets (css/js/svg/images) are cached by browsers and the edge; pages revalidate.
-  if(response.status===200&&!page&&/\.(css|js|svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(url.pathname)) headers.set("cache-control","public, max-age=86400, stale-while-revalidate=604800");
+  // E2 cache policy: content-hashed files under /assets/ never change -> immutable for a year;
+  // unhashed CSS/JS must revalidate on every use (a stale script/stylesheet is how the retired
+  // contact script kept running); unhashed images get a plain day; pages revalidate (below).
+  if(response.status===200&&!page) {const cc=assetCacheControl(url.pathname);if(cc)headers.set("cache-control",cc);}
   // no-transform: the edge must not inject third-party scripts (Web Analytics beacon) into sales
   // pages — it was the only F5 performance offender and contradicts "no invasive tracking".
   // Pages whose HTML depends on the sales switch (open AND closed) are never cached: a cached open
   // page would keep showing buy CTAs after the owner closes sales.
   else if(page&&SALES_TOGGLE_PAGES.has(page)) headers.set("cache-control",SWITCH_DEPENDENT_CACHE_CONTROL);
-  else if(response.status===200&&page) headers.set("cache-control","public, max-age=300, stale-while-revalidate=3600, no-transform");
+  else if(response.status===200&&page) headers.set("cache-control",PAGE_CACHE_CONTROL);
   applySecurityHeaders(headers);
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);
   if(response.status===200&&sku&&env?.CORE&&typeof HTMLRewriter!=="undefined"){

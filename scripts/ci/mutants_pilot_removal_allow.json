@@ -1,0 +1,238 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "E1 production fetch without the view": {
+   "primary": [
+    {
+     "test_pattern": "B1",
+     "assertion_pattern": "[B1.1]"
+    },
+    {
+     "test_pattern": "B4",
+     "assertion_pattern": "[B4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "E2 scheduled without the view": {
+   "primary": [
+    {
+     "test_pattern": "B4",
+     "assertion_pattern": "[B4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "E3 queue without the view": {
+   "primary": [
+    {
+     "test_pattern": "B4",
+     "assertion_pattern": "[B4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "E4 email without the view": {
+   "primary": [
+    {
+     "test_pattern": "B4",
+     "assertion_pattern": "[B4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "V1 runtime config not filtered": {
+   "primary": [
+    {
+     "test_pattern": "B1",
+     "assertion_pattern": "[B1.1]"
+    },
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "V2 process.env leftovers kept": {
+   "primary": [
+    {
+     "test_pattern": "B1",
+     "assertion_pattern": "[B1.1]"
+    },
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "V3 has() reveals pilot": {
+   "primary": [
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "V4 ownKeys reveals pilot": {
+   "primary": [
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "V5 descriptor reveals pilot": {
+   "primary": [
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "V6 perimeter by deployment env only": {
+   "primary": [
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "V7 pilot removed from certification too": {
+   "primary": [
+    {
+     "test_pattern": "B2",
+     "assertion_pattern": "[B2.4]"
+    },
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "V8 only ENABLED hidden": {
+   "primary": [
+    {
+     "test_pattern": "B1",
+     "assertion_pattern": "[B1.1]"
+    },
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "V9 get reveals pilot": {
+   "primary": [
+    {
+     "test_pattern": "B1",
+     "assertion_pattern": "[B1.1]"
+    },
+    {
+     "test_pattern": "B3",
+     "assertion_pattern": "[B3.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "D1 preparer writes CERTIFICATION_PILOT_ENV again": {
+   "primary": [
+    {
+     "test_pattern": "B5",
+     "assertion_pattern": "[B5.1]"
+    },
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "G1",
+     "assertion_pattern": "[G1.1]",
+     "justification": "com a dívida zerada, o gate R5 acusa a var de piloto gravada pelo preparador real do repositório"
+    }
+   ]
+  },
+  "D2 preparer keeps inherited pilot vars": {
+   "primary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "D3 preparer keeps keep_vars": {
+   "primary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "D4 verifier ignores pilot vars": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "D5 verifier ignores runtime config pilot": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "D6 verifier allows keep_vars": {
+   "primary": [
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "D7 verifier back to sandbox contract": {
+   "primary": [
+    {
+     "test_pattern": "B5",
+     "assertion_pattern": "[B5.2]"
+    },
+    {
+     "test_pattern": "B6",
+     "assertion_pattern": "[B6.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "B7",
+     "assertion_pattern": "[B7.4]",
+     "justification": "a configuração gerada (sem piloto) deixa de passar no verificador que volta a exigir sandbox"
+    }
+   ]
+  },
+  "K1 pilot deploy-config exception restored": {
+   "primary": [
+    {
+     "test_pattern": "G8",
+     "assertion_pattern": "[G8.2]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}
