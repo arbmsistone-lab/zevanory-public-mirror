@@ -1,0 +1,290 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Nn.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 interruptor ignorado": {
+   "primary": [
+    {
+     "test_pattern": "N8",
+     "assertion_pattern": "[N8.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "N26",
+     "assertion_pattern": "[N26.1]",
+     "justification": "prepareEmail com env vazio passa a montar a mensagem: deepEqual de [N26.1] falha"
+    },
+    {
+     "test_pattern": "N1",
+     "assertion_pattern": "[N1.1]",
+     "justification": "o gate confere que nada sai com o interruptor desligado ('envio com o interruptor desligado'): o gate real roda canSend/renderEmail sobre a sequência versionada; com a regra quebrada ele reprova a árvore real e o caso positivo N1 falha em [N1.1]"
+    }
+   ]
+  },
+  "M02 limite do consentimento ignorado": {
+   "primary": [
+    {
+     "test_pattern": "N10",
+     "assertion_pattern": "[N10.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "N1",
+     "assertion_pattern": "[N1.1]",
+     "justification": "o gate detecta passo 3 saindo além do consentimento v1: o gate real roda canSend/renderEmail sobre a sequência versionada; com a regra quebrada ele reprova a árvore real e o caso positivo N1 falha em [N1.1]"
+    }
+   ]
+  },
+  "M03 lead não confirmado aceito": {
+   "primary": [
+    {
+     "test_pattern": "N9",
+     "assertion_pattern": "[N9.1]"
+    }
+   ]
+  },
+  "M04 comercial com vendas fechadas": {
+   "primary": [
+    {
+     "test_pattern": "N12",
+     "assertion_pattern": "[N12.1]"
+    }
+   ]
+  },
+  "M05 versão de consentimento não aceita passa": {
+   "primary": [
+    {
+     "test_pattern": "N11",
+     "assertion_pattern": "[N11.1]"
+    }
+   ]
+  },
+  "M06 versão desconhecida do P08 passa": {
+   "primary": [
+    {
+     "test_pattern": "N11",
+     "assertion_pattern": "[N11.2]"
+    }
+   ]
+  },
+  "M07 assinatura sem link de descadastro": {
+   "primary": [
+    {
+     "test_pattern": "N7",
+     "assertion_pattern": "[N7.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "N1",
+     "assertion_pattern": "[N1.1]",
+     "justification": "o gate confere o link de descadastro no texto final de cada e-mail: o gate real roda canSend/renderEmail sobre a sequência versionada; com a regra quebrada ele reprova a árvore real e o caso positivo N1 falha em [N1.1]"
+    }
+   ]
+  },
+  "M08 sem List-Unsubscribe-Post": {
+   "primary": [
+    {
+     "test_pattern": "N7",
+     "assertion_pattern": "[N7.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "N1",
+     "assertion_pattern": "[N1.1]",
+     "justification": "o gate confere os cabeçalhos RFC 8058 de cada e-mail: o gate real roda canSend/renderEmail sobre a sequência versionada; com a regra quebrada ele reprova a árvore real e o caso positivo N1 falha em [N1.1]"
+    }
+   ]
+  },
+  "M09 léxico de promessa de ganho vazio": {
+   "primary": [
+    {
+     "test_pattern": "N2",
+     "assertion_pattern": "[N2.1]"
+    },
+    {
+     "test_pattern": "N24",
+     "assertion_pattern": "[N24.1]"
+    }
+   ]
+  },
+  "M10 léxico de urgência vazio": {
+   "primary": [
+    {
+     "test_pattern": "N3",
+     "assertion_pattern": "[N3.1]"
+    }
+   ]
+  },
+  "M11 léxico de prova social vazio": {
+   "primary": [
+    {
+     "test_pattern": "N4",
+     "assertion_pattern": "[N4.1]"
+    }
+   ]
+  },
+  "M12 promessas do #927 não conferidas": {
+   "primary": [
+    {
+     "test_pattern": "N5",
+     "assertion_pattern": "[N5.1]"
+    }
+   ]
+  },
+  "M13 assinatura não exigida": {
+   "primary": [
+    {
+     "test_pattern": "N6",
+     "assertion_pattern": "[N6.1]"
+    }
+   ]
+  },
+  "M14 métrica por e-mail não conferida": {
+   "primary": [
+    {
+     "test_pattern": "N13",
+     "assertion_pattern": "[N13.1]"
+    }
+   ]
+  },
+  "M15 abertura não proibida": {
+   "primary": [
+    {
+     "test_pattern": "N13",
+     "assertion_pattern": "[N13.2]"
+    }
+   ]
+  },
+  "M16 número sem fonte aceito": {
+   "primary": [
+    {
+     "test_pattern": "N14",
+     "assertion_pattern": "[N14.1]"
+    }
+   ]
+  },
+  "M17 fonte do número não conferida": {
+   "primary": [
+    {
+     "test_pattern": "N14",
+     "assertion_pattern": "[N14.2]"
+    }
+   ]
+  },
+  "M18 afirmação fora da página aceita": {
+   "primary": [
+    {
+     "test_pattern": "N15",
+     "assertion_pattern": "[N15.1]"
+    }
+   ]
+  },
+  "M19 comercial sem arrependimento": {
+   "primary": [
+    {
+     "test_pattern": "N16",
+     "assertion_pattern": "[N16.1]"
+    }
+   ]
+  },
+  "M20 comercial sem identificação": {
+   "primary": [
+    {
+     "test_pattern": "N16",
+     "assertion_pattern": "[N16.2]"
+    }
+   ]
+  },
+  "M21 preço sem flag comercial": {
+   "primary": [
+    {
+     "test_pattern": "N16",
+     "assertion_pattern": "[N16.3]"
+    }
+   ]
+  },
+  "M22 link de checkout aceito": {
+   "primary": [
+    {
+     "test_pattern": "N17",
+     "assertion_pattern": "[N17.1]"
+    }
+   ]
+  },
+  "M23 link cru ou pixel aceito": {
+   "primary": [
+    {
+     "test_pattern": "N18",
+     "assertion_pattern": "[N18.1]"
+    }
+   ]
+  },
+  "M24 consentimento publicado não conferido": {
+   "primary": [
+    {
+     "test_pattern": "N19",
+     "assertion_pattern": "[N19.1]"
+    }
+   ]
+  },
+  "M25 versão fora do modelo do P08 aceita": {
+   "primary": [
+    {
+     "test_pattern": "N20",
+     "assertion_pattern": "[N20.1]"
+    }
+   ]
+  },
+  "M26 interruptor ligado por padrão aceito": {
+   "primary": [
+    {
+     "test_pattern": "N21",
+     "assertion_pattern": "[N21.1]"
+    }
+   ]
+  },
+  "M27 workflow que liga o envio aceito": {
+   "primary": [
+    {
+     "test_pattern": "N22",
+     "assertion_pattern": "[N22.1]"
+    }
+   ]
+  },
+  "M28 rede no módulo do P09 aceita": {
+   "primary": [
+    {
+     "test_pattern": "N23",
+     "assertion_pattern": "[N23.1]"
+    }
+   ]
+  },
+  "M29 léxico não aplicado ao Worker": {
+   "primary": [
+    {
+     "test_pattern": "N24",
+     "assertion_pattern": "[N24.1]"
+    }
+   ]
+  },
+  "M30 salvaguardas do Worker não conferidas": {
+   "primary": [
+    {
+     "test_pattern": "N25",
+     "assertion_pattern": "[N25.1]"
+    }
+   ]
+  },
+  "M31 prepareEmail ignora a decisão": {
+   "primary": [
+    {
+     "test_pattern": "N26",
+     "assertion_pattern": "[N26.1]"
+    }
+   ]
+  }
+ }
+}

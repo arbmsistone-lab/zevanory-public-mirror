@@ -1,0 +1,66 @@
+name: p09-nurture-gates
+
+# P09 Nutrição (Roteiro Mestre v4.7, seção 5): sequência de e-mails versionada (content/p09/**) e sequência viva do
+# Worker (worker/lead-magnet.mjs) conferidas contra os pisos: sem promessa de ganho, descadastro em 1 clique, nada sem
+# consentimento (modelo do P08 e texto publicado), cliques e ações como métrica (abertura não decide).
+# Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à produção, NENHUM e-mail enviado
+# (o interruptor P09_NURTURE_SEND nunca é definido em workflow; o gate reprova se for).
+on:
+  pull_request:
+    branches:
+      - gh-pages
+    paths:
+      - ".github/workflows/**"
+      - "content/p09/**"
+      - "scripts/p09/**"
+      - "worker/lead-magnet.mjs"
+      - "worker/politica-unica.mjs"
+      - "worker/brand-email.mjs"
+      - "data/politica-unica.json"
+      - "data/products.json"
+      - "**.html"
+      - "scripts/ci/mutants_p09_nurture.py"
+      - "scripts/ci/mutants_p09_nurture_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/p09-nurture-sequence.test.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p09-nurture-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nurture:
+    name: p09 / nurture-sequence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testes (contagem exata 26, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p09-nurture-sequence.test.mjs | tee /tmp/t.txt
+          for l in "# tests 26" "# pass 26" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Gate da sequência (versionada + Worker + consentimento publicado)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/p09/nurture_gate.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Mutantes causais (classificador compartilhado; todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p09_nurture.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P09_NURTURE_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=31 killed=31 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
