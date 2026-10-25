@@ -7,7 +7,7 @@
 //   (d) digits use the unslashed Archivo figures (unicode-range face) in both stylesheets.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
@@ -119,4 +119,48 @@ test("(e) previews: manifest hashes recomputed, zip = production artifact, ≤ 3
   const sol = read("solucoes.html");
   for (const slug of ["lucro-e-caixa", "vendas-na-pratica", "ia-na-pratica", "combo-ia-vendas", "negocio-completo"])
     assert.match(sol, new RegExp(`id="p-${slug}"[\\s\\S]*?<img class="cc-thumb" src="/assets/previews/[a-z0-9-]+\\.[0-9a-f]{10}\\.webp"[^>]*loading="lazy"[^>]*alt="[^"]+\\(página real do material\\)"`), "catalogue thumbnail: " + slug);
+});
+
+// (f) Both themes (prefers-color-scheme, no toggle): every published page declares "light dark" and loads a
+//     stylesheet with dark rules; every text/background token pair meets WCAG AA (4.5:1 text, 3:1 UI/large)
+//     in BOTH themes, for product.css and legal.css.
+function tokens(css) {
+  const grab = (block) => Object.fromEntries([...block.matchAll(/--([a-z-]+):(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2].toLowerCase()]));
+  const rootEnd = css.indexOf("}", css.indexOf(":root{"));
+  const light = grab(css.slice(css.indexOf(":root{"), rootEnd));
+  const d = css.indexOf("@media (prefers-color-scheme:dark)");
+  assert.ok(d > 0, "dark rules present");
+  const dark = { ...light, ...grab(css.slice(d, css.indexOf("}", css.indexOf(":root{", d)))) };
+  return { light, dark };
+}
+const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+test("(f) both themes: dark rules on every page, AA contrast for every token pair in light and dark", () => {
+  const TEXT = [["tinta", "papel"], ["tinta", "cupom"], ["grafite", "papel"], ["grafite", "cupom"], ["azul-cedula", "papel"], ["azul-cedula", "cupom"],
+    ["cupom", "azul-cedula"], ["sobre-amarelo", "amarelo-caixa"], ["balcao-texto", "balcao"], ["balcao-suave", "balcao"], ["azul-cedula", "azul-claro"],
+    ["grafite", "cupom-elevado"], ["azul-cedula", "cupom-elevado"], ["cupom", "tinta"]];
+  const UI = [["linha", "cupom"], ["linha", "papel"], ["amarelo-caixa", "balcao"], ["azul-cedula", "papel"], ["regua", "papel"], ["regua", "cupom"]];
+  const bad = [];
+  for (const f of ["product.css", "legal.css"]) {
+    const css = readTextNormalized(join(ROOT, f));
+    assert.match(css, /color-scheme:light dark/, f);
+    for (const [theme, t] of Object.entries(tokens(css))) {
+      for (const [list, min] of [[TEXT, 4.5], [UI, 3]]) for (const [fg, bg] of list) {
+        if (!t[fg] || !t[bg]) { if (f === "product.css") bad.push(`${f} ${theme}: token ${t[fg] ? bg : fg} missing`); continue; }
+        const r = ratio(t[fg], t[bg]);
+        if (r < min) bad.push(`${f} ${theme}: ${fg} on ${bg} = ${r.toFixed(2)} < ${min}`);
+      }
+    }
+  }
+  assert.deepEqual(bad, []);
+  const pages = readdirSync(PUB).filter((n) => n.endsWith(".html"));
+  for (const n of pages) {
+    const html = read(n);
+    assert.match(html, /<meta name="color-scheme" content="light dark">/, n + ": declares both themes");
+    const css = html.match(/<link rel="stylesheet" href="\/(assets\/(?:product|legal)\.[0-9a-f]{10}\.css)">/);
+    assert.ok(css, n + ": loads the hashed design stylesheet");
+    assert.match(readTextNormalized(join(PUB, css[1])), /@media \(prefers-color-scheme:dark\)/, n + ": stylesheet has dark rules");
+  }
+  // Print stays light in both stylesheets.
+  for (const f of ["product.css", "legal.css"]) assert.match(readTextNormalized(join(ROOT, f)), /@media print\{[^]*?color-scheme:light;/, f + ": print forces light");
 });

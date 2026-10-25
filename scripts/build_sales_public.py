@@ -621,6 +621,11 @@ def fingerprint_assets() -> dict[str, str]:
         for k, v in mapping.items():
             if k.startswith("/assets/previews/"):
                 html = html.replace(f'src="{k}"', f'src="{v}"').replace(f'srcset="{k}"', f'srcset="{v}"')
+        # Both themes (prefers-color-scheme, no toggle): every page declares light and dark; the browser
+        # chrome follows the navy counter bar, identical in both themes.
+        html = re.sub(r'<meta name="color-scheme"[^>]*>', "", html)
+        html = re.sub(r'<meta name="theme-color"[^>]*>', "", html)
+        html = re.sub(r'(<meta name="viewport"[^>]*>)', r'\1<meta name="color-scheme" content="light dark"><meta name="theme-color" content="#0e1a2b">', html, count=1)
         # Self-hosted fonts (font-src 'self'), preloaded so text paints in the final face early.
         html = re.sub(r'(<link rel="stylesheet" href="/assets/(?:product|legal)\.[0-9a-f]{10}\.css">)', lambda m: preload + m.group(1), html, count=1)
         html_file.write_text(html, encoding="utf-8")

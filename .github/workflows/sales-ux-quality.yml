@@ -49,7 +49,7 @@ jobs:
   budget:
     name: sales-ux / lighthouse-axe-budget
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 100
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       QUALITY_MODULES: /tmp/q/node_modules
@@ -100,10 +100,15 @@ jobs:
           set -euo pipefail
           node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8788 /tmp/sales-ux/screenshots/before
           node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8787 /tmp/sales-ux/screenshots/after
+          COLOR_SCHEME=dark node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8787 /tmp/sales-ux/screenshots/after-dark
       - name: Budget on the base build (before, report only)
         run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8788 /tmp/sales-ux/budget-before --report-only
       - name: Budget on the PR build (after, enforced)
         run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-after
+      - name: Budget on the PR build, dark theme (prefers-color-scheme dark, enforced)
+        env:
+          COLOR_SCHEME: dark
+        run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-after-dark
       - uses: actions/upload-artifact@v4
         if: always()
         with:

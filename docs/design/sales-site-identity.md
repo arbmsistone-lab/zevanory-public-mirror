@@ -338,3 +338,26 @@ apply: no personal data, no credentials, no proprietary formulas, nothing that r
 - **Presentation:** images are lazy, sized, `<picture>` AVIF + WebP, hashed names, never linked or
   enlarged. The catalogue shows only the cover as a 72 px thumbnail. Conteúdo Pronto has no file, so
   it has no preview.
+
+## 13. Dark theme ("nos dois temas")
+
+The site follows `prefers-color-scheme`. There is no toggle and no script, so the CSP is unchanged.
+Every page declares `<meta name="color-scheme" content="light dark">` and the stylesheets declare
+`color-scheme: light dark`. The dark palette is drawn by hand from the same identity; it is not an
+inversion: the counter at night.
+
+| Token | Light | Dark | Note |
+| --- | --- | --- | --- |
+| `--papel` | `#EEF2F5` | `#0D1723` | deep navy base, not black |
+| `--cupom` | `#FFFFFF` | `#16212F` | the receipt becomes a dark receipt slip |
+| `--tinta` | `#0E1A2B` | `#EEF2F5` | 16:1 on base |
+| `--grafite` | `#4A5568` | `#B3BFCC` | 8.7:1 on slip |
+| `--azul-cedula` | `#1A5A96` | `#8FC1EF` | links, focus ring, secondary actions |
+| `--amarelo-caixa` | `#FFC72C` | `#FFC72C` | the one key keeps ink text (`--sobre-amarelo`, 11:1) |
+| `--balcao` | `#0E1A2B` | `#08111C` | the navy counter bar stays in both themes |
+| `--regua` | `#0E1A2B` | `#9FB0C3` | strong rules, softened so they don't glare |
+
+Real previews are light documents. In dark mode they sit on a lifted slip (`--cupom-elevado`) with a thin
+border, and they are never filtered or inverted. Print forces the light tokens. `tests/sales-design.test.mjs`
+(f) fails if a page lacks dark rules or any token pair drops below AA (4.5:1 text, 3:1 UI) in either
+theme. CI runs the full budget a second time with `prefers-color-scheme: dark`.

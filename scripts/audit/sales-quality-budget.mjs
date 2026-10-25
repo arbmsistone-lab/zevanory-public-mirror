@@ -17,6 +17,9 @@ import { join } from "node:path";
 const [base, outDir = "sales-quality", ...flags] = process.argv.slice(2);
 const reportOnly = flags.includes("--report-only");
 const RUNS = Number(process.env.RUNS || 3);
+// Both themes: COLOR_SCHEME=light|dark emulates prefers-color-scheme (Lighthouse via --force-dark-mode,
+// Playwright via colorScheme) and every browser check asserts the emulation actually took effect.
+const SCHEME = process.env.COLOR_SCHEME === "dark" ? "dark" : "light";
 const req = createRequire(join(process.env.QUALITY_MODULES || join(process.cwd(), "node_modules"), "noop.js"));
 const { chromium } = req("playwright");
 const AXE = readFileSync(req.resolve("axe-core/axe.min.js"), "utf8");
@@ -25,16 +28,16 @@ export const PAGES = (process.env.PAGES || "/solucoes,/zevanory-sales,/ia-na-pra
 const BUDGET = { performance: 95, accessibility: 100, "best-practices": 100, seo: 100 };
 mkdirSync(outDir, { recursive: true });
 const chromePath = chromium.executablePath();
-const result = { schema: "zevanory.sales-quality-budget.v1", base, budget: BUDGET, runs: RUNS, pages: {}, failures: [] };
+const result = { schema: "zevanory.sales-quality-budget.v1", base, scheme: SCHEME, budget: BUDGET, runs: RUNS, pages: {}, failures: [] };
 const fail = (page, device, msg) => result.failures.push(`${page} [${device}] ${msg}`);
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 
 // ---- Lighthouse ---------------------------------------------------------------------------
 function lighthouse(url, device, i) {
-  const out = join(outDir, `lh-${device}-${url.replace(/\W+/g, "_")}-${i}.json`);
+  const out = join(outDir, `lh-${SCHEME}-${device}-${url.replace(/\W+/g, "_")}-${i}.json`);
   rmSync(out, { force: true });
   const args = [LH, url, "--output=json", `--output-path=${out}`, "--quiet",
-    "--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage",
+    `--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage${SCHEME === "dark" ? " --force-dark-mode" : ""}`,
     "--only-categories=performance,accessibility,best-practices,seo", "--max-wait-for-load=45000"];
   if (device === "desktop") args.push("--preset=desktop");
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -56,11 +59,12 @@ function lighthouse(url, device, i) {
 // ---- Browser checks (axe, targets, focus, reduced motion) ---------------------------------
 async function browserChecks(browser, url, device) {
   const vp = device === "mobile" ? { width: 360, height: 800 } : { width: 1440, height: 900 };
-  const ctx = await browser.newContext({ viewport: vp, bypassCSP: true, reducedMotion: "no-preference", isMobile: device === "mobile", hasTouch: device === "mobile" });
+  const ctx = await browser.newContext({ viewport: vp, bypassCSP: true, reducedMotion: "no-preference", colorScheme: SCHEME, isMobile: device === "mobile", hasTouch: device === "mobile" });
   const page = await ctx.newPage();
   const consoleErrors = [];
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 160)); });
   await page.goto(url, { waitUntil: "load" });
+  const schemeOk = await page.evaluate((s) => matchMedia(`(prefers-color-scheme: ${s})`).matches, SCHEME);
   await page.addScriptTag({ content: AXE });
   const axe = await page.evaluate(async () => {
     const r = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"] }, resultTypes: ["violations"] });
@@ -113,7 +117,7 @@ async function browserChecks(browser, url, device) {
   });
   await ctx.close();
   // Reduced motion: emulate the preference and require no motion at all.
-  const rctx = await browser.newContext({ viewport: vp, reducedMotion: "reduce" });
+  const rctx = await browser.newContext({ viewport: vp, reducedMotion: "reduce", colorScheme: SCHEME });
   const rp = await rctx.newPage();
   await rp.goto(url, { waitUntil: "load" });
   const motion = await rp.evaluate(() => {
@@ -130,7 +134,7 @@ async function browserChecks(browser, url, device) {
     return [...new Set(bad)].slice(0, 8);
   });
   await rctx.close();
-  return { axe, targets, focus: [...new Set(focus)].slice(0, 8), motion, consoleErrors, scroll };
+  return { axe, targets, focus: [...new Set(focus)].slice(0, 8), motion, consoleErrors, scroll, schemeOk };
 }
 
 const browser = await chromium.launch();
@@ -159,9 +163,10 @@ for (const path of PAGES) {
     if (b.motion.length) fail(path, device, `reduced motion ignored: ${b.motion.join("; ")}`);
     if (b.consoleErrors.length) fail(path, device, `console errors: ${b.consoleErrors.join("; ")}`);
     if (b.scroll.length) fail(path, device, `scroll exception violated: ${b.scroll.join("; ")}`);
+    if (!b.schemeOk) fail(path, device, `prefers-color-scheme: ${SCHEME} emulation did not take effect`);
     result.pages[path][device] = row;
     const lh = row.lighthouse ? `P${row.lighthouse.median.performance}/A${row.lighthouse.min.accessibility}/BP${row.lighthouse.min["best-practices"]}/SEO${row.lighthouse.min.seo} LCP${row.lighthouse.lcp}` : "LH n/a";
-    console.log(`::notice title=SALES_QUALITY ${device} ${path}::${lh} axe_serious=${serious.length} axe_other=${b.axe.length - serious.length} small_targets=${b.targets.length} focus=${b.focus.length} motion=${b.motion.length}`);
+    console.log(`::notice title=SALES_QUALITY ${SCHEME} ${device} ${path}::${lh} axe_serious=${serious.length} axe_other=${b.axe.length - serious.length} small_targets=${b.targets.length} focus=${b.focus.length} motion=${b.motion.length}`);
   }
 }
 await browser.close();
