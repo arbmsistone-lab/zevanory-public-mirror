@@ -279,7 +279,7 @@ jobs:
           assert h.get("release")==os.environ["GITHUB_SHA"], h
           page=open("/tmp/candidate-sales.html",encoding="utf-8").read()
           assert "ZEVANORY SALES" in page
-          assert "SALES ASSIST" in page and "SALES AUTOPILOT" in page and "SALES AUTONOMOUS" in page
+          assert "A IA sugere" in page and "A IA faz o rotineiro" in page and "A IA conduz a venda" in page
           assert "/zevanory-public-mirror/" not in page
           print("ZEVANORY_SALES_CANDIDATE_SMOKE=PASS")
           PY
