@@ -17,6 +17,12 @@ for (const path of PAGES) for (const [width, height] of WIDTHS) {
   const page = await ctx.newPage();
   await page.goto(base + path, { waitUntil: "load" });
   await page.evaluate(() => document.fonts && document.fonts.ready);
+  // Lazy images (product previews) only load near the viewport: walk the page, then wait for them.
+  await page.evaluate(async () => {
+    for (let y = 0; y < document.documentElement.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 30)); }
+    await Promise.all([...document.images].map((im) => im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; })));
+    window.scrollTo(0, 0);
+  });
   const file = join(outDir, `${path.replace(/^\//, "") || "index"}-${width}.png`);
   await page.screenshot({ path: file, fullPage: true, animations: "disabled" });
   console.log("SCREENSHOT " + file);

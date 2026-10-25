@@ -18,6 +18,8 @@ on:
       - "product.css"
       - "legal.css"
       - "assets/fonts/**"
+      - "assets/previews/**"
+      - "docs/evidence/sales-ux/previews-manifest.json"
       - "solucoes/**"
       - "zevanory-sales/**"
       - "ia-na-pratica/**"

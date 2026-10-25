@@ -315,3 +315,26 @@ Signature interaction: on /solucoes each receipt line is an in-page link to the 
 solves it. The card is marked with `:target` ("Seu problema: caixa sem conferir"), focus lands on it
 (`tabindex="-1"`), and the scroll is instant under `prefers-reduced-motion`. No script is involved, so
 it works with JavaScript off and needs no CSP change. Nothing else on the site moves.
+
+## 12. Real previews ("Veja por dentro")
+
+Owner authorisation (in writing): "AUTORIZO PRÉVIAS REAIS DOS PRODUTOS NO SITE". It covers per product
+the manual cover, ONE inner page and ONE spreadsheet crop, and nothing downloadable. The Sol 228 rules
+apply: no personal data, no credentials, no proprietary formulas, nothing that rebuilds the method.
+
+- **Source:** the delivered zips (handoff v2.1). Each zip's SHA-256 equals the production catalog's
+  `artifact_sha256`. They were extracted as untrusted data in isolated directories and rendered in the
+  cloud: PDF pages with pdftoppm, spreadsheets through LibreOffice to HTML with no network and no
+  JavaScript, as values only, so no formula bar.
+- **Provenance:** `docs/evidence/sales-ux/previews-manifest.json` has one entry per image: products,
+  zip + SHA-256, path in the zip, page or sheet, crop box, redactions, and the SHA-256 of the WebP and
+  the AVIF. `tests/sales-design.test.mjs` (e) recomputes the hashes from the committed files.
+- **Labels are literal:**
+  - "página real do material" for whole pages;
+  - "trecho de página real do material" for the cropped plan page;
+  - "trecho real da planilha" for spreadsheet crops;
+  - "página real do material (trechos ocultos)" for the one redacted image: the Lucro & Caixa panel,
+    whose explanation column is pixelated.
+- **Presentation:** images are lazy, sized, `<picture>` AVIF + WebP, hashed names, never linked or
+  enlarged. The catalogue shows only the cover as a 72 px thumbnail. Conteúdo Pronto has no file, so
+  it has no preview.

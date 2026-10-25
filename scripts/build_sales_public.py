@@ -177,6 +177,53 @@ def how_to_buy() -> str:
             f'<div><dt>Suporte</dt><dd><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a><br>{RESPONSE_COMMITMENT[0].upper() + RESPONSE_COMMITMENT[1:]}</dd></div>'
             '</dl></section>')
 
+# Real product previews (owner authorisation, in writing: "AUTORIZO PRÉVIAS REAIS DOS PRODUTOS NO SITE";
+# Sol 228 content rules). Per product at most three images: manual cover, ONE inner page, ONE spreadsheet
+# crop. Provenance per image (zip + SHA-256, path in zip, page/crop, redactions, output SHA-256 of WebP and
+# AVIF) is committed in docs/evidence/sales-ux/previews-manifest.json; tests recompute the hashes.
+PREVIEW_MANIFEST = json.loads((ROOT / "docs" / "evidence" / "sales-ux" / "previews-manifest.json").read_text(encoding="utf-8"))
+_PREVIEWS = {i["id"]: i for i in PREVIEW_MANIFEST["images"]}
+PREVIEW_TEXT = {
+    "manual-ia-capa": ("Capa do manual", "Capa do manual IA na Prática, com o público, o formato e a lista das oito aulas"),
+    "manual-ia-aula-a1": ("Uma página interna: aula A1", "Página da aula A1 do manual IA na Prática: objetivo, exemplo comentado e exercício"),
+    "planilha-ia-orcamento": ("Trecho da planilha: aba Orçamento", "Trecho da planilha do IA na Prática, aba Orçamento, com as colunas item, quantidade, unitário, subtotal e conferência"),
+    "manual-vendas-capa": ("Capa do manual", "Capa do manual Vendas na Prática, com o público, o formato e a lista das oito aulas"),
+    "manual-vendas-aula-b1": ("Uma página interna: aula B1", "Página da aula B1 do manual Vendas na Prática: defina uma oferta que você consegue cumprir"),
+    "planilha-vendas-oportunidades": ("Trecho da planilha: aba Oportunidades", "Trecho da planilha comercial do Vendas na Prática, aba Oportunidades, com origem, etapa, resultado, proposta e próxima ação"),
+    "manual-lucro-capa": ("Capa do manual", "Capa do manual Lucro & Caixa: o que o produto resolve e como usar a planilha"),
+    "manual-lucro-modulo-1": ("Uma página interna: módulos 1 e 2", "Página do manual Lucro & Caixa com os módulos 1 e 2: faturamento x resultado e mapa de custos"),
+    "planilha-lucro-painel": ("Trecho da planilha: Painel de Decisão", "Trecho da planilha Lucro & Caixa, Painel de Decisão, com os rótulos dos indicadores; a coluna de leitura está oculta"),
+    "plano-30-dias-capa": ("Capa do plano de 30 dias", "Capa do Plano integrado de 30 dias do Negócio Completo, com o modo de uso e a semana 1"),
+    "plano-30-dias-semana-2": ("Uma página interna: semana 2", "Trecho da semana 2 do Plano integrado de 30 dias: ações diárias de vendas e acompanhamento"),
+    "painel-decisao-integrada": ("Trecho do Painel de Decisão Integrada", "Trecho do Painel de Decisão Integrada do Negócio Completo, com os títulos das colunas por produto ou serviço"),
+}
+
+def _picture(iid: str, cls: str = "", alt_suffix: str = "") -> str:
+    i = _PREVIEWS[iid]
+    k = f' class="{cls}"' if cls else ""
+    return (f'<picture><source type="image/avif" srcset="/{i["avif"]["file"]}">'
+            f'<img{k} src="/{i["webp"]["file"]}" width="{i["width"]}" height="{i["height"]}" loading="lazy" decoding="async" '
+            f'alt="{_attr(PREVIEW_TEXT[iid][1] + alt_suffix)}"></picture>')
+
+def preview_section(slug: str) -> str:
+    ids = PREVIEW_MANIFEST["per_product"].get(slug) or []
+    if not ids:
+        return ""
+    if len(ids) > 3:
+        raise SystemExit(f"{slug}: more than three preview images (owner authorisation is three)")
+    figs = "".join(f'<figure class="inside-item">{_picture(i)}<figcaption>{PREVIEW_TEXT[i][0]}<span class="inside-label">{_PREVIEWS[i]["label"]}</span></figcaption></figure>' for i in ids)
+    note = (" O Combo traz o IA na Prática e o Vendas na Prática completos; as imagens são desses materiais." if slug == "combo-ia-vendas" else "")
+    return ('<section class="container section inside" aria-labelledby="por-dentro"><div class="section-head">'
+            '<h2 id="por-dentro">Veja por dentro</h2><p class="section-lead">Páginas reais do material, reduzidas para visualização: a capa, '
+            'uma página interna e um trecho da planilha. O conteúdo completo vem na compra.' + note + '</p></div>'
+            f'<div class="inside-grid">{figs}</div></section>')
+
+def catalog_thumb(slug: str) -> str:
+    ids = PREVIEW_MANIFEST["per_product"].get(slug) or []
+    if not ids:
+        return ""
+    return _picture(ids[0], "cc-thumb", f' ({_PREVIEWS[ids[0]]["label"]})')
+
 def _faq_html(q, a):
     return f"<details><summary>{q}</summary><p>{a}</p></details>"
 
@@ -280,7 +327,7 @@ def apply_commerce(slug: str, html: str) -> str:
                 '</ul></div><div class="fit-card fit-no"><h3>Não é para você se</h3><ul>'
                 + "".join(f"<li>{x}</li>" for x in no) +
                 '</ul></div></div></section>')
-    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html, html, count=1, flags=re.S)
+    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html + preview_section(slug), html, count=1, flags=re.S)
     # Conversion: a compact bar that follows the reader on phones (72 h / um download beside the CTA).
     bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"]}</strong>'
            + f'<span>R$ {c["price"]} · pagamento único</span>'
@@ -332,7 +379,8 @@ def apply_catalog(html: str) -> str:
             items = [re.sub(r"\s*\([^)]*\)", "", COMMERCE[slug]["items"][k]) for k in CATALOG_INCLUDES[slug]]
             inc = '<ul class="catalog-includes">' + "".join(f"<li>{i}</li>" for i in items) + "</ul>"
         pat = rf'(<article class="catalog-card[^"]*"[^>]*><div class="cc-main">(?:<p class="cc-match">[^<]*</p>)?<h3><a href="/{slug}">[^<]*</a></h3><p>[^<]*</p>)((?:<ul class="catalog-includes">.*?</ul>)?</div>)'
-        html, n = re.subn(pat, lambda m: m.group(1) + inc + m.group(2) + f'<p class="catalog-price">{price}<span>{unit}</span></p>', html, count=1, flags=re.S)
+        thumb = catalog_thumb(slug)
+        html, n = re.subn(pat, lambda m: m.group(1) + inc + m.group(2) + f'<p class="catalog-price">{price}<span>{unit}</span></p>' + thumb, html, count=1, flags=re.S)
         if n != 1:
             raise SystemExit(f"solucoes: catalog card for {slug} missing")
     return html
@@ -556,6 +604,13 @@ def fingerprint_assets() -> dict[str, str]:
         (OUT / out).parent.mkdir(parents=True, exist_ok=True)
         (OUT / out).write_bytes(data)
         mapping["/" + name] = "/" + out
+    # Real product previews: hashed names (immutable content), referenced as /assets/previews/<file> by the build.
+    for img in sorted(p for ext in ("*.webp", "*.avif") for p in (ROOT / "assets" / "previews").glob(ext)):
+        data = img.read_bytes()
+        out = _hashed_name("previews/" + img.name, data)
+        (OUT / out).parent.mkdir(parents=True, exist_ok=True)
+        (OUT / out).write_bytes(data)
+        mapping["/assets/previews/" + img.name] = "/" + out
     fonts = [v for k, v in mapping.items() if k.endswith(".woff2")]
     preload = "".join(f'<link rel="preload" href="{f}" as="font" type="font/woff2" crossorigin>' for f in sorted(fonts))
     for html_file in sorted(OUT.glob("*.html")):
@@ -563,6 +618,9 @@ def fingerprint_assets() -> dict[str, str]:
         for name in FINGERPRINT:
             attr = "href" if name.endswith(".css") else "src"
             html = html.replace(f'{attr}="/{name}"', f'{attr}="{mapping["/" + name]}"')
+        for k, v in mapping.items():
+            if k.startswith("/assets/previews/"):
+                html = html.replace(f'src="{k}"', f'src="{v}"').replace(f'srcset="{k}"', f'srcset="{v}"')
         # Self-hosted fonts (font-src 'self'), preloaded so text paints in the final face early.
         html = re.sub(r'(<link rel="stylesheet" href="/assets/(?:product|legal)\.[0-9a-f]{10}\.css">)', lambda m: preload + m.group(1), html, count=1)
         html_file.write_text(html, encoding="utf-8")

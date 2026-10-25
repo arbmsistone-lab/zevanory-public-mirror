@@ -6,6 +6,7 @@
 //   axe-core (wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa, best-practice): zero serious/critical;
 //   internal standard: every visible interactive target >= 44x44 CSS px (whole document);
 //   WCAG 2.4.7/2.4.11/2.4.13: keyboard focus visible (>= 2px outline or ring) and never hidden
+//   scroll exception: vertical document scroll only, no horizontal scroll, no scrolling panels;
 //   under sticky UI; WCAG 2.3.3 / prefers-reduced-motion: no animation, transition or smooth scroll.
 // Usage: QUALITY_MODULES=/path/node_modules node sales-quality-budget.mjs <baseUrl> <outDir> [--report-only]
 import { spawnSync } from "node:child_process";
@@ -97,6 +98,19 @@ async function browserChecks(browser, url, device) {
     if (!f.ring) focus.push(`no visible focus: ${f.label}`);
     if (f.covered) focus.push(`focus hidden under other content: ${f.label}`);
   }
+  // Scroll exception (owner, in writing: "APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS"): vertical document
+  // scroll only; no horizontal scroll anywhere; no element (panel) scrolls on its own.
+  const scroll = await page.evaluate(() => {
+    const de = document.documentElement, bad = [];
+    if (de.scrollWidth > de.clientWidth + 1) bad.push(`horizontal page scroll ${de.scrollWidth}>${de.clientWidth}`);
+    for (const el of document.querySelectorAll("body *")) {
+      const s = getComputedStyle(el);
+      const sy = /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 1;
+      const sx = /(auto|scroll)/.test(s.overflowX) && el.scrollWidth > el.clientWidth + 1;
+      if (sy || sx) bad.push(`panel scroll ${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)}`);
+    }
+    return bad.slice(0, 6);
+  });
   await ctx.close();
   // Reduced motion: emulate the preference and require no motion at all.
   const rctx = await browser.newContext({ viewport: vp, reducedMotion: "reduce" });
@@ -116,7 +130,7 @@ async function browserChecks(browser, url, device) {
     return [...new Set(bad)].slice(0, 8);
   });
   await rctx.close();
-  return { axe, targets, focus: [...new Set(focus)].slice(0, 8), motion, consoleErrors };
+  return { axe, targets, focus: [...new Set(focus)].slice(0, 8), motion, consoleErrors, scroll };
 }
 
 const browser = await chromium.launch();
@@ -144,6 +158,7 @@ for (const path of PAGES) {
     if (b.focus.length) fail(path, device, `focus: ${b.focus.join("; ")}`);
     if (b.motion.length) fail(path, device, `reduced motion ignored: ${b.motion.join("; ")}`);
     if (b.consoleErrors.length) fail(path, device, `console errors: ${b.consoleErrors.join("; ")}`);
+    if (b.scroll.length) fail(path, device, `scroll exception violated: ${b.scroll.join("; ")}`);
     result.pages[path][device] = row;
     const lh = row.lighthouse ? `P${row.lighthouse.median.performance}/A${row.lighthouse.min.accessibility}/BP${row.lighthouse.min["best-practices"]}/SEO${row.lighthouse.min.seo} LCP${row.lighthouse.lcp}` : "LH n/a";
     console.log(`::notice title=SALES_QUALITY ${device} ${path}::${lh} axe_serious=${serious.length} axe_other=${b.axe.length - serious.length} small_targets=${b.targets.length} focus=${b.focus.length} motion=${b.motion.length}`);

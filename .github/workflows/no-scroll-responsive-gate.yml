@@ -2,6 +2,7 @@ name: ZEVANORY No Scroll Responsive Gate
 # E1 (2026-10-24): the gate keeps its name (status history) but its contract is inverted on purpose.
 # The old "no global page scroll" app shell (body overflow:hidden, <main> as the inner scroller) broke
 # native scroll, anchors, scroll restoration, the mobile address-bar collapse, print and find-in-page.
+# Owner decision (written): "APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS" (ratified by the Sol).
 # Contract now: NO HORIZONTAL scroll at any width, the document (html) is the only vertical scroller,
 # <main> is not an inner scroll container, and the bottom of every page is reachable by window scroll.
 
@@ -62,6 +63,8 @@ jobs:
                 window.scrollTo({top:root.scrollHeight,behavior:'instant'});
                 const bottomReachable=window.scrollY+window.innerHeight>=root.scrollHeight-2;
                 const mainInnerScroller=!!main && /(auto|scroll|hidden)/.test(mainStyle.overflowY) && main.scrollHeight>main.clientHeight+1;
+                // Owner exception ("APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS"): no panel scrolls on its own.
+                const scrollingPanels=[...document.querySelectorAll('body *')].filter(el=>{const s=getComputedStyle(el);return (/(auto|scroll)/.test(s.overflowY)&&el.scrollHeight>el.clientHeight+1)||(/(auto|scroll)/.test(s.overflowX)&&el.scrollWidth>el.clientWidth+1);}).length;
                 return {
                   sh:root.scrollHeight,
                   sw:root.scrollWidth,
@@ -73,11 +76,12 @@ jobs:
                   mainScrollHeight:main?.scrollHeight||0,
                   mainClientHeight:main?.clientHeight||0,
                   mainInnerScroller,
+                  scrollingPanels,
                   bottomReachable
                 };
               });
               rows.push({view:v.name,route,http:response?.status()||0,...m,
-                documentScroll:m.htmlOverflowY!=='hidden'&&m.bodyOverflowY!=='hidden'&&!m.mainInnerScroller,
+                documentScroll:m.htmlOverflowY!=='hidden'&&m.bodyOverflowY!=='hidden'&&!m.mainInnerScroller&&m.scrollingPanels===0,
                 horizontalOverflow:m.sw>m.iw+1});
               await page.close();
             }

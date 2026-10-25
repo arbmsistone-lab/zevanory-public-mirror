@@ -71,3 +71,52 @@ test("(d) unslashed figures: Archivo digits face (unicode-range U+0030-0039) in 
   }
   assert.ok(existsSync(join(ROOT, "assets/fonts/archivo-numerais.woff2")));
 });
+
+// (e) Real previews (owner, in writing: "AUTORIZO PRÉVIAS REAIS DOS PRODUTOS NO SITE"; Sol 228): per product at
+//     most three images; docs/evidence/sales-ux/previews-manifest.json has one entry per image with product,
+//     zip + full SHA-256, path in zip, page/crop, redactions and the SHA-256 of the WebP and AVIF outputs.
+//     This test recomputes every output hash from the committed files and checks the published markup.
+test("(e) previews: manifest hashes recomputed, zip = production artifact, ≤ 3 per product, truthful labels, lazy, sized", async () => {
+  const { createHash } = await import("node:crypto");
+  const M = JSON.parse(readTextNormalized(join(ROOT, "docs/evidence/sales-ux/previews-manifest.json")));
+  const sha = (p) => createHash("sha256").update(readFileSync(join(ROOT, p))).digest("hex");
+  const recovered = readTextNormalized(join(ROOT, "worker/cloudflare-worker.recovered.mjs"));
+  for (const [zip, h] of Object.entries(M.source_zips)) {
+    assert.match(h, /^[0-9a-f]{64}$/);
+    assert.ok(recovered.includes(`artifact_name: "${zip}", artifact_sha256: "${h}"`), "zip SHA-256 = production catalog: " + zip);
+  }
+  for (const img of M.images) {
+    for (const fmt of ["webp", "avif"]) assert.equal(sha(img[fmt].file), img[fmt].sha256, `${img.id}.${fmt}: committed file matches manifest`);
+    assert.ok(img.products.length >= 1 && img.sources.length === img.products.length, img.id + ": one source per product");
+    for (const src of img.sources) {
+      assert.equal(M.source_zips[src.zip], src.zip_sha256, img.id + ": zip hash");
+      assert.ok(src.path_in_zip && /^[0-9a-f]{64}$/.test(src.file_sha256), img.id + ": internal file + hash");
+    }
+    assert.ok(img.location.page || img.location.sheet, img.id + ": page or sheet");
+    const redacted = img.redactions.length > 0;
+    assert.equal(img.label, redacted ? "página real do material (trechos ocultos)" : img.label, img.id);
+    assert.ok(redacted ? true : !/ocultos/.test(img.label), img.id + ": label must not claim redaction");
+    assert.ok(img.why_safe.length > 40, img.id + ": justification");
+  }
+  const byId = Object.fromEntries(M.images.map((i) => [i.id, i]));
+  for (const [slug, ids] of Object.entries(M.per_product)) {
+    assert.ok(ids.length <= 3, slug + ": at most three images");
+    const html = read(slug + ".html");
+    if (!ids.length) { assert.ok(!html.includes('id="por-dentro"'), slug + ": no preview without a real file"); continue; }
+    const start = html.indexOf('aria-labelledby="por-dentro"');
+    const sec = html.slice(start, html.indexOf("</section>", start));
+    assert.match(sec, /Páginas reais do material/);
+    const figs = [...sec.matchAll(/<figure class="inside-item">([\s\S]*?)<\/figure>/g)].map((m) => m[1]);
+    assert.equal(figs.length, ids.length, slug + ": one figure per authorised image");
+    figs.forEach((fig, k) => {
+      const i = byId[ids[k]];
+      assert.match(fig, new RegExp(`<source type="image/avif" srcset="/assets/previews/${i.id}\\.[0-9a-f]{10}\\.avif">`));
+      assert.match(fig, new RegExp(`<img src="/assets/previews/${i.id}\\.[0-9a-f]{10}\\.webp" width="${i.width}" height="${i.height}" loading="lazy" decoding="async" alt="[^"]{30,}">`));
+      assert.ok(fig.includes(`<span class="inside-label">${i.label}</span>`), `${slug}/${i.id}: label shown`);
+    });
+    assert.doesNotMatch(sec, /href="[^"]*\.(pdf|docx|xlsx|zip|webp|avif)"/i, slug + ": nothing downloadable");
+  }
+  const sol = read("solucoes.html");
+  for (const slug of ["lucro-e-caixa", "vendas-na-pratica", "ia-na-pratica", "combo-ia-vendas", "negocio-completo"])
+    assert.match(sol, new RegExp(`id="p-${slug}"[\\s\\S]*?<img class="cc-thumb" src="/assets/previews/[a-z0-9-]+\\.[0-9a-f]{10}\\.webp"[^>]*loading="lazy"[^>]*alt="[^"]+\\(página real do material\\)"`), "catalogue thumbnail: " + slug);
+});
