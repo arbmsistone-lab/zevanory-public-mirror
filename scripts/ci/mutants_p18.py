@@ -21,7 +21,9 @@ TEST = "tests/b0-baseline.test.mjs"
 COPY = ["scripts/b0", "docs/b0", "tests/helpers/text.mjs", TEST, ".github/workflows/b0-baseline-collector.yml",
         ".github/workflows/p18-external-monitor.yml", ".github/workflows/b0-baseline-tests.yml", ".github/workflows/p18-monitor-watchdog.yml"]
 LIB, MON, WDG = "scripts/b0/b0-lib.mjs", "scripts/b0/p18-monitor.mjs", "scripts/b0/p18-watchdog.mjs"
-BASELINE_TOTAL = 21  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
+WFM = ".github/workflows/p18-external-monitor.yml"
+WF = "workflows B0/P18"
+BASELINE_TOTAL = 24  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
 
 def P(test, label):
     return {"test_pattern": test, "assertion_pattern": label}
@@ -80,7 +82,7 @@ M = {
         {"primary": [P("[GAP]", "GAP-p95")]}),
     "M16_slot_offset_ignored": (LIB, "const period = PROBE_CADENCE_MIN * 60000, off = CRON_OFFSET_MIN * 60000;",
         "const period = PROBE_CADENCE_MIN * 60000, off = 0;", {"primary": [P(E2E1, "E2E-delay")]}),
-    "M17_watchdog_edge_900": (LIB, "if (age > staleMin * 60) return { state: \"STALE\"", "if (age >= staleMin * 60) return { state: \"STALE\"",
+    "M17_watchdog_edge_900": (LIB, "if (age > staleMin * 60) return { state: \"STALE\", alert: true, age_s: age, last_success_at", "if (age >= staleMin * 60) return { state: \"STALE\", alert: true, age_s: age, last_success_at",
         {"primary": [P("[WD]", "WD-900")]}),
     "M18_watchdog_30min": (LIB, "export const HEARTBEAT_STALE_MIN = 15;", "export const HEARTBEAT_STALE_MIN = 30;",
         {"primary": [P("[WD]", "WD-901")]}),
@@ -97,6 +99,33 @@ M = {
             S(E2E1, "E2E-s9-unknown", "o incidente sem sondagem boa anterior passa a MET")]}),
     "M24_recovery_keeps_issue_open": (MON, "} else if (cur.up && open) {", "} else if (false) {",
         {"primary": [P(E2E1, "E2E-close")]}),
+    # ---- gatilho externo (AVAL Sol 253/254): janela, idempotência, metadados do pedido, vigia do caminho Cloudflare ----
+    "M25_no_idempotency": (MON, "if (isDuplicateWindow(runs, dispatch)) {", "if (false) {",
+        {"primary": [P("[IDEM]", "IDEM-sched-skip")]}),
+    "M26_requested_window_ignored": (LIB, "return (dispatch.window_id !== null && c.has(dispatch.window_id)) || c.has(dispatch.start_window_id);",
+        "return c.has(dispatch.start_window_id);", {"primary": [P("[IDEM]", "IDEM-repeat-skip")]}),
+    "M27_future_bound_open": (LIB, 'if (w > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return { ...out, window_rejected: "window_in_future" };', "",
+        {"primary": [P("[WIN]", "WIN-future-121")], "secondary": [
+            S("[IDEM]", "IDEM-forged-rejected", "o id forjado para 10:20 passa a ser aceito às 10:11 e a execução deixa de registrar window_in_future")]}),
+    "M28_dispatch_after_start": (LIB, " || t > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return", ") return",
+        {"primary": [P("[WIN]", "WIN-dispatch-after-start")]}),
+    "M29_gap_from_duplicate": (MON, "const prevProbing = runs.filter((r) => PROBING_OUTCOMES.includes(r.outcome)).at(-1) || null;",
+        "const prevProbing = runs.at(-1) || null;", {"primary": [P("[IDEM]", "IDEM-gap-from-probing-run")]}),
+    "M30_cf_watch_without_owner_switch": (WDG, "const cfEv = expected ? cfEv0 : { ...cfEv0, alert: false, expected: false };", "const cfEv = cfEv0;",
+        {"primary": [P("[WD-CF]", "WDCF-not-expected")], "secondary": [
+            S("[WD]", "WD-close", "sem a chave do proprietário o caminho CF ausente abre uma 2ª issue com o mesmo número falso (50) e a issue do vigia não fecha")]}),
+    "M31_cf_stale_edge_900": (LIB, 'if (age > staleMin * 60) return { state: "STALE", alert: true, age_s: age, started_at: doc.started_at };',
+        'if (age >= staleMin * 60) return { state: "STALE", alert: true, age_s: age, started_at: doc.started_at };', {"primary": [P("[WD-CF]", "WDCF-900")]}),
+    "M32_window_not_aligned": (LIB, "if (Number.isNaN(ms) || windowIdOf(ms) !== id || windowStartMs(ms) !== ms) return null;",
+        "if (Number.isNaN(ms)) return null;", {"primary": [P("[WIN]", "WIN-strict")]}),
+    "M33_source_not_allowlisted": (LIB, "const src = DISPATCH_SOURCES.includes(source) ? source : null;", "const src = source || null;",
+        {"primary": [P("[WIN]", "WIN-source-allowlist")]}),
+    "M34_dup_start_not_recorded": (MON, "    writeCfDispatch(dir, dup);\n", "",
+        {"primary": [P("[IDEM]", "IDEM-cf-dup-recorded")]}),
+    "M35_window_input_not_passed": (WFM, "          P18_WINDOW_ID: ${{ inputs.window_id }}\n", "",
+        {"primary": [P(WF, "WF-env window_id")]}),
+    "M36_unbounded_queue": (WFM, "  cancel-in-progress: false\n", "  cancel-in-progress: false\n  queue: max\n",
+        {"primary": [P(WF, "WF-single-pending")]}),
 }
 
 

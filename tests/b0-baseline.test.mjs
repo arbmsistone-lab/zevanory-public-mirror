@@ -14,7 +14,8 @@ import {
   parseCommandCenter, parseFunnelDiag, parseDataBackup, readP22, parseSitemap, parseA11y, aggregateProbes,
   findOpenAlert, ALERT_TITLE, addDays, validateProbe, fieldOk, SCHEMA_INCIDENT, SCHEMA_RUN, SCHEMA_HEARTBEAT, finalizeIncident,
   withRecovery, validateIncident, decideIncident, openIncident, evaluateHeartbeat, HEARTBEAT_STALE_MIN, aggregateLatency, percentile,
-  CONFIRM_BUDGET_S, WATCHDOG_TITLE,
+  CONFIRM_BUDGET_S, WATCHDOG_TITLE, WATCHDOG_CF_TITLE, windowIdOf, parseWindowId, resolveDispatch, isDuplicateWindow, validateRun,
+  evaluateCfDispatch, SCHEMA_CF_DISPATCH, CF_DISPATCH_STALE_MIN, schedSlotMs,
 } from "../scripts/b0/b0-lib.mjs";
 import { collect } from "../scripts/b0/b0-collector.mjs";
 import { main as monitorMain } from "../scripts/b0/p18-monitor.mjs";
@@ -501,12 +502,120 @@ test("workflows B0/P18: agendados, só GITHUB_TOKEN, gravam só no ramo evidence
   }
   assert.match(mon, /cron: '2-59\/5 \* \* \* \*'/, "Sol 246.09: cadência de 5 min");
   assert.match(mon, /timeout-minutes: 8\b/, "cabe a re-sondagem de confirmação");
+  // AVAL Sol 253/254: pedido externo por janela, concorrência limitada, inputs só por env (nunca no script).
+  assert.match(mon, /workflow_dispatch:\n    inputs:\n      window_id:/, "WF-inputs");
+  for (const k of ["window_id", "dispatched_at", "dispatch_source"]) assert.match(mon, new RegExp("P18_" + k.toUpperCase() + ": \\$\\{\\{ inputs\\." + k + " \\}\\}"), "WF-env " + k);
+  assert.match(mon, /concurrency:\n  group: p18-external-monitor\n  cancel-in-progress: false\n/, "WF-concurrency");
+  assert.doesNotMatch(mon, /queue: max/, "WF-single-pending: no máximo 1 rodando + 1 pendente");
+  assert.ok(mon.split("\n").filter((l) => /inputs\./.test(l)).every((l) => /^\s+P18_[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}$/.test(l) || /^run-name: /.test(l)), "WF-no-input-in-script");
   const wd = wf("p18-monitor-watchdog.yml");
   assert.match(wd, /cron: '4,14,24,34,44,54 \* \* \* \*'/);
   assert.match(wd, /contents: read/); assert.doesNotMatch(wd, /contents: write|secrets\.(?!GITHUB_TOKEN)|pull_request|wrangler|-X\s*POST/);
   assert.match(wd, /issues: write/); assert.match(wd, /runs-on: ubuntu-latest/); assert.match(wd, /p18-watchdog\.mjs/);
+  assert.match(wd, /P18_CF_DISPATCH_EXPECTED: \$\{\{ vars\.P18_CF_DISPATCH_EXPECTED \}\}/, "WF-cf-expected-var");
   assert.doesNotMatch(tst, /branches:/, "testes também em PR empilhado");
   assert.match(mon, /issues: write/);
   assert.doesNotMatch(col, /issues: write/);
   assert.match(tst, /pull_request:/); assert.match(tst, /contents: read/); assert.doesNotMatch(tst, /contents: write|schedule:/);
+});
+
+// ---- gatilho externo (AVAL Sol 253/254): janela de 5 min, idempotência, metadados do pedido, vigia do caminho CF ----
+test("[WIN] id de janela: alinhado ao minuto 0, estrito; slot :02 do agendador cai na janela :00; limites -60 min / +2 min", () => {
+  assert.equal(windowIdOf(Date.parse(T("10:04:59"))), "p18w-20261025T1000Z", "WIN-floor");
+  assert.equal(windowIdOf(Date.parse(T("10:05:00"))), "p18w-20261025T1005Z", "WIN-edge");
+  assert.equal(windowIdOf(schedSlotMs(Date.parse(T("10:02:40")))), "p18w-20261025T1000Z", "WIN-sched-same-window");
+  assert.equal(parseWindowId("p18w-20261025T1005Z"), Date.parse(T("10:05:00")), "WIN-parse");
+  for (const bad of ["p18w-20261025T1003Z", "p18w-20261325T1000Z", "p18w-20261025T2460Z", "p18w-20261025T1000", "x", "", null, "p18w-20261025T1000Z;rm"])
+    assert.equal(parseWindowId(bad), null, "WIN-strict " + bad);
+  const S0 = Date.parse(T("10:00:20"));
+  const ok = resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: T("10:00:01"), source: "cloudflare-cron", startedMs: S0 });
+  assert.deepEqual(ok, { window_id: "p18w-20261025T1000Z", start_window_id: "p18w-20261025T1000Z", dispatch_source: "cloudflare-cron", dispatched_at: T("10:00:01"), dispatch_to_start_s: 19, window_rejected: null }, "WIN-accept");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1005Z", startedMs: Date.parse(T("10:03:00")) }).window_id, "p18w-20261025T1005Z", "WIN-future-120-edge");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1005Z", startedMs: Date.parse(T("10:02:59")) }).window_rejected, "window_in_future", "WIN-future-121");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T0900Z", startedMs: Date.parse(T("10:00:00")) }).window_id, "p18w-20261025T0900Z", "WIN-old-3600-edge");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T0900Z", startedMs: Date.parse(T("10:00:01")) }).window_rejected, "window_too_old", "WIN-old-3601");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: T("09:59:59"), startedMs: S0 }).window_rejected, "bad_dispatched_at", "WIN-dispatch-before-window");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: "ontem", startedMs: S0 }).window_rejected, "bad_dispatched_at", "WIN-dispatch-garbage");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: T("10:02:21"), startedMs: S0 }).window_rejected, "bad_dispatched_at", "WIN-dispatch-after-start");
+  const rej = resolveDispatch({ windowId: "lixo", source: "atacante", startedMs: S0 });
+  assert.equal(rej.window_id, null, "WIN-reject-null"); assert.equal(rej.start_window_id, "p18w-20261025T1000Z", "WIN-reject-falls-back"); assert.equal(rej.dispatch_source, null, "WIN-source-allowlist");
+});
+
+test("[IDEM] pedido por janela: 1ª execução sonda; repetição (pedido ou agendador) na mesma janela não sonda nem alerta; id forjado não suprime", async () => {
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+    let clock = 0; const now = () => clock, sleep = async (ms) => { clock += ms; }, pause = async () => {};
+    const disp = (w, at, run) => envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: run, P18_WINDOW_ID: w, P18_DISPATCHED_AT: at, P18_DISPATCH_SOURCE: "cloudflare-cron" });
+    clock = Date.parse(T("10:00:20"));
+    const a = await monitorMain({ env: disp("p18w-20261025T1000Z", T("10:00:01"), "201"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(a.action, "none", "IDEM-first-probes"); assert.equal(a.run.window_id, "p18w-20261025T1000Z", "IDEM-run-window"); assert.equal(a.run.dispatch_to_start_s, 19, "IDEM-dispatch-to-start");
+    const hb1 = readTextNormalized(join(dir, "p18", "heartbeat.json"));
+    assert.equal(JSON.parse(hb1).window_id, "p18w-20261025T1000Z", "IDEM-hb-window"); assert.equal(JSON.parse(hb1).dispatch_to_start_s, 19, "IDEM-hb-d2s");
+    const cf1 = JSON.parse(readTextNormalized(join(dir, "p18", "cf-dispatch.json")));
+    assert.equal(cf1.schema, SCHEMA_CF_DISPATCH, "IDEM-cf-first"); assert.equal(cf1.started_at, T("10:00:20"), "IDEM-cf-first-start"); assert.equal(cf1.duplicate, false, "IDEM-cf-first-dup");
+    const callsAfterFirst = net.calls.length;
+    // Agendador do GitHub no slot :02 da MESMA janela: duplicada.
+    clock = Date.parse(T("10:02:31"));
+    const b = await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "202" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(b.action, "skip", "IDEM-sched-skip"); assert.equal(net.calls.length, callsAfterFirst, "IDEM-no-network");
+    assert.equal(readTextNormalized(join(dir, "p18", "heartbeat.json")), hb1, "IDEM-no-heartbeat");
+    // Mesmo pedido entregue de novo e iniciado tarde (janela do início já é outra): o id pedido já sondado manda.
+    clock = Date.parse(T("10:06:10"));
+    const c = await monitorMain({ env: disp("p18w-20261025T1000Z", T("10:00:01"), "203"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(c.action, "skip", "IDEM-repeat-skip"); assert.equal(c.run.dispatch_to_start_s, 369, "IDEM-late-d2s");
+    assert.equal(JSON.parse(readTextNormalized(join(dir, "p18", "cf-dispatch.json"))).duplicate, true, "IDEM-cf-dup-recorded");
+    // Próxima janela pedida: sonda; o intervalo conta da última execução que SONDOU, não da duplicada.
+    clock = Date.parse(T("10:06:40"));
+    const d = await monitorMain({ env: disp("p18w-20261025T1005Z", T("10:05:02"), "204"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(d.action, "none", "IDEM-next-window-probes"); assert.equal(d.run.prev_gap_s, 380, "IDEM-gap-from-probing-run");
+    // Id forjado para o futuro (10:20 pedido às 10:11): descartado, sonda a janela do início e NÃO suprime a janela 10:20.
+    clock = Date.parse(T("10:11:00"));
+    const e = await monitorMain({ env: disp("p18w-20261025T1020Z", "", "205"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(e.action, "none", "IDEM-forged-still-probes"); assert.equal(e.run.window_rejected, "window_in_future", "IDEM-forged-rejected"); assert.equal(e.run.window_id, null, "IDEM-forged-null");
+    clock = Date.parse(T("10:20:05"));
+    const f = await monitorMain({ env: disp("p18w-20261025T1020Z", T("10:20:01"), "206"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(f.action, "none", "IDEM-forged-no-suppress");
+    const runs = readTextNormalized(join(dir, "p18", "runs-2026-10.jsonl")).trim().split("\n").map((l) => validateRun(JSON.parse(l)));
+    assert.deepEqual(runs.map((r) => r.outcome), ["ok", "duplicate_window", "duplicate_window", "ok", "ok", "ok"], "IDEM-ledger");
+    assert.deepEqual(runs.map((r) => r.run_id), ["201", "202", "203", "204", "205", "206"], "toda execução que iniciou fica registrada");
+    assert.equal(isDuplicateWindow(runs, resolveDispatch({ windowId: "p18w-20261025T1020Z", startedMs: Date.parse(T("10:24:00")) })), true, "IDEM-covered");
+    // Linha adulterada derruba (HISTORY_MALFORMED na próxima execução).
+    assert.throws(() => validateRun({ ...runs[1], probes_at: [T("10:02:31")] }), /run_duplicate_probed/, "IDEM-dup-cannot-probe");
+    assert.throws(() => validateRun({ ...runs[0], dispatch_to_start_s: 1 }), /run_dispatch_mismatch/, "IDEM-d2s-tamper");
+    assert.throws(() => validateRun({ ...runs[0], start_window_id: "p18w-20261025T1005Z" }), /run_window_mismatch/, "IDEM-window-tamper");
+    assert.ok(net.calls.every((c) => c.url.startsWith("https://api.github.com/") || c.method === "GET"), "produção só por GET");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("[WD-CF] vigia do caminho Cloudflare: > 15 min sem início pedido pela Cloudflare alerta só quando esperado; issue própria; fecha quando volta", async () => {
+  const doc = (iso) => ({ schema: SCHEMA_CF_DISPATCH, started_at: iso, run_id: "1", window_id: null, dispatched_at: null, dispatch_to_start_s: null, duplicate: false });
+  const now = Date.parse(T("12:00:00"));
+  assert.equal(CF_DISPATCH_STALE_MIN, 15, "WDCF-15");
+  assert.equal(evaluateCfDispatch(doc(T("11:45:00")), now).state, "FRESH", "WDCF-900");
+  assert.equal(evaluateCfDispatch(doc(T("11:44:59")), now).state, "STALE", "WDCF-901");
+  assert.equal(evaluateCfDispatch(null, now).alert, true, "WDCF-missing");
+  assert.equal(evaluateCfDispatch({ started_at: T("11:59:00") }, now).state, "MALFORMED", "WDCF-malformed");
+  let hbDoc = { schema: SCHEMA_HEARTBEAT, last_success_at: T("11:58:00") }, cfDoc = null; const issues = [];
+  const fetchImpl = async (url, init = {}) => {
+    const u = new URL(String(url));
+    if (u.pathname.endsWith("/contents/p18/heartbeat.json")) return res(hbDoc);
+    if (u.pathname.endsWith("/contents/p18/cf-dispatch.json")) return cfDoc === null ? res({ message: "Not Found" }, 404) : res(cfDoc);
+    if (u.pathname.endsWith("/issues") && !init.method) return res(issues.filter((i) => i.state === "open"));
+    if (u.pathname.endsWith("/issues")) { const i = { number: 60 + issues.length, title: JSON.parse(init.body).title, state: "open" }; issues.push(i); return res(i, 201); }
+    const m = /\/issues\/(\d+)$/.exec(u.pathname);
+    if (m) { const i = issues.find((x) => x.number === Number(m[1])); const b = JSON.parse(init.body); if (b.state) i.state = b.state; return res(i); }
+    if (/\/comments$/.test(u.pathname)) return res({}, 201);
+    return res({}, 404);
+  };
+  const env = { GITHUB_REPOSITORY: "o/r", GITHUB_TOKEN: "fake", GITHUB_RUN_ID: "9" };
+  const w0 = await watchdog({ env, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(w0.cfAction, "none", "WDCF-not-expected"); assert.equal(w0.cfEv.alert, false, "WDCF-not-expected-alert"); assert.equal(issues.length, 0, "WDCF-not-expected-issue");
+  const w1 = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(w1.cfAction, "open", "WDCF-open"); assert.equal(issues[0].title, WATCHDOG_CF_TITLE, "WDCF-title");
+  assert.notEqual(WATCHDOG_CF_TITLE, WATCHDOG_TITLE, "WDCF-distinct"); assert.notEqual(WATCHDOG_CF_TITLE, ALERT_TITLE);
+  assert.equal(w1.action, "none", "batimento do monitor fresco: só o caminho CF acusa");
+  cfDoc = doc(T("11:57:00"));
+  const w2 = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(w2.cfAction, "close", "WDCF-close"); assert.equal(issues[0].state, "closed", "WDCF-closed");
 });

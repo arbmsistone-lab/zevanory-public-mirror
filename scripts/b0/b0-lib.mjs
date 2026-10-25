@@ -21,6 +21,7 @@ export const SCHEMA_PROBE = "zevanory.p18.probe.v1";
 export const SCHEMA_RUN = "zevanory.p18.run.v1";
 export const SCHEMA_INCIDENT = "zevanory.p18.incident.v1";
 export const SCHEMA_HEARTBEAT = "zevanory.p18.heartbeat.v1";
+export const SCHEMA_CF_DISPATCH = "zevanory.p18.cf-dispatch.v1";
 export const SCHEMA_REGISTER = "zevanory.b0.register.v1";
 export const SCHEMA_TARGETS = "zevanory.b0.metas.v1";
 export const SCHEMA_A11Y = "zevanory.b0.p03-a11y.v1";
@@ -43,6 +44,15 @@ export const PROBE_WORST_S = 43;
 export const ALERT_API_WORST_S = 30;
 export const CONFIRM_BUDGET_S = PROBE_WORST_S + CONFIRM_DELAY_MS / 1000 + PROBE_WORST_S + ALERT_API_WORST_S;  // 176
 export const HEARTBEAT_STALE_MIN = 15;       // vigia: última execução bem-sucedida do monitor mais velha que isso = alerta
+// Gatilho externo (AVAL Sol 253/254): o cron do Worker de controle pede workflow_dispatch a cada 5 min com um id de
+// janela p18w-AAAAMMDDTHHMMZ (início da janela de 5 min, alinhada ao minuto 0). O agendador do GitHub continua como
+// caminho extra de melhor esforço e cai na MESMA janela (slot :02 pertence à janela :00). Uma janela já sondada não
+// é sondada de novo (idempotência); o id pedido só vale dentro de [início - 60 min, início + 2 min].
+export const DISPATCH_WINDOW_MIN = 5;
+export const DISPATCH_MAX_AGE_S = 3600;
+export const DISPATCH_MAX_FUTURE_S = 120;
+export const DISPATCH_SOURCES = Object.freeze(["cloudflare-cron", "manual"]);
+export const CF_DISPATCH_STALE_MIN = 15;     // vigia: última execução pedida pela Cloudflare que INICIOU mais velha que isso
 export const MIN_PROBE_COVERAGE = 0.8;      // dia de P18/P22 só é completo com >= 80% das sondagens esperadas
 export const P22_TTL_MIN = 65;              // seção 5, P22: TTL de 65 min
 export const P20_MAX_AGE_H = 26;            // seção 9.1: 24 h + 2 h de tolerância
@@ -93,7 +103,10 @@ const FIELD_VALIDATORS = {
   alert_latency: (v) => isObj(v) && S9_VERDICTS.includes(v.s9_10min) && Array.isArray(v.s9_reasons) && v.s9_reasons.every((r) => typeof r === "string")
     && isInt(v.incidents) && isInt(v.alerts_emitted) && isInt(v.alerts_missing) && v.alerts_emitted + v.alerts_missing === v.incidents
     && ["max_alert_latency_s", "p95_alert_latency_s", "max_upper_bound_latency_s", "max_start_delay_s", "p95_start_delay_s", "max_run_gap_s", "p95_run_gap_s"].every((k) => v[k] === null || isNum(v[k]))
-    && isInt(v.runs) && isInt(v.scheduled_runs) && isNum(v.max_check_gap_s) && isNum(v.capability_bound_s) && v.capability_bound_s === v.max_check_gap_s + CONFIRM_BUDGET_S
+    && isInt(v.runs) && isInt(v.scheduled_runs)
+    && ["dispatched_runs", "duplicate_runs"].every((k) => v[k] === undefined || isInt(v[k]))
+    && ["max_dispatch_to_start_s", "p95_dispatch_to_start_s"].every((k) => v[k] === undefined || v[k] === null || isNum(v[k]))
+    && isNum(v.max_check_gap_s) && isNum(v.capability_bound_s) && v.capability_bound_s === v.max_check_gap_s + CONFIRM_BUDGET_S
     // MET é afirmação forte: só sem motivo pendente, sem alerta faltando, com a pior lacuna + confirmação <= 10 min
     // e com todo incidente dentro do limite. Histórico com MET inconsistente derruba (HISTORY_MALFORMED).
     && (v.s9_10min !== "MET" || (v.s9_reasons.length === 0 && v.alerts_missing === 0 && v.capability_bound_s <= S9_ALERT_LIMIT_S
@@ -153,11 +166,11 @@ export const PROCESSES = Object.freeze({
       "por execução: atraso do início sobre o slot do cron e intervalo desde a execução anterior",
       "veredito diário da seção 9 (MET / NOT_MET / NOT_PROVEN); lacuna entre sondagens + orçamento de confirmação > 10 min = NOT_PROVEN"],
       not_proven: ["instante real da queda: só é limitado ao intervalo (última sondagem boa, 1ª falha observada]",
-        "segundo gatilho independente do agendador do GitHub (seção 11): o vigia p18-monitor-watchdog roda no mesmo agendador; o gatilho na Cloudflare depende de passo do proprietário"] },
+        "segundo gatilho independente do agendador do GitHub (seção 11): o vigia p18-monitor-watchdog roda no mesmo agendador; o gatilho na Cloudflare (workflow_dispatch por janela + leitura do batimento) está no código, mas só conta após token, deploy e ensaios do proprietário"] },
     sources: [
       { id: "p18_external_probe", status: "PRESENT", note: "workflow p18-external-monitor, cron 2-59/5, com re-sondagem de confirmação na mesma execução" },
       { id: "p18_monitor_watchdog", status: "PRESENT", note: "workflow p18-monitor-watchdog: batimento do monitor > 15 min = alerta por canal distinto (issue própria + falha do workflow)" },
-      { id: "independent_secondary_trigger", status: "MISSING", note: "seção 11: gatilho fora do GitHub (cron existente do Worker de controle lendo o batimento) depende de deploy do proprietário" },
+      { id: "independent_secondary_trigger", status: "MISSING", note: "seção 11: gatilho fora do GitHub (cron existente do Worker de controle: workflow_dispatch por janela + leitura do batimento) depende de token, deploy e ensaios do proprietário" },
     ],
   },
   P19: {
@@ -514,22 +527,100 @@ export function schedSlotMs(startedMs) {
   const period = PROBE_CADENCE_MIN * 60000, off = CRON_OFFSET_MIN * 60000;
   return Math.floor((startedMs - off) / period) * period + off;
 }
-export function buildRunRecord({ runId, event, startedMs, prevRun }) {
+export function buildRunRecord({ runId, event, startedMs, prevRun, dispatch = null }) {
   const sched = event === "schedule";
   const slot = schedSlotMs(startedMs);
+  const d = dispatch || resolveDispatch({ startedMs });
   return {
     schema: SCHEMA_RUN, run_id: String(runId || ""), event: String(event || ""), started_at: new Date(startedMs).toISOString(),
     sched_slot_at: sched ? new Date(slot).toISOString() : null, start_delay_s: sched ? Math.round((startedMs - slot) / 1000) : null,
     prev_run_started_at: prevRun ? prevRun.started_at : null, prev_gap_s: prevRun ? Math.round((startedMs - msOf(prevRun.started_at)) / 1000) : null,
+    window_id: d.window_id, start_window_id: d.start_window_id, dispatch_source: d.dispatch_source, dispatched_at: d.dispatched_at,
+    dispatch_to_start_s: d.dispatch_to_start_s, window_rejected: d.window_rejected,
   };
 }
-export const RUN_OUTCOMES = Object.freeze(["ok", "alert_failed"]);
+// duplicate_window: execução que INICIOU (prova de que o pedido chegou ao runner) mas não sondou, porque a janela já
+// tinha sido sondada. Não conta como execução de monitoramento (atraso, intervalo) nem grava batimento.
+export const RUN_OUTCOMES = Object.freeze(["ok", "alert_failed", "duplicate_window"]);
+export const PROBING_OUTCOMES = Object.freeze(["ok", "alert_failed"]);
 export function validateRun(r) {
   if (!isObj(r) || r.schema !== SCHEMA_RUN || !isIso(r.started_at) || typeof r.event !== "string" || typeof r.run_id !== "string") throw new Error("bad_run");
   for (const k of ["start_delay_s", "prev_gap_s"]) if (r[k] !== null && !isNum(r[k])) throw new Error("bad_run_" + k);
   if (r.event === "schedule" && (!isIso(r.sched_slot_at) || r.start_delay_s !== Math.round((msOf(r.started_at) - msOf(r.sched_slot_at)) / 1000))) throw new Error("run_delay_mismatch");
   if (!RUN_OUTCOMES.includes(r.outcome)) throw new Error("bad_run_outcome");
+  // Campos do pedido externo (opcionais em linhas antigas; quando presentes, coerentes entre si).
+  if (r.start_window_id !== undefined && r.start_window_id !== windowIdOf(msOf(r.started_at))) throw new Error("run_window_mismatch");
+  if (r.window_id !== undefined && r.window_id !== null && parseWindowId(r.window_id) === null) throw new Error("bad_run_window_id");
+  if (r.dispatched_at !== undefined && r.dispatched_at !== null) {
+    if (!isIso(r.dispatched_at) || r.dispatch_to_start_s !== Math.round((msOf(r.started_at) - msOf(r.dispatched_at)) / 1000)) throw new Error("run_dispatch_mismatch");
+  } else if (r.dispatch_to_start_s !== undefined && r.dispatch_to_start_s !== null) throw new Error("run_dispatch_mismatch");
+  if (r.dispatch_source !== undefined && r.dispatch_source !== null && !DISPATCH_SOURCES.includes(r.dispatch_source)) throw new Error("bad_run_dispatch_source");
+  if (r.outcome === "duplicate_window" && (r.decision !== "skip" || !Array.isArray(r.probes_at) || r.probes_at.length !== 0)) throw new Error("run_duplicate_probed");
   return r;
+}
+
+// Janela de 5 min (início alinhado ao minuto 0) e id textual p18w-AAAAMMDDTHHMMZ.
+export function windowStartMs(ms) { const p = DISPATCH_WINDOW_MIN * 60000; return Math.floor(ms / p) * p; }
+export function windowIdOf(ms) {
+  const s = new Date(windowStartMs(ms)).toISOString();  // AAAA-MM-DDTHH:MM:00.000Z
+  return "p18w-" + s.slice(0, 4) + s.slice(5, 7) + s.slice(8, 10) + "T" + s.slice(11, 13) + s.slice(14, 16) + "Z";
+}
+export function parseWindowId(id) {
+  const m = typeof id === "string" ? /^p18w-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})Z$/.exec(id) : null;
+  if (!m) return null;
+  const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  if (Number.isNaN(ms) || windowIdOf(ms) !== id || windowStartMs(ms) !== ms) return null;  // data inválida ou fora do alinhamento
+  return ms;
+}
+// Metadados do pedido (inputs do workflow_dispatch). Entrada inválida NUNCA derruba a sondagem: o id pedido é
+// descartado (window_rejected) e a execução cai na janela do próprio início. Assim um id forjado não consegue
+// suprimir a sondagem de uma janela futura (limite de +2 min) nem reabrir uma antiga além de 60 min.
+export function resolveDispatch({ windowId = "", dispatchedAt = "", source = "", startedMs }) {
+  const start_window_id = windowIdOf(startedMs);
+  const src = DISPATCH_SOURCES.includes(source) ? source : null;
+  const out = { window_id: null, start_window_id, dispatch_source: src, dispatched_at: null, dispatch_to_start_s: null, window_rejected: null };
+  if (!windowId && !dispatchedAt) return out;
+  const w = parseWindowId(windowId);
+  if (w === null) return { ...out, window_rejected: "bad_window_id" };
+  if (w > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return { ...out, window_rejected: "window_in_future" };
+  if (w < startedMs - DISPATCH_MAX_AGE_S * 1000) return { ...out, window_rejected: "window_too_old" };
+  out.window_id = windowId;
+  if (dispatchedAt) {
+    const t = isIso(dispatchedAt) ? msOf(dispatchedAt) : NaN;
+    // O pedido sai dentro da própria janela (com folga de 2 min) e nunca depois do início do runner (+ folga de relógio).
+    if (Number.isNaN(t) || t < w || t > w + DISPATCH_WINDOW_MIN * 60000 + DISPATCH_MAX_FUTURE_S * 1000 || t > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return { ...out, window_rejected: "bad_dispatched_at" };
+    out.dispatched_at = new Date(t).toISOString();
+    out.dispatch_to_start_s = Math.round((startedMs - t) / 1000);
+  }
+  return out;
+}
+// Janelas já sondadas: o id pedido e a janela do início de toda execução que sondou.
+export function coveredWindows(runs) {
+  const s = new Set();
+  for (const r of runs) {
+    if (!PROBING_OUTCOMES.includes(r.outcome)) continue;
+    if (r.window_id) s.add(r.window_id);
+    s.add(r.start_window_id || windowIdOf(msOf(r.started_at)));
+  }
+  return s;
+}
+export function isDuplicateWindow(runs, dispatch) {
+  const c = coveredWindows(runs);
+  return (dispatch.window_id !== null && c.has(dispatch.window_id)) || c.has(dispatch.start_window_id);
+}
+// p18/cf-dispatch.json: última execução pedida pela Cloudflare que INICIOU no runner (inclusive duplicada). É o
+// batimento do caminho Cloudflare -> GitHub, lido pelo vigia do lado GitHub.
+export function buildCfDispatch(run) {
+  return { schema: SCHEMA_CF_DISPATCH, run_id: run.run_id, started_at: run.started_at, window_id: run.window_id, dispatched_at: run.dispatched_at,
+    dispatch_to_start_s: run.dispatch_to_start_s, duplicate: run.outcome === "duplicate_window" };
+}
+export function evaluateCfDispatch(doc, nowMs, staleMin = CF_DISPATCH_STALE_MIN) {
+  if (doc === null || doc === undefined) return { state: "MISSING", alert: true, age_s: null, started_at: null };
+  if (!isObj(doc) || doc.schema !== SCHEMA_CF_DISPATCH || !isIso(doc.started_at)) return { state: "MALFORMED", alert: true, age_s: null, started_at: null };
+  const age = Math.round((nowMs - msOf(doc.started_at)) / 1000);
+  if (age < -120) return { state: "FUTURE", alert: true, age_s: age, started_at: doc.started_at };
+  if (age > staleMin * 60) return { state: "STALE", alert: true, age_s: age, started_at: doc.started_at };
+  return { state: "FRESH", alert: false, age_s: age, started_at: doc.started_at };
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -604,7 +695,9 @@ export function decideIncident({ seq, open }) {
 // confirmação (CONFIRM_BUDGET_S) passa de 10 min: uma queda logo após a última sondagem boa não teria alerta a tempo.
 export function aggregateLatency({ probes, runs, incidents, day }) {
   const maxGap = checkGaps(probes, day).max_gap_s;
-  const dayRuns = runs.filter((r) => dayOf(r.started_at) === day);
+  const allDayRuns = runs.filter((r) => dayOf(r.started_at) === day);
+  const dayRuns = allDayRuns.filter((r) => r.outcome !== "duplicate_window");  // duplicadas não sondaram
+  const dispatched = allDayRuns.filter((r) => isNum(r.dispatch_to_start_s)), d2s = dispatched.map((r) => r.dispatch_to_start_s);
   const sched = dayRuns.filter((r) => r.event === "schedule" && isNum(r.start_delay_s));
   const incs = [...currentIncidents(incidents).values()].filter((i) => dayOf(i.confirmed_at) === day);
   const emitted = incs.filter((i) => i.alert_emitted_at);
@@ -625,6 +718,8 @@ export function aggregateLatency({ probes, runs, incidents, day }) {
     incidents: incs.length, alerts_emitted: emitted.length, alerts_missing: incs.length - emitted.length,
     max_alert_latency_s: max(lat), p95_alert_latency_s: percentile(lat, 0.95), max_upper_bound_latency_s: max(ub),
     runs: dayRuns.length, scheduled_runs: sched.length,
+    dispatched_runs: dispatched.length, duplicate_runs: allDayRuns.length - dayRuns.length,
+    max_dispatch_to_start_s: max(d2s), p95_dispatch_to_start_s: percentile(d2s, 0.95),
     max_start_delay_s: max(delays), p95_start_delay_s: percentile(delays, 0.95), max_run_gap_s: max(gaps), p95_run_gap_s: percentile(gaps, 0.95),
     max_check_gap_s: maxGap, capability_bound_s: capability,
   };
@@ -635,7 +730,9 @@ export function aggregateLatency({ probes, runs, incidents, day }) {
 // (sondagem, evidência e alerta) grava o batimento; a publicação no ramo é o que o torna visível ao vigia.
 export function buildHeartbeat({ nowMs, runId, run, cur, open }) {
   return { schema: SCHEMA_HEARTBEAT, last_success_at: new Date(nowMs).toISOString(), run_id: String(runId || ""), run_started_at: run.started_at,
-    last_probe_at: cur.at, up: cur.up, open_incident: open ? open.incident_id : null, stale_after_min: HEARTBEAT_STALE_MIN };
+    last_probe_at: cur.at, up: cur.up, open_incident: open ? open.incident_id : null, stale_after_min: HEARTBEAT_STALE_MIN,
+    event: run.event ?? null, window_id: run.window_id ?? null, start_window_id: run.start_window_id ?? null, dispatch_source: run.dispatch_source ?? null,
+    dispatched_at: run.dispatched_at ?? null, dispatch_to_start_s: run.dispatch_to_start_s ?? null };
 }
 export function evaluateHeartbeat(hb, nowMs, staleMin = HEARTBEAT_STALE_MIN) {
   if (hb === null || hb === undefined) return { state: "MISSING", alert: true, age_s: null, last_success_at: null };
@@ -650,6 +747,14 @@ export function evaluateHeartbeat(hb, nowMs, staleMin = HEARTBEAT_STALE_MIN) {
 // Alertas por issue do GitHub. O monitor e o vigia usam títulos distintos (canais separados).
 export const ALERT_TITLE = "[P18] Vendas fora do ar — monitor externo";
 export const WATCHDOG_TITLE = "[P18-VIGIA] Monitor externo parado — sem batimento";
+export const WATCHDOG_CF_TITLE = "[P18-VIGIA] Gatilho Cloudflare parado — nenhuma execução pedida pela Cloudflare iniciou";
+export function watchdogCfBody(ev, runUrl) {
+  return [`Vigia do P18: a última execução do monitor **pedida pelo cron do Worker de controle (Cloudflare)** que iniciou no runner está ${ev.state === "STALE" ? `há ${Math.round(ev.age_s / 60)} min (limite ${CF_DISPATCH_STALE_MIN} min)` : `indisponível (${ev.state})`}.`,
+    "", `Último início pedido pela Cloudflare: ${ev.started_at ?? "nenhum"}`, "",
+    "Causas possíveis: Cloudflare fora do ar ou cron do Worker parado, token de dispatch expirado/revogado (401/403), limite da API (429) ou fila do GitHub.",
+    "O alerta da Cloudflare (KV + resumo por e-mail) cobre as falhas que o Worker enxerga; este cobre a Cloudflare inteira parada, quando o GitHub roda o vigia.",
+    `Execução do vigia: ${runUrl}`, "", "Fecha sozinho quando uma execução pedida pela Cloudflare voltar a iniciar."].join("\n");
+}
 export function findOpenAlert(issues, title = ALERT_TITLE) {
   return (Array.isArray(issues) ? issues : []).find((i) => isObj(i) && i.title === title && !i.pull_request && i.state !== "closed") || null;
 }

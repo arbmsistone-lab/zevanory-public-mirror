@@ -5,6 +5,12 @@ name: P18 monitor watchdog (read-only)
 # Canal distinto do alerta de vendas: issue própria "[P18-VIGIA]" e o job termina com falha (notificação de falha
 # de workflow agendado do GitHub). Não grava em ramo nenhum, não toca a produção, não usa segredo além do GITHUB_TOKEN.
 # Limite: mesmo agendador do GitHub que o monitor; o gatilho independente fora do GitHub é passo do proprietário (PR).
+#
+# AVAL Sol 253/254: o vigia também lê p18/cf-dispatch.json (última execução pedida pelo cron da Cloudflare que
+# INICIOU no runner). Com a variável de repositório P18_CF_DISPATCH_EXPECTED=true (passo do proprietário, só depois
+# do deploy do Worker de controle com o token), > 15 min sem início pedido pela Cloudflare abre a issue própria
+# "[P18-VIGIA] Gatilho Cloudflare parado" e falha o job. É assim que uma Cloudflare inteira parada é detectada,
+# quando o GitHub roda o vigia; a Cloudflare, por sua vez, lê o batimento do monitor (os dois caminhos se cobrem).
 on:
   schedule:
     - cron: '4,14,24,34,44,54 * * * *'
@@ -38,4 +44,5 @@ jobs:
       - name: Conferir o batimento do monitor P18 (falha o job quando velho > 15 min)
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          P18_CF_DISPATCH_EXPECTED: ${{ vars.P18_CF_DISPATCH_EXPECTED }}
         run: node scripts/b0/p18-watchdog.mjs
