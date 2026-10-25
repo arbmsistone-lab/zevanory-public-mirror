@@ -9,7 +9,7 @@
       "identity": {
         "principal": "ZEVANORY",
         "impersonates": [],
-        "credential": "x-backup-token (CERTIFICATION_E2E_TOKEN, ZEVANORY-issued)"
+        "credential": "x-backup-token (ZEVANORY_OPERATOR_TOKEN, ZEVANORY-issued; R9 #912 transition falls back to CERTIFICATION_E2E_TOKEN)"
       },
       "purpose": "Daily backup of critical KV keys and public Neon tables into ZEVANORY-owned backup copies, plus an integrity drill, triggered by data-backup.yml.",
       "least_privilege": "Endpoint accepts only POST with the backup token, returns counts and hashes only (never data), parts bounded to 1..6; no other route is reachable with this call.",
@@ -92,7 +92,7 @@
       "identity": {
         "principal": "ZEVANORY",
         "impersonates": [],
-        "credential": "x-backup-token (CERTIFICATION_E2E_TOKEN, ZEVANORY-issued)"
+        "credential": "x-backup-token (ZEVANORY_OPERATOR_TOKEN, ZEVANORY-issued; R9 #912 transition falls back to CERTIFICATION_E2E_TOKEN)"
       },
       "purpose": "Weekly internal monitoring of the voice pipeline (transcription, answer quality, synthesis) inside the production Worker; scores only.",
       "least_privilege": "POST plus backup token only; the handler runs a fixed in-memory sample set, delivers nothing to any customer channel and stores one report key.",
@@ -130,13 +130,13 @@
     },
     {
       "file": ".github/workflows/command-center-snapshot.yml",
-      "line_pattern": "-X POST -H \"x-backup-token: \\$CERTIFICATION_E2E_TOKEN\" --max-time 120 https://zevanory\\.api\\.br/api/internal/funnel/run ",
+      "line_pattern": "-X POST -H \"x-backup-token: \\$ZEVANORY_OPERATOR_TOKEN\" --max-time 120 https://zevanory\\.api\\.br/api/internal/funnel/run ",
       "endpoint": "/api/internal/funnel/run",
       "method": "POST",
       "identity": {
         "principal": "ZEVANORY",
         "impersonates": [],
-        "credential": "x-backup-token (CERTIFICATION_E2E_TOKEN, ZEVANORY-issued)"
+        "credential": "x-backup-token (ZEVANORY_OPERATOR_TOKEN, ZEVANORY-issued; R9 #912 transition falls back to CERTIFICATION_E2E_TOKEN)"
       },
       "purpose": "Hourly consolidation of funnel aggregates for the Command Center snapshot, in its own Worker invocation.",
       "least_privilege": "POST plus backup token only; reads the sales switch without changing it and writes only the aggregate summary and a heartbeat key.",
