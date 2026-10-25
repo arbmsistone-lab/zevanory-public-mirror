@@ -18,6 +18,9 @@
 export const NA = "NOT_AVAILABLE";
 export const SCHEMA_DAY = "zevanory.b0.baseline.v1";
 export const SCHEMA_PROBE = "zevanory.p18.probe.v1";
+export const SCHEMA_RUN = "zevanory.p18.run.v1";
+export const SCHEMA_INCIDENT = "zevanory.p18.incident.v1";
+export const SCHEMA_HEARTBEAT = "zevanory.p18.heartbeat.v1";
 export const SCHEMA_REGISTER = "zevanory.b0.register.v1";
 export const SCHEMA_TARGETS = "zevanory.b0.metas.v1";
 export const SCHEMA_A11Y = "zevanory.b0.p03-a11y.v1";
@@ -26,7 +29,20 @@ export const STATES = Object.freeze(["NAO_INICIADA", "MEDICAO_ATIVA", "B0_VALIDA
 export const B0_DAYS = 14;
 export const OP_DAYS = 14;
 export const OP_EXECUTIONS = 30;
-export const PROBE_CADENCE_MIN = 10;
+export const PROBE_CADENCE_MIN = 5;          // cron '2-59/5 * * * *' (Sol 246.09: era 10 min)
+export const CRON_OFFSET_MIN = 2;            // minuto do primeiro slot da hora (foge do pico do minuto 0)
+// Confirmação dentro da MESMA execução (Sol 246.09): 2 sondagens seguidas com falha, a segunda >= 60 s depois
+// da primeira. Cada sondagem já tem uma nova tentativa por alvo após 3 s; a proteção contra falso positivo é
+// mantida (duas observações independentes separadas por >= 60 s), sem esperar o próximo cron.
+export const CONFIRM_DELAY_MS = 60000;
+export const MIN_CONFIRM_SPACING_S = 60;
+export const S9_ALERT_LIMIT_S = 600;         // seção 9, N2: "monitor externo alerta em até 10 min"
+// Pior caso, em segundos, entre o início da 1ª sondagem que vê a queda e a issue criada: sondagem (20 s de
+// timeout + 3 s + 20 s) + espera de confirmação (60 s) + 2ª sondagem (43 s) + API de issues (2 x 15 s).
+export const PROBE_WORST_S = 43;
+export const ALERT_API_WORST_S = 30;
+export const CONFIRM_BUDGET_S = PROBE_WORST_S + CONFIRM_DELAY_MS / 1000 + PROBE_WORST_S + ALERT_API_WORST_S;  // 176
+export const HEARTBEAT_STALE_MIN = 15;       // vigia: última execução bem-sucedida do monitor mais velha que isso = alerta
 export const MIN_PROBE_COVERAGE = 0.8;      // dia de P18/P22 só é completo com >= 80% das sondagens esperadas
 export const P22_TTL_MIN = 65;              // seção 5, P22: TTL de 65 min
 export const P20_MAX_AGE_H = 26;            // seção 9.1: 24 h + 2 h de tolerância
@@ -49,6 +65,7 @@ export const STATUS_URL = "https://zevanory.api.br/api/status";
 export const SITEMAPS = Object.freeze(["https://zevanory.api.br/sitemap.xml", "https://vendas.zevanory.api.br/sitemap.xml"]);
 export const FORBIDDEN_PATH = /\/(comprar|checkout|api\/checkout|assinar|hotmart)(\/|$)/i;
 
+export const S9_VERDICTS = Object.freeze(["MET", "NOT_MET", "NOT_PROVEN"]);
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const isInt = (v) => Number.isInteger(v) && v >= 0;
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -73,6 +90,15 @@ const FIELD_VALIDATORS = {
   funnel_interest: (v) => isObj(v) && isInt(v.intents_total) && isInt(v.checkouts7) && isInt(v.leads7),
   sales_availability: (v) => isObj(v) && isInt(v.probes) && isInt(v.expected) && isInt(v.up) && isInt(v.down) && v.up + v.down === v.probes
     && isNum(v.coverage) && v.coverage >= MIN_PROBE_COVERAGE && isNum(v.availability) && v.availability >= 0 && v.availability <= 1 && isNum(v.max_gap_min),
+  alert_latency: (v) => isObj(v) && S9_VERDICTS.includes(v.s9_10min) && Array.isArray(v.s9_reasons) && v.s9_reasons.every((r) => typeof r === "string")
+    && isInt(v.incidents) && isInt(v.alerts_emitted) && isInt(v.alerts_missing) && v.alerts_emitted + v.alerts_missing === v.incidents
+    && ["max_alert_latency_s", "p95_alert_latency_s", "max_upper_bound_latency_s", "max_start_delay_s", "p95_start_delay_s", "max_run_gap_s", "p95_run_gap_s"].every((k) => v[k] === null || isNum(v[k]))
+    && isInt(v.runs) && isInt(v.scheduled_runs) && isNum(v.max_check_gap_s) && isNum(v.capability_bound_s) && v.capability_bound_s === v.max_check_gap_s + CONFIRM_BUDGET_S
+    // MET é afirmação forte: só sem motivo pendente, sem alerta faltando, com a pior lacuna + confirmação <= 10 min
+    // e com todo incidente dentro do limite. Histórico com MET inconsistente derruba (HISTORY_MALFORMED).
+    && (v.s9_10min !== "MET" || (v.s9_reasons.length === 0 && v.alerts_missing === 0 && v.capability_bound_s <= S9_ALERT_LIMIT_S
+      && (v.max_upper_bound_latency_s === null || v.max_upper_bound_latency_s <= S9_ALERT_LIMIT_S)))
+    && (v.s9_10min === "MET" || v.s9_reasons.length > 0),
   kv_quota: (v) => isObj(v) && v.verified === true && isDay(v.day) && isInt(v.writes) && isInt(v.reads) && isInt(v.limit) && v.limit > 0 && isNum(v.pct) && isIso(v.snapshot_at),
   backup_restore_sample: (v) => isObj(v) && isIso(v.run_created_at) && ["success", "failure", "cancelled", "timed_out"].includes(v.run_conclusion)
     && typeof v.ok === "boolean" && isInt(v.neon_tables) && isInt(v.neon_restored_ok) && typeof v.kv_sample_ok === "boolean" && isInt(v.failures) && isNum(v.age_hours_at_collection),
@@ -121,10 +147,18 @@ export const PROCESSES = Object.freeze({
   },
   P18: {
     name: "Monitoramento", risk: "R1", label: "OPERACIONAL", frequency: "frequente",
-    fields: ["sales_availability"],
-    scope: { measured: ["disponibilidade das páginas de venda e de /api/status medida de fora da Cloudflare", "maior intervalo entre sondagens (mede o 'alerta em até 10 min')"],
-      not_proven: ["segundo gatilho independente do cron do GitHub (seção 11): não existe; atrasos e descartes do agendador ficam medidos em max_gap_min"] },
-    sources: [{ id: "p18_external_probe", status: "PRESENT", note: "workflow p18-external-monitor, a cada 10 min" }],
+    fields: ["sales_availability", "alert_latency"],
+    scope: { measured: ["disponibilidade das páginas de venda e de /api/status medida de fora da Cloudflare",
+      "por incidente: última sondagem boa, 1ª falha observada, confirmação, emissão do alerta, recuperação e latências (seção 9 auditada, não presumida)",
+      "por execução: atraso do início sobre o slot do cron e intervalo desde a execução anterior",
+      "veredito diário da seção 9 (MET / NOT_MET / NOT_PROVEN); lacuna entre sondagens + orçamento de confirmação > 10 min = NOT_PROVEN"],
+      not_proven: ["instante real da queda: só é limitado ao intervalo (última sondagem boa, 1ª falha observada]",
+        "segundo gatilho independente do agendador do GitHub (seção 11): o vigia p18-monitor-watchdog roda no mesmo agendador; o gatilho na Cloudflare depende de passo do proprietário"] },
+    sources: [
+      { id: "p18_external_probe", status: "PRESENT", note: "workflow p18-external-monitor, cron 2-59/5, com re-sondagem de confirmação na mesma execução" },
+      { id: "p18_monitor_watchdog", status: "PRESENT", note: "workflow p18-monitor-watchdog: batimento do monitor > 15 min = alerta por canal distinto (issue própria + falha do workflow)" },
+      { id: "independent_secondary_trigger", status: "MISSING", note: "seção 11: gatilho fora do GitHub (cron existente do Worker de controle lendo o batimento) depende de deploy do proprietário" },
+    ],
   },
   P19: {
     name: "Capacidade", risk: "R3", label: "OPERACIONAL", frequency: "frequente",
@@ -201,11 +235,13 @@ export function validateDailyRecord(r) {
   return r;
 }
 
+export const PROBE_KINDS = Object.freeze(["scheduled", "confirm"]);
 export function validateProbe(p) {
   if (!isObj(p) || p.schema !== SCHEMA_PROBE || !isIso(p.at) || typeof p.up !== "boolean" || !Array.isArray(p.targets) || p.targets.length === 0) throw new Error("bad_probe");
   for (const t of p.targets) if (!isObj(t) || typeof t.id !== "string" || typeof t.ok !== "boolean" || !isInt(t.status)) throw new Error("bad_probe_target");
   if (p.up !== p.targets.every((t) => t.ok)) throw new Error("probe_up_mismatch");
   if (!isObj(p.p22) || typeof p.p22.readable !== "boolean") throw new Error("bad_probe_p22");
+  if (p.kind !== undefined && !PROBE_KINDS.includes(p.kind)) throw new Error("bad_probe_kind");
   return p;
 }
 
@@ -420,17 +456,43 @@ export function parseA11y(doc) {
   return { ok: true, v: { tool: doc.tool, standard: "WCAG2AA", pages, total_errors: pages.reduce((s, p) => s + p.errors, 0) } };
 }
 
-// Agrega as sondagens do P18 de um dia UTC em disponibilidade (P18) e validade da prova (P22).
-export function aggregateProbes(probes, day) {
+
+// ---------------------------------------------------------------------------------------------------------
+// Tempo: utilitários de latência (segundos inteiros) e percentil por posto mais próximo.
+const msOf = (iso) => Date.parse(iso);
+export const secsBetween = (a, b) => Math.round((msOf(b) - msOf(a)) / 1000);
+export function percentile(xs, q) {
+  const v = xs.filter(isNum).sort((a, b) => a - b);
+  if (!v.length) return null;
+  return v[Math.min(v.length - 1, Math.max(0, Math.ceil(q * v.length) - 1))];
+}
+const byAt = (a, b) => msOf(a.at) - msOf(b.at);
+
+// Maior intervalo entre verificações (sondagens agendadas E de confirmação) no dia UTC. Usa a última sondagem antes
+// da meia-noite e a primeira depois do fim do dia quando existem; sem vizinha, a borda do dia conta como verificação
+// (conservador para o primeiro dia de histórico).
+export function checkGaps(probes, day) {
   const from = Date.parse(day + "T00:00:00Z"), to = from + 86400000;
-  const ps = probes.filter((p) => { const t = Date.parse(p.at); return t >= from && t < to; }).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const all = [...probes].sort(byAt);
+  const inDay = all.filter((p) => { const t = msOf(p.at); return t >= from && t < to; });
+  const before = all.filter((p) => msOf(p.at) < from).at(-1);
+  const after = all.find((p) => msOf(p.at) >= to);
+  const times = [before ? msOf(before.at) : from, ...inDay.map((p) => msOf(p.at)), after ? msOf(after.at) : to];
+  let max = 0;
+  for (let i = 1; i < times.length; i++) max = Math.max(max, (times[i] - times[i - 1]) / 1000);
+  return { in_day: inDay, max_gap_s: Math.round(max) };
+}
+
+// Agrega as sondagens do P18 de um dia UTC em disponibilidade (P18) e validade da prova (P22). Cobertura e
+// disponibilidade contam só as sondagens agendadas (a re-sondagem de confirmação não infla nem derruba a taxa);
+// o maior intervalo conta todas as verificações.
+export function aggregateProbes(probes, day) {
+  const g = checkGaps(probes, day);
+  const ps = g.in_day.filter((p) => p.kind !== "confirm");
   const expected = Math.round(1440 / PROBE_CADENCE_MIN);
   const coverage = Math.round(Math.min(ps.length, expected) / expected * 1000) / 1000;
-  const times = [from, ...ps.map((p) => Date.parse(p.at)), to];
-  let maxGap = 0;
-  for (let i = 1; i < times.length; i++) maxGap = Math.max(maxGap, (times[i] - times[i - 1]) / 60000);
   const up = ps.filter((p) => p.up).length;
-  const p18 = { probes: ps.length, expected, coverage, up, down: ps.length - up, availability: ps.length ? Math.round(up / ps.length * 10000) / 10000 : 0, max_gap_min: Math.round(maxGap * 10) / 10 };
+  const p18 = { probes: ps.length, expected, coverage, up, down: ps.length - up, availability: ps.length ? Math.round(up / ps.length * 10000) / 10000 : 0, max_gap_min: Math.round(g.max_gap_s / 6) / 10 };
   const reasons = {};
   let valid = 0, invalid = 0, unreadable = 0, violations = 0;
   for (const p of ps) {
@@ -445,18 +507,161 @@ export function aggregateProbes(probes, day) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Monitor P18: alerta por issue do GitHub após 2 sondagens seguidas com falha; fecha na recuperação.
+// Execuções do monitor: atraso do início sobre o slot do cron e intervalo desde a execução anterior.
+// O slot é o último instante do cron '2-59/5' <= início. Atraso >= 5 min fica ambíguo por construção (cai no slot
+// seguinte); por isso o intervalo entre execuções (prev_gap_s) é gravado junto e é ele que mostra descartes.
+export function schedSlotMs(startedMs) {
+  const period = PROBE_CADENCE_MIN * 60000, off = CRON_OFFSET_MIN * 60000;
+  return Math.floor((startedMs - off) / period) * period + off;
+}
+export function buildRunRecord({ runId, event, startedMs, prevRun }) {
+  const sched = event === "schedule";
+  const slot = schedSlotMs(startedMs);
+  return {
+    schema: SCHEMA_RUN, run_id: String(runId || ""), event: String(event || ""), started_at: new Date(startedMs).toISOString(),
+    sched_slot_at: sched ? new Date(slot).toISOString() : null, start_delay_s: sched ? Math.round((startedMs - slot) / 1000) : null,
+    prev_run_started_at: prevRun ? prevRun.started_at : null, prev_gap_s: prevRun ? Math.round((startedMs - msOf(prevRun.started_at)) / 1000) : null,
+  };
+}
+export const RUN_OUTCOMES = Object.freeze(["ok", "alert_failed"]);
+export function validateRun(r) {
+  if (!isObj(r) || r.schema !== SCHEMA_RUN || !isIso(r.started_at) || typeof r.event !== "string" || typeof r.run_id !== "string") throw new Error("bad_run");
+  for (const k of ["start_delay_s", "prev_gap_s"]) if (r[k] !== null && !isNum(r[k])) throw new Error("bad_run_" + k);
+  if (r.event === "schedule" && (!isIso(r.sched_slot_at) || r.start_delay_s !== Math.round((msOf(r.started_at) - msOf(r.sched_slot_at)) / 1000))) throw new Error("run_delay_mismatch");
+  if (!RUN_OUTCOMES.includes(r.outcome)) throw new Error("bad_run_outcome");
+  return r;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Incidentes (seção 9 auditada). O instante real da queda não é observável: fica limitado ao intervalo
+// (last_ok_observed_at, first_failure_observed_at]. Por isso gravamos:
+//   detection_seconds            = confirmed_at - first_failure_observed_at
+//   latency_seconds              = alert_emitted_at - first_failure_observed_at   (medido, limite inferior)
+//   upper_bound_latency_seconds  = alert_emitted_at - last_ok_observed_at         (limite superior da queda real ao alerta)
+// s9: alerta não emitido ou latency > 600 s = NOT_MET (a queda é certamente anterior à 1ª falha observada);
+//     sem última sondagem boa conhecida ou limite superior > 600 s = NOT_PROVEN; senão MET.
+export function incidentMetrics(inc) {
+  const emitted = inc.alert_emitted_at ?? null, lastOk = inc.last_ok_observed_at ?? null;
+  const detection = secsBetween(inc.first_failure_observed_at, inc.confirmed_at);
+  const latency = emitted ? secsBetween(inc.first_failure_observed_at, emitted) : null;
+  const upper = emitted && lastOk ? secsBetween(lastOk, emitted) : null;
+  let s9;
+  if (latency === null || latency > S9_ALERT_LIMIT_S) s9 = "NOT_MET";
+  else if (upper === null || upper > S9_ALERT_LIMIT_S) s9 = "NOT_PROVEN";
+  else s9 = "MET";
+  return { detection_seconds: detection, latency_seconds: latency, upper_bound_latency_seconds: upper, s9 };
+}
+export function finalizeIncident(inc, { alertEmittedAt = null, alertIssue = null, alertError = null } = {}) {
+  const out = { ...inc, alert_emitted_at: alertEmittedAt, alert_issue: alertIssue, alert_error: alertError ? String(alertError).slice(0, 80) : null };
+  return { ...out, ...incidentMetrics(out) };
+}
+export function withRecovery(inc, atIso) {
+  return { ...inc, recovered_at: atIso, outage_observed_seconds: secsBetween(inc.first_failure_observed_at, atIso) };
+}
+export function validateIncident(x) {
+  const isoOrNull = (v) => v === null || isIso(v);
+  if (!isObj(x) || x.schema !== SCHEMA_INCIDENT || typeof x.incident_id !== "string" || !isIso(x.first_failure_observed_at) || !isIso(x.confirmed_at)
+    || !isoOrNull(x.last_ok_observed_at) || !isoOrNull(x.alert_emitted_at) || !isoOrNull(x.recovered_at ?? null)) throw new Error("bad_incident");
+  const t = (k) => (x[k] ? msOf(x[k]) : null);
+  if ((t("last_ok_observed_at") !== null && t("last_ok_observed_at") >= t("first_failure_observed_at")) || t("confirmed_at") < t("first_failure_observed_at")
+    || (t("alert_emitted_at") !== null && t("alert_emitted_at") < t("confirmed_at")) || (t("recovered_at") !== null && t("recovered_at") < t("confirmed_at"))) throw new Error("incident_time_order");
+  const m = incidentMetrics(x);
+  for (const k of Object.keys(m)) if (x[k] !== m[k]) throw new Error("incident_metrics_mismatch " + k);
+  return x;
+}
+export function currentIncidents(lines) {
+  const m = new Map();
+  for (const l of lines) m.set(l.incident_id, l);  // append-only: a última linha de cada incidente vale
+  return m;
+}
+export function openIncident(lines) {
+  return [...currentIncidents(lines).values()].filter((i) => !i.recovered_at).at(-1) || null;
+}
+
+// Decisão sobre a sequência de sondagens (histórico + desta execução). "pending" = 1ª falha ainda não confirmada:
+// o monitor re-sonda na MESMA execução após CONFIRM_DELAY_MS. Confirmação = >= 2 sondagens seguidas com falha, a
+// última >= MIN_CONFIRM_SPACING_S depois da primeira (dentro da execução ou entre execuções).
+export function decideIncident({ seq, open }) {
+  const ps = [...seq].sort(byAt), cur = ps.at(-1);
+  if (!cur) throw new Error("no_probe");
+  if (cur.up) return open ? { action: "recover", incident: withRecovery(open, cur.at) } : { action: "none" };
+  if (open) return { action: open.alert_emitted_at ? "update" : "alert_retry" };
+  let k = ps.length - 1;
+  while (k >= 0 && !ps[k].up) k -= 1;
+  const streak = ps.slice(k + 1), first = streak[0];
+  if (streak.length >= 2 && secsBetween(first.at, cur.at) >= MIN_CONFIRM_SPACING_S) {
+    return { action: "confirm", incident: {
+      schema: SCHEMA_INCIDENT, incident_id: "p18-" + first.at, last_ok_observed_at: k >= 0 ? ps[k].at : null,
+      first_failure_observed_at: first.at, confirmed_at: cur.at, confirmed_by: cur.kind === "confirm" ? "in_run_reprobe" : "cross_run",
+      down_targets: cur.targets.filter((t) => !t.ok).map((t) => t.id + ":" + t.status), recovered_at: null,
+    } };
+  }
+  return { action: "pending", first_failure_observed_at: first.at };
+}
+
+// Campo diário P18 alert_latency: latências dos incidentes confirmados no dia, atraso do agendador e veredito da
+// seção 9. NOT_PROVEN quando a maior lacuna entre verificações passa de 10 min, ou quando lacuna + orçamento de
+// confirmação (CONFIRM_BUDGET_S) passa de 10 min: uma queda logo após a última sondagem boa não teria alerta a tempo.
+export function aggregateLatency({ probes, runs, incidents, day }) {
+  const maxGap = checkGaps(probes, day).max_gap_s;
+  const dayRuns = runs.filter((r) => dayOf(r.started_at) === day);
+  const sched = dayRuns.filter((r) => r.event === "schedule" && isNum(r.start_delay_s));
+  const incs = [...currentIncidents(incidents).values()].filter((i) => dayOf(i.confirmed_at) === day);
+  const emitted = incs.filter((i) => i.alert_emitted_at);
+  const lat = emitted.map((i) => i.latency_seconds), ub = emitted.map((i) => i.upper_bound_latency_seconds).filter(isNum);
+  const delays = sched.map((r) => r.start_delay_s), gaps = dayRuns.map((r) => r.prev_gap_s).filter(isNum);
+  const capability = maxGap + CONFIRM_BUDGET_S;
+  const reasons = [];
+  let notMet = false;
+  if (maxGap > S9_ALERT_LIMIT_S) reasons.push(`check_gap_over_10min max=${maxGap}s`);
+  else if (capability > S9_ALERT_LIMIT_S) reasons.push(`gap_plus_confirmation_over_10min ${maxGap}s+${CONFIRM_BUDGET_S}s`);
+  for (const i of incs) {
+    if (i.s9 === "NOT_MET") { notMet = true; reasons.push(`incident_not_met ${i.incident_id} ${i.alert_emitted_at ? "latency=" + i.latency_seconds + "s" : "alert_not_emitted"}`); }
+    else if (i.s9 === "NOT_PROVEN") reasons.push(`incident_not_proven ${i.incident_id} upper_bound=${i.upper_bound_latency_seconds ?? "unknown"}`);
+  }
+  const max = (xs) => (xs.length ? Math.max(...xs) : null);
+  return {
+    s9_10min: notMet ? "NOT_MET" : reasons.length ? "NOT_PROVEN" : "MET", s9_reasons: reasons,
+    incidents: incs.length, alerts_emitted: emitted.length, alerts_missing: incs.length - emitted.length,
+    max_alert_latency_s: max(lat), p95_alert_latency_s: percentile(lat, 0.95), max_upper_bound_latency_s: max(ub),
+    runs: dayRuns.length, scheduled_runs: sched.length,
+    max_start_delay_s: max(delays), p95_start_delay_s: percentile(delays, 0.95), max_run_gap_s: max(gaps), p95_run_gap_s: percentile(gaps, 0.95),
+    max_check_gap_s: maxGap, capability_bound_s: capability,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Batimento do monitor (p18/heartbeat.json no ramo de evidência) e vigia. Só a execução que terminou inteira
+// (sondagem, evidência e alerta) grava o batimento; a publicação no ramo é o que o torna visível ao vigia.
+export function buildHeartbeat({ nowMs, runId, run, cur, open }) {
+  return { schema: SCHEMA_HEARTBEAT, last_success_at: new Date(nowMs).toISOString(), run_id: String(runId || ""), run_started_at: run.started_at,
+    last_probe_at: cur.at, up: cur.up, open_incident: open ? open.incident_id : null, stale_after_min: HEARTBEAT_STALE_MIN };
+}
+export function evaluateHeartbeat(hb, nowMs, staleMin = HEARTBEAT_STALE_MIN) {
+  if (hb === null || hb === undefined) return { state: "MISSING", alert: true, age_s: null, last_success_at: null };
+  if (!isObj(hb) || hb.schema !== SCHEMA_HEARTBEAT || !isIso(hb.last_success_at)) return { state: "MALFORMED", alert: true, age_s: null, last_success_at: null };
+  const age = Math.round((nowMs - msOf(hb.last_success_at)) / 1000);
+  if (age < -120) return { state: "FUTURE", alert: true, age_s: age, last_success_at: hb.last_success_at };
+  if (age > staleMin * 60) return { state: "STALE", alert: true, age_s: age, last_success_at: hb.last_success_at };
+  return { state: "FRESH", alert: false, age_s: age, last_success_at: hb.last_success_at };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Alertas por issue do GitHub. O monitor e o vigia usam títulos distintos (canais separados).
 export const ALERT_TITLE = "[P18] Vendas fora do ar — monitor externo";
-export function decideAlert(prev, cur, openIssue) {
-  if (cur.up) return openIssue ? { action: "close", number: openIssue.number } : { action: "none" };
-  if (prev && prev.up === false) return openIssue ? { action: "update", number: openIssue.number } : { action: "open" };
-  return { action: "none" };  // primeira falha: ainda não alerta (exige 2 consecutivas)
+export const WATCHDOG_TITLE = "[P18-VIGIA] Monitor externo parado — sem batimento";
+export function findOpenAlert(issues, title = ALERT_TITLE) {
+  return (Array.isArray(issues) ? issues : []).find((i) => isObj(i) && i.title === title && !i.pull_request && i.state !== "closed") || null;
 }
-export function findOpenAlert(issues) {
-  return (Array.isArray(issues) ? issues : []).find((i) => isObj(i) && i.title === ALERT_TITLE && !i.pull_request && i.state !== "closed") || null;
-}
-export function alertBody(cur, runUrl) {
+export function alertBody(cur, runUrl, inc = null) {
   const down = cur.targets.filter((t) => !t.ok).map((t) => `- \`${t.id}\`: HTTP ${t.status}${t.error ? " (" + t.error + ")" : ""}`);
-  return [`Monitor externo P18 (fora da Cloudflare): **2 ou mais sondagens seguidas com falha**.`, "", `Última sondagem: ${cur.at}`, "", ...down, "", `Execução: ${runUrl}`, "",
+  const times = inc ? ["", `Última sondagem boa: ${inc.last_ok_observed_at ?? "desconhecida"}`, `1ª falha observada: ${inc.first_failure_observed_at}`, `Confirmada: ${inc.confirmed_at} (${inc.confirmed_by})`] : [];
+  return [`Monitor externo P18 (fora da Cloudflare): **2 sondagens seguidas com falha, a 2ª >= ${MIN_CONFIRM_SPACING_S} s depois da 1ª**.`, ...times, "", `Última sondagem: ${cur.at}`, "", ...down, "", `Execução: ${runUrl}`, "",
     "Fecha sozinho quando uma sondagem passar. Somente leitura (GET); nenhuma chamada de checkout ou pagamento. Sem dados pessoais."].join("\n");
+}
+export function watchdogBody(ev, runUrl) {
+  return [`Vigia do P18: a última execução **bem-sucedida** do monitor externo está ${ev.state === "STALE" ? `há ${Math.round(ev.age_s / 60)} min (limite ${HEARTBEAT_STALE_MIN} min)` : `indisponível (${ev.state})`}.`,
+    "", `Último batimento: ${ev.last_success_at ?? "nenhum"}`, "",
+    "Enquanto isso, a seção 9 (alerta em até 10 min) fica NOT_PROVEN: o monitor pode estar atrasado pelo agendador do GitHub, desativado ou falhando.",
+    `Execução do vigia: ${runUrl}`, "", "Fecha sozinho quando o batimento voltar a ficar fresco."].join("\n");
 }
