@@ -187,6 +187,9 @@ async function pagesCheck() {
     report.config_excludes = expectedPaths;
     for (const rel of files) {
       if (rel === "robots.txt") { const t = readFileSync(join(PAGES_SITE, rel), "utf8"); if (!/^User-agent: \*$/m.test(t) || /sitemap/i.test(t)) report.problems.push({ file: "_site/" + rel, problem: "robots.txt content" }); continue; }
+      // GitHub Pages always adds its default theme's stylesheet (jekyll-theme-primer via ThemeAssetsReader);
+      // it is GitHub's generic CSS, not repository content (the repo has no assets/css/), and no stub links it.
+      if (rel === "assets/css/style.css") { report.theme_asset = rel; continue; }
       if (!rel.endsWith(".html")) { report.problems.push({ file: "_site/" + rel, problem: "published non-HTML file (source tree leaked)" }); continue; }
       for (const problem of stubProblems(readFileSync(join(PAGES_SITE, rel), "utf8"))) report.problems.push({ file: "_site/" + rel, problem });
     }

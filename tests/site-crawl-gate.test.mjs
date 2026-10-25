@@ -3,7 +3,9 @@
 // noindex redirect to the sales host with matching canonical/refresh/link and no assets, prices or contato@.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { requireTool } from "./helpers/toolchain.mjs";
 import { spawnSync } from "node:child_process";
 import { jargonHits, visibleText, stubProblems } from "../scripts/ci/site_crawl_gate.mjs";
 
@@ -35,21 +37,23 @@ test("a compliant stub passes; each defect is caught", () => {
 });
 
 test("committed Pages layer: generator output is current and every stub is compliant", () => {
-  const r = spawnSync("python3", ["-B", "scripts/build_pages_mirror.py", "--check"], { cwd: ROOT, encoding: "utf8" });
+  const PYTHON = process.platform === "win32" ? "python" : "python3";
+  requireTool(PYTHON);
+  const r = spawnSync(PYTHON, ["-B", "scripts/build_pages_mirror.py", "--check"], { cwd: ROOT, encoding: "utf8", windowsHide: true });
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const dir = new URL("../pages-mirror/", import.meta.url);
   const files = readdirSync(dir);
   assert.ok(files.includes("index.html") && files.includes("404.html") && files.includes("quem-criou.html") && files.includes("robots.txt"));
   for (const f of files.filter((n) => n.endsWith(".html"))) {
-    const text = readFileSync(new URL(f, dir), "utf8");
+    const text = readTextNormalized(new URL(f, dir));
     assert.match(text, /^---\npermalink: \/[^\n]*\nlayout: null\n---\n<!doctype html>/, f + ": Jekyll front matter (permalink) then the stub");
     assert.deepEqual(stubProblems(text), [], f);
     assert.doesNotMatch(text, /\{\{|\{%/, f + ": no Liquid syntax");
   }
-  const robots = readFileSync(new URL("robots.txt", dir), "utf8");
+  const robots = readTextNormalized(new URL("robots.txt", dir));
   assert.match(robots, /^User-agent: \*\nAllow: \/$/m);
   assert.doesNotMatch(robots, /sitemap/i);
-  const config = readFileSync(new URL("../_config.yml", import.meta.url), "utf8");
+  const config = readTextNormalized(new URL("../_config.yml", import.meta.url));
   for (const top of ["index.html", "quem-criou", "lucro-e-caixa", "sales-public", "docs", "sitemap.xml", "robots.txt", "product.css"]) {
     assert.match(config, new RegExp(`^  - ${top.replace(".", "\\.")}$`, "m"), "excluded from Pages: " + top);
   }

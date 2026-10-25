@@ -7,7 +7,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { BLOG_CSS, BLOG_CSS_PATH, BLOG_LOGO_PATH, blogCssResponse } from "../worker/blog-layout.mjs";
 import { renderBlogIndex, renderBlogArticle, appendBlogSitemap, BLOG_INDEX_KEY } from "../worker/multichannel-autonomy.mjs";
 import { BRAND_SIZES } from "../worker/brand-kit.mjs";
@@ -71,7 +72,7 @@ test("stylesheet path is pinned to the content (immutable cache) and served by t
   assert.equal(await res.text(), BLOG_CSS);
   assert.equal(await blogCssResponse(new Request("https://zevanory.api.br" + BLOG_CSS_PATH, { method: "HEAD" })).text(), "");
   assert.doesNotMatch(BLOG_CSS, /@import|url\(|@font-face/, "self-contained: apex CSP font-src/style-src 'self'");
-  const src = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
+  const src = readTextNormalized(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url));
   const route = src.indexOf("url.pathname === BLOG_CSS_PATH");
   assert.ok(route > 0 && route < src.indexOf('url.pathname === "/blog" || url.pathname === "/blog/"'), "routed by the central Worker next to /blog");
   assert.ok(route < src.indexOf("const response2 = await env.ASSETS.fetch(assetRequest);"), "before the static assets fallthrough");

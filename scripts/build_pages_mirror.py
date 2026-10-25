@@ -182,7 +182,8 @@ def main() -> int:
     stub_root = ROOT / STUB_DIR
     existing = {p.relative_to(ROOT).as_posix() for p in stub_root.rglob("*") if p.is_file()} if stub_root.exists() else set()
     stale = sorted(existing - set(files))
-    changed = sorted(k for k, v in files.items() if not (ROOT / k).is_file() or (ROOT / k).read_text(encoding="utf-8") != v)
+    # Compare with LF line ends: a Windows checkout (core.autocrlf=true) must not look stale.
+    changed = sorted(k for k, v in files.items() if not (ROOT / k).is_file() or (ROOT / k).read_text(encoding="utf-8").replace("\r\n", "\n") != v)
     if args.check:
         if stale or changed:
             for k in changed:
@@ -197,7 +198,7 @@ def main() -> int:
         (ROOT / k).unlink()
     for k, v in files.items():
         (ROOT / k).parent.mkdir(parents=True, exist_ok=True)
-        (ROOT / k).write_text(v, encoding="utf-8")
+        (ROOT / k).write_text(v, encoding="utf-8", newline="\n")
     print(f"PAGES_MIRROR=WRITTEN files={len(files)} changed={len(changed)} removed={len(stale)}")
     return 0
 
