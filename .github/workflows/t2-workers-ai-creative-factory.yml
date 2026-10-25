@@ -25,17 +25,17 @@ jobs:
 
       - name: Generate five grounded 1080x1080 creatives inside Worker
         env:
-          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+          ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CERTIFICATION_E2E_TOKEN:-}"
+          test -n "${ZEVANORY_OPERATOR_TOKEN:-}"
           mkdir -p t2-output
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import { createHmac, randomUUID } from 'node:crypto';
 
-          const secret = process.env.CERTIFICATION_E2E_TOKEN || '';
+          const secret = process.env.ZEVANORY_OPERATOR_TOKEN || '';
           if (secret.length < 32) throw new Error('T2_CERTIFICATION_TOKEN_UNAVAILABLE');
 
           const calls = [];

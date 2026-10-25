@@ -25,7 +25,6 @@ jobs:
           ast.parse(a);ast.parse(v)
           expected=[
             'c["vars"]["ASAAS_ENV"]="sandbox"',
-            'c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"',
             'c["vars"]["MERCADOPAGO_ENV"]="sandbox"',
             'c["vars"]["SALE_GLOBALLY_ENABLED"]="false"',
             'c["vars"]["PRE_SALE_GATES_APPROVED"]="false"'
@@ -33,6 +32,9 @@ jobs:
           for e in expected:
             if e not in a:raise SystemExit("ASAAS_FINANCIAL_SAFETY_MISSING")
           if 'ASAAS_ENV_MUST_BE_SANDBOX' not in v:raise SystemExit("ASAAS_DEPLOY_PROOF_MISSING")
+          # R9 (Sol 164 §4): piloto fora da produção; o verificador exige a AUSÊNCIA de CERTIFICATION_PILOT_*.
+          if 'c["vars"]["CERTIFICATION_PILOT_' in a:raise SystemExit("PRODUCTION_PILOT_VAR_WRITTEN")
+          if 'NO_PRODUCTION_PILOT_BINDING' not in v:raise SystemExit("PILOT_ABSENCE_PROOF_MISSING")
           print("::notice title=ASAAS_CERTIFICATION_ENV::SANDBOX_ONLY_PASS")
           print("::notice title=PRODUCTION_COMMERCE::SALES_CLOSED_PASS")
           PY

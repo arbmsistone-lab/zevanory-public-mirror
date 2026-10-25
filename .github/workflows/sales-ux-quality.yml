@@ -1,0 +1,107 @@
+name: sales-ux-quality
+# E3 + E4 (2026-10-24). Pre-merge quality budget for the public sales site, measured on the PR's own
+# build served on localhost THROUGH the real Worker (scripts/audit/sales-local-server.mjs: same
+# routing, CSP and Cache-Control as production). Pages: /solucoes, /zevanory-sales, /ia-na-pratica
+# (product page) and /termos, mobile and desktop.
+#   Lighthouse 13.5.0 (same pin as the F5/apex gates): performance >= 95 (median of 3), accessibility,
+#   best-practices and SEO = 100 in every run; axe-core 4.10.3 (WCAG 2.0/2.1/2.2 A+AA + best
+#   practice): zero serious/critical; internal 44 px targets; visible, unobscured keyboard focus;
+#   prefers-reduced-motion honoured.
+#   Visual regression: full-page screenshots at 360/768/1440 of the BASE build (before) and of the PR
+#   build (after), uploaded as the "sales-ux-evidence" artifact together with both budget reports.
+# Read-only: no secrets, no deploy, no network beyond checkout, npm and localhost.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "sales-public/**"
+      - "product.css"
+      - "legal.css"
+      - "assets/fonts/**"
+      - "solucoes/**"
+      - "zevanory-sales/**"
+      - "ia-na-pratica/**"
+      - "vendas-na-pratica/**"
+      - "lucro-e-caixa/**"
+      - "combo-ia-vendas/**"
+      - "negocio-completo/**"
+      - "termos/**"
+      - "privacidade/**"
+      - "reembolso/**"
+      - "quem-criou/**"
+      - "sales-overlay/**"
+      - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "worker/sales-public-worker.mjs"
+      - "scripts/audit/sales-local-server.mjs"
+      - "scripts/audit/sales-quality-budget.mjs"
+      - "scripts/audit/sales-screenshots.mjs"
+      - ".github/workflows/sales-ux-quality.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sales-ux-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  budget:
+    name: sales-ux / lighthouse-axe-budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QUALITY_MODULES: /tmp/q/node_modules
+      ZEVANORY_SALES_PUBLIC_MODE: closed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the PR candidate (must match the committed build)
+        run: |
+          set -euo pipefail
+          python3 scripts/build_sales_public.py >/dev/null
+          git diff --exit-code -- sales-public
+      - name: Build the base (before) from the PR base commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add /tmp/base "${BASE_SHA:-origin/gh-pages}"
+          (cd /tmp/base && python3 scripts/build_sales_public.py >/dev/null)
+      - name: Install Lighthouse 13.5.0, axe-core 4.10.3 and Playwright 1.55.0
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/q && echo '{"private":true}' > /tmp/q/package.json
+          npm install --prefix /tmp/q --no-audit --no-fund lighthouse@13.5.0 axe-core@4.10.3 playwright@1.55.0 >/dev/null
+          /tmp/q/node_modules/.bin/playwright install --with-deps chromium >/dev/null
+      - name: Serve both builds through the Worker (localhost)
+        run: |
+          set -euo pipefail
+          nohup node scripts/audit/sales-local-server.mjs 8787 >/tmp/after-server.log 2>&1 &
+          nohup node scripts/audit/sales-local-server.mjs 8788 /tmp/base/sales-public /tmp/base/worker/sales-public-worker.mjs >/tmp/before-server.log 2>&1 &
+          for port in 8787 8788; do
+            for i in $(seq 1 30); do curl -fsS -o /dev/null "http://127.0.0.1:$port/solucoes" && break; sleep 1; done
+            curl -fsS -o /dev/null "http://127.0.0.1:$port/solucoes"
+          done
+      - name: Screenshots before / after (360, 768, 1440)
+        run: |
+          set -euo pipefail
+          node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8788 /tmp/sales-ux/screenshots/before
+          node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8787 /tmp/sales-ux/screenshots/after
+      - name: Budget on the base build (before, report only)
+        run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8788 /tmp/sales-ux/budget-before --report-only
+      - name: Budget on the PR build (after, enforced)
+        run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-after
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sales-ux-evidence
+          path: /tmp/sales-ux
+          retention-days: 30

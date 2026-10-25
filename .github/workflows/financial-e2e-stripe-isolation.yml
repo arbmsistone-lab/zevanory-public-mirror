@@ -1,0 +1,37 @@
+name: financial-e2e-stripe-isolation
+
+# R4: the Stripe sandbox E2E may target only the isolated certification Worker and is gated by an explicit owner
+# approval. pull_request only (never runs on merge), read-only token, no secrets, no network.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/financial_e2e_stripe.py"
+      - ".github/workflows/financial-e2e-stripe.yml"
+      - ".github/workflows/financial-e2e-stripe-isolation.yml"
+      - "tests/test_financial_e2e_stripe_isolation.py"
+
+permissions:
+  contents: read
+
+jobs:
+  isolation:
+    name: financial-e2e-stripe-isolation / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Isolation tests (exact count, no skips)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_financial_e2e_stripe_isolation -v < /dev/null 2>&1 | tee /tmp/t.txt
+          grep -qx "Ran 4 tests in .*" /tmp/t.txt || { echo "::error::expected exactly 4 tests"; exit 1; }
+          if grep -q "skipped" /tmp/t.txt; then echo "::error::skipped tests"; exit 1; fi
+          grep -qx "OK" /tmp/t.txt || { echo "::error::tests did not end in OK"; exit 1; }
