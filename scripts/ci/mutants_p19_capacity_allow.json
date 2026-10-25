@@ -1,0 +1,197 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [P19x.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "N01 requisições não somadas por Worker": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "N02 CPU p99 pelo melhor Worker": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "N03 CPU sem conversão µs -> ms": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "N04 grupo com requisições negativas aceito": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "N05 lista vazia vira zero requisições": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "N06 janela da consulta de dois dias": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.9]"
+    }
+   ],
+   "secondary": []
+  },
+  "N07 workersUsage de outro dia aceito": {
+   "primary": [
+    {
+     "test_pattern": "P19 parsers",
+     "assertion_pattern": "[P19P.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "N08 workersUsage não verificado sem motivo próprio": {
+   "primary": [
+    {
+     "test_pattern": "P19 parsers",
+     "assertion_pattern": "[P19P.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P19 coletor",
+     "assertion_pattern": "[P19C.8]",
+     "justification": "o cenário do coletor usa workersUsage com verified:false e campos completos; sem a guarda, a leitura não verificada vira medida e o campo deixa de ser NOT_AVAILABLE"
+    }
+   ]
+  },
+  "N09 pct incoerente aceito": {
+   "primary": [
+    {
+     "test_pattern": "P19 parsers",
+     "assertion_pattern": "[P19P.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "N10 PLAN_PROBE antigo aceito": {
+   "primary": [
+    {
+     "test_pattern": "P19 parsers",
+     "assertion_pattern": "[P19P.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "N11 falha de conexão do Neon ignorada": {
+   "primary": [
+    {
+     "test_pattern": "P19 parsers",
+     "assertion_pattern": "[P19P.10]"
+    }
+   ],
+   "secondary": []
+  },
+  "N12 limite do Neon de 1 GB": {
+   "primary": [
+    {
+     "test_pattern": "P19 parsers",
+     "assertion_pattern": "[P19P.11]"
+    }
+   ],
+   "secondary": []
+  },
+  "N13 Workers do dia D lidos do run do próprio dia": {
+   "primary": [
+    {
+     "test_pattern": "P19 coletor",
+     "assertion_pattern": "[P19C.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N14 margem pelo melhor dia": {
+   "primary": [
+    {
+     "test_pattern": "P19 margens",
+     "assertion_pattern": "[P19M.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N15 meta avaliada com menos de 7 dias": {
+   "primary": [
+    {
+     "test_pattern": "P19 margens",
+     "assertion_pattern": "[P19M.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "N16 NOT_AVAILABLE entra na margem": {
+   "primary": [
+    {
+     "test_pattern": "P19 margens",
+     "assertion_pattern": "[P19M.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "N17 flag complete forjada aceita": {
+   "primary": [
+    {
+     "test_pattern": "evolução do esquema",
+     "assertion_pattern": "[P19E.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "histórico malformado derruba",
+     "assertion_pattern": null,
+     "justification": "o mesmo contrato (flag complete forjada sobre campo presente inválido derruba) é verificado no P06 desse teste"
+    }
+   ]
+  },
+  "N18 Neon CU-h declarado presente": {
+   "primary": [
+    {
+     "test_pattern": "P19 coletor",
+     "assertion_pattern": "[P19C.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "N19 Workers com requisições ociosas no pior p99": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "N20 consulta sem token aceita": {
+   "primary": [
+    {
+     "test_pattern": "P19 Workers",
+     "assertion_pattern": "[P19W.11]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

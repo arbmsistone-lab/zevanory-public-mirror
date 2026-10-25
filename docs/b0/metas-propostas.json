@@ -28,6 +28,10 @@
     "P19": [
       { "id": "P19-kv-gravacoes", "type": "LB", "metric": "KV gravações/dia, pior dia de 7", "value": "<= 600 (60%), pior dia <= 700 (seção 11)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
       { "id": "P19-kv-leituras", "type": "LB", "metric": "KV leituras/dia, pior dia de 7", "value": "<= 50000 (seção 11)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P19-workers-requisicoes", "type": "LB", "metric": "Workers requisições/dia da conta, pior dia de 7 (contador diário)", "value": "<= 40% de 100 mil (seção 11)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P19-workers-cpu-p99", "type": "LB", "metric": "pior CPU p99 entre os Workers, pior dia de 7 (limite 10 ms)", "value": "<= 5 ms (seção 11)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P19-neon-armazenamento", "type": "LB", "metric": "Neon pg_database_size contra 512 MiB (armazenamento)", "value": "<= 50%; meses até 50% >= 12 (seção 11; a seção cita 1 GB, aqui o limite mais conservador do plan-probe)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P19-neon-compute", "type": "LB", "metric": "Neon CU-h do mês, projeção conservadora (cota mensal)", "value": "<= 80 CU-h no mês; <= 1,5 CU-h/dia (seção 11)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
       { "id": "P19-cota", "type": "PI", "metric": "cotas esgotadas", "value": 0, "status": "PROPOSED", "approved_by": null, "approved_at": null }
     ],
     "P20": [

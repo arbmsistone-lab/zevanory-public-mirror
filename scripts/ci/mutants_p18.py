@@ -18,10 +18,10 @@ sys.path.insert(0, str(REPO / "scripts" / "ci"))
 import mutant_classifier as mc  # noqa: E402
 
 TEST = "tests/b0-baseline.test.mjs"
-COPY = ["scripts/b0", "docs/b0", "tests/helpers/text.mjs", TEST, ".github/workflows/b0-baseline-collector.yml",
+COPY = ["scripts/b0", "docs/b0", "tests/helpers/text.mjs", TEST, "scripts/audit/workers-usage.mjs", ".github/workflows/b0-baseline-collector.yml",
         ".github/workflows/p18-external-monitor.yml", ".github/workflows/b0-baseline-tests.yml", ".github/workflows/p18-monitor-watchdog.yml"]
 LIB, MON, WDG = "scripts/b0/b0-lib.mjs", "scripts/b0/p18-monitor.mjs", "scripts/b0/p18-watchdog.mjs"
-BASELINE_TOTAL = 21  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
+BASELINE_TOTAL = 26  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
 
 def P(test, label):
     return {"test_pattern": test, "assertion_pattern": label}

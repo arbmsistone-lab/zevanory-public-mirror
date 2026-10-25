@@ -9,6 +9,11 @@ on:
       - "scripts/b0/**"
       - "tests/b0-baseline.test.mjs"
       - "scripts/ci/mutants_p18.py"
+      - "scripts/audit/workers-usage.mjs"
+      - "scripts/audit/command-center-snapshot.mjs"
+      - "scripts/ci/mutants_p19_capacity.py"
+      - "scripts/ci/mutants_p19_capacity_allow.json"
+      - "scripts/ci/mutant_classifier.py"
       - "docs/b0/**"
       - ".github/workflows/b0-baseline-collector.yml"
       - ".github/workflows/p18-external-monitor.yml"
@@ -22,7 +27,7 @@ jobs:
   tests:
     name: b0-baseline / tests
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,3 +45,11 @@ jobs:
         run: node --test tests/b0-baseline.test.mjs
       - name: Mutantes P18 (latência, confirmação, vigia, NOT_PROVEN em lacunas; classificador compartilhado R5)
         run: python3 scripts/ci/mutants_p18.py
+      - name: Mutantes causais P19 (Workers/Neon; todos precisam morrer)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p19_capacity.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P19_CAPACITY_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=20 killed=20 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
