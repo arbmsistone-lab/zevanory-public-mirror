@@ -5,13 +5,22 @@ import hmac
 import json
 import os
 import pathlib
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 
-APP = "https://zevanory.api.br"
+# R4 (incident I1; F2: a sandbox flow ran 35 times against production). Sandbox/E2E traffic may target ONLY the
+# isolated certification Worker; any *.zevanory.api.br (or production workers.dev) host is refused before any request.
+APP = (os.environ.get("CERTIFICATION_SANDBOX_URL") or "").strip().rstrip("/")
+_APP_HOST = (urllib.parse.urlsplit(APP).hostname or "").lower()
+if (re.search(r"(?:^|\.)zevanory\.api\.br\.?$|(?:^|\.)(?:girolocal-rb|zevanory)\.workers\.dev\.?$", _APP_HOST)
+        and not re.fullmatch(r"zevanory-certification\.[a-z0-9-]+\.workers\.dev", _APP_HOST)):
+    raise SystemExit("R4_PRODUCTION_HOST_DENIED")
+if not re.fullmatch(r"https://zevanory-certification\.[a-z0-9-]+\.workers\.dev", APP):
+    raise SystemExit("R4_ISOLATED_CERTIFICATION_WORKER_REQUIRED")
 MP = "https://api.mercadopago.com"
 OUT = pathlib.Path("evidence/financial-e2e-mercadopago.json")
 
