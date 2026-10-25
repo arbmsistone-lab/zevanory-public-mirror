@@ -1,0 +1,14 @@
+Assunto: O fechamento da semana em 15 minutos
+
+{{saudacao}}
+
+Uma vez por semana, o checklist pede 15 minutos para fechar a semana:
+
+1. Margem por produto: preço de venda menos custo direto. Assim você vê quais produtos pagam a conta. Se quiser fazer essa conta sem planilha, use a calculadora gratuita:
+{{link:calculadora_margem}}
+2. Total de entradas, total de saídas e o que sobrou.
+3. Escolha uma melhoria para a próxima semana: um processo, um cliente ou um custo.
+
+Isso não substitui o seu contador. É só uma leitura simples da semana para decidir com números na mão.
+
+{{assinatura}}
