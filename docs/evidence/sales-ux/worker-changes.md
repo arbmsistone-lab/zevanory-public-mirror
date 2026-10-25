@@ -5,6 +5,10 @@ File: `worker/sales-public-worker.mjs`. Base: the gh-pages blob `9e7e708aac4e7ea
 `tests/sales-worker-differential.test.mjs`, which reverse-applies the two hunks to the current file and
 checks that the result has that exact git blob id.
 
+After #893 (funnel v2, also branched from gh-pages 5bb6b552) the pre-#914 Worker is the #893 one, so the test
+now pins `86c5337c33588b50012266698c9dd0d18300e237` (`4dce12c3:worker/sales-public-worker.mjs`); the two #914 hunks
+and the behaviour matrix are unchanged.
+
 ## 1. Designed 404 for unknown page paths
 
 The new block sits right after `env.ASSETS.fetch(...)`:

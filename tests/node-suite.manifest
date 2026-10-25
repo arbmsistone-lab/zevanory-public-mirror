@@ -43,6 +43,7 @@ tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5
 tests/first-order-watch-audit.test.mjs 4
+tests/funnel-counting.test.mjs 21
 tests/funnel.test.mjs 7
 tests/hotmart-pages.test.mjs 2
 tests/hotmart-paused.test.mjs 15
