@@ -14,9 +14,11 @@ import {
   parseCommandCenter, parseFunnelDiag, parseDataBackup, readP22, parseSitemap, parseA11y, aggregateProbes,
   findOpenAlert, ALERT_TITLE, addDays, validateProbe, fieldOk, SCHEMA_INCIDENT, SCHEMA_RUN, SCHEMA_HEARTBEAT, finalizeIncident,
   withRecovery, validateIncident, decideIncident, openIncident, evaluateHeartbeat, HEARTBEAT_STALE_MIN, aggregateLatency, percentile,
-  CONFIRM_BUDGET_S, WATCHDOG_TITLE, WATCHDOG_CF_TITLE, windowIdOf, parseWindowId, resolveDispatch, isDuplicateWindow, validateRun,
+  CONFIRM_BUDGET_S, WATCHDOG_TITLE, pickMonthlyDrill, WATCHDOG_CF_TITLE, windowIdOf, parseWindowId, resolveDispatch, isDuplicateWindow, validateRun,
   evaluateCfDispatch, SCHEMA_CF_DISPATCH, CF_DISPATCH_STALE_MIN, schedSlotMs,
 } from "../scripts/b0/b0-lib.mjs";
+import { runDrill } from "../scripts/p20/restore-drill.mjs";
+import { makeBackup } from "./helpers/p20-backup-fixture.mjs";
 import { collect } from "../scripts/b0/b0-collector.mjs";
 import { main as monitorMain } from "../scripts/b0/p18-monitor.mjs";
 import { watchdog } from "../scripts/b0/p18-watchdog.mjs";
@@ -38,7 +40,19 @@ const OKV = {
   funnel_interest: { intents_total: 1, checkouts7: 0, leads7: 0 },
   kv_quota: { verified: true, day: "2026-10-25", writes: 600, reads: 30000, limit: 1000, pct: 60, snapshot_at: "2026-10-25T23:17:00.000Z" },
   backup_restore_sample: { run_created_at: "2026-10-25T09:47:17Z", run_conclusion: "success", ok: true, neon_tables: 53, neon_restored_ok: 53, kv_sample_ok: true, failures: 0, age_hours_at_collection: 16 },
+  monthly_full_restore_drill: { label: "ENSAIO_EM_PRODUCAO", verdict: "APROVADO", finished_at: "2026-10-02T07:40:00.000Z", run_id: "5", age_days: 23.7, backup_day: "2026-10-02",
+    rpo_hours: 2.2, rto_seconds: 95, tables_checked: 53, tables_hash_ok: 53, tables_restored: 53, scope_complete_9_1: false, not_covered_count: 4 },
 };
+// Registros reais do ensaio P20 (mesmo código do workflow mensal), com fixture sintética e restauração simulada.
+async function drillRecord({ mode = "producao", finished = "2026-10-20T07:40:00.000Z", corrupt = false } = {}) {
+  const kv = makeBackup({ day: "2026-10-20", started: "2026-10-20T05:10:00.000Z" });
+  if (corrupt) { const k = "zpc:backup:v1:neon:2026-10-20:part:0"; const b = JSON.parse(kv[k]); b.orders = "[]"; kv[k] = JSON.stringify(b); }
+  const fetchImpl = async (url) => { const key = decodeURIComponent(String(url).split("/values/")[1] || ""); return kv[key] == null ? new Response("", { status: 404 }) : new Response(kv[key]); };
+  let t = 0;
+  return runDrill({ mode, env: { PGHOST: "localhost", PGDATABASE: "p20_drill", CLOUDFLARE_API_TOKEN: "t".repeat(40) }, fetchImpl, fixture: mode === "sintetica" ? kv : null,
+    restoreImpl: async ({ tablesJson }) => ({ ok: true, tables: Object.fromEntries(Object.entries(tablesJson).map(([n, js]) => [n, JSON.parse(js).length])), worker_schema_ready: true }),
+    now: () => new Date(finished), clock: () => (t += 30000), inventory: null });
+}
 const fullFields = (pid) => Object.fromEntries(PROCESSES[pid].fields.filter((f) => OKV[f]).map((f) => [f, measured("teste", OKV[f])]));
 const dayRec = (day, overrides = {}) => buildDailyRecord({ day, collectedAt: day + "T23:59:00Z", runId: "1", sha: "x",
   fieldsByProcess: Object.fromEntries(PROCESS_IDS.map((p) => [p, overrides[p] || fullFields(p)])) });
@@ -114,7 +128,7 @@ test("estados: NAO_INICIADA -> MEDICAO_ATIVA; B0_VALIDA só com fontes completas
   assert.ok(ok.reasons.some((r) => /prova operacional/.test(r)), "B0_VALIDA nunca vira APTO sem prova operacional");
   assert.equal(computeState("P03", r14, approvedTargets()).state, "MEDICAO_ATIVA", "P03: Search Console MISSING bloqueia");
   assert.equal(computeState("P19", r14, approvedTargets()).state, "MEDICAO_ATIVA", "P19: Neon/Workers MISSING bloqueia");
-  assert.equal(computeState("P20", r14, approvedTargets()).state, "MEDICAO_ATIVA", "P20: ensaio mensal MISSING bloqueia");
+  assert.equal(computeState("P20", r14, approvedTargets()).state, "MEDICAO_ATIVA", "P20: cópia KV->Neon, conciliação e diário D1 MISSING bloqueiam");
   assert.equal(computeState("P06", r14, approvedTargets()).state, "MEDICAO_ATIVA");
   assert.equal(computeState("P06", r14, approvedTargets()).consecutive_complete_days, 0);
   assert.equal(computeState("P22", r14, approvedTargets(), { days: 14, real_executions: 29 }).state, "B0_VALIDA", "29 execuções não bastam");
@@ -138,7 +152,8 @@ test("registro: janela mínima de avaliação, nunca data de certificação; nad
   assert.ok(reg.processes.P15.scope.not_proven.some((s) => /conversão: NOT_PROVEN/.test(s)));
   assert.ok(reg.processes.P22.scope.not_proven.some((s) => /ciclo financeiro completo/.test(s)));
   assert.ok(reg.processes.P06.scope.not_proven.some((s) => /WhatsApp/.test(s)));
-  assert.ok(reg.processes.P20.sources.some((s) => s.id === "monthly_full_restore_drill" && s.status === "MISSING"));
+  assert.ok(reg.processes.P20.sources.some((s) => s.id === "monthly_full_restore_drill" && s.status === "PRESENT"), "[B0P20.1] ensaio mensal existe como fonte");
+  for (const id of ["kv_copy_full_restore", "provider_reconciliation", "event_journal_d1"]) assert.ok(reg.processes.P20.sources.some((s) => s.id === id && s.status === "MISSING"), "[B0P20.2] " + id);
 });
 
 test("parsers fail-closed: anotações malformadas, cota fora do fim do dia, backup, sitemap e pa11y", () => {
@@ -245,7 +260,9 @@ test("coletor ponta a ponta: P06/P08/P03-a11y NOT_AVAILABLE explícitos, anotaç
     assert.equal(record.processes.P08.fields.lead_consent_counts.value, NA);
     assert.equal(record.processes.P03.fields.a11y_wcag2aa.value, NA, "sem arquivo do pa11y: NOT_AVAILABLE, nunca 0 erros");
     assert.equal(record.processes.P03.fields.public_pages_http.value.checked, 2, "duas URLs, /comprar excluída");
-    assert.equal(record.processes.P15.complete, true); assert.equal(record.processes.P19.complete, true); assert.equal(record.processes.P20.complete, true);
+    assert.equal(record.processes.P15.complete, true); assert.equal(record.processes.P19.complete, true);
+    assert.equal(record.processes.P20.complete, false, "sem ensaio mensal no ramo: P20 incompleto");
+    assert.equal(record.processes.P20.fields.monthly_full_restore_drill.reason, "no_drill_within_31_days");
     assert.equal(record.processes.P18.complete, false, "sem sondagens P18 no ramo: incompleto");
     assert.equal(register.processes.P15.state, "MEDICAO_ATIVA");
     assert.ok(net.calls.filter((c) => !c.url.startsWith("https://api.github.com/")).every((c) => c.method === "GET" && !/comprar|checkout/.test(c.url)));
@@ -519,6 +536,62 @@ test("workflows B0/P18: agendados, só GITHUB_TOKEN, gravam só no ramo evidence
   assert.match(tst, /pull_request:/); assert.match(tst, /contents: read/); assert.doesNotMatch(tst, /contents: write|schedule:/);
 });
 
+test("P20 ensaio mensal no B0: só ENSAIO_EM_PRODUCAO em 31 dias conta; SINTETICA, NOT_AVAILABLE, antigo ou histórico malformado nunca completam", async () => {
+  const real = await drillRecord();
+  assert.equal(real.label, "ENSAIO_EM_PRODUCAO"); assert.equal(real.verdict, "APROVADO");
+  const ok = pickMonthlyDrill([real], "2026-10-25");
+  assert.equal(ok.ok, true, "[B0P20.3]");
+  assert.equal(ok.v.age_days, 5.7); assert.equal(ok.v.tables_restored, 6);
+  assert.equal(processEntry("P20", { backup_restore_sample: measured("t", OKV.backup_restore_sample), monthly_full_restore_drill: measured("t", ok.v) }).complete, true, "[B0P20.4]");
+  const synth = await drillRecord({ mode: "sintetica" });
+  assert.equal(synth.label, "SINTETICA");
+  assert.equal(pickMonthlyDrill([synth], "2026-10-25").reason, "drill_label_SINTETICA_not_counted", "[B0P20.5] sintético nunca conta");
+  assert.equal(pickMonthlyDrill([real], "2026-11-20").reason, "no_drill_within_31_days", "[B0P20.6] mais de 31 dias: não há ensaio do mês");
+  assert.equal(pickMonthlyDrill([real], "2026-10-19").reason, "no_drill_within_31_days", "[B0P20.7] ensaio posterior ao dia D não conta para D");
+  const notAvail = await runDrill({ mode: "producao", env: {}, now: () => new Date("2026-10-21T07:00:00Z"), inventory: null });
+  assert.equal(notAvail.verdict, "NOT_AVAILABLE");
+  assert.match(pickMonthlyDrill([notAvail], "2026-10-25").reason, /^latest_drill_not_available:cloudflare_token_unavailable/, "[B0P20.8]");
+  assert.equal(pickMonthlyDrill([real, notAvail], "2026-10-25").ok, true, "ensaio real no mês continua valendo depois de uma falta de leitura");
+  const bad = await drillRecord({ corrupt: true });
+  assert.equal(bad.verdict, "REPROVADO");
+  const rep = pickMonthlyDrill([bad], "2026-10-25");
+  assert.equal(rep.ok, true, "[B0P20.9] reprovado medido é dia completo com resultado ruim");
+  assert.equal(rep.v.verdict, "REPROVADO");
+  const forged = { ...ok.v, label: "SINTETICA" };
+  assert.equal(processEntry("P20", { backup_restore_sample: measured("t", OKV.backup_restore_sample), monthly_full_restore_drill: measured("t", forged) }).complete, false, "[B0P20.10]");
+  const forged2 = { ...ok.v, tables_restored: 3 };
+  assert.equal(processEntry("P20", { backup_restore_sample: measured("t", OKV.backup_restore_sample), monthly_full_restore_drill: measured("t", forged2) }).complete, false, "[B0P20.11] aprovado com restauração parcial é malformado");
+  const forged3 = { ...ok.v, age_days: 40 };
+  assert.equal(processEntry("P20", { backup_restore_sample: measured("t", OKV.backup_restore_sample), monthly_full_restore_drill: measured("t", forged3) }).complete, false, "[B0P20.12]");
+
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC });
+    mkdirSync(join(dir, "p20"), { recursive: true });
+    writeFileSync(join(dir, "p20", "restore-drills-v1.jsonl"), JSON.stringify(real) + "\n");
+    const r1 = await collect({ env: envFor(dir), fetchImpl: net.fetchImpl, now: new Date("2026-10-26T01:30:00Z"), pause: async () => {}, log: () => {} });
+    assert.equal(r1.record.processes.P20.complete, true, "[B0P20.13] coletor lê o ensaio do ramo de evidência");
+    assert.equal(r1.register.processes.P20.state, "MEDICAO_ATIVA", "[B0P20.14] fontes MISSING e metas PROPOSED mantêm P20 fora de B0_VALIDA");
+    writeFileSync(join(dir, "p20", "restore-drills-v1.jsonl"), "{lixo\n");
+    const r2 = await collect({ env: envFor(dir), fetchImpl: net.fetchImpl, now: new Date("2026-10-26T02:00:00Z"), pause: async () => {}, log: () => {} });
+    assert.equal(r2.record.processes.P20.fields.monthly_full_restore_drill.reason, "drill_history_malformed", "[B0P20.15]");
+    assert.equal(r2.record.processes.P20.complete, false, "[B0P20.16]");
+    assert.equal(r2.record.processes.P15.complete, true, "histórico P20 malformado não derruba os outros processos");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("evolução do esquema: linha antiga sem o campo novo é relida como incompleta (nunca completa) e não derruba", () => {
+  const old = dayRec("2026-10-24");
+  delete old.processes.P20.fields.monthly_full_restore_drill;
+  old.processes.P20.complete = true;
+  const [back] = parseJsonl(JSON.stringify(old), validateDailyRecord);
+  assert.equal(back.processes.P20.complete, false, "[B0P20.17]");
+  const forged = dayRec("2026-10-24");
+  forged.processes.P20.fields.backup_restore_sample = measured("t", { ok: true });
+  forged.processes.P20.complete = true;
+  assert.throws(() => parseJsonl(JSON.stringify(forged), validateDailyRecord), /complete_flag_mismatch P20/, "[B0P20.18]");
+});
+
 // ---- gatilho externo (AVAL Sol 253/254): janela de 5 min, idempotência, metadados do pedido, vigia do caminho CF ----
 test("[WIN] id de janela: alinhado ao minuto 0, estrito; slot :02 do agendador cai na janela :00; limites -60 min / +2 min", () => {
   assert.equal(windowIdOf(Date.parse(T("10:04:59"))), "p18w-20261025T1000Z", "WIN-floor");
@@ -588,7 +661,7 @@ test("[IDEM] pedido por janela: 1ª execução sonda; repetição (pedido ou age
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("[WD-CF] vigia do caminho Cloudflare: > 15 min sem início pedido pela Cloudflare alerta só quando esperado; issue própria; fecha quando volta", async () => {
+test("[WD-CF] vigia do caminho Cloudflare: só alerta com a chave E após a 1ª prova real; > 15 min sem início pedido pela Cloudflare abre issue própria; fecha quando volta", async () => {
   const doc = (iso) => ({ schema: SCHEMA_CF_DISPATCH, started_at: iso, run_id: "1", window_id: null, dispatched_at: null, dispatch_to_start_s: null, duplicate: false });
   const now = Date.parse(T("12:00:00"));
   assert.equal(CF_DISPATCH_STALE_MIN, 15, "WDCF-15");
@@ -611,11 +684,57 @@ test("[WD-CF] vigia do caminho Cloudflare: > 15 min sem início pedido pela Clou
   const env = { GITHUB_REPOSITORY: "o/r", GITHUB_TOKEN: "fake", GITHUB_RUN_ID: "9" };
   const w0 = await watchdog({ env, fetchImpl, now: () => now, log: () => {} });
   assert.equal(w0.cfAction, "none", "WDCF-not-expected"); assert.equal(w0.cfEv.alert, false, "WDCF-not-expected-alert"); assert.equal(issues.length, 0, "WDCF-not-expected-issue");
+  // Ordem Sol 259-262: chave ligada mas sem a 1ª prova real (cf-dispatch.json ausente) = nenhuma expectativa ainda.
+  const wGate = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(wGate.cfEv.gate, "AWAITING_FIRST_PROOF", "WDCF-awaiting-first-proof"); assert.equal(wGate.cfAction, "none", "WDCF-no-alert-before-proof"); assert.equal(issues.length, 0, "WDCF-no-issue-before-proof");
+  // Prova velha sem a chave: só registra.
+  cfDoc = doc(T("11:30:00"));
+  const wOff = await watchdog({ env, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(wOff.cfEv.gate, "NOT_EXPECTED", "WDCF-gate-off"); assert.equal(wOff.cfAction, "none", "WDCF-stale-without-key-silent");
+  // Chave ligada E 1ª prova existente (velha): agora acusa.
   const w1 = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(w1.cfEv.gate, "ACTIVE", "WDCF-active-after-proof");
   assert.equal(w1.cfAction, "open", "WDCF-open"); assert.equal(issues[0].title, WATCHDOG_CF_TITLE, "WDCF-title");
   assert.notEqual(WATCHDOG_CF_TITLE, WATCHDOG_TITLE, "WDCF-distinct"); assert.notEqual(WATCHDOG_CF_TITLE, ALERT_TITLE);
   assert.equal(w1.action, "none", "batimento do monitor fresco: só o caminho CF acusa");
   cfDoc = doc(T("11:57:00"));
   const w2 = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
   assert.equal(w2.cfAction, "close", "WDCF-close"); assert.equal(issues[0].state, "closed", "WDCF-closed");
+});
+
+// ---- Ordem Sol 259-262: provas explícitas ----
+test("[IDEM-HB] janela duplicada não altera heartbeat.json (bytes idênticos), nem pelo agendador nem por pedido repetido", async () => {
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+    let clock = Date.parse(T("14:00:15")); const now = () => clock, sleep = async (ms) => { clock += ms; }, pause = async () => {};
+    const disp = (run) => envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: run, P18_WINDOW_ID: "p18w-20261025T1400Z", P18_DISPATCHED_AT: T("14:00:02"), P18_DISPATCH_SOURCE: "cloudflare-cron" });
+    assert.equal((await monitorMain({ env: disp("301"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} })).action, "none", "IDEMHB-first");
+    const hbPath = join(dir, "p18", "heartbeat.json");
+    const before = readTextNormalized(hbPath);
+    for (const [at, env, label] of [["14:02:40", envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "302" }), "sched"], ["14:03:10", disp("303"), "repeat"], ["14:07:30", disp("304"), "late-repeat"]]) {
+      clock = Date.parse(T(at));
+      const r = await monitorMain({ env, fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+      assert.equal(r.action, "skip", "IDEMHB-skip-" + label);
+      assert.equal(readTextNormalized(hbPath), before, "IDEMHB-unchanged-" + label);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("[WIN-INVALID] id de janela inválido (malformado, desalinhado, data inválida, dispatched_at lixo) ainda sonda, grava batimento e registra o motivo", async () => {
+  const cases = [["lixo", "", "bad_window_id"], ["p18w-20261025T1503Z", "", "bad_window_id"], ["p18w-20261325T1500Z", "", "bad_window_id"], ["p18w-20261025T1500Z", "ontem", "bad_dispatched_at"]];
+  for (const [w, at, why] of cases) {
+    const dir = tmp();
+    try {
+      const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+      const now = () => Date.parse(T("15:01:00")), sleep = async () => {}, pause = async () => {};
+      const r = await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: "401", P18_WINDOW_ID: w, P18_DISPATCHED_AT: at, P18_DISPATCH_SOURCE: "cloudflare-cron" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+      assert.equal(r.action, "none", "WININV-probes " + w);
+      assert.ok(net.calls.some((c) => c.url.startsWith("https://zevanory.api.br/") || c.url.startsWith("https://vendas.zevanory.api.br/")), "WININV-network " + w);
+      assert.equal(r.run.window_rejected, why, "WININV-reason " + w); assert.equal(r.run.window_id, null, "WININV-null " + w);
+      assert.equal(r.run.start_window_id, "p18w-20261025T1500Z", "WININV-start-window " + w);
+      assert.ok(existsSync(join(dir, "p18", "heartbeat.json")), "WININV-heartbeat " + w);
+      assert.equal(existsSync(join(dir, "p18", "cf-dispatch.json")), false, "WININV-no-cf-proof " + w);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
 });

@@ -12,9 +12,10 @@
 import { pathToFileURL } from "node:url";
 //
 // AVAL Sol 253/254: também lê p18/cf-dispatch.json (última execução pedida pelo cron da Cloudflare que INICIOU). Com
-// P18_CF_DISPATCH_EXPECTED=true (variável do repositório, ligada pelo proprietário após o deploy do Worker), mais de
-// 15 min sem início pedido pela Cloudflare abre a issue própria WATCHDOG_CF_TITLE e falha o job. Sem a variável, o
-// estado só é registrado (NOT_EXPECTED): o gatilho ainda não foi implantado e não pode gerar alarme falso.
+// P18_CF_DISPATCH_EXPECTED=true (variável do repositório, ligada pelo proprietário após o deploy do Worker) E depois
+// da 1ª prova real (p18/cf-dispatch.json existe), mais de 15 min sem início pedido pela Cloudflare abre a issue própria
+// WATCHDOG_CF_TITLE e falha o job. Sem a variável (NOT_EXPECTED) ou sem a 1ª prova (AWAITING_FIRST_PROOF) o estado só é
+// registrado: o gatilho ainda não provou funcionar e não pode gerar alarme falso.
 import { evaluateHeartbeat, evaluateCfDispatch, findOpenAlert, watchdogBody, watchdogCfBody, WATCHDOG_TITLE, WATCHDOG_CF_TITLE } from "./b0-lib.mjs";
 
 export const HEARTBEAT_PATH = "p18/heartbeat.json";
@@ -58,7 +59,11 @@ export async function watchdog({ env = process.env, fetchImpl = fetch, now = () 
   const expected = String(env.P18_CF_DISPATCH_EXPECTED || "").trim() === "true";
   const cfRead = await readHeartbeat({ env, fetchImpl, path: CF_DISPATCH_PATH });
   const cfEv0 = cfRead.error ? { state: "UNREADABLE", alert: true, age_s: null, started_at: null, error: cfRead.error } : evaluateCfDispatch(cfRead.hb, now());
-  const cfEv = expected ? cfEv0 : { ...cfEv0, alert: false, expected: false };
+  // Ordem Sol 259-262: a expectativa só vale com a chave do proprietário E depois da 1ª prova real (cf-dispatch.json
+  // existe: uma execução pedida pela Cloudflare com janela aceita INICIOU). Antes disso: AWAITING_FIRST_PROOF, sem alerta.
+  const firstProof = cfEv0.state !== "MISSING";
+  const gate = !expected ? "NOT_EXPECTED" : !firstProof ? "AWAITING_FIRST_PROOF" : "ACTIVE";
+  const cfEv = gate === "ACTIVE" ? { ...cfEv0, gate } : { ...cfEv0, alert: false, gate };
   const cfOpen = findOpenAlert(await api(`/issues?state=open&per_page=100&creator=${encodeURIComponent("github-actions[bot]")}`), WATCHDOG_CF_TITLE);
   let cfAction = "none";
   if (cfEv.alert) {
@@ -73,7 +78,7 @@ export async function watchdog({ env = process.env, fetchImpl = fetch, now = () 
   const hb = read.hb && typeof read.hb === "object" ? read.hb : {};
   log("::notice title=P18_WATCHDOG::" + JSON.stringify({ state: ev.state, age_s: ev.age_s, last_success_at: ev.last_success_at, action,
     last_event: hb.event ?? null, last_window_id: hb.window_id ?? null, last_dispatch_to_start_s: hb.dispatch_to_start_s ?? null,
-    cf_state: expected ? cfEv.state : "NOT_EXPECTED:" + cfEv0.state, cf_age_s: cfEv0.age_s, cf_action: cfAction }));
+    cf_gate: gate, cf_state: cfEv0.state, cf_age_s: cfEv0.age_s, cf_action: cfAction }));
   return { ev, action, cfEv, cfAction };
 }
 

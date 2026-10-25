@@ -56,6 +56,7 @@ export const CF_DISPATCH_STALE_MIN = 15;     // vigia: última execução pedida
 export const MIN_PROBE_COVERAGE = 0.8;      // dia de P18/P22 só é completo com >= 80% das sondagens esperadas
 export const P22_TTL_MIN = 65;              // seção 5, P22: TTL de 65 min
 export const P20_MAX_AGE_H = 26;            // seção 9.1: 24 h + 2 h de tolerância
+export const P20_DRILL_WINDOW_DAYS = 31;    // seção 9.1: ensaio MENSAL de restauração completa (janela de 31 dias)
 export const P19_END_OF_DAY_UTC_HOUR = 20;  // leitura de cota só vale como "dia" se tirada a partir das 20:00 UTC
 export const ALLOWED_HOSTS = Object.freeze(["zevanory.api.br", "vendas.zevanory.api.br"]);
 export const UA = "Mozilla/5.0 (compatible; ZEVANORY-Monitor/1.0; B0 baseline; +https://github.com/arbmsistone-lab/zevanory-public-mirror)";
@@ -115,6 +116,12 @@ const FIELD_VALIDATORS = {
   kv_quota: (v) => isObj(v) && v.verified === true && isDay(v.day) && isInt(v.writes) && isInt(v.reads) && isInt(v.limit) && v.limit > 0 && isNum(v.pct) && isIso(v.snapshot_at),
   backup_restore_sample: (v) => isObj(v) && isIso(v.run_created_at) && ["success", "failure", "cancelled", "timed_out"].includes(v.run_conclusion)
     && typeof v.ok === "boolean" && isInt(v.neon_tables) && isInt(v.neon_restored_ok) && typeof v.kv_sample_ok === "boolean" && isInt(v.failures) && isNum(v.age_hours_at_collection),
+  // Só ensaio com a cópia REAL de produção (ENSAIO_EM_PRODUCAO) e medido (APROVADO ou REPROVADO); SINTETICA nunca.
+  monthly_full_restore_drill: (v) => isObj(v) && v.label === "ENSAIO_EM_PRODUCAO" && ["APROVADO", "REPROVADO"].includes(v.verdict) && isIso(v.finished_at)
+    && isNum(v.age_days) && v.age_days >= 0 && v.age_days <= P20_DRILL_WINDOW_DAYS && isDay(v.backup_day) && isInt(v.tables_checked) && isInt(v.tables_hash_ok)
+    && v.tables_hash_ok <= v.tables_checked && isInt(v.tables_restored) && typeof v.scope_complete_9_1 === "boolean" && isInt(v.not_covered_count)
+    && (v.verdict === "REPROVADO" || (v.tables_hash_ok === v.tables_checked && v.tables_restored === v.tables_checked && isNum(v.rpo_hours) && isNum(v.rto_seconds)))
+    && (v.rpo_hours === null || isNum(v.rpo_hours)) && (v.rto_seconds === null || isNum(v.rto_seconds)),
   financial_proof_freshness: (v) => isObj(v) && isInt(v.readings) && isInt(v.expected) && isInt(v.valid) && isInt(v.invalid) && isInt(v.unreadable)
     && v.valid + v.invalid + v.unreadable === v.readings && isNum(v.coverage) && v.coverage >= MIN_PROBE_COVERAGE && isInt(v.fail_safe_violations)
     && isObj(v.invalidation_reasons),
@@ -185,12 +192,17 @@ export const PROCESSES = Object.freeze({
   },
   P20: {
     name: "Continuidade", risk: "R1", label: "ENSAIO_EM_PRODUCAO", frequency: "raro",
-    fields: ["backup_restore_sample"],
-    scope: { measured: ["resultado e idade do backup diário com restauração por amostra (data-backup.yml)"],
-      not_proven: ["ensaio mensal de restauração COMPLETA (seção 9.1)", "diário de eventos no D1", "ensaio trimestral N2/N3", "RPO/RTO medidos"] },
+    fields: ["backup_restore_sample", "monthly_full_restore_drill"],
+    scope: { measured: ["resultado e idade do backup diário com restauração por amostra (data-backup.yml)",
+      "ensaio mensal de restauração COMPLETA da cópia Neon -> KV num Postgres efêmero, com SHA-256 por tabela contra o manifesto, RPO e RTO de dados (p20-monthly-restore-drill.yml; só ENSAIO_EM_PRODUCAO conta)"],
+      not_proven: ["restauração completa da cópia KV -> Neon (só ensaio por amostra no Worker)", "conciliação dos pedidos restaurados contra o provedor", "diário de eventos no D1",
+        "ensaio trimestral N2/N3", "RTO de serviço (DNS/Worker): o RTO medido é só de dados", "cópia cifrada (a cópia no KV está em texto claro)"] },
     sources: [
       { id: "data_backup_annotation", status: "PRESENT", note: "anotação DATA_BACKUP do run agendado/manual em gh-pages" },
-      { id: "monthly_full_restore_drill", status: "MISSING", note: "seção 9.1 exige ensaio mensal real de restauração completa; contagem de backups bem-sucedidos não substitui" },
+      { id: "monthly_full_restore_drill", status: "PRESENT", note: "p20-monthly-restore-drill.yml (Environment producao-critica, cada execução exige aprovação do proprietário) grava p20/restore-drills-v1.jsonl no ramo de evidência; só ENSAIO_EM_PRODUCAO medido em até 31 dias conta" },
+      { id: "kv_copy_full_restore", status: "MISSING", note: "a cópia KV -> Neon (zevanory_kv_backup) só é legível com a credencial do Neon, que só o Worker usa; o ensaio mensal em CI não a restaura" },
+      { id: "provider_reconciliation", status: "MISSING", note: "seção 9.1: conciliação dos pedidos restaurados contra o provedor; vendas fechadas e nenhuma credencial somente leitura do provedor no ensaio" },
+      { id: "event_journal_d1", status: "MISSING", note: "seção 9.1: diário de eventos críticos no D1 não implementado" },
     ],
   },
   P22: {
@@ -242,7 +254,10 @@ export function validateDailyRecord(r) {
     if (!isObj(e) || e.label !== def.label || !isObj(e.fields)) throw new Error("bad_process " + pid);
     for (const name of Object.keys(e.fields)) if (!def.fields.includes(name)) throw new Error("unknown_field " + pid + "." + name);
     const recomputed = def.fields.every((n) => fieldOk(n, e.fields[n]));
-    if (e.complete === true && !recomputed) throw new Error("complete_flag_mismatch " + pid);
+    // Evolução do esquema: campo criado depois da coleta fica ausente na linha antiga e a torna incompleta (nunca
+    // completa). Flag "complete" forjada sobre campos PRESENTES inválidos continua derrubando.
+    const presentOk = Object.keys(e.fields).every((n) => fieldOk(n, e.fields[n]));
+    if (e.complete === true && !presentOk) throw new Error("complete_flag_mismatch " + pid);
     e.complete = recomputed;
   }
   return r;
@@ -417,6 +432,29 @@ export function parseDataBackup(message, run, nowIso) {
   } };
 }
 
+// P20: ensaio mensal. records = registros já validados (scripts/p20/restore-drill-lib.mjs validateRecord).
+// Conta só ENSAIO_EM_PRODUCAO medido (APROVADO ou REPROVADO) terminado nos 31 dias até o fim do dia D.
+export function pickMonthlyDrill(records, day) {
+  if (!Array.isArray(records) || !isDay(day)) return { ok: false, reason: "drill_history_unreadable" };
+  const end = Date.parse(day + "T23:59:59.999Z"), start = Date.parse(addDays(day, -(P20_DRILL_WINDOW_DAYS - 1)) + "T00:00:00Z");
+  const win = records.filter((r) => isObj(r) && isIso(r.finished_at) && Date.parse(r.finished_at) >= start && Date.parse(r.finished_at) <= end)
+    .sort((a, b) => Date.parse(b.finished_at) - Date.parse(a.finished_at));
+  if (!win.length) return { ok: false, reason: "no_drill_within_31_days" };
+  const r = win.find((x) => x.label === "ENSAIO_EM_PRODUCAO" && ["APROVADO", "REPROVADO"].includes(x.verdict));
+  if (!r) {
+    const l = win[0];
+    return { ok: false, reason: l.verdict === "NOT_AVAILABLE" ? "latest_drill_not_available:" + String(l.reason || "").slice(0, 80) : "drill_label_" + String(l.label) + "_not_counted" };
+  }
+  return { ok: true, v: {
+    label: r.label, verdict: r.verdict, finished_at: r.finished_at, run_id: String(r.run_id || ""),
+    age_days: Math.round((end - Date.parse(r.finished_at)) / 864e5 * 10) / 10,
+    backup_day: r.backup?.day ?? null, rpo_hours: r.rpo_hours ?? null, rto_seconds: r.rto_seconds ?? null,
+    tables_checked: r.integrity?.tables_checked ?? null, tables_hash_ok: r.integrity?.tables_hash_ok ?? null,
+    tables_restored: isObj(r.restore) && isInt(r.restore.tables) ? r.restore.tables : 0,
+    scope_complete_9_1: r.scope_complete_9_1, not_covered_count: Array.isArray(r.not_covered) ? r.not_covered.length : null,
+  } };
+}
+
 // Leitura P22 de um corpo do /api/status (já parseado). Nunca lê contagens ou ids.
 export function readP22(body, nowMs) {
   if (!isObj(body)) return { readable: false, reason: "not_json_object" };
@@ -588,7 +626,7 @@ export function resolveDispatch({ windowId = "", dispatchedAt = "", source = "",
   if (dispatchedAt) {
     const t = isIso(dispatchedAt) ? msOf(dispatchedAt) : NaN;
     // O pedido sai dentro da própria janela (com folga de 2 min) e nunca depois do início do runner (+ folga de relógio).
-    if (Number.isNaN(t) || t < w || t > w + DISPATCH_WINDOW_MIN * 60000 + DISPATCH_MAX_FUTURE_S * 1000 || t > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return { ...out, window_rejected: "bad_dispatched_at" };
+    if (Number.isNaN(t) || t < w || t > w + DISPATCH_WINDOW_MIN * 60000 + DISPATCH_MAX_FUTURE_S * 1000 || t > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return { ...out, window_id: null, window_rejected: "bad_dispatched_at" };  // pedido incoerente: descartado inteiro
     out.dispatched_at = new Date(t).toISOString();
     out.dispatch_to_start_s = Math.round((startedMs - t) / 1000);
   }
