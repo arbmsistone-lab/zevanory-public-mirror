@@ -2,20 +2,31 @@
 // em até 10 min"). Roda num runner do GitHub (Azure), fora da Cloudflare. Somente GET; nunca /comprar, checkout ou
 // pagamento; nenhum segredo de produção; nenhum dado pessoal.
 //
-// A cada execução:
+// A cada execução (cron '2-59/5', auditoria Sol 246.09):
 //  1. sonda as páginas de venda e o /api/status (uma nova tentativa após 3 s para cada alvo);
-//  2. lê a validade da prova financeira (P22) do corpo público do /api/status;
-//  3. acrescenta uma linha em EVIDENCE_DIR/p18/probes-AAAA-MM.jsonl (ramo evidence/b0-baseline);
-//  4. alerta: 2 sondagens seguidas com falha -> abre (ou atualiza) UMA issue; primeira sondagem boa -> fecha.
-import { readFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
+//  2. se é a 1ª falha ainda não confirmada, espera CONFIRM_DELAY_MS (60 s) e re-sonda NA MESMA EXECUÇÃO: duas
+//     sondagens seguidas com falha, >= 60 s entre elas, confirmam sem esperar o próximo cron;
+//  3. grava em EVIDENCE_DIR/p18 (ramo evidence/b0-baseline): probes-AAAA-MM.jsonl (cada sondagem),
+//     incidents-AAAA-MM.jsonl (1ª falha observada, confirmação, emissão do alerta, recuperação, latências),
+//     runs-AAAA-MM.jsonl (atraso do início sobre o slot do cron e intervalo desde a execução anterior) e
+//     heartbeat.json (só quando a execução termina inteira; lido pelo vigia p18-monitor-watchdog);
+//  4. alerta: incidente confirmado -> abre (ou atualiza) UMA issue; primeira sondagem boa -> fecha.
+// Histórico malformado derruba antes de qualquer rede (fail-closed). Falha ao emitir o alerta grava o incidente com
+// alert_emitted_at = null, NÃO grava o batimento e termina com erro (o vigia e a notificação de falha do workflow
+// passam a valer); a próxima execução tenta emitir de novo e a latência medida inclui o atraso.
+import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { SALES_PAGES, STATUS_URL, SCHEMA_PROBE, readP22, validateProbe, parseJsonl, decideAlert, findOpenAlert, alertBody, ALERT_TITLE } from "./b0-lib.mjs";
+import {
+  SALES_PAGES, STATUS_URL, SCHEMA_PROBE, CONFIRM_DELAY_MS, readP22, validateProbe, validateRun, validateIncident, parseJsonl,
+  decideIncident, finalizeIncident, openIncident, buildRunRecord, buildHeartbeat, findOpenAlert, alertBody, ALERT_TITLE,
+} from "./b0-lib.mjs";
 import { probeUrl } from "./b0-collector.mjs";
 
+const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function targetId(url) { const u = new URL(url); return u.host + u.pathname; }
 
-export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), pause } = {}) {
+export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), pause, kind = "scheduled" } = {}) {
   const urls = [...SALES_PAGES, STATUS_URL];
   const res = await Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: 20000 })));
   let p22 = { readable: false, reason: "status_unreachable" };
@@ -29,55 +40,99 @@ export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), paus
     }
     return { id: targetId(r.url), ok, status: Number.isInteger(r.status) ? r.status : 0, latency_ms: r.latency_ms ?? null, ...(r.error ? { error: r.error } : {}) };
   });
-  return validateProbe({ schema: SCHEMA_PROBE, at: new Date(now()).toISOString(), up: targets.every((t) => t.ok), targets, p22 });
+  return validateProbe({ schema: SCHEMA_PROBE, at: new Date(now()).toISOString(), kind, up: targets.every((t) => t.ok), targets, p22 });
 }
 
-export function lastProbe(evidenceDir, atIso) {
-  // Mês corrente e, na virada do mês, o anterior.
+// Linhas do mês corrente e do anterior (virada do mês), em ordem. Malformado derruba.
+export function readRecent(evidenceDir, prefix, atIso, validate) {
   const d = new Date(atIso), cur = atIso.slice(0, 7);
   const prev = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
-  for (const m of [cur, prev]) {
-    const f = join(evidenceDir, "p18", `probes-${m}.jsonl`);
-    if (!existsSync(f)) continue;
-    const xs = parseJsonl(readFileSync(f, "utf8"), validateProbe);
-    if (xs.length) return xs[xs.length - 1];
+  const out = [];
+  for (const m of [prev, cur]) {
+    const f = join(evidenceDir, "p18", `${prefix}-${m}.jsonl`);
+    if (existsSync(f)) out.push(...parseJsonl(readFileSync(f, "utf8"), validate));
   }
-  return null;
+  return out;
+}
+export function lastProbe(evidenceDir, atIso) { return readRecent(evidenceDir, "probes", atIso, validateProbe).at(-1) || null; }
+
+function appendLine(dir, prefix, atIso, obj) {
+  mkdirSync(join(dir, "p18"), { recursive: true });
+  appendFileSync(join(dir, "p18", `${prefix}-${atIso.slice(0, 7)}.jsonl`), JSON.stringify(obj) + "\n");
 }
 
-export async function handleAlert({ prev, cur, env, fetchImpl = fetch, log = console.log }) {
+// Executa a ação de alerta. Retorna { action, emitted_at, issue, error }. Nunca lança: o erro volta para o chamador
+// gravar o incidente sem alert_emitted_at antes de falhar a execução.
+export async function handleAlert({ decision, cur, incident, env, fetchImpl = fetch, now = () => Date.now(), log = console.log }) {
   const repo = env.GITHUB_REPOSITORY, token = env.GITHUB_TOKEN;
-  if (!repo || !token) throw new Error("github_api_unconfigured");
-  const api = async (path, init = {}) => {
-    const r = await fetchImpl(`https://api.github.com/repos/${repo}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "zevanory-p18-monitor" }, signal: AbortSignal.timeout(15000) });
-    if (r.status < 200 || r.status >= 300) throw new Error("github_http_" + r.status);
-    return r.json();
-  };
-  // Só issues abertas pelo próprio bot com o título exato: ninguém de fora reabre/fecha o alerta pelo título.
-  const open = findOpenAlert(await api(`/issues?state=open&per_page=100&creator=${encodeURIComponent("github-actions[bot]")}`));
-  const d = decideAlert(prev, cur, open);
-  const runUrl = `https://github.com/${repo}/actions/runs/${env.GITHUB_RUN_ID || ""}`;
-  if (d.action === "open") await api("/issues", { method: "POST", body: JSON.stringify({ title: ALERT_TITLE, body: alertBody(cur, runUrl) }) });
-  if (d.action === "update") await api(`/issues/${d.number}`, { method: "PATCH", body: JSON.stringify({ body: alertBody(cur, runUrl) }) });
-  if (d.action === "close") {
-    await api(`/issues/${d.number}/comments`, { method: "POST", body: JSON.stringify({ body: `Recuperado: sondagem de ${cur.at} passou em todos os alvos. Execução: ${runUrl}` }) });
-    await api(`/issues/${d.number}`, { method: "PATCH", body: JSON.stringify({ state: "closed", state_reason: "completed" }) });
-  }
-  log(`P18_ALERT action=${d.action}`);
-  return d.action;
+  const out = { action: decision.action, emitted_at: null, issue: null, error: null };
+  try {
+    if (!repo || !token) throw new Error("github_api_unconfigured");
+    const api = async (path, init = {}) => {
+      const r = await fetchImpl(`https://api.github.com/repos/${repo}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "zevanory-p18-monitor" }, signal: AbortSignal.timeout(15000) });
+      if (r.status < 200 || r.status >= 300) throw new Error("github_http_" + r.status);
+      return r.json();
+    };
+    // Só issues abertas pelo próprio bot com o título exato: ninguém de fora reabre/fecha o alerta pelo título.
+    const open = findOpenAlert(await api(`/issues?state=open&per_page=100&creator=${encodeURIComponent("github-actions[bot]")}`), ALERT_TITLE);
+    const runUrl = `https://github.com/${repo}/actions/runs/${env.GITHUB_RUN_ID || ""}`;
+    const body = JSON.stringify({ title: ALERT_TITLE, body: alertBody(cur, runUrl, incident) });
+    const a = decision.action;
+    if (a === "confirm" || a === "alert_retry" || a === "update") {
+      const r = open ? await api(`/issues/${open.number}`, { method: "PATCH", body }) : await api("/issues", { method: "POST", body });
+      out.issue = Number.isInteger(r?.number) ? r.number : open?.number ?? null;
+      if (a !== "update") out.emitted_at = new Date(now()).toISOString();  // instante em que a issue existe com o alerta
+    } else if (cur.up && open) {
+      await api(`/issues/${open.number}/comments`, { method: "POST", body: JSON.stringify({ body: `Recuperado: sondagem de ${cur.at} passou em todos os alvos. Execução: ${runUrl}` }) });
+      await api(`/issues/${open.number}`, { method: "PATCH", body: JSON.stringify({ state: "closed", state_reason: "completed" }) });
+      out.issue = open.number;
+    }
+  } catch (e) { out.error = String(e?.message || e).slice(0, 80); }
+  log(`P18_ALERT action=${out.action}${out.error ? " error=" + out.error : ""}`);
+  return out;
 }
 
-export async function main({ env = process.env, fetchImpl = fetch, now = () => Date.now(), log = console.log, pause } = {}) {
+export async function main({ env = process.env, fetchImpl = fetch, now = () => Date.now(), log = console.log, pause, sleep = realSleep } = {}) {
   const dir = env.EVIDENCE_DIR;
   if (!dir) throw new Error("EVIDENCE_DIR_REQUIRED");
-  const cur = await runProbe({ fetchImpl, now, pause });
-  const prev = lastProbe(dir, cur.at);  // histórico malformado derruba (fail-closed), antes de gravar
-  const rec = { ...cur, run_id: String(env.GITHUB_RUN_ID || ""), event: String(env.GITHUB_EVENT_NAME || "") };
-  mkdirSync(join(dir, "p18"), { recursive: true });
-  appendFileSync(join(dir, "p18", `probes-${cur.at.slice(0, 7)}.jsonl`), JSON.stringify(rec) + "\n");
-  log("::notice title=P18_PROBE::" + JSON.stringify({ at: cur.at, up: cur.up, down: cur.targets.filter((t) => !t.ok).map((t) => t.id + ":" + t.status), p22_valid: cur.p22.valid ?? null }));
-  const action = await handleAlert({ prev, cur, env, fetchImpl, log });
-  return { cur, prev, action };
+  const startedMs = now(), startedIso = new Date(startedMs).toISOString();
+  // Fail-closed antes de qualquer rede: histórico de sondagens, incidentes e execuções precisa estar íntegro.
+  const hist = readRecent(dir, "probes", startedIso, validateProbe);
+  const incLines = readRecent(dir, "incidents", startedIso, validateIncident);
+  const runs = readRecent(dir, "runs", startedIso, validateRun);
+  const open = openIncident(incLines);
+  const run = buildRunRecord({ runId: env.GITHUB_RUN_ID, event: env.GITHUB_EVENT_NAME, startedMs, prevRun: runs.at(-1) || null });
+
+  const probes = [await runProbe({ fetchImpl, now, pause, kind: "scheduled" })];
+  appendLine(dir, "probes", probes[0].at, { ...probes[0], run_id: run.run_id, event: run.event });
+  let d = decideIncident({ seq: [...hist, ...probes], open });
+  if (d.action === "pending") {
+    // 1ª falha: confirmação dentro desta execução, sem esperar o próximo cron.
+    await sleep(CONFIRM_DELAY_MS);
+    const p2 = await runProbe({ fetchImpl, now, pause, kind: "confirm" });
+    appendLine(dir, "probes", p2.at, { ...p2, run_id: run.run_id, event: run.event });
+    probes.push(p2);
+    d = decideIncident({ seq: [...hist, ...probes], open });
+  }
+  const cur = probes.at(-1);
+  log("::notice title=P18_PROBE::" + JSON.stringify({ at: cur.at, up: cur.up, probes: probes.length, decision: d.action, down: cur.targets.filter((t) => !t.ok).map((t) => t.id + ":" + t.status), p22_valid: cur.p22.valid ?? null }));
+
+  const pendingInc = d.action === "confirm" ? d.incident : d.action === "alert_retry" ? open : null;
+  const alert = await handleAlert({ decision: d, cur, incident: pendingInc, env, fetchImpl, now, log });
+  let incident = null;
+  if (d.action === "confirm") incident = finalizeIncident(d.incident, { alertEmittedAt: alert.emitted_at, alertIssue: alert.issue, alertError: alert.error });
+  else if (d.action === "alert_retry" && alert.emitted_at) incident = finalizeIncident(open, { alertEmittedAt: alert.emitted_at, alertIssue: alert.issue });
+  else if (d.action === "recover") incident = d.incident;
+  if (incident) {
+    appendLine(dir, "incidents", incident.confirmed_at, validateIncident(incident));
+    log("::notice title=P18_INCIDENT::" + JSON.stringify({ id: incident.incident_id, first_failure_observed_at: incident.first_failure_observed_at, confirmed_at: incident.confirmed_at, alert_emitted_at: incident.alert_emitted_at, recovered_at: incident.recovered_at ?? null, latency_seconds: incident.latency_seconds, upper_bound_latency_seconds: incident.upper_bound_latency_seconds, s9: incident.s9 }));
+  }
+  const runRec = validateRun({ ...run, probes_at: probes.map((p) => p.at), confirm_reprobe: probes.length > 1, decision: d.action, incident_id: incident?.incident_id ?? open?.incident_id ?? null, outcome: alert.error ? "alert_failed" : "ok" });
+  appendLine(dir, "runs", run.started_at, runRec);
+  if (alert.error) throw new Error("P18_ALERT_FAILED " + alert.error);  // sem batimento: o vigia acusa
+  const stillOpen = d.action === "recover" ? null : incident || open;
+  writeFileSync(join(dir, "p18", "heartbeat.json"), JSON.stringify(buildHeartbeat({ nowMs: now(), runId: env.GITHUB_RUN_ID, run, cur, open: stillOpen }), null, 2) + "\n");
+  return { cur, probes, decision: d, action: d.action, incident, run: runRec };
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
