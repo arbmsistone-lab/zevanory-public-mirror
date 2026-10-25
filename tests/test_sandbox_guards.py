@@ -343,6 +343,21 @@ class GuardTests(unittest.TestCase):
             proof.Client(self.identity, self.fake).mp('/users/test', 'POST', {})
         self.assertEqual(self.fake.calls, [])
 
+    def test_production_sandbox_url_refused_in_preflight(self):
+        # R4 / F2: the sandbox flow ran 35 times against the production host; it must refuse it by name.
+        for url in ('https://zevanory.api.br', 'https://edge.zevanory.api.br', 'https://vendas.zevanory.api.br'):
+            self.env['CERTIFICATION_SANDBOX_URL'] = url
+            self.denied_preflight('PRODUCTION_HOST_DENIED')
+
+    def test_production_host_refused_even_when_module_is_bound_to_it(self):
+        for host in ('zevanory.api.br', 'edge.zevanory.api.br'):
+            app = 'https://' + host
+            with patch.object(proof, 'APP', app), patch.object(proof, 'CERT_HOST', host), \
+                    patch.object(proof, 'ALLOWED_HOSTS', frozenset({'api.mercadopago.com', host})):
+                with self.assertRaisesRegex(proof.GuardError, 'PRODUCTION_HOST_DENIED'):
+                    proof.Client(self.identity, self.fake).cert('status')
+        self.assertEqual(self.fake.calls, [])
+
     def test_unknown_host_refused(self):
         with self.assertRaises(proof.GuardError):
             proof.Client(self.identity, self.fake).request('https://evil.example/v1/payments')
