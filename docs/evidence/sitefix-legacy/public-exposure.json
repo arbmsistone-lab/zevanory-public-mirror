@@ -1,0 +1,200 @@
+{
+ "_what": "Public exposure of the GitHub Pages copy (arbmsistone-lab.github.io/zevanory-public-mirror) before this PR, and the readback to run after an authorized publish (merge to gh-pages triggers GitHub's own 'pages build and deployment').",
+ "probe_from_this_session": {
+  "date": "2026-10-25",
+  "command": "curl -sS -o /dev/null -w '%{http_code}' https://arbmsistone-lab.github.io/zevanory-public-mirror/",
+  "result": "curl: (56) CONNECT tunnel failed, response 403 (sandbox egress proxy blocks github.io)",
+  "pages_api": "gh api repos/arbmsistone-lab/zevanory-public-mirror/pages -> 403 'Access to this GitHub API path is not permitted through this proxy'"
+ },
+ "real_browser_capture_by_coordinator": {
+  "date": "2026-10-25",
+  "root": "200",
+  "quem-criou/": "200, 0 stylesheets loaded, canonical https://vendas.zevanory.api.br/quem-criou/",
+  "robots.txt": "Allow all"
+ },
+ "pages_build_runs": "actions runs 'pages build and deployment' on gh-pages: 40214877525 (9880c879) success 2026-10-25T17:06Z, 40210688786 (6d17867a), 40208676175 (c84c39f0), 40207208657 (5fc82604), 40200953739 (d7daf4a8) - every merge republishes the root tree",
+ "local_emulation_of_the_same_urls": {
+  "before (origin/gh-pages 9880c879, raw tree)": {
+   "home": {
+    "path": "/zevanory-public-mirror/",
+    "status": 200,
+    "stylesheet_links": 1,
+    "stylesheets_loaded": 1,
+    "canonical": "https://zevanory.api.br/solucoes",
+    "robots": null,
+    "refresh": null,
+    "failed_requests": [],
+    "refresh_navigation_attempted_to": [],
+    "price_text": false
+   },
+   "quem-criou": {
+    "path": "/zevanory-public-mirror/quem-criou/",
+    "status": 200,
+    "stylesheet_links": 1,
+    "stylesheets_loaded": 0,
+    "canonical": "https://vendas.zevanory.api.br/quem-criou/",
+    "robots": null,
+    "refresh": null,
+    "failed_requests": [
+     "404 /product.css",
+     "404 /assets/renan-bitu.webp",
+     "404 /brand/zevanory-logo-dark.svg"
+    ],
+    "refresh_navigation_attempted_to": [],
+    "price_text": false
+   },
+   "lucro-e-caixa": {
+    "path": "/zevanory-public-mirror/lucro-e-caixa/",
+    "status": 200,
+    "stylesheet_links": 1,
+    "stylesheets_loaded": 1,
+    "canonical": "https://zevanory.api.br/lucro-e-caixa",
+    "robots": "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1",
+    "refresh": null,
+    "failed_requests": [],
+    "refresh_navigation_attempted_to": [],
+    "price_text": false
+   }
+  },
+  "after (this PR, Jekyll permalink stubs)": {
+   "home": {
+    "path": "/zevanory-public-mirror/",
+    "status": 200,
+    "stylesheet_links": 0,
+    "stylesheets_loaded": 1,
+    "canonical": "https://vendas.zevanory.api.br/solucoes",
+    "robots": "noindex",
+    "refresh": "0; url=https://vendas.zevanory.api.br/solucoes",
+    "failed_requests": [],
+    "refresh_navigation_attempted_to": [
+     "https://vendas.zevanory.api.br/solucoes"
+    ],
+    "price_text": false
+   },
+   "quem-criou": {
+    "path": "/zevanory-public-mirror/quem-criou/",
+    "status": 200,
+    "stylesheet_links": 0,
+    "stylesheets_loaded": 1,
+    "canonical": "https://vendas.zevanory.api.br/quem-criou/",
+    "robots": "noindex",
+    "refresh": "0; url=https://vendas.zevanory.api.br/quem-criou/",
+    "failed_requests": [],
+    "refresh_navigation_attempted_to": [
+     "https://vendas.zevanory.api.br/quem-criou/"
+    ],
+    "price_text": false
+   },
+   "lucro-e-caixa": {
+    "path": "/zevanory-public-mirror/lucro-e-caixa/",
+    "status": 200,
+    "stylesheet_links": 0,
+    "stylesheets_loaded": 1,
+    "canonical": "https://vendas.zevanory.api.br/lucro-e-caixa",
+    "robots": "noindex",
+    "refresh": "0; url=https://vendas.zevanory.api.br/lucro-e-caixa",
+    "failed_requests": [],
+    "refresh_navigation_attempted_to": [
+     "https://vendas.zevanory.api.br/lucro-e-caixa"
+    ],
+    "price_text": false
+   }
+  }
+ },
+ "post_publication_readback": {
+  "when": "after the owner merges (GitHub then runs 'pages build and deployment'; wait for its 'deploy' job to succeed), from a real browser or any client that can reach github.io",
+  "checks": [
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/",
+    "expect": {
+     "status": 200,
+     "robots": "noindex",
+     "canonical": "https://vendas.zevanory.api.br/solucoes",
+     "meta_refresh": "0; url=https://vendas.zevanory.api.br/solucoes",
+     "stylesheet_links": 0,
+     "final_url_in_browser": "https://vendas.zevanory.api.br/solucoes"
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/quem-criou/",
+    "expect": {
+     "status": 200,
+     "robots": "noindex",
+     "canonical": "https://vendas.zevanory.api.br/quem-criou/",
+     "stylesheet_links": 0,
+     "final_url_in_browser": "https://vendas.zevanory.api.br/quem-criou/"
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/quem-criou",
+    "expect": {
+     "status": "301 to /zevanory-public-mirror/quem-criou/ (GitHub Pages), then as above"
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/lucro-e-caixa/",
+    "expect": {
+     "status": 200,
+     "robots": "noindex",
+     "canonical": "https://vendas.zevanory.api.br/lucro-e-caixa",
+     "stylesheet_links": 0,
+     "no_text": [
+      "R$",
+      "gates oficiais",
+      "contato@"
+     ]
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/ia-para-barbearia/",
+    "expect": {
+     "status": 200,
+     "robots": "noindex",
+     "canonical": "https://vendas.zevanory.api.br/ia-para-barbearia"
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/robots.txt",
+    "expect": {
+     "status": 200,
+     "body_contains": "User-agent: *\nAllow: /",
+     "no": "Sitemap:"
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/sitemap.xml",
+    "expect": {
+     "status": 404,
+     "robots": "noindex (404 stub)"
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/product.css",
+    "expect": {
+     "status": 404
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/OPERACAO.html",
+    "expect": {
+     "status": 404
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/docs/",
+    "expect": {
+     "status": 404
+    }
+   },
+   {
+    "url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/sales-public/solucoes.html",
+    "expect": {
+     "status": 200,
+     "robots": "noindex",
+     "canonical": "https://vendas.zevanory.api.br/solucoes"
+    }
+   }
+  ],
+  "one_liner": "for p in '' quem-criou/ lucro-e-caixa/ ia-para-barbearia/ robots.txt sitemap.xml product.css; do curl -s -o /tmp/r -w \"%{http_code} $p \" https://arbmsistone-lab.github.io/zevanory-public-mirror/$p; grep -o 'rel=\"canonical\" href=\"[^\"]*\"\\|name=\"robots\" content=\"[^\"]*\"\\|rel=\"stylesheet\"' /tmp/r | tr '\\n' ' '; echo; done"
+ }
+}
