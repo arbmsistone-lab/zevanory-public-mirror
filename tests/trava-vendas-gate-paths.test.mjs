@@ -22,6 +22,7 @@ const ENTRIES = [
   "tests/integration/close-invalidation-postgres.test.mjs",
   "tests/integration/delivery-evidence-cas-postgres.test.mjs",
   "tests/integration/mercadopago-payment-dedupe-postgres.test.mjs",
+  "tests/integration/waitlist-postgres.test.mjs",
   "tests/t4_sim/register.mjs",
   "tests/trava-vendas-gate-paths.test.mjs"
 ];

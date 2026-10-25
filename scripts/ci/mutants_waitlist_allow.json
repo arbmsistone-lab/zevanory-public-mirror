@@ -1,0 +1,206 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Wn.k]/[Pn.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "MW01 rotas ignoram a flag": {
+   "primary": [
+    {
+     "test_pattern": "W1",
+     "assertion_pattern": "[W1.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW02 job de aviso ignora a flag": {
+   "primary": [
+    {
+     "test_pattern": "W2",
+     "assertion_pattern": "[W2.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.3]",
+     "justification": "com a flag desligada o job passa a seguir o caminho ligado e, com vendas abertas, avisa o contato que sobrou (resto@): o envio que P8.3 proíbe acontece"
+    }
+   ]
+  },
+  "MW03 aviso com vendas fechadas": {
+   "primary": [
+    {
+     "test_pattern": "P2",
+     "assertion_pattern": "[P2.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.5]",
+     "justification": "com a checagem de vendas fechadas removida, a execução com salesOpen=false segue o caminho de abertura e mantém o marco sales_open_since que P8.5 exige apagado"
+    }
+   ]
+  },
+  "MW04 dados ficam depois do aviso": {
+   "primary": [
+    {
+     "test_pattern": "P3",
+     "assertion_pattern": "[P3.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P5",
+     "assertion_pattern": "[P5.3]",
+     "justification": "depois do envio que dá certo os registros ficam em 'notifying' em vez de apagados: a asserção de apagamento de P5.3 falha"
+    },
+    {
+     "test_pattern": "P6",
+     "assertion_pattern": "[P6.0]",
+     "justification": "a queda simulada acontece justamente na exclusão removida pela mutação; sem a exclusão não há queda e assert.rejects de P6.0 falha"
+    }
+   ]
+  },
+  "MW05 falha de envio não libera a reserva": {
+   "primary": [
+    {
+     "test_pattern": "P5",
+     "assertion_pattern": "[P5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW06 sem apagar 30 dias depois da abertura": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW07 sem teto de 365 dias": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW08 saída não apaga": {
+   "primary": [
+    {
+     "test_pattern": "P7",
+     "assertion_pattern": "[P7.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW09 versão do consentimento não conferida": {
+   "primary": [
+    {
+     "test_pattern": "W6",
+     "assertion_pattern": "[W6.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW10 sem dupla confirmação": {
+   "primary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P2",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P3",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P4",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P5",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P6",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P7",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    }
+   ],
+   "broad_reason": "sem dupla confirmação, todo teste que inscreve e confirma pelo caminho real (helper joined) para no passo de confirmação; a regra quebrada é a mesma (status inicial 'pending'), então a falha atinge P2 a P8 pelo mesmo motivo"
+  },
+  "MW11 abertura usa contatos do checklist": {
+   "primary": [
+    {
+     "test_pattern": "P4",
+     "assertion_pattern": "[P4.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "W5",
+     "assertion_pattern": "[W5.1]",
+     "justification": "a mutação introduz leitura de zevanory_leads em worker/waitlist.mjs, exatamente o que a guarda estática W5.1 proíbe"
+    }
+   ]
+  },
+  "MW12 trava do consentimento v2 ignorada": {
+   "primary": [
+    {
+     "test_pattern": "W7",
+     "assertion_pattern": "[W7.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW13 limite do v1 aumentado (retroativo)": {
+   "primary": [
+    {
+     "test_pattern": "W7",
+     "assertion_pattern": "[W7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW14 reinscrição troca a versão de contato confirmado": {
+   "primary": [
+    {
+     "test_pattern": "W7",
+     "assertion_pattern": "[W7.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW15 CTA vira formulário com a regra desligada": {
+   "primary": [
+    {
+     "test_pattern": "W3",
+     "assertion_pattern": "[W3.2]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}
