@@ -219,10 +219,18 @@ def preview_section(slug: str) -> str:
             f'<div class="inside-grid">{figs}</div></section>')
 
 def catalog_thumb(slug: str) -> str:
+    """Cover thumbnail; when the approved inner page is a whole page of the same format, it sits behind
+    the cover as a real two-page stack (no new content: both images are already in "Veja por dentro")."""
     ids = PREVIEW_MANIFEST["per_product"].get(slug) or []
     if not ids:
         return ""
-    return _picture(ids[0], "cc-thumb", f' ({_PREVIEWS[ids[0]]["label"]})')
+    front = _PREVIEWS[ids[0]]
+    back = _PREVIEWS[ids[1]] if len(ids) > 1 else None
+    same_format = back is not None and not back["crop_box"] and abs(back["width"] / back["height"] - front["width"] / front["height"]) < 0.01
+    behind = (f'<span class="cc-page cc-page-back" aria-hidden="true">{_picture(back["id"], "", "")}</span>'.replace(f'alt="{_attr(PREVIEW_TEXT[back["id"]][1])}"', 'alt=""')
+              if same_format else "")
+    return (f'<span class="cc-thumb{" cc-stack" if same_format else ""}">{behind}'
+            f'<span class="cc-page">{_picture(ids[0], "", " (" + front["label"] + ")")}</span></span>')
 
 def _faq_html(q, a):
     return f"<details><summary>{q}</summary><p>{a}</p></details>"

@@ -116,9 +116,21 @@ test("(e) previews: manifest hashes recomputed, zip = production artifact, ≤ 3
     });
     assert.doesNotMatch(sec, /href="[^"]*\.(pdf|docx|xlsx|zip|webp|avif)"/i, slug + ": nothing downloadable");
   }
+  // Catalogue: the real cover (128 px on desktop), optionally with the approved inner page stacked behind it.
   const sol = read("solucoes.html");
-  for (const slug of ["lucro-e-caixa", "vendas-na-pratica", "ia-na-pratica", "combo-ia-vendas", "negocio-completo"])
-    assert.match(sol, new RegExp(`id="p-${slug}"[\\s\\S]*?<img class="cc-thumb" src="/assets/previews/[a-z0-9-]+\\.[0-9a-f]{10}\\.webp"[^>]*loading="lazy"[^>]*alt="[^"]+\\(página real do material\\)"`), "catalogue thumbnail: " + slug);
+  for (const slug of ["lucro-e-caixa", "vendas-na-pratica", "ia-na-pratica", "combo-ia-vendas", "negocio-completo"]) {
+    const start = sol.indexOf(`id="p-${slug}"`);
+    const card = sol.slice(start, sol.indexOf("</article>", start));
+    const thumb = card.match(/<span class="cc-thumb( cc-stack)?">([\s\S]*?)<\/span><\/span>(?=<\/article>|$)/) || card.match(/<span class="cc-thumb( cc-stack)?">([\s\S]*)/);
+    assert.ok(thumb, "catalogue thumbnail: " + slug);
+    const used = [...card.matchAll(/src="\/assets\/previews\/([a-z0-9-]+)\.[0-9a-f]{10}\.webp"/g)].map((m) => m[1]);
+    const allowed = M.per_product[slug];
+    assert.ok(used.length >= 1 && used.length <= 2 && used.every((id) => allowed.includes(id)), `${slug}: thumbnail uses only its approved images (${used})`);
+    assert.equal(used[used.length - 1], allowed[0], slug + ": the cover is in front");
+    assert.match(card, /alt="[^"]+\(página real do material\)"/, slug + ": front cover alt + label");
+    for (const tag of card.match(/<img [^>]*>/g)) { assert.match(tag, /width="\d+" height="\d+"/); assert.match(tag, /loading="lazy"/); }
+    assert.doesNotMatch(card, /href="[^"]*\.(webp|avif|pdf)"/, slug + ": not downloadable");
+  }
 });
 
 // (f) Both themes (prefers-color-scheme, no toggle): every published page declares "light dark" and loads a

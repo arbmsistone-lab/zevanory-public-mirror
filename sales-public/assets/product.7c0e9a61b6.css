@@ -67,7 +67,7 @@
   /* Real previews are light documents: shown on a lifted slip with a thin border, never filtered. */
   .inside-grid .inside-item picture{display:block;padding:var(--s-2);background:var(--cupom-elevado);border:1px solid var(--linha)}
   .inside-item img{border-color:transparent;box-shadow:none}
-  .cc-thumb{border-color:var(--linha)}
+  .cc-page{border-color:var(--linha)}
   .site-header .brand img,.site-footer img{filter:none}
 }
 *,*::before,*::after{box-sizing:border-box}
@@ -282,11 +282,18 @@ main{display:block;overflow:visible;overflow-x:clip}
 .catalog-card:target{outline:3px solid var(--azul-cedula);outline-offset:4px;scroll-margin-top:104px}
 .catalog-card:target .cc-match{display:block}
 .catalog-card:target:not(.lead){background:var(--cupom);padding-inline:var(--s-4)}
-.catalog-card:has(.cc-thumb){grid-template-columns:72px minmax(0,1fr) 9.5rem}
-.cc-thumb{grid-column:1;grid-row:1;width:72px;height:auto;border:1px solid var(--linha-suave);background:var(--cupom)}
+/* Catalogue thumbnails: the real cover (and, when it is a whole page of the same format, the approved inner
+   page behind it as a two-page stack). Not interactive: the card link goes to the product page. */
+.catalog-card:has(.cc-thumb){grid-template-columns:140px minmax(0,1fr) 9.5rem;column-gap:var(--s-5)}
+.cc-thumb{position:relative;display:block;grid-column:1;grid-row:1 / span 2;width:128px;aspect-ratio:640 / 828}
+.cc-stack{margin:0 12px 12px 0}
+.cc-page{position:absolute;inset:0;display:block;background:var(--cupom-elevado);border:1px solid var(--linha-suave);box-shadow:0 1px 2px rgb(14 26 43 / .12)}
+.cc-page img{display:block;width:100%;height:100%;object-fit:cover;object-position:top}
+.cc-page-back{transform:translate(10px,10px);opacity:.9}
 .catalog-card:has(.cc-thumb) .cc-main{grid-column:2;grid-row:1}
 .catalog-card:has(.cc-thumb) .catalog-price{grid-column:3;grid-row:1}
-.catalog-pair .catalog-card:has(.cc-thumb){grid-template-columns:72px minmax(0,1fr)}
+.catalog-pair .catalog-card:has(.cc-thumb){grid-template-columns:116px minmax(0,1fr)}
+.catalog-pair .cc-thumb{width:104px}
 .catalog-pair .catalog-card:has(.cc-thumb) .catalog-price{grid-column:2;grid-row:2}
 .catalog-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-4)}
 .catalog-pair .catalog-card{grid-template-columns:minmax(0,1fr)}
@@ -313,7 +320,8 @@ main{display:block;overflow:visible;overflow-x:clip}
 .inside-item img{width:100%;height:auto;background:var(--cupom-elevado);border:1px solid var(--linha-suave);box-shadow:0 1px 0 var(--linha-suave)}
 .inside-item figcaption{margin-top:var(--s-2);font-size:var(--t-0);color:var(--tinta)}
 .inside-label{display:block;color:var(--grafite)}
-.inside-item picture,.catalog-card picture{display:contents}
+.inside-item picture{display:contents}
+.cc-page picture{display:block;height:100%}
 
 /* Founder. */
 .founder-section{display:grid;grid-template-columns:minmax(0,280px) minmax(0,1fr);gap:var(--s-7);align-items:start}
@@ -391,6 +399,8 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
   .trust-item:nth-child(3){padding-left:0}
   .card-grid{grid-template-columns:minmax(0,1fr)}
   .catalog-group{grid-template-columns:minmax(0,1fr)}
+  .catalog-card:has(.cc-thumb){grid-template-columns:124px minmax(0,1fr) 9.5rem}
+  .cc-thumb{width:112px}
   .footer-legal{grid-template-columns:repeat(2,minmax(0,1fr))}
   .steps,.seller{grid-template-columns:repeat(2,minmax(0,1fr))}
   .inside-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -414,10 +424,13 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
   .steps,.seller{grid-template-columns:minmax(0,1fr)}
   .inside-grid{grid-template-columns:minmax(0,1fr)}
   .inside-item img{max-width:420px}
-  .catalog-card:has(.cc-thumb),.catalog-pair .catalog-card:has(.cc-thumb){grid-template-columns:56px minmax(0,1fr)}
-  .cc-thumb{width:56px}
-  .catalog-card:has(.cc-thumb){column-gap:var(--s-3)}
-  .catalog-card:has(.cc-thumb) .catalog-price{grid-column:2;grid-row:2}
+  /* Phones: the real pages sit above the text (side by side would squeeze the copy). */
+  .catalog-card:has(.cc-thumb),.catalog-pair .catalog-card:has(.cc-thumb){grid-template-columns:minmax(0,1fr)}
+  .cc-thumb{width:120px;grid-row:1;margin-bottom:var(--s-3)}
+  .cc-stack{margin:0 10px var(--s-4) 0}
+  .cc-page-back{transform:translate(8px,8px)}
+  .catalog-card:has(.cc-thumb) .cc-main,.catalog-pair .catalog-card:has(.cc-thumb) .cc-main{grid-column:1;grid-row:2}
+  .catalog-card:has(.cc-thumb) .catalog-price,.catalog-pair .catalog-card:has(.cc-thumb) .catalog-price{grid-column:1;grid-row:3}
   .brand img{width:120px}
   .nav-cta{font-size:var(--t-0)}
   .receipt-line{font-size:1rem}
