@@ -52,7 +52,7 @@
 //   verify    --plan PLAN.json STATE
 //   postcheck --plan PLAN.json --release R.json --sales SALES.json
 //   version-id --deployments D.json   (imprime a versão única a 100%, ou nada)
-import { createHash } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -86,6 +86,18 @@ const COMMIT = /^[0-9a-f]{40}$/;
 const cleanType = (t) => String(t || "").replace(/[^a-z0-9_]/g, "").slice(0, 32) || "unknown";
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const sha256 = (s) => createHash("sha256").update(s, "utf8").digest("hex");
+// Sol 222/223 (2): integridade PRIVADA de configuração. Valores de var (e demais settings) só são comparados dentro do
+// workflow, por HMAC-SHA256 com chave aleatória POR RUN (arquivo em RUNNER_TEMP com umask 077, apontado por
+// ZEV_CONFIG_HMAC_KEY_FILE; sem o arquivo, chave aleatória do processo). Nunca há SHA-256 puro de valor, nunca a impressão
+// digital é impressa, exportada ou entra no D0. Comparação entre runs não é necessária: a remoção relê o estado ao vivo
+// no próprio run (plano x antes x depois). Segredos: a Cloudflare não devolve valor; só nome, tipo e origem.
+let PROCESS_KEY = null;
+function configKey() {
+  const f = process.env.ZEV_CONFIG_HMAC_KEY_FILE;
+  if (f) { try { const k = readFileSync(f); if (k.length >= 32) return k; } catch { /* sem arquivo: chave do processo */ } }
+  return (PROCESS_KEY ||= randomBytes(32));
+}
+export const privateFingerprint = (s) => createHmac("sha256", configKey()).update(s, "utf8").digest("hex");
 
 export class InputError extends Error {}
 
@@ -185,9 +197,12 @@ function deploymentsOf(data) {
   if (!data || typeof data !== "object" || data.success !== true) throw new InputError("deployments_not_success");
   const list = data.result?.deployments;
   if (!Array.isArray(list) || list.length === 0) throw new InputError("deployments_empty");
-  assertComplete(data, list, "deployments");
+  if (Array.isArray(data.errors) && data.errors.length) throw new InputError("deployments_with_errors");
   for (const d of list) if (!d || typeof d.created_on !== "string" || !d.created_on) throw new InputError("deployment_missing_created_on");
-  return [...list].sort((a, b) => cmp(b.created_on, a.created_on) || cmp(String(b.id || ""), String(a.id || ""))).map((d) => {
+  // Só o efetivo e o anterior importam (cadeia de um passo). Deployments mais antigos (inclusive os anteriores ao
+  // Versions da Cloudflare, sem `versions`) não são validados: histórico não é inventário. A API devolve os mais
+  // recentes primeiro; uma página parcial (result_info) do histórico é aceita, desde que traga o mais recente.
+  return [...list].sort((a, b) => cmp(b.created_on, a.created_on) || cmp(String(b.id || ""), String(a.id || ""))).slice(0, 2).map((d) => {
     const versions = Array.isArray(d?.versions) ? d.versions : [];
     if (!versions.length) throw new InputError("deployment_without_versions");
     const parsed = versions.map((v) => {
@@ -222,7 +237,7 @@ export function versionDetail(data) {
   const config = {};
   for (const b of res.bindings) {
     if (!b || typeof b.name !== "string" || !NAME.test(b.name) || typeof b.type !== "string" || !b.type) throw new InputError("version_detail_invalid_binding");
-    config[b.name] = { type: cleanType(b.type), h: sha256(canonicalJson(b)) };
+    config[b.name] = { type: cleanType(b.type), h: privateFingerprint(canonicalJson(b)) };
   }
   return { id: VERSION_ID.test(String(v.id || "")) ? v.id : null, number: Number.isInteger(v.number) ? v.number : null,
     tag: COMMIT.test(tag) ? tag : null, trigger: typeof ann["workers/triggered_by"] === "string" ? ann["workers/triggered_by"].replace(/[^a-z_]/g, "") : null,
@@ -232,7 +247,7 @@ export function versionDetail(data) {
 export function scriptSettingsHash(data) {
   bindingsOf(data);
   const { bindings, ...rest } = data.result;
-  return sha256(canonicalJson(rest));
+  return privateFingerprint(canonicalJson(rest));
 }
 export function diffConfig(before, after, allowedRemoved) {
   const allowed = new Set(allowedRemoved);
@@ -243,6 +258,16 @@ export function diffConfig(before, after, allowedRemoved) {
   const notRemoved = [...allowed].filter((n) => !removed.includes(n)).sort(cmp);
   return { ok: unexpectedRemoved.length === 0 && notRemoved.length === 0 && added.length === 0 && changed.length === 0, removed, unexpectedRemoved, notRemoved, added, changed };
 }
+// Sol 223 (2): resultado da comparação privada só como booleano e contador (nunca valor nem impressão digital).
+export function privateValueCheck(planConfig, liveConfig, removed = []) {
+  const gone = new Set(removed);
+  const names = Object.keys(planConfig).filter((n) => !gone.has(n) && Object.hasOwn(liveConfig, n) && !SECRET_TYPES_CFG.has(planConfig[n].type));
+  const changed = names.filter((n) => planConfig[n].h !== liveConfig[n].h || planConfig[n].type !== liveConfig[n].type);
+  return { unchanged: changed.length === 0, n: names.length, changed: changed.length };
+}
+const SECRET_TYPES_CFG = new Set(["secret_text", "secret_key"]);
+export const PRIVATE_LABEL = "valores verificados internamente pelo workflow (não auditados pelo SOL)";
+export const PUBLIC_LABEL = "metadados auditáveis independentemente (D0)";
 export const sameCode = (a, b) => canonicalJson(a) === canonicalJson(b);
 
 export function releaseInfo(data) {
@@ -308,6 +333,17 @@ export function snapshot({ secretList, settings, deployments, version, release }
   const doc = inventoryDocument({ entries, commitSha: commit, code: detail ? detail.code : null, toDelete, kept });
   return { secretEntries, bindingNames, entries, effective, detail, preview, commit, doc, digest: inventoryDigest(doc),
     settingsHash: settings ? scriptSettingsHash(settings) : null };
+}
+
+// Sol 221 (2): o que falta para o inventário valer como D0/V0 (fonte ausente, divergente ou incompleta).
+export function inventoryGaps(snap) {
+  const gaps = [];
+  if (!snap.bindingNames.length && !snap.settingsHash) gaps.push("settings");
+  if (!snap.effective) gaps.push("deployments");
+  else if (!snap.effective.single) gaps.push("single_version");
+  if (!snap.detail) gaps.push("version_detail");
+  if (!snap.commit) gaps.push("release_commit_sha");
+  return gaps;
 }
 
 // C2/A2: a autorização vale só para o estado revisado.
@@ -450,6 +486,91 @@ export function evaluatePostcheck({ plan, release, sales }) {
   return { ok: errors.length === 0, errors, commit_sha: r.commit_sha, sales_mode: r.sales_mode };
 }
 
+// Diagnóstico (Sol: falha ruidosa mas segura). Nada aqui imprime corpo de resposta, token ou valor.
+const SECRETISH = /(bearer\s+)\S+|(authorization:?\s*)\S+|(token[=:]\s*)\S+|[A-Za-z0-9_\-+/=]{24,}/gi;
+export function redactLine(line) {
+  return String(line).replace(SECRETISH, (m, b, a, k) => (b || a || k || "") + "[redigido]").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240);
+}
+export function redactTail(text, n = 15) {
+  return String(text || "").replace(/\r\n/g, "\n").split("\n").filter((l) => l.trim()).slice(-Math.max(1, Math.min(n, 40))).map(redactLine);
+}
+export function cfErrorLines(file) {
+  let data;
+  try { data = JSON.parse(readFileSync(file, "utf8")); } catch { return ["CF_RESPONSE json=ilegível"]; }
+  const errs = Array.isArray(data?.errors) ? data.errors : [];
+  const out = [`CF_RESPONSE success=${data?.success === true} errors=${errs.length}`];
+  // Sol 221 (1): código de erro e mensagem curta redigida, restrita a caracteres de texto; nunca o corpo da resposta.
+  for (const e of errs.slice(0, 5)) out.push(`CF_ERROR code=${Number.isInteger(e?.code) ? e.code : "?"} message=${redactLine(String(e?.message || "")).replace(/[^\p{L}\p{N} .,:'()\[\]_-]/gu, "").slice(0, 100)}`);
+  return out;
+}
+// Histórico de versões para as premissas do Sol (secret delete => versão "secret" com o mesmo etag do código).
+// Sanitizado: só ids, números, datas, origem, anotações de texto curto, etag/handlers/runtime e NOMES/TIPOS de binding.
+export const HISTORY_VERSION_FIELDS = Object.freeze(["id", "number", "created_on", "source", "triggered_by", "message", "tag", "etag", "handlers", "compatibility_date", "compatibility_flags", "bindings"]);
+export const HISTORY_DEPLOYMENT_FIELDS = Object.freeze(["id", "created_on", "source", "strategy", "triggered_by", "message", "versions"]);
+export function buildHistory({ list, details = [], deployments = null }) {
+  const items = Array.isArray(list?.result?.items) ? list.result.items : Array.isArray(list?.result) ? list.result : [];
+  const byId = new Map();
+  for (const d of details) {
+    const r = d && d.success === true ? d.result : null;
+    if (r && VERSION_ID.test(String(r.id || ""))) byId.set(r.id, r);
+  }
+  const short = (s) => (typeof s === "string" ? redactLine(s).slice(0, 120) : null);
+  const versions = items.filter((v) => v && VERSION_ID.test(String(v.id || ""))).map((v) => {
+    const det = byId.get(v.id) || {};
+    const ann = v.annotations || det.annotations || (v.metadata && v.metadata.annotations) || {};
+    const res = det.resources || {};
+    return { id: v.id, number: Number.isInteger(v.number) ? v.number : (Number.isInteger(det.number) ? det.number : null),
+      created_on: short(v.metadata?.created_on ?? v.created_on ?? det.metadata?.created_on), source: short(v.metadata?.source ?? det.metadata?.source),
+      triggered_by: short(ann["workers/triggered_by"]), message: short(ann["workers/message"]), tag: short(ann["workers/tag"]),
+      etag: typeof res.script?.etag === "string" ? res.script.etag.replace(/[^\w-]/g, "").slice(0, 80) : null,
+      handlers: Array.isArray(res.script?.handlers) ? [...res.script.handlers].map(String).sort(cmp) : null,
+      compatibility_date: short(res.script_runtime?.compatibility_date), compatibility_flags: Array.isArray(res.script_runtime?.compatibility_flags) ? [...res.script_runtime.compatibility_flags].map(String).sort(cmp) : null,
+      bindings: Array.isArray(res.bindings) ? res.bindings.filter((b) => b && typeof b.name === "string" && NAME.test(b.name)).map((b) => [b.name, cleanType(b.type)]).sort((x, y) => cmp(x[0], y[0])) : null };
+  }).sort((a, b) => (b.number ?? -1) - (a.number ?? -1) || cmp(b.created_on || "", a.created_on || ""));
+  const deps = Array.isArray(deployments?.result?.deployments) ? deployments.result.deployments : [];
+  const deploymentHistory = deps.map((d) => ({ id: short(d?.id), created_on: short(d?.created_on), source: short(d?.source), strategy: short(d?.strategy),
+    triggered_by: short(d?.annotations?.["workers/triggered_by"]), message: short(d?.annotations?.["workers/message"]),
+    versions: Array.isArray(d?.versions) ? d.versions.map((x) => ({ version_id: short(x?.version_id), percentage: Number(x?.percentage) })) : null }));
+  // Sol 221 (4): só campos da allowlist saem para o artefato (nomes, tipos, ids, datas, anotações, etag/handlers/runtime).
+  const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k] ?? null]));
+  return { schema: "zevanory-version-history/v1", script: TARGET.script, versions: versions.map((v) => pick(v, HISTORY_VERSION_FIELDS)),
+    deployments: deploymentHistory.map((d) => pick(d, HISTORY_DEPLOYMENT_FIELDS)) };
+}
+// Sol 221 (3): a anotação sozinha não prova nada. Por versão "secret": PROVEN só com etag do script presente nas duas
+// versões e igual E bindings legíveis nas duas com diferença só em bindings de segredo; REFUTED com etag presente e
+// diferente (ou diferença em binding que não é segredo); NOT_PROVEN quando falta qualquer campo.
+const SECRET_BINDING_TYPES = new Set(["secret_text", "secret_key"]);
+export function premiseOf(prev, v) {
+  if (!prev || !prev.etag || !v.etag) return { status: "NOT_PROVEN", why: "etag_ausente" };
+  if (prev.etag !== v.etag) return { status: "REFUTED", why: "etag_mudou" };
+  if (!Array.isArray(prev.bindings) || !Array.isArray(v.bindings)) return { status: "NOT_PROVEN", why: "bindings_ausentes" };
+  const a = new Map(prev.bindings.map((b) => [b[0], b[1]])), b = new Map(v.bindings.map((x) => [x[0], x[1]]));
+  const diff = [...new Set([...a.keys(), ...b.keys()])].filter((n) => a.get(n) !== b.get(n));
+  if (diff.some((n) => !SECRET_BINDING_TYPES.has(a.get(n) ?? b.get(n)))) return { status: "REFUTED", why: "binding_nao_segredo_mudou" };
+  return { status: "PROVEN", why: "etag_igual_e_so_segredos" };
+}
+export function historySummary(h) {
+  const out = [`VERSION_HISTORY versions=${h.versions.length} deployments=${h.deployments.length} with_detail=${h.versions.filter((v) => v.etag).length}`];
+  const byNumber = [...h.versions].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
+  const tally = { PROVEN: 0, REFUTED: 0, NOT_PROVEN: 0 };
+  byNumber.forEach((v, i) => {
+    if (!/secret/i.test(v.triggered_by || "")) return;
+    const prev = byNumber[i - 1];
+    const p = premiseOf(prev, v);
+    tally[p.status]++;
+    const names = (x) => new Set((x?.bindings || []).map((b) => b[0]));
+    const removed = prev && prev.bindings && v.bindings ? [...names(prev)].filter((n) => !names(v).has(n)) : null;
+    const added = prev && prev.bindings && v.bindings ? [...names(v)].filter((n) => !names(prev).has(n)) : null;
+    out.push(`SECRET_CHANGE_VERSION number=${v.number ?? "?"} id=${v.id} triggered_by=${v.triggered_by} premise=${p.status} why=${p.why} etag_equal_previous=${prev && prev.etag && v.etag ? prev.etag === v.etag : "desconhecido"} removed=${removed ? removed.join("|") || "-" : "?"} added=${added ? added.join("|") || "-" : "?"}`);
+  });
+  const triggers = {};
+  for (const v of h.versions) triggers[v.triggered_by || "ausente"] = (triggers[v.triggered_by || "ausente"] || 0) + 1;
+  out.push(`VERSION_TRIGGERS ${Object.keys(triggers).sort(cmp).map((k) => `${k}=${triggers[k]}`).join(" ")}`);
+  const status = tally.REFUTED ? "REFUTED" : tally.PROVEN && !tally.NOT_PROVEN ? "PROVEN" : tally.PROVEN ? "PARTIALLY_PROVEN" : "NOT_PROVEN";
+  out.push(`SOL_PREMISE status=${status} secret_versions=${tally.PROVEN + tally.REFUTED + tally.NOT_PROVEN} proven=${tally.PROVEN} refuted=${tally.REFUTED} not_proven=${tally.NOT_PROVEN}`);
+  return out;
+}
+
 function arg(argv, flag) {
   const i = argv.indexOf(flag);
   return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
@@ -472,9 +593,12 @@ export function cli(argv, log = console.log) {
       const secretNames = snap.secretEntries.map((e) => e.name), bindingNames = snap.bindingNames;
       for (const e of snap.entries) log(`INVENTORY_ENTRY origin=${e.origin} type=${e.type} name=${e.name}`);
       log(`INVENTORY_COUNT=${snap.entries.length}`);
+      // Sol 221 (2): D0 e V0 só saem com TODAS as fontes completas e coerentes; dado parcial nunca vira inventário.
+      const missing = settingsPath ? inventoryGaps(snap) : ["names_only"];
+      const complete = missing.length === 0;
       if (snap.effective) {
         log(`EFFECTIVE_DEPLOYMENT id=${snap.effective.deployment_id} versions=${snap.effective.versions.map((v) => `${v.id}@${v.pct}`).join(",")} previous=${snap.effective.previous ?? "nenhuma"}`);
-        log(`EFFECTIVE_VERSION_ID=${snap.effective.id}`);
+        log(`EFFECTIVE_VERSION_ID=${complete ? snap.effective.id : "NOT_EMITTED"}`);
       }
       if (snap.detail) log(`EFFECTIVE_VERSION_DETAIL number=${snap.detail.number ?? "indisponível"} workers_tag=${snap.detail.tag ?? "indisponível"} triggered_by=${snap.detail.trigger ?? "indisponível"} script_etag=${snap.detail.code.etag.replace(/[^\w-]/g, "").slice(0, 80)}`);
       log(`DEPLOYED_COMMIT_SHA=${snap.commit ?? "indisponível"}`);
@@ -485,16 +609,23 @@ export function cli(argv, log = console.log) {
         for (const n of p.absent || []) log(`PLANNED_ALREADY_ABSENT ${n}`);
         for (const n of p.kept || []) log(`PLANNED_KEEP ${n} ${snap.entries.filter((e) => e.name === n).map((e) => `${e.origin}:${e.type}`).join(",")}`);
       }
-      log(`INVENTORY_SCHEMA=${INVENTORY_SCHEMA}`);
-      log(`INVENTORY_DOCUMENT=${canonicalJson(snap.doc)}`);
-      log(`INVENTORY_DIGEST=${snap.digest}`);
+      log(`SECTION_PRIVATE=${PRIVATE_LABEL}: o readback não compara valores nem exporta impressão digital deles; a remoção compara plano x antes x depois dentro do próprio run`);
+      if (complete) {
+        log(`SECTION_D0=${PUBLIC_LABEL}: SHA-256 dos bytes UTF-8 exatos de INVENTORY_DOCUMENT (sem chave, sem valor)`);
+        log(`INVENTORY_SCHEMA=${INVENTORY_SCHEMA}`);
+        log(`INVENTORY_DOCUMENT=${canonicalJson(snap.doc)}`);
+        log(`INVENTORY_DIGEST=${snap.digest}`);
+      } else {
+        if (settingsPath) log(`::error title=INVENTORY_NOT_EMITTED::fonte ausente, divergente ou incompleta: ${missing.join(",")}; D0/V0 não emitidos`);
+        log(`INVENTORY_DIGEST=NOT_EMITTED missing=${missing.join(",")}`);
+      }
       const registry = loadDebt(arg(argv, "--debt") || DEFAULT_DEBT_FILE);
       const r = evaluateReadback({ secretNames, bindingNames, strict: argv.includes("--strict"), debt: registry });
       for (const v of r.violations) log(`::error title=PRODUCTION_TEST_SECRET_PRESENT::${v.name} (${v.source})`);
       for (const v of r.debt) log(`::warning title=LOAD_BEARING_DEBT::${v.name} (${v.source}): ${registry.names[v.name]}`);
       for (const id of r.openDebt) log(`::error title=R9_DEBT_OPEN::${id} pendente em ops/r9-debt.json`);
-      log(`PRODUCTION_TEST_SECRET_READBACK=${r.ok ? "PASS" : "FAIL"} names=${r.total} violations=${r.violations.length} debt=${r.debt.length} open_debt=${r.openDebt.length} digest=${snap.digest}`);
-      return r.ok ? 0 : 1;
+      log(`PRODUCTION_TEST_SECRET_READBACK=${r.ok ? "PASS" : "FAIL"} names=${r.total} violations=${r.violations.length} debt=${r.debt.length} open_debt=${r.openDebt.length} digest=${complete ? snap.digest : "NOT_EMITTED"}`);
+      return r.ok && (complete || !settingsPath) ? 0 : 1;
     }
     if (cmd === "plan") {
       const settings = readJson(need(argv, "--settings"));
@@ -503,6 +634,8 @@ export function cli(argv, log = console.log) {
       const target = proveTarget(settings);
       log(`TARGET account=${TARGET.account} script=${TARGET.script} deployment_env=${target.deployment_env}`);
       if (!target.ok) { log("::error title=CLEANUP_REFUSED::alvo não provado como produção"); return 1; }
+      const gaps = inventoryGaps(snap);
+      if (gaps.length) { log(`::error title=CLEANUP_REFUSED::inventário incompleto (${gaps.join(",")}); D0/V0 não emitidos`); return 1; }
       log(`INVENTORY_DIGEST=${snap.digest}`);
       log(`EFFECTIVE_VERSION_ID=${snap.effective.id}`);
       const bound = checkBinding({ digest: snap.digest, expectedDigest: arg(argv, "--expected-digest"), effective: snap.effective, expectedVersion: arg(argv, "--expected-version") });
@@ -545,6 +678,10 @@ export function cli(argv, log = console.log) {
         for (const t of r.c.typeChanged) log(`STEP_TYPE_CHANGED ${t}`);
       }
       for (const e of r.errors) log(`${e.startsWith("CONCURRENT_CHANGE") ? "::error title=CONCURRENT_CHANGE::" : "STEP_ERROR "}${e}`);
+      if (snap.detail) {
+        const vc = privateValueCheck(plan.config, snap.detail.config, phase === "post" ? [...list(arg(argv, "--deleted")), name] : list(arg(argv, "--deleted")));
+        log(`CONFIG_VALUES_UNCHANGED=${vc.unchanged} n=${vc.n} changed=${vc.changed} SCRIPT_SETTINGS_UNCHANGED=${snap.settingsHash === plan.settings_hash} (${PRIVATE_LABEL})`);
+      }
       const outVersion = arg(argv, "--out-version");
       if (r.ok && outVersion) writeFileSync(outVersion, snap.effective.id);
       // Sol 194: prova de versão ligada a cada transição (V antes/depois), separada do digest lógico.
@@ -580,6 +717,11 @@ export function cli(argv, log = console.log) {
       for (const n of v.added) log(`::error title=ADDED_SINCE_PLAN::${n}`);
       for (const t of v.typeChanged) log(`::error title=KEPT_TYPE_CHANGED::${t}`);
       for (const e of v.errors) log(`::error title=CLEANUP_POSTPROOF::${e}`);
+      const live = readSnap(argv);
+      if (live.detail) {
+        const vc = privateValueCheck(plan.config, live.detail.config, plan.toDelete);
+        log(`CONFIG_VALUES_UNCHANGED=${vc.unchanged} n=${vc.n} changed=${vc.changed} SCRIPT_SETTINGS_UNCHANGED=${live.settingsHash === plan.settings_hash} (${PRIVATE_LABEL})`);
+      }
       const after = readSnap(argv);
       log(`CLEANUP_VERIFY=${v.ok ? "PASS" : "FAIL"} still_present=${v.stillPresent.length} lost=${v.lostKept.length} added=${v.added.length} type_changed=${v.typeChanged.length} postproof_errors=${v.errors.length} version_before=${plan.version} version_after=${after.effective ? after.effective.id : "indisponível"} digest=${liveDigest(after, plan)} expected=${plan.chain[plan.chain.length - 1].digest}`);
       return v.ok ? 0 : 1;
@@ -594,6 +736,26 @@ export function cli(argv, log = console.log) {
     if (cmd === "version-id") {
       const eff = effectiveDeployment(readJson(need(argv, "--deployments")));
       if (eff.single) log(eff.id);
+      else log(`NO_SINGLE_VERSION ${eff.id.replace(/[^0-9a-f@,-]/g, "")}`);
+      return eff.single ? 0 : 1;
+    }
+    if (cmd === "cf-errors") {
+      // Diagnóstico de uma resposta da Cloudflare: só success e errors[].code/message (redigidos), nunca o corpo.
+      for (const l of cfErrorLines(arg(argv, "--file"))) log(l);
+      return 0;
+    }
+    if (cmd === "redact") {
+      const file = need(argv, "--file");
+      let text = "";
+      try { text = readFileSync(file, "utf8"); } catch { text = ""; }
+      for (const l of redactTail(text, Number(arg(argv, "--lines") || 15))) log(l);
+      return 0;
+    }
+    if (cmd === "history") {
+      const h = buildHistory({ list: readJson(need(argv, "--versions")), details: args(argv, "--detail").map((f) => { try { return readJson(f); } catch { return null; } }),
+        deployments: optJson(argv, "--deployments") });
+      writeFileSync(need(argv, "--out"), JSON.stringify(h, null, 1));
+      for (const l of historySummary(h)) log(l);
       return 0;
     }
     throw new InputError("unknown_command");

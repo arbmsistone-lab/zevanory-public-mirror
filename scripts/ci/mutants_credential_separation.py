@@ -25,7 +25,7 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/production-payment-credential-isolation.test.mjs", "tests/production-secret-names.test.mjs",
-         "tests/ci/credential-separation-gate.test.mjs"]
+         "tests/ci/credential-separation-gate.test.mjs", "tests/ci/production-worker-state.test.mjs"]
 COPY_DIRS = ["worker", "data", "tests/t4_sim", "tests/helpers", ".github/workflows"]
 COPY_FILES = TESTS + ["certification-worker.mjs", "admin.css", "ops/r9-debt.json", "scripts/ci/credential_separation_gate.py",
                       "scripts/ci/production-secret-names.mjs", "scripts/ci/production-worker-state.sh", "ops/publishers.json",
@@ -40,6 +40,7 @@ G = "scripts/ci/credential_separation_gate.py"
 S = "scripts/ci/production-secret-names.mjs"
 WF = ".github/workflows/production-test-secret-cleanup.yml"
 MX = "docs/ops/zevanory-publisher-matrix.json"
+SH = "scripts/ci/production-worker-state.sh"
 
 M = {
     # Worker de produção / certificação: escolha de credencial
@@ -98,7 +99,7 @@ M = {
     "S14 debt registry without reason/PR accepted": (S, """ || !String(e.reason || "").trim() || !String(e.planned_pr || "").trim()) throw new InputError("debt_registry_invalid");""", """) throw new InputError("debt_registry_invalid");"""),
     # Sol 187 C1 (pré-inventário)
     "C1a runtime config keys reported as bindings": (S, 'ZEVANORY_RUNTIME_CONFIG: "runtime_config" };', 'ZEVANORY_RUNTIME_CONFIG: "binding" };'),
-    "C1b readback omits the effective version": (S, "previous=${snap.effective.previous ?? \"nenhuma\"}`);\n        log(`EFFECTIVE_VERSION_ID=${snap.effective.id}`);", "previous=${snap.effective.previous ?? \"nenhuma\"}`);"),
+    "C1b readback omits the effective version": (S, "previous=${snap.effective.previous ?? \"nenhuma\"}`);\n        log(`EFFECTIVE_VERSION_ID=${complete ? snap.effective.id : \"NOT_EMITTED\"}`);", "previous=${snap.effective.previous ?? \"nenhuma\"}`);"),
     # Sol 187 C2 / 189 A2 / 194 (digest lógico e autorização D0+V0)
     "D1 digest ignores code identity": (S, "commit_sha: commitSha ?? null, code,", "commit_sha: commitSha ?? null, code: null,"),
     "D2 mutable version id inside the logical digest": (S, "  const doc = inventoryDocument({ entries, commitSha: commit, code: detail ? detail.code : null, toDelete, kept });", "  const doc = { ...inventoryDocument({ entries, commitSha: commit, code: detail ? detail.code : null, toDelete, kept }), effective_version_id: effective ? effective.id : null };"),
@@ -123,7 +124,7 @@ M = {
     "V2 kept type change ignored": (S, "  const typeChanged = expected.filter((e) => got.has(key(e)) && got.get(key(e)).type !== e.type)", "  const typeChanged = expected.filter((e) => false)"),
     "V3 code identity not compared": (S, "export const sameCode = (a, b) => canonicalJson(a) === canonicalJson(b);", "export const sameCode = (a, b) => true;"),
     "V4 config diff accepts extra removals": (S, '  const unexpectedRemoved = removed.filter((n) => !allowed.has(n) || before[n].type !== "secret_text");', "  const unexpectedRemoved = removed.filter((n) => false);"),
-    "V5 var value change invisible to config diff": (S, "config[b.name] = { type: cleanType(b.type), h: sha256(canonicalJson(b)) };", "config[b.name] = { type: cleanType(b.type), h: cleanType(b.type) };"),
+    "V5 var value change invisible to config diff": (S, "config[b.name] = { type: cleanType(b.type), h: privateFingerprint(canonicalJson(b)) };", "config[b.name] = { type: cleanType(b.type), h: cleanType(b.type) };"),
     "V6 sales status without open=false accepted": (S, 'sales.open !== false) errors.push("sales_status_open_not_false");', 'sales.open === true) errors.push("sales_status_open_not_false");'),
     "V7 commit change during cleanup accepted": (S, '  else if (plan && plan.commit_sha && r.commit_sha !== plan.commit_sha) errors.push("release_commit_changed_during_cleanup");\n', ""),
     "V8 script settings change ignored": (S, '  if (snap.settingsHash !== plan.settings_hash) errors.push("script_settings_changed");\n  if (liveDigest', "  if (liveDigest"),
@@ -135,7 +136,7 @@ M = {
     "X5 unknown origin accepted": (S, '    if (!ORIGINS.includes(e.origin)) throw new InputError("inventory_unknown_origin");\n', ""),
     "X6 pagination not exhausted accepted": (S, '  if (ri && typeof ri === "object" &&', '  if (false && ri && typeof ri === "object" &&'),
     "X7 incomplete secret list accepted": (S, '  for (const [name, type] of bindings) if (SECRET_TYPES.has(type) && !secrets.has(name)) throw new InputError("inventory_incomplete_secret_list");\n', ""),
-    "X9 deployments order taken from the API": (S, "  return [...list].sort((a, b) => cmp(b.created_on, a.created_on) || cmp(String(b.id || \"\"), String(a.id || \"\"))).map((d) => {", "  return [...list].map((d) => {"),
+    "X9 deployments order taken from the API": (S, "  return [...list].sort((a, b) => cmp(b.created_on, a.created_on) || cmp(String(b.id || \"\"), String(a.id || \"\"))).slice(0, 2).map((d) => {", "  return [...list].slice(0, 2).map((d) => {"),
     "X10 inventory order taken from the API": (S, "  return [...byKey.values()].sort((a, b) => cmp(a.name, b.name) || cmp(a.origin, b.origin) || cmp(a.type, b.type));", "  return [...byKey.values()];"),
     "X11 settings and version bindings may disagree": (S, '    if (a !== b) throw new InputError("inventory_sources_disagree");\n', ""),
     # Sol 189 A1 (matriz de publicadores)
@@ -145,6 +146,24 @@ M = {
     # gate: contrato do workflow de remoção
     "G29 cleanup authorized digest/version optional": (G, """        if not (isinstance(spec, dict) and spec.get("required") is True):""", "        if False:"),
     "G30 cleanup serialization preflight not required": (G, """    for marker in ("production-secret-names.mjs preflight", "step --phase pre",""", """    for marker in ("step --phase pre","""),
+    # Diagnóstico da coleta (run 40142599036 saiu sem nenhuma linha): falha ruidosa e segura
+    "R1 redaction disabled": (S, '.replace(SECRETISH, (m, b, a, k) => (b || a || k || "") + "[redigido]")', ".replace(SECRETISH, (m) => m)"),
+    "R2 version-id silent on a gradual rollout": (S, "      return eff.single ? 0 : 1;", "      return 0;"),
+    "R3 history keeps binding values": (S, "map((b) => [b.name, cleanType(b.type)]).sort((x, y) => cmp(x[0], y[0]))", "map((b) => [b.name, cleanType(b.type), b.text ?? null]).sort((x, y) => cmp(x[0], y[0]))"),
+    "R4 cf-errors prints the response body": (S, "  const out = [`CF_RESPONSE success=${data?.success === true} errors=${errs.length}`];", "  const out = [`CF_RESPONSE success=${data?.success === true} errors=${errs.length} body=${JSON.stringify(data)}`];"),
+    "R5 wrangler stderr printed raw": (SH, """    node scripts/ci/production-secret-names.mjs redact --file "$o/wrangler.err" --lines 15 | sed 's/^/WORKER_STATE wrangler: /'""", "    sed 's/^/WORKER_STATE wrangler: /' \"$o/wrangler.err\""),
+    "R6 version-id failure silent": (SH, """    echo "::error title=WORKER_STATE::version-id failed (exit=$rc) $(printf '%s' "$vid" | tr '\\n' ' ' | cut -c1-200)"\n""", ""),
+    "R7 diagnosis skipped after a settings failure": (SH, '  zev_cf_get settings "$o/settings.json" || { zev_diagnose "$o"; return 1; }', '  zev_cf_get settings "$o/settings.json" || return 1'),
+    "R8 evidence uploaded only on success": (".github/workflows/production-test-secret-readback.yml", "      - name: Upload readback evidence (names, codes and sanitized history only)\n        if: always()\n", "      - name: Upload readback evidence (names, codes and sanitized history only)\n"),
+    # Sol 221: falha fechada, premissa só com identidade do código, artefato com allowlist
+    "R9 partial inventory still emits D0/V0": (S, "      const complete = missing.length === 0;", "      const complete = true;"),
+    "R10 plan accepts an incomplete inventory": (S, '      if (gaps.length) { log(`::error title=CLEANUP_REFUSED::inventário incompleto (${gaps.join(",")}); D0/V0 não emitidos`); return 1; }\n', ""),
+    "R11 premise proven by the annotation alone": (S, '  if (!prev || !prev.etag || !v.etag) return { status: "NOT_PROVEN", why: "etag_ausente" };', '  if (!prev || !prev.etag || !v.etag) return { status: "PROVEN", why: "anotacao" };'),
+    "R12 artifact uploads the whole evidence folder": (".github/workflows/production-test-secret-readback.yml", "            ${{ runner.temp }}/zevanory-evidence/collect.txt\n", "            ${{ runner.temp }}/zevanory-evidence/\n"),
+    # Sol 222/223: D0 público sem chave; valores só por dentro (HMAC por run), rotulados
+    "R13 config fingerprint is a plain SHA-256": (S, '(s) => createHmac("sha256", configKey()).update(s, "utf8").digest("hex");', "(s) => sha256(s);"),
+    "R14 value-derived field inside D0": (S, "    delete: [...toDelete].sort(cmp), keep: [...kept].sort(cmp) };", "    delete: [...toDelete].sort(cmp), keep: [...kept].sort(cmp), hmac: privateFingerprint(canonicalJson(entries)) };"),
+    "R15 summary without the D0/private labels": (".github/workflows/production-test-secret-readback.yml", "grep -E '^(SECTION_D0|SECTION_PRIVATE|PRODUCTION_TEST_SECRET_READBACK", "grep -E '^(PRODUCTION_TEST_SECRET_READBACK"),
     "S12 malformed secret list accepted": (S, '  if (!Array.isArray(data)) throw new InputError("secret_list_not_array");', "  if (!Array.isArray(data)) return [];"),
 }
 

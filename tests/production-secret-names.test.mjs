@@ -12,7 +12,7 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync, readdirSync } from "nod
 import { readTextNormalized } from "./helpers/text.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cli, evaluateReadback, namesFromSecretList, namesFromSettings, planRemoval, verifyRemoval, proveTarget,
+import { cli, privateFingerprint, privateValueCheck, redactLine, redactTail, buildHistory, historySummary, HISTORY_VERSION_FIELDS, HISTORY_DEPLOYMENT_FIELDS, evaluateReadback, namesFromSecretList, namesFromSettings, planRemoval, verifyRemoval, proveTarget,
   CONFIRMATION_PHRASE, REMOVAL_ALLOWLIST, loadDebt, snapshot, canonicalJson, inventoryDigest, checkBinding, loadMatrix,
   evaluatePreflight, stepCheck, evaluatePostcheck, diffConfig, liveDigest, validateEntries, INVENTORY_SCHEMA, TARGET } from "../scripts/ci/production-secret-names.mjs";
 
@@ -442,7 +442,8 @@ test("N15 Sol 194: digest lógico com identidade do código, prova de versão po
   const missType = S0(); missType.l = missType.l.map((s) => (s.name === "DATABASE_URL" ? { name: s.name } : s)); bad(missType, "secret_list_missing_type");
   const bindNoType = S0(); delete bindNoType.s.result.bindings.find((b) => b.name === "PUBLIC_BASE_URL").type; bad(bindNoType, "settings_binding_missing_type");
   const pageS = S0(); pageS.s.result_info = { page: 1, total_pages: 2 }; bad(pageS, "settings_pagination_not_exhausted");
-  const pageD = S0(); pageD.d.result_info = { page: 1, per_page: 1, total_count: 5, total_pages: 1 }; bad(pageD, "deployments_pagination_not_exhausted");
+  const pageD = S0(); pageD.d.result_info = { page: 1, per_page: 1, total_count: 5, total_pages: 5 };
+  assert.equal(snapOf(pageD).effective.id, V0, "[N15.3] histórico de deployments paginado é aceito (só o efetivo e o anterior importam); inventário paginado não");
   const errS = S0(); errS.s.errors = [{ code: 1 }]; bad(errS, "settings_with_errors");
   const noCreated = S0(); delete noCreated.d.result.deployments[0].created_on; bad(noCreated, "deployment_missing_created_on");
   const noRt = S0(); delete noRt.v.result.resources.script_runtime; bad(noRt, "version_detail_incomplete");
@@ -457,4 +458,117 @@ test("N15 Sol 194: digest lógico com identidade do código, prova de versão po
   let m = null;
   assert.doesNotThrow(() => { m = snapOf(mixed); }, "[N15.7] ordem das APIs não pode quebrar a leitura (efetivo = deployment mais recente por created_on)");
   assert.deepEqual([m.digest, canonicalJson(m.doc), m.effective.id, m.effective.previous], [s0.digest, canonicalJson(s0.doc), V0, VX], "[N15.7] ordem das APIs não muda documento, digest nem versão efetiva");
+});
+
+test("N16 diagnóstico ruidoso e seguro: redação, erros da Cloudflare, version-id explícito, histórico sanitizado e premissa do Sol", () => {
+  const TOKEN = "cfut_SENTINELA0123456789abcdefghijklmnopqrstuvwxyz";
+  for (const l of [`Authorization: Bearer ${TOKEN}`, `token=${TOKEN}`, `X ${TOKEN} y`]) assert.ok(!redactLine(l).includes("SENTINELA"), "[N16.1] linha com token é redigida: " + l.slice(0, 20));
+  assert.equal(redactLine("✘ [ERROR] A request to the Cloudflare API failed. Authentication error [code: 10000]"), "✘ [ERROR] A request to the Cloudflare API failed. Authentication error [code: 10000]", "[N16.1] mensagem comum preservada (código do erro legível)");
+  assert.deepEqual(redactTail("a\nb\n\nc\nd", 2), ["c", "d"], "[N16.1] só as últimas linhas não vazias");
+  const cf = runCli(["cf-errors", "--file", "@e"], { e: { success: false, errors: [{ code: 10000, message: `Authentication error ${TOKEN}` }], result: { bindings: [{ name: "X", type: "plain_text", text: VALUE }] } } });
+  assert.ok(cf.out.includes("CF_RESPONSE success=false errors=1") && cf.out.includes("CF_ERROR code=10000 message=Authentication error [redigido]"), "[N16.2] status e errors[].code/message da Cloudflare");
+  assert.ok(!cf.out.includes("SENTINELA") && !cf.out.includes(VALUE), "[N16.2] nunca token nem corpo/valor");
+  assert.equal(runCli(["cf-errors", "--file", "@e"], { e: "<html>bad gateway" }).out, "CF_RESPONSE json=ilegível", "[N16.2] corpo não JSON vira só 'ilegível'");
+  const gradual = { success: true, result: { deployments: [{ id: "d", created_on: "2026-10-24T00:00:00Z", versions: [{ version_id: V0, percentage: 50 }, { version_id: V1, percentage: 50 }] }] } };
+  const g = runCli(["version-id", "--deployments", "@d"], { d: gradual });
+  assert.ok(g.code === 1 && g.out.startsWith("NO_SINGLE_VERSION "), "[N16.3] rollout gradual: version-id falha com motivo explícito (antes saía vazio)");
+  const inv2 = runCli(["version-id", "--deployments", "@d"], { d: { success: true, result: { deployments: [] } } });
+  assert.ok(inv2.code === 2 && inv2.out === "INPUT_INVALID deployments_empty", "[N16.3] motivo de validação legível para o ::error");
+  const legacy = deployments(V0, V1); legacy.result.deployments.push({ id: "legado", created_on: "2020-01-01T00:00:00Z", source: "wrangler" }, { id: "legado2", created_on: "2019-01-01T00:00:00Z", versions: [{ version_id: "nao-uuid", percentage: "x" }] });
+  assert.deepEqual([snapOf({ ...S0(), d: legacy }).effective.id, snapOf({ ...S0(), d: legacy }).effective.previous], [V0, V1], "[N16.4] deployments antigos sem versions (anteriores ao Versions) não derrubam a coleta");
+  const vlist = { success: true, result: { items: [
+    { id: V2, number: 3, metadata: { created_on: "2026-10-24T03:00:00Z", source: "api" }, annotations: { "workers/triggered_by": "secret" } },
+    { id: V1, number: 2, metadata: { created_on: "2026-10-24T02:00:00Z", source: "wrangler" }, annotations: { "workers/triggered_by": "upload", "workers/message": `deploy ${TOKEN}` } },
+    { id: V0, number: 1, metadata: { created_on: "2026-10-24T01:00:00Z", source: "wrangler" }, annotations: { "workers/triggered_by": "upload" } }] } };
+  const det = (id, etag, bindings) => ({ success: true, result: { id, resources: { bindings, script: { etag, handlers: ["fetch"] }, script_runtime: { compatibility_date: "2025-01-01", compatibility_flags: [] } } } });
+  const withSecret = [plain("PUBLIC_BASE_URL"), { name: "MERCADOPAGO_TEST_ACCESS_TOKEN", type: "secret_text" }];
+  const h = buildHistory({ list: vlist, details: [det(V2, "e1", [plain("PUBLIC_BASE_URL")]), det(V1, "e1", withSecret), det(V0, "e0", withSecret)], deployments: deployments(V2, V1, V0) });
+  assert.ok(!JSON.stringify(h).includes(VALUE) && !JSON.stringify(h).includes("SENTINELA"), "[N16.5] histórico sem valor de var e sem token");
+  assert.deepEqual(h.versions.map((v) => [v.number, v.triggered_by, v.etag]), [[3, "secret", "e1"], [2, "upload", "e1"], [1, "upload", "e0"]], "[N16.5] versões com gatilho e etag, mais nova primeiro");
+  assert.deepEqual(h.versions[0].bindings, [["PUBLIC_BASE_URL", "plain_text"]], "[N16.5] bindings só como nome e tipo");
+  const sum = historySummary(h);
+  assert.ok(sum.includes(`SECRET_CHANGE_VERSION number=3 id=${V2} triggered_by=secret premise=PROVEN why=etag_igual_e_so_segredos etag_equal_previous=true removed=MERCADOPAGO_TEST_ACCESS_TOKEN added=-`), "[N16.6] versão de troca de segredo: etag igual e só o segredo saiu => PROVEN");
+  assert.ok(sum.includes("SOL_PREMISE status=PROVEN secret_versions=1 proven=1 refuted=0 not_proven=0") && sum.includes("VERSION_TRIGGERS secret=1 upload=2"), "[N16.6] resumo da premissa do Sol");
+  const changed = historySummary(buildHistory({ list: vlist, details: [det(V2, "e9", []), det(V1, "e1", [])] }));
+  assert.ok(changed.includes("SOL_PREMISE status=REFUTED secret_versions=1 proven=0 refuted=1 not_proven=0"), "[N16.6] etag diferente numa troca de segredo refuta a premissa");
+  const noDetail = historySummary(buildHistory({ list: vlist, details: [] }));
+  assert.ok(noDetail.includes("SOL_PREMISE status=NOT_PROVEN secret_versions=1 proven=0 refuted=0 not_proven=1") && noDetail.some((l) => l.includes("premise=NOT_PROVEN why=etag_ausente")), "[N16.8] só a anotação 'secret' (sem etag) nunca prova: NOT_PROVEN");
+  const noBind = buildHistory({ list: vlist, details: [det(V2, "e1", null), det(V1, "e1", withSecret)] });
+  assert.ok(historySummary(noBind).some((l) => l.includes("premise=NOT_PROVEN why=bindings_ausentes")), "[N16.8] etag igual sem bindings legíveis: NOT_PROVEN");
+  const varChanged = buildHistory({ list: vlist, details: [det(V2, "e1", [{ name: "PUBLIC_BASE_URL", type: "json" }]), det(V1, "e1", withSecret)] });
+  assert.ok(historySummary(varChanged).some((l) => l.includes("premise=REFUTED why=binding_nao_segredo_mudou")), "[N16.8] versão 'secret' que mexe em binding que não é segredo refuta");
+  for (const v of h.versions) assert.deepEqual(Object.keys(v), [...HISTORY_VERSION_FIELDS], "[N16.9] versão do histórico só com campos da allowlist");
+  for (const d of h.deployments) assert.deepEqual(Object.keys(d), [...HISTORY_DEPLOYMENT_FIELDS], "[N16.9] deployment do histórico só com campos da allowlist");
+  const out = runCli(["history", "--versions", "@l", "--detail", "@a", "--detail", "@b", "--deployments", "@d", "--out", "@out"], { l: vlist, a: det(V2, "e1", []), b: "não json", d: deployments(V2, V1, V0) });
+  assert.ok(out.code === 0 && out.plan.schema === "zevanory-version-history/v1" && out.plan.deployments.length === 3, "[N16.7] CLI grava o histórico sanitizado (detalhe ilegível é ignorado, não inventado)");
+});
+
+test("N17 Sol 221 falha fechada: D0/V0 nunca saem com fonte ausente, divergente ou incompleta", () => {
+  const full = runCli(["readback", ...ST], S0());
+  assert.ok(/^INVENTORY_DIGEST=sha256:[0-9a-f]{64}$/m.test(full.out) && new RegExp(`^EFFECTIVE_VERSION_ID=${V0}$`, "m").test(full.out), "[N17.1] fontes completas: D0 e V0 emitidos");
+  for (const [label, files, gap] of [["sem release", { ...S0(), r: "indisponivel" }, "release_commit_sha"], ["release sem commit", { ...S0(), r: { sales_mode: "globally-blocked" } }, "release_commit_sha"]]) {
+    const r = runCli(["readback", ...ST], files);
+    assert.equal(r.code, 1, "[N17.2] inventário incompleto falha: " + label);
+    assert.ok(!/^INVENTORY_DIGEST=sha256:/m.test(r.out) && !/^INVENTORY_DOCUMENT=/m.test(r.out), "[N17.2] D0 não emitido: " + label);
+    assert.ok(r.out.includes("EFFECTIVE_VERSION_ID=NOT_EMITTED") && !new RegExp(`EFFECTIVE_VERSION_ID=${V0}`).test(r.out), "[N17.2] V0 não emitido: " + label);
+    assert.ok(r.out.includes(`INVENTORY_DIGEST=NOT_EMITTED missing=${gap}`) && r.out.includes("::error title=INVENTORY_NOT_EMITTED::"), "[N17.2] motivo explícito: " + label);
+    assert.match(r.out, /digest=NOT_EMITTED$/m, "[N17.2] veredito sem digest: " + label);
+  }
+  const noDeploy = runCli(["readback", "--secrets", "@l", "--settings", "@s", "--version-detail", "@v", "--release", "@r"], S0());
+  assert.ok(noDeploy.code === 1 && noDeploy.out.includes("missing=deployments") && !/^INVENTORY_DIGEST=sha256:/m.test(noDeploy.out), "[N17.3] sem deployments: não emite");
+  const noVer = runCli(["readback", "--secrets", "@l", "--settings", "@s", "--deployments", "@d", "--release", "@r"], S0());
+  assert.ok(noVer.code === 1 && noVer.out.includes("missing=version_detail") && !/^INVENTORY_DIGEST=sha256:/m.test(noVer.out), "[N17.3] sem detalhe da versão: não emite");
+  const names = runCli(["readback", "--secrets", "@l"], { l: list("MERCADOPAGO_ACCESS_TOKEN") });
+  assert.ok(names.out.includes("INVENTORY_DIGEST=NOT_EMITTED missing=names_only") && !/^INVENTORY_DIGEST=sha256:/m.test(names.out), "[N17.4] só nomes: nunca vira inventário");
+  const plan = runCli(["plan", ...ST, "--confirmation", CONFIRMATION_PHRASE, "--expected-digest", DIGEST0(), "--expected-version", V0, "--out", "@out"], { ...S0(), r: {} });
+  assert.ok(plan.code === 1 && plan.plan === null && /CLEANUP_REFUSED::inventário incompleto \(release_commit_sha\)/.test(plan.out) && !/^INVENTORY_DIGEST=/m.test(plan.out), "[N17.5] plano também recusa sem imprimir D0");
+});
+
+test("N18 Sol 222/223: D0 público recalculável sem chave; valores só comparados por dentro (HMAC por run), nunca exportados nem com hash puro", () => {
+  const sha = (s) => createHash("sha256").update(s, "utf8").digest("hex");
+  const st = S0();
+  const bindings = st.s.result.bindings;
+  // Impressões digitais proibidas: SHA-256 puro do valor, do valor em JSON e do binding canônico (força bruta trivial em true/false/production).
+  const forbidden = new Set();
+  for (const b of bindings) {
+    const v = b.text ?? (b.json !== undefined ? JSON.stringify(b.json) : undefined);
+    if (v !== undefined) for (const x of [v, JSON.stringify(v)]) forbidden.add(sha(x));
+    forbidden.add(sha(canonicalJson(b)));
+  }
+  const { bindings: _b, ...rest } = st.s.result; forbidden.add(sha(canonicalJson(rest)));
+  const snap = snapOf(st);
+  for (const [n, c] of Object.entries(snap.detail.config)) assert.ok(!forbidden.has(c.h), "[N18.1] impressão digital de config não é SHA-256 puro: " + n);
+  assert.ok(!forbidden.has(snap.settingsHash), "[N18.1] settings do script também não");
+  const prev = process.env.ZEV_CONFIG_HMAC_KEY_FILE;
+  const dir = mkdtempSync(join(tmpdir(), "zev-hmac-"));
+  try {
+    writeFileSync(join(dir, "k1"), "a".repeat(32)); writeFileSync(join(dir, "k2"), "b".repeat(32));
+    process.env.ZEV_CONFIG_HMAC_KEY_FILE = join(dir, "k1");
+    const h1 = privateFingerprint("true"), h1b = privateFingerprint("true");
+    process.env.ZEV_CONFIG_HMAC_KEY_FILE = join(dir, "k2");
+    assert.ok(h1 === h1b && h1 !== privateFingerprint("true") && h1 !== sha("true"), "[N18.2] HMAC estável com a mesma chave do run, diferente com outra, nunca o SHA-256 puro");
+  } finally { if (prev === undefined) delete process.env.ZEV_CONFIG_HMAC_KEY_FILE; else process.env.ZEV_CONFIG_HMAC_KEY_FILE = prev; rmSync(dir, { recursive: true, force: true }); }
+  // Tudo que sai (logs, resumo, plano interno, histórico) sem valor e sem hash puro de valor.
+  const rb = runCli(["readback", ...ST], st);
+  const plan = runCli(["plan", ...ST, "--confirmation", CONFIRMATION_PHRASE, "--expected-digest", DIGEST0(), "--expected-version", V0, "--out", "@out"], st);
+  const [A] = REMOVAL_ALLOWLIST;
+  const post = runCli(["step", "--phase", "post", "--plan", "@p", "--name", A, "--expected-version", V0, ...ST], { p: plan.plan, ...state({ removed: [A], chain: [V1, V0] }) });
+  const ver = runCli(["verify", "--plan", "@p", ...ST], { p: plan.plan, ...state({ removed: REMOVAL_ALLOWLIST, chain: [V2, V1, V0], varText: "OUTRO-VALOR-SENTINELA-555" }) });
+  const hist = JSON.stringify(buildHistory({ list: { success: true, result: { items: [{ id: V0, number: 1 }] } }, details: [st.v] }));
+  const everything = [rb.out, plan.out, JSON.stringify(plan.plan), post.out, ver.out, hist].join("\n");
+  assert.ok(!everything.includes(VALUE) && !everything.includes("OUTRO-VALOR-SENTINELA-555"), "[N18.3] nenhum valor de var em log, resumo, plano ou histórico");
+  for (const h of forbidden) assert.ok(!everything.includes(h), "[N18.3] nenhum SHA-256 puro de valor/binding em nada que sai: " + h.slice(0, 12));
+  assert.match(post.out, /^CONFIG_VALUES_UNCHANGED=true n=\d+ changed=0 SCRIPT_SETTINGS_UNCHANGED=true \(valores verificados internamente pelo workflow \(não auditados pelo SOL\)\)$/m, "[N18.4] comparação privada como booleano e contador, rotulada");
+  assert.match(ver.out, /^CONFIG_VALUES_UNCHANGED=false n=\d+ changed=1 /m, "[N18.4] valor de var mudado: false, sem dizer o valor");
+  assert.deepEqual(privateValueCheck({ A: { type: "plain_text", h: "1" }, S: { type: "secret_text", h: "2" } }, { A: { type: "plain_text", h: "1" }, S: { type: "secret_text", h: "2" } }), { unchanged: true, n: 1, changed: 0 }, "[N18.4] segredo fora da contagem (não há valor a comparar)");
+  // D0 público: recalculado dos BYTES exatos do documento exportado, sem chave.
+  const docLine = rb.out.split("\n").find((l) => l.startsWith("INVENTORY_DOCUMENT=")).slice("INVENTORY_DOCUMENT=".length);
+  const d0 = rb.out.split("\n").find((l) => l.startsWith("INVENTORY_DIGEST=")).slice("INVENTORY_DIGEST=".length);
+  assert.equal("sha256:" + createHash("sha256").update(Buffer.from(docLine, "utf8")).digest("hex"), d0, "[N18.5] D0 = SHA-256 dos bytes UTF-8 do documento exportado (sem newline final)");
+  const doc = JSON.parse(docLine);
+  assert.deepEqual(Object.keys(doc).sort(), ["account", "code", "commit_sha", "delete", "entries", "keep", "schema", "script"], "[N18.5] documento só com campos da allowlist");
+  assert.ok(doc.entries.every((e) => e.length === 3 && e.every((x) => typeof x === "string")) && !/"h"|hmac|fingerprint/i.test(docLine), "[N18.5] nenhum campo derivado de valor (nem HMAC) dentro do D0");
+  assert.equal(docLine, canonicalJson(doc), "[N18.5] o documento exportado já está na forma canônica");
+  assert.ok(rb.out.includes("SECTION_D0=metadados auditáveis independentemente (D0)") && rb.out.includes("SECTION_PRIVATE=valores verificados internamente pelo workflow (não auditados pelo SOL)"), "[N18.6] os dois compromissos rotulados no relatório");
+  assert.match(READBACK_WF, /SECTION_D0\|SECTION_PRIVATE/, "[N18.6] e no resumo do job");
 });
