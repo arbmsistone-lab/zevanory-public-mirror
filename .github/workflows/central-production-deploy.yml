@@ -262,6 +262,8 @@ jobs:
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
           npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
+          # Roteiro seção 7: build-info ganha bundle_sha256 (único módulo do dry-run; asset, não altera o bundle).
+          python3 scripts/deploy/write-build-info.py --bundle-dir /tmp/central-final
       - name: Authenticate Cloudflare
         if: steps.auth.outputs.available == 'true'
         run: npx --yes wrangler@4.135.0 whoami
@@ -480,6 +482,15 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/deploy/dispatch-exact-production-evidence.sh "$TARGET_RUNTIME_SHA"
+      - name: Read back live build-info signature region (GET only, after deploy)
+        # Roteiro seção 7: /build-info.json publicado == região de assinatura testada (git show do SHA promovido) e
+        # bundle_sha256 do dry-run. Somente leitura, DEPOIS do rollback automático de propósito: divergência deixa o
+        # run vermelho sem reverter nem alterar nada.
+        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/verify-live-build-info.py --url https://zevanory.api.br/build-info.json \
+            --expected-sha "$TARGET_RUNTIME_SHA" --source-ref "$TARGET_RUNTIME_SHA" --local-build-info public/build-info.json
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
         run: |

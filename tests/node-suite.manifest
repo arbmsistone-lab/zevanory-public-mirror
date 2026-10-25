@@ -58,8 +58,9 @@ tests/live-runtime-status.test.mjs 5
 tests/market-weekly.test.mjs 2
 tests/mercadopago-preference-expiry.test.mjs 3
 tests/mercadopago-webhook-safety.test.mjs 5
-tests/mercadopago-webhook-signature.test.mjs 11
+tests/mercadopago-webhook-signature.test.mjs 13
 tests/meta-social-manual-only.test.mjs 3
+tests/mp-signature-binding.test.mjs 9
 tests/multichannel-autonomy.test.mjs 18
 tests/operational-activity.test.mjs 7
 tests/operator-token-transition.test.mjs 8
