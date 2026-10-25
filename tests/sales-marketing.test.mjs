@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { readTextNormalized } from "./helpers/text.mjs";
+import { readTextNormalized, normalizeEol } from "./helpers/text.mjs";
 import worker, { openSalesHtml, NICHE_ROUTES } from "../worker/sales-public-worker.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -173,7 +173,7 @@ test("(d) niche pages: built, routed, canonical, linked from /solucoes, in the s
       const res = await get(path);
       assert.equal(res.status, 200, path);
       assert.equal(res.headers.get("cache-control"), "no-store, no-transform", path + ": segue o interruptor de vendas");
-      assert.equal(await res.text(), html, path);
+      assert.equal(normalizeEol(await res.text()), html, path);  // checkout may be CRLF (Windows autocrlf)
     }
     assert.ok(html.includes(`<link rel="canonical" href="${url}">`), file + ": canonical");
     assert.ok(sitemap.includes(`<loc>${url}</loc>`), file + ": sitemap");
