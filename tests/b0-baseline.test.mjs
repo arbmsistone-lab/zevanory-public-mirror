@@ -14,8 +14,9 @@ import {
   parseCommandCenter, parseFunnelDiag, parseDataBackup, readP22, parseSitemap, parseA11y, aggregateProbes,
   findOpenAlert, ALERT_TITLE, addDays, validateProbe, fieldOk, SCHEMA_INCIDENT, SCHEMA_RUN, SCHEMA_HEARTBEAT, finalizeIncident,
   withRecovery, validateIncident, decideIncident, openIncident, evaluateHeartbeat, HEARTBEAT_STALE_MIN, aggregateLatency, percentile,
-  CONFIRM_BUDGET_S, WATCHDOG_TITLE, pickMonthlyDrill,
+  CONFIRM_BUDGET_S, WATCHDOG_TITLE, parseWorkersUsage, parsePlanProbe, p19Margins, NEON_FREE_BYTES, pickMonthlyDrill,
 } from "../scripts/b0/b0-lib.mjs";
+import { summarizeWorkersGroups, workersUsageForDay, prevUtcDay, WORKERS_QUERY } from "../scripts/audit/workers-usage.mjs";
 import { runDrill } from "../scripts/p20/restore-drill.mjs";
 import { makeBackup } from "./helpers/p20-backup-fixture.mjs";
 import { collect } from "../scripts/b0/b0-collector.mjs";
@@ -38,6 +39,9 @@ const OKV = {
   funnel_origin: { sources: { direto: { views: 10, intents: 1 } } },
   funnel_interest: { intents_total: 1, checkouts7: 0, leads7: 0 },
   kv_quota: { verified: true, day: "2026-10-25", writes: 600, reads: 30000, limit: 1000, pct: 60, snapshot_at: "2026-10-25T23:17:00.000Z" },
+  workers_usage: { verified: true, day: "2026-10-25", requests: 23000, limit: 100000, pct: 23, cpu_p99_ms_worst: 3.2, cpu_limit_ms: 10, scripts: 5, snapshot_at: "2026-10-26T00:17:00.000Z" },
+  neon_storage: { bytes: 25690112, limit_bytes: 536870912, pct: 4.8, measured_at: "2026-10-19T15:52:01.954Z", age_days: 6.3, metric: "pg_database_size" },
+  neon_compute: { cu_hours_month: 30, limit_cu_hours: 100, day: "2026-10-25", measured_at: "2026-10-26T00:00:00.000Z" },
   backup_restore_sample: { run_created_at: "2026-10-25T09:47:17Z", run_conclusion: "success", ok: true, neon_tables: 53, neon_restored_ok: 53, kv_sample_ok: true, failures: 0, age_hours_at_collection: 16 },
   monthly_full_restore_drill: { label: "ENSAIO_EM_PRODUCAO", verdict: "APROVADO", finished_at: "2026-10-02T07:40:00.000Z", run_id: "5", age_days: 23.7, backup_day: "2026-10-02",
     rpo_hours: 2.2, rto_seconds: 95, tables_checked: 53, tables_hash_ok: 53, tables_restored: 53, scope_complete_9_1: false, not_covered_count: 4 },
@@ -219,14 +223,20 @@ test("alerta P18: só issue do bot com o título exato; sondagem incoerente derr
 // ---- ponta a ponta com rede falsa e diretório temporário (nunca rede real) --------------------------------
 function tmp() { return mkdtempSync(join(tmpdir(), "zev-b0-")); }
 const res = (body, status = 200) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
-function fakeNet({ ccMessage, statusBody, pagesDown = false, ctl = null }) {
+function fakeNet({ ccMessage, statusBody, pagesDown = false, ctl = null, ccNextMessage = null, planMessage = null }) {
   const calls = [], issues = [];
   const down = () => (ctl ? ctl.down : pagesDown);
   const fetchImpl = async (url, init = {}) => {
     calls.push({ url: String(url), method: init.method || "GET" });
     const u = new URL(String(url));
     if (u.host === "api.github.com") {
-      if (/command-center-snapshot\.yml\/runs/.test(u.pathname)) return res({ workflow_runs: [{ id: 11, head_branch: "gh-pages", event: "schedule", status: "completed", conclusion: "success", path: ".github/workflows/command-center-snapshot.yml", created_at: "2026-10-25T23:17:00Z" }] });
+      if (/command-center-snapshot\.yml\/runs/.test(u.pathname)) return res({ workflow_runs: [{ id: 11, head_branch: "gh-pages", event: "schedule", status: "completed", conclusion: "success", path: ".github/workflows/command-center-snapshot.yml", created_at: "2026-10-25T23:17:00Z" },
+        ...(ccNextMessage ? [{ id: 12, head_branch: "gh-pages", event: "schedule", status: "completed", conclusion: "success", path: ".github/workflows/command-center-snapshot.yml", created_at: "2026-10-26T00:17:00Z" }] : [])] });
+      if (/plan-probe\.yml\/runs/.test(u.pathname)) return res({ workflow_runs: planMessage ? [{ id: 33, head_branch: "gh-pages", event: "schedule", status: "completed", conclusion: "success", path: ".github/workflows/plan-probe.yml", created_at: "2026-10-19T15:51:46Z" }] : [] });
+      if (/\/runs\/12\/jobs/.test(u.pathname)) return res({ jobs: [{ id: 121 }] });
+      if (/\/runs\/33\/jobs/.test(u.pathname)) return res({ jobs: [{ id: 331 }] });
+      if (/check-runs\/121\/annotations/.test(u.pathname)) return res([{ title: "COMMAND_CENTER", annotation_level: "notice", message: ccNextMessage }]);
+      if (/check-runs\/331\/annotations/.test(u.pathname)) return res([{ title: "PLAN_PROBE", annotation_level: "notice", message: planMessage }]);
       if (/data-backup\.yml\/runs/.test(u.pathname)) return res({ workflow_runs: [{ id: 22, head_branch: "gh-pages", event: "schedule", status: "completed", conclusion: "success", path: ".github/workflows/data-backup.yml", created_at: "2026-10-25T09:47:17Z" }] });
       if (/\/runs\/11\/jobs/.test(u.pathname)) return res({ jobs: [{ id: 111 }] });
       if (/\/runs\/22\/jobs/.test(u.pathname)) return res({ jobs: [{ id: 222 }] });
@@ -259,7 +269,10 @@ test("coletor ponta a ponta: P06/P08/P03-a11y NOT_AVAILABLE explícitos, anotaç
     assert.equal(record.processes.P08.fields.lead_consent_counts.value, NA);
     assert.equal(record.processes.P03.fields.a11y_wcag2aa.value, NA, "sem arquivo do pa11y: NOT_AVAILABLE, nunca 0 erros");
     assert.equal(record.processes.P03.fields.public_pages_http.value.checked, 2, "duas URLs, /comprar excluída");
-    assert.equal(record.processes.P15.complete, true); assert.equal(record.processes.P19.complete, true);
+    assert.equal(record.processes.P15.complete, true);
+    assert.equal(record.processes.P19.complete, false, "P19: Workers/Neon sem leitura neste cenário, e Neon CU-h nunca tem fonte");
+    assert.equal(record.processes.P19.fields.kv_quota.value.writes, 311);
+    assert.equal(record.processes.P19.fields.neon_compute.reason, "requires_new_credential_neon_api_key");
     assert.equal(record.processes.P20.complete, false, "sem ensaio mensal no ramo: P20 incompleto");
     assert.equal(record.processes.P20.fields.monthly_full_restore_drill.reason, "no_drill_within_31_days");
     assert.equal(record.processes.P18.complete, false, "sem sondagens P18 no ramo: incompleto");
@@ -526,6 +539,117 @@ test("workflows B0/P18: agendados, só GITHUB_TOKEN, gravam só no ramo evidence
   assert.match(mon, /issues: write/);
   assert.doesNotMatch(col, /issues: write/);
   assert.match(tst, /pull_request:/); assert.match(tst, /contents: read/); assert.doesNotMatch(tst, /contents: write|schedule:/);
+});
+
+// ---- P19: Workers e Neon (seção 5: margem por modo de falha) ----------------------------------------------------
+const WG = (name, req, p99us, p50us = 500, err = 0) => ({ dimensions: { scriptName: name }, sum: { requests: req, errors: err, subrequests: 0 }, quantiles: { cpuTimeP99: p99us, cpuTimeP50: p50us } });
+const CC_NEXT = (w) => JSON.stringify({ at: "2026-10-26T00:17:05.000Z", workersUsage: w });
+const PLAN = (o) => JSON.stringify({ schema: "zevanory-plans/v1", checkedAt: "2026-10-19T15:52:01.954Z", cloudflare: {}, neon: {}, notVerifiable: [], ...o });
+
+test("P19 Workers: soma da conta e pior CPU p99 por Worker; grupo malformado, lista vazia ou sem escopo nunca viram número", async () => {
+  const w = summarizeWorkersGroups([WG("zevanory", 20000, 4100), WG("zevanory-sales-public", 3000, 1200), WG("zevanory", 500, 3000), WG("ocioso", 0, 99000)], "2026-10-25");
+  assert.equal(w.verified, true, "[P19W.1]");
+  assert.equal(w.requests, 23500, "[P19W.2] soma de todos os Workers da conta");
+  assert.equal(w.pct, 23.5);
+  assert.equal(w.cpu_p99_ms_worst, 4.1, "[P19W.3] pior p99 (µs -> ms) entre Workers com requisições");
+  assert.equal(w.cpu_p99_worst_script, "zevanory");
+  assert.equal(summarizeWorkersGroups([WG("x", 10, 100), { dimensions: { scriptName: "y" }, sum: { requests: 5 } }], "2026-10-25").verified, false, "[P19W.4] grupo malformado invalida a leitura");
+  assert.equal(summarizeWorkersGroups([WG("x", 10, 100), WG("y", -1, 100)], "2026-10-25").verified, false, "[P19W.4] requisições negativas invalidam a leitura");
+  assert.equal(summarizeWorkersGroups([], "2026-10-25").reason, "no_groups", "[P19W.5] lista vazia nunca é zero requisições");
+  assert.equal(summarizeWorkersGroups(null, "2026-10-25").verified, false);
+  const calls = [];
+  const fetchImpl = async (url, init) => { calls.push({ url: String(url), init }); return new Response(JSON.stringify({ data: null, errors: [{ message: "not authorized for that account" }] }), { status: 200 }); };
+  const r = await workersUsageForDay("2026-10-25", { token: "t", account: "a", fetchImpl });
+  assert.equal(r.verified, false, "[P19W.6] token sem escopo = verified:false");
+  assert.match(r.reason, /not authorized/);
+  assert.equal(calls[0].url, "https://api.cloudflare.com/client/v4/graphql", "[P19W.7] só a API GraphQL de análise");
+  const q = JSON.parse(calls[0].init.body);
+  assert.ok(/^query\(/.test(q.query) && !/mutation/i.test(q.query), "[P19W.8] consulta de leitura, nunca mutation");
+  assert.deepEqual(q.variables, { a: "a", s: "2026-10-25T00:00:00Z", e: "2026-10-26T00:00:00Z" }, "[P19W.9] exatamente o dia UTC completo");
+  assert.equal(q.query, WORKERS_QUERY);
+  assert.equal(prevUtcDay(Date.parse("2026-10-26T00:17:00Z")), "2026-10-25", "[P19W.10] o snapshot das 00:17 mede o dia anterior completo");
+  const n0 = calls.length;
+  assert.equal((await workersUsageForDay("2026-10-25", { token: "", account: "a", fetchImpl })).reason, "token_or_account_missing", "[P19W.11] sem token nem chama a API");
+  assert.equal(calls.length, n0, "[P19W.11] sem token nem chama a API");
+});
+
+test("P19 parsers: workersUsage do dia certo e verificado; PLAN_PROBE sem bytes, antigo ou com falha de conexão vira NOT_AVAILABLE", () => {
+  const w = summarizeWorkersGroups([WG("zevanory", 23000, 3200)], "2026-10-25");
+  const ok = parseWorkersUsage(CC_NEXT(w), "2026-10-25");
+  assert.equal(ok.ok, true, "[P19P.1]"); assert.equal(ok.v.requests, 23000); assert.equal(ok.v.snapshot_at, "2026-10-26T00:17:05.000Z");
+  assert.equal(parseWorkersUsage(CC_NEXT(w), "2026-10-24").reason, "workers_usage_other_day", "[P19P.2]");
+  assert.match(parseWorkersUsage(CC_NEXT({ verified: false, day: "2026-10-25", reason: "http_403" }), "2026-10-25").reason, /^workers_usage_unverified:http_403/, "[P19P.3]");
+  assert.equal(parseWorkersUsage(CC_NEXT({ ...w, pct: 2 }), "2026-10-25").reason, "workers_usage_malformed", "[P19P.4] pct incoerente com requests/limit");
+  assert.equal(parseWorkersUsage(CC_NEXT({ ...w, requests: "23000" }), "2026-10-25").ok, false, "[P19P.5]");
+  assert.equal(parseWorkersUsage(JSON.stringify({ at: "2026-10-26T00:17:05.000Z" }), "2026-10-25").reason, "workers_usage_absent");
+  assert.equal(parseWorkersUsage("{trunc", "2026-10-25").reason, "malformed_source");
+  const run = { id: 33 };
+  assert.equal(parsePlanProbe(PLAN({}), run, "2026-10-25").reason, "plan_probe_neon_bytes_absent", "[P19P.6] neon:{} real de 19/10 (DATABASE_URL vazio)");
+  const n = parsePlanProbe(PLAN({ neon: { bytes: 25690112 } }), run, "2026-10-25");
+  assert.equal(n.ok, true, "[P19P.7]"); assert.equal(n.v.limit_bytes, NEON_FREE_BYTES); assert.equal(n.v.pct, 4.8, "[P19P.11] 512 MiB, o limite conservador"); assert.equal(n.v.age_days, 6.3);
+  assert.equal(parsePlanProbe(PLAN({ neon: { bytes: 1 } }), run, "2026-10-28").reason, "plan_probe_too_old", "[P19P.8] mais de 8 dias");
+  assert.equal(parsePlanProbe(PLAN({ neon: { bytes: 1 } }), run, "2026-10-18").reason, "plan_probe_after_day", "[P19P.9]");
+  assert.equal(parsePlanProbe(PLAN({ neon: { bytes: 1 }, notVerifiable: [{ provider: "neon", reason: "conexão falhou" }] }), run, "2026-10-25").reason, "plan_probe_neon_connection_failed", "[P19P.10]");
+  assert.equal(parsePlanProbe(PLAN({ neon: { bytes: -5 } }), run, "2026-10-25").ok, false);
+});
+
+test("P19 coletor: Workers do run de D+1, Neon do plan-probe; Neon CU-h sempre NOT_AVAILABLE, então P19 nunca completa", async () => {
+  const dir = tmp();
+  try {
+    const w = summarizeWorkersGroups([WG("zevanory", 23000, 3200)], "2026-10-25");
+    const net = fakeNet({ ccMessage: CC, ccNextMessage: CC_NEXT(w), planMessage: PLAN({ neon: { bytes: 25690112 } }) });
+    const { record, register } = await collect({ env: envFor(dir), fetchImpl: net.fetchImpl, now: new Date("2026-10-26T01:41:00Z"), pause: async () => {}, log: () => {} });
+    const f = record.processes.P19.fields;
+    assert.equal(f.workers_usage.value.requests, 23000, "[P19C.1]");
+    assert.equal(f.neon_storage.value.bytes, 25690112, "[P19C.2]");
+    assert.equal(f.neon_compute.value, NA, "[P19C.3]");
+    assert.equal(record.processes.P19.complete, false, "[P19C.4] sem Neon CU-h nunca há dia completo");
+    assert.equal(register.processes.P19.state, "MEDICAO_ATIVA");
+    assert.ok(register.processes.P19.sources.some((s) => s.id === "neon_compute_readonly" && s.status === "MISSING" && /NEON_API_KEY/.test(s.note)), "[P19C.5] passo do proprietário explícito");
+    assert.ok(register.processes.P19.sources.some((s) => s.id === "neon_storage_readonly" && s.status === "MISSING" && /DATABASE_URL/.test(s.note)));
+    assert.ok(net.calls.every((c) => c.method === "GET"), "[P19C.6] coletor só lê");
+    const early = await collect({ env: envFor(dir), fetchImpl: fakeNet({ ccMessage: CC }).fetchImpl, now: new Date("2026-10-26T00:05:00Z"), pause: async () => {}, log: () => {} });
+    assert.equal(early.record.processes.P19.fields.workers_usage.reason, "no_successful_run_on_next_day", "[P19C.7]");
+    const bad = await collect({ env: envFor(dir), fetchImpl: fakeNet({ ccMessage: CC, ccNextMessage: CC_NEXT({ ...w, verified: false, reason: "x" }), planMessage: "{lixo" }).fetchImpl, now: new Date("2026-10-26T02:00:00Z"), pause: async () => {}, log: () => {} });
+    assert.equal(bad.record.processes.P19.fields.workers_usage.value, NA, "[P19C.8]");
+    assert.equal(bad.record.processes.P19.fields.neon_storage.reason, "malformed_source", "[P19C.9]");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("P19 margens por modo de falha: pior dia de 7; meta só avaliada com 7 dias medidos; NOT_AVAILABLE nunca entra", () => {
+  const rec = (day, wreq, p99, kvw = 600) => dayRec(day, { P19: { kv_quota: measured("t", { ...OKV.kv_quota, day, writes: kvw, pct: kvw / 10 }), workers_usage: measured("t", { ...OKV.workers_usage, day, requests: wreq, pct: wreq / 1000, cpu_p99_ms_worst: p99 }),
+    neon_storage: measured("t", OKV.neon_storage), neon_compute: na("API do Neon", "requires_new_credential_neon_api_key") } });
+  const six = days("2026-10-20", 6).map((d, i) => rec(d, 20000 + i * 1000, 2 + i * 0.5));
+  const m6 = p19Margins(six);
+  assert.equal(m6.workers_requests.days_measured, 6);
+  assert.equal(m6.workers_requests.worst_used, 25000, "[P19M.1] pior dia, nunca a média");
+  assert.equal(m6.workers_requests.margin_pct, 75, "[P19M.2]");
+  assert.equal(m6.workers_requests.within_target, null, "[P19M.3] menos de 7 dias: NOT_PROVEN");
+  assert.equal(m6.workers_cpu_p99.worst_used, 4.5);
+  assert.equal(m6.neon_compute.days_measured, 0, "[P19M.4] NOT_AVAILABLE nunca conta");
+  assert.equal(m6.neon_compute.margin_pct, null);
+  const seven = [...six, rec("2026-10-26", 41000, 3)];
+  const m7 = p19Margins(seven);
+  assert.equal(m7.workers_requests.within_target, false, "[P19M.5] 41% no pior dia > 40%");
+  assert.equal(m7.workers_cpu_p99.within_target, true);
+  assert.equal(m7.kv_writes.within_target, true);
+  const kvBad = p19Margins([...six, rec("2026-10-26", 1000, 1, 701)]);
+  assert.equal(kvBad.kv_writes.within_target, false, "[P19M.6] um dia de KV acima de 600");
+  assert.ok(Object.values(m7).every((x) => x.target_status === "PROPOSTA"), "[P19M.7]");
+  const reg = buildRegister(seven, TARGETS, "2026-10-27T01:00:00Z");
+  assert.equal(reg.processes.P19.margins.workers_cpu_p99.failure_mode, "CPU p99 (limite de 10 ms por invocação)", "[P19M.8] margens publicadas no registro");
+});
+
+test("evolução do esquema: linha antiga de P19 só com kv_quota é relida como incompleta e não derruba", () => {
+  const old = dayRec("2026-10-24");
+  for (const k of ["workers_usage", "neon_storage", "neon_compute"]) delete old.processes.P19.fields[k];
+  old.processes.P19.complete = true;
+  const [back] = parseJsonl(JSON.stringify(old), validateDailyRecord);
+  assert.equal(back.processes.P19.complete, false, "[P19E.1]");
+  const forged = dayRec("2026-10-24");
+  forged.processes.P19.fields.workers_usage = measured("t", { verified: true });
+  forged.processes.P19.complete = true;
+  assert.throws(() => parseJsonl(JSON.stringify(forged), validateDailyRecord), /complete_flag_mismatch P19/, "[P19E.2]");
 });
 
 test("P20 ensaio mensal no B0: só ENSAIO_EM_PRODUCAO em 31 dias conta; SINTETICA, NOT_AVAILABLE, antigo ou histórico malformado nunca completam", async () => {

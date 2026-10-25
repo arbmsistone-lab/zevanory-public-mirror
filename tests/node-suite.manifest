@@ -11,7 +11,7 @@ tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
 tests/autonomy-inventory.test.mjs 6
-tests/b0-baseline.test.mjs 23
+tests/b0-baseline.test.mjs 28
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
 tests/blog-editorial-uniqueness.test.mjs 1
@@ -25,7 +25,7 @@ tests/central-candidate-dryrun.test.mjs 4
 tests/central-retired-contact-script.test.mjs 5
 tests/certification-worker.test.mjs 3
 tests/circuits-adversarial.test.mjs 31
-tests/command-center-main.test.mjs 3
+tests/command-center-main.test.mjs 4
 tests/command-center-snapshot.test.mjs 9
 tests/commercial-checkout-guard.test.mjs 6
 tests/commercial-metrics-projection.test.mjs 13
