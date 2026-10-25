@@ -92,7 +92,7 @@ export function validateReply(text) {
 export function deterministicReply(question) {
   if (/\b(melhorar|aumentar|organizar|recomenda|ajud)/i.test(question) && /\bvendas?\b/i.test(question)) {
     const p = SUPPORT_PRODUCTS["vendas-na-pratica"];
-    return { body: `Para melhorar suas vendas, recomendo ${p.name}, por ${brl(p.price_brl)}: ajuda a organizar prospecção, atendimento, oferta e follow-up. Qual dessas etapas é sua maior dificuldade hoje?\n\n${SALES_ORIGIN}/vendas-na-pratica`, intent: "recommendation", product: "vendas-na-pratica" };
+    return { body: `Para melhorar suas vendas, recomendo ${p.name}, por ${brl(p.price_brl)}: ajuda a organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up. Qual dessas etapas é sua maior dificuldade hoje?\n\n${SALES_ORIGIN}/vendas-na-pratica`, intent: "recommendation", product: "vendas-na-pratica" };
   }
   const r = answerSupportQuestion({ question });
   if (r.answered) {

@@ -40,6 +40,23 @@ jobs:
           python3 -m py_compile scripts/zevanory_crown_gate.py
           python3 -m py_compile scripts/test_crown_negative.py
 
+      - name: Sales promises match the delivered material (P24)
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/ci/sales_promise_consistency.py
+          python3 scripts/ci/sales_promise_consistency.py
+          python3 scripts/ci/sales_promise_consistency.py --self-test
+
+      - name: Public copy without internal jargon or known typos (site audit S-01, S-06, S-07, S-08)
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/ci/public_copy_gate.py
+          # The committed sales site and a fresh build of the sources must both pass.
+          python3 scripts/ci/public_copy_gate.py
+          ZEVANORY_SALES_PUBLIC_OUT="$RUNNER_TEMP/sales-public-fresh" python3 scripts/build_sales_public.py >/dev/null
+          python3 scripts/ci/public_copy_gate.py --dir "$RUNNER_TEMP/sales-public-fresh"
+          python3 scripts/ci/public_copy_gate.py --self-test
+
       - name: Run fail-closed product audit
         run: |
           set -euo pipefail

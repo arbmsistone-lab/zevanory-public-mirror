@@ -38,15 +38,15 @@ jobs:
       matrix:
         include:
           - slug: ia-na-pratica
-            blob: 7c5b9dac20fc1ff0421e64f52ab7b6d2689d2d22
+            blob: d7d0af5a2705d94aecdae32379d3dbfc3a35e0bb
           - slug: vendas-na-pratica
-            blob: 2a6b9be0bd12a2ffbd9e7a4a8e9941829eab30d3
+            blob: 9c2b4e67686d75075813602987b0b439759ec35c
           - slug: combo-ia-vendas
-            blob: 2d0c53565af6eef646439b1c4f505a331c842705
+            blob: 4364bdacce4fb9d24df665540d2bde11698ba873
           - slug: lucro-e-caixa
-            blob: 427e208349bd280128413af2f16e31bca1cb9a43
+            blob: e332e09475eab691a2c0c56405eb9d744b909667
           - slug: negocio-completo
-            blob: d4fb45a28616cf714c1f33b93bf39bfcacfbfce3
+            blob: 1751bd2590e8207858874b14072d8f1d3887bd84
           # zevanory-one retired from the public surface (HTTP 410): no live P03 target.
     steps:
       - uses: actions/checkout@v4
