@@ -11,7 +11,7 @@ import { brandedEmailHtml } from "./brand-email.mjs";
 import { reviewLinks } from "./reviews.mjs";
 // Contato da assinatura dos e-mails: fonte única (contato_publico; e-mail enquanto o WhatsApp não opera).
 import { CONTACT_TEXT } from "./politica-unica.mjs";
-import { operatorToken as operatorCredential } from "./operator-credential.mjs";
+import { verifyOperatorToken } from "./operator-credential.mjs";
 
 const ORIGIN = "https://zevanory.api.br";
 const SALES = "https://vendas.zevanory.api.br";
@@ -257,8 +257,7 @@ export async function handlePostSale(request, env, { sqlFactory, isAdminAuthoriz
 
   // Certification: proves the real template + Resend path on a sandbox order, delivered to its controlled inbox.
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
-  const cert = String(operatorCredential(env) || "");
-  if (cert.length < 32 || !timingSafeEqual(cert, request.headers.get("x-certification-e2e-token") || "")) return json(401, { error: "unauthorized" });
+  if (!verifyOperatorToken(env, request.headers.get("x-certification-e2e-token") || "")) return json(401, { error: "unauthorized" });
   let input = {};
   try { input = await request.json(); } catch {}
   const oid = String(input.order_id || "").trim().toLowerCase();

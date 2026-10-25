@@ -13,9 +13,10 @@
       "planned_pr": "#912 (R9 A): ZEVANORY_OPERATOR_TOKEN no Worker (resolvedor único, dual-read com queda registrada) e nos workflows de produção; seguimento R9 A2 retira a queda depois do readback primary e então este item sai",
       "status": "OPEN",
       "prs": [
-        "#912"
+        "#912",
+        "#923"
       ],
-      "next_step": "proprietário cria ZEVANORY_OPERATOR_TOKEN (mesmo valor) no Worker zevanory e nos Environments producao-critica e gh-pages-automacao; production-credential-identity.yml com require_primary=true; depois PR R9 A2 (queda off, gate --strict)"
+      "next_step": "Sol 233/237: valor NOVO (não cópia do antigo) com janela OPERATOR_TOKEN_MIGRATION_UNTIL nos DOIS Workers (principal e controle, edge #211); procedimento em docs/ops/operator-token-transition.md, ordem (1) auditar/preparar o controle, (2) autorizações separadas, (3) deploy central com a janela e prova, (4) deploy do controle com dupla aceitação e prova, (5) valor novo nos dois Workers, (6) Environments producao-critica e gh-pages-automacao e operator-token-consumer-auth.yml (inclui a sonda HMAC T2) e require_primary, (7) A2 do edge antes do vencimento, A2 do mirror e exclusão do antigo com autorização própria"
     },
     {
       "id": "R9-D2",
