@@ -83,7 +83,9 @@ jobs:
       T_CF_TOKEN_AUDIT: ${{ secrets.CF_TOKEN_AUDIT }}
       T_CF_PROBE_TOKEN: ${{ secrets.CF_PROBE_TOKEN }}
       T_CF_PROBE_TOKEN_NO_ROUTES: ${{ secrets.CF_PROBE_TOKEN_NO_ROUTES }}
-      T_CLOUDFLARE_SANDBOX_PROBE_TOKEN: ${{ secrets.CLOUDFLARE_SANDBOX_PROBE_TOKEN }}
+      # CLOUDFLARE_SANDBOX_PROBE_TOKEN is not read here: since #909 a sandbox secret may only be read by a job in the
+      # sandbox-financial-approved environment (scripts/ci/credential_separation_gate.py). Tier O skips an unset probe
+      # token; tier A (CF_TOKEN_AUDIT lists every active token) still fails NOT_PROVEN if it can write a canonical Worker.
     steps:
       - uses: actions/checkout@v4
         with:
