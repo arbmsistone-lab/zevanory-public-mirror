@@ -5,7 +5,8 @@
 // P13c: prazo, entrega e reembolso vêm SÓ de data/politica-unica.json (worker/politica-unica.mjs):
 // a regra dos 7 dias (customer_wording.rule_7d),
 // link de 72 h / um download com reenvio sem custo, confirmação imediata, Mercado Pago avisado
-// imediatamente, crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
+// imediatamente (só checkout próprio; compras em outra plataforma são reembolsadas por ela, sem nomear a
+// Hotmart: hasCheckoutCta), crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
 // traz chamada de compra (/comprar, /assinar, Hotmart); com vendas fechadas (interruptor do
 // proprietário, worker/sales-control.mjs) preço e conteúdo avisam que as vendas estão fechadas.
 import { CLOSED_LABEL, SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER } from "./politica-unica.mjs";
