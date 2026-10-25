@@ -1,0 +1,53 @@
+name: P18 external monitor (read-only)
+
+# Roteiro Mestre v4.7, P18 (seção 5) e N2 (seção 9): monitor EXTERNO e independente da Cloudflare, gratuito,
+# sem conta nova. Runner do GitHub (Azure) sonda por GET as páginas de venda e o /api/status (nunca /comprar,
+# checkout ou pagamento), registra a disponibilidade e a validade da prova P22 no ramo evidence/b0-baseline
+# (p18/probes-AAAA-MM.jsonl) e usa uma issue do GitHub como alerta: abre após 2 sondagens seguidas com falha,
+# atualiza enquanto durar, fecha na primeira sondagem boa. Cadência e orçamento: ver o PR (seção 11).
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # só o ramo evidence/b0-baseline (scripts/b0/evidence-branch.sh recusa qualquer outro)
+  issues: write     # a issue de alerta
+
+concurrency:
+  group: p18-external-monitor
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EVIDENCE_BRANCH: evidence/b0-baseline
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/b0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Preparar o ramo de evidência
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "EVIDENCE_DIR=$RUNNER_TEMP/evidence" >> "$GITHUB_ENV"
+          EVIDENCE_DIR="$RUNNER_TEMP/evidence" bash scripts/b0/evidence-branch.sh prepare
+      - name: Sondar de fora da Cloudflare e decidir o alerta
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/b0/p18-monitor.mjs
+      - name: Publicar a sondagem no ramo de evidência
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -d "$EVIDENCE_DIR/.git" ]; then bash scripts/b0/evidence-branch.sh publish "P18 sondagem externa (run ${GITHUB_RUN_ID})"; fi

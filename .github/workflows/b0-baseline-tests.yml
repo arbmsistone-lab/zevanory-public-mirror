@@ -1,0 +1,38 @@
+name: b0-baseline-tests
+
+# Testes da lógica do coletor B0 e do monitor P18 (evidência SINTETICA). Só pull_request: nunca dispara no merge,
+# sem segredos, sem rede além do checkout e da instalação do Node. Os testes usam rede falsa e diretório temporário.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/b0/**"
+      - "tests/b0-baseline.test.mjs"
+      - "docs/b0/**"
+      - ".github/workflows/b0-baseline-collector.yml"
+      - ".github/workflows/p18-external-monitor.yml"
+      - ".github/workflows/b0-baseline-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: b0-baseline / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sintaxe
+        run: |
+          set -euo pipefail
+          for f in scripts/b0/*.mjs scripts/b0/*.cjs; do node --check "$f"; done
+          bash -n scripts/b0/evidence-branch.sh
+      - name: Testes (fail-closed, NOT_AVAILABLE nunca é dia completo, estados, alerta)
+        run: node --test tests/b0-baseline.test.mjs
