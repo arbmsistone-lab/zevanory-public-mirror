@@ -39,7 +39,7 @@ case "${1:-}" in
     for i in 1 2 3 4 5; do
       if g push -q origin "HEAD:refs/heads/$EVIDENCE_BRANCH"; then echo "EVIDENCE_PUSHED=$(git rev-parse HEAD)"; exit 0; fi
       sleep $((i * 3))
-      # Coletor grava só b0/ e monitor só p18/: o rebase não conflita; conflito real derruba (sem forçar push).
+      # Coletor grava só b0/, monitor só p18/ e ensaio P20 só p20/: o rebase não conflita; conflito real derruba (sem forçar push).
       g fetch -q origin "$EVIDENCE_BRANCH" && git rebase -q "origin/$EVIDENCE_BRANCH" || { git rebase --abort 2>/dev/null || true; echo "::error title=EVIDENCE_BRANCH::rebase falhou"; exit 1; }
     done
     echo "::error title=EVIDENCE_BRANCH::push falhou após 5 tentativas"; exit 1
