@@ -17,6 +17,11 @@ assert not _pilot, "NO_PRODUCTION_PILOT_BINDING:" + ",".join(_pilot)
 # Sem keep_vars o deploy apaga as vars do painel (inclusive uma CERTIFICATION_PILOT_ENABLED criada à mão):
 # https://developers.cloudflare.com/workers/wrangler/configuration/#source-of-truth
 assert config.get("keep_vars") is not True, "DASHBOARD_VARS_MUST_NOT_SURVIVE_DEPLOY"
+# Sol 233: a janela de migração da credencial de operador só vive em ZEVANORY_RUNTIME_CONFIG, AAAA-MM-DD <= teto em código.
+assert "OPERATOR_TOKEN_MIGRATION_UNTIL" not in vars, "OPERATOR_TOKEN_MIGRATION_ONLY_IN_RUNTIME_CONFIG"
+_mig = (_runtime_cfg if isinstance(_runtime_cfg, dict) else {}).get("OPERATOR_TOKEN_MIGRATION_UNTIL")
+if _mig is not None:
+    assert isinstance(_mig, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _mig) and _mig <= "2026-12-31", "OPERATOR_TOKEN_MIGRATION_UNTIL_INVALID"
 whatsapp_mode = str(vars.get("WHATSAPP_SALES_ENABLED", "")).lower()
 assert whatsapp_mode in ("false", "true"), "WHATSAPP_SALES_MODE_INVALID"
 assert str(vars.get("ASAAS_ENV", "")).lower() == "sandbox", "ASAAS_ENV_MUST_BE_SANDBOX"

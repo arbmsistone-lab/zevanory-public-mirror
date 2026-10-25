@@ -2,6 +2,7 @@ name: ZEVANORY No Scroll Responsive Gate
 # E1 (2026-10-24): the gate keeps its name (status history) but its contract is inverted on purpose.
 # The old "no global page scroll" app shell (body overflow:hidden, <main> as the inner scroller) broke
 # native scroll, anchors, scroll restoration, the mobile address-bar collapse, print and find-in-page.
+# Owner decision (written): "APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS" (ratified by the Sol).
 # Contract now: NO HORIZONTAL scroll at any width, the document (html) is the only vertical scroller,
 # <main> is not an inner scroll container, and the bottom of every page is reachable by window scroll.
 
@@ -17,9 +18,12 @@ permissions:
 jobs:
   measure:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Install browser
         run: |
           set -euo pipefail
@@ -62,6 +66,8 @@ jobs:
                 window.scrollTo({top:root.scrollHeight,behavior:'instant'});
                 const bottomReachable=window.scrollY+window.innerHeight>=root.scrollHeight-2;
                 const mainInnerScroller=!!main && /(auto|scroll|hidden)/.test(mainStyle.overflowY) && main.scrollHeight>main.clientHeight+1;
+                // Owner exception ("APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS"): no panel scrolls on its own.
+                const scrollingPanels=[...document.querySelectorAll('body *')].filter(el=>{const s=getComputedStyle(el);return (/(auto|scroll)/.test(s.overflowY)&&el.scrollHeight>el.clientHeight+1)||(/(auto|scroll)/.test(s.overflowX)&&el.scrollWidth>el.clientWidth+1);}).length;
                 return {
                   sh:root.scrollHeight,
                   sw:root.scrollWidth,
@@ -73,11 +79,12 @@ jobs:
                   mainScrollHeight:main?.scrollHeight||0,
                   mainClientHeight:main?.clientHeight||0,
                   mainInnerScroller,
+                  scrollingPanels,
                   bottomReachable
                 };
               });
               rows.push({view:v.name,route,http:response?.status()||0,...m,
-                documentScroll:m.htmlOverflowY!=='hidden'&&m.bodyOverflowY!=='hidden'&&!m.mainInnerScroller,
+                documentScroll:m.htmlOverflowY!=='hidden'&&m.bodyOverflowY!=='hidden'&&!m.mainInnerScroller&&m.scrollingPanels===0,
                 horizontalOverflow:m.sw>m.iw+1});
               await page.close();
             }
@@ -90,9 +97,20 @@ jobs:
           else { console.log('LAYOUT_DOCUMENT_SCROLL=FAIL'); process.exitCode=1; }
           NODE
           node audit.mjs
+      - name: Sales build through the real Worker (10 public pages + designed 404, light and dark)
+        # Sol 232: the same contract on vendas.zevanory.api.br's build (sales-public/), served by
+        # scripts/audit/sales-local-server.mjs (real Worker routing, CSP and status codes), at the 5
+        # viewports above, in both prefers-color-scheme values. The 404 must answer 404, not 200.
+        run: |
+          set -euo pipefail
+          nohup node scripts/audit/sales-local-server.mjs 8790 >/tmp/sales-scroll-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8790/solucoes && break; sleep 1; done
+          node scripts/audit/sales-scroll-gate.mjs http://127.0.0.1:8790 sales-scroll-gate.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: zevanory-no-scroll-baseline
-          path: no-scroll-baseline.json
+          path: |
+            no-scroll-baseline.json
+            sales-scroll-gate.json
           retention-days: 30

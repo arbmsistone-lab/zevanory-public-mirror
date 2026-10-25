@@ -54,6 +54,23 @@ c.pop("keep_vars",None)
 c["vars"]["ASAAS_ENV"]="sandbox"
 # The future launch configuration is dormant unless explicitly authorized.
 # This PR must not be merged before the owner's AUTORIZO COMPRA REAL instruction.
+# Sol 233: janela de migração da credencial de operador (flag NÃO secreta, vars.OPERATOR_TOKEN_MIGRATION_UNTIL). Só
+# AAAA-MM-DD válida e <= teto em código (o mesmo MIGRATION_CODE_CEILING de worker/operator-credential.mjs); vai dentro de
+# ZEVANORY_RUNTIME_CONFIG (nenhum binding novo no orçamento do Workers Free). Ausente = janela fechada (comportamento de hoje).
+OPERATOR_TOKEN_MIGRATION_CODE_CEILING="2026-12-31"
+_mig=os.environ.get("OPERATOR_TOKEN_MIGRATION_UNTIL","").strip()
+_rc=c["vars"].get("ZEVANORY_RUNTIME_CONFIG")
+for _vars in (c["vars"], _rc if isinstance(_rc,dict) else {}):
+    _vars.pop("OPERATOR_TOKEN_MIGRATION_UNTIL",None)
+if _mig:
+    import datetime
+    try:
+        _ok=bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}",_mig)) and datetime.date.fromisoformat(_mig).isoformat()==_mig
+    except ValueError:
+        _ok=False
+    if not _ok or _mig>OPERATOR_TOKEN_MIGRATION_CODE_CEILING:
+        raise SystemExit("OPERATOR_TOKEN_MIGRATION_UNTIL_INVALID")
+    c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})["OPERATOR_TOKEN_MIGRATION_UNTIL"]=_mig
 launch_authorized=os.environ.get("ZEVANORY_LAUNCH_AUTHORIZATION","")=="AUTORIZO COMPRA REAL"
 if launch_authorized:
     collector_hash=os.environ.get("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16","").lower()

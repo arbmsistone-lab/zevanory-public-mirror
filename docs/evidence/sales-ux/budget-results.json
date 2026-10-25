@@ -1,0 +1,1309 @@
+{
+  "schema": "zevanory.sales-budget-results.v1",
+  "commit": "working tree on 87336e17 (Sol 232 build; base URL is the local Worker harness)",
+  "generated_by": "scripts/audit/sales-quality-budget.mjs + sales-budget-summary.mjs",
+  "budget": {
+    "performance": 95,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 100
+  },
+  "runs": 3,
+  "themes": {
+    "light": {
+      "base": "local Worker harness (scripts/audit/sales-local-server.mjs)",
+      "pages": {
+        "/solucoes": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1663,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 401,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/lucro-e-caixa": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1513,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 368,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/vendas-na-pratica": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1511,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 383,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/ia-na-pratica": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1521,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 397,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/conteudo-pronto": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1515,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 349,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/combo-ia-vendas": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1504,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 379,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/negocio-completo": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1509,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 364,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/zevanory-sales": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1506,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 348,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/termos": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1514,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 340,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/quem-criou": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1668,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 403,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        }
+      },
+      "failures": [],
+      "pass": true
+    },
+    "dark": {
+      "base": "local Worker harness (scripts/audit/sales-local-server.mjs)",
+      "pages": {
+        "/solucoes": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1657,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 385,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/lucro-e-caixa": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1511,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 375,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/vendas-na-pratica": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1526,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 370,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/ia-na-pratica": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1512,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 397,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/conteudo-pronto": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1518,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 354,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/combo-ia-vendas": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 99,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1527,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 397,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/negocio-completo": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1523,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 393,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/zevanory-sales": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1514,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 351,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/termos": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1519,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 342,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        },
+        "/quem-criou": {
+          "mobile": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 1673,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          },
+          "desktop": {
+            "lighthouse": {
+              "median": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "min": {
+                "performance": 100,
+                "accessibility": 100,
+                "best-practices": 100,
+                "seo": 100
+              },
+              "lcp_ms": 370,
+              "cls": 0,
+              "tbt_ms": 0,
+              "failing_audits": []
+            },
+            "axe": {
+              "serious_critical": 0,
+              "other": 0,
+              "ids": []
+            },
+            "targets_under_44px": 0,
+            "focus_issues": 0,
+            "reduced_motion_issues": 0,
+            "scroll_exception_issues": 0,
+            "console_errors": 0,
+            "color_scheme_emulated": true
+          }
+        }
+      },
+      "failures": [],
+      "pass": true
+    }
+  },
+  "pass": true
+}
