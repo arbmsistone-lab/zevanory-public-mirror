@@ -82,8 +82,18 @@ export function evaluateTracking(exp, campaigns = []) {
   return { status: "tracking", clicks, verdict: clicks ? `${clicks} clique(s) vindos do e-mail de oferta em 30 dias.` : "Nenhum clique registrado ainda; a sequência começou agora." };
 }
 
+// P16 (data/p16/experiments.json): a closed experiment keeps its registered outcome and is never re-evaluated, so a
+// late burst of data cannot turn an experiment closed as INCONCLUSIVO (e.g. started without a sample-size calculation)
+// into a "winner". The P16 gate (scripts/p16/experiment_registry_gate.py) keeps `closed` equal to the closure record.
+export function evaluateClosed(exp) {
+  const c = exp.closed || {};
+  return { status: "closed", outcome: String(c.outcome || "INCONCLUSIVO"), closedAt: c.at || null, ref: c.ref || null,
+    verdict: `Encerrado em ${c.at || "data não registrada"}: ${c.outcome || "INCONCLUSIVO"} (registro ${c.ref || "P16"}). Nenhum vencedor é declarado.` };
+}
+
 export function evaluateExperiments(registry, { videos = [], productDaily = {}, campaigns = [] } = {}, now = Date.now()) {
   return (registry?.experiments || []).map((exp) => {
+    if (exp.closed) return { id: exp.id, title: exp.title, hypothesis: exp.hypothesis, metric: exp.metric, decision: exp.decision, ...evaluateClosed(exp) };
     const result = exp.kind === "arms" ? evaluateArms(exp, videos, now) : exp.kind === "before_after" ? evaluateBeforeAfter(exp, productDaily, now) : evaluateTracking(exp, campaigns);
     return { id: exp.id, title: exp.title, hypothesis: exp.hypothesis, metric: exp.metric, decision: exp.decision, ...result };
   });
