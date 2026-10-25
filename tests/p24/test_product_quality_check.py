@@ -165,7 +165,7 @@ class P24CheckTest(unittest.TestCase):
         self.assertFailsWith("região de promessas 'hero_receipt' não encontrada")
 
     def test_reintroduced_prospecting_card_fails(self):
-        self.edit("sales-public/vendas-na-pratica.html", "<h3>Oferta que você cumpre</h3>", "<h3>Quem abordar</h3>")
+        self.edit("sales-public/vendas-na-pratica.html", "<h3>Uma oferta que você consegue cumprir</h3>", "<h3>Quem abordar</h3>")
         self.assertFailsWith("PROMESSA SEM ENTREGA DECLARADA: 'Quem abordar'")
 
 

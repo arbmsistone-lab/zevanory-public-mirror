@@ -285,7 +285,7 @@
         },
         {
           "id": "VEN-C01",
-          "text": "Oferta que você cumpre",
+          "text": "Uma oferta que você consegue cumprir",
           "type": "content",
           "evidence": [
             {
@@ -297,7 +297,7 @@
               ]
             }
           ],
-          "history": "Até o #927 era \"Quem abordar\" (prospecção), marcado REVISAO_HUMANA na primeira conferência P24 (25/10/2026); a página passou a prometer o que a aula B1 entrega."
+          "history": "Até o #927 era \"Quem abordar\" (prospecção), marcado REVISAO_HUMANA na primeira conferência P24 (25/10/2026); no #927 passou a \"Oferta que você cumpre\" e depois a \"Uma oferta que você consegue cumprir\", o que a aula B1 entrega."
         },
         {
           "id": "VEN-C02",
