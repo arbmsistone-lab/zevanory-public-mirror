@@ -58,6 +58,9 @@ export const P22_TTL_MIN = 65;              // seção 5, P22: TTL de 65 min
 export const P20_MAX_AGE_H = 26;            // seção 9.1: 24 h + 2 h de tolerância
 export const P20_DRILL_WINDOW_DAYS = 31;    // seção 9.1: ensaio MENSAL de restauração completa (janela de 31 dias)
 export const P19_END_OF_DAY_UTC_HOUR = 20;  // leitura de cota só vale como "dia" se tirada a partir das 20:00 UTC
+export const P19_NEON_STORAGE_MAX_AGE_DAYS = 8; // plan-probe é semanal (segunda-feira): leitura vale por até 8 dias
+export const NEON_FREE_BYTES = 512 * 1024 * 1024; // igual a scripts/audit/plan-probe.mjs (mais conservador que o 1 GB da seção 11)
+export const NEON_FREE_CU_HOURS_MONTH = 100;    // seção 11: 100 CU-h/mês por projeto
 export const ALLOWED_HOSTS = Object.freeze(["zevanory.api.br", "vendas.zevanory.api.br"]);
 export const UA = "Mozilla/5.0 (compatible; ZEVANORY-Monitor/1.0; B0 baseline; +https://github.com/arbmsistone-lab/zevanory-public-mirror)";
 
@@ -114,6 +117,12 @@ const FIELD_VALIDATORS = {
       && (v.max_upper_bound_latency_s === null || v.max_upper_bound_latency_s <= S9_ALERT_LIMIT_S)))
     && (v.s9_10min === "MET" || v.s9_reasons.length > 0),
   kv_quota: (v) => isObj(v) && v.verified === true && isDay(v.day) && isInt(v.writes) && isInt(v.reads) && isInt(v.limit) && v.limit > 0 && isNum(v.pct) && isIso(v.snapshot_at),
+  workers_usage: (v) => isObj(v) && v.verified === true && isDay(v.day) && isInt(v.requests) && isInt(v.limit) && v.limit > 0 && isNum(v.pct)
+    && Math.abs(v.pct - Math.round(v.requests / v.limit * 1000) / 10) < 0.051 && isNum(v.cpu_p99_ms_worst) && v.cpu_p99_ms_worst >= 0 && isNum(v.cpu_limit_ms) && v.cpu_limit_ms > 0
+    && isInt(v.scripts) && v.scripts > 0 && isIso(v.snapshot_at),
+  neon_storage: (v) => isObj(v) && isInt(v.bytes) && isInt(v.limit_bytes) && v.limit_bytes > 0 && isNum(v.pct) && isIso(v.measured_at) && isNum(v.age_days)
+    && v.age_days >= 0 && v.age_days <= P19_NEON_STORAGE_MAX_AGE_DAYS && typeof v.metric === "string",
+  neon_compute: (v) => isObj(v) && isNum(v.cu_hours_month) && isNum(v.limit_cu_hours) && v.limit_cu_hours > 0 && isDay(v.day) && isIso(v.measured_at),
   backup_restore_sample: (v) => isObj(v) && isIso(v.run_created_at) && ["success", "failure", "cancelled", "timed_out"].includes(v.run_conclusion)
     && typeof v.ok === "boolean" && isInt(v.neon_tables) && isInt(v.neon_restored_ok) && typeof v.kv_sample_ok === "boolean" && isInt(v.failures) && isNum(v.age_hours_at_collection),
   // Só ensaio com a cópia REAL de produção (ENSAIO_EM_PRODUCAO) e medido (APROVADO ou REPROVADO); SINTETICA nunca.
@@ -182,12 +191,17 @@ export const PROCESSES = Object.freeze({
   },
   P19: {
     name: "Capacidade", risk: "R3", label: "OPERACIONAL", frequency: "frequente",
-    fields: ["kv_quota"],
-    scope: { measured: ["KV: gravações e leituras do dia (conta), leitura do fim do dia"], not_proven: ["Neon CU-h", "Workers requisições/dia", "Workers CPU p99", "D1 linhas", "Resend"] },
+    fields: ["kv_quota", "workers_usage", "neon_storage", "neon_compute"],
+    scope: { measured: ["KV: gravações e leituras do dia (conta), leitura do fim do dia (contador diário)",
+      "Workers: requisições do dia UTC completo da conta inteira (contador diário) e pior CPU p99 entre os Workers (CPU p99)",
+      "Neon: tamanho do banco pg_database_size pelo plan-probe semanal (armazenamento), quando a leitura existir"],
+      not_proven: ["Neon CU-h do mês (cota mensal): exige chave de API do Neon, que não existe no repositório", "Neon: armazenamento faturado (inclui histórico/WAL) difere de pg_database_size",
+        "Workers CPU p99 da conta: não existe; o pior p99 por Worker é o valor conservador", "D1 linhas", "Resend"] },
     sources: [
       { id: "kv_quota_annotation", status: "PRESENT", note: "kvQuota da anotação COMMAND_CENTER (verified=true)" },
-      { id: "neon_compute_readonly", status: "MISSING", note: "exige credencial do Neon" },
-      { id: "workers_requests_cpu_readonly", status: "MISSING", note: "seção 11: não medido; exige token Cloudflare" },
+      { id: "workers_requests_cpu_readonly", status: "PRESENT", note: "workersUsage da anotação COMMAND_CENTER do primeiro dia seguinte (GraphQL workersInvocationsAdaptive com o token que já lê a cota de KV); token sem escopo vira NOT_AVAILABLE no dia" },
+      { id: "neon_storage_readonly", status: "MISSING", note: "plan-probe.yml já mede pg_database_size, mas o segredo DATABASE_URL do Environment gh-pages-automacao está vazio (PLAN_PROBE neon:{} em 19/10). Passo do proprietário: criar um papel SOMENTE LEITURA no projeto Neon atual e gravar a URL dele como DATABASE_URL no Environment gh-pages-automacao" },
+      { id: "neon_compute_readonly", status: "MISSING", note: "CU-h do mês só pela API do Neon (consumption); exige chave de API do Neon, credencial nova. Passo do proprietário: criar chave de API do Neon restrita ao projeto e gravá-la como NEON_API_KEY no Environment gh-pages-automacao; depois um PR adiciona a leitura" },
     ],
   },
   P20: {
@@ -371,6 +385,7 @@ export function buildRegister(records, targetsDoc, nowIso) {
     const def = PROCESSES[pid];
     const st = computeState(pid, records, targetsDoc, null);
     processes[pid] = {
+      ...(pid === "P19" ? { margins: p19Margins(records) } : {}),
       name: def.name, risk: def.risk, frequency: def.frequency, evidence_label: def.label,
       scope: def.scope, sources: def.sources, fields: def.fields,
       targets: (targetsDoc?.processes?.[pid] || []).map((t) => ({ id: t.id, type: t.type, metric: t.metric, value: t.value ?? null, status: t.status, approved_by: t.approved_by ?? null, approved_at: t.approved_at ?? null })),
@@ -430,6 +445,63 @@ export function parseDataBackup(message, run, nowIso) {
     age_hours_at_collection: Math.round((Date.parse(nowIso) - Date.parse(run.created_at)) / 36e5 * 10) / 10,
     age_over_26h_at_collection: (Date.parse(nowIso) - Date.parse(run.created_at)) / 36e5 > P20_MAX_AGE_H,
   } };
+}
+
+// P19: workersUsage da anotação COMMAND_CENTER (um run do dia D+1 descreve o dia UTC D completo).
+export function parseWorkersUsage(message, day) {
+  const j = safeJson(message);
+  if (!j.ok || !isObj(j.v) || !isIso(j.v.at)) return { ok: false, reason: "malformed_source" };
+  const w = j.v.workersUsage;
+  if (!isObj(w)) return { ok: false, reason: "workers_usage_absent" };
+  if (w.verified !== true) return { ok: false, reason: "workers_usage_unverified:" + String(w.reason || "").slice(0, 60) };
+  if (w.day !== day) return { ok: false, reason: "workers_usage_other_day" };
+  const v = { verified: true, day: w.day, requests: w.requests, limit: w.limit, pct: w.pct, cpu_p99_ms_worst: w.cpu_p99_ms_worst, cpu_p99_worst_script: typeof w.cpu_p99_worst_script === "string" ? w.cpu_p99_worst_script.slice(0, 63) : null,
+    cpu_limit_ms: w.cpu_limit_ms, scripts: w.scripts, errors: isInt(w.errors) ? w.errors : null, snapshot_at: j.v.at };
+  return FIELD_VALIDATORS.workers_usage(v) ? { ok: true, v } : { ok: false, reason: "workers_usage_malformed" };
+}
+
+// P19: neon.bytes da anotação PLAN_PROBE (plan-probe.yml, semanal). run = o run lido; leitura vale até 8 dias.
+export function parsePlanProbe(message, run, day) {
+  const j = safeJson(message);
+  if (!j.ok || !isObj(j.v) || !isIso(j.v.checkedAt)) return { ok: false, reason: "malformed_source" };
+  const n = j.v.neon;
+  if (Array.isArray(j.v.notVerifiable) && j.v.notVerifiable.some((x) => isObj(x) && x.provider === "neon")) return { ok: false, reason: "plan_probe_neon_connection_failed" };
+  if (!isObj(n) || !isInt(n.bytes)) return { ok: false, reason: "plan_probe_neon_bytes_absent" };
+  const age = (Date.parse(day + "T23:59:59Z") - Date.parse(j.v.checkedAt)) / 864e5;
+  if (age < 0) return { ok: false, reason: "plan_probe_after_day" };
+  if (age > P19_NEON_STORAGE_MAX_AGE_DAYS) return { ok: false, reason: "plan_probe_too_old" };
+  const v = { bytes: n.bytes, limit_bytes: NEON_FREE_BYTES, pct: Math.round(n.bytes / NEON_FREE_BYTES * 1000) / 10, measured_at: j.v.checkedAt, age_days: Math.round(age * 10) / 10,
+    metric: "pg_database_size (lógico; o armazenamento faturado do Neon inclui histórico)", run_id: String(run?.id ?? "") };
+  return { ok: true, v };
+}
+
+// P19: margem por recurso conforme o modo de falha (seção 5), no pior dia dos últimos 7 dias registrados.
+// within_target só é calculado com 7 dias medidos; antes disso é null (NOT_PROVEN). Metas: PROPOSTA (seção 11).
+export const P19_RESOURCES = Object.freeze([
+  { id: "kv_writes", failure_mode: "contador diário (erro ao esgotar, zera 00:00 UTC)", field: "kv_quota", used: (v) => v.writes, limit: (v) => v.limit, target_max: 600, target: "<= 600 (60%) em cada um dos 7 dias, o que também cumpre o pior dia <= 700 (seção 11)" },
+  { id: "kv_reads", failure_mode: "contador diário", field: "kv_quota", used: (v) => v.reads, limit: () => 100000, target_max: 50000, target: "pior dia <= 50 mil (seção 11)" },
+  { id: "workers_requests", failure_mode: "contador diário (erro 1027 ao esgotar)", field: "workers_usage", used: (v) => v.requests, limit: (v) => v.limit, target_max: 40000, target: "<= 40% no pior dia (seção 11)" },
+  { id: "workers_cpu_p99", failure_mode: "CPU p99 (limite de 10 ms por invocação)", field: "workers_usage", used: (v) => v.cpu_p99_ms_worst, limit: (v) => v.cpu_limit_ms, target_max: 5, target: "p99 <= 5 ms no pior dia (seção 11)" },
+  { id: "neon_storage", failure_mode: "armazenamento (bloqueia gravação ao esgotar)", field: "neon_storage", used: (v) => v.bytes, limit: (v) => v.limit_bytes, target_max: NEON_FREE_BYTES / 2, target: "<= 50% (seção 11)" },
+  { id: "neon_compute", failure_mode: "cota mensal (projeto suspenso até o mês seguinte)", field: "neon_compute", used: (v) => v.cu_hours_month, limit: (v) => v.limit_cu_hours, target_max: 80, target: "projeção conservadora do mês <= 80 CU-h (seção 11)" },
+]);
+export function p19Margins(records) {
+  const byDay = latestPerDay(records.filter((r) => r.processes?.P19));
+  const days = [...byDay.keys()].sort().slice(-7);
+  const out = {};
+  for (const res of P19_RESOURCES) {
+    const vals = [];
+    for (const d of days) { const f = byDay.get(d).processes.P19.fields?.[res.field]; if (fieldOk(res.field, f)) vals.push({ used: res.used(f.value), limit: res.limit(f.value) }); }
+    const worst = vals.reduce((w, x) => (!w || x.used / x.limit > w.used / w.limit ? x : w), null);
+    out[res.id] = {
+      failure_mode: res.failure_mode, target: res.target, target_status: "PROPOSTA", days_measured: vals.length, window_days: days.length,
+      worst_used: worst ? worst.used : null, limit: worst ? worst.limit : null,
+      used_pct: worst ? Math.round(worst.used / worst.limit * 1000) / 10 : null,
+      margin_pct: worst ? Math.round((1 - worst.used / worst.limit) * 1000) / 10 : null,
+      within_target: vals.length >= 7 ? vals.every((x) => x.used <= res.target_max) : null,
+    };
+  }
+  return out;
 }
 
 // P20: ensaio mensal. records = registros já validados (scripts/p20/restore-drill-lib.mjs validateRecord).
