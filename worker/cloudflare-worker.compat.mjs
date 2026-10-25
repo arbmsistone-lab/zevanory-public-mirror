@@ -39,6 +39,7 @@ import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
+import { handleWaitlist, runWaitlistNotify } from "./waitlist.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
@@ -105,7 +106,7 @@ const wrapped = {
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
-    applySalesSwitch(await readSalesSwitch(normalized));
+    const salesOpenNow = applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
@@ -202,6 +203,10 @@ const wrapped = {
       url = new URL(request.url);
     } else if (url.pathname.startsWith("/api/checkout/") && !request.headers.get("x-certification-pilot-token")) {
       return new Response(JSON.stringify({ error: "checkout_via_sales_page_only", buy: "https://vendas.zevanory.api.br/solucoes" }), { status: 404, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
+    // Lista de espera (worker/waitlist.mjs): INERTE por padrão (WAITLIST_ENABLED !== "true" => 404 antes de banco/KV/rede).
+    if (url.pathname === "/lista-de-espera" || url.pathname.startsWith("/lista-de-espera/")) {
+      return handleWaitlist(request, normalized, { sqlFactory: whatsappProofDatabase, salesOpen: salesOpenNow });
     }
     if (url.hostname === "leads.internal" || url.pathname.startsWith("/material-gratuito/")) {
       const lead = await handleLeadMagnet(request, normalized, { sqlFactory: whatsappProofDatabase });
@@ -778,6 +783,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => { mark("delivery_watchdog", out?.ok !== false, out?.reason); console.info("paid_delivery_watchdog", JSON.stringify(out)); }).catch((error) => { mark("delivery_watchdog", false, error instanceof Error ? error.message : error); console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runSupportEvalIfDue(normalized).then((out) => console.info("support_eval", JSON.stringify(out))).catch((error) => console.error("support_eval_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
+  // Aviso da lista de espera: só com WAITLIST_ENABLED=true E vendas abertas (interruptor global); senão nada sai.
+  tasks.push(runWaitlistNotify(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("waitlist", out?.ok !== false, out?.reason); console.info("waitlist_notify", JSON.stringify({ sent: out?.sent || 0, failed: out?.failed || 0, skipped: out?.skipped || out?.reason || null })); }).catch((error) => { mark("waitlist", false, error instanceof Error ? error.message : error); console.error("waitlist_notify_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
   // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.

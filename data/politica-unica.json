@@ -11,6 +11,20 @@
     ],
     "waitlist_subject": "Lista de espera — {produto}",
     "waitlist_body": "Olá! Quero entrar na lista de espera do {produto}. Me avisem por este e-mail quando as vendas abrirem.",
+    "waitlist_form": {
+      "nota": "Regra da lista de espera (decisão delegada 2026-10-25; Sol AVAL 272, A272-02). enabled=false (padrão): o CTA 'Entrar na lista de espera' continua abrindo o mailto acima. O formulário real (zevanory.api.br/lista-de-espera?produto=<slug>, worker/waitlist.mjs, consentimento próprio em data/lista-de-espera.json) só pode ser usado com enabled=true, e enabled=true só depois de o Worker central estar com WAITLIST_ENABLED=true (senão o link daria 404) e de a Política de Privacidade descrever a finalidade. Nunca ligado automaticamente: só por decisão explícita do proprietário (tests/waitlist.test.mjs).",
+      "enabled": false,
+      "url": "https://zevanory.api.br/lista-de-espera",
+      "flag_env": "WAITLIST_ENABLED",
+      "produtos": {
+        "IA na Prática": "ia-na-pratica",
+        "Vendas na Prática": "vendas-na-pratica",
+        "Lucro & Caixa": "lucro-e-caixa",
+        "Combo IA + Vendas": "combo-ia-vendas",
+        "Negócio Completo": "negocio-completo",
+        "Conteúdo Pronto": "conteudo-pronto"
+      }
+    },
     "contact_subject": "Contato pelo site ZEVANORY"
   },
   "sol_text": "Compra, entrega, suporte e direito de arrependimento. Antes da contratação, a página e o resumo do pedido informarão fornecedor, características e conteúdo do produto, preço total, forma de pagamento, disponibilidade, prazo e modo de entrega, restrições de uso/download e canais de atendimento. O consumidor poderá corrigir os dados do pedido antes de concluir a compra. Após a contratação, receberá imediatamente a confirmação e uma cópia conservável destes termos. O produto digital será enviado ao e-mail informado após a confirmação do pagamento, por link pessoal válido por 72 horas e para um download; a expiração do link não elimina o direito ao produto, e um novo link poderá ser solicitado sem custo pelo canal de entrega ou pelo suporte. Em contratação online, o consumidor poderá desistir sem justificativa e sem ônus no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço, conforme o evento aplicável; por política mais favorável, se as datas forem diferentes, a ZEVANORY adotará a mais recente. O pedido poderá ser feito pela mesma ferramenta usada na contratação e também em zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br. O recebimento do pedido será confirmado imediatamente. A ZEVANORY comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno e devolverá integralmente os valores pagos; a visualização do crédito em cartão seguirá o prazo do emissor. Contratos acessórios serão cancelados sem custo. Demandas de consumo terão confirmação imediata e resposta conclusiva em até 5 dias; o SLA específico de direitos LGPD permanece separado. Defeito, arquivo corrompido ou falha de entrega será corrigido ou reenviado sem custo, sem limitar outros direitos legais.",

@@ -1,0 +1,21 @@
+{
+  "schema": "zevanory-lista-de-espera/v1",
+  "nota": "Lista de espera real (decisão delegada ao executor e ao auditor, 2026-10-25; Sol AVAL 272, A272-02). INERTE por padrão: só existe quando o ambiente do Worker central define WAITLIST_ENABLED exatamente igual a \"true\" (nenhum workflow, wrangler ou gerador define essa variável; tests/waitlist.test.mjs reprova se definir). Desligada, todas as rotas /lista-de-espera respondem 404 e as páginas continuam com o mailto (data/politica-unica.json, contato_publico.waitlist_form.enabled=false). Separada do material gratuito: tabelas próprias (zevanory_waitlist*), consentimento próprio (finalidade única: UM aviso de abertura das vendas), nunca lê nem escreve zevanory_leads, e o material gratuito nunca lê a lista de espera. Ativação (decisão do proprietário, nunca automática): (1) Política de Privacidade com a finalidade abaixo; (2) WAITLIST_ENABLED=true no Worker central; (3) waitlist_form.enabled=true e rebuild de sales-public. Texto sujeito a revisão jurídica do proprietário.",
+  "flag": {
+    "env": "WAITLIST_ENABLED",
+    "on_value": "true",
+    "default": "off"
+  },
+  "consent": {
+    "version": "lista-de-espera-v1-2026-10-25",
+    "text": "Quero receber um único e-mail da ZEVANORY avisando quando as vendas do {produto} abrirem. Finalidade: somente esse aviso; não entro na lista do material gratuito nem recebo outras mensagens ou ofertas. Meu e-mail e o produto escolhido ficam guardados até o aviso ser enviado e são apagados logo depois; se o aviso não puder ser enviado, são apagados no máximo {dias_apos_abertura} dias depois de as vendas abrirem e, se as vendas não abrirem, em até {teto_meses} meses. Posso sair a qualquer momento pelo link do e-mail de confirmação, e meus dados são apagados na hora. Controladora: {razao_social} (ZEVANORY), CNPJ {cnpj}, contato {email}."
+  },
+  "retencao": {
+    "link_confirmacao_horas": 48,
+    "pendente_dias_apos_expirar": 7,
+    "dias_apos_abertura": 30,
+    "teto_dias": 365,
+    "eventos_dias": 730
+  },
+  "lote_aviso_por_execucao": 10
+}
