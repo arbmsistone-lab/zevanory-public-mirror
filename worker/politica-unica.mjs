@@ -75,6 +75,10 @@ export const REFUND_TEXT = fill(W.refund);
 export const SUBSCRIPTION_DELIVERY_TEXT = fill(W.subscription_delivery);
 export const SUBSCRIPTION_REFUND_TEXT = fill(W.subscription_refund);
 export const REFUND_CHANNELS = W.refund_channels;
+// O formulário zevanory.api.br/pedir-reembolso só atende o checkout próprio (worker/refund-flow.mjs); compras pela
+// Hotmart são canceladas e reembolsadas pela Hotmart (sem nomeá-la: hasCheckoutCta trata a menção como chamada de compra).
+export const REFUND_FORM_SCOPE = W.refund_form_scope;
+export const REFUND_OTHER_PLATFORM = W.refund_other_platform;
 export const SLA_TEXT = fill(W.sla);
 export const ALLOWED_DAY_COUNTS = Object.freeze(Object.values(W.dias_permitidos).map(Number));
 

@@ -41,7 +41,7 @@ import { validateReply } from "./whatsapp-conversation.mjs";
 import {
   CLOSED_LABEL, CONFIRMATION_TEXT, DELIVERY_TEXT, LEGAL_IDENTITY, REFUND_TEXT, RULE_LINE, SLA_TEXT, SUPPLIER,
   SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER,
-  SUBSCRIPTION_DELIVERY_TEXT, SUBSCRIPTION_REFUND_TEXT, hasCheckoutCta,
+  SUBSCRIPTION_DELIVERY_TEXT, SUBSCRIPTION_REFUND_TEXT, hasCheckoutCta, REFUND_FORM_SCOPE, REFUND_OTHER_PLATFORM,
   SUPPORT_EMAIL as PUBLIC_SUPPORT_EMAIL, SUPPORT_FORM_URL, WHATSAPP_PUBLIC_RE, BANNED_NUMBER_RE
 } from "./politica-unica.mjs";
 
@@ -558,7 +558,7 @@ function customerConfirmation(t) {
   return {
     subject: `Recebemos seu pedido de atendimento — protocolo ${t.protocol}`,
     text: ["Olá,", "", `Recebemos seu pedido de atendimento pelo chat do site da ZEVANORY. Protocolo: ${t.protocol}.`, `${SLA_TEXT} Prazo: até ${dueLabel(t.due_at)}.`, "",
-      `Para reembolso ou arrependimento, você também pode usar ${CORE_ORIGIN}/pedir-reembolso. Para um novo link de acesso, ${CORE_ORIGIN}/entrega/reenviar.`,
+      `Para reembolso ou arrependimento nas ${REFUND_FORM_SCOPE}, você também pode usar ${CORE_ORIGIN}/pedir-reembolso. ${REFUND_OTHER_PLATFORM} Para um novo link de acesso, ${CORE_ORIGIN}/entrega/reenviar.`,
       `Para falar com a equipe: ${SUPPORT_EMAIL} ou o formulário de atendimento ${ATENDIMENTO_URL}.`, "",
       "Esta é uma confirmação automática. Não responda com senha, cartão ou documentos.", "", "ZEVANORY", LEGAL_IDENTITY].join("\n"),
   };
