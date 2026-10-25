@@ -1,8 +1,9 @@
 name: sales-ux-quality
 # E3 + E4 (2026-10-24). Pre-merge quality budget for the public sales site, measured on the PR's own
 # build served on localhost THROUGH the real Worker (scripts/audit/sales-local-server.mjs: same
-# routing, CSP and Cache-Control as production). Pages: /solucoes, /zevanory-sales, /ia-na-pratica
-# (product page) and /termos, mobile and desktop.
+# routing, CSP and Cache-Control as production). Pages: the 10 public pages (catalogue, the six priced
+# pages, Sales, termos, founder), mobile and desktop, light AND dark; the per-page results of both themes
+# are merged into budget-results.json (artifact; committed copy: docs/evidence/sales-ux/budget-results.json).
 #   Lighthouse 13.5.0 (same pin as the F5/apex gates): performance >= 95 (median of 3), accessibility,
 #   best-practices and SEO = 100 in every run; axe-core 4.10.3 (WCAG 2.0/2.1/2.2 A+AA + best
 #   practice): zero serious/critical; internal 44 px targets; visible, unobscured keyboard focus;
@@ -43,6 +44,7 @@ on:
       - "scripts/audit/sales-local-server.mjs"
       - "scripts/audit/sales-quality-budget.mjs"
       - "scripts/audit/sales-screenshots.mjs"
+      - "scripts/audit/sales-budget-summary.mjs"
       - ".github/workflows/sales-ux-quality.yml"
   workflow_dispatch:
 permissions:
@@ -54,7 +56,7 @@ jobs:
   budget:
     name: sales-ux / lighthouse-axe-budget
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 150
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       QUALITY_MODULES: /tmp/q/node_modules
@@ -108,21 +110,31 @@ jobs:
           COLOR_SCHEME=dark node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8787 /tmp/sales-ux/screenshots/after-dark
       - name: Budget on the base build (before, report only)
         run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8788 /tmp/sales-ux/budget-before --report-only
-      - name: Budget on the PR build (after, enforced)
+      - name: Budget on the PR build (after, enforced, all 10 public pages)
+        env:
+          PAGES: /solucoes,/lucro-e-caixa,/vendas-na-pratica,/ia-na-pratica,/conteudo-pronto,/combo-ia-vendas,/negocio-completo,/zevanory-sales,/termos,/quem-criou
         run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-after
-      - name: Budget on the PR build, dark theme (prefers-color-scheme dark, enforced)
+      - name: Budget on the PR build, dark theme (prefers-color-scheme dark, enforced, all 10 public pages)
         env:
           COLOR_SCHEME: dark
+          PAGES: /solucoes,/lucro-e-caixa,/vendas-na-pratica,/ia-na-pratica,/conteudo-pronto,/combo-ia-vendas,/negocio-completo,/zevanory-sales,/termos,/quem-criou
         run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-after-dark
       - name: Budget on the marketing pages (niche landing pages, light and dark, enforced)
         # Marketing PR (2026-10-25): the four /para/<ramo> pages share one template; all four are measured
         # in both themes. /solucoes (FAQ, demo video) and the product pages are already in the budgets above.
         env:
-          PAGES: /para/salao,/para/oficina,/para/clinica,/para/loja,/lucro-e-caixa
+          PAGES: /para/salao,/para/oficina,/para/clinica,/para/loja
         run: |
           set -euo pipefail
           node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-marketing
           COLOR_SCHEME=dark node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-marketing-dark
+      - name: Per-page budget results, both themes (budget-results.json)
+        if: always()
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/audit/sales-budget-summary.mjs /tmp/sales-ux/budget-after/sales-quality-budget.json /tmp/sales-ux/budget-after-dark/sales-quality-budget.json /tmp/sales-ux/budget-results.json --commit "$HEAD_SHA"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

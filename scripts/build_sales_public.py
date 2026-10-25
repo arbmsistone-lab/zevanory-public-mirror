@@ -107,7 +107,7 @@ LEGAL_FOOTER = ('<div class="container footer-legal">'
                 '<section class="fl-block" aria-labelledby="fl-contato"><h2 class="fl-title" id="fl-contato">Atendimento</h2><ul>'
                 f'<li><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a></li>'
                 f'<li><a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a></li>'
-                '<li class="fl-note">Confirmação na hora e resposta conclusiva em até 5 dias.</li>'
+                '<li class="fl-note">Confirmação imediata e resposta conclusiva em até 5 dias.</li>'
                 + (f'<li>WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a></li>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
                 '</ul></section>'
                 '<section class="fl-block" aria-labelledby="fl-regras"><h2 class="fl-title" id="fl-regras">Regras da compra</h2><ul>'
@@ -151,7 +151,7 @@ def buy_facts() -> str:
             '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
 
 # Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
-RESPONSE_COMMITMENT = "confirmação na hora e resposta conclusiva em até 5 dias"
+RESPONSE_COMMITMENT = "confirmação imediata e resposta conclusiva em até 5 dias"
 
 def trust_mini(payment: str = "pelo Mercado Pago") -> str:
     """Compact, factual trust block next to every price (data from data/politica-unica.json)."""
