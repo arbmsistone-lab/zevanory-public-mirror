@@ -7,7 +7,7 @@ import * as v2 from "../worker/sandbox-proof-v2.mjs";
 const TOKEN = "c".repeat(40);
 const INBOX_TOKEN = "inbox-token-for-tests-only-0123456789abcdef";
 const env = (over = {}) => ({ CERTIFICATION_PILOT_ENV: "sandbox", MERCADOPAGO_ENV: "sandbox", SALE_GLOBALLY_ENABLED: "false",
-  CERTIFICATION_E2E_TOKEN: TOKEN, DATABASE_URL: "postgres://fake", ZEVANORY_PRIVATE_ARTIFACTS: kv(), ...over });
+  ZEVANORY_OPERATOR_TOKEN: TOKEN, DATABASE_URL: "postgres://fake", ZEVANORY_PRIVATE_ARTIFACTS: kv(), ...over });
 function kv() {
   const m = new Map();
   return { m, get: async (k) => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); }, list: async ({ prefix }) => ({ keys: [...m.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })) }) };

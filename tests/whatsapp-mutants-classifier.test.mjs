@@ -93,9 +93,9 @@ test("runner refuses to start (exit 4) on a primary without assertion_pattern or
   assert.match(b.out, /^MUTANT CONFIG REFUSED .*M02_constant_flipped: \d+ expected tests \(> 4\) without an explicit broad_reason/m);
 });
 
-test("real config: 49 mutants, every primary labelled, every literal label present in the suites", () => {
+test("real config: 51 mutants, every primary labelled, every literal label present in the suites", () => {
   const cfg = JSON.parse(readTextNormalized(CONFIG)).mutants;
-  assert.equal(Object.keys(cfg).length, 49);
+  assert.equal(Object.keys(cfg).length, 51);
   const suites = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-manual-only.test.mjs", "tests/whatsapp-config-absence.test.mjs"].map((f) => readTextNormalized(join(ROOT, f))).join("\n");
   for (const [id, spec] of Object.entries(cfg)) {
     assert.ok(spec.primary.length >= 1 && spec.primary.length <= 3, id);

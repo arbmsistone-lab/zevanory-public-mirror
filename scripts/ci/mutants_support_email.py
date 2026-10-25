@@ -31,7 +31,7 @@ FWD = "worker/support-email-forward.mjs"
 COMPAT = "worker/cloudflare-worker.compat.mjs"
 SUITES = {
     "unit": {"test": "tests/support-email-forward.test.mjs",
-             "copy": [FWD, COMPAT, "worker/politica-unica.mjs", "worker/sandbox-proof-v2.mjs", "data/politica-unica.json",
+             "copy": [FWD, COMPAT, "worker/politica-unica.mjs", "worker/sandbox-proof-v2.mjs", "worker/operator-credential.mjs", "data/politica-unica.json",
                       "tests/support-email-forward.test.mjs", "tests/helpers/text.mjs", "docs/ops/EMAIL_SUPORTE.md",
                       "scripts/deploy/prepare-central-candidate.py"],
              "allow": "mutants_support_email_allow.json", "workers": 8},

@@ -152,11 +152,11 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
       MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
       MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET }}
-      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
-      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+      # F2 item 9: MERCADOPAGO_TEST_* removidos do deploy de produção (nenhum passo os lia; sandbox só no Worker de certificação).
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
-      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      # R9 (Sol 164 §4): credencial de operador da produção com nome próprio; queda para o nome antigo só na transição.
+      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}
       # Deploy the exact merged source SHA; sales remain fail-closed by configuration.
       TARGET_RUNTIME_SHA: ${{ github.sha }}
     steps:
@@ -314,13 +314,22 @@ jobs:
           # Sales remain globally disabled by the candidate configuration.
           python3 scripts/deploy/verify-financial-boundary.py
 
-      - name: Require certification secret before production deploy
+      - name: Require production operator secret before production deploy
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
+          # R9 transição: o Worker aceita ZEVANORY_OPERATOR_TOKEN e, só na ausência dele, CERTIFICATION_E2E_TOKEN
+          # (worker/operator-credential.mjs). O deploy exige ao menos um dos dois e imprime só a categoria.
           npx --yes wrangler@4.143.0 secret list --name zevanory --format json > /tmp/zevanory-secrets.json
-          jq -e 'map(.name) | index("CERTIFICATION_E2E_TOKEN") != null' /tmp/zevanory-secrets.json >/dev/null
-          echo "CERTIFICATION_E2E_TOKEN_PRESENT=PASS"
+          if jq -e 'map(.name) | index("ZEVANORY_OPERATOR_TOKEN") != null' /tmp/zevanory-secrets.json >/dev/null; then
+            echo "OPERATOR_TOKEN_BINDING=primary"
+          elif jq -e 'map(.name) | index("CERTIFICATION_E2E_TOKEN") != null' /tmp/zevanory-secrets.json >/dev/null; then
+            echo "OPERATOR_TOKEN_BINDING=legacy_fallback"
+            echo "::warning title=R9_OPERATOR_TOKEN_LEGACY::Worker zevanory ainda sem ZEVANORY_OPERATOR_TOKEN; usando o nome antigo (transição)"
+          else
+            echo "OPERATOR_TOKEN_BINDING=absent"
+            exit 1
+          fi
 
       - name: Deploy repaired production worker
         id: deployworker
@@ -456,6 +465,14 @@ jobs:
         run: |
           echo "::error title=CERTIFICATION_NAO_COMPROVADO::release $TARGET_RUNTIME_SHA kept live (smokes passed, no contrary evidence) but NOT certified: $POST_REASON. No rollback without independent evidence; re-check with t1-publisher-guard (workflow_dispatch: recheck_service=zevanory)."
           exit 1
+      - name: R9 credential identity readback (names and categories only)
+        # Depois da decisão de rollback de propósito: uma chave Stripe de TESTE ligada à produção reprova o run sem
+        # desfazer o deploy (o defeito é do segredo, não do código).
+        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/credential_identity_readback.py https://zevanory.api.br
       - name: Dispatch exact-production ZEES-16 provider evidence
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         continue-on-error: true

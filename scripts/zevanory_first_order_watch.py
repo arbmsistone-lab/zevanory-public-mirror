@@ -50,7 +50,7 @@ def read_paid_delivery_counts(fetch=None):
     import hashlib
     import hmac
     import time
-    key = os.getenv("CERTIFICATION_E2E_TOKEN", "").strip()
+    key = os.getenv("ZEVANORY_OPERATOR_TOKEN", "").strip()
     if len(key) < 32:
         raise WatchError("AUDIT_SECRET_MISSING")
     path = "/api/internal/watch/paid-delivery"

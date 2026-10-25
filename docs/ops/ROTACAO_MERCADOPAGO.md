@@ -26,7 +26,10 @@ e no Environment `producao-critica`, que exige revisor.
   3. com autorização expressa, faz rollback para `ROLLBACK_POINT` pelo painel ou por `wrangler rollback`;
   4. confirma pelo preflight seguinte; as vendas continuam fechadas o tempo todo.
 - **Execução única e concorrência (risco Sol 038-R5):** o workflow só roda por dispatch manual no gh-pages,
-  nunca por re-run (`run_attempt == 1`), e dois dispatches nunca rodam juntos (`concurrency`).
+  nunca por re-run (`run_attempt == 1`), e dois dispatches nunca rodam juntos (`concurrency`). Desde a
+  autorização escrita do proprietário ("AUTORIZO SERIALIZAR mercadopago-production-token-rotate.yml NO GRUPO
+  deploy-zevanory"), a fila é a `deploy-zevanory`, a mesma dos outros 10 publicadores do Worker: nenhum deploy
+  central e nenhuma outra troca de segredo roda durante a rotação. Recuperabilidade: seção 1.1.
 - **MP-01:** o token Cloudflare vem só de `secrets.CLOUDFLARE_API_TOKEN` (o do Environment). O nome antigo
   `…PUBLIC_OWNER…` não é mais lido. Espaços e quebras de linha são removidos do valor, como no #851.
 - **Falha ambígua (contestação Sol 21/10) — BLOQUEANTE para a troca real:** a tentativa de gravação é
@@ -76,6 +79,85 @@ e no Environment `producao-critica`, que exige revisor.
   imprime `MP_SECRET_SCOPE=NOT_CHECKED_IN_WORKFLOW`: o job não consegue verificar isso sozinho, porque listar
   os nomes dos segredos do repositório exige a permissão "Secrets", que o `GITHUB_TOKEN` não pode receber.
   A verificação é feita fora do workflow, por quem administra o repositório (Settings → Secrets, só nomes).
+
+### 1.1 Fila `deploy-zevanory`: recuperabilidade (Sol 204)
+
+Bloco no topo do workflow, igual, byte a byte, ao dos outros 10 publicadores do `zevanory`
+(`ops/publishers.json`, `services.zevanory`):
+
+```yaml
+concurrency:
+  group: deploy-zevanory
+  cancel-in-progress: false
+  queue: max
+```
+
+**Semântica do GitHub.** Numa fila de concorrência roda um item por vez. `queue` aceita `single` (padrão) e
+`max`. Com `single`, só um item fica pendente: um pendente novo **cancela** o anterior. Com `max`, até 100
+ficam pendentes, em ordem FIFO pela hora em que entraram na espera (não pela hora do disparo), e nenhum
+pendente é substituído. **Limite:** se já houver 100 pendentes, um run novo é cancelado ao entrar; não há
+prioridade para a rotação financeira. `queue: max`
+com `cancel-in-progress: true` é rejeitado na validação, e aqui `cancel-in-progress` é `false`. Assim, nenhum run
+em andamento é interrompido, nem o desta rotação nem o de outro publicador. Fontes: documentação "Control the
+concurrency of workflows and jobs" e changelog do GitHub de 07/05/2026 ("concurrency groups now allow larger queues").
+Prova neste repositório, no mesmo nível (workflow):
+- `t1-queue-max-workflow-probe.yml`: runs 38438301229, 38438303844 e 38438305790, criados em 2 s. Os três
+  terminaram com `success` e rodaram um depois do outro (17:23:50–17:24:18, 17:24:21–17:24:49, 17:24:52–17:25:20),
+  sem nenhum cancelado.
+- No nível de job, `t1-queue-max-probe.yml` (run 38443537566): 3 concorrentes, 0 descartados, sem sobreposição.
+
+**Sem `queue: max` haveria perda de pedido.** Um push no gh-pages (deploy central) que chegasse com uma rotação
+pendente cancelaria a rotação. Como o job exige `run_attempt == 1`, o run cancelado não pode ser reexecutado e
+precisa de um dispatch novo. A rotação pendente também cancelaria um deploy pendente. Os testes exigem
+`queue: max` (`tests/publisher-inventory.test.mjs` e `tests/test_mp_rotation_workflow.py`).
+
+**Nível do bloco.** O bloco fica no workflow, como nos outros 10, e não no job. O run inteiro ocupa uma única vaga.
+Gravação, espera do preflight e retorno automático acontecem no mesmo job e na mesma vaga. A fila nunca separa o
+`secret put` do seu retorno. Não há concorrência de job, que criaria uma segunda vaga. O teste N13 do #918 e
+`publisher-inventory` leem o bloco do topo.
+
+**Espera máxima na fila.** É a soma dos timeouts dos runs que entraram na espera antes. Cada membro, uma vez:
+
+| Membro | Timeout |
+|---|---|
+| `central-production-deploy.yml` (guard 5 + deploy 40) | 45 min |
+| `channel-production-bootstrap.yml` | 25 min |
+| `lead-privacy-secret-to-worker.yml`, `voice-gemini-auth-key-probe.yml`, `voice-gemini-production-provision.yml` | 15 min cada |
+| `channel-credentials-sync.yml`, `gemini-key-to-worker.yml`, `production-test-secret-cleanup.yml`, `voice-zero-spend-enable.yml` | 10 min cada |
+| `sandbox-worker-secret-audit.yml` (aposentado, `if: false`) | 5 min (na prática, pulado) |
+
+Execução: orçamento de **160 min** (155 sem o aposentado). É um orçamento dos jobs, **não** um limite
+absoluto de espera: aprovação humana, falta de runner ou outras interferências não têm teto garantido. Somam-se o tempo de fila do runner e o tempo de
+aprovação: todos os membros, inclusive esta rotação, usam o Environment `producao-critica`, que exige revisor.
+Um run que espera aprovação **segura a vaga**, porque a concorrência fica no topo do run. O próprio proprietário
+aprova esses runs e pode rejeitar ou cancelar os que ainda estão pendentes ou aguardando aprovação. Um run
+pendente nunca começou, então cancelá-lo não deixa gravação pela metade. Pushes seguidos no gh-pages podem
+enfileirar vários deploys centrais, cada um com até 45 min mais aprovação. Na direção inversa, esta rotação
+segura a fila por no máximo 100 min (timeout do job), mais a própria aprovação.
+
+**Janelas de tempo.**
+- **Os prazos medidos começam dentro do job.** A espera do preflight (80 min) usa `SECONDS` do passo, com
+  `PREFLIGHT_AFTER` gravado no mesmo job. O frescor do check-only (≤ 120 min) é medido com `Date.now()` na hora
+  do passo. O `timeout-minutes: 100` conta a execução, não a espera na fila. Nenhuma entrada do dispatch carrega
+  horário (`mode`, `target_version`, `rollback_point`).
+- **Credencial lida na hora.** O token MP do Environment é resolvido quando o job começa e validado
+  (`/users/me`, leituras MP-02) antes de qualquer gravação. Se vencer durante a espera, o run para antes de gravar.
+- **Versão ativa lida na hora.** O ponto de retorno e a pré-condição 10215 são lidos no próprio run. Um deploy
+  que rodou antes, na fila, só muda o que é lido, e o run decide sobre o estado atual.
+- **`recover` com entradas que envelheceram na fila.** `worker-version-recover.sh` recusa
+  (`RECOVER_ACTIVE_NOT_ROLLBACK_POINT`, `RECOVER_TARGET_NOT_LATEST`) **antes** do `versions deploy`, sem gravar
+  nada. O procedimento continua disponível: novo dispatch com os valores atuais, decidido com o proprietário. O
+  caminho externo (painel ou script à mão, seção "Perda do runner") não passa pela fila.
+- **Janela real: 12 h do token antigo (Ordem 046 R2).** Depois da renovação no Mercado Pago, o token antigo
+  morre em 12 h. O pior caso de execução na fila (160 min) mais a própria rotação (100 min) dá cerca de
+  4 h 20 min, dentro das 12 h. O que pode estourar a janela é **aprovação humana parada**, não a fila. Regra
+  operacional: renovar no Mercado Pago só com a fila `deploy-zevanory` vazia (Actions → filtrar os runs
+  pendentes ou em andamento desses 11 workflows), logo depois de um check-only verde. Se surgir espera, o
+  proprietário rejeita ou cancela os runs pendentes que ainda não começaram. O mesmo vale para o `recover`.
+
+**Ganho de segurança.** Antes, um deploy central podia rodar entre a leitura do ponto de retorno e o
+`secret put`, ou durante a espera de 80 min. No primeiro caso, o retorno automático desfaria esse deploy. No
+segundo, o alvo de recuperação deixaria de ser a versão mais recente. Na fila única, isso não acontece.
 
 ## 2. Segredo do webhook (`MERCADOPAGO_WEBHOOK_SECRET`)
 

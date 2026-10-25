@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only Mercado Pago production reconciliation. Never print provider response bodies."""
-import datetime,json,os,sys,urllib.parse,urllib.request,urllib.error
+import datetime,json,os,re,sys,urllib.parse,urllib.request,urllib.error
 _exit=sys.exit
 def _fail(code):
     # Only fixed error codes reach the public log/annotations, never provider bodies or data.
@@ -10,10 +10,13 @@ sys.exit=_fail
 START="2026-10-02T00:00:00-03:00"  # exact window enforced locally; API window is NOW-7DAYS..NOW
 API="https://api.mercadopago.com/v1/payments/search"
 APP="https://zevanory.api.br"
+ORDER_LOOKUP_PATH="/api/internal/audit/order-lookup"
+ORDER_LOOKUP_BATCH=40  # = ORDER_LOOKUP_MAX do Worker (worker/internal-financial-audit.mjs)
+ORDER_UUID=re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 token=os.environ.get("MERCADOPAGO_PROD_ACCESS_TOKEN","").strip()
-cert=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
+cert=os.environ.get("ZEVANORY_OPERATOR_TOKEN","").strip()
 if not token:sys.exit("MISSING_MERCADOPAGO_PROD_ACCESS_TOKEN")
-if not cert:sys.exit("MISSING_CERTIFICATION_E2E_TOKEN")
+if not cert:sys.exit("MISSING_ZEVANORY_OPERATOR_TOKEN")
 def fetch_json(url,headers):
     req=urllib.request.Request(url,headers=headers,method="GET")
     try:
@@ -47,25 +50,34 @@ while True:
         ref=str(p.get("external_reference") or "")[:160]
         val=amount(p.get("transaction_amount"))
         status=str(p.get("status") or "")[:48]
-        order_id=ref.split(":")[-1] if ref.startswith("ZEVANORY:") else ref
-        reconciled=False;reason="ORDER_NOT_VERIFIED"
-        if not order_id or not all(c.isalnum() or c in "-_" for c in order_id) or len(order_id)>100:
-            reason="NO_VALID_ORDER_REFERENCE"
-        else:
-            try:
-                url=APP+"/api/internal/certification/e2e/status?"+urllib.parse.urlencode({"order_id":order_id})
-                state=fetch_json(url,{"x-certification-e2e-token":cert,"Accept":"application/json"})
-                order=state.get("order") or {}
-                persisted=amount(order.get("amount"))
-                if str(order.get("order_id") or order.get("id") or "").lower()==order_id.lower() and persisted is not None and val==persisted:
-                    reconciled=True;reason="ORDER_AMOUNT_MATCH"
-                else:reason="ORDER_MISSING_OR_AMOUNT_MISMATCH"
-            except Exception:reason="ORDER_LOOKUP_FAILED"
-        rows.append({"payment_id":pid,"data":date,"valor":val,"status":status,"external_reference":ref,"concilia_mesmo_valor":reconciled,"motivo":reason})
+        order_id=(ref.split(":")[-1] if ref.startswith("ZEVANORY:") else ref).strip().lower()
+        rows.append({"payment_id":pid,"data":date,"valor":val,"status":status,"external_reference":ref,"concilia_mesmo_valor":False,
+                     "motivo":"ORDER_NOT_VERIFIED" if ORDER_UUID.fullmatch(order_id) else "NO_VALID_ORDER_REFERENCE","_order_id":order_id})
     offset+=len(items)
     if offset>=total:break
     if not items:sys.exit("INCOMPLETE_PAGINATION")
     if offset>100000:sys.exit("PAGINATION_SAFETY_BOUND")
+# R9 B (auditoria Sol 174): pedidos lidos pela rota de PRODUÇÃO somente leitura /api/internal/audit/order-lookup
+# (credencial de operador, só GET, transação READ ONLY no Worker). Não usa mais /api/internal/certification/e2e/status,
+# que pertence ao piloto sandbox de certificação e recusa (409) quando o piloto não existe na produção.
+pending=sorted({x["_order_id"] for x in rows if x["motivo"]=="ORDER_NOT_VERIFIED"})
+found={};failed=set()
+for i in range(0,len(pending),ORDER_LOOKUP_BATCH):
+    batch=pending[i:i+ORDER_LOOKUP_BATCH]
+    try:
+        state=fetch_json(APP+ORDER_LOOKUP_PATH+"?"+urllib.parse.urlencode([("order_id",x) for x in batch]),{"x-certification-e2e-token":cert,"Accept":"application/json"})
+        if state.get("schema")!="zevanory.audit.order-lookup/v1" or state.get("read_only") is not True or not isinstance(state.get("orders"),list):raise RuntimeError("INVALID_ORDER_LOOKUP")
+        for o in state["orders"]:
+            oid=str((o or {}).get("order_id") or "").lower()
+            if oid in batch:found[oid]=o
+    except Exception:failed.update(batch)
+for x in rows:
+    oid=x.pop("_order_id")
+    if x["motivo"]!="ORDER_NOT_VERIFIED":continue
+    if oid in failed:x["motivo"]="ORDER_LOOKUP_FAILED";continue
+    persisted=amount((found.get(oid) or {}).get("amount"))
+    if oid in found and persisted is not None and x["valor"]==persisted:x["concilia_mesmo_valor"]=True;x["motivo"]="ORDER_AMOUNT_MATCH"
+    else:x["motivo"]="ORDER_MISSING_OR_AMOUNT_MISMATCH"
 rows.sort(key=lambda x:(x["data"],x["payment_id"]))
 report={"begin_date":START,"end_date":end,"total_pagamentos":len(rows),"aprovados_sem_conciliacao":sum(x["status"]=="approved" and not x["concilia_mesmo_valor"] for x in rows),"pagamentos":rows}
 with open("mercadopago-readonly-sanitized.json","w",encoding="utf-8") as f:json.dump(report,f,ensure_ascii=False,indent=2)

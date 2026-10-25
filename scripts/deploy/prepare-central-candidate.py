@@ -44,10 +44,14 @@ if not found_private:
 c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_RUNTIME_SHA"]
 c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
 c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
-c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
+# R9 (Sol 164 §4): o piloto de certificação não existe na produção. Nenhuma CERTIFICATION_PILOT_* é gravada; as que
+# vierem da configuração base ou do runtime config são removidas, e sem keep_vars o deploy apaga as do painel.
+for _vars in (c.setdefault("vars",{}), c["vars"].get("ZEVANORY_RUNTIME_CONFIG") if isinstance(c["vars"].get("ZEVANORY_RUNTIME_CONFIG"),dict) else {}):
+    for _k in [k for k in _vars if k.startswith("CERTIFICATION_PILOT_")]:
+        _vars.pop(_k)
+c.pop("keep_vars",None)
 # Dedicated Asaas financial-certification probes must never default to the live API.
 c["vars"]["ASAAS_ENV"]="sandbox"
-c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
 # The future launch configuration is dormant unless explicitly authorized.
 # This PR must not be merged before the owner's AUTORIZO COMPRA REAL instruction.
 launch_authorized=os.environ.get("ZEVANORY_LAUNCH_AUTHORIZATION","")=="AUTORIZO COMPRA REAL"
@@ -65,7 +69,6 @@ else:
     c["vars"]["MERCADOPAGO_ENV"]="sandbox"
     c["vars"].pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
     c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{}).pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
-c["vars"]["CERTIFICATION_PILOT_PRODUCTION_ALLOWED"]="false"
 c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="false"
 c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
 c["vars"]["CHECKOUT_ENABLED"]="true"
@@ -98,8 +101,18 @@ for key in (
 # generator never assigns a WhatsApp contact alias, and it strips the legacy ones the base config
 # (83620c6 wrangler.jsonc: SUPPORT_CHANNEL with the old number) still carries. Support channel is
 # the constant suporte@zevanory.api.br in the worker. Guard: tests/whatsapp-config-absence.test.mjs.
+# The same base also ships three WhatsApp Cloud API settings inside ZEVANORY_RUNTIME_CONFIG (83620c6 wrangler.jsonc
+# lines 54/67/69). With the retirement a hard-coded constant (worker/whatsapp-retirement.mjs) nothing reads them for
+# a live path, so they are dropped from `vars` and from the runtime config. Exact names only: META_VERIFY_TOKEN (the
+# shared Instagram/Facebook webhook verify token), META_APP_SECRET01, META_GRAPH_VERSION, FACEBOOK_* and INSTAGRAM_*
+# are NOT WhatsApp settings and must survive (guard test "no over-stripping" in the same file).
+RETIRED_WHATSAPP_META_KEYS = (
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "META_WHATSAPP_IDENTITY_VERIFIED",
+    "WHATSAPP_BRAND_IDENTITY_VERIFIED",
+)
 def _retired_whatsapp_alias(key):
-    return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_")
+    return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_") or key in RETIRED_WHATSAPP_META_KEYS
 for _bag in (c["vars"], runtime):
     for _key in [k for k in _bag if _retired_whatsapp_alias(k)]:
         _bag.pop(_key)
@@ -131,6 +144,8 @@ recovered_src=recovered_src.replace(
     '    } else if (provider === "stripe") {\n',
     1
 )
+# O Worker de certificação usa este mesmo bundle (piloto legítimo lá); na produção CERTIFICATION_PILOT_ENV é invisível
+# (worker/production-pilot-guard.mjs), então pilotSandbox é sempre false.
 recovered_src=recovered_src.replace(
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";',
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";'
@@ -152,22 +167,24 @@ recovered.write_text(recovered_src,encoding="utf-8")
 # format. The apex public/ tree is the FROZEN 83620c6 snapshot (not the page sources in this repo), so the
 # generator neutralizes its two known WhatsApp surfaces here and then fails closed on anything left
 # (scripts/deploy/public_whatsapp_scan.py, after the overlay below; scanned again after the full build in central-candidate-dryrun).
-#  * whatsapp-contact.js (wa.me CTA injector, loaded by most pages) -> the inert e-mail-only script that
-#    PR #892 ships for the same path (no WhatsApp CTA; rewrites contato@ mailto to suporte@).
+#  * whatsapp-contact.js (wa.me CTA injector, loaded by 19 snapshot pages) -> RETIRED: the file is no
+#    longer published and every reference is stripped from the pages, because browsers kept OLD copies
+#    of it (cached with a long lifetime) and a cached page that still references it would run them.
+#    The central Worker answers the old path with an inert no-store tombstone
+#    (worker/retired-public-assets.mjs); docs/evidence/sales-ux/legacy-cache.md has the measurement.
 #  * index.html JSON-LD Organization telephone/ContactPoint -> e-mail only.
-WHATSAPP_FREE_CONTACT_JS = (
-    "(()=>{\n"
-    "  // Contato público: a conta WhatsApp Business da ZEVANORY foi desativada permanentemente pela Meta\n"
-    "  // (2026-10-10) e o número está banido. O único endereço eletrônico oficial é o e-mail; este script\n"
-    "  // não injeta nenhum CTA de WhatsApp (data/politica-unica.json, contato_publico) e só troca o\n"
-    "  // endereço antigo pelo e-mail oficial.\n"
-    "  const EMAIL='suporte@zevanory.api.br';\n"
-    "  document.querySelectorAll('a[href^=\"mailto:contato@zevanory.api.br\"]').forEach(a=>{a.href='mailto:'+EMAIL;});\n"
-    "})();\n"
-)
-contact_js = Path("public/whatsapp-contact.js")
-if contact_js.exists():
-    contact_js.write_bytes(WHATSAPP_FREE_CONTACT_JS.encode("utf-8"))
+RETIRED_CONTACT_SCRIPT = "whatsapp-contact.js"
+RETIRED_CONTACT_TAG = re.compile(r'[ \t]*<script\b[^>]*\bsrc="/whatsapp-contact\.js"[^>]*>\s*</script>[ \t]*\n?')
+# Build-time parity with what the e-mail-only copy did at runtime on those pages: every
+# a[href^="mailto:contato@zevanory.api.br"] became href="mailto:suporte@zevanory.api.br".
+LEGACY_CONTACT_MAILTO = re.compile(r'href="mailto:contato@zevanory\.api\.br[^"]*"')
+Path("public", RETIRED_CONTACT_SCRIPT).unlink(missing_ok=True)
+for page in sorted(Path("public").rglob("*.html")):
+    raw = page.read_bytes().decode("utf-8")
+    stripped = RETIRED_CONTACT_TAG.sub("", raw)
+    if stripped != raw:
+        stripped = LEGACY_CONTACT_MAILTO.sub('href="mailto:suporte@zevanory.api.br"', stripped)
+        page.write_bytes(stripped.encode("utf-8"))
 home = Path("public/index.html")
 if home.exists():
     raw = home.read_bytes().decode("utf-8")
@@ -205,6 +222,15 @@ _wa_hits = public_whatsapp_hits("public")
 if _wa_hits:
     raise SystemExit("PUBLIC_WHATSAPP_CONTACT_PRESENT " + " ".join(_wa_hits))
 print("PUBLIC_WHATSAPP_FREE=PASS")
+# Fail closed: no published text asset may name the retired script (a tag the regex above did not
+# match, a preload, a JS loader...). Runs after the WhatsApp scan so a leftover injector is reported there.
+_retired_refs = sorted(
+    p.as_posix() for p in Path("public").rglob("*")
+    if p.is_file() and (p.name == RETIRED_CONTACT_SCRIPT or RETIRED_CONTACT_SCRIPT.encode() in p.read_bytes())
+)
+if _retired_refs:
+    raise SystemExit("PUBLIC_RETIRED_CONTACT_SCRIPT_REFERENCED " + " ".join(_retired_refs))
+print("PUBLIC_RETIRED_CONTACT_SCRIPT=ABSENT")
 
 c["vars"]["VOICE_TTS_PROVIDER"]="gemini"
 c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"

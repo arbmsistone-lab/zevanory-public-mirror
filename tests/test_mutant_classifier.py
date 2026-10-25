@@ -4,7 +4,9 @@ Synthetic TAP built here covers each rule in isolation; the captured fixtures in
 (real `node --test` output from Node 22 and Node 24, each also stored with CRLF line endings) prove the verdict does
 not depend on the Node version or the line endings. Provenance: tests/test_mutant_classifier_live.py with
 MUTANT_CLASSIFIER_CAPTURE_DIR set, on Linux, Node v22.22.0 and Node v24.21.0 (official binary; the same version the CI
-live job ran); the *.crlf.tap twins are the same bytes with LF -> CRLF. Run: python -m unittest tests.test_mutant_classifier -v
+live job ran); the *.crlf.tap twins are the same bytes with LF -> CRLF. The source/source_eq/deep/sigterm fixtures
+(Rule11: field-like lines inside literal blocks and nested mappings) were captured the same way, on Node v22.22.0 and
+v24.21.0. Run: python -m unittest tests.test_mutant_classifier -v
 """
 import json
 import os
@@ -331,6 +333,121 @@ class Rule09LineEndingsAndNodeVersions(unittest.TestCase):
             for text in (glyph, glyph.replace("\n", "\r\n")):
                 p = mc.parse_tap(text)
                 self.assertEqual(mc.classify(6, rc, p["summary"], p["failures"], exp, allowlist=al)["verdict"], verdict, case)
+
+
+FIELD_LINES = ("signal: AbortSignal.timeout(10000),", "signal: 'SIGTERM'", "code: 'ERR_MODULE_NOT_FOUND'",
+               "failureType: 'testTimeoutFailure'", "error: 'Cannot find module ./x.mjs'", "exitCode: 1",
+               "name: 'TypeError'", "type: 'suite'")
+
+
+def literal(key, header="|-", pad="  ", lines=FIELD_LINES):
+    # a top-level key whose value is a literal/folded block scalar holding lines that look like YAML fields;
+    # some content lines carry their own indentation, as in a dumped source file
+    body = "".join(f"{pad}  {'    ' if i % 2 else ''}{ln}\n" for i, ln in enumerate(lines))
+    return f"{pad}{key}: {header}\n{pad}  export async function f() {{\n{body}{pad}  \n{pad}  }}\n"
+
+
+def with_signal_dump(base, name="T1 alpha", block=""):
+    # inject extra top-level keys into the `not ok` block of ``name`` (after its `name:` line)
+    marker = f"not ok 1 - {name}\n"
+    head, tail = base.split(marker, 1)
+    pre, post = tail.split("  name: 'AssertionError'\n", 1)
+    return head + marker + pre + "  name: 'AssertionError'\n" + block + post
+
+
+NEW_CASES = {  # captured case -> (baseline, rc, verdict, reason)
+    "source": (6, 1, mc.KILLED, "primary_assertion:T1 alpha allowlist=none"),
+    "source_eq": (6, 1, mc.KILLED, "primary_assertion:T1 alpha allowlist=none"),
+    "deep": (6, 1, mc.KILLED, "primary_assertion:T1 alpha allowlist=none"),
+    "sigterm": (1, 1, mc.INCONCLUSIVE, "infra_failure:signal:sigterm.mjs"),
+}
+
+
+class Rule11YamlTopLevelFieldsOnly(unittest.TestCase):
+    """Only keys at the YAML block's own indentation are diagnostic fields (#898 M09/M16/M20 regression)."""
+
+    def test_issue_repro_signal_line_in_actual_literal(self):
+        t = tap([notok("T1 a", 1, "A1 forbidden pattern", extra="  actual: |-\n    const r = await fetch(u, {\n"
+                       "      signal: AbortSignal.timeout(10000),\n    });\n  operator: 'doesNotMatch'\n")], 1, 0, 1)
+        r = run(t, 1, baseline=1)
+        self.assertEqual((r["verdict"], r["killing_tests"]), (mc.KILLED, ["T1 a"]), r)
+        self.assertNotEqual(r["reason"], "infra_failure:signal:T1 a")
+
+    def test_field_lines_in_actual_expected_stack_literals_stay_killed(self):
+        for header in ("|", "|-", "|+", ">", ">-", ">+", "|2-"):
+            block = literal("expected", header) + literal("actual", header) + "  operator: 'strictEqual'\n" \
+                + literal("stack", header)
+            for text in (with_signal_dump(KILL, block=block), with_signal_dump(KILL, block=block).replace("\n", "\r\n")):
+                p = mc.parse_tap(text)
+                f = p["failures"][0]
+                self.assertEqual((f["kind"], f["signal"], f["exitCode"], f["code"], f["failureType"], f["name"],
+                                  f["type"], f["error"]),
+                                 (mc.ASSERTION, None, None, "ERR_ASSERTION", "testCodeFailure", "AssertionError",
+                                  "test", "A1 alpha value"), header)
+                r = mc.classify(3, 1, p["summary"], p["failures"], E_T1)
+                self.assertEqual((r["verdict"], r["killing_tests"]), (mc.KILLED, ["T1 alpha"]), (header, r))
+
+    def test_field_lines_in_nested_mappings_and_sequences_stay_killed(self):
+        block = ("  expected:\n  actual:\n    signal: 'SIGTERM'\n    code: 'ERR_MODULE_NOT_FOUND'\n    exitCode: 3\n"
+                 "    nested:\n      failureType: 'hookFailed'\n      list:\n        0: 'error: x'\n        1:\n"
+                 "          name: 'TypeError'\n  errors:\n  - signal: 'SIGKILL'\n    code: 'ERR_MODULE_NOT_FOUND'\n"
+                 "  - exitCode: 9\n  operator: 'deepStrictEqual'\n")
+        r = run(with_signal_dump(KILL, block=block), 1)
+        self.assertEqual((r["verdict"], r["killing_tests"]), (mc.KILLED, ["T1 alpha"]), r)
+
+    def test_real_top_level_fields_still_read(self):
+        # a real top-level signal (after a literal holding a decoy) still makes the run INCONCLUSIVE
+        for sig in ("'SIGTERM'", "SIGTERM", '"SIGTERM"'):
+            block = literal("actual") + f"  signal: {sig}\n"
+            r = run(with_signal_dump(KILL, block=block), 1)
+            self.assertEqual((r["verdict"], r["reason"]), (mc.INCONCLUSIVE, "infra_failure:signal:T1 alpha"), (sig, r))
+        r = run(with_signal_dump(KILL, block=literal("actual") + "  exitCode: 1\n  signal: ~\n"), 1)
+        self.assertEqual(r["reason"], "infra_failure:process_exit:T1 alpha", r)
+        t = tap([notok("T1 alpha", 1, "Cannot find package 'pg'", "Error", "ERR_MODULE_NOT_FOUND",
+                       extra=literal("stack")), ok("T10 beta", 2), ok("T2 gamma", 3)], 3, 2, 1)
+        self.assertEqual(run(t, 1)["reason"], "infra_failure:missing_module:T1 alpha")
+
+    def test_top_level_parser_unit(self):
+        y = ["  ---", "  duration_ms: 1.5", "  type: 'test'", "  location: '/w/x.mjs:3:1'", "  error: |-",
+             "    A1 it''s here", "    signal: 'SIGTERM'", "    ", "    code: 'X'", "  code: 'ERR_ASSERTION'",
+             "  exitCode: ~", "  expected:", "  actual:", "    signal: 1", "  name: 'it''s'", "  ..."]
+        top = mc._yaml_top_level(y, 2)
+        self.assertEqual(top, {"duration_ms": "1.5", "type": "test", "location": "/w/x.mjs:3:1",
+                               "error": "A1 it''s here\nsignal: 'SIGTERM'\n\ncode: 'X'", "code": "ERR_ASSERTION",
+                               "exitCode": "~", "expected": "", "actual": "", "name": "it's"})
+        self.assertEqual(mc._yaml_top_level(y[1:-1]), top)  # default key indentation: the first line's
+        self.assertIsNone(mc._yaml_field(y, "signal", 2))
+        self.assertEqual(mc._yaml_field(y, "location", 2), "/w/x.mjs:3:1")
+        # nested test blocks sit deeper; the key indentation follows the point's `---`
+        p = mc.parse_tap(tap([ok("T1 alpha", 1), notok("T2a sub", 1, "A2a nested", indent=4,
+                                                        extra="      actual: |-\n        signal: x\n") + "    1..1\n"
+                              + notok("T2 gamma", 2, "1 subtest failed", "Error", "ERR_TEST_FAILURE", "subtestsFailed"),
+                              ok("T3 x", 3)], 4, 2, 2, plan=3))
+        self.assertEqual([(f["test_id"], f["kind"], f["signal"]) for f in p["failures"]],
+                         [("T2 gamma > T2a sub", mc.ASSERTION, None), ("T2 gamma", mc.SUBTESTS, None)])
+
+    def test_captured_node22_node24_fixtures_lf_and_crlf(self):
+        for case, (baseline, rc, verdict, reason) in NEW_CASES.items():
+            for v in VARIANTS:
+                raw = (FIX / v.format(case)).read_bytes()
+                if ".crlf." in v:
+                    self.assertNotIn(b"\n", raw.replace(b"\r\n", b""), v.format(case))
+                else:
+                    self.assertNotIn(b"\r", raw, v.format(case))
+                if case != "sigterm":  # the decoys really are inside the captured blocks
+                    self.assertRegex(raw, rb"\n {4,}signal: ", v.format(case))
+                p = mc.parse_tap(raw)
+                r = mc.classify(baseline, rc, p["summary"], p["failures"], E_T1, mutant_id=case)
+                self.assertEqual((r["verdict"], r["reason"]), (verdict, reason), (v.format(case), r))
+
+    def test_cli_on_captured_source_dump(self):
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        for v in ("node22/source.crlf.tap", "node24/source_eq.tap", "node24/deep.crlf.tap"):
+            out = subprocess.run([sys.executable, "-I", str(SCRIPT), "classify", "--baseline-total", "6", "--rc", "1",
+                                  "--tap", str(FIX / v), "--expected", json.dumps(E_T1)],
+                                 capture_output=True, text=True, env=env)
+            self.assertEqual(out.returncode, 0, (v, out.stdout, out.stderr))
+            self.assertEqual(json.loads(out.stdout)["verdict"], mc.KILLED, v)
 
 
 class Rule10StructuredEventAdapter(unittest.TestCase):
