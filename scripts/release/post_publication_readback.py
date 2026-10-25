@@ -8,7 +8,8 @@ Só faz GET/HEAD públicos: sem credenciais, sem POST, sem efeito colateral.
 Os valores esperados saem da ÁRVORE DESTE CHECKOUT (o SHA publicado), não de constantes:
   title / h1 / canonical / robots de sales-public/<rota>.html e sales-public/404.html.
 Mais as asserções explícitas do Release: vendas fechadas, trava fiscal (P23), página 404, textos de promessa (#927/#898),
-cabeçalhos de segurança, redirecionamento 308 da apex para o domínio de vendas e identidade de release dos dois Workers.
+cabeçalhos de segurança, redirecionamento 308 da apex para o domínio de vendas, identidade de release dos dois Workers
+e a cópia GitHub Pages como camada noindex de redirecionamento (#935, esperado = pages-mirror/<rota>.html).
 
 Uso:
   git checkout <SHA mesclado em gh-pages>
@@ -34,6 +35,7 @@ import sales_promise_consistency as promise  # noqa: E402  (mesmas regex do gate
 
 APEX = "https://zevanory.api.br"
 SALES = "https://vendas.zevanory.api.br"
+PAGES = "https://arbmsistone-lab.github.io/zevanory-public-mirror"
 PRODUCTS = ("ia-na-pratica", "vendas-na-pratica", "combo-ia-vendas", "lucro-e-caixa", "negocio-completo")
 ROUTES = PRODUCTS + ("conteudo-pronto", "solucoes", "kit-afiliado", "quem-criou", "termos", "privacidade", "reembolso",
                      "afiliados", "material-gratuito")
@@ -180,6 +182,21 @@ def main():
     for k in ("title", "h1", "robots"):
         run.check(f"404:{k}", got[k] == nf_exp[k], live=got[k], expected=nf_exp[k])
     run.check("404:noindex", "noindex" in (got["robots"] or ""))
+
+    # 6) Cópia GitHub Pages = camada de redirecionamento noindex (#935): esperado = pages-mirror/<rota>.html do SHA.
+    for route in ("solucoes", "combo-ia-vendas", "conteudo-pronto", "kit-afiliado"):
+        stub = ROOT / "pages-mirror" / f"{route}.html"
+        if not stub.is_file():
+            run.check(f"pages/{route}:stub source present", False, path=str(stub))
+            continue
+        exp = fields(stub.read_text("utf-8"))
+        c, html, _, _ = fetch(f"{PAGES}/{route}/")
+        got = fields(html)
+        run.check(f"pages/{route}:status 200", c == 200, status=c)
+        for k in ("title", "canonical", "robots"):
+            run.check(f"pages/{route}:{k}", got[k] == exp[k], live=got[k], expected=exp[k])
+        run.check(f"pages/{route}:noindex+refresh->vendas", "noindex" in (got["robots"] or "") and
+                  f'url={SALES}/{route}"' in html)
 
     ok = all(x["ok"] for x in run.checks)
     out = {"schema": "zevanory.release.readback.v1", "expected_sha": sha, "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
