@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 // da 1ª prova real (p18/cf-dispatch.json existe), mais de 15 min sem início pedido pela Cloudflare abre a issue própria
 // WATCHDOG_CF_TITLE e falha o job. Sem a variável (NOT_EXPECTED) ou sem a 1ª prova (AWAITING_FIRST_PROOF) o estado só é
 // registrado: o gatilho ainda não provou funcionar e não pode gerar alarme falso.
-import { evaluateHeartbeat, evaluateCfDispatch, findOpenAlert, watchdogBody, watchdogCfBody, WATCHDOG_TITLE, WATCHDOG_CF_TITLE } from "./b0-lib.mjs";
+import { evaluateHeartbeat, evaluateCfDispatch, firstProofAt, findOpenAlert, watchdogBody, watchdogCfBody, WATCHDOG_TITLE, WATCHDOG_CF_TITLE } from "./b0-lib.mjs";
 
 export const HEARTBEAT_PATH = "p18/heartbeat.json";
 export const CF_DISPATCH_PATH = "p18/cf-dispatch.json";
@@ -59,11 +59,17 @@ export async function watchdog({ env = process.env, fetchImpl = fetch, now = () 
   const expected = String(env.P18_CF_DISPATCH_EXPECTED || "").trim() === "true";
   const cfRead = await readHeartbeat({ env, fetchImpl, path: CF_DISPATCH_PATH });
   const cfEv0 = cfRead.error ? { state: "UNREADABLE", alert: true, age_s: null, started_at: null, error: cfRead.error } : evaluateCfDispatch(cfRead.hb, now());
-  // Ordem Sol 259-262: a expectativa só vale com a chave do proprietário E depois da 1ª prova real (cf-dispatch.json
-  // existe: uma execução pedida pela Cloudflare com janela aceita INICIOU). Antes disso: AWAITING_FIRST_PROOF, sem alerta.
-  const firstProof = cfEv0.state !== "MISSING";
-  const gate = !expected ? "NOT_EXPECTED" : !firstProof ? "AWAITING_FIRST_PROOF" : "ACTIVE";
+  // Ordens Sol 259-263: a expectativa só vale com a chave do proprietário E depois da 1ª PROVA VÁLIDA (documento existe,
+  // estrutura válida e prova coerente de execução pedida pela Cloudflare que iniciou: evaluateCfDispatch.valid_proof),
+  // agora ou antes (cf_first_proof_at no batimento, gravado pelo monitor). MISSING/UNREADABLE/MALFORMED/INVALID_PROOF/
+  // FUTURE antes disso ficam AWAITING_FIRST_PROOF: registrados e, se não for só ausência, um aviso NÃO paginante
+  // (::warning P18_WATCHDOG_CF_PENDING), nunca a issue do caminho Cloudflare nem falha do job.
+  const priorProof = firstProofAt(read.hb, now());
+  const activated = cfEv0.valid_proof === true || priorProof !== null;
+  const gate = !expected ? "NOT_EXPECTED" : !activated ? "AWAITING_FIRST_PROOF" : "ACTIVE";
   const cfEv = gate === "ACTIVE" ? { ...cfEv0, gate } : { ...cfEv0, alert: false, gate };
+  const pendingNotice = gate === "AWAITING_FIRST_PROOF" && cfEv0.state !== "MISSING" ? cfEv0.state : null;
+  if (pendingNotice) log("::warning title=P18_WATCHDOG_CF_PENDING::cf-dispatch.json antes da 1ª prova válida: " + JSON.stringify({ state: cfEv0.state, reason: cfEv0.reason ?? cfEv0.error ?? null }));
   const cfOpen = findOpenAlert(await api(`/issues?state=open&per_page=100&creator=${encodeURIComponent("github-actions[bot]")}`), WATCHDOG_CF_TITLE);
   let cfAction = "none";
   if (cfEv.alert) {
@@ -78,8 +84,8 @@ export async function watchdog({ env = process.env, fetchImpl = fetch, now = () 
   const hb = read.hb && typeof read.hb === "object" ? read.hb : {};
   log("::notice title=P18_WATCHDOG::" + JSON.stringify({ state: ev.state, age_s: ev.age_s, last_success_at: ev.last_success_at, action,
     last_event: hb.event ?? null, last_window_id: hb.window_id ?? null, last_dispatch_to_start_s: hb.dispatch_to_start_s ?? null,
-    cf_gate: gate, cf_state: cfEv0.state, cf_age_s: cfEv0.age_s, cf_action: cfAction }));
-  return { ev, action, cfEv, cfAction };
+    cf_gate: gate, cf_state: cfEv0.state, cf_valid_proof: cfEv0.valid_proof === true, cf_first_proof_at: priorProof, cf_pending_notice: pendingNotice, cf_age_s: cfEv0.age_s, cf_action: cfAction }));
+  return { ev, action, cfEv, cfAction, pendingNotice };
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

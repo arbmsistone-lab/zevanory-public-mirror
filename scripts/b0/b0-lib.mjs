@@ -652,13 +652,32 @@ export function buildCfDispatch(run) {
   return { schema: SCHEMA_CF_DISPATCH, run_id: run.run_id, started_at: run.started_at, window_id: run.window_id, dispatched_at: run.dispatched_at,
     dispatch_to_start_s: run.dispatch_to_start_s, duplicate: run.outcome === "duplicate_window" };
 }
+// Ordem Sol 263: três níveis separados. (1) o documento existe (MISSING/UNREADABLE vêm da leitura); (2) estrutura
+// válida (schema, tipos) senão MALFORMED; (3) PROVA de que uma execução pedida pela Cloudflare INICIOU: run_id, janela
+// válida, dispatched_at e started_at ISO, janela <= dispatched_at <= started_at, started_at não no futuro e
+// dispatch_to_start_s coerente; senão INVALID_PROOF (ou FUTURE). Só FRESH/STALE são prova válida (valid_proof: true).
 export function evaluateCfDispatch(doc, nowMs, staleMin = CF_DISPATCH_STALE_MIN) {
-  if (doc === null || doc === undefined) return { state: "MISSING", alert: true, age_s: null, started_at: null };
-  if (!isObj(doc) || doc.schema !== SCHEMA_CF_DISPATCH || !isIso(doc.started_at)) return { state: "MALFORMED", alert: true, age_s: null, started_at: null };
-  const age = Math.round((nowMs - msOf(doc.started_at)) / 1000);
-  if (age < -120) return { state: "FUTURE", alert: true, age_s: age, started_at: doc.started_at };
-  if (age > staleMin * 60) return { state: "STALE", alert: true, age_s: age, started_at: doc.started_at };
-  return { state: "FRESH", alert: false, age_s: age, started_at: doc.started_at };
+  const base = { alert: true, age_s: null, started_at: null, valid_proof: false };
+  if (doc === null || doc === undefined) return { ...base, state: "MISSING" };
+  if (!isObj(doc) || doc.schema !== SCHEMA_CF_DISPATCH || typeof doc.run_id !== "string" || typeof doc.started_at !== "string"
+    || typeof doc.window_id !== "string" || typeof doc.dispatched_at !== "string" || typeof doc.duplicate !== "boolean") return { ...base, state: "MALFORMED" };
+  const w = parseWindowId(doc.window_id);
+  if (!/^\d{1,20}$/.test(doc.run_id) || w === null || !isIso(doc.started_at) || !isIso(doc.dispatched_at)) return { ...base, state: "INVALID_PROOF", reason: "fields" };
+  const st = msOf(doc.started_at), dt = msOf(doc.dispatched_at);
+  if (dt < w || dt > w + DISPATCH_WINDOW_MIN * 60000 + DISPATCH_MAX_FUTURE_S * 1000) return { ...base, state: "INVALID_PROOF", reason: "dispatched_outside_window" };
+  if (dt > st) return { ...base, state: "INVALID_PROOF", reason: "dispatched_after_start" };
+  if (doc.dispatch_to_start_s !== Math.round((st - dt) / 1000)) return { ...base, state: "INVALID_PROOF", reason: "dispatch_to_start_mismatch" };
+  const age = Math.round((nowMs - st) / 1000);
+  if (age < -120) return { ...base, state: "FUTURE", age_s: age, started_at: doc.started_at };
+  const ok = { ...base, age_s: age, started_at: doc.started_at, valid_proof: true };
+  if (age > staleMin * 60) return { ...ok, state: "STALE" };
+  return { ...ok, state: "FRESH", alert: false };
+}
+// 1ª prova válida, persistida pelo monitor no batimento (cf_first_proof_at): uma vez ativado, um cf-dispatch.json que
+// some, quebra ou fica ilegível É falha do caminho Cloudflare. Antes da 1ª prova, nada disso ativa o vigia.
+export function firstProofAt(hb, nowMs) {
+  const v = isObj(hb) ? hb.cf_first_proof_at : null;
+  return isIso(v) && msOf(v) <= nowMs + 120000 ? v : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -766,11 +785,11 @@ export function aggregateLatency({ probes, runs, incidents, day }) {
 // ---------------------------------------------------------------------------------------------------------
 // Batimento do monitor (p18/heartbeat.json no ramo de evidência) e vigia. Só a execução que terminou inteira
 // (sondagem, evidência e alerta) grava o batimento; a publicação no ramo é o que o torna visível ao vigia.
-export function buildHeartbeat({ nowMs, runId, run, cur, open }) {
+export function buildHeartbeat({ nowMs, runId, run, cur, open, cfFirstProofAt = null }) {
   return { schema: SCHEMA_HEARTBEAT, last_success_at: new Date(nowMs).toISOString(), run_id: String(runId || ""), run_started_at: run.started_at,
     last_probe_at: cur.at, up: cur.up, open_incident: open ? open.incident_id : null, stale_after_min: HEARTBEAT_STALE_MIN,
     event: run.event ?? null, window_id: run.window_id ?? null, start_window_id: run.start_window_id ?? null, dispatch_source: run.dispatch_source ?? null,
-    dispatched_at: run.dispatched_at ?? null, dispatch_to_start_s: run.dispatch_to_start_s ?? null };
+    dispatched_at: run.dispatched_at ?? null, dispatch_to_start_s: run.dispatch_to_start_s ?? null, cf_first_proof_at: cfFirstProofAt ?? null };
 }
 export function evaluateHeartbeat(hb, nowMs, staleMin = HEARTBEAT_STALE_MIN) {
   if (hb === null || hb === undefined) return { state: "MISSING", alert: true, age_s: null, last_success_at: null };

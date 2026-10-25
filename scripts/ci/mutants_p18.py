@@ -23,7 +23,7 @@ COPY = ["scripts/b0", "docs/b0", "tests/helpers/text.mjs", TEST, "scripts/p20", 
 LIB, MON, WDG = "scripts/b0/b0-lib.mjs", "scripts/b0/p18-monitor.mjs", "scripts/b0/p18-watchdog.mjs"
 WFM = ".github/workflows/p18-external-monitor.yml"
 WF = "workflows B0/P18"
-BASELINE_TOTAL = 28  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
+BASELINE_TOTAL = 31  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
 
 def P(test, label):
     return {"test_pattern": test, "assertion_pattern": label}
@@ -113,10 +113,10 @@ M = {
         {"primary": [P("[WIN]", "WIN-dispatch-after-start")]}),
     "M29_gap_from_duplicate": (MON, "const prevProbing = runs.filter((r) => PROBING_OUTCOMES.includes(r.outcome)).at(-1) || null;",
         "const prevProbing = runs.at(-1) || null;", {"primary": [P("[IDEM]", "IDEM-gap-from-probing-run")]}),
-    "M30_cf_watch_without_owner_switch": (WDG, 'const gate = !expected ? "NOT_EXPECTED" : !firstProof ? "AWAITING_FIRST_PROOF" : "ACTIVE";',
-        'const gate = !firstProof ? "AWAITING_FIRST_PROOF" : "ACTIVE";', {"primary": [P("[WD-CF]", "WDCF-gate-off")]}),
-    "M31_cf_stale_edge_900": (LIB, 'if (age > staleMin * 60) return { state: "STALE", alert: true, age_s: age, started_at: doc.started_at };',
-        'if (age >= staleMin * 60) return { state: "STALE", alert: true, age_s: age, started_at: doc.started_at };', {"primary": [P("[WD-CF]", "WDCF-900")]}),
+    "M30_cf_watch_without_owner_switch": (WDG, 'const gate = !expected ? "NOT_EXPECTED" : !activated ? "AWAITING_FIRST_PROOF" : "ACTIVE";',
+        'const gate = !activated ? "AWAITING_FIRST_PROOF" : "ACTIVE";', {"primary": [P("[WD-CF]", "WDCF-gate-off")]}),
+    "M31_cf_stale_edge_900": (LIB, 'if (age > staleMin * 60) return { ...ok, state: "STALE" };',
+        'if (age >= staleMin * 60) return { ...ok, state: "STALE" };', {"primary": [P("[WD-CF]", "WDCF-900")]}),
     "M32_window_not_aligned": (LIB, "if (Number.isNaN(ms) || windowIdOf(ms) !== id || windowStartMs(ms) !== ms) return null;",
         "if (Number.isNaN(ms)) return null;", {"primary": [P("[WIN]", "WIN-strict")], "secondary": [
             S("[WIN-INVALID]", "WININV-reason", "o id desalinhado (T1503Z) passa a ser aceito e a execução não registra bad_window_id")]}),
@@ -135,10 +135,28 @@ M = {
     "M38_invalid_window_skips_probe": (MON, "if (isDuplicateWindow(runs, dispatch)) {", "if (isDuplicateWindow(runs, dispatch) || dispatch.window_rejected) {",
         {"primary": [P("[WIN-INVALID]", "WININV-probes")], "secondary": [
             S("[IDEM]", "IDEM-forged-still-probes", "o id forjado para o futuro é rejeitado e, com o mutante, a execução deixa de sondar")]}),
-    "M39_cf_gate_without_first_proof": (WDG, 'const firstProof = cfEv0.state !== "MISSING";', "const firstProof = true;",
-        {"primary": [P("[WD-CF]", "WDCF-awaiting-first-proof")]}),
+    "M39_cf_gate_without_first_proof": (WDG, "const activated = cfEv0.valid_proof === true || priorProof !== null;", "const activated = true;",
+        {"primary": [P("[WD-CF]", "WDCF-awaiting-first-proof")], "secondary": [
+            S("[WD-CF-GATE]", "WDG-awaiting-malformed", "sem exigência de prova, o documento malformado já ativa o vigia")]}),
     "M40_incoherent_dispatch_keeps_window": (LIB, 'return { ...out, window_id: null, window_rejected: "bad_dispatched_at" };', 'return { ...out, window_rejected: "bad_dispatched_at" };',
         {"primary": [P("[WIN-INVALID]", "WININV-null")]}),
+    # ---- Ordem Sol 263: transições do vigia do caminho Cloudflare ----
+    "M41_revert_to_not_missing": (WDG, "const activated = cfEv0.valid_proof === true || priorProof !== null;", 'const activated = cfEv0.state !== "MISSING";',
+        {"primary": [P("[WD-CF-GATE]", "WDG-awaiting-malformed")]}),
+    "M42_revert_to_not_missing_with_prior": (WDG, "const activated = cfEv0.valid_proof === true || priorProof !== null;", 'const activated = cfEv0.state !== "MISSING" || priorProof !== null;',
+        {"primary": [P("[WD-CF-GATE]", "WDG-awaiting-malformed")]}),
+    "M43_prior_proof_ignored": (WDG, "const priorProof = firstProofAt(read.hb, now());", "const priorProof = null;",
+        {"primary": [P("[WD-CF-GATE]", "WDG-active-after-prior-proof")]}),
+    "M44_order_not_checked": (LIB, 'if (dt > st) return { ...base, state: "INVALID_PROOF", reason: "dispatched_after_start" };', "",
+        {"primary": [P("[CF-PROOF]", "CFP-order")], "secondary": [
+            S("[WD-CF-GATE]", "WDG-awaiting-invalid-timestamps", "pedido depois do início passa a ser prova válida e ativa o vigia")]}),
+    "M45_future_is_proof": (LIB, 'if (age < -120) return { ...base, state: "FUTURE", age_s: age, started_at: doc.started_at };', "",
+        {"primary": [P("[CF-PROOF]", "CFP-future")], "secondary": [
+            S("[WD-CF-GATE]", "WDG-awaiting-future", "início no futuro passa a ser prova válida e ativa o vigia")]}),
+    "M46_broken_doc_becomes_first_proof": (MON, "return ev?.valid_proof ? ev.started_at : null;", "return ev ? (ev.started_at ?? new Date(nowMs).toISOString()) : null;",
+        {"primary": [P("[CF-FIRST-PROOF]", "CFFP-broken-doc-not-proof")]}),
+    "M47_first_proof_not_carried": (MON, "  if (prev) return prev;\n", "",
+        {"primary": [P("[CF-FIRST-PROOF]", "CFFP-carried-forward")]}),
 }
 
 

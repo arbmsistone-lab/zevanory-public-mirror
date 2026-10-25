@@ -26,7 +26,7 @@ import { pathToFileURL } from "node:url";
 import {
   SALES_PAGES, STATUS_URL, SCHEMA_PROBE, CONFIRM_DELAY_MS, readP22, validateProbe, validateRun, validateIncident, parseJsonl,
   decideIncident, finalizeIncident, openIncident, buildRunRecord, buildHeartbeat, findOpenAlert, alertBody, ALERT_TITLE,
-  resolveDispatch, isDuplicateWindow, buildCfDispatch, PROBING_OUTCOMES,
+  resolveDispatch, isDuplicateWindow, buildCfDispatch, PROBING_OUTCOMES, evaluateCfDispatch, firstProofAt,
 } from "./b0-lib.mjs";
 import { probeUrl } from "./b0-collector.mjs";
 
@@ -73,6 +73,17 @@ function writeCfDispatch(dir, run) {
   if (run.dispatch_source !== "cloudflare-cron" || !run.window_id) return;
   mkdirSync(join(dir, "p18"), { recursive: true });
   writeFileSync(join(dir, "p18", "cf-dispatch.json"), JSON.stringify(buildCfDispatch(run), null, 2) + "\n");
+}
+
+// Ordem Sol 263: 1ª prova VÁLIDA do caminho Cloudflare, levada adiante no batimento. Vem do batimento anterior ou, na
+// falta, do cf-dispatch.json atual SE ele for prova válida (FRESH/STALE). Documento quebrado nunca vira 1ª prova.
+function readJson(f) { try { return JSON.parse(readFileSync(f, "utf8")); } catch { return null; } }
+function carryFirstProof(dir, nowMs) {
+  const prev = existsSync(join(dir, "p18", "heartbeat.json")) ? firstProofAt(readJson(join(dir, "p18", "heartbeat.json")), nowMs) : null;
+  if (prev) return prev;
+  const f = join(dir, "p18", "cf-dispatch.json");
+  const ev = existsSync(f) ? evaluateCfDispatch(readJson(f), nowMs) : null;
+  return ev?.valid_proof ? ev.started_at : null;
 }
 
 // Executa a ação de alerta. Retorna { action, emitted_at, issue, error }. Nunca lança: o erro volta para o chamador
@@ -157,7 +168,7 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   writeCfDispatch(dir, runRec);
   if (alert.error) throw new Error("P18_ALERT_FAILED " + alert.error);  // sem batimento: o vigia acusa
   const stillOpen = d.action === "recover" ? null : incident || open;
-  writeFileSync(join(dir, "p18", "heartbeat.json"), JSON.stringify(buildHeartbeat({ nowMs: now(), runId: env.GITHUB_RUN_ID, run, cur, open: stillOpen }), null, 2) + "\n");
+  writeFileSync(join(dir, "p18", "heartbeat.json"), JSON.stringify(buildHeartbeat({ nowMs: now(), runId: env.GITHUB_RUN_ID, run, cur, open: stillOpen, cfFirstProofAt: carryFirstProof(dir, now()) }), null, 2) + "\n");
   return { cur, probes, decision: d, action: d.action, incident, run: runRec };
 }
 

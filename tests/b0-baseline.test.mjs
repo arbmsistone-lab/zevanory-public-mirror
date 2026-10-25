@@ -15,7 +15,7 @@ import {
   findOpenAlert, ALERT_TITLE, addDays, validateProbe, fieldOk, SCHEMA_INCIDENT, SCHEMA_RUN, SCHEMA_HEARTBEAT, finalizeIncident,
   withRecovery, validateIncident, decideIncident, openIncident, evaluateHeartbeat, HEARTBEAT_STALE_MIN, aggregateLatency, percentile,
   CONFIRM_BUDGET_S, WATCHDOG_TITLE, pickMonthlyDrill, WATCHDOG_CF_TITLE, windowIdOf, parseWindowId, resolveDispatch, isDuplicateWindow, validateRun,
-  evaluateCfDispatch, SCHEMA_CF_DISPATCH, CF_DISPATCH_STALE_MIN, schedSlotMs,
+  evaluateCfDispatch, SCHEMA_CF_DISPATCH, CF_DISPATCH_STALE_MIN, schedSlotMs, firstProofAt,
 } from "../scripts/b0/b0-lib.mjs";
 import { runDrill } from "../scripts/p20/restore-drill.mjs";
 import { makeBackup } from "./helpers/p20-backup-fixture.mjs";
@@ -661,8 +661,13 @@ test("[IDEM] pedido por janela: 1ª execução sonda; repetição (pedido ou age
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Prova válida de execução pedida pela Cloudflare: pedido 15 s antes do início, dentro da própria janela.
+function validCfDoc(startedIso, over = {}) {
+  const st = Date.parse(startedIso), dt = st - 15000;
+  return { schema: SCHEMA_CF_DISPATCH, run_id: "1", started_at: startedIso, window_id: windowIdOf(dt), dispatched_at: new Date(dt).toISOString(), dispatch_to_start_s: 15, duplicate: false, ...over };
+}
 test("[WD-CF] vigia do caminho Cloudflare: só alerta com a chave E após a 1ª prova real; > 15 min sem início pedido pela Cloudflare abre issue própria; fecha quando volta", async () => {
-  const doc = (iso) => ({ schema: SCHEMA_CF_DISPATCH, started_at: iso, run_id: "1", window_id: null, dispatched_at: null, dispatch_to_start_s: null, duplicate: false });
+  const doc = (iso) => validCfDoc(iso);
   const now = Date.parse(T("12:00:00"));
   assert.equal(CF_DISPATCH_STALE_MIN, 15, "WDCF-15");
   assert.equal(evaluateCfDispatch(doc(T("11:45:00")), now).state, "FRESH", "WDCF-900");
@@ -737,4 +742,93 @@ test("[WIN-INVALID] id de janela inválido (malformado, desalinhado, data invál
       assert.equal(existsSync(join(dir, "p18", "cf-dispatch.json")), false, "WININV-no-cf-proof " + w);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
+});
+
+// ---- Ordem Sol 263: transições do vigia do caminho Cloudflare ----
+test("[CF-PROOF] níveis separados: documento, estrutura e prova coerente; só FRESH/STALE são prova válida", () => {
+  const now = Date.parse(T("12:00:00"));
+  const v = validCfDoc(T("11:58:00"));
+  assert.equal(evaluateCfDispatch(v, now).state, "FRESH", "CFP-fresh"); assert.equal(evaluateCfDispatch(v, now).valid_proof, true, "CFP-valid");
+  assert.equal(evaluateCfDispatch(validCfDoc(T("11:30:00")), now).valid_proof, true, "CFP-stale-is-proof");
+  assert.equal(evaluateCfDispatch(null, now).state, "MISSING", "CFP-missing");
+  assert.equal(evaluateCfDispatch({ ...v, duplicate: "no" }, now).state, "MALFORMED", "CFP-malformed-type");
+  assert.equal(evaluateCfDispatch([], now).state, "MALFORMED", "CFP-malformed-array");
+  assert.equal(evaluateCfDispatch({ ...v, window_id: "p18w-20261025T1158Z" }, now).state, "INVALID_PROOF", "CFP-bad-window");
+  assert.equal(evaluateCfDispatch({ ...v, run_id: "abc" }, now).state, "INVALID_PROOF", "CFP-bad-run-id");
+  assert.equal(evaluateCfDispatch({ ...v, started_at: "ontem" }, now).state, "INVALID_PROOF", "CFP-bad-started");
+  const after = validCfDoc(T("11:58:00"), { dispatched_at: T("11:58:05"), window_id: "p18w-20261025T1155Z", dispatch_to_start_s: -5 });
+  assert.equal(evaluateCfDispatch(after, now).reason, "dispatched_after_start", "CFP-order");
+  assert.equal(evaluateCfDispatch({ ...v, window_id: "p18w-20261025T1145Z" }, now).reason, "dispatched_outside_window", "CFP-outside-window");
+  assert.equal(evaluateCfDispatch({ ...v, dispatch_to_start_s: 99 }, now).reason, "dispatch_to_start_mismatch", "CFP-d2s");
+  const fut = validCfDoc(T("12:05:00"));
+  assert.equal(evaluateCfDispatch(fut, now).state, "FUTURE", "CFP-future"); assert.equal(evaluateCfDispatch(fut, now).valid_proof, false, "CFP-future-not-proof");
+  assert.equal(firstProofAt({ cf_first_proof_at: T("11:00:00") }, now), T("11:00:00"), "CFP-first-proof");
+  assert.equal(firstProofAt({ cf_first_proof_at: T("12:10:00") }, now), null, "CFP-first-proof-future");
+  assert.equal(firstProofAt({ cf_first_proof_at: "x" }, now), null);
+});
+
+test("[WD-CF-GATE] antes da 1ª prova válida: documento malformado, erro de leitura, prova inválida ou futura ficam AWAITING_FIRST_PROOF com aviso não paginante; depois da prova, documento quebrado alerta", async () => {
+  const now = Date.parse(T("12:00:00"));
+  let hbDoc = { schema: SCHEMA_HEARTBEAT, last_success_at: T("11:58:00") }, cf = { status: 404, body: null }; const issues = [];
+  const fetchImpl = async (url, init = {}) => {
+    const u = new URL(String(url));
+    if (u.pathname.endsWith("/contents/p18/heartbeat.json")) return res(hbDoc);
+    if (u.pathname.endsWith("/contents/p18/cf-dispatch.json")) return cf.status === 200 ? new Response(typeof cf.body === "string" ? cf.body : JSON.stringify(cf.body), { status: 200 }) : res({ message: "x" }, cf.status);
+    if (u.pathname.endsWith("/issues") && !init.method) return res(issues.filter((i) => i.state === "open"));
+    if (u.pathname.endsWith("/issues")) { const i = { number: 70 + issues.length, title: JSON.parse(init.body).title, state: "open" }; issues.push(i); return res(i, 201); }
+    const m = /\/issues\/(\d+)$/.exec(u.pathname);
+    if (m) { const i = issues.find((x) => x.number === Number(m[1])); const b = JSON.parse(init.body); if (b.state) i.state = b.state; return res(i); }
+    return res({}, 201);
+  };
+  const env = { GITHUB_REPOSITORY: "o/r", GITHUB_TOKEN: "fake", GITHUB_RUN_ID: "9", P18_CF_DISPATCH_EXPECTED: "true" };
+  const cases = [
+    ["malformed", { status: 200, body: "{lixo" }, "MALFORMED"],
+    ["read-error", { status: 500, body: null }, "UNREADABLE"],
+    ["invalid-timestamps", { status: 200, body: validCfDoc(T("11:58:00"), { dispatched_at: T("11:58:30"), dispatch_to_start_s: -30 }) }, "INVALID_PROOF"],
+    ["future", { status: 200, body: validCfDoc(T("12:09:00")) }, "FUTURE"],
+  ];
+  for (const [label, c, state] of cases) {
+    cf = c; const lines = [];
+    const w = await watchdog({ env, fetchImpl, now: () => now, log: (l) => lines.push(l) });
+    assert.equal(w.cfEv.gate, "AWAITING_FIRST_PROOF", "WDG-awaiting-" + label);
+    assert.equal(w.cfEv.state, state, "WDG-state-" + label);
+    assert.equal(w.cfEv.alert, false, "WDG-no-page-" + label); assert.equal(w.cfAction, "none", "WDG-no-issue-action-" + label);
+    assert.equal(w.pendingNotice, state, "WDG-notice-" + label);
+    assert.ok(lines.some((l) => l.startsWith("::warning title=P18_WATCHDOG_CF_PENDING::")), "WDG-warning-logged-" + label);
+    assert.ok(!lines.some((l) => l.startsWith("::error")), "WDG-not-error-" + label);
+  }
+  assert.equal(issues.length, 0, "WDG-no-issue-before-proof");
+  cf = { status: 404, body: null };
+  const quiet = [];
+  const wm = await watchdog({ env, fetchImpl, now: () => now, log: (l) => quiet.push(l) });
+  assert.equal(wm.pendingNotice, null, "WDG-missing-no-notice"); assert.ok(!quiet.some((l) => l.includes("P18_WATCHDOG_CF_PENDING")));
+  // Depois da 1ª prova válida (gravada pelo monitor no batimento), documento quebrado É falha do caminho Cloudflare.
+  hbDoc = { ...hbDoc, cf_first_proof_at: T("10:00:00") };
+  cf = { status: 200, body: "{lixo" };
+  const wa = await watchdog({ env, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(wa.cfEv.gate, "ACTIVE", "WDG-active-after-prior-proof"); assert.equal(wa.cfAction, "open", "WDG-broken-after-proof-alerts");
+  assert.equal(issues[0].title, WATCHDOG_CF_TITLE);
+});
+
+test("[CF-FIRST-PROOF] o monitor grava cf_first_proof_at no batimento só a partir de prova válida e o leva adiante", async () => {
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+    let clock = Date.parse(T("16:00:20")); const now = () => clock, sleep = async () => {}, pause = async () => {};
+    const hb = () => JSON.parse(readTextNormalized(join(dir, "p18", "heartbeat.json")));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "500" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, null, "CFFP-none-without-cf");
+    // cf-dispatch.json quebrado no ramo: não vira 1ª prova.
+    writeFileSync(join(dir, "p18", "cf-dispatch.json"), "{lixo\n");
+    clock = Date.parse(T("16:05:20"));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "501" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, null, "CFFP-broken-doc-not-proof");
+    clock = Date.parse(T("16:10:20"));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: "502", P18_WINDOW_ID: "p18w-20261025T1610Z", P18_DISPATCHED_AT: T("16:10:02"), P18_DISPATCH_SOURCE: "cloudflare-cron" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, T("16:10:20"), "CFFP-set-from-valid-proof");
+    writeFileSync(join(dir, "p18", "cf-dispatch.json"), "{lixo\n");
+    clock = Date.parse(T("16:15:20"));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "503" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, T("16:10:20"), "CFFP-carried-forward");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
