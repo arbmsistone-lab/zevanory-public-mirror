@@ -50,6 +50,7 @@ import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
 import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch, PROOF_INVALIDATION_KV_KEY, PROOF_INVALIDATION_REASONS } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
+import { fiscalProcessDefined } from "./fiscal-process.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
 import { productionEnvView } from "./production-pilot-guard.mjs";
 
@@ -591,7 +592,8 @@ const wrapped = {
       const safeRelease = snapshot?.verified === true && salesSwitch.enabled === true && salesSwitch.authorized === true &&
         String(normalized.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
         String(normalized.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
-        String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+        String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production" &&
+        fiscalProcessDefined();
       const projected = projectProductionOnlyStatus(projectLiveStatus(body, {
         salesOpen: safeRelease,
         whatsappTransportOperational: !whatsappRetired && whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__),
