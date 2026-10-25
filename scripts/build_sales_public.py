@@ -463,7 +463,9 @@ def apply_waitlist_links(html: str) -> str:
     the same waiting-list destination as the products (policy.waitlist_href; e-mail while WhatsApp is off)."""
     return _WAITLIST_RE.sub(lambda m: f'<a {m.group(1)}href="{_attr(policy.waitlist_href(m.group(3)))}"{m.group(2)} data-zev-waitlist="{m.group(3)}"', html)
 
-_AMP_SKIP = ("script", "style", "title", "textarea")
+# <dd>: the Resumo da oferta values are body text (text face already) and machine-read as plain text
+# (scripts/p09/nurture_gate.mjs reads "Características essenciais" up to the next tag).
+_AMP_SKIP = ("script", "style", "title", "textarea", "dd")
 _AMP_RE = re.compile(r"&(?:amp;|(?![A-Za-z][A-Za-z0-9]*;|#[0-9]+;|#x[0-9A-Fa-f]+;))")
 
 def legible_ampersands(html: str) -> str:
