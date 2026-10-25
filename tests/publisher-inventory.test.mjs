@@ -82,7 +82,7 @@ test("financial publishers pending owner authorization are reported, never silen
   const pending = [...owner.entries()].filter(([, v]) => v.pending).map(([k]) => k);
   // Listed explicitly so the T1 report shows them as NOT YET SERIALIZED (owner rule: no change to
   // payment workflows without written authorization).
-  assert.deepEqual(pending.sort(), ["financial-e2e-stripe.yml", "mercadopago-exact-sha-recovery.yml", "whatsapp-broker-protocol-v2.yml"]);
+  assert.deepEqual(pending.sort(), ["financial-e2e-stripe.yml", "mercadopago-exact-sha-recovery.yml"]);
   assert.deepEqual(Object.keys(registry.unserialized_known).sort(), pending.sort(), "every unserialized publisher carries a written reason");
 });
 

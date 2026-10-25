@@ -16,13 +16,27 @@ on:
       - "tests/public-surface-router.test.mjs"
       - ".github/workflows/public-router-deploy.yml"
   workflow_dispatch:
+    inputs:
+      bootstrap_untagged:
+        description: "One-time T1 bootstrap: allow the first tagged deploy when the live router version carries no workers/tag (owner only)"
+        required: false
+        default: false
+        type: boolean
+      bootstrap_reason:
+        description: "Written reason for the bootstrap (>= 20 chars), kept in the run summary"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
 
+# T1 E4: pull-request runs get their own group, so a PR can never replace a pending deploy; the deploy
+# group keeps every queued run (queue: max) and the guard below skips the stale ones.
 concurrency:
-  group: public-router-deploy
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'public-router-deploy' }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   validate:
@@ -42,14 +56,56 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      SCRIPT_NAME: zevanory-public-router
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Pre-promotion guard (T1)
+        id: guard
+        env:
+          BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap_untagged || false }}
+          BOOTSTRAP_REASON: ${{ inputs.bootstrap_reason }}
+          ACTOR: ${{ github.actor }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          # Same shared guard as zevanory-sales-public-release.yml. The router has no SHA readback endpoint,
+          # so the Cloudflare tag of the active version is the only source: unknown production => refuse.
+          rc=0
+          python3 scripts/deploy/promotion_guard.py --service zevanory-public-router \
+            --candidate "$GITHUB_SHA" --cloudflare-script "$SCRIPT_NAME" || rc=$?
+          if [ "$rc" = "0" ]; then exit 0; fi
+          # One-time bootstrap: versions deployed before T1 carry no workers/tag, so the very first tagged
+          # deploy cannot be proven forward. Allowed only when Cloudflare ANSWERED (active version readable
+          # and untagged, never on an unreachable API), only on workflow_dispatch by the repository owner,
+          # with a written reason. After it, the live version is tagged and this branch can never apply.
+          if [ "$BOOTSTRAP" != "true" ]; then exit "$rc"; fi
+          [ "$ACTOR" = "$REPO_OWNER" ] || { echo "::error title=BOOTSTRAP_REFUSED::actor is not the repository owner"; exit 1; }
+          [ "${#BOOTSTRAP_REASON}" -ge 20 ] || { echo "::error title=BOOTSTRAP_REFUSED::bootstrap_reason must have >= 20 chars"; exit 1; }
+          state="$(python3 -c 'import sys; sys.path.insert(0, "scripts/deploy"); import promotion_guard as g; print(g.observe_cloudflare(sys.argv[1])[0])' "$SCRIPT_NAME")"
+          [ "$state" = "answered" ] || { echo "::error title=BOOTSTRAP_REFUSED::Cloudflare state=$state (bootstrap needs a readable, untagged active version)"; exit 1; }
+          echo "decision=promote" >> "$GITHUB_OUTPUT"
+          echo "::warning title=T1_ROUTER_BOOTSTRAP::first tagged deploy of $SCRIPT_NAME by $ACTOR: $BOOTSTRAP_REASON"
+          { echo "## T1 router bootstrap"; echo "actor=$ACTOR sha=$GITHUB_SHA reason=$BOOTSTRAP_REASON"; } >> "$GITHUB_STEP_SUMMARY"
       - name: Deploy public router Worker
-        run: npx --yes wrangler@4.135.0 deploy --config wrangler.public-router.toml
+        id: promote
+        if: steps.guard.outputs.decision == 'promote'
+        run: npx --yes wrangler@4.135.0 deploy --config wrangler.public-router.toml --tag="$GITHUB_SHA" --message="ZEVANORY-public-router-exact-SHA-$GITHUB_SHA"
+      - name: Post-promotion effective version (T1, Cloudflare tag)
+        if: steps.promote.outcome == 'success'
+        run: |
+          set -euo pipefail
+          # Only one SHA source exists for the router (no readback endpoint): FAIL (another SHA) fails the run;
+          # NAO_COMPROVADO is reported and keeps T1_EXCLUSIVITY at NOT_PROVEN for this Worker.
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --attempts 6 \
+            --service zevanory-public-router --candidate "$GITHUB_SHA" --cloudflare-script "$SCRIPT_NAME"
       - name: Live readback (apex home -> storefront, panel not indexable)
+        if: steps.promote.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
