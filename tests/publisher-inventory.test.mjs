@@ -82,8 +82,32 @@ test("financial publishers pending owner authorization are reported, never silen
   const pending = [...owner.entries()].filter(([, v]) => v.pending).map(([k]) => k);
   // Listed explicitly so the T1 report shows them as NOT YET SERIALIZED (owner rule: no change to
   // payment workflows without written authorization).
-  assert.deepEqual(pending.sort(), ["financial-e2e-stripe.yml", "mercadopago-exact-sha-recovery.yml", "mercadopago-production-token-rotate.yml", "whatsapp-broker-protocol-v2.yml"]);
+  assert.deepEqual(pending.sort(), ["financial-e2e-stripe.yml", "mercadopago-exact-sha-recovery.yml", "whatsapp-broker-protocol-v2.yml"]);
   assert.deepEqual(Object.keys(registry.unserialized_known).sort(), pending.sort(), "every unserialized publisher carries a written reason");
+});
+
+test("owner-authorized serialization: the Mercado Pago token rotation runs in the deploy-zevanory queue exactly like the other publishers", () => {
+  const wf = "mercadopago-production-token-rotate.yml";
+  const z = services.zevanory;
+  // Owner's written authorization (literal) is recorded next to the registration.
+  assert.match(String((z.owner_authorized_serialization || {})[wf]), /AUTORIZO SERIALIZAR mercadopago-production-token-rotate\.yml NO GRUPO deploy-zevanory/);
+  assert.ok(z.config_publishers.includes(wf), `${wf} is a serialized config publisher of zevanory`);
+  assert.ok(!(z.pending_owner_authorization || []).includes(wf), `${wf} is no longer pending`);
+  assert.ok(!Object.hasOwn(registry.unserialized_known, wf), `${wf} is no longer an unserialized exception`);
+  // Same top-level block, byte for byte, as every other member of the group (workflow level, not job level).
+  const block = (name) => {
+    const head = read(name).split(/^jobs:/m)[0];
+    const m = head.match(/^concurrency:\n(?:  [^\n]*\n)+/m);
+    return m ? m[0] : null;
+  };
+  const expected = "concurrency:\n  group: deploy-zevanory\n  cancel-in-progress: false\n  queue: max\n";
+  assert.equal(block(wf), expected, `${wf}: top-level concurrency block`);
+  const members = [z.canonical, ...z.config_publishers];
+  assert.equal(members.length, 11, "10 publishers + the token rotation");
+  for (const m of members) assert.equal(block(m), expected, `${m}: same concurrency block as the rest of the group`);
+  // No job-level concurrency that would hold a second, different slot inside the run.
+  const jobs = read(wf).split(/^jobs:/m)[1];
+  assert.doesNotMatch(jobs, /^\s+concurrency:/m, `${wf}: no job-level concurrency`);
 });
 
 test("retired and validation-only workflows cannot publish", () => {

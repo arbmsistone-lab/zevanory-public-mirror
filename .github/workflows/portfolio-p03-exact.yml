@@ -83,6 +83,8 @@ jobs:
           SLUG: ${{ matrix.slug }}
           EXPECTED_BLOB: ${{ matrix.blob }}
         run: |
+          # #911 (E2) publishes the stylesheet content-hashed (/assets/product.<sha256[:10]>.css); the live
+          # check accepts that name as well as the plain /product.css of the mirror.
           cat > p03.mjs <<'JS'
           import { chromium } from 'playwright';
           import fs from 'fs';
@@ -117,7 +119,7 @@ jobs:
               }
               return {
                 viewportMeta:Boolean(document.querySelector('meta[name="viewport"]')),
-                stylesheetLoaded:[...document.styleSheets].some(s=>String(s.href||'').includes('product.css')),
+                stylesheetLoaded:[...document.styleSheets].some(s=>/\/(?:assets\/)?product(?:\.[0-9a-f]{10})?\.css$/.test(String(s.href||'').split('?')[0])),
                 bodyFontSize:parseFloat(body.fontSize||'0'),
                 bodyLineHeight:parseFloat(body.lineHeight||'0'),
                 h1FontSize:h1s?parseFloat(h1s.fontSize||'0'):0,

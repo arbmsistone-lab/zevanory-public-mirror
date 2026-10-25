@@ -1,0 +1,46 @@
+/* "Fale com a ZEVANORY" — chat do site. Fonte: sales-overlay/site-chat.css (copiado para sales-public).
+   WCAG 2.2 AA: contraste >= 4.5:1 (tokens abaixo, conferidos em tests/site-chat-widget.test.mjs), foco visível,
+   alvos de 44 px, reflow em 320/256 px e zoom de 200% (sem largura fixa em px), sem animação. */
+.zc-entry,.zc-panel{--zc-bg:#0b1220;--zc-fg:#e6edf6;--zc-muted:#b6c2d3;--zc-line:#8aa0bd;--zc-accent:#2dd4a7;--zc-accent-fg:#04241b;--zc-link:#7dd3fc;--zc-user:#13233d;--zc-focus:#ffd166;--zc-error:#ff9b9b}
+.zc-entry,.zc-entry *,.zc-panel,.zc-panel *{box-sizing:border-box}
+.zc-entry{max-width:100%;width:min(960px,calc(100% - 32px));margin:24px auto;padding:16px;border:1px solid var(--zc-line);border-radius:12px;background:var(--zc-bg);color:var(--zc-fg);overflow-wrap:anywhere}
+.zc-entry-title{margin:0 0 8px;font-size:1.15rem;line-height:1.3;color:var(--zc-fg)}
+.zc-entry-text{margin:0 0 12px;color:var(--zc-muted);line-height:1.5}
+.zc-panel{position:fixed;right:16px;bottom:16px;z-index:40;display:flex;flex-direction:column;width:min(420px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:min(680px,calc(100vh - 32px));background:var(--zc-bg);color:var(--zc-fg);border:1px solid var(--zc-line);border-radius:12px;overflow:hidden;font-size:1rem;line-height:1.5;overflow-wrap:anywhere}
+.zc-panel[hidden],.zc-panel [hidden]{display:none}
+.zc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid var(--zc-line)}
+.zc-title{margin:0;font-size:1.1rem;line-height:1.3;min-width:0;color:var(--zc-fg)}
+.zc-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px}
+.zc-subtitle{margin:0 0 8px;font-size:1rem;color:var(--zc-fg)}
+.zc-notice-list{margin:0 0 12px;padding-left:20px;color:var(--zc-fg)}
+.zc-notice-list li{margin:0 0 8px}
+.zc-small{margin:4px 0;font-size:.9rem;color:var(--zc-muted)}
+.zc-panel a,.zc-entry a{color:var(--zc-link);text-decoration:underline}
+.zc-actions{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.zc-button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;max-width:100%;padding:8px 16px;border-radius:8px;border:2px solid var(--zc-line);background:var(--zc-bg);color:var(--zc-fg);font:inherit;font-weight:700;line-height:1.2;text-align:center;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.zc-panel a.zc-button,.zc-entry a.zc-button{color:var(--zc-fg);text-decoration:none}
+.zc-primary,.zc-launch{background:var(--zc-accent);border-color:var(--zc-accent);color:var(--zc-accent-fg)}
+.zc-button:disabled{cursor:not-allowed;opacity:1;border-style:dashed}
+.zc-entry :focus-visible,.zc-panel :focus-visible{outline:3px solid var(--zc-focus);outline-offset:2px}
+.zc-title:focus,.zc-subtitle:focus{outline:3px solid var(--zc-focus);outline-offset:2px}
+.zc-log{list-style:none;margin:0 0 8px;padding:4px;max-height:40vh;overflow-y:auto;border:1px solid var(--zc-line);border-radius:8px}
+.zc-msg{margin:8px 0;padding:8px 12px;border-radius:8px;max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+.zc-user{background:var(--zc-user);color:var(--zc-fg)}
+.zc-bot{background:var(--zc-bg);color:var(--zc-fg);border:1px solid var(--zc-line)}
+.zc-sr{position:absolute;width:4px;height:4px;padding:0;margin:-4px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.zc-status{min-height:1.5em;margin:0;color:var(--zc-muted)}
+.zc-label{display:block;margin:8px 0 4px;font-weight:700;color:var(--zc-fg)}
+.zc-input{display:block;width:100%;max-width:100%;min-height:44px;padding:8px 12px;border-radius:8px;border:2px solid var(--zc-line);background:var(--zc-bg);color:var(--zc-fg);font:inherit;resize:vertical}
+.zc-error{min-height:1.2em;margin:4px 0;color:var(--zc-error)}
+.zc-timeout{margin:8px 0;padding:8px;border:2px solid var(--zc-focus);border-radius:8px}
+.zc-timeout p{margin:0 0 8px}
+.zc-handoff{margin-top:12px;padding-top:8px;border-top:1px solid var(--zc-line)}
+/* Celular (mesmo ponto de quebra da .buy-bar, z-index 20): o painel aberto ocupa a tela inteira, por cima da
+   barra, e fecha com "Fechar" ou Esc; fechado, nada flutua sobre a barra (a entrada fica no fluxo da página). */
+@media (max-width:760px){
+  .zc-panel{inset:0;right:0;bottom:0;width:100%;max-width:100%;height:100%;max-height:100%;border-radius:0;border:0}
+  .zc-entry{margin:16px auto;border-radius:8px}
+  .zc-log{max-height:none}
+  .zc-actions .zc-button{flex:1 1 auto}
+}
+@media (prefers-reduced-motion:reduce){.zc-panel,.zc-entry{scroll-behavior:auto}}

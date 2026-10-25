@@ -1,4 +1,5 @@
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
+import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
 import { legacyTrustProjection, guardTrustChain } from "./trust-projection.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
@@ -15,6 +16,7 @@ import { whatsappChannelRetired, whatsappInstantReplyEnabled, whatsappGoneRespon
 import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
+import { handleSiteChat, handleSiteChatAdmin, runSiteChatRetention } from "./site-chat.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
@@ -48,6 +50,8 @@ import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
 import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch, PROOF_INVALIDATION_KV_KEY, PROOF_INVALIDATION_REASONS } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
+import { operatorToken as operatorCredential } from "./operator-credential.mjs";
+import { productionEnvView } from "./production-pilot-guard.mjs";
 
 async function loadWhatsappBrokerState(binding, env) {
   // Retired channel (Meta disabled the WABA on 2026-10-10): never call the broker.
@@ -95,7 +99,11 @@ const wrapped = {
     return wrapped.processFetch(request, withMeteredKv(env, "fetch:" + path), ctx);
   },
   async processFetch(request, env, ctx) {
-    let normalized = normalizeEnv(env);
+    // Retired public assets (old contact script): inert, no-store tombstone before any env/KV access.
+    const retiredAsset = retiredPublicAssetResponse(request);
+    if (retiredAsset) return retiredAsset;
+    // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
+    let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
@@ -146,7 +154,8 @@ const wrapped = {
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
-      if (audit && audit.status === 200) {
+      // order-lookup (conciliação somente leitura) devolve só o resultado do SELECT: nada é persistido nem anexado.
+      if (audit && audit.status === 200 && url.pathname !== "/api/internal/audit/order-lookup") {
         // Authenticated read-only audit already computed the provider-verified classification:
         // persist the derived snapshot (fail-closed validation) and expose its diagnostic state.
         try {
@@ -198,6 +207,20 @@ const wrapped = {
       const lead = await handleLeadMagnet(request, normalized, { sqlFactory: whatsappProofDatabase });
       if (lead) return lead;
     }
+    // Chat do site (desligado por padrão; worker/site-chat.mjs). Só pelo service binding do Worker de vendas
+    // (host chat.internal); a fila do proprietário exige autenticação de administrador.
+    if (url.hostname === "chat.internal") {
+      const chat = await handleSiteChat(request, normalized, {
+        sqlFactory: whatsappProofDatabase,
+        // Autoridade canônica de vendas (mesmo /api/sales/status público), consultada a cada resposta.
+        salesOpen: async () => {
+          const st = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status", { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
+          return (await st?.json?.())?.open === true;
+        }
+      });
+      return chat || new Response("not_found", { status: 404 });
+    }
+    if (url.pathname.startsWith("/api/admin/site-chat/")) return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
@@ -338,7 +361,7 @@ const wrapped = {
     // WhatsApp proof route. No message, no Meta call, no WhatsApp data.
     if (url.pathname === "/api/admin/voice/audit") {
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
-      const expected = String(normalized.CERTIFICATION_E2E_TOKEN || normalized.OPERATOR_TOKEN || "");
+      const expected = String(operatorCredential(normalized) || normalized.OPERATOR_TOKEN || "");
       const presented = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
       let diff = expected.length < 24 || presented.length !== expected.length ? 1 : 0;
       for (let i = 0; !diff && i < expected.length; i++) diff |= expected.charCodeAt(i) ^ presented.charCodeAt(i);
@@ -467,7 +490,7 @@ const wrapped = {
           headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
         });
       }
-      const expected = String(normalized.CERTIFICATION_E2E_TOKEN || "");
+      const expected = String(operatorCredential(normalized) || "");
       const provided = String(request.headers.get("x-certification-e2e-token") || "");
       const sandbox = String(normalized.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";
       const salesClosed = String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" && globalThis.__ZEVANORY_SALES_SWITCH__ !== true;
@@ -505,7 +528,7 @@ const wrapped = {
       // Runs the backup and restore drill; returns only counts and hashes (never data).
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
       const report = url.searchParams.get("finalize") === "1"
         ? await finalizeBackup(normalized, { parts })
@@ -517,7 +540,7 @@ const wrapped = {
       // Funnel consolidation in its own invocation (own subrequest budget). Aggregates only.
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const beat = { at: new Date().toISOString(), source: "http", tasks: {} };
       try {
         const salesOpenNow = applySalesSwitch(await readSalesSwitch(normalized).catch(() => null));
@@ -534,7 +557,7 @@ const wrapped = {
       // End-to-end voice evaluation on the production models; returns and stores scores only.
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       let apiKey = String(normalized.GEMINI_API_KEY || "").trim();
       // Presence flags only (never values): where the production voice key can come from.
       const diag = { geminiEnv: Boolean(apiKey), vaultRecord: false, vaultMaster: Boolean(normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN), vaultDecrypted: false, freeOnly: String(normalized.VOICE_TTS_FREE_ONLY || "") === "true", router: null };
@@ -637,7 +660,7 @@ const wrapped = {
 
 wrapped.scheduled = async (controller, rawEnv, ctx) => {
   const env = withMeteredKv(rawEnv, "cron:" + String(controller?.cron || "?"));
-  const normalized = normalizeEnv(env);
+  const normalized = normalizeEnv(productionEnvView(env));
   if (controller?.cron === "5,35 * * * *") {
     // Workers Free allows 5 cron triggers per ACCOUNT (all used), so this isolated
     // invocation is shared by tick minute, each with its own subrequest budget:
@@ -761,6 +784,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
+  // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.
+  if (new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours() === 6) tasks.push(runSiteChatRetention(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("site_chat_retention", JSON.stringify(out))).catch(() => console.error("site_chat_retention_failed")));
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
@@ -770,10 +795,10 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   // Acquisition (:35) and brand profiles (:05) run in the isolated "5,35" cron.
 };
 if (typeof worker.queue === "function") {
-  wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
+  wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(productionEnvView(env)), ctx);
 }
 wrapped.email = async (message, env, ctx) => {
-  const normalized = normalizeEnv(env);
+  const normalized = normalizeEnv(productionEnvView(env));
   if (await handleSandboxInboundEmail(message, normalized)) return;
   if (typeof worker.email === "function") return worker.email(message, normalized, ctx);
   message.setReject?.("mailbox_unavailable");

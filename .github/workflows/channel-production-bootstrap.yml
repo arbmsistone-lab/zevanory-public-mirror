@@ -17,7 +17,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
-      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CERTIFICATION_E2E_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_CHANNEL_ID; do
+          for name in CLOUDFLARE_API_TOKEN ZEVANORY_OPERATOR_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_CHANNEL_ID; do
             test -n "${!name:-}" || { echo "missing secret: $name"; exit 1; }
           done
       - name: Build and synchronize the single channel credential binding
@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS -X POST -H "x-certification-e2e-token: $CERTIFICATION_E2E_TOKEN" https://zevanory.api.br/api/internal/channels/telegram-proof -o /tmp/telegram-proof.json
+          curl -fsS -X POST -H "x-certification-e2e-token: $ZEVANORY_OPERATOR_TOKEN" https://zevanory.api.br/api/internal/channels/telegram-proof -o /tmp/telegram-proof.json
           node -e 'const x=require("/tmp/telegram-proof.json");if(!x.provider_post_id||!/^https:\/\/t\.me\/zevanory\/\d+$/.test(x.url||""))process.exit(1);console.log(JSON.stringify({provider_post_id:x.provider_post_id,url:x.url}))'
       - name: Validate YouTube inputs without printing values
         shell: bash

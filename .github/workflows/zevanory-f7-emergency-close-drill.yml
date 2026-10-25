@@ -18,7 +18,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
       KV_NAMESPACE_ID: "728a45738e4047f29bcb89934fd533c1"
-      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
     steps:
       - name: Close-again drill with stopwatch
         shell: bash
@@ -26,7 +26,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import hashlib,hmac,json,os,time,urllib.error,urllib.request,datetime,sys
-          tok=os.environ["CLOUDFLARE_API_TOKEN"].strip(); key=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
+          tok=os.environ["CLOUDFLARE_API_TOKEN"].strip(); key=os.environ["ZEVANORY_OPERATOR_TOKEN"].strip()
           base=f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/storage/kv/namespaces/{os.environ['KV_NAMESPACE_ID']}/values/"
           def fail(c):print("::error title=F7_DRILL::"+c);sys.exit(2)
           def req(url,method="GET",data=None,headers=None):

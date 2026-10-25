@@ -16,19 +16,19 @@ function database(rows=[values]){
  }});
 }
 test("signed GET returns aggregate-only, never PII",async()=>{
- const res=await handleFirstOrderWatchReadOnly(signed(),{CERTIFICATION_E2E_TOKEN:SECRET,DATABASE_URL:"mock"},{sqlFactory:database()});
+ const res=await handleFirstOrderWatchReadOnly(signed(),{ZEVANORY_OPERATOR_TOKEN:SECRET,DATABASE_URL:"mock"},{sqlFactory:database()});
  assert.equal(res.status,200);assert.deepEqual(await res.json(),{schema:"zevanory.first-order-watch.v1",counts:values});
 });
 test("unsigned, forged, stale and wrong method rejected before SQL",async()=>{
  for(const request of [signed({headers:false}),signed({key:"b".repeat(40)}),
    signed({at:Math.floor(Date.now()/1000)-400}),signed({method:"POST"})]){
-  const res=await handleFirstOrderWatchReadOnly(request,{CERTIFICATION_E2E_TOKEN:SECRET,DATABASE_URL:"mock"},{
+  const res=await handleFirstOrderWatchReadOnly(request,{ZEVANORY_OPERATOR_TOKEN:SECRET,DATABASE_URL:"mock"},{
    sqlFactory:()=>{throw Error("sql should not run")}});
   assert.notEqual(res.status,200);
  }
 });
 test("DB failure and inconsistent counts fail closed and suppress private error",async()=>{
- const env={CERTIFICATION_E2E_TOKEN:SECRET,DATABASE_URL:"mock"};
+ const env={ZEVANORY_OPERATOR_TOKEN:SECRET,DATABASE_URL:"mock"};
  const response=await handleFirstOrderWatchReadOnly(signed(),env,{sqlFactory:()=>({query:async()=>{throw Error("secret@invalid.com")}})});
  assert.equal(response.status,503);assert.doesNotMatch(await response.text(),/secret@/);
  const bad=await handleFirstOrderWatchReadOnly(signed(),env,{sqlFactory:database([{...values,overdue_paid:1}])});
