@@ -182,7 +182,7 @@ def load() -> dict[str, str]:
 MUTANTS = [
     ("vendas-na-pratica/index.html", "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com clareza de próxima ação.",
      "Método prático para organizar prospecção, atendimento, oferta, follow-up e melhoria comercial com clareza de próxima ação."),
-    ("sales-public/vendas-na-pratica.html", "<h3>Oferta que você cumpre</h3>", "<h3>Quem abordar</h3>"),
+    ("sales-public/vendas-na-pratica.html", "<h3>Uma oferta que você consegue cumprir</h3>", "<h3>Quem abordar</h3>"),
     ("sales-public/vendas-na-pratica.html", "<strong>Oferta antes de entender o pedido</strong>", "<strong>Prospecção sem foco</strong>"),
     ("vendas-na-pratica/index.html", "<h2>Clareza sobre como atender, o que oferecer e o que fazer depois.</h2>",
      "<h2>Clareza sobre quem abordar, o que dizer e o que fazer depois.</h2>"),
@@ -199,7 +199,7 @@ MUTANTS = [
     ("index.html", "<article><p>IA na Prática + Vendas na Prática</p>", "<article><p>IA e vendas trabalhando juntas</p>"),
     ("index.html", "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta, acompanhamento e aprendizado comercial.",
      "Método prático para organizar prospecção, atendimento, oferta, acompanhamento e aprendizado comercial."),
-    ("solucoes/index.html", "Seu problema: IA e vendas a arrumar", "Seu problema: IA para vender mais"),
+    ("solucoes/index.html", "Seu problema: IA e vendas, cada um no seu ritmo", "Seu problema: IA para vender mais"),
     ("kit-afiliado/index.html", "IA na Prática e Vendas na Prática: os dois treinamentos completos",
      "IA aplicada ao processo comercial: os dois treinamentos completos"),
     (GENERATOR, "'Quem quer usar IA no dia a dia e organizar as vendas pelo WhatsApp e nas redes'",

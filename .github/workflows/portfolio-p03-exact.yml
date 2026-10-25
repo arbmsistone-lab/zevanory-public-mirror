@@ -40,9 +40,9 @@ jobs:
           - slug: ia-na-pratica
             blob: 7c5b9dac20fc1ff0421e64f52ab7b6d2689d2d22
           - slug: vendas-na-pratica
-            blob: 683ac88dab1e77a40238c3cd502a465aaff1b053
+            blob: 428a5089c5d2666c616104deb6f146f12d5216c8
           - slug: combo-ia-vendas
-            blob: 2c82f6f5ce7bfd90d689251bef7776f410e00a55
+            blob: 1d41e04b34fd7a8e53d22def3cc41fd1207cf504
           - slug: lucro-e-caixa
             blob: 427e208349bd280128413af2f16e31bca1cb9a43
           - slug: negocio-completo
