@@ -14,6 +14,8 @@ on:
       - "scripts/ci/mutants_p19_capacity.py"
       - "scripts/ci/mutants_p19_capacity_allow.json"
       - "scripts/ci/mutant_classifier.py"
+      - "tests/helpers/p20-backup-fixture.mjs"
+      - "scripts/p20/**"
       - "docs/b0/**"
       - ".github/workflows/b0-baseline-collector.yml"
       - ".github/workflows/p18-external-monitor.yml"

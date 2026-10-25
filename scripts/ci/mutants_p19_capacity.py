@@ -25,8 +25,8 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/b0-baseline.test.mjs"]
-COPY_DIRS = ["scripts/b0", "docs/b0"]
-COPY_FILES = TESTS + ["tests/helpers/text.mjs", "scripts/audit/workers-usage.mjs", ".github/workflows/b0-baseline-collector.yml",
+COPY_DIRS = ["scripts/b0", "docs/b0", "scripts/p20", "docs/p20"]
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p20-backup-fixture.mjs", "scripts/audit/workers-usage.mjs", ".github/workflows/b0-baseline-collector.yml",
                       ".github/workflows/p18-external-monitor.yml", ".github/workflows/b0-baseline-tests.yml", ".github/workflows/p18-monitor-watchdog.yml"]
 TIMEOUT = 300
 NODE = shutil.which("node") or "node"

@@ -37,7 +37,7 @@
     "P20": [
       { "id": "P20-idade", "type": "PI", "metric": "idade da última cópia íntegra (backup + hash + restauração por amostra)", "value": "<= 26 h; > 48 h é falha crítica (seção 9.1)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
       { "id": "P20-ensaio-mensal", "type": "PI", "metric": "ensaio mensal de restauração completa em esquema isolado", "value": "1 por mês, aprovado", "status": "PROPOSED", "approved_by": null, "approved_at": null },
-      { "id": "P20-rpo-rto", "type": "LB", "metric": "RPO e RTO medidos no ensaio", "value": "objetivo RPO 24 h, RTO 4 h (seção 9.1); valor medido define a meta", "status": "PROPOSED", "approved_by": null, "approved_at": null }
+      { "id": "P20-rpo-rto", "type": "LB", "metric": "RPO e RTO medidos no ensaio", "value": "objetivos por classe em docs/p20/inventario-estado-critico.json (PROPOSTA: pedidos, entregas, reembolsos e leads RPO 24 h / RTO 4 h; atendimento 24 h / 8 h; funil 24 h / 24 h; estado comercial no KV 24 h / 1 h; catálogo no Git 0 / 1 h); valor medido no ensaio mensal define a meta", "status": "PROPOSED", "approved_by": null, "approved_at": null }
     ],
     "P22": [
       { "id": "P22-ttl", "type": "PI", "metric": "leituras do /api/status com prova PROVEN e idade <= 65 min, quando a venda estiver liberada", "value": "100%", "status": "PROPOSED", "approved_by": null, "approved_at": null },
