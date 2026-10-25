@@ -510,6 +510,9 @@ def _load_json(path: Path):
 
 
 def main(argv: list[str] | None = None) -> int:
+    # python3 -I ignora PYTHONIOENCODING; no Windows a saída cairia em cp1252 e os acentos se perderiam.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".")
     ap.add_argument("--registry", default="data/p16/experiments.json")
