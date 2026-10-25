@@ -3,3 +3,5 @@ scripts/ops/*.sh text eol=lf
 sandbox/rollback-secret-probe/*.sh text eol=lf
 # E2: content-hashed assets: the hash covers the exact served bytes, so no EOL conversion on checkout.
 sales-public/assets/** -text
+# Demo video sources (marketing PR): the manifest hashes the exact bytes, so no EOL conversion.
+assets/video/** -text

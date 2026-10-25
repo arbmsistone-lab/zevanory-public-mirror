@@ -97,7 +97,10 @@ async function salesOpen(env){
 // P13 (NO-GO): the static HTML is always built closed (waiting-list CTAs, no /comprar/ link, no
 // schema.org Offer). Only when the owner switch is open (same /api/sales/status, fail-closed: KV
 // sales:open:v1 + "LIBERAR VENDAS" + green preflight) the page is restored at request time.
-const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","conteudo-pronto"]);
+// Niche landing pages (marketing, 2026-10-25): canonical /para/<ramo>, published flat as para-<ramo>.html
+// (scripts/sales_marketing.py). They show prices and a waiting-list CTA, so they follow the sales switch.
+export const NICHE_ROUTES=Object.freeze({"para/salao":"para-salao","para/oficina":"para-oficina","para/clinica":"para-clinica","para/loja":"para-loja"});
+const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","conteudo-pronto",...Object.values(NICHE_ROUTES)]);
 const SUBSCRIPTION_PATHS=Object.freeze({"conteudo-pronto":"/assinar/conteudo-pronto"});
 const SALES_ORIGIN="https://vendas.zevanory.api.br";
 export function openSalesHtml(html,slug){
@@ -416,7 +419,7 @@ export default{async fetch(request,env,ctx){
   }
   let page="";
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
-  else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
+  else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } else if(Object.prototype.hasOwnProperty.call(NICHE_ROUTES,key)) { page=NICHE_ROUTES[key]; url.pathname="/"+page+".html"; } }
   let response=await env.ASSETS.fetch(new Request(url,request));
   // Designed 404 for unknown PAGE paths (no file extension); asset 404s stay plain. Never cached.
   if(response.status===404&&!page&&(request.method==="GET"||request.method==="HEAD")&&!/\.[a-z0-9]{1,8}$/i.test(url.pathname)){

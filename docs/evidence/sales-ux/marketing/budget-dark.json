@@ -1,0 +1,435 @@
+{
+  "schema": "zevanory.sales-quality-budget.v1",
+  "base": "http://127.0.0.1:8797",
+  "scheme": "dark",
+  "budget": {
+    "performance": 95,
+    "accessibility": 100,
+    "best-practices": 100,
+    "seo": 100
+  },
+  "runs": 3,
+  "pages": {
+    "/solucoes": {
+      "mobile": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 1809,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      },
+      "desktop": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 478,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      }
+    },
+    "/lucro-e-caixa": {
+      "mobile": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 1519,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      },
+      "desktop": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 385,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      }
+    },
+    "/conteudo-pronto": {
+      "mobile": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 1521,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      },
+      "desktop": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 364,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      }
+    },
+    "/para/salao": {
+      "mobile": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 1522,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      },
+      "desktop": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 347,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      }
+    },
+    "/para/oficina": {
+      "mobile": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 1513,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      },
+      "desktop": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 361,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      }
+    },
+    "/para/clinica": {
+      "mobile": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 1523,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      },
+      "desktop": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 349,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      }
+    },
+    "/para/loja": {
+      "mobile": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 1521,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      },
+      "desktop": {
+        "lighthouse": {
+          "median": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "min": {
+            "performance": 100,
+            "accessibility": 100,
+            "best-practices": 100,
+            "seo": 100
+          },
+          "lcp": 347,
+          "cls": 0,
+          "tbt": 0,
+          "failingAudits": []
+        },
+        "browser": {
+          "axe": [],
+          "targets": [],
+          "focus": [],
+          "motion": [],
+          "consoleErrors": [],
+          "scroll": [],
+          "schemeOk": true
+        }
+      }
+    }
+  },
+  "failures": []
+}

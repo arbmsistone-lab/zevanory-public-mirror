@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 import sales_policy as policy
+import sales_marketing as mk
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path(os.environ.get("ZEVANORY_SALES_PUBLIC_OUT") or ROOT / "sales-public")  # P13: preview/teste do modo aberto fora do repo
@@ -99,6 +100,8 @@ _SOCIAL = (("YouTube", "https://www.youtube.com/@zevanory"), ("Instagram", "http
            ("Telegram", "https://t.me/zevanory"), ("Bluesky", "https://bsky.app/profile/zevanoryoficial.bsky.social"),
            ("Pinterest", "https://www.pinterest.com/zevanory/"))
 LEGAL_FOOTER = ('<div class="container footer-legal">'
+                # Marketing (closed-sales phase): the free checklist and calculators are the primary no-cost action.
+                + mk.FREE_FOOTER +
                 '<section class="fl-block" aria-labelledby="fl-empresa"><h2 class="fl-title" id="fl-empresa">Empresa</h2>'
                 f'<p>{policy.SUPPLIER["razao_social"]}<br>CNPJ {policy.SUPPLIER["cnpj"]}<br>{policy.ADDRESS_FULL}</p></section>'
                 '<section class="fl-block" aria-labelledby="fl-contato"><h2 class="fl-title" id="fl-contato">Atendimento</h2><ul>'
@@ -323,7 +326,8 @@ def apply_commerce(slug: str, html: str) -> str:
                f'<p class="receipt-total"><span>Total</span><span>R$ {c["price"]}</span></p>'
                + trust_mini() + '</div>')
     html = re.sub(r'<aside class="hero-panel">.*?</aside>', lambda m: receipt, html, count=1, flags=re.S)
-    includes = ('<p class="byline hero-trust">Feito por <a href="/quem-criou">Renan Bitu</a>, em Várzea Alegre (CE). Suporte humano ' + HUMAN_SUPPORT + '.</p>')
+    includes = ('<p class="byline hero-trust">Feito por <a href="/quem-criou">Renan Bitu</a>, em Várzea Alegre (CE). Suporte humano ' + HUMAN_SUPPORT + '.</p>'
+                + mk.FREE_PRODUCT_LINE)
     html = re.sub(r'(<section class="container hero".*?<ul class="facts buy-facts">.*?</ul>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
     yes, no = FIT[slug]
@@ -335,7 +339,10 @@ def apply_commerce(slug: str, html: str) -> str:
                 '</ul></div><div class="fit-card fit-no"><h3>Não é para você se</h3><ul>'
                 + "".join(f"<li>{x}</li>" for x in no) +
                 '</ul></div></div></section>')
-    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html + preview_section(slug), html, count=1, flags=re.S)
+    # Marketing: a labelled fictional worked example (real structure of the product) and, only when the owner
+    # has added real consented testimonials, the testimonial section (none while data/depoimentos.json is empty).
+    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html + preview_section(slug)
+                  + mk.product_example(slug) + mk.testimonials_section(DEPOIMENTOS, slug), html, count=1, flags=re.S)
     # Conversion: a compact bar that follows the reader on phones (72 h / um download beside the CTA).
     bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"]}</strong>'
            + f'<span>R$ {c["price"]} · pagamento único</span>'
@@ -369,11 +376,15 @@ def apply_commerce(slug: str, html: str) -> str:
                 node["mainEntity"] = kept
         return m.group(1) + _json.dumps(data, ensure_ascii=False) + m.group(3)
     html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', fix_ld, html, count=1, flags=re.S)
-    return html
+    # FAQ (marketing): formats, spreadsheet skills, niche fit, no subscription, what the waiting list does.
+    return mk.extend_faq(html, mk.product_faq(slug, c["price"]), slug)
 
 CATALOG_INCLUDES = {  # the most concrete deliverables of each paid product, picked from COMMERCE (never invented)
     "lucro-e-caixa": (2, 3, 4), "vendas-na-pratica": (2, 3, 4), "ia-na-pratica": (2, 3, 0),
     "combo-ia-vendas": (0, 1, 2), "negocio-completo": (3, 4, 5)}
+
+def apply_marketing_catalog(html: str) -> str:
+    return apply_solucoes_marketing(apply_catalog(html))
 
 def apply_catalog(html: str) -> str:
     """Catalogue by problem (solucoes/index.html). For each paid product the build adds what you get
@@ -420,6 +431,15 @@ def apply_subscription(html: str) -> str:
     html = re.sub(r'(<a class="button primary" )href="[^"]*"( data-zev-sub="conteudo-pronto")',
                   lambda m: m.group(1) + f'href="{_attr(policy.waitlist_href("Conteúdo Pronto"))}"' + m.group(2), html)
     html = re.sub(r'<a class="nav-cta" href="[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
+    # Marketing: labelled fictional example right before the FAQ, extended FAQ, free first step in the hero.
+    faq_at = html.find('<div class="faq">')
+    sec_at = html.rfind("<section", 0, faq_at)
+    if faq_at < 0 or sec_at < 0:
+        raise SystemExit("conteudo-pronto: FAQ section missing")
+    html = (html[:sec_at] + mk.example_block(mk.EXAMPLES["conteudo-pronto"], "exemplo", "Com o Conteúdo Pronto")
+            + mk.testimonials_section(DEPOIMENTOS, "conteudo-pronto") + html[sec_at:])
+    html = mk.extend_faq(html, mk.SUBSCRIPTION_FAQ, "conteudo-pronto")
+    html, n = re.subn(r'(<div class="hero-panel receipt">)', lambda m: mk.FREE_PRODUCT_LINE.replace('<p class="free-next">', '<p class="free-next cp-free">') + m.group(1), html, count=1)
     if MODE == policy.OPEN:
         html = re.sub(r'<a class="button primary" href="[^"]*" data-zev-sub="conteudo-pronto" data-zev-open-text="([^"]*)">[^<]*</a>',
                       r'<a class="button primary" href="/assinar/conteudo-pronto">\1</a>', html)
@@ -432,7 +452,23 @@ def apply_subscription(html: str) -> str:
         html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', add_offer, html, count=1, flags=re.S)
     return html
 
-PRICE_PAGES = set(PRODUCTS) | {"solucoes", "conteudo-pronto"}
+PRICE_PAGES = set(PRODUCTS) | {"solucoes", "conteudo-pronto"} | set(mk.NICHE_PAGES)
+# Testimonials: refused at build time unless every entry is real and consented (see scripts/sales_marketing.py).
+DEPOIMENTOS = mk.load_depoimentos()
+
+def apply_solucoes_marketing(html: str) -> str:
+    """Catalogue (marketing): free calculators next to the free checklist in the hero, links to the niche
+    pages, the demo video, testimonials only when real ones exist, and the FAQ with its JSON-LD."""
+    html, n = re.subn(r'(<a class="button primary key" href="/material-gratuito">[^<]*</a>)',
+                      lambda m: m.group(1) + '<a class="button secondary" href="/ferramentas">Usar as calculadoras grátis</a>', html, count=1)
+    if n != 1:
+        raise SystemExit("solucoes: checklist key missing")
+    html, n = re.subn(r'(<p class="byline">Feito por )', '<p class="free-note">Grátis e sem cartão: o checklist abre na hora e as calculadoras não pedem cadastro.</p>\\1', html, count=1)
+    if n != 1 or "<!--how-to-buy-->" not in html:
+        raise SystemExit("solucoes: marketing anchors missing")
+    html = html.replace("<!--how-to-buy-->", mk.niche_catalog_group() + mk.video_section() + mk.testimonials_section(DEPOIMENTOS)
+                        + "<!--how-to-buy-->" + mk.faq_section(mk.SOLUCOES_FAQ), 1)
+    return html.replace("</head>", mk.faq_ld_block(mk.SOLUCOES_FAQ) + "</head>", 1)
 
 def sales_notice() -> str:
     """The one honest notice on pages that show prices (closed build only). <p> with plain text and
@@ -467,6 +503,19 @@ def add_legal_footer(html: str) -> str:
         return html.replace("</main>", LEGAL_FOOTER + "</main>", 1)
     return html.replace("</body>", LEGAL_FOOTER + "</body>", 1)
 
+def write_niche_pages() -> None:
+    """/para/<ramo> landing pages (data/nichos.json), published flat as para-<ramo>.html so every
+    page-level gate (P13 closed mode, contact, CSP, hashed assets) scans them like any other page; the
+    Worker maps /para/<ramo> to them. Header and footer come from the catalogue source."""
+    src = (OUT / "solucoes.html").read_text(encoding="utf-8")
+    header = re.search(r'<header class="site-header">.*?</header>', src, re.S).group(0)
+    footer = re.search(r'<footer class="site-footer">.*?</footer>', src, re.S).group(0)
+    icon = re.search(r'<link rel="icon"[^>]*>', src).group(0)
+    cta = sales_cta(COMMERCE["negocio-completo"], f'Comprar Negócio Completo · R$ {COMMERCE["negocio-completo"]["price"]}')
+    for n in mk.NICHES:
+        page = mk.niche_page(n, header, footer, icon, cta, how_to_buy(), trust_mini(), mode_text)
+        (OUT / f"para-{n['slug']}.html").write_text(page, encoding="utf-8")
+
 def copy_text_page(slug: str) -> None:
     source = ROOT / slug / "index.html"
     if not source.exists():
@@ -482,7 +531,7 @@ def apply_approved_overlay() -> None:
     approved commercial/legal identity so a rebuild can never drop it again.
     """
     ov = json.loads((OVERLAY / "approved.json").read_text(encoding="utf-8"))
-    for slug in HTML_ROUTES:
+    for slug in HTML_ROUTES + mk.NICHE_PAGES:
         path = OUT / f"{slug}.html"
         html = path.read_text(encoding="utf-8")
         head, sep, body = html.partition("</head>")
@@ -520,7 +569,7 @@ def apply_approved_overlay() -> None:
         if slug in PRODUCTS:
             html = apply_commerce(slug, html)
         if slug == "solucoes":
-            html = apply_catalog(html)
+            html = apply_marketing_catalog(html)
         if slug == "conteudo-pronto":
             html = apply_subscription(html)
         html = html.replace("<!--how-to-buy-->", how_to_buy())
@@ -619,6 +668,13 @@ def fingerprint_assets() -> dict[str, str]:
         (OUT / out).parent.mkdir(parents=True, exist_ok=True)
         (OUT / out).write_bytes(data)
         mapping["/assets/previews/" + img.name] = "/" + out
+    # Demo video (mp4, webm, captions, poster): hashed names, referenced as /assets/video/<file> by the build.
+    for f in sorted(p for ext in ("*.mp4", "*.webm", "*.vtt", "*.webp") for p in (ROOT / "assets" / "video").glob(ext)):
+        data = f.read_bytes()
+        out = _hashed_name("video/" + f.name.replace("-poster", "_poster"), data)
+        (OUT / out).parent.mkdir(parents=True, exist_ok=True)
+        (OUT / out).write_bytes(data)
+        mapping["/assets/video/" + f.name] = "/" + out
     fonts = [v for k, v in mapping.items() if k.endswith(".woff2")]
     preload = "".join(f'<link rel="preload" href="{f}" as="font" type="font/woff2" crossorigin>' for f in sorted(fonts))
     for html_file in sorted(OUT.glob("*.html")):
@@ -627,8 +683,8 @@ def fingerprint_assets() -> dict[str, str]:
             attr = "href" if name.endswith(".css") else "src"
             html = html.replace(f'{attr}="/{name}"', f'{attr}="{mapping["/" + name]}"')
         for k, v in mapping.items():
-            if k.startswith("/assets/previews/"):
-                html = html.replace(f'src="{k}"', f'src="{v}"').replace(f'srcset="{k}"', f'srcset="{v}"')
+            if k.startswith(("/assets/previews/", "/assets/video/")):
+                html = html.replace(f'src="{k}"', f'src="{v}"').replace(f'srcset="{k}"', f'srcset="{v}"').replace(f'poster="{k}"', f'poster="{v}"')
         # Both themes (prefers-color-scheme, no toggle): every page declares light and dark; the browser
         # chrome follows the navy counter bar, identical in both themes.
         html = re.sub(r'<meta name="color-scheme"[^>]*>', "", html)
@@ -674,6 +730,7 @@ def main() -> int:
 
     for slug in HTML_ROUTES:
         copy_text_page(slug)
+    write_niche_pages()
 
     apply_approved_overlay()
 
@@ -684,6 +741,8 @@ def main() -> int:
     sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/</loc>.*?</url>", "", sitemap, count=1, flags=re.S)
     sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/blog(?:/[^<]+)?</loc>.*?</url>", "", sitemap, flags=re.S)
     sitemap = sitemap.replace("<loc>https://zevanory.api.br/", "<loc>https://vendas.zevanory.api.br/")
+    # Niche landing pages exist only on the sales domain (canonical /para/<ramo>).
+    sitemap = sitemap.replace("\n</urlset>", mk.niche_sitemap_entries("2026-10-25") + "\n</urlset>", 1)
     (OUT / "sitemap.xml").write_text(sitemap, encoding="utf-8")
     shutil.copytree(ROOT / "brand", OUT / "brand")
     (OUT / "assets").mkdir(exist_ok=True)

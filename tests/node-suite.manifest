@@ -95,6 +95,7 @@ tests/sales-control.test.mjs 6
 tests/sales-design.test.mjs 6
 tests/sales-evidence.test.mjs 3
 tests/sales-ledger.test.mjs 3
+tests/sales-marketing.test.mjs 6
 tests/sales-public-gzip.test.mjs 2
 tests/sales-trust-consistency.test.mjs 4
 tests/sales-worker-differential.test.mjs 6

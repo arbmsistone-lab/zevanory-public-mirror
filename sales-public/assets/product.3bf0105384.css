@@ -377,6 +377,54 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
 .lead-banner{background:var(--cupom);padding:var(--s-5);border-top:2px solid var(--regua);margin-bottom:var(--s-5)}
 .guide-list{padding-left:var(--s-5)}
 
+/* Marketing (closed-sales phase, 2026-10-25): worked examples, niche pages, demo, free first step. */
+.example-label{display:inline-block;margin:0 0 var(--s-3);padding:var(--s-1) var(--s-3);border:2px dashed var(--linha);color:var(--tinta);font-weight:700;font-size:var(--t-0)}
+.example-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:var(--s-6)}
+.example-col{border-top:2px solid var(--regua);padding-top:var(--s-4)}
+.example-before{border-top-color:var(--linha)}
+.example-col h3{margin:0 0 var(--s-3);font-size:var(--t-2)}
+.example-col ul,.example-col ol{display:grid;gap:var(--s-2);margin:0;padding-left:var(--s-5)}
+.example-col li{font-variant-numeric:tabular-nums lining-nums}
+.example-before li{color:var(--grafite)}
+.example-note{margin:var(--s-5) 0 0;color:var(--grafite);font-size:var(--t-0)}
+.free-next,.free-note{margin:var(--s-3) 0 0;color:var(--grafite);font-size:var(--t-0);line-height:1.55}
+.cp-free{margin-bottom:var(--s-3)}
+.niche-links{padding-block:var(--s-6);border-top:2px solid var(--regua)}
+.niche-links h2{font-size:var(--t-3)}
+.niche-links p{margin:var(--s-2) 0 0;color:var(--grafite)}
+.niche-list{display:flex;flex-wrap:wrap;gap:var(--s-2) var(--s-3);margin:var(--s-4) 0 0;padding:0;list-style:none}
+.niche-list a{display:inline-flex;align-items:center;min-height:48px;padding:0 var(--s-4);border:2px solid var(--azul-cedula);border-radius:var(--controle);font-weight:700;text-decoration:none}
+.niche-list a:hover{background:var(--azul-claro)}
+.hero.niche-hero{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr)}
+.niche-hero .receipt-head{max-width:none}
+.pain-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-5) var(--s-6)}
+.pain-card{border-top:2px solid var(--regua);padding-top:var(--s-4);scroll-margin-top:104px}
+.pain-card:target{outline:3px solid var(--azul-cedula);outline-offset:6px}
+.pain-card h3{font-size:var(--t-2)}
+.pain-card>p{margin:var(--s-2) 0 0;color:var(--grafite)}
+.pain-fix{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--s-3);margin:var(--s-3) 0 0;font-family:var(--display);font-stretch:87.5%;font-weight:750;font-variant-numeric:tabular-nums lining-nums}
+.pain-fix span{color:var(--grafite);font-family:var(--texto);font-weight:400;font-size:var(--t-0)}
+.niche-warning{margin:var(--s-6) 0 0;padding:var(--s-4);background:var(--cupom);border-left:4px solid var(--linha);max-width:72ch}
+.free-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-4) var(--s-6);margin:0;padding:0;list-style:none}
+.free-list li{display:grid;gap:0;max-width:none;padding-top:var(--s-3);border-top:1px solid var(--linha-suave)}
+.free-list a{font-weight:700}
+.free-list span{color:var(--grafite);font-size:var(--t-0)}
+.demo-figure{margin:0;max-width:960px}
+.demo-figure video{display:block;width:100%;height:auto;aspect-ratio:16 / 9;background:var(--cupom-elevado);border:1px solid var(--linha-suave)}
+/* Focus lands in the player's own controls (shadow tree): ring the host so keyboard focus is always visible. */
+.demo-figure video:focus,.demo-figure video:focus-within{outline:3px solid var(--azul-cedula);outline-offset:3px}
+.demo-figure figcaption{margin-top:var(--s-2);font-size:var(--t-0)}
+.demo-script{max-width:960px;margin-top:var(--s-4);background:var(--cupom);border:1px solid var(--linha-suave);border-radius:var(--controle)}
+.demo-script summary{display:flex;align-items:center;min-height:48px;padding:var(--s-3) var(--s-4);cursor:pointer;font-weight:700}
+.demo-script ol{margin:0;padding:0 var(--s-4) var(--s-4) var(--s-7);color:var(--grafite)}
+.depo-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-5)}
+.depo{margin:0;background:var(--cupom);padding:var(--s-5);border-top:2px solid var(--regua)}
+.depo blockquote{margin:0}
+.depo figcaption{margin-top:var(--s-3);color:var(--grafite);font-size:var(--t-0)}
+.fl-free{grid-column:1 / -1;padding-bottom:var(--s-4);border-bottom:1px solid var(--linha-suave)}
+.fl-free ul{display:flex;flex-wrap:wrap;gap:0 var(--s-5)}
+.fl-free a{font-weight:700}
+
 /* 44 px targets for links in running text (internal standard; same convention as PR 821). */
 :where(main,footer) :where(p,li,dd,small,figcaption) a:not(.button):not(.nav-cta):not(.receipt-line){display:inline-flex;align-items:center;min-height:44px;min-width:44px;max-width:100%;overflow-wrap:anywhere}
 .lead-consent a,.checklist-more a{display:inline-flex;align-items:center;min-height:44px}
@@ -393,6 +441,7 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
 @media(max-width:940px){
   .hero,.catalog-hero,.problem-grid,.offer,.founder-section{grid-template-columns:minmax(0,1fr);gap:var(--s-6)}
   .offer-main,.hero:has(.hero-panel) .hero-panel{position:static}
+  .hero.niche-hero{grid-template-columns:minmax(0,1fr)}
   .catalog-hero{grid-template-areas:"title" "receipt" "intro";grid-template-rows:auto}
   .trust-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .trust-item:nth-child(2){border-right:0}
@@ -437,7 +486,8 @@ input[type=email],input[type=text],input[type=number],select{min-height:48px;pad
   .hero,.catalog-hero{padding-block:var(--s-5) var(--s-7)}
   .hero-actions{display:grid}
   .button{width:100%}
-  .trust-grid,.feature-grid,.fit-grid,.lead-grid,.checklist-grid,.catalog-pair{grid-template-columns:minmax(0,1fr)}
+  .trust-grid,.feature-grid,.fit-grid,.lead-grid,.checklist-grid,.catalog-pair,.example-grid,.pain-grid,.free-list,.depo-list{grid-template-columns:minmax(0,1fr)}
+  .fl-free ul{display:grid}
   .trust-item,.trust-item+.trust-item{padding:var(--s-4) 0;border-right:0;border-bottom:1px solid var(--linha-suave)}
   .section{padding-block:var(--s-7)}
   .process article{grid-template-columns:48px minmax(0,1fr)}

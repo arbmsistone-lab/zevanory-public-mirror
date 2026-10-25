@@ -361,3 +361,43 @@ Real previews are light documents. In dark mode they sit on a lifted slip (`--cu
 border, and they are never filtered or inverted. Print forces the light tokens. `tests/sales-design.test.mjs`
 (f) fails if a page lacks dark rules or any token pair drops below AA (4.5:1 text, 3:1 UI) in either
 theme. CI runs the full budget a second time with `prefers-color-scheme: dark`.
+
+## 14. Marketing while sales are closed (2026-10-25)
+
+Built by `scripts/sales_marketing.py` (called from `scripts/build_sales_public.py`); contracts in
+`tests/sales-marketing.test.mjs`. Nothing here invents a testimonial, a customer count, a rating, a logo, a
+result or a deadline.
+
+- **Free first step.** The checklist and the calculators are the primary no-cost action: the yellow key on
+  `/solucoes` and on the niche pages is the free checklist, with "Usar as calculadoras grátis" beside it; every
+  footer opens with a "Comece grátis" block (checklist, calculators, IA por ramo); product pages add one quiet
+  line under the hero ("Comece sem pagar").
+- **FAQ ("Perguntas frequentes").** Native `<details>`/`<summary>`, no script. Questions answer real objections
+  from the terms and the product files: delivery, formats, spreadsheet skills, niche fit, the 7-day withdrawal,
+  "tem mensalidade?" (only Conteúdo Pronto) and what the waiting list does. Each page carries one schema.org
+  `FAQPage` with exactly the visible questions; inline JSON-LD is a data block that browsers never execute, so
+  `script-src 'self'` is unchanged (the site already shipped Product/FAQPage blocks this way). The waiting-list
+  answer is written to stay true when the owner opens sales at request time (no "sales are closed" claim, no
+  CTA label).
+- **Worked examples.** One per priced page, always under the visible stamp "Exemplo fictício, para ilustrar"
+  (dashed border, ink text), with round numbers. The steps are the product's real structure as the approved
+  previews show it (aulas A1–A8 and B1–B8 from the covers, the tab order printed on the Lucro & Caixa cover,
+  the plan's weeks 1 and 2); the Lucro & Caixa and IA na Prática numbers are the manual's own fictional
+  examples, which appear on the approved inner pages. The test fails if any `R$` amount outside such a block is
+  not a catalogue price.
+- **Niche pages** `/para/salao`, `/para/oficina`, `/para/clinica`, `/para/loja` (data in `data/nichos.json`,
+  published as `para-<ramo>.html`, routed by the Worker). Each page: the niche's pains in its own words as the
+  signature receipt, what in which product handles each pain (with links and prices), the niche's free guides
+  and calculators (reusing "IA por ramo"), a niche-specific fictional example, the full trust block, an FAQ
+  subset with niche questions and the waiting-list CTA (restored to a buy CTA by the owner switch). The clinic
+  page says plainly that nothing here is an agenda or medical-record system and that health data never goes
+  into AI tools. A test caps the shared 4-word shingles between niche pages.
+- **Demo video** on `/solucoes`, below the catalogue: 75 s, silent, captions in pt-BR on by default, built only
+  from the approved preview images (`scripts/build_demo_video.py`, provenance in
+  `docs/evidence/sales-ux/demo-video-manifest.json`), every page at native size or smaller, a persistent bar
+  "Demonstração com páginas reais do material". `<video controls preload="none" playsinline muted>`, no
+  autoplay, hashed MP4 + WebM + VTT + poster, and the full script as text in a `<details>` (media alternative).
+  The poster is the typography intro card (~11 KB): a poster attribute is fetched with the page even with
+  `preload="none"`, and a 40 KB page-shot poster measured +370 ms of mobile LCP on `/solucoes` (Lighthouse 99).
+- **Testimonials**: structure only. `data/depoimentos.json` is `[]`, so no section renders; how the owner adds a
+  real, consented one is in `docs/ops/depoimentos.md`.

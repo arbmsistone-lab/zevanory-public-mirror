@@ -1,0 +1,163 @@
+{
+  "schema": "zevanory.demo-video.v1",
+  "label": "Demonstração com páginas reais do material",
+  "generated_by": "scripts/build_demo_video.py",
+  "renderer": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers",
+  "authorization": "Same images as the approved previews (owner: 'AUTORIZO PRÉVIAS REAIS DOS PRODUTOS NO SITE'); each shown at native size or smaller (never enlarged), nothing downloadable beyond the video.",
+  "width": 1280,
+  "height": 720,
+  "fps": 24,
+  "duration_s": 75.0,
+  "audio": "none (silent by design)",
+  "captions": {
+    "file": "assets/video/zevanory-demo.vtt",
+    "srclang": "pt-BR",
+    "kind": "captions"
+  },
+  "shots": [
+    {
+      "id": "intro",
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "caption": "Demonstração com páginas reais do material: capas, uma página interna e um trecho de planilha de cada produto.",
+      "source": "typography only"
+    },
+    {
+      "id": "manual-lucro-capa",
+      "start_s": 4.0,
+      "end_s": 9.5,
+      "caption": "Lucro & Caixa: capa do manual. Ela diz o que o produto resolve e a ordem das abas da planilha.",
+      "source": "assets/previews/manual-lucro-capa.webp",
+      "source_sha256": "35910456714be17a487aeaf1b41604bf3c927395900c8273ce7c9f1f794faecd",
+      "label": "página real do material"
+    },
+    {
+      "id": "manual-lucro-modulo-1",
+      "start_s": 9.5,
+      "end_s": 15.0,
+      "caption": "Página interna: módulos 1 e 2, faturamento x resultado e mapa de custos, com exemplo fictício e atividade.",
+      "source": "assets/previews/manual-lucro-modulo-1.webp",
+      "source_sha256": "08827bb6a531436c3a7af6a58cb9b3975ae3cff1dd285e0357db56693a7c6e22",
+      "label": "página real do material"
+    },
+    {
+      "id": "planilha-lucro-painel",
+      "start_s": 15.0,
+      "end_s": 20.5,
+      "caption": "Trecho da planilha: o Painel de Decisão. Nesta prévia, a coluna de leitura está oculta.",
+      "source": "assets/previews/planilha-lucro-painel.webp",
+      "source_sha256": "29241f365bebe47a6a7c2abc64159694d9e0a49a165f1b956b8f54b4e54630c6",
+      "label": "página real do material (trechos ocultos)"
+    },
+    {
+      "id": "manual-vendas-capa",
+      "start_s": 20.5,
+      "end_s": 26.0,
+      "caption": "Vendas na Prática: capa com o público, o formato e as oito aulas, de B1 a B8.",
+      "source": "assets/previews/manual-vendas-capa.webp",
+      "source_sha256": "45c84cb5653f22839d5d48b4259e4311e6faec2bcd33e98000794b015c8c3697",
+      "label": "página real do material"
+    },
+    {
+      "id": "manual-vendas-aula-b1",
+      "start_s": 26.0,
+      "end_s": 31.5,
+      "caption": "Aula B1: defina uma oferta que você consegue cumprir. Objetivo, exemplo comentado, exercício e como conferir.",
+      "source": "assets/previews/manual-vendas-aula-b1.webp",
+      "source_sha256": "bb5028c64513bc2f3c868de7ff2324f6c3bb4b6e294a9318a37dd4c4135db1bd",
+      "label": "página real do material"
+    },
+    {
+      "id": "planilha-vendas-oportunidades",
+      "start_s": 31.5,
+      "end_s": 37.0,
+      "caption": "Planilha comercial, aba Oportunidades: origem, etapa, resultado, proposta e próxima ação.",
+      "source": "assets/previews/planilha-vendas-oportunidades.webp",
+      "source_sha256": "4f883cbc8c7e93e4f26448e0ff322f78dd9dc2eb151adebd1888e8c0423238f9",
+      "label": "trecho real da planilha"
+    },
+    {
+      "id": "manual-ia-capa",
+      "start_s": 37.0,
+      "end_s": 42.5,
+      "caption": "IA na Prática: capa com o público, o formato e as oito aulas, de A1 a A8.",
+      "source": "assets/previews/manual-ia-capa.webp",
+      "source_sha256": "4e878c23ef71edcbc2453c4e919785117857940de2b34a05a361752155580bb5",
+      "label": "página real do material"
+    },
+    {
+      "id": "manual-ia-aula-a1",
+      "start_s": 42.5,
+      "end_s": 48.0,
+      "caption": "Aula A1: escolha uma rotina que vale organizar e meça o tempo completo, com a revisão incluída.",
+      "source": "assets/previews/manual-ia-aula-a1.webp",
+      "source_sha256": "275ecdef3b1777e93472a9dadbf87fad465772fda729afb5f6c40a201516c6ec",
+      "label": "página real do material"
+    },
+    {
+      "id": "planilha-ia-orcamento",
+      "start_s": 48.0,
+      "end_s": 53.5,
+      "caption": "Planilha, aba Orçamento: item, quantidade, unitário, subtotal e conferência.",
+      "source": "assets/previews/planilha-ia-orcamento.webp",
+      "source_sha256": "3c89890c2a427983dae12e4bf9a88e68cfc435eb76b8bca536ae333663e4f5a3",
+      "label": "trecho real da planilha"
+    },
+    {
+      "id": "plano-30-dias-capa",
+      "start_s": 53.5,
+      "end_s": 59.0,
+      "caption": "Negócio Completo: o Plano integrado de 30 dias, com o modo de uso e a semana 1.",
+      "source": "assets/previews/plano-30-dias-capa.webp",
+      "source_sha256": "d0378593080ef796f9da0c521327f8a00a938d043767193cf0fbfd64f49b2068",
+      "label": "página real do material"
+    },
+    {
+      "id": "plano-30-dias-semana-2",
+      "start_s": 59.0,
+      "end_s": 64.5,
+      "caption": "Semana 2 do plano: ações diárias de vendas e acompanhamento, cada uma com critério de conclusão.",
+      "source": "assets/previews/plano-30-dias-semana-2.webp",
+      "source_sha256": "e41b69a8436ef86e60b72b237c488cb496583ee14d0027cee7e1165f710f962d",
+      "label": "trecho de página real do material"
+    },
+    {
+      "id": "painel-decisao-integrada",
+      "start_s": 64.5,
+      "end_s": 70.0,
+      "caption": "Painel de Decisão Integrada: as colunas por produto ou serviço, do mesmo período.",
+      "source": "assets/previews/painel-decisao-integrada.webp",
+      "source_sha256": "b2c1fce7cc1798486e676444e14113f0e3971d01684ebaada936d91e2d6572ca",
+      "label": "trecho real da planilha"
+    },
+    {
+      "id": "outro",
+      "start_s": 70.0,
+      "end_s": 75.0,
+      "caption": "Tudo chega por e-mail, num arquivo .zip, em link pessoal válido por 72 horas e para um download.",
+      "source": "typography only"
+    }
+  ],
+  "outputs": {
+    "mp4": {
+      "file": "assets/video/zevanory-demo.mp4",
+      "sha256": "54f10934c1538d5d03227f5f1f54826254f24f03b5be96c38fa33fbb6a16b111",
+      "bytes": 965976
+    },
+    "webm": {
+      "file": "assets/video/zevanory-demo.webm",
+      "sha256": "2c2debd05b4960615aab04b50cebcf93454999ce25a8c81df1ecec2d051311ff",
+      "bytes": 1533072
+    },
+    "vtt": {
+      "file": "assets/video/zevanory-demo.vtt",
+      "sha256": "3491d079e396187646d549439745430d7ba40202d6f7e0f55694c760470c8771",
+      "bytes": 1791
+    },
+    "poster": {
+      "file": "assets/video/zevanory-demo-poster.webp",
+      "sha256": "627d2abf4bd02b036bcad604ed745e24ec4515a85572980542fae430f3171346",
+      "bytes": 11344
+    }
+  }
+}

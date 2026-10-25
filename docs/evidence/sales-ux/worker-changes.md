@@ -72,3 +72,11 @@ variant now target those strings:
     - (d) checkout and purchase routes are identical to gh-pages, closed and open;
     - (e) security headers and CSP are identical.
 - `tests/sales-design.test.mjs` (a): the built `404.html` contract.
+
+## Marketing PR (#924, stacked on #914): niche landing pages
+
+Third intended difference, asserted by `tests/sales-worker-differential.test.mjs`: `/para/salao`, `/para/oficina`,
+`/para/clinica` and `/para/loja` (with or without trailing slash) now serve `para-<ramo>.html` with status 200,
+the same CSP and `no-store, no-transform` (they follow the sales switch like the other priced pages). Before they
+were 404. The flat file names (`/para-salao`) and unknown niches (`/para/barbearia`, `/para/constructor`) stay
+designed 404s. No other route, header or body changes.

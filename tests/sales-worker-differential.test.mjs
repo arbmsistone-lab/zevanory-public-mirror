@@ -35,12 +35,23 @@ const HUNK_404 = `  // Designed 404 for unknown PAGE paths (no file extension); 
     if(nf.status===200) return new Response(request.method==="HEAD"?null:nf.body,{status:404,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
   }
 `;
+// Marketing PR (#924, stacked on #914): niche landing pages /para/<ramo>. Third intended difference:
+// those four paths serve para-<ramo>.html under the sales switch (no-store); everything else is unchanged.
+const HUNK_NICHE_NEW = `// Niche landing pages (marketing, 2026-10-25): canonical /para/<ramo>, published flat as para-<ramo>.html
+// (scripts/sales_marketing.py). They show prices and a waiting-list CTA, so they follow the sales switch.
+export const NICHE_ROUTES=Object.freeze({"para/salao":"para-salao","para/oficina":"para-oficina","para/clinica":"para-clinica","para/loja":"para-loja"});
+const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","conteudo-pronto",...Object.values(NICHE_ROUTES)]);`;
+const HUNK_NICHE_OLD = `const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","conteudo-pronto"]);`;
+const HUNK_NICHE_ROUTE = ` else if(Object.prototype.hasOwnProperty.call(NICHE_ROUTES,key)) { page=NICHE_ROUTES[key]; url.pathname="/"+page+".html"; }`;
+const NICHE_PATHS = ["/para/salao", "/para/oficina", "/para/clinica", "/para/loja"];
 const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex"); };
 
 async function loadWorkers() {
   assert.equal(NEW_SRC.split(HUNK_HOTMART_NEW).length, 2, "Hotmart hunk present exactly once");
   assert.equal(NEW_SRC.split(HUNK_404).length, 2, "404 hunk present exactly once");
-  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "");
+  assert.equal(NEW_SRC.split(HUNK_NICHE_NEW).length, 2, "niche routes hunk present exactly once");
+  assert.equal(NEW_SRC.split(HUNK_NICHE_ROUTE).length, 2, "niche route branch present exactly once");
+  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "").replace(HUNK_NICHE_NEW, HUNK_NICHE_OLD).replace(HUNK_NICHE_ROUTE, "");
   assert.equal(gitBlob(oldSrc), GH_PAGES_BLOB, "reverse-applied file is byte-identical to the gh-pages Worker (no other change)");
   const tmp = join(ROOT, "worker", `.gh-pages-sales-worker-${process.pid}-${Date.now()}.mjs`);
   writeFileSync(tmp, oldSrc);
@@ -70,7 +81,8 @@ function matrix() {
     "/comprar/ZEV-IA-011", "/comprar/ZEV-NGC-011", "/comprar/NAOEXISTE", "/comprar/", "/%63omprar/ZEV-IA-011",
     "/assinar/conteudo-pronto", "/hotmart/ia-na-pratica", "/hotmart/negocio-completo", "/reembolso/solicitar",
     `/assets/${css}`, `/assets/previews/${prev}`, "/assets/nao-existe.0123456789.css", "/product.css",
-    "/robots.txt", "/sitemap.xml", "/whatsapp-contact.js", "/llms.txt", "/brand/favicon.svg", "/health", "/arbm-sist"])];
+    "/robots.txt", "/sitemap.xml", "/whatsapp-contact.js", "/llms.txt", "/brand/favicon.svg", "/health", "/arbm-sist",
+    ...NICHE_PATHS, "/para/salao/", "/para/barbearia"])];
 }
 
 async function snap(worker, path, method, open) {
@@ -80,7 +92,8 @@ async function snap(worker, path, method, open) {
   return { status: res.status, headers, body };
 }
 
-const isUnknownPage = (p) => ["/pagina-que-nao-existe", "/nao/existe/", "/solucoes/extra", "/x"].includes(p);
+// The flat niche files (/para-salao) are not routes: unknown pages for both Workers; so is /para/barbearia.
+const isUnknownPage = (p) => ["/pagina-que-nao-existe", "/nao/existe/", "/solucoes/extra", "/x", "/para/barbearia"].includes(p) || /^\/para-[a-z]+$/.test(p);
 
 test("differential: gh-pages Worker vs #914 Worker — only the intended differences", async () => {
   const { OLD, NEW } = await loadWorkers();
@@ -98,6 +111,17 @@ test("differential: gh-pages Worker vs #914 Worker — only the intended differe
       assert.equal(b.headers["content-security-policy"], a.headers["content-security-policy"] || b.headers["content-security-policy"], key);
       if (method === "GET") assert.match(Buffer.from(b.body, "base64").toString(), /Esta página não existe\./, key);
       diffs.push("404:" + key); continue;
+    }
+    if (NICHE_PATHS.includes(path.replace(/\/$/, ""))) {
+      assert.equal(a.status, 404, key + ": not a route before"); assert.equal(b.status, 200, key + ": niche page now");
+      assert.equal(b.headers["cache-control"], "no-store, no-transform", key + ": follows the sales switch");
+      assert.equal(b.headers["content-security-policy"], (await snap(NEW, "/solucoes", method, open)).headers["content-security-policy"], key + ": same CSP");
+      if (method === "GET") {
+        const html = Buffer.from(b.body, "base64").toString();
+        assert.ok(html.includes(`<link rel="canonical" href="https://vendas.zevanory.api.br${path.replace(/\/$/, "")}">`), key);
+        assert.equal(/href="\/comprar\//.test(html), open, key + ": buy CTA only with the switch open");
+      }
+      diffs.push("niche:" + key); continue;
     }
     if (open && method === "GET" && path.startsWith("/hotmart/")) {
       assert.equal(a.status, b.status, key); assert.deepEqual(a.headers, b.headers, key + ": headers identical");
