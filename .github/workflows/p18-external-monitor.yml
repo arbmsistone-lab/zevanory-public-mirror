@@ -2,12 +2,14 @@ name: P18 external monitor (read-only)
 
 # Roteiro Mestre v4.7, P18 (seção 5) e N2 (seção 9): monitor EXTERNO e independente da Cloudflare, gratuito,
 # sem conta nova. Runner do GitHub (Azure) sonda por GET as páginas de venda e o /api/status (nunca /comprar,
-# checkout ou pagamento), registra a disponibilidade e a validade da prova P22 no ramo evidence/b0-baseline
-# (p18/probes-AAAA-MM.jsonl) e usa uma issue do GitHub como alerta: abre após 2 sondagens seguidas com falha,
-# atualiza enquanto durar, fecha na primeira sondagem boa. Cadência e orçamento: ver o PR (seção 11).
+# checkout ou pagamento). Auditoria Sol 246.09: cron a cada 5 min (minutos 2, 7, ..., fora do pico do minuto 0) e
+# confirmação da 1ª falha por re-sondagem NA MESMA EXECUÇÃO após 60 s (2 falhas seguidas sem esperar o próximo cron).
+# Grava no ramo evidence/b0-baseline: p18/probes-*.jsonl, p18/incidents-*.jsonl (1ª falha observada, confirmação,
+# emissão do alerta, recuperação, latências), p18/runs-*.jsonl (atraso do agendador) e p18/heartbeat.json (lido pelo
+# vigia p18-monitor-watchdog). Alerta: issue do GitHub aberta na confirmação, fechada na 1ª sondagem boa.
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '2-59/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -22,7 +24,7 @@ jobs:
   probe:
     if: ${{ github.ref == 'refs/heads/gh-pages' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8   # sondagem (<= 43 s) + espera de confirmação (60 s) + re-sondagem (<= 43 s) + API + publicação
     env:
       EVIDENCE_BRANCH: evidence/b0-baseline
     steps:
@@ -41,7 +43,7 @@ jobs:
         run: |
           echo "EVIDENCE_DIR=$RUNNER_TEMP/evidence" >> "$GITHUB_ENV"
           EVIDENCE_DIR="$RUNNER_TEMP/evidence" bash scripts/b0/evidence-branch.sh prepare
-      - name: Sondar de fora da Cloudflare e decidir o alerta
+      - name: Sondar de fora da Cloudflare, confirmar na mesma execução e decidir o alerta
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/b0/p18-monitor.mjs
