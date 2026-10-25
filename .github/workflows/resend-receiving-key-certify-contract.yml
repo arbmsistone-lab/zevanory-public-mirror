@@ -1,0 +1,42 @@
+name: resend-receiving-key-certify-contract
+
+# Certificação da chave do Resend Receiving antes de gravar no KV: contrato offline (HTTP e wrangler falsos),
+# contagem exata e mutantes. Só pull_request: nunca dispara no merge, sem segredo, sem rede além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/resend-receiving-key-certify-contract.yml"
+      - ".github/workflows/sandbox-resend-receiving-secret.yml"
+      - "scripts/ops/resend_receiving_key_certify.py"
+      - "scripts/ci/mutants_resend_receiving_key.py"
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/test_resend_receiving_key_certify.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Contrato (offline, contagem exata)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_resend_receiving_key_certify -v < /dev/null 2>&1 | tee /tmp/cert.txt
+          grep -qE "^Ran 21 tests in " /tmp/cert.txt && grep -qx "OK" /tmp/cert.txt || { echo "::error::contagem diferente de 21 ou falha"; exit 1; }
+      - name: Mutantes pelo classificador compartilhado (R5; todos KILLED pela asserção primária)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_resend_receiving_key.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=RESEND_RECEIVING_KEY_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS suite=resend_receiving_key total=18 killed=18 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante não KILLED (SURVIVED/INCONCLUSIVE) ou contagem mudou"; exit 1; }
