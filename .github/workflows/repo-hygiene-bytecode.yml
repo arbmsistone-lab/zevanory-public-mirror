@@ -49,7 +49,7 @@ jobs:
           PYTHONIOENCODING: "utf-8"
         run: |
           set -euo pipefail
-          # No Linux, o mp-rotation-contract roda os 22 testes sem pular nenhum. Aqui os 8 que executam os passos
+          # No Linux, o mp-rotation-contract roda os 24 testes sem pular nenhum. Aqui os 8 que executam os passos
           # bash do workflow (curl/npx falsos com shebang POSIX, bash) são pulados COM razão LINUX_ONLY;
           # qualquer outro pulo (ex.: jq/node ausentes) ou falha derruba o job.
           rc=0
@@ -58,8 +58,8 @@ jobs:
           # Diagnóstico legível sem baixar o log: cada falha, erro ou pulo vira anotação.
           grep -E "^(FAIL|ERROR):| \.\.\. (FAIL|ERROR|skipped)|Error:" /tmp/mp.txt | head -20 | while IFS= read -r l; do echo "::warning title=MP_ROTATION_WINDOWS::$l"; done
           [ "$rc" = 0 ] || { echo "::error::unittest saiu com $rc"; exit 1; }
-          grep -qx "Ran 22 tests in .*" /tmp/mp.txt || { echo "::error::contagem diferente de 22"; exit 1; }
+          grep -qx "Ran 24 tests in .*" /tmp/mp.txt || { echo "::error::contagem diferente de 24"; exit 1; }
           grep -qx "OK (skipped=8)" /tmp/mp.txt || { echo "::error::esperado OK (skipped=8)"; exit 1; }
           n="$(grep -c "skipped 'LINUX_ONLY: " /tmp/mp.txt || true)"
           [ "$n" = 8 ] || { echo "::error::esperados 8 pulados LINUX_ONLY, obtidos $n"; exit 1; }
-          echo "::notice title=MP_ROTATION_TESTS (Windows)::Ran 22, OK, 14 executados, 8 LINUX_ONLY declarados"
+          echo "::notice title=MP_ROTATION_TESTS (Windows)::Ran 24, OK, 16 executados, 8 LINUX_ONLY declarados"

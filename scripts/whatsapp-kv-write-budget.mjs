@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { whatsappInboundSafety } from "../worker/whatsapp-inbound-safety.mjs";
-import { whatsappStageRecorder, latestWhatsappStage } from "../worker/whatsapp-background.mjs";
+import { whatsappStageRecorder } from "../worker/whatsapp-background.mjs";
 import { converse, loadHistory, saveHistory, speechText, voiceReplyBody } from "../worker/whatsapp-conversation.mjs";
 import { saveWhatsappObservation } from "../worker/voice-operational-audit.mjs";
 import { getWhatsappOpsStore, resetWhatsappOpsStoreMemoForTest } from "../worker/whatsapp-neon-store.mjs";
+import { whatsappChannelRetired, whatsappInstantReplyEnabled } from "../worker/whatsapp-retirement.mjs";
 
 function fakeKv(){
  const values=new Map(),puts=[];
@@ -36,12 +37,15 @@ const end=workerSource.indexOf("function extractWhatsappInboundMessages",start);
 assert.ok(start>=0&&end>start,"reply source slice missing");
 const replySource=workerSource.slice(start,end);
 
-async function runReply({database=true,messageId="wamid.behavior"}={}){
+async function runReply({database=true,messageId="wamid.behavior",retired=false}={}){
+ let fetches=0;
  resetWhatsappOpsStoreMemoForTest();
  const kv=fakeKv(),sql=fakeSql();
  const ops=getWhatsappOpsStore(database?{DATABASE_URL:"postgres://behavior-"+messageId,ZEVANORY_PRIVATE_ARTIFACTS:kv}:{ZEVANORY_PRIVATE_ARTIFACTS:kv},()=>sql);
  const sandbox={
-  process:{env:{WHATSAPP_VOICE_REPLY:"false",SALE_GLOBALLY_ENABLED:"false"}},
+  // Historical budget measured with the channel explicitly un-retired and instant replies on.
+  process:{env:{WHATSAPP_VOICE_REPLY:"false",SALE_GLOBALLY_ENABLED:"false",...(retired?{}:{WHATSAPP_CHANNEL_RETIRED:"false",WHATSAPP_INSTANT_REPLY:"true"})}},
+  whatsappChannelRetired,whatsappInstantReplyEnabled,
   globalThis:{__ZEVANORY_PRIVATE_KV__:kv,__ZEVANORY_WHATSAPP_OPS_STORE__:ops,__ZEVANORY_WHATSAPP_E2E_STORE__:ops,__ZEVANORY_WHATSAPP_RUNTIME__:{identity_verified:true,access_token:"test-token",phone_number_id:"1300972319774588",graph_version:"v26.0"}},
   whatsappInboundSafety,whatsappStageRecorder,
   loadWhatsappHistory:loadHistory,saveWhatsappHistory:saveHistory,
@@ -50,40 +54,31 @@ async function runReply({database=true,messageId="wamid.behavior"}={}){
   whatsappSpeechText:speechText,voiceReplyBody,
   saveWhatsappObservation,
   recordWhatsappEvidence:async(type,payload)=>{await ops.put("whatsapp-e2e/"+Date.now()+"-"+type,JSON.stringify(payload),{expirationTtl:60});return true;},
-  fetch:async()=>new Response(JSON.stringify({messages:[{id:"wamid.out"}]}),{status:200,headers:{"content-type":"application/json"}}),
+  fetch:async()=>{fetches++;return new Response(JSON.stringify({messages:[{id:"wamid.out"}]}),{status:200,headers:{"content-type":"application/json"}});},
   Response,AbortSignal,URL,encodeURIComponent,Date,console,
   __name:(fn)=>fn
  };
  vm.createContext(sandbox);
  vm.runInContext(replySource,sandbox);
  const result=await sandbox.replyWhatsappConversation({from:"5511999991234",phone_number_id:"1300972319774588",type:"text",message_id:messageId},"quanto custa o combo?");
- return {result,kv,sql,ops};
+ return {result,kv,sql,ops,fetches};
 }
 
-const live=await runReply({database:true});
-assert.equal(live.result.sent,true);
-assert.equal(live.kv.puts.length,1,"KV must receive exactly the dedup put");
-const neonKeys=[...live.sql.values.keys()];
-assert.ok(neonKeys.some(k=>k.startsWith("whatsapp:instant:stage:")),"Neon stages missing");
-assert.ok(neonKeys.some(k=>k.startsWith("wa:conv:")),"Neon history missing");
-assert.ok(neonKeys.some(k=>k.startsWith("whatsapp:observation:")),"Neon observation missing");
-const last=await latestWhatsappStage(live.ops);
-assert.ok(last?.stage,"instant-status source must resolve a Neon stage");
-
-const noDb=await runReply({database:false,messageId:"wamid.nodb"});
-assert.equal(noDb.result.sent,true,"missing DATABASE_URL must not break customer response");
-assert.equal(noDb.kv.puts.length,1,"without DB, KV still only receives dedup");
-
-const before=13,after=live.kv.puts.length;
+// WhatsApp retired as a code constant (Meta disabled WABA 4019600665012911 on 2026-10-10): the reply
+// path writes NOTHING (0 KV, 0 Neon) and calls no provider, with or without re-enable env values.
+const runs=[];
+for(const database of [true,false])for(const retired of [true,false])runs.push(await runReply({database,messageId:`wamid.retired-${database}-${retired}`,retired}));
+for(const r of runs){
+ assert.equal(r.result.sent,false);assert.equal(r.result.reason,"whatsapp_channel_retired");
+ assert.equal(r.fetches,0,"retired channel must not call the provider");
+ assert.equal(r.kv.puts.length,0,"no KV write");assert.equal(r.sql.values.size,0,"no Neon write");
+}
 console.log(JSON.stringify({
  WHATSAPP_KV_WRITE_BUDGET:"PASS",
- before_minimum_writes_per_text_message:before,
- after_writes_per_text_message:after,
- reduction_percent:Number((((before-after)/before)*100).toFixed(1)),
- kv_remaining:"dedup_only",
- neon_stage:true,
- neon_history:true,
- neon_observation:true,
- instant_status_reads_neon:true,
- no_database_url_response_ok:true
+ before_minimum_writes_per_text_message:13,
+ after_writes_per_text_message:0,
+ reduction_percent:100,
+ kv_remaining:"none_channel_retired",
+ provider_calls:0,
+ env_cannot_reenable:true
 }));

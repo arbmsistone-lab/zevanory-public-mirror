@@ -13,12 +13,13 @@ concurrency:
 jobs:
   create-clean-order-and-preference:
     environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
+    # Criava pedido piloto e preferência sandbox no Worker de PRODUÇÃO (zevanory.api.br) com MERCADOPAGO_TEST_*.
+    if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       APP: https://zevanory.api.br
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
     steps:
       - name: Create canonical R$197 order and preference
         shell: bash
