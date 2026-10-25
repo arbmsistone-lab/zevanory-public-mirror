@@ -16,7 +16,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
-import { retiredPublicAssetResponse, RETIRED_CONTACT_SCRIPT, RETIRED_CONTACT_BODY, RETIRED_CONTACT_CLEAR_SITE_DATA } from "../worker/retired-public-assets.mjs";
+import { retiredPublicAssetResponse, RETIRED_CONTACT_SCRIPT, RETIRED_CONTACT_BODY, RETIRED_CONTACT_CLEAR_SITE_DATA, RETIRED_PAGE_REDIRECTS } from "../worker/retired-public-assets.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const GENERATOR = join(ROOT, "scripts/deploy/prepare-central-candidate.py");
@@ -84,7 +84,12 @@ function runGenerator(publicFiles) {
   }
 }
 
-test("(b) generator: no published copy, every reference stripped, e-mail rewrite kept only where the script ran", () => {
+// The e-mail rewrite used to be pinned to the pages that loaded the script (d.html stayed with contato@ on purpose:
+// the frozen /exclusao-dados page never loaded it and kept "contato@" twice, a PR #935 follow-up waiting for an owner
+// decision). Decision delegated 2026-10-25: the apex publishes ONLY the official mailbox of data/politica-unica.json
+// (suporte@; contato@ is still accepted as an inbound alias by worker/support-email-forward.mjs). So d.html is now
+// rewritten too, and pages that loaded the script keep the stricter rewrite (subject dropped, same href the script made).
+test("(b) generator: no published copy, every reference stripped, official mailbox on every page", () => {
   const r = runGenerator({
     [`${NAME}.js`]: "(()=>{const EMAIL='suporte@zevanory.api.br';})();\n",
     "a.html": `<a class="nav-cta" href="mailto:contato@zevanory.api.br?subject=Quero%20avaliar">Falar</a>${TAG}</body>\n`,
@@ -98,7 +103,7 @@ test("(b) generator: no published copy, every reference stripped, e-mail rewrite
   assert.equal(r.read("a.html"), '<a class="nav-cta" href="mailto:suporte@zevanory.api.br">Falar</a></body>\n', "same href the e-mail-only script produced");
   assert.equal(r.read("b.html"), "<footer>x</footer>\n</body>\n");
   assert.equal(r.read("c.html"), "<p>ok</p>\n");
-  assert.equal(r.read("d.html"), '<p><a href="mailto:contato@zevanory.api.br">contato@zevanory.api.br</a></p>\n', "a page that never loaded the script is unchanged");
+  assert.equal(r.read("d.html"), '<p><a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p>\n', "a page that never loaded the script now shows the official mailbox too");
 });
 
 test("(b) generator fails closed on any other mention of the retired script in published assets", () => {
@@ -111,4 +116,70 @@ test("(b) generator fails closed on any other mention of the retired script in p
     assert.notEqual(r.status, 0, name);
     assert.match(r.output, new RegExp(`PUBLIC_RETIRED_CONTACT_SCRIPT_REFERENCED .*${name.replace(".", "\\.")}`), name);
   }
+});
+
+// Retired legacy pages of the frozen snapshot (decision delegated 2026-10-25, PR #935 follow-up):
+// /piloto and /piloto-interesse -> store catalogue, /confianca -> canonical "Quem criou"; 308 + noindex, no body.
+test("(c) retired pages: 308 to the canonical store page, noindex, query dropped, exact paths only", async () => {
+  assert.deepEqual(RETIRED_PAGE_REDIRECTS, {
+    "/piloto": "https://vendas.zevanory.api.br/solucoes",
+    "/piloto-interesse": "https://vendas.zevanory.api.br/solucoes",
+    "/confianca": "https://vendas.zevanory.api.br/quem-criou/",
+  });
+  // Each target is the canonical the store itself declares (single source of truth: sales-public).
+  for (const [slug, target] of [["solucoes", RETIRED_PAGE_REDIRECTS["/piloto"]], ["quem-criou", RETIRED_PAGE_REDIRECTS["/confianca"]]]) {
+    assert.ok(readTextNormalized(join(ROOT, "sales-public", slug + ".html")).includes(`<link rel="canonical" href="${target}">`), slug);
+  }
+  for (const [base, target] of Object.entries(RETIRED_PAGE_REDIRECTS)) {
+    for (const path of [base, base + "/", base + ".html", base + "?utm_source=x&ref=y"]) {
+      for (const method of ["GET", "HEAD"]) {
+        const res = retiredPublicAssetResponse(req(path, method));
+        assert.ok(res, path);
+        assert.equal(res.status, 308, path);
+        assert.equal(res.headers.get("location"), target, path);
+        assert.equal(res.headers.get("x-robots-tag"), "noindex", path);
+        assert.equal(res.headers.get("clear-site-data"), null, "Clear-Site-Data only on the script tombstone");
+        assert.equal(await res.text(), "", path);
+      }
+    }
+    const post = retiredPublicAssetResponse(req(base, "POST"));
+    assert.equal(post.status, 405);
+    assert.equal(post.headers.get("allow"), "GET, HEAD");
+    assert.equal(post.headers.get("location"), null);
+  }
+  for (const path of ["/pilotos", "/piloto/x", "/PILOTO", "/piloto.js", "/piloto.css", "/piloto-interesse.js", "/confiancas", "/confianca/x",
+    "/x/confianca", "/exclusao-dados", "/quem-criou", "/blog", "/sitemap.xml"]) {
+    assert.equal(retiredPublicAssetResponse(req(path)), null, path);
+  }
+});
+
+test("(c) generator: retired page files and their own assets are no longer published", () => {
+  const r = runGenerator({
+    "piloto.html": "<h1>Piloto</h1>\n", "piloto.css": "a{}\n", "piloto.js": "1;\n",
+    "piloto-interesse.html": "<h1>Interesse</h1>\n", "piloto-interesse.js": "2;\n",
+    "confianca.html": "<h1>Confiança</h1>\n", "termos.html": "<p>termos</p>\n",
+  });
+  assert.equal(r.status, 0, r.output.slice(-800));
+  assert.match(r.output, /^PUBLIC_RETIRED_PAGES=ABSENT$/m);
+  for (const n of ["piloto.html", "piloto.css", "piloto.js", "piloto-interesse.html", "piloto-interesse.js", "confianca.html"]) assert.equal(r.read(n), null, n);
+  assert.equal(r.read("termos.html"), "<p>termos</p>\n", "other pages untouched");
+});
+
+test("(c) generator: /exclusao-dados, JSON-LD and security.txt publish only the official mailbox of the single policy", () => {
+  const policy = JSON.parse(readFileSync(join(ROOT, "data/politica-unica.json"), "utf8"));
+  assert.equal(policy.contato_publico.email, "suporte@zevanory.api.br");
+  const exclusao = '<h2>Como solicitar</h2><p>Envie a solicitação para <strong>contato@zevanory.api.br</strong> com o assunto <strong>Exclusão de dados</strong>.</p>\n<p class="muted">Canal oficial: contato@zevanory.api.br</p>\n';
+  const r = runGenerator({ "exclusao-dados.html": exclusao, "index.html": '{"@type":"Organization","email":"contato@zevanory.api.br"}\n', "security.txt": "Contact: mailto:contato@zevanory.api.br\n" });
+  assert.equal(r.status, 0, r.output.slice(-800));
+  assert.match(r.output, /^PUBLIC_OFFICIAL_MAILBOX_ONLY=PASS$/m);
+  assert.equal(r.read("exclusao-dados.html"), exclusao.replaceAll("contato@", "suporte@"));
+  assert.equal((r.read("exclusao-dados.html").match(/suporte@zevanory\.api\.br/g) || []).length, 2);
+  assert.equal(r.read("index.html"), '{"@type":"Organization","email":"suporte@zevanory.api.br"}\n');
+  assert.equal(r.read("security.txt"), "Contact: mailto:suporte@zevanory.api.br\n");
+});
+
+test("(c) generator fails closed when the legacy mailbox survives in a published asset the rewrite does not cover", () => {
+  const r = runGenerator({ "font.woff2": "contato@zevanory.api.br" });
+  assert.notEqual(r.status, 0);
+  assert.match(r.output, /PUBLIC_LEGACY_MAILBOX_PRESENT .*font\.woff2/);
 });
