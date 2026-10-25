@@ -23,6 +23,7 @@ on:
       - "scripts/ci/mutants_p09_nurture_allow.json"
       - "scripts/ci/mutant_classifier.py"
       - "tests/p09-nurture-sequence.test.mjs"
+      - "tests/helpers/p09-lead-fakes.mjs"
 
 permissions:
   contents: read
@@ -46,12 +47,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Testes (contagem exata 26, zero pulados)
+      - name: Testes (contagem exata 31, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p09-nurture-sequence.test.mjs | tee /tmp/t.txt
-          for l in "# tests 26" "# pass 26" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 31" "# pass 31" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Gate da sequência (versionada + Worker + consentimento publicado)
         shell: bash
         run: |
@@ -63,4 +64,4 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p09_nurture.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P09_NURTURE_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=31 killed=31 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=38 killed=38 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }

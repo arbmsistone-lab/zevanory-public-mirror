@@ -1,7 +1,7 @@
 {
   "schema": "zevanory-p09-sequence/v1",
   "id": "checklist-v2",
-  "version": "2026-10-25.1",
+  "version": "2026-10-25.2",
   "lead_magnet": "checklist-15-minutos",
   "note": "Sequência de nutrição do checklist gratuito (P09, Roteiro Mestre v4.7, seção 5). Conteúdo versionado: qualquer mudança de texto muda o arquivo e passa pelo gate scripts/p09/nurture_gate.mjs. Envio DESLIGADO por padrão: só existe envio quando o ambiente define P09_NURTURE_SEND exatamente igual ao id desta sequência, e cada passo respeita o consentimento registrado (P08, worker/lead-magnet.mjs CONSENT_FOLLOWUPS). Nenhum envio a partir do CI; nenhum provedor novo.",
   "send_switch": {
@@ -9,12 +9,14 @@
     "on_value": "checklist-v2",
     "default": "off"
   },
+  "retroactive": false,
   "consent": {
     "source": "worker/lead-magnet.mjs",
     "accepted_versions": [
       "lead-magnet-v1-2026-10-07"
     ],
-    "note": "Passo 0 é a entrega do checklist; o passo n (n >= 1) só sai se o consentimento registrado do lead permitir n e-mails depois do checklist. O consentimento v1 diz 'até 2 e-mails': com ele, os passos 3 e 4 nunca saem. Para enviá-los é preciso uma nova versão de consentimento (P08), com texto aprovado pelo proprietário."
+    "note": "Passo 0 é a entrega do checklist; o passo n (n >= 1) só sai se o consentimento registrado do lead permitir n e-mails depois do checklist. O consentimento v1 diz 'até 2 e-mails': com ele, os passos 3 e 4 nunca saem. Para enviá-los é preciso uma nova versão de consentimento (P08), com texto aprovado pelo proprietário.",
+    "coverage_rule": "Nunca retroativo: o passo n (n >= 1) só sai para o contato cujo consentimento registrado cobre n e-mails depois do checklist (CONSENT_FOLLOWUPS[lead.consent_version] >= n). Contatos com o consentimento v1 ('até 2 e-mails') recebem no máximo os passos 0, 1 e 2, mesmo que uma versão nova de consentimento passe a existir."
   },
   "metrics": {
     "decide_by": [

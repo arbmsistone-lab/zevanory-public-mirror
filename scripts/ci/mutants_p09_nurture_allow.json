@@ -33,6 +33,11 @@
      "test_pattern": "N1",
      "assertion_pattern": "[N1.1]",
      "justification": "o gate detecta passo 3 saindo além do consentimento v1: o gate real roda canSend/renderEmail sobre a sequência versionada; com a regra quebrada ele reprova a árvore real e o caso positivo N1 falha em [N1.1]"
+    },
+    {
+     "test_pattern": "N30",
+     "assertion_pattern": "[N30.1]",
+     "justification": "sem o limite do consentimento o contato antigo (v1) passa a receber os passos 3 e 4: é exatamente a regra 'nunca retroativo' de N30"
     }
    ]
   },
@@ -80,6 +85,11 @@
      "test_pattern": "N1",
      "assertion_pattern": "[N1.1]",
      "justification": "o gate confere o link de descadastro no texto final de cada e-mail: o gate real roda canSend/renderEmail sobre a sequência versionada; com a regra quebrada ele reprova a árvore real e o caso positivo N1 falha em [N1.1]"
+    },
+    {
+     "test_pattern": "N27",
+     "assertion_pattern": "[N27.4]",
+     "justification": "N27 confere que a mensagem preparada leva o mesmo link de descadastro exercido no Worker; sem o link na assinatura, a conferência falha"
     }
    ]
   },
@@ -283,6 +293,69 @@
     {
      "test_pattern": "N26",
      "assertion_pattern": "[N26.1]"
+    }
+   ]
+  },
+  "M32 sequência retroativa aceita": {
+   "primary": [
+    {
+     "test_pattern": "N30",
+     "assertion_pattern": "[N30.3]"
+    }
+   ]
+  },
+  "M33 chave de idempotência repetida aceita": {
+   "primary": [
+    {
+     "test_pattern": "N28",
+     "assertion_pattern": "[N28.1]"
+    }
+   ]
+  },
+  "M34 limite por contato no registro removido": {
+   "primary": [
+    {
+     "test_pattern": "N29",
+     "assertion_pattern": "[N29.3]"
+    }
+   ]
+  },
+  "M35 preparação sem reserva no registro": {
+   "primary": [
+    {
+     "test_pattern": "N28",
+     "assertion_pattern": "[N28.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "N29",
+     "assertion_pattern": "[N29.1]",
+     "justification": "sem a reserva, as 20 tentativas concorrentes de cada passo permitido viram mensagens; a lista de passos enviados deixa de ser [0, 1, 2]"
+    }
+   ]
+  },
+  "M36 gate aceita sequência retroativa": {
+   "primary": [
+    {
+     "test_pattern": "N31",
+     "assertion_pattern": "[N31.1]"
+    }
+   ]
+  },
+  "M37 chave de idempotência com e-mail": {
+   "primary": [
+    {
+     "test_pattern": "N28",
+     "assertion_pattern": "[N28.5]"
+    }
+   ]
+  },
+  "M38 descadastro do Worker não apaga o lead": {
+   "primary": [
+    {
+     "test_pattern": "N27",
+     "assertion_pattern": "[N27.7]"
     }
    ]
   }

@@ -77,6 +77,8 @@ for (const dir of seqDirs) {
   if (typeof seq.version !== "string" || !/^\d{4}-\d{2}-\d{2}\.\d+$/.test(seq.version)) err(`${W}: version deve ser AAAA-MM-DD.N`);
   const sw = seq.send_switch || {};
   if (sw.default !== "off" || sw.on_value !== seq.id || sw.env !== "P09_NURTURE_SEND") err(`${W}: interruptor deve ser P09_NURTURE_SEND, desligado por padrão, ligado só com o id da sequência`);
+  if (seq.retroactive !== false) err(`${W}: retroactive deve ser false (a sequência nunca se aplica a contatos cujo consentimento não cobre os passos)`);
+  if (typeof seq.consent?.coverage_rule !== "string" || !/nunca retroativo/i.test(seq.consent.coverage_rule)) err(`${W}: consent.coverage_rule deve declarar a regra 'nunca retroativo'`);
   const accepted = seq.consent?.accepted_versions;
   if (!Array.isArray(accepted) || !accepted.length) err(`${W}: consent.accepted_versions vazio (nada sem consentimento)`);
   else for (const v of accepted) if (!Number.isInteger(CONSENT_FOLLOWUPS[v])) err(`${W}: versão de consentimento ${v} não existe no modelo do P08 (worker/lead-magnet.mjs CONSENT_FOLLOWUPS)`);

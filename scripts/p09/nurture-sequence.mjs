@@ -13,6 +13,10 @@
 //     (CONSENT_FOLLOWUPS). O passo n (n >= 1) só sai se o consentimento permitir n e-mails depois do checklist.
 //   * E-mail comercial só com vendas abertas (interruptor do proprietário).
 //   * Todo e-mail leva o link de descadastro no texto e os cabeçalhos List-Unsubscribe / List-Unsubscribe-Post.
+//   * Nunca retroativo: a sequência declara retroactive=false e cada contato recebe só os passos que a SUA versão de
+//     consentimento cobre (contato antigo com "até 2 e-mails" nunca recebe o 4º e o 5º, mesmo se surgir versão nova).
+//   * Idempotência: cada envio reserva a chave contato+passo num registro atômico (prepareEmailOnce + ledger); repetir
+//     ou concorrer a preparação nunca gera segunda mensagem do mesmo passo nem passa do limite do consentimento.
 import { CONSENT_FOLLOWUPS } from "../../worker/lead-magnet.mjs";
 import { CUSTOMER_RULE_7D, LEGAL_IDENTITY, SUPPORT_EMAIL } from "../../worker/politica-unica.mjs";
 import { brandedEmailHtml } from "../../worker/brand-email.mjs";
@@ -74,6 +78,7 @@ export function canSend({ env = {}, sequence, step, lead, salesOpen = false, con
   const sw = sequence?.send_switch || {};
   if (!sequence?.id || sw.on_value !== sequence.id || typeof sw.env !== "string" || !sw.env) return { ok: false, reason: "switch_misconfigured" };
   if (String(env?.[sw.env] ?? "") !== sequence.id) return { ok: false, reason: "switch_off" };
+  if (sequence.retroactive !== false) return { ok: false, reason: "retroactive_not_allowed" };
   const email = (sequence.emails || []).find((e) => e.step === step);
   if (!email) return { ok: false, reason: "unknown_step" };
   if (!lead || lead.status !== "confirmed" || !lead.confirmed_at || !lead.consent_at || lead.unsubscribed_at) return { ok: false, reason: "no_confirmed_consent" };
@@ -103,4 +108,44 @@ export function prepareEmail(args = {}) {
   const decision = canSend(args);
   if (!decision.ok) return { send: false, reason: decision.reason };
   return { send: true, reason: "ok", message: renderEmail(args) };
+}
+
+// Chave de idempotência por contato + passo. contactRef é a referência pseudonimizada do lead (subject_ref, HMAC com
+// chave), nunca o e-mail. A mesma chave vai para o provedor (Idempotency-Key) quando o Worker enviar.
+export function idempotencyKey(sequence, contactRef, step) {
+  if (!/^[0-9a-f]{16,64}$/.test(String(contactRef || ""))) throw new Error("contact_ref_required");
+  if (!Number.isInteger(step) || step < 0) throw new Error("step_invalid");
+  return `zevanory-p09-${sequence.id}-${contactRef}-s${step}`;
+}
+
+// Registro de reservas de referência (memória). Contrato para a versão de produção: reserve() é ATÔMICO (no banco:
+// insert ... on conflict do nothing returning, com a contagem por contato na mesma transação). Aqui não há await entre
+// a verificação e a gravação, então chamadas concorrentes no mesmo processo não se intercalam.
+export function memoryLedger() {
+  const keys = new Set();
+  const perContact = new Map();
+  return {
+    keys, perContact,
+    async reserve(key, contactRef, max) {
+      if (keys.has(key)) return { ok: false, reason: "duplicate" };
+      const n = perContact.get(contactRef) || 0;
+      if (!Number.isInteger(max) || n >= max) return { ok: false, reason: "contact_limit" };
+      keys.add(key);
+      perContact.set(contactRef, n + 1);
+      return { ok: true };
+    },
+  };
+}
+
+// Prepara no máximo UMA mensagem por contato+passo e nunca mais que 1 + limite do consentimento por contato.
+export async function prepareEmailOnce(args = {}) {
+  const decision = canSend(args);
+  if (!decision.ok) return { send: false, reason: decision.reason };
+  if (!args.ledger?.reserve) throw new Error("ledger_required");
+  const { sequence, step, lead } = args;
+  const cf = args.consentFollowups || CONSENT_FOLLOWUPS;
+  const key = idempotencyKey(sequence, lead.subject_ref, step);
+  const r = await args.ledger.reserve(key, lead.subject_ref, 1 + cf[lead.consent_version]);
+  if (!r.ok) return { send: false, reason: r.reason };
+  return { send: true, reason: "ok", idempotencyKey: key, message: renderEmail(args) };
 }

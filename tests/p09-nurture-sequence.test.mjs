@@ -10,7 +10,9 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
-import { canSend, renderEmail, prepareEmail } from "../scripts/p09/nurture-sequence.mjs";
+import { canSend, renderEmail, prepareEmail, prepareEmailOnce, memoryLedger, idempotencyKey } from "../scripts/p09/nurture-sequence.mjs";
+import { handleLeadMagnet, leadOptOutLink, runLeadNurture } from "../worker/lead-magnet.mjs";
+import { fakeDb, kv, mailbox } from "./helpers/p09-lead-fakes.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SEQ_DIR = "content/p09/checklist-v2";
@@ -130,4 +132,77 @@ test("N26 prepareEmail só monta quando pode enviar", () => {
   assert.equal(on.send, true, "[N26.2]");
   assert.match(on.message.text, /^Olá, Ana!/, "[N26.3]");
   assert.match(on.message.text, /utm_campaign=p09v2-e2-vendas/, "[N26.4]");
+});
+
+const REF = "c".repeat(64);
+const LEADR = { ...LEAD, subject_ref: REF };
+test("N27 descadastro ponta a ponta pelo código real: link -> consentimento revogado -> nenhuma mensagem preparada", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const db = fakeDb(); const sent = mailbox(); const store = kv();
+    const env = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", LEAD_PRIVACY_SECRET: "k".repeat(40), ZEVANORY_PRIVATE_ARTIFACTS: store };
+    const opts = { sqlFactory: db.factory };
+    const sub = await handleLeadMagnet(new Request("https://leads.internal/subscribe", { method: "POST", body: JSON.stringify({ email: "ana@exemplo.com", consent: true, page: "/checklist" }) }), env, opts);
+    assert.equal(sub.status, 200, "[N27.1]");
+    const token = /confirmar\?t=([0-9a-f]{64})/.exec(sent.at(-1).text)[1];
+    const conf = await handleLeadMagnet(new Request("https://zevanory.api.br/material-gratuito/confirmar", { method: "POST", body: new URLSearchParams({ t: token }) }), env, opts);
+    assert.equal(conf.status, 200, "[N27.2]");
+    const row = db.rows.get("ana@exemplo.com");
+    const lead = () => { const r = db.rows.get("ana@exemplo.com"); return r ? { ...r, confirmed_at: "x" } : null; };
+    const optOutUrl = await leadOptOutLink(env, row.email, row.subject_ref);
+    const ledger = memoryLedger();
+    const before = await prepareEmailOnce({ env: ON, sequence: SEQ, templates: TEMPLATES, step: 1, lead: lead(), optOutUrl, products: PRODUCTS, ledger });
+    assert.equal(before.send, true, "[N27.3] antes do descadastro o passo 1 é preparado");
+    assert.ok(before.message.text.includes(optOutUrl) && before.message.headers["List-Unsubscribe"].includes(optOutUrl), "[N27.4] a mensagem leva o MESMO link exercido abaixo");
+    const u = new URL(optOutUrl);
+    const get = await handleLeadMagnet(new Request("https://zevanory.api.br" + u.pathname + u.search), env, opts);
+    assert.equal(get.status, 200, "[N27.5] GET do link só mostra a confirmação (não apaga)");
+    assert.ok(db.rows.has("ana@exemplo.com"), "[N27.5]");
+    const post = await handleLeadMagnet(new Request("https://zevanory.api.br" + u.pathname + u.search, { method: "POST" }), env, opts);
+    assert.equal(post.status, 200, "[N27.6]");
+    assert.equal(db.rows.has("ana@exemplo.com"), false, "[N27.7] consentimento revogado: dados do lead apagados");
+    assert.ok(db.events.some((e) => e.event === "revoked_and_erased" && e.subject_ref === row.subject_ref), "[N27.8] revogação registrada");
+    for (let step = 0; step < SEQ.emails.length; step += 1) {
+      const after = await prepareEmailOnce({ env: ON, sequence: SEQ, templates: TEMPLATES, step, lead: lead(), optOutUrl, products: PRODUCTS, ledger: memoryLedger(), salesOpen: true });
+      assert.deepEqual(after, { send: false, reason: "no_confirmed_consent" }, "[N27.9] passo " + step);
+    }
+    const n = sent.length;
+    await runLeadNurture(env, { sqlFactory: db.factory, salesOpen: true, now: Date.now() + 30 * 864e5 });
+    assert.equal(sent.length, n, "[N27.10] a nutrição viva também não envia nada depois do descadastro");
+  } finally { globalThis.fetch = realFetch; }
+});
+test("N28 preparação repetida e concorrente do mesmo contato+passo gera uma única mensagem", async () => {
+  const ledger = memoryLedger();
+  const args = { env: ON, sequence: SEQ, templates: TEMPLATES, step: 1, lead: LEADR, optOutUrl: OPT, products: PRODUCTS, ledger };
+  const out = await Promise.all(Array.from({ length: 100 }, () => prepareEmailOnce(args)));
+  assert.equal(out.filter((r) => r.send).length, 1, "[N28.1]");
+  assert.ok(out.filter((r) => !r.send).every((r) => r.reason === "duplicate"), "[N28.2]");
+  assert.equal(out.find((r) => r.send).idempotencyKey, `zevanory-p09-checklist-v2-${REF}-s1`, "[N28.3]");
+  for (let i = 0; i < 10; i += 1) assert.equal((await prepareEmailOnce(args)).send, false, "[N28.4] repetição sequencial");
+  assert.throws(() => idempotencyKey(SEQ, "ana@exemplo.com", 1), /contact_ref_required/, "[N28.5] a chave nunca usa o e-mail");
+});
+test("N29 o limite de mensagens por contato resiste a tentativas repetidas e concorrentes de todos os passos", async () => {
+  const ledger = memoryLedger();
+  const attempts = [];
+  for (let k = 0; k < 20; k += 1) for (const e of SEQ.emails) attempts.push(prepareEmailOnce({ env: ON, sequence: SEQ, templates: TEMPLATES, step: e.step, lead: LEADR, optOutUrl: OPT, products: PRODUCTS, ledger, salesOpen: true }));
+  const out = await Promise.all(attempts);
+  const sentSteps = out.filter((r) => r.send).map((r) => Number(r.idempotencyKey.split("-s").at(-1))).sort();
+  assert.deepEqual(sentSteps, [0, 1, 2], "[N29.1] consentimento v1: no máximo checklist + 2 e-mails, uma vez cada");
+  assert.equal(ledger.perContact.get(REF), 3, "[N29.2]");
+  assert.deepEqual(await ledger.reserve("outra-chave", REF, 3), { ok: false, reason: "contact_limit" }, "[N29.3] o registro recusa a 4ª mensagem do contato mesmo com chave nova");
+  const other = await prepareEmailOnce({ env: ON, sequence: SEQ, templates: TEMPLATES, step: 0, lead: { ...LEADR, subject_ref: "d".repeat(64) }, optOutUrl: OPT, products: PRODUCTS, ledger });
+  assert.equal(other.send, true, "[N29.4] outro contato não é afetado");
+});
+test("N30 nunca retroativo: só quem consentiu N mensagens recebe N", () => {
+  const cf = { [V1]: 2, "lead-magnet-v2-hipotetica": 4 };
+  const seq = { ...SEQ, consent: { ...SEQ.consent, accepted_versions: [V1, "lead-magnet-v2-hipotetica"] } };
+  for (const step of [3, 4]) assert.equal(canSend({ env: ON, sequence: seq, step, lead: LEAD, salesOpen: true, consentFollowups: cf }).reason, "consent_cap", "[N30.1] contato antigo (v1) não recebe o passo " + step);
+  assert.equal(canSend({ env: ON, sequence: seq, step: 4, lead: { ...LEAD, consent_version: "lead-magnet-v2-hipotetica" }, salesOpen: true, consentFollowups: cf }).ok, true, "[N30.2] contato com consentimento que cobre 4 e-mails recebe o passo 4");
+  assert.equal(canSend({ env: ON, sequence: { ...SEQ, retroactive: true }, step: 0, lead: LEAD }).reason, "retroactive_not_allowed", "[N30.3]");
+  const noFlag = { ...SEQ }; delete noFlag.retroactive;
+  assert.equal(canSend({ env: ON, sequence: noFlag, step: 0, lead: LEAD }).reason, "retroactive_not_allowed", "[N30.4] sem a declaração, fecha");
+});
+test("N31 sequência declarada retroativa reprova no gate", () => {
+  fails(gate(seqJson((s) => { s.retroactive = true; return s; })), /retroactive deve ser false/, "[N31.1]");
+  fails(gate(seqJson((s) => { delete s.consent.coverage_rule; return s; })), /coverage_rule deve declarar a regra 'nunca retroativo'/, "[N31.2]");
 });

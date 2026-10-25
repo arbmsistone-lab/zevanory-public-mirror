@@ -25,7 +25,7 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p09-nurture-sequence.test.mjs"]
 COPY_DIRS = ["content/p09", "scripts/p09"]
-COPY_FILES = TESTS + ["tests/helpers/text.mjs", "worker/lead-magnet.mjs", "worker/brand-email.mjs", "worker/activity-ledger.mjs",
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p09-lead-fakes.mjs", "worker/lead-magnet.mjs", "worker/brand-email.mjs", "worker/activity-ledger.mjs",
                       "worker/politica-unica.mjs", "data/politica-unica.json", "data/products.json", "checklist-15-minutos/index.html",
                       "material-gratuito/index.html"] + \
     [f"sales-public/{s}.html" for s in ("lucro-e-caixa", "vendas-na-pratica", "ia-na-pratica", "negocio-completo", "checklist-15-minutos", "material-gratuito")]
@@ -65,7 +65,14 @@ M = {
     "M28 rede no módulo do P09 aceita": (G, "  if (/\\bfetch\\s*\\(|api", "  if (false && /\\bfetch\\s*\\(|api"),
     "M29 léxico não aplicado ao Worker": (G, '  for (const h of lexiconHits(mail.subject + "\\n" + mail.text)) err(`${L}: ${h}`);\n', ""),
     "M30 salvaguardas do Worker não conferidas": (G, "for (const [a, what] of LIVE_ANCHORS) if (!leadSrc.includes(a)) err(", "for (const [a, what] of LIVE_ANCHORS) if (false) err("),
-    "M31 prepareEmail ignora a decisão": (S, "  if (!decision.ok) return { send: false, reason: decision.reason };\n", ""),
+    "M32 sequência retroativa aceita": (S, '  if (sequence.retroactive !== false) return { ok: false, reason: "retroactive_not_allowed" };\n', ""),
+    "M33 chave de idempotência repetida aceita": (S, '      if (keys.has(key)) return { ok: false, reason: "duplicate" };\n', ""),
+    "M34 limite por contato no registro removido": (S, '      if (!Number.isInteger(max) || n >= max) return { ok: false, reason: "contact_limit" };', '      if (false) return { ok: false, reason: "contact_limit" };'),
+    "M35 preparação sem reserva no registro": (S, "  const r = await args.ledger.reserve(key, lead.subject_ref, 1 + cf[lead.consent_version]);", "  const r = { ok: true };"),
+    "M36 gate aceita sequência retroativa": (G, "  if (seq.retroactive !== false) err(", "  if (false) err("),
+    "M37 chave de idempotência com e-mail": (S, '  if (!/^[0-9a-f]{16,64}$/.test(String(contactRef || ""))) throw new Error("contact_ref_required");\n', ""),
+    "M38 descadastro do Worker não apaga o lead": ("worker/lead-magnet.mjs", "    const rows = await sql.query(`delete from zevanory_leads where ${match.column}=$1 returning email, subject_ref, consent_version`, [match.value]);", "    const rows = [];"),
+    "M31 prepareEmail ignora a decisão": (S, '  if (!decision.ok) return { send: false, reason: decision.reason };\n  return { send: true, reason: "ok", message: renderEmail(args) };', '  return { send: true, reason: "ok", message: renderEmail(args) };'),
 }
 
 ALLOW_FILE = Path(os.environ.get("P09_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p09_nurture_allow.json"))
