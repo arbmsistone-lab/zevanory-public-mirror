@@ -122,7 +122,7 @@ const wrapped = {
       if (drained) return drained;
     }
     if (url.pathname === "/conteudo-pronto/briefing") return handleBriefing(request,normalized,ctx);
-    if (url.pathname === "/conteudo-pronto/pacote") return handlePackageView(request,normalized);
+    if (url.pathname === "/conteudo-pronto/pacote") return handlePackageView(request,normalized,ctx);
     if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);
     if (url.pathname==="/api/internal/owner/oauth/tiktok-access") return handlePublisherAccess(request,normalized,"tiktok");
     // Daily Short video, published by the Short job for platforms that pull media by URL (Instagram Reels).

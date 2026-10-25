@@ -183,7 +183,7 @@
       "pagamento": "Pix, cartão ou boleto, pela Hotmart. Sem fidelidade: cancele quando quiser.",
       "entrega": "Por e-mail, após a confirmação do pagamento: formulário curto e, depois, o pacote do mês em link privado.",
       "restricoes": "Serviço digital mensal. Licença pessoal e intransferível para uso do conteúdo no seu negócio; não é permitido revender ou redistribuir o pacote a terceiros.",
-      "caracteristicas": "Todo mês: 12 posts com legenda, 4 mensagens de venda para WhatsApp e um calendário de 30 dias, no tom do seu negócio."
+      "caracteristicas": "Todo mês: 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento — cada um com versão curta e versão de e-mail — e um calendário de 30 dias, no tom do seu negócio. Os roteiros são para canais autorizados pelo cliente, como e-mail, Instagram Direct, Telegram ou chat do site. Você revisa antes de usar; não há disparo automático."
     },
     "disponibilidade": {
       "closed": "Vendas temporariamente fechadas: entre na lista de espera.",
@@ -194,6 +194,52 @@
       "pagamento": "Pix, cartão ou boleto, pela Hotmart. A compra só é confirmada após a aprovação do pagamento.",
       "entrega": "Por e-mail, após a confirmação do pagamento, pela Hotmart; o produto também fica em Minhas compras, na sua conta Hotmart."
     }
+  },
+  "conteudo_pronto": {
+    "nota": "Conteúdo Pronto (2026-10-23): contrato único entre a oferta (resumo_oferta.assinatura.caracteristicas, /conteudo-pronto, /solucoes, suporte) e o gerador (worker/content-service.mjs). A conta WhatsApp Business da ZEVANORY foi banida pela Meta; o pacote deixou de prometer ou gerar mensagens de WhatsApp e passou a entregar roteiros multicanal para canais autorizados pelo cliente, revisados por ele, sem disparo automático. Qualquer mudança de quantidade, objetivo, canal ou formato exige subir content_schema_version (e package_schema) aqui, no data-content-schema da página e no gerador ao mesmo tempo; tests/conteudo-pronto-roteiros.test.mjs falha se página, oferta e saída do gerador divergirem ou se 'WhatsApp' voltar a aparecer na oferta, no prompt ou no pacote entregue. Leitura de pacotes já gravados (inclusive zpc.cp.package.v1): os bytes ficam como estão; se qualquer campo exibido (posts, mensagens/roteiros, calendário) citar canal banido (termos_proibidos_regex) ou o número banido de contato_publico.numeros_banidos (completo, formatado ou mascarado), o pacote NÃO é exibido nem reenviado e o assinante ativo recebe a oferta de gerar, sem custo, uma versão nova no formato atual (gravada em chave nova; a antiga fica intacta).",
+    "content_schema_version": 2,
+    "package_schema": "zpc.cp.package.v2",
+    "posts": 12,
+    "roteiros": 4,
+    "calendario_dias": 30,
+    "versoes_roteiro": [
+      "curta",
+      "email"
+    ],
+    "canais_autorizados_exemplo": [
+      "e-mail",
+      "Instagram Direct",
+      "Telegram",
+      "chat do site"
+    ],
+    "objetivos": [
+      {
+        "id": "oferta_solicitada",
+        "titulo": "Oferta solicitada",
+        "regra": "apresentar a oferta principal a quem pediu informações ou orçamento"
+      },
+      {
+        "id": "acompanhamento",
+        "titulo": "Acompanhamento de conversa existente",
+        "regra": "retomar uma conversa já iniciada pelo cliente que ficou sem resposta, sem pressão"
+      },
+      {
+        "id": "reativacao",
+        "titulo": "Reativação com relacionamento ativo ou consentimento",
+        "regra": "reativar somente cliente com relacionamento ativo ou consentimento registrado para receber contato"
+      },
+      {
+        "id": "indicacao",
+        "titulo": "Pedido de indicação",
+        "regra": "pedir indicação a quem já comprou ou foi atendido, sem oferecer vantagem condicionada"
+      }
+    ],
+    "termos_proibidos_regex": [
+      "whats\\s*app",
+      "zap",
+      "wa\\.me",
+      "disparo\\s+em\\s+massa"
+    ]
   },
   "refund_window": {
     "nota": "P13c (financeiro, para revisão do Sol): prazo de arrependimento aplicado por worker/refund-flow.mjs. Começa na data mais recente entre a contratação (confirmação do pagamento) e o recebimento (primeiro evento de entrega bem-sucedida: e-mail de entrega enviado ou primeiro download); termina no fim do 7º dia corrido seguinte, no horário de Brasília. Sem recebimento registrado o prazo não começou e o pedido é aceito. Fora do prazo o pedido não é registrado como reembolso: vai para o suporte.",
