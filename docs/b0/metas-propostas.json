@@ -1,0 +1,43 @@
+{
+  "schema": "zevanory.b0.metas.v1",
+  "titulo": "PROPOSTA de metas da fase B0 (Roteiro Mestre v4.7, seções 4, 5, 9.1 e 11)",
+  "aviso": "PROPOSTA. Nenhuma meta aqui está aprovada. Só o proprietário aprova: troca status para APPROVED e preenche approved_by e approved_at (AAAA-MM-DD) num PR revisado. Enquanto houver meta PROPOSED, o processo não chega a B0_VALIDA. Metas LB com value null só recebem valor depois dos 14 dias de linha de base.",
+  "tipos": { "PI": "piso inegociável", "PR": "paridade ou não-inferioridade (seção 6)", "LB": "meta da linha de base, provisória até a B0" },
+  "processes": {
+    "P03": [
+      { "id": "P03-http", "type": "PI", "metric": "URLs dos sitemaps públicos com HTTP 2xx/3xx", "value": "100% em toda leitura diária", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P03-wcag", "type": "PI", "metric": "erros WCAG2AA (pa11y) nas páginas de venda ao vivo", "value": 0, "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P03-impressoes", "type": "LB", "metric": "impressões e cliques por página (Search Console)", "value": null, "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ],
+    "P06": [
+      { "id": "P06-duplicatas", "type": "PI", "metric": "duplicatas na auditoria diária do registro de publicações (sem WhatsApp, aposentado)", "value": 0, "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ],
+    "P08": [
+      { "id": "P08-consentimento", "type": "PI", "metric": "leads com consentimento completo (finalidade, data, origem, descadastro, retenção)", "value": "100%", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P08-descadastro", "type": "PI", "metric": "descadastros e exclusões cumpridos e registrados", "value": "100%", "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ],
+    "P15": [
+      { "id": "P15-visitas", "type": "LB", "metric": "visitas filtradas em 7 dias (sem robôs e datacenter)", "value": null, "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P15-interesse", "type": "LB", "metric": "intenções e checkouts iniciados em 7 dias", "value": null, "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P15-humano", "type": "PI", "metric": "nenhum relatório afirma 'humano comprovado'; conversão NOT_PROVEN enquanto as vendas estiverem fechadas", "value": "sempre", "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ],
+    "P18": [
+      { "id": "P18-disponibilidade", "type": "LB", "metric": "disponibilidade das páginas de venda medida de fora", "value": ">= 99,5% (proposta da seção 5)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P18-alerta", "type": "PI", "metric": "tempo do início da queda até o alerta (issue), medido pelo maior intervalo entre sondagens", "value": "<= 10 min (seção 9, N2). ATENÇÃO: com 2 sondagens seguidas a cada 10 min o pior caso é cerca de 20 min mais o atraso do agendador do GitHub; o desenho atual NÃO atende esta meta. Decisão do proprietário: cadência de 5 min (mínimo do GitHub) ou aceitar outro valor", "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ],
+    "P19": [
+      { "id": "P19-kv-gravacoes", "type": "LB", "metric": "KV gravações/dia, pior dia de 7", "value": "<= 600 (60%), pior dia <= 700 (seção 11)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P19-kv-leituras", "type": "LB", "metric": "KV leituras/dia, pior dia de 7", "value": "<= 50000 (seção 11)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P19-cota", "type": "PI", "metric": "cotas esgotadas", "value": 0, "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ],
+    "P20": [
+      { "id": "P20-idade", "type": "PI", "metric": "idade da última cópia íntegra (backup + hash + restauração por amostra)", "value": "<= 26 h; > 48 h é falha crítica (seção 9.1)", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P20-ensaio-mensal", "type": "PI", "metric": "ensaio mensal de restauração completa em esquema isolado", "value": "1 por mês, aprovado", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P20-rpo-rto", "type": "LB", "metric": "RPO e RTO medidos no ensaio", "value": "objetivo RPO 24 h, RTO 4 h (seção 9.1); valor medido define a meta", "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ],
+    "P22": [
+      { "id": "P22-ttl", "type": "PI", "metric": "leituras do /api/status com prova PROVEN e idade <= 65 min, quando a venda estiver liberada", "value": "100%", "status": "PROPOSED", "approved_by": null, "approved_at": null },
+      { "id": "P22-fail-safe", "type": "PI", "metric": "leituras com prova inválida e venda liberada ao mesmo tempo", "value": 0, "status": "PROPOSED", "approved_by": null, "approved_at": null }
+    ]
+  }
+}

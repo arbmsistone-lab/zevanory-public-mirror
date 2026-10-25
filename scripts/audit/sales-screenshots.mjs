@@ -1,5 +1,5 @@
 // E4: full-page screenshots of the sales site at 360, 768 and 1440 px for visual comparison.
-// Usage: QUALITY_MODULES=/path/node_modules node sales-screenshots.mjs <baseUrl> <outDir>
+// Usage: [COLOR_SCHEME=dark] QUALITY_MODULES=/path/node_modules node sales-screenshots.mjs <baseUrl> <outDir>
 // Files: <outDir>/<page>-<width>.png. Read-only, localhost only.
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -10,13 +10,20 @@ const req = createRequire(join(process.env.QUALITY_MODULES || join(process.cwd()
 const { chromium } = req("playwright");
 const PAGES = (process.env.PAGES || "/solucoes,/zevanory-sales,/ia-na-pratica,/termos").split(",");
 const WIDTHS = [[360, 800], [768, 1024], [1440, 900]];
+const SCHEME = process.env.COLOR_SCHEME === "dark" ? "dark" : "light";  // prefers-color-scheme emulation
 mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch();
 for (const path of PAGES) for (const [width, height] of WIDTHS) {
-  const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: "reduce" });
+  const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: "reduce", colorScheme: SCHEME });
   const page = await ctx.newPage();
   await page.goto(base + path, { waitUntil: "load" });
   await page.evaluate(() => document.fonts && document.fonts.ready);
+  // Lazy images (product previews) only load near the viewport: walk the page, then wait for them.
+  await page.evaluate(async () => {
+    for (let y = 0; y < document.documentElement.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 30)); }
+    await Promise.all([...document.images].map((im) => im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; })));
+    window.scrollTo(0, 0);
+  });
   const file = join(outDir, `${path.replace(/^\//, "") || "index"}-${width}.png`);
   await page.screenshot({ path: file, fullPage: true, animations: "disabled" });
   console.log("SCREENSHOT " + file);

@@ -1,16 +1,13 @@
 // Internal financial read-only audit. No mutation of commerce, provider or database.
-import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
-import { operatorToken as operatorCredential, operatorTokenSource, operatorTokenFallbackUses, isCertificationPerimeter } from "./operator-credential.mjs";
+import { signedAuditProbeCategory } from "./signed-audit-probe.mjs";
+import { verifyOperatorToken, operatorAuthCounts, operatorTokenMigration, operatorTokenSource, operatorTokenFallbackUses, isCertificationPerimeter } from "./operator-credential.mjs";
 const HEADERS={"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"};
 const reply=(code,data)=>new Response(JSON.stringify(data),{status:code,headers:HEADERS});
 const authLimiter=new Map();
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(value))))).map(x=>x.toString(16).padStart(2,"0")).join("");
+// Devolve a categoria aceita (primary | legacy | legacy_fallback | certification) ou "" (recusa); ver operator-credential.mjs.
 async function authorized(request, env) {
-  const expected=String(operatorCredential(env)||"");
-  const actual=String(request.headers.get("x-certification-e2e-token")||"");
-  if(expected.length<32||actual.length!==expected.length)return false;
-  const [a,b]=await Promise.all([hash(actual),hash(expected)]);
-  return a===b;
+  return verifyOperatorToken(env,String(request.headers.get("x-certification-e2e-token")||""),{minLength:32});
 }
 function rateLimited(request,now=Date.now()) {
   const key=String(request.headers.get("cf-connecting-ip")||"unknown").slice(0,80);
@@ -271,10 +268,15 @@ export function stripeKeyMode(value){
   if(/^(?:sk|rk)_test_/.test(v))return "test";
   return "unrecognized";
 }
-export function credentialIdentity(env){
+// presented: categoria com que ESTA requisição autenticou (primary | legacy | legacy_fallback | certification); com ela o
+// readback prova que a credencial do runner autentica como a primária do Worker (--require-primary), só por categoria.
+export function credentialIdentity(env,{presented=""}={}){
   return {schema:"zevanory.audit.credential-identity/v1",
     operator_token_source:operatorTokenSource(env),
     operator_token_fallback_uses_in_isolate:operatorTokenFallbackUses(),
+    operator_token_presented:presented||"none",
+    operator_token_migration:operatorTokenMigration(env).state,
+    operator_token_auth_categories_in_isolate:operatorAuthCounts(),
     stripe_key_mode:stripeKeyMode(env?.STRIPE_SECRET_KEY),
     certification_perimeter:isCertificationPerimeter(env),
     release_sha:/^[0-9a-f]{40}$/.test(String(env?.ZEVANORY_RELEASE_SHA||""))?String(env.ZEVANORY_RELEASE_SHA):null};
@@ -321,10 +323,11 @@ export async function handleInternalFinancialAudit(request,env,{sqlFactory}={}){
   const url=new URL(request.url),path=url.pathname;
   if(![ORDER_LOOKUP_PATH,"/api/internal/audit/financial-classification","/api/internal/audit/runtime-identity","/api/internal/audit/credential-identity"].includes(path))return null;
   if(request.method!=="GET")return reply(405,{error:"method_not_allowed"});
-  if(!(await authorized(request,env)) && !(await verifySignedAuditProbe(request,env)))return reply(401,{error:"unauthorized"});
+  const presented=(request.headers.has("x-certification-e2e-token")?await authorized(request,env):"")||await signedAuditProbeCategory(request,env);
+  if(!presented)return reply(401,{error:"unauthorized"});
   if(rateLimited(request))return reply(429,{error:"audit_rate_limited"});
   if(path===ORDER_LOOKUP_PATH){const x=await orderLookup(url,env,sqlFactory);return reply(x.code,x.result);}
-  if(path.endsWith("/credential-identity"))return reply(200,credentialIdentity(env));
+  if(path.endsWith("/credential-identity"))return reply(200,credentialIdentity(env,{presented}));
   if(path.endsWith("/runtime-identity"))return reply(200,await runtimeIdentity(env,sqlFactory));
   const x=await financialClassification(env,sqlFactory);
   return reply(x.code,x.result);

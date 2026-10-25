@@ -217,7 +217,10 @@ export const HOTMART_CHECKOUT=Object.freeze({
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
 const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
 const HOTMART_TEXT=[
-  [`Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ${DELIVERY_72H} · arrependimento em 7 dias corridos.`,"Pagamento pela Hotmart (Pix, cartão ou boleto) · acesso por e-mail após a confirmação · arrependimento em 7 dias corridos."],
+  // Design PR: the hero payment facts are a list (no "·" chain); each item has its Hotmart wording.
+  ["Pagamento processado pelo Mercado Pago (Pix ou cartão)","Pagamento processado pela Hotmart (Pix, cartão ou boleto)"],
+  [`Entrega por e-mail em ${DELIVERY_72H}`,"Acesso por e-mail após a confirmação do pagamento"],
+  ["<strong>Pagamento</strong><span>processado pelo Mercado Pago","<strong>Pagamento</strong><span>processado pela Hotmart"],
   [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
   [`Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um ${DELIVERY_72H} do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.`,"Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
   [`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.`,`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.`],
@@ -415,6 +418,11 @@ export default{async fetch(request,env,ctx){
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
   let response=await env.ASSETS.fetch(new Request(url,request));
+  // Designed 404 for unknown PAGE paths (no file extension); asset 404s stay plain. Never cached.
+  if(response.status===404&&!page&&(request.method==="GET"||request.method==="HEAD")&&!/\.[a-z0-9]{1,8}$/i.test(url.pathname)){
+    const nf=await env.ASSETS.fetch(new Request(new URL("/404.html",request.url),{method:"GET"}));
+    if(nf.status===200) return new Response(request.method==="HEAD"?null:nf.body,{status:404,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
+  }
   if(response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)&&await salesOpenForPages(env))
     {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page),{status:200,statusText:response.statusText,headers:h});}
   if(response.status===200&&request.method==="GET"&&shouldInjectSiteChat(page,env))

@@ -90,24 +90,31 @@ HTML_ROUTES = (
 )
 
 
+# Company identification footer (P13c: identification and address from data/politica-unica.json).
+# Design (2026-10-24): three labelled blocks (company, contact, official profiles) instead of a
+# "A · B · C" chain. Contact is e-mail + protocol form only (WhatsApp banned by Meta; the
+# contato_publico.whatsapp_public_links_enabled lock still gates it).
+_SOCIAL = (("YouTube", "https://www.youtube.com/@zevanory"), ("Instagram", "https://www.instagram.com/zevanory_/"),
+           ("Facebook", "https://www.facebook.com/people/Zevanory/61593970292684/"), ("TikTok", "https://www.tiktok.com/@zevanory"),
+           ("Telegram", "https://t.me/zevanory"), ("Bluesky", "https://bsky.app/profile/zevanoryoficial.bsky.social"),
+           ("Pinterest", "https://www.pinterest.com/zevanory/"))
 LEGAL_FOOTER = ('<div class="container footer-legal">'
-                # P13c: identificação e endereço únicos (data/politica-unica.json, resumo_oferta.fornecedor).
-                f'{policy.SUPPLIER["razao_social"]} · CNPJ {policy.SUPPLIER["cnpj"]} · {policy.ADDRESS_FULL} · '
-                # Contato: e-mail é o único endereço eletrônico oficial (WhatsApp banido pela Meta);
-                # trava contato_publico.whatsapp_public_links_enabled.
-                f'<a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a> · '
-                f'<a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a>'
-                + (f' · WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
+                '<section class="fl-block" aria-labelledby="fl-empresa"><h2 class="fl-title" id="fl-empresa">Empresa</h2>'
+                f'<p>{policy.SUPPLIER["razao_social"]}<br>CNPJ {policy.SUPPLIER["cnpj"]}<br>{policy.ADDRESS_FULL}</p></section>'
+                '<section class="fl-block" aria-labelledby="fl-contato"><h2 class="fl-title" id="fl-contato">Atendimento</h2><ul>'
+                f'<li><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a></li>'
+                f'<li><a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a></li>'
+                '<li class="fl-note">Confirmação imediata e resposta conclusiva em até 5 dias.</li>'
+                + (f'<li>WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a></li>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
+                '</ul></section>'
+                '<section class="fl-block" aria-labelledby="fl-regras"><h2 class="fl-title" id="fl-regras">Regras da compra</h2><ul>'
+                '<li><a href="/termos">Termos de compra</a></li><li><a href="/privacidade">Privacidade</a></li>'
+                '<li><a href="/reembolso">Arrependimento e reembolso</a></li></ul></section>'
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
                 # confirm the site <-> profile link.
-                '<br>Perfis oficiais: '
-                '<a rel="me noopener" href="https://www.youtube.com/@zevanory">YouTube</a> · '
-                '<a rel="me noopener" href="https://www.instagram.com/zevanory_/">Instagram</a> · '
-                '<a rel="me noopener" href="https://www.facebook.com/people/Zevanory/61593970292684/">Facebook</a> · '
-                '<a rel="me noopener" href="https://www.tiktok.com/@zevanory">TikTok</a> · '
-                '<a rel="me noopener" href="https://t.me/zevanory">Telegram</a> · '
-                '<a rel="me noopener" href="https://bsky.app/profile/zevanoryoficial.bsky.social">Bluesky</a> · '
-                '<a rel="me noopener" href="https://www.pinterest.com/zevanory/">Pinterest</a></div>')
+                '<section class="fl-block" aria-labelledby="fl-perfis"><h2 class="fl-title" id="fl-perfis">Perfis oficiais</h2><ul class="fl-social">'
+                + "".join(f'<li><a rel="me noopener" href="{u}">{n}</a></li>' for n, u in _SOCIAL) +
+                '</ul></section></div>')
 
 COMMERCE = {
     "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197,
@@ -135,6 +142,96 @@ GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RUL
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
 MODE = policy.build_mode()
 
+def buy_facts() -> str:
+    return ('<ul class="facts buy-facts"><li>Pagamento processado pelo Mercado Pago (Pix ou cartão)</li>'
+            f'<li>Entrega por e-mail em {policy.DELIVERY_72H}</li>'
+            '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
+
+# Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
+RESPONSE_COMMITMENT = "confirmação imediata e resposta conclusiva em até 5 dias"
+
+def trust_mini(payment: str = "pelo Mercado Pago") -> str:
+    """Compact, factual trust block next to every price (data from data/politica-unica.json)."""
+    f = policy.SUPPLIER
+    return ('<ul class="trust-mini" aria-label="Quem vende e como funciona">'
+            f'<li><strong>Empresa brasileira</strong><span>{f["razao_social"]}, <span class="nowrap">CNPJ {f["cnpj"]}</span>, Várzea Alegre (CE)</span></li>'
+            f'<li><strong>Pagamento</strong><span>processado {payment}</span></li>'
+            f'<li><strong>Suporte</strong><span><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a><span class="tm-note">{RESPONSE_COMMITMENT[0].upper() + RESPONSE_COMMITMENT[1:]}.</span></span></li>'
+            '<li><strong>Regras</strong><span><a href="/termos">Termos</a>, <a href="/privacidade">Privacidade</a> e <a href="/reembolso">Reembolso</a></span></li></ul>')
+
+def how_to_buy() -> str:
+    """Full trust block (solucoes, quem-criou): how a purchase works, step by step, and who sells.
+    Every sentence restates /termos (sections 1, 3, 4, 6 and 8); nothing new is promised."""
+    f = policy.SUPPLIER
+    return ('<section class="container how-to-buy" aria-labelledby="como-compra"><h2 id="como-compra">Como a compra funciona</h2>'
+            '<ol class="steps">'
+            '<li><strong>Pagamento</strong><span>Pix ou cartão, processado pelo Mercado Pago. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
+            '<li><strong>E-mail</strong><span>Depois da confirmação do pagamento, o link chega no e-mail que você informou.</span></li>'
+            f'<li><strong>Link pessoal</strong><span>{policy.DELIVERY_72H[0].upper() + policy.DELIVERY_72H[1:]}. Se expirar, o suporte envia outro sem custo.</span></li>'
+            '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
+            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart.</p>'
+            '<dl class="seller">'
+            f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
+            f'<div><dt>CNPJ</dt><dd>{f["cnpj"]}</dd></div>'
+            '<div><dt>Onde</dt><dd>Várzea Alegre, Ceará</dd></div>'
+            f'<div><dt>Suporte</dt><dd><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a><br>{RESPONSE_COMMITMENT[0].upper() + RESPONSE_COMMITMENT[1:]}</dd></div>'
+            '</dl></section>')
+
+# Real product previews (owner authorisation, in writing: "AUTORIZO PRÉVIAS REAIS DOS PRODUTOS NO SITE";
+# Sol 228 content rules). Per product at most three images: manual cover, ONE inner page, ONE spreadsheet
+# crop. Provenance per image (zip + SHA-256, path in zip, page/crop, redactions, output SHA-256 of WebP and
+# AVIF) is committed in docs/evidence/sales-ux/previews-manifest.json; tests recompute the hashes.
+PREVIEW_MANIFEST = json.loads((ROOT / "docs" / "evidence" / "sales-ux" / "previews-manifest.json").read_text(encoding="utf-8"))
+_PREVIEWS = {i["id"]: i for i in PREVIEW_MANIFEST["images"]}
+PREVIEW_TEXT = {
+    "manual-ia-capa": ("Capa do manual", "Capa do manual IA na Prática, com o público, o formato e a lista das oito aulas"),
+    "manual-ia-aula-a1": ("Uma página interna: aula A1", "Página da aula A1 do manual IA na Prática: objetivo, exemplo comentado e exercício"),
+    "planilha-ia-orcamento": ("Trecho da planilha: aba Orçamento", "Trecho da planilha do IA na Prática, aba Orçamento, com as colunas item, quantidade, unitário, subtotal e conferência"),
+    "manual-vendas-capa": ("Capa do manual", "Capa do manual Vendas na Prática, com o público, o formato e a lista das oito aulas"),
+    "manual-vendas-aula-b1": ("Uma página interna: aula B1", "Página da aula B1 do manual Vendas na Prática: defina uma oferta que você consegue cumprir"),
+    "planilha-vendas-oportunidades": ("Trecho da planilha: aba Oportunidades", "Trecho da planilha comercial do Vendas na Prática, aba Oportunidades, com origem, etapa, resultado, proposta e próxima ação"),
+    "manual-lucro-capa": ("Capa do manual", "Capa do manual Lucro & Caixa: o que o produto resolve e como usar a planilha"),
+    "manual-lucro-modulo-1": ("Uma página interna: módulos 1 e 2", "Página do manual Lucro & Caixa com os módulos 1 e 2: faturamento x resultado e mapa de custos"),
+    "planilha-lucro-painel": ("Trecho da planilha: Painel de Decisão", "Trecho da planilha Lucro & Caixa, Painel de Decisão, com os rótulos dos indicadores; a coluna de leitura está oculta"),
+    "plano-30-dias-capa": ("Capa do plano de 30 dias", "Capa do Plano integrado de 30 dias do Negócio Completo, com o modo de uso e a semana 1"),
+    "plano-30-dias-semana-2": ("Uma página interna: semana 2", "Trecho da semana 2 do Plano integrado de 30 dias: ações diárias de vendas e acompanhamento"),
+    "painel-decisao-integrada": ("Trecho do Painel de Decisão Integrada", "Trecho do Painel de Decisão Integrada do Negócio Completo, com os títulos das colunas por produto ou serviço"),
+}
+
+def _picture(iid: str, cls: str = "", alt_suffix: str = "") -> str:
+    i = _PREVIEWS[iid]
+    k = f' class="{cls}"' if cls else ""
+    return (f'<picture><source type="image/avif" srcset="/{i["avif"]["file"]}">'
+            f'<img{k} src="/{i["webp"]["file"]}" width="{i["width"]}" height="{i["height"]}" loading="lazy" decoding="async" '
+            f'alt="{_attr(PREVIEW_TEXT[iid][1] + alt_suffix)}"></picture>')
+
+def preview_section(slug: str) -> str:
+    ids = PREVIEW_MANIFEST["per_product"].get(slug) or []
+    if not ids:
+        return ""
+    if len(ids) > 3:
+        raise SystemExit(f"{slug}: more than three preview images (owner authorisation is three)")
+    figs = "".join(f'<figure class="inside-item">{_picture(i)}<figcaption>{PREVIEW_TEXT[i][0]}<span class="inside-label">{_PREVIEWS[i]["label"]}</span></figcaption></figure>' for i in ids)
+    note = (" O Combo traz o IA na Prática e o Vendas na Prática completos; as imagens são desses materiais." if slug == "combo-ia-vendas" else "")
+    return ('<section class="container section inside" aria-labelledby="por-dentro"><div class="section-head">'
+            '<h2 id="por-dentro">Veja por dentro</h2><p class="section-lead">Páginas reais do material, reduzidas para visualização: a capa, '
+            'uma página interna e um trecho da planilha. O conteúdo completo vem na compra.' + note + '</p></div>'
+            f'<div class="inside-grid">{figs}</div></section>')
+
+def catalog_thumb(slug: str) -> str:
+    """Cover thumbnail; when the approved inner page is a whole page of the same format, it sits behind
+    the cover as a real two-page stack (no new content: both images are already in "Veja por dentro")."""
+    ids = PREVIEW_MANIFEST["per_product"].get(slug) or []
+    if not ids:
+        return ""
+    front = _PREVIEWS[ids[0]]
+    back = _PREVIEWS[ids[1]] if len(ids) > 1 else None
+    same_format = back is not None and not back["crop_box"] and abs(back["width"] / back["height"] - front["width"] / front["height"]) < 0.01
+    behind = (f'<span class="cc-page cc-page-back" aria-hidden="true">{_picture(back["id"], "", "")}</span>'.replace(f'alt="{_attr(PREVIEW_TEXT[back["id"]][1])}"', 'alt=""')
+              if same_format else "")
+    return (f'<span class="cc-thumb{" cc-stack" if same_format else ""}">{behind}'
+            f'<span class="cc-page">{_picture(ids[0], "", " (" + front["label"] + ")")}</span></span>')
+
 def _faq_html(q, a):
     return f"<details><summary>{q}</summary><p>{a}</p></details>"
 
@@ -156,11 +253,6 @@ def mode_text(closed_text: str, open_text: str, tag: str = "span", cls: str = ""
     if MODE == policy.OPEN:
         return f"<{tag}{klass}>{open_text}</{tag}>"
     return f'<{tag}{klass} data-zev-open-text="{_attr(open_text)}">{closed_text}</{tag}>'
-
-def closed_note(tag: str = "p", cls: str = "microcopy sales-closed") -> str:
-    if MODE == policy.OPEN:
-        return ""
-    return f'<{tag} class="{cls}" data-zev-closed>Preço informativo: {policy.CLOSED_LABEL}.</{tag}>'
 
 def _esc(text: str) -> str:
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -205,7 +297,9 @@ def apply_commerce(slug: str, html: str) -> str:
     html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     # Every primary CTA buys (open) or joins the waiting list (closed).
     html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', lambda m: sales_cta(c, label), html)
-    html = re.sub(r'<p class="microcopy">[^<]*</p>', '<p class="microcopy">Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ' + policy.DELIVERY_72H + ' · arrependimento em 7 dias corridos.</p>', html)
+    # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Each item has an
+    # exact Hotmart counterpart in worker/sales-public-worker.mjs (HOTMART_TEXT).
+    html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
     trust = {
         ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download."),
         ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
@@ -214,17 +308,23 @@ def apply_commerce(slug: str, html: str) -> str:
     for (old_t, old_s), (new_t, new_s) in trust.items():
         html = html.replace(f"<strong>{old_t}</strong><span>{old_s}</span>", f"<strong>{new_t}</strong><span>{new_s}</span>")
     items = "".join(f"<li>{i}</li>" for i in c["items"])
-    aside = (f'<aside class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
+    # Design (2026-10-24): "vendas temporariamente fechadas" is said ONCE per page by the site notice
+    # (sales_notice); the legal Resumo da oferta keeps its own Disponibilidade field.
+    aside = (f'<div class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
              f'<h3>O que você recebe</h3><ul>{items}</ul>'
-             + policy.POLICY_SUMMARY + closed_note()
+             + policy.POLICY_SUMMARY
              + offer_summary(slug, "produto_digital", "; ".join(c["items"]) + ".", c["price"]) +
-             '</div>' + sales_cta(c, label) + '</aside>')
+             '</div>' + sales_cta(c, label) + '</div>')
     html = re.sub(r'<aside class="offer-side">.*?</aside>', lambda m: aside, html, count=1, flags=re.S)
-    # Conversion: what the buyer gets, right under the first call to action.
-    chips = "".join(f"<li>{i}</li>" for i in c["items"][:4])
-    includes = (closed_note() + f'<ul class="hero-includes" aria-label="O que está incluído">{chips}</ul>'
-                '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano ' + HUMAN_SUPPORT + '</p>')
-    html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
+    # Hero: the product's name above the claim, and its receipt (what you get, the total) beside it.
+    html = re.sub(r'(<section class="container hero"><div>)<p class="eyebrow">[^<]*</p>', lambda m: m.group(1) + f'<p class="kicker">{c["name"]}</p>', html, count=1)
+    receipt = (f'<div class="hero-panel receipt"><p class="receipt-head">O que você recebe<span>pagamento único</span></p>'
+               f'<ul class="outcome-list">{items}</ul>'
+               f'<p class="receipt-total"><span>Total</span><span>R$ {c["price"]}</span></p>'
+               + trust_mini() + '</div>')
+    html = re.sub(r'<aside class="hero-panel">.*?</aside>', lambda m: receipt, html, count=1, flags=re.S)
+    includes = ('<p class="byline hero-trust">Feito por <a href="/quem-criou">Renan Bitu</a>, em Várzea Alegre (CE). Suporte humano ' + HUMAN_SUPPORT + '.</p>')
+    html = re.sub(r'(<section class="container hero".*?<ul class="facts buy-facts">.*?</ul>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
     yes, no = FIT[slug]
     fit_html = ('<section class="container section fit-section" aria-labelledby="para-quem">'
@@ -235,10 +335,10 @@ def apply_commerce(slug: str, html: str) -> str:
                 '</ul></div><div class="fit-card fit-no"><h3>Não é para você se</h3><ul>'
                 + "".join(f"<li>{x}</li>" for x in no) +
                 '</ul></div></div></section>')
-    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html, html, count=1, flags=re.S)
+    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html + preview_section(slug), html, count=1, flags=re.S)
     # Conversion: a compact bar that follows the reader on phones (72 h / um download beside the CTA).
     bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"]}</strong>'
-           + mode_text(f'R$ {c["price"]} · {policy.CLOSED_LABEL}', f'R$ {c["price"]} · link de 72 h, um download')
+           + f'<span>R$ {c["price"]} · pagamento único</span>'
            + '</div>' + sales_cta(c, "Comprar") + '</div>')
     html = html.replace("</main>", bar + "</main>", 1)
     # FAQ: drop "when will sales open" and fix composition answers; add delivery + withdrawal.
@@ -271,15 +371,26 @@ def apply_commerce(slug: str, html: str) -> str:
     html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', fix_ld, html, count=1, flags=re.S)
     return html
 
+CATALOG_INCLUDES = {  # the most concrete deliverables of each paid product, picked from COMMERCE (never invented)
+    "lucro-e-caixa": (2, 3, 4), "vendas-na-pratica": (2, 3, 4), "ia-na-pratica": (2, 3, 0),
+    "combo-ia-vendas": (0, 1, 2), "negocio-completo": (3, 4, 5)}
+
 def apply_catalog(html: str) -> str:
-    html = html.replace("com escopo explícito e venda condicionada a gates reais.", "com escopo explícito, pagamento seguro e arrependimento em 7 dias.")
-    for slug, c in COMMERCE.items():
-        tag = mode_text(f'R$ {c["price"]} · {policy.CLOSED_LABEL}', f'R$ {c["price"]} · link de 72 h, um download', cls="catalog-type")
-        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', lambda m: m.group(1) + tag, html, count=1, flags=re.S)
-    sub_tag = mode_text(f"R$ 197/mês · {policy.CLOSED_LABEL}", "R$ 197/mês · entrega automática por e-mail", cls="catalog-type")
-    html = re.sub(r'(<a class="catalog-card" href="/conteudo-pronto">.*?<p>[^<]*</p>)', lambda m: m.group(1) + sub_tag, html, count=1, flags=re.S)
-    for slug in ("zevanory-sales", "zevanory-cfo", "arbm-contador-saloes"):
-        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">Em breve</span>', html, count=1, flags=re.S)
+    """Catalogue by problem (solucoes/index.html). For each paid product the build adds what you get
+    (its real deliverables, from COMMERCE) and its price; free and "Em breve" status are in the source.
+    Closed status is the single page notice, not repeated per card."""
+    prices = {slug: (f'R$ {c["price"]}', "pagamento único") for slug, c in COMMERCE.items()}
+    prices["conteudo-pronto"] = ("R$ 197", "por mês")
+    for slug, (price, unit) in prices.items():
+        inc = ""
+        if slug in CATALOG_INCLUDES:
+            items = [re.sub(r"\s*\([^)]*\)", "", COMMERCE[slug]["items"][k]) for k in CATALOG_INCLUDES[slug]]
+            inc = '<ul class="catalog-includes">' + "".join(f"<li>{i}</li>" for i in items) + "</ul>"
+        pat = rf'(<article class="catalog-card[^"]*"[^>]*><div class="cc-main">(?:<p class="cc-match">[^<]*</p>)?<h3><a href="/{slug}">[^<]*</a></h3><p>[^<]*</p>)((?:<ul class="catalog-includes">.*?</ul>)?</div>)'
+        thumb = catalog_thumb(slug)
+        html, n = re.subn(pat, lambda m: m.group(1) + inc + m.group(2) + f'<p class="catalog-price">{price}<span>{unit}</span></p>' + thumb, html, count=1, flags=re.S)
+        if n != 1:
+            raise SystemExit(f"solucoes: catalog card for {slug} missing")
     return html
 
 SUBSCRIPTION_OFFER = {"@type": "Offer", "price": "197.00", "priceCurrency": "BRL", "url": f"{SALES_ORIGIN}/conteudo-pronto"}
@@ -290,10 +401,21 @@ def apply_subscription(html: str) -> str:
     if html.count('data-zev-sub="conteudo-pronto"') < 1 or "/assinar/" in html:
         raise SystemExit("conteudo-pronto: fonte fora do modo fechado")
     html = re.sub(r'(<a class="button primary" [^>]*data-zev-sub="conteudo-pronto"[^>]*>[^<]*</a></p><p class="microcopy">[^<]*</p>)',
-                  lambda m: m.group(1) + policy.SUBSCRIPTION_SUMMARY + closed_note()
+                  lambda m: m.group(1) + policy.SUBSCRIPTION_SUMMARY
                   + offer_summary("conteudo-pronto", "assinatura", policy.RESUMO_OFERTA["assinatura"]["caracteristicas"]), html, count=1)
     if policy.SUBSCRIPTION_SUMMARY not in html:
         raise SystemExit("conteudo-pronto: ancora do CTA principal nao encontrada")
+    # The summary sits in the hero, right under the h1: an h2 keeps the heading order (Lighthouse heading-order).
+    html = html.replace('aria-label="Resumo da oferta"><h3>Resumo da oferta</h3>', 'aria-label="Resumo da oferta"><h2>Resumo da oferta</h2>', 1)
+    # Design: the monthly package as a receipt beside the hero (same facts as the page's own list).
+    receipt = ('<div class="hero-panel receipt"><p class="receipt-head">Todo mês você recebe<span>sem fidelidade</span></p>'
+               '<ul class="outcome-list"><li>12 posts com legenda, chamada para ação e hashtags</li>'
+               '<li>4 mensagens de venda e acompanhamento</li><li>Calendário de 30 dias</li></ul>'
+               '<p class="receipt-total"><span>Total</span><span>R$ 197/mês</span></p>'
+               + trust_mini("pela Hotmart") + '</div>')
+    html, n = re.subn(r'(<section class="container hero"><div>.*?</dl></section></div>)(</section>)', lambda m: m.group(1) + receipt + m.group(2), html, count=1, flags=re.S)
+    if n != 1:
+        raise SystemExit("conteudo-pronto: hero receipt anchor missing")
     # Destino da lista de espera vem do contato público (e-mail enquanto o WhatsApp não opera).
     html = re.sub(r'(<a class="button primary" )href="[^"]*"( data-zev-sub="conteudo-pronto")',
                   lambda m: m.group(1) + f'href="{_attr(policy.waitlist_href("Conteúdo Pronto"))}"' + m.group(2), html)
@@ -308,6 +430,33 @@ def apply_subscription(html: str) -> str:
                     node["offers"] = dict(SUBSCRIPTION_OFFER)
             return m.group(1) + json.dumps(data, ensure_ascii=False) + m.group(3)
         html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', add_offer, html, count=1, flags=re.S)
+    return html
+
+PRICE_PAGES = set(PRODUCTS) | {"solucoes", "conteudo-pronto"}
+
+def sales_notice() -> str:
+    """The one honest notice on pages that show prices (closed build only). <p> with plain text and
+    data-zev-closed: the Worker removes it at request time when the owner opens sales."""
+    if MODE == policy.OPEN:
+        return ""
+    return (f'<p class="sales-notice" data-zev-closed>Aviso: {policy.CLOSED_LABEL}. Os preços são informativos; '
+            'entre na lista de espera e avisamos por e-mail quando abrir.</p>')
+
+def apply_presentation(slug: str, html: str) -> str:
+    """Design pass (docs/design/sales-site-identity.md), applied after every content/legal step:
+    the hero label stays (sentence case, no caps), every other eyebrow/kicker goes; no arrow tics;
+    buttons say what happens; asides that are not complementary content become plain blocks."""
+    html = re.sub(r'(<section class="container hero"><div>)<p class="eyebrow">', r'\1<p class="kicker">', html, count=1)
+    html = re.sub(r'<p class="(?:eyebrow|section-kicker)">[^<]*</p>', "", html)
+    html = re.sub(r'(<span class="card-link">[^<]*?)\s*→\s*(</span>)', r"\1\2", html)
+    html = html.replace(">Falar com a ZEVANORY</a>", ">Escrever para o suporte</a>")
+    # The hero panel is part of the hero, not complementary content (axe landmark-complementary-is-top-level).
+    # The offer block is part of the offer section too (the Decreto 7.962 tests anchor on the div).
+    html = re.sub(r'<aside class="(hero-panel|offer-side)">(.*?)</aside>', r'<div class="\1">\2</div>', html, flags=re.S)
+    html = html.replace('<nav class="site-nav"><a ', '<nav class="site-nav" aria-label="Navegação principal"><a ', 1)
+    if slug in PRICE_PAGES and "sales-notice" not in html:
+        # First thing inside <main> (inside a landmark, read right after the skip link).
+        html = re.sub(r"(<main\b[^>]*>)", lambda m: m.group(1) + sales_notice(), html, count=1)
     return html
 
 def add_legal_footer(html: str) -> str:
@@ -374,6 +523,8 @@ def apply_approved_overlay() -> None:
             html = apply_catalog(html)
         if slug == "conteudo-pronto":
             html = apply_subscription(html)
+        html = html.replace("<!--how-to-buy-->", how_to_buy())
+        html = apply_presentation(slug, html)
         html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
         # Source pages may list both addresses ("contato@ ou suporte@"); after the public
         # canonicalization they would read "suporte@ ou suporte@". Collapse the duplicate.
@@ -461,12 +612,35 @@ def fingerprint_assets() -> dict[str, str]:
         (OUT / out).parent.mkdir(parents=True, exist_ok=True)
         (OUT / out).write_bytes(data)
         mapping["/" + name] = "/" + out
+    # Real product previews: hashed names (immutable content), referenced as /assets/previews/<file> by the build.
+    for img in sorted(p for ext in ("*.webp", "*.avif") for p in (ROOT / "assets" / "previews").glob(ext)):
+        data = img.read_bytes()
+        out = _hashed_name("previews/" + img.name, data)
+        (OUT / out).parent.mkdir(parents=True, exist_ok=True)
+        (OUT / out).write_bytes(data)
+        mapping["/assets/previews/" + img.name] = "/" + out
+    fonts = [v for k, v in mapping.items() if k.endswith(".woff2")]
+    preload = "".join(f'<link rel="preload" href="{f}" as="font" type="font/woff2" crossorigin>' for f in sorted(fonts))
     for html_file in sorted(OUT.glob("*.html")):
         html = html_file.read_text(encoding="utf-8")
         for name in FINGERPRINT:
             attr = "href" if name.endswith(".css") else "src"
             html = html.replace(f'{attr}="/{name}"', f'{attr}="{mapping["/" + name]}"')
+        for k, v in mapping.items():
+            if k.startswith("/assets/previews/"):
+                html = html.replace(f'src="{k}"', f'src="{v}"').replace(f'srcset="{k}"', f'srcset="{v}"')
+        # Both themes (prefers-color-scheme, no toggle): every page declares light and dark; the browser
+        # chrome follows the navy counter bar, identical in both themes.
+        html = re.sub(r'<meta name="color-scheme"[^>]*>', "", html)
+        html = re.sub(r'<meta name="theme-color"[^>]*>', "", html)
+        html = re.sub(r'(<meta name="viewport"[^>]*>)', r'\1<meta name="color-scheme" content="light dark"><meta name="theme-color" content="#0e1a2b">', html, count=1)
+        # Self-hosted fonts (font-src 'self'), preloaded so text paints in the final face early.
+        html = re.sub(r'(<link rel="stylesheet" href="/assets/(?:product|legal)\.[0-9a-f]{10}\.css">)', lambda m: preload + m.group(1), html, count=1)
         html_file.write_text(html, encoding="utf-8")
+    # Unhashed font copies for the unhashed stylesheet (Worker info pages, pre-release cached HTML).
+    (OUT / "assets" / "fonts").mkdir(parents=True, exist_ok=True)
+    for font in sorted((ROOT / "assets" / "fonts").glob("*.woff2")):
+        shutil.copy2(font, OUT / "assets" / "fonts" / font.name)
     # The unhashed copies stay published but no page loads them: /product.css serves the Worker's
     # own info pages, and all three keep working for HTML cached before this release (the old page
     # policy allowed up to 1 h of stale-while-revalidate). They are served "no-cache", never immutable.
@@ -527,6 +701,23 @@ def main() -> int:
         shutil.copy2(png, OUT / "brand" / "export" / png.name)
     if not (OUT / "brand" / "export" / "link-card.png").is_file():
         raise SystemExit("official link-card export missing from sales build")
+
+    # Designed 404 (served by the Worker for unknown page paths; noindex).
+    nf = (ROOT / "solucoes" / "index.html").read_text(encoding="utf-8").replace("/zevanory-public-mirror/", "/")
+    head_tags = re.search(r'(<link rel="icon"[^>]*>)', nf).group(1)
+    header = re.search(r'(<header class="site-header">.*?</header>)', nf, re.S).group(1)
+    header = header.replace(">Falar com a ZEVANORY</a>", ">Escrever para o suporte</a>").replace('<nav class="site-nav"><a ', '<nav class="site-nav" aria-label="Navegação principal"><a ', 1)
+    receipt_404 = ('<div class="receipt" aria-labelledby="nf-cupom"><p class="receipt-head" id="nf-cupom">Cupom não localizado<span>404</span></p><ul>'
+                   + "".join(f'<li><a class="receipt-line" href="{h}"><span class="item">{i}</span><span class="leader" aria-hidden="true"></span><span class="fix">{t}</span></a></li>'
+                             for i, t, h in (("Ver tudo", "Soluções", "/solucoes"), ("Quem está por trás", "Quem criou", "/quem-criou"), ("Regras da compra", "Termos", "/termos")))
+                   + '</ul></div>')
+    page_404 = ('<!doctype html>\n<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                '<meta name="robots" content="noindex"><title>Página não encontrada | ZEVANORY</title>' + head_tags +
+                '<link rel="stylesheet" href="/product.css"></head><body><a class="skip-link" href="#conteudo">Ir para o conteúdo</a>' + header +
+                '<main id="conteudo"><section class="container not-found"><h1>Esta página não existe.</h1>'
+                '<p class="hero-copy">O endereço pode ter mudado ou ter sido digitado com um erro. Escolha por onde seguir:</p>'
+                + receipt_404 + '</section>' + LEGAL_FOOTER + '</main></body></html>')
+    (OUT / "404.html").write_text(page_404, encoding="utf-8")
 
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
     # even though the worker also rewrites / to /solucoes.html.
