@@ -1,6 +1,6 @@
 name: R9 operator token consumer authentication (read-only)
 
-# Sol 233, passo (c) do procedimento de docs/ops/operator-token-transition.md: para CADA consumidor de produção do
+# Sol 233, passo (6) do procedimento de docs/ops/operator-token-transition.md: para CADA consumidor de produção do
 # inventário, prova que a credencial NOVA (secrets.ZEVANORY_OPERATOR_TOKEN, sem queda para o nome antigo) autentica no
 # Worker de produção como a PRIMÁRIA, por um endpoint SOMENTE LEITURA (GET /api/internal/audit/credential-identity via
 # scripts/ci/credential_identity_readback.py --require-primary: OPERATOR_TOKEN_SOURCE=primary e
@@ -85,3 +85,41 @@ jobs:
           set -euo pipefail
           echo "CONSUMER=$CONSUMER ENVIRONMENT=gh-pages-automacao"
           python3 scripts/ci/credential_identity_readback.py https://zevanory.api.br --require-primary
+
+  # Passo (6), parte T2 (Sol 237): os 4 jobs T2 assinam x-commercial-signature para o Worker de CONTROLE
+  # (controle.zevanory.api.br, zevanory-product-control-edge), não para o Worker principal. Prova sem efeito colateral:
+  # POST /api/commercial/auth/probe (edge #211) usa o MESMO conjunto de candidatos das rotas T2 sobre uma canônica
+  # separada e não gera, não grava, não publica, não cobra, não muta. --require-primary: o valor NOVO foi aceito como
+  # primary (não o antigo nem o tick). Saídas: só categorias.
+  control-edge-t2-hmac:
+    name: hmac ${{ matrix.consumer }}
+    environment: gh-pages-automacao
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        consumer:
+          - "t2-content-calendar.yml#compose"
+          - "t2-creative-compose.yml#compose"
+          - "t2-regenerate-ia-clean.yml#regenerate"
+          - "t2-workers-ai-creative-factory.yml#generate"
+    env:
+      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Side-effect-free proof that the control Worker accepts the new credential as primary
+        shell: bash
+        env:
+          CONSUMER: ${{ matrix.consumer }}
+        run: |
+          set -euo pipefail
+          echo "CONSUMER=$CONSUMER ENVIRONMENT=gh-pages-automacao VERIFIER=controle.zevanory.api.br"
+          node scripts/ci/control_edge_hmac_probe.mjs --require-primary

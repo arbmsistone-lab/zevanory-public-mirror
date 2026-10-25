@@ -338,6 +338,61 @@
     }
    ],
    "secondary": []
+  },
+  "V7 T2 HMAC proof falls back to the legacy secret": {
+   "primary": [
+    {
+     "test_pattern": "I4",
+     "assertion_pattern": "[I4.3]"
+    },
+    {
+     "test_pattern": "I6",
+     "assertion_pattern": "[I6.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "I1",
+     "assertion_pattern": "[I1.1]",
+     "justification": "o gate passa a classificar o job de prova HMAC como new+fallback, diferente da forma new do inventário"
+    }
+   ]
+  },
+  "V8 T2 HMAC proof drops a T2 caller": {
+   "primary": [
+    {
+     "test_pattern": "I6",
+     "assertion_pattern": "[I6.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "V9 T2 HMAC proof without require-primary": {
+   "primary": [
+    {
+     "test_pattern": "I6",
+     "assertion_pattern": "[I6.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "P1 HMAC probe accepts a non-primary category": {
+   "primary": [
+    {
+     "test_pattern": "I7",
+     "assertion_pattern": "[I7.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "P2 HMAC probe sends the credential to any origin": {
+   "primary": [
+    {
+     "test_pattern": "I7",
+     "assertion_pattern": "[I7.4]"
+    }
+   ],
+   "secondary": []
   }
  }
 }

@@ -6,7 +6,10 @@
 //   I3 todo módulo do Worker que importa operator-credential.mjs ou cita um dos nomes está no documento, e vice-versa;
 //   I4 a matriz de operator-token-consumer-auth.yml cobre exatamente os consumidores de produção new+fallback, cada um no
 //      Environment dele, e prova com o readback somente leitura --require-primary usando só o nome novo;
-//   I5 workflows de prova e de readback nunca disparam no merge.
+//   I5 workflows de prova e de readback nunca disparam no merge;
+//   I6 (Sol 237) o job control-edge-t2-hmac prova os chamadores do verificador externo (exatamente os 4 jobs T2 do
+//      inventário "external"), no Environment deles, só com o nome novo, pela sonda sem efeito colateral --require-primary;
+//   I7 a sonda assina com a canônica separada, exige primary, falha fechada e nunca imprime o valor.
 // Cada asserção leva [In.k].
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -65,10 +68,17 @@ test("I3 módulos do Worker com a credencial == documento", () => {
   assert.deepEqual(listed.filter((k) => !found.includes(k)), [], "[I3.2] módulo do documento sem a credencial");
 });
 
+const HMAC_JOB = "control-edge-t2-hmac";
+function hmacJob(text) {
+  const block = text.split(/\n  (?=[a-z0-9-]+:\n)/).slice(1).find((b) => b.startsWith(HMAC_JOB + ":")) || "";
+  return { block, env: (block.match(/\n    environment: ([a-z0-9-]+)\n/) || [])[1], rows: sorted([...block.matchAll(/\n          - "([^"]+)"/g)].map((m) => m[1])) };
+}
+
 function matrix() {
   const text = readTextNormalized(join(ROOT, ".github", "workflows", "operator-token-consumer-auth.yml"));
   const rows = [];
   for (const block of text.split(/\n  (?=[a-z0-9-]+:\n)/).slice(1)) {
+    if (block.startsWith(HMAC_JOB + ":")) continue;
     const env = (block.match(/\n    environment: ([a-z0-9-]+)\n/) || [])[1];
     const consumers = [...block.matchAll(/\n          - "([^"]+)"/g)].map((m) => m[1]);
     for (const c of consumers) rows.push(`${c} env=${env}`);
@@ -84,7 +94,7 @@ test("I4 prova por consumidor: matriz == consumidores de produção, Environment
   assert.deepEqual(expected.filter((k) => !rows.includes(k)), [], "[I4.1] consumidor de produção sem prova por consumidor");
   assert.equal((text.match(/credential_identity_readback\.py https:\/\/zevanory\.api\.br --require-primary/g) || []).length, 2, "[I4.2] cada job prova com o readback somente leitura --require-primary");
   assert.doesNotMatch(text, /CERTIFICATION_E2E_TOKEN/, "[I4.3] a prova usa só o nome novo (sem queda)");
-  assert.equal((text.match(/ZEVANORY_OPERATOR_TOKEN: \$\{\{ secrets\.ZEVANORY_OPERATOR_TOKEN \}\}/g) || []).length, 2, "[I4.3] nome novo nos dois jobs");
+  assert.equal((text.match(/ZEVANORY_OPERATOR_TOKEN: \$\{\{ secrets\.ZEVANORY_OPERATOR_TOKEN \}\}/g) || []).length, 3, "[I4.3] nome novo nos três jobs");
 });
 
 test("I5 prova e readback nunca disparam no merge", () => {
@@ -94,4 +104,53 @@ test("I5 prova e readback nunca disparam no merge", () => {
     assert.deepEqual(on.split("\n").filter((l) => /^  [a-z_]+:/.test(l)).map((l) => l.trim().replace(/:.*/, "")), ["workflow_dispatch"], "[I5.1] só workflow_dispatch: " + f);
     assert.match(text, /if: \$\{\{ github\.ref == 'refs\/heads\/gh-pages' \}\}/, "[I5.1] só em gh-pages: " + f);
   }
+});
+
+test("I6 prova T2 no Worker de controle: chamadores externos == matriz, Environment deles, sonda sem efeito colateral", () => {
+  const text = readTextNormalized(join(ROOT, ".github", "workflows", "operator-token-consumer-auth.yml"));
+  const { block, env, rows } = hmacJob(text);
+  assert.ok(block, "[I6.1] job control-edge-t2-hmac ausente");
+  const ext = doc().external.find((e) => /controle\.zevanory\.api\.br/.test(e.name));
+  assert.ok(ext, "[I6.1] verificador externo ausente do inventário");
+  const callers = sorted(ext.callers.map((c) => doc().workflows.find((w) => w.workflow === c)).map((w) => `${w.workflow}#${w.job}`));
+  assert.equal(callers.length, 4, "[I6.1] os 4 jobs T2");
+  assert.deepEqual(rows, callers, "[I6.2] matriz HMAC == chamadores do verificador externo");
+  for (const c of ext.callers) assert.equal(doc().workflows.find((w) => w.workflow === c).environment, env, "[I6.3] Environment do chamador");
+  assert.match(block, /\n          node scripts\/ci\/control_edge_hmac_probe\.mjs --require-primary\n/, "[I6.4] sonda --require-primary");
+  assert.match(block, /\n      ZEVANORY_OPERATOR_TOKEN: \$\{\{ secrets\.ZEVANORY_OPERATOR_TOKEN \}\}\n/, "[I6.5] só o nome novo");
+  assert.doesNotMatch(block, /CERTIFICATION_E2E_TOKEN|factory\/tick|creative\/upload|creative\/background|publish\//, "[I6.6] nenhuma rota com efeito colateral, nenhuma queda");
+});
+
+test("I7 sonda: canônica separada, exige primary, falha fechada, sem valor na saída", async () => {
+  const { createServer } = await import("node:http");
+  const { createHmac } = await import("node:crypto");
+  const { runProbe, PROBE_PURPOSE, PROBE_PATH } = await import("../../scripts/ci/control_edge_hmac_probe.mjs");
+  const NEW = "n".repeat(40), OLD = "o".repeat(40);
+  let answer = "primary";
+  const server = createServer((req, res) => {
+    const ts = req.headers["x-commercial-timestamp"], nonce = req.headers["x-commercial-nonce"], sig = req.headers["x-commercial-signature"];
+    const ok = (s) => createHmac("sha256", s).update([PROBE_PURPOSE, ts, nonce].join("\n")).digest("hex") === sig;
+    if (req.method !== "POST" || req.url !== PROBE_PATH) { res.writeHead(404); return res.end("{}"); }
+    const hit = ok(NEW) ? answer : ok(OLD) ? "legacy" : "";
+    res.writeHead(hit ? 200 : 401, { "content-type": "application/json" });
+    res.end(JSON.stringify(hit ? { ok: true, category: hit, migration: "open", sideEffects: "none" } : { ok: false }));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const pass = await runProbe({ env: { ZEVANORY_OPERATOR_TOKEN: NEW, CONTROL_EDGE_PROBE_ORIGIN: origin }, requirePrimary: true });
+    assert.equal(pass.CONTROL_EDGE_HMAC_PROBE, "PASS", "[I7.1] valor novo aceito como primary: " + JSON.stringify(pass));
+    const legacy = await runProbe({ env: { ZEVANORY_OPERATOR_TOKEN: OLD, CONTROL_EDGE_PROBE_ORIGIN: origin }, requirePrimary: true });
+    assert.equal(legacy.REASON, "RUNNER_TOKEN_NOT_PRIMARY", "[I7.2] antigo aceito não basta");
+    answer = "tick";
+    const tick = await runProbe({ env: { ZEVANORY_OPERATOR_TOKEN: NEW, CONTROL_EDGE_PROBE_ORIGIN: origin }, requirePrimary: true });
+    assert.equal(tick.REASON, "RUNNER_TOKEN_NOT_PRIMARY", "[I7.2] tick não basta");
+    const unknown = await runProbe({ env: { ZEVANORY_OPERATOR_TOKEN: "u".repeat(40), CONTROL_EDGE_PROBE_ORIGIN: origin }, requirePrimary: true });
+    assert.equal(unknown.REASON, "CREDENTIAL_NOT_ACCEPTED", "[I7.3] desconhecido recusado");
+    const absent = await runProbe({ env: { CONTROL_EDGE_PROBE_ORIGIN: origin }, requirePrimary: true });
+    assert.equal(absent.REASON, "RUNNER_TOKEN_ABSENT_OR_SHORT", "[I7.3] sem credencial falha fechada");
+    const foreign = await runProbe({ env: { ZEVANORY_OPERATOR_TOKEN: NEW, CONTROL_EDGE_PROBE_ORIGIN: "https://example.com" }, requirePrimary: true });
+    assert.equal(foreign.REASON, "ORIGIN_REFUSED", "[I7.4] origem alheia recusada (a credencial nunca sai para outro host)");
+    for (const r of [pass, legacy, tick, unknown, absent, foreign]) assert.equal(JSON.stringify(r).includes("nnnnnnnn") || JSON.stringify(r).includes("oooooooo"), false, "[I7.5] nunca imprime o valor");
+  } finally { server.close(); }
 });

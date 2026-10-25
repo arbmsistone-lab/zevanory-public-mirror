@@ -64,19 +64,19 @@ jobs:
           grep -qx "MUTANTS total=${R9_OPERATOR_TOKEN_MUTANTS} killed=${R9_OPERATOR_TOKEN_MUTANTS} survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::contagem de mutantes mudou"; exit 1; }
         env:
           R9_OPERATOR_TOKEN_MUTANTS: "34"
-      - name: Janela de migração e inventário de consumidores (Sol 233; contagem exata 13)
+      - name: Janela de migração e inventário de consumidores (Sol 233/237; contagem exata 15)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/ci/operator-token-migration.test.mjs tests/ci/operator-token-inventory.test.mjs | tee /tmp/m.txt
-          for l in "# tests 13" "# pass 13" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/m.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 15" "# pass 15" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/m.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Mutantes da janela de migração (todos precisam morrer)
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/ci/mutants_operator_token_migration.py < /dev/null | tee /tmp/mutm.txt
           echo "::notice title=R9_OPERATOR_TOKEN_MIGRATION_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mutm.txt)"
-          grep -qx "MUTANTS total=30 killed=30 survived=0 inconclusive=0" /tmp/mutm.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=35 killed=35 survived=0 inconclusive=0" /tmp/mutm.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

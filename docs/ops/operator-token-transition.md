@@ -57,7 +57,7 @@ Todos os verificadores de entrada passam pelo mesmo `verifyOperatorToken`, inclu
 
 **Presença.** `operator-token-github-presence.sh` aceita valores diferentes **só** com a janela aberta. As verificações de presença e de `REQUIRE_PRIMARY` continuam.
 
-**Autenticação por consumidor.** O workflow `operator-token-consumer-auth.yml` roda só por `workflow_dispatch` e só em gh-pages.
+**Autenticação por consumidor.** O workflow `operator-token-consumer-auth.yml` roda só por `workflow_dispatch` e só em gh-pages. O job `control-edge-t2-hmac` prova os 4 jobs T2 no Worker de controle; veja o passo (6).
 
 - Para cada consumidor de produção, roda `credential_identity_readback.py --require-primary` com `secrets.ZEVANORY_OPERATOR_TOKEN`, sem queda, no Environment do consumidor.
 - O endpoint é somente leitura (`GET /api/internal/audit/credential-identity`).
@@ -65,66 +65,156 @@ Todos os verificadores de entrada passam pelo mesmo `verifyOperatorToken`, inclu
   - `OPERATOR_TOKEN_SOURCE=primary`: o Worker usa o nome novo;
   - `OPERATOR_TOKEN_PRESENTED=primary`: a credencial do runner autenticou como a primária, e não como a antiga aceita na janela.
 
+### Worker de controle (`controle.zevanory.api.br`, Sol 237)
+
+Os 4 jobs T2 assinam `x-commercial-signature` para o Worker de **controle** (`zevanory-product-control-portable`, código em `zevanory-product-control-edge`), e não para o Worker principal. Auditoria completa: [`control-edge-operator-token-audit.md`](control-edge-operator-token-audit.md).
+
+- **Hoje.** O verificador aceita `COMMERCIAL_ROBOT_TICK_SECRET` e `CERTIFICATION_E2E_TOKEN`. O valor novo seria recusado, e os 4 jobs T2 receberiam `commercial_creative_factory_auth_required` assim que o Environment passasse a mandar o valor novo.
+- **edge #211.**
+  - Acrescenta `ZEVANORY_OPERATOR_TOKEN` (categoria `primary`) **só dentro da janela**, com a mesma flag `OPERATOR_TOKEN_MIGRATION_UNTIL` e o mesmo teto `2026-12-31`.
+  - Fora da janela, os candidatos são exatamente os de hoje: `tick` e `legacy`.
+  - Verificação em tempo constante contra todos os candidatos; registro só por categoria (`primary`, `legacy`, `tick`, `none`).
+  - Cria a rota de prova `POST /api/commercial/auth/probe`, sem efeito colateral.
+- **Deploy.** `zpc-control-worker-deploy.yml` passa `vars.OPERATOR_TOKEN_MIGRATION_UNTIL` ao script de deploy do edge, que valida a flag e a grava como `--var`.
+
+**Assimetria depois da data.** Esta é a diferença importante em relação ao Worker principal:
+
+| Depois da data, sem A2 | Valor novo | Valor antigo |
+|---|---|---|
+| Worker principal | aceito (`primary`) | recusado |
+| Worker de controle | **recusado** | aceito (`legacy`) |
+
+Os workflows mandam `secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN`, ou seja, o valor novo assim que ele existe no Environment. Por isso, depois da data e sem os A2, **os 4 jobs T2 falham com 401** e todos os outros consumidores continuam funcionando. A falha é visível e fechada (nada é publicado). É de propósito: força concluir os A2 em vez de deixar a migração pela metade sem ninguém perceber.
+
 ## Procedimento do proprietário
 
-> **Ordem obrigatória: (a) → (d) → (b) → (c) → (e) → (f) → (g).**
+> **Ordem obrigatória: (1) → (2) → (3) → (4) → (5) → (6) → (7).**
 >
-> O Worker precisa conhecer o valor novo **antes** de qualquer cliente mandá-lo. Os consumidores leem `secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN`, então passam a mandar o valor novo assim que ele existe no Environment.
+> Cada Worker precisa conhecer o valor novo **antes** de qualquer cliente mandá-lo. Os consumidores leem `secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN` e passam a mandar o valor novo assim que ele existe no Environment. Por isso:
 >
-> Se (b) vier antes de (d), o Worker (sem o valor novo) devolve 401 para todos os consumidores entre (b) e (d). Com (d) primeiro e a janela aberta, o Worker aceita o antigo (que os clientes ainda mandam) e o novo, então nada quebra em nenhum passo.
+> - os valores entram nos **dois** Workers em (5);
+> - os Environments só são atualizados em (6), com as **duas** janelas provadamente abertas em (3) e (4).
 
-**(a) Merge e deploy com a janela LIGADA.**
+**(1) Auditar e preparar o Worker de controle.**
 
-1. Antes do deploy, crie a variável **não secreta** de repositório `OPERATOR_TOKEN_MIGRATION_UNTIL` com uma data AAAA-MM-DD até 2026-12-31. Sugestão: hoje + 14 dias.
-2. Faça o merge deste PR e aprove o deploy central (Environment `producao-critica`).
-3. Confirme no readback pós-deploy:
-   - `OPERATOR_TOKEN_MIGRATION=open`
-   - `OPERATOR_TOKEN_SOURCE=legacy_fallback` (o Worker ainda não tem o nome novo)
+- Feito neste PR (auditoria) e no edge #211 (código).
+- Nenhuma execução.
 
-**(d) Valor novo no Worker `zevanory`.** Este passo vem antes de (b); veja a ordem acima.
+**(2) Autorizações separadas.** Cada item abaixo é uma decisão própria do proprietário; uma autorização não implica a outra:
 
-- `wrangler secret put ZEVANORY_OPERATOR_TOKEN --name zevanory` com o valor NOVO (conta 1b264158…).
-- Não apague `CERTIFICATION_E2E_TOKEN`.
-- A partir daqui o Worker aceita o novo (`primary`) e, dentro da janela, o antigo (`legacy`).
+- merge deste PR;
+- merge do edge #211;
+- deploy central (`producao-critica`);
+- deploy do Worker de controle (`zpc-control-worker-deploy.yml`, `producao-critica`);
+- criação da variável `OPERATOR_TOKEN_MIGRATION_UNTIL`, com uma data AAAA-MM-DD até 2026-12-31 (sugestão: hoje + 14 dias). Ela abre a janela **nos dois** Workers no deploy seguinte de cada um.
 
-**(b) Valor novo nos Environments `producao-critica` e `gh-pages-automacao`.**
+**(3) Deploy do Worker principal com a janela, sem o valor novo, e prova.**
 
-- Crie o secret `ZEVANORY_OPERATOR_TOKEN` com o mesmo valor NOVO nos dois.
-- Não crie em `sandbox-financial-approved` nem como segredo de repositório.
-- `production-credential-identity.yml` (dispatch) passa a relatar `VALUES_EQUAL=false` com `GITHUB_OPERATOR_TOKEN_MIGRATION=open`, e passa.
+1. Crie a variável, faça o merge deste PR e aprove o deploy central.
+2. No readback pós-deploy, confirme:
+   - `OPERATOR_TOKEN_MIGRATION=open`;
+   - `OPERATOR_TOKEN_SOURCE=legacy_fallback` (o Worker ainda não tem o nome novo).
+3. Nenhum segredo muda neste passo.
 
-**(c) Verificação por consumidor.**
+**(4) Deploy do Worker de controle com a dupla aceitação, e prova.**
 
-1. Dispare `operator-token-consumer-auth.yml` em gh-pages. Cada linha da matriz precisa terminar com `R9_CREDENTIAL_IDENTITY=PASS`, com `OPERATOR_TOKEN_SOURCE=primary` e `OPERATOR_TOKEN_PRESENTED=primary`.
-2. Nos dias seguintes, os contadores `operator_token_auth_categories_in_isolate.legacy` do readback devem parar de crescer.
-3. **Consumidor externo:** confirme também o Worker de controle (`controle.zevanory.api.br`, tabela "Fora deste repositório").
+1. Faça o merge do edge #211.
+2. O reconciliador agendado (`t2-exact-control-worker-promotion.yml`) pede `zpc-control-worker-deploy.yml`. Aprove-o no Environment `producao-critica`, ou dispare com o SHA exato.
+3. Confirme:
+   - o log do deploy mostra `ZPC_OPERATOR_TOKEN_MIGRATION_FLAG=set until=<data>`;
+   - `version.json` mostra o SHA do edge com o #211;
+   - a rota T2 sem assinatura continua `401 commercial_creative_factory_auth_required` (readback do próprio deploy);
+   - `POST /api/commercial/auth/probe` sem assinatura devolve 401 (rota presente, fail-closed).
+4. Os jobs T2 continuam assinando com o valor antigo (`legacy`), sem mudança.
 
-**(e) Readback com `require_primary`.**
+**(5) O proprietário grava o valor NOVO nos dois Workers. O antigo fica.**
 
-- `production-credential-identity.yml` com `require_primary=true`.
-- Esperado: `OPERATOR_TOKEN_SOURCE=primary`, `OPERATOR_TOKEN_PRESENTED=primary` e `WORKER_BINDING_ZEVANORY_OPERATOR_TOKEN=present` nos dois Environments.
+- `wrangler secret put ZEVANORY_OPERATOR_TOKEN --name zevanory` (Worker principal, conta 1b264158…).
+- `wrangler secret put ZEVANORY_OPERATOR_TOKEN --name zevanory-product-control-portable` (Worker de controle, mesma conta), com o **mesmo** valor.
+- Não apague `CERTIFICATION_E2E_TOKEN` de nenhum dos dois.
+- A partir daqui, nos dois Workers e dentro da janela, o novo autentica como `primary` e o antigo como `legacy`. No controle, `tick` continua.
 
-**(f) PR A2 (seguimento): remove a queda e a janela.**
+**(6) Valor novo nos Environments e provas autenticadas.**
 
-O PR A2 faz o seguinte:
+1. Crie o secret `ZEVANORY_OPERATOR_TOKEN` com o mesmo valor NOVO em `producao-critica` e em `gh-pages-automacao`.
+   - Não crie em `sandbox-financial-approved` nem como segredo de repositório.
+   - `production-credential-identity.yml` (dispatch) relata `VALUES_EQUAL=false` com `GITHUB_OPERATOR_TOKEN_MIGRATION=open`, e passa.
+2. Dispare `operator-token-consumer-auth.yml` em gh-pages. São três jobs, todos somente leitura e sem efeito colateral:
+   - `producao-critica-consumers` (3 linhas) e `gh-pages-automacao-consumers` (14 linhas): `R9_CREDENTIAL_IDENTITY=PASS`, com `OPERATOR_TOKEN_SOURCE=primary` e `OPERATOR_TOKEN_PRESENTED=primary`;
+   - `control-edge-t2-hmac` (os 4 jobs T2): `CONTROL_EDGE_HMAC_PROBE=PASS CATEGORY=primary MIGRATION=open`.
+     - A sonda assina a canônica separada `zevanory-commercial-auth-probe-v1` com o valor novo.
+     - O Worker de controle verifica com o **mesmo** conjunto de candidatos das rotas T2.
+     - Ela não gera imagem, não grava, não publica, não cobra e não muta.
+3. `production-credential-identity.yml` com `require_primary=true`. Esperado nos dois Environments:
+   - `OPERATOR_TOKEN_SOURCE=primary`;
+   - `OPERATOR_TOKEN_PRESENTED=primary`;
+   - `WORKER_BINDING_ZEVANORY_OPERATOR_TOKEN=present`.
+4. Nos dias seguintes, os contadores `legacy` do readback do Worker principal devem parar de crescer. No controle, a linha `commercial_hmac_auth {"category":"legacy"}` deve sumir dos logs de novos isolates.
 
-- `OPERATOR_TOKEN_LEGACY_FALLBACK=false`;
-- apaga `operatorTokenMigration`, o candidato `legacy` e o teto;
-- tira `|| secrets.CERTIFICATION_E2E_TOKEN` dos workflows;
-- gate em `--strict`;
-- remove `OPERATOR_TOKEN_MIGRATION_UNTIL` do deploy e do script de presença;
-- remove R9-D1 de `ops/r9-debt.json`.
+**Lacuna declarada da prova T2.** A sonda prova o conjunto de candidatos e o algoritmo, mas não executa as rotas T2 em si: as canônicas são diferentes, e as rotas têm efeito colateral.
 
-Depois do merge, o proprietário apaga a variável `OPERATOR_TOKEN_MIGRATION_UNTIL`.
+- A equivalência é garantida por código no edge: as 5 rotas chamam o mesmo `verifyCommercialSignature`, e os testes H10 conferem isso estaticamente.
+- A prova de ponta a ponta de uma rota T2 só acontece na próxima execução real de um job T2. Por exemplo, o cron diário `t2-content-calendar`, que manda um criativo para a fila de aprovação do proprietário (não publica).
 
-**(g) Exclusão do valor antigo, com autorização própria.**
+**(7) Depois (A2 e exclusão do antigo), com autorizações próprias.**
 
-1. Depois do deploy do A2 e de um readback `primary`, apague `CERTIFICATION_E2E_TOKEN` do Worker `zevanory` e dos Environments `producao-critica` e `gh-pages-automacao`.
-2. Gere um valor NOVO para `CERTIFICATION_E2E_TOKEN` só em `sandbox-financial-approved` e faça o redeploy da certificação.
+- **PR A2 do mirror:**
+  - `OPERATOR_TOKEN_LEGACY_FALLBACK=false`;
+  - apaga `operatorTokenMigration`, o candidato `legacy` e o teto;
+  - tira `|| secrets.CERTIFICATION_E2E_TOKEN` dos workflows;
+  - gate em `--strict`;
+  - remove `OPERATOR_TOKEN_MIGRATION_UNTIL` do deploy central, do deploy do controle e do script de presença;
+  - remove R9-D1 de `ops/r9-debt.json`.
+- **PR A2 do edge:**
+  - `ZEVANORY_OPERATOR_TOKEN` passa a candidato permanente (`primary`, sem janela);
+  - remove `CERTIFICATION_E2E_TOKEN` dos candidatos;
+  - remove a flag do deploy.
+- **Ordem dos A2:** o A2 do edge precisa estar **em produção antes do vencimento da data** (ver "Depois da data", abaixo). O A2 do edge vai antes ou junto do A2 do mirror.
+- **Exclusão do antigo:** depois dos dois A2 e de readbacks `primary`:
+  1. apague `CERTIFICATION_E2E_TOKEN` dos Workers `zevanory` e `zevanory-product-control-portable` e dos Environments `producao-critica` e `gh-pages-automacao`;
+  2. gere um valor NOVO para `CERTIFICATION_E2E_TOKEN` só em `sandbox-financial-approved` e faça o redeploy da certificação;
+  3. por fim, o proprietário apaga a variável `OPERATOR_TOKEN_MIGRATION_UNTIL`.
 
-Esta exclusão não faz parte deste PR nem do A2.
+### Depois da data (janela vencida)
 
-**Se algo falhar entre (a) e (e):** não apague nada. Enquanto a janela estiver aberta, os dois valores autenticam. Se a data passar, o Worker volta sozinho ao comportamento de hoje (nome novo primeiro), sem deploy.
+A janela fecha sozinha às 23:59:59.999Z do dia, sem deploy, nos dois Workers.
+
+| Situação | Worker principal | Worker de controle | Efeito |
+|---|---|---|---|
+| Vence antes de (5) | valor novo ausente; antigo como `legacy_fallback` | `tick` e `legacy`, como hoje | nada quebra; a migração simplesmente não começou |
+| Vence entre (5) e (6) (Environments ainda com o antigo) | o novo existe e é o único aceito; **o antigo é recusado** | antigo aceito | todo consumidor do Worker principal recebe 401; T2 segue funcionando |
+| Vence depois de (6), sem os A2 | novo aceito | **novo recusado** | os 4 jobs T2 recebem 401; os demais funcionam |
+| Vence depois do A2 do edge | novo aceito | novo aceito (permanente) | nada quebra |
+
+### Falhas intermediárias
+
+- **Regra geral:** em qualquer falha entre (3) e (6), não apague nada e não grave segredo novo. Enquanto as duas janelas estiverem abertas, os dois valores autenticam nos dois Workers.
+- **(3) falha** (deploy central reprovado ou readback sem `open`): pare. O Worker principal continua no comportamento de hoje.
+- **(4) falha** (deploy do controle reprovado, flag `absent` ou `OPERATOR_TOKEN_MIGRATION_UNTIL_INVALID`): pare antes de (5).
+  - O Worker principal com a janela aberta e sem o valor novo é inofensivo.
+  - Não grave o valor novo em nenhum Environment enquanto o controle não provar a dupla aceitação.
+- **(5) feito só num Worker:** grave no outro antes de (6).
+  - Se (6) vier antes, os consumidores do Worker que não recebeu o valor novo recebem 401: todos, se faltou no principal; os 4 T2, se faltou no controle.
+  - Para recuar: apague o secret `ZEVANORY_OPERATOR_TOKEN` dos **Environments** (não dos Workers). Os clientes voltam ao antigo pela queda `||`.
+- **(6) com alguma linha vermelha:**
+  - Linha do Worker principal: veja `REASONS` no readback.
+  - Linha `control-edge-t2-hmac`:
+    - `PROBE_ROUTE_ABSENT`: o edge #211 não está em produção;
+    - `CREDENTIAL_NOT_ACCEPTED`: valor diferente no Worker de controle, ou janela fechada lá;
+    - `RUNNER_TOKEN_NOT_PRIMARY`: o Environment ainda manda o antigo.
+  - Corrija e dispare de novo. O recuo é o mesmo de (5).
+- **Um deploy do controle feito depois que a variável for apagada fecha a janela lá.** Isso vale também para o deploy que o reconciliador pede sozinho. Não apague a variável antes do A2 do edge estar em produção.
+
+### Proibido estender a data para esconder migração incompleta
+
+- A data **não** é prorrogada automaticamente: nem pelo código, nem por workflow, nem por reconciliador.
+- O código aceita só o que está na variável, até o teto `2026-12-31`, e nenhum script reescreve a variável.
+- Mudar `OPERATOR_TOKEN_MIGRATION_UNTIL` para uma data posterior exige três coisas:
+  1. uma autorização própria do proprietário, registrada com o motivo;
+  2. o estado dos passos (1)–(7) no momento;
+  3. um novo deploy de cada Worker.
+- Subir o teto exige PR de código revisado nos quatro arquivos do mirror e no edge.
+- Prorrogar para que um 401 dos T2 (ou de qualquer consumidor) "desapareça" sem concluir os A2 é proibido. O 401 é o sinal de que a migração está incompleta.
 
 ## Inventário de consumidores
 
@@ -133,18 +223,18 @@ O bloco JSON abaixo é a fonte conferida por `tests/ci/operator-token-inventory.
 - um workflow ou job que leia qualquer um dos dois nomes (inventário do gate `operator_token_gate.py`);
 - um script em `scripts/` que cite um dos nomes;
 - um módulo do Worker que importe `operator-credential.mjs` ou cite um dos nomes;
-- uma linha a mais ou a menos na matriz de `operator-token-consumer-auth.yml`.
+- uma linha a mais ou a menos na matriz de `operator-token-consumer-auth.yml`, incluindo a matriz `control-edge-t2-hmac`, que precisa ser exatamente os chamadores do verificador externo.
 
 Resumo:
 
 - **21 jobs ativos de produção:**
-  - 17 na forma `new+fallback`, todos com prova por consumidor em (c): 3 em `producao-critica` e 14 em `gh-pages-automacao`;
+  - 17 na forma `new+fallback`, todos com prova por consumidor em (6): 3 em `producao-critica` e 14 em `gh-pages-automacao`. Os 4 jobs T2 têm também a prova HMAC no Worker de controle;
   - 3 de readback;
   - 1 dispensado (R9-D6, fala só com o Worker de certificação).
-- 2 jobs do próprio workflow de prova (forma `new`).
+- 3 jobs do próprio workflow de prova (forma `new`): 2 de readback no Worker principal e 1 de sonda HMAC no Worker de controle.
 - 2 jobs de certificação (sandbox, credencial própria).
 - 4 jobs aposentados (`if: false`).
-- 20 scripts que citam um dos nomes.
+- 21 scripts que citam um dos nomes.
 - 11 módulos do Worker.
 - 1 verificador fora deste repositório.
 
@@ -168,9 +258,12 @@ Os crons do próprio Worker não enviam a credencial.
 
 **Fora deste repositório:** o Worker de controle `controle.zevanory.api.br`, código em `zevanory-product-control-edge`.
 
-- Ele valida a assinatura HMAC `x-commercial-signature` das rotas `/api/commercial/creative/*`, assinada pelos jobs T2 com `ZEVANORY_OPERATOR_TOKEN`.
-- O segredo dele e a regra de verificação não estão aqui.
-- **Antes de (b)**, o valor novo precisa ser aceito lá também (segredo novo, ou dupla aceitação equivalente). Sem isso, os 4 jobs T2 recebem `commercial_creative_factory_auth_required` depois de (b).
+- **O que verifica.** A assinatura HMAC `x-commercial-signature` das rotas `/api/commercial/creative/{background,upload,factory/tick}` e `/api/commercial/publish/{tick,status}`.
+- **Quem assina.** Os 4 jobs T2, com `secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN`; o Render (`server.ts`) e o cron do próprio Worker assinam com `COMMERCIAL_ROBOT_TICK_SECRET`.
+- **Candidatos hoje:** `COMMERCIAL_ROBOT_TICK_SECRET` e `CERTIFICATION_E2E_TOKEN`. Com o edge #211 e a janela aberta, também `ZEVANORY_OPERATOR_TOKEN`.
+- **Segredos.** São gravados fora de banda: nenhum workflow grava esses nomes no Worker de controle.
+- **Detalhes:** [`control-edge-operator-token-audit.md`](control-edge-operator-token-audit.md).
+- **Ordem:** os passos (4) e (5) do procedimento vêm **antes** de (6). Sem eles, os 4 jobs T2 recebem `commercial_creative_factory_auth_required` depois de (6).
 
 <!-- operator-token-inventory:begin -->
 ```json
@@ -188,8 +281,9 @@ Os crons do próprio Worker não enviam a credencial.
     {"workflow": "mercadopago-exact-sha-recovery.yml", "job": "recover-and-certify", "environment": "producao-critica", "form": "retired", "trigger": "if: false", "uses": "aposentado", "read_only": false},
     {"workflow": "mercadopago-post-payment-verification.yml", "job": "verify", "environment": "producao-critica", "form": "retired", "trigger": "if: false", "uses": "aposentado", "read_only": false},
     {"workflow": "mercadopago-prod-payments-readonly.yml", "job": "payments-readonly", "environment": "producao-critica", "form": "new+fallback", "trigger": "dispatch", "uses": "GET /api/internal/audit/order-lookup", "read_only": true},
-    {"workflow": "operator-token-consumer-auth.yml", "job": "gh-pages-automacao-consumers", "environment": "gh-pages-automacao", "form": "new", "trigger": "dispatch", "uses": "prova (c): GET /api/internal/audit/credential-identity --require-primary", "read_only": true},
-    {"workflow": "operator-token-consumer-auth.yml", "job": "producao-critica-consumers", "environment": "producao-critica", "form": "new", "trigger": "dispatch", "uses": "prova (c): GET /api/internal/audit/credential-identity --require-primary", "read_only": true},
+    {"workflow": "operator-token-consumer-auth.yml", "job": "control-edge-t2-hmac", "environment": "gh-pages-automacao", "form": "new", "trigger": "dispatch", "uses": "prova (6) T2: POST assinado HMAC /api/commercial/auth/probe no Worker de controle --require-primary (sem efeito colateral)", "read_only": true},
+    {"workflow": "operator-token-consumer-auth.yml", "job": "gh-pages-automacao-consumers", "environment": "gh-pages-automacao", "form": "new", "trigger": "dispatch", "uses": "prova (6): GET /api/internal/audit/credential-identity --require-primary", "read_only": true},
+    {"workflow": "operator-token-consumer-auth.yml", "job": "producao-critica-consumers", "environment": "producao-critica", "form": "new", "trigger": "dispatch", "uses": "prova (6): GET /api/internal/audit/credential-identity --require-primary", "read_only": true},
     {"workflow": "order12a-financial-proof-renewal.yml", "job": "signed-renewal", "environment": "gh-pages-automacao", "form": "new+fallback", "trigger": "schedule 11,41 * * * * + dispatch", "uses": "GET assinado HMAC /api/internal/audit/financial-classification (scripts/financial_proof_renewal.py)", "read_only": false},
     {"workflow": "production-credential-identity.yml", "job": "automation-environment", "environment": "gh-pages-automacao", "form": "readback", "trigger": "dispatch", "uses": "presença/igualdade (só categorias)", "read_only": true},
     {"workflow": "production-credential-identity.yml", "job": "worker-binding", "environment": "producao-critica", "form": "readback", "trigger": "dispatch", "uses": "presença + GET /api/internal/audit/credential-identity", "read_only": true},
@@ -209,6 +303,7 @@ Os crons do próprio Worker não enviam a credencial.
   "scripts": [
     {"path": "scripts/channels/prove-youtube.mjs", "role": "consumidor", "environment": "producao-critica (channel-production-bootstrap)"},
     {"path": "scripts/ci/credential_identity_readback.py", "role": "readback (só categorias)", "environment": "producao-critica, gh-pages-automacao"},
+    {"path": "scripts/ci/control_edge_hmac_probe.mjs", "role": "prova (6) T2: sonda HMAC sem efeito colateral no Worker de controle (só categorias)", "environment": "gh-pages-automacao"},
     {"path": "scripts/ci/credential_separation_gate.py", "role": "gate de CI (nome como dado)", "environment": "CI sem segredo"},
     {"path": "scripts/ci/mutants_credential_separation.py", "role": "mutantes de CI (nome como dado)", "environment": "CI sem segredo"},
     {"path": "scripts/ci/mutants_operator_token.py", "role": "mutantes de CI (nome como dado)", "environment": "CI sem segredo"},
@@ -242,7 +337,7 @@ Os crons do próprio Worker não enviam a credencial.
     {"path": "certification-worker.mjs", "role": "Worker de certificação: credencial própria; ZEVANORY_OPERATOR_TOKEN proibido"}
   ],
   "external": [
-    {"name": "controle.zevanory.api.br (zevanory-product-control-edge)", "verifies": "x-commercial-signature (HMAC com ZEVANORY_OPERATOR_TOKEN) em /api/commercial/creative/*", "callers": ["t2-content-calendar.yml", "t2-creative-compose.yml", "t2-regenerate-ia-clean.yml", "t2-workers-ai-creative-factory.yml"], "action": "aceitar o valor novo antes do passo (b)"}
+    {"name": "controle.zevanory.api.br (zevanory-product-control-edge)", "verifies": "x-commercial-signature HMAC-SHA256 em /api/commercial/creative/{background,upload,factory/tick} e /api/commercial/publish/{tick,status}; candidatos COMMERCIAL_ROBOT_TICK_SECRET + CERTIFICATION_E2E_TOKEN (+ ZEVANORY_OPERATOR_TOKEN só na janela, edge #211)", "callers": ["t2-content-calendar.yml", "t2-creative-compose.yml", "t2-regenerate-ia-clean.yml", "t2-workers-ai-creative-factory.yml"], "proof": "operator-token-consumer-auth.yml#control-edge-t2-hmac", "action": "passos (4) e (5) antes de (6)"}
   ]
 }
 ```
