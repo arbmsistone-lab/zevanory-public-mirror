@@ -519,6 +519,25 @@ test("N16 diagnóstico ruidoso e seguro: redação, erros da Cloudflare, version
   const paged = buildHistory({ list: { ...vlist, result_info: { page: 1, per_page: 3, total_pages: 4, total_count: 12 } }, details: [] });
   assert.equal(paged.completeness.pages_exhausted, false, "[N16.11] paginação não esgotada relatada");
   assert.equal(buildHistory({ list: vlist, details: [], perPage: 3 }).completeness.pages_exhausted, false, "[N16.11] página cheia sem result_info: não esgotada");
+  // Sol 231 (causal): a API devolve exatamente o limite da página (50), então pages_exhausted=false; há um exemplo
+  // qualificado válido (versão 50 "secret", anterior 49 com o mesmo etag e só o segredo removido) e mesmo assim o
+  // veredito global tem de ser NOT_PROVEN.
+  const fifty = { success: true, result: { items: Array.from({ length: 50 }, (_, i) => ({ id: `${String(50 - i).padStart(8, "0")}-0000-4000-8000-000000000000`, number: 50 - i,
+    annotations: { "workers/triggered_by": i === 0 ? "secret" : "upload" } })) } };
+  const fiftyDet = fifty.result.items.map((v) => det(v.id, "e1", v.number === 50 ? [plain("PUBLIC_BASE_URL")] : withSecret));
+  const fh = buildHistory({ list: fifty, details: fiftyDet, perPage: 50 });
+  const fs50 = historySummary(fh);
+  assert.deepEqual([fh.completeness.versions_listed, fh.completeness.details_failed, fh.completeness.pages_exhausted], [50, 0, false], "[N16.12] página cheia (50): paginação não esgotada");
+  assert.ok(fs50.some((l) => l.includes("number=50 ") && l.includes("premise=PROVEN")), "[N16.12] o exemplo da versão 50 em si é qualificado");
+  assert.ok(fs50.includes("SOL_PREMISE status=NOT_PROVEN secret_versions=1 proven=1 refuted=0 not_proven=0"), "[N16.12] com pages_exhausted=false o veredito global é NOT_PROVEN");
+  assert.ok(fs50.includes("SOL_PREMISE_CONDITIONS pages_exhausted=false continuity=true relevant_not_proven=0 qualifying_examples=1"), "[N16.12] condições explícitas");
+  assert.ok(fs50.includes("SOL_PREMISE_SCOPE=evidência histórica, não garantia do comportamento futuro (wrangler 4.143.0)"), "[N16.12] escopo declarado");
+  assert.ok(historySummary(buildHistory({ list: fifty, details: fiftyDet, perPage: 51 })).includes("SOL_PREMISE status=PROVEN secret_versions=1 proven=1 refuted=0 not_proven=0"), "[N16.12] controle: a mesma lista com paginação esgotada é PROVEN");
+  const refuting = fiftyDet.map((d, i) => (i === 0 ? det(d.result.id, "e2", [plain("PUBLIC_BASE_URL")]) : d));
+  assert.ok(historySummary(buildHistory({ list: fifty, details: refuting, perPage: 50 })).some((l) => l.startsWith("SOL_PREMISE status=REFUTED")), "[N16.13] contraexemplo válido é REFUTED mesmo com histórico incompleto");
+  const gap = { success: true, result: { items: [{ id: V2, number: 5, annotations: { "workers/triggered_by": "secret" } }, { id: V1, number: 3 }, { id: V0, number: 2 }] } };
+  const gs = historySummary(buildHistory({ list: gap, details: [det(V2, "e1", [plain("PUBLIC_BASE_URL")]), det(V1, "e1", withSecret), det(V0, "e1", withSecret)] }));
+  assert.ok(gs.some((l) => l.includes("premise=NOT_PROVEN why=gap_before")) && gs.some((l) => l.startsWith("SOL_PREMISE status=NOT_PROVEN")) && gs.some((l) => l.includes("continuity=false")), "[N16.14] lacuna entre versões: NOT_PROVEN");
   const twoSecret = { success: true, result: { items: [{ id: V2, number: 3, annotations: { "workers/triggered_by": "secret" } }, { id: V1, number: 2, annotations: { "workers/triggered_by": "secret" } }, { id: V0, number: 1 }] } };
   const mixed = historySummary(buildHistory({ list: twoSecret, details: [null, det(V1, "e1", []), det(V0, "e1", [])] }));
   assert.ok(mixed.some((l) => l === "SOL_PREMISE status=NOT_PROVEN secret_versions=2 proven=1 refuted=0 not_proven=1"), "[N16.11] um exemplo bom não basta se outro relevante ficou sem detalhe");

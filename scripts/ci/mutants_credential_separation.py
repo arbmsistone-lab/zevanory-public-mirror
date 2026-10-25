@@ -168,8 +168,10 @@ M = {
     "R16 unknown Cloudflare message printed": (S, '  return KNOWN_CF_MESSAGES.includes(s) ? s : "<redacted:unknown>";', '  return s || "<redacted:unknown>";'),
     "R17 release failure not explicit": (SH, '    zev_note "release_status=FAILED (http=$ZEV_LAST_HTTP)"', '    zev_note "release indisponível"'),
     "R18 failed detail not treated as NOT_PROVEN": (S, '  if (!v.detail_fetched) return { status: "NOT_PROVEN", why: "detail_failed" };\n  if (prev && !prev.detail_fetched) return { status: "NOT_PROVEN", why: "previous_detail_failed" };\n', ""),
-    "R19 global PROVEN despite unproven relevant versions": (S, "tally.PROVEN > 0 && tally.NOT_PROVEN === 0 ? \"PROVEN\"", "tally.PROVEN > 0 ? \"PROVEN\""),
+    "R19 global PROVEN despite unproven relevant versions": (S, "tally.PROVEN > 0 && tally.NOT_PROVEN === 0 && pagesExhausted", "tally.PROVEN > 0 && pagesExhausted"),
     "R20 missing details not counted as failed": (S, ", ...listedIds.filter((id) => !byId.has(id))])]", "])]"),
+    # Sol 231: PROVEN global exige paginação esgotada
+    "R21 global PROVEN without exhausted pages": (S, "tally.NOT_PROVEN === 0 && pagesExhausted && continuity ?", "tally.NOT_PROVEN === 0 && continuity ?"),
     "S12 malformed secret list accepted": (S, '  if (!Array.isArray(data)) throw new InputError("secret_list_not_array");', "  if (!Array.isArray(data)) return [];"),
 }
 

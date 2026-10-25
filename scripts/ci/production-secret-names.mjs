@@ -575,6 +575,8 @@ const SECRET_BINDING_TYPES = new Set(["secret_text", "secret_key"]);
 export function premiseOf(prev, v) {
   if (!v.detail_fetched) return { status: "NOT_PROVEN", why: "detail_failed" };
   if (prev && !prev.detail_fetched) return { status: "NOT_PROVEN", why: "previous_detail_failed" };
+  // Sol 231: a anterior tem de ser a IMEDIATAMENTE anterior (número - 1); lacuna não prova nada.
+  if (prev && (!Number.isInteger(prev.number) || !Number.isInteger(v.number) || prev.number !== v.number - 1)) return { status: "NOT_PROVEN", why: "gap_before" };
   if (!prev || !prev.etag || !v.etag) return { status: "NOT_PROVEN", why: "etag_ausente" };
   if (prev.etag !== v.etag) return { status: "REFUTED", why: "etag_mudou" };
   if (!Array.isArray(prev.bindings) || !Array.isArray(v.bindings)) return { status: "NOT_PROVEN", why: "bindings_ausentes" };
@@ -602,9 +604,15 @@ export function historySummary(h) {
   const triggers = {};
   for (const v of h.versions) triggers[v.triggered_by || "ausente"] = (triggers[v.triggered_by || "ausente"] || 0) + 1;
   out.push(`VERSION_TRIGGERS ${Object.keys(triggers).sort(cmp).map((k) => `${k}=${triggers[k]}`).join(" ")}`);
-  // Sol 229 (3): PROVEN só com pelo menos um exemplo qualificado e NENHUMA versão relevante sem prova (inclui detalhe
-  // que falhou); REFUTED se qualquer uma contradiz; senão NOT_PROVEN.
-  const status = tally.REFUTED ? "REFUTED" : tally.PROVEN > 0 && tally.NOT_PROVEN === 0 ? "PROVEN" : "NOT_PROVEN";
+  // Sol 229 (3) + Sol 231: PROVEN exige TODAS as condições: paginação esgotada, nenhuma versão relevante (nem a
+  // anterior) com detalhe faltando, continuidade histórica (números consecutivos, sem lacuna) e pelo menos um exemplo
+  // qualificado. REFUTED com contraexemplo válido vale mesmo com histórico incompleto. Senão NOT_PROVEN.
+  const nums = byNumber.map((v) => v.number);
+  const continuity = nums.length > 0 && nums.every((n, i) => Number.isInteger(n) && (i === 0 || n === nums[i - 1] + 1));
+  const pagesExhausted = c.pages_exhausted === true;
+  const status = tally.REFUTED ? "REFUTED" : tally.PROVEN > 0 && tally.NOT_PROVEN === 0 && pagesExhausted && continuity ? "PROVEN" : "NOT_PROVEN";
+  out.push(`SOL_PREMISE_CONDITIONS pages_exhausted=${pagesExhausted} continuity=${continuity} relevant_not_proven=${tally.NOT_PROVEN} qualifying_examples=${tally.PROVEN}`);
+  out.push("SOL_PREMISE_SCOPE=evidência histórica, não garantia do comportamento futuro (wrangler 4.143.0)");
   out.push(`SOL_PREMISE status=${status} secret_versions=${tally.PROVEN + tally.REFUTED + tally.NOT_PROVEN} proven=${tally.PROVEN} refuted=${tally.REFUTED} not_proven=${tally.NOT_PROVEN}`);
   return out;
 }
