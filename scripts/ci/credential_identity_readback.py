@@ -6,12 +6,16 @@ ZEVANORY_OPERATOR_TOKEN no runner) e imprime exatamente:
     OPERATOR_TOKEN_SOURCE=primary|legacy_fallback|absent|certification|unverified
     STRIPE_KEY_MODE=live|test|absent|unrecognized|unverified
     CERTIFICATION_PERIMETER=true|false|unverified
+    OPERATOR_TOKEN_PRESENTED=primary|legacy|legacy_fallback|certification|unverified
+    OPERATOR_TOKEN_MIGRATION=open|absent|expired|invalid|beyond_code_ceiling|unverified
 Nunca imprime o token, o corpo da resposta, tamanhos ou hashes. A classificação da chave Stripe é feita DENTRO do Worker
 pelo prefixo (sk_/rk_ + live_/test_, https://docs.stripe.com/api/authentication); aqui só se valida o enum.
 
 Falha fechada (exit 1) quando: STRIPE_KEY_MODE não é live nem absent (test, unrecognized, unverified); o Worker se
 declara perímetro de certificação; a resposta não é 200 ou não é o schema esperado; e, com --require-primary, quando
-OPERATOR_TOKEN_SOURCE != primary (pré-condição para retirar a queda para CERTIFICATION_E2E_TOKEN).
+OPERATOR_TOKEN_SOURCE != primary (pré-condição para retirar a queda para CERTIFICATION_E2E_TOKEN) ou quando a credencial do
+runner não autenticou como a primária do Worker (OPERATOR_TOKEN_PRESENTED != primary: durante a janela de migração o Worker
+também aceita o valor antigo, e só esta categoria prova que o valor NOVO do runner é o que autentica).
 Exit 2: uso inválido (token ausente). Sem dependências além da biblioteca padrão.
 Uso: credential_identity_readback.py BASE_URL [--require-primary] [--attempts N]
 """
@@ -25,6 +29,8 @@ import urllib.request
 PATH = "/api/internal/audit/credential-identity"
 SCHEMA = "zevanory.audit.credential-identity/v1"
 SOURCES = {"primary", "legacy_fallback", "absent", "certification"}
+PRESENTED = {"primary", "legacy", "legacy_fallback", "certification"}
+MIGRATION = {"open", "absent", "expired", "invalid", "beyond_code_ceiling"}
 STRIPE_MODES = {"live", "test", "absent", "unrecognized"}
 STRIPE_ALLOWED = {"live", "absent"}
 
@@ -44,7 +50,7 @@ def fetch(base, token, timeout=20):
 
 def classify(status, raw):
     out = {"OPERATOR_TOKEN_SOURCE": "unverified", "STRIPE_KEY_MODE": "unverified", "CERTIFICATION_PERIMETER": "unverified",
-           "HTTP": str(status)}
+           "OPERATOR_TOKEN_PRESENTED": "unverified", "OPERATOR_TOKEN_MIGRATION": "unverified", "HTTP": str(status)}
     if status != 200:
         return out
     try:
@@ -57,6 +63,9 @@ def classify(status, raw):
     out["OPERATOR_TOKEN_SOURCE"] = src if src in SOURCES else "unverified"
     out["STRIPE_KEY_MODE"] = mode if mode in STRIPE_MODES else "unverified"
     out["CERTIFICATION_PERIMETER"] = "true" if perim is True else "false" if perim is False else "unverified"
+    presented, migration = body.get("operator_token_presented"), body.get("operator_token_migration")
+    out["OPERATOR_TOKEN_PRESENTED"] = presented if presented in PRESENTED else "unverified"
+    out["OPERATOR_TOKEN_MIGRATION"] = migration if migration in MIGRATION else "unverified"
     return out
 
 
@@ -70,6 +79,8 @@ def verdict(out, require_primary=False):
         reasons.append("READBACK_UNVERIFIED")
     if require_primary and out["OPERATOR_TOKEN_SOURCE"] != "primary":
         reasons.append("OPERATOR_TOKEN_NOT_PRIMARY")
+    if require_primary and out["OPERATOR_TOKEN_PRESENTED"] != "primary":
+        reasons.append("RUNNER_TOKEN_NOT_PRIMARY")
     return reasons
 
 
@@ -96,7 +107,7 @@ def main(argv=None):
             break
         if n + 1 < attempts:
             time.sleep(min(10, 2 * (n + 1)))
-    for key in ("OPERATOR_TOKEN_SOURCE", "STRIPE_KEY_MODE", "CERTIFICATION_PERIMETER"):
+    for key in ("OPERATOR_TOKEN_SOURCE", "STRIPE_KEY_MODE", "CERTIFICATION_PERIMETER", "OPERATOR_TOKEN_PRESENTED", "OPERATOR_TOKEN_MIGRATION"):
         print(f"{key}={out[key]}")
     print(f"READBACK_HTTP={out['HTTP']}")
     reasons = verdict(out, require_primary)

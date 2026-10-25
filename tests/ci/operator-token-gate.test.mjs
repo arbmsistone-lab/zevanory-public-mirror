@@ -138,6 +138,7 @@ function readback(base, args = [], token = "synthetic-readback-token-0123456789a
   });
 }
 const BODY = (over = {}) => ({ schema: "zevanory.audit.credential-identity/v1", operator_token_source: "primary", operator_token_fallback_uses_in_isolate: 0,
+  operator_token_presented: "primary", operator_token_migration: "absent",
   stripe_key_mode: "live", certification_perimeter: false, release_sha: null, ...over });
 
 test("K6 readback: só categorias; chave Stripe de teste, perímetro e resposta inválida reprovam", async () => {

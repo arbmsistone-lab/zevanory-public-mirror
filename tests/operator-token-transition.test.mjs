@@ -174,7 +174,8 @@ test("T5 auditoria credential-identity: só categorias, chave Stripe de teste de
   };
   const live = await call({ ZEVANORY_OPERATOR_TOKEN: NEW, STRIPE_SECRET_KEY: "sk_live_synthetic", ZEVANORY_RELEASE_SHA: "b".repeat(40) });
   assert.equal(live.status, 200, "[T5.1] rota autenticada");
-  assert.deepEqual(Object.keys(live.body).sort(), ["certification_perimeter", "operator_token_fallback_uses_in_isolate", "operator_token_source", "release_sha", "schema", "stripe_key_mode"],
+  assert.deepEqual(Object.keys(live.body).sort(), ["certification_perimeter", "operator_token_auth_categories_in_isolate", "operator_token_fallback_uses_in_isolate", "operator_token_migration",
+    "operator_token_presented", "operator_token_source", "release_sha", "schema", "stripe_key_mode"],
     "[T5.1] só campos de categoria");
   assert.equal(live.body.stripe_key_mode, "live", "[T5.2] chave live");
   assert.ok(!JSON.stringify(live.body).includes("sk_live_synthetic") && !JSON.stringify(live.body).includes(NEW), "[T5.2] nenhum valor no corpo");
