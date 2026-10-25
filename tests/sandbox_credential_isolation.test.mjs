@@ -14,8 +14,12 @@ test('deployment preserves sandbox and production credential separation',()=>{
  assert.ok(source.includes('if (provider === "mercadopago") return handler16(req, res);'));
  assert.ok(source.includes('accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET, certificationOnly: false'));
  const deploy=read('.github/workflows/central-production-deploy.yml');
- for(const name of ['MERCADOPAGO_ACCESS_TOKEN','MERCADOPAGO_WEBHOOK_SECRET','MERCADOPAGO_TEST_ACCESS_TOKEN','MERCADOPAGO_TEST_WEBHOOK_SECRET']){
+ for(const name of ['MERCADOPAGO_ACCESS_TOKEN','MERCADOPAGO_WEBHOOK_SECRET']){
   assert.ok(deploy.includes(name + ': $' + '{{ secrets.' + name + ' }}'));
+ }
+ // F2 item 9: o deploy de produção não recebe mais as credenciais de teste (gate scripts/ci/credential_separation_gate.py).
+ for(const name of ['MERCADOPAGO_TEST_ACCESS_TOKEN','MERCADOPAGO_TEST_WEBHOOK_SECRET']){
+  assert.ok(!deploy.includes('secrets.' + name));
  }
 });
 test('variable compaction inherits secrets and preserves voice values',()=>{

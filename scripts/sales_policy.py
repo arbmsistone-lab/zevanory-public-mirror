@@ -114,7 +114,11 @@ def audit_contact(out_dir: Path) -> list[str]:
     RDFa telephone, href tel:) e o e-mail oficial no rodape de toda pagina."""
     rx = BANNED_NUMBER_RE if WHATSAPP_PUBLIC_LINKS_ENABLED else WHATSAPP_PUBLIC_RE
     problems = []
-    for f in sorted(p for ext in ("*.html", "*.js", "*.txt", "*.xml") for p in out_dir.glob(ext)):
+    # E2: scripts and stylesheets are published content-hashed under assets/ (assets/**), so those
+    # are scanned too, not only the top-level files.
+    tops = (p for ext in ("*.html", "*.js", "*.txt", "*.xml") for p in out_dir.glob(ext))
+    hashed = (p for ext in ("assets/**/*.js", "assets/**/*.css") for p in out_dir.glob(ext))
+    for f in sorted(set(tops) | set(hashed)):
         text = f.read_text(encoding="utf-8")
         m = rx.search(text)
         if m:

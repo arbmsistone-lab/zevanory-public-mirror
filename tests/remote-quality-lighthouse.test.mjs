@@ -11,6 +11,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 const dir = new URL("../.github/workflows/", import.meta.url);
 const workflows = Object.fromEntries(readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).map((f) => [f, readTextNormalized(new URL(f, dir))]));
 const f5Gate = readTextNormalized(new URL("../scripts/f5_lighthouse_gate.mjs", import.meta.url));
+const salesBudget = readTextNormalized(new URL("../scripts/audit/sales-quality-budget.mjs", import.meta.url));
 export const APPROVED_LIGHTHOUSE = "13.5.0";
 const CATEGORIES = "--only-categories=performance,accessibility,best-practices,seo";
 const count = (text, needle) => text.split(needle).length - 1;
@@ -39,6 +40,11 @@ const GATES = {
     ["ORIGIN: https://vendas.zevanory.api.br", 1],
     ["node scripts/f5_lighthouse_gate.mjs", 1],
   ],
+  // E3 (2026-10-24): pre-merge budget on the PR's own sales build (localhost, through the Worker).
+  "sales-ux-quality.yml": [
+    ["node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-after\n", 1],
+    ["--report-only", 1],
+  ],
 };
 
 test(`every workflow that invokes Lighthouse is registered and pins exactly lighthouse@${APPROVED_LIGHTHOUSE}`, () => {
@@ -66,5 +72,14 @@ test("f5 gate script: per-run thresholds and categories unchanged", () => {
   for (const needle of ['perf: device === "desktop" ? 98 : 95, a11y: 100, bp: 100, seo: 100,', "lcp: 2500, cls: 0.1, tbt: 200,",
     '"--only-categories=performance,accessibility,best-practices,seo"', 'require.resolve("lighthouse/cli/index.js")']) {
     assert.equal(count(f5Gate, needle), 1, "f5_lighthouse_gate.mjs changed or missing: " + needle);
+  }
+});
+
+test("sales UX budget script: thresholds, pages and categories unchanged (E3)", () => {
+  for (const needle of ['const BUDGET = { performance: 95, accessibility: 100, "best-practices": 100, seo: 100 };',
+    '"--only-categories=performance,accessibility,best-practices,seo"', 'req.resolve("lighthouse/cli/index.js")',
+    '"/solucoes,/zevanory-sales,/ia-na-pratica,/termos"', '["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]',
+    'v.impact === "serious" || v.impact === "critical"', "r.width < 44 || r.height < 44", 'reducedMotion: "reduce"']) {
+    assert.equal(count(salesBudget, needle), 1, "sales-quality-budget.mjs changed or missing: " + needle);
   }
 });

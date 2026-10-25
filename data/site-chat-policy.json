@@ -1,0 +1,79 @@
+{
+  "schema": "zevanory-site-chat-policy/v1",
+  "nota": "Chat do site 'Fale com a ZEVANORY' (canal próprio de atendimento; o canal de mensagens anterior foi encerrado em 2026-10-10). Escalonamento só para suporte@zevanory.api.br e o formulário com protocolo zevanory.api.br/atendimento (contato_publico em data/politica-unica.json, #892); nenhuma resposta cita aplicativo de mensagens, link curto de conversa ou número de telefone. Fonte única do aviso pré-chat, dos limites, da retenção e das respostas fixas do chat (worker/site-chat.mjs e sales-overlay/site-chat.js). Critérios de aceite: AVAL Sol 111 (2026-10-23). DESLIGADO por padrão (enabled_default=false; tests/site-chat-no-synthetic-traffic.test.mjs reprova qualquer padrão ligado): só liga quando SITE_CHAT_ENABLED receber o valor \"true\" nos dois Workers (central e vendas) após aval do Sol e decisão escrita do proprietário. O chat é OPCIONAL: compra, entrega, cancelamento, reembolso e suporte funcionam sem ele (e-mail e formulários, sem JavaScript). Textos jurídicos sujeitos à revisão do proprietário antes da ativação.",
+  "enabled_default": false,
+  "closed_price_answer": "As vendas estão fechadas; não há preço ou condição disponível para contratação agora.",
+  "owner_queue_to": "suporte@zevanory.api.br",
+  "admin_ticket_url": "https://zevanory.api.br/api/admin/site-chat/tickets/",
+  "sla_days": 5,
+  "waitlist": {
+    "email": "suporte@zevanory.api.br",
+    "subject": "Lista de espera — {produto}",
+    "body": "Olá! Quero entrar na lista de espera do {produto}. Me avisem por este e-mail quando as vendas abrirem.",
+    "nota": "Lista de espera = consentimento separado: só existe se a pessoa enviar o e-mail por iniciativa própria (mailto). O chat nunca inscreve ninguém."
+  },
+  "closed_summaries": {
+    "conteudo-pronto": "Serviço mensal de conteúdo para redes sociais: posts com legenda, mensagens de venda e um calendário de publicações, no tom do seu negócio."
+  },
+  "approved_sources": {
+    "nota": "Impressão digital do catálogo aprovado (worker/support-knowledge.mjs SUPPORT_PRODUCTS + data/products.json + closed_summaries). Mudou o catálogo => o chat recusa preço/conteúdo e escalona (fonte vencida) até alguém reaprovar este valor no mesmo PR (tests/site-chat.test.mjs).",
+    "catalog_fingerprint": "dc7381f6724af39a"
+  },
+  "limits": {
+    "message_max_chars": 600,
+    "request_max_bytes": 4096,
+    "turns_max": 20,
+    "per_session_per_minute": 6,
+    "per_ip_per_minute": 12,
+    "per_ip_per_day": 120,
+    "global_per_minute": 60,
+    "global_per_day": 2000,
+    "sessions_per_ip_per_day": 20,
+    "global_sessions_per_day": 1000,
+    "handoffs_per_ip_per_day": 3,
+    "handoffs_global_per_day": 50,
+    "ai_daily_budget": 300,
+    "concurrency_per_isolate": 8,
+    "session_idle_minutes": 30,
+    "sales_status_timeout_ms": 2500,
+    "ai_timeout_ms": 8000
+  },
+  "retention": {
+    "transcript_days": 30,
+    "ticket_days_after_closure": 180,
+    "technical_logs_days": 30,
+    "counters_days": 2,
+    "justificativas": {
+      "transcript_days": "Conversa não escalada: até 30 dias para concluir a dúvida, corrigir resposta errada e investigar abuso; depois a conversa e a sessão são eliminadas (job diário).",
+      "ticket_days_after_closure": "Atendimento escalado: 180 dias após o encerramento para comprovar o atendimento prestado ao consumidor (CDC; Decreto 7.962/2013, art. 4º) e responder reclamação posterior. Obrigação legal, disputa ou exercício de direito documentado suspendem a eliminação (retenção legal marcada pelo proprietário).",
+      "technical_logs_days": "Logs técnicos sem conteúdo nem dado pessoal (só evento, categoria e contadores), no máximo 30 dias, para segurança e diagnóstico.",
+      "counters_days": "Contadores de limite de uso por identificador pseudônimo rotativo (troca a cada dia): 2 dias.",
+      "metricas": "Métricas somente agregadas (contagens por dia e categoria)."
+    }
+  },
+  "notice": {
+    "title": "Antes de começar",
+    "who_answers": "Quem responde aqui é o assistente automático da ZEVANORY. Ele pode cometer erros. Se precisar, uma pessoa da equipe continua o atendimento por e-mail.",
+    "do_not_send": "Não envie senha, número de cartão, documentos (CPF, RG, CNH) nem dados sensíveis (saúde, religião, orientação sexual, biometria). Se enviar, o texto é removido da conversa.",
+    "controller": "Controlador: {legal_identity}.",
+    "purpose": "Finalidade: tirar dúvidas sobre os produtos e as políticas oficiais e encaminhar ao atendimento humano quando necessário. Sem publicidade e sem cookies de rastreamento.",
+    "data": "Dados tratados: as mensagens que você digitar; o seu e-mail, somente se pedir atendimento humano; e um identificador técnico pseudônimo, trocado a cada dia, para limitar abuso. A sessão fica só nesta aba do navegador.",
+    "legal_basis": "Base legal: procedimentos a seu pedido e execução de contrato (LGPD, art. 7º, V), registro do atendimento ao consumidor (art. 7º, II) e segurança contra abuso (art. 7º, IX). Não pedimos consentimento genérico para o atendimento.",
+    "operators": "Operadores: Cloudflare (hospedagem; modelo de linguagem só se a geração automática estiver ativada), Neon (banco de dados PostgreSQL) e Resend (envio de e-mail).",
+    "sharing": "Compartilhamento: somente com esses operadores, para prestar o atendimento. Não vendemos nem cedemos dados.",
+    "transfer": "Transferência internacional: esses operadores podem processar os dados fora do Brasil (LGPD, art. 33), conforme os termos de tratamento de dados de cada um.",
+    "retention": "Retenção: conversa não escalada, até 30 dias; atendimento escalado, 180 dias após o encerramento (salvo obrigação legal ou disputa); logs técnicos sem conteúdo, até 30 dias.",
+    "rights": "Seus direitos (LGPD, art. 18): acesso, correção, eliminação, informação sobre compartilhamento e oposição, pelo e-mail suporte@zevanory.api.br. Detalhes na Política de Privacidade.",
+    "optional": "O chat é opcional: você pode escrever direto para suporte@zevanory.api.br, usar o formulário de atendimento em zevanory.api.br/atendimento, pedir reembolso em zevanory.api.br/pedir-reembolso ou um novo link de acesso em zevanory.api.br/entrega/reenviar.",
+    "privacy_href": "/privacidade",
+    "start_label": "Começar conversa",
+    "email_label": "Prefiro e-mail"
+  },
+  "fallback": {
+    "message": "O chat está indisponível agora. Escreva para suporte@zevanory.api.br, use o formulário de atendimento em https://zevanory.api.br/atendimento ou os formulários de reembolso e de novo link de acesso.",
+    "contact_email": "suporte@zevanory.api.br",
+    "contact_form": "https://zevanory.api.br/atendimento",
+    "refund_form": "https://zevanory.api.br/pedir-reembolso",
+    "delivery_form": "https://zevanory.api.br/entrega/reenviar"
+  }
+}

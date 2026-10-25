@@ -1,4 +1,5 @@
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
+import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
 import { legacyTrustProjection, guardTrustChain } from "./trust-projection.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
@@ -10,9 +11,12 @@ import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./v
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
-import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
+import { handleWhatsappOnboarding, isWhatsappOnboardingPath, loadVoiceGeminiKey } from "./whatsapp-onboarding.mjs";
+import { whatsappChannelRetired, whatsappInstantReplyEnabled, whatsappGoneResponse, whatsappWebhookAckResponse, classifyMetaWebhookBody, META_WEBHOOK_CLASSIFY_MAX_BYTES, retiredWhatsappStatus } from "./whatsapp-retirement.mjs";
+import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
+import { handleSiteChat, handleSiteChatAdmin, runSiteChatRetention } from "./site-chat.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
@@ -46,8 +50,12 @@ import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
 import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch, PROOF_INVALIDATION_KV_KEY, PROOF_INVALIDATION_REASONS } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
+import { operatorToken as operatorCredential } from "./operator-credential.mjs";
+import { productionEnvView } from "./production-pilot-guard.mjs";
 
-async function loadWhatsappBrokerState(binding) {
+async function loadWhatsappBrokerState(binding, env) {
+  // Retired channel (Meta disabled the WABA on 2026-10-10): never call the broker.
+  if (whatsappChannelRetired(env)) return null;
   if (!binding?.fetch) return null;
   try {
     const r = await binding.fetch(new Request("https://whatsapp-broker.internal/broker/status", {
@@ -91,7 +99,11 @@ const wrapped = {
     return wrapped.processFetch(request, withMeteredKv(env, "fetch:" + path), ctx);
   },
   async processFetch(request, env, ctx) {
-    let normalized = normalizeEnv(env);
+    // Retired public assets (old contact script): inert, no-store tombstone before any env/KV access.
+    const retiredAsset = retiredPublicAssetResponse(request);
+    if (retiredAsset) return retiredAsset;
+    // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
+    let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
@@ -142,7 +154,8 @@ const wrapped = {
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
-      if (audit && audit.status === 200) {
+      // order-lookup (conciliação somente leitura) devolve só o resultado do SELECT: nada é persistido nem anexado.
+      if (audit && audit.status === 200 && url.pathname !== "/api/internal/audit/order-lookup") {
         // Authenticated read-only audit already computed the provider-verified classification:
         // persist the derived snapshot (fail-closed validation) and expose its diagnostic state.
         try {
@@ -194,6 +207,20 @@ const wrapped = {
       const lead = await handleLeadMagnet(request, normalized, { sqlFactory: whatsappProofDatabase });
       if (lead) return lead;
     }
+    // Chat do site (desligado por padrão; worker/site-chat.mjs). Só pelo service binding do Worker de vendas
+    // (host chat.internal); a fila do proprietário exige autenticação de administrador.
+    if (url.hostname === "chat.internal") {
+      const chat = await handleSiteChat(request, normalized, {
+        sqlFactory: whatsappProofDatabase,
+        // Autoridade canônica de vendas (mesmo /api/sales/status público), consultada a cada resposta.
+        salesOpen: async () => {
+          const st = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status", { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
+          return (await st?.json?.())?.open === true;
+        }
+      });
+      return chat || new Response("not_found", { status: 404 });
+    }
+    if (url.pathname.startsWith("/api/admin/site-chat/")) return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
@@ -233,29 +260,28 @@ const wrapped = {
       url.pathname === "/api/continuity" ||
       url.pathname === "/api/control-plane" ||
       (url.pathname === "/api/config" && /^(channel_identity_health|closure_status)$/.test(url.searchParams.get("view") || ""));
+    const whatsappRetired = whatsappChannelRetired(normalized);
+    if (whatsappRetired) {
+      // WhatsApp channel retired (Meta permanently disabled WABA 4019600665012911 on 2026-10-10):
+      // no WhatsApp credential is loaded, no broker binding is exposed and no broker status is read,
+      // on any route. Stale isolate globals are cleared so no legacy code path can pick them up.
+      globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = {};
+      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = null;
+      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = null;
+    }
     if (whatsappPath) {
-      const [whatsappRuntime, whatsappBrokerState] = await Promise.all([
-        loadWhatsappRuntimeCredentials(normalized).catch(()=>null),
-        loadWhatsappBrokerState(normalized.WHATSAPP_BROKER).catch(()=>null)
+      // Only the Gemini voice key may come from the old encrypted onboarding record (voice support);
+      // the WhatsApp credentials stored next to it are never read.
+      const [voiceGeminiKey, whatsappBrokerState] = await Promise.all([
+        loadVoiceGeminiKey(normalized).catch(()=>""),
+        whatsappRetired ? Promise.resolve(null) : loadWhatsappBrokerState(normalized.WHATSAPP_BROKER, normalized).catch(()=>null)
       ]);
-      globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
-      // Credentials verified live by the official onboarding win over legacy Worker vars,
-      // which may belong to a previous number/app (Meta answered HTTP 400 with them).
+      if (!whatsappRetired) globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = {};
+      globalThis.__ZEVANORY_VOICE_GEMINI_FROM_RECORD__ = Boolean(voiceGeminiKey);
       const overrides = {};
-      if (whatsappRuntime?.identity_verified === true && whatsappRuntime.access_token && whatsappRuntime.phone_number_id) {
+      if (voiceGeminiKey) {
         Object.assign(overrides, {
-          WHATSAPP_ACCESS_TOKEN: whatsappRuntime.access_token,
-          WHATSAPP_PHONE_NUMBER_ID: whatsappRuntime.phone_number_id,
-          WHATSAPP_BUSINESS_ACCOUNT_ID: whatsappRuntime.waba_id || "",
-          META_APP_SECRET: whatsappRuntime.app_secret,
-          META_VERIFY_TOKEN: whatsappRuntime.verify_token,
-          META_WEBHOOK_VERIFY_TOKEN: whatsappRuntime.verify_token,
-          META_GRAPH_VERSION: whatsappRuntime.graph_version || "v26.0"
-        });
-      }
-      if (whatsappRuntime?.gemini_api_key) {
-        Object.assign(overrides, {
-          GEMINI_API_KEY: whatsappRuntime.gemini_api_key,
+          GEMINI_API_KEY: voiceGeminiKey,
           GEMINI_FREE_TIER_CONFIRMED: "true",
           VOICE_TTS_PROVIDER_CHAIN: "gemini,piper-relay"
         });
@@ -275,8 +301,8 @@ const wrapped = {
           }
         });
       }
-      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
-      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappBrokerState;
+      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = whatsappRetired ? null : (normalized.WHATSAPP_BROKER || null);
+      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappRetired ? null : whatsappBrokerState;
       const whatsappOpsStore = getWhatsappOpsStore(normalized, whatsappProofDatabase);
       globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
       globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
@@ -287,15 +313,37 @@ const wrapped = {
       const mode = url.searchParams.get("hub.mode") || "";
       const token = url.searchParams.get("hub.verify_token") || "";
       const challenge = url.searchParams.get("hub.challenge") || "";
-      const rt = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+      const rt = whatsappRetired ? {} : (globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {});
       const candidates = [rt.verify_token, normalized.META_VERIFY_TOKEN, normalized.META_WEBHOOK_VERIFY_TOKEN].map((v) => String(v || "").trim()).filter(Boolean);
       const matched = mode === "subscribe" && Boolean(token) && candidates.includes(token);
       try {
         const kv = normalized.ZEVANORY_PRIVATE_ARTIFACTS;
-        if (kv?.put) await kv.put("whatsapp:webhook:last-verify", JSON.stringify({ at: new Date().toISOString(), layer: "edge", mode, token_present: Boolean(token), token_len: token.length, candidates: candidates.length, runtime_token_loaded: Boolean(rt.verify_token), matched, ua: String(request.headers.get("user-agent") || "").slice(0, 80) }), { expirationTtl: 86400 });
+        if (kv?.put) await kv.put("meta:webhook:last-verify", JSON.stringify({ at: new Date().toISOString(), layer: "edge", mode, token_present: Boolean(token), token_len: token.length, candidates: candidates.length, runtime_token_loaded: Boolean(rt.verify_token), matched, ua: String(request.headers.get("user-agent") || "").slice(0, 80) }), { expirationTtl: 86400 });
       } catch {}
       if (matched) return new Response(challenge, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
       return new Response(JSON.stringify({ error: "webhook_verification_failed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
+
+    // Meta webhook: classify the Meta PRODUCT first. Only a proven WhatsApp Business delivery
+    // (object "whatsapp_business_account" with WhatsApp fields) gets the retirement acknowledgement:
+    // 200 and nothing else (Meta retries non-2xx for days and flags failing subscriptions; 410 has no
+    // special meaning for it): no signature check against stored secrets, no processing, no storage,
+    // no reply. Instagram/Facebook Page, oversized or unclassifiable deliveries are never silently
+    // acknowledged: they continue to the normal Meta handler (signature, size limit, product routing).
+    // Legacy WhatsApp-only paths (/webhooks/whatsapp*, /api/whatsapp*) carry no other product.
+    if (whatsappRetired && request.method === "POST" && (url.pathname.startsWith("/webhooks/whatsapp") || url.pathname.startsWith("/api/whatsapp"))) {
+      return whatsappGoneResponse(url.pathname);
+    }
+    if (whatsappRetired && request.method === "POST" && (
+      url.pathname === "/api/webhooks/meta" ||
+      (url.pathname === "/api/webhooks" && String(url.searchParams.get("provider") || "") === "meta")
+    )) {
+      const declared = Number(request.headers.get("content-length") || 0);
+      if (!(declared > META_WEBHOOK_CLASSIFY_MAX_BYTES)) {
+        const raw = await request.text().catch(() => "");
+        if (classifyMetaWebhookBody(raw) === "whatsapp") return whatsappWebhookAckResponse();
+        request = new Request(request.url, { method: "POST", headers: request.headers, body: raw });
+      }
     }
 
     const canonicalRedirect = canonicalizePublicPath(request, url);
@@ -304,35 +352,26 @@ const wrapped = {
     const asaasAuthResponse = await handleAsaasPixRefundAuthorization(request, normalized);
     if (asaasAuthResponse) return asaasAuthResponse;
 
-    if (
-      url.pathname === "/admin/whatsapp-onboard/callback" ||
-      (url.pathname === "/admin/whatsapp-onboard/embedded-complete" && request.method === "POST")
-    ) {
-      const response = await handleWhatsappOnboarding(request, normalized);
-      if (response) return response;
-    }
-    // Narrow public launcher for Meta Embedded Signup. It creates a short-lived
-    // broker-backed CSRF state and renders the official Meta JS SDK flow. No
-    // credentials are disclosed, and all other onboarding/admin routes remain protected.
-    if (url.pathname === "/admin/whatsapp-onboard/start" && request.method === "GET") {
-      const response = await handleWhatsappOnboarding(request, normalized);
-      if (response) return response;
-    }
-    // Synthetic signed inbound webhooks made the bot send real WhatsApp messages; retired for good
-    // (WhatsApp Business account disabled by Meta on 2026-10-10, owner order: no message without opt-in).
-    if (url.pathname === "/api/admin/whatsapp-onboard/delivery-proof") {
-      // Only the read-only voice/cache audits stay (no message, no Meta write). Every operation
-      // that built a signed fake inbound or touched the Meta account remains retired.
-      let op = "";
-      try { op = String((await request.clone().json())?.operation || ""); } catch {}
-      const READ_ONLY_AUDITS = new Set(["audit-cache", "audit-encode", "audit-transcribe", "audit-encoder-key", "audit-source", "audit-observe"]);
-      if (!READ_ONLY_AUDITS.has(op)) return Response.json({ ok: false, error: "synthetic_whatsapp_proof_retired" }, { status: 410, headers: { "cache-control": "no-store" } });
-      return handleWhatsappOnboarding(request, normalized, { proofSql: () => whatsappProofDatabase(normalized.DATABASE_URL) });
-    }
-    if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
-      if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
-      const response = await handleWhatsappOnboarding(request, normalized);
-      if (response) return response;
+    // Former WhatsApp onboarding surface (Embedded Signup start/callback/complete, bootstrap,
+    // finalize and its automatic retry, voice-key, status) and the synthetic "delivery proof"
+    // endpoint that built app-secret-signed fake inbound webhooks: removed, 410 Gone for any
+    // method and any credential.
+    if (isWhatsappOnboardingPath(url.pathname)) return (await handleWhatsappOnboarding(request)) || whatsappGoneResponse(url.pathname);
+    // Read-only voice audits (cache/encode/transcribe/encoder-key/source) moved off the retired
+    // WhatsApp proof route. No message, no Meta call, no WhatsApp data.
+    if (url.pathname === "/api/admin/voice/audit") {
+      const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+      const expected = String(operatorCredential(normalized) || normalized.OPERATOR_TOKEN || "");
+      const presented = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
+      let diff = expected.length < 24 || presented.length !== expected.length ? 1 : 0;
+      for (let i = 0; !diff && i < expected.length; i++) diff |= expected.charCodeAt(i) ^ presented.charCodeAt(i);
+      if (diff) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (request.method !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
+      const raw = await request.text();
+      if (raw.length > 4300000) return new Response(JSON.stringify({ error: "payload_too_large" }), { status: 413, headers });
+      let input; try { input = JSON.parse(raw); } catch { return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400, headers }); }
+      if (!["audit-cache", "audit-encode", "audit-transcribe", "audit-encoder-key", "audit-source"].includes(input?.operation)) return new Response(JSON.stringify({ error: "invalid_operation" }), { status: 400, headers });
+      return handleVoiceAudit(input, normalized);
     }
 
     if (url.pathname === "/api/support/instant-status" && request.method === "GET") {
@@ -350,7 +389,7 @@ const wrapped = {
         const salesStatus = await handleSalesControl(new Request(new URL("/api/sales/status", url), { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
         salesEffective = (await salesStatus?.json?.())?.open === true;
       } catch { salesEffective = false; }
-      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", ai_binding_present: Boolean(normalized.AI?.run), broker_binding_present: Boolean(normalized.WHATSAPP_BROKER?.fetch), voice_free_only: normalized.VOICE_TTS_FREE_ONLY === "true", gemini_voice_configured: Boolean(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.gemini_api_key), sales_globally_enabled: salesEffective, sales_state_source: "/api/sales/status", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: whatsappInstantReplyEnabled(normalized), whatsapp_channel: whatsappRetired ? retiredWhatsappStatus() : { state: "active" }, ai_binding_present: Boolean(normalized.AI?.run), broker_binding_present: !whatsappRetired && Boolean(normalized.WHATSAPP_BROKER?.fetch), voice_free_only: normalized.VOICE_TTS_FREE_ONLY === "true", gemini_voice_configured: Boolean(globalThis.__ZEVANORY_VOICE_GEMINI_FROM_RECORD__ || String(normalized.GEMINI_API_KEY || "").trim()), sales_globally_enabled: salesEffective, sales_state_source: "/api/sales/status", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
 
     if (url.pathname === "/api/support/knowledge") {
@@ -451,7 +490,7 @@ const wrapped = {
           headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
         });
       }
-      const expected = String(normalized.CERTIFICATION_E2E_TOKEN || "");
+      const expected = String(operatorCredential(normalized) || "");
       const provided = String(request.headers.get("x-certification-e2e-token") || "");
       const sandbox = String(normalized.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";
       const salesClosed = String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" && globalThis.__ZEVANORY_SALES_SWITCH__ !== true;
@@ -489,7 +528,7 @@ const wrapped = {
       // Runs the backup and restore drill; returns only counts and hashes (never data).
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
       const report = url.searchParams.get("finalize") === "1"
         ? await finalizeBackup(normalized, { parts })
@@ -501,7 +540,7 @@ const wrapped = {
       // Funnel consolidation in its own invocation (own subrequest budget). Aggregates only.
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const beat = { at: new Date().toISOString(), source: "http", tasks: {} };
       try {
         const salesOpenNow = applySalesSwitch(await readSalesSwitch(normalized).catch(() => null));
@@ -518,7 +557,7 @@ const wrapped = {
       // End-to-end voice evaluation on the production models; returns and stores scores only.
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
-      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), operatorCredential(normalized))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       let apiKey = String(normalized.GEMINI_API_KEY || "").trim();
       // Presence flags only (never values): where the production voice key can come from.
       const diag = { geminiEnv: Boolean(apiKey), vaultRecord: false, vaultMaster: Boolean(normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN), vaultDecrypted: false, freeOnly: String(normalized.VOICE_TTS_FREE_ONLY || "") === "true", router: null };
@@ -559,7 +598,8 @@ const wrapped = {
         String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production";
       const projected = projectProductionOnlyStatus(projectLiveStatus(body, {
         salesOpen: safeRelease,
-        whatsappTransportOperational: whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__)
+        whatsappTransportOperational: !whatsappRetired && whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__),
+        whatsappRetired
       }), snapshot, { env: normalized, salesRelease: safeRelease });
       projected.sales_authorization = salesSwitch.enabled === true && salesSwitch.authorized === true
         ? { state: safeRelease ? "open_authorized" : "open_authorized_proof_pending", authorized_by_owner: true, at: String(salesSwitch.at || ""), revision: salesSwitch.revision || null }
@@ -620,7 +660,7 @@ const wrapped = {
 
 wrapped.scheduled = async (controller, rawEnv, ctx) => {
   const env = withMeteredKv(rawEnv, "cron:" + String(controller?.cron || "?"));
-  const normalized = normalizeEnv(env);
+  const normalized = normalizeEnv(productionEnvView(env));
   if (controller?.cron === "5,35 * * * *") {
     // Workers Free allows 5 cron triggers per ACCOUNT (all used), so this isolated
     // invocation is shared by tick minute, each with its own subrequest budget:
@@ -744,6 +784,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
+  // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.
+  if (new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours() === 6) tasks.push(runSiteChatRetention(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("site_chat_retention", JSON.stringify(out))).catch(() => console.error("site_chat_retention_failed")));
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
@@ -753,10 +795,10 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   // Acquisition (:35) and brand profiles (:05) run in the isolated "5,35" cron.
 };
 if (typeof worker.queue === "function") {
-  wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
+  wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(productionEnvView(env)), ctx);
 }
 wrapped.email = async (message, env, ctx) => {
-  const normalized = normalizeEnv(env);
+  const normalized = normalizeEnv(productionEnvView(env));
   if (await handleSandboxInboundEmail(message, normalized)) return;
   if (typeof worker.email === "function") return worker.email(message, normalized, ctx);
   message.setReject?.("mailbox_unavailable");

@@ -1,3 +1,4 @@
+import { WHATSAPP_RETIRED_MODE, WHATSAPP_RETIRED_REASON, WHATSAPP_RETIRED_STATE, retiredWhatsappChannelEntry } from "./whatsapp-retirement.mjs";
 export function whatsappTransportIsOperational(env = {}, runtime = {}, broker = {}) {
   const runtimeReady = runtime?.identity_verified === true
     && Boolean(String(runtime?.access_token || env.WHATSAPP_ACCESS_TOKEN || "").trim())
@@ -6,14 +7,21 @@ export function whatsappTransportIsOperational(env = {}, runtime = {}, broker = 
   return runtimeReady || brokerReady;
 }
 
-export function projectLiveStatus(body = {}, { salesOpen = false, whatsappTransportOperational = false } = {}) {
+export function projectLiveStatus(body = {}, { salesOpen = false, whatsappTransportOperational = false, whatsappRetired = false } = {}) {
   const sales = salesOpen ? "enabled" : "globally-blocked";
   const runtime = {
     ...(body.runtime || {}),
     sales,
-    whatsapp: whatsappTransportOperational ? "enabled" : "disabled",
+    whatsapp: whatsappRetired ? WHATSAPP_RETIRED_MODE : (whatsappTransportOperational ? "enabled" : "disabled"),
   };
-  const channel_readiness = Object.fromEntries(Object.entries(body.channel_readiness || {}).map(([name, item = {}]) => [name, {
+  if (whatsappRetired) {
+    // Meta permanently disabled the WABA on 2026-10-10: the channel is reported as retired and never
+    // counts toward health or channel quorum (provider independence).
+    runtime.whatsapp_state = WHATSAPP_RETIRED_STATE;
+    runtime.whatsapp_reason = WHATSAPP_RETIRED_REASON;
+  }
+  const channel_readiness = Object.fromEntries(Object.entries(body.channel_readiness || {}).map(([name, item = {}]) => [name,
+    whatsappRetired && name === "whatsapp" ? retiredWhatsappChannelEntry({ commercial: item.commercial, role: item.role }) : {
     ...item,
     release_gate: sales,
     commercial_execution: item.commercial === false ? "not_applicable" : (salesOpen ? "enabled" : "blocked"),

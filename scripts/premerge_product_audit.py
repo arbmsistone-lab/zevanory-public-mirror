@@ -185,9 +185,16 @@ def check_solutions():
 def check_css():
     css = (ROOT / "product.css").read_text(encoding="utf-8")
     errors = 0
-    for token in ("prefers-reduced-motion", "content-visibility", ":focus", "@media"):
+    # E3 (2026-10-24): "content-visibility" deixou de ser exigido. Em .section ele fazia o Tab levar o
+    # foco para FORA da tela (a rolagem do foco usa a altura estimada do contain-intrinsic-size e a
+    # seção muda de tamanho ao renderizar): falha de WCAG 2.4.11, medida em scripts/audit/
+    # sales-quality-budget.mjs. Agora é proibido em seções com conteúdo focável e exigimos
+    # scroll-padding (o cabeçalho fixo nunca cobre o foco).
+    for token in ("prefers-reduced-motion", ":focus-visible", "scroll-padding", "@media"):
         if token not in css:
             errors += fail(f"product.css: requisito ausente: {token}")
+    if "content-visibility" in css:
+        errors += fail("product.css: content-visibility tira o foco do teclado da tela (WCAG 2.4.11)")
     if "javascript:" in css.lower():
         errors += fail("product.css: conteúdo inválido")
     if errors == 0:
@@ -244,20 +251,26 @@ def check_official_whatsapp():
             errors += fail(f"WhatsApp oficial: frente comercial não herdando perfil canônico: {front}")
 
     for marker in (
-        'c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)',
-        'c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"',
-        'c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)',
-        '"+55 88 9234-0423": "+55 88 99254-5413"',
-        '"558892340423": "5588992545413"',
+        'return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_")',
+        'from public_whatsapp_scan import public_whatsapp_hits',
+        'raise SystemExit("PUBLIC_WHATSAPP_CONTACT_PRESENT "',
     ):
         if marker not in deploy:
             errors += fail(f"WhatsApp oficial: marcador de cutover/compactação ausente no deploy: {marker}")
+    # WhatsApp retired (PR #896): the generator must never assign a WhatsApp contact alias.
+    if re.search(r'c\["vars"\]\["(SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_[A-Z0-9_]*)"\]\s*=', deploy):
+        errors += fail("WhatsApp aposentado: deploy voltou a atribuir SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_*")
 
-    # Inbound support is allowed only when the owner KV sales lock is still enforced.
+    # WhatsApp retired (PR #896): the public number rewrite is gone and the channel stays closed.
+    for token in ('"558892340423": "5588992545413"', '"+55 88 9234-0423": "+55 88 99254-5413"'):
+        if token in deploy:
+            errors += fail("WhatsApp aposentado: deploy voltou a reescrever páginas públicas com o número banido")
     whatsapp_off = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"' in deploy
     whatsapp_inbound = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="true"' in deploy
     if whatsapp_off == whatsapp_inbound:
         errors += fail("WhatsApp oficial: modo comercial ambiguo")
+    if whatsapp_inbound:
+        errors += fail("WhatsApp aposentado: WHATSAPP_SALES_ENABLED voltou a \"true\"")
     if whatsapp_inbound:
         sales_path = ROOT / "worker" / "sales-control.mjs"
         conversation_path = ROOT / "worker" / "whatsapp-conversation.mjs"
@@ -277,7 +290,7 @@ def check_official_whatsapp():
                 errors += fail("WhatsApp oficial: link SKU sem guarda")
 
     if errors == 0:
-        pass_("WhatsApp oficial: novo número propagado a 12 frentes e legado bloqueado")
+        pass_("WhatsApp: perfis canônicos nas 12 frentes, canal aposentado fechado, sem número público no deploy")
     return errors
 
 def main():

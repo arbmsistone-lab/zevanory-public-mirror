@@ -1,0 +1,75 @@
+TAP version 13
+# Subtest: T1 alpha
+not ok 1 - T1 alpha
+  ---
+  duration_ms: 1.217723
+  type: 'test'
+  location: '/tmp/mc-live-i7jp48tn/probe.mjs:35:1'
+  failureType: 'testCodeFailure'
+  error: 'A1 no hard-coded fetch timeout'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    export async function forward(url) {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) throw Object.assign(new Error('upstream'), {
+    code: 'ERR_MODULE_NOT_FOUND',
+    failureType: 'testTimeoutFailure',
+    error: 'upstream timeout',
+    exitCode: 1,
+    signal: 'SIGTERM',
+    name: 'TypeError',
+    type: 'suite',
+      });
+    }
+  operator: 'doesNotMatch'
+  stack: |-
+    TestContext.<anonymous> (file:///tmp/mc-live-i7jp48tn/probe.mjs:37:34)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: T10 beta
+ok 2 - T10 beta
+  ---
+  duration_ms: 0.221257
+  type: 'test'
+  ...
+# Subtest: T2 gamma
+    # Subtest: T2a nested
+    ok 1 - T2a nested
+      ---
+      duration_ms: 0.191439
+      type: 'test'
+      ...
+    # Subtest: T2b nested
+    ok 2 - T2b nested
+      ---
+      duration_ms: 0.205101
+      type: 'test'
+      ...
+    1..2
+ok 3 - T2 gamma
+  ---
+  duration_ms: 0.737279
+  type: 'test'
+  ...
+# Subtest: T3 delta
+ok 4 - T3 delta
+  ---
+  duration_ms: 1.721849
+  type: 'test'
+  ...
+1..4
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 113.762501
