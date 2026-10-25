@@ -44,30 +44,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Testes (contagem exata 25 + 5 do avaliador, zero pulados)
+      - name: Testes (contagem exata 30 + 5 do avaliador, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p16-experiment-registry.test.mjs | tee /tmp/t.txt
-          for l in "# tests 25" "# pass 25" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 30" "# pass 30" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
           node --test tests/experiments.test.mjs | tee /tmp/e.txt
           for l in "# tests 5" "# pass 5" "# fail 0"; do grep -qx "$l" /tmp/e.txt || { echo "::error::esperado '$l'"; exit 1; }; done
-      - name: Registro prévio x registro vivo; registro só cresce (comparação com a base)
+      - name: Registro prévio x registro vivo; registro só cresce (git show origin/gh-pages:data/p16/experiments.json)
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          git fetch -q --depth 1 origin "$BASE_SHA"
-          git show "$BASE_SHA:data/p16/experiments.json" > /tmp/base-p16.json 2>/dev/null || : > /tmp/base-p16.json
-          python3 -I scripts/p16/experiment_registry_gate.py --base /tmp/base-p16.json | tee -a "$GITHUB_STEP_SUMMARY"
+          git fetch -q --depth 1 origin "+refs/heads/gh-pages:refs/remotes/origin/gh-pages"
+          # Histórico verificável: o gate lê a base com git show origin/gh-pages:<registro> e recusa qualquer registro
+          # anterior alterado ou removido (ref inexistente = FAIL; registro ausente na base = primeira introdução).
+          python3 -I scripts/p16/experiment_registry_gate.py --base-ref origin/gh-pages | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -q '^P16_BASE ref=origin/gh-pages commit=' "$GITHUB_STEP_SUMMARY"
       - name: Mutantes causais (classificador compartilhado; todos precisam morrer)
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/ci/mutants_p16_registry.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P16_REGISTRY_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=22 killed=22 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=31 killed=31 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

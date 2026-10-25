@@ -43,7 +43,16 @@ from pathlib import Path
 SCHEMA = "zevanory-p16-experiments/v1"
 SCHEMA_VERSION = 1
 OUTCOMES = {"MANTER", "REFORCAR", "REFORMULAR", "APOSENTAR", "INCONCLUSIVO"}  # mesmos do P02 (seção 12)
-RESULTS = ("VARIANTE_MELHOR", "SEM_DIFERENCA", "VARIANTE_PIOR", "AMOSTRA_INSUFICIENTE")
+# "Sem evidência suficiente de diferença" NÃO é equivalência (ausência de evidência não é evidência de ausência).
+# Equivalência só existe com teste formal pré-registrado (TOST com margem declarada antes do início): EQUIVALENTE.
+NO_EVIDENCE = "SEM_EVIDENCIA_SUFICIENTE_DE_DIFERENCA"
+EQUIVALENT = "EQUIVALENTE"
+RESULTS = ("VARIANTE_MELHOR", NO_EVIDENCE, "VARIANTE_PIOR", "AMOSTRA_INSUFICIENTE")
+EQUIV_WORDS = re.compile(r"equival|sem diferen[cç]a|n[aã]o h[aá] diferen[cç]a|s[aã]o iguais|mesmo desempenho|empate", re.I)
+# Fonte da tabela de decisão: o texto original do 3.1 (F2 §7) não foi localizado; a tabela é reconstruída a partir das
+# seções 5, 12 e 14 da v4.7 e NÃO é normativa até o auditor/proprietário confirmar contra o original.
+TABLE_RECONSTRUCTED = "RECONSTRUIDA_PENDENTE_CONFIRMACAO"
+TABLE_CONFIRMED = "CONFIRMADA"
 LEGACY_RESULT = "SEM_PRE_REGISTRO_VALIDO"
 # Fechada: experimentos que já estavam no registro vivo em 2026-10-12, antes deste gate. Nenhum outro vira legado.
 LEGACY_KEYS = frozenset({"short-format", "product-page-v2", "nurture-match"})
@@ -267,10 +276,19 @@ def check_prereg(root: Path, rec: dict, today: dt.date, errs: list[str], notes: 
     min_n = rec.get("min_n_per_arm")
     if not _int(min_n) or (_int(n_decl) and min_n < n_decl):
         errs.append(f"{where}: min_n_per_arm deve ser inteiro >= n_per_arm do cálculo amostral")
+    # A janela de 7 a 120 dias NÃO substitui a justificativa da amostra, o MDE nem a regra de parada: os três são exigidos.
+    if not isinstance(rec.get("sample_justification"), str) or len(rec["sample_justification"].strip()) < 30:
+        errs.append(f"{where}: sample_justification ausente ou curta (a janela não substitui a justificativa da amostra)")
+    if not isinstance(ss, dict) or not isinstance(ss.get("mde_rationale"), str) or len(ss["mde_rationale"].strip()) < 20:
+        errs.append(f"{where}: sample_size.mde_rationale ausente (por que este efeito mínimo importa; a janela não substitui o MDE)")
     stop = rec.get("stop_rule")
     if not isinstance(stop, dict):
         errs.append(f"{where}: stop_rule ausente")
     else:
+        if stop.get("basis") != "AMOSTRA" or stop.get("min_n_per_arm") != rec.get("min_n_per_arm"):
+            errs.append(f"{where}: stop_rule.basis deve ser AMOSTRA com min_n_per_arm igual ao pré-registrado (o prazo não para o experimento com decisão)")
+        if stop.get("at_max_duration_without_n") != "INCONCLUSIVO":
+            errs.append(f"{where}: stop_rule.at_max_duration_without_n deve ser INCONCLUSIVO (prazo esgotado sem n não decide)")
         mn, mx = stop.get("min_duration_days"), stop.get("max_duration_days")
         if not _int(mn) or mn < MIN_WINDOW_DAYS:
             errs.append(f"{where}: stop_rule.min_duration_days deve ser >= {MIN_WINDOW_DAYS} (janela do 3.1)")
@@ -285,23 +303,30 @@ def check_prereg(root: Path, rec: dict, today: dt.date, errs: list[str], notes: 
         errs.append(f"{where}: analysis.test ausente")
     elif isinstance(ss, dict) and an.get("alpha") != ss.get("alpha"):
         errs.append(f"{where}: analysis.alpha deve ser o mesmo alpha do cálculo amostral")
+    eq = rec.get("equivalence_test")
+    expected = set(RESULTS)
+    if eq is not None:
+        expected.add(EQUIVALENT)
+        if not isinstance(eq, dict) or eq.get("method") != "TOST" or not _num(eq.get("margin_abs")) or eq["margin_abs"] <= 0 \
+                or not _num(eq.get("alpha")) or not 0 < eq["alpha"] <= 0.10 or not isinstance(eq.get("margin_rationale"), str) or len(eq["margin_rationale"].strip()) < 20:
+            errs.append(f"{where}: equivalence_test deve ser {{method: TOST, margin_abs > 0, alpha em (0; 0,10], margin_rationale}}")
     table = rec.get("decision_table")
-    if not isinstance(table, dict) or set(table) != set(RESULTS):
-        errs.append(f"{where}: decision_table deve cobrir exatamente {list(RESULTS)}")
+    if not isinstance(table, dict) or set(table) != expected:
+        errs.append(f"{where}: decision_table deve cobrir exatamente {sorted(expected)} (EQUIVALENTE só com equivalence_test TOST pré-registrado)")
     else:
         for r, o in table.items():
             if o not in OUTCOMES:
                 errs.append(f"{where}: decision_table[{r}] = {o!r} fora de {sorted(OUTCOMES)}")
         if table.get("AMOSTRA_INSUFICIENTE") != "INCONCLUSIVO":
             errs.append(f"{where}: tabela de decisão de inconclusivos [3.1]: AMOSTRA_INSUFICIENTE só pode ser INCONCLUSIVO")
-        if table.get("SEM_DIFERENCA") in ("REFORCAR",):
-            errs.append(f"{where}: SEM_DIFERENCA não pode levar a REFORCAR (reforço exige variante melhor)")
+        if table.get(NO_EVIDENCE) in ("REFORCAR",):
+            errs.append(f"{where}: {NO_EVIDENCE} não pode levar a REFORCAR (reforço exige variante melhor)")
         if table.get("VARIANTE_PIOR") in ("REFORCAR", "MANTER") and table.get("VARIANTE_PIOR") == table.get("VARIANTE_MELHOR"):
             errs.append(f"{where}: VARIANTE_PIOR e VARIANTE_MELHOR não podem levar à mesma decisão de reforço")
 
 
 def check_closure(root: Path, rec: dict, pre: dict, start: dict | None, today: dt.date, p02: dict | None,
-                  errs: list[str], notes: list[str]) -> None:
+                  errs: list[str], notes: list[str], table_status: str = TABLE_RECONSTRUCTED) -> None:
     where = f"fechamento {rec.get('id')}"
     closed = _date(rec.get("closed_at"), "closed_at", errs, where)
     if closed and closed > today:
@@ -344,9 +369,19 @@ def check_closure(root: Path, rec: dict, pre: dict, start: dict | None, today: d
         if result != LEGACY_RESULT or outcome != "INCONCLUSIVO":
             errs.append(f"{where}: experimento legado (sem cálculo amostral) só fecha como {LEGACY_RESULT} -> INCONCLUSIVO")
         return
-    if result not in RESULTS:
-        errs.append(f"{where}: result deve ser um de {list(RESULTS)}")
+    if result == "SEM_DIFERENCA":
+        errs.append(f"{where}: 'SEM_DIFERENCA' foi renomeado para {NO_EVIDENCE} (não significativo não é equivalência)")
         return
+    if result == EQUIVALENT and pre.get("equivalence_test") is None:
+        errs.append(f"{where}: EQUIVALENTE exige equivalence_test (TOST com margem) pré-registrado; sem ele use {NO_EVIDENCE}")
+        return
+    if result not in RESULTS and result != EQUIVALENT:
+        errs.append(f"{where}: result deve ser um de {list(RESULTS) + [EQUIVALENT]}")
+        return
+    if result != EQUIVALENT and EQUIV_WORDS.search(str(rec.get("outcome_reason", "")) + " " + str(rec.get("action", ""))):
+        errs.append(f"{where}: texto afirma equivalência/ausência de diferença sem TOST pré-registrado; escreva 'sem evidência suficiente de diferença'")
+    if table_status != TABLE_CONFIRMED and outcome != "INCONCLUSIVO":
+        errs.append(f"{where}: tabela de decisão {table_status}: enquanto não for confirmada contra o 3.1 original, só INCONCLUSIVO é aceito (o gate não é normativo)")
     table = pre.get("decision_table") or {}
     if table.get(result) != outcome:
         errs.append(f"{where}: outcome {outcome} contradiz a tabela de decisão pré-registrada ({result} -> {table.get(result)})")
@@ -374,9 +409,16 @@ def check_closure(root: Path, rec: dict, pre: dict, start: dict | None, today: d
             errs.append(f"{where}: {result} exige p_value em [0; 1]")
         elif _num(alpha):
             if result in ("VARIANTE_MELHOR", "VARIANTE_PIOR") and not p < alpha:
-                errs.append(f"{where}: {result} exige p < alfa ({p} >= {alpha}); sem significância é SEM_DIFERENCA")
-            if result == "SEM_DIFERENCA" and p < alpha:
-                errs.append(f"{where}: SEM_DIFERENCA com p < alfa ({p} < {alpha})")
+                errs.append(f"{where}: {result} exige p < alfa ({p} >= {alpha}); sem significância é {NO_EVIDENCE}")
+            if result == NO_EVIDENCE and p < alpha:
+                errs.append(f"{where}: {NO_EVIDENCE} com p < alfa ({p} < {alpha})")
+        if result == EQUIVALENT:
+            eq = pre.get("equivalence_test") or {}
+            tost = obs.get("tost")
+            if not isinstance(tost, dict) or not all(_num(tost.get(k)) for k in ("p_lower", "p_upper")):
+                errs.append(f"{where}: EQUIVALENTE exige observed.tost {{p_lower, p_upper}}")
+            elif _num(eq.get("alpha")) and not (tost["p_lower"] < eq["alpha"] and tost["p_upper"] < eq["alpha"]):
+                errs.append(f"{where}: EQUIVALENTE exige os dois testes unilaterais do TOST com p < alfa ({eq['alpha']})")
         if start is not None and closed:
             st = _date(start.get("started_at"), "started_at", [], where)
             mn = (pre.get("stop_rule") or {}).get("min_duration_days")
@@ -400,6 +442,17 @@ def validate(root: Path, registry: dict, live: dict, base: dict | None = None, t
             errs.append(f"{name} deve ser lista")
             v = []
         lists[name] = v
+    src = registry.get("decision_table_source")
+    table_status = src.get("status") if isinstance(src, dict) else None
+    if table_status not in (TABLE_RECONSTRUCTED, TABLE_CONFIRMED):
+        errs.append(f"decision_table_source.status deve ser {TABLE_RECONSTRUCTED} ou {TABLE_CONFIRMED}")
+        table_status = TABLE_RECONSTRUCTED
+    elif table_status == TABLE_CONFIRMED:
+        if not check_ref(root, src.get("confirmation_ref"), "decision_table_source.confirmation_ref", errs):
+            errs.append("decision_table_source: CONFIRMADA exige confirmation_ref verificável (texto original do 3.1 F2 §7 ou registro de confirmação)")
+            table_status = TABLE_RECONSTRUCTED
+    else:
+        notes.append("tabela de decisão RECONSTRUIDA_PENDENTE_CONFIRMACAO: texto original do 3.1 (F2 §7) NOT_FOUND; só INCONCLUSIVO é aceito até a confirmação")
     pres = _ordered(lists["preregistrations"], PRE_RE, "pré-registro", errs)
     starts = _ordered(lists["starts"], START_RE, "início", errs)
     closures = _ordered(lists["closures"], CLOSE_RE, "fechamento", errs)
@@ -439,7 +492,7 @@ def validate(root: Path, registry: dict, live: dict, base: dict | None = None, t
         if pid in close_of:
             errs.append(f"fechamento {rec.get('id')}: {pid} já foi fechado ({close_of[pid].get('id')})")
         close_of[pid] = rec
-        check_closure(root, rec, pre, start_of.get(pid), today, p02, errs, notes)
+        check_closure(root, rec, pre, start_of.get(pid), today, p02, errs, notes, table_status)
     for pid, pre in pres.items():
         if pre.get("legacy") is True and pid not in close_of:
             errs.append(f"pré-registro {pid}: experimento legado sem cálculo amostral precisa estar fechado como INCONCLUSIVO")
@@ -517,7 +570,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--root", default=".")
     ap.add_argument("--registry", default="data/p16/experiments.json")
     ap.add_argument("--live", default="data/experiments.json")
-    ap.add_argument("--base", help="registro P16 da branch base, para a regra append-only")
+    ap.add_argument("--base", help="registro P16 da branch base (arquivo), para a regra append-only")
+    ap.add_argument("--base-ref", help="ref git da base (ex.: origin/gh-pages): lê o registro com git show <ref>:<registry>")
     ap.add_argument("--today", help="AAAA-MM-DD (testes)")
     ap.add_argument("--print-hash", action="store_true", help="imprime o record_sha256 esperado de cada registro")
     ap.add_argument("--sample-size", help="JSON de sample_size: imprime o n por braço recalculado")
@@ -550,7 +604,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"P16_GATE=FAIL data/p02/decisions.json ilegível: {exc}")
             return 1
     base = None
-    if args.base:
+    if args.base_ref:
+        import subprocess
+        chk = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", args.base_ref + "^{commit}"], capture_output=True, text=True)
+        if chk.returncode != 0:
+            print(f"::error title=P16::append-only: ref da base {args.base_ref!r} inexistente (sem histórico verificável)")
+            print("P16_GATE=FAIL errors=1")
+            return 1
+        shown = subprocess.run(["git", "-C", str(root), "show", f"{args.base_ref}:{args.registry}"], capture_output=True, text=True, encoding="utf-8")
+        if shown.returncode == 0:
+            base = json.loads(shown.stdout)
+            print(f"P16_BASE ref={args.base_ref} commit={chk.stdout.strip()[:12]} records={sum(len(base.get(k, []) or []) for k in ('preregistrations', 'starts', 'closures'))}")
+        else:
+            print(f"P16_BASE ref={args.base_ref} commit={chk.stdout.strip()[:12]} registry=absent (primeira introdução)")
+    elif args.base:
         bp = Path(args.base)
         if bp.is_file() and bp.stat().st_size > 0:
             base = _load_json(bp)
@@ -571,6 +638,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"P16_EXPERIMENTS preregistered={len(pres)} legacy={legacy} started={len(started_ids)} "
           f"open={len(started_ids - closed_ids)} closed={len(closed_ids)} inconclusivo={inc} "
           f"p02={'present' if p02 is not None else 'absent'} base={'yes' if base is not None else 'no'}")
+    src = reg.get("decision_table_source") if isinstance(reg.get("decision_table_source"), dict) else {}
+    print(f"P16_DECISION_TABLE status={src.get('status')} normative={'yes' if src.get('status') == TABLE_CONFIRMED else 'no'}")
     print(f"P16_GATE={'FAIL' if errs else 'PASS'} errors={len(errs)}")
     return 1 if errs else 0
 

@@ -2,11 +2,25 @@
   "schema": "zevanory-p16-experiments/v1",
   "schema_version": 1,
   "note": "Registro prévio de experimentos (P16, Roteiro Mestre v4.7, seções 5, 12 e 14). Só cresce: registro não é editado nem removido. Nada começa sem pré-registro (hipótese, métrica, cálculo amostral explícito, regra de parada, tabela de decisão); todo experimento fecha com decisão ou INCONCLUSIVO. A decisão de oferta fica no P02 (p02_decision). Validação: scripts/p16/experiment_registry_gate.py.",
+  "decision_table_source": {
+    "status": "RECONSTRUIDA_PENDENTE_CONFIRMACAO",
+    "original": "Roteiro Mestre 3.1, F2 §7 (tabela de decisão de inconclusivos)",
+    "search_result": "NOT_FOUND",
+    "searched": [
+      "roteiro v4.7 (seções 5, 12, 14 e Anexos D/F: só 'mantida', sem o texto)",
+      "histórico git de todos os 974 branches remotos de arbmsistone-lab/zevanory-public-mirror (git log --all -G 'tabela de decis|inconclusivos')",
+      "docs/, evidence/ e o repositório zevanory-product-control-edge",
+      "conversas anteriores acessíveis ao executor"
+    ],
+    "reconstructed_from": "Roteiro v4.7: seção 5 (P02/P16), seção 12 (decisões manter/reforçar/reformular/aposentar) e seção 14",
+    "effect": "Não normativa: enquanto status != CONFIRMADA, o gate só aceita fechamento INCONCLUSIVO. Confirmar exige confirmation_ref verificável no repositório (texto original ou registro de confirmação do auditor/proprietário)."
+  },
   "result_classes": {
     "VARIANTE_MELHOR": "variante melhor que o controle com p < alfa e n >= mínimo",
-    "SEM_DIFERENCA": "n >= mínimo e p >= alfa",
+    "SEM_EVIDENCIA_SUFICIENTE_DE_DIFERENCA": "n >= mínimo e p >= alfa: sem evidência suficiente de diferença; NUNCA lido como equivalência",
+    "EQUIVALENTE": "só com equivalence_test TOST e margem pré-registrados, e os dois testes unilaterais com p < alfa",
     "VARIANTE_PIOR": "variante pior com p < alfa e n >= mínimo",
-    "AMOSTRA_INSUFICIENTE": "n abaixo do mínimo pré-registrado ou janela incompleta: sempre INCONCLUSIVO",
+    "AMOSTRA_INSUFICIENTE": "n abaixo do mínimo pré-registrado ou prazo esgotado sem n: sempre INCONCLUSIVO",
     "SEM_PRE_REGISTRO_VALIDO": "só legado (iniciado antes do gate): sempre INCONCLUSIVO"
   },
   "preregistrations": [

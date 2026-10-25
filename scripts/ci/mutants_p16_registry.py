@@ -55,6 +55,15 @@ M = {
     "M19 cálculo amostral sem o poder": (G, "    z_b = norm_ppf(power)", "    z_b = 0.0"),
     "M20 métrica por abertura aceita": (G, '    elif re.search(r"\\babert"', '    elif False and re.search(r"\\babert"'),
     "M21 avaliador reavalia fechado": (E, "    if (exp.closed) return", "    if (false) return"),
+    "M23 tabela reconstruída tratada como normativa": (G, '    if table_status != TABLE_CONFIRMED and outcome != "INCONCLUSIVO":', "    if False:"),
+    "M24 equivalência afirmada sem TOST": (G, "    if result != EQUIVALENT and EQUIV_WORDS.search(", "    if False and EQUIV_WORDS.search("),
+    "M25 EQUIVALENTE sem TOST pré-registrado": (G, '    if result == EQUIVALENT and pre.get("equivalence_test") is None:', "    if False:"),
+    "M26 TOST sem p < alfa": (G, 'and not (tost["p_lower"] < eq["alpha"] and tost["p_upper"] < eq["alpha"]):', "and False:"),
+    "M27 justificativa da amostra não exigida": (G, '    if not isinstance(rec.get("sample_justification"), str) or len(rec["sample_justification"].strip()) < 30:', "    if False:"),
+    "M28 MDE sem justificativa": (G, '    if not isinstance(ss, dict) or not isinstance(ss.get("mde_rationale"), str) or len(ss["mde_rationale"].strip()) < 20:', "    if False:"),
+    "M29 regra de parada sem base amostral": (G, '        if stop.get("basis") != "AMOSTRA" or stop.get("min_n_per_arm") != rec.get("min_n_per_arm"):', "        if False:"),
+    "M30 base do git ignorada": (G, "            base = json.loads(shown.stdout)", '            base = {"preregistrations": [], "starts": [], "closures": []}'),
+    "M31 confirmação da tabela sem referência": (G, '        if not check_ref(root, src.get("confirmation_ref"), "decision_table_source.confirmation_ref", errs):', "        if False:"),
     "M22 registro vivo sem pré-registro aceito": (G, '            errs.append(f"{where}: experimento sem pré-registro em data/p16/experiments.json (nada começa sem registro prévio)")\n', "            pass\n"),
 }
 

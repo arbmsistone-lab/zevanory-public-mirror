@@ -74,7 +74,7 @@ tests/p13-decreto-oferta-cache.test.mjs 6
 tests/p13-politica-nogo.test.mjs 8
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
-tests/p16-experiment-registry.test.mjs 25
+tests/p16-experiment-registry.test.mjs 30
 tests/p20-restore-drill.test.mjs 12
 tests/payment-return-page.test.mjs 3
 tests/plan-probe.test.mjs 1
