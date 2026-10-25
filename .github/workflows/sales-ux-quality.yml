@@ -34,6 +34,11 @@ on:
       - "sales-overlay/**"
       - "scripts/build_sales_public.py"
       - "scripts/sales_policy.py"
+      - "scripts/sales_marketing.py"
+      - "data/nichos.json"
+      - "data/depoimentos.json"
+      - "assets/video/**"
+      - "docs/evidence/sales-ux/demo-video-manifest.json"
       - "worker/sales-public-worker.mjs"
       - "scripts/audit/sales-local-server.mjs"
       - "scripts/audit/sales-quality-budget.mjs"
@@ -95,7 +100,7 @@ jobs:
       - name: Screenshots before / after (360, 768, 1440)
         env:
           # Every hand-designed page (design PR): catalogue, the six priced pages, Sales, termos, founder.
-          PAGES: /solucoes,/lucro-e-caixa,/vendas-na-pratica,/ia-na-pratica,/conteudo-pronto,/combo-ia-vendas,/negocio-completo,/zevanory-sales,/termos,/quem-criou
+          PAGES: /solucoes,/lucro-e-caixa,/vendas-na-pratica,/ia-na-pratica,/conteudo-pronto,/combo-ia-vendas,/negocio-completo,/zevanory-sales,/termos,/quem-criou,/para/salao,/para/oficina,/para/clinica,/para/loja
         run: |
           set -euo pipefail
           node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8788 /tmp/sales-ux/screenshots/before
@@ -109,6 +114,15 @@ jobs:
         env:
           COLOR_SCHEME: dark
         run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-after-dark
+      - name: Budget on the marketing pages (niche landing pages, light and dark, enforced)
+        # Marketing PR (2026-10-25): the four /para/<ramo> pages share one template; all four are measured
+        # in both themes. /solucoes (FAQ, demo video) and the product pages are already in the budgets above.
+        env:
+          PAGES: /para/salao,/para/oficina,/para/clinica,/para/loja,/lucro-e-caixa
+        run: |
+          set -euo pipefail
+          node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-marketing
+          COLOR_SCHEME=dark node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8787 /tmp/sales-ux/budget-marketing-dark
       - uses: actions/upload-artifact@v4
         if: always()
         with:

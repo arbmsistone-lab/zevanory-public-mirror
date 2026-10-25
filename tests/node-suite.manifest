@@ -94,6 +94,7 @@ tests/sales-candidate-visual.test.mjs 3
 tests/sales-control.test.mjs 6
 tests/sales-design.test.mjs 6
 tests/sales-ledger.test.mjs 3
+tests/sales-marketing.test.mjs 6
 tests/sales-public-gzip.test.mjs 2
 tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18

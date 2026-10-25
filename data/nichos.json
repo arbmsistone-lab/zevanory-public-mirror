@@ -1,0 +1,155 @@
+{
+  "nota": "Páginas por ramo (/para/<ramo>) geradas por scripts/sales_marketing.py. Cada afirmação sobre um produto repete o que está nas prévias reais aprovadas (capas, uma página interna e um trecho de planilha), na lista de entregáveis (COMMERCE do build) ou nos termos; nada de depoimento, número de clientes, nota ou resultado. Números só dentro de 'exemplo', sempre com o rótulo 'Exemplo fictício, para ilustrar' e valores redondos.",
+  "nichos": [
+    {
+      "slug": "salao",
+      "nome": "salão de beleza",
+      "titulo": "Para salão de beleza: agenda, preço do serviço e caixa | ZEVANORY",
+      "descricao": "Furo na agenda, preço de escova e progressiva no chute, maquininha comendo a margem e Instagram parado: o que resolve cada problema do salão, e o que usar hoje de graça.",
+      "kicker": "Para salão de beleza",
+      "h1": "Agenda cheia e caixa vazio? Comece pelo que mais pesa no salão.",
+      "lead": "Cliente que marca e não vem, preço de progressiva no chute, maquininha levando a margem e Instagram parado. Veja qual material da ZEVANORY trata cada um desses problemas, e o que dá para fazer hoje sem pagar nada.",
+      "cupom": "Problemas do salão",
+      "dores": [
+        {"item": "Cliente que marca e não vem", "produto": "ia-na-pratica",
+         "detalhe": "Lembrete e confirmação escritos com IA e revisados por você antes de enviar. A aula A2 ensina a dar contexto sem expor a cliente; a A7, a revisão que encontra erros. Uma mensagem de confirmação pronta está no guia grátis de IA para salão."},
+        {"item": "Preço de progressiva no chute", "produto": "lucro-e-caixa",
+         "detalhe": "A planilha calcula um preço mínimo coerente com os custos, as taxas e a margem-alvo que você informa. Você para de copiar o preço da concorrente."},
+        {"item": "Maquininha levando a margem", "produto": "lucro-e-caixa",
+         "detalhe": "As taxas entram na conta da margem de cada serviço. Para uma conta rápida, a calculadora grátis de taxa da maquininha mostra quanto cai na conta em cada venda no cartão."},
+        {"item": "Pediu preço no direct e sumiu", "produto": "vendas-na-pratica",
+         "detalhe": "Cada pedido vira uma linha na aba Oportunidades, com etapa e próxima ação, e as mensagens adaptáveis ajudam a retomar a conversa com quem pediu retorno."},
+        {"item": "Post de antes e depois sem ideia", "produto": "conteudo-pronto",
+         "detalhe": "Todo mês, 12 posts com legenda e 4 mensagens de venda no tom do salão, com calendário de 30 dias. Você revisa e publica; a ZEVANORY não mexe nas suas redes."}
+      ],
+      "gratis": [
+        {"href": "/ia-para-salao-de-beleza", "nome": "IA para salão de beleza", "texto": "Mensagem de confirmação na véspera, pedido de avaliação e calendário de posts, prontos para copiar."},
+        {"href": "/calculadora-preco-hora-servico", "nome": "Calculadora de preço por hora de serviço", "texto": "Quanto cobrar pela hora de cadeira para pagar as contas e a sua retirada."},
+        {"href": "/calculadora-taxa-maquininha", "nome": "Calculadora de taxa da maquininha", "texto": "Quanto cai na conta em cada venda no débito, no crédito e no parcelado."}
+      ],
+      "exemplo": {
+        "titulo": "O desconto de dezembro, antes de anunciar",
+        "intro": "Um salão fictício quer dar 10% de desconto no pacote escova + hidratação, que custa R$ 100.",
+        "antes": ["Dá o desconto porque a concorrente deu.", "Só descobre no fim do mês que trabalhou mais e sobrou menos."],
+        "depois": ["Informa custo do produto e taxa na planilha do Lucro & Caixa: sobram R$ 30 por pacote.", "Testa os 10% no Simulador: o desconto tira R$ 10, que saem inteiros da sobra. Ela cai para cerca de R$ 20, um terço a menos.", "Decide com o número na frente: manter o desconto, reduzir ou não fazer."]
+      },
+      "faq": [
+        ["Serve para salão pequeno, de uma cadeira só?", "Sim. Os materiais foram escritos para quem toca o negócio sozinho ou com equipe pequena. A planilha usa os números que você informa, sem exigir sistema nem contador para começar."],
+        ["A IA vai falar com as minhas clientes sozinha?", "Não. Nenhum material inclui robô, disparo automático ou agente conectado. A IA ajuda a escrever rascunhos que você revisa e envia, só para quem pediu contato."]
+      ]
+    },
+    {
+      "slug": "oficina",
+      "nome": "oficina mecânica",
+      "titulo": "Para oficina mecânica: orçamento, mão de obra e caixa | ZEVANORY",
+      "descricao": "Orçamento que some no WhatsApp, item esquecido, mão de obra cobrada no olho e peça comprada sem olhar o caixa: o que resolve cada problema da oficina, e o que usar hoje de graça.",
+      "kicker": "Para oficina mecânica",
+      "h1": "Orçamento que some no WhatsApp? Organize a oficina pelo que trava o balcão.",
+      "lead": "Orçamento mandado e sem resposta, item esquecido na pressa, mão de obra cobrada no olho e peça comprada que fica parada. Veja o que resolve cada um, e o que dá para usar hoje de graça.",
+      "cupom": "Problemas da oficina",
+      "dores": [
+        {"item": "Orçamento mandado e sem resposta", "produto": "vendas-na-pratica",
+         "detalhe": "Cada orçamento enviado vira uma oportunidade com etapa e próxima ação na aba Oportunidades. O retorno deixa de depender da memória, e só recebe mensagem quem pediu."},
+        {"item": "Item esquecido no orçamento", "produto": "ia-na-pratica",
+         "detalhe": "O pedido do cliente vira briefing (aula A3) e orçamento conferível (aula A4). Na aba Orçamento da planilha: item, quantidade, unitário, subtotal e conferência."},
+        {"item": "Mão de obra cobrada no olho", "produto": "lucro-e-caixa",
+         "detalhe": "A planilha chega a um preço mínimo coerente com custos, taxas e margem-alvo. Para a hora de serviço, a calculadora grátis dá a conta em segundos."},
+        {"item": "Desconto pedido no balcão", "produto": "lucro-e-caixa",
+         "detalhe": "Antes de conceder, o Simulador mostra quanto o desconto pressiona a margem. Você responde ao cliente com o número, não no impulso."},
+        {"item": "Peça comprada sem olhar o caixa", "produto": "lucro-e-caixa",
+         "detalhe": "A aba Compra_Caixa compara a compra planejada com o caixa projetado e a reserva. Ela mostra a situação; a decisão continua sua."}
+      ],
+      "gratis": [
+        {"href": "/ia-para-oficina-mecanica", "nome": "IA para oficina mecânica", "texto": "Orçamento item por item, aviso de carro pronto e lembrete de troca de óleo, prontos para copiar."},
+        {"href": "/calculadora-preco-hora-servico", "nome": "Calculadora de preço por hora de serviço", "texto": "Quanto cobrar pela hora de mão de obra para pagar contas e retirada."},
+        {"href": "/calculadora-margem-de-lucro", "nome": "Calculadora de margem de lucro", "texto": "Margem, markup e lucro em reais de cada peça revendida."}
+      ],
+      "exemplo": {
+        "titulo": "Quarenta orçamentos por mês, contados",
+        "intro": "Uma oficina fictícia manda cerca de 40 orçamentos por mês pelo WhatsApp.",
+        "antes": ["Não sabe quantos ficaram sem resposta.", "O retorno ao cliente depende de alguém lembrar."],
+        "depois": ["Cada orçamento entra na aba Oportunidades com origem, etapa e próxima ação.", "No fim do mês a contagem aparece: por exemplo, 10 ganhos, 18 perdidos e 12 em aberto, com o motivo de cada perda anotado.", "Com isso, escolhe uma melhoria para o mês seguinte, como na aula B8."]
+      },
+      "faq": [
+        ["Os exemplos do material são de oficina?", "Os manuais de IA e de Vendas usam exemplos fictícios de pequenos prestadores de serviço que recebem pedidos de orçamento, a mesma rotina do balcão da oficina. Eles não ensinam diagnóstico mecânico nem serviço técnico."],
+        ["Serve para oficina que também vende peça?", "Sim. O Lucro & Caixa trabalha com produtos e serviços: preço, margem, desconto e caixa de cada um."],
+        ["A IA faz o orçamento sozinha?", "Não. A IA ajuda a organizar o pedido e a redigir. Preço, prazo e condição só entram com fonte, e quem confere é você, como mostram as aulas A4 e A7."]
+      ]
+    },
+    {
+      "slug": "clinica",
+      "nome": "clínica e consultório",
+      "titulo": "Para clínica e consultório: faltas, valor da sessão e caixa | ZEVANORY",
+      "descricao": "Paciente que falta, pedido de valor que não vira agendamento, sessão com preço no chute e cartão parcelado que bagunça o caixa: o que resolve cada problema da clínica, e o que usar hoje de graça.",
+      "kicker": "Para clínica e consultório",
+      "h1": "Falta, remarcação e caixa que não fecha? Comece pelo que pesa na clínica.",
+      "lead": "Paciente que falta sem avisar, pedido de valor que não vira agendamento, preço da sessão que não cobre sala e secretária, e cartão parcelado que bagunça o caixa. Veja o que resolve cada um.",
+      "cupom": "Problemas da clínica",
+      "dores": [
+        {"item": "Paciente que falta sem avisar", "produto": "ia-na-pratica",
+         "detalhe": "Textos de confirmação e de orientação escritos com IA e revisados por você. A aula A2 ensina a dar contexto sem expor quem é atendido: nenhum dado de saúde vai para a ferramenta."},
+        {"item": "Pediu valor e não agendou", "produto": "vendas-na-pratica",
+         "detalhe": "Cada contato vira uma oportunidade com etapa e próxima ação. O retorno respeita permissão e preferência: só recebe mensagem quem pediu."},
+        {"item": "Valor da sessão no chute", "produto": "lucro-e-caixa",
+         "detalhe": "Na aba Metas, despesas fixas e o resultado desejado viram receita mensal e diária estimadas; o preço mínimo considera custos, taxas e margem-alvo."},
+        {"item": "Cartão parcelado e caixa que não bate", "produto": "lucro-e-caixa",
+         "detalhe": "A planilha separa o dinheiro que já entrou do resultado do mês. A calculadora grátis de taxa da maquininha mostra quanto cai na conta em cada parcela."},
+        {"item": "Quantos atendimentos pagam o mês", "produto": "ferramentas",
+         "detalhe": "A calculadora grátis de ponto de equilíbrio mostra quantos atendimentos por mês cobrem as contas, sem cadastro."}
+      ],
+      "aviso": "Nada aqui é sistema de agenda ou de prontuário. Não coloque dados de saúde de pacientes em ferramentas de IA. Publicações nas redes seguem as regras do seu conselho profissional.",
+      "gratis": [
+        {"href": "/ia-para-clinica-e-consultorio", "nome": "IA para clínica e consultório", "texto": "Confirmação de consulta, orientação de preparo e lista de retornos, prontas para adaptar."},
+        {"href": "/calculadora-ponto-de-equilibrio", "nome": "Calculadora de ponto de equilíbrio", "texto": "Quantos atendimentos por mês pagam aluguel da sala, secretária e demais contas."},
+        {"href": "/calculadora-taxa-maquininha", "nome": "Calculadora de taxa da maquininha", "texto": "Quanto cai na conta no débito, no crédito e no parcelado."}
+      ],
+      "exemplo": {
+        "titulo": "Quanto o consultório precisa faturar",
+        "intro": "Um consultório fictício de fisioterapia tem R$ 12.000 de despesas fixas por mês e quer R$ 3.000 de resultado.",
+        "antes": ["Define o valor da sessão pelo que os colegas cobram.", "Olha o extrato e não sabe se o mês fechou no azul."],
+        "depois": ["Informa as despesas fixas e o resultado desejado na aba Metas do Lucro & Caixa.", "A planilha converte esses R$ 15.000 em receita mensal e diária estimadas, considerando a margem de cada atendimento.", "Compara a meta com a agenda real antes de mexer no preço."]
+      },
+      "faq": [
+        ["Posso usar com dados de pacientes?", "Na IA, não: a aula A2 do IA na Prática ensina a dar contexto sem expor quem é atendido. Na planilha do Lucro & Caixa entram números do negócio (preço, custo, despesas, caixa), não dados de saúde."],
+        ["Substitui o contador ou o sistema da clínica?", "Não. O material não substitui contador, consultoria financeira, jurídica ou tributária, nem sistema de agenda ou de prontuário."]
+      ]
+    },
+    {
+      "slug": "loja",
+      "nome": "loja",
+      "titulo": "Para loja: estoque, preço de etiqueta e caixa | ZEVANORY",
+      "descricao": "Dinheiro preso no estoque, etiqueta sem saber a margem, cliente que pergunta 'tem no M?' e some, e liquidação que vira prejuízo: o que resolve cada problema da loja, e o que usar hoje de graça.",
+      "kicker": "Para loja",
+      "h1": "Estoque parado e etiqueta no chute? Organize a loja pelo que trava o caixa.",
+      "lead": "Mercadoria parada com dinheiro preso, preço de etiqueta sem saber a margem, cliente que pergunta 'tem no M?' e some, e queima de estoque que vira prejuízo. Veja o que resolve cada um.",
+      "cupom": "Problemas da loja",
+      "dores": [
+        {"item": "Dinheiro preso no estoque", "produto": "lucro-e-caixa",
+         "detalhe": "Antes do pedido ao fornecedor, a aba Compra_Caixa compara a compra planejada com o caixa projetado e a reserva."},
+        {"item": "Etiqueta sem saber a margem", "produto": "ferramentas",
+         "detalhe": "As calculadoras grátis de preço de venda, margem e CMV dão a conta de cada peça em segundos. A rotina completa de margem por produto está no Lucro & Caixa."},
+        {"item": "'Tem no M?' e o cliente some", "produto": "vendas-na-pratica",
+         "detalhe": "A aula B2 organiza o caminho do perfil até a conversa; cada pedido vira oportunidade com próxima ação, e quem pediu reposição recebe o aviso."},
+        {"item": "Liquidação que vira prejuízo", "produto": "lucro-e-caixa",
+         "detalhe": "O Simulador e os Cenários testam desconto, aumento de custo e taxas antes de remarcar a loja inteira."},
+        {"item": "Peça nova sem descrição nem post", "produto": "combo-ia-vendas",
+         "detalhe": "Comandos prontos para descrições e respostas (IA na Prática) e roteiros de conteúdo com calendário de 14 dias (Vendas na Prática)."}
+      ],
+      "gratis": [
+        {"href": "/ia-para-loja-de-roupas", "nome": "IA para loja de roupas", "texto": "Descrição de peça, aviso de reposição e look da semana, prontos para copiar."},
+        {"href": "/calculadora-preco-de-venda", "nome": "Calculadora de preço de venda", "texto": "Preço que cobre custo, impostos, taxas e margem de cada peça."},
+        {"href": "/calculadora-cmv", "nome": "Calculadora de CMV", "texto": "Custo da mercadoria vendida e quanto ele pesa no faturamento."}
+      ],
+      "exemplo": {
+        "titulo": "A queima de estoque, peça por peça",
+        "intro": "Uma loja de roupas fictícia quer fazer uma queima de estoque com 30% de desconto.",
+        "antes": ["Remarca a loja inteira de uma vez.", "Vende bastante e o caixa não melhora."],
+        "depois": ["Testa o desconto no Simulador do Lucro & Caixa: uma peça que custou R$ 60 e sai por R$ 100 passa a sair por R$ 70.", "Sobram R$ 10 antes de taxas e despesas, contra R$ 40 sem desconto.", "Decide em quais peças os 30% cabem e em quais não."]
+      },
+      "faq": [
+        ["Serve para loja que vende só pelo Instagram?", "Sim. O Vendas na Prática trata do caminho do perfil até a conversa (aula B2) e do acompanhamento de cada pedido; o Lucro & Caixa vale para qualquer canal de venda."],
+        ["Controla o estoque?", "Não. Não é sistema de estoque nem de frente de caixa. O Lucro & Caixa ajuda a decidir compra, preço e desconto olhando margem e caixa."]
+      ]
+    }
+  ]
+}

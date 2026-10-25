@@ -69,4 +69,8 @@
   <url><loc>https://vendas.zevanory.api.br/mensagem-para-cliente-que-sumiu</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://vendas.zevanory.api.br/como-cobrar-cliente-pelo-whatsapp</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://vendas.zevanory.api.br/como-mandar-orcamento-pelo-whatsapp</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/para/salao</loc><lastmod>2026-10-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/para/oficina</loc><lastmod>2026-10-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/para/clinica</loc><lastmod>2026-10-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/para/loja</loc><lastmod>2026-10-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
 </urlset>
