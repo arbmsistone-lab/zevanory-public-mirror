@@ -37,6 +37,12 @@ on:
       - "scripts/ci/mutants_portfolio_cert_contract.py"
       - "tests/test_portfolio_cert_contract.py"
       - ".github/workflows/portfolio-six-target-exact-cert.yml"
+  # Contrato v3 (Sol AVAL 271): certificação pós-publicação encadeada à conclusão com SUCESSO dos deploys,
+  # com o SHA exato implantado e leitura do release publicado antes de comparar.
+  workflow_run:
+    workflows: ["ZEVANORY central production deploy", "ZEVANORY SALES public release"]
+    types: [completed]
+    branches: [gh-pages]
   workflow_dispatch:
 
 permissions:
@@ -44,13 +50,17 @@ permissions:
 
 jobs:
   contract-tests:
-    # Contrato v2 (pré-merge x pós-publicação): testes e mutantes sem rede, antes de qualquer leitura de produção.
+    # Contrato v3 (pré-merge x pós-publicação): testes e mutantes sem rede, antes de qualquer leitura de produção.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&
+       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
           fetch-depth: 1
       - name: Contract tests and mutants
@@ -64,18 +74,25 @@ jobs:
 
   certify:
     needs: contract-tests
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&
+       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         slug: [ia-na-pratica, vendas-na-pratica, combo-ia-vendas, lucro-e-caixa, negocio-completo]
     env:
       TARGET_SLUG: ${{ matrix.slug }}
-      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      # pull_request => pré-merge (produção comparada à BASE); demais eventos => pós-publicação (produção == fonte).
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
+      # pull_request => pré-merge (produção comparada à fonte no SHA PUBLICADO por superfície);
+      # workflow_run/push/dispatch => pós-publicação, só depois da promoção efetiva observada.
       CERT_CONTEXT: ${{ github.event_name == 'pull_request' && 'pre-merge' || 'post-deploy' }}
       BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      TRIGGER_SURFACE: ${{ github.event_name == 'workflow_run' && (github.event.workflow_run.name == 'ZEVANORY central production deploy' && 'central' || 'sales') || '' }}
+      CERT_PROMOTION_WAIT_SECONDS: ${{ github.event_name == 'workflow_run' && '900' || '1200' }}
       GH_READ_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
