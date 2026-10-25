@@ -342,7 +342,7 @@ export function inventoryGaps(snap) {
   if (!snap.effective) gaps.push("deployments");
   else if (!snap.effective.single) gaps.push("single_version");
   if (!snap.detail) gaps.push("version_detail");
-  if (!snap.commit) gaps.push("release_commit_sha");
+  if (!snap.commit) gaps.push("release_commit");
   return gaps;
 }
 
@@ -499,21 +499,52 @@ export function cfErrorLines(file) {
   try { data = JSON.parse(readFileSync(file, "utf8")); } catch { return ["CF_RESPONSE json=ilegível"]; }
   const errs = Array.isArray(data?.errors) ? data.errors : [];
   const out = [`CF_RESPONSE success=${data?.success === true} errors=${errs.length}`];
-  // Sol 221 (1): código de erro e mensagem curta redigida, restrita a caracteres de texto; nunca o corpo da resposta.
-  for (const e of errs.slice(0, 5)) out.push(`CF_ERROR code=${Number.isInteger(e?.code) ? e.code : "?"} message=${redactLine(String(e?.message || "")).replace(/[^\p{L}\p{N} .,:'()\[\]_-]/gu, "").slice(0, 100)}`);
+  // Sol 229 (2): só o código numérico; texto livre só se for EXATAMENTE uma mensagem conhecida da allowlist.
+  for (const e of errs.slice(0, 5)) out.push(`CF_ERROR code=${Number.isInteger(e?.code) ? e.code : "?"} message=${knownMessage(e?.message)}`);
   return out;
+}
+export const KNOWN_CF_MESSAGES = Object.freeze(["Authentication error", "Unauthorized to access requested resource", "Invalid request headers",
+  "Could not route to /client/v4/accounts", "workers.api.error.script_not_found", "This Worker does not exist on your account.", "version not found",
+  "Rate limited", "Too many requests", "Internal server error", "Method not allowed for api_token authentication scheme"]);
+export function knownMessage(m) {
+  const s = typeof m === "string" ? m.trim() : "";
+  return KNOWN_CF_MESSAGES.includes(s) ? s : "<redacted:unknown>";
+}
+// Sol 229 (2): o stderr do wrangler nunca é impresso; só uma classe de um conjunto fechado e os códigos numéricos da
+// Cloudflare encontrados em "[code: N]".
+export const WRANGLER_CLASSES = Object.freeze(["AUTH_ERROR", "NOT_FOUND", "RATE_LIMIT", "ACCOUNT_REQUIRED", "NETWORK", "NPM_ERROR", "UNKNOWN"]);
+export function classifyWrangler(text) {
+  const s = String(text || "");
+  const codes = [...new Set([...s.matchAll(/\[code:\s*(\d{3,6})\]/gi)].map((m) => Number(m[1])))].sort((a, b) => a - b);
+  const has = (re) => re.test(s);
+  const cls = codes.some((c) => [10000, 10001, 9106, 9109].includes(c)) || has(/Authentication error|Unauthorized|not authorized|Invalid API Token/i) ? "AUTH_ERROR"
+    : codes.some((c) => [10013, 971].includes(c)) || has(/rate limit|too many requests|\b429\b/i) ? "RATE_LIMIT"
+    : codes.includes(10007) || has(/not found|does not exist/i) ? "NOT_FOUND"
+    : has(/More than one account|CLOUDFLARE_ACCOUNT_ID|account id/i) ? "ACCOUNT_REQUIRED"
+    : has(/ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed|getaddrinfo|socket hang up/i) ? "NETWORK"
+    : has(/npm (ERR|error)|ERR_[A-Z_]+|E404|ETARGET/) ? "NPM_ERROR" : "UNKNOWN";
+  return { cls, codes };
 }
 // Histórico de versões para as premissas do Sol (secret delete => versão "secret" com o mesmo etag do código).
 // Sanitizado: só ids, números, datas, origem, anotações de texto curto, etag/handlers/runtime e NOMES/TIPOS de binding.
-export const HISTORY_VERSION_FIELDS = Object.freeze(["id", "number", "created_on", "source", "triggered_by", "message", "tag", "etag", "handlers", "compatibility_date", "compatibility_flags", "bindings"]);
+export const HISTORY_VERSION_FIELDS = Object.freeze(["id", "number", "created_on", "source", "triggered_by", "message", "tag", "etag", "handlers", "compatibility_date", "compatibility_flags", "detail_fetched", "bindings"]);
 export const HISTORY_DEPLOYMENT_FIELDS = Object.freeze(["id", "created_on", "source", "strategy", "triggered_by", "message", "versions"]);
-export function buildHistory({ list, details = [], deployments = null }) {
+export function buildHistory({ list, details = [], deployments = null, failed = [], perPage = 50 }) {
   const items = Array.isArray(list?.result?.items) ? list.result.items : Array.isArray(list?.result) ? list.result : [];
   const byId = new Map();
   for (const d of details) {
     const r = d && d.success === true ? d.result : null;
     if (r && VERSION_ID.test(String(r.id || ""))) byId.set(r.id, r);
   }
+  // Sol 229 (3): completude explícita (listadas, detalhes obtidos, detalhes que falharam, paginação esgotada).
+  const listedIds = items.filter((v) => v && VERSION_ID.test(String(v.id || ""))).map((v) => v.id);
+  const failedIds = [...new Set([...failed.filter((id) => VERSION_ID.test(String(id))), ...listedIds.filter((id) => !byId.has(id))])].sort(cmp);
+  const ri = list?.result_info;
+  const pagesExhausted = ri && typeof ri === "object"
+    ? Number(ri.total_pages || 1) <= Number(ri.page || 1) && (ri.total_count == null || Number(ri.total_count) <= listedIds.length)
+    : listedIds.length < perPage;
+  const completeness = { versions_listed: listedIds.length, details_fetched: listedIds.filter((id) => byId.has(id)).length, details_failed: failedIds.length,
+    details_failed_ids: failedIds, pages_exhausted: pagesExhausted };
   const short = (s) => (typeof s === "string" ? redactLine(s).slice(0, 120) : null);
   const versions = items.filter((v) => v && VERSION_ID.test(String(v.id || ""))).map((v) => {
     const det = byId.get(v.id) || {};
@@ -525,6 +556,7 @@ export function buildHistory({ list, details = [], deployments = null }) {
       etag: typeof res.script?.etag === "string" ? res.script.etag.replace(/[^\w-]/g, "").slice(0, 80) : null,
       handlers: Array.isArray(res.script?.handlers) ? [...res.script.handlers].map(String).sort(cmp) : null,
       compatibility_date: short(res.script_runtime?.compatibility_date), compatibility_flags: Array.isArray(res.script_runtime?.compatibility_flags) ? [...res.script_runtime.compatibility_flags].map(String).sort(cmp) : null,
+      detail_fetched: byId.has(v.id),
       bindings: Array.isArray(res.bindings) ? res.bindings.filter((b) => b && typeof b.name === "string" && NAME.test(b.name)).map((b) => [b.name, cleanType(b.type)]).sort((x, y) => cmp(x[0], y[0])) : null };
   }).sort((a, b) => (b.number ?? -1) - (a.number ?? -1) || cmp(b.created_on || "", a.created_on || ""));
   const deps = Array.isArray(deployments?.result?.deployments) ? deployments.result.deployments : [];
@@ -533,7 +565,7 @@ export function buildHistory({ list, details = [], deployments = null }) {
     versions: Array.isArray(d?.versions) ? d.versions.map((x) => ({ version_id: short(x?.version_id), percentage: Number(x?.percentage) })) : null }));
   // Sol 221 (4): só campos da allowlist saem para o artefato (nomes, tipos, ids, datas, anotações, etag/handlers/runtime).
   const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k] ?? null]));
-  return { schema: "zevanory-version-history/v1", script: TARGET.script, versions: versions.map((v) => pick(v, HISTORY_VERSION_FIELDS)),
+  return { schema: "zevanory-version-history/v1", script: TARGET.script, completeness, versions: versions.map((v) => pick(v, HISTORY_VERSION_FIELDS)),
     deployments: deploymentHistory.map((d) => pick(d, HISTORY_DEPLOYMENT_FIELDS)) };
 }
 // Sol 221 (3): a anotação sozinha não prova nada. Por versão "secret": PROVEN só com etag do script presente nas duas
@@ -541,6 +573,8 @@ export function buildHistory({ list, details = [], deployments = null }) {
 // diferente (ou diferença em binding que não é segredo); NOT_PROVEN quando falta qualquer campo.
 const SECRET_BINDING_TYPES = new Set(["secret_text", "secret_key"]);
 export function premiseOf(prev, v) {
+  if (!v.detail_fetched) return { status: "NOT_PROVEN", why: "detail_failed" };
+  if (prev && !prev.detail_fetched) return { status: "NOT_PROVEN", why: "previous_detail_failed" };
   if (!prev || !prev.etag || !v.etag) return { status: "NOT_PROVEN", why: "etag_ausente" };
   if (prev.etag !== v.etag) return { status: "REFUTED", why: "etag_mudou" };
   if (!Array.isArray(prev.bindings) || !Array.isArray(v.bindings)) return { status: "NOT_PROVEN", why: "bindings_ausentes" };
@@ -550,7 +584,9 @@ export function premiseOf(prev, v) {
   return { status: "PROVEN", why: "etag_igual_e_so_segredos" };
 }
 export function historySummary(h) {
-  const out = [`VERSION_HISTORY versions=${h.versions.length} deployments=${h.deployments.length} with_detail=${h.versions.filter((v) => v.etag).length}`];
+  const c = h.completeness || {};
+  const out = [`VERSION_HISTORY versions=${h.versions.length} deployments=${h.deployments.length} with_detail=${h.versions.filter((v) => v.etag).length}`,
+    `HISTORY_COMPLETENESS versions_listed=${c.versions_listed} details_fetched=${c.details_fetched} details_failed=${c.details_failed} ids=${(c.details_failed_ids || []).join(",") || "-"} pages_exhausted=${c.pages_exhausted}`];
   const byNumber = [...h.versions].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
   const tally = { PROVEN: 0, REFUTED: 0, NOT_PROVEN: 0 };
   byNumber.forEach((v, i) => {
@@ -566,7 +602,9 @@ export function historySummary(h) {
   const triggers = {};
   for (const v of h.versions) triggers[v.triggered_by || "ausente"] = (triggers[v.triggered_by || "ausente"] || 0) + 1;
   out.push(`VERSION_TRIGGERS ${Object.keys(triggers).sort(cmp).map((k) => `${k}=${triggers[k]}`).join(" ")}`);
-  const status = tally.REFUTED ? "REFUTED" : tally.PROVEN && !tally.NOT_PROVEN ? "PROVEN" : tally.PROVEN ? "PARTIALLY_PROVEN" : "NOT_PROVEN";
+  // Sol 229 (3): PROVEN só com pelo menos um exemplo qualificado e NENHUMA versão relevante sem prova (inclui detalhe
+  // que falhou); REFUTED se qualquer uma contradiz; senão NOT_PROVEN.
+  const status = tally.REFUTED ? "REFUTED" : tally.PROVEN > 0 && tally.NOT_PROVEN === 0 ? "PROVEN" : "NOT_PROVEN";
   out.push(`SOL_PREMISE status=${status} secret_versions=${tally.PROVEN + tally.REFUTED + tally.NOT_PROVEN} proven=${tally.PROVEN} refuted=${tally.REFUTED} not_proven=${tally.NOT_PROVEN}`);
   return out;
 }
@@ -744,6 +782,13 @@ export function cli(argv, log = console.log) {
       for (const l of cfErrorLines(arg(argv, "--file"))) log(l);
       return 0;
     }
+    if (cmd === "classify-wrangler") {
+      let text = "";
+      try { text = readFileSync(need(argv, "--file"), "utf8"); } catch { text = ""; }
+      const c = classifyWrangler(text);
+      log(`classification=${c.cls} cf_codes=${c.codes.join(",") || "-"}`);
+      return 0;
+    }
     if (cmd === "redact") {
       const file = need(argv, "--file");
       let text = "";
@@ -753,7 +798,7 @@ export function cli(argv, log = console.log) {
     }
     if (cmd === "history") {
       const h = buildHistory({ list: readJson(need(argv, "--versions")), details: args(argv, "--detail").map((f) => { try { return readJson(f); } catch { return null; } }),
-        deployments: optJson(argv, "--deployments") });
+        deployments: optJson(argv, "--deployments"), failed: args(argv, "--failed"), perPage: Number(arg(argv, "--per-page") || 50) });
       writeFileSync(need(argv, "--out"), JSON.stringify(h, null, 1));
       for (const l of historySummary(h)) log(l);
       return 0;

@@ -151,7 +151,7 @@ M = {
     "R2 version-id silent on a gradual rollout": (S, "      return eff.single ? 0 : 1;", "      return 0;"),
     "R3 history keeps binding values": (S, "map((b) => [b.name, cleanType(b.type)]).sort((x, y) => cmp(x[0], y[0]))", "map((b) => [b.name, cleanType(b.type), b.text ?? null]).sort((x, y) => cmp(x[0], y[0]))"),
     "R4 cf-errors prints the response body": (S, "  const out = [`CF_RESPONSE success=${data?.success === true} errors=${errs.length}`];", "  const out = [`CF_RESPONSE success=${data?.success === true} errors=${errs.length} body=${JSON.stringify(data)}`];"),
-    "R5 wrangler stderr printed raw": (SH, """    node scripts/ci/production-secret-names.mjs redact --file "$o/wrangler.err" --lines 15 | sed 's/^/WORKER_STATE wrangler: /'""", "    sed 's/^/WORKER_STATE wrangler: /' \"$o/wrangler.err\""),
+    "R5 wrangler stderr printed raw": (SH, """    node scripts/ci/production-secret-names.mjs classify-wrangler --file "$o/wrangler.err" | sed 's/^/WORKER_STATE wrangler: /'""", "    sed 's/^/WORKER_STATE wrangler: /' \"$o/wrangler.err\""),
     "R6 version-id failure silent": (SH, """    echo "::error title=WORKER_STATE::version-id failed (exit=$rc) $(printf '%s' "$vid" | tr '\\n' ' ' | cut -c1-200)"\n""", ""),
     "R7 diagnosis skipped after a settings failure": (SH, '  zev_cf_get settings "$o/settings.json" || { zev_diagnose "$o"; return 1; }', '  zev_cf_get settings "$o/settings.json" || return 1'),
     "R8 evidence uploaded only on success": (".github/workflows/production-test-secret-readback.yml", "      - name: Upload readback evidence (names, codes and sanitized history only)\n        if: always()\n", "      - name: Upload readback evidence (names, codes and sanitized history only)\n"),
@@ -164,6 +164,12 @@ M = {
     "R13 config fingerprint is a plain SHA-256": (S, '(s) => createHmac("sha256", configKey()).update(s, "utf8").digest("hex");', "(s) => sha256(s);"),
     "R14 value-derived field inside D0": (S, "    delete: [...toDelete].sort(cmp), keep: [...kept].sort(cmp) };", "    delete: [...toDelete].sort(cmp), keep: [...kept].sort(cmp), hmac: privateFingerprint(canonicalJson(entries)) };"),
     "R15 summary without the D0/private labels": (".github/workflows/production-test-secret-readback.yml", "grep -E '^(SECTION_D0|SECTION_PRIVATE|PRODUCTION_TEST_SECRET_READBACK", "grep -E '^(PRODUCTION_TEST_SECRET_READBACK"),
+    # Sol 229: release explícito, logs sem texto livre, completude do histórico
+    "R16 unknown Cloudflare message printed": (S, '  return KNOWN_CF_MESSAGES.includes(s) ? s : "<redacted:unknown>";', '  return s || "<redacted:unknown>";'),
+    "R17 release failure not explicit": (SH, '    zev_note "release_status=FAILED (http=$ZEV_LAST_HTTP)"', '    zev_note "release indisponível"'),
+    "R18 failed detail not treated as NOT_PROVEN": (S, '  if (!v.detail_fetched) return { status: "NOT_PROVEN", why: "detail_failed" };\n  if (prev && !prev.detail_fetched) return { status: "NOT_PROVEN", why: "previous_detail_failed" };\n', ""),
+    "R19 global PROVEN despite unproven relevant versions": (S, "tally.PROVEN > 0 && tally.NOT_PROVEN === 0 ? \"PROVEN\"", "tally.PROVEN > 0 ? \"PROVEN\""),
+    "R20 missing details not counted as failed": (S, ", ...listedIds.filter((id) => !byId.has(id))])]", "])]"),
     "S12 malformed secret list accepted": (S, '  if (!Array.isArray(data)) throw new InputError("secret_list_not_array");', "  if (!Array.isArray(data)) return [];"),
 }
 

@@ -466,9 +466,21 @@ test("N16 diagnóstico ruidoso e seguro: redação, erros da Cloudflare, version
   assert.equal(redactLine("✘ [ERROR] A request to the Cloudflare API failed. Authentication error [code: 10000]"), "✘ [ERROR] A request to the Cloudflare API failed. Authentication error [code: 10000]", "[N16.1] mensagem comum preservada (código do erro legível)");
   assert.deepEqual(redactTail("a\nb\n\nc\nd", 2), ["c", "d"], "[N16.1] só as últimas linhas não vazias");
   const cf = runCli(["cf-errors", "--file", "@e"], { e: { success: false, errors: [{ code: 10000, message: `Authentication error ${TOKEN}` }], result: { bindings: [{ name: "X", type: "plain_text", text: VALUE }] } } });
-  assert.ok(cf.out.includes("CF_RESPONSE success=false errors=1") && cf.out.includes("CF_ERROR code=10000 message=Authentication error [redigido]"), "[N16.2] status e errors[].code/message da Cloudflare");
+  assert.ok(cf.out.includes("CF_RESPONSE success=false errors=1") && cf.out.includes("CF_ERROR code=10000 message=<redacted:unknown>"), "[N16.2] código numérico; mensagem fora da allowlist vira <redacted:unknown>");
+  const known = runCli(["cf-errors", "--file", "@e"], { e: { success: false, errors: [{ code: 10000, message: "Authentication error" }, { code: 9109, message: " Unauthorized to access requested resource " }] } });
+  assert.ok(known.out.includes("CF_ERROR code=10000 message=Authentication error") && known.out.includes("CF_ERROR code=9109 message=Unauthorized to access requested resource"), "[N16.2] mensagens conhecidas (allowlist exata) aparecem");
+  for (const adv of ["t", "true", "Authentication error true", "Authentication\nerror", JSON.stringify({ text: "x" }), "Authentication error\u001b[0m", "authentication error"]) {
+    assert.ok(runCli(["cf-errors", "--file", "@e"], { e: { errors: [{ code: 1, message: adv }] } }).out.includes("CF_ERROR code=1 message=<redacted:unknown>"), "[N16.2] variação/valor adversarial nunca passa como texto: " + JSON.stringify(adv));
+  }
   assert.ok(!cf.out.includes("SENTINELA") && !cf.out.includes(VALUE), "[N16.2] nunca token nem corpo/valor");
   assert.equal(runCli(["cf-errors", "--file", "@e"], { e: "<html>bad gateway" }).out, "CF_RESPONSE json=ilegível", "[N16.2] corpo não JSON vira só 'ilegível'");
+  for (const [txt, cls, codes] of [["Authentication error [code: 10000]", "AUTH_ERROR", "10000"], ["x [code: 10007] not found", "NOT_FOUND", "10007"],
+    ["You have been rate limited [code: 971]", "RATE_LIMIT", "971"], ["More than one account available but unable to select one", "ACCOUNT_REQUIRED", "-"],
+    ["fetch failed\ngetaddrinfo ENOTFOUND api.cloudflare.com", "NETWORK", "-"], ["npm error code ETARGET", "NPM_ERROR", "-"], [`valor ${VALUE} true 1`, "UNKNOWN", "-"]]) {
+    const w = runCli(["classify-wrangler", "--file", "@w"], { w: txt });
+    assert.equal(w.out, `classification=${cls} cf_codes=${codes}`, "[N16.10] wrangler classificado num conjunto fechado: " + cls);
+    assert.ok(!w.out.includes(VALUE), "[N16.10] nenhum texto do stderr sai");
+  }
   const gradual = { success: true, result: { deployments: [{ id: "d", created_on: "2026-10-24T00:00:00Z", versions: [{ version_id: V0, percentage: 50 }, { version_id: V1, percentage: 50 }] }] } };
   const g = runCli(["version-id", "--deployments", "@d"], { d: gradual });
   assert.ok(g.code === 1 && g.out.startsWith("NO_SINGLE_VERSION "), "[N16.3] rollout gradual: version-id falha com motivo explícito (antes saía vazio)");
@@ -492,12 +504,24 @@ test("N16 diagnóstico ruidoso e seguro: redação, erros da Cloudflare, version
   const changed = historySummary(buildHistory({ list: vlist, details: [det(V2, "e9", []), det(V1, "e1", [])] }));
   assert.ok(changed.includes("SOL_PREMISE status=REFUTED secret_versions=1 proven=0 refuted=1 not_proven=0"), "[N16.6] etag diferente numa troca de segredo refuta a premissa");
   const noDetail = historySummary(buildHistory({ list: vlist, details: [] }));
-  assert.ok(noDetail.includes("SOL_PREMISE status=NOT_PROVEN secret_versions=1 proven=0 refuted=0 not_proven=1") && noDetail.some((l) => l.includes("premise=NOT_PROVEN why=etag_ausente")), "[N16.8] só a anotação 'secret' (sem etag) nunca prova: NOT_PROVEN");
+  assert.ok(noDetail.includes("SOL_PREMISE status=NOT_PROVEN secret_versions=1 proven=0 refuted=0 not_proven=1") && noDetail.some((l) => l.includes("premise=NOT_PROVEN why=detail_failed")), "[N16.8] só a anotação 'secret' (sem detalhe) nunca prova: NOT_PROVEN");
+  const noEtag = historySummary(buildHistory({ list: vlist, details: [det(V2, null, []), det(V1, "e1", withSecret)] }));
+  assert.ok(noEtag.some((l) => l.includes("premise=NOT_PROVEN why=etag_ausente")), "[N16.8] detalhe sem etag do script: NOT_PROVEN");
   const noBind = buildHistory({ list: vlist, details: [det(V2, "e1", null), det(V1, "e1", withSecret)] });
   assert.ok(historySummary(noBind).some((l) => l.includes("premise=NOT_PROVEN why=bindings_ausentes")), "[N16.8] etag igual sem bindings legíveis: NOT_PROVEN");
   const varChanged = buildHistory({ list: vlist, details: [det(V2, "e1", [{ name: "PUBLIC_BASE_URL", type: "json" }]), det(V1, "e1", withSecret)] });
   assert.ok(historySummary(varChanged).some((l) => l.includes("premise=REFUTED why=binding_nao_segredo_mudou")), "[N16.8] versão 'secret' que mexe em binding que não é segredo refuta");
   for (const v of h.versions) assert.deepEqual(Object.keys(v), [...HISTORY_VERSION_FIELDS], "[N16.9] versão do histórico só com campos da allowlist");
+  assert.deepEqual(h.completeness, { versions_listed: 3, details_fetched: 3, details_failed: 0, details_failed_ids: [], pages_exhausted: true }, "[N16.11] completude registrada");
+  const miss = buildHistory({ list: vlist, details: [det(V2, "e1", [plain("PUBLIC_BASE_URL")])], failed: [V1] });
+  assert.deepEqual([miss.completeness.details_fetched, miss.completeness.details_failed, miss.completeness.details_failed_ids], [1, 2, [V0, V1].sort()], "[N16.11] detalhes que faltaram contados, com ids");
+  assert.ok(historySummary(miss).some((l) => l.includes("premise=NOT_PROVEN why=previous_detail_failed")) && historySummary(miss).some((l) => l.startsWith("SOL_PREMISE status=NOT_PROVEN")), "[N16.11] detalhe faltando: NOT_PROVEN, nunca PROVEN");
+  const paged = buildHistory({ list: { ...vlist, result_info: { page: 1, per_page: 3, total_pages: 4, total_count: 12 } }, details: [] });
+  assert.equal(paged.completeness.pages_exhausted, false, "[N16.11] paginação não esgotada relatada");
+  assert.equal(buildHistory({ list: vlist, details: [], perPage: 3 }).completeness.pages_exhausted, false, "[N16.11] página cheia sem result_info: não esgotada");
+  const twoSecret = { success: true, result: { items: [{ id: V2, number: 3, annotations: { "workers/triggered_by": "secret" } }, { id: V1, number: 2, annotations: { "workers/triggered_by": "secret" } }, { id: V0, number: 1 }] } };
+  const mixed = historySummary(buildHistory({ list: twoSecret, details: [null, det(V1, "e1", []), det(V0, "e1", [])] }));
+  assert.ok(mixed.some((l) => l === "SOL_PREMISE status=NOT_PROVEN secret_versions=2 proven=1 refuted=0 not_proven=1"), "[N16.11] um exemplo bom não basta se outro relevante ficou sem detalhe");
   for (const d of h.deployments) assert.deepEqual(Object.keys(d), [...HISTORY_DEPLOYMENT_FIELDS], "[N16.9] deployment do histórico só com campos da allowlist");
   const out = runCli(["history", "--versions", "@l", "--detail", "@a", "--detail", "@b", "--deployments", "@d", "--out", "@out"], { l: vlist, a: det(V2, "e1", []), b: "não json", d: deployments(V2, V1, V0) });
   assert.ok(out.code === 0 && out.plan.schema === "zevanory-version-history/v1" && out.plan.deployments.length === 3, "[N16.7] CLI grava o histórico sanitizado (detalhe ilegível é ignorado, não inventado)");
@@ -506,7 +530,7 @@ test("N16 diagnóstico ruidoso e seguro: redação, erros da Cloudflare, version
 test("N17 Sol 221 falha fechada: D0/V0 nunca saem com fonte ausente, divergente ou incompleta", () => {
   const full = runCli(["readback", ...ST], S0());
   assert.ok(/^INVENTORY_DIGEST=sha256:[0-9a-f]{64}$/m.test(full.out) && new RegExp(`^EFFECTIVE_VERSION_ID=${V0}$`, "m").test(full.out), "[N17.1] fontes completas: D0 e V0 emitidos");
-  for (const [label, files, gap] of [["sem release", { ...S0(), r: "indisponivel" }, "release_commit_sha"], ["release sem commit", { ...S0(), r: { sales_mode: "globally-blocked" } }, "release_commit_sha"]]) {
+  for (const [label, files, gap] of [["sem release", { ...S0(), r: "indisponivel" }, "release_commit"], ["release sem commit", { ...S0(), r: { sales_mode: "globally-blocked" } }, "release_commit"], ["release só diagnóstico", { ...S0(), r: { diagnostic_only: "release_failed", http: "503" } }, "release_commit"]]) {
     const r = runCli(["readback", ...ST], files);
     assert.equal(r.code, 1, "[N17.2] inventário incompleto falha: " + label);
     assert.ok(!/^INVENTORY_DIGEST=sha256:/m.test(r.out) && !/^INVENTORY_DOCUMENT=/m.test(r.out), "[N17.2] D0 não emitido: " + label);
@@ -521,7 +545,7 @@ test("N17 Sol 221 falha fechada: D0/V0 nunca saem com fonte ausente, divergente 
   const names = runCli(["readback", "--secrets", "@l"], { l: list("MERCADOPAGO_ACCESS_TOKEN") });
   assert.ok(names.out.includes("INVENTORY_DIGEST=NOT_EMITTED missing=names_only") && !/^INVENTORY_DIGEST=sha256:/m.test(names.out), "[N17.4] só nomes: nunca vira inventário");
   const plan = runCli(["plan", ...ST, "--confirmation", CONFIRMATION_PHRASE, "--expected-digest", DIGEST0(), "--expected-version", V0, "--out", "@out"], { ...S0(), r: {} });
-  assert.ok(plan.code === 1 && plan.plan === null && /CLEANUP_REFUSED::inventário incompleto \(release_commit_sha\)/.test(plan.out) && !/^INVENTORY_DIGEST=/m.test(plan.out), "[N17.5] plano também recusa sem imprimir D0");
+  assert.ok(plan.code === 1 && plan.plan === null && /CLEANUP_REFUSED::inventário incompleto \(release_commit\)/.test(plan.out) && !/^INVENTORY_DIGEST=/m.test(plan.out), "[N17.5] plano também recusa sem imprimir D0");
 });
 
 test("N18 Sol 222/223: D0 público recalculável sem chave; valores só comparados por dentro (HMAC por run), nunca exportados nem com hash puro", () => {
