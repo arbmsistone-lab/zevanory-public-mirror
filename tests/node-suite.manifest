@@ -16,6 +16,7 @@ tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
 tests/blog-editorial-uniqueness.test.mjs 1
 tests/blog-editorial.test.mjs 6
+tests/blog-layout.test.mjs 5
 tests/bluesky-publisher.test.mjs 13
 tests/brand-email.test.mjs 2
 tests/brand-kit.test.mjs 9
