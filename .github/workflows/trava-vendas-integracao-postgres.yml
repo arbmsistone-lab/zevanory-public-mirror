@@ -50,7 +50,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: SHA efetivamente testado (pull_request = merge ref, não o head)
@@ -67,7 +67,7 @@ jobs:
           echo "GITHUB_REF=$GITHUB_REF tested=$tested merge=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
           echo "::notice title=SHA_TESTADO::ref=$GITHUB_REF tested=$tested merge(github.sha)=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
           [ "$tested" = "$MERGE_SHA" ] || { echo "::error::checkout ($tested) difere de github.sha ($MERGE_SHA)"; exit 1; }
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           package-manager-cache: false
           node-version: "22"
@@ -201,10 +201,10 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           package-manager-cache: false
           node-version: "22"

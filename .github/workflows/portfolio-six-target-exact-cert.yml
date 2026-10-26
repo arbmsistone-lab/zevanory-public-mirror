@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
@@ -95,14 +95,14 @@ jobs:
       CERT_PROMOTION_WAIT_SECONDS: ${{ github.event_name == 'workflow_run' && '900' || '1200' }}
       GH_READ_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ env.EXPECTED_SHA }}
           persist-credentials: false
           # Histórico sem blobs: o contrato pré-merge precisa de base, merge-base e diff da fonte.
           fetch-depth: 0
           filter: blob:none
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           package-manager-cache: false
           node-version: '22'
@@ -222,7 +222,7 @@ jobs:
           print(f"{s}:TECHNICAL_14=PROVED")
           print("FALSE_GREEN=0")
           PY
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: portfolio-cert-${{ matrix.slug }}-${{ env.EXPECTED_SHA }}
           path: |

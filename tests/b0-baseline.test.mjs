@@ -529,7 +529,7 @@ test("workflows B0/P18: agendados, só GITHUB_TOKEN, gravam só no ramo evidence
     assert.match(t, /evidence\/b0-baseline/, name);
     assert.doesNotMatch(t, /push[^\n]*\bgh-pages\b|HEAD:gh-pages/, name + ": nunca grava em gh-pages");
     assert.doesNotMatch(t, /-X\s*POST|--data|wrangler/, name);
-    assert.match(t, /runs-on: ubuntu-latest/, name + ": nuvem, nunca self-hosted/Windows do proprietário");
+    assert.match(t, /runs-on: ubuntu-24\.04/, name + ": nuvem, nunca self-hosted/Windows do proprietário");
   }
   assert.match(mon, /cron: '2-59\/5 \* \* \* \*'/, "Sol 246.09: cadência de 5 min");
   assert.match(mon, /timeout-minutes: 8\b/, "cabe a re-sondagem de confirmação");
@@ -542,7 +542,7 @@ test("workflows B0/P18: agendados, só GITHUB_TOKEN, gravam só no ramo evidence
   const wd = wf("p18-monitor-watchdog.yml");
   assert.match(wd, /cron: '4,14,24,34,44,54 \* \* \* \*'/);
   assert.match(wd, /contents: read/); assert.doesNotMatch(wd, /contents: write|secrets\.(?!GITHUB_TOKEN)|pull_request|wrangler|-X\s*POST/);
-  assert.match(wd, /issues: write/); assert.match(wd, /runs-on: ubuntu-latest/); assert.match(wd, /p18-watchdog\.mjs/);
+  assert.match(wd, /issues: write/); assert.match(wd, /runs-on: ubuntu-24\.04/); assert.match(wd, /p18-watchdog\.mjs/);
   assert.match(wd, /P18_CF_DISPATCH_EXPECTED: \$\{\{ vars\.P18_CF_DISPATCH_EXPECTED \}\}/, "WF-cf-expected-var");
   assert.doesNotMatch(tst, /branches:/, "testes também em PR empilhado");
   assert.match(mon, /issues: write/);

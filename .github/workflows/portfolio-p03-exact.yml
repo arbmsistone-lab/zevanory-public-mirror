@@ -49,11 +49,11 @@ jobs:
             blob: e51c01c8ba23d0392a262fb2ede8b2b7d900a182
           # zevanory-one retired from the public surface (HTTP 410): no live P03 target.
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           package-manager-cache: false
           node-version: "22"
@@ -175,7 +175,7 @@ jobs:
           node p03.mjs
 
       - name: Upload target-specific P03 evidence
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: portfolio-p03-${{ matrix.slug }}
           path: |

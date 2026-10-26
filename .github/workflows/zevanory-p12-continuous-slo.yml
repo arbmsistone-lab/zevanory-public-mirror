@@ -57,7 +57,7 @@ jobs:
           print(json.dumps(doc))
           if not doc["all_ok"]: raise SystemExit(1)
           PY
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: p12-slo-observation-${{ env.EXPECTED_SHA12 }}

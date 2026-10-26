@@ -16,7 +16,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -137,7 +137,7 @@ jobs:
           find zea10-review-pack -type f -print0 | sort -z | xargs -0 sha256sum > zea10-review-pack/SHA256SUMS
           tar -czf zea10-external-evidence-pack.tgz zea10-review-pack
           sha256sum zea10-external-evidence-pack.tgz | tee zea10-external-evidence-pack.tgz.sha256
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: zea10-external-evidence-pack
           path: |

@@ -57,11 +57,11 @@ jobs:
       QUALITY_MODULES: /tmp/q/node_modules
       ZEVANORY_SALES_PUBLIC_MODE: closed
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           package-manager-cache: false
           node-version: "22"
@@ -122,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/audit/sales-budget-summary.mjs /tmp/sales-ux/budget-after/sales-quality-budget.json /tmp/sales-ux/budget-after-dark/sales-quality-budget.json /tmp/sales-ux/budget-results.json --commit "$HEAD_SHA"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: sales-ux-evidence

@@ -22,7 +22,7 @@ jobs:
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha || github.event.pull_request.head.sha || github.sha }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ env.EXPECTED_SHA }}
           fetch-depth: 1
@@ -70,7 +70,7 @@ jobs:
           print('EXTERNAL_PAYMENT_PROVIDER_PROOF=NOT_REQUIRED_FOR_INTERNAL_CERTIFICATION')
           print('FALSE_GREEN=0')
           PY
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: network-independent-financial-cert-${{ env.EXPECTED_SHA }}
           path: evidence/financial-engine-deterministic.json

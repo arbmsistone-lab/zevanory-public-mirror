@@ -129,5 +129,6 @@ tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6
 tests/whatsapp-neon-store.test.mjs 6
 tests/whatsapp-retirement.test.mjs 17
+tests/workflow-node24-pins.test.mjs 2
 tests/youtube-daily-short.test.mjs 14
 tests/zees16-evidence-honesty.test.mjs 2

@@ -33,10 +33,10 @@ jobs:
           ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
           echo "EXACT_RELEASE_BINDING=PASS sha=$ACTUAL_SHA"
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           package-manager-cache: false
           node-version: '22'
@@ -120,7 +120,7 @@ jobs:
           if hit: raise SystemExit('commercial checkout exposed: '+','.join(hit))
           print('PASS: no direct external checkout exposed on audited public catalog')
           PY
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: zevanory-remote-quality-evidence-${{ env.EXPECTED_SHA12 }}
@@ -131,8 +131,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           package-manager-cache: false
           node-version: '22'
@@ -153,7 +153,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Validate deployability without production mutation
         run: |
           set -euo pipefail

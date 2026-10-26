@@ -189,7 +189,7 @@ test("W7 workflow do readback: coleta com saída capturada, histórico e artefat
   const wf = readTextNormalized(join(ROOT, ".github", "workflows", "production-test-secret-readback.yml"));
   assert.match(wf, /zev_fetch_state "\$d" > "\$ev\/collect\.txt" 2>&1 \|\| rc=\$\?\n\s+cat "\$ev\/collect\.txt"/, "[W7.1] saída da coleta sempre impressa, inclusive na falha");
   assert.match(wf, /zev_fetch_history "\$d" "\$ev\/version-history\.json" 50/, "[W7.2] histórico das últimas 50 versões");
-  const up = wf.slice(wf.indexOf("uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"));
+  const up = wf.slice(wf.indexOf("uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"));
   assert.match(up, /name: zevanory-readback-evidence-\$\{\{ github\.run_id \}\}/, "[W7.3] artefato nomeado pelo run");
   assert.match(up, /\n\s+retention-days: 7\n/, "[W7.3] retenção de 7 dias");
   const listed = [...up.split("retention-days")[0].matchAll(/\$\{\{ runner\.temp \}\}\/zevanory-evidence\/([^\s]*)/g)].map((m) => m[1]);

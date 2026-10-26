@@ -30,7 +30,7 @@ jobs:
           echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
           echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Bind quorum proof to exact live release
         shell: bash
         run: |
@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" '{schema:"zevanory.p14.three-provider-quorum.v1",release_sha:$sha,run_id:$run,status:"proved"}' > p14-three-provider-quorum.json
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: p14-three-provider-quorum-${{ env.EXPECTED_SHA12 }}

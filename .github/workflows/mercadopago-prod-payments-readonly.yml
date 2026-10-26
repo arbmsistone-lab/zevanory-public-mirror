@@ -14,14 +14,14 @@ jobs:
       ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
       MP_LOOKUP_PAYMENT_IDS: "182085091992"
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: GET payments/search with full pagination and read-only reconciliation
         run: python3 scripts/mercadopago_readonly_payments_audit.py
       - name: Archive sanitized data only
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: mercadopago-readonly-sanitized
           path: mercadopago-readonly-sanitized.json
