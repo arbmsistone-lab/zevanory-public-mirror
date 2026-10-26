@@ -126,6 +126,7 @@ tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
 tests/voice-eval.test.mjs 6
+tests/waitlist.test.mjs 7
 tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6
 tests/whatsapp-neon-store.test.mjs 6

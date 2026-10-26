@@ -14,6 +14,12 @@ on:
       - "data/politica-unica.json"
       # P23: registro fiscal lido pelo portão de checkout (worker/fiscal-process.mjs).
       - "data/p23/fiscal-process.json"
+      - "data/lista-de-espera.json"
+      - "content/p09/**"
+      - "scripts/sales_policy.py"
+      - "scripts/ci/mutants_waitlist.py"
+      - "scripts/ci/mutants_waitlist_allow.json"
+      - "scripts/ci/mutant_classifier.py"
       - "tests/integration/**"
       - "tests/t4_sim/**"
       - "tests/trava-vendas-gate-paths.test.mjs"
@@ -134,6 +140,18 @@ jobs:
           grep -oE 'C[0-9]{3}[A-Z]? [0-9]{3} [^|]*como (temporário|permanente): KILLED' as.txt | wc -l | grep -qx 9 || { echo "::error::esperados 9 mutantes de classificação mortos"; exit 1; }
           if grep -qE 'ATENDIMENTO_STATUS_MUTANTS .*SURVIVED' as.txt; then echo "::error::mutante de classificação sobreviveu"; exit 1; fi
           echo "::notice title=ATENDIMENTO_OUTBOX::$(grep -E '^# (tests|pass|fail|skipped) ' at.txt | paste -sd' ' -)"
+      - name: Lista de espera (PostgreSQL real; inerte por padrão; um aviso por contato; separação do material gratuito, Sol A272-02) e mutantes
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/waitlist-postgres.test.mjs | tee wl.txt
+          grep -qx "# tests 9" wl.txt && grep -qx "# pass 9" wl.txt && grep -qx "# skipped 0" wl.txt && grep -qx "# fail 0" wl.txt
+          python3 scripts/ci/mutants_waitlist.py < /dev/null | tee wlm.txt
+          grep -qx "MUTANTS total=15 killed=15 survived=0 inconclusive=0" wlm.txt || { echo "::error::mutante da lista de espera sobreviveu ou contagem mudou"; exit 1; }
+          echo "::notice title=WAITLIST::$(grep -E '^# (tests|pass|fail|skipped) ' wl.txt | paste -sd' ' -) | $(grep -E '^MUTANTS ' wlm.txt)"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail
