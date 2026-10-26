@@ -169,7 +169,8 @@ def how_to_buy() -> str:
             '<li><strong>E-mail</strong><span>Depois da confirmação do pagamento, o link chega no e-mail que você informou.</span></li>'
             f'<li><strong>Link pessoal</strong><span>{policy.DELIVERY_72H[0].upper() + policy.DELIVERY_72H[1:]}. Se expirar, o suporte envia outro sem custo.</span></li>'
             '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
-            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart.</p>'
+            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart: cancelamento e arrependimento na '
+            '<a href="/reembolso#assinatura-hotmart">política de reembolso</a>.</p>'
             '<dl class="seller">'
             f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
             f'<div><dt>CNPJ</dt><dd>{f["cnpj"]}</dd></div>'
@@ -300,13 +301,9 @@ def apply_commerce(slug: str, html: str) -> str:
     # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Each item has an
     # exact Hotmart counterpart in worker/sales-public-worker.mjs (HOTMART_TEXT).
     html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
-    trust = {
-        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download."),
-        ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
-        ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix ou cartão pelo Mercado Pago."),
-    }
-    for (old_t, old_s), (new_t, new_s) in trust.items():
-        html = html.replace(f"<strong>{old_t}</strong><span>{old_s}</span>", f"<strong>{new_t}</strong><span>{new_s}</span>")
+    # S-01 (site audit 2026-10-25): the trust strip of the sources already carries the customer wording
+    # (delivery, 7 days, payment); the old engineering items ("Performance primeiro", "Gate antes da
+    # venda") are gone from the sources and banned by scripts/ci/public_copy_gate.py.
     items = "".join(f"<li>{i}</li>" for i in c["items"])
     # Design (2026-10-24): "vendas temporariamente fechadas" is said ONCE per page by the site notice
     # (sales_notice); the legal Resumo da oferta keeps its own Disponibilidade field.
@@ -459,6 +456,46 @@ def apply_presentation(slug: str, html: str) -> str:
         html = re.sub(r"(<main\b[^>]*>)", lambda m: m.group(1) + sales_notice(), html, count=1)
     return html
 
+_WAITLIST_RE = re.compile(r'<a ([^>]*?)href="[^"]*"([^>]*?) data-zev-waitlist="([^"]+)"')
+
+def apply_waitlist_links(html: str) -> str:
+    """"Em breve" pages (CFO, SALES, ARBM Contador): every CTA marked data-zev-waitlist="<produto>" goes to
+    the same waiting-list destination as the products (policy.waitlist_href; e-mail while WhatsApp is off)."""
+    return _WAITLIST_RE.sub(lambda m: f'<a {m.group(1)}href="{_attr(policy.waitlist_href(m.group(3)))}"{m.group(2)} data-zev-waitlist="{m.group(3)}"', html)
+
+# <dd>: the Resumo da oferta values are body text (text face already) and machine-read as plain text
+# (scripts/p09/nurture_gate.mjs reads "Características essenciais" up to the next tag).
+_AMP_SKIP = ("script", "style", "title", "textarea", "dd")
+_AMP_RE = re.compile(r"&(?:amp;|(?![A-Za-z][A-Za-z0-9]*;|#[0-9]+;|#x[0-9A-Fa-f]+;))")
+
+def legible_ampersands(html: str) -> str:
+    """S-03 (site audit 2026-10-25): in the display face (Archivo at reduced width) the "&" reads as "Ɛ"/"E"
+    ("Lucro Ɛ Caixa"). Every ampersand in VISIBLE body text is wrapped in <span class="amp">, set in the
+    text face (Atkinson Hyperlegible Next, product.css), whose "&" is unambiguous at every size. The
+    official name stays "Lucro & Caixa": title, meta, attributes and JSON-LD are untouched."""
+    start = html.find("<body")
+    if start < 0:
+        return html
+    start = html.index(">", start) + 1
+    out, skip = [], None
+    for tok in re.split(r"(<[^>]+>)", html[start:]):
+        if tok.startswith("<"):
+            m = re.match(r"<(/?)([A-Za-z][A-Za-z0-9]*)", tok)
+            if m:
+                name = m.group(2).lower()
+                if not m.group(1) and name in _AMP_SKIP:
+                    skip = name
+                elif m.group(1) and name == skip:
+                    skip = None
+            out.append(tok)
+        else:
+            # A bare "&" (not starting an entity) is the same visible character as "&amp;". The whole text
+            # run is wrapped too: inside a flex/grid parent (buy bar, catalogue cards) a lone span would
+            # become its own item and drop the spaces around it ("Lucro&Caixa", or one word per line).
+            new = tok if skip else _AMP_RE.sub('<span class="amp">&amp;</span>', tok)
+            out.append(f'<span class="amp-run">{new}</span>' if new != tok else tok)
+    return html[:start] + "".join(out)
+
 def add_legal_footer(html: str) -> str:
     if "footer-legal" in html:
         return html
@@ -524,7 +561,9 @@ def apply_approved_overlay() -> None:
         if slug == "conteudo-pronto":
             html = apply_subscription(html)
         html = html.replace("<!--how-to-buy-->", how_to_buy())
+        html = apply_waitlist_links(html)
         html = apply_presentation(slug, html)
+        html = legible_ampersands(html)
         html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
         # Source pages may list both addresses ("contato@ ou suporte@"); after the public
         # canonicalization they would read "suporte@ ou suporte@". Collapse the duplicate.
@@ -717,7 +756,7 @@ def main() -> int:
                 '<main id="conteudo"><section class="container not-found"><h1>Esta página não existe.</h1>'
                 '<p class="hero-copy">O endereço pode ter mudado ou ter sido digitado com um erro. Escolha por onde seguir:</p>'
                 + receipt_404 + '</section>' + LEGAL_FOOTER + '</main></body></html>')
-    (OUT / "404.html").write_text(page_404, encoding="utf-8")
+    (OUT / "404.html").write_text(legible_ampersands(page_404), encoding="utf-8")
 
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
     # even though the worker also rewrites / to /solucoes.html.
@@ -731,10 +770,10 @@ def main() -> int:
     required = (
         "<title>ZEVANORY SALES",
         'href="/solucoes"',
-        "Autonomous Sales Platform",
-        "SALES ASSIST",
-        "SALES AUTOPILOT",
-        "SALES AUTONOMOUS",
+        "Em breve: o ZEVANORY SALES ainda não está disponível para contratação.",
+        "A IA sugere",
+        "A IA faz o rotineiro",
+        "A IA conduz a venda",
     )
     missing = [token for token in required if token not in sales]
     if missing:

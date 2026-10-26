@@ -13,11 +13,11 @@
     "nota": "Lista de espera = consentimento separado: só existe se a pessoa enviar o e-mail por iniciativa própria (mailto). O chat nunca inscreve ninguém."
   },
   "closed_summaries": {
-    "conteudo-pronto": "Serviço mensal de conteúdo para redes sociais: posts com legenda, roteiros multicanal de venda e acompanhamento e um calendário de publicações, no tom do seu negócio."
+    "conteudo-pronto": "Serviço mensal de conteúdo para redes sociais: posts com legenda, mensagens de venda e um calendário de publicações, no tom do seu negócio."
   },
   "approved_sources": {
     "nota": "Impressão digital do catálogo aprovado (worker/support-knowledge.mjs SUPPORT_PRODUCTS + data/products.json + closed_summaries). Mudou o catálogo => o chat recusa preço/conteúdo e escalona (fonte vencida) até alguém reaprovar este valor no mesmo PR (tests/site-chat.test.mjs).",
-    "catalog_fingerprint": "3eb2c886c675d3d1"
+    "catalog_fingerprint": "b473466110621058"
   },
   "limits": {
     "message_max_chars": 600,
@@ -64,7 +64,7 @@
     "transfer": "Transferência internacional: esses operadores podem processar os dados fora do Brasil (LGPD, art. 33), conforme os termos de tratamento de dados de cada um.",
     "retention": "Retenção: conversa não escalada, até 30 dias; atendimento escalado, 180 dias após o encerramento (salvo obrigação legal ou disputa); logs técnicos sem conteúdo, até 30 dias.",
     "rights": "Seus direitos (LGPD, art. 18): acesso, correção, eliminação, informação sobre compartilhamento e oposição, pelo e-mail suporte@zevanory.api.br. Detalhes na Política de Privacidade.",
-    "optional": "O chat é opcional: você pode escrever direto para suporte@zevanory.api.br, usar o formulário de atendimento em zevanory.api.br/atendimento, pedir reembolso em zevanory.api.br/pedir-reembolso (compras pagas pelo Mercado Pago no site da ZEVANORY; compras em outra plataforma são reembolsadas por ela) ou um novo link de acesso em zevanory.api.br/entrega/reenviar.",
+    "optional": "O chat é opcional: você pode escrever direto para suporte@zevanory.api.br, usar o formulário de atendimento em zevanory.api.br/atendimento, pedir reembolso em zevanory.api.br/pedir-reembolso ou um novo link de acesso em zevanory.api.br/entrega/reenviar.",
     "privacy_href": "/privacidade",
     "start_label": "Começar conversa",
     "email_label": "Prefiro e-mail"

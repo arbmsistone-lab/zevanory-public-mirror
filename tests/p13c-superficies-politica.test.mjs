@@ -159,7 +159,8 @@ function addressHits(root) {
 // ---------- testes ----------
 test("P13c: redação ao cliente é derivada do texto único (fragmentos literais do sol_text, sem marcador solto)", () => {
   for (const frag of W.fragmentos_sol) assert.ok(P.sol_text.includes(frag), "fragmento fora do sol_text: " + frag);
-  assert.ok(W.rule_7d.replace("contados", "contado").startsWith(P.rule_7d), "regra ao cliente = regra do texto único");
+  // Site audit S-07 (2026-10-25): the single text now reads "contados" (agreement with "dias"), like the customer wording.
+  assert.ok(W.rule_7d.startsWith(P.rule_7d), "regra ao cliente = regra do texto único");
   assert.ok(W.delivery.includes(P.delivery_72h));
   for (const k of ["RULE_LINE", "DELIVERY_TEXT", "REFUND_TEXT", "SUPPORT_REFUND_ANSWER", "SUPPORT_DELIVERY_ANSWER", "SUPPORT_SUBSCRIPTION_REFUND_ANSWER", "SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER"]) {
     assert.doesNotMatch(POL[k], /[{}]/, k + " com marcador não resolvido");
