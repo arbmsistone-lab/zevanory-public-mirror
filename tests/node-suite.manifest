@@ -83,6 +83,7 @@ tests/p20-restore-drill.test.mjs 12
 tests/p23-ecommerce-legal.test.mjs 18
 tests/payment-return-page.test.mjs 3
 tests/plan-probe.test.mjs 1
+tests/politica-canais-reembolso.test.mjs 7
 tests/politica-honrar-pagamento.test.mjs 2
 tests/post-sale.test.mjs 6
 tests/product-consistency.test.mjs 3

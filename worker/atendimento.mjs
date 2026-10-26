@@ -4,7 +4,8 @@
 // data/politica-unica.json, contato_publico). Este formulário complementa o mailto, sem substituí-lo.
 //
 // Tipos: suporte, reclamação, cancelamento e reembolso/arrependimento. O arrependimento continua
-// disponível pela mesma ferramenta usada na contratação (/pedir-reembolso, worker/refund-flow.mjs).
+// disponível pela mesma ferramenta usada na contratação (/pedir-reembolso, worker/refund-flow.mjs, só para o checkout
+// próprio/Mercado Pago; compras pela Hotmart são canceladas e reembolsadas pela Hotmart: REFUND_OTHER_PLATFORM).
 //
 // Outbox durável em PostgreSQL (mesmo estilo de zevanory_support_inbound, PR #894, sem depender dele):
 //   uma linha por protocolo em zevanory_atendimento_outbox, com TRÊS efeitos externos independentes, cada um
@@ -43,7 +44,7 @@
 //   dois envios feitos o payload é apagado; linha com dead-letter guarda o payload até 30 dias após o alerta.
 //   Nenhum log com dado pessoal (o módulo não escreve log). Isca anti-robô; sem captcha de terceiros.
 // * Sem JavaScript: POST HTML e confirmação na tela na mesma resposta.
-import { LEGAL_IDENTITY, SLA_TEXT, SUPPORT_EMAIL } from "./politica-unica.mjs";
+import { LEGAL_IDENTITY, REFUND_FORM_SCOPE, REFUND_OTHER_PLATFORM, SLA_TEXT, SUPPORT_EMAIL } from "./politica-unica.mjs";
 
 export const ATENDIMENTO_PATH = "/atendimento";
 export const ATENDIMENTO_API = "/api/atendimento";
@@ -263,7 +264,7 @@ function ownerMessage(row, p) {
 }
 function customerMessage(row) {
   const reembolso = row.tipo === "reembolso"
-    ? `\nSe o pedido foi pago, você também pode registrar o reembolso automaticamente, pela mesma ferramenta usada na compra: https://zevanory.api.br/pedir-reembolso (código do pedido + e-mail do pagamento).`
+    ? `\nNas ${REFUND_FORM_SCOPE}, você também pode registrar o pedido de reembolso em https://zevanory.api.br/pedir-reembolso (código do pedido + e-mail do pagamento). ${REFUND_OTHER_PLATFORM}`
     : "";
   return {
     subject: `ZEVANORY — recebemos sua solicitação (protocolo ${row.protocolo})`,
@@ -437,7 +438,7 @@ export function formPage({ values = {}, errors = {}, tipo = "" } = {}) {
   const opts = Object.entries(TIPOS).map(([k, label]) => `<div class="opt"><input type="radio" id="tipo-${k}" name="tipo" value="${k}" required${sel === k ? " checked" : ""}><label for="tipo-${k}">${esc(label)}</label></div>`).join("");
   return shell("Atendimento", `<h1>Atendimento</h1>
 <p>Suporte, reclamação, cancelamento ou reembolso. Você recebe na hora um <strong>número de protocolo</strong>, na tela e por e-mail. ${esc(SLA_TEXT)} A resposta chega pelo e-mail que você informar.</p>
-<p>Prefere e-mail? Escreva para <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>. Para desistir de uma compra (direito de arrependimento), use também a <a href="/pedir-reembolso">mesma ferramenta usada na compra</a>.</p>
+<p>Prefere e-mail? Escreva para <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>. Para desistir de uma compra (direito de arrependimento): nas ${esc(REFUND_FORM_SCOPE)}, use também o <a href="/pedir-reembolso">formulário de reembolso</a>. ${esc(REFUND_OTHER_PLATFORM)}</p>
 ${summary}<form method="post" action="${ATENDIMENTO_API}" novalidate>
 <fieldset ${errors.tipo ? 'aria-describedby="err-tipo" aria-invalid="true"' : ""}><legend>Tipo de solicitação</legend>${opts}${err("tipo")}</fieldset>
 <label class="f" for="email">Seu e-mail (a resposta chega por ele)</label><input id="email" name="email" type="email" required autocomplete="email" inputmode="email" maxlength="254" value="${esc(values.email || "")}" ${desc("email", false)}>${err("email")}
@@ -449,7 +450,7 @@ ${summary}<form method="post" action="${ATENDIMENTO_API}" novalidate>
 }
 
 export function confirmationPage(view, { emailSent = true } = {}) {
-  const reembolso = view.tipo === "reembolso" ? `<p>Se o pedido foi pago, você também pode registrar o reembolso automaticamente, pela mesma ferramenta usada na compra: <a href="/pedir-reembolso">zevanory.api.br/pedir-reembolso</a>.</p>` : "";
+  const reembolso = view.tipo === "reembolso" ? `<p>Nas ${esc(REFUND_FORM_SCOPE)}, você também pode registrar o pedido de reembolso em <a href="/pedir-reembolso">zevanory.api.br/pedir-reembolso</a>. ${esc(REFUND_OTHER_PLATFORM)}</p>` : "";
   return shell("Solicitação recebida", `<div class="ok" role="status" aria-live="polite"><h1>Solicitação recebida</h1><p>Seu número de protocolo:</p><p class="proto" id="protocolo">${esc(view.protocolo)}</p>
 <p>Tipo: ${esc(TIPOS[view.tipo] || view.tipo)}. Resposta conclusiva até <strong>${esc(brDate(Date.parse(view.responder_ate)))}</strong>, pelo e-mail informado.</p>
 <p>${emailSent ? "Enviamos uma confirmação com este protocolo para o seu e-mail." : `A confirmação por e-mail será reenviada automaticamente em instantes. Guarde este protocolo; se ela não chegar, escreva para <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> informando o protocolo.`}</p>${reembolso}</div>
