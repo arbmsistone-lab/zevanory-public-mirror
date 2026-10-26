@@ -1,0 +1,45 @@
+{
+  "schema": "zevanory-p01-hypotheses/v1",
+  "note": "Registro versionado de hipóteses do P01 (Demanda), mínimo necessário para o P02 ligar cada decisão de oferta a uma hipótese. Contém só hipóteses que já estavam registradas no repositório, com a fonte apontando para o arquivo e o trecho literal. Evidência externa de demanda (Search Console, buscas públicas) está NOT_AVAILABLE nesta versão: o Search Console não está conectado e os sinais semanais do market-weekly ficam no KV, fora do repositório. Este arquivo não muda a situação do P01 (parcial).",
+  "hypotheses": [
+    {
+      "id": "H-0001",
+      "statement": "Shorts com dica prática por ramo e com calculadora gratuita atraem mais visualizações do que o Short que apresenta o produto.",
+      "area": "conteudo",
+      "source_dated": "2026-10-12",
+      "registered_at": "2026-10-25",
+      "sources": [{"kind": "repo", "ref": "data/experiments.json", "contains": "\"id\": \"short-format\""}],
+      "external_demand_evidence": "NOT_AVAILABLE"
+    },
+    {
+      "id": "H-0002",
+      "statement": "Mostrar o que vem dentro logo abaixo do botão, para quem é e uma barra de compra no celular aumenta a intenção de compra nas 5 páginas de produto.",
+      "area": "oferta",
+      "source_dated": "2026-10-12",
+      "registered_at": "2026-10-25",
+      "sources": [{"kind": "repo", "ref": "data/experiments.json", "contains": "\"id\": \"product-page-v2\""}],
+      "external_demand_evidence": "NOT_AVAILABLE"
+    },
+    {
+      "id": "H-0003",
+      "statement": "Oferecer por e-mail o produto ligado à página onde a pessoa pediu o material gera cliques para a oferta.",
+      "area": "nutricao",
+      "source_dated": "2026-10-12",
+      "registered_at": "2026-10-25",
+      "sources": [{"kind": "repo", "ref": "data/experiments.json", "contains": "\"id\": \"nurture-match\""}],
+      "external_demand_evidence": "NOT_AVAILABLE"
+    },
+    {
+      "id": "H-0004",
+      "statement": "Os preços piloto do catálogo do Worker (147, 147, 197, 247 e 347 reais) são hipótese de preço ainda não validada; a página pratica os preços de tabela de data/products.json.",
+      "area": "oferta",
+      "source_dated": null,
+      "registered_at": "2026-10-25",
+      "sources": [
+        {"kind": "repo", "ref": "worker/cloudflare-worker.recovered.mjs", "contains": "price_status: \"pilot_hypothesis_not_validated\""},
+        {"kind": "repo", "ref": "data/products.json", "contains": "\"sku\": \"ZEV-IA-011\", \"name\": \"IA na Prática\", \"price\": 197"}
+      ],
+      "external_demand_evidence": "NOT_AVAILABLE"
+    }
+  ]
+}

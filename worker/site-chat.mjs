@@ -212,7 +212,7 @@ const NEEDS = [
   [/(tudo|completo|todas as areas|ia, vendas e (caixa|financeiro)|pacote integrado|negocio inteiro)/, "negocio-completo"],
   [/(redes sociais|instagram|\bposts?\b|\bpostagens?\b|\blegendas?\b|calendario de conteudo|conteudo pronto|o que postar|tiktok|facebook)/, "conteudo-pronto"],
   [/(caixa|lucro|margem|dinheiro|financeir|sobra|gastos?|despesas?|fluxo|precificar|preco de venda|contas)/, "lucro-e-caixa"],
-  [/(vend|cliente|prospec|atendimento|follow|oferta|fechar negocio|perco cliente|nao volta|fideliz|captar)/, "vendas-na-pratica"],
+  [/(vend|cliente|atendimento|follow|oferta|fechar negocio|perco cliente|nao volta|fideliz|captar)/, "vendas-na-pratica"],
   [/(\bia\b|inteligencia artificial|chatgpt|gpt|automatiz|ferramenta de ia|comecando com ia|processos)/, "ia-na-pratica"],
 ];
 // Dados sensíveis/proibidos: removidos ANTES de qualquer armazenamento.

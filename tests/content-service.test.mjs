@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages, validatePosts, validateMessages, SERVICE_PRODUCT_NAME } from "../worker/content-service.mjs";
+import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages, validatePosts, validateRoteiros, ROTEIRO_OBJETIVOS, SERVICE_PRODUCT_NAME } from "../worker/content-service.mjs";
 
 class MapKV { data = new Map(); async get(k) { return this.data.get(k) ?? null; } async put(k, v) { this.data.set(k, String(v)); } async delete(k) { this.data.delete(k); } async list({ prefix = "" } = {}) { return { keys: [...this.data.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })) }; } }
 const HOTTOK = "hottok-test-1234567890abcdef";
-const post = (i) => ({ tema: "Tema " + i, legenda: "Legenda completa e concreta para o negócio, explicando o benefício real do serviço sem promessas exageradas. ".repeat(3), cta: "Chame no WhatsApp", hashtags: ["#negocio", "#local"], imagem: "foto da equipe" });
-const msg = (i) => ({ objetivo: "Objetivo " + i, texto: "Olá! Aqui é do negócio. Passando para lembrar da nossa oferta principal e tirar qualquer dúvida que você tenha." });
+const post = (i) => ({ tema: "Tema " + i, legenda: "Legenda completa e concreta para o negócio, explicando o benefício real do serviço sem promessas exageradas. ".repeat(3), cta: "Chame no Direct", hashtags: ["#negocio", "#local"], imagem: "foto da equipe" });
+const roteiro = (o) => ({ objetivo_id: o.id, curta: "Olá! Aqui é do negócio. Passando para lembrar da nossa oferta principal e tirar qualquer dúvida que você tenha.", email: { assunto: "Sobre o que você pediu", corpo: "Olá! Obrigado pelo contato. ".repeat(10) + "Se fizer sentido, responda este e-mail e combinamos o próximo passo." } });
 function fakeAI({ fail = false } = {}) {
   let calls = 0;
-  return { calls: () => calls, run: async (_m, { messages }) => { calls++; if (fail) return { response: "sem json" }; const u = messages[1].content; return { response: JSON.stringify(u.includes("mensagens de WhatsApp") ? { mensagens: [1, 2, 3, 4].map(msg) } : { posts: [1, 2, 3, 4, 5, 6].map(post) }) }; } };
+  return { calls: () => calls, run: async (_m, { messages }) => { calls++; if (fail) return { response: "sem json" }; const u = messages[1].content; return { response: JSON.stringify(u.includes("roteiros multicanal") ? { roteiros: ROTEIRO_OBJETIVOS.map(roteiro) } : { posts: [1, 2, 3, 4, 5, 6].map(post) }) }; } };
 }
 function env(extra = {}) { return { ZEVANORY_PRIVATE_ARTIFACTS: new MapKV(), HOTMART_HOTTOK: HOTTOK, RESEND_API_KEY: "re_test", AI: fakeAI(), ...extra }; }
 const emails = [];
@@ -41,7 +41,8 @@ test("full automatic flow: purchase -> briefing email -> form -> AI package -> d
   assert.ok(delivery, "package emailed");
   assert.match(delivery.text, /12 POSTS/);
   assert.equal((delivery.text.match(/^POST \d+/gm) || []).length, 12);
-  assert.equal((delivery.text.match(/^MENSAGEM \d+/gm) || []).length, 4);
+  assert.equal((delivery.text.match(/^ROTEIRO \d+/gm) || []).length, 4);
+  assert.equal((delivery.text.match(/^Versão de e-mail:$/gm) || []).length, 4, "[texto-versao-email]");
   const view = delivery.text.match(/pacote\?t=([A-Za-z0-9_-]+)/);
   const page = await handlePackageView(new Request("https://zevanory.api.br/conteudo-pronto/pacote?t=" + view[1]), e);
   assert.equal(page.status, 200);
@@ -75,5 +76,5 @@ test("digital product postbacks only record visibility; validators reject promis
   const r = await handleHotmartWebhook(hook({ event: "PURCHASE_APPROVED", data: { product: { id: 8704733, name: "ZEVANORY IA na Prática" }, buyer: { email: "a@b.co" }, purchase: { transaction: "D1" } } }), e, null, fetchImpl);
   assert.equal((await r.json()).scope, "digital_product");
   assert.equal(validatePosts([{ ...post(1), legenda: "Resultado 100% garantido! ".repeat(10) }], 1), null);
-  assert.equal(validateMessages([msg(1), msg(2), msg(3)]), null);
+  assert.equal(validateRoteiros(ROTEIRO_OBJETIVOS.slice(0, 3).map(roteiro)), null);
 });

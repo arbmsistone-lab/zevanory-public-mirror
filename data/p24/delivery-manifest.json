@@ -1,0 +1,1161 @@
+{
+  "schema": "zevanory-p24-delivery-manifest/v1",
+  "generated_at": "2026-10-25",
+  "source": "cópia local dos 5 zips do pacote ZEVANORY_HANDOFF_v2.1 (SHA-256 de cada zip igual ao catálogo do Worker e ao ZEVANORY_SHA256SUMS_v2.1.txt)",
+  "generator": "scripts/p24/build_delivery_manifest.py",
+  "extractors": {
+    "pdf": "pypdf 5.9.0",
+    "docx": "python-docx",
+    "xlsx": "openpyxl + LibreOffice headless (recálculo)",
+    "txt": "utf-8 estrito"
+  },
+  "note": "Zips não versionados. Este manifesto guarda só metadados; o SHA-256 de cada zip é conferido contra o catálogo do Worker no CI.",
+  "products": {
+    "ia-na-pratica": {
+      "sku": "ZEV-IA-011",
+      "artifact_name": "ZEVANORY_IA_na_Pratica_v1.1.zip",
+      "artifact_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
+      "artifact_bytes": 209427,
+      "zip_integrity": "ok",
+      "entries": [
+        {
+          "path": "00_COMECE_AQUI.txt",
+          "size": 905,
+          "sha256": "0cad3fefb47696760bbfd2809479a1922da702aedfbda6e65c24c0dd6de17641",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 20 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_Comandos.txt",
+          "size": 7247,
+          "sha256": "32c5fe61c899ee27f8591e0f38fdbd259cf81b94f90a2af4fd328d1ef21a956f",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 50 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "size": 48597,
+          "sha256": "1b3a19eb11829a01f71f4f90b99945ef0887ecad4fe7bfee539a41cbef03385f",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1177 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": null,
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_Manual_v1.1.docx",
+          "size": 54468,
+          "sha256": "8136e5a7963f814bc847e8c4d2c8e5eab81aeea8b511c618082492e0eb75fb56",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 274 parágrafo(s), 14 tabela(s)",
+            "paragraphs": 274,
+            "tables": 14,
+            "title": "ZEVANORY | IA na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_Manual_v1.1.pdf",
+          "size": 258538,
+          "sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 25 página(s), 36478 caracteres de texto extraído",
+            "pages": 25,
+            "tagged": true,
+            "title": "ZEVANORY | IA na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "briefing": 25,
+            "conferir": 22,
+            "contexto": 5,
+            "criterio": 9,
+            "faca agora": 8,
+            "modelo": 9,
+            "promessa de faturamento": 1,
+            "repet": 2,
+            "responsavel": 19,
+            "revisao": 30,
+            "rotina": 25
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_Planilha.xlsx",
+          "size": 13432,
+          "sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 4 aba(s), 65 fórmula(s)",
+            "sheets": [
+              "Instrucoes",
+              "Orcamento",
+              "Execucao",
+              "Exemplo"
+            ],
+            "formulas": 65,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        }
+      ]
+    },
+    "vendas-na-pratica": {
+      "sku": "ZEV-VEN-011",
+      "artifact_name": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
+      "artifact_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
+      "artifact_bytes": 217255,
+      "zip_integrity": "ok",
+      "entries": [
+        {
+          "path": "00_COMECE_AQUI.txt",
+          "size": 954,
+          "sha256": "10d6b6dcd4b21161b439aaa9265bcd97ddfb1bc635bee4e7228be76500108439",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 20 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_Conteudos.txt",
+          "size": 2471,
+          "sha256": "232f3b996da1931a956172110b1caa66ffa87acc61a5470d14091f2ab9dc17a1",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 37 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "size": 46192,
+          "sha256": "24376a0aee3d46187a620852d3858629e05ddd79a9d430050216ff5c8afdaa34",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1096 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": null,
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_Manual_v1.1.docx",
+          "size": 54900,
+          "sha256": "563eec2fb93de30e61784b10cee49a9fc8e6bd35a9ef5e45a84908772febfc6a",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 295 parágrafo(s), 14 tabela(s)",
+            "paragraphs": 295,
+            "tables": 14,
+            "title": "ZEVANORY | Vendas na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "size": 279877,
+          "sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 27 página(s), 35465 caracteres de texto extraído",
+            "pages": 27,
+            "tagged": true,
+            "title": "ZEVANORY | Vendas na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "acompanhamento": 8,
+            "atendimento": 19,
+            "escopo": 22,
+            "etapa": 16,
+            "funil": 2,
+            "indicador": 15,
+            "limite": 3,
+            "melhoria": 4,
+            "objec": 5,
+            "oferta": 27,
+            "oferta que voce consegue cumprir": 2,
+            "oportunidade": 33,
+            "proposta": 63,
+            "proximo passo": 6,
+            "publico": 2,
+            "retorno": 26
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_Mensagens.txt",
+          "size": 3142,
+          "sha256": "f3583caa39f50293f9088dde9bbfd2a3d6958949042efc1206aec227056ab931",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 50 linha(s)"
+          },
+          "anchors": {
+            "entender necessidade": 1,
+            "proposta": 9,
+            "recepcao": 1,
+            "retorno combinado": 1
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_Planilha.xlsx",
+          "size": 18854,
+          "sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 5 aba(s), 32 fórmula(s)",
+            "sheets": [
+              "Instrucoes",
+              "Oportunidades",
+              "Indicadores",
+              "Calendario",
+              "Exemplo"
+            ],
+            "formulas": 32,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {
+            "indicadores": 6,
+            "oportunidades": 10
+          },
+          "quality_hits": []
+        }
+      ]
+    },
+    "lucro-e-caixa": {
+      "sku": "ZEV-LCX-011",
+      "artifact_name": "ZEVANORY_Lucro_e_Caixa_v1.1.zip",
+      "artifact_sha256": "48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f",
+      "artifact_bytes": 231259,
+      "zip_integrity": "ok",
+      "entries": [
+        {
+          "path": "00_COMECE_AQUI.txt",
+          "size": 2146,
+          "sha256": "aad42c4e315d7f058890b296547dfcd465da7379d8407cc19e71a17fb4a069a9",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 36 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.1.txt",
+          "size": 659,
+          "sha256": "aa2944f87c9c440adeddd8efcf38e1e410787a8d9855b2dce0791d79511e5176",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 11 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+          "size": 1160,
+          "sha256": "626e5c8235e4f725fc5a074aae357afcf2a21204ddad776c7cbb38f17df7297c",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 19 linha(s)"
+          },
+          "anchors": {
+            "decisao": 2,
+            "proxima revisao": 1,
+            "revisao": 2
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.1.txt",
+          "size": 3802,
+          "sha256": "d6a57ff7849cae47bc5c702fbc831ca84739ff8fb95bb2f7b9a3a62f363de37c",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 61 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx",
+          "size": 38570,
+          "sha256": "482bf99314025de58e82f23f5111f5cb5d50759f9bf195b31d014be887ff630d",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 21 parágrafo(s), 2 tabela(s)",
+            "paragraphs": 21,
+            "tables": 2,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+          "size": 46052,
+          "sha256": "eb156e8ada60cc00c6ae9a8dc61e40b1389c03a097de0d980b61260d729d8bf7",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1619 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx",
+          "size": 44331,
+          "sha256": "6dc31eed34bd4177baff2dc759b6d1b10ed5e8a46ccaba98133acc7cc9e398bc",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 218 parágrafo(s), 21 tabela(s)",
+            "paragraphs": 218,
+            "tables": 21,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "size": 174421,
+          "sha256": "b0f819e10c4c2259ea4701283a49abd9ca8e11bd2310db703a833d337883aac5",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 10 página(s), 15661 caracteres de texto extraído",
+            "pages": 10,
+            "tagged": true,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "caixa": 40,
+            "custo": 29,
+            "decis": 13,
+            "entrada": 7,
+            "fixa": 18,
+            "margem": 35,
+            "preco": 31,
+            "resultado": 10,
+            "saida": 7,
+            "variave": 15
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx",
+          "size": 50172,
+          "sha256": "265758c5a8da359f85bc3986adca192a57870bb82c3df4019c2c9c288951526d",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 13 aba(s), 963 fórmula(s)",
+            "sheets": [
+              "Comece_Aqui",
+              "Config",
+              "Produtos",
+              "Despesas",
+              "Vendas",
+              "Caixa",
+              "Dashboard",
+              "Simulador",
+              "Metas",
+              "Exemplo",
+              "Glossario",
+              "Cenarios_Vendas",
+              "Compra_Caixa"
+            ],
+            "formulas": 963,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {
+            "caixa": 30,
+            "margem": 24
+          },
+          "quality_hits": []
+        }
+      ]
+    },
+    "combo-ia-vendas": {
+      "sku": "ZEV-CMB-011",
+      "artifact_name": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
+      "artifact_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
+      "artifact_bytes": 427631,
+      "zip_integrity": "ok",
+      "entries": [
+        {
+          "path": "00_LEIA_PRIMEIRO.txt",
+          "size": 512,
+          "sha256": "6bae7500e8eecd7f625c2f0be3d3b098a58c7e9a550ca09be1f9d7c66a166eae",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 9 linha(s)"
+          },
+          "anchors": {
+            "forma independente": 1,
+            "ordem sugerida": 1
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/00_COMECE_AQUI.txt",
+          "size": 905,
+          "sha256": "0cad3fefb47696760bbfd2809479a1922da702aedfbda6e65c24c0dd6de17641",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 20 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Comandos.txt",
+          "size": 7247,
+          "sha256": "32c5fe61c899ee27f8591e0f38fdbd259cf81b94f90a2af4fd328d1ef21a956f",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 50 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "size": 48597,
+          "sha256": "1b3a19eb11829a01f71f4f90b99945ef0887ecad4fe7bfee539a41cbef03385f",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1177 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": null,
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.docx",
+          "size": 54468,
+          "sha256": "8136e5a7963f814bc847e8c4d2c8e5eab81aeea8b511c618082492e0eb75fb56",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 274 parágrafo(s), 14 tabela(s)",
+            "paragraphs": 274,
+            "tables": 14,
+            "title": "ZEVANORY | IA na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+          "size": 258538,
+          "sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 25 página(s), 36478 caracteres de texto extraído",
+            "pages": 25,
+            "tagged": true,
+            "title": "ZEVANORY | IA na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "briefing": 25,
+            "contexto": 5,
+            "criterio": 9,
+            "revisao": 30
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Planilha.xlsx",
+          "size": 13432,
+          "sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 4 aba(s), 65 fórmula(s)",
+            "sheets": [
+              "Instrucoes",
+              "Orcamento",
+              "Execucao",
+              "Exemplo"
+            ],
+            "formulas": 65,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/00_COMECE_AQUI.txt",
+          "size": 954,
+          "sha256": "10d6b6dcd4b21161b439aaa9265bcd97ddfb1bc635bee4e7228be76500108439",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 20 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Conteudos.txt",
+          "size": 2471,
+          "sha256": "232f3b996da1931a956172110b1caa66ffa87acc61a5470d14091f2ab9dc17a1",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 37 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "size": 46192,
+          "sha256": "24376a0aee3d46187a620852d3858629e05ddd79a9d430050216ff5c8afdaa34",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1096 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": null,
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.docx",
+          "size": 54900,
+          "sha256": "563eec2fb93de30e61784b10cee49a9fc8e6bd35a9ef5e45a84908772febfc6a",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 295 parágrafo(s), 14 tabela(s)",
+            "paragraphs": 295,
+            "tables": 14,
+            "title": "ZEVANORY | Vendas na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "size": 279877,
+          "sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 27 página(s), 35465 caracteres de texto extraído",
+            "pages": 27,
+            "tagged": true,
+            "title": "ZEVANORY | Vendas na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "acompanhamento": 8,
+            "atendimento": 19,
+            "indicador": 15,
+            "melhoria": 4,
+            "proposta": 63
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Mensagens.txt",
+          "size": 3142,
+          "sha256": "f3583caa39f50293f9088dde9bbfd2a3d6958949042efc1206aec227056ab931",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 50 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Planilha.xlsx",
+          "size": 18854,
+          "sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 5 aba(s), 32 fórmula(s)",
+            "sheets": [
+              "Instrucoes",
+              "Oportunidades",
+              "Indicadores",
+              "Calendario",
+              "Exemplo"
+            ],
+            "formulas": 32,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        }
+      ]
+    },
+    "negocio-completo": {
+      "sku": "ZEV-NGC-011",
+      "artifact_name": "ZEVANORY_Negocio_Completo_v1.1.zip",
+      "artifact_sha256": "8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e",
+      "artifact_bytes": 778182,
+      "zip_integrity": "ok",
+      "entries": [
+        {
+          "path": "00_COMECE_AQUI.txt",
+          "size": 770,
+          "sha256": "851807b72b1c48668610ccdf0037e2295dd45087c3d54f700933eb7e392552c1",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 14 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/00_COMECE_AQUI.txt",
+          "size": 905,
+          "sha256": "0cad3fefb47696760bbfd2809479a1922da702aedfbda6e65c24c0dd6de17641",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 20 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Comandos.txt",
+          "size": 7247,
+          "sha256": "32c5fe61c899ee27f8591e0f38fdbd259cf81b94f90a2af4fd328d1ef21a956f",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 50 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "size": 48597,
+          "sha256": "1b3a19eb11829a01f71f4f90b99945ef0887ecad4fe7bfee539a41cbef03385f",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1177 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": null,
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.docx",
+          "size": 54468,
+          "sha256": "8136e5a7963f814bc847e8c4d2c8e5eab81aeea8b511c618082492e0eb75fb56",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 274 parágrafo(s), 14 tabela(s)",
+            "paragraphs": 274,
+            "tables": 14,
+            "title": "ZEVANORY | IA na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+          "size": 258538,
+          "sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 25 página(s), 36478 caracteres de texto extraído",
+            "pages": 25,
+            "tagged": true,
+            "title": "ZEVANORY | IA na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "briefing": 25,
+            "rotina": 25
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica/ZEVANORY_IA_Planilha.xlsx",
+          "size": 13432,
+          "sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 4 aba(s), 65 fórmula(s)",
+            "sheets": [
+              "Instrucoes",
+              "Orcamento",
+              "Execucao",
+              "Exemplo"
+            ],
+            "formulas": 65,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/00_COMECE_AQUI.txt",
+          "size": 954,
+          "sha256": "10d6b6dcd4b21161b439aaa9265bcd97ddfb1bc635bee4e7228be76500108439",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 20 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Conteudos.txt",
+          "size": 2471,
+          "sha256": "232f3b996da1931a956172110b1caa66ffa87acc61a5470d14091f2ab9dc17a1",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 37 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "size": 46192,
+          "sha256": "24376a0aee3d46187a620852d3858629e05ddd79a9d430050216ff5c8afdaa34",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1096 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": null,
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.docx",
+          "size": 54900,
+          "sha256": "563eec2fb93de30e61784b10cee49a9fc8e6bd35a9ef5e45a84908772febfc6a",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 295 parágrafo(s), 14 tabela(s)",
+            "paragraphs": 295,
+            "tables": 14,
+            "title": "ZEVANORY | Vendas na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "size": 279877,
+          "sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 27 página(s), 35465 caracteres de texto extraído",
+            "pages": 27,
+            "tagged": true,
+            "title": "ZEVANORY | Vendas na Prática",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "proposta": 63,
+            "proxima acao": 6
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Mensagens.txt",
+          "size": 3142,
+          "sha256": "f3583caa39f50293f9088dde9bbfd2a3d6958949042efc1206aec227056ab931",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 50 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Planilha.xlsx",
+          "size": 18854,
+          "sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 5 aba(s), 32 fórmula(s)",
+            "sheets": [
+              "Instrucoes",
+              "Oportunidades",
+              "Indicadores",
+              "Calendario",
+              "Exemplo"
+            ],
+            "formulas": 32,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/00_COMECE_AQUI.txt",
+          "size": 2146,
+          "sha256": "aad42c4e315d7f058890b296547dfcd465da7379d8407cc19e71a17fb4a069a9",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 36 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.1.txt",
+          "size": 659,
+          "sha256": "aa2944f87c9c440adeddd8efcf38e1e410787a8d9855b2dce0791d79511e5176",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 11 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+          "size": 1160,
+          "sha256": "626e5c8235e4f725fc5a074aae357afcf2a21204ddad776c7cbb38f17df7297c",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 19 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.1.txt",
+          "size": 3802,
+          "sha256": "d6a57ff7849cae47bc5c702fbc831ca84739ff8fb95bb2f7b9a3a62f363de37c",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 61 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx",
+          "size": 38570,
+          "sha256": "482bf99314025de58e82f23f5111f5cb5d50759f9bf195b31d014be887ff630d",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 21 parágrafo(s), 2 tabela(s)",
+            "paragraphs": 21,
+            "tables": 2,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+          "size": 46052,
+          "sha256": "eb156e8ada60cc00c6ae9a8dc61e40b1389c03a097de0d980b61260d729d8bf7",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1619 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx",
+          "size": 44331,
+          "sha256": "6dc31eed34bd4177baff2dc759b6d1b10ed5e8a46ccaba98133acc7cc9e398bc",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 218 parágrafo(s), 21 tabela(s)",
+            "paragraphs": 218,
+            "tables": 21,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "size": 174421,
+          "sha256": "b0f819e10c4c2259ea4701283a49abd9ca8e11bd2310db703a833d337883aac5",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 10 página(s), 15661 caracteres de texto extraído",
+            "pages": 10,
+            "tagged": true,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "caixa": 40,
+            "custo": 29,
+            "entrada": 7,
+            "margem": 35,
+            "saida": 7
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx",
+          "size": 50172,
+          "sha256": "265758c5a8da359f85bc3986adca192a57870bb82c3df4019c2c9c288951526d",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 13 aba(s), 963 fórmula(s)",
+            "sheets": [
+              "Comece_Aqui",
+              "Config",
+              "Produtos",
+              "Despesas",
+              "Vendas",
+              "Caixa",
+              "Dashboard",
+              "Simulador",
+              "Metas",
+              "Exemplo",
+              "Glossario",
+              "Cenarios_Vendas",
+              "Compra_Caixa"
+            ],
+            "formulas": 963,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.docx",
+          "size": 42334,
+          "sha256": "922b7bc05bee46a597e8572f41227a505f4751bf0fc9bc33145d8c73f64051df",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 17 parágrafo(s), 6 tabela(s)",
+            "paragraphs": 17,
+            "tables": 6,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+          "size": 123388,
+          "sha256": "4c5ab87dbe280b810dc94819eb514ece364a703453b31b9524e0f1ef37151d18",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 4 página(s), 5951 caracteres de texto extraído",
+            "pages": 4,
+            "tagged": true,
+            "title": "ZEVANORY",
+            "lang": "en-US"
+          },
+          "anchors": {
+            "ia na pratica": 1,
+            "lucro & caixa": 2,
+            "vendas na pratica": 1
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "05_Painel_Decisao_Integrada/00_COMECE_AQUI.txt",
+          "size": 1130,
+          "sha256": "5b1a70f4de0d311b52ab75d6b10fc1671851a868f99c25b28a136999acf627cf",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 17 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "05_Painel_Decisao_Integrada/ZEVANORY_Painel_Decisao_Integrada_v1.0.xlsx",
+          "size": 18925,
+          "sha256": "af6e25a370e3f35a2cc6ba4acd964392da13b95c18480c30c16793135b18173c",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 5 aba(s), 495 fórmula(s)",
+            "sheets": [
+              "Comece_Aqui",
+              "Config",
+              "Painel_Decisao",
+              "Resumo",
+              "Motor_Decisao"
+            ],
+            "formulas": 495,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        }
+      ]
+    }
+  }
+}

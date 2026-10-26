@@ -53,6 +53,15 @@ def selected_offer(env):
     require(offer in SANDBOX_OFFERS, 'SANDBOX_OFFER_NOT_IN_CATALOG')
     return offer, SANDBOX_OFFERS[offer]
 READ_SCOPE = 'zevanory.sandbox_inbox.read'
+# R4 (incident I1 / F2: 35 runs hit the production host). The sandbox flow may talk only to the isolated
+# certification Worker and to the provider API; any production host is refused before any network call.
+PRODUCTION_HOST_RE = re.compile(r'(?:^|\.)zevanory\.api\.br\.?$|(?:^|\.)(?:girolocal-rb|zevanory)\.workers\.dev\.?$', re.I)
+ISOLATED_CERT_HOST_RE = re.compile(r'zevanory-certification\.[a-z0-9-]+\.workers\.dev')
+
+
+def refuse_production_host(host):
+    host = str(host or '').lower()
+    require(not PRODUCTION_HOST_RE.search(host) or ISOLATED_CERT_HOST_RE.fullmatch(host), 'PRODUCTION_HOST_DENIED')
 ALLOWED_HOSTS = frozenset({'api.mercadopago.com', CERT_HOST})
 PRODUCTION_NAMES = frozenset({'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_PUBLIC_KEY',
     'OPERATOR_TOKEN', 'STRIPE_SECRET_KEY', 'RESEND_API_KEY', 'ASAAS_API_KEY'})
@@ -91,6 +100,8 @@ class Identity:
 def preflight(env):
     require(env.get('SANDBOX_FINANCIAL_ENABLED') == 'true', 'FINANCIAL_DISABLED')
     origin = urllib.parse.urlsplit(str(env.get('CERTIFICATION_SANDBOX_URL') or ''))
+    refuse_production_host(origin.hostname)
+    refuse_production_host(CERT_HOST)
     require(origin.scheme == 'https' and origin.hostname == CERT_HOST and
             bool(re.fullmatch(r'zevanory-certification\.[a-z0-9-]+\.workers\.dev', origin.hostname or '')) and
             origin.path in ('', '/') and not origin.query and not origin.fragment and
@@ -135,6 +146,9 @@ def preflight(env):
 
 def validate_request(url, method, headers, identity):
     p = urllib.parse.urlsplit(url)
+    refuse_production_host(p.hostname)
+    require(p.hostname != CERT_HOST or bool(ISOLATED_CERT_HOST_RE.fullmatch(str(CERT_HOST or ''))),
+            'ISOLATED_WORKER_ORIGIN_REQUIRED')
     require(p.scheme == 'https' and p.hostname in ALLOWED_HOSTS and not p.username and
             not p.password and p.port in (None, 443) and not p.fragment and
             '%' not in p.path and FROZEN_ORDER not in urllib.parse.unquote(url), 'ENDPOINT_DENIED')

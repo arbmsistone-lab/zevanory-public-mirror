@@ -13,11 +13,11 @@
     "nota": "Lista de espera = consentimento separado: só existe se a pessoa enviar o e-mail por iniciativa própria (mailto). O chat nunca inscreve ninguém."
   },
   "closed_summaries": {
-    "conteudo-pronto": "Serviço mensal de conteúdo para redes sociais: posts com legenda, mensagens de venda e um calendário de publicações, no tom do seu negócio."
+    "conteudo-pronto": "Serviço mensal de conteúdo para redes sociais: posts com legenda, roteiros multicanal de venda e acompanhamento e um calendário de publicações, no tom do seu negócio."
   },
   "approved_sources": {
     "nota": "Impressão digital do catálogo aprovado (worker/support-knowledge.mjs SUPPORT_PRODUCTS + data/products.json + closed_summaries). Mudou o catálogo => o chat recusa preço/conteúdo e escalona (fonte vencida) até alguém reaprovar este valor no mesmo PR (tests/site-chat.test.mjs).",
-    "catalog_fingerprint": "dc7381f6724af39a"
+    "catalog_fingerprint": "3eb2c886c675d3d1"
   },
   "limits": {
     "message_max_chars": 600,

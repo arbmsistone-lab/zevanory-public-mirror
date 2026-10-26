@@ -1,0 +1,74 @@
+name: no-forged-production-input
+
+# R4 (PI) regression guard for incident I1: GitHub Actions workflows sent forged, signed Meta-style webhooks to the
+# PRODUCTION Worker, the live bot answered real WhatsApp users and Meta banned the WhatsApp Business account.
+# This job statically scans every workflow and the repo scripts they execute and FAILS CLOSED on any POST/PUT with
+# forged or signed input to a production host (scripts/ci/no_forged_production_input.py), then runs the fixture tests
+# with an exact count and the causal mutants through the shared classifier (scripts/ci/mutant_classifier.py).
+# Read-only token, no secrets, no network calls to any Zevanory host. No path filter: any workflow or script change
+# can introduce forged input, so the guard runs on every pull request and every push to gh-pages.
+on:
+  pull_request:
+    branches: [gh-pages]
+  push:
+    branches: [gh-pages]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: no-forged-production-input-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: no-forged-production-input / scan, tests, mutants
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scan workflows and invoked scripts (fail-closed)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python scripts/ci/no_forged_production_input.py | tee /tmp/r4-scan.txt
+          grep -q '^R4_FORGED_INPUT_SCAN PASS ' /tmp/r4-scan.txt || { echo "::error title=R4_FORGED_INPUT::scan did not pass"; exit 1; }
+          echo "::notice title=R4_FORGED_INPUT_SCAN::$(tail -n 1 /tmp/r4-scan.txt)"
+      - name: Fixture tests (exact count, no skips)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_no_forged_production_input -v < /dev/null 2>&1 | tee /tmp/r4-tests.txt
+          grep -qx "Ran 25 tests in .*" /tmp/r4-tests.txt || { echo "::error::expected exactly 25 R4 tests"; exit 1; }
+          if grep -q "skipped" /tmp/r4-tests.txt; then echo "::error::skipped R4 tests"; exit 1; fi
+          grep -qx "OK" /tmp/r4-tests.txt || { echo "::error::R4 tests did not end in OK"; exit 1; }
+      - name: Financial E2E isolation tests (exact count, no skips)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_financial_e2e_isolation -v < /dev/null 2>&1 | tee /tmp/r4-fin.txt
+          grep -qx "Ran 3 tests in .*" /tmp/r4-fin.txt || { echo "::error::expected exactly 3 isolation tests"; exit 1; }
+          if grep -q "skipped" /tmp/r4-fin.txt; then echo "::error::skipped isolation tests"; exit 1; fi
+          grep -qx "OK" /tmp/r4-fin.txt || { echo "::error::isolation tests did not end in OK"; exit 1; }
+      - name: Causal mutants via the shared classifier (all must be KILLED)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python scripts/ci/mutant_classifier.py self-check
+          python scripts/ci/mutants_no_forged_production_input.py | tee /tmp/r4-mutants.txt
+          grep -qx "R4_MUTANTS total=32 killed=32 survived=0 inconclusive=0 baseline_tests=25" /tmp/r4-mutants.txt \
+            || { echo "::error::expected 32/32 mutants KILLED"; exit 1; }
+          echo "::notice title=R4_MUTANTS::$(tail -n 1 /tmp/r4-mutants.txt)"
+      - name: No bytecode left in the tree
+        run: |
+          set -euo pipefail
+          if git status --porcelain --ignored | grep -E '\.pyc$|__pycache__'; then echo "::error::bytecode produced"; exit 1; fi

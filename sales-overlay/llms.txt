@@ -8,7 +8,7 @@
 - [Lucro & Caixa](https://vendas.zevanory.api.br/lucro-e-caixa): planilha de caixa e margem e rotina financeira semanal. R$ 247.
 - [Combo IA + Vendas](https://vendas.zevanory.api.br/combo-ia-vendas): os dois primeiros juntos. R$ 297.
 - [Negócio Completo](https://vendas.zevanory.api.br/negocio-completo): os três produtos e plano integrado de 30 dias. R$ 397.
-- [Conteúdo Pronto](https://vendas.zevanory.api.br/conteudo-pronto): assinatura mensal com 12 posts e 4 mensagens de venda no tom do negócio. R$ 197/mês.
+- [Conteúdo Pronto](https://vendas.zevanory.api.br/conteudo-pronto): assinatura mensal com 12 posts, 4 roteiros multicanal de venda (versão curta e de e-mail, para canais autorizados pelo cliente, sem disparo automático) e calendário de 30 dias no tom do negócio. R$ 197/mês.
 
 ## Calculadoras gratuitas
 - [Calculadora de preço de venda](https://vendas.zevanory.api.br/calculadora-preco-de-venda): Divida o custo por um menos a soma de impostos, taxas, despesas e margem.

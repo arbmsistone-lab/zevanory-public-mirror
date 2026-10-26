@@ -1,0 +1,1608 @@
+{
+  "schema": "zevanory-p24-report/v1",
+  "process": "P24",
+  "evidence_label": "SINTÉTICA (conferência automática do material; nenhuma venda ou cliente real)",
+  "generated_at": "2026-10-25",
+  "manifest_generated_at": "2026-10-25",
+  "manifest_source": "cópia local dos 5 zips do pacote ZEVANORY_HANDOFF_v2.1 (SHA-256 de cada zip igual ao catálogo do Worker e ao ZEVANORY_SHA256SUMS_v2.1.txt)",
+  "gate": "PASS",
+  "p24_verdict": "FAIL",
+  "verdict_reason": "Gate objetivo verde (nenhuma regressão), mas o PI de acessibilidade está violado em 34 arquivo(s) registrado(s) em data/p24/open-defects.json; P24 = FAIL até o material ser corrigido (novo zip, novo SHA-256 no catálogo, decisão do proprietário).",
+  "refund_reasons": "NOT_AVAILABLE (vendas fechadas; nenhum pedido real)",
+  "real_reviews": "NOT_AVAILABLE (nenhuma avaliação real registrada)",
+  "blind_evaluation": "NOT_AVAILABLE",
+  "totals": {
+    "products": 5,
+    "promises_on_pages": 81,
+    "promises_without_declared_delivery": 0,
+    "promises_pending_human_review": 0,
+    "files_checked": 63,
+    "files_open_ok": 63,
+    "errors": 0,
+    "open_defects_pi": 34,
+    "findings": 5
+  },
+  "errors": [],
+  "products": {
+    "ia-na-pratica": {
+      "sku": "ZEV-IA-011",
+      "page": "sales-public/ia-na-pratica.html",
+      "artifact_name": "ZEVANORY_IA_na_Pratica_v1.1.zip",
+      "artifact_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
+      "catalog_sha256_match": true,
+      "files_in_zip": 6,
+      "files_open_ok": 6,
+      "promises_on_page": 16,
+      "promises_mapped": 16,
+      "promises": [
+        {
+          "id": "IA-D01",
+          "text": "Manual completo (PDF e DOCX editável)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246",
+              "bytes": 258538,
+              "open": "PDF 25 página(s), 36478 caracteres de texto extraído"
+            },
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.docx",
+              "sha256": "8136e5a7963f814bc847e8c4d2c8e5eab81aeea8b511c618082492e0eb75fb56",
+              "bytes": 54468,
+              "open": "DOCX 274 parágrafo(s), 14 tabela(s)"
+            }
+          ]
+        },
+        {
+          "id": "IA-D02",
+          "text": "Guia rápido em PDF",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+              "sha256": "1b3a19eb11829a01f71f4f90b99945ef0887ecad4fe7bfee539a41cbef03385f",
+              "bytes": 48597,
+              "open": "PDF 1 página(s), 1177 caracteres de texto extraído"
+            }
+          ]
+        },
+        {
+          "id": "IA-D03",
+          "text": "Arquivo de comandos prontos para IA",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Comandos.txt",
+              "sha256": "32c5fe61c899ee27f8591e0f38fdbd259cf81b94f90a2af4fd328d1ef21a956f",
+              "bytes": 7247,
+              "open": "TXT UTF-8, 50 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "IA-D04",
+          "text": "Planilha de aplicação (XLSX)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Planilha.xlsx",
+              "sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4",
+              "bytes": 13432,
+              "open": "XLSX 4 aba(s), 65 fórmula(s)"
+            }
+          ]
+        },
+        {
+          "id": "IA-D05",
+          "text": "Arquivo 'Comece aqui' com o passo a passo",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "00_COMECE_AQUI.txt",
+              "sha256": "0cad3fefb47696760bbfd2809479a1922da702aedfbda6e65c24c0dd6de17641",
+              "bytes": 905,
+              "open": "TXT UTF-8, 20 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "IA-C01",
+          "text": "Pensar antes de pedir",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "contexto": 5,
+                "briefing": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-C02",
+          "text": "Fluxos práticos",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "modelo": 9,
+                "rotina": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-C03",
+          "text": "Revisão e critérios",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "revisao": 30,
+                "criterio": 9
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-C04",
+          "text": "Rotina de trabalho",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "rotina": 25,
+                "responsavel": 19
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-M01",
+          "text": "Clareza de entrada",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "contexto": 5,
+                "briefing": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-M02",
+          "text": "Fluxo repetível",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "rotina": 25,
+                "repet": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-M03",
+          "text": "Revisão consciente",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "revisao": 30,
+                "conferir": 22
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-K01",
+          "text": "Estrutura de uso aplicável ao dia a dia.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "rotina": 25,
+                "faca agora": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-K02",
+          "text": "Modelos para tarefas e rotinas recorrentes.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "modelo": 9,
+                "rotina": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-K03",
+          "text": "Critérios de revisão e melhoria.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "criterio": 9,
+                "revisao": 30
+              }
+            }
+          ]
+        },
+        {
+          "id": "IA-K04",
+          "text": "Foco em prática, não em promessa de resultado automático.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "faca agora": 8,
+                "promessa de faturamento": 1
+              }
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "open_defects_pi": [
+        {
+          "file": "ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "kind": "pdf_sem_titulo",
+          "detail": "PDF sem título nos metadados (WCAG 2.4.2, técnica PDF18): o leitor de tela anuncia só o nome do arquivo.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_IA_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        }
+      ],
+      "findings": []
+    },
+    "vendas-na-pratica": {
+      "sku": "ZEV-VEN-011",
+      "page": "sales-public/vendas-na-pratica.html",
+      "artifact_name": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
+      "artifact_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
+      "catalog_sha256_match": true,
+      "files_in_zip": 7,
+      "files_open_ok": 7,
+      "promises_on_page": 17,
+      "promises_mapped": 17,
+      "promises": [
+        {
+          "id": "VEN-D01",
+          "text": "Manual completo (PDF e DOCX editável)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57",
+              "bytes": 279877,
+              "open": "PDF 27 página(s), 35465 caracteres de texto extraído"
+            },
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.docx",
+              "sha256": "563eec2fb93de30e61784b10cee49a9fc8e6bd35a9ef5e45a84908772febfc6a",
+              "bytes": 54900,
+              "open": "DOCX 295 parágrafo(s), 14 tabela(s)"
+            }
+          ]
+        },
+        {
+          "id": "VEN-D02",
+          "text": "Guia rápido em PDF",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+              "sha256": "24376a0aee3d46187a620852d3858629e05ddd79a9d430050216ff5c8afdaa34",
+              "bytes": 46192,
+              "open": "PDF 1 página(s), 1096 caracteres de texto extraído"
+            }
+          ]
+        },
+        {
+          "id": "VEN-D03",
+          "text": "Modelos de mensagens de venda e follow-up",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Mensagens.txt",
+              "sha256": "f3583caa39f50293f9088dde9bbfd2a3d6958949042efc1206aec227056ab931",
+              "bytes": 3142,
+              "open": "TXT UTF-8, 50 linha(s)"
+            },
+            {
+              "file": "ZEVANORY_Vendas_Mensagens.txt",
+              "anchors": {
+                "proposta": 9,
+                "retorno combinado": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-D04",
+          "text": "Roteiro de conteúdos",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Conteudos.txt",
+              "sha256": "232f3b996da1931a956172110b1caa66ffa87acc61a5470d14091f2ab9dc17a1",
+              "bytes": 2471,
+              "open": "TXT UTF-8, 37 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "VEN-D05",
+          "text": "Planilha de acompanhamento comercial (XLSX)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Planilha.xlsx",
+              "sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0",
+              "bytes": 18854,
+              "open": "XLSX 5 aba(s), 32 fórmula(s)"
+            },
+            {
+              "file": "ZEVANORY_Vendas_Planilha.xlsx",
+              "anchors": {
+                "oportunidades": 10,
+                "indicadores": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-D06",
+          "text": "Arquivo 'Comece aqui' com o passo a passo",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "00_COMECE_AQUI.txt",
+              "sha256": "10d6b6dcd4b21161b439aaa9265bcd97ddfb1bc635bee4e7228be76500108439",
+              "bytes": 954,
+              "open": "TXT UTF-8, 20 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "VEN-C01",
+          "text": "Uma oferta que você consegue cumprir",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "oferta que voce consegue cumprir": 2,
+                "publico": 2,
+                "limite": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-C02",
+          "text": "Como conduzir",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "atendimento": 19,
+                "proximo passo": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-C03",
+          "text": "Como apresentar valor",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "proposta": 63,
+                "escopo": 22,
+                "limite": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-C04",
+          "text": "Como acompanhar",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "acompanhamento": 8,
+                "retorno": 26
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-M01",
+          "text": "Funil mais claro",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "funil": 2,
+                "oportunidade": 33
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-M02",
+          "text": "Conversa orientada ao cliente",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "atendimento": 19,
+                "objec": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-M03",
+          "text": "Aprendizado contínuo",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "indicador": 15,
+                "melhoria": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-K01",
+          "text": "Organização de funil e etapas.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "funil": 2,
+                "etapa": 16
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-K02",
+          "text": "Roteiros de descoberta e atendimento.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Mensagens.txt",
+              "anchors": {
+                "entender necessidade": 1,
+                "recepcao": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-K03",
+          "text": "Estrutura de oferta e objeções.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "oferta": 27,
+                "objec": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "VEN-K04",
+          "text": "Follow-up e aprendizado comercial.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "acompanhamento": 8,
+                "indicador": 15
+              }
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "open_defects_pi": [
+        {
+          "file": "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "kind": "pdf_sem_titulo",
+          "detail": "PDF sem título nos metadados (WCAG 2.4.2, técnica PDF18): o leitor de tela anuncia só o nome do arquivo.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_Vendas_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        }
+      ],
+      "findings": []
+    },
+    "lucro-e-caixa": {
+      "sku": "ZEV-LCX-011",
+      "page": "sales-public/lucro-e-caixa.html",
+      "artifact_name": "ZEVANORY_Lucro_e_Caixa_v1.1.zip",
+      "artifact_sha256": "48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f",
+      "catalog_sha256_match": true,
+      "files_in_zip": 9,
+      "files_open_ok": 9,
+      "promises_on_page": 17,
+      "promises_mapped": 17,
+      "promises": [
+        {
+          "id": "LCX-D01",
+          "text": "Manual completo (PDF e DOCX editável)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "sha256": "b0f819e10c4c2259ea4701283a49abd9ca8e11bd2310db703a833d337883aac5",
+              "bytes": 174421,
+              "open": "PDF 10 página(s), 15661 caracteres de texto extraído"
+            },
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx",
+              "sha256": "6dc31eed34bd4177baff2dc759b6d1b10ed5e8a46ccaba98133acc7cc9e398bc",
+              "bytes": 44331,
+              "open": "DOCX 218 parágrafo(s), 21 tabela(s)"
+            }
+          ]
+        },
+        {
+          "id": "LCX-D02",
+          "text": "Guia rápido (PDF e DOCX)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+              "sha256": "eb156e8ada60cc00c6ae9a8dc61e40b1389c03a097de0d980b61260d729d8bf7",
+              "bytes": 46052,
+              "open": "PDF 1 página(s), 1619 caracteres de texto extraído"
+            },
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx",
+              "sha256": "482bf99314025de58e82f23f5111f5cb5d50759f9bf195b31d014be887ff630d",
+              "bytes": 38570,
+              "open": "DOCX 21 parágrafo(s), 2 tabela(s)"
+            }
+          ]
+        },
+        {
+          "id": "LCX-D03",
+          "text": "Planilha de caixa e margem (XLSX)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx",
+              "sha256": "265758c5a8da359f85bc3986adca192a57870bb82c3df4019c2c9c288951526d",
+              "bytes": 50172,
+              "open": "XLSX 13 aba(s), 963 fórmula(s)"
+            },
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx",
+              "anchors": {
+                "caixa": 30,
+                "margem": 24
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-D04",
+          "text": "Checklist financeiro semanal",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+              "sha256": "626e5c8235e4f725fc5a074aae357afcf2a21204ddad776c7cbb38f17df7297c",
+              "bytes": 1160,
+              "open": "TXT UTF-8, 19 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "LCX-D05",
+          "text": "Comandos de IA para análise financeira",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.1.txt",
+              "sha256": "d6a57ff7849cae47bc5c702fbc831ca84739ff8fb95bb2f7b9a3a62f363de37c",
+              "bytes": 3802,
+              "open": "TXT UTF-8, 61 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "LCX-D06",
+          "text": "Arquivo 'Comece aqui' com o passo a passo",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "00_COMECE_AQUI.txt",
+              "sha256": "aad42c4e315d7f058890b296547dfcd465da7379d8407cc19e71a17fb4a069a9",
+              "bytes": 2146,
+              "open": "TXT UTF-8, 36 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "LCX-C01",
+          "text": "Entradas e saídas",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "entrada": 7,
+                "saida": 7,
+                "caixa": 40
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-C02",
+          "text": "Fixos e variáveis",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "fixa": 18,
+                "variave": 15,
+                "custo": 29
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-C03",
+          "text": "Preço e resultado",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "preco": 31,
+                "margem": 35,
+                "resultado": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-C04",
+          "text": "Revisão financeira",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+              "anchors": {
+                "revisao": 2,
+                "decisao": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-M01",
+          "text": "Caixa visível",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "caixa": 40,
+                "entrada": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-M02",
+          "text": "Margem mais clara",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "margem": 35,
+                "custo": 29
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-M03",
+          "text": "Revisão recorrente",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+              "anchors": {
+                "proxima revisao": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-K01",
+          "text": "Organização de entradas e saídas.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "entrada": 7,
+                "saida": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-K02",
+          "text": "Leitura prática de custos e margem.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "custo": 29,
+                "margem": 35
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-K03",
+          "text": "Rotina de acompanhamento.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+              "anchors": {
+                "proxima revisao": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "LCX-K04",
+          "text": "Estrutura para decisões operacionais mais conscientes.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "decis": 13
+              }
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "open_defects_pi": [
+        {
+          "file": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        }
+      ],
+      "findings": [
+        {
+          "product": "lucro-e-caixa",
+          "file": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+          "kind": "acessibilidade_titulo_generico",
+          "detail": "Título do PDF é só 'ZEVANORY', sem dizer qual material é (WCAG 2.4.2 pede título descritivo)."
+        },
+        {
+          "product": "lucro-e-caixa",
+          "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "kind": "acessibilidade_titulo_generico",
+          "detail": "Título do PDF é só 'ZEVANORY', sem dizer qual material é (WCAG 2.4.2 pede título descritivo)."
+        }
+      ]
+    },
+    "combo-ia-vendas": {
+      "sku": "ZEV-CMB-011",
+      "page": "sales-public/combo-ia-vendas.html",
+      "artifact_name": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
+      "artifact_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
+      "catalog_sha256_match": true,
+      "files_in_zip": 14,
+      "files_open_ok": 14,
+      "promises_on_page": 14,
+      "promises_mapped": 14,
+      "promises": [
+        {
+          "id": "CMB-D01",
+          "text": "IA na Prática completo (manual, guia, comandos e planilha)",
+          "type": "component",
+          "status": "ENTREGUE_IDENTICO_AO_AVULSO",
+          "evidence": [
+            {
+              "component": "ia-na-pratica",
+              "prefix": "01_IA_na_Pratica/",
+              "files_identical": 6,
+              "files_expected": 6
+            }
+          ]
+        },
+        {
+          "id": "CMB-D02",
+          "text": "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)",
+          "type": "component",
+          "status": "ENTREGUE_IDENTICO_AO_AVULSO",
+          "evidence": [
+            {
+              "component": "vendas-na-pratica",
+              "prefix": "02_Vendas_na_Pratica/",
+              "files_identical": 7,
+              "files_expected": 7
+            }
+          ]
+        },
+        {
+          "id": "CMB-P01",
+          "text": "Economia de R$ 97 em relação à compra separada (R$ 394)",
+          "type": "price",
+          "status": "CONTA_CONFERE",
+          "evidence": [
+            {
+              "source": "data/products.json",
+              "separate_total": 394,
+              "bundle_price": 297,
+              "economy": 97
+            }
+          ]
+        },
+        {
+          "id": "CMB-C01",
+          "text": "Método de uso",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "contexto": 5,
+                "revisao": 30
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-C02",
+          "text": "Processo comercial",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "atendimento": 19,
+                "proposta": 63,
+                "acompanhamento": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-C03",
+          "text": "Uso independente",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "00_LEIA_PRIMEIRO.txt",
+              "anchors": {
+                "forma independente": 1,
+                "ordem sugerida": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-C04",
+          "text": "Aprendizado",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "indicador": 15,
+                "melhoria": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-M01",
+          "text": "IA com método",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "contexto": 5,
+                "revisao": 30
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-M02",
+          "text": "Vendas organizadas",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "atendimento": 19,
+                "proposta": 63,
+                "acompanhamento": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-M03",
+          "text": "Melhoria contínua",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "criterio": 9
+              }
+            },
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "indicador": 15
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-K01",
+          "text": "Conteúdo de IA na Prática.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "briefing": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-K02",
+          "text": "Conteúdo de Vendas na Prática.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "proposta": 63
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-K03",
+          "text": "Ordem sugerida para usar os dois.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "00_LEIA_PRIMEIRO.txt",
+              "anchors": {
+                "ordem sugerida": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "CMB-K04",
+          "text": "Estrutura de revisão e melhoria.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "revisao": 30
+              }
+            },
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "melhoria": 4
+              }
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "open_defects_pi": [
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "kind": "pdf_sem_titulo",
+          "detail": "PDF sem título nos metadados (WCAG 2.4.2, técnica PDF18): o leitor de tela anuncia só o nome do arquivo.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "kind": "pdf_sem_titulo",
+          "detail": "PDF sem título nos metadados (WCAG 2.4.2, técnica PDF18): o leitor de tela anuncia só o nome do arquivo.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        }
+      ],
+      "findings": []
+    },
+    "negocio-completo": {
+      "sku": "ZEV-NGC-011",
+      "page": "sales-public/negocio-completo.html",
+      "artifact_name": "ZEVANORY_Negocio_Completo_v1.1.zip",
+      "artifact_sha256": "8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e",
+      "catalog_sha256_match": true,
+      "files_in_zip": 27,
+      "files_open_ok": 27,
+      "promises_on_page": 17,
+      "promises_mapped": 17,
+      "promises": [
+        {
+          "id": "NGC-D01",
+          "text": "IA na Prática completo",
+          "type": "component",
+          "status": "ENTREGUE_IDENTICO_AO_AVULSO",
+          "evidence": [
+            {
+              "component": "ia-na-pratica",
+              "prefix": "01_IA_na_Pratica/",
+              "files_identical": 6,
+              "files_expected": 6
+            }
+          ]
+        },
+        {
+          "id": "NGC-D02",
+          "text": "Vendas na Prática completo",
+          "type": "component",
+          "status": "ENTREGUE_IDENTICO_AO_AVULSO",
+          "evidence": [
+            {
+              "component": "vendas-na-pratica",
+              "prefix": "02_Vendas_na_Pratica/",
+              "files_identical": 7,
+              "files_expected": 7
+            }
+          ]
+        },
+        {
+          "id": "NGC-D03",
+          "text": "Lucro & Caixa completo",
+          "type": "component",
+          "status": "ENTREGUE_IDENTICO_AO_AVULSO",
+          "evidence": [
+            {
+              "component": "lucro-e-caixa",
+              "prefix": "03_Lucro_e_Caixa/",
+              "files_identical": 9,
+              "files_expected": 9
+            }
+          ]
+        },
+        {
+          "id": "NGC-D04",
+          "text": "Plano integrado de 30 dias (PDF e DOCX)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+              "sha256": "4c5ab87dbe280b810dc94819eb514ece364a703453b31b9524e0f1ef37151d18",
+              "bytes": 123388,
+              "open": "PDF 4 página(s), 5951 caracteres de texto extraído"
+            },
+            {
+              "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.docx",
+              "sha256": "922b7bc05bee46a597e8572f41227a505f4751bf0fc9bc33145d8c73f64051df",
+              "bytes": 42334,
+              "open": "DOCX 17 parágrafo(s), 6 tabela(s)"
+            }
+          ]
+        },
+        {
+          "id": "NGC-D05",
+          "text": "Painel de decisão integrada (XLSX)",
+          "type": "deliverable",
+          "status": "ENTREGUE",
+          "evidence": [
+            {
+              "file": "05_Painel_Decisao_Integrada/ZEVANORY_Painel_Decisao_Integrada_v1.0.xlsx",
+              "sha256": "af6e25a370e3f35a2cc6ba4acd964392da13b95c18480c30c16793135b18173c",
+              "bytes": 18925,
+              "open": "XLSX 5 aba(s), 495 fórmula(s)"
+            },
+            {
+              "file": "05_Painel_Decisao_Integrada/00_COMECE_AQUI.txt",
+              "sha256": "5b1a70f4de0d311b52ab75d6b10fc1671851a868f99c25b28a136999acf627cf",
+              "bytes": 1130,
+              "open": "TXT UTF-8, 17 linha(s)"
+            }
+          ]
+        },
+        {
+          "id": "NGC-P01",
+          "text": "Economia de R$ 244 em relação à compra separada (R$ 641)",
+          "type": "price",
+          "status": "CONTA_CONFERE",
+          "evidence": [
+            {
+              "source": "data/products.json",
+              "separate_total": 641,
+              "bundle_price": 397,
+              "economy": 244
+            }
+          ]
+        },
+        {
+          "id": "NGC-C01",
+          "text": "IA na Prática",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "rotina": 25,
+                "briefing": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-C02",
+          "text": "Vendas na Prática",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "proxima acao": 6,
+                "proposta": 63
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-C03",
+          "text": "Lucro & Caixa",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "entrada": 7,
+                "saida": 7,
+                "custo": 29,
+                "margem": 35,
+                "caixa": 40
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-C04",
+          "text": "Jornada única",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+              "anchors": {
+                "ia na pratica": 1,
+                "vendas na pratica": 1,
+                "lucro & caixa": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-M01",
+          "text": "IA aplicada",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "rotina": 25,
+                "briefing": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-M02",
+          "text": "Processo de vendas",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "proposta": 63,
+                "proxima acao": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-M03",
+          "text": "Lucro e caixa",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "caixa": 40,
+                "margem": 35
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-K01",
+          "text": "IA na Prática.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": {
+                "briefing": 25
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-K02",
+          "text": "Vendas na Prática.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": {
+                "proposta": 63
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-K03",
+          "text": "Lucro & Caixa.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": {
+                "margem": 35
+              }
+            }
+          ]
+        },
+        {
+          "id": "NGC-K04",
+          "text": "Integração dos métodos em uma rotina única.",
+          "type": "content",
+          "status": "TEMA_PRESENTE_ANCORA_AUTOMATICA",
+          "evidence": [
+            {
+              "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+              "anchors": {
+                "ia na pratica": 1,
+                "vendas na pratica": 1,
+                "lucro & caixa": 2
+              }
+            }
+          ]
+        }
+      ],
+      "errors": [],
+      "open_defects_pi": [
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "kind": "pdf_sem_titulo",
+          "detail": "PDF sem título nos metadados (WCAG 2.4.2, técnica PDF18): o leitor de tela anuncia só o nome do arquivo.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "kind": "pdf_sem_titulo",
+          "detail": "PDF sem título nos metadados (WCAG 2.4.2, técnica PDF18): o leitor de tela anuncia só o nome do arquivo.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.docx",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        },
+        {
+          "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+          "kind": "idioma_declarado_incorreto",
+          "detail": "Idioma declarado 'en-US' em material escrito em português (WCAG 3.1.1, nível A): o leitor de tela lê o texto com regras de pronúncia de outro idioma.",
+          "status": "PI_VIOLADO_REGISTRADO"
+        }
+      ],
+      "findings": [
+        {
+          "product": "negocio-completo",
+          "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+          "kind": "acessibilidade_titulo_generico",
+          "detail": "Título do PDF é só 'ZEVANORY', sem dizer qual material é (WCAG 2.4.2 pede título descritivo)."
+        },
+        {
+          "product": "negocio-completo",
+          "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "kind": "acessibilidade_titulo_generico",
+          "detail": "Título do PDF é só 'ZEVANORY', sem dizer qual material é (WCAG 2.4.2 pede título descritivo)."
+        },
+        {
+          "product": "negocio-completo",
+          "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+          "kind": "acessibilidade_titulo_generico",
+          "detail": "Título do PDF é só 'ZEVANORY', sem dizer qual material é (WCAG 2.4.2 pede título descritivo)."
+        }
+      ]
+    }
+  }
+}

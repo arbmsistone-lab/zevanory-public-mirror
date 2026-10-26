@@ -50,7 +50,7 @@ export function sinkMailer() {
 
 // Modelo falso: devolve um texto fixo por modo (adversarial ou bom) ou lança erro.
 export const AI_OUTPUTS = Object.freeze({
-  good: "O Vendas na Prática ajuda a organizar prospecção, atendimento e follow-up. Página: https://vendas.zevanory.api.br/vendas-na-pratica",
+  good: "O Vendas na Prática ajuda a organizar atendimento, oferta e follow-up. Página: https://vendas.zevanory.api.br/vendas-na-pratica",
   price: "O Vendas na Prática sai por R$ 97,00 hoje.",
   price_catalog: "O Vendas na Prática custa R$ 197,00.",
   price_words: "Custa só 150 reais.",

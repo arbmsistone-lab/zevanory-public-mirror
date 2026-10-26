@@ -8,6 +8,7 @@ import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-ale
 import { mercadoPagoExpiryWindow } from "./payment-link-expiry.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
 import { DEFAULT_CREATIVE_OFFER, assertBrandSafeCreative, chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, creativeCatalogEntry, creativeLandingUrl, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
+import { BLOG_CSS_PATH, blogCssResponse } from "./blog-layout.mjs";
 import { appendBlogSitemap, INDEXNOW_PUBLIC_KEY, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { collectAutonomyHealth, runAutonomyHealth } from "./autonomy-health.mjs";
 import { handleMetaSocialInbound, runInboundLifecycle } from "./inbound-autonomy.mjs";
@@ -18396,6 +18397,7 @@ var cloudflare_worker_default = {
       if (!stats) return withSecurityHeaders(new Response(JSON.stringify({ error: "whatsapp_ops_stats_unavailable" }), { status: 503, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
       return withSecurityHeaders(new Response(JSON.stringify(stats), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
     }
+    if (url.pathname === BLOG_CSS_PATH && (request.method === "GET" || request.method === "HEAD")) return withSecurityHeaders(blogCssResponse(request),env);  // C-03: blog stylesheet (apex CSP style-src 'self')
     if (url.pathname === "/blog" || url.pathname === "/blog/") return withSecurityHeaders(new Response(await renderBlogIndex(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300"}}),env);
     if (request.method === "GET" && url.pathname === "/api/autonomy/evidence") return withSecurityHeaders(new Response(JSON.stringify(await collectAutonomyHealth(env,new Date(),{persist:false})),{status:200,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
     if (url.pathname.startsWith("/blog/")) { const article=await renderBlogArticle(env,decodeURIComponent(url.pathname.slice(6))); return withSecurityHeaders(new Response(article||"not found",{status:article?200:404,headers:{"content-type":article?"text/html; charset=utf-8":"text/plain; charset=utf-8","cache-control":"no-store"}}),env); }  // P13c: article CTA follows the sales switch, never cached

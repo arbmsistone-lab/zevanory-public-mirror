@@ -15,6 +15,9 @@ on:
       - "reembolso/**"
       - "worker/**"
       - "scripts/portfolio_target_exact_cert.py"
+      - "scripts/portfolio_cert_contract.py"
+      - "scripts/ci/mutants_portfolio_cert_contract.py"
+      - "tests/test_portfolio_cert_contract.py"
       - ".github/workflows/portfolio-six-target-exact-cert.yml"
   push:
     branches: [gh-pages]
@@ -30,30 +33,75 @@ on:
       - "reembolso/**"
       - "worker/**"
       - "scripts/portfolio_target_exact_cert.py"
+      - "scripts/portfolio_cert_contract.py"
+      - "scripts/ci/mutants_portfolio_cert_contract.py"
+      - "tests/test_portfolio_cert_contract.py"
       - ".github/workflows/portfolio-six-target-exact-cert.yml"
+  # Contrato v3 (Sol AVAL 271): certificação pós-publicação encadeada à conclusão com SUCESSO dos deploys,
+  # com o SHA exato implantado e leitura do release publicado antes de comparar.
+  workflow_run:
+    workflows: ["ZEVANORY central production deploy", "ZEVANORY SALES public release"]
+    types: [completed]
+    branches: [gh-pages]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  certify:
+  contract-tests:
+    # Contrato v3 (pré-merge x pós-publicação): testes e mutantes sem rede, antes de qualquer leitura de produção.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&
+       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Contract tests and mutants
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -v -s tests -p test_portfolio_cert_contract.py < /dev/null 2>&1 | tee contract.txt
+          grep -qx 'OK' contract.txt
+          python3 scripts/ci/mutants_portfolio_cert_contract.py
+
+  certify:
+    needs: contract-tests
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&
+       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         slug: [ia-na-pratica, vendas-na-pratica, combo-ia-vendas, lucro-e-caixa, negocio-completo]
     env:
       TARGET_SLUG: ${{ matrix.slug }}
-      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
+      # pull_request => pré-merge (produção comparada à fonte no SHA PUBLICADO por superfície);
+      # workflow_run/push/dispatch => pós-publicação, só depois da promoção efetiva observada.
+      CERT_CONTEXT: ${{ github.event_name == 'pull_request' && 'pre-merge' || 'post-deploy' }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      TRIGGER_SURFACE: ${{ github.event_name == 'workflow_run' && (github.event.workflow_run.name == 'ZEVANORY central production deploy' && 'central' || 'sales') || '' }}
+      CERT_PROMOTION_WAIT_SECONDS: ${{ github.event_name == 'workflow_run' && '900' || '1200' }}
       GH_READ_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_SHA }}
           persist-credentials: false
-          fetch-depth: 1
+          # Histórico sem blobs: o contrato pré-merge precisa de base, merge-base e diff da fonte.
+          fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -168,7 +216,7 @@ jobs:
           checks={**a["checks"],**b["checks"],"P06":"PASS","P10":"PASS","P12":"PASS","P15":"PASS"}
           expected={"P01","P02","P03","P04","P05","P06","P07","P08","P09","P10","P11","P12","P13","P15"}
           assert set(checks)==expected and all(v=="PASS" for v in checks.values()),checks
-          out={"schema":"zevanory.portfolio.target-proof.v2","target":s,"workflow_sha":os.environ["EXPECTED_SHA"],"source_blob":a["source_blob"],"shared_runtime_release":a["shared_runtime_release"],"checks":checks,"P14":"N/A","P16":"NOT_CERTIFIED_HERE","sales_mode":"globally-blocked","false_green":0,"verdict":"PROVED_TECHNICAL_14"}
+          out={"schema":"zevanory.portfolio.target-proof.v2","target":s,"workflow_sha":os.environ["EXPECTED_SHA"],"source_blob":a["source_blob"],"shared_runtime_release":a["shared_runtime_release"],"checks":checks,"P14":"N/A","P16":"NOT_CERTIFIED_HERE","certification_context":a["certification_context"],"contract_version":a["contract_version"],"expected_changes":a["live_contract"]["expected_changes"],"sales_mode":"globally-blocked","false_green":0,"verdict":"PROVED_TECHNICAL_14"}
           pathlib.Path(f"evidence/{s}-portfolio-proof.json").write_text(json.dumps(out,indent=2)+"\n")
           print(f"{s}:TECHNICAL_14=PROVED")
           print("FALSE_GREEN=0")
