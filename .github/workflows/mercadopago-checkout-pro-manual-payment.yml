@@ -15,7 +15,7 @@ jobs:
     environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
     # Criava pedido piloto e preferência sandbox no Worker de PRODUÇÃO (zevanory.api.br) com MERCADOPAGO_TEST_*.
     if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       APP: https://zevanory.api.br
@@ -133,7 +133,7 @@ jobs:
               f.write("- Link: "+checkout_url+"\n")
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: mercadopago-clean-checkout
           path: evidence/mercadopago-clean-checkout.json

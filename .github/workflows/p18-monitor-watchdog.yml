@@ -27,19 +27,20 @@ concurrency:
 jobs:
   watch:
     if: ${{ github.ref == 'refs/heads/gh-pages' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     env:
       EVIDENCE_BRANCH: evidence/b0-baseline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
           fetch-depth: 1
           sparse-checkout: |
             scripts/b0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: "22"
       - name: Conferir o batimento do monitor P18 (falha o job quando velho > 15 min)
         env:

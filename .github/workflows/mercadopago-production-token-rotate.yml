@@ -41,7 +41,7 @@ jobs:
     # Risco Sol 038-R5: só pelo branch protegido, por dispatch manual, e nunca por "re-run" do mesmo run.
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Ordem 046 R1: espera do preflight de até 80 min (passo Wait) + validação + retorno automático + folga.
     timeout-minutes: 100
     env:
@@ -55,7 +55,7 @@ jobs:
       # Só o modo recover precisa do repositório (scripts/ops/worker-version-recover.sh, o script ensaiado).
       - name: Checkout the recovery script (recover only)
         if: inputs.mode == 'recover'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
 

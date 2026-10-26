@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   retired:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           echo "::error title=RETIRED_PUBLISHER::use zpc-control-worker-deploy.yml"

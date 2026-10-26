@@ -39,7 +39,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   integracao:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
@@ -50,7 +50,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
       - name: SHA efetivamente testado (pull_request = merge ref, não o head)
@@ -67,8 +67,9 @@ jobs:
           echo "GITHUB_REF=$GITHUB_REF tested=$tested merge=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
           echo "::notice title=SHA_TESTADO::ref=$GITHUB_REF tested=$tested merge(github.sha)=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
           [ "$tested" = "$MERGE_SHA" ] || { echo "::error::checkout ($tested) difere de github.sha ($MERGE_SHA)"; exit 1; }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: "22"
       - name: Webhook Mercado Pago (M1–M22, vendas fechadas, falhas da entrega, achados Copilot e assinatura/idempotência B05)
         env:
@@ -189,7 +190,7 @@ jobs:
   # independente de quem escreveu a PR. Cada linha MUTANT fica no log e vira anotação do check-run. KILLED exige
   # falha de ASSERÇÃO em teste esperado e nenhuma assinatura de infra; infra => INCONCLUSIVE + repetição; job falha.
   mutantes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
       postgres:
@@ -200,11 +201,12 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: "22"
       # Meta-teste do executor (auditoria Sol): SEM mutação, o harness injeta um ECONNRESET real na 1ª requisição
       # de webhook. O executor precisa classificar como INCONCLUSIVE (com as repetições controladas), nunca KILLED.

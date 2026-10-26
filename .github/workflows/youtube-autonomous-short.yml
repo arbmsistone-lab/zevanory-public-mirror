@@ -41,7 +41,7 @@ jobs:
   short:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
@@ -52,11 +52,12 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
       KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: "22"
       - name: Install media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter && fc-match -f "%{file}\n" "Inter:style=ExtraBold"
@@ -105,7 +106,7 @@ jobs:
         run: node scripts/channels/short-crosspost.mjs --slot="$SLOT" --day="${SHORT_DAY:-}"
       - name: Keep the dry-run preview for the owner to watch (3 days)
         if: ${{ inputs.dry_run == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: short-preview
           path: |

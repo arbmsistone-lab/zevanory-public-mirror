@@ -17,7 +17,7 @@ jobs:
   warm:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' && (github.run_attempt == 1) }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN || secrets.OPERATOR_TOKEN }}
@@ -25,17 +25,19 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: '1b26415802588185a86c1d4d3ebf5bdb'
       VOICE_WARM_MAX: ${{ inputs.max_voices }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           ref: gh-pages
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          package-manager-cache: false
         with: {node-version: '22'}
       - name: Warm once, resume from existing KV entries
         shell: bash
         run: |
           set -euo pipefail
           node scripts/voice_cache_warm.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: voice-cache-warm-evidence

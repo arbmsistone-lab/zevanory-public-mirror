@@ -9,7 +9,7 @@ jobs:
   snapshot:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -21,10 +21,11 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
       KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: "22"
       - run: node scripts/audit/reach-snapshot.mjs

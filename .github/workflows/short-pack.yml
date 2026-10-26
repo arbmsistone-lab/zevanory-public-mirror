@@ -26,7 +26,7 @@ jobs:
   pack:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -37,11 +37,12 @@ jobs:
       OWNER_ALERT_EMAIL: ${{ secrets.OWNER_ALERT_EMAIL }}
       KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: "22"
       - name: Skip if this pack is already hosted (scheduled backstop)
         id: already
@@ -91,7 +92,7 @@ jobs:
           with urllib.request.urlopen(req, timeout=20) as r:
               print("::notice title=SHORT_PACK_EMAIL::sent", r.status)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: steps.already.outputs.done != 'true'
         with:
           name: zevanory-short-pack

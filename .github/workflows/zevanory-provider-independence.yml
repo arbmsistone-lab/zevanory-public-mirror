@@ -12,7 +12,7 @@ permissions:
   contents: read
 jobs:
   prove:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Resolve certified live release
@@ -30,7 +30,7 @@ jobs:
           echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
           echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Bind provider-independence proof to exact live release
         shell: bash
         run: |
@@ -150,7 +150,7 @@ jobs:
         shell: bash
         run: |
           jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" '{schema:"zevanory.p14.provider-independence.v1",release_sha:$sha,run_id:$run,status:"proved"}' > p14-provider-independence.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: p14-provider-independence-${{ env.EXPECTED_SHA12 }}

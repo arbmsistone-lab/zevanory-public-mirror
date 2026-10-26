@@ -22,11 +22,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -53,16 +53,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
         node: ["22", "24"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: ${{ matrix.node }}
       - uses: actions/setup-python@v5
         with:
@@ -81,7 +82,7 @@ jobs:
           if grep -q "skipped" /tmp/live.txt; then echo "::error::skipped live meta-tests"; exit 1; fi
           grep -qx "OK" /tmp/live.txt || { echo "::error::live meta-tests did not end in OK"; exit 1; }
           echo "::notice title=MUTANT_CLASSIFIER_LIVE (node $(node --version), $RUNNER_OS)::Ran 16, OK, skipped 0"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: mutant-classifier-tap-node${{ matrix.node }}-${{ runner.os }}

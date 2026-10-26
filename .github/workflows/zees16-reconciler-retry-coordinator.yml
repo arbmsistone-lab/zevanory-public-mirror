@@ -10,7 +10,7 @@ permissions:
 jobs:
   coordinate:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 28
     concurrency:
       group: zees16-exact-retry-${{ github.event.workflow_run.head_sha || github.sha }}

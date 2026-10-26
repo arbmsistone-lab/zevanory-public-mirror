@@ -22,10 +22,10 @@ permissions:
 
 jobs:
   safety-contract:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Opt-in and compliance negative contracts
         run: python3 scripts/zevanory_sales_safety_contract.py
       - name: Deterministic payment sandbox
@@ -43,7 +43,7 @@ jobs:
           echo "REAL_MESSAGE_SENT=false"
           echo "REAL_TRANSACTION_CREATED=false"
       - name: Upload safe evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: zevanory-sales-safety-contract

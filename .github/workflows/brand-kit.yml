@@ -27,14 +27,15 @@ permissions:
   contents: read
 jobs:
   brand:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: '22'
       - name: Install pinned renderer
         run: python3 -m pip install --user --disable-pip-version-check 'CairoSVG==2.8.2' 'Pillow==12.3.0'
@@ -51,7 +52,7 @@ jobs:
           test "$(find assets/brand/export -maxdepth 1 -name '*.png' | wc -l)" -eq 13
       - name: Build and test GENERATED canonical sales sitemap
         run: python3 -m unittest discover -s tests -p 'test_sales_sitemap_generated.py' -v
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: zevanory-official-brand-kit
           path: assets/brand/export/

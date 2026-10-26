@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   p08-supply-chain:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     env:
@@ -163,7 +163,7 @@ jobs:
 
       - name: Upload exact-release P08 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: zevanory-p08-supply-chain-${{ env.EXPECTED_SHA12 }}
           path: |

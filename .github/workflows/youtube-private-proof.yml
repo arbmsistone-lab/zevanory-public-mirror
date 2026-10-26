@@ -14,7 +14,7 @@ jobs:
   proof:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' && (inputs.confirm == 'ENVIAR_PROVA_PRIVADA') }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
@@ -23,7 +23,7 @@ jobs:
       # Free-tier Gemini key as a GitHub secret (zero-cost rule: no Cloud billing / Secret Manager).
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
       - name: Validate YouTube OAuth and exact channel identity (read-only)

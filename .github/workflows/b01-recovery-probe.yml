@@ -17,7 +17,7 @@
       "environment": {
         "name": "sandbox-financial-approved"
       },
-      "runs-on": "ubuntu-latest",
+      "runs-on": "ubuntu-24.04",
       "timeout-minutes": 20,
       "env": {
         "CLOUDFLARE_SANDBOX_PROBE_TOKEN": "${{ secrets.CLOUDFLARE_SANDBOX_PROBE_TOKEN }}",
@@ -25,7 +25,7 @@
       },
       "steps": [
         {
-          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "uses": "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8",
           "with": {
             "persist-credentials": false
           }

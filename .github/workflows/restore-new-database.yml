@@ -42,7 +42,7 @@ jobs:
   rehearse:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: github.ref == 'refs/heads/gh-pages'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -59,7 +59,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: restore-rehearsal-local-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -88,13 +88,13 @@ jobs:
     needs: rehearse
     environment: producao-critica  # aprovação do proprietário obrigatória
     if: github.ref == 'refs/heads/gh-pages' && inputs.mode == 'restore'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
       RESTORE_TARGET_DATABASE_URL: ${{ secrets.RESTORE_TARGET_DATABASE_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
       - uses: actions/setup-python@v5

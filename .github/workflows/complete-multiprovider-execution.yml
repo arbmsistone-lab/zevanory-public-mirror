@@ -11,9 +11,9 @@ permissions:
   contents: read
 jobs:
   certify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Execute N-1 checkpoint lease and idempotency proof
         run: python3 scripts/verify-multiprovider-n1.py
       - name: Fail closed until complete multiprovider continuity is proven

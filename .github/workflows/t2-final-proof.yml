@@ -8,10 +8,10 @@ permissions:
   contents: read
 jobs:
   proof:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Read artifacts status and one creative
         shell: bash
         run: |
@@ -26,7 +26,7 @@ jobs:
           curl -fsS --retry 4 --retry-delay 2 "$url" -o /tmp/t2-creative.jpg
           file /tmp/t2-creative.jpg
           test -s /tmp/t2-creative.jpg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: t2-final-proof-image
           path: /tmp/t2-creative.jpg

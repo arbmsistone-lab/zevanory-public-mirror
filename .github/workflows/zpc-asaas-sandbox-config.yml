@@ -10,10 +10,10 @@ permissions:
   contents: read
 jobs:
   asaas-sandbox-config:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Verify sandbox-only release candidate source and fail-closed financial assertions
         shell: bash
         run: |

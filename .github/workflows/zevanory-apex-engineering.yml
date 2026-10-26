@@ -15,7 +15,7 @@ jobs:
   apex:
     environment: producao-critica  # B01 M1: wrangler preview remoto autenticado (achado na revarredura de Claude); exige revisão do titular
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 18
     steps:
       - name: Resolve certified live release
@@ -33,12 +33,13 @@ jobs:
           echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
           echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: '22'
       - name: Bind apex proof to exact live release
         shell: bash
@@ -259,7 +260,7 @@ jobs:
           assert commit.get('sha')==sha,(commit.get('sha'),sha)
           print('PASS source hygiene/provenance',sha)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: zevanory-apex-engineering-evidence-${{ github.run_id }}-${{ github.run_attempt }}
@@ -422,7 +423,7 @@ jobs:
           assert commit.get('sha')==sha,(commit.get('sha'),sha)
           print('PASS source hygiene/provenance',sha)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: zevanory-apex-engineering-evidence-${{ env.EXPECTED_SHA12 }}

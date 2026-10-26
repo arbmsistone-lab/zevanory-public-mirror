@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   observability:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
@@ -205,7 +205,7 @@ jobs:
 
       - name: Upload exact-release P12 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: zevanory-p12-observability-${{ env.EXPECTED_SHA12 }}
           path: |

@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   lifecycle:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
@@ -39,7 +39,7 @@ jobs:
           echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
           echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Fetch immutable certified release
         shell: bash
@@ -156,7 +156,7 @@ jobs:
           PY
 
       - name: Upload exact-release P16 evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: zevanory-p16-financial-${{ env.EXPECTED_SHA12 }}
           path: |

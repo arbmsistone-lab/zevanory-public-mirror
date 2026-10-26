@@ -31,7 +31,7 @@ permissions:
 jobs:
   p16:
     name: P16 ${{ matrix.slug }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -45,7 +45,7 @@ jobs:
     env:
       TARGET_SLUG: ${{ matrix.slug }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Resolve certified live release
         shell: bash
         run: |
@@ -102,7 +102,7 @@ jobs:
           print("FALSE_GREEN=0")
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: portfolio-p16-${{ matrix.slug }}-${{ github.sha }}
           path: evidence/${{ matrix.slug }}-p16-lifecycle.json

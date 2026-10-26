@@ -11,9 +11,9 @@ permissions:
 jobs:
   reconcile:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/p15-live-catalog-source-20260920'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0

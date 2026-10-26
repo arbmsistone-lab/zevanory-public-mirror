@@ -7,21 +7,21 @@ jobs:
   payments-readonly:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
       ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
       MP_LOOKUP_PAYMENT_IDS: "182085091992"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
       - name: GET payments/search with full pagination and read-only reconciliation
         run: python3 scripts/mercadopago_readonly_payments_audit.py
       - name: Archive sanitized data only
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: mercadopago-readonly-sanitized
           path: mercadopago-readonly-sanitized.json

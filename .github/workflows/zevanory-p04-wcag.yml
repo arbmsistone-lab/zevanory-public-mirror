@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   wcag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Resolve certified live release
@@ -33,8 +33,9 @@ jobs:
           ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
           echo "EXACT_RELEASE_BINDING=PASS sha=$ACTUAL_SHA"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: '22'
       - name: Install Pa11y
         run: npm install --no-save pa11y@9.0.1
@@ -47,7 +48,7 @@ jobs:
           fs.writeFileSync('p04-wcag-evidence.json',JSON.stringify({schema:'zevanory.p04.wcag.v1',standard:'WCAG2AA',evidence},null,2)); console.log(JSON.stringify(evidence)); if(failed)process.exit(1);
           JS
           node wcag.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: p04-wcag-evidence-${{ env.EXPECTED_SHA12 }}

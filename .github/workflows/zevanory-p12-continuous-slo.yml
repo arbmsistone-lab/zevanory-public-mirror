@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   observe:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Resolve certified live release
@@ -57,7 +57,7 @@ jobs:
           print(json.dumps(doc))
           if not doc["all_ok"]: raise SystemExit(1)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: p12-slo-observation-${{ env.EXPECTED_SHA12 }}

@@ -14,12 +14,12 @@ permissions:
   contents: read
 jobs:
   certify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha || github.event.pull_request.head.sha || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           ref: ${{ env.EXPECTED_SHA }}
           fetch-depth: 1
@@ -39,7 +39,7 @@ jobs:
           print("DETERMINISTIC_FINANCIAL_EXACT_SHA=PASS")
           print("FALSE_GREEN=0")
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: deterministic-financial-engine-${{ env.EXPECTED_SHA }}
           path: evidence/financial-engine-deterministic.json

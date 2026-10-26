@@ -10,10 +10,10 @@ permissions:
 
 jobs:
   audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Bind mirror source
         run: |
           set -euo pipefail
@@ -55,7 +55,7 @@ jobs:
           print(json.dumps(result,indent=2,ensure_ascii=False))
           assert len(out)==9
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: zevanory-9-products-inventory-audit
           path: nine-products-audit.json

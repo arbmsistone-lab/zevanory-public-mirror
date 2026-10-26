@@ -17,12 +17,13 @@ permissions:
 
 jobs:
   measure:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
+          package-manager-cache: false
           node-version: "22"
       - name: Install browser
         run: |
@@ -106,7 +107,7 @@ jobs:
           nohup node scripts/audit/sales-local-server.mjs 8790 >/tmp/sales-scroll-server.log 2>&1 &
           for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8790/solucoes && break; sleep 1; done
           node scripts/audit/sales-scroll-gate.mjs http://127.0.0.1:8790 sales-scroll-gate.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: zevanory-no-scroll-baseline

@@ -7,7 +7,7 @@ jobs:
   attest:
     environment: sandbox-financial-approved  # F2 item 9: MERCADOPAGO_TEST_* só no Environment sandbox
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     env:
       MP_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
