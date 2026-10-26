@@ -22,6 +22,8 @@ on:
       - ".github/workflows/**"
       - "ops/**"
       - "scripts/deploy/promotion_guard.py"
+      - "scripts/deploy/t2_route_guard.py"
+      - "tests/test_t2_route_guard.py"
       - "tests/publisher-inventory.test.mjs"
       - "tests/test_promotion_guard.py"
       - "tests/test_t1_transition.py"
@@ -50,6 +52,8 @@ jobs:
         run: node --test tests/publisher-inventory.test.mjs
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
+      - name: Control Worker factory/tick HMAC guard proof (inline and commercial-hmac module layouts)
+        run: python3 -m unittest -v tests/test_t2_route_guard.py
       - name: Fail-closed replay decision for the production publisher
         run: python3 -m unittest -v tests/test_auto_rerun_decision.py
       - name: Central binding budget compaction (never a gate; behaviour-neutral)
