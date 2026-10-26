@@ -14,12 +14,19 @@
 // Histórico malformado derruba antes de qualquer rede (fail-closed). Falha ao emitir o alerta grava o incidente com
 // alert_emitted_at = null, NÃO grava o batimento e termina com erro (o vigia e a notificação de falha do workflow
 // passam a valer); a próxima execução tenta emitir de novo e a latência medida inclui o atraso.
+//
+// Gatilho externo (AVAL Sol 253/254): o cron do Worker de controle pede workflow_dispatch a cada 5 min com
+// window_id/dispatched_at/dispatch_source (env P18_WINDOW_ID, P18_DISPATCHED_AT, P18_DISPATCH_SOURCE). Cada execução
+// grava o início real do runner e, quando pedida, dispatch_to_start_s. Janela já sondada (pelo id pedido ou pela
+// janela do início) = execução duplicate_window: grava a linha de execução (prova de que o pedido chegou e iniciou),
+// não sonda, não alerta, não grava batimento. O agendador do GitHub segue como caminho extra de melhor esforço.
 import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   SALES_PAGES, STATUS_URL, SCHEMA_PROBE, CONFIRM_DELAY_MS, readP22, validateProbe, validateRun, validateIncident, parseJsonl,
   decideIncident, finalizeIncident, openIncident, buildRunRecord, buildHeartbeat, findOpenAlert, alertBody, ALERT_TITLE,
+  resolveDispatch, isDuplicateWindow, buildCfDispatch, PROBING_OUTCOMES, evaluateCfDispatch, firstProofAt,
 } from "./b0-lib.mjs";
 import { probeUrl } from "./b0-collector.mjs";
 
@@ -59,6 +66,24 @@ export function lastProbe(evidenceDir, atIso) { return readRecent(evidenceDir, "
 function appendLine(dir, prefix, atIso, obj) {
   mkdirSync(join(dir, "p18"), { recursive: true });
   appendFileSync(join(dir, "p18", `${prefix}-${atIso.slice(0, 7)}.jsonl`), JSON.stringify(obj) + "\n");
+}
+
+// Batimento do caminho Cloudflare -> GitHub: só execução pedida pela Cloudflare com janela aceita.
+function writeCfDispatch(dir, run) {
+  if (run.dispatch_source !== "cloudflare-cron" || !run.window_id) return;
+  mkdirSync(join(dir, "p18"), { recursive: true });
+  writeFileSync(join(dir, "p18", "cf-dispatch.json"), JSON.stringify(buildCfDispatch(run), null, 2) + "\n");
+}
+
+// Ordem Sol 263: 1ª prova VÁLIDA do caminho Cloudflare, levada adiante no batimento. Vem do batimento anterior ou, na
+// falta, do cf-dispatch.json atual SE ele for prova válida (FRESH/STALE). Documento quebrado nunca vira 1ª prova.
+function readJson(f) { try { return JSON.parse(readFileSync(f, "utf8")); } catch { return null; } }
+function carryFirstProof(dir, nowMs) {
+  const prev = existsSync(join(dir, "p18", "heartbeat.json")) ? firstProofAt(readJson(join(dir, "p18", "heartbeat.json")), nowMs) : null;
+  if (prev) return prev;
+  const f = join(dir, "p18", "cf-dispatch.json");
+  const ev = existsSync(f) ? evaluateCfDispatch(readJson(f), nowMs) : null;
+  return ev?.valid_proof ? ev.started_at : null;
 }
 
 // Executa a ação de alerta. Retorna { action, emitted_at, issue, error }. Nunca lança: o erro volta para o chamador
@@ -101,7 +126,18 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   const incLines = readRecent(dir, "incidents", startedIso, validateIncident);
   const runs = readRecent(dir, "runs", startedIso, validateRun);
   const open = openIncident(incLines);
-  const run = buildRunRecord({ runId: env.GITHUB_RUN_ID, event: env.GITHUB_EVENT_NAME, startedMs, prevRun: runs.at(-1) || null });
+  const dispatch = resolveDispatch({ windowId: env.P18_WINDOW_ID || "", dispatchedAt: env.P18_DISPATCHED_AT || "", source: env.P18_DISPATCH_SOURCE || "", startedMs });
+  const prevProbing = runs.filter((r) => PROBING_OUTCOMES.includes(r.outcome)).at(-1) || null;
+  const run = buildRunRecord({ runId: env.GITHUB_RUN_ID, event: env.GITHUB_EVENT_NAME, startedMs, prevRun: prevProbing, dispatch });
+  log("::notice title=P18_DISPATCH::" + JSON.stringify({ event: run.event, window_id: run.window_id, start_window_id: run.start_window_id, dispatch_source: run.dispatch_source, dispatched_at: run.dispatched_at, dispatch_to_start_s: run.dispatch_to_start_s, window_rejected: run.window_rejected }));
+  if (isDuplicateWindow(runs, dispatch)) {
+    // Idempotência: nenhuma rede, nenhuma sondagem, nenhum alerta; só a prova de que o pedido iniciou no runner.
+    const dup = validateRun({ ...run, probes_at: [], confirm_reprobe: false, decision: "skip", incident_id: open?.incident_id ?? null, outcome: "duplicate_window" });
+    appendLine(dir, "runs", run.started_at, dup);
+    writeCfDispatch(dir, dup);
+    log("::notice title=P18_SKIP::" + JSON.stringify({ reason: "window_already_probed", window_id: dup.window_id, start_window_id: dup.start_window_id }));
+    return { cur: null, probes: [], decision: { action: "skip" }, action: "skip", incident: null, run: dup };
+  }
 
   const probes = [await runProbe({ fetchImpl, now, pause, kind: "scheduled" })];
   appendLine(dir, "probes", probes[0].at, { ...probes[0], run_id: run.run_id, event: run.event });
@@ -129,9 +165,10 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   }
   const runRec = validateRun({ ...run, probes_at: probes.map((p) => p.at), confirm_reprobe: probes.length > 1, decision: d.action, incident_id: incident?.incident_id ?? open?.incident_id ?? null, outcome: alert.error ? "alert_failed" : "ok" });
   appendLine(dir, "runs", run.started_at, runRec);
+  writeCfDispatch(dir, runRec);
   if (alert.error) throw new Error("P18_ALERT_FAILED " + alert.error);  // sem batimento: o vigia acusa
   const stillOpen = d.action === "recover" ? null : incident || open;
-  writeFileSync(join(dir, "p18", "heartbeat.json"), JSON.stringify(buildHeartbeat({ nowMs: now(), runId: env.GITHUB_RUN_ID, run, cur, open: stillOpen }), null, 2) + "\n");
+  writeFileSync(join(dir, "p18", "heartbeat.json"), JSON.stringify(buildHeartbeat({ nowMs: now(), runId: env.GITHUB_RUN_ID, run, cur, open: stillOpen, cfFirstProofAt: carryFirstProof(dir, now()) }), null, 2) + "\n");
   return { cur, probes, decision: d, action: d.action, incident, run: runRec };
 }
 

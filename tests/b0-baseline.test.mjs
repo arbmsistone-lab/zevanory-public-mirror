@@ -15,6 +15,8 @@ import {
   findOpenAlert, ALERT_TITLE, addDays, validateProbe, fieldOk, SCHEMA_INCIDENT, SCHEMA_RUN, SCHEMA_HEARTBEAT, finalizeIncident,
   withRecovery, validateIncident, decideIncident, openIncident, evaluateHeartbeat, HEARTBEAT_STALE_MIN, aggregateLatency, percentile,
   CONFIRM_BUDGET_S, WATCHDOG_TITLE, parseWorkersUsage, parsePlanProbe, p19Margins, NEON_FREE_BYTES, pickMonthlyDrill,
+  WATCHDOG_CF_TITLE, windowIdOf, parseWindowId, resolveDispatch, isDuplicateWindow, validateRun,
+  evaluateCfDispatch, SCHEMA_CF_DISPATCH, CF_DISPATCH_STALE_MIN, schedSlotMs, firstProofAt,
 } from "../scripts/b0/b0-lib.mjs";
 import { summarizeWorkersGroups, workersUsageForDay, prevUtcDay, WORKERS_QUERY } from "../scripts/audit/workers-usage.mjs";
 import { runDrill } from "../scripts/p20/restore-drill.mjs";
@@ -531,10 +533,17 @@ test("workflows B0/P18: agendados, só GITHUB_TOKEN, gravam só no ramo evidence
   }
   assert.match(mon, /cron: '2-59\/5 \* \* \* \*'/, "Sol 246.09: cadência de 5 min");
   assert.match(mon, /timeout-minutes: 8\b/, "cabe a re-sondagem de confirmação");
+  // AVAL Sol 253/254: pedido externo por janela, concorrência limitada, inputs só por env (nunca no script).
+  assert.match(mon, /workflow_dispatch:\n    inputs:\n      window_id:/, "WF-inputs");
+  for (const k of ["window_id", "dispatched_at", "dispatch_source"]) assert.match(mon, new RegExp("P18_" + k.toUpperCase() + ": \\$\\{\\{ inputs\\." + k + " \\}\\}"), "WF-env " + k);
+  assert.match(mon, /concurrency:\n  group: p18-external-monitor\n  cancel-in-progress: false\n/, "WF-concurrency");
+  assert.doesNotMatch(mon, /queue: max/, "WF-single-pending: no máximo 1 rodando + 1 pendente");
+  assert.ok(mon.split("\n").filter((l) => /inputs\./.test(l)).every((l) => /^\s+P18_[A-Z_]+: \$\{\{ inputs\.[a-z_]+ \}\}$/.test(l) || /^run-name: /.test(l)), "WF-no-input-in-script");
   const wd = wf("p18-monitor-watchdog.yml");
   assert.match(wd, /cron: '4,14,24,34,44,54 \* \* \* \*'/);
   assert.match(wd, /contents: read/); assert.doesNotMatch(wd, /contents: write|secrets\.(?!GITHUB_TOKEN)|pull_request|wrangler|-X\s*POST/);
   assert.match(wd, /issues: write/); assert.match(wd, /runs-on: ubuntu-latest/); assert.match(wd, /p18-watchdog\.mjs/);
+  assert.match(wd, /P18_CF_DISPATCH_EXPECTED: \$\{\{ vars\.P18_CF_DISPATCH_EXPECTED \}\}/, "WF-cf-expected-var");
   assert.doesNotMatch(tst, /branches:/, "testes também em PR empilhado");
   assert.match(mon, /issues: write/);
   assert.doesNotMatch(col, /issues: write/);
@@ -706,4 +715,245 @@ test("evolução do esquema: linha antiga sem o campo novo é relida como incomp
   forged.processes.P20.fields.backup_restore_sample = measured("t", { ok: true });
   forged.processes.P20.complete = true;
   assert.throws(() => parseJsonl(JSON.stringify(forged), validateDailyRecord), /complete_flag_mismatch P20/, "[B0P20.18]");
+});
+
+// ---- gatilho externo (AVAL Sol 253/254): janela de 5 min, idempotência, metadados do pedido, vigia do caminho CF ----
+test("[WIN] id de janela: alinhado ao minuto 0, estrito; slot :02 do agendador cai na janela :00; limites -60 min / +2 min", () => {
+  assert.equal(windowIdOf(Date.parse(T("10:04:59"))), "p18w-20261025T1000Z", "WIN-floor");
+  assert.equal(windowIdOf(Date.parse(T("10:05:00"))), "p18w-20261025T1005Z", "WIN-edge");
+  assert.equal(windowIdOf(schedSlotMs(Date.parse(T("10:02:40")))), "p18w-20261025T1000Z", "WIN-sched-same-window");
+  assert.equal(parseWindowId("p18w-20261025T1005Z"), Date.parse(T("10:05:00")), "WIN-parse");
+  for (const bad of ["p18w-20261025T1003Z", "p18w-20261325T1000Z", "p18w-20261025T2460Z", "p18w-20261025T1000", "x", "", null, "p18w-20261025T1000Z;rm"])
+    assert.equal(parseWindowId(bad), null, "WIN-strict " + bad);
+  const S0 = Date.parse(T("10:00:20"));
+  const ok = resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: T("10:00:01"), source: "cloudflare-cron", startedMs: S0 });
+  assert.deepEqual(ok, { window_id: "p18w-20261025T1000Z", start_window_id: "p18w-20261025T1000Z", dispatch_source: "cloudflare-cron", dispatched_at: T("10:00:01"), dispatch_to_start_s: 19, window_rejected: null }, "WIN-accept");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1005Z", startedMs: Date.parse(T("10:03:00")) }).window_id, "p18w-20261025T1005Z", "WIN-future-120-edge");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1005Z", startedMs: Date.parse(T("10:02:59")) }).window_rejected, "window_in_future", "WIN-future-121");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T0900Z", startedMs: Date.parse(T("10:00:00")) }).window_id, "p18w-20261025T0900Z", "WIN-old-3600-edge");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T0900Z", startedMs: Date.parse(T("10:00:01")) }).window_rejected, "window_too_old", "WIN-old-3601");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: T("09:59:59"), startedMs: S0 }).window_rejected, "bad_dispatched_at", "WIN-dispatch-before-window");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: "ontem", startedMs: S0 }).window_rejected, "bad_dispatched_at", "WIN-dispatch-garbage");
+  assert.equal(resolveDispatch({ windowId: "p18w-20261025T1000Z", dispatchedAt: T("10:02:21"), startedMs: S0 }).window_rejected, "bad_dispatched_at", "WIN-dispatch-after-start");
+  const rej = resolveDispatch({ windowId: "lixo", source: "atacante", startedMs: S0 });
+  assert.equal(rej.window_id, null, "WIN-reject-null"); assert.equal(rej.start_window_id, "p18w-20261025T1000Z", "WIN-reject-falls-back"); assert.equal(rej.dispatch_source, null, "WIN-source-allowlist");
+});
+
+test("[IDEM] pedido por janela: 1ª execução sonda; repetição (pedido ou agendador) na mesma janela não sonda nem alerta; id forjado não suprime", async () => {
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+    let clock = 0; const now = () => clock, sleep = async (ms) => { clock += ms; }, pause = async () => {};
+    const disp = (w, at, run) => envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: run, P18_WINDOW_ID: w, P18_DISPATCHED_AT: at, P18_DISPATCH_SOURCE: "cloudflare-cron" });
+    clock = Date.parse(T("10:00:20"));
+    const a = await monitorMain({ env: disp("p18w-20261025T1000Z", T("10:00:01"), "201"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(a.action, "none", "IDEM-first-probes"); assert.equal(a.run.window_id, "p18w-20261025T1000Z", "IDEM-run-window"); assert.equal(a.run.dispatch_to_start_s, 19, "IDEM-dispatch-to-start");
+    const hb1 = readTextNormalized(join(dir, "p18", "heartbeat.json"));
+    assert.equal(JSON.parse(hb1).window_id, "p18w-20261025T1000Z", "IDEM-hb-window"); assert.equal(JSON.parse(hb1).dispatch_to_start_s, 19, "IDEM-hb-d2s");
+    const cf1 = JSON.parse(readTextNormalized(join(dir, "p18", "cf-dispatch.json")));
+    assert.equal(cf1.schema, SCHEMA_CF_DISPATCH, "IDEM-cf-first"); assert.equal(cf1.started_at, T("10:00:20"), "IDEM-cf-first-start"); assert.equal(cf1.duplicate, false, "IDEM-cf-first-dup");
+    const callsAfterFirst = net.calls.length;
+    // Agendador do GitHub no slot :02 da MESMA janela: duplicada.
+    clock = Date.parse(T("10:02:31"));
+    const b = await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "202" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(b.action, "skip", "IDEM-sched-skip"); assert.equal(net.calls.length, callsAfterFirst, "IDEM-no-network");
+    assert.equal(readTextNormalized(join(dir, "p18", "heartbeat.json")), hb1, "IDEM-no-heartbeat");
+    // Mesmo pedido entregue de novo e iniciado tarde (janela do início já é outra): o id pedido já sondado manda.
+    clock = Date.parse(T("10:06:10"));
+    const c = await monitorMain({ env: disp("p18w-20261025T1000Z", T("10:00:01"), "203"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(c.action, "skip", "IDEM-repeat-skip"); assert.equal(c.run.dispatch_to_start_s, 369, "IDEM-late-d2s");
+    assert.equal(JSON.parse(readTextNormalized(join(dir, "p18", "cf-dispatch.json"))).duplicate, true, "IDEM-cf-dup-recorded");
+    // Próxima janela pedida: sonda; o intervalo conta da última execução que SONDOU, não da duplicada.
+    clock = Date.parse(T("10:06:40"));
+    const d = await monitorMain({ env: disp("p18w-20261025T1005Z", T("10:05:02"), "204"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(d.action, "none", "IDEM-next-window-probes"); assert.equal(d.run.prev_gap_s, 380, "IDEM-gap-from-probing-run");
+    // Id forjado para o futuro (10:20 pedido às 10:11): descartado, sonda a janela do início e NÃO suprime a janela 10:20.
+    clock = Date.parse(T("10:11:00"));
+    const e = await monitorMain({ env: disp("p18w-20261025T1020Z", "", "205"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(e.action, "none", "IDEM-forged-still-probes"); assert.equal(e.run.window_rejected, "window_in_future", "IDEM-forged-rejected"); assert.equal(e.run.window_id, null, "IDEM-forged-null");
+    clock = Date.parse(T("10:20:05"));
+    const f = await monitorMain({ env: disp("p18w-20261025T1020Z", T("10:20:01"), "206"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(f.action, "none", "IDEM-forged-no-suppress");
+    const runs = readTextNormalized(join(dir, "p18", "runs-2026-10.jsonl")).trim().split("\n").map((l) => validateRun(JSON.parse(l)));
+    assert.deepEqual(runs.map((r) => r.outcome), ["ok", "duplicate_window", "duplicate_window", "ok", "ok", "ok"], "IDEM-ledger");
+    assert.deepEqual(runs.map((r) => r.run_id), ["201", "202", "203", "204", "205", "206"], "toda execução que iniciou fica registrada");
+    assert.equal(isDuplicateWindow(runs, resolveDispatch({ windowId: "p18w-20261025T1020Z", startedMs: Date.parse(T("10:24:00")) })), true, "IDEM-covered");
+    // Linha adulterada derruba (HISTORY_MALFORMED na próxima execução).
+    assert.throws(() => validateRun({ ...runs[1], probes_at: [T("10:02:31")] }), /run_duplicate_probed/, "IDEM-dup-cannot-probe");
+    assert.throws(() => validateRun({ ...runs[0], dispatch_to_start_s: 1 }), /run_dispatch_mismatch/, "IDEM-d2s-tamper");
+    assert.throws(() => validateRun({ ...runs[0], start_window_id: "p18w-20261025T1005Z" }), /run_window_mismatch/, "IDEM-window-tamper");
+    assert.ok(net.calls.every((c) => c.url.startsWith("https://api.github.com/") || c.method === "GET"), "produção só por GET");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Prova válida de execução pedida pela Cloudflare: pedido 15 s antes do início, dentro da própria janela.
+function validCfDoc(startedIso, over = {}) {
+  const st = Date.parse(startedIso), dt = st - 15000;
+  return { schema: SCHEMA_CF_DISPATCH, run_id: "1", started_at: startedIso, window_id: windowIdOf(dt), dispatched_at: new Date(dt).toISOString(), dispatch_to_start_s: 15, duplicate: false, ...over };
+}
+test("[WD-CF] vigia do caminho Cloudflare: só alerta com a chave E após a 1ª prova real; > 15 min sem início pedido pela Cloudflare abre issue própria; fecha quando volta", async () => {
+  const doc = (iso) => validCfDoc(iso);
+  const now = Date.parse(T("12:00:00"));
+  assert.equal(CF_DISPATCH_STALE_MIN, 15, "WDCF-15");
+  assert.equal(evaluateCfDispatch(doc(T("11:45:00")), now).state, "FRESH", "WDCF-900");
+  assert.equal(evaluateCfDispatch(doc(T("11:44:59")), now).state, "STALE", "WDCF-901");
+  assert.equal(evaluateCfDispatch(null, now).alert, true, "WDCF-missing");
+  assert.equal(evaluateCfDispatch({ started_at: T("11:59:00") }, now).state, "MALFORMED", "WDCF-malformed");
+  let hbDoc = { schema: SCHEMA_HEARTBEAT, last_success_at: T("11:58:00") }, cfDoc = null; const issues = [];
+  const fetchImpl = async (url, init = {}) => {
+    const u = new URL(String(url));
+    if (u.pathname.endsWith("/contents/p18/heartbeat.json")) return res(hbDoc);
+    if (u.pathname.endsWith("/contents/p18/cf-dispatch.json")) return cfDoc === null ? res({ message: "Not Found" }, 404) : res(cfDoc);
+    if (u.pathname.endsWith("/issues") && !init.method) return res(issues.filter((i) => i.state === "open"));
+    if (u.pathname.endsWith("/issues")) { const i = { number: 60 + issues.length, title: JSON.parse(init.body).title, state: "open" }; issues.push(i); return res(i, 201); }
+    const m = /\/issues\/(\d+)$/.exec(u.pathname);
+    if (m) { const i = issues.find((x) => x.number === Number(m[1])); const b = JSON.parse(init.body); if (b.state) i.state = b.state; return res(i); }
+    if (/\/comments$/.test(u.pathname)) return res({}, 201);
+    return res({}, 404);
+  };
+  const env = { GITHUB_REPOSITORY: "o/r", GITHUB_TOKEN: "fake", GITHUB_RUN_ID: "9" };
+  const w0 = await watchdog({ env, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(w0.cfAction, "none", "WDCF-not-expected"); assert.equal(w0.cfEv.alert, false, "WDCF-not-expected-alert"); assert.equal(issues.length, 0, "WDCF-not-expected-issue");
+  // Ordem Sol 259-262: chave ligada mas sem a 1ª prova real (cf-dispatch.json ausente) = nenhuma expectativa ainda.
+  const wGate = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(wGate.cfEv.gate, "AWAITING_FIRST_PROOF", "WDCF-awaiting-first-proof"); assert.equal(wGate.cfAction, "none", "WDCF-no-alert-before-proof"); assert.equal(issues.length, 0, "WDCF-no-issue-before-proof");
+  // Prova velha sem a chave: só registra.
+  cfDoc = doc(T("11:30:00"));
+  const wOff = await watchdog({ env, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(wOff.cfEv.gate, "NOT_EXPECTED", "WDCF-gate-off"); assert.equal(wOff.cfAction, "none", "WDCF-stale-without-key-silent");
+  // Chave ligada E 1ª prova existente (velha): agora acusa.
+  const w1 = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(w1.cfEv.gate, "ACTIVE", "WDCF-active-after-proof");
+  assert.equal(w1.cfAction, "open", "WDCF-open"); assert.equal(issues[0].title, WATCHDOG_CF_TITLE, "WDCF-title");
+  assert.notEqual(WATCHDOG_CF_TITLE, WATCHDOG_TITLE, "WDCF-distinct"); assert.notEqual(WATCHDOG_CF_TITLE, ALERT_TITLE);
+  assert.equal(w1.action, "none", "batimento do monitor fresco: só o caminho CF acusa");
+  cfDoc = doc(T("11:57:00"));
+  const w2 = await watchdog({ env: { ...env, P18_CF_DISPATCH_EXPECTED: "true" }, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(w2.cfAction, "close", "WDCF-close"); assert.equal(issues[0].state, "closed", "WDCF-closed");
+});
+
+// ---- Ordem Sol 259-262: provas explícitas ----
+test("[IDEM-HB] janela duplicada não altera heartbeat.json (bytes idênticos), nem pelo agendador nem por pedido repetido", async () => {
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+    let clock = Date.parse(T("14:00:15")); const now = () => clock, sleep = async (ms) => { clock += ms; }, pause = async () => {};
+    const disp = (run) => envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: run, P18_WINDOW_ID: "p18w-20261025T1400Z", P18_DISPATCHED_AT: T("14:00:02"), P18_DISPATCH_SOURCE: "cloudflare-cron" });
+    assert.equal((await monitorMain({ env: disp("301"), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} })).action, "none", "IDEMHB-first");
+    const hbPath = join(dir, "p18", "heartbeat.json");
+    const before = readTextNormalized(hbPath);
+    for (const [at, env, label] of [["14:02:40", envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "302" }), "sched"], ["14:03:10", disp("303"), "repeat"], ["14:07:30", disp("304"), "late-repeat"]]) {
+      clock = Date.parse(T(at));
+      const r = await monitorMain({ env, fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+      assert.equal(r.action, "skip", "IDEMHB-skip-" + label);
+      assert.equal(readTextNormalized(hbPath), before, "IDEMHB-unchanged-" + label);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("[WIN-INVALID] id de janela inválido (malformado, desalinhado, data inválida, dispatched_at lixo) ainda sonda, grava batimento e registra o motivo", async () => {
+  const cases = [["lixo", "", "bad_window_id"], ["p18w-20261025T1503Z", "", "bad_window_id"], ["p18w-20261325T1500Z", "", "bad_window_id"], ["p18w-20261025T1500Z", "ontem", "bad_dispatched_at"]];
+  for (const [w, at, why] of cases) {
+    const dir = tmp();
+    try {
+      const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+      const now = () => Date.parse(T("15:01:00")), sleep = async () => {}, pause = async () => {};
+      const r = await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: "401", P18_WINDOW_ID: w, P18_DISPATCHED_AT: at, P18_DISPATCH_SOURCE: "cloudflare-cron" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+      assert.equal(r.action, "none", "WININV-probes " + w);
+      assert.ok(net.calls.some((c) => c.url.startsWith("https://zevanory.api.br/") || c.url.startsWith("https://vendas.zevanory.api.br/")), "WININV-network " + w);
+      assert.equal(r.run.window_rejected, why, "WININV-reason " + w); assert.equal(r.run.window_id, null, "WININV-null " + w);
+      assert.equal(r.run.start_window_id, "p18w-20261025T1500Z", "WININV-start-window " + w);
+      assert.ok(existsSync(join(dir, "p18", "heartbeat.json")), "WININV-heartbeat " + w);
+      assert.equal(existsSync(join(dir, "p18", "cf-dispatch.json")), false, "WININV-no-cf-proof " + w);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+// ---- Ordem Sol 263: transições do vigia do caminho Cloudflare ----
+test("[CF-PROOF] níveis separados: documento, estrutura e prova coerente; só FRESH/STALE são prova válida", () => {
+  const now = Date.parse(T("12:00:00"));
+  const v = validCfDoc(T("11:58:00"));
+  assert.equal(evaluateCfDispatch(v, now).state, "FRESH", "CFP-fresh"); assert.equal(evaluateCfDispatch(v, now).valid_proof, true, "CFP-valid");
+  assert.equal(evaluateCfDispatch(validCfDoc(T("11:30:00")), now).valid_proof, true, "CFP-stale-is-proof");
+  assert.equal(evaluateCfDispatch(null, now).state, "MISSING", "CFP-missing");
+  assert.equal(evaluateCfDispatch({ ...v, duplicate: "no" }, now).state, "MALFORMED", "CFP-malformed-type");
+  assert.equal(evaluateCfDispatch([], now).state, "MALFORMED", "CFP-malformed-array");
+  assert.equal(evaluateCfDispatch({ ...v, window_id: "p18w-20261025T1158Z" }, now).state, "INVALID_PROOF", "CFP-bad-window");
+  assert.equal(evaluateCfDispatch({ ...v, run_id: "abc" }, now).state, "INVALID_PROOF", "CFP-bad-run-id");
+  assert.equal(evaluateCfDispatch({ ...v, started_at: "ontem" }, now).state, "INVALID_PROOF", "CFP-bad-started");
+  const after = validCfDoc(T("11:58:00"), { dispatched_at: T("11:58:05"), window_id: "p18w-20261025T1155Z", dispatch_to_start_s: -5 });
+  assert.equal(evaluateCfDispatch(after, now).reason, "dispatched_after_start", "CFP-order");
+  assert.equal(evaluateCfDispatch({ ...v, window_id: "p18w-20261025T1145Z" }, now).reason, "dispatched_outside_window", "CFP-outside-window");
+  assert.equal(evaluateCfDispatch({ ...v, dispatch_to_start_s: 99 }, now).reason, "dispatch_to_start_mismatch", "CFP-d2s");
+  const fut = validCfDoc(T("12:05:00"));
+  assert.equal(evaluateCfDispatch(fut, now).state, "FUTURE", "CFP-future"); assert.equal(evaluateCfDispatch(fut, now).valid_proof, false, "CFP-future-not-proof");
+  assert.equal(firstProofAt({ cf_first_proof_at: T("11:00:00") }, now), T("11:00:00"), "CFP-first-proof");
+  assert.equal(firstProofAt({ cf_first_proof_at: T("12:10:00") }, now), null, "CFP-first-proof-future");
+  assert.equal(firstProofAt({ cf_first_proof_at: "x" }, now), null);
+});
+
+test("[WD-CF-GATE] antes da 1ª prova válida: documento malformado, erro de leitura, prova inválida ou futura ficam AWAITING_FIRST_PROOF com aviso não paginante; depois da prova, documento quebrado alerta", async () => {
+  const now = Date.parse(T("12:00:00"));
+  let hbDoc = { schema: SCHEMA_HEARTBEAT, last_success_at: T("11:58:00") }, cf = { status: 404, body: null }; const issues = [];
+  const fetchImpl = async (url, init = {}) => {
+    const u = new URL(String(url));
+    if (u.pathname.endsWith("/contents/p18/heartbeat.json")) return res(hbDoc);
+    if (u.pathname.endsWith("/contents/p18/cf-dispatch.json")) return cf.status === 200 ? new Response(typeof cf.body === "string" ? cf.body : JSON.stringify(cf.body), { status: 200 }) : res({ message: "x" }, cf.status);
+    if (u.pathname.endsWith("/issues") && !init.method) return res(issues.filter((i) => i.state === "open"));
+    if (u.pathname.endsWith("/issues")) { const i = { number: 70 + issues.length, title: JSON.parse(init.body).title, state: "open" }; issues.push(i); return res(i, 201); }
+    const m = /\/issues\/(\d+)$/.exec(u.pathname);
+    if (m) { const i = issues.find((x) => x.number === Number(m[1])); const b = JSON.parse(init.body); if (b.state) i.state = b.state; return res(i); }
+    return res({}, 201);
+  };
+  const env = { GITHUB_REPOSITORY: "o/r", GITHUB_TOKEN: "fake", GITHUB_RUN_ID: "9", P18_CF_DISPATCH_EXPECTED: "true" };
+  const cases = [
+    ["malformed", { status: 200, body: "{lixo" }, "MALFORMED"],
+    ["read-error", { status: 500, body: null }, "UNREADABLE"],
+    ["invalid-timestamps", { status: 200, body: validCfDoc(T("11:58:00"), { dispatched_at: T("11:58:30"), dispatch_to_start_s: -30 }) }, "INVALID_PROOF"],
+    ["future", { status: 200, body: validCfDoc(T("12:09:00")) }, "FUTURE"],
+  ];
+  for (const [label, c, state] of cases) {
+    cf = c; const lines = [];
+    const w = await watchdog({ env, fetchImpl, now: () => now, log: (l) => lines.push(l) });
+    assert.equal(w.cfEv.gate, "AWAITING_FIRST_PROOF", "WDG-awaiting-" + label);
+    assert.equal(w.cfEv.state, state, "WDG-state-" + label);
+    assert.equal(w.cfEv.alert, false, "WDG-no-page-" + label); assert.equal(w.cfAction, "none", "WDG-no-issue-action-" + label);
+    assert.equal(w.pendingNotice, state, "WDG-notice-" + label);
+    assert.ok(lines.some((l) => l.startsWith("::warning title=P18_WATCHDOG_CF_PENDING::")), "WDG-warning-logged-" + label);
+    assert.ok(!lines.some((l) => l.startsWith("::error")), "WDG-not-error-" + label);
+  }
+  assert.equal(issues.length, 0, "WDG-no-issue-before-proof");
+  cf = { status: 404, body: null };
+  const quiet = [];
+  const wm = await watchdog({ env, fetchImpl, now: () => now, log: (l) => quiet.push(l) });
+  assert.equal(wm.pendingNotice, null, "WDG-missing-no-notice"); assert.ok(!quiet.some((l) => l.includes("P18_WATCHDOG_CF_PENDING")));
+  // Depois da 1ª prova válida (gravada pelo monitor no batimento), documento quebrado É falha do caminho Cloudflare.
+  hbDoc = { ...hbDoc, cf_first_proof_at: T("10:00:00") };
+  cf = { status: 200, body: "{lixo" };
+  const wa = await watchdog({ env, fetchImpl, now: () => now, log: () => {} });
+  assert.equal(wa.cfEv.gate, "ACTIVE", "WDG-active-after-prior-proof"); assert.equal(wa.cfAction, "open", "WDG-broken-after-proof-alerts");
+  assert.equal(issues[0].title, WATCHDOG_CF_TITLE);
+});
+
+test("[CF-FIRST-PROOF] o monitor grava cf_first_proof_at no batimento só a partir de prova válida e o leva adiante", async () => {
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+    let clock = Date.parse(T("16:00:20")); const now = () => clock, sleep = async () => {}, pause = async () => {};
+    const hb = () => JSON.parse(readTextNormalized(join(dir, "p18", "heartbeat.json")));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "500" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, null, "CFFP-none-without-cf");
+    // cf-dispatch.json quebrado no ramo: não vira 1ª prova.
+    writeFileSync(join(dir, "p18", "cf-dispatch.json"), "{lixo\n");
+    clock = Date.parse(T("16:05:20"));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "501" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, null, "CFFP-broken-doc-not-proof");
+    clock = Date.parse(T("16:10:20"));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: "502", P18_WINDOW_ID: "p18w-20261025T1610Z", P18_DISPATCHED_AT: T("16:10:02"), P18_DISPATCH_SOURCE: "cloudflare-cron" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, T("16:10:20"), "CFFP-set-from-valid-proof");
+    writeFileSync(join(dir, "p18", "cf-dispatch.json"), "{lixo\n");
+    clock = Date.parse(T("16:15:20"));
+    await monitorMain({ env: envFor(dir, { GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "503" }), fetchImpl: net.fetchImpl, now, sleep, pause, log: () => {} });
+    assert.equal(hb().cf_first_proof_at, T("16:10:20"), "CFFP-carried-forward");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

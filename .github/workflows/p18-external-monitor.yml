@@ -7,10 +7,37 @@ name: P18 external monitor (read-only)
 # Grava no ramo evidence/b0-baseline: p18/probes-*.jsonl, p18/incidents-*.jsonl (1ª falha observada, confirmação,
 # emissão do alerta, recuperação, latências), p18/runs-*.jsonl (atraso do agendador) e p18/heartbeat.json (lido pelo
 # vigia p18-monitor-watchdog). Alerta: issue do GitHub aberta na confirmação, fechada na 1ª sondagem boa.
+#
+# AVAL Sol 253/254: o agendador do GitHub está estrangulado neste repositório (o monitor não rodou desde a ativação).
+# Gatilho principal = cron EXISTENTE do Worker de controle (Cloudflare), que pede workflow_dispatch a cada 5 min com
+# window_id (p18w-AAAAMMDDTHHMMZ, início da janela de 5 min), dispatched_at e dispatch_source=cloudflare-cron.
+# O schedule abaixo continua como caminho extra de melhor esforço e cai na MESMA janela (slot :02 -> janela :00).
+# Idempotência: (1) concurrency abaixo = no máximo 1 execução rodando + 1 pendente no grupo (uma nova pendente
+# cancela a pendente anterior; doc. GitHub "Control workflow concurrency"), nunca execuções ilimitadas;
+# (2) o monitor grava window_id/start_window_id em p18/runs-*.jsonl e uma janela já sondada vira duplicate_window
+# (sem sondagem, sem alerta, sem batimento). Os inputs entram por env (nunca interpolados no script) e são
+# validados no monitor (formato, alinhamento, [-60 min, +2 min]); inválido = descartado, a sondagem acontece.
+run-name: "P18 monitor ${{ inputs.window_id || github.event_name }}"
 on:
   schedule:
     - cron: '2-59/5 * * * *'
   workflow_dispatch:
+    inputs:
+      window_id:
+        description: "Janela de 5 min (p18w-AAAAMMDDTHHMMZ); vazio = janela do início"
+        required: false
+        default: ""
+        type: string
+      dispatched_at:
+        description: "Instante ISO-8601 UTC do pedido (preenchido pelo Worker de controle)"
+        required: false
+        default: ""
+        type: string
+      dispatch_source:
+        description: "cloudflare-cron | manual"
+        required: false
+        default: "manual"
+        type: string
 
 permissions:
   contents: write   # só o ramo evidence/b0-baseline (scripts/b0/evidence-branch.sh recusa qualquer outro)
@@ -46,6 +73,9 @@ jobs:
       - name: Sondar de fora da Cloudflare, confirmar na mesma execução e decidir o alerta
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          P18_WINDOW_ID: ${{ inputs.window_id }}
+          P18_DISPATCHED_AT: ${{ inputs.dispatched_at }}
+          P18_DISPATCH_SOURCE: ${{ inputs.dispatch_source }}
         run: node scripts/b0/p18-monitor.mjs
       - name: Publicar a sondagem no ramo de evidência
         if: ${{ always() }}

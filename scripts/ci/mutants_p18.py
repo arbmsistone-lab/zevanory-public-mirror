@@ -21,7 +21,9 @@ TEST = "tests/b0-baseline.test.mjs"
 COPY = ["scripts/b0", "docs/b0", "tests/helpers/text.mjs", TEST, "scripts/p20", "docs/p20", "tests/helpers/p20-backup-fixture.mjs", "scripts/audit/workers-usage.mjs", ".github/workflows/b0-baseline-collector.yml",
         ".github/workflows/p18-external-monitor.yml", ".github/workflows/b0-baseline-tests.yml", ".github/workflows/p18-monitor-watchdog.yml"]
 LIB, MON, WDG = "scripts/b0/b0-lib.mjs", "scripts/b0/p18-monitor.mjs", "scripts/b0/p18-watchdog.mjs"
-BASELINE_TOTAL = 28  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
+WFM = ".github/workflows/p18-external-monitor.yml"
+WF = "workflows B0/P18"
+BASELINE_TOTAL = 36  # = linha de tests/b0-baseline.test.mjs em tests/node-suite.manifest
 
 def P(test, label):
     return {"test_pattern": test, "assertion_pattern": label}
@@ -80,7 +82,7 @@ M = {
         {"primary": [P("[GAP]", "GAP-p95")]}),
     "M16_slot_offset_ignored": (LIB, "const period = PROBE_CADENCE_MIN * 60000, off = CRON_OFFSET_MIN * 60000;",
         "const period = PROBE_CADENCE_MIN * 60000, off = 0;", {"primary": [P(E2E1, "E2E-delay")]}),
-    "M17_watchdog_edge_900": (LIB, "if (age > staleMin * 60) return { state: \"STALE\"", "if (age >= staleMin * 60) return { state: \"STALE\"",
+    "M17_watchdog_edge_900": (LIB, "if (age > staleMin * 60) return { state: \"STALE\", alert: true, age_s: age, last_success_at", "if (age >= staleMin * 60) return { state: \"STALE\", alert: true, age_s: age, last_success_at",
         {"primary": [P("[WD]", "WD-900")]}),
     "M18_watchdog_30min": (LIB, "export const HEARTBEAT_STALE_MIN = 15;", "export const HEARTBEAT_STALE_MIN = 30;",
         {"primary": [P("[WD]", "WD-901")]}),
@@ -97,6 +99,64 @@ M = {
             S(E2E1, "E2E-s9-unknown", "o incidente sem sondagem boa anterior passa a MET")]}),
     "M24_recovery_keeps_issue_open": (MON, "} else if (cur.up && open) {", "} else if (false) {",
         {"primary": [P(E2E1, "E2E-close")]}),
+    # ---- gatilho externo (AVAL Sol 253/254): janela, idempotência, metadados do pedido, vigia do caminho Cloudflare ----
+    "M25_no_idempotency": (MON, "if (isDuplicateWindow(runs, dispatch)) {", "if (false) {",
+        {"primary": [P("[IDEM]", "IDEM-sched-skip")], "secondary": [
+            S("[IDEM-HB]", "IDEMHB-skip-sched", "sem idempotência a duplicada do agendador sonda em vez de pular")]}),
+    "M26_requested_window_ignored": (LIB, "return (dispatch.window_id !== null && c.has(dispatch.window_id)) || c.has(dispatch.start_window_id);",
+        "return c.has(dispatch.start_window_id);", {"primary": [P("[IDEM]", "IDEM-repeat-skip")], "secondary": [
+            S("[IDEM-HB]", "IDEMHB-skip-late-repeat", "o pedido repetido que inicia na janela seguinte deixa de ser reconhecido pelo id pedido")]}),
+    "M27_future_bound_open": (LIB, 'if (w > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return { ...out, window_rejected: "window_in_future" };', "",
+        {"primary": [P("[WIN]", "WIN-future-121")], "secondary": [
+            S("[IDEM]", "IDEM-forged-rejected", "o id forjado para 10:20 passa a ser aceito às 10:11 e a execução deixa de registrar window_in_future")]}),
+    "M28_dispatch_after_start": (LIB, " || t > startedMs + DISPATCH_MAX_FUTURE_S * 1000) return", ") return",
+        {"primary": [P("[WIN]", "WIN-dispatch-after-start")]}),
+    "M29_gap_from_duplicate": (MON, "const prevProbing = runs.filter((r) => PROBING_OUTCOMES.includes(r.outcome)).at(-1) || null;",
+        "const prevProbing = runs.at(-1) || null;", {"primary": [P("[IDEM]", "IDEM-gap-from-probing-run")]}),
+    "M30_cf_watch_without_owner_switch": (WDG, 'const gate = !expected ? "NOT_EXPECTED" : !activated ? "AWAITING_FIRST_PROOF" : "ACTIVE";',
+        'const gate = !activated ? "AWAITING_FIRST_PROOF" : "ACTIVE";', {"primary": [P("[WD-CF]", "WDCF-gate-off")]}),
+    "M31_cf_stale_edge_900": (LIB, 'if (age > staleMin * 60) return { ...ok, state: "STALE" };',
+        'if (age >= staleMin * 60) return { ...ok, state: "STALE" };', {"primary": [P("[WD-CF]", "WDCF-900")]}),
+    "M32_window_not_aligned": (LIB, "if (Number.isNaN(ms) || windowIdOf(ms) !== id || windowStartMs(ms) !== ms) return null;",
+        "if (Number.isNaN(ms)) return null;", {"primary": [P("[WIN]", "WIN-strict")], "secondary": [
+            S("[WIN-INVALID]", "WININV-reason", "o id desalinhado (T1503Z) passa a ser aceito e a execução não registra bad_window_id")]}),
+    "M33_source_not_allowlisted": (LIB, "const src = DISPATCH_SOURCES.includes(source) ? source : null;", "const src = source || null;",
+        {"primary": [P("[WIN]", "WIN-source-allowlist")]}),
+    "M34_dup_start_not_recorded": (MON, "    writeCfDispatch(dir, dup);\n", "",
+        {"primary": [P("[IDEM]", "IDEM-cf-dup-recorded")]}),
+    "M35_window_input_not_passed": (WFM, "          P18_WINDOW_ID: ${{ inputs.window_id }}\n", "",
+        {"primary": [P(WF, "WF-env window_id")]}),
+    "M36_unbounded_queue": (WFM, "  cancel-in-progress: false\n", "  cancel-in-progress: false\n  queue: max\n",
+        {"primary": [P(WF, "WF-single-pending")]}),
+    # ---- Ordem Sol 259-262 ----
+    "M37_duplicate_touches_heartbeat": (MON, "    writeCfDispatch(dir, dup);\n", "    writeCfDispatch(dir, dup);\n    writeFileSync(join(dir, \"p18\", \"heartbeat.json\"), \"{}\\n\");\n",
+        {"primary": [P("[IDEM-HB]", "IDEMHB-unchanged-sched")], "secondary": [
+            S("[IDEM]", "IDEM-no-heartbeat", "a duplicada do agendador no teste [IDEM] também reescreve o batimento")]}),
+    "M38_invalid_window_skips_probe": (MON, "if (isDuplicateWindow(runs, dispatch)) {", "if (isDuplicateWindow(runs, dispatch) || dispatch.window_rejected) {",
+        {"primary": [P("[WIN-INVALID]", "WININV-probes")], "secondary": [
+            S("[IDEM]", "IDEM-forged-still-probes", "o id forjado para o futuro é rejeitado e, com o mutante, a execução deixa de sondar")]}),
+    "M39_cf_gate_without_first_proof": (WDG, "const activated = cfEv0.valid_proof === true || priorProof !== null;", "const activated = true;",
+        {"primary": [P("[WD-CF]", "WDCF-awaiting-first-proof")], "secondary": [
+            S("[WD-CF-GATE]", "WDG-awaiting-malformed", "sem exigência de prova, o documento malformado já ativa o vigia")]}),
+    "M40_incoherent_dispatch_keeps_window": (LIB, 'return { ...out, window_id: null, window_rejected: "bad_dispatched_at" };', 'return { ...out, window_rejected: "bad_dispatched_at" };',
+        {"primary": [P("[WIN-INVALID]", "WININV-null")]}),
+    # ---- Ordem Sol 263: transições do vigia do caminho Cloudflare ----
+    "M41_revert_to_not_missing": (WDG, "const activated = cfEv0.valid_proof === true || priorProof !== null;", 'const activated = cfEv0.state !== "MISSING";',
+        {"primary": [P("[WD-CF-GATE]", "WDG-awaiting-malformed")]}),
+    "M42_revert_to_not_missing_with_prior": (WDG, "const activated = cfEv0.valid_proof === true || priorProof !== null;", 'const activated = cfEv0.state !== "MISSING" || priorProof !== null;',
+        {"primary": [P("[WD-CF-GATE]", "WDG-awaiting-malformed")]}),
+    "M43_prior_proof_ignored": (WDG, "const priorProof = firstProofAt(read.hb, now());", "const priorProof = null;",
+        {"primary": [P("[WD-CF-GATE]", "WDG-active-after-prior-proof")]}),
+    "M44_order_not_checked": (LIB, 'if (dt > st) return { ...base, state: "INVALID_PROOF", reason: "dispatched_after_start" };', "",
+        {"primary": [P("[CF-PROOF]", "CFP-order")], "secondary": [
+            S("[WD-CF-GATE]", "WDG-awaiting-invalid-timestamps", "pedido depois do início passa a ser prova válida e ativa o vigia")]}),
+    "M45_future_is_proof": (LIB, 'if (age < -120) return { ...base, state: "FUTURE", age_s: age, started_at: doc.started_at };', "",
+        {"primary": [P("[CF-PROOF]", "CFP-future")], "secondary": [
+            S("[WD-CF-GATE]", "WDG-awaiting-future", "início no futuro passa a ser prova válida e ativa o vigia")]}),
+    "M46_broken_doc_becomes_first_proof": (MON, "return ev?.valid_proof ? ev.started_at : null;", "return ev ? (ev.started_at ?? new Date(nowMs).toISOString()) : null;",
+        {"primary": [P("[CF-FIRST-PROOF]", "CFFP-broken-doc-not-proof")]}),
+    "M47_first_proof_not_carried": (MON, "  if (prev) return prev;\n", "",
+        {"primary": [P("[CF-FIRST-PROOF]", "CFFP-carried-forward")]}),
 }
 
 
