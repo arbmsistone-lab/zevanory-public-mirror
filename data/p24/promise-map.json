@@ -1,0 +1,1069 @@
+{
+  "schema": "zevanory-p24-promise-map/v1",
+  "note": "P24 (Roteiro Mestre v4.7, seção 5): cada promessa extraída da página de venda precisa apontar para o material entregue. O texto de cada promessa é idêntico ao da página (normalizado só em espaços). Promessa da página sem entrada neste mapa reprova o gate. 'files' são caminhos dentro do zip do produto; 'component' exige cópia byte a byte do produto avulso; 'anchors' são termos (sem acento, minúsculos) que precisam aparecer no arquivo indicado, o que é evidência automática de tema, não avaliação cega. 'review' = 'REVISAO_HUMANA' marca promessa cuja correspondência o executor não considera comprovada.",
+  "extraction": {
+    "hero_receipt": "div.hero-panel.receipt ul.outcome-list > li",
+    "offer_receives": "div.offer-side 'O que você recebe' > ul > li",
+    "essentials": "div[data-field=caracteristicas] dd, separado por ';'",
+    "scope_features": "article.feature h3",
+    "method_cards": "article.card h3",
+    "offer_method": "div.offer-main > ul > li",
+    "guard": "as seis regiões são obrigatórias; região ausente reprova o gate"
+  },
+  "products": {
+    "ia-na-pratica": {
+      "sku": "ZEV-IA-011",
+      "page": "sales-public/ia-na-pratica.html",
+      "promises": [
+        {
+          "id": "IA-D01",
+          "text": "Manual completo (PDF e DOCX editável)",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_IA_Manual_v1.1.pdf",
+            "ZEVANORY_IA_Manual_v1.1.docx"
+          ]
+        },
+        {
+          "id": "IA-D02",
+          "text": "Guia rápido em PDF",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_IA_Guia_Rapido_v1.1.pdf"
+          ]
+        },
+        {
+          "id": "IA-D03",
+          "text": "Arquivo de comandos prontos para IA",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_IA_Comandos.txt"
+          ]
+        },
+        {
+          "id": "IA-D04",
+          "text": "Planilha de aplicação (XLSX)",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_IA_Planilha.xlsx"
+          ]
+        },
+        {
+          "id": "IA-D05",
+          "text": "Arquivo 'Comece aqui' com o passo a passo",
+          "type": "deliverable",
+          "files": [
+            "00_COMECE_AQUI.txt"
+          ]
+        },
+        {
+          "id": "IA-C01",
+          "text": "Pensar antes de pedir",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "contexto",
+                "briefing"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-C02",
+          "text": "Fluxos práticos",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "modelo",
+                "rotina"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-C03",
+          "text": "Revisão e critérios",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "revisao",
+                "criterio"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-C04",
+          "text": "Rotina de trabalho",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "rotina",
+                "responsavel"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-M01",
+          "text": "Clareza de entrada",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "contexto",
+                "briefing"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-M02",
+          "text": "Fluxo repetível",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "rotina",
+                "repet"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-M03",
+          "text": "Revisão consciente",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "revisao",
+                "conferir"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-K01",
+          "text": "Estrutura de uso aplicável ao dia a dia.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "rotina",
+                "faca agora"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-K02",
+          "text": "Modelos para tarefas e rotinas recorrentes.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "modelo",
+                "rotina"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-K03",
+          "text": "Critérios de revisão e melhoria.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "criterio",
+                "revisao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "IA-K04",
+          "text": "Foco em prática, não em promessa de resultado automático.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "faca agora",
+                "promessa de faturamento"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "vendas-na-pratica": {
+      "sku": "ZEV-VEN-011",
+      "page": "sales-public/vendas-na-pratica.html",
+      "promises": [
+        {
+          "id": "VEN-D01",
+          "text": "Manual completo (PDF e DOCX editável)",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Vendas_Manual_v1.1.pdf",
+            "ZEVANORY_Vendas_Manual_v1.1.docx"
+          ]
+        },
+        {
+          "id": "VEN-D02",
+          "text": "Guia rápido em PDF",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf"
+          ]
+        },
+        {
+          "id": "VEN-D03",
+          "text": "Modelos de mensagens de venda e follow-up",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Vendas_Mensagens.txt"
+          ],
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Mensagens.txt",
+              "anchors": [
+                "proposta",
+                "retorno combinado"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-D04",
+          "text": "Roteiro de conteúdos",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Vendas_Conteudos.txt"
+          ]
+        },
+        {
+          "id": "VEN-D05",
+          "text": "Planilha de acompanhamento comercial (XLSX)",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Vendas_Planilha.xlsx"
+          ],
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Planilha.xlsx",
+              "anchors": [
+                "oportunidades",
+                "indicadores"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-D06",
+          "text": "Arquivo 'Comece aqui' com o passo a passo",
+          "type": "deliverable",
+          "files": [
+            "00_COMECE_AQUI.txt"
+          ]
+        },
+        {
+          "id": "VEN-C01",
+          "text": "Uma oferta que você consegue cumprir",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "oferta que voce consegue cumprir",
+                "publico",
+                "limite"
+              ]
+            }
+          ],
+          "history": "Até o #927 era \"Quem abordar\" (prospecção), marcado REVISAO_HUMANA na primeira conferência P24 (25/10/2026); no #927 passou a \"Oferta que você cumpre\" e depois a \"Uma oferta que você consegue cumprir\", o que a aula B1 entrega."
+        },
+        {
+          "id": "VEN-C02",
+          "text": "Como conduzir",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "atendimento",
+                "proximo passo"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-C03",
+          "text": "Como apresentar valor",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "proposta",
+                "escopo",
+                "limite"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-C04",
+          "text": "Como acompanhar",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "acompanhamento",
+                "retorno"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-M01",
+          "text": "Funil mais claro",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "funil",
+                "oportunidade"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-M02",
+          "text": "Conversa orientada ao cliente",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "atendimento",
+                "objec"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-M03",
+          "text": "Aprendizado contínuo",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "indicador",
+                "melhoria"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-K01",
+          "text": "Organização de funil e etapas.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "funil",
+                "etapa"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-K02",
+          "text": "Roteiros de descoberta e atendimento.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Mensagens.txt",
+              "anchors": [
+                "entender necessidade",
+                "recepcao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-K03",
+          "text": "Estrutura de oferta e objeções.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "oferta",
+                "objec"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "VEN-K04",
+          "text": "Follow-up e aprendizado comercial.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "acompanhamento",
+                "indicador"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "lucro-e-caixa": {
+      "sku": "ZEV-LCX-011",
+      "page": "sales-public/lucro-e-caixa.html",
+      "promises": [
+        {
+          "id": "LCX-D01",
+          "text": "Manual completo (PDF e DOCX editável)",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+            "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.docx"
+          ]
+        },
+        {
+          "id": "LCX-D02",
+          "text": "Guia rápido (PDF e DOCX)",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.pdf",
+            "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.1.docx"
+          ]
+        },
+        {
+          "id": "LCX-D03",
+          "text": "Planilha de caixa e margem (XLSX)",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx"
+          ],
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx",
+              "anchors": [
+                "caixa",
+                "margem"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-D04",
+          "text": "Checklist financeiro semanal",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt"
+          ]
+        },
+        {
+          "id": "LCX-D05",
+          "text": "Comandos de IA para análise financeira",
+          "type": "deliverable",
+          "files": [
+            "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.1.txt"
+          ]
+        },
+        {
+          "id": "LCX-D06",
+          "text": "Arquivo 'Comece aqui' com o passo a passo",
+          "type": "deliverable",
+          "files": [
+            "00_COMECE_AQUI.txt"
+          ]
+        },
+        {
+          "id": "LCX-C01",
+          "text": "Entradas e saídas",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "entrada",
+                "saida",
+                "caixa"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-C02",
+          "text": "Fixos e variáveis",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "fixa",
+                "variave",
+                "custo"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-C03",
+          "text": "Preço e resultado",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "preco",
+                "margem",
+                "resultado"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-C04",
+          "text": "Revisão financeira",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+              "anchors": [
+                "revisao",
+                "decisao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-M01",
+          "text": "Caixa visível",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "caixa",
+                "entrada"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-M02",
+          "text": "Margem mais clara",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "margem",
+                "custo"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-M03",
+          "text": "Revisão recorrente",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+              "anchors": [
+                "proxima revisao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-K01",
+          "text": "Organização de entradas e saídas.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "entrada",
+                "saida"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-K02",
+          "text": "Leitura prática de custos e margem.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "custo",
+                "margem"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-K03",
+          "text": "Rotina de acompanhamento.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.1.txt",
+              "anchors": [
+                "proxima revisao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "LCX-K04",
+          "text": "Estrutura para decisões operacionais mais conscientes.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "decis"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "combo-ia-vendas": {
+      "sku": "ZEV-CMB-011",
+      "page": "sales-public/combo-ia-vendas.html",
+      "promises": [
+        {
+          "id": "CMB-D01",
+          "text": "IA na Prática completo (manual, guia, comandos e planilha)",
+          "type": "component",
+          "component": "ia-na-pratica",
+          "prefix": "01_IA_na_Pratica/"
+        },
+        {
+          "id": "CMB-D02",
+          "text": "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)",
+          "type": "component",
+          "component": "vendas-na-pratica",
+          "prefix": "02_Vendas_na_Pratica/"
+        },
+        {
+          "id": "CMB-P01",
+          "text": "Economia de R$ 97 em relação à compra separada (R$ 394)",
+          "type": "price",
+          "components": [
+            "ia-na-pratica",
+            "vendas-na-pratica"
+          ]
+        },
+        {
+          "id": "CMB-C01",
+          "text": "Método de uso",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "contexto",
+                "revisao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-C02",
+          "text": "Processo comercial",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "atendimento",
+                "proposta",
+                "acompanhamento"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-C03",
+          "text": "Uso independente",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "00_LEIA_PRIMEIRO.txt",
+              "anchors": [
+                "forma independente",
+                "ordem sugerida"
+              ]
+            }
+          ],
+          "history": "Até o #927 era \"IA dentro do fluxo\", marcado REVISAO_HUMANA na primeira conferência P24 (25/10/2026); a página passou a dizer o que o 00_LEIA_PRIMEIRO.txt do combo diz."
+        },
+        {
+          "id": "CMB-C04",
+          "text": "Aprendizado",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "indicador",
+                "melhoria"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-M01",
+          "text": "IA com método",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "contexto",
+                "revisao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-M02",
+          "text": "Vendas organizadas",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "atendimento",
+                "proposta",
+                "acompanhamento"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-M03",
+          "text": "Melhoria contínua",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "criterio"
+              ]
+            },
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "indicador"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-K01",
+          "text": "Conteúdo de IA na Prática.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "briefing"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-K02",
+          "text": "Conteúdo de Vendas na Prática.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "proposta"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-K03",
+          "text": "Ordem sugerida para usar os dois.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "00_LEIA_PRIMEIRO.txt",
+              "anchors": [
+                "ordem sugerida"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "CMB-K04",
+          "text": "Estrutura de revisão e melhoria.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "revisao"
+              ]
+            },
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "melhoria"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "negocio-completo": {
+      "sku": "ZEV-NGC-011",
+      "page": "sales-public/negocio-completo.html",
+      "promises": [
+        {
+          "id": "NGC-D01",
+          "text": "IA na Prática completo",
+          "type": "component",
+          "component": "ia-na-pratica",
+          "prefix": "01_IA_na_Pratica/"
+        },
+        {
+          "id": "NGC-D02",
+          "text": "Vendas na Prática completo",
+          "type": "component",
+          "component": "vendas-na-pratica",
+          "prefix": "02_Vendas_na_Pratica/"
+        },
+        {
+          "id": "NGC-D03",
+          "text": "Lucro & Caixa completo",
+          "type": "component",
+          "component": "lucro-e-caixa",
+          "prefix": "03_Lucro_e_Caixa/"
+        },
+        {
+          "id": "NGC-D04",
+          "text": "Plano integrado de 30 dias (PDF e DOCX)",
+          "type": "deliverable",
+          "files": [
+            "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+            "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.docx"
+          ]
+        },
+        {
+          "id": "NGC-D05",
+          "text": "Painel de decisão integrada (XLSX)",
+          "type": "deliverable",
+          "files": [
+            "05_Painel_Decisao_Integrada/ZEVANORY_Painel_Decisao_Integrada_v1.0.xlsx",
+            "05_Painel_Decisao_Integrada/00_COMECE_AQUI.txt"
+          ]
+        },
+        {
+          "id": "NGC-P01",
+          "text": "Economia de R$ 244 em relação à compra separada (R$ 641)",
+          "type": "price",
+          "components": [
+            "ia-na-pratica",
+            "vendas-na-pratica",
+            "lucro-e-caixa"
+          ]
+        },
+        {
+          "id": "NGC-C01",
+          "text": "IA na Prática",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "rotina",
+                "briefing"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-C02",
+          "text": "Vendas na Prática",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "proxima acao",
+                "proposta"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-C03",
+          "text": "Lucro & Caixa",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "entrada",
+                "saida",
+                "custo",
+                "margem",
+                "caixa"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-C04",
+          "text": "Jornada única",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+              "anchors": [
+                "ia na pratica",
+                "vendas na pratica",
+                "lucro & caixa"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-M01",
+          "text": "IA aplicada",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "rotina",
+                "briefing"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-M02",
+          "text": "Processo de vendas",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "proposta",
+                "proxima acao"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-M03",
+          "text": "Lucro e caixa",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "caixa",
+                "margem"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-K01",
+          "text": "IA na Prática.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+              "anchors": [
+                "briefing"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-K02",
+          "text": "Vendas na Prática.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+              "anchors": [
+                "proposta"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-K03",
+          "text": "Lucro & Caixa.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "03_Lucro_e_Caixa/ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+              "anchors": [
+                "margem"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "NGC-K04",
+          "text": "Integração dos métodos em uma rotina única.",
+          "type": "content",
+          "evidence": [
+            {
+              "file": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+              "anchors": [
+                "ia na pratica",
+                "vendas na pratica",
+                "lucro & caixa"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

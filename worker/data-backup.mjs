@@ -27,6 +27,21 @@ const DAY = 86400;
 const enc = new TextEncoder();
 
 export async function sha256(s) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(String(s))))].map((x) => x.toString(16).padStart(2, "0")).join(""); }
+export const RETENTION_DAYS = 14;
+
+// Retention may NEVER delete the last intact recoverable copy (Sol 165). A copy is proven valid only by its manifest,
+// a per-row integrity check and a passed restore drill. snapshots = [{ day: "YYYY-MM-DD", valid: true|false|null }]
+// (null = not proven in this run). Returns the days that may be deleted: only days older than the retention window AND
+// older than the newest proven-valid copy, which itself is never deleted. No proven-valid copy: nothing is deleted.
+export function planRetention({ today, snapshots = [], keepDays = RETENTION_DAYS }) {
+  const cutoff = new Date(Date.parse(today + "T00:00:00Z") - keepDays * DAY * 1000).toISOString().slice(0, 10);
+  const proven = snapshots.filter((s) => s && s.valid === true).map((s) => s.day).sort();
+  const newestValid = proven.length ? proven[proven.length - 1] : null;
+  if (!newestValid) return { cutoff, newestValid: null, delete: [], reason: "no_proven_valid_copy" };
+  const del = [...new Set(snapshots.map((s) => s.day))].filter((d) => d < cutoff && d < newestValid).sort();
+  return { cutoff, newestValid, delete: del, reason: del.length ? "expired_copies_older_than_newest_valid" : "nothing_expired" };
+}
+
 export const validIdent = (s) => /^[a-z_][a-z0-9_]{0,62}$/.test(String(s));
 export async function manifestHash(entries) { return sha256(Object.keys(entries).sort().map((k) => k + "=" + entries[k]).join("\n")); }
 
@@ -66,7 +81,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
         [day, present.map(([k]) => k), present.map(([, v]) => v), present.map(([k]) => hashes[k])],
       );
     }
-    await sql.query(`delete from ${BACKUP_TABLE} where snapshot_day < $1::date - 14`, [day]);
+    // Retention runs only AFTER today's copy is proven (manifest + integrity + drill): see step 3c below.
     if (kvPart) report.kv = { keys: present.length, bytes: present.reduce((s, [, v]) => s + v.length, 0), manifest: (await manifestHash(hashes)).slice(0, 16) };
 
     // 2. Neon -> KV: counts and JSON produced by the database in one round trip.
@@ -184,6 +199,19 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
       await kv.delete(drillKey);
     }
     if (!sampleOk) fail("kv_restore_drill");
+    // 3c. Retention (own copies only): never deletes the last intact recoverable copy. Today's copy is proven valid
+    // only when its manifest equals the source manifest, every row re-hashes, nothing is missing and the drill passed;
+    // older copies are not re-verified here, so without a proven copy today nothing is deleted.
+    if (kvPart) {
+      const copyManifest = await manifestHash(Object.fromEntries(backed.filter((r) => hashes[r.key]).map((r) => [r.key, r.sha256])));
+      const todayValid = backed.length > 0 && present.length > 0 && !mismatch && !missing && sampleOk
+        && copyManifest === (await manifestHash(hashes));
+      const plan = planRetention({ today: day, snapshots: [{ day, valid: todayValid }] });
+      // Range delete bounded by BOTH the window and the newest proven-valid copy (never that copy itself).
+      if (plan.newestValid) await sql.query(`delete from ${BACKUP_TABLE} where snapshot_day < $1::date and snapshot_day < $2::date`, [plan.cutoff, plan.newestValid]);
+      report.retention = { ran: Boolean(plan.newestValid), cutoff: plan.cutoff, newestValid: plan.newestValid,
+        reason: plan.newestValid ? "bounded_by_newest_valid_copy" : plan.reason };
+    }
     report.restore = {
       neon: { mode: drillAll ? "completo" : "alteradas", tables: neonDrill.length, ok: neonDrill.filter((d) => d.ok).length, rows: neonDrill.reduce((s, d) => s + (d.restored || 0), 0), isolatedSchema: DRILL },
       kv: { verified: backed.length, mismatch, missing, sampleRestored: sample.length, sampleOk },

@@ -22,9 +22,11 @@ test("snapshot main runs end-to-end against a mocked network and writes every se
     await main();
     const s = JSON.parse(store.get(SNAPSHOT_KEY));
     for (const k of ["goals", "revenue", "funnel", "acquisition", "autonomy", "operations", "forecast", "recommendations"]) assert.ok(s[k], k);
-    assert.equal(s.revenue.salesToday.integrity, "webhook_authenticated");
+    // No sales source readable -> unknown, never a zero (AVAL Sol #893); milestones and forecast refuse.
+    assert.equal(s.revenue.salesToday.value, null); assert.equal(s.revenue.salesToday.integrityClass, "MISSING");
+    assert.equal(s.goals.find((g) => g.id === "first-sale").current, null);
     assert.equal(s.funnel.visitors7.integrity, "missing"); // no funnel summary → never a number
-    assert.equal(s.forecast.status, "insufficient");
+    assert.equal(s.forecast.status, "unverified");
   } finally { globalThis.fetch = realFetch; }
 });
 

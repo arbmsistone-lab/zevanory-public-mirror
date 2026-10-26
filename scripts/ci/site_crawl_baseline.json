@@ -1,0 +1,19 @@
+{
+ "_nota": "Ratchet of scripts/ci/site_crawl_gate.mjs. Known internal-jargon hits on the sales site at gh-pages 9880c879 (site audit S-01: /zevanory-cfo, /arbm-contador-saloes; copy rewrite is a separate change). Any NEW hit, or a higher count, fails CI. Entries may only be lowered/removed (the gate prints a notice when a page got cleaner than this file).",
+ "sales_jargon": {
+  "/zevanory-cfo": {
+   "FAIL_CLOSED": 1,
+   "UNCONFIGURED": 1,
+   "READY": 1,
+   "ZEES-16": 1
+  },
+  "/arbm-contador-saloes": {
+   "tenant": 3,
+   "SHA": 1,
+   "kill-switch": 1,
+   "gate global": 2,
+   "deliberadamente bloqueada": 1,
+   "E2E": 1
+  }
+ }
+}

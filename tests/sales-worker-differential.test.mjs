@@ -18,8 +18,11 @@ import { readTextNormalized } from "./helpers/text.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
-// git rev-parse origin/gh-pages:worker/sales-public-worker.mjs at the base of #914 (gh-pages 5bb6b552).
-const GH_PAGES_BLOB = "9e7e708aac4e7ea28de07a410bfcd44e9df71a68";
+// git rev-parse origin/gh-pages:worker/sales-public-worker.mjs at the base of #914 (gh-pages 5bb6b552) was
+// 9e7e708aac4e7ea28de07a410bfcd44e9df71a68. #893 (funnel v2) changes this Worker on a branch that also starts at
+// 5bb6b552, so once it is merged the pre-#914 Worker is the #893 one: reverse-applying #914's two hunks must give
+// exactly git rev-parse 4dce12c3:worker/sales-public-worker.mjs (#893 head before merging #914), pinned below.
+const GH_PAGES_BLOB = "86c5337c33588b50012266698c9dd0d18300e237";
 const NEW_SRC = readTextNormalized(join(ROOT, "worker/sales-public-worker.mjs"));
 
 const HUNK_HOTMART_NEW = `  // Design PR: the hero payment facts are a list (no "·" chain); each item has its Hotmart wording.

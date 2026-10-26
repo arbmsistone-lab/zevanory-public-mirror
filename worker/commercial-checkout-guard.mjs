@@ -1,5 +1,8 @@
 // A2/A3: one fail-closed policy applied before all checkout handlers.
-export const REQUIRED = Object.freeze(["global","pre_sale","absolute","checkout","financial","kv","preflight","environment","token"]);
+// P23 (Roteiro v4.7, seções 5 e 7/F3): "fiscal" = processo fiscal definido pelo proprietário com o contador
+// (data/p23/fiscal-process.json via worker/fiscal-process.mjs). Sem ele, nenhuma venda pelo checkout próprio.
+import {FISCAL_PROCESS,fiscalProcessDefined} from "./fiscal-process.mjs";
+export const REQUIRED = Object.freeze(["global","pre_sale","absolute","checkout","financial","kv","preflight","environment","fiscal","token"]);
 export function isCheckoutRoute(path){
   return /^\/(?:api\/checkout(?:\/|$)|checkout(?:\/|$)|comprar(?:\/|$)|api\/payments?\/checkout(?:\/|$))/.test(String(path||"").toLowerCase());
 }
@@ -31,7 +34,7 @@ export async function verifyProductionToken(env,{fetcher=fetch,now=Date.now()}={
   tokenCache={key,at:now,valid};
   return valid;
 }
-export async function evaluateCheckout(env,sw,{verify=verifyProductionToken,now=Date.now()}={}){
+export async function evaluateCheckout(env,sw,{verify=verifyProductionToken,now=Date.now(),fiscal=FISCAL_PROCESS}={}){
   let pre=null;
   try{pre=JSON.parse(String(await env?.ZEVANORY_PRIVATE_ARTIFACTS?.get("zpc-sales-preflight:v1")||"null"));}catch{}
   const timestamp=Date.parse(String(pre?.at||""));
@@ -44,6 +47,7 @@ export async function evaluateCheckout(env,sw,{verify=verifyProductionToken,now=
     kv:sw?.enabled===true,
     preflight:pre?.ok===true&&Number.isFinite(timestamp)&&timestamp<=now&&now-timestamp<3*3600000,
     environment:String(env?.MERCADOPAGO_ENV||"").toLowerCase()==="production",
+    fiscal:fiscalProcessDefined(fiscal,now),
     token:false
   };
   if(REQUIRED.filter(k=>k!=="token").every(k=>flags[k]))flags.token=await verify(env);

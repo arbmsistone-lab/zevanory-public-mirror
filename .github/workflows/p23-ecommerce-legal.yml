@@ -1,0 +1,77 @@
+name: p23-ecommerce-legal
+
+# P23 Fiscal e consumidor, parte de comércio eletrônico (Roteiro Mestre v4.7, seções 5 e 7/F3): checklist legal
+# (Decreto 7.962/2013, arts. 2º, 4º e 5º; CDC arts. 31 e 49) conferido em todas as páginas publicadas do site de vendas
+# e trava "Nenhuma venda direta pelo checkout próprio antes do processo fiscal definido" no código.
+# O enquadramento fiscal é decisão de classe D do proprietário com o contador; este workflow não decide nada.
+# Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à produção, token só de leitura.
+on:
+  pull_request:
+    branches:
+      - gh-pages
+    paths:
+      - ".github/workflows/p23-ecommerce-legal.yml"
+      - "data/p23/**"
+      - "data/politica-unica.json"
+      - "data/products.json"
+      - "scripts/p23/**"
+      - "sales-public/**"
+      - "worker/fiscal-process.mjs"
+      - "worker/commercial-checkout-guard.mjs"
+      - "worker/sales-control.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "scripts/build_sales_public.py"
+      - "scripts/ci/mutants_p23_legal.py"
+      - "scripts/ci/mutants_p23_legal_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/p23-ecommerce-legal.test.mjs"
+      - "tests/commercial-checkout-guard.test.mjs"
+      - "tests/circuits-adversarial.test.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p23-ecommerce-legal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  legal:
+    name: p23 / ecommerce-legal
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testes (contagem exata 18, zero pulados) e portão de checkout com o sinal fiscal
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p23-ecommerce-legal.test.mjs | tee /tmp/t.txt
+          for l in "# tests 18" "# pass 18" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          node --test tests/commercial-checkout-guard.test.mjs tests/circuits-adversarial.test.mjs tests/sales-control.test.mjs | tee /tmp/g.txt
+          grep -qx "# fail 0" /tmp/g.txt
+      - name: Checklist legal nas páginas publicadas + trava fiscal no código
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I scripts/p23/ecommerce_legal_gate.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Mutantes causais (classificador compartilhado; todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p23_legal.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P23_LEGAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=22 killed=22 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

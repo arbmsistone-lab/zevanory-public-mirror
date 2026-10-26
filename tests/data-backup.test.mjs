@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { runDataBackup, finalizeBackup, tokenOk, validIdent, manifestHash, sha256, KV_PREFIXES, REPORT_KEY } from "../worker/data-backup.mjs";
+import { runDataBackup, finalizeBackup, tokenOk, validIdent, manifestHash, sha256, KV_PREFIXES, REPORT_KEY, planRetention } from "../worker/data-backup.mjs";
 
 function fakeKv(seed = {}) {
   const m = new Map(Object.entries(seed));
@@ -15,11 +15,14 @@ function fakeKv(seed = {}) {
 }
 
 // Minimal SQL double: answers each statement of the backup by its shape.
-function fakeSql({ tables = { zevanory_leads: [{ id: 1, email_hash: "a" }, { id: 2, email_hash: "b" }] }, corruptRestore = false } = {}) {
+function fakeSql({ tables = { zevanory_leads: [{ id: 1, email_hash: "a" }, { id: 2, email_hash: "b" }] }, corruptRestore = false, corruptCopy = false } = {}) {
   const backup = [];
   const calls = [];
+  const deletes = [];
   const query = async (text, params = []) => {
     calls.push(text.replace(/\s+/g, " ").slice(0, 60));
+    if (/^delete from zevanory_kv_backup/.test(text.trim())) { deletes.push(params); return []; }
+    if (corruptCopy && /select key, value, sha256 from zevanory_kv_backup/.test(text)) return backup.map((r, i) => (i === 0 ? { ...r, value: r.value + "#tampered" } : r));
     if (/^insert into zevanory_kv_backup/.test(text.trim())) { const [, k, v, h] = params; k.forEach((key, i) => backup.push({ key, value: v[i], sha256: h[i] })); return []; }
     if (/from information_schema.tables/.test(text)) return Object.entries(tables).map(([t, rows]) => ({ t, n: rows.length }));
     if (/json_agg/.test(text)) return params[0].map((t) => ({ t, j: JSON.stringify(tables[t]) }));
@@ -27,7 +30,7 @@ function fakeSql({ tables = { zevanory_leads: [{ id: 1, email_hash: "a" }, { id:
     if (/select key, value, sha256 from zevanory_kv_backup/.test(text)) return backup;
     return [];
   };
-  return { factory: () => ({ query }), calls };
+  return { factory: () => ({ query }), calls, deletes };
 }
 
 test("full run: copies both ways, restores from the copies and reports only counts and hashes", async () => {
@@ -182,4 +185,33 @@ test("ensaio de restauração: completo aos domingos, sem cópia anterior ou ap�
   kv.m.set("zpc:backup:v1:report:part:0", JSON.stringify(rep));
   const r19 = await runDataBackup(env, { sqlFactory: s.factory, now: dia(19) });
   assert.equal(r19.restore.neon.mode, "completo");
+});
+
+// Sol 165: retention may never delete the last intact recoverable copy.
+test("retention with only expired copies keeps the newest valid one", () => {
+  const today = "2026-10-24";
+  const p = planRetention({ today, snapshots: [{ day: "2026-09-30", valid: true }, { day: "2026-10-01", valid: null }, { day: "2026-10-02", valid: true }] });
+  assert.equal(p.cutoff, "2026-10-10");
+  assert.equal(p.newestValid, "2026-10-02", "the newest proven copy is kept even though it is expired");
+  assert.deepEqual(p.delete, ["2026-09-30", "2026-10-01"]);
+  assert.ok(!p.delete.includes(p.newestValid));
+  const none = planRetention({ today, snapshots: [{ day: "2026-09-01", valid: null }, { day: "2026-09-02", valid: null }] });
+  assert.deepEqual(none.delete, [], "without a proven-valid copy nothing is deleted");
+});
+
+test("a corrupt newest copy blocks deletion of older ones", async () => {
+  const p = planRetention({ today: "2026-10-24", snapshots: [{ day: "2026-09-01", valid: null }, { day: "2026-10-24", valid: false }] });
+  assert.deepEqual(p.delete, []);
+  assert.equal(p.reason, "no_proven_valid_copy");
+  const kvSeed = { "zpc:sales:v1:summary": '{"totals":{"approved":0}}', "zpc:cp:sub:x": '{"plan":"cp"}' };
+  const now = Date.parse("2026-10-24T05:10:00Z");
+  const bad = fakeSql({ corruptCopy: true });
+  const r = await runDataBackup({ ZEVANORY_PRIVATE_ARTIFACTS: fakeKv(kvSeed), DATABASE_URL: "postgres://x" }, { sqlFactory: bad.factory, now });
+  assert.equal(r.ok, false);
+  assert.deepEqual(bad.deletes, [], "corrupt copy today: retention must not delete any older copy");
+  assert.equal(r.retention.ran, false);
+  const good = fakeSql();
+  const ok = await runDataBackup({ ZEVANORY_PRIVATE_ARTIFACTS: fakeKv(kvSeed), DATABASE_URL: "postgres://x" }, { sqlFactory: good.factory, now });
+  assert.equal(ok.ok, true, JSON.stringify(ok.failures));
+  assert.deepEqual(good.deletes, [["2026-10-10", "2026-10-24"]], "proven copy today: delete bounded by window and newest valid copy");
 });

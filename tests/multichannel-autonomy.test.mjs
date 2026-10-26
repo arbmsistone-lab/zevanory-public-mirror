@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { BLOG_CSS_PATH } from "../worker/blog-layout.mjs";
 import test from "node:test";import assert from "node:assert/strict";
 import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderBlogIndex,longFormDailyArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
 const brandResponse=name=>new Response(readFileSync(new URL("../assets/brand/export/"+name,import.meta.url)),{status:200,headers:{"content-type":"image/png"}});
@@ -157,8 +158,11 @@ test("Pinterest F1 dynamic editorial is published with the official hashed Z ima
 // and utm_campaign carried the full slug (~100 chars), which the funnel drops (^[a-z0-9_-]{1,48}$).
 test("blog article: every link reaches a real destination and every campaign survives the funnel",async()=>{
   const { attribution } = await import("../worker/sales-public-worker.mjs");
-  const salesPages = new Set(["material-gratuito","ia-por-ramo","conteudo-pronto","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo"]);
-  const apexPaths = new Set(["/blog"]);
+  // C-03: the article now wears the shared site shell (worker/blog-layout.mjs): header nav (catalogue, guides),
+  // institutional footer links, the skip link (#conteudo) and the Worker-served stylesheet. They are the
+  // only additions to the allowed destinations; the article CTAs below keep every original assertion.
+  const salesPages = new Set(["material-gratuito","ia-por-ramo","conteudo-pronto","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","quem-criou","termos","privacidade","reembolso"]);
+  const apexPaths = new Set(["/blog",BLOG_CSS_PATH]);
   const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
   const out=await ensureDailyBlog(env,new Date("2026-10-14T12:00:00Z"));
   const real=JSON.parse(await store.get("zpc:blog:article:"+out.latest.slug));
@@ -173,6 +177,7 @@ test("blog article: every link reaches a real destination and every campaign sur
     assert.equal(material.length,1);
     assert.match(material[0],/^https:\/\/vendas\.zevanory\.api\.br\/material-gratuito\?/,"free material must point at the sales host");
     for (const h of hrefs) {
+      if (h==="#conteudo") continue;
       if (h.startsWith("/")) { assert.ok(apexPaths.has(h)||h.startsWith("/brand/export/"),"unexpected relative link "+h); continue; }
       if (/^(mailto:|https:\/\/wa\.me\/)/.test(h)) continue;
       const u=new URL(h);
