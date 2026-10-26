@@ -42,17 +42,26 @@ jobs:
       - name: Checkout esparso cobre o grafo de imports (P18 monitor/vigia)
         run: python3 -m unittest -v tests/test_sparse_checkout_imports.py
       - name: Execução real do checkout esparso do P18 (módulos resolvem; A286-02)
+        timeout-minutes: 2
         run: |
           set -euo pipefail
+          # Reproduz o que o runner do P18 recebe: SÓ os diretórios da lista sparse-checkout de cada workflow,
+          # copiados para um diretório vazio; o script de entrada é importado (isMain impede a execução).
           for wf in p18-external-monitor p18-monitor-watchdog; do
             list=$(python3 -c "import sys,re;t=open('.github/workflows/'+sys.argv[1]+'.yml').read();m=re.search(r'sparse-checkout: \\|\\n((?:[ ]{12}\\S[^\\n]*\\n)+)',t);print(' '.join(l.strip() for l in m.group(1).splitlines()))" "$wf")
             entry=$(grep -oE 'node scripts/[A-Za-z0-9_./-]+\.mjs' ".github/workflows/$wf.yml" | head -1 | cut -d' ' -f2)
             dir="$RUNNER_TEMP/sparse-$wf"
-            git clone --quiet --no-checkout --filter=blob:none "file://$PWD" "$dir"
-            git -C "$dir" sparse-checkout set --no-cone $list
-            git -C "$dir" checkout --quiet "$(git rev-parse HEAD)"
-            (cd "$dir" && node --input-type=module -e "await import('./$entry'); console.log('SPARSE_IMPORT_OK $entry')")
+            mkdir -p "$dir"
+            for d in $list; do mkdir -p "$dir/$(dirname "$d")"; cp -R "$d" "$dir/$d"; done
+            (cd "$dir" && timeout 30 node --input-type=module -e "await import('./$entry'); console.log('SPARSE_IMPORT_OK $entry')")
           done
+          # Contraprova negativa: só scripts/b0 deve falhar com ERR_MODULE_NOT_FOUND em scripts/p20.
+          neg="$RUNNER_TEMP/sparse-neg"; mkdir -p "$neg/scripts"; cp -R scripts/b0 "$neg/scripts/b0"
+          if (cd "$neg" && timeout 30 node --input-type=module -e "await import('./scripts/b0/p18-monitor.mjs')" 2> err.txt); then
+            echo "::error::contraprova negativa não falhou"; exit 1
+          fi
+          grep -q "ERR_MODULE_NOT_FOUND" "$neg/err.txt" && grep -q "scripts/p20/restore-drill-lib.mjs" "$neg/err.txt"
+          echo "SPARSE_NEGATIVE_OK"
       - name: Sintaxe
         run: |
           set -euo pipefail
