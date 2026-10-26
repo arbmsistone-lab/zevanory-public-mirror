@@ -699,7 +699,10 @@ def fingerprint_assets() -> dict[str, str]:
         mapping["/" + ref.lstrip("/")] = "/" + out
         return f'url({m.group(1)}/{out}{m.group(1)})'
     for name in FINGERPRINT:
-        data = (OUT / name).read_bytes()
+        # Git may materialize tracked text files with CRLF on Windows and LF on
+        # Linux. Canonicalize line endings before hashing so a build made on
+        # either runner produces the same immutable asset name and bytes.
+        data = (OUT / name).read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
         if name.endswith(".css"):
             text = re.sub(r'url\((["\']?)([^)"\']+)\1\)', css_url, data.decode("utf-8"))
             data = text.encode("utf-8")
