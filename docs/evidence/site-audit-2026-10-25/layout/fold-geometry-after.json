@@ -1,0 +1,1194 @@
+[
+ {
+  "label": "pr2",
+  "route": "/lucro-e-caixa",
+  "scheme": "light",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/ia-na-pratica",
+  "scheme": "light",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/vendas-na-pratica",
+  "scheme": "light",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 532,
+   "bottom": 580,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 656,
+    "bottom": 707,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 715,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 774,
+    "bottom": 826,
+    "h": 51,
+    "under_bar": "partial"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 1
+ },
+ {
+  "label": "pr2",
+  "route": "/combo-ia-vendas",
+  "scheme": "light",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 932,
+   "h": 132
+  },
+  "hero_cta": {
+   "top": 472,
+   "bottom": 520,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 596,
+    "bottom": 647,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 655,
+    "bottom": 706,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 714,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/negocio-completo",
+  "scheme": "light",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/conteudo-pronto",
+  "scheme": "light",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": null,
+  "hero_cta": {
+   "top": 591,
+   "bottom": 639,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/lucro-e-caixa",
+  "scheme": "light",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 463,
+   "bottom": 511,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 587,
+    "bottom": 638,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 646,
+    "bottom": 698,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 706,
+    "bottom": 757,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/ia-na-pratica",
+  "scheme": "light",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/vendas-na-pratica",
+  "scheme": "light",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 532,
+   "bottom": 580,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 656,
+    "bottom": 707,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 715,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 774,
+    "bottom": 826,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/combo-ia-vendas",
+  "scheme": "light",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 472,
+   "bottom": 520,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 596,
+    "bottom": 647,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 655,
+    "bottom": 706,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 714,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/negocio-completo",
+  "scheme": "light",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/conteudo-pronto",
+  "scheme": "light",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": null,
+  "hero_cta": {
+   "top": 561,
+   "bottom": 609,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/lucro-e-caixa",
+  "scheme": "dark",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/ia-na-pratica",
+  "scheme": "dark",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/vendas-na-pratica",
+  "scheme": "dark",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 532,
+   "bottom": 580,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 656,
+    "bottom": 707,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 715,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 774,
+    "bottom": 826,
+    "h": 51,
+    "under_bar": "partial"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 1
+ },
+ {
+  "label": "pr2",
+  "route": "/combo-ia-vendas",
+  "scheme": "dark",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 932,
+   "h": 132
+  },
+  "hero_cta": {
+   "top": 472,
+   "bottom": 520,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 596,
+    "bottom": 647,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 655,
+    "bottom": 706,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 714,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/negocio-completo",
+  "scheme": "dark",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 800,
+   "bottom": 904,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/conteudo-pronto",
+  "scheme": "dark",
+  "viewport": "360x800",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": null,
+  "hero_cta": {
+   "top": 591,
+   "bottom": 639,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 16.5,
+  "hero_trust_rows": [],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/lucro-e-caixa",
+  "scheme": "dark",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 463,
+   "bottom": 511,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 587,
+    "bottom": 638,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 646,
+    "bottom": 698,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 706,
+    "bottom": 757,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/ia-na-pratica",
+  "scheme": "dark",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/vendas-na-pratica",
+  "scheme": "dark",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 532,
+   "bottom": 580,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 656,
+    "bottom": 707,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 715,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 774,
+    "bottom": 826,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/combo-ia-vendas",
+  "scheme": "dark",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 472,
+   "bottom": 520,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 596,
+    "bottom": 647,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 655,
+    "bottom": 706,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 714,
+    "bottom": 766,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/negocio-completo",
+  "scheme": "dark",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": {
+   "top": 844,
+   "bottom": 948,
+   "h": 104
+  },
+  "hero_cta": {
+   "top": 502,
+   "bottom": 550,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [
+   {
+    "text": "Pagamento processado pelo Mercado Pago (Pix ou car",
+    "top": 626,
+    "bottom": 677,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Entrega por e-mail em link pessoal válido por 72 h",
+    "top": 685,
+    "bottom": 736,
+    "h": 51,
+    "under_bar": "no"
+   },
+   {
+    "text": "Arrependimento em 7 dias corridos, com devolução i",
+    "top": 744,
+    "bottom": 796,
+    "h": 51,
+    "under_bar": "no"
+   }
+  ],
+  "hero_trust_rows_hidden_or_cut": 0
+ },
+ {
+  "label": "pr2",
+  "route": "/conteudo-pronto",
+  "scheme": "dark",
+  "viewport": "390x844",
+  "header": {
+   "top": 0,
+   "bottom": 64,
+   "h": 64
+  },
+  "notice": {
+   "top": 64,
+   "bottom": 132,
+   "h": 68
+  },
+  "bar": null,
+  "hero_cta": {
+   "top": 561,
+   "bottom": 609,
+   "h": 48
+  },
+  "hero_cta_text": "Entrar na lista de espera",
+  "hero_cta_fully_visible": true,
+  "chrome_px": 132,
+  "chrome_pct": 15.6,
+  "hero_trust_rows": [],
+  "hero_trust_rows_hidden_or_cut": 0
+ }
+]

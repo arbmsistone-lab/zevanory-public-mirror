@@ -2,7 +2,7 @@
 // (scripts/audit/sales-local-server.mjs). Owner decision (written): "APROVO ROLAGEM VERTICAL NAS PÁGINAS
 // PÚBLICAS" — vertical document scroll is allowed; horizontal scroll is forbidden at every width; no panel
 // scrolls on its own; <main> is not an inner scroller; the bottom of the page is reachable by window scroll.
-// Covers the 10 public pages plus the designed 404, at 5 viewports, in BOTH colour schemes.
+// Covers the 10 public pages, the /ia-por-ramo and /ferramentas hubs and the designed 404, at 5 viewports, in BOTH colour schemes.
 // Usage: node sales-scroll-gate.mjs <baseUrl> <out.json>   (playwright from QUALITY_MODULES or ./node_modules)
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -14,6 +14,8 @@ const { chromium } = req("playwright");
 export const ROUTES = [
   ["/solucoes", 200], ["/zevanory-sales", 200], ["/ia-na-pratica", 200], ["/vendas-na-pratica", 200], ["/combo-ia-vendas", 200],
   ["/lucro-e-caixa", 200], ["/negocio-completo", 200], ["/conteudo-pronto", 200], ["/quem-criou", 200], ["/termos", 200],
+  // Site audit S-02 (2026-10-25): the two acquisition hubs broke at >=768 px without any gate noticing.
+  ["/ia-por-ramo", 200], ["/ferramentas", 200],
   ["/pagina-inexistente", 404],
 ];
 const VIEWS = [
@@ -37,6 +39,11 @@ for (const scheme of ["light", "dark"]) for (const v of VIEWS) {
         mainInnerScroller: !!main && /(auto|scroll|hidden)/.test(ms.overflowY) && main.scrollHeight > main.clientHeight + 1,
         scrollingPanels, bottomReachable: window.scrollY + window.innerHeight >= root.scrollHeight - 2,
         darkMatches: matchMedia("(prefers-color-scheme: dark)").matches,
+        // S-02: nothing inside <main> runs past the viewport (the hubs' main was 1057 px wide at 1024 px, clipped
+        // because the page itself does not scroll sideways) and no heading is cut by its own box. Full-bleed bars
+        // (the legal nav) may exceed main's padding box but never the viewport.
+        mainOverflow: !!main && main.scrollWidth > innerWidth + 1,
+        clippedHeadings: [...document.querySelectorAll("main h1, main h2, main h3")].filter((h) => h.scrollWidth > h.clientWidth + 1 || h.getBoundingClientRect().right > innerWidth + 1).map((h) => h.textContent.trim().slice(0, 40)),
       };
     });
     const row = { scheme, view: v.name, route, http: res?.status() || 0, expected_http: expected, ...m,
@@ -44,9 +51,9 @@ for (const scheme of ["light", "dark"]) for (const v of VIEWS) {
       horizontalOverflow: m.sw > m.iw + 1 };
     row.schemeOk = m.darkMatches === (scheme === "dark");
     delete row.darkMatches;
-    row.pass = row.http === expected && row.documentScroll && row.bottomReachable && !row.horizontalOverflow && row.schemeOk;
+    row.pass = row.http === expected && row.documentScroll && row.bottomReachable && !row.horizontalOverflow && row.schemeOk && !m.mainOverflow && m.clippedHeadings.length === 0;
     rows.push(row);
-    if (!row.pass) console.log(`::error title=SALES_SCROLL_GATE::${scheme} ${v.name} ${route} http=${row.http} sw=${m.sw}/${m.iw} panels=${m.scrollingPanels.join(",")} bottom=${m.bottomReachable}`);
+    if (!row.pass) console.log(`::error title=SALES_SCROLL_GATE::${scheme} ${v.name} ${route} http=${row.http} sw=${m.sw}/${m.iw} panels=${m.scrollingPanels.join(",")} bottom=${m.bottomReachable} mainOverflow=${m.mainOverflow} clipped=${m.clippedHeadings.join("|")}`);
     await page.close();
   }
   await ctx.close();

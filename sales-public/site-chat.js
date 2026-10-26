@@ -132,7 +132,7 @@
   var downText = el("p", null, "O chat está indisponível agora. Escreva para " + EMAIL + ", use o formulário de atendimento ou os formulários de reembolso e de novo link de acesso.");
   down.appendChild(downText);
   var downLinks = el("ul", { className: "zc-notice-list" });
-  [["mailto:" + EMAIL, "Escrever para " + EMAIL], [FORM, "Formulário de atendimento"], ["https://zevanory.api.br/pedir-reembolso", "Pedir reembolso (compras pelo Mercado Pago)"], ["https://zevanory.api.br/entrega/reenviar", "Pedir novo link de acesso"]].forEach(function (x) {
+  [["mailto:" + EMAIL, "Escrever para " + EMAIL], [FORM, "Formulário de atendimento"], ["https://zevanory.api.br/pedir-reembolso", "Pedir reembolso"], ["https://zevanory.api.br/entrega/reenviar", "Pedir novo link de acesso"]].forEach(function (x) {
     var li = el("li"); li.appendChild(el("a", { href: x[0] }, x[1])); downLinks.appendChild(li);
   });
   down.appendChild(downLinks);

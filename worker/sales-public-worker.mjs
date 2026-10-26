@@ -108,6 +108,9 @@ export function openSalesHtml(html,slug){
   out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sub="([a-z-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sub,label)=>Object.prototype.hasOwnProperty.call(SUBSCRIPTION_PATHS,sub)?`<a ${pre}href="${SUBSCRIPTION_PATHS[sub]}">${label}</a>`:m);
   out=out.replace(/<(span|p)([^>]*?) data-zev-open-text="([^"]*)">[^<]*<\/\1>/g,"<$1$2>$3</$1>");
   out=out.replace(/<(p|span)\b[^>]*\sdata-zev-closed[^>]*>[^<]*<\/\1>/g,"");
+  // Site audit S-04: the closed-sales sign-up block (form + e-mail waiting list) is a whole <section> with no
+  // nested section; it disappears with the notice when the owner opens sales.
+  out=out.replace(/<section\b[^>]*\sdata-zev-closed-block[^>]*>(?:(?!<section\b)[\s\S])*?<\/section>/g,"");
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===slug);
   if(sku)out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
     try{const d=JSON.parse(body);
