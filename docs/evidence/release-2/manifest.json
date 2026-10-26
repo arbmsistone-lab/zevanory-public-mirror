@@ -1,0 +1,286 @@
+{
+  "schema": "zevanory.release-2-evidence.v1",
+  "source_base": "a098d8802a184df02b362d46f08fb6c81b7382f9",
+  "sales_mode": "closed",
+  "owner_vertical_scroll_approval": "APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS",
+  "matrix": {
+    "pass": true,
+    "checked": 130,
+    "routes": 13,
+    "views": 5,
+    "schemes": 2
+  },
+  "screenshots": {
+    "count": 48,
+    "widths": [
+      360,
+      390,
+      768,
+      1440
+    ],
+    "schemes": [
+      "light",
+      "dark"
+    ],
+    "routes": [
+      "solucoes",
+      "zevanory-sales",
+      "ia-na-pratica",
+      "material-gratuito",
+      "termos",
+      "reembolso"
+    ]
+  },
+  "files": [
+    {
+      "path": "docs/evidence/release-2/README.md",
+      "bytes": 1528,
+      "sha256": "c187b6786128793fea6f546a2951f1adb54fba6aa63b865dfbb0c2f5bff47b3f"
+    },
+    {
+      "path": "docs/evidence/release-2/matrix.json",
+      "bytes": 70420,
+      "sha256": "a31c12793d209ba82c256f88bdbf83457d3c8bf5ff3ca18cc63b50cf517f9a05"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/ia-na-pratica-1440.png",
+      "bytes": 1116801,
+      "sha256": "a3fa4e388d72b558e5bb2cd7451cf7972247ab1befeea7053db33d68d2d8ec76"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/ia-na-pratica-360.png",
+      "bytes": 990842,
+      "sha256": "c3f941c08a1cbae28371f221c6c5ac7b4d9620b3f3696697cd7edd8d8b119256"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/ia-na-pratica-390.png",
+      "bytes": 1031214,
+      "sha256": "d64546ee6e38bb93c40846e19bcd6222e8ef904aca1d03f46fd2343b248292d9"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/ia-na-pratica-768.png",
+      "bytes": 1031607,
+      "sha256": "a6ef625db2ac04eba08e68f3bc2b9e1f92c15749e64ffeec56d731ea5e0c1d5b"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/material-gratuito-1440.png",
+      "bytes": 174044,
+      "sha256": "67a61e9a79af13be3e6ceaee4c00feec17a64db9dc943342ca755ca72e4a8bd3"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/material-gratuito-360.png",
+      "bytes": 144738,
+      "sha256": "7ff8a44574b457b88636690228a9b9e903347da184a31e32bcea14ed3d61ae60"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/material-gratuito-390.png",
+      "bytes": 147455,
+      "sha256": "e391cfd184b06d61b12541ed9bf14574c93b99e6bb9c95941f5d7c1ec7344754"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/material-gratuito-768.png",
+      "bytes": 165706,
+      "sha256": "fd70b26ce4f8314cbd084c5bed19d5059a1453bb9c6a8e8c85b04959a4a07ccb"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/reembolso-1440.png",
+      "bytes": 498744,
+      "sha256": "a0194320ed0f913882d3ab974ab64bdd6cda4ac77c2657c7404b0fce984a844f"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/reembolso-360.png",
+      "bytes": 439368,
+      "sha256": "ad65f666dcad96a66c875196f09e2d4952688d11db2b8b755f8f84b794907333"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/reembolso-390.png",
+      "bytes": 490320,
+      "sha256": "98effb374c0cccebd8f62563bad2a46d7b172812008b6c4369ff4007741ab028"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/reembolso-768.png",
+      "bytes": 476898,
+      "sha256": "09d2a458fddca7ea0edaede435ee9b83dfd479cf240b11b8da8076fff2f0b524"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/solucoes-1440.png",
+      "bytes": 779998,
+      "sha256": "18541b850f876907c93d06cd6eff6684bb47346db75ad6a5ad2521a23e70df75"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/solucoes-360.png",
+      "bytes": 708372,
+      "sha256": "0689b0000a685e5f9f874ec671fc217fa3919237c036ff6b9d9bb70b5a45bcde"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/solucoes-390.png",
+      "bytes": 719816,
+      "sha256": "bae75a457788165b8bfa018a82ba8ff00bdc4b965752d439dd3eb206395fce49"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/solucoes-768.png",
+      "bytes": 736718,
+      "sha256": "bf68d2ffa3721bb25fa767a190f3d49325b6b3c235d17294aef73f75eec23474"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/termos-1440.png",
+      "bytes": 576263,
+      "sha256": "8500c25021f171593a5de7a1ea0b79618456469619e714d47f435393982acd56"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/termos-360.png",
+      "bytes": 507388,
+      "sha256": "15b5790d06d9eadd620e9385829cee8322afe9263e459bdd009335a2d375e72d"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/termos-390.png",
+      "bytes": 565916,
+      "sha256": "3fade1636f0a96f607b11594dcc1ad92ae720492a74c02842c1c02048fa27adb"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/termos-768.png",
+      "bytes": 550499,
+      "sha256": "7d0d7585ca1a0564ba91f04cca880e7420ced0c803ffe73c48d98582517c82c0"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/zevanory-sales-1440.png",
+      "bytes": 529123,
+      "sha256": "744f3bb085077748d81e69648a27f559bb862cbb1980516363a60212ab2ff3d0"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/zevanory-sales-360.png",
+      "bytes": 483796,
+      "sha256": "2cd467e216f059d7adc579f94711c78baa4a9a5ccbfe8b283645c888621100d0"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/zevanory-sales-390.png",
+      "bytes": 503295,
+      "sha256": "01412cdac0cf1481f64bb252385a0f17471c7daf8d4ce05c331a5d15dcc38102"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/dark/zevanory-sales-768.png",
+      "bytes": 494715,
+      "sha256": "ef20b5648ac97e15722bf3c62cec0324ea593cc4366fb97983312b9235ca8159"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/ia-na-pratica-1440.png",
+      "bytes": 1123476,
+      "sha256": "abcbefb04e6694f69a043afb363079d51cd869cda950e22322055156e971857a"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/ia-na-pratica-360.png",
+      "bytes": 995099,
+      "sha256": "09463074bc2cb6309134495c390623818c23180f8343b8121a05f459803a8e31"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/ia-na-pratica-390.png",
+      "bytes": 1035611,
+      "sha256": "ebac4581990a43d2ee454f074b1fb6416c9801b9829a2910cfada35ced11cf58"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/ia-na-pratica-768.png",
+      "bytes": 1038533,
+      "sha256": "43d872afbc6d246f5f245452124b3ca0d6319f2a3d076f277d351425f789ea12"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/material-gratuito-1440.png",
+      "bytes": 171573,
+      "sha256": "50ae3effda431915ad277c431677bb7870f01bff74f20a5b6f629289a77ccc12"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/material-gratuito-360.png",
+      "bytes": 142842,
+      "sha256": "8ecf1a0a3ec4d14a0e4befd3756640fe17c23e129db767d3b3eecba4ba3e48a8"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/material-gratuito-390.png",
+      "bytes": 146879,
+      "sha256": "add94224e6235645d59df84c49e9d694dd31edd6f720377e8a32c090e2981ca2"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/material-gratuito-768.png",
+      "bytes": 164232,
+      "sha256": "9960f70f0a88687dd0e7a56c9e643c86c63b782d2954aef25326c56cbafe7aac"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/reembolso-1440.png",
+      "bytes": 495493,
+      "sha256": "c9410783a4ea802887fc105497460a97d002140e867ae7bae40bc22ba19fdfd9"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/reembolso-360.png",
+      "bytes": 441173,
+      "sha256": "db53e21e707fe8e99b19c5bed8738e7a01e2a5a490421cdb3741c04d99f4b56b"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/reembolso-390.png",
+      "bytes": 489565,
+      "sha256": "42c5c38628fa5603d05d75a3a2ac2946a3bd408d8b9a8831c145f4fb589cec84"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/reembolso-768.png",
+      "bytes": 473801,
+      "sha256": "0eed7126b9548276c7cc9aefbeb35cd64d70f291b6093ee847fe0b462c2d75df"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/solucoes-1440.png",
+      "bytes": 776356,
+      "sha256": "4385c64b67633fda7b572b2738c7ddf68db53d62d65de9940dc3bcfeffa1646f"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/solucoes-360.png",
+      "bytes": 701718,
+      "sha256": "41e696d97439523d0be8d1de5bfdce5b9adc8361583119bd3e1c5798077e210d"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/solucoes-390.png",
+      "bytes": 715138,
+      "sha256": "7d426af0ee425d2ee2699f5c82095886f28780d7f5c7bca33a10a0f0de9fc951"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/solucoes-768.png",
+      "bytes": 732488,
+      "sha256": "200659aaee266afa56000f7be5f5cf4e71203d2557a98b3ccec25dd6d372d900"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/termos-1440.png",
+      "bytes": 571342,
+      "sha256": "8482712157866a57ffd564eff1ee665f3b19a8ea4d13ec56a7b6482a34671ce5"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/termos-360.png",
+      "bytes": 510517,
+      "sha256": "9ff98eb49f9f419183e05098e0152c69dd1d6a706ac1c5420a567c2d8a1f587b"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/termos-390.png",
+      "bytes": 564080,
+      "sha256": "8ebc74e0ed3895c798a1a8908c1266ee0c9dfec7252d258a89932bf9ac16822f"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/termos-768.png",
+      "bytes": 546785,
+      "sha256": "6973929bbc3a2bb4ff6c4e204bd464aba3bfae72e588c07aaf07f4a2bd63806f"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/zevanory-sales-1440.png",
+      "bytes": 529989,
+      "sha256": "4187f53f783e97998e828937033b5f9dfdec439d875bbf7598427f25e3468e14"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/zevanory-sales-360.png",
+      "bytes": 480440,
+      "sha256": "7177975b5bde4ffaff3c6e65eb8655f5c494d33ce736c12fb2f2635cecdf7dad"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/zevanory-sales-390.png",
+      "bytes": 499955,
+      "sha256": "72cff2e30a924e89bef12178f88e0c8af64bf1c8bde68a91a1669d8ca391f02b"
+    },
+    {
+      "path": "docs/evidence/release-2/screenshots/light/zevanory-sales-768.png",
+      "bytes": 495510,
+      "sha256": "e5ff549969b018251fe9a9a8d803527f01faeb5fd2389095d67a36213c2f76bc"
+    }
+  ]
+}

@@ -9,7 +9,7 @@ const [base, outDir = "screenshots"] = process.argv.slice(2);
 const req = createRequire(join(process.env.QUALITY_MODULES || join(process.cwd(), "node_modules"), "noop.js"));
 const { chromium } = req("playwright");
 const PAGES = (process.env.PAGES || "/solucoes,/zevanory-sales,/ia-na-pratica,/termos").split(",");
-const WIDTHS = [[360, 800], [768, 1024], [1440, 900]];
+const WIDTHS = [[360, 800], [390, 844], [768, 1024], [1440, 900]];
 const SCHEME = process.env.COLOR_SCHEME === "dark" ? "dark" : "light";  // prefers-color-scheme emulation
 mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch();

@@ -79,6 +79,10 @@ p,li,dd{max-width:var(--medida)}
 p,li,dd,figcaption{hyphens:auto;-webkit-hyphens:auto;text-wrap:pretty}
 h1,h2,h3,.button,.receipt-line,.catalog-price{hyphens:manual}
 h1,h2,h3{font-family:var(--display);font-stretch:87.5%;font-weight:750;line-height:1.08;letter-spacing:-.01em;margin:0;text-wrap:balance}
+/* S-03: Archivo's narrow "&" reads as "Ɛ" ("Lucro Ɛ Caixa"); the build wraps every visible ampersand so it is drawn by the text face. */
+.amp{font-family:var(--texto);font-stretch:100%;font-style:normal;letter-spacing:0}
+/* The wrappers stay inline text even where a component styles its spans as blocks (.buy-bar span, .trust-item span...). */
+span.amp-run.amp-run,span.amp.amp{display:inline;margin:0;color:inherit;font-size:inherit;line-height:inherit}
 h1{font-size:var(--t-5);max-width:22ch}
 h2{font-size:var(--t-4);max-width:24ch}
 h3{font-size:var(--t-3)}

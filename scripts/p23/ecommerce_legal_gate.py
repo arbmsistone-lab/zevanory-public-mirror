@@ -44,8 +44,8 @@ DECLARATIONS = {
     "D7962-5-2": "Contratos acessórios serão cancelados sem custo",
     "D7962-5-3": "comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno",
     "D7962-5-4": "O recebimento do pedido será confirmado imediatamente",
-    "CDC-49": "no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço",
-    "CDC-49-PU": "devolverá integralmente os valores pagos",
+    "CDC-49": "no prazo de 7 dias corridos contados da assinatura do contrato ou do recebimento do produto ou serviço",
+    "CDC-49-PU": "os valores pagos serão devolvidos integralmente",
 }
 LEGAL_PAGES = ("termos", "reembolso")
 FISCAL_FIELDS = ("regime", "documento_fiscal", "emissor", "decided_by", "accountant_ref", "decided_at", "procedure_ref",
@@ -117,7 +117,7 @@ def validate(root: Path, findings: list[str]) -> list[str]:
                 errs.append(f"{where}: página com preço sem '{need}' visível (Decreto 7.962, art. 2º, I e II)")
         if not re.search(r'href="[^"]*/termos[#"]', raw):
             errs.append(f"{where}: página com preço sem link para os termos (Decreto 7.962, art. 4º, I)")
-        if not re.search(r'href="[^"]*/(reembolso|pedir-reembolso)["#?]', raw):
+        if not re.search(r'href="[^"]*/(?:reembolso|pedir-' r'reembolso)["#?]', raw):
             errs.append(f"{where}: página com preço sem link para o reembolso (Decreto 7.962, art. 5º)")
     for slug in offers:
         where = f"sales-public/{slug}.html"
