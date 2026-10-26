@@ -1,0 +1,140 @@
+{
+  "schema": "zevanory-p25-weekly-review/v1",
+  "process": "P25",
+  "week": "2026-W44",
+  "reviewed_on": "2026-10-26",
+  "run": {
+    "run_id": "40364195725",
+    "commit_sha": "de2fdfd064e70cc7bb9d8fa0bd6861edf435c614"
+  },
+  "evidence_label": "SINTÉTICA (revisão automática de registros; nenhuma ocorrência real avaliada)",
+  "sources": [
+    {
+      "name": "experimentos (P16)",
+      "ref": "data/experiments.json",
+      "status": "READ",
+      "items": 3
+    },
+    {
+      "name": "hipóteses (P01)",
+      "ref": "data/p01/hypotheses.json",
+      "status": "READ",
+      "items": 4
+    },
+    {
+      "name": "decisões de oferta (P02)",
+      "ref": "data/p02/decisions.json",
+      "status": "READ",
+      "items": 2
+    },
+    {
+      "name": "funil (P15)",
+      "ref": "KV zpc-funnel:v1:summary",
+      "status": "NOT_AVAILABLE",
+      "reason": "exige credencial do Cloudflare; esta revisão roda sem segredo por desenho"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "short-format",
+      "title": "Formato do Short",
+      "kind": "arms",
+      "p01_hypotheses": [
+        "H-0001"
+      ],
+      "p02_decisions": [],
+      "pre_registered": {
+        "arms": [
+          "dica",
+          "oferta",
+          "calc"
+        ],
+        "min_per_arm": 7
+      },
+      "window": {
+        "started_at": "2026-10-12",
+        "closes_at": null,
+        "closed": null,
+        "note": "fecha por amostra (mínimo por braço), não por data"
+      },
+      "data": "NOT_AVAILABLE",
+      "decision": "SEM_DADOS",
+      "reason": "Dados do funil e do canal não lidos por esta revisão (fonte exige credencial). Nada é concluído; nenhum número estimado.",
+      "pi_7_days": "NAO_SE_APLICA_SEM_DATA_DE_FECHAMENTO"
+    },
+    {
+      "id": "product-page-v2",
+      "title": "Página de produto v2",
+      "kind": "before_after",
+      "p01_hypotheses": [
+        "H-0002"
+      ],
+      "p02_decisions": [
+        "D-2026-0001"
+      ],
+      "pre_registered": {
+        "min_views_per_side": 200,
+        "min_events_total": 20,
+        "window_days": 14
+      },
+      "window": {
+        "change_at": "2026-10-12",
+        "closes_at": "2026-10-26",
+        "closed": true,
+        "comparable_design": false
+      },
+      "data": "NOT_AVAILABLE",
+      "decision": "INCONCLUSIVO",
+      "reason": "Desenho pré-registrado não comparável: a janela anterior à mudança começa antes do filtro de robôs (cleanSince 2026-10-12); nenhum vencedor pode ser declarado, com ou sem dados.",
+      "pi_7_days": "DECISAO_REGISTRADA"
+    },
+    {
+      "id": "nurture-match",
+      "title": "E-mail com o produto certo",
+      "kind": "tracking",
+      "p01_hypotheses": [
+        "H-0003"
+      ],
+      "p02_decisions": [],
+      "pre_registered": {
+        "campaign_prefix": "s2-",
+        "rule": "Sem cliques após 30 leads, o e-mail de oferta é reescrito."
+      },
+      "window": {
+        "started_at": "2026-10-12",
+        "closes_at": null,
+        "closed": null,
+        "note": "fecha por número de leads (regra do registro)"
+      },
+      "data": "NOT_AVAILABLE",
+      "decision": "SEM_DADOS",
+      "reason": "Dados do funil e do canal não lidos por esta revisão (fonte exige credencial). Nada é concluído; nenhum número estimado.",
+      "pi_7_days": "NAO_SE_APLICA_SEM_DATA_DE_FECHAMENTO"
+    }
+  ],
+  "offer_decisions_reviewed": [
+    {
+      "id": "D-2026-0001",
+      "outcome": "INCONCLUSIVO",
+      "decided_at": "2026-10-25"
+    },
+    {
+      "id": "D-2026-0002",
+      "outcome": "INCONCLUSIVO",
+      "decided_at": "2026-10-25"
+    }
+  ],
+  "decision": "SEM_DADOS",
+  "decision_text": "Sem dados de funil ou de canal nesta revisão: nenhuma mudança e nenhuma conclusão. Os experimentos ficam como estão; o único veredito possível é o que o próprio desenho pré-registrado já determina.",
+  "hypotheses_updated": [],
+  "pi_7_days": {
+    "overdue": [],
+    "status": "OK"
+  },
+  "not_claimed": [
+    "taxa de conversão",
+    "vencedor de experimento",
+    "receita",
+    "qualquer número do funil"
+  ]
+}
