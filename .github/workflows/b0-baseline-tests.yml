@@ -41,6 +41,18 @@ jobs:
           node-version: "22"
       - name: Checkout esparso cobre o grafo de imports (P18 monitor/vigia)
         run: python3 -m unittest -v tests/test_sparse_checkout_imports.py
+      - name: Execução real do checkout esparso do P18 (módulos resolvem; A286-02)
+        run: |
+          set -euo pipefail
+          for wf in p18-external-monitor p18-monitor-watchdog; do
+            list=$(python3 -c "import sys,re;t=open('.github/workflows/'+sys.argv[1]+'.yml').read();m=re.search(r'sparse-checkout: \\|\\n((?:[ ]{12}\\S[^\\n]*\\n)+)',t);print(' '.join(l.strip() for l in m.group(1).splitlines()))" "$wf")
+            entry=$(grep -oE 'node scripts/[A-Za-z0-9_./-]+\.mjs' ".github/workflows/$wf.yml" | head -1 | cut -d' ' -f2)
+            dir="$RUNNER_TEMP/sparse-$wf"
+            git clone --quiet --no-checkout --filter=blob:none "file://$PWD" "$dir"
+            git -C "$dir" sparse-checkout set --no-cone $list
+            git -C "$dir" checkout --quiet "$(git rev-parse HEAD)"
+            (cd "$dir" && node --input-type=module -e "await import('./$entry'); console.log('SPARSE_IMPORT_OK $entry')")
+          done
       - name: Sintaxe
         run: |
           set -euo pipefail

@@ -129,5 +129,21 @@ class Mutants(unittest.TestCase):
         self.reject(INLINE_WORKER.replace("crypto.subtle.verify('HMAC', key, bytes, message)", "true"), None, "verifyFactoryRequest_unrecognised")
 
 
+class WorkflowOrder(unittest.TestCase):
+    """A286-01: the source proof must run before the build/publish steps, and again after promotion."""
+
+    def test_pre_and_post_promotion(self):
+        wf = (pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows" / "zpc-control-worker-deploy.yml").read_text(encoding="utf-8")
+        call = "python3 scripts/deploy/t2_route_guard.py --source zpc"
+        pre = wf.find("- name: Prove factory/tick HMAC guard on the exact source (pre-promotion, A286-01)")
+        build = wf.find("- name: Build exact control-plane source")
+        promote = wf.find("- name: Promote exact main SHA and verify production")
+        verify = wf.find("- name: Verify exact trust and artifact readback")
+        self.assertTrue(0 < pre < build < promote < verify)
+        self.assertIn(call, wf[pre:build])
+        self.assertIn(call, wf[verify:])
+        self.assertNotIn("continue-on-error", wf[pre:build])
+
+
 if __name__ == "__main__":
     unittest.main()

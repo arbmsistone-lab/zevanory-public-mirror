@@ -169,6 +169,12 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Prove factory/tick HMAC guard on the exact source (pre-promotion, A286-01)
+        if: env.PROMOTE == 'true'
+        # Source-only gate: runs BEFORE any build or publish, so an unguarded source never reaches production.
+        # The same proof runs again after promotion (Verify exact trust and artifact readback).
+        run: python3 scripts/deploy/t2_route_guard.py --source zpc
+
       - name: Build exact control-plane source
         if: env.PROMOTE == 'true'
         working-directory: zpc

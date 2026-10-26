@@ -45,23 +45,49 @@ def sparse_blocks(text: str):
         yield items
 
 
+def coverage_errors(name: str, text: str) -> list[str]:
+    """Missing directories for one workflow text (empty list = covered)."""
+    errors = []
+    blocks = list(sparse_blocks(text))
+    if not blocks:
+        return errors
+    if len(blocks) != 1:
+        return [f"{name}: one sparse list per workflow expected"]
+    allowed = blocks[0]
+    for script in re.findall(r"node (scripts/[\w./-]+\.mjs)", text):
+        for dep in import_graph(ROOT / script):
+            rel = dep.relative_to(ROOT).as_posix()
+            if not any(rel == d or rel.startswith(d.rstrip("/") + "/") for d in allowed):
+                errors.append(f"{name}: {script} needs {rel}, not in sparse-checkout {allowed}")
+    return errors
+
+
 class SparseCheckoutCoversImports(unittest.TestCase):
+    """Scope (A286-02): relative static/dynamic imports matched by IMPORT, for every `node scripts/*.mjs`
+    run line of a workflow that uses a sparse checkout. It does not prove coverage of other commands."""
+
     def test_workflows(self):
-        checked = 0
+        found = 0
         for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             text = wf.read_text(encoding="utf-8")
-            blocks = list(sparse_blocks(text))
-            if not blocks:
-                continue
-            self.assertEqual(len(blocks), 1, f"{wf.name}: one sparse list per workflow expected")
-            allowed = blocks[0]
-            for script in re.findall(r"node (scripts/[\w./-]+\.mjs)", text):
-                for dep in import_graph(ROOT / script):
-                    rel = dep.relative_to(ROOT).as_posix()
-                    self.assertTrue(any(rel == d or rel.startswith(d.rstrip("/") + "/") for d in allowed),
-                                    f"{wf.name}: {script} needs {rel}, not in sparse-checkout {allowed}")
-                    checked += 1
-        self.assertGreater(checked, 0)
+            if list(sparse_blocks(text)):
+                found += 1
+                self.assertEqual(coverage_errors(wf.name, text), [])
+        self.assertGreaterEqual(found, 2)
+
+    def test_counterproof_without_p20_fails_naming_the_dependency(self):
+        wf = ROOT / ".github" / "workflows" / "p18-external-monitor.yml"
+        text = wf.read_text(encoding="utf-8")
+        self.assertIn("            scripts/p20\n", text)
+        broken = text.replace("            scripts/p20\n", "", 1)
+        errors = coverage_errors(wf.name, broken)
+        self.assertTrue(errors)
+        self.assertTrue(all("needs scripts/p20/" in e for e in errors), errors)
+        self.assertTrue(any("scripts/p20/restore-drill-lib.mjs" in e for e in errors), errors)
+
+    def test_counterproof_with_p20_passes(self):
+        wf = ROOT / ".github" / "workflows" / "p18-external-monitor.yml"
+        self.assertEqual(coverage_errors(wf.name, wf.read_text(encoding="utf-8")), [])
 
     def test_p18_monitor_needs_p20(self):
         deps = {d.relative_to(ROOT).as_posix() for d in import_graph(ROOT / "scripts/b0/p18-monitor.mjs")}
