@@ -8,6 +8,7 @@ on:
     paths:
       - "scripts/b0/**"
       - "tests/b0-baseline.test.mjs"
+      - "tests/test_sparse_checkout_imports.py"
       - "scripts/ci/mutants_p18.py"
       - "scripts/audit/workers-usage.mjs"
       - "scripts/audit/command-center-snapshot.mjs"
@@ -38,6 +39,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Checkout esparso cobre o grafo de imports (P18 monitor/vigia)
+        run: python3 -m unittest -v tests/test_sparse_checkout_imports.py
       - name: Sintaxe
         run: |
           set -euo pipefail
