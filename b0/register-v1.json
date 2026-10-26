@@ -1,0 +1,846 @@
+{
+  "schema": "zevanory.b0.register.v1",
+  "generated_at": "2026-10-26T06:59:39.975Z",
+  "note": "primeira_janela_de_avaliacao_min é a data mais cedo em que 14 dias completos podem existir; é janela de avaliação, nunca data de certificação.",
+  "rules": {
+    "b0_days": 14,
+    "not_available_counts_as_complete": false,
+    "labels_never_mixed": true,
+    "targets_must_be_approved_by_owner": true
+  },
+  "processes": {
+    "P03": {
+      "name": "Páginas",
+      "risk": "R3",
+      "frequency": "frequente",
+      "evidence_label": "OPERACIONAL",
+      "scope": {
+        "measured": [
+          "status HTTP de todas as URLs dos sitemaps públicos",
+          "erros pa11y WCAG2AA (HTML_CodeSniffer) nas páginas de venda"
+        ],
+        "not_proven": [
+          "impressões e cliques por página (Search Console)",
+          "WCAG 2.2 completo (o pa11y/htmlcs não cobre todos os critérios 2.2)",
+          "alvo de toque >= 44 px em produção"
+        ]
+      },
+      "sources": [
+        {
+          "id": "public_http_probe",
+          "status": "PRESENT",
+          "note": "GET somente leitura dos sitemaps e das URLs listadas, fora da Cloudflare (runner do GitHub)"
+        },
+        {
+          "id": "pa11y_live",
+          "status": "PRESENT",
+          "note": "pa11y@9.0.1 WCAG2AA nas páginas de venda ao vivo"
+        },
+        {
+          "id": "search_console",
+          "status": "MISSING",
+          "note": "seção 5.1: Search Console ainda depende do TXT"
+        }
+      ],
+      "fields": [
+        "public_pages_http",
+        "a11y_wcag2aa"
+      ],
+      "targets": [
+        {
+          "id": "P03-http",
+          "type": "PI",
+          "metric": "URLs dos sitemaps públicos com HTTP 2xx/3xx",
+          "value": "100% em toda leitura diária",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P03-wcag",
+          "type": "PI",
+          "metric": "erros WCAG2AA (pa11y) nas páginas de venda ao vivo",
+          "value": 0,
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P03-impressoes",
+          "type": "LB",
+          "metric": "impressões e cliques por página (Search Console)",
+          "value": null,
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "fontes ausentes: search_console",
+        "metas não aprovadas pelo proprietário: P03-http, P03-wcag, P03-impressoes",
+        "dias completos consecutivos 1/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 1,
+      "primeira_janela_de_avaliacao_min": "2026-11-07",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 1,
+          "complete_days": 1,
+          "consecutive": 1,
+          "streak_start": "2026-10-25",
+          "last_day": "2026-10-25"
+        }
+      }
+    },
+    "P06": {
+      "name": "Publicação multicanal",
+      "risk": "R3",
+      "frequency": "frequente",
+      "evidence_label": "OPERACIONAL",
+      "scope": {
+        "measured": [
+          "auditoria diária de duplicatas do registro de publicações"
+        ],
+        "not_proven": [
+          "WhatsApp (canal aposentado, excluído do escopo)"
+        ]
+      },
+      "sources": [
+        {
+          "id": "publication_registry_readonly",
+          "status": "MISSING",
+          "note": "o registro de publicações vive no KV/Neon; não há leitura somente leitura sem credencial; o resumo do command-center só traz contagens por canal, não a auditoria de duplicatas"
+        }
+      ],
+      "fields": [
+        "publication_duplicate_audit"
+      ],
+      "targets": [
+        {
+          "id": "P06-duplicatas",
+          "type": "PI",
+          "metric": "duplicatas na auditoria diária do registro de publicações (sem WhatsApp, aposentado)",
+          "value": 0,
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "fontes ausentes: publication_registry_readonly",
+        "metas não aprovadas pelo proprietário: P06-duplicatas",
+        "dias completos consecutivos 0/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-08",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 1,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        }
+      }
+    },
+    "P08": {
+      "name": "Lead",
+      "risk": "R2",
+      "frequency": "frequente",
+      "evidence_label": "OPERACIONAL",
+      "scope": {
+        "measured": [
+          "contagens de consentimento (opt-in, dupla confirmação, descadastro, exclusão)"
+        ],
+        "not_proven": []
+      },
+      "sources": [
+        {
+          "id": "lead_consent_readonly",
+          "status": "MISSING",
+          "note": "consentimentos só existem no Neon; não há endpoint público agregado nem credencial somente leitura no CI"
+        }
+      ],
+      "fields": [
+        "lead_consent_counts"
+      ],
+      "targets": [
+        {
+          "id": "P08-consentimento",
+          "type": "PI",
+          "metric": "leads com consentimento completo (finalidade, data, origem, descadastro, retenção)",
+          "value": "100%",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P08-descadastro",
+          "type": "PI",
+          "metric": "descadastros e exclusões cumpridos e registrados",
+          "value": "100%",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "fontes ausentes: lead_consent_readonly",
+        "metas não aprovadas pelo proprietário: P08-consentimento, P08-descadastro",
+        "dias completos consecutivos 0/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-08",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 1,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        }
+      }
+    },
+    "P15": {
+      "name": "Medição",
+      "risk": "R3",
+      "frequency": "frequente",
+      "evidence_label": "OPERACIONAL",
+      "scope": {
+        "measured": [
+          "visitas filtradas (7 dias, sem robôs/datacenter)",
+          "origem (views e intenções por fonte)",
+          "interesse (intenções, checkouts iniciados, leads em 7 dias)"
+        ],
+        "not_proven": [
+          "conversão: NOT_PROVEN enquanto as vendas estiverem fechadas",
+          "nível 'potencialmente qualificada' separado (funil v2, #893, não publicado)"
+        ]
+      },
+      "sources": [
+        {
+          "id": "command_center_annotation",
+          "status": "PRESENT",
+          "note": "anotação COMMAND_CENTER do command-center-snapshot (gh-pages, agendado), lida pela API REST"
+        },
+        {
+          "id": "funnel_diag_annotation",
+          "status": "PRESENT",
+          "note": "anotação FUNNEL_DIAG do mesmo run"
+        }
+      ],
+      "fields": [
+        "funnel_visits",
+        "funnel_origin",
+        "funnel_interest"
+      ],
+      "targets": [
+        {
+          "id": "P15-visitas",
+          "type": "LB",
+          "metric": "visitas filtradas em 7 dias (sem robôs e datacenter)",
+          "value": null,
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P15-interesse",
+          "type": "LB",
+          "metric": "intenções e checkouts iniciados em 7 dias",
+          "value": null,
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P15-humano",
+          "type": "PI",
+          "metric": "nenhum relatório afirma 'humano comprovado'; conversão NOT_PROVEN enquanto as vendas estiverem fechadas",
+          "value": "sempre",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "metas não aprovadas pelo proprietário: P15-visitas, P15-interesse, P15-humano",
+        "dias completos consecutivos 1/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 1,
+      "primeira_janela_de_avaliacao_min": "2026-11-07",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 1,
+          "complete_days": 1,
+          "consecutive": 1,
+          "streak_start": "2026-10-25",
+          "last_day": "2026-10-25"
+        }
+      }
+    },
+    "P18": {
+      "name": "Monitoramento",
+      "risk": "R1",
+      "frequency": "frequente",
+      "evidence_label": "OPERACIONAL",
+      "scope": {
+        "measured": [
+          "disponibilidade das páginas de venda e de /api/status medida de fora da Cloudflare",
+          "por incidente: última sondagem boa, 1ª falha observada, confirmação, emissão do alerta, recuperação e latências (seção 9 auditada, não presumida)",
+          "por execução: atraso do início sobre o slot do cron e intervalo desde a execução anterior",
+          "veredito diário da seção 9 (MET / NOT_MET / NOT_PROVEN); lacuna entre sondagens + orçamento de confirmação > 10 min = NOT_PROVEN"
+        ],
+        "not_proven": [
+          "instante real da queda: só é limitado ao intervalo (última sondagem boa, 1ª falha observada]",
+          "segundo gatilho independente do agendador do GitHub (seção 11): o vigia p18-monitor-watchdog roda no mesmo agendador; o gatilho na Cloudflare depende de passo do proprietário"
+        ]
+      },
+      "sources": [
+        {
+          "id": "p18_external_probe",
+          "status": "PRESENT",
+          "note": "workflow p18-external-monitor, cron 2-59/5, com re-sondagem de confirmação na mesma execução"
+        },
+        {
+          "id": "p18_monitor_watchdog",
+          "status": "PRESENT",
+          "note": "workflow p18-monitor-watchdog: batimento do monitor > 15 min = alerta por canal distinto (issue própria + falha do workflow)"
+        },
+        {
+          "id": "independent_secondary_trigger",
+          "status": "MISSING",
+          "note": "seção 11: gatilho fora do GitHub (cron existente do Worker de controle lendo o batimento) depende de deploy do proprietário"
+        }
+      ],
+      "fields": [
+        "sales_availability",
+        "alert_latency"
+      ],
+      "targets": [
+        {
+          "id": "P18-disponibilidade",
+          "type": "LB",
+          "metric": "disponibilidade das páginas de venda medida de fora",
+          "value": ">= 99,5% (proposta da seção 5)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P18-alerta",
+          "type": "PI",
+          "metric": "tempo do início da queda até o alerta (issue), medido pelo maior intervalo entre sondagens",
+          "value": "<= 10 min (seção 9, N2). ATENÇÃO: com 2 sondagens seguidas a cada 10 min o pior caso é cerca de 20 min mais o atraso do agendador do GitHub; o desenho atual NÃO atende esta meta. Decisão do proprietário: cadência de 5 min (mínimo do GitHub) ou aceitar outro valor",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "fontes ausentes: independent_secondary_trigger",
+        "metas não aprovadas pelo proprietário: P18-disponibilidade, P18-alerta",
+        "dias completos consecutivos 0/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-08",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 1,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        }
+      }
+    },
+    "P19": {
+      "margins": {
+        "kv_writes": {
+          "failure_mode": "contador diário (erro ao esgotar, zera 00:00 UTC)",
+          "target": "<= 600 (60%) em cada um dos 7 dias, o que também cumpre o pior dia <= 700 (seção 11)",
+          "target_status": "PROPOSTA",
+          "days_measured": 1,
+          "window_days": 1,
+          "worst_used": 569,
+          "limit": 1000,
+          "used_pct": 56.9,
+          "margin_pct": 43.1,
+          "within_target": null
+        },
+        "kv_reads": {
+          "failure_mode": "contador diário",
+          "target": "pior dia <= 50 mil (seção 11)",
+          "target_status": "PROPOSTA",
+          "days_measured": 1,
+          "window_days": 1,
+          "worst_used": 35503,
+          "limit": 100000,
+          "used_pct": 35.5,
+          "margin_pct": 64.5,
+          "within_target": null
+        },
+        "workers_requests": {
+          "failure_mode": "contador diário (erro 1027 ao esgotar)",
+          "target": "<= 40% no pior dia (seção 11)",
+          "target_status": "PROPOSTA",
+          "days_measured": 1,
+          "window_days": 1,
+          "worst_used": 55322,
+          "limit": 100000,
+          "used_pct": 55.3,
+          "margin_pct": 44.7,
+          "within_target": null
+        },
+        "workers_cpu_p99": {
+          "failure_mode": "CPU p99 (limite de 10 ms por invocação)",
+          "target": "p99 <= 5 ms no pior dia (seção 11)",
+          "target_status": "PROPOSTA",
+          "days_measured": 1,
+          "window_days": 1,
+          "worst_used": 61.84,
+          "limit": 10,
+          "used_pct": 618.4,
+          "margin_pct": -518.4,
+          "within_target": null
+        },
+        "neon_storage": {
+          "failure_mode": "armazenamento (bloqueia gravação ao esgotar)",
+          "target": "<= 50% (seção 11)",
+          "target_status": "PROPOSTA",
+          "days_measured": 0,
+          "window_days": 1,
+          "worst_used": null,
+          "limit": null,
+          "used_pct": null,
+          "margin_pct": null,
+          "within_target": null
+        },
+        "neon_compute": {
+          "failure_mode": "cota mensal (projeto suspenso até o mês seguinte)",
+          "target": "projeção conservadora do mês <= 80 CU-h (seção 11)",
+          "target_status": "PROPOSTA",
+          "days_measured": 0,
+          "window_days": 1,
+          "worst_used": null,
+          "limit": null,
+          "used_pct": null,
+          "margin_pct": null,
+          "within_target": null
+        }
+      },
+      "name": "Capacidade",
+      "risk": "R3",
+      "frequency": "frequente",
+      "evidence_label": "OPERACIONAL",
+      "scope": {
+        "measured": [
+          "KV: gravações e leituras do dia (conta), leitura do fim do dia (contador diário)",
+          "Workers: requisições do dia UTC completo da conta inteira (contador diário) e pior CPU p99 entre os Workers (CPU p99)",
+          "Neon: tamanho do banco pg_database_size pelo plan-probe semanal (armazenamento), quando a leitura existir"
+        ],
+        "not_proven": [
+          "Neon CU-h do mês (cota mensal): exige chave de API do Neon, que não existe no repositório",
+          "Neon: armazenamento faturado (inclui histórico/WAL) difere de pg_database_size",
+          "Workers CPU p99 da conta: não existe; o pior p99 por Worker é o valor conservador",
+          "D1 linhas",
+          "Resend"
+        ]
+      },
+      "sources": [
+        {
+          "id": "kv_quota_annotation",
+          "status": "PRESENT",
+          "note": "kvQuota da anotação COMMAND_CENTER (verified=true)"
+        },
+        {
+          "id": "workers_requests_cpu_readonly",
+          "status": "PRESENT",
+          "note": "workersUsage da anotação COMMAND_CENTER do primeiro dia seguinte (GraphQL workersInvocationsAdaptive com o token que já lê a cota de KV); token sem escopo vira NOT_AVAILABLE no dia"
+        },
+        {
+          "id": "neon_storage_readonly",
+          "status": "MISSING",
+          "note": "plan-probe.yml já mede pg_database_size, mas o segredo DATABASE_URL do Environment gh-pages-automacao está vazio (PLAN_PROBE neon:{} em 19/10). Passo do proprietário: criar um papel SOMENTE LEITURA no projeto Neon atual e gravar a URL dele como DATABASE_URL no Environment gh-pages-automacao"
+        },
+        {
+          "id": "neon_compute_readonly",
+          "status": "MISSING",
+          "note": "CU-h do mês só pela API do Neon (consumption); exige chave de API do Neon, credencial nova. Passo do proprietário: criar chave de API do Neon restrita ao projeto e gravá-la como NEON_API_KEY no Environment gh-pages-automacao; depois um PR adiciona a leitura"
+        }
+      ],
+      "fields": [
+        "kv_quota",
+        "workers_usage",
+        "neon_storage",
+        "neon_compute"
+      ],
+      "targets": [
+        {
+          "id": "P19-kv-gravacoes",
+          "type": "LB",
+          "metric": "KV gravações/dia, pior dia de 7",
+          "value": "<= 600 (60%), pior dia <= 700 (seção 11)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P19-kv-leituras",
+          "type": "LB",
+          "metric": "KV leituras/dia, pior dia de 7",
+          "value": "<= 50000 (seção 11)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P19-workers-requisicoes",
+          "type": "LB",
+          "metric": "Workers requisições/dia da conta, pior dia de 7 (contador diário)",
+          "value": "<= 40% de 100 mil (seção 11)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P19-workers-cpu-p99",
+          "type": "LB",
+          "metric": "pior CPU p99 entre os Workers, pior dia de 7 (limite 10 ms)",
+          "value": "<= 5 ms (seção 11)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P19-neon-armazenamento",
+          "type": "LB",
+          "metric": "Neon pg_database_size contra 512 MiB (armazenamento)",
+          "value": "<= 50%; meses até 50% >= 12 (seção 11; a seção cita 1 GB, aqui o limite mais conservador do plan-probe)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P19-neon-compute",
+          "type": "LB",
+          "metric": "Neon CU-h do mês, projeção conservadora (cota mensal)",
+          "value": "<= 80 CU-h no mês; <= 1,5 CU-h/dia (seção 11)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P19-cota",
+          "type": "PI",
+          "metric": "cotas esgotadas",
+          "value": 0,
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "fontes ausentes: neon_storage_readonly, neon_compute_readonly",
+        "metas não aprovadas pelo proprietário: P19-kv-gravacoes, P19-kv-leituras, P19-workers-requisicoes, P19-workers-cpu-p99, P19-neon-armazenamento, P19-neon-compute, P19-cota",
+        "dias completos consecutivos 0/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-08",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 1,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        }
+      }
+    },
+    "P20": {
+      "name": "Continuidade",
+      "risk": "R1",
+      "frequency": "raro",
+      "evidence_label": "ENSAIO_EM_PRODUCAO",
+      "scope": {
+        "measured": [
+          "resultado e idade do backup diário com restauração por amostra (data-backup.yml)",
+          "ensaio mensal de restauração COMPLETA da cópia Neon -> KV num Postgres efêmero, com SHA-256 por tabela contra o manifesto, RPO e RTO de dados (p20-monthly-restore-drill.yml; só ENSAIO_EM_PRODUCAO conta)"
+        ],
+        "not_proven": [
+          "restauração completa da cópia KV -> Neon (só ensaio por amostra no Worker)",
+          "conciliação dos pedidos restaurados contra o provedor",
+          "diário de eventos no D1",
+          "ensaio trimestral N2/N3",
+          "RTO de serviço (DNS/Worker): o RTO medido é só de dados",
+          "cópia cifrada (a cópia no KV está em texto claro)"
+        ]
+      },
+      "sources": [
+        {
+          "id": "data_backup_annotation",
+          "status": "PRESENT",
+          "note": "anotação DATA_BACKUP do run agendado/manual em gh-pages"
+        },
+        {
+          "id": "monthly_full_restore_drill",
+          "status": "PRESENT",
+          "note": "p20-monthly-restore-drill.yml (Environment producao-critica, cada execução exige aprovação do proprietário) grava p20/restore-drills-v1.jsonl no ramo de evidência; só ENSAIO_EM_PRODUCAO medido em até 31 dias conta"
+        },
+        {
+          "id": "kv_copy_full_restore",
+          "status": "MISSING",
+          "note": "a cópia KV -> Neon (zevanory_kv_backup) só é legível com a credencial do Neon, que só o Worker usa; o ensaio mensal em CI não a restaura"
+        },
+        {
+          "id": "provider_reconciliation",
+          "status": "MISSING",
+          "note": "seção 9.1: conciliação dos pedidos restaurados contra o provedor; vendas fechadas e nenhuma credencial somente leitura do provedor no ensaio"
+        },
+        {
+          "id": "event_journal_d1",
+          "status": "MISSING",
+          "note": "seção 9.1: diário de eventos críticos no D1 não implementado"
+        }
+      ],
+      "fields": [
+        "backup_restore_sample",
+        "monthly_full_restore_drill"
+      ],
+      "targets": [
+        {
+          "id": "P20-idade",
+          "type": "PI",
+          "metric": "idade da última cópia íntegra (backup + hash + restauração por amostra)",
+          "value": "<= 26 h; > 48 h é falha crítica (seção 9.1)",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P20-ensaio-mensal",
+          "type": "PI",
+          "metric": "ensaio mensal de restauração completa em esquema isolado",
+          "value": "1 por mês, aprovado",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P20-rpo-rto",
+          "type": "LB",
+          "metric": "RPO e RTO medidos no ensaio",
+          "value": "objetivos por classe em docs/p20/inventario-estado-critico.json (PROPOSTA: pedidos, entregas, reembolsos e leads RPO 24 h / RTO 4 h; atendimento 24 h / 8 h; funil 24 h / 24 h; estado comercial no KV 24 h / 1 h; catálogo no Git 0 / 1 h); valor medido no ensaio mensal define a meta",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "fontes ausentes: kv_copy_full_restore, provider_reconciliation, event_journal_d1",
+        "metas não aprovadas pelo proprietário: P20-idade, P20-ensaio-mensal, P20-rpo-rto",
+        "dias completos consecutivos 0/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-08",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 1,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        }
+      }
+    },
+    "P22": {
+      "name": "Prova financeira",
+      "risk": "R1",
+      "frequency": "frequente",
+      "evidence_label": "OPERACIONAL",
+      "scope": {
+        "measured": [
+          "validade da prova (estado PROVEN e idade <= 65 min) em cada leitura do /api/status",
+          "invalidações registradas",
+          "fail-safe: prova inválida nunca com venda liberada"
+        ],
+        "not_proven": [
+          "ciclo financeiro completo (pagamento, conciliação, entrega): NOT_PROVEN, vendas fechadas"
+        ]
+      },
+      "sources": [
+        {
+          "id": "public_api_status",
+          "status": "PRESENT",
+          "note": "GET público /api/status em cada sondagem do P18"
+        }
+      ],
+      "fields": [
+        "financial_proof_freshness"
+      ],
+      "targets": [
+        {
+          "id": "P22-ttl",
+          "type": "PI",
+          "metric": "leituras do /api/status com prova PROVEN e idade <= 65 min, quando a venda estiver liberada",
+          "value": "100%",
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        },
+        {
+          "id": "P22-fail-safe",
+          "type": "PI",
+          "metric": "leituras com prova inválida e venda liberada ao mesmo tempo",
+          "value": 0,
+          "status": "PROPOSED",
+          "approved_by": null,
+          "approved_at": null
+        }
+      ],
+      "state": "MEDICAO_ATIVA",
+      "reasons": [
+        "metas não aprovadas pelo proprietário: P22-ttl, P22-fail-safe",
+        "dias completos consecutivos 0/14"
+      ],
+      "start_date_utc": "2026-10-25",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-08",
+      "evidence_by_label": {
+        "SINTETICA": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "ENSAIO_EM_PRODUCAO": {
+          "days_recorded": 0,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        },
+        "OPERACIONAL": {
+          "days_recorded": 1,
+          "complete_days": 0,
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-10-25"
+        }
+      }
+    }
+  }
+}
