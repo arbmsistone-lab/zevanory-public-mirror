@@ -169,6 +169,12 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Prove factory/tick HMAC guard on the exact source (pre-promotion, A286-01)
+        if: env.PROMOTE == 'true'
+        # Source-only gate: runs BEFORE any build or publish, so an unguarded source never reaches production.
+        # The same proof runs again after promotion (Verify exact trust and artifact readback).
+        run: python3 scripts/deploy/t2_route_guard.py --source zpc
+
       - name: Build exact control-plane source
         if: env.PROMOTE == 'true'
         working-directory: zpc
@@ -272,20 +278,9 @@ jobs:
           # controle.zevanory.api.br any more; the guard is proven on the EXACT source SHA being promoted (zpc checkout):
           # the factory route must reject non-POST, then call verifyFactoryRequest (HMAC verify) and answer 401 before
           # any work.
-          python3 - <<'PY'
-          import re, sys
-          src = open("zpc/cf-worker/worker.ts", encoding="utf-8").read()
-          i = src.find("url.pathname === '/api/commercial/creative/factory/tick'")
-          block = src[i:i + 600] if i >= 0 else ""
-          head = block.split("try {", 1)[0]
-          ok = (i >= 0 and "request.method !== 'POST'" in head
-                and re.search(r"if \(!await verifyFactoryRequest\(request, env\)\) return Response\.json\(\{ ok: false, error: 'commercial_creative_factory_auth_required' \}, \{ status: 401 \}\)", head)
-                and re.search(r"async function verifyFactoryRequest[\s\S]{0,1500}crypto\.subtle\.verify\('HMAC'", src))
-          if not ok:
-              print("::error title=SOURCE_T2_ROUTE_UNGUARDED::factory/tick is not HMAC-guarded before work in the promoted source")
-              sys.exit(1)
-          print("SOURCE_T2_ROUTE_GUARDED=PASS")
-          PY
+          # Edge #211 (R9-D1) moved the HMAC verify into cf-worker/commercial-hmac.ts; the proof follows
+          # verifyFactoryRequest into that module and requires it to fail closed (scripts/deploy/t2_route_guard.py).
+          python3 scripts/deploy/t2_route_guard.py --source zpc
           cat /tmp/version.json
           cat /tmp/global-trust.json
           cat /tmp/artifacts.json
