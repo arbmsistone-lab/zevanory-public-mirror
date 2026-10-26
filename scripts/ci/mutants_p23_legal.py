@@ -29,7 +29,8 @@ COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/toolchain.mjs", "
                       "worker/fiscal-process.mjs", "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs",
                       "worker/cloudflare-worker.compat.mjs", "data/politica-unica.json", "data/products.json",
                       "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json"] + \
-    sorted(f"sales-public/{p.name}" for p in (REPO / "sales-public").glob("*.html"))
+    sorted(f"sales-public/{p.name}" for p in (REPO / "sales-public").glob("*.html")) + \
+    sorted(p.relative_to(REPO).as_posix() for p in REPO.glob("*/index.html") if p.parent.name != "sales-public")
 TIMEOUT = 300
 NODE = shutil.which("node") or "node"
 G = "scripts/p23/ecommerce_legal_gate.py"
