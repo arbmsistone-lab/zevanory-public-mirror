@@ -116,6 +116,22 @@ jobs:
           grep -qx "# tests 2" r.txt && grep -qx "# pass 2" r.txt && grep -qx "# skipped 0" r.txt && grep -qx "# fail 0" r.txt
           grep -cE '^# W[0-9] .*: KILLED' r.txt | grep -qx 3 || { echo "::error::esperados 3 mutantes W mortos"; exit 1; }
           echo "::notice title=REFUND_WINDOW_MUTANTS::$(grep -E '^# W[0-9]' r.txt | sed 's/^# //' | paste -sd'|' - | sed 's/|/%0A/g')"
+      - name: Reserva transacional do reembolso automático sob concorrência
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/refund-auto-dispatch-postgres.test.mjs | tee ra-pg.txt
+          grep -qx "# tests 1" ra-pg.txt && grep -qx "# pass 1" ra-pg.txt && grep -qx "# skipped 0" ra-pg.txt && grep -qx "# fail 0" ra-pg.txt
+      - name: Mutantes do reembolso automático (classificador compartilhado)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -eo pipefail
+          python3 scripts/ci/mutants_refund_auto_dispatch.py | tee ra-mutants.txt
+          grep -q '"mutants": 21, "KILLED": 21, "SURVIVED": 0, "INCONCLUSIVE": 0' ra-mutants.txt \
+            || { echo "::error::esperados 21/21 mutantes do reembolso mortos"; exit 1; }
       - name: Outbox do formulário de atendimento (AVAL Sol #892; queda, recuperação, janela 23 h, erros permanentes, dead-letter, monitor, lease, cotas)
         env:
           T4_PG_HOST: localhost

@@ -94,6 +94,8 @@ tests/production-secret-names.test.mjs 18
 tests/production-staging-health.test.mjs 3
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 12
+tests/refund-auto-dispatch-contract.test.mjs 21
+tests/refund-auto-dispatch.test.mjs 8
 tests/refund-provider-ambiguity.test.mjs 29
 tests/remote-quality-lighthouse.test.mjs 8
 tests/reviews.test.mjs 3

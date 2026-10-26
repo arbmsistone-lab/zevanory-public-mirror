@@ -2,6 +2,7 @@ import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND
 import { drainAtendimentoOutbox, handleAtendimento } from "./atendimento.mjs";
 import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
+import { evaluateAutomaticRefund, refundAutoDispatchEnabled, refundIdempotencyKey, validateMercadoPagoCredential } from "./refund-auto-dispatch.mjs";
 export { reconcileRefund } from "./refund-provider-claims.mjs";
 // T5 — Refund flow (CDC art. 49). P13c (FINANCEIRO): o prazo segue a regra publicada
 // (data/politica-unica.json, refund_window via refundWindow): 7 dias corridos a partir da data mais
@@ -33,6 +34,13 @@ function timingSafeEqual(a, b) {
 
 function tokenFor(env, test) {
   return String((test ? env.MERCADOPAGO_TEST_ACCESS_TOKEN : env.MERCADOPAGO_ACCESS_TOKEN) || "").trim();
+}
+
+async function notifyCredentialMismatch(env, oid, reason) {
+  const subject = "ZEVANORY — reembolso bloqueado por credencial incompatível";
+  const text = `Pedido ${oid}: despacho automático recusado em modo fail-closed (${reason}). Nenhuma chamada financeira foi feita.`;
+  const sent = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), subject, text);
+  return sent.sent;
 }
 
 async function loadOrder(sql, oid) {
@@ -95,16 +103,19 @@ async function createRequest(env, sql, kv, { oid, email }) {
   oid = String(oid || "").trim().toLowerCase();
   email = String(email || "").trim().toLowerCase();
   if (!UUID.test(oid) || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) || email.length > 254) return { status: 400, body: { error: "dados_invalidos", message: GENERIC_NOT_FOUND } };
+  const automatic = refundAutoDispatchEnabled(env);
   const existing = JSON.parse(await kv.get(KEY(oid)) || "null");
   if (existing && (existing.status !== "rejected" || isAmbiguousRefund(existing))) return { status: 200, body: { received: true, status: existing.status, message: "Seu pedido de reembolso já está registrado e será processado em breve." } };
   if (existing?.status === "rejected" && await hasRefundClaim(sql, oid)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
   const order = await loadOrder(sql, oid);
-  if (!order || order.status !== "paid" || !order.payment_id || !order.paid_at) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: !order ? "order_not_found" : order.status !== "paid" ? "order_status_" + order.status : "payment_missing" } };
+  if (!order || !order.payment_id || !order.paid_at || (!automatic && order.status !== "paid")) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: !order ? "order_not_found" : order.status !== "paid" ? "order_status_" + order.status : "payment_missing" } };
   const test = order.certification_pilot === true || Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`));
+  const credential = automatic ? validateMercadoPagoCredential(env, test) : { ok: true };
   const window = refundWindow({ paidAt: order.paid_at, deliveredAt: order.delivered_at, firstDownloadAt: order.first_download_at, now: Date.now() });
   if (!window.eligible) {
-    // Never auto-refunded and never registered as a refund: routed to support (defect/delivery issues are still handled there).
-    return { status: 409, body: { error: "fora_do_prazo", route: "suporte", window_ends_at: window.ends_at, message: `O prazo de arrependimento (${CUSTOMER_RULE_7D}) deste pedido terminou. Se houver defeito, arquivo corrompido ou falha de entrega, fale com o suporte: ${REFUND_CHANNELS}.` } };
+    // With automatic dispatch disabled this remains the exact legacy route. When enabled it is registered in the
+    // manual queue below so the legal clock and the consumer protocol remain visible.
+    if (!automatic) return { status: 409, body: { error: "fora_do_prazo", route: "suporte", window_ends_at: window.ends_at, message: `O prazo de arrependimento (${CUSTOMER_RULE_7D}) deste pedido terminou. Se houver defeito, arquivo corrompido ou falha de entrega, fale com o suporte: ${REFUND_CHANNELS}.` } };
   }
   // The customer identifies with the email where the product was delivered (= Mercado Pago payer in production).
   const candidates = [];
@@ -113,11 +124,15 @@ async function createRequest(env, sql, kv, { oid, email }) {
     const ev = f?.evidence_ref && String(f.evidence_ref).trim().startsWith("{") ? JSON.parse(f.evidence_ref) : {};
     if (ev.email_recipient) candidates.push(String(ev.email_recipient).trim().toLowerCase());
   } catch {}
+  let payment = null;
   try {
-    const payment = await mpPayment(env, order.payment_id, test);
+    if (automatic && !credential.ok) throw new Error(credential.reason);
+    payment = await mpPayment(env, order.payment_id, test);
     if (payment?.payer?.email) candidates.push(String(payment.payer.email).trim().toLowerCase());
   } catch {}
-  if (!candidates.some((c) => c && timingSafeEqual(c, email))) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: candidates.length ? "email_mismatch" : "email_unverifiable" } };
+  const identityMatched = candidates.some((c) => c && timingSafeEqual(c, email));
+  if (!automatic && !identityMatched) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: candidates.length ? "email_mismatch" : "email_unverifiable" } };
+  const decision = automatic ? evaluateAutomaticRefund({ order, payment, window, identityMatched, test, credential }) : { eligible: false, reason: null };
   const record = {
     status: "pending",
     order_id: oid,
@@ -130,16 +145,26 @@ async function createRequest(env, sql, kv, { oid, email }) {
     received_at: window.received_at || null,
     window: window.reason,
     requested_at: new Date().toISOString(),
+    auto_dispatch: automatic,
+    auto_eligible: decision.eligible,
+    manual_reason: automatic && !decision.eligible ? decision.reason : null,
   };
   await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
-  if (!test) {
-    const alert = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY — novo pedido de reembolso para aprovar", `Pedido ${oid} (${record.offer_id}, R$ ${record.amount}) solicitou reembolso dentro do prazo de arrependimento (${window.reason === "recebimento_pendente" ? "recebimento ainda não registrado" : "até " + window.ends_at}).\n\nAprovar: ${ORIGIN}/admin/refunds`);
+  if (!test) await sendEmail(env, email, "ZEVANORY — recebemos seu pedido de reembolso", `Protocolo: ${oid}\n\nRecebemos seu pedido de reembolso. O pedido foi registrado em ${record.requested_at}. Você receberá a confirmação do resultado por e-mail.\n\nEquipe ZEVANORY · suporte@zevanory.api.br`);
+  if (!test && (!automatic || !decision.eligible)) {
+    const reason = record.manual_reason ? ` Motivo da análise manual: ${record.manual_reason}.` : "";
+    const alert = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY — reembolso em análise manual", `Pedido ${oid} (${record.offer_id}, R$ ${record.amount}) foi registrado.${reason}\n\nFila: ${ORIGIN}/admin/refunds`);
     if (!alert.sent) {
       // Keep a retry marker; the hourly refund watchdog re-alerts the owner.
       try { await kv.put(`refund:alert-pending:${oid}`, new Date().toISOString(), { expirationTtl: 14 * 24 * 3600 }); } catch {}
     }
   }
-  if (!test) await sendEmail(env, email, "ZEVANORY — recebemos seu pedido de reembolso", `Recebemos o pedido de reembolso do pedido ${oid}. O valor volta pelo mesmo meio de pagamento assim que o processamento for concluído. Você receberá a confirmação por e-mail.\n\nEquipe ZEVANORY · suporte@zevanory.api.br`);
+  if (automatic && !credential.ok) await notifyCredentialMismatch(env, oid, credential.reason);
+  if (automatic && decision.eligible) {
+    const outcome = await executeRefund(env, sql, kv, oid, { actor: "automatic-withdrawal" });
+    if (!test) await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY — despacho automático de reembolso", `Pedido ${oid}: resultado ${outcome.body?.status || outcome.body?.error || outcome.status}. Esta é uma notificação; não foi solicitada aprovação manual.`);
+    return { status: 200, body: { received: true, status: outcome.body?.status || "pending", protocol: oid, ...(outcome.status === 200 ? {} : { processing: outcome.body?.error }) } };
+  }
   return { status: 200, body: { received: true, status: "pending", message: "Pedido de reembolso registrado. Você receberá a confirmação por e-mail." } };
 }
 
@@ -165,8 +190,12 @@ async function executeRefund(env, sql, kv, oid, { actor }) {
       }
     } catch { return { status: 503, body: { error: "refund_claim_store_unavailable" } }; }
   }
-  const token = tokenFor(env, record.test);
-  if (!token) return { status: 503, body: { error: "mercadopago_token_missing" } };
+  const checked = record.auto_dispatch ? validateMercadoPagoCredential(env, record.test) : { ok: true, token: tokenFor(env, record.test) };
+  const token = checked.token;
+  if (!checked.ok || !token) {
+    if (record.auto_dispatch) await notifyCredentialMismatch(env, oid, checked.reason);
+    return { status: 503, body: { error: checked.reason || "mercadopago_token_missing" } };
+  }
   // Every financial POST is preceded by a single durable claim or one CAS-controlled retry.
   try {
     if (!await acquireRefundClaim(sql, record)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
@@ -176,7 +205,7 @@ async function executeRefund(env, sql, kv, oid, { actor }) {
     r = await fetch(MP + "/v1/payments/" + encodeURIComponent(record.payment_id) + "/refunds", {
       method: "POST",
       headers: { authorization: "Bearer " + token, "content-type": "application/json",
-        "x-idempotency-key": "zevanory-refund-" + oid, ...(record.test ? { "x-test-token": "true" } : {}) },
+        "x-idempotency-key": refundIdempotencyKey(oid), ...(record.test ? { "x-test-token": "true" } : {}) },
       body: "{}", signal: AbortSignal.timeout(20000) });
   } catch {
     record.provider_outcome_unknown = true;
@@ -245,7 +274,7 @@ const FORM_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"
 <script>document.getElementById('f').addEventListener('submit',async(ev)=>{ev.preventDefault();const m=document.getElementById('msg');m.style.display='block';m.textContent='Enviando…';try{const r=await fetch('/api/support/refund-request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_id:document.getElementById('o').value,email:document.getElementById('e').value})});const j=await r.json();m.textContent=j.message||'Não foi possível registrar agora. Tente novamente.';}catch{m.textContent='Não foi possível registrar agora. Tente novamente.';}});</script></body></html>`;
 
 function adminPage(items) {
-  const rows = items.map((r) => `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}</td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" && r.retry_permitted ? `<form method="post" action="/admin/refunds/action"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Repetir após conciliação (uma vez)</button></form>` : r.status === "pending" && !r.claim_present && !isAmbiguousRefund(r) ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : (isAmbiguousRefund(r) || r.claim_present) ? "Verificar conciliação no Mercado Pago antes de nova tentativa" : r.download_revocation_pending === true ? "Revogação de downloads pendente; verificar recuperação" : esc(r.refund_id || "")}</td></tr>`).join("");
+  const rows = items.map((r) => { const ageH = Math.max(0, (Date.now() - Date.parse(r.requested_at || 0)) / 3600e3); return `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}<br><small>há ${esc(ageH < 1 ? Math.max(0, Math.floor(ageH * 60)) + " min" : Math.floor(ageH) + " h")}</small></td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.manual_reason ? `<br><small>manual: ${esc(r.manual_reason)}</small>` : ""}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" && r.retry_permitted ? `<form method="post" action="/admin/refunds/action"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Repetir após conciliação (uma vez)</button></form>` : r.status === "pending" && !r.claim_present && !isAmbiguousRefund(r) ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : (isAmbiguousRefund(r) || r.claim_present) ? "Verificar conciliação no Mercado Pago antes de nova tentativa" : r.download_revocation_pending === true ? "Revogação de downloads pendente; verificar recuperação" : esc(r.refund_id || "")}</td></tr>`; }).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reembolsos · ZEVANORY</title><style>body{font-family:system-ui,sans-serif;background:#050a1e;color:#e7ecf7;margin:0;padding:24px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #22305a;text-align:left;vertical-align:top}button{padding:10px 14px;border:0;border-radius:8px;background:#22c55e;color:#04210f;font-weight:700}button.no{background:#334155;color:#fff}code{font-size:12px}</style></head><body><h1>Pedidos de reembolso</h1><p>Aprovar envia o reembolso integral ao Mercado Pago e bloqueia novos downloads do pedido.</p><table><tr><th>Quando</th><th>Pedido</th><th>Valor</th><th>Status</th><th>Ação</th></tr>${rows || '<tr><td colspan="5">Nenhum pedido.</td></tr>'}</table></body></html>`;
 }
 
