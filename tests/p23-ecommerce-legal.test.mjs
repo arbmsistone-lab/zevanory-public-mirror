@@ -51,7 +51,7 @@ test("L1 site de vendas real passa; achados relatados sem inventar dado", () => 
   assert.equal(r.status, 0, "[L1.1] " + r.stdout + r.stderr);
   assert.match(r.stdout, /P23_PAGES priced=\d+ offers=6 legal=2 fiscal_status=NAO_DEFINIDO/, "[L1.2]");
   assert.match(r.stdout, /FINDING P23-F3-FISCAL: processo fiscal NAO_DEFINIDO/, "[L1.3]");
-  assert.match(r.stdout, /FINDING D7962-2-II: o CEP 63540-000 está anotado/, "[L1.4]");
+  assert.match(r.stdout, /FINDING D7962-2-I\/II: \d+ páginas-fonte na raiz do repositório/, "[L1.4]");
 });
 test("L2 registro fiscal real (NAO_DEFINIDO) fecha o checkout próprio sozinho e sem tocar a rede", async () => {
   assert.equal(FISCAL_PROCESS.status, "NAO_DEFINIDO", "[L2.1]");

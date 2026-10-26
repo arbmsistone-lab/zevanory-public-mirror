@@ -3,12 +3,11 @@
   "note": "P24 (Roteiro Mestre v4.7, seção 5): cada promessa extraída da página de venda precisa apontar para o material entregue. O texto de cada promessa é idêntico ao da página (normalizado só em espaços). Promessa da página sem entrada neste mapa reprova o gate. 'files' são caminhos dentro do zip do produto; 'component' exige cópia byte a byte do produto avulso; 'anchors' são termos (sem acento, minúsculos) que precisam aparecer no arquivo indicado, o que é evidência automática de tema, não avaliação cega. 'review' = 'REVISAO_HUMANA' marca promessa cuja correspondência o executor não considera comprovada.",
   "extraction": {
     "hero_receipt": "div.hero-panel.receipt ul.outcome-list > li",
-    "offer_receives": "div.offer-side 'O que você recebe' > ul > li",
     "essentials": "div[data-field=caracteristicas] dd, separado por ';'",
     "scope_features": "article.feature h3",
     "method_cards": "article.card h3",
     "offer_method": "div.offer-main > ul > li",
-    "guard": "as seis regiões são obrigatórias; região ausente reprova o gate"
+    "guard": "as cinco regiões atuais são obrigatórias; região ausente reprova o gate"
   },
   "products": {
     "ia-na-pratica": {

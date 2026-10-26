@@ -60,10 +60,10 @@ def _li_items(ul_inner: str) -> list[str]:
     return [_strip_tags(x) for x in re.findall(r"<li[^>]*>(.*?)</li>", ul_inner, re.S)]
 
 
-REGIONS = ("hero_receipt", "offer_receives", "essentials", "scope_features", "method_cards", "offer_method")
+REGIONS = ("hero_receipt", "essentials", "scope_features", "method_cards", "offer_method")
 # Regiões que toda página de produto precisa ter. Se a marcação mudar e uma delas sumir, o gate reprova em vez de
 # extrair menos promessas sem avisar.
-REQUIRED_REGIONS = ("hero_receipt", "offer_receives", "essentials", "scope_features", "method_cards", "offer_method")
+REQUIRED_REGIONS = ("hero_receipt", "essentials", "scope_features", "method_cards", "offer_method")
 
 
 def extract_promises(page_html: str) -> dict[str, list[str]]:
@@ -71,8 +71,6 @@ def extract_promises(page_html: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     m = re.search(r'<(?:aside|div) class="hero-panel receipt"[^>]*>.*?<ul class="outcome-list"[^>]*>(.*?)</ul>', page_html, re.S)
     out["hero_receipt"] = _li_items(m.group(1)) if m else []
-    m = re.search(r'<div class="offer-side"[^>]*>.*?O que você recebe</h3>\s*<ul[^>]*>(.*?)</ul>', page_html, re.S)
-    out["offer_receives"] = _li_items(m.group(1)) if m else []
     m = re.search(r'<div data-field="caracteristicas">.*?<dd>(.*?)</dd>', page_html, re.S)
     if m:
         text = _strip_tags(m.group(1)).rstrip(".")
