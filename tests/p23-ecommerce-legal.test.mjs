@@ -14,8 +14,10 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
 import { FISCAL_PROCESS, fiscalProcessDefined, FISCAL_DECISION_FIELDS } from "../worker/fiscal-process.mjs";
 import { REQUIRED, evaluateCheckout, allowCheckout } from "../worker/commercial-checkout-guard.mjs";
+import { handleSalesControl, resetSalesSwitchCache } from "../worker/sales-control.mjs";
 
-requireTool("python3");
+const PYTHON = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
+requireTool(PYTHON);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GATE = join(REPO, "scripts/p23/ecommerce_legal_gate.py");
 const FILES = ["data/politica-unica.json", "data/products.json", "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json",
@@ -26,13 +28,17 @@ function gate(edits = {}) {
   const root = mkdtempSync(join(tmpdir(), "p23-"));
   try {
     for (const rel of FILES) { mkdirSync(dirname(join(root, rel)), { recursive: true }); copyFileSync(join(REPO, rel), join(root, rel)); }
+    const policyPath = join(root, "data/politica-unica.json");
+    const policy = JSON.parse(readTextNormalized(policyPath));
+    policy.legal_review = { status: "APPROVED", approved_by: "fixture-jurista", approved_at: "2026-10-27T00:00:00Z" };
+    writeFileSync(policyPath, JSON.stringify(policy, null, 2));
     for (const [rel, fn] of Object.entries(edits)) {
       const cur = readTextNormalized(join(root, rel));
       const next = fn(cur);
       assert.notEqual(next, cur, `fixture: edição sem efeito em ${rel}`);
       writeFileSync(join(root, rel), next);
     }
-    const r = spawnSync("python3", ["-I", GATE, "--root", root], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" } });
+    const r = spawnSync(PYTHON, ["-I", GATE, "--root", root], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" } });
     return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
@@ -46,12 +52,15 @@ const ENV = { SALE_GLOBALLY_ENABLED: "true", PRE_SALE_GATES_APPROVED: "true", AB
   MERCADOPAGO_ENV: "production", ZEVANORY_PRIVATE_ARTIFACTS: { get: async () => JSON.stringify({ ok: true, at: new Date(NOW - 60_000).toISOString() }) } };
 const counting = () => { const f = async () => { f.calls += 1; return true; }; f.calls = 0; return f; };
 
-test("L1 site de vendas real passa; achados relatados sem inventar dado", () => {
-  const r = spawnSync("python3", ["-I", GATE, "--root", REPO], { encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
-  assert.equal(r.status, 0, "[L1.1] " + r.stdout + r.stderr);
+test("L1 site real permanece fail-closed enquanto a revisão jurídica está pendente", () => {
+  const r = spawnSync(PYTHON, ["-I", GATE, "--root", REPO], { encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
+  assert.equal(r.status, 1, "[L1.1] " + r.stdout + r.stderr);
+  assert.match(r.stdout, /REVISÃO JURÍDICA PENDENTE/, "[L1.1a]");
   assert.match(r.stdout, /P23_PAGES priced=\d+ offers=6 legal=2 fiscal_status=NAO_DEFINIDO/, "[L1.2]");
   assert.match(r.stdout, /FINDING P23-F3-FISCAL: processo fiscal NAO_DEFINIDO/, "[L1.3]");
   assert.match(r.stdout, /FINDING D7962-2-I\/II: \d+ páginas-fonte na raiz do repositório/, "[L1.4]");
+  const approved = gate();
+  assert.doesNotMatch(approved.out, /REVISÃO JURÍDICA PENDENTE/, "[L1.5] aprovação jurídica identificável libera apenas esse bloqueio");
 });
 test("L2 registro fiscal real (NAO_DEFINIDO) fecha o checkout próprio sozinho e sem tocar a rede", async () => {
   assert.equal(FISCAL_PROCESS.status, "NAO_DEFINIDO", "[L2.1]");
@@ -89,7 +98,23 @@ test("L8 resumo sem arrependimento de 7 dias reprova (CDC art. 49)", () => fails
 test("L9 termos sem a declaração do art. 5º, § 2º reprova", () => fails(gate({ "sales-public/termos.html": (s) => s.replace("Contratos acessórios serão cancelados sem custo", "Contratos acessórios seguem as regras próprias") }), /termos.html: falta a declaração de D7962-5-2/, "[L9.1]"));
 test("L10 CNPJ com dígitos inválidos reprova", () => fails(gate({ "data/politica-unica.json": (s) => s.replace('"cnpj": "69.077.233/0001-99"', '"cnpj": "69.077.233/0001-98"') }), /dígitos verificadores inválidos/, "[L10.1]"));
 test("L11 portão de checkout sem o sinal fiscal reprova", () => fails(gate({ "worker/commercial-checkout-guard.mjs": (s) => s.replace('"environment","fiscal","token"', '"environment","token"') }), /REQUIRED sem o sinal 'fiscal'/, "[L11.1]"));
-test("L12 status público sem o processo fiscal reprova", () => fails(gate({ "worker/sales-control.mjs": (s) => s.replace("const open = released && fiscalProcessDefined(fiscal);", "const open = released;") }), /\/api\/sales\/status abre sem exigir/, "[L12.1]"));
+test("L12 status público sem o processo fiscal reprova", async () => {
+  const at = new Date(Date.now() - 60_000).toISOString();
+  const sha = "a".repeat(40);
+  const records = new Map([
+    ["sales:open:v1", JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner", at, ref: "fixture-audit" })],
+    ["zpc-sales-preflight:v1", JSON.stringify({ ok: true, at })],
+    ["zpc-production-financial-metrics:v1", JSON.stringify({ schema: "zevanory.production-financial-proof/v1", release_sha: sha, measured_at: at, verified: true, ambiguous: 0,
+      production: { paid_orders: 0, payment_events: 0, refund_events: 0, checkouts_started: 0 }, certification: { events: 0, orders_flagged: 0 }, unverified: { orders: 0 } })],
+  ]);
+  resetSalesSwitchCache();
+  const response = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status"), {
+    ZEVANORY_PRIVATE_ARTIFACTS: { get: async (key) => records.get(key) ?? null }, ZEVANORY_RELEASE_SHA: sha,
+    ABSOLUTE_RELEASE_APPROVED: "true", PRE_SALE_GATES_APPROVED: "true", MERCADOPAGO_ENV: "production",
+  }, { fiscal: { status: "NAO_DEFINIDO", decision: null } });
+  assert.equal((await response.json()).open, false, "[L12.2] status público fica fechado pelo processo fiscal mesmo com os demais sinais verdes");
+  fails(gate({ "worker/sales-control.mjs": (s) => s.replace("const open = released && fiscalProcessDefined(fiscal);", "const open = released;") }), /\/api\/sales\/status abre sem exigir/, "[L12.1]");
+});
 test("L13 /api/status sem o processo fiscal reprova", () => fails(gate({ "worker/cloudflare-worker.compat.mjs": (s) => s.replace('"production" &&\n        fiscalProcessDefined();', '"production";') }), /\/api\/status projeta vendas abertas/, "[L13.1]"));
 test("L14 registro fiscal DEFINIDO incompleto ou NAO_DEFINIDO preenchido reprova", () => {
   fails(gate({ "data/p23/fiscal-process.json": json((d) => ({ ...d, status: "DEFINIDO", decision: { regime: "Simples", decided_by: "proprietario" } })) }), /DEFINIDO sem decision.documento_fiscal/, "[L14.1]");
@@ -97,7 +122,7 @@ test("L14 registro fiscal DEFINIDO incompleto ou NAO_DEFINIDO preenchido reprova
 });
 test("L15 checklist sem item obrigatório reprova", () => fails(gate({ "data/p23/ecommerce-legal-checklist.json": json((d) => ({ ...d, items: d.items.filter((i) => i.id !== "CDC-49") })) }), /item CDC-49 ausente/, "[L15.1]"));
 test("L16 conferência dos dígitos do CNPJ", () => {
-  const v = (c) => spawnSync("python3", ["-I", GATE, "--cnpj", c], { encoding: "utf8" }).stdout.trim();
+  const v = (c) => spawnSync(PYTHON, ["-I", GATE, "--cnpj", c], { encoding: "utf8" }).stdout.trim();
   assert.equal(v("69.077.233/0001-99"), "CNPJ_VALID", "[L16.1]");
   assert.equal(v("69.077.233/0001-98"), "CNPJ_INVALID", "[L16.2]");
   assert.equal(v("11.111.111/1111-11"), "CNPJ_INVALID", "[L16.3]");

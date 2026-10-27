@@ -191,8 +191,8 @@
   "M21 status público abre sem fiscal": {
    "primary": [
     {
-     "test_pattern": "L1",
-     "assertion_pattern": "[L1.1]"
+     "test_pattern": "L12",
+     "assertion_pattern": "[L12.2]"
     }
    ],
    "secondary": [

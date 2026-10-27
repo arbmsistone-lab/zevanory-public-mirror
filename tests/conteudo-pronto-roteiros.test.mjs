@@ -518,7 +518,7 @@ test("(g2) 4xx permanente: dead na hora com alerta; dead nunca vira atual, nem c
   assert.equal(recOf(t).lastPackage, reopened.candidate_key, "[regen-reopen] promovido só após operação + entrega");
 });
 
-test("(g3) queda entre o envio e a gravação: sem segundo e-mail na retomada; queda na promoção converge; delivered duplicado não promove nem notifica", async () => {
+test("(g3) provedor entrega e a gravação falha: reinício em outro módulo repete chave/payload e não envia duas vezes", async () => {
   // Página: o envio aceito não chega a ser gravado.
   const t = legacyEnv(contaminatedLegacy());
   const put = t.kv.put.bind(t.kv);
@@ -534,7 +534,9 @@ test("(g3) queda entre o envio e a gravação: sem segundo e-mail na retomada; q
   assert.ok((await r1.text()).includes(CS.REGEN_MSG.persist), "[regen-crash] mensagem de persistência");
   assert.equal(toCustomer(t.emails).length, 1, "[regen-crash] o envio aconteceu antes da queda");
   assert.equal(candOf(t).delivery, "pending", "[regen-crash] estado ficou pending");
-  const r2 = await regenPost(t);
+  // Cache-busting importa uma nova instância do módulo, modelando outro processo/isolate.
+  const restarted = await import(`../worker/content-service.mjs?restart=${Date.now()}`);
+  const r2 = await restarted.handlePackageView(new Request(t.url, { method: "POST", body: new URLSearchParams({ acao: "regenerar" }) }), t.env, null, t.fetchImpl);
   assert.equal(r2.status, 202, "[regen-crash] retomada (accepted = 202)");
   const reqs = customerPosts(t);
   assert.equal(reqs.length, 2, "[regen-crash] duas chamadas ao Resend");
@@ -579,6 +581,15 @@ test("(g3) queda entre o envio e a gravação: sem segundo e-mail na retomada; q
   await regenPost(w);
   assert.equal((await CS.applyRegenDelivered(w.env, candOf(w).key, "re_999", w.fetchImpl)).promoted, false, "[regen-emailid] outro email_id não promove");
   assert.equal(recOf(w).lastPackage, w.legacyKey, "[regen-emailid]");
+  // A janela fica abaixo da retenção de idempotência de 24 h do provedor, e a
+  // identidade inclui assinatura/pacote/ciclo — não apenas o contato.
+  assert.equal(CS.REGEN_SEND_WINDOW_HOURS, 23, "tentativas param antes da retenção de 24 h do Resend");
+  const contact = "c@example.com";
+  const first = await CS.regenCandidateKey("zpc:cp:sub:" + "a".repeat(40), { email: contact, lastPackage: "zpc:cp:pkg:produto-a:1", cycles: 1 });
+  const otherProduct = await CS.regenCandidateKey("zpc:cp:sub:" + "b".repeat(40), { email: contact, lastPackage: "zpc:cp:pkg:produto-b:1", cycles: 1 });
+  assert.notEqual(first, otherProduct, "produto/pacote faz parte da identidade persistente, não apenas o contato");
+  const repeat = await CS.regenCandidateKey("zpc:cp:sub:" + "a".repeat(40), { email: contact, lastPackage: "zpc:cp:pkg:produto-a:1", cycles: 1 });
+  assert.equal(first, repeat, "a mesma tentativa conserva a identidade; g4 prova que o payload fica congelado");
 });
 
 test("(g4) persistência: candidato ou outbox não gravados => 503 exato, nenhum envio; pacote do candidato imutável e único", async () => {

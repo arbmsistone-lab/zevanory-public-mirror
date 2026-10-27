@@ -83,6 +83,9 @@ def resumo_fields(raw: str, slug: str) -> dict | None:
 def validate(root: Path, findings: list[str]) -> list[str]:
     errs: list[str] = []
     pol = json.loads((root / "data/politica-unica.json").read_text(encoding="utf-8"))
+    review = pol.get("legal_review") or {}
+    if review.get("status") != "APPROVED" or not review.get("approved_by") or not review.get("approved_at"):
+        errs.append("data/politica-unica.json: REVISÃO JURÍDICA PENDENTE; legal_review exige status APPROVED, approved_by e approved_at")
     sup = pol["resumo_oferta"]["fornecedor"]
     catalog = json.loads((root / "data/products.json").read_text(encoding="utf-8"))
     prices = {p["slug"]: p["price"] for p in catalog["products"]}
@@ -117,7 +120,7 @@ def validate(root: Path, findings: list[str]) -> list[str]:
                 errs.append(f"{where}: página com preço sem '{need}' visível (Decreto 7.962, art. 2º, I e II)")
         if not re.search(r'href="[^"]*/termos[#"]', raw):
             errs.append(f"{where}: página com preço sem link para os termos (Decreto 7.962, art. 4º, I)")
-        if not re.search(r'href="[^"]*/(?:reembolso|pedir-' r'reembolso)["#?]', raw):
+        if not re.search(r'href="[^"]*/(?:reembolso|pedir-reembolso)["#?]', raw):
             errs.append(f"{where}: página com preço sem link para o reembolso (Decreto 7.962, art. 5º)")
     for slug in offers:
         where = f"sales-public/{slug}.html"

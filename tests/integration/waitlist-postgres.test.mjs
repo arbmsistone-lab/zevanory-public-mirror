@@ -127,7 +127,7 @@ test("P3 vendas abertas: UM aviso por contato (2 produtos, 5 execuções simult�
   assert.equal(later.sent, 0, "[P3.5] nada mais depois do aviso");
 });
 
-test("P4 A272-02: abrir as vendas nunca usa contatos do material gratuito como destinatários do aviso, e a nutrição nunca alcança contato só da lista", { skip: SKIP }, async () => {
+test("P4 A272-02: lista comercial e material gratuito ficam separados; salesOpen não reativa ofertas antigas", { skip: SKIP }, async () => {
   reset(); const e = env(); const m = resend();
   const old = new Date(Date.now() - 20 * 86400e3).toISOString();
   // Contatos do checklist (v1 e v2, confirmados, no passo da oferta), um deles também na lista de espera de outro produto.
@@ -144,7 +144,7 @@ test("P4 A272-02: abrir as vendas nunca usa contatos do material gratuito como d
   assert.ok(!notices(m).some((d) => /lead[12]@/.test(d.to)), "[P4.2] contato do checklist nunca recebe o aviso");
   assert.doesNotMatch(notices(m).find((d) => d.to === "ambos@example.com").text, /Negócio Completo|IA na Prática|Vendas na Prática/, "[P4.3] o aviso fala só do produto pedido");
   assert.equal(psqlSync("select string_agg(email || ':' || nurture_step || ':' || consent_version, ',' order by email) from zevanory_leads"), leadsBefore, "[P4.4] a lista de espera não toca zevanory_leads");
-  // Nutrição com vendas abertas: só contatos do checklist, cada um no limite do seu consentimento; nunca o contato só da lista.
+  // A base gratuita continua apenas informativa: salesOpen não cria consentimento comercial retroativo.
   const nurtured = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => { nurtured.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); };
@@ -153,8 +153,8 @@ test("P4 A272-02: abrir as vendas nunca usa contatos do material gratuito como d
     await runLeadNurture({ ...e, DATABASE_URL: "postgres://ci" }, { sqlFactory, salesOpen: true });
   } finally { globalThis.fetch = realFetch; }
   assert.ok(!nurtured.some((x) => x.to[0] === "so-lista@example.com"), "[P4.5] contato só da lista nunca recebe e-mail do checklist");
-  assert.ok(nurtured.every((x) => /lead[12]@example\.com/.test(x.to[0])), "[P4.6] nutrição só para contatos do checklist dentro do limite: " + nurtured.map((x) => x.to[0]));
-  assert.equal(psqlSync("select nurture_step from zevanory_leads where email='lead1@example.com'"), "3", "[P4.7] v1 recebeu o 3º e-mail e parou no limite");
+  assert.deepEqual(nurtured, [], "[P4.6] abrir vendas não envia ofertas à base gratuita");
+  assert.equal(psqlSync("select string_agg(email || ':' || nurture_step, ',' order by email) from zevanory_leads where email like 'lead%'"), "lead1@example.com:5,lead2@example.com:5", "[P4.7] ofertas antigas são aposentadas, não adiadas");
 });
 
 test("P5 falha de envio: volta para confirmado e a próxima execução envia uma única vez", { skip: SKIP }, async () => {

@@ -52,7 +52,8 @@ const OPT = "https://zevanory.api.br/material-gratuito/sair?r=" + "a".repeat(64)
 test("N1 sequência real e Worker passam; v1 libera só os passos 0-2", () => {
   const r = gate();
   assert.equal(r.code, 0, "[N1.1] " + r.out);
-  assert.match(r.out, /P09_CONSENT sequence=checklist-v2 version=lead-magnet-v1-2026-10-07 followups=2 sendable_steps=0,1,2 blocked_by_consent=3,4/, "[N1.2]");
+  assert.match(r.out, /P09_CONSENT sequence=checklist-v2 version=lead-magnet-v1-2026-10-07 followups=2 sendable_steps=0,1,2 blocked_steps=3,4/, "[N1.2]");
+  assert.match(r.out, /version=lead-magnet-v2-2026-10-25 .*sendable_steps=0,1,2,3 blocked_steps=4/, "[N1.2a] vendas abertas não liberam oferta para a base gratuita");
   assert.match(r.out, /P09_SEQUENCE id=checklist-v2 .* emails=5 commercial=1 switch=P09_NURTURE_SEND:off-by-default metric=clicks\+actions/, "[N1.3]");
 });
 test("N2 promessa de ganho reprova", () => fails(gate(tpl("03-ia.txt", (s) => s.replace("Com o tempo,", "Com isso você vai faturar mais e,"))), /promessa de ganho/, "[N2.1]"));
@@ -90,11 +91,10 @@ test("N11 versão de consentimento não aceita ou desconhecida bloqueia", () => 
   const seq = { ...SEQ, consent: { ...SEQ.consent, accepted_versions: [V1, "fantasma"] } };
   assert.equal(canSend({ env: ON, sequence: seq, step: 0, lead: { ...LEAD, consent_version: "fantasma" } }).reason, "consent_version_unknown", "[N11.2]");
 });
-test("N12 e-mail comercial só com vendas abertas", () => {
+test("N12 e-mail comercial não usa o consentimento do material gratuito, nem com vendas abertas", () => {
   const cf = { [V1]: 4 };
-  assert.equal(canSend({ env: ON, sequence: SEQ, step: 4, lead: LEAD, consentFollowups: cf }).reason, "sales_closed", "[N12.1]");
-  assert.equal(canSend({ env: ON, sequence: SEQ, step: 4, lead: LEAD, consentFollowups: cf, salesOpen: "true" }).reason, "sales_closed", "[N12.2]");
-  assert.equal(canSend({ env: ON, sequence: SEQ, step: 4, lead: LEAD, consentFollowups: cf, salesOpen: true }).ok, true, "[N12.3]");
+  assert.equal(canSend({ env: ON, sequence: SEQ, step: 4, lead: LEAD, consentFollowups: cf }).reason, "commercial_consent_not_implemented", "[N12.1]");
+  assert.equal(canSend({ env: ON, sequence: SEQ, step: 4, lead: LEAD, consentFollowups: cf, salesOpen: true }).reason, "commercial_consent_not_implemented", "[N12.2] salesOpen não autoriza oferta");
 });
 test("N13 métrica por abertura reprova", () => {
   fails(gate(seqJson((s) => { s.emails[1].metric = "opens"; return s; })), /metric deve ser clicks ou actions/, "[N13.1]");
@@ -197,7 +197,7 @@ test("N30 nunca retroativo: só quem consentiu N mensagens recebe N", () => {
   const cf = { [V1]: 2, "lead-magnet-v2-hipotetica": 4 };
   const seq = { ...SEQ, consent: { ...SEQ.consent, accepted_versions: [V1, "lead-magnet-v2-hipotetica"] } };
   for (const step of [3, 4]) assert.equal(canSend({ env: ON, sequence: seq, step, lead: LEAD, salesOpen: true, consentFollowups: cf }).reason, "consent_cap", "[N30.1] contato antigo (v1) não recebe o passo " + step);
-  assert.equal(canSend({ env: ON, sequence: seq, step: 4, lead: { ...LEAD, consent_version: "lead-magnet-v2-hipotetica" }, salesOpen: true, consentFollowups: cf }).ok, true, "[N30.2] contato com consentimento que cobre 4 e-mails recebe o passo 4");
+  assert.equal(canSend({ env: ON, sequence: seq, step: 4, lead: { ...LEAD, consent_version: "lead-magnet-v2-hipotetica" }, salesOpen: true, consentFollowups: cf }).reason, "commercial_consent_not_implemented", "[N30.2] consentimento informativo nunca vira consentimento comercial");
   assert.equal(canSend({ env: ON, sequence: { ...SEQ, retroactive: true }, step: 0, lead: LEAD }).reason, "retroactive_not_allowed", "[N30.3]");
   const noFlag = { ...SEQ }; delete noFlag.retroactive;
   assert.equal(canSend({ env: ON, sequence: noFlag, step: 0, lead: LEAD }).reason, "retroactive_not_allowed", "[N30.4] sem a declaração, fecha");

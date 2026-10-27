@@ -11,7 +11,8 @@
 //   * Nada sem consentimento registrado (P08): lead confirmado (dupla confirmação), com consent_at e confirmed_at,
 //     sem descadastro, com versão de consentimento aceita pela sequência E conhecida pelo modelo do P08
 //     (CONSENT_FOLLOWUPS). O passo n (n >= 1) só sai se o consentimento permitir n e-mails depois do checklist.
-//   * E-mail comercial só com vendas abertas (interruptor do proprietário).
+//   * A base de material gratuito não autoriza oferta. E-mail comercial fica bloqueado mesmo com vendas abertas;
+//     consentimento comercial separado, auditável e cancelável é requisito futuro e não está implementado aqui.
 //   * Todo e-mail leva o link de descadastro no texto e os cabeçalhos List-Unsubscribe / List-Unsubscribe-Post.
 //   * Nunca retroativo: a sequência declara retroactive=false e cada contato recebe só os passos que a SUA versão de
 //     consentimento cobre (contato antigo com "até 2 e-mails" nunca recebe o 4º e o 5º, mesmo se surgir versão nova).
@@ -86,7 +87,7 @@ export function canSend({ env = {}, sequence, step, lead, salesOpen = false, con
   const cap = Object.prototype.hasOwnProperty.call(consentFollowups, lead.consent_version) ? consentFollowups[lead.consent_version] : undefined;
   if (!Number.isInteger(cap) || cap < 0) return { ok: false, reason: "consent_version_unknown" };
   if (step > cap) return { ok: false, reason: "consent_cap" };
-  if (email.commercial === true && salesOpen !== true) return { ok: false, reason: "sales_closed" };
+  if (email.commercial === true) return { ok: false, reason: "commercial_consent_not_implemented" };
   return { ok: true, reason: "ok" };
 }
 

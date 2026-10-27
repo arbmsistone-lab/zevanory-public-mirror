@@ -158,8 +158,8 @@ for (const dir of seqDirs) {
     const blocked = emails.map((e) => e.step).filter((s) => !ok.includes(s));
     for (const s of ok) if (s > CONSENT_FOLLOWUPS[v]) err(`${W}: passo ${s} sairia além do consentimento ${v} (${CONSENT_FOLLOWUPS[v]} e-mails depois do checklist)`);
     if (P.canSend({ env: {}, sequence: seq, step: 0, lead, salesOpen: true }).ok) err(`${W}: envio com o interruptor desligado`);
-    summary.push(`P09_CONSENT sequence=${seq.id} version=${v} followups=${CONSENT_FOLLOWUPS[v]} sendable_steps=${ok.join(",") || "-"} blocked_by_consent=${blocked.join(",") || "-"}`);
-    if (blocked.length) notes.push(`${seq.id}: passos ${blocked.join(",")} não saem com o consentimento ${v} (texto publicado: até ${CONSENT_FOLLOWUPS[v]} e-mails); exigem nova versão de consentimento (P08) aprovada pelo proprietário`);
+    summary.push(`P09_CONSENT sequence=${seq.id} version=${v} followups=${CONSENT_FOLLOWUPS[v]} sendable_steps=${ok.join(",") || "-"} blocked_steps=${blocked.join(",") || "-"}`);
+    if (blocked.length) notes.push(`${seq.id}: passos ${blocked.join(",")} ficam bloqueados pelo limite informativo ou pela ausência deliberada de consentimento comercial separado; salesOpen não os libera`);
   }
   summary.push(`P09_SEQUENCE id=${seq.id} version=${seq.version} emails=${emails.length} commercial=${emails.filter((e) => e.commercial).length} switch=${sw.env}:off-by-default metric=${[...new Set(emails.map((e) => e.metric))].join("+")}`);
 }
@@ -195,7 +195,7 @@ for (const salesOpen of [false, true]) for (const interest of ["ia", "vendas", "
 const LIVE_ANCHORS = [
   ['"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"', "cabeçalho de descadastro em 1 clique no envio"],
   ["const cap = 1 + (CONSENT_FOLLOWUPS[lead.consent_version] ?? 0);", "limite do consentimento por lead"],
-  ["if (step >= 2 && !salesOpen) {", "oferta só com vendas abertas"],
+  ["if (step >= 2) return null;", "ofertas antigas permanentemente retiradas da base gratuita"],
   ["if (consent !== true) return", "inscrição só com consentimento marcado"],
 ];
 for (const [a, what] of LIVE_ANCHORS) if (!leadSrc.includes(a)) err(`Worker: salvaguarda ausente em worker/lead-magnet.mjs (${what})`);

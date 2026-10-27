@@ -5,14 +5,14 @@ import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
-const [base, outDir = "screenshots"] = process.argv.slice(2);
-const req = createRequire(join(process.env.QUALITY_MODULES || join(process.cwd(), "node_modules"), "noop.js"));
+const [base, outDir = "screenshots", modulesDir, browserPath, schemeArg] = process.argv.slice(2);
+const req = createRequire(join(process.env.QUALITY_MODULES || modulesDir || join(process.cwd(), "node_modules"), "noop.js"));
 const { chromium } = req("playwright");
-const PAGES = (process.env.PAGES || "/solucoes,/zevanory-sales,/ia-na-pratica,/termos").split(",");
-const WIDTHS = [[360, 800], [390, 844], [768, 1024], [1440, 900]];
-const SCHEME = process.env.COLOR_SCHEME === "dark" ? "dark" : "light";  // prefers-color-scheme emulation
+const PAGES = (process.env.PAGES || "/solucoes,/zevanory-sales,/ia-na-pratica,/material-gratuito,/termos,/reembolso,/privacidade,/afiliados,/comprar/ZEV-IA-011").split(",");
+const WIDTHS = [[320, 640], [360, 800], [390, 844], [768, 1024], [1440, 900]];
+const SCHEME = (schemeArg || process.env.COLOR_SCHEME) === "dark" ? "dark" : "light";  // prefers-color-scheme emulation
 mkdirSync(outDir, { recursive: true });
-const browser = await chromium.launch();
+const browser = await chromium.launch({ ...(browserPath ? { executablePath: browserPath } : {}) });
 for (const path of PAGES) for (const [width, height] of WIDTHS) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: "reduce", colorScheme: SCHEME });
   const page = await ctx.newPage();

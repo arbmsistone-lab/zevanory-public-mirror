@@ -85,7 +85,7 @@ export const SUBSCRIPTION_DELIVERY_TEXT = fill(W.subscription_delivery);
 export const SUBSCRIPTION_REFUND_TEXT = fill(W.subscription_refund);
 export const REFUND_CHANNELS = W.refund_channels;
 // O formulário zevanory.api.br/pedir-reembolso só atende o checkout próprio (worker/refund-flow.mjs); compras pela
-// Hotmart são canceladas e reembolsadas pela Hotmart (sem nomeá-la: hasCheckoutCta trata a menção como chamada de compra).
+// Hotmart são canceladas e reembolsadas pela Hotmart. A menção operacional ao processador não é, sozinha, CTA.
 export const REFUND_FORM_SCOPE = W.refund_form_scope;
 export const REFUND_OTHER_PLATFORM = W.refund_other_platform;
 export const SLA_TEXT = fill(W.sla);
@@ -98,9 +98,10 @@ export const SUPPORT_SUBSCRIPTION_REFUND_ANSWER = [SUBSCRIPTION_REFUND_TEXT, SLA
 export const SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER = [SUBSCRIPTION_DELIVERY_TEXT, CONFIRMATION_TEXT, RULE_LINE, SLA_TEXT].join(" ");
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-// Qualquer chamada de compra: caminho de checkout/assinatura (relativo ou absoluto), host de checkout
-// externo ou menção à Hotmart como lugar de compra.
-const CHECKOUT_RE = new RegExp("(?:" + [...CHECKOUT_HREF_PATHS, ...CHECKOUT_HOSTS].map(esc).join("|") + ")|\\bhotmart\\b", "i");
+// Qualquer chamada de compra: caminho de checkout/assinatura (relativo ou absoluto) ou host de checkout externo.
+// Não tratar a palavra "Hotmart" isolada como CTA: termos e suporte precisam nomear o processador ao explicar
+// cancelamento e reembolso, sem que isso seja uma oferta.
+const CHECKOUT_RE = new RegExp("(?:" + [...CHECKOUT_HREF_PATHS, ...CHECKOUT_HOSTS].map(esc).join("|") + ")", "i");
 export function hasCheckoutCta(text) {
   return CHECKOUT_RE.test(String(text || ""));
 }

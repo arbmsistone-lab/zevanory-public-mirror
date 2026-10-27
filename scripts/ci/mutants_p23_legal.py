@@ -27,7 +27,9 @@ TESTS = ["tests/p23-ecommerce-legal.test.mjs"]
 COPY_DIRS = []
 COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/toolchain.mjs", "scripts/p23/ecommerce_legal_gate.py",
                       "worker/fiscal-process.mjs", "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs",
-                      "worker/cloudflare-worker.compat.mjs", "data/politica-unica.json", "data/products.json",
+                      "worker/commercial-metrics-projection.mjs", "worker/internal-financial-audit.mjs",
+                      "worker/signed-audit-probe.mjs", "worker/operator-credential.mjs", "worker/brand-email.mjs",
+                      "worker/politica-unica.mjs", "worker/cloudflare-worker.compat.mjs", "data/politica-unica.json", "data/products.json",
                       "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json"] + \
     sorted(f"sales-public/{p.name}" for p in (REPO / "sales-public").glob("*.html")) + \
     sorted(p.relative_to(REPO).as_posix() for p in REPO.glob("*/index.html") if p.parent.name != "sales-public")

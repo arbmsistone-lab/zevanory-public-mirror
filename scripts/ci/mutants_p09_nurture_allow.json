@@ -49,11 +49,23 @@
     }
    ]
   },
-  "M04 comercial com vendas fechadas": {
+  "M04 consentimento gratuito usado para comercial": {
    "primary": [
     {
      "test_pattern": "N12",
      "assertion_pattern": "[N12.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "N1",
+     "assertion_pattern": "[N1.2a]",
+     "justification": "o gate real detecta que os passos comerciais da sequência passariam a usar o consentimento do material gratuito"
+    },
+    {
+     "test_pattern": "N30",
+     "assertion_pattern": "[N30.2]",
+     "justification": "a prova de não retroatividade exige que nem uma versão informativa hipotética autorize o passo comercial"
     }
    ]
   },

@@ -139,7 +139,7 @@ test("W6 consentimento próprio: finalidade única, retenção, saída, controla
   assert.match(await open.text(), /As vendas estão abertas/, "[W6.5] texto");
 });
 
-test("W7 consentimento v2 do checklist: até 5 e-mails, só com a trava LEAD_CONSENT_V2 e o texto v2 mostrado; nunca retroativo", async () => {
+test("W7 consentimento v2 do checklist: continua informativo; ofertas antigas são retiradas e nunca reativadas", async () => {
   assert.equal(CONSENT_FOLLOWUPS[V1], 2, "[W7.1] v1 continua no limite (checklist + 2)");
   assert.equal(CONSENT_FOLLOWUPS[CONSENT_V2_VERSION], 4, "[W7.2] v2: checklist + 4 = 5 e-mails");
   assert.match(CONSENT_V2_TEXT, /até 5 e-mails/);
@@ -158,15 +158,15 @@ test("W7 consentimento v2 do checklist: até 5 e-mails, só com a trava LEAD_CON
   db.rows.set("old@x.com", { email: "old@x.com", email_hash: "", subject_ref: await subjectRef(base, "old@x.com"), name: null, consent_version: V1, status: "confirmed", nurture_step: 3, nurture_at: new Date(Date.now() - 20 * 86400e3).toISOString() });
   await sub({ ...base, LEAD_CONSENT_V2: CONSENT_V2_VERSION }, { email: "old@x.com", consent: true, consent_version: CONSENT_V2_VERSION });
   assert.equal(db.rows.get("old@x.com").consent_version, V1, "[W7.6] confirmado v1 não muda de versão");
-  // Nutrição: v1 para no 3º e-mail (passo 3 = limite), v2 recebe os passos 3 e 4.
+  // Nutrição: vendas abertas não transformam consentimento do material gratuito em consentimento comercial.
   const old = new Date(Date.now() - 20 * 86400e3).toISOString();
   db.rows.set("v2@x.com", { email: "v2@x.com", email_hash: "", subject_ref: await subjectRef(base, "v2@x.com"), name: null, consent_version: CONSENT_V2_VERSION, status: "confirmed", nurture_step: 3, nurture_at: old });
   sent.length = 0;
   await runLeadNurture(base, { sqlFactory: db.factory, salesOpen: true });
   assert.equal(db.rows.get("old@x.com").nurture_step, 5, "[W7.7] v1 encerrado no limite");
   assert.ok(!sent.some((m) => m.to[0] === "old@x.com"), "[W7.8] v1 não recebe o 4º e-mail");
-  assert.equal(sent.filter((m) => m.to[0] === "v2@x.com").length, 1, "[W7.9] v2 recebe o passo 3");
-  assert.equal(db.rows.get("v2@x.com").nurture_step, 4);
+  assert.equal(sent.filter((m) => m.to[0] === "v2@x.com").length, 0, "[W7.9] v2 não recebe oferta antiga");
+  assert.equal(db.rows.get("v2@x.com").nurture_step, 5, "[W7.9a] oferta antiga é aposentada definitivamente");
   // A sequência P09 aceita a v2 e continua desligada (P09_NURTURE_SEND).
   const seq = JSON.parse(read("content/p09/checklist-v2/sequence.json"));
   assert.deepEqual(seq.consent.accepted_versions, [V1, CONSENT_V2_VERSION], "[W7.10]");

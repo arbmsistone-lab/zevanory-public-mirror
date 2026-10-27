@@ -38,8 +38,17 @@ Cada item abaixo identifica o arquivo ou a lista exata de arquivos, o lado usado
 
 ## Condições e limites
 
+## Auditoria das alterações posteriores à integração
+
+- `4bb9c14e`: mantido. A normalização LF antes do fingerprint elimina diferenças Windows/Linux tanto no nome quanto nos bytes do ativo; a regeneração precisa continuar produzindo zero byte de diferença no mesmo checkout.
+- `4fd065dd` — P24 `offer_receives`: mantido e justificado pela consolidação do layout, que removeu o bloco duplicado `offer-side`. As cinco regiões que restaram continuam obrigatórias e o mapa cobre as promessas visíveis. O ajuste do mutante M25 apenas acompanha literalmente “venda e acompanhamento”.
+- `4fd065dd` — P23 L1.4: mantido porque a antiga expectativa de “CEP a confirmar” deixou de ser verdadeira; o gate agora relata a lacuna verificável das páginas-fonte fora de `sales-public`.
+- `ea90522d`: reversões não declaradas encontradas e corrigidas: escopo do `/pedir-reembolso` no aviso do chat; seção e âncora `#assinatura-hotmart`; regras correspondentes em Termos; canal Hotmart no FAQ; remoção de “que são a base para vender mais”; endereço legado do 404; regex partido de `pedir-reembolso`. A varredura dos arquivos alterados pelos cinco PRs não encontrou outra perda contratual após a regeneração e os gates de cópia.
+
+O gate jurídico agora exige `data/politica-unica.json.legal_review` com `status=APPROVED`, responsável e data. O candidato permanece deliberadamente em `PENDING`; nenhuma aprovação foi inventada pelo executor.
+
 - A272-01: a matriz local usa o aceite literal do proprietário e reprova overflow horizontal, clipping, painel rolável e fundo inalcançável.
-- A272-02: lista de espera e material gratuito têm tabelas, consentimentos e rotinas separados. A integração PostgreSQL prova que abrir vendas não usa contatos do material gratuito.
+- A272-02: lista de espera comercial e material gratuito têm tabelas, consentimentos e rotinas separados. Abrir vendas não libera ofertas para contatos do material gratuito; os passos comerciais antigos são aposentados. Relação comercial futura exige consentimento separado, auditável e cancelável e não foi implementada.
 - A272-03: procedimento por provedor está separado, mas permanece **REVISÃO JURÍDICA PENDENTE**.
 - #941: aposentadoria e 308 são cobertos pelos testes; o endereço público é `suporte@zevanory.api.br`; o recebimento do endereço antigo é preservado fora da superfície publicada.
 - #943: a integração PostgreSQL simula queda depois do envio pelo provedor falso e antes da exclusão; apó novo Worker, a mesma chave de idempotência não produz segunda entrega.

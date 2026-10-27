@@ -6,11 +6,10 @@ import { CUSTOMER_RULE_7D, DELIVERY_72H, hasCheckoutCta } from "./politica-unica
 // * Subscribe arrives only through the sales Worker's private binding (host leads.internal).
 // * Confirmation link is single-use (token hash stored) and needs a click (POST), so mail scanners
 //   never confirm on the person's behalf.
-// * Nurture (5 e-mails, then it stops): D0 checklist, D+2 practical tips, D+7 the one product
-//   that matches what the person was reading (calculator → Lucro & Caixa, sales → Vendas na
-//   Prática, otherwise IA na Prática), D+10 honest answers to the usual doubts, D+14 a last
-//   note with the complete package. Offers only go out while sales are open. Every e-mail
-//   carries one-click unsubscribe (RFC 8058) and utm tags so sales are attributed to e-mail.
+// * Nurture for free-material contacts is informational only. Opening sales never enables the
+//   retired offer steps (2–4). A future commercial sequence requires a separate, auditable and
+//   revocable consent and is intentionally not implemented here. Every informational e-mail
+//   carries one-click unsubscribe (RFC 8058).
 // * T3 / LGPD (plan 3.1): processing follows the consent text and the published privacy policy.
 //   - Consent v1 ("o checklist e até 2 e-mails de dicas e produtos") caps the sequence at the
 //     checklist + 2 e-mails; longer sequences need a new consent version.
@@ -178,11 +177,10 @@ export function interestFromPage(page = "") {
 }
 const track = (slug, step, interest) => `${SALES}/${slug}?utm_source=email&utm_medium=nurture&utm_campaign=s${step}-${interest}`;
 
-// P13c: prazo e entrega vêm de data/politica-unica.json; as ofertas (passos 2 a 4) só existem com
-// vendas abertas (interruptor do proprietário, readSalesSwitch -> runLeadNurture). Fechado (padrão),
-// o passo comercial devolve null e nenhum e-mail com chamada de compra é montado.
+// A272-02 / decisão do Sol: material gratuito e consentimento comercial são bases separadas.
+// Passos comerciais legados 2–4 nunca são montados, inclusive com vendas abertas.
 export function nurtureEmail(step, { name, optOutUrl, interest = "ia", salesOpen = false } = {}) {
-  if (step >= 2 && salesOpen !== true) return null;
+  if (step >= 2) return null;
   const mail = nurtureEmailText(step, { name, optOutUrl, interest });
   if (salesOpen !== true && hasCheckoutCta(mail.text + " " + mail.subject)) throw new Error("nurture_checkout_cta_while_closed");
   return mail;
@@ -266,10 +264,11 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
     // The consent text bounds the sequence: never send more e-mails than the person agreed to.
     const cap = 1 + (CONSENT_FOLLOWUPS[lead.consent_version] ?? 0);
     if (step >= cap) { await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]); out.capped = (out.capped || 0) + 1; continue; }
-    if (step >= 2 && !salesOpen) {
-      // Offers only go out while customers can actually buy; give up after 30 days.
-      if (since > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
-      out.held += 1; continue;
+    if (step >= 2) {
+      // Never reactivate legacy offers when salesOpen changes: retire before claim/send.
+      await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
+      out.retired_offers = (out.retired_offers || 0) + 1;
+      continue;
     }
     if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;
     const ref = lead.subject_ref || null;

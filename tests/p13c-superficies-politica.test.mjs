@@ -63,10 +63,8 @@ function checkNurture(mod) {
     assert.deepEqual(POL.bannedPolicyHits(mail.text), [], `e-mail ${s}`);
   }
   for (let s = 2; s < mod.NURTURE_DONE; s++) {
-    const t = mod.nurtureEmail(s, { name: "", optOutUrl: "u", salesOpen: true }).text;
-    assert.deepEqual(POL.bannedPolicyHits(t), [], `e-mail ${s} aberto`);
+    assert.equal(mod.nurtureEmail(s, { name: "", optOutUrl: "u", salesOpen: true }), null, `e-mail ${s}: salesOpen não reativa oferta antiga`);
   }
-  assert.ok(mod.nurtureEmail(2, { name: "", optOutUrl: "u", salesOpen: true }).text.includes(W.rule_7d));
 }
 
 function checkCaptions(cross, yt) {
@@ -204,10 +202,10 @@ test("P13c mutantes: suporte com redação antiga, e-mail com /comprar fechado, 
   const mutants = {
     "M-S1 suporte volta à redação antiga do reembolso": ["worker/support-knowledge.mjs", (s) => s.replace("const REFUND = SUPPORT_REFUND_ANSWER;", 'const REFUND = "Direito de arrependimento: você pode desistir em até 7 dias após a compra e recebe o reembolso integral pelo mesmo meio de pagamento.";'), "support"],
     "M-S2 suporte sem 72 h / um download": ["worker/support-knowledge.mjs", (s) => s.replace("const DELIVERY = SUPPORT_DELIVERY_ANSWER;", 'const DELIVERY = "Entrega digital: após o pagamento você recebe por e-mail um link seguro. Respondemos em até 2 dias úteis.";'), "support"],
-    "M-S3 suporte da assinatura volta a mandar para a Hotmart": ["worker/support-knowledge.mjs", (s) => s.replace('const answer = intent === "refund" ? SUPPORT_SUBSCRIPTION_REFUND_ANSWER', 'const answer = intent === "refund" ? SUPPORT_SUBSCRIPTION_REFUND_ANSWER + " Peça na sua conta Hotmart."'), "support"],
+    "M-S3 suporte da assinatura ganha link comercial da Hotmart": ["worker/support-knowledge.mjs", (s) => s.replace('const answer = intent === "refund" ? SUPPORT_SUBSCRIPTION_REFUND_ANSWER', 'const answer = intent === "refund" ? SUPPORT_SUBSCRIPTION_REFUND_ANSWER + " Compre em https://pay.hotmart.com/fixture."'), "support"],
     "M-E1 e-mail com /comprar enquanto fechado": ["worker/lead-magnet.mjs", (s) => s.replace("Toda sexta, olhe três números", "Compre agora: ${SALES}/comprar/ZEV-LCX-011. Toda sexta, olhe três números"), "nurture"],
-    "M-E2 oferta sai com vendas fechadas": ["worker/lead-magnet.mjs", (s) => s.replace("if (step >= 2 && salesOpen !== true) return null;", "").replace('if (salesOpen !== true && hasCheckoutCta(mail.text + " " + mail.subject)) throw new Error("nurture_checkout_cta_while_closed");', ""), "nurture"],
-    "M-E3 e-mail volta a 'garantia de 7 dias'": ["worker/lead-magnet.mjs", (s) => s.replace("Se não for para você, pode desistir em ${CUSTOMER_RULE_7D}", "Tem garantia de 7 dias"), "nurture"],
+    "M-E2 oferta antiga volta quando vendas abrem": ["worker/lead-magnet.mjs", (s) => s.replace("if (step >= 2) return null;", "if (step >= 2 && salesOpen !== true) return null;"), "nurture"],
+    "M-E3 e-mail informativo ganha 'garantia de 7 dias'": ["worker/lead-magnet.mjs", (s) => s.replace("Esta mensagem é apenas uma dica prática; não contém oferta.", "Esta mensagem tem garantia de 7 dias."), "nurture"],
     "M-C1 legenda/descrição com /comprar/ fechado": ["scripts/channels/youtube-daily-short.mjs", (s) => s.replace("const link = open ? checkout : page.toString();", "const link = checkout;"), "captions"],
     "M-C2 legenda volta a 'garantia de 7 dias'": ["scripts/channels/short-crosspost.mjs", (s) => s.replace("(open ? SHORT_RULE : CLOSED_LABEL)", '"garantia de 7 dias"'), "captions"],
     "M-G1 reviews volta a '7 dias de garantia a partir da compra'": ["worker/reviews.mjs", (s) => s.replace("Lembre: você pode desistir em", "Lembre: você tem 7 dias de garantia a partir da compra. Ou desista em"), "guard"],

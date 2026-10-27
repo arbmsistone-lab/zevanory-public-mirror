@@ -39,7 +39,8 @@ function checkSolText(P) {
     if (/Mercado Pago/.test(s)) assert.equal(s, mp, "Mercado Pago só na frase do checkout próprio: " + s);
   }
   assert.doesNotMatch(hm, /pedir-reembolso|Mercado Pago/, "a Hotmart não passa pelo formulário nem pelo Mercado Pago");
-  assert.match(t, /O recebimento do pedido será confirmado imediatamente\. Em qualquer dos casos, os valores pagos serão devolvidos integralmente; a visualização do crédito em cartão seguirá o prazo do emissor\./);
+  assert.match(t, /comunica imediatamente a Hotmart ou a administradora do cartão/);
+  assert.match(t, /O recebimento do pedido será confirmado imediatamente\. Em qualquer dos casos, os valores pagos serão devolvidos integralmente e monetariamente atualizados; a visualização do crédito em cartão seguirá o prazo do emissor\./);
   for (const f of P.customer_wording.fragmentos_sol) assert.ok(t.includes(f), "fragmento fora do sol_text: " + f);
 }
 
@@ -65,12 +66,14 @@ function checkPages(P, page) {
   for (const f of ["reembolso/index.html", "sales-public/reembolso.html"]) {
     const h = page(f);
     assert.match(h, /<strong>Compras no checkout próprio da ZEVANORY \(Mercado Pago\):<\/strong><\/p><ol>\s*<li>Acesse <a href="https:\/\/zevanory\.api\.br\/pedir-reembolso">/, f);
-    assert.match(h, /<strong>Compras pela Hotmart \(como a assinatura Conteúdo Pronto\):<\/strong> o cancelamento e o reembolso são processados pela Hotmart\. Peça na sua conta Hotmart, em Minhas compras, ou por suporte@zevanory\.api\.br\. O formulário zevanory\.api\.br\/pedir-reembolso atende só as compras do checkout próprio\./, f);
+    assert.match(h, /<h2 id="assinatura-hotmart">Assinatura Conteúdo Pronto \(cobrada pela Hotmart\)<\/h2>/, f);
+    assert.match(h, /Peça pela Hotmart, em Minhas compras, ou por suporte@zevanory\.api\.br; quando o pedido chega pelo suporte, a ZEVANORY comunica imediatamente a Hotmart ou a administradora do cartão\./, f);
+    assert.match(h, /valores pagos, monetariamente atualizados/, f);
     assert.match(h, /<strong>Estorno \(checkout próprio\):<\/strong> a ZEVANORY comunica imediatamente o Mercado Pago/, f);
     assert.match(h, /<strong>Estorno \(Hotmart\):<\/strong> processado pela Hotmart/, f);
   }
   for (const f of ["termos/index.html", "sales-public/termos.html"]) {
-    assert.match(page(f), /Nas compras feitas pela Hotmart \([^)]*\), o pagamento, a cobrança, o cancelamento e o reembolso são processados pela Hotmart\./, f);
+    assert.match(page(f), /A assinatura Conteúdo Pronto é cobrada pela Hotmart \(Pix, cartão ou boleto\), com renovação mensal automática e sem fidelidade;/, f);
   }
   for (const f of ["privacidade/index.html", "sales-public/privacidade.html"]) {
     assert.match(page(f), /Mercado Pago \(pagamentos no checkout próprio\), Hotmart \(pagamento, cancelamento e reembolso das compras feitas pela Hotmart/, f + ": Hotmart como operador");
@@ -123,7 +126,7 @@ test("mutantes: cada regressão factual é morta pelas mesmas asserções", () =
     "K9 nota do CEP sem fonte": [checkCep, (P) => { P.resumo_oferta.nota = P.resumo_oferta.nota.replace("https://www.ruacep.com.br/ce/varzea-alegre/logradouros", "consulta informal"); }],
   };
   const pageMutants = {
-    "K10 reembolso publicado sem a seção da Hotmart": (f, h) => f === "sales-public/reembolso.html" ? h.replace(/<p><strong>Compras pela Hotmart[^]*?<\/p>/, "") : h,
+    "K10 reembolso publicado sem a seção da Hotmart": (f, h) => f === "sales-public/reembolso.html" ? h.replace(/<h2 id="assinatura-hotmart">[^]*?<h2>Prazos<\/h2>/, "<h2>Prazos</h2>") : h,
     "K11 privacidade publicada sem a Hotmart como operador": (f, h) => f === "sales-public/privacidade.html" ? h.replace(/, Hotmart \([^)]*\)/, "") : h,
     "K12 termos publicados com o texto único antigo": (f, h) => f === "sales-public/termos.html" ? h.replace(mp, "") : h,
   };
@@ -152,10 +155,10 @@ const CHANNEL_SPECIFIC = {
   "worker/reviews.mjs": "avaliação só existe para pedidos da tabela orders (checkout próprio)",
   "worker/sales-public-worker.mjs": "página de produto (checkout próprio); a variante /hotmart/ troca a frase por 'peça pela Hotmart' (HOTMART_TEXT); 308 de /reembolso/solicitar; mapa de URLs do chat",
   "scripts/build_sales_public.py": "FAQ da página de produto do checkout próprio (a variante /hotmart/ troca a frase)",
+  "scripts/p23/ecommerce_legal_gate.py": "expressão estrutural que reconhece links de reembolso; não é instrução ao cliente",
   "worker/site-chat.mjs": "lista de URLs permitidas (não é instrução)",
   "worker/support-knowledge.mjs": "fontes da resposta de produto; a da assinatura não cita o formulário",
   "worker/whatsapp-conversation.mjs": "lista de URLs permitidas (não é instrução; canal aposentado)",
-  "data/site-chat-policy.json": "refund_form é URL de destino; o texto 'optional' traz o escopo",
   "data/site-chat-eval/critical.json": "fixture de avaliação",
   "data/politica-unica.json": "refund_channels/fragmentos: usados só nas frases do checkout próprio (checkWording)",
   // Páginas de produto do checkout próprio (saída de GUARANTEE_Q/FAQ do build); a variante /hotmart/ troca a frase.
@@ -194,4 +197,21 @@ test("A272-03: nenhuma instrução geral sobre /pedir-reembolso sem o escopo do 
     const loose = looseMentions(files, (g) => (g === f ? mutate(read(g)) : read(g)));
     assert.ok(loose.some((x) => x.startsWith(f + "@")), "mutante não morto: " + f);
   }
+  // M2: todo link interno que o gerador introduz aponta para uma âncora real,
+  // tanto na fonte quanto na saída publicada.
+  const generator = read("scripts/build_sales_public.py");
+  const links = [...generator.matchAll(/href=["'](\/[a-z0-9-]+)#([a-z0-9-]+)["']/gi)];
+  assert.ok(links.length > 0, "o gerador contém ao menos uma âncora interna");
+  for (const [, route, anchor] of links) {
+    const slug = route.slice(1);
+    for (const file of [`${slug}/index.html`, `sales-public/${slug}.html`]) {
+      assert.match(read(file), new RegExp(`\\bid=["']${anchor}["']`), `${file}: #${anchor}`);
+    }
+  }
+  // M4: o build fechado inteiro usa somente o endereço atual de suporte.
+  const publicFiles = readdirSync(join(ROOT, "sales-public")).filter((f) => f.endsWith(".html")).map((f) => `sales-public/${f}`);
+  for (const f of publicFiles) {
+    assert.doesNotMatch(read(f), /contato@zevanory\.api\.br/i, f);
+  }
+  assert.match(read("sales-public/404.html"), /mailto:suporte@zevanory\.api\.br/i);
 });

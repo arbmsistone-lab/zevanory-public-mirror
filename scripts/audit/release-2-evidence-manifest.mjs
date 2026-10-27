@@ -24,6 +24,10 @@ const screenshots = files.filter((item) => item.path.endsWith(".png"));
 const manifest = {
   schema: "zevanory.release-2-evidence.v1",
   source_base: "a098d8802a184df02b362d46f08fb6c81b7382f9",
+  // Local working-tree evidence must not pretend to belong to the previous
+  // commit. CI supplies the exact GITHUB_SHA after checkout.
+  release_sha: process.env.RELEASE_SHA || null,
+  release_sha_binding: "CI regenerates this manifest with RELEASE_SHA=GITHUB_SHA and verifies both manifest and matrix",
   sales_mode: "closed",
   owner_vertical_scroll_approval: "APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS",
   matrix: {
@@ -35,9 +39,9 @@ const manifest = {
   },
   screenshots: {
     count: screenshots.length,
-    widths: [360, 390, 768, 1440],
+    widths: [320, 360, 390, 768, 1440],
     schemes: ["light", "dark"],
-    routes: ["solucoes", "zevanory-sales", "ia-na-pratica", "material-gratuito", "termos", "reembolso"],
+    routes: ["solucoes", "zevanory-sales", "ia-na-pratica", "material-gratuito", "termos", "reembolso", "privacidade", "afiliados", "comprar/ZEV-IA-011"],
   },
   files,
 };

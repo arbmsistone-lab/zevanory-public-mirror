@@ -814,7 +814,7 @@ def main() -> int:
                 '<link rel="stylesheet" href="/product.css"></head><body><a class="skip-link" href="#conteudo">Ir para o conteúdo</a>' + header +
                 '<main id="conteudo"><section class="container not-found"><h1>Esta página não existe.</h1>'
                 '<p class="hero-copy">O endereço pode ter mudado ou ter sido digitado com um erro. Escolha por onde seguir:</p>'
-                + receipt_404 + '</section>' + LEGAL_FOOTER + '</main></body></html>')
+                + receipt_404 + '</section>' + LEGAL_FOOTER + '</main></body></html>').replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
     (OUT / "404.html").write_text(legible_ampersands(page_404), encoding="utf-8")
 
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
