@@ -20,6 +20,12 @@
 // grava o início real do runner e, quando pedida, dispatch_to_start_s. Janela já sondada (pelo id pedido ou pela
 // janela do início) = execução duplicate_window: grava a linha de execução (prova de que o pedido chegou e iniciou),
 // não sonda, não alerta, não grava batimento. O agendador do GitHub segue como caminho extra de melhor esforço.
+//
+// Desempenho (ORDEM 295, aval do Sol): estado SEPARADO da disponibilidade (p18-latency.mjs), refeito das mesmas
+// sondagens GET: SAUDAVEL / DEGRADADO (rota acima do orçamento em 2 janelas consecutivas) / CRITICO (= queda acima,
+// inalterada) / RECUPERADO. Aviso deduplicado (1 ao entrar, 1 ao recuperar) em issue de título próprio, registrado em
+// p18/perf-AAAA-MM.jsonl; falha no aviso NÃO derruba a execução (não é queda). Cada sondagem grava probe_id e o runner.
+// Tempo limite explícito por tentativa: REQUEST_TIMEOUT_MS (20 s) > maior orçamento (5 s). Nenhuma chamada à Cloudflare.
 import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -29,13 +35,26 @@ import {
   resolveDispatch, isDuplicateWindow, buildCfDispatch, PROBING_OUTCOMES, evaluateCfDispatch, firstProofAt,
 } from "./b0-lib.mjs";
 import { probeUrl } from "./b0-collector.mjs";
+import {
+  REQUEST_TIMEOUT_MS, ROUTE_BUDGETS_MS, assertBudgets, foldPerf, decidePerfAlert, validatePerfEvent, SCHEMA_PERF, PERF_TITLE, perfBody,
+} from "./p18-latency.mjs";
 
 const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function targetId(url) { const u = new URL(url); return u.host + u.pathname; }
 
+// Onde a sondagem rodou. Variáveis padrão do runner do GitHub (RUNNER_ENVIRONMENT/OS/ARCH/NAME; ImageOS/ImageVersion
+// nas imagens hospedadas). A região do runner hospedado não é exposta por variável: fica null com o motivo, sem
+// chamada extra de rede para descobrir.
+const envStr = (v) => (typeof v === "string" && v ? v.slice(0, 80) : null);
+export function runnerInfo(env = {}) {
+  return { environment: envStr(env.RUNNER_ENVIRONMENT), os: envStr(env.RUNNER_OS), arch: envStr(env.RUNNER_ARCH), name: envStr(env.RUNNER_NAME),
+    image_os: envStr(env.ImageOS), image_version: envStr(env.ImageVersion), region: null, region_reason: "not_exposed_by_github_runner_env" };
+}
+export const probeIdOf = (env, seq) => `p18p-${envStr(env.GITHUB_RUN_ID) || "local"}-${envStr(env.GITHUB_RUN_ATTEMPT) || "1"}-${seq}`;
+
 export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), pause, kind = "scheduled" } = {}) {
   const urls = [...SALES_PAGES, STATUS_URL];
-  const res = await Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: 20000 })));
+  const res = await Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS })));
   let p22 = { readable: false, reason: "status_unreachable" };
   const targets = res.map((r) => {
     let ok = r.status >= 200 && r.status < 400;
@@ -45,7 +64,8 @@ export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), paus
       ok = r.status === 200 && body !== null && typeof body === "object";
       p22 = ok ? readP22(body, now()) : { readable: false, reason: "status_http_" + r.status };
     }
-    return { id: targetId(r.url), ok, status: Number.isInteger(r.status) ? r.status : 0, latency_ms: r.latency_ms ?? null, ...(r.error ? { error: r.error } : {}) };
+    return { id: targetId(r.url), ok, status: Number.isInteger(r.status) ? r.status : 0, latency_ms: r.latency_ms ?? null,
+      ...(Number.isInteger(r.attempts) ? { attempts: r.attempts } : {}), ...(Number.isFinite(r.elapsed_ms) ? { elapsed_ms: r.elapsed_ms } : {}), ...(r.error ? { error: r.error } : {}) };
   });
   return validateProbe({ schema: SCHEMA_PROBE, at: new Date(now()).toISOString(), kind, up: targets.every((t) => t.ok), targets, p22 });
 }
@@ -117,7 +137,44 @@ export async function handleAlert({ decision, cur, incident, env, fetchImpl = fe
   return out;
 }
 
-export async function main({ env = process.env, fetchImpl = fetch, now = () => Date.now(), log = console.log, pause, sleep = realSleep } = {}) {
+// Aviso de desempenho (canal próprio, severidade AVISO). Só roda nas transições decididas por decidePerfAlert, logo
+// no máximo uma notificação ao entrar em DEGRADADO e uma em RECUPERADO por incidente. Nunca lança.
+export async function handlePerfAlert({ decision, view, env, fetchImpl = fetch, now = () => Date.now(), log = console.log, budgets = ROUTE_BUDGETS_MS }) {
+  const repo = env.GITHUB_REPOSITORY, token = env.GITHUB_TOKEN;
+  const out = { action: decision.action, notified_at: null, issue: null, error: null };
+  try {
+    if (!repo || !token) throw new Error("github_api_unconfigured");
+    const api = async (path, init = {}) => {
+      const r = await fetchImpl(`https://api.github.com/repos/${repo}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "zevanory-p18-monitor" }, signal: AbortSignal.timeout(15000) });
+      if (r.status < 200 || r.status >= 300) throw new Error("github_http_" + r.status);
+      return r.json();
+    };
+    const open = findOpenAlert(await api(`/issues?state=open&per_page=100&creator=${encodeURIComponent("github-actions[bot]")}`), PERF_TITLE);
+    const runUrl = `https://github.com/${repo}/actions/runs/${env.GITHUB_RUN_ID || ""}`;
+    const inc = decision.incident;
+    if (decision.action === "notify_degraded") {
+      const body = perfBody("degraded", inc, view, runUrl, budgets);
+      if (open) {
+        // Aviso de um incidente anterior ainda aberto (ex.: recuperação não fechou): comenta, nunca abre uma 2ª issue.
+        await api(`/issues/${open.number}/comments`, { method: "POST", body: JSON.stringify({ body }) });
+        out.issue = open.number;
+      } else {
+        const r = await api("/issues", { method: "POST", body: JSON.stringify({ title: PERF_TITLE, body }) });
+        out.issue = Number.isInteger(r?.number) ? r.number : null;
+      }
+    } else if (decision.action === "notify_recovered" && open) {
+      await api(`/issues/${open.number}/comments`, { method: "POST", body: JSON.stringify({ body: perfBody("recovered", inc, view, runUrl, budgets) }) });
+      await api(`/issues/${open.number}`, { method: "PATCH", body: JSON.stringify({ state: "closed", state_reason: "completed" }) });
+      out.issue = open.number;
+    }
+    out.notified_at = new Date(now()).toISOString();
+  } catch (e) { out.error = String(e?.message || e).slice(0, 80); }
+  log(`P18_PERF_ALERT action=${out.action}${out.error ? " error=" + out.error : ""}`);
+  return out;
+}
+
+export async function main({ env = process.env, fetchImpl = fetch, now = () => Date.now(), log = console.log, pause, sleep = realSleep, budgets = ROUTE_BUDGETS_MS } = {}) {
+  assertBudgets(budgets);
   const dir = env.EVIDENCE_DIR;
   if (!dir) throw new Error("EVIDENCE_DIR_REQUIRED");
   const startedMs = now(), startedIso = new Date(startedMs).toISOString();
@@ -125,6 +182,8 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   const hist = readRecent(dir, "probes", startedIso, validateProbe);
   const incLines = readRecent(dir, "incidents", startedIso, validateIncident);
   const runs = readRecent(dir, "runs", startedIso, validateRun);
+  const perfEvents = readRecent(dir, "perf", startedIso, validatePerfEvent);
+  const runner = runnerInfo(env);
   const open = openIncident(incLines);
   const dispatch = resolveDispatch({ windowId: env.P18_WINDOW_ID || "", dispatchedAt: env.P18_DISPATCHED_AT || "", source: env.P18_DISPATCH_SOURCE || "", startedMs });
   const prevProbing = runs.filter((r) => PROBING_OUTCOMES.includes(r.outcome)).at(-1) || null;
@@ -140,13 +199,13 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   }
 
   const probes = [await runProbe({ fetchImpl, now, pause, kind: "scheduled" })];
-  appendLine(dir, "probes", probes[0].at, { ...probes[0], run_id: run.run_id, event: run.event });
+  appendLine(dir, "probes", probes[0].at, { ...probes[0], run_id: run.run_id, event: run.event, probe_id: probeIdOf(env, 0), runner });
   let d = decideIncident({ seq: [...hist, ...probes], open });
   if (d.action === "pending") {
     // 1ª falha: confirmação dentro desta execução, sem esperar o próximo cron.
     await sleep(CONFIRM_DELAY_MS);
     const p2 = await runProbe({ fetchImpl, now, pause, kind: "confirm" });
-    appendLine(dir, "probes", p2.at, { ...p2, run_id: run.run_id, event: run.event });
+    appendLine(dir, "probes", p2.at, { ...p2, run_id: run.run_id, event: run.event, probe_id: probeIdOf(env, 1), runner });
     probes.push(p2);
     d = decideIncident({ seq: [...hist, ...probes], open });
   }
@@ -163,13 +222,28 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
     appendLine(dir, "incidents", incident.confirmed_at, validateIncident(incident));
     log("::notice title=P18_INCIDENT::" + JSON.stringify({ id: incident.incident_id, first_failure_observed_at: incident.first_failure_observed_at, confirmed_at: incident.confirmed_at, alert_emitted_at: incident.alert_emitted_at, recovered_at: incident.recovered_at ?? null, latency_seconds: incident.latency_seconds, upper_bound_latency_seconds: incident.upper_bound_latency_seconds, s9: incident.s9 }));
   }
-  const runRec = validateRun({ ...run, probes_at: probes.map((p) => p.at), confirm_reprobe: probes.length > 1, decision: d.action, incident_id: incident?.incident_id ?? open?.incident_id ?? null, outcome: alert.error ? "alert_failed" : "ok" });
+  // Desempenho: estado refeito do histórico + sondagens desta execução; aviso só na transição ainda não notificada.
+  const perf = foldPerf([...hist, ...probes], budgets);
+  const pd = decidePerfAlert({ perf, events: perfEvents });
+  let perfAlert = null;
+  if (pd.action !== "none") {
+    perfAlert = await handlePerfAlert({ decision: pd, view: perf.view, env, fetchImpl, now, log, budgets });
+    const inc = pd.incident, recAt = new Date(now()).toISOString();
+    appendLine(dir, "perf", recAt, validatePerfEvent({ schema: SCHEMA_PERF, incident_id: inc.incident_id, event: pd.action === "notify_degraded" ? "degraded" : "recovered",
+      at: pd.action === "notify_degraded" ? inc.entered_at : inc.recovered_at, recorded_at: recAt, routes: inc.routes, max_latency_ms: inc.max_latency_ms,
+      budgets_ms: Object.fromEntries(inc.routes.map((id) => [id, budgets[id] ?? null])), run_id: run.run_id, probe_id: probeIdOf(env, probes.length - 1),
+      notified_at: perfAlert.notified_at, issue: perfAlert.issue, ...(perfAlert.error ? { error: perfAlert.error } : {}) }));
+    if (perfAlert.error) log("::warning title=P18_PERF_ALERT_FAILED::" + perfAlert.error + " (aviso de desempenho; a próxima execução tenta de novo)");
+  }
+  log("::notice title=P18_PERF::" + JSON.stringify({ state: perf.view?.state ?? null, event: perf.view?.event ?? null, degraded: perf.view?.degraded_routes ?? [], slow_now: perf.view?.slow_now ?? [], unknown: perf.view?.unknown_routes ?? [], action: pd.action, reason: pd.reason ?? null }));
+  const perfFields = { perf_state: perf.view?.state ?? null, perf_action: pd.action, perf_incident_id: perf.incident?.incident_id ?? null };
+  const runRec = validateRun({ ...run, probes_at: probes.map((p) => p.at), confirm_reprobe: probes.length > 1, decision: d.action, incident_id: incident?.incident_id ?? open?.incident_id ?? null, outcome: alert.error ? "alert_failed" : "ok", ...perfFields });
   appendLine(dir, "runs", run.started_at, runRec);
   writeCfDispatch(dir, runRec);
   if (alert.error) throw new Error("P18_ALERT_FAILED " + alert.error);  // sem batimento: o vigia acusa
   const stillOpen = d.action === "recover" ? null : incident || open;
-  writeFileSync(join(dir, "p18", "heartbeat.json"), JSON.stringify(buildHeartbeat({ nowMs: now(), runId: env.GITHUB_RUN_ID, run, cur, open: stillOpen, cfFirstProofAt: carryFirstProof(dir, now()) }), null, 2) + "\n");
-  return { cur, probes, decision: d, action: d.action, incident, run: runRec };
+  writeFileSync(join(dir, "p18", "heartbeat.json"), JSON.stringify({ ...buildHeartbeat({ nowMs: now(), runId: env.GITHUB_RUN_ID, run, cur, open: stillOpen, cfFirstProofAt: carryFirstProof(dir, now()) }), perf_state: perfFields.perf_state, open_perf_incident: perfFields.perf_incident_id }, null, 2) + "\n");
+  return { cur, probes, decision: d, action: d.action, incident, run: runRec, perf, perfDecision: pd, perfAlert };
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
