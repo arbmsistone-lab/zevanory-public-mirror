@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { handleRefundFlow, runRefundWatchdog } from "../worker/refund-flow.mjs";
 import { saveRefund } from "../worker/refund-provider-claims.mjs";
 import { refundAutoDispatchEnabled, evaluateAutomaticRefund } from "../worker/refund-auto-dispatch.mjs";
@@ -171,8 +171,8 @@ test("X11 strict true flag; malformed values stay on legacy OFF path", async () 
 });
 
 test("X12 OFF preserves legacy email subjects, recipients and body bytes", async () => {
-  const source = readFileSync(new URL("../worker/refund-flow.mjs", import.meta.url), "utf8");
-  const legacyBlock = source.slice(source.indexOf("async function createRequest("), source.indexOf("// Only the ON flow uses this path")).replace(/\r\n/g, "\n");
+  const source = readTextNormalized(new URL("../worker/refund-flow.mjs", import.meta.url));
+  const legacyBlock = source.slice(source.indexOf("async function createRequest("), source.indexOf("// Only the ON flow uses this path"));
   assert.equal(createHash("sha256").update(legacyBlock).digest("hex"), "9996d28187f4585e16d89b91d4b9644912b24df1dd51b90f778be4f773e08ee9", "X12 baseline source identical to a098d880");
   const x = fixture({ flag: "false" });
   try {
