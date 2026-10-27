@@ -75,3 +75,57 @@ ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml
 f2523167c479ca601f1bc2b7d6ecd07b8e621431:tests/lead-magnet.test.mjs:generic-api-key:31
 # synthetic test fixture
 fecd365a8d3e8b8a01681e38692e37e47cfc622e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
+
+# Reviewed 2026-10-27 (T5, secret-scan hardening). gitleaks v8.30.1, --redact, fresh full clone at b7671272.
+# Exact fingerprints only (commit:file:rule:line). Classification per fingerprint: docs/security/secret-scan-baseline.md
+# C1 env-var reference
+2ab3f9bb2ac9044625b74b0120d9432508200b05:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:86
+4b73b1ee4669b1c95a9b18f1b724cb4d82549d11:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:86
+# C2 IndexNow key (public by design)
+2d1881dfe51a1004fe4888191ff4cbc51b9ee138:.github/workflows/indexnow-submit.yml:generic-api-key:21
+fbeec343292e9c17a6084e672bc41defb7b8a28d:.github/workflows/indexnow-submit.yml:generic-api-key:21
+# C3 Resend API key fixture
+36f1dfa8a941b24f1d52d8188f0fe33ca0a649dd:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:39
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:39
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:39
+36f1dfa8a941b24f1d52d8188f0fe33ca0a649dd:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:53
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:53
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:53
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:111
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:111
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/lead-magnet.test.mjs:generic-api-key:72
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/lead-magnet.test.mjs:generic-api-key:72
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/lead-magnet.test.mjs:generic-api-key:223
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/lead-magnet.test.mjs:generic-api-key:223
+79261985feed396f1c6bd30c4fd57c5e2f2df439:tests/p09-nurture-sequence.test.mjs:generic-api-key:143
+e9c4cc0717637d402f3919b4ca6c61e4610dff4d:tests/p09-nurture-sequence.test.mjs:generic-api-key:143
+# C4 webhook/HMAC test secret
+d6ff5f5f68b10df8d1e720071527f64cc8058525:tests/helpers/support-drain-scheduled-probe.mjs:generic-api-key:9
+36f4e2d6b1d7bb3b272ad8e57ef1276a3e08506b:tests/helpers/support-drain-scheduled-probe.mjs:generic-api-key:12
+7ab8de28bc90ca40c1d2c83255ecb6dcf44fb52a:tests/integration/support-outbox-postgres.test.mjs:generic-api-key:77
+becd10f5019cab167f35f5eebe1a98f246f441a7:tests/integration/support-outbox-postgres.test.mjs:generic-api-key:77
+d6ff5f5f68b10df8d1e720071527f64cc8058525:tests/support-email-forward.test.mjs:generic-api-key:643
+88372c53e4646f4b5ca1936b0828c191fd32de22:tests/support-email-forward.test.mjs:generic-api-key:651
+36f4e2d6b1d7bb3b272ad8e57ef1276a3e08506b:tests/support-email-forward.test.mjs:generic-api-key:671
+979c129657cd7e465baefa6fab78545affa3a1b5:tests/support-email-forward.test.mjs:generic-api-key:671
+# C5 TikTok client secret fixture
+0936186df774fcf736a5a1381daff32e523886e3:tests/owner-oauth-tiktok.test.mjs:generic-api-key:15
+dc96670b84cd591b9f6129e9f3ac62662aa59e80:tests/owner-oauth-tiktok.test.mjs:generic-api-key:15
+0936186df774fcf736a5a1381daff32e523886e3:tests/short-crosspost.test.mjs:generic-api-key:11
+dc96670b84cd591b9f6129e9f3ac62662aa59e80:tests/short-crosspost.test.mjs:generic-api-key:11
+# C6 Mercado Pago canary
+f47b1f42bf900869a85749dbec572001198e3f74:tests/test_mp_rotation_workflow.py:generic-api-key:405
+f59b28ef58a700fdd973ddccae77bda26789248a:tests/test_mp_rotation_workflow.py:generic-api-key:405
+# C7 test event id
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:47
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:47
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:54
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:54
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:90
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:90
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:92
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:92
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:95
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:95
+# C8 GitHub Action commit SHA pin
+84cab02ced8f8c67e6814801aee1d6bf10b59bbd:tests/workflow-node24-pins.test.mjs:generic-api-key:17
