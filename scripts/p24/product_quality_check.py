@@ -39,6 +39,7 @@ SCHEMA_MANIFEST = "zevanory-p24-delivery-manifest/v1"
 SCHEMA_RUBRIC = "zevanory-p24-rubric/v1"
 SCHEMA_REPORT = "zevanory-p24-report/v1"
 SCHEMA_DEFECTS = "zevanory-p24-open-defects/v1"
+SCHEMA_LICENSES = "zevanory-p24-component-licenses/v1"
 FORMAT_WORDS = {"PDF": ".pdf", "DOCX": ".docx", "XLSX": ".xlsx"}
 
 
@@ -113,6 +114,9 @@ def evaluate(root: Path, generated_at: str | None = None) -> dict:
     manifest = _load(root / "data/p24/delivery-manifest.json")
     rubric = _load(root / "data/p24/rubric.json")
     registry = _load(root / "data/p24/open-defects.json")
+    licenses = _load(root / "data/p24/component-licenses.json")
+    if licenses.get("schema") != SCHEMA_LICENSES:
+        errors.append(f"component-licenses: schema deve ser {SCHEMA_LICENSES}")
     if registry.get("schema") != SCHEMA_DEFECTS:
         errors.append(f"open-defects: schema deve ser {SCHEMA_DEFECTS}")
     registered = {}
@@ -300,6 +304,17 @@ def evaluate(root: Path, generated_at: str | None = None) -> dict:
             for hit in e.get("quality_hits", []):
                 findings.append({"product": slug, "file": path, "kind": "texto_a_revisar", "detail": hit})
 
+        # Licença e direito de distribuição por componente (ORDEM 301 item 3).
+        lic = licenses.get("products", {}).get(slug)
+        license_rows = []
+        if not lic or not lic.get("buyer_license") or not lic.get("components"):
+            errors.append(f"{slug}: sem registro de licença/direito de distribuição em data/p24/component-licenses.json")
+        else:
+            for c in lic["components"]:
+                f = c.get("file")
+                if f and (c.get("prefix", "") + f) not in entries:
+                    errors.append(f"{slug}: licença '{c.get('component')}' não está no zip entregue: {c.get('prefix', '') + f}")
+                license_rows.append({k: c.get(k) for k in ("component", "license", "prefix", "file", "rights_status")})
         prod_defects = []
         for (dslug, dpath, dkind, ddetail) in defects[pdef_start:]:
             if (dslug, dpath, dkind) in registered:
@@ -321,6 +336,7 @@ def evaluate(root: Path, generated_at: str | None = None) -> dict:
             "errors": prod_errors,
             "open_defects_pi": prod_defects,
             "findings": [f for f in findings if f.get("product") == slug],
+            "licenses": license_rows,
         }
 
     for slug in man_products:
@@ -335,6 +351,13 @@ def evaluate(root: Path, generated_at: str | None = None) -> dict:
         if key not in observed:
             errors.append(f"open-defects: {key} não ocorre mais; remova o registro (o defeito foi corrigido ou o registro está errado)")
 
+    # Homologação por produto (ORDEM 301 item 2): um FAIL não impede avaliar os outros; cada produto tem o seu gate.
+    for slug, rp in report_products.items():
+        stale_reg = [e for e in errors if e.startswith("open-defects: ('" + slug + "'")]
+        rp["errors"] = rp["errors"] + stale_reg
+        rp["gate"] = "FAIL" if rp["errors"] else "PASS"
+        # Veredito P24 do produto: FAIL com erro objetivo ou PI violado; sem isso, NAO_COMPROVADO (avaliação cega pendente).
+        rp["p24_verdict"] = "FAIL" if (rp["errors"] or rp["open_defects_pi"]) else "NAO_COMPROVADO"
     blind = rubric.get("blind_evaluation", {})
     n_open = sum(len(p["open_defects_pi"]) for p in report_products.values())
     verdict = "FAIL" if (errors or n_open) else "NAO_COMPROVADO"
@@ -370,6 +393,9 @@ def evaluate(root: Path, generated_at: str | None = None) -> dict:
             "findings": len(findings),
         },
         "errors": errors,
+        "matrix": {slug: {"gate": rp["gate"], "p24_verdict": rp["p24_verdict"], "errors": len(rp["errors"]), "files_open_ok": f"{rp['files_open_ok']}/{rp['files_in_zip']}",
+                          "promises_mapped": f"{rp['promises_mapped']}/{rp['promises_on_page']}", "catalog_sha256_match": rp["catalog_sha256_match"],
+                          "open_defects_pi": len(rp["open_defects_pi"]), "artifact": rp["artifact_name"]} for slug, rp in report_products.items()},
         "products": report_products,
     }
 
@@ -379,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--root", default=".")
     ap.add_argument("--report", help="grava o relatório JSON neste caminho")
     ap.add_argument("--generated-at", default=None)
+    ap.add_argument("--product", default=None, help="exit code só deste produto (a matriz continua completa)")
     args = ap.parse_args(argv)
     root = Path(args.root)
     try:
@@ -396,7 +423,17 @@ def main(argv: list[str] | None = None) -> int:
     t = rep["totals"]
     print(f"P24_TOTALS products={t['products']} promises={t['promises_on_pages']} without_delivery={t['promises_without_declared_delivery']} "
           f"pending_review={t['promises_pending_human_review']} files={t['files_open_ok']}/{t['files_checked']} errors={t['errors']} open_defects_pi={t['open_defects_pi']} findings={t['findings']}")
+    print("P24_MATRIX produto | gate | veredito | erros | arquivos abrem | promessas | sha catálogo | defeitos PI | artefato")
+    for slug, m in rep["matrix"].items():
+        print(f"P24_MATRIX {slug} | {m['gate']} | {m['p24_verdict']} | {m['errors']} | {m['files_open_ok']} | {m['promises_mapped']} | {'ok' if m['catalog_sha256_match'] else 'DIVERGE'} | {m['open_defects_pi']} | {m['artifact']}")
     print(f"P24_GATE={rep['gate']} P24_VERDICT={rep['p24_verdict']}")
+    if args.product:
+        m = rep["matrix"].get(args.product)
+        if not m:
+            print(f"P24_PRODUCT={args.product} ausente")
+            return 1
+        print(f"P24_PRODUCT={args.product} GATE={m['gate']}")
+        return 0 if m["gate"] == "PASS" else 1
     return 0 if rep["gate"] == "PASS" else 1
 
 

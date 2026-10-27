@@ -57,13 +57,19 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Testes negativos (contagem exata 19)
+      - name: Testes negativos (contagem exata 21)
         shell: bash
         run: |
           set -euo pipefail
           python3 -I tests/p24/test_product_quality_check.py 2>&1 | tee /tmp/t.txt
-          grep -q "^Ran 19 tests" /tmp/t.txt || { echo "::error::esperado Ran 19 tests"; exit 1; }
+          grep -q "^Ran 21 tests" /tmp/t.txt || { echo "::error::esperado Ran 21 tests"; exit 1; }
           grep -qx "OK" /tmp/t.txt
+      - name: Cadeia real SKU -> catálogo de entrega -> arquivo validado (contagem exata 1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/p24-delivery-chain.test.mjs 2>&1 | tee /tmp/c.txt
+          for kv in "tests 1" "pass 1" "fail 0" "skipped 0"; do grep -qx "# $kv" /tmp/c.txt || { echo "::error::cadeia: esperado '# $kv'"; exit 1; }; done
       - name: Página de venda x material entregue
         shell: bash
         run: |

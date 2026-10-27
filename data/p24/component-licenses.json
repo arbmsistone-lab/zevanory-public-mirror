@@ -1,0 +1,193 @@
+{
+  "schema": "zevanory-p24-component-licenses/v1",
+  "note": "Direito de distribuição por componente (Sol ORDEM 301 item 3). O gate P24 confere: todo produto do manifesto tem registro; todo arquivo de licença citado está dentro do zip entregue (no prefixo de cada componente). Fontes incorporadas nos PDF/DOCX v1.2: OFL 1.1, que permite embutir e redistribuir com o documento desde que a licença acompanhe (OFL-1.1, seções 1 e 2).",
+  "products": {
+    "ia-na-pratica": {
+      "buyer_license": {
+        "license": "Licença pessoal e intransferível para uso no trabalho ou negócio do comprador; proibido revender, redistribuir ou publicar",
+        "source": "termos/index.html, seção 5 (Licença de uso)"
+      },
+      "components": [
+        {
+          "prefix": "",
+          "component": "Texto, planilhas, exemplos e modelos",
+          "license": "Conteúdo autoral ZEVANORY (marca endossada por ARBM)",
+          "holder": "ZEVANORY / ARBM",
+          "rights_status": "DECLARADO_PELO_PROPRIETARIO_A_CONFIRMAR",
+          "note": "O executor não tem como provar autoria; o proprietário confirma por escrito que o conteúdo é próprio (sem trecho de terceiro sem licença)."
+        },
+        {
+          "prefix": "",
+          "component": "Archivo (títulos, algarismos)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        },
+        {
+          "prefix": "",
+          "component": "Atkinson Hyperlegible Next (texto; renomeada Atkinson Next ZEV)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Atkinson Hyperlegible Next Project Authors",
+          "file": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+        },
+        {
+          "prefix": "",
+          "component": "ZEV Simbolos (setas e caixas; derivada da Archivo)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        }
+      ]
+    },
+    "vendas-na-pratica": {
+      "buyer_license": {
+        "license": "Licença pessoal e intransferível para uso no trabalho ou negócio do comprador; proibido revender, redistribuir ou publicar",
+        "source": "termos/index.html, seção 5 (Licença de uso)"
+      },
+      "components": [
+        {
+          "prefix": "",
+          "component": "Texto, planilhas, exemplos e modelos",
+          "license": "Conteúdo autoral ZEVANORY (marca endossada por ARBM)",
+          "holder": "ZEVANORY / ARBM",
+          "rights_status": "DECLARADO_PELO_PROPRIETARIO_A_CONFIRMAR",
+          "note": "O executor não tem como provar autoria; o proprietário confirma por escrito que o conteúdo é próprio (sem trecho de terceiro sem licença)."
+        },
+        {
+          "prefix": "",
+          "component": "Archivo (títulos, algarismos)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        },
+        {
+          "prefix": "",
+          "component": "Atkinson Hyperlegible Next (texto; renomeada Atkinson Next ZEV)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Atkinson Hyperlegible Next Project Authors",
+          "file": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+        },
+        {
+          "prefix": "",
+          "component": "ZEV Simbolos (setas e caixas; derivada da Archivo)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        }
+      ]
+    },
+    "lucro-e-caixa": {
+      "buyer_license": {
+        "license": "Licença pessoal e intransferível para uso no trabalho ou negócio do comprador; proibido revender, redistribuir ou publicar",
+        "source": "termos/index.html, seção 5 (Licença de uso)"
+      },
+      "components": [
+        {
+          "prefix": "",
+          "component": "Texto, planilhas, exemplos e modelos",
+          "license": "Conteúdo autoral ZEVANORY (marca endossada por ARBM)",
+          "holder": "ZEVANORY / ARBM",
+          "rights_status": "DECLARADO_PELO_PROPRIETARIO_A_CONFIRMAR",
+          "note": "O executor não tem como provar autoria; o proprietário confirma por escrito que o conteúdo é próprio (sem trecho de terceiro sem licença).",
+          "note_v11": "zip v1.1 em catálogo: sem pasta Licencas_de_fontes; as fontes da v1.1 não estão registradas aqui (ver P24 open-defects e a troca para v1.2)."
+        }
+      ]
+    },
+    "combo-ia-vendas": {
+      "buyer_license": {
+        "license": "Licença pessoal e intransferível para uso no trabalho ou negócio do comprador; proibido revender, redistribuir ou publicar",
+        "source": "termos/index.html, seção 5 (Licença de uso)"
+      },
+      "components": [
+        {
+          "prefix": "",
+          "component": "Texto, planilhas, exemplos e modelos",
+          "license": "Conteúdo autoral ZEVANORY (marca endossada por ARBM)",
+          "holder": "ZEVANORY / ARBM",
+          "rights_status": "DECLARADO_PELO_PROPRIETARIO_A_CONFIRMAR",
+          "note": "O executor não tem como provar autoria; o proprietário confirma por escrito que o conteúdo é próprio (sem trecho de terceiro sem licença)."
+        },
+        {
+          "prefix": "",
+          "component": "Archivo (títulos, algarismos)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        },
+        {
+          "prefix": "",
+          "component": "Atkinson Hyperlegible Next (texto; renomeada Atkinson Next ZEV)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Atkinson Hyperlegible Next Project Authors",
+          "file": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+        },
+        {
+          "prefix": "",
+          "component": "ZEV Simbolos (setas e caixas; derivada da Archivo)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        },
+        {
+          "prefix": "01_IA_na_Pratica_v1.2/",
+          "component": "Archivo (títulos, algarismos)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        },
+        {
+          "prefix": "01_IA_na_Pratica_v1.2/",
+          "component": "Atkinson Hyperlegible Next (texto; renomeada Atkinson Next ZEV)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Atkinson Hyperlegible Next Project Authors",
+          "file": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+        },
+        {
+          "prefix": "01_IA_na_Pratica_v1.2/",
+          "component": "ZEV Simbolos (setas e caixas; derivada da Archivo)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        },
+        {
+          "prefix": "02_Vendas_na_Pratica_v1.2/",
+          "component": "Archivo (títulos, algarismos)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        },
+        {
+          "prefix": "02_Vendas_na_Pratica_v1.2/",
+          "component": "Atkinson Hyperlegible Next (texto; renomeada Atkinson Next ZEV)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Atkinson Hyperlegible Next Project Authors",
+          "file": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+        },
+        {
+          "prefix": "02_Vendas_na_Pratica_v1.2/",
+          "component": "ZEV Simbolos (setas e caixas; derivada da Archivo)",
+          "license": "SIL Open Font License 1.1",
+          "holder": "The Archivo Project Authors",
+          "file": "Licencas_de_fontes/OFL-Archivo.txt"
+        }
+      ]
+    },
+    "negocio-completo": {
+      "buyer_license": {
+        "license": "Licença pessoal e intransferível para uso no trabalho ou negócio do comprador; proibido revender, redistribuir ou publicar",
+        "source": "termos/index.html, seção 5 (Licença de uso)"
+      },
+      "components": [
+        {
+          "prefix": "",
+          "component": "Texto, planilhas, exemplos e modelos",
+          "license": "Conteúdo autoral ZEVANORY (marca endossada por ARBM)",
+          "holder": "ZEVANORY / ARBM",
+          "rights_status": "DECLARADO_PELO_PROPRIETARIO_A_CONFIRMAR",
+          "note": "O executor não tem como provar autoria; o proprietário confirma por escrito que o conteúdo é próprio (sem trecho de terceiro sem licença).",
+          "note_v11": "zip v1.1 em catálogo até a remontagem com o Lucro final do r7."
+        }
+      ]
+    }
+  }
+}
