@@ -1,5 +1,6 @@
 // Durable Mercado Pago refund claims and GET-only recovery.
 // No automatic financial POST is permitted from this module.
+import { getRefundState, writeRefundState } from "./refund-state.mjs";
 const MP = "https://api.mercadopago.com";
 const KEY = (id) => "refund:req:" + id;
 const TTL = 90 * 24 * 3600;
@@ -26,19 +27,31 @@ export async function acquireRefundClaim(sql, record) {
 export async function revokeRefundDownloads(sql, record) {
   await sql.query("update artifact_download_tokens set used_at=coalesce(used_at, now()) where order_id=$1", [record.order_id]);
 }
-export async function saveRefund(kv, record) {
+// Records of the automatic (ON) flow live in PostgreSQL (refund-state.mjs): an atomic
+// compare-and-swap with an audit event, then a best-effort KV cache copy. Without the SQL store
+// an ON record is never written (fail closed). Legacy (OFF) records keep their KV storage.
+export async function saveRefund(kv, record, { sql, actor = "system", justification = null, evidence = null, transitionKey = null } = {}) {
   if (record.auto_dispatch === true) {
-    // Monotonic guard for stale readbacks. KV does not offer compare-and-swap;
-    // the SQL provider claim is separately checked before any new ON request.
-    const stored = JSON.parse(await kv.get(KEY(record.order_id)) || "null");
-    const older = Number(record.version || 0);
-    const latest = Number(stored?.version || 0);
-    if (stored && (latest > older ||
-      (["approved", "refunded"].includes(stored.status) && !["approved", "refunded"].includes(record.status)))) return false;
-    record.version = Math.max(older, latest) + 1;
+    if (!sql) return false;
+    if (!await writeRefundState(sql, record, { actor, justification, evidence, transitionKey })) return false;
+    try { await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL }); } catch {} // cache only
+    return true;
   }
   await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL });
   return true;
+}
+// Authoritative read. ON records come from PostgreSQL (a KV copy, stale or missing, is ignored);
+// legacy records come from KV exactly as before. on=false keeps the OFF path free of new DDL.
+export async function loadRefund(kv, sql, oid, { on = false } = {}) {
+  let cached = null;
+  try { cached = JSON.parse(await kv.get(KEY(oid)) || "null"); } catch {}
+  const legacy = cached && cached.auto_dispatch !== true ? cached : null;
+  if (!on && legacy) return legacy;
+  if (!sql) return legacy;
+  let stored;
+  try { stored = await getRefundState(sql, oid, { ensure: on }); }
+  catch (e) { if (!on) return legacy; throw e; }
+  return stored || legacy;
 }
 export async function markRefundApproved(sql, kv, record, refundId, actor) {
   // Once the provider confirms, never retry POST even on DB/KV failure.
@@ -49,22 +62,29 @@ export async function markRefundApproved(sql, kv, record, refundId, actor) {
     approved_at: new Date().toISOString(), approved_by: actor,
     provider_outcome_unknown: false, download_revocation_pending: true, reconciliation_missing: null });
   if (record.auto_dispatch === true && !record.test) record.approved_email_pending = true;
-  await saveRefund(kv, record);
+  if (!await saveRefund(kv, record, { sql, actor })) {
+    // Lost a race to another terminal writer: never regress; adopt the stored terminal copy.
+    const stored = await loadRefund(kv, sql, record.order_id, { on: record.auto_dispatch === true });
+    if (!stored || !["approved", "refunded"].includes(stored.status)) throw Error("refund_state_not_persisted");
+    Object.assign(record, stored);
+  }
   try {
     await revokeRefundDownloads(sql, record);
     record.download_revocation_pending = false;
     record.last_error = null;
-    await saveRefund(kv, record);
+    await saveRefund(kv, record, { sql, actor });
     return { status: 200, body: { ok: true, status: "approved", refund_id: record.refund_id } };
   } catch {
     record.last_error = "refund_download_revocation_pending";
-    try { await saveRefund(kv, record); } catch {}
+    try { await saveRefund(kv, record, { sql, actor }); } catch {}
     return { status: 503, body: { error: "refund_download_revocation_pending" } };
   }
 }
 export async function reconcileRefund(env, sql, kv, oid) {
   if (!UUID.test(String(oid || ""))) return { status: 400, body: { error: "order_id_invalid" } };
-  const rec = JSON.parse(await kv.get(KEY(oid)) || "null");
+  let rec;
+  try { rec = await loadRefund(kv, sql, oid, { on: env?.REFUND_AUTO_DISPATCH === "true" }); }
+  catch { return { status: 503, body: { error: "refund_state_unavailable" } }; }
   if (!rec) return { status: 404, body: { error: "refund_request_not_found" } };
   let claim;
   try {
@@ -81,7 +101,7 @@ export async function reconcileRefund(env, sql, kv, oid) {
       try {
         await revokeRefundDownloads(sql, rec);
         rec.download_revocation_pending = false;
-        await saveRefund(kv, rec);
+        await saveRefund(kv, rec, { sql, actor: "provider-get-reconciliation" });
         return { status: 200, body: { ok: true, status: "approved", recovered: true, refund_id: rec.refund_id } };
       } catch { return { status: 503, body: { error: "refund_download_revocation_pending" } }; }
     }
@@ -98,7 +118,7 @@ export async function reconcileRefund(env, sql, kv, oid) {
   } catch {
     rec.reconciliation_missing = ["payment_get"];
     rec.provider_outcome_unknown = true;
-    try { await saveRefund(kv, rec); } catch {}
+    try { await saveRefund(kv, rec, { sql, actor: "provider-get-reconciliation" }); } catch {}
     return { status: 503, body: { error: "refund_payment_lookup_unavailable", missing: ["payment_get"] } };
   }
   const missing = [];
@@ -119,7 +139,7 @@ export async function reconcileRefund(env, sql, kv, oid) {
   const absent = !missing.length && refunds.length === 0 && total === 0 && payment.status === "approved" && age >= 30 * 60 * 1000;
   if (absent && claim.stage === "reconciled_not_refunded" && claim.reconciled_status === "not_refunded") {
     Object.assign(rec, { provider_outcome_unknown: false, reconciliation_missing: null, last_error: null });
-    await saveRefund(kv, rec);
+    await saveRefund(kv, rec, { sql, actor: "provider-get-reconciliation" });
     return { status: 200, body: { ok: true, status: "not_refunded", retry_permitted: true } };
   }
   if (absent && ["provider_call_may_have_been_sent","legacy_unknown"].includes(claim.stage) && claim.reconciled_status == null) {
@@ -127,7 +147,7 @@ export async function reconcileRefund(env, sql, kv, oid) {
       const updated = await sql.query("update refund_provider_claims set stage='reconciled_not_refunded',reconciled_at=now(),reconciled_status='not_refunded' where order_id=$1::uuid and payment_id=$2 and test=$3 and stage in ('provider_call_may_have_been_sent','legacy_unknown') and reconciled_status is null and claimed_at <= now() - interval '30 minutes' returning order_id", [oid, String(rec.payment_id), rec.test === true]);
       if (updated.length === 1) {
         Object.assign(rec, { provider_outcome_unknown: false, reconciliation_missing: null, last_error: null });
-        await saveRefund(kv, rec);
+        await saveRefund(kv, rec, { sql, actor: "provider-get-reconciliation" });
         return { status: 200, body: { ok: true, status: "not_refunded", retry_permitted: true } };
       }
     } catch { return { status: 503, body: { error: "refund_claim_store_unavailable" } }; }
@@ -142,6 +162,6 @@ export async function reconcileRefund(env, sql, kv, oid) {
   }
   rec.provider_outcome_unknown = true;
   rec.reconciliation_missing = missing;
-  try { await saveRefund(kv, rec); } catch {}
+  try { await saveRefund(kv, rec, { sql, actor: "provider-get-reconciliation" }); } catch {}
   return { status: 409, body: { error: "refund_provider_reconciliation_required", missing } };
 }

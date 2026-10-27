@@ -2,9 +2,12 @@
 // Rodar: T4_PG_HOST=/tmp/pgt T4_PG_PORT=55432 node --test tests/integration/refund-auto-dispatch-postgres.test.mjs
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { handleRefundFlow } from "../../worker/refund-flow.mjs";
+import { casRefundState, writeRefundState, getRefundState } from "../../worker/refund-state.mjs";
+import { createRefundStateFake } from "../helpers/refund-state-fake.mjs";
 
 const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
 const SKIP = !HOST && "T4_PG_HOST not set (throwaway local PostgreSQL required)";
@@ -20,8 +23,23 @@ const psql = (sql, db = DB) => execFileSync("psql", ["-h", HOST, "-p", PORT, "-U
 const sqlFactory = () => ({ query: async (statement, params = []) => {
   const q = inline(statement, params).trim().replace(/;\s*$/, "");
   if (/^select\b/i.test(q)) return JSON.parse(psql(`select coalesce(json_agg(t), '[]'::json) from (${q}) t`) || "[]");
+  if (/^with\b/i.test(q)) return csvRows(psqlCsv(q));
   if (/\breturning\b/i.test(q)) return JSON.parse(psql(`with changed as (${q}) select coalesce(json_agg(changed), '[]'::json) from changed`) || "[]");
   psql(q); return [];
+} });
+// Statements with data-modifying CTEs must run at top level: read their result as CSV.
+const psqlCsv = (sql) => execFileSync("psql", ["-h", HOST, "-p", PORT, "-U", "postgres", "-d", DB, "-v", "ON_ERROR_STOP=1", "-q", "--csv", "-c", sql], { encoding: "utf8" });
+const csvRows = (out) => { const [head, ...lines] = out.trim().split("\n").filter(Boolean); if (!head) return [];
+  const cols = head.split(","); return lines.map((l) => Object.fromEntries(l.split(",").map((v, i) => [cols[i], /^-?\d+$/.test(v) ? Number(v) : v]))); };
+// Truly concurrent connections (one psql process per statement) for the race tests.
+const run = promisify(execFile);
+const asyncSqlFactory = () => ({ query: async (statement, params = []) => {
+  const q = inline(statement, params).trim().replace(/;\s*$/, "");
+  const base = ["-h", HOST, "-p", PORT, "-U", "postgres", "-d", DB, "-v", "ON_ERROR_STOP=1", "-q"];
+  if (/^select\b/i.test(q)) return JSON.parse((await run("psql", [...base, "-tA", "-c", `select coalesce(json_agg(t), '[]'::json) from (${q}) t`])).stdout.trim() || "[]");
+  if (/^with\b/i.test(q)) return csvRows((await run("psql", [...base, "--csv", "-c", q])).stdout);
+  if (/\breturning\b/i.test(q)) return JSON.parse((await run("psql", [...base, "-tA", "-c", `with changed as (${q}) select coalesce(json_agg(changed), '[]'::json) from changed`])).stdout.trim() || "[]");
+  await run("psql", [...base, "-c", q]); return [];
 } });
 
 before(() => {
@@ -69,4 +87,76 @@ test("PG real: 2 pedidos simultâneos reservam uma linha e fazem um POST", { ski
     assert.equal(Number(psql(`select count(*) from refund_provider_claims where order_id=${lit(oid)}`)), 1, "[RAPG1] uma reserva transacional");
     assert.ok(statuses.includes(200), "[RAPG1] um solicitante conclui");
   } finally { globalThis.fetch = original; }
+});
+
+const rec = (oid, extra = {}) => ({ order_id: oid, status: "pending", auto_dispatch: true, request_nonce: "n", ...extra });
+
+test("PG real: CAS concorrente na mesma versão tem exatamente um vencedor e um evento por transição", { skip: SKIP }, async () => {
+  const sql = asyncSqlFactory(), oid = randomUUID();
+  const created = await Promise.all(Array.from({ length: 8 }, () => casRefundState(sql, rec(oid), 0, { actor: "consumer-request" })));
+  assert.equal(created.filter(Boolean).length, 1, "[RAPG2] uma criação");
+  const updated = await Promise.all(Array.from({ length: 8 }, (_, i) => casRefundState(sql, rec(oid, { manual_reason: "r" + i }), 1, { actor: "w" + i })));
+  assert.equal(updated.filter(Boolean).length, 1, "[RAPG2] um vencedor do CAS");
+  assert.equal(Number(psql(`select count(*) from refund_request_events where order_id=${lit(oid)}`)), 2, "[RAPG2] dois eventos");
+  assert.equal(Number(psql(`select version from refund_requests where order_id=${lit(oid)}`)), 2, "[RAPG2] versão 2");
+});
+
+test("PG real: aprovado vence escritores pendentes concorrentes e nunca regride (hipótese L-2 eliminada)", { skip: SKIP }, async () => {
+  const sql = asyncSqlFactory(), oid = randomUUID();
+  assert.ok(await writeRefundState(sql, rec(oid, { customer_email_pending: true }), { actor: "consumer-request" }), "[RAPG3] criado");
+  const base = await getRefundState(sql, oid);
+  const writers = [];
+  for (let i = 0; i < 6; i++) writers.push(writeRefundState(sql, { ...base, customer_email_pending: false, note: "p" + i }, { actor: "consumer-notification" }));
+  writers.push(writeRefundState(sql, { ...base, status: "approved", refund_id: "ref-1", customer_email_pending: true }, { actor: "automatic-withdrawal" }));
+  for (let i = 0; i < 6; i++) writers.push(writeRefundState(sql, { ...base, manual_reason: "late" + i }, { actor: "late-pending" }));
+  const results = await Promise.all(writers);
+  assert.equal(results[6], true, "[RAPG3] escrita terminal aceita");
+  const final = await getRefundState(sql, oid);
+  assert.equal(final.status, "approved", "[RAPG3] estado final aprovado");
+  assert.equal(final.refund_id, "ref-1", "[RAPG3] identificador do estorno preservado");
+  const events = JSON.parse(psql(`select coalesce(json_agg(t order by version), '[]') from (select version, to_status from refund_request_events where order_id=${lit(oid)}) t`));
+  assert.deepEqual(events.map((e) => e.version), events.map((_, i) => i + 1), "[RAPG3] versões contíguas e únicas");
+  const firstApproved = events.findIndex((e) => e.to_status === "approved");
+  assert.ok(events.slice(firstApproved).every((e) => e.to_status === "approved"), "[RAPG3] nenhuma transição pendente após aprovado");
+});
+
+test("PG real: fluxo completo com KV falhando (leituras vazias e escritas com erro) mantém estado correto e um POST", { skip: SKIP }, async () => {
+  const oid = randomUUID(), paymentId = "998877", now = new Date(Date.now() - 3600_000).toISOString();
+  psql(`insert into orders values (${lit(oid)},'paid',197,'ZEV-IA-011',false);
+        insert into financial_events values ('ev-kv-${oid}',${lit(paymentId)},'payment_confirmed',${lit(oid)},${lit(now)});
+        insert into service_fulfillment values (${lit(randomUUID())},${lit(oid)},'delivered',${lit(JSON.stringify({ email_recipient: EMAIL }))},${lit(now)});`);
+  const kv = { get: async () => null, put: async () => { throw Error("kv down"); }, list: async () => ({ keys: [], list_complete: true }) };
+  const env = { REFUND_AUTO_DISPATCH: "true", MERCADOPAGO_ENV: "production", MERCADOPAGO_ACCESS_TOKEN: "APP_USR-FAKE-PRODUCTION-ABCDEFGHIJKLMNOP",
+    MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ACCOUNT_HASH16, ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://psql.local/" + DB };
+  let posts = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/users/me")) return Response.json({ id: Number(ACCOUNT_ID), site_id: "MLB", tags: [] });
+    if (String(url).includes("resend")) return Response.json({ id: "mail" });
+    if (options.method === "POST") { posts++; return Response.json({ id: "refund-kv-1", status: "approved", amount: 197 }); }
+    return Response.json({ id: Number(paymentId), status: "approved", status_detail: "accredited", external_reference: oid,
+      transaction_amount: 197, transaction_amount_refunded: 0, refunds: [], payer: { email: EMAIL },
+      metadata: { zevanory_order_id: oid, offer_id: "ZEV-IA-011" } });
+  };
+  const sqlFactoryAsync = asyncSqlFactory;
+  const invoke = (ip) => handleRefundFlow(new Request("https://zevanory.api.br/api/support/refund-request", { method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ order_id: oid, email: EMAIL }) }), env, { sqlFactory: sqlFactoryAsync });
+  try {
+    const out = await Promise.all([invoke("198.51.100.1"), invoke("198.51.100.2"), invoke("198.51.100.3"), invoke("198.51.100.4")]);
+    assert.ok(out.every((r) => r.status === 200), "[RAPG4] respostas uniformes");
+    assert.equal(posts, 1, "[RAPG4] uma chamada financeira");
+    assert.equal(psql(`select status from refund_requests where order_id=${lit(oid)}`), "approved", "[RAPG4] estado autoritativo aprovado");
+    assert.equal(Number(psql(`select count(*) from refund_provider_claims where order_id=${lit(oid)}`)), 1, "[RAPG4] uma reserva");
+    assert.ok(Number(psql(`select count(*) from refund_request_events where order_id=${lit(oid)} and to_status='approved'`)) >= 1, "[RAPG4] transição auditada");
+    await invoke("198.51.100.5");
+    assert.equal(posts, 1, "[RAPG4] repetição sem nova chamada");
+  } finally { globalThis.fetch = original; }
+});
+
+test("PG real: o fake das unidades aplica as mesmas regras que o PostgreSQL", { skip: SKIP }, async () => {
+  const sql = sqlFactory(), oid = randomUUID(), fake = createRefundStateFake();
+  const fsql = { query: async (s, a) => fake.handle(s, a) };
+  const steps = [[rec(oid), 0], [rec(oid, { manual_reason: "x" }), 1], [rec(oid, { manual_reason: "stale" }), 1],
+    [rec(oid, { status: "approved" }), 2], [rec(oid, { manual_reason: "after" }), 3], [rec(oid, { status: "approved", n: 1 }), 3]];
+  for (const [r, v] of steps) assert.equal(await casRefundState(sql, r, v, { actor: "t" }), await casRefundState(fsql, r, v, { actor: "t" }), "[RAPG5] mesmo resultado " + JSON.stringify([r.status, r.manual_reason, v]));
 });

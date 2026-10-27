@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
 import { evaluateAutomaticRefund, refundAutoDispatchEnabled, validateMercadoPagoCredential } from "../worker/refund-auto-dispatch.mjs";
+import { createRefundStateFake } from "./helpers/refund-state-fake.mjs";
 
 const OID = "11111111-2222-4333-8444-555555555555";
 const EMAIL = "buyer@example.com";
@@ -28,12 +29,16 @@ function fixture({ order = baseOrder(), payment = basePayment(), flag = "true", 
     put: async (k, v) => { state.set(k, v); if (k === KEY && recordFailure) { recordFailure = false; throw Error("simulated_worker_restart"); } },
     list: async () => ({ keys: [...state.keys()].map((name) => ({ name })), list_complete: true }),
   };
+  const pg = createRefundStateFake();
   const sql = { query: async (statement, args = []) => {
+    const authoritative = pg.handle(statement, args);
+    if (authoritative !== undefined) return authoritative;
     if (statement.includes("from orders o")) return [order];
     if (statement.startsWith("select evidence_ref")) return evidenceEmail == null ? [] : [{ evidence_ref: JSON.stringify({ email_recipient: evidenceEmail }) }];
     if (statement.startsWith("create table if not exists refund_provider_claims")) return [];
     if (statement.startsWith("select order_id,payment_id,test,stage")) return claim ? [{ ...claim }] : [];
     if (statement.startsWith("insert into refund_provider_claims")) {
+      if (pg.failClaimOnce) { pg.failClaimOnce = false; throw Error("simulated_worker_restart_before_claim"); }
       if (claim) return [];
       claim = { order_id: args[0], payment_id: args[1], test: args[2], stage: "provider_call_may_have_been_sent", claimed_at: new Date().toISOString(), reconciled_status: null };
       return [{ order_id: args[0] }];
@@ -67,7 +72,7 @@ function fixture({ order = baseOrder(), payment = basePayment(), flag = "true", 
     };
     return () => { globalThis.fetch = original; };
   };
-  return { invoke, installFetch, state, calls, claim: () => claim, revocations: () => revocations, env };
+  return { invoke, installFetch, state, calls, pg, claim: () => claim, revocations: () => revocations, env };
 }
 
 test("RA01 elegível: confirma consumidor, reserva e faz uma chamada com chave idempotente", async () => {
@@ -86,13 +91,28 @@ test("RA01 elegível: confirma consumidor, reserva e faz uma chamada com chave i
   } finally { restore(); }
 });
 
-test("RA02 reinício depois do registro e antes da reserva não cria chamada na repetição", async () => {
+test("RA02 falha de KV depois do registro não muda o estado; reinício antes da reserva é recuperado com uma única chamada", async () => {
   const x = fixture({ failAfterRecord: true }), restore = x.installFetch();
   try {
-    assert.equal((await x.invoke()).status, 503, "[RA02] primeira execução interrompida");
+    // KV is only a cache: the failed cache write after the PostgreSQL registration changes nothing.
+    assert.equal((await x.invoke()).status, 200, "[RA02] resposta uniforme");
+    assert.equal(x.calls.post, 1, "[RA02] uma chamada");
+    assert.equal(x.pg.get(OID).status, "approved", "[RA02] estado autoritativo aprovado");
     assert.equal((await x.invoke()).status, 200, "[RA02] repetição reconhece protocolo existente");
-    assert.equal(x.calls.post, 0, "[RA02] nenhuma segunda chamada");
+    assert.equal(x.calls.post, 1, "[RA02] nenhuma segunda chamada");
   } finally { restore(); }
+  const y = fixture(), restoreY = y.installFetch();
+  try {
+    // Restart between the registration (decided eligible) and the reservation.
+    y.pg.failClaimOnce = true;
+    await y.invoke();
+    assert.equal(y.calls.post, 0, "[RA02] interrompido antes da reserva");
+    assert.equal(y.pg.get(OID).auto_eligible, true, "[RA02] decisão registrada");
+    await y.invoke();
+    assert.equal(y.calls.post, 1, "[RA02] repetição recupera com uma única chamada");
+    await y.invoke();
+    assert.equal(y.calls.post, 1, "[RA02] nenhuma chamada adicional");
+  } finally { restoreY(); }
 });
 
 test("RA03 duplo pedido concorrente é serializado pela reserva: uma chamada", async () => {

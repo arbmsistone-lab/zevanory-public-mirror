@@ -40,12 +40,17 @@ function paymentOfferId(payment) {
   return items.length === 1 && items[0]?.id ? String(items[0].id) : "";
 }
 
-export function evaluateAutomaticRefund({ order, payment, window, identityMatched, test, credential }) {
+export function evaluateAutomaticRefund({ order, payment, window, identityMatched, test, credential, paymentLookupError = null }) {
   if (!identityMatched) return { eligible: false, reason: "identity_mismatch" };
   if (!window?.eligible) return { eligible: false, reason: "outside_withdrawal_window" };
   if (test || order?.certification_pilot === true) return { eligible: false, reason: "certification_pilot" };
   if (!credential?.ok) return { eligible: false, reason: "credential_environment_mismatch" };
   if (String(order?.status || "") !== "paid") return { eligible: false, reason: "order_not_paid" };
+  // A provider lookup failure is not evidence about the payment: keep it distinct so the owner
+  // never rejects a legitimate request believing the payment was not approved. Transient
+  // failures (timeout, 408/429/5xx) are re-evaluated automatically; definitive ones are not.
+  if (paymentLookupError) return { eligible: false, reason: paymentLookupError === "not_found" ? "provider_payment_not_found" :
+    paymentLookupError === "definitive" ? "provider_lookup_rejected" : "provider_lookup_failed" };
   if (String(payment?.status || "") !== "approved") return { eligible: false, reason: "payment_not_approved" };
   if (providerHasDispute(payment)) return { eligible: false, reason: "provider_dispute_or_chargeback" };
   // A missing refund snapshot is UNKNOWN, never proof that nothing was refunded.

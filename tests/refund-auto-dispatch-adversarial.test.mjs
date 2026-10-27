@@ -6,6 +6,7 @@ import { handleRefundFlow, runRefundWatchdog } from "../worker/refund-flow.mjs";
 import { saveRefund } from "../worker/refund-provider-claims.mjs";
 import { refundAutoDispatchEnabled, evaluateAutomaticRefund } from "../worker/refund-auto-dispatch.mjs";
 import { refundWindow } from "../worker/politica-unica.mjs";
+import { createRefundStateFake } from "./helpers/refund-state-fake.mjs";
 
 // Deliberately fake every external boundary. These tests must never need provider credentials.
 const OID = "11111111-2222-4333-8444-555555555555";
@@ -33,7 +34,10 @@ function fixture({ item = order(), paid = payment(), delivery = BUYER, flag = "t
     delete: async (key) => state.delete(key),
     list: async ({ prefix }) => ({ keys: [...state.keys()].filter(k => k.startsWith(prefix)).map(name => ({ name })), list_complete: true }),
   };
+  const pg = createRefundStateFake();
   const sql = { query: async (statement, args = []) => {
+    const authoritative = pg.handle(statement, args);
+    if (authoritative !== undefined) return authoritative;
     if (statement.includes("from orders o")) return item ? [item] : [];
     if (statement.startsWith("select evidence_ref")) return delivery ? [{ evidence_ref: JSON.stringify({ email_recipient: delivery }) }] : [];
     if (statement.startsWith("select order_id,payment_id,test,stage")) return claim ? [{ ...claim }] : [];
@@ -87,14 +91,14 @@ function fixture({ item = order(), paid = payment(), delivery = BUYER, flag = "t
   };
   const panel = async () => (await handleRefundFlow(new Request("https://zevanory.api.br/admin/refunds"), env,
     { sqlFactory: () => sql, isAdminAuthorized: () => true })).text();
-  const ownerAction = async (action) => {
+  const ownerAction = async (action, justification = "Decisão registrada pelo proprietário após verificação") => {
     const r = await handleRefundFlow(new Request("https://zevanory.api.br/admin/refunds/action", {
-      method: "POST", body: new URLSearchParams({ order_id: OID, action }) }), env,
+      method: "POST", body: new URLSearchParams({ order_id: OID, action, justification }) }), env,
       { sqlFactory: () => sql, isAdminAuthorized: () => true });
     return { status: r.status, text: await r.text() };
   };
   const watchdog = () => runRefundWatchdog(env, Date.now(), { sqlFactory: () => sql });
-  return { state, calls, env, kv, invoke, panel, ownerAction, watchdog, claim: () => claim,
+  return { state, calls, env, kv, pg, sql, invoke, panel, ownerAction, watchdog, claim: () => claim,
     restore: () => { globalThis.fetch = previousFetch; } };
 }
 
@@ -215,9 +219,20 @@ test("X15 missing account hash cannot be accepted by prefix alone", async () => 
   finally { x.restore(); }
 });
 
-test("X16 unverified payment payer/delivery conflict creates no active request", async () => {
+test("X16 payer/delivery conflict opens manual identity review, never automatic, ack only to the matched registered address", async () => {
   const x = fixture({ delivery: "delivery@example.com" });
-  try { await x.invoke(); assert.equal(x.state.has(KEY), false, "X16"); assert.equal(x.calls.post, 0, "X16"); }
+  try {
+    await x.invoke();
+    const r = JSON.parse(x.state.get(KEY) || "null");
+    assert.equal(r?.manual_reason, "identity_conflict", "X16 manual review");
+    assert.equal(r?.identity_verified, false, "X16 identity not verified");
+    assert.equal(r?.auto_eligible, false, "X16 never automatic");
+    assert.equal(x.calls.post, 0, "X16 no POST");
+    const customer = x.calls.emails.filter(e => !e.to.includes("owner@example.com"));
+    assert.deepEqual(customer.map(e => e.to[0]), [BUYER], "X16 ack only to the matched registered payer");
+    assert.ok(customer.every(e => !e.to.includes("delivery@example.com")), "X16 other party not contacted");
+    assert.ok(x.calls.emails.some(e => e.to.includes("owner@example.com") && /identity_conflict/.test(e.text)), "X16 owner alerted");
+  }
   finally { x.restore(); }
 });
 
