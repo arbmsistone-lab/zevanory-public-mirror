@@ -14,8 +14,8 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
 import { FISCAL_PROCESS, fiscalProcessDefined, FISCAL_DECISION_FIELDS } from "../worker/fiscal-process.mjs";
 import { REQUIRED, evaluateCheckout, allowCheckout } from "../worker/commercial-checkout-guard.mjs";
-import { readFileSync as __readCanon } from "node:fs";
-const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url), "utf8"));
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
 const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
 const SUB_PRICE = __CANON.subscription.price;
 

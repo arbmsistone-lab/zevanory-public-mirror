@@ -24,8 +24,8 @@ import { spawnSync } from "node:child_process";
 import worker, { openSalesHtml, RETIRED_CONTACT_BODY } from "../worker/sales-public-worker.mjs";
 import { brandedEmailHtml, OFFICIAL_LEGAL_FOOTER } from "../worker/brand-email.mjs";
 import * as PU from "../worker/politica-unica.mjs";
-import { readFileSync as __readCanon } from "node:fs";
-const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url), "utf8"));
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
 const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
 const SUB_PRICE = __CANON.subscription.price;
 

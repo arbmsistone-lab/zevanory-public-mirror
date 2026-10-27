@@ -4,12 +4,13 @@
 // data/products.json: mudar o preço é mudar um arquivo, rodar scripts/sync_canonical_prices.py e o build.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { requireTool } from "./helpers/toolchain.mjs";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
 import { openSalesHtml } from "../worker/sales-public-worker.mjs";
 
-const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
+const read = (p) => readTextNormalized(new URL("../" + p, import.meta.url));
 const official = JSON.parse(read("data/products.json"));
 const P = Object.fromEntries(official.products.map((p) => [p.slug, p]));
 const SUB = Number(official.subscription.price);
@@ -29,6 +30,7 @@ function checkoutPrice(sku) {
 }
 
 test("sincronizador: nenhuma superfície tem preço diferente de data/products.json", () => {
+  requireTool("python3");
   const r = spawnSync("python3", ["scripts/sync_canonical_prices.py", "--check"], { cwd: new URL("..", import.meta.url), encoding: "utf8" });
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /PRECO_CANONICO=OK/);

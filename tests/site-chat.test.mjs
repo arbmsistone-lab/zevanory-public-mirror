@@ -1,5 +1,5 @@
-import { readFileSync as __rfP } from "node:fs";
-const __PRICES = Object.fromEntries(JSON.parse(__rfP(new URL("../data/products.json", import.meta.url), "utf8")).products.map((p) => [p.slug, p.price])); // preço canônico
+import { readTextNormalized as __rfP } from "./helpers/text.mjs";
+const __PRICES = Object.fromEntries(JSON.parse(__rfP(new URL("../data/products.json", import.meta.url))).products.map((p) => [p.slug, p.price])); // preço canônico
 // Chat do site (worker/site-chat.mjs + proxy em worker/sales-public-worker.mjs). AVAL Sol 111.
 // SOMENTE fakes locais: nenhuma requisição sai da máquina, nenhum lead/ticket/e-mail/checkout real.
 // Mutantes: scripts/ci/mutants_site_chat.py (todos precisam morrer).

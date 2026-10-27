@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { BLOG_CSS_PATH } from "../worker/blog-layout.mjs";
 import test from "node:test";import assert from "node:assert/strict";
 import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderBlogIndex,longFormDailyArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
-import { readFileSync as __readCanon } from "node:fs";
-const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url), "utf8"));
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
 const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
 const SUB_PRICE = __CANON.subscription.price;
 const brandResponse=name=>new Response(readFileSync(new URL("../assets/brand/export/"+name,import.meta.url)),{status:200,headers:{"content-type":"image/png"}});

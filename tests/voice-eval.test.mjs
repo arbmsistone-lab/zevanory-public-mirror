@@ -1,5 +1,5 @@
-import { readFileSync as __rfV } from "node:fs";
-const __PRICES_V = Object.fromEntries(JSON.parse(__rfV(new URL("../data/products.json", import.meta.url), "utf8")).products.map((p) => [p.slug, p.price])); // preço canônico
+import { readTextNormalized as __rfV } from "./helpers/text.mjs";
+const __PRICES_V = Object.fromEntries(JSON.parse(__rfV(new URL("../data/products.json", import.meta.url))).products.map((p) => [p.slug, p.price])); // preço canônico
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

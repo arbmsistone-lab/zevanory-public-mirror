@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handleLeadMagnet, runLeadNurture, runLeadRetention, leadOptOutLink, nurtureEmail, subjectRef, CONSENT_FOLLOWUPS, RETENTION_MARKER } from "../worker/lead-magnet.mjs";
 import { createHmac, createHash } from "node:crypto";
-import { readFileSync as __readCanon } from "node:fs";
-const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url), "utf8"));
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
 const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
 const SUB_PRICE = __CANON.subscription.price;
 const V1 = "lead-magnet-v1-2026-10-07";
