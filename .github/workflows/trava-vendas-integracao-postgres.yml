@@ -123,15 +123,15 @@ jobs:
         run: |
           set -eo pipefail
           node --test tests/integration/refund-auto-dispatch-postgres.test.mjs | tee ra-pg.txt
-          grep -qx "# tests 5" ra-pg.txt && grep -qx "# pass 5" ra-pg.txt && grep -qx "# skipped 0" ra-pg.txt && grep -qx "# fail 0" ra-pg.txt
+          grep -qx "# tests 6" ra-pg.txt && grep -qx "# pass 6" ra-pg.txt && grep -qx "# skipped 0" ra-pg.txt && grep -qx "# fail 0" ra-pg.txt
       - name: Mutantes do reembolso automático (classificador compartilhado)
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -eo pipefail
           python3 scripts/ci/mutants_refund_auto_dispatch.py | tee ra-mutants.txt
-          grep -q '"mutants": 80, "KILLED": 80, "SURVIVED": 0, "INCONCLUSIVE": 0' ra-mutants.txt \
-            || { echo "::error::esperados 80/80 mutantes do reembolso mortos"; exit 1; }
+          grep -q '"mutants": 87, "KILLED": 87, "SURVIVED": 0, "INCONCLUSIVE": 0' ra-mutants.txt \
+            || { echo "::error::esperados 87/87 mutantes do reembolso mortos"; exit 1; }
       - name: Outbox do formulário de atendimento (AVAL Sol #892; queda, recuperação, janela 23 h, erros permanentes, dead-letter, monitor, lease, cotas)
         env:
           T4_PG_HOST: localhost

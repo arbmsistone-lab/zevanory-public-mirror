@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""21 original + 18 refund-flow fail-closed + 22 re-audit r2 + 12 decision-state + 7 round-3 mutants with assertion-level kills."""
+"""21 original + 18 refund-flow fail-closed + 22 re-audit r2 + 12 decision-state + 7 round-3 + 7 round-4 mutants with assertion-level kills."""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "ci"))
 from mutant_classifier import aggregate, classify_run, load_mutant_config, parse_tap, run_command, validate_baseline
 
 TEST = "tests/refund-auto-dispatch-mutation-suite.mjs"
-BASELINE_COUNT = 86  # A01..A21, X01..X25 and R01..R40
+BASELINE_COUNT = 90  # A01..A21, X01..X25 and R01..R44
 MUTANTS = {
     "M01_flag_default": ("worker/refund-auto-dispatch.mjs", '=== "true";', '=== "false";', "A01"),
     "M02_prod_test_token": ("worker/refund-auto-dispatch.mjs", 'mode !== "production" || sandboxToken || !await verify(env)', 'mode !== "production" || false || false', "A02"),
@@ -64,7 +64,7 @@ MUTANTS = {
     "C07_request_window_now": ("worker/refund-flow.mjs", "firstDownloadAt: order.first_download_at, now: Date.parse(existing.requested_at) || Date.now() });", "firstDownloadAt: order.first_download_at, now: Date.now() });", "R19"),
     "C08_watchdog_window_now": ("worker/refund-flow.mjs", "{ now: Date.parse(rec.requested_at) || Date.now() });", "{ now: Date.now() });", "R19"),
     "C09_lookup_failure_reason": ("worker/refund-auto-dispatch.mjs", "if (paymentLookupError) return", "if (false) return", "R09"),
-    "C10_unverified_uncapped": ("worker/refund-flow.mjs", "if ((listed.keys || []).length >= UNVERIFIED_CAP) return;", "if (false) return;", "R10"),
+    "C10_unverified_uncapped": ("worker/refund-flow.mjs", "if ((listed.keys || []).length >= UNVERIFIED_CAP) {", "if (false) {", "R10"),
     "C11_unverified_not_deduped": ("worker/refund-flow.mjs", "`refund:unverified:${oid}:${String(hash).slice(0, 16)}`", "`refund:unverified:${oid}:${crypto.randomUUID()}`", "R10"),
     "C12_terminal_merge_lost": ("worker/refund-state.mjs", "    if (!isTerminal(record.status)) return false;\n", "    return false;\n", "R11"),
     "C13_kv_copy_trusted": ("worker/refund-provider-claims.mjs", "const legacy = cached && cached.auto_dispatch !== true ? cached : null;", "const legacy = cached;", "R34"),
@@ -93,10 +93,18 @@ MUTANTS = {
     "E01_cas_loss_dropped": ("worker/refund-flow.mjs", "continue; // lost the CAS: re-read and re-decide (L-1)", "return receipt;", "R35"),
     "E02_sandbox_flag_unknown_ignored": ("worker/refund-flow.mjs", "if (testFlagUnknown) decision =", "if (false) decision =", "R36"),
     "E03_ddl_race_not_tolerated": ("worker/refund-state.mjs", "    if (!exists) throw error;", "    throw error;", "R37"),
-    "E04_off_reads_new_tables": ("worker/refund-flow.mjs", "if (on || sawOnCopy || await onStatePresent(kv)) {", "if (true) {", "R38"),
+    "E04_off_reads_new_tables": ("worker/refund-flow.mjs", "if (on || sawOnCopy || await refundStateTablesExist(sql)) {", "if (true) {", "R38"),
     "E05_conflict_rejection_reopens": ("worker/refund-flow.mjs", 'if (conflictRejected && a.identity !== "matched") {', "if (false) {", "R39"),
     "E06_payment_override_optional": ("worker/refund-flow.mjs", "if (override && (decision?.override !== true", "if (false && (decision?.override !== true", "R40"),
     "E07_payment_override_unrecorded": ("worker/refund-flow.mjs", "        ...(override ? { payment_override: true } : {}) },", "        },", "R40"),
+    # Round 4: every manifestation persisted (M-1), PostgreSQL-based OFF visibility (M-2), B-1, L1c.
+    "G01_overflow_manifestation_dropped": ("worker/refund-flow.mjs", "  const saved = await saveRefund(kv, record, { sql, actor: \"consumer-request\",", "  const saved = overflow || await saveRefund(kv, record, { sql, actor: \"consumer-request\",", "R41"),
+    "G02_reevaluation_slots_only": ("worker/refund-flow.mjs", "for (const e of await listRefundEvents(sql, record.order_id)) {", "for (const e of []) {", "R41"),
+    "G03_off_watchdog_marker_only": ("worker/refund-flow.mjs", "if (on || await refundStateTablesExist(sqlFactory(env.DATABASE_URL))) {", "if (on) {", "R42"),
+    "G04_off_tables_check_ignored": ("worker/refund-flow.mjs", "if (on || sawOnCopy || await refundStateTablesExist(sql)) {", "if (on || sawOnCopy) {", "R42"),
+    "G05_identity_cas_loss_receipt": ("worker/refund-flow.mjs", "if (!await rememberIdentity(env, kv, sql, existing, typedHash)) continue;", "if (!await rememberIdentity(env, kv, sql, existing, typedHash)) return receipt;", "R43"),
+    "G06_admin_action_unhandled": ("worker/refund-flow.mjs", "    } catch { out = { status: 503, body: { error: \"refund_state_unavailable\" } }; }", "    } catch (e) { throw e; }", "R44"),
+    "G07_mismatch_overflow_dropped": ("worker/refund-flow.mjs", "        await kv.put(okey, JSON.stringify(", "        if (false) await kv.put(okey, JSON.stringify(", "R10"),
     "D12_owner_approve_pg_bypassed": ("worker/refund-flow.mjs", "  try { record = await loadRefund(kv, sql, oid, { on: refundAutoDispatchEnabled(env) }); }\n  catch { return { status: 503, body: { error: \"refund_state_unavailable\" } }; }\n  if (!record) return { status: 404, body: { error: \"refund_request_not_found\" } };\n  if (record.status === \"refunded\"", "  try { record = JSON.parse(await kv.get(KEY(oid)) || \"null\"); }\n  catch { return { status: 503, body: { error: \"refund_state_unavailable\" } }; }\n  if (!record) return { status: 404, body: { error: \"refund_request_not_found\" } };\n  if (record.status === \"refunded\"", "R28"),
 }
 
@@ -112,13 +120,13 @@ COLLATERAL = {
     "M01_flag_default": ["X01", "X02", "X03", "X04", "X05", "X09", "X10", "X12", "X13", "X14", "X15", "X16", "X17", "X18", "X21", "X22", "X23", "X24", "X25",
                          "R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09", "R10", "R12", "R13", "R14", "R15", "R16", "R17", "R18", "R19",
                          "R20", "R21", "R22", "R23", "R24", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33", "R34",
-                         "R35", "R36", "R38", "R39", "R40"],
+                         "R35", "R36", "R38", "R39", "R40", "R41", "R42", "R43", "R44"],
     "M02_prod_test_token": ["X13", "X15", "X18"],
     "M11_credential": ["X13"],
-    "M17_amount": ["X10", "X17", "X23", "X25", "R20", "R26", "R29", "R30"],
+    "M17_amount": ["X10", "X17", "X23", "X25", "R20", "R26", "R29", "R30", "R44"],
     "B07_on_identity": ["X16", "R10"],
     "B08_unverified_audit": ["R10"],
-    "B09_provider_gate": ["X14", "X15", "R02", "R03", "R16", "R26"],
+    "B09_provider_gate": ["X14", "X15", "R02", "R03", "R16", "R26", "R41", "R43"],
     "B10_email_match": ["X16", "R01", "R10", "R39"],
     "B13_customer_retry": ["X16", "R01", "R04", "R05", "R22", "R27", "R28"],
     "B15_missing_payment": ["R05", "R06", "R08", "R19", "R21", "R23"],
@@ -132,10 +140,11 @@ COLLATERAL = {
     "C01_conflict_dropped": ["X16", "R39"],
     "C04_unverified_blocks_buyer": ["R35"],
     "C16_owner_approve_no_reeval": ["R40"],
-    "C02_unverifiable_dropped": ["R03", "R04", "R16", "R26"],
+    "C02_unverifiable_dropped": ["R03", "R04", "R16", "R26", "R41", "R43"],
+    "G04_off_tables_check_ignored": ["R38"],
     "C05_conflict_ack_other_party": ["X16"],
     "C06_request_reeval_disabled": ["R09", "R19"],
-    "C17_watchdog_no_reeval": ["R03", "R04", "R19", "R21", "R22", "R36"],
+    "C17_watchdog_no_reeval": ["R03", "R04", "R19", "R21", "R22", "R36", "R41"],
     "C21_identity_alert_skipped": ["X16", "R01"],
     "B11_receipt_protocol": ["X10", "X21", "R01"],
     "B12_receipt_message": ["X03", "X05", "X10"],
@@ -159,6 +168,7 @@ REASONS = {
     "B16_execute_identity": "Without the evidence gate the owner approval of a held request is no longer refused.",
     "C01_conflict_dropped": "X16 and R39 assert the same conflict review (R39 also its sticky rejection).",
     "C04_unverified_blocks_buyer": "R35 needs the buyer to supersede the unconfirmed record after re-reading.",
+    "G04_off_tables_check_ignored": "R38 checks that the same OFF gate lists ON records once the tables exist.",
     "C16_owner_approve_no_reeval": "R40 checks that approval re-evaluates first when the provider recovered.",
     "C02_unverifiable_dropped": "The other unverifiable-identity scenarios share the same classification.",
     "C05_conflict_ack_other_party": "X16 asserts the same matched-address acknowledgement.",

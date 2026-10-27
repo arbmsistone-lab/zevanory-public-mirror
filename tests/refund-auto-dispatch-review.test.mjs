@@ -240,6 +240,8 @@ test("R10 unconfirmed attempts are bounded per order and deduplicated per addres
     for (let i = 0; i < 5; i++) await x.invoke("same@evil.example");
     const keys = [...x.state.keys()].filter((k) => k.startsWith("refund:unverified:"));
     assert.equal(keys.length, 10, "R10 capped at 10");
+    assert.equal(JSON.parse(x.state.get(`refund:unverified-overflow:${OID}`) || "null")?.attempts, 25, "R10 attempts beyond the cap are still counted");
+    assert.match(await x.panel(), /excedente do limite: 25 tentativas/, "R10 overflow visible to the owner");
     await x.invoke(BUYER);
     assert.equal(x.calls.post, 1, "R10 buyer unaffected");
     const y = fixture();
@@ -726,7 +728,8 @@ test("R39 an owner rejection of an identity_conflict review is final for that re
     const mails = x.calls.emails.length, version = x.rec()?.version;
     await x.invoke(BUYER);
     assert.equal(x.rec()?.status, "rejected", "R39 not reopened");
-    assert.equal(x.rec()?.version, version, "R39 no new transition");
+    assert.equal(x.rec()?.version, version + 1, "R39 the manifestation is still recorded");
+    assert.equal(x.pg.events.at(-1)?.evidence?.manifestation, true, "R39 audited as a manifestation");
     assert.equal(x.calls.emails.length, mails, "R39 no new protocol or alert");
     x.world.paid = payment(); // registered data now agree (new evidence)
     await x.invoke(BUYER);
@@ -758,4 +761,72 @@ test("R40 approval without provider proof of payment needs an explicit override 
     assert.equal((await y.ownerAction("approve")).status, 303, "R40 recovered provider approves normally");
     assert.equal(y.calls.post, 1, "R40 single POST");
   } finally { y.restore(); }
+});
+
+// ---- Round 4 (M-1, M-2, B-1, B-2) ----
+
+test("R41 every manifestation is persisted: after the proof slots are full the real payer is still recorded and matched on re-evaluation", async () => {
+  const x = fixture({ mode: "sandbox", delivery: "" });
+  try {
+    for (let i = 0; i < 5; i++) await x.invoke(`g${i}@evil.example`);
+    assert.equal(x.rec()?.identity_hashes?.length, 5, "R41 proof slots full");
+    const before = x.pg.events.length;
+    assert.equal((await x.invoke(BUYER)).status, 200, "R41 receipt");
+    assert.equal(x.pg.events.length, before + 1, "R41 the 6th manifestation is a persisted event");
+    assert.equal(x.pg.events.at(-1)?.evidence?.proof_overflow, true, "R41 overflow recorded");
+    assert.ok(x.to(OWNER).some((e) => /muitas manifestações não confirmadas/.test(e.subject)), "R41 owner alerted on overflow");
+    x.env.MERCADOPAGO_ENV = "production";
+    await x.watchdog();
+    assert.equal(x.rec()?.identity_verified, true, "R41 payer matched from the event log, never closed as unverified");
+    assert.notEqual(x.rec()?.status, "unverified_closed", "R41 not closed");
+  } finally { x.restore(); }
+});
+
+test("R42 emergency OFF without any KV marker or copy: the watchdog still reconciles the ambiguous ON refund and the owner still sees it", async () => {
+  const x = fixture({ refundBody: { message: "timeout" } });
+  try {
+    await x.invoke();
+    assert.equal(x.rec()?.provider_outcome_unknown, true, "R42 ambiguous ON refund");
+    for (const k of [...x.state.keys()]) if (k.startsWith("refund:")) x.state.delete(k); // KV lost entirely
+    x.env.REFUND_AUTO_DISPATCH = "false";
+    assert.match(await x.panel(), new RegExp(OID), "R42 owner still sees the ON record");
+    x.world.paid = payment({ transaction_amount_refunded: 197, refunds: [{ id: "ref-1", amount: 197, status: "approved" }] });
+    const q = x.sql.query;
+    x.sql.query = async (s, a) => { if (s.startsWith("select order_id,payment_id,test,stage")) { const r = await q(s, a); return r.map((c) => ({ ...c, claimed_at: new Date(Date.now() - 3600e3).toISOString() })); } return q(s, a); };
+    await x.watchdog();
+    assert.equal(x.rec()?.status, "approved", "R42 reconciled while OFF");
+    assert.equal(x.calls.post, 1, "R42 no second POST");
+  } finally { x.restore(); }
+});
+
+test("R43 an identity proof that loses the compare-and-swap is retried, never dropped (L1c)", async () => {
+  const x = fixture({ mode: "sandbox", delivery: "" });
+  try {
+    await x.invoke("first@evil.example");
+    const q = x.sql.query; let bumped = false;
+    x.sql.query = async (s, a) => {
+      if (!bumped && s.startsWith("with prev as")) { bumped = true; const r = x.pg.get(OID); x.pg.set(OID, { ...r, version: r.version + 1 }); }
+      return q(s, a);
+    };
+    await x.invoke(BUYER);
+    x.sql.query = q;
+    assert.equal(bumped, true, "R43 CAS loss injected");
+    assert.equal(x.rec()?.identity_hashes?.length, 2, "R43 proof kept after the retry");
+  } finally { x.restore(); }
+});
+
+test("R44 a storage exception during an owner action is a handled 503 with the state unchanged (B-1)", async () => {
+  const x = fixture({ paid: payment({ transaction_amount: 1 }) });
+  try {
+    await x.invoke();
+    const before = x.rec();
+    const q = x.sql.query;
+    x.sql.query = async (s, a) => { if (s.startsWith("with prev as")) throw Error('relation "refund_request_events" does not exist'); return q(s, a); };
+    let out;
+    try { out = await x.ownerAction("reject"); } catch { out = { status: "unhandled exception" }; }
+    x.sql.query = q;
+    assert.equal(out.status, 503, "R44 handled 503");
+    assert.equal(x.rec()?.status, before.status, "R44 state unchanged");
+    assert.equal(x.rec()?.version, before.version, "R44 version unchanged");
+  } finally { x.restore(); }
 });

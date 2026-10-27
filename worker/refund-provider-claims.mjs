@@ -35,17 +35,18 @@ export async function saveRefund(kv, record, { sql, actor = "system", justificat
     if (!sql) return false;
     if (!await writeRefundState(sql, record, { actor, justification, evidence, transitionKey })) return false;
     try { await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL }); } catch {} // cache only
-    try { if (!await kv.get(ON_STATE_MARKER)) await kv.put(ON_STATE_MARKER, new Date().toISOString()); } catch {}
     return true;
   }
   await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL });
   return true;
 }
-// Cheap flag: set once any ON record exists, so the OFF path reads the new tables only then (L-5).
-// A KV error counts as "present" (reading PostgreSQL is the safe side).
-export const ON_STATE_MARKER = "refund:on-state:present";
-export async function onStatePresent(kv) {
-  try { return Boolean(await kv.get(ON_STATE_MARKER)); } catch { return true; }
+// "ON records exist" is decided by PostgreSQL itself (M-2): the tables are created only by the ON
+// flow, so with the flag OFF one catalog lookup (to_regclass, no DDL, no table statement) tells
+// whether ON state can exist. If the lookup itself fails, read PostgreSQL anyway (safe side).
+export async function refundStateTablesExist(sql) {
+  if (!sql) return false;
+  try { return Boolean((await sql.query("select to_regclass($1) as t", ["refund_requests"]))[0]?.t); }
+  catch { return true; }
 }
 // Authoritative read. ON records come from PostgreSQL (a KV copy, stale or missing, is ignored);
 // legacy records come from KV exactly as before. on=false keeps the OFF path free of new DDL.
@@ -55,7 +56,7 @@ export async function loadRefund(kv, sql, oid, { on = false } = {}) {
   const legacy = cached && cached.auto_dispatch !== true ? cached : null;
   if (!on && legacy) return legacy;
   if (!sql) return legacy;
-  if (!on && !cached && !await onStatePresent(kv)) return null; // OFF without ON state: never touch the new tables
+  if (!on && !cached && !await refundStateTablesExist(sql)) return null; // OFF without ON tables: never touch them
   let stored;
   try { stored = await getRefundState(sql, oid, { ensure: on }); }
   catch (e) { if (!on) return legacy; throw e; }

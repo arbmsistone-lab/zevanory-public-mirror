@@ -7,7 +7,7 @@ const TERMINAL = ["approved", "refunded"];
 export function createRefundStateFake() {
   const rows = new Map();
   const events = [];
-  const fake = { rows, events, down: false, failNextWrite: false };
+  const fake = { rows, events, down: false, failNextWrite: false, created: false };
   const event = (oid, version, from, to, a) => {
     const [manual_reason, actor, justification, evidence, transition_key] = a;
     if (transition_key && events.some((e) => e.transition_key === transition_key)) throw Error("duplicate transition_key");
@@ -17,9 +17,13 @@ export function createRefundStateFake() {
   };
   fake.handle = (statement, args = []) => {
     const s = String(statement);
+    if (s.startsWith("select to_regclass($1)") && /^refund_request/.test(String(args[0]))) {
+      if (fake.down) throw Error("refund state store unavailable");
+      return [{ t: fake.created ? args[0] : null }]; // catalog lookup: tables exist once created
+    }
     if (!/refund_requests|refund_request_events/.test(s)) return undefined;
     if (fake.down) throw Error("refund state store unavailable");
-    if (s.startsWith("create table if not exists refund_request")) return [];
+    if (s.startsWith("create table if not exists refund_request")) { fake.created = true; return []; }
     if (s.startsWith("select version,status,record from refund_requests where order_id")) {
       const r = rows.get(args[0]);
       return r ? [{ version: r.version, status: r.status, record: structuredClone(r.record) }] : [];

@@ -1,7 +1,7 @@
 import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
 import { drainAtendimentoOutbox, handleAtendimento } from "./atendimento.mjs";
-import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, loadRefund, onStatePresent, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
-import { listRefundStates } from "./refund-state.mjs";
+import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, loadRefund, refundStateTablesExist, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
+import { listRefundStates, listRefundEvents } from "./refund-state.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
 import { evaluateAutomaticRefund, refundAutoDispatchEnabled, refundIdempotencyKey, validateMercadoPagoCredential } from "./refund-auto-dispatch.mjs";
 export { reconcileRefund } from "./refund-provider-claims.mjs";
@@ -300,7 +300,14 @@ async function recordUnverifiedAttempt(kv, order, oid, emailMasked, hash) {
     const prior = JSON.parse(await kv.get(key) || "null");
     if (!prior) {
       const listed = await kv.list({ prefix: `refund:unverified:${oid}:`, limit: UNVERIFIED_CAP });
-      if ((listed.keys || []).length >= UNVERIFIED_CAP) return;
+      if ((listed.keys || []).length >= UNVERIFIED_CAP) {
+        // Cap reached: the attempt is still counted (time + count), never silently dropped.
+        const okey = `refund:unverified-overflow:${oid}`;
+        const o = JSON.parse(await kv.get(okey) || "null");
+        await kv.put(okey, JSON.stringify({ order_id: oid, status: "unverified_overflow", attempts: Number(o?.attempts || 0) + 1,
+          first_at: o?.first_at || new Date().toISOString(), last_attempt_at: new Date().toISOString() }), { expirationTtl: 7 * 24 * 3600 });
+        return;
+      }
     }
     const at = new Date().toISOString();
     await kv.put(key, JSON.stringify({ order_id: oid, status: "unverified", email_masked: emailMasked,
@@ -309,12 +316,39 @@ async function recordUnverifiedAttempt(kv, order, oid, emailMasked, hash) {
   } catch {} // Logging must not change the public response or block a valid later request.
 }
 
-// Returns false only when a concurrent writer won the CAS (the caller re-reads and re-decides).
-async function rememberIdentity(kv, sql, record, hash) {
+// Every manifestation on an unconfirmed review is persisted (M-1): an audited transition whose
+// event carries the pseudonymous identity proof, protocol and time. IDENTITY_HASH_CAP only bounds
+// the proof slots kept inside the record; re-evaluation reads every recorded proof from the
+// event log. On the first overflow the owner is alerted. Returns false only when a concurrent
+// writer won the CAS (the caller re-reads and re-decides).
+async function rememberIdentity(env, kv, sql, record, hash, { addProof = true } = {}) {
   const hashes = record.identity_hashes || [];
-  if (hashes.includes(hash) || hashes.length >= IDENTITY_HASH_CAP) return true;
-  record.identity_hashes = [...hashes, hash];
-  return saveRefund(kv, record, { sql, actor: "consumer-request", evidence: { identity_proof_added: true } });
+  const slot = addProof && !hashes.includes(hash) && hashes.length < IDENTITY_HASH_CAP;
+  const overflow = addProof && !hashes.includes(hash) && !slot;
+  const firstOverflow = overflow && record.identity_proof_overflow !== true;
+  if (slot) record.identity_hashes = [...hashes, hash];
+  record.manifestations = Number(record.manifestations || 1) + 1;
+  record.last_manifestation_at = new Date().toISOString();
+  if (overflow) record.identity_proof_overflow = true;
+  const saved = await saveRefund(kv, record, { sql, actor: "consumer-request",
+    evidence: { manifestation: true, identity_hash: hash, protocol: record.order_id, proof_slot: slot, proof_overflow: overflow },
+    transitionKey: `manifestation:${record.order_id}:${record.version}` });
+  if (saved && firstOverflow && !record.test)
+    await sendEmail(env, OWNER(env), "ZEVANORY — muitas manifestações não confirmadas num pedido",
+      `Pedido ${record.order_id}: mais de ${IDENTITY_HASH_CAP} endereços diferentes manifestaram arrependimento sem identidade confirmada. Todas as manifestações estão registradas e serão conferidas na reavaliação. Verifique o pedido.\n\nFila: ${ORIGIN}/admin/refunds`);
+  return saved;
+}
+
+// Every identity proof recorded for this order: the record slots plus every manifestation event.
+async function recordedIdentityHashes(sql, record) {
+  const all = new Set(record.identity_hashes || []);
+  try {
+    for (const e of await listRefundEvents(sql, record.order_id)) {
+      const ev = typeof e.evidence === "string" ? JSON.parse(e.evidence) : e.evidence;
+      if (ev?.identity_hash) all.add(String(ev.identity_hash));
+    }
+  } catch (error) { if (!all.size) throw error; } // never conclude "mismatch" from a partial view
+  return [...all];
 }
 
 const manualAlertText = (record) => `Pedido ${record.order_id} (${record.offer_id}, R$ ${record.amount}) em análise manual: ${record.manual_reason}.` +
@@ -353,7 +387,7 @@ async function createAutomaticRequest(env, sql, kv, { oid, email }, ctx) {
     const redispatch = pendingExisting && existing.auto_dispatch === true && existing.identity_verified === true &&
       existing.auto_eligible === true && !existing.manual_reason && a.identity === "matched";
     if (pendingExisting && existing.identity_verified === false && a.identity !== "matched") {
-      if (!await rememberIdentity(kv, sql, existing, typedHash)) continue; // lost the CAS: re-read (L-1)
+      if (!await rememberIdentity(env, kv, sql, existing, typedHash)) continue; // lost the CAS: re-read (L-1)
       return receipt;
     }
     // An owner rejection of a conflict review stays final for the same requester while the
@@ -361,6 +395,7 @@ async function createAutomaticRequest(env, sql, kv, { oid, email }, ctx) {
     const conflictRejected = existing?.status === "rejected" && existing.manual_reason === "identity_conflict" &&
       (existing.identity_hashes || []).includes(typedHash);
     if (conflictRejected && a.identity !== "matched") {
+      if (!await rememberIdentity(env, kv, sql, existing, typedHash, { addProof: false })) continue; // persisted, still final
       if (existing.decision_email_pending === true) await resendCustomerConfirmation(env, sql, kv, existing, { payment });
       return receipt;
     }
@@ -379,6 +414,9 @@ async function createAutomaticRequest(env, sql, kv, { oid, email }, ctx) {
     }
     if (existing && existing.status !== "unverified_closed" && !supersede && !reeval &&
         (existing.status !== "rejected" || isAmbiguousRefund(existing))) {
+      // A manifestation by another proven identity on an existing ON request is recorded too (M-1).
+      if (existing.auto_dispatch === true && !(existing.identity_hashes || []).includes(typedHash) &&
+          !await rememberIdentity(env, kv, sql, existing, typedHash, { addProof: existing.identity_verified === false })) continue;
       if (existing.identity_verified && existing.customer_email_pending === true)
         await resendCustomerConfirmation(env, sql, kv, existing, { payment });
       return receipt;
@@ -430,7 +468,7 @@ async function createAutomaticRequest(env, sql, kv, { oid, email }, ctx) {
       ...(reeval || supersede ? { reevaluated_at: new Date().toISOString() } : {}),
     };
     if (!await saveRefund(kv, record, { sql, actor: "consumer-request",
-      evidence: systemEvidence({ ...a, window, decision }, { reevaluation: Boolean(reeval || supersede) }),
+      evidence: systemEvidence({ ...a, window, decision }, { reevaluation: Boolean(reeval || supersede), identity_hash: typedHash, protocol: oid }),
       transitionKey: `request:${oid}:${record.request_nonce}:${record.version}` })) continue; // lost the CAS: re-read and re-decide (L-1)
     // Notifications and dispatch run after the uniform response when the runtime allows it,
     // so the response time does not reveal whether the identity matched (L-1).
@@ -473,10 +511,18 @@ async function reevaluateRequest(env, sql, kv, oid, { actor = "reevaluation" } =
   try {
     if (await hasRefundClaim(sql, oid)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
   } catch { return { status: 503, body: { error: "refund_claim_store_unavailable" } }; }
-  const hashes = rec.identity_hashes || [];
+  // Match against EVERY recorded manifestation (M-1), not only the proof slots in the record.
+  let hashes;
+  try { hashes = rec.identity_verified === true ? (rec.identity_hashes || []) : await recordedIdentityHashes(sql, rec); }
+  catch { return { status: 503, body: { error: "refund_state_unavailable" } }; }
   const legacyVerified = rec.identity_verified === true && !hashes.length;
-  const a = await assessOrder(env, sql, kv, oid, async (c) => legacyVerified || hashes.includes(await identityHash(oid, c)),
-    { now: Date.parse(rec.requested_at) || Date.now() });
+  const matchedHashes = [];
+  const a = await assessOrder(env, sql, kv, oid, async (c) => {
+    if (legacyVerified) return true;
+    const h = await identityHash(oid, c);
+    if (hashes.includes(h)) { matchedHashes.push(h); return true; }
+    return false;
+  }, { now: Date.parse(rec.requested_at) || Date.now() });
   if (!a) return { status: 409, body: { error: "refund_order_not_found" } };
   if (a.identity === "mismatch") {
     if (rec.identity_verified === true)
@@ -507,6 +553,7 @@ async function reevaluateRequest(env, sql, kv, oid, { actor = "reevaluation" } =
     notify_source: a.identity === "conflict" ? (a.deliveryMatch ? "delivery" : "payer") : null,
     confirmation_channel: verified || a.identity === "conflict" ? "registered_address" : "none",
     auto_eligible: a.decision.eligible, manual_reason: reason, reevaluated_at: new Date().toISOString(),
+    identity_hashes: [...new Set([...(rec.identity_hashes || []), ...matchedHashes])],
     ...(verified ? { email_masked: maskEmail(a.delivery || a.payer) } : {}),
     ...(neverAcknowledged ? { customer_email_pending: !a.test } : {}),
   });
@@ -666,7 +713,7 @@ async function listRequests(kv, sql, { on = false } = {}) {
     catch { v.claim_present = true; v.retry_permitted = false; }
   };
   // ON records: PostgreSQL is authoritative (KV copies of them are ignored below). With the
-  // flag OFF the new tables are read only when ON-created state is known to exist (L-5).
+  // flag OFF the new tables are read only if they exist (catalog lookup, no DDL; M-2/L-5).
   let sawOnCopy = false;
   const legacy = [];
   let cursor;
@@ -679,7 +726,7 @@ async function listRequests(kv, sql, { on = false } = {}) {
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
-  if (on || sawOnCopy || await onStatePresent(kv)) {
+  if (on || sawOnCopy || await refundStateTablesExist(sql)) {
     let states = [];
     try { states = await listRefundStates(sql, { ensure: on }); }
     catch { if (on) out.push({ status: "state_unavailable", order_id: "", requested_at: new Date().toISOString() }); }
@@ -692,6 +739,15 @@ async function listRequests(kv, sql, { on = false } = {}) {
     for (const k of page.keys || []) {
       const v = JSON.parse(await kv.get(k.name) || "null");
       if (v?.status === "unverified") out.push(v);
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  cursor = undefined;
+  do {
+    const page = await kv.list({ prefix: "refund:unverified-overflow:", cursor });
+    for (const k of page.keys || []) {
+      const v = JSON.parse(await kv.get(k.name) || "null");
+      if (v?.status === "unverified_overflow") out.push(v);
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
@@ -714,12 +770,12 @@ function legacyAdminPage(items) {
 
 function adminPage(items, env = {}) {
   // L-7: while OFF and without any state created by the ON flow, render the exact legacy page.
-  if (!refundAutoDispatchEnabled(env) && !items.some((r) => r.auto_dispatch === true || r.status === "unverified" || r.status === "state_unavailable")) return legacyAdminPage(items);
+  if (!refundAutoDispatchEnabled(env) && !items.some((r) => r.auto_dispatch === true || ["unverified", "unverified_overflow", "state_unavailable"].includes(r.status))) return legacyAdminPage(items);
   const stateDown = items.some((r) => r.status === "state_unavailable");
   // ON records: every owner decision carries a justification (mandatory for manual review) and evidence.
   const decisionFields = (r) => r.auto_dispatch === true ? `<br><input name="justification" maxlength="500" placeholder="Justificativa${r.manual_reason ? " (obrigatória)" : ""}"> <input name="evidence" maxlength="500" placeholder="Evidência (ID no provedor, contato)">${PAYMENT_UNPROVEN.has(r.manual_reason) ? `<br><label><input type="checkbox" name="override" value="1"> Exceção: aprovar sem comprovação do pagamento no provedor (evidência obrigatória)</label>` : ""}` : "";
-  const rows = items.filter(r => r.status !== "unverified" && r.status !== "state_unavailable").map((r) => { const ageH = Math.max(0, (Date.now() - Date.parse(r.requested_at || 0)) / 3600e3); const manualHold = heldForEvidence(r) && r.status === "pending"; return `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}<br><small>há ${esc(ageH < 1 ? Math.max(0, Math.floor(ageH * 60)) + " min" : Math.floor(ageH) + " h")}</small></td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.manual_reason ? `<br><small>manual: ${esc(r.manual_reason)}</small>` : ""}${r.history?.length ? `<br><small>recusa anterior registrada (${esc(r.history.length)})</small>` : ""}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}${r.confirmation_channel === "none" ? "<br><small>sem canal seguro de confirmação: consumidor não notificado (pendência rastreada)</small>" : ""}${r.owner_decision?.justification ? `<br><small>decisão: ${esc(r.owner_decision.action)} — ${esc(r.owner_decision.justification)}</small>` : ""}</td><td>${manualHold ? `<small>Aguardar comprovação do pagamento/identidade; aprovação só após reavaliação</small><form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="reevaluate">Reavaliar agora</button> <button name="action" value="reject" class="no">Recusar</button>${decisionFields(r)}</form>` : r.status === "pending" && r.retry_permitted ? `<form method="post" action="/admin/refunds/action"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Repetir após conciliação (uma vez)</button>${decisionFields(r)}</form>` : r.status === "pending" && !r.claim_present && !isAmbiguousRefund(r) ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button>${decisionFields(r)}</form>` : (isAmbiguousRefund(r) || r.claim_present) ? "Verificar conciliação no Mercado Pago antes de nova tentativa" : r.download_revocation_pending === true ? "Revogação de downloads pendente; verificar recuperação" : esc(r.refund_id || "")}</td></tr>`; }).join("");
-  const unverified = items.filter(r => r.status === "unverified").map(r => `<tr><td>${esc(r.requested_at)}</td><td><code>${esc(r.order_id)}</code></td><td>${esc(r.email_masked)}${Number(r.attempts) > 1 ? ` (${esc(r.attempts)} tentativas)` : ""}</td><td>Identidade não confirmada — somente auditoria</td></tr>`).join("");
+  const rows = items.filter(r => !["unverified", "unverified_overflow", "state_unavailable"].includes(r.status)).map((r) => { const ageH = Math.max(0, (Date.now() - Date.parse(r.requested_at || 0)) / 3600e3); const manualHold = heldForEvidence(r) && r.status === "pending"; return `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}<br><small>há ${esc(ageH < 1 ? Math.max(0, Math.floor(ageH * 60)) + " min" : Math.floor(ageH) + " h")}</small></td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.manual_reason ? `<br><small>manual: ${esc(r.manual_reason)}</small>` : ""}${r.history?.length ? `<br><small>recusa anterior registrada (${esc(r.history.length)})</small>` : ""}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}${r.confirmation_channel === "none" ? "<br><small>sem canal seguro de confirmação: consumidor não notificado (pendência rastreada)</small>" : ""}${r.owner_decision?.justification ? `<br><small>decisão: ${esc(r.owner_decision.action)} — ${esc(r.owner_decision.justification)}</small>` : ""}</td><td>${manualHold ? `<small>Aguardar comprovação do pagamento/identidade; aprovação só após reavaliação</small><form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="reevaluate">Reavaliar agora</button> <button name="action" value="reject" class="no">Recusar</button>${decisionFields(r)}</form>` : r.status === "pending" && r.retry_permitted ? `<form method="post" action="/admin/refunds/action"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Repetir após conciliação (uma vez)</button>${decisionFields(r)}</form>` : r.status === "pending" && !r.claim_present && !isAmbiguousRefund(r) ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button>${decisionFields(r)}</form>` : (isAmbiguousRefund(r) || r.claim_present) ? "Verificar conciliação no Mercado Pago antes de nova tentativa" : r.download_revocation_pending === true ? "Revogação de downloads pendente; verificar recuperação" : esc(r.refund_id || "")}</td></tr>`; }).join("");
+  const unverified = items.filter(r => r.status === "unverified" || r.status === "unverified_overflow").map(r => r.status === "unverified_overflow" ? `<tr><td>${esc(r.last_attempt_at)}</td><td><code>${esc(r.order_id)}</code></td><td>excedente do limite: ${esc(r.attempts)} tentativas</td><td>Identidade não confirmada — somente auditoria</td></tr>` : `<tr><td>${esc(r.requested_at)}</td><td><code>${esc(r.order_id)}</code></td><td>${esc(r.email_masked)}${Number(r.attempts) > 1 ? ` (${esc(r.attempts)} tentativas)` : ""}</td><td>Identidade não confirmada — somente auditoria</td></tr>`).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reembolsos · ZEVANORY</title><style>body{font-family:system-ui,sans-serif;background:#050a1e;color:#e7ecf7;margin:0;padding:24px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #22305a;text-align:left;vertical-align:top}button{padding:10px 14px;border:0;border-radius:8px;background:#22c55e;color:#04210f;font-weight:700}button.no{background:#334155;color:#fff}code{font-size:12px}</style></head><body><h1>Pedidos de reembolso</h1><p>Aprovar envia o reembolso integral ao Mercado Pago e bloqueia novos downloads do pedido.</p>${stateDown ? "<p><strong>Estado autoritativo (PostgreSQL) indisponível: pedidos do modo automático não listados. Nenhuma decisão é possível até a recuperação.</strong></p>" : ""}<table><tr><th>Quando</th><th>Pedido</th><th>Valor</th><th>Status</th><th>Ação</th></tr>${rows || '<tr><td colspan="5">Nenhum pedido.</td></tr>'}</table><h2>Tentativas com identidade não confirmada (sem ação financeira)</h2><table><tr><th>Quando</th><th>Pedido</th><th>E-mail mascarado</th><th>Decisão</th></tr>${unverified || '<tr><td colspan="4">Nenhuma tentativa.</td></tr>'}</table></body></html>`;
 }
 
@@ -798,7 +854,10 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     // "reevaluate" exists only for ON-created records; anything else keeps the legacy 400.
     let reevaluable = false;
     if (action === "reevaluate") { try { reevaluable = (await loadRefund(kv, sql(), oid, { on: refundAutoDispatchEnabled(env) }))?.auto_dispatch === true; } catch {} }
-    const out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner", decision }) : action === "reject" ? await rejectRequest(env, kv, sql(), oid, "owner", decision) : reevaluable ? await reevaluateRequest(env, sql(), kv, oid, { actor: "owner-reevaluation" }) : { status: 400, body: { error: "action_invalid" } };
+    let out;
+    try {
+      out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner", decision }) : action === "reject" ? await rejectRequest(env, kv, sql(), oid, "owner", decision) : reevaluable ? await reevaluateRequest(env, sql(), kv, oid, { actor: "owner-reevaluation" }) : { status: 400, body: { error: "action_invalid" } };
+    } catch { out = { status: 503, body: { error: "refund_state_unavailable" } }; } // B-1: storage failure is a handled 503, the state is unchanged
     if (out.status >= 400) return html(out.status, `<p style="font-family:system-ui">Não foi possível: ${esc(out.body.error)}</p><p><a href="/admin/refunds">Voltar</a></p>`);
     return Response.redirect(`${ORIGIN}/admin/refunds`, 303);
   }
@@ -836,7 +895,7 @@ async function runRefundWatchdogCore(env, now = Date.now(), { sqlFactory } = {})
     cursor = listed.list_complete ? undefined : listed.cursor;
   } while (cursor);
   if (sqlFactory) {
-    if (on || await onStatePresent(kv)) {
+    if (on || await refundStateTablesExist(sqlFactory(env.DATABASE_URL))) {
       try { records.push(...await listRefundStates(sqlFactory(env.DATABASE_URL), { ensure: on })); }
       catch { if (on) stateUnavailable = true; }
     }
