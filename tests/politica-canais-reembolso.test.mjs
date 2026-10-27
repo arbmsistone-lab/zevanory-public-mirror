@@ -40,7 +40,7 @@ function checkSolText(P) {
   }
   assert.doesNotMatch(hm, /pedir-reembolso|Mercado Pago/, "a Hotmart não passa pelo formulário nem pelo Mercado Pago");
   assert.match(t, /comunica imediatamente a Hotmart ou a administradora do cartão/);
-  assert.match(t, /O recebimento do pedido será confirmado imediatamente\. Em qualquer dos casos, os valores pagos serão devolvidos integralmente e monetariamente atualizados; a visualização do crédito em cartão seguirá o prazo do emissor\./);
+  assert.match(t, /O recebimento do pedido será confirmado imediatamente\. Em qualquer dos casos, os valores pagos serão devolvidos integralmente, de imediato e monetariamente atualizados; a visualização do crédito em cartão seguirá o prazo do emissor\./);
   for (const f of P.customer_wording.fragmentos_sol) assert.ok(t.includes(f), "fragmento fora do sol_text: " + f);
 }
 
@@ -68,12 +68,15 @@ function checkPages(P, page) {
     assert.match(h, /<strong>Compras no checkout próprio da ZEVANORY \(Mercado Pago\):<\/strong><\/p><ol>\s*<li>Acesse <a href="https:\/\/zevanory\.api\.br\/pedir-reembolso">/, f);
     assert.match(h, /<h2 id="assinatura-hotmart">Assinatura Conteúdo Pronto \(cobrada pela Hotmart\)<\/h2>/, f);
     assert.match(h, /Peça pela Hotmart, em Minhas compras, ou por suporte@zevanory\.api\.br; quando o pedido chega pelo suporte, a ZEVANORY comunica imediatamente a Hotmart ou a administradora do cartão\./, f);
-    assert.match(h, /valores pagos, monetariamente atualizados/, f);
+    assert.match(h, /valores pagos, de imediato e monetariamente atualizados/, f);
     assert.match(h, /<strong>Estorno \(checkout próprio\):<\/strong> a ZEVANORY comunica imediatamente o Mercado Pago/, f);
     assert.match(h, /<strong>Estorno \(Hotmart\):<\/strong> processado pela Hotmart/, f);
   }
   for (const f of ["termos/index.html", "sales-public/termos.html"]) {
+    assert.match(page(f), /Nas compras feitas pela Hotmart \([^)]*\), o pagamento, a cobrança, o cancelamento e o reembolso são processados pela Hotmart\./, f);
     assert.match(page(f), /A assinatura Conteúdo Pronto é cobrada pela Hotmart \(Pix, cartão ou boleto\), com renovação mensal automática e sem fidelidade;/, f);
+    assert.match(page(f), /O Conteúdo Pronto é diferente: é um serviço mensal por assinatura, com o pacote do mês enviado por e-mail em link privado \(ver seção 3\)\./, f + ": #939 §2");
+    assert.match(page(f), /a compra é feita na página de pagamento do vendedor responsável/, f + ": #939 terceiros");
   }
   for (const f of ["privacidade/index.html", "sales-public/privacidade.html"]) {
     assert.match(page(f), /Mercado Pago \(pagamentos no checkout próprio\), Hotmart \(pagamento, cancelamento e reembolso das compras feitas pela Hotmart/, f + ": Hotmart como operador");
@@ -159,6 +162,7 @@ const CHANNEL_SPECIFIC = {
   "worker/site-chat.mjs": "lista de URLs permitidas (não é instrução)",
   "worker/support-knowledge.mjs": "fontes da resposta de produto; a da assinatura não cita o formulário",
   "worker/whatsapp-conversation.mjs": "lista de URLs permitidas (não é instrução; canal aposentado)",
+  "data/site-chat-policy.json": "refund_form é URL de destino; o texto 'optional' traz o escopo",
   "data/site-chat-eval/critical.json": "fixture de avaliação",
   "data/politica-unica.json": "refund_channels/fragmentos: usados só nas frases do checkout próprio (checkWording)",
   // Páginas de produto do checkout próprio (saída de GUARANTEE_Q/FAQ do build); a variante /hotmart/ troca a frase.

@@ -148,9 +148,9 @@ jobs:
         run: |
           set -eo pipefail
           node --test tests/integration/waitlist-postgres.test.mjs | tee wl.txt
-          grep -qx "# tests 9" wl.txt && grep -qx "# pass 9" wl.txt && grep -qx "# skipped 0" wl.txt && grep -qx "# fail 0" wl.txt
+          grep -qx "# tests 12" wl.txt && grep -qx "# pass 12" wl.txt && grep -qx "# skipped 0" wl.txt && grep -qx "# fail 0" wl.txt
           python3 scripts/ci/mutants_waitlist.py < /dev/null | tee wlm.txt
-          grep -qx "MUTANTS total=15 killed=15 survived=0 inconclusive=0" wlm.txt || { echo "::error::mutante da lista de espera sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=17 killed=17 survived=0 inconclusive=0" wlm.txt || { echo "::error::mutante da lista de espera sobreviveu ou contagem mudou"; exit 1; }
           echo "::notice title=WAITLIST::$(grep -E '^# (tests|pass|fail|skipped) ' wl.txt | paste -sd' ' -) | $(grep -E '^MUTANTS ' wlm.txt)"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |

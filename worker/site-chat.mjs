@@ -412,10 +412,18 @@ async function generate({ ai, message, salesOpen, catalog }) {
 }
 
 // Guarda final sobre QUALQUER resposta (determinística ou gerada): reprovou => resposta segura + escalonamento.
+// N-H1 (reauditoria do PR #946): a guarda decide só o TEXTO (elegibilidade de CTA, WhatsApp, telefone, preço);
+// ela não reclassifica o pedido. A intenção de atendimento já classificada (reembolso, cancelamento, arrependimento,
+// entrega, pagamento...) continua no campo category/intent e no escalonamento; o texto bloqueado nunca sai.
+// Menção ao processador (Hotmart, Mercado Pago) no pedido do cliente não é intenção de compra.
+export const SUPPORT_INTENTS = Object.freeze(["withdrawal", "cancellation", "refund", "delivery", "payment", "lgpd", "complaint", "human_request", "security", "legal"]);
+const GUARD_SAFE = `Encaminhei sua mensagem à equipe humana da ZEVANORY (protocolo ${PROTO}). ${SLA_TEXT}`;
 export function guardReply(reply, { salesOpen, catalog = CATALOG }) {
   const v = validateSiteReply(reply.body, { salesOpen, catalog });
-  if (v.ok) return { ...reply, guard: [] };
-  return { body: fill(ESC_TEXT.low_confidence, {}) + " " + HANDOFF_ASK, mode: "guard_blocked", category: "low_confidence", escalate: { category: "low_confidence" }, actions: [{ type: "handoff" }], guard: v.issues };
+  if (v.ok) return { ...reply, intent: reply.intent || reply.category, guard: [] };
+  const intent = SUPPORT_INTENTS.includes(reply.category) ? reply.category : "low_confidence";
+  const body = intent === "low_confidence" ? fill(ESC_TEXT.low_confidence, {}) : GUARD_SAFE;
+  return { body: body + " " + HANDOFF_ASK, mode: "guard_blocked", category: intent, intent, escalate: { category: intent }, actions: [{ type: "handoff" }], guard: v.issues };
 }
 
 // ---------- estado do isolate: disjuntor e concorrência ----------

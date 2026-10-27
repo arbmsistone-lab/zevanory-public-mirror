@@ -201,6 +201,30 @@
     }
    ],
    "secondary": []
+  },
+  "MW17 resultado incerto reenviado fora da janela do provedor (M5)": {
+   "primary": [
+    {
+     "test_pattern": "P12",
+     "assertion_pattern": "[P12.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "MW16 aviso aceito não é marcado como entregue (M5)": {
+   "primary": [
+    {
+     "test_pattern": "P11",
+     "assertion_pattern": "[P11.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P10",
+     "assertion_pattern": "[P10.2]",
+     "justification": "sem a marca 'sent' o aviso congelado continua reservado e é reenviado (mesma chave) a cada execução: mais chamadas ao provedor do que as 3 esperadas"
+    }
+   ]
   }
  }
 }

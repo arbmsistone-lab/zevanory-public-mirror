@@ -36,6 +36,7 @@ tests/conteudo-pronto-roteiros.test.mjs 16
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
+tests/cta-contract-closed.test.mjs 5
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/engine-dispatcher.test.mjs 4
@@ -57,6 +58,7 @@ tests/lab-cancelamento-pagamentos-pendentes.test.mjs 8
 tests/lab-fechamento-apos-cobranca.test.mjs 11
 tests/lead-magnet.test.mjs 15
 tests/lead-submit-count.test.mjs 4
+tests/legal-publish-gate.test.mjs 4
 tests/link-vencido-nao-reutilizado.test.mjs 5
 tests/live-runtime-status.test.mjs 5
 tests/market-weekly.test.mjs 2
@@ -80,7 +82,7 @@ tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
 tests/p20-restore-drill.test.mjs 12
-tests/p23-ecommerce-legal.test.mjs 18
+tests/p23-ecommerce-legal.test.mjs 19
 tests/payment-return-page.test.mjs 3
 tests/plan-probe.test.mjs 1
 tests/politica-canais-reembolso.test.mjs 7
@@ -126,6 +128,7 @@ tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
 tests/voice-eval.test.mjs 6
+tests/waitlist-m5.test.mjs 3
 tests/waitlist.test.mjs 7
 tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6

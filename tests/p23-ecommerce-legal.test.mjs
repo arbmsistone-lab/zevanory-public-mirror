@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,24 +20,43 @@ const PYTHON = process.env.PYTHON || (process.platform === "win32" ? "python" : 
 requireTool(PYTHON);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GATE = join(REPO, "scripts/p23/ecommerce_legal_gate.py");
-const FILES = ["data/politica-unica.json", "data/products.json", "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json",
-  "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs", "worker/cloudflare-worker.compat.mjs",
+const FILES = ["data/politica-unica.json", "data/products.json", "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json", "data/p23/legal-reviewers.json",
+  "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs", "worker/cloudflare-worker.compat.mjs", "termos/index.html", "reembolso/index.html",
   ...readdirSync(join(REPO, "sales-public")).filter((f) => f.endsWith(".html")).map((f) => `sales-public/${f}`)];
 
-function gate(edits = {}) {
+const LEGAL = join(REPO, "scripts/p23/legal_review.py");
+const fingerprint = (root) => { const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", root, "--fingerprint"], { encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); return r.stdout.trim(); };
+// Aprovação no formato real (M1): revisor cadastrado pelo proprietário, nome igual, data ISO, SHA-256 do texto revisado,
+// commit, versão do documento e registro auditável versionado com os mesmos campos.
+const REVIEWER = { id: "rev-msouza", name: "Maria Clara Souza, OAB/CE 12345", registro: "OAB/CE 12345", github_login: "msouza-adv", authorized_by: "proprietario", authorized_at: "2026-10-20", authorization_commit: "a098d8802a184df02b362d46f08fb6c81b7382f9" };
+function approval(root, over = {}, { reviewer = REVIEWER, record = {} } = {}) {
+  const sha = fingerprint(root);
+  const version = JSON.parse(readFileSync(join(root, "data/politica-unica.json"), "utf8")).legal_document_version;
+  const review = { status: "APPROVED", reviewer_id: reviewer ? reviewer.id : "rev-nao-cadastrado", approved_by: reviewer ? reviewer.name : REVIEWER.name, approved_at: "2026-10-27", reviewed_sha256: sha,
+    reviewed_commit: "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224", document_version: version, record: `docs/legal/reviews/${sha}.json`, ...over };
+  mkdirSync(join(root, "data/p23"), { recursive: true });
+  writeFileSync(join(root, "data/p23/legal-reviewers.json"), JSON.stringify({ schema: "zevanory-legal-reviewers/v1", reviewers: reviewer ? [reviewer] : [] }, null, 2));
+  if (record !== null) {
+    mkdirSync(join(root, "docs/legal/reviews"), { recursive: true });
+    const r = { reviewer_id: review.reviewer_id, reviewed_sha256: review.reviewed_sha256, reviewed_commit: review.reviewed_commit, document_version: review.document_version, approved_at: review.approved_at, decision: "APPROVED", ...record };
+    writeFileSync(join(root, `docs/legal/reviews/${sha}.json`), JSON.stringify(r, null, 2));
+  }
+  return review;
+}
+function gate(edits = {}, review = (root) => approval(root)) {
   const root = mkdtempSync(join(tmpdir(), "p23-"));
   try {
     for (const rel of FILES) { mkdirSync(dirname(join(root, rel)), { recursive: true }); copyFileSync(join(REPO, rel), join(root, rel)); }
-    const policyPath = join(root, "data/politica-unica.json");
-    const policy = JSON.parse(readTextNormalized(policyPath));
-    policy.legal_review = { status: "APPROVED", approved_by: "fixture-jurista", approved_at: "2026-10-27T00:00:00Z" };
-    writeFileSync(policyPath, JSON.stringify(policy, null, 2));
     for (const [rel, fn] of Object.entries(edits)) {
       const cur = readTextNormalized(join(root, rel));
       const next = fn(cur);
       assert.notEqual(next, cur, `fixture: edição sem efeito em ${rel}`);
       writeFileSync(join(root, rel), next);
     }
+    const policyPath = join(root, "data/politica-unica.json");
+    const policy = JSON.parse(readTextNormalized(policyPath));
+    policy.legal_review = review(root);
+    writeFileSync(policyPath, JSON.stringify(policy, null, 2));
     const r = spawnSync(PYTHON, ["-I", GATE, "--root", root], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" } });
     return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -129,3 +148,25 @@ test("L16 conferência dos dígitos do CNPJ", () => {
 });
 test("L17 preço total sem a informação de taxas adicionais reprova (art. 2º, IV)", () => fails(gate({ "sales-public/vendas-na-pratica.html": (s) => s.replace(/(<div data-field="preco_total"><dt>[^<]*<\/dt><dd>[^<]*?)sem taxas adicionais/, "$1com valor final") }), /vendas-na-pratica.html: preço total sem a informação de taxas adicionais/, "[L17.1]"));
 test("L18 página com preço sem link para os termos reprova", () => fails(gate({ "sales-public/ferramentas.html": (s) => s.replace(/href="([^"]*)\/termos(["#])/g, 'href="$1/regras$2') }), /ferramentas.html: página com preço sem link para os termos/, "[L18.1]"));
+test("L19 aprovação jurídica só no formato real: pessoa, data, SHA-256 do texto revisado e commit", () => {
+  const pending = /REVISÃO JURÍDICA PENDENTE/;
+  fails(gate({}, () => ({ status: "PENDING", approved_by: null, approved_at: null })), pending, "[L19.1] PENDING");
+  for (const who of ["fixture-jurista", "Jurista", "teste da Silva", "Proprietário ZEVANORY", "", "x"]) {
+    fails(gate({}, (root) => approval(root, { approved_by: who })), /approved_by .* não identifica uma pessoa/, "[L19.2] " + JSON.stringify(who));
+  }
+  fails(gate({}, (root) => approval(root, { approved_at: "ontem" })), /approved_at .* não é uma data ISO/, "[L19.3] data");
+  fails(gate({}, (root) => approval(root, { approved_at: "2999-01-01" })), /approved_at .* está no futuro/, "[L19.3a] futuro");
+  fails(gate({}, (root) => approval(root, { reviewed_sha256: "0".repeat(64) })), /o texto mudou depois da revisão/, "[L19.4] texto revisado diferente");
+  fails(gate({}, (root) => approval(root, { reviewed_commit: "HEAD" })), /reviewed_commit ausente ou inválido/, "[L19.5] commit");
+  // A aprovação vale para um texto: mudar uma palavra dos termos depois da revisão volta a bloquear.
+  const after = gate({}, (root) => { const a = approval(root); writeFileSync(join(root, "sales-public/termos.html"), readTextNormalized(join(root, "sales-public/termos.html")).replace("devolução integral", "devolução parcial")); return a; });
+  assert.match(after.out, /o texto mudou depois da revisão/, "[L19.6] texto alterado depois da revisão");
+  assert.doesNotMatch(gate().out, /approved_by|approved_at|reviewed_|PENDENTE|reviewer_id|record|document_version/, "[L19.7] aprovação válida não acusa nada");
+  // Identidade autorizada, versão e registro auditável (Sol ORDEM 294): string livre não basta.
+  fails(gate({}, (root) => approval(root, {}, { reviewer: null })), /não está no cadastro de revisores autorizados/, "[L19.8] revisor não cadastrado");
+  fails(gate({}, (root) => approval(root, {}, { reviewer: { ...REVIEWER, authorized_by: "codex" } })), /cadastro incompleto/, "[L19.9] cadastro sem autorização do proprietário");
+  fails(gate({}, (root) => approval(root, { approved_by: "Ana Beatriz Lima" })), /nome diferente de approved_by/, "[L19.10] nome diferente do cadastro");
+  fails(gate({}, (root) => approval(root, { document_version: "v0" })), /document_version .* difere da versão publicada/, "[L19.11] versão");
+  fails(gate({}, (root) => approval(root, {}, { record: null })), /legal_review.record ausente/, "[L19.12] sem registro auditável");
+  fails(gate({}, (root) => approval(root, {}, { record: { reviewed_commit: "c".repeat(40) } })), /reviewed_commit .* difere de legal_review/, "[L19.13] registro divergente");
+});

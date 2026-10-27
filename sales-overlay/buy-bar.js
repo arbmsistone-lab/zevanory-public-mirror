@@ -14,6 +14,15 @@
   }
   bar.classList.add("buy-bar-auto");
   set(false);
+  // N-H2: a folga de rolagem inferior acompanha a altura real da barra (quebra de linha, zoom, fonte), para que
+  // nenhum botão rolado até a borda de baixo (foco, âncora) fique coberto por ela.
+  function pad() {
+    var h = bar.getBoundingClientRect().height;
+    if (h > 0) document.documentElement.style.scrollPaddingBottom = Math.ceil(h + 16) + "px";
+  }
+  pad();
+  window.addEventListener("resize", pad, { passive: true });
+  if ("ResizeObserver" in window) new ResizeObserver(pad).observe(bar);
   new IntersectionObserver(function (entries) {
     var e = entries[entries.length - 1];
     set(!e.isIntersecting && e.boundingClientRect.bottom <= 0);

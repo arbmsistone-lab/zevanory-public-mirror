@@ -72,6 +72,10 @@
 }
 *,*::before,*::after{box-sizing:border-box}
 html{background:var(--papel);scroll-behavior:smooth;scroll-padding-top:88px;scroll-padding-bottom:128px;overflow-x:clip}
+/* N-H2 (reauditoria do PR #946): no celular estreito a barra de compra quebra em até três linhas (157 px a 320 px) e
+   cobria o botão rolado até ela (foco/âncora). Sem JavaScript, a folga cobre a barra mais alta; com JavaScript,
+   buy-bar.js iguala a folga à altura real da barra. */
+@media (max-width:420px){html{scroll-padding-bottom:184px}}
 body{margin:0;background:var(--papel);color:var(--tinta);font-size:var(--t-1);overflow-x:clip}
 img,svg{display:block;max-width:100%;height:auto}
 button,input,select,textarea{font:inherit;color:inherit}

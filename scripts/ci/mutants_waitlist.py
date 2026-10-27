@@ -3,7 +3,7 @@
 classificados pelo classificador COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
 Suíte (uma execução `node --test`, TAP): tests/waitlist.test.mjs (W1-W7, sem banco) e
-tests/integration/waitlist-postgres.test.mjs (P1-P9, PostgreSQL REAL: exige T4_PG_HOST/T4_PG_PORT; sem eles os testes
+tests/integration/waitlist-postgres.test.mjs (P1-P12, PostgreSQL REAL: exige T4_PG_HOST/T4_PG_PORT; sem eles os testes
 pulam e a baseline é inválida -> exit 2). Cada mutante altera UMA regra numa cópia mínima da árvore (o repositório nunca é
 alterado) e usa um banco próprio (WAITLIST_PG_DB), então os mutantes podem rodar em paralelo.
 Expectativas (mutants_waitlist_allow.json, formato load_mutant_config): primary (1-3) com test_pattern E assertion_pattern
@@ -46,6 +46,8 @@ M = {
     "MW13 limite do v1 aumentado (retroativo)": (L, "export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 2, [CONSENT_V2_VERSION]: 4 };", "export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 4, [CONSENT_V2_VERSION]: 4 };"),
     "MW14 reinscrição troca a versão de contato confirmado": (L, "  if (existing?.status === \"confirmed\") {", "  if (false) {"),
     "MW15 CTA vira formulário com a regra desligada": ("worker/politica-unica.mjs", "  if (WAITLIST_FORM.enabled && slug) return", "  if (slug) return"),
+    "MW16 aviso aceito não é marcado como entregue (M5)": (W, "    await sql.query(\"update zevanory_waitlist_notices set state='confirmed', finished_at=now() where subject_ref=$1 and opening=$2 and notice_key=$3\", [ref, n.opening, n.notice_key]);\n", ""),
+    "MW17 resultado incerto reenviado fora da janela do provedor (M5)": (W, '  if (isTrue(n.stale)) return "expired";', '  if (false) return "expired";'),
 }
 
 ALLOW_FILE = Path(os.environ.get("WAITLIST_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_waitlist_allow.json"))

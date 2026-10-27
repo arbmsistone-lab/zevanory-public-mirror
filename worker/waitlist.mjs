@@ -61,6 +61,14 @@ export const WAITLIST_SQL = Object.freeze({
     `create table if not exists zevanory_waitlist_events (id bigserial primary key, subject_ref text, product text,
       event text not null, consent_version text, at timestamptz not null default now())`,
     `create table if not exists zevanory_waitlist_state (k text primary key, v timestamptz not null)`,
+    // M5: aviso congelado antes do envio (sem e-mail: referência HMAC, produtos, assunto e texto). A Idempotency-Key do
+    // provedor sai daqui e o payload reenviado é sempre o mesmo; 'sent' sobrevive à falha da exclusão e à janela do provedor.
+    `create table if not exists zevanory_waitlist_notices (subject_ref text not null, opening text not null, notice_key text not null,
+      products text not null, subject text not null, body text not null,
+      state text not null default 'unconfirmed' check (state in ('attempting','unconfirmed','confirmed','expired')),
+      attempts int not null default 0, attempt_at timestamptz,
+      erasure text check (erasure in ('requested','confirmed')),
+      created_at timestamptz not null default now(), finished_at timestamptz, primary key (subject_ref, opening, notice_key))`,
   ],
 });
 
@@ -103,8 +111,8 @@ async function recordEvent(sql, ref, product, event, version = null) {
   await sql.query("insert into zevanory_waitlist_events (subject_ref, product, event, consent_version) values ($1, $2, $3, $4)", [ref, product, event, version]);
 }
 
-async function sendEmail(env, fetchImpl, { to, subject, text, idempotencyKey, unsubscribeUrl }) {
-  if (!env.RESEND_API_KEY) return false;
+async function postEmail(env, fetchImpl, { to, subject, text, idempotencyKey, unsubscribeUrl }) {
+  if (!env.RESEND_API_KEY) return { ok: false, status: 0 };
   const headers = { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json", "idempotency-key": idempotencyKey };
   const r = await fetchImpl("https://api.resend.com/emails", {
     method: "POST", headers,
@@ -113,8 +121,9 @@ async function sendEmail(env, fetchImpl, { to, subject, text, idempotencyKey, un
       tags: [{ name: "flow", value: "waitlist" }] }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
-  return Boolean(r?.ok);
+  return { ok: Boolean(r?.ok), status: r?.status || 0 };
 }
+async function sendEmail(env, fetchImpl, mail) { return (await postEmail(env, fetchImpl, mail)).ok; }
 
 async function rateLimited(env, request) {
   try {
@@ -146,6 +155,10 @@ async function subscribe(env, sql, fetchImpl, { email, product, consent, version
   // O consentimento registrado é o texto que a pessoa viu: a versão enviada pelo formulário tem de ser a atual.
   if (consent !== "sim" || version !== WAITLIST_CONSENT_VERSION) return formPage(product, "Marque a autorização para receber o aviso.");
   const ref = await waitlistSubjectRef(env, email);
+  // KV: o marcador "a lista guardou dados" é gravado ANTES do registro. Sem ele, a retenção com a lista desligada não
+  // saberia que existe algo para apagar; se o KV falhar, nada é guardado e a pessoa recebe 503 (tentar de novo).
+  try { await env.ZEVANORY_PRIVATE_ARTIFACTS.put(WAITLIST_HAS_DATA_KEY, "1", { expirationTtl: 400 * 86400 }); }
+  catch { return page(503, "Não foi possível concluir", "<p>Não conseguimos registrar o pedido agora. Tente de novo em instantes.</p>"); }
   await ensureSchema(sql);
   const token = randomToken();
   const rows = await sql.query(`insert into zevanory_waitlist (email, product, subject_ref, status, consent_version, consent_at, token_hash, token_expires_at)
@@ -157,7 +170,6 @@ async function subscribe(env, sql, fetchImpl, { email, product, consent, version
   // Já confirmado (ou em aviso): nada muda e nada é enviado; a resposta é a mesma (sem revelar quem está na lista).
   if (!rows.length) return page(200, "Quase lá!", `<p>${esc(GENERIC_OK)}</p>`);
   await recordEvent(sql, ref, product, "consent_given", WAITLIST_CONSENT_VERSION);
-  try { await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(WAITLIST_HAS_DATA_KEY, "1", { expirationTtl: 400 * 86400 }); } catch {}
   const optOut = await waitlistOptOutLink(env, ref);
   const sent = await sendEmail(env, fetchImpl, {
     to: email, idempotencyKey: `zevanory-waitlist-confirm-${ref}-${product}-${(await sha256Hex(token)).slice(0, 16)}`, unsubscribeUrl: optOut,
@@ -220,11 +232,101 @@ export async function handleWaitlist(request, env, { sqlFactory, fetchImpl = fet
     if (method !== "POST") return new Response(null, { status: 405, headers: { allow: "GET, HEAD, POST", ...NO_STORE } });
     await ensureSchema(sql);
     const rows = await sql.query("delete from zevanory_waitlist where subject_ref=$1 returning product, consent_version", [ref]);
+    // M5: exclusão pedida pela pessoa. Sem registro, nenhuma tentativa pendente do aviso pode ser refeita.
+    await sql.query("update zevanory_waitlist_notices set erasure='confirmed' where subject_ref=$1", [ref]);
     for (const r of rows) await recordEvent(sql, ref, r.product, "revoked_and_erased", r.consent_version);
     if (!rows.length) await recordEvent(sql, ref, null, "revocation_without_record");
     return page(200, "Pronto.", "<p>Você saiu da lista de espera e seus dados foram apagados.</p>");
   }
   return notFound();
+}
+
+// M5 (idempotência do aviso). Cada aviso é CONGELADO em zevanory_waitlist_notices antes do envio (produtos, assunto e
+// texto fixos; a Idempotency-Key deriva deles) e tem estados explícitos, gravados no banco:
+//   entrega   : attempting (tentativa em curso) -> confirmed (provedor aceitou, ou 409 = chave já usada)
+//                                              -> unconfirmed (erro/tempo esgotado: resultado desconhecido)
+//               unconfirmed/attempting abandonado, dentro de NOTICE_RETRY_HOURS da 1ª tentativa -> nova tentativa SEGURA:
+//               mesmo payload, mesma chave (o provedor deduplica por 24 h); fora dessa janela -> expired, nunca reenviado
+//               (no máximo um aviso; a pessoa pode ter recebido), e os dados são apagados;
+//               attempting recente (< NOTICE_IN_PROGRESS_MINUTES) = tentativa em curso: ninguém reenvia;
+//   exclusão  : erasure null -> requested (antes de apagar os registros) -> confirmed (registros apagados). Se a
+//               exclusão falhar, a próxima execução encontra o aviso confirmed e SÓ apaga, mesmo além da janela do
+//               provedor; nunca reenvia. A saída pela pessoa (/sair) apaga os registros na hora e marca as
+//               exclusões; sem registro reservado, não existe nova tentativa.
+// Um produto confirmado depois de um aviso de resultado incerto vira um aviso PRÓPRIO (outra chave), sem laço de 409.
+// Nenhuma tentativa monta texto novo para um aviso já congelado.
+export const NOTICE_RETRY_HOURS = 23;
+export const NOTICE_IN_PROGRESS_MINUTES = 15;
+export const NOTICE_STATES = Object.freeze(["attempting", "unconfirmed", "confirmed", "expired"]);
+export const ERASURE_STATES = Object.freeze([null, "requested", "confirmed"]);
+const isTrue = (v) => v === true || v === "t" || v === "true";
+// Decisão pura sobre um aviso congelado: "confirmed" | "in_progress" | "safe_retry" | "expired".
+export function noticeDecision(n) {
+  if (n.state === "confirmed") return "confirmed";
+  if (n.state === "expired") return "expired";
+  if (n.state === "attempting" && isTrue(n.attempt_recent)) return "in_progress";
+  if (isTrue(n.stale)) return "expired";
+  return "safe_retry";
+}
+function noticeSubject(products) {
+  return products.length === 1 ? `As vendas do ${WAITLIST_PRODUCTS[products[0]]} abriram` : "As vendas abriram";
+}
+const NOTICE_COLS = `notice_key, opening, products, subject, body, state, erasure,
+      (created_at < now() - ($3::int * interval '1 hour')) as stale,
+      (attempt_at is not null and attempt_at > now() - ($4::int * interval '1 minute')) as attempt_recent`;
+async function deliverNotices(env, sql, fetchImpl, { email, ref, opening, products }) {
+  const res = { failed: false, inProgress: false, delivered: false, abandoned: new Set(), keys: [] };
+  const covered = new Set();
+  const prior = await sql.query(`select ${NOTICE_COLS} from zevanory_waitlist_notices
+    where subject_ref=$1 and (opening=$2 or state in ('attempting','unconfirmed')) order by created_at`, [ref, opening, NOTICE_RETRY_HOURS, NOTICE_IN_PROGRESS_MINUTES]);
+  const where = "where subject_ref=$1 and opening=$2 and notice_key=$3";
+  const send = async (n) => {
+    await sql.query(`update zevanory_waitlist_notices set state='attempting', attempt_at=now(), attempts=attempts+1 ${where} and state in ('attempting','unconfirmed')`, [ref, n.opening, n.notice_key]);
+    const r = await postEmail(env, fetchImpl, { to: email, idempotencyKey: `zevanory-waitlist-notice-${ref}-${n.opening}-${n.notice_key}`, subject: n.subject, text: n.body });
+    if (!r.ok && r.status !== 409) {
+      await sql.query(`update zevanory_waitlist_notices set state='unconfirmed' ${where} and state='attempting'`, [ref, n.opening, n.notice_key]);
+      return false;
+    }
+    await sql.query("update zevanory_waitlist_notices set state='confirmed', finished_at=now() where subject_ref=$1 and opening=$2 and notice_key=$3", [ref, n.opening, n.notice_key]);
+    if (r.status === 409) await recordEvent(sql, ref, null, "notice_conflict_assumed_delivered");
+    return true;
+  };
+  for (const n of prior) {
+    const list = String(n.products || "").split(",").filter(Boolean);
+    const decision = noticeDecision(n);
+    if (decision === "in_progress") { res.inProgress = true; return res; }
+    if (decision === "expired") {
+      if (n.state !== "expired") {
+        await sql.query(`update zevanory_waitlist_notices set state='expired', finished_at=now() ${where} and state in ('attempting','unconfirmed')`, [ref, n.opening, n.notice_key]);
+        await recordEvent(sql, ref, null, "notice_expired_unconfirmed");
+      }
+      for (const p of list) res.abandoned.add(p);
+    } else if (decision === "safe_retry") {
+      if (!(await send(n))) { res.failed = true; return res; }
+      res.delivered = true;
+    }
+    for (const p of list) covered.add(p);
+    res.keys.push([n.opening, n.notice_key]);
+  }
+  const rest = products.filter((p) => !covered.has(p));
+  if (!rest.length) return res;
+  const joined = rest.join(",");
+  const key = (await sha256Hex(`${opening}|${joined}`)).slice(0, 24);
+  await sql.query(`insert into zevanory_waitlist_notices (subject_ref, opening, notice_key, products, subject, body, state)
+      values ($1, $2, $3, $4, $5, $6, 'unconfirmed') on conflict (subject_ref, opening, notice_key) do nothing`, [ref, opening, key, joined, noticeSubject(rest), noticeText(rest)]);
+  const frozen = (await sql.query(`select ${NOTICE_COLS} from zevanory_waitlist_notices where subject_ref=$1 and opening=$5 and notice_key=$2`, [ref, key, NOTICE_RETRY_HOURS, NOTICE_IN_PROGRESS_MINUTES, opening]))[0];
+  if (!frozen) { res.failed = true; return res; }
+  res.keys.push([opening, key]);
+  const decision = noticeDecision(frozen);
+  if (decision === "in_progress") { res.inProgress = true; return res; }
+  if (decision === "safe_retry") {
+    if (!(await send(frozen))) { res.failed = true; return res; }
+    res.delivered = true;
+  }
+  return res;
+}
+async function markErasure(sql, ref, keys, state) {
+  for (const [opening, key] of keys) await sql.query("update zevanory_waitlist_notices set erasure=$4 where subject_ref=$1 and opening=$2 and notice_key=$3", [ref, opening, key, state]);
 }
 
 function noticeText(products) {
@@ -247,6 +349,7 @@ export async function runWaitlistRetention(env, sql, { now = Date.now(), force =
   if (erased.length) await sql.query("insert into zevanory_waitlist_events (subject_ref, product, event, consent_version) select * from unnest($1::text[], $2::text[], $3::text[], $4::text[])",
     [erased.map((r) => r.subject_ref), erased.map((r) => r.product), erased.map((r) => (r.status === "pending" ? "erased_unconfirmed" : "erased_retention")), erased.map((r) => r.consent_version)]);
   await sql.query("delete from zevanory_waitlist_events where at < now() - ($1::int * interval '1 day')", [R.eventos_dias]);
+  await sql.query("delete from zevanory_waitlist_notices where created_at < now() - ($1::int * interval '1 day')", [R.eventos_dias]);
   try { await kv?.put?.(WAITLIST_RETENTION_MARKER, day, { expirationTtl: 3 * 86400 }); } catch {}
   return { ok: true, erased: erased.length };
 }
@@ -256,7 +359,8 @@ export async function runWaitlistNotify(env, { sqlFactory, salesOpen = false, fe
   const enabled = waitlistEnabled(env);
   if (!enabled) {
     let hadData = null;
-    try { hadData = await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(WAITLIST_HAS_DATA_KEY); } catch {}
+    // KV indisponível não pode esconder dados guardados: na dúvida, roda a retenção (só apaga, nunca envia).
+    try { hadData = await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(WAITLIST_HAS_DATA_KEY); } catch { hadData = "kv_unavailable"; }
     if (!hadData || !env.DATABASE_URL || !sqlFactory) return { ok: true, skipped: "waitlist_disabled", sent: 0 };
     return { ok: true, skipped: "waitlist_disabled", sent: 0, retention: await runWaitlistRetention(env, sqlFactory(env.DATABASE_URL), { now }) };
   }
@@ -282,17 +386,26 @@ export async function runWaitlistNotify(env, { sqlFactory, salesOpen = false, fe
     if (!claimed.length) continue;
     out.contacts += 1;
     const products = [...new Set(claimed.map((r) => r.product))].sort();
-    const ref = claimed[0].subject_ref;
-    const ok = await sendEmail(env, fetchImpl, { to: email, idempotencyKey: `zevanory-waitlist-notice-${ref}-${opening}`, subject: products.length === 1 ? `As vendas do ${WAITLIST_PRODUCTS[products[0]]} abriram` : "As vendas abriram", text: noticeText(products) });
-    if (!ok) {
+    const ref = (await waitlistSubjectRef(env, email)) || claimed[0].subject_ref;
+    const result = await deliverNotices(env, sql, fetchImpl, { email, ref, opening, products });
+    if (result.inProgress) {
+      // Tentativa em curso em outra execução: não reenvia; devolve a reserva para a próxima rodada.
+      await sql.query("update zevanory_waitlist set status='confirmed', notify_claimed_at=null where status='notifying' and email=$1", [email]);
+      out.inProgress = (out.inProgress || 0) + 1;
+      continue;
+    }
+    if (result.failed) {
       await sql.query("update zevanory_waitlist set status='confirmed', notify_claimed_at=null where email=$1 and status='notifying'", [email]);
       out.failed += 1;
       continue;
     }
-    // Finalidade cumprida: apaga na hora.
+    // Finalidade cumprida (ou resultado desconhecido fora da janela do provedor): apaga na hora (exclusão pedida ->
+    // confirmada). Se apagar falhar, o aviso continua confirmed e a próxima execução só tenta apagar de novo.
+    await markErasure(sql, ref, result.keys, "requested");
     const gone = await sql.query("delete from zevanory_waitlist where email=$1 and status='notifying' returning product, consent_version", [email]);
-    for (const r of gone) await recordEvent(sql, ref, r.product, "notified_and_erased", r.consent_version);
-    out.sent += 1;
+    await markErasure(sql, ref, result.keys, "confirmed");
+    for (const r of gone) await recordEvent(sql, ref, r.product, result.abandoned.has(r.product) ? "notice_unknown_and_erased" : "notified_and_erased", r.consent_version);
+    if (result.delivered) out.sent += 1;
   }
   out.retention = await runWaitlistRetention(env, sql, { now });
   return out;

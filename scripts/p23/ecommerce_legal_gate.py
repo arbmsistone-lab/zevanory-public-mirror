@@ -30,6 +30,10 @@ import re
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from legal_review import legal_fingerprint, validate_approval  # noqa: E402
+
 PENDING = re.compile(r"PENDENTE|PREENCHER|A CONFIRMAR|XXX|PLACEHOLDER|\bTODO\b")  # maiúsculas: "Todo mês" é texto legítimo
 PRICE = re.compile(r"R\$\s?\d")
 RESUMO_FIELDS = ("fornecedor", "cnpj", "endereco_fisico", "endereco_eletronico", "caracteristicas", "preco_total",
@@ -83,9 +87,10 @@ def resumo_fields(raw: str, slug: str) -> dict | None:
 def validate(root: Path, findings: list[str]) -> list[str]:
     errs: list[str] = []
     pol = json.loads((root / "data/politica-unica.json").read_text(encoding="utf-8"))
-    review = pol.get("legal_review") or {}
-    if review.get("status") != "APPROVED" or not review.get("approved_by") or not review.get("approved_at"):
-        errs.append("data/politica-unica.json: REVISÃO JURÍDICA PENDENTE; legal_review exige status APPROVED, approved_by e approved_at")
+    # M1: a mesma regra que os workflows de publicação aplicam (scripts/p23/legal_review.py): pessoa identificável,
+    # data ISO e o SHA-256 do texto revisado igual ao texto atual, além do commit revisado.
+    for e in validate_approval(pol.get("legal_review"), legal_fingerprint(root), root=root):
+        errs.append("data/politica-unica.json: " + e)
     sup = pol["resumo_oferta"]["fornecedor"]
     catalog = json.loads((root / "data/products.json").read_text(encoding="utf-8"))
     prices = {p["slug"]: p["price"] for p in catalog["products"]}

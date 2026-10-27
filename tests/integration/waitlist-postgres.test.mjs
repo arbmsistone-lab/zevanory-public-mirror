@@ -1,7 +1,7 @@
 // Lista de espera real (worker/waitlist.mjs) contra PostgreSQL REAL (cada consulta num processo psql próprio: concorrência
 // de verdade). Prova: dupla confirmação; nada sai com vendas fechadas; com vendas abertas UM aviso por contato (mesmo com
 // dois produtos e execuções simultâneas) e os dados apagados na hora; falha de envio e queda depois de reservar sem 2º
-// envio; saída apaga; retenção (pendente, 30 dias depois da abertura, teto de 365 dias, também com a flag desligada);
+// envio; idempotência do aviso (M5: payload congelado, sem laço de 409, sem 2º envio além da janela do provedor); saída apaga; retenção (pendente, 30 dias depois da abertura, teto de 365 dias, também com a flag desligada);
 // separação do material gratuito (Sol AVAL 272, A272-02): abrir as vendas nunca transforma contato do checklist em
 // destinatário do aviso ou de oferta sem o consentimento correspondente, e a nutrição nunca alcança contato só da lista.
 // Rótulos [Pn.k] são usados pelos mutantes (scripts/ci/mutants_waitlist.py).
@@ -64,7 +64,7 @@ async function confirmToken(e, m, token) { return wl(req("/lista-de-espera/confi
 async function joined(e, m, email, product) { const t = await signup(e, m, email, product); assert.ok(t, "[J1] token"); assert.equal((await confirmToken(e, m, t)).status, 200, "[J1] confirmação de " + email); }
 const rows = (where = "true") => JSON.parse(psqlSync(`select coalesce(json_agg(w order by email, product), '[]') from zevanory_waitlist w where ${where}`));
 const events = () => JSON.parse(psqlSync("select coalesce(json_agg(e order by id), '[]') from zevanory_waitlist_events e"));
-const reset = () => psqlSync("truncate zevanory_waitlist, zevanory_waitlist_events, zevanory_waitlist_state; truncate zevanory_leads, zevanory_lead_events");
+const reset = () => psqlSync("truncate zevanory_waitlist, zevanory_waitlist_events, zevanory_waitlist_state, zevanory_waitlist_notices; truncate zevanory_leads, zevanory_lead_events");
 const notices = (m) => [...m.delivered.values()].filter((d) => /abriram/.test(d.subject));
 
 before(async () => {
@@ -231,4 +231,78 @@ test("P9 vendas abertas: a inscrição não guarda nada", { skip: SKIP }, async 
   reset(); const e = env(); const m = resend();
   const r = await wl(req("/lista-de-espera/inscrever", "POST", form({ email: "ivo@example.com", produto: "lucro-e-caixa", consentimento: "sim", versao_consentimento: WAITLIST_CONSENT_VERSION })), e, m, true);
   assert.equal(r.status, 200); assert.deepEqual(rows(), [], "[P9.1]"); assert.equal(m.calls.length, 0);
+});
+
+// M5: modelo do provedor com retenção da Idempotency-Key por 24 h e 409 para a mesma chave com payload diferente
+// (comportamento documentado do Resend), e modo "entrega e responde erro".
+function provider() {
+  const st = { clock: Date.now(), keys: new Map(), inbox: [], calls: [], deliverThenFail: false, down: false };
+  st.fetchImpl = async (url, init) => {
+    const key = init.headers["idempotency-key"]; const body = JSON.parse(init.body); const sig = body.subject + "|" + body.text;
+    st.calls.push({ key, to: body.to[0], subject: body.subject });
+    if (st.down) return new Response("{}", { status: 500 });
+    const prev = st.keys.get(key);
+    if (prev && st.clock - prev.at < 24 * 3600e3) return prev.sig === sig ? new Response("{}", { status: 200 }) : new Response('{"name":"invalid_idempotent_request"}', { status: 409 });
+    st.keys.set(key, { sig, at: st.clock }); st.inbox.push({ to: body.to[0], subject: body.subject, text: body.text });
+    return new Response("{}", { status: st.deliverThenFail ? 500 : 200 });
+  };
+  st.to = (a) => st.inbox.filter((d) => d.to === a);
+  return st;
+}
+const notify = (e, fetchImpl, factory = sqlFactory) => runWaitlistNotify(e, { sqlFactory: factory, fetchImpl, salesOpen: true });
+
+test("P10 M5: entrega com erro do provedor e 2º produto confirmado depois: sem laço de 409; cada produto avisado uma vez", { skip: SKIP }, async () => {
+  reset(); const e = env(); const m = resend(); const pv = provider();
+  await joined(e, m, "jo@example.com", "lucro-e-caixa");
+  pv.deliverThenFail = true;
+  const first = await notify(e, pv.fetchImpl);
+  assert.deepEqual([first.sent, first.failed], [0, 1], "[P10.1] resultado incerto: reserva liberada");
+  pv.deliverThenFail = false;
+  await joined(e, m, "jo@example.com", "ia-na-pratica");
+  for (let i = 0; i < 3; i++) await notify(e, pv.fetchImpl);
+  assert.equal(pv.calls.filter((c) => c.to === "jo@example.com").length, 3, "[P10.2] uma nova tentativa do aviso congelado e um aviso novo; nada depois");
+  assert.ok(!pv.calls.some((c, i) => pv.calls.findIndex((d) => d.key === c.key) !== i && c.subject !== pv.calls.find((d) => d.key === c.key).subject), "[P10.3] mesma chave sempre com o mesmo payload");
+  const got = pv.to("jo@example.com");
+  assert.equal(got.length, 2, "[P10.4] duas entregas: uma por produto");
+  assert.match(got[0].text, /Lucro & Caixa/); assert.doesNotMatch(got[0].text, /IA na Prática/);
+  assert.match(got[1].text, /IA na Prática/); assert.doesNotMatch(got[1].text, /Lucro & Caixa/, "[P10.5] o 2º aviso fala só do produto novo");
+  assert.deepEqual(rows(), [], "[P10.6] nenhum registro preso");
+});
+
+test("P11 M5: exclusão falha e a próxima execução ocorre além da janela de 24 h do provedor: nenhuma 2ª entrega", { skip: SKIP }, async () => {
+  reset(); const e = env(); const m = resend(); const pv = provider();
+  await joined(e, m, "lia@example.com", "lucro-e-caixa");
+  const crashing = () => ({ query: async (s, p) => { if (/^delete from zevanory_waitlist where email=\$1 and status='notifying'/.test(s)) throw new Error("db_down"); return pgQuery(s, p); } });
+  await assert.rejects(notify(e, pv.fetchImpl, crashing), /db_down/, "[P11.0] exclusão falha depois do envio");
+  assert.equal(pv.to("lia@example.com").length, 1);
+  psqlSync("update zevanory_waitlist set notify_claimed_at = now() - interval '2 hours'");
+  pv.clock += 25 * 3600e3;
+  await assert.rejects(notify(e, pv.fetchImpl, crashing), /db_down/, "[P11.1] banco ainda falha na exclusão");
+  psqlSync("update zevanory_waitlist set notify_claimed_at = now() - interval '2 hours'");
+  pv.clock += 25 * 3600e3;
+  const out = await notify(e, pv.fetchImpl);
+  assert.equal(out.sent, 0, "[P11.2] já enviado: só apaga");
+  assert.equal(pv.to("lia@example.com").length, 1, "[P11.3] uma única entrega, mesmo além da janela do provedor");
+  assert.equal(pv.calls.filter((c) => c.to === "lia@example.com").length, 1, "[P11.4] nenhuma nova chamada ao provedor");
+  assert.deepEqual(rows(), [], "[P11.5] apagado");
+});
+
+test("P12 M5: resultado incerto por mais de 23 h não é reenviado com chave nova; 409 nunca vira nova tentativa", { skip: SKIP }, async () => {
+  reset(); const e = env(); const m = resend(); const pv = provider();
+  await joined(e, m, "mia@example.com", "vendas-na-pratica");
+  pv.deliverThenFail = true;
+  await notify(e, pv.fetchImpl);
+  pv.deliverThenFail = false;
+  psqlSync("update zevanory_waitlist_notices set created_at = now() - interval '24 hours'");
+  pv.clock += 25 * 3600e3;
+  await notify(e, pv.fetchImpl);
+  assert.equal(pv.to("mia@example.com").length, 1, "[P12.1] fora da janela, sem 2ª entrega");
+  assert.deepEqual(rows(), [], "[P12.2] dados apagados (finalidade encerrada)");
+  assert.ok(events().some((x) => x.event === "notice_unknown_and_erased"), "[P12.3] registro do resultado incerto");
+  // 409 (chave já usada com outro payload): marcado como enviado, sem laço.
+  await joined(e, m, "noa@example.com", "lucro-e-caixa");
+  const conflict = async () => new Response('{"name":"invalid_idempotent_request"}', { status: 409 });
+  const out = await notify(e, conflict);
+  assert.deepEqual([out.failed, rows().length], [0, 0], "[P12.4] 409 encerra o aviso");
+  assert.equal((await notify(e, conflict)).contacts, 0, "[P12.5] nada a reprocessar");
 });

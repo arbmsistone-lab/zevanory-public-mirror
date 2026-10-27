@@ -16,6 +16,8 @@ on:
       - "data/products.json"
       - "scripts/p23/**"
       - "sales-public/**"
+      - "termos/**"
+      - "reembolso/**"
       - "worker/fiscal-process.mjs"
       - "worker/commercial-checkout-guard.mjs"
       - "worker/sales-control.mjs"
@@ -50,12 +52,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Testes (contagem exata 18, zero pulados) e portão de checkout com o sinal fiscal
+      - name: Testes (contagem exata 19, zero pulados) e portão de checkout com o sinal fiscal
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p23-ecommerce-legal.test.mjs | tee /tmp/t.txt
-          for l in "# tests 18" "# pass 18" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 19" "# pass 19" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
           node --test tests/commercial-checkout-guard.test.mjs tests/circuits-adversarial.test.mjs tests/sales-control.test.mjs | tee /tmp/g.txt
           grep -qx "# fail 0" /tmp/g.txt
       - name: Checklist legal nas páginas publicadas + trava fiscal no código
@@ -69,7 +71,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p23_legal.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P23_LEGAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=22 killed=22 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=24 killed=24 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |
