@@ -28,7 +28,7 @@ HOSTS = {'api.mercadopago.com', 'zevanory-certification.fixture.workers.dev'}
 REGISTERED_EXCEPTION = {
     'filename': 'zees16-control-reconciler.yml',
     'blob': '2c99e557aa39a6d6ddde448337d83fb97d7bcda1',
-    'justification': 'T7 não financeiro; execuções serializadas, readback de fidelidade exata e aceitação 16/16 permanece fail-closed; 2026-10-08: grava no KV só quando o estado semântico muda (orçamento de 1.000 escritas/dia do Workers Free); 2026-10-10: concurrency por head_sha com cancel-in-progress, filtro gh-pages e nome real do quorum (open-provider); gatilhos preservados (Ordem 38); 2026-10-10: concurrency no nível do job, sem cancelamento (Ordem 48); 2026-10-19: B01 patch 05b — job só executa em refs/heads/gh-pages (PR #833); 2026-10-20: B01 M1 — job usa o Environment gh-pages-automacao (segredos só na branch gh-pages)',
+    'justification': 'T7 não financeiro; execuções serializadas, readback de fidelidade exata e aceitação 16/16 permanece fail-closed; 2026-10-08: grava no KV só quando o estado semântico muda (orçamento de 1.000 escritas/dia do Workers Free); 2026-10-10: concurrency por head_sha com cancel-in-progress, filtro gh-pages e nome real do quorum (open-provider); gatilhos preservados (Ordem 38); 2026-10-10: concurrency no nível do job, sem cancelamento (Ordem 48); 2026-10-19: B01 patch 05b — job só executa em refs/heads/gh-pages (PR #833); 2026-10-20: B01 M1 — job usa o Environment gh-pages-automacao (segredos só na branch gh-pages); 2026-10-26: somente runner ubuntu-24.04 e pins imutáveis de Actions oficiais foram alterados; lógica, gatilhos, Environment, permissões e escritas KV permanecem idênticos',
 }
 
 

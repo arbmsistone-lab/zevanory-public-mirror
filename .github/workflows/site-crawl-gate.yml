@@ -35,7 +35,7 @@ jobs:
           ZEVANORY_SALES_PUBLIC_OUT="$RUNNER_TEMP/sales-public" python3 -B scripts/build_sales_public.py >/dev/null
           diff -rq "$RUNNER_TEMP/sales-public" sales-public
       - name: Build the GitHub Pages site exactly as GitHub does
-        uses: actions/jekyll-build-pages@v1
+        uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697
         with:
           source: ./
           destination: ./_site

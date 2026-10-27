@@ -50,7 +50,7 @@ jobs:
         with:
           package-manager-cache: false
           node-version: "22"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - name: Testes da lógica do ensaio (sintéticos, sem segredo)
@@ -93,7 +93,7 @@ jobs:
           node-version: "22"
       - name: Baixar o registro do ensaio (ausente = NOT_AVAILABLE)
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: p20-restore-drill-${{ github.run_id }}
           path: ${{ runner.temp }}/p20
