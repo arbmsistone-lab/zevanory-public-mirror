@@ -115,3 +115,6 @@ c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-contro
 3b8e641875fc07bd3c6eda8712c7fe23891c7e2e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
 fecd365a8d3e8b8a01681e38692e37e47cfc622e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
 7a488a8ad1998abb4e906b3cb566eea98d400d64:test/meta-oauth.test.mjs:generic-api-key:5
+
+# C15 CI negative-proof fake (PR #950)
+cf033a872b91c83b7c95a119c1d36346a309f100:tests/fixtures/t5-negative-proof/fake-secret.txt:generic-api-key:3

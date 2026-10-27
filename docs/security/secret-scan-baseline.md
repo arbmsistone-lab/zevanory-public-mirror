@@ -62,7 +62,8 @@ or if a row here is not in `.gitleaksignore`.
     `git rev-list --all --no-merges --count`.
 - **Why the floor is not "≥ rev-list count".** gitleaks counts only commits whose
   patch it reads. Merges and empty or metadata-only commits have no patch, so N is
-  always smaller than `git rev-list --all --count`. Measured on 2026-10-27:
+  always smaller than `git rev-list --all --count`. Commits that only delete lines,
+  such as the revert `c312c4b6`, are not counted either. Measured on 2026-10-27:
   - 4410 scanned;
   - 4475 non-merge commits;
   - 4907 commits in total.
@@ -208,8 +209,9 @@ or if a row here is not in `.gitleaksignore`.
 | C14 | `scripts/whatsapp_audio_runtime_test.mjs` | 83 | `generic-api-key` | `3b8e6418` | Synthetic test fixture | `3b8e641875fc07bd3c6eda8712c7fe23891c7e2e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83` |
 | C14 | `scripts/whatsapp_audio_runtime_test.mjs` | 83 | `generic-api-key` | `fecd365a` | Synthetic test fixture | `fecd365a8d3e8b8a01681e38692e37e47cfc622e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83` |
 | C14 | `test/meta-oauth.test.mjs` | 5 | `generic-api-key` | `7a488a8a` | Synthetic test fixture | `7a488a8ad1998abb4e906b3cb566eea98d400d64:test/meta-oauth.test.mjs:generic-api-key:5` |
+| C15 | `tests/fixtures/t5-negative-proof/fake-secret.txt` | 3 | `generic-api-key` | `cf033a87` | CI negative-proof fake (PR #950) | `cf033a872b91c83b7c95a119c1d36346a309f100:tests/fixtures/t5-negative-proof/fake-secret.txt:generic-api-key:3` |
 
-Totals: **83** fingerprints.
+Totals: **84** fingerprints.
 
 | Class | Fingerprints |
 |---|---|
@@ -227,6 +229,8 @@ Totals: **83** fingerprints.
 | C12 | 2 |
 | C13 | 2 |
 | C14 | 5 |
+| C15 | 1 |
+| C15 | CI negative-proof fake (PR #950) | A random 32-character value generated for this test and labelled SYNTHETIC in the file. It was committed only to prove in a real Actions run that the scan fails (run 122305555353), then reverted (`c312c4b6`). Never a credential. |
 
 Findings left un-ignored: **0**. Every gitleaks finding was classified with
 confidence.
