@@ -116,24 +116,32 @@ LEGAL_FOOTER = ('<div class="container footer-legal">'
                 + "".join(f'<li><a rel="me noopener" href="{u}">{n}</a></li>' for n, u in _SOCIAL) +
                 '</ul></section></div>')
 
+# Preço canônico: data/products.json é a única definição (scripts/sync_canonical_prices.py leva o mesmo valor ao
+# checkout, ao /comprar, ao atendimento e aos materiais). Aqui nenhum preço é literal; as economias são calculadas.
+_OFFICIAL = json.loads((ROOT / "data" / "products.json").read_text(encoding="utf-8"))
+PRICE = {p["slug"]: int(p["price"]) for p in _OFFICIAL["products"]}
+SUBSCRIPTION_PRICE = int(_OFFICIAL["subscription"]["price"])
+_CMB_SEP = PRICE["ia-na-pratica"] + PRICE["vendas-na-pratica"]
+_NGC_SEP = _CMB_SEP + PRICE["lucro-e-caixa"]
+_CMB_ECO, _NGC_ECO = _CMB_SEP - PRICE["combo-ia-vendas"], _NGC_SEP - PRICE["negocio-completo"]
 COMMERCE = {
-    "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197,
+    "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": PRICE["ia-na-pratica"],
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Arquivo de comandos prontos para IA", "Planilha de aplicação (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "vendas-na-pratica": {"sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": 197,
+    "vendas-na-pratica": {"sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": PRICE["vendas-na-pratica"],
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Modelos de mensagens de venda e follow-up", "Roteiro de conteúdos", "Planilha de acompanhamento comercial (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "lucro-e-caixa": {"sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": 247,
+    "lucro-e-caixa": {"sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": PRICE["lucro-e-caixa"],
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido (PDF e DOCX)", "Planilha de caixa e margem (XLSX)", "Checklist financeiro semanal", "Comandos de IA para análise financeira", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "combo-ia-vendas": {"sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": 297,
-        "items": ["IA na Prática completo (manual, guia, comandos e planilha)", "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)", "Economia de R$ 97 em relação à compra separada (R$ 394)"],
-        "faq_q": ("Preciso comprar os produtos separadamente?", "Não. O Combo já inclui o IA na Prática e o Vendas na Prática completos, por R$ 297 (separados custariam R$ 394).")},
-    "negocio-completo": {"sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": 397,
-        "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", "Economia de R$ 244 em relação à compra separada (R$ 641)"],
+    "combo-ia-vendas": {"sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": PRICE["combo-ia-vendas"],
+        "items": ["IA na Prática completo (manual, guia, comandos e planilha)", "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)", f"Economia de R$ {_CMB_ECO} em relação à compra separada (R$ {_CMB_SEP})"],
+        "faq_q": ("Preciso comprar os produtos separadamente?", f"Não. O Combo já inclui o IA na Prática e o Vendas na Prática completos, por R$ {PRICE['combo-ia-vendas']} (separados custariam R$ {_CMB_SEP}).")},
+    "negocio-completo": {"sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": PRICE["negocio-completo"],
+        "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", f"Economia de R$ {_NGC_ECO} em relação à compra separada (R$ {_NGC_SEP})"],
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
-FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA no dia a dia e organizar as vendas pelo WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 97', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 244'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
+FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA no dia a dia e organizar as vendas pelo WhatsApp e nas redes', f'Quem quer os dois métodos com economia de R$ {_CMB_ECO}', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', f'Quem quer a maior economia: R$ {_NGC_ECO}'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
 # Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
 HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
                  else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
@@ -380,7 +388,7 @@ def apply_catalog(html: str) -> str:
     (its real deliverables, from COMMERCE) and its price; free and "Em breve" status are in the source.
     Closed status is the single page notice, not repeated per card."""
     prices = {slug: (f'R$ {c["price"]}', "pagamento único") for slug, c in COMMERCE.items()}
-    prices["conteudo-pronto"] = ("R$ 197", "por mês")
+    prices["conteudo-pronto"] = (f"R$ {SUBSCRIPTION_PRICE}", "por mês")
     for slug, (price, unit) in prices.items():
         inc = ""
         if slug in CATALOG_INCLUDES:
@@ -393,7 +401,7 @@ def apply_catalog(html: str) -> str:
             raise SystemExit(f"solucoes: catalog card for {slug} missing")
     return html
 
-SUBSCRIPTION_OFFER = {"@type": "Offer", "price": "197.00", "priceCurrency": "BRL", "url": f"{SALES_ORIGIN}/conteudo-pronto"}
+SUBSCRIPTION_OFFER = {"@type": "Offer", "price": f"{SUBSCRIPTION_PRICE}.00", "priceCurrency": "BRL", "url": f"{SALES_ORIGIN}/conteudo-pronto"}
 
 def apply_subscription(html: str) -> str:
     """P13: Conteudo Pronto. A fonte ja vem fechada (CTA de espera com data-zev-sub, sem Offer);
@@ -411,7 +419,7 @@ def apply_subscription(html: str) -> str:
     receipt = ('<div class="hero-panel receipt"><p class="receipt-head">Todo mês você recebe<span>sem fidelidade</span></p>'
                '<ul class="outcome-list"><li>12 posts com legenda, chamada para ação e hashtags</li>'
                '<li>4 mensagens de venda e acompanhamento</li><li>Calendário de 30 dias</li></ul>'
-               '<p class="receipt-total"><span>Total</span><span>R$ 197/mês</span></p>'
+               f'<p class="receipt-total"><span>Total</span><span>R$ {SUBSCRIPTION_PRICE}/mês</span></p>'
                + trust_mini("pela Hotmart") + '</div>')
     html, n = re.subn(r'(<section class="container hero"><div>.*?</dl></section></div>)(</section>)', lambda m: m.group(1) + receipt + m.group(2), html, count=1, flags=re.S)
     if n != 1:

@@ -31,7 +31,7 @@ test("site checkout prices, acquisition engine, support agent and e-mails agree 
     const p = official.products.find((x) => x.name === name);
     assert.ok(p, "e-mail product " + name); assert.equal(price, p.price, "e-mail price " + name);
   }
-  for (const m of mail.matchAll(/R\$ (\d+)/g)) assert.ok([...official.products.map((p) => p.price), 641].includes(Number(m[1])), "e-mail mentions R$ " + m[1]);
+  for (const m of mail.matchAll(/R\$ (\d+)/g)) assert.ok([...official.products.map((p) => p.price), official.products.filter((p) => ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa"].includes(p.slug)).reduce((t, p) => t + p.price, 0)].includes(Number(m[1])), "e-mail mentions R$ " + m[1]);
 });
 
 test("published product pages show the official price everywhere (buttons, schema, buy bar)", () => {
@@ -39,7 +39,7 @@ test("published product pages show the official price everywhere (buttons, schem
     const file = new URL(`../sales-public/${p.slug}.html`, import.meta.url);
     if (!existsSync(file)) continue;
     const html = readFileSync(file, "utf8");
-    const prices = [...html.matchAll(/R\$ ?(\d{3})(?![\d.,]*\s*(?:separad|em rela))/g)].map((m) => Number(m[1]));
+    const prices = [...html.matchAll(/R\$ ?(\d+)(?![\d.,]*\s*(?:separad|em rela))/g)].map((m) => Number(m[1]));
     assert.ok(prices.includes(p.price), p.slug);
     // P13: the published static page is the closed (NO-GO) build; the price stays as information
     // and the buy link/Offer only come back through the owner switch (openSalesHtml at runtime).
