@@ -20,6 +20,18 @@ Revisão 3 (reauditoria de `0afaf51a` e checagens C1–C3):
 - qualifica os limites de subrequisição;
 - estima a concorrência entre produtores com vendas abertas.
 
+Revisão 4 (reauditoria de `3832b0a8`):
+- a autoridade da prova no Postgres passa a ser o desenho **recomendado**
+  (Sol ORDEM 294: o banco transacional é a autoridade das decisões de
+  negócio);
+- a guarda no KV fica só como variante de cache/fallback, com o desenho
+  corrigido e o resíduo honesto de até 65 minutos;
+- remove a justificativa de `17,47`;
+- soma ao custo as leituras da guarda, o SQL da autoridade e o tempo ativo do
+  compute do Neon;
+- os critérios C3 ganham os cenários de falha de gravação, e o teste passa a
+  fixar os resultados exigidos.
+
 ## Sintoma e contrato
 
 O conjunto observado teve 177 sondagens: 31 `PROVEN` e 146
@@ -184,9 +196,14 @@ A prova "ressuscitada" é aceita por até 65 minutos, contra a leitura mais
 recente. No caminho do GitHub o efeito é pior, porque o carimbo de gravação
 faz a leitura antiga parecer mais nova do que é.
 
-Com vendas abertas, os produtores ficam próximos:
-- hoje, GitHub `11,41` e Worker `15,45` têm 4 minutos de distância;
-- no desenho proposto (`10,25,40,55`), a distância cairia para 1 minuto.
+Com vendas abertas, os produtores podem coincidir:
+- nominalmente, GitHub `11,41` e Worker `15,45` têm 4 minutos de distância, e
+  no desenho proposto (`10,25,40,55`) teriam 1 minuto;
+- na prática, o minuto nominal não decide nada: os 21 runs agendados do
+  workflow entre 2026-10-24 01:30Z e 2026-10-27 10:26Z começaram nos minutos
+  :30, :24, :32, :50, :04, :41, :07, :03, :59, :15, :02, :21, :11, :30, :37,
+  :54, :08, :53, :47, :53 e :26 (API REST de runs). A coincidência com um tique
+  do Worker é, portanto, aleatória com qualquer minuto nominal.
 
 O caminho do GitHub só grava resultado verificado, então o par de risco é
 "Worker grava 409, GitHub grava verificado antigo" ou dois refresh do Worker
@@ -296,17 +313,77 @@ prova financeira das demais tarefas caras:
    guarda monotônica do item 3. **Sem reserva no KV:** o KV não tem
    compare-and-set; gravações concorrentes na mesma chave terminam com a última
    vencendo, então uma "reserva" não daria exclusão mútua.
-3. **Guarda monotônica contra resultado antigo.** Todo snapshot carrega o
-   instante de início da leitura dos provedores (`measured_at`). As regras:
+3. **Autoridade da prova no Postgres (desenho recomendado).** Segue a Sol
+   ORDEM 294: o banco transacional é a autoridade das decisões de negócio. O
+   KV passa a ser só cache. Os passos:
+   - **linha única com semente:** a tabela `financial_proof_state` tem uma
+     linha só (`id = 1`), criada por
+     `insert into financial_proof_state (id, measured_at, attempt_at, outcome)
+     values (1, '-infinity', '-infinity', 'unverified') on conflict (id) do
+     nothing`, em migração própria e autorizada;
+   - **carimbo no início da leitura:** todo snapshot carrega o instante de
+     início da leitura dos provedores (`measured_at`), pelo relógio do Worker;
    - **o caminho do GitHub carimba no início da leitura**, não ao persistir:
      `financialClassification` devolve o instante e
      `persistClassificationSnapshot` o recebe em vez de `Date.now()`;
-   - antes de gravar, o produtor relê o snapshot armazenado e só grava se o seu
-     `measured_at` for **estritamente mais novo**. Em empate, 409 vence;
-   - todo 409 grava também um marcador de invalidação com o `measured_at` da
-     auditoria que o produziu;
-   - leitores só aceitam um snapshot verificado se ele tiver 65 minutos ou menos
-     **e** for mais novo que o último marcador de invalidação.
+   - **registro da tentativa antes de ler os provedores:**
+     `update financial_proof_state set attempt_at = $inicio where id = 1 and
+     attempt_at < $inicio`. Se esse commit falhar, a auditoria não começa;
+   - **gravação do desfecho, atômica e monotônica:**
+     `update financial_proof_state set measured_at = $novo, outcome =
+     $desfecho, … where id = 1 and (measured_at < $novo or (measured_at = $novo
+     and $desfecho = 'ambiguous'))`.
+     Só grava o que for **estritamente mais novo**. Em empate, 409 vence.
+     Zero linhas afetadas significa resultado antigo, que é descartado e não
+     vai ao cache;
+   - **decisão de liberar venda:** a criação de checkout com vendas abertas lê
+     a linha. Só libera com `outcome = 'verified'`, SHA exato, idade de 65
+     minutos ou menos, `ambiguous = 0` e tentativa resolvida
+     (`attempt_at <= measured_at`) ou em curso há menos de G minutos. G é o
+     prazo máximo da auditoria, imposto pelo próprio produtor (por exemplo,
+     6 min). Banco indisponível significa `UNVERIFIED_FAIL_CLOSED`;
+   - **KV como cache derivado:** o cache é gravado só depois do commit, com o
+     `measured_at` da linha, e também depois de um 409. Ele alimenta a exibição
+     (`/api/status`, `/api/sales/status`) e o pulo por piso, nunca a
+     liberação. Um cache defasado ou que não pôde ser gravado só atrasa a
+     renovação ou a exibição. A criação de checkout recusa quando o banco não
+     confirma.
+
+   **Resíduo declarado e pressupostos:**
+   - **o 409 só invalida depois de commitado.** Se o commit do 409 falhar, a
+     tentativa fica sem resolução e a linha para de liberar em até G minutos.
+     Isso é fail-closed: uma gravação ausente ou falha significa UNVERIFIED,
+     nunca FRESH;
+   - com G = 0 não há janela nenhuma, ao custo de `UNVERIFIED` durante cada
+     auditoria (10 a 20 s a cada 30 min);
+   - pressupostos: o commit da tentativa precede a leitura dos provedores, e
+     todos os carimbos vêm do mesmo relógio (o do Worker);
+   - a exibição pelo cache pode divergir do banco, inclusive por até 65
+     minutos se a gravação do cache falhar. Por isso a exibição não autoriza
+     venda.
+3a. **Variante só com KV (cache/fallback, não recomendada).** Se a autoridade
+   no banco não for aprovada, a guarda no KV exige, no mínimo:
+   - **marcador antes do snapshot:** todo 409 grava primeiro o marcador de
+     invalidação com o `measured_at` da auditoria, e só depois o snapshot;
+   - **marcador monotônico:** o marcador só é gravado se for mais novo que o
+     atual;
+   - **sem marcador, sem liberação:** se a gravação do marcador falhar, o
+     produtor não grava snapshot verificado, tenta gravar o snapshot não
+     verificado e registra a falha no batimento;
+   - **leitores com marcador:** os leitores só aceitam um snapshot verificado
+     se ele tiver 65 minutos ou menos
+     **e** for mais novo que o último marcador de invalidação;
+   - **pulo por piso com marcador:** a checagem de pulo do produtor também
+     respeita o marcador, para não adiar a recuperação;
+   - **marcador só com 409:** na variante KV, o marcador só é gravado quando há
+     409.
+
+   **Resíduo honesto da variante:** até **65 minutos de FRESH falso**. Ocorre
+   quando a gravação do marcador ou do snapshot do 409 falha (cota diária de
+   gravações esgotada, como em 12/10; 429 por mais de 1 gravação/s na mesma
+   chave; erro transitório) ou quando o marcador regride numa corrida da sua
+   leitura e gravação, pois o KV não tem compare-and-set. Só a autoridade no
+   banco fecha esse resíduo.
 4. **Isentar somente essa renovação de `dbEconomySkip`.** As outras consultas
    ao banco continuam em 00/06/12/18 UTC. O ramo isolado deixa de ler
    `sales:open:v1` (se a leitura for mantida, somam-se 96 leituras por dia).
@@ -330,54 +407,40 @@ prova financeira das demais tarefas caras:
 8. **Alerta com limite de frequência.** Com vendas fechadas, a prova vencida
    não bloqueia receita: basta o batimento. Com vendas abertas, manter o alerta
    existente, limitado a no máximo um por hora.
-9. **GitHub só como reforço, fora da janela do Worker.** O workflow do GitHub
-   fica apenas como reforço/diagnóstico quando o estado comercial autorizar,
-   nunca como relógio primário. Ao ser reativado, deve sair de `11,41` para
-   minutos a pelo menos 5 minutos dos tiques do Worker (por exemplo `17,47`,
-   a 7 ou 8 minutos), para que a releitura da guarda não caia na janela de
-   propagação do KV.
+9. **GitHub só como reforço.** O workflow do GitHub fica apenas como
+   reforço/diagnóstico quando o estado comercial autorizar, nunca como relógio
+   primário. Mudar o minuto nominal do cron do GitHub não separa os produtores:
+   o run agendado começa em minuto arbitrário (ver a seção do defeito). A
+   segurança contra a coincidência vem da guarda monotônica no banco, e o
+   cenário de concorrência é provocado por **dispatch cronometrado** no ensaio.
 
 A proposta continua fail-closed: `verifyFinancialProofSnapshot` segue exigindo
 SHA exato, idade de 65 minutos ou menos e `ambiguous=0`; 503 transitório não
 apaga a prova válida, 409 a invalida, e nada sintetiza PASS.
 
-## Garantia contra FRESH falso: limites do KV e risco residual
+## Garantia contra FRESH falso: limites e risco residual
 
-O KV não oferece compare-and-set. Gravações concorrentes na mesma chave
-terminam com a última vencendo, e uma gravação leva até 60 segundos para ser
-vista em outros locais. Por isso a releitura da guarda do item 3 pode estar
-defasada.
+| Desenho | Resultado antigo depois de um novo | Falha ao gravar o 409 | FRESH falso residual |
+|---|---|---|---|
+| Autoridade no Postgres (recomendado) | `update` monotônico afeta zero linhas; descartado | tentativa sem resolução: para de liberar em até G minutos | até G minutos (0 com G = 0) |
+| Só KV, com a guarda corrigida (fallback) | recusado pela guarda ou rejeitado pelo marcador, salvo leitura defasada | marcador ou 409 não gravados: nada invalida | até 65 minutos |
+| Hoje (sem guarda) | sobrescreve | a prova anterior segue válida | até 65 minutos |
 
-**Risco residual com a guarda e o marcador:**
-- **corrida na guarda:** dois produtores com desfechos opostos gravam a menos
-  de cerca de 60 segundos um do outro, em locais diferentes. O resultado antigo
-  pode passar pela guarda e ficar armazenado;
-- **efeito limitado pelo marcador:** o marcador de invalidação, com o
-  `measured_at` da auditoria 409, faz os leitores rejeitarem o snapshot antigo
-  assim que o marcador se propaga. A partir daí o estado é
-  `UNVERIFIED_FAIL_CLOSED` até uma auditoria verificada estritamente mais nova,
-  o que é a recuperação correta;
-- **janela de FRESH falso:** fica restrita aos leitores de locais onde o
-  marcador ainda não chegou, por até cerca de 60 segundos. É a mesma
-  defasagem que qualquer leitura do KV já tem para o próprio 409;
-- **frequência:** com a separação do item 9, a corrida exige um atraso
-  anormal de minutos em um dos produtores. Sem a separação, haveria até 48
-  pares próximos por dia com vendas abertas.
+**Postgres.** Em READ COMMITTED, um segundo `update` concorrente reavalia o
+`where` depois do commit do primeiro, então a linha só avança. Os limites:
+- a decisão de liberação passa a depender da disponibilidade do banco
+  (fail-closed);
+- o resíduo de até G minutos vem do commit falho do 409, coberto pelo registro
+  da tentativa.
 
-**Desenho sem nenhum FRESH falso (opção, para decisão de Sol e do
-proprietário):**
-- a autoridade da prova passa para o Postgres: uma linha única com
-  `measured_at`, desfecho e sequência;
-- a linha é atualizada por `update … where measured_at < $novo` (atômico e
-  monotônico) ou por `insert … on conflict do update … where`;
-- o KV vira cache derivado da linha confirmada;
-- a decisão de liberar venda (`commercial_release_allowed` com vendas abertas)
-  consulta a linha do banco, e as superfícies de exibição podem continuar no KV
-  com a defasagem de até 60 segundos declarada.
+**Só KV.** O KV não oferece compare-and-set. Gravações concorrentes na mesma
+chave terminam com a última vencendo, e uma gravação leva até 60 segundos para
+ser vista em outros locais. Mesmo com a guarda corrigida:
+- a releitura de qualquer guarda pode estar defasada;
+- uma gravação que falha (cota, 429, erro transitório) não invalida nada;
+- o marcador pode regredir numa corrida.
 
-O custo é uma instrução SQL por gravação (até mais 48 por dia) e uma por
-decisão de liberação com vendas abertas, a ser medido junto com o egress do
-Neon.
+Daí o resíduo de até 65 minutos, que não se limita à janela de propagação.
 
 ## Custo por dia: atual × proposto
 
@@ -403,13 +466,23 @@ substituem a medição exigida nos critérios de aceite.
 | Leituras no KV | cerca de 148 (ramo isolado 104, ramo horário 44) | cerca de 240 (prova 96, batimento 96, data de lançamento 48) | +92 | 100.000/dia; a conta usou 22 mil a 41 mil por dia |
 | `list` no KV | 0 da prova (24 do preflight) | 0 da prova (24 do preflight) | 0 | 1.000/dia |
 | `delete` no KV | 0 | 0 | 0 | 1.000/dia |
+| SQL da autoridade no Postgres (recomendado) | 0 | 96 (tentativa + desfecho em cada uma das 48 auditorias), mais 1 por criação de checkout com vendas abertas | +96 | egress: 1 linha curta por instrução |
+| Leituras extras da variante só KV | 0 | 96 (releitura do snapshot e do marcador antes de cada uma das 48 gravações) mais 1 leitura do marcador por chamada a `readFinancialProofSnapshot`, proporcional ao tráfego (só as sondagens P18 em `/api/status` são 288/dia) | +96 mais o tráfego | 100.000/dia |
+| Tempo ativo do compute Neon (estimativa, as duas variantes) | o banco acorda ao menos às :00 (preflight): cerca de 5 min/h | :00 mais 2 auditorias por hora: cerca de 15 min/h | +10 min/h, cerca de +120 h/mês, cerca de +30 CU-h/mês a 0,25 CU | 100 CU-h/mês por projeto; ao esgotar, o compute fica suspenso até o próximo ciclo |
 
 Leitura das gravações:
 - a pior soma diária medida (694 em 24/10) mais 64 a 84 dá **758 a 778**,
   abaixo de 1.000, mas acima do `SHED_AT_PCT=70` (700), a partir do qual
   prefixos de observabilidade começam a ser descartados;
 - com o item 6 opcional, o saldo fica em +18 a +38 (712 a 732 no pior dia);
-- a guarda do item 3 só acrescenta gravações quando há 409 (o marcador);
+- a autoridade no banco não acrescenta gravações no KV (o cache substitui a
+  gravação atual da prova); na variante só KV, o marcador só é gravado quando
+  há 409;
+- o tempo ativo do compute Neon é o custo novo mais sensível: o
+  scale-to-zero do Free suspende o compute após 5 minutos sem uso, e cada
+  auditoria a cada 30 minutos o acorda. O consumo atual de CU-h não foi
+  medido e precisa ser conferido no painel do Neon antes da decisão, porque
+  esgotar os 100 CU-h suspende o banco inteiro;
 - a decisão entre as duas variantes é do proprietário e depende do resultado
   da investigação do alerta de KV (seção abaixo).
 
@@ -417,13 +490,14 @@ Leitura das gravações:
 com data de lançamento gravada, cada auditoria soma 1 SQL de contagem de
 checkouts, total de 3):
 
-| Recurso por dia | Atual | Proposto (com item 9) |
+| Recurso por dia | Atual | Proposto |
 |---|---|---|
 | Auditorias do Worker | 48 (ramo `15,45` com `force` em todo tique; o horário pula enquanto a prova tem menos de 50 min) | 48 (piso de 25) |
 | Auditorias do GitHub | até 48 nominais; cerca de 5 por dia no ritmo observado | igual |
 | Instruções SQL | 3 × (48 + 5 a 48) = 159 a 288 | igual |
-| Gravações da prova | 48 a 96 | 48 a 96, menos as recusadas pela guarda |
-| Distância entre produtores | 4 min (`11,41` × `15,45`) | 7 a 8 min (`17,47` × `10,25,40,55`); sem o item 9, 1 min |
+| Gravações da prova | 48 a 96 | 48 a 96, menos os `update` que afetam zero linhas |
+| SQL da autoridade | 0 | 2 por auditoria: 106 a 192 (53 a 96 auditorias), mais 1 por criação de checkout |
+| Distância entre produtores | 4 min (`11,41` × `15,45`) nominais, aleatória na prática | aleatória: o run agendado do GitHub começa em minuto arbitrário; a guarda no banco resolve a coincidência |
 
 Limites conferidos na documentação da Cloudflare:
 
@@ -439,6 +513,11 @@ Limites conferidos na documentação da Cloudflare:
 - KV: gravações podem levar até 60 segundos para aparecer em outros locais, e
   em gravações concorrentes na mesma chave vale a última
   (<https://developers.cloudflare.com/kv/api/write-key-value-pairs/>).
+
+Limites conferidos na documentação do Neon: o Free dá 100 CU-hours por projeto
+por mês e 5 GB de transferência; o compute é suspenso após 5 minutos de
+inatividade, sem opção de desativar; ao esgotar a cota, o compute fica suspenso
+até o próximo ciclo (<https://neon.com/faqs/free-plan-limits-and-quotas>).
 
 ## Alerta de limite diário do KV
 
@@ -508,9 +587,11 @@ minutos e recuperação correta**.
 | Um tique ausente | derrubar um tique de propósito | prova continua `PROVEN` (idade 45 no tique seguinte) e é renovada |
 | Dois tiques consecutivos ausentes | derrubar dois tiques seguidos | prova ainda válida no tique seguinte aos dois falhos (idade 60, margem nominal 5) ou vencida e reconhecida como `UNVERIFIED_FAIL_CLOSED` se os atrasos passarem de 5 min; renovação no tique seguinte |
 | Execução atrasada | atrasar a auditoria em alguns minutos | `measured_at` continua marcando o início; nenhum snapshot com idade acima de 65 aceito |
-| Dois produtores simultâneos | GitHub `11,41` e Worker `10,25,40,55` com vendas abertas (e repetir com `17,47`) | nenhum snapshot mais antigo substitui um mais novo; nenhum FRESH falso além da janela de propagação declarada |
-| Resultado antigo depois de um novo | auditoria verificada lenta terminando depois de um 409 mais novo | a gravação antiga é recusada pela guarda ou rejeitada pelo marcador; estado `UNVERIFIED_FAIL_CLOSED` até auditoria verificada mais nova |
+| Dois produtores simultâneos | dispatch cronometrado do workflow do GitHub a menos de 60 s de um tique do Worker `10,25,40,55`, com vendas abertas | a linha do banco só avança; nenhum resultado mais antigo substitui um mais novo; nenhum FRESH falso |
+| Resultado antigo depois de um novo | auditoria verificada lenta terminando depois de um 409 mais novo | o `update` do resultado antigo afeta zero linhas; estado `UNVERIFIED_FAIL_CLOSED` até auditoria verificada mais nova |
 | Erro de banco seguido de recuperação | 503 do banco com prova válida armazenada e, depois, banco de volta | prova válida preservada enquanto tiver até 65 min, vencimento reconhecido se passar disso, renovação no primeiro tique com banco de volta |
+| Falha de gravação no KV | cota diária de gravações esgotada, 429 na mesma chave ou erro transitório no cache | a decisão de liberação não muda, porque lê o banco; cache defasado nunca libera venda; na variante só KV o cenário reprova por desenho (resíduo de até 65 min declarado) |
+| Commit do 409 falha no banco | derrubar a conexão entre a leitura dos provedores e o commit do 409 | tentativa sem resolução; liberação suspensa em até G minutos; `UNVERIFIED_FAIL_CLOSED` até auditoria resolvida mais nova |
 
 Além dos cenários, o PR deve demonstrar:
 

@@ -129,25 +129,66 @@ test("pre-existing stale-overwrite defect is cited with exact file:line", () => 
   assert.match(flat, /3\. A termina depois e grava `PROVEN` por cima de B/);
 });
 
-test("proposal: monotonic guard, residual risk and DB authority option", () => {
-  assert.match(flat, /\*\*o caminho do GitHub carimba no início da leitura\*\*, não ao persistir/);
-  assert.match(flat, /só grava se o seu `measured_at` for \*\*estritamente mais novo\*\*\. Em empate, 409 vence/);
-  assert.match(flat, /todo 409 grava também um marcador de invalidação com o `measured_at`/);
-  assert.match(flat, /leitores só aceitam um snapshot verificado se ele tiver 65 minutos ou menos \*\*e\*\* for mais novo que o último marcador/);
-  assert.match(flat, /O KV não oferece compare-and-set/);
-  assert.match(flat, /por até cerca de 60 segundos/);
-  assert.match(flat, /Desenho sem nenhum FRESH falso/);
-  assert.match(flat, /`update … where measured_at < \$novo` \(atômico e monotônico\)/);
-  assert.match(flat, /por exemplo `17,47`, a 7 ou 8 minutos/);
+test("C3 acceptance criteria fix every scenario and its required outcome", () => {
+  assert.match(flat, /\*\*nenhum FRESH falso, vencimento reconhecido em até 65 minutos e recuperação correta\*\*/);
+  const rows = [
+    ["Um tique ausente", "prova continua `PROVEN` (idade 45 no tique seguinte) e é renovada"],
+    ["Dois tiques consecutivos ausentes", "prova ainda válida no tique seguinte aos dois falhos (idade 60, margem nominal 5) ou vencida e reconhecida como `UNVERIFIED_FAIL_CLOSED` se os atrasos passarem de 5 min; renovação no tique seguinte"],
+    ["Execução atrasada", "`measured_at` continua marcando o início; nenhum snapshot com idade acima de 65 aceito"],
+    ["Dois produtores simultâneos", "a linha do banco só avança; nenhum resultado mais antigo substitui um mais novo; nenhum FRESH falso"],
+    ["Resultado antigo depois de um novo", "o `update` do resultado antigo afeta zero linhas; estado `UNVERIFIED_FAIL_CLOSED` até auditoria verificada mais nova"],
+    ["Erro de banco seguido de recuperação", "prova válida preservada enquanto tiver até 65 min, vencimento reconhecido se passar disso, renovação no primeiro tique com banco de volta"],
+    ["Falha de gravação no KV", "a decisão de liberação não muda, porque lê o banco; cache defasado nunca libera venda; na variante só KV o cenário reprova por desenho (resíduo de até 65 min declarado)"],
+    ["Commit do 409 falha no banco", "tentativa sem resolução; liberação suspensa em até G minutos; `UNVERIFIED_FAIL_CLOSED` até auditoria resolvida mais nova"],
+  ];
+  const table = [...doc.matchAll(/^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm)].map((m) => m.slice(1).map((c) => c.trim()));
+  const at = table.findIndex((r) => r[0] === "Cenário (C3)");
+  assert.ok(at >= 0, "C3 table located");
+  assert.deepEqual(table.slice(at + 1, at + 1 + rows.length).map((r) => [r[0], r[2]]), rows);
+  assert.match(flat, /dispatch cronometrado do workflow do GitHub a menos de 60 s de um tique do Worker `10,25,40,55`, com vendas abertas/);
+  assert.match(flat, /cota diária de gravações esgotada, 429 na mesma chave ou erro transitório no cache/);
+  assert.match(flat, /derrubar a conexão entre a leitura dos provedores e o commit do 409/);
 });
 
-test("C3 acceptance criteria cover every required scenario", () => {
-  assert.match(flat, /\*\*nenhum FRESH falso, vencimento reconhecido em até 65 minutos e recuperação correta\*\*/);
-  for (const scenario of ["Um tique ausente", "Dois tiques consecutivos ausentes", "Execução atrasada",
-    "Dois produtores simultâneos", "Resultado antigo depois de um novo", "Erro de banco seguido de recuperação"])
-    assert.match(doc, new RegExp(`^\\| ${scenario} \\|`, "m"), scenario);
-  assert.match(flat, /GitHub `11,41` e Worker `10,25,40,55` com vendas abertas/);
-  assert.match(flat, /503 do banco com prova válida armazenada/);
+test("recommended design: Postgres authority with seed row, tie-break and fail-closed 409 commit", () => {
+  assert.match(flat, /3\. \*\*Autoridade da prova no Postgres \(desenho recomendado\)\.\*\* Segue a Sol ORDEM 294/);
+  assert.match(flat, /values \(1, '-infinity', '-infinity', 'unverified'\) on conflict \(id\) do nothing/);
+  assert.match(flat, /\*\*o caminho do GitHub carimba no início da leitura\*\*, não ao persistir/);
+  assert.match(flat, /update financial_proof_state set attempt_at = \$inicio where id = 1 and attempt_at < \$inicio`\. Se esse commit falhar, a auditoria não começa/);
+  assert.match(flat, /where id = 1 and \(measured_at < \$novo or \(measured_at = \$novo and \$desfecho = 'ambiguous'\)\)`/);
+  assert.match(doc, /Só grava o que for \*\*estritamente mais novo\*\*\. Em empate, 409 vence\./);
+  assert.match(flat, /Zero linhas afetadas significa resultado antigo, que é descartado e não vai ao cache/);
+  assert.match(flat, /a criação de checkout com vendas abertas lê a linha\. Só libera com `outcome = 'verified'`, SHA exato, idade de 65 minutos ou menos, `ambiguous = 0` e tentativa resolvida \(`attempt_at <= measured_at`\) ou em curso há menos de G minutos/);
+  assert.match(flat, /Banco indisponível significa `UNVERIFIED_FAIL_CLOSED`/);
+  assert.match(flat, /Ele alimenta a exibição \(`\/api\/status`, `\/api\/sales\/status`\) e o pulo por piso, nunca a liberação/);
+  assert.match(flat, /\*\*o 409 só invalida depois de commitado\.\*\* Se o commit do 409 falhar, a tentativa fica sem resolução e a linha para de liberar em até G minutos/);
+  assert.match(flat, /uma gravação ausente ou falha significa UNVERIFIED, nunca FRESH/);
+  assert.match(flat, /pressupostos: o commit da tentativa precede a leitura dos provedores/);
+  assert.match(flat, /\| Autoridade no Postgres \(recomendado\) \| `update` monotônico afeta zero linhas; descartado \| tentativa sem resolução: para de liberar em até G minutos \| até G minutos \(0 com G = 0\) \|/);
+});
+
+test("KV-only variant is a fallback with the corrected guard and an honest 65-minute residual", () => {
+  assert.match(flat, /3a\. \*\*Variante só com KV \(cache\/fallback, não recomendada\)\.\*\*/);
+  assert.match(flat, /\*\*marcador antes do snapshot:\*\* todo 409 grava primeiro o marcador de invalidação/);
+  assert.match(flat, /\*\*marcador monotônico:\*\* o marcador só é gravado se for mais novo que o atual/);
+  assert.match(flat, /\*\*sem marcador, sem liberação:\*\* se a gravação do marcador falhar, o produtor não grava snapshot verificado/);
+  assert.match(doc, /\*\*e\*\* for mais novo que o último marcador de invalidação;/);
+  assert.match(flat, /\*\*pulo por piso com marcador:\*\* a checagem de pulo do produtor também respeita o marcador/);
+  assert.match(flat, /\*\*marcador só com 409:\*\* na variante KV, o marcador só é gravado quando há 409/);
+  assert.match(flat, /na variante só KV, o marcador só é gravado quando há 409/);
+  assert.match(flat, /\*\*Resíduo honesto da variante:\*\* até \*\*65 minutos de FRESH falso\*\*/);
+  assert.match(flat, /cota diária de gravações esgotada, como em 12\/10; 429 por mais de 1 gravação\/s na mesma chave; erro transitório/);
+  assert.match(flat, /Só a autoridade no banco fecha esse resíduo/);
+  assert.match(flat, /\| Só KV, com a guarda corrigida \(fallback\) \| .* \| até 65 minutos \|/);
+  assert.doesNotMatch(flat, /cerca de 60 segundos/);
+  assert.doesNotMatch(flat, /Desenho sem nenhum FRESH falso/);
+});
+
+test("GitHub minute offsets are not claimed to separate producers; timed dispatch is required", () => {
+  assert.doesNotMatch(flat, /por exemplo `17,47`/);
+  assert.doesNotMatch(flat, /\(`17,47` ×/);
+  assert.match(flat, /começaram nos minutos :30, :24, :32, :50, :04, :41, :07, :03, :59, :15, :02, :21, :11, :30, :37, :54, :08, :53, :47, :53 e :26/);
+  assert.match(flat, /o cenário de concorrência é provocado por \*\*dispatch cronometrado\*\* no ensaio/);
 });
 
 test("six-hour pulse follows the closed-sales database economy rule; DB count corrected", () => {
@@ -221,7 +262,19 @@ test("cost table: ranges, preflight writes, attempted vs effective, sales-open c
   assert.match(flat, /\| Instruções SQL \| 3 × \(48 \+ 5 a 48\) = 159 a 288 \| igual \|/);
   assert.equal(3 * (48 + 5), 159);
   assert.equal(3 * (48 + 48), 288);
-  assert.match(flat, /\| Distância entre produtores \| 4 min \(`11,41` × `15,45`\) \| 7 a 8 min/);
+  assert.match(flat, /\| Distância entre produtores \| 4 min \(`11,41` × `15,45`\) nominais, aleatória na prática \| aleatória/);
+  assert.match(flat, /\| SQL da autoridade no Postgres \(recomendado\) \| 0 \| 96 \(tentativa \+ desfecho em cada uma das 48 auditorias\), mais 1 por criação de checkout com vendas abertas \| \+96 \|/);
+  assert.equal(48 * 2, 96);
+  assert.match(flat, /\| Leituras extras da variante só KV \| 0 \| 96 \(releitura do snapshot e do marcador antes de cada uma das 48 gravações\) mais 1 leitura do marcador por chamada a `readFinancialProofSnapshot`, proporcional ao tráfego \(só as sondagens P18 em `\/api\/status` são 288\/dia\) \| \+96 mais o tráfego \|/);
+  assert.equal((24 * 60) / 5, 288);
+  for (const call of ["const snapshot = await readFinancialProofSnapshot(normalized);", "if (salesOpen && !(await readFinancialProofSnapshot(normalized)))"]) assert.ok(worker.includes(call), call);
+  assert.match(flat, /\| Tempo ativo do compute Neon \(estimativa, as duas variantes\) \| .* \| \+10 min\/h, cerca de \+120 h\/mês, cerca de \+30 CU-h\/mês a 0,25 CU \| 100 CU-h\/mês por projeto/);
+  assert.equal(Math.round((10 / 60) * 24 * 30), 120);
+  assert.equal(120 * 0.25, 30);
+  assert.match(flat, /o Free dá 100 CU-hours por projeto por mês e 5 GB de transferência; o compute é suspenso após 5 minutos de inatividade/);
+  assert.match(flat, /\| SQL da autoridade \| 0 \| 2 por auditoria: 106 a 192 \(53 a 96 auditorias\)/);
+  assert.equal(2 * (48 + 5), 106);
+  assert.equal(2 * (48 + 48), 192);
   assert.match(flat, /100\.000 leituras, 1\.000 gravações, 1\.000 exclusões e 1\.000 `list` por dia/);
   assert.match(flat, /6 conexões de saída simultâneas e 5 Cron Triggers por conta/);
   assert.match(flat, /developers\.cloudflare\.com\/kv\/platform\/limits\//);
