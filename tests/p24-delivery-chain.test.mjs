@@ -8,11 +8,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import vm from "node:vm";
 
-const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
+const read = (p) => readTextNormalized(new URL("../" + p, import.meta.url));
 const official = JSON.parse(read("data/products.json"));
 const manifest = JSON.parse(read("data/p24/delivery-manifest.json"));
 const pmap = JSON.parse(read("data/p24/promise-map.json"));
