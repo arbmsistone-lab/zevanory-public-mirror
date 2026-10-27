@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname, normalize, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { hasCheckoutCta, SUPPORT_SUBSCRIPTION_REFUND_ANSWER } from "../worker/politica-unica.mjs";
 import { classify, composeReply, guardReply, validateSiteReply, readSiteChatFlags, resetSiteChatState, SUPPORT_INTENTS } from "../worker/site-chat.mjs";
 import { readSalesSwitch, resetSalesSwitchCache } from "../worker/sales-control.mjs";
@@ -19,7 +20,7 @@ import { evaluateCheckout } from "../worker/commercial-checkout-guard.mjs";
 import { nurtureEmail } from "../worker/lead-magnet.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const read = (f) => readFileSync(join(ROOT, f), "utf8").replace(/\r\n/g, "\n");
+const read = (f) => readTextNormalized(join(ROOT, f));
 
 test("C1 N-H1: citar a Hotmart não muda a intenção (reembolso, cancelamento, arrependimento, pagamento)", async () => {
   const cases = [

@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,7 +31,7 @@ const fingerprint = (root) => { const r = spawnSync(PYTHON, ["-I", LEGAL, "--roo
 const REVIEWER = { id: "rev-msouza", name: "Maria Clara Souza, OAB/CE 12345", registro: "OAB/CE 12345", github_login: "msouza-adv", authorized_by: "proprietario", authorized_at: "2026-10-20", authorization_commit: "a098d8802a184df02b362d46f08fb6c81b7382f9" };
 function approval(root, over = {}, { reviewer = REVIEWER, record = {} } = {}) {
   const sha = fingerprint(root);
-  const version = JSON.parse(readFileSync(join(root, "data/politica-unica.json"), "utf8")).legal_document_version;
+  const version = JSON.parse(readTextNormalized(join(root, "data/politica-unica.json"))).legal_document_version;
   const review = { status: "APPROVED", reviewer_id: reviewer ? reviewer.id : "rev-nao-cadastrado", approved_by: reviewer ? reviewer.name : REVIEWER.name, approved_at: "2026-10-27", reviewed_sha256: sha,
     reviewed_commit: "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224", document_version: version, record: `docs/legal/reviews/${sha}.json`, ...over };
   mkdirSync(join(root, "data/p23"), { recursive: true });

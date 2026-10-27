@@ -5,10 +5,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
 
 const PYTHON = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
@@ -16,7 +17,7 @@ requireTool(PYTHON);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LEGAL = join(REPO, "scripts/p23/legal_review.py");
 const FILES = ["sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html", "data/politica-unica.json", "data/p23/legal-published-baseline.json", "data/p23/legal-reviewers.json"];
-const read = (p) => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
+const read = (p) => readTextNormalized(p);
 const run = (root, ...args) => { const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", root, ...args], { encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" } }); return { code: r.status, out: (r.stdout || "") + (r.stderr || "") }; };
 function tree(edit = () => {}) {
   const root = mkdtempSync(join(tmpdir(), "legal-gate-"));
@@ -32,7 +33,7 @@ const fingerprint = fp;
 const REVIEWER = { id: "rev-msouza", name: "Maria Clara Souza, OAB/CE 12345", registro: "OAB/CE 12345", github_login: "msouza-adv", authorized_by: "proprietario", authorized_at: "2026-10-20", authorization_commit: "a098d8802a184df02b362d46f08fb6c81b7382f9" };
 function approval(root, over = {}, { reviewer = REVIEWER, record = {} } = {}) {
   const sha = fingerprint(root);
-  const version = JSON.parse(readFileSync(join(root, "data/politica-unica.json"), "utf8")).legal_document_version;
+  const version = JSON.parse(readTextNormalized(join(root, "data/politica-unica.json"))).legal_document_version;
   const review = { status: "APPROVED", reviewer_id: reviewer ? reviewer.id : "rev-nao-cadastrado", approved_by: reviewer ? reviewer.name : REVIEWER.name, approved_at: "2026-10-27", reviewed_sha256: sha,
     reviewed_commit: "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224", document_version: version, record: `docs/legal/reviews/${sha}.json`, ...over };
   mkdirSync(join(root, "data/p23"), { recursive: true });

@@ -80,6 +80,8 @@ jobs:
       - name: Release 2 matrix bound to this exact SHA
         run: |
           set -euo pipefail
+          # Any failing command is named in an annotation (the job log itself is not always readable).
+          trap 'echo "::error title=RELEASE2_STEP::line $LINENO: $BASH_COMMAND"' ERR
           npm install --prefix "$RUNNER_TEMP/release2" --no-audit --no-fund playwright@1.55.0 axe-core@4.10.3 >/dev/null
           "$RUNNER_TEMP/release2/node_modules/.bin/playwright" install chromium >/dev/null
           node scripts/audit/sales-local-server.mjs 8791 sales-public >"$RUNNER_TEMP/release2-server.log" 2>&1 &
@@ -93,7 +95,7 @@ jobs:
           node -e 'const m=require(process.argv[1]); if(!m.pass||m.checked!==180||m.release_sha!==process.env.GITHUB_SHA) process.exit(1)' "$RUNNER_TEMP/release-2-matrix.json"
           cp "$RUNNER_TEMP/release-2-matrix.json" docs/evidence/release-2/matrix.json
           RELEASE_SHA="$GITHUB_SHA" node scripts/audit/release-2-evidence-manifest.mjs
-          node -e 'const m=require(process.argv[1]); if(m.release_sha!==process.env.GITHUB_SHA||m.matrix.checked!==180) process.exit(1)' docs/evidence/release-2/manifest.json
+          node -e 'const m=require(process.argv[1]); if(m.release_sha!==process.env.GITHUB_SHA||m.matrix.checked!==180) process.exit(1)' "$PWD/docs/evidence/release-2/manifest.json"
           echo "::notice title=RELEASE2_MATRIX::$(node -e 'const m=require(process.argv[1]); console.log(`checked=${m.checked} pass=${m.pass} cta_overlaps=${m.cta_overlaps} browser=${m.environment.browser_version} playwright=${m.environment.playwright} axe=${m.environment.axe_core} release_sha=${m.release_sha}`)' "$RUNNER_TEMP/release-2-matrix.json")"
 
       - name: Release 2 matrix evidence (always uploaded)
