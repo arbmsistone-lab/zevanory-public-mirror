@@ -19,7 +19,18 @@ Integrity rules (each violation is an execution error, exit 2):
     parse, and agree with the exit code; findings must belong to the scanned history;
   * the number of commits gitleaks reports must EQUAL an independent count computed
     here with a different git command; TruffleHog's log must be consistent;
-  * repository gitleaks configuration (.gitleaks*, *gitleaks*.toml) is refused.
+  * repository gitleaks configuration (.gitleaks*, *gitleaks*.toml) is refused;
+  * git attributes are neutralised for every git call and both scanners
+    (GIT_ATTR_SOURCE = empty tree, no system attributes/config), verified by a
+    self-test at start, so a committed .gitattributes (`-diff`, `binary`) cannot
+    hide content; the commit count must also be > 0 and >= 90% of the non-merge
+    commits counted by rev-list (which ignores attributes);
+  * every blob git treats as binary (NUL in the first 8000 bytes) is rescanned as
+    text with `gitleaks dir` (NULs removed, neutral first line so no magic-number
+    MIME skip), with the exact byte count checked: a NUL byte cannot hide a secret;
+  * pr-head mode does not run TruffleHog: verification would make outbound calls
+    driven by pull-request content from a pull_request_target context, and the
+    gitleaks passes already fail on any candidate.
 Exit codes: 0 clean, 1 findings, 2 execution/integrity error.
 Standard library only.
 """
@@ -54,6 +65,9 @@ SCANNERS = {
     },
 }
 CONTROLLED_CONFIG = 'title = "zevanory-controlled-default"\n[extend]\nuseDefault = true\n'
+EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+MIN_PATCH_RATIO = 0.9
+TEXT_VIEW_HEADER = b'binary blob text view\n'
 
 
 class IntegrityError(Exception):
@@ -62,14 +76,32 @@ class IntegrityError(Exception):
 
 # Network/TLS settings are the only variables passed through from the runner; tokens,
 # GIT_* overrides, GITLEAKS_* config, BASH_ENV, LD_* and PATH changes never reach a tool.
+# The only GIT_* values set are ours: attributes come from the empty tree, and system
+# attributes/config are ignored, so committed .gitattributes cannot alter diffs.
 PASSTHROUGH = ('HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy',
                'SSL_CERT_FILE', 'SSL_CERT_DIR', 'GIT_SSL_CAINFO')
 
 
 def clean_env(home):
     env = {k: os.environ[k] for k in PASSTHROUGH if k in os.environ}
-    env.update({'PATH': '/usr/bin:/bin', 'HOME': str(home), 'LANG': 'C.UTF-8', 'TMPDIR': str(home)})
+    env.update({'PATH': '/usr/bin:/bin', 'HOME': str(home), 'LANG': 'C.UTF-8', 'TMPDIR': str(home),
+                'GIT_ATTR_SOURCE': EMPTY_TREE, 'GIT_ATTR_NOSYSTEM': '1', 'GIT_CONFIG_NOSYSTEM': '1'})
     return env
+
+
+def attributes_selftest(env, work):
+    """Fail closed unless a committed '* -diff binary' .gitattributes is ignored by git log -p."""
+    repo = work / 'attr-selftest'
+    repo.mkdir()
+    git(env, repo, 'init', '-q')
+    (repo / '.gitattributes').write_text('* -diff binary\n')
+    (repo / 'probe.txt').write_text('attribute-probe-line\n')
+    git(env, repo, 'add', '-A')
+    git(env, repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'probe')
+    patch = git(env, repo, 'log', '-p', '-U0', '--all')
+    stat = git(env, repo, 'log', '--numstat', '--format=', '--all')
+    if '+attribute-probe-line' not in patch or '-\t-\t' in stat:
+        raise IntegrityError('GIT_ATTRIBUTES_NOT_NEUTRALISED (git too old for GIT_ATTR_SOURCE?)')
 
 
 def sha256_file(path):
@@ -154,7 +186,7 @@ def expected_patch_commits(env, repo, rev_args):
     return count
 
 
-def gitleaks_pass(kind, paths, env, work, repo, gl_log_opts, count_args, ignore, history):
+def gitleaks_pass(kind, paths, env, work, repo, gl_log_opts, count_args, ignore, history, non_merge=None):
     cfg = work / 'gitleaks.toml'
     cfg.write_text(CONTROLLED_CONFIG)
     report = work / f'gitleaks-{kind}.json'
@@ -186,6 +218,8 @@ def gitleaks_pass(kind, paths, env, work, repo, gl_log_opts, count_args, ignore,
         problems.append(f'GITLEAKS_ERROR_LINES={len(errs)}')
     if scanned != expected:
         problems.append(f'SCANNED_COMMITS={scanned} expected exactly {expected}')
+    if non_merge is not None and (expected <= 0 or expected < MIN_PATCH_RATIO * non_merge):
+        problems.append(f'PATCH_COMMITS_TOO_FEW expected={expected} non_merge={non_merge} (content hidden as binary?)')
     foreign = sorted({str(r.get('Commit')) for r in rows if str(r.get('Commit')) not in history})
     if foreign:
         problems.append(f'GITLEAKS_FINDINGS_OUTSIDE_SCANNED_HISTORY={len(foreign)}')
@@ -243,6 +277,70 @@ def trufflehog_pass(paths, env, work, repo):
             'pass': verified == 0 and not problems}
 
 
+def binary_blob_text_pass(paths, env, work, repo, ignore_empty):
+    """Rescan as text every blob git treats as binary (NUL in the first 8000 bytes)."""
+    check = git(env, repo, 'cat-file', '--batch-all-objects', '--batch-check=%(objectname) %(objecttype) %(objectsize)')
+    blobs = [l.split()[0] for l in check.splitlines() if l.split()[1:2] == ['blob']]
+    view = work / 'binary-text-view'
+    view.mkdir()
+    written = total = 0
+    for i in range(0, len(blobs), 400):
+        chunk = blobs[i:i + 400]
+        data = subprocess.run([GIT, '-C', str(repo), 'cat-file', '--batch'], input=('\n'.join(chunk) + '\n').encode(),
+                              env=env, check=True, capture_output=True).stdout
+        pos = 0
+        for sha in chunk:
+            nl = data.index(b'\n', pos)
+            header = data[pos:nl].split()
+            if header[0].decode() != sha or header[1] != b'blob':
+                raise IntegrityError('BINARY_PASS_BATCH_PARSE_ERROR')
+            size = int(header[2])
+            body = data[nl + 1:nl + 1 + size]
+            pos = nl + 1 + size + 1
+            if b'\0' in body[:8000]:
+                text = TEXT_VIEW_HEADER + body.replace(b'\0', b'')
+                (view / sha).write_bytes(text)
+                written += 1
+                total += len(text)
+    summary = {'scanner': 'gitleaks-dir', 'kind': 'binary-blobs-as-text', 'blobs_total': len(blobs),
+               'binary_blobs': written, 'bytes': total, 'findings': 0, 'rule_counts': {}, 'locations': [],
+               'execution_problems': [], 'pass': True}
+    if written:
+        cfg = work / 'gitleaks.toml'
+        cfg.write_text(CONTROLLED_CONFIG)
+        report = work / 'gitleaks-binary.json'
+        args = ['dir', '--config', str(cfg), '--redact', '--ignore-gitleaks-allow', '--no-banner', '--no-color',
+                '--gitleaks-ignore-path', str(ignore_empty), '--report-format', 'json', '--report-path', str(report), '.']
+        code, log = run_scanner('gitleaks', paths['gitleaks'], args, env, view, work / 'gitleaks-binary.stdout')
+        log = re.sub(r'\x1b\[[0-9;]*m', '', log)
+        hits = re.findall(r'scanned ~(\d+) bytes', log)
+        scanned = int(hits[0]) if len(hits) == 1 else -1
+        problems, rows = [], []
+        if not report.is_file():
+            problems.append('GITLEAKS_DIR_REPORT_MISSING')
+        else:
+            rows = json.loads(report.read_text())
+            if not isinstance(rows, list):
+                problems.append('GITLEAKS_DIR_REPORT_NOT_A_LIST')
+                rows = []
+        if code not in (0, 1) or (code == 1) != bool(rows):
+            problems.append(f'GITLEAKS_DIR_EXIT={code} findings={len(rows)}')
+        if [l for l in log.splitlines() if re.search(r'\bERR\b|\bFTL\b', l)]:
+            problems.append('GITLEAKS_DIR_ERROR_LINES')
+        if scanned != total:
+            problems.append(f'BINARY_TEXT_BYTES_SCANNED={scanned} expected exactly {total}')
+        foreign = sorted({pathlib.PurePosixPath(str(r.get('File'))).name for r in rows} - {p.name for p in view.iterdir()})
+        if foreign:
+            problems.append(f'GITLEAKS_DIR_FINDINGS_OUTSIDE_VIEW={len(foreign)}')
+        summary.update({'findings': len(rows), 'exit_code': code, 'scanned_bytes': scanned,
+                        'rule_counts': dict(sorted(Counter(str(r.get('RuleID')) for r in rows).items())),
+                        'locations': [{'rule': str(r.get('RuleID')), 'blob': pathlib.PurePosixPath(str(r.get('File'))).name,
+                                       'line': int(r.get('StartLine') or 0)} for r in rows],
+                        'execution_problems': problems, 'pass': code == 0 and not rows and not problems})
+    print(f"::notice title=GITLEAKS_SCANNED_BINARY_AS_TEXT::blobs={len(blobs)} binary={written} bytes={total} findings={summary['findings']}")
+    return summary
+
+
 def history_coverage(env, repo):
     """full-history: every origin branch head must be present (late heads fetched once)."""
     if git(env, repo, 'rev-parse', '--is-shallow-repository').strip() != 'false':
@@ -289,6 +387,9 @@ def main(argv=None):
     env = clean_env(work)
     parts = {}
     try:
+        attributes_selftest(env, work)
+        ignore_empty = work / 'empty.gitleaksignore'
+        ignore_empty.write_text('')
         if a.mode == 'pr-head':
             if not a.rev or not re.fullmatch(r'[0-9a-f]{40}', a.rev):
                 raise IntegrityError('pr-head needs --rev <40-hex sha>')
@@ -309,10 +410,16 @@ def main(argv=None):
             history = set(git(env, repo, 'rev-list', '--all').split())
             commits_opts, count_commits = ['--all'], ['--all', '--no-merges']
             merges_opts = ['--all', '--merges', '--remerge-diff']
+        non_merge = int(git(env, repo, 'rev-list', '--no-merges', '--count', *commits_opts))
         paths = install(work, a.offline_tarballs)
-        parts['gitleaks-commits'] = gitleaks_pass('commits', paths, env, work, repo, commits_opts, count_commits, ignore, history)
+        parts['gitleaks-commits'] = gitleaks_pass('commits', paths, env, work, repo, commits_opts, count_commits, ignore, history, non_merge)
         parts['gitleaks-merges'] = gitleaks_pass('merges', paths, env, work, repo, merges_opts, merges_opts, ignore, history)
-        parts['trufflehog'] = trufflehog_pass(paths, env, work, repo)
+        parts['gitleaks-binary-as-text'] = binary_blob_text_pass(paths, env, work, repo, ignore_empty)
+        if a.mode == 'full-history':
+            parts['trufflehog'] = trufflehog_pass(paths, env, work, repo)
+        else:
+            parts['trufflehog'] = {'scanner': 'trufflehog', 'skipped': 'pr-head: no verification calls driven by PR content',
+                                   'verified_findings': 0, 'execution_problems': [], 'pass': True}
     except (IntegrityError, subprocess.CalledProcessError, OSError, ValueError, KeyError, tarfile.TarError) as e:
         msg = getattr(e, 'stderr', None) or str(e)
         print(f'::error title=SECRET_SCAN_EXECUTION_ERROR::{type(e).__name__}: {str(msg)[:400]}')
@@ -328,11 +435,13 @@ def main(argv=None):
         print(f'SECRET_SCAN=PASS mode={a.mode}')
         return 0
     g, m, t = parts['gitleaks-commits'], parts['gitleaks-merges'], parts['trufflehog']
+    b = parts['gitleaks-binary-as-text']
     print(f"::error title=SECRET_SCAN_FAILED::mode={a.mode} gitleaks findings={g['findings']} rules={g['rule_counts']} "
           f"files={sorted(set(l['file'] for l in g['locations']))[:10]} problems={g['execution_problems']}; "
           f"merges findings={m['findings']} problems={m['execution_problems']}; "
+          f"binary-as-text findings={b['findings']} blobs={[l['blob'][:12] for l in b['locations']][:10]} problems={b['execution_problems']}; "
           f"trufflehog verified={t['verified_findings']} problems={t['execution_problems']}")
-    executed_badly = any(p.get('execution_problems') for p in (g, m, t))
+    executed_badly = any(p.get('execution_problems') for p in (g, m, t, b))
     return 2 if executed_badly else 1
 
 

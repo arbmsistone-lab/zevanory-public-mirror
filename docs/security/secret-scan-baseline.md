@@ -65,6 +65,42 @@ refs) and the base-controlled protected job (`pr-head`) run it.
   - git is `/usr/bin/git`.
   - A tool replaced after install fails with `binary SHA-256 mismatch (substituted
     tool)`. The harness proves this for both binaries.
+- **Git attributes cannot hide content (audit round 3, ALTO-1).**
+  - Every git call made by the driver, and both scanners, run with
+    `GIT_ATTR_SOURCE=<empty tree>`, `GIT_ATTR_NOSYSTEM=1` and
+    `GIT_CONFIG_NOSYSTEM=1`. A committed `.gitattributes` such as `* -diff` or
+    `*.pem binary` therefore changes neither gitleaks' `git log -p` nor the
+    independent `--numstat` count.
+  - A self-test at start fails the job (`GIT_ATTRIBUTES_NOT_NEUTRALISED`) if the
+    runner's git ignores `GIT_ATTR_SOURCE`.
+  - Defence in depth:
+    - the commit count must be > 0 and at least 90% of the non-merge commits
+      counted by `git rev-list`, which ignores attributes;
+    - the contract rejects any committed `.gitattributes` that uses `-diff`,
+      `!diff`, `binary`, `diff=` or `filter=`. The existing `-text`/`eol` rules
+      are allowed.
+- **NUL bytes cannot hide content (audit round 3, MÉDIO-1).**
+  - Every blob in the scanned repository that git treats as binary (a NUL in the
+    first 8000 bytes; this covers all commits, merges and branches) is written to a
+    private directory as a text view.
+  - In the text view, NULs are removed and a neutral first line is added, so
+    gitleaks' MIME detection cannot skip it as an archive or font.
+  - The text views are scanned with `gitleaks dir`, using the controlled config
+    and an empty ignore file. The scanned byte count must equal the bytes written.
+  - Real history: 571 binary blobs (135 MB), 0 findings. A finding here fails the
+    job and names the blob; there is no ignore mechanism for this pass.
+- **No TruffleHog in pr-head mode.**
+  - With `--only-verified`, TruffleHog would make outbound verification requests
+    built from pull-request content, from a `pull_request_target` context (a
+    low-impact SSRF). The gitleaks passes already fail on any candidate without
+    contacting anyone.
+  - TruffleHog verified scanning stays in `full-history` mode: push, schedule, and
+    the `pull_request` event.
+- **Isolated Python.** The driver runs as `python3 -I -S`, and the base contract
+  as `python3 -P -S`, so `sitecustomize.py`, `.pth` files or a `tests/__init__.py`
+  from a PR are never loaded. The contract also rejects those files at the
+  repository root and in `tests/`. Pins are computed on exact bytes, so a CRLF
+  rewrite of the driver changes the pin.
 - **Reports cannot be supplied from outside.** Reports are written to a private
   `mkdtemp` directory created by the driver, which is deleted afterwards. They
   must exist and parse as a list, agree with the exit code, and contain only
@@ -221,6 +257,13 @@ refs) and the base-controlled protected job (`pr-head`) run it.
   never "pending".
 - **Bootstrap.** `pull_request_target` reads its workflow from the base branch, so
   the protected check starts running on the first PR after this one merges.
+
+## Flow for PRs that need a new fingerprint
+
+The protected verdict always applies the **base** `.gitleaksignore`. A PR that adds
+a fingerprint (for example the C8 follow-up for #948) therefore fails the protected
+check until the owner reviews the classification row and merges with a deliberate
+bypass. This is intentional: every new exception is reviewed by the owner.
 
 ## Classes
 

@@ -45,15 +45,15 @@ PINNED_FILES = {
     'driver': 'scripts/ci/secret_scan.py',
 }
 PINNED_SHA256 = {
-    'scan': '87880f3067a620cd65825d2e0cb8687ca0a07624f2fb6417ea16da878f697d98',
+    'scan': 'd890f36830808b15db8392d6fdd9bd7d2ea19b01694155593cc652024d375d1d',
     'contract': 'ff8980b8f811d8ab33dcbccb748253d77d8a913342a3995ee695efde3620416c',
-    'protected': '65aaf3b0631dfff9f68e55a26aa173ec0101639ca084aef4f28379acb6b11ae4',
-    'driver': '8e9177d8419d8288fcab869824987330305c674f9870aee65d547a1d43d5cff8',
+    'protected': '63dc22c507104346ed76bd299209a7a95edbd2f843d06101e2ecd991feeac8ea',
+    'driver': 'e710f4a5ee3f1ca18b6982ab310f7436789d3f5c77e6a021954324ed9d7730f5',
 }
 CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
 UPLOAD = 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9'
-SCAN_CMD = 'python3 -I scripts/ci/secret_scan.py full-history --repo . --ignore .gitleaksignore --out secret-scan'
-VERDICT_CMD = ('python3 -I base/scripts/ci/secret_scan.py pr-head --repo "$RUNNER_TEMP/pr-repo" --rev "$HEAD_SHA" '
+SCAN_CMD = 'python3 -I -S scripts/ci/secret_scan.py full-history --repo . --ignore .gitleaksignore --out secret-scan'
+VERDICT_CMD = ('python3 -I -S base/scripts/ci/secret_scan.py pr-head --repo "$RUNNER_TEMP/pr-repo" --rev "$HEAD_SHA" '
                '--ignore base/.gitleaksignore --out "$RUNNER_TEMP/verdict"')
 RELEASE_URLS = {
     'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz',
@@ -69,7 +69,8 @@ def read(path):
     # Data only: refuse symlinks (a PR could point them outside its own tree).
     if path.is_symlink() or not path.resolve().is_relative_to(ROOT):
         raise AssertionError(f'{path} must be a regular file inside the checkout')
-    return path.read_text(encoding='utf-8')
+    # Exact bytes: no universal-newline translation, so a CRLF rewrite changes the pin.
+    return path.read_bytes().decode('utf-8')
 
 
 def load(path):
@@ -171,7 +172,7 @@ class DriverContract(unittest.TestCase):
         runs = [n for n in ast.walk(self.tree) if isinstance(n, ast.Call) and ast.unparse(n.func) == 'subprocess.run'
                 and ast.unparse(n.args[0].elts[0]) == 'str(path)']
         self.assertEqual(len(runs), 1)
-        self.assertIn("env.update({'PATH': '/usr/bin:/bin', 'HOME': str(home), 'LANG': 'C.UTF-8', 'TMPDIR': str(home)})", self.source)
+        self.assertIn("env.update({'PATH': '/usr/bin:/bin', 'HOME': str(home), 'LANG': 'C.UTF-8', 'TMPDIR': str(home),", self.source)
         passthrough = ast.literal_eval(re.search(r'PASSTHROUGH = (\([^)]*\))', self.source).group(1))
         self.assertEqual(set(passthrough), {'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy',
                                             'SSL_CERT_FILE', 'SSL_CERT_DIR', 'GIT_SSL_CAINFO'})
@@ -182,8 +183,18 @@ class DriverContract(unittest.TestCase):
                        "'--ignore-gitleaks-allow'", "'--only-verified', '--no-ignore-tag'",
                        "TRUFFLEHOG_VERIFIED_MISMATCH", "if chunks <= 0 or nbytes <= 0 or chunks > nbytes:",
                        "'--merges', '--remerge-diff'", "REPO_GITLEAKS_CONFIG_REFUSED", "HISTORY_INCOMPLETE",
-                       "raise IntegrityError(f'{name}: binary SHA-256 mismatch (substituted tool)')"):
+                       "raise IntegrityError(f'{name}: binary SHA-256 mismatch (substituted tool)')",
+                       "'GIT_ATTR_SOURCE': EMPTY_TREE, 'GIT_ATTR_NOSYSTEM': '1', 'GIT_CONFIG_NOSYSTEM': '1'",
+                       "EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'", "MIN_PATCH_RATIO = 0.9",
+                       "PATCH_COMMITS_TOO_FEW", "if scanned != total:", "body.replace(b'\\0', b'')",
+                       "if b'\\0' in body[:8000]:", "parts['gitleaks-binary-as-text'] = binary_blob_text_pass("):
             self.assertIn(marker, self.source)
+        main = self.funcs['main']
+        try_node = next(n for n in main.body if isinstance(n, ast.Try))
+        self.assertEqual(ast.unparse(try_node.body[0]), 'attributes_selftest(env, work)',
+                         'the attribute neutralisation self-test must run before anything else')
+        self.assertIn("        if a.mode == 'full-history':\n            parts['trufflehog'] = trufflehog_pass(", self.source,
+                      'TruffleHog (verification calls) must not run on PR content in pr-head mode')
 
 
 class ProtectedWorkflowContract(unittest.TestCase):
@@ -196,7 +207,7 @@ class ProtectedWorkflowContract(unittest.TestCase):
         'git -C "$RUNNER_TEMP/pr-repo" read-tree refs/heads/pr-head',
         'mkdir "$GITHUB_WORKSPACE/pr"',
         'git --git-dir="$RUNNER_TEMP/pr-repo/.git" --work-tree="$GITHUB_WORKSPACE/pr" checkout-index -a',
-        'SCAN_CONTRACT_ROOT="$GITHUB_WORKSPACE/pr" PYTHONPATH="$RUNNER_TEMP/pydeps" python3 -P -m unittest discover -v -s tests -p test_secret_history_scan_workflow.py 2>&1 | tee "$RUNNER_TEMP/contract.txt"',
+        'SCAN_CONTRACT_ROOT="$GITHUB_WORKSPACE/pr" PYTHONPATH="$RUNNER_TEMP/pydeps" python3 -P -S -m unittest discover -v -s tests -p test_secret_history_scan_workflow.py 2>&1 | tee "$RUNNER_TEMP/contract.txt"',
         VERDICT_CMD,
     }
 
@@ -253,6 +264,36 @@ class TreeContract(unittest.TestCase):
                 rel = (pathlib.Path(dirpath) / name).relative_to(ROOT).as_posix()
                 looks_like_config = name.startswith('.gitleaks') or ('gitleaks' in name.lower() and name.lower().endswith('.toml'))
                 if looks_like_config and rel != '.gitleaksignore':
+                    found.append(rel)
+        self.assertEqual(found, [])
+
+    def test_gitattributes_cannot_mark_content_binary(self):
+        # The driver neutralises attributes at runtime (GIT_ATTR_SOURCE = empty tree, self-test);
+        # this is defence in depth: no committed attribute may hide diffs from scanners.
+        bad = []
+        for dirpath, dirnames, filenames in os.walk(ROOT, followlinks=False):
+            dirnames[:] = [d for d in dirnames if d != '.git']
+            if '.gitattributes' not in filenames:
+                continue
+            path = pathlib.Path(dirpath) / '.gitattributes'
+            for line in read(path).splitlines():
+                attrs = line.split('#', 1)[0].split()[1:]
+                if any(a in ('-diff', '!diff', 'binary') or a.startswith(('diff=', 'filter=')) for a in attrs):
+                    bad.append(f'{path.relative_to(ROOT).as_posix()}: {line.strip()}')
+        self.assertEqual(bad, [])
+
+    def test_no_python_startup_hooks_from_the_tree(self):
+        # The base contract and driver run with -I/-P and -S, but keep the tree free of
+        # files that would be imported implicitly anywhere (site hooks, tests package).
+        found = []
+        for dirpath, dirnames, filenames in os.walk(ROOT, followlinks=False):
+            dirnames[:] = [d for d in dirnames if d != '.git']
+            for name in filenames:
+                rel = (pathlib.Path(dirpath) / name).relative_to(ROOT).as_posix()
+                # Only the locations a base invocation could see (repo root, tests/); -S/-I/-P already
+                # block them, this keeps a PR from planting them for other tooling.
+                if rel in ('sitecustomize.py', 'usercustomize.py', 'tests/__init__.py', 'tests/sitecustomize.py',
+                           'tests/usercustomize.py') or (name.endswith('.pth') and '/' not in rel):
                     found.append(rel)
         self.assertEqual(found, [])
 
