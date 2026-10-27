@@ -130,8 +130,8 @@ jobs:
         run: |
           set -eo pipefail
           python3 scripts/ci/mutants_refund_auto_dispatch.py | tee ra-mutants.txt
-          grep -q '"mutants": 21, "KILLED": 21, "SURVIVED": 0, "INCONCLUSIVE": 0' ra-mutants.txt \
-            || { echo "::error::esperados 21/21 mutantes do reembolso mortos"; exit 1; }
+          grep -q '"mutants": 39, "KILLED": 39, "SURVIVED": 0, "INCONCLUSIVE": 0' ra-mutants.txt \
+            || { echo "::error::esperados 39/39 mutantes do reembolso mortos"; exit 1; }
       - name: Outbox do formulário de atendimento (AVAL Sol #892; queda, recuperação, janela 23 h, erros permanentes, dead-letter, monitor, lease, cotas)
         env:
           T4_PG_HOST: localhost
