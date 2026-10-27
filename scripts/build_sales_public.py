@@ -98,9 +98,26 @@ _SOCIAL = (("YouTube", "https://www.youtube.com/@zevanory"), ("Instagram", "http
            ("Facebook", "https://www.facebook.com/people/Zevanory/61593970292684/"), ("TikTok", "https://www.tiktok.com/@zevanory"),
            ("Telegram", "https://t.me/zevanory"), ("Bluesky", "https://bsky.app/profile/zevanoryoficial.bsky.social"),
            ("Pinterest", "https://www.pinterest.com/zevanory/"))
+def _html_text(text: str) -> str:
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+# Decreto 7.962/2013, art. 2º, I e II: "Identificação do fornecedor" is one self-contained block with
+# razão social, nome fantasia, CNPJ, endereço físico (registered address, contrato social) and the
+# electronic address, every field from data/politica-unica.json (resumo_oferta.fornecedor) and marked
+# with data-fornecedor so tests/fornecedor-identificacao.test.mjs can assert it on every page. Label in
+# <strong> + space (no colon): the visible text stays "CNPJ 69.077.233/0001-99", the form that
+# scripts/p23/ecommerce_legal_gate.py requires on every priced page.
+SUPPLIER_ID_FIELDS = (("razao_social", "Razão social", _html_text(policy.SUPPLIER["razao_social"])),
+                      ("nome_fantasia", "Nome fantasia", _html_text(policy.SUPPLIER["nome_fantasia"])),
+                      ("cnpj", "CNPJ", _html_text(policy.SUPPLIER["cnpj"])),
+                      ("endereco", "Endereço", _html_text(policy.ADDRESS_FULL)),
+                      ("email", "E-mail", f'<a href="mailto:{policy.SUPPLIER["email"]}">{policy.SUPPLIER["email"]}</a>'))
+SUPPLIER_ID_BLOCK = ('<section class="fl-block" aria-labelledby="fl-fornecedor" data-fornecedor="identificacao">'
+                     '<h2 class="fl-title" id="fl-fornecedor">Identificação do fornecedor</h2><ul>'
+                     + "".join(f'<li data-fornecedor="{key}"><strong>{label}</strong> {value}</li>' for key, label, value in SUPPLIER_ID_FIELDS) +
+                     '</ul></section>')
 LEGAL_FOOTER = ('<div class="container footer-legal">'
-                '<section class="fl-block" aria-labelledby="fl-empresa"><h2 class="fl-title" id="fl-empresa">Empresa</h2>'
-                f'<p>{policy.SUPPLIER["razao_social"]}<br>CNPJ {policy.SUPPLIER["cnpj"]}<br>{policy.ADDRESS_FULL}</p></section>'
+                + SUPPLIER_ID_BLOCK +
                 '<section class="fl-block" aria-labelledby="fl-contato"><h2 class="fl-title" id="fl-contato">Atendimento</h2><ul>'
                 f'<li><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a></li>'
                 f'<li><a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a></li>'

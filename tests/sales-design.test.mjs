@@ -59,7 +59,7 @@ test("(c) footer: labelled company / atendimento / regras / perfis blocks, no mi
   for (const f of ["solucoes.html", "ia-na-pratica.html", "termos.html", "quem-criou.html"]) {
     const html = read(f);
     const footer = html.slice(html.indexOf('<div class="container footer-legal">'));
-    for (const id of ["fl-empresa", "fl-contato", "fl-regras", "fl-perfis"]) assert.ok(footer.includes(`id="${id}"`), `${f}: ${id}`);
+    for (const id of ["fl-fornecedor", "fl-contato", "fl-regras", "fl-perfis"]) assert.ok(footer.includes(`id="${id}"`), `${f}: ${id}`);
     assert.doesNotMatch(footer.slice(0, footer.indexOf("</div>")), / · /, f + ": no · chain in the footer");
   }
 });

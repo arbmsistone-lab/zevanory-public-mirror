@@ -66,9 +66,9 @@ test("company name, CNPJ and address: trust block, seller list and footer == Wor
   assert.deepEqual(collect(/class="trust-mini"[^>]*><li><strong>Empresa brasileira<\/strong><span>[^,]+, <span class="nowrap">CNPJ ([\d./-]+)<\/span>/g), [CNPJ]);
   assert.deepEqual(collect(/<dt>Quem vende<\/dt><dd>([^,<]+),/g), [NAME]);
   assert.deepEqual(collect(/<dt>CNPJ<\/dt><dd>([^<]+)<\/dd>/g), [CNPJ]);
-  assert.deepEqual(collect(/id="fl-empresa">Empresa<\/h2><p>([^<]+)<br>/g), [NAME]);
-  assert.deepEqual(collect(/id="fl-empresa">Empresa<\/h2><p>[^<]+<br>CNPJ ([^<]+)<br>/g), [CNPJ]);
-  assert.deepEqual(collect(/id="fl-empresa">Empresa<\/h2><p>[^<]+<br>[^<]+<br>([^<]+)<\/p>/g), [`${ADDR}, CEP ${CEP}`]);
+  assert.deepEqual(collect(/<li data-fornecedor="razao_social"><strong>Razão social<\/strong> ([^<]+)<\/li>/g), [NAME]);
+  assert.deepEqual(collect(/<li data-fornecedor="cnpj"><strong>CNPJ<\/strong> ([^<]+)<\/li>/g), [CNPJ]);
+  assert.deepEqual(collect(/<li data-fornecedor="endereco"><strong>Endereço<\/strong> ([^<]+)<\/li>/g), [`${ADDR}, CEP ${CEP}`]);
   for (const [f, h] of LEGAL) {
     const b = legalBody(h);
     assert.ok(b.includes(NAME) && b.includes(CNPJ), `${f}: name and CNPJ`);
