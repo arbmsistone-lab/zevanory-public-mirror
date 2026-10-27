@@ -25,7 +25,7 @@ jobs:
   drill:
     environment: producao-critica  # aprovação do proprietário obrigatória; somente leitura (GET) no KV
     if: ${{ github.ref == 'refs/heads/gh-pages' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       contents: read
@@ -43,12 +43,11 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: p20-drill-local-only
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@v4
         with:
-          package-manager-cache: false
           node-version: "22"
       - uses: actions/setup-python@v5
         with:
@@ -66,7 +65,7 @@ jobs:
         run: node scripts/p20/restore-drill.mjs --mode producao --out "$RUNNER_TEMP/p20/drill.json"
       - name: Registro do ensaio (só metadados)
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: p20-restore-drill-${{ github.run_id }}
           path: ${{ runner.temp }}/p20/drill.json
@@ -76,20 +75,19 @@ jobs:
   publish:
     needs: drill
     if: ${{ always() && github.ref == 'refs/heads/gh-pages' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write   # só o ramo evidence/b0-baseline (scripts/b0/evidence-branch.sh recusa qualquer outro)
     env:
       EVIDENCE_BRANCH: evidence/b0-baseline
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@v4
         with:
-          package-manager-cache: false
           node-version: "22"
       - name: Baixar o registro do ensaio (ausente = NOT_AVAILABLE)
         continue-on-error: true

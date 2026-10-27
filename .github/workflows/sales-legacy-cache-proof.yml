@@ -24,7 +24,7 @@ concurrency:
 jobs:
   proof:
     name: sales-legacy-cache / browser-cache-counterproof
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -33,13 +33,12 @@ jobs:
       INJECTOR_SHA: 36f4e2d6b1d7bb3b272ad8e57ef1276a3e08506b # parent of #892: script injected wa.me links
       BASE892_SHA: 6f2f0378b1a9acd70f8ab50dae81dc6e7be244a9 # #892 live: e-mail-only bytes, pages reference the path
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@v4
         with:
-          package-manager-cache: false
           node-version: "22"
       - name: Asset/cache contract (Worker headers, Clear-Site-Data scope, no reference in the build)
         run: node --test tests/sales-asset-cache.test.mjs
@@ -64,7 +63,7 @@ jobs:
         run: |
           grep -E '^LEGACY_CACHE_(RESIDUAL|TOMBSTONE|PROOF|FAIL)' /tmp/legacy-cache.log | while read -r l; do echo "::notice title=legacy-cache::$l"; done
           cat /tmp/legacy-cache/legacy-cache-observations.md >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sales-legacy-cache-evidence

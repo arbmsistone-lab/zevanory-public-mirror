@@ -22,10 +22,10 @@ concurrency:
 jobs:
   contract:
     name: First order watch contract (offline)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
       - name: Verify workflow YAML and no-network tests
         run: |
           python3 -m pip install --disable-pip-version-check --quiet PyYAML==6.0.2
@@ -38,7 +38,7 @@ jobs:
     name: Signed read-only audit; close only on proven delivery breach
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages'
     needs: contract
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
@@ -48,7 +48,7 @@ jobs:
       RESEND_FROM_ADDRESS: ${{ secrets.RESEND_FROM_ADDRESS }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Hourly watch (GET and read-only SQL; emergency close if proven breach)

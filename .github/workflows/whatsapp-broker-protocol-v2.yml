@@ -16,14 +16,14 @@ jobs:
   broker-protocol:
     environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
       CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
       SCRIPT: giro-whatsapp-bridge
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Fetch and patch exact live broker

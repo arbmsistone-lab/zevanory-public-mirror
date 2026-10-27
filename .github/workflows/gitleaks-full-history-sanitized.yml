@@ -5,10 +5,10 @@ permissions:
   contents: read
 jobs:
   full-history:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -50,7 +50,7 @@ jobs:
           SCAN_EXIT: ${{ steps.scan.outputs.exit_code }}
       - name: Upload sanitized report
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: gitleaks-sanitized
           path: gitleaks-sanitized.json

@@ -12,10 +12,10 @@ permissions:
   contents: read
 jobs:
   dry-run-and-static-safety:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
       - name: Validate no-money dry-run and safety contracts
         run: python3 -m unittest discover -s tests -p test_sales_switch_workflow.py -v
       - name: Bytecode/parse

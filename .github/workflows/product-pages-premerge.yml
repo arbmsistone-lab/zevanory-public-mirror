@@ -18,11 +18,11 @@ concurrency:
 jobs:
   audit:
     name: product-pages / static-audit
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout exact revision
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1

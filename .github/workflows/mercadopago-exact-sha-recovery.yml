@@ -20,7 +20,7 @@ jobs:
   recover-and-certify:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ false }} # Permanently retired: it used sandbox credentials in production secret names.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
@@ -56,14 +56,13 @@ jobs:
           echo "TARGET_SHA_LOCK=PASS"
           echo "ZERO_SPEND_ROUTE=GITHUB_ACTIONS_CLOUDFLARE_FREE"
 
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@v4
         with:
-          package-manager-cache: false
           node-version: "22"
 
       - name: Refuse retired production-secret recovery
@@ -198,7 +197,7 @@ jobs:
 
       - name: Upload immutable Mercado Pago evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: mercadopago-financial-e2e-${{ env.TARGET_SHA }}
           path: evidence/mercadopago-financial-e2e.json

@@ -18,7 +18,7 @@ concurrency:
 jobs:
   promote:
     if: github.event.pull_request.head.ref == 'fix/security-headers-preview-20261002'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
       GH_TOKEN: ${{ github.token }}

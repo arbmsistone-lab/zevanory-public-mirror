@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   provenance:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Resolve certified live release
@@ -25,7 +25,7 @@ jobs:
           echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
           echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -63,7 +63,7 @@ jobs:
           subprocess.check_call(["git","cat-file","-e",sha+"^{commit}"])
           print("P13_P15_PROVENANCE_EXACT_RELEASE=PASS",sha)
           PY
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: p15-provenance-${{ env.EXPECTED_SHA12 }}

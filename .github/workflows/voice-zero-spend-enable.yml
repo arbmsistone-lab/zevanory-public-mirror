@@ -10,7 +10,7 @@ concurrency:
 jobs:
   enable:
     environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}

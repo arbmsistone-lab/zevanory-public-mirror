@@ -24,7 +24,7 @@ jobs:
     environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
     # Verificava no Worker de PRODUÇÃO um pagamento sandbox lido com MERCADOPAGO_TEST_ACCESS_TOKEN.
     if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
       APP: https://zevanory.api.br
@@ -177,7 +177,7 @@ jobs:
           for k,v in report["checks"].items(): print(f"{k}={v}")
           PY
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: mercadopago-post-payment-verification-${{ inputs.order_id }}

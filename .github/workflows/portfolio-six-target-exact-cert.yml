@@ -55,10 +55,10 @@ jobs:
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&
        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
@@ -78,7 +78,7 @@ jobs:
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&
        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -95,16 +95,15 @@ jobs:
       CERT_PROMOTION_WAIT_SECONDS: ${{ github.event_name == 'workflow_run' && '900' || '1200' }}
       GH_READ_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_SHA }}
           persist-credentials: false
           # Histórico sem blobs: o contrato pré-merge precisa de base, merge-base e diff da fonte.
           fetch-depth: 0
           filter: blob:none
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@v4
         with:
-          package-manager-cache: false
           node-version: '22'
       - name: Exact source/live/base contract
         run: |
@@ -222,7 +221,7 @@ jobs:
           print(f"{s}:TECHNICAL_14=PROVED")
           print("FALSE_GREEN=0")
           PY
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         with:
           name: portfolio-cert-${{ matrix.slug }}-${{ env.EXPECTED_SHA }}
           path: |

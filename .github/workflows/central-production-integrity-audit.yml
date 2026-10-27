@@ -5,10 +5,10 @@ permissions:
   contents: read
 jobs:
   central-integrity:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Inspect public central HTML JS CSS and release provenance

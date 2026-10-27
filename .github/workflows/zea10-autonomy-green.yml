@@ -14,10 +14,10 @@ permissions:
 
 jobs:
   autonomy-gate:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -25,7 +25,7 @@ jobs:
         run: python scripts/zea10_autonomy_gate.py
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: zea10-autonomy-evidence
           path: evidence/zea10-autonomy-current.json

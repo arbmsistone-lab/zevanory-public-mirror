@@ -22,14 +22,14 @@ jobs:
   financial-e2e:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
     steps:
       - name: Checkout current E2E harness
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        uses: actions/checkout@v4
         with:
           ref: gh-pages
           fetch-depth: 1
@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload immutable evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: mercadopago-financial-e2e-${{ env.EXPECTED_SHA }}
           path: evidence/financial-e2e-mercadopago.json

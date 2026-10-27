@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   prove:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require real provider IDs and reachable published URLs

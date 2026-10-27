@@ -12,10 +12,10 @@ permissions:
   contents: read
 jobs:
   validate:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -105,7 +105,7 @@ jobs:
           open(root/"review-status.generated.json","w").write(json.dumps(status,indent=2,sort_keys=True)+"\n")
           print(json.dumps(status,indent=2,sort_keys=True))
           PY
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         with:
           name: zea10-external-review-intake-status
           path: zea10-external/review-status.generated.json

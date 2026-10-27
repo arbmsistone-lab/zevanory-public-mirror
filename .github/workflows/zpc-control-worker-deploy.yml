@@ -42,10 +42,10 @@ jobs:
   deploy:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
 
       - name: Resolve exact source SHA
         shell: bash
@@ -157,16 +157,14 @@ jobs:
 
       - name: Retain rollback audit record
         if: env.ROLLBACK_AUDIT == 'true'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: zpc-rollback-audit-${{ github.run_id }}
           path: /tmp/rollback-audit/rollback.json
           retention-days: 90
           if-no-files-found: error
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          package-manager-cache: false
+      - uses: actions/setup-node@v4
         if: env.PROMOTE == 'true'
         with:
           node-version: '24'

@@ -23,10 +23,10 @@ jobs:
   producao-critica:
     if: github.ref == 'refs/heads/gh-pages'
     environment: producao-critica
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - name: Inventory (hash of host only)
@@ -41,10 +41,10 @@ jobs:
   gh-pages-automacao:
     if: github.ref == 'refs/heads/gh-pages'
     environment: gh-pages-automacao
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - name: Inventory (hash of host only)
@@ -58,10 +58,10 @@ jobs:
   sandbox-financial-approved:
     if: github.ref == 'refs/heads/gh-pages'
     environment: sandbox-financial-approved
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - name: Inventory (certification DB must be isolated from production)
@@ -74,10 +74,10 @@ jobs:
 
   cloudflare-worker:
     if: github.ref == 'refs/heads/gh-pages'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - name: Worker DATABASE_URL identity via public /api/health (no secret)
@@ -90,7 +90,7 @@ jobs:
   verdict:
     needs: [producao-critica, gh-pages-automacao, sandbox-financial-approved, cloudflare-worker]
     if: always() && github.ref == 'refs/heads/gh-pages'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: All consumers point to zevanory-db-2

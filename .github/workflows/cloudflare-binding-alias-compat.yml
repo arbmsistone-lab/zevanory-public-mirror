@@ -13,10 +13,10 @@ permissions:
   contents: read
 jobs:
   prove:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
       - name: Validate recovered bundle and binding contract
         run: |
           set -euo pipefail

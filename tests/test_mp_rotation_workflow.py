@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # pulados); fora do Linux aparecem como pulados com esta razão explícita, nunca como verde silencioso.
 LINUX_ONLY = unittest.skipUnless(
     sys.platform.startswith("linux"),
-    "LINUX_ONLY: executa o passo bash do workflow com curl/npx falsos (shebang POSIX, bash); o workflow roda só em ubuntu-24.04",
+    "LINUX_ONLY: executa o passo bash do workflow com curl/npx falsos (shebang POSIX, bash); o workflow roda só em ubuntu-latest",
 )
 WORKFLOW = Path(os.environ.get("MP_ROTATION_WORKFLOW", ROOT / ".github/workflows/mercadopago-production-token-rotate.yml"))
 

@@ -17,15 +17,14 @@ permissions:
 
 jobs:
   crawl:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@v4
         with:
-          package-manager-cache: false
           node-version: "22"
       - name: Pages redirect layer is up to date
         run: python3 -B scripts/build_pages_mirror.py --check
@@ -43,7 +42,7 @@ jobs:
         run: node scripts/ci/site_crawl_gate.mjs --pages-site _site --out site-crawl.json
       - name: Blog renderer and gate unit tests
         run: node --test tests/blog-layout.test.mjs tests/site-crawl-gate.test.mjs
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: site-crawl

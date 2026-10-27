@@ -13,10 +13,10 @@ jobs:
   materialize-assets:
     # Never on gh-pages: renders official exports only on the brand feature/fix branch that changed the sources.
     if: github.repository == 'arbmsistone-lab/zevanory-public-mirror' && (github.ref == 'refs/heads/feat/brand-kit-unified-20261010' || startsWith(github.ref, 'refs/heads/fix/brand-'))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
           persist-credentials: true

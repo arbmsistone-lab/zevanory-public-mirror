@@ -14,7 +14,7 @@ jobs:
   generate:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: R4 owner approval gate (fail-closed)
@@ -30,11 +30,10 @@ jobs:
             echo "::error title=R4_OWNER_APPROVAL_REQUIRED::R4_T2_COMMERCIAL_SIGNED_CALLS_OWNER_APPROVAL is not set to approved; this job is a registered open R4 risk"
             exit 1
           fi
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@v4
         with:
-          package-manager-cache: false
           node-version: '24'
 
       - name: Generate five grounded 1080x1080 creatives inside Worker
@@ -104,7 +103,7 @@ jobs:
           jq -e '[.products[]? | select(.integrity == true)] | length >= 5' t2-output/artifacts-status.json >/dev/null
 
       - name: Upload private workflow evidence
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: t2-worker-factory-result
           path: t2-output/

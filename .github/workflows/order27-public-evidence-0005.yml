@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   read-only-proof:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Read sanitized production evidence (GET only)

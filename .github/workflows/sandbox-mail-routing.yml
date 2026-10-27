@@ -17,7 +17,7 @@ jobs:
   routing:
     environment: producao-critica  # B01 M1: modifica roteamento de e-mail/DNS da zona de produção (achado do Sol); exige revisão do titular
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

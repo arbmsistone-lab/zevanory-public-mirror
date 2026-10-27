@@ -13,21 +13,19 @@ concurrency:
 jobs:
   cycle:
     if: github.run_attempt == 1 && github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success' && (contains(github.event.workflow_run.head_commit.message, '[cache-audit-cycle-20261005]') || contains(github.event.workflow_run.head_commit.message, '[cache-audit-recovery-20261005]') || contains(github.event.workflow_run.head_commit.message, '[cache-audit-quality-20261005]') || contains(github.event.workflow_run.head_commit.message, '[cache-audit-repair-20261005]'))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 50
     env:
       REPAIR_ONLY: ${{ contains(github.event.workflow_run.head_commit.message, '[cache-audit-quality-20261005]') || contains(github.event.workflow_run.head_commit.message, '[cache-audit-repair-20261005]') }}
       GH_TOKEN: ${{ github.token }}
       CYCLE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with: {ref: '${{ github.event.workflow_run.head_sha }}'}
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          package-manager-cache: false
+      - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - run: node scripts/voice_sandbox_cycle.mjs
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: voice-sandbox-cycle-checkpoint

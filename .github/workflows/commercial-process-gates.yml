@@ -20,12 +20,12 @@ concurrency:
 jobs:
   p02:
     name: p02 / decision-registry
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
@@ -48,12 +48,12 @@ jobs:
 
   p24:
     name: p24 / product-quality
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -I scripts/p24/product_quality_check.py --report /tmp/p24-report.json --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: p24-report-${{ github.event.pull_request.head.sha }}
@@ -78,12 +78,12 @@ jobs:
 
   p25:
     name: p25 / weekly-review-dry-run
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
