@@ -1,16 +1,23 @@
+import { verifyProductionToken } from "./commercial-checkout-guard.mjs";
+
 const MONEY_EPSILON = 0.005;
 
 export const refundAutoDispatchEnabled = (env = {}) =>
-  String(env.REFUND_AUTO_DISPATCH || "").trim().toLowerCase() === "true";
+  env.REFUND_AUTO_DISPATCH === "true";
 
 export const refundIdempotencyKey = (orderId) => "zevanory-refund-" + String(orderId || "").toLowerCase();
 
-export function validateMercadoPagoCredential(env, test) {
+export async function validateMercadoPagoCredential(env, test, { verify = verifyProductionToken } = {}) {
   const token = String((test ? env.MERCADOPAGO_TEST_ACCESS_TOKEN : env.MERCADOPAGO_ACCESS_TOKEN) || "").trim();
   if (!token) return { ok: false, reason: "mercadopago_token_missing", token: "" };
-  const sandboxToken = token.startsWith("TEST-");
-  if (test && !sandboxToken) return { ok: false, reason: "sandbox_token_expected", token: "" };
-  if (!test && sandboxToken) return { ok: false, reason: "production_token_expected", token: "" };
+  const mode = String(env.MERCADOPAGO_ENV || "").trim().toLowerCase();
+  const sandboxToken = /^test-/i.test(token);
+  if (test) {
+    if (mode !== "sandbox" || !sandboxToken) return { ok: false, reason: "sandbox_token_expected", token: "" };
+  } else {
+    if (mode !== "production" || sandboxToken || !await verify(env))
+      return { ok: false, reason: "production_account_unverified", token: "" };
+  }
   return { ok: true, reason: null, token };
 }
 
@@ -41,8 +48,13 @@ export function evaluateAutomaticRefund({ order, payment, window, identityMatche
   if (String(order?.status || "") !== "paid") return { eligible: false, reason: "order_not_paid" };
   if (String(payment?.status || "") !== "approved") return { eligible: false, reason: "payment_not_approved" };
   if (providerHasDispute(payment)) return { eligible: false, reason: "provider_dispute_or_chargeback" };
-  const refunded = Number(payment?.transaction_amount_refunded || 0);
-  if (refunded > 0 || (Array.isArray(payment?.refunds) && payment.refunds.length > 0))
+  // A missing refund snapshot is UNKNOWN, never proof that nothing was refunded.
+  if (payment?.transaction_amount_refunded == null || !Array.isArray(payment?.refunds) ||
+      !Number.isFinite(Number(payment.transaction_amount_refunded)) || Number(payment.transaction_amount_refunded) < 0)
+    return { eligible: false, reason: "refund_snapshot_unverified" };
+  if (payment.status_detail !== "accredited") return { eligible: false, reason: "payment_detail_unapproved" };
+  const refunded = Number(payment.transaction_amount_refunded);
+  if (refunded > 0 || payment.refunds.length > 0)
     return { eligible: false, reason: "payment_already_refunded" };
   if (!moneyMatches(order?.amount, payment?.transaction_amount)) return { eligible: false, reason: "payment_amount_mismatch" };
   const expectedOrder = String(order?.order_id || "").toLowerCase();

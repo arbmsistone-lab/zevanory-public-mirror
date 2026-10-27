@@ -27,7 +27,18 @@ export async function revokeRefundDownloads(sql, record) {
   await sql.query("update artifact_download_tokens set used_at=coalesce(used_at, now()) where order_id=$1", [record.order_id]);
 }
 export async function saveRefund(kv, record) {
+  if (record.auto_dispatch === true) {
+    // Monotonic guard for stale readbacks. KV does not offer compare-and-swap;
+    // the SQL provider claim is separately checked before any new ON request.
+    const stored = JSON.parse(await kv.get(KEY(record.order_id)) || "null");
+    const older = Number(record.version || 0);
+    const latest = Number(stored?.version || 0);
+    if (stored && (latest > older ||
+      (["approved", "refunded"].includes(stored.status) && !["approved", "refunded"].includes(record.status)))) return false;
+    record.version = Math.max(older, latest) + 1;
+  }
   await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL });
+  return true;
 }
 export async function markRefundApproved(sql, kv, record, refundId, actor) {
   // Once the provider confirms, never retry POST even on DB/KV failure.
@@ -37,6 +48,7 @@ export async function markRefundApproved(sql, kv, record, refundId, actor) {
   Object.assign(record, { status: "approved", refund_id: String(refundId), refund_status: "approved",
     approved_at: new Date().toISOString(), approved_by: actor,
     provider_outcome_unknown: false, download_revocation_pending: true, reconciliation_missing: null });
+  if (record.auto_dispatch === true && !record.test) record.approved_email_pending = true;
   await saveRefund(kv, record);
   try {
     await revokeRefundDownloads(sql, record);

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
 import { evaluateAutomaticRefund, refundAutoDispatchEnabled, validateMercadoPagoCredential } from "../worker/refund-auto-dispatch.mjs";
 
@@ -8,6 +9,7 @@ const EMAIL = "buyer@example.com";
 const PAYMENT_ID = "99887766";
 const KEY = "refund:req:" + OID;
 const DAY = 86_400_000;
+const ACCOUNT_HASH = createHash("sha256").update("123456789").digest("hex").slice(0, 16);
 
 const baseOrder = (extra = {}) => ({ order_id: OID, status: "paid", amount: 197, offer_id: "ZEV-IA-011",
   certification_pilot: false, payment_id: PAYMENT_ID, paid_at: new Date(Date.now() - DAY).toISOString(),
@@ -16,7 +18,7 @@ const basePayment = (extra = {}) => ({ id: Number(PAYMENT_ID), status: "approved
   external_reference: OID, transaction_amount: 197, transaction_amount_refunded: 0, refunds: [], payer: { email: EMAIL },
   metadata: { zevanory_order_id: OID, offer_id: "ZEV-IA-011" }, ...extra });
 
-function fixture({ order = baseOrder(), payment = basePayment(), flag = "true", token = "APP_USR-FAKE-PRODUCTION",
+function fixture({ order = baseOrder(), payment = basePayment(), flag = "true", token = "APP_USR-FAKE-PRODUCTION-ABCDEFGHIJKLMNOP",
   evidenceEmail = EMAIL, failAfterRecord = false } = {}) {
   const state = new Map();
   let claim = null, recordFailure = failAfterRecord, revocations = 0;
@@ -41,7 +43,8 @@ function fixture({ order = baseOrder(), payment = basePayment(), flag = "true", 
     if (statement.startsWith("update artifact_download_tokens")) { revocations++; return []; }
     return [];
   } };
-  const env = { REFUND_AUTO_DISPATCH: flag, MERCADOPAGO_ACCESS_TOKEN: token,
+  const env = { REFUND_AUTO_DISPATCH: flag, MERCADOPAGO_ENV: "production",
+    MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ACCOUNT_HASH, MERCADOPAGO_ACCESS_TOKEN: token,
     MERCADOPAGO_TEST_ACCESS_TOKEN: "TEST-FAKE-SANDBOX", RESEND_API_KEY: "fake-resend", OWNER_ALERT_EMAIL: "owner@example.com",
     ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://fake.invalid/test" };
   const request = () => new Request("https://zevanory.api.br/api/support/refund-request", { method: "POST",
@@ -52,6 +55,7 @@ function fixture({ order = baseOrder(), payment = basePayment(), flag = "true", 
     const original = globalThis.fetch;
     globalThis.fetch = async (url, options = {}) => {
       const target = String(url);
+      if (target.endsWith("/users/me")) return Response.json({ id: 123456789, site_id: "MLB", tags: [] });
       if (target === "https://api.resend.com/emails") { calls.emails.push(JSON.parse(options.body)); return Response.json({ id: "fake-email" }); }
       if (options.method === "POST") {
         calls.post++;
@@ -71,7 +75,9 @@ test("RA01 elegível: confirma consumidor, reserva e faz uma chamada com chave i
   try {
     const out = await x.invoke();
     assert.equal(out.status, 200, "[RA01] resposta aceita");
-    assert.equal(out.body.status, "approved", "[RA01] resultado aprovado");
+    assert.equal(out.body.protocol, OID, "[RA01] protocolo na resposta");
+    assert.match(out.body.message, /Se os dados conferirem/, "[RA01] mensagem de sucesso");
+    assert.equal(JSON.parse(x.state.get(KEY)).status, "approved", "[RA01] resultado aprovado");
     assert.equal(x.calls.post, 1, "[RA01] uma chamada financeira");
     assert.equal(x.claim().stage, "reconciled_refunded", "[RA01] reserva durável precede conclusão");
     assert.equal(x.revocations(), 1, "[RA01] downloads revogados");
@@ -111,7 +117,7 @@ test("RA04 timeout e 5xx são outcome_unknown e nunca têm repetição cega", as
     try {
       const first = await x.invoke();
       assert.equal(first.status, 200, "[RA04] recebimento confirmado apesar do resultado ambíguo");
-      assert.match(first.body.processing, /mercadopago_refund_/, "[RA04] diagnóstico de processamento preservado");
+      assert.match(first.body.message, /Se os dados conferirem/, "[RA04] resposta pública uniforme");
       assert.equal(JSON.parse(x.state.get(KEY)).provider_outcome_unknown, true, "[RA04] marcador outcome_unknown");
       assert.equal((await x.invoke()).status, 200, "[RA04] repetição apenas confirma recebimento");
       assert.equal(x.calls.post, 1, "[RA04] sem nova tentativa cega");
@@ -121,7 +127,6 @@ test("RA04 timeout e 5xx são outcome_unknown e nunca têm repetição cega", as
 
 test("RA05 exceções vão para fila manual sem POST e guardam motivo claro", async () => {
   const scenarios = [
-    ["identity_mismatch", {}, { payer: { email: "other@example.com" } }, "other@example.com"],
     ["outside_withdrawal_window", { paid_at: new Date(Date.now() - 20 * DAY).toISOString(), delivered_at: new Date(Date.now() - 10 * DAY).toISOString() }, {}, EMAIL],
     ["provider_dispute_or_chargeback", {}, { status_detail: "charged_back" }, EMAIL],
     ["payment_amount_mismatch", {}, { transaction_amount: 196 }, EMAIL],
@@ -178,6 +183,9 @@ test("RA08 matriz pura de elegibilidade exige pedido, oferta, valor, estado e au
     ["payment_offer_mismatch", { payment: basePayment({ metadata: { zevanory_order_id: OID, offer_id: "OTHER" } }) }],
   ];
   for (const [reason, mutation] of cases) assert.deepEqual(evaluateAutomaticRefund({ ...ok, ...mutation }), { eligible: false, reason }, "[RA08] " + reason);
-  assert.equal(validateMercadoPagoCredential({ MERCADOPAGO_ACCESS_TOKEN: "TEST-X" }, false).ok, false, "[RA08] produção recusa TEST-");
-  assert.equal(validateMercadoPagoCredential({ MERCADOPAGO_TEST_ACCESS_TOKEN: "APP_USR-X" }, true).ok, false, "[RA08] sandbox recusa token produtivo");
+});
+
+test("RA09 credenciais indevidas nunca passam a validação de conta", async () => {
+  assert.equal((await validateMercadoPagoCredential({ MERCADOPAGO_ENV: "production", MERCADOPAGO_ACCESS_TOKEN: "TEST-X" }, false)).ok, false, "[RA09] produção recusa TEST-");
+  assert.equal((await validateMercadoPagoCredential({ MERCADOPAGO_ENV: "sandbox", MERCADOPAGO_TEST_ACCESS_TOKEN: "APP_USR-X" }, true)).ok, false, "[RA09] sandbox recusa token produtivo");
 });

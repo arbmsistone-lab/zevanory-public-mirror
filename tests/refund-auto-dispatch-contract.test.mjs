@@ -12,10 +12,15 @@ const args = (x = {}) => ({ order: order(), payment: payment(), window: { eligib
   test: false, credential: { ok: true }, ...x });
 const denied = (label, expected, x) => test(label, () => assert.equal(evaluateAutomaticRefund(args(x)).reason, expected, label));
 
-test("A01 flag somente true", () => assert.equal(refundAutoDispatchEnabled({ REFUND_AUTO_DISPATCH: "false" }), false, "A01"));
-test("A02 produção recusa TEST", () => assert.equal(validateMercadoPagoCredential({ MERCADOPAGO_ACCESS_TOKEN: "TEST-X" }, false).ok, false, "A02"));
-test("A03 sandbox recusa produção", () => assert.equal(validateMercadoPagoCredential({ MERCADOPAGO_TEST_ACCESS_TOKEN: "APP_USR-X" }, true).ok, false, "A03"));
-test("A04 token ausente", () => assert.equal(validateMercadoPagoCredential({}, false).ok, false, "A04"));
+test("A01 flag somente true", () => {
+  assert.equal(refundAutoDispatchEnabled({ REFUND_AUTO_DISPATCH: "false" }), false, "A01");
+  for (const flag of ["TRUE", " true", "true ", "True", "1", true])
+    assert.equal(refundAutoDispatchEnabled({ REFUND_AUTO_DISPATCH: flag }), false, "A01");
+  assert.equal(refundAutoDispatchEnabled({ REFUND_AUTO_DISPATCH: "true" }), true, "A01");
+});
+test("A02 produção recusa TEST", async () => assert.equal((await validateMercadoPagoCredential({ MERCADOPAGO_ENV: "production", MERCADOPAGO_ACCESS_TOKEN: "test-X" }, false)).ok, false, "A02"));
+test("A03 sandbox recusa produção", async () => assert.equal((await validateMercadoPagoCredential({ MERCADOPAGO_ENV: "sandbox", MERCADOPAGO_TEST_ACCESS_TOKEN: "APP_USR-X" }, true)).ok, false, "A03"));
+test("A04 token ausente", async () => assert.equal((await validateMercadoPagoCredential({ MERCADOPAGO_ENV: "production" }, false, { verify: async () => true })).ok, false, "A04"));
 test("A05 tolerância monetária", () => assert.equal(evaluateAutomaticRefund(args({ payment: payment({ transaction_amount: 197.01 }) })).reason, "payment_amount_mismatch", "A05"));
 test("A06 sinal de disputa", () => assert.equal(evaluateAutomaticRefund(args({ payment: payment({ status_detail: "in_dispute" }) })).reason, "provider_dispute_or_chargeback", "A06"));
 denied("A07 identidade", "identity_mismatch", { identityMatched: false });
