@@ -184,12 +184,12 @@ def how_to_buy() -> str:
 PREVIEW_MANIFEST = json.loads((ROOT / "docs" / "evidence" / "sales-ux" / "previews-manifest.json").read_text(encoding="utf-8"))
 _PREVIEWS = {i["id"]: i for i in PREVIEW_MANIFEST["images"]}
 PREVIEW_TEXT = {
-    "manual-ia-capa": ("Capa do manual", "Capa do manual IA na Prática, com o público, o formato e a lista das oito aulas"),
-    "manual-ia-aula-a1": ("Uma página interna: aula A1", "Página da aula A1 do manual IA na Prática: objetivo, exemplo comentado e exercício"),
-    "planilha-ia-orcamento": ("Trecho da planilha: aba Orçamento", "Trecho da planilha do IA na Prática, aba Orçamento, com as colunas item, quantidade, unitário, subtotal e conferência"),
-    "manual-vendas-capa": ("Capa do manual", "Capa do manual Vendas na Prática, com o público, o formato e a lista das oito aulas"),
-    "manual-vendas-aula-b1": ("Uma página interna: aula B1", "Página da aula B1 do manual Vendas na Prática: defina uma oferta que você consegue cumprir"),
-    "planilha-vendas-oportunidades": ("Trecho da planilha: aba Oportunidades", "Trecho da planilha comercial do Vendas na Prática, aba Oportunidades, com origem, etapa, resultado, proposta e próxima ação"),
+    "manual-ia-capa": ("Capa do manual", "Capa do manual IA na Prática, versão 1.2: usar inteligência artificial no atendimento, no orçamento, na agenda, no conteúdo e na rotina, com segurança e conferência"),
+    "manual-ia-aula-a1": ("Uma página interna: aula A1", "Primeira página da aula A1 do manual IA na Prática, Escolha uma tarefa e meça o antes: objetivo, por que começar medindo, como escolher a tarefa e exemplos por ramo"),
+    "planilha-ia-orcamento": ("Trecho da planilha: aba Orçamento", "Trecho da planilha vazia do IA na Prática, aba Orçamento: identificação, data e ramo, e as colunas item, quantidade, valor unitário, subtotal e conferência"),
+    "manual-vendas-capa": ("Capa do manual", "Capa do manual Vendas na Prática, versão 1.2: organizar os pedidos e oportunidades que chegam, do atendimento à proposta, às objeções, ao acompanhamento e à medição"),
+    "manual-vendas-aula-b1": ("Uma página interna: início da aula B1", "Página 7 do manual Vendas na Prática: fim das regras das plataformas de mensagem, a parte sobre LGPD nas vendas e o início da aula B1, Defina uma oferta que você consegue cumprir"),
+    "planilha-vendas-oportunidades": ("Trecho da planilha: aba Oportunidades", "Trecho da planilha vazia do Vendas na Prática, aba Oportunidades: data de entrada, origem, produto ou serviço, etapa, proposta, valor, resultado, motivo da perda e contato permitido"),
     "manual-lucro-capa": ("Capa do manual", "Capa do manual Lucro & Caixa: o que o produto resolve e como usar a planilha"),
     "manual-lucro-modulo-1": ("Uma página interna: módulos 1 e 2", "Página do manual Lucro & Caixa com os módulos 1 e 2: faturamento x resultado e mapa de custos"),
     "planilha-lucro-painel": ("Trecho da planilha: Painel de Decisão", "Trecho da planilha Lucro & Caixa, Painel de Decisão, com os rótulos dos indicadores; a coluna de leitura está oculta"),
