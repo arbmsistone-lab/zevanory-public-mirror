@@ -15,7 +15,8 @@ Superfícies (cada uma é reescrita a partir de data/products.json; nenhuma tem 
   - materiais de divulgação: worker/acquisition-engine.mjs, worker/creative-autonomy.mjs, worker/lead-magnet.mjs,
     worker/multichannel-autonomy.mjs;
   - prova sandbox: worker/sandbox-proof-v2.mjs e scripts/mercadopago_combo_sandbox.py;
-  - mapa P24: data/p24/promise-map.json (texto das promessas de economia).
+  - mapa P24: data/p24/promise-map.json (texto das promessas de economia);
+  - corpus de avaliação do chat: data/site-chat-eval/general.json e critical.json (preço esperado por produto).
 Depois de mudar um preço: rode este script e scripts/build_sales_public.py; o CI confere os dois.
 """
 from __future__ import annotations
@@ -68,6 +69,13 @@ def rules(d, by_slug, by_sku, sub):
     R.append(("sales-overlay/approved.json", rf'("({slug_re})": "(?:[^"\\]|\\.)*?Preço de tabela: R\$ )\d+', lambda m: f"{m.group(1)}{by_slug[m.group(2)]['price']}", 5))
     R.append(("sales-overlay/llms.txt", rf'(\]\(https://vendas\.zevanory\.api\.br/({slug_re})\)[^\n]*?R\$ )\d+', lambda m: f"{m.group(1)}{by_slug[m.group(2)]['price']}", len(by_slug)))
     R.append(("sales-overlay/llms.txt", r'(\]\(https://vendas\.zevanory\.api\.br/conteudo-pronto\)[^\n]*?R\$ )\d+(/mês)', lambda m: f"{m.group(1)}{sub}{m.group(2)}", 1))
+    # Corpus de avaliação do chat: a resposta esperada para "quanto custa X" é o preço canônico de X.
+    by_name = {p["name"]: p["price"] for p in d["products"]}
+    by_name[d["subscription"]["name"]] = sub
+    names = "|".join(re.escape(n) for n in by_name)
+    eval_rx = rf'("q": "[^"]*?({names})[^"]*",\s*"expect": \{{[^}}]*?"includes": \[\s*"R\$ )\d+(,00)'
+    R.append(("data/site-chat-eval/general.json", eval_rx, lambda m: f"{m.group(1)}{by_name[m.group(2)]}{m.group(3)}", 6))
+    R.append(("data/site-chat-eval/critical.json", eval_rx, lambda m: f"{m.group(1)}{by_name[m.group(2)]}{m.group(3)}", 2))
     pm = "data/p24/promise-map.json"
     R.append((pm, r'"Economia de R\$ \d+ em relação à compra separada \(R\$ \d+\)"(?=,\s*"type": "price",\s*"components": \[\s*"ia-na-pratica",\s*"vendas-na-pratica"\s*\])',
               lambda m: f'"Economia de R$ {cmb_eco} em relação à compra separada (R$ {cmb_sep})"', 1))

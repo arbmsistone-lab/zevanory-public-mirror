@@ -274,7 +274,7 @@ test("SC13 falha do banco => 503 com e-mail/formulários; catálogo vencido ou c
 test("SC14 validador do site: bloqueia valor, checkout, desconto, promessa, negação de direito e prazo fora da fonte; aceita a política oficial", () => {
   for (const [k, txt] of Object.entries(AI_OUTPUTS)) if (k !== "good") assert.equal(validateSiteReply(txt, { salesOpen: false }).ok, false, "[SC14.1] " + (k));
   assert.equal(validateSiteReply("Custa R$ 197,00.", { salesOpen: false }).ok, false, "[SC14.2] valor com vendas fechadas");
-  assert.equal(validateSiteReply("Custa R$ 197,00.", { salesOpen: true }).ok, true, "[SC14.3] preço do catálogo com vendas abertas");
+  assert.equal(validateSiteReply(`Custa R$ ${__PRICES["ia-na-pratica"]},00.`, { salesOpen: true }).ok, true, "[SC14.3] preço do catálogo com vendas abertas");
   assert.equal(validateSiteReply("Custa R$ 150,00.", { salesOpen: true }).ok, false, "[SC14.4]");
   assert.equal(validateSiteReply("Chega em 3 dias úteis.").ok, false, "[SC14.5]");
   assert.equal(validateSiteReply("Finalize em mercadopago.com.br/checkout/v1 ou pay.hotmart.com/X1").ok, false, "[SC14.6] checkout sem esquema também");

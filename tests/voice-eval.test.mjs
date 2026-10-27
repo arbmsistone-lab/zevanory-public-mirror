@@ -1,3 +1,5 @@
+import { readFileSync as __rfV } from "node:fs";
+const __PRICES_V = Object.fromEntries(JSON.parse(__rfV(new URL("../data/products.json", import.meta.url), "utf8")).products.map((p) => [p.slug, p.price])); // preço canônico
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -24,7 +26,7 @@ function fakeAi({ garble = false, wrongPrice = false } = {}) {
       if (model.includes("whisper")) { const t = dec.decode(Buffer.from(input.audio, "base64")).trim(); return { text: garble ? "xx yy zz" : t }; }
       const q = JSON.stringify(input.messages || input);
       const body = /reembolso|dinheiro de volta/i.test(q) ? "Você tem 7 dias de garantia para pedir reembolso pela Hotmart." :
-        /lucro/i.test(q) ? (wrongPrice ? "O Lucro & Caixa custa R$ 99,00." : "O Lucro & Caixa custa R$ 247,00.") :
+        /lucro/i.test(q) ? (wrongPrice ? "O Lucro & Caixa custa R$ 99,00." : `O Lucro & Caixa custa R$ ${__PRICES_V["lucro-e-caixa"]},00.`) :
         "Para começar a vender mais, o Vendas na Prática é o indicado, e o Combo IA + Vendas junta os dois.";
       return { response: body };
     },
