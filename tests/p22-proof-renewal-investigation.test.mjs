@@ -137,34 +137,81 @@ test("C3 acceptance criteria fix every scenario and its required outcome", () =>
     ["Execução atrasada", "`measured_at` continua marcando o início; nenhum snapshot com idade acima de 65 aceito"],
     ["Dois produtores simultâneos", "a linha do banco só avança; nenhum resultado mais antigo substitui um mais novo; nenhum FRESH falso"],
     ["Resultado antigo depois de um novo", "o `update` do resultado antigo afeta zero linhas; estado `UNVERIFIED_FAIL_CLOSED` até auditoria verificada mais nova"],
-    ["Erro de banco seguido de recuperação", "prova válida preservada enquanto tiver até 65 min, vencimento reconhecido se passar disso, renovação no primeiro tique com banco de volta"],
+    ["Erro de banco seguido de recuperação", "liberação: `UNVERIFIED_FAIL_CLOSED` enquanto o banco estiver fora; exibição: prova válida preservada enquanto tiver até 65 min, sem autorizar venda; auditoria com 503 não altera a linha; renovação no primeiro tique com banco de volta"],
     ["Falha de gravação no KV", "a decisão de liberação não muda, porque lê o banco; cache defasado nunca libera venda; na variante só KV o cenário reprova por desenho (resíduo de até 65 min declarado)"],
-    ["Commit do 409 falha no banco", "tentativa sem resolução; liberação suspensa em até G minutos; `UNVERIFIED_FAIL_CLOSED` até auditoria resolvida mais nova"],
+    ["Commit do 409 falha no banco", "pendência aberta; liberação suspensa quando completa G (6 min); `UNVERIFIED_FAIL_CLOSED` até desfecho commitado mais novo"],
+    ["Pendência seguida de novas tentativas (A/B/C)", "`unresolved_since` fica em T+30; liberação suspensa a partir de T+36; B e C não reabrem a janela; volta só com desfecho commitado"],
+    ["Linha semente ausente", "`update` da tentativa afeta zero linhas; auditoria não começa; batimento `seed_missing` e alerta; liberação `UNVERIFIED_FAIL_CLOSED`"],
+    ["Orçamento de subrequisições no commit do desfecho", "pico medido de no máximo 47 subrequisições externas (46 sem vendas abertas); o commit do desfecho nunca é cortado"],
   ];
   const table = [...doc.matchAll(/^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm)].map((m) => m.slice(1).map((c) => c.trim()));
   const at = table.findIndex((r) => r[0] === "Cenário (C3)");
   assert.ok(at >= 0, "C3 table located");
   assert.deepEqual(table.slice(at + 1, at + 1 + rows.length).map((r) => [r[0], r[2]]), rows);
+  assert.equal(rows.length, 11);
+  // A/B/C: pending opened at T+30 by A; release stops at T+30+G regardless of B (T+45) and C (T+60).
+  const T = 0, G = 6, pendingSince = T + 30;
+  for (const attempt of [T + 45, T + 60]) assert.equal(Math.min(pendingSince, attempt), pendingSince);
+  assert.equal(pendingSince + G, T + 36);
   assert.match(flat, /dispatch cronometrado do workflow do GitHub a menos de 60 s de um tique do Worker `10,25,40,55`, com vendas abertas/);
   assert.match(flat, /cota diária de gravações esgotada, 429 na mesma chave ou erro transitório no cache/);
   assert.match(flat, /derrubar a conexão entre a leitura dos provedores e o commit do 409/);
 });
 
-test("recommended design: Postgres authority with seed row, tie-break and fail-closed 409 commit", () => {
+test("recommended design: Postgres authority, DB clock, per-pending G, seed-row failure", () => {
   assert.match(flat, /3\. \*\*Autoridade da prova no Postgres \(desenho recomendado\)\.\*\* Segue a Sol ORDEM 294/);
-  assert.match(flat, /values \(1, '-infinity', '-infinity', 'unverified'\) on conflict \(id\) do nothing/);
+  assert.match(flat, /values \(1, '-infinity', '-infinity', null, 'unverified'\) on conflict \(id\) do nothing/);
+  assert.match(flat, /todos os carimbos vêm do `now\(\)` do Postgres, nunca do Worker nem do runner do GitHub\. A idade e o G são calculados em SQL/);
   assert.match(flat, /\*\*o caminho do GitHub carimba no início da leitura\*\*, não ao persistir/);
-  assert.match(flat, /update financial_proof_state set attempt_at = \$inicio where id = 1 and attempt_at < \$inicio`\. Se esse commit falhar, a auditoria não começa/);
-  assert.match(flat, /where id = 1 and \(measured_at < \$novo or \(measured_at = \$novo and \$desfecho = 'ambiguous'\)\)`/);
+  assert.match(flat, /o script do runner nunca envia carimbo/);
+  assert.match(flat, /`update financial_proof_state set attempt_at = now\(\), unresolved_since = coalesce\(unresolved_since, now\(\)\) where id = 1 returning attempt_at`/);
+  assert.match(flat, /\*\*idêntico\*\* \(`\$novo = \$inicio`\)\. Se esse commit falhar, a auditoria não começa/);
+  assert.match(flat, /\*\*Zero linhas afetadas\*\* \(linha semente ausente\) é erro: a auditoria não começa, o batimento registra `seed_missing` e sai um alerta/);
+  assert.match(flat, /unresolved_since = case when \$novo >= attempt_at then null else attempt_at end where id = 1 and \(measured_at < \$novo or \(measured_at = \$novo and \$desfecho = 'ambiguous'\)\)`/);
   assert.match(doc, /Só grava o que for \*\*estritamente mais novo\*\*\. Em empate, 409 vence\./);
   assert.match(flat, /Zero linhas afetadas significa resultado antigo, que é descartado e não vai ao cache/);
-  assert.match(flat, /a criação de checkout com vendas abertas lê a linha\. Só libera com `outcome = 'verified'`, SHA exato, idade de 65 minutos ou menos, `ambiguous = 0` e tentativa resolvida \(`attempt_at <= measured_at`\) ou em curso há menos de G minutos/);
+  assert.match(flat, /A pendência \(`unresolved_since`\) só é limpa por um desfecho commitado da tentativa mais recente/);
+  assert.match(flat, /now\(\) - measured_at <= interval '65 minutes' and \(unresolved_since is null or now\(\) - unresolved_since < interval '6 minutes'\) from financial_proof_state where id = 1`/);
+  // G pinned and justified against the reduced MP budget (42 GETs x 7 s timeout + retry pauses).
+  assert.match(flat, /\*\*G = 6 minutos\*\*, acima do pior caso da auditoria com o orçamento do item 10/);
+  assert.ok(42 * 7 + 6 * 1.5 < 6 * 60, "worst-case audit fits in G");
   assert.match(flat, /Banco indisponível significa `UNVERIFIED_FAIL_CLOSED`/);
   assert.match(flat, /Ele alimenta a exibição \(`\/api\/status`, `\/api\/sales\/status`\) e o pulo por piso, nunca a liberação/);
-  assert.match(flat, /\*\*o 409 só invalida depois de commitado\.\*\* Se o commit do 409 falhar, a tentativa fica sem resolução e a linha para de liberar em até G minutos/);
+  assert.match(flat, /Novas tentativas \*\*não\*\* reabrem a janela, porque `coalesce` preserva o início da primeira pendência\. O FRESH falso residual é de até G, uma vez por pendência, e não recorrente/);
   assert.match(flat, /uma gravação ausente ou falha significa UNVERIFIED, nunca FRESH/);
-  assert.match(flat, /pressupostos: o commit da tentativa precede a leitura dos provedores/);
-  assert.match(flat, /\| Autoridade no Postgres \(recomendado\) \| `update` monotônico afeta zero linhas; descartado \| tentativa sem resolução: para de liberar em até G minutos \| até G minutos \(0 com G = 0\) \|/);
+  assert.match(flat, /alternativa para o proprietário: G = 0 \(nenhuma janela\)/);
+  assert.match(flat, /\| Autoridade no Postgres \(recomendado\) \| `update` monotônico afeta zero linhas; descartado \| pendência preservada por `coalesce`: para de liberar quando completa G \(6 min\); novas tentativas não reabrem a janela \| até 6 min, uma vez por pendência \(0 com G = 0\) \|/);
+});
+
+test("checkout gate is new: today the guard does not read the proof; owner and Sol decide", () => {
+  const guard = read("../worker/commercial-checkout-guard.mjs");
+  const sales = read("../worker/sales-control.mjs");
+  assert.equal(line(guard, 5), 'export const REQUIRED = Object.freeze(["global","pre_sale","absolute","checkout","financial","kv","preflight","environment","fiscal","token"]);');
+  assert.doesNotMatch(guard, /FinancialProof|financial-proof|commercial-metrics-projection/);
+  assert.match(line(worker, 591), /const snapshot = await readFinancialProofSnapshot\(normalized\);/);
+  assert.match(line(sales, 149), /const proof = await readFinancialProofSnapshot\(env\);/);
+  assert.match(doc, /## Gate de checkout: decisão do proprietário e da Sol/);
+  assert.match(flat, /\*\*Fato:\*\* hoje a criação de checkout \*\*não lê a prova\*\*\. `worker\/commercial-checkout-guard\.mjs:5` define/);
+  assert.match(flat, /é, portanto, um \*\*gate novo\*\*, a ser implementado depois num PR próprio e autorizado/);
+  for (const ev of ["um 409 transitório do Mercado Pago (429/5xx, `ambiguous_transient`)", "uma tentativa sem resolução, depois de G (6 min)", "indisponibilidade do banco", "esgotamento dos 100 CU-h do Neon Free"])
+    assert.ok(flat.includes(ev), ev);
+  assert.match(flat, /até a próxima auditoria verificada \(15 a 30 min\)/);
+  assert.match(flat, /\| \*\*Bloquear \(fail-closed; padrão recomendado, coerente com P22 e a ORDEM 294\)\*\* \| checkout só com a prova do banco válida \|/);
+  assert.match(flat, /\| Degradar \| checkout continua como hoje \(sem exigir a prova\); a prova só governa a exibição \|/);
+  assert.match(flat, /\| Degradar só no transitório \|/);
+  assert.match(flat, /\*\*Esta decisão é do proprietário e da Sol\*\* e não é tomada por este documento/);
+});
+
+test("subrequest budget under the proposal stays below 50 with margin", () => {
+  assert.match(audit, /remaining:46/);
+  assert.match(recovered, /No database connection string was provided to `neon\(\)`/);
+  const today = 2 + 46, unchanged = 1 + 2 + 1 + 46, reduced = 1 + 2 + 1 + 42;
+  assert.deepEqual([today, today + 1, unchanged, unchanged + 1, reduced, reduced + 1], [48, 49, 50, 51, 46, 47]);
+  assert.ok(reduced + 1 <= 50 - 3, "margin of at least 3 with sales open");
+  assert.match(flat, /chegaria a 1 \(tentativa\) \+ 2 SQL de leitura \+ 1 desfecho \+ até 46 GETs MP = \*\*até 50\*\*, e \*\*51\*\* com vendas abertas/);
+  assert.match(flat, /reduzir o orçamento de GETs MP da auditoria de 46 para \*\*42\*\*, o que dá \*\*até 46\*\* por invocação \(47 com vendas abertas\), com margem de pelo menos 3/);
+  assert.match(flat, /reprova se passar de 46 \(47 com vendas abertas\)/);
+  assert.match(flat, /\| Subrequisições externas por invocação da prova \| até 48 \(2 SQL \+ até 46 GETs MP, `\/users\/me` e retentativas incluídos\); 49 com vendas abertas \| até 46 \(tentativa \+ 2 SQL \+ desfecho \+ até 42 GETs MP\); 47 com vendas abertas\. Sem reduzir o orçamento MP: até 50, ou 51 com vendas abertas \|/);
 });
 
 test("KV-only variant is a fallback with the corrected guard and an honest 65-minute residual", () => {

@@ -32,6 +32,16 @@ Revisão 4 (reauditoria de `3832b0a8`):
 - os critérios C3 ganham os cenários de falha de gravação, e o teste passa a
   fixar os resultados exigidos.
 
+Revisão 5 (reauditoria de `1b481702`):
+- declara que o checkout hoje não lê a prova e apresenta o gate novo como
+  decisão do proprietário e da Sol;
+- corrige o limite de G com a pendência `unresolved_since` (G = 6 min);
+- usa o relógio do banco;
+- separa exibição de liberação no cenário de banco fora;
+- trata a linha semente ausente como erro com alerta;
+- refaz o orçamento de subrequisições: até 46, ou 47 com vendas abertas, com
+  o orçamento MP reduzido para 42.
+
 ## Sintoma e contrato
 
 O conjunto observado teve 177 sondagens: 31 `PROVEN` e 146
@@ -318,46 +328,65 @@ prova financeira das demais tarefas caras:
    KV passa a ser só cache. Os passos:
    - **linha única com semente:** a tabela `financial_proof_state` tem uma
      linha só (`id = 1`), criada por
-     `insert into financial_proof_state (id, measured_at, attempt_at, outcome)
-     values (1, '-infinity', '-infinity', 'unverified') on conflict (id) do
+     `insert into financial_proof_state (id, measured_at, attempt_at, unresolved_since, outcome)
+     values (1, '-infinity', '-infinity', null, 'unverified') on conflict (id) do
      nothing`, em migração própria e autorizada;
-   - **carimbo no início da leitura:** todo snapshot carrega o instante de
-     início da leitura dos provedores (`measured_at`), pelo relógio do Worker;
+   - **relógio do banco:** todos os carimbos vêm do `now()` do Postgres, nunca
+     do Worker nem do runner do GitHub. A idade e o G são calculados em SQL;
    - **o caminho do GitHub carimba no início da leitura**, não ao persistir:
-     `financialClassification` devolve o instante e
-     `persistClassificationSnapshot` o recebe em vez de `Date.now()`;
+     a invocação HTTP do Worker que atende o GitHub registra a tentativa no
+     banco antes da classificação e usa o carimbo devolvido; o script do
+     runner nunca envia carimbo;
    - **registro da tentativa antes de ler os provedores:**
-     `update financial_proof_state set attempt_at = $inicio where id = 1 and
-     attempt_at < $inicio`. Se esse commit falhar, a auditoria não começa;
+     `update financial_proof_state set attempt_at = now(), unresolved_since =
+     coalesce(unresolved_since, now()) where id = 1 returning attempt_at`.
+     O `attempt_at` devolvido é o `$inicio` da auditoria e o `measured_at` do
+     desfecho, **idêntico** (`$novo = $inicio`). Se esse commit falhar, a
+     auditoria não começa. **Zero linhas afetadas** (linha semente ausente) é
+     erro: a auditoria não começa, o batimento registra `seed_missing` e sai
+     um alerta (no máximo um por hora), para não virar `UNVERIFIED` silencioso;
    - **gravação do desfecho, atômica e monotônica:**
      `update financial_proof_state set measured_at = $novo, outcome =
-     $desfecho, … where id = 1 and (measured_at < $novo or (measured_at = $novo
+     $desfecho, …, unresolved_since = case when $novo >= attempt_at then null
+     else attempt_at end where id = 1 and (measured_at < $novo or (measured_at = $novo
      and $desfecho = 'ambiguous'))`.
      Só grava o que for **estritamente mais novo**. Em empate, 409 vence.
      Zero linhas afetadas significa resultado antigo, que é descartado e não
-     vai ao cache;
-   - **decisão de liberar venda:** a criação de checkout com vendas abertas lê
-     a linha. Só libera com `outcome = 'verified'`, SHA exato, idade de 65
-     minutos ou menos, `ambiguous = 0` e tentativa resolvida
-     (`attempt_at <= measured_at`) ou em curso há menos de G minutos. G é o
-     prazo máximo da auditoria, imposto pelo próprio produtor (por exemplo,
-     6 min). Banco indisponível significa `UNVERIFIED_FAIL_CLOSED`;
+     vai ao cache. A pendência (`unresolved_since`) só é limpa por um desfecho
+     commitado da tentativa mais recente; o desfecho de uma tentativa mais
+     velha passa a pendência para o início da tentativa ainda em curso;
+   - **verificação de liberação (gate novo, ver a seção "Gate de checkout:
+     decisão do proprietário e da Sol"):** uma única consulta decide:
+     `select outcome = 'verified' and release_sha = $sha and ambiguous = 0 and
+     now() - measured_at <= interval '65 minutes' and (unresolved_since is null
+     or now() - unresolved_since < interval '6 minutes') from
+     financial_proof_state where id = 1`. **G = 6 minutos**, acima do pior
+     caso da auditoria com o orçamento do item 10 (42 GETs de 7 s mais as
+     pausas: cerca de 5 min). A segurança depende só dessa checagem do
+     leitor; um produtor que passe de G e commite depois grava um resultado
+     legítimo (carimbado no início). Banco indisponível significa
+     `UNVERIFIED_FAIL_CLOSED`;
    - **KV como cache derivado:** o cache é gravado só depois do commit, com o
      `measured_at` da linha, e também depois de um 409. Ele alimenta a exibição
      (`/api/status`, `/api/sales/status`) e o pulo por piso, nunca a
      liberação. Um cache defasado ou que não pôde ser gravado só atrasa a
-     renovação ou a exibição. A criação de checkout recusa quando o banco não
-     confirma.
+     renovação ou a exibição.
 
    **Resíduo declarado e pressupostos:**
    - **o 409 só invalida depois de commitado.** Se o commit do 409 falhar, a
-     tentativa fica sem resolução e a linha para de liberar em até G minutos.
-     Isso é fail-closed: uma gravação ausente ou falha significa UNVERIFIED,
-     nunca FRESH;
-   - com G = 0 não há janela nenhuma, ao custo de `UNVERIFIED` durante cada
-     auditoria (10 a 20 s a cada 30 min);
-   - pressupostos: o commit da tentativa precede a leitura dos provedores, e
-     todos os carimbos vêm do mesmo relógio (o do Worker);
+     pendência aberta na tentativa continua até um desfecho commitado, e a
+     liberação para quando ela completa G (6 min). Novas tentativas **não**
+     reabrem a janela, porque `coalesce` preserva o início da primeira
+     pendência. O FRESH falso residual é de até G, uma vez por pendência, e não
+     recorrente. Isso é fail-closed: uma gravação ausente ou falha significa
+     UNVERIFIED, nunca FRESH;
+   - alternativa para o proprietário: G = 0 (nenhuma janela), ao custo de
+     `UNVERIFIED` durante cada auditoria (10 a 20 s a cada 30 min, mais as do
+     GitHub com vendas abertas);
+   - pressupostos: o commit da tentativa precede a leitura dos provedores;
+     cada `update` é uma instrução única com commit implícito (a atomicidade
+     vem do Postgres em READ COMMITTED; não foi testado pelo driver HTTP do
+     Neon);
    - a exibição pelo cache pode divergir do banco, inclusive por até 65
      minutos se a gravação do cache falhar. Por isso a exibição não autoriza
      venda.
@@ -414,15 +443,65 @@ prova financeira das demais tarefas caras:
    segurança contra a coincidência vem da guarda monotônica no banco, e o
    cenário de concorrência é provocado por **dispatch cronometrado** no ensaio.
 
+10. **Orçamento de subrequisições com margem.** O Neon é acessado pelo driver
+   HTTP (`neon()` em `worker/cloudflare-worker.recovered.mjs`), então cada
+   instrução SQL é uma subrequisição externa. Sem ajuste, a invocação da prova
+   chegaria a 1 (tentativa) + 2 SQL de leitura + 1 desfecho + até 46 GETs MP =
+   **até 50**, e **51** com vendas abertas (mais a contagem de checkouts),
+   contra o limite de 50. O commit do desfecho é a última subrequisição, a que
+   estoura justamente quando o MP está instável. A proposta exige:
+   - reduzir o orçamento de GETs MP da auditoria de 46 para **42**, o que dá
+     **até 46** por invocação (47 com vendas abertas), com margem de pelo
+     menos 3. Com N = 40 pagamentos sobra 1 retentativa; acima disso a
+     auditoria já falha hoje (`audit_limit_exceeded`);
+   - o ensaio mede o pico de subrequisições por invocação e reprova se passar
+     de 46 (47 com vendas abertas);
+   - alternativas a avaliar, não verificadas: Neon por Hyperdrive ou service
+     binding (não confirmado em qual limite contam) e dividir a auditoria em
+     duas invocações.
+
+   Risco desta redução: menos retentativas significam mais 409 transitórios,
+   que com a opção "bloquear" do gate de checkout suspendem vendas.
+
 A proposta continua fail-closed: `verifyFinancialProofSnapshot` segue exigindo
 SHA exato, idade de 65 minutos ou menos e `ambiguous=0`; 503 transitório não
 apaga a prova válida, 409 a invalida, e nada sintetiza PASS.
+
+## Gate de checkout: decisão do proprietário e da Sol
+
+**Fato:** hoje a criação de checkout **não lê a prova**.
+`worker/commercial-checkout-guard.mjs:5` define
+`REQUIRED = ["global","pre_sale","absolute","checkout","financial","kv","preflight","environment","fiscal","token"]`,
+sem a prova, e `evaluateCheckout` não a consulta. A prova afeta apenas a
+exibição: `/api/status` (`safeRelease`, `worker/cloudflare-worker.compat.mjs:591`)
+e `/api/sales/status` (`worker/sales-control.mjs:149`).
+
+A verificação de liberação do item 3 é, portanto, um **gate novo**, a ser
+implementado depois num PR próprio e autorizado. Ele fecha o caminho direto ao
+checkout sem prova, mas cria acoplamentos. Com vendas abertas, cada um destes
+eventos bloquearia o checkout:
+- um 409 transitório do Mercado Pago (429/5xx, `ambiguous_transient`), até a
+  próxima auditoria verificada (15 a 30 min);
+- uma tentativa sem resolução, depois de G (6 min);
+- indisponibilidade do banco;
+- esgotamento dos 100 CU-h do Neon Free (compute suspenso até o próximo ciclo).
+
+Indisponibilidade e cota do Neon já impedem criar pedidos hoje, porque o pedido
+é gravado no banco. O acoplamento realmente novo é o frescor da prova e os 409.
+
+| Opção | Comportamento | A favor | Contra |
+|---|---|---|---|
+| **Bloquear (fail-closed; padrão recomendado, coerente com P22 e a ORDEM 294)** | checkout só com a prova do banco válida | nenhuma venda sem prova financeira exata; coerente com `/api/status` | vendas suspensas durante 409 transitório, pendência, banco fora ou cota do Neon |
+| Degradar | checkout continua como hoje (sem exigir a prova); a prova só governa a exibição | vendas seguem durante falhas transitórias | vendas acontecem com classificação financeira ambígua ou não provada; `/api/status` e checkout podem divergir |
+| Degradar só no transitório | bloquear, mas tolerar por até X minutos um 409 cujo único motivo seja `ambiguous_transient` | menos interrupções por instabilidade do MP | janela de venda sem prova; X precisa ser decidido e testado |
+
+**Esta decisão é do proprietário e da Sol** e não é tomada por este documento.
 
 ## Garantia contra FRESH falso: limites e risco residual
 
 | Desenho | Resultado antigo depois de um novo | Falha ao gravar o 409 | FRESH falso residual |
 |---|---|---|---|
-| Autoridade no Postgres (recomendado) | `update` monotônico afeta zero linhas; descartado | tentativa sem resolução: para de liberar em até G minutos | até G minutos (0 com G = 0) |
+| Autoridade no Postgres (recomendado) | `update` monotônico afeta zero linhas; descartado | pendência preservada por `coalesce`: para de liberar quando completa G (6 min); novas tentativas não reabrem a janela | até 6 min, uma vez por pendência (0 com G = 0) |
 | Só KV, com a guarda corrigida (fallback) | recusado pela guarda ou rejeitado pelo marcador, salvo leitura defasada | marcador ou 409 não gravados: nada invalida | até 65 minutos |
 | Hoje (sem guarda) | sobrescreve | a prova anterior segue válida | até 65 minutos |
 
@@ -430,8 +509,10 @@ apaga a prova válida, 409 a invalida, e nada sintetiza PASS.
 `where` depois do commit do primeiro, então a linha só avança. Os limites:
 - a decisão de liberação passa a depender da disponibilidade do banco
   (fail-closed);
-- o resíduo de até G minutos vem do commit falho do 409, coberto pelo registro
-  da tentativa.
+- o resíduo de até G (6 min) vem do commit falho do 409, coberto pela
+  pendência `unresolved_since`, que novas tentativas não reabrem;
+- a verificação de liberação é um gate novo, ainda não implementado (ver a
+  seção do gate de checkout).
 
 **Só KV.** O KV não oferece compare-and-set. Gravações concorrentes na mesma
 chave terminam com a última vencendo, e uma gravação leva até 60 segundos para
@@ -458,7 +539,7 @@ substituem a medição exigida nos critérios de aceite.
 | Auditorias tentadas e falhas (ramo horário) | 0 a 20 | 0 | −20 a 0 | — |
 | Instruções SQL no Neon (prova) | 8 a 48 (8 + 0 a 40) | 96 | +48 a +88 | egress: count de 1 linha + até 41 linhas curtas por auditoria (alguns KB); 5 GB/mês |
 | `select 1` do preflight | 24 | 24 | 0 | — |
-| Subrequisições externas por invocação da prova | até 48 (2 SQL + até 46 GETs MP, `/users/me` e retentativas incluídos) | igual | 0 | 50 externas + 1.000 para serviços Cloudflare |
+| Subrequisições externas por invocação da prova | até 48 (2 SQL + até 46 GETs MP, `/users/me` e retentativas incluídos); 49 com vendas abertas | até 46 (tentativa + 2 SQL + desfecho + até 42 GETs MP); 47 com vendas abertas. Sem reduzir o orçamento MP: até 50, ou 51 com vendas abertas | −2 com a redução; +2 sem ela | 50 externas + 1.000 para serviços Cloudflare |
 | GETs MP concluídos por dia (prova) | 4 × (1 + N) + parte truncada no ramo horário | 48 × (1 + N) | — | sem limite diário do Workers; checar limite de taxa do Mercado Pago |
 | Retentativas MP | até 6 por auditoria, dentro do orçamento de 46 | igual | — | — |
 | Gravações tentadas no KV | 60 a 80 (batimento 28, prova 4, `last-isolated-run` 4, não verificadas 0 a 20, preflight 24) | 144 (prova 48, `last-isolated-run` 48, batimento 24, preflight 24); 98 com o item 6 opcional | +64 a +84 (ou +18 a +38) | 1.000/dia; a conta usou 568 a 694 por dia entre 20 e 26/10 |
@@ -589,9 +670,12 @@ minutos e recuperação correta**.
 | Execução atrasada | atrasar a auditoria em alguns minutos | `measured_at` continua marcando o início; nenhum snapshot com idade acima de 65 aceito |
 | Dois produtores simultâneos | dispatch cronometrado do workflow do GitHub a menos de 60 s de um tique do Worker `10,25,40,55`, com vendas abertas | a linha do banco só avança; nenhum resultado mais antigo substitui um mais novo; nenhum FRESH falso |
 | Resultado antigo depois de um novo | auditoria verificada lenta terminando depois de um 409 mais novo | o `update` do resultado antigo afeta zero linhas; estado `UNVERIFIED_FAIL_CLOSED` até auditoria verificada mais nova |
-| Erro de banco seguido de recuperação | 503 do banco com prova válida armazenada e, depois, banco de volta | prova válida preservada enquanto tiver até 65 min, vencimento reconhecido se passar disso, renovação no primeiro tique com banco de volta |
+| Erro de banco seguido de recuperação | 503 do banco com prova válida armazenada e, depois, banco de volta | liberação: `UNVERIFIED_FAIL_CLOSED` enquanto o banco estiver fora; exibição: prova válida preservada enquanto tiver até 65 min, sem autorizar venda; auditoria com 503 não altera a linha; renovação no primeiro tique com banco de volta |
 | Falha de gravação no KV | cota diária de gravações esgotada, 429 na mesma chave ou erro transitório no cache | a decisão de liberação não muda, porque lê o banco; cache defasado nunca libera venda; na variante só KV o cenário reprova por desenho (resíduo de até 65 min declarado) |
-| Commit do 409 falha no banco | derrubar a conexão entre a leitura dos provedores e o commit do 409 | tentativa sem resolução; liberação suspensa em até G minutos; `UNVERIFIED_FAIL_CLOSED` até auditoria resolvida mais nova |
+| Commit do 409 falha no banco | derrubar a conexão entre a leitura dos provedores e o commit do 409 | pendência aberta; liberação suspensa quando completa G (6 min); `UNVERIFIED_FAIL_CLOSED` até desfecho commitado mais novo |
+| Pendência seguida de novas tentativas (A/B/C) | prova V em T; A em T+30 vê 409 e o commit falha; B em T+45 e C em T+60 registram tentativa e também falham | `unresolved_since` fica em T+30; liberação suspensa a partir de T+36; B e C não reabrem a janela; volta só com desfecho commitado |
+| Linha semente ausente | apagar a linha `id = 1` em ambiente de ensaio | `update` da tentativa afeta zero linhas; auditoria não começa; batimento `seed_missing` e alerta; liberação `UNVERIFIED_FAIL_CLOSED` |
+| Orçamento de subrequisições no commit do desfecho | N = 40 pagamentos com retentativas, vendas abertas | pico medido de no máximo 47 subrequisições externas (46 sem vendas abertas); o commit do desfecho nunca é cortado |
 
 Além dos cenários, o PR deve demonstrar:
 
