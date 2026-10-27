@@ -176,7 +176,12 @@ jobs:
       - name: Legal review gate (M1; fail closed while the new legal text is PENDING)
         # The central Worker serves the consumer texts of data/politica-unica.json (support, refund, chat) and the
         # legal surfaces. Same rule as the sales release: unchanged published text passes; new text needs approval.
-        run: python3 -I scripts/p23/legal_review.py --root . --publish-gate
+        # M-A: reviewer registry, baseline, approval records and legal_review come from the already-merged gh-pages,
+        # verified against git history (authorization and reviewed commits), never from the tree being published.
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 
       - name: Determine authenticated public-owner deployment authority
         id: auth

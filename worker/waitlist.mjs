@@ -121,7 +121,9 @@ async function postEmail(env, fetchImpl, { to, subject, text, idempotencyKey, un
       tags: [{ name: "flow", value: "waitlist" }] }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
-  return { ok: Boolean(r?.ok), status: r?.status || 0 };
+  let name = "";
+  if (r && r.status === 409) { try { name = String((await r.clone().json())?.name || ""); } catch {} }
+  return { ok: Boolean(r?.ok), status: r?.status || 0, name };
 }
 async function sendEmail(env, fetchImpl, mail) { return (await postEmail(env, fetchImpl, mail)).ok; }
 
@@ -243,7 +245,7 @@ export async function handleWaitlist(request, env, { sqlFactory, fetchImpl = fet
 
 // M5 (idempotência do aviso). Cada aviso é CONGELADO em zevanory_waitlist_notices antes do envio (produtos, assunto e
 // texto fixos; a Idempotency-Key deriva deles) e tem estados explícitos, gravados no banco:
-//   entrega   : attempting (tentativa em curso) -> confirmed (provedor aceitou, ou 409 = chave já usada)
+//   entrega   : attempting (tentativa em curso) -> confirmed (provedor aceitou, ou 409 invalid_idempotent_request = o provedor confirma a chave já usada)
 //                                              -> unconfirmed (erro/tempo esgotado: resultado desconhecido)
 //               unconfirmed/attempting abandonado, dentro de NOTICE_RETRY_HOURS da 1ª tentativa -> nova tentativa SEGURA:
 //               mesmo payload, mesma chave (o provedor deduplica por 24 h); fora dessa janela -> expired, nunca reenviado
@@ -283,12 +285,16 @@ async function deliverNotices(env, sql, fetchImpl, { email, ref, opening, produc
   const send = async (n) => {
     await sql.query(`update zevanory_waitlist_notices set state='attempting', attempt_at=now(), attempts=attempts+1 ${where} and state in ('attempting','unconfirmed')`, [ref, n.opening, n.notice_key]);
     const r = await postEmail(env, fetchImpl, { to: email, idempotencyKey: `zevanory-waitlist-notice-${ref}-${n.opening}-${n.notice_key}`, subject: n.subject, text: n.body });
-    if (!r.ok && r.status !== 409) {
+    // 409 só conta como entregue quando o provedor confirma que ESTA chave já foi usada (invalid_idempotent_request);
+    // concurrent_idempotent_requests = outra requisição com a mesma chave em curso: fica 'attempting' (em curso) e a
+    // próxima execução repete a mesma chave/payload; qualquer outro 409 é resultado desconhecido (nova tentativa segura).
+    if (r.status === 409 && r.name === "concurrent_idempotent_requests") return "in_progress";
+    if (!r.ok && !(r.status === 409 && r.name === "invalid_idempotent_request")) {
       await sql.query(`update zevanory_waitlist_notices set state='unconfirmed' ${where} and state='attempting'`, [ref, n.opening, n.notice_key]);
       return false;
     }
     await sql.query("update zevanory_waitlist_notices set state='confirmed', finished_at=now() where subject_ref=$1 and opening=$2 and notice_key=$3", [ref, n.opening, n.notice_key]);
-    if (r.status === 409) await recordEvent(sql, ref, null, "notice_conflict_assumed_delivered");
+    if (r.status === 409) await recordEvent(sql, ref, null, "notice_key_already_used_assumed_delivered");
     return true;
   };
   for (const n of prior) {
@@ -302,7 +308,9 @@ async function deliverNotices(env, sql, fetchImpl, { email, ref, opening, produc
       }
       for (const p of list) res.abandoned.add(p);
     } else if (decision === "safe_retry") {
-      if (!(await send(n))) { res.failed = true; return res; }
+      const sent = await send(n);
+      if (sent === "in_progress") { res.inProgress = true; return res; }
+      if (!sent) { res.failed = true; return res; }
       res.delivered = true;
     }
     for (const p of list) covered.add(p);
@@ -320,7 +328,9 @@ async function deliverNotices(env, sql, fetchImpl, { email, ref, opening, produc
   const decision = noticeDecision(frozen);
   if (decision === "in_progress") { res.inProgress = true; return res; }
   if (decision === "safe_retry") {
-    if (!(await send(frozen))) { res.failed = true; return res; }
+    const sent = await send(frozen);
+    if (sent === "in_progress") { res.inProgress = true; return res; }
+    if (!sent) { res.failed = true; return res; }
     res.delivered = true;
   }
   return res;

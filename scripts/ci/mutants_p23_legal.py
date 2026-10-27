@@ -62,7 +62,7 @@ M = {
     "M18 checklist incompleto aceito": (G, "        if need not in ids:", "        if False:"),
     "M19 taxas adicionais não conferidas": (G, '        if "sem taxas adicionais" not in r.get("preco_total", ""):', "        if False:"),
     "M20 link para os termos não conferido": (G, "        if not re.search(r'href=\"[^\"]*/termos[#\"]', raw):", "        if False:"),
-    "M21 status público abre sem fiscal": (SC, "    const open = released && fiscalProcessDefined(fiscal);", "    const open = released;"),
+    "M21 status público abre sem fiscal": (SC, "  const open = released && fiscalProcessDefined(fiscal);", "  const open = released;"),
     "M22 procedimento fiscal sem referência no repositório": (F, '      if (!r || r.kind !== "repo" || !filled(r.ref) || !filled(r.contains)) return false;', "      if (!r) return false;"),
     "M23 aprovador sem formato real aceito": (LR, "    if not who or not NAME.fullmatch(who) or FIXTURE.search(who):", "    if not who:"),
     "M24 aprovação de outro texto aceita": (LR, "    elif sha != fingerprint:", "    elif False:"),

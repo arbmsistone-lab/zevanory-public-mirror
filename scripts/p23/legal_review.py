@@ -27,12 +27,24 @@ Portão de publicação (--publish-gate), fail-closed:
     com a revisão PENDENTE. Um deploy que não muda texto jurídico não fica preso e nada que já está no ar é retirado;
   * texto diferente do publicado: exige aprovação válida para ESTA impressão digital; sem ela, sai com código 1 e o
     deploy para antes de tocar a produção (o que está no ar continua como está).
-Sem rede, sem segredos; só lê arquivos.
-Uso: legal_review.py --root . --fingerprint | --publish-gate | --check-approval
+Âncoras de confiança (M-A, rodada 3): no portão de publicação, o cadastro de revisores, a linha de base, os registros
+de aprovação e o bloco legal_review são lidos do gh-pages JÁ MESCLADO (--anchors-ref refs/remotes/origin/gh-pages),
+nunca da árvore em publicação, e conferidos no histórico do git:
+  * o commit publicado tem de estar contido no gh-pages;
+  * authorization_commit tem de ser um commit do gh-pages que introduziu exatamente aquela entrada do cadastro
+    (com merge por squash, o cadastro entra num PR e a aprovação só pode citá-lo num PR seguinte);
+  * reviewed_commit tem de ser um commit do gh-pages, e a impressão digital do texto NAQUELE commit tem de ser
+    reviewed_sha256 (o hash é recalculado, não declarado);
+  * a linha de base só vale se for o texto publicado antes da Release 2 (GENESIS_BASELINE, b7671272) ou o
+    reviewed_sha256 de um registro de aprovação válido já no gh-pages.
+Antes do merge, o check protegido legal-trust-anchors-protected (pull_request_target, código da base, PR lido só
+como dado) reprova todo PR que altere uma âncora; o proprietário decide de forma explícita e deliberada (bypass).
+Sem rede, sem segredos; só lê arquivos e o histórico do git local.
+Uso: legal_review.py --root . --fingerprint | --publish-gate --anchors-ref <ref> | --check-approval
 """
 from __future__ import annotations
 
-import argparse, datetime as dt, hashlib, html, json, re, sys
+import argparse, datetime as dt, hashlib, html, json, re, subprocess, sys
 from pathlib import Path
 
 LEGAL_PAGES = ("sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html")
@@ -40,6 +52,65 @@ POLICY_FIELDS = ("legal_document_version", "sol_text", "rule_7d", "customer_word
 BASELINE = "data/p23/legal-published-baseline.json"
 REVIEWERS = "data/p23/legal-reviewers.json"
 RECORDS = "docs/legal/reviews"
+POLICY = "data/politica-unica.json"
+# Texto jurídico publicado antes da Release 2 (gh-pages b7671272): a única linha de base aceita sem registro de aprovação.
+GENESIS_BASELINE = "4f8d1632504b5cdbfef3ff2e8e31cc809c86c1cf770b522a38445b5ac37c6d5d"
+CLOCK_SKEW = dt.timedelta(minutes=5)
+
+
+class Tree:
+    """Arquivos de um diretório (conteúdo em publicação, ou fixtures sem git)."""
+    git = None
+
+    def __init__(self, root):
+        self.root = Path(root)
+
+    def read(self, rel):
+        try:
+            return (self.root / rel).read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def names(self, rel):
+        d = self.root / rel
+        return sorted(p.name for p in d.iterdir()) if d.is_dir() else []
+
+
+class GitRef:
+    """Arquivos de um commit/ref do repositório local, lidos com git show (nunca da árvore de trabalho)."""
+
+    def __init__(self, repo, ref):
+        self.repo, self.ref = Path(repo), ref
+        self.git = self
+
+    def run(self, *args):
+        r = subprocess.run(["git", "-C", str(self.repo), *args], capture_output=True, text=True, encoding="utf-8")
+        return r.returncode, r.stdout
+
+    def commit(self, ref=None):
+        rc, out = self.run("rev-parse", "--verify", "--quiet", (ref or self.ref) + "^{commit}")
+        return out.strip() if rc == 0 else None
+
+    def read(self, rel, ref=None):
+        rc, out = self.run("show", f"{ref or self.ref}:{rel}")
+        return out if rc == 0 else None
+
+    def names(self, rel):
+        rc, out = self.run("ls-tree", "--name-only", f"{self.ref}:{rel}")
+        return sorted(out.split()) if rc == 0 else []
+
+    def is_ancestor(self, a, b=None):
+        return self.commit(a) is not None and self.run("merge-base", "--is-ancestor", a, b or self.ref)[0] == 0
+
+    def at(self, ref):
+        return GitRef(self.repo, ref)
+
+
+def _loads(text):
+    try:
+        return json.loads(text) if text is not None else None
+    except ValueError:
+        return None
 
 # Marcadores de teste, de exemplo ou de papel genérico: nunca identificam quem revisou.
 FIXTURE = re.compile(r"(?i)\b(fixture|teste?s?|test|exemplo|example|dummy|fake|mock|placeholder|todo|tbd|xxx+|n/?a|"
@@ -56,19 +127,25 @@ def _main_text(raw: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(body)).strip()
 
 
-def legal_fingerprint(root: Path) -> str:
+def legal_fingerprint_src(src) -> str:
     h = hashlib.sha256()
     for rel in LEGAL_PAGES:
-        path = root / rel
-        if not path.is_file():
+        raw = src.read(rel)
+        if raw is None:
             raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {rel}")
-        h.update(rel.encode() + b"\0" + _main_text(path.read_text(encoding="utf-8")).encode() + b"\0")
-    pol = json.loads((root / "data/politica-unica.json").read_text(encoding="utf-8"))
+        h.update(rel.encode() + b"\0" + _main_text(raw).encode() + b"\0")
+    pol = _loads(src.read(POLICY))
+    if not isinstance(pol, dict):
+        raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {POLICY}")
     for k in POLICY_FIELDS:
         if k not in pol and k not in ("refund_channels", "legal_document_version"):
             raise SystemExit(f"LEGAL_FINGERPRINT_FIELD_MISSING {k}")
         h.update(k.encode() + b"\0" + json.dumps(pol.get(k), ensure_ascii=False, sort_keys=True).encode() + b"\0")
     return h.hexdigest()
+
+
+def legal_fingerprint(root: Path) -> str:
+    return legal_fingerprint_src(Tree(root))
 
 
 def _day(value) -> dt.date | None:
@@ -80,17 +157,41 @@ def _day(value) -> dt.date | None:
         return None
 
 
-def _json(path: Path):
+def _future(value, now: dt.datetime) -> bool:
+    """Data só (AAAA-MM-DD): no máximo hoje (UTC). Data e hora: no máximo agora + 5 min de diferença de relógio."""
+    if len(value) == 10:
+        return dt.date.fromisoformat(value) > now.date()
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+        at = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=dt.timezone.utc)
+    return at > now + CLOCK_SKEW
 
 
-def validate_approval(review, fingerprint: str, today: dt.date | None = None, root: Path | None = None) -> list[str]:
-    today = today or dt.datetime.now(dt.timezone.utc).date()
+def _entry_introduced(git, commit, entry) -> bool:
+    """O commit de autorização (no gh-pages) introduziu exatamente esta entrada do cadastro."""
+    if not git.is_ancestor(commit):
+        return False
+    def has(ref):
+        reg = _loads(git.read(REVIEWERS, ref))
+        return any(isinstance(r, dict) and r == entry for r in (reg.get("reviewers") or [])) if isinstance(reg, dict) else False
+    return has(commit) and not has(commit + "^")
+
+
+def validate_approval(review, fingerprint: str, today: dt.date | None = None, root: Path | None = None,
+                      anchors=None, content=None, now: dt.datetime | None = None) -> list[str]:
+    """Valida o bloco de aprovação. anchors = de onde vêm cadastro e registros (Tree da mesma árvore no P23 de PR;
+    GitRef do gh-pages no portão de publicação, com as conferências de histórico)."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    if today is not None:
+        now = dt.datetime.combine(today, dt.time(23, 59), dt.timezone.utc)
     review = review if isinstance(review, dict) else {}
     root = Path(root) if root else Path(__file__).resolve().parents[2]
+    anchors = anchors or Tree(root)
+    content = content or Tree(root)
+    git = getattr(anchors, "git", None)
     errs: list[str] = []
     if review.get("status") != "APPROVED":
         errs.append("REVISÃO JURÍDICA PENDENTE; legal_review exige status APPROVED, approved_by, approved_at, reviewed_sha256 e reviewed_commit")
@@ -102,7 +203,7 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
     day = _day(review.get("approved_at"))
     if day is None:
         errs.append(f"legal_review.approved_at {review.get('approved_at')!r} não é uma data ISO (AAAA-MM-DD)")
-    elif day > today + dt.timedelta(days=1):
+    elif _future(review["approved_at"], now):
         errs.append(f"legal_review.approved_at {review.get('approved_at')!r} está no futuro")
     sha = review.get("reviewed_sha256")
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
@@ -112,13 +213,24 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
     commit = review.get("reviewed_commit")
     if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         errs.append("legal_review.reviewed_commit ausente ou inválido (SHA de 40 caracteres do commit com o texto revisado)")
+    elif git is not None:
+        # O hash é recalculado no commit revisado, que tem de estar no gh-pages.
+        if not git.is_ancestor(commit):
+            errs.append(f"legal_review.reviewed_commit {commit[:12]} não é um commit do gh-pages")
+        else:
+            try:
+                at_commit = legal_fingerprint_src(git.at(commit))
+            except SystemExit as e:
+                at_commit = str(e)
+            if at_commit != sha:
+                errs.append(f"legal_review.reviewed_commit {commit[:12]}: o texto desse commit não tem a impressão digital {str(sha)[:12]}…")
     # Versão do documento revisado.
-    pol = _json(root / "data/politica-unica.json") or {}
+    pol = _loads(content.read(POLICY)) or {}
     version = pol.get("legal_document_version")
     if not isinstance(version, str) or not version.strip() or review.get("document_version") != version:
         errs.append(f"legal_review.document_version {review.get('document_version')!r} difere da versão publicada {version!r}")
-    # Identidade autorizada (cadastro mantido pelo proprietário).
-    reg = _json(root / REVIEWERS)
+    # Identidade autorizada (cadastro mantido pelo proprietário, lido das âncoras).
+    reg = _loads(anchors.read(REVIEWERS))
     reviewers = reg.get("reviewers") if isinstance(reg, dict) else None
     entry = next((r for r in (reviewers or []) if isinstance(r, dict) and r.get("id") == review.get("reviewer_id")), None)
     if entry is None:
@@ -132,10 +244,20 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
             errs.append(f"legal_review.reviewer_id {review.get('reviewer_id')!r}: cadastro incompleto ou nome diferente de approved_by (exige name, registro OAB, github_login, authorized_by=proprietario, authorized_at e authorization_commit)")
         elif day is not None and auth_day > day:
             errs.append("legal_review: aprovação anterior à autorização do revisor")
-    # Registro auditável versionado.
+        elif git is not None:
+            # A autorização é um commit do gh-pages que introduziu esta entrada; ela não pode vir no mesmo PR da aprovação.
+            ac = entry.get("authorization_commit")
+            other = {k: v for k, v in entry.items() if k != "authorization_commit"}
+            reg_at = _loads(git.read(REVIEWERS, ac)) if git.is_ancestor(ac) else None
+            introduced = isinstance(reg_at, dict) and any(isinstance(r, dict) and r == other for r in (reg_at.get("reviewers") or []))
+            parent = _loads(git.read(REVIEWERS, ac + "^")) if introduced else None
+            existed = isinstance(parent, dict) and any(isinstance(r, dict) and r.get("id") == entry.get("id") for r in (parent.get("reviewers") or []))
+            if not introduced or existed:
+                errs.append(f"legal_review.reviewer_id {review.get('reviewer_id')!r}: authorization_commit {str(ac)[:12]} não é o commit do gh-pages que cadastrou este revisor")
+    # Registro auditável versionado (das âncoras).
     rec_path = review.get("record")
     want = f"{RECORDS}/{sha}.json" if isinstance(sha, str) else None
-    rec = _json(root / rec_path) if isinstance(rec_path, str) and rec_path == want else None
+    rec = _loads(anchors.read(rec_path)) if isinstance(rec_path, str) and rec_path == want else None
     if not isinstance(rec, dict):
         errs.append(f"legal_review.record ausente: exige o registro {want or RECORDS + '/<reviewed_sha256>.json'} versionado no repositório")
     else:
@@ -147,19 +269,46 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
     return errs
 
 
-def publish_gate(root: Path) -> tuple[bool, list[str]]:
-    fp = legal_fingerprint(root)
-    base = json.loads((root / BASELINE).read_text(encoding="utf-8"))
-    lines = [f"LEGAL_FINGERPRINT={fp}", f"LEGAL_PUBLISHED_BASELINE={base.get('fingerprint')} source_commit={base.get('source_commit')}"]
-    if not re.fullmatch(r"[0-9a-f]{64}", str(base.get("fingerprint", ""))):
-        return False, lines + ["::error title=LEGAL_PUBLISH_GATE::baseline publicado inválido; fail-closed"]
-    if fp == base["fingerprint"]:
+def approved_hashes(anchors, content) -> set[str]:
+    """reviewed_sha256 de cada registro de aprovação válido nas âncoras (cada registro validado como aprovação)."""
+    out = set()
+    for name in anchors.names(RECORDS):
+        rec = _loads(anchors.read(f"{RECORDS}/{name}"))
+        if not isinstance(rec, dict) or name != f"{rec.get('reviewed_sha256')}.json":
+            continue
+        reg = _loads(anchors.read(REVIEWERS)) or {}
+        entry = next((r for r in (reg.get("reviewers") or []) if isinstance(r, dict) and r.get("id") == rec.get("reviewer_id")), {})
+        review = {"status": "APPROVED", "approved_by": entry.get("name"), "record": f"{RECORDS}/{name}", **rec}
+        version_src = anchors.at(rec["reviewed_commit"]) if getattr(anchors, "git", None) and anchors.is_ancestor(str(rec.get("reviewed_commit"))) else content
+        if not validate_approval(review, rec.get("reviewed_sha256"), anchors=anchors, content=version_src):
+            out.add(rec["reviewed_sha256"])
+    return out
+
+
+def publish_gate(root: Path, anchors_ref: str | None = None) -> tuple[bool, list[str]]:
+    content = Tree(root)
+    fp = legal_fingerprint_src(content)
+    lines = [f"LEGAL_FINGERPRINT={fp}"]
+    blocked = "LEGAL_PUBLISH_GATE=BLOCKED (nada foi publicado; a produção segue com o texto anterior)"
+    if not anchors_ref:
+        return False, lines + ["::error title=LEGAL_PUBLISH_GATE::--anchors-ref ausente: as âncoras de confiança têm de vir do gh-pages mesclado", blocked]
+    anchors = GitRef(root, anchors_ref)
+    anchor_sha, head = anchors.commit(), anchors.commit("HEAD")
+    lines.append(f"LEGAL_ANCHORS={anchors_ref}@{anchor_sha} DEPLOYED={head}")
+    if not anchor_sha or not head or not anchors.is_ancestor(head):
+        return False, lines + ["::error title=LEGAL_PUBLISH_GATE::o commit publicado não está contido no gh-pages das âncoras (ou o ref não existe)", blocked]
+    base = _loads(anchors.read(BASELINE)) or {}
+    baseline = str(base.get("fingerprint", ""))
+    lines.append(f"LEGAL_PUBLISHED_BASELINE={baseline} source_commit={base.get('source_commit')}")
+    approved = approved_hashes(anchors, content)
+    if baseline != GENESIS_BASELINE and baseline not in approved:
+        return False, lines + ["::error title=LEGAL_PUBLISH_GATE::linha de base não é o texto pré-Release 2 nem o hash de um registro de aprovação válido no gh-pages", blocked]
+    if fp == baseline:
         return True, lines + ["LEGAL_PUBLISH_GATE=PASS_UNCHANGED (texto jurídico idêntico ao já publicado; revisão não exigida para este deploy)"]
-    pol = json.loads((root / "data/politica-unica.json").read_text(encoding="utf-8"))
-    errs = validate_approval(pol.get("legal_review"), fp, root=root)
+    pol = _loads(anchors.read(POLICY)) or {}
+    errs = validate_approval(pol.get("legal_review"), fp, anchors=anchors, content=content)
     if errs:
-        return False, lines + [f"::error title=LEGAL_PUBLISH_GATE::{e}" for e in errs] + [
-            "LEGAL_PUBLISH_GATE=BLOCKED (texto jurídico novo sem aprovação válida; nada foi publicado e a produção segue com o texto anterior)"]
+        return False, lines + [f"::error title=LEGAL_PUBLISH_GATE::{e}" for e in errs] + [blocked]
     return True, lines + ["LEGAL_PUBLISH_GATE=PASS_APPROVED"]
 
 
@@ -173,6 +322,7 @@ def main(argv=None) -> int:
     g.add_argument("--fingerprint", action="store_true")
     g.add_argument("--publish-gate", action="store_true")
     g.add_argument("--check-approval", action="store_true")
+    ap.add_argument("--anchors-ref", default=None, help="ref do gh-pages mesclado de onde vêm as âncoras (obrigatório com --publish-gate)")
     a = ap.parse_args(argv)
     root = Path(a.root).resolve()
     if a.fingerprint:
@@ -185,7 +335,7 @@ def main(argv=None) -> int:
             print("::error title=LEGAL_REVIEW::" + e)
         print("LEGAL_REVIEW=" + ("FAIL" if errs else "PASS"))
         return 1 if errs else 0
-    ok, lines = publish_gate(root)
+    ok, lines = publish_gate(root, a.anchors_ref)
     print("\n".join(lines))
     return 0 if ok else 1
 

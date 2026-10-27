@@ -23,7 +23,9 @@ const matrix = JSON.parse(readFileSync(join(evidence, "matrix.json"), "utf8"));
 const screenshots = files.filter((item) => item.path.endsWith(".png"));
 const manifest = {
   schema: "zevanory.release-2-evidence.v1",
-  source_base: "a098d8802a184df02b362d46f08fb6c81b7382f9",
+  // L-5: the base this evidence was measured against (CI passes the PR base SHA; locally the current gh-pages base).
+  source_base: process.env.SOURCE_BASE || "d01dd5ea8b85df2dbf8ccad2c6a9d6a95210f6d8",
+  ci_run: process.env.GITHUB_RUN_ID ? { run_id: process.env.GITHUB_RUN_ID, run_attempt: process.env.GITHUB_RUN_ATTEMPT || null, sha: process.env.GITHUB_SHA || null } : null,
   // Local working-tree evidence must not pretend to belong to the previous
   // commit. CI supplies the exact GITHUB_SHA after checkout.
   release_sha: process.env.RELEASE_SHA || null,

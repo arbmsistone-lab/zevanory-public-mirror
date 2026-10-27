@@ -78,3 +78,22 @@ Base atualizada: merge de `gh-pages` `b7671272` (#947) na branch, sem conflito. 
 ### Efeito do portão M1 depois do merge
 
 Este candidato muda o texto jurídico; portanto, enquanto `legal_review` estiver `PENDING`, os dois jobs de deploy param no passo "Legal review gate" com `LEGAL_PUBLISH_GATE=BLOCKED`, antes de tocar a produção. Nada que está no ar é retirado: produção segue com os Workers e o texto de `b7671272`. Qualquer outro deploy desses dois fluxos também fica parado até a aprovação, porque o texto no repositório já não é o publicado. Para publicar: o proprietário cadastra o revisor, o revisor aprova a impressão digital atual com o registro em `docs/legal/reviews/`, e depois da publicação a linha de base é atualizada para o mesmo valor.
+
+
+## Reauditoria rodada 3 (sobre `8c00ba09`)
+
+Base atualizada: merge de `gh-pages` `d01dd5ea` (#949). O único conflito foi a linha de contagem no manifesto da suíte, resolvido somando os dois lados.
+
+- **M-A (identidade jurídica forjável no mesmo PR).** As âncoras de confiança passaram a vir do gh-pages já mesclado e a ser conferidas no histórico do git: o commit de autorização tem de ter introduzido a entrada do revisor, o hash é recalculado no `reviewed_commit` e a linha de base só vale se for a de `b7671272` ou a de um registro de aprovação válido. Também há um check protegido `legal-trust-anchors-protected` (`pull_request_target`, código da base) que reprova PR que altere uma âncora. O procedimento completo está em `docs/legal/legal-review-procedure.md`. As duas forjas do auditor (`m1/forge-baseline` e `m1/forge-reviewer`) agora falham nos quatro modos: no check protegido, no portão com o PR não mesclado, no portão depois de um merge com bypass e sem âncoras. Os testes `tests/legal-publish-gate.test.mjs` G3, G4 e G6 cobrem esses casos.
+- **M-B (exceção implícita ao estado de vendas).** `canonicalSalesState`/`canonicalSalesOpen` (`worker/sales-control.mjs`) é o mesmo `open` de `/api/sales/status`. A rota `/lista-de-espera` e o job agendado agora usam esse estado. Com o interruptor ligado e as travas desligadas, nenhum aviso sai, a lista não é apagada e a página mostra o formulário (`tests/waitlist-canonical-sales.test.mjs`).
+- **L-1.** As boas-vindas da Hotmart usam uma `Idempotency-Key` por transação, e o link do formulário é derivado do segredo, da assinatura e da transação. Com isso, a mensagem é idêntica e postbacks simultâneos resultam em uma entrega (`tests/hotmart-idempotency.test.mjs`).
+- **L-2 (escolhas conscientes da lista de espera).**
+  - Um 409 só conta como entregue quando o provedor confirma a chave (`invalid_idempotent_request`).
+  - `concurrent_idempotent_requests` deixa o aviso "em curso".
+  - Qualquer outro 409 é tratado como resultado desconhecido, e a nova tentativa usa a mesma chave.
+  - Provedor fora por mais de 23 h: o aviso expira (`expired`), nunca é entregue, e os dados são apagados. Escolhemos no máximo um aviso, nunca dois.
+  - Um 2º produto confirmado depois do 1º aviso gera um 2º e-mail, só sobre esse produto.
+  - Se `LEAD_PRIVACY_SECRET` for trocado, os avisos anteriores deixam de ser encontrados pela referência. A troca deve ser feita com a lista inerte ou fora de uma abertura de vendas.
+- **L-3.** É decisão do proprietário, documentada: enquanto PENDING, os dois fluxos de deploy ficam parados.
+- **L-4.** `approved_at` sem hora vale no máximo até hoje (UTC); com hora, tolera até 5 minutos. A afirmação sobre o GitHub Pages foi corrigida: ele publica só os stubs de `pages-mirror/`.
+- **L-5.** O manifesto aponta para a base atual (`SOURCE_BASE`, padrão `d01dd5ea`). No CI, o manifesto é regenerado com `RELEASE_SHA=GITHUB_SHA`, `SOURCE_BASE` = base do PR e `ci_run` (run id), e vai no artefato `release-2-matrix-<sha>` junto com a matriz.

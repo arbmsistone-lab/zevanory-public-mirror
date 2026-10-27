@@ -136,24 +136,33 @@ async function resendDelivery(env, { sql, worker, ctx }, { orderId, email }) {
   return { sent: Boolean(r?.ok), reason: r?.ok ? "sent" : "email_failed" };
 }
 
+// Estado canônico de vendas: o MESMO "open" público de /api/sales/status. Public open means EFFECTIVE commercial
+// release, not merely the owner's KV request: owner switch (authorized) AND verified financial proof AND the
+// production release approvals AND Mercado Pago in production AND the fiscal process (P23 F3). Every consumer
+// that acts on "vendas abertas" (checkout status, chat, waitlist route and job) must use this, never the bare switch.
+export async function canonicalSalesState(env, { fiscal = FISCAL_PROCESS } = {}) {
+  const sw = await readSalesSwitch(env);
+  let proof = null;
+  try { proof = await readFinancialProofSnapshot(env); } catch { proof = null; }
+  const released = sw.enabled === true && sw.authorized === true &&
+    proof?.verified === true &&
+    String(env.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
+    String(env.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
+    String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+  // P23 (F3): sem processo fiscal definido pelo proprietário com o contador, vendas não abrem (mesma regra do checkout).
+  const open = released && fiscalProcessDefined(fiscal);
+  return { open, released, sw };
+}
+export async function canonicalSalesOpen(env, opts = {}) {
+  try { return (await canonicalSalesState(env, opts)).open === true; } catch { return false; }
+}
+
 export async function handleSalesControl(request, env, { sqlFactory, worker, ctx, fiscal = FISCAL_PROCESS } = {}) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (path === "/api/sales/status") {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
-    const sw = await readSalesSwitch(env);
-    // Public open means EFFECTIVE commercial release, not merely the owner's
-    // KV request. The runtime /api/status remains fail-closed without exact
-    // financial proof and the production release gates. This public readback
-    // must agree without changing the owner switch or any checkout rule.
-    const proof = await readFinancialProofSnapshot(env);
-    const released = sw.enabled === true && sw.authorized === true &&
-      proof?.verified === true &&
-      String(env.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
-      String(env.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
-      String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
-    // P23 (F3): sem processo fiscal definido pelo proprietário com o contador, vendas não abrem (mesma regra do checkout).
-    const open = released && fiscalProcessDefined(fiscal);
+    const { open, released, sw } = await canonicalSalesState(env, { fiscal });
     return json(200, { open, requested: sw.requested === true,
       blocked: open ? null : (sw.blocked || (sw.enabled ? (released ? "fiscal_process_undefined" : "release_or_financial_proof_pending") : null)),
       revision: sw.revision || null });

@@ -201,7 +201,12 @@ jobs:
         # /termos and /reembolso go live in this job. Text identical to the published baseline
         # (data/p23/legal-published-baseline.json) passes; any other text needs legal_review APPROVED
         # for this exact fingerprint. Runs before configs are materialized and before any deploy call.
-        run: python3 -I scripts/p23/legal_review.py --root . --publish-gate
+        # M-A: reviewer registry, baseline, approval records and legal_review come from the already-merged gh-pages,
+        # verified against git history (authorization and reviewed commits), never from the tree being published.
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 
       - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)
         run: |

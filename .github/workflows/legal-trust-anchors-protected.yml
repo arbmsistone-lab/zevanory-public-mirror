@@ -1,0 +1,53 @@
+name: legal-trust-anchors-protected
+
+# M-A (reauditoria do PR #946, rodada 3): veredito controlado pela BASE sobre as âncoras de confiança da revisão
+# jurídica (mesmo padrão de secret-scan-contract-protected, PR #950; GitHub Security Lab, "Preventing pwn requests").
+# - pull_request_target roda ESTA definição a partir da base; só o código da base executa
+#   (base/scripts/p23/trust_anchor_guard.py e base/scripts/p23/legal_review.py).
+# - O head do PR é buscado por SHA num repositório separado, sem checkout, sem hooks, filtros, submódulos ou LFS;
+#   nada do PR é executado, importado ou usado como action. O PR só é lido como dado (git diff / git show).
+# - permissions: contents: read; sem segredos; nenhum token persistido; sem filtro de caminho e sem if no job,
+#   para o check sempre reportar um resultado real.
+# - Reprova todo PR que altere data/p23/legal-reviewers.json, data/p23/legal-published-baseline.json,
+#   docs/legal/reviews/**, data/politica-unica.json, scripts/p23/** ou este arquivo. O proprietário é a única conta
+#   (não pode aprovar o próprio PR), então um PR assim só entra por decisão explícita e deliberada dele (bypass),
+#   registrada no PR. No deploy, o portão lê as âncoras do gh-pages já mesclado e as confere no histórico do git.
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+jobs:
+  protected-trust-anchors:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted base (guard code)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch pull request head as data only
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] && [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git init -q "$RUNNER_TEMP/pr-repo"
+          git -C "$RUNNER_TEMP/pr-repo" -c core.hooksPath=/dev/null fetch -q --no-tags "$REPO_URL" "+$HEAD_SHA:refs/heads/pr-head" "+$BASE_SHA:refs/heads/pr-base"
+          test "$(git -C "$RUNNER_TEMP/pr-repo" rev-parse refs/heads/pr-head)" = "$HEAD_SHA"
+      - name: Trust anchors unchanged (base code judges PR data)
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -I base/scripts/p23/trust_anchor_guard.py --pr-repo "$RUNNER_TEMP/pr-repo" --base-repo base --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
