@@ -164,6 +164,9 @@ def publish_gate(root: Path) -> tuple[bool, list[str]]:
 
 
 def main(argv=None) -> int:
+    # -I ignora PYTHONIOENCODING: no Windows o console é cp1252 e a mensagem com acento sairia ilegível.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".")
     g = ap.add_mutually_exclusive_group(required=True)

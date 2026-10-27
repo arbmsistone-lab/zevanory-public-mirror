@@ -65,6 +65,7 @@ for (const scheme of ["light", "dark"]) for (const v of VIEWS) {
     const res = await page.goto(base + route, { waitUntil: "load" });
     await page.addScriptTag({ path: AXE });
     const settled = [await settle(page)];
+    const axeRecheckCleared = [];
     // Sobreposição de CTA: cada CTA visível (até 12), rolado para o início, o centro e o fim da viewport; com a página
     // estável, nenhum ponto do botão pode estar coberto por outro elemento (barra fixa, cabeçalho, chat).
     const ctaOverlap = [];
@@ -106,11 +107,47 @@ for (const scheme of ["light", "dark"]) for (const v of VIEWS) {
     // O scrollTo do fim da página (dentro da medição acima) dispara as barras fixas; o axe só roda com tudo parado.
     settled.push(await settle(page));
     const env = await page.evaluate(() => ({ fonts: [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family).filter((f, i, a) => a.indexOf(f) === i), fontsStatus: document.fonts.status, viewport: [innerWidth, innerHeight, devicePixelRatio] }));
-    const axe = await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] }, resultTypes: ["violations"] })).violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, targets: v.nodes.slice(0, 3).map((n) => n.target.join(" ") + " :: " + String(n.any[0]?.message || n.failureSummary || "").slice(0, 160)) })));
+    // axe em duas posições: no fim da página (barras fixas ativas, como antes) e no topo (estado inicial). Um alvo que o
+    // target-size acusa como "partially obscured" só por estar, naquela rolagem, sob o cabeçalho fixo é medido de novo
+    // centralizado na viewport (com a página estável); continua reprovando se ainda estiver coberto ou pequeno.
+    // Prova do CI (864133b0): em /ia-por-ramo 1440 px, com as métricas de fonte do runner, os links "Ver guia" da
+    // última linha ficavam exatamente sob o cabeçalho fixo no fim da rolagem (11,8 px visíveis); localmente a página
+    // tinha outra altura e eles não caíam ali. Era a posição de rolagem, não o alvo.
+    const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
+    const runAxe = () => page.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, resultTypes: ["violations"] })).violations.map((v) => ({ id: v.id, impact: v.impact,
+      nodes: v.nodes.map((n) => ({ sel: n.target, msg: String(n.any[0]?.message || n.failureSummary || "").slice(0, 160) })) })), AXE_TAGS);
+    const recheckTarget = async (sel) => {
+      const found = await page.evaluate((sel) => { const el = document.querySelector(sel.join(" ")); if (!el) return false; el.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" }); return true; }, sel);
+      if (!found) return true;
+      settled.push(await settle(page));
+      return page.evaluate(async (sel) => (await window.axe.run({ include: [sel] }, { runOnly: { type: "rule", values: ["target-size"] }, resultTypes: ["violations"] })).violations.length > 0, sel);
+    };
+    const merged = new Map();
+    for (const pass of ["bottom", "top"]) {
+      if (pass === "top") { await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" })); settled.push(await settle(page)); }
+      for (const v of await runAxe()) {
+        let nodes = v.nodes;
+        if (v.id === "target-size") {
+          const keep = [];
+          for (const n of nodes) {
+            if (await recheckTarget(n.sel)) keep.push({ ...n, msg: n.msg + " [recheck centralizado: continua]" });
+            else axeRecheckCleared.push(`${pass}:${n.sel.join(" ")}`);
+          }
+          nodes = keep;
+          if (pass === "bottom") { await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" })); settled.push(await settle(page)); }
+        }
+        if (!nodes.length) continue;
+        const cur = merged.get(v.id) || { id: v.id, impact: v.impact, nodes: 0, targets: [], passes: [] };
+        cur.nodes += nodes.length; cur.passes.push(pass);
+        cur.targets.push(...nodes.slice(0, 3).map((n) => `${pass}: ${n.sel.join(" ")} :: ${n.msg}`));
+        merged.set(v.id, cur);
+      }
+    }
+    const axe = [...merged.values()].map((v) => ({ ...v, targets: v.targets.slice(0, 4) }));
     const axeSerious = axe.filter((v) => v.impact === "serious" || v.impact === "critical");
     const settleTimedOut = settled.some((x) => x.timedOut);
     const row = { scheme, view: v.name, route, http: res?.status() || 0, expected_http: expected, ...m,
-      axe, axeSeriousCritical: axeSerious.length, ctaOverlap, settle_ms: settled.reduce((n, x) => n + x.ms, 0), settleTimedOut, ...env,
+      axe, axeSeriousCritical: axeSerious.length, axeRecheckCleared, ctaOverlap, settle_ms: settled.reduce((n, x) => n + x.ms, 0), settleTimedOut, ...env,
       documentScroll: m.htmlOverflowY !== "hidden" && m.bodyOverflowY !== "hidden" && !m.mainInnerScroller && m.scrollingPanels.length === 0,
       horizontalOverflow: m.sw > m.iw + 1 };
     row.schemeOk = m.darkMatches === (scheme === "dark");

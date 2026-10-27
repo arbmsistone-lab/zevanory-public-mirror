@@ -57,8 +57,24 @@
      "test_pattern": "P6",
      "assertion_pattern": "[P6.0]",
      "justification": "a queda simulada acontece justamente na exclusão removida pela mutação; sem a exclusão não há queda e assert.rejects de P6.0 falha"
+    },
+    {
+     "test_pattern": "P10",
+     "assertion_pattern": "[P10.6]",
+     "justification": "M5: sem a exclusão os registros do contato ficam em 'notifying' depois dos dois avisos; P10.6 exige nenhum registro preso"
+    },
+    {
+     "test_pattern": "P11",
+     "assertion_pattern": "[P11.0]",
+     "justification": "a queda simulada de P11 acontece na exclusão removida pela mutação; sem exclusão não há queda e assert.rejects de P11.0 falha"
+    },
+    {
+     "test_pattern": "P12",
+     "assertion_pattern": "[P12.2]",
+     "justification": "sem a exclusão o registro do contato com resultado incerto expirado continua guardado; P12.2 exige os dados apagados"
     }
-   ]
+   ],
+   "broad_reason": "a exclusão depois do aviso é o fim de todo fluxo de envio: todo teste que avisa um contato (P3, P5, P6, P10, P11, P12) verifica que os registros foram apagados"
   },
   "MW05 falha de envio não libera a reserva": {
    "primary": [
@@ -67,7 +83,13 @@
      "assertion_pattern": "[P5.1]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "P12",
+     "assertion_pattern": "[P12.2]",
+     "justification": "a falha do provedor deixa o registro em 'notifying' (reserva não liberada); a execução seguinte não o reserva de novo e P12.2 encontra o registro guardado"
+    }
+   ]
   },
   "MW06 sem apagar 30 dias depois da abertura": {
    "primary": [
@@ -147,6 +169,21 @@
      "test_pattern": "P8",
      "assertion_pattern": "[J1]",
      "justification": "o link de confirmação só confirma registro pendente (update ... where status='pending'); com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P10",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente; com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P11",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente; com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
+    },
+    {
+     "test_pattern": "P12",
+     "assertion_pattern": "[J1]",
+     "justification": "o link de confirmação só confirma registro pendente; com o registro nascendo confirmado, a confirmação do helper joined() responde 400 e a asserção [J1] falha antes do que o teste prova"
     }
    ],
    "broad_reason": "sem dupla confirmação, todo teste que inscreve e confirma pelo caminho real (helper joined) para no passo de confirmação; a regra quebrada é a mesma (status inicial 'pending'), então a falha atinge P2 a P8 pelo mesmo motivo"
@@ -215,14 +252,14 @@
    "primary": [
     {
      "test_pattern": "P11",
-     "assertion_pattern": "[P11.2]"
+     "assertion_pattern": "[P11.1]"
     }
    ],
    "secondary": [
     {
-     "test_pattern": "P10",
-     "assertion_pattern": "[P10.2]",
-     "justification": "sem a marca 'sent' o aviso congelado continua reservado e é reenviado (mesma chave) a cada execução: mais chamadas ao provedor do que as 3 esperadas"
+     "test_pattern": "P6",
+     "assertion_pattern": "[P6.3]",
+     "justification": "sem a marca confirmed o aviso aceito fica 'attempting' com tentativa recente: a execução seguinte o trata como em curso, devolve a reserva e não apaga; P6.3 exige os dados apagados"
     }
    ]
   }
