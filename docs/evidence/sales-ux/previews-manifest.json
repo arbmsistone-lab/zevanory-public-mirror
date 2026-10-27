@@ -1,12 +1,12 @@
 {
   "schema": "zevanory.sales-previews.v2",
   "authorization": "Owner, in writing: \"AUTORIZO PRÉVIAS REAIS DOS PRODUTOS NO SITE\". Per product: the manual cover, ONE inner page, ONE spreadsheet crop; no full files, no downloadable PDFs. Sol 228 content rules applied (no personal data, no credentials, no proprietary formulas, nothing that rebuilds the method).",
-  "source_bundle": "ZEVANORY_HANDOFF_v2.1; every zip SHA-256 equals artifact_sha256 in the production Worker catalog",
+  "source_bundle": "IA na Prática, Vendas na Prática e Combo: zips v1.2 entregues (mesmo SHA-256 do catálogo do Worker); Lucro & Caixa e Negócio Completo: ZEVANORY_HANDOFF_v2.1 (v1.1, ainda em catálogo). Todo zip citado tem o SHA-256 de artifact_sha256 no catálogo de produção (teste (e) de tests/sales-design.test.mjs).",
   "source_zips": {
-    "ZEVANORY_IA_na_Pratica_v1.1.zip": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
-    "ZEVANORY_Vendas_na_Pratica_v1.1.zip": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
+    "ZEVANORY_IA_na_Pratica_v1.2.zip": "bdb6dddd22b037afc16615932a2aaa809096befda6fb6d29f29fb64bc794c137",
+    "ZEVANORY_Vendas_na_Pratica_v1.2.zip": "90a568d8ecaa42afad4ae69aace685afcb2d69989a864aa09545852716c92979",
+    "ZEVANORY_Combo_IA_e_Vendas_v1.2.zip": "7a9db9ab8b12acb92deb235f2d0161f7ebb6c41dbb282f45c85d094f1ce95104",
     "ZEVANORY_Lucro_e_Caixa_v1.1.zip": "48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f",
-    "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
     "ZEVANORY_Negocio_Completo_v1.1.zip": "8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e"
   },
   "content_checks": [
@@ -53,30 +53,30 @@
       "label": "página real do material",
       "webp": {
         "file": "assets/previews/manual-ia-capa.webp",
-        "sha256": "4e878c23ef71edcbc2453c4e919785117857940de2b34a05a361752155580bb5",
-        "bytes": 32672
+        "sha256": "8ffcb9a89b5e5b9e47f0525d36b345ca3823941c9c02d17516f53caf27460f1d",
+        "bytes": 12118
       },
       "avif": {
         "file": "assets/previews/manual-ia-capa.avif",
-        "sha256": "7570bc615b1ec5dbca5fa1c8a5e524ac20b7435af390ed21f8f41f3973dc60ef",
-        "bytes": 24627
+        "sha256": "af103cb14ea6c0a8673ac30bd557800513016909b4c0fdf4070560d1232b2f31",
+        "bytes": 9379
       },
       "width": 640,
       "height": 828,
       "sources": [
         {
           "product": "ia-na-pratica",
-          "zip": "ZEVANORY_IA_na_Pratica_v1.1.zip",
-          "zip_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
-          "path_in_zip": "ZEVANORY_IA_Manual_v1.1.pdf",
-          "file_sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246"
+          "zip": "ZEVANORY_IA_na_Pratica_v1.2.zip",
+          "zip_sha256": "bdb6dddd22b037afc16615932a2aaa809096befda6fb6d29f29fb64bc794c137",
+          "path_in_zip": "ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+          "file_sha256": "20cfe8097cc6b246a0c55714915ea465786a70bd0de42672188dd89b37572492"
         },
         {
           "product": "combo-ia-vendas",
-          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
-          "zip_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
-          "path_in_zip": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
-          "file_sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246"
+          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.2.zip",
+          "zip_sha256": "7a9db9ab8b12acb92deb235f2d0161f7ebb6c41dbb282f45c85d094f1ce95104",
+          "path_in_zip": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+          "file_sha256": "20cfe8097cc6b246a0c55714915ea465786a70bd0de42672188dd89b37572492"
         }
       ],
       "location": {
@@ -87,10 +87,11 @@
       "redactions": [],
       "render": {
         "tool": "pdftoppm -r 110 -png (poppler)",
-        "resize": "Pillow Lanczos to 640px wide",
+        "resize": "Pillow Lanczos, página inteira dentro de 640x828 com margem branca (páginas v1.2 em A4)",
         "encode": "WebP q78 method 6; AVIF q55"
       },
-      "why_safe": "Capa do manual: título, público, formato, requisitos e a lista das 8 aulas. Não traz nenhum passo do método, nenhum comando e nenhum dado pessoal."
+      "why_safe": "Capa do manual v1.2: marca, título e a frase de propósito (IA no atendimento, orçamento, agenda, conteúdo e rotina, com segurança e conferência). Nenhum passo do método, nenhum comando, nenhum dado pessoal.",
+      "version": "1.2"
     },
     {
       "id": "manual-ia-aula-a1",
@@ -100,37 +101,38 @@
       "label": "página real do material",
       "webp": {
         "file": "assets/previews/manual-ia-aula-a1.webp",
-        "sha256": "275ecdef3b1777e93472a9dadbf87fad465772fda729afb5f6c40a201516c6ec",
-        "bytes": 40136
+        "sha256": "e6c214312b8c65075027a34149db2eef6a565793d5010405d43ea00fd526fa6c",
+        "bytes": 37174
       },
       "avif": {
         "file": "assets/previews/manual-ia-aula-a1.avif",
-        "sha256": "b539f9c091cff20019327957d5b7279d956a2070442106964d8ba12247102b52",
-        "bytes": 30650
+        "sha256": "49be0df3ac2bb89bea8deab7818ab0158324cd5de01f1c92d6f11d3ec47f88f1",
+        "bytes": 27450
       },
       "width": 640,
       "height": 828,
       "sources": [
         {
           "product": "ia-na-pratica",
-          "zip": "ZEVANORY_IA_na_Pratica_v1.1.zip",
-          "zip_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
-          "path_in_zip": "ZEVANORY_IA_Manual_v1.1.pdf",
-          "file_sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246"
+          "zip": "ZEVANORY_IA_na_Pratica_v1.2.zip",
+          "zip_sha256": "bdb6dddd22b037afc16615932a2aaa809096befda6fb6d29f29fb64bc794c137",
+          "path_in_zip": "ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+          "file_sha256": "20cfe8097cc6b246a0c55714915ea465786a70bd0de42672188dd89b37572492"
         }
       ],
       "location": {
-        "page": 2
+        "page": 12
       },
       "crop_box": null,
       "crop_note": null,
       "redactions": [],
       "render": {
         "tool": "pdftoppm -r 110 -png (poppler)",
-        "resize": "Pillow Lanczos to 640px wide",
+        "resize": "Pillow Lanczos, página inteira dentro de 640x828 com margem branca (páginas v1.2 em A4)",
         "encode": "WebP q78 method 6; AVIF q55"
       },
-      "why_safe": "Primeira aula (A1 de 8), introdutória: escolher uma rotina para organizar. Os comandos de IA (arquivo separado) e as aulas A2–A8 (contexto, briefing, orçamento, checklists, revisão) ficam de fora; sozinha, a página não reconstrói o método."
+      "why_safe": "Primeira página da aula A1 de 8 (introdutória): objetivo, por que medir antes e como escolher a primeira tarefa, com a tabela de exemplos fictícios por ramo. Os comandos (arquivo separado) e as aulas A2–A8 ficam de fora; sozinha, a página não reconstrói o método.",
+      "version": "1.2"
     },
     {
       "id": "planilha-ia-orcamento",
@@ -140,33 +142,33 @@
       "label": "trecho real da planilha",
       "webp": {
         "file": "assets/previews/planilha-ia-orcamento.webp",
-        "sha256": "3c89890c2a427983dae12e4bf9a88e68cfc435eb76b8bca536ae333663e4f5a3",
-        "bytes": 3310
+        "sha256": "88dd80f934597e6a64acad7498623f94642031e7def3674cbcae24b96ee47f45",
+        "bytes": 9064
       },
       "avif": {
         "file": "assets/previews/planilha-ia-orcamento.avif",
-        "sha256": "c17fa612829d693dcd76e8226d46969ef9bb6b07d9d37d8bee3d974845371422",
-        "bytes": 2644
+        "sha256": "efeef7b5b167923b1c5a1796db060e1921e906e7a542b984e2e41786e622babd",
+        "bytes": 6049
       },
       "width": 720,
       "height": 349,
       "sources": [
         {
           "product": "ia-na-pratica",
-          "zip": "ZEVANORY_IA_na_Pratica_v1.1.zip",
-          "zip_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
-          "path_in_zip": "ZEVANORY_IA_Planilha.xlsx",
-          "file_sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4"
+          "zip": "ZEVANORY_IA_na_Pratica_v1.2.zip",
+          "zip_sha256": "bdb6dddd22b037afc16615932a2aaa809096befda6fb6d29f29fb64bc794c137",
+          "path_in_zip": "ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+          "file_sha256": "ca41732c7da2040a7ac56d66ec0621df627dca1e65abe002233ba284710d162d"
         }
       ],
       "location": {
-        "sheet": "Orcamento"
+        "sheet": "Orçamento"
       },
       "crop_box": [
         0,
         0,
-        888,
-        430
+        900,
+        436
       ],
       "crop_note": "pixels, left/top/right/bottom, applied before resize",
       "redactions": [],
@@ -174,9 +176,10 @@
         "tool": "LibreOffice headless --convert-to html (no network, JavaScript off), Playwright element screenshot of the sheet table",
         "resize": "Pillow Lanczos to 720px wide",
         "encode": "WebP q78 method 6; AVIF q55",
-        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets"
+        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets; planilha vazia (modelo)"
       },
-      "why_safe": "Cabeçalho e primeiras linhas VAZIAS do modelo (Item, Quantidade, Unitário, Subtotal, Conferência). Sem fórmulas, sem instruções, sem exemplo preenchido."
+      "why_safe": "Cabeçalho e primeiras linhas VAZIAS do modelo da aba Orçamento (identificação, data, ramo; item, quantidade, valor unitário, subtotal, conferência). Sem fórmulas, sem exemplo preenchido.",
+      "version": "1.2"
     },
     {
       "id": "manual-vendas-capa",
@@ -186,23 +189,23 @@
       "label": "página real do material",
       "webp": {
         "file": "assets/previews/manual-vendas-capa.webp",
-        "sha256": "45c84cb5653f22839d5d48b4259e4311e6faec2bcd33e98000794b015c8c3697",
-        "bytes": 34552
+        "sha256": "d296bec8c72ae9135aa733e13782bed2af419aef01d3a904d69470f20cedacdb",
+        "bytes": 13094
       },
       "avif": {
         "file": "assets/previews/manual-vendas-capa.avif",
-        "sha256": "e925bb1abb390e6fbd86fc64d7fc03620aa60c4eb693ee8abdeed6f0fd2a73b7",
-        "bytes": 25987
+        "sha256": "f2c374b3ada43c13ae84cce0620086d02726c633f84b05b738c0f3efc737677a",
+        "bytes": 10012
       },
       "width": 640,
       "height": 828,
       "sources": [
         {
           "product": "vendas-na-pratica",
-          "zip": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
-          "zip_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
-          "path_in_zip": "ZEVANORY_Vendas_Manual_v1.1.pdf",
-          "file_sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57"
+          "zip": "ZEVANORY_Vendas_na_Pratica_v1.2.zip",
+          "zip_sha256": "90a568d8ecaa42afad4ae69aace685afcb2d69989a864aa09545852716c92979",
+          "path_in_zip": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+          "file_sha256": "9d57680328840ff0dcde62b1dfcef7729a033b52969af3a56352ee862b0b7e69"
         }
       ],
       "location": {
@@ -213,10 +216,11 @@
       "redactions": [],
       "render": {
         "tool": "pdftoppm -r 110 -png (poppler)",
-        "resize": "Pillow Lanczos to 640px wide",
+        "resize": "Pillow Lanczos, página inteira dentro de 640x828 com margem branca (páginas v1.2 em A4)",
         "encode": "WebP q78 method 6; AVIF q55"
       },
-      "why_safe": "Capa do manual: título, público, formato e a lista das 8 aulas. Nenhuma mensagem pronta, nenhum roteiro."
+      "why_safe": "Capa do manual v1.2: marca, título e a frase de propósito (atendimento, oferta, proposta, objeções, acompanhamento e medição). Nenhuma mensagem pronta, nenhum roteiro.",
+      "version": "1.2"
     },
     {
       "id": "manual-vendas-aula-b1",
@@ -227,44 +231,45 @@
       "label": "página real do material",
       "webp": {
         "file": "assets/previews/manual-vendas-aula-b1.webp",
-        "sha256": "bb5028c64513bc2f3c868de7ff2324f6c3bb4b6e294a9318a37dd4c4135db1bd",
-        "bytes": 37332
+        "sha256": "805ef21e2bf78e654bd0a5914e4a69d41092e6c9785c6f7cc6b35d23a7998ebe",
+        "bytes": 52368
       },
       "avif": {
         "file": "assets/previews/manual-vendas-aula-b1.avif",
-        "sha256": "35053d5f73226d804f7fcc80b206542343d190ce9acb757d9a41d1178c5e7f26",
-        "bytes": 28151
+        "sha256": "c375d89a805dcaf70d581793ba23f240fbcaea3eb2cb11c9e8ea8ac8b4e83118",
+        "bytes": 40347
       },
       "width": 640,
       "height": 828,
       "sources": [
         {
           "product": "vendas-na-pratica",
-          "zip": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
-          "zip_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
-          "path_in_zip": "ZEVANORY_Vendas_Manual_v1.1.pdf",
-          "file_sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57"
+          "zip": "ZEVANORY_Vendas_na_Pratica_v1.2.zip",
+          "zip_sha256": "90a568d8ecaa42afad4ae69aace685afcb2d69989a864aa09545852716c92979",
+          "path_in_zip": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+          "file_sha256": "9d57680328840ff0dcde62b1dfcef7729a033b52969af3a56352ee862b0b7e69"
         },
         {
           "product": "combo-ia-vendas",
-          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
-          "zip_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
-          "path_in_zip": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
-          "file_sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57"
+          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.2.zip",
+          "zip_sha256": "7a9db9ab8b12acb92deb235f2d0161f7ebb6c41dbb282f45c85d094f1ce95104",
+          "path_in_zip": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+          "file_sha256": "9d57680328840ff0dcde62b1dfcef7729a033b52969af3a56352ee862b0b7e69"
         }
       ],
       "location": {
-        "page": 2
+        "page": 7
       },
       "crop_box": null,
       "crop_note": null,
       "redactions": [],
       "render": {
         "tool": "pdftoppm -r 110 -png (poppler)",
-        "resize": "Pillow Lanczos to 640px wide",
+        "resize": "Pillow Lanczos, página inteira dentro de 640x828 com margem branca (páginas v1.2 em A4)",
         "encode": "WebP q78 method 6; AVIF q55"
       },
-      "why_safe": "Primeira aula (B1 de 8), introdutória: definir uma oferta que dá para cumprir. Os modelos de mensagens, follow-up e roteiros de conteúdo (arquivos separados) e as aulas B2–B8 ficam de fora."
+      "why_safe": "Página 7: fim das regras das plataformas de mensagem, a parte 'A LGPD nas vendas' e o início da aula B1 de 9 (objetivo e por que começar pela oferta). Os modelos de mensagens, objeções e roteiros (arquivos separados) e as aulas B2–B9 ficam de fora.",
+      "version": "1.2"
     },
     {
       "id": "planilha-vendas-oportunidades",
@@ -275,30 +280,30 @@
       "label": "trecho real da planilha",
       "webp": {
         "file": "assets/previews/planilha-vendas-oportunidades.webp",
-        "sha256": "4f883cbc8c7e93e4f26448e0ff322f78dd9dc2eb151adebd1888e8c0423238f9",
-        "bytes": 3760
+        "sha256": "a9f3ed8ef65adaedf08b282ebd3dbd2eb7ddbd07e3a3cee1ece276f9b07c558b",
+        "bytes": 13696
       },
       "avif": {
         "file": "assets/previews/planilha-vendas-oportunidades.avif",
-        "sha256": "b149feb0c61e20d027855c2bc7123cf963eda50b323ab8aa3db8d8cd3f512c17",
-        "bytes": 3312
+        "sha256": "e0b002d39ad431b98cb5872afe8b05d497b97f24f93dde974139100e71d2d7f7",
+        "bytes": 7630
       },
       "width": 720,
       "height": 341,
       "sources": [
         {
           "product": "vendas-na-pratica",
-          "zip": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
-          "zip_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
-          "path_in_zip": "ZEVANORY_Vendas_Planilha.xlsx",
-          "file_sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0"
+          "zip": "ZEVANORY_Vendas_na_Pratica_v1.2.zip",
+          "zip_sha256": "90a568d8ecaa42afad4ae69aace685afcb2d69989a864aa09545852716c92979",
+          "path_in_zip": "ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+          "file_sha256": "1fdb41eb727b146ee6e6a8e3aaaa6c4c7d9fc903fec123abfd419afc61d17be7"
         },
         {
           "product": "combo-ia-vendas",
-          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
-          "zip_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
-          "path_in_zip": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Planilha.xlsx",
-          "file_sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0"
+          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.2.zip",
+          "zip_sha256": "7a9db9ab8b12acb92deb235f2d0161f7ebb6c41dbb282f45c85d094f1ce95104",
+          "path_in_zip": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+          "file_sha256": "1fdb41eb727b146ee6e6a8e3aaaa6c4c7d9fc903fec123abfd419afc61d17be7"
         }
       ],
       "location": {
@@ -307,8 +312,8 @@
       "crop_box": [
         0,
         0,
-        1184,
-        560
+        1120,
+        530
       ],
       "crop_note": "pixels, left/top/right/bottom, applied before resize",
       "redactions": [],
@@ -316,9 +321,10 @@
         "tool": "LibreOffice headless --convert-to html (no network, JavaScript off), Playwright element screenshot of the sheet table",
         "resize": "Pillow Lanczos to 720px wide",
         "encode": "WebP q78 method 6; AVIF q55",
-        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets"
+        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets; planilha vazia (modelo)"
       },
-      "why_safe": "Cabeçalho e primeiras linhas VAZIAS do controle de oportunidades. Sem fórmulas, sem indicadores, sem exemplo."
+      "why_safe": "Cabeçalho e linhas VAZIAS da aba Oportunidades (ID, data de entrada, origem, código e nome do produto ou serviço, etapa, proposta, valor, resultado, data da decisão, valor fechado, motivo da perda, contato permitido). A 'Data de referência' é =HOJE() e mostra a data da renderização (27/10/2026). Sem fórmulas exibidas, sem exemplo preenchido.",
+      "version": "1.2"
     },
     {
       "id": "manual-lucro-capa",
