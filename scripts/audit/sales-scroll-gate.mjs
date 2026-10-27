@@ -11,7 +11,7 @@ import { join } from "node:path";
 const [base, outPath = "sales-scroll-gate.json", modulesDir, browserPath, releaseShaArg] = process.argv.slice(2);
 const req = createRequire(join(process.env.QUALITY_MODULES || modulesDir || join(process.cwd(), "node_modules"), "noop.js"));
 const { chromium } = req("playwright");
-const AXE = createRequire(join(process.cwd(), "node_modules", "noop.js")).resolve("axe-core/axe.min.js");
+const AXE = req.resolve("axe-core/axe.min.js");
 export const ROUTES = [
   ["/solucoes", 200], ["/zevanory-sales", 200], ["/ia-na-pratica", 200], ["/vendas-na-pratica", 200], ["/combo-ia-vendas", 200],
   ["/lucro-e-caixa", 200], ["/negocio-completo", 200], ["/conteudo-pronto", 200], ["/quem-criou", 200], ["/termos", 200],
