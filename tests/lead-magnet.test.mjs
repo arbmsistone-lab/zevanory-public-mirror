@@ -152,7 +152,7 @@ test("the offer matches what the lead was reading and the sequence ends", () => 
     const t = nurtureEmail(s, { name: "", optOutUrl: "OPTOUT", salesOpen: true }).text;
     assert.match(t, /OPTOUT/);
     assert.deepEqual(bannedPolicyHits(t), [], "step " + s);
-    for (const m of t.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397, 641].includes(Number(m[1])), m[0]);
+    for (const m of t.matchAll(/R\$ (\d+)/g)) assert.ok([...Object.values(PRICE_OF), PRICE_OF["ia-na-pratica"] + PRICE_OF["vendas-na-pratica"] + PRICE_OF["lucro-e-caixa"]].includes(Number(m[1])), m[0]);
   }
 });
 

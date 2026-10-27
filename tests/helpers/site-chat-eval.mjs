@@ -24,7 +24,8 @@ export function wilsonLower(k, n, z = 1.959963984540054) {
 const CHECKOUT = /\/comprar\b|\/assinar\b|hotmart|mercadopago\.com|pay\.|checkout/i;
 function catalogFor(fault) {
   if (fault === "stale") return buildCatalog({ policy: { ...CHAT, approved_sources: { catalog_fingerprint: "0000000000000000" } } });
-  if (fault === "conflict") return buildCatalog({ products: { products: [{ slug: "ia-na-pratica", name: "IA na Prática", price: 97 }, { slug: "vendas-na-pratica", name: "Vendas na Prática", price: 197 }, { slug: "lucro-e-caixa", name: "Lucro & Caixa", price: 247 }, { slug: "combo-ia-vendas", name: "Combo IA + Vendas", price: 297 }, { slug: "negocio-completo", name: "Negócio Completo", price: 397 }], subscription: { slug: "conteudo-pronto", name: "Conteúdo Pronto", price: 197 } } });
+  // Conflito: o IA na Prática diverge de data/products.json (preço canônico + 1); o resto é o catálogo real.
+  if (fault === "conflict") { const real = JSON.parse(readFileSync(new URL("../../data/products.json", import.meta.url), "utf8")); return buildCatalog({ products: { ...real, products: real.products.map((p) => p.slug === "ia-na-pratica" ? { ...p, price: p.price + 1 } : p) } }); }
   if (fault === "missing") return buildCatalog({ products: { products: [] } });
   return CATALOG;
 }
