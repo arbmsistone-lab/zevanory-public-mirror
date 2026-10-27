@@ -11,6 +11,7 @@ on:
       - ".github/workflows/conteudo-pronto-contract.yml"
       - "tests/conteudo-pronto-roteiros.test.mjs"
       - "tests/content-service.test.mjs"
+      - "tests/conteudo-pronto-g1-g5.test.mjs"
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_conteudo_pronto.py"
       - "scripts/ci/mutant_classifier.py"
@@ -56,6 +57,14 @@ jobs:
             grep -qx "# $kv" /tmp/cp.txt || { echo "::error::esperado '# $kv'"; exit 1; }
           done
           echo "::notice title=CONTEUDO_PRONTO_TESTS::$(grep -E '^# (tests|pass|fail|skipped|todo) ' /tmp/cp.txt | paste -sd' ' -)"
+      - name: Conteúdo Pronto — G1–G5 e ORDEM 301 (fila durável, falha explícita; offline, contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/conteudo-pronto-g1-g5.test.mjs 2>&1 | tee /tmp/g.txt
+          for kv in "tests 12" "pass 12" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+            grep -qx "# $kv" /tmp/g.txt || { echo "::error::G1–G5: esperado '# $kv'"; exit 1; }
+          done
       - name: Mapa causal dos mutantes válido e documento de evidência em dia
         shell: bash
         env:

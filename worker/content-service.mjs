@@ -77,11 +77,15 @@ export function isServiceProduct(data = {}, ids = "") {
 const ACTIVE_EVENTS = new Set(["PURCHASE_APPROVED", "PURCHASE_COMPLETE"]);
 const STOP_EVENTS = new Set(["PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_CANCELED", "PURCHASE_PROTEST", "SUBSCRIPTION_CANCELLATION"]);
 
-async function sendEmail(env, to, subject, text, fetchImpl = fetch) {
+// idempotencyKey (opcional): Resend retém a chave por 24 h; mesma chave + mesmo payload devolve a resposta original
+// sem enviar outro e-mail (https://resend.com/docs/dashboard/emails/idempotency-keys).
+async function sendEmail(env, to, subject, text, fetchImpl = fetch, idempotencyKey = "") {
   if (!env.RESEND_API_KEY || !to) return false;
+  const headers = { authorization: "Bearer " + String(env.RESEND_API_KEY), "content-type": "application/json" };
+  if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
   const r = await fetchImpl("https://api.resend.com/emails", {
     method: "POST",
-    headers: { authorization: "Bearer " + String(env.RESEND_API_KEY), "content-type": "application/json" },
+    headers,
     body: JSON.stringify({ from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], reply_to: "suporte@zevanory.api.br", subject, text, html: brandedEmailHtml(text) }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
@@ -109,7 +113,10 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   if (!event || !txn) return json(400, { error: "missing_event_or_transaction" });
   const dedupe = TXN + (await sha(event + ":" + txn)).slice(0, 40);
   if (await kv.get(dedupe)) return json(200, { ok: true, duplicate: true });
-  await kv.put(dedupe, "1", { expirationTtl: 400 * DAY });
+  // G1 (ORDEM 301): o evento só conta como processado DEPOIS dos efeitos duráveis (registro do assinante e intenção de
+  // geração na fila). Se o isolate cair antes, a Hotmart reenvia o postback e o processamento se repete sem dobrar o
+  // ciclo (o ciclo só sobe uma vez por transação).
+  const markProcessed = () => kv.put(dedupe, "1", { expirationTtl: 400 * DAY });
   // Revenue ledger for the command center (aggregate, PII-free, idempotent per txn/outcome).
   await recordHotmartSale(kv, event, data).catch(() => null);
 
@@ -117,6 +124,7 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     // Digital products: Hotmart itself delivers the files. Only record visibility.
     if (ACTIVE_EVENTS.has(event)) await emitActivity(env, { type: "delivery_sent", channel: "store", status: "hotmart_approved", ref: "hotmart:" + txn }).catch(() => null);
     if (STOP_EVENTS.has(event)) await emitActivity(env, { type: "refund_requested", channel: "store", status: "hotmart_" + event.toLowerCase().slice(0, 40), ref: "hotmart:" + txn }).catch(() => null);
+    await markProcessed();
     return json(200, { ok: true, scope: "digital_product" });
   }
 
@@ -129,29 +137,36 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   if (STOP_EVENTS.has(event)) {
     if (current) await kv.put(key, JSON.stringify({ ...current, status: "inactive", stoppedAt: new Date().toISOString(), stopEvent: event }), { expirationTtl: 400 * DAY });
     await emitActivity(env, { type: "refund_requested", channel: "store", status: "service_stopped", ref: "cp:" + subscriber }).catch(() => null);
+    await markProcessed();
     return json(200, { ok: true, status: "inactive" });
   }
-  if (!ACTIVE_EVENTS.has(event)) return json(200, { ok: true, ignored: event });
-  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) return json(200, { ok: true, status: "no_buyer_email" });
+  if (!ACTIVE_EVENTS.has(event)) { await markProcessed(); return json(200, { ok: true, ignored: event }); }
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { await markProcessed(); return json(200, { ok: true, status: "no_buyer_email" }); }
 
   const record = {
     schema: "zpc.cp.v1", status: "active", email, name,
-    cycles: Number(current?.cycles || 0) + 1, lastTxn: txn,
+    cycles: current?.lastTxn === txn ? Number(current.cycles || 1) : Number(current?.cycles || 0) + 1, lastTxn: txn,
     briefing: current?.briefing || null, createdAt: current?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
+  // Campos de entrega do ciclo já entregue continuam (sem eles o ciclo seria entregue de novo).
+  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt"]) if (current?.[f] !== undefined) record[f] = current[f];
   await kv.put(key, JSON.stringify(record), { expirationTtl: 400 * DAY });
   await emitActivity(env, { type: "delivery_sent", channel: "store", status: record.cycles === 1 ? "service_started" : "service_renewed", ref: "cp:" + subscriber + ":" + record.cycles }).catch(() => null);
 
   if (!record.briefing) {
     const token = rand();
-    await kv.put(TOKEN + token, key, { expirationTtl: 60 * DAY });
+    await putToken(kv, token, { k: "brief", sub: key }, 60);
     const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
     await sendEmail(env, email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo",
-      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias chega neste e-mail em poucos minutos. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
+      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias chega neste e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
     await emitActivity(env, { type: "email_sent", channel: "email", status: "briefing_requested", ref: "cp-brief:" + subscriber + ":" + record.cycles }).catch(() => null);
     await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl);
+    await markProcessed();
     return json(200, { ok: true, status: "briefing_requested" });
   }
+  // G1: entra na fila ANTES do waitUntil; se o runtime cortar a geração (até 30 s após a resposta), o cron entrega.
+  await enqueuePending(kv, key);
+  await markProcessed();
   const job = generateAndDeliver(env, key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
   return json(200, { ok: true, status: "generation_started" });
@@ -171,22 +186,32 @@ const FIELDS = [
 function page(title, inner, status = 200) {
   return new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)} · ZEVANORY</title><style>body{margin:0;background:#05070b;color:#f5f7fb;font:16px/1.55 system-ui,Arial,sans-serif}main{max-width:720px;margin:0 auto;padding:24px 16px}label{display:block;margin:16px 0 6px;font-weight:600}input,textarea{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #2a3344;background:#0b0f16;color:#f5f7fb;font:inherit}button{margin-top:20px;padding:14px 20px;border:0;border-radius:12px;background:#dbe6ff;color:#05070b;font-weight:700;font-size:16px;cursor:pointer}article{background:#0b0f16;border:1px solid #1d2533;border-radius:12px;padding:14px;margin:12px 0}h1{font-size:28px;line-height:1.2}small{color:#9aa6bd}</style></head><body><main>${inner}</main></body></html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "referrer-policy": "no-referrer", "x-frame-options": "DENY" } });
 }
-async function resolveToken(kv, token) {
+// G5: token tipado. O formulário recebe {k:"brief"} e não abre pacote; cada e-mail de pacote recebe {k:"pkg", pkg}
+// e abre AQUELE pacote (o link do mês 1 continua mostrando o mês 1). Tokens antigos (valor = chave do assinante,
+// emitidos antes desta versão, TTL de 60/120 dias) continuam valendo como antes: formulário e último pacote.
+const putToken = (kv, token, value, ttlDays) => kv.put(TOKEN + token, JSON.stringify(value), { expirationTtl: ttlDays * DAY });
+async function resolveToken(kv, token, kind) {
   if (!/^[A-Za-z0-9_-]{40,64}$/.test(String(token || ""))) return null;
-  const key = await kv.get(TOKEN + token);
-  return key ? { key, record: await readJson(kv, key, null) } : null;
+  const raw = await kv.get(TOKEN + token);
+  if (!raw) return null;
+  let t = null;
+  if (String(raw).startsWith(SUB)) t = { k: "legacy", sub: String(raw) };
+  else { try { t = JSON.parse(String(raw)); } catch { return null; } }
+  if (!t || typeof t.sub !== "string" || !t.sub.startsWith(SUB)) return null;
+  if (kind && t.k !== kind && t.k !== "legacy") return null;
+  return { key: t.sub, token: t, record: await readJson(kv, t.sub, null) };
 }
 export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const url = new URL(request.url);
   if (!kv?.get) return page("Indisponível", "<h1>Tente novamente em instantes.</h1>", 503);
   const token = url.searchParams.get("t") || "";
-  const found = await resolveToken(kv, token);
+  const found = await resolveToken(kv, token, "brief");
   if (!found?.record || found.record.status !== "active") return page("Link inválido", "<h1>Link inválido ou expirado.</h1><p>Fale com suporte@zevanory.api.br.</p>", 404);
   if (request.method === "GET") {
     const b = found.record.briefing || {};
     const inputs = FIELDS.map(([id, label, max, req]) => `<label for="${id}">${esc(label)}${req ? "" : " <small>(opcional)</small>"}</label>${max > 120 ? `<textarea id="${id}" name="${id}" maxlength="${max}" rows="3"${req ? " required" : ""}>${esc(b[id] || "")}</textarea>` : `<input id="${id}" name="${id}" maxlength="${max}" value="${esc(b[id] || "")}"${req ? " required" : ""}>`}`).join("");
-    return page("Briefing", `<h1>Conteúdo Pronto · seu briefing</h1><p>Responda com o jeito que você fala com seus clientes. Com isso a ZEVANORY prepara seu pacote do mês e envia por e-mail em poucos minutos.</p><form method="post">${inputs}<button type="submit">Enviar e gerar meu pacote</button></form>`);
+    return page("Briefing", `<h1>Conteúdo Pronto · seu briefing</h1><p>Responda com o jeito que você fala com seus clientes. Com isso a ZEVANORY prepara seu pacote do mês e envia por e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada.</p><form method="post">${inputs}<button type="submit">Enviar e gerar meu pacote</button></form>`);
   }
   if (request.method !== "POST") return page("Método inválido", "<h1>Método inválido.</h1>", 405);
   let form; try { form = await request.formData(); } catch { form = new FormData(); }
@@ -196,25 +221,32 @@ export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
     if (req && v.length < 2) return page("Faltou um campo", `<h1>Faltou preencher: ${esc(FIELDS.find((f) => f[0] === id)[1])}</h1><p><a href="?t=${esc(token)}" style="color:#dbe6ff">Voltar</a></p>`, 400);
     briefing[id] = v;
   }
+  await enqueuePending(kv, found.key); // G1: intenção na fila antes de gravar o briefing e de responder
   await kv.put(found.key, JSON.stringify({ ...found.record, briefing, briefedAt: new Date().toISOString() }), { expirationTtl: 400 * DAY });
   const job = generateAndDeliver(env, found.key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
-  return page("Recebido", "<h1>Pronto! Seu pacote está sendo gerado.</h1><p>Ele chega no seu e-mail em poucos minutos. Confira também a caixa de spam ou promoções.</p>");
+  return page("Recebido", "<h1>Pronto! Seu pacote está sendo gerado.</h1><p>Ele chega no seu e-mail em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Confira também a caixa de spam ou promoções.</p>");
 }
 
 // ---------- Generation ----------
 function aiText(out) { return String(out?.response ?? out?.result?.response ?? out ?? ""); }
 function extractJson(text) { const s = text.indexOf("{"), e = text.lastIndexOf("}"); if (s < 0 || e <= s) return null; try { return JSON.parse(text.slice(s, e + 1)); } catch { return null; } }
 const FORBIDDEN = /(garant\w* (de )?(resultado|venda|lucro)|100% garantido|fique rico|renda garantida|milagr)/i;
+const HASHTAG = /^#[\p{L}\p{N}_]{2,40}$/u;
+export const LEGENDA_MIN = 200;
+export const IMAGEM_MIN = 8;
 function briefingText(b) { return FIELDS.filter(([id]) => b[id]).map(([id, label]) => `${label}: ${b[id]}`).join("\n"); }
 export function validatePosts(list, n) {
   if (!Array.isArray(list) || list.length < n) return null;
   const out = [];
   for (const p of list.slice(0, n)) {
     const tema = String(p?.tema || "").trim(), legenda = String(p?.legenda || "").trim(), cta = String(p?.cta || "").trim();
-    const hashtags = (Array.isArray(p?.hashtags) ? p.hashtags : String(p?.hashtags || "").split(/[\s,]+/)).map((h) => String(h).trim()).filter(Boolean).map((h) => h.startsWith("#") ? h : "#" + h).slice(0, 8);
+    const hashtags = (Array.isArray(p?.hashtags) ? p.hashtags : String(p?.hashtags || "").split(/[\s,]+/)).map((h) => String(h).trim()).filter(Boolean).map((h) => h.startsWith("#") ? h : "#" + h).filter((h) => HASHTAG.test(h)).slice(0, 8);
     const imagem = String(p?.imagem || "").trim();
-    if (tema.length < 3 || legenda.length < 120 || legenda.length > 1600 || cta.length < 3 || FORBIDDEN.test(legenda + " " + cta)) return null;
+    // G3: a página promete hashtags e sugestão de imagem para cada post; legenda curta demais não é "legenda completa".
+    if (tema.length < 3 || legenda.length < LEGENDA_MIN || legenda.length > 1600 || cta.length < 3 || FORBIDDEN.test(legenda + " " + cta)) return null;
+    if (hashtags.length < 1 || imagem.length < IMAGEM_MIN) return null;
+    if (out.some((q) => q.tema.toLowerCase() === tema.toLowerCase())) return null;
     if (contaminated([tema, legenda, cta, ...hashtags, imagem].join(" "))) return null;
     out.push({ tema, legenda, cta, hashtags, imagem });
   }
@@ -318,42 +350,147 @@ export function packageText(pkg, name = "") {
   lines.push("", "Revise e ajuste o que quiser antes de publicar ou enviar. Fale só com quem autorizou o contato com você.");
   return lines.join("\n");
 }
-export async function generateAndDeliver(env, key, fetchImpl = fetch) {
+// G2 (ORDEM 301): fila com tentativas contadas, item envenenado vai para a fila de falhas (com alerta e registro
+// explícito), reenvio só por operação registrada, alerta quando a fila para de andar e um registro de cada saída da
+// fila (nenhum pacote some em silêncio). Estado: zpc:cp:pending (fila), zpc:cp:pending-meta (tentativas),
+// zpc:cp:pending-dead (falhas definitivas), zpc:cp:pending-log (últimos 300 eventos, sem e-mail nem nome).
+const PENDING_META = "zpc:cp:pending-meta";
+const PENDING_DEAD = "zpc:cp:pending-dead";
+const PENDING_LOG = "zpc:cp:pending-log";
+const STALL_ALERT = "zpc:cp:pending-stall-alert";
+export const PENDING_MAX_ATTEMPTS = 12;
+export const PENDING_STALL_HOURS = 6;
+async function pendingLog(kv, key, event, reason = "", now = Date.now()) {
+  const log = await readJson(kv, PENDING_LOG, []);
+  log.push({ at: new Date(now).toISOString(), sub: String(key).slice(-12), event, reason: String(reason).slice(0, 80) });
+  await kv.put(PENDING_LOG, JSON.stringify(log.slice(-300)), { expirationTtl: 400 * DAY });
+}
+async function enqueuePending(kv, key, now = Date.now()) {
+  const pending = await readJson(kv, PENDING, []);
+  if (pending.includes(key)) return;
+  if (pending.length >= 200) throw new Error("pending_queue_full"); // nunca descarta o mais antigo em silêncio
+  await kv.put(PENDING, JSON.stringify([...pending, key]));
+  const meta = await readJson(kv, PENDING_META, {});
+  if (!meta[key]) { meta[key] = { attempts: 0, firstAt: new Date(now).toISOString() }; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }
+  await pendingLog(kv, key, "enqueued", "", now);
+}
+async function notePendingFailure(kv, key, reason, now = Date.now()) {
+  const meta = await readJson(kv, PENDING_META, {});
+  const m = meta[key] || { attempts: 0, firstAt: new Date(now).toISOString() };
+  meta[key] = { ...m, attempts: Number(m.attempts || 0) + 1, lastAt: new Date(now).toISOString(), lastReason: reason };
+  await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });
+}
+async function leavePending(kv, key, event, reason, now = Date.now()) {
+  const pending = await readJson(kv, PENDING, []);
+  if (pending.includes(key)) await kv.put(PENDING, JSON.stringify(pending.filter((k) => k !== key)));
+  const meta = await readJson(kv, PENDING_META, {});
+  const m = meta[key];
+  if (m) { delete meta[key]; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }
+  await pendingLog(kv, key, event, reason, now);
+  return m || null;
+}
+async function deadLetter(env, kv, key, m, fetchImpl, now) {
+  const dead = await readJson(kv, PENDING_DEAD, {});
+  dead[key] = { ...(m || {}), deadAt: new Date(now).toISOString(), status: "dead" };
+  await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
+  await leavePending(kv, key, "dead", m?.lastReason || "max_attempts", now);
+  await ownerAlert(env, "pacote do Conteúdo Pronto sem entrega", `Um assinante ficou sem o pacote do mês após ${m?.attempts ?? "?"} tentativas (último motivo: ${m?.lastReason || "desconhecido"}; assinante …${String(key).slice(-12)}). Nada mais será tentado automaticamente. Reenvio só com operação registrada (requeueDeadPackage, com operador e motivo).`, fetchImpl).catch(() => null);
+}
+// Reenvio controlado de um item da fila de falhas: só com operador e motivo, registrado no log.
+export async function requeueDeadPackage(env, key, { operator, reason, now = Date.now() } = {}) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  if (!String(operator || "").trim() || String(reason || "").trim().length < 10) return { ok: false, reason: "operator_and_reason_required" };
+  const dead = await readJson(kv, PENDING_DEAD, {});
+  if (!dead[key]) return { ok: false, reason: "not_dead" };
+  const ops = [...(dead[key].operations || []), { at: new Date(now).toISOString(), operator: String(operator).slice(0, 60), reason: String(reason).slice(0, 200) }];
+  dead[key] = { ...dead[key], status: "requeued", operations: ops };
+  await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
+  await enqueuePending(kv, key, now);
+  await pendingLog(kv, key, "requeued", String(operator).slice(0, 40), now);
+  return { ok: true };
+}
+// G1: enquanto uma geração está em andamento (no máximo 30 s de waitUntil + margem), o cron não começa outra para o
+// mesmo assinante; se o runtime cortar a geração, o lease vence e o cron (de hora em hora) entrega.
+export const GEN_LEASE_MS = 120000;
+async function releaseLease(kv, key) { // a tentativa terminou (com falha): o lease só protege geração em andamento
+  const cur = await readJson(kv, key, null);
+  if (cur?.genLeaseUntil) { const { genLeaseUntil: _l, ...rest } = cur; await kv.put(key, JSON.stringify(rest), { expirationTtl: 400 * DAY }); }
+}
+export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Date.now() } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const record = await readJson(kv, key, null);
   if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_ready" };
   if (record.deliveredCycle === record.cycles) return { ok: true, reason: "already_delivered" };
-  const pkg = await generatePackage(env, record.briefing, record.cycles);
-  if (!pkg) {
-    const pending = await readJson(kv, PENDING, []);
-    if (!pending.includes(key)) await kv.put(PENDING, JSON.stringify([...pending, key].slice(-200)));
-    await ownerAlert(env, "geração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido agora; nova tentativa automática em até 1 hora.", fetchImpl);
-    return { ok: false, reason: "generation_failed_retry_scheduled" };
-  }
+  if (record.genLeaseUntil && Date.parse(record.genLeaseUntil) > now) return { ok: false, reason: "in_progress" };
+  await kv.put(key, JSON.stringify({ ...record, genLeaseUntil: new Date(now + GEN_LEASE_MS).toISOString() }), { expirationTtl: 400 * DAY });
   // Chave com a versão do schema: uma regeneração nunca sobrescreve um pacote antigo gravado.
   const pkgKey = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION;
-  await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });
-  const token = rand();
-  await kv.put(TOKEN + token, key, { expirationTtl: 120 * DAY });
+  // G4: pacote do ciclo já gerado (o envio falhou antes) é reaproveitado: o retry não chama a IA de novo nem troca o
+  // conteúdo que o assinante ainda vai receber.
+  let pkg = await readJson(kv, pkgKey, null);
+  if (!pkg || pkg.cycle !== record.cycles || packageBlocked(pkg)) {
+    pkg = await generatePackage(env, record.briefing, record.cycles);
+    if (!pkg) {
+      await enqueuePending(kv, key, now);
+      await notePendingFailure(kv, key, "generation_failed", now);
+      await releaseLease(kv, key);
+      await ownerAlert(env, "geração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido agora; nova tentativa automática em até 1 hora.", fetchImpl);
+      return { ok: false, reason: "generation_failed_retry_scheduled" };
+    }
+    await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });
+  }
+  // G4/G5: um token por pacote (abre só este pacote), estável entre tentativas, para o e-mail repetido ser idêntico.
+  const delivery = record.pendingDelivery?.pkgKey === pkgKey && record.pendingDelivery.token ? record.pendingDelivery : { pkgKey, token: rand() };
+  if (delivery !== record.pendingDelivery) {
+    await putToken(kv, delivery.token, { k: "pkg", sub: key, pkg: pkgKey }, 120);
+    await kv.put(key, JSON.stringify({ ...record, genLeaseUntil: new Date(now + GEN_LEASE_MS).toISOString(), pendingDelivery: delivery }), { expirationTtl: 400 * DAY });
+  }
+  const token = delivery.token;
   const text = packageText(pkg, record.briefing.negocio) + `\n\nVersão para consulta online: ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
-  const sent = await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${record.cycles} chegou`, text, fetchImpl);
+  const sent = await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${record.cycles} chegou`, text, fetchImpl, "cp-pkg/" + (await sha(pkgKey + "|" + token)).slice(0, 48));
   if (!sent) {
-    const pending = await readJson(kv, PENDING, []);
-    if (!pending.includes(key)) await kv.put(PENDING, JSON.stringify([...pending, key].slice(-200)));
+    await enqueuePending(kv, key, now);
+    await notePendingFailure(kv, key, "email_failed", now);
+    await releaseLease(kv, key);
     return { ok: false, reason: "email_failed_retry_scheduled" };
   }
-  await kv.put(key, JSON.stringify({ ...record, deliveredCycle: record.cycles, deliveredAt: new Date().toISOString(), lastPackage: pkgKey }), { expirationTtl: 400 * DAY });
-  const pending = await readJson(kv, PENDING, []);
-  if (pending.includes(key)) await kv.put(PENDING, JSON.stringify(pending.filter((k) => k !== key)));
+  const { genLeaseUntil: _lease, pendingDelivery: _pd, ...base } = record;
+  await kv.put(key, JSON.stringify({ ...base, deliveredCycle: record.cycles, deliveredAt: new Date().toISOString(), lastPackage: pkgKey }), { expirationTtl: 400 * DAY });
+  await leavePending(kv, key, "delivered", "cycle " + record.cycles, now);
   await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_delivered", ref: "cp-pkg:" + key.slice(-16) + ":" + record.cycles }).catch(() => null);
   return { ok: true, reason: "delivered" };
 }
-export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2) {
+export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { now = Date.now() } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.get) return { ok: false };
   const pending = await readJson(kv, PENDING, []);
-  const results = [];
-  for (const key of pending.slice(0, limit)) results.push(await generateAndDeliver(env, key, fetchImpl));
+  // G2: itens cancelados, sem briefing, apagados ou já entregues saem da fila sem gastar o limite; quem falhou vai
+  // para o fim (rodízio), para um assinante com falha persistente não travar os outros.
+  const failed = [], results = [];
+  for (const key of pending) {
+    const rec = await readJson(kv, key, null);
+    const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : !rec.briefing ? "no_briefing" : rec.deliveredCycle === rec.cycles ? "already_delivered" : "";
+    if (why) { await leavePending(kv, key, "dropped", why, now); continue; } // registrado, nunca em silêncio
+    const meta = (await readJson(kv, PENDING_META, {}))[key];
+    if (Number(meta?.attempts || 0) >= PENDING_MAX_ATTEMPTS) { await deadLetter(env, kv, key, meta, fetchImpl, now); continue; }
+    if (results.length >= limit) continue;
+    const r = await generateAndDeliver(env, key, fetchImpl, { now });
+    results.push(r);
+    if (!r.ok) failed.push(key);
+  }
+  const cur = await readJson(kv, PENDING, []);
+  const next = [...cur.filter((k) => !failed.includes(k)), ...failed.filter((k) => cur.includes(k))];
+  if (JSON.stringify(next) !== JSON.stringify(cur)) await kv.put(PENDING, JSON.stringify(next));
+  // Fila parada: o item mais antigo está há mais de PENDING_STALL_HOURS sem entrega => alerta (no máximo 1 por dia).
+  const metaNow = await readJson(kv, PENDING_META, {});
+  const oldest = Math.min(...next.map((k) => Date.parse(metaNow[k]?.firstAt || new Date(now).toISOString())));
+  if (next.length && now - oldest > PENDING_STALL_HOURS * 3600000) {
+    const last = Date.parse(String(await kv.get(STALL_ALERT) || "")) || 0;
+    if (now - last > DAY * 1000) {
+      await kv.put(STALL_ALERT, new Date(now).toISOString(), { expirationTtl: 30 * DAY });
+      await ownerAlert(env, "fila do Conteúdo Pronto parada", `${next.length} pacote(s) pendente(s); o mais antigo espera há ${Math.round((now - oldest) / 3600000)} h. As tentativas automáticas continuam (máximo ${PENDING_MAX_ATTEMPTS} por assinante).`, fetchImpl).catch(() => null);
+    }
+  }
   // Mesmo cron: candidatos de regeneração (nova tentativa com a mesma chave; confirmação de entrega pelo email_id).
   const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
   return { ok: true, tried: results.length + Number(regen.tried || 0), delivered: results.filter((r) => r.ok).length, regen };
@@ -550,7 +687,7 @@ export async function regenerateBlockedPackage(env, key, fetchImpl = fetch, { no
       const token = rand();
       const text = packageText(JSON.parse(stored), record.briefing.negocio) + `\n\nProtocolo: ${protocolo}\nVersão para consulta online (fica disponível assim que a entrega for confirmada): ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
       if (!(await kv.get(candidate_key))) await kv.put(candidate_key, stored, { expirationTtl: 400 * DAY });
-      await kv.put(TOKEN + token, key, { expirationTtl: 120 * DAY });
+      await putToken(kv, token, { k: "pkg", sub: key, pkg: candidate_key, cand: candKey }, 120);
       cand = { schema: "zpc.cp.regen.v1", sub: key, blockedPackage: record.lastPackage, cycle: record.cycles, content_schema_version: CONTENT_SCHEMA_VERSION,
         candidate_key, hash: await sha(stored), protocolo, baseIdempotencyKey, idempotencyKey: baseIdempotencyKey, email_id: null, delivery: "pending",
         to: record.email, subject: `Seu Conteúdo Pronto do mês ${record.cycles} — nova versão (protocolo ${protocolo})`, text,
@@ -582,8 +719,15 @@ export function regenResponse(out) {
 export async function handlePackageView(request, env, ctx, fetchImpl = fetch) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const token = new URL(request.url).searchParams.get("t") || "";
-  const found = kv?.get ? await resolveToken(kv, token) : null;
-  const pkg = found?.record?.lastPackage ? await readJson(kv, found.record.lastPackage, null) : null;
+  const found = kv?.get ? await resolveToken(kv, token, "pkg") : null;
+  // G5: o token do e-mail abre o pacote daquele e-mail; o da versão nova só depois da entrega confirmada (antes disso
+  // mostra o pacote atual, que é o bloqueado, com o estado da regeneração); token antigo segue o último pacote.
+  let pkgKey = found?.record?.lastPackage || null;
+  if (found?.token?.k === "pkg") {
+    const cand = found.token.cand ? await readJson(kv, found.token.cand, null) : null;
+    pkgKey = found.token.cand && !cand?.promotedAt ? found.record?.lastPackage : found.token.pkg;
+  }
+  const pkg = pkgKey && found?.record ? await readJson(kv, pkgKey, null) : null;
   if (!pkg) return page("Pacote não encontrado", "<h1>Pacote não encontrado ou link expirado.</h1>", 404);
   const eligible = found.record.status === "active" && Boolean(found.record.briefing);
   if (request.method === "POST") {
