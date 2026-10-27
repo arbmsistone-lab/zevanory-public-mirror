@@ -146,6 +146,18 @@ test("G4 forja 2 do auditor: revisor autocadastrado + APPROVED + registro no mes
       assert.match(r.out, /o texto desse commit não tem a impressão digital/, "[G4.4a]");
       assert.ok(other);
     } finally { rmSync(root, { recursive: true, force: true }); } }
+  // (e) registro de aprovação gravado ANTES do cadastro do revisor (fora de ordem): bloqueada.
+  { const { root, text } = repo();
+    try {
+      const sha = fp(root);
+      put(root, `docs/legal/reviews/${sha}.json`, { placeholder: true }); commit(root, "registro antes do cadastro");
+      const auth = register(root);
+      approve(root, { textCommit: text, authCommit: auth });
+      commit(root, "aprovação");
+      const r = gate(root);
+      assert.equal(r.code, 1, "[G4.5] " + r.out);
+      assert.match(r.out, /tem de entrar no gh-pages num commit posterior ao authorization_commit/, "[G4.5a]");
+    } finally { rmSync(root, { recursive: true, force: true }); } }
 });
 
 test("G5 approved_at: data futura reprovada; data e hora aceitam no máximo 5 min de diferença de relógio", () => {
@@ -187,6 +199,21 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
       assert.equal(r.code, 1, `[G6.2] ${label}: ${r.out}`);
       assert.match(r.out, /TRUST_ANCHOR_CHANGED/, `[G6.2a] ${label}`);
       if (label === "linha de base") assert.match(r.out, /NÃO corresponde a nenhum registro de aprovação válido na base/, "[G6.3] linha de base proposta sem registro na base");
+    }
+    // PR que tira o portão ancorado de um workflow de publicação reprova; PR que só mexe noutra parte do workflow passa.
+    const WF = ".github/workflows/central-production-deploy.yml";
+    const LINE = "          python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages";
+    const FETCH = "          git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages";
+    for (const [label, wfText, want] of [
+      ["workflow com o portão", `jobs:\n  deploy:\n    steps:\n      - run: |\n${FETCH}\n${LINE}\n      - run: echo outro passo\n`, 0],
+      ["workflow sem o portão", `jobs:\n  deploy:\n    steps:\n      - run: |\n${FETCH}\n          # ${LINE.trim()}\n          true\n`, 1],
+    ]) {
+      git(root, "checkout", "-q", base); git(root, "checkout", "-q", "-B", "pr-wf");
+      mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, WF), wfText);
+      const head = commit(root, "PR " + label);
+      const r = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", head]);
+      assert.equal(r.code, want, `[G6.4] ${label}: ${r.out}`);
+      if (want) assert.match(r.out, /LEGAL_GATE_REMOVED/, "[G6.4a]");
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

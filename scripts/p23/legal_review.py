@@ -266,6 +266,14 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
                 errs.append(f"registro {rec_path}: {k} {rec.get(k)!r} difere de legal_review ({review.get(k)!r})")
         if rec.get("decision") != "APPROVED":
             errs.append(f"registro {rec_path}: decision deve ser APPROVED")
+        ac = entry.get("authorization_commit") if isinstance(entry, dict) else None
+        if git is not None and isinstance(ac, str) and re.fullmatch(r"[0-9a-f]{40}", ac):
+            # O registro entra no gh-pages DEPOIS do commit que cadastrou o revisor, nunca no mesmo commit: cadastro
+            # e aprovação não nascem juntos (squash: um PR cada; rebase: commits distintos, ainda sob o check protegido).
+            rc, out = git.run("log", "--format=%H", "--diff-filter=A", git.ref, "--", rec_path)
+            added = out.split()[-1] if rc == 0 and out.split() else None
+            if not added or added == ac or not git.is_ancestor(ac, added):
+                errs.append(f"registro {rec_path}: tem de entrar no gh-pages num commit posterior ao authorization_commit {ac[:12]}")
     return errs
 
 

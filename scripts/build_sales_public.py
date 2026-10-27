@@ -339,10 +339,13 @@ def apply_commerce(slug: str, html: str) -> str:
     items = "".join(f"<li>{i}</li>" for i in c["items"])
     # Design (2026-10-24): "vendas temporariamente fechadas" is said ONCE per page by the site notice
     # (sales_notice); the legal Resumo da oferta keeps its own Disponibilidade field.
-    # S-12: one offer block. The list of items already opens the page (hero receipt) and is repeated by the
-    # Resumo da oferta ("Características essenciais"), so the block no longer lists it a third time. The
-    # "Preço de tabela" line of the old "Condições comerciais" section (removed below) lives here now.
+    # S-12: one offer block. The "Preço de tabela" line of the old "Condições comerciais" section (removed below)
+    # lives here now.
+    # R4 (Sol ORDEM 301): "O que você recebe" next to the CTA is part of the offer contract and a REQUIRED region
+    # of the P24 gate (offer_receives). It stays, even though the hero receipt and the Resumo da oferta also list
+    # the items; tests/p24-offer-contract-regions.test.mjs proves the region is still covered.
     aside = (f'<div class="offer-side"><div><span class="status-pill">Preço de tabela: R$ {c["price"]}<span class="pill-unit">pagamento único</span></span>'
+             f'<h3>O que você recebe</h3><ul>{items}</ul>'
              + policy.POLICY_SUMMARY
              + offer_summary(slug, "produto_digital", "; ".join(c["items"]) + ".", c["price"]) +
              '</div>' + sales_cta(c, label) + '</div>')

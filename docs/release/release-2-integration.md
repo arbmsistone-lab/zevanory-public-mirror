@@ -97,3 +97,21 @@ Base atualizada: merge de `gh-pages` `d01dd5ea` (#949). O único conflito foi a 
 - **L-3.** É decisão do proprietário, documentada: enquanto PENDING, os dois fluxos de deploy ficam parados.
 - **L-4.** `approved_at` sem hora vale no máximo até hoje (UTC); com hora, tolera até 5 minutos. A afirmação sobre o GitHub Pages foi corrigida: ele publica só os stubs de `pages-mirror/`.
 - **L-5.** O manifesto aponta para a base atual (`SOURCE_BASE`, padrão `d01dd5ea`). No CI, o manifesto é regenerado com `RELEASE_SHA=GITHUB_SHA`, `SOURCE_BASE` = base do PR e `ci_run` (run id), e vai no artefato `release-2-matrix-<sha>` junto com a matriz.
+
+## Reauditoria rodada 3, continuação, e Sol ORDEM 301 (R4)
+
+- **R4 (o contrato da oferta não pode encolher).** O chat do site e a seção "O que você recebe" fazem parte do contrato da oferta.
+  - O commit `4fd065dd` deste PR tinha tirado do gate P24 a região obrigatória `offer_receives`, e `45365f8c` (#940) tinha tirado da página a lista "O que você recebe" do bloco da oferta. As duas mudanças foram revertidas:
+    - `scripts/build_sales_public.py` volta a gerar `<h3>O que você recebe</h3>` com os itens no `div.offer-side`, antes do CTA;
+    - `scripts/p24/product_quality_check.py` e `data/p24/promise-map.json` ficam iguais aos do gh-pages, com seis regiões obrigatórias.
+  - O teste novo `tests/p24-offer-contract-regions.test.mjs` prova quatro coisas:
+    - o P24 exige as seis regiões e tudo o que a base exige;
+    - cada página de produto tem itens em todas elas;
+    - o P24 reprova quando o bloco "O que você recebe" some (mutante);
+    - o chat continua anexável às mesmas páginas da base, com o widget publicado e o catálogo dos cinco produtos sem conflito.
+  - Esse teste falha em `8c00ba09` e passa neste head.
+- **M-A, reforço.**
+  - O registro de aprovação tem de entrar no gh-pages depois do `authorization_commit` (teste G4 e).
+  - O check protegido também reprova o PR que tire dos workflows de deploy o passo do portão ancorado (G6.4).
+  - Os limites que continuam (o check não é obrigatório, o merge por rebase é permitido e há uma única conta) estão em `docs/legal/legal-review-procedure.md`.
+- **Linhas citadas por #949.** `docs/ops/p22-proof-renewal-investigation.md` e o teste correspondente citam `worker/cloudflare-worker.compat.mjs` e `worker/sales-control.mjs` por número de linha. Os números foram atualizados para a posição atual das mesmas linhas. O conteúdo citado não mudou.

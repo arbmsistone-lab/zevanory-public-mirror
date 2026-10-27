@@ -142,8 +142,7 @@ async function resendDelivery(env, { sql, worker, ctx }, { orderId, email }) {
 // that acts on "vendas abertas" (checkout status, chat, waitlist route and job) must use this, never the bare switch.
 export async function canonicalSalesState(env, { fiscal = FISCAL_PROCESS } = {}) {
   const sw = await readSalesSwitch(env);
-  let proof = null;
-  try { proof = await readFinancialProofSnapshot(env); } catch { proof = null; }
+  const proof = await readFinancialProofSnapshot(env); // já fail-closed: devolve null em qualquer falha
   const released = sw.enabled === true && sw.authorized === true &&
     proof?.verified === true &&
     String(env.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
