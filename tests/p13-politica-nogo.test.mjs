@@ -14,6 +14,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import worker, { openSalesHtml, resetPageSwitchCache } from "../worker/sales-public-worker.mjs";
+import { readFileSync as __readCanon } from "node:fs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url), "utf8"));
+const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
+const SUB_PRICE = __CANON.subscription.price;
 
 // AVAL 084 (portabilidade): fileURLToPath, não a propriedade pathname da URL (no Windows vira "/C:/...").
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -53,7 +57,7 @@ test("(a) modo fechado: nenhum HTML publicado tem href /comprar/, /assinar/, /ho
     const html = read(PUB, slug);
     assert.equal(serviceOffer(html), undefined, "assinatura sem Offer enquanto fechada: " + slug);
     assert.ok(html.includes(P.waitlist_label) && html.includes(P.closed_label), "assinatura: espera + rótulo: " + slug);
-    assert.match(html, /R\$ 197/, "preço da assinatura como informação");
+    assert.match(html, new RegExp(`R\\$ ${SUB_PRICE}\\b`), "preço da assinatura como informação");
   }
   assert.equal(audit(PUB).status, 0, "auditoria CLI do modo fechado");
 });
@@ -116,7 +120,7 @@ test("(c) modo aberto: build de preview e restauração em tempo de execução d
       const anchors = subAnchors(opened);
       assert.equal(anchors.length, (closed.match(/data-zev-sub=/g) || []).length, "CTA de assinatura restaurado: " + slug);
       assert.ok(anchors.length >= 2);
-      assert.equal(serviceOffer(opened).price, "197.00");
+      assert.equal(serviceOffer(opened).price, `${SUB_PRICE}.00`);
       const runtime = openSalesHtml(closed, slug);
       assert.deepEqual(subAnchors(runtime), anchors, "assinatura runtime == build aberto");
       assert.deepEqual(serviceOffer(runtime), serviceOffer(opened), "Offer da assinatura runtime == build aberto");

@@ -2,6 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handleLeadMagnet, runLeadNurture, runLeadRetention, leadOptOutLink, nurtureEmail, subjectRef, CONSENT_FOLLOWUPS, RETENTION_MARKER } from "../worker/lead-magnet.mjs";
 import { createHmac, createHash } from "node:crypto";
+import { readFileSync as __readCanon } from "node:fs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url), "utf8"));
+const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
+const SUB_PRICE = __CANON.subscription.price;
 const V1 = "lead-magnet-v1-2026-10-07";
 const sha256 = async (v) => createHash("sha256").update(v).digest("hex");
 
@@ -112,7 +116,7 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
   const held = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: false });
   assert.equal(held.held, 1); assert.equal(sent.length, 0);
   const open = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
-  assert.equal(open.sent, 1); assert.match(sent[0].text, /IA na Prática \(R\$ 197/); assert.match(sent[0].text, /utm_source=email/);
+  assert.equal(open.sent, 1); assert.match(sent[0].text, new RegExp(`IA na Prática \\(R\\$ ${PRICE_OF["ia-na-pratica"]}`)); assert.match(sent[0].text, /utm_source=email/);
   const link = new URL(await leadOptOutLink(e, "x@y.com", ref));
   assert.equal(link.searchParams.get("r"), ref, "new links carry the stored keyed reference, not a plain hash");
   assert.notEqual(link.searchParams.get("r"), await sha256("x@y.com"));
@@ -130,7 +134,7 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
 test("nurture copy only uses catalog prices and the single 7-day rule (open sales only)", () => {
   assert.doesNotMatch(nurtureEmail(1, { name: "", optOutUrl: "u" }).text, /vendas-na-pratica|R\$/);
   const text = nurtureEmail(2, { name: "", optOutUrl: "u", salesOpen: true }).text;
-  for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397].includes(Number(m[1])));
+  for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([...Object.values(PRICE_OF), PRICE_OF["ia-na-pratica"] + PRICE_OF["vendas-na-pratica"] + PRICE_OF["lucro-e-caixa"]].includes(Number(m[1])));
   assert.ok(text.includes(CUSTOMER_RULE_7D) && text.includes(DELIVERY_72H), "regra e entrega da política única");
   assert.deepEqual(bannedPolicyHits(text), []);
 });
@@ -141,9 +145,9 @@ test("the offer matches what the lead was reading and the sequence ends", () => 
   assert.equal(interestFromPage("/calculadora-margem-de-lucro"), "caixa");
   assert.equal(interestFromPage("/vendas-na-pratica"), "vendas");
   assert.equal(interestFromPage("/ia-para-padaria"), "ia");
-  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa", salesOpen: true }).text, /Lucro & Caixa \(R\$ 247/);
+  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa", salesOpen: true }).text, new RegExp(`Lucro & Caixa \\(R\\$ ${PRICE_OF["lucro-e-caixa"]}`));
   const last = nurtureEmail(4, { name: "", optOutUrl: "u", salesOpen: true }).text;
-  assert.match(last, /último e-mail/i); assert.match(last, /R\$ 397/); assert.ok(last.includes(CUSTOMER_RULE_7D));
+  assert.match(last, /último e-mail/i); assert.match(last, new RegExp(`R\\$ ${PRICE_OF["negocio-completo"]}`)); assert.ok(last.includes(CUSTOMER_RULE_7D));
   for (let s = 0; s < NURTURE_DONE; s++) {
     const t = nurtureEmail(s, { name: "", optOutUrl: "OPTOUT", salesOpen: true }).text;
     assert.match(t, /OPTOUT/);

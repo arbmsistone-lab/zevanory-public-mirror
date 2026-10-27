@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { BLOG_CSS_PATH } from "../worker/blog-layout.mjs";
 import test from "node:test";import assert from "node:assert/strict";
 import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderBlogIndex,longFormDailyArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
+import { readFileSync as __readCanon } from "node:fs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url), "utf8"));
+const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
+const SUB_PRICE = __CANON.subscription.price;
 const brandResponse=name=>new Response(readFileSync(new URL("../assets/brand/export/"+name,import.meta.url)),{status:200,headers:{"content-type":"image/png"}});
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)||null,put:async(k,v)=>m.set(k,v)}};
 test("missing credential blocks only its channel and verified channels leave dry_run",()=>{const rows=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.equal(rows.find(x=>x.id==="blog").configured,true);assert.equal(rows.find(x=>x.id==="telegram").mode,"pending");assert.equal(rows.find(x=>x.id==="facebook").mode,"dry_run");const live=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i",META_APP_LIVE:"true"});assert.equal(live.find(x=>x.id==="facebook").mode,"active");});
@@ -125,7 +129,7 @@ test("Telegram resolves a public t.me URL even when configured with numeric chat
 });
 
 test("Pinterest F1 dynamic editorial is published with the official hashed Z image",async()=>{
-  const creative={creative_id:"f1-test-10",status:"approved_for_autopublish",compliance:100,score:92,offer_id:"ZEV-IA-011",product:"ZEVANORY IA na Prática",price_brl:197,brand:"ZEVANORY",asset_url:"https://creative.example/unverified.png",title:"Tema editorial específico",content:"Descrição editorial específica",landing_url:"https://vendas.zevanory.api.br/ia-na-pratica"};
+  const creative={creative_id:"f1-test-10",status:"approved_for_autopublish",compliance:100,score:92,offer_id:"ZEV-IA-011",product:"ZEVANORY IA na Prática",price_brl:PRICE_OF["ia-na-pratica"],brand:"ZEVANORY",asset_url:"https://creative.example/unverified.png",title:"Tema editorial específico",content:"Descrição editorial específica",landing_url:"https://vendas.zevanory.api.br/ia-na-pratica"};
   const rebranded=brandPinterestCreative(creative);
   assert.equal(rebranded.media_url,PINTEREST_APPROVED_BRAND_PIN_URL);
   assert.equal(rebranded.title,creative.title);
