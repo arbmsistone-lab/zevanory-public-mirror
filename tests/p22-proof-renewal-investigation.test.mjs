@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 
-const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const read = (path) => readTextNormalized(new URL(path, import.meta.url));
 const doc = read("../docs/ops/p22-proof-renewal-investigation.md");
 const workflow = read("../.github/workflows/order12a-financial-proof-renewal.yml");
 const worker = read("../worker/cloudflare-worker.compat.mjs");
