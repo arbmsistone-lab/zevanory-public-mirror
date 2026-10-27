@@ -26,7 +26,7 @@ const PRODUCTS = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-
 // Contrato da oferta fixado (gh-pages d01dd5ea): as seis regiões que o P24 exige em toda página de produto.
 const CONTRACT_REGIONS = ["hero_receipt", "offer_receives", "essentials", "scope_features", "method_cards", "offer_method"];
 const CONTRACT_CHAT_PAGES = ["solucoes", ...PRODUCTS, "conteudo-pronto", "termos", "privacidade", "reembolso"];
-const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1" };
+const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
 
 function py(code, args = [], cwd = ROOT) {
   const r = spawnSync("python3", ["-I", "-c", code, ...args], { cwd, env, encoding: "utf-8" });
@@ -101,7 +101,7 @@ test("R4.3 o gate P24 passa e reprova quando o bloco 'O que você recebe' some d
     writeFileSync(page, mutated);
     const bad = spawnSync("python3", ["-I", "scripts/p24/product_quality_check.py", "--root", dir], { cwd: dir, env, encoding: "utf-8" });
     assert.notEqual(bad.status, 0, "[R4.3.4] P24 não reprovou sem 'O que você recebe': " + bad.stdout);
-    assert.match(bad.stdout + bad.stderr, /lucro-e-caixa: região de promessas 'offer_receives' não encontrada/, "[R4.3.5]");
+    assert.match(bad.stdout + bad.stderr, /lucro-e-caixa: regi.{1,4}o de promessas 'offer_receives' n.{1,4}o encontrada/, "[R4.3.5]");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
