@@ -42,6 +42,16 @@ Revisão 5 (reauditoria de `1b481702`):
 - refaz o orçamento de subrequisições: até 46, ou 47 com vendas abertas, com
   o orçamento MP reduzido para 42.
 
+Revisão 6 (reauditoria de `b9657ede`):
+- reescreve a seção do alerta de KV: os e-mails eram avisos de 50%,
+  explicados pelas gravações de 57% a 69%; recomenda a variante econômica e
+  reduções de gravação;
+- `attempt_at` só avança (`clock_timestamp()` com guarda) e zero linhas
+  distingue concorrência de semente ausente;
+- um desfecho mais velho nunca move a pendência (`else unresolved_since`);
+- exige timeout nas consultas ao Neon para G cobrir o pior caso;
+- corrige a linha de retentativas MP (orçamento de 42).
+
 ## Sintoma e contrato
 
 O conjunto observado teve 177 sondagens: 31 `PROVEN` e 146
@@ -338,31 +348,47 @@ prova financeira das demais tarefas caras:
      banco antes da classificação e usa o carimbo devolvido; o script do
      runner nunca envia carimbo;
    - **registro da tentativa antes de ler os provedores:**
-     `update financial_proof_state set attempt_at = now(), unresolved_since =
-     coalesce(unresolved_since, now()) where id = 1 returning attempt_at`.
-     O `attempt_at` devolvido é o `$inicio` da auditoria e o `measured_at` do
-     desfecho, **idêntico** (`$novo = $inicio`). Se esse commit falhar, a
-     auditoria não começa. **Zero linhas afetadas** (linha semente ausente) é
+     `update financial_proof_state set attempt_at = clock_timestamp(),
+     unresolved_since = coalesce(unresolved_since, clock_timestamp()) where
+     id = 1 and attempt_at < clock_timestamp() returning attempt_at`.
+     `clock_timestamp()` (e não `now()`, que é o início da transação) é
+     avaliado depois de uma eventual espera de lock, então o `attempt_at`
+     **só avança**: uma tentativa que espera o lock de outra grava um instante
+     posterior ao dela. O `attempt_at` devolvido é o `$inicio` da auditoria e
+     o `measured_at` do desfecho, **idêntico** (`$novo = $inicio`).
+     Se esse commit falhar, a auditoria não começa.
+     **Zero linhas afetadas** é investigado com
+     `select exists (select 1 from financial_proof_state where id = 1)`:
+     - linha presente (concorrência ou relógio) significa pular esta tentativa
+       sem alerta;
+     - **linha semente ausente** é
      erro: a auditoria não começa, o batimento registra `seed_missing` e sai
-     um alerta (no máximo um por hora), para não virar `UNVERIFIED` silencioso;
+     um alerta (no máximo um por hora), para não virar `UNVERIFIED`
+     silencioso;
    - **gravação do desfecho, atômica e monotônica:**
      `update financial_proof_state set measured_at = $novo, outcome =
      $desfecho, …, unresolved_since = case when $novo >= attempt_at then null
-     else attempt_at end where id = 1 and (measured_at < $novo or (measured_at = $novo
+     else unresolved_since end where id = 1 and (measured_at < $novo or (measured_at = $novo
      and $desfecho = 'ambiguous'))`.
      Só grava o que for **estritamente mais novo**. Em empate, 409 vence.
      Zero linhas afetadas significa resultado antigo, que é descartado e não
      vai ao cache. A pendência (`unresolved_since`) só é limpa por um desfecho
      commitado da tentativa mais recente; o desfecho de uma tentativa mais
-     velha passa a pendência para o início da tentativa ainda em curso;
+     velha **nunca move nem limpa** a pendência (`else unresolved_since`). O
+     custo é uma pausa de liberação de no máximo a duração da tentativa em
+     curso;
    - **verificação de liberação (gate novo, ver a seção "Gate de checkout:
      decisão do proprietário e da Sol"):** uma única consulta decide:
      `select outcome = 'verified' and release_sha = $sha and ambiguous = 0 and
      now() - measured_at <= interval '65 minutes' and (unresolved_since is null
      or now() - unresolved_since < interval '6 minutes') from
      financial_proof_state where id = 1`. **G = 6 minutos**, acima do pior
-     caso da auditoria com o orçamento do item 10 (42 GETs de 7 s mais as
-     pausas: cerca de 5 min). A segurança depende só dessa checagem do
+     caso da auditoria com o orçamento do item 10. Para isso, **toda consulta
+     ao Neon exige timeout de no máximo 5 s** (`AbortSignal.timeout` no fetch
+     do driver HTTP e `statement_timeout` no banco), porque hoje o SQL do
+     driver não tem timeout. Pior caso: 42 GETs de 7 s (294 s), mais as pausas
+     de retentativa (cerca de 9 s), mais 4 SQL de 5 s (20 s) = 323 s, cerca de
+     5,4 min. A segurança depende só dessa checagem do
      leitor; um produtor que passe de G e commite depois grava um resultado
      legítimo (carimbado no início). Banco indisponível significa
      `UNVERIFIED_FAIL_CLOSED`;
@@ -541,7 +567,7 @@ substituem a medição exigida nos critérios de aceite.
 | `select 1` do preflight | 24 | 24 | 0 | — |
 | Subrequisições externas por invocação da prova | até 48 (2 SQL + até 46 GETs MP, `/users/me` e retentativas incluídos); 49 com vendas abertas | até 46 (tentativa + 2 SQL + desfecho + até 42 GETs MP); 47 com vendas abertas. Sem reduzir o orçamento MP: até 50, ou 51 com vendas abertas | −2 com a redução; +2 sem ela | 50 externas + 1.000 para serviços Cloudflare |
 | GETs MP concluídos por dia (prova) | 4 × (1 + N) + parte truncada no ramo horário | 48 × (1 + N) | — | sem limite diário do Workers; checar limite de taxa do Mercado Pago |
-| Retentativas MP | até 6 por auditoria, dentro do orçamento de 46 | igual | — | — |
+| Retentativas MP | até 6 por auditoria, dentro do orçamento de 46 | até 6 por auditoria, dentro do orçamento de 42 | — | — |
 | Gravações tentadas no KV | 60 a 80 (batimento 28, prova 4, `last-isolated-run` 4, não verificadas 0 a 20, preflight 24) | 144 (prova 48, `last-isolated-run` 48, batimento 24, preflight 24); 98 com o item 6 opcional | +64 a +84 (ou +18 a +38) | 1.000/dia; a conta usou 568 a 694 por dia entre 20 e 26/10 |
 | Gravações efetivas no KV | igual às tentadas abaixo de 70% da cota; acima disso, o batimento (`zpc:cron:v1`, descartável) é cortado | igual | — | — |
 | Leituras no KV | cerca de 148 (ramo isolado 104, ramo horário 44) | cerca de 240 (prova 96, batimento 96, data de lançamento 48) | +92 | 100.000/dia; a conta usou 22 mil a 41 mil por dia |
@@ -564,8 +590,8 @@ Leitura das gravações:
   auditoria a cada 30 minutos o acorda. O consumo atual de CU-h não foi
   medido e precisa ser conferido no painel do Neon antes da decisão, porque
   esgotar os 100 CU-h suspende o banco inteiro;
-- a decisão entre as duas variantes é do proprietário e depende do resultado
-  da investigação do alerta de KV (seção abaixo).
+- a decisão entre as duas variantes é do proprietário; a seção do alerta de
+  KV recomenda a variante econômica e outras reduções de gravação.
 
 **Concorrência entre produtores com vendas abertas** (estimativa pelo código;
 com data de lançamento gravada, cada auditoria soma 1 SQL de contagem de
@@ -602,59 +628,63 @@ até o próximo ciclo (<https://neon.com/faqs/free-plan-limits-and-quotas>).
 
 ## Alerta de limite diário do KV
 
-O proprietário recebeu um e-mail de limite diário do KV. A análise abaixo usa
-os dados que o próprio projeto mede e não substitui a conferência no painel.
+**Fato verificado:** os e-mails reais da Cloudflare de 23, 24, 25 e 26/10 dizem
+"[Alerta] Limite diário de operações do KV atingido em 50% para a conta …". O
+texto foi conferido na caixa do proprietário pelo coordenador. São **avisos de
+limiar de 50%**, não de limite atingido. O limite diário zera às 00:00 UTC.
 
 **Dados medidos.** `scripts/audit/command-center-snapshot.mjs` consulta
 `kvOperationsAdaptiveGroups` (GraphQL da Cloudflare, conta inteira) e publica
 `kvQuota` nas anotações. Pico de cada dia UTC, extraído pela auditoria de cerca
 de 150 runs:
 
-| Dia UTC | Gravações (put + delete) | Leituras |
-|---|---|---|
-| 20/10 | 594 | 22.187 |
-| 21/10 | 653 | 22.845 |
-| 22/10 | 568 | 29.359 |
-| 23/10 | 604 | 29.614 |
-| 24/10 | 694 | 41.431 |
-| 25/10 | 569 | 35.503 |
-| 26/10 | 571 | 25.201 |
-| 27/10 (parcial, 13:08Z) | 339 | 16.061 |
+| Dia UTC | Gravações (put + delete) | % de 1.000 | Leituras |
+|---|---|---|---|
+| 20/10 | 594 | 59% | 22.187 |
+| 21/10 | 653 | 65% | 22.845 |
+| 22/10 | 568 | 57% | 29.359 |
+| 23/10 | 604 | 60% | 29.614 |
+| 24/10 | 694 | 69% | 41.431 |
+| 25/10 | 569 | 57% | 35.503 |
+| 26/10 | 571 | 57% | 25.201 |
+| 27/10 (parcial, 13:08Z) | 339 | 34% | 16.061 |
 
 **Conclusões:**
 
-1. Pela medição da própria conta, nem gravações (1.000/dia) nem leituras
-   (100.000/dia) chegaram ao limite entre 20 e 27/10. O snapshot soma put e
+1. Os avisos de 23 a 26/10 são explicados pelas **gravações diárias de 568 a
+   694 (57% a 69% de 1.000)**, que cruzam 50% todos os dias. As leituras
+   ficaram em 22% a 41% de 100.000.
+2. **Nenhum limite foi atingido** entre 20 e 27/10. O snapshot soma put e
    delete, que têm limites separados de 1.000; como a soma ficou abaixo de 700,
    nenhum dos dois estourou.
-2. A P22 atual contribui pouco: 36 a 56 gravações por dia (cerca de 9% do
-   total no máximo), mais as 24 do preflight.
-3. **Hipótese principal, não medida:** o alerta se refere a operações `list`
-   (limite de 1.000/dia), que o snapshot não mede. Lists recorrentes
-   identificadas no código: `syncSharedActivity` do edge (cerca de 96/dia),
-   `kvList` do snapshot do Command Center (cerca de 8 por run, cerca de 200/dia),
-   `runOwnerAlertDigest` (24), `runSalesPreflight` (24), `runRefundWatchdog`
-   (24 ou mais, paginado), `operational-activity-sync` (4) e `data-backup`
-   (paginado, diário), além de rotas sob demanda que fazem list. O piso dos
-   crons fica em cerca de 370 a 400 por dia; um backup paginado grande ou
-   chamadas repetidas a rotas com list bastariam para passar de 1.000.
-4. Explicações alternativas não excluídas: o e-mail se refere a outra conta da
-   Cloudflare, é aviso de limiar e não de esgotamento, ou trata de um dia fora
-   da janela medida (o projeto registra um esgotamento real em 12/10).
+3. Nota: operações `list` não são medidas pelo snapshot, mas não são
+   necessárias para explicar os avisos.
+4. A P22 atual contribui com 36 a 56 gravações por dia, mais as 24 do
+   preflight.
+
+**Impacto da proposta P22 no orçamento de gravações:**
+- a proposta soma +64 a +84 gravações por dia;
+- no pior dia medido (694, ou 69%), isso dá **758 a 778 (76% a 78%)**, acima
+  do `SHED_AT_PCT=70` (700). A partir desse ponto, os prefixos de
+  observabilidade começam a ser descartados, e o aviso de 50% passa a ser
+  diário com folga menor até o limite de 1.000;
+- o orçamento de gravações é, portanto, a restrição que importa.
 
 **Recomendações (somente propostas; nada foi alterado):**
 
-1. O proprietário confere no painel da Cloudflare (KV → Metrics ou
-   Account → Usage) as operações por tipo, **incluindo `list`**, em 25 e 26/10,
-   além do texto exato, da data e da conta do e-mail.
-2. Incluir `list` no `kvQuota` do snapshot, separar `delete` de `write` e
-   comparar cada tipo com o próprio limite.
-3. Cortar lists recorrentes: `syncSharedActivity` só com marcador de pendência
-   ou de hora em hora; índice diário em chave única no lugar dos lists do
-   snapshot; `runSalesPreflight` verificando os arquivos de produto por `get` de
-   chaves conhecidas em vez de `list`.
-4. Na P22, não acrescentar nenhum `list` e preferir a variante com o item 6
-   opcional se a folga de gravações for o gargalo.
+| Medida | Gravações/dia | Pior dia (694 + saldo) |
+|---|---|---|
+| Proposta padrão | +64 a +84 | 758 a 778 (76% a 78%) |
+| Variante econômica (item 6: `last-isolated-run` só em falha ou mudança) | +18 a +38 | 712 a 732 (71% a 73%) |
+| Variante econômica + preflight gravado só em mudança ou a cada 2 h (o checkout aceita até 3 h) | +6 a +26 | 700 a 720 (70% a 72%) |
+| Variante econômica + preflight a cada 2 h + batimento isolado regravado a cada 105 min (`maxAgeMs` de 95 min com tiques de 15 min; dentro das 2 h do inventário; cerca de 14 por dia, −10) | −4 a +16 | 690 a 710 (69% a 71%) |
+
+1. **Adotar a variante econômica** e as reduções de gravação acima, para
+   manter o pior dia perto ou abaixo de 70%.
+2. Incluir `delete` separado de `write` (cada um com limite de 1.000) e
+   `list` no `kvQuota` do snapshot, para medir o que hoje é cego.
+3. O proprietário confere no painel da Cloudflare as operações por tipo nos
+   dias dos avisos.
 
 ## Critérios de aceite antes de ativar
 
@@ -674,6 +704,8 @@ minutos e recuperação correta**.
 | Falha de gravação no KV | cota diária de gravações esgotada, 429 na mesma chave ou erro transitório no cache | a decisão de liberação não muda, porque lê o banco; cache defasado nunca libera venda; na variante só KV o cenário reprova por desenho (resíduo de até 65 min declarado) |
 | Commit do 409 falha no banco | derrubar a conexão entre a leitura dos provedores e o commit do 409 | pendência aberta; liberação suspensa quando completa G (6 min); `UNVERIFIED_FAIL_CLOSED` até desfecho commitado mais novo |
 | Pendência seguida de novas tentativas (A/B/C) | prova V em T; A em T+30 vê 409 e o commit falha; B em T+45 e C em T+60 registram tentativa e também falham | `unresolved_since` fica em T+30; liberação suspensa a partir de T+36; B e C não reabrem a janela; volta só com desfecho commitado |
+| Tentativas concorrentes com espera de lock (X e Y) | X começa antes de Y, mas Y pega o lock da linha primeiro; Y vê 409 e o commit falha; X termina verificada | `attempt_at` só avança (X grava instante posterior ao de Y e só então lê os provedores); só um desfecho com leitura posterior à última tentativa limpa a pendência; nenhum desfecho mais velho reabre a liberação; zero linhas com a linha presente não dispara `seed_missing` |
+| Três tentativas sobrepostas | A (lenta, verificada) em tA; B em tB vê 409 e o commit falha; C em tC; A commita por último | pendência continua em tA; o desfecho de A não a move nem a limpa; liberação suspensa a partir de tA + 6 min até desfecho commitado de C |
 | Linha semente ausente | apagar a linha `id = 1` em ambiente de ensaio | `update` da tentativa afeta zero linhas; auditoria não começa; batimento `seed_missing` e alerta; liberação `UNVERIFIED_FAIL_CLOSED` |
 | Orçamento de subrequisições no commit do desfecho | N = 40 pagamentos com retentativas, vendas abertas | pico medido de no máximo 47 subrequisições externas (46 sem vendas abertas); o commit do desfecho nunca é cortado |
 

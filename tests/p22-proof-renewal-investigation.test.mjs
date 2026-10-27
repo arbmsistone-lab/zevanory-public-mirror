@@ -141,6 +141,8 @@ test("C3 acceptance criteria fix every scenario and its required outcome", () =>
     ["Falha de gravação no KV", "a decisão de liberação não muda, porque lê o banco; cache defasado nunca libera venda; na variante só KV o cenário reprova por desenho (resíduo de até 65 min declarado)"],
     ["Commit do 409 falha no banco", "pendência aberta; liberação suspensa quando completa G (6 min); `UNVERIFIED_FAIL_CLOSED` até desfecho commitado mais novo"],
     ["Pendência seguida de novas tentativas (A/B/C)", "`unresolved_since` fica em T+30; liberação suspensa a partir de T+36; B e C não reabrem a janela; volta só com desfecho commitado"],
+    ["Tentativas concorrentes com espera de lock (X e Y)", "`attempt_at` só avança (X grava instante posterior ao de Y e só então lê os provedores); só um desfecho com leitura posterior à última tentativa limpa a pendência; nenhum desfecho mais velho reabre a liberação; zero linhas com a linha presente não dispara `seed_missing`"],
+    ["Três tentativas sobrepostas", "pendência continua em tA; o desfecho de A não a move nem a limpa; liberação suspensa a partir de tA + 6 min até desfecho commitado de C"],
     ["Linha semente ausente", "`update` da tentativa afeta zero linhas; auditoria não começa; batimento `seed_missing` e alerta; liberação `UNVERIFIED_FAIL_CLOSED`"],
     ["Orçamento de subrequisições no commit do desfecho", "pico medido de no máximo 47 subrequisições externas (46 sem vendas abertas); o commit do desfecho nunca é cortado"],
   ];
@@ -148,7 +150,7 @@ test("C3 acceptance criteria fix every scenario and its required outcome", () =>
   const at = table.findIndex((r) => r[0] === "Cenário (C3)");
   assert.ok(at >= 0, "C3 table located");
   assert.deepEqual(table.slice(at + 1, at + 1 + rows.length).map((r) => [r[0], r[2]]), rows);
-  assert.equal(rows.length, 11);
+  assert.equal(rows.length, 13);
   // A/B/C: pending opened at T+30 by A; release stops at T+30+G regardless of B (T+45) and C (T+60).
   const T = 0, G = 6, pendingSince = T + 30;
   for (const attempt of [T + 45, T + 60]) assert.equal(Math.min(pendingSince, attempt), pendingSince);
@@ -164,17 +166,24 @@ test("recommended design: Postgres authority, DB clock, per-pending G, seed-row 
   assert.match(flat, /todos os carimbos vêm do `now\(\)` do Postgres, nunca do Worker nem do runner do GitHub\. A idade e o G são calculados em SQL/);
   assert.match(flat, /\*\*o caminho do GitHub carimba no início da leitura\*\*, não ao persistir/);
   assert.match(flat, /o script do runner nunca envia carimbo/);
-  assert.match(flat, /`update financial_proof_state set attempt_at = now\(\), unresolved_since = coalesce\(unresolved_since, now\(\)\) where id = 1 returning attempt_at`/);
+  assert.match(flat, /`update financial_proof_state set attempt_at = clock_timestamp\(\), unresolved_since = coalesce\(unresolved_since, clock_timestamp\(\)\) where id = 1 and attempt_at < clock_timestamp\(\) returning attempt_at`/);
+  assert.match(flat, /o `attempt_at` \*\*só avança\*\*: uma tentativa que espera o lock de outra grava um instante posterior ao dela/);
+  assert.match(flat, /`select exists \(select 1 from financial_proof_state where id = 1\)`/);
+  assert.match(flat, /linha presente \(concorrência ou relógio\) significa pular esta tentativa sem alerta/);
   assert.match(flat, /\*\*idêntico\*\* \(`\$novo = \$inicio`\)\. Se esse commit falhar, a auditoria não começa/);
-  assert.match(flat, /\*\*Zero linhas afetadas\*\* \(linha semente ausente\) é erro: a auditoria não começa, o batimento registra `seed_missing` e sai um alerta/);
-  assert.match(flat, /unresolved_since = case when \$novo >= attempt_at then null else attempt_at end where id = 1 and \(measured_at < \$novo or \(measured_at = \$novo and \$desfecho = 'ambiguous'\)\)`/);
+  assert.match(flat, /\*\*linha semente ausente\*\* é erro: a auditoria não começa, o batimento registra `seed_missing` e sai um alerta/);
+  assert.match(flat, /unresolved_since = case when \$novo >= attempt_at then null else unresolved_since end where id = 1 and \(measured_at < \$novo or \(measured_at = \$novo and \$desfecho = 'ambiguous'\)\)`/);
   assert.match(doc, /Só grava o que for \*\*estritamente mais novo\*\*\. Em empate, 409 vence\./);
   assert.match(flat, /Zero linhas afetadas significa resultado antigo, que é descartado e não vai ao cache/);
-  assert.match(flat, /A pendência \(`unresolved_since`\) só é limpa por um desfecho commitado da tentativa mais recente/);
+  assert.match(flat, /A pendência \(`unresolved_since`\) só é limpa por um desfecho commitado da tentativa mais recente; o desfecho de uma tentativa mais velha \*\*nunca move nem limpa\*\* a pendência \(`else unresolved_since`\)/);
   assert.match(flat, /now\(\) - measured_at <= interval '65 minutes' and \(unresolved_since is null or now\(\) - unresolved_since < interval '6 minutes'\) from financial_proof_state where id = 1`/);
   // G pinned and justified against the reduced MP budget (42 GETs x 7 s timeout + retry pauses).
   assert.match(flat, /\*\*G = 6 minutos\*\*, acima do pior caso da auditoria com o orçamento do item 10/);
-  assert.ok(42 * 7 + 6 * 1.5 < 6 * 60, "worst-case audit fits in G");
+  assert.equal(42 * 7 + 9 + 4 * 5, 323);
+  assert.ok(323 < 6 * 60, "worst-case audit with 5 s SQL timeouts fits in G");
+  assert.match(flat, /\*\*toda consulta ao Neon exige timeout de no máximo 5 s\*\* \(`AbortSignal\.timeout` no fetch do driver HTTP e `statement_timeout` no banco\)/);
+  assert.match(flat, /42 GETs de 7 s \(294 s\), mais as pausas de retentativa \(cerca de 9 s\), mais 4 SQL de 5 s \(20 s\) = 323 s, cerca de 5,4 min/);
+  assert.equal((323 / 60).toFixed(1), "5.4");
   assert.match(flat, /Banco indisponível significa `UNVERIFIED_FAIL_CLOSED`/);
   assert.match(flat, /Ele alimenta a exibição \(`\/api\/status`, `\/api\/sales\/status`\) e o pulo por piso, nunca a liberação/);
   assert.match(flat, /Novas tentativas \*\*não\*\* reabrem a janela, porque `coalesce` preserva o início da primeira pendência\. O FRESH falso residual é de até G, uma vez por pendência, e não recorrente/);
@@ -288,6 +297,7 @@ test("cost table: ranges, preflight writes, attempted vs effective, sales-open c
   const shed = 0.70 * 1000;
   assert.equal(shed, 700);
   assert.match(flat, new RegExp(`\`SHED_AT_PCT=70\` \\(${shed}\\)`));
+  assert.match(flat, new RegExp(`dá \\*\\*758 a 778\\*\\*, abaixo de 1\\.000, mas acima do \`SHED_AT_PCT=70\` \\(${shed}\\), a partir do qual`));
   // Writes: current 36 + 0..20 unverified + 24 preflight; proposed 48 + 48 + 24 + 24 (or 48 + 2 + 24 + 24).
   const cur = [28 + 4 + 4 + 0 + 24, 28 + 4 + 4 + 20 + 24], prop = 48 + 48 + 24 + 24, opt = 48 + 2 + 24 + 24;
   assert.deepEqual(cur, [60, 80]);
@@ -301,7 +311,7 @@ test("cost table: ranges, preflight writes, attempted vs effective, sales-open c
   assert.match(flat, /\| Invocações de cron do Worker central \| 120 \(24 \+ 48 \+ 48\) \| 168 \(24 \+ 96 \+ 48\) \| \+48 \|/);
   assert.match(flat, /\| Auditorias concluídas \| 4 \| 48 \|/);
   assert.match(flat, /\| Auditorias tentadas e falhas \(ramo horário\) \| 0 a 20 \| 0 \|/);
-  assert.match(flat, /\| Retentativas MP \| até 6 por auditoria/);
+  assert.match(flat, /\| Retentativas MP \| até 6 por auditoria, dentro do orçamento de 46 \| até 6 por auditoria, dentro do orçamento de 42 \|/);
   assert.match(flat, /\| Gravações efetivas no KV \|/);
   assert.match(flat, /\| Leituras no KV \| cerca de 148 .*\| cerca de 240 .*\| \+92 \| 100\.000\/dia/);
   assert.match(flat, /\| `list` no KV \| 0 da prova/);
@@ -327,12 +337,29 @@ test("cost table: ranges, preflight writes, attempted vs effective, sales-open c
   assert.match(flat, /developers\.cloudflare\.com\/kv\/platform\/limits\//);
 });
 
-test("KV daily-limit alert section: measured data, list hypothesis, proposals only", () => {
+test("KV alert section: 50% threshold warnings explained by writes; P22 write budget", () => {
   assert.match(doc, /## Alerta de limite diário do KV/);
+  assert.match(flat, /"\[Alerta\] Limite diário de operações do KV atingido em 50% para a conta …"/);
+  assert.match(flat, /São \*\*avisos de limiar de 50%\*\*, não de limite atingido/);
   for (const [day, writes, reads] of KV_PEAKS)
-    assert.match(flat, new RegExp(`\\| ${day} \\| ${writes} \\| ${reads.replace(".", "\\.")} \\|`), day);
-  assert.equal(Math.max(...KV_PEAKS.map(([, w]) => Number(w))), 694);
-  assert.match(flat, /\*\*Hipótese principal, não medida:\*\* o alerta se refere a operações `list`/);
+    assert.match(flat, new RegExp(`\\| ${day} \\| ${writes} \\| ${Math.round(Number(writes) / 10)}% \\| ${reads.replace(".", "\\.")} \\|`), day);
+  const w = KV_PEAKS.map(([, x]) => Number(x));
+  assert.deepEqual([Math.min(...w), Math.max(...w)], [568, 694]);
+  assert.ok(w.every((x) => x > 500 && x < 1000), "every day above the 50% warning, none at the limit");
+  assert.match(flat, /explicados pelas \*\*gravações diárias de 568 a 694 \(57% a 69% de 1\.000\)\*\*/);
+  assert.match(flat, /\*\*Nenhum limite foi atingido\*\* entre 20 e 27\/10/);
+  assert.match(flat, /operações `list` não são medidas pelo snapshot, mas não são necessárias para explicar os avisos/);
+  assert.doesNotMatch(flat, /Hipótese principal, não medida/);
+  // Worst day + proposal deltas, against SHED_AT_PCT (70% of 1,000).
+  const worst = 694, pct = (x) => Math.round(x / 10);
+  assert.deepEqual([worst + 64, worst + 84, pct(worst + 64), pct(worst + 84)], [758, 778, 76, 78]);
+  assert.match(flat, /isso dá \*\*758 a 778 \(76% a 78%\)\*\*, acima do `SHED_AT_PCT=70` \(700\)/);
+  assert.match(flat, /\| Proposta padrão \| \+64 a \+84 \| 758 a 778 \(76% a 78%\) \|/);
+  assert.match(flat, /\| Variante econômica \(item 6: `last-isolated-run` só em falha ou mudança\) \| \+18 a \+38 \| 712 a 732 \(71% a 73%\) \|/);
+  assert.match(flat, /\| \+6 a \+26 \| 700 a 720 \(70% a 72%\) \|/);
+  assert.match(flat, /\| −4 a \+16 \| 690 a 710 \(69% a 71%\) \|/);
+  assert.deepEqual([18 - 12, 38 - 12, 18 - 12 - 10, 38 - 12 - 10], [6, 26, -4, 16]);
+  assert.match(flat, /1\. \*\*Adotar a variante econômica\*\* e as reduções de gravação acima/);
   assert.match(flat, /Recomendações \(somente propostas; nada foi alterado\)/);
 });
 
