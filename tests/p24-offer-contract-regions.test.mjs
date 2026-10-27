@@ -130,4 +130,15 @@ test("R4.4 o chat cobre as mesmas páginas da base, com o widget publicado e o c
   }
   assert.equal(CATALOG.ok, true, "[R4.4.6] catálogo do chat com conflito ou desatualizado: " + JSON.stringify({ missing: CATALOG.missing, conflicts: CATALOG.conflicts }));
   for (const slug of PRODUCTS) assert.ok(CATALOG.items[slug], `[R4.4.7] catálogo do chat sem ${slug}`);
+  // O resumo do chat com vendas fechadas descreve a oferta: não pode voltar à promessa antiga ("mensagens de venda")
+  // nem divergir do resumo aprovado na base.
+  const cp = CATALOG.items["conteudo-pronto"]?.closedSummary || "";
+  assert.match(cp, /roteiros multicanal de venda e acompanhamento/, "[R4.4.8] resumo do Conteúdo Pronto no chat sem os roteiros multicanal");
+  assert.doesNotMatch(cp, /mensagens de venda/i, "[R4.4.9] resumo do Conteúdo Pronto no chat voltou a 'mensagens de venda'");
+  const basePolicy = ref && gitShow(ref, "data/site-chat-policy.json");
+  if (basePolicy) {
+    const head = JSON.parse(readFileSync(join(ROOT, "data/site-chat-policy.json"))).closed_summaries || {};
+    for (const [slug, text] of Object.entries(JSON.parse(basePolicy).closed_summaries || {}))
+      assert.equal(head[slug], text, `[R4.4.10] resumo fechado do chat para ${slug} difere da base (${ref})`);
+  }
 });
