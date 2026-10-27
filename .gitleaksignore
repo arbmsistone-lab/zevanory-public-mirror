@@ -14,6 +14,7 @@ c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.
 c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:130
 0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:75
 0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:110
+3092b79f99f61e77666a797330d9b5ce4aadfeee:docs/security/secret-scan-baseline.md:curl-auth-user:109
 
 # C2 IndexNow key (public by design)
 ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml:generic-api-key:17

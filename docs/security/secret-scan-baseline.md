@@ -106,7 +106,7 @@ or if a row here is not in `.gitleaksignore`.
 
 | Class | Type | Why it is not a secret |
 |---|---|---|
-| C1 | Env-var reference | curl -u "$STRIPE_SECRET_KEY:" names a GitHub Actions secret; the file holds no value. |
+| C1 | Env-var reference | The basic-auth user given to `curl` is the variable reference `$STRIPE_SECRET_KEY` (a GitHub Actions secret name); the file holds no value. Also the earlier wording of this very row in commit `3092b79f`. |
 | C2 | IndexNow key (public by design) | The IndexNow protocol requires serving the key at https://<host>/<key>.txt (sent as keyLocation, or fetched from /<key>.txt by the audit script). It grants no access. |
 | C3 | Resend API key fixture | Literal of the form re_test_<digits> or re_test_<word>_<digits>, used as a placeholder RESEND_API_KEY in tests. |
 | C4 | Webhook/HMAC test secret | Hyphenated words followed by the sequence 0123456789abcdef, used in tests to prove signature acceptance/rejection. |
@@ -133,6 +133,7 @@ or if a row here is not in `.gitleaksignore`.
 | C1 | `.github/workflows/financial-e2e-stripe.yml` | 130 | `curl-auth-user` | `c3845cf8` | Env-var reference | `c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:130` |
 | C1 | `.github/workflows/payment-sandbox-adversarial.yml` | 75 | `curl-auth-user` | `0b532d13` | Env-var reference | `0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:75` |
 | C1 | `.github/workflows/payment-sandbox-adversarial.yml` | 110 | `curl-auth-user` | `0b532d13` | Env-var reference | `0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:110` |
+| C1 | `docs/security/secret-scan-baseline.md` | 109 | `curl-auth-user` | `3092b79f` | Env-var reference | `3092b79f99f61e77666a797330d9b5ce4aadfeee:docs/security/secret-scan-baseline.md:curl-auth-user:109` |
 | C2 | `.github/workflows/indexnow-resubmit.yml` | 17 | `generic-api-key` | `ed60fc5c` | IndexNow key (public by design) | `ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml:generic-api-key:17` |
 | C2 | `.github/workflows/indexnow-resubmit.yml` | 17 | `generic-api-key` | `f6a7557d` | IndexNow key (public by design) | `f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:17` |
 | C2 | `.github/workflows/indexnow-resubmit.yml` | 32 | `generic-api-key` | `ed60fc5c` | IndexNow key (public by design) | `ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml:generic-api-key:32` |
@@ -208,11 +209,11 @@ or if a row here is not in `.gitleaksignore`.
 | C14 | `scripts/whatsapp_audio_runtime_test.mjs` | 83 | `generic-api-key` | `fecd365a` | Synthetic test fixture | `fecd365a8d3e8b8a01681e38692e37e47cfc622e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83` |
 | C14 | `test/meta-oauth.test.mjs` | 5 | `generic-api-key` | `7a488a8a` | Synthetic test fixture | `7a488a8ad1998abb4e906b3cb566eea98d400d64:test/meta-oauth.test.mjs:generic-api-key:5` |
 
-Totals: **82** fingerprints.
+Totals: **83** fingerprints.
 
 | Class | Fingerprints |
 |---|---|
-| C1 | 8 |
+| C1 | 9 |
 | C2 | 7 |
 | C3 | 20 |
 | C4 | 8 |
