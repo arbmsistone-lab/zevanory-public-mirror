@@ -107,7 +107,9 @@ def main() -> int:
         for rel in ["data/politica-unica.json", "data/p23/fiscal-process.json"]:
             shutil.copy2(ROOT / rel, temp / rel)
         (temp / "tests").mkdir()
-        for rel in [TEST, "tests/refund-auto-dispatch-contract.test.mjs", "tests/refund-auto-dispatch-adversarial.test.mjs"]:
+        (temp / "tests" / "helpers").mkdir()
+        for rel in [TEST, "tests/refund-auto-dispatch-contract.test.mjs", "tests/refund-auto-dispatch-adversarial.test.mjs",
+                    "tests/helpers/text.mjs"]:
             shutil.copy2(ROOT / rel, temp / rel)
         baseline_run = run_command(command(node), cwd=temp)
         parsed = parse_tap(baseline_run["stdout"], stderr=baseline_run["stderr"])
