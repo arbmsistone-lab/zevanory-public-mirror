@@ -1,6 +1,7 @@
 {
   "schema": "zevanory.release-2-evidence.v1",
-  "source_base": "a098d8802a184df02b362d46f08fb6c81b7382f9",
+  "source_base": "d01dd5ea8b85df2dbf8ccad2c6a9d6a95210f6d8",
+  "ci_run": null,
   "release_sha": "a4552c4f68d457df89cfa7c79ff87320d1ae6c7a",
   "release_sha_binding": "CI regenerates this manifest with RELEASE_SHA=GITHUB_SHA and verifies both manifest and matrix",
   "sales_mode": "closed",
