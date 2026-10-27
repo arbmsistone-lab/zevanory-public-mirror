@@ -1,0 +1,58 @@
+name: preco-canonico
+
+# Preço canônico (P24 T3, Sol ORDEM 301 item 4): data/products.json é a única definição de preço. Este gate prova que
+# página, resumo da oferta, JSON-LD, checkout próprio, chat e divulgação mostram/cobram o mesmo valor.
+# Só pull_request: nunca dispara no merge, sem segredo, sem rede além do checkout.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "data/products.json"
+      - "data/politica-unica.json"
+      - "data/site-chat-policy.json"
+      - "data/p24/promise-map.json"
+      - "scripts/sync_canonical_prices.py"
+      - "scripts/build_sales_public.py"
+      - "sales-overlay/**"
+      - "sales-public/**"
+      - "conteudo-pronto/index.html"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "worker/support-knowledge.mjs"
+      - "worker/acquisition-engine.mjs"
+      - "worker/creative-autonomy.mjs"
+      - "worker/lead-magnet.mjs"
+      - "worker/multichannel-autonomy.mjs"
+      - "tests/canonical-price.test.mjs"
+      - "tests/product-consistency.test.mjs"
+      - ".github/workflows/preco-canonico.yml"
+permissions:
+  contents: read
+concurrency:
+  group: preco-canonico-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  igualdade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Sincronizador sem divergência e build reproduz as páginas
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/sync_canonical_prices.py --check
+          python3 scripts/build_sales_public.py >/dev/null
+          git diff --exit-code -- sales-public || { echo "::error::sales-public diverge do build"; exit 1; }
+      - name: Página == resumo == JSON-LD == checkout == chat == divulgação (contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/canonical-price.test.mjs tests/product-consistency.test.mjs 2>&1 | tee /tmp/p.txt
+          for kv in "tests 6" "pass 6" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+            grep -qx "# $kv" /tmp/p.txt || { echo "::error::esperado '# $kv'"; exit 1; }
+          done
