@@ -32,7 +32,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           package-manager-cache: false
           node-version: "22"

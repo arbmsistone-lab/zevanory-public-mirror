@@ -45,7 +45,7 @@ jobs:
     env:
       TARGET_SLUG: ${{ matrix.slug }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Resolve certified live release
         shell: bash
         run: |
@@ -102,7 +102,7 @@ jobs:
           print("FALSE_GREEN=0")
           PY
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: portfolio-p16-${{ matrix.slug }}-${{ github.sha }}
           path: evidence/${{ matrix.slug }}-p16-lifecycle.json

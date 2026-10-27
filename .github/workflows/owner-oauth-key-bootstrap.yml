@@ -67,7 +67,7 @@ jobs:
           out.write("action=generate\n")
           PY
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           package-manager-cache: false
         if: steps.inv.outputs.action == 'generate'

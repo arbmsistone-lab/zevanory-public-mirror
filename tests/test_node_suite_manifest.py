@@ -146,7 +146,7 @@ class NodeSuiteManifest(unittest.TestCase):
         pw = PORTABILITY_WF.read_text(encoding="utf-8")
         self.assertRegex(pw, r"(?m)^on:\n  pull_request:\n")
         self.assertNotRegex(pw, r"(?m)^  (push|workflow_dispatch|schedule|workflow_run|pull_request_target):")
-        self.assertIn("os: [ubuntu-24.04, windows-latest]", pw)
+        self.assertIn("os: [ubuntu-latest, windows-latest]", pw)
         self.assertIn("python -m unittest tests.test_node_suite_manifest -v", pw)
         self.assertIn('grep -qx "Ran 14 tests in .*" nm.txt', pw)
         self.assertIn('grep -qx "Ran 14 tests in .*" nm.txt', wf)

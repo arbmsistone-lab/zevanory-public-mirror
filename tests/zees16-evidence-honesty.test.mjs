@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { requireTool } from "./helpers/toolchain.mjs";
 
 const wf = readTextNormalized(new URL("../.github/workflows/zees16-evidence-gate.yml", import.meta.url));
-const step = wf.slice(wf.indexOf("- name: Emit immutable ZEES gate evidence"), wf.indexOf("- uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", wf.indexOf("- name: Emit immutable ZEES gate evidence")));
+const step = wf.slice(wf.indexOf("- name: Emit immutable ZEES gate evidence"), wf.indexOf("- uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4", wf.indexOf("- name: Emit immutable ZEES gate evidence")));
 
 test("ZEES-16: a evidência não grava 'proved' fixo", () => {
   assert.doesNotMatch(step, /status:"proved"/);

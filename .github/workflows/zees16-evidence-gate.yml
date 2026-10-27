@@ -37,7 +37,7 @@ jobs:
           echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
       - name: Checkout exact revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           persist-credentials: false
           fetch-depth: 1
@@ -78,7 +78,7 @@ jobs:
           if [ "$JOB_STATUS" = "success" ]; then status=proved; else status=failed; fi
           jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" --arg status "$status" --arg job "$JOB_STATUS" '{schema:"zevanory.p06.zees-gate.v1",release_sha:$sha,run_id:$run,status:$status,job_status:$job}' > p06-zees-gate.json
           echo "P06_ZEES_GATE_EVIDENCE_STATUS=$status"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: always()
         with:
           name: p06-zees-gate-${{ env.EXPECTED_SHA12 }}
