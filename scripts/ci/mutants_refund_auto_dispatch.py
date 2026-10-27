@@ -92,7 +92,7 @@ MUTANTS = {
     # Round 3 LOWs: a manifestation never disappears.
     "E01_cas_loss_dropped": ("worker/refund-flow.mjs", "continue; // lost the CAS: re-read and re-decide (L-1)", "return receipt;", "R35"),
     "E02_sandbox_flag_unknown_ignored": ("worker/refund-flow.mjs", "if (testFlagUnknown) decision =", "if (false) decision =", "R36"),
-    "E03_ddl_race_not_tolerated": ("worker/refund-state.mjs", "    if (!exists) throw error;", "    throw error;", "R37"),
+    "E03_ddl_race_not_tolerated": ("worker/refund-state.mjs", "    catch (error) {\n      let exists = false;", "    catch (error) { throw error;\n      let exists = false;", "R37"),
     "E04_off_reads_new_tables": ("worker/refund-flow.mjs", "if (on || sawOnCopy || await refundStateTablesExist(sql)) {", "if (true) {", "R38"),
     "E05_conflict_rejection_reopens": ("worker/refund-flow.mjs", 'if (conflictRejected && a.identity !== "matched") {', "if (false) {", "R39"),
     "E06_payment_override_optional": ("worker/refund-flow.mjs", "if (override && (decision?.override !== true", "if (false && (decision?.override !== true", "R40"),

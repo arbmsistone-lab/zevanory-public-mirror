@@ -14,12 +14,18 @@ const isTerminal = (status) => TERMINAL.includes(status);
 
 // Concurrent first use: two "create table if not exists" may race on the catalog (duplicate key
 // on pg_type, 23505/42P07). The loser checks that the table now exists instead of failing (L-4).
-export async function idempotentDdl(sql, ddl, table) {
-  try { await sql.query(ddl); }
-  catch (error) {
-    let exists = false;
-    try { exists = Boolean((await sql.query("select to_regclass($1) as t", [table]))[0]?.t); } catch {}
-    if (!exists) throw error;
+// With several concurrent creators the transaction that won one catalog index can still lose another
+// and roll back, so the loser retries the DDL a few times before giving up.
+export async function idempotentDdl(sql, ddl, table, { attempts = 4 } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try { await sql.query(ddl); return; }
+    catch (error) {
+      let exists = false;
+      try { exists = Boolean((await sql.query("select to_regclass($1) as t", [table]))[0]?.t); } catch {}
+      if (exists) return;
+      if (attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+    }
   }
 }
 const ensured = new WeakSet(); // per SQL client: skip repeated DDL once the tables are known to exist
