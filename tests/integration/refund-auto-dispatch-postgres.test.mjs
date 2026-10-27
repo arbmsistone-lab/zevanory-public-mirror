@@ -3,13 +3,15 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { handleRefundFlow } from "../../worker/refund-flow.mjs";
 
 const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
 const SKIP = !HOST && "T4_PG_HOST not set (throwaway local PostgreSQL required)";
 const DB = "ci_refund_auto_dispatch";
 const EMAIL = "buyer@example.com";
+const ACCOUNT_ID = "123456789";
+const ACCOUNT_HASH16 = createHash("sha256").update(ACCOUNT_ID).digest("hex").slice(0, 16);
 const lit = (v) => v === null || v === undefined ? "NULL" : "'" + String(v).replace(/'/g, "''") + "'";
 const inline = (q, p) => q.replace(/\$(\d+)(?:::\w+)?/g, (_, n) => lit(p[Number(n) - 1]));
 const psql = (sql, db = DB) => execFileSync("psql", ["-h", HOST, "-p", PORT, "-U", "postgres", "-d", db,
@@ -43,11 +45,14 @@ test("PG real: 2 pedidos simultâneos reservam uma linha e fazem um POST", { ski
   const state = new Map();
   const kv = { get: async (k) => state.get(k) ?? null, put: async (k, v) => { state.set(k, v); },
     list: async () => ({ keys: [], list_complete: true }) };
-  const env = { REFUND_AUTO_DISPATCH: "true", MERCADOPAGO_ACCESS_TOKEN: "APP_USR-FAKE-PRODUCTION",
+  const env = { REFUND_AUTO_DISPATCH: "true", MERCADOPAGO_ENV: "production",
+    MERCADOPAGO_ACCESS_TOKEN: "APP_USR-FAKE-PRODUCTION-ABCDEFGHIJKLMNOP",
+    MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ACCOUNT_HASH16,
     ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://psql.local/" + DB };
   let posts = 0;
   const original = globalThis.fetch;
-  globalThis.fetch = async (_url, options = {}) => {
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/users/me")) return Response.json({ id: Number(ACCOUNT_ID), site_id: "MLB", tags: [] });
     if (options.method === "POST") { posts++; return Response.json({ id: "refund-pg-1", status: "approved", amount: 197 }); }
     return Response.json({ id: Number(paymentId), status: "approved", status_detail: "accredited", external_reference: oid,
       transaction_amount: 197, transaction_amount_refunded: 0, refunds: [], payer: { email: EMAIL },
