@@ -16,7 +16,7 @@ _spec.loader.exec_module(p24)  # type: ignore[union-attr]
 
 SLUGS = ("ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo")
 FILES = [f"sales-public/{s}.html" for s in SLUGS] + [
-    "data/p24/promise-map.json", "data/p24/delivery-manifest.json", "data/p24/rubric.json", "data/p24/open-defects.json",
+    "data/p24/promise-map.json", "data/p24/delivery-manifest.json", "data/p24/rubric.json", "data/p24/open-defects.json", "data/p24/component-licenses.json",
     "data/products.json", "worker/cloudflare-worker.recovered.mjs",
 ]
 
@@ -52,14 +52,46 @@ class P24CheckTest(unittest.TestCase):
         self.assertEqual(rep["gate"], "FAIL")
         self.assertTrue(any(needle in e for e in rep["errors"]), f"esperado {needle!r}; obtido {rep['errors'][:5]}")
 
+    # Bloqueio conhecido e registrado: o Negócio Completo em catálogo (v1.1) ainda traz IA/Vendas anteriores à v1.2;
+    # sai daqui quando for remontado com IA/Vendas v1.2 e o Lucro final do r7 (o teste falha e lembra de tirar).
+    KNOWN_BLOCKED = {"negocio-completo": ["NGC-D01: componente incompleto", "NGC-D02: componente incompleto"]}
+
     def test_real_inputs_gate_pass_verdict_fail(self):
         rep = p24.evaluate(self.root)
-        self.assertEqual(rep["errors"], [])
-        self.assertEqual(rep["gate"], "PASS")
+        for slug, m in rep["matrix"].items():
+            want = self.KNOWN_BLOCKED.get(slug)
+            errs = rep["products"][slug]["errors"]
+            if want:
+                self.assertEqual(m["gate"], "FAIL", slug + ": bloqueio conhecido sumiu? atualize KNOWN_BLOCKED")
+                self.assertEqual(len(errs), len(want), errs)
+                for w, e in zip(want, errs):
+                    self.assertIn(w, e)
+            else:
+                self.assertEqual(errs, [], slug)
+                self.assertEqual(m["gate"], "PASS", slug)
         self.assertEqual(rep["p24_verdict"], "FAIL")
         self.assertEqual(rep["totals"]["promises_without_declared_delivery"], 0)
         self.assertGreater(rep["totals"]["open_defects_pi"], 0)
         self.assertEqual(rep["totals"]["promises_pending_human_review"], 0)
+
+    def test_per_product_matrix_one_fail_does_not_block_others(self):
+        man = self.jload("data/p24/delivery-manifest.json")
+        self.entry(man, "lucro-e-caixa", "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx")["open"]["ok"] = False
+        self.jsave("data/p24/delivery-manifest.json", man)
+        rep = p24.evaluate(self.root)
+        self.assertEqual(rep["matrix"]["lucro-e-caixa"]["gate"], "FAIL")
+        for slug in ("ia-na-pratica", "vendas-na-pratica", "combo-ia-vendas"):
+            self.assertEqual(rep["matrix"][slug]["gate"], "PASS", slug + " continua avaliado e aprovado")
+
+    def test_component_license_missing_or_not_in_zip_fails(self):
+        lic = self.jload("data/p24/component-licenses.json")
+        del lic["products"]["vendas-na-pratica"]
+        lic["products"]["combo-ia-vendas"]["components"].append({"component": "fonte x", "license": "OFL", "prefix": "02_Vendas_na_Pratica_v1.2/", "file": "Licencas_de_fontes/OFL-X.txt"})
+        self.jsave("data/p24/component-licenses.json", lic)
+        rep = p24.evaluate(self.root)
+        self.assertTrue(any("vendas-na-pratica: sem registro de licença" in e for e in rep["errors"]))
+        self.assertTrue(any("licença 'fonte x' não está no zip entregue" in e for e in rep["errors"]))
+        self.assertEqual(rep["matrix"]["ia-na-pratica"]["gate"], "PASS")
 
     def test_new_page_promise_without_delivery_fails(self):
         self.edit("sales-public/ia-na-pratica.html", "<li>Guia rápido em PDF</li><li>Arquivo de comandos",
