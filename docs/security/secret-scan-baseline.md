@@ -16,11 +16,13 @@ or if a row here is not in `.gitleaksignore`.
   `arbmsistone-lab/zevanory-public-mirror` at gh-pages `b7671272`, covering
   992 remote branches.
 - Without any ignore file:
-  - 84 findings, 82 unique fingerprints;
+  - after the PR #950 commits: 86 findings, **84** unique fingerprints;
   - the default config and the controlled config give the identical set.
-- With this `.gitleaksignore`, running the workflow's own steps on the full clone:
+- With this `.gitleaksignore`, running the workflow's own steps on the full clone
+  (2026-10-27, TruffleHog stubbed):
   - 991 remote heads, 0 missing;
-  - 4410 commits scanned, against 4475 non-merge commits (floor 4251);
+  - commits: 4445 scanned, **exactly** the 4445 expected;
+  - merges: 37 scanned (remerge-diff) out of 434 merges, exactly the 37 expected;
   - **0 findings, exit 0**.
 - Each finding was classified by matching the flagged line against a structural
   pattern, printing only a character-class template or a boolean, never the
@@ -58,52 +60,117 @@ or if a row here is not in `.gitleaksignore`.
   - the JSON report exists and is a list;
   - the exit code is 0 or 1 and is consistent with the findings;
   - the log contains no `ERR`/`FTL`/`fatal:` line;
-  - `N commits scanned` satisfies N > 0 and N ≥ 95% of
-    `git rev-list --all --no-merges --count`.
-- **Why the floor is not "≥ rev-list count".** gitleaks counts only commits whose
-  patch it reads. Merges and empty or metadata-only commits have no patch, so N is
-  always smaller than `git rev-list --all --count`. Commits that only delete lines,
-  such as the revert `c312c4b6`, are not counted either. Measured on 2026-10-27:
-  - 4410 scanned;
-  - 4475 non-merge commits;
-  - 4907 commits in total.
+  - the log contains exactly one `N commits scanned` line, and N **equals** an
+    independently computed count.
+- **What the count is.** The count is taken from
+  `git log --all --no-merges --raw --numstat`, which is a different git invocation
+  from gitleaks' own `git log -p`. It counts the non-merge commits that have at
+  least one file which is:
+  - not binary;
+  - not deleted;
+  - changed by at least one line (rename detection on).
 
-  The 95% floor catches a git failure, an invalid or narrowed `--log-opts`, a
-  shallow or partial history, and a wrong source directory. The harness proves
-  each of these.
-- **TruffleHog ran.** The job fails unless:
-  - TruffleHog exits 0, and
-  - its log reports `finished scanning` with more than 0 chunks.
+  gitleaks reads a text patch for exactly these commits.
+- **What the count excludes.** Merges, empty commits, deletion-only commits (for
+  example the revert `c312c4b6`), binary-only commits, and pure renames or mode
+  changes. This was verified on the real history (4431 = 4431, later 4445 = 4445)
+  and on a synthetic repository covering each case.
+- **What equality catches.** Since this is equality, there is **no slack and no
+  ceiling problem**:
+  - a git failure;
+  - a silently dropped commit (harness: 6 scanned, 7 expected → fail);
+  - a forged count (99999 → fail);
+  - an invalid `--log-opts`;
+  - a wrong source directory.
+- **Pathspec narrowing.** A narrowed `--log-opts`/pathspec is caught first by the
+  pinned workflow bytes, because the command line must match exactly. The count
+  would catch it too, unless the excluded paths happened to hold no countable
+  commit.
+- **Merge commits (remerge-diff).** A secret introduced by a merge itself, for
+  example during conflict resolution, has no ordinary patch. Neither
+  `gitleaks git` nor `trufflehog git` sees it.
+  - A second gitleaks pass runs with `--log-opts="--all --merges --remerge-diff"`,
+    with the same report, error and exact-count checks; the count comes from
+    `git log --all --merges --remerge-diff --raw --numstat`.
+  - On the real history: 434 merges, of which 37 have their own content. Result:
+    0 findings.
+  - In the harness, an evil merge carrying a planted key fails the job.
+- **TruffleHog ran and is consistent.** The job fails unless all of these hold:
+  - TruffleHog exits 0;
+  - its log has exactly one `finished scanning` line, with 0 < chunks ≤ bytes;
+  - `verified_secrets` in that line equals the number of verified results in the
+    JSON;
+  - with `--only-verified`, the JSON contains no unverified result.
 
-  On failure, the tail of its stderr is printed.
+  On failure, the tail of its stderr is printed. TruffleHog verification is
+  **never** run locally in this sandbox: its proxy swaps the Authorization header
+  sent to api.github.com, so local verification of GitHub tokens gives false
+  positives. Local runs always stub TruffleHog.
 - **Evidence.**
-  - `secret-scan/{history,gitleaks,trufflehog}-summary.json` are uploaded.
+  - `secret-scan/{history,gitleaks-commits,gitleaks-merges,trufflehog}-summary.json` are uploaded.
   - `::notice` annotations record the counts.
   - A failing scan emits a `SECRET_SCAN_FAILED` annotation with the rules and
     files, never values.
 
 ## Contract protection
 
-- The contract test runs in three places:
-  - as the first step of the scan job;
-  - in `secret-scan-contract.yml`, on the PR's own files;
-  - in `secret-scan-contract-protected.yml`.
-- **How the protected run works.**
-  - It uses `pull_request_target`, so the workflow definition comes from the base
-    branch.
-  - It checks out the base SHA and runs the base's test.
-  - The PR head is checked out into `./pr` as data only. It is parsed with
-    `yaml.BaseLoader`, read as text, and symlinks are refused. It is never
-    executed or put on the Python path.
-  - Permissions are `contents: read`; no secrets are used; credentials are not
-    persisted.
-  - A PR therefore cannot weaken the rules that judge it.
+- **Byte-for-byte pins.** `tests/test_secret_history_scan_workflow.py` pins the
+  SHA-256 of all three secret-scan workflows. The only normalisation is the
+  self-referential test-hash and test-count lines. Any edit fails, including:
+  - a run block, an added line, or a `continue-on-error`;
+  - an `env:` (for example `PATH` or `BASH_ENV`);
+  - a write to `GITHUB_PATH`/`GITHUB_ENV`;
+  - a trigger or a comment.
+
+  Structural checks repeat the intent with readable messages:
+  - exact step list;
+  - `env:` only on the contract step (`PYTHONDONTWRITEBYTECODE`);
+  - no `GITHUB_PATH`/`GITHUB_ENV`/`BASH_ENV`/`GITHUB_OUTPUT`;
+  - exact scanner command lines;
+  - scanners invoked by absolute path.
+- **Where the test runs.**
+
+  | Where | Role |
+  |---|---|
+  | scan job, step "Secret scan contract (offline)" | PR's own checkout. Verifies the test file's SHA-256 with `sha256sum -c` before running it. |
+  | `secret-scan-contract.yml` | PR's own checkout, same hash check. |
+  | `secret-scan-contract-protected.yml` | **Authoritative.** Base branch's test, PR files as data; the PR's copy of the test must be byte-identical to the base copy. |
+
+  The first two are tamper-evident only: a PR can change the test and its hash
+  together (mutation O19). The protected run catches that. **Changing the scan, its
+  workflows or the test therefore requires the owner,** who must bypass the
+  required protected check after review.
+- **How the protected run works (GitHub Security Lab, "Preventing pwn
+  requests").**
+  - `pull_request_target` takes its workflow definition from the base branch.
+  - Only the base SHA is checked out with `actions/checkout`, and only base code
+    runs (`cd base`, `python3 -P`, pyyaml installed into `$RUNNER_TEMP`).
+  - The PR head is **not** checked out with `actions/checkout`, which refuses fork
+    heads under `pull_request_target`. Instead, the head commit is fetched **by
+    SHA** (`git fetch --depth=1 <repo> <head.sha>`) into a separate bare
+    repository, and written to `./pr` with `read-tree`/`checkout-index`. This
+    involves no hooks, no filters, no `export-ignore` and no submodules.
+  - The files in `./pr` are only parsed (`yaml.BaseLoader`) or read as text;
+    symlinks are refused, and the tree walk does not follow links.
+  - Permissions are `contents: read`; no secrets; no token persisted. The only
+    `${{ }}` values passed are `base.sha`, `head.sha` (checked against
+    `^[0-9a-f]{40}$`) and `github.repository`, and they go through `env:`/`with:`,
+    never interpolated into `run:`.
+  - This works for fork PRs: GitHub exposes fork heads as `refs/pull/N/head` in
+    the base repository, and serves fetches by SHA.
+    - Proven on GitHub itself: an `actions/checkout` PR head SHA that is on no
+      branch was fetched by SHA into an empty bare repository.
+    - Proven in a local fork simulation that runs the workflow's own run blocks,
+      with the head only reachable via `refs/pull/1/head`: an unchanged PR passes;
+      a mutated workflow, a gutted and re-hashed test, a symlinked workflow, a
+      `.gitleaks.toml` or a `*gitleaks*.toml` fails.
 - **None of these workflows has a path or branch filter, or a job-level `if:`.**
   A required check therefore always reports a real result, never "skipped" and
   never "pending".
 - **Bootstrap.** `pull_request_target` reads its workflow from the base branch, so
   the protected check starts running on the first PR after this one merges.
 
+## Classes
 
 | Class | Type | Why it is not a secret |
 |---|---|---|
@@ -268,7 +335,16 @@ that the scan fails.
 - **With a rebase merge**, the fake commit would land on gh-pages with a new SHA,
   and the push scan would correctly fail on it.
 
-Merge #950 with squash. The C15 fingerprint covers the commit on the PR branch.
+**Merge #950 with squash.** Nothing in the repository enforces this:
+`allow_rebase_merge` is `true`. Linear history already blocks merge commits.
+
+- **Owner recommendation:** disable rebase merging in the repository settings, or
+  at least choose "Squash and merge" for #950.
+- **If it is rebased by mistake:** the push scan on gh-pages fails on the
+  re-written fake commit and the re-written doc line, which is correct and loud.
+  The fix is to add their exact fingerprints, classified C15 and C1.
+
+The C15 fingerprint covers the commit on the PR branch.
 
 #948 also edits `secret-history-scan.yml`. This PR adopts the same `runs-on` and
 the same action SHAs as #948 to minimise conflicts. Even so, whichever PR lands
