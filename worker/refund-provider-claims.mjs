@@ -1,6 +1,6 @@
 // Durable Mercado Pago refund claims and GET-only recovery.
 // No automatic financial POST is permitted from this module.
-import { getRefundState, writeRefundState } from "./refund-state.mjs";
+import { getRefundState, writeRefundState, idempotentDdl } from "./refund-state.mjs";
 const MP = "https://api.mercadopago.com";
 const KEY = (id) => "refund:req:" + id;
 const TTL = 90 * 24 * 3600;
@@ -10,7 +10,7 @@ const moneyMatches = (a, b) => Number.isFinite(Number(a)) && Number.isFinite(Num
 export const isAmbiguousRefund = (r) => r?.provider_outcome_unknown === true ||
   /^mercadopago_refund_(?:[45][0-9]{2}|500|502|503|504|408)_/.test(String(r?.last_error || "")) ||
   r?.last_error === "mercadopago_refund_outcome_unknown";
-export async function ensureRefundClaims(sql) { await sql.query(DDL); }
+export async function ensureRefundClaims(sql) { await idempotentDdl(sql, DDL, "refund_provider_claims"); }
 export async function getRefundClaim(sql, oid) {
   await ensureRefundClaims(sql);
   return (await sql.query("select order_id,payment_id,test,stage,claimed_at,reconciled_at,reconciled_status from refund_provider_claims where order_id=$1::uuid", [oid]))[0] || null;
@@ -35,10 +35,17 @@ export async function saveRefund(kv, record, { sql, actor = "system", justificat
     if (!sql) return false;
     if (!await writeRefundState(sql, record, { actor, justification, evidence, transitionKey })) return false;
     try { await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL }); } catch {} // cache only
+    try { if (!await kv.get(ON_STATE_MARKER)) await kv.put(ON_STATE_MARKER, new Date().toISOString()); } catch {}
     return true;
   }
   await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL });
   return true;
+}
+// Cheap flag: set once any ON record exists, so the OFF path reads the new tables only then (L-5).
+// A KV error counts as "present" (reading PostgreSQL is the safe side).
+export const ON_STATE_MARKER = "refund:on-state:present";
+export async function onStatePresent(kv) {
+  try { return Boolean(await kv.get(ON_STATE_MARKER)); } catch { return true; }
 }
 // Authoritative read. ON records come from PostgreSQL (a KV copy, stale or missing, is ignored);
 // legacy records come from KV exactly as before. on=false keeps the OFF path free of new DDL.
@@ -48,6 +55,7 @@ export async function loadRefund(kv, sql, oid, { on = false } = {}) {
   const legacy = cached && cached.auto_dispatch !== true ? cached : null;
   if (!on && legacy) return legacy;
   if (!sql) return legacy;
+  if (!on && !cached && !await onStatePresent(kv)) return null; // OFF without ON state: never touch the new tables
   let stored;
   try { stored = await getRefundState(sql, oid, { ensure: on }); }
   catch (e) { if (!on) return legacy; throw e; }

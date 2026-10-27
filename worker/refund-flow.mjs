@@ -1,6 +1,6 @@
 import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
 import { drainAtendimentoOutbox, handleAtendimento } from "./atendimento.mjs";
-import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, loadRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
+import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, loadRefund, onStatePresent, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
 import { listRefundStates } from "./refund-state.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
 import { evaluateAutomaticRefund, refundAutoDispatchEnabled, refundIdempotencyKey, validateMercadoPagoCredential } from "./refund-auto-dispatch.mjs";
@@ -42,11 +42,11 @@ function tokenFor(env, test) {
 async function notifyCredentialMismatch(env, kv, oid, reason, test = false) {
   if (test) return false;
   const key = `refund:credential-alert:${oid}:${reason}`;
-  if (await kv.get(key)) return false;
+  try { if (await kv.get(key)) return false; } catch {} // KV only deduplicates: on error, alert anyway
   const subject = "ZEVANORY — reembolso bloqueado por credencial incompatível";
   const text = `Pedido ${oid}: despacho automático recusado em modo fail-closed (${reason}). Nenhuma chamada financeira foi feita.`;
   const sent = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), subject, text);
-  if (sent.sent) await kv.put(key, new Date().toISOString(), { expirationTtl: 24 * 3600 });
+  if (sent.sent) { try { await kv.put(key, new Date().toISOString(), { expirationTtl: 24 * 3600 }); } catch {} }
   return sent.sent;
 }
 
@@ -168,15 +168,18 @@ const REEVALUATION_DAYS = 7; // automatic (watchdog) re-evaluation window; after
 const CONFIRMATION_ALERT_H = 24; // owner alert when a consumer notification keeps failing
 // Transient holds: re-evaluated by the watchdog (GET only), by a re-request and by the owner.
 const WATCHDOG_REEVALUABLE = new Set(["payment_event_missing", "provider_lookup_failed", "credential_environment_mismatch",
-  "identity_unverifiable", "identity_conflict"]);
+  "identity_unverifiable", "identity_conflict", "test_flag_unverifiable"]);
 // Definitive provider answers are re-evaluated only on demand (owner "Reavaliar" or a re-request).
 const REEVALUABLE = new Set([...WATCHDOG_REEVALUABLE, "provider_payment_not_found", "provider_lookup_rejected"]);
 const REQUEST_REEVALUABLE = new Set([...REEVALUABLE, "eligible_after_reevaluation"]);
 // The owner cannot approve these until evidence exists; Reject and "Reavaliar" stay available.
 const heldForEvidence = (r) => r?.auto_dispatch === true && (!r.payment_id ||
-  ["payment_event_missing", "order_not_paid", "identity_unverifiable", "provider_payment_not_found"].includes(r.manual_reason) ||
+  ["payment_event_missing", "order_not_paid", "identity_unverifiable", "provider_payment_not_found", "test_flag_unverifiable"].includes(r.manual_reason) ||
   (r.identity_verified !== true && r.manual_reason !== "identity_conflict"));
 const JUSTIFICATION_MIN = 10;
+const REQUEST_CAS_ATTEMPTS = 5;
+// Provider could not prove the payment: owner approval needs an explicit override with evidence.
+const PAYMENT_UNPROVEN = new Set(["provider_lookup_failed", "provider_lookup_rejected"]);
 const clip = (v, n = 500) => String(v ?? "").trim().slice(0, n);
 
 // Pseudonymous identity proof (salted by order): lets the watchdog/owner re-check a manual
@@ -208,7 +211,11 @@ function classifyLookupError(error) {
 async function assessOrder(env, sql, kv, oid, matches, { order, now = Date.now() } = {}) {
   order = order || await loadOrder(sql, oid);
   if (!order) return null;
-  const test = order.certification_pilot === true || Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`));
+  // The sandbox-proof marker lives in KV. If KV cannot answer, the request is still registered in
+  // PostgreSQL but fails closed: test_flag_unverifiable (manual, re-evaluated when KV recovers).
+  let testFlagUnknown = false, sandboxProof = false;
+  try { sandboxProof = Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`)); } catch { testFlagUnknown = order.certification_pilot !== true; }
+  const test = order.certification_pilot === true || sandboxProof;
   const credential = await validateMercadoPagoCredential(env, test);
   let payment = null, paymentLookupError = null;
   if (credential.ok && order.payment_id) {
@@ -225,9 +232,10 @@ async function assessOrder(env, sql, kv, oid, matches, { order, now = Date.now()
     firstDownloadAt: order.first_download_at, now });
   let decision = evaluateAutomaticRefund({ order, payment, window, identityMatched, test, credential, paymentLookupError });
   if (!order.payment_id || !order.paid_at) decision = { eligible: false, reason: "payment_event_missing" };
+  if (testFlagUnknown) decision = { eligible: false, reason: "test_flag_unverifiable" };
   if (identity === "conflict") decision = { eligible: false, reason: "identity_conflict" };
   if (identity === "unverifiable") decision = { eligible: false, reason: "identity_unverifiable" };
-  return { order, test, credential, payment, paymentLookupError, delivery, payer, deliveryMatch, payerMatch, identity, window, decision };
+  return { order, test, testFlagUnknown, credential, payment, paymentLookupError, delivery, payer, deliveryMatch, payerMatch, identity, window, decision };
 }
 
 // System evidence recorded with every transition (no address, no provider secret).
@@ -301,11 +309,12 @@ async function recordUnverifiedAttempt(kv, order, oid, emailMasked, hash) {
   } catch {} // Logging must not change the public response or block a valid later request.
 }
 
+// Returns false only when a concurrent writer won the CAS (the caller re-reads and re-decides).
 async function rememberIdentity(kv, sql, record, hash) {
   const hashes = record.identity_hashes || [];
-  if (hashes.includes(hash) || hashes.length >= IDENTITY_HASH_CAP) return;
+  if (hashes.includes(hash) || hashes.length >= IDENTITY_HASH_CAP) return true;
   record.identity_hashes = [...hashes, hash];
-  try { await saveRefund(kv, record, { sql, actor: "consumer-request", evidence: { identity_proof_added: true } }); } catch {}
+  return saveRefund(kv, record, { sql, actor: "consumer-request", evidence: { identity_proof_added: true } });
 }
 
 const manualAlertText = (record) => `Pedido ${record.order_id} (${record.offer_id}, R$ ${record.amount}) em análise manual: ${record.manual_reason}.` +
@@ -328,111 +337,128 @@ async function createAutomaticRequest(env, sql, kv, { oid, email }, ctx) {
     return receipt;
   }
   const { test, credential, payment } = a;
-  // Authoritative read (PostgreSQL). A stale or missing KV copy cannot change this decision.
-  const existing = await loadRefund(kv, sql, oid, { on: true });
-  const pendingExisting = existing?.status === "pending" && !isAmbiguousRefund(existing);
-  // Unconfirmed identity never blocks the real buyer: a matched request supersedes it (H1).
-  // Only an explicit identity_verified=false marks an unconfirmed record (OFF/legacy records were verified).
-  const supersede = pendingExisting && existing.identity_verified === false && a.identity === "matched";
-  const reeval = pendingExisting && existing.identity_verified === true && a.identity === "matched" &&
-    REQUEST_REEVALUABLE.has(existing.manual_reason);
-  // A decided-eligible request whose dispatch did not reach the reservation is retried (the
-  // SQL reservation still guarantees a single POST).
-  const redispatch = pendingExisting && existing.auto_dispatch === true && existing.identity_verified === true &&
-    existing.auto_eligible === true && !existing.manual_reason && a.identity === "matched";
-  if (pendingExisting && existing.identity_verified === false && a.identity !== "matched") {
-    await rememberIdentity(kv, sql, existing, typedHash);
-    return receipt;
-  }
-  if (redispatch) {
+  // Bounded re-read/re-decide loop: losing the compare-and-swap to a concurrent writer never
+  // drops the manifestation (L-1); after the last attempt the consumer is told to retry.
+  for (let attempt = 0; attempt < REQUEST_CAS_ATTEMPTS; attempt++) {
+    // Authoritative read (PostgreSQL). A stale or missing KV copy cannot change this decision.
+    const existing = await loadRefund(kv, sql, oid, { on: true });
+    const pendingExisting = existing?.status === "pending" && !isAmbiguousRefund(existing);
+    // Unconfirmed identity never blocks the real buyer: a matched request supersedes it (H1).
+    // Only an explicit identity_verified=false marks an unconfirmed record (OFF/legacy records were verified).
+    const supersede = pendingExisting && existing.identity_verified === false && a.identity === "matched";
+    const reeval = pendingExisting && existing.identity_verified === true && a.identity === "matched" &&
+      REQUEST_REEVALUABLE.has(existing.manual_reason);
+    // A decided-eligible request whose dispatch did not reach the reservation is retried (the
+    // SQL reservation still guarantees a single POST).
+    const redispatch = pendingExisting && existing.auto_dispatch === true && existing.identity_verified === true &&
+      existing.auto_eligible === true && !existing.manual_reason && a.identity === "matched";
+    if (pendingExisting && existing.identity_verified === false && a.identity !== "matched") {
+      if (!await rememberIdentity(kv, sql, existing, typedHash)) continue; // lost the CAS: re-read (L-1)
+      return receipt;
+    }
+    // An owner rejection of a conflict review stays final for the same requester while the
+    // registered data still conflict; new evidence (sources now agree) reopens it for the owner (L-6).
+    const conflictRejected = existing?.status === "rejected" && existing.manual_reason === "identity_conflict" &&
+      (existing.identity_hashes || []).includes(typedHash);
+    if (conflictRejected && a.identity !== "matched") {
+      if (existing.decision_email_pending === true) await resendCustomerConfirmation(env, sql, kv, existing, { payment });
+      return receipt;
+    }
+    if (redispatch) {
+      if (await hasRefundClaim(sql, oid)) return receipt;
+      const retry = async () => {
+        if (existing.customer_email_pending === true) await resendCustomerConfirmation(env, sql, kv, existing, { payment });
+        const outcome = await executeRefund(env, sql, kv, oid, { actor: "automatic-withdrawal" });
+        if (!test && outcome.body?.error !== "refund_provider_reconciliation_required") await sendEmail(env, OWNER(env),
+          "ZEVANORY — despacho automático de reembolso",
+          `Pedido ${oid}: resultado ${outcome.body?.status || outcome.body?.error || outcome.status}. Esta é uma notificação; não foi solicitada aprovação manual.`);
+      };
+      if (ctx?.waitUntil) ctx.waitUntil(retry().catch(() => {}));
+      else await retry().catch(() => {});
+      return receipt;
+    }
+    if (existing && existing.status !== "unverified_closed" && !supersede && !reeval &&
+        (existing.status !== "rejected" || isAmbiguousRefund(existing))) {
+      if (existing.identity_verified && existing.customer_email_pending === true)
+        await resendCustomerConfirmation(env, sql, kv, existing, { payment });
+      return receipt;
+    }
+    // The SQL claim is authoritative. Never recreate a pending request over an already
+    // reserved, possibly completed financial POST.
     if (await hasRefundClaim(sql, oid)) return receipt;
-    const retry = async () => {
+    // The withdrawal is measured at the consumer's original manifestation when the same
+    // identity re-requests (late webhook, recovered provider/credential).
+    const keepOriginal = reeval || (supersede && (existing.identity_hashes || []).includes(typedHash));
+    let { window, decision } = a;
+    if (keepOriginal) {
+      window = refundWindow({ paidAt: order.paid_at, deliveredAt: order.delivered_at,
+        firstDownloadAt: order.first_download_at, now: Date.parse(existing.requested_at) || Date.now() });
+      if (a.identity === "matched" && order.payment_id && order.paid_at && !a.testFlagUnknown)
+        decision = evaluateAutomaticRefund({ order, payment, window, identityMatched: true, test, credential,
+          paymentLookupError: a.paymentLookupError });
+    }
+    // An owner rejection of a verified request stays sticky; rejecting an unconfirmed attempt never blocks the buyer.
+    const priorRejection = (existing?.status === "rejected" && existing.identity_verified !== false) || conflictRejected ||
+      (existing?.history || []).some((h) => h.status === "rejected" && (h.identity_verified !== false ||
+        (h.manual_reason === "identity_conflict" && (h.identity_hashes || []).includes(typedHash))));
+    if (priorRejection) decision = { eligible: false, reason: "previously_rejected" };
+    if (reeval && !decision.eligible && decision.reason === existing.manual_reason) {
       if (existing.customer_email_pending === true) await resendCustomerConfirmation(env, sql, kv, existing, { payment });
-      const outcome = await executeRefund(env, sql, kv, oid, { actor: "automatic-withdrawal" });
-      if (!test && outcome.body?.error !== "refund_provider_reconciliation_required") await sendEmail(env, OWNER(env),
-        "ZEVANORY — despacho automático de reembolso",
-        `Pedido ${oid}: resultado ${outcome.body?.status || outcome.body?.error || outcome.status}. Esta é uma notificação; não foi solicitada aprovação manual.`);
+      return receipt;
+    }
+    const verified = a.identity === "matched";
+    const closedHistory = ["rejected", "unverified_closed"].includes(existing?.status) ? [...(existing.history || []),
+      { status: existing.status, at: existing.rejected_at || existing.closed_at || null, by: existing.rejected_by || existing.closed_by || null,
+        identity_verified: existing.status === "rejected" ? existing.identity_verified !== false : false,
+        manual_reason: existing.manual_reason ?? null, identity_hashes: existing.identity_hashes || [] }] : (existing?.history || []);
+    const record = {
+      status: "pending", order_id: oid, payment_id: String(order.payment_id || ""),
+      amount: Number(order.amount), offer_id: String(order.offer_id || ""), test,
+      email_masked: maskEmail(verified ? (a.delivery || a.payer) : email), identity_verified: verified,
+      identity_hashes: [typedHash], notify_source: a.identity === "conflict" ? (a.deliveryMatch ? "delivery" : "payer") : null,
+      confirmation_channel: verified || a.identity === "conflict" ? "registered_address" : "none",
+      credential_verified: credential.ok, paid_at: order.paid_at ? new Date(order.paid_at).toISOString() : null,
+      received_at: window.received_at || null, window: window.reason,
+      requested_at: keepOriginal ? existing.requested_at : new Date().toISOString(),
+      request_nonce: keepOriginal && existing.request_nonce ? existing.request_nonce : crypto.randomUUID(),
+      version: Number(existing?.auto_dispatch === true ? existing.version || 0 : 0),
+      auto_dispatch: true, auto_eligible: decision.eligible,
+      manual_reason: decision.eligible ? null : decision.reason,
+      customer_email_pending: keepOriginal && existing.manual_reason !== "identity_unverifiable" ? existing.customer_email_pending === true :
+        !test && (verified || a.identity === "conflict"),
+      history: closedHistory,
+      ...(reeval || supersede ? { reevaluated_at: new Date().toISOString() } : {}),
     };
-    if (ctx?.waitUntil) ctx.waitUntil(retry().catch(() => {}));
-    else await retry().catch(() => {});
-    return receipt;
-  }
-  if (existing && existing.status !== "unverified_closed" && !supersede && !reeval &&
-      (existing.status !== "rejected" || isAmbiguousRefund(existing))) {
-    if (existing.identity_verified && existing.customer_email_pending === true)
-      await resendCustomerConfirmation(env, sql, kv, existing, { payment });
-    return receipt;
-  }
-  // The SQL claim is authoritative. Never recreate a pending request over an already
-  // reserved, possibly completed financial POST.
-  if (await hasRefundClaim(sql, oid)) return receipt;
-  // The withdrawal is measured at the consumer's original manifestation when the same
-  // identity re-requests (late webhook, recovered provider/credential).
-  const keepOriginal = reeval || (supersede && (existing.identity_hashes || []).includes(typedHash));
-  let { window, decision } = a;
-  if (keepOriginal) {
-    window = refundWindow({ paidAt: order.paid_at, deliveredAt: order.delivered_at,
-      firstDownloadAt: order.first_download_at, now: Date.parse(existing.requested_at) || Date.now() });
-    if (a.identity === "matched" && order.payment_id && order.paid_at)
-      decision = evaluateAutomaticRefund({ order, payment, window, identityMatched: true, test, credential,
-        paymentLookupError: a.paymentLookupError });
-  }
-  // An owner rejection of a verified request stays sticky; rejecting an unconfirmed attempt never blocks the buyer.
-  const priorRejection = (existing?.status === "rejected" && existing.identity_verified !== false) ||
-    (existing?.history || []).some((h) => h.status === "rejected" && h.identity_verified !== false);
-  if (priorRejection) decision = { eligible: false, reason: "previously_rejected" };
-  if (reeval && !decision.eligible && decision.reason === existing.manual_reason) {
-    if (existing.customer_email_pending === true) await resendCustomerConfirmation(env, sql, kv, existing, { payment });
-    return receipt;
-  }
-  const verified = a.identity === "matched";
-  const closedHistory = ["rejected", "unverified_closed"].includes(existing?.status) ? [...(existing.history || []),
-    { status: existing.status, at: existing.rejected_at || existing.closed_at || null, by: existing.rejected_by || existing.closed_by || null,
-      identity_verified: existing.status === "rejected" ? existing.identity_verified !== false : false }] : (existing?.history || []);
-  const record = {
-    status: "pending", order_id: oid, payment_id: String(order.payment_id || ""),
-    amount: Number(order.amount), offer_id: String(order.offer_id || ""), test,
-    email_masked: maskEmail(verified ? (a.delivery || a.payer) : email), identity_verified: verified,
-    identity_hashes: [typedHash], notify_source: a.identity === "conflict" ? (a.deliveryMatch ? "delivery" : "payer") : null,
-    confirmation_channel: verified || a.identity === "conflict" ? "registered_address" : "none",
-    credential_verified: credential.ok, paid_at: order.paid_at ? new Date(order.paid_at).toISOString() : null,
-    received_at: window.received_at || null, window: window.reason,
-    requested_at: keepOriginal ? existing.requested_at : new Date().toISOString(),
-    request_nonce: keepOriginal && existing.request_nonce ? existing.request_nonce : crypto.randomUUID(),
-    version: Number(existing?.auto_dispatch === true ? existing.version || 0 : 0),
-    auto_dispatch: true, auto_eligible: decision.eligible,
-    manual_reason: decision.eligible ? null : decision.reason,
-    customer_email_pending: keepOriginal && existing.manual_reason !== "identity_unverifiable" ? existing.customer_email_pending === true :
-      !test && (verified || a.identity === "conflict"),
-    history: closedHistory,
-    ...(reeval || supersede ? { reevaluated_at: new Date().toISOString() } : {}),
-  };
-  if (!await saveRefund(kv, record, { sql, actor: "consumer-request",
-    evidence: systemEvidence({ ...a, window, decision }, { reevaluation: Boolean(reeval || supersede) }),
-    transitionKey: `request:${oid}:${record.request_nonce}:${record.version}` })) return receipt;
-  // Notifications and dispatch run after the uniform response when the runtime allows it,
-  // so the response time does not reveal whether the identity matched (L-1).
-  const followUp = async () => {
-    if (!test) {
-      await resendCustomerConfirmation(env, sql, kv, record, { payment });
-      if (!decision.eligible) {
-        const alert = await sendEmail(env, OWNER(env), "ZEVANORY — reembolso em análise manual", manualAlertText(record));
-        if (!alert.sent) await kv.put(`refund:alert-pending:${oid}`, new Date().toISOString(), { expirationTtl: 14 * 24 * 3600 });
+    if (!await saveRefund(kv, record, { sql, actor: "consumer-request",
+      evidence: systemEvidence({ ...a, window, decision }, { reevaluation: Boolean(reeval || supersede) }),
+      transitionKey: `request:${oid}:${record.request_nonce}:${record.version}` })) continue; // lost the CAS: re-read and re-decide (L-1)
+    // Notifications and dispatch run after the uniform response when the runtime allows it,
+    // so the response time does not reveal whether the identity matched (L-1).
+    const followUp = async () => {
+      if (!test) {
+        await resendCustomerConfirmation(env, sql, kv, record, { payment });
+        if (!decision.eligible) {
+          const alert = await sendEmail(env, OWNER(env), "ZEVANORY — reembolso em análise manual", manualAlertText(record));
+          if (!alert.sent) { try { await kv.put(`refund:alert-pending:${oid}`, new Date().toISOString(), { expirationTtl: 14 * 24 * 3600 }); } catch {} }
+        }
       }
-    }
-    if (!credential.ok) await notifyCredentialMismatch(env, kv, oid, credential.reason, test);
-    if (decision.eligible) {
-      let outcome;
-      try { outcome = await executeRefund(env, sql, kv, oid, { actor: "automatic-withdrawal" }); }
-      catch { outcome = { status: 503, body: { error: "automatic_dispatch_failed_owner_action_required" } }; }
-      if (!test) await sendEmail(env, OWNER(env),
-        "ZEVANORY — despacho automático de reembolso",
-        `Pedido ${oid}: resultado ${outcome.body?.status || outcome.body?.error || outcome.status}. Esta é uma notificação; não foi solicitada aprovação manual.`);
-    }
-  };
-  if (ctx?.waitUntil) ctx.waitUntil(followUp().catch(() => {}));
-  else await followUp();
-  return receipt;
+      if (!credential.ok) await notifyCredentialMismatch(env, kv, oid, credential.reason, test);
+      if (decision.eligible) {
+        let outcome;
+        try { outcome = await executeRefund(env, sql, kv, oid, { actor: "automatic-withdrawal" }); }
+        catch { outcome = { status: 503, body: { error: "automatic_dispatch_failed_owner_action_required" } }; }
+        if (!test) await sendEmail(env, OWNER(env),
+          "ZEVANORY — despacho automático de reembolso",
+          `Pedido ${oid}: resultado ${outcome.body?.status || outcome.body?.error || outcome.status}. Esta é uma notificação; não foi solicitada aprovação manual.`);
+      }
+    };
+    if (ctx?.waitUntil) ctx.waitUntil(followUp().catch(() => {}));
+    else await followUp();
+    return receipt;
+  }
+  await sendEmail(env, OWNER(env), "ZEVANORY — pedido de reembolso não registrado (concorrência)",
+    `Pedido ${oid}: a manifestação não pôde ser gravada após ${REQUEST_CAS_ATTEMPTS} tentativas concorrentes. O consumidor recebeu a mensagem para tentar novamente.\n\nFila: ${ORIGIN}/admin/refunds`);
+  return { status: 503, body: { error: "indisponivel", message: "Não foi possível registrar agora. Tente novamente em instantes ou escreva para suporte@zevanory.api.br." } };
 }
 
 // GET-only re-evaluation of a held manual request (late webhook, recovered provider or
@@ -511,7 +537,7 @@ async function executeRefund(env, sql, kv, oid, { actor, decision = null }) {
     return { status: 200, body: { ok: true, status: record.status, refund_id: record.refund_id, duplicate: true } };
   }
   if (record.status !== "pending") return { status: 409, body: { error: "refund_request_not_pending" } };
-  if (heldForEvidence(record) && actor === "owner") {
+  if ((heldForEvidence(record) || PAYMENT_UNPROVEN.has(record.manual_reason)) && actor === "owner") {
     // The owner's approval first re-evaluates (GET only) so a late webhook or a recovered
     // provider is picked up instead of a dead end.
     await reevaluateRequest(env, sql, kv, oid, { actor: "owner-reevaluation" });
@@ -541,10 +567,17 @@ async function executeRefund(env, sql, kv, oid, { actor, decision = null }) {
     const justification = clip(decision?.justification);
     if (record.manual_reason && justification.length < JUSTIFICATION_MIN)
       return { status: 400, body: { error: "refund_justification_required" } };
-    record.owner_decision = { action: "approve", at: new Date().toISOString(), by: actor, justification: justification || null };
+    // L-7: the payment could not be proven at the provider (lookup failed or rejected, still after
+    // the re-evaluation above). Approving is an explicit, recorded exception: override + evidence.
+    const override = PAYMENT_UNPROVEN.has(record.manual_reason);
+    if (override && (decision?.override !== true || clip(decision?.evidence).length < JUSTIFICATION_MIN))
+      return { status: 400, body: { error: "refund_payment_override_required" } };
+    record.owner_decision = { action: "approve", at: new Date().toISOString(), by: actor, justification: justification || null,
+      ...(override ? { payment_override: true } : {}) };
     if (!await saveRefund(kv, record, { sql, actor, justification: justification || null,
       evidence: { owner: clip(decision?.evidence) || null, manual_reason: record.manual_reason ?? null, payment_id: record.payment_id,
-        identity_verified: record.identity_verified === true, reevaluated_at: record.reevaluated_at ?? null },
+        identity_verified: record.identity_verified === true, reevaluated_at: record.reevaluated_at ?? null,
+        ...(override ? { payment_override: true } : {}) },
       transitionKey: `owner:approve:${oid}:${record.version}` }))
       return { status: 409, body: { error: "refund_request_changed_concurrently" } };
   }
@@ -632,23 +665,27 @@ async function listRequests(kv, sql, { on = false } = {}) {
     try { const claim = await getRefundClaim(sql, v.order_id); v.claim_present = Boolean(claim); v.retry_permitted = claim?.stage === "reconciled_not_refunded" && claim?.reconciled_status === "not_refunded"; }
     catch { v.claim_present = true; v.retry_permitted = false; }
   };
-  // ON records: PostgreSQL is authoritative (KV copies of them are ignored below).
-  let states = [];
-  try { states = await listRefundStates(sql, { ensure: on }); }
-  catch { if (on) out.push({ status: "state_unavailable", order_id: "", requested_at: new Date().toISOString() }); }
-  for (const v of states) if (v && !v.test) { await claimInfo(v); out.push(v); }
+  // ON records: PostgreSQL is authoritative (KV copies of them are ignored below). With the
+  // flag OFF the new tables are read only when ON-created state is known to exist (L-5).
+  let sawOnCopy = false;
+  const legacy = [];
   let cursor;
   do {
     const page = await kv.list({ prefix: "refund:req:", cursor });
     for (const k of page.keys || []) {
       const v = JSON.parse(await kv.get(k.name) || "null");
-      if (v && !v.test && v.auto_dispatch !== true) {
-        await claimInfo(v);
-        out.push(v);
-      }
+      if (v?.auto_dispatch === true) sawOnCopy = true;
+      if (v && !v.test && v.auto_dispatch !== true) legacy.push(v);
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
+  if (on || sawOnCopy || await onStatePresent(kv)) {
+    let states = [];
+    try { states = await listRefundStates(sql, { ensure: on }); }
+    catch { if (on) out.push({ status: "state_unavailable", order_id: "", requested_at: new Date().toISOString() }); }
+    for (const v of states) if (v && !v.test) { await claimInfo(v); out.push(v); }
+  }
+  for (const v of legacy) { await claimInfo(v); out.push(v); }
   cursor = undefined;
   do {
     const page = await kv.list({ prefix: "refund:unverified:", cursor });
@@ -680,7 +717,7 @@ function adminPage(items, env = {}) {
   if (!refundAutoDispatchEnabled(env) && !items.some((r) => r.auto_dispatch === true || r.status === "unverified" || r.status === "state_unavailable")) return legacyAdminPage(items);
   const stateDown = items.some((r) => r.status === "state_unavailable");
   // ON records: every owner decision carries a justification (mandatory for manual review) and evidence.
-  const decisionFields = (r) => r.auto_dispatch === true ? `<br><input name="justification" maxlength="500" placeholder="Justificativa${r.manual_reason ? " (obrigatória)" : ""}"> <input name="evidence" maxlength="500" placeholder="Evidência (ID no provedor, contato)">` : "";
+  const decisionFields = (r) => r.auto_dispatch === true ? `<br><input name="justification" maxlength="500" placeholder="Justificativa${r.manual_reason ? " (obrigatória)" : ""}"> <input name="evidence" maxlength="500" placeholder="Evidência (ID no provedor, contato)">${PAYMENT_UNPROVEN.has(r.manual_reason) ? `<br><label><input type="checkbox" name="override" value="1"> Exceção: aprovar sem comprovação do pagamento no provedor (evidência obrigatória)</label>` : ""}` : "";
   const rows = items.filter(r => r.status !== "unverified" && r.status !== "state_unavailable").map((r) => { const ageH = Math.max(0, (Date.now() - Date.parse(r.requested_at || 0)) / 3600e3); const manualHold = heldForEvidence(r) && r.status === "pending"; return `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}<br><small>há ${esc(ageH < 1 ? Math.max(0, Math.floor(ageH * 60)) + " min" : Math.floor(ageH) + " h")}</small></td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.manual_reason ? `<br><small>manual: ${esc(r.manual_reason)}</small>` : ""}${r.history?.length ? `<br><small>recusa anterior registrada (${esc(r.history.length)})</small>` : ""}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}${r.confirmation_channel === "none" ? "<br><small>sem canal seguro de confirmação: consumidor não notificado (pendência rastreada)</small>" : ""}${r.owner_decision?.justification ? `<br><small>decisão: ${esc(r.owner_decision.action)} — ${esc(r.owner_decision.justification)}</small>` : ""}</td><td>${manualHold ? `<small>Aguardar comprovação do pagamento/identidade; aprovação só após reavaliação</small><form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="reevaluate">Reavaliar agora</button> <button name="action" value="reject" class="no">Recusar</button>${decisionFields(r)}</form>` : r.status === "pending" && r.retry_permitted ? `<form method="post" action="/admin/refunds/action"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Repetir após conciliação (uma vez)</button>${decisionFields(r)}</form>` : r.status === "pending" && !r.claim_present && !isAmbiguousRefund(r) ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button>${decisionFields(r)}</form>` : (isAmbiguousRefund(r) || r.claim_present) ? "Verificar conciliação no Mercado Pago antes de nova tentativa" : r.download_revocation_pending === true ? "Revogação de downloads pendente; verificar recuperação" : esc(r.refund_id || "")}</td></tr>`; }).join("");
   const unverified = items.filter(r => r.status === "unverified").map(r => `<tr><td>${esc(r.requested_at)}</td><td><code>${esc(r.order_id)}</code></td><td>${esc(r.email_masked)}${Number(r.attempts) > 1 ? ` (${esc(r.attempts)} tentativas)` : ""}</td><td>Identidade não confirmada — somente auditoria</td></tr>`).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reembolsos · ZEVANORY</title><style>body{font-family:system-ui,sans-serif;background:#050a1e;color:#e7ecf7;margin:0;padding:24px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #22305a;text-align:left;vertical-align:top}button{padding:10px 14px;border:0;border-radius:8px;background:#22c55e;color:#04210f;font-weight:700}button.no{background:#334155;color:#fff}code{font-size:12px}</style></head><body><h1>Pedidos de reembolso</h1><p>Aprovar envia o reembolso integral ao Mercado Pago e bloqueia novos downloads do pedido.</p>${stateDown ? "<p><strong>Estado autoritativo (PostgreSQL) indisponível: pedidos do modo automático não listados. Nenhuma decisão é possível até a recuperação.</strong></p>" : ""}<table><tr><th>Quando</th><th>Pedido</th><th>Valor</th><th>Status</th><th>Ação</th></tr>${rows || '<tr><td colspan="5">Nenhum pedido.</td></tr>'}</table><h2>Tentativas com identidade não confirmada (sem ação financeira)</h2><table><tr><th>Quando</th><th>Pedido</th><th>E-mail mascarado</th><th>Decisão</th></tr>${unverified || '<tr><td colspan="4">Nenhuma tentativa.</td></tr>'}</table></body></html>`;
@@ -756,7 +793,8 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     const oid = String(form?.get("order_id") || "").toLowerCase();
     const action = String(form?.get("action") || "");
     if (!UUID.test(oid)) return json(400, { error: "order_id_invalid" });
-    const decision = { justification: clip(form?.get("justification")), evidence: clip(form?.get("evidence")) };
+    const decision = { justification: clip(form?.get("justification")), evidence: clip(form?.get("evidence")),
+      override: String(form?.get("override") || "") === "1" };
     // "reevaluate" exists only for ON-created records; anything else keeps the legacy 400.
     let reevaluable = false;
     if (action === "reevaluate") { try { reevaluable = (await loadRefund(kv, sql(), oid, { on: refundAutoDispatchEnabled(env) }))?.auto_dispatch === true; } catch {} }
@@ -798,8 +836,10 @@ async function runRefundWatchdogCore(env, now = Date.now(), { sqlFactory } = {})
     cursor = listed.list_complete ? undefined : listed.cursor;
   } while (cursor);
   if (sqlFactory) {
-    try { records.push(...await listRefundStates(sqlFactory(env.DATABASE_URL), { ensure: on })); }
-    catch { if (on) stateUnavailable = true; }
+    if (on || await onStatePresent(kv)) {
+      try { records.push(...await listRefundStates(sqlFactory(env.DATABASE_URL), { ensure: on })); }
+      catch { if (on) stateUnavailable = true; }
+    }
   } else if (on) stateUnavailable = true;
   const sqlOf = () => { if (!sqlFactory) throw Error("sql_factory_unavailable"); return sqlFactory(env.DATABASE_URL); };
   for (let rec of records) {

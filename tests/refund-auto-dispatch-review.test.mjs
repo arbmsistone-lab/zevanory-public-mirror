@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { handleRefundFlow, runRefundWatchdog } from "../worker/refund-flow.mjs";
 import { saveRefund } from "../worker/refund-provider-claims.mjs";
+import { idempotentDdl } from "../worker/refund-state.mjs";
 import { createRefundStateFake } from "./helpers/refund-state-fake.mjs";
 
 const OID = "11111111-2222-4333-8444-555555555555";
@@ -77,9 +78,9 @@ function fixture({ item = order(), paid = payment(), delivery = BUYER, flag = "t
   };
   const panel = async () => (await handleRefundFlow(new Request("https://zevanory.api.br/admin/refunds"), env,
     { sqlFactory: () => sql, isAdminAuthorized: () => true })).text();
-  const ownerAction = async (action, { justification = "Verificado com o comprador pelo endereço registrado", evidence = "ticket-123" } = {}) => {
+  const ownerAction = async (action, { justification = "Verificado com o comprador pelo endereço registrado", evidence = "ticket-123", override = null } = {}) => {
     const r = await handleRefundFlow(new Request("https://zevanory.api.br/admin/refunds/action", {
-      method: "POST", body: new URLSearchParams({ order_id: OID, action, justification, evidence }) }), env, { sqlFactory: () => sql, isAdminAuthorized: () => true });
+      method: "POST", body: new URLSearchParams({ order_id: OID, action, justification, evidence, ...(override ? { override } : {}) }) }), env, { sqlFactory: () => sql, isAdminAuthorized: () => true });
     return { status: r.status, text: await r.text() };
   };
   const watchdog = (now = Date.now()) => runRefundWatchdog(env, now, { sqlFactory: () => sql });
@@ -642,4 +643,119 @@ test("R34 after an emergency switch-off, ON records are still decided from Postg
     assert.equal(x.pg.get(OID)?.status, "approved", "R34 approved in PostgreSQL");
     assert.match(await x.panel(), /Pedidos de reembolso/, "R34 panel renders");
   } finally { x.restore(); }
+});
+
+// ---- Round 3 LOWs (auditor r3 + Sol: a manifestation never disappears) ----
+
+test("R35 losing the compare-and-swap re-reads and re-decides: the real buyer is never dropped; exhausted retries answer 503 and alert", async () => {
+  const x = fixture({ mode: "sandbox", delivery: "" });
+  try {
+    await x.invoke("attacker@evil.example"); // unconfirmed review (credential failure)
+    x.env.MERCADOPAGO_ENV = "production";
+    const q = x.sql.query; let fired = false;
+    x.sql.query = async (statement, args) => {
+      if (!fired && statement.startsWith("with prev as")) {
+        fired = true; // a concurrent writer bumps the version between the buyer's read and CAS
+        const r = x.pg.get(OID); x.pg.set(OID, { ...r, version: r.version + 1, identity_hashes: [...r.identity_hashes, "concurrent"] });
+      }
+      return q(statement, args);
+    };
+    await x.invoke(BUYER);
+    x.sql.query = q;
+    assert.equal(fired, true, "R35 interleaving injected");
+    assert.equal(x.rec()?.identity_verified, true, "R35 buyer request recorded after re-decision");
+    assert.equal(x.calls.post, 1, "R35 buyer refunded");
+  } finally { x.restore(); }
+  const y = fixture();
+  try {
+    const q = y.sql.query;
+    y.sql.query = async (statement, args) => (statement.startsWith("with ins as") ? [] : q(statement, args)); // every CAS lost
+    const out = await y.invoke(BUYER);
+    assert.equal(out.status, 503, "R35 never a receipt without a record");
+    assert.ok(y.to(OWNER).some((e) => /não registrado \(concorrência\)/.test(e.subject)), "R35 owner alerted");
+    assert.equal(y.calls.post, 0, "R35 no POST");
+  } finally { y.restore(); }
+});
+
+test("R36 KV unavailable for the sandbox marker: the request is registered in PostgreSQL, fails closed and recovers when KV returns", async () => {
+  const x = fixture();
+  try {
+    const get = x.kv.get;
+    x.kv.get = async (k) => { if (k.startsWith("sandbox-proof-v2:")) throw Error("kv down"); return get(k); };
+    const out = await x.invoke();
+    assert.equal(out.status, 200, "R36 not a 503");
+    assert.equal(x.rec()?.manual_reason, "test_flag_unverifiable", "R36 clear fail-closed state");
+    assert.equal(x.calls.post, 0, "R36 no automatic POST while the test flag is unknown");
+    assert.doesNotMatch(await x.panel(), /value="approve">/, "R36 held");
+    x.kv.get = get;
+    await x.watchdog();
+    assert.equal(x.rec()?.manual_reason, "eligible_after_reevaluation", "R36 recovered by re-evaluation");
+  } finally { x.restore(); }
+});
+
+test("R37 concurrent first-use DDL is idempotent: a catalog race is tolerated when the table exists, re-raised otherwise", async () => {
+  const race = Object.assign(Error("duplicate key value violates unique constraint \"pg_type_typname_nsp_index\""), { code: "23505" });
+  const exists = { query: async (s) => { if (s.startsWith("create table")) throw race; return [{ t: "refund_requests" }]; } };
+  await assert.doesNotReject(idempotentDdl(exists, "create table if not exists refund_requests ()", "refund_requests"), "R37 race tolerated when the table exists");
+  const missing = { query: async (s) => { if (s.startsWith("create table")) throw race; return [{ t: null }]; } };
+  await assert.rejects(idempotentDdl(missing, "create table if not exists refund_requests ()", "refund_requests"), /pg_type/, "R37 real failure re-raised");
+});
+
+test("R38 OFF without ON-created state never touches the new tables; after ON state exists the OFF panel still lists it", async () => {
+  const x = fixture({ flag: "false" });
+  try {
+    const seen = []; const q = x.sql.query;
+    x.sql.query = async (statement, args) => { seen.push(statement); return q(statement, args); };
+    await x.invoke(); await x.panel(); await x.ownerAction("approve"); await x.watchdog();
+    assert.equal(seen.filter((t) => /refund_request/.test(t)).length, 0, "R38 OFF: no statement on refund_requests/events");
+  } finally { x.restore(); }
+  const y = fixture({ paid: payment({ transaction_amount: 1 }) });
+  try {
+    await y.invoke();
+    y.state.delete(KEY); // even without the KV copy
+    y.env.REFUND_AUTO_DISPATCH = "false";
+    assert.match(await y.panel(), new RegExp(OID), "R38 ON record still visible while OFF");
+  } finally { y.restore(); }
+});
+
+test("R39 an owner rejection of an identity_conflict review is final for that requester; new evidence reopens it to the owner", async () => {
+  const x = fixture({ paid: payment({ payer: { email: "payer-mp@example.com" } }) });
+  try {
+    await x.invoke(BUYER);
+    assert.equal((await x.ownerAction("reject")).status, 303, "R39 rejected");
+    const mails = x.calls.emails.length, version = x.rec()?.version;
+    await x.invoke(BUYER);
+    assert.equal(x.rec()?.status, "rejected", "R39 not reopened");
+    assert.equal(x.rec()?.version, version, "R39 no new transition");
+    assert.equal(x.calls.emails.length, mails, "R39 no new protocol or alert");
+    x.world.paid = payment(); // registered data now agree (new evidence)
+    await x.invoke(BUYER);
+    assert.equal(x.rec()?.manual_reason, "previously_rejected", "R39 reopened only for the owner");
+    assert.equal(x.calls.post, 0, "R39 never automatic after a rejection");
+  } finally { x.restore(); }
+});
+
+test("R40 approval without provider proof of payment needs an explicit override with evidence, recorded", async () => {
+  const x = fixture();
+  try {
+    x.world.getFails = true; x.world.getStatus = 401;
+    await x.invoke();
+    assert.equal(x.rec()?.manual_reason, "provider_lookup_rejected", "R40 definitive lookup failure");
+    assert.match(await x.panel(), /name="override" value="1"/, "R40 override checkbox shown");
+    assert.equal((await x.ownerAction("approve")).status, 400, "R40 justification alone is not enough");
+    assert.equal((await x.ownerAction("approve", { override: "1", evidence: "curta" })).status, 400, "R40 override needs evidence");
+    assert.equal(x.calls.post, 0, "R40 no POST");
+    assert.equal((await x.ownerAction("approve", { override: "1", evidence: "Comprovante PIX conferido no extrato" })).status, 303, "R40 explicit exception");
+    assert.equal(x.calls.post, 1, "R40 one POST");
+    const ev = x.pg.events.find((e) => e.transition_key?.startsWith("owner:approve:"));
+    assert.equal(ev?.evidence?.payment_override, true, "R40 override recorded");
+  } finally { x.restore(); }
+  const y = fixture();
+  try {
+    y.world.getFails = true; y.world.getStatus = 503;
+    await y.invoke();
+    y.world.getFails = false; // provider recovered: approval re-evaluates first, no override needed
+    assert.equal((await y.ownerAction("approve")).status, 303, "R40 recovered provider approves normally");
+    assert.equal(y.calls.post, 1, "R40 single POST");
+  } finally { y.restore(); }
 });

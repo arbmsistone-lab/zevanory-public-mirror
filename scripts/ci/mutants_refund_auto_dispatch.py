@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""21 original + 18 refund-flow fail-closed + 22 re-audit r2 + 12 decision-state mutants with assertion-level kills."""
+"""21 original + 18 refund-flow fail-closed + 22 re-audit r2 + 12 decision-state + 7 round-3 mutants with assertion-level kills."""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "ci"))
 from mutant_classifier import aggregate, classify_run, load_mutant_config, parse_tap, run_command, validate_baseline
 
 TEST = "tests/refund-auto-dispatch-mutation-suite.mjs"
-BASELINE_COUNT = 80  # A01..A21, X01..X25 and R01..R34
+BASELINE_COUNT = 86  # A01..A21, X01..X25 and R01..R40
 MUTANTS = {
     "M01_flag_default": ("worker/refund-auto-dispatch.mjs", '=== "true";', '=== "false";', "A01"),
     "M02_prod_test_token": ("worker/refund-auto-dispatch.mjs", 'mode !== "production" || sandboxToken || !await verify(env)', 'mode !== "production" || false || false', "A02"),
@@ -57,7 +57,7 @@ MUTANTS = {
     # Re-audit r2 (M-A, M-B, L-1..L-7): each mutant reverts one correction.
     "C01_conflict_dropped": ("worker/refund-flow.mjs", 'deliveryMatch || payerMatch ? "conflict"', 'false ? "conflict"', "R01"),
     "C02_unverifiable_dropped": ("worker/refund-flow.mjs", ': !payer ? "unverifiable" : "mismatch";', ': "mismatch";', "R02"),
-    "C03_credential_alert_skipped": ("worker/refund-flow.mjs", "    if (!credential.ok) await notifyCredentialMismatch(env, kv, oid, credential.reason, test);\n    if (decision.eligible) {", "    if (decision.eligible) {", "R02"),
+    "C03_credential_alert_skipped": ("worker/refund-flow.mjs", "      if (!credential.ok) await notifyCredentialMismatch(env, kv, oid, credential.reason, test);\n      if (decision.eligible) {", "      if (decision.eligible) {", "R02"),
     "C04_unverified_blocks_buyer": ("worker/refund-flow.mjs", 'const supersede = pendingExisting && existing.identity_verified === false && a.identity === "matched";', "const supersede = false;", "R02"),
     "C05_conflict_ack_other_party": ("worker/refund-flow.mjs", 'const source = record.notify_source === "payer" ? payer : delivery;', 'const source = record.notify_source === "payer" ? delivery : payer;', "R01"),
     "C06_request_reeval_disabled": ("worker/refund-flow.mjs", "const reeval = pendingExisting &&", "const reeval = false &&", "R05"),
@@ -70,13 +70,13 @@ MUTANTS = {
     "C13_kv_copy_trusted": ("worker/refund-provider-claims.mjs", "const legacy = cached && cached.auto_dispatch !== true ? cached : null;", "const legacy = cached;", "R34"),
     "C14_kv_only_write": ("worker/refund-provider-claims.mjs", "    if (!sql) return false;\n", "    if (!sql) { await kv.put(KEY(record.order_id), JSON.stringify(record), { expirationTtl: TTL }); return true; }\n", "R11"),
     "C15_held_no_reject": ("worker/refund-flow.mjs", '<button name="action" value="reevaluate">Reavaliar agora</button> <button name="action" value="reject" class="no">Recusar</button>', '<button name="action" value="reevaluate">Reavaliar agora</button>', "R07"),
-    "C16_owner_approve_no_reeval": ("worker/refund-flow.mjs", 'if (heldForEvidence(record) && actor === "owner") {', "if (false) {", "R08"),
+    "C16_owner_approve_no_reeval": ("worker/refund-flow.mjs", 'if ((heldForEvidence(record) || PAYMENT_UNPROVEN.has(record.manual_reason)) && actor === "owner") {', "if (false) {", "R08"),
     "C17_watchdog_no_reeval": ("worker/refund-flow.mjs", 'const out = await reevaluateRequest(env, sql, kv, rec.order_id, { actor: "watchdog" });', "const out = { status: 409, body: {} };", "R06"),
     "C18_reeval_mismatch_kept": ("worker/refund-flow.mjs", 'if (a.identity === "mismatch") {\n    if (rec.identity_verified === true)', 'if (false) {\n    if (rec.identity_verified === true)', "R03"),
     "C19_unverified_rejection_sticky": ("worker/refund-flow.mjs", '(existing?.status === "rejected" && existing.identity_verified !== false) ||', '(existing?.status === "rejected") ||', "R16"),
     "C20_off_admin_extended": ("worker/refund-flow.mjs", "if (!refundAutoDispatchEnabled(env) && !items.some(", "if (false && !items.some(", "R15"),
-    "C21_identity_alert_skipped": ("worker/refund-flow.mjs", "      if (!decision.eligible) {\n        const alert", "      if (false) {\n        const alert", "R02"),
-    "C22_sync_followup": ("worker/refund-flow.mjs", "if (ctx?.waitUntil) ctx.waitUntil(followUp().catch(() => {}));\n  else await followUp();", "await followUp();", "R17"),
+    "C21_identity_alert_skipped": ("worker/refund-flow.mjs", "        if (!decision.eligible) {\n          const alert", "        if (false) {\n          const alert", "R02"),
+    "C22_sync_followup": ("worker/refund-flow.mjs", "if (ctx?.waitUntil) ctx.waitUntil(followUp().catch(() => {}));\n    else await followUp();", "await followUp();", "R17"),
     # Coordinator/auditor ORDEM 294: PostgreSQL decision state, justification, audit and recovery.
     "D01_justification_optional_approve": ("worker/refund-flow.mjs", "if (record.manual_reason && justification.length < JUSTIFICATION_MIN)", "if (false)", "R20"),
     "D02_justification_optional_reject": ("worker/refund-flow.mjs", "  if (justification.length < JUSTIFICATION_MIN) return { status: 400, body: { error: \"refund_justification_required\" } };\n  const channel", "  const channel", "R20"),
@@ -85,10 +85,18 @@ MUTANTS = {
     "D05_reevaluation_unbounded": ("worker/refund-flow.mjs", "/ 864e5 <= REEVALUATION_DAYS) {", "/ 864e5 <= 1e9) {", "R23"),
     "D06_unverified_deleted": ("worker/refund-flow.mjs", 'Object.assign(rec, { status: "unverified_closed",', 'Object.assign(rec, { status: "pending",', "R03"),
     "D07_decision_email_skipped": ("worker/refund-flow.mjs", 'if (record.decision_email_pending === true && record.status === "rejected") {', "if (false) {", "R26"),
-    "D08_no_channel_unflagged": ("worker/refund-flow.mjs", 'confirmation_channel: verified || a.identity === "conflict" ? "registered_address" : "none",\n    credential_verified: credential.ok,', 'confirmation_channel: "registered_address",\n    credential_verified: credential.ok,', "R26"),
+    "D08_no_channel_unflagged": ("worker/refund-flow.mjs", 'confirmation_channel: verified || a.identity === "conflict" ? "registered_address" : "none",\n      credential_verified: credential.ok,', 'confirmation_channel: "registered_address",\n      credential_verified: credential.ok,', "R26"),
     "D09_confirmation_alert_skipped": ("worker/refund-flow.mjs", "!rec.confirmation_failure_alerted && (now - since) / 3600e3 >= CONFIRMATION_ALERT_H", "false", "R27"),
     "D10_state_down_silent": ("worker/refund-flow.mjs", "catch { if (on) stateUnavailable = true; }", "catch {}", "R31"),
     "D11_redispatch_disabled": ("worker/refund-flow.mjs", "const redispatch = pendingExisting &&", "const redispatch = false &&", "R33"),
+    # Round 3 LOWs: a manifestation never disappears.
+    "E01_cas_loss_dropped": ("worker/refund-flow.mjs", "continue; // lost the CAS: re-read and re-decide (L-1)", "return receipt;", "R35"),
+    "E02_sandbox_flag_unknown_ignored": ("worker/refund-flow.mjs", "if (testFlagUnknown) decision =", "if (false) decision =", "R36"),
+    "E03_ddl_race_not_tolerated": ("worker/refund-state.mjs", "    if (!exists) throw error;", "    throw error;", "R37"),
+    "E04_off_reads_new_tables": ("worker/refund-flow.mjs", "if (on || sawOnCopy || await onStatePresent(kv)) {", "if (true) {", "R38"),
+    "E05_conflict_rejection_reopens": ("worker/refund-flow.mjs", 'if (conflictRejected && a.identity !== "matched") {', "if (false) {", "R39"),
+    "E06_payment_override_optional": ("worker/refund-flow.mjs", "if (override && (decision?.override !== true", "if (false && (decision?.override !== true", "R40"),
+    "E07_payment_override_unrecorded": ("worker/refund-flow.mjs", "        ...(override ? { payment_override: true } : {}) },", "        },", "R40"),
     "D12_owner_approve_pg_bypassed": ("worker/refund-flow.mjs", "  try { record = await loadRefund(kv, sql, oid, { on: refundAutoDispatchEnabled(env) }); }\n  catch { return { status: 503, body: { error: \"refund_state_unavailable\" } }; }\n  if (!record) return { status: 404, body: { error: \"refund_request_not_found\" } };\n  if (record.status === \"refunded\"", "  try { record = JSON.parse(await kv.get(KEY(oid)) || \"null\"); }\n  catch { return { status: 503, body: { error: \"refund_state_unavailable\" } }; }\n  if (!record) return { status: 404, body: { error: \"refund_request_not_found\" } };\n  if (record.status === \"refunded\"", "R28"),
 }
 
@@ -103,28 +111,31 @@ CONFIG_RAW["M17_amount"]["secondary"] = [{"test_pattern": "A05", "assertion_patt
 COLLATERAL = {
     "M01_flag_default": ["X01", "X02", "X03", "X04", "X05", "X09", "X10", "X12", "X13", "X14", "X15", "X16", "X17", "X18", "X21", "X22", "X23", "X24", "X25",
                          "R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09", "R10", "R12", "R13", "R14", "R15", "R16", "R17", "R18", "R19",
-                         "R20", "R21", "R22", "R23", "R24", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33", "R34"],
+                         "R20", "R21", "R22", "R23", "R24", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33", "R34",
+                         "R35", "R36", "R38", "R39", "R40"],
     "M02_prod_test_token": ["X13", "X15", "X18"],
     "M11_credential": ["X13"],
     "M17_amount": ["X10", "X17", "X23", "X25", "R20", "R26", "R29", "R30"],
     "B07_on_identity": ["X16", "R10"],
     "B08_unverified_audit": ["R10"],
     "B09_provider_gate": ["X14", "X15", "R02", "R03", "R16", "R26"],
-    "B10_email_match": ["X16", "R01", "R10"],
+    "B10_email_match": ["X16", "R01", "R10", "R39"],
     "B13_customer_retry": ["X16", "R01", "R04", "R05", "R22", "R27", "R28"],
     "B15_missing_payment": ["R05", "R06", "R08", "R19", "R21", "R23"],
-    "B14_rejected_auto": ["R29"],
-    "C09_lookup_failure_reason": ["R22"],
+    "B14_rejected_auto": ["R29", "R39"],
+    "C09_lookup_failure_reason": ["R22", "R40"],
     "C14_kv_only_write": ["X20"],
     "C15_held_no_reject": ["R23"],
-    "D03_decision_not_persisted": ["R21"],
+    "D03_decision_not_persisted": ["R21", "R40"],
     "D12_owner_approve_pg_bypassed": ["R18", "R29", "R34"],
     "B16_execute_identity": ["R07"],
-    "C01_conflict_dropped": ["X16"],
+    "C01_conflict_dropped": ["X16", "R39"],
+    "C04_unverified_blocks_buyer": ["R35"],
+    "C16_owner_approve_no_reeval": ["R40"],
     "C02_unverifiable_dropped": ["R03", "R04", "R16", "R26"],
     "C05_conflict_ack_other_party": ["X16"],
     "C06_request_reeval_disabled": ["R09", "R19"],
-    "C17_watchdog_no_reeval": ["R03", "R04", "R19", "R21", "R22"],
+    "C17_watchdog_no_reeval": ["R03", "R04", "R19", "R21", "R22", "R36"],
     "C21_identity_alert_skipped": ["X16", "R01"],
     "B11_receipt_protocol": ["X10", "X21", "R01"],
     "B12_receipt_message": ["X03", "X05", "X10"],
@@ -134,11 +145,11 @@ REASONS = {
     "M02_prod_test_token": "Removing the environment/account verification changes routing and the alerts for incompatible production tokens.",
     "M11_credential": "Removing the eligibility gate for an invalid credential changes the reason and route of the sandbox-token scenario.",
     "M17_amount": "Removing payment amount verification converts the listed forced-manual scenarios into automatic refund attempts.",
-    "B14_rejected_auto": "R29 checks that the owner rejection survives a KV wipe through the same sticky-rejection rule.",
-    "C09_lookup_failure_reason": "R22 checks the same provider-error classification for transient failures.",
+    "B14_rejected_auto": "R29 and R39 check the same sticky-rejection rule (KV wipe; conflict reopened as previously_rejected).",
+    "C09_lookup_failure_reason": "R22 and R40 rely on the same provider-error classification.",
     "C14_kv_only_write": "X20 also asserts that an ON record is never written to KV alone.",
     "C15_held_no_reject": "R23 checks that the owner can still reject after the re-evaluation window.",
-    "D03_decision_not_persisted": "R21 checks the owner decision event in the audited lifecycle.",
+    "D03_decision_not_persisted": "R21 and R40 check the owner decision event in the audit trail.",
     "D12_owner_approve_pg_bypassed": "Reading the KV copy in executeRefund breaks every scenario where KV is stale, missing or forged.",
     "B07_on_identity": "Without the mismatch gate, conflicting recipients are not reviewed and the per-order audit cap is bypassed.",
     "B08_unverified_audit": "Without the audit record, the per-order cap/deduplication scenario has nothing to count.",
@@ -146,7 +157,9 @@ REASONS = {
     "B13_customer_retry": "Every scenario that checks the consumer acknowledgement depends on the shared protocol delivery.",
     "B15_missing_payment": "Without the payment-event gate the held scenarios that are later re-evaluated are never created.",
     "B16_execute_identity": "Without the evidence gate the owner approval of a held request is no longer refused.",
-    "C01_conflict_dropped": "X16 asserts the same conflict review from the original suite.",
+    "C01_conflict_dropped": "X16 and R39 assert the same conflict review (R39 also its sticky rejection).",
+    "C04_unverified_blocks_buyer": "R35 needs the buyer to supersede the unconfirmed record after re-reading.",
+    "C16_owner_approve_no_reeval": "R40 checks that approval re-evaluates first when the provider recovered.",
     "C02_unverifiable_dropped": "The other unverifiable-identity scenarios share the same classification.",
     "C05_conflict_ack_other_party": "X16 asserts the same matched-address acknowledgement.",
     "C06_request_reeval_disabled": "Request re-evaluation also serves the provider-recovery and original-window scenarios.",

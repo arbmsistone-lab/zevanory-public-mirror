@@ -3,7 +3,8 @@
 // compare-and-swap and an append-only event row (unique per order/version and per transition key).
 // Cloudflare KV only keeps a cache copy for the legacy readers; losing, delaying or failing a KV
 // write never changes a business decision, because every decision reads and writes here.
-// Records of the legacy (OFF) flow keep their pre-PR storage in KV and never touch these tables.
+// Records of the legacy (OFF) flow keep their pre-PR storage in KV. With the flag OFF these tables are
+// never written nor created, and are only read once ON-created state is known to exist (KV marker).
 const DDL = [
   "create table if not exists refund_requests (order_id uuid primary key, version integer not null check (version > 0), status text not null, record jsonb not null, updated_at timestamptz not null default now())",
   "create table if not exists refund_request_events (id bigserial primary key, order_id uuid not null, version integer not null, from_status text, to_status text not null, manual_reason text, actor text not null, justification text, evidence jsonb, transition_key text unique, at timestamptz not null default now(), unique (order_id, version))",
@@ -11,7 +12,23 @@ const DDL = [
 export const TERMINAL = ["approved", "refunded"];
 const isTerminal = (status) => TERMINAL.includes(status);
 
-export async function ensureRefundState(sql) { for (const ddl of DDL) await sql.query(ddl); }
+// Concurrent first use: two "create table if not exists" may race on the catalog (duplicate key
+// on pg_type, 23505/42P07). The loser checks that the table now exists instead of failing (L-4).
+export async function idempotentDdl(sql, ddl, table) {
+  try { await sql.query(ddl); }
+  catch (error) {
+    let exists = false;
+    try { exists = Boolean((await sql.query("select to_regclass($1) as t", [table]))[0]?.t); } catch {}
+    if (!exists) throw error;
+  }
+}
+const ensured = new WeakSet(); // per SQL client: skip repeated DDL once the tables are known to exist
+export async function ensureRefundState(sql) {
+  if (sql && typeof sql === "object" && ensured.has(sql)) return;
+  await idempotentDdl(sql, DDL[0], "refund_requests");
+  await idempotentDdl(sql, DDL[1], "refund_request_events");
+  if (sql && typeof sql === "object") ensured.add(sql);
+}
 
 const fromRow = (row) => row ? { ...(typeof row.record === "string" ? JSON.parse(row.record) : row.record),
   status: row.status, version: Number(row.version) } : null;
