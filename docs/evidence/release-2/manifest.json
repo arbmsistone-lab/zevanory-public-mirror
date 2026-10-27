@@ -1,7 +1,7 @@
 {
   "schema": "zevanory.release-2-evidence.v1",
   "source_base": "a098d8802a184df02b362d46f08fb6c81b7382f9",
-  "release_sha": null,
+  "release_sha": "9a25836cd869525efbec22bbe0cea220ccea711a",
   "release_sha_binding": "CI regenerates this manifest with RELEASE_SHA=GITHUB_SHA and verifies both manifest and matrix",
   "sales_mode": "closed",
   "owner_vertical_scroll_approval": "APROVO ROLAGEM VERTICAL NAS PÁGINAS PÚBLICAS",
@@ -10,7 +10,20 @@
     "checked": 180,
     "routes": 18,
     "views": 5,
-    "schemes": 2
+    "schemes": 2,
+    "release_sha": "9a25836cd869525efbec22bbe0cea220ccea711a",
+    "cta_overlap_checked": true,
+    "cta_overlaps": 0,
+    "environment": {
+      "browser": "chromium",
+      "browser_version": "141.0.7390.37",
+      "playwright": "1.55.0",
+      "axe_core": "4.10.3",
+      "node": "v22.22.0",
+      "platform": "linux-x64",
+      "ci": false,
+      "runner": null
+    }
   },
   "screenshots": {
     "count": 90,
@@ -45,8 +58,8 @@
     },
     {
       "path": "docs/evidence/release-2/matrix.json",
-      "bytes": 278785,
-      "sha256": "363ec07214cd765493290edec7ae4bec2eca43a83f2865d065ad2295cd4ed3c3"
+      "bytes": 328986,
+      "sha256": "bba4cdcd7ef3c0f1b498470251b7a0df6633d9abc18a067783bd5c53d57950d8"
     },
     {
       "path": "docs/evidence/release-2/screenshots/dark/afiliados-1440.png",

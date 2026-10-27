@@ -36,6 +36,10 @@ const manifest = {
     routes: matrix.routes,
     views: matrix.views,
     schemes: matrix.schemes,
+    release_sha: matrix.release_sha ?? null,
+    cta_overlap_checked: matrix.cta_overlap_checked === true,
+    cta_overlaps: matrix.cta_overlaps ?? null,
+    environment: matrix.environment ?? null,
   },
   screenshots: {
     count: screenshots.length,
