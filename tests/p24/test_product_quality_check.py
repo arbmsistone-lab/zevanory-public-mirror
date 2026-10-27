@@ -78,9 +78,9 @@ class P24CheckTest(unittest.TestCase):
 
     def test_promised_file_missing_from_zip_fails(self):
         man = self.jload("data/p24/delivery-manifest.json")
-        man["products"]["vendas-na-pratica"]["entries"] = [e for e in man["products"]["vendas-na-pratica"]["entries"] if e["path"] != "ZEVANORY_Vendas_Mensagens.txt"]
+        man["products"]["vendas-na-pratica"]["entries"] = [e for e in man["products"]["vendas-na-pratica"]["entries"] if e["path"] != "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt"]
         self.jsave("data/p24/delivery-manifest.json", man)
-        self.assertFailsWith("arquivo prometido ausente do zip: ZEVANORY_Vendas_Mensagens.txt")
+        self.assertFailsWith("arquivo prometido ausente do zip: ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt")
 
     def test_file_that_does_not_open_fails(self):
         man = self.jload("data/p24/delivery-manifest.json")
@@ -114,15 +114,15 @@ class P24CheckTest(unittest.TestCase):
 
     def test_promised_format_not_delivered_fails(self):
         m = self.jload("data/p24/promise-map.json")
-        m["products"]["ia-na-pratica"]["promises"][0]["files"] = ["ZEVANORY_IA_Manual_v1.1.pdf"]
+        m["products"]["ia-na-pratica"]["promises"][0]["files"] = ["ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf"]
         self.jsave("data/p24/promise-map.json", m)
         self.assertFailsWith("a promessa cita DOCX")
 
     def test_missing_anchor_fails(self):
         man = self.jload("data/p24/delivery-manifest.json")
-        self.entry(man, "ia-na-pratica", "ZEVANORY_IA_Manual_v1.1.pdf")["anchors"]["briefing"] = 0
+        self.entry(man, "ia-na-pratica", "ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf")["anchors"]["pedido"] = 0
         self.jsave("data/p24/delivery-manifest.json", man)
-        self.assertFailsWith("âncora 'briefing' ausente")
+        self.assertFailsWith("âncora 'pedido' ausente")
 
     def test_unregistered_new_defect_fails(self):
         d = self.jload("data/p24/open-defects.json")
@@ -144,7 +144,7 @@ class P24CheckTest(unittest.TestCase):
 
     def test_spreadsheet_formula_error_fails(self):
         man = self.jload("data/p24/delivery-manifest.json")
-        self.entry(man, "ia-na-pratica", "ZEVANORY_IA_Planilha.xlsx")["open"]["recalc"] = {"status": "FAIL", "errors": 3}
+        self.entry(man, "ia-na-pratica", "ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx")["open"]["recalc"] = {"status": "FAIL", "errors": 3}
         self.jsave("data/p24/delivery-manifest.json", man)
         self.assertFailsWith("erro(s) de fórmula no recálculo")
 

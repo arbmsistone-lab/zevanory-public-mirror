@@ -41,10 +41,10 @@ DEFAULT_OFFER = 'ZEV-CMB-011'
 # Digest of each SKU's private deliverable (catalog artifact_sha256): the proof
 # must download exactly the purchased product, not just any intact file.
 CATALOG_ARTIFACTS = {
-    'ZEV-IA-011': 'afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae',
-    'ZEV-VEN-011': '97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070',
+    'ZEV-IA-011': 'bdb6dddd22b037afc16615932a2aaa809096befda6fb6d29f29fb64bc794c137',
+    'ZEV-VEN-011': '90a568d8ecaa42afad4ae69aace685afcb2d69989a864aa09545852716c92979',
     'ZEV-LCX-011': '48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f',
-    'ZEV-CMB-011': '99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea',
+    'ZEV-CMB-011': '7a9db9ab8b12acb92deb235f2d0161f7ebb6c41dbb282f45c85d094f1ce95104',
     'ZEV-NGC-011': '8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e'}
 
 

@@ -148,9 +148,17 @@ def quality_hits(text: str) -> list[str]:
     hits = []
     for rx, label in ((PLACEHOLDER, "marcador de rascunho"), (INCOME, "possível promessa de ganho")):
         for m in rx.finditer(text):
-            a, b = max(0, m.start() - 50), min(len(text), m.end() + 50)
-            hits.append(f"{label}: …{re.sub(r'\s+', ' ', text[a:b])}…")
+            # Só o rótulo, o termo casado e a posição: nenhum trecho do material pago vai para o repositório.
+            hits.append(f"{label}: termo '{m.group(0)[:20]}' no caractere {m.start()}")
     return hits[:10]
+
+
+def zip_root(names: list[str]) -> str:
+    """Pasta-mãe única do zip (v1.2: 'ZEVANORY_<Produto>_v1.2/'), ou '' quando os arquivos estão na raiz (v1.1)."""
+    tops = {n.split("/", 1)[0] for n in names}
+    if len(tops) == 1 and all("/" in n for n in names):
+        return tops.pop() + "/"
+    return ""
 
 
 def anchors_by_file(pmap: dict) -> dict[str, dict[str, set[str]]]:
@@ -169,15 +177,31 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="data/p24/delivery-manifest.json")
     ap.add_argument("--generated-at", required=True, help="data/hora ISO da conferência")
     ap.add_argument("--source-label", default="cópia local dos zips catalogados")
+    ap.add_argument("--only", default="", help="slugs separados por vírgula; os demais produtos são mantidos do manifesto atual")
     args = ap.parse_args(argv)
     root, zips = Path(args.root), Path(args.zips)
     pmap = json.loads((root / "data/p24/promise-map.json").read_text(encoding="utf-8"))
     catalog = p24.parse_worker_catalog((root / "worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8"))
     anchors = anchors_by_file(pmap)
     import pypdf
+    only = {x.strip() for x in args.only.split(",") if x.strip()}
+    previous = {}
+    if only:
+        unknown = only - set(pmap["products"])
+        if unknown:
+            print(f"ABORT: --only cita produtos fora do mapa: {sorted(unknown)}")
+            return 2
+        previous = json.loads((root / args.out).read_text(encoding="utf-8")).get("products", {})
     products = {}
     with tempfile.TemporaryDirectory(prefix="p24-") as td:
         for slug, prod in pmap["products"].items():
+            if only and slug not in only:
+                if slug not in previous:
+                    print(f"ABORT {slug}: fora de --only e ausente do manifesto atual")
+                    return 2
+                products[slug] = previous[slug]
+                print(f"{slug}: mantido do manifesto atual ({previous[slug]['artifact_name']})")
+                continue
             cat = catalog[prod["sku"]]
             zpath = zips / cat["artifact_name"]
             blob = zpath.read_bytes()
@@ -188,18 +212,19 @@ def main(argv: list[str] | None = None) -> int:
             zf = zipfile.ZipFile(io.BytesIO(blob))
             bad = zf.testzip()
             entries = []
-            for info in sorted(zf.infolist(), key=lambda i: i.filename):
-                if info.is_dir():
-                    continue
+            files = [i for i in zf.infolist() if not i.is_dir()]
+            rootdir = zip_root([i.filename for i in files])
+            for info in sorted(files, key=lambda i: i.filename):
                 data = zf.read(info.filename)
-                k = kind_of(info.filename)
+                rel = info.filename[len(rootdir):]
+                k = kind_of(rel)
                 try:
                     if k == "pdf":
                         o, text = open_pdf(data)
                     elif k == "docx":
                         o, text = open_docx(data)
                     elif k == "xlsx":
-                        o, text = open_xlsx(data, info.filename, Path(td) / slug / str(len(entries)))
+                        o, text = open_xlsx(data, rel, Path(td) / slug / str(len(entries)))
                     elif k == "txt":
                         o, text = open_txt(data)
                     else:
@@ -207,9 +232,9 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception as exc:  # qualquer falha de abertura é resultado, não exceção
                     o, text = {"ok": False, "detail": f"falha ao abrir: {exc.__class__.__name__}"}, ""
                 ntext = p24.norm_anchor(text)
-                want = sorted(anchors.get(slug, {}).get(info.filename, set()))
+                want = sorted(anchors.get(slug, {}).get(rel, set()))
                 entries.append({
-                    "path": info.filename,
+                    "path": rel,
                     "size": len(data),
                     "sha256": sha256(data),
                     "kind": k,
@@ -222,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
                 "artifact_name": cat["artifact_name"],
                 "artifact_sha256": digest,
                 "artifact_bytes": len(blob),
+                "zip_root": rootdir,
                 "zip_integrity": "ok" if bad is None else f"corrompido: {bad}",
                 "entries": entries,
             }
@@ -232,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
         "source": args.source_label,
         "generator": "scripts/p24/build_delivery_manifest.py",
         "extractors": {"pdf": f"pypdf {pypdf.__version__}", "docx": "python-docx", "xlsx": "openpyxl + LibreOffice headless (recálculo)", "txt": "utf-8 estrito"},
-        "note": "Zips não versionados. Este manifesto guarda só metadados; o SHA-256 de cada zip é conferido contra o catálogo do Worker no CI.",
+        "note": "Zips não versionados. Este manifesto guarda só metadados (caminho relativo à pasta-mãe do zip, tamanho, SHA-256, abertura, contagem de âncoras); o SHA-256 de cada zip é conferido contra o catálogo do Worker no CI.",
         "products": products,
     }
     Path(root / args.out).write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -1,7 +1,7 @@
 {
   "schema": "zevanory-p24-delivery-manifest/v1",
-  "generated_at": "2026-10-25",
-  "source": "cópia local dos 5 zips do pacote ZEVANORY_HANDOFF_v2.1 (SHA-256 de cada zip igual ao catálogo do Worker e ao ZEVANORY_SHA256SUMS_v2.1.txt)",
+  "generated_at": "2026-10-27",
+  "source": "cópia local dos zips v1.2 finais (IA bdb6dddd e Vendas 90a568d8 do v7; Combo 7a9db9ab remontado com esses componentes); Lucro e Negócio Completo mantidos v1.1 até o r7",
   "generator": "scripts/p24/build_delivery_manifest.py",
   "extractors": {
     "pdf": "pypdf 5.9.0",
@@ -9,114 +9,281 @@
     "xlsx": "openpyxl + LibreOffice headless (recálculo)",
     "txt": "utf-8 estrito"
   },
-  "note": "Zips não versionados. Este manifesto guarda só metadados; o SHA-256 de cada zip é conferido contra o catálogo do Worker no CI.",
+  "note": "Zips não versionados. Este manifesto guarda só metadados (caminho relativo à pasta-mãe do zip, tamanho, SHA-256, abertura, contagem de âncoras); o SHA-256 de cada zip é conferido contra o catálogo do Worker no CI.",
   "products": {
     "ia-na-pratica": {
       "sku": "ZEV-IA-011",
-      "artifact_name": "ZEVANORY_IA_na_Pratica_v1.1.zip",
-      "artifact_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
-      "artifact_bytes": 209427,
+      "artifact_name": "ZEVANORY_IA_na_Pratica_v1.2.zip",
+      "artifact_sha256": "bdb6dddd22b037afc16615932a2aaa809096befda6fb6d29f29fb64bc794c137",
+      "artifact_bytes": 2192983,
+      "zip_root": "ZEVANORY_IA_na_Pratica_v1.2/",
       "zip_integrity": "ok",
       "entries": [
         {
-          "path": "00_COMECE_AQUI.txt",
-          "size": 905,
-          "sha256": "0cad3fefb47696760bbfd2809479a1922da702aedfbda6e65c24c0dd6de17641",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 20 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "ZEVANORY_IA_Comandos.txt",
-          "size": 7247,
-          "sha256": "32c5fe61c899ee27f8591e0f38fdbd259cf81b94f90a2af4fd328d1ef21a956f",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 50 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
-          "size": 48597,
-          "sha256": "1b3a19eb11829a01f71f4f90b99945ef0887ecad4fe7bfee539a41cbef03385f",
+          "path": "00_COMECE_AQUI_IA_na_Pratica_v1.2.pdf",
+          "size": 91410,
+          "sha256": "96b136a686b851ed7ff0011458f02c87b4fc3a28967ce3c58a1c56095056e880",
           "kind": "pdf",
           "open": {
             "ok": true,
-            "detail": "PDF 1 página(s), 1177 caracteres de texto extraído",
-            "pages": 1,
+            "detail": "PDF 2 página(s), 3800 caracteres de texto extraído",
+            "pages": 2,
             "tagged": true,
-            "title": null,
-            "lang": "en-US"
+            "title": "Comece aqui: IA na Prática",
+            "lang": "pt-BR"
           },
           "anchors": {},
           "quality_hits": []
         },
         {
-          "path": "ZEVANORY_IA_Manual_v1.1.docx",
-          "size": 54468,
-          "sha256": "8136e5a7963f814bc847e8c4d2c8e5eab81aeea8b511c618082492e0eb75fb56",
+          "path": "00_COMECE_AQUI_IA_na_Pratica_v1.2.txt",
+          "size": 4083,
+          "sha256": "d8873a8e95c37d64859007b0c2cec6a5e9701aed7c545fe2c6c819cd898b59c7",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 71 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+          "size": 823,
+          "sha256": "57ed4a885103142a2bfad56efc9ddbf04718ae3cc1227ad53e05c36054945fc8",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 14 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/OFL-Archivo.txt",
+          "size": 4481,
+          "sha256": "393a694c7dee6694a22c73049e95cea5d0808697a872c435862d33c0afc67091",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+          "size": 4524,
+          "sha256": "b5b7a8bc1e0e92be9b64abd8abd92659488733aa5be8d982bc872c36dac73f08",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "SHA256SUMS.txt",
+          "size": 1734,
+          "sha256": "83200c5587a0721a34860919f7de1de0ee5e20e13a2aa2ce33baee1fa74a68ff",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 16 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+          "size": 77680,
+          "sha256": "ba0a79979ba754655dd1d24d4e369771bf95cf98f199876a844f3dd504694228",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1978 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": "Histórico de versões: IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+          "size": 2242,
+          "sha256": "86089a7fabbeba7ef2af09eaac3f585000224994b0227d82cd800001ed1eb4fa",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 36 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+          "size": 278743,
+          "sha256": "a107dd2f9e107340e915f589c1cabbca845255332ad00e545d7f4ea2cc088aac",
           "kind": "docx",
           "open": {
             "ok": true,
-            "detail": "DOCX 274 parágrafo(s), 14 tabela(s)",
-            "paragraphs": 274,
-            "tables": 14,
-            "title": "ZEVANORY | IA na Prática",
-            "lang": "en-US"
+            "detail": "DOCX 359 parágrafo(s), 1 tabela(s)",
+            "paragraphs": 359,
+            "tables": 1,
+            "title": "Comandos de IA",
+            "lang": "pt-BR"
           },
           "anchors": {},
           "quality_hits": []
         },
         {
-          "path": "ZEVANORY_IA_Manual_v1.1.pdf",
-          "size": 258538,
-          "sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246",
+          "path": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+          "size": 305237,
+          "sha256": "96f46c38c2cb6038d045f11d2b4e4da2523cf1b0a38130e568707bffccb6af8a",
           "kind": "pdf",
           "open": {
             "ok": true,
-            "detail": "PDF 25 página(s), 36478 caracteres de texto extraído",
-            "pages": 25,
+            "detail": "PDF 31 página(s), 51612 caracteres de texto extraído",
+            "pages": 31,
             "tagged": true,
-            "title": "ZEVANORY | IA na Prática",
-            "lang": "en-US"
+            "title": "Comandos de IA",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+          "size": 52988,
+          "sha256": "ec652b4d9c7929460efc58f64ac0a3715757a3f3720dfbdde9dcfcbfcd26ac15",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 1239 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+          "size": 263607,
+          "sha256": "5aac35d23da8b6e31e1b75824da2a587d433e49f634faa2f93e81972c45650c3",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 41 parágrafo(s), 3 tabela(s)",
+            "paragraphs": 41,
+            "tables": 3,
+            "title": "Guia rápido IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+          "size": 99354,
+          "sha256": "ec638e69957acaa037e3c674f2f67ebbab0d8292ed663ac1a7290885d21b65b8",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 3 página(s), 4094 caracteres de texto extraído",
+            "pages": 3,
+            "tagged": true,
+            "title": "Guia rápido IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+          "size": 448789,
+          "sha256": "4f5d68880f91e64c48f491e6ea6b97d4583f8030709cdc485757903a33462c4e",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 636 parágrafo(s), 22 tabela(s)",
+            "paragraphs": 636,
+            "tables": 22,
+            "title": "Manual IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+          "size": 628560,
+          "sha256": "20cfe8097cc6b246a0c55714915ea465786a70bd0de42672188dd89b37572492",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 51 página(s), 101425 caracteres de texto extraído",
+            "pages": 51,
+            "tagged": true,
+            "title": "Manual IA na Prática",
+            "lang": "pt-BR"
           },
           "anchors": {
-            "briefing": 25,
-            "conferir": 22,
-            "contexto": 5,
-            "criterio": 9,
-            "faca agora": 8,
-            "modelo": 9,
-            "promessa de faturamento": 1,
-            "repet": 2,
+            "conferir": 30,
+            "contexto": 7,
+            "criterio": 13,
+            "faca agora": 9,
+            "modelo": 26,
+            "nao promete": 4,
+            "pedido": 46,
+            "repet": 5,
             "responsavel": 19,
-            "revisao": 30,
-            "rotina": 25
+            "revisao": 24,
+            "rotina": 17
           },
           "quality_hits": []
         },
         {
-          "path": "ZEVANORY_IA_Planilha.xlsx",
-          "size": 13432,
-          "sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4",
+          "path": "ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+          "size": 34876,
+          "sha256": "b3cb65090b969e7ccafbabebded0dcb5afdef182a19d05ac752fbf1a37303e33",
           "kind": "xlsx",
           "open": {
             "ok": true,
-            "detail": "XLSX 4 aba(s), 65 fórmula(s)",
+            "detail": "XLSX 4 aba(s), 565 fórmula(s)",
             "sheets": [
-              "Instrucoes",
-              "Orcamento",
-              "Execucao",
-              "Exemplo"
+              "Instruções",
+              "Orçamento",
+              "Agenda",
+              "Execução"
             ],
-            "formulas": 65,
+            "formulas": 565,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+          "size": 33714,
+          "sha256": "ca41732c7da2040a7ac56d66ec0621df627dca1e65abe002233ba284710d162d",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 4 aba(s), 565 fórmula(s)",
+            "sheets": [
+              "Instruções",
+              "Orçamento",
+              "Agenda",
+              "Execução"
+            ],
+            "formulas": 565,
             "literal_errors": 0,
             "recalc": {
               "status": "PASS",
@@ -132,133 +299,337 @@
     },
     "vendas-na-pratica": {
       "sku": "ZEV-VEN-011",
-      "artifact_name": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
-      "artifact_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
-      "artifact_bytes": 217255,
+      "artifact_name": "ZEVANORY_Vendas_na_Pratica_v1.2.zip",
+      "artifact_sha256": "90a568d8ecaa42afad4ae69aace685afcb2d69989a864aa09545852716c92979",
+      "artifact_bytes": 2558379,
+      "zip_root": "ZEVANORY_Vendas_na_Pratica_v1.2/",
       "zip_integrity": "ok",
       "entries": [
         {
-          "path": "00_COMECE_AQUI.txt",
-          "size": 954,
-          "sha256": "10d6b6dcd4b21161b439aaa9265bcd97ddfb1bc635bee4e7228be76500108439",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 20 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "ZEVANORY_Vendas_Conteudos.txt",
-          "size": 2471,
-          "sha256": "232f3b996da1931a956172110b1caa66ffa87acc61a5470d14091f2ab9dc17a1",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 37 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
-          "size": 46192,
-          "sha256": "24376a0aee3d46187a620852d3858629e05ddd79a9d430050216ff5c8afdaa34",
+          "path": "00_COMECE_AQUI_Vendas_na_Pratica_v1.2.pdf",
+          "size": 92682,
+          "sha256": "804e60df1cbb3a5f49939e658b35a25c8b74ffc10d4e918c6d421ddb745c72ad",
           "kind": "pdf",
           "open": {
             "ok": true,
-            "detail": "PDF 1 página(s), 1096 caracteres de texto extraído",
-            "pages": 1,
+            "detail": "PDF 2 página(s), 3848 caracteres de texto extraído",
+            "pages": 2,
             "tagged": true,
-            "title": null,
-            "lang": "en-US"
+            "title": "Comece aqui: Vendas na Prática",
+            "lang": "pt-BR"
           },
           "anchors": {},
           "quality_hits": []
         },
         {
-          "path": "ZEVANORY_Vendas_Manual_v1.1.docx",
-          "size": 54900,
-          "sha256": "563eec2fb93de30e61784b10cee49a9fc8e6bd35a9ef5e45a84908772febfc6a",
+          "path": "00_COMECE_AQUI_Vendas_na_Pratica_v1.2.txt",
+          "size": 4119,
+          "sha256": "66915ac8dce76010c34c8361c54bb3312e4776d6470f7eb47e32880b40f4c810",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 71 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+          "size": 827,
+          "sha256": "d364d2e476875183ff6f578bd5055c4c096ff78dc968f070ba47afd6ed028b6f",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 14 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/OFL-Archivo.txt",
+          "size": 4481,
+          "sha256": "393a694c7dee6694a22c73049e95cea5d0808697a872c435862d33c0afc67091",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+          "size": 4524,
+          "sha256": "b5b7a8bc1e0e92be9b64abd8abd92659488733aa5be8d982bc872c36dac73f08",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "SHA256SUMS.txt",
+          "size": 2126,
+          "sha256": "f640517b1286398bf7cd44a952497b911df61be0635e57014f264bd37fb4517e",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 19 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+          "size": 77785,
+          "sha256": "f20b69682b3e50e61095c9c45997fdef249d3e1cb2f1bb4ba8b0c72e85ff5572",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 2075 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": "Histórico de versões: Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+          "size": 2344,
+          "sha256": "f6eb3c23a6e791d0b2a1ca31e44f66467d5eafdf02959f9bc0a33b02a9e2234c",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 38 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+          "size": 266701,
+          "sha256": "5c35b1e5fcf92b883d299afa4dd368cccc3d29d29a40d8b8030a8dde37a9d126",
           "kind": "docx",
           "open": {
             "ok": true,
-            "detail": "DOCX 295 parágrafo(s), 14 tabela(s)",
-            "paragraphs": 295,
-            "tables": 14,
-            "title": "ZEVANORY | Vendas na Prática",
-            "lang": "en-US"
+            "detail": "DOCX 130 parágrafo(s), 2 tabela(s)",
+            "paragraphs": 130,
+            "tables": 2,
+            "title": "Roteiros de conteúdo",
+            "lang": "pt-BR"
           },
           "anchors": {},
           "quality_hits": []
         },
         {
-          "path": "ZEVANORY_Vendas_Manual_v1.1.pdf",
-          "size": 279877,
-          "sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57",
+          "path": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+          "size": 149590,
+          "sha256": "4951c85c74c9899e5451f83d69f3f1f4ed72d6de4dabe415641df0a187d8f124",
           "kind": "pdf",
           "open": {
             "ok": true,
-            "detail": "PDF 27 página(s), 35465 caracteres de texto extraído",
-            "pages": 27,
+            "detail": "PDF 7 página(s), 9436 caracteres de texto extraído",
+            "pages": 7,
             "tagged": true,
-            "title": "ZEVANORY | Vendas na Prática",
-            "lang": "en-US"
+            "title": "Roteiros de conteúdo",
+            "lang": "pt-BR"
           },
-          "anchors": {
-            "acompanhamento": 8,
-            "atendimento": 19,
-            "escopo": 22,
-            "etapa": 16,
-            "funil": 2,
-            "indicador": 15,
-            "limite": 3,
-            "melhoria": 4,
-            "objec": 5,
-            "oferta": 27,
-            "oferta que voce consegue cumprir": 2,
-            "oportunidade": 33,
-            "proposta": 63,
-            "proximo passo": 6,
-            "publico": 2,
-            "retorno": 26
-          },
+          "anchors": {},
           "quality_hits": []
         },
         {
-          "path": "ZEVANORY_Vendas_Mensagens.txt",
-          "size": 3142,
-          "sha256": "f3583caa39f50293f9088dde9bbfd2a3d6958949042efc1206aec227056ab931",
+          "path": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+          "size": 10057,
+          "sha256": "2011a39fc9fd2d31d1adb225d7772d54ac28b0f7352b87d9e5347e77e7d219cd",
           "kind": "txt",
           "open": {
             "ok": true,
-            "detail": "TXT UTF-8, 50 linha(s)"
+            "detail": "TXT UTF-8, 254 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+          "size": 263898,
+          "sha256": "fd3b621a08ae74e3677a2f70c8abf6b2262598dd5e2dbd96804dd1768e72b14a",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 29 parágrafo(s), 5 tabela(s)",
+            "paragraphs": 29,
+            "tables": 5,
+            "title": "Guia rápido Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+          "size": 102010,
+          "sha256": "cc556224a4a25c1572f5d33aec623b31ed1cfc08f7da3f2edc4df37dde383c48",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 3 página(s), 4320 caracteres de texto extraído",
+            "pages": 3,
+            "tagged": true,
+            "title": "Guia rápido Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+          "size": 459665,
+          "sha256": "3c353989876cd043d2d61cfb29403d6299cee7fdb06e50fd6239edb90fd86117",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 578 parágrafo(s), 18 tabela(s)",
+            "paragraphs": 578,
+            "tables": 18,
+            "title": "Manual Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+          "size": 591724,
+          "sha256": "9d57680328840ff0dcde62b1dfcef7729a033b52969af3a56352ee862b0b7e69",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 39 página(s), 75043 caracteres de texto extraído",
+            "pages": 39,
+            "tagged": true,
+            "title": "Manual Vendas na Prática",
+            "lang": "pt-BR"
           },
           "anchors": {
-            "entender necessidade": 1,
-            "proposta": 9,
-            "recepcao": 1,
-            "retorno combinado": 1
+            "acompanhamento": 13,
+            "atendimento": 30,
+            "escopo": 1,
+            "etapa": 19,
+            "funil": 3,
+            "indicador": 20,
+            "limite": 2,
+            "melhoria": 15,
+            "objec": 29,
+            "oferta": 28,
+            "oferta que voce consegue cumprir": 7,
+            "oportunidade": 50,
+            "proposta": 88,
+            "proximo passo": 13,
+            "publico": 1,
+            "retorno": 60
           },
           "quality_hits": []
         },
         {
-          "path": "ZEVANORY_Vendas_Planilha.xlsx",
-          "size": 18854,
-          "sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0",
+          "path": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+          "size": 274341,
+          "sha256": "408118c7610aa46e429f325a6fc9ae56edcf33eab5a4d571857527612236857b",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 306 parágrafo(s), 2 tabela(s)",
+            "paragraphs": 306,
+            "tables": 2,
+            "title": "Mensagens de venda e acompanhamento",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+          "size": 237334,
+          "sha256": "5619e92501c03b8e673e5ff2e4655585a26b3c3eecdd993be6db22f3294d2702",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 17 página(s), 30598 caracteres de texto extraído",
+            "pages": 17,
+            "tagged": true,
+            "title": "Mensagens de venda e acompanhamento",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+          "size": 30836,
+          "sha256": "3065411615983075795fc305ccc972b89d07530be0811f0bfcfd952d4e747b85",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 679 linha(s)"
+          },
+          "anchors": {
+            "primeiro contato": 1,
+            "proposta": 21,
+            "recepcao": 7,
+            "retorno combinado": 2
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+          "size": 110769,
+          "sha256": "3cdbbb205217d4ba8b59e6d17cd1919b05f1efb96c18435f6d803ae6cad12e42",
           "kind": "xlsx",
           "open": {
             "ok": true,
-            "detail": "XLSX 5 aba(s), 32 fórmula(s)",
+            "detail": "XLSX 7 aba(s), 3498 fórmula(s)",
             "sheets": [
-              "Instrucoes",
+              "Instruções",
+              "Produtos e Serviços",
               "Oportunidades",
               "Indicadores",
-              "Calendario",
-              "Exemplo"
+              "Clientes e Retornos",
+              "Agenda e Faltas",
+              "Calendário"
             ],
-            "formulas": 32,
+            "formulas": 3498,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+          "size": 108504,
+          "sha256": "1fdb41eb727b146ee6e6a8e3aaaa6c4c7d9fc903fec123abfd419afc61d17be7",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 7 aba(s), 3501 fórmula(s)",
+            "sheets": [
+              "Instruções",
+              "Produtos e Serviços",
+              "Oportunidades",
+              "Indicadores",
+              "Clientes e Retornos",
+              "Agenda e Faltas",
+              "Calendário"
+            ],
+            "formulas": 3501,
             "literal_errors": 0,
             "recalc": {
               "status": "PASS",
@@ -268,8 +639,8 @@
             }
           },
           "anchors": {
-            "indicadores": 6,
-            "oportunidades": 10
+            "indicadores": 8,
+            "oportunidades": 18
           },
           "quality_hits": []
         }
@@ -451,118 +822,274 @@
     },
     "combo-ia-vendas": {
       "sku": "ZEV-CMB-011",
-      "artifact_name": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
-      "artifact_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
-      "artifact_bytes": 427631,
+      "artifact_name": "ZEVANORY_Combo_IA_e_Vendas_v1.2.zip",
+      "artifact_sha256": "7a9db9ab8b12acb92deb235f2d0161f7ebb6c41dbb282f45c85d094f1ce95104",
+      "artifact_bytes": 4949193,
+      "zip_root": "ZEVANORY_Combo_IA_e_Vendas_v1.2/",
       "zip_integrity": "ok",
       "entries": [
         {
-          "path": "00_LEIA_PRIMEIRO.txt",
-          "size": 512,
-          "sha256": "6bae7500e8eecd7f625c2f0be3d3b098a58c7e9a550ca09be1f9d7c66a166eae",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 9 linha(s)"
-          },
-          "anchors": {
-            "forma independente": 1,
-            "ordem sugerida": 1
-          },
-          "quality_hits": []
-        },
-        {
-          "path": "01_IA_na_Pratica/00_COMECE_AQUI.txt",
-          "size": 905,
-          "sha256": "0cad3fefb47696760bbfd2809479a1922da702aedfbda6e65c24c0dd6de17641",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 20 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "01_IA_na_Pratica/ZEVANORY_IA_Comandos.txt",
-          "size": 7247,
-          "sha256": "32c5fe61c899ee27f8591e0f38fdbd259cf81b94f90a2af4fd328d1ef21a956f",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 50 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "01_IA_na_Pratica/ZEVANORY_IA_Guia_Rapido_v1.1.pdf",
-          "size": 48597,
-          "sha256": "1b3a19eb11829a01f71f4f90b99945ef0887ecad4fe7bfee539a41cbef03385f",
+          "path": "00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.pdf",
+          "size": 105699,
+          "sha256": "0894f8470cd535a46759541caa7afbe0202cc1c7136321a633546b54afa8ae05",
           "kind": "pdf",
           "open": {
             "ok": true,
-            "detail": "PDF 1 página(s), 1177 caracteres de texto extraído",
-            "pages": 1,
+            "detail": "PDF 4 página(s), 7391 caracteres de texto extraído",
+            "pages": 4,
             "tagged": true,
-            "title": null,
-            "lang": "en-US"
+            "title": "Leia primeiro: Combo IA + Vendas",
+            "lang": "pt-BR"
           },
           "anchors": {},
           "quality_hits": []
         },
         {
-          "path": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.docx",
-          "size": 54468,
-          "sha256": "8136e5a7963f814bc847e8c4d2c8e5eab81aeea8b511c618082492e0eb75fb56",
+          "path": "00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.txt",
+          "size": 8388,
+          "sha256": "c6e891e91c0b301e061284644048feec1d7a1aaa811e66bb5a93fc72bddf6cf8",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 140 linha(s)"
+          },
+          "anchors": {
+            "funcionam sozinhos": 2,
+            "ordem sugerida": 3
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/00_COMECE_AQUI_IA_na_Pratica_v1.2.pdf",
+          "size": 91410,
+          "sha256": "96b136a686b851ed7ff0011458f02c87b4fc3a28967ce3c58a1c56095056e880",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 2 página(s), 3800 caracteres de texto extraído",
+            "pages": 2,
+            "tagged": true,
+            "title": "Comece aqui: IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/00_COMECE_AQUI_IA_na_Pratica_v1.2.txt",
+          "size": 4083,
+          "sha256": "d8873a8e95c37d64859007b0c2cec6a5e9701aed7c545fe2c6c819cd898b59c7",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 71 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+          "size": 823,
+          "sha256": "57ed4a885103142a2bfad56efc9ddbf04718ae3cc1227ad53e05c36054945fc8",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 14 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+          "size": 4481,
+          "sha256": "393a694c7dee6694a22c73049e95cea5d0808697a872c435862d33c0afc67091",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+          "size": 4524,
+          "sha256": "b5b7a8bc1e0e92be9b64abd8abd92659488733aa5be8d982bc872c36dac73f08",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/SHA256SUMS.txt",
+          "size": 1734,
+          "sha256": "83200c5587a0721a34860919f7de1de0ee5e20e13a2aa2ce33baee1fa74a68ff",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 16 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+          "size": 77680,
+          "sha256": "ba0a79979ba754655dd1d24d4e369771bf95cf98f199876a844f3dd504694228",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 1978 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": "Histórico de versões: IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+          "size": 2242,
+          "sha256": "86089a7fabbeba7ef2af09eaac3f585000224994b0227d82cd800001ed1eb4fa",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 36 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+          "size": 278743,
+          "sha256": "a107dd2f9e107340e915f589c1cabbca845255332ad00e545d7f4ea2cc088aac",
           "kind": "docx",
           "open": {
             "ok": true,
-            "detail": "DOCX 274 parágrafo(s), 14 tabela(s)",
-            "paragraphs": 274,
-            "tables": 14,
-            "title": "ZEVANORY | IA na Prática",
-            "lang": "en-US"
+            "detail": "DOCX 359 parágrafo(s), 1 tabela(s)",
+            "paragraphs": 359,
+            "tables": 1,
+            "title": "Comandos de IA",
+            "lang": "pt-BR"
           },
           "anchors": {},
           "quality_hits": []
         },
         {
-          "path": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
-          "size": 258538,
-          "sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246",
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+          "size": 305237,
+          "sha256": "96f46c38c2cb6038d045f11d2b4e4da2523cf1b0a38130e568707bffccb6af8a",
           "kind": "pdf",
           "open": {
             "ok": true,
-            "detail": "PDF 25 página(s), 36478 caracteres de texto extraído",
-            "pages": 25,
+            "detail": "PDF 31 página(s), 51612 caracteres de texto extraído",
+            "pages": 31,
             "tagged": true,
-            "title": "ZEVANORY | IA na Prática",
-            "lang": "en-US"
+            "title": "Comandos de IA",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+          "size": 52988,
+          "sha256": "ec652b4d9c7929460efc58f64ac0a3715757a3f3720dfbdde9dcfcbfcd26ac15",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 1239 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+          "size": 263607,
+          "sha256": "5aac35d23da8b6e31e1b75824da2a587d433e49f634faa2f93e81972c45650c3",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 41 parágrafo(s), 3 tabela(s)",
+            "paragraphs": 41,
+            "tables": 3,
+            "title": "Guia rápido IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+          "size": 99354,
+          "sha256": "ec638e69957acaa037e3c674f2f67ebbab0d8292ed663ac1a7290885d21b65b8",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 3 página(s), 4094 caracteres de texto extraído",
+            "pages": 3,
+            "tagged": true,
+            "title": "Guia rápido IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+          "size": 448789,
+          "sha256": "4f5d68880f91e64c48f491e6ea6b97d4583f8030709cdc485757903a33462c4e",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 636 parágrafo(s), 22 tabela(s)",
+            "paragraphs": 636,
+            "tables": 22,
+            "title": "Manual IA na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+          "size": 628560,
+          "sha256": "20cfe8097cc6b246a0c55714915ea465786a70bd0de42672188dd89b37572492",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 51 página(s), 101425 caracteres de texto extraído",
+            "pages": 51,
+            "tagged": true,
+            "title": "Manual IA na Prática",
+            "lang": "pt-BR"
           },
           "anchors": {
-            "briefing": 25,
-            "contexto": 5,
-            "criterio": 9,
-            "revisao": 30
+            "contexto": 7,
+            "criterio": 13,
+            "revisao": 24
           },
           "quality_hits": []
         },
         {
-          "path": "01_IA_na_Pratica/ZEVANORY_IA_Planilha.xlsx",
-          "size": 13432,
-          "sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4",
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+          "size": 34876,
+          "sha256": "b3cb65090b969e7ccafbabebded0dcb5afdef182a19d05ac752fbf1a37303e33",
           "kind": "xlsx",
           "open": {
             "ok": true,
-            "detail": "XLSX 4 aba(s), 65 fórmula(s)",
+            "detail": "XLSX 4 aba(s), 565 fórmula(s)",
             "sheets": [
-              "Instrucoes",
-              "Orcamento",
-              "Execucao",
-              "Exemplo"
+              "Instruções",
+              "Orçamento",
+              "Agenda",
+              "Execução"
             ],
-            "formulas": 65,
+            "formulas": 565,
             "literal_errors": 0,
             "recalc": {
               "status": "PASS",
@@ -575,111 +1102,311 @@
           "quality_hits": []
         },
         {
-          "path": "02_Vendas_na_Pratica/00_COMECE_AQUI.txt",
-          "size": 954,
-          "sha256": "10d6b6dcd4b21161b439aaa9265bcd97ddfb1bc635bee4e7228be76500108439",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 20 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Conteudos.txt",
-          "size": 2471,
-          "sha256": "232f3b996da1931a956172110b1caa66ffa87acc61a5470d14091f2ab9dc17a1",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 37 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Guia_Rapido_v1.1.pdf",
-          "size": 46192,
-          "sha256": "24376a0aee3d46187a620852d3858629e05ddd79a9d430050216ff5c8afdaa34",
-          "kind": "pdf",
-          "open": {
-            "ok": true,
-            "detail": "PDF 1 página(s), 1096 caracteres de texto extraído",
-            "pages": 1,
-            "tagged": true,
-            "title": null,
-            "lang": "en-US"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.docx",
-          "size": 54900,
-          "sha256": "563eec2fb93de30e61784b10cee49a9fc8e6bd35a9ef5e45a84908772febfc6a",
-          "kind": "docx",
-          "open": {
-            "ok": true,
-            "detail": "DOCX 295 parágrafo(s), 14 tabela(s)",
-            "paragraphs": 295,
-            "tables": 14,
-            "title": "ZEVANORY | Vendas na Prática",
-            "lang": "en-US"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
-          "size": 279877,
-          "sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57",
-          "kind": "pdf",
-          "open": {
-            "ok": true,
-            "detail": "PDF 27 página(s), 35465 caracteres de texto extraído",
-            "pages": 27,
-            "tagged": true,
-            "title": "ZEVANORY | Vendas na Prática",
-            "lang": "en-US"
-          },
-          "anchors": {
-            "acompanhamento": 8,
-            "atendimento": 19,
-            "indicador": 15,
-            "melhoria": 4,
-            "proposta": 63
-          },
-          "quality_hits": []
-        },
-        {
-          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Mensagens.txt",
-          "size": 3142,
-          "sha256": "f3583caa39f50293f9088dde9bbfd2a3d6958949042efc1206aec227056ab931",
-          "kind": "txt",
-          "open": {
-            "ok": true,
-            "detail": "TXT UTF-8, 50 linha(s)"
-          },
-          "anchors": {},
-          "quality_hits": []
-        },
-        {
-          "path": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Planilha.xlsx",
-          "size": 18854,
-          "sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0",
+          "path": "01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+          "size": 33714,
+          "sha256": "ca41732c7da2040a7ac56d66ec0621df627dca1e65abe002233ba284710d162d",
           "kind": "xlsx",
           "open": {
             "ok": true,
-            "detail": "XLSX 5 aba(s), 32 fórmula(s)",
+            "detail": "XLSX 4 aba(s), 565 fórmula(s)",
             "sheets": [
-              "Instrucoes",
+              "Instruções",
+              "Orçamento",
+              "Agenda",
+              "Execução"
+            ],
+            "formulas": 565,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI_Vendas_na_Pratica_v1.2.pdf",
+          "size": 92682,
+          "sha256": "804e60df1cbb3a5f49939e658b35a25c8b74ffc10d4e918c6d421ddb745c72ad",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 2 página(s), 3848 caracteres de texto extraído",
+            "pages": 2,
+            "tagged": true,
+            "title": "Comece aqui: Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI_Vendas_na_Pratica_v1.2.txt",
+          "size": 4119,
+          "sha256": "66915ac8dce76010c34c8361c54bb3312e4776d6470f7eb47e32880b40f4c810",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 71 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+          "size": 827,
+          "sha256": "d364d2e476875183ff6f578bd5055c4c096ff78dc968f070ba47afd6ed028b6f",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 14 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+          "size": 4481,
+          "sha256": "393a694c7dee6694a22c73049e95cea5d0808697a872c435862d33c0afc67091",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+          "size": 4524,
+          "sha256": "b5b7a8bc1e0e92be9b64abd8abd92659488733aa5be8d982bc872c36dac73f08",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/SHA256SUMS.txt",
+          "size": 2126,
+          "sha256": "f640517b1286398bf7cd44a952497b911df61be0635e57014f264bd37fb4517e",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 19 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+          "size": 77785,
+          "sha256": "f20b69682b3e50e61095c9c45997fdef249d3e1cb2f1bb4ba8b0c72e85ff5572",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 1 página(s), 2075 caracteres de texto extraído",
+            "pages": 1,
+            "tagged": true,
+            "title": "Histórico de versões: Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+          "size": 2344,
+          "sha256": "f6eb3c23a6e791d0b2a1ca31e44f66467d5eafdf02959f9bc0a33b02a9e2234c",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 38 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+          "size": 266701,
+          "sha256": "5c35b1e5fcf92b883d299afa4dd368cccc3d29d29a40d8b8030a8dde37a9d126",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 130 parágrafo(s), 2 tabela(s)",
+            "paragraphs": 130,
+            "tables": 2,
+            "title": "Roteiros de conteúdo",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+          "size": 149590,
+          "sha256": "4951c85c74c9899e5451f83d69f3f1f4ed72d6de4dabe415641df0a187d8f124",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 7 página(s), 9436 caracteres de texto extraído",
+            "pages": 7,
+            "tagged": true,
+            "title": "Roteiros de conteúdo",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+          "size": 10057,
+          "sha256": "2011a39fc9fd2d31d1adb225d7772d54ac28b0f7352b87d9e5347e77e7d219cd",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 254 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+          "size": 263898,
+          "sha256": "fd3b621a08ae74e3677a2f70c8abf6b2262598dd5e2dbd96804dd1768e72b14a",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 29 parágrafo(s), 5 tabela(s)",
+            "paragraphs": 29,
+            "tables": 5,
+            "title": "Guia rápido Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+          "size": 102010,
+          "sha256": "cc556224a4a25c1572f5d33aec623b31ed1cfc08f7da3f2edc4df37dde383c48",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 3 página(s), 4320 caracteres de texto extraído",
+            "pages": 3,
+            "tagged": true,
+            "title": "Guia rápido Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+          "size": 459665,
+          "sha256": "3c353989876cd043d2d61cfb29403d6299cee7fdb06e50fd6239edb90fd86117",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 578 parágrafo(s), 18 tabela(s)",
+            "paragraphs": 578,
+            "tables": 18,
+            "title": "Manual Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+          "size": 591724,
+          "sha256": "9d57680328840ff0dcde62b1dfcef7729a033b52969af3a56352ee862b0b7e69",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 39 página(s), 75043 caracteres de texto extraído",
+            "pages": 39,
+            "tagged": true,
+            "title": "Manual Vendas na Prática",
+            "lang": "pt-BR"
+          },
+          "anchors": {
+            "acompanhamento": 13,
+            "atendimento": 30,
+            "indicador": 20,
+            "melhoria": 15,
+            "proposta": 88
+          },
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+          "size": 274341,
+          "sha256": "408118c7610aa46e429f325a6fc9ae56edcf33eab5a4d571857527612236857b",
+          "kind": "docx",
+          "open": {
+            "ok": true,
+            "detail": "DOCX 306 parágrafo(s), 2 tabela(s)",
+            "paragraphs": 306,
+            "tables": 2,
+            "title": "Mensagens de venda e acompanhamento",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+          "size": 237334,
+          "sha256": "5619e92501c03b8e673e5ff2e4655585a26b3c3eecdd993be6db22f3294d2702",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 17 página(s), 30598 caracteres de texto extraído",
+            "pages": 17,
+            "tagged": true,
+            "title": "Mensagens de venda e acompanhamento",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+          "size": 30836,
+          "sha256": "3065411615983075795fc305ccc972b89d07530be0811f0bfcfd952d4e747b85",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 679 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+          "size": 110769,
+          "sha256": "3cdbbb205217d4ba8b59e6d17cd1919b05f1efb96c18435f6d803ae6cad12e42",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 7 aba(s), 3498 fórmula(s)",
+            "sheets": [
+              "Instruções",
+              "Produtos e Serviços",
               "Oportunidades",
               "Indicadores",
-              "Calendario",
-              "Exemplo"
+              "Clientes e Retornos",
+              "Agenda e Faltas",
+              "Calendário"
             ],
-            "formulas": 32,
+            "formulas": 3498,
             "literal_errors": 0,
             "recalc": {
               "status": "PASS",
@@ -687,6 +1414,111 @@
               "errors": 0,
               "examples": []
             }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+          "size": 108504,
+          "sha256": "1fdb41eb727b146ee6e6a8e3aaaa6c4c7d9fc903fec123abfd419afc61d17be7",
+          "kind": "xlsx",
+          "open": {
+            "ok": true,
+            "detail": "XLSX 7 aba(s), 3501 fórmula(s)",
+            "sheets": [
+              "Instruções",
+              "Produtos e Serviços",
+              "Oportunidades",
+              "Indicadores",
+              "Clientes e Retornos",
+              "Agenda e Faltas",
+              "Calendário"
+            ],
+            "formulas": 3501,
+            "literal_errors": 0,
+            "recalc": {
+              "status": "PASS",
+              "engine": "LibreOffice headless",
+              "errors": 0,
+              "examples": []
+            }
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+          "size": 786,
+          "sha256": "931c2f265f0c6a9518b1376b3b83ef23b1d3b32313d0ae57553afc85625499c8",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 13 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/OFL-Archivo.txt",
+          "size": 4481,
+          "sha256": "393a694c7dee6694a22c73049e95cea5d0808697a872c435862d33c0afc67091",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+          "size": 4524,
+          "sha256": "b5b7a8bc1e0e92be9b64abd8abd92659488733aa5be8d982bc872c36dac73f08",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 93 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "SHA256SUMS.txt",
+          "size": 5692,
+          "sha256": "949f306f07d04b73a67e4294a4fecf9364eccfb4097bb8bfc182e84c1c691f14",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 44 linha(s)"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.pdf",
+          "size": 86351,
+          "sha256": "61a69a9dcf0cff41deb1a4898e9faaf50e9941b67d820686bb5310b24837482d",
+          "kind": "pdf",
+          "open": {
+            "ok": true,
+            "detail": "PDF 2 página(s), 1986 caracteres de texto extraído",
+            "pages": 2,
+            "tagged": true,
+            "title": "Histórico de versões: Combo IA + Vendas",
+            "lang": "pt-BR"
+          },
+          "anchors": {},
+          "quality_hits": []
+        },
+        {
+          "path": "ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.txt",
+          "size": 2067,
+          "sha256": "46631479fa9b5069776376b9e31e4d86da6ce5e25989415c0b925b93e878e912",
+          "kind": "txt",
+          "open": {
+            "ok": true,
+            "detail": "TXT UTF-8, 42 linha(s)"
           },
           "anchors": {},
           "quality_hits": []
