@@ -18,11 +18,11 @@ const DELIVERY = SUPPORT_DELIVERY_ANSWER;
 const REFUND = SUPPORT_REFUND_ANSWER;
 
 export const SUPPORT_PRODUCTS = Object.freeze({
-  "ia-na-pratica": { name: "IA na Prática", price_brl: 197, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
-  "vendas-na-pratica": { name: "Vendas na Prática", price_brl: 197, content: "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com clareza de próxima ação." },
-  "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 247, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
-  "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 297, content: "Reúne IA na Prática e Vendas na Prática completos: os dois treinamentos, que se complementam e podem ser usados de forma independente." },
-  "negocio-completo": { name: "Negócio Completo", price_brl: 397, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
+  "ia-na-pratica": { name: "IA na Prática", price_brl: 147, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
+  "vendas-na-pratica": { name: "Vendas na Prática", price_brl: 147, content: "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com clareza de próxima ação." },
+  "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 197, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
+  "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 247, content: "Reúne IA na Prática e Vendas na Prática completos: os dois treinamentos, que se complementam e podem ser usados de forma independente." },
+  "negocio-completo": { name: "Negócio Completo", price_brl: 347, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
   "conteudo-pronto": { name: "Conteúdo Pronto (assinatura mensal)", price_brl: 197, content: "Serviço mensal automático: depois da confirmação do pagamento, você responde um formulário curto e recebe por e-mail, em minutos, 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail, para canais autorizados pelos seus clientes, como e-mail, Instagram Direct, Telegram ou chat do site) e um calendário de 30 dias, no tom do seu negócio. Você revisa antes de usar; não há disparo automático. Renovação mensal automática, sem fidelidade: cancele quando quiser." },
 });
 

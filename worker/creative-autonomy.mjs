@@ -17,11 +17,11 @@ const money=v=>Number(Number(v||0).toFixed(2));
 // and again right before publication.
 export const SALES_ORIGIN="https://vendas.zevanory.api.br";
 export const ZEV_CREATIVE_CATALOG=Object.freeze({
- "ZEV-IA-011":Object.freeze({slug:"ia-na-pratica",name:"IA na Prática",price_brl:197}),
- "ZEV-VEN-011":Object.freeze({slug:"vendas-na-pratica",name:"Vendas na Prática",price_brl:197}),
- "ZEV-LCX-011":Object.freeze({slug:"lucro-e-caixa",name:"Lucro & Caixa",price_brl:247}),
- "ZEV-CMB-011":Object.freeze({slug:"combo-ia-vendas",name:"Combo IA + Vendas",price_brl:297}),
- "ZEV-NGC-011":Object.freeze({slug:"negocio-completo",name:"Negócio Completo",price_brl:397})
+ "ZEV-IA-011":Object.freeze({slug:"ia-na-pratica",name:"IA na Prática",price_brl:147}),
+ "ZEV-VEN-011":Object.freeze({slug:"vendas-na-pratica",name:"Vendas na Prática",price_brl:147}),
+ "ZEV-LCX-011":Object.freeze({slug:"lucro-e-caixa",name:"Lucro & Caixa",price_brl:197}),
+ "ZEV-CMB-011":Object.freeze({slug:"combo-ia-vendas",name:"Combo IA + Vendas",price_brl:247}),
+ "ZEV-NGC-011":Object.freeze({slug:"negocio-completo",name:"Negócio Completo",price_brl:347})
 });
 export const DEFAULT_CREATIVE_OFFER="ZEV-IA-011";
 const offerKey=v=>String(v||"").trim().toUpperCase();

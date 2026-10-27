@@ -35,8 +35,8 @@ FROZEN_ORDER = 'a28c53ab-9ce7-429d-9d6b-1311a3fad406'
 OUT = pathlib.Path('evidence/mercadopago-combo-sandbox.json')
 # Canonical public catalog: same SKU -> table price as the sales page and the
 # certification resolver. The proof runs one SKU per dispatch (SANDBOX_OFFER_ID).
-SANDBOX_OFFERS = {'ZEV-IA-011': 197, 'ZEV-VEN-011': 197, 'ZEV-LCX-011': 247,
-                  'ZEV-CMB-011': 297, 'ZEV-NGC-011': 397}
+SANDBOX_OFFERS = {'ZEV-IA-011': 147, 'ZEV-VEN-011': 147, 'ZEV-LCX-011': 197,
+                  'ZEV-CMB-011': 247, 'ZEV-NGC-011': 347}
 DEFAULT_OFFER = 'ZEV-CMB-011'
 # Digest of each SKU's private deliverable (catalog artifact_sha256): the proof
 # must download exactly the purchased product, not just any intact file.
