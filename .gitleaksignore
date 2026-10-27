@@ -1,77 +1,120 @@
-# Reviewed 2026-10-02. Exact historical false-positive fingerprints only.
-# No rule-wide or path-wide suppression. New findings remain fatal.
-04e9b9c9159db16df436916f8b744b7c5e1e33f6:evidence/final-closure/1162a5844a16/control.json:generic-api-key:1
-7cc8080de1fb05b89c2369e7ffb9fb7cd7514a89:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
-974c16eb01025f0498f33f1b2bf21dc9406d9281:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
-04e9b9c9159db16df436916f8b744b7c5e1e33f6:evidence/final-closure/1162a5844a16/core.json:generic-api-key:1
-c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:55
-c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:130
+# Exact gitleaks fingerprints (commit:file:rule:line) of reviewed non-secrets only.
+# No rule-wide, path-wide or regex suppression. New findings remain fatal.
+# Every entry MUST have a row in docs/security/secret-scan-baseline.md (enforced by
+# tests/test_secret_history_scan_workflow.py). Reviewed 2026-10-02 / 2026-10-08 and
+# re-reviewed 2026-10-27 (T5) with gitleaks v8.30.1 --redact on a fresh full clone.
+# The 8 stale 2026-10-02 entries for commit 20247ab2 (no longer reported) were removed.
+
+# C1 Env-var reference
 9e917e36620b72c1803a953738b6d869ae98ac08:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:55
+c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:55
+2ab3f9bb2ac9044625b74b0120d9432508200b05:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:86
+4b73b1ee4669b1c95a9b18f1b724cb4d82549d11:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:86
 9e917e36620b72c1803a953738b6d869ae98ac08:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:130
-c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
-c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
-59ded1db1fc4bfb51353b0e0f56b43c1c8ba18a9:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
-59ded1db1fc4bfb51353b0e0f56b43c1c8ba18a9:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
-8700285ba1a0a240deef9c779d9fb20f79c66500:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
-8700285ba1a0a240deef9c779d9fb20f79c66500:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
-39d4e583dd1458bc268722eb7f1de61eb9576b66:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:67
-90336ddeffbbc3666368356502fdefc05b7d6d8f:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:67
-7a488a8ad1998abb4e906b3cb566eea98d400d64:test/meta-oauth.test.mjs:generic-api-key:5
-9b4175ecf4c1bc4f53b1a58c444aa5a214d0dc9e:scripts/audit-seo-50x.mjs:generic-api-key:44
-8b82973ab375ccda05078ce505d080af37d3d85a:evidence/EG-0021-dominio-publicado-verificacao-vercel.md:generic-api-key:16
-0b54a9d7d68b2062d90678548e3954650e4dda21:evidence/EG-0022-vercel-ownership-txt.md:generic-api-key:16
-3ec9f421648fb8b5f645b3dd23e2ba756815342f:ZEVANORY_MASTER.md:generic-api-key:45
+c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:130
 0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:75
 0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:110
+3092b79f99f61e77666a797330d9b5ce4aadfeee:docs/security/secret-scan-baseline.md:curl-auth-user:109
 
-# Reviewed 2026-10-08: no live credential in history. Each entry is a verified false positive.
-# synthetic test fixture
-37b6e4b3badec47b037a3086f4141b2903142cbc:tests/post-sale.test.mjs:generic-api-key:25
-# synthetic test fixture
-3b8e641875fc07bd3c6eda8712c7fe23891c7e2e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
-# SHA-256 digest, not a credential
-9489f3b197441aac5563a9e3505cc6280f33c9b7:worker/sandbox-proof-v2.mjs:generic-api-key:14
-# synthetic test fixture
-cdeb9847df8f8af36093dc4a2dde3f4bc61d374d:tests/lead-magnet.test.mjs:generic-api-key:31
-# synthetic test fixture
-cdeb9847df8f8af36093dc4a2dde3f4bc61d374d:tests/reviews.test.mjs:generic-api-key:21
-# IndexNow key is public by protocol (served at /<key>.txt)
-f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:17
-# IndexNow key is public by protocol (served at /<key>.txt)
-f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:32
-
-# Reviewed 2026-10-08: findings on non-production branches (all refs scan). No live credential.
-# env var reference ($STRIPE_SECRET_KEY), not a value
-20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:134
-# env var reference ($STRIPE_SECRET_KEY), not a value
-20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:59
-# idempotency key, not a credential
-20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:290
-# idempotency key, not a credential
-20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:302
-# local CI mock server credential (127.0.0.1)
-20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
-# idempotency key, not a credential
-20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:95
-# synthetic test fixture
-20247ab29fdadcbba260013a6bc04d0a250cebad:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
-# SHA-256 digest, not a credential
-20247ab29fdadcbba260013a6bc04d0a250cebad:worker/sandbox-proof-v2.mjs:generic-api-key:17
-# SHA-256 digest, not a credential
-47b4301366ce0f63bba0a3edddffce6ebc44bfc0:worker/sandbox-proof-v2.mjs:generic-api-key:14
-# synthetic test fixture
-4b56f6447d8f362353b17ee27f7bd7bfa548c712:scripts/voice_render_client_test.mjs:generic-api-key:4
-# synthetic test fixture
-6cd301b238f46a15db3efc24134937c223394c46:tests/post-sale.test.mjs:generic-api-key:25
-# synthetic test fixture
-6d35b4741a1b8c6f4afcff79366c21b9d1712ada:scripts/voice_render_client_test.mjs:generic-api-key:4
-# synthetic test fixture
-d7a878ec8d4532e5e3d6e3372668aae049a3bb67:tests/reviews.test.mjs:generic-api-key:21
-# IndexNow key is public by protocol
+# C2 IndexNow key (public by design)
 ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml:generic-api-key:17
-# IndexNow key is public by protocol
+f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:17
 ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml:generic-api-key:32
-# synthetic test fixture
+f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:32
+2d1881dfe51a1004fe4888191ff4cbc51b9ee138:.github/workflows/indexnow-submit.yml:generic-api-key:21
+fbeec343292e9c17a6084e672bc41defb7b8a28d:.github/workflows/indexnow-submit.yml:generic-api-key:21
+9b4175ecf4c1bc4f53b1a58c444aa5a214d0dc9e:scripts/audit-seo-50x.mjs:generic-api-key:44
+
+# C3 Resend API key fixture
+36f1dfa8a941b24f1d52d8188f0fe33ca0a649dd:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:39
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:39
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:39
+36f1dfa8a941b24f1d52d8188f0fe33ca0a649dd:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:53
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:53
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:53
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:111
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/integration/lead-magnet-postgres.test.mjs:generic-api-key:111
+cdeb9847df8f8af36093dc4a2dde3f4bc61d374d:tests/lead-magnet.test.mjs:generic-api-key:31
 f2523167c479ca601f1bc2b7d6ecd07b8e621431:tests/lead-magnet.test.mjs:generic-api-key:31
-# synthetic test fixture
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/lead-magnet.test.mjs:generic-api-key:72
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/lead-magnet.test.mjs:generic-api-key:72
+4d364561a5206640daad235d2512a5dbcc0b8405:tests/lead-magnet.test.mjs:generic-api-key:223
+c6089cd77e0753d23cd5f83f268e877fe24f1f61:tests/lead-magnet.test.mjs:generic-api-key:223
+79261985feed396f1c6bd30c4fd57c5e2f2df439:tests/p09-nurture-sequence.test.mjs:generic-api-key:143
+e9c4cc0717637d402f3919b4ca6c61e4610dff4d:tests/p09-nurture-sequence.test.mjs:generic-api-key:143
+37b6e4b3badec47b037a3086f4141b2903142cbc:tests/post-sale.test.mjs:generic-api-key:25
+6cd301b238f46a15db3efc24134937c223394c46:tests/post-sale.test.mjs:generic-api-key:25
+cdeb9847df8f8af36093dc4a2dde3f4bc61d374d:tests/reviews.test.mjs:generic-api-key:21
+d7a878ec8d4532e5e3d6e3372668aae049a3bb67:tests/reviews.test.mjs:generic-api-key:21
+
+# C4 Webhook/HMAC test secret
+d6ff5f5f68b10df8d1e720071527f64cc8058525:tests/helpers/support-drain-scheduled-probe.mjs:generic-api-key:9
+36f4e2d6b1d7bb3b272ad8e57ef1276a3e08506b:tests/helpers/support-drain-scheduled-probe.mjs:generic-api-key:12
+7ab8de28bc90ca40c1d2c83255ecb6dcf44fb52a:tests/integration/support-outbox-postgres.test.mjs:generic-api-key:77
+becd10f5019cab167f35f5eebe1a98f246f441a7:tests/integration/support-outbox-postgres.test.mjs:generic-api-key:77
+d6ff5f5f68b10df8d1e720071527f64cc8058525:tests/support-email-forward.test.mjs:generic-api-key:643
+88372c53e4646f4b5ca1936b0828c191fd32de22:tests/support-email-forward.test.mjs:generic-api-key:651
+36f4e2d6b1d7bb3b272ad8e57ef1276a3e08506b:tests/support-email-forward.test.mjs:generic-api-key:671
+979c129657cd7e465baefa6fab78545affa3a1b5:tests/support-email-forward.test.mjs:generic-api-key:671
+
+# C5 TikTok client secret fixture
+0936186df774fcf736a5a1381daff32e523886e3:tests/owner-oauth-tiktok.test.mjs:generic-api-key:15
+dc96670b84cd591b9f6129e9f3ac62662aa59e80:tests/owner-oauth-tiktok.test.mjs:generic-api-key:15
+0936186df774fcf736a5a1381daff32e523886e3:tests/short-crosspost.test.mjs:generic-api-key:11
+dc96670b84cd591b9f6129e9f3ac62662aa59e80:tests/short-crosspost.test.mjs:generic-api-key:11
+
+# C6 Mercado Pago canary
+f47b1f42bf900869a85749dbec572001198e3f74:tests/test_mp_rotation_workflow.py:generic-api-key:405
+f59b28ef58a700fdd973ddccae77bda26789248a:tests/test_mp_rotation_workflow.py:generic-api-key:405
+
+# C7 Test event id
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:47
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:47
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:54
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:54
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:90
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:90
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:92
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:92
+191fa91fc019cb7f23490099e552be6905c2bddd:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:95
+2fa5ea9c7d9ae621e939f99a50b490d35679a621:tests/integration/psp-dlq-alert-postgres.test.mjs:generic-api-key:95
+
+# C8 GitHub Action commit SHA pin
+84cab02ced8f8c67e6814801aee1d6bf10b59bbd:tests/workflow-node24-pins.test.mjs:generic-api-key:17
+
+# C9 Idempotency key
+59ded1db1fc4bfb51353b0e0f56b43c1c8ba18a9:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
+8700285ba1a0a240deef9c779d9fb20f79c66500:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
+c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
+59ded1db1fc4bfb51353b0e0f56b43c1c8ba18a9:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
+8700285ba1a0a240deef9c779d9fb20f79c66500:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
+c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
+39d4e583dd1458bc268722eb7f1de61eb9576b66:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:67
+90336ddeffbbc3666368356502fdefc05b7d6d8f:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:67
+
+# C10 Local CI mock credential
+7cc8080de1fb05b89c2369e7ffb9fb7cd7514a89:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
+974c16eb01025f0498f33f1b2bf21dc9406d9281:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
+
+# C11 Vercel domain-verification TXT (public DNS)
+3ec9f421648fb8b5f645b3dd23e2ba756815342f:ZEVANORY_MASTER.md:generic-api-key:45
+8b82973ab375ccda05078ce505d080af37d3d85a:evidence/EG-0021-dominio-publicado-verificacao-vercel.md:generic-api-key:16
+0b54a9d7d68b2062d90678548e3954650e4dda21:evidence/EG-0022-vercel-ownership-txt.md:generic-api-key:16
+
+# C12 Check identifier in evidence JSON
+04e9b9c9159db16df436916f8b744b7c5e1e33f6:evidence/final-closure/1162a5844a16/control.json:generic-api-key:1
+04e9b9c9159db16df436916f8b744b7c5e1e33f6:evidence/final-closure/1162a5844a16/core.json:generic-api-key:1
+
+# C13 SHA-256 digest
+47b4301366ce0f63bba0a3edddffce6ebc44bfc0:worker/sandbox-proof-v2.mjs:generic-api-key:14
+9489f3b197441aac5563a9e3505cc6280f33c9b7:worker/sandbox-proof-v2.mjs:generic-api-key:14
+
+# C14 Synthetic test fixture
+4b56f6447d8f362353b17ee27f7bd7bfa548c712:scripts/voice_render_client_test.mjs:generic-api-key:4
+6d35b4741a1b8c6f4afcff79366c21b9d1712ada:scripts/voice_render_client_test.mjs:generic-api-key:4
+3b8e641875fc07bd3c6eda8712c7fe23891c7e2e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
 fecd365a8d3e8b8a01681e38692e37e47cfc622e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
+7a488a8ad1998abb4e906b3cb566eea98d400d64:test/meta-oauth.test.mjs:generic-api-key:5
+
+# C15 CI negative-proof fake (PR #950)
+cf033a872b91c83b7c95a119c1d36346a309f100:tests/fixtures/t5-negative-proof/fake-secret.txt:generic-api-key:3
