@@ -115,6 +115,19 @@ test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato
   assert.equal(built.match(/<div data-field="caracteristicas"><dt>[^<]*<\/dt><dd>([^<]*)<\/dd>/)?.[1], CANONICAL, "Resumo da oferta gerado = texto canônico");
   assert.equal(built.match(/data-content-schema="(\d+)"/)?.[1], String(C.content_schema_version));
   assert.doesNotMatch(noAsset(openSalesHtml(built, "conteudo-pronto")), WA, "modo aberto (runtime) sem WhatsApp");
+  // P24 CP-10/CP-13/CP-09/CP-18: recibo do hero = roteiros multicanal; prazo realista; validade do link declarada;
+  // nenhuma garantia de "qualidade" ligada a vendas (CDC art. 37 §1). Vale para a fonte e para a página gerada.
+  const receipt = built.match(/<div class="hero-panel receipt">[\s\S]*?<\/ul>/)?.[0] || "";
+  assert.ok(receipt.includes(`${C.roteiros} roteiros multicanal de venda e acompanhamento`), "[p24-recibo] recibo do hero com roteiros multicanal");
+  for (const [rel, html] of [["conteudo-pronto/index.html", read("conteudo-pronto/index.html")], ["sales-public/conteudo-pronto.html", built]]) {
+    assert.doesNotMatch(html, /4 mensagens/, "[p24-recibo] " + rel);
+    assert.doesNotMatch(html, /garante constância|base para vender mais/, "[p24-garantia] " + rel);
+    assert.doesNotMatch(html, /<li>Em poucos minutos/, "[p24-prazo] " + rel);
+    assert.match(html, /tenta de novo automaticamente a cada hora/, "[p24-prazo] " + rel);
+    assert.doesNotMatch(html, /consultar quando quiser/, "[p24-link] " + rel);
+    assert.match(html, /disponível por 120 dias/, "[p24-link] " + rel);
+  }
+  assert.match(read("worker/content-service.mjs"), /expirationTtl: 120 \* DAY|, 120\)/, "[p24-link] a validade declarada é a do token do pacote");
   for (const rel of ["kit-afiliado/index.html", "sales-public/kit-afiliado.html", "sales-overlay/llms.txt", "sales-public/llms.txt"]) {
     const lines = read(rel).split(/<li>|\n/).filter((l) => l.includes("Conteúdo Pronto") && /12 posts/.test(l));
     assert.ok(lines.length >= 1, rel);
