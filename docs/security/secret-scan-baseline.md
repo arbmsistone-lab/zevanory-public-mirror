@@ -47,12 +47,37 @@ or if a row here is not in `.gitleaksignore`.
   - `tests/helpers/order-lookup-probe.mjs` was confirmed synthetic by the external
     auditor (Sol, ORDEM 293).
 
-## Fail-closed guarantees of the scan job
+## Fail-closed guarantees of the scan
+
+All of the scan logic lives in **`scripts/ci/secret_scan.py`**: standard library only,
+pinned byte-for-byte by the contract test. Both the scan job (`full-history`, all
+refs) and the base-controlled protected job (`pr-head`) run it.
+
+- **Verified tools, every time.**
+  - Each scanner is downloaded from its exact release URL, and the tarball SHA-256
+    is checked.
+  - The extracted binary's SHA-256 is checked at install, **and again immediately
+    before every invocation**.
+  - Binaries are run by absolute path, never through PATH, with `shell=False`.
+  - They get a minimal environment: `PATH=/usr/bin:/bin`, a private HOME/TMPDIR,
+    and only proxy/TLS variables passed through. No tokens, no `GIT_*` overrides,
+    no `GITLEAKS_*`, no `BASH_ENV`, no `LD_*`.
+  - git is `/usr/bin/git`.
+  - A tool replaced after install fails with `binary SHA-256 mismatch (substituted
+    tool)`. The harness proves this for both binaries.
+- **Reports cannot be supplied from outside.** Reports are written to a private
+  `mkdtemp` directory created by the driver, which is deleted afterwards. They
+  must exist and parse as a list, agree with the exit code, and contain only
+  findings whose commit belongs to the scanned history.
+- **Repository gitleaks configuration is refused:** `.gitleaks*` (except the root
+  `.gitleaksignore`) and `*gitleaks*.toml`, in the working tree and in the scanned
+  tree.
 
 - **History coverage.**
   - The clone must not be shallow.
-  - Every branch head reported by `git ls-remote --heads origin` must be present
-    locally. Heads created after checkout are fetched once and re-checked.
+  - In `full-history` mode, every branch head reported by
+    `git ls-remote --heads origin` must be present locally. Heads created after
+    checkout are fetched once and re-checked.
   - Otherwise the job fails with `HISTORY_INCOMPLETE`.
   - This applies to pull_request, to the push on gh-pages after merge, and to the
     daily schedule.
@@ -115,7 +140,7 @@ or if a row here is not in `.gitleaksignore`.
 ## Contract protection
 
 - **Byte-for-byte pins.** `tests/test_secret_history_scan_workflow.py` pins the
-  SHA-256 of all three secret-scan workflows. The only normalisation is the
+  SHA-256 of the three secret-scan workflows **and of `scripts/ci/secret_scan.py`**. The only normalisation is the
   self-referential test-hash and test-count lines. Any edit fails, including:
   - a run block, an added line, or a `continue-on-error`;
   - an `env:` (for example `PATH` or `BASH_ENV`);
@@ -126,8 +151,11 @@ or if a row here is not in `.gitleaksignore`.
   - exact step list;
   - `env:` only on the contract step (`PYTHONDONTWRITEBYTECODE`);
   - no `GITHUB_PATH`/`GITHUB_ENV`/`BASH_ENV`/`GITHUB_OUTPUT`;
-  - exact scanner command lines;
-  - scanners invoked by absolute path.
+  - the exact driver command line;
+  - AST checks on the driver: only `/usr/bin/git` or the verified binary path is
+    executed, `verify_binary` is the first statement before the single scanner
+    invocation, no `shell=True`/`os.system`, every subprocess gets the clean env,
+    and the release URLs and tarball digests are pinned.
 - **Where the test runs.**
 
   | Where | Role |
@@ -140,30 +168,54 @@ or if a row here is not in `.gitleaksignore`.
   together (mutation O19). The protected run catches that. **Changing the scan, its
   workflows or the test therefore requires the owner,** who must bypass the
   required protected check after review.
-- **How the protected run works (GitHub Security Lab, "Preventing pwn
-  requests").**
-  - `pull_request_target` takes its workflow definition from the base branch.
-  - Only the base SHA is checked out with `actions/checkout`, and only base code
-    runs (`cd base`, `python3 -P`, pyyaml installed into `$RUNNER_TEMP`).
-  - The PR head is **not** checked out with `actions/checkout`, which refuses fork
-    heads under `pull_request_target`. Instead, the head commit is fetched **by
-    SHA** (`git fetch --depth=1 <repo> <head.sha>`) into a separate bare
-    repository, and written to `./pr` with `read-tree`/`checkout-index`. This
-    involves no hooks, no filters, no `export-ignore` and no submodules.
-  - The files in `./pr` are only parsed (`yaml.BaseLoader`) or read as text;
-    symlinks are refused, and the tree walk does not follow links.
-  - Permissions are `contents: read`; no secrets; no token persisted. The only
-    `${{ }}` values passed are `base.sha`, `head.sha` (checked against
-    `^[0-9a-f]{40}$`) and `github.repository`, and they go through `env:`/`with:`,
-    never interpolated into `run:`.
-  - This works for fork PRs: GitHub exposes fork heads as `refs/pull/N/head` in
-    the base repository, and serves fetches by SHA.
-    - Proven on GitHub itself: an `actions/checkout` PR head SHA that is on no
-      branch was fetched by SHA into an empty bare repository.
-    - Proven in a local fork simulation that runs the workflow's own run blocks,
-      with the head only reachable via `refs/pull/1/head`: an unchanged PR passes;
-      a mutated workflow, a gutted and re-hashed test, a symlinked workflow, a
-      `.gitleaks.toml` or a `*gitleaks*.toml` fails.
+- **Base-controlled verdict, end to end (Sol ORDEM 295).** The protected job
+  (`pull_request_target`; the workflow definition comes from the base branch) does
+  two things, both with **base code only**:
+  1. **Judge the PR's scan files.** The base copy of the test reads the PR tree as
+     data (`SCAN_CONTRACT_ROOT`).
+  2. **Scan the PR head independently.** It runs
+     `python3 -I base/scripts/ci/secret_scan.py pr-head --ignore base/.gitleaksignore`.
+     - This means the base driver, the base pins, and the base ignore list.
+     - It covers the full history of the PR head: commits and merges
+       (remerge-diff) with exact counts, plus TruffleHog `--only-verified`.
+     - A PR that changes the scanner, its driver or its ignore file cannot change
+       this verdict.
+     - A PR that adds a new fingerprint fails until the owner reviews it.
+- **How the PR head is fetched.**
+  - It is fetched **by SHA** into a separate repository (`$RUNNER_TEMP/pr-repo`)
+    with `git fetch "+$HEAD_SHA:refs/heads/pr-head"`.
+  - That repository's worktree is never checked out. Only an index is written
+    (`read-tree`), because TruffleHog needs one.
+  - Its tree is written to `./pr` with `checkout-index`, for the contract to read.
+  - This involves no hooks, filters, submodules or LFS, and no `actions/checkout`
+    of PR code, so fork heads work.
+  - Permissions are `contents: read`, with no secrets.
+  - The only `${{ }}` values passed are `base.sha`, `head.sha` (checked against
+    `^[0-9a-f]{40}$`) and `github.repository`. They go through `with:`/`env:`.
+- **Data-only rule, enforced by the contract.**
+  - Any line of the protected workflow that mentions the PR paths (`pr-repo`,
+    `$GITHUB_WORKSPACE/pr`, `head.sha`) must be one of an exact allowlist of
+    fetch, read and data-passing lines.
+  - No command word may be a PR path.
+  - `uses:` is limited to the base `actions/checkout` pin: no local or PR actions,
+    no `allow-unsafe-pr-checkout`, no `working-directory`.
+  - Step `env:` keys are limited to `HEAD_SHA`, `REPO_URL` and
+    `PYTHONDONTWRITEBYTECODE`.
+- **Fork-PR evidence.**
+  - **On GitHub:** a PR head SHA from `actions/checkout` that is on no branch was
+    fetched by SHA.
+  - **Local fork simulation** (head reachable only via `refs/pull/1/head`), running
+    the workflow's own run blocks with the base driver; TruffleHog stubbed, real
+    gitleaks:
+    - a clean PR passes;
+    - a planted key fails;
+    - an evil merge fails;
+    - a planted key together with a forged PR driver (M4b, C1) or a gutted test
+      (O19) **still fails in the base verdict alone**, even with the contract step
+      skipped.
+  - **On the real gh-pages tip, as a PR head:** 742 = 742 commits, 0 merges, 0
+    findings.
+
 - **None of these workflows has a path or branch filter, or a job-level `if:`.**
   A required check therefore always reports a real result, never "skipped" and
   never "pending".

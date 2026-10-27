@@ -1,19 +1,20 @@
 """Contract for the public full-history secret scan (T5).
 
-The three secret-scan workflows are pinned byte-for-byte: SHA-256 of the file after
-normalising only the self-referential test-hash and test-count lines. Any edit to a
-run block, env, step, trigger or comment fails. Structural checks below make the
-intent readable and give precise failure messages.
+Pins byte-for-byte (SHA-256) the three secret-scan workflows and the scanner driver
+scripts/ci/secret_scan.py; only the workflows' self-referential test-hash/test-count
+lines are normalised. Structural checks below state the intent with precise messages.
 
-Runs (1) as an early step of the scan job and (2) in secret-scan-contract.yml, both on
-the PR's own checkout (tamper-evident: the workflow first checks this file's SHA-256,
-but a PR can change both), and (3) in secret-scan-contract-protected.yml, where THIS
-file comes from the base branch, SCAN_CONTRACT_ROOT points at the PR tree (data only),
-and the PR's copy of this file must be identical to the base copy. Changing the scan,
-its workflows or this test therefore needs the owner (bypass of the protected check).
+Runs (1) in the scan job and (2) in secret-scan-contract.yml on the PR's own checkout
+(tamper-evident: the test file's SHA-256 is checked first, but a PR can change both),
+and (3) in secret-scan-contract-protected.yml, where THIS file comes from the base
+branch, SCAN_CONTRACT_ROOT points at the PR tree (data only), and the PR's copy of this
+file must equal the base copy. That workflow also runs the BASE scanner driver on the
+PR head, so the verdict never depends on PR-controlled code. Changing the scan, its
+workflows, the driver or this test therefore needs the owner (bypass after review).
 
-Offline. Files under SCAN_CONTRACT_ROOT are only parsed (yaml.BaseLoader) or read as text.
+Offline. Files under SCAN_CONTRACT_ROOT are only parsed (yaml.BaseLoader / ast) or read.
 """
+import ast
 import hashlib
 import os
 import pathlib
@@ -28,6 +29,7 @@ WF_DIR = ROOT / '.github' / 'workflows'
 WORKFLOW = WF_DIR / 'secret-history-scan.yml'
 CONTRACT_WF = WF_DIR / 'secret-scan-contract.yml'
 PROTECTED_WF = WF_DIR / 'secret-scan-contract-protected.yml'
+DRIVER = ROOT / 'scripts' / 'ci' / 'secret_scan.py'
 IGNORE = ROOT / '.gitleaksignore'
 BASELINE = ROOT / 'docs' / 'security' / 'secret-scan-baseline.md'
 THIS_TEST = 'tests/test_secret_history_scan_workflow.py'
@@ -35,52 +37,32 @@ FINGERPRINT = re.compile(r'^[0-9a-f]{40}:[^:\s]+:[a-z0-9-]+:[0-9]+$')
 TEST_HASH_LINE = re.compile(r'[0-9a-f]{64}  tests/test_secret_history_scan_workflow\.py')
 TEST_COUNT_LINE = re.compile(r'Ran [0-9]+ tests in \.\*')
 
-# SHA-256 of each workflow after normalise(). Update deliberately (owner review).
+# SHA-256 after normalise(). Update deliberately (owner review).
 PINNED_FILES = {
-    'scan': 'secret-history-scan.yml',
-    'contract': 'secret-scan-contract.yml',
-    'protected': 'secret-scan-contract-protected.yml',
+    'scan': '.github/workflows/secret-history-scan.yml',
+    'contract': '.github/workflows/secret-scan-contract.yml',
+    'protected': '.github/workflows/secret-scan-contract-protected.yml',
+    'driver': 'scripts/ci/secret_scan.py',
 }
 PINNED_SHA256 = {
-    'scan': '429d4dddafefdcf2e33cd6a2bff855fd31b49e11baf1099fa68947fb03a6ecf4',
+    'scan': '87880f3067a620cd65825d2e0cb8687ca0a07624f2fb6417ea16da878f697d98',
     'contract': 'ff8980b8f811d8ab33dcbccb748253d77d8a913342a3995ee695efde3620416c',
-    'protected': 'cc1cbd6a29e6bf8973c702bd3750c392edd2bd605862286bc1065f4b4a4c4941',
+    'protected': '65aaf3b0631dfff9f68e55a26aa173ec0101639ca084aef4f28379acb6b11ae4',
+    'driver': '8e9177d8419d8288fcab869824987330305c674f9870aee65d547a1d43d5cff8',
 }
-
-STEP_ORDER = [
-    'Checkout complete history',
-    'Verify complete Git history',
-    'Secret scan contract (offline)',
-    'Install pinned scanners (checksum-verified)',
-    'Refuse repository gitleaks configuration',
-    'Gitleaks full-history scan',
-    'Gitleaks merge-commit scan (remerge-diff)',
-    'TruffleHog verified full-history scan',
-    'Consolidate secret scan',
-    'Upload sanitized evidence',
-]
-ACTION_PINS = {
-    'Checkout complete history': 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
-    'Upload sanitized evidence': 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
+CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+UPLOAD = 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9'
+SCAN_CMD = 'python3 -I scripts/ci/secret_scan.py full-history --repo . --ignore .gitleaksignore --out secret-scan'
+VERDICT_CMD = ('python3 -I base/scripts/ci/secret_scan.py pr-head --repo "$RUNNER_TEMP/pr-repo" --rev "$HEAD_SHA" '
+               '--ignore base/.gitleaksignore --out "$RUNNER_TEMP/verdict"')
+RELEASE_URLS = {
+    'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz',
+    'https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.2/trufflehog_3.99.2_linux_amd64.tar.gz',
 }
-ALLOWED_URLS = {
-    'https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz',
-    'https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz',
+TARBALL_SHA256 = {
+    'gitleaks': '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb',
+    'trufflehog': '3c7b0d1dc4278294269bfdd7594bca8bb28c78da0a4a06ad202ded37b48deca4',
 }
-GITLEAKS_COMMITS_CMD = (
-    '"$RUNNER_TEMP/scanners/gitleaks" git --config "$RUNNER_TEMP/gitleaks.toml" --log-opts="--all" --redact '
-    '--ignore-gitleaks-allow --no-banner --no-color --gitleaks-ignore-path .gitleaksignore '
-    '--report-format json --report-path secret-scan/gitleaks.json . 2> "$RUNNER_TEMP/gitleaks.log" || code=$?'
-)
-GITLEAKS_MERGES_CMD = (
-    '"$RUNNER_TEMP/scanners/gitleaks" git --config "$RUNNER_TEMP/gitleaks.toml" --log-opts="--all --merges --remerge-diff" '
-    '--redact --ignore-gitleaks-allow --no-banner --no-color --gitleaks-ignore-path .gitleaksignore '
-    '--report-format json --report-path secret-scan/gitleaks-merges.json . 2> "$RUNNER_TEMP/gitleaks-merges.log" || code=$?'
-)
-TRUFFLEHOG_CMD = (
-    '"$RUNNER_TEMP/scanners/trufflehog" git "file://$PWD" --only-verified --no-ignore-tag --json --no-update '
-    '> secret-scan/trufflehog.raw.jsonl 2> "$RUNNER_TEMP/trufflehog.err" || code=$?'
-)
 
 
 def read(path):
@@ -106,20 +88,19 @@ def test_names(text):
 
 
 class PinContract(unittest.TestCase):
-    def test_workflows_pinned_byte_for_byte(self):
+    def test_files_pinned_byte_for_byte(self):
         for key, pinned in PINNED_SHA256.items():
-            name = PINNED_FILES[key]
-            digest = hashlib.sha256(normalise(read(WF_DIR / name)).encode('utf-8')).hexdigest()
-            self.assertEqual(digest, pinned, f'{name} differs from the pinned version')
+            digest = hashlib.sha256(normalise(read(ROOT / PINNED_FILES[key])).encode('utf-8')).hexdigest()
+            self.assertEqual(digest, pinned, f'{PINNED_FILES[key]} differs from the pinned version')
 
     def test_test_file_hash_and_count_lines(self):
         own = read(ROOT / THIS_TEST)
         digest = hashlib.sha256(own.encode('utf-8')).hexdigest()
         count = len(test_names(own))
-        for name in ('secret-history-scan.yml', 'secret-scan-contract.yml'):
-            source = read(WF_DIR / name)
-            self.assertEqual(TEST_HASH_LINE.findall(source), [f'{digest}  tests/test_secret_history_scan_workflow.py'], name)
-            self.assertEqual(TEST_COUNT_LINE.findall(source), [f'Ran {count} tests in .*'], name)
+        for path in (WORKFLOW, CONTRACT_WF):
+            source = read(path)
+            self.assertEqual(TEST_HASH_LINE.findall(source), [f'{digest}  tests/test_secret_history_scan_workflow.py'], path.name)
+            self.assertEqual(TEST_COUNT_LINE.findall(source), [f'Ran {count} tests in .*'], path.name)
 
     def test_protected_mode_test_file_identical_to_base(self):
         if not PROTECTED_MODE:
@@ -128,94 +109,142 @@ class PinContract(unittest.TestCase):
                          'the PR must not change the contract test (owner review required)')
 
 
-class Base(unittest.TestCase):
+class ScanWorkflowContract(unittest.TestCase):
     def setUp(self):
         self.source, self.wf = load(WORKFLOW)
-        self.on = self.wf['on']
-        self.jobs = self.wf['jobs']
-        self.job = self.jobs['full-history']
-        self.steps = self.job['steps']
-        self.by_name = {s.get('name'): s for s in self.steps}
 
-    def run_of(self, name):
-        return self.by_name[name].get('run', '')
-
-
-class TriggerContract(Base):
-    def test_trigger_set_is_exact(self):
-        self.assertEqual(self.on, {'schedule': [{'cron': '23 6 * * *'}], 'push': {'branches': ['gh-pages']},
-                                   'pull_request': '', 'workflow_dispatch': ''})
-
-    def test_minimal_permissions(self):
-        self.assertEqual(self.wf.get('permissions'), {'contents': 'read'})
-        for job in self.jobs.values():
-            self.assertNotIn('permissions', job)
-        self.assertNotIn('secrets.', self.source)
-        self.assertNotRegex(self.source, r'pull_request_target|workflow_run')
-
-
-class JobIntegrityContract(Base):
-    def test_single_job_never_skipped_or_soft(self):
-        self.assertEqual(list(self.jobs), ['full-history'])
-        self.assertEqual(set(self.job), {'runs-on', 'timeout-minutes', 'steps'})
-        self.assertEqual(self.job['timeout-minutes'], '30')
-
-    def test_step_order_conditions_and_env(self):
-        self.assertEqual([s.get('name') for s in self.steps], STEP_ORDER)
-        for step in self.steps:
-            self.assertNotIn('continue-on-error', step)
-            if step['name'] == 'Upload sanitized evidence':
-                self.assertEqual(step.get('if'), 'always()')
-            else:
-                self.assertNotIn('if', step, f"step {step['name']!r} must not be conditional")
-            if step['name'] == 'Secret scan contract (offline)':
-                self.assertEqual(step.get('env'), {'PYTHONDONTWRITEBYTECODE': '1'})
-            else:
-                self.assertNotIn('env', step, f"step {step['name']!r} must not set env")
-        self.assertEqual(set(self.wf['env']), {'GITLEAKS_VERSION', 'GITLEAKS_SHA256', 'TRUFFLEHOG_VERSION', 'TRUFFLEHOG_SHA256'})
-
-    def test_no_runner_environment_files(self):
-        for banned in ('GITHUB_PATH', 'GITHUB_ENV', 'BASH_ENV', 'GITHUB_OUTPUT', 'LD_PRELOAD'):
+    def test_triggers_permissions_job(self):
+        self.assertEqual(self.wf['on'], {'schedule': [{'cron': '23 6 * * *'}], 'push': {'branches': ['gh-pages']},
+                                         'pull_request': '', 'workflow_dispatch': ''})
+        self.assertEqual(self.wf['permissions'], {'contents': 'read'})
+        self.assertNotIn('env', self.wf)
+        self.assertEqual(list(self.wf['jobs']), ['full-history'])
+        self.assertEqual(set(self.wf['jobs']['full-history']), {'runs-on', 'timeout-minutes', 'steps'})
+        self.assertNotRegex(self.source, r'secrets\.|pull_request_target|workflow_run|continue-on-error')
+        for banned in ('GITHUB_PATH', 'GITHUB_ENV', 'BASH_ENV', 'GITHUB_OUTPUT', 'LD_PRELOAD', 'GITLEAKS_CONFIG', '--offline-tarballs'):
             self.assertNotIn(banned, self.source, banned)
 
-    def test_actions_pinned_by_full_sha(self):
-        uses = [s['uses'] for s in self.steps if 'uses' in s]
-        self.assertEqual(sorted(uses), sorted(ACTION_PINS.values()))
-        for name, ref in ACTION_PINS.items():
-            self.assertEqual(self.by_name[name].get('uses'), ref)
+    def test_steps(self):
+        steps = self.wf['jobs']['full-history']['steps']
+        self.assertEqual([s.get('name') for s in steps], [
+            'Checkout complete history', 'Secret scan contract (offline)',
+            'Full-history secret scan (pinned, verified scanners)', 'Upload sanitized evidence'])
+        self.assertEqual(steps[0]['uses'], CHECKOUT)
+        self.assertEqual(steps[0]['with'], {'fetch-depth': '0', 'persist-credentials': 'false'})
+        self.assertEqual(steps[1].get('env'), {'PYTHONDONTWRITEBYTECODE': '1'})
+        self.assertEqual([l.strip() for l in steps[2]['run'].strip().splitlines()], ['set -euo pipefail', SCAN_CMD])
+        self.assertNotIn('env', steps[2])
+        self.assertEqual(steps[3]['uses'], UPLOAD)
+        self.assertEqual(steps[3].get('if'), 'always()')
+        for s in steps[:3]:
+            self.assertNotIn('if', s)
 
-    def test_critical_steps_do_not_swallow_errors(self):
-        for name in STEP_ORDER[1:9]:
-            run = self.run_of(name)
-            self.assertEqual(self.by_name[name].get('shell'), 'bash')
-            self.assertTrue(run.lstrip().startswith('set -euo pipefail'), name)
-            self.assertNotRegex(run, r'set \+[a-z]*e', name)
-            for op in re.findall(r'\|\|[^\n]*', run):
-                self.assertEqual(op.strip(), '|| code=$?', f'{name}: {op!r}')
+
+class DriverContract(unittest.TestCase):
+    def setUp(self):
+        self.source = read(DRIVER)
+        self.tree = ast.parse(self.source)
+        self.funcs = {n.name: n for n in ast.walk(self.tree) if isinstance(n, ast.FunctionDef)}
+
+    def test_pinned_releases(self):
+        self.assertEqual(set(re.findall(r'https?://[^\s\'"]+', self.source)), RELEASE_URLS)
+        for name, digest in TARBALL_SHA256.items():
+            self.assertIn(f"'tar_sha256': '{digest}'", self.source)
+        self.assertEqual(len(re.findall(r"'bin_sha256': '[0-9a-f]{64}'", self.source)), 2)
+        self.assertIn("GIT = '/usr/bin/git'", self.source)
+
+    def test_only_git_or_verified_binaries_are_executed(self):
+        for node in ast.walk(self.tree):
+            if isinstance(node, ast.Call):
+                fn = ast.unparse(node.func)
+                self.assertNotRegex(fn, r'^(os\.(system|popen|exec\w*|spawn\w*)|subprocess\.(Popen|call|check_call|check_output|getoutput|getstatusoutput))$', fn)
+                if fn == 'subprocess.run':
+                    self.assertFalse(any(k.arg == 'shell' for k in node.keywords), 'shell=True is forbidden')
+                    first = node.args[0]
+                    self.assertIsInstance(first, ast.List)
+                    head = ast.unparse(first.elts[0])
+                    self.assertIn(head, ('GIT', 'str(path)'), f'unexpected executable {head}')
+                    self.assertTrue(any(k.arg == 'env' for k in node.keywords), 'every subprocess needs the clean env')
+        # The only call that executes str(path) is in run_scanner, right after verify_binary.
+        body = self.funcs['run_scanner'].body
+        self.assertEqual(ast.unparse(body[0]), 'verify_binary(name, path)')
+        runs = [n for n in ast.walk(self.tree) if isinstance(n, ast.Call) and ast.unparse(n.func) == 'subprocess.run'
+                and ast.unparse(n.args[0].elts[0]) == 'str(path)']
+        self.assertEqual(len(runs), 1)
+        self.assertIn("env.update({'PATH': '/usr/bin:/bin', 'HOME': str(home), 'LANG': 'C.UTF-8', 'TMPDIR': str(home)})", self.source)
+        passthrough = ast.literal_eval(re.search(r'PASSTHROUGH = (\([^)]*\))', self.source).group(1))
+        self.assertEqual(set(passthrough), {'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy',
+                                            'SSL_CERT_FILE', 'SSL_CERT_DIR', 'GIT_SSL_CAINFO'})
+
+    def test_fail_closed_rules_present(self):
+        for marker in ("if scanned != expected:", "if not report.is_file():", "GITLEAKS_EXIT_1_WITHOUT_FINDINGS",
+                       "GITLEAKS_EXIT_0_WITH_FINDINGS", "GITLEAKS_FINDINGS_OUTSIDE_SCANNED_HISTORY",
+                       "'--ignore-gitleaks-allow'", "'--only-verified', '--no-ignore-tag'",
+                       "TRUFFLEHOG_VERIFIED_MISMATCH", "if chunks <= 0 or nbytes <= 0 or chunks > nbytes:",
+                       "'--merges', '--remerge-diff'", "REPO_GITLEAKS_CONFIG_REFUSED", "HISTORY_INCOMPLETE",
+                       "raise IntegrityError(f'{name}: binary SHA-256 mismatch (substituted tool)')"):
+            self.assertIn(marker, self.source)
 
 
-class ScannerContract(Base):
-    def test_downloads_only_from_exact_release_urls(self):
-        self.assertEqual(set(re.findall(r'https?://[^\s"\']+', self.source)), ALLOWED_URLS)
-        self.assertEqual(self.source.count('curl '), 2)
+class ProtectedWorkflowContract(unittest.TestCase):
+    """PR content must stay data-only in the base-controlled workflow."""
+    ALLOWED_PR_LINES = {
+        'git init -q "$RUNNER_TEMP/pr-repo"',
+        'git -C "$RUNNER_TEMP/pr-repo" fetch -q --no-tags "$REPO_URL" "+$HEAD_SHA:refs/heads/pr-head"',
+        'test "$(git -C "$RUNNER_TEMP/pr-repo" rev-parse refs/heads/pr-head)" = "$HEAD_SHA"',
+        'git -C "$RUNNER_TEMP/pr-repo" symbolic-ref HEAD refs/heads/pr-head',
+        'git -C "$RUNNER_TEMP/pr-repo" read-tree refs/heads/pr-head',
+        'mkdir "$GITHUB_WORKSPACE/pr"',
+        'git --git-dir="$RUNNER_TEMP/pr-repo/.git" --work-tree="$GITHUB_WORKSPACE/pr" checkout-index -a',
+        'SCAN_CONTRACT_ROOT="$GITHUB_WORKSPACE/pr" PYTHONPATH="$RUNNER_TEMP/pydeps" python3 -P -m unittest discover -v -s tests -p test_secret_history_scan_workflow.py 2>&1 | tee "$RUNNER_TEMP/contract.txt"',
+        VERDICT_CMD,
+    }
 
-    def test_exact_scanner_invocations(self):
-        for name, cmd in (('Gitleaks full-history scan', GITLEAKS_COMMITS_CMD),
-                          ('Gitleaks merge-commit scan (remerge-diff)', GITLEAKS_MERGES_CMD),
-                          ('TruffleHog verified full-history scan', TRUFFLEHOG_CMD)):
-            lines = [l.strip() for l in self.run_of(name).splitlines() if 'scanners/' in l]
-            self.assertEqual(lines, [cmd], name)
-        self.assertEqual(len(re.findall(r'scanners/gitleaks" git ', self.source)), 2)
-        self.assertEqual(len(re.findall(r'scanners/trufflehog" git ', self.source)), 1)
+    def setUp(self):
+        self.source, self.wf = load(PROTECTED_WF)
+        self.job = self.wf['jobs']['protected-contract']
 
-    def test_exact_count_and_fail_closed_logic_identical_in_both_gitleaks_steps(self):
-        a = self.run_of('Gitleaks full-history scan').split("python3 - <<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
-        b = self.run_of('Gitleaks merge-commit scan (remerge-diff)').split("python3 - <<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
-        self.assertEqual(a, b)
-        for marker in ("if scanned != expected:", "'--raw', '--numstat', '--format=@%H'",
-                       "if not report.exists():", "raise SystemExit(f'GITLEAKS_EXECUTION_ERROR {kind} '"):
-            self.assertIn(marker, a)
+    def test_trigger_permissions(self):
+        self.assertEqual(self.wf['on'], {'pull_request_target': ''})
+        self.assertEqual(self.wf['permissions'], {'contents': 'read'})
+        self.assertNotIn('secrets.', self.source)
+        self.assertEqual(list(self.wf['jobs']), ['protected-contract'])
+        for key in ('if', 'continue-on-error', 'env', 'permissions', 'needs', 'container', 'services', 'defaults'):
+            self.assertNotIn(key, self.job)
 
+    def test_only_base_checkout_and_no_local_actions(self):
+        uses = [s['uses'] for s in self.job['steps'] if 'uses' in s]
+        self.assertEqual(uses, [CHECKOUT])
+        first = self.job['steps'][0]
+        self.assertEqual(first['with'], {'ref': '${{ github.event.pull_request.base.sha }}', 'path': 'base',
+                                         'persist-credentials': 'false'})
+        self.assertNotRegex(self.source, r'uses:\s*\./|allow-unsafe-pr-checkout|working-directory')
+
+    def test_pr_paths_only_in_data_lines(self):
+        pr_ref = re.compile(r'GITHUB_WORKSPACE/pr\b|pr-repo|\bpr/|head\.(sha|ref)')
+        for step in self.job['steps']:
+            self.assertNotIn('if', step)
+            self.assertNotIn('continue-on-error', step)
+            for line in (step.get('run') or '').splitlines():
+                line = line.strip()
+                if pr_ref.search(line):
+                    self.assertIn(line, self.ALLOWED_PR_LINES, f'PR content referenced outside the data-only allowlist: {line!r}')
+                for word in re.findall(r'(?:^|[;&|]\s*)(?:\S+=\S+\s+)*([\w./$"{}-]+)', line):
+                    self.assertFalse(pr_ref.search(word), f'executes PR content: {line!r}')
+            if 'env' in step:
+                self.assertTrue(set(step['env']) <= {'HEAD_SHA', 'REPO_URL', 'PYTHONDONTWRITEBYTECODE'}, step['env'])
+        self.assertIn('[[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]', self.source)
+        self.assertIn('cd base', self.source)
+        self.assertIn(VERDICT_CMD, self.source)
+
+    def test_contract_workflow(self):
+        source, wf = load(CONTRACT_WF)
+        self.assertEqual(wf['on'], {'pull_request': ''})
+        self.assertEqual(wf['permissions'], {'contents': 'read'})
+        self.assertNotIn('if', wf['jobs']['contract'])
+
+
+class TreeContract(unittest.TestCase):
     def test_no_repository_gitleaks_config_in_tree(self):
         found = []
         for dirpath, dirnames, filenames in os.walk(ROOT, followlinks=False):
@@ -228,37 +257,13 @@ class ScannerContract(Base):
         self.assertEqual(found, [])
 
 
-class OtherWorkflowsContract(unittest.TestCase):
-    def test_contract_workflow(self):
-        source, wf = load(CONTRACT_WF)
-        self.assertEqual(wf['on'], {'pull_request': ''})
-        self.assertEqual(wf.get('permissions'), {'contents': 'read'})
-        self.assertEqual(list(wf['jobs']), ['contract'])
-        self.assertNotIn('if', wf['jobs']['contract'])
-
-    def test_protected_contract_workflow(self):
-        source, wf = load(PROTECTED_WF)
-        self.assertEqual(wf['on'], {'pull_request_target': ''})
-        self.assertEqual(wf.get('permissions'), {'contents': 'read'})
-        self.assertNotIn('secrets.', source)
-        job = wf['jobs']['protected-contract']
-        self.assertNotIn('if', job)
-        uses = [s.get('uses') for s in job['steps'] if 'uses' in s]
-        self.assertEqual(uses, ['actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'])
-        self.assertEqual(job['steps'][0]['with']['ref'], '${{ github.event.pull_request.base.sha }}')
-        self.assertNotIn('allow-unsafe-pr-checkout', source)
-        self.assertIn('git -C "$RUNNER_TEMP/pr.git" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"', source)
-        self.assertIn('cd base', source)
-
-
 class IgnoreFileContract(unittest.TestCase):
     def setUp(self):
         lines = [l.strip() for l in read(IGNORE).splitlines()]
         self.entries = [l for l in lines if l and not l.startswith('#')]
 
     def test_only_exact_fingerprints(self):
-        bad = [l for l in self.entries if not FINGERPRINT.match(l)]
-        self.assertEqual(bad, [])
+        self.assertEqual([l for l in self.entries if not FINGERPRINT.match(l)], [])
         self.assertEqual(len(self.entries), len(set(self.entries)))
 
     def test_every_fingerprint_documented(self):
