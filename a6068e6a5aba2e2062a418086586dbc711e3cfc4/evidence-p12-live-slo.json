@@ -3,7 +3,7 @@
   "release_sha": "a6068e6a5aba2e2062a418086586dbc711e3cfc4",
   "sample_count": 6,
   "availability": 1.0,
-  "p95_latency_ms": 530.2,
+  "p95_latency_ms": 517.1,
   "slo": {
     "availability_min": 0.999,
     "p95_latency_ms_max": 5000
@@ -16,49 +16,49 @@
       "path": "/api/live",
       "attempt": 1,
       "status": 200,
-      "latency_ms": 237.98,
-      "request_id": "p12-5133f799d2ca4aa7b7d8b0ac238a7027",
-      "echo_request_id": "p12-5133f799d2ca4aa7b7d8b0ac238a7027"
+      "latency_ms": 210.81,
+      "request_id": "p12-9a980c4454c642118cc8f21e59264e6a",
+      "echo_request_id": "p12-9a980c4454c642118cc8f21e59264e6a"
     },
     {
       "path": "/api/live",
       "attempt": 2,
       "status": 200,
-      "latency_ms": 81.6,
-      "request_id": "p12-d55705d8a1094408a649803b64a8347a",
-      "echo_request_id": "p12-d55705d8a1094408a649803b64a8347a"
+      "latency_ms": 129.15,
+      "request_id": "p12-9459b35e73354a87901f7fabc71d115b",
+      "echo_request_id": "p12-9459b35e73354a87901f7fabc71d115b"
     },
     {
       "path": "/api/live",
       "attempt": 3,
       "status": 200,
-      "latency_ms": 83.13,
-      "request_id": "p12-a0f3db3a4acf4423850b7d89f5731ae9",
-      "echo_request_id": "p12-a0f3db3a4acf4423850b7d89f5731ae9"
+      "latency_ms": 131.64,
+      "request_id": "p12-c1c9eb1a29904f7ebb48f2be8dda0baf",
+      "echo_request_id": "p12-c1c9eb1a29904f7ebb48f2be8dda0baf"
     },
     {
       "path": "/api/health",
       "attempt": 1,
       "status": 200,
-      "latency_ms": 530.2,
-      "request_id": "p12-6405109e5cef46629b475d64c84d4c1c",
-      "echo_request_id": "p12-6405109e5cef46629b475d64c84d4c1c"
+      "latency_ms": 517.1,
+      "request_id": "p12-273018126f3645c49940a4140b08b3f0",
+      "echo_request_id": "p12-273018126f3645c49940a4140b08b3f0"
     },
     {
       "path": "/api/health",
       "attempt": 2,
       "status": 200,
-      "latency_ms": 1279.67,
-      "request_id": "p12-66cb68f4d6a347b69284a3cd9ddbf291",
-      "echo_request_id": "p12-66cb68f4d6a347b69284a3cd9ddbf291"
+      "latency_ms": 519.67,
+      "request_id": "p12-8627a37e102e4b6bb371e6406efe4ed2",
+      "echo_request_id": "p12-8627a37e102e4b6bb371e6406efe4ed2"
     },
     {
       "path": "/api/health",
       "attempt": 3,
       "status": 200,
-      "latency_ms": 444.73,
-      "request_id": "p12-2e31decba0534ec1a787f1e8b6e9f960",
-      "echo_request_id": "p12-2e31decba0534ec1a787f1e8b6e9f960"
+      "latency_ms": 473.0,
+      "request_id": "p12-3897b5a74093404cabb95deca3fb74fc",
+      "echo_request_id": "p12-3897b5a74093404cabb95deca3fb74fc"
     }
   ],
   "verdict": "PASS"
