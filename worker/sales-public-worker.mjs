@@ -92,7 +92,7 @@ export function isAutomationUA(ua){
   if(!s)return true;
   return BOT_UA.test(MOBILE_BROWSER.test(s)?s.replace(INAPP_TOKEN,""):s);
 }
-const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prática",197],"ZEV-LCX-011":["Lucro & Caixa",247],"ZEV-CMB-011":["Combo IA + Vendas",297],"ZEV-NGC-011":["Negócio Completo",397]};
+const PRICES={"ZEV-IA-011":["IA na Prática",147],"ZEV-VEN-011":["Vendas na Prática",147],"ZEV-LCX-011":["Lucro & Caixa",197],"ZEV-CMB-011":["Combo IA + Vendas",247],"ZEV-NGC-011":["Negócio Completo",347]};
 async function salesOpen(env){
   try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}  // only an OK response with open===true opens; anything else is closed
 }

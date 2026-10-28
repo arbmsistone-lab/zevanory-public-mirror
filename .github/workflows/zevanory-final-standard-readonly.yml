@@ -43,11 +43,11 @@ jobs:
                    "Rua Francisco de Freitas Neto", "96", "Alto do Tenente",
                    "Várzea Alegre", "63540-000", "suporte@zevanory.api.br")
           CATALOG = (
-              ("ia-na-pratica", "IA na Prática", 197, "ZEV-IA-011"),
-              ("vendas-na-pratica", "Vendas na Prática", 197, "ZEV-VEN-011"),
-              ("lucro-e-caixa", "Lucro & Caixa", 247, "ZEV-LCX-011"),
-              ("combo-ia-vendas", "Combo IA + Vendas", 297, "ZEV-CMB-011"),
-              ("negocio-completo", "Negócio Completo", 397, "ZEV-NGC-011"),
+              ("ia-na-pratica", "IA na Prática", 147, "ZEV-IA-011"),
+              ("vendas-na-pratica", "Vendas na Prática", 147, "ZEV-VEN-011"),
+              ("lucro-e-caixa", "Lucro & Caixa", 197, "ZEV-LCX-011"),
+              ("combo-ia-vendas", "Combo IA + Vendas", 247, "ZEV-CMB-011"),
+              ("negocio-completo", "Negócio Completo", 347, "ZEV-NGC-011"),
           )
           rows = []
           failures = 0

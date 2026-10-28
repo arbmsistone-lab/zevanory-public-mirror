@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { OFFICIAL_PURCHASE_SKUS, purchaseLinkFor, catalogFacts, validateReply, converse } from "../worker/whatsapp-conversation.mjs";
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
+const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
+const SUB_PRICE = __CANON.subscription.price;
 
 const BUY_ROOT = "https://vendas.zevanory.api.br/comprar/";
 const WHATSAPP_UTM = "?utm_source=whatsapp&utm_medium=chat";
@@ -34,7 +38,7 @@ test("grounded model response also carries correct SKU without fake or external 
   const answer = await converse({
     question: "Quanto custa IA na Prática?",
     salesOpen: true,
-    ai: { run: async () => ({ response: "IA na Prática custa R$ 197,00." }) }
+    ai: { run: async () => ({ response: `IA na Prática custa R$ ${PRICE_OF["ia-na-pratica"]},00.` }) }
   });
   assert.equal(answer.mode, "ai_grounded");
   assert.match(answer.body, /\/comprar\/ZEV-IA-011/);

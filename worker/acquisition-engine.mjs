@@ -8,11 +8,11 @@ export const ACQUISITION_STATE_PREFIX="zpc:acquisition:daily:";
 export const ACQUISITION_CALENDAR_KEY="zpc:acquisition:calendar:v1";
 const DAY=86400000;
 const PRODUCTS=Object.freeze([
- {sku:"ZEV-IA-011",name:"IA na Prática",price:197},
- {sku:"ZEV-VEN-011",name:"Vendas na Prática",price:197},
- {sku:"ZEV-LCX-011",name:"Lucro & Caixa",price:247},
- {sku:"ZEV-CMB-011",name:"Combo IA + Vendas",price:297},
- {sku:"ZEV-NGC-011",name:"Negócio Completo",price:397}
+ {sku:"ZEV-IA-011",name:"IA na Prática",price:147},
+ {sku:"ZEV-VEN-011",name:"Vendas na Prática",price:147},
+ {sku:"ZEV-LCX-011",name:"Lucro & Caixa",price:197},
+ {sku:"ZEV-CMB-011",name:"Combo IA + Vendas",price:247},
+ {sku:"ZEV-NGC-011",name:"Negócio Completo",price:347}
 ]);
 const NICHES=Object.freeze(["salão","loja","prestador de serviço","delivery","autônomo"]);
 const ANGLES=Object.freeze(["dor","tutorial","caso de uso","objeção","comparação"]);

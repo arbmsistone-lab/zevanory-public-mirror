@@ -14,6 +14,10 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
 import { FISCAL_PROCESS, fiscalProcessDefined, FISCAL_DECISION_FIELDS } from "../worker/fiscal-process.mjs";
 import { REQUIRED, evaluateCheckout, allowCheckout } from "../worker/commercial-checkout-guard.mjs";
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
+const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
+const SUB_PRICE = __CANON.subscription.price;
 
 requireTool("python3");
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,7 +88,7 @@ test("L4 'fiscal' é sinal obrigatório do portão (estrito)", () => {
 });
 test("L5 página com preço sem CNPJ reprova", () => fails(gate({ "sales-public/solucoes.html": (s) => s.replaceAll("69.077.233/0001-99", "") }), /solucoes.html: página com preço sem 'CNPJ 69.077.233\/0001-99'/, "[L5.1]"));
 test("L6 resumo da oferta sem um campo reprova", () => fails(gate({ "sales-public/lucro-e-caixa.html": (s) => s.replace(/<div data-field="restricoes">.*?<\/div>/, "") }), /lucro-e-caixa.html: Resumo da oferta sem o campo restricoes/, "[L6.1]"));
-test("L7 preço do resumo diferente do catálogo reprova (CDC art. 31)", () => fails(gate({ "data/products.json": (s) => s.replace('"price": 247', '"price": 249') }), /lucro-e-caixa.html: preço total do resumo .* difere do catálogo \(R\$ 249,00\)/, "[L7.1]"));
+test("L7 preço do resumo diferente do catálogo reprova (CDC art. 31)", () => fails(gate({ "data/products.json": (s) => s.replace(`"price": ${PRICE_OF["lucro-e-caixa"]}`, `"price": ${PRICE_OF["lucro-e-caixa"] + 2}`) }), new RegExp(`lucro-e-caixa.html: preço total do resumo .* difere do catálogo \\(R\\$ ${PRICE_OF["lucro-e-caixa"] + 2},00\\)`), "[L7.1]"));
 test("L8 resumo sem arrependimento de 7 dias reprova (CDC art. 49)", () => fails(gate({ "sales-public/ia-na-pratica.html": (s) => s.replace(/(<div data-field="arrependimento"><dt>[^<]*<\/dt><dd>)[^<]*/, "$1Consulte os termos.") }), /ia-na-pratica.html: arrependimento sem '7 dias corridos'/, "[L8.1]"));
 test("L9 termos sem a declaração do art. 5º, § 2º reprova", () => fails(gate({ "sales-public/termos.html": (s) => s.replace("Contratos acessórios serão cancelados sem custo", "Contratos acessórios seguem as regras próprias") }), /termos.html: falta a declaração de D7962-5-2/, "[L9.1]"));
 test("L10 CNPJ com dígitos inválidos reprova", () => fails(gate({ "data/politica-unica.json": (s) => s.replace('"cnpj": "69.077.233/0001-99"', '"cnpj": "69.077.233/0001-98"') }), /dígitos verificadores inválidos/, "[L10.1]"));
