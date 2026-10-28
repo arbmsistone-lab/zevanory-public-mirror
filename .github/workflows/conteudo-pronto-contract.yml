@@ -1,7 +1,7 @@
 name: conteudo-pronto-contract
 
 # Conteúdo Pronto (AVAL Sol #898): roteiros multicanal no lugar de mensagens de WhatsApp, contrato versionado em
-# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 80 mutantes (inclui a regeneração com entrega confirmada:
+# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 162 mutantes (82 da campanha mensal v3) (inclui a regeneração com entrega confirmada:
 # bloqueado/candidato/atual, pending -> accepted -> delivered | dead),
 # cada um morto pela asserção esperada (rótulo na saída), em Linux e Windows (Git Bash, CRLF), Node 22 e 24.
 # Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
@@ -11,6 +11,10 @@ on:
       - ".github/workflows/conteudo-pronto-contract.yml"
       - "tests/conteudo-pronto-roteiros.test.mjs"
       - "tests/content-service.test.mjs"
+      - "tests/conteudo-pronto-g1-g5.test.mjs"
+      - "tests/conteudo-pronto-campanha.test.mjs"
+      - "tests/helpers/cp-campaign.mjs"
+      - "scripts/conteudo-pronto/amostra_operacional.mjs"
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_conteudo_pronto.py"
       - "scripts/ci/mutant_classifier.py"
@@ -18,6 +22,8 @@ on:
       - "scripts/ci/mutants_conteudo_pronto_causality.py"
       - "docs/evidence/conteudo-pronto-mutant-causality.md"
       - "worker/content-service.mjs"
+      - "worker/site-chat.mjs"
+      - "worker/whatsapp-conversation.mjs"
       - "worker/politica-unica.mjs"
       - "worker/atendimento.mjs"
       - "worker/activity-ledger.mjs"
@@ -25,6 +31,7 @@ on:
       - "worker/support-knowledge.mjs"
       - "worker/sales-public-worker.mjs"
       - "data/politica-unica.json"
+      - "termos/index.html"
       - "conteudo-pronto/**"
       - "solucoes/**"
       - "kit-afiliado/**"
@@ -51,11 +58,19 @@ jobs:
         run: |
           set -euo pipefail
           node --version
-          node --test --test-reporter=tap tests/conteudo-pronto-roteiros.test.mjs tests/content-service.test.mjs 2>&1 | tee /tmp/cp.txt
-          for kv in "tests 20" "pass 20" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+          node --test --test-reporter=tap tests/conteudo-pronto-roteiros.test.mjs tests/content-service.test.mjs tests/conteudo-pronto-campanha.test.mjs 2>&1 | tee /tmp/cp.txt
+          for kv in "tests 49" "pass 49" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
             grep -qx "# $kv" /tmp/cp.txt || { echo "::error::esperado '# $kv'"; exit 1; }
           done
           echo "::notice title=CONTEUDO_PRONTO_TESTS::$(grep -E '^# (tests|pass|fail|skipped|todo) ' /tmp/cp.txt | paste -sd' ' -)"
+      - name: Conteúdo Pronto — G1–G5 e ORDEM 301 (fila durável, falha explícita; offline, contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/conteudo-pronto-g1-g5.test.mjs 2>&1 | tee /tmp/g.txt
+          for kv in "tests 21" "pass 21" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+            grep -qx "# $kv" /tmp/g.txt || { echo "::error::G1–G5: esperado '# $kv'"; exit 1; }
+          done
       - name: Mapa causal dos mutantes válido e documento de evidência em dia
         shell: bash
         env:
@@ -109,7 +124,7 @@ jobs:
           [ "$n" = "18" ] || { echo "::error::esperados 18 meta-testes, obtidos $n"; exit 1; }
           echo "::notice title=MUTANT_CLASSIFIER_META ($RUNNER_OS node ${{ matrix.node }})::Ran $n tests OK"
           rm -f meta.txt
-      - name: Conteúdo Pronto — 80 mutantes
+      - name: Conteúdo Pronto — 162 mutantes
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONIOENCODING: "utf-8"
@@ -124,7 +139,7 @@ jobs:
           if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
-          [ "$n" = "80" ] || { echo "::error::esperados 80 mutantes mortos, obtidos $n"; exit 1; }
-          grep -qx 'MUTANTS_TOTAL=80 KILLED=80 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
+          [ "$n" = "162" ] || { echo "::error::esperados 162 mutantes mortos, obtidos $n"; exit 1; }
+          grep -qx 'MUTANTS_TOTAL=162 KILLED=162 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
           rm -f mutants.txt mutants.raw
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

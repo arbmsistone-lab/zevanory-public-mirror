@@ -168,7 +168,10 @@ export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG }
     for (const m of body.matchAll(/R\$\s*([\d.]+)(?:,(\d{1,2}))?/g)) if (Number(m[2] || 0) !== 0 || !prices.has(Number(m[1].replace(/\./g, "")))) issues.push("price_outside_catalog");
     if (/\b\d+([.,]\d+)?\s*(reais|conto|pila)\b/.test(n)) issues.push("money_outside_catalog");
   }
-  if (/desconto|cupo(m|ns)|promoc|black friday|bonus|brinde|gratis|de graca|ultimas? vagas?|so hoje|por tempo limitado|reserv(a|ar|e)\b|garanta (ja|a sua|o seu|agora)|aproveite|condicao especial|oferta especial/.test(n)) issues.push("discount_or_urgency");
+  // O nome oficial do serviço ("campanha mensal de promoção de vendas", contrato v3 do Conteúdo Pronto) não é desconto:
+  // só essa expressão exata sai da checagem; "promoção" em qualquer outro contexto continua bloqueada.
+  const nd = n.replace(/campanha (mensal )?de promocao de vendas/g, "campanha de vendas");
+  if (/desconto|cupo(m|ns)|promoc|black friday|bonus|brinde|gratis|de graca|ultimas? vagas?|so hoje|por tempo limitado|reserv(a|ar|e)\b|garanta (ja|a sua|o seu|agora)|aproveite|condicao especial|oferta especial/.test(nd)) issues.push("discount_or_urgency");
   if (!salesOpen && /\b(compre|comprar agora|pode comprar|disponivel para (compra|venda)|a venda agora|finalizar (a )?compra|garanta|assine agora|contrate agora|faca seu pedido|link de (compra|pagamento))\b/.test(n)) issues.push("transactional_closed");
   if (/\b(garanto|garantimos|prometo|prometemos|com certeza (vai|voce vai)|resultado garantido|sem risco|vai vender mais|lucro garantido)\b/.test(n)) issues.push("promise");
   if (/(nao (tem|ha|existe) (direito|reembolso|devolucao|cancelamento)|sem direito a|nao (e|eh) possivel (cancelar|reembols|devolver|desistir)|nao (fazemos|aceitamos|fazem|oferecemos) (reembolso|devolucao|cancelamento)|prazo (ja )?(expirou|acabou|passou|terminou)|fora do prazo|seu pedido (foi )?negado)/.test(n)) issues.push("right_denied");

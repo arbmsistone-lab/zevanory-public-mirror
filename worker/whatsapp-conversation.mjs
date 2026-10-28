@@ -74,7 +74,9 @@ export function validateReply(text) {
     const url = m[0].replace(/[.,;!?]+$/, "");
     if (!ALLOWED_URLS.has(url)) issues.push(`url:${url}`);
   }
-  if (/\b(\d{1,3})\s*%\s*(de\s+)?(desconto|off)\b/i.test(body) || /\b(cupom|desconto|promo[cç][aã]o|gr[aá]tis|de gra[cç]a|brinde|b[oô]nus)\b/i.test(body)) issues.push("discount");
+  // Nome oficial do serviço (Conteúdo Pronto v3) não é desconto: só a expressão exata sai da checagem.
+  const bodyNoService = body.replace(/campanha (mensal )?de promo[cç][aã]o de vendas/gi, "campanha de vendas");
+  if (/\b(\d{1,3})\s*%\s*(de\s+)?(desconto|off)\b/i.test(bodyNoService) || /\b(cupom|desconto|promo[cç][aã]o|gr[aá]tis|de gra[cç]a|brinde|b[oô]nus)\b/i.test(bodyNoService)) issues.push("discount");
   // Prices only as "R$ <catalog value>" (checked above); any other money amount is invented.
   if (/\b\d+([.,]\d+)?\s*(reais|conto|pila)\b/i.test(body)) issues.push("money_outside_catalog");
   // Refund windows only as in the single policy; never claim a refund was approved/done.
