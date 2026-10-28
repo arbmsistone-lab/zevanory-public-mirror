@@ -328,6 +328,8 @@ test("[camp-ancora-vazia] palavras vazias não ancoram: oferta ou condição só
   const parcial = [1, 2, 3, 4, 5, 6].map((i) => ({ ...post(i, CS.FASES[i - 1].id), legenda: legenda(i) + " Escovação completa." }));
   assert.equal(CS.validatePosts(parcial, 6, { ...CAMPAIGN, oferta: "Escova" }), null, "[camp-ancora-vazia] 'Escovação' não ancora 'Escova'");
   assert.equal(CS.anchored("Hoje tem Escova Quarta Feliz.", CAMPAIGN.oferta), true, "[camp-ancora-vazia] oferta citada ancora");
+  for (const o of ["produto", "serviço especial", "nossa oferta"]) assert.equal(CS.validateCampaign({ ...CAMPAIGN, oferta: o }).ok, false, "[camp-ancora-vazia] oferta genérica recusada: " + o);
+  assert.equal(CS.anchored("Conheça nosso produto.", "produto"), false, "[camp-ancora-vazia] palavra genérica sozinha não ancora");
 });
 
 test("[camp-promessa] condição com promessa de resultado é recusada e nunca é exigida no e-mail; textos gerados também", () => {
@@ -364,4 +366,122 @@ test("[camp-regen-mes] regeneração de pacote bloqueado só com a campanha do m
   const out = await CS.regenerateBlockedPackage(e, sub, f);
   assert.equal(out.reason, "campaign_required", "[camp-regen-mes] campanha do mês anterior não serve");
   assert.equal(a.calls.length, 0, "[camp-regen-mes] nenhuma chamada de IA");
+});
+
+// ---------- Auditoria independente, rodada 3 do #960 (MED-A, MED-B e LOW) ----------
+test("[camp-regra] regra do mês sem campanha: o mesmo texto no contrato, na página (FAQ e FAQPage), nos Termos, no atendimento e nos lembretes", async () => {
+  const R = C.mes_sem_campanha;
+  assert.equal(R, "Se a campanha do mês não for enviada até a próxima renovação, aquele mês não gera pacote e não é reembolsado; o direito de arrependimento de 7 dias continua valendo.", "[camp-regra] texto do contrato");
+  assert.equal(CS.MES_SEM_CAMPANHA, R, "[camp-regra] código lê o contrato");
+  for (const rel of ["conteudo-pronto/index.html", "sales-public/conteudo-pronto.html"]) {
+    const html = read(rel);
+    assert.ok(html.includes("<strong>" + R + "</strong>"), "[camp-regra] FAQ com destaque: " + rel);
+    const ld = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+    const faq = (ld["@graph"] || [ld]).find((n) => n["@type"] === "FAQPage");
+    assert.ok(faq.mainEntity.some((q) => q.acceptedAnswer.text.includes(R)), "[camp-regra] FAQPage: " + rel);
+  }
+  for (const rel of ["termos/index.html", "sales-public/termos.html"]) assert.ok(read(rel).includes("<strong>" + R + "</strong>"), "[camp-regra] Termos com destaque (CDC art. 54 §4): " + rel);
+  assert.ok(SUPPORT_PRODUCTS["conteudo-pronto"].content.includes(R), "[camp-regra] atendimento");
+  const f = resend(), e = env(ai());
+  await subscribed(e, f);
+  await CS.retryPendingPackages(e, f, 2, { now: Date.now() + 3.1 * 86400e3 });
+  const lembrete = f.sent.find((m) => /Lembrete/.test(m.subject));
+  assert.ok(lembrete && lembrete.text.includes(R), "[camp-regra] lembrete");
+  assert.match(lembrete.text, /Para não receber mais, cancele a assinatura/, "[camp-regra] linha de ajuda no lembrete");
+});
+
+test("[camp-promessa-lista] portão de promessa só para resultado de vendas/renda/desempenho; frases promocionais comuns passam; o prompt avisa o modelo", async () => {
+  const proibidas = ["dobre suas vendas", "100% de lucro", "garantimos que você vai vender", "satisfação garantida ou seu dinheiro de volta", "venda mais com risco zero", "aumente seu faturamento",
+    "você vai lucrar o dobro", "faturamento em dobro", "retorno de 300% no investimento", "satisfação total ou seu dinheiro devolvido", "resultados em 7 dias", "faturamento garantido", "resultado garantido", "clientes garantidos", "Você vai vender muito"];
+  const permitidas = ["vaga garantida", "seu horário garantido", "entrega garantida até sexta", "Quer vender mais?", "Com certeza você vai amar", "garantia de 90 dias no conserto", "15% na segunda escova"];
+  for (const t of proibidas) { assert.equal(CS.promessa(t), true, "[camp-promessa-lista] recusa: " + t); assert.equal(CS.validateCampaign({ ...CAMPAIGN, condicao_comercial: t }).ok, false, "[camp-promessa-lista] campanha recusa: " + t); }
+  for (const t of permitidas) assert.equal(CS.promessa(t), false, "[camp-promessa-lista] permite: " + t);
+  const fases = CS.FASES.map((x) => x.id);
+  const mk = (extra) => [1, 2, 3, 4, 5, 6].map((i) => ({ ...post(i, fases[i - 1]), legenda: legenda(i) + " " + CAMPAIGN.oferta + ". " + extra }));
+  assert.ok(CS.validatePosts(mk("Vaga garantida e horário garantido. Com certeza você vai amar."), 6, CAMPAIGN), "[camp-promessa-lista] post promocional comum passa");
+  assert.equal(CS.validatePosts(mk("Você vai vender o dobro."), 6, CAMPAIGN), null, "[camp-promessa-lista] post com promessa recusado");
+  const systems = [];
+  await CS.generatePackage({ AI: { run: async (_m, input) => { systems.push(input.messages[0].content); return { response: "{}" }; } } }, BRIEF, 1, CAMPAIGN);
+  assert.ok(systems.length && systems.every((s) => s.includes(CS.PROMESSAS_PROIBIDAS)), "[camp-promessa-lista] lista de promessas proibidas no prompt");
+});
+
+test("[camp-correcao] recusa por promessa: uma nova chamada corretiva antes de contar a tentativa como falha", async () => {
+  const calls = [];
+  let dirty = 1;
+  const a = { calls, run: async (_m, input) => {
+    const u = input.messages[1].content;
+    calls.push(u);
+    if (u.includes("roteiros multicanal")) return { response: JSON.stringify(campaignize(u, { roteiros: CS.ROTEIRO_OBJETIVOS.map(roteiro) })) };
+    const from = Number(/posts (\d+) a/.exec(u)[1]);
+    let posts = campaignize(u, { posts: [0, 1, 2, 3, 4, 5].map((k) => post(from + k)) }).posts;
+    if (dirty-- > 0) posts = posts.map((p) => ({ ...p, legenda: p.legenda + " Você vai vender o dobro." }));
+    return { response: JSON.stringify({ posts }) };
+  } };
+  const pkg = await CS.generatePackage({ AI: a }, BRIEF, 1, CAMPAIGN);
+  assert.ok(pkg, "[camp-correcao] pacote gerado depois da correção");
+  assert.equal(calls.length, 4, "[camp-correcao] 3 chamadas + 1 corretiva");
+  assert.ok(calls[1].includes(CS.CORRECAO_PROMESSA), "[camp-correcao] a segunda chamada leva a instrução corretiva");
+  assert.ok(CS.GEN_WORST_CASE_MS >= 3 * (2 * 2 + 1) * 60000 && CS.GEN_LEASE_MS > CS.GEN_WORST_CASE_MS, "[camp-correcao] lease cobre a chamada corretiva");
+});
+
+test("[camp-operador-email] bounce: operador corrige o e-mail com motivo antes de reenviar; registrado sem o endereço no log", async () => {
+  const f = resend({ event: "bounced" }), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+  await CS.retryPendingPackages(e, f);
+  const op = (body) => CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/requeue", { method: "POST", body: JSON.stringify(body) }), e);
+  const sub = subKey(kv).slice(-12);
+  assert.equal((await op({ sub, operator: "ana", reason: "endereço corrigido pelo assinante", new_email: "não-é-email" })).status, 400, "[camp-operador-email] e-mail inválido recusado");
+  assert.equal((await op({ sub, operator: "ana", reason: "endereço corrigido pelo assinante", new_email: "Novo@Example.invalid" })).status, 200, "[camp-operador-email] reenvio com e-mail novo");
+  await CS.retryPendingPackages(e, f);
+  assert.equal(f.sent.filter((m) => /chegou/.test(m.subject)).at(-1).to[0], "novo@example.invalid", "[camp-operador-email] reenvio vai para o e-mail corrigido");
+  assert.equal(rec(kv).emailChanges.length, 1, "[camp-operador-email] alteração registrada no assinante");
+  const log = kv.data.get("zpc:cp:pending-log");
+  assert.ok(JSON.parse(log).some((x) => x.event === "email_changed") && !/novo@example/i.test(log), "[camp-operador-email] log sem o endereço");
+  // Renovação depois do bounce: o reenvio do ciclo antigo é recusado (N8).
+  const f2 = resend({ event: "bounced" }), e2 = env(ai()), kv2 = e2.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e2, f2, await subscribed(e2, f2), { ...BRIEF, ...CAMPAIGN });
+  await CS.retryPendingPackages(e2, f2);
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-OPR2"), e2, null, f2);
+  assert.deepEqual(await CS.requeueDeadPackage(e2, subKey(kv2), { operator: "ana", reason: "reenviar o ciclo antigo" }), { ok: false, reason: "cycle_superseded" }, "[camp-operador-email] ciclo antigo não é reenviado");
+});
+
+test("[camp-cancelamento] cancelado não grava campanha nem recebe lembrete; renovação sem o formulário do 1º mês alerta certo; lembrete que falha alerta", async () => {
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  const t = await subscribed(e, f);
+  await CS.handleHotmartWebhook(hook("SUBSCRIPTION_CANCELLATION", "HP-C3-X"), e, null, f);
+  for (let d = 1; d <= 20; d++) await CS.retryPendingPackages(e, f, 2, { now: Date.now() + d * 86400e3 });
+  assert.equal(f.sent.filter((m) => /Lembrete/.test(m.subject)).length, 0, "[camp-cancelamento] nenhum lembrete depois do cancelamento");
+  // Formulário aberto por um token ainda válido depois do cancelamento (N2): recusado, registro continua inativo.
+  const status = (await submit(e, f, t, { ...BRIEF, ...CAMPAIGN })).status;
+  assert.ok(status === 404 || status === 409, "[camp-cancelamento] formulário recusa assinatura inativa");
+  assert.equal(rec(kv).status, "inactive");
+  assert.equal(rec(kv).campanha, undefined, "[camp-cancelamento] nenhuma campanha gravada");
+  // Cancelamento que chega DURANTE o envio do formulário (depois da checagem inicial do token): o formulário relê o
+  // registro antes de gravar e recusa; nada de campanha num assinante cancelado.
+  const fr = resend(), er = env(ai()), kvr = er.ZEVANORY_PRIVATE_ARTIFACTS;
+  const tr = await subscribed(er, fr);
+  const put = kvr.put.bind(kvr);
+  let fired = false;
+  kvr.put = async (k, v, o) => {
+    if (!fired && k === "zpc:cp:pending") { fired = true; await put(k, v, o); await CS.handleHotmartWebhook(hook("SUBSCRIPTION_CANCELLATION", "HP-C3-XR"), er, null, fr); return; }
+    return put(k, v, o);
+  };
+  assert.equal((await submit(er, fr, tr, { ...BRIEF, ...CAMPAIGN })).status, 409, "[camp-cancelamento] cancelamento durante o formulário vence");
+  assert.equal(rec(kvr).status, "inactive");
+  assert.equal(rec(kvr).campanha, undefined, "[camp-cancelamento] nenhuma campanha gravada no cancelado");
+  // Renovação de quem nunca enviou o formulário do 1º mês: alerta "ciclo sem campanha", nunca "novo assinante".
+  const f2 = resend(), e2 = env(ai()), kv2 = e2.ZEVANORY_PRIVATE_ARTIFACTS;
+  await subscribed(e2, f2);
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-NR2"), e2, null, f2);
+  assert.deepEqual(alertKinds(kv2), ["novo_assinante", "ciclo_sem_campanha"], "[camp-cancelamento] alerta certo na renovação sem formulário");
+  // Lembrete que o provedor recusa: alerta ao proprietário uma vez, nova tentativa no cron seguinte.
+  f2.status = 500;
+  await CS.retryPendingPackages(e2, f2, 2, { now: Date.now() + 3.1 * 86400e3 });
+  await CS.retryPendingPackages(e2, f2, 2, { now: Date.now() + 3.2 * 86400e3 });
+  assert.equal(alertKinds(kv2).filter((k) => k === "lembrete_falhou").length, 1, "[camp-cancelamento] falha de lembrete alertada uma vez");
+  // Envio da campanha encerra a espera (N18).
+  const f3 = resend(), e3 = env(ai());
+  await submit(e3, f3, await subscribed(e3, f3), { ...BRIEF, ...CAMPAIGN });
+  const st = await (await CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/status"), e3)).json();
+  assert.equal(st.forms_waiting.length, 0, "[camp-cancelamento] envio do formulário encerra os lembretes");
 });

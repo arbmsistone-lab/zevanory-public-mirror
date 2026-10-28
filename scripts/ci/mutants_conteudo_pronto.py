@@ -34,7 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 36  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 41  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -210,7 +210,7 @@ M = {
         "", "[camp-ancora] post sem a oferta"),
     "M85 post sem fase aceito": (CS, "      if (!FASE_IDS.has(fase)) return null;\n",
         "", "[camp-ancora] post sem fase"),
-    "M86 e-mail sem a condição comercial aceito": (CS, "      if (!anchored(corpo, campanha.condicao_comercial)) return null;\n",
+    "M86 e-mail sem a condição comercial aceito": (CS, "      if (!anchored(corpo, campanha.condicao_comercial, { condition: true })) return null;\n",
         "", "[camp-ancora] e-mail sem a condição comercial"),
     "M87 fases da campanha não precisam ser cobertas": (CS, "    return out && FASE_IDS.size === new Set([...a, ...out].map((p) => p.fase)).size ? out : null;",
         "    return out;", "[camp-ancora] fases não cobertas"),
@@ -244,7 +244,7 @@ M = {
         "if (false) {", "[camp-lembretes] alerta ao proprietário nos dias 7 e 14"),
     "M102 bounce fora da fila de falhas": (CS, "      await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });\n      await pendingLog(kv, key, \"delivery_failed\"",
         "      await pendingLog(kv, key, \"delivery_failed\"", "[camp-bounce] falha visível no status"),
-    "M103 âncora por substring": (CS, "  if (!anchorTerms(ph).length) return false;\n  return new RegExp(",
+    "M103 âncora por substring": (CS, "  if (!(condition ? conditionTerms(ph) : anchorTerms(ph)).length) return false;\n  return new RegExp(",
         "  return normTxt(text).includes(ph);\n  return new RegExp(", "[camp-ancora-vazia] 'Escovação' não ancora 'Escova'"),
     "M104 campanha aceita promessa de resultado": (CS, "CAMPANHA_PROMESSA.test(texto) || promessa(texto) ||",
         "CAMPANHA_PROMESSA.test(texto) ||", "[camp-promessa] condição recusada: dobre suas vendas"),
@@ -256,6 +256,36 @@ M = {
         "", "[camp-regen-mes] campanha do mês anterior não serve"),
     "M108 reenvio de bounce reaproveita o token": (CS, "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); await kv.delete(DELIVERY + d.pkgKey.slice(PKG.length)); }",
         "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); }", "[camp-bounce] link novo (nova chave de idempotência)"),
+    "M109 regra do mês fora do contrato": (CS, "export const MES_SEM_CAMPANHA = CONTEUDO_PRONTO.mes_sem_campanha;",
+        "export const MES_SEM_CAMPANHA = \"O mês fica reservado.\";", "[camp-regra] código lê o contrato"),
+    "M110 Termos sem a regra": ("termos/index.html", "<strong>Se a campanha do mês não for enviada até a próxima renovação, aquele mês não gera pacote e não é reembolsado; o direito de arrependimento de 7 dias continua valendo.</strong></p>",
+        "</p>", "[camp-regra] Termos com destaque (CDC art. 54 §4): termos/index.html"),
+    "M111 portão volta a recusar frase promocional comum": (CS, "export const promessa = (t) => PROMESSA_RX.test(normTxt(t));",
+        "export const promessa = (t) => PROMESSA_RX.test(normTxt(t)) || /garantid/.test(normTxt(t));", "[camp-promessa-lista] permite: vaga garantida"),
+    "M112 portão aceita dinheiro devolvido": (CS, "  \"dinheiro\\\\s+(de\\\\s+volta|devolvido)\",",
+        "  \"dinheiro\\\\s+de\\\\s+volta\",", "[camp-promessa-lista] recusa: satisfação total ou seu dinheiro devolvido"),
+    "M113 prompt sem a lista de promessas proibidas": (CS, "sem emojis em excesso. \" + PROMESSAS_PROIBIDAS + \" Responda",
+        "sem emojis em excesso. Responda", "[camp-promessa-lista] lista de promessas proibidas no prompt"),
+    "M114 sem chamada corretiva": (CS, "retryFix = Boolean(parsed) && !corrected && promessa(JSON.stringify(parsed));",
+        "retryFix = false;", "[camp-correcao] a segunda chamada leva a instrução corretiva"),
+    "M115 palavra genérica ancora": (CS, " && !GENERIC.has(w)); }",
+        "); }", "[camp-ancora-vazia] oferta genérica recusada: produto"),
+    "M116 operador troca e-mail sem validar": (CS, "    if (newEmail && !/^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(String(newEmail).trim())) return { ok: false, reason: \"invalid_email\" };\n",
+        "", "[camp-operador-email] e-mail inválido recusado"),
+    "M117 alerta de novo assinante na renovação sem formulário": (CS, "if (!record.briefing && record.cycles === 1) await ownerAlert(env, \"novo assinante",
+        "if (!record.briefing) await ownerAlert(env, \"novo assinante", "[camp-cancelamento] alerta certo na renovação sem formulário"),
+    "M118 lembrete que falha sem alerta": (CS, "await ownerAlert(env, \"lembrete do Conteúdo Pronto não saiu\"",
+        "if (0) await ownerAlert(env, \"lembrete do Conteúdo Pronto não saiu\"", "[camp-cancelamento] falha de lembrete alertada uma vez"),
+    "M119 formulário grava campanha em assinatura cancelada": (CS, "  if (fresh.status !== \"active\") return page(\"Assinatura inativa\"",
+        "  if (false) return page(\"Assinatura inativa\"", "[camp-cancelamento] cancelamento durante o formulário vence"),
+    "M120 lembretes não param no cancelamento": (CS, "      if (!rec || rec.status !== \"active\" || !needsForm(rec) || rec.cycles !== w.cycle) {",
+        "      if (!rec || !needsForm(rec) || rec.cycles !== w.cycle) {", "[camp-cancelamento] nenhum lembrete depois do cancelamento"),
+    "M121 envio do formulário não encerra os lembretes": (CS, "  await clearFormWait(kv, found.key);\n",
+        "", "[camp-cancelamento] envio do formulário encerra os lembretes"),
+    "M122 reenvio de bounce de ciclo antigo": (CS, "    if (Number(dead[key].cycle) !== latest.cycles) return { ok: false, reason: \"cycle_superseded\" };\n",
+        "", "[camp-operador-email] ciclo antigo não é reenviado"),
+    "M123 posts sem o portão de promessa": (CS, " || promessa(tema + \" \" + legenda + \" \" + cta)) return null;",
+        ") return null;", "[camp-promessa-lista] post com promessa recusado"),
 }
 
 

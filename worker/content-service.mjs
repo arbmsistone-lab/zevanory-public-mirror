@@ -219,7 +219,8 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     await welcomeDone(env, kv, key, subscriber, record.cycles, dedupe, Date.now(), record.briefing ? "campaign_requested" : "briefing_requested", item.token);
     // Renovação chegando sem a campanha (e sem entrega) do ciclo anterior: o proprietário é avisado (MED-2).
     if (record.briefing && record.cycles > 1 && Number(record.deliveredCycle || 0) < record.cycles - 1) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem campanha", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem ter enviado a campanha do ciclo ${record.cycles - 1}, que ficou sem entrega. Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
-    if (!record.briefing) await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl, { kind: "novo_assinante", sub: key });
+    if (!record.briefing && record.cycles === 1) await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl, { kind: "novo_assinante", sub: key });
+    if (!record.briefing && record.cycles > 1) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem formulário", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem nunca ter enviado o formulário; os ciclos anteriores ficaram sem entrega. O formulário foi reenviado. Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
     return json(200, { ok: true, status: record.briefing ? "campaign_requested" : "briefing_requested" });
   }
   // Reprocessamento de uma transação cujo ciclo já foi entregue (ex.: PURCHASE_COMPLETE depois do APPROVED): nada a gerar.
@@ -257,7 +258,9 @@ async function welcomeFailed(env, kv, key, item, reason, fetchImpl, now = Date.n
 // nos dias CAMPAIGN_REMINDER_DAYS depois do pedido, alerta ao proprietário nos dias CAMPAIGN_OWNER_ALERT_DAYS. O mês pago
 // fica reservado: a campanha pode ser enviada a qualquer momento até a próxima renovação (o link vale 60 dias) e o pacote
 // é gerado quando chegar. Se a renovação seguinte chegar sem a campanha do ciclo anterior, o proprietário é avisado
-// ("ciclo sem campanha") para contatar o assinante. Política escrita na página (FAQ) e no contrato da oferta.
+// ("ciclo sem campanha") para contatar o assinante. Regra única (MES_SEM_CAMPANHA, data/politica-unica.json →
+// conteudo_pronto.mes_sem_campanha), com o mesmo texto no FAQ da página, nos Termos, no atendimento e nos lembretes.
+export const MES_SEM_CAMPANHA = CONTEUDO_PRONTO.mes_sem_campanha;
 export const CAMPAIGN_REMINDER_DAYS = Object.freeze([3, 7, 14]);
 export const CAMPAIGN_OWNER_ALERT_DAYS = Object.freeze([7, 14]);
 const FORM_WAIT = "zpc:cp:form-wait"; // { chave do assinante: { cycle, token, requestedAt, sent: [dias] } }
@@ -270,7 +273,7 @@ async function clearFormWait(kv, key) {
   const w = await readJson(kv, FORM_WAIT, {});
   if (w[key]) { delete w[key]; await kv.put(FORM_WAIT, JSON.stringify(w), { expirationTtl: 400 * DAY }); }
 }
-const reminderText = (name, cycle, first, link, day) => `Olá${firstName(name)}!\n\n${first ? "Seu pagamento foi confirmado, mas ainda falta o formulário curto (perfil do negócio e campanha do mês)" : `Sua assinatura foi renovada, mas ainda falta a campanha do mês ${cycle} (objetivo comercial, oferta, condição comercial e período)`}. Sem ela a ZEVANORY não gera os textos.\n\n${link}\n\nO mês pago fica reservado: você pode enviar a campanha a qualquer momento até a próxima renovação, e o pacote chega quando você enviar. Este é o lembrete do dia ${day}.\n\nDúvidas: suporte@zevanory.api.br`;
+const reminderText = (name, cycle, first, link, day) => `Olá${firstName(name)}!\n\n${first ? "Seu pagamento foi confirmado, mas ainda falta o formulário curto (perfil do negócio e campanha do mês)" : `Sua assinatura foi renovada, mas ainda falta a campanha do mês ${cycle} (objetivo comercial, oferta, condição comercial e período)`}. Sem ela a ZEVANORY não gera os textos.\n\n${link}\n\nO mês pago fica reservado: você pode enviar a campanha a qualquer momento até a próxima renovação, e o pacote chega quando você enviar. ${MES_SEM_CAMPANHA} Este é o lembrete do dia ${day}.\n\nVocê recebe este aviso porque assinou o Conteúdo Pronto. Para não receber mais, cancele a assinatura na sua conta Hotmart. Ajuda: suporte@zevanory.api.br`;
 export async function remindPendingForms(env, fetchImpl = fetch, { now = Date.now() } = {}) {
   const kv = kvOf(env);
   const wait = await readJson(kv, FORM_WAIT, {});
@@ -284,7 +287,16 @@ export async function remindPendingForms(env, fetchImpl = fetch, { now = Date.no
       for (const d of due) {
         const link = `${ORIGIN}/conteudo-pronto/briefing?t=${w.token}`;
         const ok = await sendEmail(env, rec.email, rec.briefing ? `Lembrete: falta a campanha do mês ${rec.cycles} do Conteúdo Pronto` : "Lembrete: falta o formulário do Conteúdo Pronto", reminderText(rec.name, rec.cycles, !rec.briefing, link, d), fetchImpl, "cp-remind/" + (await sha(key + "|" + w.cycle + "|" + d)).slice(0, 48));
-        if (!ok) { await pendingLog(kv, key, "reminder_failed", "day " + d, now); break; } // tenta de novo no próximo cron
+        if (!ok) { // tenta de novo no próximo cron; o proprietário é avisado na primeira falha de cada lembrete
+          await pendingLog(kv, key, "reminder_failed", "day " + d, now);
+          const cur = await readJson(kv, FORM_WAIT, {});
+          if (cur[key] && !(cur[key].failed || []).includes(d)) {
+            cur[key].failed = [...(cur[key].failed || []), d];
+            await kv.put(FORM_WAIT, JSON.stringify(cur), { expirationTtl: 400 * DAY });
+            await ownerAlert(env, "lembrete do Conteúdo Pronto não saiu", `O lembrete do dia ${d} para o assinante …${String(key).slice(-12)} (ciclo ${rec.cycles}) não foi aceito pelo provedor. Nova tentativa a cada hora.`, fetchImpl, { kind: "lembrete_falhou", sub: key, now });
+          }
+          break;
+        }
         const cur = await readJson(kv, FORM_WAIT, {});
         if (cur[key]) { cur[key].sent = [...(cur[key].sent || []), d]; await kv.put(FORM_WAIT, JSON.stringify(cur), { expirationTtl: 400 * DAY }); }
         await pendingLog(kv, key, "reminder_sent", "day " + d, now);
@@ -352,21 +364,43 @@ const FIELDS = [
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // Promessa de resultado em qualquer ordem ("venda garantida", "garantia de resultado", "lucro certo").
 const CAMPANHA_PROMESSA = /\b(vendas?|resultados?|lucros?|retornos?|clientes?)\s+(garantid\w*|certos?|certas?)\b|\bgarant\w*\s+(de\s+)?(vendas?|resultados?|lucros?|retornos?|clientes?)\b/i;
-// #960 rodada 2 (MED-5): a mesma família de frases que o portão do FAQ do #955 recusa, mais forte: promessa de
-// resultado, de venda ou de dinheiro de volta, em qualquer campo da campanha e em qualquer texto gerado. A condição
-// comercial é copiada nos e-mails; por isso uma condição com promessa é recusada no formulário e nunca é exigida.
-// Garantia de produto/serviço com prazo ("garantia de 90 dias no conserto") não é promessa de resultado e passa.
-export const PROMESSA_RX = /garantimos|garantid[oa]s?\b|garant\w*\s+(que|de\s+(resultado|venda|lucro|retorno|cliente)|resultado|venda|lucro|retorno)|dinheiro de volta|reembolso garantido|sem risco|risco zero|\bdobr\w*\s+(\w+\s+){0,2}(vendas?|faturamento|lucros?|clientes?|resultados?)|\btriplic\w*|\bmultiplic\w*\s+(\w+\s+){0,2}(vendas?|faturamento|lucros?|clientes?)|\d+\s*%\s*(de\s+)?(lucro|retorno|resultado|aumento)|vender mais|mais vendas|aument\w*\s+(\w+\s+){0,2}(vendas?|faturamento|lucros?)|resultado (certo|garantido)|lucro (certo|garantido)|fique rico|renda (garantida|extra garantida)|milagr|com certeza (vai|vão|voc)/i;
-export const promessa = (t) => PROMESSA_RX.test(normTxt(t)) || PROMESSA_RX.test(String(t ?? ""));
+// #960 rodadas 2 e 3 (MED-5, MED-B): promessa de RESULTADO sobre vendas, faturamento, lucro, renda, retorno ou
+// desempenho, e devolução de dinheiro condicionada a resultado. Vale para os campos da campanha e para todo texto
+// gerado; a condição comercial é copiada nos e-mails, por isso uma condição com promessa é recusada no formulário e
+// nunca é exigida. Frases promocionais comuns passam: "vaga garantida", "horário garantido", "entrega garantida até
+// sexta", "Quer vender mais?", "Com certeza você vai amar", "garantia de 90 dias no conserto".
+const RES = "(vendas?|faturamento|faturar|lucros?|lucrar|renda|retorno|rentabilidade|resultados?|clientes?|desempenho)";
+export const PROMESSA_RX = new RegExp([
+  "garant\\w*\\s+(de\\s+|que\\s+(voce\\s+)?(vai|vao|ira|irao)\\s+)?" + RES,
+  RES + "\\s+(garantid\\w*|certos?|certas?|assegurad\\w*)",
+  "\\b(vai|vao|ira|irao)\\s+(vender|lucrar|faturar|ganhar dinheiro|enriquecer)",
+  "\\b(dobr|triplic|multiplic|quadruplic)\\w*\\s+(\\w+\\s+){0,2}" + RES,
+  RES + "\\s+(\\w+\\s+)?(em|no|ao)\\s+dobro",
+  "(lucrar|faturar|ganhar|vender)\\s+(\\w+\\s+)?(o\\s+)?(dobro|triplo)",
+  "retorno\\s+(de\\s+)?\\d+\\s*%",
+  "\\d+\\s*%\\s*(de\\s+)?(lucro|retorno|rentabilidade|resultado|aumento\\s+(nas|de|das)\\s+vendas)",
+  "resultados?\\s+em\\s+\\d+\\s+(dias?|semanas?|horas?)",
+  "dinheiro\\s+(de\\s+volta|devolvido)",
+  "aument\\w*\\s+(\\w+\\s+){0,2}(vendas|faturamento|lucros?|renda)\\s+(garantid|em\\s+\\d|com\\s+certeza)",
+  "aumente\\s+(o\\s+|seu\\s+|sua\\s+|as\\s+|suas\\s+)?(vendas|faturamento|lucros?|renda)",
+  "risco\\s+zero|fique\\s+rico|renda\\s+(extra\\s+)?garantida|milagr",
+].join("|"), "i");
+// Aviso ao modelo (MED-B): as mesmas promessas listadas, para a IA evitar em vez de só ser recusada depois.
+export const PROMESSAS_PROIBIDAS = "Não prometa resultado de vendas, faturamento, lucro, renda, retorno ou desempenho: nada de \"você vai vender\", \"dobrar as vendas\", \"faturamento em dobro\", \"faturamento garantido\", \"retorno de X%\", \"resultado garantido\", \"resultados em X dias\", \"aumente suas vendas\" ou \"dinheiro de volta\". Frases como \"vaga garantida\", \"horário garantido\" ou \"entrega até sexta\" podem ser usadas.";
+export const promessa = (t) => PROMESSA_RX.test(normTxt(t));
 // #960 rodada 2 (MED-4): a âncora precisa de termos com conteúdo. Palavras vazias ("de", "da", "o") nunca bastam.
-const STOPWORDS = new Set("a o as os de da do das dos e em no na nos nas um uma uns umas para por com sem que se ao aos ou mais".split(" "));
+const STOPWORDS = new Set("a o as os de da do das dos e em no na nos nas um uma uns umas para por com sem que se ao aos ou mais nosso nossa nossos nossas seu sua seus suas meu minha este esta esse essa isto isso aqui todo toda todos todas".split(" "));
+// Palavras genéricas de oferta também não ancoram sozinhas ("nosso produto" não prova que o post fala da oferta).
+const GENERIC = new Set("produto produtos servico servicos oferta ofertas promocao promocoes desconto descontos item itens loja compra compras venda vendas cliente clientes negocio campanha preco precos normal especial novo nova novos novas".split(" "));
 export const ANCHOR_MIN_CHARS = 4;
-export function anchorTerms(t) { return normTxt(t).split(/[^a-z0-9%]+/).filter((w) => w.length >= ANCHOR_MIN_CHARS && !STOPWORDS.has(w)); }
+export function anchorTerms(t) { return normTxt(t).split(/[^a-z0-9%]+/).filter((w) => w.length >= ANCHOR_MIN_CHARS && !STOPWORDS.has(w) && !GENERIC.has(w)); }
+// A condição comercial pode ser genérica ("preço normal"): basta um termo com conteúdo ou um número/percentual.
+function conditionTerms(t) { return normTxt(t).split(/[^a-z0-9%]+/).filter((w) => (w.length >= ANCHOR_MIN_CHARS && !STOPWORDS.has(w)) || /\d/.test(w)); }
 const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // A frase inteira, com fronteira de palavra (não substring), e só se ela tiver ao menos um termo com conteúdo.
-export function anchored(text, phrase) {
+export function anchored(text, phrase, { condition = false } = {}) {
   const ph = normTxt(phrase);
-  if (!anchorTerms(ph).length) return false;
+  if (!(condition ? conditionTerms(ph) : anchorTerms(ph)).length) return false;
   return new RegExp("(^|[^a-z0-9])" + reEsc(ph) + "($|[^a-z0-9])").test(normTxt(text));
 }
 // #960 rodada 2 (LOW): data real (sem 30/02 virando março) e, no formulário, período a partir de hoje e no máximo
@@ -395,7 +429,7 @@ export function validateCampaign(raw = {}, { now = null } = {}) {
     if (ini > today + CAMPANHA_INICIO_MAX_DIAS * dayMs) return { ok: false, error: `O início da campanha precisa estar nos próximos ${CAMPANHA_INICIO_MAX_DIAS} dias.` };
   }
   if (!anchorTerms(c.oferta).length) return { ok: false, error: `Descreva a oferta com pelo menos uma palavra de ${ANCHOR_MIN_CHARS} letras ou mais (ex.: o nome do produto ou serviço).` };
-  if (!anchorTerms(c.condicao_comercial).length) return { ok: false, error: `Descreva a condição comercial com pelo menos uma palavra de ${ANCHOR_MIN_CHARS} letras ou mais (ex.: "preço normal", "15% na segunda unidade").` };
+  if (!conditionTerms(c.condicao_comercial).length) return { ok: false, error: `Descreva a condição comercial com pelo menos uma palavra de ${ANCHOR_MIN_CHARS} letras ou mais (ex.: "preço normal", "15% na segunda unidade").` };
   const texto = [c.objetivo_comercial, c.oferta, c.condicao_comercial].join(" ");
   if (FORBIDDEN.test(texto) || CAMPANHA_PROMESSA.test(texto) || promessa(texto) || contaminated(texto)) return { ok: false, error: "A campanha não pode prometer resultado, venda ou dinheiro de volta, nem citar canal de contato não autorizado." };
   return { ok: true, campanha: { ...c, dias } };
@@ -506,7 +540,7 @@ export function validateRoteiros(list, campanha = null) {
       // Condição com promessa nunca é exigida no e-mail (MED-5): sem ela a campanha inteira é recusada (fail-closed).
       if (promessa(campanha.condicao_comercial) || promessa(campanha.oferta)) return null;
       if (!anchored(curta, campanha.oferta) || !anchored(corpo, campanha.oferta)) return null;
-      if (!anchored(corpo, campanha.condicao_comercial)) return null;
+      if (!anchored(corpo, campanha.condicao_comercial, { condition: true })) return null;
     }
     out.push({ objetivo_id: obj.id, objetivo: obj.titulo, curta, email: { assunto, corpo } });
   }
@@ -521,23 +555,39 @@ export function roteirosPrompt(brief, campanha = null) {
   return `Briefing do negócio:\n${brief}\n\n${camp}Crie ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento para o negócio usar em canais que o cliente autorizou, como ${CANAIS_TEXTO}. O dono revisa antes de usar; nada é enviado automaticamente. Objetivos, nesta ordem: ${objetivos}. Cada roteiro tem uma versão curta (mensagem direta de 150 a 450 caracteres) e uma versão de e-mail (assunto curto e corpo de 400 a 1200 caracteres). Não cite aplicativos de mensagem que o cliente não autorizou, não proponha envio em massa e não invente nomes, preços ou prazos. JSON: {"roteiros":[{"objetivo_id":"${ROTEIRO_OBJETIVOS[0].id}","curta":"...","email":{"assunto":"...","corpo":"..."}}]}`;
 }
 async function ask(ai, system, user, validate) {
+  let corrected = false; // MED-B: uma única nova chamada corretiva quando a recusa foi por promessa
   for (const model of MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
-      let timer;
+      let timer, prompt = user, retryFix = false;
       try {
         const out = await Promise.race([
-          ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_tokens: 3000, temperature: 0.6 }),
+          ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: prompt }], max_tokens: 3000, temperature: 0.6 }),
           new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("ai_timeout")), 60000); }),
         ]);
         const parsed = extractJson(aiText(out));
         const ok = parsed && validate(parsed);
         if (ok) return ok;
+        retryFix = Boolean(parsed) && !corrected && promessa(JSON.stringify(parsed));
       } catch {} finally { clearTimeout(timer); }
+      if (retryFix) {
+        corrected = true;
+        let t2;
+        try {
+          const out = await Promise.race([
+            ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: user + "\n\n" + CORRECAO_PROMESSA }], max_tokens: 3000, temperature: 0.4 }),
+            new Promise((_, rej) => { t2 = setTimeout(() => rej(new Error("ai_timeout")), 60000); }),
+          ]);
+          const parsed = extractJson(aiText(out));
+          const ok = parsed && validate(parsed);
+          if (ok) return ok;
+        } catch {} finally { clearTimeout(t2); }
+      }
     }
   }
   return null;
 }
-const SYSTEM = "Você é redator sênior de marketing para pequenos negócios brasileiros. Escreva em português do Brasil, no tom pedido, de forma concreta, sem promessas de resultado, sem preços inventados, sem emojis em excesso. Responda SOMENTE com JSON válido.";
+const SYSTEM = "Você é redator sênior de marketing para pequenos negócios brasileiros. Escreva em português do Brasil, no tom pedido, de forma concreta, sem promessas de resultado, sem preços inventados, sem emojis em excesso. " + PROMESSAS_PROIBIDAS + " Responda SOMENTE com JSON válido.";
+export const CORRECAO_PROMESSA = "ATENÇÃO: a resposta anterior foi recusada porque trazia promessa de resultado de vendas, faturamento, lucro, renda ou desempenho. Reescreva o mesmo JSON sem nenhuma promessa desse tipo, mantendo a oferta e a condição comercial exatamente como informadas. " + PROMESSAS_PROIBIDAS;
 const isoAdd = (iso, days) => new Date(Date.parse(iso + "T00:00:00Z") + days * dayMs).toISOString().slice(0, 10);
 // Calendário da campanha: 12 posts e 4 roteiros distribuídos nas datas do período informado (v3).
 export function campaignCalendar(campanha, posts, roteiros) {
@@ -666,7 +716,7 @@ async function deadLetter(env, kv, key, m, fetchImpl, now) {
   await ownerAlert(env, kind === "welcome" ? "boas-vindas do Conteúdo Pronto sem entrega" : "pacote do Conteúdo Pronto sem entrega", `Um assinante ficou sem ${what} após ${m?.attempts ?? "?"} tentativas (último motivo: ${m?.lastReason || "desconhecido"}; assinante …${String(key).slice(-12)}). Nada mais será tentado automaticamente. Reenvio só pelo operador, com motivo registrado: POST /api/admin/conteudo-pronto/requeue (ou node scripts/conteudo-pronto/operador.mjs requeue).`, fetchImpl, { kind: "sem_entrega_" + kind, sub: key, now }).catch(() => null);
 }
 // Reenvio controlado de um item da fila de falhas: só com operador e motivo, registrado no log.
-export async function requeueDeadPackage(env, key, { operator, reason, now = Date.now() } = {}) {
+export async function requeueDeadPackage(env, key, { operator, reason, newEmail = "", now = Date.now() } = {}) {
   const kv = kvOf(env);
   if (!String(operator || "").trim() || String(reason || "").trim().length < 10) return { ok: false, reason: "operator_and_reason_required" };
   const dead = await readJson(kv, PENDING_DEAD, {});
@@ -676,8 +726,9 @@ export async function requeueDeadPackage(env, key, { operator, reason, now = Dat
     const latest = await readJson(kv, key, null);
     if (!latest || latest.status !== "active") return { ok: false, reason: "inactive" };
     if (Number(dead[key].cycle) !== latest.cycles) return { ok: false, reason: "cycle_superseded" };
-  }
-  const ops = [...(dead[key].operations || []), { at: new Date(now).toISOString(), operator: String(operator).slice(0, 60), reason: String(reason).slice(0, 200) }];
+    if (newEmail && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(String(newEmail).trim())) return { ok: false, reason: "invalid_email" };
+  } else if (newEmail) return { ok: false, reason: "email_change_only_for_bounce" };
+  const ops = [...(dead[key].operations || []), { at: new Date(now).toISOString(), operator: String(operator).slice(0, 60), reason: String(reason).slice(0, 200), ...(newEmail ? { email_changed: true } : {}) }];
   dead[key] = { ...dead[key], status: "requeued", operations: ops };
   await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
   if (dead[key].kind === "delivery_bounced") {
@@ -688,7 +739,10 @@ export async function requeueDeadPackage(env, key, { operator, reason, now = Dat
     if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); await kv.delete(DELIVERY + d.pkgKey.slice(PKG.length)); }
     const history = [...(latest.deliveryHistory || []), { cycle: d.cycle, receipt: latest.deliveries?.[d.cycle] || null, requeuedAt: new Date(now).toISOString(), operator: String(operator).slice(0, 60) }].slice(-20);
     const { deliveredCycle: _dc, ...rest } = latest;
-    await kv.put(key, JSON.stringify({ ...rest, deliveryHistory: history }), { expirationTtl: 400 * DAY });
+    const email = newEmail ? String(newEmail).trim().toLowerCase() : latest.email;
+    const emailOps = newEmail ? [...(latest.emailChanges || []), { at: new Date(now).toISOString(), operator: String(operator).slice(0, 60), reason: String(reason).slice(0, 200) }].slice(-20) : latest.emailChanges;
+    await kv.put(key, JSON.stringify({ ...rest, email, ...(emailOps ? { emailChanges: emailOps } : {}), deliveryHistory: history }), { expirationTtl: 400 * DAY });
+    if (newEmail) await pendingLog(kv, key, "email_changed", String(operator).slice(0, 40), now); // sem o endereço no log
     const meta = await readJson(kv, PENDING_META, {});
     meta[key] = { attempts: 0, firstAt: new Date(now).toISOString(), requeued: true };
     await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });
@@ -713,7 +767,8 @@ export async function requeueDeadPackage(env, key, { operator, reason, now = Dat
 export const AI_CALL_TIMEOUT_MS = 60000;
 export const AI_ATTEMPTS_PER_MODEL = 2;
 export const AI_CALLS_PER_PACKAGE = 3;
-export const GEN_WORST_CASE_MS = AI_CALLS_PER_PACKAGE * MODELS.length * AI_ATTEMPTS_PER_MODEL * AI_CALL_TIMEOUT_MS;
+export const AI_CORRECTIVE_CALLS = 1; // nova chamada corretiva por recusa de promessa (no máximo 1 por chamada ao modelo)
+export const GEN_WORST_CASE_MS = AI_CALLS_PER_PACKAGE * (MODELS.length * AI_ATTEMPTS_PER_MODEL + AI_CORRECTIVE_CALLS) * AI_CALL_TIMEOUT_MS;
 export const GEN_LEASE_MS = GEN_WORST_CASE_MS + 3 * 60000;
 const LEASE = "zpc:cp:lease:";
 const SENT = "zpc:cp:sent:";       // envio aceito de um pacote (chave própria: sobrevive a falha na gravação do assinante)
@@ -1179,7 +1234,7 @@ export async function handleContentOperator(request, env, { now = Date.now() } =
     const dead = await readJson(kv, PENDING_DEAD, {});
     const keys = Object.keys(dead).filter((k) => k === sub || (sub.length === 12 && tail(k) === sub));
     if (keys.length !== 1) return out(404, { error: keys.length ? "ambiguous_sub" : "not_dead" });
-    const r = await requeueDeadPackage(env, keys[0], { operator: body?.operator, reason: body?.reason, now });
+    const r = await requeueDeadPackage(env, keys[0], { operator: body?.operator, reason: body?.reason, newEmail: body?.new_email || "", now });
     return out(r.ok ? 200 : 400, r);
   }
   return out(404, { error: "not_found" });
