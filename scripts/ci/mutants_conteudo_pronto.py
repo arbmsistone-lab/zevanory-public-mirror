@@ -34,7 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 29  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 36  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -60,8 +60,8 @@ M = {
         "`${i + 1}) \"${o.id}\"`", "prompt traz objetivo e regra"),
     "M11 validador ignora a ordem dos objetivos": (CS, "    if (id !== obj.id) return null;\n",
         "", "ordem dos objetivos"),
-    "M12 validador de roteiros ignora canal banido": (CS, "    if (FORBIDDEN.test(all) || contaminated(all)) return null;",
-        "    if (FORBIDDEN.test(all)) return null;", "termo proibido na curta"),
+    "M12 validador de roteiros ignora canal banido": (CS, "    if (FORBIDDEN.test(all) || promessa(all) || contaminated(all)) return null;",
+        "    if (FORBIDDEN.test(all) || promessa(all)) return null;", "termo proibido na curta"),
     "M13 validador aceita roteiro sem versão de e-mail": (CS, "if (assunto.length < 5 || assunto.length > 120 || corpo.length < 200 || corpo.length > 1600) return null;",
         "", "versão de e-mail obrigatória"),
     "M14 pacote com versão de schema fixa 1": (CS, "content_schema_version: CONTENT_SCHEMA_VERSION, servico: SERVICO, cycle",
@@ -88,8 +88,8 @@ M = {
         "<dd>Todo mês, uma campanha de promoção de vendas com mensagens para WhatsApp,", "gerado: conteudo-pronto"),
     "M25 kit de afiliado volta a mensagens": ("kit-afiliado/index.html", "12 posts e 4 roteiros multicanal de venda no tom do negócio, entregues",
         "12 posts e 4 mensagens de venda no tom do negócio, entregues", "kit-afiliado/index.html"),
-    "M26 llms.txt gerado volta a mensagens": ("sales-public/llms.txt", "assinatura mensal com 12 posts, 4 roteiros multicanal",
-        "assinatura mensal com 12 posts, 4 mensagens de venda", "sales-public/llms.txt"),
+    "M26 llms.txt gerado volta a mensagens": ("sales-public/llms.txt", "recebe 12 posts, 4 roteiros multicanal",
+        "recebe 12 posts, 4 mensagens de venda", "sales-public/llms.txt"),
     "M27 gerador volta a emitir o campo mensagens": (CS, "posts, roteiros: m, calendario",
         "posts, mensagens: m, roteiros: m, calendario", "campo antigo 'mensagens' não é mais gerado"),
     "M28 objetivo exibido vem do modelo": (CS, "out.push({ objetivo_id: obj.id, objetivo: obj.titulo,",
@@ -204,13 +204,13 @@ M = {
         "  if (false) return", "[camp-recusa] 6 dias"),
     "M82 campo da campanha deixa de ser obrigatório": (CS, "      if (v.length < 2) return { ok: false, error: `Faltou preencher",
         "      if (false) return { ok: false, error: `Faltou preencher", "[camp-recusa] sem objetivo_comercial"),
-    "M83 campanha aceita promessa de resultado": (CS, " || CAMPANHA_PROMESSA.test(texto)",
-        "", "[camp-recusa] promessa de resultado"),
-    "M84 post sem a oferta aceito": (CS, "      if (!normTxt(legenda + \" \" + cta).includes(normTxt(campanha.oferta))) return null;\n",
+    "M83 campanha aceita promessa de resultado": (CS, "if (FORBIDDEN.test(texto) || CAMPANHA_PROMESSA.test(texto) || promessa(texto) || contaminated(texto))",
+        "if (contaminated(texto))", "[camp-recusa] promessa de resultado"),
+    "M84 post sem a oferta aceito": (CS, "      if (!anchored(legenda + \" \" + cta, campanha.oferta)) return null;\n",
         "", "[camp-ancora] post sem a oferta"),
     "M85 post sem fase aceito": (CS, "      if (!FASE_IDS.has(fase)) return null;\n",
         "", "[camp-ancora] post sem fase"),
-    "M86 e-mail sem a condição comercial aceito": (CS, "      if (!normTxt(corpo).includes(normTxt(campanha.condicao_comercial))) return null;\n",
+    "M86 e-mail sem a condição comercial aceito": (CS, "      if (!anchored(corpo, campanha.condicao_comercial)) return null;\n",
         "", "[camp-ancora] e-mail sem a condição comercial"),
     "M87 fases da campanha não precisam ser cobertas": (CS, "    return out && FASE_IDS.size === new Set([...a, ...out].map((p) => p.fase)).size ? out : null;",
         "    return out;", "[camp-ancora] fases não cobertas"),
@@ -236,6 +236,26 @@ M = {
         "  const nd = n.replace(/promocao/g, \"\");", "[camp-textos] chat ainda bloqueia"),
     "M98 atendimento deixa passar qualquer promoção": ("worker/whatsapp-conversation.mjs", "  const bodyNoService = body.replace(/campanha (mensal )?de promo[cç][aã]o de vendas/gi, \"campanha de vendas\");",
         "  const bodyNoService = body.replace(/promo[cç][aã]o/gi, \"\");", "[camp-textos] atendimento ainda bloqueia"),
+    "M99 confirmação grava a cópia antiga do registro": (CS, "await patchReceipt(kv, key, cycle, { status: \"confirmed\", confirmedAt: new Date(now).toISOString(), provider_event: ev });",
+        "await kv.put(key, JSON.stringify({ ...rec, deliveries: { ...rec.deliveries, [cycle]: { ...rcpt, status: \"confirmed\", confirmedAt: new Date(now).toISOString(), provider_event: ev } } }));", "[camp-corrida] cancelamento preservado"),
+    "M100 sem lembretes do formulário": (CS, "const due = CAMPAIGN_REMINDER_DAYS.filter(",
+        "const due = [].filter(", "[camp-lembretes] um lembrete em cada dia, sem repetir"),
+    "M101 lembrete sem alerta ao proprietário": (CS, "if (CAMPAIGN_OWNER_ALERT_DAYS.includes(d)) {",
+        "if (false) {", "[camp-lembretes] alerta ao proprietário nos dias 7 e 14"),
+    "M102 bounce fora da fila de falhas": (CS, "      await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });\n      await pendingLog(kv, key, \"delivery_failed\"",
+        "      await pendingLog(kv, key, \"delivery_failed\"", "[camp-bounce] falha visível no status"),
+    "M103 âncora por substring": (CS, "  if (!anchorTerms(ph).length) return false;\n  return new RegExp(",
+        "  return normTxt(text).includes(ph);\n  return new RegExp(", "[camp-ancora-vazia] 'Escovação' não ancora 'Escova'"),
+    "M104 campanha aceita promessa de resultado": (CS, "CAMPANHA_PROMESSA.test(texto) || promessa(texto) ||",
+        "CAMPANHA_PROMESSA.test(texto) ||", "[camp-promessa] condição recusada: dobre suas vendas"),
+    "M105 condição com promessa exigida no e-mail": (CS, "    if (FORBIDDEN.test(all) || promessa(all) || contaminated(all)) return null;\n    if (campanha) {\n      // Condição com promessa nunca é exigida no e-mail (MED-5): sem ela a campanha inteira é recusada (fail-closed).\n      if (promessa(campanha.condicao_comercial) || promessa(campanha.oferta)) return null;\n",
+        "    if (FORBIDDEN.test(all) || contaminated(all)) return null;\n    if (campanha) {\n", "[camp-promessa] promessa nunca exigida no e-mail"),
+    "M106 data inexistente aceita": (CS, "      if (!realDate(v)) return",
+        "      if (!ISO_DATE.test(v)) return", "[camp-datas] 30/02 recusado"),
+    "M107 regeneração com a campanha de outro mês": (CS, "      if (record.campanha?.cycle !== record.cycles) return { ok: false, reason: \"campaign_required\" };\n",
+        "", "[camp-regen-mes] campanha do mês anterior não serve"),
+    "M108 reenvio de bounce reaproveita o token": (CS, "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); await kv.delete(DELIVERY + d.pkgKey.slice(PKG.length)); }",
+        "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); }", "[camp-bounce] link novo (nova chave de idempotência)"),
 }
 
 

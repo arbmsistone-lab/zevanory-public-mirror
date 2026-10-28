@@ -30,8 +30,9 @@ const HOTTOK = "hottok-amostra-local-000000000000";
 const SUB_EMAIL = "assinante.teste@example.invalid";
 const ALERTS = "alertas.teste@example.invalid";
 const PERFIL = { negocio: "Ateliê Linha Viva (fictício)", ramo: "ateliê de costura sob medida", publico: "mulheres de 25 a 60 anos, noivas e madrinhas", produtos: "ajustes, vestidos sob medida, uniformes", diferencial: "prova com hora marcada e acabamento à mão", cidade: "Crato - CE", tom: "próximo e acolhedor", contato: "e-mail, Instagram Direct e chat do site" };
-const CAMP1 = { objetivo_comercial: "Encher a agenda de ajustes antes das festas de fim de ano", oferta: "Ajuste de Festa", condicao_comercial: "barra grátis em vestidos ajustados até 30/11", periodo_inicio: "2026-11-03", periodo_fim: "2026-11-30" };
-const CAMP2 = { objetivo_comercial: "Vender uniformes para pequenas empresas em janeiro", oferta: "Uniforme Sob Medida", condicao_comercial: "preço normal, com prova na sua empresa", periodo_inicio: "2026-12-01", periodo_fim: "2026-12-21" };
+const day = (n) => new Date(Date.parse(new Date().toISOString().slice(0, 10) + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10); // relativo a hoje
+const CAMP1 = { objetivo_comercial: "Encher a agenda de ajustes antes das festas de fim de ano", oferta: "Ajuste de Festa", condicao_comercial: "barra grátis em vestidos ajustados até 30/11", periodo_inicio: day(6), periodo_fim: day(33) };
+const CAMP2 = { objetivo_comercial: "Vender uniformes para pequenas empresas em janeiro", oferta: "Uniforme Sob Medida", condicao_comercial: "preço normal, com prova na sua empresa", periodo_inicio: day(34), periodo_fim: day(54) };
 
 // IA stub ancorada: lê a campanha do prompt e devolve textos que citam a oferta, a condição e uma fase por post.
 function stubAI() {

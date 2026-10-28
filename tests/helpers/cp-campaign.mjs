@@ -3,14 +3,17 @@
 // contrato exige. Os textos são fictícios.
 import { FASES } from "../../worker/content-service.mjs";
 
+// Datas relativas a hoje (o formulário recusa início no passado ou a mais de CAMPANHA_INICIO_MAX_DIAS dias).
+export const isoDay = (offsetDays, from = Date.now()) => new Date(Date.parse(new Date(from).toISOString().slice(0, 10) + "T00:00:00Z") + offsetDays * 86400000).toISOString().slice(0, 10);
+export const plusDays = (iso, n) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
 export const CAMPAIGN = Object.freeze({
   objetivo_comercial: "Lotar a agenda das quartas-feiras",
   oferta: "Escova Quarta Feliz",
   condicao_comercial: "15% na segunda escova da mesma visita",
-  periodo_inicio: "2026-11-02",
-  periodo_fim: "2026-11-29",
+  periodo_inicio: isoDay(5),
+  periodo_fim: isoDay(32),
 });
-export const CAMPAIGN_MONTH2 = Object.freeze({ ...CAMPAIGN, oferta: "Hidratação de Dezembro", condicao_comercial: "preço normal", periodo_inicio: "2026-12-01", periodo_fim: "2026-12-20" });
+export const CAMPAIGN_MONTH2 = Object.freeze({ ...CAMPAIGN, oferta: "Hidratação de Dezembro", condicao_comercial: "preço normal", periodo_inicio: isoDay(35), periodo_fim: isoDay(54) });
 
 // Lê a campanha do prompt (linhas "Oferta promovida:" e "Condição comercial:") e ajusta a resposta da IA falsa.
 export function campaignize(prompt, payload) {

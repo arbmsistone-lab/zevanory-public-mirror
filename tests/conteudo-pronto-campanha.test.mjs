@@ -17,7 +17,7 @@ import * as CS from "../worker/content-service.mjs";
 import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { validateSiteReply } from "../worker/site-chat.mjs";
 import { validateReply } from "../worker/whatsapp-conversation.mjs";
-import { CAMPAIGN, CAMPAIGN_MONTH2, campaignize } from "./helpers/cp-campaign.mjs";
+import { CAMPAIGN, CAMPAIGN_MONTH2, campaignize, isoDay, plusDays } from "./helpers/cp-campaign.mjs";
 
 globalThis.fetch = async (u) => { throw new Error("rede bloqueada no teste: " + u); };
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -83,7 +83,7 @@ test("[camp-recusa] sem campanha completa e válida o gerador recusa, sem chamar
     assert.equal(await CS.generatePackage({ AI: a }, BRIEF, 1, sem), null, "[camp-recusa] sem " + f.id);
   }
   assert.equal(await CS.generatePackage({ AI: a }, BRIEF, 1), null, "[camp-recusa] sem campanha");
-  for (const [label, c] of [["6 dias", { ...CAMPAIGN, periodo_fim: "2026-11-07" }], ["31 dias", { ...CAMPAIGN, periodo_fim: "2026-12-02" }], ["fim antes do início", { ...CAMPAIGN, periodo_fim: "2026-11-01" }],
+  for (const [label, c] of [["6 dias", { ...CAMPAIGN, periodo_fim: plusDays(CAMPAIGN.periodo_inicio, 5) }], ["31 dias", { ...CAMPAIGN, periodo_fim: plusDays(CAMPAIGN.periodo_inicio, 30) }], ["fim antes do início", { ...CAMPAIGN, periodo_fim: plusDays(CAMPAIGN.periodo_inicio, -1) }],
     ["data inválida", { ...CAMPAIGN, periodo_inicio: "02/11/2026" }], ["promessa de resultado", { ...CAMPAIGN, condicao_comercial: "venda garantida ou seu dinheiro de volta" }], ["canal banido", { ...CAMPAIGN, condicao_comercial: "chame no WhatsApp" }]]) {
     assert.equal(CS.validateCampaign(c).ok, false, "[camp-recusa] " + label);
     assert.equal(await CS.generatePackage({ AI: a }, BRIEF, 1, c), null, "[camp-recusa] gerador: " + label);
@@ -98,7 +98,7 @@ test("[camp-form] formulário sem a campanha do mês responde 400 e nada entra n
   const html = await (await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t), e, null, f)).text();
   for (const fd of CS.CAMPANHA_CAMPOS) assert.match(html, new RegExp(`name="${fd.id}"[^>]*required`), "[camp-form] campo obrigatório no formulário: " + fd.id);
   assert.equal((await submit(e, f, t, BRIEF)).status, 400, "[camp-form] sem campanha");
-  assert.equal((await submit(e, f, t, { ...BRIEF, ...CAMPAIGN, periodo_fim: "2026-11-04" })).status, 400, "[camp-form] período curto");
+  assert.equal((await submit(e, f, t, { ...BRIEF, ...CAMPAIGN, periodo_fim: plusDays(CAMPAIGN.periodo_inicio, 2) })).status, 400, "[camp-form] período curto");
   assert.equal(kv.data.get("zpc:cp:pending") ?? null, null, "[camp-form] nada na fila");
   assert.equal(a.calls.length, 0, "[camp-form] nenhuma chamada de IA");
   assert.equal(f.sent.filter((m) => /chegou/.test(m.subject)).length, 0);
@@ -238,4 +238,130 @@ test("[camp-amostra] amostra operacional completa (modo seguro) cumpre todos os 
     for (const [k, v] of Object.entries(R.criterios)) assert.equal(v, true, "[camp-amostra] " + k);
     assert.equal(R.ok, true);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------- Auditoria independente, rodada 2 do #960 (MED-1..5 e LOW) ----------
+const alertKinds = (kv) => JSON.parse(kv.data.get("zpc:cp:alerts") || "[]").map((a) => a.kind);
+
+test("[camp-corrida] cancelamento que chega durante a confirmação de entrega vence (registro relido antes de gravar)", async () => {
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+  assert.equal(rec(kv).status, "active");
+  const slow = async (url, init) => {
+    if ((init?.method || "GET") === "GET") { // o cancelamento chega enquanto o provedor responde
+      await CS.handleHotmartWebhook(hook("SUBSCRIPTION_CANCELLATION", "HP-C3-CANCEL"), e, null, f);
+      return new Response(JSON.stringify({ id: String(url).split("/").pop(), last_event: "delivered" }), { status: 200 });
+    }
+    return f(url, init);
+  };
+  await CS.confirmPackageDeliveries(e, slow);
+  const r = rec(kv);
+  assert.equal(r.status, "inactive", "[camp-corrida] cancelamento preservado");
+  assert.equal(r.stopEvent, "SUBSCRIPTION_CANCELLATION", "[camp-corrida] evento de parada preservado");
+  assert.equal(r.deliveries[1].status, "confirmed", "[camp-corrida] recibo confirmado na mesma gravação");
+});
+
+test("[camp-lembretes] formulário sem resposta: lembretes nos dias 3, 7 e 14, alerta ao proprietário nos dias 7 e 14; política do mês pago na página", async () => {
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-R2"), e, null, f); // renovação: pede a campanha do mês 2
+  const ask2 = f.sent.filter((m) => /defina a campanha do mês 2/.test(m.subject)).at(-1);
+  assert.ok(ask2, "[camp-lembretes] pedido da campanha do mês 2");
+  const t2 = tokenOf(ask2.text, "briefing");
+  let now = Date.now();
+  for (let d = 1; d <= 20; d++) await CS.retryPendingPackages(e, f, 2, { now: now + d * 86400e3 });
+  const reminders = f.sent.filter((m) => m.to[0] === "c3@example.invalid" && /Lembrete: falta a campanha do mês 2/.test(m.subject));
+  assert.deepEqual(reminders.map((m) => /lembrete do dia (\d+)/.exec(m.text)[1]).map(Number), [...CS.CAMPAIGN_REMINDER_DAYS], "[camp-lembretes] um lembrete em cada dia, sem repetir");
+  assert.ok(reminders.every((m) => m.text.includes("briefing?t=" + t2)), "[camp-lembretes] mesmo link do pedido");
+  assert.equal(alertKinds(kv).filter((k) => k === "campanha_pendente").length, CS.CAMPAIGN_OWNER_ALERT_DAYS.length, "[camp-lembretes] alerta ao proprietário nos dias 7 e 14");
+  const st = await (await CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/status"), e)).json();
+  assert.equal(st.forms_waiting.length, 1, "[camp-lembretes] espera visível no status do operador");
+  // A resposta encerra os lembretes; o mês 2 é entregue depois do dia 14 (mês reservado).
+  await submit(e, f, t2, { ...BRIEF, ...CAMPAIGN_MONTH2 });
+  assert.equal(rec(kv).deliveredCycle, 2, "[camp-lembretes] campanha enviada tarde ainda gera o mês pago");
+  const before = f.sent.length;
+  await CS.retryPendingPackages(e, f, 2, { now: now + 30 * 86400e3 });
+  assert.equal(f.sent.filter((m, i) => i >= before && /Lembrete/.test(m.subject)).length, 0, "[camp-lembretes] sem lembrete depois da resposta");
+  // Renovação seguinte sem a campanha do ciclo anterior => proprietário avisado.
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-R3"), e, null, f);
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-R4"), e, null, f);
+  assert.ok(alertKinds(kv).includes("ciclo_sem_campanha"), "[camp-lembretes] ciclo terminado sem campanha alertado");
+  // A página diz exatamente essa política.
+  for (const rel of ["conteudo-pronto/index.html", "sales-public/conteudo-pronto.html"]) {
+    const html = read(rel);
+    assert.match(html, /E se eu não enviar a campanha do mês\?/, "[camp-lembretes] FAQ: " + rel);
+    assert.match(html, new RegExp(`lembretes por e-mail ${CS.CAMPAIGN_REMINDER_DAYS.slice(0, -1).join(", ")} e ${CS.CAMPAIGN_REMINDER_DAYS.at(-1)} dias depois do pedido`), "[camp-lembretes] dias na página: " + rel);
+    assert.match(html, new RegExp(`avisada no ${CS.CAMPAIGN_OWNER_ALERT_DAYS[0]}º dia`), "[camp-lembretes] alerta na página: " + rel);
+    assert.match(html, /O mês pago fica reservado: você pode enviar a campanha a qualquer momento até a próxima renovação/, "[camp-lembretes] mês pago: " + rel);
+  }
+});
+
+test("[camp-bounce] entrega com bounce: na fila de falhas, visível no status, reenviável pelo operador com link novo", async () => {
+  const f = resend({ event: "bounced" }), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+  await CS.retryPendingPackages(e, f);
+  assert.equal(rec(kv).deliveries[1].status, "failed");
+  const op = (path, body) => CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/" + path, body ? { method: "POST", body: JSON.stringify(body) } : {}), e);
+  const st = await (await op("status")).json();
+  const d = st.dead.find((x) => x.kind === "delivery_bounced");
+  assert.ok(d && d.provider_event === "bounced" && d.cycle === 1, "[camp-bounce] falha visível no status");
+  const first = tokenOf(f.sent.filter((m) => /chegou/.test(m.subject)).at(-1).text, "pacote");
+  const r = await op("requeue", { sub: subKey(kv).slice(-12), operator: "ana", reason: "endereço conferido, reenviar" });
+  assert.equal(r.status, 200, "[camp-bounce] reenvio aceito pelo operador");
+  const calls = e.AI.calls.length;
+  await CS.retryPendingPackages(e, f);
+  const pkgs = f.sent.filter((m) => /chegou/.test(m.subject));
+  assert.equal(pkgs.length, 2, "[camp-bounce] pacote reenviado");
+  assert.notEqual(tokenOf(pkgs[1].text, "pacote"), first, "[camp-bounce] link novo (nova chave de idempotência)");
+  assert.equal(e.AI.calls.length, calls, "[camp-bounce] mesmo pacote, sem nova geração");
+  assert.equal(rec(kv).deliveryHistory.at(-1).receipt.status, "failed", "[camp-bounce] recibo com falha no histórico");
+  // O reenvio também voltou com bounce (o provedor falso devolve bounced sempre): falha nova na fila, com histórico.
+  const dead = JSON.parse(kv.data.get("zpc:cp:pending-dead"))[subKey(kv)];
+  assert.ok(dead.status === "dead" && dead.operations.length === 1 && dead.history.length === 1, "[camp-bounce] nova falha registrada com o histórico da anterior");
+});
+
+test("[camp-ancora-vazia] palavras vazias não ancoram: oferta ou condição só com 'de'/'da' é recusada; âncora é palavra inteira", () => {
+  assert.equal(CS.validateCampaign({ ...CAMPAIGN, oferta: "de" }).ok, false, "[camp-ancora-vazia] oferta 'de'");
+  assert.equal(CS.validateCampaign({ ...CAMPAIGN, condicao_comercial: "da" }).ok, false, "[camp-ancora-vazia] condição 'da'");
+  const semOferta = [1, 2, 3, 4, 5, 6].map((i) => ({ ...post(i, CS.FASES[i - 1].id), legenda: legenda(i) + " Venha de manhã ou de tarde." }));
+  assert.equal(CS.validatePosts(semOferta, 6, { ...CAMPAIGN, oferta: "de" }), null, "[camp-ancora-vazia] posts sem oferta não passam com oferta 'de'");
+  const parcial = [1, 2, 3, 4, 5, 6].map((i) => ({ ...post(i, CS.FASES[i - 1].id), legenda: legenda(i) + " Escovação completa." }));
+  assert.equal(CS.validatePosts(parcial, 6, { ...CAMPAIGN, oferta: "Escova" }), null, "[camp-ancora-vazia] 'Escovação' não ancora 'Escova'");
+  assert.equal(CS.anchored("Hoje tem Escova Quarta Feliz.", CAMPAIGN.oferta), true, "[camp-ancora-vazia] oferta citada ancora");
+});
+
+test("[camp-promessa] condição com promessa de resultado é recusada e nunca é exigida no e-mail; textos gerados também", () => {
+  for (const c of ["dobre suas vendas", "100% de lucro", "garantimos que você vai vender", "satisfação garantida ou seu dinheiro de volta", "venda mais com risco zero", "aumente seu faturamento"]) {
+    assert.equal(CS.validateCampaign({ ...CAMPAIGN, condicao_comercial: c }).ok, false, "[camp-promessa] condição recusada: " + c);
+  }
+  assert.equal(CS.validateCampaign({ ...CAMPAIGN, condicao_comercial: "garantia de 90 dias no conserto" }).ok, true, "[camp-promessa] garantia de produto com prazo passa");
+  const camp = { ...CAMPAIGN, condicao_comercial: "dobre suas vendas" };
+  const rots = CS.ROTEIRO_OBJETIVOS.map((o) => campaignize(CS.roteirosPrompt("b", camp), { roteiros: [roteiro(o)] }).roteiros[0]);
+  assert.equal(CS.validateRoteiros(rots, camp), null, "[camp-promessa] promessa nunca exigida no e-mail");
+  const ok = CS.ROTEIRO_OBJETIVOS.map((o) => campaignize(CS.roteirosPrompt("b", CAMPAIGN), { roteiros: [roteiro(o)] }).roteiros[0]);
+  assert.ok(CS.validateRoteiros(ok, CAMPAIGN), "[camp-promessa] campanha sem promessa passa");
+  const comPromessa = ok.map((r) => ({ ...r, email: { ...r.email, corpo: r.email.corpo + " Você vai vender mais." } }));
+  assert.equal(CS.validateRoteiros(comPromessa, CAMPAIGN), null, "[camp-promessa] e-mail gerado com promessa recusado");
+});
+
+test("[camp-datas] data inexistente, início no passado ou longe demais são recusados no formulário", async () => {
+  assert.equal(CS.validateCampaign({ ...CAMPAIGN, periodo_inicio: "2027-02-30", periodo_fim: "2027-03-20" }).ok, false, "[camp-datas] 30/02 recusado");
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  const t = await subscribed(e, f);
+  const past = { ...CAMPAIGN, periodo_inicio: isoDay(-3), periodo_fim: isoDay(10) };
+  assert.equal((await submit(e, f, t, { ...BRIEF, ...past })).status, 400, "[camp-datas] início no passado");
+  const far = { ...CAMPAIGN, periodo_inicio: isoDay(CS.CAMPANHA_INICIO_MAX_DIAS + 5), periodo_fim: isoDay(CS.CAMPANHA_INICIO_MAX_DIAS + 20) };
+  assert.equal((await submit(e, f, t, { ...BRIEF, ...far })).status, 400, "[camp-datas] início longe demais");
+  assert.equal(kv.data.get("zpc:cp:pending") ?? null, null, "[camp-datas] nada na fila");
+  assert.equal((await submit(e, f, t, { ...BRIEF, ...CAMPAIGN })).status, 200, "[camp-datas] período válido aceito");
+});
+
+test("[camp-regen-mes] regeneração de pacote bloqueado só com a campanha do mês do pacote", async () => {
+  const a = ai(), f = resend(), e = env(a), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  const sub = "zpc:cp:sub:" + "b".repeat(40), pk = "zpc:cp:pkg:" + "b".repeat(40) + ":2";
+  kv.data.set(pk, JSON.stringify({ schema: "zpc.cp.package.v1", cycle: 2, generatedAt: "2026-10-01T00:00:00.000Z", posts: [post(1)], mensagens: [{ objetivo: "Oferta", texto: "Chame no WhatsApp" }], calendario: [{ dia: 1, tipo: "post", tema: "Tema 1" }] }));
+  kv.data.set(sub, JSON.stringify({ schema: "zpc.cp.v1", status: "active", email: "r@example.invalid", name: "R", cycles: 2, briefing: BRIEF, deliveredCycle: 2, lastPackage: pk, campanha: { ...CAMPAIGN, cycle: 1 } }));
+  const out = await CS.regenerateBlockedPackage(e, sub, f);
+  assert.equal(out.reason, "campaign_required", "[camp-regen-mes] campanha do mês anterior não serve");
+  assert.equal(a.calls.length, 0, "[camp-regen-mes] nenhuma chamada de IA");
 });

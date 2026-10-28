@@ -216,7 +216,9 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
       await welcomeFailed(env, kv, key, { ...item, dedupe }, "email_failed", fetchImpl);
       return json(202, { ok: true, status: record.briefing ? "campaign_email_pending" : "briefing_email_pending" });
     }
-    await welcomeDone(env, kv, key, subscriber, record.cycles, dedupe, Date.now(), record.briefing ? "campaign_requested" : "briefing_requested");
+    await welcomeDone(env, kv, key, subscriber, record.cycles, dedupe, Date.now(), record.briefing ? "campaign_requested" : "briefing_requested", item.token);
+    // Renovação chegando sem a campanha (e sem entrega) do ciclo anterior: o proprietário é avisado (MED-2).
+    if (record.briefing && record.cycles > 1 && Number(record.deliveredCycle || 0) < record.cycles - 1) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem campanha", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem ter enviado a campanha do ciclo ${record.cycles - 1}, que ficou sem entrega. Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
     if (!record.briefing) await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl, { kind: "novo_assinante", sub: key });
     return json(200, { ok: true, status: record.briefing ? "campaign_requested" : "briefing_requested" });
   }
@@ -251,10 +253,56 @@ async function welcomeFailed(env, kv, key, item, reason, fetchImpl, now = Date.n
   await pendingLog(kv, key, "welcome_failed", reason, now);
   if (attempts === 1) await ownerAlert(env, "e-mail com o formulário do Conteúdo Pronto não saiu", `O e-mail com o formulário (boas-vindas ou campanha do mês) não foi aceito pelo provedor (assinante …${String(key).slice(-12)}). O sistema tenta de novo a cada hora, até ${PENDING_MAX_ATTEMPTS} vezes, com o mesmo link; depois disso o item vai para a fila de falhas.`, fetchImpl, { kind: "boas_vindas_falhou", sub: key, now }).catch(() => null);
 }
-async function welcomeDone(env, kv, key, ref, cycles, dedupe, now = Date.now(), status = "briefing_requested") {
+// #960 rodada 2 (MED-2): formulário enviado e não respondido (boas-vindas ou campanha do mês) => lembretes ao assinante
+// nos dias CAMPAIGN_REMINDER_DAYS depois do pedido, alerta ao proprietário nos dias CAMPAIGN_OWNER_ALERT_DAYS. O mês pago
+// fica reservado: a campanha pode ser enviada a qualquer momento até a próxima renovação (o link vale 60 dias) e o pacote
+// é gerado quando chegar. Se a renovação seguinte chegar sem a campanha do ciclo anterior, o proprietário é avisado
+// ("ciclo sem campanha") para contatar o assinante. Política escrita na página (FAQ) e no contrato da oferta.
+export const CAMPAIGN_REMINDER_DAYS = Object.freeze([3, 7, 14]);
+export const CAMPAIGN_OWNER_ALERT_DAYS = Object.freeze([7, 14]);
+const FORM_WAIT = "zpc:cp:form-wait"; // { chave do assinante: { cycle, token, requestedAt, sent: [dias] } }
+async function setFormWait(kv, key, cycle, token, now) {
+  const w = await readJson(kv, FORM_WAIT, {});
+  w[key] = { cycle, token, requestedAt: new Date(now).toISOString(), sent: [] };
+  await kv.put(FORM_WAIT, JSON.stringify(w), { expirationTtl: 400 * DAY });
+}
+async function clearFormWait(kv, key) {
+  const w = await readJson(kv, FORM_WAIT, {});
+  if (w[key]) { delete w[key]; await kv.put(FORM_WAIT, JSON.stringify(w), { expirationTtl: 400 * DAY }); }
+}
+const reminderText = (name, cycle, first, link, day) => `Olá${firstName(name)}!\n\n${first ? "Seu pagamento foi confirmado, mas ainda falta o formulário curto (perfil do negócio e campanha do mês)" : `Sua assinatura foi renovada, mas ainda falta a campanha do mês ${cycle} (objetivo comercial, oferta, condição comercial e período)`}. Sem ela a ZEVANORY não gera os textos.\n\n${link}\n\nO mês pago fica reservado: você pode enviar a campanha a qualquer momento até a próxima renovação, e o pacote chega quando você enviar. Este é o lembrete do dia ${day}.\n\nDúvidas: suporte@zevanory.api.br`;
+export async function remindPendingForms(env, fetchImpl = fetch, { now = Date.now() } = {}) {
+  const kv = kvOf(env);
+  const wait = await readJson(kv, FORM_WAIT, {});
+  const out = { reminders: 0, alerts: 0, cleared: 0 };
+  for (const [key, w] of Object.entries(wait)) {
+    try {
+      const rec = await readJson(kv, key, null);
+      if (!rec || rec.status !== "active" || !needsForm(rec) || rec.cycles !== w.cycle) { await clearFormWait(kv, key); out.cleared++; continue; }
+      const days = (now - Date.parse(w.requestedAt)) / (DAY * 1000);
+      const due = CAMPAIGN_REMINDER_DAYS.filter((d) => days >= d && !(w.sent || []).includes(d));
+      for (const d of due) {
+        const link = `${ORIGIN}/conteudo-pronto/briefing?t=${w.token}`;
+        const ok = await sendEmail(env, rec.email, rec.briefing ? `Lembrete: falta a campanha do mês ${rec.cycles} do Conteúdo Pronto` : "Lembrete: falta o formulário do Conteúdo Pronto", reminderText(rec.name, rec.cycles, !rec.briefing, link, d), fetchImpl, "cp-remind/" + (await sha(key + "|" + w.cycle + "|" + d)).slice(0, 48));
+        if (!ok) { await pendingLog(kv, key, "reminder_failed", "day " + d, now); break; } // tenta de novo no próximo cron
+        const cur = await readJson(kv, FORM_WAIT, {});
+        if (cur[key]) { cur[key].sent = [...(cur[key].sent || []), d]; await kv.put(FORM_WAIT, JSON.stringify(cur), { expirationTtl: 400 * DAY }); }
+        await pendingLog(kv, key, "reminder_sent", "day " + d, now);
+        out.reminders++;
+        if (CAMPAIGN_OWNER_ALERT_DAYS.includes(d)) {
+          await ownerAlert(env, rec.briefing ? "campanha do mês do Conteúdo Pronto sem resposta" : "formulário do Conteúdo Pronto sem resposta", `Assinante …${String(key).slice(-12)} pagou o ciclo ${rec.cycles} e ainda não enviou ${rec.briefing ? "a campanha do mês" : "o formulário"} (${d} dias depois do pedido; lembretes enviados nos dias ${CAMPAIGN_REMINDER_DAYS.filter((x) => x <= d).join(", ")}). Contatar o assinante. O mês fica reservado até a próxima renovação.`, fetchImpl, { kind: "campanha_pendente", sub: key, now });
+          out.alerts++;
+        }
+      }
+    } catch (e) { await pendingLog(kv, key, "reminder_failed", "exception:" + String(e?.message || e).slice(0, 40), now).catch(() => null); }
+  }
+  return out;
+}
+async function welcomeDone(env, kv, key, ref, cycles, dedupe, now = Date.now(), status = "briefing_requested", token = "") {
   const outbox = await readJson(kv, WELCOME, {});
   if (outbox[key]) { delete outbox[key]; await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY }); await pendingLog(kv, key, "welcome_sent", "", now); }
   await emitActivity(env, { type: "email_sent", channel: "email", status, ref: (status === "campaign_requested" ? "cp-camp:" : "cp-brief:") + ref + ":" + cycles }).catch(() => null);
+  if (token) await setFormWait(kv, key, cycles, token, now); // lembretes até a resposta (MED-2)
   if (dedupe) await kv.put(dedupe, "1", { expirationTtl: 400 * DAY }); // markProcessed só depois do envio
 }
 export async function retryWelcomeEmails(env, fetchImpl = fetch, { now = Date.now(), limit = 5 } = {}) {
@@ -279,7 +327,7 @@ export async function retryWelcomeEmails(env, fetchImpl = fetch, { now = Date.no
       }
       if (out.tried >= limit) continue;
       out.tried++;
-      if (await sendWelcome(env, key, rec, item.token, fetchImpl)) { await welcomeDone(env, kv, key, key.slice(-16), rec.cycles, item.dedupe, now, rec.briefing ? "campaign_requested" : "briefing_requested"); out.sent++; }
+      if (await sendWelcome(env, key, rec, item.token, fetchImpl)) { await welcomeDone(env, kv, key, key.slice(-16), rec.cycles, item.dedupe, now, rec.briefing ? "campaign_requested" : "briefing_requested", item.token); out.sent++; }
       else await welcomeFailed(env, kv, key, item, "email_failed", fetchImpl, now);
     } catch (e) {
       out.tried++;
@@ -304,13 +352,34 @@ const FIELDS = [
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // Promessa de resultado em qualquer ordem ("venda garantida", "garantia de resultado", "lucro certo").
 const CAMPANHA_PROMESSA = /\b(vendas?|resultados?|lucros?|retornos?|clientes?)\s+(garantid\w*|certos?|certas?)\b|\bgarant\w*\s+(de\s+)?(vendas?|resultados?|lucros?|retornos?|clientes?)\b/i;
+// #960 rodada 2 (MED-5): a mesma família de frases que o portão do FAQ do #955 recusa, mais forte: promessa de
+// resultado, de venda ou de dinheiro de volta, em qualquer campo da campanha e em qualquer texto gerado. A condição
+// comercial é copiada nos e-mails; por isso uma condição com promessa é recusada no formulário e nunca é exigida.
+// Garantia de produto/serviço com prazo ("garantia de 90 dias no conserto") não é promessa de resultado e passa.
+export const PROMESSA_RX = /garantimos|garantid[oa]s?\b|garant\w*\s+(que|de\s+(resultado|venda|lucro|retorno|cliente)|resultado|venda|lucro|retorno)|dinheiro de volta|reembolso garantido|sem risco|risco zero|\bdobr\w*\s+(\w+\s+){0,2}(vendas?|faturamento|lucros?|clientes?|resultados?)|\btriplic\w*|\bmultiplic\w*\s+(\w+\s+){0,2}(vendas?|faturamento|lucros?|clientes?)|\d+\s*%\s*(de\s+)?(lucro|retorno|resultado|aumento)|vender mais|mais vendas|aument\w*\s+(\w+\s+){0,2}(vendas?|faturamento|lucros?)|resultado (certo|garantido)|lucro (certo|garantido)|fique rico|renda (garantida|extra garantida)|milagr|com certeza (vai|vão|voc)/i;
+export const promessa = (t) => PROMESSA_RX.test(normTxt(t)) || PROMESSA_RX.test(String(t ?? ""));
+// #960 rodada 2 (MED-4): a âncora precisa de termos com conteúdo. Palavras vazias ("de", "da", "o") nunca bastam.
+const STOPWORDS = new Set("a o as os de da do das dos e em no na nos nas um uma uns umas para por com sem que se ao aos ou mais".split(" "));
+export const ANCHOR_MIN_CHARS = 4;
+export function anchorTerms(t) { return normTxt(t).split(/[^a-z0-9%]+/).filter((w) => w.length >= ANCHOR_MIN_CHARS && !STOPWORDS.has(w)); }
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// A frase inteira, com fronteira de palavra (não substring), e só se ela tiver ao menos um termo com conteúdo.
+export function anchored(text, phrase) {
+  const ph = normTxt(phrase);
+  if (!anchorTerms(ph).length) return false;
+  return new RegExp("(^|[^a-z0-9])" + reEsc(ph) + "($|[^a-z0-9])").test(normTxt(text));
+}
+// #960 rodada 2 (LOW): data real (sem 30/02 virando março) e, no formulário, período a partir de hoje e no máximo
+// CAMPANHA_INICIO_MAX_DIAS dias à frente (o mês pago fica reservado até a próxima renovação; ver CAMPAIGN_REMINDER_DAYS).
+export const CAMPANHA_INICIO_MAX_DIAS = 45;
+const realDate = (v) => ISO_DATE.test(v) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
 const dayMs = 86400000;
-export function validateCampaign(raw = {}) {
+export function validateCampaign(raw = {}, { now = null } = {}) {
   const c = {};
   for (const f of CAMPANHA_CAMPOS) {
     const v = String(raw?.[f.id] ?? "").replace(/\s+/g, " ").trim();
     if (f.tipo === "date") {
-      if (!ISO_DATE.test(v) || Number.isNaN(Date.parse(v + "T00:00:00Z"))) return { ok: false, error: `Informe a data: ${f.rotulo}` };
+      if (!realDate(v)) return { ok: false, error: `Informe uma data válida: ${f.rotulo}` };
     } else {
       if (v.length < 2) return { ok: false, error: `Faltou preencher: ${f.rotulo}` };
       if (v.length > f.max) return { ok: false, error: `Texto longo demais em: ${f.rotulo} (máximo ${f.max} caracteres)` };
@@ -319,8 +388,16 @@ export function validateCampaign(raw = {}) {
   }
   const dias = Math.round((Date.parse(c.periodo_fim + "T00:00:00Z") - Date.parse(c.periodo_inicio + "T00:00:00Z")) / dayMs) + 1;
   if (!(dias >= CAMPANHA.periodo_dias_min && dias <= CAMPANHA.periodo_dias_max)) return { ok: false, error: `O período da campanha precisa ter de ${CAMPANHA.periodo_dias_min} a ${CAMPANHA.periodo_dias_max} dias (informado: ${dias}).` };
+  if (now !== null) { // só no formulário: a campanha começa hoje ou depois, dentro da janela do ciclo pago
+    const today = Date.parse(new Date(now).toISOString().slice(0, 10) + "T00:00:00Z");
+    const ini = Date.parse(c.periodo_inicio + "T00:00:00Z");
+    if (ini < today) return { ok: false, error: "O início da campanha não pode ser uma data que já passou." };
+    if (ini > today + CAMPANHA_INICIO_MAX_DIAS * dayMs) return { ok: false, error: `O início da campanha precisa estar nos próximos ${CAMPANHA_INICIO_MAX_DIAS} dias.` };
+  }
+  if (!anchorTerms(c.oferta).length) return { ok: false, error: `Descreva a oferta com pelo menos uma palavra de ${ANCHOR_MIN_CHARS} letras ou mais (ex.: o nome do produto ou serviço).` };
+  if (!anchorTerms(c.condicao_comercial).length) return { ok: false, error: `Descreva a condição comercial com pelo menos uma palavra de ${ANCHOR_MIN_CHARS} letras ou mais (ex.: "preço normal", "15% na segunda unidade").` };
   const texto = [c.objetivo_comercial, c.oferta, c.condicao_comercial].join(" ");
-  if (FORBIDDEN.test(texto) || CAMPANHA_PROMESSA.test(texto) || contaminated(texto)) return { ok: false, error: "A campanha não pode prometer resultado garantido nem citar canal de contato não autorizado." };
+  if (FORBIDDEN.test(texto) || CAMPANHA_PROMESSA.test(texto) || promessa(texto) || contaminated(texto)) return { ok: false, error: "A campanha não pode prometer resultado, venda ou dinheiro de volta, nem citar canal de contato não autorizado." };
   return { ok: true, campanha: { ...c, dias } };
 }
 function page(title, inner, status = 200) {
@@ -363,10 +440,13 @@ export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
     if (req && v.length < 2) return page("Faltou um campo", `<h1>Faltou preencher: ${esc(FIELDS.find((f) => f[0] === id)[1])}</h1><p><a href="?t=${esc(token)}" style="color:#dbe6ff">Voltar</a></p>`, 400);
     briefing[id] = v;
   }
-  const camp = validateCampaign(Object.fromEntries(CAMPANHA_CAMPOS.map((f) => [f.id, form.get(f.id)])));
+  const camp = validateCampaign(Object.fromEntries(CAMPANHA_CAMPOS.map((f) => [f.id, form.get(f.id)])), { now: Date.now() });
   if (!camp.ok) return page("Campanha incompleta", `<h1>${esc(camp.error)}</h1><p>Sem a campanha do mês (objetivo comercial, oferta, condição comercial e período) a ZEVANORY não gera o pacote.</p><p><a href="?t=${esc(token)}" style="color:#dbe6ff">Voltar</a></p>`, 400);
   await enqueuePending(kv, found.key); // G1: intenção na fila antes de gravar o briefing e de responder
-  await kv.put(found.key, JSON.stringify({ ...found.record, briefing, briefedAt: new Date().toISOString(), campanha: { ...camp.campanha, cycle: found.record.cycles, savedAt: new Date().toISOString() } }), { expirationTtl: 400 * DAY });
+  const fresh = (await readJson(kv, found.key, null)) || found.record;
+  if (fresh.status !== "active") return page("Assinatura inativa", "<h1>Esta assinatura não está ativa.</h1><p>Fale com suporte@zevanory.api.br.</p>", 409);
+  await kv.put(found.key, JSON.stringify({ ...fresh, briefing, briefedAt: new Date().toISOString(), campanha: { ...camp.campanha, cycle: fresh.cycles, savedAt: new Date().toISOString() } }), { expirationTtl: 400 * DAY });
+  await clearFormWait(kv, found.key);
   const job = generateAndDeliver(env, found.key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
   return page("Recebido", `<h1>Pronto! Sua campanha do mês está sendo gerada.</h1><p>Ela chega no seu e-mail assim que ficar pronta. ${esc(RETRY_TEXT)} Confira também a caixa de spam ou promoções.</p>`);
@@ -385,19 +465,20 @@ const FASE_IDS = new Set(CAMPANHA.fases.map((f) => f.id));
 // Ancoragem (v3): com a campanha, cada post cita a oferta pelo mesmo nome e traz uma fase válida da campanha.
 export function validatePosts(list, n, campanha = null) {
   if (!Array.isArray(list) || list.length < n) return null;
+  if (campanha && (!anchorTerms(campanha.oferta).length || promessa(campanha.oferta))) return null;
   const out = [];
   for (const p of list.slice(0, n)) {
     const tema = String(p?.tema || "").trim(), legenda = String(p?.legenda || "").trim(), cta = String(p?.cta || "").trim();
     const hashtags = (Array.isArray(p?.hashtags) ? p.hashtags : String(p?.hashtags || "").split(/[\s,]+/)).map((h) => String(h).trim()).filter(Boolean).map((h) => h.startsWith("#") ? h : "#" + h).filter((h) => HASHTAG.test(h)).slice(0, 8);
     const imagem = String(p?.imagem || "").trim();
     // G3: a página promete hashtags e sugestão de imagem para cada post; legenda curta demais não é "legenda completa".
-    if (tema.length < 3 || legenda.length < LEGENDA_MIN || legenda.length > 1600 || cta.length < 3 || FORBIDDEN.test(legenda + " " + cta)) return null;
+    if (tema.length < 3 || legenda.length < LEGENDA_MIN || legenda.length > 1600 || cta.length < 3 || FORBIDDEN.test(legenda + " " + cta) || promessa(tema + " " + legenda + " " + cta)) return null;
     if (hashtags.length < 1 || imagem.length < IMAGEM_MIN) return null;
     if (out.some((q) => q.tema.toLowerCase() === tema.toLowerCase())) return null;
     if (contaminated([tema, legenda, cta, ...hashtags, imagem].join(" "))) return null;
     const fase = String(p?.fase || "").trim();
     if (campanha) {
-      if (!normTxt(legenda + " " + cta).includes(normTxt(campanha.oferta))) return null;
+      if (!anchored(legenda + " " + cta, campanha.oferta)) return null;
       if (!FASE_IDS.has(fase)) return null;
     }
     out.push(campanha ? { tema, legenda, cta, hashtags, imagem, fase } : { tema, legenda, cta, hashtags, imagem });
@@ -420,11 +501,12 @@ export function validateRoteiros(list, campanha = null) {
     if (curta.length < 60 || curta.length > 600) return null;
     if (assunto.length < 5 || assunto.length > 120 || corpo.length < 200 || corpo.length > 1600) return null;
     const all = [curta, assunto, corpo].join(" ");
-    if (FORBIDDEN.test(all) || contaminated(all)) return null;
+    if (FORBIDDEN.test(all) || promessa(all) || contaminated(all)) return null;
     if (campanha) {
-      const oferta = normTxt(campanha.oferta);
-      if (!normTxt(curta).includes(oferta) || !normTxt(corpo).includes(oferta)) return null;
-      if (!normTxt(corpo).includes(normTxt(campanha.condicao_comercial))) return null;
+      // Condição com promessa nunca é exigida no e-mail (MED-5): sem ela a campanha inteira é recusada (fail-closed).
+      if (promessa(campanha.condicao_comercial) || promessa(campanha.oferta)) return null;
+      if (!anchored(curta, campanha.oferta) || !anchored(corpo, campanha.oferta)) return null;
+      if (!anchored(corpo, campanha.condicao_comercial)) return null;
     }
     out.push({ objetivo_id: obj.id, objetivo: obj.titulo, curta, email: { assunto, corpo } });
   }
@@ -590,10 +672,28 @@ export async function requeueDeadPackage(env, key, { operator, reason, now = Dat
   const dead = await readJson(kv, PENDING_DEAD, {});
   if (!dead[key]) return { ok: false, reason: "not_dead" };
   if (dead[key].status !== "dead") return { ok: false, reason: "not_dead" };
+  if (dead[key].kind === "delivery_bounced") { // o reenvio só vale para o ciclo atual de um assinante ativo
+    const latest = await readJson(kv, key, null);
+    if (!latest || latest.status !== "active") return { ok: false, reason: "inactive" };
+    if (Number(dead[key].cycle) !== latest.cycles) return { ok: false, reason: "cycle_superseded" };
+  }
   const ops = [...(dead[key].operations || []), { at: new Date(now).toISOString(), operator: String(operator).slice(0, 60), reason: String(reason).slice(0, 200) }];
   dead[key] = { ...dead[key], status: "requeued", operations: ops };
   await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
-  if (dead[key].kind === "welcome") {
+  if (dead[key].kind === "delivery_bounced") {
+    // Mesmo pacote gravado, token de entrega novo (nova Idempotency-Key: o Resend não devolve a resposta antiga);
+    // o recibo com falha fica no histórico do assinante.
+    const d = dead[key];
+    const latest = await readJson(kv, key, null);
+    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); await kv.delete(DELIVERY + d.pkgKey.slice(PKG.length)); }
+    const history = [...(latest.deliveryHistory || []), { cycle: d.cycle, receipt: latest.deliveries?.[d.cycle] || null, requeuedAt: new Date(now).toISOString(), operator: String(operator).slice(0, 60) }].slice(-20);
+    const { deliveredCycle: _dc, ...rest } = latest;
+    await kv.put(key, JSON.stringify({ ...rest, deliveryHistory: history }), { expirationTtl: 400 * DAY });
+    const meta = await readJson(kv, PENDING_META, {});
+    meta[key] = { attempts: 0, firstAt: new Date(now).toISOString(), requeued: true };
+    await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });
+    await enqueuePending(kv, key, now);
+  } else if (dead[key].kind === "welcome") {
     const outbox = await readJson(kv, WELCOME, {});
     outbox[key] = { token: dead[key].token, dedupe: dead[key].dedupe, cycles: dead[key].cycles, attempts: 0, firstAt: new Date(now).toISOString(), requeuedBy: String(operator).slice(0, 60) };
     await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });
@@ -630,8 +730,17 @@ async function deliveryOutboxAdd(kv, key, cycle) {
 }
 // Confirmação de entrega (v3): consulta o evento do e-mail no provedor pelo id gravado. delivered/opened/clicked =>
 // confirmado; bounced/failed/suppressed/canceled => falha registrada no recibo + alerta ao proprietário.
+// #960 rodada 2 (MED-1): o GET ao provedor leva tempo; um cancelamento pode chegar no meio. O registro é relido logo
+// antes de gravar e só o recibo do ciclo muda (status, stopEvent e o resto vêm da leitura nova): o cancelamento vence.
+async function patchReceipt(kv, key, cycle, patch) {
+  const latest = await readJson(kv, key, null);
+  if (!latest?.deliveries?.[cycle]) return null;
+  const merged = { ...latest, deliveries: { ...latest.deliveries, [cycle]: { ...latest.deliveries[cycle], ...patch } } };
+  await kv.put(key, JSON.stringify(merged), { expirationTtl: 400 * DAY });
+  return merged;
+}
 export async function confirmPackageDeliveries(env, fetchImpl = fetch, { limit = 10, now = Date.now() } = {}) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const list = await readJson(kv, DELIVERY_OUTBOX, []);
   let confirmed = 0, failed = 0;
   const keep = [];
@@ -644,11 +753,17 @@ export async function confirmPackageDeliveries(env, fetchImpl = fetch, { limit =
     const ev = await resendLastEvent(env, rcpt.email_id, fetchImpl);
     const entregue = Boolean(ev) && DELIVERED_EVENTS.has(ev);
     if (entregue) {
-      await kv.put(key, JSON.stringify({ ...rec, deliveries: { ...rec.deliveries, [cycle]: { ...rcpt, status: "confirmed", confirmedAt: new Date(now).toISOString(), provider_event: ev } } }), { expirationTtl: 400 * DAY });
+      await patchReceipt(kv, key, cycle, { status: "confirmed", confirmedAt: new Date(now).toISOString(), provider_event: ev });
       confirmed++;
     } else if (ev && DEAD_EVENTS.has(ev)) {
-      await kv.put(key, JSON.stringify({ ...rec, deliveries: { ...rec.deliveries, [cycle]: { ...rcpt, status: "failed", failedAt: new Date(now).toISOString(), provider_event: ev } } }), { expirationTtl: 400 * DAY });
-      await ownerAlert(env, "campanha do Conteúdo Pronto não entregue", `Protocolo ${rcpt.protocolo}: o provedor de e-mail registrou ${ev}. Contatar o assinante e reenviar manualmente.`, fetchImpl).catch(() => null);
+      await patchReceipt(kv, key, cycle, { status: "failed", failedAt: new Date(now).toISOString(), provider_event: ev });
+      // MED-3: a falha de entrega vai para a fila de falhas (visível em /status, reenviável por /requeue).
+      const dead = await readJson(kv, PENDING_DEAD, {});
+      const prev = dead[key] || null;
+      dead[key] = { kind: "delivery_bounced", cycle: Number(cycle), protocolo: rcpt.protocolo, email_id: rcpt.email_id, pkgKey: rcpt.pkgKey, provider_event: ev, lastReason: "resend_" + ev, attempts: 1, deadAt: new Date(now).toISOString(), status: "dead", operations: prev?.operations || [], history: [...(prev?.history || []), ...(prev ? [{ deadAt: prev.deadAt, kind: prev.kind, lastReason: prev.lastReason }] : [])].slice(-20) };
+      await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
+      await pendingLog(kv, key, "delivery_failed", "resend_" + ev, now);
+      await ownerAlert(env, "campanha do Conteúdo Pronto não entregue", `Protocolo ${rcpt.protocolo}: o provedor de e-mail registrou ${ev} (assinante …${String(key).slice(-12)}). Confira o endereço com o assinante e reenvie pelo operador: POST /api/admin/conteudo-pronto/requeue (ou node scripts/conteudo-pronto/operador.mjs requeue).`, fetchImpl, { kind: "entrega_falhou", sub: key, now }).catch(() => null);
       failed++;
     } else keep.push(id);
   }
@@ -772,7 +887,8 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
   // Mesmo cron: candidatos de regeneração (nova tentativa com a mesma chave; confirmação de entrega pelo email_id).
   const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
   const welcome = await retryWelcomeEmails(env, fetchImpl, { now }).catch(() => ({ tried: 0 }));
-  return { ok: true, tried: results.length + Number(regen.tried || 0) + Number(welcome.tried || 0), delivered: results.filter((r) => r.ok).length, regen, welcome, deliveryCheck };
+  const reminders = await remindPendingForms(env, fetchImpl, { now }).catch(() => ({ reminders: 0 }));
+  return { ok: true, tried: results.length + Number(regen.tried || 0) + Number(welcome.tried || 0), delivered: results.filter((r) => r.ok).length, regen, welcome, deliveryCheck, reminders };
 }
 // ---------- Regeneração de pacote bloqueado (critério de aceite Sol #898) ----------
 // Estados do PACOTE (separados dos estados de ENTREGA):
@@ -1048,10 +1164,11 @@ export async function handleContentOperator(request, env, { now = Date.now() } =
   const path = new URL(request.url).pathname;
   const tail = (k) => String(k).slice(-12);
   if (path === "/api/admin/conteudo-pronto/status" && request.method === "GET") {
-    const [pending, meta, dead, welcome, alerts, log] = await Promise.all([readJson(kv, PENDING, []), readJson(kv, PENDING_META, {}), readJson(kv, PENDING_DEAD, {}), readJson(kv, WELCOME, {}), readJson(kv, ALERTS, []), readJson(kv, PENDING_LOG, [])]);
+    const [pending, meta, dead, welcome, alerts, log, formWait] = await Promise.all([readJson(kv, PENDING, []), readJson(kv, PENDING_META, {}), readJson(kv, PENDING_DEAD, {}), readJson(kv, WELCOME, {}), readJson(kv, ALERTS, []), readJson(kv, PENDING_LOG, []), readJson(kv, FORM_WAIT, {})]);
     return out(200, {
       pending: pending.map((k) => ({ sub: tail(k), attempts: Number(meta[k]?.attempts || 0), lastReason: meta[k]?.lastReason || null, firstAt: meta[k]?.firstAt || null })),
-      dead: Object.entries(dead).map(([k, d]) => ({ sub: tail(k), kind: d.kind || "package", status: d.status, attempts: d.attempts ?? null, lastReason: d.lastReason || null, deadAt: d.deadAt, operations: (d.operations || []).length })),
+      dead: Object.entries(dead).map(([k, d]) => ({ sub: tail(k), kind: d.kind || "package", status: d.status, attempts: d.attempts ?? null, lastReason: d.lastReason || null, provider_event: d.provider_event || null, cycle: d.cycle ?? null, protocolo: d.protocolo || null, deadAt: d.deadAt, operations: (d.operations || []).length })),
+      forms_waiting: Object.entries(formWait).map(([k, w]) => ({ sub: tail(k), cycle: w.cycle, requestedAt: w.requestedAt, reminders: w.sent || [] })),
       welcome: Object.entries(welcome).map(([k, w]) => ({ sub: tail(k), attempts: Number(w.attempts || 0), lastReason: w.lastReason || null, firstAt: w.firstAt || null })),
       alerts: alerts.slice(-50), log: log.slice(-50), max_attempts: PENDING_MAX_ATTEMPTS,
     });
