@@ -15,13 +15,17 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import worker, { openSalesHtml } from "../worker/sales-public-worker.mjs";
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
+const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
+const SUB_PRICE = __CANON.subscription.price;
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
 const P = JSON.parse(readTextNormalized(join(ROOT, "data/politica-unica.json")));
 const R = P.resumo_oferta;
 const PRODUCTS = P.policy_surfaces.products;
-const PRICES = { "ia-na-pratica": 197, "vendas-na-pratica": 197, "lucro-e-caixa": 247, "combo-ia-vendas": 297, "negocio-completo": 397 };
+const PRICES = { ...PRICE_OF };
 const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" };
 const audit = (dir) => spawnSync(PY, [join(ROOT, "scripts/sales_policy.py"), "--audit", dir, "--mode", "closed"], { encoding: "utf8", env });
@@ -72,7 +76,7 @@ test("Decreto 7.962 art. 2º: cada oferta paga tem 'Resumo da oferta' estruturad
   }
   const sub = read("conteudo-pronto");
   const { v, start } = checkSummary(sub, "conteudo-pronto");
-  assert.ok(v.preco_total.startsWith("R$ 197,00 por mês"));
+  assert.ok(v.preco_total.startsWith(`R$ ${SUB_PRICE},00 por mês`));
   assert.ok(start - sub.indexOf('data-zev-sub="conteudo-pronto"') < 2500, "assinatura: logo após o CTA principal");
   checkSummary(openSalesHtml(sub, "conteudo-pronto"), "conteudo-pronto", { open: true });
 });
