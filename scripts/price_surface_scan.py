@@ -28,6 +28,7 @@ EXCECOES = {
     "docs/**": "registro histórico, de design ou de evidência (não publicado no site nem usado pelo Worker)",
     "data/commitments.json": "registro histórico de compromissos e readbacks datados",
     "evidence/**": "relatórios de evidência datados (o que valia naquela data)",
+    "tests/p13-decreto-oferta-cache.test.mjs": "mutantes que injetam uma Offer paga no modo fechado (valor arbitrário; o gate precisa recusar)",
     "tests/ci/p16-target-lifecycle.test.mjs": "L13: link de compra de OUTRO SKU com valor arbitrário (o teste prova que o gate recusa)",
     "tests/site-chat.test.mjs": "entrada do validador do chat (prova que o chat RECUSA citar preço por conta própria)",
     "tests/creative-autonomy.test.mjs": "criativo de exemplo do avaliador (entrada do teste, não publicado)",
@@ -66,7 +67,7 @@ def real_values(d: dict) -> tuple[set[int], set[str]]:
 
 
 MONEY = re.compile(r"R\$\s?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d\d))?")
-FIELD = re.compile(r"\b(price_brl|table_price_brl|pilot_price_brl|serverPrice|amount_brl|unit_price|SANDBOX_AMOUNT_BRL)\"?\s*[:=]\s*\"?(\d+)(?:\.0+)?\b")
+FIELD = re.compile(r"\b(price_brl|table_price_brl|pilot_price_brl|serverPrice|amount_brl|unit_price|SANDBOX_AMOUNT_BRL|price)\\?\"?\s*[:=]\s*\\?\"?(\d+)(?:\.0+)?\b")
 
 
 def leftovers(root: Path, files: list[str], ints: set[int], cents: set[str]) -> list[str]:
