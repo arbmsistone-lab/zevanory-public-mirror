@@ -1,0 +1,5 @@
+{
+  "schema": "zevanory-legal-revoked/v1",
+  "nota": "Rodada 12 (LOW-3): aprovações revogadas pelo proprietário. Cada entrada: sha256 (impressão digital revogada), revoked_at (AAAA-MM-DD) e reason. Um texto revogado nunca passa no portão nem é servido como snapshot, e não vale como linha de base. Âncora de confiança (só entra por decisão deliberada).",
+  "revoked": []
+}

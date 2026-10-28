@@ -1,6 +1,18 @@
 name: ZEVANORY central production deploy
 on:
+  # Round 7 (L-1): a manual run defaults to a DRY RUN (job "rehearsal": no Environment, no secrets, any branch):
+  # builds the release in a clean directory, rebuilds it again and compares byte for byte, assembles the release
+  # directory and runs the legal gate; publishes nothing. production is the full deploy, exactly what a push to
+  # gh-pages does. (The central Worker has no isolated candidate; "candidate" exists only in the sales workflow.)
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default, publishes nothing) | production (full deploy)"
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - production
   push:
     branches: [gh-pages]
     paths:
@@ -108,9 +120,24 @@ concurrency:
   queue: max
 
 jobs:
+  # Round 6 (re-audit of PR #946, H-1): the build runs WITHOUT secrets and the deploy runs NO repository build code.
+  # Round 7 (M-1): the release (bundle, no-bundle config, assets) is built by scripts/deploy/clean_bundle.py (anchor)
+  # FIRST, in a clean directory, from `git archive $GITHUB_SHA` (never the working tree the tests use) with the
+  # integrity-pinned wrangler (npm ci of scripts/deploy/wrangler-pin/package-lock.json in $RUNNER_TEMP, npm user/global
+  # config /dev/null, explicit registry), and uploaded BEFORE any test runs. The deploy job rebuilds it the same way
+  # from its own checkout (clean_bundle.py read from gh-pages) and refuses an artifact that differs by a single byte.
+  #   guard   Environment producao-critica (unchanged T1 role). Also passes the four NON-secret variables the
+  #           candidate generator needs (Environment variables are not visible to a job without the Environment).
+  #   build   no secrets, contents: read. Reconstructs the candidate (repository code), runs the checks and the
+  #           pinned wrangler bundler, and uploads the release (config, pre-built bundle, assets, manifest).
+  #   deploy  Environment producao-critica; secrets only at step level. Checks out the event commit into base/ only
+  #           to read the gate and the anchored ops scripts (scripts/deploy/** and the verifiers are trust anchors),
+  #           downloads the release, verifies the manifest, runs the legal gate (code from gh-pages) and deploys the
+  #           PRE-BUILT bundle with wrangler --no-bundle (no rebuild). Structure enforced by
+  #           scripts/p23/trust_anchor_guard.py in the protected check legal-trust-anchors-protected.
   guard:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
-    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || inputs.mode == 'production') }}  # B01 patch 05b
     # T1 (plan 3.1): runs inside the serialized deploy-zevanory group, right before promotion.
     # An older queued run (candidate is an ancestor of what is live) does nothing; diverged
     # history, a mismatch between the Cloudflare effective version and /api/release, or an
@@ -121,51 +148,73 @@ jobs:
       contents: read
     outputs:
       decision: ${{ steps.guard.outputs.decision }}
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      launch_authorization: ${{ vars.ZEVANORY_LAUNCH_AUTHORIZATION }}
+      mp_account_hash16: ${{ vars.MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16 }}
+      mp_webhook_verified: ${{ vars.MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED }}
+      operator_token_migration_until: ${{ vars.OPERATOR_TOKEN_MIGRATION_UNTIL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: ${{ github.sha }}
+          path: base
           fetch-depth: 0
-      - name: Pre-promotion guard
+          persist-credentials: false
+      - name: Pre-promotion guard (anchored script from the trusted checkout)
         id: guard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
         run: |
           set -euo pipefail
-          python3 scripts/deploy/promotion_guard.py --service zevanory \
+          cd base
+          /usr/bin/python3 -I scripts/deploy/promotion_guard.py --service zevanory \
             --candidate "$GITHUB_SHA" \
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
-  deploy:
-    environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
+
+  build:
     needs: guard
-    if: ${{ github.ref == 'refs/heads/gh-pages' && (needs.guard.outputs.decision == 'promote') }}  # B01 patch 05b
+    # dry-run: the guard is skipped (it needs the Environment) and the build still runs (no secret is ever given to it).
+    if: ${{ !cancelled() && !failure() && ((github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run') || (github.ref == 'refs/heads/gh-pages' && needs.guard.outputs.decision == 'promote')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
-      actions: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    outputs:
+      manifest: ${{ steps.pack.outputs.manifest }}
     env:
-      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       PUBLIC_OWNER_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
-      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
-      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET }}
-      # F2 item 9: MERCADOPAGO_TEST_* removidos do deploy de produção (nenhum passo os lia; sandbox só no Worker de certificação).
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
-      # R9 (Sol 164 §4): credencial de operador da produção com nome próprio; queda para o nome antigo só na transição.
-      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}
-      # Deploy the exact merged source SHA; sales remain fail-closed by configuration.
       TARGET_RUNTIME_SHA: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
+      - name: Build the release in a clean directory from the commit (before any test)
+        id: pack
+        env:
+          ZEVANORY_LAUNCH_AUTHORIZATION: ${{ needs.guard.outputs.launch_authorization }}
+          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ needs.guard.outputs.mp_account_hash16 }}
+          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ needs.guard.outputs.mp_webhook_verified }}
+          OPERATOR_TOKEN_MIGRATION_UNTIL: ${{ needs.guard.outputs.operator_token_migration_until }}
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I scripts/deploy/clean_bundle.py central --repo . --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$GITHUB_WORKSPACE/central-release"
+          echo "manifest=$(sha256sum "$GITHUB_WORKSPACE/central-release/MANIFEST.sha256" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: central-release-${{ github.sha }}
+          path: central-release
+          if-no-files-found: error
+          # Round 10: upload-artifact v4 drops dotfiles by default; the release has public/.assetsignore and
+          # public/.well-known/security.txt, which the manifest lists. Upload exactly what was built.
+          include-hidden-files: true
+          retention-days: 7
+      # From here on: checks only. They run repository code and tests in the working tree, AFTER the release was
+      # built and uploaded; nothing they do reaches the artifact (and the deploy job rebuilds and compares anyway).
       - name: Materialize exact canonical runtime sources
         shell: bash
         run: |
@@ -173,45 +222,14 @@ jobs:
           git fetch origin "$TARGET_RUNTIME_SHA"
           git checkout "$TARGET_RUNTIME_SHA" -- worker admin.css
           echo "CANONICAL_RUNTIME_SOURCE=$TARGET_RUNTIME_SHA"
-
-      - name: Determine authenticated public-owner deployment authority
-        id: auth
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "available=false" >> "$GITHUB_OUTPUT"
-          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "CLOUDFLARE_AUTH_ROUTE=ABSENT_FAIL_CLOSED"
-            exit 0
-          fi
-          if [ -n "${CLOUDFLARE_PUBLIC_OWNER_API_TOKEN:-}" ]; then
-            echo "CLOUDFLARE_AUTH_SOURCE=PUBLIC_OWNER_DEDICATED_TOKEN"
-          else
-            echo "CLOUDFLARE_AUTH_SOURCE=LEGACY_FALLBACK_TOKEN"
-          fi
-          if [ "${CLOUDFLARE_ACCOUNT_ID:-}" != "$PUBLIC_OWNER_ACCOUNT_ID" ]; then
-            echo "CLOUDFLARE_ACCOUNT_MISMATCH=FAIL_CLOSED"
-            echo "EXPECTED_ACCOUNT=$PUBLIC_OWNER_ACCOUNT_ID"
-            echo "CONFIGURED_ACCOUNT=${CLOUDFLARE_ACCOUNT_ID:-unset}"
-            exit 0
-          fi
-          code="$(curl -sS -o /tmp/public-owner.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID" || true)"
-          if [ "$code" != "200" ] || ! python3 -c "import json; d=json.load(open('/tmp/public-owner.json')); raise SystemExit(0 if d.get('success') is True else 1)"; then
-            echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=UNAVAILABLE_FAIL_CLOSED"
-            exit 0
-          fi
-          echo "available=true" >> "$GITHUB_OUTPUT"
-          echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=PASS"
-          echo "CLOUDFLARE_ACCOUNT_ID=$PUBLIC_OWNER_ACCOUNT_ID"
       - name: Zero-cost guard (owner rule, fail closed before any deploy)
         run: python3 scripts/zero_cost_guard.py
       - name: Reconstruct exact production candidate
-        if: steps.auth.outputs.available == 'true'
         env:
-          ZEVANORY_LAUNCH_AUTHORIZATION: ${{ vars.ZEVANORY_LAUNCH_AUTHORIZATION }}
-          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ vars.MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16 }}
-          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ vars.MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED }}
-          OPERATOR_TOKEN_MIGRATION_UNTIL: ${{ vars.OPERATOR_TOKEN_MIGRATION_UNTIL }}
+          ZEVANORY_LAUNCH_AUTHORIZATION: ${{ needs.guard.outputs.launch_authorization }}
+          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ needs.guard.outputs.mp_account_hash16 }}
+          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ needs.guard.outputs.mp_webhook_verified }}
+          OPERATOR_TOKEN_MIGRATION_UNTIL: ${{ needs.guard.outputs.operator_token_migration_until }}
         run: |
           set -euo pipefail
           git fetch origin final-83620c6
@@ -219,6 +237,9 @@ jobs:
           git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
           node scripts/deploy/materialize-control-plane.mjs
           cmp -s worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          # Round 7: the clean build uses the COMMITTED control-plane file (it executes no worker/ code); the
+          # generator must reproduce it exactly.
+          git diff --exit-code -- worker/live-recovered/control-plane-vnext.js
           cp admin.css public/admin.css
           python3 scripts/deploy/write-build-info.py
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
@@ -236,7 +257,6 @@ jobs:
           node --check worker/owner-alerts.mjs
           node --check worker/sales-control.mjs
           node --check worker/funnel.mjs
-          node --check worker/sales-control.mjs
           node --check worker/lead-magnet.mjs
           node --check worker/reviews.mjs
           node --test tests/automation-traffic-guard.test.mjs tests/trust-chain-no-false-green.test.mjs tests/trust-projection-canonical.test.mjs tests/post-sale.test.mjs tests/funnel.test.mjs tests/sales-control.test.mjs tests/lead-magnet.test.mjs tests/reviews.test.mjs
@@ -262,17 +282,209 @@ jobs:
           node --test tests/mercadopago-webhook-safety.test.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
-          npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
+          npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-final"
+
+  # Round 7 (L-1): workflow_dispatch mode=dry-run. No Environment and no secrets (so it can run before the merge, on
+  # the PR branch, without any exception on producao-critica); the code is that of the dispatched commit. Publishes
+  # nothing: every wrangler call is a dry run. Round 8 (LOW-3): it checks the CODE and the build pipeline only. The
+  # four launch variables live in the producao-critica Environment, which this job (and the guard it skips) cannot
+  # read, so the rehearsed config is built with them empty (dormant launch config); production may differ in vars only.
+  rehearsal:
+    needs: build
+    # Round 9: explicit result check. Without a status function the implicit success() is false when the guard (an
+    # ancestor of build) is skipped, which is always the case in dry-run, and the rehearsal never ran.
+    if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PUBLIC_OWNER_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      npm_config_userconfig: /dev/null
+      npm_config_registry: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: central-release-${{ github.sha }}
+          path: art/central
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Verify the release manifest
+        env:
+          RELEASE_MANIFEST: ${{ needs.build.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          # Round 10: every mismatch is reported as an ::error annotation with file names only (logs may be unreadable).
+          got="$(sha256sum art/central/MANIFEST.sha256 | cut -d' ' -f1)"
+          if [ "$got" != "$RELEASE_MANIFEST" ]; then echo "::error title=RELEASE_MANIFEST::MANIFEST.sha256 hash $got differs from the build output '${RELEASE_MANIFEST}'"; exit 1; fi
+          if ! (cd art/central && sha256sum --strict -c --quiet MANIFEST.sha256) > "$RUNNER_TEMP/manifest-check.txt" 2>&1; then
+            echo "::error title=RELEASE_MANIFEST::files missing or changed vs the manifest (hidden files dropped by the upload?): $(grep -E 'FAILED' "$RUNNER_TEMP/manifest-check.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
+          if ! diff <(cd art/central && find . -type f ! -name MANIFEST.sha256 | sort) <(cut -c67- art/central/MANIFEST.sha256 | sort) > "$RUNNER_TEMP/manifest-diff.txt"; then
+            echo "::error title=RELEASE_MANIFEST::file list differs from the manifest (< extra in the artifact, > missing): $(grep -E '^[<>]' "$RUNNER_TEMP/manifest-diff.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
+          test -f art/central/worker.bundle.js && test -f art/central/wrangler.central-fix.jsonc
+          if find art/central -maxdepth 1 -name '.env*' -o -maxdepth 1 -name '.dev.vars' -o -maxdepth 1 -name '.npmrc' | grep -q .; then echo "::error::forbidden file in the release"; exit 1; fi
+          /usr/bin/python3 -I -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c["name"]=="zevanory" and c["main"]=="worker.bundle.js" and "build" not in c, c.get("main")' art/central/wrangler.central-fix.jsonc
+          echo "RELEASE_MANIFEST=PASS"
+      - name: Rebuild the release in a clean directory and compare byte for byte (dry run)
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/python3 -I base/scripts/deploy/clean_bundle.py central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/central
+      - name: Assemble the release directory and check what would be uploaded (dry run)
+        run: |
+          set -euo pipefail
+          # Clean directory: npx --yes wrangler@4.143.0 runs from here, so no repository .npmrc, package.json or
+          # node_modules can influence it.
+          R="$RUNNER_TEMP/release"; mkdir -p "$R"
+          cp -a art/central/. "$R/"
+          rm -f "$R/MANIFEST.sha256"
+          test "$(cd "$R" && ls -A | sort | tr '\n' ' ')" = "public worker.bundle.js wrangler.central-fix.jsonc "
+          (cd "$RUNNER_TEMP/release" && npm_config_offline=true npx --yes wrangler@4.143.0 deploy --no-bundle --dry-run --strict --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-nb" >/dev/null)
+          cmp "$RUNNER_TEMP/central-nb/worker.bundle.js" "$RUNNER_TEMP/release/worker.bundle.js"
+          echo "RELEASE_DIRECTORY=PASS (pinned wrangler resolved offline; nothing published)"
+      - name: Consumer-text gate (dry run; gate code of the dispatched commit, anchors from gh-pages)
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --consumer-gate --anchors-ref refs/remotes/origin/gh-pages --rehearsal
+          echo "CENTRAL_RELEASE_DRY_RUN=PASS (nothing was published)"
+
+  # Sol ORDEM 312 / round 12: the central Worker serves no legal page. Its entry point first sends /termos,
+  # /privacidade, /reembolso and /afiliados (any variant) to the same route on vendas (308) through the anchored
+  # worker/legal-routes-redirect.mjs; the protected check enforces that call. The only legal gate here is the minimal
+  # consumer-text gate (--consumer-gate): the central deploy blocks ONLY if the consumer texts of
+  # data/politica-unica.json it serves (7-day rule, refund and support answers) changed without approval.
+  deploy:
+    environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
+    needs: [guard, build]
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (needs.guard.outputs.decision == 'promote') }}  # B01 patch 05b
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PUBLIC_OWNER_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      # Deploy the exact merged source SHA; sales remain fail-closed by configuration.
+      TARGET_RUNTIME_SHA: ${{ github.sha }}
+      # Round 7 (M-1): no inherited npm configuration and an explicit registry for every npm/npx in this job.
+      npm_config_userconfig: /dev/null
+      npm_config_registry: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: central-release-${{ github.sha }}
+          path: art/central
+      - name: Verify the release manifest
+        env:
+          RELEASE_MANIFEST: ${{ needs.build.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          # Round 10: every mismatch is reported as an ::error annotation with file names only (logs may be unreadable).
+          got="$(sha256sum art/central/MANIFEST.sha256 | cut -d' ' -f1)"
+          if [ "$got" != "$RELEASE_MANIFEST" ]; then echo "::error title=RELEASE_MANIFEST::MANIFEST.sha256 hash $got differs from the build output '${RELEASE_MANIFEST}'"; exit 1; fi
+          if ! (cd art/central && sha256sum --strict -c --quiet MANIFEST.sha256) > "$RUNNER_TEMP/manifest-check.txt" 2>&1; then
+            echo "::error title=RELEASE_MANIFEST::files missing or changed vs the manifest (hidden files dropped by the upload?): $(grep -E 'FAILED' "$RUNNER_TEMP/manifest-check.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
+          if ! diff <(cd art/central && find . -type f ! -name MANIFEST.sha256 | sort) <(cut -c67- art/central/MANIFEST.sha256 | sort) > "$RUNNER_TEMP/manifest-diff.txt"; then
+            echo "::error title=RELEASE_MANIFEST::file list differs from the manifest (< extra in the artifact, > missing): $(grep -E '^[<>]' "$RUNNER_TEMP/manifest-diff.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
+          test -f art/central/worker.bundle.js && test -f art/central/wrangler.central-fix.jsonc
+          if find art/central -maxdepth 1 -name '.env*' -o -maxdepth 1 -name '.dev.vars' -o -maxdepth 1 -name '.npmrc' | grep -q .; then echo "::error::forbidden file in the release"; exit 1; fi
+          /usr/bin/python3 -I -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c["name"]=="zevanory" and c["main"]=="worker.bundle.js" and "build" not in c, c.get("main")' art/central/wrangler.central-fix.jsonc
+          echo "RELEASE_MANIFEST=PASS"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Rebuild the release from base in a clean directory and compare byte for byte
+        env:
+          ZEVANORY_LAUNCH_AUTHORIZATION: ${{ needs.guard.outputs.launch_authorization }}
+          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ needs.guard.outputs.mp_account_hash16 }}
+          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ needs.guard.outputs.mp_webhook_verified }}
+          OPERATOR_TOKEN_MIGRATION_UNTIL: ${{ needs.guard.outputs.operator_token_migration_until }}
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/deploy/clean_bundle.py > "$RUNNER_TEMP/clean_bundle.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/central
+      - name: Consumer-text gate (fail fast; blocks only if the politica-unica consumer texts changed without approval)
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --consumer-gate --anchors-ref refs/remotes/origin/gh-pages
+      - name: Assemble the release directory (pre-built bundle, assets; no repository code)
+        run: |
+          set -euo pipefail
+          # Clean directory: npx --yes wrangler@4.143.0 runs from here, so no repository .npmrc, package.json or
+          # node_modules can influence it.
+          R="$RUNNER_TEMP/release"; mkdir -p "$R"
+          cp -a art/central/. "$R/"
+          rm -f "$R/MANIFEST.sha256"
+          test "$(cd "$R" && ls -A | sort | tr '\n' ' ')" = "public worker.bundle.js wrangler.central-fix.jsonc "
+      - name: Determine authenticated public-owner deployment authority
+        id: auth
+        shell: bash
+        env:
+          CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+        run: |
+          set -euo pipefail
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "CLOUDFLARE_AUTH_ROUTE=ABSENT_FAIL_CLOSED"
+            exit 0
+          fi
+          if [ -n "${CLOUDFLARE_PUBLIC_OWNER_API_TOKEN:-}" ]; then
+            echo "CLOUDFLARE_AUTH_SOURCE=PUBLIC_OWNER_DEDICATED_TOKEN"
+          else
+            echo "CLOUDFLARE_AUTH_SOURCE=LEGACY_FALLBACK_TOKEN"
+          fi
+          if [ "${CLOUDFLARE_ACCOUNT_ID:-}" != "$PUBLIC_OWNER_ACCOUNT_ID" ]; then
+            echo "CLOUDFLARE_ACCOUNT_MISMATCH=FAIL_CLOSED"
+            echo "EXPECTED_ACCOUNT=$PUBLIC_OWNER_ACCOUNT_ID"
+            echo "CONFIGURED_ACCOUNT=${CLOUDFLARE_ACCOUNT_ID:-unset}"
+            exit 0
+          fi
+          code="$(curl -sS -o /tmp/public-owner.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID" || true)"
+          if [ "$code" != "200" ] || ! /usr/bin/python3 -I -c "import json; d=json.load(open('/tmp/public-owner.json')); raise SystemExit(0 if d.get('success') is True else 1)"; then
+            echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=UNAVAILABLE_FAIL_CLOSED"
+            exit 0
+          fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=PASS"
+          echo "CLOUDFLARE_ACCOUNT_ID=$PUBLIC_OWNER_ACCOUNT_ID"
       - name: Authenticate Cloudflare
         if: steps.auth.outputs.available == 'true'
-        run: npx --yes wrangler@4.135.0 whoami
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release"
+          npx --yes wrangler@4.143.0 whoami
       - name: Verify legacy production bridge route
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
           code="$(curl -sS -o /tmp/predeploy-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
           if [ "$code" = "200" ]; then
-            python3 scripts/deploy/verify-predeploy-health.py
+            /usr/bin/python3 -I base/scripts/deploy/verify-predeploy-health.py
           elif [ "$code" = "503" ]; then
             echo "LEGACY_PRODUCTION_BRIDGE_ROUTE=DEGRADED_RECOVERY_ALLOWED"
             echo "RECOVERY_REASON=HTTP_503_PREEXISTING"
@@ -282,23 +494,29 @@ jobs:
           fi
       - name: Discover production KV namespaces
         if: steps.auth.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" -o /tmp/kv.json
-          python3 scripts/deploy/inspect-kv.py
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/storage/kv/namespaces?per_page=100" -o /tmp/kv.json
+          /usr/bin/python3 -I base/scripts/deploy/inspect-kv.py
       - name: Discover Worker service bindings
         if: steps.auth.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
-          python3 scripts/deploy/inspect-workers.py
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
+          /usr/bin/python3 -I base/scripts/deploy/inspect-workers.py
       - name: Inspect current zevanory bindings
         if: steps.auth.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/settings" -o /tmp/settings.json
-          python3 scripts/deploy/inspect-bindings.py
-          python3 scripts/deploy/check-binding-budget.py wrangler.central-fix.jsonc /tmp/settings.json
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/zevanory/settings" -o /tmp/settings.json
+          /usr/bin/python3 -I base/scripts/deploy/inspect-bindings.py
+          /usr/bin/python3 -I base/scripts/deploy/check-binding-budget.py "$RUNNER_TEMP/release/wrangler.central-fix.jsonc" /tmp/settings.json
       - name: Verify financial safety boundary without mutating secrets
         if: steps.auth.outputs.available == 'true'
         env:
@@ -311,14 +529,18 @@ jobs:
           # This workflow repairs/proves the Control Core only. Financial credential provisioning
           # belongs to the financial closure workflow and must not block a fail-closed Core deploy.
           # Sales remain globally disabled by the candidate configuration.
-          python3 scripts/deploy/verify-financial-boundary.py
-
+          cd "$RUNNER_TEMP/release"
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/base/scripts/deploy/verify-financial-boundary.py"
       - name: Require production operator secret before production deploy
         if: steps.auth.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
         run: |
           set -euo pipefail
           # R9 transição: o Worker aceita ZEVANORY_OPERATOR_TOKEN e, só na ausência dele, CERTIFICATION_E2E_TOKEN
           # (worker/operator-credential.mjs). O deploy exige ao menos um dos dois e imprime só a categoria.
+          cd "$RUNNER_TEMP/release"
           npx --yes wrangler@4.143.0 secret list --name zevanory --format json > /tmp/zevanory-secrets.json
           if jq -e 'map(.name) | index("ZEVANORY_OPERATOR_TOKEN") != null' /tmp/zevanory-secrets.json >/dev/null; then
             echo "OPERATOR_TOKEN_BINDING=primary"
@@ -329,15 +551,32 @@ jobs:
             echo "OPERATOR_TOKEN_BINDING=absent"
             exit 1
           fi
-
+      - name: Consumer-text gate before the production deploy
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --consumer-gate --anchors-ref refs/remotes/origin/gh-pages
       - name: Deploy repaired production worker
         id: deployworker
         if: steps.auth.outputs.available == 'true'
+        env:
+          CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+          # Production credentials stay mapped to the production deploy step only (inventories: DATABASE_URL consumer
+          # table, credential separation gate); this step runs no repository code.
+          MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
+          MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+          ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}
         run: |
           set -euo pipefail
+          cd "$RUNNER_TEMP/release"
           # Omitting --keep-vars removes only obsolete dashboard plain-text vars;
           # Wrangler guarantees that deployments never delete secret bindings.
-          deploy() { npx --yes wrangler@4.143.0 deploy "$@" --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log; }
+          deploy() { npx --yes wrangler@4.143.0 deploy --no-bundle "$@" --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log; }
           fail() { tail -15 /tmp/central-deploy.log | tr '\n' ' ' | cut -c1-1800 | sed 's/^/::error title=CENTRAL_DEPLOY_FAILED::/'; echo; exit 1; }
           if ! deploy --strict; then
             # --strict aborts only when the Worker was last changed outside this pipeline
@@ -350,22 +589,25 @@ jobs:
           fi
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
+        env:
+          ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}
         run: |
           set -euo pipefail
+          CANON="base/worker/live-recovered/control-plane-vnext.js"
           WORKERS_DEV="https://zevanory.zevanory.workers.dev"
           # Legacy route is strictly diagnostic: it is not the current owner release.
           legacy_http="$(curl -sS -o /tmp/legacy-workers-dev.js -w '%{http_code}' https://zevanory.girolocal-rb.workers.dev/control-plane-vnext.js || true)"
           echo "LEGACY_WORKERS_DEV_DIAGNOSTIC_HTTP=$legacy_http"
           curl -fsS "$WORKERS_DEV/control-plane-vnext.js" -o /tmp/workers-dev.js || echo "::error title=VERIFY_WORKERS_DEV_FETCH::workers.dev control-plane-vnext.js fetch failed"
-          cmp -s /tmp/workers-dev.js worker/live-recovered/control-plane-vnext.js || { echo "::error title=VERIFY_WORKERS_DEV_CMP::workers.dev asset differs from canonical ($(wc -c </tmp/workers-dev.js 2>/dev/null) vs $(wc -c <worker/live-recovered/control-plane-vnext.js) bytes)"; exit 1; }
+          cmp -s /tmp/workers-dev.js "$CANON" || { echo "::error title=VERIFY_WORKERS_DEV_CMP::workers.dev asset differs from canonical ($(wc -c </tmp/workers-dev.js 2>/dev/null) vs $(wc -c <"$CANON") bytes)"; exit 1; }
           echo "WORKERS_DEV_CANONICAL_PASS"
           for i in $(seq 1 30); do
             curl -fsS https://zevanory.api.br/control-plane-vnext.js -o /tmp/live.js || true
-            if cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js; then break; fi
+            if cmp -s /tmp/live.js "$CANON"; then break; fi
             sleep 5
           done
-          cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js || { echo "::error title=VERIFY_APEX_ASSET_CMP::zevanory.api.br asset differs from canonical after 150s"; exit 1; }
-          python3 scripts/deploy/verify-live-asset.py || { echo "::error title=VERIFY_LIVE_ASSET::UTF-8/marker assertions failed"; exit 1; }
+          cmp -s /tmp/live.js "$CANON" || { echo "::error title=VERIFY_APEX_ASSET_CMP::zevanory.api.br asset differs from canonical after 150s"; exit 1; }
+          /usr/bin/python3 -I base/scripts/deploy/verify-live-asset.py || { echo "::error title=VERIFY_LIVE_ASSET::UTF-8/marker assertions failed"; exit 1; }
           # Cloudflare edge propagation can lag behind the successful Worker upload.
           # Sales open: the financial proof is bound to the release SHA, so every deploy
           # invalidates it and /api/status falls back to globally-blocked. Renew it for the
@@ -373,13 +615,13 @@ jobs:
           # Decide on the OWNER'S authorized request, not on the effective state: a new
           # release SHA has, by design, no proof yet, so "open" is already false here and
           # the renewal was skipped -> exact-release poll mismatch -> automatic rollback.
-          if curl -fsS https://zevanory.api.br/api/sales/status | python3 -c 'import json,sys;j=json.load(sys.stdin);sys.exit(0 if (j.get("open") is True or j.get("requested") is True) else 1)'; then
+          if curl -fsS https://zevanory.api.br/api/sales/status | /usr/bin/python3 -I -c 'import json,sys;j=json.load(sys.stdin);sys.exit(0 if (j.get("open") is True or j.get("requested") is True) else 1)'; then
             for i in $(seq 1 30); do
-              rel="$(curl -fsS https://zevanory.api.br/api/release | python3 -c 'import json,sys;print((json.load(sys.stdin).get("deployment") or {}).get("commit_sha",""))' || true)"
+              rel="$(curl -fsS https://zevanory.api.br/api/release | /usr/bin/python3 -I -c 'import json,sys;print((json.load(sys.stdin).get("deployment") or {}).get("commit_sha",""))' || true)"
               [ "$rel" = "$TARGET_RUNTIME_SHA" ] && break
               sleep 5
             done
-            python3 scripts/financial_proof_renewal.py || { sleep 15; python3 scripts/financial_proof_renewal.py; } || echo "::warning title=DEPLOY_PROOF_RENEWAL::not accepted yet; exact-release poll decides"
+            /usr/bin/python3 -I base/scripts/financial_proof_renewal.py || { sleep 15; /usr/bin/python3 -I base/scripts/financial_proof_renewal.py; } || echo "::warning title=DEPLOY_PROOF_RENEWAL::not accepted yet; exact-release poll decides"
           fi
           # Poll the canonical, non-query API until it serves this exact release SHA.
           exact_sha=0
@@ -390,7 +632,7 @@ jobs:
             curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json || true
             curl -fsS https://zevanory.api.br/api/core/v1/snapshot -o /tmp/core.json || true
             curl -fsS https://zevanory.api.br/api/core/v1/evaluation/zea10 -o /tmp/zea10.json || true
-            if GITHUB_SHA="$GITHUB_SHA" python3 scripts/deploy/verify-exact-release-poll.py;
+            if GITHUB_SHA="$GITHUB_SHA" /usr/bin/python3 -I base/scripts/deploy/verify-exact-release-poll.py;
             then
               exact_sha=1
               break
@@ -398,17 +640,17 @@ jobs:
             sleep 5
           done
           if [ "$exact_sha" != "1" ]; then
-            GITHUB_SHA="$GITHUB_SHA" VERIFY_DIAG=1 python3 scripts/deploy/verify-exact-release-poll.py || true
+            GITHUB_SHA="$GITHUB_SHA" VERIFY_DIAG=1 /usr/bin/python3 -I base/scripts/deploy/verify-exact-release-poll.py || true
             exit 1
           fi
-          python3 scripts/deploy/verify-exact-release-final.py
-          python3 scripts/deploy/verify-brand-assets-live.py
+          /usr/bin/python3 -I base/scripts/deploy/verify-exact-release-final.py
+          /usr/bin/python3 -I base/scripts/deploy/verify-brand-assets-live.py
       - name: Verify production API legal surfaces and parity after deploy
         if: steps.auth.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/verify-production-surfaces.py > /tmp/surfaces.log 2>&1 || { tail -5 /tmp/surfaces.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_SURFACES::/'; echo; cat /tmp/surfaces.log; exit 1; }
+          /usr/bin/python3 -I base/scripts/verify-production-surfaces.py > /tmp/surfaces.log 2>&1 || { tail -5 /tmp/surfaces.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_SURFACES::/'; echo; cat /tmp/surfaces.log; exit 1; }
           cat /tmp/surfaces.log
       - name: Verify live HSTS CSP and Mercado Pago navigation
         if: steps.auth.outputs.available == 'true'
@@ -416,20 +658,29 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL -D /tmp/live-security-headers.txt -o /tmp/live-solutions.html https://zevanory.api.br/solucoes
-          python3 scripts/verify-live-headers.py /tmp/live-security-headers.txt > /tmp/headers.log 2>&1 || { tail -5 /tmp/headers.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_HEADERS::/'; echo; exit 1; }
-          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
-          npx playwright install --with-deps chromium >/dev/null 2>&1
-          node scripts/deploy/mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
+          /usr/bin/python3 -I base/scripts/verify-live-headers.py /tmp/live-security-headers.txt > /tmp/headers.log 2>&1 || { tail -5 /tmp/headers.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_HEADERS::/'; echo; exit 1; }
+          # Pinned external browser tooling in a clean directory (not repository dependencies); the anchored smoke
+          # script is copied next to it so the module resolution never reaches the repository.
+          mkdir -p "$RUNNER_TEMP/pw"
+          cp base/scripts/deploy/mercadopago-csp-smoke.mjs "$RUNNER_TEMP/pw/"
+          cd "$RUNNER_TEMP/pw"
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" playwright@1.55.0 >/dev/null 2>&1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium >/dev/null 2>&1
+          node mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
           cat /tmp/mpsmoke.log
       - name: Post-promotion effective version (T1)
         id: postpromo
         if: steps.auth.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
         run: |
           set -euo pipefail
           # FAIL (positive evidence) fails this step -> automatic rollback below.
           # NAO_COMPROVADO (observer unreachable) does NOT roll back: --unproven-exit 0 and the
           # certification gate after the rollback step fails the run instead.
-          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory \
+          cd base
+          /usr/bin/python3 -I scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory \
             --candidate "$TARGET_RUNTIME_SHA" \
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
@@ -437,11 +688,14 @@ jobs:
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
         shell: bash
         run: |
           set -euo pipefail
           echo "POSTDEPLOY_SMOKE_FAILED=1"
-          npx --yes wrangler@4.143.0 rollback --name zevanory --config wrangler.central-fix.jsonc --message "Automatic rollback after failed production smoke for $TARGET_RUNTIME_SHA"
+          (cd "$RUNNER_TEMP/release" && npx --yes wrangler@4.143.0 rollback --name zevanory --config wrangler.central-fix.jsonc --message "Automatic rollback after failed production smoke for $TARGET_RUNTIME_SHA")
+          cd base
           for i in $(seq 1 20); do
             code="$(curl -sS -o /tmp/rollback-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
             if [ "$code" = "200" ] && python3 scripts/deploy/verify-rollback-health.py /tmp/rollback-health.json;
@@ -468,10 +722,12 @@ jobs:
         # Depois da decisão de rollback de propósito: uma chave Stripe de TESTE ligada à produção reprova o run sem
         # desfazer o deploy (o defeito é do segredo, não do código).
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        env:
+          ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/ci/credential_identity_readback.py https://zevanory.api.br
+          /usr/bin/python3 -I base/scripts/ci/credential_identity_readback.py https://zevanory.api.br
       - name: Dispatch exact-production ZEES-16 provider evidence
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         continue-on-error: true
@@ -480,7 +736,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/deploy/dispatch-exact-production-evidence.sh "$TARGET_RUNTIME_SHA"
+          bash base/scripts/deploy/dispatch-exact-production-evidence.sh "$TARGET_RUNTIME_SHA"
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
         run: |

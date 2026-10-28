@@ -79,8 +79,16 @@ def mailto(subject: str, body: str | None = None) -> str:
     return href + (f"&body={_q(body)}" if body else "")
 
 
+WAITLIST_FORM = CONTACT.get("waitlist_form") or {}
+WAITLIST_FORM_ENABLED = WAITLIST_FORM.get("enabled") is True
+
+
 def waitlist_href(product: str) -> str:
-    """Destino do CTA 'Entrar na lista de espera' com vendas fechadas."""
+    """Destino do CTA 'Entrar na lista de espera' com vendas fechadas. Formulário real so com
+    waitlist_form.enabled=true (decisao do proprietario, depois de ligar WAITLIST_ENABLED no Worker); senao, mailto."""
+    slug = (WAITLIST_FORM.get("produtos") or {}).get(product)
+    if WAITLIST_FORM_ENABLED and slug:
+        return WAITLIST_FORM["url"] + "?produto=" + _q(slug)
     if WHATSAPP_PUBLIC_LINKS_ENABLED:
         return WHATSAPP_URL + "?text=" + _q("Olá! Quero entrar na lista de espera do " + product + ".")
     return mailto(CONTACT["waitlist_subject"].replace("{produto}", product),

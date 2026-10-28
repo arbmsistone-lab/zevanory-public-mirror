@@ -108,6 +108,9 @@ export function openSalesHtml(html,slug){
   out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sub="([a-z-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sub,label)=>Object.prototype.hasOwnProperty.call(SUBSCRIPTION_PATHS,sub)?`<a ${pre}href="${SUBSCRIPTION_PATHS[sub]}">${label}</a>`:m);
   out=out.replace(/<(span|p)([^>]*?) data-zev-open-text="([^"]*)">[^<]*<\/\1>/g,"<$1$2>$3</$1>");
   out=out.replace(/<(p|span)\b[^>]*\sdata-zev-closed[^>]*>[^<]*<\/\1>/g,"");
+  // Site audit S-04: the closed-sales sign-up block (form + e-mail waiting list) is a whole <section> with no
+  // nested section; it disappears with the notice when the owner opens sales.
+  out=out.replace(/<section\b[^>]*\sdata-zev-closed-block[^>]*>(?:(?!<section\b)[\s\S])*?<\/section>/g,"");
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===slug);
   if(sku)out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
     try{const d=JSON.parse(body);
@@ -346,9 +349,12 @@ async function comprarRoute(request,env,ctx,match){
 // sem SITE_CHAT_ENABLED="true" neste Worker as rotas /api/chat* respondem 503 aqui mesmo (sem chamar o
 // central) e nenhuma página recebe o widget. Ligado: o widget (CSS/JS próprios, sem script de terceiros,
 // sem inline, compatível com a CSP) só é anexado às páginas abaixo e só abre por ação da pessoa.
-export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto","termos","privacidade","reembolso"]));
+// Rodada 5 (reauditoria do PR #946): páginas jurídicas são servidas BYTE A BYTE do artefato (o que o portão jurídico
+// conferiu): sem chat, sem troca de HTML de vendas, sem UTM nem compressão no corpo. Nenhuma está em SITE_CHAT_PAGES.
+export const LEGAL_ROUTES=Object.freeze(new Set(["termos","reembolso","privacidade","afiliados"]));
+export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto"]));
 export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";
-export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
+export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&!LEGAL_ROUTES.has(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
 export function injectSiteChatHtml(html){
   let out=String(html);
   if(out.includes('src="/site-chat.js"'))return out;
@@ -425,6 +431,15 @@ export default{async fetch(request,env,ctx){
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
   let response=await env.ASSETS.fetch(new Request(url,request));
+  if(LEGAL_ROUTES.has(page)){
+    // Byte a byte: o corpo é exatamente o arquivo do artefato; só os cabeçalhos são da resposta.
+    const lh=new Headers(response.headers);
+    lh.set("x-robots-tag","index,follow");
+    if(response.status===200) lh.set("cache-control",PAGE_CACHE_CONTROL);
+    applySecurityHeaders(lh);
+    if(response.status===200) countView(request,env,ctx,page,"views",null);
+    return new Response(request.method==="HEAD"?null:response.body,{status:response.status,statusText:response.statusText,headers:lh});
+  }
   // Designed 404 for unknown PAGE paths (no file extension); asset 404s stay plain. Never cached.
   if(response.status===404&&!page&&(request.method==="GET"||request.method==="HEAD")&&!/\.[a-z0-9]{1,8}$/i.test(url.pathname)){
     const nf=await env.ASSETS.fetch(new Request(new URL("/404.html",request.url),{method:"GET"}));

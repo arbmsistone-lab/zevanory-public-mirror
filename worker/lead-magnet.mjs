@@ -6,11 +6,10 @@ import { CUSTOMER_RULE_7D, DELIVERY_72H, hasCheckoutCta } from "./politica-unica
 // * Subscribe arrives only through the sales Worker's private binding (host leads.internal).
 // * Confirmation link is single-use (token hash stored) and needs a click (POST), so mail scanners
 //   never confirm on the person's behalf.
-// * Nurture (5 e-mails, then it stops): D0 checklist, D+2 practical tips, D+7 the one product
-//   that matches what the person was reading (calculator → Lucro & Caixa, sales → Vendas na
-//   Prática, otherwise IA na Prática), D+10 honest answers to the usual doubts, D+14 a last
-//   note with the complete package. Offers only go out while sales are open. Every e-mail
-//   carries one-click unsubscribe (RFC 8058) and utm tags so sales are attributed to e-mail.
+// * Nurture for free-material contacts is informational only. Opening sales never enables the
+//   retired offer steps (2–4). A future commercial sequence requires a separate, auditable and
+//   revocable consent and is intentionally not implemented here. Every informational e-mail
+//   carries one-click unsubscribe (RFC 8058).
 // * T3 / LGPD (plan 3.1): processing follows the consent text and the published privacy policy.
 //   - Consent v1 ("o checklist e até 2 e-mails de dicas e produtos") caps the sequence at the
 //     checklist + 2 e-mails; longer sequences need a new consent version.
@@ -28,8 +27,20 @@ const SALES = "https://vendas.zevanory.api.br";
 const CHECKLIST_URL = `${SALES}/checklist-15-minutos`;
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 const CONSENT_VERSION = "lead-magnet-v1-2026-10-07";
-// E-mails after the checklist that each consent text allows ("até 2 e-mails de dicas e produtos").
-export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 2 };
+// Consent v2 (prepared for the P09 sequence, PR #931; decision delegated 2026-10-25): explicit "até 5 e-mails" in total
+// (the checklist + up to 4). INERT until the owner turns it on: it is recorded ONLY when env.LEAD_CONSENT_V2 is exactly
+// this version id AND the form posted this same version (the person saw the v2 text). Otherwise the sign-up is v1.
+// Never retroactive: a lead keeps the version recorded at sign-up (v1 stays at checklist + 2), and a confirmed lead
+// signing up again does not change version.
+export const CONSENT_V2_VERSION = "lead-magnet-v2-2026-10-25";
+export const CONSENT_V2_TEXT = "Quero receber o checklist e até 5 e-mails da ZEVANORY ao todo (o checklist e mais 4 e-mails com dicas e os produtos). Posso cancelar a qualquer momento. Li a Política de Privacidade.";
+// E-mails after the checklist that each consent text allows ("até 2 e-mails de dicas e produtos"; v2: "até 5 e-mails" ao todo).
+export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 2, [CONSENT_V2_VERSION]: 4 };
+export const consentV2Enabled = (env) => String(env?.LEAD_CONSENT_V2 ?? "") === CONSENT_V2_VERSION;
+// The version recorded for a new sign-up. Fail-closed: anything but the exact gate + exact posted version is v1.
+export function signupConsentVersion(env, postedVersion) {
+  return consentV2Enabled(env) && postedVersion === CONSENT_V2_VERSION ? CONSENT_V2_VERSION : CONSENT_VERSION;
+}
 export const PENDING_GRACE_DAYS = 7;
 export const INACTIVE_RETENTION_DAYS = 730;
 // After the last e-mail the consent allows (or the held offer was abandoned), the purpose is fulfilled.
@@ -166,11 +177,10 @@ export function interestFromPage(page = "") {
 }
 const track = (slug, step, interest) => `${SALES}/${slug}?utm_source=email&utm_medium=nurture&utm_campaign=s${step}-${interest}`;
 
-// P13c: prazo e entrega vêm de data/politica-unica.json; as ofertas (passos 2 a 4) só existem com
-// vendas abertas (interruptor do proprietário, readSalesSwitch -> runLeadNurture). Fechado (padrão),
-// o passo comercial devolve null e nenhum e-mail com chamada de compra é montado.
+// A272-02 / decisão do Sol: material gratuito e consentimento comercial são bases separadas.
+// Passos comerciais legados 2–4 nunca são montados, inclusive com vendas abertas.
 export function nurtureEmail(step, { name, optOutUrl, interest = "ia", salesOpen = false } = {}) {
-  if (step >= 2 && salesOpen !== true) return null;
+  if (step >= 2) return null;
   const mail = nurtureEmailText(step, { name, optOutUrl, interest });
   if (salesOpen !== true && hasCheckoutCta(mail.text + " " + mail.subject)) throw new Error("nurture_checkout_cta_while_closed");
   return mail;
@@ -186,7 +196,7 @@ function nurtureEmailText(step, { name, optOutUrl, interest = "ia" }) {
   return { subject: "Último e-mail desta sequência", text: `${hi}\n\nEste é o último e-mail da sequência do checklist. Depois dele, não envio mais nada sobre isso.\n\nSe você quiser resolver tudo de uma vez (IA, vendas e caixa), o Negócio Completo reúne os três materiais e mais um plano de 30 dias, por R$ 397 (separados custariam R$ 641). Arrependimento: ${CUSTOMER_RULE_7D}.\n${track("negocio-completo", 4, interest)}\n\nSe agora não é o momento, tudo bem. O checklist continua sendo seu:\n${CHECKLIST_URL}` + sign };
 }
 
-async function subscribe(env, sql, { email, name, consent, page }) {
+async function subscribe(env, sql, { email, name, consent, page, consent_version: postedVersion }) {
   email = normEmail(email);
   name = String(name || "").trim().replace(/[\r\n<>]/g, " ").slice(0, 60);
   if (!EMAIL_RE.test(email) || email.length > 254) return { status: 400, body: { ok: false, message: "Confira o e-mail." } };
@@ -201,13 +211,14 @@ async function subscribe(env, sql, { email, name, consent, page }) {
   const token = randomToken();
   const tokenHash = await sha256Hex(token);
   const ref = await subjectRef(env, email);
+  const version = signupConsentVersion(env, postedVersion);
   await sql.query(`insert into zevanory_leads (email, email_hash, name, consent_version, consent_at, status, token_hash, token_expires_at, subject_ref)
       values ($1, $2, $3, $4, now(), 'pending', $5, now() + interval '48 hours', $6)
       on conflict (email) do update set name = excluded.name, consent_version = excluded.consent_version, consent_at = now(),
         status = case when zevanory_leads.status = 'unsubscribed' then 'pending' else zevanory_leads.status end,
         unsubscribed_at = null, token_hash = excluded.token_hash, token_expires_at = excluded.token_expires_at, subject_ref = coalesce(zevanory_leads.subject_ref, excluded.subject_ref)`,
-    [email, await sha256Hex(email), name || null, CONSENT_VERSION, tokenHash, ref]);
-  await recordEvent(sql, ref, "consent_given", CONSENT_VERSION);
+    [email, await sha256Hex(email), name || null, version, tokenHash, ref]);
+  await recordEvent(sql, ref, "consent_given", version);
   try { if (ref) await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:lead:interest:" + ref, interestFromPage(page), { expirationTtl: 45 * 24 * 3600 }); } catch {}
   await emitActivity(env, { type: "lead_captured", channel: "web", status: "pending", ref: "lead:" + (ref || randomToken()) + ":" + new Date().toISOString().slice(0, 10) }).catch(() => null);
   const sent = await sendEmail(env, { to: email, subject: "Confirme seu e-mail para receber o checklist", text: `${name ? `Olá, ${name}!` : "Olá!"}\n\nFalta um clique: confirme seu e-mail para receber o checklist gratuito.\n${CORE}/material-gratuito/confirmar?t=${token}\n\nSe não foi você, ignore esta mensagem: nada será enviado.\n\nEquipe ZEVANORY · ${SUPPORT_EMAIL}` });
@@ -239,7 +250,9 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureLeadSchema(sql);
   // Consent cap in ONE query (not one per lead: the hourly run shares 50 external subrequests).
+  // A version whose consent covers the whole sequence (v2: checklist + 4 = NURTURE_DONE) has nothing to cap: no query.
   for (const [version, followups] of Object.entries(CONSENT_FOLLOWUPS)) {
+    if (1 + followups >= NURTURE_DONE) continue;
     await sql.query("update zevanory_leads set nurture_step=$1 where status='confirmed' and consent_version=$2 and nurture_step >= $3 and nurture_step < $1", [NURTURE_DONE, version, 1 + followups]);
   }
   const due = await sql.query(`select email, name, nurture_step, nurture_at, consent_version, subject_ref from zevanory_leads
@@ -251,10 +264,11 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
     // The consent text bounds the sequence: never send more e-mails than the person agreed to.
     const cap = 1 + (CONSENT_FOLLOWUPS[lead.consent_version] ?? 0);
     if (step >= cap) { await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]); out.capped = (out.capped || 0) + 1; continue; }
-    if (step >= 2 && !salesOpen) {
-      // Offers only go out while customers can actually buy; give up after 30 days.
-      if (since > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
-      out.held += 1; continue;
+    if (step >= 2) {
+      // Never reactivate legacy offers when salesOpen changes: retire before claim/send.
+      await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
+      out.retired_offers = (out.retired_offers || 0) + 1;
+      continue;
     }
     if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;
     const ref = lead.subject_ref || null;

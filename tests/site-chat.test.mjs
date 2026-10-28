@@ -301,7 +301,11 @@ test("SC15 Worker de vendas: desligado => 503 local sem chamar o central e sem w
   assert.equal((await post(on, { origin: "https://evil.example" })).status, 403, "[SC15.6] outra origem");
   assert.equal((await post(on, { "user-agent": "curl/8.0" })).status, 403, "[SC15.7] automação");
   assert.equal((await post(on, { "content-type": "text/plain" })).status, 415, "[SC15.8]");
-  for (const slug of ["ia-na-pratica", "solucoes", "termos", "privacidade", "reembolso", "conteudo-pronto"]) {
+  for (const slug of ["termos", "privacidade", "reembolso", "afiliados"]) {
+    const legal = await (await salesWorker.fetch(new Request(ORIGIN + "/" + slug, { headers: { "user-agent": CHROME } }), on, { waitUntil() {} })).text();
+    assert.ok(!legal.includes("site-chat"), "[SC15.9b] página jurídica sem widget: " + slug);
+  }
+  for (const slug of ["ia-na-pratica", "solucoes", "conteudo-pronto"]) {
     const html = await (await salesWorker.fetch(new Request(ORIGIN + "/" + slug, { headers: { "user-agent": CHROME } }), on, { waitUntil() {} })).text();
     assert.ok(html.includes('<script src="/site-chat.js" defer></script></body>') && html.includes('<link rel="stylesheet" href="/site-chat.css"></head>'), "[SC15.9] " + (slug));
   }
@@ -309,7 +313,9 @@ test("SC15 Worker de vendas: desligado => 503 local sem chamar o central e sem w
   assert.ok(!other.includes("site-chat"), "[SC15.10] fora da lista: sem widget");
   assert.equal(shouldInjectSiteChat("solucoes", {}), false, "[SC15.11]");
   assert.equal(injectSiteChatHtml(injectSiteChatHtml("<head></head><body></body>")).match(/site-chat\.js/g).length, 1, "[SC15.12] idempotente");
-  assert.ok(SITE_CHAT_PAGES.has("solucoes") && SITE_CHAT_PAGES.has("termos"), "[SC15.13]");
+  assert.ok(SITE_CHAT_PAGES.has("solucoes"), "[SC15.13]");
+  // Rodada 5: páginas jurídicas nunca recebem o widget (servidas byte a byte do artefato).
+  for (const legal of ["termos", "reembolso", "privacidade", "afiliados"]) assert.ok(!SITE_CHAT_PAGES.has(legal) && !shouldInjectSiteChat(legal, on), "[SC15.14] " + legal);
 });
 
 test("SC16 fila do proprietário exige autenticação de administrador", async () => {

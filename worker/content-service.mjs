@@ -77,18 +77,20 @@ export function isServiceProduct(data = {}, ids = "") {
 const ACTIVE_EVENTS = new Set(["PURCHASE_APPROVED", "PURCHASE_COMPLETE"]);
 const STOP_EVENTS = new Set(["PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_CANCELED", "PURCHASE_PROTEST", "SUBSCRIPTION_CANCELLATION"]);
 
-async function sendEmail(env, to, subject, text, fetchImpl = fetch) {
+async function sendEmail(env, to, subject, text, fetchImpl = fetch, idempotencyKey = "") {
   if (!env.RESEND_API_KEY || !to) return false;
   const r = await fetchImpl("https://api.resend.com/emails", {
     method: "POST",
-    headers: { authorization: "Bearer " + String(env.RESEND_API_KEY), "content-type": "application/json" },
+    // L-1 (reauditoria do PR #946, rodada 3): postbacks simultâneos da mesma transação enviam a mesma mensagem com a
+    // mesma Idempotency-Key; o provedor entrega uma vez.
+    headers: { authorization: "Bearer " + String(env.RESEND_API_KEY), "content-type": "application/json", ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}) },
     body: JSON.stringify({ from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], reply_to: "suporte@zevanory.api.br", subject, text, html: brandedEmailHtml(text) }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
   return Boolean(r?.ok);
 }
-async function ownerAlert(env, subject, text, fetchImpl) {
-  return sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY · " + subject, text, fetchImpl);
+async function ownerAlert(env, subject, text, fetchImpl, idempotencyKey = "") {
+  return sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY · " + subject, text, fetchImpl, idempotencyKey);
 }
 
 // ---------- Hotmart postback ----------
@@ -109,7 +111,10 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   if (!event || !txn) return json(400, { error: "missing_event_or_transaction" });
   const dedupe = TXN + (await sha(event + ":" + txn)).slice(0, 40);
   if (await kv.get(dedupe)) return json(200, { ok: true, duplicate: true });
-  await kv.put(dedupe, "1", { expirationTtl: 400 * DAY });
+  // KV (reauditoria do PR #946): o marcador de evento processado é gravado por ÚLTIMO (commit). Se o KV falhar no meio,
+  // o webhook responde erro, a Hotmart reenvia e o reprocessamento é idempotente por transação (ciclo e e-mail de
+  // briefing não se repetem); nunca fica "processado" sem o estado do assinante gravado.
+  const done = async (res) => { await kv.put(dedupe, "1", { expirationTtl: 400 * DAY }); return res; };
   // Revenue ledger for the command center (aggregate, PII-free, idempotent per txn/outcome).
   await recordHotmartSale(kv, event, data).catch(() => null);
 
@@ -117,7 +122,7 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     // Digital products: Hotmart itself delivers the files. Only record visibility.
     if (ACTIVE_EVENTS.has(event)) await emitActivity(env, { type: "delivery_sent", channel: "store", status: "hotmart_approved", ref: "hotmart:" + txn }).catch(() => null);
     if (STOP_EVENTS.has(event)) await emitActivity(env, { type: "refund_requested", channel: "store", status: "hotmart_" + event.toLowerCase().slice(0, 40), ref: "hotmart:" + txn }).catch(() => null);
-    return json(200, { ok: true, scope: "digital_product" });
+    return done(json(200, { ok: true, scope: "digital_product" }));
   }
 
   const subscriber = String(data?.subscription?.subscriber?.code || "") || "txn-" + txn;
@@ -129,32 +134,38 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   if (STOP_EVENTS.has(event)) {
     if (current) await kv.put(key, JSON.stringify({ ...current, status: "inactive", stoppedAt: new Date().toISOString(), stopEvent: event }), { expirationTtl: 400 * DAY });
     await emitActivity(env, { type: "refund_requested", channel: "store", status: "service_stopped", ref: "cp:" + subscriber }).catch(() => null);
-    return json(200, { ok: true, status: "inactive" });
+    return done(json(200, { ok: true, status: "inactive" }));
   }
-  if (!ACTIVE_EVENTS.has(event)) return json(200, { ok: true, ignored: event });
-  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) return json(200, { ok: true, status: "no_buyer_email" });
+  if (!ACTIVE_EVENTS.has(event)) return done(json(200, { ok: true, ignored: event }));
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) return done(json(200, { ok: true, status: "no_buyer_email" }));
+  const replay = current?.lastTxn === txn && current?.status === "active";
 
   const record = {
     schema: "zpc.cp.v1", status: "active", email, name,
-    cycles: Number(current?.cycles || 0) + 1, lastTxn: txn,
+    cycles: Number(current?.cycles || 0) + (replay ? 0 : 1), lastTxn: txn, briefingTxn: current?.briefingTxn || null,
     briefing: current?.briefing || null, createdAt: current?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   await kv.put(key, JSON.stringify(record), { expirationTtl: 400 * DAY });
   await emitActivity(env, { type: "delivery_sent", channel: "store", status: record.cycles === 1 ? "service_started" : "service_renewed", ref: "cp:" + subscriber + ":" + record.cycles }).catch(() => null);
 
   if (!record.briefing) {
-    const token = rand();
+    if (record.briefingTxn === txn) return done(json(200, { ok: true, status: "briefing_requested", replay: true }));
+    // Token do formulário derivado do segredo do webhook, da assinatura e da transação: postbacks simultâneos da
+    // mesma transação montam a MESMA mensagem (mesmo link), então a Idempotency-Key deduplica sem conflito.
+    const token = (await sha(secret + ":cp-briefing:" + key + ":" + txn)).slice(0, 48);
+    const mailKey = "zevanory-cp-welcome-" + (await sha(key + ":" + txn)).slice(0, 32);
     await kv.put(TOKEN + token, key, { expirationTtl: 60 * DAY });
     const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
     await sendEmail(env, email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo",
-      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias chega neste e-mail em poucos minutos. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
+      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias chega neste e-mail em poucos minutos. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl, mailKey);
     await emitActivity(env, { type: "email_sent", channel: "email", status: "briefing_requested", ref: "cp-brief:" + subscriber + ":" + record.cycles }).catch(() => null);
-    await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl);
-    return json(200, { ok: true, status: "briefing_requested" });
+    await kv.put(key, JSON.stringify({ ...record, briefingTxn: txn }), { expirationTtl: 400 * DAY });
+    await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl, mailKey + "-owner");
+    return done(json(200, { ok: true, status: "briefing_requested" }));
   }
   const job = generateAndDeliver(env, key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
-  return json(200, { ok: true, status: "generation_started" });
+  return done(json(200, { ok: true, status: "generation_started" }));
 }
 
 // ---------- Briefing form ----------

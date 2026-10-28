@@ -191,8 +191,8 @@
   "M21 status público abre sem fiscal": {
    "primary": [
     {
-     "test_pattern": "L1",
-     "assertion_pattern": "[L1.1]"
+     "test_pattern": "L12",
+     "assertion_pattern": "[L12.2]"
     }
    ],
    "secondary": [
@@ -208,6 +208,30 @@
     {
      "test_pattern": "L3",
      "assertion_pattern": "[L3.3]"
+    }
+   ]
+  },
+  "M23 aprovador sem formato real aceito": {
+   "primary": [
+    {
+     "test_pattern": "L19",
+     "assertion_pattern": "[L19.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M24 aprovação de outro texto aceita": {
+   "primary": [
+    {
+     "test_pattern": "L19",
+     "assertion_pattern": "[L19.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L19",
+     "assertion_pattern": "[L19.6]",
+     "justification": "o texto alterado depois da revisão deixa de ser acusado pelo mesmo ramo do código"
     }
    ]
   }

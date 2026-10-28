@@ -1,0 +1,5 @@
+S2 (aprovado): LEGAL_PUBLISH_GATE=PASS_APPROVED
+PR-3 guarda protegida: TRUST_ANCHORS=UNCHANGED files=1 | validador: LEGAL_GATE_WORKFLOWS=VALID problems=0
+job deploy em S3: 1) portão: LEGAL_PUBLISH_GATE=PASS_APPROVED
+  2) build rc=0
+  3) integridade rc=0  4) publicado: CLÁUSULA NOVA: nenhum reembolso. Cancelamento e reembolso

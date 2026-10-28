@@ -41,3 +41,4 @@ strong{font-weight:700}
 @media(max-width:560px){.legal-brand{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 @media print{:root{color-scheme:light;--papel:#fff;--cupom:#fff;--tinta:#000;--grafite:#333;--azul-cedula:#000;--linha-suave:#999;--regua:#000;--balcao:#fff;--balcao-texto:#000}.nav{background:white}.nav a{color:black}.legal-brand img{filter:invert(1)}a[href^="http"]::after{content:" (" attr(href) ")";font-size:9pt}}
+.amp{font-family:"Atkinson Hyperlegible Next",Verdana,sans-serif;font-stretch:100%;letter-spacing:0}

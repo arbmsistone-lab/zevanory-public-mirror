@@ -37,8 +37,14 @@ assert not re.search(r'\[\s*["\']vars["\']\s*\]\s*\[\s*["\']CERTIFICATION_PILOT_
 assert 'NO_PRODUCTION_PILOT_BINDING' in Path("scripts/deploy/verify-financial-boundary.py").read_text(encoding="utf-8"), "PILOT_ABSENCE_PROOF_MISSING"
 wf=Path(".github/workflows/central-production-deploy.yml").read_text(encoding="utf-8")
 reconstruct=wf.split('- name: Reconstruct exact production candidate',1)[1].split('run: |',1)[0]
+# PR #946 rodada 6: o build roda sem o Environment (sem segredo); o job guard (com o Environment) repassa as variáveis
+# NÃO secretas como saída. Aceita a ligação direta ou a ligação via needs.guard.outputs.<x> com <x>: ${{ vars.VAR }}.
+guard_outputs=wf.split('\n  guard:\n',1)[1].split('\n    steps:\n',1)[0] if '\n  guard:\n' in wf else ""
 for var in ('ZEVANORY_LAUNCH_AUTHORIZATION','MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16','MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED'):
-    assert var+': ${{ vars.'+var+' }}' in reconstruct, "LAUNCH_ENV_BINDING_MISSING:"+var
+    direct=var+': ${{ vars.'+var+' }}' in reconstruct
+    m=re.search(re.escape(var)+r': \$\{\{ needs\.guard\.outputs\.([a-z0-9_]+) \}\}', reconstruct)
+    via_guard=bool(m) and (m.group(1)+': ${{ vars.'+var+' }}') in guard_outputs
+    assert direct or via_guard, "LAUNCH_ENV_BINDING_MISSING:"+var
 guard=Path("worker/commercial-checkout-guard.mjs").read_text(encoding="utf-8")
 assert 'sw?.authorized===true' in guard and 'sw?.enabled===true' in guard, "KV_OWNER_AUTHORIZATION_REQUIRED"
 status=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")

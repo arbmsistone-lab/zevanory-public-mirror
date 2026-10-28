@@ -13,9 +13,10 @@
   "consent": {
     "source": "worker/lead-magnet.mjs",
     "accepted_versions": [
-      "lead-magnet-v1-2026-10-07"
+      "lead-magnet-v1-2026-10-07",
+      "lead-magnet-v2-2026-10-25"
     ],
-    "note": "Passo 0 é a entrega do checklist; o passo n (n >= 1) só sai se o consentimento registrado do lead permitir n e-mails depois do checklist. O consentimento v1 diz 'até 2 e-mails': com ele, os passos 3 e 4 nunca saem. Para enviá-los é preciso uma nova versão de consentimento (P08), com texto aprovado pelo proprietário.",
+    "note": "Passo 0 é a entrega do checklist; o passo n (n >= 1) só sai se o consentimento registrado do lead permitir n e-mails depois do checklist. O consentimento v1 diz 'até 2 e-mails': com ele, os passos 3 e 4 nunca saem. Para enviá-los é preciso uma nova versão de consentimento (P08), com texto aprovado pelo proprietário. Consentimento v2 (lead-magnet-v2-2026-10-25, 'até 5 e-mails' ao todo) preparado e INERTE: só é registrado em inscrições NOVAS quando o Worker tem LEAD_CONSENT_V2 igual ao id da versão e o formulário mostrou o texto v2; com ele os passos 0 a 4 cabem no consentimento. Contatos v1 continuam limitados aos passos 0, 1 e 2.",
     "coverage_rule": "Nunca retroativo: o passo n (n >= 1) só sai para o contato cujo consentimento registrado cobre n e-mails depois do checklist (CONSENT_FOLLOWUPS[lead.consent_version] >= n). Contatos com o consentimento v1 ('até 2 e-mails') recebem no máximo os passos 0, 1 e 2, mesmo que uma versão nova de consentimento passe a existir."
   },
   "metrics": {

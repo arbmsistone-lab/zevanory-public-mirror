@@ -1,4 +1,4 @@
-import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
+import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_FORM_SCOPE, REFUND_OTHER_PLATFORM, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
 import { drainAtendimentoOutbox, handleAtendimento } from "./atendimento.mjs";
 import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
@@ -21,7 +21,7 @@ const HEADERS = { "content-type": "application/json; charset=utf-8", "cache-cont
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: HEADERS });
 const html = (status, body, extra = {}) => new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", ...extra } });
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const GENERIC_NOT_FOUND = "Não encontramos um pedido elegível com esses dados. Confira o código do pedido (está no e-mail de entrega) e o e-mail usado no pagamento, ou escreva para suporte@zevanory.api.br.";
+const GENERIC_NOT_FOUND = "Não encontramos um pedido elegível com esses dados. Confira o código do pedido (está no e-mail de entrega) e o e-mail usado no pagamento, ou escreva para suporte@zevanory.api.br. Este formulário atende as " + REFUND_FORM_SCOPE + ". " + REFUND_OTHER_PLATFORM;
 
 function timingSafeEqual(a, b) {
   a = String(a); b = String(b);
@@ -238,7 +238,7 @@ async function listRequests(kv, sql) {
 
 const FORM_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Solicitar reembolso · ZEVANORY</title>
 <meta name="robots" content="noindex"><link rel="icon" href="/brand/export/avatar-400.png"><style>body{margin:0;font-family:system-ui,sans-serif;background:#05070b;color:#e7ecf7}main{max-width:520px;margin:0 auto;padding:32px 20px}.zv-brand{display:block;margin:0 0 22px}.zv-brand img{display:block;height:44px;width:auto}.zv-legal{margin-top:24px;padding-top:14px;border-top:1px solid #1c2a44;font-size:12px;color:#7f8ca3;line-height:1.6}.zv-legal a,.zv-help a{color:#7fd3ff}h1{font-size:26px}p{color:#b9c4dc;line-height:1.5}label{display:block;margin:18px 0 6px;font-weight:600}input{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #24324f;background:#0b1220;color:#fff;font-size:16px}button{margin-top:22px;width:100%;padding:14px;border:0;border-radius:10px;background:#00b8ff;color:#04121f;font-weight:700;font-size:16px;cursor:pointer}#msg{margin-top:18px;padding:12px;border-radius:10px;background:#0b1220;display:none}</style></head>
-<body><main><a class="zv-brand" href="https://vendas.zevanory.api.br/"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="224" height="51"></a><h1>Solicitar reembolso</h1><p>${REFUND_TEXT} ${SLA_TEXT}</p>
+<body><main><a class="zv-brand" href="https://vendas.zevanory.api.br/"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="224" height="51"></a><h1>Solicitar reembolso</h1><p><strong>Este formulário atende as ${REFUND_FORM_SCOPE}.</strong> ${REFUND_OTHER_PLATFORM}</p><p>${REFUND_TEXT} ${SLA_TEXT}</p>
 <form id="f"><label for="o">Código do pedido</label><input id="o" name="order_id" required placeholder="está no e-mail de entrega" autocomplete="off">
 <label for="e">E-mail usado no pagamento</label><input id="e" name="email" type="email" required autocomplete="email"><button type="submit">Enviar pedido de reembolso</button></form><div id="msg" role="status"></div>
 <p class="zv-help" style="margin-top:28px;font-size:14px">Dúvidas, reclamação ou cancelamento: ${CONTACT_HTML}</p><p class="zv-legal">${LEGAL_IDENTITY} · <a href="https://vendas.zevanory.api.br/termos">Termos</a> · <a href="https://vendas.zevanory.api.br/privacidade">Privacidade</a> · <a href="https://vendas.zevanory.api.br/reembolso">Reembolso</a></p></main>

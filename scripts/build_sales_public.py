@@ -169,7 +169,8 @@ def how_to_buy() -> str:
             '<li><strong>E-mail</strong><span>Depois da confirmação do pagamento, o link chega no e-mail que você informou.</span></li>'
             f'<li><strong>Link pessoal</strong><span>{policy.DELIVERY_72H[0].upper() + policy.DELIVERY_72H[1:]}. Se expirar, o suporte envia outro sem custo.</span></li>'
             '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
-            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart.</p>'
+            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart: cancelamento e arrependimento na '
+            '<a href="/reembolso#assinatura-hotmart">política de reembolso</a>.</p>'
             '<dl class="seller">'
             f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
             f'<div><dt>CNPJ</dt><dd>{f["cnpj"]}</dd></div>'
@@ -291,6 +292,38 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
     return (f'<section class="offer-summary" data-offer-summary="{slug}" aria-label="Resumo da oferta">'
             f'<h3>Resumo da oferta</h3><dl>{"".join(rows)}</dl></section>')
 
+# S-04 (site audit 2026-10-25). The site's lead backend (POST /material-gratuito/inscrever -> CORE, double
+# opt-in, consent "lead-magnet-v1-2026-10-07") delivers the free checklist and at most 2 e-mails; it is not a
+# waiting list (leads are erased after the sequence, and the product e-mail only goes out if sales reopen
+# within 30 days). So the form says exactly that, with the same consent text as /material-gratuito, and the
+# waiting list itself stays the official e-mail (contato_publico rule 1 in data/politica-unica.json), now
+# with the address in plain text for phones without a mail app. The Worker drops the whole block
+# (data-zev-closed-block) when the owner opens sales.
+LEAD_CONSENT = ('Quero receber o checklist e até 2 e-mails com dicas e os produtos da ZEVANORY. Posso cancelar a qualquer '
+                'momento. Li a <a href="/privacidade">Política de Privacidade</a>.')
+
+def waitlist_block(name: str) -> str:
+    if MODE == policy.OPEN:
+        return ""
+    subject = policy.CONTACT["waitlist_subject"].replace("{produto}", name)
+    return ('<section class="container section waitlist" id="lista-de-espera" aria-labelledby="espera-titulo" data-zev-closed-block>'
+            '<div class="section-head"><h2 id="espera-titulo">Vendas fechadas por enquanto</h2>'
+            f'<p class="section-lead">Duas formas de ficar por perto enquanto o {_esc(name)} não volta à venda.</p></div>'
+            '<div class="waitlist-grid">'
+            '<form class="lead-form" method="post" action="/material-gratuito/inscrever" aria-labelledby="espera-form-titulo">'
+            '<h3 id="espera-form-titulo">Comece grátis: checklist de 15 minutos por dia</h3>'
+            '<label for="espera-email">Seu melhor e-mail</label><input id="espera-email" name="email" type="email" required autocomplete="email" maxlength="254">'
+            '<label for="espera-nome">Seu nome (opcional)</label><input id="espera-nome" name="nome" type="text" autocomplete="given-name" maxlength="60">'
+            '<div class="lead-hp" aria-hidden="true"><label for="espera-site">Não preencha</label><input id="espera-site" name="website" type="text" tabindex="-1" autocomplete="off"></div>'
+            f'<label class="lead-consent"><input type="checkbox" name="consentimento" value="sim" required> <span>{LEAD_CONSENT}</span></label>'
+            '<button class="button primary" type="submit">Receber o checklist grátis</button>'
+            '<p class="lead-note">O checklist abre assim que você enviar. As dicas por e-mail só chegam depois que você confirmar o endereço. Sem spam e sem repasse dos seus dados.</p></form>'
+            '<div class="waitlist-mail"><h3>Lista de espera</h3>'
+            f'<p>Para ser avisado quando o {_esc(name)} voltar à venda, entre na lista de espera por e-mail. Se o botão não abrir o seu aplicativo de e-mail, '
+            f'escreva para <strong>{policy.SUPPORT_EMAIL}</strong> com o assunto “{_esc(subject)}”.</p>'
+            f'<p><a class="button secondary" href="{_attr(policy.waitlist_href(name))}">Entrar na lista de espera por e-mail</a></p></div>'
+            '</div></section>')
+
 def apply_commerce(slug: str, html: str) -> str:
     c = COMMERCE[slug]
     label = f"Comprar agora · R$ {c['price']}"
@@ -300,22 +333,30 @@ def apply_commerce(slug: str, html: str) -> str:
     # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Each item has an
     # exact Hotmart counterpart in worker/sales-public-worker.mjs (HOTMART_TEXT).
     html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
-    trust = {
-        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download."),
-        ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
-        ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix ou cartão pelo Mercado Pago."),
-    }
-    for (old_t, old_s), (new_t, new_s) in trust.items():
-        html = html.replace(f"<strong>{old_t}</strong><span>{old_s}</span>", f"<strong>{new_t}</strong><span>{new_s}</span>")
+    # S-01 (site audit 2026-10-25): the trust strip of the sources already carries the customer wording
+    # (delivery, 7 days, payment); the old engineering items ("Performance primeiro", "Gate antes da
+    # venda") are gone from the sources and banned by scripts/ci/public_copy_gate.py.
     items = "".join(f"<li>{i}</li>" for i in c["items"])
     # Design (2026-10-24): "vendas temporariamente fechadas" is said ONCE per page by the site notice
     # (sales_notice); the legal Resumo da oferta keeps its own Disponibilidade field.
-    aside = (f'<div class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
+    # S-12: one offer block. The "Preço de tabela" line of the old "Condições comerciais" section (removed below)
+    # lives here now.
+    # R4 (Sol ORDEM 301): "O que você recebe" next to the CTA is part of the offer contract and a REQUIRED region
+    # of the P24 gate (offer_receives). It stays, even though the hero receipt and the Resumo da oferta also list
+    # the items; tests/p24-offer-contract-regions.test.mjs proves the region is still covered.
+    aside = (f'<div class="offer-side"><div><span class="status-pill">Preço de tabela: R$ {c["price"]}<span class="pill-unit">pagamento único</span></span>'
              f'<h3>O que você recebe</h3><ul>{items}</ul>'
              + policy.POLICY_SUMMARY
              + offer_summary(slug, "produto_digital", "; ".join(c["items"]) + ".", c["price"]) +
              '</div>' + sales_cta(c, label) + '</div>')
     html = re.sub(r'<aside class="offer-side">.*?</aside>', lambda m: aside, html, count=1, flags=re.S)
+    # S-12: the approved "Condições comerciais" section repeated price, delivery and withdrawal right after the
+    # offer block that already carries all three (policy summary + Resumo da oferta, Decreto 7.962). It goes.
+    html, n = re.subn(r'<section class="container section"><div class="offer"><div class="offer-main"><p class="section-kicker">Condições comerciais</p>.*?</section>', "", html, count=1, flags=re.S)
+    if n != 1:
+        raise SystemExit(f"{slug}: condições comerciais anchor missing")
+    # S-04: on-site sign-up next to the offer (existing double opt-in backend, existing consent text).
+    html = re.sub(r'(<section class="container final-cta">)', lambda m: waitlist_block(c["name"]) + m.group(1), html, count=1)
     # Hero: the product's name above the claim, and its receipt (what you get, the total) beside it.
     html = re.sub(r'(<section class="container hero"><div>)<p class="eyebrow">[^<]*</p>', lambda m: m.group(1) + f'<p class="kicker">{c["name"]}</p>', html, count=1)
     receipt = (f'<div class="hero-panel receipt"><p class="receipt-head">O que você recebe<span>pagamento único</span></p>'
@@ -335,12 +376,21 @@ def apply_commerce(slug: str, html: str) -> str:
                 '</ul></div><div class="fit-card fit-no"><h3>Não é para você se</h3><ul>'
                 + "".join(f"<li>{x}</li>" for x in no) +
                 '</ul></div></div></section>')
-    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html + preview_section(slug), html, count=1, flags=re.S)
+    # S-12 (site audit 2026-10-25): the trust strip repeated, word for word, the three facts already listed
+    # under the hero CTA (payment, 72 h delivery, 7 days) plus a generic privacy line; it goes, and "Para
+    # quem é" follows the hero directly. The facts stay under the CTA, in the offer block and in the FAQ.
+    html, n = re.subn(r'<section class="trust-strip".*?</section>', lambda m: fit_html + preview_section(slug), html, count=1, flags=re.S)
+    if n != 1:
+        raise SystemExit(f"{slug}: trust strip anchor missing")
     # Conversion: a compact bar that follows the reader on phones (72 h / um download beside the CTA).
-    bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"]}</strong>'
-           + f'<span>R$ {c["price"]} · pagamento único</span>'
+    # "Combo IA + Vendas" breaks as "Combo / IA + Vendas", never with "+" alone at a line end.
+    bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"].replace(" + ", "&nbsp;+&nbsp;")}</strong>'
+           + f'<span>R$ {c["price"]}, pagamento único</span>'
            + '</div>' + sales_cta(c, "Comprar") + '</div>')
     html = html.replace("</main>", bar + "</main>", 1)
+    # S-09: the phone buy bar appears only after the hero CTA has scrolled out of view (buy-bar.js); before
+    # that it would repeat the CTA right above it and cover the hero facts.
+    html = html.replace("</head>", '<script src="/buy-bar.js" defer></script></head>', 1)
     # FAQ: drop "when will sales open" and fix composition answers; add delivery + withdrawal.
     html = re.sub(r'<details><summary>Quando (a compra|o checkout) será liberad[ao]\?</summary><p>[^<]*</p></details>', _faq_html(*DELIVERY_Q) + _faq_html(*GUARANTEE_Q), html)
     if c["faq_q"]:
@@ -420,6 +470,9 @@ def apply_subscription(html: str) -> str:
     html = re.sub(r'(<a class="button primary" )href="[^"]*"( data-zev-sub="conteudo-pronto")',
                   lambda m: m.group(1) + f'href="{_attr(policy.waitlist_href("Conteúdo Pronto"))}"' + m.group(2), html)
     html = re.sub(r'<a class="nav-cta" href="[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
+    if "</main>" not in html:
+        raise SystemExit("conteudo-pronto: </main> anchor missing (waitlist block)")
+    html = html.replace("</main>", waitlist_block("Conteúdo Pronto") + "</main>", 1)
     if MODE == policy.OPEN:
         html = re.sub(r'<a class="button primary" href="[^"]*" data-zev-sub="conteudo-pronto" data-zev-open-text="([^"]*)">[^<]*</a>',
                       r'<a class="button primary" href="/assinar/conteudo-pronto">\1</a>', html)
@@ -439,8 +492,10 @@ def sales_notice() -> str:
     data-zev-closed: the Worker removes it at request time when the owner opens sales."""
     if MODE == policy.OPEN:
         return ""
-    return (f'<p class="sales-notice" data-zev-closed>Aviso: {policy.CLOSED_LABEL}. Os preços são informativos; '
-            'entre na lista de espera e avisamos por e-mail quando abrir.</p>')
+    # S-09: one short line on phones (was ~100 px at 360 px); the same three facts: closed, prices are
+    # informative, how to be told when it opens.
+    return (f'<p class="sales-notice" data-zev-closed>Aviso: {policy.CLOSED_LABEL}. Preços informativos; '
+            'entre na lista de espera.</p>')
 
 def apply_presentation(slug: str, html: str) -> str:
     """Design pass (docs/design/sales-site-identity.md), applied after every content/legal step:
@@ -458,6 +513,46 @@ def apply_presentation(slug: str, html: str) -> str:
         # First thing inside <main> (inside a landmark, read right after the skip link).
         html = re.sub(r"(<main\b[^>]*>)", lambda m: m.group(1) + sales_notice(), html, count=1)
     return html
+
+_WAITLIST_RE = re.compile(r'<a ([^>]*?)href="[^"]*"([^>]*?) data-zev-waitlist="([^"]+)"')
+
+def apply_waitlist_links(html: str) -> str:
+    """"Em breve" pages (CFO, SALES, ARBM Contador): every CTA marked data-zev-waitlist="<produto>" goes to
+    the same waiting-list destination as the products (policy.waitlist_href; e-mail while WhatsApp is off)."""
+    return _WAITLIST_RE.sub(lambda m: f'<a {m.group(1)}href="{_attr(policy.waitlist_href(m.group(3)))}"{m.group(2)} data-zev-waitlist="{m.group(3)}"', html)
+
+# <dd>: the Resumo da oferta values are body text (text face already) and machine-read as plain text
+# (scripts/p09/nurture_gate.mjs reads "Características essenciais" up to the next tag).
+_AMP_SKIP = ("script", "style", "title", "textarea", "dd")
+_AMP_RE = re.compile(r"&(?:amp;|(?![A-Za-z][A-Za-z0-9]*;|#[0-9]+;|#x[0-9A-Fa-f]+;))")
+
+def legible_ampersands(html: str) -> str:
+    """S-03 (site audit 2026-10-25): in the display face (Archivo at reduced width) the "&" reads as "Ɛ"/"E"
+    ("Lucro Ɛ Caixa"). Every ampersand in VISIBLE body text is wrapped in <span class="amp">, set in the
+    text face (Atkinson Hyperlegible Next, product.css), whose "&" is unambiguous at every size. The
+    official name stays "Lucro & Caixa": title, meta, attributes and JSON-LD are untouched."""
+    start = html.find("<body")
+    if start < 0:
+        return html
+    start = html.index(">", start) + 1
+    out, skip = [], None
+    for tok in re.split(r"(<[^>]+>)", html[start:]):
+        if tok.startswith("<"):
+            m = re.match(r"<(/?)([A-Za-z][A-Za-z0-9]*)", tok)
+            if m:
+                name = m.group(2).lower()
+                if not m.group(1) and name in _AMP_SKIP:
+                    skip = name
+                elif m.group(1) and name == skip:
+                    skip = None
+            out.append(tok)
+        else:
+            # A bare "&" (not starting an entity) is the same visible character as "&amp;". The whole text
+            # run is wrapped too: inside a flex/grid parent (buy bar, catalogue cards) a lone span would
+            # become its own item and drop the spaces around it ("Lucro&Caixa", or one word per line).
+            new = tok if skip else _AMP_RE.sub('<span class="amp">&amp;</span>', tok)
+            out.append(f'<span class="amp-run">{new}</span>' if new != tok else tok)
+    return html[:start] + "".join(out)
 
 def add_legal_footer(html: str) -> str:
     if "footer-legal" in html:
@@ -524,7 +619,9 @@ def apply_approved_overlay() -> None:
         if slug == "conteudo-pronto":
             html = apply_subscription(html)
         html = html.replace("<!--how-to-buy-->", how_to_buy())
+        html = apply_waitlist_links(html)
         html = apply_presentation(slug, html)
+        html = legible_ampersands(html)
         html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
         # Source pages may list both addresses ("contato@ ou suporte@"); after the public
         # canonicalization they would read "suporte@ ou suporte@". Collapse the duplicate.
@@ -540,6 +637,7 @@ def apply_approved_overlay() -> None:
     for asset in ("site-chat.js", "site-chat.css"):
         shutil.copy2(OVERLAY / asset, OUT / asset)
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
+    shutil.copy2(OVERLAY / "buy-bar.js", OUT / "buy-bar.js")
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
     controller = (OUT / "privacidade.html").read_text(encoding="utf-8")
@@ -578,7 +676,7 @@ def apply_approved_overlay() -> None:
 # /assets/<name>.<sha256[:10]>.<ext> and served "immutable" by the Worker; HTML revalidates, so a
 # deploy can never leave a returning visitor running a stale script or stylesheet. url() targets
 # inside the CSS (fonts, images under /assets) are hashed first and rewritten to absolute paths.
-FINGERPRINT = ("product.css", "legal.css", "ferramentas.js")
+FINGERPRINT = ("product.css", "legal.css", "ferramentas.js", "buy-bar.js")
 HASHED_RE = re.compile(r"^/assets/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[0-9a-f]{10}\.(?:css|js|woff2)$")
 
 def _hashed_name(rel: str, data: bytes) -> str:
@@ -604,7 +702,10 @@ def fingerprint_assets() -> dict[str, str]:
         mapping["/" + ref.lstrip("/")] = "/" + out
         return f'url({m.group(1)}/{out}{m.group(1)})'
     for name in FINGERPRINT:
-        data = (OUT / name).read_bytes()
+        # Git may materialize tracked text files with CRLF on Windows and LF on
+        # Linux. Canonicalize line endings before hashing so a build made on
+        # either runner produces the same immutable asset name and bytes.
+        data = (OUT / name).read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
         if name.endswith(".css"):
             text = re.sub(r'url\((["\']?)([^)"\']+)\1\)', css_url, data.decode("utf-8"))
             data = text.encode("utf-8")
@@ -716,8 +817,8 @@ def main() -> int:
                 '<link rel="stylesheet" href="/product.css"></head><body><a class="skip-link" href="#conteudo">Ir para o conteúdo</a>' + header +
                 '<main id="conteudo"><section class="container not-found"><h1>Esta página não existe.</h1>'
                 '<p class="hero-copy">O endereço pode ter mudado ou ter sido digitado com um erro. Escolha por onde seguir:</p>'
-                + receipt_404 + '</section>' + LEGAL_FOOTER + '</main></body></html>')
-    (OUT / "404.html").write_text(page_404, encoding="utf-8")
+                + receipt_404 + '</section>' + LEGAL_FOOTER + '</main></body></html>').replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
+    (OUT / "404.html").write_text(legible_ampersands(page_404), encoding="utf-8")
 
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
     # even though the worker also rewrites / to /solucoes.html.
@@ -731,10 +832,10 @@ def main() -> int:
     required = (
         "<title>ZEVANORY SALES",
         'href="/solucoes"',
-        "Autonomous Sales Platform",
-        "SALES ASSIST",
-        "SALES AUTOPILOT",
-        "SALES AUTONOMOUS",
+        "Em breve: o ZEVANORY SALES ainda não está disponível para contratação.",
+        "A IA sugere",
+        "A IA faz o rotineiro",
+        "A IA conduz a venda",
     )
     missing = [token for token in required if token not in sales]
     if missing:

@@ -1,0 +1,253 @@
+{
+ "schema": "zevanory.site-audit-fix.layout.v1",
+ "base": "claude/fix-sales-promises@7087d876 (PR #927)",
+ "axe": {
+  "version": "4.10.3",
+  "routes": 72,
+  "renders": 288,
+  "violations": 0
+ },
+ "lighthouse_axe_budget": {
+  "lighthouse": "13.5.0",
+  "light": [
+   "P100/A100/BP100/SEO100 LCP1658 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP425 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1535 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP396 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1555 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP402 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1593 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP387 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1520 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP432 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1536 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP440 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1579 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP399 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1533 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP400 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1515 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP346 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1682 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP413 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0"
+  ],
+  "dark": [
+   "P100/A100/BP100/SEO100 LCP1666 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP370 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1590 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP398 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1562 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP388 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1532 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP421 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1520 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP395 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1609 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP396 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1604 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP422 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1522 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP379 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1514 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP339 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP1706 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0",
+   "P100/A100/BP100/SEO100 LCP396 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0"
+  ]
+ },
+ "scroll_gate": {
+  "after_pass": true,
+  "before_pass": false,
+  "checks": 130
+ },
+ "fold_chrome_pct": {
+  "before": [
+   [
+    "/combo-ia-vendas",
+    "360x800",
+    37.3
+   ],
+   [
+    "/combo-ia-vendas",
+    "390x844",
+    32
+   ],
+   [
+    "/conteudo-pronto",
+    "360x800",
+    20.8
+   ],
+   [
+    "/conteudo-pronto",
+    "390x844",
+    19.7
+   ],
+   [
+    "/ia-na-pratica",
+    "360x800",
+    33.8
+   ],
+   [
+    "/ia-na-pratica",
+    "390x844",
+    32
+   ],
+   [
+    "/lucro-e-caixa",
+    "360x800",
+    33.8
+   ],
+   [
+    "/lucro-e-caixa",
+    "390x844",
+    32
+   ],
+   [
+    "/negocio-completo",
+    "360x800",
+    33.8
+   ],
+   [
+    "/negocio-completo",
+    "390x844",
+    32
+   ],
+   [
+    "/vendas-na-pratica",
+    "360x800",
+    33.8
+   ],
+   [
+    "/vendas-na-pratica",
+    "390x844",
+    32
+   ]
+  ],
+  "after": [
+   [
+    "/combo-ia-vendas",
+    "360x800",
+    16.5
+   ],
+   [
+    "/combo-ia-vendas",
+    "390x844",
+    15.6
+   ],
+   [
+    "/conteudo-pronto",
+    "360x800",
+    16.5
+   ],
+   [
+    "/conteudo-pronto",
+    "390x844",
+    15.6
+   ],
+   [
+    "/ia-na-pratica",
+    "360x800",
+    16.5
+   ],
+   [
+    "/ia-na-pratica",
+    "390x844",
+    15.6
+   ],
+   [
+    "/lucro-e-caixa",
+    "360x800",
+    16.5
+   ],
+   [
+    "/lucro-e-caixa",
+    "390x844",
+    15.6
+   ],
+   [
+    "/negocio-completo",
+    "360x800",
+    16.5
+   ],
+   [
+    "/negocio-completo",
+    "390x844",
+    15.6
+   ],
+   [
+    "/vendas-na-pratica",
+    "360x800",
+    16.5
+   ],
+   [
+    "/vendas-na-pratica",
+    "390x844",
+    15.6
+   ]
+  ]
+ },
+ "page_height_390_light": {
+  "/lucro-e-caixa": [
+   13460,
+   13269
+  ],
+  "/ia-na-pratica": [
+   13300,
+   13165
+  ],
+  "/vendas-na-pratica": [
+   13618,
+   13401
+  ],
+  "/combo-ia-vendas": [
+   13277,
+   13141
+  ],
+  "/negocio-completo": [
+   13084,
+   12948
+  ],
+  "/conteudo-pronto": [
+   5824,
+   7062
+  ],
+  "/ia-por-ramo": [
+   10685,
+   11532
+  ],
+  "/ferramentas": [
+   3534,
+   3582
+  ],
+  "/solucoes": [
+   9340,
+   9307
+  ]
+ },
+ "horizontal_overflow_after": 0,
+ "screenshots": {
+  "widths": [
+   360,
+   390,
+   768,
+   1024,
+   1280,
+   1366,
+   1536
+  ],
+  "schemes": [
+   "light",
+   "dark"
+  ],
+  "routes": [
+   "/combo-ia-vendas",
+   "/conteudo-pronto",
+   "/ferramentas",
+   "/ia-na-pratica",
+   "/ia-por-ramo",
+   "/lucro-e-caixa",
+   "/negocio-completo",
+   "/solucoes",
+   "/vendas-na-pratica"
+  ]
+ }
+}

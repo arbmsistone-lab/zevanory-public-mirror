@@ -1,0 +1,103 @@
+{
+ "schema": "zevanory.site-audit-fix.copy.v1",
+ "base": "claude/fix-sales-promises@7087d876 (PR #927)",
+ "axe": {
+  "version": "4.10.3",
+  "routes": 72,
+  "widths": [
+   390,
+   1440
+  ],
+  "schemes": [
+   "light",
+   "dark"
+  ],
+  "renders": 288,
+  "violations": 0
+ },
+ "lighthouse_axe_budget": {
+  "lighthouse": "13.5.0",
+  "pages": 10,
+  "light": [
+   "P100/A100/BP100/SEO100 LCP1540 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP420 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1531 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP411 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1514 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP395 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1526 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP392 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1516 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP377 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1510 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP397 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1510 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP376 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1524 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP361 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1372 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP363 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1673 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP385 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n"
+  ],
+  "dark": [
+   "P100/A100/BP100/SEO100 LCP1590 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP388 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1520 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP369 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1519 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP366 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1518 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP390 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1513 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP374 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1509 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP366 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1525 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP369 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1532 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP350 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1384 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP350 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP1669 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n",
+   "P100/A100/BP100/SEO100 LCP404 axe_serious=0 axe_other=0 small_targets=0 focus=0 motion=0\n"
+  ]
+ },
+ "scroll_gate": true,
+ "spellcheck_pt_BR": {
+  "tool": "hunspell pt_BR (LibreOffice dictionary) via spylls",
+  "unknown_words_before": 131,
+  "unknown_words_after": 107,
+  "real_errors_fixed": [
+   "açaíteria -> açaiteria (9+5+2)",
+   "contado -> contados (23)"
+  ],
+  "remaining_unknown_are": "brand/platform names, accepted loanwords (checklist, posts, follow-up, markup, delivery), slugs, OAuth scope names on /privacidade"
+ },
+ "screenshots": {
+  "widths": [
+   360,
+   390,
+   768,
+   1024,
+   1280,
+   1366,
+   1536
+  ],
+  "schemes": [
+   "light",
+   "dark"
+  ],
+  "routes": [
+   "/zevanory-cfo",
+   "/arbm-contador-saloes",
+   "/zevanory-sales",
+   "/solucoes",
+   "/reembolso",
+   "/termos",
+   "/conteudo-pronto",
+   "/lucro-e-caixa"
+  ],
+  "horizontal_overflow_after": 0
+ }
+}

@@ -42,8 +42,13 @@ const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 export function mailtoHref(subject, body) {
   return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}` + (body ? `&body=${encodeURIComponent(body)}` : "");
 }
+// Lista de espera real (contato_publico.waitlist_form): o formulário só é usado com enabled=true (decisão do
+// proprietário, depois de WAITLIST_ENABLED=true no Worker central); desligado (padrão), continua o mailto.
+export const WAITLIST_FORM = Object.freeze({ ...(C.waitlist_form || {}), enabled: C.waitlist_form?.enabled === true, produtos: Object.freeze({ ...(C.waitlist_form?.produtos || {}) }) });
 // Lista de espera / aviso de reabertura: mailto com assunto e corpo fixos (sem dado pessoal na URL).
 export function waitlistHref(product) {
+  const slug = WAITLIST_FORM.produtos[product];
+  if (WAITLIST_FORM.enabled && slug) return `${WAITLIST_FORM.url}?produto=${encodeURIComponent(slug)}`;
   if (WHATSAPP_PUBLIC_LINKS_ENABLED) return `${WHATSAPP_URL}?text=${encodeURIComponent(`Olá! Quero entrar na lista de espera do ${product}.`)}`;
   return mailtoHref(C.waitlist_subject.replaceAll("{produto}", product), C.waitlist_body.replaceAll("{produto}", product));
 }
@@ -79,6 +84,10 @@ export const REFUND_TEXT = fill(W.refund);
 export const SUBSCRIPTION_DELIVERY_TEXT = fill(W.subscription_delivery);
 export const SUBSCRIPTION_REFUND_TEXT = fill(W.subscription_refund);
 export const REFUND_CHANNELS = W.refund_channels;
+// O formulário zevanory.api.br/pedir-reembolso só atende o checkout próprio (worker/refund-flow.mjs); compras pela
+// Hotmart são canceladas e reembolsadas pela Hotmart (sem nomeá-la: hasCheckoutCta trata a menção como chamada de compra).
+export const REFUND_FORM_SCOPE = W.refund_form_scope;
+export const REFUND_OTHER_PLATFORM = W.refund_other_platform;
 export const SLA_TEXT = fill(W.sla);
 export const ALLOWED_DAY_COUNTS = Object.freeze(Object.values(W.dias_permitidos).map(Number));
 

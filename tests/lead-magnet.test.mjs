@@ -103,16 +103,18 @@ test("double opt-in: only the confirmation link (POST) starts the sequence", asy
   assert.equal(reuse.status, 400, "token is single-use");
 });
 
-test("nurture holds the catalog e-mail while sales are closed; opt-out stops everything and erases the lead", async () => {
+test("A272-02: opening sales never sends a retired offer to a free-material contact", async () => {
   const db = fakeDb(); const sent = mailbox(); const store = kv();
   const e = env(store);
   const ref = await subjectRef(e, "x@y.com");
   db.rows.set("x@y.com", { email: "x@y.com", email_hash: "", subject_ref: ref, name: "Ana", consent_version: V1, status: "confirmed", nurture_step: 2, nurture_at: new Date(Date.now() - 6 * 86400e3).toISOString() });
   store.m.set("zpc:lead:interest:" + ref, "ia");
   const held = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: false });
-  assert.equal(held.held, 1); assert.equal(sent.length, 0);
+  assert.equal(held.retired_offers, 1); assert.equal(sent.length, 0);
+  assert.equal(db.rows.get("x@y.com").nurture_step, NURTURE_DONE);
+  db.rows.get("x@y.com").nurture_at = new Date(Date.now() - 40 * 86400e3).toISOString();
   const open = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
-  assert.equal(open.sent, 1); assert.match(sent[0].text, /IA na Prática \(R\$ 197/); assert.match(sent[0].text, /utm_source=email/);
+  assert.equal(open.sent, 0); assert.equal(sent.length, 0, "salesOpen alone cannot reactivate commercial mail");
   const link = new URL(await leadOptOutLink(e, "x@y.com", ref));
   assert.equal(link.searchParams.get("r"), ref, "new links carry the stored keyed reference, not a plain hash");
   assert.notEqual(link.searchParams.get("r"), await sha256("x@y.com"));
@@ -127,43 +129,37 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
   assert.doesNotMatch(JSON.stringify(db.events), /@|Ana/, "audit trail has no e-mail or name");
 });
 
-test("nurture copy only uses catalog prices and the single 7-day rule (open sales only)", () => {
+test("free-material nurture never constructs the legacy commercial copy", () => {
   assert.doesNotMatch(nurtureEmail(1, { name: "", optOutUrl: "u" }).text, /vendas-na-pratica|R\$/);
-  const text = nurtureEmail(2, { name: "", optOutUrl: "u", salesOpen: true }).text;
-  for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397].includes(Number(m[1])));
-  assert.ok(text.includes(CUSTOMER_RULE_7D) && text.includes(DELIVERY_72H), "regra e entrega da política única");
-  assert.deepEqual(bannedPolicyHits(text), []);
+  for (const step of [2, 3, 4]) assert.equal(nurtureEmail(step, { name: "", optOutUrl: "u", salesOpen: true }), null);
 });
 
 import { interestFromPage, NURTURE_DONE } from "../worker/lead-magnet.mjs";
 import { CUSTOMER_RULE_7D, DELIVERY_72H, bannedPolicyHits, hasCheckoutCta } from "../worker/politica-unica.mjs";
-test("the offer matches what the lead was reading and the sequence ends", () => {
+test("interest classification remains available for informational material without enabling offers", () => {
   assert.equal(interestFromPage("/calculadora-margem-de-lucro"), "caixa");
   assert.equal(interestFromPage("/vendas-na-pratica"), "vendas");
   assert.equal(interestFromPage("/ia-para-padaria"), "ia");
-  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa", salesOpen: true }).text, /Lucro & Caixa \(R\$ 247/);
-  const last = nurtureEmail(4, { name: "", optOutUrl: "u", salesOpen: true }).text;
-  assert.match(last, /último e-mail/i); assert.match(last, /R\$ 397/); assert.ok(last.includes(CUSTOMER_RULE_7D));
-  for (let s = 0; s < NURTURE_DONE; s++) {
+  for (let s = 0; s < 2; s++) {
     const t = nurtureEmail(s, { name: "", optOutUrl: "OPTOUT", salesOpen: true }).text;
     assert.match(t, /OPTOUT/);
     assert.deepEqual(bannedPolicyHits(t), [], "step " + s);
-    for (const m of t.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397, 641].includes(Number(m[1])), m[0]);
+    assert.equal(hasCheckoutCta(t), false);
   }
 });
 
-test("P13c: com vendas fechadas (padrão) nenhum e-mail de nutrição tem oferta ou chamada de compra", () => {
+test("P13c: nenhuma posição comercial é montada para a base gratuita, com vendas fechadas ou abertas", () => {
   for (let s = 0; s < NURTURE_DONE; s++) {
     for (const opts of [{}, { salesOpen: false }, { salesOpen: "true" }]) {
       const mail = nurtureEmail(s, { name: "", optOutUrl: "u", ...opts });
-      if (s >= 2) { assert.equal(mail, null, `passo ${s} fechado não monta oferta`); continue; }
+      if (s >= 2) { assert.equal(mail, null, `passo ${s} nunca monta oferta`); continue; }
       assert.equal(hasCheckoutCta(mail.text + mail.subject), false, "passo " + s);
       assert.doesNotMatch(mail.text, /R\$ \d/, "sem preço com vendas fechadas: passo " + s);
     }
   }
 });
 
-test("consent v1 allows the checklist + 2 e-mails: the sequence stops there, in one query", async () => {
+test("consent v1 bounds informational mail and retired offers never reactivate", async () => {
   assert.equal(CONSENT_FOLLOWUPS[V1], 2);
   const db = fakeDb(); const sent = mailbox(); const store = kv(); const e = env(store);
   const old = new Date(Date.now() - 20 * 86400e3).toISOString();
@@ -173,14 +169,14 @@ test("consent v1 allows the checklist + 2 e-mails: the sequence stops there, in 
   assert.match(sent[0].subject, /hábitos/);
   assert.equal(db.rows.get("a@x.com").nurture_step, 5); assert.equal(db.rows.get("b@x.com").nurture_step, 5);
   assert.equal(db.queries.filter((q) => /consent_version=\$2/.test(q)).length, 1, "bulk cap, not one query per lead");
-  // c@x.com: step 1 sent (tips) -> 2; then offer (step 2) -> 3; then nothing more.
+  // c@x.com: step 1 is informational; step 2 is retired permanently.
   db.rows.get("c@x.com").nurture_at = old;
   await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
   db.rows.get("c@x.com").nurture_at = old;
   const after = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
-  assert.equal(sent.length, 2 + 0 + (after.sent || 0)); assert.equal(after.sent, 0);
+  assert.equal(sent.length, 1); assert.equal(after.sent, 0);
   assert.equal(db.rows.get("c@x.com").nurture_step, 5);
-  assert.equal(sent.filter((m) => m.to[0] === "c@x.com").length, 2, "checklist (sent at confirmation) + exactly 2 follow-ups");
+  assert.equal(sent.filter((m) => m.to[0] === "c@x.com").length, 1, "only the remaining informational follow-up is sent");
 });
 
 test("legacy opt-out links already sent keep working; forged tokens never erase", async () => {

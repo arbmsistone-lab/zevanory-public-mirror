@@ -1,0 +1,105 @@
+== base: 7087d8763968282c702f63a8e80ebef533abfa8f
+
+== S-01 internal engineering jargon on public, indexable pages
+FOUND  zevanory-cfo:       1 FAIL_CLOSED;      1 READY;      1 UNCONFIGURED;      1 ZEES-16; | robots=<none, indexable> | links from /solucoes=1 | http=200 x-robots=index,follow
+FOUND  arbm-contador-saloes:       1 SHA;      1 deliberadamente bloqueada;      2 gate global;      1 kill-switch;      3 tenant; | robots=<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"> | links from /solucoes=1 | http=200 x-robots=index,follow
+FOUND  zevanory-sales:       1 Autonomous Sales Platform;      1 Autopilot; | robots=<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"> | links from /solucoes=1 | http=200 x-robots=index,follow
+
+== S-02 catalog-card grid collision (/ia-por-ramo, /ferramentas)
+FOUND  /ia-por-ramo  light w= 390 cols='None' heading_w=Nonepx clipped=0 main=390/390 desc-decoration=None
+FOUND  /ferramentas  light w= 390 cols='None' heading_w=Nonepx clipped=0 main=390/390 desc-decoration=None
+FOUND  /ia-por-ramo  light w= 768 cols='None' heading_w=Nonepx clipped=0 main=768/768 desc-decoration=None
+FOUND  /ferramentas  light w= 768 cols='None' heading_w=Nonepx clipped=0 main=768/768 desc-decoration=None
+FOUND  /ia-por-ramo  light w=1024 cols='None' heading_w=Nonepx clipped=0 main=1024/1024 desc-decoration=None
+FOUND  /ferramentas  light w=1024 cols='None' heading_w=Nonepx clipped=0 main=1024/1024 desc-decoration=None
+FOUND  /ia-por-ramo  light w=1440 cols='None' heading_w=Nonepx clipped=0 main=1440/1440 desc-decoration=None
+FOUND  /ferramentas  light w=1440 cols='None' heading_w=Nonepx clipped=0 main=1440/1440 desc-decoration=None
+FOUND  /ia-por-ramo  dark  w= 390 cols='None' heading_w=Nonepx clipped=0 main=390/390 desc-decoration=None
+FOUND  /ferramentas  dark  w= 390 cols='None' heading_w=Nonepx clipped=0 main=390/390 desc-decoration=None
+FOUND  /ia-por-ramo  dark  w= 768 cols='None' heading_w=Nonepx clipped=0 main=768/768 desc-decoration=None
+FOUND  /ferramentas  dark  w= 768 cols='None' heading_w=Nonepx clipped=0 main=768/768 desc-decoration=None
+FOUND  /ia-por-ramo  dark  w=1024 cols='None' heading_w=Nonepx clipped=0 main=1024/1024 desc-decoration=None
+FOUND  /ferramentas  dark  w=1024 cols='None' heading_w=Nonepx clipped=0 main=1024/1024 desc-decoration=None
+FOUND  /ia-por-ramo  dark  w=1440 cols='None' heading_w=Nonepx clipped=0 main=1440/1440 desc-decoration=None
+FOUND  /ferramentas  dark  w=1440 cols='None' heading_w=Nonepx clipped=0 main=1440/1440 desc-decoration=None
+
+== S-03 ampersand glyph in display font
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+locator.screenshot: Timeout 29970.351ms exceeded.
+Call log:
+[2m  - taking element screenshot[22m
+[2m  - waiting for fonts to load...[22m
+[2m  - fonts loaded[22m
+[2m  - attempting scroll into view action[22m
+[2m    2 × waiting for element to be stable[22m
+[2m      - element is not visible[22m
+[2m    - retrying scroll into view action[22m
+[2m    - waiting 20ms[22m
+[2m    2 × waiting for element to be stable[22m
+[2m      - element is not visible[22m
+[2m    - retrying scroll into view action[22m
+[2m      - waiting 100ms[22m
+[2m    58 × waiting for element to be stable[22m
+[2m       - element is not visible[22m
+[2m     - retrying scroll into view action[22m
+[2m       - waiting 500ms[22m
+
+    at /tmp/claude-0/-home-claude/89471d30-9cb0-5157-af21-a5ded118b7b0/scratchpad/sitefix/kit/scripts/amp.mjs:11:14 {
+  name: 'TimeoutError'
+}
+
+Node.js v22.22.0
+
+== S-04 waitlist CTAs are mailto: while a real lead backend exists
+FOUND  ia-na-pratica: primary CTAs mailto=4, form posts=1
+FOUND  vendas-na-pratica: primary CTAs mailto=4, form posts=1
+FOUND  lucro-e-caixa: primary CTAs mailto=4, form posts=1
+FOUND  combo-ia-vendas: primary CTAs mailto=4, form posts=1
+FOUND  negocio-completo: primary CTAs mailto=4, form posts=1
+FOUND  conteudo-pronto: primary CTAs mailto=2, form posts=1
+INFO   lead backend route: 400:  if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env,ctx);
+
+== S-05 'Software' promised on /solucoes while all software is 'Em breve'
+FOUND  title: Soluções ZEVANORY | Software, IA, vendas e gestão
+FOUND  hero: Software, planilhas e IA para quem toca salão, oficina, clínica ou loja. Ache o seu problema no cupom e veja o que resolve.
+FOUND  software items: ZEVANORY CFO Em breve ZEVANORY SALES Em breve ARBM Contador para Salões Em breve
+
+== S-06 unverifiable claims
+FOUND  arbm-contador-saloes: Oferta certificada no nível do produto
+FOUND  arbm-contador-saloes: Escopo sem promessas além do produto certificado
+FOUND  arbm-contador-saloes: Conta por tenant, aceite versionado de termos, recuperação, exportação e encerramento de conta fazem parte do ciclo certificado
+FOUND  arbm-contador-saloes:  O fluxo E2E de conta, recuperação, exportação e encerramento foi certificado
+FOUND  solucoes:  A própria ZEVANORY é prova do método: a loja, o atendimento, a entrega e os controles foram construídos e são operados com inteligência artificial, do jeito que ensinamos
+FOUND  quem-criou:  A própria ZEVANORY é prova do método: a loja, o atendimento, a entrega e os controles foram construídos e são operados com inteligência artificial, do jeito que ensinamos
+
+== C-01 central gh-pages tree: mixed base paths / broken refs / legacy home
+FOUND  crawled 85 bad 11
+        404 /zevanory-public-mirror/piloto <- ['/zevanory-public-mirror/']
+        404 /assets/renan-bitu.webp <- ['/zevanory-public-mirror/solucoes', '/zevanory-public-mirror/quem-criou']
+        404 /reembolso <- ['/zevanory-public-mirror/termos', '/zevanory-public-mirror/quem-criou']
+        404 /privacidade <- ['/zevanory-public-mirror/termos', '/zevanory-public-mirror/reembolso']
+        404 /brand/favicon.svg <- ['/zevanory-public-mirror/quem-criou']
+        404 /product.css <- ['/zevanory-public-mirror/quem-criou']
+        404 / <- ['/zevanory-public-mirror/quem-criou']
+        404 /brand/zevanory-logo-dark.svg <- ['/zevanory-public-mirror/quem-criou']
+        404 /termos <- ['/zevanory-public-mirror/quem-criou']
+        404 /solucoes <- ['/zevanory-public-mirror/quem-criou']
+        404 /kit-afiliado <- ['/zevanory-public-mirror/afiliados']
+FOUND  home nav:  Soluções Piloto Termos 
+FOUND  quem-criou root-relative refs: href="/brand/favicon.svg" href="/product.css" src="/brand/zevanory-logo-dark.svg" src="/assets/renan-bitu.webp" 
+
+== C-02 central product copies diverge (jargon, no closed notice, contato@)
+FOUND  lucro-e-caixa: gates/JS jargon=4 closed-notice=0 contato@=4 canonical=https://zevanory.api.br/lucro-e-caixa
+FOUND  ia-na-pratica: gates/JS jargon=4 closed-notice=0 contato@=4 canonical=https://zevanory.api.br/ia-na-pratica
+FOUND  vendas-na-pratica: gates/JS jargon=4 closed-notice=0 contato@=4 canonical=https://zevanory.api.br/vendas-na-pratica
+FOUND  combo-ia-vendas: gates/JS jargon=4 closed-notice=0 contato@=4 canonical=https://zevanory.api.br/combo-ia-vendas
+FOUND  negocio-completo: gates/JS jargon=4 closed-notice=0 contato@=4 canonical=https://zevanory.api.br/negocio-completo
+INFO   apex router: Response.redirect("https://vendas.zevanory.api.br"+url.pathname+url.search,308)
+
+== C-03 blog renders unstyled HTML
+FOUND  blog bytes=474 stylesheet_links=0 header=0 footer=0 body=' Blog ZEVANORY Blog ZEVANORY Guias de IA por ramo de negócio Novos artigos em preparação. '
+FOUND  sitemap blog entries: 4
+INFO   template: worker/multichannel-autonomy.mjs:217

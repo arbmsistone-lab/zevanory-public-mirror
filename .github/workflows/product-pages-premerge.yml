@@ -19,7 +19,7 @@ jobs:
   audit:
     name: product-pages / static-audit
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - name: Checkout exact revision
         uses: actions/checkout@v4
@@ -47,6 +47,16 @@ jobs:
           python3 scripts/ci/sales_promise_consistency.py
           python3 scripts/ci/sales_promise_consistency.py --self-test
 
+      - name: Public copy without internal jargon or known typos (site audit S-01, S-06, S-07, S-08)
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/ci/public_copy_gate.py
+          # The committed sales site and a fresh build of the sources must both pass.
+          python3 scripts/ci/public_copy_gate.py
+          ZEVANORY_SALES_PUBLIC_OUT="$RUNNER_TEMP/sales-public-fresh" python3 scripts/build_sales_public.py >/dev/null
+          python3 scripts/ci/public_copy_gate.py --dir "$RUNNER_TEMP/sales-public-fresh"
+          python3 scripts/ci/public_copy_gate.py --self-test
+
       - name: Run fail-closed product audit
         run: |
           set -euo pipefail
@@ -66,3 +76,38 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/zevanory_crown_gate.py
+
+      - name: Release 2 matrix bound to this exact SHA
+        run: |
+          set -euo pipefail
+          # Any failing command is named in an annotation (the job log itself is not always readable).
+          trap 'echo "::error title=RELEASE2_STEP::line $LINENO: $BASH_COMMAND"' ERR
+          npm install --prefix "$RUNNER_TEMP/release2" --no-audit --no-fund playwright@1.55.0 axe-core@4.10.3 >/dev/null
+          "$RUNNER_TEMP/release2/node_modules/.bin/playwright" install chromium >/dev/null
+          node scripts/audit/sales-local-server.mjs 8791 sales-public >"$RUNNER_TEMP/release2-server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8791/solucoes && break; sleep 1; done
+          # N-H2: environment evidence for comparison with the local reproduction (fonts, versions, image).
+          mkdir -p "$RUNNER_TEMP/release2-evidence"
+          { echo "image=${ImageOS:-} ${ImageVersion:-}"; node --version; fc-list : family | sort -u; } > "$RUNNER_TEMP/release2-evidence/environment.txt" 2>&1 || true
+          SCROLL_GATE_SHOTS="$RUNNER_TEMP/release2-evidence/failed-shots" node scripts/audit/sales-scroll-gate.mjs http://127.0.0.1:8791 "$RUNNER_TEMP/release-2-matrix.json" "$RUNNER_TEMP/release2/node_modules" "" "$GITHUB_SHA"
+          node -e 'const m=require(process.argv[1]); if(!m.pass||m.checked!==180||m.release_sha!==process.env.GITHUB_SHA) process.exit(1)' "$RUNNER_TEMP/release-2-matrix.json"
+          cp "$RUNNER_TEMP/release-2-matrix.json" docs/evidence/release-2/matrix.json
+          cp docs/evidence/release-2/manifest.json "$RUNNER_TEMP/release2-evidence/manifest.committed.json"
+          RELEASE_SHA="$GITHUB_SHA" SOURCE_BASE="${{ github.event.pull_request.base.sha || github.sha }}" node scripts/audit/release-2-evidence-manifest.mjs
+          cp docs/evidence/release-2/manifest.json "$RUNNER_TEMP/release2-evidence/manifest.ci.json"
+          node -e 'const m=require(process.argv[1]); if(m.release_sha!==process.env.GITHUB_SHA||m.matrix.checked!==180) process.exit(1)' "$PWD/docs/evidence/release-2/manifest.json"
+          echo "::notice title=RELEASE2_MATRIX::$(node -e 'const m=require(process.argv[1]); console.log(`checked=${m.checked} pass=${m.pass} cta_overlaps=${m.cta_overlaps} browser=${m.environment.browser_version} playwright=${m.environment.playwright} axe=${m.environment.axe_core} release_sha=${m.release_sha}`)' "$RUNNER_TEMP/release-2-matrix.json")"
+
+      - name: Release 2 matrix evidence (always uploaded)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-2-matrix-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/release-2-matrix.json
+            ${{ runner.temp }}/release2-server.log
+            ${{ runner.temp }}/release2-evidence/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,45 @@
+
+=== 1. sales: clean build A
+PINNED_WRANGLER=4.143.0 lockfile_sha256=7ddb315933614a443959ae5d75552a95e44957c34ac35e7664f0f4de93caa214
+CLEAN_BUNDLE=BUILT kind=sales rev=15a8c73d14be890536eaf6a6a55eb7812623c668 manifest=9ab577adcb26038a08814f164132bb91d2e85b888d85897f74905d9347a731bc
+9ab577adcb26038a08814f164132bb91d2e85b888d85897f74905d9347a731bc  MANIFEST.sha256
+504881a844908be2ff2aa738cecd7d73b4424aa6e2ba5445b07d425843257b8d  sales-worker.deploy.js
+504881a844908be2ff2aa738cecd7d73b4424aa6e2ba5445b07d425843257b8d  sales-worker.preview.js
+3eade5f0914bd091c7211cc684690d7024739a02b576f5e36c509c3130531b0f  wrangler.sales.deploy.toml
+0ebd11c49446e188a837c28815e3ff502101c667422d53aa8ed57de31d61f072  wrangler.sales.preview.toml
+
+=== 2. sales: clean build B in a different, deeper path, --verify against A
+CLEAN_BUNDLE=BUILT kind=sales rev=15a8c73d14be890536eaf6a6a55eb7812623c668 manifest=9ab577adcb26038a08814f164132bb91d2e85b888d85897f74905d9347a731bc
+CLEAN_BUNDLE_REPRODUCED=MATCH files=5 manifest=9ab577adcb26038a08814f164132bb91d2e85b888d85897f74905d9347a731bc
+
+=== 3. central: clean build A
+PINNED_WRANGLER=4.143.0 lockfile_sha256=7ddb315933614a443959ae5d75552a95e44957c34ac35e7664f0f4de93caa214
+COMMERCIAL_RETIREMENT_OVERLAY=PASS
+PUBLIC_WHATSAPP_FREE=PASS
+PUBLIC_OFFICIAL_MAILBOX_ONLY=PASS
+BRAND_CANONICAL_STATIC_ASSETS=PASS 13
+CLEAN_BUNDLE=BUILT kind=central rev=15a8c73d14be890536eaf6a6a55eb7812623c668 manifest=50eb29239dbbfb123768823a08f5b0f2acee7c86f9a0ad60650cab9c2e7fe488
+25f15ea76914910db46767251e29ee3670180889c111a4c93a045bdd524381f7  worker.bundle.js
+9b6337d395cdf6beaef6eae37229bf01c497a5d848df8cac7b5adf10e6ac3b23  wrangler.central-fix.jsonc
+50eb29239dbbfb123768823a08f5b0f2acee7c86f9a0ad60650cab9c2e7fe488  MANIFEST.sha256
+69
+
+=== 4. central: clean build B elsewhere, --verify against A
+CLEAN_BUNDLE=BUILT kind=central rev=15a8c73d14be890536eaf6a6a55eb7812623c668 manifest=50eb29239dbbfb123768823a08f5b0f2acee7c86f9a0ad60650cab9c2e7fe488
+CLEAN_BUNDLE_REPRODUCED=MATCH files=72 manifest=50eb29239dbbfb123768823a08f5b0f2acee7c86f9a0ad60650cab9c2e7fe488
+
+=== 5. round-6 flow (full checkout, generators + node materialize, same pinned wrangler) gives the same bytes
+SALES_ROUND6_FLOW_BUNDLE=IDENTICAL
+CENTRAL_ROUND6_FLOW_BUNDLE=IDENTICAL
+CENTRAL_ROUND6_FLOW_PUBLIC=IDENTICAL
+
+=== 6. test-time mutation of the Worker source in the build workspace -> forged artifact -> deploy-side rebuild refuses it
+forged bundle carries the mutation: 1
+CLEAN_BUNDLE=BUILT kind=sales rev=15a8c73d14be890536eaf6a6a55eb7812623c668 manifest=9ab577adcb26038a08814f164132bb91d2e85b888d85897f74905d9347a731bc
+::error title=CLEAN_BUNDLE_MISMATCH::sales-worker.deploy.js
+CLEAN_BUNDLE_REPRODUCED=MISMATCH files=1
+deploy-side rebuild exit code: 1
+
+=== 7. commit with node_modules/.bin/wrangler (stub) and .npmrc -> refused, stub never runs
+CLEAN_BUNDLE=REFUSED the commit contains npm/yarn configuration or packages: ['.npmrc', 'node_modules/.bin/wrangler']
+STUB_EXECUTED=NO

@@ -86,7 +86,7 @@ M = {
         "<li>4 mensagens de venda para WhatsApp por mês</li>", "[catalogo]"),
     "M24 página gerada desatualizada": ("sales-public/conteudo-pronto.html", "<dd>Todo mês: 12 posts com legenda, 4 roteiros multicanal",
         "<dd>Todo mês: 12 posts com legenda, 4 mensagens para WhatsApp e roteiros multicanal", "gerado: conteudo-pronto"),
-    "M25 kit de afiliado volta a mensagens": ("kit-afiliado/index.html", "12 posts e 4 roteiros multicanal de venda no tom do negócio, entregues",
+    "M25 kit de afiliado volta a mensagens": ("kit-afiliado/index.html", "12 posts e 4 roteiros multicanal de venda e acompanhamento no tom do negócio, entregues",
         "12 posts e 4 mensagens de venda no tom do negócio, entregues", "kit-afiliado/index.html"),
     "M26 llms.txt gerado volta a mensagens": ("sales-public/llms.txt", "assinatura mensal com 12 posts, 4 roteiros multicanal",
         "assinatura mensal com 12 posts, 4 mensagens de venda", "sales-public/llms.txt"),

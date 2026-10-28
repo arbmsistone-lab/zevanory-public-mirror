@@ -1,0 +1,23 @@
+MA1 gate sem --anchors-ref usa a árvore: KILLED not ok 1 - G1 produção: revisão PENDENTE, cadastro vazio e texto novo -> publicação bloque
+MA2 sem conferência de ancestral do HEAD: KILLED not ok 4 - G4 forja 2 do auditor: revisor autocadastrado + APPROVED + registro no mesmo PR
+MA3 linha de base aceita sem aprovação: KILLED not ok 3 - G3 forja 1 do auditor: linha de base reescrita com a impressão digital do texto
+MA4 authorization_commit não conferido no histórico: KILLED not ok 4 - G4 forja 2 do auditor: revisor autocadastrado + APPROVED + registro no mesmo PR
+MA5 hash do reviewed_commit não recalculado: KILLED not ok 4 - G4 forja 2 do auditor: revisor autocadastrado + APPROVED + registro no mesmo PR
+MA6 registro no mesmo commit da autorização: KILLED not ok 4 - G4 forja 2 do auditor: revisor autocadastrado + APPROVED + registro no mesmo PR
+MA7 reviewed_commit fora do gh-pages: KILLED not ok 9 - G9 reviewed_commit tem de estar no gh-pages: commit de outro branch com o MESMO
+MA8 linha de base lida da árvore em publicação: KILLED not ok 10 - G10 linha de base e legal_review vêm das âncoras (gh-pages à frente), nunca da
+MA8b legal_review lido da árvore em publicação: KILLED not ok 10 - G10 linha de base e legal_review vêm das âncoras (gh-pages à frente), nunca da
+MA8c cadastro lido da árvore em publicação: KILLED not ok 2 - G2 fluxo legítimo em dois passos: cadastro num commit do gh-pages, aprovação nu; not ok 10 - G10 linha de base e legal_review vêm das âncoras (gh-pages à frente), nunca da
+MA9 guarda não reconhece âncoras: KILLED not ok 6 - G6 check protegido: PR que altera uma âncora reprova; PR comum passa; linha de 
+MA10 guarda não verifica o passo do portão: ANCHOR_MISSING(count=0)
+MA11 workflow de vendas sem --anchors-ref: KILLED not ok 6 - G6 check protegido: PR que altera uma âncora reprova; PR comum passa; linha de ; not ok 7 - G7 os dois workflows de publicação leem as âncoras do gh-pages mesclado antes d; not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+MA12 workflow central sem o portão: KILLED not ok 6 - G6 check protegido: PR que altera uma âncora reprova; PR comum passa; linha de ; not ok 7 - G7 os dois workflows de publicação leem as âncoras do gh-pages mesclado antes d; not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+MB1 rota da lista com interruptor puro: KILLED not ok 4 - CS4 o Worker central passa o estado canônico à rota e ao job da lista de espera
+MB2 job da lista com interruptor puro: KILLED not ok 4 - CS4 o Worker central passa o estado canônico à rota e ao job da lista de espera
+MB3 canônico sem prova financeira: KILLED not ok 6 - public sales status remains fail-closed despite an approved owner switch while 
+MB4 canônico sem fiscal: KILLED not ok 12 - L12 status público sem o processo fiscal reprova
+L1a sem Idempotency-Key: KILLED not ok 1 - HI1 3 postbacks simultâneos da mesma transação: uma mensagem de boas-vindas ent; not ok 3 - HI3 postbacks simultâneos montam a MESMA mensagem: nenhum 409 do provedor e tex; not ok 4 - HI4 a chave é por TRANSAÇÃO: o mesmo assinante, numa renovação ainda sem formul
+L1b token aleatório (mensagens diferentes): KILLED not ok 3 - HI3 postbacks simultâneos montam a MESMA mensagem: nenhum 409 do provedor e tex
+L1c chave por assinatura (não por transação): KILLED not ok 4 - HI4 a chave é por TRANSAÇÃO: o mesmo assinante, numa renovação ainda sem formul
+L1d guarda briefingTxn removida: KILLED not ok 9 - HI5 marcador perdido e nova tentativa 25 h depois (fora da janela do provedor):
+R4a P24 sem offer_receives obrigatório: KILLED not ok 1 - R4.1 o P24 exige as seis regiões do contrato da oferta e tudo o que a base exig; not ok 3 - R4.3 o gate P24 passa e reprova quando o bloco 'O que você recebe' some de uma ; not ok 4 - R4.4 o chat cobre as mesmas páginas da base, com o widget publicado e o catálog

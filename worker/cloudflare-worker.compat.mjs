@@ -1,4 +1,4 @@
-import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
+import { legalRouteRedirect } from "./legal-routes-redirect.mjs"; import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
 import { legacyTrustProjection, guardTrustChain } from "./trust-projection.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
@@ -39,10 +39,11 @@ import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
+import { handleWaitlist, runWaitlistNotify, waitlistEnabled } from "./waitlist.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
-import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
+import { applySalesSwitch, canonicalSalesOpen, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { dbEconomySkip } from "./db-economy.mjs";
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
@@ -92,7 +93,7 @@ function canonicalizePublicPath(request, url) {
 }
 
 const wrapped = {
-  async fetch(request, env, ctx) {
+  async fetch(request, env, ctx) { const legalRedirect = legalRouteRedirect(request); if (legalRedirect) return legalRedirect;  // anchor: legal routes live only on vendas
     // KV write census (METACLOUD phase A): every write on the shared namespace is logged by prefix.
     let path = "/";
     // Only route words: any segment that could carry an id or token becomes "*" (public census).
@@ -106,7 +107,12 @@ const wrapped = {
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
-    applySalesSwitch(await readSalesSwitch(normalized));
+    // LOW-2 (rodada 4): lista de espera desligada => 404 ANTES de qualquer leitura de KV (inclusive o interruptor abaixo).
+    if (!waitlistEnabled(normalized)) {
+      const off = await handleWaitlist(request, normalized, { sqlFactory: whatsappProofDatabase, salesOpen: false });
+      if (off) return off;
+    }
+    const salesOpenNow = applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
@@ -203,6 +209,12 @@ const wrapped = {
       url = new URL(request.url);
     } else if (url.pathname.startsWith("/api/checkout/") && !request.headers.get("x-certification-pilot-token")) {
       return new Response(JSON.stringify({ error: "checkout_via_sales_page_only", buy: "https://vendas.zevanory.api.br/solucoes" }), { status: 404, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
+    // Lista de espera (worker/waitlist.mjs): INERTE por padrão (WAITLIST_ENABLED !== "true" => 404 antes de banco/KV/rede).
+    if (url.pathname === "/lista-de-espera" || url.pathname.startsWith("/lista-de-espera/")) {
+      // M-B: o MESMO "open" canônico de /api/sales/status (interruptor + prova financeira + liberações + MP produção +
+      // processo fiscal), nunca só o interruptor do proprietário.
+      return handleWaitlist(request, normalized, { sqlFactory: whatsappProofDatabase, salesOpen: await canonicalSalesOpen(normalized) });
     }
     if (url.hostname === "leads.internal" || url.pathname.startsWith("/material-gratuito/")) {
       const lead = await handleLeadMagnet(request, normalized, { sqlFactory: whatsappProofDatabase });
@@ -780,6 +792,10 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => { mark("delivery_watchdog", out?.ok !== false, out?.reason); console.info("paid_delivery_watchdog", JSON.stringify(out)); }).catch((error) => { mark("delivery_watchdog", false, error instanceof Error ? error.message : error); console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runSupportEvalIfDue(normalized).then((out) => console.info("support_eval", JSON.stringify(out))).catch((error) => console.error("support_eval_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
+  // Aviso da lista de espera: só com WAITLIST_ENABLED=true E vendas EFETIVAMENTE abertas — o mesmo "open" canônico de
+  // /api/sales/status (M-B), não só o interruptor; com as travas desligadas nada sai e a lista não é apagada.
+  const waitlistSalesOpen = await canonicalSalesOpen(normalized);
+  tasks.push(runWaitlistNotify(normalized, { sqlFactory: whatsappProofDatabase, salesOpen: waitlistSalesOpen }).then((out) => { mark("waitlist", out?.ok !== false, out?.reason); console.info("waitlist_notify", JSON.stringify({ sent: out?.sent || 0, failed: out?.failed || 0, skipped: out?.skipped || out?.reason || null })); }).catch((error) => { mark("waitlist", false, error instanceof Error ? error.message : error); console.error("waitlist_notify_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
   // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.

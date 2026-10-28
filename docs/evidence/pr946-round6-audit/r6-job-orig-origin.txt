@@ -1,0 +1,10 @@
+S2 aprovado: LEGAL_PUBLISH_GATE=PASS_APPROVED
+PR-3 guarda protegida: TRUST_ANCHORS=UNCHANGED files=1
+job: portão inicial: LEGAL_PUBLISH_GATE=PASS_APPROVED
+ rc=0
+job: build rc=0
+job: portão final (antes do deploy): LEGAL_PUBLISH_GATE=PASS_APPROVED (falso)
+ rc=0
+job: /reembolso servido pelo Worker empacotado: (texto original)
+job: CSS servido: CLÁUSULA NOVA: nenhum reembolso.
+job: portão REAL (código do gh-pages verdadeiro) no mesmo artefato: LEGAL_PUBLISH_GATE=BLOCKED (nada foi pub

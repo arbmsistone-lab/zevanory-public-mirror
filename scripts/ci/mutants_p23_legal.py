@@ -3,7 +3,7 @@
 worker/fiscal-process.mjs e sinal 'fiscal' de worker/commercial-checkout-guard.mjs, classificados pelo classificador
 COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
-Suíte (uma execução `node --test`, TAP): tests/p23-ecommerce-legal.test.mjs (L1-L18). Cada mutante altera UMA regra numa
+Suíte (uma execução `node --test`, TAP): tests/p23-ecommerce-legal.test.mjs (L1-L19). Cada mutante altera UMA regra numa
 cópia mínima da árvore em diretório temporário (o repositório nunca é alterado).
 Expectativas (mutants_p23_legal_allow.json, formato load_mutant_config): primary (1-3) com test_pattern E
 assertion_pattern NÃO nulo (marcador [Ln.k]) e secondary com justification, escritas por raciocínio sobre a mutação
@@ -24,15 +24,20 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p23-ecommerce-legal.test.mjs"]
-COPY_DIRS = []
-COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/toolchain.mjs", "scripts/p23/ecommerce_legal_gate.py",
+COPY_DIRS = ["sales-public/assets", "sales-public/brand"]  # rodada 5: assets das páginas jurídicas entram na impressão digital
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/toolchain.mjs", "scripts/p23/ecommerce_legal_gate.py", "scripts/p23/legal_review.py",
                       "worker/fiscal-process.mjs", "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs",
-                      "worker/cloudflare-worker.compat.mjs", "data/politica-unica.json", "data/products.json",
-                      "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json"] + \
-    sorted(f"sales-public/{p.name}" for p in (REPO / "sales-public").glob("*.html"))
+                      "worker/commercial-metrics-projection.mjs", "worker/internal-financial-audit.mjs",
+                      "worker/signed-audit-probe.mjs", "worker/operator-credential.mjs", "worker/brand-email.mjs",
+                      "worker/politica-unica.mjs", "worker/cloudflare-worker.compat.mjs",
+                      "sales-worker.mjs", "worker/sales-public-worker.mjs", "wrangler.sales.toml", "data/politica-unica.json", "data/products.json",
+                      "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json", "data/p23/legal-reviewers.json"] + \
+    sorted(f"sales-public/{p.name}" for p in (REPO / "sales-public").glob("*.html")) + \
+    sorted(p.relative_to(REPO).as_posix() for p in REPO.glob("*/index.html") if p.parent.name != "sales-public")
 TIMEOUT = 300
 NODE = shutil.which("node") or "node"
 G = "scripts/p23/ecommerce_legal_gate.py"
+LR = "scripts/p23/legal_review.py"
 F = "worker/fiscal-process.mjs"
 C = "worker/commercial-checkout-guard.mjs"
 SC = "worker/sales-control.mjs"
@@ -58,8 +63,10 @@ M = {
     "M18 checklist incompleto aceito": (G, "        if need not in ids:", "        if False:"),
     "M19 taxas adicionais não conferidas": (G, '        if "sem taxas adicionais" not in r.get("preco_total", ""):', "        if False:"),
     "M20 link para os termos não conferido": (G, "        if not re.search(r'href=\"[^\"]*/termos[#\"]', raw):", "        if False:"),
-    "M21 status público abre sem fiscal": (SC, "    const open = released && fiscalProcessDefined(fiscal);", "    const open = released;"),
+    "M21 status público abre sem fiscal": (SC, "  const open = released && fiscalProcessDefined(fiscal);", "  const open = released;"),
     "M22 procedimento fiscal sem referência no repositório": (F, '      if (!r || r.kind !== "repo" || !filled(r.ref) || !filled(r.contains)) return false;', "      if (!r) return false;"),
+    "M23 aprovador sem formato real aceito": (LR, "    if not who or not NAME.fullmatch(who) or FIXTURE.search(who):", "    if not who:"),
+    "M24 aprovação de outro texto aceita": (LR, "    elif sha != fingerprint:", "    elif False:"),
 }
 
 ALLOW_FILE = Path(os.environ.get("P23_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p23_legal_allow.json"))

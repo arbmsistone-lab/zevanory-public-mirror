@@ -22,9 +22,10 @@ tests/brand-email.test.mjs 2
 tests/brand-kit.test.mjs 9
 tests/brand-profiles.test.mjs 16
 tests/central-candidate-dryrun.test.mjs 4
-tests/central-retired-contact-script.test.mjs 5
+tests/central-retired-contact-script.test.mjs 9
 tests/certification-worker.test.mjs 3
 tests/circuits-adversarial.test.mjs 31
+tests/clean-bundle.test.mjs 9
 tests/command-center-main.test.mjs 4
 tests/command-center-snapshot.test.mjs 9
 tests/commercial-checkout-guard.test.mjs 6
@@ -36,6 +37,7 @@ tests/conteudo-pronto-roteiros.test.mjs 16
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
+tests/cta-contract-closed.test.mjs 5
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/engine-dispatcher.test.mjs 4
@@ -46,6 +48,7 @@ tests/financial-proof-invalidation-evidence.test.mjs 5
 tests/first-order-watch-audit.test.mjs 4
 tests/funnel-counting.test.mjs 21
 tests/funnel.test.mjs 7
+tests/hotmart-idempotency.test.mjs 5
 tests/hotmart-pages.test.mjs 2
 tests/hotmart-paused.test.mjs 15
 tests/inbound-autonomy.test.mjs 6
@@ -57,6 +60,9 @@ tests/lab-cancelamento-pagamentos-pendentes.test.mjs 8
 tests/lab-fechamento-apos-cobranca.test.mjs 11
 tests/lead-magnet.test.mjs 15
 tests/lead-submit-count.test.mjs 4
+tests/legal-publish-gate.test.mjs 23
+tests/legal-routes-artifact.test.mjs 4
+tests/legal-routes-hosts.test.mjs 3
 tests/link-vencido-nao-reutilizado.test.mjs 5
 tests/live-runtime-status.test.mjs 5
 tests/market-weekly.test.mjs 2
@@ -81,9 +87,11 @@ tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
 tests/p20-restore-drill.test.mjs 12
 tests/p22-proof-renewal-investigation.test.mjs 17
-tests/p23-ecommerce-legal.test.mjs 18
+tests/p23-ecommerce-legal.test.mjs 19
+tests/p24-offer-contract-regions.test.mjs 4
 tests/payment-return-page.test.mjs 3
 tests/plan-probe.test.mjs 1
+tests/politica-canais-reembolso.test.mjs 7
 tests/politica-honrar-pagamento.test.mjs 2
 tests/post-sale.test.mjs 6
 tests/product-consistency.test.mjs 3
@@ -126,6 +134,9 @@ tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
 tests/voice-eval.test.mjs 6
+tests/waitlist-canonical-sales.test.mjs 5
+tests/waitlist-m5.test.mjs 3
+tests/waitlist.test.mjs 7
 tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6
 tests/whatsapp-neon-store.test.mjs 6

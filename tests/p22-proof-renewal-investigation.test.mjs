@@ -116,7 +116,7 @@ test("pre-existing stale-overwrite defect is cited with exact file:line", () => 
   assert.match(line(projection, 117), /await kv\.put\(COMMERCIAL_PROOF_KV_KEY/);
   assert.match(line(projection, 168), /persistClassificationSnapshot\(env,classified,\{now=Date\.now\(\)/);
   assert.match(line(projection, 173), /await kv\.put\(COMMERCIAL_PROOF_KV_KEY/);
-  assert.match(line(worker, 168), /persistClassificationSnapshot\(normalized, \{ code: 200, result: body \}, \{ sqlFactory: whatsappProofDatabase \}\)/);
+  assert.match(line(worker, 174), /persistClassificationSnapshot\(normalized, \{ code: 200, result: body \}, \{ sqlFactory: whatsappProofDatabase \}\)/);
   // No re-read of the stored measured_at between the audit and the write.
   const refresh = projection.slice(projection.indexOf("const audited=await audit"), projection.indexOf("export function projectProductionOnlyStatus"));
   assert.doesNotMatch(refresh, /kv\.get\(/);
@@ -124,7 +124,7 @@ test("pre-existing stale-overwrite defect is cited with exact file:line", () => 
   assert.doesNotMatch(persist, /kv\.get\(|measured_at/);
   assert.match(doc, /## Defeito pré-existente: resultado antigo sobrescreve um novo/);
   assert.match(flat, /\*\*Confirmado pelo código; não observado em produção\.\*\*/);
-  for (const ref of ["commercial-metrics-projection.mjs:85", "commercial-metrics-projection.mjs:91", "commercial-metrics-projection.mjs:111", "commercial-metrics-projection.mjs:168", "commercial-metrics-projection.mjs:173", "cloudflare-worker.compat.mjs:168"])
+  for (const ref of ["commercial-metrics-projection.mjs:85", "commercial-metrics-projection.mjs:91", "commercial-metrics-projection.mjs:111", "commercial-metrics-projection.mjs:168", "commercial-metrics-projection.mjs:173", "cloudflare-worker.compat.mjs:174"])
     assert.ok(doc.includes(ref), ref);
   assert.match(flat, /3\. A termina depois e grava `PROVEN` por cima de B/);
 });
@@ -197,8 +197,8 @@ test("checkout gate is new: today the guard does not read the proof; owner and S
   const sales = read("../worker/sales-control.mjs");
   assert.equal(line(guard, 5), 'export const REQUIRED = Object.freeze(["global","pre_sale","absolute","checkout","financial","kv","preflight","environment","fiscal","token"]);');
   assert.doesNotMatch(guard, /FinancialProof|financial-proof|commercial-metrics-projection/);
-  assert.match(line(worker, 591), /const snapshot = await readFinancialProofSnapshot\(normalized\);/);
-  assert.match(line(sales, 149), /const proof = await readFinancialProofSnapshot\(env\);/);
+  assert.match(line(worker, 603), /const snapshot = await readFinancialProofSnapshot\(normalized\);/);
+  assert.match(line(sales, 145), /const proof = await readFinancialProofSnapshot\(env\);/);
   assert.match(doc, /## Gate de checkout: decisão do proprietário e da Sol/);
   assert.match(flat, /\*\*Fato:\*\* hoje a criação de checkout \*\*não lê a prova\*\*\. `worker\/commercial-checkout-guard\.mjs:5` define/);
   assert.match(flat, /é, portanto, um \*\*gate novo\*\*, a ser implementado depois num PR próprio e autorizado/);

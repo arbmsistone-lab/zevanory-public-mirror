@@ -215,7 +215,11 @@ MUTANTS = [
     (WORKER_CHAT, "[/(vend|cliente|atendimento|follow|", "[/(vend|cliente|prospec|atendimento|follow|"),
     (WORKER_WHATSAPP, "ajuda a organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up.",
      "ajuda a organizar prospecção, atendimento, oferta e follow-up."),
-    ("zevanory-sales/index.html", "Em breve: o ZEVANORY SALES ainda não está disponível para contratação.", ""),
+    # Site audit S-01 (2026-10-25): the page now says "Em breve" in the title, the hero label, the notice and
+    # the offer box, so removing only the notice ("Em breve: o ZEVANORY SALES ainda não está disponível para
+    # contratação.") no longer drops the label. This mutant drops EVERY label (regex, all occurrences)
+    # while the description still mentions prospecção.
+    ("zevanory-sales/index.html", r"[Ee]m breve", "Disponível", "regex"),
 ]
 
 
@@ -226,12 +230,13 @@ def self_test() -> int:
         print("SELF-TEST precondição: o repositório atual já reprova:\n  " + "\n  ".join(base))
         return 1
     survivors = []
-    for path, new, old in MUTANTS:
-        if files[path].count(new) < 1:
+    for path, new, old, *mode in MUTANTS:
+        regex = mode == ["regex"]
+        if (not re.search(new, files[path])) if regex else files[path].count(new) < 1:
             survivors.append(f"{path}: âncora do mutante ausente: {new[:60]}")
             continue
         mutated = dict(files)
-        mutated[path] = files[path].replace(new, old, 1)
+        mutated[path] = re.sub(new, old, files[path]) if regex else files[path].replace(new, old, 1)
         if not check(mutated):
             survivors.append(f"{path}: texto antigo NÃO reprovou: {old[:70]}")
     if survivors:

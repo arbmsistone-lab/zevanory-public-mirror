@@ -149,9 +149,11 @@ class Sim:
 
 
 def verify_cmd(step_run: str) -> str:
-    m = re.search(r"python3 scripts/deploy/promotion_guard\.py --verify-promoted(?:[^\n]*\\\n)*[^\n]*", step_run)
+    m = re.search(r"python3 (?:-I )?scripts/deploy/promotion_guard\.py --verify-promoted(?:[^\n]*\\\n)*[^\n]*", step_run)
     assert m, "post-promotion command not found"
-    return m.group(0)
+    # The workflows run the anchored script with `python3 -I` (round 6, PR #946); the simulation injects its network
+    # stubs through PYTHONPATH, which -I ignores, so the simulated run drops only that flag (same script, same args).
+    return m.group(0).replace("python3 -I ", "python3 ")
 
 
 class Transition(unittest.TestCase):

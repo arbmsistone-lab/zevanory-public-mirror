@@ -35,7 +35,7 @@
 - [IA para padaria](https://vendas.zevanory.api.br/ia-para-padaria): usos práticos, mensagens prontas para WhatsApp e checklist para padarias.
 - [IA para pizzaria](https://vendas.zevanory.api.br/ia-para-pizzaria): usos práticos, mensagens prontas para WhatsApp e checklist para pizzarias.
 - [IA para hamburgueria](https://vendas.zevanory.api.br/ia-para-hamburgueria): usos práticos, mensagens prontas para WhatsApp e checklist para hamburguerias.
-- [IA para açaíteria e sorveteria](https://vendas.zevanory.api.br/ia-para-acaiteria): usos práticos, mensagens prontas para WhatsApp e checklist para açaíterias e sorveterias.
+- [IA para açaiteria e sorveteria](https://vendas.zevanory.api.br/ia-para-acaiteria): usos práticos, mensagens prontas para WhatsApp e checklist para açaiterias e sorveterias.
 - [IA para confeitaria](https://vendas.zevanory.api.br/ia-para-confeitaria): usos práticos, mensagens prontas para WhatsApp e checklist para confeitarias.
 - [IA para farmácia](https://vendas.zevanory.api.br/ia-para-farmacia): usos práticos, mensagens prontas para WhatsApp e checklist para farmácias.
 - [IA para ótica](https://vendas.zevanory.api.br/ia-para-otica): usos práticos, mensagens prontas para WhatsApp e checklist para óticas.

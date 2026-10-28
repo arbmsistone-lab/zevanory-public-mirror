@@ -1,0 +1,58 @@
+PUBLIC_COPY_GATE=FAIL
+  arbm-contador-saloes.html: tenant: «não fazem parte desta versão. Conta por tenant, aceite versionado de termos, recuperaç»
+  arbm-contador-saloes.html: SHA: «iberadamente bloqueada. Fonte, release, SHA, versão Cloudflare, escopo, preço, prov»
+  arbm-contador-saloes.html: kill-switch: «necer materializados e reproduzíveis. O kill-switch global de vendas da ZEVANORY continua o»
+  arbm-contador-saloes.html: gate(s): «ckout e cobrança seguem bloqueados pelo gate global da ZEVANORY. Operação financeira»
+  arbm-contador-saloes.html: deliberadamente bloqueada: «o ao release comercial. Venda permanece deliberadamente bloqueada. Fonte, release, SHA, versão Cloudflar»
+  arbm-contador-saloes.html: guardrails: «lientes, financeiro, radar MEI e IA com guardrails. ARBM Contador para Salões | ZEVANORY S»
+  arbm-contador-saloes.html: ledger: «cebíveis, despesas, resultado líquido e ledger imutável com estornos. MEI e relatórios»
+  arbm-contador-saloes.html: runbook: «Suporte Canal: suporte@zevanory.api.br. Runbook de incidentes, recuperação, rollback e»
+  arbm-contador-saloes.html: rollback: «br. Runbook de incidentes, recuperação, rollback e privacidade vinculado ao release come»
+  arbm-contador-saloes.html: release: «ão, rollback e privacidade vinculado ao release comercial. Venda permanece deliberadame»
+  arbm-contador-saloes.html: E2E: «e termos e validação de acesso. O fluxo E2E de conta, recuperação, exportação e enc»
+  arbm-contador-saloes.html: certificado/certificada (sem certificador): «te de IA com guardrails fiscais. Oferta certificada no nível do produto. Venda, checkout e»
+  combo-ia-vendas.html: 'dias corridos contado' (concordância: contados): «m custo pelo suporte. Arrependimento: 7 dias corridos contado da assinatura do contrato ou do recebim»
+  combo-ia-vendas.html: 'Contado da assinatura' sem sujeito (contados): «sivo embutido. Arrependimento em 7 dias Contado da assinatura ou do recebimento, com devolução integr»
+  conteudo-pronto.html: 'dias corridos contado' (concordância: contados): «mês em link privado). Arrependimento: 7 dias corridos contado da assinatura do contrato ou do recebim»
+  ia-na-pratica.html: 'dias corridos contado' (concordância: contados): «m custo pelo suporte. Arrependimento: 7 dias corridos contado da assinatura do contrato ou do recebim»
+  ia-na-pratica.html: 'Contado da assinatura' sem sujeito (contados): «sivo embutido. Arrependimento em 7 dias Contado da assinatura ou do recebimento, com devolução integr»
+  ia-para-acaiteria.html: 'açaíteria' (grafia: açaiteria): «IA para açaíteria e sorveteria: guia prático | ZEVANORY I»
+  ia-por-ramo.html: 'açaíteria' (grafia: açaiteria): «a hamburguerias. Ver guia Guia gratuito Açaíteria e sorveteria Usos práticos de IA, mensa»
+  index.html: prova do método: «r o caixa no azul. A própria ZEVANORY é prova do método: a loja, o atendimento, a entrega e os»
+  index.html: 'dias corridos contado' (concordância: contados): «s vale o direito de arrependimento de 7 dias corridos contado da assinatura do contrato ou do recebim»
+  llms.txt: 'açaíteria' (grafia: açaiteria): «hecklist para hamburguerias.
+- [IA para açaíteria e sorveteria] : usos práticos, mensagen»
+  lucro-e-caixa.html: 'dias corridos contado' (concordância: contados): «m custo pelo suporte. Arrependimento: 7 dias corridos contado da assinatura do contrato ou do recebim»
+  lucro-e-caixa.html: 'Contado da assinatura' sem sujeito (contados): «sivo embutido. Arrependimento em 7 dias Contado da assinatura ou do recebimento, com devolução integr»
+  negocio-completo.html: 'dias corridos contado' (concordância: contados): «m custo pelo suporte. Arrependimento: 7 dias corridos contado da assinatura do contrato ou do recebim»
+  negocio-completo.html: 'Contado da assinatura' sem sujeito (contados): «sivo embutido. Arrependimento em 7 dias Contado da assinatura ou do recebimento, com devolução integr»
+  quem-criou.html: prova do método: «r o caixa no azul. A própria ZEVANORY é prova do método: a loja, o atendimento, a entrega e os»
+  reembolso.html: SLA: «e resposta conclusiva em até 5 dias; o SLA específico de direitos LGPD permanece s»
+  reembolso.html: 'dias corridos contado' (concordância: contados): «esistiu? Peça a devolução integral em 7 dias corridos contado da assinatura do contrato ou do recebim»
+  solucoes.html: prova do método: «r o caixa no azul. A própria ZEVANORY é prova do método: a loja, o atendimento, a entrega e os»
+  solucoes.html: 'dias corridos contado' (concordância: contados): «s vale o direito de arrependimento de 7 dias corridos contado da assinatura do contrato ou do recebim»
+  termos.html: SLA: «e resposta conclusiva em até 5 dias; o SLA específico de direitos LGPD permanece s»
+  termos.html: 'dias corridos contado' (concordância: contados): «e para um download. Pode desistir em 7 dias corridos contado da assinatura do contrato ou do recebim»
+  vendas-na-pratica.html: 'dias corridos contado' (concordância: contados): «m custo pelo suporte. Arrependimento: 7 dias corridos contado da assinatura do contrato ou do recebim»
+  vendas-na-pratica.html: 'Contado da assinatura' sem sujeito (contados): «sivo embutido. Arrependimento em 7 dias Contado da assinatura ou do recebimento, com devolução integr»
+  zevanory-cfo.html: FAIL_CLOSED / fail-closed: «bíveis e fila de decisões, com operação fail-closed. ZEVANORY CFO | Inteligência financeira»
+  zevanory-cfo.html: UNCONFIGURED: «s fiscais. A v1 inicia adaptadores como UNCONFIGURED. Governança Fila de decisões Ações deri»
+  zevanory-cfo.html: READY (estado interno): «encher dashboards. Adaptadores só ficam READY com evidência associada. Uma leitura fi»
+  zevanory-cfo.html: ZEES-16: «té Legal, Pagamento, Entrega, Suporte e ZEES-16 aplicáveis estarem comprovados. Disp»
+  zevanory-cfo.html: gate(s): «comprovados. Disponibilidade controlada Gates antes da ativação comercial O produto p»
+  zevanory-cfo.html: disponibilidade controlada: «ZEVANORY CFO Ver capacidades Produto em disponibilidade controlada. Nenhuma movimentação financeira extern»
+  zevanory-cfo.html: dashboard: «ão. Nenhum dado fictício para preencher dashboards. Adaptadores só ficam READY com evidênc»
+  zevanory-cfo.html: v1 (versão interna): «ce, ERP externo e documentos fiscais. A v1 inicia adaptadores como UNCONFIGURED. G»
+  zevanory-cfo.html: adaptadores: «ado fictício para preencher dashboards. Adaptadores só ficam READY com evidência associada.»
+  zevanory-sales.html: FAIL_CLOSED / fail-closed: «om IA, autonomia progressiva e execução fail-closed. ZEVANORY SALES | Operação comercial co»
+  zevanory-sales.html: gate(s): «cia. Qualificação → conversa → oferta O gate comercial decide se o contato pode acon»
+  zevanory-sales.html: Autonomous / Autopilot / Assist: «ermos Avaliar ZEVANORY SALES ZEVANORY · Autonomous Sales Platform Operação comercial com I»
+  zevanory-sales.html: Sales Platform: «ar ZEVANORY SALES ZEVANORY · Autonomous Sales Platform Operação comercial com IA, sem perder o»
+  zevanory-sales.html: guardrails: «melhor ação. Agente conversacional com guardrails. Follow-up e recuperação de abandono. C»
+  zevanory-sales.html: failover: «nanceira reconciliada. Observabilidade, failover e auditoria. Liberação comercial contro»
+  zevanory-sales.html: pipeline: «buída seja evidência, não suposição. Um pipeline que sabe onde cada oportunidade está. O»
+  zevanory-sales.html: release: «tificação transacional e a aprovação do release comercial. Entrar na avaliação O que o»
+  zevanory-sales.html: fulfillment: «nas por política. Checkout, pagamento e fulfillment vinculados à mesma oportunidade. Bloque»
+  zevanory-sales.html: dashboard: «fulfillment. Sem pular etapa só para o dashboard ficar verde. Descoberta → qualificação»
+  zevanory-sales.html: prospecting/scoring/revenue: «ir saltos de estado e falsos positivos. Prospecting Descoberta Pesquisa oportunidades e pre»
+  zevanory-sales.html: certificado/certificada (sem certificador): «externa só aparecem como ativos após a certificação transacional e a aprovação do release c»

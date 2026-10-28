@@ -60,7 +60,8 @@ test("Decreto 7.962 art. 2º: cada oferta paga tem 'Resumo da oferta' estruturad
     const html = read(slug);
     const { v, start } = checkSummary(html, slug);
     assert.ok(v.preco_total.startsWith(`R$ ${PRICES[slug]},00`), slug + ": preço total = preço da página");
-    assert.ok(html.includes(`<span class="status-pill">R$ ${PRICES[slug]} · pagamento único</span>`), slug);
+    // Site audit S-12 (2026-10-25): the price pill carries the "Preço de tabela" line of the removed "Condições comerciais" section.
+    assert.ok(html.includes(`<span class="status-pill">Preço de tabela: R$ ${PRICES[slug]}<span class="pill-unit">pagamento único</span></span>`), slug);
     assert.ok(v.entrega.includes(P.delivery_72h), slug + ": modo e prazo de entrega");
     // Posição ostensiva: dentro do mesmo bloco da oferta (<div class="offer-side">) do CTA principal.
     // Design PR (2026-10-24): o bloco deixou de ser <aside> (axe landmark-complementary-is-top-level);

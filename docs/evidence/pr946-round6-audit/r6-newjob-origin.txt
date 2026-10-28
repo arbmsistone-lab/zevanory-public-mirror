@@ -1,0 +1,8 @@
+S2 aprovado: LEGAL_PUBLISH_GATE=PASS_APPROVED
+PR-3 guarda protegida: TRUST_ANCHORS=UNCHANGED files=1
+site-build: build rc=0 | segredo no job site-build do workflow: NAO
+site-build: remote.origin.url (só deste workspace) = tmp5q8i1pv7
+worker-bundle: o job executa build_sales_public? NAO
+deploy: passo do portão do head (antes do deploy): LEGAL_PUBLISH_GATE=BLOCKED (nada foi publicado; a produção rc=1
+deploy: /reembolso servido pelo pacote do worker-bundle (fontes âncora) com os assets do artefato: (texto original)
+deploy: CSS do artefato traz a cláusula? SIM

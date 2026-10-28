@@ -30,6 +30,10 @@ import re
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from legal_review import legal_fingerprint, validate_approval  # noqa: E402
+
 PENDING = re.compile(r"PENDENTE|PREENCHER|A CONFIRMAR|XXX|PLACEHOLDER|\bTODO\b")  # maiúsculas: "Todo mês" é texto legítimo
 PRICE = re.compile(r"R\$\s?\d")
 RESUMO_FIELDS = ("fornecedor", "cnpj", "endereco_fisico", "endereco_eletronico", "caracteristicas", "preco_total",
@@ -44,8 +48,8 @@ DECLARATIONS = {
     "D7962-5-2": "Contratos acessórios serão cancelados sem custo",
     "D7962-5-3": "comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno",
     "D7962-5-4": "O recebimento do pedido será confirmado imediatamente",
-    "CDC-49": "no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço",
-    "CDC-49-PU": "devolverá integralmente os valores pagos",
+    "CDC-49": "no prazo de 7 dias corridos contados da assinatura do contrato ou do recebimento do produto ou serviço",
+    "CDC-49-PU": "os valores pagos serão devolvidos integralmente",
 }
 LEGAL_PAGES = ("termos", "reembolso")
 FISCAL_FIELDS = ("regime", "documento_fiscal", "emissor", "decided_by", "accountant_ref", "decided_at", "procedure_ref",
@@ -53,7 +57,10 @@ FISCAL_FIELDS = ("regime", "documento_fiscal", "emissor", "decided_by", "account
 
 
 def visible(raw: str) -> str:
-    s = re.sub(r"<script\b.*?</script>|<style\b.*?</style>", " ", raw, flags=re.S | re.I)
+    # MED-2 (rodada 4): comentários HTML saem ANTES das tags (uma isca "<!--<main>...-->" não conta como visível), e
+    # <template> (não renderizado) também sai.
+    s = re.sub(r"<!--.*?(?:-->|\Z)", " ", raw, flags=re.S)
+    s = re.sub(r"<script\b.*?</script>|<style\b.*?</style>|<template\b.*?</template>", " ", s, flags=re.S | re.I)
     s = html.unescape(re.sub(r"<[^>]+>", " ", s))
     return re.sub(r"\s+", " ", s).strip()
 
@@ -83,6 +90,10 @@ def resumo_fields(raw: str, slug: str) -> dict | None:
 def validate(root: Path, findings: list[str]) -> list[str]:
     errs: list[str] = []
     pol = json.loads((root / "data/politica-unica.json").read_text(encoding="utf-8"))
+    # M1: a mesma regra que os workflows de publicação aplicam (scripts/p23/legal_review.py): pessoa identificável,
+    # data ISO e o SHA-256 do texto revisado igual ao texto atual, além do commit revisado.
+    for e in validate_approval(pol.get("legal_review"), legal_fingerprint(root), root=root):
+        errs.append("data/politica-unica.json: " + e)
     sup = pol["resumo_oferta"]["fornecedor"]
     catalog = json.loads((root / "data/products.json").read_text(encoding="utf-8"))
     prices = {p["slug"]: p["price"] for p in catalog["products"]}
@@ -117,7 +128,7 @@ def validate(root: Path, findings: list[str]) -> list[str]:
                 errs.append(f"{where}: página com preço sem '{need}' visível (Decreto 7.962, art. 2º, I e II)")
         if not re.search(r'href="[^"]*/termos[#"]', raw):
             errs.append(f"{where}: página com preço sem link para os termos (Decreto 7.962, art. 4º, I)")
-        if not re.search(r'href="[^"]*/(reembolso|pedir-reembolso)["#?]', raw):
+        if not re.search(r'href="[^"]*/(?:reembolso|pedir-reembolso)["#?]', raw):
             errs.append(f"{where}: página com preço sem link para o reembolso (Decreto 7.962, art. 5º)")
     for slug in offers:
         where = f"sales-public/{slug}.html"

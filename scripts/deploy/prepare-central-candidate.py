@@ -202,6 +202,27 @@ for page in sorted(Path("public").rglob("*.html")):
     if stripped != raw:
         stripped = LEGACY_CONTACT_MAILTO.sub('href="mailto:suporte@zevanory.api.br"', stripped)
         page.write_bytes(stripped.encode("utf-8"))
+# Official public mailbox (data/politica-unica.json -> contato_publico.email). contato@ stays an INBOUND alias only
+# (worker/support-email-forward.mjs forwards it), so nothing is lost, but the apex must publish just one address:
+# every remaining mention in a published text asset of the frozen snapshot (the /exclusao-dados LGPD channel, the
+# /central JSON-LD, /.well-known/security.txt Contact, the product pages behind the public router) becomes suporte@.
+# Owner decision delegated 2026-10-25 (PR #935 follow-up). Fail closed below if any mention survives.
+_POLICY = Path(__file__).resolve().parents[2] / "data" / "politica-unica.json"
+OFFICIAL_MAILBOX = json.loads(_POLICY.read_text(encoding="utf-8"))["contato_publico"]["email"]
+assert OFFICIAL_MAILBOX == "suporte@zevanory.api.br", "OFFICIAL_MAILBOX_CHANGED"
+LEGACY_MAILBOX = "contato@zevanory.api.br"
+TEXT_SUFFIXES = (".html", ".txt", ".xml", ".json", ".js", ".css")
+for asset in sorted(Path("public").rglob("*")):
+    if asset.is_file() and asset.suffix in TEXT_SUFFIXES:
+        raw = asset.read_bytes()
+        if LEGACY_MAILBOX.encode() in raw:
+            asset.write_bytes(raw.replace(LEGACY_MAILBOX.encode(), OFFICIAL_MAILBOX.encode()))
+# Retired legacy pages (/piloto, /piloto-interesse, /confianca): the central Worker answers them with a 308 + noindex
+# (worker/retired-public-assets.mjs, RETIRED_PAGE_REDIRECTS); their files and their own scripts/styles are no longer
+# published, so the ASSETS binding cannot serve them by any path either.
+RETIRED_PAGE_FILES = ("piloto.html", "piloto.css", "piloto.js", "piloto-interesse.html", "piloto-interesse.js", "confianca.html")
+for name in RETIRED_PAGE_FILES:
+    Path("public", name).unlink(missing_ok=True)
 home = Path("public/index.html")
 if home.exists():
     raw = home.read_bytes().decode("utf-8")
@@ -248,6 +269,14 @@ _retired_refs = sorted(
 if _retired_refs:
     raise SystemExit("PUBLIC_RETIRED_CONTACT_SCRIPT_REFERENCED " + " ".join(_retired_refs))
 print("PUBLIC_RETIRED_CONTACT_SCRIPT=ABSENT")
+_legacy_mailbox = sorted(p.as_posix() for p in Path("public").rglob("*") if p.is_file() and LEGACY_MAILBOX.encode() in p.read_bytes())
+if _legacy_mailbox:
+    raise SystemExit("PUBLIC_LEGACY_MAILBOX_PRESENT " + " ".join(_legacy_mailbox))
+print("PUBLIC_OFFICIAL_MAILBOX_ONLY=PASS")
+_retired_pages = sorted(n for n in RETIRED_PAGE_FILES if Path("public", n).exists())
+if _retired_pages:
+    raise SystemExit("PUBLIC_RETIRED_PAGE_PRESENT " + " ".join(_retired_pages))
+print("PUBLIC_RETIRED_PAGES=ABSENT")
 
 c["vars"]["VOICE_TTS_PROVIDER"]="gemini"
 c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"

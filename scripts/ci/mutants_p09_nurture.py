@@ -38,7 +38,7 @@ M = {
     "M01 interruptor ignorado": (S, '  if (String(env?.[sw.env] ?? "") !== sequence.id) return', "  if (false) return"),
     "M02 limite do consentimento ignorado": (S, "  if (step > cap) return", "  if (false) return"),
     "M03 lead não confirmado aceito": (S, 'if (!lead || lead.status !== "confirmed" || ', "if (!lead || "),
-    "M04 comercial com vendas fechadas": (S, "  if (email.commercial === true && salesOpen !== true) return", "  if (false) return"),
+    "M04 consentimento gratuito usado para comercial": (S, "  if (email.commercial === true) return", "  if (false) return"),
     "M05 versão de consentimento não aceita passa": (S, "  if (!(sequence.consent?.accepted_versions || []).includes(lead.consent_version)) return", "  if (false) return"),
     "M06 versão desconhecida do P08 passa": (S, '  if (!Number.isInteger(cap) || cap < 0) return { ok: false, reason: "consent_version_unknown" };\n', ""),
     "M07 assinatura sem link de descadastro": (S, "Descadastre-se em 1 clique: ${optOutUrl}`", "Descadastre-se em 1 clique.`"),

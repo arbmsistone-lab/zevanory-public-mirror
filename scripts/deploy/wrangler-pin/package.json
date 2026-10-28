@@ -1,0 +1,8 @@
+{
+  "name": "zevanory-deploy-tools",
+  "private": true,
+  "description": "Pinned deploy tool (wrangler) for the release workflows. Installed only with npm ci from package-lock.json (integrity-checked), outside the repository checkout.",
+  "dependencies": {
+    "wrangler": "4.143.0"
+  }
+}

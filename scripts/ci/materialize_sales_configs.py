@@ -57,5 +57,8 @@ for line in source.splitlines():
         inserted_workers_dev=True
     lines.append(line)
 Path("wrangler.sales.preview.toml").write_text("\n".join(lines)+"\n",encoding="utf-8")
-Path("/tmp/candidate-name").write_text(candidate,encoding="utf-8")
+try:  # legado (o deploy grava o próprio /tmp/candidate-name); no Windows da suíte /tmp pode não existir
+    Path("/tmp/candidate-name").write_text(candidate,encoding="utf-8")
+except OSError:
+    pass
 print("CANDIDATE="+candidate)

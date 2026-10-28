@@ -75,7 +75,30 @@ on:
       - "tests/p13-politica-nogo.test.mjs"
       - "scripts/premerge_product_audit.py"
       - ".github/workflows/zevanory-sales-public-release.yml"
+  # Round 7 (L-1): a manual run defaults to a DRY RUN. dry-run builds, verifies the manifests, rebuilds the Worker
+  # in a clean directory and compares it byte for byte, assembles the release and runs the legal gate, and publishes
+  # nothing (job "rehearsal": no Environment, no secrets; any branch). candidate publishes ONLY the isolated
+  # zevanory-sales-candidate-<run id> Worker on workers.dev, smoke-tests it and deletes it (gh-pages only; no
+  # promotion). production is the full release, exactly what a push to gh-pages does.
+  # Sol ORDEM 312: emergency (owner only, reason required, audit record) deploys like production but accepts a sales
+  # Worker whose serving code is unapproved, ONLY if the legal page files, their assets and the consumer texts served
+  # are an approved snapshot. Honest limit: that unapproved serving code could in principle change what the legal
+  # routes return at runtime; emergency is an audited owner override, not a bypass available to an ordinary PR.
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default, publishes nothing) | candidate (isolated candidate only, then deleted) | production (full release)"
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - candidate
+          - production
+          - emergency
+      reason:
+        description: "emergency only: why (at least 20 characters; recorded in the run and in the audit artifact)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -96,13 +119,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
 
@@ -156,43 +181,78 @@ jobs:
           ! grep -Fq "/zevanory-public-mirror/" sales-public/zevanory-sales.html
           echo "ZEVANORY_SALES_PUBLIC_VERIFY=PASS"
 
-  deploy:
-    environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
-    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b
+  # Round 6 (re-audit of PR #946, H-1): build and deploy are separate jobs. Round 7 (M-1): the Worker is bundled
+  # only in a CLEAN directory, from the commit, by the integrity-pinned wrangler; the deploy job rebuilds it the same
+  # way from its own trusted checkout and refuses an artifact that differs by a single byte.
+  #   worker-bundle  no secrets; runs ONLY scripts/deploy/clean_bundle.py (anchor), right after the checkout and
+  #                  before anything else: `git archive $GITHUB_SHA` of the anchored sources (sales-worker.mjs,
+  #                  worker/sales-public-worker.mjs, worker/politica-unica.mjs, data/politica-unica.json,
+  #                  wrangler.sales.toml, scripts/ci/materialize_sales_configs.py) into a fresh directory; wrangler
+  #                  4.143.0 from `npm ci --ignore-scripts` of scripts/deploy/wrangler-pin/package-lock.json (sha512 per
+  #                  package, registry.npmjs.org, npm user/global config /dev/null) installed in $RUNNER_TEMP, outside
+  #                  the checkout; a commit with .npmrc, package.json, node_modules/... fails closed.
+  #   site-build     no secrets; runs the repository build (scripts/build_sales_public.py) and the P13 audit.
+  #                  Produces sales-public/. Whatever this code does, it never sees a production secret.
+  #   deploy         Environment producao-critica; secrets only at step level. Runs NO repository build code: it
+  #                  checks out the event commit into base/ (explicit ref, no credentials kept), downloads both
+  #                  artifacts, verifies their manifests, REBUILDS the Worker with clean_bundle.py read from gh-pages
+  #                  (same clean way, from base/'s object store) and compares it byte for byte with the artifact, runs
+  #                  the legal gate (code from gh-pages) on the downloaded bytes and deploys the PRE-BUILT bundle with
+  #                  wrangler --no-bundle (no rebuild). `npx --yes wrangler@4.143.0` runs from $RUNNER_TEMP/release
+  #                  and resolves to the pinned install in $RUNNER_TEMP (offline-checked by clean_bundle.py).
+  #   rehearsal      only for workflow_dispatch mode=dry-run: the same checks as deploy, without Environment or
+  #                  secrets, with the code of the dispatched commit; publishes nothing.
+  #   Structure enforced by scripts/p23/trust_anchor_guard.py in the protected check legal-trust-anchors-protected.
+  worker-bundle:
+    if: ${{ (github.ref == 'refs/heads/gh-pages' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
-      PUBLIC_OWNER_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
-      SCRIPT_NAME: "zevanory-sales-public"
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      manifest: ${{ steps.pack.outputs.manifest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
 
-      - name: Require authenticated deployment authority
+      - name: Bundle the sales Worker in a clean directory from anchored sources only
+        id: pack
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_AUTH=ABSENT_FAIL_CLOSED"; exit 21; }
-          test "$CLOUDFLARE_ACCOUNT_ID" = "$PUBLIC_OWNER_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT=WRONG_FAIL_CLOSED"; exit 22; }
-          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID"             -o /tmp/cloudflare-account.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open("/tmp/cloudflare-account.json"))
-          assert d.get("success") is True, d.get("errors")
-          print("CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=PASS")
-          PY
+          /usr/bin/python3 -I scripts/deploy/clean_bundle.py sales --repo . --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$GITHUB_WORKSPACE/worker-artifact"
+          echo "manifest=$(sha256sum "$GITHUB_WORKSPACE/worker-artifact/MANIFEST.sha256" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sales-worker-${{ github.sha }}
+          path: worker-artifact
+          if-no-files-found: error
+          include-hidden-files: true  # round 10: upload exactly what clean_bundle.py built
+          retention-days: 7
+
+  site-build:
+    if: ${{ (github.ref == 'refs/heads/gh-pages' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      manifest: ${{ steps.pack.outputs.manifest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
 
       - name: Build exact release assets
         run: python3 scripts/build_sales_public.py
@@ -206,14 +266,141 @@ jobs:
           python3 scripts/sales_policy.py --audit sales-public --mode closed
           echo "P13_NOGO_GREP_GATE=PASS"
 
-      - name: Materialize release configs
-        run: python3 scripts/ci/materialize_sales_configs.py
-
-      - name: Snapshot active canonical deployment
+      - name: Pack the site artifact with a manifest
+        id: pack
         run: |
           set -euo pipefail
-          code="$(curl -sS -o /tmp/previous-deployments.json -w '%{http_code}'             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments" || true)"
-          python3 - "$code" <<'PY'
+          OUT="$GITHUB_WORKSPACE/site-artifact"; mkdir -p "$OUT"
+          cp -a sales-public "$OUT/sales-public"
+          (cd "$OUT" && find sales-public -type f -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256)
+          echo "manifest=$(sha256sum "$OUT/MANIFEST.sha256" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sales-site-${{ github.sha }}
+          path: site-artifact
+          if-no-files-found: error
+          include-hidden-files: true  # round 10: a dotfile in the build reaches the deploy check (refused there), never silently dropped
+          retention-days: 7
+
+  deploy:
+    environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode != 'dry-run')) }}  # B01 patch 05b
+    needs: [verify, worker-bundle, site-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PUBLIC_OWNER_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+      SCRIPT_NAME: "zevanory-sales-public"
+      # Round 7 (L-1): candidate = isolated candidate only (no promotion); a push is always production.
+      RELEASE_MODE: ${{ github.event_name == 'push' && 'production' || inputs.mode }}
+      # Round 7 (M-1): no inherited npm configuration and an explicit registry for every npm/npx in this job.
+      npm_config_userconfig: /dev/null
+      npm_config_registry: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: sales-worker-${{ github.sha }}
+          path: art/worker
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: sales-site-${{ github.sha }}
+          path: art/site
+
+      - name: Emergency mode record (owner only, reason required)
+        if: env.RELEASE_MODE == 'emergency'
+        env:
+          EMERGENCY_REASON: ${{ inputs.reason }}
+          OWNER: ${{ github.repository_owner }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$TRIGGERING_ACTOR" = "$OWNER" || { echo "::error title=LEGAL_EMERGENCY::only the repository owner ($OWNER) may dispatch or re-run emergency; triggered by $TRIGGERING_ACTOR"; exit 1; }
+          test "${#EMERGENCY_REASON}" -ge 20 || { echo "::error title=LEGAL_EMERGENCY::reason must have at least 20 characters"; exit 1; }
+          echo "::warning title=LEGAL_EMERGENCY::emergency deploy of $GITHUB_SHA by $TRIGGERING_ACTOR (run $GITHUB_RUN_ID); served legal files and consumer texts stay the approved snapshot; the serving code is NOT approved (audited owner override)"
+          { echo "## Emergency deploy record"; echo "- commit: $GITHUB_SHA"; echo "- triggered by: $TRIGGERING_ACTOR"; echo "- run: $GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"; echo "- reason:"; printf '%s\n' "$EMERGENCY_REASON" | sed 's/^/    /'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify artifact manifests and file allowlists
+        env:
+          WORKER_MANIFEST: ${{ needs.worker-bundle.outputs.manifest }}
+          SITE_MANIFEST: ${{ needs.site-build.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          test "$(sha256sum art/worker/MANIFEST.sha256 | cut -d' ' -f1)" = "$WORKER_MANIFEST"
+          test "$(sha256sum art/site/MANIFEST.sha256 | cut -d' ' -f1)" = "$SITE_MANIFEST"
+          (cd art/worker && sha256sum --strict -c --quiet MANIFEST.sha256)
+          (cd art/site && sha256sum --strict -c --quiet MANIFEST.sha256)
+          test "$(cd art/worker && find . -type f | sort | tr '\n' ' ')" = "./MANIFEST.sha256 ./sales-worker.deploy.js ./sales-worker.preview.js ./wrangler.sales.deploy.toml ./wrangler.sales.preview.toml "
+          diff <(cd art/site && find sales-public -type f | sort) <(cut -c67- art/site/MANIFEST.sha256 | sort)
+          if find art/site -name '_headers' -o -name '_redirects' -o -name '.assetsignore' -o -name '.env*' -o -name '.dev.vars' -o -name '.npmrc' | grep -q .; then echo "::error::forbidden file in the site artifact"; exit 1; fi
+          grep -qx 'name = "zevanory-sales-public"' art/worker/wrangler.sales.deploy.toml
+          grep -qx "name = \"zevanory-sales-candidate-$GITHUB_RUN_ID\"" art/worker/wrangler.sales.preview.toml
+          echo "ARTIFACT_MANIFESTS=PASS"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Rebuild the Worker from base in a clean directory and compare byte for byte
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/deploy/clean_bundle.py > "$RUNNER_TEMP/clean_bundle.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/worker
+
+      - name: Serve the last approved legal snapshot when the commit's legal text is not approved
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --apply-snapshot art/site/sales-public --anchors-ref refs/remotes/origin/gh-pages
+
+      - name: Legal artifact gate (fail fast)
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+
+      - name: Assemble the release directory (pre-built bundles, gated site; no repository code)
+        run: |
+          set -euo pipefail
+          # Clean directory: only the configs, the bundles and the gated site. npx --yes wrangler@4.143.0 runs from
+          # here, so no repository .npmrc, package.json or node_modules can influence it.
+          R="$RUNNER_TEMP/release"; mkdir -p "$R"
+          cp art/worker/wrangler.sales.deploy.toml art/worker/wrangler.sales.preview.toml art/worker/sales-worker.deploy.js art/worker/sales-worker.preview.js "$R/"
+          cp -a art/site/sales-public "$R/sales-public"
+          test "$(cd "$R" && ls -A | sort | tr '\n' ' ')" = "sales-public sales-worker.deploy.js sales-worker.preview.js wrangler.sales.deploy.toml wrangler.sales.preview.toml "
+
+      - name: Require authenticated deployment authority
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_AUTH=ABSENT_FAIL_CLOSED"; exit 21; }
+          test "$CLOUDFLARE_ACCOUNT_ID" = "$PUBLIC_OWNER_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT=WRONG_FAIL_CLOSED"; exit 22; }
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID" -o "$RUNNER_TEMP/cloudflare-account.json"
+          /usr/bin/python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("success") is True, d.get("errors"); print("CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=PASS")' "$RUNNER_TEMP/cloudflare-account.json"
+
+      - name: Snapshot active canonical deployment
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /tmp/previous-deployments.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments" || true)"
+          /usr/bin/python3 -I - "$code" <<'PY'
           import json,sys
           from pathlib import Path
           code=sys.argv[1]
@@ -248,30 +435,41 @@ jobs:
               print("PREVIOUS_DEPLOYMENT_SNAPSHOT=NONE_FIRST_RELEASE")
           PY
 
-      - name: Deploy isolated candidate
-        run: npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml
-
-      - name: Resolve candidate URL and smoke test
+      - name: Legal artifact gate before the candidate deploy
         run: |
           set -euo pipefail
-          CANDIDATE="$(cat /tmp/candidate-name)"
-          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/subdomain"             -o /tmp/workers-subdomain.json
-          SUBDOMAIN="$(python3 - <<'PY'
-          import json
-          d=json.load(open("/tmp/workers-subdomain.json"))
-          assert d.get("success") is True, d.get("errors")
-          print(d["result"]["subdomain"])
-          PY
-          )"
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+
+      - name: Deploy isolated candidate
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release"
+          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml --no-bundle
+
+      - name: Resolve candidate URL and smoke test
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          CANDIDATE="zevanory-sales-candidate-$GITHUB_RUN_ID"
+          echo "$CANDIDATE" > /tmp/candidate-name
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/subdomain" -o /tmp/workers-subdomain.json
+          SUBDOMAIN="$(/usr/bin/python3 -I -c 'import json; d=json.load(open("/tmp/workers-subdomain.json")); assert d.get("success") is True, d.get("errors"); print(d["result"]["subdomain"])')"
           BASE="https://$CANDIDATE.$SUBDOMAIN.workers.dev"
           echo "$BASE" > /tmp/candidate-base
           for i in $(seq 1 12); do
-            if curl -fsS "$BASE/health" -o /tmp/candidate-health.json               && curl -fsS "$BASE/zevanory-sales" -o /tmp/candidate-sales.html; then
+            if curl -fsS "$BASE/health" -o /tmp/candidate-health.json && curl -fsS "$BASE/zevanory-sales" -o /tmp/candidate-sales.html; then
               break
             fi
             sleep 5
           done
-          python3 - <<'PY'
+          /usr/bin/python3 -I - <<'PY'
           import json,os
           h=json.load(open("/tmp/candidate-health.json"))
           assert h.get("ok") is True, h
@@ -279,39 +477,59 @@ jobs:
           assert h.get("release")==os.environ["GITHUB_SHA"], h
           page=open("/tmp/candidate-sales.html",encoding="utf-8").read()
           assert "ZEVANORY SALES" in page
-          assert "SALES ASSIST" in page and "SALES AUTOPILOT" in page and "SALES AUTONOMOUS" in page
+          assert "A IA sugere" in page and "A IA faz o rotineiro" in page and "A IA conduz a venda" in page
           assert "/zevanory-public-mirror/" not in page
           print("ZEVANORY_SALES_CANDIDATE_SMOKE=PASS")
           PY
 
       - name: Pre-promotion guard (T1, inside the serialized deploy group)
         id: guard
+        if: env.RELEASE_MODE == 'production' || env.RELEASE_MODE == 'emergency'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
         run: |
           set -euo pipefail
-          python3 scripts/deploy/promotion_guard.py --service zevanory-sales-public \
+          cd base
+          /usr/bin/python3 -I scripts/deploy/promotion_guard.py --service zevanory-sales-public \
             --candidate "$GITHUB_SHA" \
             --readback-url https://vendas.zevanory.api.br/health --readback-path release \
             --cloudflare-script "$SCRIPT_NAME"
 
+      - name: Legal artifact gate before the canonical promotion
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+
       - name: Promote exact candidate source to canonical domain
         id: promote
         if: steps.guard.outputs.decision == 'promote'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml --tag="$GITHUB_SHA" --message="ZEVANORY-sales-exact-SHA-$GITHUB_SHA"
+          cd "$RUNNER_TEMP/release"
+          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml --tag="$GITHUB_SHA" --message="ZEVANORY-sales-exact-SHA-$GITHUB_SHA" --no-bundle
           echo "promoted=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify canonical production readback
         id: readback
         if: steps.promote.outputs.promoted == 'true'
         continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
         run: |
           set -euo pipefail
           BASE="https://vendas.zevanory.api.br"
           ok=false
           for i in $(seq 1 18); do
-            if curl -fsS "$BASE/health" -o /tmp/canonical-health.json               && curl -fsS "$BASE/zevanory-sales" -o /tmp/canonical-sales.html; then
-              if python3 - <<'PY'
+            if curl -fsS "$BASE/health" -o /tmp/canonical-health.json && curl -fsS "$BASE/zevanory-sales" -o /tmp/canonical-sales.html; then
+              if /usr/bin/python3 -I - <<'PY'
           import json,os
           h=json.load(open("/tmp/canonical-health.json"))
           page=open("/tmp/canonical-sales.html",encoding="utf-8").read()
@@ -329,7 +547,7 @@ jobs:
             sleep 5
           done
           test "$ok" = "true"
-          bash scripts/ci/verify-founder-and-products.sh
+          bash base/scripts/ci/verify-founder-and-products.sh
           # Legal seller text readback (moved here from sales-legal-publish.yml, now validation-only).
           curl -fsS "$BASE/termos" -o /tmp/termos.html
           grep -Fq 'inscrita no CNPJ sob o nº 69.077.233/0001-99' /tmp/termos.html
@@ -337,21 +555,19 @@ jobs:
           # T1: the effective version (Cloudflare tag + /health) must be exactly this SHA.
           # FAIL fails this step -> rollback. NAO_COMPROVADO (observer unreachable) does not roll back:
           # exit 0 here, then the certification gate after the rollback step fails the run.
-          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory-sales-public --candidate "$GITHUB_SHA" --readback-url "$BASE/health" --readback-path release --cloudflare-script "$SCRIPT_NAME"
+          cd base
+          /usr/bin/python3 -I scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory-sales-public --candidate "$GITHUB_SHA" --readback-url "$BASE/health" --readback-path release --cloudflare-script "$SCRIPT_NAME"
           echo "ZEVANORY_SALES_CANONICAL_READBACK=DONE"
 
       - name: Roll back canonical deployment on failed readback
         if: steps.promote.outputs.promoted == 'true' && steps.readback.outcome != 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
           if [ -s /tmp/rollback-deployment.json ]; then
-            curl -fsS -X POST               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               --data-binary @/tmp/rollback-deployment.json               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments"               -o /tmp/rollback-result.json
-            python3 - <<'PY'
-          import json
-          d=json.load(open("/tmp/rollback-result.json"))
-          assert d.get("success") is True, d.get("errors")
-          print("ZEVANORY_SALES_CANONICAL_ROLLBACK=PASS")
-          PY
+            curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data-binary @/tmp/rollback-deployment.json "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments" -o /tmp/rollback-result.json
+            /usr/bin/python3 -I -c 'import json; d=json.load(open("/tmp/rollback-result.json")); assert d.get("success") is True, d.get("errors"); print("ZEVANORY_SALES_CANONICAL_ROLLBACK=PASS")'
           else
             # T1 audit 13/10: the canonical production script is NEVER deleted by automation.
             # Without a rollback snapshot the failed release stays as is and the run fails loudly
@@ -371,12 +587,19 @@ jobs:
 
       - name: Delete isolated candidate
         if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
+          CANDIDATE="zevanory-sales-candidate-$GITHUB_RUN_ID"
           if [ -f /tmp/candidate-name ]; then
-            CANDIDATE="$(cat /tmp/candidate-name)"
-            curl -sS -X DELETE               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$CANDIDATE"               >/tmp/delete-candidate.json || true
+            curl -sS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$CANDIDATE" >/tmp/delete-candidate.json || true
           fi
+
+      - name: Candidate mode result (no promotion)
+        if: env.RELEASE_MODE == 'candidate'
+        run: |
+          echo "ZEVANORY_SALES_CANDIDATE_ONLY=PASS candidate=zevanory-sales-candidate-$GITHUB_RUN_ID (deleted; canonical untouched)"
 
       - name: Certify public release
         if: steps.readback.outcome == 'success' && steps.readback.outputs.state == 'PASS'
@@ -384,3 +607,114 @@ jobs:
           echo "ZEVANORY_SALES_PUBLIC_RELEASE=PASS"
           echo "RELEASE_SHA=$GITHUB_SHA"
           echo "CANONICAL_DOMAIN=vendas.zevanory.api.br"
+
+  # Round 7 (L-1): workflow_dispatch mode=dry-run. No Environment and no secrets (so it can run before the merge, on
+  # the PR branch, without any exception on producao-critica); the code is that of the dispatched commit. Publishes
+  # nothing: every wrangler call is a dry run.
+  rehearsal:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}
+    needs: [verify, worker-bundle, site-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      npm_config_userconfig: /dev/null
+      npm_config_registry: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: sales-worker-${{ github.sha }}
+          path: art/worker
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: sales-site-${{ github.sha }}
+          path: art/site
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Verify artifact manifests and file allowlists
+        env:
+          WORKER_MANIFEST: ${{ needs.worker-bundle.outputs.manifest }}
+          SITE_MANIFEST: ${{ needs.site-build.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          test "$(sha256sum art/worker/MANIFEST.sha256 | cut -d' ' -f1)" = "$WORKER_MANIFEST"
+          test "$(sha256sum art/site/MANIFEST.sha256 | cut -d' ' -f1)" = "$SITE_MANIFEST"
+          (cd art/worker && sha256sum --strict -c --quiet MANIFEST.sha256)
+          (cd art/site && sha256sum --strict -c --quiet MANIFEST.sha256)
+          test "$(cd art/worker && find . -type f | sort | tr '\n' ' ')" = "./MANIFEST.sha256 ./sales-worker.deploy.js ./sales-worker.preview.js ./wrangler.sales.deploy.toml ./wrangler.sales.preview.toml "
+          diff <(cd art/site && find sales-public -type f | sort) <(cut -c67- art/site/MANIFEST.sha256 | sort)
+          if find art/site -name '_headers' -o -name '_redirects' -o -name '.assetsignore' -o -name '.env*' -o -name '.dev.vars' -o -name '.npmrc' | grep -q .; then echo "::error::forbidden file in the site artifact"; exit 1; fi
+          grep -qx 'name = "zevanory-sales-public"' art/worker/wrangler.sales.deploy.toml
+          grep -qx "name = \"zevanory-sales-candidate-$GITHUB_RUN_ID\"" art/worker/wrangler.sales.preview.toml
+          echo "ARTIFACT_MANIFESTS=PASS"
+
+      - name: Rebuild the Worker in a clean directory and compare byte for byte (dry run)
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/worker
+
+      - name: Serve the last approved legal snapshot when the commit's legal text is not approved (dry run)
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --apply-snapshot art/site/sales-public --anchors-ref refs/remotes/origin/gh-pages --rehearsal
+
+      - name: Assemble the release directory and check what would be uploaded (dry run)
+        run: |
+          set -euo pipefail
+          # Clean directory: only the configs, the bundles and the gated site. npx --yes wrangler@4.143.0 runs from
+          # here, so no repository .npmrc, package.json or node_modules can influence it.
+          R="$RUNNER_TEMP/release"; mkdir -p "$R"
+          cp art/worker/wrangler.sales.deploy.toml art/worker/wrangler.sales.preview.toml art/worker/sales-worker.deploy.js art/worker/sales-worker.preview.js "$R/"
+          cp -a art/site/sales-public "$R/sales-public"
+          test "$(cd "$R" && ls -A | sort | tr '\n' ' ')" = "sales-public sales-worker.deploy.js sales-worker.preview.js wrangler.sales.deploy.toml wrangler.sales.preview.toml "
+          for kind in deploy preview; do
+            (cd "$RUNNER_TEMP/release" && npm_config_offline=true npx --yes wrangler@4.143.0 deploy --no-bundle --dry-run --config "wrangler.sales.$kind.toml" --outdir "$RUNNER_TEMP/nb-$kind" >/dev/null)
+            cmp "$RUNNER_TEMP/nb-$kind/sales-worker.$kind.js" "$RUNNER_TEMP/release/sales-worker.$kind.js"
+          done
+          echo "RELEASE_DIRECTORY=PASS (pinned wrangler resolved offline; nothing published)"
+
+      - name: Legal artifact gate (dry run; gate code of the dispatched commit, anchors from gh-pages)
+        run: |
+          set -euo pipefail
+          rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
+          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages --rehearsal
+          echo "SALES_RELEASE_DRY_RUN=PASS (nothing was published)"
+
+  # Sol ORDEM 312: audit record of an emergency dispatch, kept 90 days (independent of the deploy outcome); it receives no secret.
+  emergency-audit:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'emergency' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Write the emergency audit record
+        env:
+          EMERGENCY_REASON: ${{ inputs.reason }}
+          OWNER: ${{ github.repository_owner }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          mkdir -p emergency-audit
+          /usr/bin/python3 -I -c 'import json,os; json.dump({"schema":"zevanory-emergency-deploy/v1","commit":os.environ["GITHUB_SHA"],"ref":os.environ["GITHUB_REF"],"triggering_actor":os.environ["TRIGGERING_ACTOR"],"first_actor":os.environ["GITHUB_ACTOR"],"owner":os.environ["OWNER"],"actor_is_owner":os.environ["TRIGGERING_ACTOR"]==os.environ["OWNER"],"run_id":os.environ["GITHUB_RUN_ID"],"run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],"reason":os.environ["EMERGENCY_REASON"],"rule":"served legal files and consumer texts must be an approved snapshot; the serving code may be unapproved (audited owner override; it could in principle change runtime output)"},open("emergency-audit/record.json","w"),ensure_ascii=False,indent=2)'
+          cat emergency-audit/record.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: emergency-audit-${{ github.run_id }}
+          path: emergency-audit
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90

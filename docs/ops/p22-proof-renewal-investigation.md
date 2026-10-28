@@ -204,7 +204,7 @@ e o KV aplica "a última gravação vence":
   usa `now=Date.now()` no momento de **persistir**, não no da leitura dos
   provedores;
 - `worker/commercial-metrics-projection.mjs:173`: grava sem comparar;
-- `worker/cloudflare-worker.compat.mjs:168`: o caminho do GitHub chama
+- `worker/cloudflare-worker.compat.mjs:174`: o caminho do GitHub chama
   `persistClassificationSnapshot` sem passar o instante da leitura.
 
 Cenário de FRESH falso:
@@ -499,8 +499,8 @@ apaga a prova válida, 409 a invalida, e nada sintetiza PASS.
 `worker/commercial-checkout-guard.mjs:5` define
 `REQUIRED = ["global","pre_sale","absolute","checkout","financial","kv","preflight","environment","fiscal","token"]`,
 sem a prova, e `evaluateCheckout` não a consulta. A prova afeta apenas a
-exibição: `/api/status` (`safeRelease`, `worker/cloudflare-worker.compat.mjs:591`)
-e `/api/sales/status` (`worker/sales-control.mjs:149`).
+exibição: `/api/status` (`safeRelease`, `worker/cloudflare-worker.compat.mjs:603`)
+e `/api/sales/status` (`worker/sales-control.mjs:145`).
 
 A verificação de liberação do item 3 é, portanto, um **gate novo**, a ser
 implementado depois num PR próprio e autorizado. Ele fecha o caminho direto ao
