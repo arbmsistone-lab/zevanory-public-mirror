@@ -3,6 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as CS from "../worker/content-service.mjs";
+import { CAMPAIGN, CAMPAIGN_MONTH2, campaignize } from "./helpers/cp-campaign.mjs";
 
 globalThis.fetch = async (u) => { throw new Error("rede bloqueada no teste: " + u); };
 class MapKV {
@@ -25,9 +26,9 @@ function ai({ mode = "ok" } = {}) {
     calls.push(u);
     if (mode === "fail") return { response: "sem json" };
     if (mode === "hang") return new Promise((r) => hung.push(r));
-    if (u.includes("roteiros multicanal")) return { response: JSON.stringify({ roteiros: CS.ROTEIRO_OBJETIVOS.map(roteiro) }) };
+    if (u.includes("roteiros multicanal")) return { response: JSON.stringify(campaignize(u, { roteiros: CS.ROTEIRO_OBJETIVOS.map(roteiro) })) };
     const from = Number(/posts (\d+) a/.exec(u)[1]);
-    return { response: JSON.stringify({ posts: [0, 1, 2, 3, 4, 5].map((k) => post(from + k, mode)) }) };
+    return { response: JSON.stringify(campaignize(u, { posts: [0, 1, 2, 3, 4, 5].map((k) => post(from + k, mode)) })) };
   } };
 }
 function resend({ status = 200 } = {}) {
@@ -44,7 +45,9 @@ const env = (a) => ({ ZEVANORY_PRIVATE_ARTIFACTS: new MapKV(), HOTMART_HOTTOK: H
 const hook = (event, txn, sub, email) => new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": HOTTOK },
   body: JSON.stringify({ event, data: { product: { id: 8704905, name: CS.SERVICE_PRODUCT_NAME }, buyer: { email, name: "Assinante" }, purchase: { transaction: txn }, subscription: { subscriber: { code: sub } } } }) });
 const tokenOf = (text, p) => new RegExp(p + "\\?t=([A-Za-z0-9_-]+)").exec(text)?.[1];
-const brief = (e, f, t, ctx = null) => CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t, { method: "POST", body: new URLSearchParams(BRIEF) }), e, ctx, f);
+const brief = (e, f, t, ctx = null, camp = CAMPAIGN) => CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t, { method: "POST", body: new URLSearchParams({ ...BRIEF, ...camp }) }), e, ctx, f);
+// v3: renovação pede a campanha do novo mês; devolve o token do formulário enviado no e-mail.
+const campaignToken = (f, to) => tokenOf(f.sent.filter((m) => m.to[0] === to && /defina a campanha/.test(m.subject)).at(-1).text, "briefing");
 const view = (e, t) => CS.handlePackageView(new Request("https://zevanory.api.br/conteudo-pronto/pacote?t=" + t), e);
 const deliveries = (f, to) => f.sent.filter((m) => /chegou/.test(m.subject) && (!to || m.to[0] === to));
 const subRecord = (kv) => JSON.parse(kv.data.get([...kv.data.keys()].find((k) => k.startsWith("zpc:cp:sub:"))));
@@ -148,6 +151,7 @@ test("[G5] o link de cada mês abre aquele mês; o token do formulário não abr
   assert.equal((await view(e, bt)).status, 404, "[G5] token do formulário não abre o pacote");
   assert.match(await (await view(e, pt1)).text(), /mês 1/, "[G5] link do mês 1");
   await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-A-2", "SUB-A", "a@example.invalid"), e, null, f);
+  await brief(e, f, campaignToken(f, "a@example.invalid"), null, CAMPAIGN_MONTH2);
   const pt2 = tokenOf(deliveries(f).at(-1).text, "pacote");
   assert.notEqual(pt2, pt1);
   const v1 = await (await view(e, pt1)).text();
@@ -184,11 +188,14 @@ test("[G1-intent] queda antes de marcar o postback como processado: a Hotmart re
   e.ZEVANORY_PRIVATE_ARTIFACTS = crash;
   const renewal = () => CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-I-2", "SUB-I", "i@example.invalid"), e, { waitUntil: () => {} }, f);
   await assert.rejects(renewal(), /isolate killed/, "[G1-intent] queda simulada no marcador de processado");
-  assert.match(String(crash.data.get("zpc:cp:pending")), /zpc:cp:sub:/, "[G1-intent] intenção de geração já gravada antes do marcador");
+  assert.equal(subRecord(crash).cycles, 2, "[G1-intent] o novo ciclo já está gravado antes do marcador");
   const again = await (await renewal()).json();
-  assert.equal(again.status, "generation_started", "[G1-intent] reenvio da Hotmart processa de novo (não é 'duplicate')");
+  assert.equal(again.status, "campaign_requested", "[G1-intent] reenvio da Hotmart processa de novo (não é 'duplicate') e pede a campanha do mês");
   assert.equal(subRecord(crash).cycles, 2, "[G1-intent] o ciclo sobe uma vez só");
   assert.equal((await (await renewal()).json()).duplicate, true, "[G1-intent] terceiro reenvio é duplicado");
+  // A campanha chega com o waitUntil cortado: a intenção de geração fica na fila antes da resposta.
+  await brief(e, f, campaignToken(f, "i@example.invalid"), { waitUntil: () => {} }, CAMPAIGN_MONTH2);
+  assert.match(String(crash.data.get("zpc:cp:pending")), /zpc:cp:sub:/, "[G1-intent] intenção de geração gravada antes da resposta");
   await new Promise((r) => setTimeout(r, 20));
   await CS.retryPendingPackages(e, f);
   assert.equal(deliveries(f, "i@example.invalid").filter((m) => /mês 2/.test(m.subject)).length, 1, "[G1-intent] pacote do mês 2 sai uma vez");

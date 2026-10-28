@@ -26,6 +26,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import * as CS from "../worker/content-service.mjs";
 import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { openSalesHtml } from "../worker/sales-public-worker.mjs";
+import { CAMPAIGN, campaignize } from "./helpers/cp-campaign.mjs";
 
 const CP_CARD = /<article class="catalog-card[^"]*" id="p-conteudo-pronto"[^>]*>[\s\S]*?<\/article>/;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -38,10 +39,10 @@ const WA = /whats\s*app/i;
 // tests/contato-publico-whatsapp.test.mjs) não é promessa de canal: fica fora da guarda.
 const noAsset = (html) => html.replace(/<script src="\/whatsapp-contact\.js" defer><\/script>/g, "");
 
-const CANONICAL = "Todo mês: 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento — cada um com versão curta e versão de e-mail — e um calendário de 30 dias, no tom do seu negócio. Os roteiros são para canais autorizados pelo cliente, como e-mail, Instagram Direct, Telegram ou chat do site. Você revisa antes de usar; não há disparo automático.";
+const CANONICAL = "Todo mês, uma campanha de promoção de vendas da oferta que você escolher: no formulário do mês você informa o objetivo comercial, o produto, serviço ou oferta, a condição comercial e o período (de 7 a 30 dias). A campanha traz 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento — cada um com versão curta e versão de e-mail — e um calendário com as datas do período, todos sobre essa oferta e no tom do seu negócio. Os roteiros são para canais autorizados pelo cliente, como e-mail, Instagram Direct, Telegram ou chat do site. Você revisa antes de usar; não há disparo automático.";
 const OBJECTIVE_IDS = ["oferta_solicitada", "acompanhamento", "reativacao", "indicacao"];
 // v2 ainda não foi publicada: a impressão digital registra o contrato final da v2 (com wa.me nos termos proibidos).
-const CONTRACT_FINGERPRINTS = { 2: "5a6a0d0c1fee4716dcf78f16a177337ec8c21c96bb973ed3998b279d19491498" };
+const CONTRACT_FINGERPRINTS = { 2: "5a6a0d0c1fee4716dcf78f16a177337ec8c21c96bb973ed3998b279d19491498", 3: "9f3bfe405109613ca8ab5d5d020ec56c911ce3ff676e1f15269fc9456dc410e5" };
 const fingerprint = () => {
   const { nota, ...contrato } = C;
   return createHash("sha256").update(JSON.stringify({ contrato, caracteristicas: CARACT })).digest("hex");
@@ -52,14 +53,20 @@ const post = (i) => ({ tema: "Tema " + i, legenda: "Legenda completa e concreta 
 const roteiro = (o, extra = {}) => ({ objetivo_id: o.id, curta: "Olá! Aqui é do negócio. Passando para lembrar da nossa oferta principal e tirar qualquer dúvida que você tenha.", email: { assunto: "Sobre o que você pediu", corpo: "Olá! Obrigado pelo contato. ".repeat(10) + "Se fizer sentido, responda este e-mail e combinamos o próximo passo." }, ...extra });
 function fakeAI() {
   const prompts = [];
-  return { prompts, run: async (_m, { messages }) => { const u = messages[1].content; prompts.push(u); return { response: JSON.stringify(u.includes("roteiros multicanal") ? { roteiros: CS.ROTEIRO_OBJETIVOS.map((o) => roteiro(o)) } : { posts: [1, 2, 3, 4, 5, 6].map(post) }) }; } };
+  return { prompts, run: async (_m, { messages }) => { const u = messages[1].content; prompts.push(u); return { response: JSON.stringify(campaignize(u, u.includes("roteiros multicanal") ? { roteiros: CS.ROTEIRO_OBJETIVOS.map((o) => roteiro(o)) } : { posts: [1, 2, 3, 4, 5, 6].map(post) })) }; } };
 }
 const BRIEF = { negocio: "Salão Bela", ramo: "salão de beleza", publico: "mulheres 25-50", produtos: "corte, escova", diferencial: "atendimento rápido", tom: "próximo", contato: "e-mail e Instagram Direct" };
 
 test("(a) oferta canônica e contrato v2: texto literal, quantidades e os quatro objetivos", () => {
   assert.equal(CARACT, CANONICAL, "características essenciais = texto canônico do auditor");
-  assert.equal(C.content_schema_version, 2);
-  assert.equal(C.package_schema, "zpc.cp.package.v2");
+  assert.equal(C.content_schema_version, 3);
+  assert.equal(C.package_schema, "zpc.cp.package.v3");
+  // v3 (Sol AVAL 304): campanha mensal de promoção de vendas, com os cinco campos obrigatórios e seis fases.
+  assert.equal(C.servico, "campanha mensal de promoção de vendas", "[campanha] serviço");
+  assert.deepEqual(C.campanha.campos.map((f) => f.id), ["objetivo_comercial", "oferta", "condicao_comercial", "periodo_inicio", "periodo_fim"], "[campanha] campos obrigatórios");
+  assert.equal(C.campanha.fases.length, 6, "[campanha] fases");
+  for (const k of ["campanha de promoção de vendas", "objetivo comercial", "condição comercial", `período (de ${C.campanha.periodo_dias_min} a ${C.campanha.periodo_dias_max} dias)`, "todos sobre essa oferta"]) assert.ok(CARACT.includes(k), "[campanha] oferta descreve: " + k);
+  for (const k of ["descricao_fiscal_proposta", "descricao_hotmart_proposta"]) assert.match(C[k], /campanha mensal de promoção de vendas/i, "[campanha] " + k);
   assert.equal(CONTRACT_FINGERPRINTS[C.content_schema_version], fingerprint(), "contrato mudou: suba content_schema_version e registre a impressão digital nova");
   assert.deepEqual(C.objetivos.map((o) => o.id), OBJECTIVE_IDS, "[objetivos] ids e ordem do contrato");
   assert.deepEqual(C.versoes_roteiro, ["curta", "email"]);
@@ -71,7 +78,7 @@ test("(a) oferta canônica e contrato v2: texto literal, quantidades e os quatro
   assert.ok(CARACT.includes(`${C.posts} posts com legenda`));
   assert.ok(CARACT.includes(`${C.roteiros} roteiros multicanal de venda e acompanhamento`));
   assert.ok(CARACT.includes("versão curta e versão de e-mail"));
-  assert.ok(CARACT.includes(`calendário de ${C.calendario_dias} dias`));
+  assert.ok(CARACT.includes("calendário com as datas do período"));
   const canais = C.canais_autorizados_exemplo;
   assert.ok(CARACT.includes(`canais autorizados pelo cliente, como ${canais.slice(0, -1).join(", ")} ou ${canais.at(-1)}`));
   assert.ok(CARACT.includes("não há disparo automático"));
@@ -139,7 +146,7 @@ test("(c) saída do gerador = contrato: schema versionado, objetivos na ordem, c
   assert.equal(CS.CONTENT_SCHEMA_VERSION, C.content_schema_version);
   assert.equal(CS.PACKAGE_SCHEMA, C.package_schema);
   const ai = fakeAI();
-  const pkg = await CS.generatePackage({ AI: ai }, BRIEF, 3);
+  const pkg = await CS.generatePackage({ AI: ai }, BRIEF, 3, CAMPAIGN);
   assert.ok(pkg, "pacote gerado");
   assert.equal(pkg.schema, C.package_schema);
   assert.equal(pkg.content_schema_version, C.content_schema_version, "[pkg-version]");
@@ -198,7 +205,7 @@ test("(d) guarda: fonte do gerador, e-mail de boas-vindas, formulário, pacote e
   const t = welcome.text.match(/t=([A-Za-z0-9_-]+)/)[1];
   const form = await (await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t), env, null, fetchImpl)).text();
   assert.doesNotMatch(form, WA, "[form] formulário sem WhatsApp");
-  await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t, { method: "POST", body: new URLSearchParams(BRIEF) }), env, null, fetchImpl);
+  await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t, { method: "POST", body: new URLSearchParams({ ...BRIEF, ...CAMPAIGN }) }), env, null, fetchImpl);
   const delivery = emails.find((m) => /chegou/.test(m.subject));
   assert.ok(delivery, "pacote entregue");
   for (const part of [delivery.text, delivery.html]) assert.doesNotMatch(part, WA, "e-mail do pacote");
@@ -292,7 +299,7 @@ function legacyEnv(pkg, { status = "active" } = {}) {
   const raw = JSON.stringify(pkg);
   kv.data.set(legacyKey, raw);
   kv.data.set("zpc:cp:token:" + token, sub);
-  kv.data.set(sub, JSON.stringify({ schema: "zpc.cp.v1", status, email: "c@example.com", name: "Ana", cycles: 1, briefing: BRIEF, deliveredCycle: 1, lastPackage: legacyKey }));
+  kv.data.set(sub, JSON.stringify({ schema: "zpc.cp.v1", status, email: "c@example.com", name: "Ana", cycles: 1, briefing: BRIEF, deliveredCycle: 1, lastPackage: legacyKey, campanha: { ...CAMPAIGN, cycle: 1 } }));
   const ai = fakeAI();
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, RESEND_API_KEY: "re_test", AI: ai };
   const resend = fakeResend(emails);

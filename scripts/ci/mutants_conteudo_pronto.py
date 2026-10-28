@@ -28,13 +28,13 @@ from pathlib import Path
 
 _ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(_ARGS[0] if _ARGS else Path(__file__).resolve().parents[2])
-TESTS = [Path("tests", "conteudo-pronto-roteiros.test.mjs"), Path("tests", "content-service.test.mjs")]
+TESTS = [Path("tests", "conteudo-pronto-roteiros.test.mjs"), Path("tests", "content-service.test.mjs"), Path("tests", "conteudo-pronto-campanha.test.mjs")]
 J = "data/politica-unica.json"
 CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 20  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 29  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -44,12 +44,12 @@ M = {
         "para WhatsApp.", "conteudo-pronto/index.html"),
     "M03 item da página volta a WhatsApp": (PG, "<li>4 roteiros multicanal de venda e acompanhamento, cada um com versão curta e versão de e-mail</li>",
         "<li>4 mensagens de venda e acompanhamento para WhatsApp</li>", "conteudo-pronto/index.html"),
-    "M04 JSON-LD diverge do texto canônico": (PG, "\"description\": \"Todo mês: 12 posts",
-        "\"description\": \"Todo mês, 12 posts", "JSON-LD = texto canônico"),
-    "M05 data-content-schema removido da página": (PG, " data-content-schema=\"2\"",
+    "M04 JSON-LD diverge do texto canônico": (PG, "\"description\": \"Todo mês, uma campanha de promoção de vendas",
+        "\"description\": \"Todo mês: uma campanha de promoção de vendas", "JSON-LD = texto canônico"),
+    "M05 data-content-schema removido da página": (PG, " data-content-schema=\"3\"",
         "", "página e gerador na mesma versão de schema"),
-    "M06 versão sobe só no JSON": (J, "\"content_schema_version\": 2",
-        "\"content_schema_version\": 3", "página e gerador na mesma versão de schema"),
+    "M06 versão sobe só no JSON": (J, "\"content_schema_version\": 3",
+        "\"content_schema_version\": 4", "página e gerador na mesma versão de schema"),
     "M07 reativação sem consentimento, sem subir versão": (J, "reativar somente cliente com relacionamento ativo ou consentimento registrado para receber contato",
         "reativar cliente antigo", "contrato mudou: suba content_schema_version"),
     "M08 objetivo renomeado no contrato": (J, "\"id\": \"oferta_solicitada\"",
@@ -64,10 +64,10 @@ M = {
         "    if (FORBIDDEN.test(all)) return null;", "termo proibido na curta"),
     "M13 validador aceita roteiro sem versão de e-mail": (CS, "if (assunto.length < 5 || assunto.length > 120 || corpo.length < 200 || corpo.length > 1600) return null;",
         "", "versão de e-mail obrigatória"),
-    "M14 pacote com versão de schema fixa 1": (CS, "content_schema_version: CONTENT_SCHEMA_VERSION, cycle",
-        "content_schema_version: 1, cycle", "[pkg-version]"),
-    "M15 calendário com 3 roteiros": (CS, "[5, 12, 19, 26].forEach",
-        "[5, 12, 19].forEach", "[calendario]"),
+    "M14 pacote com versão de schema fixa 1": (CS, "content_schema_version: CONTENT_SCHEMA_VERSION, servico: SERVICO, cycle",
+        "content_schema_version: 1, servico: SERVICO, cycle", "[pkg-version]"),
+    "M15 calendário com 3 roteiros": (CS, "[0.15, 0.4, 0.65, 0.9].forEach",
+        "[0.15, 0.4, 0.65].forEach", "[calendario]"),
     "M16 calendário rotula WhatsApp": (CS, "const CAL_LABEL = { post: \"Post\", roteiro: \"Roteiro\" };",
         "const CAL_LABEL = { post: \"Post\", roteiro: \"WhatsApp\" };", "worker/content-service.mjs sem WhatsApp"),
     "M17 título do pacote volta a MENSAGENS PARA WHATSAPP": (CS, "export const ROTEIROS_TITULO = `${N_ROTEIROS} ROTEIROS MULTICANAL DE VENDA E ACOMPANHAMENTO`;",
@@ -84,8 +84,8 @@ M = {
         "4 mensagens de venda para WhatsApp (cada um", "[suporte]"),
     "M23 catálogo-fonte volta a WhatsApp": ("solucoes/index.html", "<li>4 roteiros multicanal de venda e acompanhamento por mês</li>",
         "<li>4 mensagens de venda para WhatsApp por mês</li>", "[catalogo]"),
-    "M24 página gerada desatualizada": ("sales-public/conteudo-pronto.html", "<dd>Todo mês: 12 posts com legenda, 4 roteiros multicanal",
-        "<dd>Todo mês: 12 posts com legenda, 4 mensagens para WhatsApp e roteiros multicanal", "gerado: conteudo-pronto"),
+    "M24 página gerada desatualizada": ("sales-public/conteudo-pronto.html", "<dd>Todo mês, uma campanha de promoção de vendas",
+        "<dd>Todo mês, uma campanha de promoção de vendas com mensagens para WhatsApp,", "gerado: conteudo-pronto"),
     "M25 kit de afiliado volta a mensagens": ("kit-afiliado/index.html", "12 posts e 4 roteiros multicanal de venda no tom do negócio, entregues",
         "12 posts e 4 mensagens de venda no tom do negócio, entregues", "kit-afiliado/index.html"),
     "M26 llms.txt gerado volta a mensagens": ("sales-public/llms.txt", "assinatura mensal com 12 posts, 4 roteiros multicanal",
@@ -110,8 +110,8 @@ M = {
         "<li>4 mensagens de venda por mês</li>", "gerado: solucoes"),
     "M36 leitura não bloqueia pacote contaminado": (CS, "  if (packageBlocked(pkg)) {\n    const cand = eligible",
         "  if (false) {\n    const cand = eligible", "[legacy-html-leak]"),
-    "M37 detector ignora o calendário": (CS, "  return [...posts, ...rots, ...cal]",
-        "  return [...posts, ...rots]", "[legacy-detect] calendario.tema"),
+    "M37 detector ignora o calendário": (CS, "  return [...camp, ...posts, ...rots, ...cal]",
+        "  return [...camp, ...posts, ...rots]", "[legacy-detect] calendario.tema"),
     "M38 detector ignora hashtags": (CS, "p?.cta, ...(Array.isArray(p?.hashtags) ? p.hashtags : [p?.hashtags]), p?.imagem]",
         "p?.cta, p?.imagem]", "[legacy-detect] posts.hashtags"),
     "M39 detector ignora o objetivo das mensagens": (CS, "flatMap((r) => [r?.objetivo, r?.curta,",
@@ -199,6 +199,43 @@ M = {
         "transient: resendFailureIsTransient(r.status), reason", "[regen-fail] 409 concurrent_idempotent_requests"),
     "M79 POST não converge delivered interrompido": (CS, "  if (cand.delivery === \"delivered\" && !cand.promotedAt) {\n    await applyRegenDelivered(",
         "  if (false) {\n    await applyRegenDelivered(", "[regen-converge] promovido na retomada"),
+    # v3 (Sol AVAL 304): campanha mensal de promoção de vendas.
+    "M81 período da campanha sem limite": (CS, "  if (!(dias >= CAMPANHA.periodo_dias_min && dias <= CAMPANHA.periodo_dias_max)) return",
+        "  if (false) return", "[camp-recusa] 6 dias"),
+    "M82 campo da campanha deixa de ser obrigatório": (CS, "      if (v.length < 2) return { ok: false, error: `Faltou preencher",
+        "      if (false) return { ok: false, error: `Faltou preencher", "[camp-recusa] sem objetivo_comercial"),
+    "M83 campanha aceita promessa de resultado": (CS, " || CAMPANHA_PROMESSA.test(texto)",
+        "", "[camp-recusa] promessa de resultado"),
+    "M84 post sem a oferta aceito": (CS, "      if (!normTxt(legenda + \" \" + cta).includes(normTxt(campanha.oferta))) return null;\n",
+        "", "[camp-ancora] post sem a oferta"),
+    "M85 post sem fase aceito": (CS, "      if (!FASE_IDS.has(fase)) return null;\n",
+        "", "[camp-ancora] post sem fase"),
+    "M86 e-mail sem a condição comercial aceito": (CS, "      if (!normTxt(corpo).includes(normTxt(campanha.condicao_comercial))) return null;\n",
+        "", "[camp-ancora] e-mail sem a condição comercial"),
+    "M87 fases da campanha não precisam ser cobertas": (CS, "    return out && FASE_IDS.size === new Set([...a, ...out].map((p) => p.fase)).size ? out : null;",
+        "    return out;", "[camp-ancora] fases não cobertas"),
+    "M88 calendário sai do período": (CS, "  const at = (f) => Math.round(f * span);",
+        "  const at = (f) => Math.round(f * (span + 10));", "[camp-pacote] calendário no período e em ordem"),
+    "M89 entrega gera com a campanha do mês anterior": (CS, "  if (record.campanha?.cycle !== record.cycles || !validateCampaign(record.campanha).ok) return { ok: false, reason: \"campaign_required\" };",
+        "", "[camp-renovacao] entrega recusa sem campanha"),
+    "M90 renovação não pede a campanha do mês": (CS, "  if (record.campanha?.cycle !== record.cycles) {\n    const token = rand();",
+        "  if (false) {\n    const token = rand();", "[camp-renovacao] status"),
+    "M91 protocolo do recibo fora do formato": (CS, "protocolo: \"CP-\" + pkgSha.slice(0, 10).toUpperCase()",
+        "protocolo: \"CP-\" + pkgSha.slice(0, 6)", "[camp-entrega] protocolo"),
+    "M92 evento bounced confirma a entrega": (CS, "    const entregue = Boolean(ev) && DELIVERED_EVENTS.has(ev);",
+        "    const entregue = Boolean(ev);", "[camp-entrega] bounced"),
+    "M93 recibo sem o id do e-mail": (CS, "email_id: typeof sent === \"string\" ? sent : null,",
+        "email_id: null,", "[camp-entrega] id do e-mail enviado"),
+    "M94 serviço deixa de ser campanha no contrato": (J, "\"servico\": \"campanha mensal de promoção de vendas\"",
+        "\"servico\": \"pacote mensal de conteúdo\"", "[campanha] serviço"),
+    "M95 descrição Hotmart sem a campanha": (J, "\"descricao_hotmart_proposta\": \"ZEVANORY Conteúdo Pronto: campanha mensal de promoção de vendas.",
+        "\"descricao_hotmart_proposta\": \"ZEVANORY Conteúdo Pronto: pacote mensal de conteúdo.", "[campanha] descricao_hotmart_proposta"),
+    "M96 formulário reaproveita a campanha do mês anterior": (CS, "    const cp = found.record.campanha?.cycle === found.record.cycles ? found.record.campanha : {};",
+        "    const cp = found.record.campanha || {};", "[camp-renovacao] campanha do mês anterior não é reaproveitada"),
+    "M97 chat deixa passar qualquer promoção": ("worker/site-chat.mjs", "  const nd = n.replace(/campanha (mensal )?de promocao de vendas/g, \"campanha de vendas\");",
+        "  const nd = n.replace(/promocao/g, \"\");", "[camp-textos] chat ainda bloqueia"),
+    "M98 atendimento deixa passar qualquer promoção": ("worker/whatsapp-conversation.mjs", "  const bodyNoService = body.replace(/campanha (mensal )?de promo[cç][aã]o de vendas/gi, \"campanha de vendas\");",
+        "  const bodyNoService = body.replace(/promo[cç][aã]o/gi, \"\");", "[camp-textos] atendimento ainda bloqueia"),
 }
 
 

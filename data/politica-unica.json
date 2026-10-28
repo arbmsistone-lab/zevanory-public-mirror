@@ -181,9 +181,9 @@
     "assinatura": {
       "preco_total": "R$ 197,00 por mês, cobrança mensal automática. É o valor total, sem taxas adicionais.",
       "pagamento": "Pix, cartão ou boleto, pela Hotmart. Sem fidelidade: cancele quando quiser.",
-      "entrega": "Por e-mail, após a confirmação do pagamento: formulário curto e, depois, o pacote do mês em link privado.",
+      "entrega": "Por e-mail, após a confirmação do pagamento: formulário da campanha do mês e, depois, a campanha em link privado, com registro do envio e da confirmação de entrega pelo provedor de e-mail.",
       "restricoes": "Serviço digital mensal. Licença pessoal e intransferível para uso do conteúdo no seu negócio; não é permitido revender ou redistribuir o pacote a terceiros.",
-      "caracteristicas": "Todo mês: 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento — cada um com versão curta e versão de e-mail — e um calendário de 30 dias, no tom do seu negócio. Os roteiros são para canais autorizados pelo cliente, como e-mail, Instagram Direct, Telegram ou chat do site. Você revisa antes de usar; não há disparo automático."
+      "caracteristicas": "Todo mês, uma campanha de promoção de vendas da oferta que você escolher: no formulário do mês você informa o objetivo comercial, o produto, serviço ou oferta, a condição comercial e o período (de 7 a 30 dias). A campanha traz 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento — cada um com versão curta e versão de e-mail — e um calendário com as datas do período, todos sobre essa oferta e no tom do seu negócio. Os roteiros são para canais autorizados pelo cliente, como e-mail, Instagram Direct, Telegram ou chat do site. Você revisa antes de usar; não há disparo automático."
     },
     "disponibilidade": {
       "closed": "Vendas temporariamente fechadas: entre na lista de espera.",
@@ -196,9 +196,10 @@
     }
   },
   "conteudo_pronto": {
-    "nota": "Conteúdo Pronto (2026-10-23): contrato único entre a oferta (resumo_oferta.assinatura.caracteristicas, /conteudo-pronto, /solucoes, suporte) e o gerador (worker/content-service.mjs). A conta WhatsApp Business da ZEVANORY foi banida pela Meta; o pacote deixou de prometer ou gerar mensagens de WhatsApp e passou a entregar roteiros multicanal para canais autorizados pelo cliente, revisados por ele, sem disparo automático. Qualquer mudança de quantidade, objetivo, canal ou formato exige subir content_schema_version (e package_schema) aqui, no data-content-schema da página e no gerador ao mesmo tempo; tests/conteudo-pronto-roteiros.test.mjs falha se página, oferta e saída do gerador divergirem ou se 'WhatsApp' voltar a aparecer na oferta, no prompt ou no pacote entregue. Leitura de pacotes já gravados (inclusive zpc.cp.package.v1): os bytes ficam como estão; se qualquer campo exibido (posts, mensagens/roteiros, calendário) citar canal banido (termos_proibidos_regex) ou o número banido de contato_publico.numeros_banidos (completo, formatado ou mascarado), o pacote NÃO é exibido nem reenviado e o assinante ativo recebe a oferta de gerar, sem custo, uma versão nova no formato atual (gravada em chave nova; a antiga fica intacta).",
-    "content_schema_version": 2,
-    "package_schema": "zpc.cp.package.v2",
+    "nota": "Conteúdo Pronto (2026-10-23): contrato único entre a oferta (resumo_oferta.assinatura.caracteristicas, /conteudo-pronto, /solucoes, suporte) e o gerador (worker/content-service.mjs). A conta WhatsApp Business da ZEVANORY foi banida pela Meta; o pacote deixou de prometer ou gerar mensagens de WhatsApp e passou a entregar roteiros multicanal para canais autorizados pelo cliente, revisados por ele, sem disparo automático. Qualquer mudança de quantidade, objetivo, canal ou formato exige subir content_schema_version (e package_schema) aqui, no data-content-schema da página e no gerador ao mesmo tempo; tests/conteudo-pronto-roteiros.test.mjs falha se página, oferta e saída do gerador divergirem ou se 'WhatsApp' voltar a aparecer na oferta, no prompt ou no pacote entregue. Leitura de pacotes já gravados (inclusive zpc.cp.package.v1): os bytes ficam como estão; se qualquer campo exibido (posts, mensagens/roteiros, calendário) citar canal banido (termos_proibidos_regex) ou o número banido de contato_publico.numeros_banidos (completo, formatado ou mascarado), o pacote NÃO é exibido nem reenviado e o assinante ativo recebe a oferta de gerar, sem custo, uma versão nova no formato atual (gravada em chave nova; a antiga fica intacta). Versão 3 (27/10/2026, Sol AVAL 304): o serviço passa a ser uma campanha mensal de promoção de vendas; o briefing mensal exige objetivo comercial, oferta, condição comercial e período (conteudo_pronto.campanha), e posts, roteiros e calendário são ancorados nessa campanha. As descrições fiscal (NFS-e) e da Hotmart propostas ficam aqui para o proprietário copiar; o repositório não altera a Hotmart nem emite nota.",
+    "content_schema_version": 3,
+    "package_schema": "zpc.cp.package.v3",
+    "servico": "campanha mensal de promoção de vendas",
     "posts": 12,
     "roteiros": 4,
     "calendario_dias": 30,
@@ -239,7 +240,67 @@
       "zap",
       "wa\\.me",
       "disparo\\s+em\\s+massa"
-    ]
+    ],
+    "campanha": {
+      "regra": "Cada ciclo é uma campanha mensal de promoção de vendas do assinante. O formulário do mês exige os cinco campos abaixo; sem eles o gerador recusa o pacote (nenhuma chamada de IA). Cada post e cada roteiro cita a oferta pelo mesmo nome; a condição comercial aparece no corpo de e-mail de cada roteiro e só pode ser a informada pelo assinante; cada post tem uma fase da campanha e as seis fases aparecem; o calendário usa datas dentro do período informado.",
+      "campos": [
+        {
+          "id": "objetivo_comercial",
+          "rotulo": "Objetivo comercial da campanha deste mês (ex.: lotar a agenda das quartas, vender o novo kit)",
+          "max": 200
+        },
+        {
+          "id": "oferta",
+          "rotulo": "Produto, serviço ou oferta promovida (nome curto, do jeito que vai aparecer nos posts)",
+          "max": 60
+        },
+        {
+          "id": "condicao_comercial",
+          "rotulo": "Condição comercial que você vai cumprir (ex.: 15% na segunda escova; entrega grátis acima de R$ 100). Se não houver condição especial, escreva: preço normal",
+          "max": 160
+        },
+        {
+          "id": "periodo_inicio",
+          "rotulo": "Início da campanha",
+          "tipo": "date"
+        },
+        {
+          "id": "periodo_fim",
+          "rotulo": "Fim da campanha",
+          "tipo": "date"
+        }
+      ],
+      "periodo_dias_min": 7,
+      "periodo_dias_max": 30,
+      "fases": [
+        {
+          "id": "anuncio",
+          "titulo": "Anúncio da oferta"
+        },
+        {
+          "id": "beneficio",
+          "titulo": "Benefício e para quem é"
+        },
+        {
+          "id": "prova",
+          "titulo": "Prova ou bastidor"
+        },
+        {
+          "id": "duvida",
+          "titulo": "Dúvida frequente sobre a oferta"
+        },
+        {
+          "id": "lembrete",
+          "titulo": "Lembrete da condição e do prazo"
+        },
+        {
+          "id": "encerramento",
+          "titulo": "Encerramento da campanha"
+        }
+      ]
+    },
+    "descricao_fiscal_proposta": "Campanha mensal de promoção de vendas: planejamento e redação de 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento (versão curta e versão de e-mail) e calendário do período, sobre o objetivo comercial, a oferta e a condição comercial informados pelo contratante. Serviço digital, entregue por e-mail; publicação e envio feitos pelo contratante.",
+    "descricao_hotmart_proposta": "ZEVANORY Conteúdo Pronto: campanha mensal de promoção de vendas. Todo mês você informa o objetivo comercial, a oferta, a condição comercial e o período; recebe por e-mail 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento (versão curta e versão de e-mail) e o calendário da campanha, no tom do seu negócio. Você revisa e publica; não há publicação nem disparo automático. Sem garantia de resultado de vendas."
   },
   "refund_window": {
     "nota": "P13c (financeiro, para revisão do Sol): prazo de arrependimento aplicado por worker/refund-flow.mjs. Começa na data mais recente entre a contratação (confirmação do pagamento) e o recebimento (primeiro evento de entrega bem-sucedida: e-mail de entrega enviado ou primeiro download); termina no fim do 7º dia corrido seguinte, no horário de Brasília. Sem recebimento registrado o prazo não começou e o pedido é aceito. Fora do prazo o pedido não é registrado como reembolso: vai para o suporte.",

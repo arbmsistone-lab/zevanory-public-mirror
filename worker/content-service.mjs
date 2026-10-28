@@ -23,6 +23,11 @@ export const CONTENT_SCHEMA_VERSION = CONTEUDO_PRONTO.content_schema_version;
 export const PACKAGE_SCHEMA = CONTEUDO_PRONTO.package_schema;
 export const ROTEIRO_OBJETIVOS = Object.freeze(CONTEUDO_PRONTO.objetivos.map((o) => Object.freeze({ ...o })));
 const N_POSTS = CONTEUDO_PRONTO.posts;
+// v3 (Sol AVAL 304): cada ciclo é uma campanha mensal de promoção de vendas do assinante.
+export const SERVICO = CONTEUDO_PRONTO.servico;
+export const CAMPANHA = CONTEUDO_PRONTO.campanha;
+export const CAMPANHA_CAMPOS = Object.freeze(CAMPANHA.campos.map((f) => Object.freeze({ ...f })));
+export const FASES = Object.freeze(CAMPANHA.fases.map((f) => Object.freeze({ ...f })));
 const N_ROTEIROS = CONTEUDO_PRONTO.roteiros;
 const CANAIS = CONTEUDO_PRONTO.canais_autorizados_exemplo;
 const CANAIS_TEXTO = CANAIS.slice(0, -1).join(", ") + " ou " + CANAIS[CANAIS.length - 1];
@@ -89,7 +94,10 @@ async function sendEmail(env, to, subject, text, fetchImpl = fetch, idempotencyK
     body: JSON.stringify({ from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], reply_to: "suporte@zevanory.api.br", subject, text, html: brandedEmailHtml(text) }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
-  return Boolean(r?.ok);
+  if (!r?.ok) return false;
+  // Id do provedor (prova de envio; a confirmação de entrega vem depois pelo mesmo id). 2xx sem id: enviado, sem prova.
+  const data = await r.json().catch(() => null);
+  return String(data?.id || "") || true;
 }
 async function ownerAlert(env, subject, text, fetchImpl) {
   return sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY · " + subject, text, fetchImpl);
@@ -149,7 +157,7 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     briefing: current?.briefing || null, createdAt: current?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   // Campos de entrega do ciclo já entregue continuam (sem eles o ciclo seria entregue de novo).
-  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt"]) if (current?.[f] !== undefined) record[f] = current[f];
+  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt", "campanha", "deliveries"]) if (current?.[f] !== undefined) record[f] = current[f];
   await kv.put(key, JSON.stringify(record), { expirationTtl: 400 * DAY });
   await emitActivity(env, { type: "delivery_sent", channel: "store", status: record.cycles === 1 ? "service_started" : "service_renewed", ref: "cp:" + subscriber + ":" + record.cycles }).catch(() => null);
 
@@ -158,11 +166,22 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     await putToken(kv, token, { k: "brief", sub: key }, 60);
     const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
     await sendEmail(env, email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo",
-      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias chega neste e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
+      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar a sua ${SERVICO}, responda este formulário curto (leva 5 minutos): o perfil do negócio e a campanha do mês (objetivo comercial, oferta, condição comercial e período).\n\n${link}\n\nAssim que você enviar, a campanha com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário do período chega neste e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
     await emitActivity(env, { type: "email_sent", channel: "email", status: "briefing_requested", ref: "cp-brief:" + subscriber + ":" + record.cycles }).catch(() => null);
     await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl);
     await markProcessed();
     return json(200, { ok: true, status: "briefing_requested" });
+  }
+  // v3: renovação = nova campanha. Sem a campanha deste ciclo, o assinante recebe o formulário da campanha do mês
+  // (perfil do negócio já preenchido) e nada é gerado até ele responder.
+  if (record.campanha?.cycle !== record.cycles) {
+    const token = rand();
+    await putToken(kv, token, { k: "brief", sub: key }, 60);
+    await sendEmail(env, email, `Conteúdo Pronto: defina a campanha do mês ${record.cycles}`,
+      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSua assinatura foi renovada. Para a ZEVANORY preparar a ${SERVICO} deste mês, informe no formulário o objetivo comercial, a oferta, a condição comercial e o período (o perfil do seu negócio já vem preenchido):\n\n${ORIGIN}/conteudo-pronto/briefing?t=${token}\n\nA campanha chega neste e-mail depois que você enviar, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
+    await emitActivity(env, { type: "email_sent", channel: "email", status: "campaign_requested", ref: "cp-camp:" + subscriber + ":" + record.cycles }).catch(() => null);
+    await markProcessed();
+    return json(200, { ok: true, status: "campaign_requested" });
   }
   // G1: entra na fila ANTES do waitUntil; se o runtime cortar a geração (até 30 s após a resposta), o cron entrega.
   await enqueuePending(kv, key);
@@ -183,6 +202,29 @@ const FIELDS = [
   ["tom", "Tom de voz (ex.: próximo e divertido, sério e técnico)", 120, true],
   ["contato", "Canais que seus clientes autorizaram para falar com você (ex.: e-mail, Instagram Direct, Telegram, chat do site)", 160, false],
 ];
+// Campanha do mês: os cinco campos do contrato, todos obrigatórios. Datas AAAA-MM-DD; período de N a M dias.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+// Promessa de resultado em qualquer ordem ("venda garantida", "garantia de resultado", "lucro certo").
+const CAMPANHA_PROMESSA = /\b(vendas?|resultados?|lucros?|retornos?|clientes?)\s+(garantid\w*|certos?|certas?)\b|\bgarant\w*\s+(de\s+)?(vendas?|resultados?|lucros?|retornos?|clientes?)\b/i;
+const dayMs = 86400000;
+export function validateCampaign(raw = {}) {
+  const c = {};
+  for (const f of CAMPANHA_CAMPOS) {
+    const v = String(raw?.[f.id] ?? "").replace(/\s+/g, " ").trim();
+    if (f.tipo === "date") {
+      if (!ISO_DATE.test(v) || Number.isNaN(Date.parse(v + "T00:00:00Z"))) return { ok: false, error: `Informe a data: ${f.rotulo}` };
+    } else {
+      if (v.length < 2) return { ok: false, error: `Faltou preencher: ${f.rotulo}` };
+      if (v.length > f.max) return { ok: false, error: `Texto longo demais em: ${f.rotulo} (máximo ${f.max} caracteres)` };
+    }
+    c[f.id] = v;
+  }
+  const dias = Math.round((Date.parse(c.periodo_fim + "T00:00:00Z") - Date.parse(c.periodo_inicio + "T00:00:00Z")) / dayMs) + 1;
+  if (!(dias >= CAMPANHA.periodo_dias_min && dias <= CAMPANHA.periodo_dias_max)) return { ok: false, error: `O período da campanha precisa ter de ${CAMPANHA.periodo_dias_min} a ${CAMPANHA.periodo_dias_max} dias (informado: ${dias}).` };
+  const texto = [c.objetivo_comercial, c.oferta, c.condicao_comercial].join(" ");
+  if (FORBIDDEN.test(texto) || CAMPANHA_PROMESSA.test(texto) || contaminated(texto)) return { ok: false, error: "A campanha não pode prometer resultado garantido nem citar canal de contato não autorizado." };
+  return { ok: true, campanha: { ...c, dias } };
+}
 function page(title, inner, status = 200) {
   return new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)} · ZEVANORY</title><style>body{margin:0;background:#05070b;color:#f5f7fb;font:16px/1.55 system-ui,Arial,sans-serif}main{max-width:720px;margin:0 auto;padding:24px 16px}label{display:block;margin:16px 0 6px;font-weight:600}input,textarea{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #2a3344;background:#0b0f16;color:#f5f7fb;font:inherit}button{margin-top:20px;padding:14px 20px;border:0;border-radius:12px;background:#dbe6ff;color:#05070b;font-weight:700;font-size:16px;cursor:pointer}article{background:#0b0f16;border:1px solid #1d2533;border-radius:12px;padding:14px;margin:12px 0}h1{font-size:28px;line-height:1.2}small{color:#9aa6bd}</style></head><body><main>${inner}</main></body></html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "referrer-policy": "no-referrer", "x-frame-options": "DENY" } });
 }
@@ -210,8 +252,10 @@ export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
   if (!found?.record || found.record.status !== "active") return page("Link inválido", "<h1>Link inválido ou expirado.</h1><p>Fale com suporte@zevanory.api.br.</p>", 404);
   if (request.method === "GET") {
     const b = found.record.briefing || {};
+    const cp = found.record.campanha?.cycle === found.record.cycles ? found.record.campanha : {};
+    const campInputs = CAMPANHA_CAMPOS.map((f) => `<label for="${f.id}">${esc(f.rotulo)}</label>${f.tipo === "date" ? `<input type="date" id="${f.id}" name="${f.id}" value="${esc(cp[f.id] || "")}" required>` : `<input id="${f.id}" name="${f.id}" maxlength="${f.max}" value="${esc(cp[f.id] || "")}" required>`}`).join("");
     const inputs = FIELDS.map(([id, label, max, req]) => `<label for="${id}">${esc(label)}${req ? "" : " <small>(opcional)</small>"}</label>${max > 120 ? `<textarea id="${id}" name="${id}" maxlength="${max}" rows="3"${req ? " required" : ""}>${esc(b[id] || "")}</textarea>` : `<input id="${id}" name="${id}" maxlength="${max}" value="${esc(b[id] || "")}"${req ? " required" : ""}>`}`).join("");
-    return page("Briefing", `<h1>Conteúdo Pronto · seu briefing</h1><p>Responda com o jeito que você fala com seus clientes. Com isso a ZEVANORY prepara seu pacote do mês e envia por e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada.</p><form method="post">${inputs}<button type="submit">Enviar e gerar meu pacote</button></form>`);
+    return page("Briefing", `<h1>Conteúdo Pronto · campanha do mês ${esc(found.record.cycles)}</h1><p>Cada mês é uma ${esc(SERVICO)} da oferta que você escolher. Informe a campanha e o perfil do negócio, com o jeito que você fala com seus clientes. Com isso a ZEVANORY prepara a campanha e envia por e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada.</p><form method="post"><h2>Campanha do mês</h2>${campInputs}<p><small>A condição comercial é sua: só informe o que você vai cumprir. Os textos não prometem resultado.</small></p><h2>Perfil do negócio</h2>${inputs}<button type="submit">Enviar e gerar minha campanha</button></form>`);
   }
   if (request.method !== "POST") return page("Método inválido", "<h1>Método inválido.</h1>", 405);
   let form; try { form = await request.formData(); } catch { form = new FormData(); }
@@ -221,11 +265,13 @@ export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
     if (req && v.length < 2) return page("Faltou um campo", `<h1>Faltou preencher: ${esc(FIELDS.find((f) => f[0] === id)[1])}</h1><p><a href="?t=${esc(token)}" style="color:#dbe6ff">Voltar</a></p>`, 400);
     briefing[id] = v;
   }
+  const camp = validateCampaign(Object.fromEntries(CAMPANHA_CAMPOS.map((f) => [f.id, form.get(f.id)])));
+  if (!camp.ok) return page("Campanha incompleta", `<h1>${esc(camp.error)}</h1><p>Sem a campanha do mês (objetivo comercial, oferta, condição comercial e período) a ZEVANORY não gera o pacote.</p><p><a href="?t=${esc(token)}" style="color:#dbe6ff">Voltar</a></p>`, 400);
   await enqueuePending(kv, found.key); // G1: intenção na fila antes de gravar o briefing e de responder
-  await kv.put(found.key, JSON.stringify({ ...found.record, briefing, briefedAt: new Date().toISOString() }), { expirationTtl: 400 * DAY });
+  await kv.put(found.key, JSON.stringify({ ...found.record, briefing, briefedAt: new Date().toISOString(), campanha: { ...camp.campanha, cycle: found.record.cycles, savedAt: new Date().toISOString() } }), { expirationTtl: 400 * DAY });
   const job = generateAndDeliver(env, found.key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
-  return page("Recebido", "<h1>Pronto! Seu pacote está sendo gerado.</h1><p>Ele chega no seu e-mail em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Confira também a caixa de spam ou promoções.</p>");
+  return page("Recebido", "<h1>Pronto! Sua campanha do mês está sendo gerada.</h1><p>Ele chega no seu e-mail em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Confira também a caixa de spam ou promoções.</p>");
 }
 
 // ---------- Generation ----------
@@ -236,7 +282,10 @@ const HASHTAG = /^#[\p{L}\p{N}_]{2,40}$/u;
 export const LEGENDA_MIN = 200;
 export const IMAGEM_MIN = 8;
 function briefingText(b) { return FIELDS.filter(([id]) => b[id]).map(([id, label]) => `${label}: ${b[id]}`).join("\n"); }
-export function validatePosts(list, n) {
+const normTxt = (s) => String(s ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+const FASE_IDS = new Set(CAMPANHA.fases.map((f) => f.id));
+// Ancoragem (v3): com a campanha, cada post cita a oferta pelo mesmo nome e traz uma fase válida da campanha.
+export function validatePosts(list, n, campanha = null) {
   if (!Array.isArray(list) || list.length < n) return null;
   const out = [];
   for (const p of list.slice(0, n)) {
@@ -248,14 +297,19 @@ export function validatePosts(list, n) {
     if (hashtags.length < 1 || imagem.length < IMAGEM_MIN) return null;
     if (out.some((q) => q.tema.toLowerCase() === tema.toLowerCase())) return null;
     if (contaminated([tema, legenda, cta, ...hashtags, imagem].join(" "))) return null;
-    out.push({ tema, legenda, cta, hashtags, imagem });
+    const fase = String(p?.fase || "").trim();
+    if (campanha) {
+      if (!normTxt(legenda + " " + cta).includes(normTxt(campanha.oferta))) return null;
+      if (!FASE_IDS.has(fase)) return null;
+    }
+    out.push(campanha ? { tema, legenda, cta, hashtags, imagem, fase } : { tema, legenda, cta, hashtags, imagem });
   }
   return out;
 }
 // Roteiros multicanal: exatamente os objetivos do contrato, na ordem; cada um com versão curta
 // (Direct, Telegram, chat do site) e versão de e-mail (assunto + corpo). O objetivo exibido vem do
 // contrato, nunca do modelo, para a saída não divergir da oferta.
-export function validateRoteiros(list) {
+export function validateRoteiros(list, campanha = null) {
   if (!Array.isArray(list) || list.length < N_ROTEIROS) return null;
   const out = [];
   for (const [i, obj] of ROTEIRO_OBJETIVOS.entries()) {
@@ -269,13 +323,22 @@ export function validateRoteiros(list) {
     if (assunto.length < 5 || assunto.length > 120 || corpo.length < 200 || corpo.length > 1600) return null;
     const all = [curta, assunto, corpo].join(" ");
     if (FORBIDDEN.test(all) || contaminated(all)) return null;
+    if (campanha) {
+      const oferta = normTxt(campanha.oferta);
+      if (!normTxt(curta).includes(oferta) || !normTxt(corpo).includes(oferta)) return null;
+      if (!normTxt(corpo).includes(normTxt(campanha.condicao_comercial))) return null;
+    }
     out.push({ objetivo_id: obj.id, objetivo: obj.titulo, curta, email: { assunto, corpo } });
   }
   return out;
 }
-export function roteirosPrompt(brief) {
+export function campaignText(c) {
+  return `CAMPANHA DO MÊS (${SERVICO}):\nObjetivo comercial: ${c.objetivo_comercial}\nOferta promovida: ${c.oferta}\nCondição comercial: ${c.condicao_comercial}\nPeríodo: de ${c.periodo_inicio} a ${c.periodo_fim}`;
+}
+export function roteirosPrompt(brief, campanha = null) {
   const objetivos = ROTEIRO_OBJETIVOS.map((o, i) => `${i + 1}) "${o.id}": ${o.regra}`).join("; ");
-  return `Briefing do negócio:\n${brief}\n\nCrie ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento para o negócio usar em canais que o cliente autorizou, como ${CANAIS_TEXTO}. O dono revisa antes de usar; nada é enviado automaticamente. Objetivos, nesta ordem: ${objetivos}. Cada roteiro tem uma versão curta (mensagem direta de 150 a 450 caracteres) e uma versão de e-mail (assunto curto e corpo de 400 a 1200 caracteres). Não cite aplicativos de mensagem que o cliente não autorizou, não proponha envio em massa e não invente nomes, preços ou prazos. JSON: {"roteiros":[{"objetivo_id":"${ROTEIRO_OBJETIVOS[0].id}","curta":"...","email":{"assunto":"...","corpo":"..."}}]}`;
+  const camp = campanha ? `${campaignText(campanha)}\n\nTodos os roteiros promovem esta campanha: cite a oferta exatamente como "${campanha.oferta}" na versão curta e no corpo do e-mail, e escreva a condição comercial exatamente como "${campanha.condicao_comercial}" no corpo do e-mail. Não invente outra condição, prazo ou preço.\n\n` : "";
+  return `Briefing do negócio:\n${brief}\n\n${camp}Crie ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento para o negócio usar em canais que o cliente autorizou, como ${CANAIS_TEXTO}. O dono revisa antes de usar; nada é enviado automaticamente. Objetivos, nesta ordem: ${objetivos}. Cada roteiro tem uma versão curta (mensagem direta de 150 a 450 caracteres) e uma versão de e-mail (assunto curto e corpo de 400 a 1200 caracteres). Não cite aplicativos de mensagem que o cliente não autorizou, não proponha envio em massa e não invente nomes, preços ou prazos. JSON: {"roteiros":[{"objetivo_id":"${ROTEIRO_OBJETIVOS[0].id}","curta":"...","email":{"assunto":"...","corpo":"..."}}]}`;
 }
 async function ask(ai, system, user, validate) {
   for (const model of MODELS) {
@@ -295,24 +358,40 @@ async function ask(ai, system, user, validate) {
   return null;
 }
 const SYSTEM = "Você é redator sênior de marketing para pequenos negócios brasileiros. Escreva em português do Brasil, no tom pedido, de forma concreta, sem promessas de resultado, sem preços inventados, sem emojis em excesso. Responda SOMENTE com JSON válido.";
-export async function generatePackage(env, briefing, cycle = 1) {
+const isoAdd = (iso, days) => new Date(Date.parse(iso + "T00:00:00Z") + days * dayMs).toISOString().slice(0, 10);
+// Calendário da campanha: 12 posts e 4 roteiros distribuídos nas datas do período informado (v3).
+export function campaignCalendar(campanha, posts, roteiros) {
+  const span = Math.round((Date.parse(campanha.periodo_fim + "T00:00:00Z") - Date.parse(campanha.periodo_inicio + "T00:00:00Z")) / dayMs);
+  const at = (f) => Math.round(f * span);
+  const cal = posts.map((p, i) => ({ dia: at(i / (posts.length - 1)) + 1, data: isoAdd(campanha.periodo_inicio, at(i / (posts.length - 1))), tipo: "post", tema: p.tema, fase: p.fase }));
+  [0.15, 0.4, 0.65, 0.9].forEach((f, i) => cal.push({ dia: at(f) + 1, data: isoAdd(campanha.periodo_inicio, at(f)), tipo: "roteiro", tema: roteiros[i].objetivo }));
+  return cal.sort((x, y) => x.dia - y.dia || (x.tipo === "post" ? -1 : 1));
+}
+// v3: o gerador RECUSA sem campanha válida (nenhuma chamada de IA). Posts e roteiros ancorados na campanha; as seis
+// fases precisam aparecer nos 12 posts.
+export async function generatePackage(env, briefing, cycle = 1, campanha = null) {
+  const v = validateCampaign(campanha || {});
+  if (!v.ok) return null;
+  const camp = v.campanha;
   const ai = env.AI;
   if (!ai?.run) return null;
   const brief = briefingText(briefing);
-  const postSpec = (from) => `Briefing do negócio:\n${brief}\n\nCrie 6 posts para redes sociais (mês ${cycle}, posts ${from} a ${from + 5}), variando entre: educativo, prova/bastidor, oferta, dúvida frequente, história de cliente (sem inventar nomes reais) e engajamento. JSON: {"posts":[{"tema":"...","legenda":"legenda completa de 400 a 900 caracteres","cta":"chamada para ação curta","hashtags":["#...",5 a 8],"imagem":"sugestão objetiva de foto ou arte"}]}`;
-  const a = await ask(ai, SYSTEM, postSpec(1), (j) => validatePosts(j.posts, 6));
+  const fases = CAMPANHA.fases.map((f) => `"${f.id}" (${f.titulo})`).join(", ");
+  const postSpec = (from) => `Briefing do negócio:\n${brief}\n\n${campaignText(camp)}\n\nCrie 6 posts para redes sociais da campanha (mês ${cycle}, posts ${from} a ${from + 5}). Todos promovem a oferta: cite-a exatamente como "${camp.oferta}" na legenda; use só a condição comercial informada; não invente nomes, preços nem prazos. Cada post tem uma fase da campanha, entre: ${fases}. JSON: {"posts":[{"fase":"anuncio","tema":"...","legenda":"legenda completa de 400 a 900 caracteres","cta":"chamada para ação curta","hashtags":["#...",5 a 8],"imagem":"sugestão objetiva de foto ou arte"}]}`;
+  const a = await ask(ai, SYSTEM, postSpec(1), (j) => validatePosts(j.posts, 6, camp));
   if (!a) return null;
-  const b = await ask(ai, SYSTEM, postSpec(7) + `\nNão repita estes temas: ${a.map((p) => p.tema).join("; ")}.`, (j) => validatePosts(j.posts, 6));
+  const b = await ask(ai, SYSTEM, postSpec(7) + `\nNão repita estes temas: ${a.map((p) => p.tema).join("; ")}. Cubra as fases que faltarem entre: ${fases}.`, (j) => {
+    const out = validatePosts(j.posts, 6, camp);
+    return out && FASE_IDS.size === new Set([...a, ...out].map((p) => p.fase)).size ? out : null;
+  });
   if (!b) return null;
-  const m = await ask(ai, SYSTEM, roteirosPrompt(brief), (j) => validateRoteiros(j.roteiros));
+  const m = await ask(ai, SYSTEM, roteirosPrompt(brief, camp), (j) => validateRoteiros(j.roteiros, camp));
   if (!m) return null;
   const posts = [...a, ...b];
   if (posts.length !== N_POSTS) return null;
-  const days = [1, 3, 6, 8, 10, 13, 15, 17, 20, 22, 25, 28];
-  const calendar = posts.map((p, i) => ({ dia: days[i], tipo: "post", tema: p.tema }));
-  [5, 12, 19, 26].forEach((dia, i) => calendar.push({ dia, tipo: "roteiro", tema: m[i].objetivo }));
-  calendar.sort((x, y) => x.dia - y.dia);
-  return { schema: PACKAGE_SCHEMA, content_schema_version: CONTENT_SCHEMA_VERSION, cycle, generatedAt: new Date().toISOString(), posts, roteiros: m, calendario: calendar };
+  const { dias: _d, ...campanhaGravada } = camp;
+  return { schema: PACKAGE_SCHEMA, content_schema_version: CONTENT_SCHEMA_VERSION, servico: SERVICO, cycle, generatedAt: new Date().toISOString(),
+    campanha: campanhaGravada, posts, roteiros: m, calendario: campaignCalendar(camp, posts, m) };
 }
 // Pacotes antigos (zpc.cp.package.v1, campo "mensagens") continuam legíveis no link privado, com
 // rótulo neutro: nenhum canal é prometido na reexibição.
@@ -325,7 +404,8 @@ export function displayedText(pkg) {
   const posts = (Array.isArray(pkg?.posts) ? pkg.posts : []).flatMap((p) => [p?.tema, p?.legenda, p?.cta, ...(Array.isArray(p?.hashtags) ? p.hashtags : [p?.hashtags]), p?.imagem]);
   const rots = roteirosOf(pkg).flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo]);
   const cal = (Array.isArray(pkg?.calendario) ? pkg.calendario : []).map((c) => c?.tema);
-  return [...posts, ...rots, ...cal].filter((x) => x != null).map(String).join("\n");
+  const camp = pkg?.campanha ? [pkg.campanha.objetivo_comercial, pkg.campanha.oferta, pkg.campanha.condicao_comercial] : [];
+  return [...camp, ...posts, ...rots, ...cal].filter((x) => x != null).map(String).join("\n");
 }
 // Decisão (AVAL Sol #898): pacote gravado que cita canal banido ou o número banido NÃO é saneado nem exibido —
 // é bloqueado na leitura; os bytes gravados ficam intactos e o assinante ativo pode gerar, sem custo, uma versão
@@ -338,8 +418,13 @@ export const ROTEIROS_TITULO = `${N_ROTEIROS} ROTEIROS MULTICANAL DE VENDA E ACO
 export const ROTEIROS_AVISO = `Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}. Use a reativação só com relacionamento ativo ou consentimento registrado. Você revisa antes de usar; não há disparo automático.`;
 export function packageText(pkg, name = "") {
   if (packageBlocked(pkg)) return `Seu pacote Conteúdo Pronto — mês ${pkg?.cycle ?? ""}\n\n${BLOQUEIO_TEXTO}\nPeça a versão nova pelo link privado do pacote ou em suporte@zevanory.api.br.`;
-  const lines = [`Seu pacote Conteúdo Pronto — mês ${pkg.cycle}${name ? ` (${name})` : ""}`, "", "CALENDÁRIO DE 30 DIAS"];
-  for (const c of pkg.calendario) lines.push(`Dia ${String(c.dia).padStart(2, "0")} · ${calLabel(c.tipo)} · ${c.tema}`);
+  const camp = pkg.campanha;
+  const br = (iso) => iso ? iso.split("-").reverse().join("/") : "";
+  const lines = [`Seu pacote Conteúdo Pronto — mês ${pkg.cycle}${name ? ` (${name})` : ""}`, ""];
+  if (camp) lines.push(`CAMPANHA DO MÊS (${SERVICO})`, `Objetivo comercial: ${camp.objetivo_comercial}`, `Oferta promovida: ${camp.oferta}`, `Condição comercial: ${camp.condicao_comercial}`, `Período: ${br(camp.periodo_inicio)} a ${br(camp.periodo_fim)}`, "");
+  lines.push(camp ? "CALENDÁRIO DA CAMPANHA" : "CALENDÁRIO DE 30 DIAS");
+  const faseTitulo = Object.fromEntries(CAMPANHA.fases.map((f) => [f.id, f.titulo]));
+  for (const c of pkg.calendario) lines.push(c.data ? `${br(c.data)} · ${calLabel(c.tipo)}${c.fase ? " · " + (faseTitulo[c.fase] || c.fase) : ""} · ${c.tema}` : `Dia ${String(c.dia).padStart(2, "0")} · ${calLabel(c.tipo)} · ${c.tema}`);
   lines.push("", `${pkg.posts.length} POSTS`);
   pkg.posts.forEach((p, i) => lines.push("", `POST ${i + 1} — ${p.tema}`, p.legenda, `Chamada: ${p.cta}`, p.hashtags.join(" "), `Imagem sugerida: ${p.imagem || "foto real do seu negócio"}`));
   lines.push("", ROTEIROS_TITULO, ROTEIROS_AVISO);
@@ -416,11 +501,46 @@ async function releaseLease(kv, key) { // a tentativa terminou (com falha): o le
   const cur = await readJson(kv, key, null);
   if (cur?.genLeaseUntil) { const { genLeaseUntil: _l, ...rest } = cur; await kv.put(key, JSON.stringify(rest), { expirationTtl: 400 * DAY }); }
 }
+const DELIVERY_OUTBOX = "zpc:cp:delivery-outbox";
+async function deliveryOutboxAdd(kv, key, cycle) {
+  const list = await readJson(kv, DELIVERY_OUTBOX, []);
+  const id = key + "#" + cycle;
+  if (!list.includes(id)) await kv.put(DELIVERY_OUTBOX, JSON.stringify([...list, id].slice(-500)));
+}
+// Confirmação de entrega (v3): consulta o evento do e-mail no provedor pelo id gravado. delivered/opened/clicked =>
+// confirmado; bounced/failed/suppressed/canceled => falha registrada no recibo + alerta ao proprietário.
+export async function confirmPackageDeliveries(env, fetchImpl = fetch, { limit = 10, now = Date.now() } = {}) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const list = await readJson(kv, DELIVERY_OUTBOX, []);
+  let confirmed = 0, failed = 0;
+  const keep = [];
+  for (const id of list) {
+    if (confirmed + failed >= limit) { keep.push(id); continue; }
+    const [key, cycle] = id.split("#");
+    const rec = await readJson(kv, key, null);
+    const rcpt = rec?.deliveries?.[cycle];
+    if (!rcpt?.email_id || rcpt.status === "confirmed" || rcpt.status === "failed") continue;
+    const ev = await resendLastEvent(env, rcpt.email_id, fetchImpl);
+    const entregue = Boolean(ev) && DELIVERED_EVENTS.has(ev);
+    if (entregue) {
+      await kv.put(key, JSON.stringify({ ...rec, deliveries: { ...rec.deliveries, [cycle]: { ...rcpt, status: "confirmed", confirmedAt: new Date(now).toISOString(), provider_event: ev } } }), { expirationTtl: 400 * DAY });
+      confirmed++;
+    } else if (ev && DEAD_EVENTS.has(ev)) {
+      await kv.put(key, JSON.stringify({ ...rec, deliveries: { ...rec.deliveries, [cycle]: { ...rcpt, status: "failed", failedAt: new Date(now).toISOString(), provider_event: ev } } }), { expirationTtl: 400 * DAY });
+      await ownerAlert(env, "campanha do Conteúdo Pronto não entregue", `Protocolo ${rcpt.protocolo}: o provedor de e-mail registrou ${ev}. Contatar o assinante e reenviar manualmente.`, fetchImpl).catch(() => null);
+      failed++;
+    } else keep.push(id);
+  }
+  if (JSON.stringify(keep) !== JSON.stringify(list)) await kv.put(DELIVERY_OUTBOX, JSON.stringify(keep));
+  return { confirmed, failed, waiting: keep.length };
+}
 export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Date.now() } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const record = await readJson(kv, key, null);
   if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_ready" };
   if (record.deliveredCycle === record.cycles) return { ok: true, reason: "already_delivered" };
+  // v3: sem a campanha DESTE ciclo não há geração (o assinante recebeu o formulário da campanha do mês).
+  if (record.campanha?.cycle !== record.cycles || !validateCampaign(record.campanha).ok) return { ok: false, reason: "campaign_required" };
   if (record.genLeaseUntil && Date.parse(record.genLeaseUntil) > now) return { ok: false, reason: "in_progress" };
   await kv.put(key, JSON.stringify({ ...record, genLeaseUntil: new Date(now + GEN_LEASE_MS).toISOString() }), { expirationTtl: 400 * DAY });
   // Chave com a versão do schema: uma regeneração nunca sobrescreve um pacote antigo gravado.
@@ -429,7 +549,7 @@ export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Da
   // conteúdo que o assinante ainda vai receber.
   let pkg = await readJson(kv, pkgKey, null);
   if (!pkg || pkg.cycle !== record.cycles || packageBlocked(pkg)) {
-    pkg = await generatePackage(env, record.briefing, record.cycles);
+    pkg = await generatePackage(env, record.briefing, record.cycles, record.campanha);
     if (!pkg) {
       await enqueuePending(kv, key, now);
       await notePendingFailure(kv, key, "generation_failed", now);
@@ -455,7 +575,12 @@ export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Da
     return { ok: false, reason: "email_failed_retry_scheduled" };
   }
   const { genLeaseUntil: _lease, pendingDelivery: _pd, ...base } = record;
-  await kv.put(key, JSON.stringify({ ...base, deliveredCycle: record.cycles, deliveredAt: new Date().toISOString(), lastPackage: pkgKey }), { expirationTtl: 400 * DAY });
+  // Entrega verificável (v3): protocolo, SHA-256 do pacote, id do e-mail no provedor; a confirmação de entrega vem do
+  // provedor pelo mesmo id (confirmPackageDeliveries, no cron).
+  const pkgSha = await sha(JSON.stringify(pkg));
+  const receipt = { pkgKey, sha256: pkgSha, protocolo: "CP-" + pkgSha.slice(0, 10).toUpperCase(), email_id: typeof sent === "string" ? sent : null, sentAt: new Date(now).toISOString(), status: typeof sent === "string" ? "sent" : "sent_without_id" };
+  await kv.put(key, JSON.stringify({ ...base, deliveredCycle: record.cycles, deliveredAt: new Date().toISOString(), lastPackage: pkgKey, deliveries: { ...(record.deliveries || {}), [record.cycles]: receipt } }), { expirationTtl: 400 * DAY });
+  if (receipt.email_id) await deliveryOutboxAdd(kv, key, record.cycles);
   await leavePending(kv, key, "delivered", "cycle " + record.cycles, now);
   await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_delivered", ref: "cp-pkg:" + key.slice(-16) + ":" + record.cycles }).catch(() => null);
   return { ok: true, reason: "delivered" };
@@ -469,7 +594,7 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
   const failed = [], results = [];
   for (const key of pending) {
     const rec = await readJson(kv, key, null);
-    const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : !rec.briefing ? "no_briefing" : rec.deliveredCycle === rec.cycles ? "already_delivered" : "";
+    const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : !rec.briefing ? "no_briefing" : rec.deliveredCycle === rec.cycles ? "already_delivered" : rec.campanha?.cycle !== rec.cycles ? "campaign_required" : "";
     if (why) { await leavePending(kv, key, "dropped", why, now); continue; } // registrado, nunca em silêncio
     const meta = (await readJson(kv, PENDING_META, {}))[key];
     if (Number(meta?.attempts || 0) >= PENDING_MAX_ATTEMPTS) { await deadLetter(env, kv, key, meta, fetchImpl, now); continue; }
@@ -491,9 +616,10 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
       await ownerAlert(env, "fila do Conteúdo Pronto parada", `${next.length} pacote(s) pendente(s); o mais antigo espera há ${Math.round((now - oldest) / 3600000)} h. As tentativas automáticas continuam (máximo ${PENDING_MAX_ATTEMPTS} por assinante).`, fetchImpl).catch(() => null);
     }
   }
+  const deliveryCheck = await confirmPackageDeliveries(env, fetchImpl, { now }).catch(() => ({ confirmed: 0, failed: 0 }));
   // Mesmo cron: candidatos de regeneração (nova tentativa com a mesma chave; confirmação de entrega pelo email_id).
   const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
-  return { ok: true, tried: results.length + Number(regen.tried || 0), delivered: results.filter((r) => r.ok).length, regen };
+  return { ok: true, tried: results.length + Number(regen.tried || 0), delivered: results.filter((r) => r.ok).length, regen, deliveryCheck };
 }
 // ---------- Regeneração de pacote bloqueado (critério de aceite Sol #898) ----------
 // Estados do PACOTE (separados dos estados de ENTREGA):
@@ -674,7 +800,8 @@ export async function regenerateBlockedPackage(env, key, fetchImpl = fetch, { no
     const candidate_key = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION + ":c" + h.slice(0, 12);
     let stored = await kv.get(candidate_key);
     if (!stored) {
-      const pkg = await generatePackage(env, record.briefing, record.cycles);
+      if (record.campanha?.cycle !== record.cycles) return { ok: false, reason: "campaign_required" };
+      const pkg = await generatePackage(env, record.briefing, record.cycles, record.campanha);
       if (!pkg || packageBlocked(pkg)) {
         await ownerAlert(env, "regeneração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido para substituir um pacote antigo bloqueado; o assinante pode tentar de novo.", fetchImpl);
         return { ok: false, reason: "generation_failed" };
@@ -747,6 +874,10 @@ export async function handlePackageView(request, env, ctx, fetchImpl = fetch) {
   }
   const posts = pkg.posts.map((p, i) => `<article><h2>Post ${i + 1} — ${esc(p.tema)}</h2><p style="white-space:pre-wrap">${esc(p.legenda)}</p><p><b>Chamada:</b> ${esc(p.cta)}</p><p>${esc(p.hashtags.join(" "))}</p><small>Imagem sugerida: ${esc(p.imagem)}</small></article>`).join("");
   const rots = roteirosOf(pkg).map((r, i) => `<article><h2>Roteiro ${i + 1} — ${esc(r.objetivo)}</h2><h3>Versão curta</h3><p style="white-space:pre-wrap">${esc(r.curta)}</p>${r.email ? `<h3>Versão de e-mail</h3><p><b>Assunto:</b> ${esc(r.email.assunto)}</p><p style="white-space:pre-wrap">${esc(r.email.corpo)}</p>` : ""}</article>`).join("");
-  const cal = pkg.calendario.map((c) => `<li>Dia ${c.dia} · ${calLabel(c.tipo)} · ${esc(c.tema)}</li>`).join("");
-  return page("Seu pacote", `<h1>Conteúdo Pronto · mês ${pkg.cycle}</h1><h2>Calendário</h2><ul>${cal}</ul><h2>${pkg.posts.length} posts</h2>${posts}<h2>${esc(ROTEIROS_TITULO.charAt(0) + ROTEIROS_TITULO.slice(1).toLowerCase())}</h2><p>${esc(ROTEIROS_AVISO)}</p>${rots}`);
+  const br = (iso) => iso ? iso.split("-").reverse().join("/") : "";
+  const cal = pkg.calendario.map((c) => `<li>${c.data ? esc(br(c.data)) : "Dia " + c.dia} · ${calLabel(c.tipo)}${c.fase ? " · " + esc((FASES.find((f) => f.id === c.fase) || {}).titulo || c.fase) : ""} · ${esc(c.tema)}</li>`).join("");
+  const camp = pkg.campanha ? `<h2>Campanha do mês</h2><ul><li><b>Objetivo comercial:</b> ${esc(pkg.campanha.objetivo_comercial)}</li><li><b>Oferta promovida:</b> ${esc(pkg.campanha.oferta)}</li><li><b>Condição comercial:</b> ${esc(pkg.campanha.condicao_comercial)}</li><li><b>Período:</b> ${esc(br(pkg.campanha.periodo_inicio))} a ${esc(br(pkg.campanha.periodo_fim))}</li></ul>` : "";
+  const rc = found.record.deliveries?.[pkg.cycle];
+  const receipt = rc ? `<p><small>Recibo de entrega: protocolo ${esc(rc.protocolo)} · enviado em ${esc(rc.sentAt)} · ${rc.status === "confirmed" ? "entrega confirmada pelo provedor de e-mail em " + esc(rc.confirmedAt) : rc.status === "failed" ? "o provedor de e-mail não entregou; a equipe foi avisada" : "aguardando confirmação do provedor de e-mail"} · SHA-256 ${esc(rc.sha256)}</small></p>` : "";
+  return page("Seu pacote", `<h1>Conteúdo Pronto · mês ${pkg.cycle}</h1>${receipt}${camp}<h2>Calendário</h2><ul>${cal}</ul><h2>${pkg.posts.length} posts</h2>${posts}<h2>${esc(ROTEIROS_TITULO.charAt(0) + ROTEIROS_TITULO.slice(1).toLowerCase())}</h2><p>${esc(ROTEIROS_AVISO)}</p>${rots}`);
 }
