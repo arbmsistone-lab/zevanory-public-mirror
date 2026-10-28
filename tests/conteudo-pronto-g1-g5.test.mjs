@@ -238,3 +238,183 @@ test("[no-silent] em todos os cenários, cada ciclo pago termina entregue, pende
     if (dead[key]) assert.ok(f.sent.some((m) => /sem entrega/.test(m.subject)), `[no-silent] ${mode}/${status}: falha alertada`);
   }
 });
+
+// ---------- Auditoria independente do #953 (H1, H2, M1-M4 e mutantes sobreviventes) ----------
+// KV com o limite documentado do Workers KV: 1 escrita por segundo na MESMA chave (429 acima disso), como a sonda P4.
+function rateLimited(kv, { persistent = null, recent = false } = {}) {
+  const last = new Map(), put = kv.put.bind(kv);
+  if (recent) for (const k of kv.data.keys()) last.set(k, Date.now()); // como se cada chave tivesse acabado de ser gravada
+  kv.put = async (k, v, o) => {
+    const n = Date.now();
+    if ((persistent && persistent.test(k)) || n - (last.get(k) || 0) < 1000) throw new Error("KV PUT failed: 429 Too Many Requests");
+    last.set(k, n);
+    return put(k, v, o);
+  };
+  return kv;
+}
+const subKey = (kv) => [...kv.data.keys()].find((k) => k.startsWith("zpc:cp:sub:"));
+const alertsOf = (kv) => JSON.parse(kv.data.get("zpc:cp:alerts") || "[]");
+
+test("[A-kv429] KV com 1 escrita/s por chave: a entrega conclui uma vez, sem reenvio a cada cron", async () => {
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  const t = await subscribe(e, f, "SUB-K", "k@example.invalid");
+  f.status = 500; await brief(e, f, t); f.status = 200;
+  rateLimited(kv, { recent: true });
+  const out = await CS.retryPendingPackages(e, f, 2, { now: Date.now() + 3 * 3600e3 });
+  assert.equal(out.delivered, 1, "[A-kv429] 429 na chave do assinante é repetido, a entrega conclui");
+  assert.equal(subRecord(kv).deliveredCycle, 1, "[A-kv429] ciclo gravado");
+  for (let i = 0; i < 3; i++) await CS.retryPendingPackages(e, f, 2, { now: Date.now() + (4 + i) * 3600e3 });
+  assert.equal(deliveries(f, "k@example.invalid").length, 2, "[A-kv429] 1 tentativa com 500 + 1 envio aceito; nenhum reenvio depois");
+});
+
+test("[A-exception] exceção dentro da entrega: o cron não aborta, a tentativa conta, fica no log, alerta gravado e o e-mail não se repete", async () => {
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  const t1 = await subscribe(e, f, "SUB-X1", "x1@example.invalid");
+  const t2 = await subscribe(e, f, "SUB-X2", "x2@example.invalid");
+  f.status = 500; await brief(e, f, t1); await brief(e, f, t2); f.status = 200;
+  const k1 = JSON.parse(kv.data.get("zpc:cp:pending"))[0];
+  rateLimited(kv, { persistent: new RegExp("^" + k1 + "$") }); // a chave do 1º assinante recusa toda escrita (429 persistente)
+  const out = await CS.retryPendingPackages(e, f, 2, { now: Date.now() + 3600e3 });
+  assert.equal(out.delivered, 1, "[A-exception] o segundo assinante é entregue no mesmo cron");
+  const meta = JSON.parse(kv.data.get("zpc:cp:pending-meta"));
+  assert.equal(meta[k1].attempts, 2, "[A-exception] exceção conta como tentativa (1ª falha de envio + exceção)");
+  assert.match(meta[k1].lastReason, /^exception:/, "[A-exception] motivo registrado");
+  assert.ok(JSON.parse(kv.data.get("zpc:cp:pending-log")).some((x) => x.event === "exception"), "[A-exception] log");
+  assert.ok(alertsOf(kv).some((a) => a.kind === "erro_entrega"), "[A-exception] alerta gravado");
+  const sentBefore = deliveries(f, "x1@example.invalid").length;
+  kv.put = MapKV.prototype.put.bind(kv); // KV volta ao normal
+  await new Promise((r) => setTimeout(r, 1100));
+  await CS.retryPendingPackages(e, f, 2, { now: Date.now() + 2 * 3600e3 });
+  assert.equal(deliveries(f, "x1@example.invalid").length, sentBefore, "[A-exception] envio já aceito não é repetido");
+  assert.equal(JSON.parse(kv.data.get(k1)).deliveredCycle, 1, "[A-exception] registro concluído sem novo envio");
+  assert.deepEqual(JSON.parse(kv.data.get("zpc:cp:pending")), [], "[A-exception] fila vazia");
+});
+
+test("[A-welcome] e-mail de boas-vindas que falha: não marca processado, fica na fila, alerta gravado, cron reenvia o mesmo link", async () => {
+  const f = resend({ status: 500 }), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  const r = await (await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-W", "SUB-W", "w@example.invalid"), e, null, f)).json();
+  assert.equal(r.status, "briefing_email_pending", "[A-welcome] status explícito");
+  const outbox = JSON.parse(kv.data.get("zpc:cp:welcome-outbox"));
+  assert.equal(Object.keys(outbox).length, 1, "[A-welcome] na fila de boas-vindas");
+  assert.ok(alertsOf(kv).some((a) => a.kind === "boas_vindas_falhou" && a.emailed === false), "[A-welcome] alerta gravado mesmo com o Resend fora");
+  const again = await (await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-W", "SUB-W", "w@example.invalid"), e, null, f)).json();
+  assert.notEqual(again.duplicate, true, "[A-welcome] reenvio da Hotmart não é tratado como duplicado");
+  f.status = 200;
+  const out = await CS.retryPendingPackages(e, f);
+  assert.equal(out.welcome.sent, 1, "[A-welcome] cron envia");
+  const mails = f.sent.filter((m) => m.to[0] === "w@example.invalid");
+  assert.ok(mails.length >= 2 && new Set(mails.map((m) => m.text)).size === 1 && new Set(mails.map((m) => m.idem)).size === 1, "[A-welcome] mesmo link e mesma Idempotency-Key");
+  assert.deepEqual(JSON.parse(kv.data.get("zpc:cp:welcome-outbox")), {}, "[A-welcome] sai da fila");
+  const third = await (await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-W", "SUB-W", "w@example.invalid"), e, null, f)).json();
+  assert.equal(third.duplicate, true, "[A-welcome] processado só depois do envio");
+  const t = tokenOf(mails[0].text, "briefing");
+  assert.equal((await brief(e, f, t)).status, 200, "[A-welcome] o link funciona");
+});
+
+test("[A-welcome-dead] boas-vindas que nunca saem: limite, fila de falhas com alerta e reenvio pelo operador", async () => {
+  const f = resend({ status: 500 }), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-WD", "SUB-WD", "wd@example.invalid"), e, null, f);
+  for (let i = 0; i < CS.PENDING_MAX_ATTEMPTS + 1; i++) await CS.retryPendingPackages(e, f);
+  const dead = JSON.parse(kv.data.get("zpc:cp:pending-dead"));
+  const key = subKey(kv);
+  assert.equal(dead[key]?.kind, "welcome", "[A-welcome-dead] na fila de falhas");
+  assert.ok(alertsOf(kv).some((a) => a.kind === "sem_entrega_welcome"), "[A-welcome-dead] alerta");
+  f.status = 200;
+  assert.equal((await CS.requeueDeadPackage(e, key, { operator: "renan", reason: "Resend voltou, reenvio manual" })).ok, true);
+  const out = await CS.retryPendingPackages(e, f);
+  assert.equal(out.welcome.sent, 1, "[A-welcome-dead] reenvio do operador entrega");
+});
+
+test("[A-operator] rota de operador: status sem dados pessoais; reenvio exige operador e motivo", async () => {
+  const f = resend(), e = env(ai({ mode: "fail" })), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await brief(e, f, await subscribe(e, f, "SUB-O", "o@example.invalid"));
+  for (let i = 0; i < CS.PENDING_MAX_ATTEMPTS + 1; i++) await CS.retryPendingPackages(e, f);
+  const st = await CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/status"), e);
+  const body = await st.json();
+  assert.equal(st.status, 200);
+  assert.equal(body.dead.length, 1, "[A-operator] fila de falhas visível");
+  assert.ok(body.alerts.some((a) => a.kind === "sem_entrega_package"), "[A-operator] alertas visíveis");
+  assert.doesNotMatch(JSON.stringify(body), /@example|Assinante/, "[A-operator] sem e-mail nem nome");
+  const sub = body.dead[0].sub;
+  const req = (b) => CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/requeue", { method: "POST", body: JSON.stringify(b) }), e);
+  assert.equal((await req({ sub, operator: "renan", reason: "" })).status, 400, "[A-operator] motivo vazio recusado");
+  assert.equal((await CS.requeueDeadPackage(e, subKey(kv), { operator: "renan", reason: "" })).ok, false, "[A-operator] requeue sem motivo recusado");
+  assert.equal((await req({ sub, operator: "", reason: "motivo suficiente" })).status, 400, "[A-operator] sem operador recusado");
+  assert.equal((await req({ sub, operator: "renan", reason: "IA voltou, reenvio manual" })).status, 200, "[A-operator] reenvio registrado");
+  assert.equal((await req({ sub, operator: "renan", reason: "IA voltou, reenvio manual" })).status, 400, "[A-operator] não reabre duas vezes");
+  e.AI = ai();
+  assert.equal((await CS.retryPendingPackages(e, f)).delivered, 1, "[A-operator] entregue depois do reenvio");
+  // A rota está ligada ao Worker de produção atrás do token de operador.
+  const compat = (await import("node:fs")).readFileSync(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url), "utf8");
+  const at = compat.indexOf('url.pathname.startsWith("/api/admin/conteudo-pronto/")');
+  assert.ok(at > 0 && /verifyOperatorToken[\s\S]{0,300}handleContentOperator/.test(compat.slice(at, at + 700)), "[A-operator] rota autenticada no Worker");
+});
+
+test("[A-dead-history] um segundo dead-letter preserva o histórico de operações", async () => {
+  const f = resend(), e = env(ai({ mode: "fail" })), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await brief(e, f, await subscribe(e, f, "SUB-H2", "h2@example.invalid"));
+  for (let i = 0; i < CS.PENDING_MAX_ATTEMPTS + 1; i++) await CS.retryPendingPackages(e, f);
+  const key = subKey(kv);
+  await CS.requeueDeadPackage(e, key, { operator: "renan", reason: "primeira tentativa manual" });
+  for (let i = 0; i < CS.PENDING_MAX_ATTEMPTS + 1; i++) await CS.retryPendingPackages(e, f);
+  const d = JSON.parse(kv.data.get("zpc:cp:pending-dead"))[key];
+  assert.equal(d.status, "dead");
+  assert.equal(d.operations.length, 1, "[A-dead-history] operação anterior preservada");
+  assert.equal(d.history.length, 1, "[A-dead-history] dead-letter anterior registrado");
+});
+
+test("[A-lease] lease maior que o pior caso da geração; reenvio do formulário durante a geração não abre outra", async (t0) => {
+  assert.ok(CS.GEN_WORST_CASE_MS >= 3 * 2 * 2 * 60000, "[A-lease] pior caso: 3 chamadas x 2 modelos x 2 tentativas x 60 s");
+  assert.ok(CS.GEN_LEASE_MS > CS.GEN_WORST_CASE_MS, "[A-lease] lease cobre o pior caso");
+  const slow = ai({ mode: "hang" });
+  t0.after(() => slow.release());
+  const f = resend(), e = env(slow), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await brief(e, f, await subscribe(e, f, "SUB-LS", "ls@example.invalid"), { waitUntil: () => {} });
+  const calls = slow.calls.length;
+  const r = await CS.generateAndDeliver(e, subKey(kv), f, { now: Date.now() + 10 * 60000 }); // 10 min depois, ainda gerando
+  assert.equal(r.reason, "in_progress", "[A-lease] segunda geração recusada durante o pior caso");
+  assert.equal(slow.calls.length, calls, "[A-lease] nenhuma chamada de IA nova");
+});
+
+test("[A-low] mutantes sobreviventes: legenda curta, reprocessamento, fila cheia, falha de envio conta tentativa", async () => {
+  assert.equal(CS.validatePosts([{ ...post(1), legenda: "x".repeat(150) }], 1), null, "[A-low] legenda de 150 caracteres recusada");
+  // APPROVED e COMPLETE da mesma transação depois da entrega: um pacote só.
+  { const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+    await brief(e, f, await subscribe(e, f, "SUB-RP", "rp@example.invalid", "HP-RP"));
+    const before = subRecord(kv);
+    await CS.handleHotmartWebhook(hook("PURCHASE_COMPLETE", "HP-RP", "SUB-RP", "rp@example.invalid"), e, null, f);
+    await CS.retryPendingPackages(e, f);
+    assert.equal(deliveries(f).length, 1, "[A-low] reprocessar a mesma transação não reenvia o pacote");
+    const after = subRecord(kv);
+    for (const k of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt"]) assert.equal(after[k], before[k], "[A-low] reprocessamento preserva " + k);
+    assert.equal(JSON.parse(kv.data.get("zpc:cp:pending-log")).filter((x) => x.event === "enqueued").length, 1, "[A-low] reprocessamento não abre nova geração"); }
+  // Fila cheia: recusa o novo, nunca descarta o mais antigo.
+  { const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+    const t = await subscribe(e, f, "SUB-FULL", "full@example.invalid");
+    const fake = Array.from({ length: 200 }, (_, i) => "zpc:cp:sub:fake" + i);
+    kv.data.set("zpc:cp:pending", JSON.stringify(fake));
+    await brief(e, f, t).catch(() => null);
+    const q = JSON.parse(kv.data.get("zpc:cp:pending"));
+    assert.equal(q[0], fake[0], "[A-low] fila cheia mantém o mais antigo");
+    assert.equal(q.length, 200, "[A-low] fila cheia não cresce nem descarta"); }
+  // Falha de envio do pacote conta tentativa (Resend fora do ar chega à fila de falhas).
+  { const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+    const t = await subscribe(e, f, "SUB-EF", "ef@example.invalid");
+    f.status = 500; await brief(e, f, t);
+    const meta = JSON.parse(kv.data.get("zpc:cp:pending-meta"));
+    assert.equal(Object.values(meta)[0].attempts, 1, "[A-low] falha de envio conta tentativa");
+    assert.equal(Object.values(meta)[0].lastReason, "email_failed"); }
+});
+
+test("[A-text] textos ao assinante sem prazo não medido e com o limite de tentativas", async () => {
+  const f = resend(), e = env(ai());
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-TX", "SUB-TX", "tx@example.invalid"), e, null, f);
+  const welcome = f.sent.find((m) => m.to[0] === "tx@example.invalid").text;
+  const t = tokenOf(welcome, "briefing");
+  const form = await (await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t), e, null, f)).text();
+  const done = await (await brief(e, f, t)).text();
+  for (const [where, text] of [["boas-vindas", welcome], ["formulário", form], ["recebido", done]]) {
+    assert.doesNotMatch(text, /poucos minutos|em minutos/i, "[A-text] sem prazo não medido: " + where);
+    assert.match(text, new RegExp("até " + CS.PENDING_MAX_ATTEMPTS + " vezes"), "[A-text] limite de tentativas: " + where);
+  }
+});

@@ -47,6 +47,10 @@ export function bannedNumberIn(text) {
 export const contaminated = (text) => ROTEIRO_PROIBIDO.test(String(text ?? "")) || bannedNumberIn(text);
 
 export const SERVICE_PRODUCT_NAME = "ZEVANORY Conteúdo Pronto";
+// Validade do link de cada pacote (a página promete 120 dias: tests/conteudo-pronto-roteiros.test.mjs [p24-link]).
+export const PACKAGE_LINK_DAYS = 120;
+// Auditoria #953 M4: sem promessa de prazo não medida ("em poucos minutos"); o limite de tentativas é dito.
+export const RETRY_TEXT = "Se a geração ou o envio falhar, o sistema tenta de novo automaticamente a cada hora, até 12 vezes, e a equipe da ZEVANORY é avisada.";
 const SUB = "zpc:cp:sub:";        // subscriber record
 const TOKEN = "zpc:cp:token:";    // briefing/package access token -> subscriber key
 const TXN = "zpc:cp:txn:";        // processed transaction (idempotency)
@@ -61,6 +65,29 @@ const json = (status, body) => new Response(JSON.stringify(body), { status, head
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const b64 = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const rand = () => b64(crypto.getRandomValues(new Uint8Array(32)));
+// Auditoria #953 H1: o Workers KV aceita no máximo 1 escrita por segundo na MESMA chave e responde 429 acima disso; a
+// Cloudflare recomenda repetir com espera (https://developers.cloudflare.com/kv/api/write-key-value-pairs/). Todas as
+// gravações deste módulo passam por este invólucro: só um 429 é repetido (qualquer outro erro sobe na hora).
+export const KV_PUT_RETRY_MS = Object.freeze([1100, 2500]);
+const KV_RATE_LIMITED = /\b429\b|too many requests/i;
+const KV_WRAPPED = new WeakMap();
+function kvOf(env) {
+  const raw = env?.ZEVANORY_PRIVATE_ARTIFACTS;
+  if (!raw?.get || !raw?.put) return raw;
+  if (KV_WRAPPED.has(raw)) return KV_WRAPPED.get(raw);
+  const w = {
+    get: (...a) => raw.get(...a), list: (...a) => raw.list?.(...a),
+    delete: (k) => (raw.delete ? raw.delete(k) : raw.put(k, "", { expirationTtl: 60 })), // sem delete: valor vazio = sem lease
+    put: async (k, v, o) => {
+      for (let i = 0; ; i++) {
+        try { return await raw.put(k, v, o); }
+        catch (e) { if (i >= KV_PUT_RETRY_MS.length || !KV_RATE_LIMITED.test(String(e?.message || e))) throw e; await new Promise((r) => setTimeout(r, KV_PUT_RETRY_MS[i])); }
+      }
+    },
+  };
+  KV_WRAPPED.set(raw, w);
+  return w;
+}
 async function sha(s) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(String(s))))].map((x) => x.toString(16).padStart(2, "0")).join(""); }
 function eq(a, b) { const x = enc.encode(String(a)), y = enc.encode(String(b)); let n = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) n |= (x[i] || 0) ^ (y[i] || 0); return n === 0; }
 async function readJson(kv, key, fallback = null) { try { return JSON.parse(String(await kv.get(key) || "null")) ?? fallback; } catch { return fallback; } }
@@ -91,14 +118,29 @@ async function sendEmail(env, to, subject, text, fetchImpl = fetch, idempotencyK
   }).catch(() => null);
   return Boolean(r?.ok);
 }
-async function ownerAlert(env, subject, text, fetchImpl) {
-  return sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY · " + subject, text, fetchImpl);
+// Auditoria #953 M2: o alerta não depende só do Resend (que pode ser justamente o que falhou). Todo alerta fica
+// gravado em zpc:cp:alerts (últimos 200, sem e-mail nem nome; lido pela rota autenticada /api/admin/conteudo-pronto/status)
+// e vai para o ledger de atividade da central (owner_alert_sent), além do e-mail.
+const ALERTS = "zpc:cp:alerts";
+async function ownerAlert(env, subject, text, fetchImpl, { kind = "geral", sub = "", now = Date.now() } = {}) {
+  const emailed = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY · " + subject, text, fetchImpl);
+  const kv = kvOf(env);
+  const slug = String(kind).toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 48) || "geral";
+  if (kv?.get) {
+    try {
+      const list = await readJson(kv, ALERTS, []);
+      list.push({ at: new Date(now).toISOString(), kind: slug, subject: String(subject).slice(0, 120), sub: String(sub).slice(-12), emailed });
+      await kv.put(ALERTS, JSON.stringify(list.slice(-200)), { expirationTtl: 400 * DAY });
+    } catch {}
+  }
+  await emitActivity(env, { type: "owner_alert_sent", channel: "owner", status: "cp_" + slug, ref: "cp-alert:" + slug + ":" + String(sub).slice(-12) + ":" + now }).catch(() => null);
+  return emailed;
 }
 
 // ---------- Hotmart postback ----------
 export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch) {
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const secret = hottok(env);
   if (!kv?.get || !kv?.put) return json(503, { error: "secure_store_unavailable" });
   if (secret.length < 16) return json(503, { error: "hotmart_not_configured" });
@@ -154,22 +196,82 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   await emitActivity(env, { type: "delivery_sent", channel: "store", status: record.cycles === 1 ? "service_started" : "service_renewed", ref: "cp:" + subscriber + ":" + record.cycles }).catch(() => null);
 
   if (!record.briefing) {
-    const token = rand();
-    await putToken(kv, token, { k: "brief", sub: key }, 60);
-    const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
-    await sendEmail(env, email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo",
-      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias chega neste e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
-    await emitActivity(env, { type: "email_sent", channel: "email", status: "briefing_requested", ref: "cp-brief:" + subscriber + ":" + record.cycles }).catch(() => null);
-    await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl);
-    await markProcessed();
+    // Auditoria #953 H2: o evento só conta como processado depois que o e-mail com o formulário SAIU. Se o envio falhar,
+    // o pedido entra na fila de boas-vindas (mesmo link e mesma Idempotency-Key em toda tentativa), fica registrado,
+    // o proprietário é avisado e o cron tenta de novo; o marcador de processado é gravado pelo cron no envio.
+    const outbox = await readJson(kv, WELCOME, {});
+    const item = outbox[key]?.token ? outbox[key] : { token: rand(), dedupe, cycles: record.cycles, attempts: 0, firstAt: new Date().toISOString() };
+    if (!outbox[key]?.token) await putToken(kv, item.token, { k: "brief", sub: key }, 60);
+    const sent = await sendWelcome(env, key, record, item.token, fetchImpl);
+    if (!sent) {
+      await welcomeFailed(env, kv, key, { ...item, dedupe }, "email_failed", fetchImpl);
+      return json(202, { ok: true, status: "briefing_email_pending" });
+    }
+    await welcomeDone(env, kv, key, subscriber, record.cycles, dedupe);
+    await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl, { kind: "novo_assinante", sub: key });
     return json(200, { ok: true, status: "briefing_requested" });
   }
+  // Reprocessamento de uma transação cujo ciclo já foi entregue (ex.: PURCHASE_COMPLETE depois do APPROVED): nada a gerar.
+  if (record.deliveredCycle === record.cycles) { await markProcessed(); return json(200, { ok: true, status: "already_delivered" }); }
   // G1: entra na fila ANTES do waitUntil; se o runtime cortar a geração (até 30 s após a resposta), o cron entrega.
   await enqueuePending(kv, key);
   await markProcessed();
   const job = generateAndDeliver(env, key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
   return json(200, { ok: true, status: "generation_started" });
+}
+
+// ---------- Boas-vindas (formulário) com fila de repetição ----------
+const WELCOME = "zpc:cp:welcome-outbox"; // { chave do assinante: { token, dedupe, cycles, attempts, firstAt, lastAt, lastReason } }
+const welcomeText = (name, link) => `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, a ZEVANORY gera o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias e envia para este e-mail. ${RETRY_TEXT} Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`;
+async function sendWelcome(env, key, record, token, fetchImpl) {
+  const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
+  return sendEmail(env, record.email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo", welcomeText(record.name, link), fetchImpl, "cp-welcome/" + (await sha(key + "|" + token)).slice(0, 48));
+}
+async function welcomeFailed(env, kv, key, item, reason, fetchImpl, now = Date.now()) {
+  const outbox = await readJson(kv, WELCOME, {});
+  const attempts = Number(item.attempts || 0) + 1;
+  outbox[key] = { ...item, attempts, lastAt: new Date(now).toISOString(), lastReason: reason };
+  await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });
+  await pendingLog(kv, key, "welcome_failed", reason, now);
+  if (attempts === 1) await ownerAlert(env, "e-mail de boas-vindas do Conteúdo Pronto não saiu", `O e-mail com o formulário de um novo assinante não foi aceito pelo provedor (assinante …${String(key).slice(-12)}). O sistema tenta de novo a cada hora, até ${PENDING_MAX_ATTEMPTS} vezes, com o mesmo link; depois disso o item vai para a fila de falhas.`, fetchImpl, { kind: "boas_vindas_falhou", sub: key, now }).catch(() => null);
+}
+async function welcomeDone(env, kv, key, ref, cycles, dedupe, now = Date.now()) {
+  const outbox = await readJson(kv, WELCOME, {});
+  if (outbox[key]) { delete outbox[key]; await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY }); await pendingLog(kv, key, "welcome_sent", "", now); }
+  await emitActivity(env, { type: "email_sent", channel: "email", status: "briefing_requested", ref: "cp-brief:" + ref + ":" + cycles }).catch(() => null);
+  if (dedupe) await kv.put(dedupe, "1", { expirationTtl: 400 * DAY }); // markProcessed só depois do envio
+}
+export async function retryWelcomeEmails(env, fetchImpl = fetch, { now = Date.now(), limit = 5 } = {}) {
+  const kv = kvOf(env);
+  const outbox = await readJson(kv, WELCOME, {});
+  const out = { tried: 0, sent: 0, dead: 0, dropped: 0 };
+  for (const [key, item] of Object.entries(outbox)) {
+    try {
+      const rec = await readJson(kv, key, null);
+      const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : rec.briefing ? "already_briefed" : "";
+      if (why) {
+        const cur = await readJson(kv, WELCOME, {}); delete cur[key];
+        await kv.put(WELCOME, JSON.stringify(cur), { expirationTtl: 400 * DAY });
+        if (item.dedupe) await kv.put(item.dedupe, "1", { expirationTtl: 400 * DAY });
+        await pendingLog(kv, key, "welcome_dropped", why, now); out.dropped++; continue;
+      }
+      if (Number(item.attempts || 0) >= PENDING_MAX_ATTEMPTS) {
+        const cur = await readJson(kv, WELCOME, {}); delete cur[key];
+        await kv.put(WELCOME, JSON.stringify(cur), { expirationTtl: 400 * DAY });
+        await deadLetter(env, kv, key, { attempts: item.attempts, firstAt: item.firstAt, lastReason: item.lastReason || "email_failed", kind: "welcome", token: item.token, dedupe: item.dedupe, cycles: item.cycles }, fetchImpl, now);
+        out.dead++; continue;
+      }
+      if (out.tried >= limit) continue;
+      out.tried++;
+      if (await sendWelcome(env, key, rec, item.token, fetchImpl)) { await welcomeDone(env, kv, key, key.slice(-16), rec.cycles, item.dedupe, now); out.sent++; }
+      else await welcomeFailed(env, kv, key, item, "email_failed", fetchImpl, now);
+    } catch (e) {
+      out.tried++;
+      await welcomeFailed(env, kv, key, item, "exception:" + String(e?.message || e).slice(0, 40), fetchImpl, now).catch(() => null);
+    }
+  }
+  return out;
 }
 
 // ---------- Briefing form ----------
@@ -202,7 +304,7 @@ async function resolveToken(kv, token, kind) {
   return { key: t.sub, token: t, record: await readJson(kv, t.sub, null) };
 }
 export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const url = new URL(request.url);
   if (!kv?.get) return page("Indisponível", "<h1>Tente novamente em instantes.</h1>", 503);
   const token = url.searchParams.get("t") || "";
@@ -211,7 +313,7 @@ export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
   if (request.method === "GET") {
     const b = found.record.briefing || {};
     const inputs = FIELDS.map(([id, label, max, req]) => `<label for="${id}">${esc(label)}${req ? "" : " <small>(opcional)</small>"}</label>${max > 120 ? `<textarea id="${id}" name="${id}" maxlength="${max}" rows="3"${req ? " required" : ""}>${esc(b[id] || "")}</textarea>` : `<input id="${id}" name="${id}" maxlength="${max}" value="${esc(b[id] || "")}"${req ? " required" : ""}>`}`).join("");
-    return page("Briefing", `<h1>Conteúdo Pronto · seu briefing</h1><p>Responda com o jeito que você fala com seus clientes. Com isso a ZEVANORY prepara seu pacote do mês e envia por e-mail, em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada.</p><form method="post">${inputs}<button type="submit">Enviar e gerar meu pacote</button></form>`);
+    return page("Briefing", `<h1>Conteúdo Pronto · seu briefing</h1><p>Responda com o jeito que você fala com seus clientes. Com isso a ZEVANORY prepara seu pacote do mês e envia por e-mail assim que ele fica pronto. ${esc(RETRY_TEXT)}</p><form method="post">${inputs}<button type="submit">Enviar e gerar meu pacote</button></form>`);
   }
   if (request.method !== "POST") return page("Método inválido", "<h1>Método inválido.</h1>", 405);
   let form; try { form = await request.formData(); } catch { form = new FormData(); }
@@ -225,7 +327,7 @@ export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
   await kv.put(found.key, JSON.stringify({ ...found.record, briefing, briefedAt: new Date().toISOString() }), { expirationTtl: 400 * DAY });
   const job = generateAndDeliver(env, found.key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
-  return page("Recebido", "<h1>Pronto! Seu pacote está sendo gerado.</h1><p>Ele chega no seu e-mail em geral em poucos minutos; se a geração falhar, o sistema tenta de novo automaticamente a cada hora e a equipe da ZEVANORY é avisada. Confira também a caixa de spam ou promoções.</p>");
+  return page("Recebido", `<h1>Pronto! Seu pacote está sendo gerado.</h1><p>Ele chega no seu e-mail assim que ficar pronto. ${esc(RETRY_TEXT)} Confira também a caixa de spam ou promoções.</p>`);
 }
 
 // ---------- Generation ----------
@@ -391,38 +493,62 @@ async function leavePending(kv, key, event, reason, now = Date.now()) {
 }
 async function deadLetter(env, kv, key, m, fetchImpl, now) {
   const dead = await readJson(kv, PENDING_DEAD, {});
-  dead[key] = { ...(m || {}), deadAt: new Date(now).toISOString(), status: "dead" };
+  const prev = dead[key] || null; // um segundo dead-letter não apaga o histórico de operações do primeiro
+  const kind = m?.kind === "welcome" ? "welcome" : "package";
+  dead[key] = { ...(m || {}), kind, deadAt: new Date(now).toISOString(), status: "dead", operations: prev?.operations || [], history: [...(prev?.history || []), ...(prev ? [{ deadAt: prev.deadAt, attempts: prev.attempts, lastReason: prev.lastReason }] : [])].slice(-20) };
   await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
-  await leavePending(kv, key, "dead", m?.lastReason || "max_attempts", now);
-  await ownerAlert(env, "pacote do Conteúdo Pronto sem entrega", `Um assinante ficou sem o pacote do mês após ${m?.attempts ?? "?"} tentativas (último motivo: ${m?.lastReason || "desconhecido"}; assinante …${String(key).slice(-12)}). Nada mais será tentado automaticamente. Reenvio só com operação registrada (requeueDeadPackage, com operador e motivo).`, fetchImpl).catch(() => null);
+  if (kind === "package") await leavePending(kv, key, "dead", m?.lastReason || "max_attempts", now);
+  else await pendingLog(kv, key, "dead", "welcome:" + (m?.lastReason || "max_attempts"), now);
+  const what = kind === "welcome" ? "o e-mail com o formulário" : "o pacote do mês";
+  await ownerAlert(env, kind === "welcome" ? "boas-vindas do Conteúdo Pronto sem entrega" : "pacote do Conteúdo Pronto sem entrega", `Um assinante ficou sem ${what} após ${m?.attempts ?? "?"} tentativas (último motivo: ${m?.lastReason || "desconhecido"}; assinante …${String(key).slice(-12)}). Nada mais será tentado automaticamente. Reenvio só pelo operador, com motivo registrado: POST /api/admin/conteudo-pronto/requeue (ou node scripts/conteudo-pronto/operador.mjs requeue).`, fetchImpl, { kind: "sem_entrega_" + kind, sub: key, now }).catch(() => null);
 }
 // Reenvio controlado de um item da fila de falhas: só com operador e motivo, registrado no log.
 export async function requeueDeadPackage(env, key, { operator, reason, now = Date.now() } = {}) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   if (!String(operator || "").trim() || String(reason || "").trim().length < 10) return { ok: false, reason: "operator_and_reason_required" };
   const dead = await readJson(kv, PENDING_DEAD, {});
   if (!dead[key]) return { ok: false, reason: "not_dead" };
+  if (dead[key].status !== "dead") return { ok: false, reason: "not_dead" };
   const ops = [...(dead[key].operations || []), { at: new Date(now).toISOString(), operator: String(operator).slice(0, 60), reason: String(reason).slice(0, 200) }];
   dead[key] = { ...dead[key], status: "requeued", operations: ops };
   await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
-  await enqueuePending(kv, key, now);
+  if (dead[key].kind === "welcome") {
+    const outbox = await readJson(kv, WELCOME, {});
+    outbox[key] = { token: dead[key].token, dedupe: dead[key].dedupe, cycles: dead[key].cycles, attempts: 0, firstAt: new Date(now).toISOString(), requeuedBy: String(operator).slice(0, 60) };
+    await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });
+  } else {
+    const meta = await readJson(kv, PENDING_META, {});
+    meta[key] = { attempts: 0, firstAt: new Date(now).toISOString(), requeued: true };
+    await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });
+    await enqueuePending(kv, key, now);
+  }
   await pendingLog(kv, key, "requeued", String(operator).slice(0, 40), now);
   return { ok: true };
 }
-// G1: enquanto uma geração está em andamento (no máximo 30 s de waitUntil + margem), o cron não começa outra para o
-// mesmo assinante; se o runtime cortar a geração, o lease vence e o cron (de hora em hora) entrega.
-export const GEN_LEASE_MS = 120000;
-async function releaseLease(kv, key) { // a tentativa terminou (com falha): o lease só protege geração em andamento
-  const cur = await readJson(kv, key, null);
-  if (cur?.genLeaseUntil) { const { genLeaseUntil: _l, ...rest } = cur; await kv.put(key, JSON.stringify(rest), { expirationTtl: 400 * DAY }); }
+// G1: enquanto uma geração está em andamento, o cron e um reenvio do formulário não começam outra para o mesmo
+// assinante. Auditoria #953 M3: o lease cobre o PIOR caso da geração (3 chamadas de IA x modelos x tentativas x tempo
+// limite de cada chamada, mais o envio e as repetições de KV), não só os 30 s do waitUntil. Ele fica numa chave
+// própria (zpc:cp:lease:), para não gastar escritas na chave do assinante (H1: 1 escrita/s por chave).
+export const AI_CALL_TIMEOUT_MS = 60000;
+export const AI_ATTEMPTS_PER_MODEL = 2;
+export const AI_CALLS_PER_PACKAGE = 3;
+export const GEN_WORST_CASE_MS = AI_CALLS_PER_PACKAGE * MODELS.length * AI_ATTEMPTS_PER_MODEL * AI_CALL_TIMEOUT_MS;
+export const GEN_LEASE_MS = GEN_WORST_CASE_MS + 3 * 60000;
+const LEASE = "zpc:cp:lease:";
+const SENT = "zpc:cp:sent:";       // envio aceito de um pacote (chave própria: sobrevive a falha na gravação do assinante)
+const DELIVERY = "zpc:cp:delivery:"; // token estável do e-mail de um pacote, entre tentativas
+const leaseKey = (key) => LEASE + key.slice(SUB.length);
+async function releaseLease(kv, key) { // a tentativa terminou: o lease só protege geração em andamento
+  await kv.delete(leaseKey(key));
 }
 export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Date.now() } = {}) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const record = await readJson(kv, key, null);
   if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_ready" };
   if (record.deliveredCycle === record.cycles) return { ok: true, reason: "already_delivered" };
-  if (record.genLeaseUntil && Date.parse(record.genLeaseUntil) > now) return { ok: false, reason: "in_progress" };
-  await kv.put(key, JSON.stringify({ ...record, genLeaseUntil: new Date(now + GEN_LEASE_MS).toISOString() }), { expirationTtl: 400 * DAY });
+  const leaseUntil = Date.parse(String(await kv.get(leaseKey(key)) || "")) || 0;
+  if (leaseUntil > now) return { ok: false, reason: "in_progress" };
+  await kv.put(leaseKey(key), new Date(now + GEN_LEASE_MS).toISOString(), { expirationTtl: Math.ceil(GEN_LEASE_MS / 1000) + 60 });
   // Chave com a versão do schema: uma regeneração nunca sobrescreve um pacote antigo gravado.
   const pkgKey = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION;
   // G4: pacote do ciclo já gerado (o envio falhou antes) é reaproveitado: o retry não chama a IA de novo nem troca o
@@ -434,34 +560,43 @@ export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Da
       await enqueuePending(kv, key, now);
       await notePendingFailure(kv, key, "generation_failed", now);
       await releaseLease(kv, key);
-      await ownerAlert(env, "geração do Conteúdo Pronto adiada", "A IA não gerou um pacote válido agora; nova tentativa automática em até 1 hora.", fetchImpl);
+      await ownerAlert(env, "geração do Conteúdo Pronto adiada", `A IA não gerou um pacote válido agora; nova tentativa automática em até 1 hora (máximo ${PENDING_MAX_ATTEMPTS}).`, fetchImpl, { kind: "geracao_adiada", sub: key, now });
       return { ok: false, reason: "generation_failed_retry_scheduled" };
     }
     await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });
   }
   // G4/G5: um token por pacote (abre só este pacote), estável entre tentativas, para o e-mail repetido ser idêntico.
-  const delivery = record.pendingDelivery?.pkgKey === pkgKey && record.pendingDelivery.token ? record.pendingDelivery : { pkgKey, token: rand() };
-  if (delivery !== record.pendingDelivery) {
-    await putToken(kv, delivery.token, { k: "pkg", sub: key, pkg: pkgKey }, 120);
-    await kv.put(key, JSON.stringify({ ...record, genLeaseUntil: new Date(now + GEN_LEASE_MS).toISOString(), pendingDelivery: delivery }), { expirationTtl: 400 * DAY });
+  // Fica numa chave própria por pacote (H1: nenhuma escrita extra na chave do assinante antes do envio).
+  const deliveryKey = DELIVERY + pkgKey.slice(PKG.length);
+  const stored = await readJson(kv, deliveryKey, null);
+  const delivery = stored?.pkgKey === pkgKey && stored.token ? stored : { pkgKey, token: rand() };
+  if (delivery !== stored) {
+    await putToken(kv, delivery.token, { k: "pkg", sub: key, pkg: pkgKey }, PACKAGE_LINK_DAYS);
+    await kv.put(deliveryKey, JSON.stringify(delivery), { expirationTtl: 400 * DAY });
   }
   const token = delivery.token;
-  const text = packageText(pkg, record.briefing.negocio) + `\n\nVersão para consulta online: ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
-  const sent = await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${record.cycles} chegou`, text, fetchImpl, "cp-pkg/" + (await sha(pkgKey + "|" + token)).slice(0, 48));
-  if (!sent) {
-    await enqueuePending(kv, key, now);
-    await notePendingFailure(kv, key, "email_failed", now);
-    await releaseLease(kv, key);
-    return { ok: false, reason: "email_failed_retry_scheduled" };
+  // H1: se o envio deste pacote já foi aceito (e a gravação seguinte falhou), não reenvia: só conclui o registro.
+  if (!(await kv.get(SENT + pkgKey.slice(PKG.length)))) {
+    const text = packageText(pkg, record.briefing.negocio) + `\n\nVersão para consulta online: ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
+    const sent = await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${record.cycles} chegou`, text, fetchImpl, "cp-pkg/" + (await sha(pkgKey + "|" + token)).slice(0, 48));
+    if (!sent) {
+      await enqueuePending(kv, key, now);
+      await notePendingFailure(kv, key, "email_failed", now);
+      await releaseLease(kv, key);
+      return { ok: false, reason: "email_failed_retry_scheduled" };
+    }
+    await kv.put(SENT + pkgKey.slice(PKG.length), new Date(now).toISOString(), { expirationTtl: 400 * DAY });
   }
-  const { genLeaseUntil: _lease, pendingDelivery: _pd, ...base } = record;
+  const latest = (await readJson(kv, key, null)) || record; // o formulário pode ter gravado o registro durante a geração
+  const { genLeaseUntil: _lease, pendingDelivery: _pd, ...base } = latest;
   await kv.put(key, JSON.stringify({ ...base, deliveredCycle: record.cycles, deliveredAt: new Date().toISOString(), lastPackage: pkgKey }), { expirationTtl: 400 * DAY });
+  await releaseLease(kv, key);
   await leavePending(kv, key, "delivered", "cycle " + record.cycles, now);
   await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_delivered", ref: "cp-pkg:" + key.slice(-16) + ":" + record.cycles }).catch(() => null);
   return { ok: true, reason: "delivered" };
 }
 export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { now = Date.now() } = {}) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   if (!kv?.get) return { ok: false };
   const pending = await readJson(kv, PENDING, []);
   // G2: itens cancelados, sem briefing, apagados ou já entregues saem da fila sem gastar o limite; quem falhou vai
@@ -474,7 +609,23 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
     const meta = (await readJson(kv, PENDING_META, {}))[key];
     if (Number(meta?.attempts || 0) >= PENDING_MAX_ATTEMPTS) { await deadLetter(env, kv, key, meta, fetchImpl, now); continue; }
     if (results.length >= limit) continue;
-    const r = await generateAndDeliver(env, key, fetchImpl, { now });
+    let r;
+    try { r = await generateAndDeliver(env, key, fetchImpl, { now }); }
+    catch (e) {
+      // H1: uma exceção (ex.: KV 429 que persistiu, fila cheia) não derruba o cron nem os outros itens; conta como
+      // tentativa (o item chega ao limite e à fila de falhas), fica no log e o proprietário é avisado na primeira vez.
+      const reason = "exception:" + String(e?.message || e).replace(/\s+/g, " ").slice(0, 60);
+      r = { ok: false, reason };
+      try {
+        await notePendingFailure(kv, key, reason, now);
+        await pendingLog(kv, key, "exception", reason, now);
+        await releaseLease(kv, key);
+        const meta = await readJson(kv, PENDING_META, {});
+        const first = !meta[key]?.exceptionAlerted; // um alerta por item; o dead-letter avisa no fim
+        if (first && meta[key]) { meta[key].exceptionAlerted = true; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }
+        if (first) await ownerAlert(env, "erro na entrega do Conteúdo Pronto", `Uma tentativa de entrega terminou em erro (${reason}; assinante …${String(key).slice(-12)}). As tentativas automáticas continuam a cada hora, até ${PENDING_MAX_ATTEMPTS}.`, fetchImpl, { kind: "erro_entrega", sub: key, now });
+      } catch {}
+    }
     results.push(r);
     if (!r.ok) failed.push(key);
   }
@@ -488,12 +639,13 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
     const last = Date.parse(String(await kv.get(STALL_ALERT) || "")) || 0;
     if (now - last > DAY * 1000) {
       await kv.put(STALL_ALERT, new Date(now).toISOString(), { expirationTtl: 30 * DAY });
-      await ownerAlert(env, "fila do Conteúdo Pronto parada", `${next.length} pacote(s) pendente(s); o mais antigo espera há ${Math.round((now - oldest) / 3600000)} h. As tentativas automáticas continuam (máximo ${PENDING_MAX_ATTEMPTS} por assinante).`, fetchImpl).catch(() => null);
+      await ownerAlert(env, "fila do Conteúdo Pronto parada", `${next.length} pacote(s) pendente(s); o mais antigo espera há ${Math.round((now - oldest) / 3600000)} h. As tentativas automáticas continuam (máximo ${PENDING_MAX_ATTEMPTS} por assinante).`, fetchImpl, { kind: "fila_parada", now }).catch(() => null);
     }
   }
   // Mesmo cron: candidatos de regeneração (nova tentativa com a mesma chave; confirmação de entrega pelo email_id).
   const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
-  return { ok: true, tried: results.length + Number(regen.tried || 0), delivered: results.filter((r) => r.ok).length, regen };
+  const welcome = await retryWelcomeEmails(env, fetchImpl, { now }).catch(() => ({ tried: 0 }));
+  return { ok: true, tried: results.length + Number(regen.tried || 0) + Number(welcome.tried || 0), delivered: results.filter((r) => r.ok).length, regen, welcome };
 }
 // ---------- Regeneração de pacote bloqueado (critério de aceite Sol #898) ----------
 // Estados do PACOTE (separados dos estados de ENTREGA):
@@ -599,7 +751,7 @@ async function attemptSend(env, kv, candKey, cand, fetchImpl, now) {
 }
 // Entrega confirmada pelo MESMO email_id: promove uma única vez; dead nunca promove; duplicado não promove nem notifica.
 export async function applyRegenDelivered(env, candKey, emailId, fetchImpl = fetch) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const cand = await readJson(kv, candKey, null);
   if (!cand || !cand.email_id || String(emailId) !== String(cand.email_id)) return { promoted: false, reason: "unknown_email_id" };
   if (cand.delivery === "dead") return { promoted: false, reason: "dead_not_promoted" };
@@ -631,7 +783,7 @@ export async function applyRegenDelivered(env, candKey, emailId, fetchImpl = fet
 }
 // Reconciliação (cron): pending => nova tentativa com a mesma chave; accepted => consulta pelo email_id.
 export async function reconcileRegenCandidates(env, fetchImpl = fetch, { limit = 10, now = Date.now() } = {}) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   if (!kv?.get) return { ok: false };
   const out = { ok: true, tried: 0, promoted: 0, accepted: 0, dead: 0, pending: 0 };
   for (const candKey of (await readJson(kv, REGEN_OUTBOX, [])).slice(0, limit)) {
@@ -650,7 +802,7 @@ export async function reconcileRegenCandidates(env, fetchImpl = fetch, { limit =
 }
 // Operação explícita e registrada para reabrir um candidato dead (nova Idempotency-Key, mesmo pacote imutável).
 export async function reopenDeadRegenCandidate(env, candKey, { operator, reason, now = Date.now() } = {}) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const cand = await readJson(kv, candKey, null);
   if (!cand || cand.delivery !== "dead") return { ok: false, reason: "not_dead" };
   if (!String(operator || "").trim() || !String(reason || "").trim()) return { ok: false, reason: "operation_must_be_recorded" };
@@ -662,7 +814,7 @@ export async function reopenDeadRegenCandidate(env, candKey, { operator, reason,
 }
 // Pedido do cliente (POST da página): cria ou reaproveita o candidato e faz UMA tentativa de envio.
 export async function regenerateBlockedPackage(env, key, fetchImpl = fetch, { now = Date.now() } = {}) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const record = await readJson(kv, key, null);
   if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_eligible" };
   const current = record.lastPackage ? await readJson(kv, record.lastPackage, null) : null;
@@ -717,7 +869,7 @@ export function regenResponse(out) {
   return [503, "Não foi possível gerar a versão nova agora. A versão antiga continua bloqueada e não foi exibida nem alterada. Tente novamente mais tarde ou escreva para suporte@zevanory.api.br."];
 }
 export async function handlePackageView(request, env, ctx, fetchImpl = fetch) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv = kvOf(env);
   const token = new URL(request.url).searchParams.get("t") || "";
   const found = kv?.get ? await resolveToken(kv, token, "pkg") : null;
   // G5: o token do e-mail abre o pacote daquele e-mail; o da versão nova só depois da entrega confirmada (antes disso
@@ -749,4 +901,37 @@ export async function handlePackageView(request, env, ctx, fetchImpl = fetch) {
   const rots = roteirosOf(pkg).map((r, i) => `<article><h2>Roteiro ${i + 1} — ${esc(r.objetivo)}</h2><h3>Versão curta</h3><p style="white-space:pre-wrap">${esc(r.curta)}</p>${r.email ? `<h3>Versão de e-mail</h3><p><b>Assunto:</b> ${esc(r.email.assunto)}</p><p style="white-space:pre-wrap">${esc(r.email.corpo)}</p>` : ""}</article>`).join("");
   const cal = pkg.calendario.map((c) => `<li>Dia ${c.dia} · ${calLabel(c.tipo)} · ${esc(c.tema)}</li>`).join("");
   return page("Seu pacote", `<h1>Conteúdo Pronto · mês ${pkg.cycle}</h1><h2>Calendário</h2><ul>${cal}</ul><h2>${pkg.posts.length} posts</h2>${posts}<h2>${esc(ROTEIROS_TITULO.charAt(0) + ROTEIROS_TITULO.slice(1).toLowerCase())}</h2><p>${esc(ROTEIROS_AVISO)}</p>${rots}`);
+}
+
+// ---------- Operação (auditoria #953 M1/M2) ----------
+// GET  /api/admin/conteudo-pronto/status  -> fila, tentativas, fila de falhas, boas-vindas pendentes, alertas e log
+// POST /api/admin/conteudo-pronto/requeue -> {sub, operator, reason}: reenvio de um item da fila de falhas
+// A autenticação (token de operador) é feita pelo Worker antes de chamar esta função; aqui não há segredo. As respostas
+// não têm e-mail nem nome: o assinante aparece pelos 12 últimos caracteres da chave.
+export async function handleContentOperator(request, env, { now = Date.now() } = {}) {
+  const kv = kvOf(env);
+  const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+  const out = (status, body) => new Response(JSON.stringify(body), { status, headers });
+  if (!kv?.get) return out(503, { error: "secure_store_unavailable" });
+  const path = new URL(request.url).pathname;
+  const tail = (k) => String(k).slice(-12);
+  if (path === "/api/admin/conteudo-pronto/status" && request.method === "GET") {
+    const [pending, meta, dead, welcome, alerts, log] = await Promise.all([readJson(kv, PENDING, []), readJson(kv, PENDING_META, {}), readJson(kv, PENDING_DEAD, {}), readJson(kv, WELCOME, {}), readJson(kv, ALERTS, []), readJson(kv, PENDING_LOG, [])]);
+    return out(200, {
+      pending: pending.map((k) => ({ sub: tail(k), attempts: Number(meta[k]?.attempts || 0), lastReason: meta[k]?.lastReason || null, firstAt: meta[k]?.firstAt || null })),
+      dead: Object.entries(dead).map(([k, d]) => ({ sub: tail(k), kind: d.kind || "package", status: d.status, attempts: d.attempts ?? null, lastReason: d.lastReason || null, deadAt: d.deadAt, operations: (d.operations || []).length })),
+      welcome: Object.entries(welcome).map(([k, w]) => ({ sub: tail(k), attempts: Number(w.attempts || 0), lastReason: w.lastReason || null, firstAt: w.firstAt || null })),
+      alerts: alerts.slice(-50), log: log.slice(-50), max_attempts: PENDING_MAX_ATTEMPTS,
+    });
+  }
+  if (path === "/api/admin/conteudo-pronto/requeue" && request.method === "POST") {
+    let body = null; try { body = await request.json(); } catch { return out(400, { error: "invalid_json" }); }
+    const sub = String(body?.sub || "");
+    const dead = await readJson(kv, PENDING_DEAD, {});
+    const keys = Object.keys(dead).filter((k) => k === sub || (sub.length === 12 && tail(k) === sub));
+    if (keys.length !== 1) return out(404, { error: keys.length ? "ambiguous_sub" : "not_dead" });
+    const r = await requeueDeadPackage(env, keys[0], { operator: body?.operator, reason: body?.reason, now });
+    return out(r.ok ? 200 : 400, r);
+  }
+  return out(404, { error: "not_found" });
 }

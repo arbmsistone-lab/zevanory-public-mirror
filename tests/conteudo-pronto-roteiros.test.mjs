@@ -383,6 +383,10 @@ test("(f2) regeneração: 2xx do envio só deixa o candidato accepted; entrega c
   assert.ok(mail.text.includes(CS.ROTEIROS_TITULO), "[regen] formato atual");
   const pending = await (await CS.handlePackageView(new Request(t.url), t.env, null, t.fetchImpl)).text();
   assert.ok(pending.includes(CS.REGEN_MSG.accepted) && !pending.includes("Gerar versão nova sem custo") && !pending.includes(CS.REGEN_MSG.delivered), "[regen-accepted] página mostra o estado, sem o pacote");
+  // O link da versão nova (token do candidato) só abre a versão nova depois da entrega confirmada.
+  const candToken = /pacote\?t=([A-Za-z0-9_-]+)/.exec(mail.text)[1];
+  const early = await (await CS.handlePackageView(new Request("https://zevanory.api.br/conteudo-pronto/pacote?t=" + candToken), t.env, null, t.fetchImpl)).text();
+  assert.ok(early.includes(CS.BLOQUEIO_TEXTO) && !early.includes("<h3>Versão de e-mail</h3>"), "[regen-token-early] link da versão nova não abre antes da entrega confirmada");
   // last_event ainda "sent": continua accepted.
   await CS.retryPendingPackages(t.env, t.fetchImpl);
   assert.equal(recOf(t).lastPackage, t.legacyKey, "[regen-accepted] last_event sent não promove");
