@@ -5,7 +5,7 @@ import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
 import { handleOwnerOAuth, handleYoutubePublisherAccess, handlePublisherAccess } from "./owner-oauth.mjs";
-import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages } from "./content-service.mjs";
+import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages } from "./content-service.mjs"; import { handleKitsRequest, KITS_ADMIN_PATHS, KITS_CUSTOMER_PATHS } from "./hotmart-kits.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -110,7 +110,7 @@ const wrapped = {
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
-    if (url.pathname === "/api/webhooks/hotmart") return handleHotmartWebhook(request,normalized,ctx);
+    if (url.pathname === "/api/webhooks/hotmart") return handleHotmartWebhook(request,normalized,ctx,fetch,{ sqlFactory: whatsappProofDatabase }); /* Modelo B (Sol ORDEM 313): contingência dos kits (Club fora do ar), desligada por padrão; operador com credencial + motivo; comprador só com link individual. */ if (KITS_ADMIN_PATHS.includes(url.pathname) || KITS_CUSTOMER_PATHS.includes(url.pathname)) { const kits = await handleKitsRequest(request, normalized, { sqlFactory: whatsappProofDatabase, isOperator: (req) => verifyOperatorToken(normalized, String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "")) }); if (kits) return kits; }
     // suporte@/contato@ (e-mail oficial do consumidor): Resend email.received assinado -> encaminha ao dono.
     // Devolve null para outros eventos/destinatários (entregas, prova-sandbox@): o handler legado segue igual.
     if (url.pathname === "/api/webhooks/resend" && request.method === "POST") {

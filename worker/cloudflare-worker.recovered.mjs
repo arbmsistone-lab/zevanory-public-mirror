@@ -17609,14 +17609,20 @@ function privateArtifactForClaim({ artifact_key, artifact_sha256 } = {}) {
   return PRIVATE_ARTIFACTS.find((x2) => x2.key === key && x2.sha256 === sha4) || null;
 }
 __name(privateArtifactForClaim, "privateArtifactForClaim");
+// Checkout próprio = os únicos provedores que o próprio pedido (tabela orders) registra. Lista fechada: qualquer outro
+// valor (inclusive 'hotmart') é recusado na emissão e no consumo do link.
+var OWN_CHECKOUT_PROVIDERS = Object.freeze(["mercadopago", "asaas"]);
+var OWN_CHECKOUT_PROVIDERS_SQL = "(" + OWN_CHECKOUT_PROVIDERS.map((p) => `'${p}'`).join(",") + ")";
 var sha2562 = /* @__PURE__ */ __name((value) => createHash23("sha256").update(String(value)).digest("hex"), "sha256");
 var uuid2 = /* @__PURE__ */ __name((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || "")), "uuid");
 async function issueArtifactDownload(sql, { orderId, issuedBy = "operator", ttlMinutes = 30 } = {}) {
   if (!sql?.query) throw new Error("artifact_sql_required");
   if (!uuid2(orderId)) throw new Error("artifact_order_id_invalid");
   const ttl = Math.min(4320, Math.max(5, Number.parseInt(String(ttlMinutes), 10) || 30));
+  // Modelo B (Sol ORDEM 313): a rota ZIP do KV só atende o checkout próprio (VC-P). Compra Hotmart (kits entregues
+  // só pelo Hotmart Club) nunca recebe o ZIP por esta rota, nem por /private/artifacts/issue nem por /entrega/reenviar.
   const eligible = await sql.query(`select o.order_id,o.offer_id from orders o
-    where o.order_id=$1 and o.status='paid'
+    where o.order_id=$1 and o.status='paid' and o.provider in ${OWN_CHECKOUT_PROVIDERS_SQL}
       and exists(select 1 from financial_events f where f.order_id=o.order_id and f.normalized_event='payment_confirmed')
     limit 1`, [orderId]);
   if (eligible.length !== 1) throw new Error("artifact_paid_reconciled_order_required");
@@ -17640,7 +17646,7 @@ async function consumeArtifactDownload(sql, { token } = {}) {
   if (raw.length < 32 || raw.length > 128) throw new Error("artifact_token_invalid");
   const rows = await sql.query(`update artifact_download_tokens t set used_at=now()
     where t.token_sha256=$1 and t.used_at is null and t.expires_at>now()
-      and exists(select 1 from orders o where o.order_id=t.order_id and o.status='paid'
+      and exists(select 1 from orders o where o.order_id=t.order_id and o.status='paid' and o.provider in ${OWN_CHECKOUT_PROVIDERS_SQL}
         and exists(select 1 from financial_events f where f.order_id=o.order_id and f.normalized_event='payment_confirmed'))
     returning t.token_id,t.order_id,t.artifact_key,t.artifact_sha256,t.expires_at,t.used_at`, [sha2562(raw)]);
   if (rows.length !== 1) throw new Error("artifact_token_unavailable");

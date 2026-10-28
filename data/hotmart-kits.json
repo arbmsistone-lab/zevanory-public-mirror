@@ -1,0 +1,1513 @@
+{
+ "schema": "zevanory-hotmart-kits/v1",
+ "nota": "Modelo B (Sol ORDEM 313): os 5 kits vendidos na Hotmart são entregues SOMENTE pela área de membros (Hotmart Club). Dia 1: aulas, manuais e guias online; planilhas (XLSX), modelos (DOCX) e textos para baixar. Dia 8: PDFs e pacote completo (.zip), pela liberação programada nativa do Club. Este arquivo é a fonte única de: (1) mapa produto Hotmart -> SKU usado pela ingestão dos postbacks (worker/hotmart-kits.mjs); (2) links de checkout das páginas /hotmart/<produto> (worker/sales-public-worker.mjs); (3) regra do dia 8 e catálogo do serviço de CONTINGÊNCIA (Club fora do ar, desligado por padrão). IDs de produto e códigos de oferta são configuráveis aqui (e por HOTMART_KIT_PRODUCT_IDS no Worker) porque a troca do formato de entrega para área de membros pode exigir produtos novos na Hotmart (ver docs/ops/hotmart-club-modelo-b-checklist.md). Nenhuma credencial aqui.",
+ "versao_catalogo": "1.2",
+ "fuso": "America/Sao_Paulo",
+ "liberacao_dia8": {
+  "nota": "Contingência: os arquivos do dia 8 só são autorizados quando se completam 8 dias inteiros (192 horas) desde a aprovação do pagamento (approved_date do postback Hotmart; na falta dele, o horário em que o postback aprovado chegou, que nunca é anterior). O fuso de referência é America/Sao_Paulo (sem horário de verão desde 2019): a liberação cai no 8º dia após a confirmação, no mesmo horário de Brasília da confirmação; a regra também exige o mesmo horário de parede em America/Sao_Paulo, de modo que um eventual retorno do horário de verão nunca antecipa a liberação. O Club deve ser configurado para não liberar antes disso (gate 3 mede).",
+  "horas_minimas": 192,
+  "dias_civis": 8
+ },
+ "contingencia": {
+  "ttl_minutos_padrao": 120,
+  "ttl_minutos_max": 1440,
+  "usos_max_por_link": 40,
+  "horas_max_ligada": 72
+ },
+ "kits": [
+  {
+   "sku": "ZEV-IA-011",
+   "slug": "ia-na-pratica",
+   "nome": "IA na Prática",
+   "hotmart_product_ids": [
+    "8704733"
+   ],
+   "checkout": "https://pay.hotmart.com/F107979716H?off=g9knd34r",
+   "formato_atual_hotmart": "arquivo (painel lido em 28/10/2026: upload ZIP/RAR/EXE, v1.1); troca para área de membros pendente do proprietário"
+  },
+  {
+   "sku": "ZEV-VEN-011",
+   "slug": "vendas-na-pratica",
+   "nome": "Vendas na Prática",
+   "hotmart_product_ids": [],
+   "checkout": "https://pay.hotmart.com/Y107979937I?off=8mg88sdd",
+   "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
+  },
+  {
+   "sku": "ZEV-LCX-011",
+   "slug": "lucro-e-caixa",
+   "nome": "Lucro & Caixa",
+   "hotmart_product_ids": [],
+   "checkout": "https://pay.hotmart.com/L107979973K?off=ksb5di36",
+   "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
+  },
+  {
+   "sku": "ZEV-CMB-011",
+   "slug": "combo-ia-vendas",
+   "nome": "Combo IA + Vendas",
+   "hotmart_product_ids": [],
+   "checkout": "https://pay.hotmart.com/H107979990T?off=b3ytmah4",
+   "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
+  },
+  {
+   "sku": "ZEV-NGC-011",
+   "slug": "negocio-completo",
+   "nome": "Negócio Completo",
+   "hotmart_product_ids": [],
+   "checkout": "https://pay.hotmart.com/U107980005X?off=weo47apk",
+   "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
+  }
+ ],
+ "catalogo_contingencia": {
+  "ZEV-IA-011": [
+   {
+    "id": "3e8050573d92c770",
+    "arquivo": "00_COMECE_AQUI_IA_na_Pratica_v1.2.txt",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/00_COMECE_AQUI_IA_na_Pratica_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "D8873A8E95C37D64859007B0C2CEC6A5E9701AED7C545FE2C6C819CD898B59C7",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/00_COMECE_AQUI_IA_na_Pratica_v1.2.txt"
+   },
+   {
+    "id": "6a5eea74b8a8f6cf",
+    "arquivo": "LEIA_Licencas_de_fontes.txt",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "57ED4A885103142A2BFAD56EFC9DDBF04718AE3CC1227AD53E05C36054945FC8",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt"
+   },
+   {
+    "id": "5eb9a715c1b33d85",
+    "arquivo": "OFL-Archivo.txt",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "393A694C7DEE6694A22C73049E95CEA5D0808697A872C435862D33C0AFC67091",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/Licencas_de_fontes/OFL-Archivo.txt"
+   },
+   {
+    "id": "0e06a4bf8aabea58",
+    "arquivo": "OFL-AtkinsonHyperlegibleNext.txt",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "B5B7A8BC1E0E92BE9B64ABD8ABD92659488733AA5BE8D982BC872C36DAC73F08",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+   },
+   {
+    "id": "b13c31309a732a9c",
+    "arquivo": "SHA256SUMS.txt",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/SHA256SUMS.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "8B71EED5A0E4F25747611BF0001E2C2FD0F996C39DE41C4DF34C986942843217",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/SHA256SUMS.txt"
+   },
+   {
+    "id": "7b7a3014f2ae4289",
+    "arquivo": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "B1A6E89BABB880DCC3DBEBFFB0A1EE70A8FEDCB357234B07A2F257B6BABB7F05",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "802aa03459ecd4cb",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "13948A475754AF7C4949E646CD774B7E7EDFAE69441FE5BF57B805A88E60D7EB",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx"
+   },
+   {
+    "id": "1b4652fa906eb896",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "EC652B4D9C7929460EFC58F64AC0A3715757A3F3720DFBDDE9DCFCBFCD26AC15",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt"
+   },
+   {
+    "id": "87b961951d0d1671",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "5AAC35D23DA8B6E31E1B75824DA2A587D433E49F634FAA2F93E81972C45650C3",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "5473f68951135615",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "91542E69F6A0816AF877E9804D70EF03B31726C02A69F0FDB963EEC5B2815442",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.docx"
+   },
+   {
+    "id": "0326f9f1419e4250",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "9077BAA6DE7E3081665A3D90437450E5E1CB3B70D0D35732A726A79B99800F8E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx"
+   },
+   {
+    "id": "513d354d4c39888b",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "E0F1B126734B4C8613B3E6B1B445D436D0A29C2F3B030248323DDB3E8D5B0461",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "9c1a68582384c1a8",
+    "arquivo": "ZEVANORY_IA_na_Pratica_v1.2.zip",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2.zip",
+    "liberacao": "dia8",
+    "content_type": "application/zip",
+    "sha256": "FF1FEA47E1044E9F316D4B3B0286A96B538F8DEE7DA22A443EDCFDD772953E5A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2.zip"
+   },
+   {
+    "id": "e64b50d7967c777a",
+    "arquivo": "00_COMECE_AQUI_IA_na_Pratica_v1.2.pdf",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/00_COMECE_AQUI_IA_na_Pratica_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "F6CE3B86B4B088D69E3DC9F0EF311FB2AF85D6ABAE33AA93C465F02E3785B4FE",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/00_COMECE_AQUI_IA_na_Pratica_v1.2.pdf"
+   },
+   {
+    "id": "2d379af2a304edeb",
+    "arquivo": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "6F65BE2318C629BBD6ED6423CF33AE0D24780363CA6E964DC0A72D0BAF97ED53",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "aab59ff5c883b21d",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "943078D33B5148E873C24D73F8B37A1FAAF3BCFB045F17A4EB370D9C1D66959A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf"
+   },
+   {
+    "id": "1226af70db78a5a8",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "0464152E1281E1D934FA8290D98C2194631F6AA7A681AA0487D202ECC4B8AF5C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "9c987fe0df278970",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "BC5DF8BE4E690D55FB8ACB84BBECEEA3309D0F2F8FEB45DDD8C8EE9F473E7719",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-IA-011/ZEVANORY_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf"
+   }
+  ],
+  "ZEV-VEN-011": [
+   {
+    "id": "11adc6d201edb05b",
+    "arquivo": "00_COMECE_AQUI_Vendas_na_Pratica_v1.2.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/00_COMECE_AQUI_Vendas_na_Pratica_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "66915AC8DCE76010C34C8361C54BB3312E4776D6470F7EB47E32880B40F4C810",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/00_COMECE_AQUI_Vendas_na_Pratica_v1.2.txt"
+   },
+   {
+    "id": "a2c0af6fdd384658",
+    "arquivo": "LEIA_Licencas_de_fontes.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "D364D2E476875183FF6F578BD5055C4C096FF78DC968F070BA47AFD6ED028B6F",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt"
+   },
+   {
+    "id": "33ba4d4ea108ea03",
+    "arquivo": "OFL-Archivo.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "393A694C7DEE6694A22C73049E95CEA5D0808697A872C435862D33C0AFC67091",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/Licencas_de_fontes/OFL-Archivo.txt"
+   },
+   {
+    "id": "1bd38db13c6ab017",
+    "arquivo": "OFL-AtkinsonHyperlegibleNext.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "B5B7A8BC1E0E92BE9B64ABD8ABD92659488733AA5BE8D982BC872C36DAC73F08",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+   },
+   {
+    "id": "5f41902786ac4f8c",
+    "arquivo": "SHA256SUMS.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/SHA256SUMS.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "832F879C6970DEB01ADB62786456A34C007E634884AFE14F4602CC70E1647ECD",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/SHA256SUMS.txt"
+   },
+   {
+    "id": "faf32c9ccbe25472",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "F6EB3C23A6E791D0B2A1CA31E44F66467D5EAFDF02959F9BC0A33B02A9E2234C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "9f6694b9e37d75cc",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "9B0C43FC66BCFE3B8D3D3FB632585FA5915452AB243C25B7FAE4F56AECC709C6",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx"
+   },
+   {
+    "id": "9dc51bd9bd5f58a7",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "2011A39FC9FD2D31D1ADB225D7772D54AC28B0F7352B87D9E5347E77E7D219CD",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt"
+   },
+   {
+    "id": "50d8ed6fde551076",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "FD3B621A08AE74E3677A2F70C8ABF6B2262598DD5E2DBD96804DD1768E72B14A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "a59f5433c987ba2d",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "DC21EB2A8CA63F47719A3C0843B3527316DDCDD7D7D588E210FD093C5D2F7350",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx"
+   },
+   {
+    "id": "68d8a639f491bc0a",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "6A12D12A8CB1BAB7B9A2F9619B08A8E67B28C2DBFB8BED18C4174AE3FF7868E4",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx"
+   },
+   {
+    "id": "9180d4a51f085117",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "3065411615983075795FC305CCC972B89D07530BE0811F0BFCFD952D4E747B85",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt"
+   },
+   {
+    "id": "97880bed4fa259a2",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "666169DE9410FB883E3980D759D9C2058B40709093FDD30CD54025A2A0EAD099",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx"
+   },
+   {
+    "id": "5f0025e5b4e3a7ba",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "5F1714BDB264B4B2C980316A429020639517214D038B291F1964F291D0E65733",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "ba31bba40f5f5df4",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_v1.2.zip",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2.zip",
+    "liberacao": "dia8",
+    "content_type": "application/zip",
+    "sha256": "077E548DD320D63A19906C3416EA20CEB0C7F8A0187A0D03CB6D0196002C73E7",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2.zip"
+   },
+   {
+    "id": "c806094ccf95c259",
+    "arquivo": "00_COMECE_AQUI_Vendas_na_Pratica_v1.2.pdf",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/00_COMECE_AQUI_Vendas_na_Pratica_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "40E5A5687782270C896EA02F2FFA20DFCE82C1F706411EF10B59A60E484E048B",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/00_COMECE_AQUI_Vendas_na_Pratica_v1.2.pdf"
+   },
+   {
+    "id": "f736213605485ac0",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "DA446BB3836FC1141227E245DFD7C082C0032D8268C7E410FAD986EFA7518D2C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "6f9ba32d6c660192",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "5EADAAB09706FD52B6E8FE805C713EF0370AEE95F85D5628A74297C75E7C39D6",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf"
+   },
+   {
+    "id": "59aa3625c6d8d10f",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "77EF78AA666ED6E201D462C2D18D64617118E6B6C73A695FF93FD426BA342BC8",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "9916c2e8151b5268",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "C0DB73117006FB5DF558A1113AD9AF019DFAD3F40B74A33D6F5CB721C73EFFD7",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf"
+   },
+   {
+    "id": "a86c50eb05c66956",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+    "caminho": "ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "F340B4CA312AA1D9CF9638D8F80928360E0A76E0093F463918EEBBB7397E923A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-VEN-011/ZEVANORY_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf"
+   }
+  ],
+  "ZEV-LCX-011": [
+   {
+    "id": "56f77dc81ee91b7b",
+    "arquivo": "00_COMECE_AQUI_Lucro_e_Caixa_v1.2.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "1EDA4B234296F921107F9AF3C533FA261B26EDE0735DBEDC26D19C0364AE4B3A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.txt"
+   },
+   {
+    "id": "bcf92c6960d43cdb",
+    "arquivo": "LEIA_Licencas_de_fontes.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "5D1868DB96EFCD85DB4F8412D655DE504561A80934FF56E9D1CC5E2060ED915F",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt"
+   },
+   {
+    "id": "2ece019380b27375",
+    "arquivo": "OFL-Archivo.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "393A694C7DEE6694A22C73049E95CEA5D0808697A872C435862D33C0AFC67091",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-Archivo.txt"
+   },
+   {
+    "id": "b1565c6abde91e61",
+    "arquivo": "OFL-AtkinsonHyperlegibleNext.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "B5B7A8BC1E0E92BE9B64ABD8ABD92659488733AA5BE8D982BC872C36DAC73F08",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+   },
+   {
+    "id": "aceb1dcbb7c6d34c",
+    "arquivo": "SHA256SUMS.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/SHA256SUMS.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "FBF8C00B5278CFCE9E9BCE7D10D028145E9964FF56FDBE61FA57071BEE293073",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/SHA256SUMS.txt"
+   },
+   {
+    "id": "e540e797741d81f3",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "22EC46D7E1A75CB24A8DD8CDDED845E705C4A8C7F83F4ABD8BACB27418BF027F",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "bbf0fab122e18bad",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.docx",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "66CE30CCC46B2846602DC2107D8002658BCCEBFF110818899537436D8BD65D3D",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.docx"
+   },
+   {
+    "id": "2a6a3adf41b870c2",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "5EF291516C8A7F68D9787CB477F476563E1D607F286F183DEF6BDB9B81AE7731",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.txt"
+   },
+   {
+    "id": "8796943336babcb3",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.docx",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "A9EC0537E67E12E58D35427FC793575D0A5B0930AE228592895EE156A5E59A85",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.docx"
+   },
+   {
+    "id": "fe879be60f1bd449",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.txt",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "C4543BA4DC5BE40704B7705F411BB2A74BC7BFBDE877D4D4D0B44FFEAABAE04E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.txt"
+   },
+   {
+    "id": "d5e0c855ee21533a",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "461E6663A7C774768D1D1553EBAB6EC10A5E2A2EDE859B55E82984416AA33933",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "435aa4ad23669479",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "6C353E7C9B8B6A3B08BB05EC13447CE7625CD7CF06A7A4F6566FFB8A364FFF06",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.docx"
+   },
+   {
+    "id": "6ff6906ad00bb922",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Planilha_Exemplo_Salao_v1.2.xlsx",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_Exemplo_Salao_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "C8738A7E351D22DB783E341DFE88CEECA2BEA665F76F4305600E9D26F84B0D58",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_Exemplo_Salao_v1.2.xlsx"
+   },
+   {
+    "id": "29657ae9050adda5",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "A21BB7E03EC5F1CD8614B4908D4109EB93D028EB0B79686420C6C2C043F4CB65",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "1562d2b1f8670efc",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_v1.2.zip",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2.zip",
+    "liberacao": "dia8",
+    "content_type": "application/zip",
+    "sha256": "6093702D34295AFBD5FB7231D0242393B0EDB0094FDE193D29A7562D12C99410",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2.zip"
+   },
+   {
+    "id": "c40ee9b5640f8e3e",
+    "arquivo": "00_COMECE_AQUI_Lucro_e_Caixa_v1.2.pdf",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "141FC04FE3D596CC87A665032661C9EDDA41E0E30610D5CC430DF748FD5A7480",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.pdf"
+   },
+   {
+    "id": "2709d324b5511558",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "1C9C48642EAAD5A4D95D6987B846821502CD133955B0136B820EA0D5FCC3AE65",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "aaf9052d1f5c16bd",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.pdf",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "A16D1857361F010889E2AD4B241CF032E118BFFB3E191D924BE91EAFE6AC09EB",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.pdf"
+   },
+   {
+    "id": "e5ce7ba1bf475a43",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.pdf",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "B0442F8B1004AE71EDA78765FEA9D0A756E977C8CD4644B31072D52CEB60AF50",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.pdf"
+   },
+   {
+    "id": "cb8c57b62c67b338",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "34AEF6200CD9DB4DE0FABA4B7A4E37398C4BAF22D3EF473A2506FFB88C2965A5",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "2cf0d266a2455d11",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "D7B6969BA44E7EE880450A4E18080D48912CCEC36C0E5468840429DA7FFFADE4",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-LCX-011/ZEVANORY_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.pdf"
+   }
+  ],
+  "ZEV-CMB-011": [
+   {
+    "id": "e79bd1ec32cf597f",
+    "arquivo": "00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "ADB82341AA59EE7AE2F390193A198D18A81A8C8517D2508E1DE1E791A47257E5",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.txt"
+   },
+   {
+    "id": "1704afbf20479263",
+    "arquivo": "00_COMECE_AQUI.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "3321DD9D5330B954BF68518F93BD061C0061BFB5BA90D9A342133CC091D0C418",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.txt"
+   },
+   {
+    "id": "3f597224a827df40",
+    "arquivo": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "2206204E946CC9D4F4174EC6118351A3B1ABFE88A83B8D25648BA4C7968874BD",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "105e051fcab2ffb6",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "EB68E12BA7671D314882A6AB344FFE809074F5992DE7BC07F1A56300CF072D76",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx"
+   },
+   {
+    "id": "d29bfa19abca106e",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "1A0922C0371BE15F596D2D1762BB86FFC0AE93B01EE9A8430CA78CF7236E0BB4",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt"
+   },
+   {
+    "id": "66aa50cdba5de6a1",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "FF1B52123D13ADD92B79E833B422441D6F7EFE5861745B7A066FAE1D888E3C2E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "3beb03f2552b4a06",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "2FCEF5615E42908AB87FAABDDC1F14B23581DC2D23BFB373F47A95F1F84E5A3B",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.docx"
+   },
+   {
+    "id": "bbed0f4c5b72d0dd",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "96FD275B0D761C0D1F2BE7D0EE31B879595432F24C555502AC8CF0BC548D7DBC",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx"
+   },
+   {
+    "id": "c6072d964cb09f48",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "8865FD821ECC2816BAD99752D1BA5E926BB4BC4B31A2837BDB639C9D062A0CB3",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "c5683408016ef4d6",
+    "arquivo": "00_COMECE_AQUI.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "CF07E4387C2956384088EAC5141AFFC2E577430FAE6208679CA4D435B0C9ADB8",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.txt"
+   },
+   {
+    "id": "dbd7ba470cd6c7b8",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "D156D6DE5C6F0B49F4EA1095FDC108C762EC54CE12B75F5BF1CB6AB6A354382E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "2fae71685bfa70fc",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "7E529222E5F14408661C059B59F61F1379F6D02FB59B1B7EA6270D5E6F122521",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx"
+   },
+   {
+    "id": "0e1c9f959e92c5a7",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "8CAE170314F8179A93E4060AF895E39BBAF35C70BCBC4C46F99A4ADDA84026D2",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt"
+   },
+   {
+    "id": "3a4cd411bda3b845",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "A9E944DA5ED279C5655FA4A38EC17AC48AE670FA5FF0A0BBF87422D012652F75",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "6fc02972409e9ca0",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "BED9E2F920B34B067BCDB13577D66D4F1A58FF27C0A0A2C46B5BD500FB0D4548",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx"
+   },
+   {
+    "id": "0b9be34cf2697fa5",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "DA583C9DA6CC7ED410A7511A770FBCF11D1E90FD611C11C325744B8C241228AB",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx"
+   },
+   {
+    "id": "64f04ea5b96027ed",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "E0C3E9641C6B823029521EA5456CA77EEBB616EFAE8A852B857662B2CBF9C388",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt"
+   },
+   {
+    "id": "49369890a145e430",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "CE9C2A173295F0B61B9C8099B4D3A8F26153AA9D575756B01A6E33C074B7DF86",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx"
+   },
+   {
+    "id": "8cad0e3ac6909083",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "2657F8527D7EF8250C1126F4683E58CFFE7ECC074717A0DAD897A9A83C0C744A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "e28c089a44d50091",
+    "arquivo": "LEIA_Licencas_de_fontes.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "931C2F265F0C6A9518B1376B3B83EF23B1D3B32313D0AE57553AFC85625499C8",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt"
+   },
+   {
+    "id": "a0dca9c61cc1f326",
+    "arquivo": "OFL-Archivo.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "393A694C7DEE6694A22C73049E95CEA5D0808697A872C435862D33C0AFC67091",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/Licencas_de_fontes/OFL-Archivo.txt"
+   },
+   {
+    "id": "3380279ab2d02ad3",
+    "arquivo": "OFL-AtkinsonHyperlegibleNext.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "B5B7A8BC1E0E92BE9B64ABD8ABD92659488733AA5BE8D982BC872C36DAC73F08",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+   },
+   {
+    "id": "4bb594d8a4224c3d",
+    "arquivo": "SHA256SUMS.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/SHA256SUMS.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "6333254ACE0CA145CBAE3062752A85E0DEB74D68645E498D930B6398FE2D9800",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/SHA256SUMS.txt"
+   },
+   {
+    "id": "b462650ca769a733",
+    "arquivo": "ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "46631479FA9B5069776376B9E31E4D86DA6CE5E25989415C0B925B93E878E912",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "5b2dcfdec63be5ab",
+    "arquivo": "ZEVANORY_Combo_IA_e_Vendas_v1.2.zip",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2.zip",
+    "liberacao": "dia8",
+    "content_type": "application/zip",
+    "sha256": "C4BD03163214F73C86947C5619BF43EC322FAEAEE73819C0708E8F9AB6646D41",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2.zip"
+   },
+   {
+    "id": "0102214f912fca9b",
+    "arquivo": "00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "B71A84BB3135B7F7B8CA77A103A16BD33E64FD1D8DD153E85A86DFDBCDB3E7D0",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/00_LEIA_PRIMEIRO_Combo_IA_e_Vendas_v1.2.pdf"
+   },
+   {
+    "id": "5df639ce656751bb",
+    "arquivo": "00_COMECE_AQUI.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "D803D7AA5EBE22D27DA4EF9D017BCF08E51C50D2D62F5577E8CAD685AB092F9C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.pdf"
+   },
+   {
+    "id": "92ebd1de7acf5b76",
+    "arquivo": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "0C058D68F9370AAC2A639A965EE4DEA4BBE390AA26AE1BF85448E3769321FA7D",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "a59e21224f016ed0",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "CB111A08CD16A688E54FB24ACC0489599FAF35EC666DA61DA9E686D766E6AFC4",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf"
+   },
+   {
+    "id": "3a150e40ec806e88",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "81D4DC8812C3F500A8EC97F3896DB899612D5EAA47B43D5D79AB5C3A419A916B",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "38790e770e1f83ef",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "BEE67E176BB9CA4645918107CD34ED7CF83B1CD92D610432B44EE59B4A6C31B6",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf"
+   },
+   {
+    "id": "f810e5cacfa5f990",
+    "arquivo": "00_COMECE_AQUI.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "75CAA3347D3357EC3F51AAE892AFB36E9136CA623FB6D64105B97E7989D7A027",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.pdf"
+   },
+   {
+    "id": "7b80886bab1af61a",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "F855953084B5410A7277BC0D805350A2C3501624AAE4420A9FE63BA759440FAC",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "c7447f259cd8207c",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "03D66082D523518E158CA94BE9C628A94A440DDD23DCBB5C407837409048508C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf"
+   },
+   {
+    "id": "0978cc8228ada4ce",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "746483EF3CD7173B8B8CCDEAD59EBE521CFD48FDC3149F0EB38A2C2A5CD1075F",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "f808a75988f4fea1",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "1939E9CE65135A106D843BC9E7C693817AF8C00EEB8B48F4BC6CF7415C99E90A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf"
+   },
+   {
+    "id": "e7febd1898520816",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "4A6C7FEFD724EB35465D3E8B09B3E5C0533C94C5C9C8FBEE01F99DFA23CCE914",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf"
+   },
+   {
+    "id": "7bdd9db4e6efb1b2",
+    "arquivo": "ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Combo_IA_e_Vendas_v1.2/ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "C7C7A1A7428EBD62776ADC67923F1E3BC94A8E4B5D594D1443E1301F76A2F3D7",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-CMB-011/ZEVANORY_Combo_IA_e_Vendas_v1.2/ZEVANORY_Combo_IA_e_Vendas_CHANGELOG_v1.2.pdf"
+   }
+  ],
+  "ZEV-NGC-011": [
+   {
+    "id": "f2824dffd8334ed1",
+    "arquivo": "00_COMECE_AQUI_Negocio_Completo_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/00_COMECE_AQUI_Negocio_Completo_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "6A13DD0F855084A6443ED6592FBEC0D46DF0051DABCB619C936EEEC130C9F1BC",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/00_COMECE_AQUI_Negocio_Completo_v1.2.txt"
+   },
+   {
+    "id": "62e9275857e95b6d",
+    "arquivo": "00_COMECE_AQUI.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "3321DD9D5330B954BF68518F93BD061C0061BFB5BA90D9A342133CC091D0C418",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.txt"
+   },
+   {
+    "id": "37ab8d27b28d6ceb",
+    "arquivo": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "2206204E946CC9D4F4174EC6118351A3B1ABFE88A83B8D25648BA4C7968874BD",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "eabb7d3c691ff719",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "EB68E12BA7671D314882A6AB344FFE809074F5992DE7BC07F1A56300CF072D76",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.docx"
+   },
+   {
+    "id": "8c922bddfe557cc6",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "1A0922C0371BE15F596D2D1762BB86FFC0AE93B01EE9A8430CA78CF7236E0BB4",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.txt"
+   },
+   {
+    "id": "cd28e9f153284902",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "FF1B52123D13ADD92B79E833B422441D6F7EFE5861745B7A066FAE1D888E3C2E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "3934556797b412db",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "2FCEF5615E42908AB87FAABDDC1F14B23581DC2D23BFB373F47A95F1F84E5A3B",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.docx"
+   },
+   {
+    "id": "1d0498998dd49634",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "96FD275B0D761C0D1F2BE7D0EE31B879595432F24C555502AC8CF0BC548D7DBC",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_Exemplo_v1.2.xlsx"
+   },
+   {
+    "id": "81a4700f3c5473c8",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "8865FD821ECC2816BAD99752D1BA5E926BB4BC4B31A2837BDB639C9D062A0CB3",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "70180c1625d02fbe",
+    "arquivo": "00_COMECE_AQUI.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "CF07E4387C2956384088EAC5141AFFC2E577430FAE6208679CA4D435B0C9ADB8",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.txt"
+   },
+   {
+    "id": "68b2281db9b5dc1b",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "D156D6DE5C6F0B49F4EA1095FDC108C762EC54CE12B75F5BF1CB6AB6A354382E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "103e9ef3de31fcb8",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "7E529222E5F14408661C059B59F61F1379F6D02FB59B1B7EA6270D5E6F122521",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.docx"
+   },
+   {
+    "id": "d5f61e3f51843126",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "8CAE170314F8179A93E4060AF895E39BBAF35C70BCBC4C46F99A4ADDA84026D2",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.txt"
+   },
+   {
+    "id": "0ad70ad5c4451bd0",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "A9E944DA5ED279C5655FA4A38EC17AC48AE670FA5FF0A0BBF87422D012652F75",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "2d48f9b1142ac798",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "BED9E2F920B34B067BCDB13577D66D4F1A58FF27C0A0A2C46B5BD500FB0D4548",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.docx"
+   },
+   {
+    "id": "3984b91d398ca4a7",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "DA583C9DA6CC7ED410A7511A770FBCF11D1E90FD611C11C325744B8C241228AB",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.docx"
+   },
+   {
+    "id": "664efc7c73b965fd",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "E0C3E9641C6B823029521EA5456CA77EEBB616EFAE8A852B857662B2CBF9C388",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.txt"
+   },
+   {
+    "id": "ce2deeda8adca41d",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "CE9C2A173295F0B61B9C8099B4D3A8F26153AA9D575756B01A6E33C074B7DF86",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_Exemplo_v1.2.xlsx"
+   },
+   {
+    "id": "0630cc849abd6811",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "2657F8527D7EF8250C1126F4683E58CFFE7ECC074717A0DAD897A9A83C0C744A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "16c4b7b83f280456",
+    "arquivo": "00_COMECE_AQUI_Lucro_e_Caixa_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "D21A2236E58F3F9FD04403D016E699BB8AD90B99634C799543CE6B57C7EF288C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.txt"
+   },
+   {
+    "id": "33575446bba4877c",
+    "arquivo": "LEIA_Licencas_de_fontes.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "51EDA73494C960501CB4C45EAAD172BEE02D6E1C34C5BA1632C6A3F29CBFBC2D",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt"
+   },
+   {
+    "id": "96b286b334bf13f7",
+    "arquivo": "OFL-Archivo.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "393A694C7DEE6694A22C73049E95CEA5D0808697A872C435862D33C0AFC67091",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-Archivo.txt"
+   },
+   {
+    "id": "b970725de953aa0e",
+    "arquivo": "OFL-AtkinsonHyperlegibleNext.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "B5B7A8BC1E0E92BE9B64ABD8ABD92659488733AA5BE8D982BC872C36DAC73F08",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+   },
+   {
+    "id": "eb220263bbc87719",
+    "arquivo": "SHA256SUMS.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/SHA256SUMS.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "C8EB8CD31A74F2E427A02AF11F4ACAC6ACAF0B2BF2020A760A72FDBC88A0D844",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/SHA256SUMS.txt"
+   },
+   {
+    "id": "d9d201e7c920b195",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "8F53E6B7B097B47073E3BBEF5D1389411B5C2394A2E56995678235F4018AB690",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "c903969d4485b2ff",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "761318C81EC2ECB9AD90C60BF62A24CDC9BA28449AB941760E18901CF54DB561",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.docx"
+   },
+   {
+    "id": "93a8d4b7bca923be",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "228D1C5FF9009F033E2E05D06FF6F2FA65DBE6F461FA87E784DE6854FF17E506",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.txt"
+   },
+   {
+    "id": "11611bc4efdd2f03",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "35A0969AD2C41BACB8DF6D07A8F4C5FD400A25951661C9761E24505C2F815572",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.docx"
+   },
+   {
+    "id": "3ba9e241aeb10226",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "C4543BA4DC5BE40704B7705F411BB2A74BC7BFBDE877D4D4D0B44FFEAABAE04E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.txt"
+   },
+   {
+    "id": "96920dd8e911e79b",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "990A707997FAB20ECE440223D4D2A2E5F35320EA8930E9EE09CDADB9864EAB31",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.docx"
+   },
+   {
+    "id": "965a7dbb6761d23d",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Manual_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "73AAADC7C4CAF14428D482DCF74BC42E103B4B2DB48E0D69193BC1B6F4CEC170",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.docx"
+   },
+   {
+    "id": "69e7373b189e5ecf",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Planilha_Exemplo_Salao_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_Exemplo_Salao_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "DF254C926C82C72EFA4F7E293E8EB7ED751AF7CE9891577E66D71AEE0A91A51B",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_Exemplo_Salao_v1.2.xlsx"
+   },
+   {
+    "id": "4e8aaca6a1f66b10",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "31B3B60697E9AE3EEFB135F796E2C5740ED07EB79D1CEBB9D5392DEBE38A6F0D",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Planilha_v1.2.xlsx"
+   },
+   {
+    "id": "05543f7de763bb2b",
+    "arquivo": "ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.2.docx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/04_Plano_Integrado_30_Dias/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.2.docx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "sha256": "80235E7718E6C162174B660D9687FF49379736F12E3121489593B8E52A5ADDA8",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/04_Plano_Integrado_30_Dias/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.2.docx"
+   },
+   {
+    "id": "80f91cb5726dee4e",
+    "arquivo": "ZEVANORY_Negocio_Completo_Painel_Decisao_Integrada_Exemplo_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/05_Painel_Decisao_Integrada/ZEVANORY_Negocio_Completo_Painel_Decisao_Integrada_Exemplo_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "81B977F6741C9F34071EC8D401415A4185B70D85ED7B341CA482D8EB9147C406",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/05_Painel_Decisao_Integrada/ZEVANORY_Negocio_Completo_Painel_Decisao_Integrada_Exemplo_v1.2.xlsx"
+   },
+   {
+    "id": "2aefbf36f0d53e0e",
+    "arquivo": "ZEVANORY_Negocio_Completo_Painel_Decisao_Integrada_v1.2.xlsx",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/05_Painel_Decisao_Integrada/ZEVANORY_Negocio_Completo_Painel_Decisao_Integrada_v1.2.xlsx",
+    "liberacao": "dia1",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sha256": "D9A4ED042B5EDBB6189369531653C80A7C8A3A04067212BAC5103940C3B3B321",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/05_Painel_Decisao_Integrada/ZEVANORY_Negocio_Completo_Painel_Decisao_Integrada_v1.2.xlsx"
+   },
+   {
+    "id": "e485db4a0f590f68",
+    "arquivo": "LEIA_Licencas_de_fontes.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "931C2F265F0C6A9518B1376B3B83EF23B1D3B32313D0AE57553AFC85625499C8",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/Licencas_de_fontes/LEIA_Licencas_de_fontes.txt"
+   },
+   {
+    "id": "df370213f3f0c343",
+    "arquivo": "OFL-Archivo.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/Licencas_de_fontes/OFL-Archivo.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "393A694C7DEE6694A22C73049E95CEA5D0808697A872C435862D33C0AFC67091",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/Licencas_de_fontes/OFL-Archivo.txt"
+   },
+   {
+    "id": "308961f0a3c52932",
+    "arquivo": "OFL-AtkinsonHyperlegibleNext.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "B5B7A8BC1E0E92BE9B64ABD8ABD92659488733AA5BE8D982BC872C36DAC73F08",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/Licencas_de_fontes/OFL-AtkinsonHyperlegibleNext.txt"
+   },
+   {
+    "id": "6399c00a32736dd0",
+    "arquivo": "SHA256SUMS.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/SHA256SUMS.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "030CEB0672D09912838568D7B62405489526BE7D0C8851F286261A2BF6325B75",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/SHA256SUMS.txt"
+   },
+   {
+    "id": "349eec57df9517e8",
+    "arquivo": "ZEVANORY_Negocio_Completo_CHANGELOG_v1.2.txt",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/ZEVANORY_Negocio_Completo_CHANGELOG_v1.2.txt",
+    "liberacao": "dia1",
+    "content_type": "text/plain; charset=utf-8",
+    "sha256": "36FC929A5AB6F6A5F4F1B226375CBF2A93E643BF4AA2F4DFE59BBEC8A1ACE615",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/ZEVANORY_Negocio_Completo_CHANGELOG_v1.2.txt"
+   },
+   {
+    "id": "1074302c04323cc3",
+    "arquivo": "ZEVANORY_Negocio_Completo_v1.2.zip",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2.zip",
+    "liberacao": "dia8",
+    "content_type": "application/zip",
+    "sha256": "FBBBA4A2A623A6E72F5A8C9DA4701E64C5D31CA44C1A24270D704B074EE97F9E",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2.zip"
+   },
+   {
+    "id": "2805c31ac04acf3b",
+    "arquivo": "00_COMECE_AQUI_Negocio_Completo_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/00_COMECE_AQUI_Negocio_Completo_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "091BCAD0F33FEC82C9849ADFE90B5B0B3799E94A0DFFC5C7C54E010AC17F8355",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/00_COMECE_AQUI_Negocio_Completo_v1.2.pdf"
+   },
+   {
+    "id": "76f5bdefbb0d5665",
+    "arquivo": "00_COMECE_AQUI.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "D803D7AA5EBE22D27DA4EF9D017BCF08E51C50D2D62F5577E8CAD685AB092F9C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/00_COMECE_AQUI.pdf"
+   },
+   {
+    "id": "dff13d6db7a4b9f0",
+    "arquivo": "ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "0C058D68F9370AAC2A639A965EE4DEA4BBE390AA26AE1BF85448E3769321FA7D",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "aa8ab95576de8fda",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "CB111A08CD16A688E54FB24ACC0489599FAF35EC666DA61DA9E686D766E6AFC4",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Comandos_v1.2.pdf"
+   },
+   {
+    "id": "cd185dcdde391b85",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "81D4DC8812C3F500A8EC97F3896DB899612D5EAA47B43D5D79AB5C3A419A916B",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "3140dc8d2a98a391",
+    "arquivo": "ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "BEE67E176BB9CA4645918107CD34ED7CF83B1CD92D610432B44EE59B4A6C31B6",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/01_IA_na_Pratica_v1.2/ZEVANORY_IA_na_Pratica_Manual_v1.2.pdf"
+   },
+   {
+    "id": "996719f3da0706b0",
+    "arquivo": "00_COMECE_AQUI.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "75CAA3347D3357EC3F51AAE892AFB36E9136CA623FB6D64105B97E7989D7A027",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/00_COMECE_AQUI.pdf"
+   },
+   {
+    "id": "8d3932eba7329b9d",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "F855953084B5410A7277BC0D805350A2C3501624AAE4420A9FE63BA759440FAC",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "c669052e2b8531ab",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "03D66082D523518E158CA94BE9C628A94A440DDD23DCBB5C407837409048508C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Conteudos_v1.2.pdf"
+   },
+   {
+    "id": "744b5751ba3b633d",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "746483EF3CD7173B8B8CCDEAD59EBE521CFD48FDC3149F0EB38A2C2A5CD1075F",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "0c78a656207627fd",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "1939E9CE65135A106D843BC9E7C693817AF8C00EEB8B48F4BC6CF7415C99E90A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Manual_v1.2.pdf"
+   },
+   {
+    "id": "20b3ae8213ce8756",
+    "arquivo": "ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "4A6C7FEFD724EB35465D3E8B09B3E5C0533C94C5C9C8FBEE01F99DFA23CCE914",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/02_Vendas_na_Pratica_v1.2/ZEVANORY_Vendas_na_Pratica_Mensagens_v1.2.pdf"
+   },
+   {
+    "id": "6c0efd051644b00e",
+    "arquivo": "00_COMECE_AQUI_Lucro_e_Caixa_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "CF483F32182D05D9A473738FF30F2A6838B70124E098B2D9C916D4688651354C",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/00_COMECE_AQUI_Lucro_e_Caixa_v1.2.pdf"
+   },
+   {
+    "id": "0624ec31c2f27d38",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "32C7EEF92409069D376688CECCCFF66D7400E718C42B0BDA264C3B87B714797B",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_CHANGELOG_v1.2.pdf"
+   },
+   {
+    "id": "7eaf0acd844d56f1",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "748EDE88AD2CF9502271AEAC461A6E32BC0C182631328F56A2BCAE07FC346B86",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Checklist_Semanal_v1.2.pdf"
+   },
+   {
+    "id": "c50fad0efa37127f",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "32EBD54EA99870D91254E941660F068901348BB7FE60AF9AFD39A0DF758C48D7",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Comandos_IA_v1.2.pdf"
+   },
+   {
+    "id": "12b09cfeaedb2f6b",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "036F1CA97299DC11AB9EEC1091944FC83FB3D484FED291951E4A2628ED61BCBD",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Guia_Rapido_v1.2.pdf"
+   },
+   {
+    "id": "4cc1a8e71c4ff278",
+    "arquivo": "ZEVANORY_Lucro_e_Caixa_Manual_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "82B66CB7BB9883B9C03F322A91B8F3B01F6CB639D64A70CBED45AD8138CAD4B7",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/03_Lucro_e_Caixa_v1.2/ZEVANORY_Lucro_e_Caixa_Manual_v1.2.pdf"
+   },
+   {
+    "id": "bbae28451863c223",
+    "arquivo": "ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/04_Plano_Integrado_30_Dias/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "A4C1EE79BC3D7281BFBF7D7C92ACEABFE7FC51F6EFA5E91F7776F0573DB6A729",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/04_Plano_Integrado_30_Dias/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.2.pdf"
+   },
+   {
+    "id": "0fe0c8ab5f608de2",
+    "arquivo": "ZEVANORY_Negocio_Completo_CHANGELOG_v1.2.pdf",
+    "caminho": "ZEVANORY_Negocio_Completo_v1.2/ZEVANORY_Negocio_Completo_CHANGELOG_v1.2.pdf",
+    "liberacao": "dia8",
+    "content_type": "application/pdf",
+    "sha256": "E79D0642ABA43DA4A4E65C71359ECC469E017EE8D6667BE76B4A68BBF601869A",
+    "kv_key": "zevanory/club-b/v1.2/ZEV-NGC-011/ZEVANORY_Negocio_Completo_v1.2/ZEVANORY_Negocio_Completo_CHANGELOG_v1.2.pdf"
+   }
+  ]
+ }
+}

@@ -38,12 +38,50 @@ const HUNK_404 = `  // Designed 404 for unknown PAGE paths (no file extension); 
     if(nf.status===200) return new Response(request.method==="HEAD"?null:nf.body,{status:404,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
   }
 `;
+// Modelo B (Sol ORDEM 313, PR dos kits pelo Hotmart Club): quinta diferença intencional, só na variante Hotmart.
+// Três trechos: import dos textos e do catálogo, links de checkout lidos de data/hotmart-kits.json (mesmos valores) e as
+// trocas do modelo B aplicadas depois das trocas existentes. Revertidos, o arquivo volta a ser byte a byte o do gh-pages.
+const HUNK_MODELB_IMPORT_NEW = `import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, ENTREGA_CLUB, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+import HOTMART_KITS from "../data/hotmart-kits.json" with { type: "json" };
+`;
+const HUNK_MODELB_IMPORT_OLD = `import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+`;
+const HUNK_MODELB_CHECKOUT_NEW = `// Modelo B (Sol ORDEM 313): links de checkout dos kits em data/hotmart-kits.json (fonte única; configurável se a troca do
+// formato de entrega para área de membros exigir produtos ou ofertas novos na Hotmart).
+export const HOTMART_CHECKOUT=Object.freeze(Object.fromEntries(HOTMART_KITS.kits.map((k)=>[k.slug,k.checkout])));
+`;
+const HUNK_MODELB_CHECKOUT_OLD = `export const HOTMART_CHECKOUT=Object.freeze({
+  "ia-na-pratica":"https://pay.hotmart.com/F107979716H?off=g9knd34r",
+  "vendas-na-pratica":"https://pay.hotmart.com/Y107979937I?off=8mg88sdd",
+  "lucro-e-caixa":"https://pay.hotmart.com/L107979973K?off=ksb5di36",
+  "combo-ia-vendas":"https://pay.hotmart.com/H107979990T?off=b3ytmah4",
+  "negocio-completo":"https://pay.hotmart.com/U107980005X?off=weo47apk",
+});
+`;
+const HUNK_MODELB_TEXT = `// Modelo B (Sol ORDEM 313): kits entregues SOMENTE pela área de membros (Hotmart Club). Aplicado depois das trocas acima:
+// cada texto de entrega da variante Hotmart passa ao do modelo B (data/politica-unica.json, entrega_club).
+const EC=ENTREGA_CLUB;
+HOTMART_TEXT.push(
+  ["Acesso por e-mail após a confirmação do pagamento",EC.fato_compra],
+  ["Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail.",EC.oferta_condicao],
+  ["Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart.",EC.faq_resposta],
+  ["Como recebo o produto?",EC.faq_pergunta],
+  [\`Você pode desistir em \${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.\`,EC.arrependimento_faq],
+  ["<strong>Entrega por link pessoal</strong>",\`<strong>\${EC.confianca_titulo}</strong>\`],
+  ["Acesso por e-mail logo após a confirmação do pagamento.",EC.confianca_texto],
+  [\`Entrega: após a confirmação do pagamento, por e-mail, em \${DELIVERY_72H}; se o link expirar, um novo é enviado sem custo pelo suporte.\`,EC.resumo_politica],
+  [RESUMO_OFERTA.produto_digital.restricoes,RESUMO_OFERTA.hotmart.restricoes],
+);
+export const HOTMART_TEXT_PAIRS=Object.freeze(HOTMART_TEXT.map((x)=>Object.freeze([...x])));
+`;
 const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex"); };
 
 async function loadWorkers() {
   assert.equal(NEW_SRC.split(HUNK_HOTMART_NEW).length, 2, "Hotmart hunk present exactly once");
   assert.equal(NEW_SRC.split(HUNK_404).length, 2, "404 hunk present exactly once");
-  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "");
+  for (const h of [HUNK_MODELB_IMPORT_NEW, HUNK_MODELB_CHECKOUT_NEW, HUNK_MODELB_TEXT]) assert.equal(NEW_SRC.split(h).length, 2, "model B hunk present exactly once");
+  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "")
+    .replace(HUNK_MODELB_IMPORT_NEW, HUNK_MODELB_IMPORT_OLD).replace(HUNK_MODELB_CHECKOUT_NEW, HUNK_MODELB_CHECKOUT_OLD).replace(HUNK_MODELB_TEXT, "");
   assert.equal(gitBlob(oldSrc), GH_PAGES_BLOB, "reverse-applied file is byte-identical to the gh-pages Worker (no other change)");
   const tmp = join(ROOT, "worker", `.gh-pages-sales-worker-${process.pid}-${Date.now()}.mjs`);
   writeFileSync(tmp, oldSrc);
@@ -157,7 +195,9 @@ test("(b) Hotmart list rewrite only in the Hotmart variant; Mercado Pago text un
   if (hot.status === 200) {
     const h = Buffer.from(hot.body, "base64").toString();
     assert.match(h, /<li>Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)<\/li>|Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)/);
-    assert.match(h, /Acesso por e-mail após a confirmação do pagamento/);
+    // Modelo B: o fato de entrega da variante Hotmart é o da área de membros (data/politica-unica.json, entrega_club).
+    assert.match(h, /Acesso pela área de membros: aulas online e planilhas e modelos desde o 1º dia; PDFs e pacote completo a partir do 8º dia/);
+    assert.doesNotMatch(h, /Acesso por e-mail após a confirmação do pagamento|72 horas|entrega\/reenviar/);
   }
 });
 

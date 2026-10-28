@@ -190,9 +190,10 @@
       "open": "Disponível para compra."
     },
     "hotmart": {
-      "nota": "Variante /hotmart/<produto> (só com vendas abertas): troca pagamento e entrega do resumo.",
+      "nota": "Variante /hotmart/<produto> (só com vendas abertas): troca pagamento, entrega e restrições do resumo. Modelo B (Sol ORDEM 313): entrega e restrições são as de entrega_club (teste tests/hotmart-kits-textos.test.mjs exige igualdade).",
       "pagamento": "Pix, cartão ou boleto, pela Hotmart. A compra só é confirmada após a aprovação do pagamento.",
-      "entrega": "Por e-mail, após a confirmação do pagamento, pela Hotmart; o produto também fica em Minhas compras, na sua conta Hotmart."
+      "entrega": "Pela área de membros da Hotmart, com o acesso enviado ao seu e-mail após a confirmação do pagamento: acesso online imediato às aulas, manuais e guias; planilhas (XLSX) e modelos editáveis (DOCX) para baixar desde o 1º dia; manuais e guias em PDF e o pacote completo (.zip) para baixar a partir do 8º dia após a confirmação do pagamento.",
+      "restricoes": "Produto digital: conteúdo online na área de membros e arquivos para download, nas datas informadas na entrega. Material licenciado para uso individual do comprador. É proibida sua revenda ou redistribuição não autorizada, respeitados os direitos previstos em lei."
     }
   },
   "conteudo_pronto": {
@@ -246,5 +247,30 @@
     "days": 7,
     "utc_offset_minutes": -180,
     "fragmento_sol": "se as datas forem diferentes, a ZEVANORY adotará a mais recente"
+  },
+  "entrega_club": {
+    "nota": "Modelo B (Sol ORDEM 313, aprovado): os 5 kits vendidos na Hotmart são entregues SOMENTE pela área de membros (Hotmart Club). Fonte única dos textos de entrega das compras Hotmart: página /hotmart/<produto> (worker/sales-public-worker.mjs, HOTMART_TEXT), resumo da oferta (resumo_oferta.hotmart), FAQ e FAQPage, Termos (seção 4), /reembolso, e-mails (boas-vindas para o proprietário colar na Hotmart e e-mail de contingência do Worker) e descrição do produto na Hotmart. O sol_text (seção 6) NÃO muda aqui: a proposta para ele e para a declaração D7962-5-3 do portão P23 está no corpo do PR, para aprovação do Sol e do P23. O aviso de licença é genérico, sem marca d'água por comprador, e não é apresentado como DRM.",
+    "linha_canonica": "Acesso online imediato pela área de membros; planilhas e modelos para baixar desde o 1º dia; PDFs e pacote completo para baixar a partir do 8º dia.",
+    "resumo_entrega": "Pela área de membros da Hotmart, com o acesso enviado ao seu e-mail após a confirmação do pagamento: acesso online imediato às aulas, manuais e guias; planilhas (XLSX) e modelos editáveis (DOCX) para baixar desde o 1º dia; manuais e guias em PDF e o pacote completo (.zip) para baixar a partir do 8º dia após a confirmação do pagamento.",
+    "restricoes": "Produto digital: conteúdo online na área de membros e arquivos para download, nas datas informadas na entrega. Material licenciado para uso individual do comprador. É proibida sua revenda ou redistribuição não autorizada, respeitados os direitos previstos em lei.",
+    "aviso_licenca": "Material licenciado para uso individual do comprador. É proibida sua revenda ou redistribuição não autorizada, respeitados os direitos previstos em lei.",
+    "pagamento_fato": "Pagamento processado pela Hotmart (Pix, cartão ou boleto)",
+    "fato_compra": "Acesso pela área de membros: aulas online e planilhas e modelos desde o 1º dia; PDFs e pacote completo a partir do 8º dia",
+    "confianca_titulo": "Acesso pela área de membros",
+    "confianca_texto": "Aulas online e planilhas e modelos desde o 1º dia; PDFs e pacote completo a partir do 8º dia.",
+    "oferta_condicao": "Acesso pela área de membros da Hotmart após a confirmação do pagamento: aulas online e planilhas e modelos desde o 1º dia; PDFs e pacote completo a partir do 8º dia.",
+    "resumo_politica": "Entrega: pela área de membros da Hotmart, após a confirmação do pagamento: aulas online e planilhas e modelos desde o 1º dia; PDFs e pacote completo a partir do 8º dia.",
+    "faq_pergunta": "Como e quando recebo o produto?",
+    "faq_resposta": "Pela área de membros da Hotmart (Hotmart Club). Logo após a confirmação do pagamento, a Hotmart envia o acesso ao seu e-mail. Desde o 1º dia: todas as aulas, manuais e guias para ler online e todas as planilhas (XLSX) e modelos editáveis (DOCX) para baixar e usar. A partir do 8º dia após a confirmação do pagamento: os manuais e guias em PDF e o pacote completo (.zip) para baixar, liberados automaticamente na própria área de membros.",
+    "arrependimento_faq": "Você pode desistir em {rule_7d_curto}, sem justificativa e com devolução integral, mesmo que já tenha acessado as aulas ou baixado arquivos: peça pela Hotmart, em Minhas compras, ou pelo e-mail suporte@zevanory.api.br.",
+    "termos_paragrafo": "Compras pela Hotmart (IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas e Negócio Completo): a entrega é feita somente pela área de membros da Hotmart (Hotmart Club), cujo acesso a Hotmart envia ao e-mail informado após a confirmação do pagamento. Desde o 1º dia ficam disponíveis as aulas, manuais e guias para leitura online e as planilhas (XLSX) e os modelos editáveis (DOCX) para baixar; a partir do 8º dia após a confirmação do pagamento, os manuais e guias em PDF e o pacote completo (.zip) para baixar, liberados automaticamente na área de membros. O link pessoal de 72 horas e o pedido de novo link em zevanory.api.br/entrega/reenviar valem só para o checkout próprio, não para essas compras. Se a área de membros ficar indisponível, o suporte poderá enviar ao e-mail da compra um link individual e temporário com os arquivos já liberados para aquela compra, sem antecipar os do 8º dia. O direito de arrependimento da seção 6 vale normalmente, mesmo depois de acessar as aulas ou baixar arquivos: o pedido pode ser feito na própria Hotmart (Minhas compras) ou pelos canais da seção 6, e todo pedido dentro do prazo é aprovado, sem recusa por acesso ou consumo do conteúdo. Após reembolso, cancelamento ou chargeback, o acesso à área de membros e qualquer link de contingência são encerrados.",
+    "termos_licenca": "O material traz o aviso: “Material licenciado para uso individual do comprador. É proibida sua revenda ou redistribuição não autorizada, respeitados os direitos previstos em lei.” O aviso informa a licença; não é um mecanismo técnico de proteção (DRM) nem uma marca individual do comprador.",
+    "reembolso_paragrafo": "Compras pela Hotmart: peça pela Hotmart, em Minhas compras, ou pelos canais acima. Todo pedido dentro do prazo é aprovado, mesmo que você já tenha acessado as aulas ou baixado planilhas, modelos ou PDFs: não recusamos reembolso por acesso ou consumo do conteúdo. A ZEVANORY comunica imediatamente a Hotmart, que faz a devolução integral no mesmo meio de pagamento. Após o reembolso, o acesso à área de membros é encerrado.",
+    "email_boas_vindas_assunto": "Seu acesso ao {produto}: como funciona",
+    "email_boas_vindas": "Olá! Seu pagamento foi confirmado e o {produto} está na área de membros da Hotmart (o acesso chega num e-mail da própria Hotmart).\n\nDesde hoje (1º dia): todas as aulas, manuais e guias para ler online e todas as planilhas (XLSX) e modelos editáveis (DOCX) para baixar e usar.\nA partir do 8º dia após a confirmação do pagamento: os manuais e guias em PDF e o pacote completo (.zip), liberados automaticamente na área de membros.\n\nArrependimento: você pode desistir em {rule_7d}, com devolução integral, mesmo depois de acessar as aulas ou baixar arquivos. Peça pela Hotmart (Minhas compras) ou em {refund_channels}.\n\n{aviso_licenca}\n\nDúvidas: suporte@zevanory.api.br",
+    "email_contingencia_assunto": "ZEVANORY: link temporário dos seus arquivos ({produto})",
+    "email_contingencia": "Olá! A área de membros da Hotmart está indisponível no momento. Por isso enviamos um link individual e temporário com os arquivos já liberados para a sua compra do {produto}:\n\n{link}\n\nO link vale até {expira} (horário de Brasília), é só seu e deixa de funcionar se a compra for reembolsada, cancelada ou contestada. {dia8}\n\n{aviso_licenca}\n\nDúvidas: suporte@zevanory.api.br",
+    "dia8_liberado": "Os PDFs e o pacote completo já estão liberados para a sua compra.",
+    "dia8_pendente": "Os PDFs e o pacote completo serão liberados a partir de {data} (horário de Brasília), 8 dias após a confirmação do pagamento."
   }
 }

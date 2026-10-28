@@ -1,4 +1,5 @@
-import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, ENTREGA_CLUB, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+import HOTMART_KITS from "../data/hotmart-kits.json" with { type: "json" };
 // Contato humano nas páginas do Worker vem de contato_publico (e-mail enquanto o WhatsApp não opera).
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto","kit-afiliado","ia-por-ramo","ia-para-salao-de-beleza","ia-para-barbearia","ia-para-restaurante-e-lanchonete","ia-para-loja-de-roupas","ia-para-mercadinho","ia-para-oficina-mecanica","ia-para-clinica-e-consultorio","ia-para-academia","ia-para-pet-shop","ia-para-contabilidade","ia-para-imobiliaria","ia-para-deposito-de-bebidas","ferramentas","calculadora-preco-de-venda","calculadora-margem-de-lucro","calculadora-ponto-de-equilibrio","ia-para-padaria","ia-para-pizzaria","ia-para-hamburgueria","ia-para-acaiteria","ia-para-confeitaria","ia-para-farmacia","ia-para-otica","ia-para-papelaria","ia-para-materiais-de-construcao","ia-para-assistencia-tecnica-de-celular","ia-para-autoescola","ia-para-escola-de-idiomas","ia-para-clinica-odontologica","ia-para-psicologo","ia-para-nutricionista","ia-para-fisioterapia","ia-para-estetica","ia-para-manicure","ia-para-lava-jato","ia-para-eletricista-e-encanador","ia-para-fotografo","ia-para-arquitetura-e-design-de-interiores","ia-para-advocacia","ia-para-agencia-de-viagens","ia-para-floricultura","ia-para-marmitaria","ia-para-pousada","ia-para-distribuidora-de-gas-e-agua","calculadora-fluxo-de-caixa","calculadora-preco-hora-servico","calculadora-taxa-maquininha","calculadora-cmv","mensagem-para-cliente-que-sumiu","como-cobrar-cliente-pelo-whatsapp","como-mandar-orcamento-pelo-whatsapp"]);
@@ -207,13 +208,9 @@ async function reviewSummary(env){
 // Hotmart affiliate channel: same official product page, but the buy buttons go to the
 // Hotmart checkout (affiliate commission only exists there). Mercado Pago pages stay intact.
 // Links are public checkout URLs (not secrets). Empty => redirect to the normal page.
-export const HOTMART_CHECKOUT=Object.freeze({
-  "ia-na-pratica":"https://pay.hotmart.com/F107979716H?off=g9knd34r",
-  "vendas-na-pratica":"https://pay.hotmart.com/Y107979937I?off=8mg88sdd",
-  "lucro-e-caixa":"https://pay.hotmart.com/L107979973K?off=ksb5di36",
-  "combo-ia-vendas":"https://pay.hotmart.com/H107979990T?off=b3ytmah4",
-  "negocio-completo":"https://pay.hotmart.com/U107980005X?off=weo47apk",
-});
+// Modelo B (Sol ORDEM 313): links de checkout dos kits em data/hotmart-kits.json (fonte única; configurável se a troca do
+// formato de entrega para área de membros exigir produtos ou ofertas novos na Hotmart).
+export const HOTMART_CHECKOUT=Object.freeze(Object.fromEntries(HOTMART_KITS.kits.map((k)=>[k.slug,k.checkout])));
 // Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
 const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
@@ -230,6 +227,21 @@ const HOTMART_TEXT=[
 ];
 // Decreto 7.962 "Resumo da oferta": pagamento e entrega da variante Hotmart (data/politica-unica.json).
 HOTMART_TEXT.push([RESUMO_OFERTA.produto_digital.pagamento,RESUMO_OFERTA.hotmart.pagamento],[RESUMO_OFERTA.produto_digital.entrega.replace("{delivery_72h}",DELIVERY_72H),RESUMO_OFERTA.hotmart.entrega]);
+// Modelo B (Sol ORDEM 313): kits entregues SOMENTE pela área de membros (Hotmart Club). Aplicado depois das trocas acima:
+// cada texto de entrega da variante Hotmart passa ao do modelo B (data/politica-unica.json, entrega_club).
+const EC=ENTREGA_CLUB;
+HOTMART_TEXT.push(
+  ["Acesso por e-mail após a confirmação do pagamento",EC.fato_compra],
+  ["Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail.",EC.oferta_condicao],
+  ["Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart.",EC.faq_resposta],
+  ["Como recebo o produto?",EC.faq_pergunta],
+  [`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.`,EC.arrependimento_faq],
+  ["<strong>Entrega por link pessoal</strong>",`<strong>${EC.confianca_titulo}</strong>`],
+  ["Acesso por e-mail logo após a confirmação do pagamento.",EC.confianca_texto],
+  [`Entrega: após a confirmação do pagamento, por e-mail, em ${DELIVERY_72H}; se o link expirar, um novo é enviado sem custo pelo suporte.`,EC.resumo_politica],
+  [RESUMO_OFERTA.produto_digital.restricoes,RESUMO_OFERTA.hotmart.restricoes],
+);
+export const HOTMART_TEXT_PAIRS=Object.freeze(HOTMART_TEXT.map((x)=>Object.freeze([...x])));
 export function hotmartPage(html,slug,checkout){
   let out=openSalesHtml(html,slug);  // only served while sales are open (handleHotmart)
   for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);
