@@ -50,21 +50,22 @@ concurrency:
 jobs:
   budget:
     name: sales-ux / lighthouse-axe-budget
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       QUALITY_MODULES: /tmp/q/node_modules
       ZEVANORY_SALES_PUBLIC_MODE: closed
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
+          package-manager-cache: false
           node-version: "22"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - name: Build the PR candidate (must match the committed build)
@@ -121,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/audit/sales-budget-summary.mjs /tmp/sales-ux/budget-after/sales-quality-budget.json /tmp/sales-ux/budget-after-dark/sales-quality-budget.json /tmp/sales-ux/budget-results.json --commit "$HEAD_SHA"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: sales-ux-evidence

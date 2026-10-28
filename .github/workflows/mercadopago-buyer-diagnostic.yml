@@ -14,13 +14,13 @@ jobs:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     # Substituído por sandbox-identity-attest.yml (mesma verificação seller/buyer test_user, em sandbox-financial-approved).
     if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}'}
       - run: python3 scripts/mercadopago_buyer_diagnostic.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: sandbox-buyer-diagnostic

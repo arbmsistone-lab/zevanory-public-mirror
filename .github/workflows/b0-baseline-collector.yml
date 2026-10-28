@@ -23,17 +23,18 @@ concurrency:
 jobs:
   collect:
     if: ${{ github.ref == 'refs/heads/gh-pages' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       EVIDENCE_BRANCH: evidence/b0-baseline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
+          package-manager-cache: false
           node-version: "22"
       - name: Testes do coletor (fail-closed)
         run: node --test tests/b0-baseline.test.mjs

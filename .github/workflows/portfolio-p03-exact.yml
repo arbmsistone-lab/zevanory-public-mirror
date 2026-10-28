@@ -31,7 +31,7 @@ permissions:
 jobs:
   p03:
     name: P03 ${{ matrix.slug }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -49,12 +49,13 @@ jobs:
             blob: e51c01c8ba23d0392a262fb2ede8b2b7d900a182
           # zevanory-one retired from the public surface (HTTP 410): no live P03 target.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
+          package-manager-cache: false
           node-version: "22"
 
       - name: Verify immutable target blob and static geometry contract
@@ -174,7 +175,7 @@ jobs:
           node p03.mjs
 
       - name: Upload target-specific P03 evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: portfolio-p03-${{ matrix.slug }}
           path: |

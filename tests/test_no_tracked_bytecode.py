@@ -106,7 +106,7 @@ class NoTrackedBytecode(unittest.TestCase):
         self.assertFalse((on["pull_request"] or {}).get("paths"), "sem filtro de caminho: o guarda roda em toda PR")
         self.assertEqual(doc["permissions"], {"contents": "read"})
         self.assertNotIn("secrets.", text)
-        self.assertEqual(doc["jobs"]["no-tracked-bytecode"]["strategy"]["matrix"]["os"], ["ubuntu-latest", "windows-latest"])
+        self.assertEqual(doc["jobs"]["no-tracked-bytecode"]["strategy"]["matrix"]["os"], ["ubuntu-24.04", "windows-latest"])
         self.assertIn("python scripts/ci/no_tracked_bytecode.py", text)
         self.assertIn("tests.test_no_tracked_bytecode", text)
 
