@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { handleRefundFlow, runRefundWatchdog, reconcileRefund } from "../worker/refund-flow.mjs";
+import { IA_PRICE } from "./helpers/catalog-price.mjs";
 
 const OID = "11111111-2222-4333-8444-555555555555";
 const TOKEN = "certification-only-test-token-0123456789abcdef";
@@ -10,7 +11,7 @@ const key = "refund:req:" + OID;
 function fixture(initial = {}) {
   const state = new Map([[key, JSON.stringify({
     status: "pending", order_id: OID, payment_id: PAYMENT,
-    offer_id: "ZEV-IA-011", amount: 197, test: true, ...initial
+    offer_id: "ZEV-IA-011", amount: IA_PRICE, test: true, ...initial
   })]]);
   let updateCount = 0;
   let claimCount = 0;
@@ -250,7 +251,7 @@ test("nonterminal 200 refund is ambiguous and cannot produce false approval", as
 
 const cleanPayment = (extra = {}) => ({
   id: Number(PAYMENT), status: "approved", status_detail: "accredited",
-  transaction_amount: 197, transaction_amount_refunded: 0, refunds: [], ...extra
+  transaction_amount: IA_PRICE, transaction_amount_refunded: 0, refunds: [], ...extra
 });
 async function withPaymentStub(post, payment, run) {
   const original = globalThis.fetch;
@@ -305,8 +306,8 @@ test("worker death after approved POST is recovered from GET only and revokes do
   const x = fixture();
   x.killAfterPost();
   await withPaymentStub(() => Response.json({ id: 31337, status: "approved" }),
-    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: 197,
-      refunds: [{ id: 31337, status: "approved", amount: 197 }] }),
+    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: IA_PRICE,
+      refunds: [{ id: 31337, status: "approved", amount: IA_PRICE }] }),
     async (calls) => {
       assert.equal((await x.invoke()).code, 503);
       assert.equal(JSON.parse(x.state.get(key)).status, "pending");
@@ -321,8 +322,8 @@ test("worker death after approved POST is recovered from GET only and revokes do
 test("reconciliation a: full approved refund is confirmed by GET and downloads revoked", async () => {
   const x = fixture();
   await withPaymentStub(() => Response.json({ error: "upstream" }, { status: 500 }),
-    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: 197,
-      refunds: [{ id: "abc-refund", status: "approved", amount: 197 }] }), async (calls) => {
+    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: IA_PRICE,
+      refunds: [{ id: "abc-refund", status: "approved", amount: IA_PRICE }] }), async (calls) => {
       assert.equal((await x.invoke()).code, 502);
       const r = await x.reconcile();
       assert.equal(r.status, 200);
@@ -389,7 +390,7 @@ test("reconciliation c: missing refunds, missing refunded amount or mismatched a
 test("in_process refund cannot approve or permit another POST until terminal GET", async () => {
   const x = fixture();
   await withPaymentStub(() => Response.json({ id: 404, status: "in_process" }),
-    cleanPayment({ transaction_amount_refunded: 197, refunds: [{ id: 404, status: "in_process", amount: 197 }] }), async (calls) => {
+    cleanPayment({ transaction_amount_refunded: IA_PRICE, refunds: [{ id: 404, status: "in_process", amount: IA_PRICE }] }), async (calls) => {
       assert.equal((await x.invoke()).code, 502);
       x.setClaimAgeMinutes(31);
       const r = await x.reconcile();
@@ -448,8 +449,8 @@ test("watchdog repairs an approved refund after Worker dies before KV persistenc
   const x = fixture();
   x.killAfterPost();
   await withPaymentStub(() => Response.json({ id: 5555, status: "approved" }),
-    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: 197,
-      refunds: [{ id: 5555, status: "approved", amount: 197 }] }), async (calls) => {
+    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: IA_PRICE,
+      refunds: [{ id: 5555, status: "approved", amount: IA_PRICE }] }), async (calls) => {
       assert.equal((await x.invoke()).code, 503);
       assert.equal(JSON.parse(x.state.get(key)).provider_outcome_unknown, undefined);
       const result = await x.watchdog();
@@ -497,8 +498,8 @@ test("certification refund-reconcile approved ingests signed sandbox webhook and
   }};
   await withPaymentStub(
     () => Response.json({ message: "upstream" }, { status: 500 }),
-    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: 197,
-      refunds: [{ id: "rec-refund", status: "approved", amount: 197 }] }),
+    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: IA_PRICE,
+      refunds: [{ id: "rec-refund", status: "approved", amount: IA_PRICE }] }),
     async (calls) => {
       assert.equal((await x.invoke()).code, 502);
       const result = await x.reconcileRoute(worker);

@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import http from "node:http";
 import { createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { IA_PRICE, IA_PRICE_STR } from "../helpers/catalog-price.mjs";
 
 const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
 const SKIP = !HOST && "T4_PG_HOST not set (throwaway local PostgreSQL required)";
@@ -158,7 +159,7 @@ async function webhook(paymentId, { signature, requestId = randomUUID(), body } 
 }
 let seq = 1000000;
 let bundle = null;
-function newOrder({ amount = "197.00", status = "checkout_ready", sku = "ZEV-IA-011" } = {}) {
+function newOrder({ amount = IA_PRICE_STR, status = "checkout_ready", sku = "ZEV-IA-011" } = {}) {
   const id = randomUUID();
   runQuery(`insert into orders (order_id, offer_id, amount, provider, external_reference, status) values ($1,$2,$3,'mercadopago',$4,$5)`,
     [id, sku, amount, `ZEVANORY:EXP-0001:${id}`, status]);

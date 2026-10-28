@@ -16,7 +16,12 @@ Superfícies (cada uma é reescrita a partir de data/products.json; nenhuma tem 
     worker/multichannel-autonomy.mjs;
   - prova sandbox: worker/sandbox-proof-v2.mjs e scripts/mercadopago_combo_sandbox.py;
   - mapa P24: data/p24/promise-map.json (texto das promessas de economia);
-  - corpus de avaliação do chat: data/site-chat-eval/general.json e critical.json (preço esperado por produto).
+  - corpus de avaliação do chat: data/site-chat-eval/general.json e critical.json (preço esperado por produto);
+  - guias verticais ia-para-*/index.html, calculadoras e ferramentas, kit de afiliado (preço e comissão calculada),
+    criativos do YouTube (scripts/channels) e da prova do Telegram (bundle do Worker), sonda manual do checkout.
+As cópias em sales-public/ são geradas pelo build a partir dessas fontes. scripts/price_surface_scan.py prova que
+nenhum outro arquivo tem preço literal: troca os preços por valores-sentinela numa cópia, roda este script e o build,
+e falha se sobrar qualquer preço real fora da lista de exceções justificadas.
 Depois de mudar um preço: rode este script e scripts/build_sales_public.py; o CI confere os dois.
 """
 from __future__ import annotations
@@ -33,6 +38,12 @@ def load():
     d = json.loads((ROOT / "data/products.json").read_text(encoding="utf-8"))
     by_slug = {p["slug"]: p for p in d["products"]}
     return d, by_slug, {p["sku"]: p["price"] for p in d["products"]}, int(d["subscription"]["price"])
+
+
+def brl_cents(hundredths: int) -> str:
+    """valor em centésimos de real (preço x percentual) -> "98,50" / "1.234,00"."""
+    reais, cents = divmod(int(hundredths), 100)
+    return f"{reais:,}".replace(",", ".") + f",{cents:02d}"
 
 
 def economy(by_slug, slug, parts):
@@ -76,6 +87,42 @@ def rules(d, by_slug, by_sku, sub):
     eval_rx = rf'("q": "[^"]*?({names})[^"]*",\s*"expect": \{{[^}}]*?"includes": \[\s*"R\$ )\d+(,00)'
     R.append(("data/site-chat-eval/general.json", eval_rx, lambda m: f"{m.group(1)}{by_name[m.group(2)]}{m.group(3)}", 6))
     R.append(("data/site-chat-eval/critical.json", eval_rx, lambda m: f"{m.group(1)}{by_name[m.group(2)]}{m.group(3)}", 2))
+    # Auditoria #954 HIGH-1: superfícies que tinham preço literal fora do sincronizador.
+    lcx = by_slug["lucro-e-caixa"]["price"]
+    R.append(("ia-para-*/index.html", r'(comandos prontos \(R\$ )\d+(\))', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
+    R.append(("ia-para-*/index.html", r'(entregues por e-mail \(R\$ )\d+(/mês\))', lambda m: f"{m.group(1)}{sub}{m.group(2)}", 1))
+    R.append(("calculadora-*/index.html", r'(analisar seus números \(R\$ )\d+(;)', lambda m: f"{m.group(1)}{lcx}{m.group(2)}", 1))
+    R.append(("ferramentas/index.html", r'(analisar seus números \(R\$ )\d+(;)', lambda m: f"{m.group(1)}{lcx}{m.group(2)}", 1))
+    # Kit de afiliado: preço e comissão calculada (percentual escrito na própria linha, valor = preço x percentual).
+    names_kit = {p["name"]: p["price"] for p in d["products"]}
+    kit_names = "|".join(re.escape(n.replace("&", "&amp;")) for n in names_kit)
+    def kit(m):
+        name = m.group(2).replace("&amp;", "&")
+        price = names_kit[name] if name in names_kit else sub
+        pct = int(m.group(4))
+        return f"{m.group(1)}{price}{m.group(3)}{pct}% (R$ {brl_cents(price * pct)})"
+    R.append(("kit-afiliado/index.html", rf'(<strong>({kit_names})</strong> · R\$ )\d+( · comissão de )(\d+)% \(R\$ [\d.]+,\d\d\)', kit, len(names_kit)))
+    R.append(("kit-afiliado/index.html", r'(<strong>(Conteúdo Pronto) \(assinatura\)</strong> · R\$ )\d+(/mês · comissão de )(\d+)% \(R\$ [\d.]+,\d\d\)', kit, 1))
+    # Criativos do YouTube e da prova do Telegram (texto genérico "a ZEVANORY por R$ X" = preço do IA na Prática).
+    for f in ("scripts/channels/render-youtube-short.mjs", "scripts/channels/youtube-preflight.mjs"):
+        R.append((f, r'(Organize tarefas repetitivas por R\$ )\d+(,00)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
+        R.append((f, r'(cta:"Conheça a ZEVANORY",price_brl:)\d+', lambda m: f"{m.group(1)}{ia}", 1))
+        R.append((f, r'(\{serverPrice:)\d+', lambda m: f"{m.group(1)}{ia}", 1))
+    R.append((rec, r'(Conheça a ZEVANORY por R\$ )\d+(,00\. )', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
+    R.append((rec, r'(cta:"Acessar material gratuito",price_brl:)\d+(\};\n\s*const approved=evaluateCreativeWithRewrites\(spec,\{serverPrice:)\d+', lambda m: f"{m.group(1)}{ia}{m.group(2)}{ia}", 1))
+    # Sonda manual do checkout (workflow_dispatch): o valor conferido é o preço do IA na Prática.
+    wf = ".github/workflows/mercadopago-checkout-pro-manual-payment.yml"
+    R.append((wf, r'(Create canonical R\$)\d+( order)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
+    R.append((wf, r'(-)\d+(\.0\)<0\.001)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 2))
+    R.append((wf, r'("amount_brl":)\d+(\.0,)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
+    R.append((wf, r'(- Valor: \*\*R\$ )\d+(,00\*\*)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
+    # Short diário do YouTube (preço por SKU), padrão final só-leitura (tuplas por produto) e auditoria do checkout
+    # Hotmart (preço que o comprador precisa ver na Hotmart: concilia a Hotmart com a página quando o dono a dispara).
+    R.append(("scripts/channels/youtube-daily-short.mjs", rf'"({sku_re})": \d+', lambda m: f'"{m.group(1)}": {by_sku[m.group(1)]}', len(by_sku)))
+    R.append((".github/workflows/zevanory-final-standard-readonly.yml", rf'(\("({slug_re})", "[^"]+", )\d+(, "ZEV-)', lambda m: f"{m.group(1)}{by_slug[m.group(2)]['price']}{m.group(3)}", len(by_slug)))
+    hot = {**{p["name"]: p["price"] for p in d["products"]}, "Conteúdo Pronto": sub}
+    hot_rx = "|".join(re.escape(n) for n in hot)
+    R.append((".github/workflows/hotmart-identity-audit.yml", rf'("ZEVANORY ({hot_rx})" ")\d+(,00")', lambda m: f"{m.group(1)}{hot[m.group(2)]}{m.group(3)}", len(hot)))
     pm = "data/p24/promise-map.json"
     R.append((pm, r'"Economia de R\$ \d+ em relação à compra separada \(R\$ \d+\)"(?=,\s*"type": "price",\s*"components": \[\s*"ia-na-pratica",\s*"vendas-na-pratica"\s*\])',
               lambda m: f'"Economia de R$ {cmb_eco} em relação à compra separada (R$ {cmb_sep})"', 1))
@@ -89,12 +136,16 @@ def main(argv=None) -> int:
     d, by_slug, by_sku, sub = load()
     problems, changed = [], []
     texts = {}
-    for f, rx, fn, want in rules(d, by_slug, by_sku, sub):
-        t = texts.setdefault(f, (ROOT / f).read_text(encoding="utf-8"))
-        new, n = re.subn(rx, fn, t)
-        if n != want:
-            problems.append(f"{f}: padrão {rx[:60]}… casou {n} vez(es), esperado {want} (a superfície mudou de forma: ajuste o sincronizador)")
-        texts[f] = new
+    for spec, rx, fn, want in rules(d, by_slug, by_sku, sub):
+        files = sorted(str(x.relative_to(ROOT)) for x in ROOT.glob(spec)) if "*" in spec else [spec]
+        if not files:
+            problems.append(f"{spec}: nenhum arquivo (a superfície mudou de lugar: ajuste o sincronizador)")
+        for f in files:
+            t = texts.setdefault(f, (ROOT / f).read_text(encoding="utf-8"))
+            new, n = re.subn(rx, fn, t)
+            if n != want:
+                problems.append(f"{f}: padrão {rx[:60]}… casou {n} vez(es), esperado {want} (a superfície mudou de forma: ajuste o sincronizador)")
+            texts[f] = new
     for f, t in texts.items():
         if t != (ROOT / f).read_text(encoding="utf-8"):
             changed.append(f)

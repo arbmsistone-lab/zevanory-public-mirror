@@ -6,7 +6,10 @@ import { CUSTOMER_RULE_7D, hasCheckoutCta, bannedPolicyHits } from "../worker/po
 
 const failures = [];
 let correct = 0;
-const expectPrices = { "ia-na-pratica": "R$ 197,00", "vendas-na-pratica": "R$ 197,00", "lucro-e-caixa": "R$ 247,00", "combo-ia-vendas": "R$ 297,00", "negocio-completo": "R$ 397,00", "conteudo-pronto": "R$ 197,00" };
+// Preço esperado = data/products.json (fonte única; scripts/sync_canonical_prices.py). Nenhum valor literal aqui.
+const official = JSON.parse(fs.readFileSync(new URL("../data/products.json", import.meta.url), "utf8"));
+const brl = (v) => `R$ ${v},00`;
+const expectPrices = Object.fromEntries([...official.products.map((p) => [p.slug, brl(p.price)]), ["conteudo-pronto", brl(official.subscription.price)]]);
 
 // Prices must match the approved, published sales pages.
 const ov = JSON.parse(fs.readFileSync(new URL("../sales-overlay/approved.json", import.meta.url), "utf8"));
@@ -32,7 +35,7 @@ for (const [slug, q, intent, ok] of cases) {
 
 // Product resolved from free text, as a WhatsApp customer would write it.
 const free = answerSupportQuestion({ question: "qual o valor do combo?" });
-if (!(free.product === "combo-ia-vendas" && free.answer.includes("R$ 297,00"))) failures.push("free-text product resolution");
+if (!(free.product === "combo-ia-vendas" && free.answer.includes(expectPrices["combo-ia-vendas"]))) failures.push("free-text product resolution");
 // Unknown questions must hand off, never invent.
 const unknown = answerSupportQuestion({ product: "ia-na-pratica", question: "vocês fazem site para restaurante?" });
 if (unknown.answered || !unknown.handoff) failures.push("unknown question must hand off");
@@ -42,7 +45,7 @@ if (ambiguous.answered || !ambiguous.needs_product) failures.push("ambiguous pri
 // HTTP contract.
 const res = await handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge?product=lucro-e-caixa&q=pre%C3%A7o"));
 const body = await res.json();
-if (res.status !== 200 || !body.answer?.includes("R$ 247,00") || res.headers.get("cache-control") !== "no-store") failures.push("http contract");
+if (res.status !== 200 || !body.answer?.includes(expectPrices["lucro-e-caixa"]) || res.headers.get("cache-control") !== "no-store") failures.push("http contract");
 const post = await handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge", { method: "POST" }));
 if (post.status !== 405) failures.push("POST must be 405");
 

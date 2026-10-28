@@ -24,9 +24,9 @@ function checkoutPrice(sku) {
   const src = read("worker/cloudflare-worker.recovered.mjs");
   const cat = src.match(/ZEVANORY_PRODUCTS = (Object\.freeze\(\[[\s\S]*?\]\));/)[1];
   const fn = (name) => src.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))[0];
-  const ctx = { PROJECT: { offerId: sku }, ARBM_SIST_OFFER: { id: "ARBM-SIST" } };
-  vm.runInNewContext(`const ZEVANORY_PRODUCTS = ${cat}.map((p) => ({ ...p, sellable: true }));\n${fn("getZevanoryProduct")}\n${fn("resolveCheckoutOffer")}\nthis.out = resolveCheckoutOffer(${JSON.stringify(sku)});`, ctx);
-  return ctx.out;
+  const ctx = { PROJECT: { offerId: sku }, ARBM_SIST_OFFER: { id: "ARBM-SIST" }, process: { env: {} } };
+  vm.runInNewContext(`const ZEVANORY_PRODUCTS = ${cat}.map((p) => ({ ...p, sellable: true }));\n${fn("getZevanoryProduct")}\n${fn("resolveCheckoutOffer")}\n${fn("publicOffer")}\nthis.out = resolveCheckoutOffer(${JSON.stringify(sku)}); this.pub = publicOffer();`, ctx);
+  return Object.assign({}, ctx.out, { public_price_brl: ctx.pub.price_brl });
 }
 
 test("sincronizador: nenhuma superfície tem preço diferente de data/products.json", () => {
@@ -55,6 +55,7 @@ test("por produto: página == resumo da oferta == JSON-LD == checkout (unit_pric
     assert.match(open, new RegExp(`Comprar agora · R\\$ ${p.price}`), `[botao-aberto] ${p.slug}`);
     const offer = checkoutPrice(p.sku);
     assert.equal(offer.price_brl, p.price, `[checkout] ${p.sku}: cobrado == página`);
+    assert.equal(offer.public_price_brl, p.price, `[public-offer] ${p.sku}: rota pública de status == página`);
     assert.match(salesWorker, new RegExp(`"${p.sku}":\\["[^"]+",${p.price}\\]`), `[comprar] ${p.sku}`);
     assert.match(support, new RegExp(`"${p.slug}": \\{ name: "[^"]+", price_brl: ${p.price}\\b`), `[chat] ${p.slug}`);
     assert.match(engine, new RegExp(`sku:"${p.sku}",name:"[^"]+",price:${p.price}\\b`), `[divulgacao] ${p.slug}`);
@@ -71,4 +72,17 @@ test("assinatura Conteúdo Pronto: página == JSON-LD == chat == contrato", () =
   assert.match(open, new RegExp(`"price":"${SUB}\\.00"`), "[cp-json-ld]");
   assert.match(read("worker/support-knowledge.mjs"), new RegExp(`Conteúdo Pronto \\(assinatura mensal\\)", price_brl: ${SUB}\\b`), "[cp-chat]");
   assert.match(read("data/politica-unica.json"), new RegExp(`"preco_total": "R\\$ ${SUB},00 por mês`), "[cp-contrato]");
+});
+
+// Auditoria #954 HIGH-1: nenhum arquivo versionado tem preço próprio. Com preços-sentinela em data/products.json,
+// o sincronizador e o build precisam tirar TODO preço real do repositório (exceções justificadas no script).
+test("varredura: trocar o preço em data/products.json troca todas as superfícies (nenhum preço literal sobra)", () => {
+  requireTool("python3");
+  const cwd = new URL("..", import.meta.url);
+  const r = spawnSync("python3", ["-B", "scripts/price_surface_scan.py"], { cwd, encoding: "utf8" });
+  assert.equal(r.status, 0, "[varredura] " + r.stdout.slice(-3000) + r.stderr.slice(-1000));
+  assert.match(r.stdout, /PRICE_SCAN=OK ocorrencias=0/);
+  const self = spawnSync("python3", ["-B", "scripts/price_surface_scan.py", "--selftest"], { cwd, encoding: "utf8" });
+  assert.equal(self.status, 0, "[varredura-autoteste] " + self.stdout + self.stderr);
+  assert.match(self.stdout, /PRICE_SCAN_SELFTEST=OK/);
 });

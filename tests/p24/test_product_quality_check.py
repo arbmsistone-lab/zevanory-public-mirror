@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -101,11 +102,14 @@ class P24CheckTest(unittest.TestCase):
         self.assertFailsWith("arquivos diferentes do produto avulso")
 
     def test_bundle_economy_arithmetic_fails(self):
-        old = "Economia de R$ 97 em relação à compra separada (R$ 394)"
-        new = "Economia de R$ 120 em relação à compra separada (R$ 394)"
-        page = self.root / "sales-public/combo-ia-vendas.html"
-        page.write_text(page.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+        # Texto atual da economia lido do mapa (o preço vem de data/products.json; nada de valor literal aqui).
         m = self.jload("data/p24/promise-map.json")
+        old = next(p["text"] for p in m["products"]["combo-ia-vendas"]["promises"] if p["text"].startswith("Economia de R$ "))
+        eco = int(re.match(r"Economia de R\$ (\d+) ", old).group(1))
+        new = old.replace(f"Economia de R$ {eco} ", f"Economia de R$ {eco + 23} ", 1)
+        page = self.root / "sales-public/combo-ia-vendas.html"
+        assert old in page.read_text(encoding="utf-8")
+        page.write_text(page.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
         for p in m["products"]["combo-ia-vendas"]["promises"]:
             if p["text"] == old:
                 p["text"] = new
