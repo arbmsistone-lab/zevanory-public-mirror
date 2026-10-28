@@ -14,14 +14,20 @@ Reprova (TRUST_ANCHORS=CHANGED) todo PR que altere uma âncora:
     worker/politica-unica.mjs, wrangler.sales.toml e scripts/ci/materialize_sales_configs.py.
 
 Reprova (TRUST_ANCHORS=GATE_INVALID) quando a ESTRUTURA dos dois workflows de deploy no head não garante o portão
-(sempre validada, com ou sem mudança):
-  * o passo do portão (GATE_BODY: código do portão lido do gh-pages, binários absolutos, HEAD = GITHUB_SHA, sem
-    assume-unchanged/skip-worktree, diff contra GITHUB_SHA) é o PRIMEIRO comando do job deploy (antes só
-    actions/checkout, setup-python e setup-node) e vem de novo logo antes de CADA passo que publica; nenhum deles tem
-    if, continue-on-error, shell, env nem working-directory;
+(sempre validada, com ou sem mudança). Rodada 6 (H-1): build sem segredo e deploy sem código de build do repositório.
+  * só os jobs listados em SPECS recebem segredo (vendas: deploy; central: guard e deploy); nenhum segredo no env do
+    workflow nem no env de job (só no passo que precisa); os jobs de build têm permissions: contents: read e nada mais;
+  * todo `uses:` é fixado por SHA; no job deploy só checkout (path: base, ref: github.sha, persist-credentials: false)
+    e download-artifact;
+  * os jobs com segredo (e o worker-bundle do vendas) só executam arquivos do repositório que são âncora e nunca
+    executam código de worker/; no job deploy não há npx, npm só instala wrangler/playwright fixados em $RUNNER_TEMP,
+    wrangler só pelo binário fixado, todo deploy usa --no-bundle (sem rebuild) e não há --dry-run/--outdir nem
+    scripts de build;
+  * o manifesto do artefato é conferido antes do portão; o portão (gate_body: código do gh-pages pelo checkout
+    confiável, /usr/bin/python3 -I, sobre o artefato baixado) roda antes de qualquer passo com segredo e logo antes de
+    cada passo que publica, sem if, continue-on-error, shell ou env;
   * passo que publica não usa always()/failure()/cancelled(); o job deploy também não; nenhum outro job publica;
-  * sem defaults no workflow nem no job; sem BASH_ENV/ENV/PATH/LD_*/PYTHON*/NODE_OPTIONS/GIT_* no env;
-  * YAML válido (quando o PyYAML está disponível).
+  * sem defaults; sem BASH_ENV/ENV/PATH/LD_*/PYTHON*/NODE_OPTIONS/GIT_* no env; YAML válido (com PyYAML).
 
 Se o PR mudar a linha de base, também informa se o novo valor é o texto pré-Release 2 ou o reviewed_sha256 de um
 registro de aprovação válido JÁ na base.
@@ -44,26 +50,39 @@ DEPLOY_WORKFLOWS = (".github/workflows/zevanory-sales-public-release.yml", ".git
 ANCHORS = ("data/p23/legal-reviewers.json", "data/p23/legal-published-baseline.json", "docs/legal/reviews/*",
            "data/politica-unica.json", "scripts/p23/*", ".github/workflows/*", ".github/actions/*",
            "sales-worker.mjs", "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "wrangler.sales.toml",
-           "scripts/ci/materialize_sales_configs.py")
+           "scripts/ci/materialize_sales_configs.py",
+           # Rodada 6: tudo o que os jobs com segredo executam (lido do checkout confiável base/) também é âncora.
+           "scripts/deploy/*", "scripts/ci/verify-founder-and-products.sh", "scripts/verify-production-surfaces.py",
+           "scripts/verify-live-headers.py", "scripts/financial_proof_renewal.py", "scripts/ci/credential_identity_readback.py")
 
-# Arquivos da impressão digital conferidos pelo diff de integridade (scripts/p23/legal_review.py LEGAL_PAGES + a
-# política); os assets referenciados entram pelos bytes no próprio portão.
-LEGAL_FILES = ("sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html",
-               "sales-public/privacidade.html", "sales-public/afiliados.html", "privacidade/index.html",
-               "afiliados/index.html", "data/politica-unica.json")
-# Passo do portão jurídico: o MESMO corpo como primeiro comando do job deploy e logo antes de cada passo que publica.
-# O código do portão vem do gh-pages já mesclado (git show), nunca da árvore em publicação; binários por caminho
-# absoluto; HEAD tem de ser o commit do evento e a árvore não pode esconder mudanças (assume-unchanged/skip-worktree).
-GATE_BODY = (
-    "set -euo pipefail",
-    'test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"',
-    "test -z \"$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)\"",
-    '/usr/bin/git diff --exit-code "$GITHUB_SHA" -- ' + " ".join(LEGAL_FILES),
-    "/usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages",
-    '/usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"',
-    '/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages',
-)
-SETUP_USES = re.compile(r"^actions/(checkout|setup-python|setup-node)@[\w.-]+$")
+# Rodada 6: o build roda SEM segredos e o deploy NÃO roda código de build do repositório.
+SPECS = {
+    ".github/workflows/zevanory-sales-public-release.yml": {
+        "secret_jobs": {"deploy"}, "build_jobs": {"worker-bundle", "site-build"}, "anchored_jobs": {"worker-bundle"},
+        "artifact_copy": "rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public"},
+    ".github/workflows/central-production-deploy.yml": {
+        "secret_jobs": {"guard", "deploy"}, "build_jobs": {"build"}, "anchored_jobs": set(), "artifact_copy": None},
+}
+DEPLOY_WORKFLOWS = tuple(SPECS)
+
+
+def gate_body(artifact_copy):
+    """Passo do portão no job deploy: código do portão lido do gh-pages (ref do checkout confiável base/, feito neste
+    job, sem credenciais guardadas e sem nenhum código do repositório antes), executado com /usr/bin/python3 -I sobre
+    o artefato baixado (no vendas, sales-public/ do artefato substitui o da árvore antes da impressão digital)."""
+    body = ["set -euo pipefail",
+            'test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"',
+            '/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"']
+    if artifact_copy:
+        body.append(artifact_copy)
+    body.append('/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages')
+    return body
+
+
+PINNED_USES = re.compile(r"^(actions/checkout|actions/download-artifact|actions/upload-artifact|actions/setup-node|actions/setup-python)@[0-9a-f]{40}$")
+DEPLOY_JOB_USES = re.compile(r"^(actions/checkout|actions/download-artifact)@[0-9a-f]{40}$")
+NPM_ALLOWED = re.compile(r'^npm install --no-save --no-audit --no-fund --prefix "\$RUNNER_TEMP/pw" playwright@1\.55\.0(\s|$)')
+REPO_SCRIPT = re.compile(r"(?<![\w.-])((?:scripts|tests)/[\w./-]+\.(?:py|mjs|js|cjs|sh))\b")
 STATUS_FN = re.compile(r"\b(always|failure|cancelled)\s*\(")
 FORBIDDEN_ENV = re.compile(r"^(BASH_ENV|ENV|PATH|LD_\w+|PYTHON\w*|NODE_OPTIONS|NODE_PATH|GIT_\w+|SHELLOPTS|BASHOPTS|PS4)$")
 DEPLOY_ACTION = re.compile(r"cloudflare/wrangler-action|cloudflare/pages-action|actions/deploy-pages")
@@ -140,10 +159,23 @@ def _steps(lines: list[str], start: int, end: int) -> list[dict]:
     return steps
 
 
-def validate_deploy_workflow(name: str, text: str) -> list[str]:
+def _job_permissions(lines, ks, ke):
+    out = {}
+    for k, v, s2, e2 in _children(lines, ks + 1, ke, 6):
+        out[k] = v
+    return out
+
+
+def _with(st) -> dict:
+    text = (st["keys"].get("with") or {}).get("text", "")
+    return {m.group(1): m.group(2).strip() for m in re.finditer(r"^ {10}([\w-]+):\s*(.*)$", text, re.M)}
+
+
+def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> list[str]:
+    spec = spec or SPECS[name]
     lines = text.splitlines()
     errs: list[str] = []
-    try:  # YAML inválido não roda (o deploy nem dispara); com PyYAML disponível, isso também reprova aqui.
+    try:  # YAML inválido não roda; com PyYAML disponível, isso também reprova aqui.
         import yaml  # type: ignore
     except ImportError:
         yaml = None
@@ -153,59 +185,121 @@ def validate_deploy_workflow(name: str, text: str) -> list[str]:
         except yaml.YAMLError as e:
             errs.append(f"{name}: YAML inválido ({type(e).__name__})")
     top = _children(lines, 0, len(lines), 0)
-    for k, v, s, e in top:
+    for k, v, s0, e0 in top:
         if k == "defaults":
-            errs.append(f"{name}: 'defaults' no workflow pode trocar o shell do portão")
+            errs.append(f"{name}: 'defaults' no workflow pode trocar o shell")
         if k == "env":
-            errs += [f"{name}: env do workflow define {ek}" for ek, *_ in _children(lines, s + 1, e, 2) if FORBIDDEN_ENV.match(ek)]
-    jobs = next(((s, e) for k, v, s, e in top if k == "jobs"), None)
+            errs += [f"{name}: env do workflow define {ek}" for ek, *_ in _children(lines, s0 + 1, e0, 2) if FORBIDDEN_ENV.match(ek)]
+            if "secrets." in "\n".join(lines[s0:e0]):
+                errs.append(f"{name}: segredo no env do workflow (chega a todos os jobs)")
+    jobs = next(((s0, e0) for k, v, s0, e0 in top if k == "jobs"), None)
     if not jobs:
         return errs + [f"{name}: sem 'jobs'"]
-    job_list = _children(lines, jobs[0] + 1, jobs[1], 2)
-    deploy = next((j for j in job_list if j[0] == "deploy"), None)
-    if not deploy:
-        return errs + [f"{name}: sem o job 'deploy'"]
-    for jk, _, js, je in job_list:
-        if jk != "deploy" and deploys("\n".join(lines[js:je])):
-            errs.append(f"{name}: o job '{jk}' publica fora do job 'deploy' (sem o portão)")
-    _, _, s, e = deploy
-    jkeys = {k: (v, ks, ke) for k, v, ks, ke in _children(lines, s + 1, e, 4)}
-    for bad in ("defaults", "continue-on-error"):
-        if bad in jkeys:
-            errs.append(f"{name}: job deploy com '{bad}'")
+    job_list = {k: (s0, e0) for k, v, s0, e0 in _children(lines, jobs[0] + 1, jobs[1], 2)}
+    for need in ("deploy", *spec["build_jobs"]):
+        if need not in job_list:
+            errs.append(f"{name}: falta o job '{need}'")
+    if errs and "deploy" not in job_list:
+        return errs
+    for jk, (s0, e0) in job_list.items():
+        jtext = "\n".join(lines[s0:e0])
+        jkeys = {k: (v, ks, ke) for k, v, ks, ke in _children(lines, s0 + 1, e0, 4)}
+        if "secrets." in jtext and jk not in spec["secret_jobs"]:
+            errs.append(f"{name}: o job '{jk}' recebe segredo; só {sorted(spec['secret_jobs'])} podem")
+        if "environment" in jkeys and jk not in spec["secret_jobs"]:
+            errs.append(f"{name}: o job '{jk}' usa o Environment de produção")
+        for bad in ("defaults",):
+            if bad in jkeys:
+                errs.append(f"{name}: job '{jk}' com '{bad}'")
+        if "env" in jkeys:
+            _, ks, ke = jkeys["env"]
+            errs += [f"{name}: env do job '{jk}' define {ek}" for ek, *_ in _children(lines, ks + 1, ke, 6) if FORBIDDEN_ENV.match(ek)]
+            if "secrets." in "\n".join(lines[ks:ke]):
+                errs.append(f"{name}: segredo no env do job '{jk}' (só no passo que precisa)")
+        steps = _steps(lines, jkeys["steps"][1] + 1, jkeys["steps"][2]) if "steps" in jkeys else []
+        for st in steps:
+            uses = (st["keys"].get("uses") or {}).get("value", "")
+            if uses and not PINNED_USES.match(uses):
+                errs.append(f"{name}: job '{jk}' usa action sem SHA fixado: {uses}")
+        if jk != "deploy" and deploys(jtext):
+            errs.append(f"{name}: o job '{jk}' publica fora do job 'deploy'")
+        if jk in spec["build_jobs"]:
+            perms = _job_permissions(lines, *jkeys["permissions"][1:]) if "permissions" in jkeys else None
+            if perms != {"contents": "read"}:
+                errs.append(f"{name}: o job de build '{jk}' precisa de permissions: contents: read (e nada mais)")
+        if jk in spec["anchored_jobs"] or jk in spec["secret_jobs"]:
+            for path in sorted(set(REPO_SCRIPT.findall(jtext))):
+                if not is_anchor(path):
+                    errs.append(f"{name}: o job '{jk}' executa {path}, que não é âncora")
+            if re.search(r"\b(node|python3?|bash|sh)\b[^\n]*(?<![\w-])worker/", jtext):
+                errs.append(f"{name}: o job '{jk}' executa código de worker/")
+    if "deploy" not in job_list:
+        return errs
+    s0, e0 = job_list["deploy"]
+    jkeys = {k: (v, ks, ke) for k, v, ks, ke in _children(lines, s0 + 1, e0, 4)}
+    needs = jkeys.get("needs", ("", 0, 0))[0]
+    for b in spec["build_jobs"]:
+        if not re.search(r"(^|[\s\[,])" + re.escape(b) + r"([\s\],]|$)", needs):
+            errs.append(f"{name}: o job deploy precisa de needs: {b}")
     if "if" in jkeys and STATUS_FN.search(jkeys["if"][0]):
         errs.append(f"{name}: job deploy com always()/failure()/cancelled() no if")
-    if "env" in jkeys:
-        _, ks, ke = jkeys["env"]
-        errs += [f"{name}: env do job deploy define {ek}" for ek, *_ in _children(lines, ks + 1, ke, 6) if FORBIDDEN_ENV.match(ek)]
+    if "continue-on-error" in jkeys:
+        errs.append(f"{name}: job deploy com continue-on-error")
     if "steps" not in jkeys:
         return errs + [f"{name}: job deploy sem steps"]
-    _, ks, ke = jkeys["steps"]
-    steps = _steps(lines, ks + 1, ke)
-    is_gate = lambda st: (st["keys"].get("run") or {}).get("body") == list(GATE_BODY)
+    steps = _steps(lines, jkeys["steps"][1] + 1, jkeys["steps"][2])
+    body = gate_body(spec["artifact_copy"])
+    is_gate = lambda st: (st["keys"].get("run") or {}).get("body") == body
     gates = [n for n, st in enumerate(steps) if is_gate(st)]
     if not gates:
-        return errs + [f"{name}: o job deploy não tem o passo do portão ({' / '.join(GATE_BODY)})"]
+        return errs + [f"{name}: o job deploy não tem o passo do portão ({' / '.join(body)})"]
+    first_secret = next((n for n, st in enumerate(steps) if "secrets." in st["text"]), len(steps))
+    if gates[0] > first_secret:
+        errs.append(f"{name}: um passo com segredo roda antes do primeiro portão")
+    if not any("sha256sum --strict -c" in st["text"] for st in steps[:gates[0]]):
+        errs.append(f"{name}: o manifesto do artefato não é conferido antes do portão")
     for n in gates:
         extra = set(steps[n]["keys"]) - {"name", "run", "id"}
         if extra:
             errs.append(f"{name}: passo do portão (linha {steps[n]['line']}) com {sorted(extra)}; só name, id e run são aceitos")
-    g = gates[0]
-    for st in steps[:g]:
-        uses = (st["keys"].get("uses") or {}).get("value", "")
-        if set(st["keys"]) - {"uses", "with", "name", "id"} or not SETUP_USES.match(uses):
-            errs.append(f"{name}: passo da linha {st['line']} roda antes do portão; antes dele só actions/checkout, setup-python e setup-node")
     for n, st in enumerate(steps):
+        uses = (st["keys"].get("uses") or {}).get("value", "")
+        if uses:
+            if not DEPLOY_JOB_USES.match(uses):
+                errs.append(f"{name}: o job deploy só pode usar checkout e download-artifact fixados; achou {uses}")
+            if uses.startswith("actions/checkout"):
+                w = _with(st)
+                if w.get("path") != "base" or w.get("ref") != "${{ github.sha }}" or w.get("persist-credentials") != "false":
+                    errs.append(f"{name}: checkout do job deploy tem de ser path: base, ref: ${{{{ github.sha }}}}, persist-credentials: false")
+            continue
+        run = (st["keys"].get("run") or {}).get("body") or []
+        joined = "\n".join(run)
+        in_release = False
+        for l in run:
+            if re.search(r'cd "\$RUNNER_TEMP/release"', l):
+                in_release = True
+            if re.search(r"(^|[\s;&|(])npx\b", l):
+                if not re.search(r"(^|[\s;&|(])npx --yes wrangler@4\.143\.0 ", l) or re.findall(r"npx\b", l).__len__() != 1:
+                    errs.append(f"{name}: no job deploy só npx --yes wrangler@4.143.0 (linha {st['line']})")
+                elif not (in_release or re.search(r'\(cd "\$RUNNER_TEMP/release" && npx ', l)):
+                    errs.append(f"{name}: wrangler no job deploy só a partir do diretório limpo $RUNNER_TEMP/release (linha {st['line']})")
+            if re.search(r"(^|[\s;&|(])npm\b", l) and not NPM_ALLOWED.match(l.strip()):
+                errs.append(f"{name}: npm no job deploy só para instalar playwright fixado fora do repositório (linha {st['line']})")
+            if re.search(r"\bwrangler\b", re.sub(r"npx --yes wrangler@4\.143\.0|wrangler\.[\w.-]+\.(?:toml|jsonc?)", "", l)):
+                errs.append(f"{name}: wrangler fora de npx --yes wrangler@4.143.0 (linha {st['line']})")
+            if re.search(r"npx --yes wrangler@4\.143\.0", l):
+                if re.search(r"\bdeploy\b", l) and "--no-bundle" not in l:
+                    errs.append(f"{name}: deploy sem --no-bundle no job deploy (rebuild) (linha {st['line']})")
+                if "--dry-run" in l or "--outdir" in l:
+                    errs.append(f"{name}: empacotamento (--dry-run/--outdir) no job deploy (linha {st['line']})")
+            if re.search(r"\b(build_sales_public|materialize|prepare-central-candidate|write-build-info|copy-brand-export)\b", l):
+                errs.append(f"{name}: código de build no job deploy (linha {st['line']})")
         if not deploys(st["text"]):
             continue
-        if n < g:
-            errs.append(f"{name}: passo da linha {st['line']} publica antes do portão")
-        cond = (st["keys"].get("if") or {}).get("value", "")
-        if STATUS_FN.search(cond):
+        if STATUS_FN.search((st["keys"].get("if") or {}).get("value", "")):
             errs.append(f"{name}: passo que publica (linha {st['line']}) usa always()/failure()/cancelled() no if")
-        prev = steps[n - 1] if n else None
-        if prev is None or not is_gate(prev):
-            errs.append(f"{name}: passo que publica (linha {st['line']}) não vem logo depois do passo do portão (artefato conferido)")
+        if n == 0 or not is_gate(steps[n - 1]):
+            errs.append(f"{name}: passo que publica (linha {st['line']}) não vem logo depois do passo do portão")
     return errs
 
 

@@ -62,7 +62,7 @@ REVIEWERS = "data/p23/legal-reviewers.json"
 RECORDS = "docs/legal/reviews"
 POLICY = "data/politica-unica.json"
 # Texto jurídico publicado antes da Release 2 (gh-pages b7671272): a única linha de base aceita sem registro de aprovação.
-GENESIS_BASELINE = "46675c70c28a34ac1a30051a645dbf258d6aa7905c539df9c2bb3807acef9f68"
+GENESIS_BASELINE = "30d9b928d17b96d9cf596a878bc55692367516a59556bcf5d5c560aa3345b5c3"
 CLOCK_SKEW = dt.timedelta(minutes=5)
 
 
@@ -142,6 +142,7 @@ NAME = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*(?: (?
 # [assets] directory = ./sales-public). Os assets que elas referenciam são resolvidos nesse mesmo diretório.
 ARTIFACT_DIR = "sales-public"
 SERVED_LEGAL = ("termos", "reembolso", "privacidade", "afiliados")
+LEGAL_SERVING_CODE = ("sales-worker.mjs", "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "wrangler.sales.toml")
 # <link rel> que não carrega nada na página (só metadado): não é asset.
 _LINK_NOT_ASSET = {"canonical", "alternate", "author", "license", "help", "prev", "next", "search", "me", "bookmark"}
 _ASSET_ATTRS = {"script": ("src",), "img": ("src", "srcset"), "source": ("src", "srcset"), "iframe": ("src",),
@@ -210,6 +211,12 @@ def _check_main(raw: str, rel: str) -> None:
     opened, closed = len(re.findall(r"<main\b", s, re.I)), len(re.findall(r"</main\s*>", s, re.I))
     if opened != 1 or closed != 1:
         raise SystemExit(f"LEGAL_FINGERPRINT_MAIN_INVALID {rel}: exige exatamente um <main> fora de comentários (abertos={opened}, fechados={closed})")
+    # Rodada 6 (L-2): <base href> muda a resolução dos assets e meta refresh troca a página servida; nenhum dos dois
+    # pode existir numa página jurídica.
+    if re.search(r"<base\b", s, re.I):
+        raise SystemExit(f"LEGAL_PAGE_FORBIDDEN {rel}: <base> não é aceito numa página jurídica")
+    if re.search(r"<meta\b[^>]*http-equiv\s*=\s*[\"']?refresh", s, re.I):
+        raise SystemExit(f"LEGAL_PAGE_FORBIDDEN {rel}: meta refresh não é aceito numa página jurídica")
 
 
 def legal_artifact_files(src) -> list[tuple[str, bytes]]:
@@ -242,6 +249,13 @@ def legal_artifact_files(src) -> list[tuple[str, bytes]]:
             target = _resolve(ref, base_url, rel)
             if target:
                 queue.append((target, "/" + target.removeprefix(ARTIFACT_DIR + "/"), rel))
+    # Rodada 6: o código que SERVE as rotas jurídicas e a configuração dele também entram, por bytes (o pacote do
+    # Worker é gerado só destes arquivos no job worker-bundle, que não roda outro código do repositório).
+    for rel in LEGAL_SERVING_CODE:
+        data = src.read_bytes(rel)
+        if data is None:
+            raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {rel}")
+        out[rel] = data
     for rel in LEGAL_PAGES:
         if not rel.startswith(ARTIFACT_DIR + "/"):
             data = src.read_bytes(rel)

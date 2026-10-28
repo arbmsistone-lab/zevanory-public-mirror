@@ -74,8 +74,11 @@ class SalesDeployNoRoutes(unittest.TestCase):
         self.assertNotRegex(self.preview, r"(?m)^\s*routes?\s*=")
 
     def test_both_jobs_use_the_same_materialize_script(self):
-        self.assertEqual(step("deploy", "Materialize release configs")["run"].strip(),
-                         "python3 scripts/ci/materialize_sales_configs.py")
+        # Rodada 6 do #946: as configs de release saem do job worker-bundle (sem segredo, só código âncora); o deploy
+        # recebe essas configs no artefato e não roda o script.
+        self.assertIn("/usr/bin/python3 -I scripts/ci/materialize_sales_configs.py",
+                      step("worker-bundle", "Bundle the sales Worker from anchored sources only")["run"])
+        self.assertNotIn("materialize_sales_configs", "\n".join(s.get("run", "") for s in jobs()["deploy"]["steps"]))
         verify = step("verify", "Cloudflare dry-run of the exact canonical deploy config (no routes)")["run"]
         self.assertIn("python3 scripts/ci/materialize_sales_configs.py", verify)
 

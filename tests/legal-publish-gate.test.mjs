@@ -207,7 +207,7 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
     // MED-1 (rodada 4): os workflows de deploy são âncoras; qualquer neutralização do passo do portão reprova, e um
     // workflow NOVO que publica também. Variantes do auditor (tools/ma-attacks.sh): coe, ift, ortrue, newwf.
     const SALES = ".github/workflows/zevanory-sales-public-release.yml", CENTRAL = ".github/workflows/central-production-deploy.yml";
-    const GATE_NAME = "      - name: Legal review gate (M1; fail closed while the new legal text is PENDING)";
+    const GATE_NAME = "      - name: Legal artifact gate (fail fast)";
     const GL = "--anchors-ref refs/remotes/origin/gh-pages";
     const edit = (rel, fn) => { const f = join(root, rel); writeFileSync(f, fn(read(f))); };
     for (const [label, change, title] of [
@@ -243,27 +243,38 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("G7 os dois workflows de publicação leem as âncoras do gh-pages mesclado antes de qualquer deploy; o check protegido roda só código da base", () => {
-  for (const [wf, firstMutation] of [
-    [".github/workflows/zevanory-sales-public-release.yml", "Materialize release configs"],
-    [".github/workflows/central-production-deploy.yml", "Reconstruct exact production candidate"],
+test("G7 rodada 6: build sem segredo, deploy sem código de build; o portão vem do gh-pages e roda antes de qualquer segredo", () => {
+  for (const [wf, builds] of [
+    [".github/workflows/zevanory-sales-public-release.yml", ["worker-bundle", "site-build"]],
+    [".github/workflows/central-production-deploy.yml", ["build"]],
   ]) {
     const y = read(join(REPO, wf));
-    const body = y.slice(y.indexOf("  deploy:"));
-    const gateAt = body.indexOf('/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages');
-    assert.ok(gateAt > 0, `[G7.1] ${wf}: portão ancorado no job deploy`);
-    assert.ok(body.lastIndexOf("/usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages", gateAt) > 0, `[G7.1a] ${wf}: busca o gh-pages`);
-    assert.ok(body.lastIndexOf('/usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"', gateAt) > 0, `[G7.1b] ${wf}: código do portão vem do gh-pages`);
-    assert.ok(gateAt < body.indexOf(firstMutation) && gateAt < body.indexOf("wrangler"), `[G7.2] ${wf}: antes de '${firstMutation}' e do wrangler`);
-    const step = body.slice(body.lastIndexOf("- name:", gateAt), body.indexOf("- name:", gateAt + 1));
-    assert.doesNotMatch(step, /continue-on-error|\|\|\s*true\s*$|\bif:/m, `[G7.3] ${wf}: o passo não pode ser ignorado`);
+    const job = (name) => { const i = y.indexOf(`\n  ${name}:\n`); assert.ok(i > 0, `[G7.0] ${wf}: job ${name}`); const rest = y.slice(i + 1); const j = rest.slice(3).search(/\n  [a-z][\w-]*:\n/); return j < 0 ? rest : rest.slice(0, j + 3); };
+    for (const b of builds) {
+      const t = job(b);
+      assert.doesNotMatch(t, /secrets\./, `[G7.1] ${wf}: o job ${b} não recebe segredo`);
+      assert.doesNotMatch(t, /environment:/, `[G7.1a] ${wf}: o job ${b} não usa o Environment`);
+      assert.match(t, /permissions:\n      contents: read\n/, `[G7.1b] ${wf}: ${b} só lê`);
+    }
+    const d = job("deploy");
+    assert.doesNotMatch(d.split("steps:")[0], /secrets\./, `[G7.2] ${wf}: nenhum segredo no env do job deploy`);
+    assert.match(d, /path: base\n          fetch-depth: 0\n          persist-credentials: false/, `[G7.3] ${wf}: checkout confiável em base/ sem credencial`);
+    const gateAt = d.indexOf('/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages');
+    assert.ok(gateAt > 0, `[G7.4] ${wf}: portão no job deploy`);
+    assert.ok(d.lastIndexOf('/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"', gateAt) > 0, `[G7.5] ${wf}: código do portão vem do gh-pages`);
+    assert.ok(gateAt < d.indexOf("secrets."), `[G7.6] ${wf}: portão antes de qualquer segredo`);
+    assert.doesNotMatch(d, /git fetch[^\n]*origin|remote\.origin\.url/, `[G7.7] ${wf}: o deploy não confia em remote.origin.url`);
+    const deployLines = d.split("\n").filter((x) => /wrangler@4\.143\.0 deploy/.test(x));
+    assert.ok(deployLines.length >= 1, `[G7.8] ${wf}: há deploy no job deploy`);
+    for (const l of deployLines) assert.match(l, /--no-bundle/, `[G7.8a] ${wf}: deploy sem rebuild: ${l.trim()}`);
+    assert.doesNotMatch(d, /build_sales_public|prepare-central-candidate|materialize|--dry-run|--outdir/, `[G7.9] ${wf}: nenhum código de build nem empacotamento no deploy`);
   }
   const p = read(join(REPO, ".github/workflows/legal-trust-anchors-protected.yml"));
-  assert.match(p, /on:\n  pull_request_target:\n\npermissions:\n  contents: read/, "[G7.4] pull_request_target, só leitura, sem filtro de caminho");
-  assert.match(p, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/, "[G7.5] checkout da base");
-  assert.match(p, /python3 -I base\/scripts\/p23\/trust_anchor_guard\.py/, "[G7.6] executa só o guarda da base");
-  assert.doesNotMatch(p, /secrets\.|ref: \$\{\{ github\.event\.pull_request\.head|checkout-index|\.\/pr\//, "[G7.7] nenhum segredo, nenhum checkout ou execução do PR");
-  assert.doesNotMatch(p.split("jobs:")[1], /^\s+if:/m, "[G7.8] sem if no job: sempre reporta resultado");
+  assert.match(p, /on:\n  pull_request_target:\n\npermissions:\n  contents: read/, "[G7.10] pull_request_target, só leitura, sem filtro de caminho");
+  assert.match(p, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/, "[G7.11] checkout da base");
+  assert.match(p, /python3 -I base\/scripts\/p23\/trust_anchor_guard\.py/, "[G7.12] executa só o guarda da base");
+  assert.doesNotMatch(p, /secrets\.|ref: \$\{\{ github\.event\.pull_request\.head|checkout-index|\.\/pr\//, "[G7.13] nenhum segredo, nenhum checkout ou execução do PR");
+  assert.doesNotMatch(p.split("jobs:")[1], /^\s+if:/m, "[G7.14] sem if no job: sempre reporta resultado");
 });
 
 test("G8 MED-2: a impressão digital cobre TODO o texto visível; isca em comentário, texto depois de </main> e dois <main> não passam", () => {
@@ -342,7 +353,7 @@ test("G10 linha de base e legal_review vêm das âncoras (gh-pages à frente), n
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("G11 validação estrutural dos workflows de deploy (--validate-workflows): o real passa; cada neutralização reprova", () => {
+test("G11 validação estrutural (rodada 6): o real passa; segredo no build, código no deploy, rebuild e cada neutralização reprovam", () => {
   const dir = mkdtempSync(join(tmpdir(), "legal-wf-"));
   try {
     const SALES = ".github/workflows/zevanory-sales-public-release.yml", CENTRAL = ".github/workflows/central-production-deploy.yml";
@@ -354,30 +365,42 @@ test("G11 validação estrutural dos workflows de deploy (--validate-workflows):
     const real = run();
     assert.equal(real.code, 0, "[G11.1] " + real.out);
     assert.match(real.out, /LEGAL_GATE_WORKFLOWS=VALID/, "[G11.1a]");
-    const GATE_NAME = "      - name: Legal review gate (M1; fail closed while the new legal text is PENDING)";
+    const GATE_NAME = "      - name: Legal artifact gate (fail fast)\n";
     const GL = "--anchors-ref refs/remotes/origin/gh-pages";
-    const INTEG = /      - name: Legal artifact gate before the candidate deploy[^\n]*\n        run: \|\n(?:          [^\n]*\n)+\n/;
-    const gateBlock = (t) => t.slice(t.indexOf(GATE_NAME), t.indexOf("      - name: Require authenticated deployment authority"));
+    const DEPLOY_SALES = "      - name: Deploy isolated candidate\n";
+    const TOKEN = "          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}\n";
     for (const [label, rel, fn] of [
-      ["continue-on-error no passo", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        continue-on-error: true")],
-      ["if no passo", CENTRAL, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        if: ${{ false }}")],
-      ["|| true", SALES, (t) => t.replace(GL + "\n", GL + " || true\n")],
-      ["shell trocado no passo", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        shell: bash -c 'true {0}'")],
-      ["passo sem o portão", CENTRAL, (t) => t.replace('          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate ' + GL + "\n", "          true\n")],
-      ["portão da árvore em vez do gh-pages", SALES, (t) => t.replace('/usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"', 'cp scripts/p23/legal_review.py "$RUNNER_TEMP/legal_gate.py"')],
-      ["integridade contra HEAD local", SALES, (t) => t.replace('/usr/bin/git diff --exit-code "$GITHUB_SHA" --', "/usr/bin/git diff --exit-code HEAD --")],
-      ["sem conferir HEAD = GITHUB_SHA", CENTRAL, (t) => t.replace('          test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"\n', "")],
-      ["V1 do auditor: deploy com wrangler entre aspas e if: always() antes do portão", SALES, (t) => t.replace("      - name: Require authenticated deployment authority\n", '      - name: Deploy anyway\n        if: always()\n        run: npx --yes "wrangler@4.143.0" deploy --config wrangler.sales.deploy.toml\n      - name: Require authenticated deployment authority\n')],
-      ["deploy via variável depois do portão", CENTRAL, (t) => t.replace("      - name: Determine authenticated public-owner deployment authority\n", "      - name: Sneak\n        run: W=wrangler; npx --yes $W deploy --config wrangler.central-fix.jsonc\n      - name: Determine authenticated public-owner deployment authority\n")],
-      ["upload pela API da Cloudflare depois do portão", SALES, (t) => t.replace("      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test", '      - name: Sneak\n        run: curl -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/x/workers/scripts/zevanory-sales-public -F metadata=@m.json\n      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test')],
-      ["portão depois do build", SALES, (t) => { const g = gateBlock(t); return t.replace(g, "").replace("      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test", g + "      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test"); }],
-      ["passo antes do portão reescreve o script", CENTRAL, (t) => t.replace(GATE_NAME, "      - run: echo 'print(0)' > scripts/p23/legal_review.py\n" + GATE_NAME)],
-      ["deploy sem integridade antes", SALES, (t) => t.replace(INTEG, "")],
-      ["deploy com if: always()", SALES, (t) => t.replace("      - name: Deploy isolated candidate\n", "      - name: Deploy isolated candidate\n        if: always()\n")],
-      ["job deploy com defaults", SALES, (t) => t.replace(/(\n  deploy:\n)/, "$1    defaults:\n      run:\n        shell: bash -c 'true {0}'\n")],
-      ["defaults no workflow", CENTRAL, (t) => t.replace("\njobs:\n", "\ndefaults:\n  run:\n    shell: sh\njobs:\n")],
-      ["BASH_ENV no job deploy", CENTRAL, (t) => t.replace("      TARGET_RUNTIME_SHA: ${{ github.sha }}\n", "      TARGET_RUNTIME_SHA: ${{ github.sha }}\n      BASH_ENV: ./evil.sh\n")],
+      // Mutações pedidas pela rodada 6.
+      ["segredo no job de build (site-build)", SALES, (t) => t.replace("      - name: Build exact release assets\n", "      - name: Build exact release assets\n        env:\n" + TOKEN)],
+      ["segredo no job de build (central)", CENTRAL, (t) => t.replace("      - name: Zero-cost guard (owner rule, fail closed before any deploy)\n", "      - name: Zero-cost guard (owner rule, fail closed before any deploy)\n        env:\n" + TOKEN)],
+      ["segredo no env do job deploy", SALES, (t) => t.replace('      SCRIPT_NAME: "zevanory-sales-public"\n    steps:', '      SCRIPT_NAME: "zevanory-sales-public"\n' + TOKEN.replace("          ", "      ") + "    steps:")],
+      ["código do repositório no deploy (build)", SALES, (t) => t.replace(GATE_NAME, "      - name: Rebuild\n        run: python3 scripts/build_sales_public.py\n" + GATE_NAME)],
+      ["código não âncora no deploy", CENTRAL, (t) => t.replace("/usr/bin/python3 -I base/scripts/deploy/inspect-kv.py", "/usr/bin/python3 -I base/scripts/sales_policy.py")],
+      ["código de worker/ no deploy", CENTRAL, (t) => t.replace("/usr/bin/python3 -I base/scripts/deploy/inspect-kv.py", "node base/worker/funnel.mjs")],
+      ["rebuild no deploy (sem --no-bundle)", SALES, (t) => t.replace("deploy --config wrangler.sales.preview.toml --no-bundle", "deploy --config wrangler.sales.preview.toml")],
+      ["rebuild no deploy (central)", CENTRAL, (t) => t.replace('deploy --no-bundle "$@"', 'deploy "$@"')],
+      ["empacotar no deploy (--dry-run --outdir)", SALES, (t) => t.replace('npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml --no-bundle', 'npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml --no-bundle --dry-run --outdir x')],
+      ["wrangler fora do diretório limpo (repositório)", SALES, (t) => t.replace('cd "$RUNNER_TEMP/release"\n          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml --no-bundle', 'cd base\n          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml --no-bundle')],
+      ["npx de outro pacote no deploy", CENTRAL, (t) => t.replace("npx --yes wrangler@4.143.0 whoami", "npx --yes some-tool@1.0.0 whoami")],
+      ["wrangler sem versão fixada no deploy", CENTRAL, (t) => t.replace("npx --yes wrangler@4.143.0 whoami", "npx --yes wrangler whoami")],
+      ["npm de dependência do repositório no deploy", CENTRAL, (t) => t.replace('npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" playwright@1.55.0', "npm ci")],
+      ["checkout do deploy sem path base", SALES, (t) => t.replace("          ref: ${{ github.sha }}\n          path: base\n", "          ref: ${{ github.sha }}\n")],
+      ["checkout do deploy guardando credencial", CENTRAL, (t) => t.replace("          path: base\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/download-artifact", "          path: base\n          fetch-depth: 0\n      - uses: actions/download-artifact")],
+      ["action sem SHA fixado", SALES, (t) => t.replace("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", "actions/download-artifact@v4")],
+      ["setup-node no deploy", CENTRAL, (t) => t.replace("      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n", "      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020\n      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n")],
+      ["build sem permissions só de leitura", SALES, (t) => t.replace("    timeout-minutes: 10\n    permissions:\n      contents: read\n    outputs:\n      manifest: ${{ steps.pack.outputs.manifest }}\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n        with:\n          persist-credentials: false\n\n      - uses: actions/setup-python", "    timeout-minutes: 10\n    permissions:\n      contents: write\n    outputs:\n      manifest: ${{ steps.pack.outputs.manifest }}\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n        with:\n          persist-credentials: false\n\n      - uses: actions/setup-python")],
+      ["worker-bundle executa código não âncora", SALES, (t) => t.replace("/usr/bin/python3 -I scripts/ci/materialize_sales_configs.py\n", "/usr/bin/python3 -I scripts/ci/materialize_sales_configs.py\n          python3 scripts/build_sales_public.py\n")],
+      ["manifesto não conferido", SALES, (t) => t.replace("          (cd art/worker && sha256sum --strict -c --quiet MANIFEST.sha256)\n          (cd art/site && sha256sum --strict -c --quiet MANIFEST.sha256)\n", "")],
+      // Neutralizações do portão.
+      ["continue-on-error no portão", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "        continue-on-error: true\n")],
+      ["if no portão", CENTRAL, (t) => t.replace(GATE_NAME, GATE_NAME + "        if: ${{ false }}\n")],
+      ["|| true no portão", SALES, (t) => t.split(GL + "\n").join(GL + " || true\n")],
+      ["portão lido da árvore", CENTRAL, (t) => t.split('/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"').join('cp base/scripts/p23/legal_review.py "$RUNNER_TEMP/legal_gate.py"')],
+      ["sem portão antes do candidato", SALES, (t) => t.replace(/      - name: Legal artifact gate before the candidate deploy\n        run: \|\n(?:          [^\n]*\n)+\n/, "")],
+      ["V1: deploy com wrangler entre aspas e if: always()", SALES, (t) => t.replace(DEPLOY_SALES, '      - name: Deploy anyway\n        if: always()\n        run: npx --yes "wrangler@4.143.0" deploy --config wrangler.sales.deploy.toml\n' + DEPLOY_SALES)],
       ["outro job publica", SALES, (t) => t.replace("npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public", "npx --yes wrangler@4.143.0 deploy --strict --config wrangler.sales.toml")],
+      ["defaults no workflow", CENTRAL, (t) => t.replace("\njobs:\n", "\ndefaults:\n  run:\n    shell: sh\njobs:\n")],
+      ["segredo no env do workflow", SALES, (t) => t.replace("env:\n  ZEVANORY_SALES_PUBLIC_MODE: closed\n", "env:\n  ZEVANORY_SALES_PUBLIC_MODE: closed\n  X: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n")],
     ]) {
       const mutated = fn(orig[rel]);
       assert.notEqual(mutated, orig[rel], `[G11.2] âncora do mutante ausente: ${label}`);
@@ -385,9 +408,6 @@ test("G11 validação estrutural dos workflows de deploy (--validate-workflows):
       assert.equal(r.code, 1, `[G11.3] ${label} não reprovou: ${r.out}`);
       assert.match(r.out, /LEGAL_GATE_WORKFLOWS=INVALID/, `[G11.3a] ${label}`);
     }
-    // Os arquivos da impressão digital do portão e os do passo de integridade são os mesmos.
-    const lr = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l, trust_anchor_guard as g; print(list(l.LEGAL_PAGES) + [l.POLICY] == list(g.LEGAL_FILES))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
-    assert.equal(lr.stdout.trim(), "True", "[G11.4] " + lr.stdout + lr.stderr);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -429,26 +449,51 @@ test("G12 MED-2 r5: atributo, elemento escondido, input, srcdoc, attr()/::after 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("G13 MED-1 r5 (B1): build que reescreve a página e faz commit local, assume-unchanged ou só reescreve: o passo do portão falha", () => {
+test("G13 H-1 r6: o portão do job deploy (corpo exato do workflow) roda sobre o artefato baixado; build malicioso não o engana", () => {
   requireTool("bash");
-  // As quatro primeiras linhas do passo do portão, exatamente como no workflow (git pelo PATH no teste).
-  const body = spawnSync(PYTHON, ["-I", "-c", "import sys, json; sys.path.insert(0, sys.argv[1]); import trust_anchor_guard as g; print(json.dumps(list(g.GATE_BODY[:4])))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
-  const lines = JSON.parse(body.stdout).map((l) => l.replaceAll("/usr/bin/git", "git"));
-  const runBody = (root, sha) => spawnSync("bash", ["-c", lines.join("\n")], { cwd: root, encoding: "utf8", env: { ...GIT_ENV, GITHUB_SHA: sha } });
-  for (const [label, attack, wantLine] of [
-    ["commit local (r5-b1)", (root) => { word(root, "<h1>", "<h1>CLÁUSULA NOVA: nenhum reembolso. "); git(root, "commit", "-qam", "build"); }, /rev-parse/],
-    ["assume-unchanged", (root) => { word(root, "<h1>", "<h1>CLÁUSULA NOVA. "); git(root, "update-index", "--assume-unchanged", "sales-public/termos.html"); }, /ls-files/],
-    ["só reescreve", (root) => { word(root, "<h1>", "<h1>CLÁUSULA NOVA. "); }, /diff/],
-  ]) {
-    const { root, text } = repo();
-    try {
-      assert.equal(runBody(root, text).status, 0, `[G13.0] ${label}: árvore limpa passa`);
-      attack(root);
-      const r = runBody(root, text);
-      assert.notEqual(r.status, 0, `[G13.1] ${label}: o passo do portão tem de falhar`);
-      assert.ok(wantLine.test(lines.join("\n")), `[G13.2] ${label}`);
-    } finally { rmSync(root, { recursive: true, force: true }); }
-  }
+  // Corpo exato do passo do portão do vendas, tirado do guarda (o mesmo que o workflow tem de ter, validado no G11).
+  const out = spawnSync(PYTHON, ["-I", "-c", "import sys, json; sys.path.insert(0, sys.argv[1]); import trust_anchor_guard as g; print(json.dumps(g.gate_body(g.SPECS['.github/workflows/zevanory-sales-public-release.yml']['artifact_copy'])))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
+  const lines = JSON.parse(out.stdout).map((l) => l.replaceAll("/usr/bin/git", "git").replaceAll("/usr/bin/python3", PYTHON));
+  const { root: trusted } = repo();
+  const job = mkdtempSync(join(tmpdir(), "r6-job-"));
+  try {
+    // O gh-pages confiável traz o código do portão (como no repositório real).
+    mkdirSync(join(trusted, "scripts/p23"), { recursive: true }); copyFileSync(LEGAL, join(trusted, "scripts/p23/legal_review.py"));
+    const sha = commit(trusted, "gh-pages com o portão");
+    git(trusted, "update-ref", "refs/remotes/origin/gh-pages", sha);
+    // Job deploy: base/ = checkout confiável do commit do evento; art/site = artefato do site-build.
+    git(job, "init", "-q"); git(job, "clone", "-q", trusted, join(job, "base"));
+    git(join(job, "base"), "checkout", "-q", sha); git(join(job, "base"), "update-ref", "refs/remotes/origin/gh-pages", sha);
+    const art = join(job, "art/site/sales-public");
+    const runGate = () => spawnSync("bash", ["-c", lines.join("\n")], { cwd: job, encoding: "utf8", env: { ...GIT_ENV, ...PYENV, GITHUB_SHA: sha, RUNNER_TEMP: job } });
+    const fresh = () => { rmSync(join(job, "art"), { recursive: true, force: true }); mkdirSync(art, { recursive: true }); for (const f of FILES.filter((x) => x.startsWith("sales-public/"))) { mkdirSync(dirname(join(job, "art/site", f)), { recursive: true }); copyFileSync(join(trusted, f), join(job, "art/site", f)); } };
+    fresh();
+    const clean = runGate();
+    assert.match(clean.stdout + clean.stderr, /LEGAL_PUBLISH_GATE=BLOCKED/, "[G13.0] texto da Release 2 sem aprovação continua bloqueado (controle)");
+    // Estado aprovado: linha de base = artefato atual (fixture; o gate aceita só a gênese ou um registro, então
+    // usamos o próprio fluxo de aprovação do G2 no repositório confiável).
+    const auth = register(trusted); approve(trusted, { textCommit: sha, authCommit: auth }); const s2 = commit(trusted, "aprovação");
+    git(trusted, "update-ref", "refs/remotes/origin/gh-pages", s2);
+    rmSync(join(job, "base"), { recursive: true, force: true }); git(job, "clone", "-q", trusted, join(job, "base")); git(join(job, "base"), "checkout", "-q", s2); git(join(job, "base"), "update-ref", "refs/remotes/origin/gh-pages", s2);
+    const runAt = (c) => spawnSync("bash", ["-c", lines.join("\n")], { cwd: job, encoding: "utf8", env: { ...GIT_ENV, ...PYENV, GITHUB_SHA: c, RUNNER_TEMP: job } });
+    fresh();
+    const ok = runAt(s2);
+    assert.equal(ok.status, 0, "[G13.1] artefato aprovado passa: " + ok.stdout + ok.stderr);
+    assert.match(ok.stdout, /PASS_APPROVED/, "[G13.1a]");
+    // MODE=origin do r6-job: o build troca o CSS e aponta remote.origin.url para um gh-pages falso. No job novo o
+    // build roda em outro job; o artefato chega com o CSS trocado e o portão (do checkout confiável) bloqueia.
+    fresh();
+    const css = FILES.find((f) => /^sales-public\/assets\/legal\.[0-9a-f]+\.css$/.test(f));
+    writeFileSync(join(job, "art/site", css), read(join(job, "art/site", css)) + '\nmain h1::after{content:" CLÁUSULA NOVA: nenhum reembolso."}\n');
+    const bad = runAt(s2);
+    assert.notEqual(bad.status, 0, "[G13.2] artefato com CSS trocado bloqueia");
+    assert.match(bad.stdout + bad.stderr, /LEGAL_PUBLISH_GATE=BLOCKED/, "[G13.2a]");
+    // Reescrita de página no artefato também bloqueia.
+    fresh();
+    const pg = join(job, "art/site/sales-public/reembolso.html");
+    writeFileSync(pg, read(pg).replace("<h1>", "<h1>CLÁUSULA NOVA: nenhum reembolso. "));
+    assert.notEqual(runAt(s2).status, 0, "[G13.3] página trocada no artefato bloqueia");
+  } finally { rmSync(trusted, { recursive: true, force: true }); rmSync(job, { recursive: true, force: true }); }
 });
 
 test("G14 r5: Worker de vendas (W1), premerge (V2) e workflows novos (r5-newwf) são âncoras: CHANGED", () => {
