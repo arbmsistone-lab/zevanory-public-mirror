@@ -39,7 +39,7 @@ import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
-import { handleWaitlist, runWaitlistNotify } from "./waitlist.mjs";
+import { handleWaitlist, runWaitlistNotify, waitlistEnabled } from "./waitlist.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
@@ -107,6 +107,11 @@ const wrapped = {
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
+    // LOW-2 (rodada 4): lista de espera desligada => 404 ANTES de qualquer leitura de KV (inclusive o interruptor abaixo).
+    if (!waitlistEnabled(normalized)) {
+      const off = await handleWaitlist(request, normalized, { sqlFactory: whatsappProofDatabase, salesOpen: false });
+      if (off) return off;
+    }
     const salesOpenNow = applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);

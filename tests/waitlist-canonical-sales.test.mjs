@@ -81,3 +81,14 @@ test("CS4 o Worker central passa o estado canônico à rota e ao job da lista de
   assert.doesNotMatch(src, /runWaitlistNotify\([^)]*salesOpen(?:Now)?\s*\}/, "[CS4.3] nenhum caminho com o interruptor puro");
   assert.doesNotMatch(src, /handleWaitlist\([^)]*salesOpenNow/, "[CS4.4]");
 });
+
+test("CS5 lista desligada: o Worker central responde 404 em /lista-de-espera sem nenhuma operação de KV (LOW-2)", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const r = spawnSync(process.execPath, [join(ROOT, "tests/helpers/waitlist-off-probe.mjs")], { encoding: "utf8", timeout: 60000 });
+  assert.equal(r.status, 0, "[CS5.1] " + r.stderr);
+  const rows = JSON.parse(r.stdout.trim().split("\n").pop());
+  for (const row of rows) {
+    assert.equal(row.status, 404, `[CS5.2] ${row.path}`);
+    assert.equal(row.kv_ops, 0, `[CS5.3] ${row.path}: leu o KV antes do 404`);
+  }
+});

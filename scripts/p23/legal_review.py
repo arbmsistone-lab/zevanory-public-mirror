@@ -47,14 +47,17 @@ from __future__ import annotations
 import argparse, datetime as dt, hashlib, html, json, re, subprocess, sys
 from pathlib import Path
 
-LEGAL_PAGES = ("sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html")
+# MED-2 (rodada 4): /privacidade e /afiliados também são textos jurídicos de consumo (LGPD; programa de afiliados) e
+# entram na impressão digital, nas duas superfícies.
+LEGAL_PAGES = ("sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html",
+               "sales-public/privacidade.html", "sales-public/afiliados.html", "privacidade/index.html", "afiliados/index.html")
 POLICY_FIELDS = ("legal_document_version", "sol_text", "rule_7d", "customer_wording", "refund_channels")
 BASELINE = "data/p23/legal-published-baseline.json"
 REVIEWERS = "data/p23/legal-reviewers.json"
 RECORDS = "docs/legal/reviews"
 POLICY = "data/politica-unica.json"
 # Texto jurídico publicado antes da Release 2 (gh-pages b7671272): a única linha de base aceita sem registro de aprovação.
-GENESIS_BASELINE = "4f8d1632504b5cdbfef3ff2e8e31cc809c86c1cf770b522a38445b5ac37c6d5d"
+GENESIS_BASELINE = "aa8e8d73b1efdf1bccf133e39f63e59aed137e52d0560ffc1106d335a076634d"
 CLOCK_SKEW = dt.timedelta(minutes=5)
 
 
@@ -119,12 +122,23 @@ NAME = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*(?: (?
                   r"(?:,? \(?OAB/[A-Z]{2} ?\d{3,7}\)?)?$")
 
 
-def _main_text(raw: str) -> str:
-    m = re.search(r"<main\b[^>]*>(.*?)</main>", raw, re.S | re.I)
-    body = m.group(1) if m else raw
-    body = re.sub(r"<(script|style)\b.*?</\1>", " ", body, flags=re.S | re.I)
-    body = re.sub(r"<[^>]+>", " ", body)
-    return re.sub(r"\s+", " ", html.unescape(body)).strip()
+def _visible_text(raw: str, rel: str = "") -> str:
+    """Texto da página inteira que vai à impressão digital (MED-2, rodada 4).
+
+    Comentários HTML saem antes de tudo (uma isca <main> dentro de comentário não engana a extração). A página tem de
+    ter exatamente um <main>. Entra TODO o texto do <body> (inclusive o que vem antes e depois de <main>, <noscript>,
+    <template> e o conteúdo de <script>/<style> inline, com o src de scripts externos) e o <title>; só o resto do
+    <head> fica de fora. Qualquer acréscimo visível muda a impressão digital."""
+    s = re.sub(r"<!--.*?(?:-->|\Z)", " ", raw, flags=re.S)
+    opened, closed = len(re.findall(r"<main\b", s, re.I)), len(re.findall(r"</main\s*>", s, re.I))
+    if opened != 1 or closed != 1:
+        raise SystemExit(f"LEGAL_FINGERPRINT_MAIN_INVALID {rel}: exige exatamente um <main> fora de comentários (abertos={opened}, fechados={closed})")
+    title = re.search(r"<title\b[^>]*>(.*?)</title\s*>", s, re.S | re.I)
+    m = re.search(r"<body\b[^>]*>(.*)", s, re.S | re.I)
+    body = m.group(1) if m else re.sub(r"<head\b.*?</head\s*>", " ", s, flags=re.S | re.I)
+    body = re.sub(r"<script\b([^>]*)>", lambda x: " [script " + " ".join(re.findall(r"\bsrc\s*=\s*[\"']?([^\"'\s>]+)", x.group(1))) + "] ", body, flags=re.I)
+    text = (title.group(1) if title else "") + " " + re.sub(r"<[^>]+>", " ", body)
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
 def legal_fingerprint_src(src) -> str:
@@ -133,7 +147,7 @@ def legal_fingerprint_src(src) -> str:
         raw = src.read(rel)
         if raw is None:
             raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {rel}")
-        h.update(rel.encode() + b"\0" + _main_text(raw).encode() + b"\0")
+        h.update(rel.encode() + b"\0" + _visible_text(raw, rel).encode() + b"\0")
     pol = _loads(src.read(POLICY))
     if not isinstance(pol, dict):
         raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {POLICY}")
@@ -168,16 +182,6 @@ def _future(value, now: dt.datetime) -> bool:
     if at.tzinfo is None:
         at = at.replace(tzinfo=dt.timezone.utc)
     return at > now + CLOCK_SKEW
-
-
-def _entry_introduced(git, commit, entry) -> bool:
-    """O commit de autorização (no gh-pages) introduziu exatamente esta entrada do cadastro."""
-    if not git.is_ancestor(commit):
-        return False
-    def has(ref):
-        reg = _loads(git.read(REVIEWERS, ref))
-        return any(isinstance(r, dict) and r == entry for r in (reg.get("reviewers") or [])) if isinstance(reg, dict) else False
-    return has(commit) and not has(commit + "^")
 
 
 def validate_approval(review, fingerprint: str, today: dt.date | None = None, root: Path | None = None,

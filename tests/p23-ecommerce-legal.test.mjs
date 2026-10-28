@@ -21,7 +21,7 @@ requireTool(PYTHON);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GATE = join(REPO, "scripts/p23/ecommerce_legal_gate.py");
 const FILES = ["data/politica-unica.json", "data/products.json", "data/p23/fiscal-process.json", "data/p23/ecommerce-legal-checklist.json", "data/p23/legal-reviewers.json",
-  "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs", "worker/cloudflare-worker.compat.mjs", "termos/index.html", "reembolso/index.html",
+  "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs", "worker/cloudflare-worker.compat.mjs", "termos/index.html", "reembolso/index.html", "privacidade/index.html", "afiliados/index.html",
   ...readdirSync(join(REPO, "sales-public")).filter((f) => f.endsWith(".html")).map((f) => `sales-public/${f}`)];
 
 const LEGAL = join(REPO, "scripts/p23/legal_review.py");

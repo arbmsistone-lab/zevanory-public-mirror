@@ -47,7 +47,7 @@ tests/financial-proof-invalidation-evidence.test.mjs 5
 tests/first-order-watch-audit.test.mjs 4
 tests/funnel-counting.test.mjs 21
 tests/funnel.test.mjs 7
-tests/hotmart-idempotency.test.mjs 2
+tests/hotmart-idempotency.test.mjs 5
 tests/hotmart-pages.test.mjs 2
 tests/hotmart-paused.test.mjs 15
 tests/inbound-autonomy.test.mjs 6
@@ -59,7 +59,7 @@ tests/lab-cancelamento-pagamentos-pendentes.test.mjs 8
 tests/lab-fechamento-apos-cobranca.test.mjs 11
 tests/lead-magnet.test.mjs 15
 tests/lead-submit-count.test.mjs 4
-tests/legal-publish-gate.test.mjs 7
+tests/legal-publish-gate.test.mjs 11
 tests/link-vencido-nao-reutilizado.test.mjs 5
 tests/live-runtime-status.test.mjs 5
 tests/market-weekly.test.mjs 2
@@ -131,7 +131,7 @@ tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
 tests/voice-eval.test.mjs 6
-tests/waitlist-canonical-sales.test.mjs 4
+tests/waitlist-canonical-sales.test.mjs 5
 tests/waitlist-m5.test.mjs 3
 tests/waitlist.test.mjs 7
 tests/whatsapp-config-absence.test.mjs 7

@@ -1,6 +1,6 @@
 # Revisão jurídica dos textos de consumo: procedimento e âncoras de confiança
 
-Este documento atende M1 e M-A da reauditoria do PR #946. Ele explica como funciona o portão que impede publicar texto jurídico de consumo sem aprovação.
+Este documento atende M1 e M-A das reauditorias do PR #946 (rodadas 2, 3 e 4). Ele explica como funciona o portão que impede publicar texto jurídico de consumo sem aprovação.
 
 ## O que o portão confere
 
@@ -10,65 +10,143 @@ O script é `scripts/p23/legal_review.py`. No deploy, ele roda com:
 --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 ```
 
-Ele roda em dois jobs de deploy, antes de qualquer chamada à Cloudflare:
+Ele roda no job `deploy` de dois workflows:
 
 - `zevanory-sales-public-release.yml`;
 - `central-production-deploy.yml`.
 
-O portão separa duas coisas:
+Em cada um, ele é o **primeiro comando** do job: antes dele só rodam `actions/checkout`, `actions/setup-python` e `actions/setup-node`. Ou seja, nenhum código do repositório roda antes do portão.
 
-- **O texto a publicar.** É a árvore em deploy. A impressão digital é o SHA-256 do texto visível de `/termos` e `/reembolso`, nas duas superfícies, mais os textos de consumo de `data/politica-unica.json`, incluindo `legal_document_version`.
-- **As âncoras de confiança.** Elas são lidas do **gh-pages já mesclado**, com `git show`, e nunca da árvore em publicação:
-  - o cadastro `data/p23/legal-reviewers.json`;
-  - a linha de base `data/p23/legal-published-baseline.json`;
-  - os registros `docs/legal/reviews/<sha256>.json`;
-  - o bloco `legal_review`.
+O portão separa duas coisas: o texto a publicar e as âncoras de confiança.
 
-O portão também confere o histórico do git:
+### O texto a publicar
+
+É a árvore em deploy. A impressão digital é o SHA-256 de **todo o texto visível** das páginas jurídicas, nas duas superfícies (`sales-public/*.html` e `<rota>/index.html`):
+
+- `/termos`;
+- `/reembolso`;
+- `/privacidade` (LGPD);
+- `/afiliados` (contrato do programa de afiliados).
+
+Também entram os textos de consumo de `data/politica-unica.json`, incluindo `legal_document_version`.
+
+Regras da extração (MED-2, rodada 4):
+
+- Os comentários HTML são removidos antes de tudo. Uma isca `<main>` dentro de comentário não engana a extração.
+- A página precisa ter exatamente um `<main>`. Se não tiver, a extração falha com `LEGAL_FINGERPRINT_MAIN_INVALID`.
+- Entra todo o texto do `<body>`: antes, dentro e depois do `<main>`, inclusive `<noscript>` e `<template>`. Entram também o conteúdo de `<script>` e `<style>` inline, o `src` de scripts externos e o `<title>`.
+- Qualquer texto visível acrescentado muda a impressão digital. Um comentário puro não muda.
+
+O checklist do P23 (`visible()` em `scripts/p23/ecommerce_legal_gate.py`) também descarta comentários e `<template>` antes de procurar as frases obrigatórias.
+
+### As âncoras de confiança
+
+Elas são lidas do **gh-pages já mesclado**, com `git show`, e nunca da árvore em publicação:
+
+- o cadastro `data/p23/legal-reviewers.json`;
+- a linha de base `data/p23/legal-published-baseline.json`;
+- os registros `docs/legal/reviews/<sha256>.json`;
+- o bloco `legal_review`.
+
+### Conferências no histórico do git
 
 1. O commit em deploy tem de estar contido no gh-pages.
-2. `authorization_commit` tem de ser o commit do gh-pages que **introduziu** a entrada daquele revisor no cadastro. Com merge por squash, o cadastro entra num PR, e a aprovação só pode citá-lo num PR seguinte.
+2. `authorization_commit` tem de ser o commit do gh-pages que **introduziu** a entrada daquele revisor no cadastro.
 3. O registro `docs/legal/reviews/<sha256>.json` tem de entrar no gh-pages num commit **posterior** ao `authorization_commit`, nunca antes nem no mesmo commit.
-4. `reviewed_commit` tem de ser um commit do gh-pages. A impressão digital do texto **nesse commit** é recalculada e tem de ser igual a `reviewed_sha256`.
-5. A linha de base só vale em dois casos: se for o texto publicado antes da Release 2 (`GENESIS_BASELINE`, de `b7671272`), ou se for o `reviewed_sha256` de um registro de aprovação válido já no gh-pages. Escrever um valor no arquivo não basta.
+4. `reviewed_commit` tem de ser um commit do gh-pages. Um commit de outro branch com o mesmo texto não serve. A impressão digital do texto **nesse commit** é recalculada e tem de ser igual a `reviewed_sha256`.
+5. A linha de base só vale em dois casos:
+   - se for o texto publicado antes da Release 2 (`GENESIS_BASELINE`, calculado sobre `b7671272` com as regras acima);
+   - ou se for o `reviewed_sha256` de um registro de aprovação válido já no gh-pages.
+
+   Escrever um valor no arquivo não basta.
 6. `approved_at` não pode estar no futuro. Uma data sem hora vale no máximo até hoje (UTC). Uma data com hora tolera até 5 minutos de diferença de relógio.
 
-Com o texto igual à linha de base validada, o portão responde `PASS_UNCHANGED`. Com texto novo, ele exige uma aprovação válida para essa impressão digital. Sem ela, responde `BLOCKED` e o deploy para antes de tocar a produção. Nada que está no ar é retirado.
+### Resultado
+
+- Texto igual à linha de base validada: `PASS_UNCHANGED`.
+- Texto novo: o portão exige uma aprovação válida para essa impressão digital.
+- Sem aprovação: `BLOCKED`, e o deploy para antes de tocar a produção. Nada que está no ar é retirado.
+- Uma árvore antiga não se autoriza com a própria linha de base nem com o próprio `legal_review`. Valem sempre as âncoras do gh-pages atual.
+
+### Integridade até o deploy
+
+Antes de **cada** passo que publica, há um passo de integridade que roda:
+
+```
+git diff --exit-code HEAD -- <os mesmos arquivos da impressão digital>
+```
+
+Isso prova que a árvore enviada à Cloudflare tem exatamente o texto que o portão conferiu, inclusive depois do build de `sales-public/`.
 
 ## Check protegido antes do merge
 
-O check é `.github/workflows/legal-trust-anchors-protected.yml`. Ele roda em `pull_request_target`, com o código da base; o PR é lido só como dado, no mesmo padrão de `secret-scan-contract-protected` (#950). O check **reprova** todo PR que altere qualquer um destes arquivos:
+O check é `.github/workflows/legal-trust-anchors-protected.yml`. Ele roda em `pull_request_target`, com o código da base; o PR é lido só como dado, no mesmo padrão de `secret-scan-contract-protected` (#950). Ele faz três coisas.
+
+### 1. Reprova a alteração de âncoras
+
+Resposta `TRUST_ANCHORS=CHANGED`, para todo PR que altere:
 
 - `data/p23/legal-reviewers.json`
 - `data/p23/legal-published-baseline.json`
 - `docs/legal/reviews/**`
 - `data/politica-unica.json`
 - `scripts/p23/**`
-- o próprio workflow
+- o próprio workflow protegido
+- os **dois workflows de deploy** acima
+
+### 2. Reprova workflow que publica
+
+Também responde `CHANGED` quando o PR altera ou cria **qualquer outro workflow que publique**. Conta como publicar:
+
+- `wrangler deploy` ou `publish` sem `--dry-run`, `versions deploy` ou `pages deploy`;
+- `cloudflare/wrangler-action`, `cloudflare/pages-action` ou `actions/deploy-pages`;
+- uso do Environment `producao-critica`.
+
+### 3. Valida a estrutura dos workflows de deploy
+
+Resposta `TRUST_ANCHORS=GATE_INVALID`. A estrutura dos dois workflows de deploy no head é validada sempre, mesmo sem mudança:
+
+- O passo do portão é o primeiro comando do job `deploy`. Ele roda exatamente as três linhas esperadas e não tem `if`, `continue-on-error`, `shell`, `env` nem `working-directory`.
+- Cada passo que publica vem logo depois do passo de integridade e não usa `always()`, `failure()` ou `cancelled()` no `if`.
+- O job `deploy` não usa `always()`, `failure()` ou `cancelled()` no `if`, nem tem `continue-on-error`.
+- Nenhum outro job desses workflows publica.
+- Não há `defaults` (troca de shell) no workflow nem no job.
+- Não há `BASH_ENV`, `ENV`, `PATH`, `LD_*`, `PYTHON*`, `NODE_OPTIONS` nem `GIT_*` no `env` do workflow ou do job.
+
+A mesma validação estrutural roda no check **obrigatório** `product-pages / static-audit`, com `trust_anchor_guard.py --validate-workflows`, e na suíte (`tests/legal-publish-gate.test.mjs` G11).
 
 Se o PR mudar a linha de base, o check também informa se o novo valor corresponde a um registro de aprovação válido **na base**.
 
-O check também reprova (`TRUST_ANCHORS=GATE_REMOVED`) o PR que altere um dos dois workflows de deploy e deixe de chamar, fora de comentário, `python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages` e a busca do gh-pages. Mudanças em outras partes desses workflows continuam livres.
+### Quando o check passa a valer
 
-O proprietário é a única conta e não pode aprovar o próprio PR, então revisão obrigatória e CODEOWNERS não funcionam aqui. Um PR que mexe nas âncoras só entra por **decisão explícita e deliberada do proprietário**: ele faz o bypass da proteção e registra o motivo no PR.
+`pull_request_target` usa a definição da base, então o check só passa a valer depois que este workflow estiver no gh-pages. Portanto ele não roda no próprio PR #946. Este PR altera âncoras (o script do portão, `data/politica-unica.json` e os dois workflows de deploy), então o merge dele já é uma decisão deliberada do proprietário.
 
-Como `pull_request_target` usa a definição da base, o check só passa a valer depois que este workflow estiver no gh-pages. Portanto ele não roda no próprio PR #946, que altera âncoras (o script do portão e `data/politica-unica.json`) e por isso já exige a decisão deliberada do proprietário.
+## Passos do proprietário (fora deste PR)
 
-## Limites que continuam (decisão do proprietário)
+Este PR não muda a proteção da branch. Para o desenho ficar completo, o proprietário precisa fazer duas coisas.
 
-- O check protegido não está entre os checks obrigatórios do gh-pages. Este PR não muda a proteção da branch. Para o check bloquear de fato, o proprietário precisa acrescentar `legal-trust-anchors-protected / protected-trust-anchors` aos checks obrigatórios.
-- O repositório permite merge por rebase. Num rebase, um PR com dois commits (o 1º cadastra o revisor, o 2º aprova citando o 1º) chega ao gh-pages com a mesma forma do fluxo legítimo em dois PRs, e o git não distingue os dois casos. Esse PR altera âncoras, então o check protegido reprova. Para fechar também esse caminho no portão, o proprietário pode desligar o merge por rebase (fica só squash).
-- Com uma única conta, toda proteção pode ser contornada pelo proprietário. O objetivo é que nenhuma aprovação entre **sem** uma decisão explícita dele, registrada no PR.
+1. **Tornar o check obrigatório.** Acrescentar `legal-trust-anchors-protected / protected-trust-anchors` aos checks obrigatórios do gh-pages, em Settings, Branches, gh-pages. Enquanto ele não for obrigatório, um PR que mexa nas âncoras fica vermelho nesse check, mas o merge ainda é possível sem bypass.
+2. **Desligar o merge por rebase.** Em Settings, General, Pull Requests, deixar só o squash.
+   - O "rebase and merge" do GitHub reescreve os SHAs. Por isso, um PR com dois commits (cadastro e depois aprovação citando o 1º) já não funciona: o `authorization_commit` citado não existiria no gh-pages.
+   - Mesmo assim, ficar só com o squash garante "um PR = um commit no gh-pages" e torna explícita a regra "o cadastro e a aprovação vêm em PRs separados".
+
+Com o check obrigatório, um PR que mexa nas âncoras só entra se o proprietário fizer o bypass da proteção de forma explícita e registrar o motivo no PR. O proprietário é a única conta e não pode aprovar o próprio PR, então revisão obrigatória e CODEOWNERS não funcionam aqui.
 
 ## Fluxo para publicar um texto novo
 
-1. Um PR muda o texto. O check protegido reprova se esse PR tocar `data/politica-unica.json`. Depois do merge, por bypass deliberado, os deploys param em `BLOCKED`.
-2. Num PR separado, o proprietário cadastra o revisor em `legal-reviewers.json`, com nome, OAB, `github_login`, `authorized_by: "proprietario"` e `authorized_at`. O merge desse PR, por bypass, gera o commit S.
-3. Num PR seguinte, entram:
+1. Um PR muda o texto. Depois do merge, os deploys param em `BLOCKED`. Nada no ar muda.
+2. Num PR separado, o proprietário cadastra o revisor em `legal-reviewers.json`, com nome, OAB, `github_login`, `authorized_by: "proprietario"` e `authorized_at`. Esse PR mexe numa âncora, então o check fica vermelho e o merge é por decisão deliberada do proprietário. O merge gera o commit S.
+3. Num PR seguinte, também por decisão deliberada, entram:
    - a entrada do revisor recebe `authorization_commit = S`;
    - `legal_review` fica APPROVED, com `reviewed_sha256` igual à impressão digital do texto, `reviewed_commit` igual ao commit do gh-pages que contém o texto e `document_version`;
    - o registro `docs/legal/reviews/<sha256>.json`.
 4. O deploy seguinte passa com `PASS_APPROVED`. Depois de publicar, a linha de base pode passar a ser esse `reviewed_sha256`, porque ele corresponde a um registro válido.
+
+## Limites que continuam
+
+- Com uma única conta, toda proteção pode ser contornada pelo proprietário. O objetivo é que nenhuma aprovação, e nenhuma neutralização do portão, entre **sem** uma decisão explícita dele.
+- Texto montado em tempo de execução por um script externo (por exemplo, o widget do chat) não entra na impressão digital, porque só o `src` do script é considerado. O chat do site tem contrato e testes próprios, e o widget só é anexado com `SITE_CHAT_ENABLED`.
+- O passo de integridade usa o `git` do runner. Um código malicioso no build de `sales-public/` que adulterasse o próprio runner exigiria mudar `scripts/build_sales_public.py` com esse propósito. Isso fica fora do alcance de uma simples mudança de texto e é visível na revisão do PR.
 
 ## Decisão do proprietário (L-3)
 

@@ -1,6 +1,6 @@
 {
   "schema": "zevanory-legal-published-baseline/v1",
-  "fingerprint": "4f8d1632504b5cdbfef3ff2e8e31cc809c86c1cf770b522a38445b5ac37c6d5d",
+  "fingerprint": "aa8e8d73b1efdf1bccf133e39f63e59aed137e52d0560ffc1106d335a076634d",
   "source_commit": "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224",
-  "nota": "M1 (reauditoria do PR #946): impressão digital (scripts/p23/legal_review.py --fingerprint) do texto jurídico de gh-pages b7671272, o texto já publicado antes da Release 2. O portão de publicação (--publish-gate) deixa passar sem revisão só um deploy cujo texto jurídico é idêntico a este; texto diferente exige data/politica-unica.json legal_review APPROVED com reviewed_sha256 igual ao texto que vai ao ar. Atualizar este arquivo somente depois de publicar um texto aprovado (o mesmo valor de reviewed_sha256), nunca para destravar um texto não revisado."
+  "nota": "M1 (reauditoria do PR #946): impressão digital (scripts/p23/legal_review.py --fingerprint) do texto jurídico de gh-pages b7671272 (MED-2, rodada 4: todo o texto visível de /termos, /reembolso, /privacidade e /afiliados nas duas superfícies, sem comentários HTML, com exatamente um <main>), o texto já publicado antes da Release 2. O portão de publicação (--publish-gate) deixa passar sem revisão só um deploy cujo texto jurídico é idêntico a este; texto diferente exige data/politica-unica.json legal_review APPROVED com reviewed_sha256 igual ao texto que vai ao ar. Atualizar este arquivo somente depois de publicar um texto aprovado (o mesmo valor de reviewed_sha256), nunca para destravar um texto não revisado."
 }

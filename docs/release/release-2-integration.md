@@ -115,3 +115,27 @@ Base atualizada: merge de `gh-pages` `d01dd5ea` (#949). O único conflito foi a 
   - O check protegido também reprova o PR que tire dos workflows de deploy o passo do portão ancorado (G6.4).
   - Os limites que continuam (o check não é obrigatório, o merge por rebase é permitido e há uma única conta) estão em `docs/legal/legal-review-procedure.md`.
 - **Linhas citadas por #949.** `docs/ops/p22-proof-renewal-investigation.md` e o teste correspondente citam `worker/cloudflare-worker.compat.mjs` e `worker/sales-control.mjs` por número de linha. Os números foram atualizados para a posição atual das mesmas linhas. O conteúdo citado não mudou.
+
+## Reauditoria rodada 4 (sobre `bbd58d95`)
+
+M-B, L-1 e R4 foram confirmados. M-A estava parcial; as correções estão abaixo. O procedimento completo está em `docs/legal/legal-review-procedure.md`.
+
+- **MED-1 (passo do portão neutralizável).** Os dois workflows de deploy passaram a ser âncoras, e qualquer workflow alterado ou criado que publique também reprova o check protegido. A estrutura é validada por `scripts/p23/trust_anchor_guard.py`, inclusive dentro do check obrigatório `product-pages / static-audit`. A validação exige:
+  - o portão como primeiro comando do job `deploy`, sem `if`, `continue-on-error`, `shell` nem `env`, com as três linhas exatas;
+  - um passo de integridade (`git diff --exit-code HEAD` nos arquivos da impressão digital) logo antes de cada passo que publica;
+  - nenhum `always()`, `failure()` ou `cancelled()` no `if` dos passos que publicam;
+  - nenhum outro job que publique;
+  - nenhum `defaults`, `BASH_ENV`, `PATH`, `PYTHON*` ou `GIT_*`.
+
+  Testes: `tests/legal-publish-gate.test.mjs` G6.4 (variantes `coe`, `ift`, `ortrue`, `newwf` e workflow com `producao-critica`) e G11 (13 neutralizações estruturais).
+- **MED-2 (impressão digital só do 1º `<main>`).** Comentários HTML saem antes da extração, é exigido exatamente um `<main>`, e entra todo o texto do `<body>` e o `<title>`. `/privacidade` e `/afiliados` entraram na impressão digital. O `visible()` do P23 também descarta comentários e `<template>`. `GENESIS_BASELINE` e `data/p23/legal-published-baseline.json` foram recalculados sobre `b7671272` com as novas regras (`aa8e8d73…`). Teste G8: isca em comentário, texto depois e antes de `</main>`, dois `<main>`, portão com a isca mesclada e `visible()` do P23.
+- **LOW-1.**
+  - G9: `reviewed_commit` de outro branch com o mesmo texto é recusado.
+  - G10: linha de base e `legal_review` vêm das âncoras quando o gh-pages já avançou.
+  - HI3: texto idêntico e nenhum 409 nos postbacks simultâneos.
+  - HI4: chave por transação.
+  - HI5: guarda `briefingTxn` 25 h depois.
+- **LOW-2.** `/lista-de-espera` desligada responde 404 antes de qualquer leitura de KV, inclusive a do interruptor no topo do `fetch` (teste CS5, com o Worker central real e zero operações de KV).
+- **LOW-3.** Código morto `_entry_introduced` removido.
+- **LOW-5.** O procedimento foi reescrito. Os passos do proprietário ficaram explícitos: tornar o check obrigatório e desligar o merge por rebase. O risco de rebase foi descrito corretamente, e o escopo da impressão digital (`/privacidade` e `/afiliados`) está documentado.
+- **Linhas citadas por #949.** Foram atualizadas de novo (`compat.mjs:174` e `:603`), porque o atalho da lista de espera deslocou o arquivo.

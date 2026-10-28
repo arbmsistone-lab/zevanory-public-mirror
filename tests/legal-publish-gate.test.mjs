@@ -19,7 +19,8 @@ requireTool("git");
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LEGAL = join(REPO, "scripts/p23/legal_review.py");
 const GUARD = join(REPO, "scripts/p23/trust_anchor_guard.py");
-const FILES = ["sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html", "data/politica-unica.json", "data/p23/legal-published-baseline.json", "data/p23/legal-reviewers.json"];
+const FILES = ["sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html", "sales-public/privacidade.html", "sales-public/afiliados.html", "privacidade/index.html", "afiliados/index.html", "data/politica-unica.json", "data/p23/legal-published-baseline.json", "data/p23/legal-reviewers.json",
+  ".github/workflows/zevanory-sales-public-release.yml", ".github/workflows/central-production-deploy.yml"];
 const read = (p) => readTextNormalized(p);
 const PYENV = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONDONTWRITEBYTECODE: "1" };
 const py = (script, args) => { const r = spawnSync(PYTHON, ["-I", script, ...args], { encoding: "utf8", env: PYENV }); return { code: r.status, out: (r.stdout || "") + (r.stderr || "") }; };
@@ -200,21 +201,33 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
       assert.match(r.out, /TRUST_ANCHOR_CHANGED/, `[G6.2a] ${label}`);
       if (label === "linha de base") assert.match(r.out, /NÃO corresponde a nenhum registro de aprovação válido na base/, "[G6.3] linha de base proposta sem registro na base");
     }
-    // PR que tira o portão ancorado de um workflow de publicação reprova; PR que só mexe noutra parte do workflow passa.
-    const WF = ".github/workflows/central-production-deploy.yml";
-    const LINE = "          python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages";
-    const FETCH = "          git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages";
-    for (const [label, wfText, want] of [
-      ["workflow com o portão", `jobs:\n  deploy:\n    steps:\n      - run: |\n${FETCH}\n${LINE}\n      - run: echo outro passo\n`, 0],
-      ["workflow sem o portão", `jobs:\n  deploy:\n    steps:\n      - run: |\n${FETCH}\n          # ${LINE.trim()}\n          true\n`, 1],
+    // MED-1 (rodada 4): os workflows de deploy são âncoras; qualquer neutralização do passo do portão reprova, e um
+    // workflow NOVO que publica também. Variantes do auditor (tools/ma-attacks.sh): coe, ift, ortrue, newwf.
+    const SALES = ".github/workflows/zevanory-sales-public-release.yml", CENTRAL = ".github/workflows/central-production-deploy.yml";
+    const GATE_NAME = "      - name: Legal review gate (M1; fail closed while the new legal text is PENDING)";
+    const GL = "--anchors-ref refs/remotes/origin/gh-pages";
+    const edit = (rel, fn) => { const f = join(root, rel); writeFileSync(f, fn(read(f))); };
+    for (const [label, change, title] of [
+      ["coe", () => edit(SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        continue-on-error: true")), /LEGAL_GATE_INVALID/],
+      ["ift", () => edit(CENTRAL, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        if: ${{ false }}")), /LEGAL_GATE_INVALID/],
+      ["ortrue", () => edit(SALES, (t) => t.replace(GL + "\n", GL + " || true\n")), /LEGAL_GATE_INVALID/],
+      ["newwf", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/x.yml"), "name: x\non: {push: {branches: [gh-pages]}}\njobs:\n  d:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: python3 scripts/build_sales_public.py && npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml\n"); }, /TRUST_ANCHOR_DEPLOY_WORKFLOW/],
+      ["newwf-env", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/y.yml"), "name: y\non: push\njobs:\n  d:\n    environment: producao-critica\n    runs-on: ubuntu-latest\n    steps:\n      - run: bash scripts/qualquer.sh\n"); }, /TRUST_ANCHOR_DEPLOY_WORKFLOW/],
     ]) {
-      git(root, "checkout", "-q", base); git(root, "checkout", "-q", "-B", "pr-wf");
-      mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, WF), wfText);
-      const head = commit(root, "PR " + label);
+      git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-wf");
+      change(); const head = commit(root, "PR " + label);
       const r = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", head]);
-      assert.equal(r.code, want, `[G6.4] ${label}: ${r.out}`);
-      if (want) assert.match(r.out, /LEGAL_GATE_REMOVED/, "[G6.4a]");
+      assert.equal(r.code, 1, `[G6.4] ${label}: ${r.out}`);
+      assert.match(r.out, /TRUST_ANCHORS=CHANGED/, `[G6.4a] ${label}`);
+      assert.match(r.out, title, `[G6.4b] ${label}`);
     }
+    // Workflow novo que não publica (dry-run ou nenhum deploy) passa.
+    git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-wf-ok");
+    mkdirSync(join(root, ".github/workflows"), { recursive: true });
+    writeFileSync(join(root, ".github/workflows/z.yml"), "name: z\non: pull_request\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx --yes wrangler@4.143.0 deploy --dry-run --config wrangler.sales.toml\n");
+    const okHead = commit(root, "PR workflow sem deploy real");
+    const ok2 = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", okHead]);
+    assert.equal(ok2.code, 0, "[G6.5] " + ok2.out);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -238,4 +251,119 @@ test("G7 os dois workflows de publicação leem as âncoras do gh-pages mesclado
   assert.match(p, /python3 -I base\/scripts\/p23\/trust_anchor_guard\.py/, "[G7.6] executa só o guarda da base");
   assert.doesNotMatch(p, /secrets\.|ref: \$\{\{ github\.event\.pull_request\.head|checkout-index|\.\/pr\//, "[G7.7] nenhum segredo, nenhum checkout ou execução do PR");
   assert.doesNotMatch(p.split("jobs:")[1], /^\s+if:/m, "[G7.8] sem if no job: sempre reporta resultado");
+});
+
+test("G8 MED-2: a impressão digital cobre TODO o texto visível; isca em comentário, texto depois de </main> e dois <main> não passam", () => {
+  const { root } = repo();
+  try {
+    const fp0 = fp(root);
+    const termos = join(root, "termos/index.html");
+    const original = read(termos);
+    const swap = (fn) => { writeFileSync(termos, fn(original)); const v = py(LEGAL, ["--root", root, "--fingerprint"]); writeFileSync(termos, original); return v; };
+    // A1 do auditor: o <main> antigo dentro de um comentário e um <main> novo com cláusula não revisada.
+    const a1 = swap((h) => h.replace(/<main\b[^>]*>[\s\S]*?<\/main>/, (m) => "<!--" + m + "--><main><h1>Termos</h1><p>CLÁUSULA NOVA NÃO REVISADA: nenhum reembolso.</p></main>"));
+    assert.equal(a1.code, 0, "[G8.1] " + a1.out);
+    assert.notEqual(a1.out.trim(), fp0, "[G8.1a] isca em comentário muda a impressão digital");
+    // A1b: texto visível depois de </main>.
+    const a1b = swap((h) => h.replace("</main>", "</main><section><h2>11. Nova</h2><p>Sem reembolso.</p></section>"));
+    assert.notEqual(a1b.out.trim(), fp0, "[G8.2] texto depois de </main> muda a impressão digital");
+    // Texto antes de <main> também conta.
+    const pre = swap((h) => h.replace(/<main\b/, "<p>Aviso novo fora do main.</p><main"));
+    assert.notEqual(pre.out.trim(), fp0, "[G8.3] texto antes de <main> muda a impressão digital");
+    // Dois <main> (fora de comentário) reprovam com erro explícito.
+    const two = swap((h) => h.replace("</main>", "</main><main><p>x</p></main>"));
+    assert.notEqual(two.code, 0, "[G8.4] dois <main> reprovam");
+    assert.match(two.out, /LEGAL_FINGERPRINT_MAIN_INVALID termos\/index.html/, "[G8.4a]");
+    // Comentário sem texto visível não muda nada.
+    const com = swap((h) => h.replace("</main>", "<!-- nota interna --></main>"));
+    assert.equal(com.out.trim(), fp0, "[G8.5] comentário puro não muda a impressão digital");
+    // Portão: a isca A1 mesclada no gh-pages não passa como texto publicado.
+    writeFileSync(termos, original.replace(/<main\b[^>]*>[\s\S]*?<\/main>/, (m) => "<!--" + m + "--><main><p>CLÁUSULA NOVA</p></main>"));
+    commit(root, "isca A1");
+    const g = gate(root);
+    assert.equal(g.code, 1, "[G8.6] " + g.out);
+    assert.doesNotMatch(g.out, /PASS_UNCHANGED/, "[G8.6a]");
+    // P23: o visible() do checklist também ignora a isca em comentário.
+    const vis = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import ecommerce_legal_gate as g; print(g.visible(sys.argv[2]))", join(REPO, "scripts/p23"), "<!--<main><p>ISCA</p></main>--><main><p>REAL</p></main>"], { encoding: "utf8", env: PYENV });
+    assert.equal(vis.status, 0, "[G8.7] " + vis.stderr);
+    assert.equal(vis.stdout.trim(), "REAL", "[G8.7a] P23 visible() sem o texto do comentário");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("G9 reviewed_commit tem de estar no gh-pages: commit de outro branch com o MESMO texto não serve", () => {
+  const { root, text } = repo();
+  try {
+    git(root, "checkout", "-q", "-b", "outro"); writeFileSync(join(root, "README.txt"), "x"); const side = commit(root, "outro branch, mesmo texto");
+    git(root, "checkout", "-q", "main");
+    const auth = register(root);
+    approve(root, { textCommit: side, authCommit: auth });
+    commit(root, "aprovação citando commit fora do gh-pages");
+    const r = gate(root);
+    assert.equal(r.code, 1, "[G9.1] " + r.out);
+    assert.match(r.out, /reviewed_commit [0-9a-f]{12} não é um commit do gh-pages/, "[G9.2]");
+    assert.ok(text);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("G10 linha de base e legal_review vêm das âncoras (gh-pages à frente), nunca da árvore em publicação", () => {
+  const { root, text: c0 } = repo();
+  try {
+    const auth = register(root);
+    approve(root, { textCommit: c0, authCommit: auth });
+    json(root, "data/p23/legal-published-baseline.json", (d) => { d.fingerprint = fp(root); });
+    const c1 = commit(root, "T1 aprovado e publicado");
+    assert.equal(gate(root).code, 0, "[G10.0] T1 publicado passa");
+    word(root, "devolução integral", "devolução integral e imediata"); const c2 = commit(root, "T2");
+    approve(root, { textCommit: c2, authCommit: auth }); commit(root, "T2 aprovado");
+    json(root, "data/p23/legal-published-baseline.json", (d) => { d.fingerprint = fp(root); }); commit(root, "T2 publicado");
+    assert.equal(gate(root).code, 0, "[G10.1] T2 publicado passa");
+    // Deploy da árvore antiga (c1: T1, linha de base T1 e legal_review T1 NA ÁRVORE) com o gh-pages já em T2.
+    git(root, "checkout", "-q", c1);
+    const r = gate(root, "main");
+    assert.equal(r.code, 1, "[G10.2] a árvore antiga não se autoriza com a própria linha de base/legal_review: " + r.out);
+    assert.match(r.out, /LEGAL_PUBLISH_GATE=BLOCKED/, "[G10.2a]");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("G11 validação estrutural dos workflows de deploy (--validate-workflows): o real passa; cada neutralização reprova", () => {
+  const dir = mkdtempSync(join(tmpdir(), "legal-wf-"));
+  try {
+    const SALES = ".github/workflows/zevanory-sales-public-release.yml", CENTRAL = ".github/workflows/central-production-deploy.yml";
+    const orig = { [SALES]: read(join(REPO, SALES)), [CENTRAL]: read(join(REPO, CENTRAL)) };
+    const run = (over = {}) => {
+      for (const [rel, text] of Object.entries({ ...orig, ...over })) { mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), text); }
+      return py(GUARD, ["--validate-workflows", "--root", dir]);
+    };
+    const real = run();
+    assert.equal(real.code, 0, "[G11.1] " + real.out);
+    assert.match(real.out, /LEGAL_GATE_WORKFLOWS=VALID/, "[G11.1a]");
+    const GATE_NAME = "      - name: Legal review gate (M1; fail closed while the new legal text is PENDING)";
+    const GL = "--anchors-ref refs/remotes/origin/gh-pages";
+    const INTEG = /      - name: Legal text integrity before the candidate deploy[^\n]*\n        run: \|\n          set -euo pipefail\n          git diff --exit-code HEAD -- [^\n]*\n\n/;
+    const gateBlock = (t) => t.slice(t.indexOf(GATE_NAME), t.indexOf("      - name: Require authenticated deployment authority"));
+    for (const [label, rel, fn] of [
+      ["continue-on-error no passo", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        continue-on-error: true")],
+      ["if no passo", CENTRAL, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        if: ${{ false }}")],
+      ["|| true", SALES, (t) => t.replace(GL + "\n", GL + " || true\n")],
+      ["shell trocado no passo", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        shell: bash -c 'true {0}'")],
+      ["passo sem o portão", CENTRAL, (t) => t.replace("          python3 -I scripts/p23/legal_review.py --root . --publish-gate " + GL + "\n", "          true\n")],
+      ["portão depois do build", SALES, (t) => { const g = gateBlock(t); return t.replace(g, "").replace("      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test", g + "      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test"); }],
+      ["passo antes do portão reescreve o script", CENTRAL, (t) => t.replace(GATE_NAME, "      - run: echo 'print(0)' > scripts/p23/legal_review.py\n" + GATE_NAME)],
+      ["deploy sem integridade antes", SALES, (t) => t.replace(INTEG, "")],
+      ["deploy com if: always()", SALES, (t) => t.replace("      - name: Deploy isolated candidate\n", "      - name: Deploy isolated candidate\n        if: always()\n")],
+      ["job deploy com defaults", SALES, (t) => t.replace(/(\n  deploy:\n)/, "$1    defaults:\n      run:\n        shell: bash -c 'true {0}'\n")],
+      ["defaults no workflow", CENTRAL, (t) => t.replace("\njobs:\n", "\ndefaults:\n  run:\n    shell: sh\njobs:\n")],
+      ["BASH_ENV no job deploy", CENTRAL, (t) => t.replace("      TARGET_RUNTIME_SHA: ${{ github.sha }}\n", "      TARGET_RUNTIME_SHA: ${{ github.sha }}\n      BASH_ENV: ./evil.sh\n")],
+      ["outro job publica", SALES, (t) => t.replace("npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public", "npx --yes wrangler@4.143.0 deploy --strict --config wrangler.sales.toml")],
+    ]) {
+      const mutated = fn(orig[rel]);
+      assert.notEqual(mutated, orig[rel], `[G11.2] âncora do mutante ausente: ${label}`);
+      const r = run({ [rel]: mutated });
+      assert.equal(r.code, 1, `[G11.3] ${label} não reprovou: ${r.out}`);
+      assert.match(r.out, /LEGAL_GATE_WORKFLOWS=INVALID/, `[G11.3a] ${label}`);
+    }
+    // Os arquivos da impressão digital do portão e os do passo de integridade são os mesmos.
+    const lr = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l, trust_anchor_guard as g; print(list(l.LEGAL_PAGES) + [l.POLICY] == list(g.LEGAL_FILES))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
+    assert.equal(lr.stdout.trim(), "True", "[G11.4] " + lr.stdout + lr.stderr);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

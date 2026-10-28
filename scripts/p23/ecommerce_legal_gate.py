@@ -57,7 +57,10 @@ FISCAL_FIELDS = ("regime", "documento_fiscal", "emissor", "decided_by", "account
 
 
 def visible(raw: str) -> str:
-    s = re.sub(r"<script\b.*?</script>|<style\b.*?</style>", " ", raw, flags=re.S | re.I)
+    # MED-2 (rodada 4): comentários HTML saem ANTES das tags (uma isca "<!--<main>...-->" não conta como visível), e
+    # <template> (não renderizado) também sai.
+    s = re.sub(r"<!--.*?(?:-->|\Z)", " ", raw, flags=re.S)
+    s = re.sub(r"<script\b.*?</script>|<style\b.*?</style>|<template\b.*?</template>", " ", s, flags=re.S | re.I)
     s = html.unescape(re.sub(r"<[^>]+>", " ", s))
     return re.sub(r"\s+", " ", s).strip()
 
