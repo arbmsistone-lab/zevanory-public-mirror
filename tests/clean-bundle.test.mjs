@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, existsSync, chmodSync, readdirSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireTool } from "./helpers/toolchain.mjs";
 import { readTextNormalized } from "./helpers/text.mjs";
@@ -81,7 +81,8 @@ test("CB1 the anchored sources of the commit build a release; the bundler runs o
     assert.equal(bundles.length, 2, "[CB1.4] deploy + preview: " + JSON.stringify(r.log));
     assert.equal(r.log.filter((c) => c.argv.includes("--no-bundle")).length, 2, "[CB1.4a] --no-bundle upload check for both configs");
     for (const c of r.log) {
-      assert.ok(c.cwd.startsWith(r.work), `[CB1.5] bundler ran outside the clean work dir: ${c.cwd}`);
+      // Compare by the unique work-dir name: on Windows the cwd Python reports can be the long form of a short temp path.
+      assert.ok(c.cwd.split("\\").join("/").includes("/" + basename(r.work) + "/clean/"), `[CB1.5] bundler ran outside the clean work dir: ${c.cwd}`);
       assert.equal(c.userconfig, "/dev/null", "[CB1.6] npm user config neutralized");
     }
     const src = join(r.work, "clean", "src");
