@@ -93,6 +93,13 @@ class HiddenFilesInRelease(unittest.TestCase):
             self.assertEqual(up[0]["with"]["name"], name)
             self.assertIs(up[0]["with"].get("include-hidden-files"), True, f"{job}: include-hidden-files must be true")
 
+    def test_every_artifact_upload_in_the_deploy_workflows_keeps_hidden_files(self):
+        for path in (WF, SALES):
+            for jname, job in jobs(path).items():
+                for s in job.get("steps", []):
+                    if str(s.get("uses", "")).startswith("actions/upload-artifact@"):
+                        self.assertIs(s["with"].get("include-hidden-files"), True, f"{path.name}:{jname}:{s['with'].get('name')}")
+
     def test_the_frozen_public_really_has_hidden_files(self):
         sha = "83620c680958d726fc4b0fd16e2574cdcc362a6d"
         if subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{sha}^{{commit}}"], capture_output=True).returncode != 0:

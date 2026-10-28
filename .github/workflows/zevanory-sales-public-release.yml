@@ -271,6 +271,7 @@ jobs:
           name: sales-site-${{ github.sha }}
           path: site-artifact
           if-no-files-found: error
+          include-hidden-files: true  # round 10: a dotfile in the build reaches the deploy check (refused there), never silently dropped
           retention-days: 7
 
   deploy:
