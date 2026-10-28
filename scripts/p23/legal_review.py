@@ -418,7 +418,32 @@ def approved_hashes(anchors, content) -> set[str]:
     return out
 
 
-def publish_gate(root: Path, anchors_ref: str | None = None) -> tuple[bool, list[str]]:
+def rehearsal_verdict(content, fp: str, anchors) -> list[str]:
+    """Só no ensaio (--rehearsal, dry-run antes do merge): quando o commit despachado ainda não está no gh-pages, o
+    portão continua RECUSANDO, mas antes calcula e imprime o veredito que a impressão digital teria contra as âncoras
+    do gh-pages (linha de base, aprovações) e os arquivos jurídicos que diferem. Nunca muda o resultado."""
+    try:
+        base, src = _loads(anchors.read(BASELINE)), "gh-pages"
+        if base is None:  # antes do merge da Release 2 o gh-pages ainda não tem o arquivo: usa o do commit despachado
+            base, src = _loads(content.read(BASELINE)), "commit despachado (ausente no gh-pages)"
+        baseline = str((base or {}).get("fingerprint", ""))
+        out = [f"LEGAL_REHEARSAL_BASELINE={baseline} origem={src}"]
+        if baseline != GENESIS_BASELINE and baseline not in approved_hashes(anchors, content):
+            return out + ["LEGAL_REHEARSAL_VERDICT=BLOCKED (linha de base do gh-pages inválida)"]
+        if fp == baseline:
+            return out + ["LEGAL_REHEARSAL_VERDICT=PASS_UNCHANGED (texto jurídico idêntico ao publicado)"]
+        mine, theirs = dict(legal_artifact_files(content)), dict(legal_artifact_files(anchors))
+        changed = sorted(k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k))
+        pa, pb = _loads(content.read(POLICY)) or {}, _loads(anchors.read(POLICY)) or {}
+        changed += [f"{POLICY}#{k}" for k in POLICY_FIELDS if pa.get(k) != pb.get(k)]
+        errs = validate_approval(pb.get("legal_review"), fp, anchors=anchors, content=content)
+        verdict = "PASS_APPROVED" if not errs else f"BLOCKED (sem aprovação válida para {fp[:12]}…: {errs[0]})"
+        return out + [f"LEGAL_REHEARSAL_CHANGED={c}" for c in changed] + [f"LEGAL_REHEARSAL_VERDICT={verdict}"]
+    except (SystemExit, Exception) as e:  # o ensaio é informativo; o portão já recusou
+        return [f"LEGAL_REHEARSAL_VERDICT=UNAVAILABLE ({e})"]
+
+
+def publish_gate(root: Path, anchors_ref: str | None = None, rehearsal: bool = False) -> tuple[bool, list[str]]:
     content = Tree(root)
     fp = legal_fingerprint_src(content)
     lines = [f"LEGAL_FINGERPRINT={fp}"]
@@ -429,7 +454,8 @@ def publish_gate(root: Path, anchors_ref: str | None = None) -> tuple[bool, list
     anchor_sha, head = anchors.commit(), anchors.commit("HEAD")
     lines.append(f"LEGAL_ANCHORS={anchors_ref}@{anchor_sha} DEPLOYED={head}")
     if not anchor_sha or not head or not anchors.is_ancestor(head):
-        return False, lines + ["::error title=LEGAL_PUBLISH_GATE::o commit publicado não está contido no gh-pages das âncoras (ou o ref não existe)", blocked]
+        extra = rehearsal_verdict(content, fp, anchors) if rehearsal and anchor_sha else []
+        return False, lines + extra + ["::error title=LEGAL_PUBLISH_GATE::o commit publicado não está contido no gh-pages das âncoras (ou o ref não existe)", blocked]
     base = _loads(anchors.read(BASELINE)) or {}
     baseline = str(base.get("fingerprint", ""))
     lines.append(f"LEGAL_PUBLISHED_BASELINE={baseline} source_commit={base.get('source_commit')}")
@@ -457,6 +483,7 @@ def main(argv=None) -> int:
     g.add_argument("--check-approval", action="store_true")
     g.add_argument("--artifact-files", action="store_true", help="lista os arquivos que entram na impressão digital")
     ap.add_argument("--anchors-ref", default=None, help="ref do gh-pages mesclado de onde vêm as âncoras (obrigatório com --publish-gate)")
+    ap.add_argument("--rehearsal", action="store_true", help="só no ensaio (dry-run): imprime o veredito da impressão digital mesmo quando o commit não está no gh-pages; o resultado continua recusado")
     a = ap.parse_args(argv)
     root = Path(a.root).resolve()
     if a.artifact_files:
@@ -473,7 +500,7 @@ def main(argv=None) -> int:
             print("::error title=LEGAL_REVIEW::" + e)
         print("LEGAL_REVIEW=" + ("FAIL" if errs else "PASS"))
         return 1 if errs else 0
-    ok, lines = publish_gate(root, a.anchors_ref)
+    ok, lines = publish_gate(root, a.anchors_ref, rehearsal=a.rehearsal)
     print("\n".join(lines))
     return 0 if ok else 1
 

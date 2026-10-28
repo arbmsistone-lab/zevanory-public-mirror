@@ -654,5 +654,5 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
-          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages --rehearsal
           echo "SALES_RELEASE_DRY_RUN=PASS (nothing was published)"

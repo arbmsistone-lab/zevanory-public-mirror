@@ -288,7 +288,9 @@ jobs:
   # read, so the rehearsed config is built with them empty (dormant launch config); production may differ in vars only.
   rehearsal:
     needs: build
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}
+    # Round 9: explicit result check. Without a status function the implicit success() is false when the guard (an
+    # ancestor of build) is skipped, which is always the case in dry-run, and the rehearsal never ran.
+    if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -343,7 +345,7 @@ jobs:
       - name: Legal artifact gate (dry run; gate code of the dispatched commit, anchors from gh-pages)
         run: |
           set -euo pipefail
-          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages --rehearsal
           echo "CENTRAL_RELEASE_DRY_RUN=PASS (nothing was published)"
 
   deploy:

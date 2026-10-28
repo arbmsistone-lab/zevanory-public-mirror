@@ -415,6 +415,8 @@ test("G11 validação estrutural (rodadas 6 e 7): o real passa; segredo no build
       ["r7 npm com configuração do usuário no deploy", SALES, (t) => t.replace("      npm_config_userconfig: /dev/null\n", "")],
       // Rodada 8 (LOW-2): o ensaio também compara com o artefato.
       ["r8 ensaio central sem --verify", CENTRAL, (t) => t.replace('/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/central', '/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro"')],
+      ["r9 --rehearsal no portão do deploy", SALES, (t) => t.replace(GL + "\n", GL + " --rehearsal\n")],
+      ["r9 ensaio central sem checar o resultado do build", CENTRAL, (t) => t.replace("if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}", "if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}")],
       ["r8 ensaio de vendas sem --verify", SALES, (t) => t.replace('/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/worker', '/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro"')],
       ["manifesto não conferido", SALES, (t) => t.replace("          (cd art/worker && sha256sum --strict -c --quiet MANIFEST.sha256)\n          (cd art/site && sha256sum --strict -c --quiet MANIFEST.sha256)\n", "")],
       // Neutralizações do portão.
@@ -588,5 +590,35 @@ test("G15 r7 M-1c: configuração npm/yarn, pacotes e configurações wrangler e
       const r = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", head]);
       assert.equal(r.code, 0, `[G15.4] ${path} não é âncora: ${r.out}`);
     }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("G16 r9 ensaio (--rehearsal): commit fora do gh-pages continua BLOCKED, mas imprime o veredito da impressão digital; sem a flag nada muda", () => {
+  const { root, text: base } = repo();
+  const rehearse = (r) => py(LEGAL, ["--root", r, "--publish-gate", "--anchors-ref", "main", "--rehearsal"]);
+  try {
+    // No gh-pages (main) o portão normal e o de ensaio dão a mesma saída.
+    const a = gate(root), b = rehearse(root);
+    assert.equal(a.code, b.code, "[G16.1]"); assert.equal(a.out, b.out, "[G16.1a] a flag não muda nada quando o commit está no gh-pages");
+    // Commit despachado num branch (ainda não está no gh-pages), com texto jurídico alterado.
+    git(root, "checkout", "-q", "-B", "pr-branch"); word(root, "Termos", "Termos e Condições"); commit(root, "texto alterado no branch");
+    const plain = gate(root);
+    assert.equal(plain.code, 1, "[G16.2] " + plain.out);
+    assert.doesNotMatch(plain.out, /LEGAL_REHEARSAL_/, "[G16.3] sem --rehearsal, nenhuma linha de ensaio (produção inalterada)");
+    const r = rehearse(root);
+    assert.equal(r.code, 1, "[G16.4] o ensaio continua recusando: " + r.out);
+    assert.match(r.out, /não está contido no gh-pages/, "[G16.5]");
+    assert.match(r.out, /LEGAL_PUBLISH_GATE=BLOCKED/, "[G16.6]");
+    assert.match(r.out, /LEGAL_REHEARSAL_CHANGED=sales-public\/termos\.html/, "[G16.7] arquivo alterado listado");
+    assert.match(r.out, /LEGAL_REHEARSAL_VERDICT=BLOCKED \(sem aprovação válida/, "[G16.8] veredito impresso");
+    assert.ok(r.out.indexOf("LEGAL_REHEARSAL_VERDICT") < r.out.indexOf("LEGAL_PUBLISH_GATE=BLOCKED"), "[G16.9] veredito antes da recusa");
+    // gh-pages ainda sem a linha de base (antes do merge da Release 2): o ensaio usa a do commit despachado e diz isso.
+    git(root, "checkout", "-q", "main"); git(root, "rm", "-q", "data/p23/legal-published-baseline.json"); commit(root, "gh-pages antigo, sem linha de base");
+    git(root, "checkout", "-q", "pr-branch");
+    const old = rehearse(root);
+    assert.equal(old.code, 1, "[G16.10]");
+    assert.match(old.out, /LEGAL_REHEARSAL_BASELINE=[0-9a-f]{64} origem=commit despachado/, "[G16.11] " + old.out);
+    assert.match(old.out, /LEGAL_REHEARSAL_VERDICT=BLOCKED/, "[G16.12]");
+    void base;
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

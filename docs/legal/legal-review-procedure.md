@@ -188,6 +188,8 @@ O `dry-run` do central confere o **código** e o pipeline de build, não a confi
 
 Antes do merge, o `dry-run` no branch do PR **não precisa de exceção** no Environment, porque o job `rehearsal` não usa o `producao-critica`. O resultado esperado hoje é: tudo verde até o portão, e o portão em `BLOCKED` enquanto a revisão jurídica estiver PENDING (o texto da Release 2 difere da linha de base). Isso é o portão funcionando.
 
+No ensaio, o portão roda com `--rehearsal` (só no job `rehearsal`; o validador exige o corpo exato, sem a flag, no `deploy`). Quando o commit despachado ainda não está no gh-pages, o portão continua recusando (`LEGAL_PUBLISH_GATE=BLOCKED`), mas antes imprime o que a impressão digital daria contra as âncoras do gh-pages: `LEGAL_REHEARSAL_BASELINE` (com a origem; antes do merge da Release 2, o gh-pages ainda não tem a linha de base e vale a do commit), cada `LEGAL_REHEARSAL_CHANGED=<arquivo>` e `LEGAL_REHEARSAL_VERDICT=PASS_UNCHANGED|PASS_APPROVED|BLOCKED`. Em produção nada muda.
+
 ## Rollback manual por Worker
 
 Pré-requisitos: `CLOUDFLARE_API_TOKEN` do proprietário no ambiente local (nunca colado em log), `CLOUDFLARE_ACCOUNT_ID=1b26415802588185a86c1d4d3ebf5bdb`, e rodar os comandos `wrangler` fora de qualquer checkout (`cd "$(mktemp -d)"`), para nenhum `.npmrc` ou `node_modules` local interferir. Os comandos usam a mesma versão do wrangler dos workflows.

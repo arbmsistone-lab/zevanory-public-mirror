@@ -290,6 +290,9 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
             r0, r1 = job_list[rj]
             rkeys = {k: (v, ks, ke) for k, v, ks, ke in _children(lines, r0 + 1, r1, 4)}
             rsteps = _steps(lines, rkeys["steps"][1] + 1, rkeys["steps"][2]) if "steps" in rkeys else []
+            rif = rkeys.get("if", ("",))[0]
+            if "inputs.mode == 'dry-run'" not in rif or re.search(r"\b(always|failure)\s*\(", rif):
+                errs.append(f"{name}: o job '{rj}' só roda em dry-run, sem always()/failure() no if (rodada 9)")
             if not any((st["keys"].get("run") or {}).get("body") == spec["rehearsal_repro"] for st in rsteps):
                 errs.append(f"{name}: o job '{rj}' não reconstrói e compara com o artefato ({spec['rehearsal_repro'][-1]})")
     if spec.get("bundle_job") and spec["bundle_job"][0] in job_list:
