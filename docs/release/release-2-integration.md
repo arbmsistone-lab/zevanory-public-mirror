@@ -191,3 +191,46 @@ O desenho convergiu para bytes do artefato, em vez de texto e padrões. O proced
 - O `publication_chain_check.py` aceita `needs: [guard, build]`.
 - `test_sales_deploy_no_routes` confere o gerador de configs no `worker-bundle`.
 - As saídas de `r6-job.sh` (original e adaptado ao novo desenho) estão em `docs/evidence/pr946-round6-audit/`.
+
+## Reauditoria rodada 7 (sobre `39f1593e`): pacote preso às fontes âncora
+
+**M-1.** O pacote do Worker publicado não estava preso às fontes âncora. No central, testes e scripts não âncora rodavam no mesmo workspace empacotado e podiam reescrever `worker/*.mjs` antes do empacotamento. No vendas, `npx wrangler` rodava dentro do checkout, então um `node_modules/.bin/wrangler` commitado seria executado e um `.npmrc` do repositório trocaria o registro.
+
+### O que muda nos deploys de produção
+
+- **Empacotamento limpo (`scripts/deploy/clean_bundle.py`, âncora).** É o mesmo script no build e no deploy, para os dois Workers:
+  - as fontes saem de `git archive $GITHUB_SHA` para um diretório novo; no vendas, só as âncoras do Worker;
+  - o `wrangler 4.143.0` vem de `npm ci --ignore-scripts` do lockfile âncora `scripts/deploy/wrangler-pin/package-lock.json`, com sha512 por pacote e só `registry.npmjs.org`. A instalação fica em `$RUNNER_TEMP`, fora do checkout, com a configuração npm do usuário em `/dev/null` e registro explícito;
+  - um commit com `.npmrc`, `.yarnrc*`, `package*.json`, `node_modules/` etc. é recusado (`CLEAN_BUNDLE=REFUSED`).
+- **Vendas, `worker-bundle`:** o único passo `run` é o `clean_bundle.py sales`, seguido do upload.
+- **Central, `build`:** o `clean_bundle.py central` roda **primeiro**, e o artefato sobe **antes** de qualquer teste. As checagens e os testes de sempre rodam depois, no workspace, e não alcançam mais o artefato.
+  - O pacote usa o arquivo do painel de controle **commitado** (`worker/live-recovered/control-plane-vnext.js`), então o empacotamento não executa código de `worker/`.
+  - O `build` prova que o gerador reproduz esse arquivo (`git diff --exit-code` depois do `materialize-control-plane.mjs`).
+- **Os dois `deploy`:** antes do portão e de qualquer segredo, um passo novo lê o `clean_bundle.py` do gh-pages, reconstrói o release a partir de `base/` e compara **byte a byte** com o artefato (`--verify`). Uma diferença para o job.
+  - O `env` do job ganha `npm_config_userconfig: /dev/null` e `npm_config_registry: https://registry.npmjs.org`.
+  - Os `npx --yes wrangler@4.143.0` que publicam rodam de `$RUNNER_TEMP/release` e resolvem para a instalação fixada em `$RUNNER_TEMP`. O `clean_bundle.py` confere essa resolução offline.
+  - Novo `uses:` permitido no deploy: `actions/setup-node` fixado por SHA, Node 22, igual ao build.
+- **M-1(c), âncoras em qualquer pasta:** `.npmrc`, `.yarnrc*`, `package.json`, `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.pnpmfile.cjs`, `bunfig.toml`, `bun.lockb`, `node_modules/**`, `.yarn/**` e todo `wrangler*.toml|json|jsonc`. Isso inclui as configs de `sandbox/`, que passam a exigir decisão deliberada.
+- **L-1, `workflow_dispatch` com `mode`:**
+  - `dry-run` é o padrão e roda no job `rehearsal`, sem Environment e sem segredo, em qualquer branch. Ele refaz os builds, os manifestos, a reconstrução comparada, o diretório de release e o `--no-bundle --dry-run` com o wrangler fixado, além do portão. Não publica nada.
+  - `candidate` existe só no vendas. Publica só o candidato isolado, faz o smoke e o apaga, sem promoção.
+  - `production` é o deploy completo, igual a um push.
+  - **Mudança de comportamento:** antes, um disparo manual publicava; agora o disparo sem escolha é `dry-run`.
+  - Os comandos de rollback manual por Worker estão em `docs/legal/legal-review-procedure.md`.
+- **O que não muda:** gatilhos de push e `paths`, concorrência, Environments, nome do candidato, promoção, snapshot, rollbacks automáticos e certificação. A lista FIRES_ON_MERGE continua a mesma.
+
+### Testes e evidências
+
+- `tests/clean-bundle.test.mjs`, 6 testes que rodam o script real em repositórios git temporários, com um empacotador stub que registra cada chamada:
+  - CB2: um `node_modules/.bin/wrangler` commitado é recusado e nunca executado;
+  - CB3: `.npmrc` na raiz ou numa pasta, `package*.json`, `.yarnrc.yml` e `node_modules/` numa pasta são recusados;
+  - CB4: uma mutação da fonte do Worker na árvore de trabalho não entra no release, e o artefato forjado a partir dela é recusado pela reconstrução (`MISMATCH`), assim como um arquivo a mais;
+  - CB5 e CB6: lockfile sem sha512, de outro registro ou com outra versão, wrangler instalado errado e saída não vazia são recusados;
+  - CB1: só as fontes âncora entram no diretório limpo, e todas são âncora.
+- G15: `.npmrc`, `node_modules/.bin/wrangler`, `package*.json`, `yarn`/`pnpm` e configs `wrangler*` em qualquer pasta dão `CHANGED` no check protegido.
+- G11 ganhou 9 mutantes da rodada 7: npx no checkout, teste antes do empacotamento, upload depois dos testes, deploy sem reconstrução, reconstrução sem `--verify` ou lida da árvore, reconstrução depois do portão, segredo na reconstrução e npm com configuração do usuário. G7 confere a estrutura nova.
+- Execução real, com o lockfile e o wrangler 4.143.0 de verdade, em `docs/evidence/pr946-round7-audit/`:
+  - o vendas e o central são construídos duas vezes, em diretórios diferentes, com `MATCH` byte a byte;
+  - o pacote do central é idêntico ao do fluxo antigo;
+  - o artefato forjado é recusado.
+- `test_t1_transition` S8 voltou a ler o comando do passo do central, que tem `python3 -I` desde a rodada 6. O teste já falhava em `39f1593e`.
