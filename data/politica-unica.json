@@ -299,8 +299,10 @@
         }
       ]
     },
-    "mes_sem_campanha": "A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O arrependimento de 7 dias continua valendo.",
+    "mes_sem_campanha": "A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O estorno é processado em até 7 dias úteis. O arrependimento de 7 dias continua valendo.",
     "creditos_max": 2,
+    "reembolso_prazo_dias_uteis": 7,
+    "reembolso_alerta_dias": 5,
     "descricao_fiscal_proposta": "Campanha mensal de promoção de vendas: planejamento e redação de 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento (versão curta e versão de e-mail) e calendário do período, sobre o objetivo comercial, a oferta e a condição comercial informados pelo contratante. Serviço digital, entregue por e-mail; publicação e envio feitos pelo contratante.",
     "descricao_hotmart_proposta": "ZEVANORY Conteúdo Pronto: campanha mensal de promoção de vendas. Todo mês você informa o objetivo comercial, a oferta, a condição comercial e o período; recebe por e-mail 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento (versão curta e versão de e-mail) e o calendário da campanha, no tom do seu negócio. Você revisa e publica; não há publicação nem disparo automático. Sem garantia de resultado de vendas."
   },

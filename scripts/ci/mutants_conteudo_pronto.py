@@ -34,7 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 43  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 45  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -258,7 +258,7 @@ M = {
         "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); }", "[camp-bounce] link novo (nova chave de idempotência)"),
     "M109 regra do mês fora do contrato": (CS, "export const MES_SEM_CAMPANHA = CONTEUDO_PRONTO.mes_sem_campanha;",
         "export const MES_SEM_CAMPANHA = \"O mês fica reservado.\";", "[camp-regra] código lê o contrato"),
-    "M110 Termos sem a regra": ("termos/index.html", "<strong>A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O arrependimento de 7 dias continua valendo.</strong> A assinatura é cancelada",
+    "M110 Termos sem a regra": ("termos/index.html", "<strong>A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O estorno é processado em até 7 dias úteis. O arrependimento de 7 dias continua valendo.</strong> A assinatura é cancelada",
         " A assinatura é cancelada", "[camp-regra] Termos com destaque (CDC art. 54 §4): termos/index.html"),
     "M111 portão volta a recusar frase promocional comum": (CS, "export const promessa = (t) => PROMESSA_RX.test(normTxt(t));",
         "export const promessa = (t) => PROMESSA_RX.test(normTxt(t)) || /garantid/.test(normTxt(t));", "[camp-promessa-lista] permite: vaga garantida"),
@@ -292,14 +292,36 @@ M = {
         "  const cyc = Number(record.deliveredCycle || 0) !== Number(record.cycles) ? Number(record.cycles) : null;", "[camp-credito] pacote do mês 2 gerado com o crédito"),
     "M126 sem limite de créditos": (CS, "    overflow = live.slice(0, Math.max(0, live.length - CREDITOS_MAX)).map((c) => c.cycle);",
         "    overflow = [];", "[camp-credito] no máximo 2 créditos"),
-    "M127 cancelamento sem reembolso": (CS, "    const owed = current?.status === \"active\" && (event === \"SUBSCRIPTION_CANCELLATION\" || event === \"PURCHASE_CANCELED\") ? pendingCycles(current) : [];",
-        "    const owed = [];", "[camp-reembolso] cancelamento reembolsa todo mês pago sem pacote"),
+    "M127 cancelamento sem reembolso": (CS, "      owed = pendingCycles({ ...latest, refundRequests }).filter((c) => !already.has(c));",
+        "      owed = [];", "[camp-reembolso] cancelamento reembolsa todo mês pago sem pacote"),
     "M128 pedido de reembolso sem alerta": (CS, "await ownerAlert(env, \"reembolso do Conteúdo Pronto a processar na Hotmart\"",
         "if (0) await ownerAlert(env, \"reembolso do Conteúdo Pronto a processar na Hotmart\"", "[camp-credito] proprietário avisado do reembolso"),
     "M129 reembolso não tira o mês dos pendentes": (CS, "const refundedCycles = (rec) => new Set((rec?.refundRequests || []).map((r) => Number(r.cycle)));",
         "const refundedCycles = (rec) => new Set();", "[camp-reembolso] mês reembolsado sai dos pendentes"),
     "M130 status sem os créditos": (CS, "      credits: Object.entries(creditIdx)",
         "      _c: Object.entries(creditIdx)", "[camp-credito] crédito visível no status"),
+    "M131 estorno de um mês sempre encerra a assinatura": (CS, "const ends = event === \"SUBSCRIPTION_CANCELLATION\" || (Boolean(subStatus) && SUB_ENDED_RX.test(subStatus));",
+        "const ends = true;", "[camp-estorno] estorno do mês pedido mantém a assinatura ativa"),
+    "M132 mês estornado sem registro fica pendente": (CS, "      else refundRequests.push({ cycle: txnCycle, reason: event.toLowerCase(), at, status: \"processed\", processedAt: at, processedBy: \"webhook:\" + event });\n",
+        "", "[camp-estorno] mês estornado sai dos pendentes"),
+    "M133 estorno ambíguo sem alerta de confirmação": (CS, "if (!ends && !subStatus && !matched) await ownerAlert(",
+        "if (0) await ownerAlert(", "[camp-estorno] sem status: proprietário confirma"),
+    "M134 reembolso atrasado sem alerta": (CS, "  await ownerAlert(env, \"reembolso do Conteúdo Pronto atrasado\"",
+        "  if (0) await ownerAlert(env, \"reembolso do Conteúdo Pronto atrasado\"", "[camp-reembolso-prazo] alerta de atraso uma vez"),
+    "M135 pedido parado não vira overdue": (CS, "for (const r of late) { r.status = \"overdue\";",
+        "for (const r of late) { r.status = \"requested\";", "[camp-reembolso-prazo] pedido parado vira overdue"),
+    "M136 processado sem pedido aberto": (CS, "    if (!open) return out(400, { ok: false, reason: \"no_open_request\" });\n",
+        "    if (!open) return out(200, { ok: true, cycle });\n", "[camp-reembolso-prazo] não processa duas vezes"),
+    "M137 estorno não chega à lista do proprietário": (CS, "    if (txnCycle !== null) await markRefundProcessed(kv, key, txnCycle, \"webhook:\" + event);\n",
+        "", "[camp-estorno] processado na lista do proprietário"),
+    "M138 mesma transação sob outro evento dá crédito em dobro": (CS, "cycles: current?.lastTxn === txn ? Number(current.cycles || 1) :",
+        "cycles: false ? Number(current.cycles || 1) :", "[camp-estorno] sem crédito em dobro pela mesma transação"),
+    "M139 transação sem ciclo (estorno não acha o mês)": (CS, "  record.txnCycles = Object.fromEntries([...Object.entries(current?.txnCycles || {}), [txn, record.cycles]].slice(-36));",
+        "  record.txnCycles = {};", "[camp-estorno] pedido do mês vira processado pelo webhook"),
+    "M140 status de encerramento ignorado": (CS, "const SUB_ENDED_RX = /^(CANCEL|INACTIVE|EXPIRED|ENDED)/;",
+        "const SUB_ENDED_RX = /^$/;", "[camp-estorno] status de encerramento encerra a assinatura"),
+    "M141 /reembolso sem o prazo da regra": ("reembolso/index.html", "O estorno é processado em até 7 dias úteis.",
+        "O estorno é processado quando possível.", "[camp-reembolso-prazo] regra do Conteúdo Pronto em reembolso/index.html"),
 }
 
 

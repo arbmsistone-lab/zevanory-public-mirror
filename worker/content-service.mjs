@@ -107,6 +107,8 @@ export function isServiceProduct(data = {}, ids = "") {
 }
 
 const ACTIVE_EVENTS = new Set(["PURCHASE_APPROVED", "PURCHASE_COMPLETE"]);
+// subscription.status da Hotmart que encerra a assinatura (os demais, como ACTIVE, STARTED, DELAYED e OVERDUE, não).
+const SUB_ENDED_RX = /^(CANCEL|INACTIVE|EXPIRED|ENDED)/;
 const STOP_EVENTS = new Set(["PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_CANCELED", "PURCHASE_PROTEST", "SUBSCRIPTION_CANCELLATION"]);
 
 // idempotencyKey (opcional): Resend retém a chave por 24 h; mesma chave + mesmo payload devolve a resposta original
@@ -182,23 +184,52 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   const key = SUB + (await sha(subscriber)).slice(0, 40);
   const email = String(data?.buyer?.email || "").trim().toLowerCase();
   const name = String(data?.buyer?.name || "").trim().slice(0, 80);
-  const current = await readJson(kv, key, null);
+  let current = await readJson(kv, key, null);
 
   if (STOP_EVENTS.has(event)) {
-    // S308: no cancelamento, todo mês pago sem pacote entregue (créditos e o mês atual) é reembolsado: pedido registrado e
-    // proprietário avisado; o estorno é feito na Hotmart. Estorno/chargeback já devolvem o valor e não geram pedido.
-    const owed = current?.status === "active" && (event === "SUBSCRIPTION_CANCELLATION" || event === "PURCHASE_CANCELED") ? pendingCycles(current) : [];
-    const reqs = owed.map((cycle) => ({ cycle, reason: "cancelamento", at: new Date().toISOString(), status: "pedido_registrado" }));
-    if (current) await kv.put(key, JSON.stringify({ ...current, status: "inactive", stoppedAt: new Date().toISOString(), stopEvent: event, ...(reqs.length ? { refundRequests: [...(current.refundRequests || []), ...reqs] } : {}) }), { expirationTtl: 400 * DAY });
+    // Rodada 5 (HIGH-1, HIGH-2, MED-3). Estorno, chargeback, protesto ou cancelamento de UMA transação (um mês) não é,
+    // por si, o fim da assinatura: a Hotmart permite estornar uma recorrência sem cancelar (PRECISA DE CONFIRMAÇÃO DO
+    // PROPRIETÁRIO). Regras:
+    //  - o mês da transação (txnCycles, ou purchase.recurrence_number) sai dos pendentes e o pedido aberto desse mês vira
+    //    "processed"; sem pedido, o mês fica registrado como devolvido (nunca vira crédito numa reassinatura);
+    //  - a assinatura só acaba com SUBSCRIPTION_CANCELLATION ou com subscription.status de encerramento no payload;
+    //  - ao acabar, todo outro mês pago sem pacote (créditos e o mês atual) vira pedido de reembolso, com alerta;
+    //  - payload sem status e sem pedido aberto correspondente: assinatura mantida ativa, créditos preservados, alerta ao
+    //    proprietário para confirmar (falha segura).
+    const at = new Date().toISOString();
+    const subStatus = String(data?.subscription?.status || "").trim().toUpperCase();
+    const ends = event === "SUBSCRIPTION_CANCELLATION" || (Boolean(subStatus) && SUB_ENDED_RX.test(subStatus));
+    if (!current) { await markProcessed(); return json(200, { ok: true, status: "unknown_subscriber" }); }
+    const latest = (await readJson(kv, key, null)) || current; // releitura logo antes de gravar
+    const recNum = Number(data?.purchase?.recurrence_number || data?.purchase?.recurrency_number || 0);
+    const txnCycle = event === "SUBSCRIPTION_CANCELLATION" ? null : (latest.txnCycles?.[txn] ?? (recNum > 0 ? recNum : null));
+    const refundRequests = (latest.refundRequests || []).map((r) => ({ ...r }));
+    let matched = false;
+    if (txnCycle !== null) {
+      const open = refundRequests.find((r) => Number(r.cycle) === txnCycle);
+      if (open) { matched = open.status !== "processed"; Object.assign(open, { status: "processed", processedAt: at, processedBy: "webhook:" + event }); }
+      else refundRequests.push({ cycle: txnCycle, reason: event.toLowerCase(), at, status: "processed", processedAt: at, processedBy: "webhook:" + event });
+    }
+    let owed = [];
+    if (ends && latest.status === "active") {
+      const already = new Set(refundRequests.map((r) => Number(r.cycle)));
+      owed = pendingCycles({ ...latest, refundRequests }).filter((c) => !already.has(c));
+      refundRequests.push(...owed.map((cycle) => ({ cycle, reason: "cancelamento", at, status: "requested" })));
+    }
+    const updated = { ...latest, refundRequests, ...(ends ? { status: "inactive", stoppedAt: at, stopEvent: event } : {}) };
+    await kv.put(key, JSON.stringify(updated), { expirationTtl: 400 * DAY });
+    await syncCreditIndex(kv, key, updated);
+    if (txnCycle !== null) await markRefundProcessed(kv, key, txnCycle, "webhook:" + event);
     if (owed.length) await recordRefundRequests(env, kv, key, owed, "cancelamento", { fetchImpl });
-    if (current) await syncCreditIndex(kv, key, { ...current, status: "inactive" });
-    await emitActivity(env, { type: "refund_requested", channel: "store", status: "service_stopped", ref: "cp:" + subscriber }).catch(() => null);
+    if (!ends && !subStatus && !matched) await ownerAlert(env, "estorno de um mês do Conteúdo Pronto: confirmar a assinatura", `A Hotmart enviou ${event} (assinante …${String(key).slice(-12)}, ciclo ${txnCycle ?? "desconhecido"}) sem o status da assinatura. A assinatura foi mantida ativa e os créditos foram preservados. Confirmar na Hotmart se ela continua; se foi encerrada, o cancelamento chega como SUBSCRIPTION_CANCELLATION.`, fetchImpl, { kind: "assinatura_confirmar", sub: key }).catch(() => null);
+    await emitActivity(env, { type: "refund_requested", channel: "store", status: ends ? "service_stopped" : "service_month_refunded", ref: "cp:" + subscriber + ":" + event.toLowerCase() + ":" + txn }).catch(() => null);
     await markProcessed();
-    return json(200, { ok: true, status: "inactive" });
+    return json(200, { ok: true, status: ends ? "inactive" : "active", cycle: txnCycle });
   }
   if (!ACTIVE_EVENTS.has(event)) { await markProcessed(); return json(200, { ok: true, ignored: event }); }
   if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { await markProcessed(); return json(200, { ok: true, status: "no_buyer_email" }); }
 
+  current = (await readJson(kv, key, null)) || current; // releitura logo antes de montar e gravar (LOW, rodada 5)
   const record = {
     schema: "zpc.cp.v1", status: "active", email, name,
     cycles: current?.lastTxn === txn ? Number(current.cycles || 1) : Number(current?.cycles || 0) + 1, lastTxn: txn,
@@ -206,6 +237,8 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   };
   // Campos de entrega do ciclo já entregue continuam (sem eles o ciclo seria entregue de novo).
   for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt", "campanha", "deliveries", "credits", "creditsUsed", "refundRequests", "deliveryHistory", "emailChanges"]) if (current?.[f] !== undefined) record[f] = current[f];
+  // Transação -> ciclo, para um estorno da Hotmart achar o mês certo (últimas 36).
+  record.txnCycles = Object.fromEntries([...Object.entries(current?.txnCycles || {}), [txn, record.cycles]].slice(-36));
   // S308: renovação com o mês anterior pago e sem pacote => crédito (nunca perda). Acima do limite, o mais antigo vira
   // pedido de reembolso registrado.
   let newCredit = null, overflow = [];
@@ -217,7 +250,7 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     const live = credits.filter((c) => !refunded.has(Number(c.cycle)));
     overflow = live.slice(0, Math.max(0, live.length - CREDITOS_MAX)).map((c) => c.cycle);
     record.credits = credits.filter((c) => !overflow.includes(c.cycle));
-    if (overflow.length) record.refundRequests = [...(record.refundRequests || []), ...overflow.map((cycle) => ({ cycle, reason: "limite_de_creditos", at: new Date().toISOString(), status: "pedido_registrado" }))];
+    if (overflow.length) record.refundRequests = [...(record.refundRequests || []), ...overflow.map((cycle) => ({ cycle, reason: "limite_de_creditos", at: new Date().toISOString(), status: "requested" }))];
   }
   await kv.put(key, JSON.stringify(record), { expirationTtl: 400 * DAY });
   if (newCredit) { await pendingLog(kv, key, "credit_created", "ciclo " + newCredit.cycle); await syncCreditIndex(kv, key, record); }
@@ -283,12 +316,39 @@ async function syncCreditIndex(kv, key, rec) {
   if (cycles.length) idx[key] = cycles; else delete idx[key];
   await kv.put(CREDIT_INDEX, JSON.stringify(idx), { expirationTtl: 400 * DAY });
 }
+// MED-5 (rodada 5): estados do pedido de reembolso. requested -> processed (estorno confirmado pelo webhook da Hotmart
+// ou marcado pelo operador, com motivo) ou -> overdue (sem processar depois de REEMBOLSO_ALERTA_DIAS; alerta ao
+// proprietário). O texto público promete o estorno em até REEMBOLSO_PRAZO_DIAS_UTEIS dias úteis.
+export const REEMBOLSO_PRAZO_DIAS_UTEIS = CONTEUDO_PRONTO.reembolso_prazo_dias_uteis;
+export const REEMBOLSO_ALERTA_DIAS = CONTEUDO_PRONTO.reembolso_alerta_dias;
+async function markRefundProcessed(kv, key, cycle, by, note = "", now = Date.now()) {
+  const at = new Date(now).toISOString();
+  const list = await readJson(kv, REFUNDS, []);
+  let hit = false;
+  for (const r of list) if (r.key === key && Number(r.cycle) === Number(cycle) && r.status !== "processed") { r.status = "processed"; r.processedAt = at; r.processedBy = String(by).slice(0, 60); r.processedNote = String(note).slice(0, 200); hit = true; }
+  if (!hit && !list.some((r) => r.key === key && Number(r.cycle) === Number(cycle))) list.push({ key, sub: String(key).slice(-12), cycle: Number(cycle), reason: String(by).slice(0, 60), at, status: "processed", processedAt: at, processedBy: String(by).slice(0, 60) });
+  await kv.put(REFUNDS, JSON.stringify(list.slice(-500)), { expirationTtl: 400 * DAY });
+  await pendingLog(kv, key, "refund_processed", "ciclo " + cycle + " por " + String(by).slice(0, 30), now);
+}
+export async function checkOverdueRefunds(env, fetchImpl = fetch, { now = Date.now() } = {}) {
+  const kv = kvOf(env);
+  const days = Number(env?.CP_REFUND_OVERDUE_DAYS) > 0 ? Number(env.CP_REFUND_OVERDUE_DAYS) : REEMBOLSO_ALERTA_DIAS;
+  const list = await readJson(kv, REFUNDS, []);
+  const late = list.filter((r) => r.status === "requested" && now - Date.parse(r.at) > days * DAY * 1000);
+  if (!late.length) return { overdue: 0 };
+  for (const r of late) { r.status = "overdue"; r.overdueAt = new Date(now).toISOString(); }
+  await kv.put(REFUNDS, JSON.stringify(list), { expirationTtl: 400 * DAY });
+  await ownerAlert(env, "reembolso do Conteúdo Pronto atrasado", `${late.length} pedido(s) de reembolso sem processar há mais de ${days} dias (${late.map((r) => "…" + r.sub + " ciclo " + r.cycle).join("; ")}). O prazo prometido é de ${REEMBOLSO_PRAZO_DIAS_UTEIS} dias úteis. Processar na Hotmart e marcar como processado: POST /api/admin/conteudo-pronto/refund-processed.`, fetchImpl, { kind: "reembolso_atrasado", now }).catch(() => null);
+  return { overdue: late.length };
+}
 async function recordRefundRequests(env, kv, key, cycles, reason, { operator = "sistema", note = "", now = Date.now(), fetchImpl = fetch } = {}) {
   if (!cycles.length) return [];
   const at = new Date(now).toISOString();
-  const reqs = cycles.map((cycle) => ({ cycle: Number(cycle), reason, operator: String(operator).slice(0, 60), note: String(note).slice(0, 200), at, status: "pedido_registrado" }));
+  const reqs = cycles.map((cycle) => ({ cycle: Number(cycle), reason, operator: String(operator).slice(0, 60), note: String(note).slice(0, 200), at, status: "requested" }));
   const list = await readJson(kv, REFUNDS, []);
-  list.push(...reqs.map((r) => ({ ...r, sub: String(key).slice(-12) })));
+  // LOW (rodada 5): idempotente por (assinante, ciclo) — um pedido nunca entra duas vezes na lista do proprietário.
+  const fresh = reqs.filter((r) => !list.some((x) => x.key === key && Number(x.cycle) === r.cycle));
+  list.push(...fresh.map((r) => ({ ...r, key, sub: String(key).slice(-12) })));
   await kv.put(REFUNDS, JSON.stringify(list.slice(-500)), { expirationTtl: 400 * DAY });
   for (const r of reqs) await pendingLog(kv, key, "refund_requested", reason + " ciclo " + r.cycle, now);
   await ownerAlert(env, "reembolso do Conteúdo Pronto a processar na Hotmart", `Pedido de reembolso registrado (${reason}) para o assinante …${String(key).slice(-12)}, ciclo(s) ${cycles.join(", ")} sem pacote entregue. Processar o estorno na Hotmart; o sistema não move dinheiro.`, fetchImpl, { kind: "reembolso_pedido", sub: key, now }).catch(() => null);
@@ -1017,6 +1077,7 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
   const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
   const welcome = await retryWelcomeEmails(env, fetchImpl, { now }).catch(() => ({ tried: 0 }));
   const reminders = await remindPendingForms(env, fetchImpl, { now }).catch(() => ({ reminders: 0 }));
+  await checkOverdueRefunds(env, fetchImpl, { now }).catch(() => null);
   return { ok: true, tried: results.length + Number(regen.tried || 0) + Number(welcome.tried || 0), delivered: results.filter((r) => r.ok).length, regen, welcome, deliveryCheck, reminders };
 }
 // ---------- Regeneração de pacote bloqueado (critério de aceite Sol #898) ----------
@@ -1299,7 +1360,7 @@ export async function handleContentOperator(request, env, { now = Date.now() } =
       dead: Object.entries(dead).map(([k, d]) => ({ sub: tail(k), kind: d.kind || "package", status: d.status, attempts: d.attempts ?? null, lastReason: d.lastReason || null, provider_event: d.provider_event || null, cycle: d.cycle ?? null, protocolo: d.protocolo || null, deadAt: d.deadAt, operations: (d.operations || []).length })),
       forms_waiting: Object.entries(formWait).map(([k, w]) => ({ sub: tail(k), cycle: w.cycle, requestedAt: w.requestedAt, reminders: w.sent || [] })),
       credits: Object.entries(creditIdx).map(([k, cycles]) => ({ sub: tail(k), cycles })), credits_max: CREDITOS_MAX,
-      refund_requests: refunds.slice(-100),
+      refund_requests: refunds.slice(-100).map(({ key: _k, ...r }) => r), refund_overdue_days: REEMBOLSO_ALERTA_DIAS,
       welcome: Object.entries(welcome).map(([k, w]) => ({ sub: tail(k), attempts: Number(w.attempts || 0), lastReason: w.lastReason || null, firstAt: w.firstAt || null })),
       alerts: alerts.slice(-50), log: log.slice(-50), max_attempts: PENDING_MAX_ATTEMPTS,
     });
@@ -1317,10 +1378,27 @@ export async function handleContentOperator(request, env, { now = Date.now() } =
     const cycle = Number(body?.cycle);
     if (!rec || !pendingCycles(rec).includes(cycle)) return out(400, { ok: false, reason: "cycle_not_refundable" });
     const latest = (await readJson(kv, keys[0], null)) || rec;
-    const updated = { ...latest, refundRequests: [...(latest.refundRequests || []), { cycle, reason: "pedido_do_assinante", operator: operator.slice(0, 60), at: new Date(now).toISOString(), status: "pedido_registrado" }] };
+    if (!pendingCycles(latest).includes(cycle)) return out(409, { ok: false, reason: "cycle_changed" }); // outro escritor chegou antes
+    const updated = { ...latest, refundRequests: [...(latest.refundRequests || []), { cycle, reason: "pedido_do_assinante", operator: operator.slice(0, 60), at: new Date(now).toISOString(), status: "requested" }] };
     await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });
     await syncCreditIndex(kv, keys[0], updated);
     await recordRefundRequests(env, kv, keys[0], [cycle], "pedido_do_assinante", { operator, note: reason, now });
+    return out(200, { ok: true, cycle });
+  }
+  // POST /api/admin/conteudo-pronto/refund-processed -> {sub, cycle, operator, reason}: o proprietário estornou na Hotmart.
+  if (path === "/api/admin/conteudo-pronto/refund-processed" && request.method === "POST") {
+    let body = null; try { body = await request.json(); } catch { return out(400, { error: "invalid_json" }); }
+    const sub = String(body?.sub || ""), operator = String(body?.operator || "").trim(), reason = String(body?.reason || "").trim(), cycle = Number(body?.cycle);
+    if (!operator || reason.length < 10) return out(400, { ok: false, reason: "operator_and_reason_required" });
+    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];
+    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? "ambiguous_sub" : "not_found" });
+    const latest = await readJson(kv, keys[0], null);
+    const reqs = (latest?.refundRequests || []).map((r) => ({ ...r }));
+    const open = reqs.find((r) => Number(r.cycle) === cycle && r.status !== "processed");
+    if (!open) return out(400, { ok: false, reason: "no_open_request" });
+    Object.assign(open, { status: "processed", processedAt: new Date(now).toISOString(), processedBy: operator.slice(0, 60) });
+    await kv.put(keys[0], JSON.stringify({ ...latest, refundRequests: reqs }), { expirationTtl: 400 * DAY });
+    await markRefundProcessed(kv, keys[0], cycle, operator, reason, now);
     return out(200, { ok: true, cycle });
   }
   if (path === "/api/admin/conteudo-pronto/requeue" && request.method === "POST") {

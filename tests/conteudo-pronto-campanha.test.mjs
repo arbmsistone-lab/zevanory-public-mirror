@@ -551,3 +551,76 @@ test("[camp-reembolso] pedido de reembolso pelo suporte e cancelamento com créd
   assert.deepEqual((await statusOf(e2)).credits, [], "[camp-reembolso] cancelado sai do índice de créditos");
   assert.ok(alertKinds(kv2).includes("reembolso_pedido"), "[camp-reembolso] proprietário avisado no cancelamento");
 });
+
+// ---------- Auditoria independente, rodada 5 do #960 (estorno por mês x fim da assinatura; estados do reembolso) ----------
+const hookX = (event, txn, { status = "", recurrence = 0, sub = "SUB-C3" } = {}) => new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": HOTTOK },
+  body: JSON.stringify({ event, data: { product: { id: 8704905, name: CS.SERVICE_PRODUCT_NAME }, buyer: { email: "c3@example.invalid", name: "Assinante" }, purchase: { transaction: txn, ...(recurrence ? { recurrence_number: recurrence } : {}) }, subscription: { subscriber: { code: sub }, ...(status ? { status } : {}) } } }) });
+const refundOp = (e, path, body) => CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/" + path, { method: "POST", body: JSON.stringify(body) }), e);
+async function withCredit() { // mês 1 entregue, mês 2 virou crédito, mês 3 atual sem pacote
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+  await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-E2"), e, null, f);
+  await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-E3"), e, null, f);
+  return { f, e, kv };
+}
+
+test("[camp-estorno] estorno de UM mês não encerra a assinatura; fim só por cancelamento ou status de encerramento; mês devolvido nunca vira crédito", async () => {
+  // A) Reembolso a pedido executado na Hotmart: o pedido aberto vira "processed" e a assinatura continua ativa.
+  { const { f, e, kv } = await withCredit();
+    assert.equal((await refundOp(e, "refund-request", { sub: subKey(kv).slice(-12), cycle: 2, operator: "ana", reason: "assinante pediu o reembolso do mês 2" })).status, 200);
+    await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-E2"), e, null, f);
+    assert.equal(rec(kv).status, "active", "[camp-estorno] estorno do mês pedido mantém a assinatura ativa");
+    assert.equal(rec(kv).refundRequests.find((r) => r.cycle === 2)?.status, "processed", "[camp-estorno] pedido do mês vira processado pelo webhook");
+    assert.ok(((await statusOf(e)).refund_requests || []).some((r) => r.cycle === 2 && r.status === "processed"), "[camp-estorno] processado na lista do proprietário");
+    assert.ok(!alertKinds(kv).includes("assinatura_confirmar"), "[camp-estorno] estorno correspondente não pede confirmação");
+    // B) Estorno sem pedido e sem status no payload: falha segura (ativa, alerta para confirmar, mês fora dos pendentes).
+    await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-E3"), e, null, f);
+    assert.equal(rec(kv).status, "active", "[camp-estorno] sem status: assinatura mantida ativa");
+    assert.ok(alertKinds(kv).includes("assinatura_confirmar"), "[camp-estorno] sem status: proprietário confirma");
+    assert.deepEqual(CS.pendingCycles(rec(kv)), [], "[camp-estorno] mês estornado sai dos pendentes");
+    await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-E4"), e, null, f);
+    assert.ok(!(rec(kv).credits || []).some((c) => c.cycle === 3), "[camp-estorno] mês estornado não vira crédito na renovação"); }
+  // C) Chargeback com status de encerramento: assinatura encerrada, os OUTROS meses sem pacote viram pedido de reembolso.
+  { const { f, e, kv } = await withCredit();
+    await CS.handleHotmartWebhook(hookX("PURCHASE_CHARGEBACK", "HP-E3", { status: "CANCELLED_BY_CUSTOMER" }), e, null, f);
+    assert.equal(rec(kv).status, "inactive", "[camp-estorno] status de encerramento encerra a assinatura");
+    assert.deepEqual((rec(kv).refundRequests || []).map((r) => [r.cycle, r.status]).sort(), [[2, "requested"], [3, "processed"]], "[camp-estorno] crédito restante vira pedido; o mês estornado fica processado");
+    assert.ok(alertKinds(kv).includes("reembolso_pedido"), "[camp-estorno] proprietário avisado");
+    // D) Reassinatura depois do chargeback: o mês devolvido não vira crédito.
+    await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-E9"), e, null, f);
+    assert.equal(rec(kv).status, "active");
+    assert.ok(!(rec(kv).credits || []).some((c) => c.cycle === 3) && !CS.pendingCycles(rec(kv)).includes(3), "[camp-estorno] reassinatura não transforma o mês devolvido em crédito"); }
+  // E) PURCHASE_CANCELED com status de encerramento pede reembolso dos meses sem pacote.
+  { const { f, e, kv } = await withCredit();
+    await CS.handleHotmartWebhook(hookX("PURCHASE_CANCELED", "HP-E3", { status: "CANCELLED_BY_SELLER" }), e, null, f);
+    assert.ok((rec(kv).refundRequests || []).some((r) => r.cycle === 2 && r.reason === "cancelamento"), "[camp-estorno] PURCHASE_CANCELED que encerra pede reembolso"); }
+  // F) Mesma transação de renovação com outro evento (APPROVED e depois COMPLETE): um crédito só.
+  { const { f, e, kv } = await withCredit();
+    await CS.handleHotmartWebhook(hookX("PURCHASE_COMPLETE", "HP-E3"), e, null, f);
+    assert.equal(rec(kv).cycles, 3, "[camp-estorno] sem crédito em dobro pela mesma transação: o ciclo não avança");
+    assert.deepEqual((rec(kv).credits || []).map((c) => c.cycle), [2], "[camp-estorno] sem crédito em dobro pela mesma transação"); }
+});
+
+test("[camp-reembolso-prazo] pedido de reembolso: requested → processed (webhook ou operador) → overdue com alerta; prazo no texto; /reembolso com a regra", async () => {
+  assert.ok(C.mes_sem_campanha.includes(`O estorno é processado em até ${CS.REEMBOLSO_PRAZO_DIAS_UTEIS} dias úteis`), "[camp-reembolso-prazo] prazo no texto único");
+  for (const rel of ["reembolso/index.html", "sales-public/reembolso.html"]) {
+    const html = read(rel);
+    assert.ok(html.includes(C.mes_sem_campanha), "[camp-reembolso-prazo] regra do Conteúdo Pronto em " + rel);
+    assert.match(html, /a instituição de pagamento é a Hotmart/, "[camp-reembolso-prazo] caminho Hotmart em " + rel);
+  }
+  const { f, e, kv } = await withCredit();
+  const sub = subKey(kv).slice(-12);
+  await refundOp(e, "refund-request", { sub, cycle: 2, operator: "ana", reason: "assinante pediu o reembolso do mês 2" });
+  assert.equal(((await statusOf(e)).refund_requests || []).find((r) => r.cycle === 2)?.status, "requested");
+  const later = Date.now() + (CS.REEMBOLSO_ALERTA_DIAS + 1) * 86400e3;
+  await CS.checkOverdueRefunds(e, f, { now: later });
+  await CS.checkOverdueRefunds(e, f, { now: later + 3600e3 });
+  assert.equal(((await statusOf(e)).refund_requests || []).find((r) => r.cycle === 2)?.status, "overdue", "[camp-reembolso-prazo] pedido parado vira overdue");
+  assert.equal(alertKinds(kv).filter((k) => k === "reembolso_atrasado").length, 1, "[camp-reembolso-prazo] alerta de atraso uma vez");
+  assert.equal((await refundOp(e, "refund-processed", { sub, cycle: 2, operator: "ana", reason: "" })).status, 400, "[camp-reembolso-prazo] processado exige motivo");
+  assert.equal((await refundOp(e, "refund-processed", { sub, cycle: 2, operator: "ana", reason: "estornado na Hotmart hoje" })).status, 200, "[camp-reembolso-prazo] operador marca processado");
+  assert.equal(((await statusOf(e)).refund_requests || []).find((r) => r.cycle === 2)?.status, "processed", "[camp-reembolso-prazo] processado na lista");
+  assert.equal(rec(kv).refundRequests.find((r) => r.cycle === 2)?.status, "processed", "[camp-reembolso-prazo] processado no assinante");
+  assert.equal((await refundOp(e, "refund-processed", { sub, cycle: 2, operator: "ana", reason: "estornado na Hotmart hoje" })).status, 400, "[camp-reembolso-prazo] não processa duas vezes");
+  assert.ok(!JSON.stringify(await statusOf(e)).includes(subKey(kv)), "[camp-reembolso-prazo] status sem a chave inteira");
+});
