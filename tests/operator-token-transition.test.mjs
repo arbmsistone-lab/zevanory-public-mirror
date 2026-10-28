@@ -79,7 +79,7 @@ function probed() {
 // certification_invite saiu desta lista com o R9 B: na produção o convite do piloto é recusado (409) ANTES da autenticação,
 // com qualquer credencial (provado em T2c e em tests/production-pilot-removal.test.mjs).
 const ROUTES = ["backup_run", "funnel_run", "voice_eval_run", "audit_credential_identity", "telegram_proof",
-  "channel_evidence", "whatsapp_stats_refresh", "voice_audit", "node_e2e_status"];
+  "channel_evidence", "whatsapp_stats_refresh", "voice_audit", "cp_operator_status", "node_e2e_status"];
 
 test("T2 Worker de produção: toda rota de operador aceita o nome novo e o prefere ao antigo", () => {
   const out = probed();
