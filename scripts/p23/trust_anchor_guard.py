@@ -311,6 +311,8 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
             nxt = (bsteps[n + 1]["keys"].get("uses") or {}).get("value", "") if n + 1 < len(bsteps) else ""
             if not nxt.startswith("actions/upload-artifact@"):
                 errs.append(f"{name}: no job '{bj}', o upload-artifact tem de vir logo depois do empacotamento limpo (antes de qualquer teste)")
+            elif _with(bsteps[n + 1]).get("include-hidden-files", "").split(" #")[0].strip() != "true":
+                errs.append(f"{name}: no job '{bj}', o upload-artifact tem de usar include-hidden-files: true (o release tem arquivos ocultos; rodada 10)")
             if any(not re.match(r"^(actions/checkout|actions/setup-node)@", (st["keys"].get("uses") or {}).get("value", "")) for st in bsteps[:n]):
                 errs.append(f"{name}: no job '{bj}', só checkout e setup-node antes do empacotamento limpo")
     if "deploy" not in job_list:

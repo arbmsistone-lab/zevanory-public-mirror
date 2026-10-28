@@ -224,6 +224,7 @@ jobs:
           name: sales-worker-${{ github.sha }}
           path: worker-artifact
           if-no-files-found: error
+          include-hidden-files: true  # round 10: upload exactly what clean_bundle.py built
           retention-days: 7
 
   site-build:

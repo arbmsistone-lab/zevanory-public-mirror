@@ -429,18 +429,21 @@ def rehearsal_verdict(content, fp: str, anchors) -> list[str]:
         baseline = str((base or {}).get("fingerprint", ""))
         out = [f"LEGAL_REHEARSAL_BASELINE={baseline} origem={src}"]
         if baseline != GENESIS_BASELINE and baseline not in approved_hashes(anchors, content):
-            return out + ["LEGAL_REHEARSAL_VERDICT=BLOCKED (linha de base do gh-pages inválida)"]
+            return out + ["LEGAL_REHEARSAL_VERDICT=BLOCKED (linha de base do gh-pages inválida)",
+                          f"::notice title=LEGAL_REHEARSAL_VERDICT::BLOCKED; invalid baseline {baseline[:12]} ({src})"]
         if fp == baseline:
-            return out + ["LEGAL_REHEARSAL_VERDICT=PASS_UNCHANGED (texto jurídico idêntico ao publicado)"]
+            return out + ["LEGAL_REHEARSAL_VERDICT=PASS_UNCHANGED (texto jurídico idêntico ao publicado)",
+                          f"::notice title=LEGAL_REHEARSAL_VERDICT::PASS_UNCHANGED; baseline {baseline[:12]} ({src})"]
         mine, theirs = dict(legal_artifact_files(content)), dict(legal_artifact_files(anchors))
         changed = sorted(k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k))
         pa, pb = _loads(content.read(POLICY)) or {}, _loads(anchors.read(POLICY)) or {}
         changed += [f"{POLICY}#{k}" for k in POLICY_FIELDS if pa.get(k) != pb.get(k)]
         errs = validate_approval(pb.get("legal_review"), fp, anchors=anchors, content=content)
         verdict = "PASS_APPROVED" if not errs else f"BLOCKED (sem aprovação válida para {fp[:12]}…: {errs[0]})"
-        return out + [f"LEGAL_REHEARSAL_CHANGED={c}" for c in changed] + [f"LEGAL_REHEARSAL_VERDICT={verdict}"]
+        return out + [f"LEGAL_REHEARSAL_CHANGED={c}" for c in changed] + [f"LEGAL_REHEARSAL_VERDICT={verdict}",
+                f"::notice title=LEGAL_REHEARSAL_VERDICT::{verdict.split(' (')[0]}; baseline {baseline[:12]} ({src}); {len(changed)} changed: {', '.join(changed[:20])}"]
     except (SystemExit, Exception) as e:  # o ensaio é informativo; o portão já recusou
-        return [f"LEGAL_REHEARSAL_VERDICT=UNAVAILABLE ({e})"]
+        return [f"LEGAL_REHEARSAL_VERDICT=UNAVAILABLE ({e})", f"::notice title=LEGAL_REHEARSAL_VERDICT::UNAVAILABLE ({e})"]
 
 
 def publish_gate(root: Path, anchors_ref: str | None = None, rehearsal: bool = False) -> tuple[bool, list[str]]:

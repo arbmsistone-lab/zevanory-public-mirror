@@ -209,6 +209,9 @@ jobs:
           name: central-release-${{ github.sha }}
           path: central-release
           if-no-files-found: error
+          # Round 10: upload-artifact v4 drops dotfiles by default; the release has public/.assetsignore and
+          # public/.well-known/security.txt, which the manifest lists. Upload exactly what was built.
+          include-hidden-files: true
           retention-days: 7
       # From here on: checks only. They run repository code and tests in the working tree, AFTER the release was
       # built and uploaded; nothing they do reaches the artifact (and the deploy job rebuilds and compares anyway).
@@ -318,9 +321,15 @@ jobs:
           RELEASE_MANIFEST: ${{ needs.build.outputs.manifest }}
         run: |
           set -euo pipefail
-          test "$(sha256sum art/central/MANIFEST.sha256 | cut -d' ' -f1)" = "$RELEASE_MANIFEST"
-          (cd art/central && sha256sum --strict -c --quiet MANIFEST.sha256)
-          diff <(cd art/central && find . -type f ! -name MANIFEST.sha256 | sort) <(cut -c67- art/central/MANIFEST.sha256 | sort)
+          # Round 10: every mismatch is reported as an ::error annotation with file names only (logs may be unreadable).
+          got="$(sha256sum art/central/MANIFEST.sha256 | cut -d' ' -f1)"
+          if [ "$got" != "$RELEASE_MANIFEST" ]; then echo "::error title=RELEASE_MANIFEST::MANIFEST.sha256 hash $got differs from the build output '${RELEASE_MANIFEST}'"; exit 1; fi
+          if ! (cd art/central && sha256sum --strict -c --quiet MANIFEST.sha256) > "$RUNNER_TEMP/manifest-check.txt" 2>&1; then
+            echo "::error title=RELEASE_MANIFEST::files missing or changed vs the manifest (hidden files dropped by the upload?): $(grep -E 'FAILED' "$RUNNER_TEMP/manifest-check.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
+          if ! diff <(cd art/central && find . -type f ! -name MANIFEST.sha256 | sort) <(cut -c67- art/central/MANIFEST.sha256 | sort) > "$RUNNER_TEMP/manifest-diff.txt"; then
+            echo "::error title=RELEASE_MANIFEST::file list differs from the manifest (< extra in the artifact, > missing): $(grep -E '^[<>]' "$RUNNER_TEMP/manifest-diff.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
           test -f art/central/worker.bundle.js && test -f art/central/wrangler.central-fix.jsonc
           if find art/central -maxdepth 1 -name '.env*' -o -maxdepth 1 -name '.dev.vars' -o -maxdepth 1 -name '.npmrc' | grep -q .; then echo "::error::forbidden file in the release"; exit 1; fi
           /usr/bin/python3 -I -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c["name"]=="zevanory" and c["main"]=="worker.bundle.js" and "build" not in c, c.get("main")' art/central/wrangler.central-fix.jsonc
@@ -380,9 +389,15 @@ jobs:
           RELEASE_MANIFEST: ${{ needs.build.outputs.manifest }}
         run: |
           set -euo pipefail
-          test "$(sha256sum art/central/MANIFEST.sha256 | cut -d' ' -f1)" = "$RELEASE_MANIFEST"
-          (cd art/central && sha256sum --strict -c --quiet MANIFEST.sha256)
-          diff <(cd art/central && find . -type f ! -name MANIFEST.sha256 | sort) <(cut -c67- art/central/MANIFEST.sha256 | sort)
+          # Round 10: every mismatch is reported as an ::error annotation with file names only (logs may be unreadable).
+          got="$(sha256sum art/central/MANIFEST.sha256 | cut -d' ' -f1)"
+          if [ "$got" != "$RELEASE_MANIFEST" ]; then echo "::error title=RELEASE_MANIFEST::MANIFEST.sha256 hash $got differs from the build output '${RELEASE_MANIFEST}'"; exit 1; fi
+          if ! (cd art/central && sha256sum --strict -c --quiet MANIFEST.sha256) > "$RUNNER_TEMP/manifest-check.txt" 2>&1; then
+            echo "::error title=RELEASE_MANIFEST::files missing or changed vs the manifest (hidden files dropped by the upload?): $(grep -E 'FAILED' "$RUNNER_TEMP/manifest-check.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
+          if ! diff <(cd art/central && find . -type f ! -name MANIFEST.sha256 | sort) <(cut -c67- art/central/MANIFEST.sha256 | sort) > "$RUNNER_TEMP/manifest-diff.txt"; then
+            echo "::error title=RELEASE_MANIFEST::file list differs from the manifest (< extra in the artifact, > missing): $(grep -E '^[<>]' "$RUNNER_TEMP/manifest-diff.txt" | head -20 | tr '\n' ' ')"; exit 1
+          fi
           test -f art/central/worker.bundle.js && test -f art/central/wrangler.central-fix.jsonc
           if find art/central -maxdepth 1 -name '.env*' -o -maxdepth 1 -name '.dev.vars' -o -maxdepth 1 -name '.npmrc' | grep -q .; then echo "::error::forbidden file in the release"; exit 1; fi
           /usr/bin/python3 -I -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c["name"]=="zevanory" and c["main"]=="worker.bundle.js" and "build" not in c, c.get("main")' art/central/wrangler.central-fix.jsonc

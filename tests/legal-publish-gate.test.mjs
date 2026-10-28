@@ -417,6 +417,7 @@ test("G11 validação estrutural (rodadas 6 e 7): o real passa; segredo no build
       ["r8 ensaio central sem --verify", CENTRAL, (t) => t.replace('/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/central', '/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro"')],
       ["r9 --rehearsal no portão do deploy", SALES, (t) => t.replace(GL + "\n", GL + " --rehearsal\n")],
       ["r9 ensaio central sem checar o resultado do build", CENTRAL, (t) => t.replace("if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}", "if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}")],
+      ["r10 upload do central sem arquivos ocultos", CENTRAL, (t) => t.replace("          include-hidden-files: true\n", "")],
       ["r8 ensaio de vendas sem --verify", SALES, (t) => t.replace('/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/worker', '/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro"')],
       ["manifesto não conferido", SALES, (t) => t.replace("          (cd art/worker && sha256sum --strict -c --quiet MANIFEST.sha256)\n          (cd art/site && sha256sum --strict -c --quiet MANIFEST.sha256)\n", "")],
       // Neutralizações do portão.
@@ -611,6 +612,7 @@ test("G16 r9 ensaio (--rehearsal): commit fora do gh-pages continua BLOCKED, mas
     assert.match(r.out, /LEGAL_PUBLISH_GATE=BLOCKED/, "[G16.6]");
     assert.match(r.out, /LEGAL_REHEARSAL_CHANGED=sales-public\/termos\.html/, "[G16.7] arquivo alterado listado");
     assert.match(r.out, /LEGAL_REHEARSAL_VERDICT=BLOCKED \(sem aprovação válida/, "[G16.8] veredito impresso");
+    assert.match(r.out, /::notice title=LEGAL_REHEARSAL_VERDICT::BLOCKED; baseline [0-9a-f]{12} \(gh-pages\); \d+ changed: [^\n]*sales-public\/termos\.html/, "[G16.8a] veredito também como anotação");
     assert.ok(r.out.indexOf("LEGAL_REHEARSAL_VERDICT") < r.out.indexOf("LEGAL_PUBLISH_GATE=BLOCKED"), "[G16.9] veredito antes da recusa");
     // gh-pages ainda sem a linha de base (antes do merge da Release 2): o ensaio usa a do commit despachado e diz isso.
     git(root, "checkout", "-q", "main"); git(root, "rm", "-q", "data/p23/legal-published-baseline.json"); commit(root, "gh-pages antigo, sem linha de base");
