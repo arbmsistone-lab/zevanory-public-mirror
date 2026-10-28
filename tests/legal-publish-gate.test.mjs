@@ -446,6 +446,22 @@ test("G12 MED-2 r5: atributo, elemento escondido, input, srcdoc, attr()/::after 
     assert.match(py(LEGAL, ["--root", root, "--fingerprint"]).out, /LEGAL_ASSET_MISSING/, "[G12.3] asset ausente");
     writeFileSync(pg, read(pg).replace('/assets/nao-existe.css', "https://cdn.example/x.css"));
     assert.match(py(LEGAL, ["--root", root, "--fingerprint"]).out, /LEGAL_ASSET_EXTERNAL/, "[G12.4] asset externo");
+    writeFileSync(pg, read(pg).replace('<link rel="stylesheet" href="https://cdn.example/x.css">', ""));
+    // Rodada 6 (L-2): <base href> e meta refresh são recusados numa página jurídica.
+    for (const [label, tag] of [["base", '<base href="https://outro.example/">'], ["meta refresh", '<meta http-equiv="refresh" content="0;url=/outra">']]) {
+      const before = read(pg);
+      writeFileSync(pg, before.replace("</head>", tag + "</head>"));
+      assert.match(py(LEGAL, ["--root", root, "--fingerprint"]).out, /LEGAL_PAGE_FORBIDDEN sales-public\/termos\.html/, `[G12.5] ${label} recusado`);
+      writeFileSync(pg, before);
+    }
+    // Rodada 6 (H-1 MODE=worker): o código que serve as rotas jurídicas e a configuração entram na impressão digital.
+    const base0 = fp(root);
+    for (const f of ["worker/sales-public-worker.mjs", "sales-worker.mjs", "worker/politica-unica.mjs", "wrangler.sales.toml"]) {
+      const orig = read(join(root, f));
+      writeFileSync(join(root, f), orig + "\n// mudança\n");
+      assert.notEqual(fp(root), base0, `[G12.6] ${f} muda a impressão digital`);
+      writeFileSync(join(root, f), orig);
+    }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

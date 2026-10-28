@@ -157,3 +157,37 @@ O desenho convergiu para bytes do artefato, em vez de texto e padrões. O proced
    - Teste G14: W1, V2 e as variantes de r5-newwf.
 5. **Validador só no check protegido.** O passo foi removido de `product-pages-premerge.yml` (que roda com a definição do PR). A detecção de deploy ficou conservadora: aspas, variável, API e actions. Teste G11, com as variantes V1, variável, API e as do portão.
 6. As saídas dos scripts do auditor contra o novo head estão em `docs/evidence/pr946-round5-audit/`.
+
+## Reauditoria rodada 6 (sobre `9c563be0`): build e deploy separados
+
+**H-1.** Um PR que mudava só `scripts/build_sales_public.py` conseguia três coisas: reescrever o Worker depois do portão, trocar `remote.origin.url` ou usar o token presente no job. A correção é a separação a seguir, nos dois workflows de deploy (detalhes em `docs/legal/legal-review-procedure.md`).
+
+### O que muda nos deploys de produção
+
+- **Vendas:** os jobs passam a ser `verify`, `worker-bundle` (novo, sem segredo), `site-build` (novo, sem segredo) e `deploy`.
+  - O `deploy` não roda mais `build_sales_public.py`, `sales_policy.py` nem `materialize_sales_configs.py`. Ele baixa os artefatos, confere os manifestos e roda o portão.
+  - Ele publica com `npx --yes wrangler@4.143.0 deploy --no-bundle` o pacote pronto, a partir de um diretório limpo.
+  - O nome do candidato continua `zevanory-sales-candidate-$GITHUB_RUN_ID`. A promoção, o snapshot, o rollback, a exclusão do candidato e a certificação são os mesmos.
+  - A releitura de `/termos` continua por conteúdo (`grep` do CNPJ).
+- **Central:** os jobs passam a ser `guard`, `build` (novo, sem segredo) e `deploy`.
+  - A reconstrução do candidato, as checagens `node --test` e o empacotamento saem do `deploy` e vão para o `build`.
+  - O `guard` repassa as quatro variáveis **não secretas** do Environment (`ZEVANORY_LAUNCH_AUTHORIZATION`, `MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16`, `MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED` e `OPERATOR_TOKEN_MIGRATION_UNTIL`).
+  - O `deploy` publica com `--no-bundle` o pacote do `build`. O rollback (`wrangler rollback --name zevanory`), a renovação da prova financeira, as verificações pós-deploy, o smoke do Mercado Pago (Playwright fixado num diretório limpo) e o disparo das evidências continuam iguais. Os scripts vêm do checkout confiável `base/`.
+- **Os dois workflows:**
+  - Os segredos saem do `env` dos jobs e ficam só nos passos que os usam.
+  - O central mantém o mapeamento das credenciais de produção (`MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`, `DATABASE_URL`, `OPERATOR_TOKEN`) **só no passo de deploy**, que não roda código do repositório. Isso preserva o inventário de consumidores de `DATABASE_URL` e o gate de separação de credenciais.
+  - Todas as actions ficam fixadas por SHA.
+- **O que não muda:** os gatilhos (`push`/`paths`/`workflow_dispatch`), a concorrência (`deploy-zevanory-sales-public`, `deploy-zevanory`, `queue: max`) e os Environments. Por isso a lista FIRES_ON_MERGE (classe B) é a mesma.
+- **Risco operacional, novo e declarado:** o deploy depende de dois artefatos do mesmo run. Se o upload falhar, o deploy não roda (falha fechada; a produção fica como está).
+  - O empacotamento do central com `--no-bundle` foi validado no próprio job `build`, sem segredo. Se o pacote não for um único módulo, o build falha antes de tocar a produção.
+  - O primeiro run real depois do merge é a prova final.
+
+### Testes e evidências
+
+- G11: segredo no build, código do repositório no deploy, rebuild no deploy, actions sem SHA, checkout sem `base`, `npx`/`npm`, neutralizações do portão.
+- G12: o código que serve as rotas muda a impressão digital; `<base>` e meta refresh são recusados.
+- G13: o corpo exato do portão do workflow sobre um artefato com CSS ou página trocados dá `BLOCKED`.
+- G7: estrutura.
+- O `publication_chain_check.py` aceita `needs: [guard, build]`.
+- `test_sales_deploy_no_routes` confere o gerador de configs no `worker-bundle`.
+- As saídas de `r6-job.sh` (original e adaptado ao novo desenho) estão em `docs/evidence/pr946-round6-audit/`.

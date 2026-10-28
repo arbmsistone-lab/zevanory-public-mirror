@@ -1,6 +1,6 @@
 # Revisão jurídica dos textos de consumo: procedimento e âncoras de confiança
 
-Este documento atende M1 e M-A das reauditorias do PR #946 (rodadas 2 a 5). Ele explica como funciona o portão que impede publicar texto jurídico de consumo sem aprovação.
+Este documento atende M1 e M-A das reauditorias do PR #946 (rodadas 2 a 6). Ele explica como funciona o portão que impede publicar texto jurídico de consumo sem aprovação.
 
 ## O que o portão confere
 
@@ -20,9 +20,10 @@ A impressão digital é o SHA-256 dos **bytes** de tudo o que forma as páginas 
   - Um asset externo (`https://`, `//`) reprova (`LEGAL_ASSET_EXTERNAL`).
   - Um caminho fora do artefato reprova (`LEGAL_ASSET_OUTSIDE`).
 - As fontes dessas páginas na raiz: `termos/`, `reembolso/`, `privacidade/` e `afiliados/`.
+- O código que serve as rotas jurídicas e a configuração dele (rodada 6): `sales-worker.mjs`, `worker/sales-public-worker.mjs`, `worker/politica-unica.mjs` e `wrangler.sales.toml`.
 - Os textos de consumo de `data/politica-unica.json`, incluindo `legal_document_version`.
 
-Qualquer byte diferente muda a impressão digital: texto, atributo (`style`, `hidden`, `value`, `srcdoc`, `data-*`), CSS (`::after`, `content`, `display:none`), fonte, imagem ou comentário. Também é exigido exatamente um `<main>` fora de comentários em cada página servida.
+Qualquer byte diferente muda a impressão digital: texto, atributo (`style`, `hidden`, `value`, `srcdoc`, `data-*`), CSS (`::after`, `content`, `display:none`), fonte, imagem ou comentário. Também é exigido exatamente um `<main>` fora de comentários em cada página servida. `<base>` e meta refresh são recusados (`LEGAL_PAGE_FORBIDDEN`, rodada 6).
 
 ### O Worker serve exatamente esses bytes
 
@@ -35,32 +36,52 @@ O Worker de vendas (`worker/sales-public-worker.mjs`, `LEGAL_ROUTES`) responde a
 
 Só os cabeçalhos são da resposta. O teste `tests/legal-routes-artifact.test.mjs` roda o Worker real e compara os bytes de cada rota com o arquivo, com o chat ligado, vendas abertas, UTM, `Accept-Encoding: gzip` e barra final.
 
-### Quando o portão roda
+### Build sem segredo, deploy sem código de build (rodada 6)
 
-O passo do portão roda no job `deploy` de `zevanory-sales-public-release.yml` e de `central-production-deploy.yml`, em dois momentos:
+Nos dois workflows de deploy, o build e o deploy estão em jobs separados.
 
-- como **primeiro comando** do job, para falhar cedo;
-- de novo, **logo antes de cada passo que publica**, sobre o artefato exato que vai ao ar.
+**Vendas (`zevanory-sales-public-release.yml`)**
 
-O corpo do passo é sempre o mesmo:
+| Job | Segredos | O que roda | O que produz |
+|---|---|---|---|
+| `verify` | nenhum | as verificações de sempre (também em PR) | — |
+| `worker-bundle` | nenhum (`contents: read`) | só código âncora: `scripts/ci/materialize_sales_configs.py` e o empacotador `npx --yes wrangler@4.143.0 deploy --dry-run --outdir` sobre fontes âncora (`sales-worker.mjs`, `worker/sales-public-worker.mjs`, `worker/politica-unica.mjs`, `data/politica-unica.json`, `wrangler.sales.toml`) | os pacotes prontos, as configs de release (`main` apontando para o pacote) e `MANIFEST.sha256`. O próprio job confere, sem segredo, que `--no-bundle` envia exatamente esses bytes. |
+| `site-build` | nenhum (`contents: read`) | o build do repositório (`scripts/build_sales_public.py`) e a auditoria P13 | `sales-public/` e `MANIFEST.sha256` |
+| `deploy` | Environment `producao-critica`; segredos **só no passo** que precisa | **nenhum código de build do repositório** (detalhes abaixo) | a publicação |
+
+**Central (`central-production-deploy.yml`)**
+
+| Job | Segredos | O que roda |
+|---|---|---|
+| `guard` | Environment `producao-critica` | o pré-guarda T1 (`promotion_guard.py`, âncora) a partir do checkout confiável. Também repassa ao build as quatro variáveis **não secretas** que o gerador do candidato usa. |
+| `build` | nenhum (`contents: read`) | reconstrói o candidato (código do repositório), roda as checagens e o empacotador e confere que a config `--no-bundle` reproduz o pacote. Envia config, pacote, `public/` e o manifesto. |
+| `deploy` | Environment `producao-critica`; segredos só no passo | mesmo padrão do vendas; scripts de operação âncora (`scripts/deploy/**` e os verificadores) lidos de `base/`. |
+
+**O job `deploy`, em ordem**
+
+1. Faz `actions/checkout` (SHA fixado) do commit do evento em `base/`, com `fetch-depth: 0` e `persist-credentials: false`. Nada do repositório rodou antes nesse job, então `remote.origin.url` e o `refs/remotes/origin/gh-pages` vêm do próprio checkout.
+2. Baixa os artefatos (`actions/download-artifact` com SHA fixado).
+3. Confere o hash de cada manifesto contra a saída do job que o gerou (`needs.<job>.outputs.manifest`), confere cada arquivo contra o manifesto e confere a lista exata de arquivos. Recusa `_headers`, `_redirects`, `.assetsignore`, `.env*`, `.dev.vars` e `.npmrc`.
+4. Roda o **portão**, antes de qualquer passo com segredo e de novo logo antes de cada passo que publica.
+5. Monta um diretório limpo (`$RUNNER_TEMP/release`), só com configs, pacotes e o site do artefato, e chama dali `npx --yes wrangler@4.143.0 deploy --no-bundle`. É o pacote pronto, sem rebuild.
+
+**O corpo do portão no vendas**
 
 ```
 set -euo pipefail
-test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"
-test -z "$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)"
-/usr/bin/git diff --exit-code "$GITHUB_SHA" -- <páginas jurídicas e data/politica-unica.json>
-/usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
-/usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
-/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
+/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 ```
 
-O que cada linha garante:
+No central, o corpo é o mesmo, sem a cópia de `sales-public/`.
 
-- O `HEAD` do runner é o commit do evento. Um commit local feito por um script do build reprova.
-- Nenhum arquivo está marcado como `assume-unchanged` ou `skip-worktree`.
-- A árvore não difere do commit do evento nos arquivos jurídicos.
-- O código do portão vem do **gh-pages mesclado**, não da árvore em publicação.
-- Os binários são chamados por caminho absoluto. Um `PATH` alterado por um passo anterior não troca o `git` nem o `python3`.
+**Por que isso fecha os três caminhos da rodada 6**
+
+- **Reescrever o Worker depois do portão.** Um build que reescreve o Worker só altera o workspace do `site-build`. O pacote vem do `worker-bundle`, que nunca roda o build. Além disso, o código que serve as rotas jurídicas e a configuração dele entram na impressão digital.
+- **Trocar `remote.origin.url`.** Isso só vale no workspace do `site-build`. O portão do deploy lê do próprio checkout confiável.
+- **Usar o token.** O token não existe nos jobs que rodam código de build.
 
 ### As âncoras de confiança
 
@@ -96,24 +117,26 @@ O check responde `TRUST_ANCHORS=CHANGED` para todo PR que altere:
 - `data/politica-unica.json`;
 - `scripts/p23/**`;
 - **qualquer arquivo** em `.github/workflows/` ou `.github/actions/`. A detecção de "workflow que publica" só gera um aviso informativo; a âncora é a regra;
-- o que serve as rotas jurídicas em tempo de execução: `sales-worker.mjs`, `worker/sales-public-worker.mjs`, `worker/politica-unica.mjs`, `wrangler.sales.toml` e `scripts/ci/materialize_sales_configs.py`.
+- o que serve as rotas jurídicas em tempo de execução: `sales-worker.mjs`, `worker/sales-public-worker.mjs`, `worker/politica-unica.mjs`, `wrangler.sales.toml` e `scripts/ci/materialize_sales_configs.py`;
+- tudo o que os jobs com segredo executam (rodada 6): `scripts/deploy/**`, `scripts/ci/verify-founder-and-products.sh`, `scripts/verify-production-surfaces.py`, `scripts/verify-live-headers.py`, `scripts/financial_proof_renewal.py` e `scripts/ci/credential_identity_readback.py`.
 
 ### 2. Estrutura dos workflows de deploy
 
-O check responde `TRUST_ANCHORS=GATE_INVALID` quando a estrutura dos dois workflows de deploy no head não garante o portão. A validação roda sempre, com ou sem mudança, e exige:
+O check responde `TRUST_ANCHORS=GATE_INVALID` quando a estrutura dos dois workflows de deploy no head não garante a separação e o portão. A validação roda sempre, com ou sem mudança, e exige:
 
-- O passo do portão (o corpo acima) é o primeiro comando do job `deploy`; antes dele só `actions/checkout`, `actions/setup-python` e `actions/setup-node`.
-- Ele aparece de novo logo antes de cada passo que publica.
-- Nenhum passo do portão tem `if`, `continue-on-error`, `shell`, `env` ou `working-directory`.
-- Conta como "passo que publica":
-  - wrangler como comando de publicação, também entre aspas ou via variável;
-  - envio de código pela API da Cloudflare;
-  - as actions de deploy.
-- Nenhum passo que publica, nem o job `deploy`, usa `always()`, `failure()` ou `cancelled()` no `if`.
-- Nenhum outro job publica.
-- Não há `defaults` no workflow nem no job.
-- Não há `BASH_ENV`, `ENV`, `PATH`, `LD_*`, `PYTHON*`, `NODE_OPTIONS` nem `GIT_*` no `env` do workflow ou do job.
-- O YAML é válido.
+- Só os jobs com segredo previstos recebem segredo (vendas: `deploy`; central: `guard` e `deploy`). Não há segredo no `env` do workflow nem no `env` de job. Os jobs de build têm `permissions: contents: read` e nada mais, e não usam o Environment.
+- Todo `uses:` é fixado por SHA. No job `deploy`, só `actions/checkout` (`path: base`, `ref: ${{ github.sha }}`, `persist-credentials: false`) e `actions/download-artifact`.
+- Os jobs com segredo, e o `worker-bundle`, só executam arquivos do repositório que são âncora, e nunca código de `worker/`.
+- No job `deploy`:
+  - `npx` só serve para `npx --yes wrangler@4.143.0`, e só a partir de `$RUNNER_TEMP/release`;
+  - `npm` só serve para instalar o `playwright@1.55.0` fixado em `$RUNNER_TEMP/pw`;
+  - todo `deploy` usa `--no-bundle`;
+  - não há `--dry-run` nem `--outdir`;
+  - não há scripts de build.
+- O manifesto é conferido antes do portão.
+- O portão (o corpo acima) roda antes de qualquer passo com segredo e logo antes de cada passo que publica, sem `if`, `continue-on-error`, `shell` ou `env`.
+- Passo que publica não usa `always()`, `failure()` ou `cancelled()`, nem o job `deploy`. Nenhum outro job publica.
+- Não há `defaults` nem `BASH_ENV`, `PATH`, `PYTHON*` ou `GIT_*` no `env`. O YAML é válido.
 
 ### 3. Linha de base
 
@@ -144,12 +167,9 @@ Depois disso, um PR que mexa nas âncoras só entra se o proprietário fizer o b
 
 ## Limites que continuam
 
-- **Só uma conta.** Toda proteção pode ser contornada pelo proprietário. O objetivo é que nenhuma aprovação e nenhuma neutralização do portão entrem **sem** uma decisão explícita dele.
-- **Código do repositório antes do portão final, no mesmo job.** No job de deploy de vendas, o build (`scripts/build_sales_public.py`) roda antes do portão final.
-  - O portão final pega uma reescrita de página, um commit local, `assume-unchanged` e uma troca de `PATH`.
-  - Ele não pega um código **deliberadamente malicioso** que adultere o próprio runner, por exemplo via `sudo` ou `LD_PRELOAD` gravado em `GITHUB_ENV`.
-  - Fechar isso exige separar o deploy num job novo, sem código do repositório antes da publicação, com o artefato passado entre jobs. É uma mudança de arquitetura dos workflows de produção, proposta como passo seguinte.
-- **O Worker central** não serve as páginas jurídicas (o apex redireciona para `vendas`). Os textos de consumo dele (`data/politica-unica.json`) entram na impressão digital por valor. O código do Worker central não é âncora.
+- **Só uma conta.** Toda proteção pode ser contornada pelo proprietário. O objetivo é que nenhuma aprovação, e nenhuma mudança no que roda com segredo, entre **sem** uma decisão explícita dele.
+- **Pacote e código do Worker central.** O pacote do Worker central é gerado por código do repositório que não é âncora (`worker/*.mjs` e os geradores do candidato rodam no build, sem segredo). Por desenho, um PR comum que muda o Worker central publica essa mudança no próximo deploy, e é isso que a revisão de código cobre. O central não serve as páginas jurídicas (o apex redireciona para `vendas`). Os textos de consumo dele (`data/politica-unica.json`) são âncora e entram na impressão digital.
+- **Dependências externas fixadas por versão.** `wrangler@4.143.0` e `playwright@1.55.0` vêm do registro npm, fixados por versão, não por hash. Eles rodam a partir de diretórios limpos e não são dependências do repositório.
 
 ## Decisão do proprietário (L-3)
 
