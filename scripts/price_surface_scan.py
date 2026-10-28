@@ -34,7 +34,6 @@ EXCECOES = {
     "tests/creative-autonomy.test.mjs": "criativo de exemplo do avaliador (entrada do teste, não publicado)",
     "tests/site-crawl-gate.test.mjs": "página-stub do teste do crawler",
     "tests/youtube-daily-short.test.mjs": "entrada do conversor de fala (R$ por extenso)",
-    "scripts/whatsapp_conversation_test.mjs": "respostas falsas da IA para o validador do canal aposentado",
     "scripts/ci/mutants_site_chat_allow.json": "justificativa de mutante que cita a entrada do validador",
     "scripts/price_surface_scan.py": "este arquivo",
 }
