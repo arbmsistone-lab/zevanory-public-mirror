@@ -34,7 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 45  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 48  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -322,6 +322,26 @@ M = {
         "const SUB_ENDED_RX = /^$/;", "[camp-estorno] status de encerramento encerra a assinatura"),
     "M141 /reembolso sem o prazo da regra": ("reembolso/index.html", "O estorno é processado em até 7 dias úteis.",
         "O estorno é processado quando possível.", "[camp-reembolso-prazo] regra do Conteúdo Pronto em reembolso/index.html"),
+    "M142 estorno volta a adivinhar o mês pela recorrência": (CS, "(Number.isInteger(latest.txnCycles?.[txn]) ? latest.txnCycles[txn] : null)",
+        "(Number.isInteger(latest.txnCycles?.[txn]) ? latest.txnCycles[txn] : recNum)", "[camp-pago] cobrança recusada não aponta mês"),
+    "M143 cobrança recusada sem o alerta certo": (CS, "else if (!ends && paidCycle === null && event === \"PURCHASE_CANCELED\") await ownerAlert(",
+        "else if (false) await ownerAlert(", "[camp-pago] alerta de cobrança não concluída"),
+    "M144 recorrência não inteira aceita": (CS, "/^\\d{1,4}$/.test(String(recRaw ?? \"\").trim()) && Number(recRaw) > 0",
+        "Number(recRaw) > 0", "[camp-pago] recorrência não inteira descartada"),
+    "M145 estorno parcial tira o mês inteiro": (CS, "const txnCycle = partial ? null : paidCycle;",
+        "const txnCycle = paidCycle;", "[camp-parcial] estorno parcial não tira o mês"),
+    "M146 estorno parcial sem alerta": (CS, "if (partial) await ownerAlert(",
+        "if (false) await ownerAlert(", "[camp-parcial] proprietário avisado do parcial"),
+    "M147 valor pago não gravado na renovação": (CS, "  record.txnPaid = Object.fromEntries([...Object.entries(current?.txnPaid || {}), ...(Number.isFinite(paidValue) && paidValue > 0 ? [[txn, paidValue]] : [])].slice(-36));",
+        "  record.txnPaid = {};", "[camp-parcial] estorno parcial não tira o mês"),
+    "M148 status desconhecido sem alerta": (CS, "if (unknownStatus) await ownerAlert(",
+        "if (false) await ownerAlert(", "[camp-parcial] status desconhecido alerta: OVERDUE"),
+    "M149 baixa do operador seguida de alerta inútil": (CS, "if (open) { matched = true;",
+        "if (open) { matched = open.status !== \"processed\";", "[camp-parcial] sem alerta de confirmação depois da baixa do operador"),
+    "M150 pedido duplicado na lista do proprietário": (CS, "  const fresh = reqs.filter((r) => !list.some((x) => x.key === key && Number(x.cycle) === r.cycle));",
+        "  const fresh = reqs;", "[camp-corrida-reembolso] um pedido só por mês na lista do proprietário"),
+    "M151 rota de pedido sem a releitura": (CS, "    if (!pendingCycles(latest).includes(cycle)) return out(409, { ok: false, reason: \"cycle_changed\" }); // outro escritor chegou antes\n",
+        "", "[camp-corrida-reembolso] releitura detecta o outro escritor"),
 }
 
 

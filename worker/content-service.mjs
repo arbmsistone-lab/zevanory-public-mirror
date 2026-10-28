@@ -107,8 +107,10 @@ export function isServiceProduct(data = {}, ids = "") {
 }
 
 const ACTIVE_EVENTS = new Set(["PURCHASE_APPROVED", "PURCHASE_COMPLETE"]);
-// subscription.status da Hotmart que encerra a assinatura (os demais, como ACTIVE, STARTED, DELAYED e OVERDUE, não).
+// subscription.status da Hotmart que encerra a assinatura. ACTIVE e STARTED são ativos conhecidos; qualquer outro
+// (DELAYED, OVERDUE, SUSPENDED, um status novo) mantém a assinatura ativa e alerta o proprietário (rodada 6, MED-3).
 const SUB_ENDED_RX = /^(CANCEL|INACTIVE|EXPIRED|ENDED)/;
+const SUB_ACTIVE_RX = /^(ACTIVE|STARTED)$/;
 const STOP_EVENTS = new Set(["PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_CANCELED", "PURCHASE_PROTEST", "SUBSCRIPTION_CANCELLATION"]);
 
 // idempotencyKey (opcional): Resend retém a chave por 24 h; mesma chave + mesmo payload devolve a resposta original
@@ -187,44 +189,66 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   let current = await readJson(kv, key, null);
 
   if (STOP_EVENTS.has(event)) {
-    // Rodada 5 (HIGH-1, HIGH-2, MED-3). Estorno, chargeback, protesto ou cancelamento de UMA transação (um mês) não é,
-    // por si, o fim da assinatura: a Hotmart permite estornar uma recorrência sem cancelar (PRECISA DE CONFIRMAÇÃO DO
+    // Rodadas 5 e 6 da auditoria. Estorno, chargeback, protesto ou cancelamento de UMA transação não é, por si, o fim da
+    // assinatura: supõe-se que a Hotmart permite estornar uma recorrência sem cancelar (PRECISA DE CONFIRMAÇÃO DO
     // PROPRIETÁRIO). Regras:
-    //  - o mês da transação (txnCycles, ou purchase.recurrence_number) sai dos pendentes e o pedido aberto desse mês vira
-    //    "processed"; sem pedido, o mês fica registrado como devolvido (nunca vira crédito numa reassinatura);
-    //  - a assinatura só acaba com SUBSCRIPTION_CANCELLATION ou com subscription.status de encerramento no payload;
-    //  - ao acabar, todo outro mês pago sem pacote (créditos e o mês atual) vira pedido de reembolso, com alerta;
-    //  - payload sem status e sem pedido aberto correspondente: assinatura mantida ativa, créditos preservados, alerta ao
-    //    proprietário para confirmar (falha segura).
+    //  - só um mês PAGO pode ser devolvido: o ciclo vem apenas de txnCycles (transação aprovada registrada na renovação).
+    //    Transação desconhecida não mexe em mês nenhum (sem fallback por recurrence_number: a Hotmart recomeça a
+    //    recorrência numa reassinatura, e um palpite errado poderia dar reembolso e pacote do mesmo mês). Um
+    //    PURCHASE_CANCELED de transação desconhecida é cobrança não concluída ("não pago"), sem rótulo de reembolso;
+    //  - estorno parcial (valor menor que o pago) não tira o mês: fica registrado e o proprietário é avisado;
+    //  - pedido aberto do mês devolvido vira "processed"; sem pedido, o mês fica registrado como devolvido (nunca vira
+    //    crédito numa reassinatura);
+    //  - a assinatura só acaba com SUBSCRIPTION_CANCELLATION ou subscription.status de encerramento; ao acabar, todo
+    //    outro mês pago sem pacote vira pedido de reembolso, com alerta;
+    //  - payload sem status, transação desconhecida ou status fora dos conhecidos: assinatura ativa, créditos
+    //    preservados, alerta ao proprietário (falha segura, nunca silenciosa).
     const at = new Date().toISOString();
     const subStatus = String(data?.subscription?.status || "").trim().toUpperCase();
     const ends = event === "SUBSCRIPTION_CANCELLATION" || (Boolean(subStatus) && SUB_ENDED_RX.test(subStatus));
+    const unknownStatus = Boolean(subStatus) && !ends && !SUB_ACTIVE_RX.test(subStatus);
     if (!current) { await markProcessed(); return json(200, { ok: true, status: "unknown_subscriber" }); }
     const latest = (await readJson(kv, key, null)) || current; // releitura logo antes de gravar
-    const recNum = Number(data?.purchase?.recurrence_number || data?.purchase?.recurrency_number || 0);
-    const txnCycle = event === "SUBSCRIPTION_CANCELLATION" ? null : (latest.txnCycles?.[txn] ?? (recNum > 0 ? recNum : null));
+    const recRaw = data?.purchase?.recurrence_number ?? data?.purchase?.recurrency_number;
+    const recNum = /^\d{1,4}$/.test(String(recRaw ?? "").trim()) && Number(recRaw) > 0 ? Number(recRaw) : null; // só inteiro positivo, e só para o alerta
+    const paidCycle = event === "SUBSCRIPTION_CANCELLATION" ? null : (Number.isInteger(latest.txnCycles?.[txn]) ? latest.txnCycles[txn] : null);
+    const money = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+    const refundAmt = money(data?.purchase?.price?.value);
+    const paidAmt = paidCycle === null ? null : (money(latest.txnPaid?.[txn]) ?? money(data?.purchase?.full_price?.value));
+    const partial = paidCycle !== null && refundAmt !== null && paidAmt !== null && refundAmt < paidAmt - 0.005;
+    const txnCycle = partial ? null : paidCycle; // mês efetivamente devolvido
     const refundRequests = (latest.refundRequests || []).map((r) => ({ ...r }));
+    const partialRefunds = [...(latest.partialRefunds || [])];
     let matched = false;
     if (txnCycle !== null) {
       const open = refundRequests.find((r) => Number(r.cycle) === txnCycle);
-      if (open) { matched = open.status !== "processed"; Object.assign(open, { status: "processed", processedAt: at, processedBy: "webhook:" + event }); }
+      if (open) { matched = true; if (open.status !== "processed") Object.assign(open, { status: "processed", processedAt: at, processedBy: "webhook:" + event }); }
       else refundRequests.push({ cycle: txnCycle, reason: event.toLowerCase(), at, status: "processed", processedAt: at, processedBy: "webhook:" + event });
     }
+    if (partial && !partialRefunds.some((r) => r.txn === txn && r.event === event)) partialRefunds.push({ cycle: paidCycle, txn, event, amount: refundAmt, paid: paidAmt, at });
     let owed = [];
     if (ends && latest.status === "active") {
       const already = new Set(refundRequests.map((r) => Number(r.cycle)));
       owed = pendingCycles({ ...latest, refundRequests }).filter((c) => !already.has(c));
       refundRequests.push(...owed.map((cycle) => ({ cycle, reason: "cancelamento", at, status: "requested" })));
     }
-    const updated = { ...latest, refundRequests, ...(ends ? { status: "inactive", stoppedAt: at, stopEvent: event } : {}) };
+    const updated = { ...latest, refundRequests, ...(partialRefunds.length ? { partialRefunds: partialRefunds.slice(-36) } : {}), ...(ends ? { status: "inactive", stoppedAt: at, stopEvent: event } : {}) };
     await kv.put(key, JSON.stringify(updated), { expirationTtl: 400 * DAY });
     await syncCreditIndex(kv, key, updated);
     if (txnCycle !== null) await markRefundProcessed(kv, key, txnCycle, "webhook:" + event);
     if (owed.length) await recordRefundRequests(env, kv, key, owed, "cancelamento", { fetchImpl });
-    if (!ends && !subStatus && !matched) await ownerAlert(env, "estorno de um mês do Conteúdo Pronto: confirmar a assinatura", `A Hotmart enviou ${event} (assinante …${String(key).slice(-12)}, ciclo ${txnCycle ?? "desconhecido"}) sem o status da assinatura. A assinatura foi mantida ativa e os créditos foram preservados. Confirmar na Hotmart se ela continua; se foi encerrada, o cancelamento chega como SUBSCRIPTION_CANCELLATION.`, fetchImpl, { kind: "assinatura_confirmar", sub: key }).catch(() => null);
-    await emitActivity(env, { type: "refund_requested", channel: "store", status: ends ? "service_stopped" : "service_month_refunded", ref: "cp:" + subscriber + ":" + event.toLowerCase() + ":" + txn }).catch(() => null);
+    const who = `assinante …${String(key).slice(-12)}`;
+    const recTxt = recNum ? `, recorrência ${recNum} na Hotmart` : "";
+    const keep = "A assinatura foi mantida ativa e os créditos foram preservados.";
+    if (partial) await ownerAlert(env, "estorno parcial no Conteúdo Pronto", `A Hotmart enviou ${event} de ${refundAmt} sobre ${paidAmt} pagos (${who}, ciclo ${paidCycle}). O mês continua a entregar e o estorno parcial ficou registrado. Conferir na Hotmart.`, fetchImpl, { kind: "estorno_parcial", sub: key }).catch(() => null);
+    else if (!ends && paidCycle === null && event === "PURCHASE_CANCELED") await ownerAlert(env, "cobrança do Conteúdo Pronto não concluída", `A Hotmart enviou PURCHASE_CANCELED de uma transação que não foi aprovada aqui (${who}${recTxt}). Tratado como cobrança não paga: nenhum mês foi alterado e nada foi marcado como reembolso. Se uma nova tentativa for aprovada, o mês segue normalmente. ${keep}`, fetchImpl, { kind: "cobranca_nao_concluida", sub: key }).catch(() => null);
+    else if (!ends && paidCycle === null) await ownerAlert(env, "estorno de transação desconhecida no Conteúdo Pronto: confirmar", `A Hotmart enviou ${event} de uma transação que não está registrada como paga aqui (${who}${recTxt}). Nenhum mês foi alterado. ${keep} Confirmar na Hotmart qual mês foi devolvido e registrar pelo operador (refund-request e refund-processed).`, fetchImpl, { kind: "assinatura_confirmar", sub: key }).catch(() => null);
+    else if (!ends && !subStatus && !matched) await ownerAlert(env, "estorno de um mês do Conteúdo Pronto: confirmar a assinatura", `A Hotmart enviou ${event} (${who}, ciclo ${txnCycle}) sem o status da assinatura. O mês ${txnCycle} saiu dos pendentes. ${keep} Confirmar na Hotmart se ela continua; se foi encerrada, o cancelamento chega como SUBSCRIPTION_CANCELLATION.`, fetchImpl, { kind: "assinatura_confirmar", sub: key }).catch(() => null);
+    if (unknownStatus) await ownerAlert(env, "status de assinatura não reconhecido no Conteúdo Pronto", `A Hotmart enviou ${event} com subscription.status "${subStatus.slice(0, 40)}" (${who}). Esse status não está entre os conhecidos (ativos: ACTIVE, STARTED; encerramento: CANCEL*, INACTIVE, EXPIRED, ENDED). ${keep} Confirmar a situação na Hotmart.`, fetchImpl, { kind: "assinatura_status_desconhecido", sub: key }).catch(() => null);
+    const outcome = ends ? "service_stopped" : partial ? "service_partial_refund" : paidCycle === null ? (event === "PURCHASE_CANCELED" ? "service_charge_not_completed" : "service_refund_unmatched") : "service_month_refunded";
+    await emitActivity(env, { type: "refund_requested", channel: "store", status: outcome, ref: "cp:" + subscriber + ":" + event.toLowerCase() + ":" + txn }).catch(() => null);
     await markProcessed();
-    return json(200, { ok: true, status: ends ? "inactive" : "active", cycle: txnCycle });
+    return json(200, { ok: true, status: ends ? "inactive" : "active", cycle: txnCycle, ...(partial ? { partial: true } : {}), ...(paidCycle === null && !ends ? { unpaid_or_unknown: true } : {}) });
   }
   if (!ACTIVE_EVENTS.has(event)) { await markProcessed(); return json(200, { ok: true, ignored: event }); }
   if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { await markProcessed(); return json(200, { ok: true, status: "no_buyer_email" }); }
@@ -236,9 +260,12 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     briefing: current?.briefing || null, createdAt: current?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   // Campos de entrega do ciclo já entregue continuam (sem eles o ciclo seria entregue de novo).
-  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt", "campanha", "deliveries", "credits", "creditsUsed", "refundRequests", "deliveryHistory", "emailChanges"]) if (current?.[f] !== undefined) record[f] = current[f];
+  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt", "campanha", "deliveries", "credits", "creditsUsed", "refundRequests", "partialRefunds", "deliveryHistory", "emailChanges"]) if (current?.[f] !== undefined) record[f] = current[f];
   // Transação -> ciclo, para um estorno da Hotmart achar o mês certo (últimas 36).
   record.txnCycles = Object.fromEntries([...Object.entries(current?.txnCycles || {}), [txn, record.cycles]].slice(-36));
+  // Valor pago por transação, para distinguir estorno parcial de total (rodada 6, MED-2).
+  const paidValue = Number(data?.purchase?.price?.value);
+  record.txnPaid = Object.fromEntries([...Object.entries(current?.txnPaid || {}), ...(Number.isFinite(paidValue) && paidValue > 0 ? [[txn, paidValue]] : [])].slice(-36));
   // S308: renovação com o mês anterior pago e sem pacote => crédito (nunca perda). Acima do limite, o mais antigo vira
   // pedido de reembolso registrado.
   let newCredit = null, overflow = [];

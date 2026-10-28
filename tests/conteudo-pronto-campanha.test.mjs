@@ -553,8 +553,8 @@ test("[camp-reembolso] pedido de reembolso pelo suporte e cancelamento com créd
 });
 
 // ---------- Auditoria independente, rodada 5 do #960 (estorno por mês x fim da assinatura; estados do reembolso) ----------
-const hookX = (event, txn, { status = "", recurrence = 0, sub = "SUB-C3" } = {}) => new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": HOTTOK },
-  body: JSON.stringify({ event, data: { product: { id: 8704905, name: CS.SERVICE_PRODUCT_NAME }, buyer: { email: "c3@example.invalid", name: "Assinante" }, purchase: { transaction: txn, ...(recurrence ? { recurrence_number: recurrence } : {}) }, subscription: { subscriber: { code: sub }, ...(status ? { status } : {}) } } }) });
+const hookX = (event, txn, { status = "", recurrence = 0, sub = "SUB-C3", price = 0 } = {}) => new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": HOTTOK },
+  body: JSON.stringify({ event, data: { product: { id: 8704905, name: CS.SERVICE_PRODUCT_NAME }, buyer: { email: "c3@example.invalid", name: "Assinante" }, purchase: { transaction: txn, ...(recurrence ? { recurrence_number: recurrence } : {}), ...(price ? { price: { value: price } } : {}) }, subscription: { subscriber: { code: sub }, ...(status ? { status } : {}) } } }) });
 const refundOp = (e, path, body) => CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/" + path, { method: "POST", body: JSON.stringify(body) }), e);
 async function withCredit() { // mês 1 entregue, mês 2 virou crédito, mês 3 atual sem pacote
   const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
@@ -623,4 +623,102 @@ test("[camp-reembolso-prazo] pedido de reembolso: requested → processed (webho
   assert.equal(rec(kv).refundRequests.find((r) => r.cycle === 2)?.status, "processed", "[camp-reembolso-prazo] processado no assinante");
   assert.equal((await refundOp(e, "refund-processed", { sub, cycle: 2, operator: "ana", reason: "estornado na Hotmart hoje" })).status, 400, "[camp-reembolso-prazo] não processa duas vezes");
   assert.ok(!JSON.stringify(await statusOf(e)).includes(subKey(kv)), "[camp-reembolso-prazo] status sem a chave inteira");
+});
+
+// ---------- Auditoria independente, rodada 6 do #960 (só mês PAGO é devolvido; parcial; status desconhecido) ----------
+const mailText = (f, rx) => f.sent.filter((m) => rx.test(m.subject || "")).map((m) => String(m.text || m.html || "")).join("\n");
+
+test("[camp-pago] só um mês pago pode ser devolvido: cobrança recusada não é reembolso; transação desconhecida não mexe em mês", async () => {
+  // A) Renovação recusada (PURCHASE_CANCELED de transação nunca aprovada, recorrência 3) e depois aprovada.
+  { const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+    await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+    await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-P2"), e, null, f);
+    const r = await (await CS.handleHotmartWebhook(hookX("PURCHASE_CANCELED", "HP-P3-RECUSADA", { recurrence: 3 }), e, null, f)).json();
+    assert.equal(r.cycle, null, "[camp-pago] cobrança recusada não aponta mês");
+    assert.deepEqual(rec(kv).refundRequests || [], [], "[camp-pago] cobrança recusada não vira reembolso");
+    assert.ok(alertKinds(kv).includes("cobranca_nao_concluida"), "[camp-pago] alerta de cobrança não concluída");
+    assert.match(mailText(f, /não concluída/), /não paga/, "[camp-pago] texto do alerta fala em cobrança não paga");
+    assert.doesNotMatch(mailText(f, /não concluída/), /estorno de um mês/, "[camp-pago] texto do alerta não fala em estorno");
+    const asks = () => f.sent.filter((m) => /campanha do mês/.test(m.subject || "")).length;
+    const asked = asks();
+    await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-P3-OK", { recurrence: 3 }), e, null, f);
+    assert.equal(rec(kv).cycles, 3);
+    assert.deepEqual(CS.pendingCycles(rec(kv)), [2, 3], "[camp-pago] mês 3 pago depois da recusa fica pendente");
+    assert.ok(asks() > asked, "[camp-pago] a renovação paga pede a campanha"); }
+  // B) Estorno de transação desconhecida com recurrence_number: sem palpite pelo número (a Hotmart recomeça em 1 numa
+  //    reassinatura); nenhum mês alterado, alerta para confirmar. Número não inteiro não aparece no alerta.
+  { const { f, e, kv } = await withCredit();
+    const r = await (await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-FORMATO-OUTRO", { recurrence: 2 }), e, null, f)).json();
+    assert.equal(r.cycle, null, "[camp-pago] sem palpite pela recorrência");
+    assert.deepEqual(CS.pendingCycles(rec(kv)), [2, 3], "[camp-pago] transação desconhecida não tira mês");
+    assert.ok(alertKinds(kv).includes("assinatura_confirmar"), "[camp-pago] transação desconhecida pede confirmação");
+    assert.match(mailText(f, /transação desconhecida/), /recorrência 2 na Hotmart/, "[camp-pago] alerta traz a recorrência inteira");
+    await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-FORMATO-OUTRO-2", { recurrence: 2.5 }), e, null, f);
+    assert.doesNotMatch(mailText(f, /transação desconhecida/), /2\.5/, "[camp-pago] recorrência não inteira descartada");
+    assert.deepEqual(CS.pendingCycles(rec(kv)), [2, 3]); }
+  // C) Reassinatura: recorrência 1 da assinatura nova com transação desconhecida não devolve o ciclo 1 antigo nem o atual.
+  { const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+    await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+    await CS.handleHotmartWebhook(hookX("SUBSCRIPTION_CANCELLATION", "HP-R-C"), e, null, f);
+    await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-R-NOVA", { recurrence: 1 }), e, null, f);
+    const before = JSON.stringify(rec(kv).refundRequests || []);
+    await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-R-NOVA-OUTRO", { recurrence: 1 }), e, null, f);
+    assert.equal(JSON.stringify(rec(kv).refundRequests || []), before, "[camp-pago] reassinatura: recorrência 1 não marca ciclo nenhum");
+    assert.ok(CS.pendingCycles(rec(kv)).includes(rec(kv).cycles), "[camp-pago] reassinatura: mês atual continua pendente"); }
+});
+
+test("[camp-parcial] estorno parcial mantém o mês; status desconhecido alerta; baixa do operador não gera alerta inútil", async () => {
+  // A) Parcial: pagou 197, estornou 20 -> o mês continua a entregar, o parcial fica registrado, o proprietário é avisado.
+  { const { f, e, kv } = await withCredit();
+    await CS.handleHotmartWebhook(hookX("PURCHASE_APPROVED", "HP-V4", { price: 197 }), e, null, f);
+    const r = await (await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-V4", { price: 20 }), e, null, f)).json();
+    assert.equal(r.partial, true, "[camp-parcial] estorno parcial não tira o mês: resposta marca parcial");
+    assert.ok(CS.pendingCycles(rec(kv)).includes(4), "[camp-parcial] estorno parcial não tira o mês");
+    assert.deepEqual((rec(kv).partialRefunds || []).map((x) => [x.cycle, x.amount, x.paid]), [[4, 20, 197]], "[camp-parcial] parcial registrado");
+    assert.ok(alertKinds(kv).includes("estorno_parcial"), "[camp-parcial] proprietário avisado do parcial");
+    await CS.handleHotmartWebhook(hookX("PURCHASE_CHARGEBACK", "HP-V4", { price: 197 }), e, null, f);
+    assert.ok(!CS.pendingCycles(rec(kv)).includes(4), "[camp-parcial] estorno do valor inteiro tira o mês"); }
+  // B) Status fora dos conhecidos (OVERDUE, DELAYED, SUSPENDED): ativa, créditos mantidos, alerta. ACTIVE não alerta.
+  for (const st of ["OVERDUE", "DELAYED", "SUSPENDED"]) {
+    const { f, e, kv } = await withCredit();
+    await CS.handleHotmartWebhook(hookX("PURCHASE_CHARGEBACK", "HP-E3", { status: st }), e, null, f);
+    assert.equal(rec(kv).status, "active", "[camp-parcial] status desconhecido mantém ativa: " + st);
+    assert.ok(CS.pendingCycles(rec(kv)).includes(2), "[camp-parcial] status desconhecido mantém o crédito: " + st);
+    assert.ok(alertKinds(kv).includes("assinatura_status_desconhecido"), "[camp-parcial] status desconhecido alerta: " + st);
+  }
+  { const { f, e, kv } = await withCredit();
+    await CS.handleHotmartWebhook(hookX("PURCHASE_CHARGEBACK", "HP-E3", { status: "ACTIVE" }), e, null, f);
+    assert.ok(!alertKinds(kv).includes("assinatura_status_desconhecido"), "[camp-parcial] ACTIVE é conhecido"); }
+  // C) O operador marcou processado antes do webhook: o webhook não pede confirmação.
+  { const { f, e, kv } = await withCredit();
+    const sub = subKey(kv).slice(-12);
+    await refundOp(e, "refund-request", { sub, cycle: 2, operator: "ana", reason: "assinante pediu o reembolso do mês 2" });
+    await refundOp(e, "refund-processed", { sub, cycle: 2, operator: "ana", reason: "estornado na Hotmart hoje" });
+    await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-E2"), e, null, f);
+    assert.ok(!alertKinds(kv).includes("assinatura_confirmar"), "[camp-parcial] sem alerta de confirmação depois da baixa do operador");
+    assert.equal(rec(kv).refundRequests.find((r) => r.cycle === 2)?.processedBy, "ana", "[camp-parcial] baixa do operador preservada"); }
+});
+
+test("[camp-corrida-reembolso] pedido de reembolso: releitura antes de gravar (409) e um só pedido por mês na lista do proprietário", async () => {
+  // A) Outro escritor registra o mês 2 entre a leitura e a gravação da rota: a releitura vê e responde 409.
+  { const { e, kv } = await withCredit();
+    const key = subKey(kv), sub = key.slice(-12), orig = kv.get.bind(kv);
+    let reads = 0;
+    kv.get = async (k, ...rest) => {
+      const v = await orig(k, ...rest);
+      if (k === key && ++reads === 1) { const r = JSON.parse(kv.data.get(key)); r.refundRequests = [...(r.refundRequests || []), { cycle: 2, reason: "pedido_do_assinante", status: "requested", at: new Date().toISOString() }]; kv.data.set(key, JSON.stringify(r)); }
+      return v;
+    };
+    const res = await refundOp(e, "refund-request", { sub, cycle: 2, operator: "ana", reason: "assinante pediu o reembolso do mês 2" });
+    kv.get = orig;
+    assert.equal(res.status, 409, "[camp-corrida-reembolso] releitura detecta o outro escritor");
+    assert.equal(rec(kv).refundRequests.filter((r) => r.cycle === 2).length, 1, "[camp-corrida-reembolso] um pedido só no assinante"); }
+  // B) Atualização perdida no registro (corrida) e depois cancelamento: a lista do proprietário não duplica o mês.
+  { const { f, e, kv } = await withCredit();
+    const key = subKey(kv);
+    await refundOp(e, "refund-request", { sub: key.slice(-12), cycle: 2, operator: "ana", reason: "assinante pediu o reembolso do mês 2" });
+    const r = JSON.parse(kv.data.get(key)); r.refundRequests = []; kv.data.set(key, JSON.stringify(r)); // simula a atualização perdida
+    await CS.handleHotmartWebhook(hookX("SUBSCRIPTION_CANCELLATION", "HP-E-C"), e, null, f);
+    const list = JSON.parse(kv.data.get("zpc:cp:refund-requests") || "[]").filter((x) => x.key === key && x.cycle === 2);
+    assert.equal(list.length, 1, "[camp-corrida-reembolso] um pedido só por mês na lista do proprietário"); }
 });
