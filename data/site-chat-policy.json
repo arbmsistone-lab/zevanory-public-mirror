@@ -17,7 +17,7 @@
   },
   "approved_sources": {
     "nota": "Impressão digital do catálogo aprovado (worker/support-knowledge.mjs SUPPORT_PRODUCTS + data/products.json + closed_summaries). Mudou o catálogo => o chat recusa preço/conteúdo e escalona (fonte vencida) até alguém reaprovar este valor no mesmo PR (tests/site-chat.test.mjs).",
-    "catalog_fingerprint": "4d8b5f7fc5873a74"
+    "catalog_fingerprint": "f6e1ed1a8029cf26"
   },
   "limits": {
     "message_max_chars": 600,

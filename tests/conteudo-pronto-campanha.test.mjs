@@ -58,7 +58,7 @@ function resend({ event = "delivered" } = {}) {
     const id = "em-" + (sent.length + 1);
     sent.push({ ...JSON.parse(init.body), id });
     events.set(id, event);
-    return new Response(JSON.stringify({ id }), { status: 200 });
+    return new Response(JSON.stringify({ id }), { status: f.status ?? 200 });
   };
   f.sent = sent;
   return f;
@@ -161,6 +161,18 @@ test("[camp-renovacao] renovação pede a campanha do mês e não gera nada até
   assert.doesNotMatch(form, new RegExp(CAMPAIGN.oferta), "[camp-renovacao] campanha do mês anterior não é reaproveitada");
   await submit(e, f, t2, { ...BRIEF, ...CAMPAIGN_MONTH2 });
   assert.equal(JSON.parse(kv.data.get(rec(kv).lastPackage)).campanha.oferta, CAMPAIGN_MONTH2.oferta, "[camp-renovacao] mês 2 com a campanha nova");
+  // Auditoria #953 H2 na renovação: o pedido da campanha que não sai entra na fila de formulários; o postback não conta
+  // como processado até o envio; o cron reenvia o mesmo link.
+  f.status = 500;
+  const r3 = await (await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-3"), e, null, f)).json();
+  assert.equal(r3.status, "campaign_email_pending", "[camp-renovacao] pedido da campanha pendente");
+  assert.notEqual((await (await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-3"), e, null, f)).json()).duplicate, true, "[camp-renovacao] não marcado como processado");
+  delete f.status;
+  const cron = await CS.retryPendingPackages(e, f);
+  assert.equal(cron.welcome.sent, 1, "[camp-renovacao] cron envia o pedido da campanha do mês 3");
+  const asks = f.sent.filter((m) => /defina a campanha do mês 3/.test(m.subject));
+  assert.ok(asks.length >= 2 && new Set(asks.map((m) => m.text)).size === 1, "[camp-renovacao] mesmo link em toda tentativa");
+  assert.equal((await (await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-3"), e, null, f)).json()).duplicate, true, "[camp-renovacao] processado depois do envio");
 });
 
 test("[camp-entrega] entrega verificável: recibo com protocolo, SHA-256 e id; confirmação pelo provedor; falha registrada com alerta", async () => {

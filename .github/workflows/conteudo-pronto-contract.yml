@@ -67,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test --test-reporter=tap tests/conteudo-pronto-g1-g5.test.mjs 2>&1 | tee /tmp/g.txt
-          for kv in "tests 12" "pass 12" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+          for kv in "tests 21" "pass 21" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
             grep -qx "# $kv" /tmp/g.txt || { echo "::error::G1–G5: esperado '# $kv'"; exit 1; }
           done
       - name: Mapa causal dos mutantes válido e documento de evidência em dia
