@@ -221,6 +221,14 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
       assert.match(r.out, /TRUST_ANCHORS=CHANGED/, `[G6.4a] ${label}`);
       assert.match(r.out, title, `[G6.4b] ${label}`);
     }
+    // Mudança inócua num workflow de deploy (só um comentário): é âncora, reprova como TRUST_ANCHOR_CHANGED.
+    git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-wf-comment");
+    edit(CENTRAL, (t) => t.replace("\njobs:\n", "\n# comentário inócuo\njobs:\n"));
+    const cHead = commit(root, "PR comenta o workflow de deploy");
+    const c = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", cHead]);
+    assert.equal(c.code, 1, "[G6.6] " + c.out);
+    assert.match(c.out, /TRUST_ANCHOR_CHANGED::\.github\/workflows\/central-production-deploy\.yml/, "[G6.6a] workflow de deploy é âncora");
+    assert.doesNotMatch(c.out, /LEGAL_GATE_INVALID/, "[G6.6b] a estrutura continua válida");
     // Workflow novo que não publica (dry-run ou nenhum deploy) passa.
     git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-wf-ok");
     mkdirSync(join(root, ".github/workflows"), { recursive: true });

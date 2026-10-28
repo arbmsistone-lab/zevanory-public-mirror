@@ -1,0 +1,8 @@
+T0: LEGAL_PUBLISH_GATE=PASS_UNCHANGED (texto jurídico idêntico ao já publicado; revisão não exigida para este deploy)
+A1 guarda: TRUST_ANCHORS=UNCHANGED files=4
+A1 portão pós-merge: LEGAL_PUBLISH_GATE=BLOCKED (nada foi publicado; a produção segue com o texto anterior)  | publicado: CLÁUSULA NOVA NÃO REVISADA: nenhum reembolso.
+A1b texto depois de </main>: fp=85c3724e25ef (gênese 4f8d16325…)
+A2[coe] guarda: TRUST_ANCHORS=CHANGED anchors=2 gate_problems=2 files=3
+A2[ift] guarda: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=1 files=2
+A2[ortrue] guarda: TRUST_ANCHORS=CHANGED anchors=2 gate_problems=2 files=3
+A2[newwf] guarda: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=2

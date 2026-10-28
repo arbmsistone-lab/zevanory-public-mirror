@@ -1,0 +1,17 @@
+X1 guarda: workflows de deploy não são âncora: SURVIVED 
+X2 guarda: workflow novo que publica não detectado: KILLED not ok 6 - G6 check protegido: PR que altera uma âncora reprova; PR comum passa; linha de 
+X3 validador: continue-on-error/if no passo aceitos: KILLED not ok 6 - G6 check protegido: PR que altera uma âncora reprova; PR comum passa; linha de ; not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+X4 validador: passos antes do portão aceitos: KILLED not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+X5 validador: deploy sem integridade aceito: KILLED not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+X6 validador: always() em passo que publica aceito: KILLED not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+X7 validador: defaults aceito: KILLED not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+X8 validador: BASH_ENV aceito: KILLED not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+X9 validador: outro job publica aceito: KILLED not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+X10 validação estrutural fora do PR (sem GATE_INVALID): KILLED not ok 6 - G6 check protegido: PR que altera uma âncora reprova; PR comum passa; linha de 
+Y1 impressão digital só do <main>: KILLED not ok 8 - G8 MED-2: a impressão digital cobre TODO o texto visível; isca em comentário, t
+Y2 comentários não removidos: KILLED not ok 8 - G8 MED-2: a impressão digital cobre TODO o texto visível; isca em comentário, t
+Y3 dois <main> aceitos: KILLED not ok 8 - G8 MED-2: a impressão digital cobre TODO o texto visível; isca em comentário, t
+Y4 privacidade/afiliados fora da impressão digital: KILLED not ok 11 - G11 validação estrutural dos workflows de deploy (--validate-workflows): o rea
+Y5 P23 visible() sem remover comentários: KILLED not ok 8 - G8 MED-2: a impressão digital cobre TODO o texto visível; isca em comentário, t
+Z1 lista desligada lê KV antes do 404: KILLED not ok 5 - CS5 lista desligada: o Worker central responde 404 em /lista-de-espera sem nenh
+X1 guarda: workflows de deploy não são âncora: KILLED (rerun after adding G6.6) not ok 6 - G6 ... [G6.6a] workflow de deploy é âncora
