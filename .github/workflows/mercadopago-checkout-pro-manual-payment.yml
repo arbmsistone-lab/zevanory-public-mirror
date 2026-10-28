@@ -21,7 +21,7 @@ jobs:
       APP: https://zevanory.api.br
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
     steps:
-      - name: Create canonical R$197 order and preference
+      - name: Create canonical R$147 order and preference
         shell: bash
         run: |
           set -euo pipefail
@@ -81,7 +81,7 @@ jobs:
                         "GET",{"x-certification-e2e-token":cert},None,(200,))
           order=state.get("order") or {}
           assert order.get("offer_id")=="ZEV-IA-011",order
-          assert abs(float(order.get("amount") or 0)-197.0)<0.001,order
+          assert abs(float(order.get("amount") or 0)-147.0)<0.001,order
           assert order.get("status")=="checkout_ready",order
           pref_id=str(order.get("provider_checkout_id") or "")
           assert pref_id,pref_id
@@ -92,7 +92,7 @@ jobs:
               "external_reference": str(pref.get("external_reference") or "").lower()==order_id.lower(),
               # Both canonical hosts route to the same production Worker (parity proven post-deploy).
               "notification_url": any(str(pref.get("notification_url") or "").startswith(h+"/api/webhooks") for h in ("https://zevanory.api.br","https://edge.zevanory.api.br")),
-              "single_item_197": len(items)==1 and abs(float(items[0].get("unit_price") or 0)-197.0)<0.001,
+              "single_item_197": len(items)==1 and abs(float(items[0].get("unit_price") or 0)-147.0)<0.001,
               "currency_brl": bool(items) and str(items[0].get("currency_id") or "")=="BRL",
               "auto_return": str(pref.get("auto_return") or "")=="approved",
               "init_point_matches": str(pref.get("init_point") or "")==checkout_url,
@@ -111,7 +111,7 @@ jobs:
               "gate":"MERCADOPAGO_CLEAN_CHECKOUT_PRO",
               "order_id":order_id,
               "offer_id":"ZEV-IA-011",
-              "amount_brl":197.0,
+              "amount_brl":147.0,
               "preference_id":pref_id,
               "external_reference":pref.get("external_reference"),
               "notification_url":pref.get("notification_url"),
@@ -129,7 +129,7 @@ jobs:
           with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
               f.write("## Checkout Pro limpo\n\n")
               f.write("- Pedido: `"+order_id+"`\n")
-              f.write("- Valor: **R$ 197,00**\n")
+              f.write("- Valor: **R$ 147,00**\n")
               f.write("- Link: "+checkout_url+"\n")
           PY
 
