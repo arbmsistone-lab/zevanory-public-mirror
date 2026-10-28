@@ -233,13 +233,13 @@ class GuardTests(unittest.TestCase):
 
     def test_checkout_amount_divergence_stops_before_payment(self):
         self.env['SANDBOX_OFFER_ID'] = 'ZEV-NGC-011'
-        self.fake.checkout_changes = {'amount_brl': 347}
+        self.fake.checkout_changes = {'amount_brl': 13}  # valor fora de qualquer preço de catálogo
         report = self.run_fake()
         self.assertEqual(report['cause'], 'CATALOG_AMOUNT_REQUIRED')
         self.assertFalse(any('/v1/payments' in r.full_url for r in self.fake.calls))
 
     def test_persisted_order_mismatch_fails(self):
-        for change in ({'amount_brl': 147}, {'offer_id': 'ZEV-IA-011'}, {'certification_pilot': False}, {'currency': 'USD'}):
+        for change in ({'amount_brl': 11}, {'offer_id': 'ZEV-IA-011'}, {'certification_pilot': False}, {'currency': 'USD'}):
             self.setUp()
             self.fake.persisted = change
             report = self.run_fake()
