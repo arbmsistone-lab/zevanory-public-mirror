@@ -310,6 +310,7 @@ Os crons do próprio Worker não enviam a credencial.
     {"path": "scripts/ci/mutants_operator_token_migration.py", "role": "mutantes de CI (nome como dado)", "environment": "CI sem segredo"},
     {"path": "scripts/ci/operator-token-github-presence.sh", "role": "presença/igualdade (só categorias)", "environment": "producao-critica, gh-pages-automacao"},
     {"path": "scripts/ci/operator_token_gate.py", "role": "gate de CI (nome como dado)", "environment": "CI sem segredo"},
+    {"path": "scripts/conteudo-pronto/operador.mjs", "role": "consumidor manual do proprietário/operador (status e reenvio do Conteúdo Pronto em /api/admin/conteudo-pronto/*; nunca imprime o valor)", "environment": "máquina do operador (nenhum job)"},
     {"path": "scripts/financial_e2e_closure.py", "role": "aposentado (citado em filtros de caminho)", "environment": "nenhum job ativo"},
     {"path": "scripts/financial_e2e_mercadopago.py", "role": "aposentado (financial-e2e-closure, if: false)", "environment": "nenhum job ativo"},
     {"path": "scripts/financial_e2e_stripe.py", "role": "certificação (dispensa R9-D6)", "environment": "producao-critica → Worker de certificação"},
