@@ -27,7 +27,7 @@ TESTS = ["tests/ci/p16-target-lifecycle.test.mjs"]
 SLUGS = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"]
 COPY_DIRS = ["tests/fixtures/p16"]
 COPY_FILES = TESTS + ["scripts/portfolio_target_lifecycle.py", "tests/helpers/p16_lifecycle_harness.py", "tests/helpers/toolchain.mjs",
-                      "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "data/politica-unica.json",
+                      "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "data/politica-unica.json", "data/hotmart-kits.json",
                       "worker/cloudflare-worker.recovered.mjs"] + \
     [f"sales-public/{s}.html" for s in SLUGS] + [f"{s}/index.html" for s in SLUGS] + [f"evidence/zees16/coverage/{s}.json" for s in SLUGS]
 TIMEOUT = 300

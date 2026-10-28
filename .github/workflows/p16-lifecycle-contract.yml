@@ -25,6 +25,8 @@ on:
       - "worker/sales-public-worker.mjs"
       - "worker/politica-unica.mjs"
       - "data/politica-unica.json"
+      # Modelo B (Sol ORDEM 313): o Worker de vendas importa os links de checkout dos kits deste arquivo.
+      - "data/hotmart-kits.json"
 
 permissions:
   contents: read
