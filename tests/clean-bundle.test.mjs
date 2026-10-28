@@ -7,11 +7,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, existsSync, chmodSync, readdirSync, cpSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, existsSync, chmodSync, readdirSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireTool } from "./helpers/toolchain.mjs";
+import { readTextNormalized } from "./helpers/text.mjs";
 
 const PYTHON = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 requireTool(PYTHON);
@@ -48,6 +49,7 @@ function tools() {
   const t = mkdtempSync(join(tmpdir(), "cb-tools-"));
   put(t, "node_modules/wrangler/package.json", JSON.stringify({ name: "wrangler", version: "4.143.0" }));
   put(t, "node_modules/.bin/wrangler", STUB, 0o755);
+  put(t, "node_modules/.bin/wrangler.cmd", `@"${PYTHON}" "%~dp0wrangler" %*\r\n`);  // Windows: what npm would create
   return t;
 }
 function salesRepo() {
@@ -63,7 +65,7 @@ function cb(root, sha, t, extra = [], env = {}) {
   const r = spawnSync(PYTHON, ["-I", CB, "sales", "--repo", root, "--rev", sha, "--tools", t, "--work", join(work, "clean"), "--out", out, "--skip-install", ...extra],
     { encoding: "utf8", env: { ...PYENV, ...env } });
   const logf = join(t, "node_modules", "stub.log");
-  const log = existsSync(logf) ? readFileSync(logf, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+  const log = existsSync(logf) ? readTextNormalized(logf).trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
   return { code: r.status, out: (r.stdout || "") + (r.stderr || ""), dir: out, work, log };
 }
 const cleanup = (...dirs) => dirs.forEach((d) => rmSync(d, { recursive: true, force: true }));
@@ -123,7 +125,7 @@ test("CB4 a test-time mutation of the Worker source never reaches the release, a
   const clean = cb(root, sha, t);
   // Round-6 attack: code running in the build workspace (a test) rewrites the Worker source before bundling.
   const p = join(root, "worker/sales-public-worker.mjs");
-  writeFileSync(p, readFileSync(p, "utf8").replace("export default", "/* INJECTED-BY-TEST */\nexport default"));
+  writeFileSync(p, readTextNormalized(p).replace("export default", "/* INJECTED-BY-TEST */\nexport default"));
   const again = cb(root, sha, t, ["--verify", clean.dir]);
   // The artifact the round-6 build would have produced from the mutated working tree.
   const evil = mkdtempSync(join(tmpdir(), "cb-evil-"));
@@ -131,15 +133,15 @@ test("CB4 a test-time mutation of the Worker source never reaches the release, a
     assert.equal(clean.code, 0, "[CB4.1] " + clean.out);
     assert.equal(again.code, 0, "[CB4.2] the clean build ignores the working tree: " + again.out);
     assert.match(again.out, /CLEAN_BUNDLE_REPRODUCED=MATCH/, "[CB4.3]");
-    assert.ok(!readFileSync(join(again.dir, "sales-worker.deploy.js"), "utf8").includes("INJECTED-BY-TEST"), "[CB4.4] mutation absent from the release");
+    assert.ok(!readTextNormalized(join(again.dir, "sales-worker.deploy.js")).includes("INJECTED-BY-TEST"), "[CB4.4] mutation absent from the release");
     cpSync(clean.dir, evil, { recursive: true });
     const ws = join(evil, "ws"); cpSync(join(clean.work, "clean", "src"), ws, { recursive: true });
     copyFileSync(p, join(ws, "worker/sales-public-worker.mjs"));  // same sources, plus the test-time mutation
-    const stub = spawnSync(join(t, "node_modules/.bin/wrangler"), ["deploy", "--dry-run", "--config", "wrangler.sales.deploy.toml", "--outdir", join(evil, "b")], { cwd: ws, encoding: "utf8" });
+    const stub = spawnSync(PYTHON, [join(t, "node_modules/.bin/wrangler"), "deploy", "--dry-run", "--config", "wrangler.sales.deploy.toml", "--outdir", join(evil, "b")], { cwd: ws, encoding: "utf8" });
     assert.equal(stub.status, 0, stub.stderr);
     copyFileSync(join(evil, "b", "sales-worker.js"), join(evil, "sales-worker.deploy.js"));
     rmSync(join(evil, "b"), { recursive: true, force: true }); rmSync(ws, { recursive: true, force: true });
-    assert.ok(readFileSync(join(evil, "sales-worker.deploy.js"), "utf8").includes("INJECTED-BY-TEST"), "[CB4.5] the forged artifact carries the mutation");
+    assert.ok(readTextNormalized(join(evil, "sales-worker.deploy.js")).includes("INJECTED-BY-TEST"), "[CB4.5] the forged artifact carries the mutation");
     const deploy = cb(root, sha, t, ["--verify", evil]);
     assert.equal(deploy.code, 1, "[CB4.6] the deploy-side rebuild refuses the forged artifact: " + deploy.out);
     assert.match(deploy.out, /CLEAN_BUNDLE_MISMATCH::sales-worker\.deploy\.js/, "[CB4.7]");
@@ -152,7 +154,7 @@ test("CB4 a test-time mutation of the Worker source never reaches the release, a
 });
 
 test("CB5 the pinned tool: a lockfile without sha512 integrity, from another registry or with another wrangler version fails closed", () => {
-  const lock = JSON.parse(readFileSync(join(REPO, "scripts/deploy/wrangler-pin/package-lock.json"), "utf8"));
+  const lock = JSON.parse(readTextNormalized(join(REPO, "scripts/deploy/wrangler-pin/package-lock.json")));
   assert.equal(lock.packages["node_modules/wrangler"].version, "4.143.0", "[CB5.0]");
   for (const [label, fn, msg] of [
     ["no integrity", (l) => { delete l.packages["node_modules/wrangler"].integrity; }, /without registry\.npmjs\.org \+ sha512 integrity: node_modules\/wrangler/],

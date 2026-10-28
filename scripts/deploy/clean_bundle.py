@@ -134,7 +134,7 @@ def install_tools(repo: Path, rev: str, tools: Path, work: Path, skip: bool) -> 
         if (tools / "node_modules").exists():
             shutil.rmtree(tools / "node_modules")
         run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund", f"--registry={REGISTRY}"], tools, env, quiet=True)
-    wrangler = tools / "node_modules" / ".bin" / "wrangler"
+    wrangler = tools / "node_modules" / ".bin" / ("wrangler.cmd" if os.name == "nt" else "wrangler")  # nt: test suite only
     meta = json.loads((tools / "node_modules" / "wrangler" / "package.json").read_text(encoding="utf-8"))
     if meta.get("version") != WRANGLER_VERSION or not wrangler.exists():
         raise Refused(f"installed wrangler is {meta.get('version')!r}, expected {WRANGLER_VERSION}")
