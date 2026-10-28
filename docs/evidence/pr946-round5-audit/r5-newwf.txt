@@ -1,0 +1,5 @@
+N[quoted]: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=1
+N[varcmd]: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=1
+N[npmscript]: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=1
+N[reusable]: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=1
+N[apicurl]: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=1

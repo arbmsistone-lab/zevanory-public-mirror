@@ -1,0 +1,10 @@
+LEGAL_ASSET_MISSING sales-public/termos.html: sales-public/assets/legal.dd437829cb.css
+T0: 
+A1 guarda: TRUST_ANCHORS=UNCHANGED files=4
+A1 portão pós-merge: LEGAL_PUBLISH_GATE=BLOCKED (nada foi publicado; a produção segue com o texto anterior)  | publicado: CLÁUSULA NOVA NÃO REVISADA: nenhum reembolso.
+LEGAL_ASSET_MISSING sales-public/termos.html: sales-public/assets/legal.dd437829cb.css
+A1b texto depois de </main>: fp= (gênese 4f8d16325…)
+A2[coe] guarda: TRUST_ANCHORS=CHANGED anchors=2 gate_problems=2 files=3
+A2[ift] guarda: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=1 files=2
+A2[ortrue] guarda: TRUST_ANCHORS=CHANGED anchors=2 gate_problems=2 files=3
+A2[newwf] guarda: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=2

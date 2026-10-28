@@ -1,0 +1,18 @@
+T0 (estado estável = gênese): fp=46675c70c28a34ac LEGAL_PUBLISH_GATE=PASS_UNCHANGED (texto jurídico idêntico ao já publicado; revisão n�
+C[hide]: fp=0b0141c33d995f7c (igual T0: nao) guarda=TRUST_ANCHORS=UNCHANGED files=2
+C[input]: fp=7afbed5a819c82f5 (igual T0: nao) guarda=TRUST_ANCHORS=UNCHANGED files=2
+C[srcdoc]: fp=d649f9c381697780 (igual T0: nao) guarda=TRUST_ANCHORS=UNCHANGED files=2
+C[attr]: fp=4adb2675dfd14b26 (igual T0: nao) guarda=TRUST_ANCHORS=UNCHANGED files=4
+C[css]: fp igual T0: nao guarda=TRUST_ANCHORS=UNCHANGED files=2
+W1: fp igual T0: SIM guarda=TRUST_ANCHORS=CHANGED anchors=1 gate_problems=0 files=1 servido: CLÁUSULA NOVA: nenhum reembolso. Cancelamento e reembolso
+B1 guarda: TRUST_ANCHORS=UNCHANGED files=1 | validador: LEGAL_GATE_WORKFLOWS=VALID problems=0
+B1 job deploy: 1) portão: LEGAL_PUBLISH_GATE=PASS_UNCHANGED (texto jurídico idêntico ao já publicado; revisão n�
+   2) build rc=0
+   3) integridade rc=1 | 4) publicado: 
+V1 validador (static-audit obrigatório): LEGAL_GATE_WORKFLOWS=INVALID problems=1 | guarda protegida: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=1 files=1
+Traceback (most recent call last):
+  File "<stdin>", line 2, in <module>
+ValueError: substring not found
+HEAD detached from 0e890b12
+nothing to commit, working tree clean
+V2 premerge sem o passo do validador: guarda protegida: TRUST_ANCHORS=CHANGED anchors=1 gate_problems=1 files=1; grep validador no premerge: 0
