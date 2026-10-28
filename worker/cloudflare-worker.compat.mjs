@@ -626,8 +626,9 @@ const wrapped = {
 
     // Operação do Conteúdo Pronto (auditoria #953 M1/M2): status da fila, falhas e alertas; reenvio com operador e motivo.
     if (url.pathname.startsWith("/api/admin/conteudo-pronto/")) {
-      const presented = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
-      if (!verifyOperatorToken(normalized, presented, { minLength: 24, fallbackToken: normalized.OPERATOR_TOKEN })) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      const bearer = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
+      const operatorOk = verifyOperatorToken(normalized, bearer, { minLength: 24, fallbackToken: normalized.OPERATOR_TOKEN });
+      if (!operatorOk) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
       return handleContentOperator(request, normalized);
     }
     if (url.pathname === "/api/control-plane") {
