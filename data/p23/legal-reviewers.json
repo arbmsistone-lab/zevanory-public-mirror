@@ -1,5 +1,5 @@
 {
   "schema": "zevanory-legal-reviewers/v1",
-  "nota": "M1 (reauditoria do PR #946): cadastro de quem pode aprovar os textos jurídicos de consumo. Mantido SOMENTE pelo proprietário: cada entrada exige id, name (igual ao approved_by), registro (OAB/UF número), github_login, authorized_by=\"proprietario\", authorized_at (AAAA-MM-DD) e authorization_commit (SHA do commit em que o proprietário fez o cadastro). Vazio = nenhuma aprovação é aceita (P23 e portão de publicação fail-closed).",
+  "nota": "M1 (reauditoria do PR #946) e Sol ORDEM 312: cadastro de quem pode aprovar os textos jurídicos de consumo. Mantido SOMENTE pelo proprietário. Revisor profissional: id, name (igual ao approved_by), registro (OAB/UF número), github_login, authorized_by=\"proprietario\", authorized_at (AAAA-MM-DD) e authorization_commit. Revisor interno (o proprietário; controle temporário que não constitui parecer jurídico): os mesmos campos com type=\"internal_owner\" e sem registro OAB. Vazio = nenhuma aprovação é aceita; os deploys de vendas servem o último texto aprovado (snapshot).",
   "reviewers": []
 }

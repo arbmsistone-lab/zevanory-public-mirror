@@ -234,3 +234,42 @@ O desenho convergiu para bytes do artefato, em vez de texto e padrões. O proced
   - o pacote do central é idêntico ao do fluxo antigo;
   - o artefato forjado é recusado.
 - `test_t1_transition` S8 voltou a ler o comando do passo do central, que tem `python3 -I` desde a rodada 6. O teste já falhava em `39f1593e`.
+
+## Sol ORDEM 312 (rodada 12): dois níveis de aprovação, snapshot jurídico aprovado, sem congelamento
+
+A Sol exige duas coisas ao mesmo tempo: nenhum texto jurídico novo publicado sem aprovação documentada, e nenhuma correção operacional urgente bloqueada indefinidamente porque a revisão externa ainda não foi contratada. Detalhes em `docs/legal/legal-review-procedure.md`.
+
+### O que muda
+
+- **Dois níveis de aprovação:**
+  - PROFESSIONAL: `APPROVED`, OAB, o fluxo de sempre;
+  - INTERNAL_OWNER: `APPROVED_INTERNAL`, `type: internal_owner`, com o aviso exato "Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico.", o checklist P23 completo e a referência a uma auditoria independente (sha256 conferido).
+  - O portão imprime `LEGAL_APPROVAL_LEVEL`. A aprovação interna nunca aparece como parecer. As duas etapas, cadastro num PR e aprovação no seguinte, valem para os dois níveis.
+- **Snapshot aprovado no deploy de vendas.** Um passo novo, antes do portão, troca no diretório servido o texto jurídico não aprovado pelo último texto aprovado, reproduzido do commit de origem (gênese `b7671272`).
+  - O portão passa se o conjunto servido for o de um texto aprovado. Imprime `LEGAL_SERVED=APPROVED_HEAD|APPROVED_SNAPSHOT <fp>` e `LEGAL_PENDING=<itens pendentes>`.
+  - Texto não aprovado nunca vai ao ar.
+- **Escolha de segurança.** Código que serve as rotas jurídicas ou textos de consumo alterados sem aprovação bloqueiam **só** o deploy de vendas. O site de vendas sai no mesmo deploy do Worker.
+- **Central sem portão jurídico.** O apex serve as páginas jurídicas do `public/` congelado de `83620c68`, transformado só por gerador âncora. O validador reprova qualquer portão jurídico no central.
+- **Modo emergência, só no vendas:**
+  - restrições: só o dono do repositório, com motivo, só no gh-pages;
+  - registros: o resumo do run, a anotação e o artefato de auditoria por 90 dias;
+  - o que aceita: só código que serve não aprovado, com os textos do snapshot aprovado. Nunca troca texto jurídico.
+- **Bootstrap do check protegido.** A sequência está documentada. `scripts/ops/verify_required_checks.py` faz a conferência somente leitura via REST e hoje responde `BOOTSTRAP=INCOMPLETE`.
+
+### Efeito deste PR depois do merge
+
+Em relação à gênese, o PR muda as páginas jurídicas, o código que serve e os textos de consumo.
+
+- **Vendas:** até haver aprovação, profissional ou interna, o deploy de vendas fica em `LEGAL_UNAPPROVED_TEXT_SERVED`, com a lista pendente, e a produção de vendas fica como está.
+- **Central:** segue normalmente.
+
+### Testes
+
+- G17: aprovação interna (aceita; nível impresso; nunca "parecer"; checklist, auditoria, aviso, OAB e as duas etapas).
+- G18: snapshot (texto não aprovado servido reprova; bytes do snapshot servidos; `LEGAL_PENDING`; código que serve alterado bloqueia só o vendas).
+- G19: emergência (dono, motivo, ref; nunca troca texto).
+- G20: gênese reproduzível; snapshot não reproduzível reprova.
+- LR4: o Worker real serve os bytes do snapshot.
+- G11: mutantes "portão jurídico no central", "vendas sem snapshot" e "snapshot depois do portão".
+- G7: estrutura.
+- `test_verify_required_checks.py`.

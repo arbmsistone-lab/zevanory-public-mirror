@@ -60,3 +60,40 @@ test("LR3 HEAD de rota jurídica não tem corpo e mantém os cabeçalhos de segu
   assert.equal((await res.arrayBuffer()).byteLength, 0, "[LR3.2]");
   assert.ok(res.headers.get("content-security-policy") || res.headers.get("x-content-type-options"), "[LR3.3] cabeçalhos de segurança aplicados");
 });
+
+// Sol ORDEM 312: quando o texto do commit não está aprovado, o deploy troca no diretório servido as páginas jurídicas
+// pelo snapshot aprovado (legal_review.py --apply-snapshot). O Worker REAL serve exatamente esses bytes do snapshot,
+// em todas as variantes de pedido, com chat ligado e vendas abertas: o código que serve não os altera.
+test("LR4 o Worker serve byte a byte o snapshot aprovado aplicado no diretório servido", async () => {
+  const { mkdtempSync, cpSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "legal-snap-"));
+  try {
+    cpSync(ART, dir, { recursive: true });
+    const GEN = "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224";
+    const have = spawnSync("git", ["-C", ROOT, "cat-file", "-e", GEN + "^{commit}"]).status === 0;
+    const snapshot = {};
+    for (const r of LEGAL_ROUTES) {
+      // Com o histórico (deploy, fetch-depth 0): bytes reais da gênese. Em checkout raso: bytes distintos e válidos.
+      const bytes = have ? spawnSync("git", ["-C", ROOT, "show", `${GEN}:sales-public/${r}.html`]).stdout
+        : Buffer.from(readFileSync(join(ART, r + ".html"), "utf8").replace("<main>", "<main><!-- snapshot aprovado -->"));
+      assert.ok(bytes.length > 100, `[LR4.0] ${r}`);
+      writeFileSync(join(dir, r + ".html"), bytes); snapshot[r] = Buffer.from(bytes);
+    }
+    const snapAssets = { async fetch(req) {
+      const p = decodeURIComponent(new URL(req.url).pathname);
+      try { return new Response(readFileSync(join(dir, p)), { status: 200, headers: { "content-type": p.endsWith(".html") ? "text/html; charset=utf-8" : "application/octet-stream" } }); }
+      catch { return new Response("not found", { status: 404 }); }
+    } };
+    const env = { ...ENV, ASSETS: snapAssets };
+    for (const route of LEGAL_ROUTES) {
+      assert.ok(!snapshot[route].equals(readFileSync(join(ART, route + ".html"))) || !have, `[LR4.1] ${route}: o snapshot difere do texto do commit`);
+      for (const path of [`/${route}`, `/${route}/`, `/${route}?utm_source=x`]) {
+        const res = await salesWorker.fetch(new Request(ORIGIN + path, { headers: { "user-agent": CHROME, "accept-encoding": "gzip" } }), env, ctx);
+        assert.equal(res.status, 200, `[LR4.2] ${path}`);
+        const got = Buffer.from(await res.arrayBuffer());
+        assert.ok(got.equals(snapshot[route]), `[LR4.3] ${path}: o corpo servido não é o snapshot (${got.length} x ${snapshot[route].length})`);
+      }
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

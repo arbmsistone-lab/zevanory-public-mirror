@@ -55,7 +55,7 @@ Nos dois workflows de deploy, o build e o deploy estão em jobs separados.
 |---|---|---|
 | `guard` | Environment `producao-critica` | o pré-guarda T1 (`promotion_guard.py`, âncora) a partir do checkout confiável. Também repassa ao build as quatro variáveis **não secretas** que o gerador do candidato usa. |
 | `build` | nenhum (`contents: read`) | **primeiro** `scripts/deploy/clean_bundle.py central` (empacotamento limpo, rodada 7) e o upload do artefato (config, pacote, `public/`, manifesto); **depois** as checagens e os testes do repositório, que não alcançam mais o artefato. |
-| `deploy` | Environment `producao-critica`; segredos só no passo | mesmo padrão do vendas; scripts de operação âncora (`scripts/deploy/**` e os verificadores) lidos de `base/`. |
+| `deploy` | Environment `producao-critica`; segredos só no passo | mesmo padrão do vendas, **sem portão jurídico** (Sol ORDEM 312: o central nunca é bloqueado por ele; ver "Sem congelamento"); scripts de operação âncora (`scripts/deploy/**` e os verificadores) lidos de `base/`. |
 
 **O job `deploy`, em ordem**
 
@@ -85,7 +85,7 @@ rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
 /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 ```
 
-No central, o corpo é o mesmo, sem a cópia de `sales-public/`.
+O central não roda o portão (Sol ORDEM 312). O validador reprova qualquer `legal_review.py`, `--publish-gate` ou `--apply-snapshot` no workflow do central.
 
 **Por que isso fecha os três caminhos da rodada 6**
 
@@ -181,6 +181,7 @@ Os dois workflows têm a entrada `mode` no `workflow_dispatch`:
 | `dry-run` (padrão) | builds, manifestos, reconstrução limpa comparada byte a byte, diretório de release, `--no-bundle --dry-run` com o wrangler fixado (offline) e o portão. **Nada é publicado.** | igual (o `guard` não roda) | job `rehearsal`: sem Environment e sem segredo; qualquer branch; código do commit disparado, âncoras do gh-pages |
 | `candidate` | publica **só** o candidato isolado `zevanory-sales-candidate-<run id>` em workers.dev, faz o smoke e o apaga. Sem promoção, sem tocar o domínio canônico. | (não existe: o central não tem candidato isolado) | job `deploy` (Environment `producao-critica`), só no gh-pages |
 | `production` | o release completo, igual a um push no gh-pages | o deploy completo, igual a um push | job `deploy`, só no gh-pages |
+| `emergency` | como `production`, mas aceita código que serve as rotas jurídicas não aprovado, **só** se as páginas jurídicas, os assets e os textos de consumo servidos forem um snapshot aprovado. Só o dono do repositório, com `reason` de 20+ caracteres; registro no resumo do run, anotação `::warning` e artefato `emergency-audit-<run>` (90 dias). | (não existe: o central nunca é bloqueado) | job `deploy` (+ `emergency-audit`), só no gh-pages |
 
 Um push no gh-pages é sempre `production`.
 
@@ -224,23 +225,73 @@ O rollback restaura código e configuração da versão escolhida; não mexe em 
 
 ## Fluxo para publicar um texto novo
 
-1. Um PR muda o texto. Depois do merge, os deploys param em `BLOCKED`. Nada no ar muda.
-2. Num PR separado, o proprietário cadastra o revisor (nome, OAB, `github_login`, `authorized_by: "proprietario"`, `authorized_at`). O PR mexe numa âncora, então o merge é por decisão deliberada. O merge gera o commit S.
+1. Um PR muda o texto. Depois do merge, o deploy de vendas serve o último texto aprovado (snapshot) e lista o texto novo em `LEGAL_PENDING`; se o código que serve ou os textos de consumo também mudaram, só o deploy de vendas fica bloqueado. O central segue.
+2. Num PR separado, o proprietário cadastra o revisor: profissional (nome, OAB, `github_login`, `authorized_by: "proprietario"`, `authorized_at`) ou interno (`type: "internal_owner"`, sem OAB). O PR mexe numa âncora, então o merge é por decisão deliberada. O merge gera o commit S.
 3. Num PR seguinte, também por decisão deliberada:
    - a entrada do revisor recebe `authorization_commit = S`;
-   - `legal_review` fica APPROVED, com `reviewed_sha256` (`legal_review.py --fingerprint`), `reviewed_commit` (o commit do gh-pages com o artefato revisado) e `document_version`;
+   - `legal_review` fica APPROVED (profissional) ou APPROVED_INTERNAL com `type: "internal_owner"` e o `disclaimer` (interna; o registro traz o checklist P23 e a auditoria), com `reviewed_sha256` (`legal_review.py --fingerprint`), `reviewed_commit` (o commit do gh-pages com o artefato revisado) e `document_version`;
    - entra o registro `docs/legal/reviews/<sha256>.json`.
 4. O deploy seguinte passa com `PASS_APPROVED`. Depois de publicar, a linha de base pode passar a ser esse `reviewed_sha256`.
 
 ## Limites que continuam
 
 - **Só uma conta.** Toda proteção pode ser contornada pelo proprietário. O objetivo é que nenhuma aprovação, e nenhuma mudança no que roda com segredo, entre **sem** uma decisão explícita dele.
-- **Pacote e código do Worker central.** O pacote do Worker central é gerado por código do repositório que não é âncora (`worker/*.mjs` e os geradores do candidato rodam no build, sem segredo). Por desenho, um PR comum que muda o Worker central publica essa mudança no próximo deploy, e é isso que a revisão de código cobre. O central não serve as páginas jurídicas (o apex redireciona para `vendas`). Os textos de consumo dele (`data/politica-unica.json`) são âncora e entram na impressão digital.
+- **Pacote e código do Worker central.** O pacote do Worker central é gerado por código do repositório que não é âncora (`worker/*.mjs`; os geradores do candidato são âncora). Por desenho, um PR comum que muda o Worker central publica essa mudança no próximo deploy, e é isso que a revisão de código cobre. Correção (rodada 12): o apex **serve** `/termos`, `/privacidade`, `/reembolso` e `/afiliados`, a partir do `public/` **congelado** do commit `83620c68` (bytes imutáveis), transformado só pelo `scripts/deploy/prepare-central-candidate.py` (âncora). Nenhum texto jurídico novo chega ao apex por um PR comum; por isso o central não passa pelo portão (Sol ORDEM 312). Os textos de consumo (`data/politica-unica.json`) são âncora.
 - **Dependências externas.** Rodada 7: o `wrangler 4.143.0` vem do lockfile âncora `scripts/deploy/wrangler-pin/package-lock.json` (integridade sha512 de cada pacote, `npm ci`). O `playwright@1.55.0` do smoke do Mercado Pago continua fixado só por versão (roda depois do deploy, num diretório limpo, e não entra no pacote). Os jobs `verify` (vendas) e as checagens do `build` (central) ainda rodam `npx --yes wrangler@4.143.0 --dry-run` no checkout; a saída deles não vai para produção (é só checagem, sem segredo).
 - **Central: fontes do pacote.** O pacote do central sai do objeto do commit, mas `worker/*.mjs` não é âncora: um PR comum que muda o Worker central continua publicando essa mudança, coberto pela revisão de código (ver acima).
 
-## Decisão do proprietário (L-3)
+## Decisão do proprietário (L-3), substituída pela Sol ORDEM 312
 
-Enquanto `legal_review` estiver PENDING e o artefato jurídico for diferente do publicado, **todo** deploy desses dois fluxos fica parado no portão, inclusive deploys sem relação com o texto jurídico. A partir da rodada 5, isso inclui qualquer mudança de byte no CSS, nas fontes ou nas imagens que as páginas jurídicas usam.
+Até a rodada 11, enquanto `legal_review` estivesse PENDING e o artefato jurídico fosse diferente do publicado, **todo** deploy dos dois fluxos ficava parado no portão. A Sol ORDEM 312 exige que "nenhum texto jurídico novo seja publicado sem aprovação documentada" **e** que "nenhuma correção operacional urgente fique indefinidamente bloqueada apenas porque uma revisão jurídica externa ainda não foi contratada". O desenho abaixo atende as duas.
+
+## Dois níveis de aprovação (Sol ORDEM 312)
+
+| Nível | `legal_review.status` / `type` | Quem | O que o registro exige | Como o portão imprime |
+|---|---|---|---|---|
+| **PROFESSIONAL** | `APPROVED` / ausente ou `professional` | advogado(a) com registro na OAB, cadastrado(a) pelo proprietário (`registro: OAB/UF número`) | o fluxo de sempre (registro em `docs/legal/reviews/<sha256>.json`, `decision: "APPROVED"`) | `LEGAL_APPROVAL_LEVEL=PROFESSIONAL (revisão de advogado(a) com registro na OAB)` |
+| **INTERNAL_OWNER** | `APPROVED_INTERNAL` / `internal_owner` | o proprietário, cadastrado como revisor interno (`type: "internal_owner"`, **sem** OAB) | `decision: "APPROVED_INTERNAL"`, `type: "internal_owner"`, `disclaimer` exato; `checklist` com **todos** os itens de `data/p23/ecommerce-legal-checklist.json` respondidos `conforme` ou `nao_aplicavel`, cada um com evidência; `audit_report` com `ref` (caminho no repositório, cujo sha256 é conferido, ou URL), `sha256` e `auditor` diferente de quem aprova | `LEGAL_APPROVAL_LEVEL=INTERNAL_OWNER (Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico. ...)` |
+
+O `disclaimer` obrigatório da aprovação interna é exatamente: "Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico." Fora dele, nenhum campo da aprovação interna pode falar em "parecer" ou "opinião jurídica" (reprova). A aprovação interna não pode citar OAB.
+
+**A aprovação interna é um controle temporário.** Ela documenta a decisão do proprietário, com o checklist P23 e uma auditoria independente, mas não substitui a análise de um profissional. Recomenda-se uma revisão profissional (OAB) antes ou logo depois da primeira venda, conforme a Sol.
+
+As mesmas duas etapas valem para os dois níveis: o cadastro do revisor (profissional ou interno) entra num PR; a aprovação, que cita `authorization_commit`, entra num PR seguinte. Cadastro e aprovação no mesmo commit reprovam.
+
+## Sem congelamento: o snapshot jurídico aprovado (Sol ORDEM 312)
+
+O deploy de vendas passa a seguir quando o texto jurídico do commit ainda não foi aprovado, servindo o **último texto aprovado**:
+
+1. No job `deploy`, depois da reconstrução comparada e antes do primeiro portão, o passo "Serve the last approved legal snapshot..." roda `legal_review.py --apply-snapshot art/site/sales-public` (código do gh-pages). Se o texto do commit está aprovado, nada muda. Se não está, as páginas jurídicas e os assets delas são trocados pelos bytes do último texto aprovado, reproduzidos do commit de origem (a gênese é `b7671272`; a6068e6a, publicado hoje, tem os mesmos bytes). Um asset compartilhado com bytes diferentes recusa.
+2. O portão confere o que vai ao ar: passa só se o conjunto servido (páginas jurídicas e assets do artefato, o código que as serve e os textos de consumo de `data/politica-unica.json`) for **igual** ao de um texto aprovado e reproduzível (linha de base ou registro de aprovação válido). Imprime `LEGAL_SERVED=APPROVED_HEAD <fp>` (o texto do commit) ou `LEGAL_SERVED=APPROVED_SNAPSHOT <fp>`, o nível da aprovação e `LEGAL_PENDING=<itens do commit que aguardam aprovação e não vão ao ar>`.
+3. Texto jurídico não aprovado nunca vai ao ar. Um snapshot que não se reproduz (impressão digital recalculada no commit de origem diferente da declarada) recusa.
+
+**Prova técnica.** `tests/legal-routes-artifact.test.mjs` (LR4) troca as páginas do diretório servido pelo snapshot e roda o Worker de vendas REAL: as quatro rotas jurídicas devolvem exatamente os bytes do snapshot, com chat ligado, vendas abertas, UTM, barra final e gzip. As rotas jurídicas são servidas do `ASSETS` sem nenhuma injeção (LR1 a LR3).
+
+**Escolha de segurança e o custo dela.** Se o **código que serve** as rotas jurídicas (`sales-worker.mjs`, `worker/sales-public-worker.mjs`, `worker/politica-unica.mjs`, `wrangler.sales.toml`) ou os **textos de consumo** de `data/politica-unica.json` mudaram sem aprovação, o snapshot não resolve. Esses arquivos vão no pacote do Worker, e trocar o Worker inteiro por uma versão antiga desfaria outras correções.
+- Nesse caso, só o deploy do Worker de vendas fica bloqueado (`LEGAL_SERVING_UNAPPROVED` ou `LEGAL_UNAPPROVED_TEXT_SERVED`), com a lista do que está pendente.
+- O central nunca é bloqueado. O site de vendas e o Worker de vendas são publicados juntos, num único deploy com os assets, então "o site" segue o Worker.
+- O custo é que uma mudança no código que serve exige aprovação (interna serve) ou o modo emergência. O ganho é que nenhum código não aprovado decide o que as rotas jurídicas mostram sem uma decisão registrada.
+
+**O central.** O deploy central não tem portão jurídico, e o validador reprova se alguém o colocar. Ele não serve texto jurídico aprovável: o apex serve as páginas jurídicas do `public/` congelado de `83620c68`, transformado só por gerador âncora.
+
+**Este PR depois do merge.** O PR muda as páginas jurídicas, o código que serve e os textos de consumo em relação à gênese. Até haver aprovação (profissional ou interna), o deploy de vendas fica em `LEGAL_UNAPPROVED_TEXT_SERVED`, com a produção como está, e o central segue normalmente.
+
+## Modo emergência (Sol ORDEM 312, item 3)
+
+- `workflow_dispatch` com `mode: emergency` e `reason` de pelo menos 20 caracteres, **só** no gh-pages e **só** pelo dono do repositório.
+- O próprio portão confere, a partir do evento gravado pelo GitHub no runner: modo, motivo, autor = dono e ref. O passo "Emergency mode record" também confere e grava o registro no resumo do run.
+- O job `emergency-audit` guarda `record.json` (autor, motivo, commit, run) por 90 dias.
+- Ele passa um Worker de vendas cujo código que serve não está aprovado **somente** se as páginas jurídicas, os assets e os textos de consumo servidos forem exatamente os de um snapshot aprovado (`LEGAL_SERVED=EMERGENCY_SNAPSHOT`, anotação `::warning`). Ele nunca troca texto jurídico: com texto de consumo alterado, recusa.
+- Não existe outro desvio.
+
+## Implantação inicial do check protegido (bootstrap)
+
+O `pull_request_target` roda a definição da **base**, então o check `legal-trust-anchors-protected` não protege o PR que o introduz (#946). A sequência inicial é:
+
+1. Merge do #946 por squash, por decisão deliberada do proprietário.
+2. Conferir que `.github/workflows/legal-trust-anchors-protected.yml` está no gh-pages.
+3. O proprietário torna `protected-trust-anchors` um check obrigatório do gh-pages (Settings → Branches).
+4. O proprietário deixa só o merge por squash (desliga rebase e merge commit).
+5. Conferência somente leitura: `python3 -I scripts/ops/verify_required_checks.py`. Deve imprimir `PROTECTED_CHECK_WORKFLOW=PRESENT`, `REQUIRED_CHECK=PRESENT`, `SQUASH_ONLY=YES` e `BOOTSTRAP=COMPLETE` (rc 0). O script só faz `GET` na API REST (`gh api`). Hoje, antes do merge, ele imprime `BOOTSTRAP=INCOMPLETE`: o check não existe no gh-pages, os obrigatórios são só `product-pages / static-audit` e `zees16-evidence / fail-closed`, e rebase e merge commit estão ligados.
 
 O GitHub Pages publica só os stubs de redirecionamento de `pages-mirror/`, então não publica texto jurídico.

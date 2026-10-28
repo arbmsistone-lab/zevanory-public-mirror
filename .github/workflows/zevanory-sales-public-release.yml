@@ -80,6 +80,9 @@ on:
   # nothing (job "rehearsal": no Environment, no secrets; any branch). candidate publishes ONLY the isolated
   # zevanory-sales-candidate-<run id> Worker on workers.dev, smoke-tests it and deletes it (gh-pages only; no
   # promotion). production is the full release, exactly what a push to gh-pages does.
+  # Sol ORDEM 312: emergency (owner only, reason required, audit record) deploys like production but accepts a sales
+  # Worker whose serving code is unapproved, ONLY if the legal pages, their assets and the consumer texts served are an
+  # approved snapshot. It can never replace a protected legal text.
   workflow_dispatch:
     inputs:
       mode:
@@ -90,6 +93,11 @@ on:
           - dry-run
           - candidate
           - production
+          - emergency
+      reason:
+        description: "emergency only: why (at least 20 characters; recorded in the run and in the audit artifact)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -308,6 +316,18 @@ jobs:
           name: sales-site-${{ github.sha }}
           path: art/site
 
+      - name: Emergency mode record (owner only, reason required)
+        if: env.RELEASE_MODE == 'emergency'
+        env:
+          EMERGENCY_REASON: ${{ inputs.reason }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = "$OWNER" || { echo "::error title=LEGAL_EMERGENCY::only the repository owner ($OWNER) may dispatch emergency; dispatched by $GITHUB_ACTOR"; exit 1; }
+          test "${#EMERGENCY_REASON}" -ge 20 || { echo "::error title=LEGAL_EMERGENCY::reason must have at least 20 characters"; exit 1; }
+          echo "::warning title=LEGAL_EMERGENCY::emergency deploy of $GITHUB_SHA by $GITHUB_ACTOR (run $GITHUB_RUN_ID); legal texts stay the approved snapshot"
+          { echo "## Emergency deploy record"; echo "- commit: $GITHUB_SHA"; echo "- actor: $GITHUB_ACTOR"; echo "- run: $GITHUB_RUN_ID"; echo "- reason:"; printf '%s\n' "$EMERGENCY_REASON" | sed 's/^/    /'; } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify artifact manifests and file allowlists
         env:
           WORKER_MANIFEST: ${{ needs.worker-bundle.outputs.manifest }}
@@ -335,6 +355,13 @@ jobs:
           test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
           /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/deploy/clean_bundle.py > "$RUNNER_TEMP/clean_bundle.py"
           /usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/worker
+
+      - name: Serve the last approved legal snapshot when the commit's legal text is not approved
+        run: |
+          set -euo pipefail
+          test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
+          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --apply-snapshot art/site/sales-public --anchors-ref refs/remotes/origin/gh-pages
 
       - name: Legal artifact gate (fail fast)
         run: |
@@ -455,7 +482,7 @@ jobs:
 
       - name: Pre-promotion guard (T1, inside the serialized deploy group)
         id: guard
-        if: env.RELEASE_MODE == 'production'
+        if: env.RELEASE_MODE == 'production' || env.RELEASE_MODE == 'emergency'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
@@ -637,6 +664,11 @@ jobs:
           test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"
           /usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/worker
 
+      - name: Serve the last approved legal snapshot when the commit's legal text is not approved (dry run)
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --apply-snapshot art/site/sales-public --anchors-ref refs/remotes/origin/gh-pages --rehearsal
+
       - name: Assemble the release directory and check what would be uploaded (dry run)
         run: |
           set -euo pipefail
@@ -658,3 +690,28 @@ jobs:
           rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
           /usr/bin/python3 -I base/scripts/p23/legal_review.py --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages --rehearsal
           echo "SALES_RELEASE_DRY_RUN=PASS (nothing was published)"
+
+  # Sol ORDEM 312: audit record of an emergency dispatch, kept 90 days (independent of the deploy outcome); it receives no secret.
+  emergency-audit:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'emergency' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Write the emergency audit record
+        env:
+          EMERGENCY_REASON: ${{ inputs.reason }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          mkdir -p emergency-audit
+          /usr/bin/python3 -I -c 'import json,os; json.dump({"schema":"zevanory-emergency-deploy/v1","commit":os.environ["GITHUB_SHA"],"ref":os.environ["GITHUB_REF"],"actor":os.environ["GITHUB_ACTOR"],"owner":os.environ["OWNER"],"actor_is_owner":os.environ["GITHUB_ACTOR"]==os.environ["OWNER"],"run_id":os.environ["GITHUB_RUN_ID"],"reason":os.environ["EMERGENCY_REASON"],"rule":"legal texts served must be an approved snapshot; only the serving code may be unapproved"},open("emergency-audit/record.json","w"),ensure_ascii=False,indent=2)'
+          cat emergency-audit/record.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: emergency-audit-${{ github.run_id }}
+          path: emergency-audit
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90

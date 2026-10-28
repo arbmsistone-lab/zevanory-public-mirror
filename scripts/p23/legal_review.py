@@ -44,12 +44,21 @@ nunca da árvore em publicação, e conferidos no histórico do git:
     reviewed_sha256 de um registro de aprovação válido já no gh-pages.
 Antes do merge, o check protegido legal-trust-anchors-protected (pull_request_target, código da base, PR lido só
 como dado) reprova todo PR que altere uma âncora; o proprietário decide de forma explícita e deliberada (bypass).
+Sol ORDEM 312 (rodada 12):
+  * dois níveis de aprovação: PROFESSIONAL (status APPROVED, OAB) e INTERNAL_OWNER (status APPROVED_INTERNAL, type
+    internal_owner, disclaimer "não constitui parecer jurídico", checklist P23 completo e auditoria independente);
+    o portão imprime qual (LEGAL_APPROVAL_LEVEL); a interna nunca é apresentada como parecer;
+  * sem congelamento: --apply-snapshot troca no diretório servido o texto jurídico não aprovado pelo último texto
+    aprovado (reproduzido do commit de origem; gênese b7671272) e o portão passa se o conjunto SERVIDO for o de um
+    texto aprovado (LEGAL_SERVED=APPROVED_HEAD|APPROVED_SNAPSHOT, LEGAL_PENDING); código que serve ou textos de
+    consumo não aprovados bloqueiam só o deploy de vendas (o central não usa este portão);
+  * emergência (workflow_dispatch mode=emergency, dono do repositório, motivo): só com os textos do snapshot aprovado.
 Sem rede, sem segredos; só lê arquivos e o histórico do git local.
-Uso: legal_review.py --root . --fingerprint | --publish-gate --anchors-ref <ref> | --check-approval
+Uso: legal_review.py --root . --fingerprint | --publish-gate --anchors-ref <ref> | --apply-snapshot <dir> --anchors-ref <ref> | --check-approval
 """
 from __future__ import annotations
 
-import argparse, datetime as dt, hashlib, html, json, re, subprocess, sys
+import argparse, datetime as dt, hashlib, html, json, os, re, subprocess, sys
 from pathlib import Path
 
 # MED-2 (rodada 4): /privacidade e /afiliados também são textos jurídicos de consumo (LGPD; programa de afiliados) e
@@ -63,6 +72,13 @@ RECORDS = "docs/legal/reviews"
 POLICY = "data/politica-unica.json"
 # Texto jurídico publicado antes da Release 2 (gh-pages b7671272): a única linha de base aceita sem registro de aprovação.
 GENESIS_BASELINE = "30d9b928d17b96d9cf596a878bc55692367516a59556bcf5d5c560aa3345b5c3"
+GENESIS_COMMIT = "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224"  # Sol ORDEM 312: o snapshot de origem é reproduzível deste commit
+CHECKLIST = "data/p23/ecommerce-legal-checklist.json"
+# Sol ORDEM 312: a aprovação INTERNAL (proprietário) é um controle temporário e nunca é apresentada como parecer.
+INTERNAL_DISCLAIMER = "Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico."
+LEVEL_TEXT = {"PROFESSIONAL": "PROFESSIONAL (revisão de advogado(a) com registro na OAB)",
+              "INTERNAL_OWNER": "INTERNAL_OWNER (" + INTERNAL_DISCLAIMER + " Checklist P23 e auditoria independente registrados.)",
+              "GENESIS": "GENESIS (texto publicado antes da Release 2, reproduzível de b7671272)"}
 CLOCK_SKEW = dt.timedelta(minutes=5)
 
 
@@ -219,7 +235,7 @@ def _check_main(raw: str, rel: str) -> None:
         raise SystemExit(f"LEGAL_PAGE_FORBIDDEN {rel}: meta refresh não é aceito numa página jurídica")
 
 
-def legal_artifact_files(src) -> list[tuple[str, bytes]]:
+def legal_artifact_files(src, sources: bool = True) -> list[tuple[str, bytes]]:
     """Todos os arquivos que formam as páginas jurídicas como são servidas: cada página jurídica do artefato, todo
     asset que ela referencia (CSS, JS, fontes, imagens, iframes), recursivamente (CSS -> url()/@import), e as fontes
     das páginas na raiz. Asset ausente, externo ou fora do artefato reprova (fail-closed)."""
@@ -256,7 +272,7 @@ def legal_artifact_files(src) -> list[tuple[str, bytes]]:
         if data is None:
             raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {rel}")
         out[rel] = data
-    for rel in LEGAL_PAGES:
+    for rel in (LEGAL_PAGES if sources else ()):
         if not rel.startswith(ARTIFACT_DIR + "/"):
             data = src.read_bytes(rel)
             if data is None:
@@ -266,8 +282,26 @@ def legal_artifact_files(src) -> list[tuple[str, bytes]]:
 
 
 def legal_fingerprint_src(src) -> str:
-    h = hashlib.sha256()
-    for rel, data in legal_artifact_files(src):
+    return _digest(src, legal_artifact_files(src), b"")
+
+
+def served_fingerprint(src) -> str:
+    """Sol ORDEM 312: o que o Worker de vendas SERVE (páginas jurídicas e assets do artefato, o código que as serve e
+    os textos de consumo), sem as fontes da raiz, que não vão ao ar. Um deploy só passa se isto for igual ao de um
+    texto aprovado."""
+    return _digest(src, legal_artifact_files(src, sources=False), b"zevanory-legal-served/v1\0")
+
+
+def texts_fingerprint(src) -> str:
+    """Só os TEXTOS servidos (páginas jurídicas, assets e textos de consumo), sem o código: usado no modo emergência,
+    que nunca troca texto jurídico protegido."""
+    files = [(r, d) for r, d in legal_artifact_files(src, sources=False) if r.startswith(ARTIFACT_DIR + "/")]
+    return _digest(src, files, b"zevanory-legal-texts/v1\0")
+
+
+def _digest(src, files, prefix: bytes) -> str:
+    h = hashlib.sha256(prefix) if prefix else hashlib.sha256()
+    for rel, data in files:
         h.update(rel.encode() + b"\0" + str(len(data)).encode() + b"\0" + data + b"\0")
     pol = _loads(src.read(POLICY))
     if not isinstance(pol, dict):
@@ -318,13 +352,22 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
     content = content or Tree(root)
     git = getattr(anchors, "git", None)
     errs: list[str] = []
-    if review.get("status") != "APPROVED":
-        errs.append("REVISÃO JURÍDICA PENDENTE; legal_review exige status APPROVED, approved_by, approved_at, reviewed_sha256 e reviewed_commit")
+    if review.get("status") not in ("APPROVED", "APPROVED_INTERNAL"):
+        errs.append("REVISÃO JURÍDICA PENDENTE; legal_review exige status APPROVED (profissional, OAB) ou APPROVED_INTERNAL (interna do proprietário, type internal_owner), approved_by, approved_at, reviewed_sha256 e reviewed_commit")
         return errs
+    internal = review.get("status") == "APPROVED_INTERNAL"
+    if internal and review.get("type") != "internal_owner":
+        errs.append("legal_review: APPROVED_INTERNAL exige type \"internal_owner\"")
+    if not internal and review.get("type") not in (None, "professional"):
+        errs.append("legal_review: status APPROVED é só para a revisão profissional (OAB); a interna usa APPROVED_INTERNAL")
     who = review.get("approved_by")
     who = who.strip() if isinstance(who, str) else ""
     if not who or not NAME.fullmatch(who) or FIXTURE.search(who):
         errs.append(f"legal_review.approved_by {review.get('approved_by')!r} não identifica uma pessoa (nome e sobrenome, opcional ', OAB/UF número'; sem marcador de teste ou papel genérico)")
+    if internal and "OAB" in who.upper():
+        errs.append("legal_review: aprovação interna não pode citar OAB (não é revisão profissional)")
+    if internal:
+        errs += _internal_errors(review, None, anchors, who, where="legal_review")
     day = _day(review.get("approved_at"))
     if day is None:
         errs.append(f"legal_review.approved_at {review.get('approved_at')!r} não é uma data ISO (AAAA-MM-DD)")
@@ -362,11 +405,13 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
         errs.append(f"legal_review.reviewer_id {review.get('reviewer_id')!r} não está no cadastro de revisores autorizados ({REVIEWERS})")
     else:
         auth_day = _day(entry.get("authorized_at"))
+        kind_ok = (entry.get("type") == "internal_owner" and not entry.get("registro")) if internal else \
+            (entry.get("type") in (None, "professional") and re.fullmatch(r"OAB/[A-Z]{2} ?\d{3,7}", str(entry.get("registro", ""))))
         if (entry.get("name") != who or entry.get("authorized_by") != "proprietario" or auth_day is None
                 or not re.fullmatch(r"[0-9a-f]{40}", str(entry.get("authorization_commit", "")))
-                or not re.fullmatch(r"OAB/[A-Z]{2} ?\d{3,7}", str(entry.get("registro", "")))
+                or not kind_ok
                 or not re.fullmatch(r"[A-Za-z0-9-]{1,39}", str(entry.get("github_login", "")))):
-            errs.append(f"legal_review.reviewer_id {review.get('reviewer_id')!r}: cadastro incompleto ou nome diferente de approved_by (exige name, registro OAB, github_login, authorized_by=proprietario, authorized_at e authorization_commit)")
+            errs.append(f"legal_review.reviewer_id {review.get('reviewer_id')!r}: cadastro incompleto, de outro nível ou nome diferente de approved_by (profissional: registro OAB; interna: type internal_owner sem OAB; ambos: name, github_login, authorized_by=proprietario, authorized_at e authorization_commit)")
         elif day is not None and auth_day > day:
             errs.append("legal_review: aprovação anterior à autorização do revisor")
         elif git is not None:
@@ -389,8 +434,13 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
         for k in ("reviewer_id", "reviewed_sha256", "reviewed_commit", "document_version", "approved_at"):
             if rec.get(k) != review.get(k):
                 errs.append(f"registro {rec_path}: {k} {rec.get(k)!r} difere de legal_review ({review.get(k)!r})")
-        if rec.get("decision") != "APPROVED":
-            errs.append(f"registro {rec_path}: decision deve ser APPROVED")
+        want_decision = "APPROVED_INTERNAL" if internal else "APPROVED"
+        if rec.get("decision") != want_decision:
+            errs.append(f"registro {rec_path}: decision deve ser {want_decision}")
+        if (rec.get("type") or "professional") != ("internal_owner" if internal else "professional"):
+            errs.append(f"registro {rec_path}: type difere do nível da aprovação")
+        if internal:
+            errs += _internal_errors(rec, rec, anchors, who, where=f"registro {rec_path}")
         ac = entry.get("authorization_commit") if isinstance(entry, dict) else None
         if git is not None and isinstance(ac, str) and re.fullmatch(r"[0-9a-f]{40}", ac):
             # O registro entra no gh-pages DEPOIS do commit que cadastrou o revisor, nunca no mesmo commit: cadastro
@@ -402,48 +452,231 @@ def validate_approval(review, fingerprint: str, today: dt.date | None = None, ro
     return errs
 
 
-def approved_hashes(anchors, content) -> set[str]:
-    """reviewed_sha256 de cada registro de aprovação válido nas âncoras (cada registro validado como aprovação)."""
-    out = set()
+def _strings(obj):
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            yield from _strings(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _strings(v)
+
+
+def _internal_errors(block, rec, anchors, who: str, where: str) -> list[str]:
+    """Aprovação interna (Sol ORDEM 312): aviso exato de que não é parecer; e, no registro, o checklist P23 inteiro
+    respondido e a referência a um relatório de auditoria independente."""
+    errs = []
+    if block.get("disclaimer") != INTERNAL_DISCLAIMER:
+        errs.append(f"{where}: aprovação interna exige disclaimer exatamente {INTERNAL_DISCLAIMER!r}")
+    others = {k: v for k, v in block.items() if k != "disclaimer"}
+    if any(re.search(r"(?i)parecer|opini[aã]o jur[ií]dica|legal opinion", x) for x in _strings(others)):
+        errs.append(f"{where}: aprovação interna não pode se apresentar como parecer ou opinião jurídica")
+    if rec is None:
+        return errs
+    ck = _loads(anchors.read(CHECKLIST)) or {}
+    ids = [i.get("id") for i in ck.get("items", []) if isinstance(i, dict) and i.get("id")]
+    answers = rec.get("checklist") if isinstance(rec.get("checklist"), dict) else {}
+    if not ids:
+        errs.append(f"{where}: checklist P23 ({CHECKLIST}) ausente nas âncoras")
+    for i in ids:
+        a = answers.get(i)
+        if not isinstance(a, dict) or a.get("answer") not in ("conforme", "nao_aplicavel") or not str(a.get("evidence", "")).strip():
+            errs.append(f"{where}: checklist P23 item {i} sem resposta conforme/nao_aplicavel com evidência")
+    extra = sorted(set(answers) - set(ids))
+    if extra:
+        errs.append(f"{where}: checklist com itens que não existem no P23: {extra[:5]}")
+    audit = rec.get("audit_report") if isinstance(rec.get("audit_report"), dict) else {}
+    ref, sha, auditor = str(audit.get("ref", "")).strip(), str(audit.get("sha256", "")), str(audit.get("auditor", "")).strip()
+    if not ref or not re.fullmatch(r"[0-9a-f]{64}", sha) or not auditor or auditor == who:
+        errs.append(f"{where}: audit_report exige ref, sha256 e auditor independente (diferente de quem aprova)")
+    elif "://" not in ref:
+        data = anchors.read_bytes(ref)
+        if data is None or hashlib.sha256(data).hexdigest() != sha:
+            errs.append(f"{where}: audit_report {ref} ausente nas âncoras ou com sha256 diferente")
+    return errs
+
+
+def approval_records(anchors, content) -> list[dict]:
+    """Registros de aprovação válidos nas âncoras: [{sha, commit, level}]."""
+    out = []
     for name in anchors.names(RECORDS):
         rec = _loads(anchors.read(f"{RECORDS}/{name}"))
         if not isinstance(rec, dict) or name != f"{rec.get('reviewed_sha256')}.json":
             continue
         reg = _loads(anchors.read(REVIEWERS)) or {}
         entry = next((r for r in (reg.get("reviewers") or []) if isinstance(r, dict) and r.get("id") == rec.get("reviewer_id")), {})
-        review = {"status": "APPROVED", "approved_by": entry.get("name"), "record": f"{RECORDS}/{name}", **rec}
+        internal = rec.get("decision") == "APPROVED_INTERNAL"
+        review = {"approved_by": entry.get("name"), "record": f"{RECORDS}/{name}", **rec,
+                  "status": "APPROVED_INTERNAL" if internal else "APPROVED"}
         version_src = anchors.at(rec["reviewed_commit"]) if getattr(anchors, "git", None) and anchors.is_ancestor(str(rec.get("reviewed_commit"))) else content
         if not validate_approval(review, rec.get("reviewed_sha256"), anchors=anchors, content=version_src):
-            out.add(rec["reviewed_sha256"])
+            out.append({"sha": rec["reviewed_sha256"], "commit": rec["reviewed_commit"], "level": "INTERNAL_OWNER" if internal else "PROFESSIONAL"})
     return out
 
 
-def rehearsal_verdict(content, fp: str, anchors) -> list[str]:
-    """Só no ensaio (--rehearsal, dry-run antes do merge): quando o commit despachado ainda não está no gh-pages, o
-    portão continua RECUSANDO, mas antes calcula e imprime o veredito que a impressão digital teria contra as âncoras
-    do gh-pages (linha de base, aprovações) e os arquivos jurídicos que diferem. Nunca muda o resultado."""
+def approved_hashes(anchors, content) -> set[str]:
+    return {r["sha"] for r in approval_records(anchors, content)}
+
+
+class Overlay(Tree):
+    """Árvore do commit (base/) com o diretório servido (sales-public/) vindo do artefato."""
+
+    def __init__(self, root, serve_dir):
+        super().__init__(root)
+        self.serve = Path(serve_dir)
+
+    def _p(self, rel):
+        return self.serve / rel[len(ARTIFACT_DIR) + 1:] if rel.startswith(ARTIFACT_DIR + "/") else self.root / rel
+
+    def read(self, rel):
+        try:
+            return self._p(rel).read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def read_bytes(self, rel):
+        try:
+            return self._p(rel).read_bytes()
+        except OSError:
+            return None
+
+
+def _level_line(level: str) -> str:
+    return f"LEGAL_APPROVAL_LEVEL={LEVEL_TEXT[level]}"
+
+
+def _baseline(anchors, content, rehearsal: bool):
+    base, src = _loads(anchors.read(BASELINE)), "gh-pages"
+    if base is None and rehearsal:  # ensaio antes do merge da Release 2: o gh-pages ainda não tem o arquivo
+        base, src = _loads(content.read(BASELINE)), "commit despachado (ausente no gh-pages)"
+    return base or {}, src
+
+
+def approved_snapshots(anchors, content, rehearsal: bool = False) -> tuple[list[dict], list[str]]:
+    """Textos aprovados que podem ser servidos (Sol ORDEM 312): a linha de base publicada (gênese b7671272 ou um texto
+    aprovado) e cada registro de aprovação válido. Cada um tem de ser REPRODUZÍVEL: a impressão digital recalculada
+    no commit de origem (no gh-pages) é a declarada. Ordenados do mais novo para o mais antigo."""
+    base, _ = _baseline(anchors, content, rehearsal)
+    recs = approval_records(anchors, content)
+    levels = {r["sha"]: r["level"] for r in recs}
+    cands, errs = [], []
+    fp, commit = str(base.get("fingerprint", "")), str(base.get("source_commit", ""))
+    if fp:
+        if fp == GENESIS_BASELINE and commit != GENESIS_COMMIT:
+            errs.append(f"LEGAL_SNAPSHOT_NOT_REPRODUCIBLE linha de base de origem tem de apontar para {GENESIS_COMMIT[:12]}")
+        elif fp == GENESIS_BASELINE or fp in levels:
+            cands.append({"sha": fp, "commit": commit, "level": "GENESIS" if fp == GENESIS_BASELINE else levels[fp], "from": "baseline"})
+    cands += [{**r, "from": "record"} for r in recs]
+    out, seen = [], set()
+    for c in cands:
+        if c["sha"] in seen:
+            continue
+        try:
+            ok = bool(re.fullmatch(r"[0-9a-f]{40}", c["commit"])) and anchors.is_ancestor(c["commit"])
+            src = anchors.at(c["commit"]) if ok else None
+            if not ok or legal_fingerprint_src(src) != c["sha"]:
+                errs.append(f"LEGAL_SNAPSHOT_NOT_REPRODUCIBLE {c['sha'][:12]}@{c['commit'][:12]}: a impressão digital recalculada no commit não é a declarada (ou o commit não está no gh-pages)")
+                continue
+            rc, n = anchors.run("rev-list", "--count", c["commit"])
+            out.append({**c, "served": served_fingerprint(src), "texts": texts_fingerprint(src), "order": int(n.strip() or 0), "src": src})
+            seen.add(c["sha"])
+        except SystemExit as e:
+            errs.append(f"LEGAL_SNAPSHOT_NOT_REPRODUCIBLE {c['sha'][:12]}@{c['commit'][:12]}: {e}")
+    return sorted(out, key=lambda c: -c["order"]), errs
+
+
+def _pending(root: Path, snap) -> list[str]:
+    """O que o commit em deploy muda no texto jurídico servido em relação ao snapshot aprovado (aguarda aprovação)."""
     try:
-        base, src = _loads(anchors.read(BASELINE)), "gh-pages"
-        if base is None:  # antes do merge da Release 2 o gh-pages ainda não tem o arquivo: usa o do commit despachado
-            base, src = _loads(content.read(BASELINE)), "commit despachado (ausente no gh-pages)"
-        baseline = str((base or {}).get("fingerprint", ""))
-        out = [f"LEGAL_REHEARSAL_BASELINE={baseline} origem={src}"]
-        if baseline != GENESIS_BASELINE and baseline not in approved_hashes(anchors, content):
-            return out + ["LEGAL_REHEARSAL_VERDICT=BLOCKED (linha de base do gh-pages inválida)",
-                          f"::notice title=LEGAL_REHEARSAL_VERDICT::BLOCKED; invalid baseline {baseline[:12]} ({src})"]
-        if fp == baseline:
-            return out + ["LEGAL_REHEARSAL_VERDICT=PASS_UNCHANGED (texto jurídico idêntico ao publicado)",
-                          f"::notice title=LEGAL_REHEARSAL_VERDICT::PASS_UNCHANGED; baseline {baseline[:12]} ({src})"]
-        mine, theirs = dict(legal_artifact_files(content)), dict(legal_artifact_files(anchors))
-        changed = sorted(k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k))
-        pa, pb = _loads(content.read(POLICY)) or {}, _loads(anchors.read(POLICY)) or {}
-        changed += [f"{POLICY}#{k}" for k in POLICY_FIELDS if pa.get(k) != pb.get(k)]
-        errs = validate_approval(pb.get("legal_review"), fp, anchors=anchors, content=content)
-        verdict = "PASS_APPROVED" if not errs else f"BLOCKED (sem aprovação válida para {fp[:12]}…: {errs[0]})"
-        return out + [f"LEGAL_REHEARSAL_CHANGED={c}" for c in changed] + [f"LEGAL_REHEARSAL_VERDICT={verdict}",
-                f"::notice title=LEGAL_REHEARSAL_VERDICT::{verdict.split(' (')[0]}; baseline {baseline[:12]} ({src}); {len(changed)} changed: {', '.join(changed[:20])}"]
-    except (SystemExit, Exception) as e:  # o ensaio é informativo; o portão já recusou
-        return [f"LEGAL_REHEARSAL_VERDICT=UNAVAILABLE ({e})", f"::notice title=LEGAL_REHEARSAL_VERDICT::UNAVAILABLE ({e})"]
+        head = GitRef(root, "HEAD")
+        mine, served = dict(legal_artifact_files(head, sources=False)), dict(legal_artifact_files(snap, sources=False))
+        out = sorted(k for k in set(mine) | set(served) if mine.get(k) != served.get(k))
+        pa, pb = _loads(head.read(POLICY)) or {}, _loads(snap.read(POLICY)) or {}
+        return out + [f"{POLICY}#{k}" for k in POLICY_FIELDS if pa.get(k) != pb.get(k)]
+    except SystemExit as e:
+        return [f"(não calculado: {e})"]
+
+
+def emergency_context():
+    """Modo emergência (Sol ORDEM 312, item 3): só workflow_dispatch no gh-pages com mode=emergency, motivo com pelo
+    menos 20 caracteres e disparado pelo DONO do repositório. Lido do evento que o próprio GitHub grava no runner."""
+    if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        return None
+    try:
+        ev = json.loads(Path(os.environ.get("GITHUB_EVENT_PATH", "")).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    inputs = ev.get("inputs") or {}
+    if inputs.get("mode") != "emergency":
+        return None
+    reason = str(inputs.get("reason") or "").strip()
+    actor = str((ev.get("sender") or {}).get("login") or "")
+    owner = str(((ev.get("repository") or {}).get("owner") or {}).get("login") or "")
+    problems = []
+    if os.environ.get("GITHUB_REF") != "refs/heads/gh-pages":
+        problems.append("só no gh-pages")
+    if len(reason) < 20:
+        problems.append("motivo com pelo menos 20 caracteres")
+    if not owner or actor != owner:
+        problems.append(f"só o dono do repositório ({owner or '?'}) pode disparar; disparado por {actor or '?'}")
+    return {"reason": reason, "actor": actor, "problems": problems}
+
+
+def _decide(root: Path, content, fp: str, anchors, rehearsal: bool) -> tuple[bool, list[str], str]:
+    """Decide o que pode ir ao ar (sem a conferência de contenção, feita antes). Devolve (ok, linhas, veredito)."""
+    base, src = _baseline(anchors, content, rehearsal)
+    baseline = str(base.get("fingerprint", ""))
+    lines = [f"LEGAL_PUBLISHED_BASELINE={baseline} source_commit={base.get('source_commit')} origem={src}"]
+    recs = approval_records(anchors, content)
+    if baseline != GENESIS_BASELINE and baseline not in {r["sha"] for r in recs}:
+        return False, lines + ["::error title=LEGAL_PUBLISH_GATE::linha de base não é o texto pré-Release 2 nem o hash de um registro de aprovação válido no gh-pages"], "BLOCKED"
+    def served_label():
+        pend = _pending(root, content)  # o que do commit não está sendo servido (vazio: serve o próprio commit)
+        return ("APPROVED_SNAPSHOT" if pend else "APPROVED_HEAD"), (", ".join(pend) if pend else "(nenhum)")
+    if fp == baseline:
+        level = "GENESIS" if fp == GENESIS_BASELINE else next(r["level"] for r in recs if r["sha"] == fp)
+        label, pend0 = served_label()
+        return True, lines + [f"LEGAL_SERVED={label} {fp}", _level_line(level), f"LEGAL_PENDING={pend0}",
+                              "LEGAL_PUBLISH_GATE=PASS_UNCHANGED (texto jurídico idêntico ao já publicado; revisão não exigida para este deploy)"], "PASS_UNCHANGED"
+    pol = _loads(anchors.read(POLICY)) or {}
+    errs = validate_approval(pol.get("legal_review"), fp, anchors=anchors, content=content)
+    if not errs:
+        level = "INTERNAL_OWNER" if pol["legal_review"].get("status") == "APPROVED_INTERNAL" else "PROFESSIONAL"
+        label, pend0 = served_label()
+        return True, lines + [f"LEGAL_SERVED={label} {fp}", _level_line(level), f"LEGAL_PENDING={pend0}", "LEGAL_PUBLISH_GATE=PASS_APPROVED"], "PASS_APPROVED"
+    # Texto do commit sem aprovação: só passa se o que vai ao ar for um snapshot aprovado (Sol ORDEM 312, item 2).
+    snaps, serrs = approved_snapshots(anchors, content, rehearsal)
+    lines += [f"::error title=LEGAL_SNAPSHOT::{e}" for e in serrs]
+    served, texts = served_fingerprint(content), texts_fingerprint(content)
+    ref_snap = next((c for c in snaps if c["served"] == served), None) or next((c for c in snaps if c["texts"] == texts), None) or (snaps[0] if snaps else None)
+    pending = _pending(root, ref_snap["src"] if ref_snap else anchors)  # sem snapshot reproduzível: em relação ao gh-pages
+    pend = f"LEGAL_PENDING={', '.join(pending) if pending else '(nenhum)'} ({len(pending)} item(ns) do commit aguardam aprovação e não vão ao ar)"
+    match = next((c for c in snaps if c["served"] == served), None)
+    if match:
+        return True, lines + [f"LEGAL_HEAD_FINGERPRINT={fp} (não aprovado; NÃO é servido)",
+                              f"LEGAL_SERVED=APPROVED_SNAPSHOT {match['sha']} commit={match['commit']}", _level_line(match["level"]), pend,
+                              f"::notice title=LEGAL_SERVED::APPROVED_SNAPSHOT {match['sha'][:12]}; pendente: {', '.join(pending[:15])}",
+                              "LEGAL_PUBLISH_GATE=PASS_APPROVED_SNAPSHOT"], "PASS_APPROVED_SNAPSHOT"
+    texts_match = next((c for c in snaps if c["texts"] == texts), None)
+    em = None if rehearsal else emergency_context()
+    if em is not None:
+        if em["problems"]:
+            return False, lines + [pend, f"::error title=LEGAL_EMERGENCY::modo emergência recusado: {'; '.join(em['problems'])}"], "BLOCKED"
+        if texts_match:
+            return True, lines + [f"LEGAL_HEAD_FINGERPRINT={fp} (não aprovado)",
+                                  f"LEGAL_SERVED=EMERGENCY_SNAPSHOT {texts_match['sha']} commit={texts_match['commit']}", _level_line(texts_match["level"]), pend,
+                                  f"::warning title=LEGAL_EMERGENCY::deploy de emergência por {em['actor']}: textos jurídicos = snapshot aprovado {texts_match['sha'][:12]}; código que serve as rotas não aprovado. Motivo: {em['reason'][:300]}",
+                                  "LEGAL_PUBLISH_GATE=PASS_EMERGENCY_SNAPSHOT"], "PASS_EMERGENCY_SNAPSHOT"
+        return False, lines + [pend, "::error title=LEGAL_EMERGENCY::o modo emergência nunca troca texto jurídico: as páginas, os assets e os textos de consumo servidos têm de ser os de um snapshot aprovado"], "BLOCKED"
+    if texts_match:
+        why = ("LEGAL_SERVING_UNAPPROVED: os textos servidos são o snapshot aprovado, mas o código que serve as rotas jurídicas "
+               "(sales-worker.mjs, worker/sales-public-worker.mjs, worker/politica-unica.mjs, wrangler.sales.toml) mudou sem aprovação. "
+               "Só o deploy do Worker de vendas fica bloqueado; o central não usa este portão. Aprovação (profissional ou interna) ou modo emergência.")
+    else:
+        why = ("LEGAL_UNAPPROVED_TEXT_SERVED: o que iria ao ar não é um texto aprovado (aplique o snapshot com --apply-snapshot; "
+               "textos de consumo de data/politica-unica.json alterados também exigem aprovação)")
+    return False, lines + [pend] + [f"::error title=LEGAL_PUBLISH_GATE::{e}" for e in errs] + [f"::error title=LEGAL_PUBLISH_GATE::{why}"], "BLOCKED"
 
 
 def publish_gate(root: Path, anchors_ref: str | None = None, rehearsal: bool = False) -> tuple[bool, list[str]]:
@@ -457,21 +690,49 @@ def publish_gate(root: Path, anchors_ref: str | None = None, rehearsal: bool = F
     anchor_sha, head = anchors.commit(), anchors.commit("HEAD")
     lines.append(f"LEGAL_ANCHORS={anchors_ref}@{anchor_sha} DEPLOYED={head}")
     if not anchor_sha or not head or not anchors.is_ancestor(head):
-        extra = rehearsal_verdict(content, fp, anchors) if rehearsal and anchor_sha else []
+        extra = []
+        if rehearsal and anchor_sha:  # ensaio: o veredito que o portão daria, sempre seguido da recusa
+            try:
+                _, dl, verdict = _decide(root, content, fp, anchors, True)
+                extra = [l.replace("LEGAL_", "LEGAL_REHEARSAL_", 1) if l.startswith("LEGAL_") else l.replace("::error title=", "::notice title=REHEARSAL_") for l in dl]
+                extra += [f"LEGAL_REHEARSAL_VERDICT={verdict}", f"::notice title=LEGAL_REHEARSAL_VERDICT::{verdict}"]
+            except (SystemExit, Exception) as e:
+                extra = [f"LEGAL_REHEARSAL_VERDICT=UNAVAILABLE ({e})", f"::notice title=LEGAL_REHEARSAL_VERDICT::UNAVAILABLE ({e})"]
         return False, lines + extra + ["::error title=LEGAL_PUBLISH_GATE::o commit publicado não está contido no gh-pages das âncoras (ou o ref não existe)", blocked]
-    base = _loads(anchors.read(BASELINE)) or {}
-    baseline = str(base.get("fingerprint", ""))
-    lines.append(f"LEGAL_PUBLISHED_BASELINE={baseline} source_commit={base.get('source_commit')}")
-    approved = approved_hashes(anchors, content)
-    if baseline != GENESIS_BASELINE and baseline not in approved:
-        return False, lines + ["::error title=LEGAL_PUBLISH_GATE::linha de base não é o texto pré-Release 2 nem o hash de um registro de aprovação válido no gh-pages", blocked]
-    if fp == baseline:
-        return True, lines + ["LEGAL_PUBLISH_GATE=PASS_UNCHANGED (texto jurídico idêntico ao já publicado; revisão não exigida para este deploy)"]
+    ok, dl, _ = _decide(root, content, fp, anchors, False)
+    return ok, lines + dl + ([] if ok else [blocked])
+
+
+def apply_snapshot(root: Path, serve_dir: Path, anchors_ref: str, rehearsal: bool = False) -> tuple[int, list[str]]:
+    """Sol ORDEM 312, item 2: se o texto jurídico do commit não está aprovado, troca no diretório servido as páginas
+    jurídicas e os assets delas pelos bytes do ÚLTIMO texto aprovado (reproduzidos do commit de origem). Nada mais
+    muda; um asset compartilhado com bytes diferentes recusa (fail-closed)."""
+    content = Overlay(root, serve_dir)
+    anchors = GitRef(root, anchors_ref)
+    fp = legal_fingerprint_src(content)
+    lines = [f"LEGAL_FINGERPRINT={fp}"]
+    base, _ = _baseline(anchors, content, rehearsal)
     pol = _loads(anchors.read(POLICY)) or {}
-    errs = validate_approval(pol.get("legal_review"), fp, anchors=anchors, content=content)
-    if errs:
-        return False, lines + [f"::error title=LEGAL_PUBLISH_GATE::{e}" for e in errs] + [blocked]
-    return True, lines + ["LEGAL_PUBLISH_GATE=PASS_APPROVED"]
+    if fp == str(base.get("fingerprint", "")) or not validate_approval(pol.get("legal_review"), fp, anchors=anchors, content=content):
+        return 0, lines + ["LEGAL_SNAPSHOT=NOT_NEEDED (o texto do commit é o aprovado; vai ao ar como está)"]
+    snaps, errs = approved_snapshots(anchors, content, rehearsal)
+    if not snaps:
+        return 1, lines + [f"::error title=LEGAL_SNAPSHOT::{e}" for e in errs] + ["::error title=LEGAL_SNAPSHOT::nenhum texto aprovado reproduzível para servir"]
+    lines += [f"::warning title=LEGAL_SNAPSHOT::{e} (ignorado)" for e in errs]
+    last = snaps[0]
+    files = [(r, d) for r, d in legal_artifact_files(last["src"], sources=False) if r.startswith(ARTIFACT_DIR + "/")]
+    pages = {f"{ARTIFACT_DIR}/{n}.html" for n in SERVED_LEGAL}
+    conflicts = [r for r, d in files if r not in pages and content.read_bytes(r) not in (None, d)]
+    if conflicts:
+        return 1, lines + [f"::error title=LEGAL_SNAPSHOT::asset compartilhado com bytes diferentes do snapshot (não sobrescrito): {', '.join(conflicts[:10])}"]
+    for r, d in files:
+        t = serve_dir / r[len(ARTIFACT_DIR) + 1:]
+        t.parent.mkdir(parents=True, exist_ok=True)
+        t.write_bytes(d)
+    pending = _pending(root, last["src"])
+    return 0, lines + [f"LEGAL_SNAPSHOT_APPLIED={last['sha']} commit={last['commit']} arquivos={len(files)}", _level_line(last["level"]),
+                       f"LEGAL_PENDING={', '.join(pending) if pending else '(nenhum)'}",
+                       f"::notice title=LEGAL_SNAPSHOT::texto jurídico do commit não aprovado; servido o snapshot aprovado {last['sha'][:12]}"]
 
 
 def main(argv=None) -> int:
@@ -485,6 +746,7 @@ def main(argv=None) -> int:
     g.add_argument("--publish-gate", action="store_true")
     g.add_argument("--check-approval", action="store_true")
     g.add_argument("--artifact-files", action="store_true", help="lista os arquivos que entram na impressão digital")
+    g.add_argument("--apply-snapshot", metavar="DIR", help="diretório servido (sales-public do artefato): troca o texto jurídico não aprovado pelo último snapshot aprovado")
     ap.add_argument("--anchors-ref", default=None, help="ref do gh-pages mesclado de onde vêm as âncoras (obrigatório com --publish-gate)")
     ap.add_argument("--rehearsal", action="store_true", help="só no ensaio (dry-run): imprime o veredito da impressão digital mesmo quando o commit não está no gh-pages; o resultado continua recusado")
     a = ap.parse_args(argv)
@@ -503,6 +765,13 @@ def main(argv=None) -> int:
             print("::error title=LEGAL_REVIEW::" + e)
         print("LEGAL_REVIEW=" + ("FAIL" if errs else "PASS"))
         return 1 if errs else 0
+    if a.apply_snapshot:
+        if not a.anchors_ref:
+            print("::error title=LEGAL_SNAPSHOT::--anchors-ref obrigatório")
+            return 1
+        rc, lines = apply_snapshot(root, Path(a.apply_snapshot).resolve(), a.anchors_ref, rehearsal=a.rehearsal)
+        print("\n".join(lines))
+        return rc
     ok, lines = publish_gate(root, a.anchors_ref, rehearsal=a.rehearsal)
     print("\n".join(lines))
     return 0 if ok else 1

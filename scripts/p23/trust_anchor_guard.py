@@ -39,6 +39,11 @@ Rodada 7 (M-1): o bundle publicado fica preso às fontes ancoradas.
     yarn.lock, pnpm-lock.yaml, .pnpmfile.cjs, bunfig.toml, qualquer node_modules/** e toda configuração wrangler*
     (.toml/.json/.jsonc) em qualquer pasta.
 
+Rodada 12 (Sol ORDEM 312): no vendas, o passo que aplica o snapshot jurídico aprovado (--apply-snapshot, código do
+gh-pages, corpo exato) é obrigatório depois da reconstrução e antes do primeiro portão; o central NUNCA tem portão
+jurídico (legal_review.py, --publish-gate ou --apply-snapshot no workflow do central reprovam), e sem portão a
+reconstrução e o manifesto têm de vir antes de qualquer segredo.
+
 Se o PR mudar a linha de base, também informa se o novo valor é o texto pré-Release 2 ou o reviewed_sha256 de um
 registro de aprovação válido JÁ na base.
 
@@ -87,6 +92,14 @@ def repro_body(kind: str, art: str) -> list[str]:
             f'/usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" {kind} --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify {art}']
 
 
+def snapshot_body() -> list[str]:
+    """Sol ORDEM 312: antes do portão, o texto jurídico não aprovado é trocado pelo último snapshot aprovado."""
+    return ["set -euo pipefail",
+            'test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"',
+            '/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"',
+            '/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --apply-snapshot art/site/sales-public --anchors-ref refs/remotes/origin/gh-pages']
+
+
 def rehearsal_repro_body(kind: str, art: str) -> list[str]:
     """Rodada 8 (LOW-2): o ensaio (dry-run) também reconstrói e compara com o artefato."""
     return ["set -euo pipefail",
@@ -101,6 +114,7 @@ SPECS = {
         "bundle_job": ("worker-bundle", clean_bundle_body("sales", "worker-artifact")),
         "repro_body": repro_body("sales", "art/worker"),
         "rehearsal_repro": rehearsal_repro_body("sales", "art/worker"),
+        "snapshot_body": snapshot_body(),
         "artifact_copy": "rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public"},
     ".github/workflows/central-production-deploy.yml": {
         "secret_jobs": {"guard", "deploy"}, "build_jobs": {"build"}, "anchored_jobs": set(),
@@ -108,6 +122,7 @@ SPECS = {
         "bundle_job": ("build", clean_bundle_body("central", "central-release")),
         "repro_body": repro_body("central", "art/central"),
         "rehearsal_repro": rehearsal_repro_body("central", "art/central"),
+        "legal_gate": False,
         "artifact_copy": None},
 }
 DEPLOY_NPM_ENV = {"npm_config_userconfig": "/dev/null", "npm_config_registry": "https://registry.npmjs.org"}
@@ -330,22 +345,39 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
     if "steps" not in jkeys:
         return errs + [f"{name}: job deploy sem steps"]
     steps = _steps(lines, jkeys["steps"][1] + 1, jkeys["steps"][2])
+    legal = spec.get("legal_gate", True)
     body = gate_body(spec["artifact_copy"])
-    is_gate = lambda st: (st["keys"].get("run") or {}).get("body") == body
+    is_gate = lambda st: legal and (st["keys"].get("run") or {}).get("body") == body
     gates = [n for n, st in enumerate(steps) if is_gate(st)]
-    if not gates:
-        return errs + [f"{name}: o job deploy não tem o passo do portão ({' / '.join(body)})"]
     first_secret = next((n for n, st in enumerate(steps) if "secrets." in st["text"]), len(steps))
-    if gates[0] > first_secret:
-        errs.append(f"{name}: um passo com segredo roda antes do primeiro portão")
-    if not any("sha256sum --strict -c" in st["text"] for st in steps[:gates[0]]):
-        errs.append(f"{name}: o manifesto do artefato não é conferido antes do portão")
+    if legal:
+        if not gates:
+            return errs + [f"{name}: o job deploy não tem o passo do portão ({' / '.join(body)})"]
+        if gates[0] > first_secret:
+            errs.append(f"{name}: um passo com segredo roda antes do primeiro portão")
+        if not any("sha256sum --strict -c" in st["text"] for st in steps[:gates[0]]):
+            errs.append(f"{name}: o manifesto do artefato não é conferido antes do portão")
+        gate_at = gates[0]
+    else:
+        # Sol ORDEM 312: o deploy central nunca é bloqueado pelo portão jurídico (não serve texto jurídico aprovável).
+        if re.search(r"legal_review\.py|legal_gate\.py|--publish-gate|--apply-snapshot", text):
+            errs.append(f"{name}: o portão jurídico não pode bloquear este workflow (Sol ORDEM 312: o central nunca é bloqueado pelo portão jurídico)")
+        if not any("sha256sum --strict -c" in st["text"] for st in steps[:first_secret]):
+            errs.append(f"{name}: o manifesto do artefato não é conferido antes de qualquer segredo")
+        gate_at = first_secret
+    if spec.get("snapshot_body"):
+        snap = [n for n, st in enumerate(steps) if (st["keys"].get("run") or {}).get("body") == spec["snapshot_body"]]
+        repro_at = next((n for n, st in enumerate(steps) if (st["keys"].get("run") or {}).get("body") == spec.get("repro_body")), -1)
+        if not snap:
+            errs.append(f"{name}: o job deploy não aplica o snapshot jurídico aprovado ({spec['snapshot_body'][-1]})")
+        elif not (repro_at < snap[0] < gate_at and snap[0] < first_secret) or set(steps[snap[0]]["keys"]) - {"name", "run", "id"}:
+            errs.append(f"{name}: o snapshot jurídico tem de ser aplicado depois da reconstrução e antes do primeiro portão e de qualquer segredo, sem if/env")
     if spec.get("repro_body"):
         repro = [n for n, st in enumerate(steps) if (st["keys"].get("run") or {}).get("body") == spec["repro_body"]]
         manifest_at = next((n for n, st in enumerate(steps) if "sha256sum --strict -c" in st["text"]), len(steps))
         if not repro:
             errs.append(f"{name}: o job deploy não reconstrói o bundle de forma limpa e não compara com o artefato ({spec['repro_body'][-1]})")
-        elif not (manifest_at < repro[0] < gates[0] and repro[0] < first_secret):
+        elif not (manifest_at < repro[0] < gate_at and repro[0] < first_secret):
             errs.append(f"{name}: a reconstrução limpa tem de vir depois do manifesto e antes do primeiro portão e de qualquer segredo")
         else:
             extra = set(steps[repro[0]]["keys"]) - {"name", "run", "id", "env"}
@@ -391,7 +423,7 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
                     errs.append(f"{name}: empacotamento (--dry-run/--outdir) no job deploy (linha {st['line']})")
             if re.search(r"\b(build_sales_public|materialize|prepare-central-candidate|write-build-info|copy-brand-export)\b", l):
                 errs.append(f"{name}: código de build no job deploy (linha {st['line']})")
-        if not deploys(st["text"]):
+        if not deploys(st["text"]) or not legal:
             continue
         if STATUS_FN.search((st["keys"].get("if") or {}).get("value", "")):
             errs.append(f"{name}: passo que publica (linha {st['line']}) usa always()/failure()/cancelled() no if")
