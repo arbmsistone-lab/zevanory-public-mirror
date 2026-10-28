@@ -116,6 +116,13 @@ def rules(d, by_slug, by_sku, sub):
     R.append((wf, r'(-)\d+(\.0\)<0\.001)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 2))
     R.append((wf, r'("amount_brl":)\d+(\.0,)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
     R.append((wf, r'(- Valor: \*\*R\$ )\d+(,00\*\*)', lambda m: f"{m.group(1)}{ia}{m.group(2)}", 1))
+    # Short diário do YouTube (preço por SKU), padrão final só-leitura (tuplas por produto) e auditoria do checkout
+    # Hotmart (preço que o comprador precisa ver na Hotmart: concilia a Hotmart com a página quando o dono a dispara).
+    R.append(("scripts/channels/youtube-daily-short.mjs", rf'"({sku_re})": \d+', lambda m: f'"{m.group(1)}": {by_sku[m.group(1)]}', len(by_sku)))
+    R.append((".github/workflows/zevanory-final-standard-readonly.yml", rf'(\("({slug_re})", "[^"]+", )\d+(, "ZEV-)', lambda m: f"{m.group(1)}{by_slug[m.group(2)]['price']}{m.group(3)}", len(by_slug)))
+    hot = {**{p["name"]: p["price"] for p in d["products"]}, "Conteúdo Pronto": sub}
+    hot_rx = "|".join(re.escape(n) for n in hot)
+    R.append((".github/workflows/hotmart-identity-audit.yml", rf'("ZEVANORY ({hot_rx})" ")\d+(,00")', lambda m: f"{m.group(1)}{hot[m.group(2)]}{m.group(3)}", len(hot)))
     pm = "data/p24/promise-map.json"
     R.append((pm, r'"Economia de R\$ \d+ em relação à compra separada \(R\$ \d+\)"(?=,\s*"type": "price",\s*"components": \[\s*"ia-na-pratica",\s*"vendas-na-pratica"\s*\])',
               lambda m: f'"Economia de R$ {cmb_eco} em relação à compra separada (R$ {cmb_sep})"', 1))

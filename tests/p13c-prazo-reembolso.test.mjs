@@ -9,6 +9,7 @@ import { readFileSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { IA_PRICE, IA_PRICE_STR } from "./helpers/catalog-price.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const P = JSON.parse(readTextNormalized(join(ROOT, "data/politica-unica.json")));
@@ -47,7 +48,7 @@ function fixture({ paidAt, deliveredAt = null, firstDownloadAt = null }) {
   const kv = { get: async (k) => state.get(k) ?? null, put: async (k, v) => { state.set(k, v); }, list: async () => ({ keys: [], list_complete: true }) };
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://mock.invalid/x" };
   const sqlFactory = () => ({ query: async (statement) => {
-    if (/from orders o/.test(statement)) return [{ order_id: OID, status: "paid", amount: 197, offer_id: "ZEV-IA-011", certification_pilot: true, payment_id: "123", paid_at: new Date(paidAt).toISOString(),
+    if (/from orders o/.test(statement)) return [{ order_id: OID, status: "paid", amount: IA_PRICE, offer_id: "ZEV-IA-011", certification_pilot: true, payment_id: "123", paid_at: new Date(paidAt).toISOString(),
       delivered_at: /delivered_at/.test(statement) && deliveredAt ? new Date(deliveredAt).toISOString() : null,
       first_download_at: /used_at/.test(statement) && firstDownloadAt ? new Date(firstDownloadAt).toISOString() : null }];
     if (/select evidence_ref from service_fulfillment/.test(statement)) return [{ evidence_ref: JSON.stringify({ email_recipient: EMAIL }) }];

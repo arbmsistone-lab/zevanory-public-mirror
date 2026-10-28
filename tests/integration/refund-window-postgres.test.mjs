@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { IA_PRICE, IA_PRICE_STR } from "../helpers/catalog-price.mjs";
 
 const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
 const SKIP = !HOST && "T4_PG_HOST not set (throwaway local PostgreSQL required)";
@@ -54,7 +55,7 @@ function seed() {
   const oid = randomUUID(), now = Date.now(), paid = now - 10 * DAY;
   const day1 = new Date(paid + 1 * DAY).toISOString(), day6 = new Date(paid + 6 * DAY).toISOString();
   const ev = JSON.stringify({ email_recipient: EMAIL });
-  psql(`insert into orders values (${lit(oid)}, 'paid', 197, 'ZEV-IA-011', true);
+  psql(`insert into orders values (${lit(oid)}, 'paid', ${IA_PRICE}, 'ZEV-IA-011', true);
         insert into financial_events values (${lit("ev-" + oid)}, '123', 'payment_confirmed', ${lit(oid)}, ${lit(new Date(paid).toISOString())});
         insert into service_fulfillment values (${lit(randomUUID())}, ${lit(oid)}, 'delivered', ${lit(ev)}, ${lit(day6)});
         insert into service_fulfillment values (${lit(randomUUID())}, ${lit(oid)}, 'delivered', ${lit(ev)}, ${lit(day1)});`);

@@ -219,7 +219,8 @@ class GuardTests(unittest.TestCase):
                              sleep=lambda _: (_ for _ in ()).throw(proof.GuardError('RECEIPT_WEBHOOK_TIMEOUT')))
         out = proof.run_catalog({}, runner=runner)
         self.assertEqual(out['status'], 'PASS', out)
-        self.assertEqual([r['amount_brl'] for r in out['results']], [197, 197, 247, 297, 397])
+        catalog = json.loads((ROOT / 'data/products.json').read_text(encoding='utf-8'))
+        self.assertEqual([r['amount_brl'] for r in out['results']], [p['price'] for p in catalog['products']])  # preço = data/products.json
         saved = json.dumps(out)
         self.assertNotIn('temporary-download-value', saved)
         self.assertNotIn('sha256', saved)
