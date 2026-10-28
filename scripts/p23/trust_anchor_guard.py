@@ -1,36 +1,33 @@
 #!/usr/bin/env python3
-"""ZEVANORY | Guarda das âncoras de confiança da revisão jurídica (M-A, reauditoria do PR #946, rodadas 3 e 4).
+"""ZEVANORY | Guarda das âncoras de confiança da revisão jurídica (M-A, reauditoria do PR #946, rodadas 3 a 5).
 
 Roda no check protegido .github/workflows/legal-trust-anchors-protected.yml (pull_request_target): este código vem
-da BASE; o PR é só dado (um repositório git separado, nunca executado). Reprova (TRUST_ANCHORS=CHANGED) todo PR que:
+da BASE; o PR é só dado (um repositório git separado, nunca executado). É o ÚNICO lugar onde esta guarda é imposta
+(o check precisa estar entre os obrigatórios do gh-pages; ver docs/legal/legal-review-procedure.md).
 
-  * altere uma âncora: data/p23/legal-reviewers.json, data/p23/legal-published-baseline.json, docs/legal/reviews/**,
-    data/politica-unica.json, scripts/p23/**, este workflow protegido e os DOIS workflows de deploy que publicam o
-    texto jurídico (.github/workflows/zevanory-sales-public-release.yml e central-production-deploy.yml);
-  * altere ou crie QUALQUER outro workflow que publique (wrangler deploy/publish sem --dry-run, versions/pages deploy,
-    cloudflare/wrangler-action, cloudflare/pages-action, actions/deploy-pages, Environment producao-critica).
+Reprova (TRUST_ANCHORS=CHANGED) todo PR que altere uma âncora:
+  * data/p23/legal-reviewers.json, data/p23/legal-published-baseline.json, docs/legal/reviews/**,
+    data/politica-unica.json, scripts/p23/**;
+  * QUALQUER arquivo em .github/workflows/ ou .github/actions/ (rodada 5: conservador; a detecção de "workflow que
+    publica" só gera aviso informativo);
+  * o que serve as rotas jurídicas em tempo de execução: sales-worker.mjs, worker/sales-public-worker.mjs,
+    worker/politica-unica.mjs, wrangler.sales.toml e scripts/ci/materialize_sales_configs.py.
 
-E reprova (TRUST_ANCHORS=GATE_INVALID) quando a ESTRUTURA dos dois workflows de deploy no head não garante o portão
-(validação feita sempre, com ou sem mudança; ver validate_deploy_workflow):
-
-  * o passo do portão existe no job deploy, é o PRIMEIRO passo que executa comando (antes dele só actions/checkout,
-    actions/setup-python e actions/setup-node), roda exatamente as três linhas esperadas e não tem if,
-    continue-on-error, shell, env nem working-directory;
-  * cada passo que publica é precedido imediatamente do passo de integridade (o texto jurídico na árvore é o que o
-    portão conferiu: git diff --exit-code HEAD nos arquivos da impressão digital), sem if nem continue-on-error;
-  * passo que publica não usa always()/failure()/cancelled() no if; o job deploy também não;
-  * nenhum outro job desses workflows publica;
-  * sem defaults (shell trocado) no workflow nem no job, e sem BASH_ENV/ENV/PATH/LD_*/PYTHON*/NODE_OPTIONS/GIT_* no
-    env do workflow ou do job.
-
-Um PR que mexa nas âncoras só entra com decisão explícita e deliberada do proprietário, registrada no PR (o check
-precisa estar entre os obrigatórios do gh-pages para bloquear; ver docs/legal/legal-review-procedure.md).
+Reprova (TRUST_ANCHORS=GATE_INVALID) quando a ESTRUTURA dos dois workflows de deploy no head não garante o portão
+(sempre validada, com ou sem mudança):
+  * o passo do portão (GATE_BODY: código do portão lido do gh-pages, binários absolutos, HEAD = GITHUB_SHA, sem
+    assume-unchanged/skip-worktree, diff contra GITHUB_SHA) é o PRIMEIRO comando do job deploy (antes só
+    actions/checkout, setup-python e setup-node) e vem de novo logo antes de CADA passo que publica; nenhum deles tem
+    if, continue-on-error, shell, env nem working-directory;
+  * passo que publica não usa always()/failure()/cancelled(); o job deploy também não; nenhum outro job publica;
+  * sem defaults no workflow nem no job; sem BASH_ENV/ENV/PATH/LD_*/PYTHON*/NODE_OPTIONS/GIT_* no env;
+  * YAML válido (quando o PyYAML está disponível).
 
 Se o PR mudar a linha de base, também informa se o novo valor é o texto pré-Release 2 ou o reviewed_sha256 de um
 registro de aprovação válido JÁ na base.
 
 Uso: trust_anchor_guard.py --pr-repo <git dir do PR> --base-sha <sha> --head-sha <sha> [--base-repo <checkout da base>]
-     trust_anchor_guard.py --validate-workflows --root <checkout>    (só a validação estrutural, na árvore)
+     trust_anchor_guard.py --validate-workflows --root <checkout>    (só a validação estrutural, na árvore; testes)
 Saída: TRUST_ANCHORS=UNCHANGED (rc 0) | CHANGED ou GATE_INVALID (rc 1, com a lista e o motivo).
 """
 from __future__ import annotations
@@ -39,36 +36,71 @@ import argparse, fnmatch, json, re, subprocess, sys
 from pathlib import Path
 
 DEPLOY_WORKFLOWS = (".github/workflows/zevanory-sales-public-release.yml", ".github/workflows/central-production-deploy.yml")
+# Rodada 5: âncoras conservadoras. Qualquer mudança em .github/workflows/ ou .github/actions/ é CHANGED (a detecção de
+# "workflow que publica" virou só informativa). Também são âncoras os arquivos que SERVEM as rotas jurídicas em tempo
+# de execução (o portão confere os bytes do artefato; o código do Worker de vendas e a configuração dele decidem o que
+# é servido): o ponto de entrada, o Worker, o módulo que ele importa, a configuração wrangler e o script que a reescreve
+# no deploy.
 ANCHORS = ("data/p23/legal-reviewers.json", "data/p23/legal-published-baseline.json", "docs/legal/reviews/*",
-           "data/politica-unica.json", "scripts/p23/*", ".github/workflows/legal-trust-anchors-protected.yml",
-           *DEPLOY_WORKFLOWS)
+           "data/politica-unica.json", "scripts/p23/*", ".github/workflows/*", ".github/actions/*",
+           "sales-worker.mjs", "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "wrangler.sales.toml",
+           "scripts/ci/materialize_sales_configs.py")
 
-GATE_FETCH = "git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages"
-GATE_LINE = "python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages"
-GATE_BODY = ("set -euo pipefail", GATE_FETCH, GATE_LINE)
-# Arquivos da impressão digital (scripts/p23/legal_review.py LEGAL_PAGES + a política); o teste confere a igualdade.
+# Arquivos da impressão digital conferidos pelo diff de integridade (scripts/p23/legal_review.py LEGAL_PAGES + a
+# política); os assets referenciados entram pelos bytes no próprio portão.
 LEGAL_FILES = ("sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html",
                "sales-public/privacidade.html", "sales-public/afiliados.html", "privacidade/index.html",
                "afiliados/index.html", "data/politica-unica.json")
-INTEGRITY_LINE = "git diff --exit-code HEAD -- " + " ".join(LEGAL_FILES)
-INTEGRITY_BODY = ("set -euo pipefail", INTEGRITY_LINE)
+# Passo do portão jurídico: o MESMO corpo como primeiro comando do job deploy e logo antes de cada passo que publica.
+# O código do portão vem do gh-pages já mesclado (git show), nunca da árvore em publicação; binários por caminho
+# absoluto; HEAD tem de ser o commit do evento e a árvore não pode esconder mudanças (assume-unchanged/skip-worktree).
+GATE_BODY = (
+    "set -euo pipefail",
+    'test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"',
+    "test -z \"$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)\"",
+    '/usr/bin/git diff --exit-code "$GITHUB_SHA" -- ' + " ".join(LEGAL_FILES),
+    "/usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages",
+    '/usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"',
+    '/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages',
+)
 SETUP_USES = re.compile(r"^actions/(checkout|setup-python|setup-node)@[\w.-]+$")
 STATUS_FN = re.compile(r"\b(always|failure|cancelled)\s*\(")
 FORBIDDEN_ENV = re.compile(r"^(BASH_ENV|ENV|PATH|LD_\w+|PYTHON\w*|NODE_OPTIONS|NODE_PATH|GIT_\w+|SHELLOPTS|BASHOPTS|PS4)$")
-DEPLOY_LINE = re.compile(r"wrangler(?:@[\w.^~-]+)?\s+(?:versions\s+|pages\s+)?(?:deploy|publish)\b"
-                         r"|cloudflare/wrangler-action|cloudflare/pages-action|actions/deploy-pages")
-# Workflow novo/alterado que usa o Environment de produção também conta como "publica" (detecção conservadora).
-PROD_ENV = re.compile(r"^\s*environment:\s*['\"]?producao-critica")
+DEPLOY_ACTION = re.compile(r"cloudflare/wrangler-action|cloudflare/pages-action|actions/deploy-pages")
+CF_API_WRITE = re.compile(r"api\.cloudflare\.com", re.I)
 
 
 def is_anchor(path: str) -> bool:
     return any(fnmatch.fnmatchcase(path, pat) if "*" in pat else path == pat for pat in ANCHORS)
 
 
+WRANGLER_PUBLISH = re.compile(r"\bwrangler(?:@\S+)?\s+(?:--?\S+\s+)*(?:deploy|publish|versions\s+(?:upload|deploy)|pages\s+(?:deploy|publish))\b", re.I)
+VAR_WRANGLER = re.compile(r"(\w+)=\S*wrangler\S*")
+CF_CODE_WRITE = re.compile(r"(-X|--request)\s*(PUT|PATCH)\b|\s(-F|--form)\s|/versions\b|/content\b", re.I)
+
+
 def deploys(text: str, prod_env: bool = False) -> bool:
-    """Linha que publica de verdade (dry-run não conta); com prod_env, usar o Environment de produção também conta."""
-    return any((DEPLOY_LINE.search(l) and "--dry-run" not in l) or (prod_env and PROD_ENV.search(l))
-               for l in text.splitlines() if not l.lstrip().startswith("#"))
+    """Texto (passo ou workflow) que publica código ou conteúdo novo. Conservador: aspas removidas e linhas de
+    continuação juntadas; conta wrangler como comando de publicação (deploy, publish, versions upload/deploy, pages
+    deploy), também via variável (W=wrangler; npx $W deploy), sem --dry-run; envio de código pela API da Cloudflare
+    (PUT/PATCH, multipart, /versions, /content); e as actions de deploy. Rollback para a implantação anterior e exclusão
+    do candidato não publicam nada novo. Nos workflows de deploy decide onde o portão é exigido; fora deles é só
+    informativo (todo workflow já é âncora)."""
+    t = re.sub(r"[\"']", "", re.sub(r"\\\n", " ", text))
+    t = re.sub(r"\bwrangler[\w.-]*\.(?:toml|jsonc?|json)\b", "CFG", t)
+    for l in (x for x in t.splitlines() if not x.lstrip().startswith("#")):
+        if "--dry-run" in l:
+            continue
+        if DEPLOY_ACTION.search(l) or WRANGLER_PUBLISH.search(l):
+            return True
+        for var in VAR_WRANGLER.findall(l):
+            if re.search(r"\$\{?" + re.escape(var) + r"\}?\s+(?:\S+\s+)*?(deploy|publish|versions\s+upload)\b", l):
+                return True
+        if CF_API_WRITE.search(l) and CF_CODE_WRITE.search(l):
+            return True
+        if prod_env and re.search(r"producao-critica", l):
+            return True
+    return False
 
 
 # ---------- leitura estrutural mínima do YAML dos workflows (sem dependência externa; indentação do repositório) ----------
@@ -150,13 +182,15 @@ def validate_deploy_workflow(name: str, text: str) -> list[str]:
         return errs + [f"{name}: job deploy sem steps"]
     _, ks, ke = jkeys["steps"]
     steps = _steps(lines, ks + 1, ke)
-    gates = [n for n, st in enumerate(steps) if (st["keys"].get("run") or {}).get("body") == list(GATE_BODY)]
-    if len(gates) != 1:
-        return errs + [f"{name}: o job deploy precisa de exatamente um passo do portão com: {' / '.join(GATE_BODY)} (achados {len(gates)})"]
+    is_gate = lambda st: (st["keys"].get("run") or {}).get("body") == list(GATE_BODY)
+    gates = [n for n, st in enumerate(steps) if is_gate(st)]
+    if not gates:
+        return errs + [f"{name}: o job deploy não tem o passo do portão ({' / '.join(GATE_BODY)})"]
+    for n in gates:
+        extra = set(steps[n]["keys"]) - {"name", "run", "id"}
+        if extra:
+            errs.append(f"{name}: passo do portão (linha {steps[n]['line']}) com {sorted(extra)}; só name, id e run são aceitos")
     g = gates[0]
-    extra = set(steps[g]["keys"]) - {"name", "run", "id"}
-    if extra:
-        errs.append(f"{name}: passo do portão (linha {steps[g]['line']}) com {sorted(extra)}; só name, id e run são aceitos")
     for st in steps[:g]:
         uses = (st["keys"].get("uses") or {}).get("value", "")
         if set(st["keys"]) - {"uses", "with", "name", "id"} or not SETUP_USES.match(uses):
@@ -170,10 +204,8 @@ def validate_deploy_workflow(name: str, text: str) -> list[str]:
         if STATUS_FN.search(cond):
             errs.append(f"{name}: passo que publica (linha {st['line']}) usa always()/failure()/cancelled() no if")
         prev = steps[n - 1] if n else None
-        ok = prev is not None and (prev["keys"].get("run") or {}).get("body") == list(INTEGRITY_BODY) \
-            and not set(prev["keys"]) - {"name", "run", "id"}
-        if not ok:
-            errs.append(f"{name}: passo que publica (linha {st['line']}) não vem logo depois do passo de integridade ({INTEGRITY_LINE})")
+        if prev is None or not is_gate(prev):
+            errs.append(f"{name}: passo que publica (linha {st['line']}) não vem logo depois do passo do portão (artefato conferido)")
     return errs
 
 
@@ -233,13 +265,12 @@ def main(argv=None) -> int:
         ap.error("--pr-repo, --base-sha e --head-sha são obrigatórios (ou use --validate-workflows)")
     paths = changed_paths(a.pr_repo, a.base_sha, a.head_sha)
     hit = [p for p in paths if is_anchor(p)]
-    new_deploy = [p for p in paths if p.startswith(".github/workflows/") and p not in hit
-                  and deploys(show(a.pr_repo, a.head_sha, p) or "", prod_env=True)]
+    new_deploy = [p for p in paths if p.startswith(".github/") and deploys(show(a.pr_repo, a.head_sha, p) or "", prod_env=True)]
     invalid = validate_tree(lambda p: show(a.pr_repo, a.head_sha, p))
     for p in hit:
         print(f"::error title=TRUST_ANCHOR_CHANGED::{p}: âncora de confiança da revisão jurídica; só entra com decisão explícita e deliberada do proprietário")
     for p in new_deploy:
-        print(f"::error title=TRUST_ANCHOR_DEPLOY_WORKFLOW::{p}: workflow que publica; só entra com decisão explícita e deliberada do proprietário")
+        print(f"::notice title=TRUST_ANCHOR_DEPLOY_WORKFLOW::{p}: além de âncora, parece publicar (informativo)")
     for e in invalid:
         print(f"::error title=LEGAL_GATE_INVALID::{e}")
     if "data/p23/legal-published-baseline.json" in hit and a.base_repo:
@@ -254,8 +285,8 @@ def main(argv=None) -> int:
                   + ("é o texto pré-Release 2 ou de um registro de aprovação válido na base" if ok else "NÃO corresponde a nenhum registro de aprovação válido na base"))
         except (ImportError, ValueError, AttributeError, SystemExit) as e:
             print(f"::error title=TRUST_ANCHOR_BASELINE::não foi possível conferir a linha de base proposta: {e}")
-    if hit or new_deploy:
-        print(f"TRUST_ANCHORS=CHANGED anchors={len(hit) + len(new_deploy)} gate_problems={len(invalid)} files={len(paths)}")
+    if hit:
+        print(f"TRUST_ANCHORS=CHANGED anchors={len(hit)} gate_problems={len(invalid)} files={len(paths)}")
         return 1
     if invalid:
         print(f"TRUST_ANCHORS=GATE_INVALID problems={len(invalid)} files={len(paths)}")

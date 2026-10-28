@@ -32,7 +32,9 @@ const P24 = "scripts/p24/product_quality_check.py";
 const PRODUCTS = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"];
 // Contrato da oferta fixado (gh-pages d01dd5ea): as seis regiões que o P24 exige em toda página de produto.
 const CONTRACT_REGIONS = ["hero_receipt", "offer_receives", "essentials", "scope_features", "method_cards", "offer_method"];
-const CONTRACT_CHAT_PAGES = ["solucoes", ...PRODUCTS, "conteudo-pronto", "termos", "privacidade", "reembolso"];
+// Rodada 5: as páginas jurídicas saem do chat (servidas byte a byte do artefato); as de oferta continuam com ele.
+const LEGAL_ROUTES = ["termos", "reembolso", "privacidade", "afiliados"];
+const CONTRACT_CHAT_PAGES = ["solucoes", ...PRODUCTS, "conteudo-pronto"];
 const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
 
 function py(code, args = [], cwd = ROOT) {
@@ -119,7 +121,8 @@ test("R4.4 o chat cobre as mesmas páginas da base, com o widget publicado e o c
   const ref = baseRef();
   const base = ref && gitShow(ref, "worker/sales-public-worker.mjs");
   const m = base && /SITE_CHAT_PAGES=Object\.freeze\(new Set\((\[[^\]]*\])\)\)/.exec(base);
-  if (m) for (const p of JSON.parse(m[1])) assert.ok(SITE_CHAT_PAGES.has(p), `[R4.4.2] página com chat na base (${ref}) perdeu o chat: ${p}`);
+  if (m) for (const p of JSON.parse(m[1]).filter((x) => !LEGAL_ROUTES.includes(x))) assert.ok(SITE_CHAT_PAGES.has(p), `[R4.4.2] página de oferta com chat na base (${ref}) perdeu o chat: ${p}`);
+  for (const p of LEGAL_ROUTES) assert.ok(!SITE_CHAT_PAGES.has(p), `[R4.4.2b] página jurídica ${p} não pode receber o chat`);
   for (const f of ["site-chat.js", "site-chat.css"]) {
     assert.ok(existsSync(join(ROOT, "sales-public", f)), `[R4.4.3] sales-public/${f} ausente`);
     assert.ok(existsSync(join(ROOT, "sales-overlay", f)), `[R4.4.4] sales-overlay/${f} ausente`);

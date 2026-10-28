@@ -24,7 +24,7 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p23-ecommerce-legal.test.mjs"]
-COPY_DIRS = []
+COPY_DIRS = ["sales-public/assets", "sales-public/brand"]  # rodada 5: assets das páginas jurídicas entram na impressão digital
 COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/toolchain.mjs", "scripts/p23/ecommerce_legal_gate.py", "scripts/p23/legal_review.py",
                       "worker/fiscal-process.mjs", "worker/commercial-checkout-guard.mjs", "worker/sales-control.mjs",
                       "worker/commercial-metrics-projection.mjs", "worker/internal-financial-audit.mjs",

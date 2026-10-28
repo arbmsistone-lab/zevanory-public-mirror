@@ -40,11 +40,6 @@ jobs:
           python3 -m py_compile scripts/zevanory_crown_gate.py
           python3 -m py_compile scripts/test_crown_negative.py
 
-      - name: Legal gate structure in the deploy workflows (M-A MED-1; also checked by legal-trust-anchors-protected)
-        run: |
-          set -euo pipefail
-          python3 -I scripts/p23/trust_anchor_guard.py --validate-workflows --root .
-
       - name: Sales promises match the delivered material (P24)
         run: |
           set -euo pipefail

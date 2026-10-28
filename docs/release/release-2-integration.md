@@ -139,3 +139,21 @@ M-B, L-1 e R4 foram confirmados. M-A estava parcial; as correções estão abaix
 - **LOW-3.** Código morto `_entry_introduced` removido.
 - **LOW-5.** O procedimento foi reescrito. Os passos do proprietário ficaram explícitos: tornar o check obrigatório e desligar o merge por rebase. O risco de rebase foi descrito corretamente, e o escopo da impressão digital (`/privacidade` e `/afiliados`) está documentado.
 - **Linhas citadas por #949.** Foram atualizadas de novo (`compat.mjs:174` e `:603`), porque o atalho da lista de espera deslocou o arquivo.
+
+## Reauditoria rodada 5 (sobre `ae8e4d51`): desenho por bytes
+
+O desenho convergiu para bytes do artefato, em vez de texto e padrões. O procedimento completo está em `docs/legal/legal-review-procedure.md`.
+
+1. **Portão do artefato antes de cada deploy.**
+   - A impressão digital é o SHA-256 dos bytes de cada página jurídica servida e de todo asset que ela referencia (CSS, JS, fontes, imagens), resolvido no artefato, mais as fontes na raiz e os textos de consumo.
+   - O passo do portão é o primeiro comando do job `deploy` e se repete logo antes de cada passo que publica. Ele lê o código do portão do gh-pages com `git show`.
+   - A gênese foi recalculada (`46675c70…`, igual em `b7671272`, `d01dd5ea` e `a6068e6a`).
+   - Testes: G12 (`hide`, `input`, `srcdoc`, `attr`, `css`, asset ausente ou externo) e G8.
+2. **Worker sem injeção nas rotas jurídicas.** `LEGAL_ROUTES` servem o corpo byte a byte do artefato, e as páginas jurídicas saíram de `SITE_CHAT_PAGES`. Teste `tests/legal-routes-artifact.test.mjs`, com o Worker real: chat ligado, vendas abertas, UTM, gzip e barra final.
+3. **Integridade contra `$GITHUB_SHA`.** O passo exige `HEAD = $GITHUB_SHA`, nenhum `assume-unchanged` ou `skip-worktree`, `git diff --exit-code "$GITHUB_SHA"` e binários por caminho absoluto. Teste G13: commit local (r5-b1), `assume-unchanged` e reescrita simples.
+4. **Âncoras conservadoras.**
+   - Qualquer mudança em `.github/workflows/` ou `.github/actions/` é `CHANGED`.
+   - O que serve as rotas jurídicas também virou âncora: `sales-worker.mjs`, `worker/sales-public-worker.mjs`, `worker/politica-unica.mjs`, `wrangler.sales.toml` e `scripts/ci/materialize_sales_configs.py`.
+   - Teste G14: W1, V2 e as variantes de r5-newwf.
+5. **Validador só no check protegido.** O passo foi removido de `product-pages-premerge.yml` (que roda com a definição do PR). A detecção de deploy ficou conservadora: aspas, variável, API e actions. Teste G11, com as variantes V1, variável, API e as do portão.
+6. As saídas dos scripts do auditor contra o novo head estão em `docs/evidence/pr946-round5-audit/`.

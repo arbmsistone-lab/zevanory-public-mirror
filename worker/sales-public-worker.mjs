@@ -349,9 +349,12 @@ async function comprarRoute(request,env,ctx,match){
 // sem SITE_CHAT_ENABLED="true" neste Worker as rotas /api/chat* respondem 503 aqui mesmo (sem chamar o
 // central) e nenhuma página recebe o widget. Ligado: o widget (CSS/JS próprios, sem script de terceiros,
 // sem inline, compatível com a CSP) só é anexado às páginas abaixo e só abre por ação da pessoa.
-export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto","termos","privacidade","reembolso"]));
+// Rodada 5 (reauditoria do PR #946): páginas jurídicas são servidas BYTE A BYTE do artefato (o que o portão jurídico
+// conferiu): sem chat, sem troca de HTML de vendas, sem UTM nem compressão no corpo. Nenhuma está em SITE_CHAT_PAGES.
+export const LEGAL_ROUTES=Object.freeze(new Set(["termos","reembolso","privacidade","afiliados"]));
+export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto"]));
 export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";
-export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
+export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&!LEGAL_ROUTES.has(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
 export function injectSiteChatHtml(html){
   let out=String(html);
   if(out.includes('src="/site-chat.js"'))return out;
@@ -428,6 +431,15 @@ export default{async fetch(request,env,ctx){
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
   let response=await env.ASSETS.fetch(new Request(url,request));
+  if(LEGAL_ROUTES.has(page)){
+    // Byte a byte: o corpo é exatamente o arquivo do artefato; só os cabeçalhos são da resposta.
+    const lh=new Headers(response.headers);
+    lh.set("x-robots-tag","index,follow");
+    if(response.status===200) lh.set("cache-control",PAGE_CACHE_CONTROL);
+    applySecurityHeaders(lh);
+    if(response.status===200) countView(request,env,ctx,page,"views",null);
+    return new Response(request.method==="HEAD"?null:response.body,{status:response.status,statusText:response.statusText,headers:lh});
+  }
   // Designed 404 for unknown PAGE paths (no file extension); asset 404s stay plain. Never cached.
   if(response.status===404&&!page&&(request.method==="GET"||request.method==="HEAD")&&!/\.[a-z0-9]{1,8}$/i.test(url.pathname)){
     const nf=await env.ASSETS.fetch(new Request(new URL("/404.html",request.url),{method:"GET"}));

@@ -44,6 +44,25 @@ const HUNK_CLOSED_BLOCK = `  // Site audit S-04: the closed-sales sign-up block 
   // nested section; it disappears with the notice when the owner opens sales.
   out=out.replace(/<section\\b[^>]*\\sdata-zev-closed-block[^>]*>(?:(?!<section\\b)[\\s\\S])*?<\\/section>/g,"");
 `;
+// Reauditoria do PR #946, rodada 5: quarta diferença intencional. As rotas jurídicas são servidas byte a byte do
+// artefato (sem chat, sem HTML do modo aberto, sem UTM nem compressão no corpo) e saem da lista do chat.
+const HUNK_LEGAL_CONST_NEW = `// Rodada 5 (reauditoria do PR #946): páginas jurídicas são servidas BYTE A BYTE do artefato (o que o portão jurídico
+// conferiu): sem chat, sem troca de HTML de vendas, sem UTM nem compressão no corpo. Nenhuma está em SITE_CHAT_PAGES.
+export const LEGAL_ROUTES=Object.freeze(new Set(["termos","reembolso","privacidade","afiliados"]));
+export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto"]));`;
+const HUNK_LEGAL_CONST_OLD = `export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto","termos","privacidade","reembolso"]));`;
+const HUNK_LEGAL_INJECT_NEW = "export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&!LEGAL_ROUTES.has(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);";
+const HUNK_LEGAL_INJECT_OLD = "export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);";
+const HUNK_LEGAL_ROUTE = `  if(LEGAL_ROUTES.has(page)){
+    // Byte a byte: o corpo é exatamente o arquivo do artefato; só os cabeçalhos são da resposta.
+    const lh=new Headers(response.headers);
+    lh.set("x-robots-tag","index,follow");
+    if(response.status===200) lh.set("cache-control",PAGE_CACHE_CONTROL);
+    applySecurityHeaders(lh);
+    if(response.status===200) countView(request,env,ctx,page,"views",null);
+    return new Response(request.method==="HEAD"?null:response.body,{status:response.status,statusText:response.statusText,headers:lh});
+  }
+`;
 const CLOSED_BLOCK_RE = /<section\b[^>]*\sdata-zev-closed-block[^>]*>(?:(?!<section\b)[\s\S])*?<\/section>/g;
 const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex"); };
 
@@ -51,7 +70,9 @@ async function loadWorkers() {
   assert.equal(NEW_SRC.split(HUNK_HOTMART_NEW).length, 2, "Hotmart hunk present exactly once");
   assert.equal(NEW_SRC.split(HUNK_404).length, 2, "404 hunk present exactly once");
   assert.equal(NEW_SRC.split(HUNK_CLOSED_BLOCK).length, 2, "closed-block hunk present exactly once");
-  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "").replace(HUNK_CLOSED_BLOCK, "");
+  for (const h of [HUNK_LEGAL_CONST_NEW, HUNK_LEGAL_INJECT_NEW, HUNK_LEGAL_ROUTE]) assert.equal(NEW_SRC.split(h).length, 2, "legal-route hunk present exactly once");
+  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "").replace(HUNK_CLOSED_BLOCK, "")
+    .replace(HUNK_LEGAL_CONST_NEW, HUNK_LEGAL_CONST_OLD).replace(HUNK_LEGAL_INJECT_NEW, HUNK_LEGAL_INJECT_OLD).replace(HUNK_LEGAL_ROUTE, "");
   assert.equal(gitBlob(oldSrc), GH_PAGES_BLOB, "reverse-applied file is byte-identical to the gh-pages Worker (no other change)");
   const tmp = join(ROOT, "worker", `.gh-pages-sales-worker-${process.pid}-${Date.now()}.mjs`);
   writeFileSync(tmp, oldSrc);

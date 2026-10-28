@@ -59,7 +59,8 @@ tests/lab-cancelamento-pagamentos-pendentes.test.mjs 8
 tests/lab-fechamento-apos-cobranca.test.mjs 11
 tests/lead-magnet.test.mjs 15
 tests/lead-submit-count.test.mjs 4
-tests/legal-publish-gate.test.mjs 11
+tests/legal-publish-gate.test.mjs 14
+tests/legal-routes-artifact.test.mjs 3
 tests/link-vencido-nao-reutilizado.test.mjs 5
 tests/live-runtime-status.test.mjs 5
 tests/market-weekly.test.mjs 2

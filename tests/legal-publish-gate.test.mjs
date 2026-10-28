@@ -21,6 +21,9 @@ const LEGAL = join(REPO, "scripts/p23/legal_review.py");
 const GUARD = join(REPO, "scripts/p23/trust_anchor_guard.py");
 const FILES = ["sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html", "sales-public/privacidade.html", "sales-public/afiliados.html", "privacidade/index.html", "afiliados/index.html", "data/politica-unica.json", "data/p23/legal-published-baseline.json", "data/p23/legal-reviewers.json",
   ".github/workflows/zevanory-sales-public-release.yml", ".github/workflows/central-production-deploy.yml"];
+// Rodada 5: a impressão digital cobre os bytes dos assets das páginas jurídicas (CSS, fontes, imagens): as fixtures copiam.
+{ const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", REPO, "--artifact-files"], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+  for (const rel of r.stdout.split("\n").map((x) => x.trim()).filter(Boolean)) if (!FILES.includes(rel)) FILES.push(rel); }
 const read = (p) => readTextNormalized(p);
 const PYENV = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONDONTWRITEBYTECODE: "1" };
 const py = (script, args) => { const r = spawnSync(PYTHON, ["-I", script, ...args], { encoding: "utf8", env: PYENV }); return { code: r.status, out: (r.stdout || "") + (r.stderr || "") }; };
@@ -211,8 +214,8 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
       ["coe", () => edit(SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        continue-on-error: true")), /LEGAL_GATE_INVALID/],
       ["ift", () => edit(CENTRAL, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        if: ${{ false }}")), /LEGAL_GATE_INVALID/],
       ["ortrue", () => edit(SALES, (t) => t.replace(GL + "\n", GL + " || true\n")), /LEGAL_GATE_INVALID/],
-      ["newwf", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/x.yml"), "name: x\non: {push: {branches: [gh-pages]}}\njobs:\n  d:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: python3 scripts/build_sales_public.py && npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml\n"); }, /TRUST_ANCHOR_DEPLOY_WORKFLOW/],
-      ["newwf-env", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/y.yml"), "name: y\non: push\njobs:\n  d:\n    environment: producao-critica\n    runs-on: ubuntu-latest\n    steps:\n      - run: bash scripts/qualquer.sh\n"); }, /TRUST_ANCHOR_DEPLOY_WORKFLOW/],
+      ["newwf", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/x.yml"), "name: x\non: {push: {branches: [gh-pages]}}\njobs:\n  d:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: python3 scripts/build_sales_public.py && npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml\n"); }, /TRUST_ANCHOR_CHANGED::\.github\/workflows\/x\.yml/],
+      ["newwf-env", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/y.yml"), "name: y\non: push\njobs:\n  d:\n    environment: producao-critica\n    runs-on: ubuntu-latest\n    steps:\n      - run: bash scripts/qualquer.sh\n"); }, /TRUST_ANCHOR_CHANGED::\.github\/workflows\/y\.yml/],
     ]) {
       git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-wf");
       change(); const head = commit(root, "PR " + label);
@@ -229,13 +232,14 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
     assert.equal(c.code, 1, "[G6.6] " + c.out);
     assert.match(c.out, /TRUST_ANCHOR_CHANGED::\.github\/workflows\/central-production-deploy\.yml/, "[G6.6a] workflow de deploy é âncora");
     assert.doesNotMatch(c.out, /LEGAL_GATE_INVALID/, "[G6.6b] a estrutura continua válida");
-    // Workflow novo que não publica (dry-run ou nenhum deploy) passa.
+    // Rodada 5: QUALQUER workflow novo ou alterado é âncora, mesmo sem deploy (a detecção de deploy é só informativa).
     git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-wf-ok");
     mkdirSync(join(root, ".github/workflows"), { recursive: true });
     writeFileSync(join(root, ".github/workflows/z.yml"), "name: z\non: pull_request\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx --yes wrangler@4.143.0 deploy --dry-run --config wrangler.sales.toml\n");
     const okHead = commit(root, "PR workflow sem deploy real");
     const ok2 = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", okHead]);
-    assert.equal(ok2.code, 0, "[G6.5] " + ok2.out);
+    assert.equal(ok2.code, 1, "[G6.5] " + ok2.out);
+    assert.match(ok2.out, /TRUST_ANCHOR_CHANGED::\.github\/workflows\/z\.yml/, "[G6.5a]");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -246,12 +250,13 @@ test("G7 os dois workflows de publicação leem as âncoras do gh-pages mesclado
   ]) {
     const y = read(join(REPO, wf));
     const body = y.slice(y.indexOf("  deploy:"));
-    const gateAt = body.indexOf("scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages");
+    const gateAt = body.indexOf('/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages');
     assert.ok(gateAt > 0, `[G7.1] ${wf}: portão ancorado no job deploy`);
-    assert.ok(body.lastIndexOf("git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages", gateAt) > 0, `[G7.1a] ${wf}: busca o gh-pages`);
+    assert.ok(body.lastIndexOf("/usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages", gateAt) > 0, `[G7.1a] ${wf}: busca o gh-pages`);
+    assert.ok(body.lastIndexOf('/usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"', gateAt) > 0, `[G7.1b] ${wf}: código do portão vem do gh-pages`);
     assert.ok(gateAt < body.indexOf(firstMutation) && gateAt < body.indexOf("wrangler"), `[G7.2] ${wf}: antes de '${firstMutation}' e do wrangler`);
     const step = body.slice(body.lastIndexOf("- name:", gateAt), body.indexOf("- name:", gateAt + 1));
-    assert.doesNotMatch(step, /continue-on-error|\|\|\s*true|\bif:/, `[G7.3] ${wf}: o passo não pode ser ignorado`);
+    assert.doesNotMatch(step, /continue-on-error|\|\|\s*true\s*$|\bif:/m, `[G7.3] ${wf}: o passo não pode ser ignorado`);
   }
   const p = read(join(REPO, ".github/workflows/legal-trust-anchors-protected.yml"));
   assert.match(p, /on:\n  pull_request_target:\n\npermissions:\n  contents: read/, "[G7.4] pull_request_target, só leitura, sem filtro de caminho");
@@ -279,12 +284,16 @@ test("G8 MED-2: a impressão digital cobre TODO o texto visível; isca em coment
     const pre = swap((h) => h.replace(/<main\b/, "<p>Aviso novo fora do main.</p><main"));
     assert.notEqual(pre.out.trim(), fp0, "[G8.3] texto antes de <main> muda a impressão digital");
     // Dois <main> (fora de comentário) reprovam com erro explícito.
-    const two = swap((h) => h.replace("</main>", "</main><main><p>x</p></main>"));
+    // Dois <main> (fora de comentário) numa página SERVIDA reprovam com erro explícito.
+    const served = join(root, "sales-public/termos.html"), servedOrig = read(served);
+    writeFileSync(served, servedOrig.replace("</main>", "</main><main><p>x</p></main>"));
+    const two = py(LEGAL, ["--root", root, "--fingerprint"]);
+    writeFileSync(served, servedOrig);
     assert.notEqual(two.code, 0, "[G8.4] dois <main> reprovam");
-    assert.match(two.out, /LEGAL_FINGERPRINT_MAIN_INVALID termos\/index.html/, "[G8.4a]");
-    // Comentário sem texto visível não muda nada.
+    assert.match(two.out, /LEGAL_FINGERPRINT_MAIN_INVALID sales-public\/termos.html/, "[G8.4a]");
+    // Rodada 5: a impressão digital é por BYTES; até um comentário muda (nada passa sem revisão).
     const com = swap((h) => h.replace("</main>", "<!-- nota interna --></main>"));
-    assert.equal(com.out.trim(), fp0, "[G8.5] comentário puro não muda a impressão digital");
+    assert.notEqual(com.out.trim(), fp0, "[G8.5] qualquer byte muda a impressão digital");
     // Portão: a isca A1 mesclada no gh-pages não passa como texto publicado.
     writeFileSync(termos, original.replace(/<main\b[^>]*>[\s\S]*?<\/main>/, (m) => "<!--" + m + "--><main><p>CLÁUSULA NOVA</p></main>"));
     commit(root, "isca A1");
@@ -347,14 +356,20 @@ test("G11 validação estrutural dos workflows de deploy (--validate-workflows):
     assert.match(real.out, /LEGAL_GATE_WORKFLOWS=VALID/, "[G11.1a]");
     const GATE_NAME = "      - name: Legal review gate (M1; fail closed while the new legal text is PENDING)";
     const GL = "--anchors-ref refs/remotes/origin/gh-pages";
-    const INTEG = /      - name: Legal text integrity before the candidate deploy[^\n]*\n        run: \|\n          set -euo pipefail\n          git diff --exit-code HEAD -- [^\n]*\n\n/;
+    const INTEG = /      - name: Legal artifact gate before the candidate deploy[^\n]*\n        run: \|\n(?:          [^\n]*\n)+\n/;
     const gateBlock = (t) => t.slice(t.indexOf(GATE_NAME), t.indexOf("      - name: Require authenticated deployment authority"));
     for (const [label, rel, fn] of [
       ["continue-on-error no passo", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        continue-on-error: true")],
       ["if no passo", CENTRAL, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        if: ${{ false }}")],
       ["|| true", SALES, (t) => t.replace(GL + "\n", GL + " || true\n")],
       ["shell trocado no passo", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        shell: bash -c 'true {0}'")],
-      ["passo sem o portão", CENTRAL, (t) => t.replace("          python3 -I scripts/p23/legal_review.py --root . --publish-gate " + GL + "\n", "          true\n")],
+      ["passo sem o portão", CENTRAL, (t) => t.replace('          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate ' + GL + "\n", "          true\n")],
+      ["portão da árvore em vez do gh-pages", SALES, (t) => t.replace('/usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"', 'cp scripts/p23/legal_review.py "$RUNNER_TEMP/legal_gate.py"')],
+      ["integridade contra HEAD local", SALES, (t) => t.replace('/usr/bin/git diff --exit-code "$GITHUB_SHA" --', "/usr/bin/git diff --exit-code HEAD --")],
+      ["sem conferir HEAD = GITHUB_SHA", CENTRAL, (t) => t.replace('          test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"\n', "")],
+      ["V1 do auditor: deploy com wrangler entre aspas e if: always() antes do portão", SALES, (t) => t.replace("      - name: Require authenticated deployment authority\n", '      - name: Deploy anyway\n        if: always()\n        run: npx --yes "wrangler@4.143.0" deploy --config wrangler.sales.deploy.toml\n      - name: Require authenticated deployment authority\n')],
+      ["deploy via variável depois do portão", CENTRAL, (t) => t.replace("      - name: Determine authenticated public-owner deployment authority\n", "      - name: Sneak\n        run: W=wrangler; npx --yes $W deploy --config wrangler.central-fix.jsonc\n      - name: Determine authenticated public-owner deployment authority\n")],
+      ["upload pela API da Cloudflare depois do portão", SALES, (t) => t.replace("      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test", '      - name: Sneak\n        run: curl -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/x/workers/scripts/zevanory-sales-public -F metadata=@m.json\n      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test')],
       ["portão depois do build", SALES, (t) => { const g = gateBlock(t); return t.replace(g, "").replace("      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test", g + "      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)\n        run: |\n          set -euo pipefail\n          test"); }],
       ["passo antes do portão reescreve o script", CENTRAL, (t) => t.replace(GATE_NAME, "      - run: echo 'print(0)' > scripts/p23/legal_review.py\n" + GATE_NAME)],
       ["deploy sem integridade antes", SALES, (t) => t.replace(INTEG, "")],
@@ -374,4 +389,91 @@ test("G11 validação estrutural dos workflows de deploy (--validate-workflows):
     const lr = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l, trust_anchor_guard as g; print(list(l.LEGAL_PAGES) + [l.POLICY] == list(g.LEGAL_FILES))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
     assert.equal(lr.stdout.trim(), "True", "[G11.4] " + lr.stdout + lr.stderr);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------- Rodada 5: cada reprodução do auditor (scratchpad/audit-v12/pr946-r5/tools) falha fechada ----------
+test("G12 MED-2 r5: atributo, elemento escondido, input, srcdoc, attr()/::after e CSS externo mudam a impressão digital", () => {
+  const { root } = repo();
+  try {
+    const fp0 = fp(root);
+    const pages = ["sales-public/reembolso.html", "reembolso/index.html"];
+    const css = FILES.filter((f) => /^sales-public\/assets\/legal\.[0-9a-f]+\.css$/.test(f));
+    assert.ok(css.length === 1, "[G12.0] CSS das páginas jurídicas entra na impressão digital: " + css);
+    const snapshot = () => Object.fromEntries([...pages, ...css].map((f) => [f, read(join(root, f))]));
+    const orig = snapshot();
+    const restore = () => { for (const [f, t] of Object.entries(orig)) writeFileSync(join(root, f), t); };
+    for (const [label, fn] of [
+      ["hide", () => { for (const f of pages) { const p = join(root, f); writeFileSync(p, read(p).replace("<h2>", '<h2 style="display:none">').replace(/(<h2 style="display:none">[\s\S]*?<\/h2>)\s*<p>/, "$1<p hidden>")); } }],
+      ["input", () => { for (const f of pages) { const p = join(root, f); writeFileSync(p, read(p).replace("</main>", '<input readonly value="CLÁUSULA NOVA: nenhum reembolso após o download."></main>')); } }],
+      ["srcdoc", () => { for (const f of pages) { const p = join(root, f); writeFileSync(p, read(p).replace("</main>", '<iframe srcdoc="&lt;p&gt;CLÁUSULA NOVA: nenhum reembolso.&lt;/p&gt;"></iframe></main>')); } }],
+      ["attr", () => { for (const f of pages) { const p = join(root, f); writeFileSync(p, read(p).replace(/<h1([^>]*)>/, '<h1$1 data-c=" — CLÁUSULA NOVA: nenhum reembolso">')); } for (const c of css) writeFileSync(join(root, c), read(join(root, c)) + "h1[data-c]::after{content:attr(data-c)}\n"); }],
+      ["css", () => { for (const c of css) writeFileSync(join(root, c), read(join(root, c)) + 'main h1::after{content:" — CLÁUSULA NOVA: nenhum reembolso"} main h2:nth-of-type(2){display:none}\n'); }],
+    ]) {
+      fn();
+      const v = fp(root);
+      assert.notEqual(v, fp0, `[G12.1] ${label}: a impressão digital tem de mudar`);
+      restore();
+    }
+    // Merge do ataque CSS: o portão bloqueia (texto publicado ≠ artefato).
+    writeFileSync(join(root, css[0]), read(join(root, css[0])) + 'main h1::after{content:"CLÁUSULA NOVA"}\n');
+    commit(root, "PR só CSS");
+    const g = gate(root);
+    assert.equal(g.code, 1, "[G12.2] " + g.out);
+    assert.match(g.out, /LEGAL_PUBLISH_GATE=BLOCKED/, "[G12.2a]");
+    // Asset referenciado ausente ou externo reprova (fail-closed).
+    const pg = join(root, "sales-public/termos.html");
+    writeFileSync(pg, read(pg).replace("</head>", '<link rel="stylesheet" href="/assets/nao-existe.css"></head>'));
+    assert.match(py(LEGAL, ["--root", root, "--fingerprint"]).out, /LEGAL_ASSET_MISSING/, "[G12.3] asset ausente");
+    writeFileSync(pg, read(pg).replace('/assets/nao-existe.css', "https://cdn.example/x.css"));
+    assert.match(py(LEGAL, ["--root", root, "--fingerprint"]).out, /LEGAL_ASSET_EXTERNAL/, "[G12.4] asset externo");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("G13 MED-1 r5 (B1): build que reescreve a página e faz commit local, assume-unchanged ou só reescreve: o passo do portão falha", () => {
+  requireTool("bash");
+  // As quatro primeiras linhas do passo do portão, exatamente como no workflow (git pelo PATH no teste).
+  const body = spawnSync(PYTHON, ["-I", "-c", "import sys, json; sys.path.insert(0, sys.argv[1]); import trust_anchor_guard as g; print(json.dumps(list(g.GATE_BODY[:4])))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
+  const lines = JSON.parse(body.stdout).map((l) => l.replaceAll("/usr/bin/git", "git"));
+  const runBody = (root, sha) => spawnSync("bash", ["-c", lines.join("\n")], { cwd: root, encoding: "utf8", env: { ...GIT_ENV, GITHUB_SHA: sha } });
+  for (const [label, attack, wantLine] of [
+    ["commit local (r5-b1)", (root) => { word(root, "<h1>", "<h1>CLÁUSULA NOVA: nenhum reembolso. "); git(root, "commit", "-qam", "build"); }, /rev-parse/],
+    ["assume-unchanged", (root) => { word(root, "<h1>", "<h1>CLÁUSULA NOVA. "); git(root, "update-index", "--assume-unchanged", "sales-public/termos.html"); }, /ls-files/],
+    ["só reescreve", (root) => { word(root, "<h1>", "<h1>CLÁUSULA NOVA. "); }, /diff/],
+  ]) {
+    const { root, text } = repo();
+    try {
+      assert.equal(runBody(root, text).status, 0, `[G13.0] ${label}: árvore limpa passa`);
+      attack(root);
+      const r = runBody(root, text);
+      assert.notEqual(r.status, 0, `[G13.1] ${label}: o passo do portão tem de falhar`);
+      assert.ok(wantLine.test(lines.join("\n")), `[G13.2] ${label}`);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+test("G14 r5: Worker de vendas (W1), premerge (V2) e workflows novos (r5-newwf) são âncoras: CHANGED", () => {
+  const { root, text: base } = repo();
+  try {
+    const wf = (name, body) => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows", name), body); };
+    const fileEdit = (rel, body) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), body); };
+    const HDR = "name: n\non:\n  push:\n    branches: [gh-pages]\njobs:\n  d:\n    runs-on: ubuntu-latest\n";
+    for (const [label, change, path] of [
+      ["W1 Worker de vendas", () => fileEdit("worker/sales-public-worker.mjs", "export default {};\n"), "worker/sales-public-worker.mjs"],
+      ["W1 entrada do Worker", () => fileEdit("sales-worker.mjs", "export default {};\n"), "sales-worker.mjs"],
+      ["config wrangler de vendas", () => fileEdit("wrangler.sales.toml", "name = \"x\"\n"), "wrangler.sales.toml"],
+      ["V2 premerge", () => wf("product-pages-premerge.yml", "name: p\non: pull_request\njobs: {}\n"), ".github/workflows/product-pages-premerge.yml"],
+      ["newwf quoted", () => wf("n.yml", HDR + "    environment:\n      name: producao-critica\n    steps:\n      - run: npx --yes \"wrangler@4.143.0\" deploy\n"), ".github/workflows/n.yml"],
+      ["newwf varcmd", () => wf("n.yml", HDR + "    environment: { name: producao-critica }\n    steps:\n      - run: W=wrangler; npx --yes $W deploy\n"), ".github/workflows/n.yml"],
+      ["newwf npmscript", () => wf("n.yml", HDR + "    steps:\n      - run: node scripts/deploy/any.mjs\n"), ".github/workflows/n.yml"],
+      ["newwf apicurl", () => wf("n.yml", HDR + "    steps:\n      - run: curl -X PUT https://api.cloudflare.com/client/v4/accounts/x/workers/scripts/y -F m=@m\n"), ".github/workflows/n.yml"],
+      ["action local", () => fileEdit(".github/actions/x/action.yml", "runs: {using: composite, steps: []}\n"), ".github/actions/x/action.yml"],
+    ]) {
+      git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-r5");
+      change(); const head = commit(root, "PR " + label);
+      const r = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", head]);
+      assert.equal(r.code, 1, `[G14.1] ${label}: ${r.out}`);
+      assert.match(r.out, /TRUST_ANCHORS=CHANGED/, `[G14.2] ${label}`);
+      assert.ok(r.out.includes("TRUST_ANCHOR_CHANGED::" + path), `[G14.3] ${label}: ${path} citado`);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -169,14 +169,19 @@ jobs:
       - name: Legal review gate (M1; fail closed while the new legal text is PENDING)
         # The central Worker serves the consumer texts of data/politica-unica.json (support, refund, chat) and the
         # legal surfaces. Same rule as the sales release: unchanged published text passes; new text needs approval.
-        # MED-1 (round 4): FIRST command of the job, before any step that runs repository code (structure checked by
-        # scripts/p23/trust_anchor_guard.py; this workflow is a trust anchor).
+        # Round 5: FIRST command of the job (fail fast) and again right before EACH deploy step. The gate code is read
+        # from the merged gh-pages (git show), binaries by absolute path, HEAD must be GITHUB_SHA, and the fingerprint
+        # covers the BYTES of every served legal page and of every asset it references (scripts/p23/legal_review.py).
         # M-A: reviewer registry, baseline, approval records and legal_review come from the already-merged gh-pages,
         # verified against git history (authorization and reviewed commits), never from the tree being published.
         run: |
           set -euo pipefail
-          git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
-          python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+          test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)"
+          /usr/bin/git diff --exit-code "$GITHUB_SHA" -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          /usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          /usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 
       - name: Materialize exact canonical runtime sources
         shell: bash
@@ -341,10 +346,15 @@ jobs:
             exit 1
           fi
 
-      - name: Legal text integrity before the production deploy (MED-1 and MED-2, the tree still holds the text the gate checked)
+      - name: Legal artifact gate before the production deploy (round 5, base gate code on the exact bytes that ship)
         run: |
           set -euo pipefail
-          git diff --exit-code HEAD -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)"
+          /usr/bin/git diff --exit-code "$GITHUB_SHA" -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          /usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          /usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 
       - name: Deploy repaired production worker
         id: deployworker

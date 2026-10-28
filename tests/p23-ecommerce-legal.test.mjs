@@ -25,6 +25,9 @@ const FILES = ["data/politica-unica.json", "data/products.json", "data/p23/fisca
   ...readdirSync(join(REPO, "sales-public")).filter((f) => f.endsWith(".html")).map((f) => `sales-public/${f}`)];
 
 const LEGAL = join(REPO, "scripts/p23/legal_review.py");
+// Rodada 5: a impressão digital cobre os bytes dos assets das páginas jurídicas; as fixtures copiam esses arquivos também.
+{ const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", REPO, "--artifact-files"], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+  for (const rel of r.stdout.split("\n").map((x) => x.trim()).filter(Boolean)) if (!FILES.includes(rel)) FILES.push(rel); }
 const fingerprint = (root) => { const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", root, "--fingerprint"], { encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); return r.stdout.trim(); };
 // Aprovação no formato real (M1): revisor cadastrado pelo proprietário, nome igual, data ISO, SHA-256 do texto revisado,
 // commit, versão do documento e registro auditável versionado com os mesmos campos.

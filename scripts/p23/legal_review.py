@@ -6,10 +6,15 @@ Uma única regra, usada em dois lugares:
   * os workflows que PUBLICAM /termos e /reembolso (zevanory-sales-public-release.yml, job deploy, e
     central-production-deploy.yml, job deploy), com --publish-gate, antes de qualquer chamada à Cloudflare.
 
-Impressão digital (legal_fingerprint): SHA-256 do texto visível de <main> das páginas jurídicas publicadas
-(sales-public/termos.html, sales-public/reembolso.html, termos/index.html, reembolso/index.html) e dos textos de consumo
-de data/politica-unica.json que o Worker e o chat repetem (sol_text, rule_7d, customer_wording, refund_channels). Só o
-texto conta: trocar o nome de um asset ou o HTML em volta não muda a impressão digital; mudar uma palavra muda.
+Impressão digital (legal_fingerprint), rodada 5: SHA-256 dos BYTES de tudo o que forma as páginas jurídicas como são
+servidas pelo Worker de vendas: cada página (sales-public/termos, reembolso, privacidade e afiliados), todo asset que ela
+referencia (CSS, JS, fontes, imagens, iframes; CSS seguido em url()/@import), resolvido no próprio artefato (asset
+ausente, externo ou fora do artefato reprova), as fontes dessas páginas na raiz (termos/, reembolso/, privacidade/,
+afiliados/) e os textos de consumo de data/politica-unica.json (sol_text, rule_7d, customer_wording, refund_channels,
+legal_document_version). Qualquer byte diferente (texto, atributo, CSS, ::after, elemento escondido) muda a impressão
+digital. Cada página servida também precisa ter exatamente um <main> fora de comentários.
+No deploy, o portão roda logo antes de CADA passo que publica, com o código lido do gh-pages mesclado (git show), sobre
+o artefato exato que vai ao ar; as rotas jurídicas do Worker servem esses bytes sem nenhuma alteração.
 
 Aprovação válida (validate_approval), em data/politica-unica.json -> legal_review. Uma string livre não basta:
   * identidade AUTORIZADA: reviewer_id cadastrado em data/p23/legal-reviewers.json (nome, registro profissional,
@@ -57,7 +62,7 @@ REVIEWERS = "data/p23/legal-reviewers.json"
 RECORDS = "docs/legal/reviews"
 POLICY = "data/politica-unica.json"
 # Texto jurídico publicado antes da Release 2 (gh-pages b7671272): a única linha de base aceita sem registro de aprovação.
-GENESIS_BASELINE = "aa8e8d73b1efdf1bccf133e39f63e59aed137e52d0560ffc1106d335a076634d"
+GENESIS_BASELINE = "46675c70c28a34ac1a30051a645dbf258d6aa7905c539df9c2bb3807acef9f68"
 CLOCK_SKEW = dt.timedelta(minutes=5)
 
 
@@ -71,6 +76,12 @@ class Tree:
     def read(self, rel):
         try:
             return (self.root / rel).read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def read_bytes(self, rel):
+        try:
+            return (self.root / rel).read_bytes()
         except OSError:
             return None
 
@@ -98,6 +109,10 @@ class GitRef:
         rc, out = self.run("show", f"{ref or self.ref}:{rel}")
         return out if rc == 0 else None
 
+    def read_bytes(self, rel, ref=None):
+        r = subprocess.run(["git", "-C", str(self.repo), "show", f"{ref or self.ref}:{rel}"], capture_output=True)
+        return r.stdout if r.returncode == 0 else None
+
     def names(self, rel):
         rc, out = self.run("ls-tree", "--name-only", f"{self.ref}:{rel}")
         return sorted(out.split()) if rc == 0 else []
@@ -122,32 +137,124 @@ NAME = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*(?: (?
                   r"(?:,? \(?OAB/[A-Z]{2} ?\d{3,7}\)?)?$")
 
 
-def _visible_text(raw: str, rel: str = "") -> str:
-    """Texto da página inteira que vai à impressão digital (MED-2, rodada 4).
+# ---------- impressão digital por BYTES do artefato (rodada 5) ----------
+# Páginas jurídicas servidas pelo Worker de vendas, a partir do diretório de assets publicado (wrangler.sales.toml
+# [assets] directory = ./sales-public). Os assets que elas referenciam são resolvidos nesse mesmo diretório.
+ARTIFACT_DIR = "sales-public"
+SERVED_LEGAL = ("termos", "reembolso", "privacidade", "afiliados")
+# <link rel> que não carrega nada na página (só metadado): não é asset.
+_LINK_NOT_ASSET = {"canonical", "alternate", "author", "license", "help", "prev", "next", "search", "me", "bookmark"}
+_ASSET_ATTRS = {"script": ("src",), "img": ("src", "srcset"), "source": ("src", "srcset"), "iframe": ("src",),
+                "frame": ("src",), "object": ("data",), "embed": ("src",), "video": ("src", "poster"), "audio": ("src",),
+                "track": ("src",), "input": ("src",), "use": ("href", "xlink:href"), "image": ("href", "xlink:href")}
 
-    Comentários HTML saem antes de tudo (uma isca <main> dentro de comentário não engana a extração). A página tem de
-    ter exatamente um <main>. Entra TODO o texto do <body> (inclusive o que vem antes e depois de <main>, <noscript>,
-    <template> e o conteúdo de <script>/<style> inline, com o src de scripts externos) e o <title>; só o resto do
-    <head> fica de fora. Qualquer acréscimo visível muda a impressão digital."""
+
+def _attrs(tag: str) -> dict:
+    out = {}
+    for m in re.finditer(r"([A-Za-z_:][-\w:.]*)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>\"']+))", tag):
+        value = next(g for g in m.groups()[1:] if g is not None)
+        out[m.group(1).lower()] = html.unescape(value)
+    return out
+
+
+def _css_refs(css: str) -> list[str]:
+    css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+    refs = [m.group(2) for m in re.finditer(r"url\(\s*(['\"]?)(.*?)\1\s*\)", css, re.I)]
+    refs += [m.group(2) for m in re.finditer(r"@import\s+(['\"])(.*?)\1", css, re.I)]
+    return refs
+
+
+def _html_refs(page: str) -> list[str]:
+    refs: list[str] = []
+    for m in re.finditer(r"<([A-Za-z][\w:-]*)\b([^>]*)>", page):
+        name, a = m.group(1).lower(), _attrs(m.group(2))
+        if name == "link":
+            rels = set(a.get("rel", "").lower().split())
+            if a.get("href") and not rels <= _LINK_NOT_ASSET:
+                refs.append(a["href"])
+        for at in _ASSET_ATTRS.get(name, ()):
+            if a.get(at):
+                refs += [c.strip().split()[0] for c in a[at].split(",") if c.strip()] if at == "srcset" else [a[at]]
+        if a.get("style"):
+            refs += _css_refs(a["style"])
+    for m in re.finditer(r"<style\b[^>]*>(.*?)</style\s*>", page, re.S | re.I):
+        refs += _css_refs(m.group(1))
+    return refs
+
+
+def _resolve(ref: str, base_url: str, origin_rel: str) -> str | None:
+    """URL referenciada -> caminho dentro do artefato. None = não é arquivo (data:, #, mailto:); externo reprova."""
+    ref = ref.strip()
+    if not ref or ref.startswith(("#", "data:", "mailto:", "tel:", "javascript:", "about:")):
+        return None
+    if re.match(r"^([a-z][a-z0-9+.-]*:)?//", ref, re.I):
+        raise SystemExit(f"LEGAL_ASSET_EXTERNAL {origin_rel}: {ref} (asset de fora do artefato não pode ser conferido)")
+    path = ref.split("#", 1)[0].split("?", 1)[0]
+    if not path.startswith("/"):
+        path = base_url.rsplit("/", 1)[0] + "/" + path
+    parts: list[str] = []
+    for seg in path.split("/"):
+        if seg in ("", "."):
+            continue
+        if seg == "..":
+            if not parts:
+                raise SystemExit(f"LEGAL_ASSET_OUTSIDE {origin_rel}: {ref}")
+            parts.pop()
+        else:
+            parts.append(seg)
+    return ARTIFACT_DIR + "/" + "/".join(parts)
+
+
+def _check_main(raw: str, rel: str) -> None:
     s = re.sub(r"<!--.*?(?:-->|\Z)", " ", raw, flags=re.S)
     opened, closed = len(re.findall(r"<main\b", s, re.I)), len(re.findall(r"</main\s*>", s, re.I))
     if opened != 1 or closed != 1:
         raise SystemExit(f"LEGAL_FINGERPRINT_MAIN_INVALID {rel}: exige exatamente um <main> fora de comentários (abertos={opened}, fechados={closed})")
-    title = re.search(r"<title\b[^>]*>(.*?)</title\s*>", s, re.S | re.I)
-    m = re.search(r"<body\b[^>]*>(.*)", s, re.S | re.I)
-    body = m.group(1) if m else re.sub(r"<head\b.*?</head\s*>", " ", s, flags=re.S | re.I)
-    body = re.sub(r"<script\b([^>]*)>", lambda x: " [script " + " ".join(re.findall(r"\bsrc\s*=\s*[\"']?([^\"'\s>]+)", x.group(1))) + "] ", body, flags=re.I)
-    text = (title.group(1) if title else "") + " " + re.sub(r"<[^>]+>", " ", body)
-    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def legal_artifact_files(src) -> list[tuple[str, bytes]]:
+    """Todos os arquivos que formam as páginas jurídicas como são servidas: cada página jurídica do artefato, todo
+    asset que ela referencia (CSS, JS, fontes, imagens, iframes), recursivamente (CSS -> url()/@import), e as fontes
+    das páginas na raiz. Asset ausente, externo ou fora do artefato reprova (fail-closed)."""
+    out: dict[str, bytes] = {}
+    queue: list[tuple[str, str, str]] = []  # (caminho no artefato, url base, de onde veio)
+    for name in SERVED_LEGAL:
+        rel = f"{ARTIFACT_DIR}/{name}.html"
+        queue.append((rel, f"/{name}", rel))
+    while queue:
+        rel, base_url, origin = queue.pop(0)
+        if rel in out:
+            continue
+        data = src.read_bytes(rel)
+        if data is None:
+            raise SystemExit(f"LEGAL_ASSET_MISSING {origin}: {rel}")
+        out[rel] = data
+        text = data.decode("utf-8", "replace")
+        if rel.endswith(".html"):
+            if origin == rel:  # página jurídica servida (não um iframe referenciado)
+                _check_main(text, rel)
+            refs = _html_refs(text)
+        elif rel.endswith(".css"):
+            refs = _css_refs(text)
+        else:
+            refs = []
+        for ref in refs:
+            target = _resolve(ref, base_url, rel)
+            if target:
+                queue.append((target, "/" + target.removeprefix(ARTIFACT_DIR + "/"), rel))
+    for rel in LEGAL_PAGES:
+        if not rel.startswith(ARTIFACT_DIR + "/"):
+            data = src.read_bytes(rel)
+            if data is None:
+                raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {rel}")
+            out[rel] = data
+    return sorted(out.items())
 
 
 def legal_fingerprint_src(src) -> str:
     h = hashlib.sha256()
-    for rel in LEGAL_PAGES:
-        raw = src.read(rel)
-        if raw is None:
-            raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {rel}")
-        h.update(rel.encode() + b"\0" + _visible_text(raw, rel).encode() + b"\0")
+    for rel, data in legal_artifact_files(src):
+        h.update(rel.encode() + b"\0" + str(len(data)).encode() + b"\0" + data + b"\0")
     pol = _loads(src.read(POLICY))
     if not isinstance(pol, dict):
         raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {POLICY}")
@@ -334,9 +441,14 @@ def main(argv=None) -> int:
     g.add_argument("--fingerprint", action="store_true")
     g.add_argument("--publish-gate", action="store_true")
     g.add_argument("--check-approval", action="store_true")
+    g.add_argument("--artifact-files", action="store_true", help="lista os arquivos que entram na impressão digital")
     ap.add_argument("--anchors-ref", default=None, help="ref do gh-pages mesclado de onde vêm as âncoras (obrigatório com --publish-gate)")
     a = ap.parse_args(argv)
     root = Path(a.root).resolve()
+    if a.artifact_files:
+        for rel, data in legal_artifact_files(Tree(root)):
+            print(rel)
+        return 0
     if a.fingerprint:
         print(legal_fingerprint(root))
         return 0

@@ -182,9 +182,9 @@ jobs:
           node-version: "22"
 
       - name: Legal review gate (M1; fail closed while the new legal text is PENDING)
-        # MED-1 (round 4): FIRST command of the job, before the build and any other repository code (structure checked
-        # by scripts/p23/trust_anchor_guard.py; this workflow is a trust anchor). It checks the committed legal pages;
-        # the integrity step before each deploy proves the built tree still holds exactly that text.
+        # Round 5: FIRST command of the job (fail fast) and again right before EACH deploy step, on the built artifact.
+        # The gate code is read from the merged gh-pages (git show), binaries by absolute path, HEAD must be GITHUB_SHA,
+        # and the fingerprint covers the BYTES of every served legal page and of every asset it references.
         # /termos and /reembolso go live in this job. Text identical to the published baseline
         # (data/p23/legal-published-baseline.json) passes; any other text needs legal_review APPROVED
         # for this exact fingerprint. Runs before configs are materialized and before any deploy call.
@@ -192,8 +192,12 @@ jobs:
         # verified against git history (authorization and reviewed commits), never from the tree being published.
         run: |
           set -euo pipefail
-          git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
-          python3 -I scripts/p23/legal_review.py --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
+          test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)"
+          /usr/bin/git diff --exit-code "$GITHUB_SHA" -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          /usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          /usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 
       - name: Require authenticated deployment authority
         run: |
@@ -262,10 +266,15 @@ jobs:
               print("PREVIOUS_DEPLOYMENT_SNAPSHOT=NONE_FIRST_RELEASE")
           PY
 
-      - name: Legal text integrity before the candidate deploy (MED-1 and MED-2, the tree still holds the text the gate checked)
+      - name: Legal artifact gate before the candidate deploy (round 5, base gate code on the exact bytes that ship)
         run: |
           set -euo pipefail
-          git diff --exit-code HEAD -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)"
+          /usr/bin/git diff --exit-code "$GITHUB_SHA" -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          /usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          /usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 
       - name: Deploy isolated candidate
         run: npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml
@@ -312,10 +321,15 @@ jobs:
             --readback-url https://vendas.zevanory.api.br/health --readback-path release \
             --cloudflare-script "$SCRIPT_NAME"
 
-      - name: Legal text integrity before the canonical promotion (MED-1 and MED-2, the tree still holds the text the gate checked)
+      - name: Legal artifact gate before the canonical promotion (round 5, base gate code on the exact bytes that ship)
         run: |
           set -euo pipefail
-          git diff --exit-code HEAD -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          test "$(/usr/bin/git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(/usr/bin/git ls-files -v | grep -E '^([a-z]|S) ' || true)"
+          /usr/bin/git diff --exit-code "$GITHUB_SHA" -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
+          /usr/bin/git fetch --no-tags --quiet origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages
+          /usr/bin/git show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"
+          /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root . --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 
       - name: Promote exact candidate source to canonical domain
         id: promote
