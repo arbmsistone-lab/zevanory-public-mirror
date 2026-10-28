@@ -7,7 +7,8 @@ scripts) may have touched, and runs the bundler ONLY from an integrity-pinned in
   1. The repository tree at --rev must not contain npm/yarn/pnpm configuration or packages (.npmrc, .yarnrc*,
      package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, npm-shrinkwrap.json, .pnpmfile.cjs, bunfig.toml,
      node_modules/**) outside scripts/deploy/wrangler-pin/. Anything else fails closed (CLEAN_BUNDLE=REFUSED).
-  2. The sources are copied with `git archive <rev> -- <allowlisted paths>` into a fresh directory:
+  2. The sources are copied blob by blob from the commit (`git ls-tree` + `git cat-file`; no .gitattributes
+     processing, regular files only) for the allowlisted paths into a fresh directory:
        sales    only the trust anchors that make up the sales Worker (sales-worker.mjs, worker/sales-public-worker.mjs,
                 worker/politica-unica.mjs, data/politica-unica.json, wrangler.sales.toml and the config generator
                 scripts/ci/materialize_sales_configs.py);
@@ -32,7 +33,7 @@ Usage: clean_bundle.py {sales|central} --repo <git checkout> --rev <40-hex sha> 
 """
 from __future__ import annotations
 
-import argparse, hashlib, io, json, os, re, shutil, subprocess, sys, tarfile
+import argparse, hashlib, json, os, re, shutil, subprocess, sys
 from pathlib import Path
 
 WRANGLER_VERSION = "4.143.0"
@@ -71,23 +72,40 @@ def git(repo: Path, *args: str, binary: bool = False):
 
 
 def extract(repo: Path, rev: str, paths: tuple[str, ...], dest: Path) -> None:
-    """git archive of the commit (object store, not the working tree) into dest; regular files and dirs only."""
-    raw = git(repo, "archive", "--format=tar", rev, "--", *paths, binary=True)
-    with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
-        for m in tar.getmembers():
-            name = m.name
-            if name.startswith("/") or ".." in name.split("/") or not (m.isfile() or m.isdir()):
-                raise Refused(f"unexpected archive member {name!r}")
-            if forbidden_path(name.rstrip("/")):
-                raise Refused(f"forbidden npm file in the sources: {name}")
-            target = dest / name
-            if m.isdir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(tar.extractfile(m).read())
-            if m.mode & 0o111:
-                target.chmod(0o755)
+    """Blobs of the commit (object store, not the working tree) into dest, read with `git ls-tree` + `git cat-file`:
+    no .gitattributes processing (export-subst/export-ignore cannot change the bytes, round 8 LOW-1). Only regular
+    files (100644/100755); a symlink (120000), submodule (160000) or any other entry fails closed."""
+    entries = []
+    for rec in git(repo, "ls-tree", "-r", "-z", "--full-tree", rev, "--", *paths).split("\0"):
+        if not rec:
+            continue
+        meta, name = rec.split("\t", 1)
+        mode, kind, oid = meta.split()
+        if name.startswith("/") or ".." in name.split("/") or kind != "blob" or mode not in ("100644", "100755"):
+            raise Refused(f"unexpected tree entry {mode} {kind} {name!r}")
+        if forbidden_path(name):
+            raise Refused(f"forbidden npm file in the sources: {name}")
+        entries.append((mode, oid, name))
+    for p in paths:
+        if not any(n == p or n.startswith(p + "/") for _, _, n in entries):
+            raise Refused(f"path missing from the commit: {p}")
+    r = subprocess.run(["git", "-C", str(repo), "cat-file", "--batch"], input=b"".join(o.encode() + b"\n" for _, o, _ in entries),
+                       capture_output=True)
+    if r.returncode != 0:
+        raise Refused(f"git cat-file: {r.stderr.decode('utf-8', 'replace').strip()[:300]}")
+    out, pos = r.stdout, 0
+    for mode, oid, name in entries:
+        nl = out.index(b"\n", pos)
+        h_oid, h_kind, h_size = out[pos:nl].decode().split()
+        if h_oid != oid or h_kind != "blob":
+            raise Refused(f"git cat-file returned {h_oid} {h_kind} for {name}")
+        data = out[nl + 1:nl + 1 + int(h_size)]
+        pos = nl + 1 + int(h_size) + 1
+        target = dest / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        if mode == "100755":
+            target.chmod(0o755)
 
 
 PASSTHROUGH = ("HTTPS_PROXY", "https_proxy", "NODE_EXTRA_CA_CERTS", "npm_config_https_proxy", "npm_config_proxy", "npm_config_noproxy")

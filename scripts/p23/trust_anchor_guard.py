@@ -66,7 +66,8 @@ ANCHORS = ("data/p23/legal-reviewers.json", "data/p23/legal-published-baseline.j
            "scripts/verify-live-headers.py", "scripts/financial_proof_renewal.py", "scripts/ci/credential_identity_readback.py")
 # Rodada 7 (M-1c): o que pode redirecionar npm/npx ou trocar o wrangler executado, e o que o wrangler lê, em qualquer pasta.
 NPM_ANCHOR_NAMES = {".npmrc", "package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml",
-                    "pnpm-workspace.yaml", ".pnpmfile.cjs", "bunfig.toml", "bun.lockb"}
+                    "pnpm-workspace.yaml", ".pnpmfile.cjs", "bunfig.toml", "bun.lockb",
+                    ".gitattributes"}  # rodada 8 (LOW-1): export-subst/export-ignore mudam o que o git exporta
 WRANGLER_CONFIG = re.compile(r"^wrangler[^/]*\.(?:toml|json|jsonc)$")
 
 # Rodada 6: o build roda SEM segredos e o deploy NÃO roda código de build do repositório.
@@ -86,18 +87,27 @@ def repro_body(kind: str, art: str) -> list[str]:
             f'/usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" {kind} --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify {art}']
 
 
+def rehearsal_repro_body(kind: str, art: str) -> list[str]:
+    """Rodada 8 (LOW-2): o ensaio (dry-run) também reconstrói e compara com o artefato."""
+    return ["set -euo pipefail",
+            'test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"',
+            f'/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py {kind} --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify {art}']
+
+
 SPECS = {
     ".github/workflows/zevanory-sales-public-release.yml": {
         "secret_jobs": {"deploy"}, "build_jobs": {"worker-bundle", "site-build"}, "anchored_jobs": {"worker-bundle"},
         "rehearsal_jobs": {"rehearsal"},
         "bundle_job": ("worker-bundle", clean_bundle_body("sales", "worker-artifact")),
         "repro_body": repro_body("sales", "art/worker"),
+        "rehearsal_repro": rehearsal_repro_body("sales", "art/worker"),
         "artifact_copy": "rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public"},
     ".github/workflows/central-production-deploy.yml": {
         "secret_jobs": {"guard", "deploy"}, "build_jobs": {"build"}, "anchored_jobs": set(),
         "rehearsal_jobs": {"rehearsal"},
         "bundle_job": ("build", clean_bundle_body("central", "central-release")),
         "repro_body": repro_body("central", "art/central"),
+        "rehearsal_repro": rehearsal_repro_body("central", "art/central"),
         "artifact_copy": None},
 }
 DEPLOY_NPM_ENV = {"npm_config_userconfig": "/dev/null", "npm_config_registry": "https://registry.npmjs.org"}
@@ -275,6 +285,13 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
                     errs.append(f"{name}: o job '{jk}' executa {path}, que não é âncora")
             if re.search(r"\b(node|python3?|bash|sh)\b[^\n]*(?<![\w-])worker/", jtext):
                 errs.append(f"{name}: o job '{jk}' executa código de worker/")
+    for rj in spec.get("rehearsal_jobs", ()):
+        if rj in job_list and spec.get("rehearsal_repro"):
+            r0, r1 = job_list[rj]
+            rkeys = {k: (v, ks, ke) for k, v, ks, ke in _children(lines, r0 + 1, r1, 4)}
+            rsteps = _steps(lines, rkeys["steps"][1] + 1, rkeys["steps"][2]) if "steps" in rkeys else []
+            if not any((st["keys"].get("run") or {}).get("body") == spec["rehearsal_repro"] for st in rsteps):
+                errs.append(f"{name}: o job '{rj}' não reconstrói e compara com o artefato ({spec['rehearsal_repro'][-1]})")
     if spec.get("bundle_job") and spec["bundle_job"][0] in job_list:
         bj, want = spec["bundle_job"]
         b0, b1 = job_list[bj]

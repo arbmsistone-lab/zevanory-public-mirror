@@ -184,6 +184,8 @@ Os dois workflows têm a entrada `mode` no `workflow_dispatch`:
 
 Um push no gh-pages é sempre `production`.
 
+O `dry-run` do central confere o **código** e o pipeline de build, não a configuração de produção. As quatro variáveis de lançamento (`ZEVANORY_LAUNCH_AUTHORIZATION`, `MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16`, `MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED`, `OPERATOR_TOKEN_MIGRATION_UNTIL`) ficam no Environment `producao-critica`, que o ensaio não lê. Por isso a config ensaiada sai com elas vazias (configuração de lançamento dormente), e a de produção pode diferir só nesses `vars`, nunca no pacote do Worker. (Rodada 8, LOW-3.)
+
 Antes do merge, o `dry-run` no branch do PR **não precisa de exceção** no Environment, porque o job `rehearsal` não usa o `producao-critica`. O resultado esperado hoje é: tudo verde até o portão, e o portão em `BLOCKED` enquanto a revisão jurídica estiver PENDING (o texto da Release 2 difere da linha de base). Isso é o portão funcionando.
 
 ## Rollback manual por Worker

@@ -283,7 +283,9 @@ jobs:
 
   # Round 7 (L-1): workflow_dispatch mode=dry-run. No Environment and no secrets (so it can run before the merge, on
   # the PR branch, without any exception on producao-critica); the code is that of the dispatched commit. Publishes
-  # nothing: every wrangler call is a dry run.
+  # nothing: every wrangler call is a dry run. Round 8 (LOW-3): it checks the CODE and the build pipeline only. The
+  # four launch variables live in the producao-critica Environment, which this job (and the guard it skips) cannot
+  # read, so the rehearsed config is built with them empty (dormant launch config); production may differ in vars only.
   rehearsal:
     needs: build
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}

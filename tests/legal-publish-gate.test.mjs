@@ -413,6 +413,9 @@ test("G11 validação estrutural (rodadas 6 e 7): o real passa; segredo no build
       ["r7 reconstrução depois do portão (central)", CENTRAL, (t) => { const m = t.match(/      - name: Rebuild the release from base in a clean directory and compare byte for byte\n(?:        [^\n]*\n)+/); return m ? t.replace(m[0], "").replace("      - name: Assemble the release directory (pre-built bundle, assets; no repository code)\n", m[0] + "      - name: Assemble the release directory (pre-built bundle, assets; no repository code)\n") : t; }],
       ["r7 segredo no passo de reconstrução", CENTRAL, (t) => t.replace("      - name: Rebuild the release from base in a clean directory and compare byte for byte\n        env:\n", "      - name: Rebuild the release from base in a clean directory and compare byte for byte\n        env:\n" + TOKEN)],
       ["r7 npm com configuração do usuário no deploy", SALES, (t) => t.replace("      npm_config_userconfig: /dev/null\n", "")],
+      // Rodada 8 (LOW-2): o ensaio também compara com o artefato.
+      ["r8 ensaio central sem --verify", CENTRAL, (t) => t.replace('/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/central', '/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py central --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro"')],
+      ["r8 ensaio de vendas sem --verify", SALES, (t) => t.replace('/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify art/worker', '/usr/bin/python3 -I base/scripts/deploy/clean_bundle.py sales --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro"')],
       ["manifesto não conferido", SALES, (t) => t.replace("          (cd art/worker && sha256sum --strict -c --quiet MANIFEST.sha256)\n          (cd art/site && sha256sum --strict -c --quiet MANIFEST.sha256)\n", "")],
       // Neutralizações do portão.
       ["continue-on-error no portão", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "        continue-on-error: true\n")],
@@ -567,7 +570,8 @@ test("G15 r7 M-1c: configuração npm/yarn, pacotes e configurações wrangler e
   try {
     for (const path of ["node_modules/.bin/wrangler", ".npmrc", "worker/.npmrc", ".yarnrc.yml", ".yarnrc", "package.json", "package-lock.json",
       "tools/package.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "sub/node_modules/wrangler/index.js", "wrangler.toml",
-      "wrangler.extra.toml", "sandbox/x/wrangler.jsonc", "wrangler.json", "scripts/deploy/wrangler-pin/package-lock.json"]) {
+      "wrangler.extra.toml", "sandbox/x/wrangler.jsonc", "wrangler.json", "scripts/deploy/wrangler-pin/package-lock.json",
+      ".gitattributes", "worker/.gitattributes"]) {
       git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-r7");
       mkdirSync(dirname(join(root, path)), { recursive: true });
       writeFileSync(join(root, path), path.endsWith("wrangler") ? "#!/bin/sh\necho stub\n" : "registry=https://evil.invalid/\n");

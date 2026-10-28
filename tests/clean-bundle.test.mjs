@@ -194,3 +194,69 @@ test("CB6 an installed tool that is not wrangler 4.143.0 fails closed; a non-emp
     assert.match(busy.stdout + busy.stderr, /is not empty/, "[CB6.4]");
   } finally { cleanup(root, t, t2, r.work, w); }
 });
+
+test("CB7 .gitattributes (export-subst, export-ignore) cannot change the extracted sources (round 8, LOW-1)", () => {
+  const { root } = salesRepo(); const t = tools();
+  put(root, ".gitattributes", "worker/sales-public-worker.mjs export-subst\nworker/politica-unica.mjs export-ignore\n");
+  const p = join(root, "worker/sales-public-worker.mjs");
+  writeFileSync(p, readTextNormalized(p) + "\n// $Format:%s$\n");
+  git(root, "add", "-A"); git(root, "commit", "-q", "-m", "SUBJECT-LEAK-MARKER"); const sha = git(root, "rev-parse", "HEAD");
+  const r = cb(root, sha, t);
+  try {
+    assert.equal(r.code, 0, "[CB7.1] " + r.out);
+    const bundle = readTextNormalized(join(r.dir, "sales-worker.deploy.js"));
+    assert.ok(bundle.includes("// $Format:%s$"), "[CB7.2] export-subst not applied: placeholder kept verbatim");
+    assert.ok(!bundle.includes("SUBJECT-LEAK-MARKER"), "[CB7.3] the commit subject did not leak into the bundle");
+    assert.ok(existsSync(join(r.work, "clean", "src", "worker/politica-unica.mjs")), "[CB7.4] export-ignore not applied: file extracted");
+  } finally { cleanup(root, t, r.work); }
+});
+
+test("CB8 a symlink among the sources fails closed (round 8, LOW-2)", () => {
+  const { root } = salesRepo(); const t = tools();
+  const oid = spawnSync("git", ["-C", root, "hash-object", "-w", "--stdin"], { input: "../data/politica-unica.json", encoding: "utf8" }).stdout.trim();
+  git(root, "rm", "-q", "--cached", "worker/politica-unica.mjs");
+  git(root, "update-index", "--add", "--cacheinfo", `120000,${oid},worker/politica-unica.mjs`);
+  git(root, "commit", "-q", "-m", "symlink"); const sha = git(root, "rev-parse", "HEAD");
+  const r = cb(root, sha, t);
+  try {
+    assert.notEqual(r.code, 0, "[CB8.1] " + r.out);
+    assert.match(r.out, /CLEAN_BUNDLE=REFUSED unexpected tree entry 120000 blob 'worker\/politica-unica\.mjs'/, "[CB8.2] " + r.out);
+    assert.equal(r.log.length, 0, "[CB8.3] no bundler call");
+  } finally { cleanup(root, t, r.work); }
+});
+
+test("CB9 the pinned install is `npm ci --ignore-scripts` with the explicit registry and no user config (round 8, LOW-2)", () => {
+  const WANT = ["ci", "--ignore-scripts", "--no-audit", "--no-fund", "--registry=https://registry.npmjs.org"];
+  if (process.platform === "win32") {  // clean_bundle.py installs only on the Linux runners; static form here
+    assert.ok(readTextNormalized(CB).includes('run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund", f"--registry={REGISTRY}"], tools, env, quiet=True)'), "[CB9.0]");
+    return;
+  }
+  const { root, sha } = salesRepo();
+  const t = mkdtempSync(join(tmpdir(), "cb-tools-empty-"));
+  const bin = mkdtempSync(join(tmpdir(), "cb-fakebin-"));
+  const log = join(bin, "calls.log");
+  const fake = (tool) => `#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+with open(${JSON.stringify(log)}, "a") as f: f.write(json.dumps({"tool": "${tool}", "argv": sys.argv[1:], "cwd": os.getcwd(), "userconfig": os.environ.get("npm_config_userconfig"), "offline": os.environ.get("npm_config_offline")}) + "\\n")
+if "${tool}" == "npx": print("4.143.0"); sys.exit(0)
+nm = Path("node_modules"); (nm / ".bin").mkdir(parents=True, exist_ok=True); (nm / "wrangler").mkdir(exist_ok=True)
+(nm / "wrangler" / "package.json").write_text(json.dumps({"name": "wrangler", "version": "4.143.0"}))
+w = nm / ".bin" / "wrangler"; w.write_text(${JSON.stringify(STUB)}); w.chmod(0o755)
+`;
+  put(bin, "npm", fake("npm"), 0o755); put(bin, "npx", fake("npx"), 0o755);
+  const work = mkdtempSync(join(tmpdir(), "cb-work-"));
+  const r = spawnSync(PYTHON, ["-I", CB, "sales", "--repo", root, "--rev", sha, "--tools", t, "--work", join(work, "clean"), "--out", join(work, "out")],
+    { encoding: "utf8", env: { ...PYENV, PATH: bin + ":" + process.env.PATH } });
+  try {
+    assert.equal(r.status, 0, "[CB9.1] " + r.stdout + r.stderr);
+    const calls = readTextNormalized(log).trim().split("\n").map((l) => JSON.parse(l));
+    const npm = calls.filter((c) => c.tool === "npm");
+    assert.equal(npm.length, 1, "[CB9.2]");
+    assert.deepEqual(npm[0].argv, WANT, "[CB9.3] exact install command (scripts never run)");
+    assert.equal(npm[0].userconfig, "/dev/null", "[CB9.4]");
+    assert.ok(npm[0].cwd.includes(basename(t)), "[CB9.5] installed in the tools dir");
+    const npx = calls.filter((c) => c.tool === "npx");
+    assert.equal(npx.length, 1, "[CB9.6]"); assert.equal(npx[0].offline, "true", "[CB9.7] npx resolution checked offline");
+  } finally { cleanup(root, t, bin, work); }
+});
