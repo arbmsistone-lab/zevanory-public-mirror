@@ -185,7 +185,13 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   const current = await readJson(kv, key, null);
 
   if (STOP_EVENTS.has(event)) {
-    if (current) await kv.put(key, JSON.stringify({ ...current, status: "inactive", stoppedAt: new Date().toISOString(), stopEvent: event }), { expirationTtl: 400 * DAY });
+    // S308: no cancelamento, todo mês pago sem pacote entregue (créditos e o mês atual) é reembolsado: pedido registrado e
+    // proprietário avisado; o estorno é feito na Hotmart. Estorno/chargeback já devolvem o valor e não geram pedido.
+    const owed = current?.status === "active" && (event === "SUBSCRIPTION_CANCELLATION" || event === "PURCHASE_CANCELED") ? pendingCycles(current) : [];
+    const reqs = owed.map((cycle) => ({ cycle, reason: "cancelamento", at: new Date().toISOString(), status: "pedido_registrado" }));
+    if (current) await kv.put(key, JSON.stringify({ ...current, status: "inactive", stoppedAt: new Date().toISOString(), stopEvent: event, ...(reqs.length ? { refundRequests: [...(current.refundRequests || []), ...reqs] } : {}) }), { expirationTtl: 400 * DAY });
+    if (owed.length) await recordRefundRequests(env, kv, key, owed, "cancelamento", { fetchImpl });
+    if (current) await syncCreditIndex(kv, key, { ...current, status: "inactive" });
     await emitActivity(env, { type: "refund_requested", channel: "store", status: "service_stopped", ref: "cp:" + subscriber }).catch(() => null);
     await markProcessed();
     return json(200, { ok: true, status: "inactive" });
@@ -199,8 +205,23 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     briefing: current?.briefing || null, createdAt: current?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   // Campos de entrega do ciclo já entregue continuam (sem eles o ciclo seria entregue de novo).
-  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt", "campanha", "deliveries"]) if (current?.[f] !== undefined) record[f] = current[f];
+  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt", "campanha", "deliveries", "credits", "creditsUsed", "refundRequests", "deliveryHistory", "emailChanges"]) if (current?.[f] !== undefined) record[f] = current[f];
+  // S308: renovação com o mês anterior pago e sem pacote => crédito (nunca perda). Acima do limite, o mais antigo vira
+  // pedido de reembolso registrado.
+  let newCredit = null, overflow = [];
+  const prev = Number(current?.cycles || 0);
+  if (current && current.lastTxn !== txn && prev >= 1 && pendingCycles({ ...current, credits: [] }).includes(prev)) {
+    newCredit = { cycle: prev, createdAt: new Date().toISOString() };
+    const credits = [...(record.credits || []).filter((c) => Number(c.cycle) !== prev), newCredit].sort((a, b) => a.cycle - b.cycle);
+    const refunded = refundedCycles(record);
+    const live = credits.filter((c) => !refunded.has(Number(c.cycle)));
+    overflow = live.slice(0, Math.max(0, live.length - CREDITOS_MAX)).map((c) => c.cycle);
+    record.credits = credits.filter((c) => !overflow.includes(c.cycle));
+    if (overflow.length) record.refundRequests = [...(record.refundRequests || []), ...overflow.map((cycle) => ({ cycle, reason: "limite_de_creditos", at: new Date().toISOString(), status: "pedido_registrado" }))];
+  }
   await kv.put(key, JSON.stringify(record), { expirationTtl: 400 * DAY });
+  if (newCredit) { await pendingLog(kv, key, "credit_created", "ciclo " + newCredit.cycle); await syncCreditIndex(kv, key, record); }
+  if (overflow.length) await recordRefundRequests(env, kv, key, overflow, "limite_de_creditos", { fetchImpl });
   await emitActivity(env, { type: "delivery_sent", channel: "store", status: record.cycles === 1 ? "service_started" : "service_renewed", ref: "cp:" + subscriber + ":" + record.cycles }).catch(() => null);
 
   // Formulário (boas-vindas no 1º ciclo; na renovação, pedido da campanha do mês). Auditoria #953 H2: o evento só conta
@@ -218,13 +239,13 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     }
     await welcomeDone(env, kv, key, subscriber, record.cycles, dedupe, Date.now(), record.briefing ? "campaign_requested" : "briefing_requested", item.token);
     // Renovação chegando sem a campanha (e sem entrega) do ciclo anterior: o proprietário é avisado (MED-2).
-    if (record.briefing && record.cycles > 1 && Number(record.deliveredCycle || 0) < record.cycles - 1) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem campanha", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem ter enviado a campanha do ciclo ${record.cycles - 1}, que ficou sem entrega. Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
+    if (record.briefing && newCredit) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem campanha", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem ter enviado a campanha do ciclo ${newCredit.cycle}: o mês virou crédito (${(record.credits || []).length} de ${CREDITOS_MAX}). Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
     if (!record.briefing && record.cycles === 1) await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl, { kind: "novo_assinante", sub: key });
-    if (!record.briefing && record.cycles > 1) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem formulário", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem nunca ter enviado o formulário; os ciclos anteriores ficaram sem entrega. O formulário foi reenviado. Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
+    if (!record.briefing && record.cycles > 1) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem formulário", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem nunca ter enviado o formulário; os meses sem pacote viraram crédito (${(record.credits || []).length} de ${CREDITOS_MAX}). O formulário foi reenviado. Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
     return json(200, { ok: true, status: record.briefing ? "campaign_requested" : "briefing_requested" });
   }
   // Reprocessamento de uma transação cujo ciclo já foi entregue (ex.: PURCHASE_COMPLETE depois do APPROVED): nada a gerar.
-  if (record.deliveredCycle === record.cycles) { await markProcessed(); return json(200, { ok: true, status: "already_delivered" }); }
+  if (campaignTarget(record) === null) { await markProcessed(); return json(200, { ok: true, status: "already_delivered" }); }
   // G1: entra na fila ANTES do waitUntil; se o runtime cortar a geração (até 30 s após a resposta), o cron entrega.
   await enqueuePending(kv, key);
   await markProcessed();
@@ -236,14 +257,51 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
 // ---------- Boas-vindas (formulário) com fila de repetição ----------
 const WELCOME = "zpc:cp:welcome-outbox"; // { chave do assinante: { token, dedupe, cycles, attempts, firstAt, lastAt, lastReason } }
 // v3: o formulário é pedido no 1º ciclo (perfil + campanha) e a cada renovação (campanha do mês).
-const needsForm = (rec) => !rec.briefing || rec.campanha?.cycle !== rec.cycles;
+// Sol ORDEM 308 (S308-B4): mês pago sem campanha NUNCA é perdido. Na renovação, um mês pago sem pacote vira crédito
+// (record.credits); a campanha enviada depois gera o pacote do crédito mais antigo, sem custo. Limite: CREDITOS_MAX
+// créditos; o que passar disso vira pedido de reembolso (o crédito mais antigo). Pedido de reembolso de mês sem pacote a
+// qualquer momento (operador) e no cancelamento: o código só registra (record.refundRequests e zpc:cp:refund-requests)
+// e avisa o proprietário; o estorno é feito pelo proprietário na Hotmart.
+export const CREDITOS_MAX = CONTEUDO_PRONTO.creditos_max;
+const REFUNDS = "zpc:cp:refund-requests";
+const CREDIT_INDEX = "zpc:cp:credit-index";
+const refundedCycles = (rec) => new Set((rec?.refundRequests || []).map((r) => Number(r.cycle)));
+export function pendingCycles(rec) {
+  if (!rec) return [];
+  const refunded = refundedCycles(rec);
+  const credits = [...new Set((rec.credits || []).map((c) => Number(c.cycle)))].filter((c) => !refunded.has(c)).sort((a, b) => a - b);
+  const cur = Number(rec.deliveredCycle || 0) !== Number(rec.cycles) && !refunded.has(Number(rec.cycles)) && !credits.includes(Number(rec.cycles)) ? [Number(rec.cycles)] : [];
+  return [...credits, ...cur];
+}
+export const campaignTarget = (rec) => pendingCycles(rec)[0] ?? null;
+const needsForm = (rec) => !rec.briefing || (campaignTarget(rec) !== null && rec.campanha?.cycle !== campaignTarget(rec));
+async function syncCreditIndex(kv, key, rec) {
+  const idx = await readJson(kv, CREDIT_INDEX, {});
+  const refunded = refundedCycles(rec);
+  const cycles = (rec?.status === "active" ? (rec.credits || []) : []).map((c) => Number(c.cycle)).filter((c) => !refunded.has(c));
+  if (JSON.stringify(idx[key] || []) === JSON.stringify(cycles)) return;
+  if (cycles.length) idx[key] = cycles; else delete idx[key];
+  await kv.put(CREDIT_INDEX, JSON.stringify(idx), { expirationTtl: 400 * DAY });
+}
+async function recordRefundRequests(env, kv, key, cycles, reason, { operator = "sistema", note = "", now = Date.now(), fetchImpl = fetch } = {}) {
+  if (!cycles.length) return [];
+  const at = new Date(now).toISOString();
+  const reqs = cycles.map((cycle) => ({ cycle: Number(cycle), reason, operator: String(operator).slice(0, 60), note: String(note).slice(0, 200), at, status: "pedido_registrado" }));
+  const list = await readJson(kv, REFUNDS, []);
+  list.push(...reqs.map((r) => ({ ...r, sub: String(key).slice(-12) })));
+  await kv.put(REFUNDS, JSON.stringify(list.slice(-500)), { expirationTtl: 400 * DAY });
+  for (const r of reqs) await pendingLog(kv, key, "refund_requested", reason + " ciclo " + r.cycle, now);
+  await ownerAlert(env, "reembolso do Conteúdo Pronto a processar na Hotmart", `Pedido de reembolso registrado (${reason}) para o assinante …${String(key).slice(-12)}, ciclo(s) ${cycles.join(", ")} sem pacote entregue. Processar o estorno na Hotmart; o sistema não move dinheiro.`, fetchImpl, { kind: "reembolso_pedido", sub: key, now }).catch(() => null);
+  return reqs;
+}
 const firstName = (name) => (name ? ", " + String(name).split(" ")[0] : "");
 const welcomeText = (name, link) => `Olá${firstName(name)}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar a sua ${SERVICO}, responda este formulário curto (leva 5 minutos): o perfil do negócio e a campanha do mês (objetivo comercial, oferta, condição comercial e período).\n\n${link}\n\nAssim que você enviar, a ZEVANORY gera a campanha com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário do período e envia para este e-mail. ${RETRY_TEXT} Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`;
-const campaignRequestText = (name, cycle, link) => `Olá${firstName(name)}!\n\nSua assinatura foi renovada. Para a ZEVANORY preparar a ${SERVICO} deste mês, informe no formulário o objetivo comercial, a oferta, a condição comercial e o período (o perfil do seu negócio já vem preenchido):\n\n${link}\n\nA campanha chega neste e-mail depois que você enviar. ${RETRY_TEXT}\n\nDúvidas: suporte@zevanory.api.br`;
+const campaignRequestText = (name, cycle, link, credit = false) => `Olá${firstName(name)}!\n\n${credit ? `Você tem o mês ${cycle} em crédito (pago e ainda sem pacote). Para a ZEVANORY preparar a ${SERVICO} desse mês, sem custo adicional,` : `Sua assinatura foi renovada. Para a ZEVANORY preparar a ${SERVICO} deste mês,`} informe no formulário o objetivo comercial, a oferta, a condição comercial e o período (o perfil do seu negócio já vem preenchido):\n\n${link}\n\nA campanha chega neste e-mail depois que você enviar. ${RETRY_TEXT}\n\nDúvidas: suporte@zevanory.api.br`;
 async function sendWelcome(env, key, record, token, fetchImpl) {
   const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
   const idem = (record.briefing ? "cp-camp/" : "cp-welcome/") + (await sha(key + "|" + token)).slice(0, 48);
-  if (record.briefing) return sendEmail(env, record.email, `Conteúdo Pronto: defina a campanha do mês ${record.cycles}`, campaignRequestText(record.name, record.cycles, link), fetchImpl, idem);
+  const alvo = campaignTarget(record) ?? record.cycles;
+  if (record.briefing) return sendEmail(env, record.email, `Conteúdo Pronto: defina a campanha do mês ${alvo}`, campaignRequestText(record.name, alvo, link, alvo !== record.cycles), fetchImpl, idem);
   return sendEmail(env, record.email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo", welcomeText(record.name, link), fetchImpl, idem);
 }
 async function welcomeFailed(env, kv, key, item, reason, fetchImpl, now = Date.now()) {
@@ -255,10 +313,9 @@ async function welcomeFailed(env, kv, key, item, reason, fetchImpl, now = Date.n
   if (attempts === 1) await ownerAlert(env, "e-mail com o formulário do Conteúdo Pronto não saiu", `O e-mail com o formulário (boas-vindas ou campanha do mês) não foi aceito pelo provedor (assinante …${String(key).slice(-12)}). O sistema tenta de novo a cada hora, até ${PENDING_MAX_ATTEMPTS} vezes, com o mesmo link; depois disso o item vai para a fila de falhas.`, fetchImpl, { kind: "boas_vindas_falhou", sub: key, now }).catch(() => null);
 }
 // #960 rodada 2 (MED-2): formulário enviado e não respondido (boas-vindas ou campanha do mês) => lembretes ao assinante
-// nos dias CAMPAIGN_REMINDER_DAYS depois do pedido, alerta ao proprietário nos dias CAMPAIGN_OWNER_ALERT_DAYS. O mês pago
-// fica reservado: a campanha pode ser enviada a qualquer momento até a próxima renovação (o link vale 60 dias) e o pacote
-// é gerado quando chegar. Se a renovação seguinte chegar sem a campanha do ciclo anterior, o proprietário é avisado
-// ("ciclo sem campanha") para contatar o assinante. Regra única (MES_SEM_CAMPANHA, data/politica-unica.json →
+// nos dias CAMPAIGN_REMINDER_DAYS depois do pedido, alerta ao proprietário nos dias CAMPAIGN_OWNER_ALERT_DAYS. Se a
+// renovação seguinte chegar sem a campanha, o mês pago vira crédito (S308; ver pendingCycles) e o proprietário é avisado
+// ("ciclo sem campanha"). Regra única (MES_SEM_CAMPANHA, data/politica-unica.json →
 // conteudo_pronto.mes_sem_campanha), com o mesmo texto no FAQ da página, nos Termos, no atendimento e nos lembretes.
 export const MES_SEM_CAMPANHA = CONTEUDO_PRONTO.mes_sem_campanha;
 export const CAMPAIGN_REMINDER_DAYS = Object.freeze([3, 7, 14]);
@@ -273,7 +330,7 @@ async function clearFormWait(kv, key) {
   const w = await readJson(kv, FORM_WAIT, {});
   if (w[key]) { delete w[key]; await kv.put(FORM_WAIT, JSON.stringify(w), { expirationTtl: 400 * DAY }); }
 }
-const reminderText = (name, cycle, first, link, day) => `Olá${firstName(name)}!\n\n${first ? "Seu pagamento foi confirmado, mas ainda falta o formulário curto (perfil do negócio e campanha do mês)" : `Sua assinatura foi renovada, mas ainda falta a campanha do mês ${cycle} (objetivo comercial, oferta, condição comercial e período)`}. Sem ela a ZEVANORY não gera os textos.\n\n${link}\n\nO mês pago fica reservado: você pode enviar a campanha a qualquer momento até a próxima renovação, e o pacote chega quando você enviar. ${MES_SEM_CAMPANHA} Este é o lembrete do dia ${day}.\n\nVocê recebe este aviso porque assinou o Conteúdo Pronto. Para não receber mais, cancele a assinatura na sua conta Hotmart. Ajuda: suporte@zevanory.api.br`;
+const reminderText = (name, cycle, first, link, day) => `Olá${firstName(name)}!\n\n${first ? "Seu pagamento foi confirmado, mas ainda falta o formulário curto (perfil do negócio e campanha do mês)" : `Sua assinatura foi renovada, mas ainda falta a campanha do mês ${cycle} (objetivo comercial, oferta, condição comercial e período)`}. Sem ela a ZEVANORY não gera os textos.\n\n${link}\n\n${MES_SEM_CAMPANHA} Este é o lembrete do dia ${day}.\n\nVocê recebe este aviso porque assinou o Conteúdo Pronto. Para não receber mais, cancele a assinatura na sua conta Hotmart. Ajuda: suporte@zevanory.api.br`;
 export async function remindPendingForms(env, fetchImpl = fetch, { now = Date.now() } = {}) {
   const kv = kvOf(env);
   const wait = await readJson(kv, FORM_WAIT, {});
@@ -479,7 +536,7 @@ export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
   await enqueuePending(kv, found.key); // G1: intenção na fila antes de gravar o briefing e de responder
   const fresh = (await readJson(kv, found.key, null)) || found.record;
   if (fresh.status !== "active") return page("Assinatura inativa", "<h1>Esta assinatura não está ativa.</h1><p>Fale com suporte@zevanory.api.br.</p>", 409);
-  await kv.put(found.key, JSON.stringify({ ...fresh, briefing, briefedAt: new Date().toISOString(), campanha: { ...camp.campanha, cycle: fresh.cycles, savedAt: new Date().toISOString() } }), { expirationTtl: 400 * DAY });
+  await kv.put(found.key, JSON.stringify({ ...fresh, briefing, briefedAt: new Date().toISOString(), campanha: { ...camp.campanha, cycle: campaignTarget(fresh) ?? fresh.cycles, savedAt: new Date().toISOString() } }), { expirationTtl: 400 * DAY });
   await clearFormWait(kv, found.key);
   const job = generateAndDeliver(env, found.key, fetchImpl);
   if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
@@ -829,19 +886,21 @@ export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Da
   const kv = kvOf(env);
   const record = await readJson(kv, key, null);
   if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_ready" };
-  if (record.deliveredCycle === record.cycles) return { ok: true, reason: "already_delivered" };
-  // v3: sem a campanha DESTE ciclo não há geração (o assinante recebeu o formulário da campanha do mês).
-  if (record.campanha?.cycle !== record.cycles || !validateCampaign(record.campanha).ok) return { ok: false, reason: "campaign_required" };
+  // S308: o mês a entregar é o crédito mais antigo; sem crédito, o mês atual ainda sem pacote.
+  const cyc = campaignTarget(record);
+  if (cyc === null) return { ok: true, reason: "already_delivered" };
+  // v3: sem a campanha DESSE mês não há geração (o assinante recebeu o formulário da campanha).
+  if (record.campanha?.cycle !== cyc || !validateCampaign(record.campanha).ok) return { ok: false, reason: "campaign_required" };
   const leaseUntil = Date.parse(String(await kv.get(leaseKey(key)) || "")) || 0;
   if (leaseUntil > now) return { ok: false, reason: "in_progress" };
   await kv.put(leaseKey(key), new Date(now + GEN_LEASE_MS).toISOString(), { expirationTtl: Math.ceil(GEN_LEASE_MS / 1000) + 60 });
   // Chave com a versão do schema: uma regeneração nunca sobrescreve um pacote antigo gravado.
-  const pkgKey = PKG + key.slice(SUB.length) + ":" + record.cycles + ":v" + CONTENT_SCHEMA_VERSION;
+  const pkgKey = PKG + key.slice(SUB.length) + ":" + cyc + ":v" + CONTENT_SCHEMA_VERSION;
   // G4: pacote do ciclo já gerado (o envio falhou antes) é reaproveitado: o retry não chama a IA de novo nem troca o
   // conteúdo que o assinante ainda vai receber.
   let pkg = await readJson(kv, pkgKey, null);
-  if (!pkg || pkg.cycle !== record.cycles || packageBlocked(pkg)) {
-    pkg = await generatePackage(env, record.briefing, record.cycles, record.campanha);
+  if (!pkg || pkg.cycle !== cyc || packageBlocked(pkg)) {
+    pkg = await generatePackage(env, record.briefing, cyc, record.campanha);
     if (!pkg) {
       await enqueuePending(kv, key, now);
       await notePendingFailure(kv, key, "generation_failed", now);
@@ -868,7 +927,7 @@ export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Da
   if (sentRaw) { try { sentMark = JSON.parse(String(sentRaw)); } catch { sentMark = { at: String(sentRaw), email_id: null }; } }
   if (!sentMark) {
     const text = packageText(pkg, record.briefing.negocio) + `\n\nVersão para consulta online: ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
-    const sent = await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${record.cycles} chegou`, text, fetchImpl, "cp-pkg/" + (await sha(pkgKey + "|" + token)).slice(0, 48));
+    const sent = await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${cyc} chegou`, text, fetchImpl, "cp-pkg/" + (await sha(pkgKey + "|" + token)).slice(0, 48));
     if (!sent) {
       await enqueuePending(kv, key, now);
       await notePendingFailure(kv, key, "email_failed", now);
@@ -884,12 +943,27 @@ export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Da
   // provedor pelo mesmo id (confirmPackageDeliveries, no cron).
   const pkgSha = await sha(JSON.stringify(pkg));
   const receipt = { pkgKey, sha256: pkgSha, protocolo: "CP-" + pkgSha.slice(0, 10).toUpperCase(), email_id: sentMark.email_id || null, sentAt: sentMark.at, status: sentMark.email_id ? "sent" : "sent_without_id" };
-  await kv.put(key, JSON.stringify({ ...base, deliveredCycle: record.cycles, deliveredAt: new Date().toISOString(), lastPackage: pkgKey, deliveries: { ...(latest.deliveries || {}), [record.cycles]: receipt } }), { expirationTtl: 400 * DAY });
+  const isCurrent = cyc === Number(latest.cycles);
+  const credits = (latest.credits || []).filter((c) => Number(c.cycle) !== cyc);
+  const creditsUsed = isCurrent ? latest.creditsUsed : [...(latest.creditsUsed || []), { cycle: cyc, deliveredAt: new Date(now).toISOString() }];
+  const updated = { ...base, ...(isCurrent ? { deliveredCycle: cyc } : {}), deliveredAt: new Date().toISOString(), lastPackage: pkgKey, deliveries: { ...(latest.deliveries || {}), [cyc]: receipt }, credits, ...(creditsUsed ? { creditsUsed } : {}) };
+  await kv.put(key, JSON.stringify(updated), { expirationTtl: 400 * DAY });
   await releaseLease(kv, key);
-  if (receipt.email_id) await deliveryOutboxAdd(kv, key, record.cycles);
-  await leavePending(kv, key, "delivered", "cycle " + record.cycles, now);
-  await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_delivered", ref: "cp-pkg:" + key.slice(-16) + ":" + record.cycles }).catch(() => null);
-  return { ok: true, reason: "delivered" };
+  if (receipt.email_id) await deliveryOutboxAdd(kv, key, cyc);
+  await leavePending(kv, key, "delivered", "cycle " + cyc + (isCurrent ? "" : " (crédito)"), now);
+  if (!isCurrent) await syncCreditIndex(kv, key, updated);
+  await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_delivered", ref: "cp-pkg:" + key.slice(-16) + ":" + cyc }).catch(() => null);
+  // Ainda há mês pago sem pacote (outro crédito ou o mês atual): pede a próxima campanha pela fila de formulários.
+  if (campaignTarget(updated) !== null && updated.status === "active") {
+    const outbox = await readJson(kv, WELCOME, {});
+    if (!outbox[key]) {
+      const token = rand();
+      await putToken(kv, token, { k: "brief", sub: key }, 60);
+      outbox[key] = { token, dedupe: null, cycles: updated.cycles, attempts: 0, firstAt: new Date(now).toISOString() };
+      await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });
+    }
+  }
+  return { ok: true, reason: "delivered", cycle: cyc };
 }
 export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { now = Date.now() } = {}) {
   const kv = kvOf(env);
@@ -900,7 +974,7 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
   const failed = [], results = [];
   for (const key of pending) {
     const rec = await readJson(kv, key, null);
-    const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : !rec.briefing ? "no_briefing" : rec.deliveredCycle === rec.cycles ? "already_delivered" : rec.campanha?.cycle !== rec.cycles ? "campaign_required" : "";
+    const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : !rec.briefing ? "no_briefing" : campaignTarget(rec) === null ? "already_delivered" : needsForm(rec) ? "campaign_required" : "";
     if (why) { await leavePending(kv, key, "dropped", why, now); continue; } // registrado, nunca em silêncio
     const meta = (await readJson(kv, PENDING_META, {}))[key];
     if (Number(meta?.attempts || 0) >= PENDING_MAX_ATTEMPTS) { await deadLetter(env, kv, key, meta, fetchImpl, now); continue; }
@@ -1219,14 +1293,35 @@ export async function handleContentOperator(request, env, { now = Date.now() } =
   const path = new URL(request.url).pathname;
   const tail = (k) => String(k).slice(-12);
   if (path === "/api/admin/conteudo-pronto/status" && request.method === "GET") {
-    const [pending, meta, dead, welcome, alerts, log, formWait] = await Promise.all([readJson(kv, PENDING, []), readJson(kv, PENDING_META, {}), readJson(kv, PENDING_DEAD, {}), readJson(kv, WELCOME, {}), readJson(kv, ALERTS, []), readJson(kv, PENDING_LOG, []), readJson(kv, FORM_WAIT, {})]);
+    const [pending, meta, dead, welcome, alerts, log, formWait, creditIdx, refunds] = await Promise.all([readJson(kv, PENDING, []), readJson(kv, PENDING_META, {}), readJson(kv, PENDING_DEAD, {}), readJson(kv, WELCOME, {}), readJson(kv, ALERTS, []), readJson(kv, PENDING_LOG, []), readJson(kv, FORM_WAIT, {}), readJson(kv, CREDIT_INDEX, {}), readJson(kv, REFUNDS, [])]);
     return out(200, {
       pending: pending.map((k) => ({ sub: tail(k), attempts: Number(meta[k]?.attempts || 0), lastReason: meta[k]?.lastReason || null, firstAt: meta[k]?.firstAt || null })),
       dead: Object.entries(dead).map(([k, d]) => ({ sub: tail(k), kind: d.kind || "package", status: d.status, attempts: d.attempts ?? null, lastReason: d.lastReason || null, provider_event: d.provider_event || null, cycle: d.cycle ?? null, protocolo: d.protocolo || null, deadAt: d.deadAt, operations: (d.operations || []).length })),
       forms_waiting: Object.entries(formWait).map(([k, w]) => ({ sub: tail(k), cycle: w.cycle, requestedAt: w.requestedAt, reminders: w.sent || [] })),
+      credits: Object.entries(creditIdx).map(([k, cycles]) => ({ sub: tail(k), cycles })), credits_max: CREDITOS_MAX,
+      refund_requests: refunds.slice(-100),
       welcome: Object.entries(welcome).map(([k, w]) => ({ sub: tail(k), attempts: Number(w.attempts || 0), lastReason: w.lastReason || null, firstAt: w.firstAt || null })),
       alerts: alerts.slice(-50), log: log.slice(-50), max_attempts: PENDING_MAX_ATTEMPTS,
     });
+  }
+  // POST /api/admin/conteudo-pronto/refund-request -> {sub, cycle, operator, reason}: o assinante pediu ao suporte o
+  // reembolso de um mês pago sem pacote. Registra, tira o mês dos pendentes (não gera mais) e avisa o proprietário, que faz o
+  // estorno na Hotmart. Nada de dinheiro é movido aqui.
+  if (path === "/api/admin/conteudo-pronto/refund-request" && request.method === "POST") {
+    let body = null; try { body = await request.json(); } catch { return out(400, { error: "invalid_json" }); }
+    const sub = String(body?.sub || ""), operator = String(body?.operator || "").trim(), reason = String(body?.reason || "").trim();
+    if (!operator || reason.length < 10) return out(400, { ok: false, reason: "operator_and_reason_required" });
+    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];
+    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? "ambiguous_sub" : "not_found" });
+    const rec = await readJson(kv, keys[0], null);
+    const cycle = Number(body?.cycle);
+    if (!rec || !pendingCycles(rec).includes(cycle)) return out(400, { ok: false, reason: "cycle_not_refundable" });
+    const latest = (await readJson(kv, keys[0], null)) || rec;
+    const updated = { ...latest, refundRequests: [...(latest.refundRequests || []), { cycle, reason: "pedido_do_assinante", operator: operator.slice(0, 60), at: new Date(now).toISOString(), status: "pedido_registrado" }] };
+    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });
+    await syncCreditIndex(kv, keys[0], updated);
+    await recordRefundRequests(env, kv, keys[0], [cycle], "pedido_do_assinante", { operator, note: reason, now });
+    return out(200, { ok: true, cycle });
   }
   if (path === "/api/admin/conteudo-pronto/requeue" && request.method === "POST") {
     let body = null; try { body = await request.json(); } catch { return out(400, { error: "invalid_json" }); }

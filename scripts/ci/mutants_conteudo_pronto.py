@@ -34,7 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 41  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 43  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -80,8 +80,8 @@ M = {
         "Os roteiros são para WhatsApp; você revisa", "worker/content-service.mjs sem WhatsApp"),
     "M21 formulário volta a WhatsApp (escapado na fonte)": (CS, "(ex.: e-mail, Instagram Direct, Telegram, chat do site)",
         "(Whats\\u0041pp, Instagram, site)", "[form]"),
-    "M22 suporte volta a WhatsApp": ("worker/support-knowledge.mjs", "4 roteiros multicanal de venda e acompanhamento (cada um",
-        "4 mensagens de venda para WhatsApp (cada um", "[suporte]"),
+    "M22 suporte volta a WhatsApp": ("worker/support-knowledge.mjs", "4 roteiros multicanal de venda e acompanhamento (versão curta",
+        "4 mensagens de venda para WhatsApp (versão curta", "[suporte]"),
     "M23 catálogo-fonte volta a WhatsApp": ("solucoes/index.html", "<li>4 roteiros multicanal de venda e acompanhamento por mês</li>",
         "<li>4 mensagens de venda para WhatsApp por mês</li>", "[catalogo]"),
     "M24 página gerada desatualizada": ("sales-public/conteudo-pronto.html", "<dd>Todo mês, uma campanha de promoção de vendas",
@@ -216,9 +216,9 @@ M = {
         "    return out;", "[camp-ancora] fases não cobertas"),
     "M88 calendário sai do período": (CS, "  const at = (f) => Math.round(f * span);",
         "  const at = (f) => Math.round(f * (span + 10));", "[camp-pacote] calendário no período e em ordem"),
-    "M89 entrega gera com a campanha do mês anterior": (CS, "  if (record.campanha?.cycle !== record.cycles || !validateCampaign(record.campanha).ok) return { ok: false, reason: \"campaign_required\" };",
+    "M89 entrega gera com a campanha do mês anterior": (CS, "  if (record.campanha?.cycle !== cyc || !validateCampaign(record.campanha).ok) return { ok: false, reason: \"campaign_required\" };",
         "", "[camp-renovacao] entrega recusa sem campanha"),
-    "M90 renovação não pede a campanha do mês": (CS, "const needsForm = (rec) => !rec.briefing || rec.campanha?.cycle !== rec.cycles;",
+    "M90 renovação não pede a campanha do mês": (CS, "const needsForm = (rec) => !rec.briefing || (campaignTarget(rec) !== null && rec.campanha?.cycle !== campaignTarget(rec));",
         "const needsForm = (rec) => !rec.briefing;", "[camp-renovacao] status"),
     "M91 protocolo do recibo fora do formato": (CS, "protocolo: \"CP-\" + pkgSha.slice(0, 10).toUpperCase()",
         "protocolo: \"CP-\" + pkgSha.slice(0, 6)", "[camp-entrega] protocolo"),
@@ -258,8 +258,8 @@ M = {
         "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); }", "[camp-bounce] link novo (nova chave de idempotência)"),
     "M109 regra do mês fora do contrato": (CS, "export const MES_SEM_CAMPANHA = CONTEUDO_PRONTO.mes_sem_campanha;",
         "export const MES_SEM_CAMPANHA = \"O mês fica reservado.\";", "[camp-regra] código lê o contrato"),
-    "M110 Termos sem a regra": ("termos/index.html", "<strong>Se a campanha do mês não for enviada até a próxima renovação, aquele mês não gera pacote e não é reembolsado; o direito de arrependimento de 7 dias continua valendo.</strong></p>",
-        "</p>", "[camp-regra] Termos com destaque (CDC art. 54 §4): termos/index.html"),
+    "M110 Termos sem a regra": ("termos/index.html", "<strong>A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O arrependimento de 7 dias continua valendo.</strong> A assinatura é cancelada",
+        " A assinatura é cancelada", "[camp-regra] Termos com destaque (CDC art. 54 §4): termos/index.html"),
     "M111 portão volta a recusar frase promocional comum": (CS, "export const promessa = (t) => PROMESSA_RX.test(normTxt(t));",
         "export const promessa = (t) => PROMESSA_RX.test(normTxt(t)) || /garantid/.test(normTxt(t));", "[camp-promessa-lista] permite: vaga garantida"),
     "M112 portão aceita dinheiro devolvido": (CS, "  \"dinheiro\\\\s+(de\\\\s+volta|devolvido)\",",
@@ -286,6 +286,20 @@ M = {
         "", "[camp-operador-email] ciclo antigo não é reenviado"),
     "M123 posts sem o portão de promessa": (CS, " || promessa(tema + \" \" + legenda + \" \" + cta)) return null;",
         ") return null;", "[camp-promessa-lista] post com promessa recusado"),
+    "M124 renovação perde o mês sem campanha": (CS, "  if (current && current.lastTxn !== txn && prev >= 1 && pendingCycles({ ...current, credits: [] }).includes(prev)) {",
+        "  if (false) {", "[camp-credito] mês 2 virou crédito"),
+    "M125 geração ignora o crédito": (CS, "  const cyc = campaignTarget(record);",
+        "  const cyc = Number(record.deliveredCycle || 0) !== Number(record.cycles) ? Number(record.cycles) : null;", "[camp-credito] pacote do mês 2 gerado com o crédito"),
+    "M126 sem limite de créditos": (CS, "    overflow = live.slice(0, Math.max(0, live.length - CREDITOS_MAX)).map((c) => c.cycle);",
+        "    overflow = [];", "[camp-credito] no máximo 2 créditos"),
+    "M127 cancelamento sem reembolso": (CS, "    const owed = current?.status === \"active\" && (event === \"SUBSCRIPTION_CANCELLATION\" || event === \"PURCHASE_CANCELED\") ? pendingCycles(current) : [];",
+        "    const owed = [];", "[camp-reembolso] cancelamento reembolsa todo mês pago sem pacote"),
+    "M128 pedido de reembolso sem alerta": (CS, "await ownerAlert(env, \"reembolso do Conteúdo Pronto a processar na Hotmart\"",
+        "if (0) await ownerAlert(env, \"reembolso do Conteúdo Pronto a processar na Hotmart\"", "[camp-credito] proprietário avisado do reembolso"),
+    "M129 reembolso não tira o mês dos pendentes": (CS, "const refundedCycles = (rec) => new Set((rec?.refundRequests || []).map((r) => Number(r.cycle)));",
+        "const refundedCycles = (rec) => new Set();", "[camp-reembolso] mês reembolsado sai dos pendentes"),
+    "M130 status sem os créditos": (CS, "      credits: Object.entries(creditIdx)",
+        "      _c: Object.entries(creditIdx)", "[camp-credito] crédito visível no status"),
 }
 
 

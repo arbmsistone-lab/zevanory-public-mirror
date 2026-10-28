@@ -42,7 +42,7 @@ const noAsset = (html) => html.replace(/<script src="\/whatsapp-contact\.js" def
 const CANONICAL = "Todo mês, uma campanha de promoção de vendas da oferta que você escolher: no formulário do mês você informa o objetivo comercial, o produto, serviço ou oferta, a condição comercial e o período (de 7 a 30 dias). A campanha traz 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento — cada um com versão curta e versão de e-mail — e um calendário com as datas do período, todos sobre essa oferta e no tom do seu negócio. Os roteiros são para canais autorizados pelo cliente, como e-mail, Instagram Direct, Telegram ou chat do site. Você revisa antes de usar; não há disparo automático.";
 const OBJECTIVE_IDS = ["oferta_solicitada", "acompanhamento", "reativacao", "indicacao"];
 // v2 ainda não foi publicada: a impressão digital registra o contrato final da v2 (com wa.me nos termos proibidos).
-const CONTRACT_FINGERPRINTS = { 2: "5a6a0d0c1fee4716dcf78f16a177337ec8c21c96bb973ed3998b279d19491498", 3: "8148622053017283baf89d7b9437c74a233bb73b56d66fdc411fcb67e7e9f9b6" };
+const CONTRACT_FINGERPRINTS = { 2: "5a6a0d0c1fee4716dcf78f16a177337ec8c21c96bb973ed3998b279d19491498", 3: "79cd19866f46bcf14ae18315f8eba2c6705c4717df85dee10797f635e4d39203" };
 const fingerprint = () => {
   const { nota, ...contrato } = C;
   return createHash("sha256").update(JSON.stringify({ contrato, caracteristicas: CARACT })).digest("hex");

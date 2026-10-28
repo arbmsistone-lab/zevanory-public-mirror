@@ -292,7 +292,7 @@ test("[camp-lembretes] formulário sem resposta: lembretes nos dias 3, 7 e 14, a
     assert.match(html, /E se eu não enviar a campanha do mês\?/, "[camp-lembretes] FAQ: " + rel);
     assert.match(html, new RegExp(`lembretes por e-mail ${CS.CAMPAIGN_REMINDER_DAYS.slice(0, -1).join(", ")} e ${CS.CAMPAIGN_REMINDER_DAYS.at(-1)} dias depois do pedido`), "[camp-lembretes] dias na página: " + rel);
     assert.match(html, new RegExp(`avisada no ${CS.CAMPAIGN_OWNER_ALERT_DAYS[0]}º dia`), "[camp-lembretes] alerta na página: " + rel);
-    assert.match(html, /O mês pago fica reservado: você pode enviar a campanha a qualquer momento até a próxima renovação/, "[camp-lembretes] mês pago: " + rel);
+    assert.ok(html.includes(C.mes_sem_campanha), "[camp-lembretes] mês pago (regra do contrato): " + rel);
   }
 });
 
@@ -371,7 +371,12 @@ test("[camp-regen-mes] regeneração de pacote bloqueado só com a campanha do m
 // ---------- Auditoria independente, rodada 3 do #960 (MED-A, MED-B e LOW) ----------
 test("[camp-regra] regra do mês sem campanha: o mesmo texto no contrato, na página (FAQ e FAQPage), nos Termos, no atendimento e nos lembretes", async () => {
   const R = C.mes_sem_campanha;
-  assert.equal(R, "Se a campanha do mês não for enviada até a próxima renovação, aquele mês não gera pacote e não é reembolsado; o direito de arrependimento de 7 dias continua valendo.", "[camp-regra] texto do contrato");
+  // Sol ORDEM 308 (S308-B4): crédito, limite explícito, reembolso a pedido e no cancelamento; nunca perda automática.
+  for (const trecho of ["o mês pago vira crédito", "sem custo adicional", `no máximo ${C.creditos_max} meses em crédito`, "o crédito mais antigo é reembolsado",
+    "pedir ao suporte o reembolso de mês pago sem pacote", "no cancelamento, todo mês pago sem pacote é reembolsado", "arrependimento de 7 dias"])
+    assert.ok(R.includes(trecho), "[camp-regra] texto do contrato: " + trecho);
+  assert.doesNotMatch(R, /não é reembolsado|não gera pacote e/, "[camp-regra] sem perda automática");
+  assert.equal(CS.CREDITOS_MAX, C.creditos_max, "[camp-regra] limite de créditos do contrato no código");
   assert.equal(CS.MES_SEM_CAMPANHA, R, "[camp-regra] código lê o contrato");
   for (const rel of ["conteudo-pronto/index.html", "sales-public/conteudo-pronto.html"]) {
     const html = read(rel);
@@ -484,4 +489,65 @@ test("[camp-cancelamento] cancelado não grava campanha nem recebe lembrete; ren
   await submit(e3, f3, await subscribed(e3, f3), { ...BRIEF, ...CAMPAIGN });
   const st = await (await CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/status"), e3)).json();
   assert.equal(st.forms_waiting.length, 0, "[camp-cancelamento] envio do formulário encerra os lembretes");
+});
+
+// ---------- Sol ORDEM 308 (S308-B4): mês sem campanha vira crédito; reembolso a pedido e no cancelamento ----------
+const statusOf = async (e) => (await CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/status"), e)).json();
+
+test("[camp-credito] renovação sem campanha: o mês vira crédito; a campanha enviada depois gera o pacote do crédito mais antigo, sem custo; limite de créditos com reembolso do excedente", async () => {
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });   // mês 1 entregue
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-K2"), e, null, f); // mês 2 pago, sem campanha
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-K3"), e, null, f); // renovação: mês 2 vira crédito
+  assert.deepEqual(rec(kv).credits.map((c) => c.cycle), [2], "[camp-credito] mês 2 virou crédito");
+  assert.deepEqual(CS.pendingCycles(rec(kv)), [2, 3], "[camp-credito] pendentes: crédito 2 e mês 3");
+  assert.deepEqual(((await statusOf(e)).credits || []).map((c) => c.cycles), [[2]], "[camp-credito] crédito visível no status");
+  const ask = f.sent.filter((m) => /defina a campanha do mês 2/.test(m.subject)).at(-1);
+  assert.ok(ask && /em crédito/.test(ask.text), "[camp-credito] pedido da campanha do mês em crédito");
+  await submit(e, f, tokenOf(ask.text, "briefing"), { ...BRIEF, ...CAMPAIGN_MONTH2 });
+  assert.ok(f.sent.some((m) => /mês 2 chegou/.test(m.subject)), "[camp-credito] pacote do mês 2 gerado com o crédito");
+  assert.deepEqual(rec(kv).credits, [], "[camp-credito] crédito consumido");
+  assert.deepEqual(rec(kv).creditsUsed.map((c) => c.cycle), [2], "[camp-credito] crédito registrado como usado");
+  assert.equal(JSON.parse(kv.data.get(rec(kv).lastPackage)).cycle, 2);
+  await CS.retryPendingPackages(e, f); // a fila de formulários pede a campanha do mês 3
+  const ask3 = f.sent.filter((m) => /defina a campanha do mês 3/.test(m.subject)).at(-1);
+  assert.ok(ask3, "[camp-credito] pede a campanha do mês atual depois de usar o crédito");
+  await submit(e, f, tokenOf(ask3.text, "briefing"), { ...BRIEF, ...CAMPAIGN });
+  assert.equal(rec(kv).deliveredCycle, 3, "[camp-credito] mês 3 entregue");
+  // Limite: com 2 créditos, mais um mês sem campanha reembolsa o crédito mais antigo (pedido registrado e alertado).
+  const g = resend(), e2 = env(ai()), kv2 = e2.ZEVANORY_PRIVATE_ARTIFACTS;
+  await subscribed(e2, g); // mês 1 sem formulário
+  for (const n of [2, 3, 4]) await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-L" + n), e2, null, g);
+  assert.deepEqual(rec(kv2).credits.map((c) => c.cycle), [2, 3], "[camp-credito] no máximo " + CS.CREDITOS_MAX + " créditos");
+  assert.deepEqual(rec(kv2).refundRequests.map((r) => [r.cycle, r.reason]), [[1, "limite_de_creditos"]], "[camp-credito] excedente vira pedido de reembolso");
+  assert.ok(alertKinds(kv2).includes("reembolso_pedido"), "[camp-credito] proprietário avisado do reembolso");
+  assert.deepEqual(CS.pendingCycles(rec(kv2)), [2, 3, 4], "[camp-credito] o mês reembolsado não gera mais pacote");
+});
+
+test("[camp-reembolso] pedido de reembolso pelo suporte e cancelamento com crédito: registrado e alertado, nunca dinheiro movido pelo sistema", async () => {
+  const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-Q2"), e, null, f);
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-Q3"), e, null, f); // crédito 2, mês 3 pendente
+  const op = (body) => CS.handleContentOperator(new Request("https://zevanory.api.br/api/admin/conteudo-pronto/refund-request", { method: "POST", body: JSON.stringify(body) }), e);
+  const sub = subKey(kv).slice(-12);
+  assert.equal((await op({ sub, cycle: 2, operator: "ana", reason: "" })).status, 400, "[camp-reembolso] sem motivo recusado");
+  assert.equal((await op({ sub, cycle: 1, operator: "ana", reason: "assinante pediu reembolso" })).status, 400, "[camp-reembolso] mês já entregue não é reembolsável aqui");
+  assert.equal((await op({ sub, cycle: 2, operator: "ana", reason: "assinante pediu reembolso do mês 2" })).status, 200, "[camp-reembolso] pedido registrado");
+  assert.deepEqual(CS.pendingCycles(rec(kv)), [3], "[camp-reembolso] mês reembolsado sai dos pendentes");
+  const st = await statusOf(e);
+  assert.ok(st.refund_requests.some((r) => r.cycle === 2 && r.reason === "pedido_do_assinante"), "[camp-reembolso] pedido visível no status");
+  assert.deepEqual(st.credits, [], "[camp-reembolso] crédito reembolsado sai do índice");
+  assert.ok(alertKinds(kv).includes("reembolso_pedido"), "[camp-reembolso] proprietário avisado");
+  assert.ok(f.sent.every((m) => !/api\.hotmart|refund/i.test(m.to?.[0] || "")), "[camp-reembolso] nenhuma chamada de estorno");
+  // Cancelamento com crédito e mês atual sem pacote: todos reembolsados (pedido registrado), nada mais é gerado.
+  const g = resend(), e2 = env(ai()), kv2 = e2.ZEVANORY_PRIVATE_ARTIFACTS;
+  await submit(e2, g, await subscribed(e2, g), { ...BRIEF, ...CAMPAIGN });
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-Z2"), e2, null, g);
+  await CS.handleHotmartWebhook(hook("PURCHASE_APPROVED", "HP-C3-Z3"), e2, null, g);
+  await CS.handleHotmartWebhook(hook("SUBSCRIPTION_CANCELLATION", "HP-C3-ZX"), e2, null, g);
+  assert.deepEqual((rec(kv2).refundRequests || []).map((r) => [r.cycle, r.reason]), [[2, "cancelamento"], [3, "cancelamento"]], "[camp-reembolso] cancelamento reembolsa todo mês pago sem pacote");
+  assert.deepEqual(CS.pendingCycles(rec(kv2)), [], "[camp-reembolso] nada pendente depois do cancelamento");
+  assert.deepEqual((await statusOf(e2)).credits, [], "[camp-reembolso] cancelado sai do índice de créditos");
+  assert.ok(alertKinds(kv2).includes("reembolso_pedido"), "[camp-reembolso] proprietário avisado no cancelamento");
 });
