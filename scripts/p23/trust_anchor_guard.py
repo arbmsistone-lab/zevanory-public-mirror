@@ -111,6 +111,15 @@ def _steps(lines: list[str], start: int, end: int) -> list[dict]:
 def validate_deploy_workflow(name: str, text: str) -> list[str]:
     lines = text.splitlines()
     errs: list[str] = []
+    try:  # YAML inválido não roda (o deploy nem dispara); com PyYAML disponível, isso também reprova aqui.
+        import yaml  # type: ignore
+    except ImportError:
+        yaml = None
+    if yaml is not None:
+        try:
+            yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            errs.append(f"{name}: YAML inválido ({type(e).__name__})")
     top = _children(lines, 0, len(lines), 0)
     for k, v, s, e in top:
         if k == "defaults":

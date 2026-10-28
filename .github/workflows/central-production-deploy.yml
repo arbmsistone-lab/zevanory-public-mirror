@@ -341,7 +341,7 @@ jobs:
             exit 1
           fi
 
-      - name: Legal text integrity before the production deploy (MED-2/MED-1: the tree still holds the text the gate checked)
+      - name: Legal text integrity before the production deploy (MED-1 and MED-2, the tree still holds the text the gate checked)
         run: |
           set -euo pipefail
           git diff --exit-code HEAD -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json

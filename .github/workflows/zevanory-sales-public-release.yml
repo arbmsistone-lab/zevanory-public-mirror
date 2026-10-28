@@ -262,7 +262,7 @@ jobs:
               print("PREVIOUS_DEPLOYMENT_SNAPSHOT=NONE_FIRST_RELEASE")
           PY
 
-      - name: Legal text integrity before the candidate deploy (MED-2/MED-1: the tree still holds the text the gate checked)
+      - name: Legal text integrity before the candidate deploy (MED-1 and MED-2, the tree still holds the text the gate checked)
         run: |
           set -euo pipefail
           git diff --exit-code HEAD -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
@@ -312,7 +312,7 @@ jobs:
             --readback-url https://vendas.zevanory.api.br/health --readback-path release \
             --cloudflare-script "$SCRIPT_NAME"
 
-      - name: Legal text integrity before the canonical promotion (MED-2/MED-1: the tree still holds the text the gate checked)
+      - name: Legal text integrity before the canonical promotion (MED-1 and MED-2, the tree still holds the text the gate checked)
         run: |
           set -euo pipefail
           git diff --exit-code HEAD -- sales-public/termos.html sales-public/reembolso.html termos/index.html reembolso/index.html sales-public/privacidade.html sales-public/afiliados.html privacidade/index.html afiliados/index.html data/politica-unica.json
