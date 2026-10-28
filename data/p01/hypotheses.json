@@ -37,7 +37,7 @@
       "registered_at": "2026-10-25",
       "sources": [
         {"kind": "repo", "ref": "worker/cloudflare-worker.recovered.mjs", "contains": "price_status: \"pilot_hypothesis_not_validated\""},
-        {"kind": "repo", "ref": "data/products.json", "contains": "\"sku\": \"ZEV-IA-011\", \"name\": \"IA na Prática\", \"price\": 197"}
+        {"kind": "repo", "ref": "data/products.json", "contains": "\"sku\": \"ZEV-IA-011\", \"name\": \"IA na Prática\", \"price\": "}
       ],
       "external_demand_evidence": "NOT_AVAILABLE"
     }

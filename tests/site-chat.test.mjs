@@ -1,3 +1,5 @@
+import { readTextNormalized as __rfP } from "./helpers/text.mjs";
+const __PRICES = Object.fromEntries(JSON.parse(__rfP(new URL("../data/products.json", import.meta.url))).products.map((p) => [p.slug, p.price])); // preço canônico
 // Chat do site (worker/site-chat.mjs + proxy em worker/sales-public-worker.mjs). AVAL Sol 111.
 // SOMENTE fakes locais: nenhuma requisição sai da máquina, nenhum lead/ticket/e-mail/checkout real.
 // Mutantes: scripts/ci/mutants_site_chat.py (todos precisam morrer).
@@ -101,7 +103,7 @@ test("SC06 autoridade canônica consultada a CADA resposta; aberta => preço do 
   const h = harness({ salesOpen: async () => { calls += 1; return open; } });
   const s = await h.session();
   const a = await h.say(s, "Quanto custa o Lucro & Caixa?");
-  assert.match(a.body.reply, /R\$ 247,00/, "[SC06.1]");
+  assert.match(a.body.reply, new RegExp(`R\\$ ${__PRICES["lucro-e-caixa"]},00`), "[SC06.1]");
   assert.doesNotMatch(a.body.reply, CHECKOUT, "[SC06.2]");
   open = false;
   const b = await h.say(s, "Quanto custa o Lucro & Caixa?");
@@ -272,7 +274,7 @@ test("SC13 falha do banco => 503 com e-mail/formulários; catálogo vencido ou c
 test("SC14 validador do site: bloqueia valor, checkout, desconto, promessa, negação de direito e prazo fora da fonte; aceita a política oficial", () => {
   for (const [k, txt] of Object.entries(AI_OUTPUTS)) if (k !== "good") assert.equal(validateSiteReply(txt, { salesOpen: false }).ok, false, "[SC14.1] " + (k));
   assert.equal(validateSiteReply("Custa R$ 197,00.", { salesOpen: false }).ok, false, "[SC14.2] valor com vendas fechadas");
-  assert.equal(validateSiteReply("Custa R$ 197,00.", { salesOpen: true }).ok, true, "[SC14.3] preço do catálogo com vendas abertas");
+  assert.equal(validateSiteReply(`Custa R$ ${__PRICES["ia-na-pratica"]},00.`, { salesOpen: true }).ok, true, "[SC14.3] preço do catálogo com vendas abertas");
   assert.equal(validateSiteReply("Custa R$ 150,00.", { salesOpen: true }).ok, false, "[SC14.4]");
   assert.equal(validateSiteReply("Chega em 3 dias úteis.").ok, false, "[SC14.5]");
   assert.equal(validateSiteReply("Finalize em mercadopago.com.br/checkout/v1 ou pay.hotmart.com/X1").ok, false, "[SC14.6] checkout sem esquema também");

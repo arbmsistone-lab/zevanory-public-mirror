@@ -11,15 +11,15 @@ export const SANDBOX_INBOX_DOMAIN = "zevanory.api.br";
 export const SANDBOX_INBOX_ADDRESS = "prova-sandbox@zevanory.api.br";
 const RESEND = "https://api.resend.com";
 export const SANDBOX_OFFER_ID = "ZEV-CMB-011";
-export const SANDBOX_AMOUNT_BRL = 297;
+export const SANDBOX_AMOUNT_BRL = 157;
 // Canonical public catalog (same table price the sales page shows and the
 // certification resolver charges). Any other SKU or amount is rejected.
 export const SANDBOX_OFFERS = Object.freeze({
-  "ZEV-IA-011": 197,
-  "ZEV-VEN-011": 197,
-  "ZEV-LCX-011": 247,
-  "ZEV-CMB-011": 297,
-  "ZEV-NGC-011": 397
+  "ZEV-IA-011": 97,
+  "ZEV-VEN-011": 97,
+  "ZEV-LCX-011": 147,
+  "ZEV-CMB-011": 157,
+  "ZEV-NGC-011": 247
 });
 export const FROZEN_ORDER = "a28c53ab-9ce7-429d-9d6b-1311a3fad406";
 // sha256 of the high-entropy read-only inbox token kept in the GitHub

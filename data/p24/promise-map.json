@@ -681,7 +681,7 @@
         },
         {
           "id": "CMB-P01",
-          "text": "Economia de R$ 97 em relação à compra separada (R$ 394)",
+          "text": "Economia de R$ 37 em relação à compra separada (R$ 194)",
           "type": "price",
           "components": [
             "ia-na-pratica",
@@ -899,7 +899,7 @@
         },
         {
           "id": "NGC-P01",
-          "text": "Economia de R$ 244 em relação à compra separada (R$ 641)",
+          "text": "Economia de R$ 94 em relação à compra separada (R$ 341)",
           "type": "price",
           "components": [
             "ia-na-pratica",

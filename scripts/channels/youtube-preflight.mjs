@@ -8,8 +8,8 @@ const fail = code => { throw Error(code); };
 // Only fixed codes reach the public log; never tokens, provider bodies or channel data beyond the id.
 const report_fail=e=>{console.log("::error title=YOUTUBE_PREFLIGHT::"+String(e?.message||e).replace(/[^a-z0-9_:.-]/gi,"_").slice(0,120));process.exit(1);};process.on("unhandledRejection",report_fail);process.on("uncaughtException",report_fail);
 const run = (cmd,args) => { const p=spawnSync(cmd,args,{encoding:"utf8",maxBuffer:8*1024*1024});if(p.status!==0)fail(cmd+"_failed");return p.stdout; };
-const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 197,00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:197};
-const gate=evaluateCreativeWithRewrites(selected,{serverPrice:197});
+const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 97,00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:97};
+const gate=evaluateCreativeWithRewrites(selected,{serverPrice:97});
 if(gate.action!=="publish"||gate.compliance!==100||gate.score<85)fail("f1_gate_rejected");
 const required=["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","GEMINI_API_KEY"];
 for(const name of required)if(!process.env[name])fail("missing_secret_"+name);

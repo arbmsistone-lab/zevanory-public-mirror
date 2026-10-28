@@ -92,7 +92,7 @@ export function isAutomationUA(ua){
   if(!s)return true;
   return BOT_UA.test(MOBILE_BROWSER.test(s)?s.replace(INAPP_TOKEN,""):s);
 }
-const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prática",197],"ZEV-LCX-011":["Lucro & Caixa",247],"ZEV-CMB-011":["Combo IA + Vendas",297],"ZEV-NGC-011":["Negócio Completo",397]};
+const PRICES={"ZEV-IA-011":["IA na Prática",97],"ZEV-VEN-011":["Vendas na Prática",97],"ZEV-LCX-011":["Lucro & Caixa",147],"ZEV-CMB-011":["Combo IA + Vendas",157],"ZEV-NGC-011":["Negócio Completo",247]};
 async function salesOpen(env){
   try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}  // only an OK response with open===true opens; anything else is closed
 }
@@ -115,7 +115,7 @@ export function openSalesHtml(html,slug){
       return a+JSON.stringify(d)+c;}catch{return m}});
   if(slug==="conteudo-pronto")out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
     try{const d=JSON.parse(body);
-      for(const n of d["@graph"]||[])if(n&&n["@type"]==="Service")n.offers={"@type":"Offer",price:"197.00",priceCurrency:"BRL",url:SALES_ORIGIN+"/conteudo-pronto"};
+      for(const n of d["@graph"]||[])if(n&&n["@type"]==="Service")n.offers={"@type":"Offer",price:"97.00",priceCurrency:"BRL",url:SALES_ORIGIN+"/conteudo-pronto"};
       return a+JSON.stringify(d)+c;}catch{return m}});
   return out;
 }

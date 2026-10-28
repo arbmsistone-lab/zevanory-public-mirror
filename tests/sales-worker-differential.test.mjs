@@ -23,6 +23,8 @@ const PUB = join(ROOT, "sales-public");
 // 5bb6b552, so once it is merged the pre-#914 Worker is the #893 one: reverse-applying #914's two hunks must give
 // exactly git rev-parse 4dce12c3:worker/sales-public-worker.mjs (#893 head before merging #914), pinned below.
 const GH_PAGES_BLOB = "86c5337c33588b50012266698c9dd0d18300e237";
+// git blob id de neutralPrices(conteúdo do blob acima): o mesmo arquivo com os preços sincronizados zerados (#954).
+const GH_PAGES_BLOB_NEUTRAL = "ab811ce3c8002a08170151c1082d4e73e072d3f3";
 const NEW_SRC = readTextNormalized(join(ROOT, "worker/sales-public-worker.mjs"));
 
 const HUNK_HOTMART_NEW = `  // Design PR: the hero payment facts are a list (no "·" chain); each item has its Hotmart wording.
@@ -38,13 +40,17 @@ const HUNK_404 = `  // Designed 404 for unknown PAGE paths (no file extension); 
     if(nf.status===200) return new Response(request.method==="HEAD"?null:nf.body,{status:404,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
   }
 `;
+// Mesmo padrão de scripts/sync_canonical_prices.py (PRICES por SKU e Offer do Service).
+const neutralPrices = (src) => src.replace(/("ZEV-[A-Z]{2,3}-\d{3}":\["[^"]+",)\d+(\])/g, "$10$2").replace(/(n\.offers=\{"@type":"Offer",price:")\d+(\.00")/, "$10$2");
 const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex"); };
 
 async function loadWorkers() {
   assert.equal(NEW_SRC.split(HUNK_HOTMART_NEW).length, 2, "Hotmart hunk present exactly once");
   assert.equal(NEW_SRC.split(HUNK_404).length, 2, "404 hunk present exactly once");
   const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "");
-  assert.equal(gitBlob(oldSrc), GH_PAGES_BLOB, "reverse-applied file is byte-identical to the gh-pages Worker (no other change)");
+  // Preço canônico (#954): os valores de PRICES e da Offer da assinatura vêm de data/products.json pelo sincronizador;
+  // a comparação de bytes ignora SÓ esses números (zerados nos dois lados), para uma mudança de preço não mexer no pin.
+  assert.equal(gitBlob(neutralPrices(oldSrc)), GH_PAGES_BLOB_NEUTRAL, "reverse-applied file is byte-identical to the gh-pages Worker (no other change; prices neutralized)");
   const tmp = join(ROOT, "worker", `.gh-pages-sales-worker-${process.pid}-${Date.now()}.mjs`);
   writeFileSync(tmp, oldSrc);
   try {

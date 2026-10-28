@@ -1,0 +1,48 @@
+name: preco-canonico
+
+# Preço canônico (P24 T3, Sol ORDEM 301 item 4): data/products.json é a única definição de preço. Este gate prova que
+# página, resumo da oferta, JSON-LD, checkout próprio, chat e divulgação mostram/cobram o mesmo valor.
+# Só pull_request: nunca dispara no merge, sem segredo, sem rede além do checkout. A varredura
+# (scripts/price_surface_scan.py) troca os preços por sentinelas numa cópia e falha se sobrar preço literal em qualquer arquivo.
+on:
+  pull_request:
+    branches: [gh-pages]
+    # Sem filtro de caminho (auditoria #954 HIGH-1): um preço literal novo pode aparecer em qualquer arquivo.
+permissions:
+  contents: read
+concurrency:
+  group: preco-canonico-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  igualdade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Sincronizador sem divergência e build reproduz as páginas
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/sync_canonical_prices.py --check
+          python3 scripts/build_sales_public.py >/dev/null
+          git diff --exit-code -- sales-public || { echo "::error::sales-public diverge do build"; exit 1; }
+      - name: Varredura do repositório inteiro (preços-sentinela) e autoteste
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/price_surface_scan.py
+          python3 scripts/price_surface_scan.py --selftest
+      - name: Página == resumo == JSON-LD == checkout == chat == divulgação (contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/canonical-price.test.mjs tests/product-consistency.test.mjs 2>&1 | tee /tmp/p.txt
+          for kv in "tests 7" "pass 7" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+            grep -qx "# $kv" /tmp/p.txt || { echo "::error::esperado '# $kv'"; exit 1; }
+          done

@@ -24,6 +24,10 @@ import { spawnSync } from "node:child_process";
 import worker, { openSalesHtml, RETIRED_CONTACT_BODY } from "../worker/sales-public-worker.mjs";
 import { brandedEmailHtml, OFFICIAL_LEGAL_FOOTER } from "../worker/brand-email.mjs";
 import * as PU from "../worker/politica-unica.mjs";
+import { readTextNormalized as __readCanon } from "./helpers/text.mjs";
+const __CANON = JSON.parse(__readCanon(new URL("../data/products.json", import.meta.url)));
+const PRICE_OF = Object.fromEntries(__CANON.products.map((p) => [p.slug, p.price])); // preço canônico (data/products.json)
+const SUB_PRICE = __CANON.subscription.price;
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
@@ -140,7 +144,7 @@ test("(b) CTAs de lista de espera abrem e-mail com assunto 'Lista de espera — 
   assert.ok(n >= 22, "5 produtos x 4 CTAs + 2 do Conteúdo Pronto; achados " + n);
   // Vendas abertas: o Worker continua restaurando a compra a partir de data-zev-open-text.
   const open = openSalesHtml(readTextNormalized(join(PUB, "ia-na-pratica.html")), "ia-na-pratica");
-  assert.match(open, /<a class="button primary" href="\/comprar\/ZEV-IA-011" rel="nofollow">Comprar agora · R\$ 197<\/a>/);
+  assert.match(open, new RegExp(`<a class="button primary" href="/comprar/ZEV-IA-011" rel="nofollow">Comprar agora · R\\$ ${PRICE_OF["ia-na-pratica"]}</a>`));
   assert.doesNotMatch(open, /mailto:[^"]*Lista%20de%20espera/);
   const sub = openSalesHtml(readTextNormalized(join(PUB, "conteudo-pronto.html")), "conteudo-pronto");
   assert.match(sub, /href="\/assinar\/conteudo-pronto">Assinar agora/);

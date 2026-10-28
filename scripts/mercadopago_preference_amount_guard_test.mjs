@@ -2,6 +2,7 @@
 // the persisted order amount. Extracts the guard from the shipped runtime and runs it.
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
+import { IA_PRICE, IA_PRICE_STR } from "../tests/helpers/catalog-price.mjs";
 
 const runtime = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
 const start = runtime.indexOf("function preferenceMatchesPersistedOrder(");
@@ -15,18 +16,18 @@ const providerCall = runtime.indexOf("raw = await createMercadoPagoPreference(pa
 assert.ok(callSite > 0 && providerCall > callSite, "GUARD_NOT_BEFORE_PROVIDER_CALL");
 assert.equal((runtime.match(/\/checkout\/preferences`/g) || []).length, 1, "UNEXPECTED_PREFERENCE_CREATION_POINT");
 
-const order = { amount: "197.00", offer_id: "ZEV-IA-011" };
+const order = { amount: IA_PRICE_STR, offer_id: "ZEV-IA-011" };
 const pref = (unit_price, extra = {}) => ({ items: [{ id: "ZEV-IA-011", quantity: 1, currency_id: "BRL", unit_price, ...extra }] });
 
-assert.equal(guard(pref(197), order), true, "MATCHING_AMOUNT_ACCEPTED");
-assert.equal(guard(pref(197), { amount: "5.00", offer_id: "ZEV-IA-011" }), false, "ISSUE_307_197_VS_5_REJECTED");
+assert.equal(guard(pref(IA_PRICE), order), true, "MATCHING_AMOUNT_ACCEPTED");
+assert.equal(guard(pref(IA_PRICE), { amount: "5.00", offer_id: "ZEV-IA-011" }), false, "ISSUE_307_197_VS_5_REJECTED");
 assert.equal(guard(pref(5), order), false, "LOWER_AMOUNT_REJECTED");
-assert.equal(guard(pref(197.01), order), false, "CENT_DIFFERENCE_REJECTED");
-assert.equal(guard(pref(197, { quantity: 2 }), order), false, "QUANTITY_REJECTED");
-assert.equal(guard(pref(197, { currency_id: "USD" }), order), false, "CURRENCY_REJECTED");
-assert.equal(guard(pref(197, { id: "ZEV-OTHER" }), order), false, "OFFER_MISMATCH_REJECTED");
-assert.equal(guard({ items: [...pref(197).items, ...pref(197).items] }, order), false, "MULTI_ITEM_REJECTED");
-assert.equal(guard(pref(197), { amount: "0", offer_id: "ZEV-IA-011" }), false, "ZERO_ORDER_REJECTED");
+assert.equal(guard(pref(IA_PRICE + 0.01), order), false, "CENT_DIFFERENCE_REJECTED");
+assert.equal(guard(pref(IA_PRICE, { quantity: 2 }), order), false, "QUANTITY_REJECTED");
+assert.equal(guard(pref(IA_PRICE, { currency_id: "USD" }), order), false, "CURRENCY_REJECTED");
+assert.equal(guard(pref(IA_PRICE, { id: "ZEV-OTHER" }), order), false, "OFFER_MISMATCH_REJECTED");
+assert.equal(guard({ items: [...pref(IA_PRICE).items, ...pref(IA_PRICE).items] }, order), false, "MULTI_ITEM_REJECTED");
+assert.equal(guard(pref(IA_PRICE), { amount: "0", offer_id: "ZEV-IA-011" }), false, "ZERO_ORDER_REJECTED");
 assert.equal(guard(null, order), false, "EMPTY_PAYLOAD_REJECTED");
 
 console.log("PREFERENCE_AMOUNT_GUARD_TEST=PASS");
