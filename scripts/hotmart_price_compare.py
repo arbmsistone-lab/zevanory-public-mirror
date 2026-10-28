@@ -45,10 +45,22 @@ def _get_json(url: str, headers: dict, method: str = "GET") -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
+def _hotmart_https(url: str) -> str:
+    """Credenciais só vão para https em *.hotmart.com (auditoria #954 LOW: --token-url não pode desviar o segredo)."""
+    u = urllib.parse.urlsplit(url)
+    host = (u.hostname or "").lower()
+    if u.scheme != "https" or not (host == "hotmart.com" or host.endswith(".hotmart.com")) or u.username or u.password:
+        raise SystemExit("URL recusada: só https em *.hotmart.com")
+    return url
+
+
 def read_api(mapping: dict[str, str], token_url: str, offers_url: str) -> dict[str, float | None]:
+    _hotmart_https(token_url)
+    _hotmart_https(offers_url.format(product_id="0"))
     cid, secret, basic = (os.environ.get(k, "") for k in ("HOTMART_CLIENT_ID", "HOTMART_CLIENT_SECRET", "HOTMART_BASIC"))
     if not (cid and secret and basic):
         raise SystemExit("defina HOTMART_CLIENT_ID, HOTMART_CLIENT_SECRET e HOTMART_BASIC (nada é impresso)")
+    # O formato de token da Hotmart leva client_id/client_secret na query; a URL nunca é impressa nem registrada.
     url = token_url + "&" + urllib.parse.urlencode({"client_id": cid, "client_secret": secret})
     token = _get_json(url, {"Authorization": "Basic " + basic}, "POST_TOKEN").get("access_token")  # emissão de token, não altera dados
     if not token:
