@@ -8,7 +8,7 @@
 //   T* textos do modelo B (fonte única, Termos, /reembolso, variante Hotmart, privacidade)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import {
   KITS_DATA, day8ReleaseAt, day8Released, brt, authorizedFiles, catalogFor, kitSkuFor, kitProductMap, approvedAtMs,
   handleKitsRequest, contingencyEmail, ref, KITS_ADMIN_PATHS,
@@ -18,7 +18,7 @@ import { handleSalesControl } from "../worker/sales-control.mjs";
 import { hotmartPage, HOTMART_CHECKOUT } from "../worker/sales-public-worker.mjs";
 import { ENTREGA_CLUB, RESUMO_OFERTA, bannedPolicyHits } from "../worker/politica-unica.mjs";
 
-const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
+const read = (p) => readTextNormalized(new URL("../" + p, import.meta.url));
 const POLICY = JSON.parse(read("data/politica-unica.json"));
 const H = 3_600_000;
 const SKUS = ["ZEV-IA-011", "ZEV-VEN-011", "ZEV-LCX-011", "ZEV-CMB-011", "ZEV-NGC-011"];
