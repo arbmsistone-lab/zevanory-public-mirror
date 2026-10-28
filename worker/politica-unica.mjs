@@ -131,3 +131,10 @@ export function refundWindow({ paidAt, deliveredAt, firstDownloadAt, now = Date.
   return { eligible: toMs(now) <= deadline, started: true, reason: toMs(now) <= deadline ? "dentro_do_prazo" : "fora_do_prazo",
     paid_at: new Date(paid).toISOString(), received_at: new Date(receipt).toISOString(), starts_at: new Date(start).toISOString(), ends_at: new Date(deadline).toISOString() };
 }
+
+// Modelo B (Sol ORDEM 313): textos de entrega das compras Hotmart (kits entregues só pela área de membros).
+// Fonte única: data/politica-unica.json (entrega_club). {rule_7d}/{refund_channels} preenchidos aqui;
+// {produto}, {link}, {expira}, {dia8}, {data} e {aviso_licenca} pelo consumidor (worker/hotmart-kits.mjs).
+const E = POLICY.entrega_club;
+export const ENTREGA_CLUB = Object.freeze(Object.fromEntries(Object.entries(E).filter(([k]) => k !== "nota")
+  .map(([k, v]) => [k, fill(String(v)).replaceAll("{rule_7d_curto}", RULE_7D).replaceAll("{aviso_licenca}", E.aviso_licenca)])));

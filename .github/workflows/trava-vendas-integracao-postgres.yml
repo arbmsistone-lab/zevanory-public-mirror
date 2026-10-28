@@ -12,6 +12,8 @@ on:
     paths:
       - "worker/**"
       - "data/politica-unica.json"
+      # Modelo B (Sol ORDEM 313): catálogo e IDs dos kits Hotmart, importados pelo Worker.
+      - "data/hotmart-kits.json"
       # P23: registro fiscal lido pelo portão de checkout (worker/fiscal-process.mjs).
       - "data/p23/fiscal-process.json"
       - "tests/integration/**"
@@ -32,6 +34,7 @@ on:
       - ".github/workflows/trava-vendas-integracao-postgres.yml"
       - "tests/mercadopago-webhook-signature.test.mjs"
       - "scripts/ci/mutants_mp_webhook.py"
+      - "scripts/ci/mutants_kits_club_b.py"
 permissions:
   contents: read
 concurrency:
@@ -134,6 +137,15 @@ jobs:
           grep -oE 'C[0-9]{3}[A-Z]? [0-9]{3} [^|]*como (temporário|permanente): KILLED' as.txt | wc -l | grep -qx 9 || { echo "::error::esperados 9 mutantes de classificação mortos"; exit 1; }
           if grep -qE 'ATENDIMENTO_STATUS_MUTANTS .*SURVIVED' as.txt; then echo "::error::mutante de classificação sobreviveu"; exit 1; fi
           echo "::notice title=ATENDIMENTO_OUTBOX::$(grep -E '^# (tests|pass|fail|skipped) ' at.txt | paste -sd' ' -)"
+      - name: Modelo B (Sol ORDEM 313) — trava da rota ZIP para compras Hotmart, ingestão dos postbacks e contingência S313-03
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/hotmart-kits-postgres.test.mjs | tee hk.txt
+          grep -qx "# tests 16" hk.txt && grep -qx "# pass 16" hk.txt && grep -qx "# skipped 0" hk.txt && grep -qx "# fail 0" hk.txt
+          echo "::notice title=COUNTS_HOTMART_KITS::$(grep -E '^# (tests|pass|fail|skipped) ' hk.txt | paste -sd' ' -)"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail
@@ -185,6 +197,39 @@ jobs:
           set -eo pipefail
           node --test tests/trava-vendas-gate-paths.test.mjs | tee g.txt
           grep -qx "# tests 3" g.txt && grep -qx "# pass 3" g.txt && grep -qx "# skipped 0" g.txt && grep -qx "# fail 0" g.txt
+  # Modelo B (Sol ORDEM 313): 24 mutantes das propriedades de segurança (trava da rota ZIP, estado pegajoso, PROTEST,
+  # dia 8, destinatário, token fora da resposta e do registro, revogação, contingência desligada, privacidade).
+  mutantes-kits-club-b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Mutantes do modelo B (cada um morto por falha de asserção do teste esperado)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 -I scripts/ci/mutants_kits_club_b.py < /dev/null | tee mk.txt || rc=$?
+          [ "$rc" = 0 ] || { echo "::error::mutantes do modelo B saíram com $rc"; exit 1; }
+          grep -qx 'MUTANTS_TOTAL=24 KILLED=24 SURVIVED=0 INCONCLUSIVE=0' mk.txt
+          grep -qx 'MUTANT BASELINE PASS pg=True' mk.txt
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
   # B05 (PR #868): os 13 mutantes de assinatura/idempotência rodam no runner contra o PostgreSQL efêmero,
   # independente de quem escreveu a PR. Cada linha MUTANT fica no log e vira anotação do check-run. KILLED exige
   # falha de ASSERÇÃO em teste esperado e nenhuma assinatura de infra; infra => INCONCLUSIVE + repetição; job falha.

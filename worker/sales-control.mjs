@@ -96,11 +96,11 @@ const RESEND_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-
 
 async function resendDelivery(env, { sql, worker, ctx }, { orderId, email }) {
   const rows = await sql.query(
-    `select o.order_id, o.offer_id, o.status, sf.status as fulfillment_status, sf.evidence_ref
+    `select o.order_id, o.offer_id, o.status, o.provider, sf.status as fulfillment_status, sf.evidence_ref
        from orders o join service_fulfillment sf on sf.order_id = o.order_id
-      where o.order_id = $1 limit 1`, [orderId]);
-  const order = rows[0];
-  if (!order || order.status !== "paid" || order.fulfillment_status !== "delivered") return { sent: false, reason: "not_eligible" };
+      where o.order_id = $1 and o.provider in ('mercadopago', 'asaas') limit 1`, [orderId]);
+  const order = rows[0]; // Modelo B (Sol ORDEM 313): reenvio só do checkout próprio; compra Hotmart (kits pelo Hotmart Club) nunca recebe o ZIP por aqui (também recusado na emissão e no consumo).
+  if (!order || !["mercadopago", "asaas"].includes(String(order.provider || "")) || order.status !== "paid" || order.fulfillment_status !== "delivered") return { sent: false, reason: "not_eligible" };
   let evidence = {};
   try { evidence = JSON.parse(String(order.evidence_ref || "{}")); } catch {}
   const recipient = String(evidence.email_recipient || "").trim().toLowerCase();
