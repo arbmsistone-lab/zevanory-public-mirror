@@ -7,6 +7,9 @@ import { pcm16ToMp3, ttsBytesWithFailover } from "../worker/voice-provider-route
 import { handleWhatsappOnboarding, loadVoiceGeminiKey } from "../worker/whatsapp-onboarding.mjs";
 
 let checks = 0;
+// Preços do catálogo (data/products.json via sincronizador -> SUPPORT_PRODUCTS); nenhum valor literal aqui.
+const CMB = `R$ ${SUPPORT_PRODUCTS["combo-ia-vendas"].price_brl},00`, VEN = `R$ ${SUPPORT_PRODUCTS["vendas-na-pratica"].price_brl},00`;
+const reEsc = (t) => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 function check(name, fn) { fn(); checks++; console.log(`PASS ${name}`); }
 for (const text of ["R$ 150", "R$ 297,50", "https://example.com/pagar", "https://vendas.zevanory.api.br.evil.example/combo-ia-vendas", "20% de desconto"]) {
   check(`reject ${text}`, () => assert.equal(validateReply(text).ok, false));
@@ -23,16 +26,16 @@ const invented = await converse({ question, ai: { async run() { aiCalls++; retur
 check("hallucinated price -> grounded_fallback", () => {
   assert.equal(invented.mode, "grounded_fallback");
   assert.equal(invented.body, deterministicReply(question).body);
-  assert.match(invented.body, /R\$ 297,00/);
+  assert.match(invented.body, reEsc(CMB));
   assert.equal(aiCalls, 3);
 });
 const offline = await converse({ question });
 check("no AI -> fixed grounded answer", () => { assert.equal(offline.mode, "grounded"); assert.equal(offline.body, invented.body); });
-const validAI = await converse({ question, ai: { async run() { return { response: "O Combo IA + Vendas custa R$ 297,00. https://vendas.zevanory.api.br/combo-ia-vendas" }; } } });
+const validAI = await converse({ question, ai: { async run() { return { response: `O Combo IA + Vendas custa ${CMB}. https://vendas.zevanory.api.br/combo-ia-vendas` }; } } });
 check("approved AI response accepted", () => { assert.equal(validAI.mode, "ai_grounded"); assert.ok(validAI.model); });
 const recommendation = await converse({ question: "quero melhorar minhas vendas, o que recomenda?" });
-check("consultative recommendation remains available on AI failure", () => { assert.match(recommendation.body, /Vendas na Prática/); assert.match(recommendation.body, /R\$ 197,00/); assert.equal(validateReply(recommendation.body).ok, true); });
-check("speech removes links", () => { const spoken = speechText("Veja https://vendas.zevanory.api.br/combo-ia-vendas por R$ 297,00."); assert.doesNotMatch(spoken, /https?:\/\//); assert.match(spoken, /297 reais/); });
+check("consultative recommendation remains available on AI failure", () => { assert.match(recommendation.body, /Vendas na Prática/); assert.match(recommendation.body, reEsc(VEN)); assert.equal(validateReply(recommendation.body).ok, true); });
+check("speech removes links", () => { const spoken = speechText(`Veja https://vendas.zevanory.api.br/combo-ia-vendas por ${CMB}.`); assert.doesNotMatch(spoken, /https?:\/\//); assert.match(spoken, new RegExp(SUPPORT_PRODUCTS["combo-ia-vendas"].price_brl + " reais")); });
 
 const pcm = new Uint8Array(24000 * 2);
 const view = new DataView(pcm.buffer);
@@ -83,7 +86,7 @@ check("reject multiple customer questions",()=>assert.equal(validateReply("Qual 
 check("spoken summary keeps full text separate",()=>{const original="Olá! "+("Esta orientação ajuda a organizar o atendimento e melhorar as vendas. ").repeat(10)+" https://vendas.zevanory.api.br/combo-ia-vendas";const voice=speechText(original);assert.ok(voice.length<=350);assert.ok(!voice.includes("https://"));assert.ok(voice.endsWith("Os detalhes estão na mensagem de texto."));assert.ok(original.length>600);});
 
 const {voiceCacheKey} = await import("../worker/voice-remote-tts.mjs");
-const alternativeAI = await converse({question,ai:{async run(){return {response:"Por R$ 297,00 você leva o Combo IA + Vendas. Quer conhecer o material?"};}}});
+const alternativeAI = await converse({question,ai:{async run(){return {response:`Por ${CMB} você leva o Combo IA + Vendas. Quer conhecer o material?`};}}});
 assert.notEqual(validAI.body,alternativeAI.body);
 assert.equal(await voiceCacheKey(speechText(voiceReplyBody(question,validAI.body))),await voiceCacheKey(speechText(voiceReplyBody(question,alternativeAI.body))));
 for(const q of ["Como recebo o combo?","Quero reembolso do combo"]){assert.equal(speechText(voiceReplyBody(q,"fala variável da IA")),speechText(deterministicReply(q).body));}
