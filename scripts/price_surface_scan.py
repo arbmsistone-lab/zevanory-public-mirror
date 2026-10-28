@@ -7,7 +7,8 @@
 Método: copia os arquivos versionados para um diretório temporário, troca os preços em data/products.json por
 valores-sentinela (que não existem em lugar nenhum), roda scripts/sync_canonical_prices.py e scripts/build_sales_public.py
 na cópia e procura o preço REAL (e os valores derivados: total separado, economia, comissão de afiliado) em todos os
-arquivos de texto. Qualquer ocorrência fora de EXCECOES é uma superfície com preço próprio, que não acompanharia uma
+arquivos de texto: "R$ N", campos de preço (price, price_brl, unit_price, ...), número solto ao lado de um SKU, slug
+ou nome de produto na mesma linha e o vetor de preços na ordem do catálogo. Qualquer ocorrência fora de EXCECOES é uma superfície com preço próprio, que não acompanharia uma
 mudança de preço: o script falha e diz onde. Não usa rede nem credencial.
 """
 from __future__ import annotations
@@ -69,8 +70,21 @@ MONEY = re.compile(r"R\$\s?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d\d))?")
 FIELD = re.compile(r"\b(price_brl|table_price_brl|pilot_price_brl|serverPrice|amount_brl|unit_price|SANDBOX_AMOUNT_BRL|price)\\?\"?\s*[:=]\s*\\?\"?(\d+)(?:\.0+)?\b")
 
 
-def leftovers(root: Path, files: list[str], ints: set[int], cents: set[str]) -> list[str]:
+def keyed_patterns(d: dict) -> tuple[re.Pattern, re.Pattern]:
+    """número solto ao lado de um SKU, slug ou nome de produto na mesma linha; e o vetor de preços na ordem do catálogo."""
+    keys = [p["sku"] for p in d["products"]] + [p["slug"] for p in d["products"]] + [p["name"] for p in d["products"]] + ["conteudo-pronto"]
+    key_rx = re.compile("|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True)))
+    vec = [p["price"] for p in d["products"]]
+    vec_rx = re.compile(r"(?<![\w.])" + r"\s*,\s*".join(str(v) for v in vec) + r"(?![\w.])")
+    return key_rx, vec_rx
+
+
+BARE = re.compile(r"(?<![\w.#/-])(\d{2,4})(?:\.0+)?(?![\w%])")
+
+
+def leftovers(root: Path, files: list[str], ints: set[int], cents: set[str], d: dict | None = None) -> list[str]:
     found = []
+    key_rx, vec_rx = keyed_patterns(d) if d else (None, None)
     for rel in files:
         if excepted(rel) or Path(rel).suffix.lower() not in TEXT_EXT:
             continue
@@ -86,6 +100,17 @@ def leftovers(root: Path, files: list[str], ints: set[int], cents: set[str]) -> 
             for m in FIELD.finditer(line):
                 if int(m.group(2)) in ints:
                     found.append(f"{rel}:{n}: {line[max(0, m.start() - 30):m.end() + 10].strip()}")
+            if key_rx and len(line) < 2000:
+                if vec_rx.search(line):
+                    found.append(f"{rel}:{n}: vetor de preços do catálogo: {line.strip()[:120]}")
+                hit = None
+                for k in key_rx.finditer(line):
+                    window = line[max(0, k.start() - 60):k.end() + 60]
+                    if any(int(m.group(1)) in ints and "R$" not in window[max(0, m.start() - 4):m.start()] for m in BARE.finditer(window)):
+                        hit = (k.group(0), window)
+                        break
+                if hit:
+                    found.append(f"{rel}:{n}: número ao lado de {hit[0]}: {hit[1].strip()[:140]}")
     return found
 
 
@@ -108,19 +133,21 @@ def run(plant: str | None = None) -> tuple[bool, list[str]]:
         (work / "data/products.json").write_text(json.dumps(sent, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         if plant:  # autoteste: um preço literal fora do sincronizador
             f = work / plant
-            f.write_text(f.read_text(encoding="utf-8") + f"\n<!-- oferta: R$ {sorted(ints)[0]} -->\n", encoding="utf-8")
+            lcx = next(x["price"] for x in d["products"] if x["sku"] == "ZEV-LCX-011")
+            f.write_text(f.read_text(encoding="utf-8") + f"\n<!-- oferta: R$ {sorted(ints)[0]} -->\n<!-- tabela ZEV-LCX-011 {lcx} -->\n", encoding="utf-8")
         steps = [[sys.executable, "-B", "scripts/sync_canonical_prices.py"], [sys.executable, "-B", "scripts/build_sales_public.py"]]
         for cmd in steps:
             r = subprocess.run(cmd, cwd=work, capture_output=True, text=True)
             if r.returncode != 0:
                 return False, [f"{' '.join(cmd[2:])} falhou com preços-sentinela: {(r.stdout + r.stderr)[-600:]}"]
-        return True, leftovers(work, files, ints, cents)
+        return True, leftovers(work, files, ints, cents, d)
 
 
 def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         ok, found = run(plant="kit-afiliado/index.html")
-        caught = ok and any(x.startswith("kit-afiliado/index.html:") and "oferta: R$" in x for x in found)
+        caught = ok and any(x.startswith("kit-afiliado/index.html:") and "oferta: R$" in x for x in found) \
+            and any(x.startswith("kit-afiliado/index.html:") and "número ao lado de ZEV-LCX-011" in x for x in found)
         print(f"PRICE_SCAN_SELFTEST={'OK' if caught else 'FAIL'}")
         return 0 if caught else 1
     ok, found = run()

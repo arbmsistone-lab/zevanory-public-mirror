@@ -10,7 +10,7 @@ Nunca roda no CI, nunca grava nada na Hotmart e nunca imprime credencial. Dois m
      (developers.hotmart.com não estava acessível daqui). Antes de usar, o proprietário confere em
      https://developers.hotmart.com/docs e ajusta com --token-url / --offers-url se preciso.
   2) Leitura manual: o proprietário copia o preço que a Hotmart mostra e informa em um JSON
-       {"ZEV-IA-011": 197, "conteudo-pronto": 197, ...}
+       {"ZEV-IA-011": <preço>, "conteudo-pronto": <preço>, ...}
      python3 scripts/hotmart_price_compare.py --from-json precos_lidos_na_hotmart.json
 
 Saída: uma linha por produto (sku, canônico, Hotmart, IGUAL/DIVERGE/NAO_LIDO); exit 1 se algum diverge.

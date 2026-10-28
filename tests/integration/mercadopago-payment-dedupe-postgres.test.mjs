@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { IA_PRICE, IA_PRICE_STR } from "../helpers/catalog-price.mjs";
 
 const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
 const SKIP = !HOST && "T4_PG_HOST not set (throwaway local PostgreSQL required)";
@@ -26,11 +27,11 @@ const inline = (q, p) => q.replace(/\$(\d+)/g, (_, n) => lit(p[Number(n) - 1]));
 
 function pedido() {
   const id = randomUUID(), ref = `ZEVANORY:EXP-0001:${id}`;
-  psql(`insert into orders (order_id, offer_id, amount, provider, external_reference, status) values (${lit(id)},'ZEV-IA-011','197.00','mercadopago',${lit(ref)},'checkout_ready')`);
+  psql(`insert into orders (order_id, offer_id, amount, provider, external_reference, status) values (${lit(id)},'ZEV-IA-011','${IA_PRICE_STR}','mercadopago',${lit(ref)},'checkout_ready')`);
   return { id, ref };
 }
 // Mesmos parâmetros que o handler passa: [providerEventId, paymentId, normalized, nome, status, ref, valor, orderId, reembolsado, fulfillmentId]
-const params = (o, paymentId) => [`mp:${paymentId}:approved:0`, paymentId, "payment_confirmed", "payment.updated", "approved", o.ref, 197, o.id, 0, randomUUID()];
+const params = (o, paymentId) => [`mp:${paymentId}:approved:0`, paymentId, "payment_confirmed", "payment.updated", "approved", o.ref, IA_PRICE, o.id, 0, randomUUID()];
 const um = (sql) => psql(sql);
 
 before(() => {
