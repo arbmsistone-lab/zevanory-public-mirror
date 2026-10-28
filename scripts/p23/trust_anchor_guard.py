@@ -28,6 +28,16 @@ Reprova (TRUST_ANCHORS=GATE_INVALID) quando a ESTRUTURA dos dois workflows de de
     cada passo que publica, sem if, continue-on-error, shell ou env;
   * passo que publica não usa always()/failure()/cancelled(); o job deploy também não; nenhum outro job publica;
   * sem defaults; sem BASH_ENV/ENV/PATH/LD_*/PYTHON*/NODE_OPTIONS/GIT_* no env; YAML válido (com PyYAML).
+Rodada 7 (M-1): o bundle publicado fica preso às fontes ancoradas.
+  * no job que gera o artefato do Worker, o PRIMEIRO passo run é exatamente scripts/deploy/clean_bundle.py (âncora:
+    git archive do commit para um diretório limpo, wrangler fixado por integridade via npm ci do lockfile ancorado em
+    scripts/deploy/wrangler-pin/, fora do checkout) e o passo seguinte é o upload-artifact (antes de qualquer teste);
+  * no job deploy, depois da conferência do manifesto e antes do primeiro portão e do primeiro passo com segredo, o
+    passo de reconstrução (clean_bundle.py lido do gh-pages, --verify contra o artefato baixado) é obrigatório;
+    o job deploy define npm_config_userconfig=/dev/null e npm_config_registry=https://registry.npmjs.org;
+  * âncoras novas (rodada 7, M-1c): .npmrc, .yarnrc*, package.json, package-lock.json, npm-shrinkwrap.json,
+    yarn.lock, pnpm-lock.yaml, .pnpmfile.cjs, bunfig.toml, qualquer node_modules/** e toda configuração wrangler*
+    (.toml/.json/.jsonc) em qualquer pasta.
 
 Se o PR mudar a linha de base, também informa se o novo valor é o texto pré-Release 2 ou o reviewed_sha256 de um
 registro de aprovação válido JÁ na base.
@@ -54,15 +64,43 @@ ANCHORS = ("data/p23/legal-reviewers.json", "data/p23/legal-published-baseline.j
            # Rodada 6: tudo o que os jobs com segredo executam (lido do checkout confiável base/) também é âncora.
            "scripts/deploy/*", "scripts/ci/verify-founder-and-products.sh", "scripts/verify-production-surfaces.py",
            "scripts/verify-live-headers.py", "scripts/financial_proof_renewal.py", "scripts/ci/credential_identity_readback.py")
+# Rodada 7 (M-1c): o que pode redirecionar npm/npx ou trocar o wrangler executado, e o que o wrangler lê, em qualquer pasta.
+NPM_ANCHOR_NAMES = {".npmrc", "package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml",
+                    "pnpm-workspace.yaml", ".pnpmfile.cjs", "bunfig.toml", "bun.lockb"}
+WRANGLER_CONFIG = re.compile(r"^wrangler[^/]*\.(?:toml|json|jsonc)$")
 
 # Rodada 6: o build roda SEM segredos e o deploy NÃO roda código de build do repositório.
+def clean_bundle_body(kind: str, out: str) -> list[str]:
+    """Rodada 7: primeiro passo run do job que gera o artefato do Worker (antes de qualquer outro código)."""
+    return ["set -euo pipefail",
+            f'/usr/bin/python3 -I scripts/deploy/clean_bundle.py {kind} --repo . --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$GITHUB_WORKSPACE/{out}"',
+            f'echo "manifest=$(sha256sum "$GITHUB_WORKSPACE/{out}/MANIFEST.sha256" | cut -d\' \' -f1)" >> "$GITHUB_OUTPUT"']
+
+
+def repro_body(kind: str, art: str) -> list[str]:
+    """Rodada 7: reconstrução no job deploy (código do gh-pages, fontes do objeto do commit em base/) e comparação
+    byte a byte com o artefato baixado."""
+    return ["set -euo pipefail",
+            'test "$(/usr/bin/git -C base rev-parse HEAD)" = "$GITHUB_SHA"',
+            '/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/deploy/clean_bundle.py > "$RUNNER_TEMP/clean_bundle.py"',
+            f'/usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" {kind} --repo base --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$RUNNER_TEMP/repro" --verify {art}']
+
+
 SPECS = {
     ".github/workflows/zevanory-sales-public-release.yml": {
         "secret_jobs": {"deploy"}, "build_jobs": {"worker-bundle", "site-build"}, "anchored_jobs": {"worker-bundle"},
+        "rehearsal_jobs": {"rehearsal"},
+        "bundle_job": ("worker-bundle", clean_bundle_body("sales", "worker-artifact")),
+        "repro_body": repro_body("sales", "art/worker"),
         "artifact_copy": "rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public"},
     ".github/workflows/central-production-deploy.yml": {
-        "secret_jobs": {"guard", "deploy"}, "build_jobs": {"build"}, "anchored_jobs": set(), "artifact_copy": None},
+        "secret_jobs": {"guard", "deploy"}, "build_jobs": {"build"}, "anchored_jobs": set(),
+        "rehearsal_jobs": {"rehearsal"},
+        "bundle_job": ("build", clean_bundle_body("central", "central-release")),
+        "repro_body": repro_body("central", "art/central"),
+        "artifact_copy": None},
 }
+DEPLOY_NPM_ENV = {"npm_config_userconfig": "/dev/null", "npm_config_registry": "https://registry.npmjs.org"}
 DEPLOY_WORKFLOWS = tuple(SPECS)
 
 
@@ -80,7 +118,7 @@ def gate_body(artifact_copy):
 
 
 PINNED_USES = re.compile(r"^(actions/checkout|actions/download-artifact|actions/upload-artifact|actions/setup-node|actions/setup-python)@[0-9a-f]{40}$")
-DEPLOY_JOB_USES = re.compile(r"^(actions/checkout|actions/download-artifact)@[0-9a-f]{40}$")
+DEPLOY_JOB_USES = re.compile(r"^(actions/checkout|actions/download-artifact|actions/setup-node)@[0-9a-f]{40}$")
 NPM_ALLOWED = re.compile(r'^npm install --no-save --no-audit --no-fund --prefix "\$RUNNER_TEMP/pw" playwright@1\.55\.0(\s|$)')
 REPO_SCRIPT = re.compile(r"(?<![\w.-])((?:scripts|tests)/[\w./-]+\.(?:py|mjs|js|cjs|sh))\b")
 STATUS_FN = re.compile(r"\b(always|failure|cancelled)\s*\(")
@@ -90,6 +128,10 @@ CF_API_WRITE = re.compile(r"api\.cloudflare\.com", re.I)
 
 
 def is_anchor(path: str) -> bool:
+    parts = path.split("/")
+    if "node_modules" in parts or ".yarn" in parts[:-1] or parts[-1] in NPM_ANCHOR_NAMES or parts[-1].startswith(".yarnrc") \
+            or WRANGLER_CONFIG.match(parts[-1]):
+        return True
     return any(fnmatch.fnmatchcase(path, pat) if "*" in pat else path == pat for pat in ANCHORS)
 
 
@@ -196,7 +238,7 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
     if not jobs:
         return errs + [f"{name}: sem 'jobs'"]
     job_list = {k: (s0, e0) for k, v, s0, e0 in _children(lines, jobs[0] + 1, jobs[1], 2)}
-    for need in ("deploy", *spec["build_jobs"]):
+    for need in ("deploy", *spec["build_jobs"], *spec.get("rehearsal_jobs", ())):
         if need not in job_list:
             errs.append(f"{name}: falta o job '{need}'")
     if errs and "deploy" not in job_list:
@@ -223,7 +265,7 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
                 errs.append(f"{name}: job '{jk}' usa action sem SHA fixado: {uses}")
         if jk != "deploy" and deploys(jtext):
             errs.append(f"{name}: o job '{jk}' publica fora do job 'deploy'")
-        if jk in spec["build_jobs"]:
+        if jk in spec["build_jobs"] or jk in spec.get("rehearsal_jobs", ()):
             perms = _job_permissions(lines, *jkeys["permissions"][1:]) if "permissions" in jkeys else None
             if perms != {"contents": "read"}:
                 errs.append(f"{name}: o job de build '{jk}' precisa de permissions: contents: read (e nada mais)")
@@ -233,6 +275,24 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
                     errs.append(f"{name}: o job '{jk}' executa {path}, que não é âncora")
             if re.search(r"\b(node|python3?|bash|sh)\b[^\n]*(?<![\w-])worker/", jtext):
                 errs.append(f"{name}: o job '{jk}' executa código de worker/")
+    if spec.get("bundle_job") and spec["bundle_job"][0] in job_list:
+        bj, want = spec["bundle_job"]
+        b0, b1 = job_list[bj]
+        bkeys = {k: (v, ks, ke) for k, v, ks, ke in _children(lines, b0 + 1, b1, 4)}
+        bsteps = _steps(lines, bkeys["steps"][1] + 1, bkeys["steps"][2]) if "steps" in bkeys else []
+        runs = [n for n, st in enumerate(bsteps) if "run" in st["keys"]]
+        if not runs or (bsteps[runs[0]]["keys"]["run"].get("body") != want):
+            errs.append(f"{name}: no job '{bj}', o primeiro passo run tem de ser o empacotamento limpo ({want[1]})")
+        else:
+            n = runs[0]
+            extra = set(bsteps[n]["keys"]) - {"name", "run", "id", "env"}
+            if extra or "secrets." in bsteps[n]["text"]:
+                errs.append(f"{name}: passo de empacotamento limpo do job '{bj}' com {sorted(extra) or 'segredo'}")
+            nxt = (bsteps[n + 1]["keys"].get("uses") or {}).get("value", "") if n + 1 < len(bsteps) else ""
+            if not nxt.startswith("actions/upload-artifact@"):
+                errs.append(f"{name}: no job '{bj}', o upload-artifact tem de vir logo depois do empacotamento limpo (antes de qualquer teste)")
+            if any(not re.match(r"^(actions/checkout|actions/setup-node)@", (st["keys"].get("uses") or {}).get("value", "")) for st in bsteps[:n]):
+                errs.append(f"{name}: no job '{bj}', só checkout e setup-node antes do empacotamento limpo")
     if "deploy" not in job_list:
         return errs
     s0, e0 = job_list["deploy"]
@@ -258,6 +318,21 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
         errs.append(f"{name}: um passo com segredo roda antes do primeiro portão")
     if not any("sha256sum --strict -c" in st["text"] for st in steps[:gates[0]]):
         errs.append(f"{name}: o manifesto do artefato não é conferido antes do portão")
+    if spec.get("repro_body"):
+        repro = [n for n, st in enumerate(steps) if (st["keys"].get("run") or {}).get("body") == spec["repro_body"]]
+        manifest_at = next((n for n, st in enumerate(steps) if "sha256sum --strict -c" in st["text"]), len(steps))
+        if not repro:
+            errs.append(f"{name}: o job deploy não reconstrói o bundle de forma limpa e não compara com o artefato ({spec['repro_body'][-1]})")
+        elif not (manifest_at < repro[0] < gates[0] and repro[0] < first_secret):
+            errs.append(f"{name}: a reconstrução limpa tem de vir depois do manifesto e antes do primeiro portão e de qualquer segredo")
+        else:
+            extra = set(steps[repro[0]]["keys"]) - {"name", "run", "id", "env"}
+            if extra or "secrets." in steps[repro[0]]["text"]:
+                errs.append(f"{name}: passo de reconstrução limpa com {sorted(extra) or 'segredo'}")
+        jenv = {k: v for k, v, *_ in _children(lines, jkeys["env"][1] + 1, jkeys["env"][2], 6)} if "env" in jkeys else {}
+        for k, v in DEPLOY_NPM_ENV.items():
+            if jenv.get(k) != v:
+                errs.append(f"{name}: o job deploy precisa de env {k}: {v}")
     for n in gates:
         extra = set(steps[n]["keys"]) - {"name", "run", "id"}
         if extra:

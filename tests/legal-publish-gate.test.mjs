@@ -243,7 +243,7 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("G7 rodada 6: build sem segredo, deploy sem código de build; o portão vem do gh-pages e roda antes de qualquer segredo", () => {
+test("G7 rodadas 6 e 7: build sem segredo, deploy sem código de build; o portão vem do gh-pages e roda antes de qualquer segredo", () => {
   for (const [wf, builds] of [
     [".github/workflows/zevanory-sales-public-release.yml", ["worker-bundle", "site-build"]],
     [".github/workflows/central-production-deploy.yml", ["build"]],
@@ -268,6 +268,19 @@ test("G7 rodada 6: build sem segredo, deploy sem código de build; o portão vem
     assert.ok(deployLines.length >= 1, `[G7.8] ${wf}: há deploy no job deploy`);
     for (const l of deployLines) assert.match(l, /--no-bundle/, `[G7.8a] ${wf}: deploy sem rebuild: ${l.trim()}`);
     assert.doesNotMatch(d, /build_sales_public|prepare-central-candidate|materialize|--dry-run|--outdir/, `[G7.9] ${wf}: nenhum código de build nem empacotamento no deploy`);
+    // Rodada 7 (M-1): reconstrução limpa no deploy, com o código do gh-pages, comparada byte a byte com o artefato,
+    // antes do portão; npm sem configuração herdada.
+    const kind = wf.includes("sales") ? "sales" : "central";
+    const reproAt = d.indexOf(`/usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" ${kind} --repo base --rev "$GITHUB_SHA"`);
+    assert.ok(reproAt > 0 && reproAt < gateAt, `[G7.15] ${wf}: reconstrução limpa antes do portão`);
+    assert.ok(d.lastIndexOf('/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/deploy/clean_bundle.py > "$RUNNER_TEMP/clean_bundle.py"', reproAt) > 0, `[G7.16] ${wf}: clean_bundle.py vem do gh-pages`);
+    assert.match(d.slice(reproAt).split("\n")[0], / --verify art\/(worker|central)$/, `[G7.17] ${wf}: compara com o artefato`);
+    assert.match(d, /\n      npm_config_userconfig: \/dev\/null\n      npm_config_registry: https:\/\/registry\.npmjs\.org\n/, `[G7.18] ${wf}: npm sem configuração herdada`);
+    const b = job(builds[0]);
+    const firstRun = b.indexOf("run: |");
+    assert.ok(firstRun > 0 && b.slice(firstRun, firstRun + 200).includes(`/usr/bin/python3 -I scripts/deploy/clean_bundle.py ${kind} --repo . --rev "$GITHUB_SHA"`), `[G7.19] ${wf}: o primeiro passo run do build é o empacotamento limpo`);
+    assert.ok(b.indexOf("actions/upload-artifact@") > firstRun && b.indexOf("actions/upload-artifact@") < b.indexOf("run: |", firstRun + 6) || b.indexOf("run: |", firstRun + 6) < 0, `[G7.20] ${wf}: upload logo depois do empacotamento limpo`);
+    assert.doesNotMatch(b.slice(0, b.indexOf("actions/upload-artifact@")), /npx|node --test|npm /, `[G7.21] ${wf}: nada de npx/testes antes do upload`);
   }
   const p = read(join(REPO, ".github/workflows/legal-trust-anchors-protected.yml"));
   assert.match(p, /on:\n  pull_request_target:\n\npermissions:\n  contents: read/, "[G7.10] pull_request_target, só leitura, sem filtro de caminho");
@@ -353,7 +366,7 @@ test("G10 linha de base e legal_review vêm das âncoras (gh-pages à frente), n
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("G11 validação estrutural (rodada 6): o real passa; segredo no build, código no deploy, rebuild e cada neutralização reprovam", () => {
+test("G11 validação estrutural (rodadas 6 e 7): o real passa; segredo no build, código no deploy, rebuild e cada neutralização reprovam", () => {
   const dir = mkdtempSync(join(tmpdir(), "legal-wf-"));
   try {
     const SALES = ".github/workflows/zevanory-sales-public-release.yml", CENTRAL = ".github/workflows/central-production-deploy.yml";
@@ -373,7 +386,7 @@ test("G11 validação estrutural (rodada 6): o real passa; segredo no build, có
       // Mutações pedidas pela rodada 6.
       ["segredo no job de build (site-build)", SALES, (t) => t.replace("      - name: Build exact release assets\n", "      - name: Build exact release assets\n        env:\n" + TOKEN)],
       ["segredo no job de build (central)", CENTRAL, (t) => t.replace("      - name: Zero-cost guard (owner rule, fail closed before any deploy)\n", "      - name: Zero-cost guard (owner rule, fail closed before any deploy)\n        env:\n" + TOKEN)],
-      ["segredo no env do job deploy", SALES, (t) => t.replace('      SCRIPT_NAME: "zevanory-sales-public"\n    steps:', '      SCRIPT_NAME: "zevanory-sales-public"\n' + TOKEN.replace("          ", "      ") + "    steps:")],
+      ["segredo no env do job deploy", SALES, (t) => t.replace('      SCRIPT_NAME: "zevanory-sales-public"\n', '      SCRIPT_NAME: "zevanory-sales-public"\n' + TOKEN.replace("          ", "      "))],
       ["código do repositório no deploy (build)", SALES, (t) => t.replace(GATE_NAME, "      - name: Rebuild\n        run: python3 scripts/build_sales_public.py\n" + GATE_NAME)],
       ["código não âncora no deploy", CENTRAL, (t) => t.replace("/usr/bin/python3 -I base/scripts/deploy/inspect-kv.py", "/usr/bin/python3 -I base/scripts/sales_policy.py")],
       ["código de worker/ no deploy", CENTRAL, (t) => t.replace("/usr/bin/python3 -I base/scripts/deploy/inspect-kv.py", "node base/worker/funnel.mjs")],
@@ -385,11 +398,21 @@ test("G11 validação estrutural (rodada 6): o real passa; segredo no build, có
       ["wrangler sem versão fixada no deploy", CENTRAL, (t) => t.replace("npx --yes wrangler@4.143.0 whoami", "npx --yes wrangler whoami")],
       ["npm de dependência do repositório no deploy", CENTRAL, (t) => t.replace('npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" playwright@1.55.0', "npm ci")],
       ["checkout do deploy sem path base", SALES, (t) => t.replace("          ref: ${{ github.sha }}\n          path: base\n", "          ref: ${{ github.sha }}\n")],
-      ["checkout do deploy guardando credencial", CENTRAL, (t) => t.replace("          path: base\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/download-artifact", "          path: base\n          fetch-depth: 0\n      - uses: actions/download-artifact")],
+      ["checkout do deploy guardando credencial", CENTRAL, (t) => { const a = "          path: base\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/download-artifact", i = t.lastIndexOf(a); return i < 0 ? t : t.slice(0, i) + a.replace("          persist-credentials: false\n", "") + t.slice(i + a.length); }],
       ["action sem SHA fixado", SALES, (t) => t.replace("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", "actions/download-artifact@v4")],
-      ["setup-node no deploy", CENTRAL, (t) => t.replace("      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n", "      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020\n      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n")],
+      ["setup-python no deploy", CENTRAL, (t) => t.replace("      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n        with:\n          name: central-release-${{ github.sha }}\n          path: art/central\n      - name: Verify the release manifest", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093\n        with:\n          name: central-release-${{ github.sha }}\n          path: art/central\n      - name: Verify the release manifest")],
       ["build sem permissions só de leitura", SALES, (t) => t.replace("    timeout-minutes: 10\n    permissions:\n      contents: read\n    outputs:\n      manifest: ${{ steps.pack.outputs.manifest }}\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n        with:\n          persist-credentials: false\n\n      - uses: actions/setup-python", "    timeout-minutes: 10\n    permissions:\n      contents: write\n    outputs:\n      manifest: ${{ steps.pack.outputs.manifest }}\n    steps:\n      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n        with:\n          persist-credentials: false\n\n      - uses: actions/setup-python")],
-      ["worker-bundle executa código não âncora", SALES, (t) => t.replace("/usr/bin/python3 -I scripts/ci/materialize_sales_configs.py\n", "/usr/bin/python3 -I scripts/ci/materialize_sales_configs.py\n          python3 scripts/build_sales_public.py\n")],
+      ["worker-bundle executa código não âncora", SALES, (t) => t.replace('--out "$GITHUB_WORKSPACE/worker-artifact"\n', '--out "$GITHUB_WORKSPACE/worker-artifact"\n          python3 scripts/build_sales_public.py\n')],
+      // Rodada 7 (M-1): o bundle publicado fica preso às fontes ancoradas do commit.
+      ["r7 bundle no checkout com npx (forma da rodada 6)", SALES, (t) => t.replace('/usr/bin/python3 -I scripts/deploy/clean_bundle.py sales --repo . --rev "$GITHUB_SHA" --tools "$RUNNER_TEMP" --work "$RUNNER_TEMP/clean" --out "$GITHUB_WORKSPACE/worker-artifact"', 'npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.deploy.toml --outdir "$GITHUB_WORKSPACE/worker-artifact"')],
+      ["r7 teste antes do empacotamento limpo (central)", CENTRAL, (t) => t.replace("      - name: Build the release in a clean directory from the commit (before any test)\n", "      - name: Tests first\n        run: node --test tests/funnel.test.mjs\n      - name: Build the release in a clean directory from the commit (before any test)\n")],
+      ["r7 upload depois dos testes (central)", CENTRAL, (t) => t.replace("      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: central-release-", "      - name: Tests before upload\n        run: node --test tests/funnel.test.mjs\n      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: central-release-")],
+      ["r7 deploy sem reconstrução limpa", SALES, (t) => t.replace(/      - name: Rebuild the Worker from base in a clean directory and compare byte for byte\n        run: \|\n(?:          [^\n]*\n)+\n/, "")],
+      ["r7 reconstrução sem --verify", SALES, (t) => t.replace('--out "$RUNNER_TEMP/repro" --verify art/worker\n', '--out "$RUNNER_TEMP/repro"\n')],
+      ["r7 clean_bundle.py lido da árvore no deploy", CENTRAL, (t) => t.replace('/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/deploy/clean_bundle.py > "$RUNNER_TEMP/clean_bundle.py"', 'cp base/scripts/deploy/clean_bundle.py "$RUNNER_TEMP/clean_bundle.py"')],
+      ["r7 reconstrução depois do portão (central)", CENTRAL, (t) => { const m = t.match(/      - name: Rebuild the release from base in a clean directory and compare byte for byte\n(?:        [^\n]*\n)+/); return m ? t.replace(m[0], "").replace("      - name: Assemble the release directory (pre-built bundle, assets; no repository code)\n", m[0] + "      - name: Assemble the release directory (pre-built bundle, assets; no repository code)\n") : t; }],
+      ["r7 segredo no passo de reconstrução", CENTRAL, (t) => t.replace("      - name: Rebuild the release from base in a clean directory and compare byte for byte\n        env:\n", "      - name: Rebuild the release from base in a clean directory and compare byte for byte\n        env:\n" + TOKEN)],
+      ["r7 npm com configuração do usuário no deploy", SALES, (t) => t.replace("      npm_config_userconfig: /dev/null\n", "")],
       ["manifesto não conferido", SALES, (t) => t.replace("          (cd art/worker && sha256sum --strict -c --quiet MANIFEST.sha256)\n          (cd art/site && sha256sum --strict -c --quiet MANIFEST.sha256)\n", "")],
       // Neutralizações do portão.
       ["continue-on-error no portão", SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "        continue-on-error: true\n")],
@@ -535,6 +558,31 @@ test("G14 r5: Worker de vendas (W1), premerge (V2) e workflows novos (r5-newwf) 
       assert.equal(r.code, 1, `[G14.1] ${label}: ${r.out}`);
       assert.match(r.out, /TRUST_ANCHORS=CHANGED/, `[G14.2] ${label}`);
       assert.ok(r.out.includes("TRUST_ANCHOR_CHANGED::" + path), `[G14.3] ${label}: ${path} citado`);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("G15 r7 M-1c: configuração npm/yarn, pacotes e configurações wrangler em qualquer pasta são âncoras: CHANGED", () => {
+  const { root, text: base } = repo();
+  try {
+    for (const path of ["node_modules/.bin/wrangler", ".npmrc", "worker/.npmrc", ".yarnrc.yml", ".yarnrc", "package.json", "package-lock.json",
+      "tools/package.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "sub/node_modules/wrangler/index.js", "wrangler.toml",
+      "wrangler.extra.toml", "sandbox/x/wrangler.jsonc", "wrangler.json", "scripts/deploy/wrangler-pin/package-lock.json"]) {
+      git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-r7");
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), path.endsWith("wrangler") ? "#!/bin/sh\necho stub\n" : "registry=https://evil.invalid/\n");
+      const head = commit(root, "PR " + path);
+      const r = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", head]);
+      assert.equal(r.code, 1, `[G15.1] ${path}: ${r.out}`);
+      assert.match(r.out, /TRUST_ANCHORS=CHANGED/, `[G15.2] ${path}`);
+      assert.ok(r.out.includes("TRUST_ANCHOR_CHANGED::" + path), `[G15.3] ${path} citado`);
+    }
+    for (const path of ["docs/package-notes.md", "worker/funnel.mjs", "assets/npmrc-guide.txt"]) {
+      git(root, "checkout", "-q", "-f", base); git(root, "checkout", "-q", "-B", "pr-r7-ok");
+      mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), "x\n");
+      const head = commit(root, "PR comum " + path);
+      const r = py(GUARD, ["--pr-repo", root, "--base-sha", base, "--head-sha", head]);
+      assert.equal(r.code, 0, `[G15.4] ${path} não é âncora: ${r.out}`);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

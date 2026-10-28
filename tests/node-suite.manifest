@@ -25,6 +25,7 @@ tests/central-candidate-dryrun.test.mjs 4
 tests/central-retired-contact-script.test.mjs 9
 tests/certification-worker.test.mjs 3
 tests/circuits-adversarial.test.mjs 31
+tests/clean-bundle.test.mjs 6
 tests/command-center-main.test.mjs 4
 tests/command-center-snapshot.test.mjs 9
 tests/commercial-checkout-guard.test.mjs 6
@@ -59,7 +60,7 @@ tests/lab-cancelamento-pagamentos-pendentes.test.mjs 8
 tests/lab-fechamento-apos-cobranca.test.mjs 11
 tests/lead-magnet.test.mjs 15
 tests/lead-submit-count.test.mjs 4
-tests/legal-publish-gate.test.mjs 14
+tests/legal-publish-gate.test.mjs 15
 tests/legal-routes-artifact.test.mjs 3
 tests/link-vencido-nao-reutilizado.test.mjs 5
 tests/live-runtime-status.test.mjs 5
