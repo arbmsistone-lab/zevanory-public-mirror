@@ -1,4 +1,4 @@
-import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
+import { legalRouteRedirect } from "./legal-routes-redirect.mjs"; import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
 import { legacyTrustProjection, guardTrustChain } from "./trust-projection.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
@@ -93,7 +93,7 @@ function canonicalizePublicPath(request, url) {
 }
 
 const wrapped = {
-  async fetch(request, env, ctx) {
+  async fetch(request, env, ctx) { const legalRedirect = legalRouteRedirect(request); if (legalRedirect) return legalRedirect;  // anchor: legal routes live only on vendas
     // KV write census (METACLOUD phase A): every write on the shared namespace is logged by prefix.
     let path = "/";
     // Only route words: any segment that could carry an id or token becomes "*" (public census).

@@ -63,12 +63,18 @@ DEPLOY_WORKFLOWS = (".github/workflows/zevanory-sales-public-release.yml", ".git
 # é servido): o ponto de entrada, o Worker, o módulo que ele importa, a configuração wrangler e o script que a reescreve
 # no deploy.
 ANCHORS = ("data/p23/legal-reviewers.json", "data/p23/legal-published-baseline.json", "docs/legal/reviews/*",
-           "data/politica-unica.json", "scripts/p23/*", ".github/workflows/*", ".github/actions/*",
+           "data/politica-unica.json", "scripts/p23/*", "docs/legal/audits/*", ".github/workflows/*", ".github/actions/*",
            "sales-worker.mjs", "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "wrangler.sales.toml",
            "scripts/ci/materialize_sales_configs.py",
            # Rodada 6: tudo o que os jobs com segredo executam (lido do checkout confiável base/) também é âncora.
            "scripts/deploy/*", "scripts/ci/verify-founder-and-products.sh", "scripts/verify-production-surfaces.py",
-           "scripts/verify-live-headers.py", "scripts/financial_proof_renewal.py", "scripts/ci/credential_identity_readback.py")
+           "scripts/verify-live-headers.py", "scripts/financial_proof_renewal.py", "scripts/ci/credential_identity_readback.py",
+           # Rodada 12 (MED-1): quem responde às rotas jurídicas fora do site de vendas (308 para vendas).
+           "worker/legal-routes-redirect.mjs", "worker/public-surface-router.mjs", "data/p23/legal-revoked.json")
+CENTRAL_ENTRY = "worker/cloudflare-worker.compat.mjs"
+CENTRAL_ENTRY_IMPORT = 'import { legalRouteRedirect } from "./legal-routes-redirect.mjs";'
+CENTRAL_ENTRY_FETCH = ("const wrapped = {\n  async fetch(request, env, ctx) { "
+                       "const legalRedirect = legalRouteRedirect(request); if (legalRedirect) return legalRedirect;")
 # Rodada 7 (M-1c): o que pode redirecionar npm/npx ou trocar o wrangler executado, e o que o wrangler lê, em qualquer pasta.
 NPM_ANCHOR_NAMES = {".npmrc", "package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml",
                     "pnpm-workspace.yaml", ".pnpmfile.cjs", "bunfig.toml", "bun.lockb",
@@ -122,14 +128,16 @@ SPECS = {
         "bundle_job": ("build", clean_bundle_body("central", "central-release")),
         "repro_body": repro_body("central", "art/central"),
         "rehearsal_repro": rehearsal_repro_body("central", "art/central"),
-        "legal_gate": False,
+        # Rodada 12 (MED-3a): no central, só o portão mínimo dos textos de consumo (--consumer-gate); o portão
+        # jurídico completo (--publish-gate) e o snapshot (--apply-snapshot) são proibidos.
+        "gate_flag": "--consumer-gate", "forbid": r"--publish-gate|--apply-snapshot",
         "artifact_copy": None},
 }
 DEPLOY_NPM_ENV = {"npm_config_userconfig": "/dev/null", "npm_config_registry": "https://registry.npmjs.org"}
 DEPLOY_WORKFLOWS = tuple(SPECS)
 
 
-def gate_body(artifact_copy):
+def gate_body(artifact_copy, flag="--publish-gate"):
     """Passo do portão no job deploy: código do portão lido do gh-pages (ref do checkout confiável base/, feito neste
     job, sem credenciais guardadas e sem nenhum código do repositório antes), executado com /usr/bin/python3 -I sobre
     o artefato baixado (no vendas, sales-public/ do artefato substitui o da árvore antes da impressão digital)."""
@@ -138,7 +146,7 @@ def gate_body(artifact_copy):
             '/usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > "$RUNNER_TEMP/legal_gate.py"']
     if artifact_copy:
         body.append(artifact_copy)
-    body.append('/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages')
+    body.append(f'/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base {flag} --anchors-ref refs/remotes/origin/gh-pages')
     return body
 
 
@@ -346,7 +354,9 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
         return errs + [f"{name}: job deploy sem steps"]
     steps = _steps(lines, jkeys["steps"][1] + 1, jkeys["steps"][2])
     legal = spec.get("legal_gate", True)
-    body = gate_body(spec["artifact_copy"])
+    body = gate_body(spec["artifact_copy"], spec.get("gate_flag", "--publish-gate"))
+    if spec.get("forbid") and re.search(spec["forbid"], text):
+        errs.append(f"{name}: o central só pode ter o portão dos textos de consumo (--consumer-gate); nunca o portão jurídico completo nem o snapshot (Sol ORDEM 312)")
     is_gate = lambda st: legal and (st["keys"].get("run") or {}).get("body") == body
     gates = [n for n, st in enumerate(steps) if is_gate(st)]
     first_secret = next((n for n, st in enumerate(steps) if "secrets." in st["text"]), len(steps))
@@ -432,8 +442,24 @@ def validate_deploy_workflow(name: str, text: str, spec: dict | None = None) -> 
     return errs
 
 
-def validate_tree(read) -> list[str]:
+def validate_central_entry(text: str | None) -> list[str]:
+    """Rodada 12 (MED-1): o ponto de entrada do central (não âncora) tem de desviar as rotas jurídicas para vendas
+    ANTES de qualquer outra coisa, pelo módulo âncora worker/legal-routes-redirect.mjs."""
+    if text is None:
+        return [f"{CENTRAL_ENTRY}: ausente"]
+    t = text.replace("\r\n", "\n")
     errs = []
+    if not any(l.startswith(CENTRAL_ENTRY_IMPORT) for l in t.splitlines()):
+        errs.append(f"{CENTRAL_ENTRY}: falta {CENTRAL_ENTRY_IMPORT}")
+    if CENTRAL_ENTRY_FETCH not in t or t.count("const wrapped = {") != 1:
+        errs.append(f"{CENTRAL_ENTRY}: a primeira instrução de wrapped.fetch tem de ser o desvio das rotas jurídicas (legalRouteRedirect)")
+    if not re.search(r"^export default wrapped;\s*$", t, re.M) or len(re.findall(r"^export default", t, re.M)) != 1:
+        errs.append(f"{CENTRAL_ENTRY}: o export default tem de ser wrapped")
+    return errs
+
+
+def validate_tree(read) -> list[str]:
+    errs = validate_central_entry(read(CENTRAL_ENTRY))
     for wf in DEPLOY_WORKFLOWS:
         text = read(wf)
         errs += [f"{wf}: ausente"] if text is None else validate_deploy_workflow(wf, text)

@@ -21,7 +21,7 @@ const LEGAL = join(REPO, "scripts/p23/legal_review.py");
 const GUARD = join(REPO, "scripts/p23/trust_anchor_guard.py");
 const FILES = ["sales-public/termos.html", "sales-public/reembolso.html", "termos/index.html", "reembolso/index.html", "sales-public/privacidade.html", "sales-public/afiliados.html", "privacidade/index.html", "afiliados/index.html", "data/politica-unica.json", "data/p23/legal-published-baseline.json", "data/p23/legal-reviewers.json",
   ".github/workflows/zevanory-sales-public-release.yml", ".github/workflows/central-production-deploy.yml", "data/p23/ecommerce-legal-checklist.json",
-  ...["sales-worker.mjs", "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "wrangler.sales.toml"]];
+  ...["sales-worker.mjs", "worker/sales-public-worker.mjs", "worker/politica-unica.mjs", "wrangler.sales.toml", "worker/cloudflare-worker.compat.mjs"]];
 // Rodada 5: a impressão digital cobre os bytes dos assets das páginas jurídicas (CSS, fontes, imagens): as fixtures copiam.
 { const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", REPO, "--artifact-files"], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
   for (const rel of r.stdout.split("\n").map((x) => x.trim()).filter(Boolean)) if (!FILES.includes(rel)) FILES.push(rel); }
@@ -215,7 +215,7 @@ test("G6 check protegido: PR que altera uma âncora reprova; PR comum passa; lin
     const edit = (rel, fn) => { const f = join(root, rel); writeFileSync(f, fn(read(f))); };
     for (const [label, change, title] of [
       ["coe", () => edit(SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        continue-on-error: true")), /LEGAL_GATE_INVALID/],
-      ["ift", () => edit(SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "        if: ${{ false }}\n")), /LEGAL_GATE_INVALID/],
+      ["ift", () => edit(SALES, (t) => t.replace(GATE_NAME, GATE_NAME + "\n        if: ${{ false }}")), /LEGAL_GATE_INVALID/],
       ["ortrue", () => edit(SALES, (t) => t.replace(GL + "\n", GL + " || true\n")), /LEGAL_GATE_INVALID/],
       ["newwf", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/x.yml"), "name: x\non: {push: {branches: [gh-pages]}}\njobs:\n  d:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: python3 scripts/build_sales_public.py && npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml\n"); }, /TRUST_ANCHOR_CHANGED::\.github\/workflows\/x\.yml/],
       ["newwf-env", () => { mkdirSync(join(root, ".github/workflows"), { recursive: true }); writeFileSync(join(root, ".github/workflows/y.yml"), "name: y\non: push\njobs:\n  d:\n    environment: producao-critica\n    runs-on: ubuntu-latest\n    steps:\n      - run: bash scripts/qualquer.sh\n"); }, /TRUST_ANCHOR_CHANGED::\.github\/workflows\/y\.yml/],
@@ -262,7 +262,9 @@ test("G7 rodadas 6 e 7: build sem segredo, deploy sem código de build; o portã
     const d = job("deploy");
     if (wf.includes("central")) {
       // Sol ORDEM 312: o deploy central nunca é bloqueado pelo portão jurídico.
-      assert.doesNotMatch(y, /legal_review\.py|legal_gate\.py|--publish-gate|--apply-snapshot/, `[G7.22] ${wf}: nenhum portão jurídico no central`);
+      assert.doesNotMatch(y, /--publish-gate|--apply-snapshot/, `[G7.22] ${wf}: no central, nunca o portão jurídico completo nem o snapshot`);
+      const cg = d.indexOf('/usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --consumer-gate --anchors-ref refs/remotes/origin/gh-pages');
+      assert.ok(cg > 0 && cg < d.indexOf("secrets."), `[G7.26] ${wf}: portão dos textos de consumo antes de qualquer segredo`);
       assert.ok(d.indexOf("sha256sum --strict -c") > 0 && d.indexOf("sha256sum --strict -c") < d.indexOf("secrets."), `[G7.23] ${wf}: manifesto antes de qualquer segredo`);
       const reproC = d.indexOf('/usr/bin/python3 -I "$RUNNER_TEMP/clean_bundle.py" central --repo base');
       assert.ok(reproC > 0 && reproC < d.indexOf("secrets."), `[G7.24] ${wf}: reconstrução limpa antes de qualquer segredo`);
@@ -394,7 +396,8 @@ test("G11 validação estrutural (rodadas 6 e 7): o real passa; segredo no build
   const dir = mkdtempSync(join(tmpdir(), "legal-wf-"));
   try {
     const SALES = ".github/workflows/zevanory-sales-public-release.yml", CENTRAL = ".github/workflows/central-production-deploy.yml";
-    const orig = { [SALES]: read(join(REPO, SALES)), [CENTRAL]: read(join(REPO, CENTRAL)) };
+    const ENTRY = "worker/cloudflare-worker.compat.mjs";
+    const orig = { [SALES]: read(join(REPO, SALES)), [CENTRAL]: read(join(REPO, CENTRAL)), [ENTRY]: read(join(REPO, ENTRY)) };
     const run = (over = {}) => {
       for (const [rel, text] of Object.entries({ ...orig, ...over })) { mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), text); }
       return py(GUARD, ["--validate-workflows", "--root", dir]);
@@ -443,6 +446,11 @@ test("G11 validação estrutural (rodadas 6 e 7): o real passa; segredo no build
       ["r9 ensaio central sem checar o resultado do build", CENTRAL, (t) => t.replace("if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}", "if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}")],
       // Sol ORDEM 312.
       ["o12 portão jurídico bloqueando o central", CENTRAL, (t) => t.replace("      - name: Assemble the release directory (pre-built bundle, assets; no repository code)\n", "      - name: Legal artifact gate (fail fast)\n        run: |\n          set -euo pipefail\n          test \"$(/usr/bin/git -C base rev-parse HEAD)\" = \"$GITHUB_SHA\"\n          /usr/bin/git -C base show refs/remotes/origin/gh-pages:scripts/p23/legal_review.py > \"$RUNNER_TEMP/legal_gate.py\"\n          /usr/bin/python3 -I \"$RUNNER_TEMP/legal_gate.py\" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages\n      - name: Assemble the release directory (pre-built bundle, assets; no repository code)\n")],
+      ["r12 central sem o portão dos textos de consumo", CENTRAL, (t) => t.split(/      - name: Consumer-text gate \(fail fast[^\n]*\n        run: \|\n(?:          [^\n]*\n)+/).join("")],
+      ["r12 central publica sem o portão de consumo logo antes", CENTRAL, (t) => t.replace(/      - name: Consumer-text gate before the production deploy\n        run: \|\n(?:          [^\n]*\n)+/, "")],
+      ["r12 entrada do central sem desviar as rotas jurídicas", ENTRY, (t) => t.replace(" const legalRedirect = legalRouteRedirect(request); if (legalRedirect) return legalRedirect;  // anchor: legal routes live only on vendas", "")],
+      ["r12 entrada do central desvia depois de outra instrução", ENTRY, (t) => t.replace("  async fetch(request, env, ctx) { const legalRedirect", "  async fetch(request, env, ctx) { globalThis.x = 1; const legalRedirect")],
+      ["r12 entrada do central sem importar o módulo âncora", ENTRY, (t) => t.replace('import { legalRouteRedirect } from "./legal-routes-redirect.mjs"; ', 'const legalRouteRedirect = () => null; ')],
       ["o12 vendas sem aplicar o snapshot aprovado", SALES, (t) => t.replace(/      - name: Serve the last approved legal snapshot when the commit's legal text is not approved\n        run: \|\n(?:          [^\n]*\n)+\n/, "")],
       ["o12 snapshot depois do portão", SALES, (t) => { const m = t.match(/      - name: Serve the last approved legal snapshot when the commit's legal text is not approved\n        run: \|\n(?:          [^\n]*\n)+\n/); return m ? t.replace(m[0], "").replace("      - name: Assemble the release directory (pre-built bundles, gated site; no repository code)\n", m[0] + "      - name: Assemble the release directory (pre-built bundles, gated site; no repository code)\n") : t; }],
       ["r10 upload do central sem arquivos ocultos", CENTRAL, (t) => t.replace("          include-hidden-files: true\n", "")],
@@ -658,13 +666,19 @@ const INTERNAL = { id: "int-renan", name: "Renan Bitu", type: "internal_owner", 
 const DISCLAIMER = "Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico.";
 const AUDIT = "docs/legal/audits/auditoria-independente.md";
 const sha256 = (buf) => spawnSync(PYTHON, ["-I", "-c", "import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())"], { input: buf }).stdout.toString().trim();
+const AUDIT_TEXT = "# Auditoria independente (fixture)\n\nEscopo: textos jurídicos e código que os serve no commit 0123456789abcdef0123456789abcdef01234567.\nAprovado no código.\n";
+// PR 1: cadastro do revisor interno + relatório de auditoria versionado (antes do registro de aprovação).
+function registerInternal(root, audit = AUDIT_TEXT) {
+  mkdirSync(join(root, "docs/legal/audits"), { recursive: true });
+  writeFileSync(join(root, AUDIT), audit);
+  return register(root, INTERNAL);
+}
 function approveInternal(root, { textCommit, authCommit, rec = (r) => r, rev = (r) => r }) {
   const sha = fp(root);
   const version = JSON.parse(read(join(root, "data/politica-unica.json"))).legal_document_version;
   json(root, "data/p23/legal-reviewers.json", (d) => { d.reviewers = d.reviewers.map((r) => (r.id === INTERNAL.id && !r.authorization_commit ? { ...r, authorization_commit: authCommit } : r)); });
-  mkdirSync(join(root, "docs/legal/audits"), { recursive: true });
-  writeFileSync(join(root, AUDIT), "# Auditoria independente (fixture)\n\nAprovado no código.\n");
-  const audit = { ref: AUDIT, sha256: sha256(Buffer.from("# Auditoria independente (fixture)\n\nAprovado no código.\n")), auditor: "Auditoria Externa Independente" };
+  const bytes = spawnSync("git", ["-C", root, "show", `HEAD:${AUDIT}`]).stdout;
+  const audit = { ref: AUDIT, sha256: sha256(bytes.length ? bytes : Buffer.from(AUDIT_TEXT)), auditor: "Auditoria Independente Externa", auditor_kind: "independent_ai_auditor" };
   const ids = JSON.parse(read(join(root, "data/p23/ecommerce-legal-checklist.json"))).items.map((i) => i.id);
   const checklist = Object.fromEntries(ids.map((id) => [id, { answer: "conforme", evidence: `conferido em sales-public (${id})` }]));
   const review = rev({ status: "APPROVED_INTERNAL", type: "internal_owner", reviewer_id: INTERNAL.id, approved_by: INTERNAL.name, approved_at: "2026-10-27",
@@ -678,7 +692,7 @@ function approveInternal(root, { textCommit, authCommit, rec = (r) => r, rev = (
 test("G17 o12 aprovação INTERNA (proprietário): aceita com checklist P23 e auditoria; impressa como interna, nunca como parecer", () => {
   const { root, text } = repo();
   try {
-    const auth = register(root, INTERNAL);
+    const auth = registerInternal(root);
     approveInternal(root, { textCommit: text, authCommit: auth }); const ok1 = commit(root, "aprovação interna");
     const ok = gate(root);
     assert.equal(ok.code, 0, "[G17.1] " + ok.out);
@@ -691,6 +705,10 @@ test("G17 o12 aprovação INTERNA (proprietário): aceita com checklist P23 e au
       ["item não conforme", { rec: (r) => ({ ...r, checklist: { ...r.checklist, [Object.keys(r.checklist)[0]]: { answer: "nao_conforme", evidence: "x" } } }) }, /checklist P23 item/],
       ["auditoria com hash errado", { rec: (r) => ({ ...r, audit_report: { ...r.audit_report, sha256: "0".repeat(64) } }) }, /audit_report/],
       ["auditor é quem aprova", { rec: (r) => ({ ...r, audit_report: { ...r.audit_report, auditor: INTERNAL.name } }) }, /audit_report/],
+      ["auditor é quem aprova (minúsculas, sem acento)", { rec: (r) => ({ ...r, audit_report: { ...r.audit_report, auditor: "  renan  BITU " } }) }, /independente/],
+      ["auditoria por URL externa", { rec: (r) => ({ ...r, audit_report: { ...r.audit_report, ref: "https://example.invalid/auditoria.md" } }) }, /URL externa não é aceita/],
+      ["auditor_kind ausente", { rec: (r) => ({ ...r, audit_report: { ...r.audit_report, auditor_kind: undefined } }) }, /auditor_kind/],
+      ["auditor humano sem nome", { rec: (r) => ({ ...r, audit_report: { ...r.audit_report, auditor_kind: "human", auditor: "auditoria" } }) }, /nome e sobrenome/],
       ["registro se apresenta como parecer", { rec: (r) => ({ ...r, nota: "parecer jurídico favorável" }) }, /não pode se apresentar como parecer/],
       ["sem o aviso", { rec: (r) => ({ ...r, disclaimer: "ok" }), rev: (r) => ({ ...r, disclaimer: "ok" }) }, /disclaimer/],
       ["APPROVED com registro interno", { rev: (r) => ({ ...r, status: "APPROVED", type: undefined }), rec: (r) => ({ ...r, decision: "APPROVED", type: undefined }) }, /cadastro incompleto, de outro nível|decision|type/],
@@ -702,6 +720,16 @@ test("G17 o12 aprovação INTERNA (proprietário): aceita com checklist P23 e au
       assert.equal(r.code, 1, `[G17.5] ${label}: ${r.out}`);
       assert.match(r.out, msg, `[G17.5a] ${label}: ${r.out}`);
     }
+    // Relatório sem escopo/SHA, e relatório que entra no MESMO commit do registro: reprovam.
+    git(root, "checkout", "-q", "-f", text); git(root, "checkout", "-q", "-B", "audit-sem-escopo");
+    const authNs = registerInternal(root, "# relatório\nok\n");
+    approveInternal(root, { textCommit: text, authCommit: authNs }); commit(root, "aprovação com relatório sem escopo");
+    assert.match(gate(root, "HEAD").out, /declarar o escopo e o SHA/, "[G17.8] relatório sem escopo/SHA");
+    git(root, "checkout", "-q", "-f", text); git(root, "checkout", "-q", "-B", "audit-mesmo-commit");
+    const authNa = register(root, INTERNAL);
+    mkdirSync(join(root, "docs/legal/audits"), { recursive: true }); writeFileSync(join(root, AUDIT), AUDIT_TEXT);
+    approveInternal(root, { textCommit: text, authCommit: authNa }); commit(root, "relatório e aprovação juntos");
+    assert.match(gate(root, "HEAD").out, /commit ANTERIOR ao do registro/, "[G17.9] relatório no mesmo commit do registro");
     // Aprovação interna citando OAB não vale (confere a aprovação declarada na árvore, como o P23 de PR).
     git(root, "checkout", "-q", "-f", auth); git(root, "checkout", "-q", "-B", "v-oab");
     approveInternal(root, { textCommit: text, authCommit: auth, rev: (r) => ({ ...r, approved_by: "Renan Bitu, OAB/CE 12345" }) });
@@ -733,7 +761,7 @@ test("G18 o12 snapshot aprovado: texto novo não aprovado nunca é servido; o de
   const { root, text } = repo();
   try {
     const approved = publishedApproved(root, text);
-    const before = git(root, "show", `${text}:sales-public/termos.html`);
+    const before = git(root, "show", `${text}:sales-public/termos.html`).replace(/\r\n/g, "\n");
     word(root, "Termos", "Termos Novos");
     writeFileSync(join(root, "termos/index.html"), read(join(root, "termos/index.html")) + "\n<!-- fonte nova -->\n");
     commit(root, "texto novo, sem aprovação");
@@ -757,17 +785,17 @@ test("G18 o12 snapshot aprovado: texto novo não aprovado nunca é servido; o de
     assert.equal(applySnapshot(root).code, 0, "[G18.5]");
     const sc = gate(root);
     assert.equal(sc.code, 1, "[G18.6] " + sc.out);
-    assert.match(sc.out, /LEGAL_SERVING_UNAPPROVED[^\n]*Só o deploy do Worker de vendas fica bloqueado; o central não usa este portão/, "[G18.6a]");
+    assert.match(sc.out, /LEGAL_SERVING_UNAPPROVED[^\n]*Só o deploy do Worker de vendas fica bloqueado; o central só confere os textos de consumo/, "[G18.6a]");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("G19 o12 emergência: só o dono, com motivo, e só com os textos do snapshot aprovado; nunca troca texto jurídico", () => {
   const { root, text } = repo();
   const dir = mkdtempSync(join(tmpdir(), "legal-ev-"));
-  const em = (event, ref = "refs/heads/gh-pages") => {
+  const em = (event, ref = "refs/heads/gh-pages", extra = {}) => {
     writeFileSync(join(dir, "event.json"), JSON.stringify(event));
     const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", root, "--publish-gate", "--anchors-ref", "main"],
-      { encoding: "utf8", env: { ...PYENV, GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_EVENT_PATH: join(dir, "event.json"), GITHUB_REF: ref } });
+      { encoding: "utf8", env: { ...PYENV, GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_EVENT_PATH: join(dir, "event.json"), GITHUB_REF: ref, ...extra } });
     return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
   };
   const ev = (over = {}) => ({ inputs: { mode: "emergency", reason: "correção urgente de checkout quebrado em produção" }, sender: { login: "dono" }, repository: { owner: { login: "dono" } }, ...over });
@@ -784,6 +812,8 @@ test("G19 o12 emergência: só o dono, com motivo, e só com os textos do snapsh
     assert.equal(em(ev({ sender: { login: "outra-conta" } })).code, 1, "[G19.3] só o dono");
     assert.equal(em(ev({ inputs: { mode: "emergency", reason: "curto" } })).code, 1, "[G19.4] motivo obrigatório");
     assert.equal(em(ev(), "refs/heads/outro").code, 1, "[G19.5] só no gh-pages");
+    assert.equal(em(ev(), "refs/heads/gh-pages", { GITHUB_TRIGGERING_ACTOR: "outra-conta" }).code, 1, "[G19.5a] re-run por outra conta (triggering_actor) reprova");
+    assert.equal(em(ev(), "refs/heads/gh-pages", { GITHUB_TRIGGERING_ACTOR: "dono" }).code, 0, "[G19.5b]");
     // Texto de consumo alterado: a emergência não o publica.
     json(root, "data/politica-unica.json", (d) => { d.rule_7d = String(d.rule_7d) + " (alterado)"; }); commit(root, "texto de consumo alterado");
     assert.equal(applySnapshot(root).code, 0, "[G19.6]");
@@ -793,14 +823,18 @@ test("G19 o12 emergência: só o dono, com motivo, e só com os textos do snapsh
   } finally { rmSync(root, { recursive: true, force: true }); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("G20 o12 snapshot de origem reproduzível (b7671272/a6068e6a); snapshot não reproduzível reprova", () => {
+test("G20 o12 snapshot de origem reproduzível (b7671272/a6068e6a); snapshot não reproduzível reprova", (t) => {
   const base = JSON.parse(read(join(REPO, "data/p23/legal-published-baseline.json")));
   const consts = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l; print(l.GENESIS_BASELINE, l.GENESIS_COMMIT)", join(REPO, "scripts/p23")], { encoding: "utf8" }).stdout.trim().split(" ");
   assert.deepEqual([base.fingerprint, base.source_commit], consts, "[G20.1] a linha de base aponta para o snapshot de origem");
   const have = ["b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224", "a6068e6a5aba2e2062a418086586dbc711e3cfc4"].every((c) => spawnSync("git", ["-C", REPO, "cat-file", "-e", c + "^{commit}"]).status === 0);
-  if (have) {  // no CI com checkout raso os commits antigos não existem; no deploy (fetch-depth 0) existem
-    const r = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l\nfor c in sys.argv[2:]:\n  g=l.GitRef(sys.argv[1]+'/../..', c); print(l.legal_fingerprint_src(g), l.served_fingerprint(g), l.texts_fingerprint(g))",
-      join(REPO, "scripts/p23"), "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224", "a6068e6a5aba2e2062a418086586dbc711e3cfc4"], { encoding: "utf8" });
+  if (!have) {
+    // Checkout raso (CI): os commits antigos não existem. A reprodução real é imposta no deploy (fetch-depth 0) pelo
+    // próprio --apply-snapshot, que falha fechado; aqui o caso aparece como SKIP, não como verde vazio (LOW-4).
+    t.diagnostic("G20.2-3 SKIP: b7671272/a6068e6a ausentes neste clone (checkout raso)");
+  } else {
+    const r = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l\nfor c in sys.argv[3:]:\n  g=l.GitRef(sys.argv[2], c); print(l.legal_fingerprint_src(g), l.served_fingerprint(g), l.texts_fingerprint(g))",
+      join(REPO, "scripts/p23"), REPO, "b7671272b1c0b35d1bb7a20fa2489bd7c5a0f224", "a6068e6a5aba2e2062a418086586dbc711e3cfc4"], { encoding: "utf8" });
     const [x, y] = r.stdout.trim().split("\n");
     assert.equal(x.split(" ")[0], consts[0], "[G20.2] b7671272 reproduz a gênese " + r.stderr);
     assert.equal(x, y, "[G20.3] a6068e6a (publicado) é byte a byte o mesmo snapshot");
@@ -822,11 +856,79 @@ test("G20 o12 snapshot de origem reproduzível (b7671272/a6068e6a); snapshot nã
   const r2 = repo();
   try {
     const approved = publishedApproved(r2.root, r2.text);
-    const good = git(r2.root, "show", `${r2.text}:sales-public/termos.html`);
+    const good = git(r2.root, "show", `${r2.text}:sales-public/termos.html`).replace(/\r\n/g, "\n");
     word(r2.root, "Termos", "Termos Falsos"); const evil = commit(r2.root, "texto não aprovado");
     json(r2.root, "data/p23/legal-published-baseline.json", (d) => { d.source_commit = evil; }); commit(r2.root, "linha de base aponta para o texto não aprovado");
     const a = applySnapshot(r2.root);
     assert.match(a.out, new RegExp(`LEGAL_SNAPSHOT_NOT_REPRODUCIBLE ${approved.slice(0, 12)}@${evil.slice(0, 12)}`), "[G20.7] " + a.out);
     assert.equal(read(join(r2.root, "sales-public/termos.html")).trim(), good, "[G20.8] o texto não aprovado nunca é servido");
   } finally { rmSync(r2.root, { recursive: true, force: true }); }
+});
+
+test("G21 r12 revogação: texto revogado não passa, não é servido como snapshot e não vale como linha de base", () => {
+  const { root, text } = repo();
+  try {
+    const approved = publishedApproved(root, text);
+    assert.equal(gate(root).code, 0, "[G21.0]");
+    put(root, "data/p23/legal-revoked.json", { schema: "zevanory-legal-revoked/v1", revoked: [{ sha256: approved, revoked_at: "2026-10-28", reason: "texto superado" }] });
+    commit(root, "proprietário revoga a aprovação");
+    const r = gate(root);
+    assert.equal(r.code, 1, "[G21.1] " + r.out);
+    assert.match(r.out, /revogada/, "[G21.1a]");
+    word(root, "Termos", "Termos Novos"); commit(root, "texto novo");
+    const a = applySnapshot(root);
+    assert.doesNotMatch(a.out, new RegExp(`LEGAL_SNAPSHOT_APPLIED=${approved}`), "[G21.2] o snapshot revogado nunca é aplicado: " + a.out);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+const consumer = (root, ref = "main") => py(LEGAL, ["--root", root, "--consumer-gate", "--anchors-ref", ref]);
+test("G22 r12 portão mínimo do central: bloqueia SÓ se os textos de consumo mudaram sem aprovação", () => {
+  const { root, text } = repo();
+  try {
+    publishedApproved(root, text);
+    const ok = consumer(root);
+    assert.equal(ok.code, 0, "[G22.1] " + ok.out);
+    assert.match(ok.out, /LEGAL_CONSUMER_GATE=PASS/, "[G22.1a]");
+    // Página jurídica e código que serve alterados (só vendas os serve): o central NÃO bloqueia.
+    word(root, "Termos", "Termos Novos");
+    writeFileSync(join(root, "worker/sales-public-worker.mjs"), read(join(root, "worker/sales-public-worker.mjs")) + "\n// x\n");
+    commit(root, "mudanças que só o vendas serve");
+    const pages = consumer(root);
+    assert.equal(pages.code, 0, "[G22.2] o central não é bloqueado por página jurídica nem pelo código de vendas: " + pages.out);
+    assert.match(pages.out, /LEGAL_CONSUMER_TEXTS=APPROVED_SNAPSHOT/, "[G22.2a]");
+    // Texto de consumo alterado sem aprovação: o central bloqueia, e diz por quê.
+    json(root, "data/politica-unica.json", (d) => { d.rule_7d = String(d.rule_7d) + " (alterado)"; }); commit(root, "regra dos 7 dias alterada");
+    const bad = consumer(root);
+    assert.equal(bad.code, 1, "[G22.3] " + bad.out);
+    assert.match(bad.out, /LEGAL_CONSUMER_PENDING=data\/politica-unica\.json#rule_7d/, "[G22.3a]");
+    assert.match(bad.out, /só por isso o deploy central fica bloqueado/, "[G22.3b]");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("G23 r12 kit da aprovação interna: dois PRs em minutos, com a mesma validação do portão", () => {
+  const { root, text } = repo();
+  const KIT = join(REPO, "scripts/p23/internal_approval.py");
+  const dir = mkdtempSync(join(tmpdir(), "legal-kit-"));
+  try {
+    for (const rel of ["docs/legal/internal-approval/checklist-p23.json"]) { mkdirSync(dirname(join(root, rel)), { recursive: true }); copyFileSync(join(REPO, rel), join(root, rel)); }
+    writeFileSync(join(dir, "auditoria.md"), AUDIT_TEXT);
+    const r1 = py(KIT, ["--root", root, "register", "--name", "Renan Bitu", "--github-login", "arbmsistone-lab", "--audit-report", join(dir, "auditoria.md"), "--authorized-at", "2026-10-20"]);
+    assert.equal(r1.code, 0, "[G23.1] " + r1.out);
+    commit(root, "PR 1: revisor interno + auditoria");
+    const tpl = JSON.parse(read(join(root, "docs/legal/internal-approval/checklist-p23.json")));
+    assert.ok(Object.values(tpl.answers).every((a) => a.answer === "" && a.evidence === ""), "[G23.2] o modelo não vem preenchido");
+    const empty = py(KIT, ["--root", root, "approve", "--checklist", join(root, "docs/legal/internal-approval/checklist-p23.json"), "--audit-report", "docs/legal/audits/auditoria.md", "--auditor", "Auditoria Independente Externa", "--auditor-kind", "independent_ai_auditor", "--approved-at", "2026-10-27", "--anchors-ref", "main"]);
+    assert.equal(empty.code, 1, "[G23.3] checklist em branco não aprova");
+    for (const a of Object.values(tpl.answers)) { a.answer = "conforme"; a.evidence = "conferido pelo proprietário"; }
+    writeFileSync(join(dir, "preenchido.json"), JSON.stringify(tpl));
+    const r2 = py(KIT, ["--root", root, "approve", "--checklist", join(dir, "preenchido.json"), "--audit-report", "docs/legal/audits/auditoria.md", "--auditor", "Auditoria Independente Externa", "--auditor-kind", "independent_ai_auditor", "--approved-at", "2026-10-27", "--anchors-ref", "main"]);
+    assert.equal(r2.code, 0, "[G23.4] " + r2.out);
+    assert.match(r2.out, /INTERNAL_APPROVAL_PR2=READY/, "[G23.4a]");
+    commit(root, "PR 2: aprovação interna");
+    const g = gate(root);
+    assert.equal(g.code, 0, "[G23.5] " + g.out);
+    assert.match(g.out, /LEGAL_APPROVAL_LEVEL=INTERNAL_OWNER/, "[G23.5a]");
+    assert.equal(consumer(root).code, 0, "[G23.6] o central também passa");
+    void text;
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(dir, { recursive: true, force: true }); }
 });

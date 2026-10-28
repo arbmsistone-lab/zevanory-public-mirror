@@ -81,8 +81,9 @@ on:
   # zevanory-sales-candidate-<run id> Worker on workers.dev, smoke-tests it and deletes it (gh-pages only; no
   # promotion). production is the full release, exactly what a push to gh-pages does.
   # Sol ORDEM 312: emergency (owner only, reason required, audit record) deploys like production but accepts a sales
-  # Worker whose serving code is unapproved, ONLY if the legal pages, their assets and the consumer texts served are an
-  # approved snapshot. It can never replace a protected legal text.
+  # Worker whose serving code is unapproved, ONLY if the legal page files, their assets and the consumer texts served
+  # are an approved snapshot. Honest limit: that unapproved serving code could in principle change what the legal
+  # routes return at runtime; emergency is an audited owner override, not a bypass available to an ordinary PR.
   workflow_dispatch:
     inputs:
       mode:
@@ -321,12 +322,13 @@ jobs:
         env:
           EMERGENCY_REASON: ${{ inputs.reason }}
           OWNER: ${{ github.repository_owner }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
           set -euo pipefail
-          test "$GITHUB_ACTOR" = "$OWNER" || { echo "::error title=LEGAL_EMERGENCY::only the repository owner ($OWNER) may dispatch emergency; dispatched by $GITHUB_ACTOR"; exit 1; }
+          test "$TRIGGERING_ACTOR" = "$OWNER" || { echo "::error title=LEGAL_EMERGENCY::only the repository owner ($OWNER) may dispatch or re-run emergency; triggered by $TRIGGERING_ACTOR"; exit 1; }
           test "${#EMERGENCY_REASON}" -ge 20 || { echo "::error title=LEGAL_EMERGENCY::reason must have at least 20 characters"; exit 1; }
-          echo "::warning title=LEGAL_EMERGENCY::emergency deploy of $GITHUB_SHA by $GITHUB_ACTOR (run $GITHUB_RUN_ID); legal texts stay the approved snapshot"
-          { echo "## Emergency deploy record"; echo "- commit: $GITHUB_SHA"; echo "- actor: $GITHUB_ACTOR"; echo "- run: $GITHUB_RUN_ID"; echo "- reason:"; printf '%s\n' "$EMERGENCY_REASON" | sed 's/^/    /'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=LEGAL_EMERGENCY::emergency deploy of $GITHUB_SHA by $TRIGGERING_ACTOR (run $GITHUB_RUN_ID); served legal files and consumer texts stay the approved snapshot; the serving code is NOT approved (audited owner override)"
+          { echo "## Emergency deploy record"; echo "- commit: $GITHUB_SHA"; echo "- triggered by: $TRIGGERING_ACTOR"; echo "- run: $GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"; echo "- reason:"; printf '%s\n' "$EMERGENCY_REASON" | sed 's/^/    /'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify artifact manifests and file allowlists
         env:
@@ -703,10 +705,11 @@ jobs:
         env:
           EMERGENCY_REASON: ${{ inputs.reason }}
           OWNER: ${{ github.repository_owner }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
           set -euo pipefail
           mkdir -p emergency-audit
-          /usr/bin/python3 -I -c 'import json,os; json.dump({"schema":"zevanory-emergency-deploy/v1","commit":os.environ["GITHUB_SHA"],"ref":os.environ["GITHUB_REF"],"actor":os.environ["GITHUB_ACTOR"],"owner":os.environ["OWNER"],"actor_is_owner":os.environ["GITHUB_ACTOR"]==os.environ["OWNER"],"run_id":os.environ["GITHUB_RUN_ID"],"reason":os.environ["EMERGENCY_REASON"],"rule":"legal texts served must be an approved snapshot; only the serving code may be unapproved"},open("emergency-audit/record.json","w"),ensure_ascii=False,indent=2)'
+          /usr/bin/python3 -I -c 'import json,os; json.dump({"schema":"zevanory-emergency-deploy/v1","commit":os.environ["GITHUB_SHA"],"ref":os.environ["GITHUB_REF"],"triggering_actor":os.environ["TRIGGERING_ACTOR"],"first_actor":os.environ["GITHUB_ACTOR"],"owner":os.environ["OWNER"],"actor_is_owner":os.environ["TRIGGERING_ACTOR"]==os.environ["OWNER"],"run_id":os.environ["GITHUB_RUN_ID"],"run_attempt":os.environ["GITHUB_RUN_ATTEMPT"],"reason":os.environ["EMERGENCY_REASON"],"rule":"served legal files and consumer texts must be an approved snapshot; the serving code may be unapproved (audited owner override; it could in principle change runtime output)"},open("emergency-audit/record.json","w"),ensure_ascii=False,indent=2)'
           cat emergency-audit/record.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

@@ -55,7 +55,7 @@ Nos dois workflows de deploy, o build e o deploy estão em jobs separados.
 |---|---|---|
 | `guard` | Environment `producao-critica` | o pré-guarda T1 (`promotion_guard.py`, âncora) a partir do checkout confiável. Também repassa ao build as quatro variáveis **não secretas** que o gerador do candidato usa. |
 | `build` | nenhum (`contents: read`) | **primeiro** `scripts/deploy/clean_bundle.py central` (empacotamento limpo, rodada 7) e o upload do artefato (config, pacote, `public/`, manifesto); **depois** as checagens e os testes do repositório, que não alcançam mais o artefato. |
-| `deploy` | Environment `producao-critica`; segredos só no passo | mesmo padrão do vendas, **sem portão jurídico** (Sol ORDEM 312: o central nunca é bloqueado por ele; ver "Sem congelamento"); scripts de operação âncora (`scripts/deploy/**` e os verificadores) lidos de `base/`. |
+| `deploy` | Environment `producao-critica`; segredos só no passo | mesmo padrão do vendas, mas só com o **portão mínimo dos textos de consumo** (`--consumer-gate`, rodada 12): bloqueia só se os textos de consumo de `data/politica-unica.json` mudaram sem aprovação; scripts de operação âncora (`scripts/deploy/**` e os verificadores) lidos de `base/`. |
 
 **O job `deploy`, em ordem**
 
@@ -85,7 +85,7 @@ rm -rf base/sales-public && cp -a art/site/sales-public base/sales-public
 /usr/bin/python3 -I "$RUNNER_TEMP/legal_gate.py" --root base --publish-gate --anchors-ref refs/remotes/origin/gh-pages
 ```
 
-O central não roda o portão (Sol ORDEM 312). O validador reprova qualquer `legal_review.py`, `--publish-gate` ou `--apply-snapshot` no workflow do central.
+No central, o corpo é o mesmo com `--consumer-gate` no lugar de `--publish-gate`, sem a cópia de `sales-public/` (rodada 12). O validador reprova `--publish-gate` ou `--apply-snapshot` no workflow do central.
 
 **Por que isso fecha os três caminhos da rodada 6**
 
@@ -249,9 +249,13 @@ Até a rodada 11, enquanto `legal_review` estivesse PENDING e o artefato jurídi
 | Nível | `legal_review.status` / `type` | Quem | O que o registro exige | Como o portão imprime |
 |---|---|---|---|---|
 | **PROFESSIONAL** | `APPROVED` / ausente ou `professional` | advogado(a) com registro na OAB, cadastrado(a) pelo proprietário (`registro: OAB/UF número`) | o fluxo de sempre (registro em `docs/legal/reviews/<sha256>.json`, `decision: "APPROVED"`) | `LEGAL_APPROVAL_LEVEL=PROFESSIONAL (revisão de advogado(a) com registro na OAB)` |
-| **INTERNAL_OWNER** | `APPROVED_INTERNAL` / `internal_owner` | o proprietário, cadastrado como revisor interno (`type: "internal_owner"`, **sem** OAB) | `decision: "APPROVED_INTERNAL"`, `type: "internal_owner"`, `disclaimer` exato; `checklist` com **todos** os itens de `data/p23/ecommerce-legal-checklist.json` respondidos `conforme` ou `nao_aplicavel`, cada um com evidência; `audit_report` com `ref` (caminho no repositório, cujo sha256 é conferido, ou URL), `sha256` e `auditor` diferente de quem aprova | `LEGAL_APPROVAL_LEVEL=INTERNAL_OWNER (Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico. ...)` |
+| **INTERNAL_OWNER** | `APPROVED_INTERNAL` / `internal_owner` | o proprietário, cadastrado como revisor interno (`type: "internal_owner"`, **sem** OAB) | `decision: "APPROVED_INTERNAL"`, `type: "internal_owner"`, `disclaimer` exato; `checklist` com **todos** os itens de `data/p23/ecommerce-legal-checklist.json` respondidos `conforme` ou `nao_aplicavel`, cada um com evidência; `audit_report` com `ref` = arquivo versionado em `docs/legal/audits/` (URL externa recusada) que entrou no gh-pages num commit **anterior** ao do registro e declara escopo e SHA (40 hex) auditado, `sha256` conferido, `auditor` independente (comparado normalizado, sem diferenciar maiúsculas e acentos, com quem aprova e com todo revisor cadastrado) e `auditor_kind` (`independent_ai_auditor` ou `human`) | `LEGAL_APPROVAL_LEVEL=INTERNAL_OWNER (Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico. ...)` |
 
 O `disclaimer` obrigatório da aprovação interna é exatamente: "Aprovação interna do proprietário: controle temporário; não constitui parecer jurídico." Fora dele, nenhum campo da aprovação interna pode falar em "parecer" ou "opinião jurídica" (reprova). A aprovação interna não pode citar OAB.
+
+**Sobre o `auditor_kind`, com honestidade.** `independent_ai_auditor` quer dizer que a auditoria foi feita por uma execução de IA separada de quem preparou o PR (por exemplo, as reauditorias independentes deste PR). É uma checagem técnica independente do texto e do código, não uma pessoa e não um parecer. `human` quer dizer um auditor humano identificado por nome e sobrenome.
+
+**Revogação (rodada 12).** O proprietário revoga uma aprovação acrescentando a impressão digital em `data/p23/legal-revoked.json` (âncora; `sha256`, `revoked_at`, `reason`). Um texto revogado não passa no portão, não é servido como snapshot e não vale como linha de base.
 
 **A aprovação interna é um controle temporário.** Ela documenta a decisão do proprietário, com o checklist P23 e uma auditoria independente, mas não substitui a análise de um profissional. Recomenda-se uma revisão profissional (OAB) antes ou logo depois da primeira venda, conforme a Sol.
 
@@ -269,19 +273,67 @@ O deploy de vendas passa a seguir quando o texto jurídico do commit ainda não 
 
 **Escolha de segurança e o custo dela.** Se o **código que serve** as rotas jurídicas (`sales-worker.mjs`, `worker/sales-public-worker.mjs`, `worker/politica-unica.mjs`, `wrangler.sales.toml`) ou os **textos de consumo** de `data/politica-unica.json` mudaram sem aprovação, o snapshot não resolve. Esses arquivos vão no pacote do Worker, e trocar o Worker inteiro por uma versão antiga desfaria outras correções.
 - Nesse caso, só o deploy do Worker de vendas fica bloqueado (`LEGAL_SERVING_UNAPPROVED` ou `LEGAL_UNAPPROVED_TEXT_SERVED`), com a lista do que está pendente.
-- O central nunca é bloqueado. O site de vendas e o Worker de vendas são publicados juntos, num único deploy com os assets, então "o site" segue o Worker.
+- O central não é bloqueado por página jurídica nem pelo código de vendas; ele só confere os textos de consumo (ver abaixo). O site de vendas e o Worker de vendas são publicados juntos, num único deploy com os assets, então "o site" segue o Worker.
 - O custo é que uma mudança no código que serve exige aprovação (interna serve) ou o modo emergência. O ganho é que nenhum código não aprovado decide o que as rotas jurídicas mostram sem uma decisão registrada.
 
-**O central.** O deploy central não tem portão jurídico, e o validador reprova se alguém o colocar. Ele não serve texto jurídico aprovável: o apex serve as páginas jurídicas do `public/` congelado de `83620c68`, transformado só por gerador âncora.
+**Rotas jurídicas fora de vendas (rodada 12, MED-1; corrige a rodada anterior).** A afirmação "o apex serve as páginas congeladas" estava errada.
+- No apex, `/termos*`, `/privacidade*`, `/reembolso*` e `/afiliados*` são do Worker `zevanory-public-router`.
+- Nos outros hosts do central (`edge.`, `backup.`, workers.dev), o roteamento era do código não âncora do central.
 
-**Este PR depois do merge.** O PR muda as páginas jurídicas, o código que serve e os textos de consumo em relação à gênese. Até haver aprovação (profissional ou interna), o deploy de vendas fica em `LEGAL_UNAPPROVED_TEXT_SERVED`, com a produção como está, e o central segue normalmente.
+Agora todo host que não é vendas responde a essas rotas, em qualquer variante (`.html`, `/index.html`, barra final, maiúsculas, query), com **308 para a mesma rota em `vendas.zevanory.api.br`**, sem corpo próprio. O texto jurídico só existe onde o portão por bytes e o snapshot valem.
+- O desvio está no módulo âncora `worker/legal-routes-redirect.mjs`.
+- O roteador público (`worker/public-surface-router.mjs`) é âncora inteiro. O workflow dele também é, como todo workflow.
+- No central, a **primeira instrução** de `wrapped.fetch` no ponto de entrada (`worker/cloudflare-worker.compat.mjs`) é a chamada ao módulo. O check protegido reprova um head em que ela suma ou deixe de ser a primeira.
+- Prova: `tests/legal-routes-hosts.test.mjs` roda o roteador e o ponto de entrada **real** do central, em quatro hosts e seis variantes por rota.
+- O roteador não precisa de portão próprio: ele não produz texto jurídico (só redireciona), e mudar isso exige mudar uma âncora.
+
+**O central: portão mínimo dos textos de consumo (rodada 12, MED-3a, opção mais segura, sujeita ao aceite da Sol).** O Worker central serve textos de consumo que vêm de `data/politica-unica.json`: a regra dos 7 dias e as respostas de reembolso e de suporte. Antes de qualquer segredo e logo antes do deploy, o central roda `legal_review.py --consumer-gate` (código do gh-pages).
+- Ele passa se esses campos forem os de um texto aprovado: o texto do commit, aprovado, ou um snapshot aprovado e reproduzível.
+- Se não forem, bloqueia **só** o central, com `LEGAL_CONSUMER_PENDING=<campos>`.
+- Páginas jurídicas e código de vendas não bloqueiam o central.
+
+**Este PR depois do merge (rodada 12, MED-3b).** Em relação à gênese, o PR muda as páginas jurídicas, o código que serve e os textos de consumo. Por isso, **depois do merge, o deploy de vendas e o deploy central ficam bloqueados** até o proprietário registrar uma aprovação, profissional ou interna. A produção fica como está. Com o kit abaixo, a aprovação interna leva minutos.
+
+## Aprovação interna da Release 2: procedimento exato em dois PRs (rodada 12, MED-3b)
+
+Pré-requisitos:
+- o merge do #946;
+- `git fetch origin gh-pages`;
+- o relatório da auditoria independente em Markdown, com uma linha "Escopo" e o SHA (40 hex) auditado.
+
+**PR 1, cadastro e auditoria (o merge cria o `authorization_commit`):**
+
+```
+python3 -I scripts/p23/internal_approval.py register --name "<nome e sobrenome do proprietário>" --github-login arbmsistone-lab --audit-report <relatorio.md>
+git add data/p23/legal-reviewers.json docs/legal/audits/<relatorio.md>
+```
+
+Abra o PR. Ele mexe em âncoras, então o merge é deliberado, por squash.
+
+**PR 2, aprovação:**
+
+1. Copie `docs/legal/internal-approval/checklist-p23.json` e preencha **cada** item com `answer` (`conforme` ou `nao_aplicavel`) e `evidence` (onde conferiu). As respostas são do proprietário; o modelo vem em branco.
+2. Gere a aprovação:
+   ```
+   python3 -I scripts/p23/internal_approval.py approve --checklist <checklist preenchido.json> --audit-report docs/legal/audits/<relatorio.md> --auditor "<quem auditou>" --auditor-kind independent_ai_auditor
+   ```
+   O script grava `legal_review` (`APPROVED_INTERNAL`) em `data/politica-unica.json`, o `authorization_commit` no cadastro e o registro `docs/legal/reviews/<sha256>.json`. Antes de terminar, ele roda a mesma validação do portão e responde `INTERNAL_APPROVAL_PR2=READY` ou `INVALID`.
+3. Faça o commit dos três arquivos num PR, merge deliberado por squash.
+
+Depois do merge do PR 2:
+- o deploy de vendas passa com `LEGAL_APPROVAL_LEVEL=INTERNAL_OWNER (... não constitui parecer jurídico ...)`;
+- o central passa no portão de consumo.
+
+O G23 roda esse fluxo de ponta a ponta numa fixture.
 
 ## Modo emergência (Sol ORDEM 312, item 3)
 
 - `workflow_dispatch` com `mode: emergency` e `reason` de pelo menos 20 caracteres, **só** no gh-pages e **só** pelo dono do repositório.
 - O próprio portão confere, a partir do evento gravado pelo GitHub no runner: modo, motivo, autor = dono e ref. O passo "Emergency mode record" também confere e grava o registro no resumo do run.
 - O job `emergency-audit` guarda `record.json` (autor, motivo, commit, run) por 90 dias.
-- Ele passa um Worker de vendas cujo código que serve não está aprovado **somente** se as páginas jurídicas, os assets e os textos de consumo servidos forem exatamente os de um snapshot aprovado (`LEGAL_SERVED=EMERGENCY_SNAPSHOT`, anotação `::warning`). Ele nunca troca texto jurídico: com texto de consumo alterado, recusa.
+- O dono é conferido por `github.triggering_actor` (`GITHUB_TRIGGERING_ACTOR`), que num re-run é quem dispara agora, e não quem disparou a primeira vez.
+- Ele passa um Worker de vendas cujo código que serve não está aprovado **somente** se os arquivos das páginas jurídicas, os assets e os textos de consumo servidos forem exatamente os de um snapshot aprovado (`LEGAL_SERVED=EMERGENCY_SNAPSHOT`, anotação `::warning`). Com texto de consumo alterado, recusa.
+- **Limite, dito com honestidade (rodada 12, LOW-1):** o código que serve, não aprovado, poderia em tese alterar em tempo de execução o que as rotas jurídicas devolvem, como no ataque W1 da rodada 5. A emergência é uma **sobreposição auditada do proprietário** (dono, motivo, registro de 90 dias), não um caminho aberto a um PR comum (o código que serve é âncora).
 - Não existe outro desvio.
 
 ## Implantação inicial do check protegido (bootstrap)

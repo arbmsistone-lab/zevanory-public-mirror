@@ -1,5 +1,7 @@
+import { legalRouteRedirect } from "./legal-routes-redirect.mjs";
 const retired=["/arbm-sist","/zevanory-one","/arbm-one"];
 export default{async fetch(request){
+  const legal=legalRouteRedirect(request); if(legal) return legal;  // anchor: legal routes live only on vendas
   const url=new URL(request.url);
   const p=url.pathname.replace(/\/$/,"")||"/";
   if(retired.some(x=>p===x||p.startsWith(x+"/"))) return new Response("Produto retirado da superficie publica ZEVANORY.",{status:410,headers:{"cache-control":"no-store","content-type":"text/plain; charset=utf-8"}});

@@ -273,3 +273,29 @@ Em relação à gênese, o PR muda as páginas jurídicas, o código que serve e
 - G11: mutantes "portão jurídico no central", "vendas sem snapshot" e "snapshot depois do portão".
 - G7: estrutura.
 - `test_verify_required_checks.py`.
+
+## Reauditoria rodada 12 (sobre `34b88671`): rotas jurídicas fora de vendas, auditoria interna e textos de consumo do central
+
+- **MED-1:**
+  - O apex não servia páginas congeladas: as rotas jurídicas passavam pelo roteador público e pelo código do central, nenhum dos dois âncora.
+  - Agora todo host que não é vendas responde a `/termos`, `/privacidade`, `/reembolso` e `/afiliados`, em qualquer variante, com 308 para vendas. O desvio vem do módulo âncora `worker/legal-routes-redirect.mjs`.
+  - O roteador público é âncora inteiro.
+  - No central, a primeira instrução de `wrapped.fetch` chama o módulo, e o check protegido exige isso.
+  - Teste: `legal-routes-hosts.test.mjs` roda o roteador e o ponto de entrada real do central.
+- **MED-2:** a auditoria da aprovação interna precisa ser:
+  - um arquivo versionado em `docs/legal/audits/`, que entrou num commit anterior ao do registro, com sha256 conferido e escopo e SHA declarados (URL externa é recusada);
+  - de um auditor independente, comparado de forma normalizada;
+  - com `auditor_kind` (`independent_ai_auditor` ou `human`).
+- **MED-3a:** o central tem um portão mínimo, `--consumer-gate`, que bloqueia só se os textos de consumo de `data/politica-unica.json` mudaram sem aprovação.
+- **MED-3b:**
+  - **Depois do merge, o #946 bloqueia o deploy de vendas e o central** até existir uma aprovação. A produção fica como está.
+  - Kit: `scripts/p23/internal_approval.py` e o modelo em branco `docs/legal/internal-approval/checklist-p23.json`. O procedimento exato em dois PRs está em `docs/legal/legal-review-procedure.md`.
+- **MED-4:** a suíte Windows volta a passar.
+  - G18 e G20 tinham CRLF e caminho.
+  - O mutante "ift" do G6 só reprovava pela checagem de YAML, ausente no Windows; foi corrigido.
+  - Conferido localmente com checkout CRLF e com Python sem PyYAML.
+- **LOW:**
+  - a emergência confere `github.triggering_actor`;
+  - o texto da emergência agora diz que ela é uma sobreposição auditada, e que o código não aprovado poderia alterar a resposta em tempo de execução;
+  - novo `data/p23/legal-revoked.json` para revogação;
+  - o G20 aparece como SKIP em clone raso.
