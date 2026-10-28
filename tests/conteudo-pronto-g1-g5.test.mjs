@@ -3,6 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as CS from "../worker/content-service.mjs";
+import { readTextNormalized } from "./helpers/text.mjs";
 
 globalThis.fetch = async (u) => { throw new Error("rede bloqueada no teste: " + u); };
 class MapKV {
@@ -345,7 +346,7 @@ test("[A-operator] rota de operador: status sem dados pessoais; reenvio exige op
   e.AI = ai();
   assert.equal((await CS.retryPendingPackages(e, f)).delivered, 1, "[A-operator] entregue depois do reenvio");
   // A rota está ligada ao Worker de produção atrás do token de operador.
-  const compat = (await import("node:fs")).readFileSync(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url), "utf8");
+  const compat = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
   const at = compat.indexOf('url.pathname.startsWith("/api/admin/conteudo-pronto/")');
   assert.ok(at > 0 && /verifyOperatorToken[\s\S]{0,300}handleContentOperator/.test(compat.slice(at, at + 700)), "[A-operator] rota autenticada no Worker");
 });
