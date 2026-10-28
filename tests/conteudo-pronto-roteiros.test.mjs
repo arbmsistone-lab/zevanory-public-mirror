@@ -78,7 +78,33 @@ test("(a) oferta canônica e contrato v2: texto literal, quantidades e os quatro
   for (const [k, v] of Object.entries(C)) if (k !== "termos_proibidos_regex" && k !== "nota") assert.doesNotMatch(JSON.stringify(v), WA, "contrato sem WhatsApp: " + k);
 });
 
-test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato e não prometem WhatsApp", () => {
+// Auditoria #955 C7/C9: frases de promessa (resultado, venda, prazo de entrega) só passam numa frase com negação.
+const FAQ_PROMESSA = /garant|asseguramos|com certeza|vender mais|mais vendas|aument\w* (?:as |suas )?vendas|resultado garantido|entrega (?:é )?garantida|em (?:até )?\d+ (?:minutos?|horas?)/i;
+function* faqAnswers(html) {
+  const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || [];
+  for (const block of ld) {
+    const data = JSON.parse(block.replace(/^<script[^>]*>|<\/script>$/g, ""));
+    for (const node of data["@graph"] || [data]) if (node["@type"] === "FAQPage") for (const q of node.mainEntity || []) yield String(q.acceptedAnswer?.text || "");
+  }
+  for (const m of html.matchAll(/<details><summary>[\s\S]*?<\/summary><p>([\s\S]*?)<\/p><\/details>/g)) yield m[1].replace(/<[^>]+>/g, "");
+}
+// Validade real do link do pacote: uma entrega completa do gerador (IA e Resend simulados) e o TTL gravado no token
+// que o e-mail do pacote leva. Depende do #953 (um token por pacote, PACKAGE_LINK_DAYS).
+async function packageLinkTtlDays() {
+  class TtlKV extends KV { ttl = new Map(); async put(k, v, o) { if (o?.expirationTtl) this.ttl.set(k, o.expirationTtl); return super.put(k, v, o); } async delete(k) { this.data.delete(k); } }
+  const kv = new TtlKV(), sent = [];
+  const fetchImpl = async (_u, init) => { sent.push(JSON.parse(init.body)); return new Response(JSON.stringify({ id: "re_" + sent.length }), { status: 200 }); };
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, RESEND_API_KEY: "re_test", AI: fakeAI(), HOTMART_HOTTOK: "hottok-ttl-0000000000000000" };
+  const hook = new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": env.HOTMART_HOTTOK },
+    body: JSON.stringify({ event: "PURCHASE_APPROVED", data: { product: { id: 8704905, name: CS.SERVICE_PRODUCT_NAME }, buyer: { email: "ttl@example.com", name: "Ana" }, purchase: { transaction: "HP-TTL" }, subscription: { subscriber: { code: "SUB-TTL" } } } }) });
+  await CS.handleHotmartWebhook(hook, env, null, fetchImpl);
+  const bt = /briefing\?t=([A-Za-z0-9_-]+)/.exec(sent[0].text)[1];
+  await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + bt, { method: "POST", body: new URLSearchParams(BRIEF) }), env, null, fetchImpl);
+  const mail = sent.find((m) => /chegou/.test(m.subject));
+  const pt = /pacote\?t=([A-Za-z0-9_-]+)/.exec(mail.text)[1];
+  return kv.ttl.get("zpc:cp:token:" + pt) / 86400;
+}
+test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato e não prometem WhatsApp", async () => {
   const src = read("conteudo-pronto/index.html");
   assert.doesNotMatch(src, WA, "conteudo-pronto/index.html");
   assert.equal(src.match(/data-content-schema="(\d+)"/)?.[1], String(C.content_schema_version), "página e gerador na mesma versão de schema");
@@ -123,11 +149,24 @@ test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato
     assert.doesNotMatch(html, /4 mensagens/, "[p24-recibo] " + rel);
     assert.doesNotMatch(html, /garante constância|base para vender mais/, "[p24-garantia] " + rel);
     assert.doesNotMatch(html, /<li>Em poucos minutos/, "[p24-prazo] " + rel);
-    assert.match(html, /tenta de novo automaticamente a cada hora/, "[p24-prazo] " + rel);
+    assert.match(html, /tenta de novo automaticamente a cada hora, até 12 vezes, e a equipe da ZEVANORY é avisada/, "[p24-prazo] " + rel);
+    assert.doesNotMatch(html, /poucos minutos|acompanha até a entrega/, "[p24-prazo] sem prazo não medido nem acompanhamento que o sistema não faz: " + rel);
     assert.doesNotMatch(html, /consultar quando quiser/, "[p24-link] " + rel);
     assert.match(html, /disponível por 120 dias/, "[p24-link] " + rel);
   }
-  assert.match(read("worker/content-service.mjs"), /expirationTtl: 120 \* DAY|, 120\)/, "[p24-link] a validade declarada é a do token do pacote");
+  // A validade declarada é a do token do PACOTE (medida numa entrega real do gerador), não a de qualquer token.
+  const days = Number(read("conteudo-pronto/index.html").match(/disponível por (\d+) dias/)[1]);
+  assert.equal(await packageLinkTtlDays(), days, "[p24-link] link do pacote vale exatamente o que a página promete");
+  assert.match(SUPPORT_PRODUCTS["conteudo-pronto"].content, /a equipe da ZEVANORY é avisada/, "[p24-prazo] atendimento");
+  assert.doesNotMatch(SUPPORT_PRODUCTS["conteudo-pronto"].content, /poucos minutos/, "[p24-prazo] atendimento sem prazo não medido");
+  // FAQ (FAQPage e <details>): nenhuma resposta promete resultado, venda ou prazo sem negação na mesma frase.
+  for (const [rel, html] of [["conteudo-pronto/index.html", read("conteudo-pronto/index.html")], ["sales-public/conteudo-pronto.html", built]]) {
+    const answers = [...faqAnswers(html)];
+    assert.ok(answers.length >= 4, "[p24-faq-promessa] respostas encontradas: " + rel);
+    for (const a of answers) for (const frase of a.split(/(?<=[.!?])\s+/)) {
+      if (FAQ_PROMESSA.test(frase)) assert.match(frase, /\b(não|nenhuma?|sem)\b/i, `[p24-faq-promessa] ${rel}: "${frase}"`);
+    }
+  }
   for (const rel of ["kit-afiliado/index.html", "sales-public/kit-afiliado.html", "sales-overlay/llms.txt", "sales-public/llms.txt"]) {
     const lines = read(rel).split(/<li>|\n/).filter((l) => l.includes("Conteúdo Pronto") && /12 posts/.test(l));
     assert.ok(lines.length >= 1, rel);
