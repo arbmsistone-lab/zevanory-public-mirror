@@ -410,7 +410,7 @@ def apply_subscription(html: str) -> str:
     # Design: the monthly package as a receipt beside the hero (same facts as the page's own list).
     receipt = ('<div class="hero-panel receipt"><p class="receipt-head">Todo mês você recebe<span>sem fidelidade</span></p>'
                '<ul class="outcome-list"><li>12 posts com legenda, chamada para ação e hashtags</li>'
-               '<li>4 mensagens de venda e acompanhamento</li><li>Calendário de 30 dias</li></ul>'
+               '<li>4 roteiros multicanal de venda e acompanhamento</li><li>Calendário de 30 dias</li></ul>'
                '<p class="receipt-total"><span>Total</span><span>R$ 197/mês</span></p>'
                + trust_mini("pela Hotmart") + '</div>')
     html, n = re.subn(r'(<section class="container hero"><div>.*?</dl></section></div>)(</section>)', lambda m: m.group(1) + receipt + m.group(2), html, count=1, flags=re.S)

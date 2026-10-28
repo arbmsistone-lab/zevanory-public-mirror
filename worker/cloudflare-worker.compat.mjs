@@ -5,7 +5,7 @@ import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
 import { handleOwnerOAuth, handleYoutubePublisherAccess, handlePublisherAccess } from "./owner-oauth.mjs";
-import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages } from "./content-service.mjs";
+import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages, handleContentOperator } from "./content-service.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -624,6 +624,13 @@ const wrapped = {
       });
     }
 
+    // Operação do Conteúdo Pronto (auditoria #953 M1/M2): status da fila, falhas e alertas; reenvio com operador e motivo.
+    if (url.pathname.startsWith("/api/admin/conteudo-pronto/")) {
+      const bearer = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
+      const operatorOk = verifyOperatorToken(normalized, bearer, { minLength: 24, fallbackToken: normalized.OPERATOR_TOKEN });
+      if (!operatorOk) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      return handleContentOperator(request, normalized);
+    }
     if (url.pathname === "/api/control-plane") {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
       if (!response.ok || !body) return response;
