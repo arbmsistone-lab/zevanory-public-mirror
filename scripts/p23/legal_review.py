@@ -757,35 +757,84 @@ def publish_gate(root: Path, anchors_ref: str | None = None, rehearsal: bool = F
     return ok, lines + dl + ([] if ok else [blocked])
 
 
+# Rodada 13 (MED-B): lista EXPLÍCITA e versionada do que o Worker central consome de data/politica-unica.json (via
+# worker/politica-unica.mjs), mais os bytes do próprio módulo, que compõe REFUND_TEXT, SUPPORT_REFUND_ANSWER e o
+# prazo (refundWindow). Mudar a lista exige mudar CONSUMER_VERSION (o prefixo do hash), o que invalida as aprovações
+# de consumo anteriores (fail-closed até nova aprovação).
+#   * refund_window (days, utc_offset_minutes): decide a elegibilidade do reembolso em worker/refund-flow.mjs;
+#   * delivery_72h (DELIVERY_72H), nota_canais_reembolso (canais de reembolso do checkout próprio), contato_publico
+#     (e-mail, formulário, WhatsApp e lista de espera de todas as respostas e rodapés do central);
+#   * resumo_oferta: só resumo_oferta.fornecedor (SUPPLIER/LEGAL_IDENTITY, a identificação do fornecedor nos e-mails,
+#     respostas e rodapés do central: refund-flow, atendimento, waitlist, site-chat, brand-email...). Os demais
+#     subcampos (produto_digital, hotmart, assinatura, disponibilidade, campos) só são lidos pelo build estático e pelo
+#     Worker de vendas (sales-public-worker.mjs); nenhum módulo do central os usa, então não bloqueiam o central.
+CONSUMER_VERSION = "zevanory-consumer-texts/v2"
+CONSUMER_FIELDS = (("legal_document_version",), ("sol_text",), ("rule_7d",), ("customer_wording",), ("refund_channels",),
+                   ("refund_window",), ("delivery_72h",), ("nota_canais_reembolso",), ("contato_publico",),
+                   ("resumo_oferta", "fornecedor"))
+CONSUMER_OPTIONAL = {("refund_channels",), ("legal_document_version",)}  # ausentes no texto de origem (b7671272)
+CONSUMER_MODULE = "worker/politica-unica.mjs"
+_ABSENT = object()
+
+
+def _consumer_value(pol, path):
+    cur = pol
+    for k in path:
+        if not isinstance(cur, dict) or k not in cur:
+            return _ABSENT
+        cur = cur[k]
+    return cur
+
+
+def _consumer_changed(a, b) -> list[str]:
+    """Campos de consumo (e o módulo) que diferem entre duas origens."""
+    pa, pb = _loads(a.read(POLICY)) or {}, _loads(b.read(POLICY)) or {}
+    out = [f"{POLICY}#{'.'.join(p)}" for p in CONSUMER_FIELDS if _consumer_value(pa, p) != _consumer_value(pb, p)]
+    return out + ([CONSUMER_MODULE] if a.read_bytes(CONSUMER_MODULE) != b.read_bytes(CONSUMER_MODULE) else [])
+
+
 def consumer_fingerprint(src) -> str:
-    """Rodada 12 (MED-3a): só os textos de consumo de data/politica-unica.json (regra dos 7 dias, reembolso, suporte),
-    que o Worker central também serve."""
+    """Rodada 12 (MED-3a), ampliado na rodada 13 (MED-B): os textos de consumo que o Worker central serve ou aplica
+    (CONSUMER_FIELDS) e o sha256 dos bytes de worker/politica-unica.mjs, com separação de domínio. Campo obrigatório
+    ou módulo ausente: falha fechada (SystemExit)."""
     pol = _loads(src.read(POLICY))
     if not isinstance(pol, dict):
         raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {POLICY}")
-    h = hashlib.sha256(b"zevanory-consumer-texts/v1\0")
-    for k in POLICY_FIELDS:
-        h.update(k.encode() + b"\0" + json.dumps(pol.get(k), ensure_ascii=False, sort_keys=True).encode() + b"\0")
+    h = hashlib.sha256(CONSUMER_VERSION.encode() + b"\0")
+    for path in CONSUMER_FIELDS:
+        v = _consumer_value(pol, path)
+        if v is _ABSENT and path not in CONSUMER_OPTIONAL:
+            raise SystemExit(f"LEGAL_FINGERPRINT_FIELD_MISSING {'.'.join(path)}")
+        h.update(b"field\0" + "/".join(path).encode() + b"\0" + json.dumps(None if v is _ABSENT else v, ensure_ascii=False, sort_keys=True).encode() + b"\0")
+    mod = src.read_bytes(CONSUMER_MODULE)
+    if mod is None:
+        raise SystemExit(f"LEGAL_FINGERPRINT_SOURCE_MISSING {CONSUMER_MODULE}")
+    h.update(b"file\0" + CONSUMER_MODULE.encode() + b"\0" + hashlib.sha256(mod).hexdigest().encode() + b"\0")
     return h.hexdigest()
 
 
+def _consumer_fp_or_none(src):
+    try:
+        return consumer_fingerprint(src)
+    except SystemExit:
+        return None  # snapshot sem os campos de consumo (ou sem o módulo) nunca casa
+
+
 def _consumer_decide(root: Path, content, anchors, rehearsal: bool) -> tuple[bool, list[str], str]:
+    """Rodada 13 (MED-B): o central só passa se a impressão de consumo do commit for a de um texto APROVADO e
+    reproduzível (linha de base ou registro de aprovação, recalculada no commit de origem). Não há atalho pela
+    impressão jurídica: ela não cobre refund_window nem o módulo, então texto jurídico igual não basta."""
     cfp = consumer_fingerprint(content)
-    lines = [f"LEGAL_CONSUMER_FINGERPRINT={cfp}"]
-    pol = _loads(anchors.read(POLICY)) or {}
+    lines = [f"LEGAL_CONSUMER_FINGERPRINT={cfp} ({CONSUMER_VERSION})"]
     fp = legal_fingerprint_src(content)
-    base, _ = _baseline(anchors, content, rehearsal)
-    if (fp == str(base.get("fingerprint", "")) and fp not in revoked_hashes(anchors)) or not validate_approval(pol.get("legal_review"), fp, anchors=anchors, content=content):
-        return True, lines + ["LEGAL_CONSUMER_TEXTS=APPROVED_HEAD", "LEGAL_CONSUMER_GATE=PASS"], "PASS"
     snaps, serrs = approved_snapshots(anchors, content, rehearsal)
-    match = next((c for c in snaps if consumer_fingerprint(c["src"]) == cfp), None)
+    match = next((c for c in snaps if _consumer_fp_or_none(c["src"]) == cfp), None)
     if match:
-        return True, lines + [f"LEGAL_CONSUMER_TEXTS=APPROVED_SNAPSHOT {match['sha']} commit={match['commit']}", _level_line(match["level"]), "LEGAL_CONSUMER_GATE=PASS"], "PASS"
-    ref = snaps[0]["src"] if snaps else anchors
-    pa, pb = _loads(content.read(POLICY)) or {}, _loads(ref.read(POLICY)) or {}
-    changed = [f"{POLICY}#{k}" for k in POLICY_FIELDS if pa.get(k) != pb.get(k)]
+        label = "APPROVED_HEAD" if match["sha"] == fp else f"APPROVED_SNAPSHOT {match['sha']} commit={match['commit']}"
+        return True, lines + [f"LEGAL_CONSUMER_TEXTS={label}", _level_line(match["level"]), "LEGAL_CONSUMER_GATE=PASS"], "PASS"
+    changed = _consumer_changed(content, snaps[0]["src"]) if snaps else []
     return False, lines + [f"::error title=LEGAL_CONSUMER_GATE::{e}" for e in serrs] + [f"LEGAL_CONSUMER_PENDING={', '.join(changed) or '(?)'}",
-            "::error title=LEGAL_CONSUMER_GATE::os textos de consumo de data/politica-unica.json que o Worker central serve mudaram sem aprovação "
+            "::error title=LEGAL_CONSUMER_GATE::os textos de consumo de data/politica-unica.json (ou worker/politica-unica.mjs) que o Worker central serve mudaram sem aprovação "
             "(profissional ou interna); só por isso o deploy central fica bloqueado. Nada mais do central passa por este portão."], "BLOCKED"
 
 

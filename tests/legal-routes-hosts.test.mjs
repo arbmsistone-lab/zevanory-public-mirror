@@ -43,3 +43,41 @@ test("LH3 Worker central (ponto de entrada real) em edge., backup. e workers.dev
     assert.equal(o.body, 0, `[LH3.4] ${o.url}`);
   }
 });
+
+// Rodada 13 (LOW-1): variantes não canônicas (barra dupla, percent-encoding, %2F final, ;params) também vão para vendas,
+// com a mesma query; percent duplo, sequência inválida, caractere de controle e barra invertida não casam (sem redirect).
+// Segunda letra em percent-encoding (/t%65rmos, /p%72ivacidade...) e em percent duplo (%25XX).
+const PCT = (r, pre = "%") => `/${r[0]}${pre}${r.charCodeAt(1).toString(16)}${r.slice(2)}`;
+const NONCANON = (r) => [[`//${r}`, ""], [PCT(r), ""], [PCT(r).toUpperCase(), ""], [`/${r}%2F`, ""], [`/${r};x`, ""], [`/${r};x?utm_source=y`, "?utm_source=y"],
+  [`///${r.toUpperCase()}.html;p/`, ""], [`/${r}%2Findex.html`, ""], [`/${r}%2f%2F?a=1`, "?a=1"]];
+const REJECT = (r) => [`/${r}%252F`, PCT(r, "%25"), `/${r}%00`, `/${r}%0a`, `/${r}%5C`, `/${r}%`, `/${r}%E0%A4%A`, `/%2F%2Fevil.example/${r}`, `//evil.example/${r}`, `/x/..%2F${r}`, `/api/${r}`, `/${r}x`];
+
+test("LH4 caminho canonicalizado: //termos, /t%65rmos, /termos%2F, /termos;x -> 308 para vendas; o resto não casa", async () => {
+  for (const r of LEGAL_ROUTES) {
+    for (const [path, q] of NONCANON(r)) {
+      for (const res of [legalRouteRedirect(new Request("https://edge.zevanory.api.br" + path)), await router.fetch(new Request("https://zevanory.api.br" + path))]) {
+        assert.equal(res?.status, 308, `[LH4.1] ${path}`);
+        assert.equal(res.headers.get("location"), `https://vendas.zevanory.api.br/${r}${q}`, `[LH4.2] ${path}`);
+        assert.equal((await res.text()).length, 0, `[LH4.3] ${path}`);
+      }
+    }
+    for (const path of REJECT(r)) {
+      const res = legalRouteRedirect(new Request("https://edge.zevanory.api.br" + path));
+      assert.equal(res, null, `[LH4.4] ${path} não é rota jurídica (nem redireciona)`);
+    }
+  }
+});
+
+test("LH5 Worker central (ponto de entrada real): as variantes não canônicas também vão para vendas", () => {
+  const cases = [];
+  for (const host of ["edge.zevanory.api.br", "zevanory.arbmsist.workers.dev"]) for (const r of LEGAL_ROUTES) for (const [path, q] of NONCANON(r)) cases.push([`https://${host}${path}`, `https://vendas.zevanory.api.br/${r}${q}`]);
+  const p = spawnSync(process.execPath, [join(ROOT, "tests/helpers/central-entry-probe.mjs"), join(ROOT, "worker/cloudflare-worker.compat.mjs"), ...cases.map((c) => c[0])], { encoding: "utf8", timeout: 120000 });
+  assert.equal(p.status, 0, "[LH5.0] " + p.stderr);
+  const out = JSON.parse(p.stdout);
+  assert.equal(out.length, cases.length, "[LH5.1]");
+  out.forEach((o, i) => {
+    assert.equal(o.status, 308, `[LH5.2] ${o.url}: ${o.error || o.status}`);
+    assert.equal(o.location, cases[i][1], `[LH5.3] ${o.url}`);
+    assert.equal(o.body, 0, `[LH5.4] ${o.url}`);
+  });
+});

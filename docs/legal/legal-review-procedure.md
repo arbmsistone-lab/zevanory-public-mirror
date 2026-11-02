@@ -285,12 +285,20 @@ Agora todo host que não é vendas responde a essas rotas, em qualquer variante 
 - O roteador público (`worker/public-surface-router.mjs`) é âncora inteiro. O workflow dele também é, como todo workflow.
 - No central, a **primeira instrução** de `wrapped.fetch` no ponto de entrada (`worker/cloudflare-worker.compat.mjs`) é a chamada ao módulo. O check protegido reprova um head em que ela suma ou deixe de ser a primeira.
 - Prova: `tests/legal-routes-hosts.test.mjs` roda o roteador e o ponto de entrada **real** do central, em quatro hosts e seis variantes por rota.
+- Rodada 13 (LOW-1): antes do teste, o caminho é canonicalizado (`canonicalLegalPath`). O percent-encoding é decodificado uma vez, barras repetidas são colapsadas e `;params` é removido. Assim, `//termos`, `/t%65rmos`, `/termos%2F` e `/termos;x` também dão 308 para vendas, com a mesma query. Percent duplo (`%25`), sequência inválida, caractere de controle e barra invertida não casam, e o pedido segue sem redirecionar. O destino é sempre a origem de vendas mais o nome fixo da rota, então não há open redirect. Prova: LH4 e LH5.
 - O roteador não precisa de portão próprio: ele não produz texto jurídico (só redireciona), e mudar isso exige mudar uma âncora.
 
 **O central: portão mínimo dos textos de consumo (rodada 12, MED-3a, opção mais segura, sujeita ao aceite da Sol).** O Worker central serve textos de consumo que vêm de `data/politica-unica.json`: a regra dos 7 dias e as respostas de reembolso e de suporte. Antes de qualquer segredo e logo antes do deploy, o central roda `legal_review.py --consumer-gate` (código do gh-pages).
 - Ele passa se esses campos forem os de um texto aprovado: o texto do commit, aprovado, ou um snapshot aprovado e reproduzível.
 - Se não forem, bloqueia **só** o central, com `LEGAL_CONSUMER_PENDING=<campos>`.
 - Páginas jurídicas e código de vendas não bloqueiam o central.
+- **Rodada 13 (MED-B): o que entra na impressão de consumo** (`consumer_fingerprint`, lista explícita `CONSUMER_FIELDS`, prefixo de domínio `zevanory-consumer-texts/v2`):
+  - de `data/politica-unica.json`: `legal_document_version`, `sol_text`, `rule_7d`, `customer_wording`, `refund_channels`, `refund_window` (`days` e `utc_offset_minutes`, que decidem a elegibilidade do reembolso em `worker/refund-flow.mjs`), `delivery_72h`, `nota_canais_reembolso`, `contato_publico` e `resumo_oferta.fornecedor`;
+  - o sha256 dos bytes de `worker/politica-unica.mjs`, que compõe `REFUND_TEXT`, `SUPPORT_REFUND_ANSWER` e o prazo (`refundWindow`). Módulo ou campo obrigatório ausente: falha fechada.
+  - **`resumo_oferta`:** só `fornecedor` entra, porque é o único subcampo que o central usa (`SUPPLIER`/`LEGAL_IDENTITY` nos e-mails, respostas e rodapés). `produto_digital`, `hotmart`, `assinatura`, `disponibilidade` e `campos` só são lidos pelo build estático e pelo Worker de vendas, então não bloqueiam o central.
+  - Não há mais atalho pela impressão jurídica: o central só passa se a impressão de consumo do commit for igual à de um texto aprovado e reproduzível, recalculada no commit de origem (linha de base ou registro de aprovação).
+  - Mudar a lista exige mudar a versão do prefixo. As aprovações de consumo anteriores deixam de casar e o central fica bloqueado até uma nova aprovação.
+  - Prova: `tests/legal-publish-gate.test.mjs`, G24. Mudar `refund_window.days` (7→6), `refund_window.utc_offset_minutes` (−180→−120), `delivery_72h`, `nota_canais_reembolso`, `contato_publico`, `resumo_oferta.fornecedor` ou um byte do módulo bloqueia. O preço da oferta, que só o vendas lê, não bloqueia.
 
 **Este PR depois do merge (rodada 12, MED-3b).** Em relação à gênese, o PR muda as páginas jurídicas, o código que serve e os textos de consumo. Por isso, **depois do merge, o deploy de vendas e o deploy central ficam bloqueados** até o proprietário registrar uma aprovação, profissional ou interna. A produção fica como está. Com o kit abaixo, a aprovação interna leva minutos.
 

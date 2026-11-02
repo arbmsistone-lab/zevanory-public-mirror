@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -792,10 +792,14 @@ test("G18 o12 snapshot aprovado: texto novo não aprovado nunca é servido; o de
 test("G19 o12 emergência: só o dono, com motivo, e só com os textos do snapshot aprovado; nunca troca texto jurídico", () => {
   const { root, text } = repo();
   const dir = mkdtempSync(join(tmpdir(), "legal-ev-"));
+  // Rodada 13 (MED-A): o runner do CI exporta GITHUB_TRIGGERING_ACTOR/GITHUB_ACTOR reais (ex.: arbmsistone-lab), e o
+  // legal_review prefere GITHUB_TRIGGERING_ACTOR ao sender do evento. O filho não herda esses atores; os casos que
+  // precisam de um ator o definem em `extra` (aplicado por último).
+  const ISOLATED = Object.fromEntries(Object.entries(PYENV).filter(([k]) => !["GITHUB_TRIGGERING_ACTOR", "GITHUB_ACTOR"].includes(k.toUpperCase())));
   const em = (event, ref = "refs/heads/gh-pages", extra = {}) => {
     writeFileSync(join(dir, "event.json"), JSON.stringify(event));
     const r = spawnSync(PYTHON, ["-I", LEGAL, "--root", root, "--publish-gate", "--anchors-ref", "main"],
-      { encoding: "utf8", env: { ...PYENV, GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_EVENT_PATH: join(dir, "event.json"), GITHUB_REF: ref, ...extra } });
+      { encoding: "utf8", env: { ...ISOLATED, GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_EVENT_PATH: join(dir, "event.json"), GITHUB_REF: ref, ...extra } });
     return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
   };
   const ev = (over = {}) => ({ inputs: { mode: "emergency", reason: "correção urgente de checkout quebrado em produção" }, sender: { login: "dono" }, repository: { owner: { login: "dono" } }, ...over });
@@ -902,6 +906,54 @@ test("G22 r12 portão mínimo do central: bloqueia SÓ se os textos de consumo m
     assert.equal(bad.code, 1, "[G22.3] " + bad.out);
     assert.match(bad.out, /LEGAL_CONSUMER_PENDING=data\/politica-unica\.json#rule_7d/, "[G22.3a]");
     assert.match(bad.out, /só por isso o deploy central fica bloqueado/, "[G22.3b]");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Rodada 13 (MED-B): o portão do central cobre tudo o que o central consome de data/politica-unica.json (prazo de
+// arrependimento, entrega, canais de reembolso, contato, fornecedor) e os bytes de worker/politica-unica.mjs.
+// M1-M6 têm de BLOQUEAR; M7 (mudança que só o vendas consome) não pode bloquear.
+const CONSUMER_MUTANTS = [
+  ["M1 refund_window.days 7->6", true, (root) => json(root, "data/politica-unica.json", (d) => { assert.equal(d.refund_window.days, 7); d.refund_window.days = 6; }), "refund_window"],
+  ["M2 refund_window.utc_offset_minutes -180->-120", true, (root) => json(root, "data/politica-unica.json", (d) => { assert.equal(d.refund_window.utc_offset_minutes, -180); d.refund_window.utc_offset_minutes = -120; }), "refund_window"],
+  ["M3 delivery_72h", true, (root) => json(root, "data/politica-unica.json", (d) => { d.delivery_72h = String(d.delivery_72h).replace("72 horas", "48 horas"); }), "delivery_72h"],
+  ["M4 nota_canais_reembolso", true, (root) => json(root, "data/politica-unica.json", (d) => { d.nota_canais_reembolso = String(d.nota_canais_reembolso) + " (alterado)"; }), "nota_canais_reembolso"],
+  ["M5 contato_publico", true, (root) => json(root, "data/politica-unica.json", (d) => { d.contato_publico.email = "outro@example.invalid"; }), "contato_publico"],
+  ["M6 um byte de worker/politica-unica.mjs", true, (root) => { const p = join(root, "worker/politica-unica.mjs"); const b = readFileSync(p); const i = b.indexOf(0x37); assert.ok(i >= 0); b[i] = 0x36; writeFileSync(p, b); }, "worker/politica-unica.mjs"],
+  ["M8 resumo_oferta.fornecedor (identificação nos e-mails do central)", true, (root) => json(root, "data/politica-unica.json", (d) => { d.resumo_oferta.fornecedor.cep = "00000-000"; }), "resumo_oferta.fornecedor"],
+  ["M7 controle: preço da oferta (só build estático e Worker de vendas)", false, (root) => json(root, "data/politica-unica.json", (d) => { d.resumo_oferta.produto_digital.preco_total = String(d.resumo_oferta.produto_digital.preco_total) + " (alterado)"; }), null],
+];
+test("G24 r13 portão do central: refund_window, entrega, canais, contato, fornecedor e o módulo bloqueiam; mudança só de vendas não", () => {
+  const { root, text } = repo();
+  try {
+    publishedApproved(root, text);
+    const head = git(root, "rev-parse", "HEAD");
+    const ok = consumer(root);
+    assert.equal(ok.code, 0, "[G24.0] " + ok.out);
+    assert.match(ok.out, /LEGAL_CONSUMER_FINGERPRINT=[0-9a-f]{64} \(zevanory-consumer-texts\/v2\)/, "[G24.0a]");
+    for (const [name, blocks, mutate, field] of CONSUMER_MUTANTS) {
+      git(root, "reset", "-q", "--hard", head);
+      mutate(root); commit(root, name);
+      const r = consumer(root);
+      if (blocks) {
+        assert.equal(r.code, 1, `[G24.1] ${name} tem de bloquear o central: ${r.out}`);
+        assert.match(r.out, /LEGAL_CONSUMER_GATE=BLOCKED/, `[G24.1a] ${name}`);
+        assert.match(r.out, new RegExp(`LEGAL_CONSUMER_PENDING=[^\\n]*${field.replace(/[./]/g, "\\$&")}`), `[G24.1b] ${name} nomeia o campo`);
+      } else {
+        assert.equal(r.code, 0, `[G24.2] ${name} não pode bloquear o central: ${r.out}`);
+        assert.match(r.out, /LEGAL_CONSUMER_GATE=PASS/, `[G24.2a] ${name}`);
+      }
+    }
+    // Módulo ausente: falha fechada.
+    git(root, "reset", "-q", "--hard", head);
+    rmSync(join(root, "worker/politica-unica.mjs")); commit(root, "módulo removido");
+    const gone = consumer(root);
+    assert.notEqual(gone.code, 0, "[G24.3] sem worker/politica-unica.mjs o central não passa: " + gone.out);
+    assert.match(gone.out, /LEGAL_FINGERPRINT_SOURCE_MISSING worker\/politica-unica\.mjs/, "[G24.3a]");
+    // Aprovações de consumo antigas (sem o módulo/campos no texto de origem) não casam: o snapshot tem de ter os campos.
+    const lr = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l; print(l.CONSUMER_VERSION); print(' '.join('.'.join(p) for p in l.CONSUMER_FIELDS))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
+    const [ver, fields] = lr.stdout.trim().split("\n");
+    assert.equal(ver, "zevanory-consumer-texts/v2", "[G24.4] versão explícita do conjunto de campos");
+    for (const f of ["refund_window", "delivery_72h", "nota_canais_reembolso", "contato_publico", "resumo_oferta.fornecedor", "rule_7d", "customer_wording", "sol_text"]) assert.ok(fields.split(" ").includes(f), `[G24.4a] ${f} no portão do central`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
