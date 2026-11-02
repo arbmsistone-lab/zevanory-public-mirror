@@ -10,7 +10,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readFileSy
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readTextNormalized } from "./helpers/text.mjs";
+import { readTextNormalized, normalizeEol } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
 
 const PYTHON = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
@@ -761,7 +761,7 @@ test("G18 o12 snapshot aprovado: texto novo não aprovado nunca é servido; o de
   const { root, text } = repo();
   try {
     const approved = publishedApproved(root, text);
-    const before = git(root, "show", `${text}:sales-public/termos.html`).replace(/\r\n/g, "\n");
+    const before = normalizeEol(git(root, "show", `${text}:sales-public/termos.html`));
     word(root, "Termos", "Termos Novos");
     writeFileSync(join(root, "termos/index.html"), read(join(root, "termos/index.html")) + "\n<!-- fonte nova -->\n");
     commit(root, "texto novo, sem aprovação");
@@ -860,7 +860,7 @@ test("G20 o12 snapshot de origem reproduzível (b7671272/a6068e6a); snapshot nã
   const r2 = repo();
   try {
     const approved = publishedApproved(r2.root, r2.text);
-    const good = git(r2.root, "show", `${r2.text}:sales-public/termos.html`).replace(/\r\n/g, "\n");
+    const good = normalizeEol(git(r2.root, "show", `${r2.text}:sales-public/termos.html`));
     word(r2.root, "Termos", "Termos Falsos"); const evil = commit(r2.root, "texto não aprovado");
     json(r2.root, "data/p23/legal-published-baseline.json", (d) => { d.source_commit = evil; }); commit(r2.root, "linha de base aponta para o texto não aprovado");
     const a = applySnapshot(r2.root);
