@@ -105,7 +105,9 @@ test("every calendar day has a full on-screen script that wraps within the frame
     assert.equal(p.said.length, 4);
     for (const k of ["hook", "niche", "tip", "product", "offer", "cta", "url"]) assert.ok(String(p.screen[k] || "").trim(), k);
     assert.ok(wrapText(p.screen.hook, 14, 3), "hook fits in 3 lines");
-    assert.match(p.speech, /arrependimento em sete dias corridos/); assert.doesNotMatch(p.speech + p.description, /garantia/i);
+    // Vendas fechadas (padrão): a voz avisa CLOSED_LABEL; a regra de compra só é dita com vendas abertas.
+    assert.match(p.speech, /vendas temporariamente fechadas/); assert.doesNotMatch(p.speech, /arrependimento/); assert.doesNotMatch(p.speech + p.description, /garantia/i);
+    assert.match(planShort(day, { salesOpen: true }).speech, /arrependimento em sete dias corridos/);
   }
 });
 

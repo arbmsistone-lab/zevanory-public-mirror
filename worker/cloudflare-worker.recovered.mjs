@@ -16,6 +16,7 @@ import { affiliateReport, applyAffiliateOrderOutcome, recordAffiliateAttribution
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { CONTACT_TEXT, CONTACT_TEXT_OR, CUSTOMER_RULE_7D, SHORT_RULE_LABEL } from "./politica-unica.mjs";
+import { payloadSalesLockViolations } from "./sales-lock-content.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
 import { whatsappChannelRetired, whatsappInstantReplyEnabled, retiredWhatsappChannelEntry, isWhatsappWebhookBody, WHATSAPP_RETIRED_MODE, WHATSAPP_RETIRED_REASON } from "./whatsapp-retirement.mjs";
 import { operatorToken as operatorCredential, verifyOperatorToken } from "./operator-credential.mjs";
@@ -12990,7 +12991,7 @@ var required3 = /* @__PURE__ */ __name((value, code) => {
   return v2;
 }, "required");
 var ORGANIC_DESTINATIONS = /* @__PURE__ */ new Set(["channel:facebook", "channel:instagram", "channel:youtube", "channel:tiktok", "channel:linkedin"]);
-var organicEventAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => !gateEvaluator(env).enabled && ORGANIC_DESTINATIONS.has(String(event?.destination || "")) && env.ORGANIC_PUBLISHING_ENABLED === "true" && event?.event_type === "publish_content" && event?.payload?.organic_only === true && event?.payload?.commercial_intent !== true && !event?.payload?.landing_url, "organicEventAllowed");
+var organicEventAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => !gateEvaluator(env).enabled && ORGANIC_DESTINATIONS.has(String(event?.destination || "")) && env.ORGANIC_PUBLISHING_ENABLED === "true" && event?.event_type === "publish_content" && event?.payload?.organic_only === true && event?.payload?.commercial_intent !== true && !event?.payload?.landing_url && payloadSalesLockViolations(event?.payload).length === 0, "organicEventAllowed");
 var supportEventAllowed = /* @__PURE__ */ __name((event) => event?.event_type === "send_support_message" && event?.payload?.support_only === true && !event?.payload?.commercial_intent && !event?.payload?.checkout_url && !event?.payload?.payment_link, "supportEventAllowed");
 var COMMERCIAL_CONSENT_DESTINATIONS = /* @__PURE__ */ new Set(["channel:whatsapp", "channel:email"]);
 var ensureCommercialContactConsent = /* @__PURE__ */ __name((event) => {
