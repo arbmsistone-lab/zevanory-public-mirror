@@ -369,6 +369,12 @@ export function pendingCycles(rec) {
   return [...credits, ...cur];
 }
 export const campaignTarget = (rec) => pendingCycles(rec)[0] ?? null;
+// Rodada 8: ciclo com pacote entregue (mês atual entregue, recibo de entrega ou crédito usado).
+export const cycleDelivered = (rec, c) => Boolean(rec?.deliveries?.[c]) || Number(rec?.deliveredCycle || 0) === Number(c) || (rec?.creditsUsed || []).some((x) => Number(x.cycle) === Number(c));
+// Rodada 8: o KV do Cloudflare não tem compare-and-swap. Releitura logo antes de gravar: se o registro mudou desde a
+// leitura (webhook ou outro operador), 409 e nada é gravado. Detecta a corrida vista no mesmo ponto de presença; entre
+// pontos de presença o KV é eventualmente consistente (até 60 s), risco residual declarado no PR.
+async function recordChanged(kv, key, seen) { return JSON.stringify((await readJson(kv, key, null)) ?? null) !== JSON.stringify(seen ?? null); }
 const needsForm = (rec) => !rec.briefing || (campaignTarget(rec) !== null && rec.campanha?.cycle !== campaignTarget(rec));
 async function syncCreditIndex(kv, key, rec) {
   const idx = await readJson(kv, CREDIT_INDEX, {});
@@ -1482,11 +1488,13 @@ export async function handleContentOperator(request, env, { now = Date.now() } =
     let updated = { ...latest, refundsToConfirm: rest };
     if (kind === "total") updated.refundRequests = [...(latest.refundRequests || []).filter((r) => Number(r.cycle) !== cycle), { cycle, reason: "estorno_confirmado", operator: operator.slice(0, 60), note: reason.slice(0, 200), at, status: "processed", processedAt: at, processedBy: operator.slice(0, 60) }];
     else updated.partialRefunds = [...(latest.partialRefunds || []), { cycle, txn: item.txn, event: item.event, amount: parseAmount(body?.amount) ?? item.amount, paid: item.paid, at, by: operator.slice(0, 60) }].slice(-36);
+    if (await recordChanged(kv, keys[0], latest)) return out(409, { ok: false, reason: "record_changed" }); // outro escritor chegou antes
     await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });
     await syncCreditIndex(kv, keys[0], updated);
     if (kind === "total") await markRefundProcessed(kv, keys[0], cycle, operator, reason, now);
-    await pendingLog(kv, keys[0], "refund_confirmed", kind + " ciclo " + cycle + " por " + operator.slice(0, 30) + ": " + reason.slice(0, 80), now);
-    return out(200, { ok: true, cycle, kind });
+    const delivered = cycleDelivered(latest, cycle); // estorno de mês já entregue: registrado, mas não há mês a tirar
+    await pendingLog(kv, keys[0], "refund_confirmed", kind + " ciclo " + cycle + (delivered ? " (já entregue)" : "") + " por " + operator.slice(0, 30) + ": " + reason.slice(0, 80), now);
+    return out(200, { ok: true, cycle, kind, delivered });
   }
   // Rodada 7. POST /api/admin/conteudo-pronto/refund-revert -> {sub, cycle, operator, reason}: devolve aos pendentes um mês
   // tirado por engano (pedido ou estorno registrado). Fica registrado no assinante, na lista do proprietário e no log.
@@ -1499,15 +1507,20 @@ export async function handleContentOperator(request, env, { now = Date.now() } =
     const latest = await readJson(kv, keys[0], null);
     const removed = (latest?.refundRequests || []).filter((r) => Number(r.cycle) === cycle);
     if (!removed.length) return out(400, { ok: false, reason: "no_refund_for_cycle" });
+    // Rodada 8: só reverte o que volta de fato aos pendentes. Mês já entregue (pacote enviado) não é "restaurável":
+    // 409 sem gravar nada, em vez de 200 com uma reversão que não devolve mês nenhum.
+    if (cycleDelivered(latest, cycle)) return out(409, { ok: false, reason: "cycle_already_delivered", cycle });
     const at = new Date(now).toISOString();
     const updated = { ...latest, refundRequests: latest.refundRequests.filter((r) => Number(r.cycle) !== cycle), revertedRefunds: [...(latest.revertedRefunds || []), { cycle, removed, operator: operator.slice(0, 60), reason: reason.slice(0, 200), at }].slice(-36) };
+    if (!pendingCycles(updated).includes(cycle)) return out(409, { ok: false, reason: "cycle_not_restorable", cycle });
+    if (await recordChanged(kv, keys[0], latest)) return out(409, { ok: false, reason: "record_changed" }); // outro escritor chegou antes
     await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });
     await syncCreditIndex(kv, keys[0], updated);
     const list = await readJson(kv, REFUNDS, []);
     for (const r of list) if (r.key === keys[0] && Number(r.cycle) === cycle) Object.assign(r, { status: "reverted", revertedAt: at, revertedBy: operator.slice(0, 60), revertNote: reason.slice(0, 200) });
     await kv.put(REFUNDS, JSON.stringify(list.slice(-500)), { expirationTtl: 400 * DAY });
     await pendingLog(kv, keys[0], "refund_reverted", "ciclo " + cycle + " por " + operator.slice(0, 30) + ": " + reason.slice(0, 80), now);
-    return out(200, { ok: true, cycle, pending: pendingCycles(updated).includes(cycle) });
+    return out(200, { ok: true, cycle, pending: true });
   }
   if (path === "/api/admin/conteudo-pronto/requeue" && request.method === "POST") {
     let body = null; try { body = await request.json(); } catch { return out(400, { error: "invalid_json" }); }

@@ -34,7 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 49  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 50  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -364,6 +364,28 @@ M = {
         "fetchImpl, { kind: \"cobranca_nao_concluida\", sub: key })", "[camp-confirmar] cobranças recusadas agrupadas por dia"),
     "M162 estorno a confirmar fora do status": (CS, "      refunds_to_confirm: await",
         "      _rtc: await", "[camp-estorno] estorno a confirmar no status"),
+    "M163 reverter mês entregue sem o motivo próprio": (CS, "    if (cycleDelivered(latest, cycle)) return out(409, { ok: false, reason: \"cycle_already_delivered\", cycle });\n",
+        "", "[camp-reverter] motivo cycle_already_delivered"),
+    "M164 reverter mês entregue responde 200": (CS, "    if (cycleDelivered(latest, cycle)) return out(409, { ok: false, reason: \"cycle_already_delivered\", cycle });\n    const at = new Date(now).toISOString();\n    const updated = { ...latest, refundRequests: latest.refundRequests.filter((r) => Number(r.cycle) !== cycle), revertedRefunds: [...(latest.revertedRefunds || []), { cycle, removed, operator: operator.slice(0, 60), reason: reason.slice(0, 200), at }].slice(-36) };\n    if (!pendingCycles(updated).includes(cycle)) return out(409, { ok: false, reason: \"cycle_not_restorable\", cycle });\n",
+        "    const at = new Date(now).toISOString();\n    const updated = { ...latest, refundRequests: latest.refundRequests.filter((r) => Number(r.cycle) !== cycle), revertedRefunds: [...(latest.revertedRefunds || []), { cycle, removed, operator: operator.slice(0, 60), reason: reason.slice(0, 200), at }].slice(-36) };\n", "[camp-reverter] mês entregue não é revertido"),
+    "M165 entrega por crédito não conta como entregue": (CS, "export const cycleDelivered = (rec, c) => Boolean(rec?.deliveries?.[c]) || Number(rec?.deliveredCycle || 0) === Number(c) || (rec?.creditsUsed || []).some((x) => Number(x.cycle) === Number(c));",
+        "export const cycleDelivered = (rec, c) => Number(rec?.deliveredCycle || 0) === Number(c);", "[camp-reverter] confirmação de mês entregue sinaliza delivered"),
+    "M166 reverter sem a releitura": (CS, "    if (await recordChanged(kv, keys[0], latest)) return out(409, { ok: false, reason: \"record_changed\" }); // outro escritor chegou antes\n    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    const list",
+        "    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    const list", "[camp-reverter] releitura antes de gravar: refund-revert"),
+    "M167 confirmar sem a releitura": (CS, "    if (await recordChanged(kv, keys[0], latest)) return out(409, { ok: false, reason: \"record_changed\" }); // outro escritor chegou antes\n    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    if (kind",
+        "    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    if (kind", "[camp-reverter] releitura antes de gravar: refund-confirm"),
+    "M168 sem estorno a confirmar": (CS, "    } else if (paidCycle !== null && !partial) { // sem pedido: estorno a confirmar, mês mantido\n      confirm = true;\n",
+        "    } else if (paidCycle !== null && !partial) { // sem pedido: estorno a confirmar, mês mantido\n      confirm = false;\n", "[camp-confirmar] alerta do estorno com valor"),
+    "M169 reverter sem operador": (CS, "if (!operator || reason.length < 10) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];\n    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? \"ambiguous_sub\" : \"not_found\" });\n    const latest = await readJson(kv, keys[0], null);\n    const removed",
+        "if (reason.length < 10) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];\n    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? \"ambiguous_sub\" : \"not_found\" });\n    const latest = await readJson(kv, keys[0], null);\n    const removed", "[camp-reverter] reverter exige operador"),
+    "M170 reversão dupla aceita": (CS, "    if (!removed.length) return out(400, { ok: false, reason: \"no_refund_for_cycle\" });\n",
+        "", "[camp-reverter] segunda reversão recusada"),
+    "M171 confirmação não consome o item": (CS, "    const rest = latest.refundsToConfirm.filter((r) => r !== item);",
+        "    const rest = latest.refundsToConfirm;", "[camp-reverter] confirmação só uma vez"),
+    "M172 período do texto trocado": (CS, "`Período: ${br(camp.periodo_inicio)} a ${br(camp.periodo_fim)}`",
+        "`Período: ${br(camp.periodo_fim)} a ${br(camp.periodo_inicio)}`", "[camp-pacote] período do texto = período da campanha"),
+    "M173 confirmação de mês entregue sem sinal": (CS, "    const delivered = cycleDelivered(latest, cycle);",
+        "    const delivered = false;", "[camp-reverter] confirmação de mês entregue sinaliza delivered"),
 }
 
 

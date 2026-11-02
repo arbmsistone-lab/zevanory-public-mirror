@@ -138,7 +138,11 @@ test("[camp-pacote] pacote = campanha: campanha gravada, posts e roteiros ancora
   assert.equal(pkg.calendario[0].data, CAMPAIGN.periodo_inicio, "[camp-pacote] começa no início");
   assert.equal(pkg.calendario.filter((c) => c.tipo === "post").at(-1).data, CAMPAIGN.periodo_fim, "[camp-pacote] último post no fim");
   const txt = CS.packageText(pkg, "Salão Bela");
-  for (const k of ["CAMPANHA DO MÊS", `Oferta promovida: ${CAMPAIGN.oferta}`, `Condição comercial: ${CAMPAIGN.condicao_comercial}`, "Período: 02/11/2026 a 29/11/2026", "CALENDÁRIO DA CAMPANHA"]) assert.ok(txt.includes(k), "[camp-pacote] texto: " + k);
+  for (const k of ["CAMPANHA DO MÊS", `Oferta promovida: ${CAMPAIGN.oferta}`, `Condição comercial: ${CAMPAIGN.condicao_comercial}`, "CALENDÁRIO DA CAMPANHA"]) assert.ok(txt.includes(k), "[camp-pacote] texto: " + k);
+  // Rodada 8: as datas da campanha são relativas a hoje (helpers/cp-campaign.mjs); o literal fixo "02/11/2026 a
+  // 29/11/2026" só passava no dia 28/10/2026 e quebrava a suíte em qualquer outro dia.
+  const brDate = (iso) => iso.split("-").reverse().join("/");
+  assert.ok(txt.includes(`Período: ${brDate(CAMPAIGN.periodo_inicio)} a ${brDate(CAMPAIGN.periodo_fim)}`), "[camp-pacote] período do texto = período da campanha");
 });
 
 test("[camp-renovacao] renovação pede a campanha do mês e não gera nada até o assinante responder; fila descarta com registro", async () => {
@@ -781,4 +785,60 @@ test("[camp-confirmar] estorno sem valor claro fica a confirmar; valor BR; opera
     assert.equal(alertKinds(kv).filter((k) => k === "cobranca_nao_concluida").length, 1, "[camp-confirmar] cobranças recusadas agrupadas por dia");
     assert.equal(f.sent.filter((m) => /não concluída/.test(m.subject || "")).length, 1, "[camp-confirmar] um e-mail por dia");
     assert.equal(JSON.parse(kv.data.get("zpc:cp:alerts")).find((a) => a.kind === "cobranca_nao_concluida").repeats, 3, "[camp-confirmar] repetições contadas"); }
+});
+
+// ---------- Auditoria independente, rodada 8 do #960 (reverter mês já entregue; releitura antes de gravar) ----------
+test("[camp-reverter] reverter só devolve mês restaurável: entregue => 409 sem gravar; operador e motivo; idempotente; confirmar uma vez; releitura 409", async () => {
+  const lastForm = (f) => tokenOf([...f.sent].reverse().find((m) => /briefing\?t=/.test(m.text || "")).text, "briefing");
+  const op = async (e, path, b) => { const r = await refundOp(e, path, b); return { status: r.status, ...(await r.json()) }; };
+  // A) Crédito 2 estornado sem pedido (a confirmar), o assinante envia a campanha e o crédito 2 é ENTREGUE; o operador
+  //    confirma o estorno total (registrado, delivered:true) e tenta reverter: 409 cycle_already_delivered, nada gravado.
+  { const { f, e, kv } = await withCredit(); const sub = subKey(kv).slice(-12);
+    assert.equal((await (await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-E2"), e, null, f)).json()).to_confirm, 2);
+    await submit(e, f, lastForm(f), { ...BRIEF, ...CAMPAIGN });
+    assert.ok(rec(kv).deliveries?.[2], "[camp-reverter] pré-condição: crédito 2 entregue");
+    const c = await op(e, "refund-confirm", { sub, cycle: 2, kind: "total", operator: "ana", reason: "estorno total confirmado na Hotmart" });
+    assert.equal(c.status, 200); assert.equal(c.delivered, true, "[camp-reverter] confirmação de mês entregue sinaliza delivered");
+    const snap = kv.data.get(subKey(kv)), list = kv.data.get("zpc:cp:refund-requests");
+    const rv = await op(e, "refund-revert", { sub, cycle: 2, operator: "ana", reason: "achei que tinha sido parcial" });
+    assert.equal(rv.status, 409, "[camp-reverter] mês entregue não é revertido");
+    assert.equal(rv.reason, "cycle_already_delivered", "[camp-reverter] motivo cycle_already_delivered");
+    assert.equal(kv.data.get(subKey(kv)), snap, "[camp-reverter] recusa não grava no assinante");
+    assert.equal(kv.data.get("zpc:cp:refund-requests"), list, "[camp-reverter] recusa não grava na lista"); }
+  // B) Mês atual entregue (deliveredCycle) com um pedido registrado: 409 também.
+  { const { f, e, kv } = await withCredit(); const sub = subKey(kv).slice(-12);
+    await op(e, "refund-request", { sub, cycle: 2, operator: "ana", reason: "assinante pediu o reembolso do mês 2" });
+    await submit(e, f, lastForm(f), { ...BRIEF, ...CAMPAIGN });
+    assert.equal(Number(rec(kv).deliveredCycle), 3, "[camp-reverter] pré-condição: mês 3 entregue");
+    const k = subKey(kv), r0 = JSON.parse(kv.data.get(k)); r0.refundRequests.push({ cycle: 3, reason: "cancelamento", status: "requested", at: new Date().toISOString() }); kv.data.set(k, JSON.stringify(r0));
+    assert.equal((await op(e, "refund-revert", { sub, cycle: 3, operator: "ana", reason: "reverter o mês 3 entregue" })).status, 409, "[camp-reverter] mês atual entregue não é revertido"); }
+  // C) Fluxo normal: confirmação total uma vez; reverter exige operador e motivo, devolve o mês (pending:true) e é idempotente.
+  { const { f, e, kv } = await withCredit(); const sub = subKey(kv).slice(-12);
+    await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-E3"), e, null, f);
+    assert.equal((await op(e, "refund-confirm", { sub, cycle: 3, kind: "total", reason: "estorno total confirmado" })).status, 400, "[camp-reverter] confirmação exige operador");
+    const c1 = await op(e, "refund-confirm", { sub, cycle: 3, kind: "total", operator: "ana", reason: "estorno total confirmado" });
+    assert.equal(c1.status, 200); assert.equal(c1.delivered, false);
+    assert.ok(!CS.pendingCycles(rec(kv)).includes(3), "[camp-reverter] confirmação total tira o mês");
+    assert.equal((await op(e, "refund-confirm", { sub, cycle: 3, kind: "total", operator: "ana", reason: "estorno total confirmado" })).status, 400, "[camp-reverter] confirmação só uma vez");
+    assert.equal(rec(kv).refundRequests.filter((r) => r.cycle === 3).length, 1, "[camp-reverter] um registro só do estorno confirmado");
+    assert.equal((await op(e, "refund-revert", { sub, cycle: 3, reason: "estorno foi parcial, mês volta" })).status, 400, "[camp-reverter] reverter exige operador");
+    const r1 = await op(e, "refund-revert", { sub, cycle: 3, operator: "ana", reason: "estorno foi parcial, mês volta" });
+    assert.equal(r1.status, 200); assert.equal(r1.pending, true, "[camp-reverter] reverter responde pending:true");
+    assert.ok(CS.pendingCycles(rec(kv)).includes(3), "[camp-reverter] mês volta aos pendentes");
+    const snap = kv.data.get(subKey(kv));
+    assert.equal((await op(e, "refund-revert", { sub, cycle: 3, operator: "ana", reason: "estorno foi parcial, mês volta" })).status, 400, "[camp-reverter] segunda reversão recusada");
+    assert.equal(kv.data.get(subKey(kv)), snap, "[camp-reverter] segunda reversão não grava");
+    assert.equal(rec(kv).revertedRefunds.length, 1, "[camp-reverter] uma reversão só"); }
+  // D) Corrida: outro escritor muda o registro entre a leitura e a gravação (reverter e confirmar) => 409, nada perdido.
+  for (const path of ["refund-revert", "refund-confirm"]) {
+    const { f, e, kv } = await withCredit(); const key = subKey(kv), sub = key.slice(-12);
+    await CS.handleHotmartWebhook(hookX("PURCHASE_REFUNDED", "HP-E3"), e, null, f);
+    if (path === "refund-revert") await op(e, "refund-confirm", { sub, cycle: 3, kind: "total", operator: "ana", reason: "estorno total confirmado" });
+    const orig = kv.get.bind(kv); let reads = 0;
+    kv.get = async (k, ...rest) => { const v = await orig(k, ...rest); if (k === key && ++reads === 1) { const r = JSON.parse(kv.data.get(key)); r.briefedAt = "outro-escritor"; kv.data.set(key, JSON.stringify(r)); } return v; };
+    const res = await op(e, path, { sub, cycle: 3, kind: "parcial", amount: "20,00", operator: "ana", reason: "corrida com outro escritor" });
+    kv.get = orig;
+    assert.equal(res.status, 409, "[camp-reverter] releitura antes de gravar: " + path);
+    assert.equal(rec(kv).briefedAt, "outro-escritor", "[camp-reverter] gravação do outro escritor preservada: " + path);
+  }
 });
