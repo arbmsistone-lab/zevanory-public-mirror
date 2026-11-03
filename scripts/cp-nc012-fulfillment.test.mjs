@@ -11,7 +11,7 @@ function harness(){
  }};
  let alarms=[];
  const storage={sql,setAlarm:async due=>alarms.push(due),transactionSync(fn){db.exec("BEGIN IMMEDIATE");try{const x=fn();db.exec("COMMIT");return x}catch(e){db.exec("ROLLBACK");throw e}}};
- const o=new ContentProntoSubscriberDO({storage,id:{toString:()=>("synthetic")}}),now=Date.now();
+ const o=new ContentProntoSubscriberDO({storage,id:{toString:()=>("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")}}),now=Date.now();
  const call=async obj=>o.fetch(new Request("https://internal.example/internal/fulfillment",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(obj)}));
  const intent=(kind,n,extra={})=>({kind,cycle:1,event_key:"nc012:"+kind+":"+n,now_ms:now+n,...extra});
  o.ledger.apply({event_key:"approved:synthetic:001",kind:"approved",cycle:1,at:new Date(now).toISOString()});
@@ -25,7 +25,7 @@ test("G05 cannot generate without approved paid cycle",async()=>{
 });
 test("G05 enqueue persists one job plus one alarm in the subscriber DO",async()=>{
  const h=harness();const a=await h.call(h.intent("enqueue",1));
- assert.equal(a.status,200,await a.text());assert.equal(h.o.fulfillment.snapshot().jobs.length,1);
+ assert.equal(a.status,200);assert.equal(h.o.fulfillment.snapshot().jobs.length,1);
  assert.equal(h.alarms.length,1);
  const replay=await h.call(h.intent("enqueue",1));assert.equal(replay.status,200);
  assert.equal(h.o.fulfillment.snapshot().jobs.length,1);
@@ -61,7 +61,7 @@ test("G07 immutable package candidate creates blocked Resend outbox without emai
  const h=harness();await h.call(h.intent("enqueue",1));await h.call(h.intent("claim",2));
  const sha="c".repeat(64),key="cp-pkg/"+"a".repeat(64)+"/1/"+sha;
  let r=await h.call(h.intent("package_ready",3,{package_sha256:sha,blob_key:key}));
- assert.equal(r.status,200,await r.text());assert.equal((await r.json()).code,"OUTBOX_NOT_CONNECTED");
+ assert.equal(r.status,200);assert.equal((await r.json()).code,"OUTBOX_NOT_CONNECTED");
  assert.equal(h.o.fulfillment.snapshot().packages.length,1);
  assert.equal(h.o.fulfillment.snapshot().outbox[0].status,"blocked");
  assert.equal(h.o.fulfillment.snapshot().outbox[0].provider_receipt,null);
