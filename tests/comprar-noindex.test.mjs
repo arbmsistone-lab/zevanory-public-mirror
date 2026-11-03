@@ -64,18 +64,18 @@ async function assertNoindex(r, label, expectStatus) {
 const CASES = [
   ["closed GET (Vendas abrem em breve)", {}, {}, 200, /Vendas abrem em breve/],
   ["closed HEAD", {method: "HEAD"}, {}, 200, null],
-  ["closed POST", {method: "POST"}, {}, 200, /Vendas abrem em breve/],
+  ["closed POST denied by DEC-05", {method: "POST"}, {}, 503, /Checkout próprio indisponível/],
   ["status 500 = closed", {}, {sales: "error500"}, 200, /Vendas abrem em breve/],
   ["status throw = closed", {}, {sales: "throw"}, 200, /Vendas abrem em breve/],
-  ["no core binding (503)", {}, {core: false}, 503, /Checkout indisponível/],
-  ["open GET confirmation", {}, {sales: "open"}, 200, /Ir para o pagamento seguro/],
-  ["open HEAD", {method: "HEAD"}, {sales: "open"}, 200, null],
-  ["open POST -> Mercado Pago (303)", {method: "POST"}, {sales: "open"}, 303, null],
-  ["open POST automation UA (403)", {method: "POST", ua: "curl/8.0"}, {sales: "open"}, 403, /Acesso não permitido/],
-  ["open POST rate limited (429)", {method: "POST"}, {sales: "open", limiter: "limited"}, 429, /Muitas tentativas/],
-  ["open POST checkout failure (503)", {method: "POST"}, {sales: "open", checkout: "fail"}, 503, /Não foi possível abrir o pagamento/],
-  ["PUT (405)", {method: "PUT"}, {sales: "open"}, 405, null],
-  ["DELETE closed (405)", {method: "DELETE"}, {}, 405, null],
+  ["no core binding remains closed", {}, {core: false}, 200, /Vendas abrem em breve/],
+  ["open GET redirects to owner-gated Hotmart route", {}, {sales: "open"}, 302, null],
+  ["open HEAD gated Hotmart", {method: "HEAD"}, {sales: "open"}, 302, null],
+  ["open POST MP closed (503)", {method: "POST"}, {sales: "open"}, 503, /Checkout próprio indisponível/],
+  ["open POST automation UA also denied (503)", {method: "POST", ua: "curl/8.0"}, {sales: "open"}, 503, /Checkout próprio indisponível/],
+  ["open POST no rate-limiter needed because disabled (503)", {method: "POST"}, {sales: "open", limiter: "limited"}, 503, /Checkout próprio indisponível/],
+  ["open POST checkout never reached (503)", {method: "POST"}, {sales: "open", checkout: "fail"}, 503, /Checkout próprio indisponível/],
+  ["PUT own checkout disabled (503)", {method: "PUT"}, {sales: "open"}, 503, null],
+  ["DELETE own checkout disabled (503)", {method: "DELETE"}, {}, 503, null],
 ];
 
 test("every product and every buy-flow state carries X-Robots-Tag noindex,nofollow, no-store and the robots meta", async () => {
@@ -85,7 +85,8 @@ test("every product and every buy-flow state carries X-Robots-Tag noindex,nofoll
       const r = await call(path, {...opts, env: makeEnv(envOpts)});
       const body = await assertNoindex(r, label, status);
       if (bodyRe) assert.match(body, bodyRe, label);
-      if (status === 303) assert.equal(r.headers.get("location"), MP_URL, label);
+      if (status === 302) assert.equal(r.headers.get("location"), "/hotmart/"+({"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"})[sku],label);
+      if (status === 503) assert.equal(r.headers.get("location"),null,label);
     }
   }
 });
@@ -111,7 +112,7 @@ test("an unexpected exception inside the buy flow still answers 5xx with the noi
   try { r = await call("/comprar/ZEV-IA-011", {method: "POST", env: makeEnv({sales: "open"}), ctx: throwingCtx}); }
   catch (e) { assert.fail("[exception] buy flow threw instead of answering 503: " + e.message); }
   const body = await assertNoindex(r, "exception", 503);
-  assert.match(body, /Checkout indisponível/, "[exception]");
+  assert.match(body, /Checkout próprio indisponível/, "[exception]");
 });
 
 test("percent-encoded aliases of /comprar are decoded once (URL rules) and get the same flow and headers", async () => {
@@ -122,7 +123,7 @@ test("percent-encoded aliases of /comprar are decoded once (URL rules) and get t
     const closed = await call(path);
     assert.match(await assertNoindex(closed, `[alias] closed ${path}`, 200), /Vendas abrem em breve/, `[alias] ${path}`);
     const open = await call(path, {method: "POST", env: makeEnv({sales: "open"})});
-    await assertNoindex(open, `[alias] open POST ${path}`, 303);
+    await assertNoindex(open, `[alias] open POST ${path}`, 503);
   }
   for (const path of ["/%63omprar", "/%63omprar/", "/comp%72ar/x", "/%63omprar/%ZZ", "/%63omprar/ZEV-IA-011/extra"]) {
     await assertNoindex(await call(path, {env: makeEnv({sales: "open"})}), `[alias] ${path}`, 404);
