@@ -9,6 +9,9 @@ on:
       - "worker/cp-do-identity.mjs"
       - "worker/cp-g03-g04-candidate.mjs"
       - "worker/cp-nc011-routing.mjs"
+      - "worker/cp-nc012-digital-hotmart.mjs"
+      - "worker/cp-nc012-fulfillment.mjs"
+      - "scripts/cp-nc012-fulfillment.test.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "scripts/cp-nc011-routes.test.mjs"
       - "scripts/cp-g03-g04-candidate.test.mjs"
@@ -95,6 +98,12 @@ jobs:
           node --test --test-reporter=tap scripts/cp-nc011-routes.test.mjs | tee nc011-routes.txt
           grep -qx '# tests 5' <(grep '^# tests ' nc011-routes.txt)
           grep -qx '# pass 5' <(grep '^# pass ' nc011-routes.txt)
+      - name: NC-012 per-subscriber DO fulfillment and held Resend outbox
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/cp-nc012-fulfillment.test.mjs | tee nc012-fulfillment.txt
+          grep -qx '# tests 8' <(grep '^# tests ' nc012-fulfillment.txt)
+          grep -qx '# pass 8' <(grep '^# pass ' nc012-fulfillment.txt)
       - name: N3 mutation tests (5/5 killed)
         run: |
           set -euo pipefail
