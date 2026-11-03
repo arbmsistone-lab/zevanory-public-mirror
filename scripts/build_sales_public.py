@@ -380,7 +380,7 @@ def apply_catalog(html: str) -> str:
     (its real deliverables, from COMMERCE) and its price; free and "Em breve" status are in the source.
     Closed status is the single page notice, not repeated per card."""
     prices = {slug: (f'R$ {c["price"]}', "pagamento único") for slug, c in COMMERCE.items()}
-    prices["conteudo-pronto"] = ("R$ 197", "por mês")
+    # DEC-04: subscription excluded from phase one public catalog.
     for slug, (price, unit) in prices.items():
         inc = ""
         if slug in CATALOG_INCLUDES:
