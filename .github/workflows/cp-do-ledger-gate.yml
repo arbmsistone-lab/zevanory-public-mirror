@@ -1,0 +1,46 @@
+name: NC-007 Conteudo Pronto Durable Object ledger (offline)
+on:
+  pull_request:
+    branches: [gh-pages, "claude/conteudo-pronto-campanha-v3"]
+    paths:
+      - "worker/cp-durable-ledger.mjs"
+      - "worker/content-service.mjs"
+      - "scripts/cp-durable-ledger.test.mjs"
+      - "docs/ops/cp-do-cutover-NC007.md"
+      - ".github/workflows/cp-do-ledger-gate.yml"
+permissions:
+  contents: read
+jobs:
+  do-sqlite-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Nine independent SQLite transitions with no credentials
+        run: |
+          set -euo pipefail
+          node --test scripts/cp-durable-ledger.test.mjs 2>&1 | tee cp-do.txt
+          grep -qx '# tests 9' <(grep '# tests ' cp-do.txt)
+          grep -qx '# pass 9' <(grep '# pass ' cp-do.txt)
+          grep -qx '# fail 0' <(grep '# fail ' cp-do.txt)
+  production-cutover-invariant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fail closed while CP canonical legacy KV writers still exist
+        run: |
+          set -euo pipefail
+          if grep -Eq 'await kv\.put\(key, JSON\.stringify\((record|updated)' worker/content-service.mjs; then
+            echo "::error title=CP_DO_CUTOVER_NO_GO::webhook/operator still have canonical KV writes; N3 integration remains pending"
+            echo 'CP_DO_CUTOVER=NO_GO_LEGACY_WRITERS'
+            exit 1
+          fi
+          echo 'CP_DO_CUTOVER_STATIC=PASS'
