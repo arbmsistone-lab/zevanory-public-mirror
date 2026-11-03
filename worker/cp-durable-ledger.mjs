@@ -182,9 +182,11 @@ export class CpSubscriberLedger {
      this.sql.exec("INSERT OR IGNORE INTO cp_form_submissions(cycle,event_key,form_sha256,form_json,submitted_at) VALUES(?,?,?,?,?)",
        cycle,eventKey,intent.form_sha256,intent.form_json,at);
      this.sql.exec("UPDATE subscriber_state SET version=version+1,updated_at=? WHERE singleton=1",at);
+     if(this.campaign)this.campaign.onSubmitted(cycle,at);
     }else if(kind==="approved"){
       this.sql.exec("INSERT OR IGNORE INTO cp_cycles(cycle,approved_at_ms,release_at_ms,status,created_at,updated_at) VALUES(?,NULL,NULL,'approved',?,?)",cycle,at,at);
       this.sql.exec("UPDATE subscriber_state SET status='active', cycle=?,version=version+1,updated_at=? WHERE singleton=1",Math.max(state.cycle,cycle),at);
+      if(this.campaign)this.campaign.onApproved(cycle,at);
     }else if(kind==="queue_delivery"){
       this.sql.exec("INSERT OR IGNORE INTO cp_outbox(outbox_key,event_key,cycle,status,provider_idempotency_key,created_at,updated_at) VALUES(?,?,?,'pending',?,?,?)",
         "delivery:"+cycle,eventKey,cycle,this.canonicalId+"/delivery/"+cycle,at,at);
