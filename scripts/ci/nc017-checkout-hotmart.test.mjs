@@ -12,7 +12,7 @@ const env=(status)=>({MP_PHASE1_CHECKOUT_ENABLED:"true",CORE:{fetch:async input=
  const url=typeof input==="string"?input:input.url;
  assert.equal(url,"https://zevanory.api.br/api/sales/status","no own checkout bridge");
  return Response.json({open:status==="open"});
-}},ASSETS:{fetch:async request=>new Response(read(new URL(request.url).pathname.replace(/^\\//,"").replace(/\\.html$/,"")),{status:200})}});
+}},ASSETS:{fetch:async request=>new Response(read(new URL(request.url).pathname.replace(/^\//,"").replace(/\.html$/,"")),{status:200})}});
 
 test("DEC05: code lock cannot be enabled by an env override or open owner switch",async()=>{
  assert.equal(MP_PHASE1_CHECKOUT_ENABLED,false);
@@ -62,9 +62,9 @@ test("F-b: every Hotmart rewrite input exists and variant removes own checkout c
      assert.ok(html.includes(source),slug+" missing exact Hotmart source: "+source.slice(0,80));
    }
    const variant=hotmartPage(html,slug,"https://pay.hotmart.com/X123ABC");
-   const visible=variant.replace(/<script type="application\\/ld\\+json">[\\s\\S]*?<\\/script>/g,"");
+   const visible=variant.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g,"");
    assert.ok(visible.includes('href="https://pay.hotmart.com/X123ABC"'),slug+" real Hotmart CTA");
-   assert.doesNotMatch(visible,/Mercado Pago|pedir-reembolso|entrega\\/reenviar/,slug);
+   assert.doesNotMatch(visible,/Mercado Pago|pedir-reembolso|entrega\/reenviar/,slug);
    assert.throws(()=>hotmartPage(html.replace("</main>","<p>Mercado Pago</p></main>"),slug,"https://pay.hotmart.com/X123ABC"),/hotmart_copy_rewrite_incomplete/);
  }
 });
