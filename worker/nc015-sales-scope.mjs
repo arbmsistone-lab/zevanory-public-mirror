@@ -4,7 +4,7 @@ export const CP_SALES_ENABLED=false;
 export function cpSalesEnabled(){return CP_SALES_ENABLED===true}
 export function isCpPublicRoute(path){
  const clean=String(path||"").replace(/\/+$/,"")||"/";
- return clean==="/conteudo-pronto"||clean==="/conteudo-pronto.html"||
+ return clean==="/conteudo-pronto"||clean==="/conteudo-pronto.html"||clean==="/conteudo-pronto/index.html"||
   clean==="/assinar/conteudo-pronto"||clean==="/hotmart/conteudo-pronto"||
   clean==="/conteudo-pronto/briefing"||clean==="/conteudo-pronto/pacote";
 }
