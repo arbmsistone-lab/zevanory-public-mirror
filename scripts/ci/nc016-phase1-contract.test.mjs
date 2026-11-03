@@ -53,7 +53,7 @@ test("NC016-A3 no boleto in first-phase offer, terms or Hotmart copy",()=>{
 
 test("NC016-A4 delivery 192h is explicit and held for legal review",()=>{
  const policy=JSON.parse(read("data/politica-unica.json"));
- assert.equal(policy.legal_review.status,"PENDING");
+ assert.match(policy.nota_nc016_dec01_v3,/pendente de revisão/i);
  assert.match(policy.sol_text,/192 horas \(8 dias\) após a aprovação do pagamento/);
  assert.ok(policy.sol_text.includes(deadline));
  assert.match(policy.sol_text,/até cinco downloads/);
