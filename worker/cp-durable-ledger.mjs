@@ -320,7 +320,7 @@ export class ContentProntoSubscriberDO {
    const answer=this.ledger.apply(input);
    return Response.json(answer);
   }catch(err){
-   const e=err instanceof CpTransitionError||err instanceof CpWorkError?err:new CpTransitionError("unavailable",503);
+   const e=err instanceof CpTransitionError||err instanceof CpWorkError||err instanceof CpCampaignError?err:new CpTransitionError("unavailable",503);
    return Response.json({ok:false,error:e.code},{status:e.status});
   }
  }
