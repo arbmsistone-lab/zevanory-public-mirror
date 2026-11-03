@@ -16,7 +16,7 @@ if(actual.length!==expected.length)throw Error("CP_MANIFEST_REVIEW_REQUIRED_FOR_
 // NC-011: recursively inspect all runtime code roots, not just worker/*.mjs.
 // Unit tests and generated output are deliberately not production entrypoints;
 // migration/deploy scripts remain in scope and must not hide canonical CP writes.
-const runtimeRoots=["worker","cf-worker","backend","src","functions","api","pages","scripts/deploy","scripts/migrations"];
+// Scan repository-wide; tests/fixtures are counted but never treated as live writers.
 const codeExt=/\.(?:mjs|cjs|js|jsx|ts|tsx|py|ps1|sh)$/;
 const skipDirs=new Set(["node_modules",".git","dist","build","coverage",".next",".wrangler","__pycache__"]);
 function walk(relative,acc=[]){
@@ -30,11 +30,14 @@ function walk(relative,acc=[]){
  }catch(e){if(e.code!=="ENOENT")throw e}
  return acc;
 }
-const files=runtimeRoots.flatMap(dir=>walk(dir));
+const files=walk(".");
 const exempt=new Set(["worker/sales-ledger.mjs","worker/data-backup.mjs"]); // M3 excluded from CP only.
 const unsafe=[];
 for(const file of files){
  if(file==="worker/content-service.mjs"||exempt.has(file))continue;
+ // Tests and fixtures are isolated and not deployment/runtime entrypoints.
+ if(/(?:^|\/)(?:tests?|__tests__|fixtures|test-fixtures)\//.test(file)||
+    /\.(?:test|spec|mock|fixture)\.[cm]?[jt]sx?$/.test(file))continue;
  const content=readFileSync(resolve(root,file),"utf8");
  // Co-location is conservative: any CP key with a write/alias in the same
  // production file requires human audit. No extra writers may be introduced.
