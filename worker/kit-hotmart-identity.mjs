@@ -25,8 +25,10 @@ export async function resolveVerifiedKitPurchase(request,env){
  const key=await crypto.subtle.importKey("raw",enc.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
  const opaque=hex(await crypto.subtle.sign("HMAC",key,enc.encode("kit-release/v1|"+productId+"|"+transaction)));
  const id=env.PURCHASE_RELEASE_DO.idFromName("kit-verified:"+opaque);
+ const actualId=String(id);
+ if(!/^[a-f0-9]{64}$/.test(actualId))throw new KitReleaseError("kit_invalid_do_id",503);
  const eventKey="hotmart:"+event+":"+opaque.slice(0,40);
- return {stub:env.PURCHASE_RELEASE_DO.get(id),opaqueOrderId:"kr:"+opaque,
+ return {stub:env.PURCHASE_RELEASE_DO.get(id),opaqueOrderId:"kr:"+actualId,
   event:{event_type:event,event_key:eventKey,approved_at_ms:data?.purchase?.approved_date??null},
   privateReference:{transaction,product_id:productId}, // internal DO only, NEVER log
   rawForAudit:{productId,event}}; // never expose transaction/buyer in logs
