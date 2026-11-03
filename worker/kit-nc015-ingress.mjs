@@ -1,7 +1,7 @@
 // NC-015: isolated Hotmart kit event ingestion into its own DO.
 // The non-CP digital-products financial ledger remains independently routed.
 // Mounting is behind a SOURCE CODE constant, not an environment override.
-import {resolveVerifiedKitPurchase,KitReleaseError} from "./kit-hotmart-identity.mjs";
+import {resolveVerifiedKitPurchase} from "./kit-hotmart-identity.mjs";
 export const KIT_ORDER_INGEST_ENABLED=false;
 export function isKitProductNc015(data,env){
  const id=String(data?.product?.id??"");
