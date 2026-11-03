@@ -121,7 +121,7 @@ test("H11 authenticated routing derives DO from product+transaction, not buyer e
  const ids=[];const env={HOTMART_HOTTOK:"test-hotmart-hottok-very-secret",
   PURCHASE_DO_ROUTING_KEY:"test-kit-do-route-secret-123456789012345",
   HOTMART_KIT_PRODUCT_IDS:"8704733,8704826,8704851,8704861,8704871",
-  PURCHASE_RELEASE_DO:{idFromName(n){ids.push(n);return n;},get(n){return {id:n}}}};
+  PURCHASE_RELEASE_DO:{idFromName(n){ids.push(n);return {toString:()=>("b".repeat(64))};},get(n){return {id:n}}}};
  function req({email="a@test.invalid",tok=env.HOTMART_HOTTOK,product=8704733}={}){
   return new Request("https://zevanory.api.br/api/webhooks/hotmart",{method:"POST",headers:{"x-hotmart-hottok":tok,"content-type":"application/json"},
    body:JSON.stringify({version:"2.0.0",event:"PURCHASE_APPROVED",data:{product:{id:product},purchase:{transaction:"HP1234567890111",approved_date:D},buyer:{email}}})});
