@@ -169,7 +169,6 @@ def how_to_buy() -> str:
             '<li><strong>E-mail</strong><span>Depois da confirmação do pagamento, o link chega no e-mail que você informou.</span></li>'
             f'<li><strong>Link pessoal</strong><span>{policy.DELIVERY_72H[0].upper() + policy.DELIVERY_72H[1:]}. Se expirar, o suporte envia outro sem custo.</span></li>'
             '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
-            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart.</p>'
             '<dl class="seller">'
             f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
             f'<div><dt>CNPJ</dt><dd>{f["cnpj"]}</dd></div>'
