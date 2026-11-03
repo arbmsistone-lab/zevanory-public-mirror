@@ -16,11 +16,11 @@ function run(mutator){
   return spawnSync(process.execPath,[CHECK],{cwd:tmp,encoding:"utf8",timeout:10000});
  }finally{rmSync(tmp,{recursive:true,force:true})}
 }
-test("G00 reduced inventory 69 to 55 passes, but cutover remains NO_GO",()=>{
+test("G00 reduced inventory 69 to 37 passes, but cutover remains NO_GO",()=>{
  const r=run(()=>{});
  assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/"baseline":55/);
- assert.match(r.stdout,/"actual":55/);
+ assert.match(r.stdout,/"baseline":37/);
+ assert.match(r.stdout,/"actual":37/);
  assert.match(r.stdout,/NO_GO_LEGACY_KV_WRITERS/);
 });
 test("G00 mutant new direct KV writer in content-service is killed",()=>{
