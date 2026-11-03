@@ -62,7 +62,7 @@ test("F-b: every Hotmart rewrite input exists and variant removes own checkout c
    const matching=HOTMART_TEXT.filter(([source])=>html.includes(source));
    assert.ok(matching.length>=4,slug+" insufficient exact rewrite coverage");
    assert.ok(matching.some(([source])=>source.includes("Pagamento processado pelo Mercado Pago")),slug+" missing payment processor source");
-   assert.ok(matching.some(([source])=>source.includes("Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago)")),slug+" missing legacy overlay source");
+   assert.ok(matching.some(([source])=>source.includes("Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago)") || source.includes("Pagamento por Pix à vista ou cartão na plataforma indicada")),slug+" missing current or legacy offer overlay source");
    const variant=hotmartPage(html,slug,"https://pay.hotmart.com/X123ABC");
    const visible=variant.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g,"");
    assert.ok(visible.includes('href="https://pay.hotmart.com/X123ABC"'),slug+" real Hotmart CTA");
