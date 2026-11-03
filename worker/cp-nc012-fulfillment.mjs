@@ -57,6 +57,10 @@ export class CpFulfillmentLedger {
        this.sql.exec("UPDATE cp_work_jobs SET status='retry',due_at_ms=?,lease_deadline_ms=NULL,updated_at_ms=? WHERE cycle=?",now+backoff,now,cycle);
      }
    }else if(input.kind==="package_ready"){
+     // A second immutable version is a conflict, not an authorization failure.
+     // The original checksum/outbox remain untouched and cannot be replaced.
+     if(state?.status==="package_ready"||this.row("SELECT cycle FROM cp_package_objects WHERE cycle=?",cycle))
+       throw new CpWorkError("package_already_recorded",409);
      if(!state||state.status!=="generating"||state.lease_deadline_ms<now||
          !hashOk(input.package_sha256)||!/^cp-pkg\/[a-f0-9]{64}\/[1-9]\d{0,3}\/[a-f0-9]{64}$/.test(input.blob_key)||
          !input.blob_key.endsWith(input.package_sha256))
