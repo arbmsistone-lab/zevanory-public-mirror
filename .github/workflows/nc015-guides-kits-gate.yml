@@ -1,0 +1,71 @@
+name: NC-015 Phase 1 guides and kits isolated gates
+on:
+  pull_request:
+    paths:
+      - "worker/kit-*"
+      - "worker/nc015-sales-scope.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/cp-nc011-routing.mjs"
+      - "scripts/ci/nc015-*"
+      - "scripts/build_sales_public.py"
+      - "solucoes/index.html"
+      - "sales-overlay/llms.txt"
+      - "sales-public/**"
+      - ".github/workflows/nc015-guides-kits-gate.yml"
+permissions:
+  contents: read
+jobs:
+  private-kit-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Exactly 8 kit 192h/download/readback/Resend offline cases
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/ci/nc015-kit-e2e.test.mjs | tee kit-e2e.txt
+          grep -qx '# tests 8' kit-e2e.txt
+          grep -qx '# pass 8' kit-e2e.txt
+          grep -qx '# fail 0' kit-e2e.txt
+  first-phase-public-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Exactly 4 CP hidden and exposed-file scan tests
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/ci/nc015-scope-exposure.test.mjs | tee scope.txt
+          grep -qx '# tests 4' scope.txt
+          grep -qx '# pass 4' scope.txt
+          grep -qx '# fail 0' scope.txt
+      - name: Public PDF ZIP census (only checked-out repository)
+        run: |
+          set -euo pipefail
+          node scripts/ci/nc015-public-download-census.mjs
+  first-phase-static-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rebuild committed sales pages without reviving CP
+        run: |
+          set -euo pipefail
+          python3 scripts/build_sales_public.py
+          git diff --exit-code -- sales-public
