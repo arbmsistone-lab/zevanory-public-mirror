@@ -1,7 +1,7 @@
 // ZEVANORY NC-007 / ADR-CP-001: DRAFT-only SQLite Durable Object ledger.
 // NOT connected to the live webhook/cron/operator/refund paths. Do not deploy.
 // The canonical key is resolved SERVER-SIDE by the Worker (never from request JSON).
-const ALLOWED = new Set(["approved","queue_delivery","refund","operator_stop","provider_receipt","provider_uncertain","form_token_issued","form_submitted"]);
+const ALLOWED = new Set(["approved","queue_delivery","refund","operator_stop","provider_receipt","provider_uncertain","form_token_issued","form_submitted","refund_review"]);
 const validEvent = s => typeof s==="string" && /^[a-zA-Z0-9:/._-]{12,180}$/.test(s);
 const validCycle = n => Number.isInteger(n) && n>0 && n<=1200;
 const validVersion = n => Number.isInteger(n) && n>=0 && n<=Number.MAX_SAFE_INTEGER-1;
@@ -161,7 +161,15 @@ export class CpSubscriberLedger {
       throw new CpTransitionError("form_token_expired_or_consumed",403);
     }
     this.sql.exec("INSERT INTO cp_event_ledger(event_key,kind,cycle,version,created_at) VALUES(?,?,?,?,?)",eventKey,kind,cycle,state.version+1,at);
-    if(kind==="form_token_issued"){
+    if(kind==="refund_review"){
+      // No unverified partial/full refund can be blindly classified as terminal.
+      // Stop fulfillment and queue owner reconciliation inside this DO.
+      this.sql.exec("INSERT OR IGNORE INTO cp_refund_events(event_key,cycle,refund_type,state,created_at) VALUES(?,?,'requested','pending',?)",
+        eventKey,cycle,at);
+      this.sql.exec("UPDATE subscriber_state SET status='inactive',version=version+1,updated_at=? WHERE singleton=1",at);
+      this.sql.exec("INSERT OR IGNORE INTO cp_alarm_jobs(alarm_key,due_at_ms,kind,state,updated_at) VALUES(?,?, 'owner_alert','scheduled',?)",
+       "refund-review:"+cycle,Date.parse(at)+1000,at);
+    }else     if(kind==="form_token_issued"){
      const prior=this.one("SELECT token_sha256 FROM cp_form_tokens WHERE cycle=?",cycle);
      if(prior && prior.token_sha256!==intent.token_sha256)throw new CpTransitionError("form_token_conflict");
      this.sql.exec("INSERT OR IGNORE INTO cp_form_tokens(cycle,token_sha256,expires_at_ms,status) VALUES(?,?,?,'issued')",
@@ -173,6 +181,7 @@ export class CpSubscriberLedger {
        cycle,eventKey,intent.form_sha256,intent.form_json,at);
      this.sql.exec("UPDATE subscriber_state SET version=version+1,updated_at=? WHERE singleton=1",at);
     }else if(kind==="approved"){
+      this.sql.exec("INSERT OR IGNORE INTO cp_cycles(cycle,approved_at_ms,release_at_ms,status,created_at,updated_at) VALUES(?,NULL,NULL,'approved',?,?)",cycle,at,at);
       this.sql.exec("UPDATE subscriber_state SET status='active', cycle=?,version=version+1,updated_at=? WHERE singleton=1",Math.max(state.cycle,cycle),at);
     }else if(kind==="queue_delivery"){
       this.sql.exec("INSERT OR IGNORE INTO cp_outbox(outbox_key,event_key,cycle,status,provider_idempotency_key,created_at,updated_at) VALUES(?,?,?,'pending',?,?,?)",
