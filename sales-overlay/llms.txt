@@ -3,11 +3,11 @@
 > ZEVANORY (A. RENAN ALVES MOREIRA BITU LTDA, CNPJ 69.077.233/0001-99, Várzea Alegre/CE, Brasil) oferece guias digitais, kits e planilhas para pequenos negócios. Vendas ainda fechadas. Suporte: suporte@zevanory.api.br.
 
 ## Produtos
-- [IA na Prática](https://vendas.zevanory.api.br/ia-na-pratica): método para usar IA no dia a dia do negócio, com comandos prontos. R$ 197 (vendas temporariamente fechadas; direito de arrependimento de 7 dias, ver Termos).
-- [Vendas na Prática](https://vendas.zevanory.api.br/vendas-na-pratica): processo comercial, mensagens de venda e follow-up. R$ 197.
-- [Lucro & Caixa](https://vendas.zevanory.api.br/lucro-e-caixa): planilha de caixa e margem e rotina financeira semanal. R$ 247.
-- [Combo IA + Vendas](https://vendas.zevanory.api.br/combo-ia-vendas): os dois primeiros juntos. R$ 297.
-- [Negócio Completo](https://vendas.zevanory.api.br/negocio-completo): os três produtos e plano integrado de 30 dias. R$ 397.
+- [IA na Prática](https://vendas.zevanory.api.br/ia-na-pratica): método para usar IA no dia a dia do negócio, com comandos prontos. R$ 97 (vendas temporariamente fechadas; direito de arrependimento de 7 dias, ver Termos).
+- [Vendas na Prática](https://vendas.zevanory.api.br/vendas-na-pratica): processo comercial, mensagens de venda e follow-up. R$ 97.
+- [Lucro & Caixa](https://vendas.zevanory.api.br/lucro-e-caixa): planilha de caixa e margem e rotina financeira semanal. R$ 147.
+- [Combo IA + Vendas](https://vendas.zevanory.api.br/combo-ia-vendas): os dois primeiros juntos. R$ 157.
+- [Negócio Completo](https://vendas.zevanory.api.br/negocio-completo): os três produtos e plano integrado de 30 dias. R$ 247.
 
 ## Calculadoras gratuitas
 - [Calculadora de preço de venda](https://vendas.zevanory.api.br/calculadora-preco-de-venda): Divida o custo por um menos a soma de impostos, taxas, despesas e margem.
