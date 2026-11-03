@@ -92,7 +92,7 @@
     "delivery": "O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento, ao fim do prazo de garantia. O link individual permite até cinco downloads; se expirar, solicite outro sem custo em zevanory.api.br/entrega/reenviar ou pelo suporte.",
     "resend_short": "Link expirado? Um novo link é fornecido sem custo em zevanory.api.br/entrega/reenviar.",
     "confirmation": "Após a contratação, a confirmação e uma cópia conservável dos termos chegam imediatamente.",
-    "refund": "Direito de arrependimento: em contratação online, você pode desistir sem justificativa e sem ônus em {rule_7d}. Peça pela mesma ferramenta usada na contratação ou em {refund_channels}. O recebimento do pedido é confirmado imediatamente. A ZEVANORY comunica imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno e devolve integralmente os valores pagos; a visualização do crédito em cartão segue o prazo do emissor.",
+    "refund": "Direito de arrependimento: em contratação online, você pode desistir sem justificativa e sem ônus em {rule_7d}. Peça pela mesma ferramenta usada na contratação ou em {refund_channels}. O recebimento do pedido é confirmado imediatamente. A ZEVANORY comunica imediatamente a plataforma responsável pela cobrança, conforme a compra, para impedir o lançamento ou iniciar o estorno, com devolução integral dos valores pagos; a visualização do crédito em cartão segue o prazo do emissor.",
     "subscription_delivery": "Conteúdo Pronto (assinatura): após a confirmação do pagamento, você recebe por e-mail um link para um formulário curto e, depois, o pacote do mês em link privado. Sem fidelidade: a renovação pode ser cancelada a qualquer momento.",
     "subscription_refund": "Direito de arrependimento: você pode desistir sem justificativa e sem ônus em {rule_7d}, com devolução integral dos valores pagos. Peça pela mesma ferramenta usada na contratação ou em {refund_channels}. O recebimento do pedido é confirmado imediatamente; a visualização do crédito em cartão segue o prazo do emissor.",
     "refund_channels": "zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br",
@@ -312,5 +312,6 @@
     "utc_offset_minutes": -180,
     "fragmento_sol": "se as datas forem diferentes, a ZEVANORY adotará a mais recente"
   },
-  "nota_nc016_dec01_v3": "MINUTA jurídica para guias e kits, pendente de revisão do proprietário/advogado no #946. NENHUMA aprovação ou permissão de deploy decorre deste texto. Não confundir 192h de liberação com o prazo legal do CDC."
+  "nota_nc016_dec01_v3": "MINUTA jurídica para guias e kits, pendente de revisão do proprietário/advogado no #946. NENHUMA aprovação ou permissão de deploy decorre deste texto. Não confundir 192h de liberação com o prazo legal do CDC.",
+  "nota_nc017_atendimento": "Minuta DEC-05: atendimento genérico não deve presumir checkout próprio Mercado Pago; reembolso é processado pela plataforma real do pedido. Revisão jurídica P23/#946 pendente."
 }
