@@ -23,7 +23,9 @@ test("receipt destinations: each everyday problem jumps to the card of the produ
   const html = readFileSync(new URL("../sales-public/solucoes.html", import.meta.url), "utf8");
   const block = html.slice(html.indexOf('<div class="receipt"'));
   const hrefs = [...block.slice(0, block.indexOf("</section>")).matchAll(/class="receipt-line" href="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(hrefs, ["#p-lucro-e-caixa", "#p-vendas-na-pratica", "#p-conteudo-pronto", "#p-ia-na-pratica", "#p-ferramentas", "#p-combo-ia-vendas", "#p-negocio-completo"]);
+  // DEC-04 (fase 1): o Conteúdo Pronto está oculto — nem linha de recibo nem cartão no catálogo.
+  assert.deepEqual(hrefs, ["#p-lucro-e-caixa", "#p-vendas-na-pratica", "#p-ia-na-pratica", "#p-ferramentas", "#p-combo-ia-vendas", "#p-negocio-completo"]);
+  assert.doesNotMatch(html, /id="p-conteudo-pronto"|href="[^"]*\/conteudo-pronto/, "CP oculto no catálogo");
   for (const h of hrefs) {
     const slug = h.slice(3);
     const card = html.match(new RegExp(`<article class="catalog-card[^"]*" id="p-${slug}" tabindex="-1"><div class="cc-main"><p class="cc-match">Seu problema: [^<]+</p><h3><a href="/${slug}">`));
