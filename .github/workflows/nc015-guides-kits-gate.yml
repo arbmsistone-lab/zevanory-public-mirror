@@ -9,6 +9,9 @@ on:
       - "worker/cp-nc011-routing.mjs"
       - "scripts/ci/nc015-*"
       - "scripts/ci/nc016-*"
+      - "scripts/ci/nc017-*"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "data/products.json"
       - "data/politica-unica.json"
       - "sales-overlay/approved.json"
       - "termos/index.html"
@@ -63,6 +66,13 @@ jobs:
           grep -qx '# tests 5' nc016.txt
           grep -qx '# pass 5' nc016.txt
           grep -qx '# fail 0' nc016.txt
+      - name: NC-017 own checkout fail-closed and Hotmart exact-copy contracts
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/ci/nc017-checkout-hotmart.test.mjs | tee nc017.txt
+          grep -qx '# tests 4' nc017.txt
+          grep -qx '# pass 4' nc017.txt
+          grep -qx '# fail 0' nc017.txt
       - name: Public PDF ZIP census (only checked-out repository)
         run: |
           set -euo pipefail
