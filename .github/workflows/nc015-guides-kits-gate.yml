@@ -77,8 +77,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Rebuild committed sales pages without reviving CP
+      - name: Rebuild sales pages (no secrets and no deployment)
         run: |
           set -euo pipefail
           python3 scripts/build_sales_public.py
+      - name: Preserve deterministic build for NC-017 offline reconciliation
+        uses: actions/upload-artifact@v4
+        with:
+          name: nc017-generated-sales-pages
+          path: sales-public/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Verify committed sales pages exactly reproduce
+        run: |
+          set -euo pipefail
           git diff --exit-code -- sales-public
