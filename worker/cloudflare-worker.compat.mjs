@@ -6,6 +6,7 @@ import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.
 import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
 import { handleOwnerOAuth, handleYoutubePublisherAccess, handlePublisherAccess } from "./owner-oauth.mjs";
 import { routeHotmartNc011, routeBriefingNc011, routePackageNc011, routeOperatorNc011 } from "./cp-nc011-routing.mjs";
+import {cpSalesEnabled,isCpPublicRoute,cpClosedResponse} from "./nc015-sales-scope.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -122,6 +123,7 @@ const wrapped = {
       const drained = await handleSupportDrainRequest(request, normalized, { sqlFactory: whatsappProofDatabase });
       if (drained) return drained;
     }
+    if(!cpSalesEnabled() && isCpPublicRoute(url.pathname))return cpClosedResponse();
     if (url.pathname === "/conteudo-pronto/briefing") return routeBriefingNc011(request,normalized);
     if (url.pathname === "/conteudo-pronto/pacote") return routePackageNc011(request,normalized);
     if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);
