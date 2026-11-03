@@ -1,3 +1,4 @@
+import {grantPreparedKitToken} from "./kit-nc015-token.mjs";
 // ZEVANORY NC-009 N3 (DEC-01 v3) | OFFLINE CANDIDATE / NOT BOUND OR DEPLOYED.
 // One SQLite-backed Durable Object PER PURCHASE (not the monthly Content Pronto subscriber DO).
 // The worker must validate Hotmart Hottok and route from a server-computed HMAC before calling this class.
@@ -256,11 +257,36 @@ export class KitReleaseOrderDO {
   try{
    const path=new URL(request.url).pathname;
    if(path==="/internal/event" && request.method==="POST"){
-    const result=this.ledger.acceptEvent(await request.json());
+    const event=await request.json();
+    if(event?.private_reference)this.ledger.recordReference(event.private_reference);
+    const result=this.ledger.acceptEvent(event);
     const current=this.ledger.state();
     // One order per DO: only one release alarm, no global cron.
     if(current.state==="waiting" && current.release_at_ms!==null)await this.ctx.storage.setAlarm(current.release_at_ms);
     return Response.json(result);
+   }
+   if(path==="/internal/reference"&&request.method==="GET"){
+    const ref=this.ledger.purchaseReference();
+    if(!ref)return Response.json({error:"reference_missing"},{status:503});
+    return Response.json({reference:ref,state:this.ledger.state()});
+   }
+   if(path==="/internal/grant"&&request.method==="POST"){
+    const {now_ms,proof}=await request.json();
+    const grant=await grantPreparedKitToken(this.ledger,now_ms,proof,this.env.KIT_DOWNLOAD_SIGNING_KEY);
+    return Response.json({code:grant.code,release_at_ms:grant.release_at_ms??null});
+   }
+   if(path==="/internal/download-claim"&&request.method==="POST"){
+    const {now_ms,raw_token,proof}=await request.json();
+    const claim=await this.ledger.claimDownload(now_ms,raw_token,proof);
+    return Response.json(claim,{status:claim.ok?200:403});
+   }
+   if(path==="/internal/email-claim"&&request.method==="POST"){
+    const claim=this.ledger.claimEmailSend(Date.now());
+    return Response.json(claim,{status:claim.ok?200:409});
+   }
+   if(path==="/internal/email-receipt"&&request.method==="POST"){
+    const {receipt}=await request.json();
+    return Response.json(this.ledger.acceptEmailReceipt(Date.now(),receipt));
    }
    if(path==="/internal/operator/resume-refund"&&request.method==="POST"){
     if(!ctEq(request.headers.get("x-operator-key"),this.env.AUTHENTICATED_OWNER_OPERATOR_KEY))
