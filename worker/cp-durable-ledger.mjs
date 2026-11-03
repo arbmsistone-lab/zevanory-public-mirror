@@ -1,7 +1,7 @@
 // ZEVANORY NC-007 / ADR-CP-001: DRAFT-only SQLite Durable Object ledger.
 // NOT connected to the live webhook/cron/operator/refund paths. Do not deploy.
 // The canonical key is resolved SERVER-SIDE by the Worker (never from request JSON).
-const ALLOWED = new Set(["approved","queue_delivery","refund","operator_stop","provider_receipt","provider_uncertain"]);
+const ALLOWED = new Set(["approved","queue_delivery","refund","operator_stop","provider_receipt","provider_uncertain","form_token_issued","form_submitted"]);
 const validEvent = s => typeof s==="string" && /^[a-zA-Z0-9:/._-]{12,180}$/.test(s);
 const validCycle = n => Number.isInteger(n) && n>0 && n<=1200;
 const validVersion = n => Number.isInteger(n) && n>=0 && n<=Number.MAX_SAFE_INTEGER-1;
@@ -91,6 +91,12 @@ export class CpSubscriberLedger {
    state TEXT NOT NULL CHECK(state IN ('scheduled','queued','canceled')),
    updated_at TEXT NOT NULL
   )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_form_tokens(
+   cycle INTEGER PRIMARY KEY, token_sha256 TEXT NOT NULL, expires_at_ms INTEGER NOT NULL,
+   status TEXT NOT NULL CHECK(status IN ('issued','consumed','revoked')))`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_form_submissions(
+   cycle INTEGER PRIMARY KEY, event_key TEXT NOT NULL UNIQUE,
+   form_sha256 TEXT NOT NULL,form_json TEXT NOT NULL,submitted_at TEXT NOT NULL)`);
   this.sql.exec(`CREATE INDEX IF NOT EXISTS cp_alarm_due_idx ON cp_alarm_jobs(state,due_at_ms)`);
   this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_alarm_outbox(
    alarm_key TEXT PRIMARY KEY,
@@ -139,8 +145,34 @@ export class CpSubscriberLedger {
     if(kind==="provider_uncertain" && !this.one("SELECT outbox_key FROM cp_outbox WHERE cycle=? AND status='pending'",cycle))
       throw new CpTransitionError("outbox_not_pending");
     if(kind==="operator_stop" && state.status==="refunded")throw new CpTransitionError("terminal_refund");
+    if(kind==="form_token_issued"||kind==="form_submitted"){
+     if(state.status!=="active"||cycle!==state.cycle)throw new CpTransitionError("form_not_eligible");
+     if(typeof intent.token_sha256!=="string"||!/^[a-f0-9]{64}$/.test(intent.token_sha256))
+      throw new CpTransitionError("invalid_form_token",400);
+    }
+    if(kind==="form_token_issued"&&(!Number.isSafeInteger(intent.expires_at_ms)||intent.expires_at_ms<Date.parse(at)))
+      throw new CpTransitionError("invalid_form_token_expiry",400);
+    if(kind==="form_submitted"&&(typeof intent.form_json!=="string"||intent.form_json.length>8192||
+      typeof intent.form_sha256!=="string"||!/^[a-f0-9]{64}$/.test(intent.form_sha256)))
+      throw new CpTransitionError("invalid_form_content",400);
+    if(kind==="form_submitted"){
+     const token=this.one("SELECT token_sha256,expires_at_ms,status FROM cp_form_tokens WHERE cycle=?",cycle);
+     if(!token||token.status!=="issued"||token.token_sha256!==intent.token_sha256||token.expires_at_ms<Date.parse(at))
+      throw new CpTransitionError("form_token_expired_or_consumed",403);
+    }
     this.sql.exec("INSERT INTO cp_event_ledger(event_key,kind,cycle,version,created_at) VALUES(?,?,?,?,?)",eventKey,kind,cycle,state.version+1,at);
-    if(kind==="approved"){
+    if(kind==="form_token_issued"){
+     const prior=this.one("SELECT token_sha256 FROM cp_form_tokens WHERE cycle=?",cycle);
+     if(prior && prior.token_sha256!==intent.token_sha256)throw new CpTransitionError("form_token_conflict");
+     this.sql.exec("INSERT OR IGNORE INTO cp_form_tokens(cycle,token_sha256,expires_at_ms,status) VALUES(?,?,?,'issued')",
+       cycle,intent.token_sha256,intent.expires_at_ms);
+     this.sql.exec("UPDATE subscriber_state SET version=version+1,updated_at=? WHERE singleton=1",at);
+    }else if(kind==="form_submitted"){
+     this.sql.exec("UPDATE cp_form_tokens SET status='consumed' WHERE cycle=? AND token_sha256=?",cycle,intent.token_sha256);
+     this.sql.exec("INSERT OR IGNORE INTO cp_form_submissions(cycle,event_key,form_sha256,form_json,submitted_at) VALUES(?,?,?,?,?)",
+       cycle,eventKey,intent.form_sha256,intent.form_json,at);
+     this.sql.exec("UPDATE subscriber_state SET version=version+1,updated_at=? WHERE singleton=1",at);
+    }else if(kind==="approved"){
       this.sql.exec("UPDATE subscriber_state SET status='active', cycle=?,version=version+1,updated_at=? WHERE singleton=1",Math.max(state.cycle,cycle),at);
     }else if(kind==="queue_delivery"){
       this.sql.exec("INSERT OR IGNORE INTO cp_outbox(outbox_key,event_key,cycle,status,provider_idempotency_key,created_at,updated_at) VALUES(?,?,?,'pending',?,?,?)",
