@@ -138,7 +138,7 @@ async function handleBuy(request,env,sku,ctx){
   // fail-closed Hotmart variant. POST never creates an own-checkout transaction.
   if(!isMpPhase1CheckoutEnabled()){
     if(request.method!=="GET"&&request.method!=="HEAD")return infoPage(503,"Checkout próprio indisponível","<p>Na primeira fase, os guias e kits usam somente a Hotmart.</p>");
-    if(!(await salesOpen(env)))return infoPage(200,"Vendas abrem em breve",`<p>O ${PRICES[sku][0]} ainda não está à venda.</p>`);
+    if(!(await salesOpen(env)))return infoPage(200,"Vendas abrem em breve",`<p>O ${PRICES[sku][0]} ainda não está à venda. Para dúvidas, escreva para ${CONTACT_HTML}.</p>`);
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/hotmart/"+slug,"cache-control":"no-store"}))});
   }
   if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
