@@ -55,7 +55,7 @@ test("NC011 GET reads the real SQLite token, POST validates and consumes it once
   expires_at_ms:Date.now()+3600000,env:h.env,event_key:"form:issued-00000000001"});
  const link="https://example.invalid/conteudo-pronto/briefing?t="+encodeURIComponent(issued.token);
  const get=await routeBriefingNc011(new Request(link),h.env);
- assert.equal(get.status,200,await get.text());
+ assert.equal(get.status,200);
  const html=await get.text();
  assert.match(html,/campanha do mês/i);
  const start=new Date(Date.now()+2*86400000);
