@@ -12,6 +12,7 @@ on:
       - "worker/cp-nc012-digital-hotmart.mjs"
       - "worker/cp-nc012-fulfillment.mjs"
       - "scripts/cp-nc012-fulfillment.test.mjs"
+      - "scripts/cp-nc013-regression.test.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "scripts/cp-nc011-routes.test.mjs"
       - "scripts/cp-g03-g04-candidate.test.mjs"
@@ -104,6 +105,13 @@ jobs:
           node --test --test-reporter=tap scripts/cp-nc012-fulfillment.test.mjs | tee nc012-fulfillment.txt
           grep -qx '# tests 8' <(grep '^# tests ' nc012-fulfillment.txt)
           grep -qx '# pass 8' <(grep '^# pass ' nc012-fulfillment.txt)
+      - name: NC-013 digital webhook and DO replacements regression
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/cp-nc013-regression.test.mjs | tee nc013-regression.txt
+          grep -qx '# tests 5' nc013-regression.txt
+          grep -qx '# pass 5' nc013-regression.txt
+          grep -qx '# fail 0' nc013-regression.txt
       - name: N3 mutation tests (5/5 killed)
         run: |
           set -euo pipefail
