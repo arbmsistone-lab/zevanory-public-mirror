@@ -554,7 +554,8 @@ const FIELDS = [
   ["cidade", "Cidade / região de atendimento", 80, false],
   ["tom", "Tom de voz (ex.: próximo e divertido, sério e técnico)", 120, true],
   ["contato", "Canais que seus clientes autorizaram para falar com você (ex.: e-mail, Instagram Direct, Telegram, chat do site)", 160, false],
-];
+]; 
+export const CP_BRIEFING_FIELDS = FIELDS; // NC-011: same field contract for DO-backed form
 // Campanha do mês: os cinco campos do contrato, todos obrigatórios. Datas AAAA-MM-DD; período de N a M dias.
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // Promessa de resultado em qualquer ordem ("venda garantida", "garantia de resultado", "lucro certo").
