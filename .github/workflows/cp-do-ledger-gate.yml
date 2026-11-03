@@ -6,6 +6,16 @@ on:
       - "worker/cp-durable-ledger.mjs"
       - "worker/content-service.mjs"
       - "scripts/cp-durable-ledger.test.mjs"
+      - "worker/cp-do-identity.mjs"
+      - "worker/kit-hotmart-identity.mjs"
+      - "worker/kit-release-192h.mjs"
+      - "scripts/cp-kv-writers-lint.mjs"
+      - "scripts/cp-kv-writers-lint.test.mjs"
+      - "scripts/cp-do-identity.test.mjs"
+      - "scripts/cp-alarm-g02.test.mjs"
+      - "scripts/kit-192h-release.test.mjs"
+      - "scripts/kit-192h-mutants.mjs"
+      - "docs/ops/cp-kv-allowlist-NC009.json"
       - "docs/ops/cp-do-cutover-NC007.md"
       - ".github/workflows/cp-do-ledger-gate.yml"
 permissions:
@@ -28,6 +38,41 @@ jobs:
           grep -qx '# tests 9' <(grep '# tests ' cp-do.txt)
           grep -qx '# pass 9' <(grep '# pass ' cp-do.txt)
           grep -qx '# fail 0' <(grep '# fail ' cp-do.txt)
+  nc009-g00-g02-n3-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: G00 allowlist and three static mutants
+        run: |
+          set -euo pipefail
+          node scripts/cp-kv-writers-lint.mjs | tee lint.txt
+          grep -q '"G00_KV_LINT":"PASS"' lint.txt
+          node --test --test-reporter=tap scripts/cp-kv-writers-lint.test.mjs | tee g00.txt
+          grep -qx '# tests 3' <(grep '^# tests ' g00.txt)
+          grep -qx '# pass 3' <(grep '^# pass ' g00.txt)
+      - name: G01 signed identity and G02 per-subscriber alarm queue
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/cp-do-identity.test.mjs scripts/cp-alarm-g02.test.mjs | tee g01-g02.txt
+          grep -qx '# tests 11' <(grep '^# tests ' g01-g02.txt)
+          grep -qx '# pass 11' <(grep '^# pass ' g01-g02.txt)
+      - name: N3 exact-192h offline boundary, refunds, replay and signed links
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/kit-192h-release.test.mjs | tee kit192.txt
+          grep -qx '# tests 12' <(grep '^# tests ' kit192.txt)
+          grep -qx '# pass 12' <(grep '^# pass ' kit192.txt)
+      - name: N3 mutation tests (5/5 killed)
+        run: |
+          set -euo pipefail
+          node scripts/kit-192h-mutants.mjs | tee mutant192.txt
+          grep -qx 'NC009_KIT_MUTANTS=PASS killed=5/5' mutant192.txt
   production-cutover-invariant:
     runs-on: ubuntu-latest
     timeout-minutes: 2
