@@ -279,11 +279,12 @@ export class ContentProntoSubscriberDO {
    if(path==="/internal/fulfillment" && request.method==="POST"){
     const input=await request.json();
     const result=this.fulfillment.apply(input);
-    if(input.kind==="enqueue" && ["applied","already_queued","duplicate_event"].includes(result.code)){
+    if(["enqueue","failure"].includes(input.kind) && ["applied","already_queued","duplicate_event"].includes(result.code)){
       const job=result.job;
-      if(job?.due_at_ms && job.status==="queued"){
+      if(job?.due_at_ms && ["queued","retry"].includes(job.status)){
         try{
-          const alarm=this.ledger.scheduleAlarmJob({alarm_key:"fulfillment:"+input.cycle,kind:"retry",due_at_ms:job.due_at_ms});
+          const key="fulfillment:"+input.cycle+":attempt:"+job.attempts;
+          const alarm=this.ledger.scheduleAlarmJob({alarm_key:key,kind:"retry",due_at_ms:job.due_at_ms});
           if(alarm.next!==null)await this.ctx.storage.setAlarm(alarm.next);
         }catch{
           // Queue remains persisted. No success is claimed without an actual alarm.
