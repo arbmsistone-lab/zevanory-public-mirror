@@ -63,6 +63,9 @@ export class KitReleaseLedger {
     status TEXT NOT NULL CHECK(status IN ('pending','sent')),
     created_at_ms INTEGER NOT NULL
   )`);
+  this.sql.exec("CREATE TABLE IF NOT EXISTS kit_download_usage(singleton INTEGER PRIMARY KEY CHECK(singleton=1),used INTEGER NOT NULL DEFAULT 0 CHECK(used BETWEEN 0 AND 5))");
+  this.sql.exec("INSERT OR IGNORE INTO kit_download_usage(singleton,used) VALUES(1,0)");
+  this.sql.exec("CREATE TABLE IF NOT EXISTS kit_private_reference(singleton INTEGER PRIMARY KEY CHECK(singleton=1),transaction TEXT NOT NULL,product_id TEXT NOT NULL)");
   this.sql.exec("INSERT OR IGNORE INTO kit_alarm_policy(singleton,attempts,status) VALUES(1,0,'idle')");
   this.sql.exec("INSERT OR IGNORE INTO kit_order(singleton,state,updated_at_ms,version) VALUES(1,'absent',0,0)");
  }
