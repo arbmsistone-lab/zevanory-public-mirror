@@ -117,23 +117,23 @@ LEGAL_FOOTER = ('<div class="container footer-legal">'
                 '</ul></section></div>')
 
 COMMERCE = {
-    "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197,
+    "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 97,
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Arquivo de comandos prontos para IA", "Planilha de aplicação (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "vendas-na-pratica": {"sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": 197,
+    "vendas-na-pratica": {"sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": 97,
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Modelos de mensagens de venda e follow-up", "Roteiro de conteúdos", "Planilha de acompanhamento comercial (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "lucro-e-caixa": {"sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": 247,
+    "lucro-e-caixa": {"sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": 147,
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido (PDF e DOCX)", "Planilha de caixa e margem (XLSX)", "Checklist financeiro semanal", "Comandos de IA para análise financeira", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "combo-ia-vendas": {"sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": 297,
-        "items": ["IA na Prática completo (manual, guia, comandos e planilha)", "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)", "Economia de R$ 97 em relação à compra separada (R$ 394)"],
-        "faq_q": ("Preciso comprar os produtos separadamente?", "Não. O Combo já inclui o IA na Prática e o Vendas na Prática completos, por R$ 297 (separados custariam R$ 394).")},
-    "negocio-completo": {"sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": 397,
-        "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", "Economia de R$ 244 em relação à compra separada (R$ 641)"],
+    "combo-ia-vendas": {"sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": 157,
+        "items": ["IA na Prática completo (manual, guia, comandos e planilha)", "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)", "Economia de R$ 37 em relação à compra separada (R$ 194)"],
+        "faq_q": ("Preciso comprar os produtos separadamente?", "Não. O Combo já inclui o IA na Prática e o Vendas na Prática completos, por R$ 157 (separados custariam R$ 194).")},
+    "negocio-completo": {"sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": 247,
+        "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", "Economia de R$ 94 em relação à compra separada (R$ 341)"],
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
-FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA no dia a dia e organizar as vendas pelo WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 97', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 244'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
+FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA no dia a dia e organizar as vendas pelo WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 37', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 94'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
 # Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
 HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
                  else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
