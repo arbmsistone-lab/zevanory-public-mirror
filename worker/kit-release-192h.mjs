@@ -66,7 +66,7 @@ export class KitReleaseLedger {
   )`);
   this.sql.exec("CREATE TABLE IF NOT EXISTS kit_download_usage(singleton INTEGER PRIMARY KEY CHECK(singleton=1),used INTEGER NOT NULL DEFAULT 0 CHECK(used BETWEEN 0 AND 5))");
   this.sql.exec("INSERT OR IGNORE INTO kit_download_usage(singleton,used) VALUES(1,0)");
-  this.sql.exec("CREATE TABLE IF NOT EXISTS kit_private_reference(singleton INTEGER PRIMARY KEY CHECK(singleton=1),transaction TEXT NOT NULL,product_id TEXT NOT NULL)");
+  this.sql.exec("CREATE TABLE IF NOT EXISTS kit_private_reference(singleton INTEGER PRIMARY KEY CHECK(singleton=1),provider_txn TEXT NOT NULL,product_id TEXT NOT NULL)");
   this.sql.exec("INSERT OR IGNORE INTO kit_alarm_policy(singleton,attempts,status) VALUES(1,0,'idle')");
   this.sql.exec("INSERT OR IGNORE INTO kit_order(singleton,state,updated_at_ms,version) VALUES(1,'absent',0,0)");
  }
@@ -193,15 +193,16 @@ export class KitReleaseLedger {
   if(typeof transaction!=="string"||!/^[A-Za-z0-9_.:-]{10,100}$/.test(transaction)||
      !/^[0-9]{6,12}$/.test(String(product_id)))throw new KitReleaseError("invalid_purchase_reference",400);
   return this.storage.transactionSync(()=>{
-   const old=this.one("SELECT transaction,product_id FROM kit_private_reference WHERE singleton=1");
-   if(old && (old.transaction!==transaction||old.product_id!==String(product_id)))
+   const old=this.one("SELECT provider_txn,product_id FROM kit_private_reference WHERE singleton=1");
+   if(old && (old.provider_txn!==transaction||old.product_id!==String(product_id)))
     throw new KitReleaseError("purchase_reference_conflict",409);
-   if(!old)this.sql.exec("INSERT INTO kit_private_reference(singleton,transaction,product_id) VALUES(1,?,?)",transaction,String(product_id));
+   if(!old)this.sql.exec("INSERT INTO kit_private_reference(singleton,provider_txn,product_id) VALUES(1,?,?)",transaction,String(product_id));
    return {ok:true};
   });
  }
  purchaseReference(){
-  return this.one("SELECT transaction,product_id FROM kit_private_reference WHERE singleton=1");
+  const row=this.one("SELECT provider_txn,product_id FROM kit_private_reference WHERE singleton=1");
+   return row?{transaction:row.provider_txn,product_id:row.product_id}:null;
  }
  async claimDownload(now,token,proof){
   if(!await this.canDownload(now,token,proof))return {ok:false,code:"download_not_eligible"};
