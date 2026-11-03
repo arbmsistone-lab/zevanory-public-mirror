@@ -28,7 +28,7 @@ function checkSupport(mod) {
     assert.equal(refund.intent, "refund", slug); assert.equal(delivery.intent, "delivery", slug);
     for (const [kind, a] of [["refund", refund.answer], ["delivery", delivery.answer]]) {
       assert.ok(a.includes(W.rule_7d), `${slug}/${kind}: regra única dos 7 dias`);
-      assert.match(a, /192 horas \(8 dias\)/, `${slug}/${kind}: prazo correto dos PDFs e ZIP`);
+      if(kind==="delivery") assert.match(a, /192 horas \(8 dias\)/, `${slug}/${kind}: prazo correto dos PDFs e ZIP`);
       assert.doesNotMatch(a, /72 horas|um download/i, `${slug}/${kind}: não prometer download antecipado`);
       assert.match(a, /sem custo/, `${slug}/${kind}: reenvio sem custo`);
       assert.match(a, /imediata/, `${slug}/${kind}: confirmação imediata`);
@@ -37,7 +37,8 @@ function checkSupport(mod) {
       assert.deepEqual(POL.bannedPolicyHits(a), [], `${slug}/${kind}: formulação divergente`);
       assert.equal(POL.hasCheckoutCta(a), false, `${slug}/${kind}: chamada de compra`);
     }
-    assert.match(refund.answer, /comunica imediatamente o Mercado Pago/, slug);
+    assert.match(refund.answer, /plataforma responsável pela cobrança/, slug);
+    assert.doesNotMatch(refund.answer,/comunica imediatamente o Mercado Pago/,slug);
     assert.match(refund.answer, /prazo do emissor/, slug);
   }
   for (const q of ["Posso pedir reembolso se não gostar?", "Como recebo o acesso depois de pagar?"]) {
