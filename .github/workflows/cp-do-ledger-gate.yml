@@ -24,7 +24,7 @@ jobs:
       - name: Nine independent SQLite transitions with no credentials
         run: |
           set -euo pipefail
-          node --test scripts/cp-durable-ledger.test.mjs 2>&1 | tee cp-do.txt
+          node --test --test-reporter=tap scripts/cp-durable-ledger.test.mjs 2>&1 | tee cp-do.txt
           grep -qx '# tests 9' <(grep '# tests ' cp-do.txt)
           grep -qx '# pass 9' <(grep '# pass ' cp-do.txt)
           grep -qx '# fail 0' <(grep '# fail ' cp-do.txt)
