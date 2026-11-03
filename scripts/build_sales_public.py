@@ -484,6 +484,10 @@ def apply_approved_overlay() -> None:
     ov = json.loads((OVERLAY / "approved.json").read_text(encoding="utf-8"))
     for slug in HTML_ROUTES:
         path = OUT / f"{slug}.html"
+        if slug == "conteudo-pronto":
+            # DEC-04: no public subscription collateral in the first-phase build.
+            path.write_text('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>Página indisponível | ZEVANORY</title></head><body><main><h1>Página indisponível</h1><p>Suporte: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>', encoding="utf-8")
+            continue
         html = path.read_text(encoding="utf-8")
         head, sep, body = html.partition("</head>")
         # Canonical/social identity points to the domain that actually serves the page.
