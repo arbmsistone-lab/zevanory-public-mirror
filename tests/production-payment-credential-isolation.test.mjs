@@ -15,6 +15,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { isMpPhase1CheckoutEnabled } from "../worker/nc015-sales-scope.mjs";
+// DEC-05: while the phase-one Hotmart-only lock is on, the own/pilot checkout is refused EARLIER by the lock
+// (503 phase1_hotmart_only, before any provider). Lifting the lock must bring back the isolation refusal below.
+const PILOT_CHECKOUT_REFUSAL = isMpPhase1CheckoutEnabled() ? "certification_checkout_not_isolated" : "phase1_hotmart_only";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const run = spawnSync(process.execPath, ["--import", "./tests/t4_sim/register.mjs", "tests/helpers/payment-credential-probe.mjs"],
@@ -41,7 +45,7 @@ test("P1 produção só com credenciais de TESTE recusa webhook de pagamento de 
 test("P2 produção só com credenciais de TESTE recusa checkout de produção", () => {
   const entry = scenario("prod_checkout_only_test");
   assert.equal(entry.status, 503, "[P2.1] entrada do Worker recusa o checkout piloto em produção");
-  assert.equal(entry.error, "certification_checkout_not_isolated", "[P2.1] motivo: produção não é sandbox isolado");
+  assert.equal(entry.error, PILOT_CHECKOUT_REFUSAL, "[P2.1] motivo: trava DEC-05 (fase 1 só Hotmart) ou, sem ela, produção não é sandbox isolado");
   const handler = scenario("prod_checkout_handler_only_test");
   assert.equal(handler.status, 503, "[P2.2] handler sem credencial de produção não cria preferência");
   assert.equal(handler.error, "payment_capacity_unavailable", "[P2.2] Mercado Pago indisponível sem credencial de produção");
