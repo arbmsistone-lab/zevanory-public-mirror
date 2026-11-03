@@ -26,6 +26,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import * as CS from "../worker/content-service.mjs";
 import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { openSalesHtml } from "../worker/sales-public-worker.mjs";
+import { cpSalesEnabled } from "../worker/nc015-sales-scope.mjs";
 import { CAMPAIGN, campaignize } from "./helpers/cp-campaign.mjs";
 
 const CP_CARD = /<article class="catalog-card[^"]*" id="p-conteudo-pronto"[^>]*>[\s\S]*?<\/article>/;
@@ -96,7 +97,31 @@ function* faqAnswers(html) {
   for (const m of html.matchAll(/<details><summary>[\s\S]*?<\/summary><p>([\s\S]*?)<\/p><\/details>/g)) yield m[1].replace(/<[^>]+>/g, "");
 }
 // NC-012: obsolete KV-only link TTL probe retired. The DO link contract is in scripts/cp-g03-g04-candidate.test.mjs.
+// DEC-04 (fase 1): o CP está oculto. A página-fonte e a gerada são a lápide (noindex,nofollow, sem preço, sem oferta,
+// sem assinatura, sem WhatsApp, inalterada pelo interruptor) e o catálogo não tem o cartão do CP. O contrato completo
+// abaixo volta a valer quando cpSalesEnabled() for ligado por mudança auditada.
+function assertCpTombstone() {
+  for (const rel of ["conteudo-pronto/index.html", "sales-public/conteudo-pronto.html"]) {
+    const html = read(rel);
+    assert.match(html, /<meta name="robots" content="noindex,nofollow">/, "[dec04] lápide noindex: " + rel);
+    assert.match(html, /<h1>Página indisponível<\/h1>/, "[dec04] lápide: " + rel);
+    assert.doesNotMatch(html, WA, "[dec04] sem WhatsApp: " + rel);
+    assert.doesNotMatch(html, /R\$|data-zev-sub|data-offer-summary|"@type":\s*"(?:Offer|Service)"|\/assinar\/|pay\.hotmart\.com/, "[dec04] sem oferta: " + rel);
+    assert.equal(openSalesHtml(html, "conteudo-pronto"), html, "[dec04] interruptor de vendas não reabre o CP: " + rel);
+  }
+  for (const rel of ["solucoes/index.html", "sales-public/solucoes.html", "sales-public/index.html"]) assert.doesNotMatch(read(rel), CP_CARD, "[dec04] catálogo sem o cartão do CP: " + rel);
+}
 test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato e não prometem WhatsApp", async () => {
+  if (!cpSalesEnabled()) {
+    assertCpTombstone();
+    // O atendimento continua descrevendo o serviço (pedidos antigos) sem WhatsApp e no contrato multicanal.
+    const sup = SUPPORT_PRODUCTS["conteudo-pronto"].content;
+    assert.doesNotMatch(sup, WA, "[suporte]");
+    assert.ok(sup.includes(`${C.roteiros} roteiros multicanal de venda e acompanhamento`) && sup.includes("versão curta e versão de e-mail") && sup.includes("não há disparo automático"));
+    assert.match(sup, /a equipe da ZEVANORY é avisada/, "[p24-prazo] atendimento");
+    assert.doesNotMatch(sup, /poucos minutos/, "[p24-prazo] atendimento sem prazo não medido");
+    return;
+  }
   const src = read("conteudo-pronto/index.html");
   assert.doesNotMatch(src, WA, "conteudo-pronto/index.html");
   assert.equal(src.match(/data-content-schema="(\d+)"/)?.[1], String(C.content_schema_version), "página e gerador na mesma versão de schema");
@@ -266,9 +291,15 @@ test("(e) toda página que descreve o Conteúdo Pronto (guias ia-para-*, kit, ll
   assert.ok(niches.length >= 40, "guias de nicho encontrados: " + niches.length);
   const required = [
     ...niches.flatMap((n) => [`${n}/index.html`, `sales-public/${n}.html`]),
-    "kit-afiliado/index.html", "sales-public/kit-afiliado.html", "sales-overlay/llms.txt", "sales-public/llms.txt",
-    "solucoes/index.html", "sales-public/solucoes.html", "sales-public/index.html",
+    "kit-afiliado/index.html", "sales-public/kit-afiliado.html",
   ];
+  // DEC-04: com o CP oculto, catálogo e llms.txt não o descrevem (nem o anunciam); ligado, voltam a ser exigidos.
+  const catalog = ["sales-overlay/llms.txt", "sales-public/llms.txt", "solucoes/index.html", "sales-public/solucoes.html", "sales-public/index.html"];
+  if (cpSalesEnabled()) required.push(...catalog);
+  else for (const rel of catalog) {
+    assert.ok(!described.has(rel), "[dec04] CP oculto não é descrito em: " + rel);
+    assert.doesNotMatch(read(rel), /Conteúdo Pronto|\/conteudo-pronto|\/assinar\//, "[dec04] CP oculto não é anunciado em: " + rel);
+  }
   for (const rel of required) assert.ok(described.has(rel), "página descreve o Conteúdo Pronto e entrou na varredura: " + rel);
 });
 

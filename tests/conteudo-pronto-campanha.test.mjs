@@ -18,6 +18,7 @@ import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { validateSiteReply } from "../worker/site-chat.mjs";
 import { validateReply } from "../worker/whatsapp-conversation.mjs";
 import { CAMPAIGN, CAMPAIGN_MONTH2, campaignize, isoDay, plusDays } from "./helpers/cp-campaign.mjs";
+import { cpSalesEnabled } from "../worker/nc015-sales-scope.mjs";
 
 globalThis.fetch = async (u) => { throw new Error("rede bloqueada no teste: " + u); };
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -210,18 +211,26 @@ test("[camp-textos] página, oferta, atendimento, chat e descrições fiscal/Hot
   const built = read("sales-public/conteudo-pronto.html");
   const sup = SUPPORT_PRODUCTS["conteudo-pronto"].content;
   const chat = JSON.parse(read("data/site-chat-policy.json")).closed_summaries["conteudo-pronto"];
-  for (const [nome, t] of [["oferta", caract], ["página", page], ["página gerada", built], ["atendimento", sup], ["chat", chat], ["fiscal", C.descricao_fiscal_proposta], ["hotmart", C.descricao_hotmart_proposta]]) {
+  // DEC-04 (fase 1): com o CP oculto, a página-fonte e a gerada são a lápide (sem oferta); os demais textos
+  // (oferta, atendimento, chat, fiscal, Hotmart) continuam descrevendo a campanha. Ligado, a página volta a ser exigida.
+  const live = cpSalesEnabled();
+  if (!live) for (const [nome, t] of [["página", page], ["página gerada", built]]) {
+    assert.match(t, /<meta name="robots" content="noindex,nofollow">/, "[camp-textos] lápide noindex: " + nome);
+    assert.doesNotMatch(t, /R\$|data-zev-sub|\/assinar\/|pay\.hotmart\.com|promoção/i, "[camp-textos] lápide sem oferta: " + nome);
+  }
+  const pages = (rows) => rows.filter(([nome]) => live || !nome.startsWith("página"));
+  for (const [nome, t] of pages([["oferta", caract], ["página", page], ["página gerada", built], ["atendimento", sup], ["chat", chat], ["fiscal", C.descricao_fiscal_proposta], ["hotmart", C.descricao_hotmart_proposta]])) {
     assert.match(t, /campanha (mensal )?de promoção de vendas/i, "[camp-textos] " + nome);
   }
-  for (const [nome, t] of [["oferta", caract], ["página", page], ["atendimento", sup], ["fiscal", C.descricao_fiscal_proposta], ["hotmart", C.descricao_hotmart_proposta]]) {
+  for (const [nome, t] of pages([["oferta", caract], ["página", page], ["atendimento", sup], ["fiscal", C.descricao_fiscal_proposta], ["hotmart", C.descricao_hotmart_proposta]])) {
     assert.match(t, /objetivo comercial/i, "[camp-textos] objetivo comercial: " + nome);
     assert.match(t, /condição comercial/i, "[camp-textos] condição comercial: " + nome);
   }
   // Nada além do entregue: sem publicação, sem disparo, sem anúncio, sem garantia de resultado.
-  for (const [nome, t] of [["página", page], ["hotmart", C.descricao_hotmart_proposta], ["fiscal", C.descricao_fiscal_proposta]]) {
+  for (const [nome, t] of pages([["página", page], ["hotmart", C.descricao_hotmart_proposta], ["fiscal", C.descricao_fiscal_proposta]])) {
     assert.doesNotMatch(t, /publicamos (nas|por)|enviamos as mensagens|gerenciamos (seus )?anúncios|resultado garantido|vendas garantidas/i, "[camp-textos] nada além do entregue: " + nome);
   }
-  assert.match(page, /Escolher a oferta ou a condição comercial por você/, "[camp-textos] a condição é do assinante");
+  if (live) assert.match(page, /Escolher a oferta ou a condição comercial por você/, "[camp-textos] a condição é do assinante");
   // O nome do serviço passa nos validadores do chat e do atendimento; "promoção" fora dele continua bloqueada.
   const nome = "O Conteúdo Pronto é uma campanha mensal de promoção de vendas da oferta que você escolher.";
   assert.equal(validateSiteReply(nome).ok, true, "[camp-textos] chat aceita o nome do serviço");
@@ -230,7 +239,7 @@ test("[camp-textos] página, oferta, atendimento, chat e descrições fiscal/Hot
     assert.ok(validateSiteReply(t).issues.includes("discount_or_urgency"), "[camp-textos] chat ainda bloqueia: " + t);
     assert.ok(validateReply(t).issues.includes("discount"), "[camp-textos] atendimento ainda bloqueia: " + t);
   }
-  assert.match(page, /data-content-schema="3"/);
+  if (live) assert.match(page, /data-content-schema="3"/);
 });
 
 test("[camp-amostra] amostra operacional completa (modo seguro) cumpre todos os critérios", () => {
