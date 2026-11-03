@@ -8,6 +8,12 @@ on:
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/cp-nc011-routing.mjs"
       - "scripts/ci/nc015-*"
+      - "scripts/ci/nc016-*"
+      - "data/politica-unica.json"
+      - "sales-overlay/approved.json"
+      - "termos/index.html"
+      - "reembolso/index.html"
+      - "conteudo-pronto/index.html"
       - "scripts/build_sales_public.py"
       - "solucoes/index.html"
       - "sales-overlay/llms.txt"
@@ -50,6 +56,13 @@ jobs:
           grep -qx '# tests 4' scope.txt
           grep -qx '# pass 4' scope.txt
           grep -qx '# fail 0' scope.txt
+      - name: Exactly 5 NC-016 A1-A4 static price, payment and legal-gating cases
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/ci/nc016-phase1-contract.test.mjs | tee nc016.txt
+          grep -qx '# tests 5' nc016.txt
+          grep -qx '# pass 5' nc016.txt
+          grep -qx '# fail 0' nc016.txt
       - name: Public PDF ZIP census (only checked-out repository)
         run: |
           set -euo pipefail
