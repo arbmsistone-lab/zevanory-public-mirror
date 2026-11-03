@@ -40,17 +40,17 @@ test("internal monitors are refused at POST /comprar and never reach checkout cr
     assert.ok(BOT_UA.test(ua), ua);
     const { env, calls } = coreEnv();
     const res = await worker.fetch(post("/comprar/ZEV-IA-011", ua), env, ctx);
-    assert.equal(res.status, 403, ua);
+    assert.equal(res.status, 503, ua);
     assert.ok(!calls.some((u) => u.startsWith("https://checkout.internal/")), "checkout created for " + ua);
   }
 });
 
-test("a real browser POST still opens the Mercado Pago checkout (303)", async () => {
+test("DEC-05: even a real browser POST cannot reopen Mercado Pago checkout", async () => {
   const { env, calls } = coreEnv();
   const res = await worker.fetch(post("/comprar/ZEV-IA-011", CHROME), env, ctx);
-  assert.equal(res.status, 303);
-  assert.match(res.headers.get("location"), /^https:\/\/www\.mercadopago\.com\.br\//);
-  assert.equal(calls.filter((u) => u.startsWith("https://checkout.internal/")).length, 1);
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get("location"),null);
+  assert.equal(calls.filter((u) => u.startsWith("https://checkout.internal/")).length, 0);
   assert.ok(!BOT_UA.test(CHROME));
 });
 
