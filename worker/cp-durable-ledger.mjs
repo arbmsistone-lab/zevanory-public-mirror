@@ -262,6 +262,17 @@ export class ContentProntoSubscriberDO {
   try{
    const path=new URL(request.url).pathname;
    if(path==="/internal/snapshot" && request.method==="GET")return Response.json(this.ledger.snapshot());
+   if(path==="/internal/form-status" && request.method==="GET") {
+    // Internal DO binding only. Return no PII, token or form fields.
+    const qs=new URL(request.url).searchParams;
+    const cycle=Number(qs.get("cycle")),hash=qs.get("sha256")||"";
+    if(!Number.isInteger(cycle)||cycle<1||!/^[a-f0-9]{64}$/.test(hash))
+     return Response.json({ok:false,valid:false},{status:400});
+    const row=this.ledger.one("SELECT token_sha256,expires_at_ms,status FROM cp_form_tokens WHERE cycle=?",cycle);
+    const state=this.ledger.current();
+    const valid=Boolean(row&&state.status==="active"&&state.cycle===cycle&&row.status==="issued"&&row.token_sha256===hash&&row.expires_at_ms>=Date.now());
+    return Response.json({ok:true,valid,cycle});
+   }
    if(path==="/internal/events" && request.method==="GET"){
     const from=Number(new URL(request.url).searchParams.get("after")||0);
     return Response.json({events:this.ledger.exportEvents(from)});
