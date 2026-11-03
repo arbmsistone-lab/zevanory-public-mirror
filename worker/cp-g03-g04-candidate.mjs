@@ -92,3 +92,20 @@ export async function submitCpFormCandidate({token,form,env,now=Date.now()}){
   return json(202,{ok:true,code:answer.code,delivery:"held_pending_cutover"});
  }catch{return json(403,{ok:false,error:"form_token_invalid_or_unavailable"})}
 }
+
+
+// NC-011 effective route: validation uses the actual SQLite form-token state.
+// Invalid, consumed, revoked or unavailable tokens never show the form.
+export async function inspectCpFormTokenCandidate({token,env,now=Date.now()}){
+ try{
+  const {record,hash}=await checkedToken(token,env,now);
+  if(!env?.CP_SUBSCRIBER_DO?.idFromName||!env?.CP_SUBSCRIBER_DO?.get)
+   return {ok:false,status:503};
+  const stub=env.CP_SUBSCRIBER_DO.get(env.CP_SUBSCRIBER_DO.idFromName("cp-verified:"+record.s));
+  const u="https://internal.cp.example/internal/form-status?cycle="+encodeURIComponent(record.c)+"&sha256="+hash;
+  const response=await stub.fetch(u,{method:"GET"});
+  if(!response.ok)return {ok:false,status:503};
+  const data=await response.json();
+  return data?.ok===true&&data?.valid===true&&data?.cycle===record.c ? {ok:true,status:200,cycle:record.c} : {ok:false,status:404};
+ }catch{return {ok:false,status:404}}
+}
