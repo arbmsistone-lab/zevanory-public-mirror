@@ -32,10 +32,18 @@ test("intent and source are stored as aggregate counters only and summarized per
   assert.deepEqual(s.topCampaigns, [{ campaign: "conteudo_20261012", views: 4 }]);
   assert.equal(s.pages["ia-na-pratica"].views, 10);
 });
-test("subscribe redirect keeps the source for Hotmart's sale report", async () => {
-  const r = await worker.fetch(new Request("https://vendas.zevanory.api.br/assinar/conteudo-pronto?utm_source=telegram"), { CORE: { fetch: async () => new Response(JSON.stringify({ open: true })) } }, { waitUntil() {} }); // sales open (owner switch); closed is covered in hotmart-paused.test.mjs
-  assert.equal(r.status, 302);
-  assert.match(r.headers.get("location"), /^https:\/\/pay\.hotmart\.com\/X107980075B\?off=4ydutio7&src=telegram$/);
+test("Hotmart-only kit variant preserves src attribution and never exposes CP", async () => {
+  const asset = await import("node:fs").then(fs=>fs.readFileSync(new URL("../sales-public/ia-na-pratica.html", import.meta.url),"utf8"));
+  const calls=[];
+  const env={CORE:{fetch: async()=>Response.json({open:true})},ASSETS:{fetch:async()=>new Response(asset,{status:200})}};
+  const r=await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica?utm_source=telegram"),env,{waitUntil(){}});
+  assert.equal(r.status,200);
+  const html=await r.text();
+  assert.match(html,/pay\\.hotmart\\.com\\/F107979716H\\?off=g9knd34r&src=telegram/);
+  assert.doesNotMatch(html,/Mercado Pago|pedir-reembolso|entrega\\/reenviar/);
+  const cp=await worker.fetch(new Request("https://vendas.zevanory.api.br/assinar/conteudo-pronto?utm_source=telegram"),env,{waitUntil(){}});
+  assert.equal(cp.status,404);
+  assert.equal(cp.headers.get("location"),null);
 });
 test("visits from cloud/datacenter networks (our audits, monitors, headless browsers) are never counted as people", () => {
   const ua = "Mozilla/5.0 (Windows NT 10.0) Chrome/130";
