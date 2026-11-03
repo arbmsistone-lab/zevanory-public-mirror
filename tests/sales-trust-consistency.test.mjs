@@ -51,13 +51,21 @@ test("7-day withdrawal: trust copy == Worker RULE_7D == Termos/Reembolso", () =>
   }
 });
 
-test("72-hour link: trust copy == Worker DELIVERY_72H == Termos/Reembolso", () => {
-  assert.equal(DELIVERY_72H, "link pessoal válido por 72 horas e para um download");
+test("DEC-01 v3: 192h PDF/ZIP commitment matches Worker, products, Termos and Reembolso", () => {
+  assert.equal(DELIVERY_72H,"192 horas (8 dias) após a aprovação do pagamento");
   assert.ok(DELIVERY_TEXT.includes(DELIVERY_72H));
-  assert.deepEqual(collect(/<li>Entrega por e-mail em ([^<]+)<\/li>/g), [DELIVERY_72H]);
-  assert.deepEqual(collect(/<li><strong>Link pessoal<\/strong><span>([^.<]+)\./g).map(lc1), [DELIVERY_72H]);
-  for (const f of ["termos.html", "reembolso.html"]) assert.ok(legalBody(read(f)).includes(DELIVERY_72H), f);
-  for (const [f, h] of [...LEGAL, ...pages]) for (const m of text(h).matchAll(/válid[oa] por (\d+) horas/g)) assert.equal(m[1], "72", `${f}: ${m[0]}`);
+  const facts=collect(/<li>PDFs e ZIP por e-mail ([^<]+)<\/li>/g);
+  assert.ok(facts.some(v=>v.includes(DELIVERY_72H)),"hero states the exact 192-hour deadline");
+  const trust=collect(/<li><strong>PDFs e ZIP<\/strong><span>([^<]+)<\/span><\/li>/g);
+  assert.ok(trust.some(v=>v.includes(DELIVERY_72H)),"offer trust states the same deadline");
+  for (const f of ["termos.html","reembolso.html"]) assert.ok(legalBody(read(f)).includes(DELIVERY_72H),f);
+  for (const [f,h] of [...LEGAL,...pages]){
+    const b=text(h);
+    assert.doesNotMatch(b,/link pessoal válido por 72 horas e para um download|72 horas e para um download/i,f);
+  }
+  for(const slug of ["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo"]){
+    assert.ok(read(slug+".html").includes(DELIVERY_72H),slug+": no early link");
+  }
 });
 
 test("company name, CNPJ and address: trust block, seller list and footer == Worker SUPPLIER == legal pages", () => {
