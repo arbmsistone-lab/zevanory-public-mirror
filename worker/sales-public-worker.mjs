@@ -241,8 +241,8 @@ export function hotmartPage(html,slug,checkout){
   let out=openSalesHtml(html,slug);  // only served while sales are open (handleHotmart)
   for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);
   // A stale pair must never leak own-checkout copy into a Hotmart purchase page.
-  const visible=out.replace(/<script type="application\\/ld\\+json">[\\s\\S]*?<\\/script>/g,"");
-  if(/Mercado Pago|pedir-reembolso|entrega\\/reenviar/.test(visible))throw Error("hotmart_copy_rewrite_incomplete");
+  const visible=out.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g,"");
+  if(/Mercado Pago|pedir-reembolso|entrega\/reenviar/.test(visible))throw Error("hotmart_copy_rewrite_incomplete");
   out=out.replace(/href="\/comprar\/ZEV-[A-Z0-9-]+"/g,'href="'+checkout+'" rel="noopener"');
   // Avoid duplicate-content SEO: the canonical stays on the main page; this variant is not indexed.
   out=out.replace("<head>",'<head><meta name="robots" content="noindex,follow">');
