@@ -137,14 +137,14 @@ FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a di
 # Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
 HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
                  else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
-DELIVERY_Q = ("Como recebo o produto?", "Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um " + policy.DELIVERY_72H + " do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.")
+DELIVERY_Q = ("Como recebo o produto?", "O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento, ao fim do prazo de garantia. O link permite até cinco downloads durante a validade; peça outro sem custo se expirar.")
 GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
 MODE = policy.build_mode()
 
 def buy_facts() -> str:
     return ('<ul class="facts buy-facts"><li>Pagamento processado pelo Mercado Pago (Pix ou cartão)</li>'
-            f'<li>Entrega por e-mail em {policy.DELIVERY_72H}</li>'
+            f'<li>PDFs e ZIP por e-mail {policy.DELIVERY_72H}; acesso online e planilhas imediatamente</li>'
             '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
 
 # Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
@@ -166,8 +166,8 @@ def how_to_buy() -> str:
     return ('<section class="container how-to-buy" aria-labelledby="como-compra"><h2 id="como-compra">Como a compra funciona</h2>'
             '<ol class="steps">'
             '<li><strong>Pagamento</strong><span>Pix ou cartão, processado pelo Mercado Pago. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
-            '<li><strong>E-mail</strong><span>Depois da confirmação do pagamento, o link chega no e-mail que você informou.</span></li>'
-            f'<li><strong>Link pessoal</strong><span>{policy.DELIVERY_72H[0].upper() + policy.DELIVERY_72H[1:]}. Se expirar, o suporte envia outro sem custo.</span></li>'
+            '<li><strong>E-mail</strong><span>Após a aprovação, o Hotmart Club oferece acesso online e às planilhas.</span></li>'
+            f'<li><strong>PDFs e ZIP</strong><span>Disponíveis por link pessoal {policy.DELIVERY_72H}. Se expirar, o suporte envia outro sem custo.</span></li>'
             '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
             '<dl class="seller">'
             f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
@@ -300,7 +300,7 @@ def apply_commerce(slug: str, html: str) -> str:
     # exact Hotmart counterpart in worker/sales-public-worker.mjs (HOTMART_TEXT).
     html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
     trust = {
-        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download."),
+        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "O acesso online e as planilhas ficam disponíveis após a aprovação; PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação do pagamento."),
         ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
         ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix ou cartão pelo Mercado Pago."),
     }
