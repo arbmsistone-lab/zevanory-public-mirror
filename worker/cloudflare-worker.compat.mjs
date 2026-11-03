@@ -7,6 +7,7 @@ import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } fro
 import { handleOwnerOAuth, handleYoutubePublisherAccess, handlePublisherAccess } from "./owner-oauth.mjs";
 import { routeHotmartNc011, routeBriefingNc011, routePackageNc011, routeOperatorNc011 } from "./cp-nc011-routing.mjs";
 import {cpSalesEnabled,isCpPublicRoute,cpClosedResponse} from "./nc015-sales-scope.mjs";
+import {handleKitDownloadNc015} from "./kit-nc015-download.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -110,6 +111,7 @@ const wrapped = {
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
+    if (url.pathname === "/kit/baixar") return handleKitDownloadNc015(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
     if (url.pathname === "/api/webhooks/hotmart") return routeHotmartNc011(request,normalized,ctx);
     // suporte@/contato@ (e-mail oficial do consumidor): Resend email.received assinado -> encaminha ao dono.
