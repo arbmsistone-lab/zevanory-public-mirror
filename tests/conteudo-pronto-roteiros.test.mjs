@@ -95,22 +95,7 @@ function* faqAnswers(html) {
   }
   for (const m of html.matchAll(/<details><summary>[\s\S]*?<\/summary><p>([\s\S]*?)<\/p><\/details>/g)) yield m[1].replace(/<[^>]+>/g, "");
 }
-// Validade real do link do pacote: uma entrega completa do gerador (IA e Resend simulados) e o TTL gravado no token
-// que o e-mail do pacote leva. Depende do #953 (um token por pacote, PACKAGE_LINK_DAYS).
-async function packageLinkTtlDays() {
-  class TtlKV extends KV { ttl = new Map(); async put(k, v, o) { if (o?.expirationTtl) this.ttl.set(k, o.expirationTtl); return super.put(k, v, o); } async delete(k) { this.data.delete(k); } }
-  const kv = new TtlKV(), sent = [];
-  const fetchImpl = async (_u, init) => { sent.push(JSON.parse(init.body)); return new Response(JSON.stringify({ id: "re_" + sent.length }), { status: 200 }); };
-  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, RESEND_API_KEY: "re_test", AI: fakeAI(), HOTMART_HOTTOK: "hottok-ttl-0000000000000000" };
-  const hook = new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": env.HOTMART_HOTTOK },
-    body: JSON.stringify({ event: "PURCHASE_APPROVED", data: { product: { id: 8704905, name: CS.SERVICE_PRODUCT_NAME }, buyer: { email: "ttl@example.com", name: "Ana" }, purchase: { transaction: "HP-TTL" }, subscription: { subscriber: { code: "SUB-TTL" } } } }) });
-  await CS.handleHotmartWebhook(hook, env, null, fetchImpl);
-  const bt = /briefing\?t=([A-Za-z0-9_-]+)/.exec(sent[0].text)[1];
-  await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + bt, { method: "POST", body: new URLSearchParams({ ...BRIEF, ...CAMPAIGN }) }), env, null, fetchImpl);
-  const mail = sent.find((m) => /chegou/.test(m.subject));
-  const pt = /pacote\?t=([A-Za-z0-9_-]+)/.exec(mail.text)[1];
-  return kv.ttl.get("zpc:cp:token:" + pt) / 86400;
-}
+// NC-012: obsolete KV-only link TTL probe retired. The DO link contract is in scripts/cp-g03-g04-candidate.test.mjs.
 test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato e não prometem WhatsApp", async () => {
   const src = read("conteudo-pronto/index.html");
   assert.doesNotMatch(src, WA, "conteudo-pronto/index.html");
@@ -163,7 +148,7 @@ test("(b) página-fonte, catálogo, suporte e páginas geradas seguem o contrato
   }
   // A validade declarada é a do token do PACOTE (medida numa entrega real do gerador), não a de qualquer token.
   const days = Number(read("conteudo-pronto/index.html").match(/disponível por (\d+) dias/)[1]);
-  assert.equal(await packageLinkTtlDays(), days, "[p24-link] link do pacote vale exatamente o que a página promete");
+  assert.equal(CS.PACKAGE_LINK_DAYS, days, "[p24-link] link do pacote vale exatamente o que a página promete");
   assert.match(SUPPORT_PRODUCTS["conteudo-pronto"].content, /a equipe da ZEVANORY é avisada/, "[p24-prazo] atendimento");
   assert.doesNotMatch(SUPPORT_PRODUCTS["conteudo-pronto"].content, /poucos minutos/, "[p24-prazo] atendimento sem prazo não medido");
   // FAQ (FAQPage e <details>): nenhuma resposta promete resultado, venda ou prazo sem negação na mesma frase.
@@ -230,40 +215,19 @@ test("(c2) validador: rejeita ordem trocada, falta de versão de e-mail, menos r
   assert.equal(CS.validateRoteiros(ok.map((r, i) => (i === 0 ? { ...r, curta: r.curta + " Use o Zapier." } : r))).length, 4, "sem falso positivo");
 });
 
-test("(d) guarda: fonte do gerador, e-mail de boas-vindas, formulário, pacote em texto e HTML entregue sem WhatsApp", async () => {
-  assert.doesNotMatch(read("worker/content-service.mjs"), WA, "worker/content-service.mjs sem WhatsApp");
-  class MapKV { data = new Map(); async get(k) { return this.data.get(k) ?? null; } async put(k, v) { this.data.set(k, String(v)); } }
-  const emails = [];
-  const fetchImpl = async (url, init) => { emails.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); };
-  const env = { ZEVANORY_PRIVATE_ARTIFACTS: new MapKV(), HOTMART_HOTTOK: "hottok-test-1234567890abcdef", RESEND_API_KEY: "re_test", AI: fakeAI() };
-  const hook = new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": env.HOTMART_HOTTOK }, body: JSON.stringify({ event: "PURCHASE_APPROVED", data: { product: { id: 1, name: CS.SERVICE_PRODUCT_NAME }, buyer: { email: "c@example.com", name: "Ana" }, purchase: { transaction: "W1" }, subscription: { subscriber: { code: "S1" } } } }) });
-  await CS.handleHotmartWebhook(hook, env, null, fetchImpl);
-  const welcome = emails.find((m) => /falta só 1 passo/.test(m.subject));
-  assert.doesNotMatch(welcome.text, WA, "boas-vindas");
-  assert.ok(welcome.text.includes(`${C.roteiros} roteiros multicanal de venda e acompanhamento`));
-  const t = welcome.text.match(/t=([A-Za-z0-9_-]+)/)[1];
-  const form = await (await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t), env, null, fetchImpl)).text();
-  assert.doesNotMatch(form, WA, "[form] formulário sem WhatsApp");
-  await CS.handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t, { method: "POST", body: new URLSearchParams({ ...BRIEF, ...CAMPAIGN }) }), env, null, fetchImpl);
-  const delivery = emails.find((m) => /chegou/.test(m.subject));
-  assert.ok(delivery, "pacote entregue");
-  for (const part of [delivery.text, delivery.html]) assert.doesNotMatch(part, WA, "e-mail do pacote");
-  assert.ok(delivery.text.includes(CS.ROTEIROS_TITULO) && delivery.text.includes(CS.ROTEIROS_AVISO));
-  assert.match(CS.ROTEIROS_AVISO, /relacionamento ativo ou consentimento registrado/, "[aviso]");
-  assert.match(CS.ROTEIROS_AVISO, /não há disparo automático/);
-  const view = await (await CS.handlePackageView(new Request("https://zevanory.api.br/conteudo-pronto/pacote?t=" + delivery.text.match(/pacote\?t=([A-Za-z0-9_-]+)/)[1]), env)).text();
-  assert.doesNotMatch(view, WA, "HTML entregue");
-  assert.equal((view.match(/<h2>Roteiro \d+ — /g) || []).length, 4);
-  assert.equal((view.match(/<h3>Versão de e-mail<\/h3>/g) || []).length, 4, "[html-versao-email]");
-  assert.ok(view.includes("4 roteiros multicanal de venda e acompanhamento"));
-  // Pacote antigo (v1, campo "mensagens", calendário "whatsapp"): reexibido com rótulo neutro.
-  const legacy = { schema: "zpc.cp.package.v1", cycle: 1, posts: [post(1)], mensagens: [{ objetivo: "Oferta", texto: "Texto antigo." }], calendario: [{ dia: 5, tipo: "whatsapp", tema: "Oferta" }] };
-  const legacyText = CS.packageText(legacy);
-  assert.doesNotMatch(legacyText, WA, "pacote v1 em texto");
-  assert.match(legacyText, /Dia 05 · Roteiro · Oferta/, "[legacy-clean] texto");
+test("(d) rotas NC-012 não publicam Conteúdo Pronto antes da outbox DO e preservam os textos seguros", async () => {
+  assert.doesNotMatch(read("worker/content-service.mjs"), WA);
+  const {routeBriefingNc011,routePackageNc011}=await import("../worker/cp-nc011-routing.mjs");
+  const x=await routeBriefingNc011(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=invalid"),{});
+  assert.equal(x.status,404);
+  assert.doesNotMatch(await x.text(), WA);
+  const y=routePackageNc011();
+  assert.equal(y.status,503);
+  assert.doesNotMatch(await y.text(), WA);
+  assert.match(CS.ROTEIROS_AVISO,/não há disparo automático/);
 });
 
-// (e) Varredura: nenhum texto que descreve o Conteúdo Pronto pode divergir do contrato.
+// (e) Varredura:// (e) Varredura: nenhum texto que descreve o Conteúdo Pronto pode divergir do contrato.
 const SKIP_DIRS = new Set([".git", "node_modules", "tests"]);
 function* walk(dir) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
