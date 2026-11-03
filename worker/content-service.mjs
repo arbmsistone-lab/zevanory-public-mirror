@@ -1,4 +1,4 @@
-// ZEVANORY Conteúdo Pronto — fully automatic monthly service sold on Hotmart.
+// ZEVANORY Conteúdo Pronto — legacy package/regeneration validators only (NC-012 Draft, production NO-GO).
 // Hotmart owns billing, recurrence, cancellation and refunds. This module only:
 //   1) receives the authenticated Hotmart postback (hottok, constant-time compare);
 //   2) on an approved charge, emails a one-time briefing link (first cycle) or, on renewal,
@@ -576,32 +576,7 @@ async function enqueuePending(kv, key, now = Date.now()) {
   if (!meta[key]) { meta[key] = { attempts: 0, firstAt: new Date(now).toISOString() }; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }
   await pendingLog(kv, key, "enqueued", "", now);
 }
-async function notePendingFailure(kv, key, reason, now = Date.now()) {
-  const meta = await readJson(kv, PENDING_META, {});
-  const m = meta[key] || { attempts: 0, firstAt: new Date(now).toISOString() };
-  meta[key] = { ...m, attempts: Number(m.attempts || 0) + 1, lastAt: new Date(now).toISOString(), lastReason: reason };
-  await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });
-}
-async function leavePending(kv, key, event, reason, now = Date.now()) {
-  const pending = await readJson(kv, PENDING, []);
-  if (pending.includes(key)) await kv.put(PENDING, JSON.stringify(pending.filter((k) => k !== key)));
-  const meta = await readJson(kv, PENDING_META, {});
-  const m = meta[key];
-  if (m) { delete meta[key]; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }
-  await pendingLog(kv, key, event, reason, now);
-  return m || null;
-}
-async function deadLetter(env, kv, key, m, fetchImpl, now) {
-  const dead = await readJson(kv, PENDING_DEAD, {});
-  const prev = dead[key] || null; // um segundo dead-letter não apaga o histórico de operações do primeiro
-  const kind = m?.kind === "welcome" ? "welcome" : "package";
-  dead[key] = { ...(m || {}), kind, deadAt: new Date(now).toISOString(), status: "dead", operations: prev?.operations || [], history: [...(prev?.history || []), ...(prev ? [{ deadAt: prev.deadAt, attempts: prev.attempts, lastReason: prev.lastReason }] : [])].slice(-20) };
-  await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
-  if (kind === "package") await leavePending(kv, key, "dead", m?.lastReason || "max_attempts", now);
-  else await pendingLog(kv, key, "dead", "welcome:" + (m?.lastReason || "max_attempts"), now);
-  const what = kind === "welcome" ? "o e-mail com o formulário" : "o pacote do mês";
-  await ownerAlert(env, kind === "welcome" ? "boas-vindas do Conteúdo Pronto sem entrega" : "pacote do Conteúdo Pronto sem entrega", `Um assinante ficou sem ${what} após ${m?.attempts ?? "?"} tentativas (último motivo: ${m?.lastReason || "desconhecido"}; assinante …${String(key).slice(-12)}). Nada mais será tentado automaticamente. Reenvio só pelo operador, com motivo registrado: POST /api/admin/conteudo-pronto/requeue (ou node scripts/conteudo-pronto/operador.mjs requeue).`, fetchImpl, { kind: "sem_entrega_" + kind, sub: key, now }).catch(() => null);
-}
+// NC-012: legacy global pending failure/dead-letter removed; DO work_jobs + owner_alert_outbox govern these transitions.
 // Reenvio controlado de um item da fila de falhas: só com operador e motivo, registrado no log.
 export async function requeueDeadPackage(env, key, { operator, reason, newEmail = "", now = Date.now() } = {}) {
   const kv = kvOf(env);
@@ -647,208 +622,23 @@ export async function requeueDeadPackage(env, key, { operator, reason, newEmail 
   await pendingLog(kv, key, "requeued", String(operator).slice(0, 40), now);
   return { ok: true };
 }
-// G1: enquanto uma geração está em andamento, o cron e um reenvio do formulário não começam outra para o mesmo
-// assinante. Auditoria #953 M3: o lease cobre o PIOR caso da geração (3 chamadas de IA x modelos x tentativas x tempo
-// limite de cada chamada, mais o envio e as repetições de KV), não só os 30 s do waitUntil. Ele fica numa chave
-// própria (zpc:cp:lease:), para não gastar escritas na chave do assinante (H1: 1 escrita/s por chave).
+// NC-012 G05/G07: CP generation/lease/delivery KV implementation removed.
+// Only an isolated regeneration-compatibility facade remains for legacy test
+// fixtures; this is not wired to the production Cron or customer routes.
 export const AI_CALL_TIMEOUT_MS = 60000;
 export const AI_ATTEMPTS_PER_MODEL = 2;
 export const AI_CALLS_PER_PACKAGE = 3;
-export const AI_CORRECTIVE_CALLS = 1; // nova chamada corretiva por recusa de promessa (no máximo 1 por chamada ao modelo)
+export const AI_CORRECTIVE_CALLS = 1;
 export const GEN_WORST_CASE_MS = AI_CALLS_PER_PACKAGE * (MODELS.length * AI_ATTEMPTS_PER_MODEL + AI_CORRECTIVE_CALLS) * AI_CALL_TIMEOUT_MS;
 export const GEN_LEASE_MS = GEN_WORST_CASE_MS + 3 * 60000;
-const LEASE = "zpc:cp:lease:";
-const SENT = "zpc:cp:sent:";       // envio aceito de um pacote (chave própria: sobrevive a falha na gravação do assinante)
-const DELIVERY = "zpc:cp:delivery:"; // token estável do e-mail de um pacote, entre tentativas
-const leaseKey = (key) => LEASE + key.slice(SUB.length);
-async function releaseLease(kv, key) { // a tentativa terminou: o lease só protege geração em andamento
-  await kv.delete(leaseKey(key));
-}
-const DELIVERY_OUTBOX = "zpc:cp:delivery-outbox";
-async function deliveryOutboxAdd(kv, key, cycle) {
-  const list = await readJson(kv, DELIVERY_OUTBOX, []);
-  const id = key + "#" + cycle;
-  if (!list.includes(id)) await kv.put(DELIVERY_OUTBOX, JSON.stringify([...list, id].slice(-500)));
-}
-// Confirmação de entrega (v3): consulta o evento do e-mail no provedor pelo id gravado. delivered/opened/clicked =>
-// confirmado; bounced/failed/suppressed/canceled => falha registrada no recibo + alerta ao proprietário.
-// #960 rodada 2 (MED-1): o GET ao provedor leva tempo; um cancelamento pode chegar no meio. O registro é relido logo
-// antes de gravar e só o recibo do ciclo muda (status, stopEvent e o resto vêm da leitura nova): o cancelamento vence.
-async function patchReceipt(kv, key, cycle, patch) {
-  const latest = await readJson(kv, key, null);
-  if (!latest?.deliveries?.[cycle]) return null;
-  const merged = { ...latest, deliveries: { ...latest.deliveries, [cycle]: { ...latest.deliveries[cycle], ...patch } } };
-  await kv.put(key, JSON.stringify(merged), { expirationTtl: 400 * DAY });
-  return merged;
-}
-export async function confirmPackageDeliveries(env, fetchImpl = fetch, { limit = 10, now = Date.now() } = {}) {
-  const kv = kvOf(env);
-  const list = await readJson(kv, DELIVERY_OUTBOX, []);
-  let confirmed = 0, failed = 0;
-  const keep = [];
-  for (const id of list) {
-    if (confirmed + failed >= limit) { keep.push(id); continue; }
-    const [key, cycle] = id.split("#");
-    const rec = await readJson(kv, key, null);
-    const rcpt = rec?.deliveries?.[cycle];
-    if (!rcpt?.email_id || rcpt.status === "confirmed" || rcpt.status === "failed") continue;
-    const ev = await resendLastEvent(env, rcpt.email_id, fetchImpl);
-    const entregue = Boolean(ev) && DELIVERED_EVENTS.has(ev);
-    if (entregue) {
-      await patchReceipt(kv, key, cycle, { status: "confirmed", confirmedAt: new Date(now).toISOString(), provider_event: ev });
-      confirmed++;
-    } else if (ev && DEAD_EVENTS.has(ev)) {
-      await patchReceipt(kv, key, cycle, { status: "failed", failedAt: new Date(now).toISOString(), provider_event: ev });
-      // MED-3: a falha de entrega vai para a fila de falhas (visível em /status, reenviável por /requeue).
-      const dead = await readJson(kv, PENDING_DEAD, {});
-      const prev = dead[key] || null;
-      dead[key] = { kind: "delivery_bounced", cycle: Number(cycle), protocolo: rcpt.protocolo, email_id: rcpt.email_id, pkgKey: rcpt.pkgKey, provider_event: ev, lastReason: "resend_" + ev, attempts: 1, deadAt: new Date(now).toISOString(), status: "dead", operations: prev?.operations || [], history: [...(prev?.history || []), ...(prev ? [{ deadAt: prev.deadAt, kind: prev.kind, lastReason: prev.lastReason }] : [])].slice(-20) };
-      await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });
-      await pendingLog(kv, key, "delivery_failed", "resend_" + ev, now);
-      await ownerAlert(env, "campanha do Conteúdo Pronto não entregue", `Protocolo ${rcpt.protocolo}: o provedor de e-mail registrou ${ev} (assinante …${String(key).slice(-12)}). Confira o endereço com o assinante e reenvie pelo operador: POST /api/admin/conteudo-pronto/requeue (ou node scripts/conteudo-pronto/operador.mjs requeue).`, fetchImpl, { kind: "entrega_falhou", sub: key, now }).catch(() => null);
-      failed++;
-    } else keep.push(id);
-  }
-  if (JSON.stringify(keep) !== JSON.stringify(list)) await kv.put(DELIVERY_OUTBOX, JSON.stringify(keep));
-  return { confirmed, failed, waiting: keep.length };
-}
-export async function generateAndDeliver(env, key, fetchImpl = fetch, { now = Date.now() } = {}) {
-  const kv = kvOf(env);
-  const record = await readJson(kv, key, null);
-  if (!record || record.status !== "active" || !record.briefing) return { ok: false, reason: "not_ready" };
-  // S308: o mês a entregar é o crédito mais antigo; sem crédito, o mês atual ainda sem pacote.
-  const cyc = campaignTarget(record);
-  if (cyc === null) return { ok: true, reason: "already_delivered" };
-  // v3: sem a campanha DESSE mês não há geração (o assinante recebeu o formulário da campanha).
-  if (record.campanha?.cycle !== cyc || !validateCampaign(record.campanha).ok) return { ok: false, reason: "campaign_required" };
-  const leaseUntil = Date.parse(String(await kv.get(leaseKey(key)) || "")) || 0;
-  if (leaseUntil > now) return { ok: false, reason: "in_progress" };
-  await kv.put(leaseKey(key), new Date(now + GEN_LEASE_MS).toISOString(), { expirationTtl: Math.ceil(GEN_LEASE_MS / 1000) + 60 });
-  // Chave com a versão do schema: uma regeneração nunca sobrescreve um pacote antigo gravado.
-  const pkgKey = PKG + key.slice(SUB.length) + ":" + cyc + ":v" + CONTENT_SCHEMA_VERSION;
-  // G4: pacote do ciclo já gerado (o envio falhou antes) é reaproveitado: o retry não chama a IA de novo nem troca o
-  // conteúdo que o assinante ainda vai receber.
-  let pkg = await readJson(kv, pkgKey, null);
-  if (!pkg || pkg.cycle !== cyc || packageBlocked(pkg)) {
-    pkg = await generatePackage(env, record.briefing, cyc, record.campanha);
-    if (!pkg) {
-      await enqueuePending(kv, key, now);
-      await notePendingFailure(kv, key, "generation_failed", now);
-      await releaseLease(kv, key);
-      await ownerAlert(env, "geração do Conteúdo Pronto adiada", `A IA não gerou um pacote válido agora; nova tentativa automática em até 1 hora (máximo ${PENDING_MAX_ATTEMPTS}).`, fetchImpl, { kind: "geracao_adiada", sub: key, now });
-      return { ok: false, reason: "generation_failed_retry_scheduled" };
-    }
-    await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });
-  }
-  // G4/G5: um token por pacote (abre só este pacote), estável entre tentativas, para o e-mail repetido ser idêntico.
-  // Fica numa chave própria por pacote (H1: nenhuma escrita extra na chave do assinante antes do envio).
-  const deliveryKey = DELIVERY + pkgKey.slice(PKG.length);
-  const stored = await readJson(kv, deliveryKey, null);
-  const delivery = stored?.pkgKey === pkgKey && stored.token ? stored : { pkgKey, token: rand() };
-  if (delivery !== stored) {
-    await putToken(kv, delivery.token, { k: "pkg", sub: key, pkg: pkgKey }, PACKAGE_LINK_DAYS);
-    await kv.put(deliveryKey, JSON.stringify(delivery), { expirationTtl: 400 * DAY });
-  }
-  const token = delivery.token;
-  // H1: se o envio deste pacote já foi aceito (e a gravação seguinte falhou), não reenvia: só conclui o registro.
-  const sentKey = SENT + pkgKey.slice(PKG.length);
-  const sentRaw = await kv.get(sentKey);
-  let sentMark = null;
-  if (sentRaw) { try { sentMark = JSON.parse(String(sentRaw)); } catch { sentMark = { at: String(sentRaw), email_id: null }; } }
-  if (!sentMark) {
-    const text = packageText(pkg, record.briefing.negocio) + `\n\nVersão para consulta online: ${ORIGIN}/conteudo-pronto/pacote?t=${token}\n\nDúvidas ou ajustes: responda este e-mail ou escreva para suporte@zevanory.api.br.`;
-    const sent = await sendEmail(env, record.email, `Seu Conteúdo Pronto do mês ${cyc} chegou`, text, fetchImpl, "cp-pkg/" + (await sha(pkgKey + "|" + token)).slice(0, 48));
-    if (!sent) {
-      await enqueuePending(kv, key, now);
-      await notePendingFailure(kv, key, "email_failed", now);
-      await releaseLease(kv, key);
-      return { ok: false, reason: "email_failed_retry_scheduled" };
-    }
-    sentMark = { at: new Date(now).toISOString(), email_id: typeof sent === "string" ? sent : null };
-    await kv.put(sentKey, JSON.stringify(sentMark), { expirationTtl: 400 * DAY });
-  }
-  const latest = (await readJson(kv, key, null)) || record; // o formulário pode ter gravado o registro durante a geração
-  const { genLeaseUntil: _lease, pendingDelivery: _pd, ...base } = latest;
-  // Entrega verificável (v3): protocolo, SHA-256 do pacote, id do e-mail no provedor; a confirmação de entrega vem do
-  // provedor pelo mesmo id (confirmPackageDeliveries, no cron).
-  const pkgSha = await sha(JSON.stringify(pkg));
-  const receipt = { pkgKey, sha256: pkgSha, protocolo: "CP-" + pkgSha.slice(0, 10).toUpperCase(), email_id: sentMark.email_id || null, sentAt: sentMark.at, status: sentMark.email_id ? "sent" : "sent_without_id" };
-  const isCurrent = cyc === Number(latest.cycles);
-  const credits = (latest.credits || []).filter((c) => Number(c.cycle) !== cyc);
-  const creditsUsed = isCurrent ? latest.creditsUsed : [...(latest.creditsUsed || []), { cycle: cyc, deliveredAt: new Date(now).toISOString() }];
-  const updated = { ...base, ...(isCurrent ? { deliveredCycle: cyc } : {}), deliveredAt: new Date().toISOString(), lastPackage: pkgKey, deliveries: { ...(latest.deliveries || {}), [cyc]: receipt }, credits, ...(creditsUsed ? { creditsUsed } : {}) };
-  await kv.put(key, JSON.stringify(updated), { expirationTtl: 400 * DAY });
-  await releaseLease(kv, key);
-  if (receipt.email_id) await deliveryOutboxAdd(kv, key, cyc);
-  await leavePending(kv, key, "delivered", "cycle " + cyc + (isCurrent ? "" : " (crédito)"), now);
-  if (!isCurrent) await syncCreditIndex(kv, key, updated);
-  await emitActivity(env, { type: "delivery_sent", channel: "email", status: "service_package_delivered", ref: "cp-pkg:" + key.slice(-16) + ":" + cyc }).catch(() => null);
-  // Ainda há mês pago sem pacote (outro crédito ou o mês atual): pede a próxima campanha pela fila de formulários.
-  if (campaignTarget(updated) !== null && updated.status === "active") {
-    const outbox = await readJson(kv, WELCOME, {});
-    if (!outbox[key]) {
-      const token = rand();
-      await putToken(kv, token, { k: "brief", sub: key }, 60);
-      outbox[key] = { token, dedupe: null, cycles: updated.cycles, attempts: 0, firstAt: new Date(now).toISOString() };
-      await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });
-    }
-  }
-  return { ok: true, reason: "delivered", cycle: cyc };
-}
-export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { now = Date.now() } = {}) {
-  const kv = kvOf(env);
-  if (!kv?.get) return { ok: false };
-  const pending = await readJson(kv, PENDING, []);
-  // G2: itens cancelados, sem briefing, apagados ou já entregues saem da fila sem gastar o limite; quem falhou vai
-  // para o fim (rodízio), para um assinante com falha persistente não travar os outros.
-  const failed = [], results = [];
-  for (const key of pending) {
-    const rec = await readJson(kv, key, null);
-    const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : !rec.briefing ? "no_briefing" : campaignTarget(rec) === null ? "already_delivered" : needsForm(rec) ? "campaign_required" : "";
-    if (why) { await leavePending(kv, key, "dropped", why, now); continue; } // registrado, nunca em silêncio
-    const meta = (await readJson(kv, PENDING_META, {}))[key];
-    if (Number(meta?.attempts || 0) >= PENDING_MAX_ATTEMPTS) { await deadLetter(env, kv, key, meta, fetchImpl, now); continue; }
-    if (results.length >= limit) continue;
-    let r;
-    try { r = await generateAndDeliver(env, key, fetchImpl, { now }); }
-    catch (e) {
-      // H1: uma exceção (ex.: KV 429 que persistiu, fila cheia) não derruba o cron nem os outros itens; conta como
-      // tentativa (o item chega ao limite e à fila de falhas), fica no log e o proprietário é avisado na primeira vez.
-      const reason = "exception:" + String(e?.message || e).replace(/\s+/g, " ").slice(0, 60);
-      r = { ok: false, reason };
-      try {
-        await notePendingFailure(kv, key, reason, now);
-        await pendingLog(kv, key, "exception", reason, now);
-        await releaseLease(kv, key);
-        const meta = await readJson(kv, PENDING_META, {});
-        const first = !meta[key]?.exceptionAlerted; // um alerta por item; o dead-letter avisa no fim
-        if (first && meta[key]) { meta[key].exceptionAlerted = true; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }
-        if (first) await ownerAlert(env, "erro na entrega do Conteúdo Pronto", `Uma tentativa de entrega terminou em erro (${reason}; assinante …${String(key).slice(-12)}). As tentativas automáticas continuam a cada hora, até ${PENDING_MAX_ATTEMPTS}.`, fetchImpl, { kind: "erro_entrega", sub: key, now });
-      } catch {}
-    }
-    results.push(r);
-    if (!r.ok) failed.push(key);
-  }
-  const cur = await readJson(kv, PENDING, []);
-  const next = [...cur.filter((k) => !failed.includes(k)), ...failed.filter((k) => cur.includes(k))];
-  if (JSON.stringify(next) !== JSON.stringify(cur)) await kv.put(PENDING, JSON.stringify(next));
-  // Fila parada: o item mais antigo está há mais de PENDING_STALL_HOURS sem entrega => alerta (no máximo 1 por dia).
-  const metaNow = await readJson(kv, PENDING_META, {});
-  const oldest = Math.min(...next.map((k) => Date.parse(metaNow[k]?.firstAt || new Date(now).toISOString())));
-  if (next.length && now - oldest > PENDING_STALL_HOURS * 3600000) {
-    const last = Date.parse(String(await kv.get(STALL_ALERT) || "")) || 0;
-    if (now - last > DAY * 1000) {
-      await kv.put(STALL_ALERT, new Date(now).toISOString(), { expirationTtl: 30 * DAY });
-      await ownerAlert(env, "fila do Conteúdo Pronto parada", `${next.length} pacote(s) pendente(s); o mais antigo espera há ${Math.round((now - oldest) / 3600000)} h. As tentativas automáticas continuam (máximo ${PENDING_MAX_ATTEMPTS} por assinante).`, fetchImpl, { kind: "fila_parada", now }).catch(() => null);
-    }
-  }
-  const deliveryCheck = await confirmPackageDeliveries(env, fetchImpl, { now }).catch(() => ({ confirmed: 0, failed: 0 }));
-  // Mesmo cron: candidatos de regeneração (nova tentativa com a mesma chave; confirmação de entrega pelo email_id).
-  const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
-  const welcome = { tried: 0, disabled: "NC012_DO_OUTBOX_NOT_CONNECTED" };
-  const reminders = { reminders: 0, disabled: "NC012_DO_OUTBOX_NOT_CONNECTED" };
-  await checkOverdueRefunds(env, fetchImpl, { now }).catch(() => null);
-  return { ok: true, tried: results.length + Number(regen.tried || 0) + Number(welcome.tried || 0), delivered: results.filter((r) => r.ok).length, regen, welcome, deliveryCheck, reminders };
+const SENT = "zpc:cp:sent:";
+const DELIVERY = "zpc:cp:delivery:";
+export async function retryPendingPackages(env, fetchImpl=fetch, limit=2, {now=Date.now()}={}){
+  // No global queue reads, writes, generation, or deliveries. Only the
+  // pre-existing regeneration test contract, which needs separate G06 cutover.
+  const regen=await reconcileRegenCandidates(env,fetchImpl,{limit,now}).catch(()=>({ok:false}));
+  return {ok:regen.ok===true,tried:0,delivered:0,regen,welcome:{tried:0,disabled:"DO_OUTBOX_NOT_CONNECTED"},
+    deliveryCheck:{confirmed:0,failed:0},reminders:{reminders:0,disabled:"DO_OUTBOX_NOT_CONNECTED"}};
 }
 // ---------- Regeneração de pacote bloqueado (critério de aceite Sol #898) ----------
 // Estados do PACOTE (separados dos estados de ENTREGA):
