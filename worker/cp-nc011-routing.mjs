@@ -3,6 +3,7 @@
 // existing Hotmart path until an independent digital-products cutover.
 import { isServiceProduct, validateCampaign, CAMPANHA_CAMPOS, CP_BRIEFING_FIELDS } from "./content-service.mjs";
 import {handleDigitalHotmartNc012} from "./cp-nc012-digital-hotmart.mjs";
+import {KIT_ORDER_INGEST_ENABLED,isKitProductNc015,ingestVerifiedKitCandidate} from "./kit-nc015-ingress.mjs";
 import { handleCpDoWebhookCandidate, inspectCpFormTokenCandidate, submitCpFormCandidate, enqueueCpFormWorkCandidate } from "./cp-g03-g04-candidate.mjs";
 
 const json=(status,body)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -25,6 +26,14 @@ export async function routeHotmartNc011(request,env,ctx){
  }
  // CP product ID/name are never classified by buyer claims alone after the
  // strict allowlist; unknown digital products continue to their existing route.
+ // DEC-04: existing guides/kits digital ledger is processed once. The DO
+ // extension stays disabled in source until a separate owner release.
+ if(KIT_ORDER_INGEST_ENABLED&&isKitProductNc015(body?.data,env)){
+  const digital=await handleDigitalHotmartNc012(request.clone(),env);
+  if(!digital.ok)return digital;
+  const recorded=await ingestVerifiedKitCandidate(request,env);
+  return recorded.ok?digital:recorded;
+ }
  return handleDigitalHotmartNc012(request,env);
 }
 export async function routeBriefingNc011(request,env){
