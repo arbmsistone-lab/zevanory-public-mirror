@@ -23,7 +23,7 @@ const good=execute(null);
 if(good.code!==0||!/# pass 5\b/.test(good.output)){console.error(good.output.slice(-6000));throw Error('FIXES_BASELINE_FAIL')}
 const variants=[
  {name:'F1_EXTERNAL_REFUND_IGNORED',from:'if(!this.validApprovedProof(now,proof))return false;',to:'if(false)return false;'},
- {name:'F2_SUCCESS_ALARM_REPOLLS',from:'if(result.code==="verification_queued"||result.code==="already_queued")return;',to:'if(false)return;'},
+ {name:'F2_VERIFIED_ALARM_REQUERIES_PROVIDER',from:'if(policy.status==="queued"||policy.status==="stalled")return;',to:'if(false)return;'},
  {name:'F3_REQUEST_NEVER_HELD',from:'event_type==="REFUND_REQUESTED" && state.state!=="revoked"',to:'event_type==="REFUND_IGNORED" && state.state!=="revoked"'}
 ];
 for(const m of variants){
