@@ -214,10 +214,10 @@ test("Sol: número banido / wa.me só em arquivos internos da lista explícita (
         if (!ent.isFile()) continue;
         const name = rel ? rel + "/" + ent.name : ent.name;
         if (name.startsWith("tests/")) continue;
-        if (/\\.(png|jpe?g|webp|gif|woff2?|ico|pdf|zip|mp4|ogg|mp3)$/i.test(name)) continue;
+        if (/\.(png|jpe?g|webp|gif|woff2?|ico|pdf|zip|mp4|ogg|mp3)$/i.test(name)) continue;
         const bytes = readFileSync(join(dir, ent.name));
         if (bytes.includes(0)) continue;
-        if (/wa\\.me\\/|api\\.whatsapp\\.com\\/|5588992545413|99254[-. ]?5413/i.test(bytes.toString("utf8"))) files.push(name);
+        if (/wa\.me\/|api\.whatsapp\.com\/|5588992545413|99254[-. ]?5413/i.test(bytes.toString("utf8"))) files.push(name);
       }
     };
     scan(ROOT);
