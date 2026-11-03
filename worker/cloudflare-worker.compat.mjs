@@ -6,7 +6,7 @@ import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.
 import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
 import { handleOwnerOAuth, handleYoutubePublisherAccess, handlePublisherAccess } from "./owner-oauth.mjs";
 import { routeHotmartNc011, routeBriefingNc011, routePackageNc011, routeOperatorNc011 } from "./cp-nc011-routing.mjs";
-import {cpSalesEnabled,isCpPublicRoute,cpClosedResponse} from "./nc015-sales-scope.mjs";
+import {cpSalesEnabled,isCpPublicRoute,cpClosedResponse,isMpPhase1CheckoutEnabled} from "./nc015-sales-scope.mjs";
 import {handleKitDownloadNc015} from "./kit-nc015-download.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
@@ -183,6 +183,11 @@ const wrapped = {
       if (audit) return audit;
       return new Response("not_found",{status:404});
     }
+    // NC-017 DEC-05: neither internal service bindings nor public URLs can create
+    // a Mercado Pago checkout in the Hotmart-only phase, even with all sales flags
+    // switched on or a sandbox pilot token. Existing MP post-sale routes remain live.
+    if (isCheckoutRoute(url.pathname) && !isMpPhase1CheckoutEnabled())
+      return denyCheckout("phase1_hotmart_only");
     // Universal pre-routing guard: applies to private service binding and legacy checkout paths.
     if (await requiresPilotDenial(request, normalized)) return denyCheckout("production_certification_pilot_disabled");
     if (isCheckoutRoute(url.pathname)) {
