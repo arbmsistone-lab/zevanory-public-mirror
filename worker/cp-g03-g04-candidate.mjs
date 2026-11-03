@@ -109,3 +109,23 @@ export async function inspectCpFormTokenCandidate({token,env,now=Date.now()}){
   return data?.ok===true&&data?.valid===true&&data?.cycle===record.c ? {ok:true,status:200,cycle:record.c} : {ok:false,status:404};
  }catch{return {ok:false,status:404}}
 }
+
+
+// NC-012 G05: enqueue generation intent in the SAME subscriber Durable Object
+// after the G04 form transaction. This never sends email or invokes AI.
+// Repeatable if the form was committed but the queue response was uncertain.
+export async function enqueueCpFormWorkCandidate({token,env,now=Date.now()}){
+ try{
+  const {record,hash}=await checkedToken(token,env,now);
+  if(!env?.CP_SUBSCRIBER_DO?.idFromName||!env?.CP_SUBSCRIBER_DO?.get)
+   return json(503,{ok:false,error:"fulfillment_binding_missing"});
+  const stub=env.CP_SUBSCRIBER_DO.get(env.CP_SUBSCRIBER_DO.idFromName("cp-verified:"+record.s));
+  const result=await stub.fetch("https://internal.cp.example/internal/fulfillment",{
+   method:"POST",headers:{"content-type":"application/json"},
+   body:JSON.stringify({kind:"enqueue",cycle:record.c,event_key:"work:form:"+hash,now_ms:now})});
+  if(!result.ok)return json(503,{ok:false,error:"fulfillment_queue_not_confirmed"});
+  const body=await result.json();
+  if(body?.ok!==true)return json(503,{ok:false,error:"fulfillment_queue_unverified"});
+  return json(202,{ok:true,code:body.code,delivery:"OUTBOX_NOT_CONNECTED"});
+ }catch{return json(503,{ok:false,error:"fulfillment_queue_unavailable"})}
+}
