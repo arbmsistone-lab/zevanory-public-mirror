@@ -1,6 +1,5 @@
 # ZEVANORY
 
-> ZEVANORY (A. RENAN ALVES MOREIRA BITU LTDA, CNPJ 69.077.233/0001-99, Várzea Alegre/CE, Brasil) cria guias digitais e conteúdo pronto para pequenos negócios usarem inteligência artificial, vendas e controle de caixa com método e revisão humana. Suporte: suporte@zevanory.api.br.
 
 ## Produtos
 - [IA na Prática](https://vendas.zevanory.api.br/ia-na-pratica): método para usar IA no dia a dia do negócio, com comandos prontos. R$ 197 (vendas temporariamente fechadas; direito de arrependimento de 7 dias, ver Termos).
@@ -8,7 +7,6 @@
 - [Lucro & Caixa](https://vendas.zevanory.api.br/lucro-e-caixa): planilha de caixa e margem e rotina financeira semanal. R$ 247.
 - [Combo IA + Vendas](https://vendas.zevanory.api.br/combo-ia-vendas): os dois primeiros juntos. R$ 297.
 - [Negócio Completo](https://vendas.zevanory.api.br/negocio-completo): os três produtos e plano integrado de 30 dias. R$ 397.
-- [Conteúdo Pronto](https://vendas.zevanory.api.br/conteudo-pronto): campanha mensal de promoção de vendas: todo mês o assinante informa objetivo comercial, oferta, condição comercial e período, e recebe 12 posts, 4 roteiros multicanal de venda (versão curta e de e-mail, para canais autorizados pelo cliente, sem disparo automático) e o calendário do período, todos sobre essa oferta, no tom do negócio. Sem garantia de resultado. R$ 197/mês.
 
 ## Calculadoras gratuitas
 - [Calculadora de preço de venda](https://vendas.zevanory.api.br/calculadora-preco-de-venda): Divida o custo por um menos a soma de impostos, taxas, despesas e margem.
@@ -63,3 +61,4 @@
 
 ## Políticas
 - [Termos](https://vendas.zevanory.api.br/termos) · [Privacidade](https://vendas.zevanory.api.br/privacidade) · [Reembolso](https://vendas.zevanory.api.br/reembolso)
+
