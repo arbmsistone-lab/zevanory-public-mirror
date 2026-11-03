@@ -39,8 +39,8 @@ test("Hotmart-only kit variant preserves src attribution and never exposes CP", 
   const r=await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica?utm_source=telegram"),env,{waitUntil(){}});
   assert.equal(r.status,200);
   const html=await r.text();
-  assert.match(html,/pay\\.hotmart\\.com\\/F107979716H\\?off=g9knd34r&src=telegram/);
-  assert.doesNotMatch(html,/Mercado Pago|pedir-reembolso|entrega\\/reenviar/);
+  assert.match(html,/pay\.hotmart\.com\/F107979716H\?off=g9knd34r&src=telegram/);
+  assert.doesNotMatch(html,/Mercado Pago|pedir-reembolso|entrega\/reenviar/);
   const cp=await worker.fetch(new Request("https://vendas.zevanory.api.br/assinar/conteudo-pronto?utm_source=telegram"),env,{waitUntil(){}});
   assert.equal(cp.status,404);
   assert.equal(cp.headers.get("location"),null);
