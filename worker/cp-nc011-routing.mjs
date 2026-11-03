@@ -1,7 +1,8 @@
 // NC-011: effective Conteudo Pronto router (candidate only, no deploy).
 // CP events never fall back to legacy KV. Non-CP digital products keep their own
 // existing Hotmart path until an independent digital-products cutover.
-import { isServiceProduct, validateCampaign, CAMPANHA_CAMPOS, CP_BRIEFING_FIELDS, handleHotmartWebhook } from "./content-service.mjs";
+import { isServiceProduct, validateCampaign, CAMPANHA_CAMPOS, CP_BRIEFING_FIELDS } from "./content-service.mjs";
+import {handleDigitalHotmartNc012} from "./cp-nc012-digital-hotmart.mjs";
 import { handleCpDoWebhookCandidate, inspectCpFormTokenCandidate, submitCpFormCandidate } from "./cp-g03-g04-candidate.mjs";
 
 const json=(status,body)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -24,7 +25,7 @@ export async function routeHotmartNc011(request,env,ctx){
  }
  // CP product ID/name are never classified by buyer claims alone after the
  // strict allowlist; unknown digital products continue to their existing route.
- return handleHotmartWebhook(request,env,ctx);
+ return handleDigitalHotmartNc012(request,env);
 }
 export async function routeBriefingNc011(request,env){
  if(!["GET","POST"].includes(request.method))return page("Método inválido","<h1>Método inválido</h1>",405);
