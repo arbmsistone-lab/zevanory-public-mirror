@@ -17,10 +17,10 @@ export async function downloadVerifiedKitCandidate({
  if(u.pathname!=="/kit/baixar")return deny(404);
  const claim=await verifySignedKitToken(u.searchParams.get("t"),env?.KIT_DOWNLOAD_SIGNING_KEY);
  if(!claim)return deny(404);
- if(!env?.PURCHASE_RELEASE_DO?.idFromName||!env?.PURCHASE_RELEASE_DO?.get||
+ if(!env?.PURCHASE_RELEASE_DO?.idFromString||!env?.PURCHASE_RELEASE_DO?.get||
     typeof env.INTERNAL_DO_SIGNING_KEY!=="string"||
     env.INTERNAL_DO_SIGNING_KEY.length<24)return deny(503);
- const stub=env.PURCHASE_RELEASE_DO.get(env.PURCHASE_RELEASE_DO.idFromName("kit-verified:"+claim.orderOpaque.slice(3)));
+ const stub=env.PURCHASE_RELEASE_DO.get(env.PURCHASE_RELEASE_DO.idFromString(claim.orderOpaque.slice(3)));
  const internalHeaders={"x-internal-do-key":env.INTERNAL_DO_SIGNING_KEY};
  let meta,proof,asset;
  try{
