@@ -18,7 +18,7 @@ test("NC012 authenticated digital-products Hotmart callback never writes zpc:cp:
  const kv=new MapKV();
  const env={HOTMART_HOTTOK:token,HOTMART_SERVICE_PRODUCT_IDS:"8704905",ZEVANORY_PRIVATE_ARTIFACTS:kv};
  const r=await routeHotmartNc011(post(digital("PURCHASE_APPROVED","D001")),env);
- assert.equal(r.status,200,await r.text());
+ assert.equal(r.status,200);
  assert.equal((await r.json()).scope,"digital_product");
  assert.ok([...kv.data.keys()].some(k=>k.startsWith("zpc:sales:")));
  assert.equal([...kv.data.keys()].filter(k=>k.startsWith("zpc:cp:")).length,0);
