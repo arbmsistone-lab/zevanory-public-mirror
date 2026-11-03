@@ -169,6 +169,7 @@ export class CpSubscriberLedger {
       this.sql.exec("INSERT OR IGNORE INTO cp_refund_events(event_key,cycle,refund_type,state,created_at) VALUES(?,?,'requested','pending',?)",
         eventKey,cycle,at);
       this.sql.exec("UPDATE subscriber_state SET status='inactive',version=version+1,updated_at=? WHERE singleton=1",at);
+      if(this.campaign)this.campaign.onStopped(at);
       this.sql.exec("INSERT OR IGNORE INTO cp_alarm_jobs(alarm_key,due_at_ms,kind,state,updated_at) VALUES(?,?, 'owner_alert','scheduled',?)",
        "refund-review:"+cycle,Date.parse(at)+1000,at);
     }else     if(kind==="form_token_issued"){
@@ -196,8 +197,10 @@ export class CpSubscriberLedger {
       this.sql.exec("UPDATE cp_outbox SET status='canceled',updated_at=? WHERE cycle=? AND status='pending'",at,cycle);
       // Existing acknowledged delivery is immutable even after refund.
       this.sql.exec("UPDATE subscriber_state SET status=CASE WHEN cycle=? THEN 'refunded' ELSE status END,version=version+1,updated_at=? WHERE singleton=1",cycle,at);
+      if(this.campaign&&cycle===state.cycle)this.campaign.onStopped(at);
     }else if(kind==="operator_stop"){
       this.sql.exec("UPDATE subscriber_state SET status='inactive',version=version+1,updated_at=? WHERE singleton=1",at);
+      if(this.campaign)this.campaign.onStopped(at);
     }else if(kind==="provider_receipt"){
       const existing=this.one("SELECT status,receipt FROM cp_outbox WHERE cycle=?",cycle);
       if(existing.status==="sent" && existing.receipt!==intent.receipt)throw new CpTransitionError("receipt_conflict");
