@@ -1,7 +1,7 @@
 name: NC-007 Conteudo Pronto Durable Object ledger (offline)
 on:
   pull_request:
-    branches: [gh-pages, "claude/conteudo-pronto-campanha-v3"]
+    branches: [gh-pages, "claude/conteudo-pronto-campanha-v3", "gpt6/nc007-cp-durable-ledger"]
     paths:
       - "worker/cp-durable-ledger.mjs"
       - "worker/content-service.mjs"
