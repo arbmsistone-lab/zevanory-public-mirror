@@ -24,7 +24,7 @@ export function wilsonLower(k, n, z = 1.959963984540054) {
 const CHECKOUT = /\/comprar\b|\/assinar\b|hotmart|mercadopago\.com|pay\.|checkout/i;
 function catalogFor(fault) {
   if (fault === "stale") return buildCatalog({ policy: { ...CHAT, approved_sources: { catalog_fingerprint: "0000000000000000" } } });
-  if (fault === "conflict") return buildCatalog({ products: { products: [{ slug: "ia-na-pratica", name: "IA na Prática", price: 97 }, { slug: "vendas-na-pratica", name: "Vendas na Prática", price: 197 }, { slug: "lucro-e-caixa", name: "Lucro & Caixa", price: 247 }, { slug: "combo-ia-vendas", name: "Combo IA + Vendas", price: 297 }, { slug: "negocio-completo", name: "Negócio Completo", price: 397 }], subscription: { slug: "conteudo-pronto", name: "Conteúdo Pronto", price: 197 } } });
+  if (fault === "conflict") return buildCatalog({ products: { products: [{ slug: "ia-na-pratica", name: "IA na Prática", price: 99 }, { slug: "vendas-na-pratica", name: "Vendas na Prática", price: 97 }, { slug: "lucro-e-caixa", name: "Lucro & Caixa", price: 147 }, { slug: "combo-ia-vendas", name: "Combo IA + Vendas", price: 157 }, { slug: "negocio-completo", name: "Negócio Completo", price: 247 }], subscription: { slug: "conteudo-pronto", name: "Conteúdo Pronto", price: 197 } } });
   if (fault === "missing") return buildCatalog({ products: { products: [] } });
   return CATALOG;
 }
@@ -75,7 +75,8 @@ export async function runCase(c) {
     const v = validateSiteReply(body, { salesOpen, catalog: catalogFor(f.catalog) });
     if (!v.ok) reasons.push("validator:" + v.issues.join("|"));
     if (!salesOpen && /R\$|\breais\b/.test(body)) reasons.push("money_while_closed");
-    if (CHECKOUT.test(body)) reasons.push("checkout");
+    // DEC-01 v3: "Hotmart Club" na frase oficial de entrega é o local de acesso, não checkout; qualquer outra menção reprova.
+    if (CHECKOUT.test(body.split("O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento.").join(" "))) reasons.push("checkout");
   }
   if (e.kind === "closed_price" && body !== CLOSED_PRICE_ANSWER) reasons.push("not_exact_closed_answer");
   if (e.kind === "escalate" && (!escalation || (e.category && escalation !== e.category))) reasons.push(`escalation:${escalation}!=${e.category || "any"}`);

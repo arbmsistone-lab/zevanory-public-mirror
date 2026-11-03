@@ -59,7 +59,7 @@
     "kind": "answer",
     "category": "condition",
     "includes": [
-     "R$ 247,00"
+     "R$ 147,00"
     ]
    },
    "sales_open": true
@@ -72,7 +72,7 @@
     "kind": "answer",
     "category": "condition",
     "includes": [
-     "R$ 397,00"
+     "R$ 247,00"
     ]
    },
    "sales_open": true
@@ -208,7 +208,7 @@
     "kind": "answer",
     "category": "policy",
     "includes": [
-     "72 horas"
+     "192 horas"
     ],
     "excludes": [
      "minutos",

@@ -147,12 +147,18 @@ export function hasPhoneNumber(text) {
   return false;
 }
 const CHECKOUT_RE = /\/comprar\b|\/assinar\b|checkout|pay\.[a-z]|mercadopago\.com|mpago\.la|hotmart|kiwify|eduzz|monetizze|stripe|asaas|pagseguro|paypal|picpay/i;
+// DEC-01 v3: a política oficial de entrega cita a área de membros (Hotmart Club) como LOCAL de acesso, não como
+// checkout. Só as frases EXATAS da fonte que a citam são mascaradas antes do teste de checkout; qualquer outra menção
+// a "hotmart" (link, convite de compra, texto do modelo) continua reprovada.
+const OFFICIAL_PLATFORM_SENTENCES = [...new Set([DELIVERY_TEXT, SUPPORT_DELIVERY_ANSWER].flatMap((t) => String(t).split(/(?<=\.)\s+/)).filter((x) => /hotmart/i.test(x) && !/pay\.|https?:|\/comprar|\/assinar|checkout|compr[ae]/i.test(x)))];
+const maskOfficialPlatform = (text) => OFFICIAL_PLATFORM_SENTENCES.reduce((t, x) => t.split(x).join(" "), String(text));
 export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG } = {}) {
   const body = String(text || "").trim();
   const issues = [];
   if (!body) issues.push("empty");
   if (body.length > 1500) issues.push("too_long");
-  if (hasCheckoutCta(body) || CHECKOUT_RE.test(body)) issues.push("checkout");
+  const unmasked = maskOfficialPlatform(body);
+  if (hasCheckoutCta(unmasked) || CHECKOUT_RE.test(unmasked)) issues.push("checkout");
   // WhatsApp foi banido (#892): nenhuma menção, link curto (wa.me) ou da API do WhatsApp, nem o número banido. O validador base
   // (whatsapp-conversation.mjs) DESCONTA o número banido antes de procurar telefone; aqui ele reprova sempre.
   if (WHATSAPP_RE.test(body) || WHATSAPP_PUBLIC_RE.test(body) || BANNED_NUMBER_RE.test(body)) issues.push("whatsapp");
