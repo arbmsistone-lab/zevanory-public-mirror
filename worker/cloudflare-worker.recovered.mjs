@@ -13003,7 +13003,7 @@ var ensureCommercialContactConsent = /* @__PURE__ */ __name((event) => {
 var ensureOutboundAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => {
   ensureCommercialContactConsent(event);
   if (event?.payload?.creative_id) assertBrandSafeCreative(event.payload);
-  if (P04_META_CLOSED.has(String(event?.destination || "")) && !supportEventAllowed(event)) throw new Error("p04_meta_closed");
+  if (P04_META_CLOSED.has(String(event?.destination || ""))) throw new Error("p04_meta_closed");
   if (gateEvaluator(env).enabled) return;
   if (supportEventAllowed(event)) return;
   if (organicEventAllowed(event, env, gateEvaluator)) return;

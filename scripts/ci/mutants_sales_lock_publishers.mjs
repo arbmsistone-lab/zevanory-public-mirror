@@ -37,9 +37,9 @@ const MUTANTS = [
   ["SLP16_comprar_without_slash_missed", D, [[LOCK, "hasCheckoutCta(s) || COMPRAR_RE.test(s)", "hasCheckoutCta(s)"]]],
   ["SLP17_cta_detector_removed", B_DRAFT, [[LOCK, '  if (PURCHASE_CTA_RE.test(s)) out.push("purchase_cta");\n', ""]]],
   ["SLP18_caption_field_not_inspected", D, [[LOCK, '"content", "title", "description", "caption", "text"', '"content", "title", "description", "text"']]],
-  ["SLP19_meta_outbound_gate_removed", M7, [[REC, '  if (P04_META_CLOSED.has(String(event?.destination || "")) && !supportEventAllowed(event)) throw new Error("p04_meta_closed");\n', ""]]],
+  ["SLP19_meta_outbound_gate_removed", M7, [[REC, '  if (P04_META_CLOSED.has(String(event?.destination || ""))) throw new Error("p04_meta_closed");\n', ""]]],
   ["SLP20_meta_organic_gate_removed", M7, [[REC, ' && !P04_META_CLOSED.has(String(event?.destination || "")) && env.ORGANIC', " && env.ORGANIC"]]],
-  ["SLP21_meta_support_bypass_broadened", M7, [[REC, ' && !supportEventAllowed(event)) throw new Error("p04_meta_closed");', ' && event?.event_type === "publish_content") throw new Error("p04_meta_closed");']]],
+  ["SLP21_meta_support_bypass_reopened", M7, [[REC, 'if (P04_META_CLOSED.has(String(event?.destination || ""))) throw', 'if (P04_META_CLOSED.has(String(event?.destination || "")) && !supportEventAllowed(event)) throw']]],
 ];
 
 const eol = (s) => s.replace(/\r\n/g, "\n");

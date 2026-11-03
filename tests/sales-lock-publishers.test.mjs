@@ -200,7 +200,8 @@ test("D7: Instagram e Facebook fechados sem P04 certificado, com vendas abertas 
     const dm = { event_type: "send_message", destination, payload: { content: "Oi, tudo bem?" } };
     assert.throws(() => box.ensureOutboundAllowed(dm, env, open), /p04_meta_closed/, destination + ": mensagem não-suporte também fechada");
     const support = { event_type: "send_support_message", destination, payload: { support_only: true, content: "Seu acesso foi reenviado." } };
-    assert.doesNotThrow(() => box.ensureOutboundAllowed(support, env, closed), destination + ": suporte sem intenção comercial segue (A-07 pendente)");
+    assert.throws(() => box.ensureOutboundAllowed(support, env, closed), /p04_meta_closed/, destination + ": suporte automático também fechado (R16)");
+    assert.throws(() => box.ensureOutboundAllowed(support, env, open), /p04_meta_closed/, destination + ": suporte com vendas abertas também fechado");
   }
   const other = { event_type: "publish_content", destination: "channel:linkedin", payload: { organic_only: true, content: "Uma dica prática para organizar a semana.", title: "Dica" } };
   assert.doesNotThrow(() => box.ensureOutboundAllowed(other, env, closed), "canal não Meta segue a regra comercial normal");
