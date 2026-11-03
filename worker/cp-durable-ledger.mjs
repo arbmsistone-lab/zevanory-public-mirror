@@ -1,4 +1,5 @@
 import {CpFulfillmentLedger,CpWorkError} from "./cp-nc012-fulfillment.mjs";
+import {CpCampaignLedger,CpCampaignError} from "./cp-nc014-campaign.mjs";
 // ZEVANORY NC-007 / ADR-CP-001: DRAFT-only SQLite Durable Object ledger.
 // NOT connected to the live webhook/cron/operator/refund paths. Do not deploy.
 // The canonical key is resolved SERVER-SIDE by the Worker (never from request JSON).
