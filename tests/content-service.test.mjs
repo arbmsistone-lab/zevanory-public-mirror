@@ -1,85 +1,52 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages, validatePosts, validateRoteiros, ROTEIRO_OBJETIVOS, SERVICE_PRODUCT_NAME } from "../worker/content-service.mjs";
-import { CAMPAIGN, CAMPAIGN_MONTH2, campaignize } from "./helpers/cp-campaign.mjs";
-
-class MapKV { data = new Map(); async get(k) { return this.data.get(k) ?? null; } async put(k, v) { this.data.set(k, String(v)); } async delete(k) { this.data.delete(k); } async list({ prefix = "" } = {}) { return { keys: [...this.data.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })) }; } }
-const HOTTOK = "hottok-test-1234567890abcdef";
-const post = (i) => ({ tema: "Tema " + i, legenda: "Legenda completa e concreta para o negócio, explicando o benefício real do serviço sem promessas exageradas. ".repeat(3), cta: "Chame no Direct", hashtags: ["#negocio", "#local"], imagem: "foto da equipe" });
-const roteiro = (o) => ({ objetivo_id: o.id, curta: "Olá! Aqui é do negócio. Passando para lembrar da nossa oferta principal e tirar qualquer dúvida que você tenha.", email: { assunto: "Sobre o que você pediu", corpo: "Olá! Obrigado pelo contato. ".repeat(10) + "Se fizer sentido, responda este e-mail e combinamos o próximo passo." } });
-function fakeAI({ fail = false } = {}) {
-  let calls = 0;
-  return { calls: () => calls, run: async (_m, { messages }) => { calls++; if (fail) return { response: "sem json" }; const u = messages[1].content; return { response: JSON.stringify(campaignize(u, u.includes("roteiros multicanal") ? { roteiros: ROTEIRO_OBJETIVOS.map(roteiro) } : { posts: [1, 2, 3, 4, 5, 6].map(post) })) }; } };
+import * as CS from "../worker/content-service.mjs";
+import {routeHotmartNc011,routeBriefingNc011,routePackageNc011} from "../worker/cp-nc011-routing.mjs";
+class MapKV {
+ data=new Map();
+ async get(k){return this.data.get(k)||null}
+ async put(k,v){if(k.startsWith("zpc:cp:"))throw Error("legacy_cp_writer_forbidden");this.data.set(k,String(v))}
+ async delete(k){if(k.startsWith("zpc:cp:"))throw Error("legacy_cp_delete_forbidden");this.data.delete(k)}
 }
-function env(extra = {}) { return { ZEVANORY_PRIVATE_ARTIFACTS: new MapKV(), HOTMART_HOTTOK: HOTTOK, RESEND_API_KEY: "re_test", AI: fakeAI(), ...extra }; }
-const emails = [];
-const fetchImpl = async (url, init) => { if (String(url).includes("resend")) { emails.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); } throw Error("unexpected " + url); };
-const hook = (body, token = HOTTOK) => new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "content-type": "application/json", "x-hotmart-hottok": token }, body: JSON.stringify(body) });
-const purchase = (event, txn, extra = {}) => ({ event, data: { product: { id: 999, name: SERVICE_PRODUCT_NAME }, buyer: { email: "cliente@example.com", name: "Maria Silva" }, purchase: { transaction: txn }, subscription: { subscriber: { code: "SUB1" } }, ...extra } });
-
-test("webhook rejects wrong hottok and missing config", async () => {
-  const e = env();
-  assert.equal((await handleHotmartWebhook(hook(purchase("PURCHASE_APPROVED", "T1"), "wrong"), e, null, fetchImpl)).status, 401);
-  assert.equal((await handleHotmartWebhook(hook(purchase("PURCHASE_APPROVED", "T1")), { ...e, HOTMART_HOTTOK: "" }, null, fetchImpl)).status, 503);
+const token="hottok-test-1234567890abcdef";
+function post(body,tok=token){
+ return new Request("https://zevanory.api.br/api/webhooks/hotmart",{method:"POST",
+  headers:{"content-type":"application/json","x-hotmart-hottok":tok},body:JSON.stringify(body)});
+}
+const digital=(event,txn)=>({event,data:{product:{id:8704733,name:"ZEVANORY IA na Prática"},purchase:{transaction:txn,status:"APPROVED",price:{value:97}}}});
+test("NC012 authenticated digital-products Hotmart callback never writes zpc:cp:*",async()=>{
+ const kv=new MapKV();
+ const env={HOTMART_HOTTOK:token,HOTMART_SERVICE_PRODUCT_IDS:"8704905",ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ const r=await routeHotmartNc011(post(digital("PURCHASE_APPROVED","D001")),env);
+ assert.equal(r.status,200,await r.text());
+ assert.equal((await r.json()).scope,"digital_product");
+ assert.ok([...kv.data.keys()].some(k=>k.startsWith("zpc:sales:")));
+ assert.equal([...kv.data.keys()].filter(k=>k.startsWith("zpc:cp:")).length,0);
+ const repeated=await routeHotmartNc011(post(digital("PURCHASE_COMPLETE","D001")),env);
+ assert.equal(repeated.status,200);
+ assert.equal((await repeated.json()).duplicate,true);
 });
-
-test("full automatic flow: purchase -> briefing email -> form -> AI package -> delivery email -> renewal regenerates -> cancel stops", async () => {
-  emails.length = 0;
-  const e = env();
-  const r1 = await handleHotmartWebhook(hook(purchase("PURCHASE_APPROVED", "T1")), e, null, fetchImpl);
-  assert.equal((await r1.json()).status, "briefing_requested");
-  const welcome = emails.find((m) => m.to[0] === "cliente@example.com");
-  const link = welcome.text.match(/https:\/\/zevanory\.api\.br\/conteudo-pronto\/briefing\?t=([A-Za-z0-9_-]+)/);
-  assert.ok(link, "briefing link sent");
-  // duplicate postback is idempotent
-  assert.equal((await (await handleHotmartWebhook(hook(purchase("PURCHASE_APPROVED", "T1")), e, null, fetchImpl)).json()).duplicate, true);
-  const form = new URLSearchParams({ negocio: "Salão Bela", ramo: "salão de beleza", publico: "mulheres 25-50", produtos: "corte, escova, coloração", diferencial: "atendimento rápido", tom: "próximo", cidade: "Várzea Alegre", ...CAMPAIGN });
-  const get = await handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + link[1]), e, null, fetchImpl);
-  assert.equal(get.status, 200);
-  const posted = await handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + link[1], { method: "POST", body: form }), e, null, fetchImpl);
-  assert.equal(posted.status, 200);
-  const delivery = emails.find((m) => /chegou/.test(m.subject));
-  assert.ok(delivery, "package emailed");
-  assert.match(delivery.text, /12 POSTS/);
-  assert.equal((delivery.text.match(/^POST \d+/gm) || []).length, 12);
-  assert.equal((delivery.text.match(/^ROTEIRO \d+/gm) || []).length, 4);
-  assert.equal((delivery.text.match(/^Versão de e-mail:$/gm) || []).length, 4, "[texto-versao-email]");
-  const view = delivery.text.match(/pacote\?t=([A-Za-z0-9_-]+)/);
-  const page = await handlePackageView(new Request("https://zevanory.api.br/conteudo-pronto/pacote?t=" + view[1]), e);
-  assert.equal(page.status, 200);
-  // renewal (v3): the subscriber defines the new month's campaign (profile prefilled), then the package is delivered
-  const before = emails.length;
-  assert.equal((await (await handleHotmartWebhook(hook(purchase("PURCHASE_APPROVED", "T2")), e, null, fetchImpl)).json()).status, "campaign_requested");
-  const ask2 = emails.slice(before).find((m) => /campanha do mês 2/.test(m.subject));
-  assert.ok(ask2, "campaign form for month 2");
-  const t2 = ask2.text.match(/briefing\?t=([A-Za-z0-9_-]+)/)[1];
-  await handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t2, { method: "POST", body: new URLSearchParams({ ...Object.fromEntries(form), ...CAMPAIGN_MONTH2 }) }), e, null, fetchImpl);
-  assert.ok(emails.slice(before).some((m) => /mês 2/.test(m.subject) && /chegou/.test(m.subject)), "renewal package delivered");
-  // cancellation stops; old briefing link becomes invalid
-  await handleHotmartWebhook(hook(purchase("SUBSCRIPTION_CANCELLATION", "T3")), e, null, fetchImpl);
-  assert.equal((await handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + link[1]), e, null, fetchImpl)).status, 404);
-  // logs/ledger never contain the buyer e-mail
-  const ledger = [...e.ZEVANORY_PRIVATE_ARTIFACTS.data.entries()].filter(([k]) => k.startsWith("zpc-activity:")).map(([, v]) => v).join("");
-  assert.doesNotMatch(ledger, /cliente@example\.com|Maria/);
+test("NC012 Hottok missing, bad token and invalid digital event fail closed",async()=>{
+ const env={HOTMART_HOTTOK:token,HOTMART_SERVICE_PRODUCT_IDS:"8704905",ZEVANORY_PRIVATE_ARTIFACTS:new MapKV()};
+ assert.equal((await routeHotmartNc011(post(digital("PURCHASE_APPROVED","D001"),"wrong"),env)).status,401);
+ assert.equal((await routeHotmartNc011(post(digital("PURCHASE_APPROVED","D001")),{...env,HOTMART_HOTTOK:""})).status,503);
+ assert.equal((await routeHotmartNc011(post(digital("UNKNOWN","D001")),env)).status,422);
 });
-
-test("AI failure schedules a retry instead of sending a bad package", async () => {
-  emails.length = 0;
-  const e = env({ AI: fakeAI({ fail: true }) });
-  await handleHotmartWebhook(hook(purchase("PURCHASE_APPROVED", "T9")), e, null, fetchImpl);
-  const t = emails[0].text.match(/t=([A-Za-z0-9_-]+)/)[1];
-  await handleBriefing(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=" + t, { method: "POST", body: new URLSearchParams({ negocio: "Loja X", ramo: "loja", publico: "todos", produtos: "roupas", diferencial: "preço", tom: "leve", ...CAMPAIGN }) }), e, null, fetchImpl);
-  assert.ok(!emails.some((m) => /chegou/.test(m.subject)));
-  assert.match(String(await e.ZEVANORY_PRIVATE_ARTIFACTS.get("zpc:cp:pending")), /zpc:cp:sub:/);
-  e.AI = fakeAI();
-  const out = await retryPendingPackages(e, fetchImpl);
-  assert.equal(out.delivered, 1);
+test("NC012 CP can never fall back to KV when DO binding absent",async()=>{
+ const kv=new MapKV(),env={HOTMART_HOTTOK:token,HOTMART_SERVICE_PRODUCT_IDS:"8704905",ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ const body={version:"2.0.0",event:"PURCHASE_APPROVED",data:{product:{id:8704905,name:"ZEVANORY Conteúdo Pronto"},purchase:{transaction:"CP000000001",recurrence_number:1},subscription:{subscriber:{code:"sub000000001"}}}};
+ const r=await routeHotmartNc011(post(body),env);
+ assert.equal(r.status,503);
+ assert.equal([...kv.data.keys()].filter(k=>k.startsWith("zpc:cp:")).length,0);
+ assert.equal((await routeBriefingNc011(new Request("https://zevanory.api.br/conteudo-pronto/briefing?t=invalid"),env)).status,404);
+ assert.equal(routePackageNc011().status,503);
 });
-
-test("digital product postbacks only record visibility; validators reject promises", async () => {
-  const e = env();
-  const r = await handleHotmartWebhook(hook({ event: "PURCHASE_APPROVED", data: { product: { id: 8704733, name: "ZEVANORY IA na Prática" }, buyer: { email: "a@b.co" }, purchase: { transaction: "D1" } } }), e, null, fetchImpl);
-  assert.equal((await r.json()).scope, "digital_product");
-  assert.equal(validatePosts([{ ...post(1), legenda: "Resultado 100% garantido! ".repeat(10) }], 1), null);
-  assert.equal(validateRoteiros(ROTEIRO_OBJETIVOS.slice(0, 3).map(roteiro)), null);
+test("NC012 obsolete CP entrypoints are deleted but generation validators remain",()=>{
+ assert.equal(typeof CS.handleHotmartWebhook,"undefined");
+ assert.equal(typeof CS.handleBriefing,"undefined");
+ assert.equal(CS.SERVICE_PRODUCT_NAME,"ZEVANORY Conteúdo Pronto");
+ assert.equal(CS.PACKAGE_LINK_DAYS,120);
+ assert.equal(CS.validateRoteiros([{objetivo_id:"not-a-real-objective"}]),null);
+ const posts=[{tema:"fraude",legenda:"Lucro 100% garantido! ".repeat(20),cta:"Compre",hashtags:["#x"],imagem:"texto"}];
+ assert.equal(CS.validatePosts(posts,1),null);
 });
