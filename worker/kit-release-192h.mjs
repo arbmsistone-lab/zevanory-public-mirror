@@ -51,6 +51,19 @@ export class KitReleaseLedger {
    status TEXT NOT NULL CHECK(status IN ('pending','done','revoked')),
    proof_seen_at_ms INTEGER NOT NULL
   )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS kit_alarm_policy(
+    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0 AND attempts<=48),
+    status TEXT NOT NULL CHECK(status IN ('idle','retrying','queued','stalled')),
+    next_retry_at_ms INTEGER
+  )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS kit_owner_alert_outbox(
+    alert_key TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','sent')),
+    created_at_ms INTEGER NOT NULL
+  )`);
+  this.sql.exec("INSERT OR IGNORE INTO kit_alarm_policy(singleton,attempts,status) VALUES(1,0,'idle')");
   this.sql.exec("INSERT OR IGNORE INTO kit_order(singleton,state,updated_at_ms,version) VALUES(1,'absent',0,0)");
  }
  one(q,...args){return this.sql.exec(q,...args).toArray()[0]||null}
@@ -82,6 +95,27 @@ export class KitReleaseLedger {
    return {code:"applied",...this.state()};
   });
  }
+ alarmPolicy(){return this.one("SELECT attempts,status,next_retry_at_ms FROM kit_alarm_policy WHERE singleton=1");}
+ failAlarm(now){
+  if(!validMs(now))throw new KitReleaseError("invalid_clock",400);
+  return this.storage.transactionSync(()=>{
+   if(this.state().state!=="waiting")return {code:"not_waiting"};
+   const a=this.alarmPolicy();
+   if(a.status==="queued"||a.status==="stalled")return {code:"already_done"};
+   const attempt=Math.min(48,a.attempts+1);
+   if(attempt>=48){
+    this.sql.exec("UPDATE kit_alarm_policy SET attempts=48,status='stalled',next_retry_at_ms=NULL WHERE singleton=1");
+    this.sql.exec("UPDATE kit_order SET state='stalled',updated_at_ms=?,version=version+1 WHERE singleton=1",now);
+    this.sql.exec("INSERT OR IGNORE INTO kit_owner_alert_outbox(alert_key,kind,status,created_at_ms) VALUES(?,'release_verification_stalled','pending',?)",
+      this.orderOpaque+":alarm-stalled:v1",now);
+    return {code:"stalled",attempts:48};
+   }
+   const delay=Math.min(6*60*60*1000,5*60*1000*2**(attempt-1));
+   const next=now+delay;
+   this.sql.exec("UPDATE kit_alarm_policy SET attempts=?,status='retrying',next_retry_at_ms=? WHERE singleton=1",attempt,next);
+   return {code:"retry",attempts:attempt,next};
+  });
+ }
  validApprovedProof(now,proof){
   return Boolean(proof && proof.source==="hotmart_authoritative_readback" && proof.state==="APPROVED" &&
    proof.refund_request_open===false && proof.order_opaque===this.orderOpaque &&
@@ -99,6 +133,7 @@ export class KitReleaseLedger {
    this.sql.exec("INSERT INTO kit_events(event_key,event_type,seen_at_ms) VALUES(?,'OPERATOR_REFUND_REQUEST_WITHDRAWN',?)",event_key,now);
    this.sql.exec("UPDATE kit_order SET state='waiting',revocation_event=NULL,updated_at_ms=?,version=version+1 WHERE singleton=1",now);
    this.sql.exec("DELETE FROM kit_eligibility_outbox WHERE status='revoked'");
+   this.sql.exec("UPDATE kit_alarm_policy SET attempts=0,status='idle',next_retry_at_ms=NULL WHERE singleton=1");
    return {code:"resumed",...this.state()};
   });
  }
@@ -119,8 +154,11 @@ export class KitReleaseLedger {
   return this.storage.transactionSync(()=>{
    const state=this.state();
    if(state.state!=="waiting"||now<state.release_at_ms)return {code:"not_eligible"};
-   this.sql.exec("INSERT OR IGNORE INTO kit_eligibility_outbox(message_key,status,proof_seen_at_ms) VALUES(?,'pending',?)",
+   const prior=this.one("SELECT status FROM kit_eligibility_outbox WHERE message_key=?",this.orderOpaque+":verified:v1");
+   if(prior?.status==="pending"||prior?.status==="done")return {code:"already_queued"};
+   this.sql.exec("INSERT OR REPLACE INTO kit_eligibility_outbox(message_key,status,proof_seen_at_ms) VALUES(?,'pending',?)",
       this.orderOpaque+":verified:v1",now);
+   this.sql.exec("UPDATE kit_alarm_policy SET status='queued',next_retry_at_ms=NULL WHERE singleton=1");
    return {code:"verification_queued"};
   });
  }
@@ -197,27 +235,28 @@ export class KitReleaseOrderDO {
   }catch(e){const err=e instanceof KitReleaseError?e:new KitReleaseError("unavailable",503);
    return Response.json({error:err.code},{status:err.status})}
  }
- async alarm(){
-  const now=Date.now();
+ async alarm(now=Date.now()){
   const st=this.ledger.state();
   if(st.state!=="waiting")return;
+  const policy=this.ledger.alarmPolicy();
+  if(policy.status==="queued"||policy.status==="stalled")return;
   if(now<st.release_at_ms){await this.ctx.storage.setAlarm(st.release_at_ms);return;}
-  // Do not invent 'APPROVED' proof on an alarm. Read the verified provider
-  // status from an owner-approved authenticated service binding; without it
-  // retain the order and retry. No real Hotmart network access in this draft.
+  if(policy.next_retry_at_ms && now<policy.next_retry_at_ms){
+   await this.ctx.storage.setAlarm(policy.next_retry_at_ms);return;
+  }
   try{
    if(!this.env.HOTMART_STATUS_VERIFIER?.fetch)throw new Error("provider_status_verifier_missing");
    const response=await this.env.HOTMART_STATUS_VERIFIER.fetch("https://internal.hotmart/status",{method:"GET"});
    if(!response.ok)throw new Error("provider_status_unavailable");
    const proof=await response.json();
-   // No token creation or access grant in an alarm: only enqueue a durable
-   // eligibility claim for a *separate* audited mail sender with a fresh readback.
    const result=this.ledger.queueVerifiedEligibility(now,proof);
-   if(result.code!=="verification_queued"){await this.ctx.storage.setAlarm(now+5*60000);return;}
-   // This candidate has no sender integration. Keep waiting / no downloadable token.
-   await this.ctx.storage.setAlarm(now+5*60000);
+   // F2: durable eligibility outbox is the handoff: stop scheduling.
+   if(result.code==="verification_queued"||result.code==="already_queued")return;
   }catch{
-   await this.ctx.storage.setAlarm(now+5*60000);
+   // Provider unavailable: fail closed, backoff below.
   }
+  const result=this.ledger.failAlarm(now);
+  if(result.code==="retry")await this.ctx.storage.setAlarm(result.next);
+  // 48 failures => stalled and owner-alert outbox, no infinite polling.
  }
 }
