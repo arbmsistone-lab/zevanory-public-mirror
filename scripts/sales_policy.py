@@ -349,6 +349,14 @@ def audit_policy(out_dir: Path, products=PRODUCT_SURFACES, legal=LEGAL_SURFACES)
                 problems.append(f"{slug}: formulacao divergente '{bad}'")
     for slug in SUBSCRIPTION_SURFACES:
         text = (out_dir / f"{slug}.html").read_text(encoding="utf-8")
+        # NC-015 DEC-04: subscription is EXCLUDED from phase one, not a
+        # legally active offer. Accept only the exact closed-page shape.
+        if slug == "conteudo-pronto" and 'noindex,nofollow' in text:
+            if ('<h1>Página indisponível</h1>' not in text
+                    or 'pay.hotmart.com' in text or '/assinar/' in text
+                    or 'data-zev-sub=' in text):
+                problems.append(f"{slug}: tombstone da fase 1 invalida")
+            continue
         if RULE_7D not in text:
             problems.append(f"{slug}: falta '{RULE_7D}'")
         if f"/termos#{POLICY_ANCHOR}" not in text:
