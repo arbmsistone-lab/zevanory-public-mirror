@@ -241,7 +241,8 @@ test("cache: páginas que dependem do interruptor saem com no-store nos dois mod
     for (const s of ["open", "closed"]) {
       state = s;
       const res = await get(path);
-      assert.equal(res.status, 200, path);
+      assert.equal(res.status, path==="/conteudo-pronto"?404:200,path);
+      if(path==="/conteudo-pronto") assert.equal(res.headers.get("x-robots-tag"),"noindex, nofollow");
       const cc = String(res.headers.get("cache-control") || "");
       assert.match(cc, /\bno-store\b/, `${path} (${s}) sem no-store: ${cc}`);
       assert.doesNotMatch(cc, /\b(public|max-age=[1-9]|s-maxage|stale-while-revalidate)\b/, `${path} (${s}) armazenável: ${cc}`);
