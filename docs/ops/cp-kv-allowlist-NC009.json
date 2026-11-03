@@ -1,8 +1,8 @@
 {
   "schema": "zpc-cp-kv-exit/v1",
-  "source_sha": "161a396f698b8d8f1ea647e0b70632dac8b8ddb3",
+  "source_sha": "0cef9a5772eb5f58575b74722ab9ffd675d279cc",
   "scope": "worker/content-service.mjs",
-  "remaining_baseline": 55,
+  "remaining_baseline": 37,
   "allowlist": [
     {
       "line": 85,
@@ -53,177 +53,105 @@
       "text": "if (!meta[key]) { meta[key] = { attempts: 0, firstAt: new Date(now).toISOString() }; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }"
     },
     {
-      "line": 583,
-      "text": "await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 587,
-      "text": "if (pending.includes(key)) await kv.put(PENDING, JSON.stringify(pending.filter((k) => k !== key)));"
-    },
-    {
-      "line": 590,
-      "text": "if (m) { delete meta[key]; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }"
-    },
-    {
-      "line": 599,
+      "line": 595,
       "text": "await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 620,
-      "text": "await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 626,
+      "line": 601,
       "text": "if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); await kv.delete(DELIVERY + d.pkgKey.slice(PKG.length)); }"
     },
     {
-      "line": 631,
+      "line": 606,
       "text": "await kv.put(key, JSON.stringify({ ...rest, email, ...(emailOps ? { emailChanges: emailOps } : {}), deliveryHistory: history }), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 635,
+      "line": 610,
       "text": "await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 640,
+      "line": 615,
       "text": "await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 644,
+      "line": 619,
       "text": "await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 665,
-      "text": "await kv.delete(leaseKey(key));"
-    },
-    {
-      "line": 671,
-      "text": "if (!list.includes(id)) await kv.put(DELIVERY_OUTBOX, JSON.stringify([...list, id].slice(-500)));"
-    },
-    {
-      "line": 681,
-      "text": "await kv.put(key, JSON.stringify(merged), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 706,
-      "text": "await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 712,
-      "text": "if (JSON.stringify(keep) !== JSON.stringify(list)) await kv.put(DELIVERY_OUTBOX, JSON.stringify(keep));"
-    },
-    {
-      "line": 726,
-      "text": "await kv.put(leaseKey(key), new Date(now + GEN_LEASE_MS).toISOString(), { expirationTtl: Math.ceil(GEN_LEASE_MS / 1000) + 60 });"
-    },
-    {
-      "line": 741,
-      "text": "await kv.put(pkgKey, JSON.stringify(pkg), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 750,
-      "text": "await kv.put(deliveryKey, JSON.stringify(delivery), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 768,
-      "text": "await kv.put(sentKey, JSON.stringify(sentMark), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 780,
-      "text": "await kv.put(key, JSON.stringify(updated), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 793,
-      "text": "await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });"
-    },
-    {
-      "line": 825,
-      "text": "if (first && meta[key]) { meta[key].exceptionAlerted = true; await kv.put(PENDING_META, JSON.stringify(meta), { expirationTtl: 400 * DAY }); }"
-    },
-    {
-      "line": 834,
-      "text": "if (JSON.stringify(next) !== JSON.stringify(cur)) await kv.put(PENDING, JSON.stringify(next));"
-    },
-    {
-      "line": 841,
-      "text": "await kv.put(STALL_ALERT, new Date(now).toISOString(), { expirationTtl: 30 * DAY });"
-    },
-    {
-      "line": 895,
+      "line": 685,
       "text": "const putJson = (kv, k, v) => kv.put(k, JSON.stringify(v), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 928,
+      "line": 718,
       "text": "if (!list.includes(candKey)) await kv.put(REGEN_OUTBOX, JSON.stringify([...list, candKey].slice(-500)));"
     },
     {
-      "line": 932,
+      "line": 722,
       "text": "if (list.includes(candKey)) await kv.put(REGEN_OUTBOX, JSON.stringify(list.filter((k) => k !== candKey)));"
     },
     {
-      "line": 936,
+      "line": 726,
       "text": "await putJson(kv, candKey, dead);"
     },
     {
-      "line": 947,
+      "line": 737,
       "text": "await putJson(kv, candKey, accepted);"
     },
     {
-      "line": 952,
+      "line": 742,
       "text": "await putJson(kv, candKey, pending);"
     },
     {
-      "line": 963,
+      "line": 753,
       "text": "if (c.delivery !== \"delivered\") { c = { ...c, delivery: \"delivered\", deliveredAt: new Date().toISOString() }; await putJson(kv, candKey, c); }"
     },
     {
-      "line": 969,
+      "line": 759,
       "text": "await putJson(kv, candKey, { ...c, promotedAt: record.regeneratedAt || new Date().toISOString() });"
     },
     {
-      "line": 974,
+      "line": 764,
       "text": "await putJson(kv, candKey, { ...c, promotedAt: null, superseded: true });"
     },
     {
-      "line": 981,
+      "line": 771,
       "text": "await putJson(kv, cand.sub, { ...record, lastPackage: cand.candidate_key, blockedPackage: cand.blockedPackage, regeneratedAt: at, regenProtocolo: cand.protocolo, regenEmailId: cand.email_id });"
     },
     {
-      "line": 983,
+      "line": 773,
       "text": "await putJson(kv, candKey, { ...c, promotedAt: at });"
     },
     {
-      "line": 1014,
+      "line": 804,
       "text": "await putJson(kv, candKey, reopened);"
     },
     {
-      "line": 1045,
+      "line": 835,
       "text": "if (!(await kv.get(candidate_key))) await kv.put(candidate_key, stored, { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 1051,
+      "line": 841,
       "text": "await putJson(kv, candKey, cand);"
     },
     {
-      "line": 1154,
+      "line": 944,
       "text": "await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 1171,
+      "line": 961,
       "text": "await kv.put(keys[0], JSON.stringify({ ...latest, refundRequests: reqs }), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 1194,
+      "line": 984,
       "text": "await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 1219,
+      "line": 1009,
       "text": "await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });"
     },
     {
-      "line": 1223,
+      "line": 1013,
       "text": "await kv.put(REFUNDS, JSON.stringify(list.slice(-500)), { expirationTtl: 400 * DAY });"
     }
   ],
-  "policy": "NC-012 real deletion: 69 -> 55 syntactic writers; no relocation. No cutover until 0 canonical writes and DO/Resend/R2 guards. M3 ledger and backup exempt."
+  "policy": "NC-012 real deletion: 69 -> 37 legacy writer expressions; code-only Draft; no mutation to production. Cutover remains NO_GO. M3 sales ledger and backup exempt."
 }
