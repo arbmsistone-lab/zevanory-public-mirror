@@ -177,185 +177,7 @@ async function ownerAlert(env, subject, text, fetchImpl, { kind = "geral", sub =
   return emailed;
 }
 
-// ---------- Hotmart postback ----------
-export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch) {
-  if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
-  const kv = kvOf(env);
-  const secret = hottok(env);
-  if (!kv?.get || !kv?.put) return json(503, { error: "secure_store_unavailable" });
-  if (secret.length < 16) return json(503, { error: "hotmart_not_configured" });
-  let body = null;
-  try { body = await request.json(); } catch { return json(400, { error: "invalid_json" }); }
-  const provided = request.headers.get("x-hotmart-hottok") || String(body?.hottok || "");
-  if (!eq(provided, secret)) return json(401, { error: "unauthorized" });
-  const serviceIds = String(env.HOTMART_SERVICE_PRODUCT_IDS || bundle(env).HOTMART_SERVICE_PRODUCT_IDS || "8704905");
-  const event = String(body?.event || "").toUpperCase();
-  const data = body?.data || {};
-  const txn = String(data?.purchase?.transaction || "");
-  if (!event || !txn) return json(400, { error: "missing_event_or_transaction" });
-  const purchaseStatus = String(data?.purchase?.status || "").trim().toUpperCase().slice(0, 40);
-  const subStatusKey = String(data?.subscription?.status || "").trim().toUpperCase().slice(0, 40);
-  const dedupe = TXN + (await sha(event + ":" + txn + ":" + purchaseStatus + ":" + subStatusKey)).slice(0, 40);
-  const seen = await kv.get(dedupe);
-  if (seen) {
-    // Rodada 7 (LOW): um PURCHASE_CANCELED de cobrança não concluída é guardado como "unpaid". Se a mesma transação foi
-    // aprovada depois, um novo PURCHASE_CANCELED dela é cancelamento de verdade e não é descartado como duplicata.
-    let paidNow = false;
-    if (seen === "unpaid") {
-      const sk = SUB + (await sha(String(data?.subscription?.subscriber?.code || "") || "txn-" + txn)).slice(0, 40);
-      paidNow = Number.isInteger((await readJson(kv, sk, null))?.txnCycles?.[txn]);
-    }
-    if (!paidNow) return json(200, { ok: true, duplicate: true });
-  }
-  // G1 (ORDEM 301): o evento só conta como processado DEPOIS dos efeitos duráveis (registro do assinante e intenção de
-  // geração na fila). Se o isolate cair antes, a Hotmart reenvia o postback e o processamento se repete sem dobrar o
-  // ciclo (o ciclo só sobe uma vez por transação).
-  const markProcessed = (mark = "1") => kv.put(dedupe, mark, { expirationTtl: 400 * DAY });
-  // Revenue ledger for the command center (aggregate, PII-free, idempotent per txn/outcome).
-  await recordHotmartSale(kv, event, data).catch(() => null);
-
-  if (!isServiceProduct(data, serviceIds)) {
-    // Digital products: Hotmart itself delivers the files. Only record visibility.
-    if (ACTIVE_EVENTS.has(event)) await emitActivity(env, { type: "delivery_sent", channel: "store", status: "hotmart_approved", ref: "hotmart:" + txn }).catch(() => null);
-    if (STOP_EVENTS.has(event)) await emitActivity(env, { type: "refund_requested", channel: "store", status: "hotmart_" + event.toLowerCase().slice(0, 40), ref: "hotmart:" + txn }).catch(() => null);
-    await markProcessed();
-    return json(200, { ok: true, scope: "digital_product" });
-  }
-
-  const subscriber = String(data?.subscription?.subscriber?.code || "") || "txn-" + txn;
-  const key = SUB + (await sha(subscriber)).slice(0, 40);
-  const email = String(data?.buyer?.email || "").trim().toLowerCase();
-  const name = String(data?.buyer?.name || "").trim().slice(0, 80);
-  let current = await readJson(kv, key, null);
-
-  if (STOP_EVENTS.has(event)) {
-    // Rodadas 5, 6 e 7 da auditoria. Estorno, chargeback, protesto ou cancelamento de UMA transação não é, por si, o fim
-    // da assinatura: supõe-se que a Hotmart permite estornar uma recorrência sem cancelar (PRECISA DE CONFIRMAÇÃO DO
-    // PROPRIETÁRIO). Regras:
-    //  - só um mês PAGO pode ser devolvido: o ciclo vem apenas de txnCycles (transação aprovada registrada na renovação).
-    //    Transação desconhecida não mexe em mês nenhum (sem palpite por recurrence_number). PURCHASE_CANCELED de
-    //    transação desconhecida é cobrança não concluída ("não paga"), sem rótulo de reembolso;
-    //  - o mês só sai dos pendentes sozinho quando havia um pedido de reembolso aberto para ele (o proprietário pediu o
-    //    estorno na Hotmart e o webhook confirma). Sem pedido, o mês fica "estorno a confirmar": continua a entregar, o
-    //    proprietário é avisado e confirma pelo operador (refund-confirm: total ou parcial, com motivo). Motivo: o campo
-    //    do valor estornado no postback NÃO foi verificado na documentação da Hotmart, e valor ausente, zero, ilegível
-    //    ou igual ao preço não prova estorno total;
-    //  - valor claramente menor que o pago => estorno parcial registrado, mês mantido, alerta;
-    //  - a assinatura só acaba com SUBSCRIPTION_CANCELLATION ou subscription.status de encerramento; ao acabar, todo
-    //    outro mês pago sem pacote (fora os que estão a confirmar) vira pedido de reembolso, com alerta;
-    //  - status fora dos conhecidos: assinatura ativa, créditos preservados, alerta (nunca silencioso).
-    const at = new Date().toISOString();
-    const subStatus = subStatusKey;
-    const ends = event === "SUBSCRIPTION_CANCELLATION" || (Boolean(subStatus) && SUB_ENDED_RX.test(subStatus));
-    const unknownStatus = Boolean(subStatus) && !ends && !SUB_ACTIVE_RX.test(subStatus);
-    if (!current) { await markProcessed(); return json(200, { ok: true, status: "unknown_subscriber" }); }
-    const latest = (await readJson(kv, key, null)) || current; // releitura logo antes de gravar
-    const recRaw = data?.purchase?.recurrence_number ?? data?.purchase?.recurrency_number;
-    const recNum = /^\d{1,4}$/.test(String(recRaw ?? "").trim()) && Number(recRaw) > 0 ? Number(recRaw) : null; // só inteiro positivo, e só para o alerta
-    const paidCycle = event === "SUBSCRIPTION_CANCELLATION" ? null : (Number.isInteger(latest.txnCycles?.[txn]) ? latest.txnCycles[txn] : null);
-    const refundAmt = parseAmount(data?.purchase?.price?.value);
-    const paidAmt = paidCycle === null ? null : (parseAmount(latest.txnPaid?.[txn]) ?? parseAmount(data?.purchase?.full_price?.value));
-    const partial = paidCycle !== null && refundAmt !== null && paidAmt !== null && refundAmt < paidAmt - 0.005;
-    const refundRequests = (latest.refundRequests || []).map((r) => ({ ...r }));
-    const partialRefunds = [...(latest.partialRefunds || [])];
-    const toConfirm = [...(latest.refundsToConfirm || [])];
-    const open = paidCycle === null ? null : refundRequests.find((r) => Number(r.cycle) === paidCycle);
-    let txnCycle = null, confirm = false;
-    if (paidCycle !== null && open && !partial) { // pedido existente: o webhook confirma o estorno pedido
-      txnCycle = paidCycle;
-      if (open.status !== "processed") Object.assign(open, { status: "processed", processedAt: at, processedBy: "webhook:" + event });
-    } else if (paidCycle !== null && !partial) { // sem pedido: estorno a confirmar, mês mantido
-      confirm = true;
-      if (!toConfirm.some((r) => Number(r.cycle) === paidCycle)) toConfirm.push({ cycle: paidCycle, txn, event, amount: refundAmt, amountRaw: String(data?.purchase?.price?.value ?? "").slice(0, 20), paid: paidAmt, at });
-    }
-    if (partial && !partialRefunds.some((r) => r.txn === txn && r.event === event)) partialRefunds.push({ cycle: paidCycle, txn, event, amount: refundAmt, paid: paidAmt, at });
-    let owed = [];
-    if (ends && latest.status === "active") {
-      const skip = new Set([...refundRequests.map((r) => Number(r.cycle)), ...toConfirm.map((r) => Number(r.cycle))]);
-      owed = pendingCycles({ ...latest, refundRequests }).filter((c) => !skip.has(c));
-      refundRequests.push(...owed.map((cycle) => ({ cycle, reason: "cancelamento", at, status: "requested" })));
-    }
-    const updated = { ...latest, refundRequests, ...(partialRefunds.length ? { partialRefunds: partialRefunds.slice(-36) } : {}), ...(toConfirm.length ? { refundsToConfirm: toConfirm.slice(-36) } : {}), ...(ends ? { status: "inactive", stoppedAt: at, stopEvent: event } : {}) };
-    await kv.put(key, JSON.stringify(updated), { expirationTtl: 400 * DAY });
-    await syncCreditIndex(kv, key, updated);
-    if (txnCycle !== null) await markRefundProcessed(kv, key, txnCycle, "webhook:" + event);
-    if (owed.length) await recordRefundRequests(env, kv, key, owed, "cancelamento", { fetchImpl });
-    const who = `assinante …${String(key).slice(-12)}`;
-    const recTxt = recNum ? `, recorrência ${recNum} na Hotmart` : "";
-    const keep = "A assinatura foi mantida ativa e os créditos foram preservados.";
-    if (partial) await ownerAlert(env, "estorno parcial no Conteúdo Pronto", `A Hotmart enviou ${event} de ${refundAmt} sobre ${paidAmt} pagos (${who}, ciclo ${paidCycle}). O mês continua a entregar e o estorno parcial ficou registrado. Conferir na Hotmart.`, fetchImpl, { kind: "estorno_parcial", sub: key }).catch(() => null);
-    else if (confirm) await ownerAlert(env, "estorno a confirmar no Conteúdo Pronto", `A Hotmart enviou ${event} da transação paga do ciclo ${paidCycle} (${who}), sem pedido de reembolso aberto. Valor informado: ${refundAmt ?? "ausente ou ilegível"}${paidAmt ? ` sobre ${paidAmt} pagos` : ""}. O mês ${paidCycle} CONTINUA a entregar até a confirmação. Conferir na Hotmart e confirmar: POST /api/admin/conteudo-pronto/refund-confirm {sub, cycle, kind: "total" ou "parcial", operator, reason}.${ends ? "" : " " + keep}`, fetchImpl, { kind: "estorno_a_confirmar", sub: key }).catch(() => null);
-    else if (!ends && paidCycle === null && event === "PURCHASE_CANCELED") await ownerAlert(env, "cobrança do Conteúdo Pronto não concluída", `A Hotmart enviou PURCHASE_CANCELED de uma transação que não foi aprovada aqui (${who}${recTxt}). Tratado como cobrança não paga: nenhum mês foi alterado e nada foi marcado como reembolso. Se uma nova tentativa for aprovada, o mês segue normalmente. ${keep} (Repetições do mesmo dia entram neste alerta.)`, fetchImpl, { kind: "cobranca_nao_concluida", sub: key, daily: true }).catch(() => null);
-    else if (!ends && paidCycle === null) await ownerAlert(env, "estorno de transação desconhecida no Conteúdo Pronto: confirmar", `A Hotmart enviou ${event} de uma transação que não está registrada como paga aqui (${who}${recTxt}). Nenhum mês foi alterado. ${keep} Confirmar na Hotmart qual mês foi devolvido e registrar pelo operador (refund-request e refund-processed).`, fetchImpl, { kind: "assinatura_confirmar", sub: key }).catch(() => null);
-    if (unknownStatus) await ownerAlert(env, "status de assinatura não reconhecido no Conteúdo Pronto", `A Hotmart enviou ${event} com subscription.status "${subStatus.slice(0, 40)}" (${who}). Esse status não está entre os conhecidos (ativos: ACTIVE, STARTED; encerramento: CANCEL*, INACTIVE, EXPIRED, ENDED). ${keep} Confirmar a situação na Hotmart.`, fetchImpl, { kind: "assinatura_status_desconhecido", sub: key }).catch(() => null);
-    const outcome = ends ? "service_stopped" : partial ? "service_partial_refund" : confirm ? "service_refund_to_confirm" : paidCycle === null ? (event === "PURCHASE_CANCELED" ? "service_charge_not_completed" : "service_refund_unmatched") : "service_month_refunded";
-    await emitActivity(env, { type: "refund_requested", channel: "store", status: outcome, ref: "cp:" + subscriber + ":" + event.toLowerCase() + ":" + txn }).catch(() => null);
-    await markProcessed(paidCycle === null && event === "PURCHASE_CANCELED" ? "unpaid" : "1");
-    return json(200, { ok: true, status: ends ? "inactive" : "active", cycle: txnCycle, ...(partial ? { partial: true } : {}), ...(confirm ? { to_confirm: paidCycle } : {}), ...(paidCycle === null && !ends ? { unpaid_or_unknown: true } : {}) });
-  }
-  if (!ACTIVE_EVENTS.has(event)) { await markProcessed(); return json(200, { ok: true, ignored: event }); }
-  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { await markProcessed(); return json(200, { ok: true, status: "no_buyer_email" }); }
-
-  current = (await readJson(kv, key, null)) || current; // releitura logo antes de montar e gravar (LOW, rodada 5)
-  const record = {
-    schema: "zpc.cp.v1", status: "active", email, name,
-    cycles: current?.lastTxn === txn ? Number(current.cycles || 1) : Number(current?.cycles || 0) + 1, lastTxn: txn,
-    briefing: current?.briefing || null, createdAt: current?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(),
-  };
-  // Campos de entrega do ciclo já entregue continuam (sem eles o ciclo seria entregue de novo).
-  for (const f of ["deliveredCycle", "deliveredAt", "lastPackage", "briefedAt", "regenProtocolo", "regeneratedAt", "campanha", "deliveries", "credits", "creditsUsed", "refundRequests", "partialRefunds", "refundsToConfirm", "revertedRefunds", "deliveryHistory", "emailChanges"]) if (current?.[f] !== undefined) record[f] = current[f];
-  // Transação -> ciclo, para um estorno da Hotmart achar o mês certo (últimas 36).
-  record.txnCycles = Object.fromEntries([...Object.entries(current?.txnCycles || {}), [txn, record.cycles]].slice(-36));
-  // Valor pago por transação, para distinguir estorno parcial de total (rodada 6, MED-2).
-  const paidValue = parseAmount(data?.purchase?.price?.value);
-  record.txnPaid = Object.fromEntries([...Object.entries(current?.txnPaid || {}), ...(paidValue !== null ? [[txn, paidValue]] : [])].slice(-36));
-  // S308: renovação com o mês anterior pago e sem pacote => crédito (nunca perda). Acima do limite, o mais antigo vira
-  // pedido de reembolso registrado.
-  let newCredit = null, overflow = [];
-  const prev = Number(current?.cycles || 0);
-  if (current && current.lastTxn !== txn && prev >= 1 && pendingCycles({ ...current, credits: [] }).includes(prev)) {
-    newCredit = { cycle: prev, createdAt: new Date().toISOString() };
-    const credits = [...(record.credits || []).filter((c) => Number(c.cycle) !== prev), newCredit].sort((a, b) => a.cycle - b.cycle);
-    const refunded = refundedCycles(record);
-    const live = credits.filter((c) => !refunded.has(Number(c.cycle)));
-    overflow = live.slice(0, Math.max(0, live.length - CREDITOS_MAX)).map((c) => c.cycle);
-    record.credits = credits.filter((c) => !overflow.includes(c.cycle));
-    if (overflow.length) record.refundRequests = [...(record.refundRequests || []), ...overflow.map((cycle) => ({ cycle, reason: "limite_de_creditos", at: new Date().toISOString(), status: "requested" }))];
-  }
-  await kv.put(key, JSON.stringify(record), { expirationTtl: 400 * DAY });
-  if (newCredit) { await pendingLog(kv, key, "credit_created", "ciclo " + newCredit.cycle); await syncCreditIndex(kv, key, record); }
-  if (overflow.length) await recordRefundRequests(env, kv, key, overflow, "limite_de_creditos", { fetchImpl });
-  await emitActivity(env, { type: "delivery_sent", channel: "store", status: record.cycles === 1 ? "service_started" : "service_renewed", ref: "cp:" + subscriber + ":" + record.cycles }).catch(() => null);
-
-  // Formulário (boas-vindas no 1º ciclo; na renovação, pedido da campanha do mês). Auditoria #953 H2: o evento só conta
-  // como processado depois que o e-mail SAIU; se o envio falhar, o pedido entra na fila de formulários (mesmo link e mesma
-  // Idempotency-Key em toda tentativa), fica registrado, o proprietário é avisado e o cron tenta de novo.
-  // v3: renovação = nova campanha; sem a campanha deste ciclo nada é gerado até o assinante responder.
-  if (needsForm(record)) {
-    const outbox = await readJson(kv, WELCOME, {});
-    const item = outbox[key]?.token && outbox[key].cycles === record.cycles ? outbox[key] : { token: rand(), dedupe, cycles: record.cycles, attempts: 0, firstAt: new Date().toISOString() };
-    if (item !== outbox[key]) await putToken(kv, item.token, { k: "brief", sub: key }, 60);
-    const sent = await sendWelcome(env, key, record, item.token, fetchImpl);
-    if (!sent) {
-      await welcomeFailed(env, kv, key, { ...item, dedupe }, "email_failed", fetchImpl);
-      return json(202, { ok: true, status: record.briefing ? "campaign_email_pending" : "briefing_email_pending" });
-    }
-    await welcomeDone(env, kv, key, subscriber, record.cycles, dedupe, Date.now(), record.briefing ? "campaign_requested" : "briefing_requested", item.token);
-    // Renovação chegando sem a campanha (e sem entrega) do ciclo anterior: o proprietário é avisado (MED-2).
-    if (record.briefing && newCredit) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem campanha", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem ter enviado a campanha do ciclo ${newCredit.cycle}: o mês virou crédito (${(record.credits || []).length} de ${CREDITOS_MAX}). Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
-    if (!record.briefing && record.cycles === 1) await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl, { kind: "novo_assinante", sub: key });
-    if (!record.briefing && record.cycles > 1) await ownerAlert(env, "ciclo do Conteúdo Pronto terminou sem formulário", `Assinante …${String(key).slice(-12)} renovou (ciclo ${record.cycles}) sem nunca ter enviado o formulário; os meses sem pacote viraram crédito (${(record.credits || []).length} de ${CREDITOS_MAX}). O formulário foi reenviado. Contatar o assinante.`, fetchImpl, { kind: "ciclo_sem_campanha", sub: key });
-    return json(200, { ok: true, status: record.briefing ? "campaign_requested" : "briefing_requested" });
-  }
-  // Reprocessamento de uma transação cujo ciclo já foi entregue (ex.: PURCHASE_COMPLETE depois do APPROVED): nada a gerar.
-  if (campaignTarget(record) === null) { await markProcessed(); return json(200, { ok: true, status: "already_delivered" }); }
-  // G1: entra na fila ANTES do waitUntil; se o runtime cortar a geração (até 30 s após a resposta), o cron entrega.
-  await enqueuePending(kv, key);
-  await markProcessed();
-  const job = generateAndDeliver(env, key, fetchImpl);
-  if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
-  return json(200, { ok: true, status: "generation_started" });
-}
+// NC-012: CP webhook removed. Effective route is routed to SQLite DO, no KV fallback.
 
 // ---------- Boas-vindas (formulário) com fila de repetição ----------
 const WELCOME = "zpc:cp:welcome-outbox"; // { chave do assinante: { token, dedupe, cycles, attempts, firstAt, lastAt, lastReason } }
@@ -435,21 +257,7 @@ async function recordRefundRequests(env, kv, key, cycles, reason, { operator = "
 const firstName = (name) => (name ? ", " + String(name).split(" ")[0] : "");
 const welcomeText = (name, link) => `Olá${firstName(name)}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar a sua ${SERVICO}, responda este formulário curto (leva 5 minutos): o perfil do negócio e a campanha do mês (objetivo comercial, oferta, condição comercial e período).\n\n${link}\n\nAssim que você enviar, a ZEVANORY gera a campanha com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário do período e envia para este e-mail. ${RETRY_TEXT} Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`;
 const campaignRequestText = (name, cycle, link, credit = false) => `Olá${firstName(name)}!\n\n${credit ? `Você tem o mês ${cycle} em crédito (pago e ainda sem pacote). Para a ZEVANORY preparar a ${SERVICO} desse mês, sem custo adicional,` : `Sua assinatura foi renovada. Para a ZEVANORY preparar a ${SERVICO} deste mês,`} informe no formulário o objetivo comercial, a oferta, a condição comercial e o período (o perfil do seu negócio já vem preenchido):\n\n${link}\n\nA campanha chega neste e-mail depois que você enviar. ${RETRY_TEXT}\n\nDúvidas: suporte@zevanory.api.br`;
-async function sendWelcome(env, key, record, token, fetchImpl) {
-  const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
-  const idem = (record.briefing ? "cp-camp/" : "cp-welcome/") + (await sha(key + "|" + token)).slice(0, 48);
-  const alvo = campaignTarget(record) ?? record.cycles;
-  if (record.briefing) return sendEmail(env, record.email, `Conteúdo Pronto: defina a campanha do mês ${alvo}`, campaignRequestText(record.name, alvo, link, alvo !== record.cycles), fetchImpl, idem);
-  return sendEmail(env, record.email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo", welcomeText(record.name, link), fetchImpl, idem);
-}
-async function welcomeFailed(env, kv, key, item, reason, fetchImpl, now = Date.now()) {
-  const outbox = await readJson(kv, WELCOME, {});
-  const attempts = Number(item.attempts || 0) + 1;
-  outbox[key] = { ...item, attempts, lastAt: new Date(now).toISOString(), lastReason: reason };
-  await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY });
-  await pendingLog(kv, key, "welcome_failed", reason, now);
-  if (attempts === 1) await ownerAlert(env, "e-mail com o formulário do Conteúdo Pronto não saiu", `O e-mail com o formulário (boas-vindas ou campanha do mês) não foi aceito pelo provedor (assinante …${String(key).slice(-12)}). O sistema tenta de novo a cada hora, até ${PENDING_MAX_ATTEMPTS} vezes, com o mesmo link; depois disso o item vai para a fila de falhas.`, fetchImpl, { kind: "boas_vindas_falhou", sub: key, now }).catch(() => null);
-}
+// NC-012: obsolete welcome sender and KV retry removed; DO outbox is not connected to Resend.
 // #960 rodada 2 (MED-2): formulário enviado e não respondido (boas-vindas ou campanha do mês) => lembretes ao assinante
 // nos dias CAMPAIGN_REMINDER_DAYS depois do pedido, alerta ao proprietário nos dias CAMPAIGN_OWNER_ALERT_DAYS. Se a
 // renovação seguinte chegar sem a campanha, o mês pago vira crédito (S308; ver pendingCycles) e o proprietário é avisado
@@ -459,91 +267,7 @@ export const MES_SEM_CAMPANHA = CONTEUDO_PRONTO.mes_sem_campanha;
 export const CAMPAIGN_REMINDER_DAYS = Object.freeze([3, 7, 14]);
 export const CAMPAIGN_OWNER_ALERT_DAYS = Object.freeze([7, 14]);
 const FORM_WAIT = "zpc:cp:form-wait"; // { chave do assinante: { cycle, token, requestedAt, sent: [dias] } }
-async function setFormWait(kv, key, cycle, token, now) {
-  const w = await readJson(kv, FORM_WAIT, {});
-  w[key] = { cycle, token, requestedAt: new Date(now).toISOString(), sent: [] };
-  await kv.put(FORM_WAIT, JSON.stringify(w), { expirationTtl: 400 * DAY });
-}
-async function clearFormWait(kv, key) {
-  const w = await readJson(kv, FORM_WAIT, {});
-  if (w[key]) { delete w[key]; await kv.put(FORM_WAIT, JSON.stringify(w), { expirationTtl: 400 * DAY }); }
-}
-const reminderText = (name, cycle, first, link, day) => `Olá${firstName(name)}!\n\n${first ? "Seu pagamento foi confirmado, mas ainda falta o formulário curto (perfil do negócio e campanha do mês)" : `Sua assinatura foi renovada, mas ainda falta a campanha do mês ${cycle} (objetivo comercial, oferta, condição comercial e período)`}. Sem ela a ZEVANORY não gera os textos.\n\n${link}\n\n${MES_SEM_CAMPANHA} Este é o lembrete do dia ${day}.\n\nVocê recebe este aviso porque assinou o Conteúdo Pronto. Para não receber mais, cancele a assinatura na sua conta Hotmart. Ajuda: suporte@zevanory.api.br`;
-export async function remindPendingForms(env, fetchImpl = fetch, { now = Date.now() } = {}) {
-  const kv = kvOf(env);
-  const wait = await readJson(kv, FORM_WAIT, {});
-  const out = { reminders: 0, alerts: 0, cleared: 0 };
-  for (const [key, w] of Object.entries(wait)) {
-    try {
-      const rec = await readJson(kv, key, null);
-      if (!rec || rec.status !== "active" || !needsForm(rec) || rec.cycles !== w.cycle) { await clearFormWait(kv, key); out.cleared++; continue; }
-      const days = (now - Date.parse(w.requestedAt)) / (DAY * 1000);
-      const due = CAMPAIGN_REMINDER_DAYS.filter((d) => days >= d && !(w.sent || []).includes(d));
-      for (const d of due) {
-        const link = `${ORIGIN}/conteudo-pronto/briefing?t=${w.token}`;
-        const ok = await sendEmail(env, rec.email, rec.briefing ? `Lembrete: falta a campanha do mês ${rec.cycles} do Conteúdo Pronto` : "Lembrete: falta o formulário do Conteúdo Pronto", reminderText(rec.name, rec.cycles, !rec.briefing, link, d), fetchImpl, "cp-remind/" + (await sha(key + "|" + w.cycle + "|" + d)).slice(0, 48));
-        if (!ok) { // tenta de novo no próximo cron; o proprietário é avisado na primeira falha de cada lembrete
-          await pendingLog(kv, key, "reminder_failed", "day " + d, now);
-          const cur = await readJson(kv, FORM_WAIT, {});
-          if (cur[key] && !(cur[key].failed || []).includes(d)) {
-            cur[key].failed = [...(cur[key].failed || []), d];
-            await kv.put(FORM_WAIT, JSON.stringify(cur), { expirationTtl: 400 * DAY });
-            await ownerAlert(env, "lembrete do Conteúdo Pronto não saiu", `O lembrete do dia ${d} para o assinante …${String(key).slice(-12)} (ciclo ${rec.cycles}) não foi aceito pelo provedor. Nova tentativa a cada hora.`, fetchImpl, { kind: "lembrete_falhou", sub: key, now });
-          }
-          break;
-        }
-        const cur = await readJson(kv, FORM_WAIT, {});
-        if (cur[key]) { cur[key].sent = [...(cur[key].sent || []), d]; await kv.put(FORM_WAIT, JSON.stringify(cur), { expirationTtl: 400 * DAY }); }
-        await pendingLog(kv, key, "reminder_sent", "day " + d, now);
-        out.reminders++;
-        if (CAMPAIGN_OWNER_ALERT_DAYS.includes(d)) {
-          await ownerAlert(env, rec.briefing ? "campanha do mês do Conteúdo Pronto sem resposta" : "formulário do Conteúdo Pronto sem resposta", `Assinante …${String(key).slice(-12)} pagou o ciclo ${rec.cycles} e ainda não enviou ${rec.briefing ? "a campanha do mês" : "o formulário"} (${d} dias depois do pedido; lembretes enviados nos dias ${CAMPAIGN_REMINDER_DAYS.filter((x) => x <= d).join(", ")}). Contatar o assinante. O mês fica reservado até a próxima renovação.`, fetchImpl, { kind: "campanha_pendente", sub: key, now });
-          out.alerts++;
-        }
-      }
-    } catch (e) { await pendingLog(kv, key, "reminder_failed", "exception:" + String(e?.message || e).slice(0, 40), now).catch(() => null); }
-  }
-  return out;
-}
-async function welcomeDone(env, kv, key, ref, cycles, dedupe, now = Date.now(), status = "briefing_requested", token = "") {
-  const outbox = await readJson(kv, WELCOME, {});
-  if (outbox[key]) { delete outbox[key]; await kv.put(WELCOME, JSON.stringify(outbox), { expirationTtl: 400 * DAY }); await pendingLog(kv, key, "welcome_sent", "", now); }
-  await emitActivity(env, { type: "email_sent", channel: "email", status, ref: (status === "campaign_requested" ? "cp-camp:" : "cp-brief:") + ref + ":" + cycles }).catch(() => null);
-  if (token) await setFormWait(kv, key, cycles, token, now); // lembretes até a resposta (MED-2)
-  if (dedupe) await kv.put(dedupe, "1", { expirationTtl: 400 * DAY }); // markProcessed só depois do envio
-}
-export async function retryWelcomeEmails(env, fetchImpl = fetch, { now = Date.now(), limit = 5 } = {}) {
-  const kv = kvOf(env);
-  const outbox = await readJson(kv, WELCOME, {});
-  const out = { tried: 0, sent: 0, dead: 0, dropped: 0 };
-  for (const [key, item] of Object.entries(outbox)) {
-    try {
-      const rec = await readJson(kv, key, null);
-      const why = !rec ? "record_missing" : rec.status !== "active" ? "inactive" : !needsForm(rec) ? "already_briefed" : item.cycles !== rec.cycles ? "superseded_cycle" : "";
-      if (why) {
-        const cur = await readJson(kv, WELCOME, {}); delete cur[key];
-        await kv.put(WELCOME, JSON.stringify(cur), { expirationTtl: 400 * DAY });
-        if (item.dedupe) await kv.put(item.dedupe, "1", { expirationTtl: 400 * DAY });
-        await pendingLog(kv, key, "welcome_dropped", why, now); out.dropped++; continue;
-      }
-      if (Number(item.attempts || 0) >= PENDING_MAX_ATTEMPTS) {
-        const cur = await readJson(kv, WELCOME, {}); delete cur[key];
-        await kv.put(WELCOME, JSON.stringify(cur), { expirationTtl: 400 * DAY });
-        await deadLetter(env, kv, key, { attempts: item.attempts, firstAt: item.firstAt, lastReason: item.lastReason || "email_failed", kind: "welcome", token: item.token, dedupe: item.dedupe, cycles: item.cycles }, fetchImpl, now);
-        out.dead++; continue;
-      }
-      if (out.tried >= limit) continue;
-      out.tried++;
-      if (await sendWelcome(env, key, rec, item.token, fetchImpl)) { await welcomeDone(env, kv, key, key.slice(-16), rec.cycles, item.dedupe, now, rec.briefing ? "campaign_requested" : "briefing_requested", item.token); out.sent++; }
-      else await welcomeFailed(env, kv, key, item, "email_failed", fetchImpl, now);
-    } catch (e) {
-      out.tried++;
-      await welcomeFailed(env, kv, key, item, "exception:" + String(e?.message || e).slice(0, 40), fetchImpl, now).catch(() => null);
-    }
-  }
-  return out;
-}
-
+// NC-012: KV form reminders/welcome retries removed; DO token and form ledger replace them.
 // ---------- Briefing form ----------
 const FIELDS = [
   ["negocio", "Nome do negócio", 80, true],
@@ -648,40 +372,7 @@ async function resolveToken(kv, token, kind) {
   if (kind && t.k !== kind && t.k !== "legacy") return null;
   return { key: t.sub, token: t, record: await readJson(kv, t.sub, null) };
 }
-export async function handleBriefing(request, env, ctx, fetchImpl = fetch) {
-  const kv = kvOf(env);
-  const url = new URL(request.url);
-  if (!kv?.get) return page("Indisponível", "<h1>Tente novamente em instantes.</h1>", 503);
-  const token = url.searchParams.get("t") || "";
-  const found = await resolveToken(kv, token, "brief");
-  if (!found?.record || found.record.status !== "active") return page("Link inválido", "<h1>Link inválido ou expirado.</h1><p>Fale com suporte@zevanory.api.br.</p>", 404);
-  if (request.method === "GET") {
-    const b = found.record.briefing || {};
-    const cp = found.record.campanha?.cycle === found.record.cycles ? found.record.campanha : {};
-    const campInputs = CAMPANHA_CAMPOS.map((f) => `<label for="${f.id}">${esc(f.rotulo)}</label>${f.tipo === "date" ? `<input type="date" id="${f.id}" name="${f.id}" value="${esc(cp[f.id] || "")}" required>` : `<input id="${f.id}" name="${f.id}" maxlength="${f.max}" value="${esc(cp[f.id] || "")}" required>`}`).join("");
-    const inputs = FIELDS.map(([id, label, max, req]) => `<label for="${id}">${esc(label)}${req ? "" : " <small>(opcional)</small>"}</label>${max > 120 ? `<textarea id="${id}" name="${id}" maxlength="${max}" rows="3"${req ? " required" : ""}>${esc(b[id] || "")}</textarea>` : `<input id="${id}" name="${id}" maxlength="${max}" value="${esc(b[id] || "")}"${req ? " required" : ""}>`}`).join("");
-    return page("Briefing", `<h1>Conteúdo Pronto · campanha do mês ${esc(found.record.cycles)}</h1><p>Cada mês é uma ${esc(SERVICO)} da oferta que você escolher. Informe a campanha e o perfil do negócio, com o jeito que você fala com seus clientes. Com isso a ZEVANORY prepara a campanha e envia por e-mail assim que ela fica pronta. ${esc(RETRY_TEXT)}</p><form method="post"><h2>Campanha do mês</h2>${campInputs}<p><small>A condição comercial é sua: só informe o que você vai cumprir. Os textos não prometem resultado.</small></p><h2>Perfil do negócio</h2>${inputs}<button type="submit">Enviar e gerar minha campanha</button></form>`);
-  }
-  if (request.method !== "POST") return page("Método inválido", "<h1>Método inválido.</h1>", 405);
-  let form; try { form = await request.formData(); } catch { form = new FormData(); }
-  const briefing = {};
-  for (const [id, , max, req] of FIELDS) {
-    const v = String(form.get(id) || "").replace(/\s+/g, " ").trim().slice(0, max);
-    if (req && v.length < 2) return page("Faltou um campo", `<h1>Faltou preencher: ${esc(FIELDS.find((f) => f[0] === id)[1])}</h1><p><a href="?t=${esc(token)}" style="color:#dbe6ff">Voltar</a></p>`, 400);
-    briefing[id] = v;
-  }
-  const camp = validateCampaign(Object.fromEntries(CAMPANHA_CAMPOS.map((f) => [f.id, form.get(f.id)])), { now: Date.now() });
-  if (!camp.ok) return page("Campanha incompleta", `<h1>${esc(camp.error)}</h1><p>Sem a campanha do mês (objetivo comercial, oferta, condição comercial e período) a ZEVANORY não gera o pacote.</p><p><a href="?t=${esc(token)}" style="color:#dbe6ff">Voltar</a></p>`, 400);
-  await enqueuePending(kv, found.key); // G1: intenção na fila antes de gravar o briefing e de responder
-  const fresh = (await readJson(kv, found.key, null)) || found.record;
-  if (fresh.status !== "active") return page("Assinatura inativa", "<h1>Esta assinatura não está ativa.</h1><p>Fale com suporte@zevanory.api.br.</p>", 409);
-  await kv.put(found.key, JSON.stringify({ ...fresh, briefing, briefedAt: new Date().toISOString(), campanha: { ...camp.campanha, cycle: campaignTarget(fresh) ?? fresh.cycles, savedAt: new Date().toISOString() } }), { expirationTtl: 400 * DAY });
-  await clearFormWait(kv, found.key);
-  const job = generateAndDeliver(env, found.key, fetchImpl);
-  if (ctx?.waitUntil) ctx.waitUntil(job); else await job;
-  return page("Recebido", `<h1>Pronto! Sua campanha do mês está sendo gerada.</h1><p>Ela chega no seu e-mail assim que ficar pronta. ${esc(RETRY_TEXT)} Confira também a caixa de spam ou promoções.</p>`);
-}
-
+// NC-012: obsolete KV briefing handler removed; active route uses G04 signed token and DO SQLite.
 // ---------- Generation ----------
 function aiText(out) { return String(out?.response ?? out?.result?.response ?? out ?? ""); }
 function extractJson(text) { const s = text.indexOf("{"), e = text.lastIndexOf("}"); if (s < 0 || e <= s) return null; try { return JSON.parse(text.slice(s, e + 1)); } catch { return null; } }
@@ -1154,8 +845,8 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2, { 
   const deliveryCheck = await confirmPackageDeliveries(env, fetchImpl, { now }).catch(() => ({ confirmed: 0, failed: 0 }));
   // Mesmo cron: candidatos de regeneração (nova tentativa com a mesma chave; confirmação de entrega pelo email_id).
   const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));
-  const welcome = await retryWelcomeEmails(env, fetchImpl, { now }).catch(() => ({ tried: 0 }));
-  const reminders = await remindPendingForms(env, fetchImpl, { now }).catch(() => ({ reminders: 0 }));
+  const welcome = { tried: 0, disabled: "NC012_DO_OUTBOX_NOT_CONNECTED" };
+  const reminders = { reminders: 0, disabled: "NC012_DO_OUTBOX_NOT_CONNECTED" };
   await checkOverdueRefunds(env, fetchImpl, { now }).catch(() => null);
   return { ok: true, tried: results.length + Number(regen.tried || 0) + Number(welcome.tried || 0), delivered: results.filter((r) => r.ok).length, regen, welcome, deliveryCheck, reminders };
 }
