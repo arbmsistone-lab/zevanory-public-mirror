@@ -16,16 +16,17 @@ function run(mutator){
   return spawnSync(process.execPath,[CHECK],{cwd:tmp,encoding:"utf8",timeout:10000});
  }finally{rmSync(tmp,{recursive:true,force:true})}
 }
-test("G00 baseline inventory passes but cutover remains NO_GO",()=>{
+test("G00 reduced inventory 69 to 55 passes, but cutover remains NO_GO",()=>{
  const r=run(()=>{});
  assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/"baseline":69/);
+ assert.match(r.stdout,/"baseline":55/);
+ assert.match(r.stdout,/"actual":55/);
  assert.match(r.stdout,/NO_GO_LEGACY_KV_WRITERS/);
 });
 test("G00 mutant new direct KV writer in content-service is killed",()=>{
  const r=run(root=>{
   const p=join(root,"worker/content-service.mjs");
-  writeFileSync(p,readFileSync(p,"utf8").replace('await kv.put(key, JSON.stringify(record)', 'await kv.put(key, JSON.stringify(updated)'));
+  writeFileSync(p,readFileSync(p,"utf8").replace('await kv.put(keys[0], JSON.stringify(updated)', 'await kv.put(keys[0], JSON.stringify({mutated:true})'));
  });
  assert.notEqual(r.status,0,"mutant changed canonical writer, must fail");
  assert.match(r.stderr,/CP_UNAPPROVED_KV_WRITER/);
