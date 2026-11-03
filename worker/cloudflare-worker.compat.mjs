@@ -5,7 +5,7 @@ import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
 import { handleOwnerOAuth, handleYoutubePublisherAccess, handlePublisherAccess } from "./owner-oauth.mjs";
-import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages, handleContentOperator } from "./content-service.mjs";
+import { routeHotmartNc011, routeBriefingNc011, routePackageNc011, routeOperatorNc011 } from "./cp-nc011-routing.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -110,7 +110,7 @@ const wrapped = {
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
-    if (url.pathname === "/api/webhooks/hotmart") return handleHotmartWebhook(request,normalized,ctx);
+    if (url.pathname === "/api/webhooks/hotmart") return routeHotmartNc011(request,normalized,ctx);
     // suporte@/contato@ (e-mail oficial do consumidor): Resend email.received assinado -> encaminha ao dono.
     // Devolve null para outros eventos/destinatários (entregas, prova-sandbox@): o handler legado segue igual.
     if (url.pathname === "/api/webhooks/resend" && request.method === "POST") {
@@ -122,8 +122,8 @@ const wrapped = {
       const drained = await handleSupportDrainRequest(request, normalized, { sqlFactory: whatsappProofDatabase });
       if (drained) return drained;
     }
-    if (url.pathname === "/conteudo-pronto/briefing") return handleBriefing(request,normalized,ctx);
-    if (url.pathname === "/conteudo-pronto/pacote") return handlePackageView(request,normalized,ctx);
+    if (url.pathname === "/conteudo-pronto/briefing") return routeBriefingNc011(request,normalized);
+    if (url.pathname === "/conteudo-pronto/pacote") return routePackageNc011(request,normalized);
     if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);
     if (url.pathname==="/api/internal/owner/oauth/tiktok-access") return handlePublisherAccess(request,normalized,"tiktok");
     // Daily Short video, published by the Short job for platforms that pull media by URL (Instagram Reels).
@@ -629,7 +629,7 @@ const wrapped = {
       const bearer = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
       const operatorOk = verifyOperatorToken(normalized, bearer, { minLength: 24, fallbackToken: normalized.OPERATOR_TOKEN });
       if (!operatorOk) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
-      return handleContentOperator(request, normalized);
+      return routeOperatorNc011(request, normalized);
     }
     if (url.pathname === "/api/control-plane") {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
@@ -688,12 +688,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
     } catch {
       console.error("brand_profile_cycle_unverified");
     }
-    try {
-      const cp=await retryPendingPackages(normalized);
-      if(cp?.tried)console.info("content_service_retry",JSON.stringify(cp));
-    } catch {
-      console.error("content_service_retry_failed");
-    }
+    // NC-011: legacy CP KV delivery cron intentionally disconnected; DO outbox consumer is not provisioned.
     }
     const economia = await dbEconomySkip(normalized, controller);
     if (economia) { console.info("db_economy_skip", JSON.stringify({ cron: "5,35", reason: economia })); return; }
