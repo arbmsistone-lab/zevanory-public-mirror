@@ -46,6 +46,11 @@ export class KitReleaseLedger {
    created_at_ms INTEGER NOT NULL,
    updated_at_ms INTEGER NOT NULL
   )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS kit_eligibility_outbox(
+   message_key TEXT PRIMARY KEY,
+   status TEXT NOT NULL CHECK(status IN ('pending','done','revoked')),
+   proof_seen_at_ms INTEGER NOT NULL
+  )`);
   this.sql.exec("INSERT OR IGNORE INTO kit_order(singleton,state,updated_at_ms,version) VALUES(1,'absent',0,0)");
  }
  one(q,...args){return this.sql.exec(q,...args).toArray()[0]||null}
@@ -84,6 +89,17 @@ export class KitReleaseLedger {
    return {code:"verification_pending",...st};
   // The token is minted later in async prepareGrant() after state verification.
   return {code:"eligible",...st};
+ }
+ queueVerifiedEligibility(now,proof){
+  const result=this.authorizeRelease(now,proof);
+  if(result.code!=="eligible")return result;
+  return this.storage.transactionSync(()=>{
+   const state=this.state();
+   if(state.state!=="waiting"||now<state.release_at_ms)return {code:"not_eligible"};
+   this.sql.exec("INSERT OR IGNORE INTO kit_eligibility_outbox(message_key,status,proof_seen_at_ms) VALUES(?,'pending',?)",
+      this.orderOpaque+":verified:v1",now);
+   return {code:"verification_queued"};
+  });
  }
  async prepareGrant(now,proof,{ttlMs=14*24*3600*1000,randomBytes}={}){
   const readiness=this.authorizeRelease(now,proof);
@@ -159,10 +175,12 @@ export class KitReleaseOrderDO {
    const response=await this.env.HOTMART_STATUS_VERIFIER.fetch("https://internal.hotmart/status",{method:"GET"});
    if(!response.ok)throw new Error("provider_status_unavailable");
    const proof=await response.json();
-   const result=await this.ledger.prepareGrant(now,proof);
-   if(result.code!=="grant_pending_email"){await this.ctx.storage.setAlarm(now+5*60000);return;}
-   // No token is e-mailed here; must flow through audited Resend outbox later.
-   // Without a provider sender, grant remains pending and inaccessible to buyers.
+   // No token creation or access grant in an alarm: only enqueue a durable
+   // eligibility claim for a *separate* audited mail sender with a fresh readback.
+   const result=this.ledger.queueVerifiedEligibility(now,proof);
+   if(result.code!=="verification_queued"){await this.ctx.storage.setAlarm(now+5*60000);return;}
+   // This candidate has no sender integration. Keep waiting / no downloadable token.
+   await this.ctx.storage.setAlarm(now+5*60000);
   }catch{
    await this.ctx.storage.setAlarm(now+5*60000);
   }
