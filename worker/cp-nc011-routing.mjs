@@ -3,7 +3,7 @@
 // existing Hotmart path until an independent digital-products cutover.
 import { isServiceProduct, validateCampaign, CAMPANHA_CAMPOS, CP_BRIEFING_FIELDS } from "./content-service.mjs";
 import {handleDigitalHotmartNc012} from "./cp-nc012-digital-hotmart.mjs";
-import { handleCpDoWebhookCandidate, inspectCpFormTokenCandidate, submitCpFormCandidate } from "./cp-g03-g04-candidate.mjs";
+import { handleCpDoWebhookCandidate, inspectCpFormTokenCandidate, submitCpFormCandidate, enqueueCpFormWorkCandidate } from "./cp-g03-g04-candidate.mjs";
 
 const json=(status,body)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -30,8 +30,8 @@ export async function routeHotmartNc011(request,env,ctx){
 export async function routeBriefingNc011(request,env){
  if(!["GET","POST"].includes(request.method))return page("Método inválido","<h1>Método inválido</h1>",405);
  const url=new URL(request.url),token=url.searchParams.get("t")||"";
- const verify=await inspectCpFormTokenCandidate({token,env});
- if(!verify.ok)return page("Link indisponível","<h1>Link inválido, expirado ou ainda não liberado.</h1><p>Entre em contato com suporte@zevanory.api.br.</p>",verify.status===503?503:404);
+ const verify=request.method==="GET"?await inspectCpFormTokenCandidate({token,env}):null;
+ if(request.method==="GET"&&!verify.ok)return page("Link indisponível","<h1>Link inválido, expirado ou ainda não liberado.</h1><p>Entre em contato com suporte@zevanory.api.br.</p>",verify.status===503?503:404);
  if(request.method==="GET"){
   const fields=[
    ...CAMPANHA_CAMPOS.map(f=>'<label for="'+esc(f.id)+'">'+esc(f.rotulo)+'</label><input id="'+esc(f.id)+'" name="'+esc(f.id)+'" maxlength="'+Number(f.max||100)+'" '+(f.tipo==="date"?'type="date"':'type="text"')+' required>'),
@@ -59,7 +59,9 @@ export async function routeBriefingNc011(request,env){
  }
  const result=await submitCpFormCandidate({token,form:{briefing,campanha:camp.campanha},env});
  if(result.status!==202)return page("Não registrado","<h1>Não foi possível registrar a campanha.</h1><p>Nenhuma entrega foi prometida.</p>",result.status);
- return page("Registrado","<h1>Campanha registrada.</h1><p>O registro está guardado no núcleo transacional. Nenhum pacote ou e-mail será enviado até a homologação da fila de entrega.</p>",202);
+ const queued=await enqueueCpFormWorkCandidate({token,env});
+ if(queued.status!==202)return page("Pendente","<h1>Registro aguardando fila de processamento.</h1><p>O formulário foi recebido, mas a geração ainda não está confirmada. Nenhum pacote ou e-mail foi enviado.</p>",503);
+ return page("Registrado","<h1>Campanha registrada na fila transacional.</h1><p>Nenhum pacote ou e-mail será enviado até a homologação do consumidor DO e da outbox Resend.</p>",202);
 }
 export function routePackageNc011(){
  return page("Entrega indisponível","<h1>Pacote indisponível até homologação do novo sistema.</h1><p>Contate suporte@zevanory.api.br.</p>",503);
