@@ -82,9 +82,20 @@ export const REFUND_CHANNELS = W.refund_channels;
 export const SLA_TEXT = fill(W.sla);
 export const ALLOWED_DAY_COUNTS = Object.freeze(Object.values(W.dias_permitidos).map(Number));
 
+// Modelo B (Sol ORDEM 313): o link de 72 h, o reenvio e o Mercado Pago valem só para compras no checkout próprio (no
+// suporte e no chat: "compras pelo site da ZEVANORY", porque o validador do chat recusa a palavra "checkout"); os
+// kits comprados na Hotmart são entregues pela área de membros. DELIVERY_TEXT continua igual porque é exibido na página
+// /comprar do próprio checkout (rota byte a byte igual ao gh-pages; tests/sales-worker-differential.test.mjs). As
+// respostas do suporte usam a versão qualificada + o ramo da área de membros (sem a palavra "Hotmart", que o suporte
+// trata como chamada de compra: hasCheckoutCta). customer_wording.refund (paráfrase da D7962-5-3) NÃO muda aqui:
+// a redação qualificada está no corpo do PR, para aprovação P23/Sol.
+export const OWN_CHECKOUT_DELIVERY_TEXT = fill(W.delivery_checkout_proprio);
+export const CLUB_DELIVERY_TEXT = fill(W.club_delivery);
+export const CLUB_REFUND_TEXT = fill(W.club_refund);
+
 // Respostas completas do suporte (mesmas peças para API, WhatsApp e voz).
-export const SUPPORT_REFUND_ANSWER = [REFUND_TEXT, RESEND_SHORT, SLA_TEXT].join(" ");
-export const SUPPORT_DELIVERY_ANSWER = [DELIVERY_TEXT, CONFIRMATION_TEXT, RULE_LINE, SLA_TEXT].join(" ");
+export const SUPPORT_REFUND_ANSWER = [REFUND_TEXT, CLUB_REFUND_TEXT, RESEND_SHORT, SLA_TEXT].join(" ");
+export const SUPPORT_DELIVERY_ANSWER = [OWN_CHECKOUT_DELIVERY_TEXT, CLUB_DELIVERY_TEXT, CONFIRMATION_TEXT, RULE_LINE, SLA_TEXT].join(" ");
 export const SUPPORT_SUBSCRIPTION_REFUND_ANSWER = [SUBSCRIPTION_REFUND_TEXT, SLA_TEXT].join(" ");
 export const SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER = [SUBSCRIPTION_DELIVERY_TEXT, CONFIRMATION_TEXT, RULE_LINE, SLA_TEXT].join(" ");
 

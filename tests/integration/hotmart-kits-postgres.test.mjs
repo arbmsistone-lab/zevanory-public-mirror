@@ -7,6 +7,8 @@
 //          (falha => nenhum link); destinatário = comprador; arquivos autorizados com a fronteira do dia 8 (antes, no
 //          instante, depois); link individual, curto e revogável; registro sem token nem e-mail; bloqueio depois de
 //          reembolso, chargeback ou cancelamento; revogação pelo operador; contingência desligada; validade; teto de usos.
+//   C10    desligar a contingência revoga todos os links abertos; religar não ressuscita nenhum.
+//   C11    tentativas negadas (arquivo do dia 8 antes da hora) não gastam usos do link.
 // Rodar: T4_PG_HOST=/var/tmp/pg-kits/sock T4_PG_PORT=55440 node --test tests/integration/hotmart-kits-postgres.test.mjs
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -190,12 +192,27 @@ test("C1 desligada por padrão: nenhum link é emitido e o pedido fica registrad
   assert.equal((await admin("estado", { enabled: true, hours: 4, operator: "x", reason: "curto" })).status, 400);
 });
 
-test("C2 identificação, estado e destinatário: transação sem registro 404; reembolsada 410; e-mail que não é o do comprador 403", { skip: SKIP }, async () => {
+test("C2 recusa única: compra desconhecida, e-mail que não é o do comprador e compra reembolsada => mesmo 403 e mesmo corpo; motivo só no registro", { skip: SKIP }, async () => {
   assert.equal((await turnOn()).status, 200);
-  assert.equal((await admin("link", { transaction: "HP1601NAOEXISTE", email: "a@b.co", ...WHO })).status, 404);
-  assert.equal((await admin("link", { transaction: "HP1601P2", email: "ana.compradora@example.com", ...WHO })).status, 410);
-  const r = await admin("link", { transaction: "HP1601C1", email: "outra.pessoa@example.com", ...WHO });
-  assert.equal(r.status, 403); assert.equal(r.body.error, "recipient_not_buyer"); assert.equal(r.mail.sent.length, 0);
+  const lastOutcome = () => psql("select outcome from hotmart_kit_audit where kind='contingency_link' order by id desc limit 1");
+  const cases = [
+    [{ transaction: "HP1601NAOEXISTE", email: "a@b.co" }, "denied:purchase_not_found"],
+    [{ transaction: "HP1601NAOEXISTE", email: "ana.compradora@example.com" }, "denied:purchase_not_found"],
+    [{ transaction: "HP1601C1", email: "outra.pessoa@example.com" }, "denied:recipient_not_buyer"],
+    [{ transaction: "HP1601P2", email: "outra.pessoa@example.com" }, "denied:recipient_not_buyer"],
+    [{ transaction: "HP1601P2", email: "ana.compradora@example.com" }, "denied:status_refunded"],
+    [{ transaction: "HP1601P3B", email: "ana.compradora@example.com" }, "denied:status_unknown"],
+  ];
+  const bodies = [];
+  for (const [body, outcome] of cases) {
+    const r = await admin("link", { ...body, ...WHO });
+    assert.equal(r.status, 403, JSON.stringify(body)); assert.equal(r.mail.sent.length, 0);
+    bodies.push(JSON.stringify(r.body));
+    assert.equal(lastOutcome(), outcome, JSON.stringify(body));
+  }
+  assert.equal(new Set(bodies).size, 1, "corpo idêntico em todos os casos: " + bodies[0]);
+  assert.equal(JSON.parse(bodies[0]).error, "not_eligible");
+  assert.doesNotMatch(bodies[0], /refunded|status|not_found|recipient|buyer/);
 });
 
 test("C3 link emitido: só ao e-mail do comprador, sem token na resposta, no banco (só hash) ou no registro", { skip: SKIP }, async () => {
@@ -225,7 +242,7 @@ test("C4 fronteira do dia 8 (aprovação 10:00 BRT de 28/10): 05/11 09:59:59.999
   assert.equal(before.status, 200);
   assert.match(before.html, /Planilha\.xlsx/); assert.match(before.html, /Modelo\.docx/);
   assert.doesNotMatch(before.html, /Manual\.pdf|Pacote\.zip/);
-  assert.match(before.html, /a partir de 05\/11\/2026 às 10:00/);
+  assert.match(before.html, /serão liberados em 05\/11\/2026 às 10:00 \(horário de Brasília\), 8 dias completos \(192 horas\)/);
   assert.equal((await download(t, "d8p", rel - 1)).status, 403);
   assert.equal((await download(t, "d8z", rel - 1)).status, 403);
   assert.equal((await download(t, "d8p", T0 + 168 * H)).status, 403, "7 dias (168 h) ainda não");
@@ -250,7 +267,8 @@ test("C5 reembolso, chargeback ou cancelamento depois do link: página e downloa
     assert.equal((await viewPage(t, T0 + 3 * H)).status, 410, ev);
     assert.equal((await download(t, "d1x", T0 + 3 * H)).status, 410, ev);
     assert.equal(psql(`select bool_and(revoked_at is not null)::text from hotmart_kit_links where transaction_ref=${lit(await ref(SECRET, "transaction", txn))}`), "true", ev);
-    assert.equal((await admin("link", { transaction: txn, email: "ana.compradora@example.com", ...WHO })).status, 410, ev + ": novo link recusado");
+    const again = await admin("link", { transaction: txn, email: "ana.compradora@example.com", ...WHO });
+    assert.equal(again.status, 403, ev + ": novo link recusado"); assert.equal(again.body.error, "not_eligible");
   }
   // O download revalida o estado da compra mesmo que a revogação dos links não tenha sido gravada (defesa em profundidade).
   await postback("PURCHASE_APPROVED", "HP1601C5DB");
@@ -273,10 +291,13 @@ test("C6 revogação pelo operador, contingência desligada e validade vencida b
   assert.equal((await download(b, "d1x", T0 + H)).status, 410, "contingência desligada");
   assert.equal((await viewPage(b, T0 + H)).status, 410);
   await turnOn();
-  const c = await issue();
+  const c = await issue(), d = await issue();
   psql(`update hotmart_kit_links set expires_at = now() - interval '1 second' where token_sha256=${lit(createHash("sha256").update(c).digest("hex"))}`);
   assert.equal((await download(c, "d1x", T0 + H)).status, 410, "vencido");
+  assert.equal((await download(d, "d1x", T0 + H)).status, 200);
   psql(`update hotmart_kit_contingency set until = now() - interval '1 second'`);
+  assert.equal((await download(d, "d1x", T0 + H)).status, 410, "janela da contingência vencida bloqueia link ainda dentro da validade");
+  assert.equal((await viewPage(d, T0 + H)).status, 410);
   assert.equal((await admin("link", { transaction: "HP1601C6", email: "ana.compradora@example.com", ...WHO })).status, 409, "janela de 72 h expirada = desligada");
   await turnOn();
 });
@@ -297,11 +318,46 @@ test("C8 teto de usos por link e link de outra compra não serve (isolamento ent
   const t = tokenOf((await admin("link", { transaction: "HP1601C8", email: "bia@example.com", ...WHO })).mail);
   psql(`update hotmart_kit_links set uses = max_uses where token_sha256=${lit(createHash("sha256").update(t).digest("hex"))}`);
   assert.equal((await download(t, "d1x", T0 + H)).status, 410);
-  assert.equal((await admin("link", { transaction: "HP1601C8", email: "ana.compradora@example.com", ...WHO })).status, 403, "e-mail de outra compradora");
+  const other = await admin("link", { transaction: "HP1601C8", email: "ana.compradora@example.com", ...WHO });
+  assert.equal(other.status, 403, "e-mail de outra compradora"); assert.equal(other.body.error, "not_eligible");
 });
 
 test("C9 PROTEST não bloqueia o link (só sinaliza ao operador; Q3 do Sol)", { skip: SKIP }, async () => {
   const r = await admin("link", { transaction: "HP1601P3", email: "ana.compradora@example.com", ...WHO });
   assert.equal(r.status, 201); assert.equal(r.body.refund_requested, true);
   assert.match(psql("select outcome from hotmart_kit_audit where kind='contingency_link' order by id desc limit 1"), /:refund_requested$/);
+});
+
+test("C10 desligar a contingência revoga todos os links abertos (revoked_at gravado); religar não ressuscita nenhum", { skip: SKIP }, async () => {
+  await turnOn();
+  await postback("PURCHASE_APPROVED", "HP1601C10");
+  const a = tokenOf((await admin("link", { transaction: "HP1601C10", email: "ana.compradora@example.com", ...WHO })).mail);
+  const b = tokenOf((await admin("link", { transaction: "HP1601C10", email: "ana.compradora@example.com", ...WHO })).mail);
+  assert.equal((await download(a, "d1x", T0 + H)).status, 200);
+  const open = Number(psql("select count(*) from hotmart_kit_links where revoked_at is null"));
+  assert.ok(open >= 2);
+  const off = await admin("estado", { enabled: false, ...WHO });
+  assert.equal(off.status, 200); assert.equal(off.body.revoked, open);
+  assert.equal(psql("select count(*) from hotmart_kit_links where revoked_at is null"), "0", "todos os links abertos revogados");
+  assert.equal(psql("select outcome from hotmart_kit_audit where kind='contingency_off' order by id desc limit 1"), "ok:revoked:" + open);
+  assert.equal((await turnOn()).status, 200);
+  for (const t of [a, b]) {
+    assert.equal((await viewPage(t, T0 + H)).status, 410, "religar não ressuscita o link");
+    assert.equal((await download(t, "d1x", T0 + H)).status, 410);
+  }
+  const c = tokenOf((await admin("link", { transaction: "HP1601C10", email: "ana.compradora@example.com", ...WHO })).mail);
+  assert.equal((await download(c, "d1x", T0 + H)).status, 200, "link novo, emitido depois de religar, funciona");
+});
+
+test("C11 tentativas negadas não gastam usos: 40 pedidos do dia 8 antes da hora (403) e o download do dia 1 ainda funciona", { skip: SKIP }, async () => {
+  await turnOn();
+  await postback("PURCHASE_APPROVED", "HP1601C11");
+  const t = tokenOf((await admin("link", { transaction: "HP1601C11", email: "ana.compradora@example.com", ...WHO })).mail);
+  const hash = lit(createHash("sha256").update(t).digest("hex"));
+  assert.equal(psql(`select max_uses from hotmart_kit_links where token_sha256=${hash}`), "40");
+  for (let i = 0; i < 40; i++) assert.equal((await download(t, i % 2 ? "d8p" : "d8z", T0 + 2 * H)).status, 403, "tentativa " + i);
+  assert.equal(psql(`select uses from hotmart_kit_links where token_sha256=${hash}`), "0", "negadas não contam uso");
+  const ok = await download(t, "d1x", T0 + 2 * H);
+  assert.equal(ok.status, 200); assert.equal(ok.text, "conteudo d1x");
+  assert.equal(psql(`select uses from hotmart_kit_links where token_sha256=${hash}`), "1");
 });

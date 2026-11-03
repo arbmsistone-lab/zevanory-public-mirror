@@ -71,10 +71,11 @@ test("AI failure schedules a retry instead of sending a bad package", async () =
   assert.equal(out.delivered, 1);
 });
 
-test("digital product postbacks only record visibility; validators reject promises", async () => {
+test("unmapped Hotmart product (not service, not kit) is never granted; validators reject promises", async () => {
   const e = env();
   const r = await handleHotmartWebhook(hook({ event: "PURCHASE_APPROVED", data: { product: { id: 9990001, name: "Produto digital que não é kit" }, buyer: { email: "a@b.co" }, purchase: { transaction: "D1" } } }), e, null, fetchImpl);
-  assert.equal((await r.json()).scope, "digital_product");
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).scope, "unmapped_product");
   assert.equal(validatePosts([{ ...post(1), legenda: "Resultado 100% garantido! ".repeat(10) }], 1), null);
   assert.equal(validateRoteiros(ROTEIRO_OBJETIVOS.slice(0, 3).map(roteiro)), null);
 });

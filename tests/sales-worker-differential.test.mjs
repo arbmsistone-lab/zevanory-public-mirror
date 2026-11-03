@@ -196,7 +196,7 @@ test("(b) Hotmart list rewrite only in the Hotmart variant; Mercado Pago text un
     const h = Buffer.from(hot.body, "base64").toString();
     assert.match(h, /<li>Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)<\/li>|Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)/);
     // Modelo B: o fato de entrega da variante Hotmart é o da área de membros (data/politica-unica.json, entrega_club).
-    assert.match(h, /Acesso pela área de membros: aulas online e planilhas e modelos desde o 1º dia; PDFs e pacote completo a partir do 8º dia/);
+    assert.match(h, /Acesso pela área de membros: aulas online e planilhas e modelos desde o 1º dia; PDFs e pacote completo 8 dias completos \(192 horas\) após a aprovação do pagamento/);
     assert.doesNotMatch(h, /Acesso por e-mail após a confirmação do pagamento|72 horas|entrega\/reenviar/);
   }
 });

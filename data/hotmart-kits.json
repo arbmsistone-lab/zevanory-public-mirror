@@ -4,7 +4,7 @@
  "versao_catalogo": "1.2",
  "fuso": "America/Sao_Paulo",
  "liberacao_dia8": {
-  "nota": "Contingência: os arquivos do dia 8 só são autorizados quando se completam 8 dias inteiros (192 horas) desde a aprovação do pagamento (approved_date do postback Hotmart; na falta dele, o horário em que o postback aprovado chegou, que nunca é anterior). O fuso de referência é America/Sao_Paulo (sem horário de verão desde 2019): a liberação cai no 8º dia após a confirmação, no mesmo horário de Brasília da confirmação; a regra também exige o mesmo horário de parede em America/Sao_Paulo, de modo que um eventual retorno do horário de verão nunca antecipa a liberação. O Club deve ser configurado para não liberar antes disso (gate 3 mede).",
+  "nota": "Contingência: os arquivos do dia 8 só são autorizados quando se completam 8 dias inteiros (192 horas) desde a aprovação do pagamento (approved_date do postback Hotmart; na falta dele, o horário em que o postback aprovado chegou, que nunca é anterior). O fuso de referência é America/Sao_Paulo (sem horário de verão desde 2019): a liberação cai 8 dias completos (192 horas) após a aprovação, no mesmo horário de Brasília (ex.: 28/10 às 10h -> 05/11 às 10h); a regra também exige o mesmo horário de parede em America/Sao_Paulo, de modo que um eventual retorno do horário de verão nunca antecipa a liberação. O Club deve ser configurado para não liberar antes disso (gate 3 mede).",
   "horas_minimas": 192,
   "dias_civis": 8
  },
@@ -29,7 +29,9 @@
    "sku": "ZEV-VEN-011",
    "slug": "vendas-na-pratica",
    "nome": "Vendas na Prática",
-   "hotmart_product_ids": [],
+   "hotmart_product_ids": [
+    "8704826"
+   ],
    "checkout": "https://pay.hotmart.com/Y107979937I?off=8mg88sdd",
    "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
   },
@@ -37,7 +39,9 @@
    "sku": "ZEV-LCX-011",
    "slug": "lucro-e-caixa",
    "nome": "Lucro & Caixa",
-   "hotmart_product_ids": [],
+   "hotmart_product_ids": [
+    "8704851"
+   ],
    "checkout": "https://pay.hotmart.com/L107979973K?off=ksb5di36",
    "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
   },
@@ -45,7 +49,9 @@
    "sku": "ZEV-CMB-011",
    "slug": "combo-ia-vendas",
    "nome": "Combo IA + Vendas",
-   "hotmart_product_ids": [],
+   "hotmart_product_ids": [
+    "8704861"
+   ],
    "checkout": "https://pay.hotmart.com/H107979990T?off=b3ytmah4",
    "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
   },
@@ -53,7 +59,9 @@
    "sku": "ZEV-NGC-011",
    "slug": "negocio-completo",
    "nome": "Negócio Completo",
-   "hotmart_product_ids": [],
+   "hotmart_product_ids": [
+    "8704871"
+   ],
    "checkout": "https://pay.hotmart.com/U107980005X?off=weo47apk",
    "formato_atual_hotmart": "não lido; provavelmente arquivo, como o IA"
   }

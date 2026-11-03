@@ -64,13 +64,13 @@
     "transfer": "Transferência internacional: esses operadores podem processar os dados fora do Brasil (LGPD, art. 33), conforme os termos de tratamento de dados de cada um.",
     "retention": "Retenção: conversa não escalada, até 30 dias; atendimento escalado, 180 dias após o encerramento (salvo obrigação legal ou disputa); logs técnicos sem conteúdo, até 30 dias.",
     "rights": "Seus direitos (LGPD, art. 18): acesso, correção, eliminação, informação sobre compartilhamento e oposição, pelo e-mail suporte@zevanory.api.br. Detalhes na Política de Privacidade.",
-    "optional": "O chat é opcional: você pode escrever direto para suporte@zevanory.api.br, usar o formulário de atendimento em zevanory.api.br/atendimento, pedir reembolso em zevanory.api.br/pedir-reembolso ou um novo link de acesso em zevanory.api.br/entrega/reenviar.",
+    "optional": "O chat é opcional: você pode escrever direto para suporte@zevanory.api.br, usar o formulário de atendimento em zevanory.api.br/atendimento, pedir reembolso em zevanory.api.br/pedir-reembolso ou, nas compras pelo site da ZEVANORY, um novo link de acesso em zevanory.api.br/entrega/reenviar.",
     "privacy_href": "/privacidade",
     "start_label": "Começar conversa",
     "email_label": "Prefiro e-mail"
   },
   "fallback": {
-    "message": "O chat está indisponível agora. Escreva para suporte@zevanory.api.br, use o formulário de atendimento em https://zevanory.api.br/atendimento ou os formulários de reembolso e de novo link de acesso.",
+    "message": "O chat está indisponível agora. Escreva para suporte@zevanory.api.br, use o formulário de atendimento em https://zevanory.api.br/atendimento ou os formulários de reembolso e de novo link de acesso (este, para compras pelo site da ZEVANORY).",
     "contact_email": "suporte@zevanory.api.br",
     "contact_form": "https://zevanory.api.br/atendimento",
     "refund_form": "https://zevanory.api.br/pedir-reembolso",

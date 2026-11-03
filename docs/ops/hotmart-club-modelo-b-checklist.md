@@ -24,6 +24,8 @@ Faça tudo primeiro em **um** produto (IA na Prática), rode os gates 1 a 4 e s�
 
 Fato lido no painel em 28/10: o produto **8704733 (IA na Prática)** está como entrega por **ARQUIVO** ("Conteúdo do produto: upload ZIP/RAR/EXE, máx. 250 MB", com o zip v1.1). Os outros 4 kits provavelmente estão iguais. A tela inicial também mostra uma Área de Membros com 3 produtos, entre eles "ZEVANORY IA na Prática – Program".
 
+IDs de produto mapeados em `data/hotmart-kits.json`: IA na Prática **8704733**, Vendas na Prática **8704826**, Lucro & Caixa **8704851**, Combo IA + Vendas **8704861** e Negócio Completo **8704871**. O Conteúdo Pronto (**8704905**) segue no caminho do serviço. Um postback de produto que não é nenhum desses gera o log `hotmart_unmapped_product` e um alerta por produto por dia; nada é liberado e a Hotmart recebe 200.
+
 - [ ] Em cada um dos 5 produtos, anote o formato de entrega atual e tire um print.
 - [ ] **Verifique se o formato pode ser trocado para "Área de membros (Hotmart Club)" mantendo o MESMO ID de produto.** Anote o que a tela permite. Não troque ainda.
 - [ ] **Se a troca no mesmo ID for possível:** troque só depois dos passos 1 a 5. Os links de checkout (`F107979716H`, `Y107979937I`, `L107979973K`, `H107979990T`, `U107980005X`) e os códigos de oferta continuam valendo; confira cada um.

@@ -295,7 +295,7 @@ const ESC_TEXT = {
   withdrawal: `Seu pedido foi encaminhado à equipe humana (protocolo ${PROTO}). {refund}`,
   cancellation: `Seu pedido de cancelamento foi encaminhado à equipe humana (protocolo ${PROTO}). {refund}`,
   refund: `Seu pedido foi encaminhado à equipe humana (protocolo ${PROTO}). {refund}`,
-  delivery: `Encaminhei à equipe humana (protocolo ${PROTO}). {delivery} Você também pode pedir um novo link em ${CORE_ORIGIN}/entrega/reenviar`,
+  delivery: `Encaminhei à equipe humana (protocolo ${PROTO}). {delivery} Nas compras pelo site da ZEVANORY, você também pode pedir um novo link em ${CORE_ORIGIN}/entrega/reenviar`,
   payment: `Questões de pagamento são tratadas por uma pessoa da equipe (protocolo ${PROTO}). Não envie dados de cartão por aqui. ${SLA_TEXT}`,
   lgpd: `Pedidos sobre os seus dados pessoais (LGPD) são tratados por uma pessoa da equipe (protocolo ${PROTO}), nos prazos da lei. Você também pode escrever para ${SUPPORT_EMAIL}. Detalhes em ${SALES_ORIGIN}/privacidade`,
   legal: `Assuntos jurídicos são tratados por uma pessoa da equipe (protocolo ${PROTO}). ${SLA_TEXT}`,
@@ -558,7 +558,7 @@ function customerConfirmation(t) {
   return {
     subject: `Recebemos seu pedido de atendimento — protocolo ${t.protocol}`,
     text: ["Olá,", "", `Recebemos seu pedido de atendimento pelo chat do site da ZEVANORY. Protocolo: ${t.protocol}.`, `${SLA_TEXT} Prazo: até ${dueLabel(t.due_at)}.`, "",
-      `Para reembolso ou arrependimento, você também pode usar ${CORE_ORIGIN}/pedir-reembolso. Para um novo link de acesso, ${CORE_ORIGIN}/entrega/reenviar.`,
+      `Para reembolso ou arrependimento, você também pode usar ${CORE_ORIGIN}/pedir-reembolso. Para um novo link de acesso (compras pelo site da ZEVANORY), ${CORE_ORIGIN}/entrega/reenviar.`,
       `Para falar com a equipe: ${SUPPORT_EMAIL} ou o formulário de atendimento ${ATENDIMENTO_URL}.`, "",
       "Esta é uma confirmação automática. Não responda com senha, cartão ou documentos.", "", "ZEVANORY", LEGAL_IDENTITY].join("\n"),
   };

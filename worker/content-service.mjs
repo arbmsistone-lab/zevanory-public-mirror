@@ -51,6 +51,7 @@ export const SERVICE_PRODUCT_NAME = "ZEVANORY Conteúdo Pronto";
 const SUB = "zpc:cp:sub:";        // subscriber record
 const TOKEN = "zpc:cp:token:";    // briefing/package access token -> subscriber key
 const TXN = "zpc:cp:txn:";        // processed transaction (idempotency)
+const ALERT = "zpc:cp:alert:";    // owner alert de-dupe (per key per day)
 const PKG = "zpc:cp:pkg:";        // generated package
 const PENDING = "zpc:cp:pending"; // list of subscriber keys awaiting generation retry
 const ORIGIN = "https://zevanory.api.br";
@@ -92,6 +93,16 @@ async function ownerAlert(env, subject, text, fetchImpl) {
   return sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY · " + subject, text, fetchImpl);
 }
 
+// Alerta ao proprietário deduplicado por chave e dia (UTC) no KV; falha do alerta nunca muda a resposta à Hotmart.
+async function alertOncePerDay(kv, env, key, subject, text, fetchImpl) {
+  try {
+    const k = ALERT + key + ":" + new Date().toISOString().slice(0, 10);
+    if (await kv.get(k)) return false;
+    await kv.put(k, "1", { expirationTtl: 2 * DAY });
+    return await ownerAlert(env, subject, text, fetchImpl);
+  } catch { return false; }
+}
+
 // ---------- Hotmart postback ----------
 export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch, opts = {}) {
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
@@ -110,22 +121,43 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch,
   if (!event || !txn) return json(400, { error: "missing_event_or_transaction" });
   const dedupe = TXN + (await sha(event + ":" + txn)).slice(0, 40);
   if (await kv.get(dedupe)) return json(200, { ok: true, duplicate: true });
-  await kv.put(dedupe, "1", { expirationTtl: 400 * DAY });
+  const service = isServiceProduct(data, serviceIds);
+  const kitSku = service ? null : kitSkuFor(data, env);
+  // Kit (modelo B): a chave de deduplicação do KV só é gravada DEPOIS do commit no PostgreSQL (que já é idempotente por
+  // evento + transação). Se a gravação falhar, não sobra chave nenhuma e o reenvio da Hotmart é processado. Demais
+  // escopos: comportamento anterior (chave gravada antes do processamento).
+  if (!kitSku) await kv.put(dedupe, "1", { expirationTtl: 400 * DAY });
   // Revenue ledger for the command center (aggregate, PII-free, idempotent per txn/outcome).
   await recordHotmartSale(kv, event, data).catch(() => null);
 
-  if (!isServiceProduct(data, serviceIds)) {
-    // Modelo B (Sol ORDEM 313): kits entregues só pelo Hotmart Club. O estado da compra vai para o PostgreSQL
-    // (worker/hotmart-kits.mjs); se não gravar, libera a deduplicação e devolve 503 para a Hotmart reenviar.
-    if (kitSkuFor(data, env)) {
-      try { await ingestKitPostback(env, { event, data }, { sqlFactory: opts.sqlFactory }); }
-      catch (error) {
-        try { await kv.delete?.(dedupe); } catch {}
-        console.error("hotmart_kit_ingest_failed", String(error?.message || "error").slice(0, 60));
-        return json(503, { error: "kit_state_unavailable" });
-      }
+  if (!service) {
+    // Produto Hotmart que não é o serviço (Conteúdo Pronto) nem um kit mapeado em data/hotmart-kits.json (ou em
+    // HOTMART_KIT_PRODUCT_IDS): nada é concedido nem registrado como entrega. Log estruturado + alerta ao proprietário
+    // (no máximo 1 por produto por dia) e 200 para a Hotmart não reenviar em laço.
+    if (!kitSku) {
+      const productId = String(data?.product?.id ?? "").replace(/[^0-9A-Za-z_-]/g, "").slice(0, 32) || "sem_id";
+      console.warn(JSON.stringify({ event: "hotmart_unmapped_product", product_id: productId, hotmart_event: event.slice(0, 40) }));
+      await alertOncePerDay(kv, env, "unmapped:" + productId, "produto Hotmart sem mapeamento",
+        `A Hotmart enviou o evento ${event.slice(0, 40)} do produto ${productId}, que não é o Conteúdo Pronto nem um kit mapeado em data/hotmart-kits.json. Nada foi liberado pela ZEVANORY. Confira o produto no painel da Hotmart e, se for um kit, inclua o ID no mapa (ou em HOTMART_KIT_PRODUCT_IDS).`, fetchImpl);
+      return json(200, { ok: true, scope: "unmapped_product" });
     }
-    // Digital products: Hotmart itself delivers the files. Only record visibility.
+    // Modelo B (Sol ORDEM 313): kits entregues só pelo Hotmart Club. O estado da compra vai para o PostgreSQL
+    // (worker/hotmart-kits.mjs); se não gravar, nenhuma chave de deduplicação fica no KV e a resposta é 503 para a
+    // Hotmart reenviar. Transação fora do formato: 200 + alerta (reenviar não corrige o dado; evita laço de 503).
+    let ingest;
+    try { ingest = await ingestKitPostback(env, { event, data }, { sqlFactory: opts.sqlFactory }); }
+    catch (error) {
+      console.error("hotmart_kit_ingest_failed", String(error?.message || "error").slice(0, 60));
+      return json(503, { error: "kit_state_unavailable" });
+    }
+    await kv.put(dedupe, "1", { expirationTtl: 400 * DAY });
+    if (ingest?.invalid) {
+      console.warn(JSON.stringify({ event: "kits_transaction_invalid", sku: kitSku, hotmart_event: event.slice(0, 40) }));
+      await alertOncePerDay(kv, env, "kit-invalid:" + kitSku, "postback de kit com transação inválida",
+        `A Hotmart enviou o evento ${event.slice(0, 40)} do kit ${kitSku} com um código de transação fora do formato esperado. Nada foi gravado nem liberado pela ZEVANORY. Confira a venda no painel da Hotmart.`, fetchImpl);
+      return json(200, { ok: true, scope: "kit_transaction_invalid" });
+    }
+    // Kits: a Hotmart entrega pelo Club. Só registra a visibilidade.
     if (ACTIVE_EVENTS.has(event)) await emitActivity(env, { type: "delivery_sent", channel: "store", status: "hotmart_approved", ref: "hotmart:" + txn }).catch(() => null);
     if (STOP_EVENTS.has(event)) await emitActivity(env, { type: "refund_requested", channel: "store", status: "hotmart_" + event.toLowerCase().slice(0, 40), ref: "hotmart:" + txn }).catch(() => null);
     return json(200, { ok: true, scope: "digital_product" });

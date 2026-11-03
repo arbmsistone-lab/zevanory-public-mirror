@@ -28,6 +28,7 @@ UNIT = "tests/hotmart-kits.test.mjs"
 PG = "tests/integration/hotmart-kits-postgres.test.mjs"
 REC = "worker/cloudflare-worker.recovered.mjs"
 KITS = "worker/hotmart-kits.mjs"
+CS = "worker/content-service.mjs"
 
 # (id, descrição, arquivo, trecho original, trecho mutado, testes que devem falhar: prefixos "K1", "Z1"...)
 MUTANTS = [
@@ -50,11 +51,14 @@ MUTANTS = [
      "select $2, $4, case when $5 = 'protest' then 'unknown' else $5 end,", "select $2, $4, case when $5 = 'protest' then 'refunded' else $5 end,", ["P3"]),
     ("M08", "evento duplicado reprocessado (sem registro do evento)", KITS,
      "      on conflict (event_key) do nothing returning 1)", "      on conflict (event_key) do update set received_at = now() returning 1)", ["P1"]),
+    # M09/M10: o download valida o link (view) e depois conta o uso (use); as duas consultas são mutadas juntas.
     ("M09", "download sem exigir compra aprovada", KITS,
-     "      and p.transaction_ref = l.transaction_ref and p.status = 'approved' and p.revoked_at is null and p.approved_at is not null\n      and c.id = 1",
-     "      and p.transaction_ref = l.transaction_ref and p.approved_at is not null\n      and c.id = 1", ["C5"]),
+     [("      and p.transaction_ref = l.transaction_ref and p.status = 'approved' and p.revoked_at is null and p.approved_at is not null\n      and c.id = 1",
+       "      and p.transaction_ref = l.transaction_ref and p.approved_at is not null\n      and c.id = 1"),
+      ("      and p.status = 'approved' and p.revoked_at is null and p.approved_at is not null`,", "      and p.approved_at is not null`,")], None, ["C5"]),
     ("M10", "download sem exigir contingência ligada", KITS,
-     "      and c.id = 1 and c.enabled and c.until > now()\n    returning l.transaction_ref", "      and c.id = 1\n    returning l.transaction_ref", ["C6"]),
+     [("      and c.id = 1 and c.enabled and c.until > now()\n    returning l.transaction_ref", "      and c.id = 1\n    returning l.transaction_ref"),
+      ("    join hotmart_kit_contingency c on c.id = 1 and c.enabled and c.until > now()\n", "    join hotmart_kit_contingency c on c.id = 1\n")], None, ["C6"]),
     ("M11", "dia 8 com 7 dias (168 h)", "data/hotmart-kits.json",
      '"horas_minimas": 192,\n  "dias_civis": 8', '"horas_minimas": 168,\n  "dias_civis": 7', ["D1", "D2", "C3", "C4"]),
     ("M12", "dia 8 sem a guarda do horário de parede (só horas)", KITS,
@@ -65,15 +69,16 @@ MUTANTS = [
      '  return catalogFor(sku, catalog).filter((f) => f.liberacao === "dia1" || (f.liberacao === "dia8" && open8));',
      "  return catalogFor(sku, catalog);", ["D4", "C4"]),
     ("M15", "destinatário não conferido com o comprador", KITS,
-     "  if (!p.buyer_email_ref || p.buyer_email_ref !== emailRef) {", "  if (false) {", ["C2", "C8"]),
+     '    : !p.buyer_email_ref || p.buyer_email_ref !== emailRef ? "recipient_not_buyer"', '    : false ? "recipient_not_buyer"', ["C2", "C8"]),
     ("M16", "token devolvido ao operador na resposta", KITS,
      "  return json(201, { issued: true, sku: p.sku,", "  return json(201, { issued: true, token, sku: p.sku,", ["C3"]),
     ("M17", "token gravado no registro de auditoria", KITS,
      '(released ? "issued:dia1+dia8" : "issued:dia1")', '(released ? "issued:dia1+dia8" : "issued:dia1:" + token)', ["C3"]),
     ("M18", "reembolso não revoga os links já emitidos", KITS,
      '  if (["refunded", "chargeback", "canceled"].includes(state)) await sql.query(q.revokeLinks, [tref]);\n', "", ["W3", "C5"]),
-    ("M19", "falha na gravação do kit não libera a deduplicação", "worker/content-service.mjs",
-     "        try { await kv.delete?.(dedupe); } catch {}\n", "", ["W2"]),
+    # L3: a chave de deduplicação do KV de um evento de kit é gravada antes do commit no PostgreSQL.
+    ("M19", "deduplicação do kit gravada antes do commit no PostgreSQL", CS,
+     "  if (!kitSku) await kv.put(dedupe, \"1\", { expirationTtl: 400 * DAY });", "  await kv.put(dedupe, \"1\", { expirationTtl: 400 * DAY });", ["W5"]),
     ("M20", "rota de operador sem verificar a credencial", KITS,
      '    if (typeof isOperator !== "function" || !(await isOperator(request))) return json(401, { error: "operator_auth_required" });\n', "", ["R1"]),
     ("M21", "leitura do estado com falha emite link mesmo assim", KITS,
@@ -86,6 +91,28 @@ MUTANTS = [
      "  [`Entrega: após a confirmação do pagamento, por e-mail, em ${DELIVERY_72H}; se o link expirar, um novo é enviado sem custo pelo suporte.`,EC.resumo_politica],\n", "", ["T4"]),
     ("M24", "privacidade chama a Hotmart de operadora", "privacidade/index.html",
      "Mercado Pago (pagamentos), Resend", "Mercado Pago e Hotmart (pagamentos), Resend", ["T6"]),
+    # H1: produto Hotmart sem mapeamento.
+    ("M25", "produto sem mapeamento não alerta o proprietário", CS,
+     '      await alertOncePerDay(kv, env, "unmapped:" + productId,', '      if (false) await alertOncePerDay(kv, env, "unmapped:" + productId,', ["W4"]),
+    ("M26", "ID real de um kit fora do mapa (Vendas 8704826)", "data/hotmart-kits.json",
+     '"hotmart_product_ids": [\n    "8704826"\n   ]', '"hotmart_product_ids": []', ["W4"]),
+    # M3: recusa uniforme.
+    ("M27", "recusa revela o estado da compra (status e motivo distintos)", KITS,
+     "  if (denial) { await audit(sql, q, \"contingency_link\", tref, operator, reason, \"denied:\" + denial); return json(403, NOT_ELIGIBLE); }",
+     "  if (denial) { await audit(sql, q, \"contingency_link\", tref, operator, reason, \"denied:\" + denial); return json(denial === \"purchase_not_found\" ? 404 : 403, { ...NOT_ELIGIBLE, reason: denial }); }", ["C2"]),
+    # L1: desligar a contingência revoga os links abertos.
+    ("M28", "desligar a contingência não revoga os links abertos", KITS,
+     "update hotmart_kit_links set revoked_at = now() where revoked_at is null and not $1::boolean returning 1)",
+     "update hotmart_kit_links set revoked_at = now() where false returning 1)", ["C10"]),
+    # L2: tentativa negada não consome uso.
+    ("M29", "tentativa negada consome uso do link", KITS,
+     "  try { row = one(await sql.query(q.view, [tokenSha])); }", "  try { row = one(await sql.query(q.use, [tokenSha])); }", ["C11"]),
+    # L4: motivo do operador sem redação.
+    ("M30", "motivo com e-mail/CPF/transação gravado em claro", KITS,
+     "reason ? redactReason(reason) : null", "reason ? String(reason).slice(0, 500) : null", ["R5"]),
+    # L5: transação malformada volta a 503 em laço.
+    ("M31", "transação malformada => 503 (laço de reenvio)", KITS,
+     "  if (!/^[A-Z0-9-]{6,64}$/.test(txn)) return { kit: true, sku, invalid: true };", "  if (!/^[A-Z0-9-]{6,64}$/.test(txn)) throw new Error(\"kits_transaction_invalid\");", ["W6"]),
 ]
 
 

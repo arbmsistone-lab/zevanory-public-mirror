@@ -144,7 +144,7 @@ jobs:
         run: |
           set -eo pipefail
           node --test tests/integration/hotmart-kits-postgres.test.mjs | tee hk.txt
-          grep -qx "# tests 16" hk.txt && grep -qx "# pass 16" hk.txt && grep -qx "# skipped 0" hk.txt && grep -qx "# fail 0" hk.txt
+          grep -qx "# tests 18" hk.txt && grep -qx "# pass 18" hk.txt && grep -qx "# skipped 0" hk.txt && grep -qx "# fail 0" hk.txt
           echo "::notice title=COUNTS_HOTMART_KITS::$(grep -E '^# (tests|pass|fail|skipped) ' hk.txt | paste -sd' ' -)"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
@@ -197,7 +197,7 @@ jobs:
           set -eo pipefail
           node --test tests/trava-vendas-gate-paths.test.mjs | tee g.txt
           grep -qx "# tests 3" g.txt && grep -qx "# pass 3" g.txt && grep -qx "# skipped 0" g.txt && grep -qx "# fail 0" g.txt
-  # Modelo B (Sol ORDEM 313): 24 mutantes das propriedades de segurança (trava da rota ZIP, estado pegajoso, PROTEST,
+  # Modelo B (Sol ORDEM 313): 31 mutantes das propriedades de segurança (trava da rota ZIP, estado pegajoso, PROTEST,
   # dia 8, destinatário, token fora da resposta e do registro, revogação, contingência desligada, privacidade).
   mutantes-kits-club-b:
     runs-on: ubuntu-latest
@@ -227,7 +227,7 @@ jobs:
           rc=0
           python3 -I scripts/ci/mutants_kits_club_b.py < /dev/null | tee mk.txt || rc=$?
           [ "$rc" = 0 ] || { echo "::error::mutantes do modelo B saíram com $rc"; exit 1; }
-          grep -qx 'MUTANTS_TOTAL=24 KILLED=24 SURVIVED=0 INCONCLUSIVE=0' mk.txt
+          grep -qx 'MUTANTS_TOTAL=31 KILLED=31 SURVIVED=0 INCONCLUSIVE=0' mk.txt
           grep -qx 'MUTANT BASELINE PASS pg=True' mk.txt
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
   # B05 (PR #868): os 13 mutantes de assinatura/idempotência rodam no runner contra o PostgreSQL efêmero,

@@ -3,7 +3,8 @@
 // da rota ZIP por provedor) é provado contra PostgreSQL real em tests/integration/hotmart-kits-postgres.test.mjs.
 //   K* trava da rota ZIP do KV (texto do SQL e /entrega/reenviar com compra Hotmart)
 //   D* regra do dia 8 (antes, no instante e depois; BRT x UTC; guarda contra horário de verão)
-//   W* postback de kit no webhook autenticado (falha de gravação libera a deduplicação; nenhum dado em claro)
+//   W* postback de kit no webhook autenticado (deduplicação só depois do commit; produto sem mapeamento; transação
+//      inválida; nenhum dado em claro)
 //   R* rotas da contingência (operador + motivo, desligada sem banco, link inválido)
 //   T* textos do modelo B (fonte única, Termos, /reembolso, variante Hotmart, privacidade)
 import test from "node:test";
@@ -11,7 +12,7 @@ import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
 import {
   KITS_DATA, day8ReleaseAt, day8Released, brt, authorizedFiles, catalogFor, kitSkuFor, kitProductMap, approvedAtMs,
-  handleKitsRequest, contingencyEmail, ref, KITS_ADMIN_PATHS,
+  handleKitsRequest, contingencyEmail, ref, KITS_ADMIN_PATHS, redactReason, TZ,
 } from "../worker/hotmart-kits.mjs";
 import { handleHotmartWebhook } from "../worker/content-service.mjs";
 import { handleSalesControl } from "../worker/sales-control.mjs";
@@ -173,6 +174,91 @@ test("W3 eventos: reembolso, chargeback e cancelamento revogam links; PROTEST n�
   assert.equal(r.status, 503);
 });
 
+test("W4 IDs reais dos 5 kits; Conteúdo Pronto segue no serviço; produto sem mapeamento: 200, log estruturado, 1 alerta por produto/dia, nada concedido", async () => {
+  const ids = { 8704733: "ZEV-IA-011", 8704826: "ZEV-VEN-011", 8704851: "ZEV-LCX-011", 8704861: "ZEV-CMB-011", 8704871: "ZEV-NGC-011" };
+  for (const [id, sku] of Object.entries(ids)) assert.equal(kitSkuFor({ product: { id: Number(id) } }), sku, id);
+  assert.equal(kitProductMap().size, 5);
+  assert.equal(kitSkuFor({ product: { id: 8704905 } }), null);
+  const kv = new MapKV(), mails = [], logs = [];
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, HOTMART_HOTTOK: HOTTOK, LEAD_PRIVACY_SECRET: "s".repeat(40), DATABASE_URL: "x", RESEND_API_KEY: "re", OWNER_ALERT_EMAIL: "dono@example.com" };
+  const fetchImpl = async (url, init) => { mails.push(JSON.parse(init.body)); return new Response("{}"); };
+  let sqlCalls = 0;
+  const opts = { sqlFactory: () => { sqlCalls++; return { query: async () => [] }; } };
+  const orig = console.warn; console.warn = (...a) => logs.push(a.join(" "));
+  try {
+    const unk = (id, txn, event = "PURCHASE_APPROVED") => handleHotmartWebhook(hook({ event, data: { product: { id, name: "Outro produto" }, buyer: { email: "x@y.co" }, purchase: { transaction: txn } } }), env, null, fetchImpl, opts);
+    for (const [id, txn, event] of [[5550001, "HPUNK0001"], [5550001, "HPUNK0002"], [5550001, "HPUNK0001", "PURCHASE_COMPLETE"], [5550002, "HPUNK0003"]]) {
+      const r = await unk(id, txn, event);
+      assert.equal(r.status, 200, id + txn);
+      assert.equal((await r.json()).scope, "unmapped_product");
+    }
+    assert.equal(sqlCalls, 0, "nada é gravado como compra de kit");
+    const alerts = mails.filter((m) => /sem mapeamento/.test(m.subject));
+    assert.equal(alerts.length, 2, "um alerta por produto por dia");
+    assert.deepEqual(alerts.map((m) => m.to[0]), ["dono@example.com", "dono@example.com"]);
+    assert.match(alerts[0].text, /5550001/); assert.match(alerts[1].text, /5550002/);
+    assert.doesNotMatch(JSON.stringify(alerts), /x@y\.co|HPUNK/, "alerta sem e-mail do comprador nem transação");
+    const structured = logs.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((x) => x?.event === "hotmart_unmapped_product");
+    assert.equal(structured.length, 4);
+    assert.equal(structured[0].product_id, "5550001");
+    assert.doesNotMatch(logs.join("\n"), /x@y\.co|HPUNK/);
+    // Conteúdo Pronto (8704905) continua no caminho do serviço, sem alerta de produto sem mapeamento.
+    mails.length = 0;
+    const cp = await handleHotmartWebhook(hook({ event: "PURCHASE_APPROVED", data: { product: { id: 8704905, name: "x" }, buyer: { email: "cp@example.com" }, purchase: { transaction: "HPCP0001" } } }), env, null, fetchImpl, opts);
+    assert.equal(cp.status, 200);
+    assert.notEqual((await cp.json()).scope, "unmapped_product");
+    assert.ok(!mails.some((m) => /sem mapeamento/.test(m.subject)));
+    assert.ok([...kv.data.keys()].some((k) => k.startsWith("zpc:cp:sub:")), "assinatura registrada no serviço");
+    // Kit mapeado (Vendas 8704826) vai para a ingestão do kit, nunca para o alerta.
+    let ingested = null;
+    const kitOpts = { sqlFactory: () => ({ query: async (text, args) => { if (/kits:ingest/.test(text)) { ingested = args[3]; return [{ status: "approved" }]; } return []; } }) };
+    const v = await handleHotmartWebhook(hook(kitEvent("PURCHASE_APPROVED", "HPVEN0001", { product: { id: 8704826, name: "Vendas" } })), env, null, fetchImpl, kitOpts);
+    assert.equal(v.status, 200); assert.equal(ingested, "ZEV-VEN-011");
+  } finally { console.warn = orig; }
+});
+
+test("W5 kit: a chave de deduplicação do KV só é gravada depois do commit no PostgreSQL; falha não deixa chave", async () => {
+  const kv = new MapKV();
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, HOTMART_HOTTOK: HOTTOK, LEAD_PRIVACY_SECRET: "s".repeat(40), DATABASE_URL: "x" };
+  const dedupeKeys = () => [...kv.data.keys()].filter((k) => k.startsWith("zpc:cp:txn:"));
+  let atCommit = null;
+  const ok = { sqlFactory: () => ({ query: async (text) => { if (/kits:ingest/.test(text)) { atCommit = dedupeKeys().length; return [{ status: "approved" }]; } return []; } }) };
+  const r = await handleHotmartWebhook(hook(kitEvent("PURCHASE_APPROVED", "HPDEDUP01")), env, null, async () => new Response("{}"), ok);
+  assert.equal(r.status, 200);
+  assert.equal(atCommit, 0, "nenhuma chave no KV antes do commit");
+  assert.equal(dedupeKeys().length, 1, "chave gravada depois do commit");
+  const dup = await handleHotmartWebhook(hook(kitEvent("PURCHASE_APPROVED", "HPDEDUP01")), env, null, async () => new Response("{}"), ok);
+  assert.deepEqual(await dup.json(), { ok: true, duplicate: true });
+  const fail = { sqlFactory: () => ({ query: async (text) => { if (/kits:ingest/.test(text)) { atCommit = dedupeKeys().length; throw new Error("commit failed"); } return []; } }) };
+  const orig = console.error; console.error = () => {};
+  try {
+    const f = await handleHotmartWebhook(hook(kitEvent("PURCHASE_REFUNDED", "HPDEDUP01")), env, null, async () => new Response("{}"), fail);
+    assert.equal(f.status, 503);
+  } finally { console.error = orig; }
+  assert.equal(atCommit, 1, "só a chave do evento anterior, já confirmado");
+  assert.equal(dedupeKeys().length, 1, "falha não grava chave: o reenvio da Hotmart será processado");
+});
+
+test("W6 kit com transação fora do formato: 200 + alerta ao proprietário (1 por kit/dia), nada gravado, sem laço de 503", async () => {
+  const kv = new MapKV(), mails = [];
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, HOTMART_HOTTOK: HOTTOK, LEAD_PRIVACY_SECRET: "s".repeat(40), DATABASE_URL: "x", RESEND_API_KEY: "re" };
+  let sqlCalls = 0;
+  const opts = { sqlFactory: () => { sqlCalls++; return { query: async () => [] }; } };
+  const orig = console.warn; console.warn = () => {};
+  try {
+    for (const txn of ["AB", "HP 0001 KIT", "HP0001KIT!"]) {
+      const r = await handleHotmartWebhook(hook(kitEvent("PURCHASE_APPROVED", txn)), env, null, async (u, init) => { mails.push(JSON.parse(init.body)); return new Response("{}"); }, opts);
+      assert.equal(r.status, 200, txn);
+      assert.equal((await r.json()).scope, "kit_transaction_invalid", txn);
+    }
+  } finally { console.warn = orig; }
+  assert.equal(sqlCalls, 0);
+  const alerts = mails.filter((m) => /transação inválida/.test(m.subject));
+  assert.equal(alerts.length, 1, "deduplicado por kit/dia");
+  assert.match(alerts[0].text, /ZEV-IA-011/);
+  assert.doesNotMatch(alerts[0].text, /HP0001KIT|Comprador@Example\.com/i);
+});
+
 // ---------------- R: rotas ----------------
 const adminReq = (path, body, auth = true) => new Request("https://zevanory.api.br" + path, { method: "POST", headers: { "content-type": "application/json", ...(auth ? { authorization: "Bearer op" } : {}) }, body: JSON.stringify(body) });
 const isOperator = async (req) => req.headers.get("authorization") === "Bearer op";
@@ -214,7 +300,7 @@ test("R4 e-mail de contingência: link, validade e liberação do dia 8 em horá
   const m = contingencyEmail({ sku: "ZEV-NGC-011", link: "https://zevanory.api.br/entrega/contingencia?t=X", expiresMs: Date.parse("2026-10-30T12:00:00-03:00"), approvedMs: a, nowMs: Date.parse("2026-10-30T10:00:00-03:00") });
   assert.match(m.subject, /Negócio Completo/);
   assert.match(m.text, /vale até 30\/10\/2026 às 12:00 \(horário de Brasília\)/);
-  assert.match(m.text, /serão liberados a partir de 05\/11\/2026 às 23:59 \(horário de Brasília\)/);
+  assert.match(m.text, /serão liberados em 05\/11\/2026 às 23:59 \(horário de Brasília\), 8 dias completos \(192 horas\) após a aprovação do pagamento/);
   assert.ok(m.text.includes(ENTREGA_CLUB.aviso_licenca));
   assert.doesNotMatch(m.text, /DRM|marca d.água/i);
   const later = contingencyEmail({ sku: "ZEV-IA-011", link: "L", expiresMs: a, approvedMs: a, nowMs: a + 192 * H });
@@ -223,9 +309,49 @@ test("R4 e-mail de contingência: link, validade e liberação do dia 8 em horá
   assert.notEqual(await ref("s".repeat(40), "email", "x@y.z"), await ref("s".repeat(40), "transaction", "x@y.z"), "separação de domínio");
 });
 
+test("R5 motivo do operador: e-mail, CPF e transação Hotmart nunca vão em claro para hotmart_kit_audit", async () => {
+  assert.equal(redactReason("Cliente ana.souza+x@example.com.br pediu"), "Cliente [email] pediu");
+  assert.equal(redactReason("CPF 123.456.789-09 / 12345678909 / 123 456 789 09"), "CPF [cpf] / [cpf] / [cpf]");
+  assert.equal(redactReason("compra HP1601547928 travada"), "compra [transacao] travada");
+  assert.equal(redactReason("Club fora do ar desde 10h"), "Club fora do ar desde 10h");
+  const audits = [];
+  const sqlFactory = () => ({ query: async (text, args) => { if (/kits:audit/.test(text)) audits.push(args); if (/kits:state/.test(text)) return [{ open: "false" }]; return []; } });
+  const reason = "Club fora; cliente ana@example.com CPF 529.982.247-25 compra HP1601547928";
+  const r = await handleKitsRequest(adminReq(KITS_ADMIN_PATHS[1], { transaction: "HP1601547928", email: "ana@example.com", operator: "renan", reason }),
+    { DATABASE_URL: "x", LEAD_PRIVACY_SECRET: "s".repeat(40) }, { sqlFactory, isOperator });
+  assert.equal(r.status, 409);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0][3], "Club fora; cliente [email] CPF [cpf] compra [transacao]");
+  assert.doesNotMatch(JSON.stringify(audits), /ana@example\.com|529\.982|HP1601547928/);
+});
+
+test("D6 texto público do dia 8 (sem dia ordinal) e o exemplo 28/10 10h -> 05/11 10h valem nas regras atuais de America/Sao_Paulo", () => {
+  const E = POLICY.entrega_club;
+  const TXT = "Os PDFs e o pacote completo ficam disponíveis para download 8 dias completos (192 horas) após a aprovação do pagamento, pelo Hotmart Club. Exemplo: aprovação em 28/10 às 10h, liberação em 05/11 às 10h, horário de Brasília.";
+  assert.equal(E.dia8_texto, TXT);
+  assert.equal(ENTREGA_CLUB.dia8_texto, TXT);
+  for (const k of ["faq_resposta", "email_boas_vindas", "termos_paragrafo"]) assert.ok(E[k].includes(TXT), k);
+  for (const p of ["termos/index.html", "sales-public/termos.html"]) assert.ok(visible(read(p)).includes(TXT), p);
+  const surfaces = [JSON.stringify(E), JSON.stringify(POLICY.resumo_oferta.hotmart), visible(read("termos/index.html")), visible(read("sales-public/termos.html")), read("data/hotmart-kits.json")];
+  for (const slug of Object.keys(HOTMART_CHECKOUT)) surfaces.push(visible(hotmartPage(read(`sales-public/${slug}.html`), slug, "https://pay.hotmart.com/X123ABC")));
+  for (const t of surfaces) assert.doesNotMatch(t, /\b8º dia|8\.º dia|oitavo dia|a partir do 8/i);
+  // O exemplo do texto: aprovação 28/10/2026 10:00 BRT => liberação 05/11/2026 10:00 BRT, exatamente 192 h depois.
+  assert.equal(TZ, "America/Sao_Paulo");
+  const a = Date.parse("2026-10-28T10:00:00-03:00"), rel = day8ReleaseAt(a);
+  assert.equal(rel - a, 192 * H);
+  assert.equal(brt(a), "28/10/2026 às 10:00");
+  assert.equal(brt(rel), "05/11/2026 às 10:00");
+  assert.equal(day8Released(a, rel - 1), false);
+  // Regras atuais do fuso (sem horário de verão): o deslocamento é -03:00 nos dois instantes e em todo o intervalo.
+  const off = (ms) => new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", timeZoneName: "longOffset" }).formatToParts(new Date(ms)).find((x) => x.type === "timeZoneName").value;
+  for (let t = a; t <= rel; t += 6 * H) assert.equal(off(t), "GMT-03:00");
+  // Comentário no código: com um eventual horário de verão futuro, a liberação nunca é antecipada.
+  assert.match(read("worker/hotmart-kits.mjs"), /o código nunca antecipa/);
+});
+
 // ---------------- T: textos ----------------
 const visible = (html) => html.replace(/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
-const TIMELINE = [/área de membros/, /1º dia/, /8º dia/, /planilhas/, /modelos/, /PDF/];
+const TIMELINE = [/área de membros/, /1º dia/, /8 dias completos \(192 horas\) após a aprovação do pagamento/, /planilhas/, /modelos/, /PDF/];
 
 test("T1 fonte única: resumo da oferta Hotmart = entrega_club; aviso de licença exato; linha canônica do modelo B", () => {
   const E = POLICY.entrega_club;
@@ -233,7 +359,7 @@ test("T1 fonte única: resumo da oferta Hotmart = entrega_club; aviso de licenç
   assert.equal(RESUMO_OFERTA.hotmart.restricoes, E.restricoes);
   assert.equal(E.aviso_licenca, "Material licenciado para uso individual do comprador. É proibida sua revenda ou redistribuição não autorizada, respeitados os direitos previstos em lei.");
   assert.ok(E.restricoes.endsWith(E.aviso_licenca));
-  assert.equal(E.linha_canonica, "Acesso online imediato pela área de membros; planilhas e modelos para baixar desde o 1º dia; PDFs e pacote completo para baixar a partir do 8º dia.");
+  assert.equal(E.linha_canonica, "Acesso online imediato pela área de membros; planilhas e modelos para baixar desde o 1º dia; PDFs e pacote completo para baixar 8 dias completos (192 horas) após a aprovação do pagamento.");
   for (const k of ["resumo_entrega", "faq_resposta", "termos_paragrafo", "email_boas_vindas", "oferta_condicao", "fato_compra", "resumo_politica"])
     for (const re of TIMELINE.slice(1, 3)) assert.match(E[k], re, k);
 });
@@ -302,4 +428,33 @@ test("T6 privacidade: papel real da Hotmart (controladora para finalidades próp
     assert.match(v, /sem o e-mail em claro/);
     assert.match(v, /não levam marca individual do comprador/);
   }
+});
+
+test("T7 M1: link de 72 h, reenvio e Mercado Pago qualificados como checkout próprio; suporte e chat com o ramo da área de membros", async () => {
+  const POL = await import("../worker/politica-unica.mjs");
+  const W = POLICY.customer_wording;
+  assert.ok(POL.SUPPORT_DELIVERY_ANSWER.startsWith("Compras pelo site da ZEVANORY (pagamento pelo Mercado Pago): após a confirmação do pagamento"));
+  assert.ok(POL.SUPPORT_DELIVERY_ANSWER.includes(POL.CLUB_DELIVERY_TEXT));
+  assert.match(POL.CLUB_DELIVERY_TEXT, /área de membros/); assert.match(POL.CLUB_DELIVERY_TEXT, /8 dias completos \(192 horas\) após a aprovação do pagamento/);
+  assert.ok(POL.SUPPORT_REFUND_ANSWER.includes(POL.CLUB_REFUND_TEXT));
+  assert.match(POL.CLUB_REFUND_TEXT, /todo pedido dentro do prazo é aprovado, mesmo depois de acessar as aulas ou baixar arquivos/);
+  assert.match(POL.RESEND_SHORT, /^Compra pelo site da ZEVANORY com link expirado/);
+  for (const a of [POL.SUPPORT_DELIVERY_ANSWER, POL.SUPPORT_REFUND_ANSWER]) assert.deepEqual(bannedPolicyHits(a), []);
+  // Âncoras legais intactas: sol_text, delivery_72h, fragmentos e customer_wording.refund (paráfrase da D7962-5-3).
+  for (const f of W.fragmentos_sol) assert.ok(POLICY.sol_text.includes(f));
+  assert.equal(POLICY.delivery_72h, "link pessoal válido por 72 horas e para um download");
+  assert.match(W.refund, /A ZEVANORY comunica imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno/);
+  // Chat: escalonamento de entrega qualifica o reenvio.
+  const chat = read("worker/site-chat.mjs");
+  assert.match(chat, /\{delivery\} Nas compras pelo site da ZEVANORY, você também pode pedir um novo link/);
+  const CHAT = JSON.parse(read("data/site-chat-policy.json"));
+  assert.match(CHAT.notice.optional, /nas compras pelo site da ZEVANORY, um novo link de acesso/);
+  // Termos e /reembolso: partes fora do sol_text qualificadas.
+  for (const p of ["termos/index.html", "sales-public/termos.html"]) {
+    const v = visible(read(p));
+    assert.match(v, /Resumo\. No checkout próprio, você compra um produto digital/);
+    assert.match(v, /No checkout próprio, o pagamento é processado pelo Mercado Pago/);
+    assert.match(v, /4\. Entrega Compras no checkout próprio: após a confirmação do pagamento/);
+  }
+  for (const p of ["reembolso/index.html", "sales-public/reembolso.html"]) assert.match(visible(read(p)), /No checkout próprio, a entrega é por e-mail em link pessoal válido por 72 horas/);
 });

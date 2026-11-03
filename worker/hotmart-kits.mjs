@@ -60,6 +60,10 @@ function offsetMs(ms, tz) {
 // Liberação = o MAIS TARDIO entre (a) aprovação + horas_minimas e (b) o mesmo horário de parede de America/Sao_Paulo
 // no dia civil aprovação + dias_civis. Sem horário de verão os dois coincidem (8 dias = 192 h); com horário de verão,
 // (b) impede que a mudança de relógio antecipe a liberação. Nunca antes de approved + 192 h.
+// Texto público (data/politica-unica.json, entrega_club): "8 dias completos (192 horas) após a aprovação", com o
+// exemplo 28/10 10h -> 05/11 10h (horário de Brasília). O exemplo vale nas regras atuais de America/Sao_Paulo (sem
+// horário de verão desde 2019; tests/hotmart-kits.test.mjs confere). Se um horário de verão voltar a existir, a
+// liberação pode cair 1 h DEPOIS do mesmo horário de parede (nunca antes de 192 h): o código nunca antecipa.
 export function day8ReleaseAt(approvedMs, { rule = RELEASE_RULE, tz = TZ } = {}) {
   const a = Number(approvedMs);
   if (!Number.isFinite(a)) return Infinity;
@@ -140,9 +144,13 @@ export const KITS_SQL = Object.freeze({
       (extract(epoch from approved_at) * 1000)::bigint::text as approved_ms from hotmart_kit_purchases where transaction_ref = $1`,
   state: `/*kits:state*/ select enabled::text as enabled, (extract(epoch from until) * 1000)::bigint::text as until_ms,
       (enabled and until > now())::text as open from hotmart_kit_contingency where id = 1`,
-  setState: `/*kits:set-state*/ insert into hotmart_kit_contingency (id, enabled, until, actor, reason) values (1, $1::boolean, now() + make_interval(hours => $2::int), $3, $4)
+  // Desligar revoga, no MESMO comando, todos os links abertos; religar não ressuscita nenhum (a validação exige
+  // revoked_at is null).
+  setState: `/*kits:set-state*/ with off as (
+      update hotmart_kit_links set revoked_at = now() where revoked_at is null and not $1::boolean returning 1)
+    insert into hotmart_kit_contingency (id, enabled, until, actor, reason) values (1, $1::boolean, now() + make_interval(hours => $2::int), $3, $4)
     on conflict (id) do update set enabled = excluded.enabled, until = excluded.until, actor = excluded.actor, reason = excluded.reason, at = now()
-    returning (extract(epoch from until) * 1000)::bigint::text as until_ms`,
+    returning (extract(epoch from until) * 1000)::bigint::text as until_ms, (select count(*) from off)::text as revoked`,
   issue: `/*kits:issue*/ insert into hotmart_kit_links (token_sha256, transaction_ref, sku, expires_at, max_uses, actor)
     select $1, $2, $3, least(now() + make_interval(mins => $4::int), c.until), $5::int, $6
       from hotmart_kit_contingency c where c.id = 1 and c.enabled and c.until > now()
@@ -190,11 +198,13 @@ export async function ingestKitPostback(env, { event, data }, { sqlFactory, now 
   if (!sku) return { kit: false };
   const state = KIT_EVENTS[String(event || "").toUpperCase()];
   if (!state) return { kit: true, sku, ignored: true };
+  // Transação fora do formato: dado permanente (reenviar não corrige). Nada é gravado; o chamador responde 200 e
+  // alerta o proprietário, em vez de 503 em laço.
+  const txn = normTxn(data?.purchase?.transaction);
+  if (!/^[A-Z0-9-]{6,64}$/.test(txn)) return { kit: true, sku, invalid: true };
   const secret = privacySecret(env);
   if (!secret) throw new Error("kits_privacy_secret_missing");
   if (!env.DATABASE_URL || typeof sqlFactory !== "function") throw new Error("kits_database_unavailable");
-  const txn = normTxn(data?.purchase?.transaction);
-  if (!/^[A-Z0-9-]{6,64}$/.test(txn)) throw new Error("kits_transaction_invalid");
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureSchema(sql, q);
   const tref = await ref(secret, "transaction", txn);
@@ -214,6 +224,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const page = (status, title, inner) => new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)} · ZEVANORY</title></head><body><main><h1>${esc(title)}</h1>${inner}</main></body></html>`,
   { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "x-robots-tag": "noindex" } });
 const OPERATOR_RE = /^[A-Za-z0-9 ._@:-]{3,64}$/;
+const NOT_ELIGIBLE = Object.freeze({ issued: false, error: "not_eligible", action: "Nenhum link emitido. Confira no painel da Hotmart se a compra está aprovada e se o e-mail é o do comprador; se o postback não chegou, peça o reenvio. Não envie arquivos por outro canal." });
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 const randomToken = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
@@ -228,8 +239,16 @@ function operatorAndReason(body) {
   if (reason.length < 10 || reason.length > 500) return { error: json(400, { error: "reason_required" }) };
   return { operator, reason };
 }
+// O motivo é texto livre do operador: e-mail, CPF e código de transação Hotmart nunca vão em claro para o registro.
+export function redactReason(reason) {
+  return String(reason ?? "")
+    .replace(/[^\s@<>()[\]{},;:"']+@[^\s@<>()[\]{},;:"']+/g, "[email]")
+    .replace(/(?<!\d)\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2}(?!\d)/g, "[cpf]")
+    .replace(/\bHP\d{6,}\b/gi, "[transacao]")
+    .slice(0, 500);
+}
 async function audit(sql, q, kind, tref, actor, reason, outcome) {
-  try { await sql.query(q.audit, [kind, tref || null, actor || null, reason ? String(reason).slice(0, 500) : null, String(outcome).slice(0, 80)]); } catch {}
+  try { await sql.query(q.audit, [kind, tref || null, actor || null, reason ? redactReason(reason) : null, String(outcome).slice(0, 80)]); } catch {}
 }
 async function contingencyOpen(sql, q) {
   const s = one(await sql.query(q.state, []));
@@ -265,8 +284,9 @@ async function adminRoute(path, request, env, ctx) {
     const hours = enabled ? Math.trunc(Number(parsed.body.hours)) : 0;
     if (enabled && !(hours >= 1 && hours <= Number(CONTINGENCY.horas_max_ligada))) return json(400, { error: "hours_out_of_range", max: CONTINGENCY.horas_max_ligada });
     const r = one(await sql.query(q.setState, [enabled, enabled ? hours : 0, operator, reason]));
-    await audit(sql, q, enabled ? "contingency_on" : "contingency_off", null, operator, reason, "ok");
-    return json(200, { ok: true, enabled, until: enabled && r?.until_ms ? new Date(Number(r.until_ms)).toISOString() : null });
+    const revoked = enabled ? 0 : Number(r?.revoked || 0);
+    await audit(sql, q, enabled ? "contingency_on" : "contingency_off", null, operator, reason, enabled ? "ok" : "ok:revoked:" + revoked);
+    return json(200, { ok: true, enabled, until: enabled && r?.until_ms ? new Date(Number(r.until_ms)).toISOString() : null, ...(enabled ? {} : { revoked }) });
   }
   const secret = privacySecret(env);
   if (!secret) return json(503, { error: "kits_privacy_secret_missing" });
@@ -285,17 +305,21 @@ async function adminRoute(path, request, env, ctx) {
   try { open = await contingencyOpen(sql, q); } catch { open = null; }
   if (open === null) return json(503, { issued: false, error: "purchase_state_unavailable", action: "Nenhum link emitido. Confira a compra no painel da Hotmart e tente de novo; não envie arquivos por outro canal." });
   if (!open) { await audit(sql, q, "contingency_link", tref, operator, reason, "denied:contingency_closed"); return json(409, { issued: false, error: "contingency_closed" }); }
+  const emailRef = await ref(secret, "email", email);
   let p;
   try { p = one(await sql.query(q.purchase, [tref])); } catch {
     // Leitura do estado falhou: fail-closed, nada é emitido; o operador confere no painel Hotmart e repete.
     return json(503, { issued: false, error: "purchase_state_unavailable", action: "Nenhum link emitido. Confira a compra no painel da Hotmart e tente de novo; não envie arquivos por outro canal." });
   }
-  if (!p) { await audit(sql, q, "contingency_link", tref, operator, reason, "denied:purchase_not_found"); return json(404, { issued: false, error: "purchase_not_found", action: "Compra sem registro sincronizado (postback não recebido). Nenhum link emitido; confira no painel da Hotmart e peça o reenvio do postback." }); }
-  if (p.status !== "approved") { await audit(sql, q, "contingency_link", tref, operator, reason, "denied:status_" + p.status); return json(p.status === "unknown" ? 409 : 410, { issued: false, error: "purchase_not_active", status: p.status }); }
-  const approvedMs = Number(p.approved_ms);
-  if (!Number.isFinite(approvedMs) || approvedMs <= 0) { await audit(sql, q, "contingency_link", tref, operator, reason, "denied:no_approval_time"); return json(409, { issued: false, error: "purchase_not_active" }); }
-  const emailRef = await ref(secret, "email", email);
-  if (!p.buyer_email_ref || p.buyer_email_ref !== emailRef) { await audit(sql, q, "contingency_link", tref, operator, reason, "denied:recipient_not_buyer"); return json(403, { issued: false, error: "recipient_not_buyer" }); }
+  // O e-mail (HMAC) é conferido ANTES de qualquer estado da compra: compra desconhecida, e-mail que não é o do
+  // comprador, compra reembolsada/cancelada/contestada ou sem aprovação recebem a MESMA recusa (status e corpo
+  // idênticos). O motivo fica só no registro de auditoria.
+  const approvedMs = Number(p?.approved_ms);
+  const denial = !p ? "purchase_not_found"
+    : !p.buyer_email_ref || p.buyer_email_ref !== emailRef ? "recipient_not_buyer"
+    : p.status !== "approved" ? "status_" + p.status
+    : !Number.isFinite(approvedMs) || approvedMs <= 0 ? "no_approval_time" : null;
+  if (denial) { await audit(sql, q, "contingency_link", tref, operator, reason, "denied:" + denial); return json(403, NOT_ELIGIBLE); }
   const nowMs = nowFn();
   const files = authorizedFiles(p.sku, approvedMs, nowMs, ctx.catalog);
   if (!files.length) { await audit(sql, q, "contingency_link", tref, operator, reason, "denied:no_files"); return json(409, { issued: false, error: "no_authorized_files" }); }
@@ -341,11 +365,16 @@ async function customerRoute(path, request, env, ctx) {
   let token = "", fid = "";
   try { const form = await request.formData(); token = String(form.get("t") || ""); fid = String(form.get("f") || ""); } catch {}
   if (!TOKEN_RE.test(token) || !/^[0-9a-f]{16}$/.test(fid)) return json(404, { error: "download_unavailable" });
+  // 1) valida o link SEM consumir uso; 2) autoriza o arquivo pedido (dia 1 / dia 8); 3) só então conta um uso, num
+  // comando que revalida tudo de novo. Tentativas negadas (arquivo do dia 8 antes da hora) não gastam usos do link.
+  const tokenSha = await sha256Hex(enc.encode(token));
   let row = null;
-  try { row = one(await sql.query(q.use, [await sha256Hex(enc.encode(token))])); } catch { return json(503, { error: "download_validation_unavailable" }); }
+  try { row = one(await sql.query(q.view, [tokenSha])); } catch { return json(503, { error: "download_validation_unavailable" }); }
   if (!row) { await audit(sql, q, "contingency_download", null, null, null, "denied:link_or_purchase"); return json(410, { error: "download_unavailable" }); }
   const file = authorizedFiles(row.sku, Number(row.approved_ms), nowFn(), ctx.catalog).find((f) => f.id === fid);
   if (!file) { await audit(sql, q, "contingency_download", row.transaction_ref, null, null, "denied:file_not_authorized"); return json(403, { error: "file_not_authorized" }); }
+  try { row = one(await sql.query(q.use, [tokenSha])); } catch { return json(503, { error: "download_validation_unavailable" }); }
+  if (!row) { await audit(sql, q, "contingency_download", null, null, null, "denied:link_or_purchase"); return json(410, { error: "download_unavailable" }); }
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const bytes = kv?.get ? await kv.get(file.kv_key, "arrayBuffer") : null;
   if (!bytes) { await audit(sql, q, "contingency_download", row.transaction_ref, null, null, "failed:missing"); return json(503, { error: "artifact_missing" }); }
