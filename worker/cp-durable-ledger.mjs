@@ -45,6 +45,60 @@ export class CpSubscriberLedger {
     event_key TEXT NOT NULL,
     refunded_at TEXT NOT NULL
    )`);
+  // G02: normalized records retained separately from customer identity/PII.
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_cycles(
+   cycle INTEGER PRIMARY KEY CHECK(cycle>0),
+   approved_at_ms INTEGER,
+   release_at_ms INTEGER,
+   status TEXT NOT NULL CHECK(status IN ('approved','refunded','partially_refunded','canceled')),
+   created_at TEXT NOT NULL,
+   updated_at TEXT NOT NULL,
+   CHECK(release_at_ms IS NULL OR (approved_at_ms IS NOT NULL AND release_at_ms>=approved_at_ms))
+  )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_credits(
+   cycle INTEGER PRIMARY KEY CHECK(cycle>0),
+   source_event_key TEXT NOT NULL,
+   status TEXT NOT NULL CHECK(status IN ('available','used','refunded')),
+   updated_at TEXT NOT NULL
+  )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_refund_events(
+   event_key TEXT PRIMARY KEY,
+   cycle INTEGER NOT NULL,
+   refund_type TEXT NOT NULL CHECK(refund_type IN ('partial','total','chargeback','protest','requested')),
+   state TEXT NOT NULL CHECK(state IN ('pending','confirmed','reversed')),
+   created_at TEXT NOT NULL
+  )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_regen_jobs(
+   job_key TEXT PRIMARY KEY,
+   cycle INTEGER NOT NULL,
+   source_package_sha256 TEXT,
+   candidate_sha256 TEXT,
+   status TEXT NOT NULL CHECK(status IN ('blocked','queued','uncertain','accepted','delivered','dead')),
+   updated_at TEXT NOT NULL
+  )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_delivery_receipts(
+   receipt_key TEXT PRIMARY KEY,
+   cycle INTEGER NOT NULL,
+   provider_receipt TEXT NOT NULL,
+   package_sha256 TEXT,
+   status TEXT NOT NULL CHECK(status IN ('accepted','sent','delivered','failed','revoked')),
+   created_at TEXT NOT NULL
+  )`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_alarm_jobs(
+   alarm_key TEXT PRIMARY KEY,
+   due_at_ms INTEGER NOT NULL,
+   kind TEXT NOT NULL CHECK(kind IN ('retry','reminder','monthly_delivery','release_192h','reconcile','owner_alert')),
+   state TEXT NOT NULL CHECK(state IN ('scheduled','queued','canceled')),
+   updated_at TEXT NOT NULL
+  )`);
+  this.sql.exec(`CREATE INDEX IF NOT EXISTS cp_alarm_due_idx ON cp_alarm_jobs(state,due_at_ms)`);
+  this.sql.exec(`CREATE TABLE IF NOT EXISTS cp_alarm_outbox(
+   alarm_key TEXT PRIMARY KEY,
+   kind TEXT NOT NULL,
+   due_at_ms INTEGER NOT NULL,
+   enqueued_at_ms INTEGER NOT NULL,
+   status TEXT NOT NULL CHECK(status IN ('pending','uncertain','done','canceled'))
+  )`);
   this.sql.exec("INSERT OR IGNORE INTO subscriber_state(singleton,version,status,cycle,delivered_cycle,updated_at) VALUES (1,0,'absent',0,0,'1970-01-01T00:00:00Z')");
  }
  one(query,...args){return this.sql.exec(query,...args).toArray()[0]||null;}
@@ -115,6 +169,38 @@ export class CpSubscriberLedger {
    throw new CpTransitionError("sqlite_unavailable",503);
   }
  }
+ // M1: multiple jobs per subscriber DO, one Cloudflare alarm per object.
+ // A real consumer must reconcile outbox and never send email from this method.
+ scheduleAlarmJob({alarm_key,kind,due_at_ms},at=new Date().toISOString()){
+  if(!validEvent(alarm_key)||!["retry","reminder","monthly_delivery","release_192h","reconcile","owner_alert"].includes(kind)||
+    !Number.isSafeInteger(due_at_ms)||due_at_ms<1)
+    throw new CpTransitionError("invalid_alarm_job",400);
+  return this.storage.transactionSync(()=>{
+   const prior=this.one("SELECT due_at_ms,kind,state FROM cp_alarm_jobs WHERE alarm_key=?",alarm_key);
+   if(prior){
+    if(prior.due_at_ms!==due_at_ms||prior.kind!==kind)throw new CpTransitionError("alarm_conflict");
+    return {code:"duplicate_alarm",next:this.nextAlarmAt()};
+   }
+   this.sql.exec("INSERT INTO cp_alarm_jobs(alarm_key,due_at_ms,kind,state,updated_at) VALUES(?,?,?,'scheduled',?)",alarm_key,due_at_ms,kind,at);
+   return {code:"scheduled",next:this.nextAlarmAt()};
+  });
+ }
+ nextAlarmAt(){
+  return this.one("SELECT MIN(due_at_ms) AS due FROM cp_alarm_jobs WHERE state='scheduled'")?.due??null;
+ }
+ claimDueAlarmJobs(now){
+  if(!Number.isSafeInteger(now)||now<1)throw new CpTransitionError("invalid_clock",400);
+  return this.storage.transactionSync(()=>{
+   const due=this.sql.exec("SELECT alarm_key,kind,due_at_ms FROM cp_alarm_jobs WHERE state='scheduled' AND due_at_ms<=? ORDER BY due_at_ms LIMIT 50",now).toArray();
+   for(const task of due){
+    this.sql.exec("INSERT OR IGNORE INTO cp_alarm_outbox(alarm_key,kind,due_at_ms,enqueued_at_ms,status) VALUES(?,?,?,?,'pending')",
+      task.alarm_key,task.kind,task.due_at_ms,now);
+    this.sql.exec("UPDATE cp_alarm_jobs SET state='queued',updated_at=? WHERE alarm_key=?",new Date(now).toISOString(),task.alarm_key);
+   }
+   return {queued:due.length,next:this.nextAlarmAt()};
+  });
+ }
+ // G02 schema never marks an external delivery as sent: receipt comes from the provider.
  // Append-only per-object export; an external aggregator must orchestrate daily
  // export and retention. No direct KV writes or external emails occur here.
  exportEvents(afterVersion=0){
@@ -139,7 +225,16 @@ export class ContentProntoSubscriberDO {
     const from=Number(new URL(request.url).searchParams.get("after")||0);
     return Response.json({events:this.ledger.exportEvents(from)});
    }
-   if(path!=="/internal/apply"||request.method!=="POST")return Response.json({error:"method_not_allowed"},{status:405});
+   if(path==="/internal/schedule" && request.method==="POST"){
+    const job=await request.json();
+    const queued=this.ledger.scheduleAlarmJob(job);
+    if(queued.next!==null){
+      try { await this.ctx.storage.setAlarm(queued.next); }
+      catch { return Response.json({ok:false,error:"alarm_unavailable"},{status:503}); }
+    }
+    return Response.json({ok:true,...queued});
+  }
+  if(path!=="/internal/apply"||request.method!=="POST")return Response.json({error:"method_not_allowed"},{status:405});
    const input=await request.json();
    const answer=this.ledger.apply(input);
    return Response.json(answer);
@@ -147,5 +242,12 @@ export class ContentProntoSubscriberDO {
    const e=err instanceof CpTransitionError?err:new CpTransitionError("unavailable",503);
    return Response.json({ok:false,error:e.code},{status:e.status});
   }
+ }
+ async alarm(){
+  // At-least-once Cloudflare alarm: atomically queue due events, NEVER send email here.
+  const now=Date.now();
+  const moved=this.ledger.claimDueAlarmJobs(now);
+  if(moved.next!==null)await this.ctx.storage.setAlarm(Math.max(now+1,moved.next));
+  // If a downstream consumer is absent, alarms remain durable as PENDING outbox.
  }
 }
