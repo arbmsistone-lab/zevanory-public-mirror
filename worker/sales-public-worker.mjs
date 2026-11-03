@@ -73,7 +73,7 @@ function infoPage(status,title,body){
 // the text never claims confirmation or absence of charge; access depends only on the webhook.
 const PAYMENT_RETURN={
   aprovado:["Recebemos o seu retorno do pagamento","<p>Assim que o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra. Costuma levar poucos minutos.</p><p>Não chegou? Confira a caixa de spam ou promoções. Você também pode <a href=\"https://zevanory.api.br/entrega/reenviar\">pedir um novo link de acesso</a>.</p>"],
-  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix ou boleto, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+".</p>"],
+  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix à vista, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+".</p>"],
   falhou:["Não conseguimos confirmar o seu pagamento","<p>Esta página não confirma o resultado do pagamento: ele pode ter sido recusado, cancelado ou até concluído. Confira o status no aplicativo ou no e-mail do Mercado Pago antes de tentar de novo, para não pagar duas vezes.</p><p>Se aparecer cobrança e o acesso não chegar no seu e-mail, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+". Se não houve cobrança, você pode tentar de novo pela página do produto.</p>"]
 };
 export function paymentReturnPage(state){
@@ -220,14 +220,14 @@ export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7"
 const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
 const HOTMART_TEXT=[
   // Design PR: the hero payment facts are a list (no "·" chain); each item has its Hotmart wording.
-  ["Pagamento processado pelo Mercado Pago (Pix ou cartão)","Pagamento processado pela Hotmart (Pix, cartão ou boleto)"],
+  ["Pagamento processado pelo Mercado Pago (Pix ou cartão)","Pagamento processado pela Hotmart (Pix à vista ou cartão)"],
   [`Entrega por e-mail em ${DELIVERY_72H}`,"Acesso por e-mail após a confirmação do pagamento"],
   ["<strong>Pagamento</strong><span>processado pelo Mercado Pago","<strong>Pagamento</strong><span>processado pela Hotmart"],
   [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
-  [`Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um ${DELIVERY_72H} do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.`,"Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
+  [`Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um ${DELIVERY_72H} do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.`,"Após a aprovação do pagamento, o Hotmart Club dá acesso online e às planilhas. Os PDFs e o ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento."],
   [`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.`,`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.`],
-  ["Pix ou cartão pelo Mercado Pago.","Pix, cartão ou boleto pela Hotmart."],
-  ["Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download.","Acesso por e-mail logo após a confirmação do pagamento."],
+  ["Pix ou cartão pelo Mercado Pago.","Pix à vista ou cartão pela Hotmart."],
+  ["Por e-mail 192 horas (8 dias) após a aprovação do pagamento: PDFs e ZIP; acesso online e planilhas imediatamente.","Acesso online e planilhas imediatamente; PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação do pagamento."],
 ];
 // Decreto 7.962 "Resumo da oferta": pagamento e entrega da variante Hotmart (data/politica-unica.json).
 HOTMART_TEXT.push([RESUMO_OFERTA.produto_digital.pagamento,RESUMO_OFERTA.hotmart.pagamento],[RESUMO_OFERTA.produto_digital.entrega.replace("{delivery_72h}",DELIVERY_72H),RESUMO_OFERTA.hotmart.entrega]);
