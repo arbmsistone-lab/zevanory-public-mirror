@@ -92,8 +92,16 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Qualquer chamada de compra: caminho de checkout/assinatura (relativo ou absoluto), host de checkout
 // externo ou menção à Hotmart como lugar de compra.
 const CHECKOUT_RE = new RegExp("(?:" + [...CHECKOUT_HREF_PATHS, ...CHECKOUT_HOSTS].map(esc).join("|") + ")|\\bhotmart\\b", "i");
+// DEC-01 v3: a frase oficial de entrega cita o Hotmart Club como LOCAL de acesso pós-compra, não como lugar de
+// compra. Só as frases EXATAS da política que o citam são mascaradas; qualquer outra menção a hotmart (texto livre,
+// convite, link ou host de checkout) continua sendo chamada de compra.
+const OFFICIAL_PLATFORM_SENTENCES = [...new Set([DELIVERY_TEXT].flatMap((t) => String(t).split(/(?<=\.)\s+/))
+  .filter((x) => /hotmart/i.test(x) && !/pay\.|https?:|\/comprar|\/assinar|checkout|compr[ae]/i.test(x)))];
+export function maskOfficialPlatformMentions(text) {
+  return OFFICIAL_PLATFORM_SENTENCES.reduce((t, x) => t.split(x).join(" "), String(text || ""));
+}
 export function hasCheckoutCta(text) {
-  return CHECKOUT_RE.test(String(text || ""));
+  return CHECKOUT_RE.test(maskOfficialPlatformMentions(text));
 }
 
 // Formulações divergentes proibidas (maiúsculas ignoradas) + a frase de banned_refund_context perto

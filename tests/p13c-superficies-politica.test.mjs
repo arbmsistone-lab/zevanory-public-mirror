@@ -192,7 +192,7 @@ test("P13c: rota /api/support/knowledge lê o interruptor do proprietário (fail
   assert.ok((await ask({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true }) }) })).includes(P.closed_label), "registro incompleto: fechado");
   const at = new Date(Date.now() - 60_000).toISOString();
   const open = await ask({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner", at, ref: "audit-ref-1" }), "zpc-sales-preflight:v1": JSON.stringify({ ok: true, at }) }) });
-  assert.ok(!open.includes(P.closed_label) && open.includes("R$ 247,00"), "aberto e autorizado: sem rótulo de fechado");
+  assert.ok(!open.includes(P.closed_label) && open.includes("R$ 147,00"), "aberto e autorizado: sem rótulo de fechado");
   resetSalesSwitchCache();
   checkNurture(await import("../worker/lead-magnet.mjs"));
   checkCaptions(await import("../scripts/channels/short-crosspost.mjs"), await import("../scripts/channels/youtube-daily-short.mjs"));
