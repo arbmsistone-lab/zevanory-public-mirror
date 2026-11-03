@@ -1,3 +1,4 @@
+import {CpFulfillmentLedger,CpWorkError} from "./cp-nc012-fulfillment.mjs";
 // ZEVANORY NC-007 / ADR-CP-001: DRAFT-only SQLite Durable Object ledger.
 // NOT connected to the live webhook/cron/operator/refund paths. Do not deploy.
 // The canonical key is resolved SERVER-SIDE by the Worker (never from request JSON).
@@ -257,6 +258,7 @@ export class ContentProntoSubscriberDO {
  constructor(ctx){
   this.ctx=ctx;
   this.ledger=new CpSubscriberLedger(ctx.storage,"cp-do:"+String(ctx.id));
+  this.fulfillment=new CpFulfillmentLedger(ctx.storage,this.ledger,"cp-do:"+String(ctx.id));
  }
  async fetch(request){
   try{
@@ -272,6 +274,13 @@ export class ContentProntoSubscriberDO {
     const state=this.ledger.current();
     const valid=Boolean(row&&state.status==="active"&&state.cycle===cycle&&row.status==="issued"&&row.token_sha256===hash&&row.expires_at_ms>=Date.now());
     return Response.json({ok:true,valid,cycle});
+   }
+   if(path==="/internal/fulfillment-snapshot" && request.method==="GET")return Response.json(this.fulfillment.snapshot());
+   if(path==="/internal/fulfillment" && request.method==="POST"){
+    const result=this.fulfillment.apply(await request.json());
+    // State remains durable even if scheduling is unavailable; never report success.
+    // Next external consumer must inspect PENDING work/outbox; none is connected.
+    return Response.json(result);
    }
    if(path==="/internal/events" && request.method==="GET"){
     const from=Number(new URL(request.url).searchParams.get("after")||0);
@@ -291,7 +300,7 @@ export class ContentProntoSubscriberDO {
    const answer=this.ledger.apply(input);
    return Response.json(answer);
   }catch(err){
-   const e=err instanceof CpTransitionError?err:new CpTransitionError("unavailable",503);
+   const e=err instanceof CpTransitionError||err instanceof CpWorkError?err:new CpTransitionError("unavailable",503);
    return Response.json({ok:false,error:e.code},{status:e.status});
   }
  }
