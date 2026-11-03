@@ -38,7 +38,7 @@ test("DEC-04 public catalog and llms contain no CP links or subscription offer",
   assert.doesNotMatch(body,/conteudo-pronto|Conteúdo Pronto/i,path);
  }
  for(const path of ["sales-public/conteudo-pronto.html","pages-mirror/conteudo-pronto.html",
-  "pages-mirror/sales-public__conteudo-pronto.html"]){
+  "pages-mirror/sales-public__conteudo-pronto.html","conteudo-pronto/index.html"]){
   const body=read(path);
   assert.match(body,/noindex,nofollow/);
   assert.doesNotMatch(body,/assinar|pay\.hotmart\.com|data-zev-sub/);
