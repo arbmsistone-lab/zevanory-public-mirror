@@ -23,7 +23,7 @@ function walk(relative,acc=[]){
  const dir=resolve(root,relative);
  try{
   for(const ent of readdirSync(dir,{withFileTypes:true})){
-   const next=relative+"/"+ent.name;
+   const next=(relative==="."?"":relative+"/")+ent.name;
    if(ent.isDirectory()&&!skipDirs.has(ent.name))walk(next,acc);
    else if(ent.isFile()&&codeExt.test(ent.name))acc.push(next);
   }
