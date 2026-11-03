@@ -28,5 +28,6 @@ export async function resolveVerifiedKitPurchase(request,env){
  const eventKey="hotmart:"+event+":"+opaque.slice(0,40);
  return {stub:env.PURCHASE_RELEASE_DO.get(id),opaqueOrderId:"kr:"+opaque,
   event:{event_type:event,event_key:eventKey,approved_at_ms:data?.purchase?.approved_date??null},
+  privateReference:{transaction,product_id:productId}, // internal DO only, NEVER log
   rawForAudit:{productId,event}}; // never expose transaction/buyer in logs
 }
