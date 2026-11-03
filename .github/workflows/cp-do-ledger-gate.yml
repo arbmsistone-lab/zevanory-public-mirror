@@ -15,6 +15,8 @@ on:
       - "scripts/cp-alarm-g02.test.mjs"
       - "scripts/kit-192h-release.test.mjs"
       - "scripts/kit-192h-mutants.mjs"
+      - "scripts/kit-192h-fixes.test.mjs"
+      - "scripts/kit-192h-fixes-mutants.mjs"
       - "docs/ops/cp-kv-allowlist-NC009.json"
       - "docs/ops/cp-do-cutover-NC007.md"
       - ".github/workflows/cp-do-ledger-gate.yml"
@@ -68,6 +70,14 @@ jobs:
           node --test --test-reporter=tap scripts/kit-192h-release.test.mjs | tee kit192.txt
           grep -qx '# tests 12' <(grep '^# tests ' kit192.txt)
           grep -qx '# pass 12' <(grep '^# pass ' kit192.txt)
+      - name: NC-010 F1-F3 regression cases and three mutation kills
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/kit-192h-fixes.test.mjs 2>&1 | tee nc010-fixes.txt
+          grep -qx '# tests 5' <(grep '^# tests ' nc010-fixes.txt)
+          grep -qx '# pass 5' <(grep '^# pass ' nc010-fixes.txt)
+          node scripts/kit-192h-fixes-mutants.mjs | tee nc010-mutants.txt
+          grep -qx 'NC010_F1_F2_F3_MUTANTS=PASS killed=3/3' nc010-mutants.txt
       - name: N3 mutation tests (5/5 killed)
         run: |
           set -euo pipefail
