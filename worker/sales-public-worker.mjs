@@ -225,22 +225,24 @@ export const HOTMART_CHECKOUT=Object.freeze({
 // Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
 const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
-const HOTMART_TEXT=[
-  // Design PR: the hero payment facts are a list (no "·" chain); each item has its Hotmart wording.
+export const HOTMART_TEXT=[
+  // Every left operand is exact generated phase-one product copy; verified by NC-017 tests.
   ["Pagamento processado pelo Mercado Pago (Pix ou cartão)","Pagamento processado pela Hotmart (Pix à vista ou cartão)"],
-  [`Entrega por e-mail em ${DELIVERY_72H}`,"Acesso por e-mail após a confirmação do pagamento"],
+  [`PDFs e ZIP por e-mail ${DELIVERY_72H}; acesso online e planilhas imediatamente`,"Acesso online e planilhas após a aprovação pela Hotmart; PDFs e ZIP liberados por e-mail após 192 horas (8 dias)."],
   ["<strong>Pagamento</strong><span>processado pelo Mercado Pago","<strong>Pagamento</strong><span>processado pela Hotmart"],
-  [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
-  [`Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um ${DELIVERY_72H} do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.`,"Após a aprovação do pagamento, o Hotmart Club dá acesso online e às planilhas. Os PDFs e o ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento."],
+  ["Pagamento por Pix à vista ou cartão na plataforma indicada no checkout. O acesso online e as planilhas são liberados após a aprovação. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento, ao fim do prazo de garantia.","Pagamento pela Hotmart (Pix à vista ou cartão). O acesso online e as planilhas são imediatos após aprovação. Os PDFs e o pacote ZIP chegam por e-mail 192 horas (8 dias) após a aprovação do pagamento."],
   [`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.`,`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.`],
   ["Pix ou cartão pelo Mercado Pago.","Pix à vista ou cartão pela Hotmart."],
-  ["Por e-mail 192 horas (8 dias) após a aprovação do pagamento: PDFs e ZIP; acesso online e planilhas imediatamente.","Acesso online e planilhas imediatamente; PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação do pagamento."],
+  ["O acesso online e as planilhas ficam disponíveis após a aprovação; PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação do pagamento.","Acesso online e planilhas pela Hotmart após a aprovação; PDFs e ZIP por e-mail 192 horas (8 dias) depois."],
 ];
 // Decreto 7.962 "Resumo da oferta": pagamento e entrega da variante Hotmart (data/politica-unica.json).
 HOTMART_TEXT.push([RESUMO_OFERTA.produto_digital.pagamento,RESUMO_OFERTA.hotmart.pagamento],[RESUMO_OFERTA.produto_digital.entrega.replace("{delivery_72h}",DELIVERY_72H),RESUMO_OFERTA.hotmart.entrega]);
 export function hotmartPage(html,slug,checkout){
   let out=openSalesHtml(html,slug);  // only served while sales are open (handleHotmart)
   for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);
+  // A stale pair must never leak own-checkout copy into a Hotmart purchase page.
+  const visible=out.replace(/<script type="application\\/ld\\+json">[\\s\\S]*?<\\/script>/g,"");
+  if(/Mercado Pago|pedir-reembolso|entrega\\/reenviar/.test(visible))throw Error("hotmart_copy_rewrite_incomplete");
   out=out.replace(/href="\/comprar\/ZEV-[A-Z0-9-]+"/g,'href="'+checkout+'" rel="noopener"');
   // Avoid duplicate-content SEO: the canonical stays on the main page; this variant is not indexed.
   out=out.replace("<head>",'<head><meta name="robots" content="noindex,follow">');
@@ -264,7 +266,8 @@ async function handleHotmart(request,env,slug,ctx){
   const page=await env.ASSETS.fetch(new Request(new URL("/"+slug+".html",request.url),{method:"GET"}));
   if(page.status!==200)return page;
   const headers=applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex, follow"}));  // never cache a purchase link past a switch change
-  return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers});
+  try{return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers})}
+  catch{return infoPage(503,"Oferta indisponível","<p>Os dados de pagamento e entrega estão sob revisão. Nenhum checkout foi aberto.</p>")}
 }
 
 // Auditor Sol (AVAL 100): every response under /comprar/ (any SKU, method, status 2xx/3xx/4xx/5xx,
