@@ -51,9 +51,9 @@ test("(a) modo fechado: nenhum HTML publicado tem href /comprar/, /assinar/, /ho
   }
   for (const slug of SUBS) {
     const html = read(PUB, slug);
-    assert.equal(serviceOffer(html), undefined, "assinatura sem Offer enquanto fechada: " + slug);
-    assert.ok(html.includes(P.waitlist_label) && html.includes(P.closed_label), "assinatura: espera + rótulo: " + slug);
-    assert.match(html, /R\$ 197/, "preço da assinatura como informação");
+    assert.match(html,/noindex,nofollow/);
+    assert.match(html,/Página indisponível/);
+    assert.doesNotMatch(html,/href="\/assinar\/|pay\.hotmart\.com|data-zev-sub|R\$|schema\.org\/InStock/);
   }
   assert.equal(audit(PUB).status, 0, "auditoria CLI do modo fechado");
 });
@@ -61,9 +61,8 @@ test("(a) modo fechado: nenhum HTML publicado tem href /comprar/, /assinar/, /ho
 test("(b) assinatura e demais páginas: mesma regra de 7 dias junto ao CTA e nenhuma formulação divergente no site", () => {
   for (const slug of SUBS) {
     const html = read(PUB, slug);
-    const hero = html.match(/data-zev-sub="conteudo-pronto"[\s\S]*?<p class="policy-summary">[\s\S]*?<\/p>/)[0];
-    assert.ok(hero.length < 1200 && hero.includes(P.rule_7d) && hero.includes(`/termos#${P.policy_anchor}`), "resumo ao lado do CTA: " + slug);
-    assert.ok(!html.includes("72 horas"), "assinatura não promete link de 72 h (entrega é por link privado mensal)");
+    assert.match(html,/noindex,nofollow/,"CP hidden in all modes");
+    assert.doesNotMatch(html,/data-zev-sub|R\$|Assinar agora|pay\.hotmart\.com/);
   }
   for (const f of readdirSync(PUB).filter((x) => x.endsWith(".html"))) {
     const html = readTextNormalized(join(PUB, f));
@@ -113,14 +112,11 @@ test("(c) modo aberto: build de preview e restauração em tempo de execução d
     }
     for (const slug of SUBS) {
       const opened = read(out, slug), closed = read(PUB, slug);
-      const anchors = subAnchors(opened);
-      assert.equal(anchors.length, (closed.match(/data-zev-sub=/g) || []).length, "CTA de assinatura restaurado: " + slug);
-      assert.ok(anchors.length >= 2);
-      assert.equal(serviceOffer(opened).price, "197.00");
-      const runtime = openSalesHtml(closed, slug);
-      assert.deepEqual(subAnchors(runtime), anchors, "assinatura runtime == build aberto");
-      assert.deepEqual(serviceOffer(runtime), serviceOffer(opened), "Offer da assinatura runtime == build aberto");
-      assert.ok(!runtime.includes("data-zev-") && !runtime.includes(P.closed_label));
+      assert.match(opened,/noindex,nofollow/);
+      assert.equal(opened,closed,"open build cannot revive suspended CP");
+      assert.equal(openSalesHtml(closed,slug),closed,"sales switch cannot revive CP");
+      assert.equal(subAnchors(opened).length,0);
+      assert.doesNotMatch(opened,/data-zev-sub|Assinar agora|R\$/);
     }
     const bad = spawnSync(PY, [join(ROOT, "scripts/build_sales_public.py")], { encoding: "utf8", env: { ...env, ZEVANORY_SALES_PUBLIC_MODE: "aberto", ZEVANORY_SALES_PUBLIC_OUT: out } });
     assert.notEqual(bad.status, 0, "modo desconhecido nunca abre");
@@ -152,8 +148,8 @@ test("(c) Worker: CTAs só voltam com o interruptor do proprietário aberto (mes
     }
     resetPageSwitchCache();
     const sub = await (await worker.fetch(get("/conteudo-pronto"), pageEnv(status), ctx)).text();
-    assert.equal(/href="\/assinar\/conteudo-pronto"/.test(sub), open, "assinatura status=" + status);
-    assert.equal(sub.includes(P.waitlist_label), !open, "assinatura lista de espera status=" + status);
+    assert.match(sub,/Página indisponível/,"CP always unavailable");
+    assert.doesNotMatch(sub,/assinar|R\$|Assinar agora/);
     resetPageSwitchCache();
     const cat = await (await worker.fetch(get("/solucoes"), pageEnv(status), ctx)).text();
     assert.equal(cat.includes(P.closed_label), !open, "catálogo status=" + status);
@@ -244,12 +240,12 @@ test("mutantes: /comprar/ remanescente, InStock remanescente e 'após o pagament
     "M3 termos mantém 'após o pagamento'": { primary: [/^termos: formulacao divergente '7 dias após o pagamento'$/], apply: (d) => mutate(d, "termos", (h) => h.replace("</main>", "<p>Você pode desistir da compra em até 7 dias após o pagamento.</p></main>")) },
     "M3b produto troca a regra por 'após a compra'": { primary: [/^vendas-na-pratica: (?:falta '7 dias corridos[^']*'|formulacao divergente 'até 7 dias após a compra')$/], apply: (d) => mutate(d, "vendas-na-pratica", (h) => h.split(P.rule_7d).join("até 7 dias após a compra")) },
     "M4 reembolso mantém 'em até 2 dias úteis'": { primary: [/^reembolso: formulacao divergente 'em até 2 dias úteis'$/], apply: (d) => mutate(d, "reembolso", (h) => h.replace("</main>", "<p>Reembolso em até 2 dias úteis.</p></main>")) },
-    "M5 produto sem 72 h ao lado da oferta": { primary: [/^combo-ia-vendas: falta 'link pessoal válido por 72 horas[^']*'$/], apply: (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("link pessoal")) },
-    "M7 assinatura mantém href /assinar/": { primary: [/^conteudo-pronto\.html: href de checkout\/assinatura \(href="\/assinar\/\) em modo fechado$/], apply: (d) => mutate(d, "conteudo-pronto", (h) => h.replace(/href="[^"]*" data-zev-sub="conteudo-pronto"/, 'href="/assinar/conteudo-pronto" data-zev-sub="conteudo-pronto"')) },
+    "M5 produto sem 192h ao lado da oferta": { primary: [/^combo-ia-vendas: falta '192 horas \(8 dias\) após a aprovação do pagamento'$/], apply: (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("link pessoal")) },
+    "M7 assinatura mantém href /assinar/": { primary: [/^conteudo-pronto\.html: href de checkout\/assinatura \(href="\/assinar\/\) em modo fechado$/], apply: (d) => mutate(d, "conteudo-pronto", (h) => h.replace("</main>",'<a href="/assinar/conteudo-pronto">Assinar</a></main>')) },
     "M7b página com link /hotmart/": { primary: [/^ia-por-ramo\.html: href de checkout\/assinatura \(href="\/hotmart\/\) em modo fechado$/], apply: (d) => mutate(d, "ia-por-ramo", (h) => h.replace("</main>", '<a href="/hotmart/ia-na-pratica">x</a></main>')) },
     "M7c página com checkout pay.hotmart.com": { primary: [/^kit-afiliado\.html: href de checkout\/assinatura \(href="https:\/\/pay\.hotmart\.com\) em modo fechado$/], apply: (d) => mutate(d, "kit-afiliado", (h) => h.replace("</main>", '<a href="https://pay.hotmart.com/F107979716H?off=g9knd34r">x</a></main>')) },
     "M8 calculadora mantém 'garantia de 7 dias'": { primary: [/^calculadora-cmv: formulacao divergente 'garantia de 7 dias'$/], apply: (d) => mutate(d, "calculadora-cmv", (h) => h.replace("direito de arrependimento de 7 dias", "garantia de 7 dias")) },
-    "M8b assinatura sem a regra dos 7 dias": { primary: [/^conteudo-pronto: falta '7 dias corridos[^']*'$/], apply: (d) => mutate(d, "conteudo-pronto", (h) => h.split(P.rule_7d).join("7 dias")) },
+    "M8b CP escondido não aceita link externo de checkout": { primary: [/^conteudo-pronto\.html: href de checkout\/assinatura \("https:\/\/pay\.hotmart\.com\) em modo fechado$/], apply: (d) => mutate(d,"conteudo-pronto",h=>h.replace("</main>",'<a href="https://pay.hotmart.com/Z123">Pagamento</a></main>')) },
     "M6 texto único alterado em termos": { primary: [/^termos: texto unico \(Sol 079-P13\) ausente ou alterado$/], apply: (d) => mutate(d, "termos", (h) => h.replace(P.sol_text, P.sol_text.replace("receberá imediatamente a confirmação", "receberá a confirmação em 48 horas"))) },
   });
   const report = [];
