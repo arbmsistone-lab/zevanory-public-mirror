@@ -165,7 +165,7 @@ test("D': adaptador orgânico com vendas fechadas recusa texto com preço, check
   const box = outboundBox();
   const env = { ORGANIC_PUBLISHING_ENABLED: "true" };
   const closed = () => ({ enabled: false }), open = () => ({ enabled: true });
-  const ev = (payload) => ({ event_type: "publish_content", destination: "channel:instagram", payload: { organic_only: true, content: "Uma dica prática para organizar a semana.", title: "Dica", ...payload } });
+  const ev = (payload) => ({ event_type: "publish_content", destination: "channel:linkedin", payload: { organic_only: true, content: "Uma dica prática para organizar a semana.", title: "Dica", ...payload } });
   assert.doesNotThrow(() => box.ensureOutboundAllowed(ev({}), env, closed), "texto orgânico limpo segue");
   assert.equal(box.organicEventAllowed(ev({}), env, closed), true);
   for (const [name, p] of [
@@ -184,4 +184,24 @@ test("D': adaptador orgânico com vendas fechadas recusa texto com preço, check
   assert.doesNotThrow(() => box.ensureOutboundAllowed(ev({ content: "Guia por R$ 197,00." }), env, open));
   assert.deepEqual(payloadSalesLockViolations({ content: "ok", price_brl: 0 }), ["price"]);
   assert.deepEqual(payloadSalesLockViolations(null), []);
+});
+
+test("D7: Instagram e Facebook fechados sem P04 certificado, com vendas abertas ou fechadas e texto limpo", () => {
+  const box = outboundBox();
+  const env = { ORGANIC_PUBLISHING_ENABLED: "true" };
+  const closed = () => ({ enabled: false }), open = () => ({ enabled: true });
+  for (const destination of ["channel:instagram", "channel:facebook"]) {
+    const ev = { event_type: "publish_content", destination, payload: { organic_only: true, content: "Uma dica prática para organizar a semana.", title: "Dica" } };
+    assert.equal(box.organicEventAllowed(ev, env, closed), false, destination + ": orgânico limpo não é liberado");
+    assert.throws(() => box.ensureOutboundAllowed(ev, env, closed), /p04_meta_closed/, destination + ": vendas fechadas");
+    assert.throws(() => box.ensureOutboundAllowed(ev, env, open), /p04_meta_closed/, destination + ": vendas abertas não reabrem a Meta");
+    const promo = { event_type: "publish_content", destination, payload: { content: "Guia por R$ 197,00." } };
+    assert.throws(() => box.ensureOutboundAllowed(promo, env, open), /p04_meta_closed/, destination + ": comercial com vendas abertas");
+    const dm = { event_type: "send_message", destination, payload: { content: "Oi, tudo bem?" } };
+    assert.throws(() => box.ensureOutboundAllowed(dm, env, open), /p04_meta_closed/, destination + ": mensagem não-suporte também fechada");
+    const support = { event_type: "send_support_message", destination, payload: { support_only: true, content: "Seu acesso foi reenviado." } };
+    assert.doesNotThrow(() => box.ensureOutboundAllowed(support, env, closed), destination + ": suporte sem intenção comercial segue (A-07 pendente)");
+  }
+  const other = { event_type: "publish_content", destination: "channel:linkedin", payload: { organic_only: true, content: "Uma dica prática para organizar a semana.", title: "Dica" } };
+  assert.doesNotThrow(() => box.ensureOutboundAllowed(other, env, closed), "canal não Meta segue a regra comercial normal");
 });

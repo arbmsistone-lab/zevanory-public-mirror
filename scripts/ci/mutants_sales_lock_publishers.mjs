@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITE = "tests/sales-lock-publishers.test.mjs";
-const BASE_COUNT = 6;
+const BASE_COUNT = 7;
 const COPY = ["worker", "data", "scripts/channels", "assets/brand/export", "tests/helpers", SUITE];
 const ACQ = "worker/acquisition-engine.mjs", LOCK = "worker/sales-lock-content.mjs", YT = "scripts/channels/youtube-daily-short.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
-const B_CLOSED = "B: trava fechada", B_DRAFT = "B: validateDraft fechada", B_READ = "B: leitura da trava", C = "C: Short fechado", D = "D': adaptador orgânico";
+const M7 = "D7: Instagram e Facebook fechados", B_CLOSED = "B: trava fechada", B_DRAFT = "B: validateDraft fechada", B_READ = "B: leitura da trava", C = "C: Short fechado", D = "D': adaptador orgânico";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
   ["SLP01_engine_ignores_lock", B_CLOSED, [[ACQ, " const salesOpen=await contentSalesOpen(env);", " const salesOpen=true;"]]],
@@ -37,6 +37,9 @@ const MUTANTS = [
   ["SLP16_comprar_without_slash_missed", D, [[LOCK, "hasCheckoutCta(s) || COMPRAR_RE.test(s)", "hasCheckoutCta(s)"]]],
   ["SLP17_cta_detector_removed", B_DRAFT, [[LOCK, '  if (PURCHASE_CTA_RE.test(s)) out.push("purchase_cta");\n', ""]]],
   ["SLP18_caption_field_not_inspected", D, [[LOCK, '"content", "title", "description", "caption", "text"', '"content", "title", "description", "text"']]],
+  ["SLP19_meta_outbound_gate_removed", M7, [[REC, '  if (P04_META_CLOSED.has(String(event?.destination || "")) && !supportEventAllowed(event)) throw new Error("p04_meta_closed");\n', ""]]],
+  ["SLP20_meta_organic_gate_removed", M7, [[REC, ' && !P04_META_CLOSED.has(String(event?.destination || "")) && env.ORGANIC', " && env.ORGANIC"]]],
+  ["SLP21_meta_support_bypass_broadened", M7, [[REC, ' && !supportEventAllowed(event)) throw new Error("p04_meta_closed");', ' && event?.event_type === "publish_content") throw new Error("p04_meta_closed");']]],
 ];
 
 const eol = (s) => s.replace(/\r\n/g, "\n");

@@ -12991,7 +12991,8 @@ var required3 = /* @__PURE__ */ __name((value, code) => {
   return v2;
 }, "required");
 var ORGANIC_DESTINATIONS = /* @__PURE__ */ new Set(["channel:facebook", "channel:instagram", "channel:youtube", "channel:tiktok", "channel:linkedin"]);
-var organicEventAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => !gateEvaluator(env).enabled && ORGANIC_DESTINATIONS.has(String(event?.destination || "")) && env.ORGANIC_PUBLISHING_ENABLED === "true" && event?.event_type === "publish_content" && event?.payload?.organic_only === true && event?.payload?.commercial_intent !== true && !event?.payload?.landing_url && payloadSalesLockViolations(event?.payload).length === 0, "organicEventAllowed");
+var P04_META_CLOSED = /* @__PURE__ */ new Set(["channel:instagram", "channel:facebook"]);
+var organicEventAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => !gateEvaluator(env).enabled && ORGANIC_DESTINATIONS.has(String(event?.destination || "")) && !P04_META_CLOSED.has(String(event?.destination || "")) && env.ORGANIC_PUBLISHING_ENABLED === "true" && event?.event_type === "publish_content" && event?.payload?.organic_only === true && event?.payload?.commercial_intent !== true && !event?.payload?.landing_url && payloadSalesLockViolations(event?.payload).length === 0, "organicEventAllowed");
 var supportEventAllowed = /* @__PURE__ */ __name((event) => event?.event_type === "send_support_message" && event?.payload?.support_only === true && !event?.payload?.commercial_intent && !event?.payload?.checkout_url && !event?.payload?.payment_link, "supportEventAllowed");
 var COMMERCIAL_CONSENT_DESTINATIONS = /* @__PURE__ */ new Set(["channel:whatsapp", "channel:email"]);
 var ensureCommercialContactConsent = /* @__PURE__ */ __name((event) => {
@@ -13001,6 +13002,7 @@ var ensureCommercialContactConsent = /* @__PURE__ */ __name((event) => {
 }, "ensureCommercialContactConsent");
 var ensureOutboundAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => {
   ensureCommercialContactConsent(event);
+  if (P04_META_CLOSED.has(String(event?.destination || "")) && !supportEventAllowed(event)) throw new Error("p04_meta_closed");
   if (event?.payload?.creative_id) assertBrandSafeCreative(event.payload);
   if (gateEvaluator(env).enabled) return;
   if (supportEventAllowed(event)) return;
