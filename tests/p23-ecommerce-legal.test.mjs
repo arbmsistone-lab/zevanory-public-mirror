@@ -84,7 +84,7 @@ test("L4 'fiscal' é sinal obrigatório do portão (estrito)", () => {
 });
 test("L5 página com preço sem CNPJ reprova", () => fails(gate({ "sales-public/solucoes.html": (s) => s.replaceAll("69.077.233/0001-99", "") }), /solucoes.html: página com preço sem 'CNPJ 69.077.233\/0001-99'/, "[L5.1]"));
 test("L6 resumo da oferta sem um campo reprova", () => fails(gate({ "sales-public/lucro-e-caixa.html": (s) => s.replace(/<div data-field="restricoes">.*?<\/div>/, "") }), /lucro-e-caixa.html: Resumo da oferta sem o campo restricoes/, "[L6.1]"));
-test("L7 preço do resumo diferente do catálogo reprova (CDC art. 31)", () => fails(gate({ "data/products.json": (s) => s.replace('"price": 247', '"price": 249') }), /lucro-e-caixa.html: preço total do resumo .* difere do catálogo \(R\$ 249,00\)/, "[L7.1]"));
+test("L7 preço do resumo diferente do catálogo reprova (CDC art. 31)", () => fails(gate({ "data/products.json": (s) => s.replace('"price": 147', '"price": 149') }), /lucro-e-caixa.html: preço total do resumo .* difere do catálogo \(R\$ 149,00\)/, "[L7.1]"));
 test("L8 resumo sem arrependimento de 7 dias reprova (CDC art. 49)", () => fails(gate({ "sales-public/ia-na-pratica.html": (s) => s.replace(/(<div data-field="arrependimento"><dt>[^<]*<\/dt><dd>)[^<]*/, "$1Consulte os termos.") }), /ia-na-pratica.html: arrependimento sem '7 dias corridos'/, "[L8.1]"));
 test("L9 termos sem a declaração do art. 5º, § 2º reprova", () => fails(gate({ "sales-public/termos.html": (s) => s.replace("Contratos acessórios serão cancelados sem custo", "Contratos acessórios seguem as regras próprias") }), /termos.html: falta a declaração de D7962-5-2/, "[L9.1]"));
 test("L10 CNPJ com dígitos inválidos reprova", () => fails(gate({ "data/politica-unica.json": (s) => s.replace('"cnpj": "69.077.233/0001-99"', '"cnpj": "69.077.233/0001-98"') }), /dígitos verificadores inválidos/, "[L10.1]"));
@@ -104,3 +104,8 @@ test("L16 conferência dos dígitos do CNPJ", () => {
 });
 test("L17 preço total sem a informação de taxas adicionais reprova (art. 2º, IV)", () => fails(gate({ "sales-public/vendas-na-pratica.html": (s) => s.replace(/(<div data-field="preco_total"><dt>[^<]*<\/dt><dd>[^<]*?)sem taxas adicionais/, "$1com valor final") }), /vendas-na-pratica.html: preço total sem a informação de taxas adicionais/, "[L17.1]"));
 test("L18 página com preço sem link para os termos reprova", () => fails(gate({ "sales-public/ferramentas.html": (s) => s.replace(/href="([^"]*)\/termos(["#])/g, 'href="$1/regras$2') }), /ferramentas.html: página com preço sem link para os termos/, "[L18.1]"));
+// DEC-04: a lápide do Conteúdo Pronto só dispensa o resumo enquanto não vende; preço ou link de assinatura nela reprova.
+test("L19 lápide do CP com preço ou /assinar/ volta a exigir o contrato completo", () => {
+  fails(gate({ "sales-public/conteudo-pronto.html": (s) => s.replace("</main>", "<p>R$ 197,00 por mês</p></main>") }), /conteudo-pronto.html: sem .Resumo da oferta./, "[L19.1]");
+  fails(gate({ "sales-public/conteudo-pronto.html": (s) => s.replace("</main>", "<a href=\"/assinar/conteudo-pronto\">Assinar</a></main>") }), /conteudo-pronto.html: sem .Resumo da oferta./, "[L19.2]");
+});
