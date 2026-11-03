@@ -7,6 +7,8 @@ on:
       - "worker/content-service.mjs"
       - "scripts/cp-durable-ledger.test.mjs"
       - "worker/cp-do-identity.mjs"
+      - "worker/cp-g03-g04-candidate.mjs"
+      - "scripts/cp-g03-g04-candidate.test.mjs"
       - "worker/kit-hotmart-identity.mjs"
       - "worker/kit-release-192h.mjs"
       - "scripts/cp-kv-writers-lint.mjs"
@@ -78,6 +80,12 @@ jobs:
           grep -qx '# pass 5' <(grep '^# pass ' nc010-fixes.txt)
           node scripts/kit-192h-fixes-mutants.mjs | tee nc010-mutants.txt
           grep -qx 'NC010_F1_F2_F3_MUTANTS=PASS killed=3/3' nc010-mutants.txt
+      - name: NC-010 G03/G04 authenticated DO webhook and token candidate tests
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/cp-g03-g04-candidate.test.mjs | tee g03-g04.txt
+          grep -qx '# tests 6' <(grep '^# tests ' g03-g04.txt)
+          grep -qx '# pass 6' <(grep '^# pass ' g03-g04.txt)
       - name: N3 mutation tests (5/5 killed)
         run: |
           set -euo pipefail
