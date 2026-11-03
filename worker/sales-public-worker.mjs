@@ -1,4 +1,5 @@
 import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+import {cpSalesEnabled,isCpPublicRoute,cpClosedResponse} from "./nc015-sales-scope.mjs";
 // Contato humano nas páginas do Worker vem de contato_publico (e-mail enquanto o WhatsApp não opera).
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto","kit-afiliado","ia-por-ramo","ia-para-salao-de-beleza","ia-para-barbearia","ia-para-restaurante-e-lanchonete","ia-para-loja-de-roupas","ia-para-mercadinho","ia-para-oficina-mecanica","ia-para-clinica-e-consultorio","ia-para-academia","ia-para-pet-shop","ia-para-contabilidade","ia-para-imobiliaria","ia-para-deposito-de-bebidas","ferramentas","calculadora-preco-de-venda","calculadora-margem-de-lucro","calculadora-ponto-de-equilibrio","ia-para-padaria","ia-para-pizzaria","ia-para-hamburgueria","ia-para-acaiteria","ia-para-confeitaria","ia-para-farmacia","ia-para-otica","ia-para-papelaria","ia-para-materiais-de-construcao","ia-para-assistencia-tecnica-de-celular","ia-para-autoescola","ia-para-escola-de-idiomas","ia-para-clinica-odontologica","ia-para-psicologo","ia-para-nutricionista","ia-para-fisioterapia","ia-para-estetica","ia-para-manicure","ia-para-lava-jato","ia-para-eletricista-e-encanador","ia-para-fotografo","ia-para-arquitetura-e-design-de-interiores","ia-para-advocacia","ia-para-agencia-de-viagens","ia-para-floricultura","ia-para-marmitaria","ia-para-pousada","ia-para-distribuidora-de-gas-e-agua","calculadora-fluxo-de-caixa","calculadora-preco-hora-servico","calculadora-taxa-maquininha","calculadora-cmv","mensagem-para-cliente-que-sumiu","como-cobrar-cliente-pelo-whatsapp","como-mandar-orcamento-pelo-whatsapp"]);
@@ -384,6 +385,9 @@ export async function handleSiteChatProxy(request,env){
 
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  // NC-015 / DEC-04: the subscription cannot become purchasable through
+  // an independent sales switch or a stale direct URL.
+  if(!cpSalesEnabled() && isCpPublicRoute(url.pathname))return cpClosedResponse();
   const comprar=comprarMatch(url.pathname);
   if(comprar) return noindexComprar(await comprarRoute(request,env,ctx,comprar));
   // IndexNow ownership proof for the sales host (same public key as the apex).
