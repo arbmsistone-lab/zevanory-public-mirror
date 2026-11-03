@@ -277,9 +277,20 @@ export class ContentProntoSubscriberDO {
    }
    if(path==="/internal/fulfillment-snapshot" && request.method==="GET")return Response.json(this.fulfillment.snapshot());
    if(path==="/internal/fulfillment" && request.method==="POST"){
-    const result=this.fulfillment.apply(await request.json());
-    // State remains durable even if scheduling is unavailable; never report success.
-    // Next external consumer must inspect PENDING work/outbox; none is connected.
+    const input=await request.json();
+    const result=this.fulfillment.apply(input);
+    if(input.kind==="enqueue" && ["applied","already_queued","duplicate_event"].includes(result.code)){
+      const job=result.job;
+      if(job?.due_at_ms && job.status==="queued"){
+        try{
+          const alarm=this.ledger.scheduleAlarmJob({alarm_key:"fulfillment:"+input.cycle,kind:"retry",due_at_ms:job.due_at_ms});
+          if(alarm.next!==null)await this.ctx.storage.setAlarm(alarm.next);
+        }catch{
+          // Queue remains persisted. No success is claimed without an actual alarm.
+          return Response.json({ok:false,error:"alarm_not_confirmed"},{status:503});
+        }
+      }
+    }
     return Response.json(result);
    }
    if(path==="/internal/events" && request.method==="GET"){
