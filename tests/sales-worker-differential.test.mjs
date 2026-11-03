@@ -6,6 +6,10 @@
 // the only differences are the intended ones:
 //   1. unknown PAGE paths: designed /404.html, status 404, noindex, no-store (was a plain 404);
 //   2. the Hotmart variant (only served while sales are open) rewrites the new list items.
+// NC-017 (tests/helpers/sales-worker-nc017-hunks.mjs, reverse-applied first and pinned to the 81d637e blob) adds:
+//   3. DEC-04: /conteudo-pronto and /assinar/conteudo-pronto are 404 noindex no-store, no redirect, same security headers;
+//   4. DEC-05: /comprar/<SKU> never opens an own checkout (closed: notice page; open: 302 only to /hotmart/<slug>);
+//   5. DEC-02: open product pages differ only in the JSON-LD Offer price.
 // Everything else (status, every header incl. CSP/security headers, body bytes) is identical.
 // Documented in docs/evidence/sales-ux/worker-changes.md.
 import test from "node:test";
@@ -15,6 +19,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
+import { NC017_SALES_WORKER_HUNKS, NC017_BASE_BLOB } from "./helpers/sales-worker-nc017-hunks.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
@@ -41,9 +46,16 @@ const HUNK_404 = `  // Designed 404 for unknown PAGE paths (no file extension); 
 const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex"); };
 
 async function loadWorkers() {
-  assert.equal(NEW_SRC.split(HUNK_HOTMART_NEW).length, 2, "Hotmart hunk present exactly once");
-  assert.equal(NEW_SRC.split(HUNK_404).length, 2, "404 hunk present exactly once");
-  const oldSrc = NEW_SRC.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "");
+  // NC-017 first: reverse its exact hunks to get the Worker at 81d637e (pinned), then #914's two hunks.
+  let baseSrc = NEW_SRC;
+  for (const [cur, prev] of NC017_SALES_WORKER_HUNKS) {
+    assert.equal(baseSrc.split(cur).length, 2, "NC-017 hunk present exactly once: " + cur.slice(0, 60));
+    baseSrc = baseSrc.replace(cur, () => prev);
+  }
+  assert.equal(gitBlob(baseSrc), NC017_BASE_BLOB, "NC-017 reverse-applied file is byte-identical to the Worker at 81d637e (no other change)");
+  assert.equal(baseSrc.split(HUNK_HOTMART_NEW).length, 2, "Hotmart hunk present exactly once");
+  assert.equal(baseSrc.split(HUNK_404).length, 2, "404 hunk present exactly once");
+  const oldSrc = baseSrc.replace(HUNK_HOTMART_NEW, HUNK_HOTMART_OLD).replace(HUNK_404, "");
   assert.equal(gitBlob(oldSrc), GH_PAGES_BLOB, "reverse-applied file is byte-identical to the gh-pages Worker (no other change)");
   const tmp = join(ROOT, "worker", `.gh-pages-sales-worker-${process.pid}-${Date.now()}.mjs`);
   writeFileSync(tmp, oldSrc);
@@ -83,6 +95,43 @@ async function snap(worker, path, method, open) {
   return { status: res.status, headers, body };
 }
 
+const SEC = ["content-security-policy", "strict-transport-security", "x-content-type-options", "x-frame-options", "referrer-policy", "permissions-policy", "cross-origin-opener-policy", "cross-origin-resource-policy"];
+// NC-017 DEC-02: the only change on open product pages is the JSON-LD Offer price (data/products.json).
+const DEC02 = { "/ia-na-pratica": [197, 97], "/vendas-na-pratica": [197, 97], "/lucro-e-caixa": [247, 147], "/combo-ia-vendas": [297, 157], "/negocio-completo": [397, 247] };
+const CP_ROUTES = new Set(["/conteudo-pronto", "/assinar/conteudo-pronto"]);
+const BUY_ROUTES = /^\/(comprar|%63omprar)\/ZEV-[A-Z]+-011$/;
+const html64 = (r) => Buffer.from(r.body, "base64").toString();
+// NC-017 intended differences (DEC-02, DEC-04, DEC-05). Returns a label when handled; asserts the guarantee.
+function nc017Intended(path, method, open, a, b, key) {
+  if (CP_ROUTES.has(path)) {
+    // DEC-04: Conteúdo Pronto hidden: 404, noindex, no-store, no redirect to any checkout, same security headers.
+    assert.equal(b.status, 404, key); assert.equal(b.headers.location, undefined, key);
+    assert.match(b.headers["x-robots-tag"], /noindex/, key); assert.match(b.headers["cache-control"], /no-store/, key);
+    for (const h of SEC) assert.equal(b.headers[h], a.headers[h], `${key}: ${h}`);
+    if (method === "GET") assert.doesNotMatch(html64(b), /pay\.hotmart|\/assinar\/|R\$/, key);
+    return "cp";
+  }
+  if (BUY_ROUTES.test(path)) {
+    // DEC-05: the own buy route never creates a Mercado Pago checkout; open => only the gated Hotmart variant.
+    for (const h of SEC) assert.equal(b.headers[h], a.headers[h], `${key}: ${h}`);
+    assert.match(b.headers["x-robots-tag"], /noindex/, key); assert.match(b.headers["cache-control"], /no-store/, key);
+    if (open) {
+      assert.equal(b.status, 302, key); assert.match(b.headers.location, /^\/hotmart\/[a-z-]+$/, key);
+    } else {
+      assert.equal(b.status, a.status, key); assert.equal(b.headers.location, undefined, key);
+      if (method === "GET") { const h = html64(b); assert.match(h, /Vendas abrem em breve/, key); assert.doesNotMatch(h, /href="[^"]*(\/comprar\/|pay\.|mercadopago)/, key); }
+    }
+    return "dec05";
+  }
+  if (open && method === "GET" && DEC02[path]) {
+    assert.equal(b.status, a.status, key); assert.deepEqual(b.headers, a.headers, key + ": headers identical");
+    const [was, now] = DEC02[path];
+    assert.equal(html64(b).split(`"price":"${now}.00"`).join(`"price":"${was}.00"`), html64(a), key + ": only the DEC-02 Offer price differs");
+    return "dec02";
+  }
+  return null;
+}
+
 const isUnknownPage = (p) => ["/pagina-que-nao-existe", "/nao/existe/", "/solucoes/extra", "/x"].includes(p);
 
 test("differential: gh-pages Worker vs #914 Worker — only the intended differences", async () => {
@@ -105,15 +154,19 @@ test("differential: gh-pages Worker vs #914 Worker — only the intended differe
     if (open && method === "GET" && path.startsWith("/hotmart/")) {
       assert.equal(a.status, b.status, key); assert.deepEqual(a.headers, b.headers, key + ": headers identical");
       const html = Buffer.from(b.body, "base64").toString();
-      assert.match(html, /Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)/, key);
+      assert.match(html, /Pagamento processado pela Hotmart \(Pix à vista ou cartão\)/, key);
       assert.match(html, /<strong>Pagamento<\/strong><span>processado pela Hotmart/, key);
-      assert.doesNotMatch(html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ""), /Mercado Pago/, key);
+      assert.doesNotMatch(html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ""), /Mercado Pago|pedir-reembolso|entrega\/reenviar/, key);
+      assert.doesNotMatch(html, /boleto|peça em a Hotmart|72 horas/i, key + ": DEC-01 v3 (sem boleto) e nenhuma reescrita quebrada");
       diffs.push("hotmart:" + key); continue;
     }
+    const nc = nc017Intended(path, method, open, a, b, key);
+    if (nc) { diffs.push(nc + ":" + key); continue; }
     assert.fail(`unexpected difference at ${key}: status ${a.status}->${b.status}`);
   }
   assert.ok(compared > 300, "matrix size " + compared);
   assert.ok(diffs.some((d) => d.startsWith("404:")) && diffs.some((d) => d.startsWith("hotmart:")), "both intended differences observed");
+  for (const k of ["cp:", "dec05:", "dec02:"]) assert.ok(diffs.some((d) => d.startsWith(k)), "NC-017 intended difference observed: " + k);
   console.log(`SALES_WORKER_DIFFERENTIAL compared=${compared} intended_differences=${diffs.length}`);
 });
 
@@ -141,7 +194,6 @@ test("(c) sales closed: no buy CTA, /comprar link, checkout or InStock on any pa
 
 test("(e) security headers and CSP byte-identical to gh-pages on pages, assets and checkout routes", async () => {
   const { OLD, NEW } = await loadWorkers();
-  const SEC = ["content-security-policy", "strict-transport-security", "x-content-type-options", "x-frame-options", "referrer-policy", "permissions-policy", "cross-origin-opener-policy", "cross-origin-resource-policy"];
   for (const p of ["/solucoes", "/ia-na-pratica", "/termos", "/comprar/ZEV-IA-011", "/assinar/conteudo-pronto", "/hotmart/ia-na-pratica", "/whatsapp-contact.js", "/robots.txt"]) {
     const [a, b] = [await snap(OLD, p, "GET", false), await snap(NEW, p, "GET", false)];
     for (const h of SEC) assert.equal(b.headers[h], a.headers[h], `${p}: ${h}`);
@@ -154,16 +206,19 @@ test("(b) Hotmart list rewrite only in the Hotmart variant; Mercado Pago text un
   assert.match(page, /Pagamento processado pelo Mercado Pago \(Pix ou cartão\)/);
   assert.doesNotMatch(page, /processado pela Hotmart/);
   const hot = await snap(NEW, "/hotmart/ia-na-pratica", "GET", true);
-  if (hot.status === 200) {
+  assert.equal(hot.status, 200, "Hotmart variant served while open (never vacuous)");
+  {
     const h = Buffer.from(hot.body, "base64").toString();
-    assert.match(h, /<li>Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)<\/li>|Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)/);
-    assert.match(h, /Acesso por e-mail após a confirmação do pagamento/);
+    assert.match(h, /<li>Pagamento processado pela Hotmart \(Pix à vista ou cartão\)<\/li>/);
+    assert.match(h, /PDFs e ZIP liberados por e-mail após 192 horas \(8 dias\)/);
   }
 });
 
 test("(d) checkout and purchase routes return exactly what gh-pages returned (closed and open)", async () => {
   const { OLD, NEW } = await loadWorkers();
   for (const open of [false, true]) for (const p of ["/comprar/ZEV-IA-011", "/comprar/ZEV-NGC-011", "/comprar/NAOEXISTE", "/comprar/", "/%63omprar/ZEV-IA-011", "/assinar/conteudo-pronto", "/reembolso/solicitar", "/api/sales/status"]) {
-    assert.deepEqual(await snap(NEW, p, "GET", open), await snap(OLD, p, "GET", open), `${open ? "open" : "closed"} ${p}`);
+    const [a, b] = [await snap(OLD, p, "GET", open), await snap(NEW, p, "GET", open)], key = `${open ? "open" : "closed"} GET ${p}`;
+    if (nc017Intended(p, "GET", open, a, b, key)) continue;  // DEC-04/DEC-05, asserted fail-closed above
+    assert.deepEqual(b, a, key);
   }
 });

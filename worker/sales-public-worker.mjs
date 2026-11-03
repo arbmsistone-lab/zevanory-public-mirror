@@ -397,7 +397,11 @@ export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
   // NC-015 / DEC-04: the subscription cannot become purchasable through
   // an independent sales switch or a stale direct URL.
-  if(!cpSalesEnabled() && isCpPublicRoute(url.pathname))return cpClosedResponse();
+  if(!cpSalesEnabled() && isCpPublicRoute(url.pathname)){
+    // Same HSTS/CSP/frame/referrer/permissions headers as every other sales-host response.
+    const closed=cpClosedResponse();
+    return new Response(request.method==="HEAD"?null:closed.body,{status:closed.status,headers:applySecurityHeaders(new Headers(closed.headers))});
+  }
   const comprar=comprarMatch(url.pathname);
   if(comprar) return noindexComprar(await comprarRoute(request,env,ctx,comprar));
   // IndexNow ownership proof for the sales host (same public key as the apex).
