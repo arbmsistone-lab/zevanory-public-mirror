@@ -15,7 +15,7 @@ function harness(){
   if(/^CREATE\s+(TABLE|INDEX)/i.test(s)){db.exec(s);return {toArray:()=>[]}};
   db.prepare(s).run(...args);return {toArray:()=>[]};
  }};
- const storage={sql,transactionSync(fn){db.exec("BEGIN IMMEDIATE");try{const v=fn();db.exec("COMMIT");return v}catch(e){db.exec("ROLLBACK");throw e}}};
+ const storage={sql,setAlarm:async()=>true,transactionSync(fn){db.exec("BEGIN IMMEDIATE");try{const v=fn();db.exec("COMMIT");return v}catch(e){db.exec("ROLLBACK");throw e}}};
  const doObj=new ContentProntoSubscriberDO({storage,id:{toString:()=>"test"}});
  const hits=[],failKV={get(){throw Error("legacy KV read forbidden")},put(){throw Error("legacy KV write forbidden")}};
  const env={
@@ -72,6 +72,8 @@ test("NC011 GET reads the real SQLite token, POST validates and consumes it once
  const sent=await routeBriefingNc011(form,h.env);
  assert.equal(sent.status,202,await sent.text());
  assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM cp_form_submissions").get().n,1);
+ assert.equal(h.doObj.fulfillment.snapshot().jobs.length,1);
+ assert.equal(h.doObj.fulfillment.snapshot().outbox.length,0); // not generated or delivered
  const replay=await routeBriefingNc011(new Request(link),h.env);
  assert.equal(replay.status,404);
 });
