@@ -28,8 +28,8 @@ function checkSupport(mod) {
     assert.equal(refund.intent, "refund", slug); assert.equal(delivery.intent, "delivery", slug);
     for (const [kind, a] of [["refund", refund.answer], ["delivery", delivery.answer]]) {
       assert.ok(a.includes(W.rule_7d), `${slug}/${kind}: regra única dos 7 dias`);
-      assert.match(a, /72 horas/, `${slug}/${kind}: link de 72 h`);
-      assert.match(a, /um download/, `${slug}/${kind}: um download`);
+      assert.match(a, /192 horas \(8 dias\)/, `${slug}/${kind}: prazo correto dos PDFs e ZIP`);
+      assert.doesNotMatch(a, /72 horas|um download/i, `${slug}/${kind}: não prometer download antecipado`);
       assert.match(a, /sem custo/, `${slug}/${kind}: reenvio sem custo`);
       assert.match(a, /imediata/, `${slug}/${kind}: confirmação imediata`);
       assert.match(a, /resposta conclusiva em até 5 dias/, `${slug}/${kind}: resposta em até 5 dias`);
@@ -149,10 +149,14 @@ function addressHits(root) {
     if (/Casa Residencial/.test(text)) hits.push(`${r}: 'Casa Residencial'`);
     if (/CNPJ 69\.077\.233\/0001-99 · Várzea Alegre\/CE/.test(text)) hits.push(`${r}: identificação sem o endereço único`);
   }
-  for (const slug of ["termos", "privacidade", "reembolso", ...PRODUCTS, "conteudo-pronto", "solucoes"]) {
+  for (const slug of ["termos", "privacidade", "reembolso", ...PRODUCTS, "solucoes"]) {
     const f = join(root, "sales-public", slug + ".html");
     if (existsSync(f) && !readTextNormalized(f).includes(ADDRESS)) hits.push(`sales-public/${slug}.html: sem o endereço único`);
   }
+  // CP is a noindex security tombstone. It cannot carry active offer/legal copy.
+  const cp=readTextNormalized(join(root,"sales-public/conteudo-pronto.html"));
+  if(!cp.includes("noindex,nofollow") || /data-zev-sub|pay\\.hotmart\\.com|R\\$/.test(cp))
+    hits.push("conteudo-pronto: lápide de assinatura incorreta");
   return hits;
 }
 
