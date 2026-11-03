@@ -188,6 +188,46 @@ export class KitReleaseLedger {
      typeof token!=="string"||!/^[a-f0-9]{64}$/.test(token))return false;
   return ctEq(await sha256(token),st.token_hash);
  }
+ recordReference({transaction,product_id}){
+  if(typeof transaction!=="string"||!/^[A-Za-z0-9_.:-]{10,100}$/.test(transaction)||
+     !/^[0-9]{6,12}$/.test(String(product_id)))throw new KitReleaseError("invalid_purchase_reference",400);
+  return this.storage.transactionSync(()=>{
+   const old=this.one("SELECT transaction,product_id FROM kit_private_reference WHERE singleton=1");
+   if(old && (old.transaction!==transaction||old.product_id!==String(product_id)))
+    throw new KitReleaseError("purchase_reference_conflict",409);
+   if(!old)this.sql.exec("INSERT INTO kit_private_reference(singleton,transaction,product_id) VALUES(1,?,?)",transaction,String(product_id));
+   return {ok:true};
+  });
+ }
+ purchaseReference(){
+  return this.one("SELECT transaction,product_id FROM kit_private_reference WHERE singleton=1");
+ }
+ async claimDownload(now,token,proof){
+  if(!await this.canDownload(now,token,proof))return {ok:false,code:"download_not_eligible"};
+  const digest=await sha256(token);
+  return this.storage.transactionSync(()=>{
+   const st=this.state();
+   const usage=this.one("SELECT used FROM kit_download_usage WHERE singleton=1");
+   if(st.state!=="ready"||now<st.release_at_ms||now>st.token_expires_at_ms||
+      !ctEq(st.token_hash,digest)||!this.validApprovedProof(now,proof))
+    return {ok:false,code:"download_revoked"};
+   if(usage.used>=5)return {ok:false,code:"download_limit_reached"};
+   this.sql.exec("UPDATE kit_download_usage SET used=used+1 WHERE singleton=1 AND used<5");
+   return {ok:true,remaining:4-usage.used};
+  });
+ }
+ downloadCount(){return this.one("SELECT used FROM kit_download_usage WHERE singleton=1")?.used??0;}
+ claimEmailSend(now){
+  if(!validMs(now))throw new KitReleaseError("invalid_clock",400);
+  return this.storage.transactionSync(()=>{
+   if(this.state().state!=="ready")return {ok:false,code:"purchase_not_ready"};
+   const key=this.orderOpaque+":mail:v1";
+   const msg=this.one("SELECT status FROM kit_mail_outbox WHERE message_key=?",key);
+   if(!msg||msg.status!=="pending")return {ok:false,code:"mail_not_claimable"};
+   this.sql.exec("UPDATE kit_mail_outbox SET status='uncertain',updated_at_ms=? WHERE message_key=? AND status='pending'",now,key);
+   return {ok:true,message_key:key};
+  });
+ }
  markEmailUncertain(now){
   this.sql.exec("UPDATE kit_mail_outbox SET status='uncertain',updated_at_ms=? WHERE status='pending'",now);
  }
