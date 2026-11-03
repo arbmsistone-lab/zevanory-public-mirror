@@ -950,10 +950,11 @@ test("G24 r13 portão do central: refund_window, entrega, canais, contato, forne
     assert.notEqual(gone.code, 0, "[G24.3] sem worker/politica-unica.mjs o central não passa: " + gone.out);
     assert.match(gone.out, /LEGAL_FINGERPRINT_SOURCE_MISSING worker\/politica-unica\.mjs/, "[G24.3a]");
     // Aprovações de consumo antigas (sem o módulo/campos no texto de origem) não casam: o snapshot tem de ter os campos.
-    const lr = spawnSync(PYTHON, ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import legal_review as l; print(l.CONSUMER_VERSION); print(' '.join('.'.join(p) for p in l.CONSUMER_FIELDS))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
-    const [ver, fields] = lr.stdout.trim().split("\n");
+    const lr = spawnSync(PYTHON, ["-I", "-c", "import sys, json; sys.path.insert(0, sys.argv[1]); import legal_review as l; print(json.dumps([l.CONSUMER_VERSION, ['.'.join(p) for p in l.CONSUMER_FIELDS]]))", join(REPO, "scripts/p23")], { encoding: "utf8", env: PYENV });
+    // JSON (não linhas): no Windows o print do Python termina em CRLF.
+    const [ver, fields] = JSON.parse(lr.stdout);
     assert.equal(ver, "zevanory-consumer-texts/v2", "[G24.4] versão explícita do conjunto de campos");
-    for (const f of ["refund_window", "delivery_72h", "nota_canais_reembolso", "contato_publico", "resumo_oferta.fornecedor", "rule_7d", "customer_wording", "sol_text"]) assert.ok(fields.split(" ").includes(f), `[G24.4a] ${f} no portão do central`);
+    for (const f of ["refund_window", "delivery_72h", "nota_canais_reembolso", "contato_publico", "resumo_oferta.fornecedor", "rule_7d", "customer_wording", "sol_text"]) assert.ok(fields.includes(f), `[G24.4a] ${f} no portão do central`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
