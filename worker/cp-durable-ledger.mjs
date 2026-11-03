@@ -260,6 +260,8 @@ export class ContentProntoSubscriberDO {
   this.ctx=ctx;
   this.ledger=new CpSubscriberLedger(ctx.storage,"cp-do:"+String(ctx.id));
   this.fulfillment=new CpFulfillmentLedger(ctx.storage,this.ledger,"cp-do:"+String(ctx.id));
+  this.campaign=new CpCampaignLedger(ctx.storage,this.ledger);
+  this.ledger.campaign=this.campaign;
  }
  async fetch(request){
   try{
