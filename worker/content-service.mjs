@@ -145,13 +145,21 @@ async function sendEmail(env, to, subject, text, fetchImpl = fetch, idempotencyK
 // gravado em zpc:cp:alerts (últimos 200, sem e-mail nem nome; lido pela rota autenticada /api/admin/conteudo-pronto/status)
 // e vai para o ledger de atividade da central (owner_alert_sent), além do e-mail.
 const ALERTS = "zpc:cp:alerts";
+// #960 rodada 9 (contra-auditoria GPT-6): regra de negócio por DATA CIVIL de America/Sao_Paulo (fuso IANA, sem offset
+// fixo), não pela data UTC. Às 21h de Brasília já é o dia seguinte em UTC; "hoje" do assinante e o dia dos alertas
+// agrupados seguem o calendário de Brasília. Fonte: ECMA-402 Intl.DateTimeFormat (option timeZone).
+const SP_DAY_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+export function civilDaySP(ms = Date.now()) {
+  const p = Object.fromEntries(SP_DAY_FMT.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+}
 async function ownerAlert(env, subject, text, fetchImpl, { kind = "geral", sub = "", now = Date.now(), daily = false } = {}) {
   if (daily) { // rodada 7 (LOW): um e-mail por assinante, tipo e dia; as repetições só contam no registro
     const kv0 = kvOf(env), slug0 = String(kind).toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 48) || "geral";
     try {
       const list = await readJson(kv0, ALERTS, []);
-      const day = new Date(now).toISOString().slice(0, 10), tailSub = String(sub).slice(-12);
-      const prev = [...list].reverse().find((a) => a.kind === slug0 && a.sub === tailSub && String(a.at).slice(0, 10) === day);
+      const day = civilDaySP(now), tailSub = String(sub).slice(-12);
+      const prev = [...list].reverse().find((a) => a.kind === slug0 && a.sub === tailSub && Number.isFinite(Date.parse(a.at)) && civilDaySP(Date.parse(a.at)) === day);
       if (prev) { prev.repeats = Number(prev.repeats || 0) + 1; prev.lastAt = new Date(now).toISOString(); await kv0.put(ALERTS, JSON.stringify(list.slice(-200)), { expirationTtl: 400 * DAY }); return prev.emailed; }
     } catch {}
   }
@@ -374,6 +382,8 @@ export const cycleDelivered = (rec, c) => Boolean(rec?.deliveries?.[c]) || Numbe
 // Rodada 8: o KV do Cloudflare não tem compare-and-swap. Releitura logo antes de gravar: se o registro mudou desde a
 // leitura (webhook ou outro operador), 409 e nada é gravado. Detecta a corrida vista no mesmo ponto de presença; entre
 // pontos de presença o KV é eventualmente consistente (até 60 s), risco residual declarado no PR.
+// DECISÃO (rodada 9 do #960): o KV só é aceito com VENDAS FECHADAS. Antes de vender o Conteúdo Pronto, o estado das
+// rotas de operador e do webhook migra para PostgreSQL com CAS ou para Durable Object, num PR separado.
 async function recordChanged(kv, key, seen) { return JSON.stringify((await readJson(kv, key, null)) ?? null) !== JSON.stringify(seen ?? null); }
 const needsForm = (rec) => !rec.briefing || (campaignTarget(rec) !== null && rec.campanha?.cycle !== campaignTarget(rec));
 async function syncCreditIndex(kv, key, rec) {
@@ -591,7 +601,8 @@ export function anchored(text, phrase, { condition = false } = {}) {
 // #960 rodada 2 (LOW): data real (sem 30/02 virando março) e, no formulário, período a partir de hoje e no máximo
 // CAMPANHA_INICIO_MAX_DIAS dias à frente (o mês pago fica reservado até a próxima renovação; ver CAMPAIGN_REMINDER_DAYS).
 export const CAMPANHA_INICIO_MAX_DIAS = 45;
-const realDate = (v) => ISO_DATE.test(v) && new Date(v + "T00:00:00Z").toISOString().slice(0, 10) === v;
+// Rodada 9 (LOW): mês 13, dia 00 etc. dão Invalid Date; toISOString() lançaria RangeError. Data impossível = inválida.
+const realDate = (v) => { if (!ISO_DATE.test(v)) return false; const t = Date.parse(v + "T00:00:00Z"); return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v; };
 const dayMs = 86400000;
 export function validateCampaign(raw = {}, { now = null } = {}) {
   const c = {};
@@ -608,7 +619,7 @@ export function validateCampaign(raw = {}, { now = null } = {}) {
   const dias = Math.round((Date.parse(c.periodo_fim + "T00:00:00Z") - Date.parse(c.periodo_inicio + "T00:00:00Z")) / dayMs) + 1;
   if (!(dias >= CAMPANHA.periodo_dias_min && dias <= CAMPANHA.periodo_dias_max)) return { ok: false, error: `O período da campanha precisa ter de ${CAMPANHA.periodo_dias_min} a ${CAMPANHA.periodo_dias_max} dias (informado: ${dias}).` };
   if (now !== null) { // só no formulário: a campanha começa hoje ou depois, dentro da janela do ciclo pago
-    const today = Date.parse(new Date(now).toISOString().slice(0, 10) + "T00:00:00Z");
+    const today = Date.parse(civilDaySP(now) + "T00:00:00Z"); // "hoje" em Brasília (rodada 9), não em UTC
     const ini = Date.parse(c.periodo_inicio + "T00:00:00Z");
     if (ini < today) return { ok: false, error: "O início da campanha não pode ser uma data que já passou." };
     if (ini > today + CAMPANHA_INICIO_MAX_DIAS * dayMs) return { ok: false, error: `O início da campanha precisa estar nos próximos ${CAMPANHA_INICIO_MAX_DIAS} dias.` };

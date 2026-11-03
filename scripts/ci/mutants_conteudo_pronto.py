@@ -34,7 +34,7 @@ CS = "worker/content-service.mjs"
 PG = "conteudo-pronto/index.html"
 NODE = shutil.which("node")
 TIMEOUT = 600
-BASELINE_TESTS = 50  # contagem fixada (o job de contrato confere o mesmo número)
+BASELINE_TESTS = 51  # contagem fixada (o job de contrato confere o mesmo número)
 
 # id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
@@ -386,6 +386,16 @@ M = {
         "`Período: ${br(camp.periodo_fim)} a ${br(camp.periodo_inicio)}`", "[camp-pacote] período do texto = período da campanha"),
     "M173 confirmação de mês entregue sem sinal": (CS, "    const delivered = cycleDelivered(latest, cycle);",
         "    const delivered = false;", "[camp-reverter] confirmação de mês entregue sinaliza delivered"),
+    "M174 hoje do formulário volta a UTC": (CS, "const today = Date.parse(civilDaySP(now) + \"T00:00:00Z\");",
+        "const today = Date.parse(new Date(now).toISOString().slice(0, 10) + \"T00:00:00Z\");", "[camp-fuso] 21h de Brasília ainda é hoje"),
+    "M175 dia dos alertas volta a UTC": (CS, "const day = civilDaySP(now), tailSub",
+        "const day = new Date(now).toISOString().slice(0, 10), tailSub", "[camp-fuso] alertas agrupados pelo dia de Brasília"),
+    "M176 data civil calculada em UTC": (CS, "timeZone: \"America/Sao_Paulo\", year: \"numeric\"",
+        "timeZone: \"UTC\", year: \"numeric\"", "[camp-fuso] data civil de Brasília"),
+    "M177 data impossível sem guarda de Invalid Date": (CS, "const realDate = (v) => { if (!ISO_DATE.test(v)) return false; const t = Date.parse(v + \"T00:00:00Z\"); return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v; };",
+        "const realDate = (v) => ISO_DATE.test(v) && new Date(v + \"T00:00:00Z\").toISOString().slice(0, 10) === v;", "[camp-fuso] data impossível sem exceção"),
+    "M178 alerta anterior comparado pelo dia UTC": (CS, "civilDaySP(Date.parse(a.at)) === day",
+        "String(a.at).slice(0, 10) === day", "[camp-fuso] alertas agrupados pelo dia de Brasília"),
 }
 
 

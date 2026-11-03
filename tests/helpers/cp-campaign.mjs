@@ -1,11 +1,12 @@
 // Conteúdo Pronto v3 (campanha mensal de promoção de vendas): campanha de exemplo para os testes e um adaptador que
 // faz a IA falsa responder ANCORADA na campanha do prompt (cita a oferta, a condição e uma fase por post), como o
 // contrato exige. Os textos são fictícios.
-import { FASES } from "../../worker/content-service.mjs";
+import { FASES, civilDaySP } from "../../worker/content-service.mjs";
 
-// Datas relativas a hoje (o formulário recusa início no passado ou a mais de CAMPANHA_INICIO_MAX_DIAS dias).
-export const isoDay = (offsetDays, from = Date.now()) => new Date(Date.parse(new Date(from).toISOString().slice(0, 10) + "T00:00:00Z") + offsetDays * 86400000).toISOString().slice(0, 10);
+// Datas relativas a hoje (o formulário recusa início no passado ou a mais de CAMPANHA_INICIO_MAX_DIAS dias). "Hoje" é a
+// data civil de Brasília, a mesma regra do formulário (rodada 9 do #960), para a suíte não depender da hora em que roda.
 export const plusDays = (iso, n) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
+export const isoDay = (offsetDays, from = Date.now()) => plusDays(civilDaySP(from), offsetDays);
 export const CAMPAIGN = Object.freeze({
   objetivo_comercial: "Lotar a agenda das quartas-feiras",
   oferta: "Escova Quarta Feliz",

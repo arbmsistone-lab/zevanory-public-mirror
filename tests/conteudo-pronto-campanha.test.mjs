@@ -842,3 +842,55 @@ test("[camp-reverter] reverter só devolve mês restaurável: entregue => 409 se
     assert.equal(rec(kv).briefedAt, "outro-escritor", "[camp-reverter] gravação do outro escritor preservada: " + path);
   }
 });
+
+// ---------- Contra-auditoria GPT-6 sobre a rodada 8 do #960 (data civil de Brasília; data impossível) ----------
+test("[camp-fuso] hoje e limite pela data civil de Brasília (viradas UTC, de mês, de ano, 29/02); dia dos alertas; data impossível sem exceção", async () => {
+  const at = (iso) => Date.parse(iso);
+  const camp = (ini, fim) => ({ ...CAMPAIGN, periodo_inicio: ini, periodo_fim: fim ?? plusDays(ini, 14) });
+  const ok = (ini, nowIso, fim) => CS.validateCampaign(camp(ini, fim), { now: at(nowIso) }).ok;
+  // Data civil de Brasília nas duas faces da virada UTC (02/11 20:59 e 21:00 BRT) e da meia-noite local (23:59 e 00:00).
+  assert.deepEqual(["2026-11-02T23:59:00Z", "2026-11-03T00:00:00Z", "2026-11-03T02:59:00Z", "2026-11-03T03:00:00Z"].map((x) => CS.civilDaySP(at(x))),
+    ["2026-11-02", "2026-11-02", "2026-11-02", "2026-11-03"], "[camp-fuso] data civil de Brasília");
+  // Campanha que começa em 02/11: aceita até 23:59 BRT de 02/11 (inclusive 21:00 BRT, já 03/11 em UTC); recusada à 00:00 de 03/11.
+  assert.equal(ok("2026-11-02", "2026-11-02T23:59:00Z"), true, "[camp-fuso] 20h59 de Brasília é hoje");
+  assert.equal(ok("2026-11-02", "2026-11-03T00:00:00Z"), true, "[camp-fuso] 21h de Brasília ainda é hoje");
+  assert.equal(ok("2026-11-02", "2026-11-03T00:54:00Z"), true, "[camp-fuso] 21h54 de Brasília ainda é hoje");
+  assert.equal(ok("2026-11-02", "2026-11-03T02:59:00Z"), true, "[camp-fuso] 23h59 de Brasília ainda é hoje");
+  assert.equal(ok("2026-11-02", "2026-11-03T03:00:00Z"), false, "[camp-fuso] 00h de Brasília: ontem já passou");
+  // Limite de CAMPANHA_INICIO_MAX_DIAS contado a partir de hoje em Brasília (às 21h BRT, em UTC já seria um dia a mais).
+  const max = plusDays("2026-11-02", CS.CAMPANHA_INICIO_MAX_DIAS);
+  assert.equal(ok(max, "2026-11-03T00:00:00Z"), true, "[camp-fuso] limite de dias: último dia aceito");
+  assert.equal(ok(plusDays(max, 1), "2026-11-03T00:00:00Z"), false, "[camp-fuso] limite de dias pela data de Brasília");
+  // Virada de mês (31/10 -> 01/11), de ano (31/12 -> 01/01) e 29/02/2028.
+  assert.equal(ok("2026-10-31", "2026-11-01T02:30:00Z"), true, "[camp-fuso] 31/10 23h30 de Brasília ainda é 31/10");
+  assert.equal(ok("2026-10-31", "2026-11-01T03:00:00Z"), false, "[camp-fuso] 01/11 00h de Brasília: 31/10 passou");
+  assert.equal(ok("2026-12-31", "2027-01-01T01:00:00Z", "2027-01-15"), true, "[camp-fuso] 31/12 22h de Brasília ainda é 31/12");
+  assert.equal(ok("2026-12-31", "2027-01-01T03:00:00Z", "2027-01-15"), false, "[camp-fuso] 01/01 00h de Brasília: 31/12 passou");
+  assert.equal(CS.civilDaySP(at("2028-03-01T00:30:00Z")), "2028-02-29", "[camp-fuso] 29/02/2028 21h30 de Brasília");
+  assert.equal(ok("2028-02-29", "2028-03-01T00:30:00Z", "2028-03-14"), true, "[camp-fuso] 29/02/2028 aceito no próprio dia");
+  assert.equal(CS.validateCampaign(camp("2027-02-29", "2027-03-14")).ok, false, "[camp-fuso] 29/02/2027 não existe");
+  // Data impossível: erro de validação controlado, nenhuma exceção (função e formulário).
+  for (const v of ["2026-13-01", "2026-02-30", "2026-00-10", "abc", ""]) {
+    let r = null, threw = null;
+    try { r = CS.validateCampaign(camp(v, "2026-11-20")); } catch (err) { threw = err; }
+    assert.ok(!threw, "[camp-fuso] data impossível sem exceção: " + JSON.stringify(v));
+    assert.equal(r.ok, false); assert.match(r.error, /data válida/, "[camp-fuso] erro de validação: " + JSON.stringify(v));
+  }
+  { const f = resend(), e = env(ai()); const t = await subscribed(e, f);
+    let res = null, threw = null;
+    try { res = await submit(e, f, t, { ...BRIEF, ...CAMPAIGN, periodo_inicio: "2026-13-01" }); } catch (err) { threw = err; }
+    assert.ok(!threw, "[camp-fuso] data impossível sem exceção: formulário");
+    assert.equal(res.status, 400, "[camp-fuso] formulário responde 400 com data impossível"); }
+  // Alertas agrupados por assinante e DIA DE BRASÍLIA: 20h59 e 21h BRT de 02/11 = mesmo dia; 23h59 e 00h = dias diferentes.
+  const realNow = Date.now;
+  try {
+    for (const [a, b, n, label] of [["2026-11-02T23:59:00Z", "2026-11-03T00:00:00Z", 1, "mesmo dia de Brasília"], ["2026-11-03T02:59:00Z", "2026-11-03T03:00:00Z", 2, "dias diferentes em Brasília"]]) {
+      const f = resend(), e = env(ai()), kv = e.ZEVANORY_PRIVATE_ARTIFACTS;
+      await submit(e, f, await subscribed(e, f), { ...BRIEF, ...CAMPAIGN });
+      Date.now = () => at(a); await CS.handleHotmartWebhook(hookX("PURCHASE_CANCELED", "HP-FUSO-1"), e, null, f);
+      Date.now = () => at(b); await CS.handleHotmartWebhook(hookX("PURCHASE_CANCELED", "HP-FUSO-2"), e, null, f);
+      Date.now = realNow;
+      assert.equal(alertKinds(kv).filter((k) => k === "cobranca_nao_concluida").length, n, "[camp-fuso] alertas agrupados pelo dia de Brasília: " + label);
+    }
+  } finally { Date.now = realNow; }
+});
