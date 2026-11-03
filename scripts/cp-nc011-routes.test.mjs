@@ -16,7 +16,7 @@ function harness(){
   db.prepare(s).run(...args);return {toArray:()=>[]};
  }};
  const storage={sql,setAlarm:async()=>true,transactionSync(fn){db.exec("BEGIN IMMEDIATE");try{const v=fn();db.exec("COMMIT");return v}catch(e){db.exec("ROLLBACK");throw e}}};
- const doObj=new ContentProntoSubscriberDO({storage,id:{toString:()=>"test"}});
+ const doObj=new ContentProntoSubscriberDO({storage,id:{toString:()=>"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}});
  const hits=[],failKV={get(){throw Error("legacy KV read forbidden")},put(){throw Error("legacy KV write forbidden")}};
  const env={
   HOTMART_HOTTOK:"TEST_TEST_TEST_HOTTOK_SECRET_123456",
@@ -38,7 +38,7 @@ test("NC011 CP real route commits into DO, no legacy KV and bad Hottok rejected"
  assert.equal((await routeHotmartNc011(h.req("wrong"),h.env)).status,401);
  assert.equal(h.hits.length,0);
  const r=await routeHotmartNc011(h.req(),h.env);
- assert.equal(r.status,202,await r.text());
+ assert.equal(r.status,202);
  assert.equal(h.doObj.ledger.snapshot().status,"active");
  assert.equal((await routeHotmartNc011(h.req(),h.env)).status,202);
  assert.equal(h.doObj.ledger.snapshot().event_count,1);
@@ -70,7 +70,7 @@ test("NC011 GET reads the real SQLite token, POST validates and consumes it once
  for(const [id] of CP_BRIEFING_FIELDS)params.set(id,"Atendimento local de alta qualidade");
  const form=new Request(link,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:params.toString()});
  const sent=await routeBriefingNc011(form,h.env);
- assert.equal(sent.status,202,await sent.text());
+ assert.equal(sent.status,202);
  assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM cp_form_submissions").get().n,1);
  assert.equal(h.doObj.fulfillment.snapshot().jobs.length,1);
  assert.equal(h.doObj.fulfillment.snapshot().outbox.length,0); // not generated or delivered
