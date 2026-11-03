@@ -60,14 +60,16 @@ test("F2: no provider verifier stops after <=48 retries and emits one owner aler
 test("F2: provider-approved claim stops alarm instead of polling forever",async()=>{
  const h=harness();h.approve();
  const at=D+192*H,ctx={storage:h.storage,id:{toString:()=> "a".repeat(64)}};
+ let readbacks=0;
  const obj=new KitReleaseOrderDO(ctx,{HOTMART_STATUS_VERIFIER:{
-  async fetch(){return Response.json(h.proof(at))}}});
+  async fetch(){readbacks++;return Response.json(h.proof(at))}}});
  await obj.alarm(at);
  assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM kit_eligibility_outbox").get().n,1);
  assert.equal(obj.ledger.alarmPolicy().status,"queued");
  assert.equal(h.storage.alarms.length,0);
  await obj.alarm(at+24*H);
  assert.equal(h.storage.alarms.length,0);
+ assert.equal(readbacks,1,"verified delivery must never perform another provider readback");
 });
 test("F3: refund request is reversible ONLY with owner version + authoritative clear proof",async()=>{
  const h=harness();h.approve();
