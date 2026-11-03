@@ -18,7 +18,7 @@ function harness(){
  const ledger=new KitReleaseLedger(storage,key);
  const approve=(at=D,arrived=at)=>ledger.acceptEvent({event_type:"PURCHASE_APPROVED",event_key:"hotmart:approved-transaction-001",approved_at_ms:at},arrived);
  const refund=(type="PURCHASE_REFUNDED",when=D+180*H)=>ledger.acceptEvent({event_type:type,event_key:"hotmart:"+type.toLowerCase()+"-001"},when);
- const proof=(at=D+192*H)=>({source:"hotmart_authoritative_readback",state:"APPROVED",checked_at_ms:at});
+ const proof=(at=D+192*H)=>({source:"hotmart_authoritative_readback",state:"APPROVED",refund_request_open:false,order_opaque:key,checked_at_ms:at});
  return {db,storage,ledger,approve,refund,proof,key};
 }
 test("H00 192h exactly independent of purchase calendar (00:05,12:00,23:55)",()=>{
@@ -57,10 +57,10 @@ test("H04 chargeback after release revokes previously valid token",async()=>{
  const at=D+192*H;
  const r=await h.ledger.prepareGrant(at,h.proof(at),{randomBytes:()=>new Uint8Array(32).fill(7)});
  assert.equal(r.code,"grant_pending_email");
- assert.equal(await h.ledger.canDownload(at,r.token),true);
- assert.equal(await h.ledger.canDownload(at-1,r.token),false);
+ assert.equal(await h.ledger.canDownload(at,r.token,h.proof(at)),true);
+ assert.equal(await h.ledger.canDownload(at-1,r.token,h.proof(at-1)),false);
  h.refund("PURCHASE_CHARGEBACK",at+2*H);
- assert.equal(await h.ledger.canDownload(at+2*H,r.token),false);
+ assert.equal(await h.ledger.canDownload(at+2*H,r.token,h.proof(at+2*H)),false);
  assert.equal(h.ledger.state().token_hash,null);
 });
 test("H05 approval after prior PROTEST must NOT reopen a revoked purchase",()=>{
@@ -89,9 +89,9 @@ test("H08 stolen token cannot open early, token expiry enforced",async()=>{
  const at=D+192*H;
  const r=await h.ledger.prepareGrant(at,h.proof(at),{randomBytes:()=>new Uint8Array(32).fill(2),ttlMs:1000*3600});
  assert.equal(await h.ledger.canDownload(at-1,r.token),false);
- assert.equal(await h.ledger.canDownload(at,r.token),true);
- assert.equal(await h.ledger.canDownload(at+1000*3600+1,r.token),false);
- assert.equal(await h.ledger.canDownload(at,"0".repeat(64)),false);
+ assert.equal(await h.ledger.canDownload(at,r.token,h.proof(at)),true);
+ assert.equal(await h.ledger.canDownload(at+1000*3600+1,r.token,h.proof(at+1000*3600+1)),false);
+ assert.equal(await h.ledger.canDownload(at,"0".repeat(64),h.proof(at)),false);
 });
 test("H09 restart preserves approval, refund and immutable email receipt",async()=>{
  const h=harness();h.approve();
@@ -103,7 +103,7 @@ test("H09 restart preserves approval, refund and immutable email receipt",async(
  assert.equal(other.acceptEmailReceipt(at+2,"resend:receipt-0001").code,"accepted");
  assert.equal(h.ledger.outbox()[0].provider_receipt,"resend:receipt-0001");
  assert.throws(()=>h.ledger.acceptEmailReceipt(at+3,"resend:receipt-different"),/receipt_conflict/);
- assert.equal(await other.canDownload(at,r.token),true);
+ assert.equal(await other.canDownload(at,r.token,h.proof(at)),true);
 });
 test("H10 internal DO rejects request without trusted bridge and uses own alarm",async()=>{
  const h=harness(),ctx={storage:h.storage,id:{toString:()=>"a".repeat(64)}};
