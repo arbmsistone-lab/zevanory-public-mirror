@@ -5,7 +5,7 @@
 export const RELEASE_HOURS=192;
 export const RELEASE_DELAY_MS=192*60*60*1000;
 const EVENTS=new Set(["PURCHASE_APPROVED","PURCHASE_REFUNDED","PURCHASE_CHARGEBACK","PURCHASE_PROTEST","PURCHASE_CANCELED","REFUND_REQUESTED"]);
-const BLOCKING=new Set(["PURCHASE_REFUNDED","PURCHASE_CHARGEBACK","PURCHASE_PROTEST","PURCHASE_CANCELED","REFUND_REQUESTED"]);
+const BLOCKING=new Set(["PURCHASE_REFUNDED","PURCHASE_CHARGEBACK","PURCHASE_PROTEST","PURCHASE_CANCELED"]);
 const validKey=s=>typeof s==="string" && /^[a-zA-Z0-9:._/-]{12,180}$/.test(s);
 const validMs=n=>Number.isSafeInteger(n)&&n>1577836800000&&n<4102444800000;
 const utf8=new TextEncoder();
@@ -25,7 +25,7 @@ export class KitReleaseLedger {
    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
    approved_at_ms INTEGER,
    release_at_ms INTEGER,
-   state TEXT NOT NULL CHECK(state IN ('absent','waiting','ready','revoked')),
+   state TEXT NOT NULL CHECK(state IN ('absent','waiting','ready','held_refund_request','revoked','stalled')),
    revocation_event TEXT,
    token_hash TEXT,
    token_expires_at_ms INTEGER,
@@ -70,11 +70,36 @@ export class KitReleaseLedger {
    if(BLOCKING.has(event_type)){
     this.sql.exec("UPDATE kit_order SET state='revoked',revocation_event=?,token_hash=NULL,token_expires_at_ms=NULL,updated_at_ms=?,version=version+1 WHERE singleton=1",event_type,now);
     this.sql.exec("UPDATE kit_mail_outbox SET status='revoked',updated_at_ms=? WHERE status IN ('pending','uncertain')",now);
+    this.sql.exec("UPDATE kit_eligibility_outbox SET status='revoked' WHERE status='pending'");
+   } else if(event_type==="REFUND_REQUESTED" && state.state!=="revoked" && state.state!=="stalled"){
+    this.sql.exec("UPDATE kit_order SET state='held_refund_request',revocation_event=?,token_hash=NULL,token_expires_at_ms=NULL,updated_at_ms=?,version=version+1 WHERE singleton=1",event_type,now);
+    this.sql.exec("UPDATE kit_mail_outbox SET status='revoked',updated_at_ms=? WHERE status IN ('pending','uncertain')",now);
+    this.sql.exec("UPDATE kit_eligibility_outbox SET status='revoked' WHERE status='pending'");
    } else if(state.state==="absent"){
     this.sql.exec("UPDATE kit_order SET state='waiting',approved_at_ms=?,release_at_ms=?,updated_at_ms=?,version=version+1 WHERE singleton=1",
       approved_at_ms,approved_at_ms+RELEASE_DELAY_MS,now);
    } // revoked is terminal, late approval never unlocks
    return {code:"applied",...this.state()};
+  });
+ }
+ validApprovedProof(now,proof){
+  return Boolean(proof && proof.source==="hotmart_authoritative_readback" && proof.state==="APPROVED" &&
+   proof.refund_request_open===false && proof.order_opaque===this.orderOpaque &&
+   validMs(proof.checked_at_ms) && proof.checked_at_ms<=now && now-proof.checked_at_ms<=5*60*1000);
+ }
+ resumeRefundRequest({event_key,expected_version},now,proof){
+  if(!validKey(event_key)||!Number.isSafeInteger(expected_version)||!validMs(now))
+   throw new KitReleaseError("invalid_operator_command",400);
+  if(!this.validApprovedProof(now,proof))throw new KitReleaseError("refund_resolution_not_verified",503);
+  return this.storage.transactionSync(()=>{
+   if(this.one("SELECT event_key FROM kit_events WHERE event_key=?",event_key))return {code:"duplicate_event",...this.state()};
+   const st=this.state();
+   if(st.version!==expected_version)throw new KitReleaseError("stale_version");
+   if(st.state!=="held_refund_request")throw new KitReleaseError("not_held_refund");
+   this.sql.exec("INSERT INTO kit_events(event_key,event_type,seen_at_ms) VALUES(?,'OPERATOR_REFUND_REQUEST_WITHDRAWN',?)",event_key,now);
+   this.sql.exec("UPDATE kit_order SET state='waiting',revocation_event=NULL,updated_at_ms=?,version=version+1 WHERE singleton=1",now);
+   this.sql.exec("DELETE FROM kit_eligibility_outbox WHERE status='revoked'");
+   return {code:"resumed",...this.state()};
   });
  }
  // A release depends on a fresh provider-authoritative status, obtained by a
@@ -83,9 +108,7 @@ export class KitReleaseLedger {
   if(!validMs(now))throw new KitReleaseError("invalid_clock",400);
   const st=this.state();
   if(st.state!=="waiting"||!validMs(st.release_at_ms)||now<st.release_at_ms)return {code:"not_eligible",...st};
-  if(!proof || proof.source!=="hotmart_authoritative_readback"||
-    proof.state!=="APPROVED"||!validMs(proof.checked_at_ms)||
-    proof.checked_at_ms>now||now-proof.checked_at_ms>5*60*1000)
+  if(!this.validApprovedProof(now,proof))
    return {code:"verification_pending",...st};
   // The token is minted later in async prepareGrant() after state verification.
   return {code:"eligible",...st};
@@ -117,7 +140,8 @@ export class KitReleaseLedger {
    return {code:"grant_pending_email",token,release_at_ms:st.release_at_ms,expires_at_ms:expires};
   });
  }
- async canDownload(now,token){
+ async canDownload(now,token,proof){
+   if(!this.validApprovedProof(now,proof))return false;
   const st=this.state();
   if(st.state!=="ready"||!validMs(now)||now<st.release_at_ms||now>st.token_expires_at_ms||!st.token_hash||
      typeof token!=="string"||!/^[a-f0-9]{64}$/.test(token))return false;
@@ -156,6 +180,17 @@ export class KitReleaseOrderDO {
     // One order per DO: only one release alarm, no global cron.
     if(current.state==="waiting" && current.release_at_ms!==null)await this.ctx.storage.setAlarm(current.release_at_ms);
     return Response.json(result);
+   }
+   if(path==="/internal/operator/resume-refund"&&request.method==="POST"){
+    if(!ctEq(request.headers.get("x-operator-key"),this.env.AUTHENTICATED_OWNER_OPERATOR_KEY))
+     return Response.json({error:"operator_not_authorized"},{status:403});
+    if(!this.env.HOTMART_STATUS_VERIFIER?.fetch)
+     return Response.json({error:"provider_readback_unavailable"},{status:503});
+    const checked=await this.env.HOTMART_STATUS_VERIFIER.fetch("https://internal.hotmart/status",{method:"GET"});
+    if(!checked.ok)return Response.json({error:"provider_readback_failed"},{status:503});
+    const output=this.ledger.resumeRefundRequest(await request.json(),Date.now(),await checked.json());
+    if(output.code==="resumed")await this.ctx.storage.setAlarm(Math.max(Date.now()+1,output.release_at_ms));
+    return Response.json(output);
    }
    if(path==="/internal/status"&&request.method==="GET")return Response.json({order:this.ledger.state(),events:this.ledger.eventCount(),outbox:this.ledger.outbox()});
    return Response.json({error:"method_not_allowed"},{status:405});
