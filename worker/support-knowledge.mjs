@@ -18,11 +18,11 @@ const DELIVERY = SUPPORT_DELIVERY_ANSWER;
 const REFUND = SUPPORT_REFUND_ANSWER;
 
 export const SUPPORT_PRODUCTS = Object.freeze({
-  "ia-na-pratica": { name: "IA na Prática", price_brl: 197, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
-  "vendas-na-pratica": { name: "Vendas na Prática", price_brl: 197, content: "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com clareza de próxima ação." },
-  "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 247, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
-  "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 297, content: "Reúne IA na Prática e Vendas na Prática completos: os dois treinamentos, que se complementam e podem ser usados de forma independente." },
-  "negocio-completo": { name: "Negócio Completo", price_brl: 397, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
+  "ia-na-pratica": { name: "IA na Prática", price_brl: 97, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
+  "vendas-na-pratica": { name: "Vendas na Prática", price_brl: 97, content: "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com clareza de próxima ação." },
+  "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 147, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
+  "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 157, content: "Reúne IA na Prática e Vendas na Prática completos: os dois treinamentos, que se complementam e podem ser usados de forma independente." },
+  "negocio-completo": { name: "Negócio Completo", price_brl: 247, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
   "conteudo-pronto": { name: "Conteúdo Pronto (assinatura mensal)", price_brl: 197, content: "Campanha mensal de promoção de vendas: você informa no formulário o objetivo comercial, a oferta, a condição comercial e o período e recebe por e-mail 12 posts, 4 roteiros multicanal de venda e acompanhamento (versão curta e versão de e-mail) e o calendário do período. Se a geração ou o envio falhar, nova tentativa a cada hora, até 12 vezes, e a equipe da ZEVANORY é avisada. Você revisa antes de usar; não há disparo automático. A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O estorno é processado em até 7 dias úteis. O arrependimento de 7 dias continua valendo. Renovação mensal automática, sem fidelidade." },
 });
 
