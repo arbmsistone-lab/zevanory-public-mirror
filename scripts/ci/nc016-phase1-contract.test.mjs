@@ -16,7 +16,7 @@ test("NC016-A1 root CP tombstone cannot index, offer or reactivate",()=>{
  const page=read("conteudo-pronto/index.html");
  assert.match(page,/noindex,nofollow/);
  assert.match(page,/Página indisponível/);
- assert.doesNotMatch(page,/data-zev-open-text|data-zev-sub|R\$|index,follow|pay\.hotmart\.com|/assinar//);
+ assert.doesNotMatch(page,/data-zev-open-text|data-zev-sub|R\$|index,follow|pay\.hotmart\.com|\/assinar\//);
  assert.equal(page,read("sales-public/conteudo-pronto.html"));
 });
 
