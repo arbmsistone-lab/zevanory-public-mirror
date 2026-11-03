@@ -69,7 +69,9 @@ jobs:
       - name: NC-017 own checkout fail-closed and Hotmart exact-copy contracts
         run: |
           set -euo pipefail
-          node --test --test-reporter=tap scripts/ci/nc017-checkout-hotmart.test.mjs | tee nc017.txt
+          # cloudflare-worker.compat.mjs imports cloudflare:node; the offline t4_sim hooks resolve it and
+          # --test-force-exit closes the in-process node server the recovered Worker starts.
+          node --import ./tests/t4_sim/register.mjs --test --test-force-exit --test-reporter=tap scripts/ci/nc017-checkout-hotmart.test.mjs | tee nc017.txt
           grep -qx '# tests 4' nc017.txt
           grep -qx '# pass 4' nc017.txt
           grep -qx '# fail 0' nc017.txt

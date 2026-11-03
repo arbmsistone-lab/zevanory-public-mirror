@@ -57,12 +57,14 @@ test("F-b: every Hotmart rewrite input exists and variant removes own checkout c
  assert.equal(slugs.length,5);
  for(const slug of slugs){
    const html=read(slug);
-   // Optional legacy/new generator variants are allowed, but at least one
-   // payment marker and the exact published overlay must be consumed.
-   const matching=HOTMART_TEXT.filter(([source])=>html.includes(source));
-   assert.ok(matching.length>=4,slug+" insufficient exact rewrite coverage");
-   assert.ok(matching.some(([source])=>source.includes("Pagamento processado pelo Mercado Pago")),slug+" missing payment processor source");
-   assert.ok(matching.some(([source])=>source.includes("Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago)") || source.includes("Pagamento por Pix à vista ou cartão na plataforma indicada")),slug+" missing current or legacy offer overlay source");
+   // Every pair must consume its source IN ORDER (as hotmartPage applies them): a pair whose
+   // source no longer exists, or that an earlier generic pair already rewrote, silently stops
+   // rewriting and is rejected here.
+   let seq=html;
+   HOTMART_TEXT.forEach(([source,target],i)=>{
+     assert.ok(seq.includes(source),`${slug} pair ${i} source missing: ${source.slice(0,60)}`);
+     seq=seq.split(source).join(target);
+   });
    const variant=hotmartPage(html,slug,"https://pay.hotmart.com/X123ABC");
    const visible=variant.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g,"");
    assert.ok(visible.includes('href="https://pay.hotmart.com/X123ABC"'),slug+" real Hotmart CTA");
