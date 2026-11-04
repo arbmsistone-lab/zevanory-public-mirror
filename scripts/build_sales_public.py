@@ -137,14 +137,15 @@ FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a di
 # Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
 HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
                  else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
-DELIVERY_Q = ("Como recebo o produto?", "O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento. O link permite até cinco downloads durante a validade; peça outro sem custo se expirar.")
-GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras, ou pelo e-mail suporte@zevanory.api.br.")
+# DEC-06: entrega imediata e integral para download na área de compras da Hotmart (frase canônica de data/politica-unica.json).
+DELIVERY_Q = ("Como recebo o produto?", policy.DELIVERY_TEXT)
+GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça " + policy.REFUND_CHANNELS_HOTMART + ". " + policy.HOTMART_GUARANTEE)
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
 MODE = policy.build_mode()
 
 def buy_facts() -> str:
     return ('<ul class="facts buy-facts"><li>Pagamento processado pela Hotmart (Pix à vista ou cartão)</li>'
-            f'<li>PDFs e ZIP por e-mail {policy.DELIVERY_72H}; acesso online e planilhas imediatamente</li>'
+            f'<li>{policy.DELIVERY_SHORT.rstrip(".")}</li>'
             '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
 
 # Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
@@ -166,8 +167,7 @@ def how_to_buy() -> str:
     return ('<section class="container how-to-buy" aria-labelledby="como-compra"><h2 id="como-compra">Como a compra funciona</h2>'
             '<ol class="steps">'
             '<li><strong>Pagamento</strong><span>Pix à vista ou cartão, processado pela Hotmart. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
-            '<li><strong>E-mail</strong><span>Após a aprovação, o Hotmart Club oferece acesso online e às planilhas.</span></li>'
-            f'<li><strong>PDFs e ZIP</strong><span>Disponíveis por link pessoal {policy.DELIVERY_72H}. Se expirar, o suporte envia outro sem custo.</span></li>'
+            f'<li><strong>Acesso imediato</strong><span>{policy.DELIVERY_TEXT}</span></li>'
             '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
             '<dl class="seller">'
             f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
@@ -273,7 +273,7 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
         "preco_total": terms["preco_total"].replace("{price}", str(price)),
         "pagamento": terms["pagamento"],
         "disponibilidade": None,
-        "entrega": terms["entrega"].replace("{delivery_72h}", policy.DELIVERY_72H),
+        "entrega": terms["entrega"],
         "restricoes": terms["restricoes"],
         "arrependimento": policy.CUSTOMER_RULE_7D + ", com devolução integral.",
     }
@@ -301,7 +301,7 @@ def apply_commerce(slug: str, html: str) -> str:
     # worker/sales-public-worker.mjs (HOTMART_TEXT).
     html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
     trust = {
-        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "O acesso online e as planilhas ficam disponíveis após a aprovação; PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação do pagamento."),
+        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Acesso imediato", policy.DELIVERY_SHORT),
         ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
         ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix à vista ou cartão pela Hotmart."),
     }

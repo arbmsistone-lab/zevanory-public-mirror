@@ -31,6 +31,14 @@ SOL_TEXT = _DATA["sol_text"]
 # cinco paginas de produto).
 RULE_7D = _DATA["rule_7d"]
 DELIVERY_72H = _DATA["delivery_72h"]
+# DEC-06: entrega imediata e integral para download na area de compras da Hotmart. delivery_72h mantem o nome (compatibilidade) e contem a frase
+# canonica de entrega; DELIVERY_SHORT e o campo "Modo e prazo de entrega"; HOTMART_GUARANTEE e a linha de garantia.
+DELIVERY_SHORT = _DATA["delivery_short"]
+DELIVERY_TEXT = _DATA["customer_wording"]["delivery"]
+HOTMART_GUARANTEE = _DATA["hotmart_guarantee"]
+REFUND_CHANNELS_HOTMART = _DATA["customer_wording"]["refund_channels_hotmart"]
+# DEC-06: promessas de entrega diferida/link externo que nao podem voltar ao texto publico.
+DEC06_FORBIDDEN_RE = re.compile(r"192\s*(?:horas|h)\b|\(8 dias\)|cinco downloads|at[eé] 5 downloads|link (?:individual|pessoal)|e-mail 192", re.I)
 CLOSED_LABEL = _DATA["closed_label"]
 WAITLIST_LABEL = _DATA["waitlist_label"]
 POLICY_ANCHOR = _DATA["policy_anchor"]
@@ -49,7 +57,7 @@ SUPPLIER = RESUMO_OFERTA["fornecedor"]
 ADDRESS_FULL = f'{SUPPLIER["endereco_fisico"]}, CEP {SUPPLIER["cep"]}'
 PENDING_MARKERS = ("PENDENTE", "PREENCHER", "A CONFIRMAR", "XXX", "PLACEHOLDER")
 
-for _part in (RULE_7D, DELIVERY_72H):
+for _part in (RULE_7D, DELIVERY_72H, DELIVERY_TEXT, HOTMART_GUARANTEE, REFUND_CHANNELS_HOTMART):
     assert _part in SOL_TEXT, _part
 
 # Contato publico (data/politica-unica.json, contato_publico). A conta WhatsApp Business da ZEVANORY
@@ -138,10 +146,8 @@ SUBSCRIPTION_SUMMARY = (
 )
 
 POLICY_SUMMARY = (
-    '<p class="policy-summary">Entrega: acesso online e planilhas logo após a aprovação do pagamento; '
-    'PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação. '
-    'Se o link expirar, um novo é enviado sem custo pelo suporte. '
-    f'Arrependimento: {RULE_7D}, com devolução integral (se as datas forem diferentes, vale a mais recente). '
+    f'<p class="policy-summary">Entrega: {DELIVERY_SHORT[0].lower() + DELIVERY_SHORT[1:]} '
+    f'Arrependimento: {RULE_7D}, com devolução integral (se as datas forem diferentes, vale a mais recente). {HOTMART_GUARANTEE} '
     f'<a href="/termos#{POLICY_ANCHOR}">Termos completos</a> · <a href="/reembolso">Reembolso</a></p>'
 )
 
@@ -338,7 +344,7 @@ def audit_closed(out_dir: Path) -> list[str]:
 
 
 def audit_policy(out_dir: Path, products=PRODUCT_SURFACES, legal=LEGAL_SURFACES) -> list[str]:
-    """Mesma regra de 7 dias e mesma divulgacao 72 h / um download em todas as superficies."""
+    """Mesma regra de 7 dias e mesma entrega imediata na area de compras da Hotmart (DEC-06) em todas as superficies."""
     problems = []
     for slug in tuple(legal) + tuple(products):
         text = (out_dir / f"{slug}.html").read_text(encoding="utf-8")
@@ -348,6 +354,8 @@ def audit_policy(out_dir: Path, products=PRODUCT_SURFACES, legal=LEGAL_SURFACES)
         for bad in BANNED_POLICY_PHRASES:
             if bad in text:
                 problems.append(f"{slug}: formulacao divergente '{bad}'")
+        if DELIVERY_TEXT not in text:
+            problems.append(f"{slug}: falta a frase de entrega imediata DEC-06")
     for slug in SUBSCRIPTION_SURFACES:
         text = (out_dir / f"{slug}.html").read_text(encoding="utf-8")
         # NC-015 DEC-04: subscription is EXCLUDED from phase one, not a
@@ -371,6 +379,11 @@ def audit_policy(out_dir: Path, products=PRODUCT_SURFACES, legal=LEGAL_SURFACES)
         for bad in BANNED_POLICY_PHRASES:
             if bad in text:
                 problems.append(f"{f.stem}: formulacao divergente '{bad}'")
+    # DEC-06: nenhuma pagina publicada promete liberacao diferida, limite de downloads ou link externo de entrega.
+    for f in sorted(out_dir.glob("*.html")):
+        m = DEC06_FORBIDDEN_RE.search(f.read_text(encoding="utf-8"))
+        if m:
+            problems.append(f"{f.stem}: promessa de entrega diferida/link externo ({m.group(0)}) contraria a DEC-06")
     for slug in legal:
         text = (out_dir / f"{slug}.html").read_text(encoding="utf-8")
         if SOL_TEXT not in text:

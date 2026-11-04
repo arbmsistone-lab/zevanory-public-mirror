@@ -13,9 +13,12 @@
     "waitlist_body": "Olá! Quero entrar na lista de espera do {produto}. Me avisem por este e-mail quando as vendas abrirem.",
     "contact_subject": "Contato pelo site ZEVANORY"
   },
-  "sol_text": "Compra, entrega, suporte e direito de arrependimento. Antes da contratação, a página e o resumo do pedido informarão fornecedor, características e conteúdo do produto, preço total, forma de pagamento, disponibilidade, prazo e modo de entrega, restrições de uso/download e canais de atendimento. O consumidor poderá corrigir os dados do pedido antes de concluir a compra. Após a contratação, receberá imediatamente a confirmação e uma cópia conservável destes termos. O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento. O link pessoal permite até cinco downloads durante sua validade; a expiração do link não elimina o direito ao produto, e um novo link poderá ser solicitado sem custo pelo canal de entrega ou pelo suporte. Em contratação online, o consumidor poderá desistir sem justificativa e sem ônus no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço, conforme o evento aplicável; por política mais favorável, se as datas forem diferentes, a ZEVANORY adotará a mais recente. O pedido poderá ser feito pela mesma ferramenta usada na contratação e também em zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br. O recebimento do pedido será confirmado imediatamente. A ZEVANORY comunicará imediatamente a Hotmart para impedir o lançamento ou iniciar o estorno e devolverá integralmente os valores pagos; a visualização do crédito em cartão seguirá o prazo do emissor. Contratos acessórios serão cancelados sem custo. Demandas de consumo terão confirmação imediata e resposta conclusiva em até 5 dias; o SLA específico de direitos LGPD permanece separado. Defeito, arquivo corrompido ou falha de entrega será corrigido ou reenviado sem custo, sem limitar outros direitos legais.",
+  "sol_text": "Compra, entrega, suporte e direito de arrependimento. Antes da contratação, a página e o resumo do pedido informarão fornecedor, características e conteúdo do produto, preço total, forma de pagamento, disponibilidade, prazo e modo de entrega, restrições de uso/download e canais de atendimento. O consumidor poderá corrigir os dados do pedido antes de concluir a compra. Após a contratação, receberá imediatamente a confirmação e uma cópia conservável destes termos. Após a aprovação do pagamento pela Hotmart, você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart (Minhas compras): PDFs, planilhas XLSX, arquivos editáveis e pacote ZIP, conforme a oferta. Se houver erro de acesso ou arquivo indisponível, o suporte resolve sem custo: suporte@zevanory.api.br. Em contratação online, o consumidor poderá desistir sem justificativa e sem ônus no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço, conforme o evento aplicável; por política mais favorável, se as datas forem diferentes, a ZEVANORY adotará a mais recente. A garantia destas ofertas na Hotmart é de 7 dias. O pedido poderá ser feito pela mesma ferramenta usada na contratação, ou seja, pela Hotmart (refund.hotmart.com ou Minhas compras) ou pelo e-mail suporte@zevanory.api.br. O recebimento do pedido será confirmado imediatamente. A ZEVANORY comunicará imediatamente a Hotmart para impedir o lançamento ou iniciar o estorno e devolverá integralmente os valores pagos; a visualização do crédito em cartão seguirá o prazo do emissor. Contratos acessórios serão cancelados sem custo. Demandas de consumo terão confirmação imediata e resposta conclusiva em até 5 dias; o SLA específico de direitos LGPD permanece separado. Defeito, arquivo corrompido ou falha de entrega será corrigido ou reenviado sem custo, sem limitar outros direitos legais.",
   "rule_7d": "7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço",
-  "delivery_72h": "192 horas (8 dias) após a aprovação do pagamento",
+  "delivery_72h": "Após a aprovação do pagamento pela Hotmart, você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart (Minhas compras)",
+  "delivery_short": "Acesso imediato e integral para download na sua área de compras da Hotmart após a aprovação do pagamento.",
+  "hotmart_guarantee": "A garantia destas ofertas na Hotmart é de 7 dias.",
+  "nota_dec06": "DEC-06 (consenso Claude + GPT-6; conferência ao vivo na Hotmart): na fase 1, após a aprovação do pagamento pela Hotmart, o comprador recebe o produto INTEGRAL imediatamente, como arquivo para download na área de compras da Hotmart (Minhas compras): PDFs, XLSX, DOCX e ZIP. Sem retenção diferida, sem link externo da ZEVANORY e sem limite de downloads. A chave delivery_72h mantém o nome por compatibilidade e agora contém a frase de entrega imediata; delivery_short é o campo 'Modo e prazo de entrega'. Garantia da Hotmart nestas ofertas: 7 dias (hotmart_guarantee), sem alterar o arrependimento do art. 49 do CDC. A liberação diferida (worker/kit-release-192h.mjs e worker/kit-nc015-*.mjs) fica preservada e INATIVA atrás de KIT_DEFERRED_192H_ENABLED (padrão desligado; worker/kit-deferred-192h-flag.mjs).",
   "closed_label": "vendas temporariamente fechadas",
   "waitlist_label": "Entrar na lista de espera",
   "policy_anchor": "compra-entrega-arrependimento",
@@ -85,17 +88,18 @@
     "window": 120
   },
   "customer_wording": {
-    "nota": "P13c: redação das superfícies fora das páginas (respostas do suporte e do WhatsApp, e-mails, avaliações, posts e criativos), derivada do sol_text. Lida por worker/politica-unica.mjs; {rule_7d} e {refund_channels} são substituídos lá. Cada item de fragmentos_sol existe literalmente no sol_text (tests/p13c-superficies-politica.test.mjs).",
+    "nota": "P13c: redação das superfícies fora das páginas (respostas do suporte e do WhatsApp, e-mails, avaliações, posts e criativos), derivada do sol_text. Lida por worker/politica-unica.mjs; {rule_7d}, {refund_channels}, {refund_channels_hotmart} e {hotmart_guarantee} são substituídos lá. Cada item de fragmentos_sol existe literalmente no sol_text (tests/p13c-superficies-politica.test.mjs). DEC-06: refund_channels (com zevanory.api.br/pedir-reembolso) fica só para os pedidos anteriores pagos pelo Mercado Pago (worker/refund-flow.mjs); compras novas usam refund_channels_hotmart.",
     "rule_7d": "7 dias corridos contados da assinatura do contrato ou do recebimento do produto ou serviço (a data mais recente, se diferentes)",
     "short": "arrependimento em 7 dias corridos",
     "rule_line": "Arrependimento: {rule_7d}, com devolução integral.",
-    "delivery": "O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento. O link individual permite até cinco downloads; se expirar, solicite outro sem custo em zevanory.api.br/entrega/reenviar ou pelo suporte.",
-    "resend_short": "Link expirado? Um novo link é fornecido sem custo em zevanory.api.br/entrega/reenviar.",
+    "delivery": "Após a aprovação do pagamento pela Hotmart, você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart (Minhas compras): PDFs, planilhas XLSX, arquivos editáveis e pacote ZIP, conforme a oferta. Se houver erro de acesso ou arquivo indisponível, o suporte resolve sem custo: suporte@zevanory.api.br.",
+    "resend_short": "Erro de acesso ou arquivo indisponível? O suporte resolve sem custo: suporte@zevanory.api.br.",
     "confirmation": "Após a contratação, a confirmação e uma cópia conservável dos termos chegam imediatamente.",
-    "refund": "Direito de arrependimento: em contratação online, você pode desistir sem justificativa e sem ônus em {rule_7d}. Peça pela mesma ferramenta usada na contratação ou em {refund_channels}. O recebimento do pedido é confirmado imediatamente. A ZEVANORY comunica imediatamente a plataforma responsável pela cobrança, conforme a compra, para impedir o lançamento ou iniciar o estorno, com devolução integral dos valores pagos; a visualização do crédito em cartão segue o prazo do emissor.",
+    "refund": "Direito de arrependimento: em contratação online, você pode desistir sem justificativa e sem ônus em {rule_7d}. Peça pela mesma ferramenta usada na contratação, ou seja, {refund_channels_hotmart}. {hotmart_guarantee} O recebimento do pedido é confirmado imediatamente. A ZEVANORY comunica imediatamente a plataforma responsável pela cobrança, conforme a compra, para impedir o lançamento ou iniciar o estorno, com devolução integral dos valores pagos; a visualização do crédito em cartão segue o prazo do emissor.",
     "subscription_delivery": "Conteúdo Pronto (assinatura): após a confirmação do pagamento, você recebe por e-mail um link para um formulário curto e, depois, o pacote do mês em link privado. Sem fidelidade: a renovação pode ser cancelada a qualquer momento.",
-    "subscription_refund": "Direito de arrependimento: você pode desistir sem justificativa e sem ônus em {rule_7d}, com devolução integral dos valores pagos. Peça pela mesma ferramenta usada na contratação ou em {refund_channels}. O recebimento do pedido é confirmado imediatamente; a visualização do crédito em cartão segue o prazo do emissor.",
+    "subscription_refund": "Direito de arrependimento: você pode desistir sem justificativa e sem ônus em {rule_7d}, com devolução integral dos valores pagos. Peça pela mesma ferramenta usada na contratação, ou seja, {refund_channels_hotmart}. O recebimento do pedido é confirmado imediatamente; a visualização do crédito em cartão segue o prazo do emissor.",
     "refund_channels": "zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br",
+    "refund_channels_hotmart": "pela Hotmart (refund.hotmart.com ou Minhas compras) ou pelo e-mail suporte@zevanory.api.br",
     "sla": "Demandas de consumo têm confirmação imediata e resposta conclusiva em até 5 dias.",
     "dias_permitidos": {
       "arrependimento": 7,
@@ -104,15 +108,16 @@
     "fragmentos_sol": [
       "7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço",
       "se as datas forem diferentes, a ZEVANORY adotará a mais recente",
-      "Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento",
-      "um novo link poderá ser solicitado sem custo",
+      "você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart (Minhas compras)",
+      "o suporte resolve sem custo",
       "receberá imediatamente a confirmação e uma cópia conservável destes termos",
       "O recebimento do pedido será confirmado imediatamente",
       "comunicará imediatamente a Hotmart para impedir o lançamento ou iniciar o estorno",
       "a visualização do crédito em cartão seguirá o prazo do emissor",
       "resposta conclusiva em até 5 dias",
-      "zevanory.api.br/pedir-reembolso ou suporte@zevanory.api.br",
-      "pela mesma ferramenta usada na contratação"
+      "pela Hotmart (refund.hotmart.com ou Minhas compras) ou pelo e-mail suporte@zevanory.api.br",
+      "pela mesma ferramenta usada na contratação",
+      "A garantia destas ofertas na Hotmart é de 7 dias"
     ]
   },
   "resumo_oferta": {
@@ -175,7 +180,7 @@
     "produto_digital": {
       "preco_total": "R$ {price},00, pagamento único. É o valor total, sem taxas adicionais nem frete.",
       "pagamento": "Pix à vista ou cartão, pela Hotmart. A compra só é confirmada após a aprovação do pagamento.",
-      "entrega": "O acesso online e as planilhas são imediatos; PDFs e ZIP por e-mail {delivery_72h}; novo link sem custo se expirar.",
+      "entrega": "Acesso imediato e integral para download na sua área de compras da Hotmart após a aprovação do pagamento.",
       "restricoes": "Produto digital (arquivos para download). Licença pessoal e intransferível para uso no seu trabalho ou negócio; não é permitido revender, redistribuir ou publicar os arquivos."
     },
     "assinatura": {
@@ -190,9 +195,9 @@
       "open": "Disponível para compra."
     },
     "hotmart": {
-      "nota": "Variante /hotmart/<produto> (só com vendas abertas): troca pagamento e entrega do resumo.",
+      "nota": "Variante /hotmart/<produto> (só com vendas abertas): troca pagamento e entrega do resumo. DEC-06: a entrega já é a mesma da página base (acesso imediato e integral para download na área de compras da Hotmart).",
       "pagamento": "Pix à vista ou cartão, pela Hotmart. A compra só é confirmada após a aprovação do pagamento.",
-      "entrega": "O acesso online pelo Hotmart Club e as planilhas ficam disponíveis após a aprovação. PDFs e ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento; novo link sem custo se expirar."
+      "entrega": "Acesso imediato e integral para download na sua área de compras da Hotmart após a aprovação do pagamento."
     }
   },
   "conteudo_pronto": {
@@ -312,6 +317,6 @@
     "utc_offset_minutes": -180,
     "fragmento_sol": "se as datas forem diferentes, a ZEVANORY adotará a mais recente"
   },
-  "nota_nc016_dec01_v3": "MINUTA jurídica para guias e kits, pendente de revisão do proprietário/advogado no #946. NENHUMA aprovação ou permissão de deploy decorre deste texto. Não confundir 192h de liberação com o prazo legal do CDC.",
+  "nota_nc016_dec01_v3": "MINUTA jurídica para guias e kits, pendente de revisão do proprietário/advogado no #946. NENHUMA aprovação ou permissão de deploy decorre deste texto. DEC-06 substitui a liberação diferida (192h) pela entrega imediata e integral para download na área de compras da Hotmart; o prazo legal do CDC não muda.",
   "nota_nc017_atendimento": "Minuta DEC-05: atendimento genérico não deve presumir checkout próprio Mercado Pago; reembolso é processado pela plataforma real do pedido. Revisão jurídica P23/#946 pendente."
 }
