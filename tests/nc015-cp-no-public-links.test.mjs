@@ -5,13 +5,15 @@
 // never a link.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureDailyBlog, renderBlogArticle } from "../worker/multichannel-autonomy.mjs";
+import { readTextNormalized } from "./helpers/text.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const read = (rel) => readFileSync(join(root, rel), "utf8");
+// Relative paths are always posix ("dir/file"), so the allow-lists also hold on a Windows checkout.
+const read = (rel) => readTextNormalized(join(root, rel));
 const TOMBSTONES = new Set(["conteudo-pronto/index.html", "sales-public/conteudo-pronto.html",
   "pages-mirror/conteudo-pronto.html", "pages-mirror/sales-public__conteudo-pronto.html"]);
 // Plain-text legal mentions allowed (no link): see header.
@@ -30,7 +32,7 @@ export function cpProblems(rel, body) {
 function publicFiles() {
   const files = ["index.html", "sitemap.xml", "robots.txt", "sales-overlay/llms.txt", "sales-overlay/robots.txt", "sales-overlay/approved.json"];
   for (const d of readdirSync(root)) {
-    const p = join(d, "index.html");
+    const p = d + "/index.html";
     if (!d.startsWith(".") && existsSync(join(root, p)) && statSync(join(root, p)).isFile()) files.push(p);
   }
   for (const dir of ["sales-public", "pages-mirror"]) {
