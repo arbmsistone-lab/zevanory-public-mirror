@@ -52,13 +52,13 @@ CHECKOUT_HREF = re.compile(r'href=["\'][^"\']*(checkout|/comprar|mercadopago|str
 # Textos de promessa que o Release tem de servir (fonte: #927 e #898), por rota.
 MUST_CONTAIN = {
     "combo-ia-vendas": ["IA com método e vendas organizadas, em um só pacote."],
-    "conteudo-pronto": ["roteiros multicanal"],
-    "kit-afiliado": ["roteiros multicanal", "treinamentos completos, que podem ser usados de forma independente"],
-    "solucoes": ["roteiros multicanal", "e vendas, cada um no seu ritmo"],
+    "conteudo-pronto": ["Página indisponível"],
+    "kit-afiliado": ["treinamentos completos, que podem ser usados de forma independente"],
+    "solucoes": ["e vendas, cada um no seu ritmo"],
 }
 MUST_NOT_CONTAIN = {
     "combo-ia-vendas": ["Conecte IA ao processo comercial", "Execução comercial com IA"],
-    "conteudo-pronto": ["mensagens de venda para WhatsApp"],
+    "conteudo-pronto": ["mensagens de venda para WhatsApp", "roteiros multicanal", "pay.hotmart.com"],
 }
 
 
@@ -159,7 +159,8 @@ def main():
         exp = fields(src.read_text("utf-8"))
         c, html, h, final = fetch(f"{SALES}/{route}")
         got = fields(html)
-        run.check(f"{route}:status 200", c == 200, status=c)
+        expected_status = 404 if route == "conteudo-pronto" else 200
+        run.check(f"{route}:status {expected_status}", c == expected_status, status=c)
         for k in ("title", "h1", "canonical", "robots"):
             run.check(f"{route}:{k}", got[k] == exp[k], live=got[k], expected=exp[k])
         security_headers(run, route, h)
@@ -202,8 +203,13 @@ def main():
         run.check(f"pages/{route}:status 200", c == 200, status=c)
         for k in ("title", "canonical", "robots"):
             run.check(f"pages/{route}:{k}", got[k] == exp[k], live=got[k], expected=exp[k])
-        run.check(f"pages/{route}:noindex+refresh->vendas", "noindex" in (got["robots"] or "") and
-                  f'url={SALES}/{route}"' in html)
+        if route == "conteudo-pronto":
+            run.check("pages/conteudo-pronto:retired noindex without redirect",
+                      "noindex" in (got["robots"] or "") and "Página indisponível" in html and
+                      "http-equiv=\"refresh\"" not in html.lower() and not CHECKOUT_HREF.search(html))
+        else:
+            run.check(f"pages/{route}:noindex+refresh->vendas", "noindex" in (got["robots"] or "") and
+                      f'url={SALES}/{route}"' in html)
 
     # 7) NO-GO pós-publicação (Sol AVAL 271, R271-03). Só GET, sem seguir redirecionamentos: nunca chega a um provedor
     #    de pagamento e nunca cria sessão (o POST de /comprar/<SKU> é o único que cria; não é feito aqui).
@@ -235,7 +241,7 @@ def main():
     pay_link = re.compile(r'href=["\'][^"\']*(pay\.hotmart\.com|mercadopago\.com|checkout\.stripe|/comprar/)', re.I)
     for route in ("conteudo-pronto", "solucoes", "combo-ia-vendas", "vendas-na-pratica", "negocio-completo"):
         c, html, _, _ = fetch(f"{SALES}/{route}")
-        run.check(f"nogo:P12/P15 {route} has no payment link", c == 200 and not pay_link.search(html), status=c)
+        run.check(f"nogo:P12/P15 {route} has no payment link", c == (404 if route == "conteudo-pronto" else 200) and not pay_link.search(html), status=c)
     # 7f) P09_NURTURE_SEND desligado: a variável vive no Worker e não é exposta publicamente. Evidência disponível:
     #     árvore publicada (nenhum workflow define a variável; interruptor da sequência com default "off").
     #     Conferência direta: nomes de variáveis pelo proprietário (passo "R9 credential identity readback" do deploy).

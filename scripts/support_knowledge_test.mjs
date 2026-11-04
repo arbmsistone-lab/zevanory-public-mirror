@@ -6,7 +6,7 @@ import { CUSTOMER_RULE_7D, hasCheckoutCta, bannedPolicyHits } from "../worker/po
 
 const failures = [];
 let correct = 0;
-const expectPrices = { "ia-na-pratica": "R$ 197,00", "vendas-na-pratica": "R$ 197,00", "lucro-e-caixa": "R$ 247,00", "combo-ia-vendas": "R$ 297,00", "negocio-completo": "R$ 397,00", "conteudo-pronto": "R$ 197,00" };
+const expectPrices = { "ia-na-pratica": "R$ 97,00", "vendas-na-pratica": "R$ 97,00", "lucro-e-caixa": "R$ 147,00", "combo-ia-vendas": "R$ 157,00", "negocio-completo": "R$ 247,00", "conteudo-pronto": "R$ 197,00" };
 
 // Prices must match the approved, published sales pages.
 const ov = JSON.parse(fs.readFileSync(new URL("../sales-overlay/approved.json", import.meta.url), "utf8"));
@@ -20,7 +20,7 @@ for (const slug of Object.keys(SUPPORT_PRODUCTS)) {
   const name = SUPPORT_PRODUCTS[slug].name;
   cases.push([slug, `Quanto custa o ${name}?`, "price", (a) => a.includes(expectPrices[slug])]);
   cases.push([slug, "Posso pedir reembolso se não gostar?", "refund", (a) => a.includes(CUSTOMER_RULE_7D) && /devolv|devolu/.test(a) && /resposta conclusiva em até 5 dias/.test(a)]);
-  cases.push([slug, "Como recebo o acesso depois de pagar?", "delivery", (a) => /e-mail/.test(a) && /link (pessoal|privado)/.test(a) && a.includes(CUSTOMER_RULE_7D)]);
+  cases.push([slug, "Como recebo o acesso depois de pagar?", "delivery", (a) => (slug === "conteudo-pronto" ? (/e-mail/.test(a) && /link (pessoal|privado)/.test(a)) : (a.includes("acesso imediato ao conteúdo integral") && a.includes("Hotmart (Minhas compras)") && !/link (pessoal|privado)|192 horas de espera/i.test(a))) && a.includes(CUSTOMER_RULE_7D)]);
   cases.push([slug, "O que vem no conteúdo?", "content", (a) => a.startsWith(name + ":")]);
 }
 for (const [slug, q, intent, ok] of cases) {
@@ -32,7 +32,7 @@ for (const [slug, q, intent, ok] of cases) {
 
 // Product resolved from free text, as a WhatsApp customer would write it.
 const free = answerSupportQuestion({ question: "qual o valor do combo?" });
-if (!(free.product === "combo-ia-vendas" && free.answer.includes("R$ 297,00"))) failures.push("free-text product resolution");
+if (!(free.product === "combo-ia-vendas" && free.answer.includes("R$ 157,00"))) failures.push("free-text product resolution");
 // Unknown questions must hand off, never invent.
 const unknown = answerSupportQuestion({ product: "ia-na-pratica", question: "vocês fazem site para restaurante?" });
 if (unknown.answered || !unknown.handoff) failures.push("unknown question must hand off");
@@ -42,7 +42,7 @@ if (ambiguous.answered || !ambiguous.needs_product) failures.push("ambiguous pri
 // HTTP contract.
 const res = await handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge?product=lucro-e-caixa&q=pre%C3%A7o"));
 const body = await res.json();
-if (res.status !== 200 || !body.answer?.includes("R$ 247,00") || res.headers.get("cache-control") !== "no-store") failures.push("http contract");
+if (res.status !== 200 || !body.answer?.includes("R$ 147,00") || res.headers.get("cache-control") !== "no-store") failures.push("http contract");
 const post = await handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge", { method: "POST" }));
 if (post.status !== 405) failures.push("POST must be 405");
 

@@ -13,7 +13,7 @@ const req = createRequire(join(process.env.QUALITY_MODULES || join(process.cwd()
 const { chromium } = req("playwright");
 export const ROUTES = [
   ["/solucoes", 200], ["/zevanory-sales", 200], ["/ia-na-pratica", 200], ["/vendas-na-pratica", 200], ["/combo-ia-vendas", 200],
-  ["/lucro-e-caixa", 200], ["/negocio-completo", 200], ["/conteudo-pronto", 200], ["/quem-criou", 200], ["/termos", 200],
+  ["/lucro-e-caixa", 200], ["/negocio-completo", 200], ["/conteudo-pronto", 404], ["/quem-criou", 200], ["/termos", 200],
   ["/pagina-inexistente", 404],
 ];
 const VIEWS = [
