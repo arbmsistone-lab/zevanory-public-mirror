@@ -4,6 +4,8 @@ import { ensureDailyBlog, publishTelegram, channelChecklist, resolveChannelCrede
 import { publishBluesky, blueskyReady, blueskyPostText, graphemeCount } from "./bluesky-publisher.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { creativeAutopublishPaused } from "./creative-autonomy.mjs";
+import { CLOSED_LABEL } from "./politica-unica.mjs";
+import { contentSalesOpen, salesLockViolations } from "./sales-lock-content.mjs";
 export const ACQUISITION_STATE_PREFIX="zpc:acquisition:daily:";
 export const ACQUISITION_CALENDAR_KEY="zpc:acquisition:calendar:v1";
 const DAY=86400000;
@@ -35,9 +37,14 @@ export function planCalendar(now=new Date(),days=30){
  const first=localDay(now),epoch=Date.parse(first+"T00:00:00Z");
  return Array.from({length:days},(_,i)=>calendarEntry(new Date(epoch+i*DAY).toISOString().slice(0,10)));
 }
-export function productLink(entry,channel){
+// Trava de vendas (fail-closed): só com salesOpen === true o link vai ao checkout /comprar/<SKU>; fechada
+// (padrão) vai à página do produto, a mesma convenção do blog e do Short (CLOSED_LABEL no texto).
+export const PRODUCT_PAGES=Object.freeze({"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"});
+export function productLink(entry,channel,{salesOpen=false}={}){
  if(!["blog","telegram","bluesky"].includes(channel))throw new Error("channel_not_enabled");
- const u=new URL("https://vendas.zevanory.api.br/comprar/"+entry.product.sku);
+ const page=PRODUCT_PAGES[entry?.product?.sku];
+ if(!page)throw new Error("product_page_unknown");
+ const u=new URL("https://vendas.zevanory.api.br/"+(salesOpen===true?"comprar/"+entry.product.sku:page));
  u.searchParams.set("utm_source",channel);u.searchParams.set("utm_medium","organic");u.searchParams.set("utm_campaign","conteudo_"+entry.day.replaceAll("-",""));
  return u.toString();
 }
@@ -48,12 +55,14 @@ const guidance=Object.freeze({
  "objeção":"Compare o trabalho manual com uma rotina assistida, sem presumir economia ou faturamento.",
  "comparação":"Avalie clareza, privacidade e possibilidade de desfazer cada automação antes de adotá-la."
 });
-export function generateNative(entry,channel){
+export function generateNative(entry,channel,{salesOpen=false}={}){
+ const open=salesOpen===true;
  const headline=entry.angle==="tutorial"?"Passo a passo":entry.angle==="comparação"?"O que avaliar":"Uma ideia prática";
  const hook=headline+" para "+entry.niche;
- const value=entry.product.name+": "+guidance[entry.angle]+" Use o guia para organizar a rotina.";
+ // Fechada: o aviso vem logo após o nome do produto, antes de qualquer corte de tamanho (Bluesky).
+ const value=entry.product.name+(open?"":" ("+CLOSED_LABEL+")")+": "+guidance[entry.angle]+" Use o guia para organizar a rotina.";
  const cta="Veja o guia digital";
- const link=productLink(entry,channel);
+ const link=productLink(entry,channel,{salesOpen:open});
  if(channel==="telegram")return {channel,hook,value,cta,link,text:hook+"\n\n"+value+"\n\n"+cta+": "+link+"\n#ZEVANORY #Negocios"};
  if(channel==="bluesky"){
   const generated=blueskyPostText({hook,value,cta,productUrl:link,day:entry.day});
@@ -67,13 +76,19 @@ export function textSimilarity(a,b){
  const grams=s=>{const t=tokens(s);return new Set(t.slice(0,-2).map((_,i)=>t.slice(i,i+3).join(" ")));};
  const x=grams(a),y=grams(b);return [...x].filter(k=>y.has(k)).length/(new Set([...x,...y]).size||1);
 }
-export function validateDraft({draft,entry,priorPosts=[],linkHttpStatus=200}={}){
- const reasons=[];
+export function validateDraft({draft,entry,priorPosts=[],linkHttpStatus=200,salesOpen=false}={}){
+ const reasons=[],open=salesOpen===true;
  const forbidden=/\b(?:lucro garantido|renda garantida|faturamento garantido|ganhe dinheiro|resultado garantido|depoimento real|cliente comprovou)\b/i;
  if(forbidden.test(draft?.text||""))reasons.push("claims");
  if(!draft?.text||!draft.text.includes(entry?.product?.name))reasons.push("product_identity");
- const link=productLink(entry,draft?.channel);
+ const link=productLink(entry,draft?.channel,{salesOpen:open});
  if(draft.link!==link||!draft.text.includes(link))reasons.push("utm_or_sku");
+ // Vendas fechadas (ou trava ilegível): sem preço, sem /comprar, sem Hotmart/checkout, sem chamada de compra,
+ // e o texto avisa que as vendas estão fechadas.
+ if(!open){
+  for(const v of salesLockViolations(String(draft?.text||"")+"\n"+String(draft?.link||"")))reasons.push("sales_closed_"+v);
+  if(!String(draft?.text||"").includes(CLOSED_LABEL))reasons.push("sales_closed_label_missing");
+ }
  if(linkHttpStatus!==200)reasons.push("product_http_not_200");
  if(draft.channel==="bluesky"&&graphemeCount(draft.text)>300)reasons.push("channel_graphemes");
  if(draft.channel==="telegram"&&draft.text.length>4096)reasons.push("channel_length");
@@ -96,7 +111,8 @@ export async function verifyProductLink(url){
  let u;try{u=new URL(url);}catch{return 0;}
  if(u.protocol!=="https:"||u.hostname!=="vendas.zevanory.api.br"||u.username||u.password||u.port)return 0;
  const m=/^\/comprar\/(ZEV-[A-Z0-9-]+)$/.exec(u.pathname);
- return m&&CATALOG_SKUS.includes(m[1])?200:0;
+ if(m)return CATALOG_SKUS.includes(m[1])?200:0;
+ return Object.values(PRODUCT_PAGES).includes(u.pathname.slice(1))?200:0;
 }
 const MAX_DAILY_ATTEMPTS=3;
 // Definitive provider rejections happen before anything is published; they may be
@@ -104,7 +120,7 @@ const MAX_DAILY_ATTEMPTS=3;
 // Telegram, which has no idempotency key. Bluesky reuses a deterministic record
 // key and adopts an existing record, so it can safely retry either way.
 const definitiveFailure=message=>/^(bluesky_http_4\d\d|bluesky_session_invalid|bluesky_receipt_mismatch|telegram_http_4\d\d|provider_http_4\d\d|bluesky_product_link_invalid|bluesky_link_too_long|bluesky_grapheme_limit|telegram_credentials_missing|brand_[a-z0-9_]+)$/.test(String(message||""))&&!/_(408|429)$/.test(String(message||""));
-async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[]}){
+async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesOpen=false}){
  const key=ACQUISITION_STATE_PREFIX+entry.day+":"+channel;
  const prior=await safeJson(kv,key,null);
  const attempts=Number(prior?.attempts||(prior?1:0));
@@ -123,9 +139,10 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[]}){
    return adopted;
   }
  }
- const draft=generateNative(entry,channel);
+ const open=salesOpen===true;
+ const draft=generateNative(entry,channel,{salesOpen:open});
  const linkHttpStatus=await verifyProductLink(draft.link);
- const gate=validateDraft({draft,entry,priorPosts:past,linkHttpStatus});
+ const gate=validateDraft({draft,entry,priorPosts:past,linkHttpStatus,salesOpen:open});
  if(!gate.ok){return {channel,day:entry.day,status:"erro",code:gate.reasons.join(","),gate};}
  const reservation={channel,day:entry.day,status:"pending",startedAt:now.toISOString(),theme_id:entry.theme_id,attempts:attempts+1};
  await kv.put(key,JSON.stringify(reservation),{expirationTtl:45*86400});
@@ -156,6 +173,8 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  const day=localContentDay(now),entry=calendarEntry(day),hour=localHour(now),channels=channelChecklist(env);
  const active=channel=>channels.find(x=>x.id===channel)?.configured===true;
  const paused=await creativeAutopublishPaused(env);
+ // Trava canônica de vendas (KV sales:open:v1 via readSalesSwitch), lida uma vez por execução; erro = fechada.
+ const salesOpen=await contentSalesOpen(env);
  const outcomes=[];
  if(hour>=PEAK_HOURS.blog){
   try{
@@ -173,7 +192,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
   }
   try{
    const archive=await safeJson(kv,"zpc:acquisition:history:"+channel,[]);
-   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:Array.isArray(archive)?archive:[]});
+   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:Array.isArray(archive)?archive:[],salesOpen});
    outcomes.push(result);
    if(result.status==="publicado"&&!archive.some(p=>p.day===day)){
     await kv.put("zpc:acquisition:history:"+channel,JSON.stringify([...archive,{day,text:result.text,product:result.product}].slice(-30)),{expirationTtl:45*86400});

@@ -11,7 +11,9 @@ test("30-day calendar rotates five real SKUs, five niches, five angles",()=>{
 });
 test("each generated native message has right purchase SKU and channel UTM",()=>{
  const c=calendarEntry("2026-10-10");
- for(const ch of ["blog","telegram","bluesky"]){const d=generateNative(c,ch);assert.match(d.link,new RegExp(c.product.sku));assert.match(d.link,new RegExp("utm_source="+ch));assert.ok(d.text.includes(d.link));}
+ // Vendas abertas: checkout /comprar/<SKU>. Fechadas (padrão): página do produto, sem /comprar.
+ for(const ch of ["blog","telegram","bluesky"]){const d=generateNative(c,ch,{salesOpen:true});assert.match(d.link,new RegExp("/comprar/"+c.product.sku));assert.match(d.link,new RegExp("utm_source="+ch));assert.ok(d.text.includes(d.link));}
+ for(const ch of ["blog","telegram","bluesky"]){const d=generateNative(c,ch);assert.match(d.link,/^https:\/\/vendas\.zevanory\.api\.br\/ia-na-pratica\?/);assert.doesNotMatch(d.link,/\/comprar/);assert.match(d.link,new RegExp("utm_source="+ch));assert.ok(d.text.includes(d.link));}
  assert.notEqual(generateNative(c,"telegram").text,generateNative(c,"bluesky").text);
 });
 test("gate rejects false claims, wrong link, lack of HTTP 200 and repeated content",()=>{
