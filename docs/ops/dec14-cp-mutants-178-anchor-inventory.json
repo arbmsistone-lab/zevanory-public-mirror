@@ -1,0 +1,1565 @@
+{
+  "decision": "DEC-14(a)",
+  "at": "2026-11-04",
+  "base_sha": "da9f55c99c7b122a0ad7317e4861e3071ba1adad",
+  "evidence_job_id": 126829377852,
+  "total": 178,
+  "present": 127,
+  "missing": 51,
+  "declared_retire_target": 46,
+  "retirement_action": "NOT_PERFORMED_CENSUS_CONFLICT",
+  "entries": [
+    {
+      "id": "M01",
+      "description": "oferta volta a WhatsApp (JSON)",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M02",
+      "description": "hero promete WhatsApp",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M02",
+        "name": "M02 hero promete WhatsApp",
+        "file": "conteudo-pronto/index.html",
+        "hits": 0,
+        "assertion": "conteudo-pronto/index.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M03",
+      "description": "item da página volta a WhatsApp",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M03",
+        "name": "M03 item da página volta a WhatsApp",
+        "file": "conteudo-pronto/index.html",
+        "hits": 0,
+        "assertion": "conteudo-pronto/index.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M04",
+      "description": "JSON-LD diverge do texto canônico",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M04",
+        "name": "M04 JSON-LD diverge do texto canônico",
+        "file": "conteudo-pronto/index.html",
+        "hits": 0,
+        "assertion": "JSON-LD = texto canônico"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M05",
+      "description": "data-content-schema removido da página",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M05",
+        "name": "M05 data-content-schema removido da página",
+        "file": "conteudo-pronto/index.html",
+        "hits": 0,
+        "assertion": "página e gerador na mesma versão de schema"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M06",
+      "description": "versão sobe só no JSON",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M07",
+      "description": "reativação sem consentimento, sem subir versão",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M08",
+      "description": "objetivo renomeado no contrato",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M09",
+      "description": "prompt volta a WhatsApp",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M10",
+      "description": "prompt sem as regras dos objetivos",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M11",
+      "description": "validador ignora a ordem dos objetivos",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M12",
+      "description": "validador de roteiros ignora canal banido",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M13",
+      "description": "validador aceita roteiro sem versão de e-mail",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M14",
+      "description": "pacote com versão de schema fixa 1",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M15",
+      "description": "calendário com 3 roteiros",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M16",
+      "description": "calendário rotula WhatsApp",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M17",
+      "description": "título do pacote volta a MENSAGENS PARA WHATSAPP",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M18",
+      "description": "pacote em texto sem versão de e-mail",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M19",
+      "description": "HTML entregue sem versão de e-mail",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M20",
+      "description": "boas-vindas voltam a WhatsApp",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M21",
+      "description": "formulário volta a WhatsApp (escapado na fonte)",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M22",
+      "description": "suporte volta a WhatsApp",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M23",
+      "description": "catálogo-fonte volta a WhatsApp",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M23",
+        "name": "M23 catálogo-fonte volta a WhatsApp",
+        "file": "solucoes/index.html",
+        "hits": 0,
+        "assertion": "[catalogo]"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M24",
+      "description": "página gerada desatualizada",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M24",
+        "name": "M24 página gerada desatualizada",
+        "file": "sales-public/conteudo-pronto.html",
+        "hits": 0,
+        "assertion": "gerado: conteudo-pronto"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M25",
+      "description": "kit de afiliado volta a mensagens",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M25",
+        "name": "M25 kit de afiliado volta a mensagens",
+        "file": "kit-afiliado/index.html",
+        "hits": 0,
+        "assertion": "kit-afiliado/index.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M26",
+      "description": "llms.txt gerado volta a mensagens",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M26",
+        "name": "M26 llms.txt gerado volta a mensagens",
+        "file": "sales-public/llms.txt",
+        "hits": 0,
+        "assertion": "sales-public/llms.txt"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M27",
+      "description": "gerador volta a emitir o campo mensagens",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M28",
+      "description": "objetivo exibido vem do modelo",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M29",
+      "description": "legado v1 exibe o tipo antigo do calendário",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M30",
+      "description": "aviso sem a regra de consentimento",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M31",
+      "description": "guia de nicho (fonte) volta a mensagens",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M31",
+        "name": "M31 guia de nicho (fonte) volta a mensagens",
+        "file": "ia-para-pizzaria/index.html",
+        "hits": 0,
+        "assertion": "roteiros multicanal do contrato — ia-para-pizzaria/index.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M32",
+      "description": "guia de nicho (gerado) volta a mensagens",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M32",
+        "name": "M32 guia de nicho (gerado) volta a mensagens",
+        "file": "sales-public/ia-para-barbearia.html",
+        "hits": 0,
+        "assertion": "roteiros multicanal do contrato — sales-public/ia-para-barbearia.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M33",
+      "description": "guia gerado sai da varredura",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M33",
+        "name": "M33 guia gerado sai da varredura",
+        "file": "sales-public/ia-para-padaria.html",
+        "hits": 0,
+        "assertion": "entrou na varredura: sales-public/ia-para-padaria.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M34",
+      "description": "página nova descreve com WhatsApp",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M34",
+        "name": "M34 página nova descreve com WhatsApp",
+        "file": "afiliados/index.html",
+        "hits": 0,
+        "assertion": "sem mensagens/WhatsApp — afiliados/index.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M35",
+      "description": "catálogo gerado desatualizado",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M35",
+        "name": "M35 catálogo gerado desatualizado",
+        "file": "sales-public/solucoes.html",
+        "hits": 0,
+        "assertion": "gerado: solucoes"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M36",
+      "description": "leitura não bloqueia pacote contaminado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M37",
+      "description": "detector ignora o calendário",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M38",
+      "description": "detector ignora hashtags",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M39",
+      "description": "detector ignora o objetivo das mensagens",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M40",
+      "description": "número mascarado não detectado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M41",
+      "description": "número banido em dígitos (completo ou formatado) não detectado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M42",
+      "description": "wa.me fora dos termos proibidos",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M43",
+      "description": "regeneração sobrescreve o pacote antigo",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M44",
+      "description": "regeneração não é idempotente",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M45",
+      "description": "assinante inativo recebe o botão",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M46",
+      "description": "pacote em texto não bloqueia",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M47",
+      "description": "gerador v2 aceita posts contaminados",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M48",
+      "description": "bloqueio sem oferta de regeneração",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M49",
+      "description": "regeneração não aponta para a versão nova",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M50",
+      "description": "máscara sem âncora no DDD (falso positivo)",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M51",
+      "description": "regeneração ignora o retorno do envio",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M52",
+      "description": "regeneração promove com 2xx (antes da entrega)",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M53",
+      "description": "envio sem Idempotency-Key",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M54",
+      "description": "Idempotency-Key nova a cada tentativa",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M55",
+      "description": "429/5xx/tempo esgotado tratados como permanentes",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M56",
+      "description": "4xx permanente tratado como temporário",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M57",
+      "description": "dead sem alerta ao proprietário",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M58",
+      "description": "dead promovido por delivered tardio",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M59",
+      "description": "delivered duplicado reprocessa",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M60",
+      "description": "reconciliação promove sem evento delivered",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M61",
+      "description": "reconciliação fora do cron",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M61",
+        "name": "M61 reconciliação fora do cron",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[regen-cron]"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M62",
+      "description": "outro email_id confirma a entrega",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M63",
+      "description": "candidato sem sufixo colide com o v2 bloqueado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M64",
+      "description": "um candidato novo por tentativa",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M65",
+      "description": "janela de 23 h ignorada",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M66",
+      "description": "accepted sem prazo de confirmação",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M67",
+      "description": "bounced não vira dead",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M68",
+      "description": "reabrir dead sem operação registrada",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M69",
+      "description": "falha de persistência respondida como pendência",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M70",
+      "description": "envia sem outbox durável",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M71",
+      "description": "página afirma entrega com 2xx",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M80",
+      "description": "accepted responde 200 (entrega não confirmada)",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M72",
+      "description": "pendência responde 503 em vez de 202",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M73",
+      "description": "queda pós-promoção vira superseded",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M74",
+      "description": "candidato regravado (não imutável)",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M75",
+      "description": "detector v2 ignora a versão curta",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M76",
+      "description": "detector v2 ignora o assunto do e-mail",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M77",
+      "description": "detector v2 ignora o corpo do e-mail",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M78",
+      "description": "409 concorrente tratado como permanente (corpo do erro ignorado)",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M79",
+      "description": "POST não converge delivered interrompido",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M81",
+      "description": "período da campanha sem limite",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M82",
+      "description": "campo da campanha deixa de ser obrigatório",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M83",
+      "description": "campanha aceita promessa de resultado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M84",
+      "description": "post sem a oferta aceito",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M85",
+      "description": "post sem fase aceito",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M86",
+      "description": "e-mail sem a condição comercial aceito",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M87",
+      "description": "fases da campanha não precisam ser cobertas",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M88",
+      "description": "calendário sai do período",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M89",
+      "description": "entrega gera com a campanha do mês anterior",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M89",
+        "name": "M89 entrega gera com a campanha do mês anterior",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-renovacao] entrega recusa sem campanha"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M90",
+      "description": "renovação não pede a campanha do mês",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M91",
+      "description": "protocolo do recibo fora do formato",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M91",
+        "name": "M91 protocolo do recibo fora do formato",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-entrega] protocolo"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M92",
+      "description": "evento bounced confirma a entrega",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M92",
+        "name": "M92 evento bounced confirma a entrega",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-entrega] bounced"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M93",
+      "description": "recibo sem o id do e-mail",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M93",
+        "name": "M93 recibo sem o id do e-mail",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-entrega] id do e-mail enviado"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M94",
+      "description": "serviço deixa de ser campanha no contrato",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M95",
+      "description": "descrição Hotmart sem a campanha",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M96",
+      "description": "formulário reaproveita a campanha do mês anterior",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M96",
+        "name": "M96 formulário reaproveita a campanha do mês anterior",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-renovacao] campanha do mês anterior não é reaproveitada"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M97",
+      "description": "chat deixa passar qualquer promoção",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M98",
+      "description": "atendimento deixa passar qualquer promoção",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M99",
+      "description": "confirmação grava a cópia antiga do registro",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M99",
+        "name": "M99 confirmação grava a cópia antiga do registro",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-corrida] cancelamento preservado"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M100",
+      "description": "sem lembretes do formulário",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M100",
+        "name": "M100 sem lembretes do formulário",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-lembretes] um lembrete em cada dia, sem repetir"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M101",
+      "description": "lembrete sem alerta ao proprietário",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M101",
+        "name": "M101 lembrete sem alerta ao proprietário",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-lembretes] alerta ao proprietário nos dias 7 e 14"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M102",
+      "description": "bounce fora da fila de falhas",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M102",
+        "name": "M102 bounce fora da fila de falhas",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-bounce] falha visível no status"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M103",
+      "description": "âncora por substring",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M104",
+      "description": "campanha aceita promessa de resultado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M105",
+      "description": "condição com promessa exigida no e-mail",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M106",
+      "description": "data inexistente aceita",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M107",
+      "description": "regeneração com a campanha de outro mês",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M108",
+      "description": "reenvio de bounce reaproveita o token",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M109",
+      "description": "regra do mês fora do contrato",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M110",
+      "description": "Termos sem a regra",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M110",
+        "name": "M110 Termos sem a regra",
+        "file": "termos/index.html",
+        "hits": 0,
+        "assertion": "[camp-regra] Termos com destaque (CDC art. 54 §4): termos/index.html"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M111",
+      "description": "portão volta a recusar frase promocional comum",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M112",
+      "description": "portão aceita dinheiro devolvido",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M113",
+      "description": "prompt sem a lista de promessas proibidas",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M114",
+      "description": "sem chamada corretiva",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M115",
+      "description": "palavra genérica ancora",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M116",
+      "description": "operador troca e-mail sem validar",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M117",
+      "description": "alerta de novo assinante na renovação sem formulário",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M117",
+        "name": "M117 alerta de novo assinante na renovação sem formulário",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-cancelamento] alerta certo na renovação sem formulário"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M118",
+      "description": "lembrete que falha sem alerta",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M118",
+        "name": "M118 lembrete que falha sem alerta",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-cancelamento] falha de lembrete alertada uma vez"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M119",
+      "description": "formulário grava campanha em assinatura cancelada",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M119",
+        "name": "M119 formulário grava campanha em assinatura cancelada",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-cancelamento] cancelamento durante o formulário vence"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M120",
+      "description": "lembretes não param no cancelamento",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M120",
+        "name": "M120 lembretes não param no cancelamento",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-cancelamento] nenhum lembrete depois do cancelamento"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M121",
+      "description": "envio do formulário não encerra os lembretes",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M121",
+        "name": "M121 envio do formulário não encerra os lembretes",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-cancelamento] envio do formulário encerra os lembretes"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M122",
+      "description": "reenvio de bounce de ciclo antigo",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M123",
+      "description": "posts sem o portão de promessa",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M124",
+      "description": "renovação perde o mês sem campanha",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M124",
+        "name": "M124 renovação perde o mês sem campanha",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-credito] mês 2 virou crédito"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M125",
+      "description": "geração ignora o crédito",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M125",
+        "name": "M125 geração ignora o crédito",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-credito] pacote do mês 2 gerado com o crédito"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M126",
+      "description": "sem limite de créditos",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M126",
+        "name": "M126 sem limite de créditos",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-credito] no máximo 2 créditos"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M127",
+      "description": "cancelamento sem reembolso",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M127",
+        "name": "M127 cancelamento sem reembolso",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-reembolso] cancelamento reembolsa todo mês pago sem pacote"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M128",
+      "description": "pedido de reembolso sem alerta",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M129",
+      "description": "reembolso não tira o mês dos pendentes",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M130",
+      "description": "status sem os créditos",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M131",
+      "description": "estorno de um mês sempre encerra a assinatura",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M131",
+        "name": "M131 estorno de um mês sempre encerra a assinatura",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-estorno] estorno do mês pedido mantém a assinatura ativa"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M132",
+      "description": "estorno confirmado não tira o mês",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M133",
+      "description": "estorno a confirmar sem alerta",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M133",
+        "name": "M133 estorno a confirmar sem alerta",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-estorno] sem status: proprietário confirma"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M134",
+      "description": "reembolso atrasado sem alerta",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M135",
+      "description": "pedido parado não vira overdue",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M136",
+      "description": "processado sem pedido aberto",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M137",
+      "description": "estorno não chega à lista do proprietário",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M137",
+        "name": "M137 estorno não chega à lista do proprietário",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-estorno] processado na lista do proprietário"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M138",
+      "description": "mesma transação sob outro evento dá crédito em dobro",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M138",
+        "name": "M138 mesma transação sob outro evento dá crédito em dobro",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-estorno] sem crédito em dobro pela mesma transação"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M139",
+      "description": "transação sem ciclo (estorno não acha o mês)",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M139",
+        "name": "M139 transação sem ciclo (estorno não acha o mês)",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-estorno] pedido do mês vira processado pelo webhook"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M140",
+      "description": "status de encerramento ignorado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M141",
+      "description": "/reembolso sem o prazo da regra",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M142",
+      "description": "estorno volta a adivinhar o mês pela recorrência",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M142",
+        "name": "M142 estorno volta a adivinhar o mês pela recorrência",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-pago] alerta de cobrança não concluída"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M143",
+      "description": "cobrança recusada sem o alerta certo",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M143",
+        "name": "M143 cobrança recusada sem o alerta certo",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-pago] alerta de cobrança não concluída"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M144",
+      "description": "recorrência não inteira aceita",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M144",
+        "name": "M144 recorrência não inteira aceita",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-pago] recorrência não inteira descartada"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M145",
+      "description": "estorno parcial tratado como inteiro",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M145",
+        "name": "M145 estorno parcial tratado como inteiro",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-parcial] estorno parcial não tira o mês: resposta marca parcial"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M146",
+      "description": "estorno parcial sem alerta",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M146",
+        "name": "M146 estorno parcial sem alerta",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-parcial] proprietário avisado do parcial"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M147",
+      "description": "valor pago não gravado na renovação",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M147",
+        "name": "M147 valor pago não gravado na renovação",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-parcial] estorno parcial não tira o mês: resposta marca parcial"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M148",
+      "description": "status desconhecido sem alerta",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M148",
+        "name": "M148 status desconhecido sem alerta",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-parcial] status desconhecido alerta: OVERDUE"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M149",
+      "description": "baixa do operador seguida de alerta inútil",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M149",
+        "name": "M149 baixa do operador seguida de alerta inútil",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-parcial] sem alerta de confirmação depois da baixa do operador"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M150",
+      "description": "pedido duplicado na lista do proprietário",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M151",
+      "description": "rota de pedido sem a releitura",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M152",
+      "description": "estorno sem pedido tira o mês na hora",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M152",
+        "name": "M152 estorno sem pedido tira o mês na hora",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-estorno] estorno sem pedido mantém o mês até a confirmação"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M153",
+      "description": "valor com vírgula ilegível",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M154",
+      "description": "confirmação sem motivo",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M155",
+      "description": "confirmação parcial tira o mês",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M156",
+      "description": "reverter não devolve o mês",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M157",
+      "description": "reverter sem motivo",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M158",
+      "description": "reversão fora da lista do proprietário",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M159",
+      "description": "cancelamento real descartado como duplicata",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M159",
+        "name": "M159 cancelamento real descartado como duplicata",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-confirmar] cancelamento real de transação aprovada não é duplicata"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M160",
+      "description": "cobrança recusada sem marca de não pago",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M160",
+        "name": "M160 cobrança recusada sem marca de não pago",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-confirmar] cancelamento real de transação aprovada não é duplicata"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M161",
+      "description": "alertas de cobrança recusada sem agrupamento",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M161",
+        "name": "M161 alertas de cobrança recusada sem agrupamento",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-confirmar] cobranças recusadas agrupadas por dia"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M162",
+      "description": "estorno a confirmar fora do status",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M163",
+      "description": "reverter mês entregue sem o motivo próprio",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M164",
+      "description": "reverter mês entregue responde 200",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M165",
+      "description": "entrega por crédito não conta como entregue",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M166",
+      "description": "reverter sem a releitura",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M167",
+      "description": "confirmar sem a releitura",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M168",
+      "description": "sem estorno a confirmar",
+      "source_anchor": "MISSING",
+      "missing_detail": {
+        "id": "M168",
+        "name": "M168 sem estorno a confirmar",
+        "file": "worker/content-service.mjs",
+        "hits": 0,
+        "assertion": "[camp-confirmar] alerta do estorno com valor"
+      },
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M169",
+      "description": "reverter sem operador",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M170",
+      "description": "reversão dupla aceita",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M171",
+      "description": "confirmação não consome o item",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M172",
+      "description": "período do texto trocado",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M173",
+      "description": "confirmação de mês entregue sem sinal",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M174",
+      "description": "hoje do formulário volta a UTC",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M175",
+      "description": "dia dos alertas volta a UTC",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M176",
+      "description": "data civil calculada em UTC",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M177",
+      "description": "data impossível sem guarda de Invalid Date",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    },
+    {
+      "id": "M178",
+      "description": "alerta anterior comparado pelo dia UTC",
+      "source_anchor": "PRESENT",
+      "missing_detail": null,
+      "retirement": "NOT_AUTHORIZED_UNTIL_COVERAGE_RECONCILIATION"
+    }
+  ]
+}
