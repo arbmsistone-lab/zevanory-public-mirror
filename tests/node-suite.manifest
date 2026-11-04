@@ -68,6 +68,7 @@ tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
+tests/nc015-cp-no-public-links.test.mjs 4
 tests/operational-activity.test.mjs 7
 tests/operator-token-transition.test.mjs 8
 tests/order22-isolated-financial-proof-evidence.test.mjs 1

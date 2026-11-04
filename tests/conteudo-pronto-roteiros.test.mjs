@@ -289,12 +289,12 @@ test("(e) toda página que descreve o Conteúdo Pronto (guias ia-para-*, kit, ll
   // Cobertura: cada guia de nicho (fonte e página gerada), kit, llms e catálogo entram na varredura.
   const niches = readdirSync(ROOT, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith("ia-para-")).map((e) => e.name);
   assert.ok(niches.length >= 40, "guias de nicho encontrados: " + niches.length);
-  const required = [
+  const required = [];
+  // DEC-04: com o CP oculto, catálogo, llms.txt, guias de nicho e kit do afiliado não o descrevem (nem o anunciam,
+  // nem linkam a lápide 404); ligado, voltam a ser exigidos.
+  const catalog = ["sales-overlay/llms.txt", "sales-public/llms.txt", "solucoes/index.html", "sales-public/solucoes.html", "sales-public/index.html",
     ...niches.flatMap((n) => [`${n}/index.html`, `sales-public/${n}.html`]),
-    "kit-afiliado/index.html", "sales-public/kit-afiliado.html",
-  ];
-  // DEC-04: com o CP oculto, catálogo e llms.txt não o descrevem (nem o anunciam); ligado, voltam a ser exigidos.
-  const catalog = ["sales-overlay/llms.txt", "sales-public/llms.txt", "solucoes/index.html", "sales-public/solucoes.html", "sales-public/index.html"];
+    "kit-afiliado/index.html", "sales-public/kit-afiliado.html"];
   if (cpSalesEnabled()) required.push(...catalog);
   else for (const rel of catalog) {
     assert.ok(!described.has(rel), "[dec04] CP oculto não é descrito em: " + rel);
