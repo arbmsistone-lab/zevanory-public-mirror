@@ -14,8 +14,11 @@ export function isCpPublicRoute(path){
   clean==="/conteudo-pronto/briefing"||clean==="/conteudo-pronto/pacote";
 }
 export function cpClosedResponse(){
- return new Response("Página indisponível",{status:404,headers:{
-   "content-type":"text/plain; charset=utf-8","cache-control":"no-store, no-cache, must-revalidate",
+ // DEC-04: this is an actual public HTML page response, not an unlabelled text/plain 404.
+ // The Worker intercepts this route before Static Assets; accessibility must live here.
+ const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Página indisponível | ZEVANORY</title></head><body><main><h1>Página indisponível</h1><p>Suporte: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>';
+ return new Response(html,{status:404,headers:{
+   "content-type":"text/html; charset=utf-8","cache-control":"no-store, no-cache, must-revalidate",
    "x-robots-tag":"noindex, nofollow","x-content-type-options":"nosniff"
  }});
 }
