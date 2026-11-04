@@ -1,6 +1,6 @@
 {
   "schema": "zevanory.b0.register.v1",
-  "generated_at": "2026-11-03T08:35:24.681Z",
+  "generated_at": "2026-11-04T08:01:01.314Z",
   "note": "primeira_janela_de_avaliacao_min é a data mais cedo em que 14 dias completos podem existir; é janela de avaliação, nunca data de certificação.",
   "rules": {
     "b0_days": 14,
@@ -79,10 +79,10 @@
       "reasons": [
         "fontes ausentes: search_console",
         "metas não aprovadas pelo proprietário: P03-http, P03-wcag, P03-impressoes",
-        "dias completos consecutivos 9/14"
+        "dias completos consecutivos 10/14"
       ],
       "start_date_utc": "2026-10-25",
-      "consecutive_complete_days": 9,
+      "consecutive_complete_days": 10,
       "primeira_janela_de_avaliacao_min": "2026-11-07",
       "evidence_by_label": {
         "SINTETICA": {
@@ -90,21 +90,21 @@
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
-          "days_recorded": 9,
-          "complete_days": 9,
-          "consecutive": 9,
+          "days_recorded": 10,
+          "complete_days": 10,
+          "consecutive": 10,
           "streak_start": "2026-10-25",
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         }
       }
     },
@@ -150,28 +150,28 @@
       ],
       "start_date_utc": "2026-10-25",
       "consecutive_complete_days": 0,
-      "primeira_janela_de_avaliacao_min": "2026-11-16",
+      "primeira_janela_de_avaliacao_min": "2026-11-17",
       "evidence_by_label": {
         "SINTETICA": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
-          "days_recorded": 9,
+          "days_recorded": 10,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         }
       }
     },
@@ -224,28 +224,28 @@
       ],
       "start_date_utc": "2026-10-25",
       "consecutive_complete_days": 0,
-      "primeira_janela_de_avaliacao_min": "2026-11-16",
+      "primeira_janela_de_avaliacao_min": "2026-11-17",
       "evidence_by_label": {
         "SINTETICA": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
-          "days_recorded": 9,
+          "days_recorded": 10,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         }
       }
     },
@@ -318,28 +318,28 @@
       ],
       "start_date_utc": "2026-10-25",
       "consecutive_complete_days": 0,
-      "primeira_janela_de_avaliacao_min": "2026-11-16",
+      "primeira_janela_de_avaliacao_min": "2026-11-17",
       "evidence_by_label": {
         "SINTETICA": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
-          "days_recorded": 9,
+          "days_recorded": 10,
           "complete_days": 1,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         }
       }
     },
@@ -405,32 +405,32 @@
       "reasons": [
         "fontes ausentes: independent_secondary_trigger",
         "metas não aprovadas pelo proprietário: P18-disponibilidade, P18-alerta",
-        "dias completos consecutivos 7/14"
+        "dias completos consecutivos 0/14"
       ],
       "start_date_utc": "2026-10-25",
-      "consecutive_complete_days": 7,
-      "primeira_janela_de_avaliacao_min": "2026-11-09",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-17",
       "evidence_by_label": {
         "SINTETICA": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
-          "days_recorded": 9,
+          "days_recorded": 10,
           "complete_days": 7,
-          "consecutive": 7,
-          "streak_start": "2026-10-27",
-          "last_day": "2026-11-02"
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-11-03"
         }
       }
     },
@@ -440,25 +440,25 @@
           "failure_mode": "contador diário (erro ao esgotar, zera 00:00 UTC)",
           "target": "<= 600 (60%) em cada um dos 7 dias, o que também cumpre o pior dia <= 700 (seção 11)",
           "target_status": "PROPOSTA",
-          "days_measured": 6,
+          "days_measured": 7,
           "window_days": 7,
           "worst_used": 517,
           "limit": 1000,
           "used_pct": 51.7,
           "margin_pct": 48.3,
-          "within_target": null
+          "within_target": true
         },
         "kv_reads": {
           "failure_mode": "contador diário",
           "target": "pior dia <= 50 mil (seção 11)",
           "target_status": "PROPOSTA",
-          "days_measured": 6,
+          "days_measured": 7,
           "window_days": 7,
-          "worst_used": 23396,
+          "worst_used": 23670,
           "limit": 100000,
-          "used_pct": 23.4,
-          "margin_pct": 76.6,
-          "within_target": null
+          "used_pct": 23.7,
+          "margin_pct": 76.3,
+          "within_target": true
         },
         "workers_requests": {
           "failure_mode": "contador diário (erro 1027 ao esgotar)",
@@ -466,10 +466,10 @@
           "target_status": "PROPOSTA",
           "days_measured": 7,
           "window_days": 7,
-          "worst_used": 52646,
+          "worst_used": 43121,
           "limit": 100000,
-          "used_pct": 52.6,
-          "margin_pct": 47.4,
+          "used_pct": 43.1,
+          "margin_pct": 56.9,
           "within_target": false
         },
         "workers_cpu_p99": {
@@ -628,28 +628,28 @@
       ],
       "start_date_utc": "2026-10-25",
       "consecutive_complete_days": 0,
-      "primeira_janela_de_avaliacao_min": "2026-11-16",
+      "primeira_janela_de_avaliacao_min": "2026-11-17",
       "evidence_by_label": {
         "SINTETICA": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
-          "days_recorded": 9,
+          "days_recorded": 10,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         }
       }
     },
@@ -740,28 +740,28 @@
       ],
       "start_date_utc": "2026-10-25",
       "consecutive_complete_days": 0,
-      "primeira_janela_de_avaliacao_min": "2026-11-16",
+      "primeira_janela_de_avaliacao_min": "2026-11-17",
       "evidence_by_label": {
         "SINTETICA": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
-          "days_recorded": 9,
+          "days_recorded": 10,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         }
       }
     },
@@ -813,32 +813,32 @@
       "state": "MEDICAO_ATIVA",
       "reasons": [
         "metas não aprovadas pelo proprietário: P22-ttl, P22-fail-safe",
-        "dias completos consecutivos 7/14"
+        "dias completos consecutivos 0/14"
       ],
       "start_date_utc": "2026-10-25",
-      "consecutive_complete_days": 7,
-      "primeira_janela_de_avaliacao_min": "2026-11-09",
+      "consecutive_complete_days": 0,
+      "primeira_janela_de_avaliacao_min": "2026-11-17",
       "evidence_by_label": {
         "SINTETICA": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "ENSAIO_EM_PRODUCAO": {
           "days_recorded": 0,
           "complete_days": 0,
           "consecutive": 0,
           "streak_start": null,
-          "last_day": "2026-11-02"
+          "last_day": "2026-11-03"
         },
         "OPERACIONAL": {
-          "days_recorded": 9,
+          "days_recorded": 10,
           "complete_days": 7,
-          "consecutive": 7,
-          "streak_start": "2026-10-27",
-          "last_day": "2026-11-02"
+          "consecutive": 0,
+          "streak_start": null,
+          "last_day": "2026-11-03"
         }
       }
     }
