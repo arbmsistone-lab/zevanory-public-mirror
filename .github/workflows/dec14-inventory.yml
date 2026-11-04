@@ -1,0 +1,21 @@
+name: DEC-14 legacy coverage inventory
+on:
+  pull_request:
+    paths:
+      - 'scripts/ci/dec14-inventory.py'
+      - '.github/workflows/dec14-inventory.yml'
+      - 'scripts/ci/mutants_conteudo_pronto.py'
+      - 'worker/content-service.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dec14-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -B scripts/ci/dec14-inventory.py
