@@ -16,7 +16,7 @@ export function isCpPublicRoute(path){
 export function cpClosedResponse(){
  // DEC-04: this is an actual public HTML page response, not an unlabelled text/plain 404.
  // The Worker intercepts this route before Static Assets; accessibility must live here.
- const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Página indisponível | ZEVANORY</title></head><body><main><h1>Página indisponível</h1><p>Suporte: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>';
+ const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Página indisponível | ZEVANORY</title><style>body{margin:0;padding:24px;font:18px/1.5 system-ui,Arial,sans-serif;color:#172334;background:#fff}main{max-width:60ch;margin:0 auto}a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;color:#0756a0}a:focus-visible{outline:3px solid #0756a0;outline-offset:3px}@media(prefers-color-scheme:dark){body{color:#fff;background:#101922}a{color:#9cccff}a:focus-visible{outline-color:#9cccff}}</style></head><body><main><h1>Página indisponível</h1><p>Suporte: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>';
  return new Response(html,{status:404,headers:{
    "content-type":"text/html; charset=utf-8","cache-control":"no-store, no-cache, must-revalidate",
    "x-robots-tag":"noindex, nofollow","x-content-type-options":"nosniff"
