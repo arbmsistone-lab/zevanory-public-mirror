@@ -1,7 +1,7 @@
 // Sol 232 (#914): the trust block (trust-mini, "Como a compra funciona", hero buy-facts, legal footer)
 // must state exactly the same facts as /termos, /privacidade, /reembolso and the Worker's checkout facts
 // (worker/politica-unica.mjs: DELIVERY_72H, RULE_7D, SUPPLIER). Facts are EXTRACTED from the built pages,
-// so any edit that makes one source diverge (support time, 7 days, 72-hour link, CNPJ, company name,
+// so any edit that makes one source diverge (support time, 7 days, DEC-06 immediate delivery, CNPJ, company name,
 // address) fails here.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
-import { DELIVERY_72H, DELIVERY_TEXT, RULE_7D, RULE_LINE, SUPPLIER } from "../worker/politica-unica.mjs";
+import { DELIVERY_72H, DELIVERY_SHORT, DELIVERY_TEXT, HOTMART_GUARANTEE, RULE_7D, RULE_LINE, SUPPLIER } from "../worker/politica-unica.mjs";
 
 const PUB = join(fileURLToPath(new URL("..", import.meta.url)), "sales-public");
 const read = (f) => readTextNormalized(join(PUB, f));
@@ -51,20 +51,29 @@ test("7-day withdrawal: trust copy == Worker RULE_7D == Termos/Reembolso", () =>
   }
 });
 
-test("DEC-01 v3: 192h PDF/ZIP commitment matches Worker, products, Termos and Reembolso", () => {
-  assert.equal(DELIVERY_72H,"192 horas (8 dias) após a aprovação do pagamento");
-  assert.ok(DELIVERY_TEXT.includes(DELIVERY_72H));
-  const facts=collect(/<li>PDFs e ZIP por e-mail ([^<]+)<\/li>/g);
-  assert.ok(facts.some(v=>v.includes(DELIVERY_72H)),"hero states the exact 192-hour deadline");
-  const trust=collect(/<li><strong>PDFs e ZIP<\/strong><span>([^<]+)<\/span><\/li>/g);
-  assert.ok(trust.some(v=>v.includes(DELIVERY_72H)),"offer trust states the same deadline");
-  for (const f of ["termos.html","reembolso.html"]) assert.ok(legalBody(read(f)).includes(DELIVERY_72H),f);
-  for (const [f,h] of [...LEGAL,...pages]){
-    const b=text(h);
-    assert.doesNotMatch(b,/link pessoal válido por 72 horas e para um download|72 horas e para um download/i,f);
+test("DEC-06: immediate full download at the Hotmart purchase area matches Worker, products, Termos and Reembolso", () => {
+  // DEC-06 (Claude + GPT-6) supersedes the DEC-01 v3 192 h release: no deferred e-mail, no ZEVANORY link, no download cap.
+  assert.equal(DELIVERY_72H, "Após a aprovação do pagamento pela Hotmart, você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart (Minhas compras)");
+  assert.equal(DELIVERY_TEXT, "Após a aprovação do pagamento pela Hotmart, você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart (Minhas compras): PDFs, planilhas XLSX, arquivos editáveis e pacote ZIP, conforme a oferta. Se houver erro de acesso ou arquivo indisponível, o suporte resolve sem custo: suporte@zevanory.api.br.");
+  assert.equal(DELIVERY_SHORT, "Acesso imediato e integral para download na sua área de compras da Hotmart após a aprovação do pagamento.");
+  assert.equal(HOTMART_GUARANTEE, "A garantia destas ofertas na Hotmart é de 7 dias.");
+  const facts = collect(/<ul class="facts buy-facts">.*?<\/li><li>([^<]+)<\/li>/g);
+  assert.deepEqual(facts, [DELIVERY_SHORT.replace(/\.$/, "")], "hero states the immediate download");
+  const how = collect(/<strong>Acesso imediato<\/strong><span>([^<]+)<\/span>/g);
+  assert.ok(how.includes(DELIVERY_TEXT) && how.includes(DELIVERY_SHORT), "how-to-buy and offer trust state the same delivery");
+  for (const f of ["termos.html", "reembolso.html"]) {
+    const b = legalBody(read(f));
+    assert.ok(b.includes(DELIVERY_TEXT), f);
+    assert.ok(b.includes(HOTMART_GUARANTEE), f + ": Hotmart guarantee line");
   }
-  for(const slug of ["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo"]){
-    assert.ok(read(slug+".html").includes(DELIVERY_72H),slug+": no early link");
+  for (const [f, h] of [...LEGAL, ...pages]) {
+    const b = text(h);
+    assert.doesNotMatch(b, /192\s*(horas|h)\b|\(8 dias\)|cinco downloads|até 5 downloads|link (pessoal|individual)|e-mail 192|Hotmart Club|conteúdo online/i, f + ": no deferred/external-link delivery promise");
+  }
+  for (const slug of ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"]) {
+    const h = read(slug + ".html");
+    assert.ok(h.includes(DELIVERY_TEXT), slug + ": canonical DEC-06 delivery sentence");
+    assert.ok(h.includes(`<dd>${DELIVERY_SHORT}</dd>`), slug + ": Resumo da oferta delivery field");
   }
 });
 

@@ -200,19 +200,24 @@ test("(e) security headers and CSP byte-identical to gh-pages on pages, assets a
   }
 });
 
-test("(b) Hotmart list rewrite only in the Hotmart variant; base page already names the Hotmart for payment (DEC-05)", async () => {
+test("(b) base page and Hotmart variant carry the same Hotmart payment and DEC-06 immediate-download delivery (DEC-05/DEC-06)", async () => {
   const { NEW } = await loadWorkers();
   const page = Buffer.from((await snap(NEW, "/ia-na-pratica", "GET", true)).body, "base64").toString();
-  // NC-019: phase one sells only via Hotmart, so the base page states it; only the delivery item is rewritten.
+  // NC-019: phase one sells only via Hotmart, so the base page states it. DEC-06: delivery is the immediate full
+  // download in the Hotmart purchase area on the base page too, so HOTMART_TEXT rewrites nothing.
+  const LDX = /<script type="application\/ld\+json">[\s\S]*?<\/script>/g;
+  const DEC06 = /<li>Acesso imediato e integral para download na sua área de compras da Hotmart após a aprovação do pagamento<\/li>/;
   assert.match(page, /<li>Pagamento processado pela Hotmart \(Pix à vista ou cartão\)<\/li>/);
-  assert.doesNotMatch(page.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ""), /Mercado Pago/);
-  assert.doesNotMatch(page, /PDFs e ZIP liberados por e-mail após 192 horas/);
+  assert.match(page, DEC06);
+  assert.doesNotMatch(page.replace(LDX, ""), /Mercado Pago/);
+  assert.doesNotMatch(page, /192 horas|cinco downloads|link (pessoal|individual)/);
   const hot = await snap(NEW, "/hotmart/ia-na-pratica", "GET", true);
   assert.equal(hot.status, 200, "Hotmart variant served while open (never vacuous)");
   {
     const h = Buffer.from(hot.body, "base64").toString();
     assert.match(h, /<li>Pagamento processado pela Hotmart \(Pix à vista ou cartão\)<\/li>/);
-    assert.match(h, /PDFs e ZIP liberados por e-mail após 192 horas \(8 dias\)/);
+    assert.match(h, DEC06);
+    assert.doesNotMatch(h, /192 horas|cinco downloads|link (pessoal|individual)|entrega\/reenviar/);
   }
 });
 

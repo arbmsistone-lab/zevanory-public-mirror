@@ -208,7 +208,7 @@
     "kind": "answer",
     "category": "policy",
     "includes": [
-     "192 horas"
+     "acesso imediato ao conteúdo integral"
     ],
     "excludes": [
      "minutos",
@@ -308,7 +308,7 @@
     "kind": "escalate",
     "category": "refund",
     "includes": [
-     "pedir-reembolso"
+     "refund.hotmart.com ou Minhas compras"
     ]
    }
   },
@@ -476,7 +476,11 @@
     "kind": "escalate",
     "category": "delivery",
     "includes": [
-     "entrega/reenviar"
+     "o suporte resolve sem custo"
+    ],
+    "excludes": [
+     "entrega/reenviar",
+     "192 horas"
     ]
    }
   },

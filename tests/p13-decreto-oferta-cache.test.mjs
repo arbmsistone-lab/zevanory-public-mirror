@@ -61,7 +61,8 @@ test("Decreto 7.962 art. 2º: cada oferta paga tem 'Resumo da oferta' estruturad
     const { v, start } = checkSummary(html, slug);
     assert.ok(v.preco_total.startsWith(`R$ ${PRICES[slug]},00`), slug + ": preço total = preço da página");
     assert.ok(html.includes(`<span class="status-pill">R$ ${PRICES[slug]} · pagamento único</span>`), slug);
-    assert.ok(v.entrega.includes(P.delivery_72h), slug + ": modo e prazo de entrega");
+    // DEC-06: acesso imediato e integral para download na área de compras da Hotmart (campo curto).
+    assert.equal(v.entrega, P.delivery_short, slug + ": modo e prazo de entrega");
     // Posição ostensiva: dentro do mesmo bloco da oferta (<div class="offer-side">) do CTA principal.
     // Design PR (2026-10-24): o bloco deixou de ser <aside> (axe landmark-complementary-is-top-level);
     // o bloco termina no CTA ("</a></div>"), que fica logo depois do resumo.

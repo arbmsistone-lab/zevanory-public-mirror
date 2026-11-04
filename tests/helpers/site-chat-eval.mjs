@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { composeReply, guardReply, validateSiteReply, handleSiteChat, buildCatalog, CATALOG, CHAT, CLOSED_PRICE_ANSWER, resetSiteChatState, KILL_KV_KEY } from "../../worker/site-chat.mjs";
 import { fakeAi, fakeSql, fakeKv, sinkMailer, SANDBOX_ENV, chatRequest } from "./site-chat-fakes.mjs";
+import { maskOfficialPlatformMentions } from "../../worker/politica-unica.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const REQUIRED_CRITICAL_TAGS = Object.freeze(["price", "closed_sales", "deadline", "withdrawal", "refund", "payment", "lgpd", "legal", "delivery", "prompt_injection", "stale_catalog", "conflicting_policy", "dependency_failure"]);
@@ -75,8 +76,9 @@ export async function runCase(c) {
     const v = validateSiteReply(body, { salesOpen, catalog: catalogFor(f.catalog) });
     if (!v.ok) reasons.push("validator:" + v.issues.join("|"));
     if (!salesOpen && /R\$|\breais\b/.test(body)) reasons.push("money_while_closed");
-    // DEC-01 v3: "Hotmart Club" na frase oficial de entrega é o local de acesso, não checkout; qualquer outra menção reprova.
-    if (CHECKOUT.test(body.split("O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento.").join(" "))) reasons.push("checkout");
+    // DEC-06: só as frases oficiais EXATAS da política que citam a Hotmart como local pós-compra (download em Minhas
+    // compras, reembolso em refund.hotmart.com, garantia de 7 dias) são mascaradas; qualquer outra menção reprova.
+    if (CHECKOUT.test(maskOfficialPlatformMentions(body))) reasons.push("checkout");
   }
   if (e.kind === "closed_price" && body !== CLOSED_PRICE_ANSWER) reasons.push("not_exact_closed_answer");
   if (e.kind === "escalate" && (!escalation || (e.category && escalation !== e.category))) reasons.push(`escalation:${escalation}!=${e.category || "any"}`);

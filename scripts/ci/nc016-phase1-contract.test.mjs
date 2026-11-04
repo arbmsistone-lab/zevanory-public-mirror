@@ -10,8 +10,14 @@ const pricing=[
  ["ia-na-pratica",97],["vendas-na-pratica",97],["lucro-e-caixa",147],
  ["combo-ia-vendas",157],["negocio-completo",247]
 ];
-// NC-019 (DEC-01 v3, minuta R64): a liberação de 192 h não é vinculada ao prazo de garantia/arrependimento.
-const deadline="O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento.";
+// DEC-06 (Claude + GPT-6; conferência ao vivo na Hotmart): produto integral para download na área de compras da Hotmart,
+// imediatamente após a aprovação. Substitui a liberação de 192 h da DEC-01 v3 (módulo preservado e inativo).
+const deadline="Após a aprovação do pagamento pela Hotmart, você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart (Minhas compras): PDFs, planilhas XLSX, arquivos editáveis e pacote ZIP, conforme a oferta. Se houver erro de acesso ou arquivo indisponível, o suporte resolve sem custo: suporte@zevanory.api.br.";
+const shortDelivery="Acesso imediato e integral para download na sua área de compras da Hotmart após a aprovação do pagamento.";
+const guarantee="A garantia destas ofertas na Hotmart é de 7 dias.";
+const refundNew="pela Hotmart (refund.hotmart.com ou Minhas compras) ou pelo e-mail suporte@zevanory.api.br";
+// Promessas da DEC-01 v3 que não podem voltar ao texto público.
+const DEFERRED=/192\s*(horas|h)\b|\(8 dias\)|cinco downloads|até 5 downloads|link (individual|pessoal)|e-mail 192|Hotmart Club|conteúdo online/i;
 
 test("NC016-A1 root CP tombstone cannot index, offer or reactivate",()=>{
  const page=read("conteudo-pronto/index.html");
@@ -52,16 +58,23 @@ test("NC016-A3 no boleto in first-phase offer, terms or Hotmart copy",()=>{
  }
 });
 
-test("NC016-A4 delivery 192h is explicit and held for legal review",()=>{
+test("NC016-A4 / DEC-06 immediate full download at the Hotmart purchase area, held for legal review",()=>{
  const policy=JSON.parse(read("data/politica-unica.json"));
  assert.match(policy.nota_nc016_dec01_v3,/pendente de revisão/i);
- assert.match(policy.sol_text,/192 horas \(8 dias\) após a aprovação do pagamento/);
+ assert.match(policy.nota_dec06,/DEC-06/);
  assert.ok(policy.sol_text.includes(deadline));
- assert.match(policy.sol_text,/até cinco downloads/);
+ assert.ok(policy.sol_text.includes(guarantee));
+ assert.ok(policy.sol_text.includes(refundNew));
+ assert.doesNotMatch(policy.sol_text,DEFERRED);
+ assert.equal(policy.delivery_short,shortDelivery);
+ assert.equal(policy.resumo_oferta.produto_digital.entrega,shortDelivery);
+ assert.equal(policy.resumo_oferta.hotmart.entrega,shortDelivery);
  for(const file of ["termos/index.html","sales-public/termos.html","reembolso/index.html",
  "sales-public/reembolso.html",...pricing.map(([slug])=>"sales-public/"+slug+".html")]){
    const body=read(file);
-   assert.match(body,/192 horas \(8 dias\)/,file);
+   assert.ok(body.includes(deadline),file+": DEC-06 delivery sentence");
+   assert.ok(body.includes(guarantee),file+": Hotmart 7-day guarantee line");
+   assert.doesNotMatch(body,DEFERRED,file);
    assert.doesNotMatch(body,/72 horas|72 h|para um download/i,file);
  }
  assert.match(read("sales-public/termos.html"),/revisão jurídica/i);
@@ -72,7 +85,8 @@ test("NC016-A2/A4 root catalog is synchronized and independent of CP",()=>{
  assert.equal(read("sales-public/index.html"),read("sales-public/solucoes.html"));
  const catalog=read("sales-public/index.html");
  assert.doesNotMatch(catalog,/conteudo-pronto|Conteúdo Pronto|72 horas|72 h/i);
- assert.match(catalog,/192 horas \(8 dias\)/);
+ assert.ok(catalog.includes(deadline),"catalog states the DEC-06 delivery");
+ assert.doesNotMatch(catalog,DEFERRED);
 });
 
 // NC-019: fontes públicas (canônicas e geradas) sem a cláusula que amarrava a entrega ao prazo de garantia.
@@ -94,7 +108,7 @@ test("NC019-1 no public source ties delivery to the end of the warranty period",
  assert.ok(scanned>100,"scan is not vacuous: "+scanned);
  const policy=JSON.parse(read("data/politica-unica.json"));
  assert.ok(policy.customer_wording.delivery.startsWith(deadline),"customer wording keeps the canonical delivery sentence");
- // The 7-day withdrawal (art. 49 CDC) sentence stays independent of the 192 h release.
+ // The 7-day withdrawal (art. 49 CDC) sentence stays independent of the delivery.
  const withdrawal=policy.sol_text.slice(policy.sol_text.indexOf("Em contratação online"));
  assert.match(withdrawal,/^Em contratação online, o consumidor poderá desistir sem justificativa e sem ônus no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço/);
  assert.doesNotMatch(withdrawal.slice(0,withdrawal.indexOf(".")),/192|PDF|ZIP|garantia/);
@@ -113,7 +127,51 @@ test("NC019-2 base product pages: payment field and purchase wording name the Ho
    assert.doesNotMatch(field[1],/Mercado Pago/,slug);
    const visible=page.replace(LD,"");
    assert.doesNotMatch(visible,/Mercado Pago|pedir-reembolso/,slug+": no own-checkout purchase or refund wording");
-   assert.match(visible,/peça pela Hotmart, em Minhas compras, ou pelo e-mail suporte@zevanory\.api\.br/,slug+": refund instruction for new purchases");
-   assert.match(visible,/Entrega: acesso online e planilhas logo após a aprovação do pagamento; PDFs e ZIP por e-mail 192 horas \(8 dias\) após a aprovação\./,slug+": policy summary");
+   assert.ok(visible.includes("peça "+refundNew+"."),slug+": refund instruction for new purchases");
+   assert.ok(visible.includes("Entrega: acesso imediato e integral para download na sua área de compras da Hotmart após a aprovação do pagamento."),slug+": policy summary");
+   assert.ok(visible.includes(guarantee),slug+": Hotmart guarantee line");
+   const entrega=page.match(/<div data-field="entrega"><dt>Modo e prazo de entrega<\/dt><dd>([^<]*)<\/dd><\/div>/);
+   assert.ok(entrega&&entrega[1]===shortDelivery,slug+": Resumo da oferta delivery field");
+ }
+});
+
+// DEC-06: nenhuma fonte pública (canônica, gerada, overlay, Worker de vendas, espelho) promete entrega diferida, limite
+// de downloads ou link externo; o texto de 192 h só vive no módulo inativo e nos seus testes.
+test("DEC06-1 public sources carry the immediate download sentence and no deferred/external-link promise",()=>{
+ const files=[...PUBLIC_FILES,"worker/politica-unica.mjs","worker/site-chat.mjs","worker/support-knowledge.mjs",
+  "solucoes/index.html"];
+ for(const dir of ["sales-public","pages-mirror"])for(const f of readdirSync(join(root,dir)))if(/\.(html|txt|xml|json)$/.test(f))files.push(dir+"/"+f);
+ const INACTIVE=/^worker\/(kit-release-192h|kit-nc015-|kit-hotmart-identity|kit-deferred-192h-flag)/;
+ let scanned=0;
+ for(const file of files){
+   if(!existsSync(join(root,file))||INACTIVE.test(file))continue;
+   scanned++;
+   let body=read(file);
+   if(file==="data/politica-unica.json"){const d=JSON.parse(body);body=JSON.stringify([d.sol_text,d.delivery_72h,d.delivery_short,d.customer_wording,d.resumo_oferta]);}
+   if(file==="scripts/sales_policy.py")body=body.replace(/^DEC06_FORBIDDEN_RE = .*$/m,"");
+   assert.doesNotMatch(body,DEFERRED,file);
+ }
+ assert.ok(scanned>150,"scan is not vacuous: "+scanned);
+ const policy=JSON.parse(read("data/politica-unica.json"));
+ assert.equal(policy.customer_wording.delivery,deadline);
+ assert.equal(policy.customer_wording.refund_channels_hotmart,refundNew);
+ assert.equal(policy.hotmart_guarantee,guarantee);
+ for(const f of ["termos/index.html","reembolso/index.html"])assert.doesNotMatch(read(f),/download imediato/i,f);
+});
+
+test("DEC06-2 support answers with the new delivery/refund sentences pass the site validator; purchase calls stay blocked",async()=>{
+ const {validateSiteReply}=await import("../../worker/site-chat.mjs");
+ const {answerSupportQuestion}=await import("../../worker/support-knowledge.mjs");
+ const {hasCheckoutCta}=await import("../../worker/politica-unica.mjs");
+ for(const q of ["como é a entrega?","como recebo o material?","quero reembolso","tem garantia?"]){
+   const a=answerSupportQuestion({question:q,product:"ia-na-pratica"}).answer;
+   assert.deepEqual(validateSiteReply(a).issues,[],q);
+   assert.equal(hasCheckoutCta(a),false,q);
+ }
+ assert.ok(answerSupportQuestion({question:"como recebo o material?"}).answer.includes(deadline));
+ for(const bad of ["compre no Hotmart Club","Compre agora na Hotmart (Minhas compras)","https://pay.hotmart.com/F107979716H",
+  "Acesse /comprar/ZEV-IA-011","Finalize em go.hotmart.com/abc","Garanta já o seu na Hotmart"]){
+   assert.ok(validateSiteReply(bad).issues.includes("checkout"),bad);
+   assert.equal(hasCheckoutCta(bad),true,bad);
  }
 });

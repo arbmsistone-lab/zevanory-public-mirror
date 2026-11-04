@@ -70,11 +70,12 @@ test("(b) assinatura e demais páginas: mesma regra de 7 dias junto ao CTA e nen
   }
 });
 
-test("(b) mesma regra de 7 dias e mesma divulgação 72 h / um download em todas as superfícies", () => {
+test("(b) mesma regra de 7 dias e mesma entrega imediata DEC-06 (download na área de compras da Hotmart) em todas as superfícies", () => {
   for (const slug of [...LEGAL, ...PRODUCTS]) {
     const html = read(PUB, slug);
     assert.ok(html.includes(P.rule_7d), "regra 7 dias: " + slug);
-    assert.ok(html.includes(P.delivery_72h), "72 h / um download: " + slug);
+    assert.ok(html.includes(P.delivery_72h) && html.includes(P.customer_wording.delivery), "entrega imediata DEC-06: " + slug);
+    assert.doesNotMatch(html, /192\s*(horas|h)\b|\(8 dias\)|cinco downloads|link (pessoal|individual)/i, "DEC-06 sem entrega diferida: " + slug);
     for (const bad of P.banned_policy_phrases) assert.ok(!html.includes(bad), `${slug}: '${bad}'`);
   }
   for (const slug of LEGAL) assert.ok(read(PUB, slug).includes(P.sol_text), "texto único exato: " + slug);
@@ -83,7 +84,7 @@ test("(b) mesma regra de 7 dias e mesma divulgação 72 h / um download em todas
   for (const slug of PRODUCTS) {
     // Design PR: o bloco da oferta é <div class="offer-side"> (era <aside>) e termina no CTA.
     const aside = read(PUB, slug).match(/<div class="offer-side"><div><span class="status-pill">[\s\S]*?data-zev-sku="[^"]+"[^>]*>[^<]*<\/a><\/div>/)[0];
-    assert.ok(aside.includes(P.delivery_72h) && aside.includes(P.rule_7d), "resumo junto ao CTA: " + slug);
+    assert.ok(aside.includes(P.delivery_short) && aside.includes(P.rule_7d) && aside.includes(P.hotmart_guarantee), "resumo junto ao CTA: " + slug);
     assert.ok(aside.includes(`data-zev-sku="${SKUS[slug]}"`), "CTA no mesmo bloco: " + slug);
     assert.ok(aside.includes(`/termos#${P.policy_anchor}`), "link para o texto completo: " + slug);
   }
@@ -144,7 +145,7 @@ test("(c) Worker: CTAs só voltam com o interruptor do proprietário aberto (mes
       assert.equal(CHECKOUT_HREF.test(body), open, `${slug} status=${status}`);
       assert.equal(/schema\.org\/InStock/.test(body), open, `${slug} InStock status=${status}`);
       assert.equal(body.includes(P.waitlist_label), !open, `${slug} lista de espera status=${status}`);
-      assert.ok(body.includes(P.delivery_72h), "72 h sempre ao lado da oferta");
+      assert.ok(body.includes(P.delivery_72h), "entrega imediata DEC-06 sempre ao lado da oferta");
     }
     resetPageSwitchCache();
     const sub = await (await worker.fetch(get("/conteudo-pronto"), pageEnv(status), ctx)).text();
@@ -240,7 +241,8 @@ test("mutantes: /comprar/ remanescente, InStock remanescente e 'após o pagament
     "M3 termos mantém 'após o pagamento'": { primary: [/^termos: formulacao divergente '7 dias após o pagamento'$/], apply: (d) => mutate(d, "termos", (h) => h.replace("</main>", "<p>Você pode desistir da compra em até 7 dias após o pagamento.</p></main>")) },
     "M3b produto troca a regra por 'após a compra'": { primary: [/^vendas-na-pratica: (?:falta '7 dias corridos[^']*'|formulacao divergente 'até 7 dias após a compra')$/], apply: (d) => mutate(d, "vendas-na-pratica", (h) => h.split(P.rule_7d).join("até 7 dias após a compra")) },
     "M4 reembolso mantém 'em até 2 dias úteis'": { primary: [/^reembolso: formulacao divergente 'em até 2 dias úteis'$/], apply: (d) => mutate(d, "reembolso", (h) => h.replace("</main>", "<p>Reembolso em até 2 dias úteis.</p></main>")) },
-    "M5 produto sem 192h ao lado da oferta": { primary: [/^combo-ia-vendas: falta '192 horas \(8 dias\) após a aprovação do pagamento'$/], apply: (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("link pessoal")) },
+    "M5 produto volta a prometer PDFs/ZIP por e-mail em 192 h": { primary: [/^combo-ia-vendas: falta 'Após a aprovação do pagamento pela Hotmart, você recebe acesso imediato ao conteúdo integral do produto para download na sua área de compras da Hotmart \(Minhas compras\)'$/, /^combo-ia-vendas: falta a frase de entrega imediata DEC-06$/, /^combo-ia-vendas: promessa de entrega diferida\/link externo \((?:e-mail 192|192 horas)\) contraria a DEC-06$/], apply: (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento")) },
+    "M5b catálogo volta a prometer link pessoal com cinco downloads": { primary: [/^index: promessa de entrega diferida\/link externo \(link pessoal\) contraria a DEC-06$/], apply: (d) => mutate(d, "index", (h) => h.replace("</main>", "<p>Entrega por e-mail, em link pessoal com até cinco downloads.</p></main>")) },
     "M7 assinatura mantém href /assinar/": { primary: [/^conteudo-pronto\.html: href de checkout\/assinatura \(href="\/assinar\/\) em modo fechado$/], secondary: [{ re: /^conteudo-pronto: tombstone da fase 1 invalida$/, why: "DEC-04: o mesmo link de assinatura/checkout inserido na lápide do CP também a invalida (scripts/sales_policy.py)" }], apply: (d) => mutate(d, "conteudo-pronto", (h) => h.replace("</main>",'<a href="/assinar/conteudo-pronto">Assinar</a></main>')) },
     "M7b página com link /hotmart/": { primary: [/^ia-por-ramo\.html: href de checkout\/assinatura \(href="\/hotmart\/\) em modo fechado$/], apply: (d) => mutate(d, "ia-por-ramo", (h) => h.replace("</main>", '<a href="/hotmart/ia-na-pratica">x</a></main>')) },
     "M7c página com checkout pay.hotmart.com": { primary: [/^kit-afiliado\.html: href de checkout\/assinatura \(href="https:\/\/pay\.hotmart\.com\) em modo fechado$/], apply: (d) => mutate(d, "kit-afiliado", (h) => h.replace("</main>", '<a href="https://pay.hotmart.com/F107979716H?off=g9knd34r">x</a></main>')) },
