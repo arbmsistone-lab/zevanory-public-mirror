@@ -58,9 +58,10 @@ test("NC016-A3 no boleto in first-phase offer, terms or Hotmart copy",()=>{
  }
 });
 
-test("NC016-A4 / DEC-06 immediate full download at the Hotmart purchase area, held for legal review",()=>{
+test("NC016-A4 / DEC-06 immediate full download at the Hotmart purchase area, owner-approved terms published",()=>{
  const policy=JSON.parse(read("data/politica-unica.json"));
- assert.match(policy.nota_nc016_dec01_v3,/pendente de revisão/i);
+ assert.match(policy.nota_nc016_dec01_v3,/aprovados pelo proprietário/i);
+ assert.match(policy.nota_nc016_dec01_v3,/NÃO autoriza merge nem deploy/);
  assert.match(policy.nota_dec06,/DEC-06/);
  assert.ok(policy.sol_text.includes(deadline));
  assert.ok(policy.sol_text.includes(guarantee));
@@ -77,8 +78,10 @@ test("NC016-A4 / DEC-06 immediate full download at the Hotmart purchase area, he
    assert.doesNotMatch(body,DEFERRED,file);
    assert.doesNotMatch(body,/72 horas|72 h|para um download/i,file);
  }
- assert.match(read("sales-public/termos.html"),/revisão jurídica/i);
- assert.match(read("termos/index.html"),/não publicar/i);
+ // DEC-06: the owner approved the consolidated terms; the published pages carry no draft/hold marker.
+ for(const file of ["termos/index.html","sales-public/termos.html","reembolso/index.html","sales-public/reembolso.html"]){
+   assert.doesNotMatch(read(file),/não publicar|minuta|revisão jurídica/i,file);
+ }
 });
 
 test("NC016-A2/A4 root catalog is synchronized and independent of CP",()=>{
