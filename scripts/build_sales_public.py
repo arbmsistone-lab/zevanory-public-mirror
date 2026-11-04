@@ -148,7 +148,7 @@ def buy_facts() -> str:
             f'<li>{policy.DELIVERY_SHORT.rstrip(".")}</li>'
             '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
 
-# Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
+# Response commitment as documented in /termos (section 1): immediate confirmation, conclusive answer in 5 days.
 RESPONSE_COMMITMENT = "confirmação imediata e resposta conclusiva em até 5 dias"
 
 def trust_mini(payment: str = "pela Hotmart") -> str:
@@ -162,7 +162,7 @@ def trust_mini(payment: str = "pela Hotmart") -> str:
 
 def how_to_buy() -> str:
     """Full trust block (solucoes, quem-criou): how a purchase works, step by step, and who sells.
-    Every sentence restates /termos (sections 1, 3, 4, 6 and 8); nothing new is promised."""
+    Every sentence restates /termos (sections 1, 3, 4, 5 and 6); nothing new is promised."""
     f = policy.SUPPLIER
     return ('<section class="container how-to-buy" aria-labelledby="como-compra"><h2 id="como-compra">Como a compra funciona</h2>'
             '<ol class="steps">'
