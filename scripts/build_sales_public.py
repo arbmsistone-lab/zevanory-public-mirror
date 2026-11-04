@@ -137,7 +137,7 @@ FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a di
 # Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
 HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
                  else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
-DELIVERY_Q = ("Como recebo o produto?", "O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento, ao fim do prazo de garantia. O link permite até cinco downloads durante a validade; peça outro sem custo se expirar.")
+DELIVERY_Q = ("Como recebo o produto?", "O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento. O link permite até cinco downloads durante a validade; peça outro sem custo se expirar.")
 GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
 MODE = policy.build_mode()

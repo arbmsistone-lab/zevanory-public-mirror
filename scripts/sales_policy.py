@@ -138,8 +138,9 @@ SUBSCRIPTION_SUMMARY = (
 )
 
 POLICY_SUMMARY = (
-    f'<p class="policy-summary">Entrega: após a confirmação do pagamento, por e-mail, em {DELIVERY_72H}; '
-    'se o link expirar, um novo é enviado sem custo pelo suporte. '
+    '<p class="policy-summary">Entrega: acesso online e planilhas logo após a aprovação do pagamento; '
+    'PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação. '
+    'Se o link expirar, um novo é enviado sem custo pelo suporte. '
     f'Arrependimento: {RULE_7D}, com devolução integral (se as datas forem diferentes, vale a mais recente). '
     f'<a href="/termos#{POLICY_ANCHOR}">Termos completos</a> · <a href="/reembolso">Reembolso</a></p>'
 )

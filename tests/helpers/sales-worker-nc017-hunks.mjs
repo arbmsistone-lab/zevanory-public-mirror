@@ -3,6 +3,7 @@
 // tests/sales-worker-differential.test.mjs reverse-applies them (then #914's hunks) and pins both
 // blobs, so ANY other change to worker/sales-public-worker.mjs fails the differential. Regenerate
 // only together with an audited change to the Worker, and add its behaviour to the intended diffs.
+// NC-019 (Claude): 192 h sentence without "ao fim do prazo de garantia" (DEC-01 v3 / minuta R64).
 export const NC017_SALES_WORKER_HUNKS = Object.freeze([
  [
   "import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from \"./politica-unica.mjs\";\nimport {cpSalesEnabled,isCpPublicRoute,cpClosedResponse,isMpPhase1CheckoutEnabled} from \"./nc015-sales-scope.mjs\";\n",
@@ -25,7 +26,7 @@ export const NC017_SALES_WORKER_HUNKS = Object.freeze([
   "const SERVICE_WA=contactHref(\"Olá! Quero assinar o Conteúdo Pronto.\");\nconst HOTMART_TEXT=[\n  // Design PR: the hero payment facts are a list (no \"·\" chain); each item has its Hotmart wording.\n  [\"Pagamento processado pelo Mercado Pago (Pix ou cartão)\",\"Pagamento processado pela Hotmart (Pix, cartão ou boleto)\"],\n  [`Entrega por e-mail em ${DELIVERY_72H}`,\"Acesso por e-mail após a confirmação do pagamento\"],\n"
  ],
  [
-  "  [\"<strong>Pagamento</strong><span>processado pelo Mercado Pago\",\"<strong>Pagamento</strong><span>processado pela Hotmart\"],\n  [\"Pagamento por Pix à vista ou cartão na plataforma indicada no checkout. O acesso online e as planilhas são liberados após a aprovação. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento, ao fim do prazo de garantia.\",\"Pagamento pela Hotmart (Pix à vista ou cartão). O acesso online e as planilhas são imediatos após aprovação. Os PDFs e o pacote ZIP chegam por e-mail 192 horas (8 dias) após a aprovação do pagamento.\"],\n",
+  "  [\"<strong>Pagamento</strong><span>processado pelo Mercado Pago\",\"<strong>Pagamento</strong><span>processado pela Hotmart\"],\n  [\"Pagamento por Pix à vista ou cartão na plataforma indicada no checkout. O acesso online e as planilhas são liberados após a aprovação. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento.\",\"Pagamento pela Hotmart (Pix à vista ou cartão). O acesso online e as planilhas são imediatos após aprovação. Os PDFs e o pacote ZIP chegam por e-mail 192 horas (8 dias) após a aprovação do pagamento.\"],\n",
   "  [\"<strong>Pagamento</strong><span>processado pelo Mercado Pago\",\"<strong>Pagamento</strong><span>processado pela Hotmart\"],\n  [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,\"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail.\"],\n  [`Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um ${DELIVERY_72H} do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.`,\"Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart.\"],\n"
  ],
  [

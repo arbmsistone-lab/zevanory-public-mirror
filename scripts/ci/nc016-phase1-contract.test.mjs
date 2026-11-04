@@ -10,7 +10,8 @@ const pricing=[
  ["ia-na-pratica",97],["vendas-na-pratica",97],["lucro-e-caixa",147],
  ["combo-ia-vendas",157],["negocio-completo",247]
 ];
-const deadline="Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento, ao fim do prazo de garantia.";
+// NC-019 (DEC-01 v3, minuta R64): a liberação de 192 h não é vinculada ao prazo de garantia/arrependimento.
+const deadline="O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento.";
 
 test("NC016-A1 root CP tombstone cannot index, offer or reactivate",()=>{
  const page=read("conteudo-pronto/index.html");
