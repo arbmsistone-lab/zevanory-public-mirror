@@ -4,8 +4,8 @@
 // invented answer.
 // P13c: prazo, entrega e reembolso vêm SÓ de data/politica-unica.json (worker/politica-unica.mjs):
 // a regra dos 7 dias (customer_wording.rule_7d),
-// link de 72 h / um download com reenvio sem custo, confirmação imediata, Mercado Pago avisado
-// imediatamente, crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
+// entrega imediata e integral para download na área de compras da Hotmart (DEC-06), confirmação imediata, plataforma
+// de cobrança avisada imediatamente, crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
 // traz chamada de compra (/comprar, /assinar, Hotmart); com vendas fechadas (interruptor do
 // proprietário, worker/sales-control.mjs) preço e conteúdo avisam que as vendas estão fechadas.
 import { CLOSED_LABEL, SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER } from "./politica-unica.mjs";
@@ -64,7 +64,7 @@ export function answerSupportQuestion({ product, question, salesOpen } = {}) {
     return { answered: true, intent, product: slug, answer: "Não. Os materiais da ZEVANORY ajudam na gestão do dia a dia, mas não substituem contador, obrigações fiscais nem consultoria individual, e não prometem resultado financeiro: o resultado depende da aplicação no seu negócio.", sources: [slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
   }
   if (intent === "refund" || intent === "delivery") {
-    return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [intent === "refund" ? "https://zevanory.api.br/pedir-reembolso" : "https://zevanory.api.br/entrega/reenviar", slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
+    return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [...(intent === "refund" ? ["https://zevanory.api.br/pedir-reembolso"] : []), slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
   }
   if (!slug) {
     return { answered: false, intent, product: null, answer: "Sobre qual produto? IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas ou Negócio Completo.", handoff: false, needs_product: true };
