@@ -46,7 +46,9 @@ test("(b) trust block next to the price on every priced page (and Hotmart wordin
     assert.ok(receipt.includes('class="receipt-total"'), slug + ": price in the receipt");
     for (const need of ["Empresa brasileira", "A. RENAN ALVES MOREIRA BITU LTDA", "CNPJ 69.077.233/0001-99</span>", "Várzea Alegre (CE)", "resposta conclusiva em até 5 dias", 'href="/termos"', 'href="/privacidade"', 'href="/reembolso"'])
       assert.ok(receipt.includes(need), `${slug}: ${need}`);
-    assert.ok(receipt.includes("processado pelo Mercado Pago"), slug + ": legacy static copy must name own checkout; Hotmart transformation separately verified");
+    // NC-019 (DEC-05): phase one sells only via Hotmart, so the base page already names it.
+    assert.ok(receipt.includes("processado pela Hotmart"), slug + ": base page names the Hotmart as payment processor");
+    assert.ok(!receipt.includes("Mercado Pago"), slug + ": no Mercado Pago purchase wording for new purchases");
   }
   for (const slug of PRICED) {
     const out = hotmartPage(read(slug + ".html"), slug, "https://pay.hotmart.com/X1");

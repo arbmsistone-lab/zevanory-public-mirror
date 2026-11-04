@@ -227,16 +227,14 @@ export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7"
 const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
 export const HOTMART_TEXT=[
   // Every left operand is exact generated phase-one product copy; verified by NC-017 tests.
-  ["Pagamento processado pelo Mercado Pago (Pix ou cartão)","Pagamento processado pela Hotmart (Pix à vista ou cartão)"],
+  // NC-019 (DEC-05): payment, refund and Resumo-da-oferta payment already name the Hotmart on the base
+  // page, so only the delivery wording still differs here.
   [`PDFs e ZIP por e-mail ${DELIVERY_72H}; acesso online e planilhas imediatamente`,"Acesso online e planilhas após a aprovação pela Hotmart; PDFs e ZIP liberados por e-mail após 192 horas (8 dias)."],
-  ["<strong>Pagamento</strong><span>processado pelo Mercado Pago","<strong>Pagamento</strong><span>processado pela Hotmart"],
   ["Pagamento por Pix à vista ou cartão na plataforma indicada no checkout. O acesso online e as planilhas são liberados após a aprovação. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento.","Pagamento pela Hotmart (Pix à vista ou cartão). O acesso online e as planilhas são imediatos após aprovação. Os PDFs e o pacote ZIP chegam por e-mail 192 horas (8 dias) após a aprovação do pagamento."],
-  [`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.`,`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.`],
-  ["Pix ou cartão pelo Mercado Pago.","Pix à vista ou cartão pela Hotmart."],
   ["O acesso online e as planilhas ficam disponíveis após a aprovação; PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação do pagamento.","Acesso online e planilhas pela Hotmart após a aprovação; PDFs e ZIP por e-mail 192 horas (8 dias) depois."],
 ];
-// Decreto 7.962 "Resumo da oferta": pagamento e entrega da variante Hotmart (data/politica-unica.json).
-HOTMART_TEXT.push([RESUMO_OFERTA.produto_digital.pagamento,RESUMO_OFERTA.hotmart.pagamento],[RESUMO_OFERTA.produto_digital.entrega.replace("{delivery_72h}",DELIVERY_72H),RESUMO_OFERTA.hotmart.entrega]);
+// Decreto 7.962 "Resumo da oferta": entrega da variante Hotmart (data/politica-unica.json).
+HOTMART_TEXT.push([RESUMO_OFERTA.produto_digital.entrega.replace("{delivery_72h}",DELIVERY_72H),RESUMO_OFERTA.hotmart.entrega]);
 export function hotmartPage(html,slug,checkout){
   let out=openSalesHtml(html,slug);  // only served while sales are open (handleHotmart)
   for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);

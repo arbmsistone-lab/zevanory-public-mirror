@@ -138,19 +138,19 @@ FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a di
 HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
                  else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
 DELIVERY_Q = ("Como recebo o produto?", "O acesso online pelo Hotmart Club e as planilhas XLSX ficam disponíveis imediatamente após a aprovação do pagamento. Os PDFs e o pacote ZIP são enviados por e-mail 192 horas (8 dias) após a aprovação do pagamento. O link permite até cinco downloads durante a validade; peça outro sem custo se expirar.")
-GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
+GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras, ou pelo e-mail suporte@zevanory.api.br.")
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
 MODE = policy.build_mode()
 
 def buy_facts() -> str:
-    return ('<ul class="facts buy-facts"><li>Pagamento processado pelo Mercado Pago (Pix ou cartão)</li>'
+    return ('<ul class="facts buy-facts"><li>Pagamento processado pela Hotmart (Pix à vista ou cartão)</li>'
             f'<li>PDFs e ZIP por e-mail {policy.DELIVERY_72H}; acesso online e planilhas imediatamente</li>'
             '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
 
 # Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
 RESPONSE_COMMITMENT = "confirmação imediata e resposta conclusiva em até 5 dias"
 
-def trust_mini(payment: str = "pelo Mercado Pago") -> str:
+def trust_mini(payment: str = "pela Hotmart") -> str:
     """Compact, factual trust block next to every price (data from data/politica-unica.json)."""
     f = policy.SUPPLIER
     return ('<ul class="trust-mini" aria-label="Quem vende e como funciona">'
@@ -165,7 +165,7 @@ def how_to_buy() -> str:
     f = policy.SUPPLIER
     return ('<section class="container how-to-buy" aria-labelledby="como-compra"><h2 id="como-compra">Como a compra funciona</h2>'
             '<ol class="steps">'
-            '<li><strong>Pagamento</strong><span>Pix ou cartão, processado pelo Mercado Pago. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
+            '<li><strong>Pagamento</strong><span>Pix à vista ou cartão, processado pela Hotmart. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
             '<li><strong>E-mail</strong><span>Após a aprovação, o Hotmart Club oferece acesso online e às planilhas.</span></li>'
             f'<li><strong>PDFs e ZIP</strong><span>Disponíveis por link pessoal {policy.DELIVERY_72H}. Se expirar, o suporte envia outro sem custo.</span></li>'
             '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
@@ -296,13 +296,14 @@ def apply_commerce(slug: str, html: str) -> str:
     html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     # Every primary CTA buys (open) or joins the waiting list (closed).
     html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', lambda m: sales_cta(c, label), html)
-    # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Each item has an
-    # exact Hotmart counterpart in worker/sales-public-worker.mjs (HOTMART_TEXT).
+    # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Payment already names
+    # the Hotmart (DEC-05); items that still differ in the Hotmart variant have an exact counterpart in
+    # worker/sales-public-worker.mjs (HOTMART_TEXT).
     html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
     trust = {
         ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "O acesso online e as planilhas ficam disponíveis após a aprovação; PDFs e ZIP por e-mail 192 horas (8 dias) após a aprovação do pagamento."),
         ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
-        ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix ou cartão pelo Mercado Pago."),
+        ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix à vista ou cartão pela Hotmart."),
     }
     for (old_t, old_s), (new_t, new_s) in trust.items():
         html = html.replace(f"<strong>{old_t}</strong><span>{old_s}</span>", f"<strong>{new_t}</strong><span>{new_s}</span>")

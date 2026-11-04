@@ -200,11 +200,13 @@ test("(e) security headers and CSP byte-identical to gh-pages on pages, assets a
   }
 });
 
-test("(b) Hotmart list rewrite only in the Hotmart variant; Mercado Pago text unchanged elsewhere", async () => {
+test("(b) Hotmart list rewrite only in the Hotmart variant; base page already names the Hotmart for payment (DEC-05)", async () => {
   const { NEW } = await loadWorkers();
   const page = Buffer.from((await snap(NEW, "/ia-na-pratica", "GET", true)).body, "base64").toString();
-  assert.match(page, /Pagamento processado pelo Mercado Pago \(Pix ou cartão\)/);
-  assert.doesNotMatch(page, /processado pela Hotmart/);
+  // NC-019: phase one sells only via Hotmart, so the base page states it; only the delivery item is rewritten.
+  assert.match(page, /<li>Pagamento processado pela Hotmart \(Pix à vista ou cartão\)<\/li>/);
+  assert.doesNotMatch(page.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ""), /Mercado Pago/);
+  assert.doesNotMatch(page, /PDFs e ZIP liberados por e-mail após 192 horas/);
   const hot = await snap(NEW, "/hotmart/ia-na-pratica", "GET", true);
   assert.equal(hot.status, 200, "Hotmart variant served while open (never vacuous)");
   {
