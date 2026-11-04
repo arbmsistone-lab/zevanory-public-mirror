@@ -42,7 +42,8 @@ DECLARATIONS = {
     "D7962-4-PU": "resposta conclusiva em até 5 dias",
     "D7962-5-1": "pela mesma ferramenta usada na contratação",
     "D7962-5-2": "Contratos acessórios serão cancelados sem custo",
-    "D7962-5-3": "comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno",
+    # NC-019 (DEC-05): na fase 1 a instituição de pagamento das compras novas é a Hotmart.
+    "D7962-5-3": "comunicará imediatamente a Hotmart para impedir o lançamento ou iniciar o estorno",
     "D7962-5-4": "O recebimento do pedido será confirmado imediatamente",
     "CDC-49": "no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço",
     "CDC-49-PU": "devolverá integralmente os valores pagos",
