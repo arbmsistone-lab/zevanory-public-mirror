@@ -2,6 +2,8 @@
 // The non-CP digital-products financial ledger remains independently routed.
 // Mounting is behind a SOURCE CODE constant, not an environment override.
 import {resolveVerifiedKitPurchase} from "./kit-hotmart-identity.mjs";
+import {kitDeferred192hEnabled,kitDeferred192hDisabledResponse} from "./kit-deferred-192h-flag.mjs";
+// DEC-06: inactive behind KIT_DEFERRED_192H_ENABLED (default off) in addition to the source constant below.
 export const KIT_ORDER_INGEST_ENABLED=false;
 export function isKitProductNc015(data,env){
  const id=String(data?.product?.id??"");
@@ -9,6 +11,7 @@ export function isKitProductNc015(data,env){
  return /^[0-9]{6,12}$/.test(id)&&allow.includes(id);
 }
 export async function ingestVerifiedKitCandidate(request,env){
+ if(!kitDeferred192hEnabled(env))return kitDeferred192hDisabledResponse();
  try{
   const verified=await resolveVerifiedKitPurchase(request,env);
   if(String(env?.INTERNAL_DO_SIGNING_KEY||"").length<24)

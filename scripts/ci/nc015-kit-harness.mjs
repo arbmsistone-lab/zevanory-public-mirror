@@ -8,7 +8,10 @@ export const TRANSACTION="HP1234567890111";
 export const ID="a".repeat(64);
 export const SIGNING_KEY="nc015-owner-pending-key-only-synthetic-1234567890";
 export const INTERNAL_KEY="nc015-internal-do-synthetic-1234567890";
-export function createKitHarness(){
+// DEC-06: the deferred 192 h module is INACTIVE by default; this offline harness turns it on EXPLICITLY
+// (deferred:true) so its own unit tests keep running. createKitHarness({deferred:false}) proves the off state.
+export function createKitHarness({deferred=true}={}){
+ const flag=deferred?{KIT_DEFERRED_192H_ENABLED:"true"}:{};
  const db=new DatabaseSync(":memory:");
  const sql={exec(q,...args){
   const s=q.trim();
@@ -25,7 +28,7 @@ export function createKitHarness(){
  const proof=(now=eligibleAt)=>({source:"hotmart_authoritative_readback",
   state:"APPROVED",refund_request_open:false,order_opaque:opaque,checked_at_ms:now,approved_at_ms:at});
  const verifier={fetch:async()=>Response.json(proof(eligibleAt))};
- const envDO={INTERNAL_DO_SIGNING_KEY:INTERNAL_KEY,
+ const envDO={...flag,INTERNAL_DO_SIGNING_KEY:INTERNAL_KEY,
   KIT_DOWNLOAD_SIGNING_KEY:SIGNING_KEY,HOTMART_STATUS_VERIFIER:verifier};
  const object=new KitReleaseOrderDO({id:{toString:()=>ID},storage},envDO);
  const stub={fetch:(u,init={})=>object.fetch(new Request(u,init))};
@@ -44,7 +47,7 @@ export function createKitHarness(){
   if(!init.headers.authorization?.startsWith("Bearer "))throw Error("missing_auth");
   return Response.json({items:[sale]});
  };
- const env={INTERNAL_DO_SIGNING_KEY:INTERNAL_KEY,
+ const env={...flag,INTERNAL_DO_SIGNING_KEY:INTERNAL_KEY,
   KIT_DOWNLOAD_SIGNING_KEY:SIGNING_KEY,HOTMART_ACCESS_TOKEN:"offline-token-not-a-real-secret-1234567890",
   PURCHASE_RELEASE_DO:doNamespace};
  const approve=async()=>{

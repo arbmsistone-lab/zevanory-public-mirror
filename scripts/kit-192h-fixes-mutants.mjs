@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 const root=resolve(import.meta.dirname,'..');
-const files=['worker/kit-release-192h.mjs','worker/kit-hotmart-identity.mjs','worker/kit-nc015-token.mjs','scripts/kit-192h-fixes.test.mjs'];
+const files=['worker/kit-release-192h.mjs','worker/kit-deferred-192h-flag.mjs','worker/kit-hotmart-identity.mjs','worker/kit-nc015-token.mjs','scripts/kit-192h-fixes.test.mjs'];
 function execute(mutant){
  const dir=mkdtempSync(join(tmpdir(),'nc010-fix-'));
  try{

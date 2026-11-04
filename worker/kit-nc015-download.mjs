@@ -5,13 +5,15 @@ import {verifySignedKitToken} from "./kit-nc015-token.mjs";
 import {readHotmartOrderNc015} from "./kit-nc015-readback.mjs";
 import {getVerifiedKitAsset,KitAssetError} from "./kit-nc015-private-asset.mjs";
 import {KitReadbackError} from "./kit-nc015-readback.mjs";
+import {kitDeferred192hEnabled} from "./kit-deferred-192h-flag.mjs";
+// DEC-06: also requires KIT_DEFERRED_192H_ENABLED (default off); phase 1 delivers at the Hotmart purchase area.
 export const KIT_DOWNLOAD_ENABLED=false;
 const headers=Object.freeze({"cache-control":"no-store, private, max-age=0","x-content-type-options":"nosniff","referrer-policy":"no-referrer"});
 function deny(status=503){return new Response("Download indisponível",{status,headers})}
 export async function downloadVerifiedKitCandidate({
  request,env,now=Date.now(),enabled=false,fetcher=fetch
 }={}){
- if(!enabled)return deny(503);
+ if(!enabled||!kitDeferred192hEnabled(env))return deny(503);
  if(request?.method!=="GET")return deny(405);
  const u=new URL(request.url);
  if(u.pathname!=="/kit/baixar")return deny(404);
@@ -55,5 +57,5 @@ export async function downloadVerifiedKitCandidate({
  }});
 }
 export function handleKitDownloadNc015(request,env){
- return downloadVerifiedKitCandidate({request,env,enabled:KIT_DOWNLOAD_ENABLED});
+ return downloadVerifiedKitCandidate({request,env,enabled:KIT_DOWNLOAD_ENABLED&&kitDeferred192hEnabled(env)});
 }

@@ -1,4 +1,7 @@
 import {grantPreparedKitToken} from "./kit-nc015-token.mjs";
+import {kitDeferred192hEnabled,kitDeferred192hDisabledResponse} from "./kit-deferred-192h-flag.mjs";
+// DEC-06: INACTIVE in phase 1 (immediate full download at Hotmart). Every DO entry point is fail-closed behind
+// KIT_DEFERRED_192H_ENABLED (worker/kit-deferred-192h-flag.mjs, default off); the ledger logic is kept intact.
 // ZEVANORY NC-009 N3 (DEC-01 v3) | OFFLINE CANDIDATE / NOT BOUND OR DEPLOYED.
 // One SQLite-backed Durable Object PER PURCHASE (not the monthly Content Pronto subscriber DO).
 // The worker must validate Hotmart Hottok and route from a server-computed HMAC before calling this class.
@@ -254,6 +257,7 @@ export class KitReleaseOrderDO {
  }
  // No public Worker route should proxy external HTTP directly to these endpoints.
  async fetch(request){
+  if(!kitDeferred192hEnabled(this.env))return kitDeferred192hDisabledResponse();
   if(!ctEq(request.headers.get("x-internal-do-key"),this.env.INTERNAL_DO_SIGNING_KEY))return Response.json({error:"not_authorized"},{status:403});
   try{
    const path=new URL(request.url).pathname;
@@ -306,6 +310,7 @@ export class KitReleaseOrderDO {
    return Response.json({error:err.code},{status:err.status})}
  }
  async alarm(now=Date.now()){
+  if(!kitDeferred192hEnabled(this.env))return;  // DEC-06: no deferred release while the flag is off
   const st=this.ledger.state();
   if(st.state!=="waiting")return;
   const policy=this.ledger.alarmPolicy();

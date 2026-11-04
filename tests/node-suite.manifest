@@ -53,6 +53,7 @@ tests/hotmart-paused.test.mjs 15
 tests/inbound-autonomy.test.mjs 6
 tests/instant-status-sales-coherence.test.mjs 3
 tests/internal-financial-audit.test.mjs 11
+tests/kit-deferred-192h-flag.test.mjs 6
 tests/kv-meter.test.mjs 5
 tests/kv-quota-issue.test.mjs 5
 tests/lab-cancelamento-pagamentos-pendentes.test.mjs 8

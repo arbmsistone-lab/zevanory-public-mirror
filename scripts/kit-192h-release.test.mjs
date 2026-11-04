@@ -107,7 +107,7 @@ test("H09 restart preserves approval, refund and immutable email receipt",async(
 });
 test("H10 internal DO rejects request without trusted bridge and uses own alarm",async()=>{
  const h=harness(),ctx={storage:h.storage,id:{toString:()=>"a".repeat(64)}};
- const obj=new KitReleaseOrderDO(ctx,{INTERNAL_DO_SIGNING_KEY:"test-only-internal-do-secret"});
+ const obj=new KitReleaseOrderDO(ctx,{KIT_DEFERRED_192H_ENABLED:"true",INTERNAL_DO_SIGNING_KEY:"test-only-internal-do-secret"});
  const req=(key)=>new Request("https://private.example/internal/event",{method:"POST",headers:{"x-internal-do-key":key,"content-type":"application/json"},body:JSON.stringify({
  event_key:"hotmart:approved-transaction-011",event_type:"PURCHASE_APPROVED",approved_at_ms:Date.now()-1000
  })});

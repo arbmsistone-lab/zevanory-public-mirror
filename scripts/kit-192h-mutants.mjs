@@ -5,7 +5,7 @@ import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 const root=resolve(import.meta.dirname,"..");
 const testPath="scripts/kit-192h-release.test.mjs";
-const files=["worker/kit-release-192h.mjs","worker/kit-hotmart-identity.mjs","worker/kit-nc015-token.mjs",testPath];
+const files=["worker/kit-release-192h.mjs","worker/kit-deferred-192h-flag.mjs","worker/kit-hotmart-identity.mjs","worker/kit-nc015-token.mjs",testPath];
 function run(mutant){
  const tmp=mkdtempSync(join(tmpdir(),"kit192-"));
  try{

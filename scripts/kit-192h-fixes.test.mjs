@@ -37,7 +37,7 @@ test("F1: provider refund without local webhook denies access, stale and wrong p
 test("F2: no provider verifier stops after <=48 retries and emits one owner alert, 30-day bounded",async()=>{
  const h=harness();h.approve();
  const ctx={storage:h.storage,id:{toString:()=> "a".repeat(64)}};
- const obj=new KitReleaseOrderDO(ctx,{});
+ const obj=new KitReleaseOrderDO(ctx,{KIT_DEFERRED_192H_ENABLED:"true"});
  let t=D+192*H,calls=0;
  for(let day=0;day<30;day++){
   const bound=t+24*H;
@@ -61,7 +61,7 @@ test("F2: provider-approved claim stops alarm instead of polling forever",async(
  const h=harness();h.approve();
  const at=D+192*H,ctx={storage:h.storage,id:{toString:()=> "a".repeat(64)}};
  let readbacks=0;
- const obj=new KitReleaseOrderDO(ctx,{HOTMART_STATUS_VERIFIER:{
+ const obj=new KitReleaseOrderDO(ctx,{KIT_DEFERRED_192H_ENABLED:"true",HOTMART_STATUS_VERIFIER:{
   async fetch(){readbacks++;return Response.json(h.proof(at))}}});
  await obj.alarm(at);
  assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM kit_eligibility_outbox").get().n,1);
@@ -91,7 +91,7 @@ test("F3: internal operator route must authenticate and reject terminal refund",
  assert.equal(h.ledger.state().state,"revoked");
  assert.throws(()=>h.ledger.resumeRefundRequest({event_key:"operator:force-resume-0000001",expected_version:h.ledger.state().version},D+180*H+1,h.proof(D+180*H+1)),/not_held_refund/);
  const key="trusted-test-key",ctx={storage:h.storage,id:{toString:()=> "a".repeat(64)}};
- const obj=new KitReleaseOrderDO(ctx,{INTERNAL_DO_SIGNING_KEY:key,AUTHENTICATED_OWNER_OPERATOR_KEY:"owner-test-key"});
+ const obj=new KitReleaseOrderDO(ctx,{KIT_DEFERRED_192H_ENABLED:"true",INTERNAL_DO_SIGNING_KEY:key,AUTHENTICATED_OWNER_OPERATOR_KEY:"owner-test-key"});
  const req=(owner)=>new Request("https://internal.example/internal/operator/resume-refund",{method:"POST",
   headers:{"x-internal-do-key":key,"x-operator-key":owner,"content-type":"application/json"},
   body:JSON.stringify({event_key:"operator:force-resume-0000001",expected_version:h.ledger.state().version})});
