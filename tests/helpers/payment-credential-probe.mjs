@@ -73,6 +73,10 @@ const d1 = { prepare() { return { bind() { return this; }, async first() { retur
 
 const { default: production } = await import("../../worker/cloudflare-worker.compat.mjs");
 const { default: certification } = await import("../../certification-worker.mjs");
+// DEC-05 locks own checkout before the pilot isolation guard; a copy of the compat Worker with the lock lifted (this
+// process only, tests/helpers/dec05-lifted.mjs) proves the guard that answers once the lock is lifted.
+const { importLifted } = await import("./dec05-lifted.mjs");
+const { default: productionLifted } = await importLifted(new URL("../../worker/cloudflare-worker.compat.mjs", import.meta.url));
 
 // Cada cenário parte de um process.env sem nenhuma credencial de pagamento: o bundle hidrata process.env a partir de
 // `env` e nunca apaga chaves (hydrateRuntimeConfig), então a limpeza garante que o cenário enxerga SÓ o que declara.
@@ -107,7 +111,7 @@ async function webhook(worker, env, provider, secret, origin = "https://zevanory
 // Checkout: (a) pela entrada do Worker (compat) e (b) direto no handler Node do bundle (handler12), com process.env
 // igual ao que o Worker hidrata. (b) existe porque o compat recusa o piloto em produção antes do handler; o handler
 // ainda precisa provar sozinho que, sem a credencial de produção, não cria preferência com a de teste.
-async function checkout(env, { direct = false } = {}) {
+async function checkout(env, { direct = false, worker = production } = {}) {
   resetProcessEnv();
   const before = mpCalls.length;
   const init = { method: "POST", headers: { "content-type": "application/json", "x-certification-pilot-token": "synthetic-pilot-token" },
@@ -117,7 +121,7 @@ async function checkout(env, { direct = false } = {}) {
     for (const [k, v] of Object.entries(env)) if (typeof v === "string") process.env[k] = v;
     res = await globalThis.fetch("http://127.0.0.1:8788/api/checkout/mercadopago", init);
   } else {
-    res = await production.fetch(new Request("https://zevanory.api.br/api/checkout/mercadopago", init), env, { waitUntil() {} });
+    res = await worker.fetch(new Request("https://zevanory.api.br/api/checkout/mercadopago", init), env, { waitUntil() {} });
   }
   const body = await res.json().catch(() => ({}));
   return { status: res.status, error: body.error || null, reason: body.reason || null, mp: mpCalls.slice(before) };
@@ -138,6 +142,7 @@ try {
   out.prod_webhook_only_test_signed_test = await webhook(production, envWith("test"), "mercadopago", CRED.TEST_SECRET);
   out.prod_webhook_only_test_unsigned = await webhook(production, envWith("test"), "mercadopago", null);
   out.prod_checkout_only_test = await checkout(envWith("test"));
+  out.prod_checkout_only_test_dec05_lifted = await checkout(envWith("test"), { worker: productionLifted });
   out.prod_checkout_handler_only_test = await checkout(envWith("test"), { direct: true });
   out.prod_checkout_handler_only_prod = await checkout(envWith("production"), { direct: true });
   // Produção, só credenciais de PRODUÇÃO presentes (rota de teste).

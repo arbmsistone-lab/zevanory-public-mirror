@@ -6,6 +6,13 @@ import {fileURLToPath} from "node:url";
 import {dirname, join} from "node:path";
 import worker, {percentDecodeOnce, comprarMatch} from "../worker/sales-public-worker.mjs";
 import {WHATSAPP_PUBLIC_RE, WHATSAPP_CHANNEL_RE} from "../worker/politica-unica.mjs";
+import {isMpPhase1CheckoutEnabled} from "../worker/nc015-sales-scope.mjs";
+import {importLifted} from "./helpers/dec05-lifted.mjs";
+// DEC-05 locks the own checkout BEFORE the older buy-flow code (303 to the provider, 405, exception handler). That
+// code is what answers the day the lock is lifted, so it is also exercised on a copy of the Worker with the lock
+// lifted (tests/helpers/dec05-lifted.mjs, this process only). The default import above stays locked.
+const lifted = (await importLifted(new URL("../worker/sales-public-worker.mjs", import.meta.url))).default;
+assert.equal(isMpPhase1CheckoutEnabled(), false, "DEC-05 lock is on in the default graph");
 
 // Auditor Sol (AVAL 100): /comprar/ on vendas.zevanory.api.br stays out of search indexes by the
 // response itself (X-Robots-Tag noindex,nofollow + Cache-Control no-store + robots meta in HTML),
@@ -38,8 +45,8 @@ function makeEnv({sales = "closed", checkout = "ok", limiter = "ok", core = true
   return env;
 }
 const okCtx = {waitUntil() {}};
-const call = (path, {method = "GET", ua = BROWSER, env = makeEnv(), ctx = okCtx} = {}) =>
-  worker.fetch(new Request("https://vendas.zevanory.api.br" + path, {method, headers: {"user-agent": ua, "cf-connecting-ip": "203.0.113.9"}}), env, ctx);
+const call = (path, {method = "GET", ua = BROWSER, env = makeEnv(), ctx = okCtx, w = worker} = {}) =>
+  w.fetch(new Request("https://vendas.zevanory.api.br" + path, {method, headers: {"user-agent": ua, "cf-connecting-ip": "203.0.113.9"}}), env, ctx);
 
 function assertNoWhatsapp(body, label) {
   const m = WHATSAPP_PUBLIC_RE.exec(body) || WHATSAPP_CHANNEL_RE.exec(body);
@@ -78,6 +85,17 @@ const CASES = [
   ["DELETE own checkout disabled (503)", {method: "DELETE"}, {}, 503, null],
 ];
 
+const LIFTED_CASES = [
+  ["open GET confirmation step", {}, {sales: "open"}, 200, /Ir para o pagamento seguro/],
+  ["open POST 303 to the provider", {method: "POST"}, {sales: "open"}, 303, null],
+  ["closed POST", {method: "POST"}, {}, 200, /Vendas abrem em breve/],
+  ["automation UA 403", {method: "POST", ua: "curl/8.0"}, {sales: "open"}, 403, null],
+  ["rate limited 429", {method: "POST"}, {sales: "open", limiter: "limited"}, 429, null],
+  ["checkout failure 503", {method: "POST"}, {sales: "open", checkout: "fail"}, 503, /Não foi possível abrir o pagamento/],
+  ["PUT 405", {method: "PUT"}, {sales: "open"}, 405, null],
+  ["DELETE 405", {method: "DELETE"}, {}, 405, null],
+];
+
 test("every product and every buy-flow state carries X-Robots-Tag noindex,nofollow, no-store and the robots meta", async () => {
   for (const sku of SKUS) for (const path of ["/comprar/" + sku, "/comprar/" + sku + "/", "/comprar/" + sku.toLowerCase()]) {
     for (const [name, opts, envOpts, status, bodyRe] of CASES) {
@@ -87,6 +105,14 @@ test("every product and every buy-flow state carries X-Robots-Tag noindex,nofoll
       if (bodyRe) assert.match(body, bodyRe, label);
       if (status === 302) assert.equal(r.headers.get("location"), "/hotmart/"+({"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"})[sku],label);
       if (status === 503) assert.equal(r.headers.get("location"),null,label);
+    }
+    // Post-lock buy flow (DEC-05 lifted copy): 303 to the provider, 405, 403, 429 and 503 keep every noindex header.
+    for (const [name, opts, envOpts, status, bodyRe] of LIFTED_CASES) {
+      const label = `${path} [lifted] ${name}`;
+      const r = await call(path, {...opts, env: makeEnv(envOpts), w: lifted});
+      const body = await assertNoindex(r, label, status);
+      if (bodyRe) assert.match(body, bodyRe, label);
+      if (status === 303) assert.equal(r.headers.get("location"), MP_URL, label);
     }
   }
 });
@@ -113,6 +139,12 @@ test("an unexpected exception inside the buy flow still answers 5xx with the noi
   catch (e) { assert.fail("[exception] buy flow threw instead of answering 503: " + e.message); }
   const body = await assertNoindex(r, "exception", 503);
   assert.match(body, /Checkout próprio indisponível/, "[exception]");
+  // DEC-05 lifted copy: the POST really creates the session, so the throwing waitUntil hits the route's handler.
+  let l;
+  try { l = await call("/comprar/ZEV-IA-011", {method: "POST", env: makeEnv({sales: "open"}), ctx: throwingCtx, w: lifted}); }
+  catch (e) { assert.fail("[exception] lifted buy flow threw instead of answering 503: " + e.message); }
+  const lbody = await assertNoindex(l, "[lifted] exception", 503);
+  assert.match(lbody, /Checkout indisponível/, "[exception]");
 });
 
 test("percent-encoded aliases of /comprar are decoded once (URL rules) and get the same flow and headers", async () => {

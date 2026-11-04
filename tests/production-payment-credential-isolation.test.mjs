@@ -52,6 +52,11 @@ test("P2 produção só com credenciais de TESTE recusa checkout de produção",
   assert.deepEqual([...entry.mp, ...handler.mp], [], "[P2.2] nenhuma chamada ao Mercado Pago com o token de teste");
   const control = scenario("prod_checkout_handler_only_prod");
   assert.equal(control.error, "checkout_storage_unavailable", "[P2.3] controle: com credencial de produção o handler passa do provedor e para no banco");
+  // DEC-05 levantada (cópia isolada do compat): a guarda de isolamento do piloto continua sendo a recusa.
+  const lifted = scenario("prod_checkout_only_test_dec05_lifted");
+  assert.equal(lifted.status, 503, "[P2.4] trava DEC-05 levantada: entrada ainda recusa o piloto em produção");
+  assert.equal(lifted.error, "certification_checkout_not_isolated", "[P2.4] motivo: produção não é sandbox isolado");
+  assert.deepEqual(lifted.mp, [], "[P2.4] nenhuma chamada ao Mercado Pago");
 });
 
 test("P3 só com credenciais de PRODUÇÃO a rota de teste recusa", () => {
