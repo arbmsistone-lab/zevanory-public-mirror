@@ -18,6 +18,9 @@ on:
       - "reembolso/index.html"
       - "conteudo-pronto/index.html"
       - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "data/p24/promise-map.json"
+      - "pages-mirror/**"
       - "solucoes/index.html"
       - "sales-overlay/llms.txt"
       - "sales-public/**"
@@ -59,12 +62,12 @@ jobs:
           grep -qx '# tests 4' scope.txt
           grep -qx '# pass 4' scope.txt
           grep -qx '# fail 0' scope.txt
-      - name: Exactly 5 NC-016 A1-A4 static price, payment and legal-gating cases
+      - name: Exactly 7 NC-016 A1-A4 and NC-019 static price, payment, delivery and legal-gating cases
         run: |
           set -euo pipefail
           node --test --test-reporter=tap scripts/ci/nc016-phase1-contract.test.mjs | tee nc016.txt
-          grep -qx '# tests 5' nc016.txt
-          grep -qx '# pass 5' nc016.txt
+          grep -qx '# tests 7' nc016.txt
+          grep -qx '# pass 7' nc016.txt
           grep -qx '# fail 0' nc016.txt
       - name: NC-017 own checkout fail-closed and Hotmart exact-copy contracts
         run: |

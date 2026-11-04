@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
+import {readFileSync,readdirSync,existsSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {join} from "node:path";
 
@@ -73,4 +73,47 @@ test("NC016-A2/A4 root catalog is synchronized and independent of CP",()=>{
  const catalog=read("sales-public/index.html");
  assert.doesNotMatch(catalog,/conteudo-pronto|Conteúdo Pronto|72 horas|72 h/i);
  assert.match(catalog,/192 horas \(8 dias\)/);
+});
+
+// NC-019: fontes públicas (canônicas e geradas) sem a cláusula que amarrava a entrega ao prazo de garantia.
+const PUBLIC_DIRS=["sales-public","pages-mirror","worker"];
+const PUBLIC_FILES=["data/politica-unica.json","data/products.json","data/p24/promise-map.json","sales-overlay/approved.json",
+ "scripts/build_sales_public.py","scripts/sales_policy.py","termos/index.html","reembolso/index.html",
+ ...pricing.map(([slug])=>slug+"/index.html")];
+const LD=/<script type="application\/ld\+json">[\s\S]*?<\/script>/g;
+
+test("NC019-1 no public source ties delivery to the end of the warranty period",()=>{
+ const files=[...PUBLIC_FILES];
+ for(const dir of PUBLIC_DIRS)for(const f of readdirSync(join(root,dir)))if(/\.(html|mjs|js|json|txt|xml)$/.test(f))files.push(dir+"/"+f);
+ let scanned=0;
+ for(const file of files){
+   if(!existsSync(join(root,file)))continue;
+   scanned++;
+   assert.doesNotMatch(read(file),/fim do prazo de garantia/i,file);
+ }
+ assert.ok(scanned>100,"scan is not vacuous: "+scanned);
+ const policy=JSON.parse(read("data/politica-unica.json"));
+ assert.ok(policy.customer_wording.delivery.startsWith(deadline),"customer wording keeps the canonical delivery sentence");
+ // The 7-day withdrawal (art. 49 CDC) sentence stays independent of the 192 h release.
+ const withdrawal=policy.sol_text.slice(policy.sol_text.indexOf("Em contratação online"));
+ assert.match(withdrawal,/^Em contratação online, o consumidor poderá desistir sem justificativa e sem ônus no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço/);
+ assert.doesNotMatch(withdrawal.slice(0,withdrawal.indexOf(".")),/192|PDF|ZIP|garantia/);
+});
+
+test("NC019-2 base product pages: payment field and purchase wording name the Hotmart, never Mercado Pago (DEC-05)",()=>{
+ const policy=JSON.parse(read("data/politica-unica.json"));
+ assert.equal(policy.resumo_oferta.produto_digital.pagamento,"Pix à vista ou cartão, pela Hotmart. A compra só é confirmada após a aprovação do pagamento.");
+ assert.match(policy.sol_text,/comunicará imediatamente a Hotmart/);
+ assert.doesNotMatch(policy.sol_text,/comunicará imediatamente o Mercado Pago/);
+ for(const [slug] of pricing){
+   const page=read("sales-public/"+slug+".html");
+   const field=page.match(/<div data-field="pagamento"><dt>[^<]*<\/dt><dd>([^<]*)<\/dd><\/div>/);
+   assert.ok(field,slug+": Resumo da oferta payment field");
+   assert.match(field[1],/Hotmart/,slug);
+   assert.doesNotMatch(field[1],/Mercado Pago/,slug);
+   const visible=page.replace(LD,"");
+   assert.doesNotMatch(visible,/Mercado Pago|pedir-reembolso/,slug+": no own-checkout purchase or refund wording");
+   assert.match(visible,/peça pela Hotmart, em Minhas compras, ou pelo e-mail suporte@zevanory\.api\.br/,slug+": refund instruction for new purchases");
+   assert.match(visible,/Entrega: acesso online e planilhas logo após a aprovação do pagamento; PDFs e ZIP por e-mail 192 horas \(8 dias\) após a aprovação\./,slug+": policy summary");
+ }
 });
