@@ -66,7 +66,7 @@ jobs:
             grep -qx "# $kv" /tmp/cp.txt || { echo "::error::esperado '# $kv'"; exit 1; }
           done
           echo "::notice title=CONTEUDO_PRONTO_TESTS::$(grep -E '^# (tests|pass|fail|skipped|todo) ' /tmp/cp.txt | paste -sd' ' -)"
-      - name: Conteúdo Pronto — G3 validador de posts (DEC-14: 20 testes G1–G5 do pipeline KV aposentados; offline, contagem exata)
+      - name: Conteúdo Pronto — G3 validador de posts (DEC-14 aposentou os 20 testes G1–G5 do pipeline KV; offline, contagem exata)
         shell: bash
         run: |
           set -euo pipefail

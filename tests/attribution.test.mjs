@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { handleFunnel, buildFunnelSummary, isCountableView } from "../worker/funnel.mjs";
 import { attribution, isFunnelPage } from "../worker/sales-public-worker.mjs";
 import worker from "../worker/sales-public-worker.mjs";
@@ -33,7 +34,7 @@ test("intent and source are stored as aggregate counters only and summarized per
   assert.equal(s.pages["ia-na-pratica"].views, 10);
 });
 test("Hotmart-only kit variant preserves src attribution and never exposes CP", async () => {
-  const asset = await import("node:fs").then(fs=>fs.readFileSync(new URL("../sales-public/ia-na-pratica.html", import.meta.url),"utf8"));
+  const asset = readTextNormalized(new URL("../sales-public/ia-na-pratica.html", import.meta.url));
   const calls=[];
   const env={CORE:{fetch: async()=>Response.json({open:true})},ASSETS:{fetch:async()=>new Response(asset,{status:200})}};
   const r=await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica?utm_source=telegram"),env,{waitUntil(){}});

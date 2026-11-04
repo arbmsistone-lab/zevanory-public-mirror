@@ -5,7 +5,8 @@
 // módulo (scripts/kit-192h-*.test.mjs, scripts/ci/nc015-kit-e2e.test.mjs) ligam a flag EXPLICITAMENTE no harness.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { KIT_DEFERRED_192H_DEFAULT, KIT_DEFERRED_192H_FLAG, kitDeferred192hEnabled } from "../worker/kit-deferred-192h-flag.mjs";
@@ -16,7 +17,7 @@ import { ingestVerifiedKitCandidate, KIT_ORDER_INGEST_ENABLED } from "../worker/
 import salesWorker from "../worker/sales-public-worker.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const read = (p) => readFileSync(join(ROOT, p), "utf8");
+const read = (p) => readTextNormalized(join(ROOT, p));
 
 test("DEC-06 flag: default OFF and fail-closed for every value except exactly \"true\"", () => {
   assert.equal(KIT_DEFERRED_192H_FLAG, "KIT_DEFERRED_192H_ENABLED");
