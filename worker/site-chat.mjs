@@ -36,6 +36,7 @@
 //   domínios reservados); o modo sandbox (SITE_CHAT_SANDBOX=true) exige um sink injetado e nunca usa o Resend.
 import CHAT_POLICY from "../data/site-chat-policy.json" with { type: "json" };
 import {verifyChatTurnstile} from "./r120-chat-turnstile.mjs";
+import {registerRequest as registerOfficialAtendimento, parseInput as parseOfficialAtendimento} from "./atendimento.mjs";
 import PRODUCTS_JSON from "../data/products.json" with { type: "json" };
 import { SUPPORT_PRODUCTS, answerSupportQuestion, resolveProduct } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
@@ -695,7 +696,9 @@ async function messageRoute(sql, env, body, deps, { ip, now, flags }) {
       protocol = t?.protocol || null; due = t?.due_at || null;
     }
   }
-  const finalBody = protocol ? reply.body.replaceAll(PROTO, protocol)
+  const officialMode=String(env.SITE_CHAT_OFFICIAL_PROTOCOLS||"")==="true";
+  const finalBody = protocol && officialMode ? reply.body.replaceAll(`(protocolo ${PROTO})`,"(registro concluído após informar seu e-mail)").replaceAll(PROTO,"")
+    : protocol ? reply.body.replaceAll(PROTO, protocol)
     : reply.body.replace(` (protocolo ${PROTO})`, "").replace(`(protocolo ${PROTO})`, "").replaceAll(PROTO, "");
   const stored = redactSensitive(message).text;
   await sql.query("insert into zevanory_site_chat_messages (session_hash, role, body) values ($1, 'u', $2), ($1, 'a', $3)", [s.sess, stored, finalBody]);
@@ -716,6 +719,25 @@ async function handoffRoute(sql, env, body, deps, { ip, now, flags }) {
   const known = await sessionHasTicket(sql, s.sess);
   const over = await hitLimits(sql, [[`s:${s.sess}:m`, minuteWin(now), L.per_session_per_minute], ...(known ? [] : [[`i:${ip}:h:d`, dayWin(now), L.handoffs_per_ip_per_day], ["g:h:d", dayWin(now), L.handoffs_global_per_day]])]);
   if (over) { siteChatLog("rate_limited", { reason: over }); return json(429, { error: "rate_limited", fallback: FALLBACK }, { "retry-after": "3600" }); }
+  // R122: the canonical /atendimento outbox, not the independent chat ZC ticket,
+  // becomes the consumer-facing protocol. Default OFF until E2E and explicit activation.
+  if (String(env.SITE_CHAT_OFFICIAL_PROTOCOLS || "") === "true") {
+    if (body.privacy_ack !== true) return json(400,{error:"privacy_ack_required",fallback:FALLBACK});
+    const messages=await sql.query("select role, body from zevanory_site_chat_messages where session_hash = $1 order by id desc limit 24",[s.sess]);
+    const lines=(messages||[]).slice().reverse().map(m=>(m.role==="u"?"Consumidor: ":"Assistente: ")+redactSensitive(String(m.body||"")).text);
+    const transcript=lines.join("\\n").slice(0,3500);
+    const typeFrom=String((await sql.query("select categories from zevanory_site_chat_tickets where session_hash = $1",[s.sess]))?.[0]?.categories||"");
+    const tipo=/refund|withdrawal/.test(typeFrom)?"reembolso":/cancellation/.test(typeFrom)?"cancelamento":/complaint/.test(typeFrom)?"reclamacao":"suporte";
+    const parsed=parseOfficialAtendimento({tipo,email,pedido:"",mensagem:transcript.length>=10?transcript:"Atendimento iniciado pelo chat; solicitar retorno humano."});
+    const register=deps.registerOfficialAtendimento||registerOfficialAtendimento;
+    const out=await register(env,parsed,{ip,now,sqlFactory:deps.sqlFactory,fetchImpl:deps.fetchImpl});
+    if(out?.status!==200||!/^ZEV-[0-9]{8}-[A-F0-9]{10}$/.test(String(out?.body?.protocolo||"")))
+      return json(503,{error:"official_protocol_unavailable",fallback:FALLBACK});
+    const protocol=out.body.protocolo;
+    // Resend e alerta ao proprietário são responsabilidade do outbox oficial.
+    // Não emitir e-mail paralelo do ZC ticket.
+    return json(200,{reply:"Solicitação registrada no atendimento oficial. Protocolo: "+protocol+". Confirmação por e-mail: "+(out.body.email_confirmacao==="enviado"?"enviada.":"pendente; guarde seu número."),protocol,email_confirmation:out.body.email_confirmacao==="enviado"?"sent":"pending",official:true});
+  }
   const t = await openTicket(sql, { sess: s.sess, category: "human_request", now, sandbox: flags.sandbox });
   if (!t?.protocol) return json(503, { error: "site_chat_unavailable", fallback: FALLBACK });
   await sql.query("update zevanory_site_chat_tickets set contact_email = $2 where protocol = $1", [t.protocol, email]);
