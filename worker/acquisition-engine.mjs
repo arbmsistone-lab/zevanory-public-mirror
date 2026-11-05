@@ -179,7 +179,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  if(hour>=PEAK_HOURS.blog){
   try{
    const blog=await ensureDailyBlog(env,now,fetchImpl);
-   outcomes.push({channel:"blog",status:blog.latest?"publicado":"erro",url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day});
+   outcomes.push({channel:"blog",status:blog.latest?"publicado":blog.draft?"rascunho":"erro",url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day,code:blog.latest?null:blog.reason||"blog_unavailable"});
    if(blog.latest)await emitActivity(env,{type:"post_published",channel:"blog",status:"published",ref:"blog:"+day+":"+blog.latest.slug,link:blog.latest.url},{now:now.getTime()}).catch(()=>null);
   }catch{outcomes.push({channel:"blog",status:"erro",code:"blog_generation_failed",day});}
  }
