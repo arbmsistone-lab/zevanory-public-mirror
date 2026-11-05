@@ -384,6 +384,10 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   if (generative && ai?.run && !off("generative")) {
     const gen = await generate({ ai, message, salesOpen, catalog, product: det.product });
     if (gen.error) onAiFailure(gen.error);
+    // R120 DEC-20: provider free-quota exhaustion cannot be mistaken for an answered chat.
+    // No paid retry, no alternate provider, no checkout. Expose the existing human protocol form.
+    if (gen.error && /quota|neurons|insufficient_quota|exceeded|daily.limit|rate.limit|429/i.test(gen.error))
+      return { ...emailOnly, mode: "ai_quota_fallback", category: "ai_quota", actions: [...EMAIL_ONLY_ACTIONS] };
     if (gen.text && validateSiteReply(gen.text, { salesOpen, catalog }).ok) return { body: gen.text, mode: "ai_grounded", category: det.category, actions, model: gen.model };
     return { ...det, mode: det.mode + "_grounded_fallback", actions };
   }
