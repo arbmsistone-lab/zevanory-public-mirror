@@ -20,6 +20,7 @@ import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { handleSiteChat, handleSiteChatAdmin, runSiteChatRetention } from "./site-chat.mjs";
 import {handleR120PublicChat} from "./r120-chat-public.mjs";
+import {injectInstitutionalChat} from "./r120-chat-institutional.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
@@ -100,7 +101,9 @@ const wrapped = {
     let path = "/";
     // Only route words: any segment that could carry an id or token becomes "*" (public census).
     try { path = new URL(request.url).pathname.split("/").slice(0, 4).map((seg) => (seg === "" || /^[a-z][a-z-]{0,23}$/.test(seg) ? seg : "*")).join("/") || "/"; } catch {}
-    return wrapped.processFetch(request, withMeteredKv(env, "fetch:" + path), ctx);
+    const meteredEnv=withMeteredKv(env, "fetch:" + path);
+    const response=await wrapped.processFetch(request, meteredEnv, ctx);
+    return injectInstitutionalChat(request, normalizeEnv(productionEnvView(meteredEnv)), response);
   },
   async processFetch(request, env, ctx) {
     // Retired public assets (old contact script): inert, no-store tombstone before any env/KV access.
