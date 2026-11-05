@@ -35,6 +35,7 @@
 // * Isolamento de testes: produção recusa tokens/eventos sintéticos (sbx_, cabeçalhos de teste, e-mails de
 //   domínios reservados); o modo sandbox (SITE_CHAT_SANDBOX=true) exige um sink injetado e nunca usa o Resend.
 import CHAT_POLICY from "../data/site-chat-policy.json" with { type: "json" };
+import {verifyChatTurnstile} from "./r120-chat-turnstile.mjs";
 import PRODUCTS_JSON from "../data/products.json" with { type: "json" };
 import { SUPPORT_PRODUCTS, answerSupportQuestion, resolveProduct } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
@@ -596,7 +597,7 @@ export async function handleSiteChat(request, env = {}, deps = {}) {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" }, { allow: "GET" });
     if (!flags.enabled) return json(503, { enabled: false, error: "site_chat_disabled", fallback: FALLBACK });
     const notice = Object.fromEntries(Object.entries(CHAT.notice).map(([k, v]) => [k, fill(v, { legal_identity: LEGAL_IDENTITY })]));
-    return json(200, { enabled: true, generative: flags.generative, idle_minutes: L.session_idle_minutes, message_max_chars: L.message_max_chars, notice, fallback: FALLBACK });
+    return json(200, { enabled: true, generative: flags.generative, idle_minutes: L.session_idle_minutes, message_max_chars: L.message_max_chars, notice, fallback: FALLBACK, turnstile_sitekey: String(env.SITE_CHAT_TURNSTILE_SITEKEY||"") });
   }
   if (!flags.enabled) { siteChatLog("disabled"); return json(503, { error: "site_chat_disabled", fallback: FALLBACK }); }
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" }, { allow: "POST" });
@@ -618,7 +619,11 @@ export async function handleSiteChat(request, env = {}, deps = {}) {
     try { sql = deps.sqlFactory(env.DATABASE_URL); await ensureSiteChatSchema(sql); }
     catch { breaker.dbOpenUntil = now + 30_000; siteChatLog("dependency_failure", { dep: "database" }); return json(503, { error: "site_chat_unavailable", fallback: FALLBACK }); }
     try {
-      if (url.pathname === "/api/chat/session") return await sessionRoute(sql, env, body, { ip, now, flags });
+      if (url.pathname === "/api/chat/session") {
+        if (!body.renew && !(await verifyChatTurnstile(body.turnstile_token,env,deps.fetchImpl||fetch)))
+          return json(403,{error:"turnstile_required",fallback:FALLBACK});
+        return await sessionRoute(sql, env, body, { ip, now, flags });
+      }
       if (url.pathname === "/api/chat") return await messageRoute(sql, env, body, deps, { ip, now, flags });
       if (url.pathname === "/api/chat/handoff") return await handoffRoute(sql, env, body, deps, { ip, now, flags });
       return json(404, { error: "not_found" });
