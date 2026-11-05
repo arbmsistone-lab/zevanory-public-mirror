@@ -245,7 +245,7 @@ const wrapped = {
       });
       return chat || new Response("not_found", { status: 404 });
     }
-    if (url.pathname.startsWith("/api/admin/site-chat/")) return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
+    if (url.pathname.startsWith("/api/admin/site-chat/") || url.pathname === "/admin/chat-protocolos") return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);

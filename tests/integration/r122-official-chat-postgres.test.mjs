@@ -65,6 +65,7 @@ test("R122 PostgreSQL efêmero: chat -> protocolo oficial ZEV -> outbox real -> 
   assert.equal(first.body.official,true);
   assert.equal(first.body.email_confirmation,"sent");
   assert.equal(psql("select count(*)::int as n from zevanory_atendimento_outbox")[0].n,"1");
+  assert.equal(psql("select count(*)::int as n from zevanory_site_chat_tickets")[0].n,"0","no parallel ZC/SBX ticket in official mode");
   assert.equal(psql("select owner_status from zevanory_atendimento_outbox")[0].owner_status,"sent");
   assert.equal(psql("select customer_status from zevanory_atendimento_outbox")[0].customer_status,"sent");
   assert.equal(chatMailer.sent.length,0,"nenhum e-mail paralelo do chat");

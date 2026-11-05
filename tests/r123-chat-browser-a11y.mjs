@@ -11,7 +11,7 @@ const css=readFileSync(new URL("../sales-overlay/site-chat.css",import.meta.url)
 const browser=await chromium.launch({headless:true});
 try{
  const page=await browser.newPage({viewport:{width:360,height:740},deviceScaleFactor:1});
- await page.addInitScript(()=>{window.turnstile={render(_container,args){queueMicrotask(()=>args.callback("synthetic-turnstile-token"));return "mock-id"}}});
+ await page.route("https://challenges.cloudflare.com/**",route=>route.fulfill({status:200,contentType:"text/javascript",body:"window.turnstile={render:(_container,args)=>{queueMicrotask(()=>args.callback('synthetic-turnstile-token'));return 'mock-id'},reset:()=>{}};"}));
  await page.route("https://zevanory.api.br/**",async(route)=>{
   const u=new URL(route.request().url());
   if(u.pathname==="/api/chat/status")return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({notice:{who_answers:"Você está falando com um assistente virtual.",privacy_href:"/privacidade"},idle_minutes:30,message_max_chars:600,turnstile_sitekey:"test_R123_key"})});

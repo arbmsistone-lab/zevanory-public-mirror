@@ -797,7 +797,7 @@ async function handoffRoute(sql, env, body, deps, { ip, now, flags }) {
 // ---------- fila do proprietário (autenticada) ----------
 export async function handleSiteChatAdmin(request, env = {}, { sqlFactory, isAdminAuthorized } = {}) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/admin/site-chat/")) return null;
+  if (!url.pathname.startsWith("/api/admin/site-chat/") && url.pathname!=="/admin/chat-protocolos") return null;
   if (typeof isAdminAuthorized !== "function" || !isAdminAuthorized(request, env)) return json(401, { error: "unauthorized" }, { "www-authenticate": 'Basic realm="ZEVANORY"' });
   if (!sqlFactory || !env.DATABASE_URL) return json(503, { error: "database_unavailable" });
   const sql = sqlFactory(env.DATABASE_URL);
@@ -809,6 +809,18 @@ export async function handleSiteChatAdmin(request, env = {}, { sqlFactory, isAdm
       join zevanory_site_chat_sessions s on s.official_protocol=o.protocolo
       order by o.recebido_em desc limit 200`,[]);
     return json(200,{tickets:rows||[],source:"zevanory_atendimento_outbox"});
+  }
+  if(url.pathname==="/admin/chat-protocolos" && request.method==="GET"){
+    // Auth is checked above; use the SAME official outbox as /atendimento.
+    const rows=await sql.query(`select o.protocolo,o.tipo,o.recebido_em,o.responder_ate,
+      o.owner_status,o.customer_status from zevanory_atendimento_outbox o
+      join zevanory_site_chat_sessions s on s.official_protocol=o.protocolo
+      order by o.recebido_em desc limit 200`,[]);
+    const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    const cell=v=>"<td>"+safe(v)+"</td>";
+    const data=(rows||[]).map(r=>"<tr>"+["protocolo","tipo","recebido_em","responder_ate","owner_status","customer_status"].map(k=>cell(r[k])).join("")+"</tr>").join("");
+    const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>ZEVANORY | Atendimento</title></head><body><main><h1>Protocolos oficiais do chat</h1><p>Atendimento oficial ZEVANORY. Consultar /atendimento para novas solicitações.</p><table><caption>Fila oficial de protocolos ZEV originados no chat</caption><thead><tr><th>Protocolo</th><th>Tipo</th><th>Recebido</th><th>Prazo</th><th>Aviso à equipe</th><th>Confirmação ao cliente</th></tr></thead><tbody>${data}</tbody></table></main></body></html>`;
+    return new Response(html,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'","x-frame-options":"DENY","x-content-type-options":"nosniff","referrer-policy":"no-referrer"}});
   }
   const m = url.pathname.match(/^\/api\/admin\/site-chat\/tickets(?:\/((?:ZC|SBX)-\d{8}-[A-Z2-9]{6}))?(?:\/(close|hold))?$/);
   if (!m) return json(404, { error: "not_found" });

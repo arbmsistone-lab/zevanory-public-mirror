@@ -14,7 +14,7 @@ function compressPage(request, body, init){
   headers.append("vary","accept-encoding");
   return new Response(body.pipeThrough(new CompressionStream("gzip")),{...init,headers,encodeBody:"manual"});
 }
-const CSP=["default-src 'self'","base-uri 'none'",`form-action 'self' ${MP}`,"frame-ancestors 'none'","object-src 'none'",`script-src 'self' ${MP} https://sdk.mercadopago.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`,`frame-src ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://challenges.cloudflare.com`,"style-src 'self'",`img-src 'self' data: ${MP}`,`connect-src 'self' https://api.mercadopago.com ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://cloudflareinsights.com`,"font-src 'self'"].join("; ");
+const CSP=["default-src 'self'","base-uri 'none'",`form-action 'self' ${MP}`,"frame-ancestors 'none'","object-src 'none'",`script-src 'self' ${MP} https://sdk.mercadopago.com https://static.cloudflareinsights.com`,`frame-src ${MP} https://*.mercadopago.com https://*.mercadopago.com.br`,"style-src 'self'",`img-src 'self' data: ${MP}`,`connect-src 'self' https://api.mercadopago.com ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://cloudflareinsights.com`,"font-src 'self'"].join("; ");
 function applySecurityHeaders(headers){
   headers.set("strict-transport-security","max-age=63072000; includeSubDomains; preload");
   headers.set("content-security-policy",CSP);
@@ -462,6 +462,12 @@ export default{async fetch(request,env,ctx){
   else if(page&&SALES_TOGGLE_PAGES.has(page)) headers.set("cache-control",SWITCH_DEPENDENT_CACHE_CONTROL);
   else if(response.status===200&&page) headers.set("cache-control",PAGE_CACHE_CONTROL);
   applySecurityHeaders(headers);
+  // R124: enable Turnstile only on a page actually serving the chat; OFF retains the exact historical CSP.
+  if(response.status===200&&page&&shouldInjectSiteChat(page,env)){
+    headers.set("content-security-policy",CSP
+      .replace("https://static.cloudflareinsights.com","https://static.cloudflareinsights.com https://challenges.cloudflare.com")
+      .replace("https://*.mercadopago.com.br","https://*.mercadopago.com.br https://challenges.cloudflare.com"));
+  }
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);
   if(response.status===200&&sku&&env?.CORE&&typeof HTMLRewriter!=="undefined"){
     const r=(await reviewSummary(env))[sku];
