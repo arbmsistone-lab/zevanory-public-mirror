@@ -31,6 +31,7 @@ git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
 node scripts/deploy/materialize-control-plane.mjs
 cmp -s worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
 cp admin.css public/admin.css
+python3 scripts/deploy/copy-site-chat-assets.py
 python3 scripts/deploy/write-build-info.py
 git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
 python3 scripts/deploy/prepare-central-candidate.py
