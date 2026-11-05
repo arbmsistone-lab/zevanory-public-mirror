@@ -120,6 +120,9 @@
   handoff.appendChild(el("label", { for: "zc-email", className: "zc-label" }, "Seu e-mail"));
   var emailInput = el("input", { id: "zc-email", className: "zc-input", type: "email", autocomplete: "email", inputmode: "email", required: "required", "aria-describedby": "zc-email-error" });
   handoff.appendChild(emailInput);
+  var privacyAck = el("input", { id: "zc-privacy-ack", type: "checkbox", required: "required" });
+  var privacyAckLabel = el("label", { for: "zc-privacy-ack", className: "zc-small" }, "Li o aviso de privacidade e solicito encaminhamento da conversa à equipe por e-mail.");
+  handoff.appendChild(privacyAck); handoff.appendChild(privacyAckLabel);
   var emailError = el("p", { id: "zc-email-error", className: "zc-error", "aria-live": "polite" });
   handoff.appendChild(emailError);
   var handoffActions = el("div", { className: "zc-actions" });
@@ -316,9 +319,10 @@
     e.preventDefault();
     var v = emailInput.value.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { emailError.textContent = "Digite um e-mail válido, como nome@exemplo.com.br."; emailInput.setAttribute("aria-invalid", "true"); emailInput.focus(); return; }
+    if (!privacyAck.checked) { emailError.textContent = "Confirme a leitura do aviso de privacidade para enviar seu atendimento."; privacyAck.focus(); return; }
     emailError.textContent = ""; emailInput.removeAttribute("aria-invalid");
     setBusy(true);
-    ensureSession().then(function (session) { return request("/handoff", "POST", { session: session, email: v }); }).then(function (j) {
+    ensureSession().then(function (session) { return request("/handoff", "POST", { session: session, email: v, privacy_ack: privacyAck.checked }); }).then(function (j) {
       setBusy(false);
       if (j.__status === 503) return showDown(j.fallback && j.fallback.message);
       if (j.__status !== 200) { emailError.textContent = j.__status === 429 ? "Muitos pedidos hoje. Escreva para " + EMAIL + "." : "Não foi possível agora. Escreva para " + EMAIL + "."; return; }
