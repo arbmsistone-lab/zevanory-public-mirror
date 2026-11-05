@@ -705,7 +705,7 @@ async function messageRoute(sql, env, body, deps, { ip, now, flags }) {
   await sql.query("update zevanory_site_chat_sessions set turns = turns + 1, corrections = corrections + $2, last_at = $3::timestamptz, source_version = $4 where session_hash = $1", [s.sess, composed.correction ? 1 : 0, new Date(now).toISOString(), SOURCE_VERSION]);
   siteChatLog("reply", { category: reply.category, mode: reply.mode, created: Boolean(protocol) });
   const out = { reply: finalBody, category: reply.category, actions: reply.actions || [] };
-  if (reply.escalate) out.escalation = { category: reply.escalate.category, protocol, due_date: due ? dueLabel(due) : null, sla_days: CHAT.sla_days, needs_email: true };
+  if (reply.escalate) out.escalation = { category: reply.escalate.category, protocol: officialMode ? null : protocol, due_date: due ? dueLabel(due) : null, sla_days: CHAT.sla_days, needs_email: true };
   return json(200, out);
 }
 
