@@ -32,7 +32,9 @@ tests/commercial-metrics-projection.test.mjs 13
 tests/comprar-noindex.test.mjs 8
 tests/contato-publico-whatsapp.test.mjs 9
 tests/content-service.test.mjs 4
-tests/conteudo-pronto-roteiros.test.mjs 16
+tests/conteudo-pronto-campanha.test.mjs 12
+tests/conteudo-pronto-g1-g5.test.mjs 1
+tests/conteudo-pronto-roteiros.test.mjs 9
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
@@ -51,6 +53,7 @@ tests/hotmart-paused.test.mjs 15
 tests/inbound-autonomy.test.mjs 6
 tests/instant-status-sales-coherence.test.mjs 3
 tests/internal-financial-audit.test.mjs 11
+tests/kit-deferred-192h-flag.test.mjs 6
 tests/kv-meter.test.mjs 5
 tests/kv-quota-issue.test.mjs 5
 tests/lab-cancelamento-pagamentos-pendentes.test.mjs 8
@@ -65,6 +68,7 @@ tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
+tests/nc015-cp-no-public-links.test.mjs 4
 tests/operational-activity.test.mjs 7
 tests/operator-token-transition.test.mjs 8
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
@@ -81,7 +85,7 @@ tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
 tests/p20-restore-drill.test.mjs 12
 tests/p22-proof-renewal-investigation.test.mjs 17
-tests/p23-ecommerce-legal.test.mjs 18
+tests/p23-ecommerce-legal.test.mjs 19
 tests/payment-return-page.test.mjs 3
 tests/plan-probe.test.mjs 1
 tests/politica-honrar-pagamento.test.mjs 2
@@ -93,6 +97,7 @@ tests/production-payment-credential-isolation.test.mjs 7
 tests/production-pilot-removal.test.mjs 7
 tests/production-secret-names.test.mjs 18
 tests/production-staging-health.test.mjs 3
+tests/public-html-internal-markers.test.mjs 2
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 12
 tests/refund-provider-ambiguity.test.mjs 29

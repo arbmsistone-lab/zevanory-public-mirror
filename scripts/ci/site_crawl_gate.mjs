@@ -19,7 +19,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join, normalize, extname, relative } from "node:path";
+import { join, normalize, extname, relative, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -149,6 +149,28 @@ export function stubProblems(html) {
   return p;
 }
 
+// DEC-04 (phase 1: Conteúdo Pronto is not sold): the two historic CP URLs on the Pages copy are NOT redirect stubs.
+// They are the 404-equivalent tombstone (noindex,nofollow, no redirect to any offer, no CTA, support contact only),
+// byte-identical to sales-public/conteudo-pronto.html. Only these two names may use this shape; every other page
+// must still pass stubProblems().
+export const CP_TOMBSTONE_STUBS = Object.freeze(["conteudo-pronto.html", "sales-public__conteudo-pronto.html"]);
+export const CP_TOMBSTONE_SITE = Object.freeze(["conteudo-pronto/index.html", "sales-public/conteudo-pronto.html"]);
+export function tombstoneProblems(html) {
+  const p = [];
+  if (!/<meta name="robots" content="noindex,nofollow">/.test(html)) p.push("tombstone without noindex,nofollow");
+  if (!/<title>Página indisponível \| ZEVANORY<\/title>/.test(html) || !/<h1>Página indisponível<\/h1>/.test(html)) p.push("tombstone without the unavailable notice");
+  if (/http-equiv="refresh"|rel="canonical"|vendas\.zevanory\.api\.br/i.test(html)) p.push("tombstone redirects or links to the sales host");
+  const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
+  if (hrefs.some((h) => h !== "mailto:suporte@zevanory.api.br")) p.push("tombstone links somewhere other than suporte@");
+  if (/data-zev-sub|assin|hotmart|<form\b/i.test(html)) p.push("tombstone carries a subscription/offer CTA");
+  if (/<link rel="stylesheet"|<img\b|<script\b/i.test(html)) p.push("loads assets (stylesheet/img/script)");
+  if (/R\$\s?\d|\bpreço|checkout|comprar|contato@/i.test(html)) p.push("price/offer/legacy contact text");
+  return p;
+}
+export function pagesFileProblems(name, html) {
+  return CP_TOMBSTONE_STUBS.includes(name) || CP_TOMBSTONE_SITE.includes(name) ? tombstoneProblems(html) : stubProblems(html);
+}
+
 async function walk(dir) {
   const out = [];
   for (const e of await readdir(dir, { withFileTypes: true })) {
@@ -167,7 +189,7 @@ async function pagesCheck() {
     const text = readFileSync(f, "utf8");
     if (f.endsWith(".html")) {
       report.stubs++;
-      for (const problem of stubProblems(text)) report.problems.push({ file: rel, problem });
+      for (const problem of pagesFileProblems(basename(f), text)) report.problems.push({ file: rel, problem });
       const target = text.match(STUB_RE.canonical)?.[1];
       if (target) {
         // Every redirect target must be a page the sales Worker serves with 200 (no redirect chain, no 404).
@@ -191,7 +213,7 @@ async function pagesCheck() {
       // it is GitHub's generic CSS, not repository content (the repo has no assets/css/), and no stub links it.
       if (rel === "assets/css/style.css") { report.theme_asset = rel; continue; }
       if (!rel.endsWith(".html")) { report.problems.push({ file: "_site/" + rel, problem: "published non-HTML file (source tree leaked)" }); continue; }
-      for (const problem of stubProblems(readFileSync(join(PAGES_SITE, rel), "utf8"))) report.problems.push({ file: "_site/" + rel, problem });
+      for (const problem of pagesFileProblems(rel, readFileSync(join(PAGES_SITE, rel), "utf8"))) report.problems.push({ file: "_site/" + rel, problem });
     }
     for (const must of ["index.html", "404.html", "quem-criou/index.html", "lucro-e-caixa/index.html", "robots.txt"]) {
       if (!files.includes(must)) report.problems.push({ file: "_site/" + must, problem: "expected redirect stub missing" });

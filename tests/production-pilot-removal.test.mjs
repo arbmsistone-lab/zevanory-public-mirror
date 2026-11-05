@@ -20,6 +20,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { requireTool } from "./helpers/toolchain.mjs";
 import { fileURLToPath } from "node:url";
+import { isMpPhase1CheckoutEnabled } from "../worker/nc015-sales-scope.mjs";
+// DEC-05: while the phase-one Hotmart-only lock is on, the own/pilot checkout is refused EARLIER by the lock
+// (503 phase1_hotmart_only, before any provider). Lifting the lock must bring back the isolation refusal below.
+const PILOT_CHECKOUT_REFUSAL = isMpPhase1CheckoutEnabled() ? "certification_checkout_not_isolated" : "phase1_hotmart_only";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const run = spawnSync(process.execPath, ["--import", "./tests/t4_sim/register.mjs", "tests/helpers/pilot-removal-probe.mjs"],
@@ -34,7 +38,7 @@ function probed() {
 const VARIANTS = ["vars", "runtime_object", "runtime_string", "process_env"];
 // Recusa esperada por caminho (motivo fail-closed do próprio código, não 401/404 genérico).
 const REFUSAL = {
-  pilot_checkout: [503, "certification_checkout_not_isolated"],
+  pilot_checkout: [503, PILOT_CHECKOUT_REFUSAL],
   certification_invite: [409, "certification_e2e_not_fail_closed"],
   sandbox_status: [409, "certification_e2e_not_fail_closed"],
   sandbox_checkout: [409, "certification_e2e_not_fail_closed"],

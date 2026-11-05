@@ -4,8 +4,8 @@
 // invented answer.
 // P13c: prazo, entrega e reembolso vêm SÓ de data/politica-unica.json (worker/politica-unica.mjs):
 // a regra dos 7 dias (customer_wording.rule_7d),
-// link de 72 h / um download com reenvio sem custo, confirmação imediata, Mercado Pago avisado
-// imediatamente, crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
+// entrega imediata e integral para download na área de compras da Hotmart (DEC-06), confirmação imediata, plataforma
+// de cobrança avisada imediatamente, crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
 // traz chamada de compra (/comprar, /assinar, Hotmart); com vendas fechadas (interruptor do
 // proprietário, worker/sales-control.mjs) preço e conteúdo avisam que as vendas estão fechadas.
 import { CLOSED_LABEL, SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER } from "./politica-unica.mjs";
@@ -18,12 +18,12 @@ const DELIVERY = SUPPORT_DELIVERY_ANSWER;
 const REFUND = SUPPORT_REFUND_ANSWER;
 
 export const SUPPORT_PRODUCTS = Object.freeze({
-  "ia-na-pratica": { name: "IA na Prática", price_brl: 197, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
-  "vendas-na-pratica": { name: "Vendas na Prática", price_brl: 197, content: "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com clareza de próxima ação." },
-  "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 247, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
-  "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 297, content: "Reúne IA na Prática e Vendas na Prática completos: os dois treinamentos, que se complementam e podem ser usados de forma independente." },
-  "negocio-completo": { name: "Negócio Completo", price_brl: 397, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
-  "conteudo-pronto": { name: "Conteúdo Pronto (assinatura mensal)", price_brl: 197, content: "Serviço mensal automático: depois da confirmação do pagamento, você responde um formulário curto e recebe por e-mail, em minutos, 12 posts com legenda, 4 roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail, para canais autorizados pelos seus clientes, como e-mail, Instagram Direct, Telegram ou chat do site) e um calendário de 30 dias, no tom do seu negócio. Você revisa antes de usar; não há disparo automático. Renovação mensal automática, sem fidelidade: cancele quando quiser." },
+  "ia-na-pratica": { name: "IA na Prática", price_brl: 97, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
+  "vendas-na-pratica": { name: "Vendas na Prática", price_brl: 97, content: "Método prático para organizar os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com clareza de próxima ação." },
+  "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 147, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
+  "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 157, content: "Reúne IA na Prática e Vendas na Prática completos: os dois treinamentos, que se complementam e podem ser usados de forma independente." },
+  "negocio-completo": { name: "Negócio Completo", price_brl: 247, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
+  "conteudo-pronto": { name: "Conteúdo Pronto (assinatura mensal)", price_brl: 197, content: "Campanha mensal de promoção de vendas: você informa no formulário o objetivo comercial, a oferta, a condição comercial e o período e recebe por e-mail 12 posts, 4 roteiros multicanal de venda e acompanhamento (versão curta e versão de e-mail) e o calendário do período. Se a geração ou o envio falhar, nova tentativa a cada hora, até 12 vezes, e a equipe da ZEVANORY é avisada. Você revisa antes de usar; não há disparo automático. A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O estorno é processado em até 7 dias úteis. O arrependimento de 7 dias continua valendo. Renovação mensal automática, sem fidelidade." },
 });
 
 // Most specific first: "como recebo o acesso depois de pagar" is delivery, not price.
@@ -64,7 +64,7 @@ export function answerSupportQuestion({ product, question, salesOpen } = {}) {
     return { answered: true, intent, product: slug, answer: "Não. Os materiais da ZEVANORY ajudam na gestão do dia a dia, mas não substituem contador, obrigações fiscais nem consultoria individual, e não prometem resultado financeiro: o resultado depende da aplicação no seu negócio.", sources: [slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
   }
   if (intent === "refund" || intent === "delivery") {
-    return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [intent === "refund" ? "https://zevanory.api.br/pedir-reembolso" : "https://zevanory.api.br/entrega/reenviar", slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
+    return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [...(intent === "refund" ? ["https://zevanory.api.br/pedir-reembolso"] : []), slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
   }
   if (!slug) {
     return { answered: false, intent, product: null, answer: "Sobre qual produto? IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas ou Negócio Completo.", handoff: false, needs_product: true };

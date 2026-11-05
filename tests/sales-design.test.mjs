@@ -38,7 +38,7 @@ test("(a) unknown page -> designed 404 (noindex, no-store); asset 404 stays plai
   assert.equal(await asset.text(), "Not found");
 });
 
-const PRICED = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo", "conteudo-pronto"];
+const PRICED = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"];
 test("(b) trust block next to the price on every priced page (and Hotmart wording in the Hotmart variant)", () => {
   for (const slug of PRICED) {
     const html = read(slug + ".html");
@@ -46,12 +46,14 @@ test("(b) trust block next to the price on every priced page (and Hotmart wordin
     assert.ok(receipt.includes('class="receipt-total"'), slug + ": price in the receipt");
     for (const need of ["Empresa brasileira", "A. RENAN ALVES MOREIRA BITU LTDA", "CNPJ 69.077.233/0001-99</span>", "Várzea Alegre (CE)", "resposta conclusiva em até 5 dias", 'href="/termos"', 'href="/privacidade"', 'href="/reembolso"'])
       assert.ok(receipt.includes(need), `${slug}: ${need}`);
-    assert.ok(receipt.includes(slug === "conteudo-pronto" ? "processado pela Hotmart" : "processado pelo Mercado Pago"), slug + ": payment processor named as text");
+    // NC-019 (DEC-05): phase one sells only via Hotmart, so the base page already names it.
+    assert.ok(receipt.includes("processado pela Hotmart"), slug + ": base page names the Hotmart as payment processor");
+    assert.ok(!receipt.includes("Mercado Pago"), slug + ": no Mercado Pago purchase wording for new purchases");
   }
-  for (const slug of PRICED.slice(0, 5)) {
+  for (const slug of PRICED) {
     const out = hotmartPage(read(slug + ".html"), slug, "https://pay.hotmart.com/X1");
     assert.match(out, /<strong>Pagamento<\/strong><span>processado pela Hotmart/);
-    assert.match(out, /Pagamento processado pela Hotmart \(Pix, cartão ou boleto\)/);
+    assert.match(out, /Pagamento processado pela Hotmart \(Pix à vista ou cartão\)/);
   }
 });
 
@@ -168,6 +170,12 @@ test("(f) both themes: dark rules on every page, AA contrast for every token pai
   const pages = readdirSync(PUB).filter((n) => n.endsWith(".html"));
   for (const n of pages) {
     const html = read(n);
+    // DEC-04: security tombstone is deliberately tiny, no product layout or styling.
+    if(n==="conteudo-pronto.html"){
+      assert.match(html,/noindex,nofollow/);
+      assert.doesNotMatch(html,/href="\/assinar\/|pay\.hotmart\.com|data-zev-sub/);
+      continue;
+    }
     assert.match(html, /<meta name="color-scheme" content="light dark">/, n + ": declares both themes");
     const css = html.match(/<link rel="stylesheet" href="\/(assets\/(?:product|legal)\.[0-9a-f]{10}\.css)">/);
     assert.ok(css, n + ": loads the hashed design stylesheet");

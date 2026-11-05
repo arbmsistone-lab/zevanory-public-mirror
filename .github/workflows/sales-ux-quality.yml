@@ -103,6 +103,8 @@ jobs:
           node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8788 /tmp/sales-ux/screenshots/before
           node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8787 /tmp/sales-ux/screenshots/after
           COLOR_SCHEME=dark node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8787 /tmp/sales-ux/screenshots/after-dark
+      - name: DEC-04 accessible CP 404 and fail-closed summary regression
+        run: node --test tests/ci/dec04-cp-lighthouse-tombstone.test.mjs
       - name: Budget on the base build (before, report only)
         run: node scripts/audit/sales-quality-budget.mjs http://127.0.0.1:8788 /tmp/sales-ux/budget-before --report-only
       - name: Budget on the PR build (after, enforced, all 10 public pages)

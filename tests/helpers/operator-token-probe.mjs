@@ -73,6 +73,7 @@ const ROUTES = {
   channel_evidence: ["/api/internal/channels/evidence", "POST", "x-certification-e2e-token", "not-json"],
   whatsapp_stats_refresh: ["/api/internal/whatsapp/stats-refresh", "POST", "x-certification-e2e-token", "{}"],
   voice_audit: ["/api/admin/voice/audit", "POST", "authorization", "{}"],
+  cp_operator_status: ["/api/admin/conteudo-pronto/status", "GET", "authorization", null],
 };
 
 async function call(env, route, token) {

@@ -62,7 +62,7 @@ M = {
     "P7 right denial allowed": (CHAT, "  if (/(nao (tem|ha|existe) (direito", "  if (false && /(nao (tem|ha|existe) (direito"),
     "P8 deadline outside source allowed": (CHAT, 'issues.push("deadline_outside_source");', ""),
     # vendas fechadas / checkout
-    "C1 checkout mention allowed": (CHAT, 'if (hasCheckoutCta(body) || CHECKOUT_RE.test(body)) issues.push("checkout");', ""),
+    "C1 checkout mention allowed": (CHAT, 'if (hasCheckoutCta(unmasked) || CHECKOUT_RE.test(unmasked)) issues.push("checkout");', ""),
     "C2 ambiguous sales status = open": (CHAT, "    return v === true;", "    return v !== false;"),
     "C3 sales status error = open": (CHAT, '} catch { breakerFailure("sales_status"); return false; }', '} catch { breakerFailure("sales_status"); return true; }'),
     "C4 widget links checkout": (JS, " && !/^\\/(comprar|assinar)\\b/.test(u.pathname)", ""),

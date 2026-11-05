@@ -6,6 +6,13 @@ import {fileURLToPath} from "node:url";
 import {dirname, join} from "node:path";
 import worker, {percentDecodeOnce, comprarMatch} from "../worker/sales-public-worker.mjs";
 import {WHATSAPP_PUBLIC_RE, WHATSAPP_CHANNEL_RE} from "../worker/politica-unica.mjs";
+import {isMpPhase1CheckoutEnabled} from "../worker/nc015-sales-scope.mjs";
+import {importLifted} from "./helpers/dec05-lifted.mjs";
+// DEC-05 locks the own checkout BEFORE the older buy-flow code (303 to the provider, 405, exception handler). That
+// code is what answers the day the lock is lifted, so it is also exercised on a copy of the Worker with the lock
+// lifted (tests/helpers/dec05-lifted.mjs, this process only). The default import above stays locked.
+const lifted = (await importLifted(new URL("../worker/sales-public-worker.mjs", import.meta.url))).default;
+assert.equal(isMpPhase1CheckoutEnabled(), false, "DEC-05 lock is on in the default graph");
 
 // Auditor Sol (AVAL 100): /comprar/ on vendas.zevanory.api.br stays out of search indexes by the
 // response itself (X-Robots-Tag noindex,nofollow + Cache-Control no-store + robots meta in HTML),
@@ -38,8 +45,8 @@ function makeEnv({sales = "closed", checkout = "ok", limiter = "ok", core = true
   return env;
 }
 const okCtx = {waitUntil() {}};
-const call = (path, {method = "GET", ua = BROWSER, env = makeEnv(), ctx = okCtx} = {}) =>
-  worker.fetch(new Request("https://vendas.zevanory.api.br" + path, {method, headers: {"user-agent": ua, "cf-connecting-ip": "203.0.113.9"}}), env, ctx);
+const call = (path, {method = "GET", ua = BROWSER, env = makeEnv(), ctx = okCtx, w = worker} = {}) =>
+  w.fetch(new Request("https://vendas.zevanory.api.br" + path, {method, headers: {"user-agent": ua, "cf-connecting-ip": "203.0.113.9"}}), env, ctx);
 
 function assertNoWhatsapp(body, label) {
   const m = WHATSAPP_PUBLIC_RE.exec(body) || WHATSAPP_CHANNEL_RE.exec(body);
@@ -64,18 +71,29 @@ async function assertNoindex(r, label, expectStatus) {
 const CASES = [
   ["closed GET (Vendas abrem em breve)", {}, {}, 200, /Vendas abrem em breve/],
   ["closed HEAD", {method: "HEAD"}, {}, 200, null],
-  ["closed POST", {method: "POST"}, {}, 200, /Vendas abrem em breve/],
+  ["closed POST denied by DEC-05", {method: "POST"}, {}, 503, /Checkout próprio indisponível/],
   ["status 500 = closed", {}, {sales: "error500"}, 200, /Vendas abrem em breve/],
   ["status throw = closed", {}, {sales: "throw"}, 200, /Vendas abrem em breve/],
-  ["no core binding (503)", {}, {core: false}, 503, /Checkout indisponível/],
-  ["open GET confirmation", {}, {sales: "open"}, 200, /Ir para o pagamento seguro/],
-  ["open HEAD", {method: "HEAD"}, {sales: "open"}, 200, null],
-  ["open POST -> Mercado Pago (303)", {method: "POST"}, {sales: "open"}, 303, null],
-  ["open POST automation UA (403)", {method: "POST", ua: "curl/8.0"}, {sales: "open"}, 403, /Acesso não permitido/],
-  ["open POST rate limited (429)", {method: "POST"}, {sales: "open", limiter: "limited"}, 429, /Muitas tentativas/],
-  ["open POST checkout failure (503)", {method: "POST"}, {sales: "open", checkout: "fail"}, 503, /Não foi possível abrir o pagamento/],
-  ["PUT (405)", {method: "PUT"}, {sales: "open"}, 405, null],
-  ["DELETE closed (405)", {method: "DELETE"}, {}, 405, null],
+  ["no core binding remains closed", {}, {core: false}, 200, /Vendas abrem em breve/],
+  ["open GET redirects to owner-gated Hotmart route", {}, {sales: "open"}, 302, null],
+  ["open HEAD gated Hotmart", {method: "HEAD"}, {sales: "open"}, 302, null],
+  ["open POST MP closed (503)", {method: "POST"}, {sales: "open"}, 503, /Checkout próprio indisponível/],
+  ["open POST automation UA also denied (503)", {method: "POST", ua: "curl/8.0"}, {sales: "open"}, 503, /Checkout próprio indisponível/],
+  ["open POST no rate-limiter needed because disabled (503)", {method: "POST"}, {sales: "open", limiter: "limited"}, 503, /Checkout próprio indisponível/],
+  ["open POST checkout never reached (503)", {method: "POST"}, {sales: "open", checkout: "fail"}, 503, /Checkout próprio indisponível/],
+  ["PUT own checkout disabled (503)", {method: "PUT"}, {sales: "open"}, 503, null],
+  ["DELETE own checkout disabled (503)", {method: "DELETE"}, {}, 503, null],
+];
+
+const LIFTED_CASES = [
+  ["open GET confirmation step", {}, {sales: "open"}, 200, /Ir para o pagamento seguro/],
+  ["open POST 303 to the provider", {method: "POST"}, {sales: "open"}, 303, null],
+  ["closed POST", {method: "POST"}, {}, 200, /Vendas abrem em breve/],
+  ["automation UA 403", {method: "POST", ua: "curl/8.0"}, {sales: "open"}, 403, null],
+  ["rate limited 429", {method: "POST"}, {sales: "open", limiter: "limited"}, 429, null],
+  ["checkout failure 503", {method: "POST"}, {sales: "open", checkout: "fail"}, 503, /Não foi possível abrir o pagamento/],
+  ["PUT 405", {method: "PUT"}, {sales: "open"}, 405, null],
+  ["DELETE 405", {method: "DELETE"}, {}, 405, null],
 ];
 
 test("every product and every buy-flow state carries X-Robots-Tag noindex,nofollow, no-store and the robots meta", async () => {
@@ -83,6 +101,15 @@ test("every product and every buy-flow state carries X-Robots-Tag noindex,nofoll
     for (const [name, opts, envOpts, status, bodyRe] of CASES) {
       const label = `${path} ${name}`;
       const r = await call(path, {...opts, env: makeEnv(envOpts)});
+      const body = await assertNoindex(r, label, status);
+      if (bodyRe) assert.match(body, bodyRe, label);
+      if (status === 302) assert.equal(r.headers.get("location"), "/hotmart/"+({"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"})[sku],label);
+      if (status === 503) assert.equal(r.headers.get("location"),null,label);
+    }
+    // Post-lock buy flow (DEC-05 lifted copy): 303 to the provider, 405, 403, 429 and 503 keep every noindex header.
+    for (const [name, opts, envOpts, status, bodyRe] of LIFTED_CASES) {
+      const label = `${path} [lifted] ${name}`;
+      const r = await call(path, {...opts, env: makeEnv(envOpts), w: lifted});
       const body = await assertNoindex(r, label, status);
       if (bodyRe) assert.match(body, bodyRe, label);
       if (status === 303) assert.equal(r.headers.get("location"), MP_URL, label);
@@ -111,7 +138,13 @@ test("an unexpected exception inside the buy flow still answers 5xx with the noi
   try { r = await call("/comprar/ZEV-IA-011", {method: "POST", env: makeEnv({sales: "open"}), ctx: throwingCtx}); }
   catch (e) { assert.fail("[exception] buy flow threw instead of answering 503: " + e.message); }
   const body = await assertNoindex(r, "exception", 503);
-  assert.match(body, /Checkout indisponível/, "[exception]");
+  assert.match(body, /Checkout próprio indisponível/, "[exception]");
+  // DEC-05 lifted copy: the POST really creates the session, so the throwing waitUntil hits the route's handler.
+  let l;
+  try { l = await call("/comprar/ZEV-IA-011", {method: "POST", env: makeEnv({sales: "open"}), ctx: throwingCtx, w: lifted}); }
+  catch (e) { assert.fail("[exception] lifted buy flow threw instead of answering 503: " + e.message); }
+  const lbody = await assertNoindex(l, "[lifted] exception", 503);
+  assert.match(lbody, /Checkout indisponível/, "[exception]");
 });
 
 test("percent-encoded aliases of /comprar are decoded once (URL rules) and get the same flow and headers", async () => {
@@ -122,7 +155,7 @@ test("percent-encoded aliases of /comprar are decoded once (URL rules) and get t
     const closed = await call(path);
     assert.match(await assertNoindex(closed, `[alias] closed ${path}`, 200), /Vendas abrem em breve/, `[alias] ${path}`);
     const open = await call(path, {method: "POST", env: makeEnv({sales: "open"})});
-    await assertNoindex(open, `[alias] open POST ${path}`, 303);
+    await assertNoindex(open, `[alias] open POST ${path}`, 503);
   }
   for (const path of ["/%63omprar", "/%63omprar/", "/comp%72ar/x", "/%63omprar/%ZZ", "/%63omprar/ZEV-IA-011/extra"]) {
     await assertNoindex(await call(path, {env: makeEnv({sales: "open"})}), `[alias] ${path}`, 404);

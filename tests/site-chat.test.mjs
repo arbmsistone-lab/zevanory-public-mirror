@@ -70,7 +70,7 @@ test("SC04 preço inventado pelo modelo é bloqueado (vendas fechadas e abertas)
     assert.notEqual(r.mode, "ai_grounded", "[SC04.3] " + (mode));
   }
   const open = await composeReply({ message: "O que vem no Vendas na Prática?", salesOpen: true, ai: fakeAi("price"), generative: true });
-  assert.doesNotMatch(open.body, /97/, "[SC04.4]");
+  assert.doesNotMatch(open.body, /89/, "[SC04.4]");
   const ai = fakeAi("price");
   const closed = await composeReply({ message: "Quanto custa o Lucro & Caixa?", salesOpen: false, ai, generative: true });
   assert.equal(closed.body, CLOSED_PRICE_ANSWER, "[SC04.5] frase exata do Sol");
@@ -101,7 +101,7 @@ test("SC06 autoridade canônica consultada a CADA resposta; aberta => preço do 
   const h = harness({ salesOpen: async () => { calls += 1; return open; } });
   const s = await h.session();
   const a = await h.say(s, "Quanto custa o Lucro & Caixa?");
-  assert.match(a.body.reply, /R\$ 247,00/, "[SC06.1]");
+  assert.match(a.body.reply, /R\$ 147,00/, "[SC06.1]");
   assert.doesNotMatch(a.body.reply, CHECKOUT, "[SC06.2]");
   open = false;
   const b = await h.say(s, "Quanto custa o Lucro & Caixa?");
@@ -301,10 +301,15 @@ test("SC15 Worker de vendas: desligado => 503 local sem chamar o central e sem w
   assert.equal((await post(on, { origin: "https://evil.example" })).status, 403, "[SC15.6] outra origem");
   assert.equal((await post(on, { "user-agent": "curl/8.0" })).status, 403, "[SC15.7] automação");
   assert.equal((await post(on, { "content-type": "text/plain" })).status, 415, "[SC15.8]");
-  for (const slug of ["ia-na-pratica", "solucoes", "termos", "privacidade", "reembolso", "conteudo-pronto"]) {
+  for (const slug of ["ia-na-pratica", "solucoes", "termos", "privacidade", "reembolso"]) {
     const html = await (await salesWorker.fetch(new Request(ORIGIN + "/" + slug, { headers: { "user-agent": CHROME } }), on, { waitUntil() {} })).text();
     assert.ok(html.includes('<script src="/site-chat.js" defer></script></body>') && html.includes('<link rel="stylesheet" href="/site-chat.css"></head>'), "[SC15.9] " + (slug));
   }
+  // DEC-04: o Conteúdo Pronto está oculto na fase 1 — a rota pública é 404 noindex, sem widget nem página.
+  const cp = await salesWorker.fetch(new Request(ORIGIN + "/conteudo-pronto", { headers: { "user-agent": CHROME } }), on, { waitUntil() {} });
+  assert.equal(cp.status, 404, "[SC15.9b] conteudo-pronto oculto");
+  assert.match(cp.headers.get("x-robots-tag") || "", /noindex/, "[SC15.9b] noindex");
+  assert.ok(!(await cp.text()).includes("site-chat"), "[SC15.9b] sem widget");
   const other = await (await salesWorker.fetch(new Request(ORIGIN + "/ia-para-barbearia", { headers: { "user-agent": CHROME } }), on, { waitUntil() {} })).text();
   assert.ok(!other.includes("site-chat"), "[SC15.10] fora da lista: sem widget");
   assert.equal(shouldInjectSiteChat("solucoes", {}), false, "[SC15.11]");

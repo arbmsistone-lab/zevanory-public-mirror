@@ -3,7 +3,7 @@
 worker/fiscal-process.mjs e sinal 'fiscal' de worker/commercial-checkout-guard.mjs, classificados pelo classificador
 COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
-Suíte (uma execução `node --test`, TAP): tests/p23-ecommerce-legal.test.mjs (L1-L18). Cada mutante altera UMA regra numa
+Suíte (uma execução `node --test`, TAP): tests/p23-ecommerce-legal.test.mjs (L1-L19). Cada mutante altera UMA regra numa
 cópia mínima da árvore em diretório temporário (o repositório nunca é alterado).
 Expectativas (mutants_p23_legal_allow.json, formato load_mutant_config): primary (1-3) com test_pattern E
 assertion_pattern NÃO nulo (marcador [Ln.k]) e secondary com justification, escritas por raciocínio sobre a mutação

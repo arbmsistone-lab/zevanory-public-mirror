@@ -5,11 +5,16 @@
 import POLICY from "../data/politica-unica.json" with { type: "json" };
 
 const W = POLICY.customer_wording;
-const fill = (s) => String(s).replaceAll("{rule_7d}", W.rule_7d).replaceAll("{refund_channels}", W.refund_channels);
+// DEC-06: {refund_channels_hotmart} (compras novas) e {hotmart_guarantee}; {refund_channels} fica para os pedidos anteriores do Mercado Pago.
+const fill = (s) => String(s).replaceAll("{rule_7d}", W.rule_7d).replaceAll("{refund_channels_hotmart}", W.refund_channels_hotmart)
+  .replaceAll("{refund_channels}", W.refund_channels).replaceAll("{hotmart_guarantee}", POLICY.hotmart_guarantee);
 
 export const SOL_TEXT = POLICY.sol_text;
 export const RULE_7D = POLICY.rule_7d;
 export const DELIVERY_72H = POLICY.delivery_72h;
+// DEC-06: entrega imediata e integral para download na área de compras da Hotmart (delivery_72h mantém o nome; delivery_short é o campo do Resumo da oferta).
+export const DELIVERY_SHORT = POLICY.delivery_short;
+export const HOTMART_GUARANTEE = POLICY.hotmart_guarantee;
 export const CLOSED_LABEL = POLICY.closed_label;
 export const WAITLIST_LABEL = POLICY.waitlist_label;
 export const BANNED_POLICY_PHRASES = Object.freeze([...POLICY.banned_policy_phrases]);
@@ -79,6 +84,7 @@ export const REFUND_TEXT = fill(W.refund);
 export const SUBSCRIPTION_DELIVERY_TEXT = fill(W.subscription_delivery);
 export const SUBSCRIPTION_REFUND_TEXT = fill(W.subscription_refund);
 export const REFUND_CHANNELS = W.refund_channels;
+export const REFUND_CHANNELS_HOTMART = W.refund_channels_hotmart;
 export const SLA_TEXT = fill(W.sla);
 export const ALLOWED_DAY_COUNTS = Object.freeze(Object.values(W.dias_permitidos).map(Number));
 
@@ -92,8 +98,22 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Qualquer chamada de compra: caminho de checkout/assinatura (relativo ou absoluto), host de checkout
 // externo ou menção à Hotmart como lugar de compra.
 const CHECKOUT_RE = new RegExp("(?:" + [...CHECKOUT_HREF_PATHS, ...CHECKOUT_HOSTS].map(esc).join("|") + ")|\\bhotmart\\b", "i");
+// DEC-01 v3 / DEC-06: a frase oficial de entrega cita a área de compras da Hotmart como LOCAL de download pós-compra, não como lugar de
+// compra. Só as frases EXATAS da política que o citam são mascaradas; qualquer outra menção a hotmart (texto livre,
+// convite, link ou host de checkout) continua sendo chamada de compra.
+// DEC-06: também as frases EXATAS de reembolso (refund.hotmart.com / Minhas compras) e de garantia da Hotmart, que são
+// canais pós-compra; "compre na Hotmart" (ou no Club), pay.hotmart, /comprar e qualquer texto livre continuam bloqueados.
+// DEC-06: a frase de entrega cita a "área de compras da Hotmart (Minhas compras)" como LOCAL de download pós-compra; por isso
+// o filtro recusa só o verbo/ato de comprar como palavra inteira (compre, compra), nunca o nome da área "Minhas compras".
+const OFFICIAL_PLATFORM_SENTENCES = [...new Set([
+  ...[DELIVERY_TEXT].flatMap((t) => String(t).split(/(?<=\.)\s+/)),
+  W.refund_channels_hotmart, POLICY.hotmart_guarantee,
+].filter((x) => /hotmart/i.test(x) && !/pay\.|go\.hotmart|https?:|\/comprar|\/assinar|checkout|\bcompr[ae]\b/i.test(x)))];
+export function maskOfficialPlatformMentions(text) {
+  return OFFICIAL_PLATFORM_SENTENCES.reduce((t, x) => t.split(x).join(" "), String(text || ""));
+}
 export function hasCheckoutCta(text) {
-  return CHECKOUT_RE.test(String(text || ""));
+  return CHECKOUT_RE.test(maskOfficialPlatformMentions(text));
 }
 
 // Formulações divergentes proibidas (maiúsculas ignoradas) + a frase de banned_refund_context perto

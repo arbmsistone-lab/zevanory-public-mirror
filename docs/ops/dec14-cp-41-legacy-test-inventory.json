@@ -1,0 +1,598 @@
+{
+  "decision": "DEC-14(a)",
+  "source_sha": "da9f55c99c7b122a0ad7317e4861e3071ba1adad",
+  "evidence_jobs": [
+    126824634341,
+    126824635024
+  ],
+  "item_count": 41,
+  "retirement_state": "RETIRED_DEC14_WITH_REPLACEMENTS",
+  "items": [
+    {
+      "id": "CP-CAMP-01",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-form] formulário sem a campanha do mês responde 400 e nada entra na fila",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-form]",
+      "removed_code": [
+        "handleBriefing",
+        "handleHotmartWebhook"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-CAMP-02",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-renovacao] renovação pede a campanha do mês e não gera nada até o assinante responder; fila descarta com registro",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-renovacao]",
+      "removed_code": [
+        "generateAndDeliver",
+        "handleBriefing",
+        "handleHotmartWebhook",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-03",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-entrega] entrega verificável: recibo com protocolo, SHA-256 e id; confirmação pelo provedor; falha registrada com alerta",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-BOUNCE (sem substituto: recibo/confirmação pelo provedor ainda não ligados no DO; outbox Resend retida — scripts/cp-nc012-fulfillment.test.mjs)",
+      "removed_code": [
+        "confirmPackageDeliveries",
+        "handleBriefing",
+        "handleHotmartWebhook",
+        "handlePackageView"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-04",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-amostra] amostra operacional completa (modo seguro) cumpre todos os critérios",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "nenhum: o script de amostra chamava o webhook removido (scripts/conteudo-pronto/amostra_operacional.mjs removido junto)",
+      "removed_code": [
+        "handleHotmartWebhook",
+        "handleBriefing",
+        "confirmPackageDeliveries",
+        "handlePackageView (via scripts/conteudo-pronto/amostra_operacional.mjs, removido)"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-CAMP-05",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-corrida] cancelamento que chega durante a confirmação de entrega vence (registro relido antes de gravar)",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-BOUNCE (corrida cancelamento x confirmação no DO)",
+      "removed_code": [
+        "confirmPackageDeliveries",
+        "handleBriefing",
+        "handleHotmartWebhook"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-CAMP-06",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-lembretes] formulário sem resposta: lembretes nos dias 3, 7 e 14, alerta ao proprietário nos dias 7 e 14; política do mês pago na página",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-lembretes] (2 testes)",
+      "removed_code": [
+        "CAMPAIGN_OWNER_ALERT_DAYS",
+        "CAMPAIGN_REMINDER_DAYS",
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-07",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-bounce] entrega com bounce: na fila de falhas, visível no status, reenviável pelo operador com link novo",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-BOUNCE",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-08",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-datas] data inexistente, início no passado ou longe demais são recusados no formulário",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "tests/conteudo-pronto-campanha.test.mjs [dec14-datas] (parte pura)",
+      "removed_code": [
+        "handleBriefing",
+        "handleHotmartWebhook"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-CAMP-09",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-regra] regra do mês sem campanha: o mesmo texto no contrato, na página (FAQ e FAQPage), nos Termos, no atendimento e nos lembretes",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "texto da regra: tests/conteudo-pronto-campanha.test.mjs [dec14-reembolso-texto] (/reembolso); página e Termos do CP não existem na fase 1 (lápide DEC-04, termos DEC-06)",
+      "removed_code": [
+        "CREDITOS_MAX",
+        "MES_SEM_CAMPANHA",
+        "handleHotmartWebhook",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-10",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-operador-email] bounce: operador corrige o e-mail com motivo antes de reenviar; registrado sem o endereço no log",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-OPERADOR",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "requeueDeadPackage",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-11",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-cancelamento] cancelado não grava campanha nem recebe lembrete; renovação sem o formulário do 1º mês alerta certo; lembrete que falha alerta",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-cancelamento]",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-12",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-credito] renovação sem campanha: o mês vira crédito; a campanha enviada depois gera o pacote do crédito mais antigo, sem custo; limite de créditos com reembolso do excedente",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-credito]",
+      "removed_code": [
+        "CREDITOS_MAX",
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "pendingCycles",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-13",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-reembolso] pedido de reembolso pelo suporte e cancelamento com crédito: registrado e alertado, nunca dinheiro movido pelo sistema",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-REFUND",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "pendingCycles"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-14",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-estorno] estorno de UM mês não encerra a assinatura; fim só por cancelamento ou status de encerramento; mês devolvido nunca vira crédito",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-REFUND",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "pendingCycles"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-15",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-reembolso-prazo] pedido de reembolso: requested → processed (webhook ou operador) → overdue com alerta; prazo no texto; /reembolso com a regra",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "tests/conteudo-pronto-campanha.test.mjs [dec14-reembolso-texto] (parte textual); fluxo: P2-REFUND",
+      "removed_code": [
+        "REEMBOLSO_ALERTA_DIAS",
+        "REEMBOLSO_PRAZO_DIAS_UTEIS",
+        "checkOverdueRefunds",
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-16",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-pago] só um mês pago pode ser devolvido: cobrança recusada não é reembolso; transação desconhecida não mexe em mês",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-pago]",
+      "removed_code": [
+        "handleBriefing",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "pendingCycles"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-CAMP-17",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-parcial] estorno parcial mantém o mês; status desconhecido alerta; baixa do operador não gera alerta inútil",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-REFUND",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "pendingCycles"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-18",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-corrida-reembolso] pedido de reembolso: releitura antes de gravar (409) e um só pedido por mês na lista do proprietário",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-REFUND",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-19",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-confirmar] estorno sem valor claro fica a confirmar; valor BR; operador confirma ou reverte; dedupe e alertas agrupados",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-REFUND",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)",
+        "parseAmount",
+        "pendingCycles"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-20",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-reverter] reverter só devolve mês restaurável: entregue => 409 sem gravar; operador e motivo; idempotente; confirmar uma vez; releitura 409",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "P2-REFUND",
+      "removed_code": [
+        "handleBriefing",
+        "handleContentOperator",
+        "handleHotmartWebhook",
+        "pendingCycles"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-CAMP-21",
+      "file": "tests/conteudo-pronto-campanha.test.mjs",
+      "title": "[camp-fuso] hoje e limite pela data civil de Brasília (viradas UTC, de mês, de ano, 29/02); dia dos alertas; data impossível sem exceção",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-fuso]; tests/conteudo-pronto-campanha.test.mjs [dec14-fuso] (parte pura)",
+      "removed_code": [
+        "handleBriefing",
+        "handleHotmartWebhook",
+        "ownerAlert (zpc:cp:alerts)"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-G1G5-01",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G1] waitUntil cortado (IA lenta): o assinante já está na fila e o cron entrega depois que o lease vence",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs/lease)",
+      "removed_code": [
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-02",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G2] fila de pendentes: cancelados e entregues na frente não bloqueiam o terceiro assinante",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs)",
+      "removed_code": [
+        "handleHotmartWebhook",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-03",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G2] falha persistente vai para o fim da fila (rodízio)",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs)",
+      "removed_code": [
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-04",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G3] IA devolve posts sem hashtags e sem imagem: nada é enviado, o pacote fica pendente",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "tests/conteudo-pronto-g1-g5.test.mjs [G3] validador (mantido) + scripts/cp-nc012-fulfillment.test.mjs",
+      "removed_code": [
+        "handleHotmartWebhook",
+        "handleBriefing (helpers subscribe/brief)",
+        "zpc:cp:pending (fila KV)"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-G1G5-05",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G4] falha do Resend: o retry reenvia o MESMO pacote, sem chamar a IA de novo, com o mesmo link e a mesma chave de idempotência",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (outbox Resend retida, idempotência)",
+      "removed_code": [
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-06",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G5] o link de cada mês abre aquele mês; o token do formulário não abre pacote",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-g03-g04-candidate.test.mjs (token assinado G04)",
+      "removed_code": [
+        "handleBriefing",
+        "handleHotmartWebhook"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-G1G5-07",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G5] token antigo (valor = chave do assinante) continua abrindo formulário e último pacote",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-g03-g04-candidate.test.mjs (token assinado G04)",
+      "removed_code": [
+        "handleBriefing"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-G1G5-08",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G1-intent] queda antes de marcar o postback como processado: a Hotmart reenvia, o ciclo não dobra e o pacote sai uma vez",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-g03-g04-candidate.test.mjs (webhook DO idempotente G03)",
+      "removed_code": [
+        "handleHotmartWebhook",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-09",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G2-poison] item que falha sempre: limite de tentativas, fila de falhas com alerta e registro; reenvio só com operador e motivo",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "PENDING_MAX_ATTEMPTS",
+        "requeueDeadPackage",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-10",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[G2-stall] fila parada há mais de 6 h gera alerta (no máximo um por dia)",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "PENDING_STALL_HOURS",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-11",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[no-silent] em todos os cenários, cada ciclo pago termina entregue, pendente ou na fila de falhas com alerta",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "PENDING_MAX_ATTEMPTS",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-12",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-kv429] KV com 1 escrita/s por chave: a entrega conclui uma vez, sem reenvio a cada cron",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-13",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-exception] exceção dentro da entrega: o cron não aborta, a tentativa conta, fica no log, alerta gravado e o e-mail não se repete",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-14",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-welcome] e-mail de boas-vindas que falha: não marca processado, fica na fila, alerta gravado, cron reenvia o mesmo link",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "handleHotmartWebhook",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-15",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-welcome-dead] boas-vindas que nunca saem: limite, fila de falhas com alerta e reenvio pelo operador",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "PENDING_MAX_ATTEMPTS",
+        "handleHotmartWebhook",
+        "requeueDeadPackage",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-16",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-operator] rota de operador: status sem dados pessoais; reenvio exige operador e motivo",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "PENDING_MAX_ATTEMPTS",
+        "handleContentOperator",
+        "requeueDeadPackage",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-17",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-dead-history] um segundo dead-letter preserva o histórico de operações",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "PENDING_MAX_ATTEMPTS",
+        "requeueDeadPackage",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-18",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-lease] lease maior que o pior caso da geração; reenvio do formulário durante a geração não abre outra",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "generateAndDeliver"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    },
+    {
+      "id": "CP-G1G5-19",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-low] mutantes sobreviventes: legenda curta, reprocessamento, fila cheia, falha de envio conta tentativa",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "handleHotmartWebhook",
+        "retryPendingPackages"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)"
+    },
+    {
+      "id": "CP-G1G5-20",
+      "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+      "title": "[A-text] textos ao assinante sem prazo não medido e com o limite de tentativas",
+      "status": "RETIRED",
+      "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+      "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR",
+      "removed_code": [
+        "PENDING_MAX_ATTEMPTS",
+        "handleBriefing",
+        "handleHotmartWebhook"
+      ],
+      "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)"
+    }
+  ],
+  "retired_at_registry": "docs/ops/dec14-cp-retirement-registry.json"
+}

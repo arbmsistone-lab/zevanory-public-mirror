@@ -41,7 +41,7 @@ import { validateReply } from "./whatsapp-conversation.mjs";
 import {
   CLOSED_LABEL, CONFIRMATION_TEXT, DELIVERY_TEXT, LEGAL_IDENTITY, REFUND_TEXT, RULE_LINE, SLA_TEXT, SUPPLIER,
   SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER,
-  SUBSCRIPTION_DELIVERY_TEXT, SUBSCRIPTION_REFUND_TEXT, hasCheckoutCta,
+  SUBSCRIPTION_DELIVERY_TEXT, SUBSCRIPTION_REFUND_TEXT, hasCheckoutCta, maskOfficialPlatformMentions, REFUND_CHANNELS_HOTMART,
   SUPPORT_EMAIL as PUBLIC_SUPPORT_EMAIL, SUPPORT_FORM_URL, WHATSAPP_PUBLIC_RE, BANNED_NUMBER_RE
 } from "./politica-unica.mjs";
 
@@ -147,12 +147,15 @@ export function hasPhoneNumber(text) {
   return false;
 }
 const CHECKOUT_RE = /\/comprar\b|\/assinar\b|checkout|pay\.[a-z]|mercadopago\.com|mpago\.la|hotmart|kiwify|eduzz|monetizze|stripe|asaas|pagseguro|paypal|picpay/i;
+// DEC-01 v3 / DEC-06: frases oficiais EXATAS que citam a Hotmart como local pós-compra (download em Minhas compras,
+// reembolso em refund.hotmart.com, linha oficial da garantia da Hotmart) são mascaradas por politica-unica; qualquer outra menção bloqueia.
 export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG } = {}) {
   const body = String(text || "").trim();
   const issues = [];
   if (!body) issues.push("empty");
   if (body.length > 1500) issues.push("too_long");
-  if (hasCheckoutCta(body) || CHECKOUT_RE.test(body)) issues.push("checkout");
+  const unmasked = maskOfficialPlatformMentions(body);
+  if (hasCheckoutCta(unmasked) || CHECKOUT_RE.test(unmasked)) issues.push("checkout");
   // WhatsApp foi banido (#892): nenhuma menção, link curto (wa.me) ou da API do WhatsApp, nem o número banido. O validador base
   // (whatsapp-conversation.mjs) DESCONTA o número banido antes de procurar telefone; aqui ele reprova sempre.
   if (WHATSAPP_RE.test(body) || WHATSAPP_PUBLIC_RE.test(body) || BANNED_NUMBER_RE.test(body)) issues.push("whatsapp");
@@ -168,7 +171,10 @@ export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG }
     for (const m of body.matchAll(/R\$\s*([\d.]+)(?:,(\d{1,2}))?/g)) if (Number(m[2] || 0) !== 0 || !prices.has(Number(m[1].replace(/\./g, "")))) issues.push("price_outside_catalog");
     if (/\b\d+([.,]\d+)?\s*(reais|conto|pila)\b/.test(n)) issues.push("money_outside_catalog");
   }
-  if (/desconto|cupo(m|ns)|promoc|black friday|bonus|brinde|gratis|de graca|ultimas? vagas?|so hoje|por tempo limitado|reserv(a|ar|e)\b|garanta (ja|a sua|o seu|agora)|aproveite|condicao especial|oferta especial/.test(n)) issues.push("discount_or_urgency");
+  // O nome oficial do serviço ("campanha mensal de promoção de vendas", contrato v3 do Conteúdo Pronto) não é desconto:
+  // só essa expressão exata sai da checagem; "promoção" em qualquer outro contexto continua bloqueada.
+  const nd = n.replace(/campanha (mensal )?de promocao de vendas/g, "campanha de vendas");
+  if (/desconto|cupo(m|ns)|promoc|black friday|bonus|brinde|gratis|de graca|ultimas? vagas?|so hoje|por tempo limitado|reserv(a|ar|e)\b|garanta (ja|a sua|o seu|agora)|aproveite|condicao especial|oferta especial/.test(nd)) issues.push("discount_or_urgency");
   if (!salesOpen && /\b(compre|comprar agora|pode comprar|disponivel para (compra|venda)|a venda agora|finalizar (a )?compra|garanta|assine agora|contrate agora|faca seu pedido|link de (compra|pagamento))\b/.test(n)) issues.push("transactional_closed");
   if (/\b(garanto|garantimos|prometo|prometemos|com certeza (vai|voce vai)|resultado garantido|sem risco|vai vender mais|lucro garantido)\b/.test(n)) issues.push("promise");
   if (/(nao (tem|ha|existe) (direito|reembolso|devolucao|cancelamento)|sem direito a|nao (e|eh) possivel (cancelar|reembols|devolver|desistir)|nao (fazemos|aceitamos|fazem|oferecemos) (reembolso|devolucao|cancelamento)|prazo (ja )?(expirou|acabou|passou|terminou)|fora do prazo|seu pedido (foi )?negado)/.test(n)) issues.push("right_denied");
@@ -295,7 +301,8 @@ const ESC_TEXT = {
   withdrawal: `Seu pedido foi encaminhado à equipe humana (protocolo ${PROTO}). {refund}`,
   cancellation: `Seu pedido de cancelamento foi encaminhado à equipe humana (protocolo ${PROTO}). {refund}`,
   refund: `Seu pedido foi encaminhado à equipe humana (protocolo ${PROTO}). {refund}`,
-  delivery: `Encaminhei à equipe humana (protocolo ${PROTO}). {delivery} Você também pode pedir um novo link em ${CORE_ORIGIN}/entrega/reenviar`,
+  // DEC-06: entrega imediata na área de compras da Hotmart; sem novo link externo da ZEVANORY para compras novas.
+  delivery: `Encaminhei à equipe humana (protocolo ${PROTO}). {delivery}`,
   payment: `Questões de pagamento são tratadas por uma pessoa da equipe (protocolo ${PROTO}). Não envie dados de cartão por aqui. ${SLA_TEXT}`,
   lgpd: `Pedidos sobre os seus dados pessoais (LGPD) são tratados por uma pessoa da equipe (protocolo ${PROTO}), nos prazos da lei. Você também pode escrever para ${SUPPORT_EMAIL}. Detalhes em ${SALES_ORIGIN}/privacidade`,
   legal: `Assuntos jurídicos são tratados por uma pessoa da equipe (protocolo ${PROTO}). ${SLA_TEXT}`,
@@ -558,7 +565,7 @@ function customerConfirmation(t) {
   return {
     subject: `Recebemos seu pedido de atendimento — protocolo ${t.protocol}`,
     text: ["Olá,", "", `Recebemos seu pedido de atendimento pelo chat do site da ZEVANORY. Protocolo: ${t.protocol}.`, `${SLA_TEXT} Prazo: até ${dueLabel(t.due_at)}.`, "",
-      `Para reembolso ou arrependimento, você também pode usar ${CORE_ORIGIN}/pedir-reembolso. Para um novo link de acesso, ${CORE_ORIGIN}/entrega/reenviar.`,
+      `Para reembolso ou arrependimento, peça ${REFUND_CHANNELS_HOTMART}. Pedidos anteriores pagos pelo Mercado Pago: ${CORE_ORIGIN}/pedir-reembolso.`,
       `Para falar com a equipe: ${SUPPORT_EMAIL} ou o formulário de atendimento ${ATENDIMENTO_URL}.`, "",
       "Esta é uma confirmação automática. Não responda com senha, cartão ou documentos.", "", "ZEVANORY", LEGAL_IDENTITY].join("\n"),
   };

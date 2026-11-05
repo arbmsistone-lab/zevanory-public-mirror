@@ -8,7 +8,13 @@
       "area": "conteudo",
       "source_dated": "2026-10-12",
       "registered_at": "2026-10-25",
-      "sources": [{"kind": "repo", "ref": "data/experiments.json", "contains": "\"id\": \"short-format\""}],
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "data/experiments.json",
+          "contains": "\"id\": \"short-format\""
+        }
+      ],
       "external_demand_evidence": "NOT_AVAILABLE"
     },
     {
@@ -17,7 +23,13 @@
       "area": "oferta",
       "source_dated": "2026-10-12",
       "registered_at": "2026-10-25",
-      "sources": [{"kind": "repo", "ref": "data/experiments.json", "contains": "\"id\": \"product-page-v2\""}],
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "data/experiments.json",
+          "contains": "\"id\": \"product-page-v2\""
+        }
+      ],
       "external_demand_evidence": "NOT_AVAILABLE"
     },
     {
@@ -26,7 +38,13 @@
       "area": "nutricao",
       "source_dated": "2026-10-12",
       "registered_at": "2026-10-25",
-      "sources": [{"kind": "repo", "ref": "data/experiments.json", "contains": "\"id\": \"nurture-match\""}],
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "data/experiments.json",
+          "contains": "\"id\": \"nurture-match\""
+        }
+      ],
       "external_demand_evidence": "NOT_AVAILABLE"
     },
     {
@@ -36,8 +54,16 @@
       "source_dated": null,
       "registered_at": "2026-10-25",
       "sources": [
-        {"kind": "repo", "ref": "worker/cloudflare-worker.recovered.mjs", "contains": "price_status: \"pilot_hypothesis_not_validated\""},
-        {"kind": "repo", "ref": "data/products.json", "contains": "\"sku\": \"ZEV-IA-011\", \"name\": \"IA na Prática\", \"price\": 197"}
+        {
+          "kind": "repo",
+          "ref": "worker/cloudflare-worker.recovered.mjs",
+          "contains": "price_status: \"pilot_hypothesis_not_validated\""
+        },
+        {
+          "kind": "repo",
+          "ref": "data/products.json",
+          "contains": "\"sku\": \"ZEV-IA-011\",\n      \"name\": \"IA na Prática\",\n      \"price\": 97"
+        }
       ],
       "external_demand_evidence": "NOT_AVAILABLE"
     }

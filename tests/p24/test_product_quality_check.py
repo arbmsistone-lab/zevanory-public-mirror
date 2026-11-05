@@ -101,8 +101,8 @@ class P24CheckTest(unittest.TestCase):
         self.assertFailsWith("arquivos diferentes do produto avulso")
 
     def test_bundle_economy_arithmetic_fails(self):
-        old = "Economia de R$ 97 em relação à compra separada (R$ 394)"
-        new = "Economia de R$ 120 em relação à compra separada (R$ 394)"
+        old = "Economia de R$ 37 em relação à compra separada (R$ 194)"
+        new = "Economia de R$ 120 em relação à compra separada (R$ 194)"
         page = self.root / "sales-public/combo-ia-vendas.html"
         page.write_text(page.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
         m = self.jload("data/p24/promise-map.json")

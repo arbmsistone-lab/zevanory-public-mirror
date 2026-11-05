@@ -28,16 +28,20 @@ function checkSupport(mod) {
     assert.equal(refund.intent, "refund", slug); assert.equal(delivery.intent, "delivery", slug);
     for (const [kind, a] of [["refund", refund.answer], ["delivery", delivery.answer]]) {
       assert.ok(a.includes(W.rule_7d), `${slug}/${kind}: regra única dos 7 dias`);
-      assert.match(a, /72 horas/, `${slug}/${kind}: link de 72 h`);
-      assert.match(a, /um download/, `${slug}/${kind}: um download`);
-      assert.match(a, /sem custo/, `${slug}/${kind}: reenvio sem custo`);
+      // DEC-06: entrega imediata e integral para download na área de compras da Hotmart; nada de liberação diferida.
+      if(kind==="delivery") assert.ok(a.includes(W.delivery), `${slug}/${kind}: frase canônica de entrega imediata (DEC-06)`);
+      assert.doesNotMatch(a, /72 horas|um download|192\s*(horas|h)\b|\(8 dias\)|cinco downloads|link (pessoal|individual)|Hotmart Club/i, `${slug}/${kind}: sem entrega diferida nem link externo`);
+      assert.match(a, /sem custo/, `${slug}/${kind}: erro de acesso resolvido sem custo`);
       assert.match(a, /imediata/, `${slug}/${kind}: confirmação imediata`);
       assert.match(a, /resposta conclusiva em até 5 dias/, `${slug}/${kind}: resposta em até 5 dias`);
       assert.doesNotMatch(a, /2 dias úteis/, `${slug}/${kind}`);
       assert.deepEqual(POL.bannedPolicyHits(a), [], `${slug}/${kind}: formulação divergente`);
       assert.equal(POL.hasCheckoutCta(a), false, `${slug}/${kind}: chamada de compra`);
     }
-    assert.match(refund.answer, /comunica imediatamente o Mercado Pago/, slug);
+    assert.match(refund.answer, /plataforma responsável pela cobrança/, slug);
+    assert.ok(refund.answer.includes(W.refund_channels_hotmart), slug + ": reembolso de compra nova pela Hotmart ou e-mail (DEC-06)");
+    assert.ok(refund.answer.includes(P.hotmart_guarantee), slug + ": garantia de 7 dias da Hotmart");
+    assert.doesNotMatch(refund.answer,/comunica imediatamente o Mercado Pago/,slug);
     assert.match(refund.answer, /prazo do emissor/, slug);
   }
   for (const q of ["Posso pedir reembolso se não gostar?", "Como recebo o acesso depois de pagar?"]) {
@@ -149,10 +153,14 @@ function addressHits(root) {
     if (/Casa Residencial/.test(text)) hits.push(`${r}: 'Casa Residencial'`);
     if (/CNPJ 69\.077\.233\/0001-99 · Várzea Alegre\/CE/.test(text)) hits.push(`${r}: identificação sem o endereço único`);
   }
-  for (const slug of ["termos", "privacidade", "reembolso", ...PRODUCTS, "conteudo-pronto", "solucoes"]) {
+  for (const slug of ["termos", "privacidade", "reembolso", ...PRODUCTS, "solucoes"]) {
     const f = join(root, "sales-public", slug + ".html");
     if (existsSync(f) && !readTextNormalized(f).includes(ADDRESS)) hits.push(`sales-public/${slug}.html: sem o endereço único`);
   }
+  // CP is a noindex security tombstone. It cannot carry active offer/legal copy.
+  const cp=readTextNormalized(join(root,"sales-public/conteudo-pronto.html"));
+  if(!cp.includes("noindex,nofollow") || /data-zev-sub|pay\\.hotmart\\.com|R\\$/.test(cp))
+    hits.push("conteudo-pronto: lápide de assinatura incorreta");
   return hits;
 }
 
@@ -187,7 +195,7 @@ test("P13c: rota /api/support/knowledge lê o interruptor do proprietário (fail
   assert.ok((await ask({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true }) }) })).includes(P.closed_label), "registro incompleto: fechado");
   const at = new Date(Date.now() - 60_000).toISOString();
   const open = await ask({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner", at, ref: "audit-ref-1" }), "zpc-sales-preflight:v1": JSON.stringify({ ok: true, at }) }) });
-  assert.ok(!open.includes(P.closed_label) && open.includes("R$ 247,00"), "aberto e autorizado: sem rótulo de fechado");
+  assert.ok(!open.includes(P.closed_label) && open.includes("R$ 147,00"), "aberto e autorizado: sem rótulo de fechado");
   resetSalesSwitchCache();
   checkNurture(await import("../worker/lead-magnet.mjs"));
   checkCaptions(await import("../scripts/channels/short-crosspost.mjs"), await import("../scripts/channels/youtube-daily-short.mjs"));
@@ -202,7 +210,7 @@ test("P13c guarda: nenhuma formulação divergente em worker/, scripts/channels/
 test("P13c mutantes: suporte com redação antiga, e-mail com /comprar fechado, oferta fechada, legenda com checkout e arquivo com 'garantia de 7 dias' são mortos", async () => {
   const mutants = {
     "M-S1 suporte volta à redação antiga do reembolso": ["worker/support-knowledge.mjs", (s) => s.replace("const REFUND = SUPPORT_REFUND_ANSWER;", 'const REFUND = "Direito de arrependimento: você pode desistir em até 7 dias após a compra e recebe o reembolso integral pelo mesmo meio de pagamento.";'), "support"],
-    "M-S2 suporte sem 72 h / um download": ["worker/support-knowledge.mjs", (s) => s.replace("const DELIVERY = SUPPORT_DELIVERY_ANSWER;", 'const DELIVERY = "Entrega digital: após o pagamento você recebe por e-mail um link seguro. Respondemos em até 2 dias úteis.";'), "support"],
+    "M-S2 suporte sem a entrega imediata DEC-06": ["worker/support-knowledge.mjs", (s) => s.replace("const DELIVERY = SUPPORT_DELIVERY_ANSWER;", 'const DELIVERY = "Entrega digital: após o pagamento você recebe por e-mail um link seguro. Respondemos em até 2 dias úteis.";'), "support"],
     "M-S3 suporte da assinatura volta a mandar para a Hotmart": ["worker/support-knowledge.mjs", (s) => s.replace('const answer = intent === "refund" ? SUPPORT_SUBSCRIPTION_REFUND_ANSWER', 'const answer = intent === "refund" ? SUPPORT_SUBSCRIPTION_REFUND_ANSWER + " Peça na sua conta Hotmart."'), "support"],
     "M-E1 e-mail com /comprar enquanto fechado": ["worker/lead-magnet.mjs", (s) => s.replace("Toda sexta, olhe três números", "Compre agora: ${SALES}/comprar/ZEV-LCX-011. Toda sexta, olhe três números"), "nurture"],
     "M-E2 oferta sai com vendas fechadas": ["worker/lead-magnet.mjs", (s) => s.replace("if (step >= 2 && salesOpen !== true) return null;", "").replace('if (salesOpen !== true && hasCheckoutCta(mail.text + " " + mail.subject)) throw new Error("nurture_checkout_cta_while_closed");', ""), "nurture"],

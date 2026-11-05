@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import * as v2 from "../worker/sandbox-proof-v2.mjs";
+// DEC-02: data/products.json is the single price source; the sandbox catalog must mirror it.
+const CATALOG = Object.fromEntries(JSON.parse(readFileSync(new URL("../data/products.json", import.meta.url), "utf8")).products.map((p) => [p.sku, p.price]));
 
 const TOKEN = "c".repeat(40);
 const INBOX_TOKEN = "inbox-token-for-tests-only-0123456789abcdef";
@@ -59,7 +61,7 @@ test("checkout delegates order and preference creation to the canonical Mercado 
   assert.equal(r.status, 201);
   const d = await r.json();
   assert.equal(d.created_new, true);
-  assert.equal(d.amount_brl, 297);
+  assert.equal(d.amount_brl, CATALOG["ZEV-CMB-011"]);
   assert.equal(d.excluded_from_revenue, true);
   assert.equal(d.real_customer_delivery, false);
   assert.equal(d.email_recipient, v2.SANDBOX_INBOX_ADDRESS);
@@ -223,7 +225,8 @@ test("reconciliation never certifies a non-approved canonical event", async () =
 });
 
 test("sandbox offers mirror the canonical public catalog prices", () => {
-  assert.deepEqual({ ...v2.SANDBOX_OFFERS }, { "ZEV-IA-011": 197, "ZEV-VEN-011": 197, "ZEV-LCX-011": 247, "ZEV-CMB-011": 297, "ZEV-NGC-011": 397 });
+  assert.deepEqual({ ...v2.SANDBOX_OFFERS }, CATALOG);
+  assert.deepEqual(CATALOG, { "ZEV-IA-011": 97, "ZEV-VEN-011": 97, "ZEV-LCX-011": 147, "ZEV-CMB-011": 157, "ZEV-NGC-011": 247 }, "DEC-02");
   const sales = readFileSync(new URL("../worker/sales-public-worker.mjs", import.meta.url), "utf8");
   for (const [sku, price] of Object.entries(v2.SANDBOX_OFFERS)) assert.match(sales, new RegExp(`"${sku}":\\["[^"]+",${price}\\]`));
 });
@@ -261,5 +264,5 @@ test("an unpaid order of another SKU is never reused", async () => {
   assert.equal(r.status, 201);
   const d = await r.json();
   assert.equal(d.created_new, true);
-  assert.equal(d.amount_brl, 397);
+  assert.equal(d.amount_brl, CATALOG["ZEV-NGC-011"]);
 });

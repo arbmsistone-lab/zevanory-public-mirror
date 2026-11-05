@@ -23,6 +23,7 @@ on:
       - "sales-public/combo-ia-vendas.html"
       - "sales-public/negocio-completo.html"
       - "worker/sales-public-worker.mjs"
+      - "worker/nc015-sales-scope.mjs"
       - "worker/politica-unica.mjs"
       - "data/politica-unica.json"
 
