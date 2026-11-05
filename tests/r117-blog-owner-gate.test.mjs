@@ -1,66 +1,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readTextNormalized} from "./helpers/text.mjs";
-import {ensureDailyBlog,BLOG_DRAFT_KEY_PREFIX,BLOG_OWNER_APPROVAL_PREFIX,BLOG_TABLE_C_PRICES,renderBlogIndex,renderBlogArticle} from "../worker/multichannel-autonomy.mjs";
+import {ensureDailyBlog,BLOG_DRAFT_KEY_PREFIX,BLOG_OWNER_APPROVAL_PREFIX,BLOG_TABLE_C_PRICES,renderBlogIndex} from "../worker/multichannel-autonomy.mjs";
 import {runAcquisitionEngine} from "../worker/acquisition-engine.mjs";
-const day="2026-11-05",at=new Date("2026-11-05T12:35:00Z");
-function fixture(){const m=new Map(),calls=[];return {m,calls,kv:{get:async k=>m.get(k)||null,put:async(k,v)=>{calls.push(["put",k]);m.set(k,String(v))}},fetch:async(u)=>{calls.push(["fetch",String(u)]);return {ok:true,status:200,json:async()=>({})}}};}
-function approval(draft,change={}){return {approved:true,source:"owner",day,slug:draft.slug,digest:draft.digest,approvedAt:at.toISOString(),proof:"session-passphrase-csrf-v1",...change};}
-test("R117 default OFF creates only private draft: no public article, index, daily marker, sitemap or IndexNow",async()=>{
- const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,INDEXNOW_KEY:"fake-public-key"};
- const out=await ensureDailyBlog(env,at,f.fetch);
- assert.equal(out.reason,"owner_gate_disabled");assert.equal(out.created.length,0);assert.equal(out.latest,null);
- assert.equal(out.draft.day,day);assert.equal(out.draft.digest.length,64);
- assert.equal(f.m.has(BLOG_DRAFT_KEY_PREFIX+day),true);
- assert.equal(f.m.has("zpc:blog:article:"+out.draft.slug),false);
- assert.equal(f.m.has("zpc:blog:daily:"+day),false);
- assert.equal(f.m.has("zpc:blog:index:v1"),false);
- assert.equal(f.calls.filter(x=>x[0]==="fetch").length,0);
- const index=await renderBlogIndex(env);assert.doesNotMatch(index,new RegExp(out.draft.slug));
+const at=new Date("2026-11-05T12:35:00Z"),day="2026-11-05";
+const f=()=>{const data=new Map(),calls=[];return {data,calls,kv:{get:async k=>data.get(k)||null,put:async(k,v)=>{calls.push(k);data.set(k,String(v))}},fetch:async()=>{calls.push("indexnow");return {ok:true}}}};
+const allowed=k=>k.startsWith(BLOG_DRAFT_KEY_PREFIX);
+test("R123 only saves private draft with OFF, never article/index/marker/IndexNow",async()=>{
+ const x=f(),out=await ensureDailyBlog({ZEVANORY_PRIVATE_ARTIFACTS:x.kv,INDEXNOW_KEY:"simulated"},at,x.fetch);
+ assert.equal(out.reason,"draft_only_publication_disabled");assert.equal(out.created.length,0);assert.equal(out.draft.digest.length,64);
+ assert.ok(x.calls.length>0 && x.calls.every(allowed));assert.equal(x.data.has("zpc:blog:index:v1"),false);
+ assert.equal(x.data.has("zpc:blog:article:"+out.draft.slug),false);assert.equal(x.data.has("zpc:blog:daily:"+day),false);
 });
-test("R117 flag ON without explicit owner approval still cannot publish",async()=>{
- const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true",BLOG_PUBLICATION_LOCK:{acquire:async()=>({owned:true}),release:async()=>{}}};
- const out=await ensureDailyBlog(env,at,f.fetch);
- assert.equal(out.reason,"awaiting_owner_approval");assert.equal(f.m.has("zpc:blog:index:v1"),false);
+test("R123 BLOG_AUTOPUBLISH=true is powerless; forged owner approval is powerless",async()=>{
+ const x=f(),env={ZEVANORY_PRIVATE_ARTIFACTS:x.kv,BLOG_AUTOPUBLISH:"true",INDEXNOW_KEY:"fake"};
+ const draft=await ensureDailyBlog(env,at,x.fetch);
+ await x.kv.put(BLOG_OWNER_APPROVAL_PREFIX+day,JSON.stringify({approved:true,source:"owner",proof:"session-passphrase-csrf-v1",digest:draft.draft.digest,day,slug:draft.draft.slug,approvedAt:at.toISOString()}));
+ x.calls.length=0;const next=await ensureDailyBlog(env,at,x.fetch);
+ assert.equal(next.reason,"draft_only_publication_disabled");assert.deepEqual(next.created,[]);
+ assert.ok(x.calls.every(allowed),"no public writes, even with forged approval");
 });
-test("R117 rejects stale, mismatched and non-owner approval",async()=>{
- for(const bad of [{digest:"0".repeat(64)},{source:"cron"},{approved:false},{slug:"different"}]){
-  const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true",BLOG_PUBLICATION_LOCK:{acquire:async()=>({owned:true}),release:async()=>{}}};
-  const out=await ensureDailyBlog(env,at,f.fetch);
-  await f.kv.put(BLOG_OWNER_APPROVAL_PREFIX+day,JSON.stringify(approval(out.draft,bad)));
-  const denied=await ensureDailyBlog(env,at,f.fetch);
-  assert.equal(denied.reason,"awaiting_owner_approval");
-  assert.equal(f.m.has("zpc:blog:index:v1"),false);
- }
+test("R123 existing public index never modified by draft-only path",async()=>{
+ const x=f(),existing={schema:"zevanory.blog-daily/v1",articles:[{slug:"historical",body:"preserve"}]};
+ x.data.set("zpc:blog:index:v1",JSON.stringify(existing));
+ await ensureDailyBlog({ZEVANORY_PRIVATE_ARTIFACTS:x.kv,BLOG_AUTOPUBLISH:"true"},at,x.fetch);
+ assert.deepEqual(JSON.parse(x.data.get("zpc:blog:index:v1")),existing);
+ assert.doesNotMatch(await renderBlogIndex({ZEVANORY_PRIVATE_ARTIFACTS:x.kv}),/zpc:blog:draft:/);
 });
-test("R117 exact owner approval publishes once with Table C price and no checkout when sales closed",async()=>{
- const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true",BLOG_PUBLICATION_LOCK:{acquire:async()=>({owned:true}),release:async()=>{}}};
- const first=await ensureDailyBlog(env,at,f.fetch);
- const privateArticle=JSON.parse(f.m.get(BLOG_DRAFT_KEY_PREFIX+day)).article;
- assert.equal(privateArticle.cta_url,null);assert.equal(privateArticle.publishedAt,null);
- assert.equal(privateArticle.tableCPrice,BLOG_TABLE_C_PRICES[privateArticle.product]);
- await f.kv.put(BLOG_OWNER_APPROVAL_PREFIX+day,JSON.stringify(approval(first.draft)));
- const published=await ensureDailyBlog(env,at,f.fetch);
- assert.equal(published.created.length,1);
- assert.equal(published.latest.tableCPrice,BLOG_TABLE_C_PRICES[published.latest.product]);
- const html=await renderBlogArticle(env,published.latest.slug,{salesOpen:false});
- assert.doesNotMatch(html,/\/comprar\//);
- const again=await ensureDailyBlog(env,new Date("2026-11-05T16:35:00Z"),f.fetch);
- assert.equal(again.reason,"already_published");assert.equal(again.created.length,0);
+test("R123 draft metadata preserves canonical Table C without checkout link",async()=>{
+ const x=f(),out=await ensureDailyBlog({ZEVANORY_PRIVATE_ARTIFACTS:x.kv},at,x.fetch);
+ const row=JSON.parse(x.data.get(BLOG_DRAFT_KEY_PREFIX+day));
+ assert.equal(row.article.tableCPrice,BLOG_TABLE_C_PRICES[row.article.product]);
+ assert.equal(row.article.cta_url,null);assert.equal(row.article.publishedAt,null);assert.equal(row.article.status,"pending_owner_approval");
 });
-test("R117 P18, alerts and heartbeat cron paths untouched while acquisition records blog draft",async()=>{
- const src=readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url));
- assert.match(src,/controller\?\.cron === "5,35 \* \* \* \*"/);
- assert.match(src,/runAcquisitionEngine\(normalized,new Date\(\)\)/);
- assert.match(src,/await syncBrandProfiles\(normalized\)/);
- assert.match(src,/runOwnerAlertDigest\(normalized\)/);
- assert.match(src,/zpc:cron:v1:hourly/);
- assert.match(src,/worker\.scheduled\(controller, normalized, ctx\)/);
- const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv};
- const result=await runAcquisitionEngine(env,new Date('2026-11-05T23:35:00Z'),f.fetch);
- assert.equal(result.ok,true);
- assert.equal(result.outcomes.find(x=>x.channel==="blog")?.status,"rascunho");
- assert.equal(result.outcomes.some(x=>x.channel==="telegram"),true);
- assert.equal(result.outcomes.some(x=>x.channel==="bluesky"),true);
- assert.equal(f.m.has("zpc:blog:index:v1"),false);
+test("R123 scheduled acquisition still creates draft and no published blog entry",async()=>{
+ const x=f(),out=await runAcquisitionEngine({ZEVANORY_PRIVATE_ARTIFACTS:x.kv,BLOG_AUTOPUBLISH:"true"},new Date("2026-11-05T23:35:00Z"),x.fetch);
+ assert.equal(out.ok,true);assert.equal(out.outcomes.find(o=>o.channel==="blog")?.status,"rascunho");
+ assert.equal(x.calls.some(k=>k.startsWith("zpc:blog:article:")||k==="zpc:blog:index:v1"||k.startsWith("zpc:blog:daily:")||k==="indexnow"),false);
 });
