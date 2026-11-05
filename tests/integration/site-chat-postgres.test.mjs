@@ -99,3 +99,48 @@ test("PostgreSQL real: retenção 30 dias (não escalada), 180 dias após encerr
   assert.equal(psql("select count(*)::int as n from zevanory_site_chat_counters where window_start < now() - interval '2 days'")[0].n, "0");
   assert.equal(psql("select count(*)::int as n from zevanory_site_chat_counters where bucket = 'g:d2'")[0].n, "1");
 });
+
+test("R122 PostgreSQL efêmero: chat -> protocolo oficial ZEV -> outbox real -> confirmação e alerta simulados", { skip }, async () => {
+  psql("drop table if exists zevanory_site_chat_messages, zevanory_site_chat_tickets, zevanory_site_chat_sessions, zevanory_site_chat_counters, zevanory_atendimento_outbox, zevanory_atendimento_quota, zevanory_atendimento_monitor");
+  resetSiteChatState();
+  const sent = new Map();
+  const fetchImpl = async (_url,init) => {
+    const key=String(init?.headers?.["idempotency-key"]||"");
+    if(!sent.has(key))sent.set(key,JSON.parse(init.body));
+    return Response.json({id:"synthetic-"+sent.size});
+  };
+  const env={
+    ...SANDBOX_ENV,ZEVANORY_PRIVATE_ARTIFACTS:fakeKv(),SITE_CHAT_OFFICIAL_PROTOCOLS:"true",
+    LEAD_PRIVACY_SECRET:"r122-isolated-privacy-secret-40-characters-minimum",
+    RESEND_API_KEY:"re_synthetic_sink_only",
+    SUPPORT_FORWARD_TO:"owner@example.org",OWNER_ALERT_EMAIL:"alerts@example.org",
+  };
+  const chatMailer=sinkMailer();
+  const deps={sqlFactory,fetchImpl,salesOpen:async()=>false,mailer:chatMailer};
+  const call=async(path,body)=>{
+    const result=await handleSiteChat(chatRequest(path,body),env,deps);
+    return {status:result.status,body:await result.json()};
+  };
+  const sid=(await call("/api/chat/session",{})).body.session;
+  assert.match(sid,/^sbx_/);
+  const r=await call("/api/chat",{session:sid,message:"Quero reembolso, não tive acesso ao guia que comprei"});
+  assert.equal(r.status,200);
+  assert.equal(r.body.escalation.protocol,null,"ZC provisório não exposto no modo oficial");
+  assert.doesNotMatch(r.body.reply,/SBX-|ZC-/);
+  const refused=await call("/api/chat/handoff",{session:sid,email:"buyer@example.com"});
+  assert.equal(refused.status,400);
+  const first=await call("/api/chat/handoff",{session:sid,email:"buyer@example.com",privacy_ack:true});
+  assert.equal(first.status,200);
+  assert.match(first.body.protocol,/^ZEV-\d{8}-[A-F0-9]{10}$/);
+  assert.equal(first.body.official,true);
+  assert.equal(first.body.email_confirmation,"sent");
+  assert.equal(psql("select count(*)::int as n from zevanory_atendimento_outbox")[0].n,"1");
+  assert.equal(psql("select owner_status from zevanory_atendimento_outbox")[0].owner_status,"sent");
+  assert.equal(psql("select customer_status from zevanory_atendimento_outbox")[0].customer_status,"sent");
+  assert.equal(chatMailer.sent.length,0,"nenhum e-mail paralelo do chat");
+  assert.equal(sent.size,2,"um alerta ao dono e uma confirmação ao cliente");
+  assert.ok([...sent.values()].some(v=>v.to?.includes("buyer@example.com")));
+  const again=await call("/api/chat/handoff",{session:sid,email:"buyer@example.com",privacy_ack:true});
+  assert.equal(again.body.protocol,first.body.protocol);
+  assert.equal(sent.size,2,"segunda chamada não duplica avisos");
+});
