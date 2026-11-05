@@ -100,6 +100,7 @@ tests/production-staging-health.test.mjs 3
 tests/public-html-internal-markers.test.mjs 2
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 12
+tests/r117-blog-owner-gate.test.mjs 5
 tests/refund-provider-ambiguity.test.mjs 29
 tests/remote-quality-lighthouse.test.mjs 8
 tests/reviews.test.mjs 3

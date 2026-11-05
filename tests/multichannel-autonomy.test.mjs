@@ -1,55 +1,84 @@
 import { readFileSync } from "node:fs";
 import { BLOG_CSS_PATH } from "../worker/blog-layout.mjs";
 import test from "node:test";import assert from "node:assert/strict";
-import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderBlogIndex,longFormDailyArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
+import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,BLOG_OWNER_APPROVAL_PREFIX,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderBlogIndex,longFormDailyArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
 const brandResponse=name=>new Response(readFileSync(new URL("../assets/brand/export/"+name,import.meta.url)),{status:200,headers:{"content-type":"image/png"}});
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)||null,put:async(k,v)=>m.set(k,v)}};
+async function approveDaily(env,at){
+ const first=await ensureDailyBlog(env,at);
+ if(first.latest)return first;
+ assert.equal(first.reason,"awaiting_owner_approval");
+ const day=localContentDay(at);
+ await env.ZEVANORY_PRIVATE_ARTIFACTS.put(BLOG_OWNER_APPROVAL_PREFIX+day,JSON.stringify({approved:true,source:"owner",day,slug:first.draft.slug,digest:first.draft.digest,approvedAt:at.toISOString()}));
+ return ensureDailyBlog(env,at);
+}
+
 test("missing credential blocks only its channel and verified channels leave dry_run",()=>{const rows=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.equal(rows.find(x=>x.id==="blog").configured,true);assert.equal(rows.find(x=>x.id==="telegram").mode,"pending");assert.equal(rows.find(x=>x.id==="facebook").mode,"dry_run");const live=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i",META_APP_LIVE:"true"});assert.equal(live.find(x=>x.id==="facebook").mode,"active");});
 test("CHANNEL_CREDENTIALS_JSON takes precedence and individual bindings remain a fallback",()=>{const bundled=resolveChannelCredentials({CHANNEL_CREDENTIALS_JSON:JSON.stringify({TELEGRAM_BOT_TOKEN:"bundle",TELEGRAM_CHANNEL_ID:"@zevanory"}),TELEGRAM_BOT_TOKEN:"legacy"});assert.equal(bundled.TELEGRAM_BOT_TOKEN,"bundle");assert.equal(channelChecklist({CHANNEL_CREDENTIALS_JSON:JSON.stringify({TELEGRAM_BOT_TOKEN:"bundle",TELEGRAM_CHANNEL_ID:"@zevanory"})}).find(x=>x.id==="telegram").configured,true);assert.equal(resolveChannelCredentials({TELEGRAM_BOT_TOKEN:"legacy"}).TELEGRAM_BOT_TOKEN,"legacy");});
 test("channel bundle includes YouTube refresh without Google Business fields and IndexNow key is publishable",()=>{const bundled=resolveChannelCredentials({CHANNEL_CREDENTIALS_JSON:JSON.stringify({YOUTUBE_REFRESH_TOKEN:"refresh",GOOGLE_BUSINESS_ACCESS_TOKEN:"retired"})});assert.equal(bundled.YOUTUBE_REFRESH_TOKEN,"refresh");assert.equal(bundled.GOOGLE_BUSINESS_ACCESS_TOKEN,undefined);assert.match(INDEXNOW_PUBLIC_KEY,/^[a-f0-9]{32,128}$/);});
-test("blog creates all three compliant weekly articles in one cycle with Article, FAQ and UTMs",async()=>{const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};const out=await ensureWeeklyBlog(env,new Date("2026-10-07T12:00:00Z"),async()=>({ok:true}));assert.equal(out.total,3);assert.equal(out.created.length,3);const html=await renderBlogArticle(env,out.created[0].id);assert.match(html,/Article/);assert.match(html,/FAQPage/);assert.match(html,/utm_source=blog/);assert.match(html,/Arrependimento em 7 dias corridos/);assert.doesNotMatch(html,/garantia de 7 dias/i);});
+test("R117 legacy weekly entrypoint cannot publish without owner",async()=>{
+ const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store};
+ const out=await ensureWeeklyBlog(env,new Date("2026-10-07T12:00:00Z"));
+ assert.equal(out.created.length,0);assert.equal(out.reason,"legacy_publisher_disabled");
+ assert.equal(await store.get("zpc:blog:index:v1"),null);
+});
 test("official Telegram and Pinterest adapters return real provider evidence",async()=>{const calls=[];const fetchImpl=async(url,init)=>{calls.push([url,init]);if(url.endsWith("/brand/export/pin.png"))return brandResponse("pin.png");return url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:7}})}:{status:201,json:async()=>({id:"pin-9"})};};const tg=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"oi"},fetchImpl});assert.equal(tg.url,"https://t.me/zevanory/7");const pin=await publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"secret",PINTEREST_BOARD_ID:"board"},payload:{title:"t",content:"c",landing_url:"https://zevanory.api.br",media_url:"https://zevanory.api.br/brand/export/pin.png"},fetchImpl});assert.equal(pin.url,"https://www.pinterest.com/pin/pin-9/");assert.equal(calls.length,3);});
 test("private Sistema channels checklist contains exact Pinterest fields and replaces Google Business with Search Console",async()=>{const html=await renderChannelsPage({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.match(html,/Sistema/);assert.match(html,/TELEGRAM_BOT_TOKEN/);assert.match(html,/YOUTUBE_CLIENT_ID/);assert.match(html,/PINTEREST_ACCESS_TOKEN/);assert.match(html,/PINTEREST_BOARD_ID/);assert.match(html,/pins:write/);assert.match(html,/boards:write/);assert.match(html,/developers\.pinterest\.com\/apps\//);assert.match(html,/Google Search Console \+ Blog/);assert.doesNotMatch(html,/Google Perfil da Empresa/);assert.doesNotMatch(html,/GOOGLE_BUSINESS_/);assert.match(html,/Aguardando verificação da empresa \(em análise\)/);assert.match(html,/Pendente credencial/);assert.match(html,/developers\.facebook\.com/);});
-test("regression: 60 consecutive days publish one compliant article each (the fixed 6-topic library stopped)",async()=>{
-  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
-  const slugs=[];
-  for(let i=0;i<60;i++){
-    const outcome=await ensureDailyBlog(env,new Date(Date.UTC(2026,9,11+i,15)));
-    assert.equal(outcome.created.length,1,"day "+i);
-    assert.equal(outcome.latest.compliance,100);
-    assert.ok(outcome.latest.score>=85);
-    slugs.push(outcome.latest.slug);
-  }
-  assert.equal(new Set(slugs).size,60);
+test("DEC-21 60 consecutive days create distinct PRIVATE drafts and never publish",async()=>{
+const store=kv(),writes=[],wrapped={get:store.get,put:async(k,v)=>{writes.push(k);await store.put(k,v)}};
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:wrapped,PUBLIC_BASE_URL:"https://zevanory.api.br",BLOG_AUTOPUBLISH:"true",INDEXNOW_KEY:"fake"};
+ const slugs=[];
+ for(let i=0;i<60;i++){
+   const at=new Date(Date.UTC(2026,9,11+i,15)),out=await ensureDailyBlog(env,at,async()=>{throw Error("IndexNow forbidden")});
+   const day=localContentDay(at);
+   assert.equal(out.reason,"draft_only_publication_disabled","day "+i);
+   assert.deepEqual(out.created,[]);
+   assert.ok(out.draft.digest.length===64);
+   const saved=JSON.parse(await store.get("zpc:blog:draft:v1:"+day));
+   assert.equal(saved.article.status,"pending_owner_approval");
+   assert.equal(saved.article.publishedAt,null);
+   assert.equal(saved.article.cta_url,null);
+   slugs.push(out.draft.slug);
+ }
+ assert.equal(new Set(slugs).size,60);
+ assert.ok(writes.every(k=>k.startsWith("zpc:blog:draft:v1:")),"only private draft writes");
+ assert.equal(await store.get("zpc:blog:index:v1"),null);
+ assert.equal(await store.get("zpc:blog:daily:"+localContentDay(new Date(Date.UTC(2026,9,11,15)))),null);
 });
-test("one SEO article per Fortaleza calendar day for two consecutive dates",async()=>{
-  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
-  const first=await ensureDailyBlog(env,new Date("2026-10-08T12:00:00Z"));
-  const repeat=await ensureDailyBlog(env,new Date("2026-10-08T18:00:00Z"));
-  const next=await ensureDailyBlog(env,new Date("2026-10-09T12:00:00Z"));
-  assert.equal(first.created.length,1);
-  assert.equal(repeat.created.length,0);
-  assert.equal(next.created.length,1);
-  assert.equal(localContentDay(new Date("2026-10-09T01:00:00Z")),"2026-10-08");
-  const index=JSON.parse(await store.get("zpc:blog:index:v1"));
-  assert.equal(index.articles.length,2);
-  const html=await renderBlogArticle(env,next.latest.slug);
-  assert.match(html,/utm_source=blog/);
-  // P13c: vendas fechadas (padrão) => página do produto + aviso; aberto => /comprar/.
-  assert.doesNotMatch(html,/\/comprar\//); assert.match(html,/vendas temporariamente fechadas/);
-  const openHtml=await renderBlogArticle(env,next.latest.slug,{salesOpen:true});
-  assert.match(openHtml,new RegExp("https://vendas\\.zevanory\\.api\\.br/comprar/"+next.latest.product+"\\?utm_source=blog"));
-  assert.match(html,/<h2>Perguntas frequentes<\/h2>/);
+
+test("DEC-21 same Fortaleza day has same private draft, subsequent day different, zero public writes",async()=>{
+const store=kv(),writes=[],wrapped={get:store.get,put:async(k,v)=>{writes.push(k);await store.put(k,v)}};
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:wrapped,PUBLIC_BASE_URL:"https://zevanory.api.br",BLOG_AUTOPUBLISH:"true",INDEXNOW_KEY:"fake"};
+ const first=await ensureDailyBlog(env,new Date("2026-10-08T12:00:00Z"),async()=>{throw Error("IndexNow must not run")});
+ const repeat=await ensureDailyBlog(env,new Date("2026-10-08T18:00:00Z"));
+ const next=await ensureDailyBlog(env,new Date("2026-10-09T12:00:00Z"));
+ for(const r of [first,repeat,next]){assert.equal(r.reason,"draft_only_publication_disabled");assert.deepEqual(r.created,[]);assert.equal(r.latest,null)}
+ assert.equal(first.draft.digest,repeat.draft.digest);
+ assert.notEqual(first.draft.slug,next.draft.slug);
+ assert.equal(localContentDay(new Date("2026-10-09T01:00:00Z")),"2026-10-08");
+ assert.ok(writes.every(k=>k.startsWith("zpc:blog:draft:v1:")));
+ assert.equal(await store.get("zpc:blog:index:v1"),null);
+ assert.equal(await store.get("zpc:blog:daily:2026-10-08"),null);
+ assert.equal(await store.get("zpc:blog:article:"+first.draft.slug),null);
+ assert.equal(await store.get("zpc:blog:article:"+next.draft.slug),null);
 });
-test("regression: production index with legacy articles keeps publishing past the old repeat (2026-10-15)",async()=>{
-  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store};
-  // Legacy long-form bodies already in production.
-  const legacy=["ia-pratica-pequenos-negocios","automacao-atendimento-clareza","atendimento-servicos-varzea-alegre"].map((slug,i)=>({slug:slug+"-2026-10-0"+(7+i),title:slug,url:"https://zevanory.api.br/blog/"+slug,publishedAt:"2026-10-0"+(7+i)+"T03:00:00Z",body:longFormDailyArticle({slug,title:slug},"2026-10-10").body}));
-  await store.put("zpc:blog:index:v1",JSON.stringify({articles:legacy}));
-  for(const d of ["2026-10-12","2026-10-13","2026-10-14","2026-10-15","2026-10-16"]){
-    const out=await ensureDailyBlog(env,new Date(d+"T12:30:00Z"));assert.equal(out.created.length,1,d);
-  }
+
+test("DEC-21 historical published index immutable while later days remain draft-only",async()=>{
+const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,BLOG_AUTOPUBLISH:"true",INDEXNOW_KEY:"fake"};
+ const legacy=["ia-pratica-pequenos-negocios","automacao-atendimento-clareza","atendimento-servicos-varzea-alegre"].map((slug,i)=>({slug:slug+"-2026-10-0"+(7+i),title:slug,url:"https://zevanory.api.br/blog/"+slug,publishedAt:"2026-10-0"+(7+i)+"T03:00:00Z",body:longFormDailyArticle({slug,title:slug},"2026-10-10").body}));
+ const stable=JSON.stringify({articles:legacy});await store.put("zpc:blog:index:v1",stable);
+ const writes=[],wrapped={get:store.get,put:async(k,v)=>{writes.push(k);await store.put(k,v)}};env.ZEVANORY_PRIVATE_ARTIFACTS=wrapped;
+ for(const d of ["2026-10-12","2026-10-13","2026-10-14","2026-10-15","2026-10-16"]){
+  const out=await ensureDailyBlog(env,new Date(d+"T12:30:00Z"),async()=>{throw Error("IndexNow forbidden")});
+  assert.equal(out.reason,"draft_only_publication_disabled",d);
+  assert.deepEqual(out.created,[]);
+  assert.equal(await store.get("zpc:blog:article:"+out.draft.slug),null);
+  assert.equal(await store.get("zpc:blog:daily:"+d),null);
+ }
+ assert.equal(await store.get("zpc:blog:index:v1"),stable,"historical index unchanged");
+ assert.ok(writes.every(k=>k.startsWith("zpc:blog:draft:v1:")));
 });
+
 test("blog index lists newest first with a readable Sao Paulo date",async()=>{
   const store=kv();
   await store.put("zpc:blog:index:v1",JSON.stringify({articles:[{slug:"old",title:"Antigo",description:"a",publishedAt:"2026-10-07T20:00:32.000Z"},{slug:"new",title:"Novo",description:"b",publishedAt:"2026-10-11T12:25:00.000Z"}]}));
@@ -156,16 +185,22 @@ test("Pinterest F1 dynamic editorial is published with the official hashed Z ima
 // Blog article links (re-authored fix for the issue first reported in #798). Original defect: the
 // free-material link was relative ("/material-gratuito"), which 404s on the apex where the blog lives,
 // and utm_campaign carried the full slug (~100 chars), which the funnel drops (^[a-z0-9_-]{1,48}$).
-test("blog article: every link reaches a real destination and every campaign survives the funnel",async()=>{
+test("DEC-21 draft is never published; historical article links still reach real destinations",async()=>{
   const { attribution } = await import("../worker/sales-public-worker.mjs");
   // C-03: the article now wears the shared site shell (worker/blog-layout.mjs): header nav (catalogue, guides),
   // institutional footer links, the skip link (#conteudo) and the Worker-served stylesheet. They are the
   // only additions to the allowed destinations; the article CTAs below keep every original assertion.
   const salesPages = new Set(["material-gratuito","ia-por-ramo","conteudo-pronto","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","quem-criou","termos","privacidade","reembolso"]);
   const apexPaths = new Set(["/blog",BLOG_CSS_PATH]);
-  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
+  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br",BLOG_AUTOPUBLISH:"true"};
   const out=await ensureDailyBlog(env,new Date("2026-10-14T12:00:00Z"));
-  const real=JSON.parse(await store.get("zpc:blog:article:"+out.latest.slug));
+  assert.equal(out.reason,"draft_only_publication_disabled");
+  assert.equal(await store.get("zpc:blog:index:v1"),null);
+  assert.equal(await store.get("zpc:blog:article:"+out.draft.slug),null);
+  const archived=JSON.parse(await store.get("zpc:blog:draft:v1:2026-10-14")).article;
+  const real={...archived,slug:out.draft.slug,publishedAt:"2026-10-14T12:00:00Z",status:"published"};
+  // Explicit historical article fixture, NOT written by ensureDailyBlog.
+  await store.put("zpc:blog:article:"+real.slug,JSON.stringify(real));
   assert.ok(real.slug.length>48,"fixture must reproduce a slug longer than the funnel limit");
   const legacy={...real,slug:"artigo-antigo-sem-dia-"+"x".repeat(80)+"-\"><script>",day:undefined};
   await store.put("zpc:blog:article:legacy",JSON.stringify(legacy));

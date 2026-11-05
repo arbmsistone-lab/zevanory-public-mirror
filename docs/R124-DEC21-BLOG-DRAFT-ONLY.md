@@ -1,0 +1,4 @@
+# R124 | DEC-21 somente rascunhos, sem publicação
+Proprietário: decisão por consenso com Claude e GPT-6. PR #972 permanece Draft, nenhum merge ou deploy.
+Este patch preserva os cinco testes legados, convertendo seus contratos: 60 dias e dias sucessivos geram exclusivamente `zpc:blog:draft:v1:<dia>`; nenhum artigo público, índice, marcador diário ou chamada IndexNow. Índices históricos são imutáveis. Para preservar a regressão dos links SEO e da DEC-04, testes de conteúdo publicado criam EXPLICITAMENTE registros históricos artificiais no KV falso depois de comprovar que o gerador não os criou.
+`BLOG_AUTOPUBLISH=true` e até um marcador de aprovação falso não criam permissão para publicação. Fase 2 de aprovação, trava atômica e publicação ficam congeladas. Os testes antigos não foram excluídos nem retirados do manifesto.
