@@ -57,7 +57,7 @@ test("R117 P18, alerts and heartbeat cron paths untouched while acquisition reco
  assert.match(src,/zpc:cron:v1:hourly/);
  assert.match(src,/worker\.scheduled\(controller, normalized, ctx\)/);
  const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv};
- const result=await runAcquisitionEngine(env,at,f.fetch);
+ const result=await runAcquisitionEngine(env,new Date('2026-11-05T23:35:00Z'),f.fetch);
  assert.equal(result.ok,true);
  assert.equal(result.outcomes.find(x=>x.channel==="blog")?.status,"rascunho");
  assert.equal(result.outcomes.some(x=>x.channel==="telegram"),true);
