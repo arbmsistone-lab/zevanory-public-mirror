@@ -14,7 +14,7 @@ function compressPage(request, body, init){
   headers.append("vary","accept-encoding");
   return new Response(body.pipeThrough(new CompressionStream("gzip")),{...init,headers,encodeBody:"manual"});
 }
-const CSP=["default-src 'self'","base-uri 'none'",`form-action 'self' ${MP}`,"frame-ancestors 'none'","object-src 'none'",`script-src 'self' ${MP} https://sdk.mercadopago.com https://static.cloudflareinsights.com`,`frame-src ${MP} https://*.mercadopago.com https://*.mercadopago.com.br`,"style-src 'self'",`img-src 'self' data: ${MP}`,`connect-src 'self' https://api.mercadopago.com ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://cloudflareinsights.com`,"font-src 'self'"].join("; ");
+const CSP=["default-src 'self'","base-uri 'none'",`form-action 'self' ${MP}`,"frame-ancestors 'none'","object-src 'none'",`script-src 'self' ${MP} https://sdk.mercadopago.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`,`frame-src ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://challenges.cloudflare.com`,"style-src 'self'",`img-src 'self' data: ${MP}`,`connect-src 'self' https://api.mercadopago.com ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://cloudflareinsights.com`,"font-src 'self'"].join("; ");
 function applySecurityHeaders(headers){
   headers.set("strict-transport-security","max-age=63072000; includeSubDomains; preload");
   headers.set("content-security-policy",CSP);
