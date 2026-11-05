@@ -5,7 +5,7 @@ import {ensureDailyBlog,BLOG_DRAFT_KEY_PREFIX,BLOG_OWNER_APPROVAL_PREFIX,BLOG_TA
 import {runAcquisitionEngine} from "../worker/acquisition-engine.mjs";
 const day="2026-11-05",at=new Date("2026-11-05T12:35:00Z");
 function fixture(){const m=new Map(),calls=[];return {m,calls,kv:{get:async k=>m.get(k)||null,put:async(k,v)=>{calls.push(["put",k]);m.set(k,String(v))}},fetch:async(u)=>{calls.push(["fetch",String(u)]);return {ok:true,status:200,json:async()=>({})}}};}
-function approval(draft,change={}){return {approved:true,source:"owner",day,slug:draft.slug,digest:draft.digest,approvedAt:at.toISOString(),...change};}
+function approval(draft,change={}){return {approved:true,source:"owner",day,slug:draft.slug,digest:draft.digest,approvedAt:at.toISOString(),proof:"session-passphrase-csrf-v1",...change};}
 test("R117 default OFF creates only private draft: no public article, index, daily marker, sitemap or IndexNow",async()=>{
  const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,INDEXNOW_KEY:"fake-public-key"};
  const out=await ensureDailyBlog(env,at,f.fetch);
@@ -19,13 +19,13 @@ test("R117 default OFF creates only private draft: no public article, index, dai
  const index=await renderBlogIndex(env);assert.doesNotMatch(index,new RegExp(out.draft.slug));
 });
 test("R117 flag ON without explicit owner approval still cannot publish",async()=>{
- const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true"};
+ const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true",BLOG_PUBLICATION_LOCK:{acquire:async()=>({owned:true}),release:async()=>{}}};
  const out=await ensureDailyBlog(env,at,f.fetch);
  assert.equal(out.reason,"awaiting_owner_approval");assert.equal(f.m.has("zpc:blog:index:v1"),false);
 });
 test("R117 rejects stale, mismatched and non-owner approval",async()=>{
  for(const bad of [{digest:"0".repeat(64)},{source:"cron"},{approved:false},{slug:"different"}]){
-  const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true"};
+  const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true",BLOG_PUBLICATION_LOCK:{acquire:async()=>({owned:true}),release:async()=>{}}};
   const out=await ensureDailyBlog(env,at,f.fetch);
   await f.kv.put(BLOG_OWNER_APPROVAL_PREFIX+day,JSON.stringify(approval(out.draft,bad)));
   const denied=await ensureDailyBlog(env,at,f.fetch);
@@ -34,7 +34,7 @@ test("R117 rejects stale, mismatched and non-owner approval",async()=>{
  }
 });
 test("R117 exact owner approval publishes once with Table C price and no checkout when sales closed",async()=>{
- const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true"};
+ const f=fixture(),env={ZEVANORY_PRIVATE_ARTIFACTS:f.kv,BLOG_AUTOPUBLISH:"true",BLOG_PUBLICATION_LOCK:{acquire:async()=>({owned:true}),release:async()=>{}}};
  const first=await ensureDailyBlog(env,at,f.fetch);
  const privateArticle=JSON.parse(f.m.get(BLOG_DRAFT_KEY_PREFIX+day)).article;
  assert.equal(privateArticle.cta_url,null);assert.equal(privateArticle.publishedAt,null);
