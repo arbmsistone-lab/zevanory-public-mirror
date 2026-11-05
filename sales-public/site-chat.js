@@ -14,7 +14,7 @@
   var FORM = "https://zevanory.api.br/atendimento";
   var LINK_HOSTS = ["vendas.zevanory.api.br", "zevanory.api.br"];
   var KEY = "zevSiteChatSession";
-  var state = { session: "", idleMinutes: 30, idleTimer: 0, warnTimer: 0, busy: false, opener: null, started: false, notice: null };
+  var state = { session: "", idleMinutes: 30, idleTimer: 0, warnTimer: 0, busy: false, opener: null, started: false, notice: null, turnstileToken: "", turnstileWidget: null };
 
   function el(tag, attrs, text) {
     var n = document.createElement(tag);
@@ -72,9 +72,12 @@
   privacy.appendChild(privacyLink);
   privacy.appendChild(document.createTextNode("."));
   notice.appendChild(privacy);
+  var turnstileBox = el("div", { className: "zc-turnstile", "aria-label": "Verificação de segurança" });
+  notice.appendChild(turnstileBox);
   var noticeActions = el("div", { className: "zc-actions" });
   var startBtn = el("button", { type: "button", className: "zc-button zc-primary" }, "Começar conversa");
   var mailLink = el("a", { className: "zc-button zc-secondary", href: "mailto:" + EMAIL + "?subject=" + encodeURIComponent("Contato pelo site ZEVANORY") }, "Prefiro e-mail");
+  startBtn.disabled = true;
   noticeActions.appendChild(startBtn);
   noticeActions.appendChild(mailLink);
   notice.appendChild(noticeActions);
@@ -175,10 +178,31 @@
       return r.json().catch(function () { return {}; }).then(function (j) { j.__status = r.status; return j; });
     });
   }
+  // R120: Turnstile is the only externally loaded security widget; the chat UI stays first-party.
+  function installTurnstile(key) {
+    if (!key || !/^[A-Za-z0-9_-]{6,100}$/.test(key)) return showDown("A verificação do chat está indisponível. Use o formulário de atendimento.");
+    function render() {
+      if (!window.turnstile || state.turnstileWidget != null) return;
+      state.turnstileWidget = window.turnstile.render(turnstileBox, {
+        sitekey: key, action: "zevanory_chat",
+        callback: function (token) { state.turnstileToken = token; startBtn.disabled = false; },
+        "expired-callback": function () { state.turnstileToken = ""; startBtn.disabled = true; },
+        "error-callback": function () { state.turnstileToken = ""; startBtn.disabled = true; }
+      });
+    }
+    if (window.turnstile) { render(); return; }
+    var script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true; script.defer = true;
+    script.onload = render;
+    script.onerror = function () { showDown("Não foi possível verificar a sessão. Use o formulário de atendimento."); };
+    document.head.appendChild(script);
+  }
   function loadStatus() {
     request("/status", "GET").then(function (j) {
       if (j.__status !== 200 || !j.notice) return showDown(j.fallback && j.fallback.message);
       state.notice = j.notice;
+      installTurnstile(j.turnstile_sitekey);
       state.idleMinutes = Number(j.idle_minutes) || 30;
       if (j.message_max_chars) { MAX = Number(j.message_max_chars) || MAX; input.setAttribute("maxlength", String(MAX)); updateCount(); }
       noticeList.textContent = "";
@@ -218,7 +242,10 @@
     if (state.session) return Promise.resolve(state.session);
     var s = stored();
     if (s) { state.session = s; return Promise.resolve(s); }
-    return request("/session", "POST", {}).then(function (j) {
+    if (!state.turnstileToken) return Promise.reject({ __status: 403 });
+    return request("/session", "POST", { turnstile_token: state.turnstileToken }).then(function (j) {
+      state.turnstileToken = "";
+      startBtn.disabled = true;
       if (j.__status !== 200 || !j.session) throw j;
       state.session = j.session; store(j.session);
       state.idleMinutes = Number(j.idle_minutes) || state.idleMinutes;
@@ -261,6 +288,7 @@
   launch.addEventListener("click", open);
   closeBtn.addEventListener("click", close);
   startBtn.addEventListener("click", function () {
+    if (!state.turnstileToken && !state.session && !stored()) return;
     notice.hidden = true; chat.hidden = false; state.started = true;
     addMessage("bot", "Olá! Sou o assistente automático da ZEVANORY. Como posso ajudar?");
     input.focus();
