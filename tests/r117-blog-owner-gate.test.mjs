@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
+import {readTextNormalized} from "./helpers/text.mjs";
 import {ensureDailyBlog,BLOG_DRAFT_KEY_PREFIX,BLOG_OWNER_APPROVAL_PREFIX,BLOG_TABLE_C_PRICES,renderBlogIndex,renderBlogArticle} from "../worker/multichannel-autonomy.mjs";
 import {runAcquisitionEngine} from "../worker/acquisition-engine.mjs";
 const day="2026-11-05",at=new Date("2026-11-05T12:35:00Z");
@@ -49,7 +49,7 @@ test("R117 exact owner approval publishes once with Table C price and no checkou
  assert.equal(again.reason,"already_published");assert.equal(again.created.length,0);
 });
 test("R117 P18, alerts and heartbeat cron paths untouched while acquisition records blog draft",async()=>{
- const src=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
+ const src=readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url));
  assert.match(src,/controller\?\.cron === "5,35 \* \* \* \*"/);
  assert.match(src,/runAcquisitionEngine\(normalized,new Date\(\)\)/);
  assert.match(src,/await syncBrandProfiles\(normalized\)/);
