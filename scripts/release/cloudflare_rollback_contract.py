@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""R103: build/validate a Cloudflare Workers deployment rollback request (offline)."""
+"""R106: choose latest Cloudflare deployment by UTC created_on; validate rollback payload offline."""
 import argparse
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -21,7 +22,27 @@ def rollback_payload(response):
         raise SnapshotError("cloudflare_deployments_list_invalid")
     if not deployments:
         return None
-    previous = deployments[0]
+    # Never trust API list order: the sandbox returned oldest first.
+    # Reject any missing/ambiguous timestamp rather than risk restoring an unrelated deployment.
+    dated = []
+    for deployment in deployments:
+        if not isinstance(deployment, dict):
+            raise SnapshotError("deployment_not_object")
+        stamp = deployment.get("created_on")
+        if not isinstance(stamp, str) or not stamp.strip():
+            raise SnapshotError("deployment_created_on_missing")
+        try:
+            dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        except ValueError:
+            raise SnapshotError("deployment_created_on_invalid") from None
+        if dt.tzinfo is None or dt.utcoffset() is None:
+            raise SnapshotError("deployment_created_on_timezone_missing")
+        dated.append((dt.astimezone(timezone.utc), deployment))
+    latest_at = max(item[0] for item in dated)
+    latest = [deployment for dt, deployment in dated if dt == latest_at]
+    if len(latest) != 1:
+        raise SnapshotError("deployment_created_on_tie")
+    previous = latest[0]
     if not isinstance(previous, dict) or not isinstance(previous.get("versions"), list) or not previous["versions"]:
         raise SnapshotError("previous_versions_missing")
     versions = []
@@ -65,7 +86,7 @@ def validate_payload(body):
         raise SnapshotError("rollback_payload_keys_invalid")
     if body.get("strategy") != "percentage":
         raise SnapshotError("rollback_strategy_invalid")
-    return rollback_payload({"success": True, "result": {"deployments": [{"versions": body["versions"]}]}})
+    return rollback_payload({"success": True, "result": {"deployments": [{"created_on": "2000-01-01T00:00:00Z", "versions": body["versions"]}]}})
 
 
 def main():
