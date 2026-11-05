@@ -90,9 +90,6 @@ const editorialLeads=Object.freeze({
  "atendimento-servicos-varzea-alegre":"Em serviços de Várzea Alegre, registre dúvidas, orçamentos e consentimento para retorno."
 });
 const isoWeek=date=>{const d=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=new Date(Date.UTC(d.getUTCFullYear(),0,1));return `${d.getUTCFullYear()}-${String(Math.ceil((((d-y)/86400000)+1)/7)).padStart(2,"0")}`;};
-const desiredCount=()=>3;
-function articleFor(topic,now,env){const [slug,title,description]=topic,url=`${baseUrl(env)}/blog/${slug}`;const body=(editorialLeads[slug]||"Defina uma rotina e acompanhe resultados com revisão humana.")+" A ZEVANORY oferece guia digital para processos práticos, sem promessas financeiras. Conheça a solução por R$ 197,00. "+SHORT_RULE_LABEL+".";const rubric=evaluateCreativeWithRewrites({brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1080,hook:title,body,cta:"Conheça a ZEVANORY",price_brl:197},{serverPrice:197,visualScore:1});if(rubric.action!=="publish")throw new Error("blog_compliance_rejected");return {slug,title,description,body:rubric.spec.body,publishedAt:now.toISOString(),url,score:rubric.score,compliance:rubric.compliance,faq:[{q:"Por onde começar?",a:"Escolha uma tarefa pequena, mensurável e reversível."},{q:"Como reduzir riscos?",a:"Use revisão, registro de evidências e limites claros."}]};}
-
 // R117: legacy weekly entrypoint is irrevocably read-only; acquisition owns draft generation.
 export async function ensureWeeklyBlog(env={}) {
   const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
