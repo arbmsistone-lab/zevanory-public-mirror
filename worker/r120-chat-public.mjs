@@ -21,13 +21,16 @@ export async function handleR120PublicChat(request,env={},deps={}){
  if(!status && !/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type")||""))return json(415,"json_required");
  if(Number(request.headers.get("content-length")||0)>4096)return json(413,"too_large");
  // Same handlers, database, audit and sales authority as the existing internal API.
- const internal=new Request("https://chat.internal"+url.pathname+url.search,request);
+ const headers=new Headers(request.headers);
+ headers.delete("x-zev-client-ip");
+ headers.set("x-zev-client-ip",request.headers.get("cf-connecting-ip")||"");
+ const internal=new Request("https://chat.internal"+url.pathname+url.search,{method:request.method,headers,body:request.method==="GET"?undefined:request.body,duplex:request.method==="GET"?undefined:"half"});
  const res=await handleSiteChat(internal,env,deps);
  if(!res)return json(503,"chat_unavailable");
- const headers=new Headers(res.headers);
- headers.set("vary","origin");
- headers.set("cache-control","no-store");
- if(origin==="https://zevanory.api.br")headers.set("access-control-allow-origin","https://zevanory.api.br");
+ const responseHeaders=new Headers(res.headers);
+ responseHeaders.set("vary","origin");
+ responseHeaders.set("cache-control","no-store");
+ if(origin==="https://zevanory.api.br")responseHeaders.set("access-control-allow-origin","https://zevanory.api.br");
  if(origin==="https://vendas.zevanory.api.br")headers.set("access-control-allow-origin","https://vendas.zevanory.api.br");
- return new Response(res.body,{status:res.status,statusText:res.statusText,headers});
+ return new Response(res.body,{status:res.status,statusText:res.statusText,headers:responseHeaders});
 }
