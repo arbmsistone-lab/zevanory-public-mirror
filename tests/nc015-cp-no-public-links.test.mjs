@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureDailyBlog, renderBlogArticle } from "../worker/multichannel-autonomy.mjs";
+import { ensureDailyBlog, BLOG_OWNER_APPROVAL_PREFIX, renderBlogArticle } from "../worker/multichannel-autonomy.mjs";
 import { readTextNormalized } from "./helpers/text.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -66,8 +66,12 @@ test("DEC-04 the 40 sector guides cross-sell a phase-1 product instead of the hi
 
 test("DEC-04 blog article CTAs never point at /conteudo-pronto", async () => {
   const m = new Map(), store = { get: async (k) => m.get(k) || null, put: async (k, v) => m.set(k, v) };
-  const env = { ZEVANORY_PRIVATE_ARTIFACTS: store, PUBLIC_BASE_URL: "https://zevanory.api.br" };
-  const out = await ensureDailyBlog(env, new Date("2026-10-14T12:00:00Z"));
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: store, PUBLIC_BASE_URL: "https://zevanory.api.br", BLOG_AUTOPUBLISH:"true" };
+  const date=new Date("2026-10-14T12:00:00Z");
+  const draft=await ensureDailyBlog(env,date);
+  assert.equal(draft.reason,"awaiting_owner_approval");
+  await store.put(BLOG_OWNER_APPROVAL_PREFIX+"2026-10-14",JSON.stringify({approved:true,source:"owner",day:"2026-10-14",slug:draft.draft.slug,digest:draft.draft.digest,approvedAt:date.toISOString()}));
+  const out = await ensureDailyBlog(env,date);
   for (const open of [false, true]) {
     const html = await renderBlogArticle(env, out.latest.slug, { salesOpen: open });
     assert.match(html, /vendas\.zevanory\.api\.br\/vendas-na-pratica\?/);
