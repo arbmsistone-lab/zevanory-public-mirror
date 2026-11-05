@@ -15,11 +15,11 @@ import { fakeSql, fakeKv, sinkMailer, fakeAi, captureLogs, SANDBOX_ENV, AI_OUTPU
 
 const CHECKOUT = /\/comprar\b|\/assinar\b|hotmart|mercadopago\.com|pay\.|checkout/i;
 const ORIGIN = "https://vendas.zevanory.api.br";
-function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, mailer = sinkMailer(), ai, catalog, fetchImpl } = {}) {
+function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, mailer = sinkMailer(), ai, catalog, fetchImpl, registerOfficial } = {}) {
   resetSiteChatState();
   const factoryCalls = { n: 0 };
   const fullEnv = { ...SANDBOX_ENV, ZEVANORY_PRIVATE_ARTIFACTS: kv, ...(ai ? { AI: ai } : {}), ...env };
-  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, mailer, ...(catalog ? { catalog } : {}), ...(fetchImpl ? { fetchImpl } : {}) };
+  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, mailer, ...(catalog ? { catalog } : {}), ...(fetchImpl ? { fetchImpl } : {}), ...(registerOfficial ? { registerOfficialAtendimento: registerOfficial } : {}) };
   const call = async (path, body, { method = "POST", headers = {} } = {}) => {
     const res = await handleSiteChat(new Request("https://chat.internal" + path, { method, headers: { "content-type": "application/json", "x-zev-client-ip": "203.0.113.7", ...headers }, body: method === "GET" ? undefined : JSON.stringify(body || {}) }), fullEnv, deps);
     return { status: res.status, body: await res.json() };
