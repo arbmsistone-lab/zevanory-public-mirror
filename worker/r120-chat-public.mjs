@@ -10,7 +10,10 @@ export async function handleR120PublicChat(request,env={},deps={}){
  const origin=request.headers.get("origin")||"";
  if(request.method==="OPTIONS"){
    if(!CHAT_ALLOWED_ORIGINS.includes(origin))return json(403,"origin_not_allowed");
-   return new Response(null,{status:204,headers:{"access-control-allow-origin":origin,"access-control-allow-methods":"GET,POST,OPTIONS","access-control-allow-headers":"content-type","access-control-max-age":"600","vary":"origin"}});
+   const headers={"access-control-allow-methods":"GET,POST,OPTIONS","access-control-allow-headers":"content-type","access-control-max-age":"600","vary":"origin"};
+   if(origin==="https://zevanory.api.br")headers["access-control-allow-origin"]="https://zevanory.api.br";
+   if(origin==="https://vendas.zevanory.api.br")headers["access-control-allow-origin"]="https://vendas.zevanory.api.br";
+   return new Response(null,{status:204,headers});
  }
  const status=url.pathname==="/api/chat/status";
  if(status?request.method!=="GET":request.method!=="POST")return json(405,"method_not_allowed");
@@ -24,6 +27,7 @@ export async function handleR120PublicChat(request,env={},deps={}){
  const headers=new Headers(res.headers);
  headers.set("vary","origin");
  headers.set("cache-control","no-store");
- if(CHAT_ALLOWED_ORIGINS.includes(origin))headers.set("access-control-allow-origin",origin);
+ if(origin==="https://zevanory.api.br")headers.set("access-control-allow-origin","https://zevanory.api.br");
+ if(origin==="https://vendas.zevanory.api.br")headers.set("access-control-allow-origin","https://vendas.zevanory.api.br");
  return new Response(res.body,{status:res.status,statusText:res.statusText,headers});
 }
