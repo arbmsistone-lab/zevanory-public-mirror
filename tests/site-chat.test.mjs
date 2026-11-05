@@ -312,7 +312,7 @@ test("SC15 Worker de vendas: desligado => 503 local sem chamar o central e sem w
   assert.match(cp.headers.get("x-robots-tag") || "", /noindex/, "[SC15.9b] noindex");
   assert.ok(!(await cp.text()).includes("site-chat"), "[SC15.9b] sem widget");
   const other = await (await salesWorker.fetch(new Request(ORIGIN + "/ia-para-barbearia", { headers: { "user-agent": CHROME } }), on, { waitUntil() {} })).text();
-  assert.ok(!other.includes("site-chat"), "[SC15.10] fora da lista: sem widget");
+  assert.ok(other.includes("site-chat.js"), "[SC15.10] R120: guia setorial também elegível ao widget, sempre atrás do interruptor");
   assert.equal(shouldInjectSiteChat("solucoes", {}), false, "[SC15.11]");
   assert.equal(injectSiteChatHtml(injectSiteChatHtml("<head></head><body></body>")).match(/site-chat\.js/g).length, 1, "[SC15.12] idempotente");
   assert.ok(SITE_CHAT_PAGES.has("solucoes") && SITE_CHAT_PAGES.has("termos"), "[SC15.13]");
