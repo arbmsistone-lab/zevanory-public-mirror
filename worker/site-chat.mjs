@@ -396,7 +396,8 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   return { ...det, actions };
 }
 
-const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fp8-fast"];
+// R122: single Free-compatible lower-neuron model; no fallback to a more expensive model.
+const MODELS = ["@cf/meta/llama-3.1-8b-instruct-fp8-fast"];
 function generationPrompt({ salesOpen, catalog }) {
   const lines = Object.values(catalog.items).map((i) => `- ${i.name}: ${salesOpen ? i.content : i.closedSummary} Página: ${i.page}`);
   return [
