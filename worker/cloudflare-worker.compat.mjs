@@ -19,6 +19,7 @@ import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { handleSiteChat, handleSiteChatAdmin, runSiteChatRetention } from "./site-chat.mjs";
+import {handleR120PublicChat} from "./r120-chat-public.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
@@ -110,6 +111,17 @@ const wrapped = {
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
+    // R120: canonical public endpoint, same backend as the sales service binding.
+    if (url.hostname === "zevanory.api.br" && url.pathname.startsWith("/api/chat")) {
+      const publicChat=await handleR120PublicChat(request,normalized,{
+        sqlFactory:whatsappProofDatabase,
+        salesOpen:async()=>{
+          const st=await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status",{method:"GET"}),normalized,{sqlFactory:whatsappProofDatabase,worker,ctx});
+          return (await st?.json?.())?.open===true;
+        }
+      });
+      if(publicChat)return publicChat;
+    }
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     if (url.pathname === "/kit/baixar") return handleKitDownloadNc015(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
