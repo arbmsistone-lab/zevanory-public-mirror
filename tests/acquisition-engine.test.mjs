@@ -114,7 +114,9 @@ test("one cycle publishes Telegram and Bluesky after peak, then never duplicates
  const date=new Date("2026-10-10T23:00:00Z");
  const a=await runAcquisitionEngine(env,date,mock);
  assert.equal(a.ok,true);
- assert.deepEqual(a.outcomes.filter(x=>x.status==="publicado").map(x=>x.channel).sort(),["blog","bluesky","telegram"]);
+ assert.deepEqual(a.outcomes.filter(x=>x.status==="publicado").map(x=>x.channel).sort(),["bluesky","telegram"]);
+ assert.equal(a.outcomes.find(x=>x.channel==="blog").status,"rascunho");
+ assert.equal(await store.get("zpc:blog:index:v1"),null,"R117: acquisition cannot publish blog by default");
  const b=await runAcquisitionEngine(env,date,mock);
  assert.equal(counts.telegram,1);assert.equal(counts.createRecord,1);
  assert.ok(b.outcomes.some(x=>x.channel==="bluesky"&&x.url));

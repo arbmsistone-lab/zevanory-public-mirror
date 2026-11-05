@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureDailyBlog, renderBlogArticle } from "../worker/multichannel-autonomy.mjs";
+import { ensureDailyBlog, BLOG_OWNER_APPROVAL_PREFIX, renderBlogArticle } from "../worker/multichannel-autonomy.mjs";
 import { readTextNormalized } from "./helpers/text.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -64,12 +64,24 @@ test("DEC-04 the 40 sector guides cross-sell a phase-1 product instead of the hi
   }
 });
 
-test("DEC-04 blog article CTAs never point at /conteudo-pronto", async () => {
+test("DEC-21 no publication even with approval; archived DEC-04 blog CTAs never show Conteúdo Pronto", async () => {
   const m = new Map(), store = { get: async (k) => m.get(k) || null, put: async (k, v) => m.set(k, v) };
-  const env = { ZEVANORY_PRIVATE_ARTIFACTS: store, PUBLIC_BASE_URL: "https://zevanory.api.br" };
-  const out = await ensureDailyBlog(env, new Date("2026-10-14T12:00:00Z"));
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: store, PUBLIC_BASE_URL: "https://zevanory.api.br", BLOG_AUTOPUBLISH:"true" };
+  const date=new Date("2026-10-14T12:00:00Z");
+  const draft=await ensureDailyBlog(env,date);
+  assert.equal(draft.reason,"draft_only_publication_disabled");
+  assert.equal(await store.get("zpc:blog:article:"+draft.draft.slug),null);
+  assert.equal(await store.get("zpc:blog:index:v1"),null);
+  await store.put(BLOG_OWNER_APPROVAL_PREFIX+"2026-10-14",JSON.stringify({approved:true,source:"owner",day:"2026-10-14",slug:draft.draft.slug,digest:draft.draft.digest,approvedAt:date.toISOString()}));
+  const denied=await ensureDailyBlog(env,date);
+  assert.equal(denied.reason,"draft_only_publication_disabled");
+  assert.equal(await store.get("zpc:blog:article:"+draft.draft.slug),null);
+  assert.equal(await store.get("zpc:blog:daily:2026-10-14"),null);
+  const archived=JSON.parse(await store.get("zpc:blog:draft:v1:2026-10-14")).article;
+  // Old published record fixture exercises CTA scanner without enabling publication.
+  await store.put("zpc:blog:article:"+draft.draft.slug,JSON.stringify({...archived,publishedAt:date.toISOString(),status:"published"}));
   for (const open of [false, true]) {
-    const html = await renderBlogArticle(env, out.latest.slug, { salesOpen: open });
+    const html = await renderBlogArticle(env, draft.draft.slug, { salesOpen: open });
     assert.match(html, /vendas\.zevanory\.api\.br\/vendas-na-pratica\?/);
     assert.deepEqual(cpProblems("blog", html), []);
   }

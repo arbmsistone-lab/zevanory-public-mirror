@@ -100,6 +100,7 @@ tests/production-staging-health.test.mjs 3
 tests/public-html-internal-markers.test.mjs 2
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 12
+tests/r117-blog-owner-gate.test.mjs 5
 tests/r120-dec20-chat.test.mjs 4
 tests/r120-public-chat.test.mjs 4
 tests/r120-turnstile.test.mjs 4
