@@ -26,3 +26,10 @@ Falha por quota/429 leva ao formulário /atendimento e e-mail, sem cobrança, se
 - CI completo do HEAD exato necessário (o cron do Github Actions pode atrasar); mutantes e guards de Worker de vendas precisam PASS real.
 - Desligado por padrão: SITE_CHAT_ENABLED e SITE_CHAT_OFFICIAL_PROTOCOLS não devem ser ativados sem GO/autorizações.
 - Vendas fechadas, nenhuma alteração em produção, sem merge, deploy, conta ou custo.
+
+## R123 (one-push candidate, no CI PASS yet)
+- Quota soft reservation: 6,000 neurons/day in PostgreSQL shared counter table under chat-only bucket `g:chat:neurons:d`, 160 reserved per inference request (conservative bounded prompt 8,000 chars + 220 output tokens), leaving nominal room for other account-wide AI consumers. This is an internal cap, not an atomic account-wide allocation; real Cloudflare usage and other services must still be monitored independently. On failed reservation, return official /atendimento fallback, never attempt AI.
+- Official protocol mode no longer creates ZC tickets, records one `ZEV-` outbox protocol and maps it on chat session; admin read endpoint `/api/admin/site-chat/official` lists from official outbox behind existing admin authorization. UI integration into React Control Center still requires verification.
+- Fix second CORS origin response header; free model only, no paid automatic retry.
+- Browser test `tests/r123-chat-browser-a11y.mjs` created for 360 px + axe serious/critical + Escape + consent; MUST be executed in sandbox with locally installed Playwright/axe, not treated as CI PASS automatically.
+- E2E PG+Resend-sink separately declared under `tests/integration/r122-official-chat-postgres.test.mjs`; still requires actual successful runner log before claim.

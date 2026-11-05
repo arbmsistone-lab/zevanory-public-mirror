@@ -31,6 +31,6 @@ export async function handleR120PublicChat(request,env={},deps={}){
  responseHeaders.set("vary","origin");
  responseHeaders.set("cache-control","no-store");
  if(origin==="https://zevanory.api.br")responseHeaders.set("access-control-allow-origin","https://zevanory.api.br");
- if(origin==="https://vendas.zevanory.api.br")headers.set("access-control-allow-origin","https://vendas.zevanory.api.br");
+ if(origin==="https://vendas.zevanory.api.br")responseHeaders.set("access-control-allow-origin","https://vendas.zevanory.api.br");
  return new Response(res.body,{status:res.status,statusText:res.statusText,headers:responseHeaders});
 }

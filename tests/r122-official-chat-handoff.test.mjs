@@ -28,6 +28,7 @@ test("R122 official handoff creates a ZEV consumer protocol, not a second chat e
  assert.equal(handoff.body.official,true);
  assert.equal(handoff.body.email_confirmation,"sent");
  assert.equal(count,1);
+ assert.equal(sql.db.tickets.size,0,"official mode creates zero parallel ZC tickets");
  assert.equal(record.email,"comprador@dominio.com.br");
  assert.equal(record.tipo,"reembolso");
  assert.equal(mailer.sent.length,0,"no parallel chat emails; official durable outbox owns delivery");
