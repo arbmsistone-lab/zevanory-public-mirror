@@ -104,6 +104,7 @@ tests/r120-dec20-chat.test.mjs 4
 tests/r120-public-chat.test.mjs 4
 tests/r120-turnstile.test.mjs 4
 tests/r121-chat-institutional.test.mjs 4
+tests/r122-official-chat-handoff.test.mjs 2
 tests/refund-provider-ambiguity.test.mjs 29
 tests/remote-quality-lighthouse.test.mjs 8
 tests/reviews.test.mjs 3
