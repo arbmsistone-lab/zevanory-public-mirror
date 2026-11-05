@@ -1,9 +1,9 @@
 // R120 / DEC-20: local, side-effect-free contract tests. No network, mail or production KV.
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
+import {readTextNormalized} from "./helpers/text.mjs";
 import {composeReply,guardReply, CATALOG, CLOSED_PRICE_ANSWER, CHAT} from "../worker/site-chat.mjs";
-const read=p=>readFileSync(new URL("../"+p,import.meta.url),"utf8");
+const read=p=>readTextNormalized(new URL("../"+p,import.meta.url));
 test("R120 absent official knowledge escalates to human rather than improvises",async()=>{
   const missing={...CATALOG,ok:false};
   const answer=await composeReply({message:"O que vem no Vendas na Prática?",catalog:missing,salesOpen:false});
