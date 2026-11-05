@@ -1,0 +1,49 @@
+name: Sales lock publishers
+# Trava de vendas nos publicadores de conteúdo: motor de aquisição (Telegram/Bluesky), Short do YouTube e adaptadores
+# orgânicos do bundle. Com a trava fechada, ilegível ou incompleta nenhum texto publicado leva preço, /comprar,
+# Hotmart/checkout ou chamada de compra. Testes comportamentais (exatamente 7) + mutantes (exatamente 21 KILLED pelo
+# teste esperado). Só pull request: nunca dispara no merge. Offline, sem segredos, somente leitura.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/acquisition-engine.mjs"
+      - "worker/bluesky-publisher.mjs"
+      - "worker/sales-lock-content.mjs"
+      - "worker/sales-control.mjs"
+      - "worker/politica-unica.mjs"
+      - "data/politica-unica.json"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "scripts/channels/youtube-daily-short.mjs"
+      - "tests/sales-lock-publishers.test.mjs"
+      - "scripts/ci/mutants_sales_lock_publishers.mjs"
+      - ".github/workflows/sales-lock-publishers.yml"
+permissions:
+  contents: read
+concurrency:
+  group: sales-lock-publishers-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sales-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testes (exatamente 7)
+        run: |
+          set -euo pipefail
+          node --test tests/sales-lock-publishers.test.mjs < /dev/null | tee t.txt
+          grep -qx '# tests 7' t.txt && grep -qx '# pass 7' t.txt && grep -qx '# fail 0' t.txt && grep -qx '# skipped 0' t.txt
+      - name: Mutantes (exatamente 21 KILLED)
+        run: |
+          set -euo pipefail
+          node scripts/ci/mutants_sales_lock_publishers.mjs < /dev/null | tee mut.txt
+          grep -qx 'BASELINE PASS tests=7' mut.txt
+          grep -qx 'MUTANTS PASS killed=21/21' mut.txt
+          test "$(grep -c ' KILLED by=' mut.txt)" = "21"
+          git diff --exit-code -- worker scripts tests
