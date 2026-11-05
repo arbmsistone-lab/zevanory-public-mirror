@@ -122,6 +122,7 @@ export const BLOG_DAILY_KEY_PREFIX = "zpc:blog:daily:";
 export const BLOG_TABLE_C_PRICES=Object.freeze({"ZEV-IA-011":97,"ZEV-VEN-011":97,"ZEV-LCX-011":147,"ZEV-CMB-011":157,"ZEV-NGC-011":247});
 export const BLOG_DRAFT_KEY_PREFIX="zpc:blog:draft:v1:";
 export const BLOG_OWNER_APPROVAL_PREFIX="zpc:blog:owner-approval:v1:";
+export const BLOG_PUBLICATION_STAGE_PREFIX="zpc:blog:publication-stage:v1:";
 export async function blogDraftDigest(article) {
   const payload=JSON.stringify({slug:article.slug,day:article.day,product:article.product,title:article.title,body:article.body,price:article.tableCPrice});
   const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload));
@@ -153,17 +154,41 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   if(String(env.BLOG_AUTOPUBLISH||"").trim()!=="true")
     return {created:[],latest:null,draft:{day,slug:draft.slug,digest},day,reason:"owner_gate_disabled"};
   let approval=null;try{approval=JSON.parse(String(await kv.get(BLOG_OWNER_APPROVAL_PREFIX+day)||"null"));}catch{}
-  if(approval?.approved!==true||approval?.source!=="owner"||approval?.day!==day||approval?.slug!==draft.slug||approval?.digest!==digest||!approval?.approvedAt)
+  if(approval?.approved!==true||approval?.source!=="owner"||approval?.proof!=="session-passphrase-csrf-v1"||approval?.day!==day||approval?.slug!==draft.slug||approval?.digest!==digest||!approval?.approvedAt)
     return {created:[],latest:null,draft:{day,slug:draft.slug,digest},day,reason:"awaiting_owner_approval"};
-  let index={articles:[]};try{index=JSON.parse(String(await kv.get(BLOG_INDEX_KEY)||"null"))||index;}catch{}
-  for(const prior of index.articles||[])if(prior?.body&&trigramSimilarity(draft.body,prior.body)>=0.5)throw new Error("blog_duplicate_editorial_content");
-  const article={...draft,publishedAt:now.toISOString(),status:"published"};
-  index={schema:"zevanory.blog-daily/v1",updatedAt:now.toISOString(),articles:[...(index.articles||[]).filter(x=>x.slug!==article.slug),article].slice(-45)};
-  await kv.put("zpc:blog:article:"+article.slug,JSON.stringify(article),{expirationTtl:370*DAY});
-  await kv.put(BLOG_INDEX_KEY,JSON.stringify(index),{expirationTtl:370*DAY});
-  await kv.put(key,JSON.stringify({slug:article.slug,publishedAt:article.publishedAt,approvalDigest:digest}),{expirationTtl:370*DAY});
-  if(clean(env.INDEXNOW_KEY))await fetchImpl("https://api.indexnow.org/indexnow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({host:new URL(baseUrl(env)).host,key:clean(env.INDEXNOW_KEY,200),urlList:[article.url]}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
-  return {created:[{id:article.slug,url:article.url}],latest:article,total:index.articles.length,day};
+  // NC-02: KV is NOT a transactional/locking store. A real atomic per-day
+  // PostgreSQL/DO lease adapter is MANDATORY; absent => no public writes.
+  const lock=env.BLOG_PUBLICATION_LOCK;
+  if(typeof lock?.acquire!=="function"||typeof lock?.release!=="function")
+    return {created:[],latest:null,day,reason:"publication_lock_unavailable"};
+  const lease=await lock.acquire({day,slug:draft.slug,digest});
+  if(!lease?.owned)return {created:[],latest:null,day,reason:"publication_locked"};
+  try {
+    const stageKey=BLOG_PUBLICATION_STAGE_PREFIX+day;
+    let stage=null;try{stage=JSON.parse(String(await kv.get(stageKey)||"null"));}catch{}
+    if(stage && (stage.digest!==digest||stage.slug!==draft.slug||stage.day!==day))
+      throw new Error("blog_publication_stage_conflict");
+    let index={articles:[]};try{index=JSON.parse(String(await kv.get(BLOG_INDEX_KEY)||"null"))||index;}catch{}
+    for(const prior of index.articles||[])
+      if(prior?.slug!==draft.slug&&prior?.body&&trigramSimilarity(draft.body,prior.body)>=0.5)
+        throw new Error("blog_duplicate_editorial_content");
+    const article=stage?.article||{...draft,publishedAt:now.toISOString(),status:"published"};
+    if(!stage){
+      stage={schema:"zpc.blog.publication-stage.v1",day,slug:draft.slug,digest,phase:"prepared",article};
+      await kv.put(stageKey,JSON.stringify(stage),{expirationTtl:370*DAY});
+    }
+    // Phase 1: stable content, then the rolling index (both idempotent on retry).
+    await kv.put("zpc:blog:article:"+article.slug,JSON.stringify(article),{expirationTtl:370*DAY});
+    index={schema:"zevanory.blog-daily/v1",updatedAt:article.publishedAt,articles:[...(index.articles||[]).filter(x=>x.slug!==article.slug),article].slice(-45)};
+    await kv.put(BLOG_INDEX_KEY,JSON.stringify(index),{expirationTtl:370*DAY});
+    // Phase 2: the daily visibility marker is last; retries recover before commit.
+    await kv.put(key,JSON.stringify({slug:article.slug,publishedAt:article.publishedAt,approvalDigest:digest}),{expirationTtl:370*DAY});
+    await kv.put(stageKey,JSON.stringify({...stage,phase:"committed"}),{expirationTtl:370*DAY});
+    if(clean(env.INDEXNOW_KEY))await fetchImpl("https://api.indexnow.org/indexnow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({host:new URL(baseUrl(env)).host,key:clean(env.INDEXNOW_KEY,200),urlList:[article.url]}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
+    return {created:[{id:article.slug,url:article.url}],latest:article,total:index.articles.length,day};
+  } finally {await lock.release({day,slug:draft.slug,digest,lease}).catch(()=>null);}
+
+
 }
 
 export async function recordChannelProof(env={},proof={}){const id=clean(proof.channel,40);if(!["telegram","youtube"].includes(id)||!clean(proof.provider_post_id,200))throw new Error("channel_proof_invalid");const row={channel:id,provider_post_id:clean(proof.provider_post_id,200),url:clean(proof.url,1000)||null,publishedAt:clean(proof.publishedAt,80)||new Date().toISOString()};await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(`${CHANNEL_PROOF_PREFIX}${id}`,JSON.stringify(row),{expirationTtl:370*DAY});return row;}
