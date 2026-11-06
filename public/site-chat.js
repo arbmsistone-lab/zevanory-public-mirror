@@ -85,8 +85,10 @@
 
   // Conversa.
   var chat = el("div", { className: "zc-chat", hidden: true });
-  var log = el("ol", { className: "zc-log", role: "log", "aria-live": "polite", "aria-relevant": "additions", "aria-label": "Histórico da conversa", tabindex: "0" });
-  chat.appendChild(log);
+  var logRegion = el("div", { role: "log", "aria-live": "polite", "aria-relevant": "additions", "aria-label": "Histórico da conversa" });
+  var log = el("ol", { className: "zc-log", tabindex: "0" });
+  logRegion.appendChild(log);
+  chat.appendChild(logRegion);
   var status = el("p", { className: "zc-status", role: "status" });
   chat.appendChild(status);
   var timeout = el("div", { className: "zc-timeout", role: "alert", hidden: true });

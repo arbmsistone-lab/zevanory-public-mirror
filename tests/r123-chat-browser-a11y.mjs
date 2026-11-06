@@ -16,7 +16,7 @@ try{
   const u=new URL(route.request().url());
   if(u.pathname==="/api/chat/status")return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({notice:{who_answers:"Você está falando com um assistente virtual.",privacy_href:"/privacidade"},idle_minutes:30,message_max_chars:600,turnstile_sitekey:"test_R123_key"})});
   if(u.pathname==="/api/chat/session")return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({session:"sbx_"+ "a".repeat(43),idle_minutes:30})});
-  return route.fulfill({status:200,contentType:"text/html",body:'<!doctype html><html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main><h1>Atendimento ZEVANORY</h1></main><footer>Contato</footer></body></html>'});
+  return route.fulfill({status:200,contentType:"text/html",body:'<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Atendimento ZEVANORY | Teste acessível</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main><h1>Atendimento ZEVANORY</h1></main><footer>Contato</footer></body></html>'});
  });
  await page.goto("https://zevanory.api.br/__r123__/browser",{waitUntil:"domcontentloaded"});
  await page.addStyleTag({content:css});await page.addScriptTag({content:js});
