@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/site-chat.test.mjs tests/site-chat-widget.test.mjs tests/site-chat-no-synthetic-traffic.test.mjs tests/site-chat-eval.test.mjs | tee /tmp/chat.txt
-          grep -qx "# tests 33" /tmp/chat.txt || { echo "::error::contagem de testes diferente de 33"; exit 1; }
+          grep -qx "# tests 34" /tmp/chat.txt || { echo "::error::contagem de testes diferente de 33"; exit 1; }
           grep -qx "# fail 0" /tmp/chat.txt && grep -qx "# skipped 0" /tmp/chat.txt || { echo "::error::falha ou teste pulado"; exit 1; }
       - name: Relatório P10 (gerais Wilson 95% >= 0,90; críticos 100%)
         shell: bash
@@ -94,8 +94,8 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/integration/r122-official-chat-postgres.test.mjs 2>&1 | tee /tmp/r125-official-postgres.log
-          grep -qx "# tests 1" /tmp/r125-official-postgres.log &&
-          grep -qx "# pass 1" /tmp/r125-official-postgres.log &&
+          grep -qx "# tests 2" /tmp/r125-official-postgres.log &&
+          grep -qx "# pass 2" /tmp/r125-official-postgres.log &&
           grep -qx "# fail 0" /tmp/r125-official-postgres.log &&
           grep -qx "# skipped 0" /tmp/r125-official-postgres.log ||
           { echo "::error::R125 ZEV outbox test did not PASS"; exit 1; }

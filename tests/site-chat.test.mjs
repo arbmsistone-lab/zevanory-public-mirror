@@ -422,3 +422,35 @@ test("SC18 padrão desligado em tempo de execução: sem variável, vazia, \"1\"
   resetSiteChatState();
   assert.equal((await readSiteChatFlags({ ...SANDBOX_ENV, ZEVANORY_PRIVATE_ARTIFACTS: fakeKv() })).enabled, true, "[SC18.5] controle positivo: \"true\" explícito + KV legível liga");
 });
+
+// R142 / NC-R141-PRIV-01: privacy guard before PostgreSQL and ZEV transcript.
+test("SC19 sensitive health/religion content is removed, category retained, structured identifiers remain masked", async () => {
+  for (const [sample, privateWord] of [
+    ["Tenho diagnóstico de r142epilepsia e preciso de ajuda", "r142epilepsia"],
+    ["Minha religião r142privada está causando dificuldades", "r142privada"],
+    ["Minha saúde r142confidencial precisa de atenção", "r142confidencial"],
+    ["Minha orientação sexual r142reservada é assunto privado", "r142reservada"],
+    ["Minha biometria r142unica foi compartilhada", "r142unica"],
+    ["meu diagnóstico de depressão", "diagnóstico de depressão"],
+    ["sou evangélico", "evangélico"],
+    ["sou homossexual", "homossexual"],
+    ["biometria facial", "biometria facial"],
+  ]) {
+    const red = redactSensitive(sample);
+    assert.equal(red.text, "[conteúdo sensível removido]", "[SC19.1]");
+    assert.equal(red.sensitive, true, "[SC19.2]");
+    assert.equal(classify(red.text).category, "sensitive_data", "[SC19.3]");
+    const h = harness();
+    const sid = await h.session();
+    const reply = await h.say(sid, sample);
+    assert.equal(reply.status, 200, "[SC19.4]");
+    const stored = h.sql.db.messages.filter(m => m.role === "u").map(m => m.body).join(" ");
+    assert.equal(stored, "[conteúdo sensível removido]", "[SC19.5]");
+    assert.ok(!stored.includes(privateWord), "[SC19.6]");
+  }
+  const ordinary = redactSensitive("CPF 123.456.789-09 cartao 4111 1111 1111 1111 senha: r142secreta");
+  for (const leak of ["123.456.789-09", "4111 1111 1111 1111", "r142secreta"]) {
+    assert.ok(!ordinary.text.includes(leak), "[SC19.7]");
+  }
+  assert.match(ordinary.text, /\[removido\]/, "[SC19.8]");
+});

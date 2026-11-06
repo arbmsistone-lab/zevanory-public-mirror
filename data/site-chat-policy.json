@@ -54,7 +54,7 @@
   "notice": {
     "title": "Antes de começar",
     "who_answers": "Você está falando com um assistente virtual. Quem responde aqui é o assistente automático da ZEVANORY. Ele pode cometer erros. Se precisar, uma pessoa da equipe continua o atendimento por e-mail.",
-    "do_not_send": "Não envie senha, número de cartão, documentos (CPF, RG, CNH) nem dados sensíveis (saúde, religião, orientação sexual, biometria). Se enviar, o texto é removido da conversa.",
+    "do_not_send": "Não envie senhas, cartões, documentos ou informações sensíveis (saúde, religião, orientação sexual, biometria). O sistema mascara dados reconhecidos, como CPF, números de cartão e senhas; quando identifica assunto sensível, substitui toda a mensagem por [conteúdo sensível removido] antes de gravar ou encaminhar ao atendimento. A detecção automática pode não reconhecer todos os dados.",
     "controller": "Controlador: {legal_identity}.",
     "purpose": "Finalidade: tirar dúvidas sobre os produtos e as políticas oficiais e encaminhar ao atendimento humano quando necessário. Sem publicidade e sem cookies de rastreamento.",
     "data": "Dados tratados: as mensagens que você digitar; o seu e-mail, somente se pedir atendimento humano; e um identificador técnico pseudônimo, trocado a cada dia, para limitar abuso. A sessão fica só nesta aba do navegador.",
