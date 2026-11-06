@@ -35,6 +35,8 @@
 // * Isolamento de testes: produção recusa tokens/eventos sintéticos (sbx_, cabeçalhos de teste, e-mails de
 //   domínios reservados); o modo sandbox (SITE_CHAT_SANDBOX=true) exige um sink injetado e nunca usa o Resend.
 import CHAT_POLICY from "../data/site-chat-policy.json" with { type: "json" };
+import {verifyChatTurnstile} from "./r120-chat-turnstile.mjs";
+import {registerRequest as registerOfficialAtendimento, parseInput as parseOfficialAtendimento} from "./atendimento.mjs";
 import PRODUCTS_JSON from "../data/products.json" with { type: "json" };
 import { SUPPORT_PRODUCTS, answerSupportQuestion, resolveProduct } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
@@ -47,6 +49,19 @@ import {
 
 export const CHAT = CHAT_POLICY;
 const L = CHAT.limits;
+// R123: conservative tokens-based reservation, independent of every other Workers AI consumer.
+// The account-wide free balance remains provider-controlled and can still be exhausted elsewhere.
+export const CHAT_NEURON_DAILY_CEILING = 6000;
+export const CHAT_NEURON_RESERVATION = 160; // worst-case upper allowance for <=8k prompt chars + 220 output tokens
+export async function reserveChatNeurons(sql,now=Date.now()){
+  const rows=await sql.query(`/*chat:neurons*/ insert into zevanory_site_chat_counters (bucket,window_start,n)
+    values ('g:chat:neurons:d',$1::timestamptz,$2::int)
+    on conflict (bucket,window_start) do update
+      set n=zevanory_site_chat_counters.n+excluded.n
+      where zevanory_site_chat_counters.n+excluded.n <= $3::int
+    returning n`,[dayWin(now),CHAT_NEURON_RESERVATION,CHAT_NEURON_DAILY_CEILING]);
+  return Array.isArray(rows)&&rows.length===1&&Number(rows[0].n)<=CHAT_NEURON_DAILY_CEILING;
+}
 export const CLOSED_PRICE_ANSWER = CHAT.closed_price_answer;
 export const KILL_KV_KEY = "site-chat:kill:v1";
 export const CATEGORIES_OFF_KV_KEY = "site-chat:categories-off:v1";
@@ -384,13 +399,18 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   if (generative && ai?.run && !off("generative")) {
     const gen = await generate({ ai, message, salesOpen, catalog, product: det.product });
     if (gen.error) onAiFailure(gen.error);
+    // R120 DEC-20: provider free-quota exhaustion cannot be mistaken for an answered chat.
+    // No paid retry, no alternate provider, no checkout. Expose the existing human protocol form.
+    if (gen.error && /quota|neurons|insufficient_quota|exceeded|daily.limit|rate.limit|429/i.test(gen.error))
+      return { ...emailOnly, mode: "ai_quota_fallback", category: "ai_quota", actions: [...EMAIL_ONLY_ACTIONS] };
     if (gen.text && validateSiteReply(gen.text, { salesOpen, catalog }).ok) return { body: gen.text, mode: "ai_grounded", category: det.category, actions, model: gen.model };
     return { ...det, mode: det.mode + "_grounded_fallback", actions };
   }
   return { ...det, actions };
 }
 
-const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fp8-fast"];
+// R122: single Free-compatible lower-neuron model; no fallback to a more expensive model.
+const MODELS = ["@cf/meta/llama-3.1-8b-instruct-fp8-fast"];
 function generationPrompt({ salesOpen, catalog }) {
   const lines = Object.values(catalog.items).map((i) => `- ${i.name}: ${salesOpen ? i.content : i.closedSummary} Página: ${i.page}`);
   return [
@@ -402,11 +422,13 @@ function generationPrompt({ salesOpen, catalog }) {
   ].filter(Boolean).join("\n");
 }
 async function generate({ ai, message, salesOpen, catalog }) {
+  const prompt=generationPrompt({salesOpen,catalog});
+  if(prompt.length+String(message||"").length>8000)return {error:"chat_neuron_quota_guard"};
   for (const model of MODELS) {
     let timer;
     try {
       const out = await Promise.race([
-        ai.run(model, { messages: [{ role: "system", content: generationPrompt({ salesOpen, catalog }) }, { role: "user", content: String(message).slice(0, L.message_max_chars) }], max_tokens: 220, temperature: 0.2 }),
+        ai.run(model, { messages: [{ role: "system", content: prompt }, { role: "user", content: String(message).slice(0, L.message_max_chars) }], max_tokens: 220, temperature: 0.2 }),
         new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("ai_timeout")), L.ai_timeout_ms); }),
       ]);
       const text = String(out?.response ?? out?.result?.response ?? out?.choices?.[0]?.message?.content ?? "").replace(/\*\*/g, "").trim();
@@ -490,6 +512,7 @@ export async function ensureSiteChatSchema(sql) {
     created_at timestamptz not null default now(), due_at timestamptz not null, closed_at timestamptz,
     legal_hold boolean not null default false, owner_notified_at timestamptz, customer_confirmed_at timestamptz,
     source_version text, sandbox boolean not null default false)`, []);
+  await sql.query("alter table zevanory_site_chat_sessions add column if not exists official_protocol text",[]);
   await sql.query(`create table if not exists zevanory_site_chat_counters (
     bucket text not null, window_start timestamptz not null, n integer not null default 0, primary key (bucket, window_start))`, []);
   schemaReady = true;
@@ -592,7 +615,7 @@ export async function handleSiteChat(request, env = {}, deps = {}) {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" }, { allow: "GET" });
     if (!flags.enabled) return json(503, { enabled: false, error: "site_chat_disabled", fallback: FALLBACK });
     const notice = Object.fromEntries(Object.entries(CHAT.notice).map(([k, v]) => [k, fill(v, { legal_identity: LEGAL_IDENTITY })]));
-    return json(200, { enabled: true, generative: flags.generative, idle_minutes: L.session_idle_minutes, message_max_chars: L.message_max_chars, notice, fallback: FALLBACK });
+    return json(200, { enabled: true, generative: flags.generative, idle_minutes: L.session_idle_minutes, message_max_chars: L.message_max_chars, notice, fallback: FALLBACK, turnstile_sitekey: String(env.SITE_CHAT_TURNSTILE_SITEKEY||"") });
   }
   if (!flags.enabled) { siteChatLog("disabled"); return json(503, { error: "site_chat_disabled", fallback: FALLBACK }); }
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" }, { allow: "POST" });
@@ -614,7 +637,11 @@ export async function handleSiteChat(request, env = {}, deps = {}) {
     try { sql = deps.sqlFactory(env.DATABASE_URL); await ensureSiteChatSchema(sql); }
     catch { breaker.dbOpenUntil = now + 30_000; siteChatLog("dependency_failure", { dep: "database" }); return json(503, { error: "site_chat_unavailable", fallback: FALLBACK }); }
     try {
-      if (url.pathname === "/api/chat/session") return await sessionRoute(sql, env, body, { ip, now, flags });
+      if (url.pathname === "/api/chat/session") {
+        if (!body.renew && !(await verifyChatTurnstile(body.turnstile_token,env,deps.fetchImpl||fetch)))
+          return json(403,{error:"turnstile_required",fallback:FALLBACK});
+        return await sessionRoute(sql, env, body, { ip, now, flags });
+      }
       if (url.pathname === "/api/chat") return await messageRoute(sql, env, body, deps, { ip, now, flags });
       if (url.pathname === "/api/chat/handoff") return await handoffRoute(sql, env, body, deps, { ip, now, flags });
       return json(404, { error: "not_found" });
@@ -670,14 +697,21 @@ async function messageRoute(sql, env, body, deps, { ip, now, flags }) {
   // Autoridade canônica a CADA resposta; erro/timeout = fechado.
   const salesOpen = await salesOpenNow(deps);
   let generative = flags.generative && !generationBreakerOpen(now);
+  let neuronBudgetUnavailable=false;
   if (generative) {
-    const budget = await hitLimits(sql, [["g:ai:d", dayWin(now), L.ai_daily_budget]]);
-    if (budget) generative = false;
+    const callBudget=await hitLimits(sql,[["g:ai:d",dayWin(now),L.ai_daily_budget]]);
+    // The Postgres reservation is atomic, UTC-day scoped and never touches other AI consumers' counters.
+    const neurons=callBudget?"":await reserveChatNeurons(sql,now).catch(()=>false);
+    if(!neurons){generative=false;neuronBudgetUnavailable=true;}
   }
-  const composed = await composeReply({ message, salesOpen, session: s.row, catalog: deps.catalog || CATALOG, ai: env.AI, generative, categoriesOff: flags.categoriesOff, onAiFailure: (dep) => breakerFailure("ai:" + dep, now) });
+  const composed = neuronBudgetUnavailable
+    ? {body:FALLBACK.message,mode:"ai_budget_fallback",category:"ai_quota",actions:[...EMAIL_ONLY_ACTIONS]}
+    : await composeReply({ message, salesOpen, session: s.row, catalog: deps.catalog || CATALOG, ai: env.AI, generative, categoriesOff: flags.categoriesOff, onAiFailure: (dep) => breakerFailure("ai:" + dep, now) });
   const reply = guardReply(composed, { salesOpen, catalog: deps.catalog || CATALOG });
+  const officialMode=String(env.SITE_CHAT_OFFICIAL_PROTOCOLS||"")==="true";
   let protocol = null, due = null;
-  if (reply.escalate) {
+  // A draft escalation is not a ZC ticket in official mode. The ZEV outbox is the ONLY consumer protocol.
+  if (reply.escalate && !officialMode) {
     const lim = (await sessionHasTicket(sql, s.sess)) ? "" : await hitLimits(sql, [[`i:${ip}:h:d`, dayWin(now), L.handoffs_per_ip_per_day], ["g:h:d", dayWin(now), L.handoffs_global_per_day]]);
     if (lim) {
       siteChatLog("rate_limited", { reason: lim });
@@ -686,14 +720,15 @@ async function messageRoute(sql, env, body, deps, { ip, now, flags }) {
       protocol = t?.protocol || null; due = t?.due_at || null;
     }
   }
-  const finalBody = protocol ? reply.body.replaceAll(PROTO, protocol)
+  const finalBody = protocol && officialMode ? reply.body.replaceAll(`(protocolo ${PROTO})`,"(registro concluído após informar seu e-mail)").replaceAll(PROTO,"")
+    : protocol ? reply.body.replaceAll(PROTO, protocol)
     : reply.body.replace(` (protocolo ${PROTO})`, "").replace(`(protocolo ${PROTO})`, "").replaceAll(PROTO, "");
   const stored = redactSensitive(message).text;
   await sql.query("insert into zevanory_site_chat_messages (session_hash, role, body) values ($1, 'u', $2), ($1, 'a', $3)", [s.sess, stored, finalBody]);
   await sql.query("update zevanory_site_chat_sessions set turns = turns + 1, corrections = corrections + $2, last_at = $3::timestamptz, source_version = $4 where session_hash = $1", [s.sess, composed.correction ? 1 : 0, new Date(now).toISOString(), SOURCE_VERSION]);
   siteChatLog("reply", { category: reply.category, mode: reply.mode, created: Boolean(protocol) });
   const out = { reply: finalBody, category: reply.category, actions: reply.actions || [] };
-  if (reply.escalate) out.escalation = { category: reply.escalate.category, protocol, due_date: due ? dueLabel(due) : null, sla_days: CHAT.sla_days, needs_email: true };
+  if (reply.escalate) out.escalation = { category: reply.escalate.category, protocol: officialMode ? null : protocol, due_date: due ? dueLabel(due) : null, sla_days: CHAT.sla_days, needs_email: true };
   return json(200, out);
 }
 
@@ -707,6 +742,29 @@ async function handoffRoute(sql, env, body, deps, { ip, now, flags }) {
   const known = await sessionHasTicket(sql, s.sess);
   const over = await hitLimits(sql, [[`s:${s.sess}:m`, minuteWin(now), L.per_session_per_minute], ...(known ? [] : [[`i:${ip}:h:d`, dayWin(now), L.handoffs_per_ip_per_day], ["g:h:d", dayWin(now), L.handoffs_global_per_day]])]);
   if (over) { siteChatLog("rate_limited", { reason: over }); return json(429, { error: "rate_limited", fallback: FALLBACK }, { "retry-after": "3600" }); }
+  // R122: the canonical /atendimento outbox, not the independent chat ZC ticket,
+  // becomes the consumer-facing protocol. Default OFF until E2E and explicit activation.
+  if (String(env.SITE_CHAT_OFFICIAL_PROTOCOLS || "") === "true") {
+    if (body.privacy_ack !== true) return json(400,{error:"privacy_ack_required",fallback:FALLBACK});
+    const messages=await sql.query("select role, body from zevanory_site_chat_messages where session_hash = $1 order by id desc limit 24",[s.sess]);
+    const ordered=(messages||[]).slice().reverse();
+    const lines=ordered.map(m=>(m.role==="u"?"Consumidor: ":"Assistente: ")+redactSensitive(String(m.body||"")).text);
+    const transcript=lines.join("\n").slice(0,3500);
+    const categories=ordered.filter(m=>m.role==="u").map(m=>classify(String(m.body||"")).category).filter(Boolean);
+    const tipo=categories.some(c=>c==="refund"||c==="withdrawal")?"reembolso"
+      :categories.includes("cancellation")?"cancelamento"
+      :categories.includes("complaint")?"reclamacao":"suporte";
+    const parsed=parseOfficialAtendimento({tipo,email,pedido:"",mensagem:transcript.length>=10?transcript:"Atendimento iniciado pelo chat; solicitar retorno humano."});
+    const register=deps.registerOfficialAtendimento||registerOfficialAtendimento;
+    const out=await register(env,parsed,{ip,now,sqlFactory:deps.sqlFactory,fetchImpl:deps.fetchImpl});
+    if(out?.status!==200||!/^ZEV-[0-9]{8}-[A-F0-9]{10}$/.test(String(out?.body?.protocolo||"")))
+      return json(503,{error:"official_protocol_unavailable",fallback:FALLBACK});
+    const protocol=out.body.protocolo;
+    await sql.query("update zevanory_site_chat_sessions set official_protocol=$2 where session_hash=$1",[s.sess,protocol]);
+    // Resend e alerta ao proprietário são responsabilidade do outbox oficial.
+    // Não emitir e-mail paralelo do ZC ticket.
+    return json(200,{reply:"Solicitação registrada no atendimento oficial. Protocolo: "+protocol+". Confirmação por e-mail: "+(out.body.email_confirmacao==="enviado"?"enviada.":"pendente; guarde seu número."),protocol,email_confirmation:out.body.email_confirmacao==="enviado"?"sent":"pending",official:true});
+  }
   const t = await openTicket(sql, { sess: s.sess, category: "human_request", now, sandbox: flags.sandbox });
   if (!t?.protocol) return json(503, { error: "site_chat_unavailable", fallback: FALLBACK });
   await sql.query("update zevanory_site_chat_tickets set contact_email = $2 where protocol = $1", [t.protocol, email]);
@@ -739,11 +797,31 @@ async function handoffRoute(sql, env, body, deps, { ip, now, flags }) {
 // ---------- fila do proprietário (autenticada) ----------
 export async function handleSiteChatAdmin(request, env = {}, { sqlFactory, isAdminAuthorized } = {}) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/admin/site-chat/")) return null;
+  if (!url.pathname.startsWith("/api/admin/site-chat/") && url.pathname!=="/admin/chat-protocolos") return null;
   if (typeof isAdminAuthorized !== "function" || !isAdminAuthorized(request, env)) return json(401, { error: "unauthorized" }, { "www-authenticate": 'Basic realm="ZEVANORY"' });
   if (!sqlFactory || !env.DATABASE_URL) return json(503, { error: "database_unavailable" });
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureSiteChatSchema(sql);
+  if(url.pathname==="/api/admin/site-chat/official" && request.method==="GET"){
+    // The official ZEV outbox is the authoritative queue; no transcript or personal data in the list.
+    const rows=await sql.query(`select o.protocolo,o.tipo,o.recebido_em,o.responder_ate,
+      o.owner_status,o.customer_status from zevanory_atendimento_outbox o
+      join zevanory_site_chat_sessions s on s.official_protocol=o.protocolo
+      order by o.recebido_em desc limit 200`,[]);
+    return json(200,{tickets:rows||[],source:"zevanory_atendimento_outbox"});
+  }
+  if(url.pathname==="/admin/chat-protocolos" && request.method==="GET"){
+    // Auth is checked above; use the SAME official outbox as /atendimento.
+    const rows=await sql.query(`select o.protocolo,o.tipo,o.recebido_em,o.responder_ate,
+      o.owner_status,o.customer_status from zevanory_atendimento_outbox o
+      join zevanory_site_chat_sessions s on s.official_protocol=o.protocolo
+      order by o.recebido_em desc limit 200`,[]);
+    const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    const cell=v=>"<td>"+safe(v)+"</td>";
+    const data=(rows||[]).map(r=>"<tr>"+["protocolo","tipo","recebido_em","responder_ate","owner_status","customer_status"].map(k=>cell(r[k])).join("")+"</tr>").join("");
+    const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>ZEVANORY | Atendimento</title></head><body><main><h1>Protocolos oficiais do chat</h1><p>Atendimento oficial ZEVANORY. Consultar /atendimento para novas solicitações.</p><table><caption>Fila oficial de protocolos ZEV originados no chat</caption><thead><tr><th>Protocolo</th><th>Tipo</th><th>Recebido</th><th>Prazo</th><th>Aviso à equipe</th><th>Confirmação ao cliente</th></tr></thead><tbody>${data}</tbody></table></main></body></html>`;
+    return new Response(html,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'","x-frame-options":"DENY","x-content-type-options":"nosniff","referrer-policy":"no-referrer"}});
+  }
   const m = url.pathname.match(/^\/api\/admin\/site-chat\/tickets(?:\/((?:ZC|SBX)-\d{8}-[A-Z2-9]{6}))?(?:\/(close|hold))?$/);
   if (!m) return json(404, { error: "not_found" });
   const [, protocol, action] = m;

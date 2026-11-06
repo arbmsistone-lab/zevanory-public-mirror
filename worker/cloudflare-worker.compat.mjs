@@ -19,6 +19,8 @@ import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { handleSiteChat, handleSiteChatAdmin, runSiteChatRetention } from "./site-chat.mjs";
+import {handleR120PublicChat} from "./r120-chat-public.mjs";
+import {injectInstitutionalChat} from "./r120-chat-institutional.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
@@ -100,7 +102,9 @@ const wrapped = {
     let path = "/";
     // Only route words: any segment that could carry an id or token becomes "*" (public census).
     try { path = new URL(request.url).pathname.split("/").slice(0, 4).map((seg) => (seg === "" || /^[a-z][a-z-]{0,23}$/.test(seg) ? seg : "*")).join("/") || "/"; } catch {}
-    return wrapped.processFetch(request, withMeteredKv(env, "fetch:" + path), ctx);
+    const meteredEnv=withMeteredKv(env, "fetch:" + path);
+    const response=await wrapped.processFetch(request, meteredEnv, ctx);
+    return injectInstitutionalChat(request, normalizeEnv(productionEnvView(meteredEnv)), response);
   },
   async processFetch(request, env, ctx) {
     // Retired public assets (old contact script): inert, no-store tombstone before any env/KV access.
@@ -113,6 +117,17 @@ const wrapped = {
     if(new URL(request.url).pathname===ATENDIMENTO_DRAIN_PATH)return handleAtendimentoDrainRequest(request,normalized,{sqlFactory:whatsappProofDatabase});
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
+    // R139: chat stays OFF without SITE_CHAT_ENABLED=true; internal SELF drain R138 runs before this.
+    if (url.hostname === "zevanory.api.br" && url.pathname.startsWith("/api/chat")) {
+      const publicChat=await handleR120PublicChat(request,normalized,{
+        sqlFactory:whatsappProofDatabase,
+        salesOpen:async()=>{
+          const st=await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status",{method:"GET"}),normalized,{sqlFactory:whatsappProofDatabase,worker,ctx});
+          return (await st?.json?.())?.open===true;
+        }
+      });
+      if(publicChat)return publicChat;
+    }
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     if (url.pathname === "/kit/baixar") return handleKitDownloadNc015(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
@@ -233,7 +248,7 @@ const wrapped = {
       });
       return chat || new Response("not_found", { status: 404 });
     }
-    if (url.pathname.startsWith("/api/admin/site-chat/")) return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
+    if (url.pathname.startsWith("/api/admin/site-chat/") || url.pathname === "/admin/chat-protocolos") return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);

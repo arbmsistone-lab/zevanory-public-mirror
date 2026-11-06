@@ -15,11 +15,11 @@ import { fakeSql, fakeKv, sinkMailer, fakeAi, captureLogs, SANDBOX_ENV, AI_OUTPU
 
 const CHECKOUT = /\/comprar\b|\/assinar\b|hotmart|mercadopago\.com|pay\.|checkout/i;
 const ORIGIN = "https://vendas.zevanory.api.br";
-function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, mailer = sinkMailer(), ai, catalog } = {}) {
+function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, mailer = sinkMailer(), ai, catalog, fetchImpl, registerOfficial } = {}) {
   resetSiteChatState();
   const factoryCalls = { n: 0 };
   const fullEnv = { ...SANDBOX_ENV, ZEVANORY_PRIVATE_ARTIFACTS: kv, ...(ai ? { AI: ai } : {}), ...env };
-  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, mailer, ...(catalog ? { catalog } : {}) };
+  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, mailer, ...(catalog ? { catalog } : {}), ...(fetchImpl ? { fetchImpl } : {}), ...(registerOfficial ? { registerOfficialAtendimento: registerOfficial } : {}) };
   const call = async (path, body, { method = "POST", headers = {} } = {}) => {
     const res = await handleSiteChat(new Request("https://chat.internal" + path, { method, headers: { "content-type": "application/json", "x-zev-client-ip": "203.0.113.7", ...headers }, body: method === "GET" ? undefined : JSON.stringify(body || {}) }), fullEnv, deps);
     return { status: res.status, body: await res.json() };
@@ -208,10 +208,11 @@ test("SC10 sem dado pessoal nem conteúdo nos logs; transcrição guardada com d
 
 test("SC11 isolamento de testes: produção recusa marcadores sintéticos; sandbox exige sink e nunca usa o Resend", async () => {
   const prod = { SITE_CHAT_SANDBOX: undefined };
-  const p = harness({ env: prod });
+  const p = harness({ env: { ...prod, SITE_CHAT_TURNSTILE_SECRET:"local-fake-secret" }, fetchImpl: async ()=>({ok:true,json:async()=>({success:true,hostname:"zevanory.api.br",action:"zevanory_chat"})}) });
   assert.equal((await p.call("/api/chat/session", {}, { headers: { "x-zevanory-synthetic": "1" } })).status, 422, "[SC11.1]");
   assert.equal((await p.call("/api/chat", { session: "sbx_" + "a".repeat(43), message: "oi" })).status, 422, "[SC11.2]");
-  const ps = (await p.call("/api/chat/session", {})).body.session;
+  assert.equal((await p.call("/api/chat/session", {})).status,403,"[SC11.3a] sessão exige Turnstile");
+  const ps = (await p.call("/api/chat/session", { turnstile_token:"local-valid-turnstile" })).body.session;
   assert.match(ps, /^zc_/, "[SC11.3]");
   assert.equal((await p.call("/api/chat/handoff", { session: ps, email: "qa@example.com" })).status, 422, "[SC11.4]");
   assert.equal((await p.call("/api/chat/handoff", { session: ps, email: "x@foo.test" })).status, 422, "[SC11.5]");
@@ -311,7 +312,7 @@ test("SC15 Worker de vendas: desligado => 503 local sem chamar o central e sem w
   assert.match(cp.headers.get("x-robots-tag") || "", /noindex/, "[SC15.9b] noindex");
   assert.ok(!(await cp.text()).includes("site-chat"), "[SC15.9b] sem widget");
   const other = await (await salesWorker.fetch(new Request(ORIGIN + "/ia-para-barbearia", { headers: { "user-agent": CHROME } }), on, { waitUntil() {} })).text();
-  assert.ok(!other.includes("site-chat"), "[SC15.10] fora da lista: sem widget");
+  assert.ok(other.includes("site-chat.js"), "[SC15.10] R120: guia setorial também elegível ao widget, sempre atrás do interruptor");
   assert.equal(shouldInjectSiteChat("solucoes", {}), false, "[SC15.11]");
   assert.equal(injectSiteChatHtml(injectSiteChatHtml("<head></head><body></body>")).match(/site-chat\.js/g).length, 1, "[SC15.12] idempotente");
   assert.ok(SITE_CHAT_PAGES.has("solucoes") && SITE_CHAT_PAGES.has("termos"), "[SC15.13]");

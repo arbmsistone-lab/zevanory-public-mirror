@@ -29,6 +29,10 @@ const PUB = join(ROOT, "sales-public");
 // exactly git rev-parse 4dce12c3:worker/sales-public-worker.mjs (#893 head before merging #914), pinned below.
 const GH_PAGES_BLOB = "86c5337c33588b50012266698c9dd0d18300e237";
 const NEW_SRC = readTextNormalized(join(ROOT, "worker/sales-public-worker.mjs"));
+const R124_CHAT_WORKER_BLOB="41b16c3aca1b27d0dd5e5ebee4c771850cd2b183";
+const R124_CHAT_PAGES_CURRENT="// R120 DEC-20: all informational sales HTML routes, still OFF unless both Workers explicitly enable chat.\nexport const SITE_CHAT_PAGES=Object.freeze(new Set([...htmlRoutes]));";
+const R124_CHAT_PAGES_PREVIOUS="export const SITE_CHAT_PAGES=Object.freeze(new Set([\"solucoes\",\"ia-na-pratica\",\"vendas-na-pratica\",\"lucro-e-caixa\",\"combo-ia-vendas\",\"negocio-completo\",\"conteudo-pronto\",\"termos\",\"privacidade\",\"reembolso\"]));";
+const R124_CHAT_ONLY_CSP="  // R124: enable Turnstile only on a page actually serving the chat; OFF retains the exact historical CSP.\n  if(response.status===200&&page&&shouldInjectSiteChat(page,env)){\n    headers.set(\"content-security-policy\",CSP\n      .replace(\"https://static.cloudflareinsights.com\",\"https://static.cloudflareinsights.com https://challenges.cloudflare.com\")\n      .replace(\"https://*.mercadopago.com.br\",\"https://*.mercadopago.com.br https://challenges.cloudflare.com\"));\n  }\n";
 
 const HUNK_HOTMART_NEW = `  // Design PR: the hero payment facts are a list (no "·" chain); each item has its Hotmart wording.
   ["Pagamento processado pelo Mercado Pago (Pix ou cartão)","Pagamento processado pela Hotmart (Pix, cartão ou boleto)"],
@@ -47,7 +51,12 @@ const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sh
 
 async function loadWorkers() {
   // NC-017 first: reverse its exact hunks to get the Worker at 81d637e (pinned), then #914's two hunks.
-  let baseSrc = NEW_SRC;
+  assert.equal(gitBlob(NEW_SRC),R124_CHAT_WORKER_BLOB,"R124 exact candidate blob hash pinned");
+  let baseSrc=NEW_SRC;
+  assert.equal(baseSrc.split(R124_CHAT_ONLY_CSP).length,2,"exactly one conditional chat CSP hunk");
+  baseSrc=baseSrc.replace(R124_CHAT_ONLY_CSP,"");
+  assert.equal(baseSrc.split(R124_CHAT_PAGES_CURRENT).length,2,"exactly one chat page-list hunk");
+  baseSrc=baseSrc.replace(R124_CHAT_PAGES_CURRENT,R124_CHAT_PAGES_PREVIOUS);
   for (const [cur, prev] of NC017_SALES_WORKER_HUNKS) {
     assert.equal(baseSrc.split(cur).length, 2, "NC-017 hunk present exactly once: " + cur.slice(0, 60));
     baseSrc = baseSrc.replace(cur, () => prev);

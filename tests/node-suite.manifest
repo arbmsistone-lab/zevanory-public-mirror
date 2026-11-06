@@ -102,6 +102,13 @@ tests/public-html-internal-markers.test.mjs 2
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 12
 tests/r117-blog-owner-gate.test.mjs 5
+tests/r120-dec20-chat.test.mjs 4
+tests/r120-public-chat.test.mjs 4
+tests/r120-turnstile.test.mjs 4
+tests/r121-chat-institutional.test.mjs 4
+tests/r122-official-chat-handoff.test.mjs 3
+tests/r123-neuron-budget.test.mjs 2
+tests/r124-owner-panel.test.mjs 2
 tests/refund-provider-ambiguity.test.mjs 29
 tests/remote-quality-lighthouse.test.mjs 8
 tests/reviews.test.mjs 3
