@@ -32,6 +32,7 @@ async function jsonOrThrow(r, code) { const j = await r.json().catch(() => ({}))
 // TikTok Content Posting API (Direct Post, FILE_UPLOAD). Unaudited apps may only
 // post SELF_ONLY; the privacy actually used is whatever creator_info allows.
 export async function publishTikTok(plan, mp4, { token, audited = false, fetchImpl = fetch, sleep = sleepMs }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const auth = { authorization: "Bearer " + token, "content-type": "application/json; charset=UTF-8" };
   const info = await jsonOrThrow(await fetchImpl("https://open.tiktokapis.com/v2/post/publish/creator_info/query/", { method: "POST", headers: auth, body: "{}" }), "tiktok_creator_info");
   const options = info?.data?.privacy_level_options || [];
@@ -56,6 +57,7 @@ export async function publishTikTok(plan, mp4, { token, audited = false, fetchIm
 
 // Instagram Reels: container from the public video URL, wait until FINISHED, publish.
 export async function publishInstagramReel(plan, videoUrl, { token, igId, fetchImpl = fetch, sleep = sleepMs }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const c = await jsonOrThrow(await fetchImpl(`${GRAPH}/${igId}/media`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ media_type: "REELS", video_url: videoUrl, caption: captionFor(plan, "instagram", { salesOpen: plan.salesOpen === true }), share_to_feed: true, access_token: token }) }), "instagram_container");
   if (!c?.id) throw new Error("instagram_container_missing");
   for (let i = 0; i < 40; i++) {
@@ -73,6 +75,7 @@ export async function publishInstagramReel(plan, videoUrl, { token, igId, fetchI
 
 // Facebook Page video (Reels-eligible vertical video) via direct file upload.
 export async function publishFacebookVideo(plan, mp4, { token, pageId, fetchImpl = fetch }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const form = new FormData();
   form.set("access_token", token); form.set("description", captionFor(plan, "facebook", { salesOpen: plan.salesOpen === true })); form.set("title", plan.title.slice(0, 95));
   form.set("source", new Blob([mp4], { type: "video/mp4" }), "zevanory-short.mp4");
@@ -83,6 +86,7 @@ export async function publishFacebookVideo(plan, mp4, { token, pageId, fetchImpl
 
 // Telegram channel: the same vertical video, native player (no external link preview needed).
 export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl = fetch }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const form = new FormData();
   form.set("chat_id", chatId); form.set("caption", captionFor(plan, "telegram", { salesOpen: plan.salesOpen === true }).slice(0, 1024)); form.set("supports_streaming", "true");
   form.set("video", new Blob([mp4], { type: "video/mp4" }), "zevanory-" + plan.day + ".mp4");

@@ -354,6 +354,7 @@ export function cloudflareKv({ token, account, namespace, fetchImpl = fetch }) {
 }
 
 export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const auth = { authorization: "Bearer " + accessToken };
   const chRes = await fetchImpl("https://www.googleapis.com/youtube/v3/channels?part=id,contentDetails&mine=true", { headers: auth });
   const ch = await chRes.json().catch(() => ({}));
