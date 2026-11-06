@@ -371,9 +371,17 @@ bypass. This is intentional: every new exception is reviewed by the owner.
 | C14 | `scripts/whatsapp_audio_runtime_test.mjs` | 83 | `generic-api-key` | `3b8e6418` | Synthetic test fixture | `3b8e641875fc07bd3c6eda8712c7fe23891c7e2e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83` |
 | C14 | `scripts/whatsapp_audio_runtime_test.mjs` | 83 | `generic-api-key` | `fecd365a` | Synthetic test fixture | `fecd365a8d3e8b8a01681e38692e37e47cfc622e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83` |
 | C14 | `test/meta-oauth.test.mjs` | 5 | `generic-api-key` | `7a488a8a` | Synthetic test fixture | `7a488a8ad1998abb4e906b3cb566eea98d400d64:test/meta-oauth.test.mjs:generic-api-key:5` |
+| C14 | `scripts/ci/nc015-kit-harness.mjs` | 10 | `generic-api-key` | `3d43889f` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `3d43889facd6e79916e87d798bfda21b57465c2a:scripts/ci/nc015-kit-harness.mjs:generic-api-key:10` |
+| C14 | `tests/content-service.test.mjs` | 11 | `generic-api-key` | `3d43889f` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `3d43889facd6e79916e87d798bfda21b57465c2a:tests/content-service.test.mjs:generic-api-key:11` |
+| C14 | `scripts/cp-do-identity.test.mjs` | 3 | `generic-api-key` | `3d43889f` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `3d43889facd6e79916e87d798bfda21b57465c2a:scripts/cp-do-identity.test.mjs:generic-api-key:3` |
+| C14 | `scripts/cp-nc013-regression.test.mjs` | 9 | `generic-api-key` | `3d43889f` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `3d43889facd6e79916e87d798bfda21b57465c2a:scripts/cp-nc013-regression.test.mjs:generic-api-key:9` |
+| C14 | `scripts/ci/nc015-kit-harness.mjs` | 10 | `generic-api-key` | `4303af99` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `4303af99abd473f27a2a4e60cde447d635a07789:scripts/ci/nc015-kit-harness.mjs:generic-api-key:10` |
+| C14 | `scripts/cp-nc013-regression.test.mjs` | 9 | `generic-api-key` | `ad29c627` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `ad29c627e77882575ba874e1cec797573e016557:scripts/cp-nc013-regression.test.mjs:generic-api-key:9` |
+| C14 | `tests/content-service.test.mjs` | 11 | `generic-api-key` | `27853699` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `27853699d7fb2e8256b6d65900ccc0f24d90eb17:tests/content-service.test.mjs:generic-api-key:11` |
+| C14 | `scripts/cp-do-identity.test.mjs` | 3 | `generic-api-key` | `03d8fc2e` | Synthetic test fixture (R148 re-review 2026-11-06: literal synthetic/test/offline placeholder) | `03d8fc2e5289e6fd2e6e92f3ca13bec89cccd98b:scripts/cp-do-identity.test.mjs:generic-api-key:3` |
 | C15 | `tests/fixtures/t5-negative-proof/fake-secret.txt` | 3 | `generic-api-key` | `cf033a87` | CI negative-proof fake (PR #950) | `cf033a872b91c83b7c95a119c1d36346a309f100:tests/fixtures/t5-negative-proof/fake-secret.txt:generic-api-key:3` |
 
-Totals: **84** fingerprints.
+Totals: **92** fingerprints (84 from the 2026-10-27 review + 8 synthetic fixtures re-reviewed 2026-11-06, R148).
 
 | Class | Fingerprints |
 |---|---|
