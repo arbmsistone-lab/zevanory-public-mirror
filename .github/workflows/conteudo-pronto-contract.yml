@@ -1,8 +1,9 @@
 name: conteudo-pronto-contract
 
 # Conteúdo Pronto (AVAL Sol #898): roteiros multicanal no lugar de mensagens de WhatsApp, contrato versionado em
-# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 80 mutantes (inclui a regeneração com entrega confirmada:
-# bloqueado/candidato/atual, pending -> accepted -> delivered | dead),
+# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e os 59 mutantes ativos
+# (DEC-14: dos 178, os 119 cujo trecho-alvo não existe mais foram aposentados um a um em
+# docs/ops/dec14-cp-retirement-registry.json; scripts/ci/dec14-inventory.py confere 59 + 119 = 178),
 # cada um morto pela asserção esperada (rótulo na saída), em Linux e Windows (Git Bash, CRLF), Node 22 e 24.
 # Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
 on:
@@ -11,6 +12,11 @@ on:
       - ".github/workflows/conteudo-pronto-contract.yml"
       - "tests/conteudo-pronto-roteiros.test.mjs"
       - "tests/content-service.test.mjs"
+      - "tests/conteudo-pronto-g1-g5.test.mjs"
+      - "tests/conteudo-pronto-campanha.test.mjs"
+      - "tests/helpers/cp-campaign.mjs"
+      - "scripts/ci/dec14-inventory.py"
+      - "docs/ops/dec14-cp-retirement-registry.json"
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_conteudo_pronto.py"
       - "scripts/ci/mutant_classifier.py"
@@ -18,6 +24,8 @@ on:
       - "scripts/ci/mutants_conteudo_pronto_causality.py"
       - "docs/evidence/conteudo-pronto-mutant-causality.md"
       - "worker/content-service.mjs"
+      - "worker/site-chat.mjs"
+      - "worker/whatsapp-conversation.mjs"
       - "worker/politica-unica.mjs"
       - "worker/atendimento.mjs"
       - "worker/activity-ledger.mjs"
@@ -25,6 +33,7 @@ on:
       - "worker/support-knowledge.mjs"
       - "worker/sales-public-worker.mjs"
       - "data/politica-unica.json"
+      - "termos/index.html"
       - "conteudo-pronto/**"
       - "solucoes/**"
       - "kit-afiliado/**"
@@ -51,11 +60,20 @@ jobs:
         run: |
           set -euo pipefail
           node --version
-          node --test --test-reporter=tap tests/conteudo-pronto-roteiros.test.mjs tests/content-service.test.mjs 2>&1 | tee /tmp/cp.txt
-          for kv in "tests 20" "pass 20" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+          node --test --test-reporter=tap tests/conteudo-pronto-roteiros.test.mjs tests/content-service.test.mjs tests/conteudo-pronto-campanha.test.mjs 2>&1 | tee /tmp/cp.txt
+          # DEC-14: 51 -> 25 (29 testes do pipeline KV aposentados nestes arquivos, 3 [dec14-*] novos sem KV; (f) e (g6) reescritos sem KV; registro em docs/ops/dec14-cp-retirement-registry.json)
+          for kv in "tests 25" "pass 25" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
             grep -qx "# $kv" /tmp/cp.txt || { echo "::error::esperado '# $kv'"; exit 1; }
           done
           echo "::notice title=CONTEUDO_PRONTO_TESTS::$(grep -E '^# (tests|pass|fail|skipped|todo) ' /tmp/cp.txt | paste -sd' ' -)"
+      - name: Conteúdo Pronto — G3 validador de posts (DEC-14 aposentou os 20 testes G1–G5 do pipeline KV; offline, contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/conteudo-pronto-g1-g5.test.mjs 2>&1 | tee /tmp/g.txt
+          for kv in "tests 1" "pass 1" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+            grep -qx "# $kv" /tmp/g.txt || { echo "::error::G1–G5: esperado '# $kv'"; exit 1; }
+          done
       - name: Mapa causal dos mutantes válido e documento de evidência em dia
         shell: bash
         env:
@@ -64,6 +82,7 @@ jobs:
           set -euo pipefail
           python3 -B scripts/ci/mutants_conteudo_pronto.py --causality-md > /tmp/causality.md
           diff -u docs/evidence/conteudo-pronto-mutant-causality.md /tmp/causality.md || { echo "::error::docs/evidence/conteudo-pronto-mutant-causality.md desatualizado (regenere com --causality-md)"; exit 1; }
+          python3 -B scripts/ci/dec14-inventory.py > /tmp/dec14.json || { cat /tmp/dec14.json; echo "::error::DEC-14: inventário ativos + aposentados != 178 ou aposentado com trecho presente"; exit 1; }
           python3 -B -c "import sys; sys.path.insert(0, 'scripts/ci'); import importlib.util as u; s = u.spec_from_file_location('r', 'scripts/ci/mutants_conteudo_pronto.py'); r = u.module_from_spec(s); s.loader.exec_module(r); p = r.causality_problems(); print('\n'.join(p) or 'CAUSALITY_OK'); sys.exit(1 if p else 0)"
       - name: Build de vendas reproduz as páginas versionadas
         shell: bash
@@ -109,7 +128,7 @@ jobs:
           [ "$n" = "18" ] || { echo "::error::esperados 18 meta-testes, obtidos $n"; exit 1; }
           echo "::notice title=MUTANT_CLASSIFIER_META ($RUNNER_OS node ${{ matrix.node }})::Ran $n tests OK"
           rm -f meta.txt
-      - name: Conteúdo Pronto — 80 mutantes
+      - name: Conteúdo Pronto — 59 mutantes ativos (DEC-14; 119 aposentados no registro)
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONIOENCODING: "utf-8"
@@ -124,7 +143,7 @@ jobs:
           if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
-          [ "$n" = "80" ] || { echo "::error::esperados 80 mutantes mortos, obtidos $n"; exit 1; }
-          grep -qx 'MUTANTS_TOTAL=80 KILLED=80 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
+          [ "$n" = "59" ] || { echo "::error::esperados 59 mutantes ativos mortos, obtidos $n"; exit 1; }
+          grep -qx 'MUTANTS_TOTAL=59 KILLED=59 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
           rm -f mutants.txt mutants.raw
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

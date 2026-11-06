@@ -106,7 +106,7 @@ export function planShort(day, { salesOpen = false } = {}) {
   const hook = ANGLE_HOOK[entry.angle] + " para " + niche;
   const spec = { creative_id: "youtube-short-" + day, brand: "ZEVANORY", site: "zevanory.api.br", width: 1080, height: 1920, hook, body: entry.product.name + " por R$ " + price + ",00. " + SHORT_RULE_LABEL + ".", cta: "Veja o guia digital", price_brl: price };
   const gate = evaluateCreativeWithRewrites(spec, { serverPrice: price, visualScore: 1 });
-  const checkout = productLink(entry, "blog").replace("utm_source=blog", "utm_source=youtube");
+  const checkout = productLink(entry, "blog", { salesOpen: true }).replace("utm_source=blog", "utm_source=youtube");
   const page = new URL(checkout); page.pathname = "/" + PRODUCT_PAGES[entry.product.sku];
   if (!PRODUCT_PAGES[entry.product.sku]) throw new Error("youtube_product_page_unknown");
   const open = salesOpen === true;
@@ -122,14 +122,16 @@ export function planShort(day, { salesOpen = false } = {}) {
     "",
     marker
   ].join("\n");
-  const lines = [ANGLE_HOOK[entry.angle], "Para " + niche, "", entry.product.name, SHORT_RULE_LABEL];
+  // Vendas fechadas (padrão): nada de preço nem de regra de compra na tela ou na voz; aviso CLOSED_LABEL.
+  const closedLabel = CLOSED_LABEL.charAt(0).toUpperCase() + CLOSED_LABEL.slice(1);
+  const lines = [ANGLE_HOOK[entry.angle], "Para " + niche, "", entry.product.name, open ? SHORT_RULE_LABEL : closedLabel];
   // Spoken script, grouped by on-screen beat: 1 hook, 2 practical tip, 3 offer, 4 call to action.
   const opener = /[?!.]$/.test(ANGLE_HOOK[entry.angle]) ? ANGLE_HOOK[entry.angle] : ANGLE_HOOK[entry.angle] + ".";
-  const said = [[opener, "Isso é para " + niche + "."], [ANGLE_LINE[entry.angle]], [entry.product.name + ", com " + SHORT_RULE_SPOKEN + "."], ["Veja o guia no link da descrição."]];
+  const said = [[opener, "Isso é para " + niche + "."], [ANGLE_LINE[entry.angle]], [open ? entry.product.name + ", com " + SHORT_RULE_SPOKEN + "." : entry.product.name + ": " + CLOSED_LABEL + "."], ["Veja o guia no link da descrição."]];
   const speech = said.map(b => b.join(" ")).join(" ");
   const screen = {
     hook: ANGLE_HOOK[entry.angle], niche: "para " + niche, tip: ANGLE_LINE[entry.angle],
-    product: entry.product.name, offer: "R$ " + price + " · " + SHORT_RULE_LABEL,
+    product: entry.product.name, offer: open ? "R$ " + price + " · " + SHORT_RULE_LABEL : closedLabel,
     cta: "Link na descrição", url: "vendas.zevanory.api.br"
   };
   return { day, slot: "oferta", entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", entry.product.name] };

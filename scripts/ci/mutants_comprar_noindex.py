@@ -29,7 +29,8 @@ from pathlib import Path
 REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
 TEST = Path("tests", "comprar-noindex.test.mjs")
 COPY_DIRS = [Path("worker"), Path("sales-public"), Path("data")]
-COPY_FILES = [TEST, Path("tests", "helpers", "text.mjs"), Path("sales-overlay", "robots.txt"), Path("sitemap.xml")]
+COPY_FILES = [TEST, Path("tests", "helpers", "text.mjs"), Path("tests", "helpers", "dec05-lifted.mjs"),
+              Path("tests", "helpers", "dec05-lifted-hooks.mjs"), Path("sales-overlay", "robots.txt"), Path("sitemap.xml")]
 W = "worker/sales-public-worker.mjs"
 NODE = shutil.which("node")
 TIMEOUT = 600

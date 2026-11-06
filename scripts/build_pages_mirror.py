@@ -162,6 +162,14 @@ def render() -> dict[str, str]:
         target = target_for(path, canon)
         if f"{STUB_DIR}/{stub_name(path)}" in files:
             raise SystemExit(f"PAGES_MIRROR: two published paths map to the stub {stub_name(path)}")
+        # DEC-04: the two historic Content Pronto URLs must remain 404-equivalent,
+        # noindex, with no redirect or stale subscription/checkout CTA.
+        if path in ("/conteudo-pronto/", "/sales-public/conteudo-pronto.html"):
+            tombstone=(SALES_DIR / "conteudo-pronto.html").read_text(encoding="utf-8")
+            if 'noindex,nofollow' not in tombstone or 'Página indisponível' not in tombstone or 'data-zev-sub' in tombstone:
+                raise SystemExit("PAGES_MIRROR: Content Pronto tombstone invalid")
+            files[f"{STUB_DIR}/{stub_name(path)}"]=front_matter(path)+tombstone+"\n"
+            continue
         files[f"{STUB_DIR}/{stub_name(path)}"] = front_matter(path) + stub_html(
             target, title="Esta página mudou de endereço",
             lead="Esta cópia não é mantida. A versão oficial e atualizada da ZEVANORY está em:")

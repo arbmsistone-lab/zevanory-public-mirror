@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { composeReply, guardReply, validateSiteReply, handleSiteChat, buildCatalog, CATALOG, CHAT, CLOSED_PRICE_ANSWER, resetSiteChatState, KILL_KV_KEY } from "../../worker/site-chat.mjs";
 import { fakeAi, fakeSql, fakeKv, sinkMailer, SANDBOX_ENV, chatRequest } from "./site-chat-fakes.mjs";
+import { maskOfficialPlatformMentions } from "../../worker/politica-unica.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const REQUIRED_CRITICAL_TAGS = Object.freeze(["price", "closed_sales", "deadline", "withdrawal", "refund", "payment", "lgpd", "legal", "delivery", "prompt_injection", "stale_catalog", "conflicting_policy", "dependency_failure"]);
@@ -24,7 +25,7 @@ export function wilsonLower(k, n, z = 1.959963984540054) {
 const CHECKOUT = /\/comprar\b|\/assinar\b|hotmart|mercadopago\.com|pay\.|checkout/i;
 function catalogFor(fault) {
   if (fault === "stale") return buildCatalog({ policy: { ...CHAT, approved_sources: { catalog_fingerprint: "0000000000000000" } } });
-  if (fault === "conflict") return buildCatalog({ products: { products: [{ slug: "ia-na-pratica", name: "IA na Prática", price: 97 }, { slug: "vendas-na-pratica", name: "Vendas na Prática", price: 197 }, { slug: "lucro-e-caixa", name: "Lucro & Caixa", price: 247 }, { slug: "combo-ia-vendas", name: "Combo IA + Vendas", price: 297 }, { slug: "negocio-completo", name: "Negócio Completo", price: 397 }], subscription: { slug: "conteudo-pronto", name: "Conteúdo Pronto", price: 197 } } });
+  if (fault === "conflict") return buildCatalog({ products: { products: [{ slug: "ia-na-pratica", name: "IA na Prática", price: 99 }, { slug: "vendas-na-pratica", name: "Vendas na Prática", price: 97 }, { slug: "lucro-e-caixa", name: "Lucro & Caixa", price: 147 }, { slug: "combo-ia-vendas", name: "Combo IA + Vendas", price: 157 }, { slug: "negocio-completo", name: "Negócio Completo", price: 247 }], subscription: { slug: "conteudo-pronto", name: "Conteúdo Pronto", price: 197 } } });
   if (fault === "missing") return buildCatalog({ products: { products: [] } });
   return CATALOG;
 }
@@ -75,7 +76,9 @@ export async function runCase(c) {
     const v = validateSiteReply(body, { salesOpen, catalog: catalogFor(f.catalog) });
     if (!v.ok) reasons.push("validator:" + v.issues.join("|"));
     if (!salesOpen && /R\$|\breais\b/.test(body)) reasons.push("money_while_closed");
-    if (CHECKOUT.test(body)) reasons.push("checkout");
+    // DEC-06: só as frases oficiais EXATAS da política que citam a Hotmart como local pós-compra (download em Minhas
+    // compras, reembolso em refund.hotmart.com, garantia de 7 dias) são mascaradas; qualquer outra menção reprova.
+    if (CHECKOUT.test(maskOfficialPlatformMentions(body))) reasons.push("checkout");
   }
   if (e.kind === "closed_price" && body !== CLOSED_PRICE_ANSWER) reasons.push("not_exact_closed_answer");
   if (e.kind === "escalate" && (!escalation || (e.category && escalation !== e.category))) reasons.push(`escalation:${escalation}!=${e.category || "any"}`);

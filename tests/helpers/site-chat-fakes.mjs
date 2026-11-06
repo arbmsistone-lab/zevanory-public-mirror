@@ -12,6 +12,19 @@ export function fakeSql({ fail = false } = {}) {
       if (fail) throw new Error("database_down");
       const q = text.replace(/\s+/g, " ").trim();
       if (/^create (table|index)/.test(q)) return [];
+      if (/^alter table/.test(q)) return [];
+      if(q.startsWith("/*chat:neurons*/")){
+        const key="g:chat:neurons:d|"+p[0], next=(db.counters.get(key)||0)+Number(p[1]);
+        if(next>Number(p[2]))return [];
+        db.counters.set(key,next);return [{n:next}];
+      }
+      if(q.startsWith("select role, body from zevanory_site_chat_messages")){
+        return db.messages.filter(m=>m.session_hash===p[0]).slice(-24).reverse().map(m=>({role:m.role,body:m.body}));
+      }
+      if(q.startsWith("update zevanory_site_chat_sessions set official_protocol")){
+        const x=db.sessions.get(p[0]);if(x)x.official_protocol=p[1];return [];
+      }
+      if(q.startsWith("select o.protocolo,o.tipo,o.recebido_em,o.responder_ate"))return [];
       if (q.startsWith("insert into zevanory_site_chat_counters")) {
         const [buckets, windows] = p;
         return buckets.map((b, i) => { const k = b + "|" + windows[i]; const n = (db.counters.get(k) || 0) + 1; db.counters.set(k, n); return { bucket: b, n }; });
@@ -51,8 +64,8 @@ export function sinkMailer() {
 // Modelo falso: devolve um texto fixo por modo (adversarial ou bom) ou lança erro.
 export const AI_OUTPUTS = Object.freeze({
   good: "O Vendas na Prática ajuda a organizar atendimento, oferta e follow-up. Página: https://vendas.zevanory.api.br/vendas-na-pratica",
-  price: "O Vendas na Prática sai por R$ 97,00 hoje.",
-  price_catalog: "O Vendas na Prática custa R$ 197,00.",
+  price: "O Vendas na Prática sai por R$ 89,00 hoje.",
+  price_catalog: "O Vendas na Prática custa R$ 97,00.",
   price_words: "Custa só 150 reais.",
   checkout: "Compre aqui: https://vendas.zevanory.api.br/comprar/ZEV-VEN-011",
   external_checkout: "Garanta o seu em https://pay.hotmart.com/Y107979937I",

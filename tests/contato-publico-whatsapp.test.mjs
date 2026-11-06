@@ -16,7 +16,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
-import { readdirSync, existsSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:fs";
+import { readdirSync, existsSync, mkdtempSync, cpSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,13 +137,15 @@ test("(b) CTAs de lista de espera abrem e-mail com assunto 'Lista de espera — 
     n += (html.match(/data-zev-(sku|sub)="/g) || []).length;
     assert.deepEqual(waitlistViolations(name, html), [], name);
   }
-  assert.ok(n >= 22, "5 produtos x 4 CTAs + 2 do Conteúdo Pronto; achados " + n);
+  assert.ok(n >= 20, "5 produtos x 4 CTAs em modo fechado e CP desativado; achados " + n);
   // Vendas abertas: o Worker continua restaurando a compra a partir de data-zev-open-text.
   const open = openSalesHtml(readTextNormalized(join(PUB, "ia-na-pratica.html")), "ia-na-pratica");
-  assert.match(open, /<a class="button primary" href="\/comprar\/ZEV-IA-011" rel="nofollow">Comprar agora · R\$ 197<\/a>/);
+  assert.match(open, /<a class="button primary" href="\/comprar\/ZEV-IA-011" rel="nofollow">Comprar agora · R\$ 97<\/a>/);
   assert.doesNotMatch(open, /mailto:[^"]*Lista%20de%20espera/);
   const sub = openSalesHtml(readTextNormalized(join(PUB, "conteudo-pronto.html")), "conteudo-pronto");
-  assert.match(sub, /href="\/assinar\/conteudo-pronto">Assinar agora/);
+  assert.match(sub, /Página indisponível/);
+  assert.doesNotMatch(sub, /data-zev-sub|Assinar agora|pay\\.hotmart\\.com/);
+  assert.match(readTextNormalized(join(PUB,"conteudo-pronto.html")),/noindex,nofollow/);
 });
 
 // Sem telefone público (JSON-LD/Microdata/RDFa telephone, href tel:): não há linha de atendimento.
@@ -198,8 +200,31 @@ test("Sol: sem telefone público, e-mail oficial em toda página, Organization c
 
 test("Sol: número banido / wa.me só em arquivos internos da lista explícita (nunca publicados)", () => {
   const out = spawnSync("git", ["grep", "-lIE", "wa\\.me/|api\\.whatsapp\\.com/|5588992545413|99254[-. ]?5413"], { cwd: ROOT, encoding: "utf8" });
-  const files = out.stdout.split("\n").filter(Boolean).filter((f) => !f.startsWith("tests/"));
-  assert.ok(out.status === 0 || out.status === 1, out.stderr);
+  // NC-013 C4: git archive used by the independent auditor has NO .git.
+  // In a checkout use git grep; in an archive perform the same conservative
+  // content scan over extracted repository files, including internal docs.
+  let files = out.stdout.split("\n").filter(Boolean).filter((f) => !f.startsWith("tests/"));
+  if (out.status !== 0 && out.status !== 1) {
+    if (!/not a git repository/i.test(String(out.stderr || ""))) assert.fail(out.stderr || "git grep failed");
+    const scan = (dir, rel = "") => {
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        if (ent.isDirectory()) {
+          if ([".git", "node_modules", "dist", ".next", "coverage"].includes(ent.name)) continue;
+          scan(join(dir, ent.name), rel ? rel + "/" + ent.name : ent.name);
+          continue;
+        }
+        if (!ent.isFile()) continue;
+        const name = rel ? rel + "/" + ent.name : ent.name;
+        if (name.startsWith("tests/")) continue;
+        if (/\.(png|jpe?g|webp|gif|woff2?|ico|pdf|zip|mp4|ogg|mp3)$/i.test(name)) continue;
+        const bytes = readFileSync(join(dir, ent.name));
+        if (bytes.includes(0)) continue;
+        if (/wa\.me\/|api\.whatsapp\.com\/|5588992545413|99254[-. ]?5413/i.test(bytes.toString("utf8"))) files.push(name);
+      }
+    };
+    scan(ROOT);
+    files = [...new Set(files)].sort();
+  }
   const extra = files.filter((f) => !ALLOWLIST.has(f));
   assert.deepEqual(extra, [], "fora da lista explícita");
   // A lista só encolhe: entrada que não cita mais o número/wa.me é obsoleta e sai no mesmo PR (#896).
@@ -208,13 +233,16 @@ test("Sol: número banido / wa.me só em arquivos internos da lista explícita (
 });
 
 test("(c) Resumo da oferta e canais de arrependimento: só endereços que funcionam", () => {
-  for (const slug of [...P.policy_surfaces.products, ...P.policy_surfaces.subscription]) {
+  for (const slug of P.policy_surfaces.products) {
     const html = readTextNormalized(join(PUB, slug + ".html"));
     const dd = (html.match(/<div data-field="endereco_eletronico"><dt>[^<]*<\/dt><dd>([^<]*)<\/dd>/) || [])[1];
     assert.ok(dd, slug + ": campo endereço eletrônico");
     assert.ok(dd.includes(C.email) && dd.includes(P.resumo_oferta.fornecedor.site), slug + ": e-mail e site");
     assert.equal(/WhatsApp/i.test(dd), ENABLED, slug + ": WhatsApp só com a flag ligada");
   }
+  const cp=readTextNormalized(join(PUB,"conteudo-pronto.html"));
+  assert.match(cp,/noindex,nofollow/);
+  assert.doesNotMatch(cp,/data-zev-sub|pay\\.hotmart\\.com/);
   assert.equal(WA_RE.test(P.sol_text), ENABLED, "sol_text");
   assert.equal(WA_RE.test(P.customer_wording.refund_channels), ENABLED, "refund_channels");
   assert.ok(P.customer_wording.refund_channels.includes(C.email));

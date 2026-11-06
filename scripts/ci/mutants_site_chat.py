@@ -36,7 +36,7 @@ CSS = "sales-overlay/site-chat.css"
 GUARD = "tests/site-chat-no-synthetic-traffic.test.mjs"
 POLICY = "data/site-chat-policy.json"
 SUITES = ["tests/site-chat.test.mjs", "tests/site-chat-widget.test.mjs", "tests/site-chat-no-synthetic-traffic.test.mjs", "tests/site-chat-eval.test.mjs"]
-BASELINE_TOTAL = 33  # contagem exata da suíte do chat (igual ao gate do workflow site-chat-contract)
+BASELINE_TOTAL = 34  # SC19 privacy regression; all 56 existing mutants are preserved
 DIRS = ["worker", "data", "tests", "sales-overlay", "sales-public", "scripts", ".github"]
 FILES = ["product.css", "wrangler.sales.toml", "wrangler.public-router.toml"]
 TIMEOUT = 300
@@ -62,7 +62,7 @@ M = {
     "P7 right denial allowed": (CHAT, "  if (/(nao (tem|ha|existe) (direito", "  if (false && /(nao (tem|ha|existe) (direito"),
     "P8 deadline outside source allowed": (CHAT, 'issues.push("deadline_outside_source");', ""),
     # vendas fechadas / checkout
-    "C1 checkout mention allowed": (CHAT, 'if (hasCheckoutCta(body) || CHECKOUT_RE.test(body)) issues.push("checkout");', ""),
+    "C1 checkout mention allowed": (CHAT, 'if (hasCheckoutCta(unmasked) || CHECKOUT_RE.test(unmasked)) issues.push("checkout");', ""),
     "C2 ambiguous sales status = open": (CHAT, "    return v === true;", "    return v !== false;"),
     "C3 sales status error = open": (CHAT, '} catch { breakerFailure("sales_status"); return false; }', '} catch { breakerFailure("sales_status"); return true; }'),
     "C4 widget links checkout": (JS, " && !/^\\/(comprar|assinar)\\b/.test(u.pathname)", ""),

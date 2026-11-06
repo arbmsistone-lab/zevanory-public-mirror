@@ -17,7 +17,7 @@ test("cron horário chama o dreno do outbox primeiro, via SELF, com token HMAC a
   const out = probe("0 * * * *");
   assert.ok(!out.timeout);
   const selfCalls = out.events.filter((e) => e.startsWith("self:"));
-  assert.deepEqual(selfCalls, ["self:/api/internal/support/outbox/drain:200"]);
+  assert.deepEqual(selfCalls, ["self:/api/internal/support/outbox/drain:200", "self:/api/internal/atendimento/outbox/drain:200"], "ambos os drenos validam HMAC em SELF e antecedem as tarefas pesadas");
   assert.equal(out.events[0], "self:/api/internal/support/outbox/drain:200", "antes de qualquer outra rede: " + out.events.slice(0, 3).join(","));
   assert.equal(out.rejected, null, "fila em dia: execução verde");
 });

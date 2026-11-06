@@ -58,6 +58,8 @@ class FakeProd:
         if url.endswith("/assinar/conteudo-pronto"):
             return 200, "<title>Assinaturas pausadas | ZEVANORY</title><h1>Assinaturas pausadas</h1>", H, url
         r = url.split("/")[-1]
+        if r == "conteudo-pronto":
+            return 404, (ROOT / "sales-public/conteudo-pronto.html").read_text("utf-8"), H, url
         f = ROOT / f"sales-public/{r}.html"
         if not f.exists():
             return 404, (ROOT / "sales-public/404.html").read_text("utf-8"), H, url
