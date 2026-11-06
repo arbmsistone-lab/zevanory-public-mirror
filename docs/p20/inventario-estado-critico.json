@@ -29,7 +29,7 @@
       "rto_objetivo_h": 4,
       "integridade": "SHA-256 por tabela contra o manifesto + contagem e hash de conteúdo após a restauração",
       "status": "PROPOSTA",
-      "tables": ["orders", "financial_events", "affiliate_commissions", "integration_outbox"]
+      "tables": ["orders", "financial_events", "affiliate_commissions", "integration_outbox", "kit_order", "subscriber_state", "cp_cycles", "cp_credits", "cp_event_ledger"]
     },
     {
       "id": "entregas",
@@ -42,7 +42,7 @@
       "rto_objetivo_h": 4,
       "integridade": "Idem pedidos",
       "status": "PROPOSTA",
-      "tables": ["service_fulfillment", "lifecycle_certification_artifacts", "lifecycle_evidence_events"]
+      "tables": ["service_fulfillment", "lifecycle_certification_artifacts", "lifecycle_evidence_events", "kit_download_usage", "kit_private_reference", "kit_events", "kit_eligibility_outbox", "kit_mail_outbox", "cp_monthly_campaigns", "cp_form_submissions", "cp_form_tokens", "cp_delivery_receipts", "cp_package_objects"]
     },
     {
       "id": "reembolsos_avaliacoes",
@@ -55,7 +55,7 @@
       "rto_objetivo_h": 4,
       "integridade": "Idem pedidos",
       "status": "PROPOSTA",
-      "tables": ["refund_provider_claims", "zevanory_reviews"]
+      "tables": ["refund_provider_claims", "zevanory_reviews", "cp_refunds", "cp_refund_events", "cp_credit_refund_intents"]
     },
     {
       "id": "leads_consentimentos",
@@ -120,7 +120,7 @@
       "rto_objetivo_h": 24,
       "integridade": "Idem pedidos",
       "status": "PROPOSTA",
-      "tables": ["schema_migrations", "agent_approvals", "agent_control_state", "agent_jobs", "agent_memory", "agent_runs", "agent_tool_audit", "tenants", "tenant_memberships", "nuvemshop_connections", "nuvemshop_webhook_receipts", "whatsapp_evidence", "whatsapp_history", "whatsapp_observations", "whatsapp_stage_events"]
+      "tables": ["schema_migrations", "agent_approvals", "agent_control_state", "agent_jobs", "agent_memory", "agent_runs", "agent_tool_audit", "tenants", "tenant_memberships", "nuvemshop_connections", "nuvemshop_webhook_receipts", "whatsapp_evidence", "whatsapp_history", "whatsapp_observations", "whatsapp_stage_events", "kit_alarm_policy", "kit_owner_alert_outbox", "cp_alarm_jobs", "cp_alarm_outbox", "cp_campaign_reminder_outbox", "cp_outbox", "cp_owner_alert_outbox", "cp_regen_jobs", "cp_resend_outbox", "cp_work_events", "cp_work_jobs"]
     },
     {
       "id": "estado_comercial_kv",
