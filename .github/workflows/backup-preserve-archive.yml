@@ -44,16 +44,16 @@ jobs:
   preserve:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: github.ref == 'refs/heads/gh-pages'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - run: python -m pip install --disable-pip-version-check cryptography==43.0.3
@@ -70,7 +70,7 @@ jobs:
       - name: Upload encrypted archive (90 days)
         id: upload
         if: inputs.mode == 'archive'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: zevanory-backup-${{ inputs.day }}-encrypted
           path: |
@@ -98,7 +98,7 @@ jobs:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     needs: preserve
     if: github.ref == 'refs/heads/gh-pages' && inputs.mode == 'archive'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
@@ -116,14 +116,14 @@ jobs:
       PGPASSWORD: restore-check-local-only
       PGDATABASE: postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - run: python -m pip install --disable-pip-version-check cryptography==43.0.3
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: zevanory-backup-${{ inputs.day }}-encrypted
           path: preserve-out

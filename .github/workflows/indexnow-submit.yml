@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   submit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       KEY: 4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922

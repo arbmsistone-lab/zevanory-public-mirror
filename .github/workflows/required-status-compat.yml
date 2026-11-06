@@ -12,11 +12,11 @@ permissions:
 jobs:
   product-status:
     name: product-pages / static-audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
       - name: Checkout exact revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           fetch-depth: 1
@@ -44,11 +44,11 @@ jobs:
 
   zees-status:
     name: zees16-evidence / fail-closed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 4
     steps:
       - name: Checkout exact revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           fetch-depth: 1

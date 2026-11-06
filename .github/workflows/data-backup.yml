@@ -19,16 +19,17 @@ jobs:
   backup:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
+          package-manager-cache: false
           node-version: "22"
       - run: node --test tests/data-backup.test.mjs
       - run: node scripts/ops/data-backup.mjs

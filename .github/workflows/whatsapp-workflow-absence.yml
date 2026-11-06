@@ -17,14 +17,15 @@ concurrency:
   cancel-in-progress: true
 jobs:
   scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
+          package-manager-cache: false
           node-version: "22"
       - name: Workflows carry no retired WhatsApp alias assignment or number
         run: python3 -B scripts/deploy/public_whatsapp_scan.py --workflows .github/workflows

@@ -15,10 +15,10 @@ permissions:
   contents: read
 jobs:
   stage-only:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Validate future production configuration stays owner-gated
         run: python3 scripts/launch_config_contract.py
       - name: Launch transition behaviour (owner authorization, derived release, stale-proof alert)

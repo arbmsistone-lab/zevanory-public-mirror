@@ -34,8 +34,8 @@ MUTANTS = [
     ("certification no longer chained to sales deploy", ".github/workflows/portfolio-six-target-exact-cert.yml",
      ', "ZEVANORY SALES public release"]', "]"),
     ("certification runs on failed deploys", ".github/workflows/portfolio-six-target-exact-cert.yml",
-     "(github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&\n       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))\n    runs-on: ubuntu-latest\n    timeout-minutes: 45",
-     "(github.event.workflow_run.head_branch == 'gh-pages')\n    runs-on: ubuntu-latest\n    timeout-minutes: 45"),
+     "(github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages' &&\n       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))\n    runs-on: ubuntu-24.04\n    timeout-minutes: 45",
+     "(github.event.workflow_run.head_branch == 'gh-pages')\n    runs-on: ubuntu-24.04\n    timeout-minutes: 45"),
 ]
 
 

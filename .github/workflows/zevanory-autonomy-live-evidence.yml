@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   evidence:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
       - name: Collect public evidence

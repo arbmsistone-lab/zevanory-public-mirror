@@ -22,14 +22,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - name: Self-check and meta-tests (exact count, no skips)
@@ -53,18 +53,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
         node: ["22", "24"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
+          package-manager-cache: false
           node-version: ${{ matrix.node }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - name: Live probe runs classified (exact count, no skips)
@@ -81,7 +82,7 @@ jobs:
           if grep -q "skipped" /tmp/live.txt; then echo "::error::skipped live meta-tests"; exit 1; fi
           grep -qx "OK" /tmp/live.txt || { echo "::error::live meta-tests did not end in OK"; exit 1; }
           echo "::notice title=MUTANT_CLASSIFIER_LIVE (node $(node --version), $RUNNER_OS)::Ran 16, OK, skipped 0"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: mutant-classifier-tap-node${{ matrix.node }}-${{ runner.os }}
