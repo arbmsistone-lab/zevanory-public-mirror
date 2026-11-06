@@ -1,4 +1,5 @@
 import { SHORT_RULE_LABEL } from "./politica-unica.mjs";
+import { DEC22_DRAFT_ONLY } from "./channel-dec22.mjs";
 export const CREATIVE_AUTOPUBLISH_PAUSE_KEY="zpc:creative-autonomy:paused:v1";
 export const CREATIVE_AUTONOMY_FEED_KEY="zpc:creative-autonomy:feed:v1";
 export const CREATIVE_BANDIT_KEY="zpc:creative-autonomy:bandit:v1";
@@ -167,8 +168,8 @@ export async function sendDailyCreativeReport(env={},options={}){
  if(existing)return {sent:false,reason:"already_sent",evidence:existing};
  const data=await creativeAutonomyDashboard(env),to=String(env.OWNER_ALERT_EMAIL||"zevanory@gmail.com");
  if(!env.RESEND_API_KEY)return {sent:false,reason:"mailer_unavailable"};
- const lines=data.evaluations.slice(0,30).map(x=>`${x.channel} | ${x.score}/100 | compliance ${x.compliance}% | ${x.status} | ${x.reason}`);
- const fetchImpl=options.fetchImpl||fetch,r=await fetchImpl("https://api.resend.com/emails",{method:"POST",headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[to],subject:`ZEVANORY — relatório diário de conteúdo ${date}`,text:[`Publicação automática: ${data.paused?"PAUSADA":"ATIVA"}`,"",...lines].join("\n")}),signal:AbortSignal.timeout(10000)}).catch(()=>null);
+ const lines=data.evaluations.slice(0,30).map(x=>`${x.channel} | ${x.score}/100 | compliance ${x.compliance}% | ${DEC22_DRAFT_ONLY&&x.status==="approved_for_autopublish"?"rascunho_para_revisao":x.status} | ${x.reason}`);
+ const fetchImpl=options.fetchImpl||fetch,r=await fetchImpl("https://api.resend.com/emails",{method:"POST",headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[to],subject:`ZEVANORY — relatório diário de conteúdo ${date}`,text:[`Publicação automática: ${DEC22_DRAFT_ONLY?"BLOQUEADA (DEC-22: somente rascunhos)":data.paused?"PAUSADA":"ATIVA"}`,"",...lines].join("\n")}),signal:AbortSignal.timeout(10000)}).catch(()=>null);
  if(!r?.ok)return {sent:false};
  const provider=await r.json().catch(()=>({})),evidence={sent:true,sentAt:now.toISOString(),provider_message_id:String(provider?.id||"").slice(0,200)||null,date};
  await Promise.all([kv.put(key,JSON.stringify(evidence),{expirationTtl:8*DAY}),kv.put("zpc:creative-autonomy:daily:last",JSON.stringify(evidence),{expirationTtl:30*DAY})]);

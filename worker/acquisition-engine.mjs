@@ -1,6 +1,7 @@
 // Acquisition V1: independent channel outcomes, evidence-first and zero cold outreach.
 // Cron ingress remains the existing Cloudflare hourly schedule; this module selects peak slots.
 import { ensureDailyBlog, publishTelegram, channelChecklist, resolveChannelCredentials, localContentDay } from "./multichannel-autonomy.mjs";
+import { DEC22_DRAFT_ONLY, DEC22_REASON } from "./channel-dec22.mjs";
 import { publishBluesky, blueskyReady, blueskyPostText, graphemeCount } from "./bluesky-publisher.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { creativeAutopublishPaused } from "./creative-autonomy.mjs";
@@ -184,6 +185,12 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
   }catch{outcomes.push({channel:"blog",status:"erro",code:"blog_generation_failed",day});}
  }
  for(const channel of ["telegram","bluesky"]){
+   if(DEC22_DRAFT_ONLY){
+    const draft=generateNative(entry,channel,{salesOpen:false});
+    await kv.put("zpc:channel:draft:v1:"+channel+":"+day,JSON.stringify({schema:"zpc.channel.draft.v1",day,channel,status:"rascunho",approved:false,text:draft.text,link:draft.link,product:entry.product.sku,generatedAt:now.toISOString()}),{expirationTtl:45*86400});
+    outcomes.push({channel,day,status:"rascunho",code:DEC22_REASON});
+    continue;
+   }
   if(hour<PEAK_HOURS[channel])continue;
   if(paused){outcomes.push({channel,status:"pausado",code:"creative_autopublish_paused",day});continue;}
   if(!active(channel)){
