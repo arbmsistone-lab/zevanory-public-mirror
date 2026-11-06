@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   attest:
-    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
+    environment: sandbox-financial-approved  # F2 item 9: MERCADOPAGO_TEST_* só no Environment sandbox
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages'
     runs-on: ubuntu-latest
     timeout-minutes: 3

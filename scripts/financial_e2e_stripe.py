@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-import json, os, pathlib, time, urllib.error, urllib.parse, urllib.request, uuid
+import json, os, pathlib, re, time, urllib.error, urllib.parse, urllib.request, uuid
 
-APP="https://zevanory.api.br"
+# R4 (incident I1; F2: a sandbox flow ran 35 times against production). Sandbox/E2E traffic may target ONLY the
+# isolated certification Worker; any *.zevanory.api.br (or production workers.dev) host is refused before any request.
+APP=(os.environ.get("CERTIFICATION_SANDBOX_URL") or "").strip().rstrip("/")
+_APP_HOST=(urllib.parse.urlsplit(APP).hostname or "").lower()
+if (re.search(r"(?:^|\.)zevanory\.api\.br\.?$|(?:^|\.)(?:girolocal-rb|zevanory)\.workers\.dev\.?$", _APP_HOST)
+        and not re.fullmatch(r"zevanory-certification\.[a-z0-9-]+\.workers\.dev", _APP_HOST)):
+    raise SystemExit("R4_PRODUCTION_HOST_DENIED")
+if not re.fullmatch(r"https://zevanory-certification\.[a-z0-9-]+\.workers\.dev", APP):
+    raise SystemExit("R4_ISOLATED_CERTIFICATION_WORKER_REQUIRED")
 STRIPE="https://api.stripe.com/v1"
 OUT=pathlib.Path("evidence/financial-e2e-stripe.json")
 KEY=os.environ["STRIPE_SECRET_KEY"].strip()

@@ -105,7 +105,7 @@ test("one-click opt-out stops further sends", async () => {
 
 test("certification route refuses real orders and requires the token", async () => {
   const kv = memoryKv();
-  const e = env(kv, { CERTIFICATION_E2E_TOKEN: "c".repeat(40) });
+  const e = env(kv, { ZEVANORY_OPERATOR_TOKEN: "c".repeat(40) });
   const real = order("77777777-7777-4777-8777-777777777777", "ZEV-IA-011", HOUR, "cliente@empresa.com.br");
   const sqlFactory = () => ({ query: async () => [real] });
   const noToken = await handlePostSale(new Request("https://zevanory.api.br/api/internal/certification/e2e/post-sale", { method: "POST", body: JSON.stringify({ order_id: real.order_id }) }), e, { sqlFactory });

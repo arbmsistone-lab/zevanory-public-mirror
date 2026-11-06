@@ -44,9 +44,10 @@ test("voice mode does not append a checkout URL", async () => {
   const answer = await converse({ question: "Quanto custa Vendas na Prática?", salesOpen: true, voice: true });
   assert.doesNotMatch(answer.body, /\/comprar\/ZEV-/);
 });
-test("deploy activates only WhatsApp commercial inbound; owner KV remains authoritative", () => {
+test("deploy keeps the retired WhatsApp channel closed (PR #896); owner KV remains authoritative", () => {
   const source = readFileSync(new URL("../scripts/deploy/prepare-central-candidate.py", import.meta.url), "utf8");
-  assert.match(source, /c\["vars"\]\["WHATSAPP_SALES_ENABLED"\]="true"/);
+  assert.match(source, /c\["vars"\]\["WHATSAPP_SALES_ENABLED"\]="false"/);
+  assert.doesNotMatch(source, /WHATSAPP_SALES_ENABLED"\]\s*=\s*"true"/);
   assert.match(source, /c\["vars"\]\["SALE_GLOBALLY_ENABLED"\]="false"/);
   assert.match(source, /c\["vars"\]\["CHECKOUT_ENABLED"\]="true"/);
 });

@@ -28,9 +28,10 @@ function safe(env){
     String(env.SALE_GLOBALLY_ENABLED)!=="false"||
     String(env.CERTIFICATION_PILOT_PRODUCTION_ALLOWED)!=="false")return false;
  // No production secrets/bindings, production KV, or shared database.
+ // R9: ZEVANORY_OPERATOR_TOKEN is the PRODUCTION operator credential; it must never be bound here.
  for(const key of ["MERCADOPAGO_ACCESS_TOKEN","MERCADOPAGO_WEBHOOK_SECRET",
    "MERCADOPAGO_PUBLIC_KEY","DATABASE_URL","OPERATOR_TOKEN","STRIPE_SECRET_KEY",
-   "RESEND_API_KEY","ASAAS_API_KEY","SELF","CORE"]){
+   "RESEND_API_KEY","ASAAS_API_KEY","ZEVANORY_OPERATOR_TOKEN","SELF","CORE"]){
    if(env[key]!==undefined && env[key]!==null)return false;
  }
  return (function(){

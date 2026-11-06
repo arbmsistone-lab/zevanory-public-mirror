@@ -1,0 +1,521 @@
+{
+ "_doc": "Expectativas causais dos mutantes do Funil v2 (scripts/ci/mutants_funnel_v2.py), no formato de load_mutant_config. Escritas por raciocínio sobre cada mutação, antes de rodá-la; primary = teste + marcador [FUnn.k]/[FPn.k] da asserção.",
+ "first_strict_run": [
+  "Primeira execução estrita (Node 22.22, PostgreSQL 16.15, local, antes do push): 40/40 KILLED, cada um exatamente na primária raciocinada, 0 repetições, 0 secundárias fora do previsto (F5 e F12 tocaram a secundária FU14 prevista; K5 e K6 tocaram as secundárias FU03 previstas). Nenhuma expectativa precisou ser corrigida.",
+  "Casos em que a asserção mais óbvia NÃO é a que falha e a primária foi escolhida rastreando o código antes de rodar: Z9 → [FU16.3] (a definição com o link é publicada no snapshot, varrido antes do arquivo-fonte em [FU16.4]); F1 → [FU01.1] (o total vem antes do contador ignoredNonOwnProvider [FU01.4]); F3 → [FU02.3] (o caso sales=null aparece antes do noPostback [FU02.8]); F13 → [FU12.4] (contagem dupla no POST com sessão criada, antes do caso 503 [FU12.5]); Z6 → [FU17.1] (o emissor no código é afirmado antes do GET comportamental [FU17.2]).",
+  "Contraprova real em tests/test_mutants_funnel_v2_classifier.py: o mesmo mutante Z9 com primária [FU16.4] (a escolha ingênua) é classificado INCONCLUSIVE."
+ ],
+ "unit": {
+  "changes": {
+   "F1 rótulo Hotmart no ledger próprio é contado": "sumOwn deixa de ignorar provedor fora de OWN_PROVIDERS (rótulo hotmart no ledger próprio passa a somar)",
+   "F2 checkout próprio ausente vira zero": "ownTotal de checkout próprio missing/unverified passa de null para 0",
+   "F3 Hotmart sem postback tratada como ledger completo": "hotmartStatus devolve sempre \"ledger\" (ausência de postback vira registro completo)",
+   "F4 clique de lista contado sem instrumentação": "waitlistClicks30 ignora clickInstrumented (soma waitlist_click mesmo sem emissor)",
+   "F5 intenção contada em dias fechados": "transactionalIntent30 publica a soma mesmo sem nenhum dia com vendas abertas",
+   "F6 série antiga reclassificada como completa": "legacyMixedClicks30 passa a ser declarada COMPLETE em vez de LEGACY_MIXED",
+   "F7 conversão visitante→venda usa dias fechados": "denominador de visitorToSale soma site_visitors de todos os 30 dias em vez dos dias abertos",
+   "F8 leads confirmados somam pendentes": "leadsConfirmed7 lê last7Days.leads (pendentes + confirmados)",
+   "F9 sonda inconclusiva vira aceitando": "classifyHotmartProbe devolve accepting para qualquer 200 sem sinal de fechada",
+   "F10 erro 049 não reconhecido": "classifyHotmartProbe só reconhece fechada por blockedText (ignora /error e errorCode)",
+   "F11 P0 não levantado com oferta aceitando": "hotmartLockState não levanta p0_bypass com oferta aceitando e vendas fechadas",
+   "F12 vendas fechadas esperam checkout": "expectedBuyState(false) passa a esperar checkout",
+   "F13 intenção contada antes da sessão criada": "countView(own_checkout_started) chamado no POST antes da chamada a checkout.internal",
+   "F14 exposição sempre como botão de compra": "exposição da página com interruptor sempre como cta=buy",
+   "F15 painel volta a vendas só Hotmart": "funnelMetrics calcula sales30 com own=null (só Hotmart)",
+   "F16 inventário aceita P0 como prova": "inventário Hotmart aceita qualquer estado diferente de unknown como prova",
+   "F17 painel recomenda levar Comprar à Hotmart": "snapshot acrescenta recomendação de levar o botão Comprar ao checkout da Hotmart",
+   "Z1 vendas desconhecidas viram 0 nos marcos": "salesCount = salesKnown.value ?? 0",
+   "Z2 parcial zero tratado como zero conhecido": "knownCount de PARTIAL com valor 0 devolve 0 em vez de null",
+   "Z3 previsão extrapola com fonte faltando": "forecast ignora salesKnown e sempre chama forecastSales",
+   "Z4 recomendação sem ramo de vendas não verificadas": "recommend perde o ramo \"vendas NÃO VERIFICADAS\"",
+   "Z5 métrica só-Hotmart volta ao snapshot": "snapshot volta a publicar revenue.netTotalCents rotulado Hotmart",
+   "Z6 emissor legado checkout_intent no GET": "GET de /comprar/<sku> volta a emitir checkout_intent",
+   "Z7 borda UTC da Hotmart ignorada": "salesMetric ignora vendas Hotmart nos dias UTC da borda da janela",
+   "Z8 visitante→venda COMPLETE com Hotmart fora do numerador": "visitorToSale ignora vendas Hotmart da janela na classe",
+   "Z9 link de contato no código novo": "a definição de waitlistClicks30 em funnel-counting.mjs passa a conter o link de contato banido (montado em tempo de execução pelo runner)",
+   "Z10 meta de receita soma limite inferior": "grossKnown devolve o bruto mesmo quando o total é limite inferior",
+   "K1 marcador paidWithoutConfirmedEvent ignorado": "OWN_MARKERS sem paidWithoutConfirmedEvent (restam statusMismatch, confirmedEventWithoutOrder, extraOrdersSameSession)",
+   "K2 marcador statusMismatch ignorado": "OWN_MARKERS sem statusMismatch (restam paidWithoutConfirmedEvent, confirmedEventWithoutOrder, extraOrdersSameSession)",
+   "K3 marcador confirmedEventWithoutOrder ignorado": "OWN_MARKERS sem confirmedEventWithoutOrder (restam paidWithoutConfirmedEvent, statusMismatch, extraOrdersSameSession)",
+   "K4 marcador extraOrdersSameSession ignorado": "OWN_MARKERS sem extraOrdersSameSession (restam paidWithoutConfirmedEvent, statusMismatch, confirmedEventWithoutOrder)",
+   "K5 zero parcial publicado como zero": "salesMetric deixa de publicar o zero PARTIAL como null",
+   "K6 marcadores não exigidos para completo": "combineSales declara completo sem exigir os quatro marcadores zerados"
+  },
+  "mutants": {
+   "F1 rótulo Hotmart no ledger próprio é contado": {
+    "primary": [
+     {
+      "test_pattern": "vendas: checkout próprio por provedor + Hotmart",
+      "assertion_pattern": "[FU01.1]",
+      "why": "o caso tem hotmart:5 dentro do ledger próprio; o total 4 (MP 2 + Asaas 1 + Hotmart 1) é a 1ª asserção e vira 9"
+     }
+    ],
+    "secondary": []
+   },
+   "F2 checkout próprio ausente vira zero": {
+    "primary": [
+     {
+      "test_pattern": "vendas: fonte ausente vira PARTIAL/MISSING",
+      "assertion_pattern": "[FU02.3]",
+      "why": "sem nenhuma fonte (sales=null, own=null) o total deve ser null; com own=0 e Hotmart sem postback ele vira 0. FU02.1/FU02.2 seguem verdes: o caso parcial já é PARTIAL e o zero parcial é publicado como null"
+     }
+    ],
+    "secondary": []
+   },
+   "F3 Hotmart sem postback tratada como ledger completo": {
+    "primary": [
+     {
+      "test_pattern": "vendas: fonte ausente vira PARTIAL/MISSING",
+      "assertion_pattern": "[FU02.3]",
+      "why": "sales=null passa a ser ledger, então o total sem fonte nenhuma deixa de ser null e vira 0; é a 1ª asserção do teste que usa sales=null (FU02.1/FU02.2 usam ledger vazio)"
+     }
+    ],
+    "secondary": []
+   },
+   "F4 clique de lista contado sem instrumentação": {
+    "primary": [
+     {
+      "test_pattern": "lista de espera é interesse",
+      "assertion_pattern": "[FU06.4]",
+      "why": "clique não instrumentado deve ser null; com a mutação vira 0 (soma de série vazia)"
+     }
+    ],
+    "secondary": []
+   },
+   "F5 intenção contada em dias fechados": {
+    "primary": [
+     {
+      "test_pattern": "intenção transacional só com vendas abertas",
+      "assertion_pattern": "[FU07.1]",
+      "why": "sem dia aberto a intenção é null; vira 0"
+     }
+    ],
+    "secondary": [
+     {
+      "test_pattern": "snapshot: Vendas (30d)",
+      "assertion_pattern": "[FU14.6]",
+      "justification": "o snapshot publica a mesma métrica (funnel.intents30 = transactionalIntent30) com vendas fechadas e afirma null; FU14.1–FU14.5 não dependem dela"
+     }
+    ]
+   },
+   "F6 série antiga reclassificada como completa": {
+    "primary": [
+     {
+      "test_pattern": "intenção transacional só com vendas abertas",
+      "assertion_pattern": "[FU07.3]",
+      "why": "a série antiga fresca vira COMPLETE; FU07.1/FU07.2 (valor 26) não mudam"
+     }
+    ],
+    "secondary": []
+   },
+   "F7 conversão visitante→venda usa dias fechados": {
+    "primary": [
+     {
+      "test_pattern": "cinco conversões separadas",
+      "assertion_pattern": "[FU08.2]",
+      "why": "10 vendas ÷ 300 visitor-days = 3,33 em vez de 10; FU08.1 (checkoutStart) não usa esse denominador"
+     }
+    ],
+    "secondary": []
+   },
+   "F8 leads confirmados somam pendentes": {
+    "primary": [
+     {
+      "test_pattern": "lista de espera é interesse",
+      "assertion_pattern": "[FU06.10]",
+      "why": "leads=2 (1 pendente + 1 confirmado) contra o esperado 1; FU06.1–FU06.9 não leem leads"
+     }
+    ],
+    "secondary": []
+   },
+   "F9 sonda inconclusiva vira aceitando": {
+    "primary": [
+     {
+      "test_pattern": "Hotmart: erro 049 = encerrada",
+      "assertion_pattern": "[FU10.4]",
+      "why": "200 sem marcador da oferta deve ser inconclusive; FU10.1–FU10.3 têm sinal explícito"
+     }
+    ],
+    "secondary": []
+   },
+   "F10 erro 049 não reconhecido": {
+    "primary": [
+     {
+      "test_pattern": "Hotmart: erro 049 = encerrada",
+      "assertion_pattern": "[FU10.1]",
+      "why": "a sonda 049 (/error, errorCode, sem blockedText, sem marcador) vira inconclusive em vez de closed"
+     }
+    ],
+    "secondary": []
+   },
+   "F11 P0 não levantado com oferta aceitando": {
+    "primary": [
+     {
+      "test_pattern": "Hotmart: erro 049 = encerrada",
+      "assertion_pattern": "[FU10.9]",
+      "why": "5 fechadas + 1 aceitando com vendas fechadas cai em unverified; FU10.6–FU10.8 usam só fechadas"
+     }
+    ],
+    "secondary": []
+   },
+   "F12 vendas fechadas esperam checkout": {
+    "primary": [
+     {
+      "test_pattern": "caminho de compra: com vendas fechadas",
+      "assertion_pattern": "[FU11.1]",
+      "why": "o aviso de fechado deixa de ser o estado esperado: ok vira false"
+     }
+    ],
+    "secondary": [
+     {
+      "test_pattern": "snapshot: Vendas (30d)",
+      "assertion_pattern": "[FU14.13]",
+      "justification": "o snapshot avalia operations.buyFlow com a mesma função e vendas fechadas; afirma expected=closed e ok. FU14.1–FU14.12 não dependem de buyFlow"
+     }
+    ]
+   },
+   "F13 intenção contada antes da sessão criada": {
+    "primary": [
+     {
+      "test_pattern": "Worker de vendas: página de produto",
+      "assertion_pattern": "[FU12.4]",
+      "why": "no POST com sessão criada passam a existir 2 sinais (o antecipado + o do 303); a lista exata de 1 sinal é a 1ª asserção afetada (FU12.1–FU12.3 são GET)"
+     }
+    ],
+    "secondary": []
+   },
+   "F14 exposição sempre como botão de compra": {
+    "primary": [
+     {
+      "test_pattern": "Worker de vendas: página de produto",
+      "assertion_pattern": "[FU12.1]",
+      "why": "com vendas fechadas a exposição deve ser waitlist; vira buy"
+     }
+    ],
+    "secondary": []
+   },
+   "F15 painel volta a vendas só Hotmart": {
+    "primary": [
+     {
+      "test_pattern": "snapshot: Vendas (30d)",
+      "assertion_pattern": "[FU14.1]",
+      "why": "sales30 do snapshot deve somar 1 próprio + 1 Hotmart = 2; vira 1. Nenhum teste anterior afirma sales30 de funnelMetrics"
+     }
+    ],
+    "secondary": []
+   },
+   "F16 inventário aceita P0 como prova": {
+    "primary": [
+     {
+      "test_pattern": "Hotmart: erro 049 = encerrada",
+      "assertion_pattern": "[FU10.14]",
+      "why": "o caso P0 (p0_bypass) passa a proven=true; FU10.13 (seis fechadas) segue true"
+     }
+    ],
+    "secondary": []
+   },
+   "F17 painel recomenda levar Comprar à Hotmart": {
+    "primary": [
+     {
+      "test_pattern": "snapshot: Vendas (30d)",
+      "assertion_pattern": "[FU14.14]",
+      "why": "recomendação proibida aparece; FU14.1–FU14.13 não leem recomendações. FU15 só exige presença de outras recomendações"
+     }
+    ],
+    "secondary": []
+   },
+   "Z1 vendas desconhecidas viram 0 nos marcos": {
+    "primary": [
+     {
+      "test_pattern": "falso zero proibido",
+      "assertion_pattern": "[FU15.4]",
+      "why": "com o checkout próprio não verificado a meta first-sale vira 0 em vez de null; FU15.1–FU15.3 são knownCount puro"
+     }
+    ],
+    "secondary": []
+   },
+   "Z2 parcial zero tratado como zero conhecido": {
+    "primary": [
+     {
+      "test_pattern": "falso zero proibido",
+      "assertion_pattern": "[FU15.1]",
+      "why": "knownCount({0, PARTIAL}) é exatamente o ramo alterado. FU03.6 passa pelo ramo value==null, que não muda"
+     }
+    ],
+    "secondary": []
+   },
+   "Z3 previsão extrapola com fonte faltando": {
+    "primary": [
+     {
+      "test_pattern": "falso zero proibido",
+      "assertion_pattern": "[FU15.6]",
+      "why": "a previsão vira insufficient em vez de unverified; FU15.4/FU15.5 (marcos) não mudam"
+     }
+    ],
+    "secondary": []
+   },
+   "Z4 recomendação sem ramo de vendas não verificadas": {
+    "primary": [
+     {
+      "test_pattern": "falso zero proibido",
+      "assertion_pattern": "[FU15.7]",
+      "why": "sem o ramo, k.value null cai no else (\"null/7 vendas\") e nenhuma recomendação diz NÃO VERIFICADAS"
+     }
+    ],
+    "secondary": []
+   },
+   "Z5 métrica só-Hotmart volta ao snapshot": {
+    "primary": [
+     {
+      "test_pattern": "métricas antigas só-Hotmart removidas",
+      "assertion_pattern": "[FU16.1]",
+      "why": "a lista de métricas removidas inclui netTotalCents; é verificada antes do rótulo (FU16.2)"
+     }
+    ],
+    "secondary": []
+   },
+   "Z6 emissor legado checkout_intent no GET": {
+    "primary": [
+     {
+      "test_pattern": "intenção legada removida",
+      "assertion_pattern": "[FU17.1]",
+      "why": "o emissor \"checkout_intent\" reaparece no código do Worker; é a 1ª asserção do teste (FU17.2, o GET comportamental, vem depois)"
+     }
+    ],
+    "secondary": []
+   },
+   "Z7 borda UTC da Hotmart ignorada": {
+    "primary": [
+     {
+      "test_pattern": "calendário único",
+      "assertion_pattern": "[FU18.3]",
+      "why": "venda Hotmart no 1º dia da janela deixa de rebaixar o total para PARTIAL"
+     }
+    ],
+    "secondary": []
+   },
+   "Z8 visitante→venda COMPLETE com Hotmart fora do numerador": {
+    "primary": [
+     {
+      "test_pattern": "calendário único",
+      "assertion_pattern": "[FU18.6]",
+      "why": "com venda Hotmart na janela a conversão deveria ser PARTIAL; com cobertura v2 completa vira COMPLETE"
+     }
+    ],
+    "secondary": []
+   },
+   "Z9 link de contato no código novo": {
+    "primary": [
+     {
+      "test_pattern": "métricas antigas só-Hotmart removidas",
+      "assertion_pattern": "[FU16.3]",
+      "why": "a definição de waitlistClicks30 é publicada no snapshot (funnel.waitlistClicks30), então a varredura do JSON do snapshot (FU16.3) falha ANTES da varredura do arquivo-fonte (FU16.4); FU16.1/FU16.2 não envolvem o link"
+     }
+    ],
+    "secondary": []
+   },
+   "Z10 meta de receita soma limite inferior": {
+    "primary": [
+     {
+      "test_pattern": "falso zero proibido",
+      "assertion_pattern": "[FU15.14]",
+      "why": "no caso lower (Hotmart 1, próprio não verificado) a receita total vira 100 em vez de null; FU15.4–FU15.13 não leem receita do caso lower"
+     }
+    ],
+    "secondary": []
+   },
+   "K1 marcador paidWithoutConfirmedEvent ignorado": {
+    "primary": [
+     {
+      "test_pattern": "vendas: marcador paidWithoutConfirmedEvent",
+      "assertion_pattern": "[FU03.1]",
+      "why": "com paidWithoutConfirmedEvent=1 o ledger passa a ser declarado limpo e completo; os testes dos outros marcadores não mudam"
+     }
+    ],
+    "secondary": []
+   },
+   "K2 marcador statusMismatch ignorado": {
+    "primary": [
+     {
+      "test_pattern": "vendas: marcador statusMismatch",
+      "assertion_pattern": "[FU03.1]",
+      "why": "com statusMismatch=1 o ledger passa a ser declarado limpo e completo; os testes dos outros marcadores não mudam"
+     }
+    ],
+    "secondary": []
+   },
+   "K3 marcador confirmedEventWithoutOrder ignorado": {
+    "primary": [
+     {
+      "test_pattern": "vendas: marcador confirmedEventWithoutOrder",
+      "assertion_pattern": "[FU03.1]",
+      "why": "com confirmedEventWithoutOrder=1 o ledger passa a ser declarado limpo e completo; os testes dos outros marcadores não mudam"
+     }
+    ],
+    "secondary": []
+   },
+   "K4 marcador extraOrdersSameSession ignorado": {
+    "primary": [
+     {
+      "test_pattern": "vendas: marcador extraOrdersSameSession",
+      "assertion_pattern": "[FU03.1]",
+      "why": "com extraOrdersSameSession=1 o ledger passa a ser declarado limpo e completo; os testes dos outros marcadores não mudam"
+     }
+    ],
+    "secondary": []
+   },
+   "K5 zero parcial publicado como zero": {
+    "primary": [
+     {
+      "test_pattern": "vendas: fonte ausente vira PARTIAL/MISSING",
+      "assertion_pattern": "[FU02.7]",
+      "why": "Hotmart sem postback + próprio 0 = zero parcial; deve ser null"
+     },
+     {
+      "test_pattern": "vendas: marcador ausente no resumo",
+      "assertion_pattern": "[FU04.2]",
+      "why": "marcadores ausentes = PARTIAL; o zero deve ser null (FU04.1, a classe, não muda)"
+     },
+     {
+      "test_pattern": "vendas: marcador paidWithoutConfirmedEvent",
+      "assertion_pattern": "[FU03.2]",
+      "why": "zero com marcador sinalizado deve ser null (FU03.1 complete=false não muda)"
+     }
+    ],
+    "secondary": [
+     {
+      "test_pattern": "vendas: marcador statusMismatch",
+      "assertion_pattern": "[FU03.2]",
+      "justification": "mesma regra (zero com marcador sinalizado = null) no teste do marcador statusMismatch; secundário só pelo limite de 3 primárias"
+     },
+     {
+      "test_pattern": "vendas: marcador confirmedEventWithoutOrder",
+      "assertion_pattern": "[FU03.2]",
+      "justification": "mesma regra (zero com marcador sinalizado = null) no teste do marcador confirmedEventWithoutOrder; secundário só pelo limite de 3 primárias"
+     },
+     {
+      "test_pattern": "vendas: marcador extraOrdersSameSession",
+      "assertion_pattern": "[FU03.2]",
+      "justification": "mesma regra (zero com marcador sinalizado = null) no teste do marcador extraOrdersSameSession; secundário só pelo limite de 3 primárias"
+     }
+    ],
+    "broad_reason": "a regra 'zero PARTIAL é null' é afirmada diretamente em 6 testes (FU02, FU04 e os 4 testes de marcador gerados por laço); todos falham na asserção do valor nulo"
+   },
+   "K6 marcadores não exigidos para completo": {
+    "primary": [
+     {
+      "test_pattern": "vendas: marcador ausente no resumo",
+      "assertion_pattern": "[FU04.1]",
+      "why": "marcadores ausentes deixam de impedir COMPLETE"
+     },
+     {
+      "test_pattern": "vendas: marcador paidWithoutConfirmedEvent",
+      "assertion_pattern": "[FU03.1]",
+      "why": "com paidWithoutConfirmedEvent=1 complete passa a true"
+     },
+     {
+      "test_pattern": "vendas: marcador statusMismatch",
+      "assertion_pattern": "[FU03.1]",
+      "why": "com statusMismatch=1 complete passa a true"
+     }
+    ],
+    "secondary": [
+     {
+      "test_pattern": "vendas: marcador confirmedEventWithoutOrder",
+      "assertion_pattern": "[FU03.1]",
+      "justification": "mesma regra (marcador > 0 impede completo) no teste do marcador confirmedEventWithoutOrder; secundário só pelo limite de 3 primárias"
+     },
+     {
+      "test_pattern": "vendas: marcador extraOrdersSameSession",
+      "assertion_pattern": "[FU03.1]",
+      "justification": "mesma regra (marcador > 0 impede completo) no teste do marcador extraOrdersSameSession; secundário só pelo limite de 3 primárias"
+     }
+    ],
+    "broad_reason": "a regra 'completo exige os quatro marcadores zerados' é afirmada diretamente em 5 testes (FU04 e os 4 testes de marcador); todos falham na 1ª asserção de completude"
+   }
+  }
+ },
+ "pg": {
+  "changes": {
+   "S1 failover na mesma sessão conta 2": "OWN_CHECKOUT_SQL agrupa a compra por order_id em vez de session_id",
+   "S2 pedidos de certificação contam": "OWN_CHECKOUT_SQL deixa de excluir certification_pilot",
+   "S3 dia da venda em UTC": "dia da venda calculado em UTC em vez de America/Sao_Paulo",
+   "S4 intenção sem janela de 30 min": "chave de deduplicação da intenção usa o instante em vez da janela de 30 min",
+   "S5 visitor-days deduplicados por página": "site_visitors deduplicado por página em vez do site inteiro",
+   "S6 confirmados pela data do cadastro": "leads confirmados em 7 dias filtrados por created_at em vez de confirmed_at",
+   "S7 linhas v2 em dia UTC": "v2Day usa o dia UTC em vez de America/Sao_Paulo"
+  },
+  "mutants": {
+   "S1 failover na mesma sessão conta 2": {
+    "primary": [
+     {
+      "test_pattern": "V1 venda",
+      "assertion_pattern": "[FP1.3]",
+      "why": "failover MP→Asaas na mesma sessão vira 2 vendas (asaas 2 no dia 21); FP1.2 (dia 19) não envolve a sessão"
+     }
+    ],
+    "secondary": []
+   },
+   "S2 pedidos de certificação contam": {
+    "primary": [
+     {
+      "test_pattern": "V1 venda",
+      "assertion_pattern": "[FP1.2]",
+      "why": "o pedido de certificação confirmado às 02:30 UTC de 20/10 entra no dia 19 (mercadopago 2)"
+     }
+    ],
+    "secondary": []
+   },
+   "S3 dia da venda em UTC": {
+    "primary": [
+     {
+      "test_pattern": "V1 venda",
+      "assertion_pattern": "[FP1.2]",
+      "why": "02:30 UTC de 20/10 passa a cair no dia 20; o dia 19 fica vazio"
+     }
+    ],
+    "secondary": []
+   },
+   "S4 intenção sem janela de 30 min": {
+    "primary": [
+     {
+      "test_pattern": "V3 sinais",
+      "assertion_pattern": "[FP3.6]",
+      "why": "10:01 e 10:02 viram duas intenções (3 em vez de 2); FP3.1–FP3.5 não envolvem intenção"
+     }
+    ],
+    "secondary": []
+   },
+   "S5 visitor-days deduplicados por página": {
+    "primary": [
+     {
+      "test_pattern": "V3 sinais",
+      "assertion_pattern": "[FP3.3]",
+      "why": "visitor-days do site deixa de ser 2 (por pessoa); FP3.1/FP3.2 são o legado por página, que não muda"
+     }
+    ],
+    "secondary": []
+   },
+   "S6 confirmados pela data do cadastro": {
+    "primary": [
+     {
+      "test_pattern": "V4 resumo",
+      "assertion_pattern": "[FP4.6]",
+      "why": "o lead criado há 10 dias e confirmado hoje sai da contagem (0 em vez de 1)"
+     }
+    ],
+    "secondary": []
+   },
+   "S7 linhas v2 em dia UTC": {
+    "primary": [
+     {
+      "test_pattern": "V3 sinais",
+      "assertion_pattern": "[FP3.12]",
+      "why": "a exposição às 01:30 UTC de 23/10 deixa de cair no dia 22 de São Paulo; FP3.1–FP3.11 usam 10:01 UTC, mesmo dia nos dois calendários"
+     }
+    ],
+    "secondary": []
+   }
+  }
+ }
+}

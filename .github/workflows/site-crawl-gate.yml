@@ -1,0 +1,50 @@
+name: Site crawl gate (canonical trees + GitHub Pages redirect layer)
+
+# Site audit C-01/C-02/C-03 (Sol 264). Pull requests only: never runs on merge, no secrets, no deploy, no network
+# beyond checkout and GitHub's own Pages build action.
+#  1. pages-mirror/ and _config.yml match scripts/build_pages_mirror.py (every top-level entry excluded, one
+#     noindex redirect stub per page the source tree used to publish).
+#  2. The REAL GitHub Pages build (actions/jekyll-build-pages, the action "pages build and deployment" uses)
+#     of this commit publishes only those stubs plus robots.txt.
+#  3. Crawl of the sales tree through the real sales Worker (broken internal refs, internal-jargon ratchet),
+#     blog renderers of the central Worker, every redirect target answering 200.
+on:
+  pull_request:
+    branches: [gh-pages]
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Pages redirect layer is up to date
+        run: python3 -B scripts/build_pages_mirror.py --check
+      - name: Sales source tree untouched by the redirect layer (build reproducible)
+        run: |
+          set -euo pipefail
+          ZEVANORY_SALES_PUBLIC_OUT="$RUNNER_TEMP/sales-public" python3 -B scripts/build_sales_public.py >/dev/null
+          diff -rq "$RUNNER_TEMP/sales-public" sales-public
+      - name: Build the GitHub Pages site exactly as GitHub does
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Crawl canonical trees and the Pages output
+        run: node scripts/ci/site_crawl_gate.mjs --pages-site _site --out site-crawl.json
+      - name: Blog renderer and gate unit tests
+        run: node --test tests/blog-layout.test.mjs tests/site-crawl-gate.test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-crawl
+          path: site-crawl.json
+          if-no-files-found: ignore

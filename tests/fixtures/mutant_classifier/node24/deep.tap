@@ -1,0 +1,91 @@
+TAP version 13
+# Subtest: T1 alpha
+not ok 1 - T1 alpha
+  ---
+  duration_ms: 2.577236
+  type: 'test'
+  location: '/tmp/mc-live-__jukadt/probe.mjs:35:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    A1 deep options
+    + actual - expected
+    
+      {
+        code: 'ERR_MODULE_NOT_FOUND',
+    +   exitCode: 3,
+    +   nested: {
+    +     failureType: 'hookFailed',
+    +     list: [
+    +       'error: x',
+    +       {
+    +         name: 'TypeError'
+    +       }
+    +     ]
+    +   },
+    +   signal: 'SIGTERM'
+    -   signal: null
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    signal: ~
+    code: 'ERR_MODULE_NOT_FOUND'
+  actual:
+    signal: 'SIGTERM'
+    code: 'ERR_MODULE_NOT_FOUND'
+    exitCode: 3
+    nested:
+      failureType: 'hookFailed'
+      list:
+        0: 'error: x'
+        1:
+          name: 'TypeError'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///tmp/mc-live-__jukadt/probe.mjs:40:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: T10 beta
+ok 2 - T10 beta
+  ---
+  duration_ms: 0.237198
+  type: 'test'
+  ...
+# Subtest: T2 gamma
+    # Subtest: T2a nested
+    ok 1 - T2a nested
+      ---
+      duration_ms: 0.134154
+      type: 'test'
+      ...
+    # Subtest: T2b nested
+    ok 2 - T2b nested
+      ---
+      duration_ms: 1.242448
+      type: 'test'
+      ...
+    1..2
+ok 3 - T2 gamma
+  ---
+  duration_ms: 2.07062
+  type: 'test'
+  ...
+# Subtest: T3 delta
+ok 4 - T3 delta
+  ---
+  duration_ms: 0.15476
+  type: 'test'
+  ...
+1..4
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 110.428387

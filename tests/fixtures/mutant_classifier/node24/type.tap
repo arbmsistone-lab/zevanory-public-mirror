@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: T1 alpha
+not ok 1 - T1 alpha
+  ---
+  duration_ms: 0.801411
+  type: 'test'
+  location: '/tmp/mc-live-8j7aazws/probe.mjs:13:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of null (reading 'boom')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///tmp/mc-live-8j7aazws/probe.mjs:14:30)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: T10 beta
+ok 2 - T10 beta
+  ---
+  duration_ms: 0.225695
+  type: 'test'
+  ...
+# Subtest: T2 gamma
+    # Subtest: T2a nested
+    ok 1 - T2a nested
+      ---
+      duration_ms: 0.304476
+      type: 'test'
+      ...
+    # Subtest: T2b nested
+    ok 2 - T2b nested
+      ---
+      duration_ms: 0.188781
+      type: 'test'
+      ...
+    1..2
+ok 3 - T2 gamma
+  ---
+  duration_ms: 1.863817
+  type: 'test'
+  ...
+# Subtest: T3 delta
+ok 4 - T3 delta
+  ---
+  duration_ms: 1.270806
+  type: 'test'
+  ...
+1..4
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 119.741658

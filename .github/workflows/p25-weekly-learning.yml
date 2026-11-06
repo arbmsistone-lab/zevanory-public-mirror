@@ -1,0 +1,87 @@
+name: p25-weekly-learning
+
+# P25 Aprendizado (Roteiro Mestre v4.7, seção 5): toda semana, revisão automática do funil e dos experimentos com
+# decisão registrada. Só leitura dos registros versionados (data/experiments.json, data/p01, data/p02); nenhum
+# segredo; nenhuma chamada à produção. O registro da semana vai para a branch evidence/p25-learning, nunca gh-pages.
+# Sem dados, o registro diz "SEM_DADOS". Commits feitos com o GITHUB_TOKEN não disparam outros workflows.
+on:
+  schedule:
+    - cron: "37 10 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p25-weekly-learning
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      EVIDENCE_BRANCH: "evidence/p25-learning"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Testes da revisão (P25) e do registro de decisões (P02)
+        run: |
+          set -euo pipefail
+          python3 -I tests/p25/test_weekly_learning_review.py
+          python3 -I scripts/p02/decision_registry_gate.py
+
+      - name: Revisões anteriores (só leitura da branch de evidência)
+        env:
+          GH_REPO_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          case "$EVIDENCE_BRANCH" in evidence/*) ;; *) echo "::error::branch de evidência fora de evidence/*"; exit 1;; esac
+          mkdir -p /tmp/p25-prior
+          if git clone --quiet --depth 1 --branch "$EVIDENCE_BRANCH" "$GH_REPO_URL" /tmp/p25-evidence 2>/dev/null; then
+            cp /tmp/p25-evidence/reviews/*.json /tmp/p25-prior/ 2>/dev/null || true
+          fi
+          ls /tmp/p25-prior | wc -l | sed 's/^/revisões anteriores: /'
+
+      - name: Revisão semanal (registro de decisão ou SEM_DADOS)
+        run: |
+          set -euo pipefail
+          week="$(date -u +%G-W%V)"
+          echo "WEEK=$week" >> "$GITHUB_ENV"
+          python3 -I scripts/p25/weekly_learning_review.py --out "/tmp/p25-out/${week}-run${GITHUB_RUN_ID}.json" \
+            --prior-dir /tmp/p25-prior --run-id "$GITHUB_RUN_ID" --sha "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Gravar na branch de evidência (nunca gh-pages)
+        if: ${{ github.ref == 'refs/heads/gh-pages' }}
+        env:
+          GH_PUSH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "$EVIDENCE_BRANCH" in evidence/*) ;; *) echo "::error::branch de evidência fora de evidence/*"; exit 1;; esac
+          [ "$EVIDENCE_BRANCH" != "gh-pages" ] || { echo "::error::recusado: gh-pages"; exit 1; }
+          url="https://x-access-token:${GH_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          rm -rf /tmp/p25-push
+          if ! git clone --quiet --depth 1 --branch "$EVIDENCE_BRANCH" "$url" /tmp/p25-push 2>/dev/null; then
+            mkdir -p /tmp/p25-push && git -C /tmp/p25-push init -q && git -C /tmp/p25-push checkout -q --orphan "$EVIDENCE_BRANCH"
+            git -C /tmp/p25-push remote add origin "$url"
+          fi
+          mkdir -p /tmp/p25-push/reviews
+          cp /tmp/p25-out/*.json /tmp/p25-push/reviews/
+          cp /tmp/p25-out/*.json /tmp/p25-push/latest.json
+          cd /tmp/p25-push
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reviews latest.json
+          git commit -q -m "P25: revisão semanal ${WEEK} (run ${GITHUB_RUN_ID}, ${GITHUB_SHA:0:12})"
+          for i in 1 2 3; do git push -q origin "HEAD:refs/heads/${EVIDENCE_BRANCH}" && break; git pull -q --rebase origin "$EVIDENCE_BRANCH" || true; done
+          echo "P25_EVIDENCE=${EVIDENCE_BRANCH}/reviews/${WEEK}-run${GITHUB_RUN_ID}.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Fora de gh-pages, só ensaio (nada é gravado)
+        if: ${{ github.ref != 'refs/heads/gh-pages' }}
+        run: echo "P25_DRY_RUN=1 ref=${GITHUB_REF} (registro não gravado)"

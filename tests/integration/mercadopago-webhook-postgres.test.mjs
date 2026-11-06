@@ -4,9 +4,10 @@
 //   * Mercado Pago API: a local fixture (no call leaves the machine); Resend: recorded, never sent;
 //   * KV: in-memory. No credentials, no payments, no e-mails, no cost.
 // Run: T4_PG_HOST=/tmp/pgt T4_PG_PORT=55432 node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs
-import { test, before, after } from "node:test";
+import { test as nodeTest, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import http from "node:http";
 import { createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -14,6 +15,61 @@ const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
 const SKIP = !HOST && "T4_PG_HOST not set (throwaway local PostgreSQL required)";
 const SECRET = "t4-synthetic-webhook-secret";
 const realFetch = globalThis.fetch;
+
+// ---------- transporte HTTP local (somente teste; o Worker não muda) ----------
+// Defeito corrigido (auditoria Sol, #868): o servidor Node do bundle fecha conexão keep-alive ociosa após
+// keepAliveTimeout (padrão 5 s) e o cliente undici reaproveitava o socket do pool; como as chamadas psql são
+// SÍNCRONAS (execFileSync bloqueia o event loop), o FIN do servidor e o próximo envio do cliente disputavam
+// o mesmo socket => "fetch failed"/ECONNRESET intermitente, sem relação com o comportamento testado.
+// Correção determinística: (1) toda requisição ao servidor local leva `Connection: close` — o undici marca a
+// requisição como reset e NUNCA devolve o socket ao pool; cada chamada abre conexão TCP nova, então não existe
+// socket ocioso para disputar; (2) defesa extra no servidor do bundle (capturado em http.createServer antes do
+// import): keepAliveTimeout alto. Erro de transporte é relançado com a marca T4_TRANSPORT_ERROR + código da
+// causa, para o executor de mutantes classificá-lo como INFRA (nunca como falha funcional).
+// Meta-teste do executor: T4_INJECT_ECONNRESET=<n> faz o servidor enviar RST (socket.resetAndDestroy) na
+// n-ésima requisição POST de webhook — ECONNRESET REAL sem nenhuma mutação de código.
+const INJECT_RESET_AT = Number(process.env.T4_INJECT_ECONNRESET || 0);
+let webhookPosts = 0;
+const originalCreateServer = http.createServer;
+http.createServer = function createServerT4(...args) {
+  const i = args.findIndex((a) => typeof a === "function");
+  if (i >= 0 && INJECT_RESET_AT > 0) {
+    const handler = args[i];
+    args[i] = function injectReset(req, res) {
+      if (req.method === "POST" && String(req.url).startsWith("/api/webhooks") && ++webhookPosts === INJECT_RESET_AT) {
+        console.log("T4_INJECTED_ECONNRESET", JSON.stringify({ request: webhookPosts, url: String(req.url).slice(0, 80) }));
+        return req.socket.resetAndDestroy();
+      }
+      return handler.call(this, req, res);
+    };
+  }
+  const server = originalCreateServer.apply(this, args);
+  server.keepAliveTimeout = 120_000;
+  server.headersTimeout = 125_000;
+  return server;
+};
+// Meta-teste do executor (auditoria Sol, B05-B): T4_INJECT_TYPEERROR=<prefixo> troca o corpo do teste cujo nome
+// começa com "<prefixo> " por um TypeError real (falha NÃO-asserção, NÃO-infra), para provar que uma falha não
+// prevista na allowlist causal deixa o mutante INCONCLUSIVE mesmo com a asserção esperada falhando em outro teste.
+const INJECT_TYPEERROR = String(process.env.T4_INJECT_TYPEERROR || "");
+function test(name, opts, fn) {
+  if (!INJECT_TYPEERROR || !String(name).startsWith(INJECT_TYPEERROR + " ")) return nodeTest(name, opts, fn);
+  return nodeTest(name, opts, async () => {
+    console.log("T4_INJECTED_TYPEERROR", JSON.stringify({ test: String(name).slice(0, 60) }));
+    const ausente = undefined;
+    return ausente.t4_injected_type_error;
+  });
+}
+async function localFetch(input, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("connection", "close");
+  try {
+    return await realFetch(input, { ...init, headers });
+  } catch (e) {
+    const c = e?.cause;
+    throw new Error(`T4_TRANSPORT_ERROR ${e?.message} cause=${c?.code || c?.name || "?"} ${String(c?.message || "").slice(0, 120)}`, { cause: e });
+  }
+}
 
 // ---------- PostgreSQL through psql (the Neon HTTP protocol is emulated on top) ----------
 const lit = (v) => v === null || v === undefined ? "NULL" : "'" + String(v).replace(/'/g, "''") + "'";
@@ -55,7 +111,7 @@ const kv = { async get(k) { return kvStore.get(k) ?? null; }, async put(k, v) { 
 
 function fakeFetch(input, init = {}) {
   const url = new URL(typeof input === "string" ? input : input.url);
-  if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return realFetch(input, init);
+  if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return localFetch(input, init);
   if (url.pathname === "/sql" && init.headers?.["Neon-Connection-String"]) {
     if (world.dbDown) return Promise.reject(new Error("synthetic database outage"));
     const body = JSON.parse(init.body);
@@ -95,7 +151,7 @@ function fakeFetch(input, init = {}) {
 const sign = (paymentId, requestId, ts = Math.floor(Date.now() / 1000)) =>
   `ts=${ts},v1=${createHmac("sha256", SECRET).update(`id:${paymentId};request-id:${requestId};ts:${ts};`).digest("hex")}`;
 async function webhook(paymentId, { signature, requestId = randomUUID(), body } = {}) {
-  const res = await realFetch("http://127.0.0.1:8788/api/webhooks?provider=mercadopago&data.id=" + paymentId, {
+  const res = await localFetch("http://127.0.0.1:8788/api/webhooks?provider=mercadopago&data.id=" + paymentId, {
     method: "POST", headers: { "content-type": "application/json", "x-request-id": requestId, "x-signature": signature ?? sign(paymentId, requestId) },
     body: JSON.stringify(body ?? { type: "payment", action: "payment.updated", data: { id: String(paymentId) } }) });
   return { status: res.status, body: await res.json().catch(() => ({})) };
@@ -129,7 +185,7 @@ before(async () => {
   globalThis.__ZEVANORY_PRIVATE_KV__ = kv;
   globalThis.fetch = fakeFetch;
   bundle = await import("../../worker/cloudflare-worker.recovered.mjs");
-  for (let i = 0; i < 50; i++) { try { await realFetch("http://127.0.0.1:8788/api/health"); break; } catch { await new Promise((r) => setTimeout(r, 100)); } }
+  for (let i = 0; i < 50; i++) { try { await localFetch("http://127.0.0.1:8788/api/health"); break; } catch { await new Promise((r) => setTimeout(r, 100)); } }
 });
 after(() => { if (!SKIP) setTimeout(() => process.exit(process.exitCode || 0), 50); });
 
@@ -381,8 +437,13 @@ test("M14 falha após CAS vencedor e antes do aceite do provedor: reprocesso rea
 test("M15 fronteira de vencimento: link com > 10 min é reaproveitado; com < 10 min é renovado — o e-mail nunca leva link prestes a vencer", { skip: SKIP }, async () => {
   for (const [minutos, renova] of [[11, false], [9, true]]) {
     const o = newOrder(); const id = pay(o);
-    world.failBeforeAccept = true; await webhook(id); world.failBeforeAccept = false;
-    const ev = JSON.parse(fulfillment(o.id)[1]); const antigo = ev.download_url;
+    world.failBeforeAccept = true; const r1 = await webhook(id); world.failBeforeAccept = false;
+    // 1º webhook verificado ANTES de indexar a linha (AVAL Sol: sem isso um TypeError genérico mascara defeito):
+    // falha do provedor antes do aceite => 503 e a linha de entrega com a evidência já persistida.
+    assert.equal(r1.status, 503, JSON.stringify([minutos, r1.body]));
+    const f1 = fulfillment(o.id);
+    assert.ok(f1 && typeof f1[1] === "string" && f1[1].length > 0, `${minutos} min: 1º webhook persiste a linha de entrega com evidência`);
+    const ev = JSON.parse(f1[1]); const antigo = ev.download_url;
     ev.expires_at = new Date(Date.now() + minutos * 60000).toISOString();
     runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, JSON.stringify(ev)]);
     assert.equal((await webhook(id)).status, 200);
@@ -422,3 +483,88 @@ test("M17 evidência em branco ('' ou espaços) não trava a entrega (ramo texto
 // com expressão text (INSERT ... service_fulfillment), e com coluna jsonb o PostgreSQL rejeita esse INSERT
 // ("column evidence_ref is of type jsonb but expression is of type text") — verificado neste harness.
 // Logo a coluna em uso é text; a leitura de objeto foi mantida apenas como defesa.
+
+// ---------- M19–M22: B05 / G9 (D7) — assinatura e idempotência pelo handler REAL, sem operação financeira ----------
+// Referência oficial: https://omega.mercadopago.com.br/developers/es/docs/qr-code/notifications (aba "sem SDK").
+async function webhookBruto(paymentId, headers, { body, query = "data.id=" + paymentId } = {}) {
+  const res = await localFetch("http://127.0.0.1:8788/api/webhooks?provider=mercadopago&" + query, {
+    method: "POST", headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body ?? { type: "payment", action: "payment.updated", data: { id: String(paymentId) } }) });
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+const emails = (orderId) => world.emails.filter((m) => String(m.text || "").includes(String(orderId).toLowerCase())).length;
+const fulfillmentRows = (id) => Number(one("select count(*)::int from service_fulfillment where order_id=$1", [id])[0]);
+const recoveryKey = (paymentId) => "mercadopago:webhook-recovery:v1:" + paymentId;
+
+test("M19 assinatura válida pelo handler real: ts em milissegundos e header com espaços/ordem invertida => pago e entregue uma vez", { skip: SKIP }, async () => {
+  for (const formato of ["ms", "espacos"]) {
+    const o = newOrder(); const id = pay(o); const req = randomUUID();
+    const ts = formato === "ms" ? String(Date.now()) : String(Math.floor(Date.now() / 1000));
+    const v1 = createHmac("sha256", SECRET).update(`id:${id};request-id:${req};ts:${ts};`).digest("hex");
+    const sig = formato === "ms" ? `ts=${ts},v1=${v1}` : ` v1=${v1.toUpperCase()} ,  ts=${ts} `;
+    const r = await webhookBruto(id, { "x-request-id": req, "x-signature": sig });
+    assert.equal(r.status, 200, JSON.stringify([formato, r.body]));
+    assert.equal(orderStatus(o.id), "paid"); assert.equal(fulfillment(o.id)[0], "delivered");
+    assert.equal(events(o.id), 1); assert.equal(emails(o.id), 1);
+    assert.equal(kvStore.has(recoveryKey(id)), false, "assinatura válida não enfileira recuperação");
+  }
+});
+
+test("M20 assinatura inválida (segredo errado, adulteração, fora da janela, cabeçalho ausente): 401, nada pago, recuperação enfileirada", { skip: SKIP }, async () => {
+  const agora = Math.floor(Date.now() / 1000);
+  const casos = {
+    segredo_errado: (id, req) => ({ "x-request-id": req, "x-signature": `ts=${agora},v1=${createHmac("sha256", "outro-segredo-sintetico").update(`id:${id};request-id:${req};ts:${agora};`).digest("hex")}` }),
+    request_id_adulterado: (id, req) => ({ "x-request-id": req + "-x", "x-signature": sign(id, req, agora) }),
+    ts_adulterado: (id, req) => { const s = sign(id, req, agora); assert.ok(s.startsWith(`ts=${agora},`)); return { "x-request-id": req, "x-signature": s.replace(`ts=${agora},`, `ts=${agora + 1},`) }; },
+    ts_futuro_11min: (id, req) => ({ "x-request-id": req, "x-signature": sign(id, req, agora + 11 * 60) }),
+    ts_antigo_11min: (id, req) => ({ "x-request-id": req, "x-signature": sign(id, req, agora - 11 * 60) }),
+    sem_x_signature: (id, req) => ({ "x-request-id": req }),
+    sem_x_request_id_manifesto_oficial: (id) => ({ "x-signature": `ts=${agora},v1=${createHmac("sha256", SECRET).update(`id:${id};ts:${agora};`).digest("hex")}` }),
+    // Discriminativo para M4a (exigência de x-request-id): cabeçalho AUSENTE, mas HMAC correto do manifesto
+    // literal com "request-id:;" — só a recusa explícita de request-id vazio impede o processamento.
+    sem_x_request_id_hmac_request_id_vazio: (id) => ({ "x-signature": sign(id, "", agora) }),
+    sem_ts: (id, req) => ({ "x-request-id": req, "x-signature": `v1=${createHmac("sha256", SECRET).update(`id:${id};request-id:${req};ts:;`).digest("hex")}` }),
+  };
+  for (const [nome, cabecalhos] of Object.entries(casos)) {
+    const o = newOrder(); const id = pay(o); const req = randomUUID();
+    const calls = world.mpCalls.length; const mails = world.emails.length;
+    const r = await webhookBruto(id, cabecalhos(id, req));
+    assert.equal(r.status, 401, JSON.stringify([nome, r.body])); assert.equal(r.body.error, "webhook_auth_failed");
+    assert.equal(world.mpCalls.length, calls, `${nome}: nenhuma consulta ao provedor`);
+    assert.equal(orderStatus(o.id), "checkout_ready", `${nome}: nunca marca pago`);
+    assert.equal(events(o.id), 0); assert.equal(tokens(o.id), 0); assert.equal(fulfillmentRows(o.id), 0);
+    assert.equal(world.emails.length, mails, `${nome}: nenhum e-mail`);
+    const fila = JSON.parse(kvStore.get(recoveryKey(id)) || "null");
+    assert.equal(fila?.paymentId, id, `${nome}: reconciliação pelo provedor enfileirada`);
+  }
+});
+
+test("M21 data.id alfanumérico maiúsculo (regra oficial de minúsculas) e divergência query/corpo: 400 antes da assinatura, sem efeito", { skip: SKIP }, async () => {
+  const upper = "ORD01JQ4S4KY8HWQ6NA5PXB65B3D3", req = randomUUID(), ts = Math.floor(Date.now() / 1000);
+  const v1 = createHmac("sha256", SECRET).update(`id:${upper.toLowerCase()};request-id:${req};ts:${ts};`).digest("hex");
+  const calls = world.mpCalls.length;
+  const r = await webhookBruto(upper, { "x-request-id": req, "x-signature": `ts=${ts},v1=${v1}` });
+  assert.equal(r.status, 400); assert.equal(r.body.error, "unsupported_webhook");
+  const o = newOrder(); const id = pay(o);
+  const r2 = await webhookBruto(id, { "x-request-id": req, "x-signature": sign(id, req) }, { query: "data.id=" + (Number(id) + 1) });
+  assert.equal(r2.status, 400, "id da URL diferente do corpo");
+  assert.equal(world.mpCalls.length, calls); assert.equal(orderStatus(o.id), "checkout_ready");
+  assert.equal(kvStore.has(recoveryKey(upper)), false);
+});
+
+test("M22 duplicatas válidas simultâneas (mesma notificação e notificações distintas do mesmo pagamento): 1 evento, 1 transição, 1 entrega, 1 e-mail", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o); const reqA = randomUUID();
+  const iguais = Array.from({ length: 5 }, () => webhookBruto(id, { "x-request-id": reqA, "x-signature": sign(id, reqA) }));
+  const distintas = Array.from({ length: 3 }, () => { const r = randomUUID(); return webhookBruto(id, { "x-request-id": r, "x-signature": sign(id, r) }); });
+  const rs = await Promise.all([...iguais, ...distintas]);
+  console.log("B05_M22_CONCURRENT", JSON.stringify({ statuses: rs.map((r) => r.status), emails: emails(o.id), tokens: tokens(o.id) }));
+  assert.ok(rs.every((r) => r.status === 200 || r.status === 503), JSON.stringify(rs.map((r) => [r.status, r.body.error])));
+  assert.equal(rs.filter((r) => r.status === 200 && r.body.duplicate === false).length, 1, "exatamente uma transição para pago");
+  assert.equal(events(o.id), 1); assert.equal(fulfillmentRows(o.id), 1); assert.equal(orderStatus(o.id), "paid");
+  const retry = await webhook(id);
+  assert.equal(retry.status, 200); assert.equal(retry.body.duplicate, true);
+  assert.equal(fulfillment(o.id)[0], "delivered"); assert.equal(events(o.id), 1);
+  assert.equal(emails(o.id), 1, "um único e-mail aceito pelo provedor (mesma chave de idempotência)");
+  const chaves = new Set(world.emails.filter((m) => m.text.includes(o.id.toLowerCase())).map((m) => m.idem));
+  assert.equal(chaves.size, 1);
+});

@@ -2,7 +2,7 @@
 // database credential), in parts that each fit the free plan's per-invocation budget, then the
 // combined verdict. The endpoint returns counts and hashes only.
 const base = process.env.BACKUP_URL || "https://zevanory.api.br/api/internal/backup/run";
-const token = process.env.CERTIFICATION_E2E_TOKEN || "";
+const token = process.env.ZEVANORY_OPERATOR_TOKEN || "";
 const PARTS = 3;
 if (token.length < 32) { console.log("::error title=DATA_BACKUP::token_unavailable"); process.exit(1); }
 const call = async (qs) => {

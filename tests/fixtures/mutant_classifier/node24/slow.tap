@@ -1,0 +1,69 @@
+TAP version 13
+# Subtest: T1 alpha
+not ok 1 - T1 alpha
+  ---
+  duration_ms: 1.780717
+  type: 'test'
+  location: '/tmp/mc-live-8j7aazws/probe.mjs:13:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    A1 alpha value
+    
+    2 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///tmp/mc-live-8j7aazws/probe.mjs:15:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.start (node:internal/test_runner/test:1262:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: T10 beta
+ok 2 - T10 beta
+  ---
+  duration_ms: 0.222608
+  type: 'test'
+  ...
+# Subtest: T2 gamma
+    # Subtest: T2a nested
+    ok 1 - T2a nested
+      ---
+      duration_ms: 0.374093
+      type: 'test'
+      ...
+    # Subtest: T2b nested
+    ok 2 - T2b nested
+      ---
+      duration_ms: 0.280087
+      type: 'test'
+      ...
+    1..2
+ok 3 - T2 gamma
+  ---
+  duration_ms: 1.680328
+  type: 'test'
+  ...
+# Subtest: T3 delta
+not ok 4 - T3 delta
+  ---
+  duration_ms: 100.534233
+  type: 'test'
+  location: '/tmp/mc-live-8j7aazws/probe.mjs:24:1'
+  failureType: 'testTimeoutFailure'
+  error: 'test timed out after 100ms'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..4
+# tests 6
+# suites 0
+# pass 4
+# fail 1
+# cancelled 1
+# skipped 0
+# todo 0
+# duration_ms 2121.727726

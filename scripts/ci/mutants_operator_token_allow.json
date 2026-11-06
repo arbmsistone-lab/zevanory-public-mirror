@@ -1,0 +1,431 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "O1 legacy preferred over new": {
+   "primary": [
+    {
+     "test_pattern": "T1",
+     "assertion_pattern": "[T1.1]"
+    },
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "T3 ",
+     "assertion_pattern": "[T3.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "T2b",
+     "assertion_pattern": "[T2b.1]",
+     "justification": "com os dois nomes o readback passa a relatar legacy_fallback em vez de primary"
+    },
+    {
+     "test_pattern": "T1b",
+     "assertion_pattern": "[T1b.4]",
+     "justification": "perímetro poluído com o nome novo tem os dois nomes; o resolvedor mutante devolve o antigo (legacy_fallback)"
+    }
+   ],
+   "broad_reason": "a prioridade do nome novo é exercida pelo resolvedor (T1, T1b), pelo Worker real (T2, T2b) e pelos handlers diretos (T3)"
+  },
+  "O2 short new token falls back to legacy": {
+   "primary": [
+    {
+     "test_pattern": "T1",
+     "assertion_pattern": "[T1.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "O3 fallback disabled during transition": {
+   "primary": [
+    {
+     "test_pattern": "T1",
+     "assertion_pattern": "[T1.2]"
+    },
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "T3 ",
+     "assertion_pattern": "[T3.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "T2b",
+     "assertion_pattern": "[T2b.2]",
+     "justification": "sem a queda o readback da variante só-antigo não autentica"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.5]",
+     "justification": "o gate estrito deixa de acusar a queda ligada no resolvedor real (ela está desligada)"
+    }
+   ],
+   "broad_reason": "a transição dual-read é exercida pelo resolvedor, pelo Worker real, pelos handlers diretos, pelo readback e pelo gate estrito"
+  },
+  "O4 fallback log leaks the value": {
+   "primary": [
+    {
+     "test_pattern": "T1",
+     "assertion_pattern": "[T1.2]"
+    },
+    {
+     "test_pattern": "T2b",
+     "assertion_pattern": "[T2b.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "O5 perimeter ignores production-only names": {
+   "primary": [
+    {
+     "test_pattern": "T1b",
+     "assertion_pattern": "[T1b.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "O6 perimeter ignores worker name": {
+   "primary": [
+    {
+     "test_pattern": "T1b",
+     "assertion_pattern": "[T1b.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "W1 compat backup reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W2 compat invite reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W3 recovered telegram proof reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W4 recovered node e2e status reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W5 internal audit reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "T3",
+     "assertion_pattern": "[T3.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "T5",
+     "assertion_pattern": "[T5.1]",
+     "justification": "a rota de auditoria deixa de autenticar com o nome novo, então o corpo esperado não chega"
+    },
+    {
+     "test_pattern": "T2b",
+     "assertion_pattern": "[T2b.1]",
+     "justification": "o readback com o nome novo deixa de responder 200"
+    }
+   ],
+   "broad_reason": "a mesma função authorized() protege a rota exercida pelo Worker real (T2, T2b), pelo handler direto (T3), pelo corpo do readback (T5) e pelo gate (K1)"
+  },
+  "W6 signed probe reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T3",
+     "assertion_pattern": "[T3.3]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W7 voice audit reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T3",
+     "assertion_pattern": "[T3.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W8 compat voice audit reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W9 post-sale certification reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T3",
+     "assertion_pattern": "[T3.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W10 refund approve reads legacy name": {
+   "primary": [
+    {
+     "test_pattern": "T3",
+     "assertion_pattern": "[T3.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W11 certification worker accepts production operator token": {
+   "primary": [
+    {
+     "test_pattern": "T4",
+     "assertion_pattern": "[T4.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "W12 stripe test key reported as live": {
+   "primary": [
+    {
+     "test_pattern": "T5",
+     "assertion_pattern": "[T5.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "W13 credential identity leaks token": {
+   "primary": [
+    {
+     "test_pattern": "T5",
+     "assertion_pattern": "[T5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "W14 credential identity unauthenticated": {
+   "primary": [
+    {
+     "test_pattern": "T2",
+     "assertion_pattern": "[T2.2]"
+    },
+    {
+     "test_pattern": "T3",
+     "assertion_pattern": "[T3.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "K1 gate accepts legacy before new": {
+   "primary": [
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[K2.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "K2 gate never treats a job as retired": {
+   "primary": [
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[K2.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]",
+     "justification": "os jobs aposentados reais (if: false) passam a ser cobrados como consumidores ativos e o repositório acusa violação"
+    }
+   ]
+  },
+  "K3 gate skips sandbox check for production token": {
+   "primary": [
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "K4 gate counts name mentions as reads": {
+   "primary": [
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.1]",
+     "justification": "scripts reais que só citam o nome como dado (gates, readback) passam a ser acusados no repositório"
+    }
+   ]
+  },
+  "K5 gate ignores step env": {
+   "primary": [
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "K6 gate ignores shell reads": {
+   "primary": [
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "K7 gate skips worker scan": {
+   "primary": [
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "K8 strict ignores resolver flag": {
+   "primary": [
+    {
+     "test_pattern": "K5",
+     "assertion_pattern": "[K5.2]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "K9 strict ignores workflow fallback": {
+   "primary": [
+    {
+     "test_pattern": "K5",
+     "assertion_pattern": "[K5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "R1 readback accepts stripe test key": {
+   "primary": [
+    {
+     "test_pattern": "K6",
+     "assertion_pattern": "[K6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "R2 readback echoes unknown stripe mode": {
+   "primary": [
+    {
+     "test_pattern": "K6",
+     "assertion_pattern": "[K6.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "R3 readback ignores perimeter": {
+   "primary": [
+    {
+     "test_pattern": "K6",
+     "assertion_pattern": "[K6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "R4 readback ignores require-primary": {
+   "primary": [
+    {
+     "test_pattern": "K6",
+     "assertion_pattern": "[K6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "P1 presence never detects mismatch": {
+   "primary": [
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[K7.2]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

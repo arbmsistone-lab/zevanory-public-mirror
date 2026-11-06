@@ -34,9 +34,10 @@ class LaunchConfigModes(unittest.TestCase):
     def test_no_authorization_all_closed_and_sandbox(self):
         code, vars_, _ = run_case()
         self.assertEqual(code, 0)
-        for name in ("ABSOLUTE_RELEASE_APPROVED","PRE_SALE_GATES_APPROVED","SALE_GLOBALLY_ENABLED",
-                     "CERTIFICATION_PILOT_PRODUCTION_ALLOWED"):
+        for name in ("ABSOLUTE_RELEASE_APPROVED","PRE_SALE_GATES_APPROVED","SALE_GLOBALLY_ENABLED"):
             self.assertEqual(vars_[name], "false", name)
+        # R9: nenhuma CERTIFICATION_PILOT_* na configuração de produção.
+        self.assertEqual([k for k in vars_ if k.startswith("CERTIFICATION_PILOT_")], [])
         self.assertEqual(vars_["MERCADOPAGO_ENV"], "sandbox")
         self.assertNotIn("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16", vars_)
         self.assertNotIn("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16", vars_["ZEVANORY_RUNTIME_CONFIG"])
@@ -61,7 +62,30 @@ class LaunchConfigModes(unittest.TestCase):
         self.assertEqual(vars_["ABSOLUTE_RELEASE_APPROVED"],"true")
         self.assertEqual(vars_["PRE_SALE_GATES_APPROVED"],"true")
         self.assertEqual(vars_["SALE_GLOBALLY_ENABLED"],"false")
-        self.assertEqual(vars_["CERTIFICATION_PILOT_PRODUCTION_ALLOWED"],"false")
+        self.assertEqual([k for k in vars_ if k.startswith("CERTIFICATION_PILOT_")], [])
+
+class R9PilotStripped(unittest.TestCase):
+    def test_base_and_runtime_pilot_vars_removed_and_keep_vars_dropped(self):
+        with tempfile.TemporaryDirectory(prefix="zevanory-r9-pilot-") as td:
+            path = pathlib.Path(td)
+            (path/"worker").mkdir(); (path/"public").mkdir()
+            base = {"keep_vars": True, "kv_namespaces": [], "vars": {"CERTIFICATION_PILOT_ENABLED": "true", "CERTIFICATION_PILOT_ENV": "sandbox",
+                    "ZEVANORY_RUNTIME_CONFIG": {"CERTIFICATION_PILOT_APPROVER": "x", "KEEP": "1"}}}
+            (path/"wrangler.central-fix.jsonc").write_text(json.dumps(base), encoding="utf-8")
+            (path/"worker/binding-aliases.mjs").write_text("return Reflect.get(target, prop, receiver);\nreturn Reflect.has(target, prop);\n", encoding="utf-8")
+            (path/"worker/cloudflare-worker.recovered.mjs").write_text(
+                '    }\n    if (provider === "stripe") {\nconst pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";\nconst commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked || preSaleCutoverSafe || commercialLivePattern;\n',
+                encoding="utf-8")
+            (path/"public/solucoes.html").write_text("<!doctype html><title>Solucoes</title>", encoding="utf-8")
+            (path/"public/sitemap.xml").write_text("<urlset></urlset>", encoding="utf-8")
+            env = {**os.environ, **DEFAULTS, "ZEVANORY_LAUNCH_AUTHORIZATION": ""}
+            proc = subprocess.run([sys.executable, str(SCRIPT)], cwd=td, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+            self.assertEqual(proc.returncode, 0, proc.stderr[-400:])
+            config = json.loads((path/"wrangler.central-fix.jsonc").read_text(encoding="utf-8"))
+            self.assertNotIn("keep_vars", config)
+            self.assertEqual([k for k in config["vars"] if k.startswith("CERTIFICATION_PILOT_")], [])
+            self.assertEqual([k for k in config["vars"]["ZEVANORY_RUNTIME_CONFIG"] if k.startswith("CERTIFICATION_PILOT_")], [])
+            self.assertEqual(config["vars"]["ZEVANORY_RUNTIME_CONFIG"]["KEEP"], "1")
 
 if __name__=="__main__":
     unittest.main(verbosity=2)

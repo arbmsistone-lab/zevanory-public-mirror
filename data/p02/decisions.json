@@ -1,0 +1,95 @@
+{
+  "schema": "zevanory-p02-decisions/v1",
+  "schema_version": 1,
+  "note": "Registro auditável de decisões de oferta (P02, Roteiro Mestre v4.7). Só cresce: decisão registrada não é editada nem removida; correção entra como nova decisão com 'supersedes'. Cada decisão liga a hipóteses do P01 (data/p01/hypotheses.json) e a evidências verificáveis. Sem amostra pré-registrada, a decisão é INCONCLUSIVO. Validação: scripts/p02/decision_registry_gate.py.",
+  "decisions": [
+    {
+      "id": "D-2026-0001",
+      "decided_at": "2026-10-25",
+      "subject": "Apresentação da oferta nas 5 páginas de produto (experimento product-page-v2: o que vem dentro abaixo do botão, para quem é, barra de compra no celular)",
+      "scope": [
+        "ia-na-pratica",
+        "vendas-na-pratica",
+        "lucro-e-caixa",
+        "combo-ia-vendas",
+        "negocio-completo"
+      ],
+      "decision_class": "A",
+      "p01_hypotheses": [
+        "H-0002"
+      ],
+      "pre_registration": {
+        "ref": {
+          "kind": "repo",
+          "ref": "data/experiments.json",
+          "contains": "\"minViewsPerSide\": 200"
+        },
+        "registered_at": "2026-10-12",
+        "metric": "Intenção de compra ÷ visitas nas 5 páginas de produto (antes x depois, janela de 14 dias)",
+        "min_n": {
+          "views_per_side": 200,
+          "intent_events_total": 20
+        }
+      },
+      "observed": {
+        "status": "NOT_AVAILABLE",
+        "reason": "O agregado do funil (KV zpc-funnel:v1:summary) exige credencial e não foi lido; nenhum número foi copiado para cá. Mesmo com os dados, o desenho pré-registrado não permite conclusão: cleanSince = changeAt = 2026-10-12, então a janela anterior foi medida antes do filtro de robôs e scripts/audit/experiments.mjs devolve 'inconclusive' por construção."
+      },
+      "outcome": "INCONCLUSIVO",
+      "outcome_reason": "Sem dado observado nesta revisão e com um desenho pré-registrado que não compara janelas equivalentes (antes do filtro de robôs x depois). Além disso, as vendas estão fechadas globalmente (P22), então intenção de compra não chega a checkout. Nenhuma conclusão sobre a oferta é possível.",
+      "action": "Nenhuma mudança na oferta. Antes de qualquer decisão futura sobre a apresentação, pré-registrar um desenho comparável (as duas janelas depois do filtro de robôs) com amostra mínima, no data/experiments.json.",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "data/experiments.json",
+          "contains": "\"cleanSince\": \"2026-10-12\""
+        },
+        {
+          "kind": "repo",
+          "ref": "scripts/audit/experiments.mjs",
+          "contains": "antes e depois não são comparáveis"
+        }
+      ],
+      "recorded_by": "executor (Claude), sem autorização operacional; decisão INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "aa01d220c51331bb11206dbae31141a5c953702bbb8d5e18c62c0b6649cded3a"
+    },
+    {
+      "id": "D-2026-0002",
+      "decided_at": "2026-10-25",
+      "subject": "Preço dos 5 produtos: tabela (data/products.json) x preço piloto do catálogo do Worker",
+      "scope": [
+        "ia-na-pratica",
+        "vendas-na-pratica",
+        "lucro-e-caixa",
+        "combo-ia-vendas",
+        "negocio-completo"
+      ],
+      "decision_class": "D",
+      "p01_hypotheses": [
+        "H-0004"
+      ],
+      "pre_registration": null,
+      "observed": {
+        "status": "NOT_AVAILABLE",
+        "reason": "Nenhuma amostra de preço foi pré-registrada e não há venda real (vendas fechadas globalmente)."
+      },
+      "outcome": "INCONCLUSIVO",
+      "outcome_reason": "Não existe amostra pré-registrada para testar preço e não há nenhuma venda para observar. Preço é classe D (seção 3): só o proprietário decide, ato por ato. O executor não propõe mudança.",
+      "action": "Manter os preços de data/products.json sem alteração. O status 'pilot_hypothesis_not_validated' do catálogo continua como hipótese aberta do P01 (H-0004).",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "worker/cloudflare-worker.recovered.mjs",
+          "contains": "price_status: \"pilot_hypothesis_not_validated\""
+        },
+        {
+          "kind": "repo",
+          "ref": "data/products.json",
+          "contains": "\"guaranteeDays\": 7"
+        }
+      ],
+      "recorded_by": "executor (Claude), sem autorização operacional; decisão INCONCLUSIVO não altera nada em produção",
+      "record_sha256": "df0d960c92954fb0403c2158afff72654b76cac9af7b81cf572595f76ce42953"
+    }
+  ]
+}

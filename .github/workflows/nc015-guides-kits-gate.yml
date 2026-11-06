@@ -1,0 +1,109 @@
+name: NC-015 Phase 1 guides and kits isolated gates
+on:
+  pull_request:
+    paths:
+      - "worker/kit-*"
+      - "worker/nc015-sales-scope.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/cp-nc011-routing.mjs"
+      - "scripts/ci/nc015-*"
+      - "scripts/ci/nc016-*"
+      - "scripts/ci/nc017-*"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "data/products.json"
+      - "data/politica-unica.json"
+      - "sales-overlay/approved.json"
+      - "termos/index.html"
+      - "reembolso/index.html"
+      - "conteudo-pronto/index.html"
+      - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "data/p24/promise-map.json"
+      - "pages-mirror/**"
+      - "solucoes/index.html"
+      - "sales-overlay/llms.txt"
+      - "sales-public/**"
+      - ".github/workflows/nc015-guides-kits-gate.yml"
+permissions:
+  contents: read
+jobs:
+  private-kit-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Exactly 8 kit 192h/download/readback/Resend offline cases
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/ci/nc015-kit-e2e.test.mjs | tee kit-e2e.txt
+          grep -qx '# tests 8' kit-e2e.txt
+          grep -qx '# pass 8' kit-e2e.txt
+          grep -qx '# fail 0' kit-e2e.txt
+  first-phase-public-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Exactly 4 CP hidden and exposed-file scan tests
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/ci/nc015-scope-exposure.test.mjs | tee scope.txt
+          grep -qx '# tests 4' scope.txt
+          grep -qx '# pass 4' scope.txt
+          grep -qx '# fail 0' scope.txt
+      - name: Exactly 9 NC-016 A1-A4, NC-019 and DEC-06 static price, payment, delivery and legal cases
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/ci/nc016-phase1-contract.test.mjs | tee nc016.txt
+          grep -qx '# tests 9' nc016.txt
+          grep -qx '# pass 9' nc016.txt
+          grep -qx '# fail 0' nc016.txt
+      - name: NC-017 own checkout fail-closed and Hotmart exact-copy contracts
+        run: |
+          set -euo pipefail
+          # cloudflare-worker.compat.mjs imports cloudflare:node; the offline t4_sim hooks resolve it and
+          # --test-force-exit closes the in-process node server the recovered Worker starts.
+          node --import ./tests/t4_sim/register.mjs --test --test-force-exit --test-reporter=tap scripts/ci/nc017-checkout-hotmart.test.mjs | tee nc017.txt
+          grep -qx '# tests 4' nc017.txt
+          grep -qx '# pass 4' nc017.txt
+          grep -qx '# fail 0' nc017.txt
+      - name: Public PDF ZIP census (only checked-out repository)
+        run: |
+          set -euo pipefail
+          node scripts/ci/nc015-public-download-census.mjs
+  first-phase-static-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rebuild sales pages (no secrets and no deployment)
+        run: |
+          set -euo pipefail
+          python3 scripts/build_sales_public.py
+      - name: Preserve deterministic build for NC-017 offline reconciliation
+        uses: actions/upload-artifact@v4
+        with:
+          name: nc017-generated-sales-pages
+          path: sales-public/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Verify committed sales pages exactly reproduce
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- sales-public

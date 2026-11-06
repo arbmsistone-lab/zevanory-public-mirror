@@ -1,0 +1,59 @@
+name: database-url-inventory-contract
+
+# B07 T4: contrato offline do inventário de DATABASE_URL (só URLs falsas), contagem exata e mutantes impressos no log.
+# Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/database-url-consumer-inventory.yml"
+      - ".github/workflows/database-url-inventory-contract.yml"
+      - "scripts/ops/database_url_inventory.py"
+      - "scripts/ci/mutants_database_url_inventory.py"
+      - "tests/test_database_url_inventory.py"
+      - "tests/test_database_identity_worker.py"
+      - "worker/database-identity.mjs"
+      - ".github/workflows/*.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Inventory contract (offline, exact count)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+          suites="tests.test_database_url_inventory"; want=10
+          if [ -f tests/test_database_identity_worker.py ]; then suites="$suites tests.test_database_identity_worker"; want=$((want + 2)); fi
+          rc=0
+          python3 -m unittest $suites -v 2>&1 < /dev/null | tee /tmp/contract.txt || rc=$?
+          echo "::notice title=CONTRACT_TESTS::$(grep -E '^Ran [0-9]+ tests in ' /tmp/contract.txt || echo 'sem linha Ran') | $(tail -n 1 /tmp/contract.txt) | rc=$rc"
+          [ "$rc" = 0 ] || { echo "::error::suíte falhou (rc=$rc)"; exit 1; }
+          grep -qx "Ran $want tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de $want"; exit 1; }
+          grep -qx "OK" /tmp/contract.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
+          if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
+          echo "CONTRACT_TESTS=$want OK"
+      - name: Mutants (each must be killed)
+        if: always()
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_database_url_inventory.py < /dev/null | tee /tmp/mutants.txt || rc=$?
+          echo "::notice title=MUTANTS_DBURL_INVENTORY::$(grep -E '^MUTANTS?_|^MUTANT ' /tmp/mutants.txt | paste -sd'|' - | sed 's/%/%25/g; s/|/%0A/g')%0Arc=$rc"
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
+          n="$(grep -c '^MUTANT [A-Z][0-9]* KILLED' /tmp/mutants.txt || true)"
+          [ "$n" = "21" ] || { echo "::error::esperados 21 mutantes mortos, obtidos $n"; exit 1; }
+          if grep -q '^MUTANT [^ ]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

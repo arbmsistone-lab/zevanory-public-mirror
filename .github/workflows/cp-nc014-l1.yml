@@ -1,0 +1,28 @@
+name: NC-014 L1 Campaign Durable Object tests
+on:
+  pull_request:
+    paths:
+      - "worker/cp-durable-ledger.mjs"
+      - "worker/cp-nc014-campaign.mjs"
+      - "scripts/cp-nc014-l1-campaign.test.mjs"
+      - ".github/workflows/cp-nc014-l1.yml"
+permissions:
+  contents: read
+jobs:
+  campaign-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: L1 DO campaign, credits, reminders and timezone
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap scripts/cp-nc014-l1-campaign.test.mjs | tee l1.txt
+          grep -qx '# tests 8' l1.txt
+          grep -qx '# pass 8' l1.txt
+          grep -qx '# fail 0' l1.txt

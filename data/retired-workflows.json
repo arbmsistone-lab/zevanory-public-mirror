@@ -105,8 +105,8 @@
     },
     {
       "file": "mercadopago-exact-sha-recovery.yml",
-      "gate": "\"environment\":\"sandbox\"",
-      "reason": "recuperação de sandbox exige aprovação no ambiente protegido 'sandbox'"
+      "gate": "vars.R4_MP_EXACT_SHA_RECOVERY_OWNER_APPROVAL",
+      "reason": "R4: job retirado (if: false) só roda com aprovação do proprietário por SHA em R4_MP_EXACT_SHA_RECOVERY_OWNER_APPROVAL; o passo que enviava webhooks Mercado Pago assinados à produção foi removido"
     }
   ]
 }

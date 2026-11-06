@@ -1,0 +1,12 @@
+Assunto: Seu checklist: 15 minutos por dia para organizar o negócio
+
+{{saudacao}}
+
+Aqui está o checklist gratuito que você pediu:
+{{link:checklist}}
+
+Ele tem três blocos curtos (caixa, vendas e IA) e um fechamento uma vez por semana. Para começar, faça hoje só o bloco do caixa, que leva 5 minutos: anote as entradas e saídas do dia e confira o saldo real (banco + caixa) com o que foi anotado.
+
+Nos próximos dias envio dicas curtas para aplicar os outros blocos. Estas mensagens não pedem compra.
+
+{{assinatura}}

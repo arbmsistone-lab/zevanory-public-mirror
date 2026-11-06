@@ -36,7 +36,7 @@ test("before/after uses equal windows and a proportion test", () => {
 test("every registered experiment evaluates with no data and never claims a result", () => {
   const out = evaluateExperiments(registry, {}, Date.parse("2026-10-13T00:00:00Z"));
   assert.equal(out.length, registry.experiments.length);
-  for (const e of out) { assert.ok(["collecting", "tracking", "inconclusive"].includes(e.status), e.id); assert.ok(e.hypothesis && e.metric && e.verdict); }
+  for (const e of out) { assert.ok(["collecting", "tracking", "inconclusive", "closed"].includes(e.status), e.id); assert.ok(e.hypothesis && e.metric && e.verdict); }
 });
 
 import { fmtP } from "../scripts/audit/experiments.mjs";

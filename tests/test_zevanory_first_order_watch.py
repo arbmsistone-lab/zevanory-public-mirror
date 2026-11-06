@@ -94,7 +94,7 @@ class FirstOrderWatchTests(unittest.TestCase):
         def signed(path, headers):
             captured.append((path, headers))
             return {"schema": "zevanory.first-order-watch.v1", "counts": COUNTS}
-        with patch.dict("os.environ", {"CERTIFICATION_E2E_TOKEN": "k"*40}, clear=True):
+        with patch.dict("os.environ", {"ZEVANORY_OPERATOR_TOKEN": "k"*40}, clear=True):
             output = watchdog.read_paid_delivery_counts(fetch=signed)
         self.assertEqual(output, COUNTS)
         self.assertEqual(len(captured), 1)
@@ -111,7 +111,7 @@ class FirstOrderWatchTests(unittest.TestCase):
                 watchdog.read_paid_delivery_counts(fetch=lambda *_: None)
         for data in [None, {"paid": 1}, {**COUNTS, "paid": True},
                      {**COUNTS, "paid": -1}, {**COUNTS, "overdue_paid": 1}]:
-            with patch.dict("os.environ", {"CERTIFICATION_E2E_TOKEN":"k"*40}, clear=True):
+            with patch.dict("os.environ", {"ZEVANORY_OPERATOR_TOKEN":"k"*40}, clear=True):
                 with self.assertRaises(watchdog.WatchError):
                     watchdog.read_paid_delivery_counts(
                         fetch=lambda *_: {"schema":"zevanory.first-order-watch.v1","counts":data})
@@ -128,14 +128,15 @@ class FirstOrderWatchTests(unittest.TestCase):
         self.assertIn("refs/heads/gh-pages", watch["if"])
         self.assertNotIn("DATABASE_URL", watch["env"])
         self.assertIn("RESEND_API_KEY", watch["env"])
-        self.assertIn("CERTIFICATION_E2E_TOKEN", watch["env"])
+        self.assertIn("ZEVANORY_OPERATOR_TOKEN", watch["env"])
+        self.assertNotIn("CERTIFICATION_E2E_TOKEN", watch["env"])  # R9: nome antigo só como queda do segredo
         self.assertEqual(wf["concurrency"]["group"], "zevanory-owner-sales-switch")
 
     def test_actions_never_receives_primary_database_credentials(self):
         workflow = (ROOT / ".github/workflows/zevanory-first-order-watch.yml").read_text()
         self.assertNotIn("DATABASE_URL", workflow)
         self.assertNotIn("psycopg", workflow)
-        self.assertIn("CERTIFICATION_E2E_TOKEN", workflow)
+        self.assertIn("secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN", workflow)
         self.assertIn("CLOUDFLARE_API_TOKEN", workflow)
 
     def test_get_requests_are_only_read_in_stub(self):

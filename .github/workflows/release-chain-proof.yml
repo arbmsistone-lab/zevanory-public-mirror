@@ -1,0 +1,43 @@
+name: release-chain-proof
+
+# Sol AVAL 271 (R271-02/R271-03): prova executável, sem rede e sem segredos, da cadeia de publicação
+# (aprovação producao-critica, SHA esperado em cada Worker, rollback, certificação pós-publicação encadeada)
+# e ensaio do roteiro de leitura pós-publicação (NO-GO). Só pull_request: nunca dispara no merge.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/release/**"
+      - "tests/test_publication_chain_check.py"
+      - "tests/test_release_readback.py"
+      - ".github/workflows/central-production-deploy.yml"
+      - ".github/workflows/zevanory-sales-public-release.yml"
+      - ".github/workflows/portfolio-six-target-exact-cert.yml"
+      - ".github/workflows/release-chain-proof.yml"
+      - "scripts/portfolio_cert_contract.py"
+      - "sales-public/**"
+      - "pages-mirror/**"
+
+permissions:
+  contents: read
+
+jobs:
+  chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Publication chain static proof (C1-C7)
+        run: python3 scripts/release/publication_chain_check.py --out chain.json
+      - name: Chain-check mutants and readback dry-run (NO-GO)
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -v -s tests -p 'test_publication_chain_check.py' < /dev/null 2>&1 | tee t1.txt
+          grep -qx 'OK' t1.txt
+          python3 -m unittest discover -v -s tests -p 'test_release_readback.py' < /dev/null 2>&1 | tee t2.txt
+          grep -qx 'OK' t2.txt

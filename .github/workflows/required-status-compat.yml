@@ -34,6 +34,13 @@ jobs:
           python3 scripts/zevanory_10p_excellence_gate.py
           python3 scripts/test_crown_negative.py
           python3 scripts/zevanory_crown_gate.py
+      - name: P02 registro de decisões e P24 página x material entregue (sem rede, sem segredo)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -I scripts/p02/decision_registry_gate.py
+          python3 -I scripts/p24/product_quality_check.py
 
   zees-status:
     name: zees16-evidence / fail-closed

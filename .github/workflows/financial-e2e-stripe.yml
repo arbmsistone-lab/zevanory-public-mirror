@@ -31,7 +31,32 @@ jobs:
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      # R4: the sandbox lifecycle may target ONLY the isolated certification Worker, never *.zevanory.api.br.
+      CERTIFICATION_SANDBOX_URL: ${{ vars.CERTIFICATION_SANDBOX_URL }}
     steps:
+      - name: R4 owner approval gate (fail-closed)
+        shell: bash
+        env:
+          R4_OWNER_APPROVAL: ${{ vars.R4_FINANCIAL_E2E_STRIPE_OWNER_APPROVAL }}
+        run: |
+          # R4 (Sol rule 2d, owner authorization relayed 24/10/2026): this job cannot run unless the owner records a
+          # per-SHA approval "approved:<expected_sha>" in the repository variable R4_FINANCIAL_E2E_STRIPE_OWNER_APPROVAL.
+          if [ -z "${R4_OWNER_APPROVAL:-}" ] || [ "$R4_OWNER_APPROVAL" != "approved:${EXPECTED_SHA:-none}" ]; then
+            echo "::error title=R4_OWNER_APPROVAL_REQUIRED::no owner approval recorded for this run"
+            exit 1
+          fi
+
+      - name: R4 refuse production targets (isolated certification Worker only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="$(python3 -c 'import os,urllib.parse;print((urllib.parse.urlsplit(os.environ.get("CERTIFICATION_SANDBOX_URL","")).hostname or "").lower())')"
+          case "$host" in
+            zevanory.api.br|*.zevanory.api.br) echo "::error title=R4_PRODUCTION_HOST_DENIED::$host"; exit 1;;
+          esac
+          [[ "${CERTIFICATION_SANDBOX_URL:-}" =~ ^https://zevanory-certification\.[a-z0-9-]+\.workers\.dev$ ]] \
+            || { echo "::error title=R4_ISOLATED_CERTIFICATION_WORKER_REQUIRED::set vars.CERTIFICATION_SANDBOX_URL"; exit 1; }
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_SHA }}
@@ -58,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS https://api.stripe.com/v1/webhook_endpoints             -u "$STRIPE_SECRET_KEY:"             --data-urlencode "url=https://zevanory.api.br/api/webhooks?provider=stripe"             -d "enabled_events[]=payment_intent.succeeded"             -d "enabled_events[]=charge.refunded" > /tmp/stripe-webhook.json
+          curl -fsS https://api.stripe.com/v1/webhook_endpoints             -u "$STRIPE_SECRET_KEY:"             --data-urlencode "url=${CERTIFICATION_SANDBOX_URL}/api/webhooks?provider=stripe"             -d "enabled_events[]=payment_intent.succeeded"             -d "enabled_events[]=charge.refunded" > /tmp/stripe-webhook.json
           python3 - <<'PY'
           import json, os
           d=json.load(open("/tmp/stripe-webhook.json"))
@@ -80,7 +105,7 @@ jobs:
             "STRIPE_WEBHOOK_SECRET":os.environ["STRIPE_WEBHOOK_SECRET"]
           },open("/tmp/stripe-secrets.json","w"))
           PY
-          npx --yes wrangler@4.135.0 secret bulk /tmp/stripe-secrets.json --name zevanory
+          npx --yes wrangler@4.135.0 secret bulk /tmp/stripe-secrets.json --name zevanory-certification
           rm -f /tmp/stripe-secrets.json
           echo "STRIPE_SECRET_SYNC=PASS"
 
@@ -88,7 +113,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json
+          curl -fsS "${CERTIFICATION_SANDBOX_URL}/api/release" -o /tmp/release.json
           python3 - <<'PY'
           import json,os
           d=json.load(open("/tmp/release.json"))

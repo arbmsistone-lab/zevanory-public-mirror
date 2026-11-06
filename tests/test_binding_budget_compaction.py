@@ -14,8 +14,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/deploy/prepare-central-candidate.py"
 RECOVERED = ROOT / "worker/cloudflare-worker.recovered.mjs"
 
-# The two values this test has always required to stay accessible after compaction.
-REQUIRED = ["ZEVANORY_RELEASE_REF", "ZEVANORY_WHATSAPP_DISPLAY"]
+# The value this test has always required to stay accessible after compaction. ZEVANORY_WHATSAPP_DISPLAY
+# left the list when WhatsApp was retired (PR #896): the generator no longer emits it at all.
+REQUIRED = ["ZEVANORY_RELEASE_REF"]
 # Every other compacted key needs an explicit, reviewed justification here.
 REVIEWED_EXTRA = {
     "AGENT_AUTONOMY_MODE": "12/10, slot for GEMINI_API_KEY; code default 'guarded' (safest)",
@@ -26,7 +27,7 @@ NEVER_COMPACT = {
     "SALE_GLOBALLY_ENABLED", "MERCADOPAGO_ENV", "PRE_SALE_GATES_APPROVED", "ABSOLUTE_RELEASE_APPROVED",
     "CHECKOUT_ENABLED", "FINANCIAL_EVENTS_ENABLED", "PAYMENT_PROVIDER", "PAYMENT_RUNTIME_MODE",
     "PAYMENT_MERCHANT_IDENTITY_VERIFIED", "PAYMENT_PUBLIC_BASE_URL", "WHATSAPP_SALES_ENABLED",
-    "CERTIFICATION_PILOT_PRODUCTION_ALLOWED", "CERTIFICATION_PILOT_ENV", "ASAAS_ENV",
+    "ASAAS_ENV",
     "AGENT_HUMAN_APPROVAL_REQUIRED", "AGENT_AI_ENABLED", "ZEVANORY_RELEASE_SHA", "ZEVANORY_DEPLOYMENT_ENV",
 }
 
@@ -35,7 +36,7 @@ def compaction_loops(source):
     return [node for node in source.body if isinstance(node, ast.For)
             and isinstance(node.target, ast.Name) and node.target.id == "key"
             and isinstance(node.iter, ast.Tuple)
-            and [n.value for n in node.iter.elts if isinstance(n, ast.Constant)][:2] == REQUIRED]
+            and [n.value for n in node.iter.elts if isinstance(n, ast.Constant)][:1] == REQUIRED]
 
 
 class BindingBudgetAliasTest(unittest.TestCase):
@@ -49,10 +50,9 @@ class BindingBudgetAliasTest(unittest.TestCase):
     def test_compacted_release_and_contact_values_remain_accessible(self):
         self.assertEqual(len(self.loops), 1, "expected the explicit safe compaction loop")
         keys = self.keys()
-        self.assertEqual(keys[:2], REQUIRED)
-        self.assertEqual(set(keys[2:]), set(REVIEWED_EXTRA), "every extra compacted key must be reviewed here")
+        self.assertEqual(keys[:1], REQUIRED)
+        self.assertEqual(set(keys[1:]), set(REVIEWED_EXTRA), "every extra compacted key must be reviewed here")
         before = {"ZEVANORY_RELEASE_REF": "gh-pages",
-                  "ZEVANORY_WHATSAPP_DISPLAY": "+55 88 99254-5413",
                   "AGENT_AUTONOMY_MODE": "progressive",
                   "AGENT_AI_MAX_RUNS_PER_HOUR": "100",
                   "SALE_GLOBALLY_ENABLED": "false",

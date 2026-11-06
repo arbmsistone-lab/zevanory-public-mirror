@@ -1,0 +1,215 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Ln.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 registro fiscal sem exigir DEFINIDO": {
+   "primary": [
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.3]"
+    }
+   ]
+  },
+  "M02 campos da decisão não exigidos": {
+   "primary": [
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.2]"
+    }
+   ]
+  },
+  "M03 decisão por quem não é o proprietário": {
+   "primary": [
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.3]"
+    }
+   ]
+  },
+  "M04 decisão datada no futuro aceita": {
+   "primary": [
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.3]"
+    }
+   ]
+  },
+  "M05 portão sem o sinal fiscal": {
+   "primary": [
+    {
+     "test_pattern": "L2",
+     "assertion_pattern": "[L2.3]"
+    },
+    {
+     "test_pattern": "L4",
+     "assertion_pattern": "[L4.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L1",
+     "assertion_pattern": "[L1.1]",
+     "justification": "o gate roda sobre a árvore real e confere estaticamente a trava fiscal no código; com a trava quebrada ele reprova e o caso positivo L1 falha em [L1.1]"
+    },
+    {
+     "test_pattern": "L11",
+     "assertion_pattern": "re:edição sem efeito",
+     "justification": "L11 monta a fixture removendo \"fiscal\" de REQUIRED; com o mutante a lista já está sem o sinal e a edição vira no-op, o que a guarda da fixture recusa (edição sem efeito)"
+    }
+   ]
+  },
+  "M06 sinal fiscal sempre verdadeiro": {
+   "primary": [
+    {
+     "test_pattern": "L2",
+     "assertion_pattern": "[L2.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L1",
+     "assertion_pattern": "[L1.1]",
+     "justification": "o gate roda sobre a árvore real e confere estaticamente a trava fiscal no código; com a trava quebrada ele reprova e o caso positivo L1 falha em [L1.1]"
+    }
+   ]
+  },
+  "M07 identificação do fornecedor não conferida": {
+   "primary": [
+    {
+     "test_pattern": "L5",
+     "assertion_pattern": "[L5.1]"
+    }
+   ]
+  },
+  "M08 campo do resumo ausente aceito": {
+   "primary": [
+    {
+     "test_pattern": "L6",
+     "assertion_pattern": "[L6.1]"
+    }
+   ]
+  },
+  "M09 preço diferente do catálogo aceito": {
+   "primary": [
+    {
+     "test_pattern": "L7",
+     "assertion_pattern": "[L7.1]"
+    }
+   ]
+  },
+  "M10 arrependimento não conferido": {
+   "primary": [
+    {
+     "test_pattern": "L8",
+     "assertion_pattern": "[L8.1]"
+    }
+   ]
+  },
+  "M11 declarações dos arts. 4º e 5º não conferidas": {
+   "primary": [
+    {
+     "test_pattern": "L9",
+     "assertion_pattern": "[L9.1]"
+    }
+   ]
+  },
+  "M12 dígitos do CNPJ não conferidos": {
+   "primary": [
+    {
+     "test_pattern": "L10",
+     "assertion_pattern": "[L10.1]"
+    },
+    {
+     "test_pattern": "L16",
+     "assertion_pattern": "[L16.2]"
+    }
+   ]
+  },
+  "M13 REQUIRED sem fiscal aceito": {
+   "primary": [
+    {
+     "test_pattern": "L11",
+     "assertion_pattern": "[L11.1]"
+    }
+   ]
+  },
+  "M14 status público sem fiscal aceito": {
+   "primary": [
+    {
+     "test_pattern": "L12",
+     "assertion_pattern": "[L12.1]"
+    }
+   ]
+  },
+  "M15 /api/status sem fiscal aceito": {
+   "primary": [
+    {
+     "test_pattern": "L13",
+     "assertion_pattern": "[L13.1]"
+    }
+   ]
+  },
+  "M16 DEFINIDO incompleto aceito": {
+   "primary": [
+    {
+     "test_pattern": "L14",
+     "assertion_pattern": "[L14.1]"
+    }
+   ]
+  },
+  "M17 NAO_DEFINIDO preenchido aceito": {
+   "primary": [
+    {
+     "test_pattern": "L14",
+     "assertion_pattern": "[L14.2]"
+    }
+   ]
+  },
+  "M18 checklist incompleto aceito": {
+   "primary": [
+    {
+     "test_pattern": "L15",
+     "assertion_pattern": "[L15.1]"
+    }
+   ]
+  },
+  "M19 taxas adicionais não conferidas": {
+   "primary": [
+    {
+     "test_pattern": "L17",
+     "assertion_pattern": "[L17.1]"
+    }
+   ]
+  },
+  "M20 link para os termos não conferido": {
+   "primary": [
+    {
+     "test_pattern": "L18",
+     "assertion_pattern": "[L18.1]"
+    }
+   ]
+  },
+  "M21 status público abre sem fiscal": {
+   "primary": [
+    {
+     "test_pattern": "L1",
+     "assertion_pattern": "[L1.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L12",
+     "assertion_pattern": "re:edição sem efeito",
+     "justification": "L12 monta a fixture trocando a linha do status público pela versão sem fiscal; com o mutante a linha já é essa e a edição vira no-op, recusada pela guarda da fixture (edição sem efeito)"
+    }
+   ]
+  },
+  "M22 procedimento fiscal sem referência no repositório": {
+   "primary": [
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.3]"
+    }
+   ]
+  }
+ }
+}

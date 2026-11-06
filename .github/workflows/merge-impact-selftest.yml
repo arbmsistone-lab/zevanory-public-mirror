@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # Histórico completo: o replay do #833 usa os workflows FIXADOS no merge be47edb3 (árvore conferida no teste).
+          fetch-depth: 0
       - name: Suíte integral (35 testes) sobre o repositório completo
         run: |
           set -euo pipefail

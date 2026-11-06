@@ -1,0 +1,355 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Ln.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 pre-fix: buy CTA required regardless of switch": {
+   "primary": [
+    {
+     "test_pattern": "L1",
+     "assertion_pattern": "[L1.1]"
+    },
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L5",
+     "assertion_pattern": "[L5.1]",
+     "justification": "fixture derivada da página fechada real julgada pela forma ABERTA: falha em buy_target_missing/open_buy_anchor_missing, não no rótulo fechado que o teste espera"
+    },
+    {
+     "test_pattern": "L6",
+     "assertion_pattern": "[L6.1]",
+     "justification": "fixture derivada da página fechada real julgada pela forma ABERTA: falha em buy_target_missing/open_buy_anchor_missing, não no rótulo fechado que o teste espera"
+    },
+    {
+     "test_pattern": "L7",
+     "assertion_pattern": "[L7.1]",
+     "justification": "fixture derivada da página fechada real julgada pela forma ABERTA: falha em buy_target_missing/open_buy_anchor_missing, não no rótulo fechado que o teste espera"
+    },
+    {
+     "test_pattern": "L8",
+     "assertion_pattern": "[L8.1]",
+     "justification": "fixture derivada da página fechada real julgada pela forma ABERTA: falha em buy_target_missing/open_buy_anchor_missing, não no rótulo fechado que o teste espera"
+    },
+    {
+     "test_pattern": "L9",
+     "assertion_pattern": "[L9.1]",
+     "justification": "fixture derivada da página fechada real julgada pela forma ABERTA: falha em buy_target_missing/open_buy_anchor_missing, não no rótulo fechado que o teste espera"
+    },
+    {
+     "test_pattern": "L10",
+     "assertion_pattern": "[L10.1]",
+     "justification": "fixture derivada da página fechada real julgada pela forma ABERTA: falha em buy_target_missing/open_buy_anchor_missing, não no rótulo fechado que o teste espera"
+    }
+   ],
+   "broad_reason": "a mutação restaura o comportamento anterior ao fix (exigir botão de compra com vendas fechadas): toda fixture de vendas fechadas passa a ser julgada pela forma aberta"
+  },
+  "M02 closed accepts /comprar/": {
+   "primary": [
+    {
+     "test_pattern": "L5",
+     "assertion_pattern": "[L5.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.1]",
+     "justification": "a página aberta com interruptor fechado ainda falha, mas no botão visível (closed_buy_cta_present), não em closed_buy_href_present"
+    }
+   ]
+  },
+  "M03 closed accepts external checkout": {
+   "primary": [
+    {
+     "test_pattern": "L6",
+     "assertion_pattern": "[L6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M04 closed accepts visible buy CTA": {
+   "primary": [
+    {
+     "test_pattern": "L7",
+     "assertion_pattern": "[L7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M05 closed buy CTA by raw substring (attribute counted)": {
+   "primary": [
+    {
+     "test_pattern": "L1",
+     "assertion_pattern": "[L1.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L8",
+     "assertion_pattern": "[L8.1]",
+     "justification": "a página fechada real guarda 'Comprar agora' em data-zev-open-text; a checagem ingênua dispara closed_buy_cta_present antes do InStock"
+    },
+    {
+     "test_pattern": "L9",
+     "assertion_pattern": "[L9.1]",
+     "justification": "idem: closed_buy_cta_present dispara antes da exigência da lista de espera"
+    },
+    {
+     "test_pattern": "L10",
+     "assertion_pattern": "[L10.1]",
+     "justification": "idem: closed_buy_cta_present dispara antes da exigência do rótulo de fechado"
+    }
+   ]
+  },
+  "M06 closed accepts InStock": {
+   "primary": [
+    {
+     "test_pattern": "L8",
+     "assertion_pattern": "[L8.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M07 closed waitlist CTA not required": {
+   "primary": [
+    {
+     "test_pattern": "L9",
+     "assertion_pattern": "[L9.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M08 closed waitlist not bound to SKU": {
+   "primary": [
+    {
+     "test_pattern": "L9",
+     "assertion_pattern": "[L9.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M09 closed waitlist dead href accepted": {
+   "primary": [
+    {
+     "test_pattern": "L9",
+     "assertion_pattern": "[L9.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M10 closed label not required": {
+   "primary": [
+    {
+     "test_pattern": "L10",
+     "assertion_pattern": "[L10.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M11 status open by truthiness": {
+   "primary": [
+    {
+     "test_pattern": "L16",
+     "assertion_pattern": "[L16.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M12 status open with blocked accepted": {
+   "primary": [
+    {
+     "test_pattern": "L16",
+     "assertion_pattern": "[L16.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M13 status non-200 accepted": {
+   "primary": [
+    {
+     "test_pattern": "L15",
+     "assertion_pattern": "[L15.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M14 status network error read as closed": {
+   "primary": [
+    {
+     "test_pattern": "L15",
+     "assertion_pattern": "[L15.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M15 status non-JSON read as closed": {
+   "primary": [
+    {
+     "test_pattern": "L15",
+     "assertion_pattern": "[L15.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M16 open buy anchor not required": {
+   "primary": [
+    {
+     "test_pattern": "L14",
+     "assertion_pattern": "[L14.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M17 open foreign SKU accepted": {
+   "primary": [
+    {
+     "test_pattern": "L13",
+     "assertion_pattern": "[L13.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M18 open waitlist leftover accepted": {
+   "primary": [
+    {
+     "test_pattern": "L11",
+     "assertion_pattern": "[L11.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M19 open closed-label leftover accepted": {
+   "primary": [
+    {
+     "test_pattern": "L12",
+     "assertion_pattern": "[L12.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M20 release sales_mode cross-check removed": {
+   "primary": [
+    {
+     "test_pattern": "L17",
+     "assertion_pattern": "[L17.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M21 switch reading inverted": {
+   "primary": [
+    {
+     "test_pattern": "L1",
+     "assertion_pattern": "[L1.1]"
+    },
+    {
+     "test_pattern": "L2",
+     "assertion_pattern": "[L2.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "L3",
+     "assertion_pattern": "[L3.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L4",
+     "assertion_pattern": "[L4.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L5",
+     "assertion_pattern": "[L5.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L6",
+     "assertion_pattern": "[L6.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L7",
+     "assertion_pattern": "[L7.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L8",
+     "assertion_pattern": "[L8.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L9",
+     "assertion_pattern": "[L9.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L10",
+     "assertion_pattern": "[L10.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L11",
+     "assertion_pattern": "[L11.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L12",
+     "assertion_pattern": "[L12.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L13",
+     "assertion_pattern": "[L13.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L14",
+     "assertion_pattern": "[L14.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L17",
+     "assertion_pattern": "[L17.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    },
+    {
+     "test_pattern": "L18",
+     "assertion_pattern": "[L18.1]",
+     "justification": "com a leitura invertida o sales_mode do release deixa de casar (sales_mode_mismatch) ou, quando casa, a página é julgada pela forma oposta; o rótulo obtido difere do esperado"
+    }
+   ],
+   "broad_reason": "inverter a leitura do interruptor muda o modo de todas as fixtures que leem um status válido (só L15/L16, que falham antes, ficam de fora)"
+  },
+  "M22 guarantee not required": {
+   "primary": [
+    {
+     "test_pattern": "L18",
+     "assertion_pattern": "[L18.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M23 supplier identification not required": {
+   "primary": [
+    {
+     "test_pattern": "L18",
+     "assertion_pattern": "[L18.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M24 open buy target substring not required": {
+   "primary": [
+    {
+     "test_pattern": "L4",
+     "assertion_pattern": "[L4.1]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

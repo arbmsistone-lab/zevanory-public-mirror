@@ -17,7 +17,7 @@ const calendarAngle = process.env.T2_ANGLE || ANGLES[Math.floor(day / ALL_SLUGS.
 if (CALENDAR && (!ALL_SLUGS.includes(calendarSlug) || !ANGLES.includes(calendarAngle))) throw new Error('T2_CALENDAR_INVALID');
 const SLUGS = CALENDAR ? [calendarSlug] : ALL_SLUGS;
 const ANGLE = CALENDAR ? calendarAngle : 'oferta';
-const secret = process.env.CERTIFICATION_E2E_TOKEN || '';
+const secret = process.env.ZEVANORY_OPERATOR_TOKEN || '';
 if (secret.length < 32) throw new Error('T2_CERTIFICATION_TOKEN_UNAVAILABLE');
 const out = process.env.T2_OUT || 't2-output';
 fs.mkdirSync(out, { recursive: true });

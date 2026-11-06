@@ -1,0 +1,141 @@
+{
+ "generated_by": "scripts/ci/site_crawl_gate.mjs",
+ "sales": {
+  "surface": "vendas.zevanory.api.br (sales-public via worker/sales-public-worker.mjs)",
+  "crawled": 129,
+  "broken_count": 0,
+  "broken": [],
+  "not_found_status": 404,
+  "jargon": {
+   "/zevanory-cfo": {
+    "FAIL_CLOSED": 1,
+    "UNCONFIGURED": 1,
+    "READY": 1,
+    "ZEES-16": 1
+   },
+   "/arbm-contador-saloes": {
+    "tenant": 3,
+    "SHA": 1,
+    "kill-switch": 1,
+    "gate global": 2,
+    "deliberadamente bloqueada": 1,
+    "E2E": 1
+   }
+  },
+  "apex_refs_not_crawled": [
+   "/atendimento",
+   "/brand/export/link-card.png",
+   "/brand/export/pin.png",
+   "/entrega/reenviar",
+   "/pedir-reembolso"
+  ]
+ },
+ "blog": {
+  "surface": "zevanory.api.br/blog (central Worker renderers)",
+  "pages": {
+   "/blog (KV vazio)": {
+    "stylesheets": 1,
+    "header": true,
+    "footer": true,
+    "noindex": true,
+    "broken_refs": [],
+    "jargon": {}
+   },
+   "/blog (com artigo)": {
+    "stylesheets": 1,
+    "header": true,
+    "footer": true,
+    "noindex": false,
+    "broken_refs": [],
+    "jargon": {}
+   },
+   "/blog/<slug>": {
+    "stylesheets": 1,
+    "header": true,
+    "footer": true,
+    "noindex": false,
+    "broken_refs": [],
+    "jargon": {}
+   }
+  }
+ },
+ "pages": {
+  "surface": "arbmsistone-lab.github.io/zevanory-public-mirror (GitHub Pages copy)",
+  "stubs": 148,
+  "problems": [],
+  "targets": {
+   "https://vendas.zevanory.api.br/solucoes": 200,
+   "https://vendas.zevanory.api.br/afiliados": 200,
+   "https://vendas.zevanory.api.br/arbm-contador-saloes": 200,
+   "https://vendas.zevanory.api.br/calculadora-cmv": 200,
+   "https://vendas.zevanory.api.br/calculadora-fluxo-de-caixa": 200,
+   "https://vendas.zevanory.api.br/calculadora-margem-de-lucro": 200,
+   "https://vendas.zevanory.api.br/calculadora-ponto-de-equilibrio": 200,
+   "https://vendas.zevanory.api.br/calculadora-preco-de-venda": 200,
+   "https://vendas.zevanory.api.br/calculadora-preco-hora-servico": 200,
+   "https://vendas.zevanory.api.br/calculadora-taxa-maquininha": 200,
+   "https://vendas.zevanory.api.br/checklist-15-minutos": 200,
+   "https://vendas.zevanory.api.br/combo-ia-vendas": 200,
+   "https://vendas.zevanory.api.br/como-cobrar-cliente-pelo-whatsapp": 200,
+   "https://vendas.zevanory.api.br/como-mandar-orcamento-pelo-whatsapp": 200,
+   "https://vendas.zevanory.api.br/conteudo-pronto": 200,
+   "https://vendas.zevanory.api.br/ferramentas": 200,
+   "https://vendas.zevanory.api.br/ia-na-pratica": 200,
+   "https://vendas.zevanory.api.br/ia-para-academia": 200,
+   "https://vendas.zevanory.api.br/ia-para-acaiteria": 200,
+   "https://vendas.zevanory.api.br/ia-para-advocacia": 200,
+   "https://vendas.zevanory.api.br/ia-para-agencia-de-viagens": 200,
+   "https://vendas.zevanory.api.br/ia-para-arquitetura-e-design-de-interiores": 200,
+   "https://vendas.zevanory.api.br/ia-para-assistencia-tecnica-de-celular": 200,
+   "https://vendas.zevanory.api.br/ia-para-autoescola": 200,
+   "https://vendas.zevanory.api.br/ia-para-barbearia": 200,
+   "https://vendas.zevanory.api.br/ia-para-clinica-e-consultorio": 200,
+   "https://vendas.zevanory.api.br/ia-para-clinica-odontologica": 200,
+   "https://vendas.zevanory.api.br/ia-para-confeitaria": 200,
+   "https://vendas.zevanory.api.br/ia-para-contabilidade": 200,
+   "https://vendas.zevanory.api.br/ia-para-deposito-de-bebidas": 200,
+   "https://vendas.zevanory.api.br/ia-para-distribuidora-de-gas-e-agua": 200,
+   "https://vendas.zevanory.api.br/ia-para-eletricista-e-encanador": 200,
+   "https://vendas.zevanory.api.br/ia-para-escola-de-idiomas": 200,
+   "https://vendas.zevanory.api.br/ia-para-estetica": 200,
+   "https://vendas.zevanory.api.br/ia-para-farmacia": 200,
+   "https://vendas.zevanory.api.br/ia-para-fisioterapia": 200,
+   "https://vendas.zevanory.api.br/ia-para-floricultura": 200,
+   "https://vendas.zevanory.api.br/ia-para-fotografo": 200,
+   "https://vendas.zevanory.api.br/ia-para-hamburgueria": 200,
+   "https://vendas.zevanory.api.br/ia-para-imobiliaria": 200,
+   "https://vendas.zevanory.api.br/ia-para-lava-jato": 200,
+   "https://vendas.zevanory.api.br/ia-para-loja-de-roupas": 200,
+   "https://vendas.zevanory.api.br/ia-para-manicure": 200,
+   "https://vendas.zevanory.api.br/ia-para-marmitaria": 200,
+   "https://vendas.zevanory.api.br/ia-para-materiais-de-construcao": 200,
+   "https://vendas.zevanory.api.br/ia-para-mercadinho": 200,
+   "https://vendas.zevanory.api.br/ia-para-nutricionista": 200,
+   "https://vendas.zevanory.api.br/ia-para-oficina-mecanica": 200,
+   "https://vendas.zevanory.api.br/ia-para-otica": 200,
+   "https://vendas.zevanory.api.br/ia-para-padaria": 200,
+   "https://vendas.zevanory.api.br/ia-para-papelaria": 200,
+   "https://vendas.zevanory.api.br/ia-para-pet-shop": 200,
+   "https://vendas.zevanory.api.br/ia-para-pizzaria": 200,
+   "https://vendas.zevanory.api.br/ia-para-pousada": 200,
+   "https://vendas.zevanory.api.br/ia-para-psicologo": 200,
+   "https://vendas.zevanory.api.br/ia-para-restaurante-e-lanchonete": 200,
+   "https://vendas.zevanory.api.br/ia-para-salao-de-beleza": 200,
+   "https://vendas.zevanory.api.br/ia-por-ramo": 200,
+   "https://vendas.zevanory.api.br/kit-afiliado": 200,
+   "https://vendas.zevanory.api.br/lucro-e-caixa": 200,
+   "https://vendas.zevanory.api.br/material-gratuito": 200,
+   "https://vendas.zevanory.api.br/mensagem-para-cliente-que-sumiu": 200,
+   "https://vendas.zevanory.api.br/negocio-completo": 200,
+   "https://vendas.zevanory.api.br/privacidade": 200,
+   "https://vendas.zevanory.api.br/quem-criou/": 200,
+   "https://vendas.zevanory.api.br/reembolso": 200,
+   "https://vendas.zevanory.api.br/termos": 200,
+   "https://vendas.zevanory.api.br/vendas-na-pratica": 200,
+   "https://vendas.zevanory.api.br/zevanory-cfo": 200,
+   "https://vendas.zevanory.api.br/zevanory-sales": 200
+  }
+ },
+ "jargon_new_vs_baseline": [],
+ "jargon_baseline_stale": []
+}

@@ -1,10 +1,9 @@
 name: ZEVANORY financial E2E closure
 
+# RETIRADO (F2 item 9): rodava o ciclo sandbox CONTRA o Worker de produção com MERCADOPAGO_TEST_* no Environment
+# producao-critica e caía para o token/segredo de PRODUÇÃO quando o de teste faltava. Sem gatilho de push (o selftest
+# retroativo do #833 usa os workflows fixados no merge be47edb3, como no #904); o job tem if: false.
 on:
-  push:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/financial-e2e-closure.yml"
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -22,12 +21,10 @@ concurrency:
 jobs:
   financial-e2e:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
-    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
+    if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
-      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
     steps:

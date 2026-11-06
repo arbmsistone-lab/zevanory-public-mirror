@@ -1,0 +1,35 @@
+{
+  "schema": "zevanory-p24-rubric/v1",
+  "process": "P24 Qualidade do produto",
+  "risk_class": "R2",
+  "source": "Roteiro Mestre v4.7, seção 5 (P24), seção 6.1 (calibração), seção 6.4 (R2), seção 6.5 (teto de inferência), seção 8 (certificação)",
+  "rule": "Cada material vendido conferido contra a página de venda: promete X, entrega X; arquivos abrem; sem erro; acessível (PI). Avaliação cega pela rubrica.",
+  "criteria": [
+    {"id": "R24-01", "name": "Toda promessa da página tem entrega declarada", "kind": "PI", "method": "automatico", "check": "scripts/p24/product_quality_check.py: promessa extraída da página sem entrada em data/p24/promise-map.json reprova."},
+    {"id": "R24-02", "name": "Entregável prometido existe no zip catalogado", "kind": "PI", "method": "automatico", "check": "Arquivo mapeado presente no manifesto do zip cujo SHA-256 é igual ao do catálogo do Worker."},
+    {"id": "R24-03", "name": "Formato prometido é o formato entregue", "kind": "PI", "method": "automatico", "check": "PDF, DOCX ou XLSX citado na promessa exige arquivo com essa extensão entre os mapeados."},
+    {"id": "R24-04", "name": "Arquivos abrem", "kind": "PI", "method": "automatico", "check": "Zip íntegro; PDF com páginas e texto; DOCX com conteúdo; XLSX com abas; TXT em UTF-8 estrito."},
+    {"id": "R24-05", "name": "Sem erro de fórmula", "kind": "PI", "method": "automatico", "check": "Recálculo de cada XLSX pelo LibreOffice sem #REF!, #DIV/0!, #NAME?, #VALUE!, #N/A, #NUM!, #NULL! ou Err:."},
+    {"id": "R24-06", "name": "Pacote 'completo' é igual ao produto avulso", "kind": "PI", "method": "automatico", "check": "Cada arquivo do produto avulso aparece no pacote com o mesmo SHA-256."},
+    {"id": "R24-07", "name": "Conta de economia do pacote fecha", "kind": "PI", "method": "automatico", "check": "Soma dos avulsos e economia citadas na página iguais aos preços de data/products.json."},
+    {"id": "R24-08", "name": "Acessível: documento marcado, com título e idioma corretos", "kind": "PI", "method": "automatico", "check": "PDF com /MarkInfo Marked e árvore de estrutura; PDF com título nos metadados (WCAG 2.4.2, técnica PDF18); PDF e DOCX com idioma declarado pt (WCAG 3.1.1). Título genérico vira achado. Defeito conhecido fica em data/p24/open-defects.json e mantém o veredito P24 em FAIL; defeito novo reprova o gate."},
+    {"id": "R24-09", "name": "Tema prometido presente no material", "kind": "PI", "method": "automatico_parcial", "check": "Âncoras temáticas no arquivo indicado. É evidência de presença do tema, não de qualidade; promessas sem correspondência clara ficam REVISAO_HUMANA."},
+    {"id": "R24-10", "name": "Sem promessa de ganho e sem marcador de rascunho no material", "kind": "PI", "method": "automatico_triagem", "check": "Busca por promessas de ganho e marcadores de rascunho; ocorrência vira achado para revisão humana."},
+    {"id": "R24-11", "name": "Avaliação cega do material contra a página", "kind": "PI", "method": "humano_cego", "check": "Avaliador sem acesso ao veredito automático lê a página e o material e marca, por promessa: entregue, parcial, ausente. Concordância com o gate automático medida por kappa de Cohen (seção 6.1: ≥ 0,80 geral; ≥ 0,70 por categoria com n ≥ 20; 100% de recall nos casos críticos)."},
+    {"id": "R24-12", "name": "Motivos de reembolso e avaliações reais", "kind": "LB", "method": "operacional", "check": "Alimentado por P13. Sem vendas, NOT_AVAILABLE."}
+  ],
+  "statuses": {
+    "ENTREGUE": "Arquivo(s) prometido(s) presentes, abrem e têm o formato citado.",
+    "ENTREGUE_IDENTICO_AO_AVULSO": "Componente de pacote idêntico, arquivo por arquivo, ao produto avulso.",
+    "CONTA_CONFERE": "Conta de preço do pacote confere com data/products.json.",
+    "TEMA_PRESENTE_ANCORA_AUTOMATICA": "Âncoras do tema encontradas no arquivo; avaliação cega pendente.",
+    "BENEFICIO_TEMA_PRESENTE_NAO_GARANTIDO": "Benefício declarado; o material trata do tema, mas o resultado depende de quem aplica e não é garantido.",
+    "REVISAO_HUMANA": "O executor não considera a correspondência comprovada; achado registrado.",
+    "FAIL": "Falha objetiva; o gate reprova."
+  },
+  "blind_evaluation": {
+    "status": "NOT_AVAILABLE",
+    "reason": "Nenhum avaliador humano cego designado até 25/10/2026. Sem essa avaliação, P24 não passa de NÃO COMPROVADO, mesmo com o gate automático verde."
+  },
+  "verdict_rule": "Gate automático verde é condição necessária, não suficiente. P24 só pode ser homologado com a avaliação cega (R24-11) concluída, achados resolvidos e parecer do auditor; certificação exige ainda a seção 8."
+}

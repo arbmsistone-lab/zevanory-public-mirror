@@ -1,0 +1,6 @@
+// Fixture for mutant M28 only (historical forged-webhook generator shape). Never executed.
+const payload={object:"whatsapp_business_account",entry:[{changes:[{field:"messages",value:{messages:[{from:owner,type:"text",text:{body:"quanto custa?"}}]}}]}]};
+const body=JSON.stringify(payload);
+const key=await crypto.subtle.importKey("raw",encoder.encode(record.app_secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+const signature="sha256="+hex(await crypto.subtle.sign("HMAC",key,encoder.encode(body)));
+await fetch(base+"/api/webhooks/meta",{method:"POST",headers:{"x-hub-signature-256":signature},body});

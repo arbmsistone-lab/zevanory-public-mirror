@@ -40,22 +40,11 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s=Path("worker/whatsapp-credential-broker.mjs").read_text()
-          for marker in [
-              'OFFICIAL_E164 = "5588992545413"',
-              'u.hostname==="whatsapp-broker.internal"',
-              'old_number_active_route:false',
-              'official_number_not_verified',
-              '/broker/verify-signature',
-              '/broker/verify-token',
-              '/broker/oauth/callback',
-              '/broker/request-code',
-              '/broker/verify-code',
-              '/broker/send',
-              '/broker/media',
-              'whatsapp_business_management',
-              'whatsapp_business_messaging',
-          ]:
+          # The broker is a retired 410 tombstone (PR #896): validate the tombstone contract, not the old routes.
+          for marker in ['status: 410', 'retired: true', 'error: "whatsapp_channel_retired"']:
               assert marker in s, marker
+          for forbidden in ['graph.facebook.com', 'await fetch', 'env.', '/broker/send', 'OFFICIAL_E164']:
+              assert forbidden not in s, forbidden
           assert "console.log" not in s
           print("WHATSAPP_BROKER_STATIC_GATE=PASS")
           PY

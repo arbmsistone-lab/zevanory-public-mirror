@@ -2,9 +2,9 @@
 // Lê o YAML de verdade (job a job), não a primeira linha "environment:" do arquivo.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readTextNormalized } from './helpers/text.mjs';
 
-const read = (name) => readFileSync(new URL('../.github/workflows/' + name, import.meta.url), 'utf8');
+const read = (name) => readTextNormalized(new URL('../.github/workflows/' + name, import.meta.url));
 function jobEnvironment(yaml, job) {
   const lines = yaml.split('\n');
   const start = lines.findIndex((l) => l === `  ${job}:` || l.startsWith(`  ${job}: `) || l.startsWith(`  ${job}:  #`));

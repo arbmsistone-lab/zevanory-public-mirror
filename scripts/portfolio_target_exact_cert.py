@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-import hashlib, json, os, pathlib, re, time, urllib.request, subprocess
+import hashlib, json, os, pathlib, re, sys, time, urllib.request, subprocess
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent))
+import portfolio_cert_contract as contract
+# Contrato v3: pull_request = pré-merge (produção == fonte no SHA PUBLICADO de cada superfície; deriva publicada x base
+# e mudanças candidato x base registradas); workflow_run dos deploys / push / dispatch = pós-publicação, só depois da
+# promoção efetiva observada (produção == fonte, exata). Ver portfolio_cert_contract.py.
+EVENT=os.environ.get("GITHUB_EVENT_NAME")
+CONTEXT=contract.resolve_context(EVENT,os.environ.get("CERT_CONTEXT"))
+TRIGGER=contract.resolve_trigger(EVENT,os.environ.get("TRIGGER_SURFACE"))
 SLUG=os.environ["TARGET_SLUG"]
 SHA=os.environ["EXPECTED_SHA"].lower()
 BASE="https://zevanory.api.br"
@@ -32,18 +40,55 @@ def get(url, headers=None):
         body=r.read(); rh={k.lower():v for k,v in r.headers.items()}; code=r.status
     return code,body,rh,round((time.perf_counter()-t)*1000,2)
 
-code,live,headers,ms=get(f"{BASE}/{SLUG}")
+def get_final(url):
+    req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-PORTFOLIO-CERT/3.0","Accept":"text/html","Cache-Control":"no-cache"})
+    with urllib.request.urlopen(req,timeout=25) as r:
+        return r.status,r.read().decode("utf-8","replace"),r.geturl()
+
+def read_release(surface):
+    try:
+        c,b,_,_=get(contract.SURFACES[surface]["release_url"]+("?t=%d"%time.time()))
+        return contract.release_sha(surface,json.loads(b.decode())) if c==200 else None
+    except Exception:
+        return None
+
+def contract_fail(e):
+    print(f"::error title=PORTFOLIO_CERT_CONTRACT::{SLUG} {CONTEXT} {e.code} {json.dumps(e.detail,ensure_ascii=False)[:1500]}")
+    raise AssertionError((SLUG,e.code,e.detail)) from None
+
+head_fields=contract.extract_fields(html)
+_,_,final_url=get_final(f"{BASE}/{SLUG}")
+try:
+    serving=contract.surface_for_url(final_url)
+    if CONTEXT==contract.PRE_MERGE:
+        deployed_shas={s:read_release(s) for s in contract.SURFACES}
+        premerge=contract.premerge_inputs(f"{SLUG}/index.html",SHA,os.environ.get("BASE_SHA","").lower(),deployed_shas,serving)
+        code,live,headers,ms=get(f"{BASE}/{SLUG}")
+        live_fields=contract.extract_fields(live.decode("utf-8","replace"))
+        live_contract=contract.evaluate_premerge(head_fields,live_fields,premerge["deployed"],premerge["base"],premerge["merge_base"],
+            head_html=html,diff_text=premerge["diff_text"],surfaces=premerge["surfaces"],serving=serving)
+        live_contract.update(base_sha=premerge["base_sha"],merge_base_sha=premerge["merge_base_sha"])
+    else:
+        promotion=contract.await_promotion(SHA,head_fields,serving,read_release,
+            lambda sha: contract.fields_at_sha(sha,f"{SLUG}/index.html"),trigger=TRIGGER,
+            wait_seconds=int(os.environ.get("CERT_PROMOTION_WAIT_SECONDS","900")))
+        code,live,headers,ms=get(f"{BASE}/{SLUG}")
+        live_fields=contract.extract_fields(live.decode("utf-8","replace"))
+        live_contract=contract.evaluate_post_deploy(head_fields,live_fields,promotion)
+except contract.ContractError as e:
+    contract_fail(e)
 assert code==200
 live_text=live.decode("utf-8","replace")
 # Owner-approved canonical is the domain that serves the page (zevanory.api.br/<slug> 308-redirects there).
 assert f'href="https://vendas.zevanory.api.br/{SLUG}"' in live_text,(SLUG,"canonical_live_mismatch")
-src_title=re.search(r"<title>(.*?)</title>",html,re.I|re.S)
-live_title=re.search(r"<title>(.*?)</title>",live_text,re.I|re.S)
-assert src_title and live_title and src_title.group(1).strip()==live_title.group(1).strip(),(SLUG,"live_title_mismatch")
-src_h1=re.search(r"<h1[^>]*>(.*?)</h1>",html,re.I|re.S)
-live_h1=re.search(r"<h1[^>]*>(.*?)</h1>",live_text,re.I|re.S)
-clean=lambda x: re.sub(r"<[^>]+>","",x).strip()
-assert src_h1 and live_h1 and clean(src_h1.group(1))==clean(live_h1.group(1)),(SLUG,"live_h1_mismatch")
+for s_name,s_rel in (live_contract.get("surfaces") or {}).items():
+    print(f"::notice title=SURFACE {SLUG} {s_name}::published={s_rel['deployed_sha']} base={s_rel['base_sha']} relation={s_rel['relation']}")
+for ch in live_contract.get("pending_undeployed",[]):
+    print(f"::warning title=PENDING_UNDEPLOYED {SLUG} {ch['surface']}::{ch['field']}: publicado {ch['deployed']!r} x base {ch['base']!r} ({ch['relation']})")
+for ch in live_contract["expected_changes"]:
+    print(f"::notice title=EXPECTED_CHANGE {SLUG}::{ch['field']}: {ch['base']!r} -> {ch['candidate']!r} (diff linhas {ch['candidate_lines']})")
+if live_contract.get("promotion"):
+    print(f"::notice title=PROMOTION_OBSERVED {SLUG}::{json.dumps(live_contract['promotion'])}")
 
 # P07: target-source SAST + live DAST/header boundary.
 secret_patterns=[
@@ -124,7 +169,8 @@ pathlib.Path(f"evidence/{SLUG}-sbom.cdx.json").write_text(json.dumps(sbom,indent
 report={
   "schema":"zevanory.portfolio.target-base-cert.v2","target":SLUG,"workflow_sha":SHA,
   "url":f"{BASE}/{SLUG}","source_blob":blob,"source_sha256":source_sha256,
-  "live_binding":"canonical+title+h1","latency_ms":lat,"p95_latency_ms":p95,
+  "live_binding":live_contract["live_binding"],"certification_context":CONTEXT,
+  "contract_version":live_contract["contract_version"],"live_contract":live_contract,"latency_ms":lat,"p95_latency_ms":p95,
   "shared_runtime_release":runtime_sha,"sales_mode":rel.get("sales_mode"),
   "security_headers":required_headers,"data_governance":data_profile,
   "checks":{"P01":"PASS","P05":"PASS","P07":"PASS","P08":"PASS","P09":"PASS","P11":"PASS","P13":"PASS"},
