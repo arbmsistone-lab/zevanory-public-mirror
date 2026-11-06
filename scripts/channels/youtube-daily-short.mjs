@@ -6,6 +6,7 @@
 // the shared activity outbox. Tokens come from the OAuth bridge; nothing secret is
 // logged. Usage: node youtube-daily-short.mjs [--dry-run] [--day=YYYY-MM-DD]
 import { spawnSync } from "node:child_process";
+import { DEC22_DRAFT_ONLY } from "../../worker/channel-dec22.mjs";
 import { readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { getUsage, addUsage, allow } from "./usage.mjs";
@@ -353,6 +354,7 @@ export function cloudflareKv({ token, account, namespace, fetchImpl = fetch }) {
 }
 
 export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const auth = { authorization: "Bearer " + accessToken };
   const chRes = await fetchImpl("https://www.googleapis.com/youtube/v3/channels?part=id,contentDetails&mine=true", { headers: auth });
   const ch = await chRes.json().catch(() => ({}));
@@ -417,6 +419,11 @@ if (isMain) {
       if (window.action !== "publish" && !dry) { note("notice", slot + ": not published (" + window.reason + ") — " + (window.action === "wait" ? "the planned run publishes it" : "documented as missed for " + day)); continue; }
       const plan = planSlot(day, slot, { salesOpen });
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected");
+      if(DEC22_DRAFT_ONLY){
+        await lockKv?.put?.("zpc:channel:draft:v1:youtube:"+day+":"+slot,JSON.stringify({schema:"zpc.channel.draft.v1",channel:"youtube",day,slot,status:"rascunho",approved:false,title:plan.title,description:plan.description}),{expirationTtl:45*86400});
+        note("notice",slot+": DEC-22 draft only; no render or upload");
+        continue;
+      }
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
       const usageKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
       const usage = usageKv ? await getUsage(usageKv) : {};

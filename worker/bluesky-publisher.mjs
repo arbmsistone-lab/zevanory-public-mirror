@@ -1,3 +1,4 @@
+import { DEC22_DRAFT_ONLY } from "./channel-dec22.mjs";
 // Official AT Protocol XRPC posting; credentials are Worker environment bindings only.
 // Same rkey on every retry prevents a timeout from duplicating a published record.
 const clean=v=>String(v??"").trim();
@@ -79,6 +80,7 @@ async function existingRecord({fetchImpl,did,rkey,token}){
 }
 export async function publishBluesky({env={},title,hook,value,cta,productUrl,day,topic="daily",fetchImpl=fetch,sleepImpl}={}){
  if(!blueskyReady(env))return {status:"aguardando credencial"};
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
  const endpoint="https://bsky.social/xrpc/";
  const request=(method,body,token)=>retryXrpc({fetchImpl,url:endpoint+method,body,token,sleepImpl});
  const session=await request("com.atproto.server.createSession",{identifier:clean(env.BLUESKY_HANDLE),password:clean(env.BLUESKY_APP_PASSWORD)});

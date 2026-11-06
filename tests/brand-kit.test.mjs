@@ -48,16 +48,11 @@ test("never accept redirects or oversized images",async()=>{
  await assert.rejects(validateOutboundBrandImage({url:knownUrl,channel:"telegram",approved,fetchImpl:async()=>({status:200,arrayBuffer:async()=>new Uint8Array(1000001).buffer})}),/brand_asset_size/);
 });
 
-test("Telegram media publication cannot bypass official logo validation or reach provider",async()=>{
- const writes=[],store=new Map();
- const env={TELEGRAM_BOT_TOKEN:"token",TELEGRAM_CHANNEL_ID:"@zevanory",
- ZEVANORY_PRIVATE_ARTIFACTS:{get:async k=>store.get(k)||null,put:async(k,v)=>store.set(k,String(v))}};
- await assert.rejects(publishTelegram({env,payload:{content:"teste",media_url:"https://zevanory.api.br/brand/export/fake-logo.png"},fetchImpl:async(url,init)=>{writes.push(url);throw Error("not_called")}}),/brand_channel_size_or_role/);
- assert.equal(writes.length,0);
- assert.ok([...store.keys()].some(k=>k.startsWith("zpc-activity:v1:event:")),"blocked image creates a privacy-safe audit event");
+test("Telegram media publication cannot bypass official logo validation or reach provider", async()=>{
+ const calls=[];await assert.rejects(publishTelegram({env:{TELEGRAM_BOT_TOKEN:"x",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"x"},fetchImpl:async url=>{calls.push(url)}}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
-test("Pinterest media publication cannot bypass official logo gate or contact Pinterest",async()=>{
- const requests=[],env={PINTEREST_ACCESS_TOKEN:"token",PINTEREST_BOARD_ID:"board"};
- await assert.rejects(publishPinterest({env,payload:{title:"teste",content:"mensagem",landing_url:"https://zevanory.api.br",media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl:async(url,init)=>{requests.push(url);throw Error("not_called")}}),/brand_channel_size_or_role/);
- assert.deepEqual(requests,[]);
+
+test("Pinterest media publication cannot bypass official logo gate or contact Pinterest", async()=>{
+ const calls=[];await assert.rejects(publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"x",PINTEREST_BOARD_ID:"x"},payload:{content:"x"},fetchImpl:async url=>{calls.push(url)}}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
+

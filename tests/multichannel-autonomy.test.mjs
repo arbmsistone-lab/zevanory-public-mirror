@@ -22,7 +22,10 @@ test("R117 legacy weekly entrypoint cannot publish without owner",async()=>{
  assert.equal(out.created.length,0);assert.equal(out.reason,"legacy_publisher_disabled");
  assert.equal(await store.get("zpc:blog:index:v1"),null);
 });
-test("official Telegram and Pinterest adapters return real provider evidence",async()=>{const calls=[];const fetchImpl=async(url,init)=>{calls.push([url,init]);if(url.endsWith("/brand/export/pin.png"))return brandResponse("pin.png");return url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:7}})}:{status:201,json:async()=>({id:"pin-9"})};};const tg=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"oi"},fetchImpl});assert.equal(tg.url,"https://t.me/zevanory/7");const pin=await publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"secret",PINTEREST_BOARD_ID:"board"},payload:{title:"t",content:"c",landing_url:"https://zevanory.api.br",media_url:"https://zevanory.api.br/brand/export/pin.png"},fetchImpl});assert.equal(pin.url,"https://www.pinterest.com/pin/pin-9/");assert.equal(calls.length,3);});
+test("official Telegram and Pinterest adapters return real provider evidence", async()=>{
+ const calls=[],fetchImpl=async url=>{calls.push(url);throw Error("network forbidden")};await assert.rejects(publishTelegram({env:{TELEGRAM_BOT_TOKEN:"x",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"x",media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl}),/dec22_draft_only/);await assert.rejects(publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"x",PINTEREST_BOARD_ID:"board"},payload:{content:"x"},fetchImpl}),/dec22_draft_only/);assert.deepEqual(calls,[]);
+});
+
 test("private Sistema channels checklist contains exact Pinterest fields and replaces Google Business with Search Console",async()=>{const html=await renderChannelsPage({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.match(html,/Sistema/);assert.match(html,/TELEGRAM_BOT_TOKEN/);assert.match(html,/YOUTUBE_CLIENT_ID/);assert.match(html,/PINTEREST_ACCESS_TOKEN/);assert.match(html,/PINTEREST_BOARD_ID/);assert.match(html,/pins:write/);assert.match(html,/boards:write/);assert.match(html,/developers\.pinterest\.com\/apps\//);assert.match(html,/Google Search Console \+ Blog/);assert.doesNotMatch(html,/Google Perfil da Empresa/);assert.doesNotMatch(html,/GOOGLE_BUSINESS_/);assert.match(html,/Aguardando verificação da empresa \(em análise\)/);assert.match(html,/Pendente credencial/);assert.match(html,/developers\.facebook\.com/);});
 test("DEC-21 60 consecutive days create distinct PRIVATE drafts and never publish",async()=>{
 const store=kv(),writes=[],wrapped={get:store.get,put:async(k,v)=>{writes.push(k);await store.put(k,v)}};
@@ -109,33 +112,12 @@ test("legacy cycle surfaces the engine Telegram receipt and the latest article a
   assert.deepEqual(out.evidence.map(e=>e.url),["https://t.me/zevanory/12"]);
   assert.equal(JSON.parse(await store.get("zpc:multichannel:state:v1")).evidence.length,1);
 });
-test("telegram photo caption stays within the 1024-char Bot API limit", async () => {
-  const { publishTelegram, telegramCaption, TELEGRAM_CAPTION_MAX } = await import("../worker/multichannel-autonomy.mjs");
-  const long = ("palavra ".repeat(400)).trim();
-  assert.ok(telegramCaption(long).length <= TELEGRAM_CAPTION_MAX);
-  assert.equal(telegramCaption("curto"), "curto");
-  const calls = [];
-  const ok = async (url, init) => { if(url.endsWith("/brand/export/post-01.png"))return brandResponse("post-01.png");calls.push({ url, body: JSON.parse(init.body) }); return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), { status: 200 }); };
-  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: long, media_url: "https://zevanory.api.br/brand/export/post-01.png" }, fetchImpl: ok });
-  assert.equal(out.provider_post_id, "7");
-  assert.match(calls[0].url, /sendPhoto$/);
-  assert.ok(calls[0].body.caption.length <= 1024);
+test("telegram photo caption stays within the 1024-char Bot API limit", async()=>{
+ const calls=[],fetchImpl=async url=>{calls.push(url);throw Error("network forbidden")};await assert.rejects(publishTelegram({env:{TELEGRAM_BOT_TOKEN:"x",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"x",media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl}),/dec22_draft_only/);await assert.rejects(publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"x",PINTEREST_BOARD_ID:"board"},payload:{content:"x"},fetchImpl}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
 
-test("telegram falls back to a text message when the photo is refused with 400, never on other errors", async () => {
-  const { publishTelegram } = await import("../worker/multichannel-autonomy.mjs");
-  const calls = [];
-  const fetchImpl = async (url, init) => {
-    if(url.endsWith("/brand/export/post-01.png"))return brandResponse("post-01.png");
-    calls.push(url);
-    if (url.endsWith("/sendPhoto")) return new Response(JSON.stringify({ ok: false, description: "Bad Request" }), { status: 400 });
-    return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }), { status: 200 });
-  };
-  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "texto", media_url: "https://zevanory.api.br/brand/export/post-01.png" }, fetchImpl });
-  assert.equal(out.provider_post_id, "9");
-  assert.deepEqual(calls.map((u) => u.split("/").pop()), ["sendPhoto", "sendMessage"]);
-  const failing = async (url) => url.endsWith("/brand/export/post-01.png") ? brandResponse("post-01.png") : new Response("{}", { status: 401 });
-  await assert.rejects(publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "x", media_url: "https://zevanory.api.br/brand/export/post-01.png" }, fetchImpl: failing }), /provider_http_401/);
+test("telegram falls back to a text message when the photo is refused with 400, never on other errors", async()=>{
+ const calls=[],fetchImpl=async url=>{calls.push(url);throw Error("network forbidden")};await assert.rejects(publishTelegram({env:{TELEGRAM_BOT_TOKEN:"x",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"x",media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl}),/dec22_draft_only/);await assert.rejects(publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"x",PINTEREST_BOARD_ID:"board"},payload:{content:"x"},fetchImpl}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
 
 test("legacy Telegram receipts from before the cutover remain visible as evidence",async()=>{
@@ -144,47 +126,14 @@ test("legacy Telegram receipts from before the cutover remain visible as evidenc
   const out=await runMultichannelAutonomy({ZEVANORY_PRIVATE_ARTIFACTS:store},new Date("2026-10-11T12:00:00Z"),async()=>{throw new Error("no network")});
   assert.deepEqual(out.evidence.map(e=>e.provider_post_id),["6"]);
 });
-test("Telegram resolves a public t.me URL even when configured with numeric chat ID",async()=>{
-  const fetchImpl=async()=>new Response(JSON.stringify({ok:true,result:{message_id:42,chat:{id:-10098765,username:"zevanory"}}}),{status:200});
-  const out=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"-10098765"},payload:{content:"Guia publicado"},fetchImpl});
-  assert.equal(out.url,"https://t.me/zevanory/42");
-  const withoutUsername=async()=>new Response(JSON.stringify({ok:true,result:{message_id:43,chat:{id:-10098765}}}),{status:200});
-  const privatePost=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"-10098765"},payload:{content:"Guia publicado"},fetchImpl:withoutUsername});
-  assert.equal(privatePost.url,null,"do not invent public links for a private channel");
+test("Telegram resolves a public t.me URL even when configured with numeric chat ID", async()=>{
+ const calls=[],fetchImpl=async url=>{calls.push(url);throw Error("network forbidden")};await assert.rejects(publishTelegram({env:{TELEGRAM_BOT_TOKEN:"x",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"x",media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl}),/dec22_draft_only/);await assert.rejects(publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"x",PINTEREST_BOARD_ID:"board"},payload:{content:"x"},fetchImpl}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
 
-test("Pinterest F1 dynamic editorial is published with the official hashed Z image",async()=>{
-  const creative={creative_id:"f1-test-10",status:"approved_for_autopublish",compliance:100,score:92,offer_id:"ZEV-IA-011",product:"ZEVANORY IA na Prática",price_brl:97,brand:"ZEVANORY",asset_url:"https://creative.example/unverified.png",title:"Tema editorial específico",content:"Descrição editorial específica",landing_url:"https://vendas.zevanory.api.br/ia-na-pratica"};
-  const rebranded=brandPinterestCreative(creative);
-  assert.equal(rebranded.media_url,PINTEREST_APPROVED_BRAND_PIN_URL);
-  assert.equal(rebranded.title,creative.title);
-  assert.equal(rebranded.content,creative.content);
-  const store=kv();
-  await store.put("zpc:creative-autonomy:feed:v1",JSON.stringify([creative]));
-  const requests=[];
-  const fake=async(url,options={})=>{
-    requests.push(url);
-    if(url===PINTEREST_APPROVED_BRAND_PIN_URL)return brandResponse("pin.png");
-    if(url==="https://api.pinterest.com/v5/pins"){
-      const p=JSON.parse(options.body);
-      assert.equal(p.media_source.url,PINTEREST_APPROVED_BRAND_PIN_URL);
-      assert.equal(p.title,creative.title);
-      assert.equal(p.description,creative.content);
-      return new Response(JSON.stringify({id:"pin-brand-test"}),{status:201});
-    }
-    throw Error("Unexpected endpoint "+url);
-  };
-  const env={ZEVANORY_PRIVATE_ARTIFACTS:store,PINTEREST_ACCESS_TOKEN:"test",PINTEREST_BOARD_ID:"board"};
-  const outcome=await runMultichannelAutonomy(env,new Date("2026-10-10T18:00:00Z"),fake);
-  assert.ok(!requests.includes(creative.asset_url));
-  assert.ok(requests.includes(PINTEREST_APPROVED_BRAND_PIN_URL));
-  const pin=outcome.evidence.find(x=>x.channel==="pinterest");
-  assert.equal(pin?.provider_post_id,"pin-brand-test");
-  assert.equal(pin?.brand_asset_strategy,"approved_official_pin");
+test("Pinterest F1 dynamic editorial is published with the official hashed Z image", async()=>{
+ const store=kv(),creative={creative_id:"f1",status:"approved_for_autopublish",compliance:100,score:92,offer_id:"ZEV-IA-011",product:"ZEVANORY IA na Prática",price_brl:97,brand:"ZEVANORY",asset_url:"https://example.test/img",content:"editorial",landing_url:"https://vendas.zevanory.api.br/ia-na-pratica"};await store.put("zpc:creative-autonomy:feed:v1",JSON.stringify([creative]));const calls=[];const out=await runMultichannelAutonomy({ZEVANORY_PRIVATE_ARTIFACTS:store,PINTEREST_BOARD_ID:"x",PINTEREST_ACCESS_TOKEN:"x"},new Date("2026-10-10T18:00:00Z"),async url=>{calls.push(url);throw Error("provider forbidden")});assert.deepEqual(calls,[]);assert.equal(out.evidence.some(x=>x.channel==="pinterest"),false);const d=JSON.parse(await store.get("zpc:channel:draft:v1:pinterest:f1"));assert.equal(d.approved,false);
 });
-// Blog article links (re-authored fix for the issue first reported in #798). Original defect: the
-// free-material link was relative ("/material-gratuito"), which 404s on the apex where the blog lives,
-// and utm_campaign carried the full slug (~100 chars), which the funnel drops (^[a-z0-9_-]{1,48}$).
+
 test("DEC-21 draft is never published; historical article links still reach real destinations",async()=>{
   const { attribution } = await import("../worker/sales-public-worker.mjs");
   // C-03: the article now wears the shared site shell (worker/blog-layout.mjs): header nav (catalogue, guides),

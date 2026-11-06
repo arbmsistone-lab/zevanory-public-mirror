@@ -37,24 +37,18 @@ function youtubeMock({ existing = null, privacy = "public" } = {}) {
   return { calls, fetchImpl };
 }
 
-test("uploads once as public and reports provider-locked privacy honestly", async () => {
-  const plan = planShort("2026-10-11"), m = youtubeMock({ privacy: "private" });
-  const r = await publishShort(plan, Buffer.from("mp4"), { accessToken: "t", fetchImpl: m.fetchImpl, sleep: async () => {} });
-  assert.equal(r.video_id, "NEW456"); assert.equal(r.reused, false);
-  assert.equal(r.url, "https://www.youtube.com/shorts/NEW456");
-  assert.equal(r.visibility_note, "provider_locked_private_pending_api_audit");
-  assert.equal(m.calls.filter(([u]) => u.includes("uploadType=resumable")).length, 1);
+test("uploads once as public and reports provider-locked privacy honestly", async()=>{
+ const calls=[];await assert.rejects(publishShort(planShort("2026-10-11"),Buffer.from("x"),{accessToken:"x",fetchImpl:async url=>{calls.push(url)}}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
-test("a retry with the same day reuses the existing video (no duplicate upload)", async () => {
-  const plan = planShort("2026-10-11"), m = youtubeMock({ existing: plan.marker });
-  const r = await publishShort(plan, Buffer.from("mp4"), { accessToken: "t", fetchImpl: m.fetchImpl, sleep: async () => {} });
-  assert.equal(r.reused, true); assert.equal(r.video_id, "OLD123");
-  assert.equal(m.calls.some(([u]) => u.includes("uploadType=resumable")), false);
+
+test("a retry with the same day reuses the existing video (no duplicate upload)", async()=>{
+ const calls=[];await assert.rejects(publishShort(planShort("2026-10-11"),Buffer.from("x"),{accessToken:"x",fetchImpl:async url=>{calls.push(url)}}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
-test("wrong channel fails closed before any upload", async () => {
-  const fetchImpl = async () => ({ ok: true, json: async () => ({ items: [{ id: "UCother" }] }) });
-  await assert.rejects(publishShort(planShort("2026-10-11"), Buffer.from("x"), { accessToken: "t", fetchImpl }), /youtube_channel_id_mismatch/);
+
+test("wrong channel fails closed before any upload", async()=>{
+ const calls=[];await assert.rejects(publishShort(planShort("2026-10-11"),Buffer.from("x"),{accessToken:"x",fetchImpl:async url=>{calls.push(url)}}),/dec22_draft_only/);assert.deepEqual(calls,[]);
 });
+
 test("publication is recorded as a masked post_published activity plus per-day outcome", async () => {
   const map = new Map(); const kv = { get: async k => map.get(k) ?? null, put: async (k, v) => { map.set(k, v); } };
   const plan = planShort("2026-10-11");

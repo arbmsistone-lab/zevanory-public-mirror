@@ -5,6 +5,7 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
+import { DEC22_DRAFT_ONLY } from "../../worker/channel-dec22.mjs";
 import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen } from "./youtube-daily-short.mjs";
 import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta } from "../../worker/politica-unica.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
@@ -31,6 +32,7 @@ async function jsonOrThrow(r, code) { const j = await r.json().catch(() => ({}))
 // TikTok Content Posting API (Direct Post, FILE_UPLOAD). Unaudited apps may only
 // post SELF_ONLY; the privacy actually used is whatever creator_info allows.
 export async function publishTikTok(plan, mp4, { token, audited = false, fetchImpl = fetch, sleep = sleepMs }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const auth = { authorization: "Bearer " + token, "content-type": "application/json; charset=UTF-8" };
   const info = await jsonOrThrow(await fetchImpl("https://open.tiktokapis.com/v2/post/publish/creator_info/query/", { method: "POST", headers: auth, body: "{}" }), "tiktok_creator_info");
   const options = info?.data?.privacy_level_options || [];
@@ -55,6 +57,7 @@ export async function publishTikTok(plan, mp4, { token, audited = false, fetchIm
 
 // Instagram Reels: container from the public video URL, wait until FINISHED, publish.
 export async function publishInstagramReel(plan, videoUrl, { token, igId, fetchImpl = fetch, sleep = sleepMs }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const c = await jsonOrThrow(await fetchImpl(`${GRAPH}/${igId}/media`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ media_type: "REELS", video_url: videoUrl, caption: captionFor(plan, "instagram", { salesOpen: plan.salesOpen === true }), share_to_feed: true, access_token: token }) }), "instagram_container");
   if (!c?.id) throw new Error("instagram_container_missing");
   for (let i = 0; i < 40; i++) {
@@ -72,6 +75,7 @@ export async function publishInstagramReel(plan, videoUrl, { token, igId, fetchI
 
 // Facebook Page video (Reels-eligible vertical video) via direct file upload.
 export async function publishFacebookVideo(plan, mp4, { token, pageId, fetchImpl = fetch }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const form = new FormData();
   form.set("access_token", token); form.set("description", captionFor(plan, "facebook", { salesOpen: plan.salesOpen === true })); form.set("title", plan.title.slice(0, 95));
   form.set("source", new Blob([mp4], { type: "video/mp4" }), "zevanory-short.mp4");
@@ -82,6 +86,7 @@ export async function publishFacebookVideo(plan, mp4, { token, pageId, fetchImpl
 
 // Telegram channel: the same vertical video, native player (no external link preview needed).
 export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl = fetch }) {
+ if(DEC22_DRAFT_ONLY)throw new Error("dec22_draft_only");
   const form = new FormData();
   form.set("chat_id", chatId); form.set("caption", captionFor(plan, "telegram", { salesOpen: plan.salesOpen === true }).slice(0, 1024)); form.set("supports_streaming", "true");
   form.set("video", new Blob([mp4], { type: "video/mp4" }), "zevanory-" + plan.day + ".mp4");
@@ -95,6 +100,13 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
 export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen }) {
   const open = typeof salesOpen === "boolean" ? salesOpen : await channelSalesOpen(kv);
   const plan = { ...planSlot(day, slot, { salesOpen: open }), salesOpen: open }, report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
+  if(DEC22_DRAFT_ONLY){
+    for(const channel of ["tiktok","telegram_video","instagram","facebook"]){
+      await kv?.put?.("zpc:channel:draft:v1:"+channel+":"+day+":"+slot,JSON.stringify({schema:"zpc.channel.draft.v1",channel,day,slot,status:"rascunho",approved:false,caption:captionFor(plan,channel==="telegram_video"?"telegram":channel,{salesOpen:false})}),{expirationTtl:45*86400});
+      report[channel]="draft_only_dec22";
+    }
+    return report;
+  }
   const done = async ch => { const v = await kv.get(`zpc:acquisition:daily:${day}:${ch}${sfx}`); return v ? JSON.parse(v) : null; };
   const record = async (ch, r) => {
     await kv.put(`zpc:acquisition:daily:${day}:${ch}${sfx}`, JSON.stringify({ channel: ch, day, status: "publicado", provider_post_id: r.provider_post_id, url: r.url, privacy: r.privacy || "public", product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 400 * 86400 });
