@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { fileURLToPath } from "node:url";
-import { handleAtendimento, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, resendFailureIsTransient, ATENDIMENTO_SQL, MAX_ATTEMPTS, SEND_WINDOW_HOURS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
+import { handleAtendimento, atendimentoContext, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, resendFailureIsTransient, ATENDIMENTO_SQL, MAX_ATTEMPTS, SEND_WINDOW_HOURS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
 import { FORWARD_TO_KV_KEY as SUPPORT_FORWARD_KEY } from "../worker/support-email-forward.mjs";
 import { FORWARD_TO_KV_KEY } from "../worker/atendimento.mjs";
@@ -75,6 +75,99 @@ export function replyChannelViolations(text) {
   if (/"telephone"|itemprop="telephone"|type="tel"/i.test(text)) v.push("telefone");
   return v;
 }
+
+// R133: Cloudflare Workers native fetch throws Illegal invocation when called as a method of an arbitrary object.
+// The default must be wrapped while injected test fetch functions must keep their exact identity.
+test("R133 native fetch maintains Cloudflare-compatible receiver; injected fetch remains untouched", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = function cloudflareNativeLike(url, init) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    calls++;
+    assert.equal(url, "https://api.resend.com/emails");
+    assert.equal(init.method, "POST");
+    return Promise.resolve(new Response(JSON.stringify({ id: "simulated" }), { status: 200 }));
+  };
+  try {
+    const context = await atendimentoContext(CFG, { sqlFactory: () => ({ query: async () => [] }) });
+    assert.equal(context.missing, undefined);
+    const response = await context.fetchImpl("https://api.resend.com/emails", { method: "POST" });
+    assert.equal(response.status, 200);
+    assert.equal(calls, 1);
+    const injected = async () => new Response(null, { status: 204 });
+    const contextWithInjected = await atendimentoContext(CFG, { sqlFactory: () => ({ query: async () => [] }), fetchImpl: injected });
+    assert.equal(contextWithInjected.fetchImpl, injected, "injection for existing tests is preserved");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+// R134: same native receiver regression through the hourly drain path (no fetchImpl injection).
+// This must fail on 36cf5cf: both sends remain pending with resend_network; after the fix both are sent.
+test("R134 hourly drain sends pending owner and customer notifications with default Cloudflare-like fetch", async () => {
+  const originalFetch = globalThis.fetch;
+  const protocolo = "ZEV-20261106-DA2F6F3C54";
+  const now = "2026-11-06T11:36:23.884Z";
+  const states = { owner: "pending", customer: "pending", payload: { email: "cliente@example.com", pedido: "", mensagem: "Preciso de atendimento do suporte." } };
+  const calls = [];
+  globalThis.fetch = function cloudflareNativeLike(url, init) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    assert.equal(url, "https://api.resend.com/emails");
+    const body = JSON.parse(init.body);
+    calls.push({ key: init.headers["idempotency-key"], to: body.to[0] });
+    return Promise.resolve(new Response(JSON.stringify({ id: "sent_" + calls.length }), {
+      status: 200, headers: { "content-type": "application/json" },
+    }));
+  };
+  const q = Object.fromEntries([
+    "due", "lease", "ownerSent", "customerSent", "ownerFailed", "customerFailed",
+    "release", "alertDue", "health", "housekeeping", "monitorClaim",
+  ].map(key => [key, key]));
+  q.schema = [];
+  const sql = {
+    async query(statement, params = []) {
+      if (statement === q.due) return [{ protocolo }];
+      if (statement === q.lease) return [{
+        protocolo, tipo: "suporte", owner_status: states.owner, customer_status: states.customer,
+        owner_attempts: 1, customer_attempts: 1,
+        payload: states.payload, recebido_em: now, responder_ate: "2026-11-11T11:36:23.884Z",
+        owner_window_ok: true, customer_window_ok: true,
+      }];
+      if (statement === q.ownerSent) { states.owner = "sent"; return []; }
+      if (statement === q.customerSent) { states.customer = "sent"; return []; }
+      if (statement === q.ownerFailed) return [{ owner_status: states.owner, owner_attempts: 2 }];
+      if (statement === q.customerFailed) return [{ customer_status: states.customer, customer_attempts: 2 }];
+      if (statement === q.release) return [{ owner_status: states.owner, customer_status: states.customer, alert_status: "none" }];
+      if (statement === q.alertDue) return [];
+      if (statement === q.health) return [{ alert_dead: 0, old_alert: 0, old_deadline: 0, oldest_hours: 0 }];
+      if (statement === q.housekeeping) return [{ quotas: 0, purged: 0 }];
+      throw new Error("unexpected SQL statement");
+    },
+  };
+  try {
+    const result = await drainAtendimentoOutbox(CFG, { sqlFactory: () => sql, q });
+    assert.equal(result.ok, true);
+    assert.equal(result.checked, 1);
+    assert.equal(result.done, 1, "pending protocol must be fully delivered by the hourly drain");
+    assert.equal(result.pending, 0);
+    assert.equal(states.owner, "sent");
+    assert.equal(states.customer, "sent");
+    assert.deepEqual(calls.map(c => c.key), [
+      "atendimento-owner/" + protocolo, "atendimento-ack/" + protocolo,
+    ], "idempotency keys must remain stable for the preexisting protocol");
+    assert.deepEqual(calls.map(c => c.to), ["dono@example.com", "cliente@example.com"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("R133 /atendimento displays on-screen receipt without falsely promising immediate email", () => {
+  assert.match(formPage(), /Guarde esse número: ele é o seu comprovante de registro/);
+  assert.doesNotMatch(formPage(), /na tela e por e-mail/);
+  const pending = confirmationPage({ protocolo: "ZEV-20261106-DA2F6F3C54", tipo: "suporte", responder_ate: "2026-11-11T11:36:23.884Z" }, { emailSent: false });
+  assert.match(pending, /Guarde esse número: ele é o seu comprovante de registro/);
+  assert.doesNotMatch(pending, /reenviada automaticamente em instantes/);
+});
 
 test("GET /atendimento: formulário acessível, e-mail oficial, 4 tipos, isca, sem WhatsApp", async () => {
   const r = await handleAtendimento(new Request("https://zevanory.api.br/atendimento?tipo=reembolso"), env());
@@ -216,7 +309,7 @@ test("validação acessível: erros com aria-invalid/aria-describedby, sem e-mai
   assert.equal(sent.length, 0);
 }));
 
-test("confirmação: protocolo, prazo de 5 dias, aviso de reenvio automático quando o e-mail ainda não saiu", () => {
+test("confirmação: protocolo, prazo de 5 dias, estado pendente, comprovante e suporte por e-mail", () => {
   const v = { protocolo: "ZEV-20261023-ABCDEF0123", tipo: "reembolso", recebido_em: new Date(NOW).toISOString(), responder_ate: new Date(NOW + RESPONSE_DAYS * 86400000).toISOString() };
   const sentHtml = confirmationPage(v, { emailSent: true });
   assert.deepEqual(confirmationContract(sentHtml), []);
@@ -224,7 +317,12 @@ test("confirmação: protocolo, prazo de 5 dias, aviso de reenvio automático qu
   assert.match(sentHtml, /href="\/pedir-reembolso"/);
   const pend = confirmationPage(v, { emailSent: false });
   assert.deepEqual(confirmationContract(pend), []);
-  assert.match(pend, /reenviada automaticamente/);
+  assert.match(pend, /ZEV-20261023-ABCDEF0123/);
+  assert.match(pend, /até <strong>28\/10\/2026<\/strong>/);
+  assert.match(pend, /A confirmação por e-mail está pendente/);
+  assert.match(pend, /Guarde esse número: ele é o seu comprovante de registro/);
+  assert.match(pend, /href="mailto:suporte@zevanory\.api\.br"/);
+  assert.doesNotMatch(pend, /em instantes/);
 });
 
 test("mutantes: protocolo ausente, e-mail oficial ausente, resposta por WhatsApp, wa.me, número banido, telephone — mortos", () => {
