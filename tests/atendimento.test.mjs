@@ -309,7 +309,7 @@ test("validação acessível: erros com aria-invalid/aria-describedby, sem e-mai
   assert.equal(sent.length, 0);
 }));
 
-test("confirmação: protocolo, prazo de 5 dias, aviso de reenvio automático quando o e-mail ainda não saiu", () => {
+test("confirmação: protocolo, prazo de 5 dias, estado pendente, comprovante e suporte por e-mail", () => {
   const v = { protocolo: "ZEV-20261023-ABCDEF0123", tipo: "reembolso", recebido_em: new Date(NOW).toISOString(), responder_ate: new Date(NOW + RESPONSE_DAYS * 86400000).toISOString() };
   const sentHtml = confirmationPage(v, { emailSent: true });
   assert.deepEqual(confirmationContract(sentHtml), []);
@@ -317,7 +317,12 @@ test("confirmação: protocolo, prazo de 5 dias, aviso de reenvio automático qu
   assert.match(sentHtml, /href="\/pedir-reembolso"/);
   const pend = confirmationPage(v, { emailSent: false });
   assert.deepEqual(confirmationContract(pend), []);
-  assert.match(pend, /reenviada automaticamente/);
+  assert.match(pend, /ZEV-20261023-ABCDEF0123/);
+  assert.match(pend, /até <strong>28\/10\/2026<\/strong>/);
+  assert.match(pend, /A confirmação por e-mail está pendente/);
+  assert.match(pend, /Guarde esse número: ele é o seu comprovante de registro/);
+  assert.match(pend, /href="mailto:suporte@zevanory\.api\.br"/);
+  assert.doesNotMatch(pend, /em instantes/);
 });
 
 test("mutantes: protocolo ausente, e-mail oficial ausente, resposta por WhatsApp, wa.me, número banido, telephone — mortos", () => {
