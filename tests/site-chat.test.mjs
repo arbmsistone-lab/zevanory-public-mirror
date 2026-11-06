@@ -15,11 +15,11 @@ import { fakeSql, fakeKv, sinkMailer, fakeAi, captureLogs, SANDBOX_ENV, AI_OUTPU
 
 const CHECKOUT = /\/comprar\b|\/assinar\b|hotmart|mercadopago\.com|pay\.|checkout/i;
 const ORIGIN = "https://vendas.zevanory.api.br";
-function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, mailer = sinkMailer(), ai, catalog } = {}) {
+function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, mailer = sinkMailer(), ai, catalog, fetchImpl, registerOfficial } = {}) {
   resetSiteChatState();
   const factoryCalls = { n: 0 };
   const fullEnv = { ...SANDBOX_ENV, ZEVANORY_PRIVATE_ARTIFACTS: kv, ...(ai ? { AI: ai } : {}), ...env };
-  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, mailer, ...(catalog ? { catalog } : {}) };
+  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, mailer, ...(catalog ? { catalog } : {}), ...(fetchImpl ? { fetchImpl } : {}), ...(registerOfficial ? { registerOfficialAtendimento: registerOfficial } : {}) };
   const call = async (path, body, { method = "POST", headers = {} } = {}) => {
     const res = await handleSiteChat(new Request("https://chat.internal" + path, { method, headers: { "content-type": "application/json", "x-zev-client-ip": "203.0.113.7", ...headers }, body: method === "GET" ? undefined : JSON.stringify(body || {}) }), fullEnv, deps);
     return { status: res.status, body: await res.json() };
@@ -208,10 +208,11 @@ test("SC10 sem dado pessoal nem conteúdo nos logs; transcrição guardada com d
 
 test("SC11 isolamento de testes: produção recusa marcadores sintéticos; sandbox exige sink e nunca usa o Resend", async () => {
   const prod = { SITE_CHAT_SANDBOX: undefined };
-  const p = harness({ env: prod });
+  const p = harness({ env: { ...prod, SITE_CHAT_TURNSTILE_SECRET:"local-fake-secret" }, fetchImpl: async ()=>({ok:true,json:async()=>({success:true,hostname:"zevanory.api.br",action:"zevanory_chat"})}) });
   assert.equal((await p.call("/api/chat/session", {}, { headers: { "x-zevanory-synthetic": "1" } })).status, 422, "[SC11.1]");
   assert.equal((await p.call("/api/chat", { session: "sbx_" + "a".repeat(43), message: "oi" })).status, 422, "[SC11.2]");
-  const ps = (await p.call("/api/chat/session", {})).body.session;
+  assert.equal((await p.call("/api/chat/session", {})).status,403,"[SC11.3a] sessão exige Turnstile");
+  const ps = (await p.call("/api/chat/session", { turnstile_token:"local-valid-turnstile" })).body.session;
   assert.match(ps, /^zc_/, "[SC11.3]");
   assert.equal((await p.call("/api/chat/handoff", { session: ps, email: "qa@example.com" })).status, 422, "[SC11.4]");
   assert.equal((await p.call("/api/chat/handoff", { session: ps, email: "x@foo.test" })).status, 422, "[SC11.5]");
@@ -311,7 +312,7 @@ test("SC15 Worker de vendas: desligado => 503 local sem chamar o central e sem w
   assert.match(cp.headers.get("x-robots-tag") || "", /noindex/, "[SC15.9b] noindex");
   assert.ok(!(await cp.text()).includes("site-chat"), "[SC15.9b] sem widget");
   const other = await (await salesWorker.fetch(new Request(ORIGIN + "/ia-para-barbearia", { headers: { "user-agent": CHROME } }), on, { waitUntil() {} })).text();
-  assert.ok(!other.includes("site-chat"), "[SC15.10] fora da lista: sem widget");
+  assert.ok(other.includes("site-chat.js"), "[SC15.10] R120: guia setorial também elegível ao widget, sempre atrás do interruptor");
   assert.equal(shouldInjectSiteChat("solucoes", {}), false, "[SC15.11]");
   assert.equal(injectSiteChatHtml(injectSiteChatHtml("<head></head><body></body>")).match(/site-chat\.js/g).length, 1, "[SC15.12] idempotente");
   assert.ok(SITE_CHAT_PAGES.has("solucoes") && SITE_CHAT_PAGES.has("termos"), "[SC15.13]");
@@ -420,4 +421,36 @@ test("SC18 padrão desligado em tempo de execução: sem variável, vazia, \"1\"
   assert.equal(CHAT.enabled_default, false, "[SC18.4]");
   resetSiteChatState();
   assert.equal((await readSiteChatFlags({ ...SANDBOX_ENV, ZEVANORY_PRIVATE_ARTIFACTS: fakeKv() })).enabled, true, "[SC18.5] controle positivo: \"true\" explícito + KV legível liga");
+});
+
+// R142 / NC-R141-PRIV-01: privacy guard before PostgreSQL and ZEV transcript.
+test("SC19 sensitive health/religion content is removed, category retained, structured identifiers remain masked", async () => {
+  for (const [sample, privateWord] of [
+    ["Tenho diagnóstico de r142epilepsia e preciso de ajuda", "r142epilepsia"],
+    ["Minha religião r142privada está causando dificuldades", "r142privada"],
+    ["Minha saúde r142confidencial precisa de atenção", "r142confidencial"],
+    ["Minha orientação sexual r142reservada é assunto privado", "r142reservada"],
+    ["Minha biometria r142unica foi compartilhada", "r142unica"],
+    ["meu diagnóstico de depressão", "diagnóstico de depressão"],
+    ["sou evangélico", "evangélico"],
+    ["sou homossexual", "homossexual"],
+    ["biometria facial", "biometria facial"],
+  ]) {
+    const red = redactSensitive(sample);
+    assert.equal(red.text, "[conteúdo sensível removido]", "[SC19.1]");
+    assert.equal(red.sensitive, true, "[SC19.2]");
+    assert.equal(classify(red.text).category, "sensitive_data", "[SC19.3]");
+    const h = harness();
+    const sid = await h.session();
+    const reply = await h.say(sid, sample);
+    assert.equal(reply.status, 200, "[SC19.4]");
+    const stored = h.sql.db.messages.filter(m => m.role === "u").map(m => m.body).join(" ");
+    assert.equal(stored, "[conteúdo sensível removido]", "[SC19.5]");
+    assert.ok(!stored.includes(privateWord), "[SC19.6]");
+  }
+  const ordinary = redactSensitive("CPF 123.456.789-09 cartao 4111 1111 1111 1111 senha: r142secreta");
+  for (const leak of ["123.456.789-09", "4111 1111 1111 1111", "r142secreta"]) {
+    assert.ok(!ordinary.text.includes(leak), "[SC19.7]");
+  }
+  assert.match(ordinary.text, /\[removido\]/, "[SC19.8]");
 });

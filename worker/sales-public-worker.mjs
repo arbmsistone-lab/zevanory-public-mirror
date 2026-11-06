@@ -350,7 +350,8 @@ async function comprarRoute(request,env,ctx,match){
 // sem SITE_CHAT_ENABLED="true" neste Worker as rotas /api/chat* respondem 503 aqui mesmo (sem chamar o
 // central) e nenhuma página recebe o widget. Ligado: o widget (CSS/JS próprios, sem script de terceiros,
 // sem inline, compatível com a CSP) só é anexado às páginas abaixo e só abre por ação da pessoa.
-export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto","termos","privacidade","reembolso"]));
+// R120 DEC-20: all informational sales HTML routes, still OFF unless both Workers explicitly enable chat.
+export const SITE_CHAT_PAGES=Object.freeze(new Set([...htmlRoutes]));
 export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";
 export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
 export function injectSiteChatHtml(html){
@@ -461,6 +462,12 @@ export default{async fetch(request,env,ctx){
   else if(page&&SALES_TOGGLE_PAGES.has(page)) headers.set("cache-control",SWITCH_DEPENDENT_CACHE_CONTROL);
   else if(response.status===200&&page) headers.set("cache-control",PAGE_CACHE_CONTROL);
   applySecurityHeaders(headers);
+  // R124: enable Turnstile only on a page actually serving the chat; OFF retains the exact historical CSP.
+  if(response.status===200&&page&&shouldInjectSiteChat(page,env)){
+    headers.set("content-security-policy",CSP
+      .replace("https://static.cloudflareinsights.com","https://static.cloudflareinsights.com https://challenges.cloudflare.com")
+      .replace("https://*.mercadopago.com.br","https://*.mercadopago.com.br https://challenges.cloudflare.com"));
+  }
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);
   if(response.status===200&&sku&&env?.CORE&&typeof HTMLRewriter!=="undefined"){
     const r=(await reviewSummary(env))[sku];

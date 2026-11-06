@@ -102,7 +102,7 @@ export async function ownerTarget(env) {
   return v;
 }
 // Contexto de execução; `missing` lista o que falta (fail-closed).
-export async function atendimentoContext(env = {}, { sqlFactory, fetchImpl = globalThis.fetch, q = ATENDIMENTO_SQL, transient = resendFailureIsTransient } = {}) {
+export async function atendimentoContext(env = {}, { sqlFactory, fetchImpl = (...args) => globalThis.fetch(...args), q = ATENDIMENTO_SQL, transient = resendFailureIsTransient } = {}) {
   const missing = [];
   const secret = privacySecret(env);
   if (!secret) missing.push("LEAD_PRIVACY_SECRET");
@@ -380,7 +380,7 @@ export async function registerRequest(env, input, { ip = "unknown", now = Date.n
 // Cron horário: retoma envios pendentes, processa dead-letters, monitora pendências antigas e faz a limpeza.
 // ok=false (cron vermelho) com: dead-letter esgotado sem reconhecimento manual, pendência além do prazo
 // operacional (OLD_PENDING_DEADLINE_HOURS) ou alerta de pendência antiga que não saiu.
-export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl = globalThis.fetch, limit = 3, q, transient } = {}) {
+export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl, limit = 3, q, transient } = {}) {
   if (!env.DATABASE_URL || typeof sqlFactory !== "function") return { ok: true, skipped: "no_database" };
   const c = await atendimentoContext(env, { sqlFactory, fetchImpl, q, transient });
   if (c.missing) {
@@ -436,7 +436,7 @@ export function formPage({ values = {}, errors = {}, tipo = "" } = {}) {
   const summary = Object.keys(errors).length ? `<div role="alert"><p class="err">Corrija os campos indicados abaixo.</p></div>` : "";
   const opts = Object.entries(TIPOS).map(([k, label]) => `<div class="opt"><input type="radio" id="tipo-${k}" name="tipo" value="${k}" required${sel === k ? " checked" : ""}><label for="tipo-${k}">${esc(label)}</label></div>`).join("");
   return shell("Atendimento", `<h1>Atendimento</h1>
-<p>Suporte, reclamação, cancelamento ou reembolso. Você recebe na hora um <strong>número de protocolo</strong>, na tela e por e-mail. ${esc(SLA_TEXT)} A resposta chega pelo e-mail que você informar.</p>
+<p>Suporte, reclamação, cancelamento ou reembolso. Você recebe na hora um <strong>número de protocolo</strong> na tela. Guarde esse número: ele é o seu comprovante de registro. Também enviaremos uma confirmação para o e-mail informado. ${esc(SLA_TEXT)} A resposta chega pelo e-mail que você informar.</p>
 <p>Prefere e-mail? Escreva para <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>. Para desistir de uma compra (direito de arrependimento), use também a <a href="/pedir-reembolso">mesma ferramenta usada na compra</a>.</p>
 ${summary}<form method="post" action="${ATENDIMENTO_API}" novalidate>
 <fieldset ${errors.tipo ? 'aria-describedby="err-tipo" aria-invalid="true"' : ""}><legend>Tipo de solicitação</legend>${opts}${err("tipo")}</fieldset>
@@ -452,7 +452,7 @@ export function confirmationPage(view, { emailSent = true } = {}) {
   const reembolso = view.tipo === "reembolso" ? `<p>Se o pedido foi pago, você também pode registrar o reembolso automaticamente, pela mesma ferramenta usada na compra: <a href="/pedir-reembolso">zevanory.api.br/pedir-reembolso</a>.</p>` : "";
   return shell("Solicitação recebida", `<div class="ok" role="status" aria-live="polite"><h1>Solicitação recebida</h1><p>Seu número de protocolo:</p><p class="proto" id="protocolo">${esc(view.protocolo)}</p>
 <p>Tipo: ${esc(TIPOS[view.tipo] || view.tipo)}. Resposta conclusiva até <strong>${esc(brDate(Date.parse(view.responder_ate)))}</strong>, pelo e-mail informado.</p>
-<p>${emailSent ? "Enviamos uma confirmação com este protocolo para o seu e-mail." : `A confirmação por e-mail será reenviada automaticamente em instantes. Guarde este protocolo; se ela não chegar, escreva para <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> informando o protocolo.`}</p>${reembolso}</div>
+<p>${emailSent ? "Enviamos uma confirmação com este protocolo para o seu e-mail." : `A confirmação por e-mail está pendente. Guarde esse número: ele é o seu comprovante de registro. Se ela não chegar, escreva para <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> informando o protocolo.`}</p>${reembolso}</div>
 <p><a href="${ATENDIMENTO_PATH}">Enviar outra solicitação</a></p>`);
 }
 

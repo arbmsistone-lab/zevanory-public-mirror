@@ -19,6 +19,8 @@ import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { handleSiteChat, handleSiteChatAdmin, runSiteChatRetention } from "./site-chat.mjs";
+import {handleR120PublicChat} from "./r120-chat-public.mjs";
+import {injectInstitutionalChat} from "./r120-chat-institutional.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
@@ -36,6 +38,7 @@ import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
 import { handleSupportInboundWebhook, handleSupportDrainRequest, dispatchSupportDrain } from "./support-email-forward.mjs";
+import { ATENDIMENTO_DRAIN_PATH, handleAtendimentoDrainRequest, dispatchAtendimentoDrain } from "./atendimento-drain-dispatch.mjs";
 import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
@@ -99,7 +102,9 @@ const wrapped = {
     let path = "/";
     // Only route words: any segment that could carry an id or token becomes "*" (public census).
     try { path = new URL(request.url).pathname.split("/").slice(0, 4).map((seg) => (seg === "" || /^[a-z][a-z-]{0,23}$/.test(seg) ? seg : "*")).join("/") || "/"; } catch {}
-    return wrapped.processFetch(request, withMeteredKv(env, "fetch:" + path), ctx);
+    const meteredEnv=withMeteredKv(env, "fetch:" + path);
+    const response=await wrapped.processFetch(request, meteredEnv, ctx);
+    return injectInstitutionalChat(request, normalizeEnv(productionEnvView(meteredEnv)), response);
   },
   async processFetch(request, env, ctx) {
     // Retired public assets (old contact script): inert, no-store tombstone before any env/KV access.
@@ -108,8 +113,21 @@ const wrapped = {
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
+    // R138: isolated drainer before sales lookup or other application subrequests.
+    if(new URL(request.url).pathname===ATENDIMENTO_DRAIN_PATH)return handleAtendimentoDrainRequest(request,normalized,{sqlFactory:whatsappProofDatabase});
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
+    // R139: chat stays OFF without SITE_CHAT_ENABLED=true; internal SELF drain R138 runs before this.
+    if (url.hostname === "zevanory.api.br" && url.pathname.startsWith("/api/chat")) {
+      const publicChat=await handleR120PublicChat(request,normalized,{
+        sqlFactory:whatsappProofDatabase,
+        salesOpen:async()=>{
+          const st=await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status",{method:"GET"}),normalized,{sqlFactory:whatsappProofDatabase,worker,ctx});
+          return (await st?.json?.())?.open===true;
+        }
+      });
+      if(publicChat)return publicChat;
+    }
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     if (url.pathname === "/kit/baixar") return handleKitDownloadNc015(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
@@ -230,7 +248,7 @@ const wrapped = {
       });
       return chat || new Response("not_found", { status: 404 });
     }
-    if (url.pathname.startsWith("/api/admin/site-chat/")) return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
+    if (url.pathname.startsWith("/api/admin/site-chat/") || url.pathname === "/admin/chat-protocolos") return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
@@ -768,6 +786,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   // disputam as 50 subrequisições desta invocação (2026-10-24: retentativas não rodavam no cron).
   let supportOverdue = false;
   await dispatchSupportDrain(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => { supportOverdue = out.result?.overdue === true; console.info("support_outbox", JSON.stringify({ via: out.via, status: out.status ?? null, checked: out.result?.checked ?? null, done: out.result?.done ?? null, pending: out.result?.pending ?? null, dead: out.result?.dead ?? null, backlog: out.result?.backlog ?? null, oldest_min: out.result?.oldest_min ?? null, overdue: supportOverdue })); }).catch(() => console.error("support_outbox_failed", "exception"));
+  // R138: /atendimento dispatch also runs BEFORE preflight/other hourly tasks, via isolated SELF.
+  await dispatchAtendimentoDrain(normalized).then((out) => console.info("atendimento_outbox", JSON.stringify({via:out.via,status:out.status??null,ok:out.result?.ok===true,checked:out.result?.checked??null,done:out.result?.done??null,pending:out.result?.pending??null,dead:out.result?.dead??null,reason:out.result?.reason||null}))).catch(()=>console.error("atendimento_outbox_failed","exception"));
   await runSalesPreflight(normalized).then((out) => console.info("sales_preflight", JSON.stringify({ ok: out.ok, failed: out.checks.filter((c) => !c.ok).map((c) => c.id) }))).catch((error) => console.error("sales_preflight_failed", error instanceof Error ? error.message : String(error)));
   resetSalesSwitchCache();
   const salesSwitchState = await readSalesSwitch(normalized);

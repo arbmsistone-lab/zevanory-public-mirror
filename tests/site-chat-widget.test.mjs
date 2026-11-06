@@ -79,7 +79,7 @@ test("SW04 CSP e privacidade: sem innerHTML/eval/estilo inline/cookie/localStora
   for (const bad of [/innerHTML/, /outerHTML/, /insertAdjacentHTML/, /document\.write/, /\beval\(/, /new Function/, /\.style\./, /setAttribute\("style"/, /document\.cookie/, /localStorage/, /\/comprar\//, /\/assinar\//, /hotmart/i, /mercadopago/i, /wa\.me/, /<script/i])
     assert.doesNotMatch(JS, bad, "[SW04.1] " + (String(bad)));
   const urls = [...JS.matchAll(/https?:\/\/[a-z0-9.-]+/gi)].map((m) => m[0]);
-  for (const u of urls) assert.match(u, /^https:\/\/(vendas\.)?zevanory\.api\.br$/, "[SW04.2] " + (u));
+  for (const u of urls) assert.ok(/^https:\/\/(vendas\.)?zevanory\.api\.br$/.test(u) || u === "https://challenges.cloudflare.com", "[SW04.2] somente domínios próprios + Turnstile: " + u);
   assert.match(JS, /sessionStorage/, "[SW04.3] token só nesta aba");
   assert.match(JS, /!\/\^\\\/\(comprar\|assinar\)\\b\/\.test\(u\.pathname\)/, "[SW04.4] richText nunca transforma checkout em link");
   assert.doesNotMatch(CSS, /url\(|@import|https?:/, "[SW04.5] CSS sem recursos externos");
