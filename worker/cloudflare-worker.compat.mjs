@@ -36,6 +36,7 @@ import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
 import { handleSupportInboundWebhook, handleSupportDrainRequest, dispatchSupportDrain } from "./support-email-forward.mjs";
+import { ATENDIMENTO_DRAIN_PATH, handleAtendimentoDrainRequest, dispatchAtendimentoDrain } from "./atendimento-drain-dispatch.mjs";
 import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
@@ -108,6 +109,8 @@ const wrapped = {
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
+    // R138: isolated drainer before sales lookup or other application subrequests.
+    if(new URL(request.url).pathname===ATENDIMENTO_DRAIN_PATH)return handleAtendimentoDrainRequest(request,normalized,{sqlFactory:whatsappProofDatabase});
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
@@ -768,6 +771,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   // disputam as 50 subrequisições desta invocação (2026-10-24: retentativas não rodavam no cron).
   let supportOverdue = false;
   await dispatchSupportDrain(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => { supportOverdue = out.result?.overdue === true; console.info("support_outbox", JSON.stringify({ via: out.via, status: out.status ?? null, checked: out.result?.checked ?? null, done: out.result?.done ?? null, pending: out.result?.pending ?? null, dead: out.result?.dead ?? null, backlog: out.result?.backlog ?? null, oldest_min: out.result?.oldest_min ?? null, overdue: supportOverdue })); }).catch(() => console.error("support_outbox_failed", "exception"));
+  // R138: /atendimento dispatch also runs BEFORE preflight/other hourly tasks, via isolated SELF.
+  await dispatchAtendimentoDrain(normalized).then((out) => console.info("atendimento_outbox", JSON.stringify({via:out.via,status:out.status??null,ok:out.result?.ok===true,checked:out.result?.checked??null,done:out.result?.done??null,pending:out.result?.pending??null,dead:out.result?.dead??null,reason:out.result?.reason||null}))).catch(()=>console.error("atendimento_outbox_failed","exception"));
   await runSalesPreflight(normalized).then((out) => console.info("sales_preflight", JSON.stringify({ ok: out.ok, failed: out.checks.filter((c) => !c.ok).map((c) => c.id) }))).catch((error) => console.error("sales_preflight_failed", error instanceof Error ? error.message : String(error)));
   resetSalesSwitchCache();
   const salesSwitchState = await readSalesSwitch(normalized);
