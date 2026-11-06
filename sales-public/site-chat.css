@@ -44,7 +44,11 @@
   .zc-actions .zc-button{flex:1 1 auto}
 }
 @media (prefers-reduced-motion:reduce){.zc-panel,.zc-entry{scroll-behavior:auto}}
-/* R148: botão do chat no menu superior, ao lado de "Escrever para o suporte" (herda .nav-cta da página). */
-.site-nav .zc-nav-chat{display:inline-flex;align-items:center;min-height:44px;font:inherit;color:inherit;background:transparent;cursor:pointer;margin-right:8px}
-.site-nav .zc-nav-chat:focus-visible{outline:3px solid #ffd166;outline-offset:2px}
-@media (max-width:520px){.site-nav .zc-nav-chat{margin-right:4px;padding:0 10px}}
+/* R148: botão do chat no menu superior, ao lado de "Escrever para o suporte" (mesmo desenho do .nav-cta da página). */
+.site-nav button.zc-nav-chat{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font:inherit;font-weight:700;white-space:nowrap;cursor:pointer}
+.site-nav button.zc-nav-chat:hover{text-decoration:underline}
+.site-nav button.zc-nav-chat:focus-visible{outline:3px solid #ffd166;outline-offset:2px}
+.zc-nav-short{display:none}
+@media (max-width:640px){.site-nav button.zc-nav-chat{padding:0 12px}.zc-nav-long{display:none}.zc-nav-short{display:inline}}
+/* Celular: o logotipo não encolhe; o menu desce para uma segunda linha com os dois botões lado a lado. */
+@media (max-width:480px){.header-inner:has(.zc-nav-chat){flex-wrap:wrap;row-gap:0;padding-bottom:8px}.header-inner:has(.zc-nav-chat) .brand{flex-shrink:0}.site-nav:has(.zc-nav-chat){width:100%;gap:8px}.site-nav:has(.zc-nav-chat) .nav-cta:not(.zc-nav-chat){flex:1;justify-content:center}}
