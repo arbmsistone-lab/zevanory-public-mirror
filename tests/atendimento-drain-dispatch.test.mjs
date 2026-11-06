@@ -31,7 +31,7 @@ test("R138 SELF isolation: signed request and no inline fallback even on SELF fa
 test("R138 endpoint blocks forged/replayed calls before sending, no sensitive content in result",async()=>{
  const env={LEAD_PRIVACY_SECRET:secret,DATABASE_URL:"postgres://fake"};
  let consumed=false,calls=0;
- const sql={async query(q,params){calls++;if(q.includes("drain_nonce")){if(consumed)return [];consumed=true;return [{nonce:params[0]}]}return []}};
+ const sql={async query(q,params){calls++;if(q.includes("/*atendimento:drain_nonce*/")){if(consumed)return [];consumed=true;return [{nonce:params[0]}]}return []}};
  const auth={sqlFactory:()=>sql,nowMs:now};
  assert.equal((await handleAtendimentoDrainRequest(incoming(),env,auth)).status,401);
  assert.equal(calls,0);
