@@ -26,3 +26,13 @@ Esta varredura abrange os principais padrões identificados na busca do reposit�
 - R132 registrou no Neon o protocolo `ZEV-20261106-DA2F6F3C54` com owner/customer pendentes, 1 tentativa cada, erro `resend_network`.
 - Nenhuma promessa de entrega até que CI do PR esteja verde e, após merge/deploy autorizados, o cron retome a mesma linha e prove `owner_status='sent'`, `customer_status='sent'` e registros no Resend.
 - Não fazer merge/deploy neste PR sem autorização literal específica pelo SHA; vendas continuam fechadas; custo zero obrigatório.
+
+## R134 | Falha no cron e correção adicional
+
+A contra-auditoria do R133 detectou outra forma de propagar o fetch nativo sem receiver: `drainAtendimentoOutbox` definia `fetchImpl = globalThis.fetch` por padrão, e passava esse valor explicitamente a `atendimentoContext`, anulando o novo wrapper. Corrigido removendo apenas o default do dreno: `fetchImpl` chega como `undefined` ao contexto e utiliza seu wrapper seguro. Chamadas com `fetchImpl` injetado continuam inalteradas.
+
+Teste R134: dreno chamado sem `fetchImpl`, SQL fake com um protocolo pendente, `globalThis.fetch` simulado para rejeitar `this` não nativo; assertivas sobre dois envios, destinatários, `owner/customer sent`, contagem `done=1` e chaves `atendimento-owner/<protocolo>` / `atendimento-ack/<protocolo>`. Deve falhar no SHA R133 e passar no SHA R134.
+
+Varredura adicional no GitHub: referências `fetchImpl = globalThis.fetch` em `atendimento.mjs`, `support-email-forward.mjs`, `site-chat.mjs`, `voice-provider-router.mjs`; `c.fetchImpl(...)` somente em `atendimento.mjs`. `support-email-forward.mjs` passa `c.fetchImpl` como argumento à função `resendCall`, que o invoca como função local. Outros `fetchImpl = fetch` em módulos de publicação e autonomia não alterados. Nenhum publicador será reativado por este PR.
+
+CI e homologação: não declarar PASS sem resultados reais do GitHub. PR continua Draft, nenhum merge/deploy. Verificação de `owner_status/customer_status=sent` no Neon é pós-deploy e exige liberação explícita.

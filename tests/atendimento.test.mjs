@@ -102,6 +102,65 @@ test("R133 native fetch maintains Cloudflare-compatible receiver; injected fetch
   }
 });
 
+// R134: same native receiver regression through the hourly drain path (no fetchImpl injection).
+// This must fail on 36cf5cf: both sends remain pending with resend_network; after the fix both are sent.
+test("R134 hourly drain sends pending owner and customer notifications with default Cloudflare-like fetch", async () => {
+  const originalFetch = globalThis.fetch;
+  const protocolo = "ZEV-20261106-DA2F6F3C54";
+  const now = "2026-11-06T11:36:23.884Z";
+  const states = { owner: "pending", customer: "pending", payload: { email: "cliente@example.com", pedido: "", mensagem: "Preciso de atendimento do suporte." } };
+  const calls = [];
+  globalThis.fetch = function cloudflareNativeLike(url, init) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    assert.equal(url, "https://api.resend.com/emails");
+    const body = JSON.parse(init.body);
+    calls.push({ key: init.headers["idempotency-key"], to: body.to[0] });
+    return Promise.resolve(new Response(JSON.stringify({ id: "sent_" + calls.length }), {
+      status: 200, headers: { "content-type": "application/json" },
+    }));
+  };
+  const q = Object.fromEntries([
+    "due", "lease", "ownerSent", "customerSent", "ownerFailed", "customerFailed",
+    "release", "alertDue", "health", "housekeeping", "monitorClaim",
+  ].map(key => [key, key]));
+  q.schema = [];
+  const sql = {
+    async query(statement, params = []) {
+      if (statement === q.due) return [{ protocolo }];
+      if (statement === q.lease) return [{
+        protocolo, tipo: "suporte", owner_status: states.owner, customer_status: states.customer,
+        owner_attempts: 1, customer_attempts: 1,
+        payload: states.payload, recebido_em: now, responder_ate: "2026-11-11T11:36:23.884Z",
+        owner_window_ok: true, customer_window_ok: true,
+      }];
+      if (statement === q.ownerSent) { states.owner = "sent"; return []; }
+      if (statement === q.customerSent) { states.customer = "sent"; return []; }
+      if (statement === q.ownerFailed) return [{ owner_status: states.owner, owner_attempts: 2 }];
+      if (statement === q.customerFailed) return [{ customer_status: states.customer, customer_attempts: 2 }];
+      if (statement === q.release) return [{ owner_status: states.owner, customer_status: states.customer, alert_status: "none" }];
+      if (statement === q.alertDue) return [];
+      if (statement === q.health) return [{ alert_dead: 0, old_alert: 0, old_deadline: 0, oldest_hours: 0 }];
+      if (statement === q.housekeeping) return [{ quotas: 0, purged: 0 }];
+      throw new Error("unexpected SQL statement");
+    },
+  };
+  try {
+    const result = await drainAtendimentoOutbox(CFG, { sqlFactory: () => sql, q });
+    assert.equal(result.ok, true);
+    assert.equal(result.checked, 1);
+    assert.equal(result.done, 1, "pending protocol must be fully delivered by the hourly drain");
+    assert.equal(result.pending, 0);
+    assert.equal(states.owner, "sent");
+    assert.equal(states.customer, "sent");
+    assert.deepEqual(calls.map(c => c.key), [
+      "atendimento-owner/" + protocolo, "atendimento-ack/" + protocolo,
+    ], "idempotency keys must remain stable for the preexisting protocol");
+    assert.deepEqual(calls.map(c => c.to), ["dono@example.com", "cliente@example.com"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("R133 /atendimento displays on-screen receipt without falsely promising immediate email", () => {
   assert.match(formPage(), /Guarde esse número: ele é o seu comprovante de registro/);
   assert.doesNotMatch(formPage(), /na tela e por e-mail/);

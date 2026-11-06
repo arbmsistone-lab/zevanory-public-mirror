@@ -380,7 +380,7 @@ export async function registerRequest(env, input, { ip = "unknown", now = Date.n
 // Cron horário: retoma envios pendentes, processa dead-letters, monitora pendências antigas e faz a limpeza.
 // ok=false (cron vermelho) com: dead-letter esgotado sem reconhecimento manual, pendência além do prazo
 // operacional (OLD_PENDING_DEADLINE_HOURS) ou alerta de pendência antiga que não saiu.
-export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl = globalThis.fetch, limit = 3, q, transient } = {}) {
+export async function drainAtendimentoOutbox(env = {}, { sqlFactory, fetchImpl, limit = 3, q, transient } = {}) {
   if (!env.DATABASE_URL || typeof sqlFactory !== "function") return { ok: true, skipped: "no_database" };
   const c = await atendimentoContext(env, { sqlFactory, fetchImpl, q, transient });
   if (c.missing) {
