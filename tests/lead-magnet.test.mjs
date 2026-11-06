@@ -17,9 +17,9 @@ function fakeDb() {
     if (/^create table|^alter table/i.test(t)) return [];
     if (/^select status, confirmed_at/i.test(t)) { const r = rows.get(params[0]); return r ? [r] : []; }
     if (/^insert into zevanory_leads/i.test(t)) {
-      const [email, email_hash, name, consent_version, token_hash, subject_ref] = params;
+      const [email, email_hash, name, consent_version, consent_text, token_hash, subject_ref] = params;
       const prev = rows.get(email);
-      rows.set(email, { ...(prev || { nurture_step: 0 }), email, email_hash, name, consent_version, token_hash, subject_ref: prev?.subject_ref ?? subject_ref, consent_at: Date.now(), token_expires_at: Date.now() + 48 * 3600e3, status: prev?.status === "confirmed" ? "confirmed" : "pending" });
+      rows.set(email, { ...(prev || { nurture_step: 0 }), email, email_hash, name, consent_version, consent_text, token_hash, subject_ref: prev?.subject_ref ?? subject_ref, consent_at: Date.now(), token_expires_at: Date.now() + 48 * 3600e3, status: prev?.status === "confirmed" ? "confirmed" : "pending" });
       return [];
     }
     if (/^insert into zevanory_lead_events \(subject_ref, event, consent_version\) values/i.test(t)) { events.push({ subject_ref: params[0], event: params[1], consent_version: params[2], at: Date.now() }); return []; }
@@ -85,6 +85,7 @@ test("double opt-in: only the confirmation link (POST) starts the sequence", asy
   const res = await handleLeadMagnet(subscribeReq({ email: "Cliente@Empresa.com.br", name: "Ana", consent: true }), env(store), { sqlFactory: db.factory });
   assert.equal(res.status, 200);
   assert.equal(db.rows.get("cliente@empresa.com.br").status, "pending");
+  assert.equal(db.rows.get("cliente@empresa.com.br").consent_text, "Quero receber o checklist e até 2 e-mails com dicas e os produtos da ZEVANORY. Posso cancelar a qualquer momento. Li a Política de Privacidade.");
   assert.equal(sent.length, 1);
   const link = sent[0].text.match(/https:\/\/zevanory\.api\.br\/material-gratuito\/confirmar\?t=([0-9a-f]{64})/);
   assert.ok(link, "confirmation link present");
