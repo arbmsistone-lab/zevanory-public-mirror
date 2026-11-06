@@ -6,6 +6,7 @@
 tests/acquisition-engine.test.mjs 16
 tests/activity-ledger.test.mjs 6
 tests/affiliate-program.test.mjs 3
+tests/atendimento-drain-dispatch.test.mjs 3
 tests/atendimento.test.mjs 12
 tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
@@ -105,7 +106,7 @@ tests/r120-dec20-chat.test.mjs 4
 tests/r120-public-chat.test.mjs 4
 tests/r120-turnstile.test.mjs 4
 tests/r121-chat-institutional.test.mjs 4
-tests/r122-official-chat-handoff.test.mjs 2
+tests/r122-official-chat-handoff.test.mjs 3
 tests/r123-neuron-budget.test.mjs 2
 tests/r124-owner-panel.test.mjs 2
 tests/refund-provider-ambiguity.test.mjs 29
