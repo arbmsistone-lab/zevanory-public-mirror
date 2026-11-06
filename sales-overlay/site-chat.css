@@ -47,7 +47,7 @@
 /* R148: botão do chat no menu superior, ao lado de "Escrever para o suporte" (mesmo desenho do .nav-cta da página). */
 .site-nav button.zc-nav-chat{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font:inherit;font-weight:700;white-space:nowrap;cursor:pointer}
 .site-nav button.zc-nav-chat:hover{text-decoration:underline}
-.site-nav button.zc-nav-chat:focus-visible{outline:3px solid #ffd166;outline-offset:2px}
+.site-nav button.zc-nav-chat:focus-visible{outline-width:3px;outline-style:solid;outline-offset:2px}
 .zc-nav-short{display:none}
 @media (max-width:640px){.site-nav button.zc-nav-chat{padding:0 12px}.zc-nav-long{display:none}.zc-nav-short{display:inline}}
 /* Celular: o logotipo não encolhe; o menu desce para uma segunda linha com os dois botões lado a lado. */
