@@ -20,12 +20,13 @@ export function maskExcerpt(text) {
     .slice(0, 280);
 }
 
-async function sendOwnerEmail(env, subject, text) {
+// idempotencyKey (opcional): repassado como Idempotency-Key ao Resend — a mesma chave em 24 h nunca gera segundo e-mail.
+async function sendOwnerEmail(env, subject, text, { idempotencyKey = "" } = {}) {
   const to = String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com");
   if (!env.RESEND_API_KEY) return false;
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json", ...(/^[A-Za-z0-9_.:-]{1,256}$/.test(String(idempotencyKey)) ? { "idempotency-key": String(idempotencyKey) } : {}) },
     body: JSON.stringify({ from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], subject, text }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
@@ -34,14 +35,14 @@ async function sendOwnerEmail(env, subject, text) {
   return Boolean(r?.ok);
 }
 
-export async function alertOwnerNow(env, { channel, contact, excerpt, reason, category }) {
+export async function alertOwnerNow(env, { channel, contact, excerpt, reason, category, idempotencyKey = "" }) {
   if (!ALLOWED_OWNER_ALERTS.has(String(category || ""))) return { sent: false, reason: "category_not_alertable" };
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const contactHash = (await sha256Hex(String(contact || "anon"))).slice(0, 16);
   const key = `owner-alert:sent:${channel}:${contactHash}`;
   try { if (kv?.get && await kv.get(key)) return { sent: false, reason: "recently_alerted" }; } catch {}
   const sent = await sendOwnerEmail(env, `ZEVANORY — cliente precisa de você (${channel})`,
-    `Um cliente no ${channel} precisa de atendimento humano.\n\nMotivo: ${reason}\nMensagem: "${maskExcerpt(excerpt)}"\nContato (ref.): ${contactHash}\n\nO robô já respondeu de forma segura e avisou que um atendente vai continuar. Responda pelo próprio ${channel}.`);
+    `Um cliente no ${channel} precisa de atendimento humano.\n\nMotivo: ${reason}\nMensagem: "${maskExcerpt(excerpt)}"\nContato (ref.): ${contactHash}\n\nO robô já respondeu de forma segura e avisou que um atendente vai continuar. Responda pelo próprio ${channel}.`, { idempotencyKey });
   if (sent) { try { await kv?.put?.(key, "1", { expirationTtl: 6 * 3600 }); } catch {} }
   return { sent };
 }

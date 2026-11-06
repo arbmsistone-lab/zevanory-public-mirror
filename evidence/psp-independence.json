@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "objective": "psp-independence",
+  "roadmap_items": [
+    "B05",
+    "B08"
+  ],
+  "invariant": "no single payment provider may stop sales; no ambiguous attempt may be charged twice; the commercial lock blocks every provider",
+  "fallback_order": [
+    "mercadopago",
+    "asaas"
+  ],
+  "min_ready_psp_quorum": 2,
+  "ambiguous_never_fails_over": true,
+  "commercial_lock_blocks_all_providers": true,
+  "asaas_webhook_requires_path_secret_and_token": true,
+  "asaas_refund_requires_persisted_intent": true,
+  "proof_scope": "offline (fakes only); real sandbox E2E pending owner credentials",
+  "required_properties": [
+    "fixed deterministic order mercadopago -> asaas (no hash balancing)",
+    "per-provider circuit breaker + explicit health (PSP_FORCE_DOWN / KV)",
+    "503 fail-closed when no provider is usable",
+    "idempotency key per order; ambiguous result => reconciliation, never a second provider",
+    "no provider secret embedded in source"
+  ],
+  "half_open_single_probe_coordinator": "postgresql (psp_circuit_probes lease; KV is eventually consistent)",
+  "breaker_store_errors_explicit": true,
+  "asaas_review_queue_drain_and_dlq": true
+}
