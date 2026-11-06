@@ -85,10 +85,8 @@
 
   // Conversa.
   var chat = el("div", { className: "zc-chat", hidden: true });
-  var logRegion = el("div", { role: "log", "aria-live": "polite", "aria-relevant": "additions", "aria-label": "Histórico da conversa" });
-  var log = el("ol", { className: "zc-log", tabindex: "0" });
-  logRegion.appendChild(log);
-  chat.appendChild(logRegion);
+  var log = el("ol", { className: "zc-log", role: "log", "aria-live": "polite", "aria-relevant": "additions", "aria-label": "Histórico da conversa", tabindex: "0" });
+  chat.appendChild(log);
   var status = el("p", { className: "zc-status", role: "status" });
   chat.appendChild(status);
   var timeout = el("div", { className: "zc-timeout", role: "alert", hidden: true });
@@ -218,7 +216,7 @@
     }).catch(function () { showDown(); });
   }
   function addMessage(role, text) {
-    var li = el("li", { className: "zc-msg zc-" + role });
+    var li = el("li", { className: "zc-msg zc-" + role, role: "group" });
     li.appendChild(el("span", { className: "zc-sr" }, role === "user" ? "Você disse: " : "Assistente ZEVANORY: "));
     var p = el("span", { className: "zc-text" });
     richText(p, text);
