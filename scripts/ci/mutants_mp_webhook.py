@@ -46,7 +46,7 @@ RETRIES = 2  # repetições controladas após um INCONCLUSIVE (total de tentativ
 
 TAP = ["--test-reporter=tap", "--test-reporter-destination=stdout"]
 SUITES = {  # nome -> (comando, contagem exata na linha de base)
-    "unit": (["node", "--test", *TAP, "tests/mercadopago-webhook-signature.test.mjs"], 11),
+    "unit": (["node", "--test", *TAP, "tests/mercadopago-webhook-signature.test.mjs"], 13),
     "dedupe_pg": (["node", "--test", *TAP, "tests/integration/mercadopago-payment-dedupe-postgres.test.mjs"], 4),
     "http_pg": (["node", "--import", "./tests/t4_sim/register.mjs", "--test", *TAP,
                  "tests/integration/mercadopago-webhook-postgres.test.mjs"], 25),

@@ -1,0 +1,14 @@
+{
+  "_doc": "Roteiro secao 7 (amarracao ao codigo publicado). Regiao de assinatura Mercado Pago: o texto-fonte que tests/mercadopago-webhook-signature.test.mjs EXECUTA, extraido do Worker exatamente como o teste extrai (indexOf do inicio, indexOf do fim a partir do inicio, fatia [inicio, fim)). Lida por scripts/deploy/build_provenance.py (build-info, guarda, readback) e por tests/helpers/mp-signature-region.mjs (teste). Mudar este arquivo muda a definicao para os dois lados ao mesmo tempo; o teste S12 confere que ela continua igual a extracao literal do teste.",
+  "version": 1,
+  "source": "worker/cloudflare-worker.recovered.mjs",
+  "eol": "CRLF->LF (mesma regra de tests/helpers/text.mjs normalizeEol)",
+  "encoding": "utf-8",
+  "joiner": "\n",
+  "parts": [
+    ["var safeText2 = ", "function buildMercadoPagoPreference("],
+    ["function normalizeMercadoPagoWebhook(", "__name(normalizeMercadoPagoWebhook"],
+    ["function verifyMercadoPagoSignature(", "__name(verifyMercadoPagoSignature"]
+  ],
+  "free_identifiers": ["verifyMercadoPagoSignature", "normalizeMercadoPagoWebhook", "safeText2", "crypto5", "Buffer"]
+}
