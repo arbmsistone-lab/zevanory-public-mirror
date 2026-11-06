@@ -37,10 +37,10 @@ tests/conteudo-pronto-g1-g5.test.mjs 1
 tests/conteudo-pronto-roteiros.test.mjs 9
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
-tests/dec22-channel-draft-only.test.mjs 3
 tests/creative-offer-containment.test.mjs 7
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
+tests/dec22-channel-draft-only.test.mjs 3
 tests/engine-dispatcher.test.mjs 4
 tests/experiments.test.mjs 5
 tests/financial-audit-mp-retry.test.mjs 5
