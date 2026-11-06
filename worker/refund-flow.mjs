@@ -1,5 +1,5 @@
 import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
-import { drainAtendimentoOutbox, handleAtendimento } from "./atendimento.mjs";
+import { handleAtendimento } from "./atendimento.mjs";
 import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
 export { reconcileRefund } from "./refund-provider-claims.mjs";
@@ -323,15 +323,9 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
   return null;
 }
 
-// Hourly watchdog does GET-only reconciliation; never makes refund POST requests.
-// Cron horário: reembolsos + outbox do atendimento (drainAtendimentoOutbox). Falha do atendimento deixa
-// o resultado ok=false (cron vermelho), sem impedir a parte do reembolso.
+// R138: GET-only refunds remain here. Atendimento outbox runs separately via SELF, BEFORE the busy cron.
 export async function runRefundWatchdog(env, now = Date.now(), { sqlFactory } = {}) {
-  const refund = await runRefundWatchdogCore(env, now, { sqlFactory });
-  let atendimento;
-  try { atendimento = await drainAtendimentoOutbox(env, { sqlFactory }); }
-  catch { atendimento = { ok: false, reason: "atendimento_drain_failed" }; }
-  return { ...refund, ok: refund.ok !== false && atendimento.ok !== false, atendimento };
+  return runRefundWatchdogCore(env, now, { sqlFactory });
 }
 
 async function runRefundWatchdogCore(env, now = Date.now(), { sqlFactory } = {}) {
