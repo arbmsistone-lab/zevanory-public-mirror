@@ -1,4 +1,5 @@
 import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+import {cpSalesEnabled,isCpPublicRoute,cpClosedResponse,isMpPhase1CheckoutEnabled} from "./nc015-sales-scope.mjs";
 // Contato humano nas páginas do Worker vem de contato_publico (e-mail enquanto o WhatsApp não opera).
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto","kit-afiliado","ia-por-ramo","ia-para-salao-de-beleza","ia-para-barbearia","ia-para-restaurante-e-lanchonete","ia-para-loja-de-roupas","ia-para-mercadinho","ia-para-oficina-mecanica","ia-para-clinica-e-consultorio","ia-para-academia","ia-para-pet-shop","ia-para-contabilidade","ia-para-imobiliaria","ia-para-deposito-de-bebidas","ferramentas","calculadora-preco-de-venda","calculadora-margem-de-lucro","calculadora-ponto-de-equilibrio","ia-para-padaria","ia-para-pizzaria","ia-para-hamburgueria","ia-para-acaiteria","ia-para-confeitaria","ia-para-farmacia","ia-para-otica","ia-para-papelaria","ia-para-materiais-de-construcao","ia-para-assistencia-tecnica-de-celular","ia-para-autoescola","ia-para-escola-de-idiomas","ia-para-clinica-odontologica","ia-para-psicologo","ia-para-nutricionista","ia-para-fisioterapia","ia-para-estetica","ia-para-manicure","ia-para-lava-jato","ia-para-eletricista-e-encanador","ia-para-fotografo","ia-para-arquitetura-e-design-de-interiores","ia-para-advocacia","ia-para-agencia-de-viagens","ia-para-floricultura","ia-para-marmitaria","ia-para-pousada","ia-para-distribuidora-de-gas-e-agua","calculadora-fluxo-de-caixa","calculadora-preco-hora-servico","calculadora-taxa-maquininha","calculadora-cmv","mensagem-para-cliente-que-sumiu","como-cobrar-cliente-pelo-whatsapp","como-mandar-orcamento-pelo-whatsapp"]);
@@ -72,7 +73,7 @@ function infoPage(status,title,body){
 // the text never claims confirmation or absence of charge; access depends only on the webhook.
 const PAYMENT_RETURN={
   aprovado:["Recebemos o seu retorno do pagamento","<p>Assim que o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra. Costuma levar poucos minutos.</p><p>Não chegou? Confira a caixa de spam ou promoções. Você também pode <a href=\"https://zevanory.api.br/entrega/reenviar\">pedir um novo link de acesso</a>.</p>"],
-  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix ou boleto, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+".</p>"],
+  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix à vista, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+".</p>"],
   falhou:["Não conseguimos confirmar o seu pagamento","<p>Esta página não confirma o resultado do pagamento: ele pode ter sido recusado, cancelado ou até concluído. Confira o status no aplicativo ou no e-mail do Mercado Pago antes de tentar de novo, para não pagar duas vezes.</p><p>Se aparecer cobrança e o acesso não chegar no seu e-mail, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+". Se não houve cobrança, você pode tentar de novo pela página do produto.</p>"]
 };
 export function paymentReturnPage(state){
@@ -92,7 +93,7 @@ export function isAutomationUA(ua){
   if(!s)return true;
   return BOT_UA.test(MOBILE_BROWSER.test(s)?s.replace(INAPP_TOKEN,""):s);
 }
-const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prática",197],"ZEV-LCX-011":["Lucro & Caixa",247],"ZEV-CMB-011":["Combo IA + Vendas",297],"ZEV-NGC-011":["Negócio Completo",397]};
+const PRICES={"ZEV-IA-011":["IA na Prática",97],"ZEV-VEN-011":["Vendas na Prática",97],"ZEV-LCX-011":["Lucro & Caixa",147],"ZEV-CMB-011":["Combo IA + Vendas",157],"ZEV-NGC-011":["Negócio Completo",247]};
 async function salesOpen(env){
   try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}  // only an OK response with open===true opens; anything else is closed
 }
@@ -133,6 +134,13 @@ async function overLimit(env,ip){
 async function handleBuy(request,env,sku,ctx){
   const slug=BUY_SKUS[sku];
   if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
+  // DEC-05: while Mercado Pago is excluded, direct GET/HEAD go only to the
+  // fail-closed Hotmart variant. POST never creates an own-checkout transaction.
+  if(!isMpPhase1CheckoutEnabled()){
+    if(request.method!=="GET"&&request.method!=="HEAD")return infoPage(503,"Checkout próprio indisponível","<p>Na primeira fase, os guias e kits usam somente a Hotmart.</p>");
+    if(!(await salesOpen(env)))return infoPage(200,"Vendas abrem em breve",`<p>O ${PRICES[sku][0]} ainda não está à venda. Para dúvidas, escreva para ${CONTACT_HTML}.</p>`);
+    return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/hotmart/"+slug,"cache-control":"no-store"}))});
+  }
   if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
   if(!env?.CORE||typeof env.CORE.fetch!=="function") return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale com a gente: "+CONTACT_HTML+".</p>");
   const [name,price]=PRICES[sku];
@@ -217,22 +225,17 @@ export const HOTMART_CHECKOUT=Object.freeze({
 // Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
 const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
-const HOTMART_TEXT=[
-  // Design PR: the hero payment facts are a list (no "·" chain); each item has its Hotmart wording.
-  ["Pagamento processado pelo Mercado Pago (Pix ou cartão)","Pagamento processado pela Hotmart (Pix, cartão ou boleto)"],
-  [`Entrega por e-mail em ${DELIVERY_72H}`,"Acesso por e-mail após a confirmação do pagamento"],
-  ["<strong>Pagamento</strong><span>processado pelo Mercado Pago","<strong>Pagamento</strong><span>processado pela Hotmart"],
-  [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
-  [`Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um ${DELIVERY_72H} do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.`,"Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
-  [`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.`,`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.`],
-  ["Pix ou cartão pelo Mercado Pago.","Pix, cartão ou boleto pela Hotmart."],
-  ["Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download.","Acesso por e-mail logo após a confirmação do pagamento."],
+export const HOTMART_TEXT=[
+  // Every left operand is exact generated phase-one product copy; verified by NC-017 tests.
+  // DEC-06: payment, refund, delivery (immediate full download in the Hotmart purchase area) and the Resumo da
+  // oferta are already the Hotmart wording on the base page, so no pair is needed; the leak guard below stays.
 ];
-// Decreto 7.962 "Resumo da oferta": pagamento e entrega da variante Hotmart (data/politica-unica.json).
-HOTMART_TEXT.push([RESUMO_OFERTA.produto_digital.pagamento,RESUMO_OFERTA.hotmart.pagamento],[RESUMO_OFERTA.produto_digital.entrega.replace("{delivery_72h}",DELIVERY_72H),RESUMO_OFERTA.hotmart.entrega]);
 export function hotmartPage(html,slug,checkout){
   let out=openSalesHtml(html,slug);  // only served while sales are open (handleHotmart)
   for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);
+  // A stale pair must never leak own-checkout copy into a Hotmart purchase page.
+  const visible=out.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g,"");
+  if(/Mercado Pago|pedir-reembolso|entrega\/reenviar/.test(visible))throw Error("hotmart_copy_rewrite_incomplete");
   out=out.replace(/href="\/comprar\/ZEV-[A-Z0-9-]+"/g,'href="'+checkout+'" rel="noopener"');
   // Avoid duplicate-content SEO: the canonical stays on the main page; this variant is not indexed.
   out=out.replace("<head>",'<head><meta name="robots" content="noindex,follow">');
@@ -256,7 +259,8 @@ async function handleHotmart(request,env,slug,ctx){
   const page=await env.ASSETS.fetch(new Request(new URL("/"+slug+".html",request.url),{method:"GET"}));
   if(page.status!==200)return page;
   const headers=applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex, follow"}));  // never cache a purchase link past a switch change
-  return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers});
+  try{return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers})}
+  catch{return infoPage(503,"Oferta indisponível","<p>Os dados de pagamento e entrega estão sob revisão. Nenhum checkout foi aberto.</p>")}
 }
 
 // Auditor Sol (AVAL 100): every response under /comprar/ (any SKU, method, status 2xx/3xx/4xx/5xx,
@@ -346,7 +350,8 @@ async function comprarRoute(request,env,ctx,match){
 // sem SITE_CHAT_ENABLED="true" neste Worker as rotas /api/chat* respondem 503 aqui mesmo (sem chamar o
 // central) e nenhuma página recebe o widget. Ligado: o widget (CSS/JS próprios, sem script de terceiros,
 // sem inline, compatível com a CSP) só é anexado às páginas abaixo e só abre por ação da pessoa.
-export const SITE_CHAT_PAGES=Object.freeze(new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","conteudo-pronto","termos","privacidade","reembolso"]));
+// R120 DEC-20: all informational sales HTML routes, still OFF unless both Workers explicitly enable chat.
+export const SITE_CHAT_PAGES=Object.freeze(new Set([...htmlRoutes]));
 export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";
 export const shouldInjectSiteChat=(page,env)=>Boolean(page)&&SITE_CHAT_PAGES.has(page)&&siteChatEnabled(env);
 export function injectSiteChatHtml(html){
@@ -384,6 +389,13 @@ export async function handleSiteChatProxy(request,env){
 
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  // NC-015 / DEC-04: the subscription cannot become purchasable through
+  // an independent sales switch or a stale direct URL.
+  if(!cpSalesEnabled() && isCpPublicRoute(url.pathname)){
+    // Same HSTS/CSP/frame/referrer/permissions headers as every other sales-host response.
+    const closed=cpClosedResponse();
+    return new Response(request.method==="HEAD"?null:closed.body,{status:closed.status,headers:applySecurityHeaders(new Headers(closed.headers))});
+  }
   const comprar=comprarMatch(url.pathname);
   if(comprar) return noindexComprar(await comprarRoute(request,env,ctx,comprar));
   // IndexNow ownership proof for the sales host (same public key as the apex).
@@ -450,6 +462,12 @@ export default{async fetch(request,env,ctx){
   else if(page&&SALES_TOGGLE_PAGES.has(page)) headers.set("cache-control",SWITCH_DEPENDENT_CACHE_CONTROL);
   else if(response.status===200&&page) headers.set("cache-control",PAGE_CACHE_CONTROL);
   applySecurityHeaders(headers);
+  // R124: enable Turnstile only on a page actually serving the chat; OFF retains the exact historical CSP.
+  if(response.status===200&&page&&shouldInjectSiteChat(page,env)){
+    headers.set("content-security-policy",CSP
+      .replace("https://static.cloudflareinsights.com","https://static.cloudflareinsights.com https://challenges.cloudflare.com")
+      .replace("https://*.mercadopago.com.br","https://*.mercadopago.com.br https://challenges.cloudflare.com"));
+  }
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);
   if(response.status===200&&sku&&env?.CORE&&typeof HTMLRewriter!=="undefined"){
     const r=(await reviewSummary(env))[sku];

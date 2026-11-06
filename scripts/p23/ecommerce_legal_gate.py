@@ -42,7 +42,8 @@ DECLARATIONS = {
     "D7962-4-PU": "resposta conclusiva em até 5 dias",
     "D7962-5-1": "pela mesma ferramenta usada na contratação",
     "D7962-5-2": "Contratos acessórios serão cancelados sem custo",
-    "D7962-5-3": "comunicará imediatamente o Mercado Pago para impedir o lançamento ou iniciar o estorno",
+    # NC-019 (DEC-05): na fase 1 a instituição de pagamento das compras novas é a Hotmart.
+    "D7962-5-3": "comunicará imediatamente a Hotmart para impedir o lançamento ou iniciar o estorno",
     "D7962-5-4": "O recebimento do pedido será confirmado imediatamente",
     "CDC-49": "no prazo de 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço",
     "CDC-49-PU": "devolverá integralmente os valores pagos",
@@ -104,11 +105,22 @@ def validate(root: Path, findings: list[str]) -> list[str]:
     if not pages:
         errs.append("sales-public/*.html: nenhuma página publicada encontrada")
     offers = list(pol["policy_surfaces"]["products"]) + list(pol["policy_surfaces"].get("subscription", []))
+    # DEC-04 (fase 1): a assinatura pode estar oculta por uma LÁPIDE — noindex,nofollow, sem preço, sem oferta e sem
+    # link de checkout/assinatura. Só a assinatura pode ser lápide; uma lápide não vende, então não leva resumo da
+    # oferta. Qualquer preço, oferta ou link de compra na página volta a exigir o contrato completo abaixo.
+    subs = set(pol["policy_surfaces"].get("subscription", []))
+    def tombstone(slug, raw):
+        return (slug in subs and 'name="robots" content="noindex,nofollow"' in raw and not PRICE.search(visible(raw))
+                and not re.search(r'data-offer-summary|data-zev-sub|"@type":\s*"Offer"|/assinar/|/comprar/|pay\.hotmart\.com|R\$', raw))
+    hidden = []
     priced = 0
     for p in pages:
         raw = p.read_text(encoding="utf-8")
         vis = visible(raw)
         if not PRICE.search(vis) and p.stem not in offers:
+            continue
+        if tombstone(p.stem, raw):
+            hidden.append(p.stem)
             continue
         priced += 1
         where = f"sales-public/{p.name}"
@@ -126,6 +138,8 @@ def validate(root: Path, findings: list[str]) -> list[str]:
             errs.append(f"{where}: página de oferta ausente")
             continue
         raw = f.read_text(encoding="utf-8")
+        if tombstone(slug, raw):
+            continue
         r = resumo_fields(raw, slug)
         if r is None:
             errs.append(f"{where}: sem 'Resumo da oferta' (data-offer-summary) junto à oferta (Decreto 7.962, art. 2º e art. 4º, I)")
@@ -223,7 +237,7 @@ def validate(root: Path, findings: list[str]) -> list[str]:
     if src_missing:
         findings.append(f"D7962-2-I/II: {len(src_missing)} páginas-fonte na raiz do repositório (*/index.html, canônicas em zevanory.api.br/<página>) mostram preço sem a identificação completa do fornecedor: "
                         f"{', '.join(src_missing[:8])}{' ...' if len(src_missing) > 8 else ''}. O site de vendas publicado (sales-public) está completo; se essas páginas-fonte forem servidas ao público (espelho GitHub Pages ou rota da apex), precisam do mesmo rodapé")
-    print(f"P23_PAGES priced={priced} offers={len(offers)} legal={len(LEGAL_PAGES)} fiscal_status={st} checklist_items={len(ids)}")
+    print(f"P23_PAGES priced={priced} offers={len(offers)} legal={len(LEGAL_PAGES)} fiscal_status={st} checklist_items={len(ids)} hidden={','.join(hidden) or '-'}")
     return errs
 
 

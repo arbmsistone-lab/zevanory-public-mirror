@@ -59,7 +59,7 @@
     "kind": "answer",
     "category": "condition",
     "includes": [
-     "R$ 247,00"
+     "R$ 147,00"
     ]
    },
    "sales_open": true
@@ -72,7 +72,7 @@
     "kind": "answer",
     "category": "condition",
     "includes": [
-     "R$ 397,00"
+     "R$ 247,00"
     ]
    },
    "sales_open": true
@@ -208,7 +208,7 @@
     "kind": "answer",
     "category": "policy",
     "includes": [
-     "72 horas"
+     "acesso imediato ao conteúdo integral"
     ],
     "excludes": [
      "minutos",
@@ -308,7 +308,7 @@
     "kind": "escalate",
     "category": "refund",
     "includes": [
-     "pedir-reembolso"
+     "refund.hotmart.com ou Minhas compras"
     ]
    }
   },
@@ -476,7 +476,11 @@
     "kind": "escalate",
     "category": "delivery",
     "includes": [
-     "entrega/reenviar"
+     "o suporte resolve sem custo"
+    ],
+    "excludes": [
+     "entrega/reenviar",
+     "192 horas"
     ]
    }
   },

@@ -27,6 +27,9 @@ on:
       - "tests/site-chat*.test.mjs"
       - "tests/helpers/site-chat-*.mjs"
       - "tests/integration/site-chat-postgres.test.mjs"
+      - "tests/integration/r122-official-chat-postgres.test.mjs"
+      - "tests/r123-chat-browser-a11y.mjs"
+      - "tests/r120-dec20-chat.test.mjs"
       - "scripts/ci/mutants_site_chat.py"
       - "scripts/ci/mutants_site_chat_allow.json"
       - "scripts/ci/mutant_classifier.py"
@@ -66,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/site-chat.test.mjs tests/site-chat-widget.test.mjs tests/site-chat-no-synthetic-traffic.test.mjs tests/site-chat-eval.test.mjs | tee /tmp/chat.txt
-          grep -qx "# tests 33" /tmp/chat.txt || { echo "::error::contagem de testes diferente de 33"; exit 1; }
+          grep -qx "# tests 34" /tmp/chat.txt || { echo "::error::contagem de testes diferente de 33"; exit 1; }
           grep -qx "# fail 0" /tmp/chat.txt && grep -qx "# skipped 0" /tmp/chat.txt || { echo "::error::falha ou teste pulado"; exit 1; }
       - name: Relatório P10 (gerais Wilson 95% >= 0,90; críticos 100%)
         shell: bash
@@ -83,6 +86,38 @@ jobs:
           set -euo pipefail
           node --test tests/integration/site-chat-postgres.test.mjs | tee /tmp/pg.txt
           grep -qx "# tests 2" /tmp/pg.txt && grep -qx "# pass 2" /tmp/pg.txt && grep -qx "# skipped 0" /tmp/pg.txt || { echo "::error::PostgreSQL: contagem diferente de 2 ou pulado"; exit 1; }
+      - name: R125 protocolo ZEV real na outbox PostgreSQL + Resend sink (nunca produção)
+        shell: bash
+        env:
+          SITE_CHAT_PG_HOST: localhost
+          SITE_CHAT_PG_PORT: "5432"
+        run: |
+          set -euo pipefail
+          node --test tests/integration/r122-official-chat-postgres.test.mjs 2>&1 | tee /tmp/r125-official-postgres.log
+          grep -qx "# tests 2" /tmp/r125-official-postgres.log &&
+          grep -qx "# pass 2" /tmp/r125-official-postgres.log &&
+          grep -qx "# fail 0" /tmp/r125-official-postgres.log &&
+          grep -qx "# skipped 0" /tmp/r125-official-postgres.log ||
+          { echo "::error::R125 ZEV outbox test did not PASS"; exit 1; }
+      - name: R125 navegador Chromium 360 px + axe-core serious/critical zero
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --no-audit --no-fund --ignore-scripts playwright@1.58.2 axe-core@4.10.3
+          npx playwright install chromium
+          node tests/r123-chat-browser-a11y.mjs 2>&1 | tee /tmp/r125-browser-360-axe.log
+          grep -q "R123_BROWSER_360_AXE=PASS" /tmp/r125-browser-360-axe.log ||
+          { echo "::error::R125 browser/axe test did not PASS"; exit 1; }
+      - name: R125 anexar logs do Postgres e navegador
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r125-chat-postgres-browser-${{ github.run_id }}
+          path: |
+            /tmp/r125-official-postgres.log
+            /tmp/r125-browser-360-axe.log
+          if-no-files-found: warn
+          retention-days: 14
       - name: Contraprovas do runner sobre o classificador compartilhado (contagem exata)
         shell: bash
         env:

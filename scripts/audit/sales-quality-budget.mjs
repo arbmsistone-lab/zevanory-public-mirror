@@ -63,7 +63,8 @@ async function browserChecks(browser, url, device) {
   const page = await ctx.newPage();
   const consoleErrors = [];
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 160)); });
-  await page.goto(url, { waitUntil: "load" });
+  const response = await page.goto(url, { waitUntil: "load" });
+  const httpStatus = response?.status() ?? 0;
   const schemeOk = await page.evaluate((s) => matchMedia(`(prefers-color-scheme: ${s})`).matches, SCHEME);
   await page.addScriptTag({ content: AXE });
   const axe = await page.evaluate(async () => {
@@ -134,7 +135,7 @@ async function browserChecks(browser, url, device) {
     return [...new Set(bad)].slice(0, 8);
   });
   await rctx.close();
-  return { axe, targets, focus: [...new Set(focus)].slice(0, 8), motion, consoleErrors, scroll, schemeOk };
+  return { httpStatus, axe, targets, focus: [...new Set(focus)].slice(0, 8), motion, consoleErrors, scroll, schemeOk };
 }
 
 const browser = await chromium.launch();
@@ -142,11 +143,15 @@ for (const path of PAGES) {
   const url = base + path;
   result.pages[path] = {};
   for (const device of ["mobile", "desktop"]) {
+    // DEC-04: the retired CP route is deliberately 404. It is still checked by axe,
+    // focus, motion, scrolling and document semantics. Only HTTP-200 Lighthouse
+    // performance and the browser's expected 404 network-console diagnostic are N/A.
+    const cpTombstone = path === "/conteudo-pronto";
     const runs = [];
-    for (let i = 0; i <= RUNS; i++) { const m = lighthouse(url, device, i); if (i > 0) runs.push(m); }
+    if (!cpTombstone) for (let i = 0; i <= RUNS; i++) { const m = lighthouse(url, device, i); if (i > 0) runs.push(m); }
     const ok = runs.filter(Boolean);
     const row = { lighthouse: null, browser: null };
-    if (ok.length < RUNS) fail(path, device, `lighthouse completed ${ok.length}/${RUNS}`);
+    if (!cpTombstone && ok.length < RUNS) fail(path, device, `lighthouse completed ${ok.length}/${RUNS}`);
     if (ok.length) {
       const med = Object.fromEntries(Object.keys(BUDGET).map((k) => [k, median(ok.map((r) => r.score[k]))]));
       const min = Object.fromEntries(Object.keys(BUDGET).map((k) => [k, Math.min(...ok.map((r) => r.score[k]))]));
@@ -156,16 +161,21 @@ for (const path of PAGES) {
     }
     const b = await browserChecks(browser, url, device);
     row.browser = b;
+    const expectedHttp = cpTombstone ? 404 : 200;
+    if (b.httpStatus !== expectedHttp) fail(path, device, `HTTP ${b.httpStatus}, expected ${expectedHttp}`);
     const serious = b.axe.filter((v) => v.impact === "serious" || v.impact === "critical");
     if (serious.length) fail(path, device, `axe serious/critical: ${serious.map((v) => `${v.id}(${v.nodes}) ${v.sample}`).join("; ")}`);
     if (b.targets.length) fail(path, device, `targets < 44px: ${b.targets.join("; ")}`);
     if (b.focus.length) fail(path, device, `focus: ${b.focus.join("; ")}`);
     if (b.motion.length) fail(path, device, `reduced motion ignored: ${b.motion.join("; ")}`);
-    if (b.consoleErrors.length) fail(path, device, `console errors: ${b.consoleErrors.join("; ")}`);
+    const unexpectedConsole = cpTombstone
+      ? b.consoleErrors.filter((message) => !/Failed to load resource: the server responded with a status of 404 \(Not Found\)/.test(message))
+      : b.consoleErrors;
+    if (unexpectedConsole.length) fail(path, device, `console errors: ${unexpectedConsole.join("; ")}`);
     if (b.scroll.length) fail(path, device, `scroll exception violated: ${b.scroll.join("; ")}`);
     if (!b.schemeOk) fail(path, device, `prefers-color-scheme: ${SCHEME} emulation did not take effect`);
     result.pages[path][device] = row;
-    const lh = row.lighthouse ? `P${row.lighthouse.median.performance}/A${row.lighthouse.min.accessibility}/BP${row.lighthouse.min["best-practices"]}/SEO${row.lighthouse.min.seo} LCP${row.lighthouse.lcp}` : "LH n/a";
+    const lh = cpTombstone ? "LH n/a (expected HTTP 404)" : row.lighthouse ? `P${row.lighthouse.median.performance}/A${row.lighthouse.min.accessibility}/BP${row.lighthouse.min["best-practices"]}/SEO${row.lighthouse.min.seo} LCP${row.lighthouse.lcp}` : "LH n/a";
     console.log(`::notice title=SALES_QUALITY ${SCHEME} ${device} ${path}::${lh} axe_serious=${serious.length} axe_other=${b.axe.length - serious.length} small_targets=${b.targets.length} focus=${b.focus.length} motion=${b.motion.length}`);
   }
 }

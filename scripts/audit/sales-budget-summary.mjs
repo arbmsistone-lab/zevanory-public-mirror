@@ -6,8 +6,26 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const [lightPath, darkPath, outPath, ...rest] = process.argv.slice(2);
 const commit = rest[rest.indexOf("--commit") + 1] && rest.includes("--commit") ? rest[rest.indexOf("--commit") + 1] : null;
-const themes = { light: JSON.parse(readFileSync(lightPath, "utf8")), dark: JSON.parse(readFileSync(darkPath, "utf8")) };
-const out = { schema: "zevanory.sales-budget-results.v1", commit, generated_by: "scripts/audit/sales-quality-budget.mjs + sales-budget-summary.mjs", budget: themes.light.budget, runs: themes.light.runs, themes: {}, pass: true };
+// A missing theme report is a failed measurement, not permission to certify PASS.
+const load = (path, theme) => {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    if (!parsed || parsed.scheme !== theme || !Array.isArray(parsed.failures) || !parsed.pages || !parsed.budget) {
+      throw new Error("invalid schema or scheme");
+    }
+    return { report: parsed, problem: null };
+  } catch (error) {
+    return { report: { scheme: theme, budget: null, runs: null, pages: {}, failures: [`missing/invalid ${theme} report: ${error.message}`] },
+      problem: String(error.message) };
+  }
+};
+const loaded = { light: load(lightPath, "light"), dark: load(darkPath, "dark") };
+const themes = Object.fromEntries(Object.entries(loaded).map(([name, value]) => [name, value.report]));
+const out = { schema: "zevanory.sales-budget-results.v1", commit,
+  generated_by: "scripts/audit/sales-quality-budget.mjs + sales-budget-summary.mjs",
+  budget: themes.light.budget || themes.dark.budget, runs: themes.light.runs ?? themes.dark.runs,
+  themes: {}, pass: true, missing_reports: Object.fromEntries(Object.entries(loaded)
+    .filter(([, value]) => value.problem).map(([name, value]) => [name, value.problem])) };
 for (const [theme, r] of Object.entries(themes)) {
   if (r.scheme !== theme) throw new Error(`${theme} report has scheme ${r.scheme}`);
   const pages = {};
@@ -33,3 +51,4 @@ for (const [theme, r] of Object.entries(themes)) {
 }
 writeFileSync(outPath, JSON.stringify(out, null, 2) + "\n");
 console.log(`SALES_BUDGET_RESULTS=${out.pass ? "PASS" : "FAIL"} pages=${Object.keys(out.themes.light.pages).length} themes=2 -> ${outPath}`);
+if (!out.pass) process.exitCode = 1;

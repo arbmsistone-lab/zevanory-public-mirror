@@ -172,8 +172,20 @@ test("Worker de vendas: página de produto conta exposição ao CTA certo; inten
   await worker.fetch(req("/ferramentas"), env(false), ctx); await Promise.all(waits);
   assert.equal(hits[0].cta, undefined, "[FU12.3] página sem interruptor não é exposição");
   hits.length = 0;
-  await worker.fetch(req("/comprar/ZEV-IA-011", { method: "POST" }), env(true), ctx); await Promise.all(waits);
-  assert.deepEqual(hits.map((h) => [h.page, h.metric, h.provider]), [["ia-na-pratica", "own_checkout_started", "mercadopago"]], "[FU12.4]");
+  // DEC-05 (fase 1 só Hotmart): com vendas abertas o POST do checkout próprio é recusado (503) antes de criar
+  // sessão no Mercado Pago, logo nenhuma intenção own_checkout_started é contada.
+  { const e = env(true), core = e.CORE.fetch, seen = []; e.CORE.fetch = async (u, init) => { seen.push(String(u)); return core(u, init); };
+    const r = await worker.fetch(req("/comprar/ZEV-IA-011", { method: "POST" }), e, ctx); await Promise.all(waits);
+    assert.equal(r.status, 503, "[FU12.4] checkout próprio travado (DEC-05)");
+    assert.equal(r.headers.get("location"), null, "[FU12.4] sem redirecionamento a checkout");
+    assert.equal(seen.filter((u) => u.includes("checkout.internal")).length, 0, "[FU12.4] nenhuma sessão de checkout criada");
+    assert.equal(hits.filter((h) => h.metric === "own_checkout_started").length, 0, "[FU12.4] sem sessão = nenhuma intenção"); }
+  // DEC-05: o caminho legado de checkout próprio não pode emitir intenção nem mesmo em código
+  // inalcançável; protege contra regressão quando futuras mudanças tocarem a trava. Mata F13.
+  const buySource = readTextNormalized(new URL("../worker/sales-public-worker.mjs", import.meta.url));
+  const buyHandler = buySource.split("async function handleBuy(request,env,sku,ctx){")[1]?.split("// Lead magnet form")[0] || "";
+  assert.ok(buyHandler.length > 400, "[FU12.4] caminho legado precisa continuar auditável");
+  assert.doesNotMatch(buyHandler, /countView\([^;\n]*"own_checkout_started"/, "[FU12.4] DEC-05 proíbe contagem de intenção no checkout próprio desabilitado");
   hits.length = 0;
   await worker.fetch(req("/comprar/ZEV-IA-011", { method: "POST" }), env(true, 503), ctx); await Promise.all(waits);
   assert.equal(hits.filter((h) => h.metric === "own_checkout_started").length, 0, "[FU12.5] sessão não criada = nenhuma intenção");

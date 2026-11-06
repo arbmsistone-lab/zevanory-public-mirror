@@ -7,7 +7,7 @@ import { readdirSync } from "node:fs";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
 import { spawnSync } from "node:child_process";
-import { jargonHits, visibleText, stubProblems } from "../scripts/ci/site_crawl_gate.mjs";
+import { jargonHits, visibleText, stubProblems, tombstoneProblems, pagesFileProblems, CP_TOMBSTONE_STUBS } from "../scripts/ci/site_crawl_gate.mjs";
 
 const ROOT = new URL("..", import.meta.url);
 const stub = (t = "https://vendas.zevanory.api.br/solucoes") =>
@@ -34,6 +34,22 @@ test("a compliant stub passes; each defect is caught", () => {
     [stub("https://zevanory.api.br/solucoes"), "no canonical to the sales host"],
   ];
   for (const [html, problem] of cases) assert.ok(stubProblems(html).includes(problem), problem);
+  // DEC-04: the CP tombstone shape is accepted ONLY for the two historic CP names; anywhere else it is a broken stub.
+  const tomb = readTextNormalized(new URL("../sales-public/conteudo-pronto.html", import.meta.url));
+  assert.deepEqual(tombstoneProblems(tomb), []);
+  assert.deepEqual(pagesFileProblems("conteudo-pronto.html", tomb), []);
+  assert.ok(pagesFileProblems("termos.html", tomb).includes("no canonical to the sales host"), "tombstone outside the CP names");
+  assert.ok(pagesFileProblems("conteudo-pronto.html", stub()).includes("tombstone redirects or links to the sales host"), "CP name cannot redirect to an offer");
+  const tcases = [
+    [tomb.replace('content="noindex,nofollow"', 'content="index"'), "tombstone without noindex,nofollow"],
+    [tomb.replace("<h1>Página indisponível</h1>", "<h1>Conteúdo Pronto</h1>"), "tombstone without the unavailable notice"],
+    [tomb.replace("</head>", '<meta http-equiv="refresh" content="0; url=https://vendas.zevanory.api.br/solucoes"></head>'), "tombstone redirects or links to the sales host"],
+    [tomb.replace("</main>", '<p><a href="/assinar/conteudo-pronto">x</a></p></main>'), "tombstone links somewhere other than suporte@"],
+    [tomb.replace("</main>", '<button data-zev-sub="1">x</button></main>'), "tombstone carries a subscription/offer CTA"],
+    [tomb.replace("</main>", "<p>R$ 197 por mês</p></main>"), "price/offer/legacy contact text"],
+    [tomb.replace("</head>", '<script src="/x.js"></script></head>'), "loads assets (stylesheet/img/script)"],
+  ];
+  for (const [html, problem] of tcases) assert.ok(tombstoneProblems(html).includes(problem), problem);
 });
 
 test("committed Pages layer: generator output is current and every stub is compliant", () => {
@@ -47,9 +63,12 @@ test("committed Pages layer: generator output is current and every stub is compl
   for (const f of files.filter((n) => n.endsWith(".html"))) {
     const text = readTextNormalized(new URL(f, dir));
     assert.match(text, /^---\npermalink: \/[^\n]*\nlayout: null\n---\n<!doctype html>/, f + ": Jekyll front matter (permalink) then the stub");
-    assert.deepEqual(stubProblems(text), [], f);
+    assert.deepEqual(pagesFileProblems(f, text), [], f);
     assert.doesNotMatch(text, /\{\{|\{%/, f + ": no Liquid syntax");
   }
+  assert.deepEqual(files.filter((n) => CP_TOMBSTONE_STUBS.includes(n)).sort(), [...CP_TOMBSTONE_STUBS].sort(), "DEC-04: both CP tombstones present");
+  for (const f of CP_TOMBSTONE_STUBS) assert.equal(readTextNormalized(new URL(f, dir)).replace(/^---\n[\s\S]*?\n---\n/, ""),
+    readTextNormalized(new URL("../sales-public/conteudo-pronto.html", import.meta.url)) + (readTextNormalized(new URL("../sales-public/conteudo-pronto.html", import.meta.url)).endsWith("\n") ? "" : "\n"), f + ": byte-identical to the sales tombstone");
   const robots = readTextNormalized(new URL("robots.txt", dir));
   assert.match(robots, /^User-agent: \*\nAllow: \/$/m);
   assert.doesNotMatch(robots, /sitemap/i);

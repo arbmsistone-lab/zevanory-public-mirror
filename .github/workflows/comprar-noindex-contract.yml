@@ -9,6 +9,8 @@ on:
     paths:
       - ".github/workflows/comprar-noindex-contract.yml"
       - "tests/comprar-noindex.test.mjs"
+      - "tests/helpers/dec05-lifted.mjs"
+      - "tests/helpers/dec05-lifted-hooks.mjs"
       - "scripts/ci/mutants_comprar_noindex.py"
       - "tests/test_mutants_comprar_classifier.py"
       - "worker/sales-public-worker.mjs"

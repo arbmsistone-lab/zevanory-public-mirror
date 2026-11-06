@@ -21,7 +21,7 @@ const PUB = join(ROOT, "sales-public");
 const P = JSON.parse(readTextNormalized(join(ROOT, "data/politica-unica.json")));
 const R = P.resumo_oferta;
 const PRODUCTS = P.policy_surfaces.products;
-const PRICES = { "ia-na-pratica": 197, "vendas-na-pratica": 197, "lucro-e-caixa": 247, "combo-ia-vendas": 297, "negocio-completo": 397 };
+const PRICES = { "ia-na-pratica": 97, "vendas-na-pratica": 97, "lucro-e-caixa": 147, "combo-ia-vendas": 157, "negocio-completo": 247 };
 const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" };
 const audit = (dir) => spawnSync(PY, [join(ROOT, "scripts/sales_policy.py"), "--audit", dir, "--mode", "closed"], { encoding: "utf8", env });
@@ -61,7 +61,8 @@ test("Decreto 7.962 art. 2º: cada oferta paga tem 'Resumo da oferta' estruturad
     const { v, start } = checkSummary(html, slug);
     assert.ok(v.preco_total.startsWith(`R$ ${PRICES[slug]},00`), slug + ": preço total = preço da página");
     assert.ok(html.includes(`<span class="status-pill">R$ ${PRICES[slug]} · pagamento único</span>`), slug);
-    assert.ok(v.entrega.includes(P.delivery_72h), slug + ": modo e prazo de entrega");
+    // DEC-06: acesso imediato e integral para download na área de compras da Hotmart (campo curto).
+    assert.equal(v.entrega, P.delivery_short, slug + ": modo e prazo de entrega");
     // Posição ostensiva: dentro do mesmo bloco da oferta (<div class="offer-side">) do CTA principal.
     // Design PR (2026-10-24): o bloco deixou de ser <aside> (axe landmark-complementary-is-top-level);
     // o bloco termina no CTA ("</a></div>"), que fica logo depois do resumo.
@@ -70,11 +71,12 @@ test("Decreto 7.962 art. 2º: cada oferta paga tem 'Resumo da oferta' estruturad
     // Modo aberto em runtime: mesma estrutura, disponibilidade aberta.
     checkSummary(openSalesHtml(html, slug), slug, { open: true });
   }
+  // DEC-04: CP is not a phase-one offer; legal summary must not be emitted.
   const sub = read("conteudo-pronto");
-  const { v, start } = checkSummary(sub, "conteudo-pronto");
-  assert.ok(v.preco_total.startsWith("R$ 197,00 por mês"));
-  assert.ok(start - sub.indexOf('data-zev-sub="conteudo-pronto"') < 2500, "assinatura: logo após o CTA principal");
-  checkSummary(openSalesHtml(sub, "conteudo-pronto"), "conteudo-pronto", { open: true });
+  assert.match(sub,/noindex,nofollow/);
+  assert.match(sub,/Página indisponível/);
+  assert.doesNotMatch(sub,/data-offer-summary|data-zev-sub|pay\.hotmart\.com|R\$/);
+  assert.equal(openSalesHtml(sub,"conteudo-pronto"),sub,"sales switch cannot revive CP");
 });
 
 test("Decreto 7.962 mutantes: campo removido, CNPJ trocado, CEP pendente e disponibilidade ausente são mortos", () => {
@@ -103,7 +105,7 @@ test("gate do modo fechado (CLI): Offer paga em qualquer disponibilidade e check
     "G4 Offer LimitedAvailability": ["combo-ia-vendas", ld("combo-ia-vendas", { "@type": "Offer", price: 297, availability: "https://schema.org/LimitedAvailability" })],
     "G5 AggregateOffer lowPrice > 0": ["negocio-completo", ld("negocio-completo", { "@type": "AggregateOffer", lowPrice: "397", priceCurrency: "BRL" })],
     "G6 Offer sem preço": ["ia-na-pratica", ld("ia-na-pratica", { "@type": "Offer", priceCurrency: "BRL", availability: "https://schema.org/PreOrder" })],
-    "G7 assinatura com Offer de 197 sem availability": ["conteudo-pronto", (h) => h.replace('"@type": "Service",', '"@type": "Service", "offers": {"@type": "Offer", "price": "197.00", "priceCurrency": "BRL"},')],
+    "G7 CP hidden surface reintroduces paid Offer": ["conteudo-pronto", (h) => h.replace("</main>", '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","offers":{"@type":"Offer","price":"97.00","priceCurrency":"BRL"}}</script></main>')],
     "G8 calculadora vira oferta paga": ["calculadora-cmv", (h) => h.replace('"offers": {"@type": "Offer", "price": "0"', '"offers": {"@type": "Offer", "price": "19.90"')],
     "G9 link de checkout Mercado Pago externo": ["solucoes", (h) => h.replace("</main>", '<a href="https://mpago.la/2xYz">pagar</a></main>')],
     "G10 link go.hotmart.com": ["kit-afiliado", (h) => h.replace("</main>", '<a href="https://go.hotmart.com/X1">comprar</a></main>')],
@@ -240,7 +242,8 @@ test("cache: páginas que dependem do interruptor saem com no-store nos dois mod
     for (const s of ["open", "closed"]) {
       state = s;
       const res = await get(path);
-      assert.equal(res.status, 200, path);
+      assert.equal(res.status, path==="/conteudo-pronto"?404:200,path);
+      if(path==="/conteudo-pronto") assert.equal(res.headers.get("x-robots-tag"),"noindex, nofollow");
       const cc = String(res.headers.get("cache-control") || "");
       assert.match(cc, /\bno-store\b/, `${path} (${s}) sem no-store: ${cc}`);
       assert.doesNotMatch(cc, /\b(public|max-age=[1-9]|s-maxage|stale-while-revalidate)\b/, `${path} (${s}) armazenável: ${cc}`);

@@ -112,7 +112,7 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
   const held = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: false });
   assert.equal(held.held, 1); assert.equal(sent.length, 0);
   const open = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
-  assert.equal(open.sent, 1); assert.match(sent[0].text, /IA na Prática \(R\$ 197/); assert.match(sent[0].text, /utm_source=email/);
+  assert.equal(open.sent, 1); assert.match(sent[0].text, /IA na Prática \(R\$ 97/); assert.match(sent[0].text, /utm_source=email/);
   const link = new URL(await leadOptOutLink(e, "x@y.com", ref));
   assert.equal(link.searchParams.get("r"), ref, "new links carry the stored keyed reference, not a plain hash");
   assert.notEqual(link.searchParams.get("r"), await sha256("x@y.com"));
@@ -130,7 +130,7 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
 test("nurture copy only uses catalog prices and the single 7-day rule (open sales only)", () => {
   assert.doesNotMatch(nurtureEmail(1, { name: "", optOutUrl: "u" }).text, /vendas-na-pratica|R\$/);
   const text = nurtureEmail(2, { name: "", optOutUrl: "u", salesOpen: true }).text;
-  for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397].includes(Number(m[1])));
+  for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([97, 147, 157, 247].includes(Number(m[1])));
   assert.ok(text.includes(CUSTOMER_RULE_7D) && text.includes(DELIVERY_72H), "regra e entrega da política única");
   assert.deepEqual(bannedPolicyHits(text), []);
 });
@@ -141,14 +141,14 @@ test("the offer matches what the lead was reading and the sequence ends", () => 
   assert.equal(interestFromPage("/calculadora-margem-de-lucro"), "caixa");
   assert.equal(interestFromPage("/vendas-na-pratica"), "vendas");
   assert.equal(interestFromPage("/ia-para-padaria"), "ia");
-  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa", salesOpen: true }).text, /Lucro & Caixa \(R\$ 247/);
+  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa", salesOpen: true }).text, /Lucro & Caixa \(R\$ 147/);
   const last = nurtureEmail(4, { name: "", optOutUrl: "u", salesOpen: true }).text;
-  assert.match(last, /último e-mail/i); assert.match(last, /R\$ 397/); assert.ok(last.includes(CUSTOMER_RULE_7D));
+  assert.match(last, /último e-mail/i); assert.match(last, /R\$ 247/); assert.ok(last.includes(CUSTOMER_RULE_7D));
   for (let s = 0; s < NURTURE_DONE; s++) {
     const t = nurtureEmail(s, { name: "", optOutUrl: "OPTOUT", salesOpen: true }).text;
     assert.match(t, /OPTOUT/);
     assert.deepEqual(bannedPolicyHits(t), [], "step " + s);
-    for (const m of t.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397, 641].includes(Number(m[1])), m[0]);
+    for (const m of t.matchAll(/R\$ (\d+)/g)) assert.ok([97, 147, 157, 247, 341].includes(Number(m[1])), m[0]);
   }
 });
 

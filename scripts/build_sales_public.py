@@ -117,40 +117,41 @@ LEGAL_FOOTER = ('<div class="container footer-legal">'
                 '</ul></section></div>')
 
 COMMERCE = {
-    "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197,
+    "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 97,
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Arquivo de comandos prontos para IA", "Planilha de aplicação (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "vendas-na-pratica": {"sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": 197,
+    "vendas-na-pratica": {"sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": 97,
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Modelos de mensagens de venda e follow-up", "Roteiro de conteúdos", "Planilha de acompanhamento comercial (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "lucro-e-caixa": {"sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": 247,
+    "lucro-e-caixa": {"sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": 147,
         "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido (PDF e DOCX)", "Planilha de caixa e margem (XLSX)", "Checklist financeiro semanal", "Comandos de IA para análise financeira", "Arquivo 'Comece aqui' com o passo a passo"],
         "faq_q": None},
-    "combo-ia-vendas": {"sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": 297,
-        "items": ["IA na Prática completo (manual, guia, comandos e planilha)", "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)", "Economia de R$ 97 em relação à compra separada (R$ 394)"],
-        "faq_q": ("Preciso comprar os produtos separadamente?", "Não. O Combo já inclui o IA na Prática e o Vendas na Prática completos, por R$ 297 (separados custariam R$ 394).")},
-    "negocio-completo": {"sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": 397,
-        "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", "Economia de R$ 244 em relação à compra separada (R$ 641)"],
+    "combo-ia-vendas": {"sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": 157,
+        "items": ["IA na Prática completo (manual, guia, comandos e planilha)", "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)", "Economia de R$ 37 em relação à compra separada (R$ 194)"],
+        "faq_q": ("Preciso comprar os produtos separadamente?", "Não. O Combo já inclui o IA na Prática e o Vendas na Prática completos, por R$ 157 (separados custariam R$ 194).")},
+    "negocio-completo": {"sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": 247,
+        "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", "Economia de R$ 94 em relação à compra separada (R$ 341)"],
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
-FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA no dia a dia e organizar as vendas pelo WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 97', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 244'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
+FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA no dia a dia e organizar as vendas pelo WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 37', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 94'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
 # Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
 HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
                  else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
-DELIVERY_Q = ("Como recebo o produto?", "Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um " + policy.DELIVERY_72H + " do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.")
-GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
+# DEC-06: entrega imediata e integral para download na área de compras da Hotmart (frase canônica de data/politica-unica.json).
+DELIVERY_Q = ("Como recebo o produto?", policy.DELIVERY_TEXT)
+GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça " + policy.REFUND_CHANNELS_HOTMART + ". " + policy.HOTMART_GUARANTEE)
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
 MODE = policy.build_mode()
 
 def buy_facts() -> str:
-    return ('<ul class="facts buy-facts"><li>Pagamento processado pelo Mercado Pago (Pix ou cartão)</li>'
-            f'<li>Entrega por e-mail em {policy.DELIVERY_72H}</li>'
+    return ('<ul class="facts buy-facts"><li>Pagamento processado pela Hotmart (Pix à vista ou cartão)</li>'
+            f'<li>{policy.DELIVERY_SHORT.rstrip(".")}</li>'
             '<li>Arrependimento em 7 dias corridos, com devolução integral</li></ul>')
 
-# Response commitment as documented in /termos (section 8): protocol on the spot, conclusive answer in 5 days.
+# Response commitment as documented in /termos (section 1): immediate confirmation, conclusive answer in 5 days.
 RESPONSE_COMMITMENT = "confirmação imediata e resposta conclusiva em até 5 dias"
 
-def trust_mini(payment: str = "pelo Mercado Pago") -> str:
+def trust_mini(payment: str = "pela Hotmart") -> str:
     """Compact, factual trust block next to every price (data from data/politica-unica.json)."""
     f = policy.SUPPLIER
     return ('<ul class="trust-mini" aria-label="Quem vende e como funciona">'
@@ -161,15 +162,13 @@ def trust_mini(payment: str = "pelo Mercado Pago") -> str:
 
 def how_to_buy() -> str:
     """Full trust block (solucoes, quem-criou): how a purchase works, step by step, and who sells.
-    Every sentence restates /termos (sections 1, 3, 4, 6 and 8); nothing new is promised."""
+    Every sentence restates /termos (sections 1, 3, 4, 5 and 6); nothing new is promised."""
     f = policy.SUPPLIER
     return ('<section class="container how-to-buy" aria-labelledby="como-compra"><h2 id="como-compra">Como a compra funciona</h2>'
             '<ol class="steps">'
-            '<li><strong>Pagamento</strong><span>Pix ou cartão, processado pelo Mercado Pago. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
-            '<li><strong>E-mail</strong><span>Depois da confirmação do pagamento, o link chega no e-mail que você informou.</span></li>'
-            f'<li><strong>Link pessoal</strong><span>{policy.DELIVERY_72H[0].upper() + policy.DELIVERY_72H[1:]}. Se expirar, o suporte envia outro sem custo.</span></li>'
+            '<li><strong>Pagamento</strong><span>Pix à vista ou cartão, processado pela Hotmart. A ZEVANORY não recebe nem armazena dados de cartão.</span></li>'
+            f'<li><strong>Acesso imediato</strong><span>{policy.DELIVERY_TEXT}</span></li>'
             '<li><strong>7 dias</strong><span>Para desistir, sem justificativa, com devolução integral.</span></li></ol>'
-            '<p class="steps-note">O Conteúdo Pronto é uma assinatura mensal cobrada pela Hotmart.</p>'
             '<dl class="seller">'
             f'<div><dt>Quem vende</dt><dd>{f["razao_social"]}, empresa brasileira</dd></div>'
             f'<div><dt>CNPJ</dt><dd>{f["cnpj"]}</dd></div>'
@@ -274,7 +273,7 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
         "preco_total": terms["preco_total"].replace("{price}", str(price)),
         "pagamento": terms["pagamento"],
         "disponibilidade": None,
-        "entrega": terms["entrega"].replace("{delivery_72h}", policy.DELIVERY_72H),
+        "entrega": terms["entrega"],
         "restricoes": terms["restricoes"],
         "arrependimento": policy.CUSTOMER_RULE_7D + ", com devolução integral.",
     }
@@ -297,13 +296,14 @@ def apply_commerce(slug: str, html: str) -> str:
     html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     # Every primary CTA buys (open) or joins the waiting list (closed).
     html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', lambda m: sales_cta(c, label), html)
-    # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Each item has an
-    # exact Hotmart counterpart in worker/sales-public-worker.mjs (HOTMART_TEXT).
+    # Design: the payment/delivery/withdrawal facts as a short list, not a "·" chain. Payment already names
+    # the Hotmart (DEC-05); items that still differ in the Hotmart variant have an exact counterpart in
+    # worker/sales-public-worker.mjs (HOTMART_TEXT).
     html = re.sub(r'<p class="microcopy">[^<]*</p>', lambda m: buy_facts(), html, count=1)
     trust = {
-        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download."),
+        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Acesso imediato", policy.DELIVERY_SHORT),
         ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
-        ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix ou cartão pelo Mercado Pago."),
+        ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix à vista ou cartão pela Hotmart."),
     }
     for (old_t, old_s), (new_t, new_s) in trust.items():
         html = html.replace(f"<strong>{old_t}</strong><span>{old_s}</span>", f"<strong>{new_t}</strong><span>{new_s}</span>")
@@ -380,7 +380,7 @@ def apply_catalog(html: str) -> str:
     (its real deliverables, from COMMERCE) and its price; free and "Em breve" status are in the source.
     Closed status is the single page notice, not repeated per card."""
     prices = {slug: (f'R$ {c["price"]}', "pagamento único") for slug, c in COMMERCE.items()}
-    prices["conteudo-pronto"] = ("R$ 197", "por mês")
+    # DEC-04: subscription excluded from phase one public catalog.
     for slug, (price, unit) in prices.items():
         inc = ""
         if slug in CATALOG_INCLUDES:
@@ -409,8 +409,8 @@ def apply_subscription(html: str) -> str:
     html = html.replace('aria-label="Resumo da oferta"><h3>Resumo da oferta</h3>', 'aria-label="Resumo da oferta"><h2>Resumo da oferta</h2>', 1)
     # Design: the monthly package as a receipt beside the hero (same facts as the page's own list).
     receipt = ('<div class="hero-panel receipt"><p class="receipt-head">Todo mês você recebe<span>sem fidelidade</span></p>'
-               '<ul class="outcome-list"><li>12 posts com legenda, chamada para ação e hashtags</li>'
-               '<li>4 mensagens de venda e acompanhamento</li><li>Calendário de 30 dias</li></ul>'
+               '<ul class="outcome-list"><li>Uma campanha de promoção de vendas da sua oferta</li><li>12 posts com legenda, chamada para ação e hashtags</li>'
+               '<li>4 roteiros multicanal de venda e acompanhamento</li><li>Calendário do período da campanha</li></ul>'
                '<p class="receipt-total"><span>Total</span><span>R$ 197/mês</span></p>'
                + trust_mini("pela Hotmart") + '</div>')
     html, n = re.subn(r'(<section class="container hero"><div>.*?</dl></section></div>)(</section>)', lambda m: m.group(1) + receipt + m.group(2), html, count=1, flags=re.S)
@@ -484,6 +484,10 @@ def apply_approved_overlay() -> None:
     ov = json.loads((OVERLAY / "approved.json").read_text(encoding="utf-8"))
     for slug in HTML_ROUTES:
         path = OUT / f"{slug}.html"
+        if slug == "conteudo-pronto":
+            # DEC-04: no public subscription collateral in the first-phase build.
+            path.write_text('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>Página indisponível | ZEVANORY</title></head><body><main><h1>Página indisponível</h1><p>Suporte: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>', encoding="utf-8")
+            continue
         html = path.read_text(encoding="utf-8")
         head, sep, body = html.partition("</head>")
         # Canonical/social identity points to the domain that actually serves the page.
