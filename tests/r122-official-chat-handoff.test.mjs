@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {handleSiteChat,resetSiteChatState} from "../worker/site-chat.mjs";
@@ -45,11 +45,11 @@ test("R122 unavailable official protocol fails closed with actual form fallback"
 });
 
 test("R139 route preserves official ZEV outbox with separate signed SELF hourly retry",()=>{
-  const chat=readFileSync(new URL("../worker/site-chat.mjs",import.meta.url),"utf8");
-  const atendimento=readFileSync(new URL("../worker/atendimento.mjs",import.meta.url),"utf8");
-  const isolated=readFileSync(new URL("../worker/atendimento-drain-dispatch.mjs",import.meta.url),"utf8");
-  const worker=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
-  const refund=readFileSync(new URL("../worker/refund-flow.mjs",import.meta.url),"utf8");
+  const chat=readTextNormalized(new URL("../worker/site-chat.mjs",import.meta.url));
+  const atendimento=readTextNormalized(new URL("../worker/atendimento.mjs",import.meta.url));
+  const isolated=readTextNormalized(new URL("../worker/atendimento-drain-dispatch.mjs",import.meta.url));
+  const worker=readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url));
+  const refund=readTextNormalized(new URL("../worker/refund-flow.mjs",import.meta.url));
   assert.match(chat,/registerRequest as registerOfficialAtendimento/);
   assert.match(chat,/SITE_CHAT_OFFICIAL_PROTOCOLS/);
   assert.match(chat,/const register=deps\.registerOfficialAtendimento\|\|registerOfficialAtendimento/);
