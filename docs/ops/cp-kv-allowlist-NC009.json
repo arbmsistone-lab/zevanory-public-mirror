@@ -1,0 +1,10 @@
+{
+  "schema": "zpc-cp-kv-exit/v1",
+  "source_sha": "aafe5107b32c8852198d9efd5036a5860db0cad2 + DEC-14(b)",
+  "scope": "worker/content-service.mjs",
+  "remaining_baseline": 0,
+  "allowlist": [],
+  "policy": "DEC-14(b) (consenso Claude+GPT-6): as 37 expressões legadas de escrita KV restantes (NC-012: 69 -> 37) foram removidas de worker/content-service.mjs com o pipeline KV inteiro, 37 -> 0. Prova por escrita e caminho de exceção para compradores históricos: docs/ops/dec14-cp-37-kv-writer-inventory.json. Nenhum dado em KV foi apagado (só código). M3 sales ledger e backup continuam isentos.",
+  "previous_baseline": 37,
+  "previous_source_sha": "0cef9a5772eb5f58575b74722ab9ffd675d279cc"
+}

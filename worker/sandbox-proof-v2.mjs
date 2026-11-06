@@ -3,6 +3,7 @@
 // MERCADOPAGO_ENV=sandbox and SALE_GLOBALLY_ENABLED!=true. Orders created here
 // are certification_pilot=true, excluded from revenue and never delivered to a
 // real customer: the delivery mail goes only to the isolated inbox subdomain.
+import { verifyOperatorToken } from "./operator-credential.mjs";
 
 export const SANDBOX_INBOX_DOMAIN = "zevanory.api.br";
 // Apex MX is Resend Receiving (inbound-smtp.sa-east-1.amazonaws.com); any address
@@ -10,15 +11,15 @@ export const SANDBOX_INBOX_DOMAIN = "zevanory.api.br";
 export const SANDBOX_INBOX_ADDRESS = "prova-sandbox@zevanory.api.br";
 const RESEND = "https://api.resend.com";
 export const SANDBOX_OFFER_ID = "ZEV-CMB-011";
-export const SANDBOX_AMOUNT_BRL = 297;
+export const SANDBOX_AMOUNT_BRL = 297; // legacy frozen synthetic order amount; NOT current catalog price.
 // Canonical public catalog (same table price the sales page shows and the
 // certification resolver charges). Any other SKU or amount is rejected.
 export const SANDBOX_OFFERS = Object.freeze({
-  "ZEV-IA-011": 197,
-  "ZEV-VEN-011": 197,
-  "ZEV-LCX-011": 247,
-  "ZEV-CMB-011": 297,
-  "ZEV-NGC-011": 397
+  "ZEV-IA-011": 97,
+  "ZEV-VEN-011": 97,
+  "ZEV-LCX-011": 147,
+  "ZEV-CMB-011": 157,
+  "ZEV-NGC-011": 247
 });
 export const FROZEN_ORDER = "a28c53ab-9ce7-429d-9d6b-1311a3fad406";
 // sha256 of the high-entropy read-only inbox token kept in the GitHub
@@ -326,9 +327,8 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     }
     return json(200, { messages, inbox_rows_seen: rows.length, receiving_api_status: listed.status });
   }
-  const expected = String(env.CERTIFICATION_E2E_TOKEN || "");
   const provided = String(request.headers.get("x-certification-e2e-token") || "");
-  if (expected.length < 32 || !timingSafeEqualText(expected, provided)) return json(401, { error: "certification_e2e_auth_required" });
+  if (!verifyOperatorToken(env, provided)) return json(401, { error: "certification_e2e_auth_required" });
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv) return json(503, { error: "sandbox_state_unavailable" });
 

@@ -1,0 +1,3372 @@
+{
+  "schema": "zevanory-dec14-cp-retirement/v1",
+  "decision": "DEC-14(a)/(b) consenso Claude+GPT-6; DEC-04",
+  "base_sha": "aafe5107b32c8852198d9efd5036a5860db0cad2",
+  "rule": "Só é aposentado o que perdeu o alvo: teste que chama função removida; mutante cujo trecho-alvo não existe mais no repositório (scripts/ci/dec14-inventory.py confere ausência). Mutante com alvo presente continua ativo e precisa morrer (59/59 KILLED). Limiares do classificador inalterados; só as contagens esperadas mudaram (testes do contrato 51->25, G1-G5 21->1, mutantes 178->59 ativos + 119 aposentados).",
+  "tests": {
+    "retired": 49,
+    "rebuilt_without_kv": 2,
+    "note": "41 do inventário GPT-6 (21 campanha + 20 G1–G5, ids preservados) + 8 que dependiam do código KV removido pelo DEC-14(b): CP-CAMP-22 [camp-regen-mes] e CP-ROT-F2/G1/G2/G3/G4/G5/G7. (f) e (g6) foram reescritos sem KV (mesmo rótulo). Novos sem KV: [dec14-datas], [dec14-fuso], [dec14-reembolso-texto]; (d) e (a) ganharam rótulos causais.",
+    "items": [
+      {
+        "id": "CP-CAMP-01",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-form] formulário sem a campanha do mês responde 400 e nada entra na fila",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleHotmartWebhook"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-form]"
+      },
+      {
+        "id": "CP-CAMP-02",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-renovacao] renovação pede a campanha do mês e não gera nada até o assinante responder; fila descarta com registro",
+        "state": "RETIRED",
+        "removed_code": [
+          "generateAndDeliver",
+          "handleBriefing",
+          "handleHotmartWebhook",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-renovacao]"
+      },
+      {
+        "id": "CP-CAMP-03",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-entrega] entrega verificável: recibo com protocolo, SHA-256 e id; confirmação pelo provedor; falha registrada com alerta",
+        "state": "RETIRED",
+        "removed_code": [
+          "confirmPackageDeliveries",
+          "handleBriefing",
+          "handleHotmartWebhook",
+          "handlePackageView"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-BOUNCE (sem substituto: recibo/confirmação pelo provedor ainda não ligados no DO; outbox Resend retida — scripts/cp-nc012-fulfillment.test.mjs)"
+      },
+      {
+        "id": "CP-CAMP-04",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-amostra] amostra operacional completa (modo seguro) cumpre todos os critérios",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleHotmartWebhook",
+          "handleBriefing",
+          "confirmPackageDeliveries",
+          "handlePackageView (via scripts/conteudo-pronto/amostra_operacional.mjs, removido)"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "nenhum: o script de amostra chamava o webhook removido (scripts/conteudo-pronto/amostra_operacional.mjs removido junto)"
+      },
+      {
+        "id": "CP-CAMP-05",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-corrida] cancelamento que chega durante a confirmação de entrega vence (registro relido antes de gravar)",
+        "state": "RETIRED",
+        "removed_code": [
+          "confirmPackageDeliveries",
+          "handleBriefing",
+          "handleHotmartWebhook"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-BOUNCE (corrida cancelamento x confirmação no DO)"
+      },
+      {
+        "id": "CP-CAMP-06",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-lembretes] formulário sem resposta: lembretes nos dias 3, 7 e 14, alerta ao proprietário nos dias 7 e 14; política do mês pago na página",
+        "state": "RETIRED",
+        "removed_code": [
+          "CAMPAIGN_OWNER_ALERT_DAYS",
+          "CAMPAIGN_REMINDER_DAYS",
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-lembretes] (2 testes)"
+      },
+      {
+        "id": "CP-CAMP-07",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-bounce] entrega com bounce: na fila de falhas, visível no status, reenviável pelo operador com link novo",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-BOUNCE"
+      },
+      {
+        "id": "CP-CAMP-08",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-datas] data inexistente, início no passado ou longe demais são recusados no formulário",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleHotmartWebhook"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "tests/conteudo-pronto-campanha.test.mjs [dec14-datas] (parte pura)"
+      },
+      {
+        "id": "CP-CAMP-22",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-regen-mes] regeneração de pacote bloqueado só com a campanha do mês do pacote",
+        "state": "RETIRED",
+        "removed_code": [
+          "regenerateBlockedPackage"
+        ],
+        "removed_by": "DEC-14(b) (regenerateBlockedPackage em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-LEGACY-PKG"
+      },
+      {
+        "id": "CP-CAMP-09",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-regra] regra do mês sem campanha: o mesmo texto no contrato, na página (FAQ e FAQPage), nos Termos, no atendimento e nos lembretes",
+        "state": "RETIRED",
+        "removed_code": [
+          "CREDITOS_MAX",
+          "MES_SEM_CAMPANHA",
+          "handleHotmartWebhook",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "texto da regra: tests/conteudo-pronto-campanha.test.mjs [dec14-reembolso-texto] (/reembolso); página e Termos do CP não existem na fase 1 (lápide DEC-04, termos DEC-06)"
+      },
+      {
+        "id": "CP-CAMP-10",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-operador-email] bounce: operador corrige o e-mail com motivo antes de reenviar; registrado sem o endereço no log",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "requeueDeadPackage",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-OPERADOR"
+      },
+      {
+        "id": "CP-CAMP-11",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-cancelamento] cancelado não grava campanha nem recebe lembrete; renovação sem o formulário do 1º mês alerta certo; lembrete que falha alerta",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-cancelamento]"
+      },
+      {
+        "id": "CP-CAMP-12",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-credito] renovação sem campanha: o mês vira crédito; a campanha enviada depois gera o pacote do crédito mais antigo, sem custo; limite de créditos com reembolso do excedente",
+        "state": "RETIRED",
+        "removed_code": [
+          "CREDITOS_MAX",
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "pendingCycles",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-credito]"
+      },
+      {
+        "id": "CP-CAMP-13",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-reembolso] pedido de reembolso pelo suporte e cancelamento com crédito: registrado e alertado, nunca dinheiro movido pelo sistema",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "pendingCycles"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-REFUND"
+      },
+      {
+        "id": "CP-CAMP-14",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-estorno] estorno de UM mês não encerra a assinatura; fim só por cancelamento ou status de encerramento; mês devolvido nunca vira crédito",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "pendingCycles"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-REFUND"
+      },
+      {
+        "id": "CP-CAMP-15",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-reembolso-prazo] pedido de reembolso: requested → processed (webhook ou operador) → overdue com alerta; prazo no texto; /reembolso com a regra",
+        "state": "RETIRED",
+        "removed_code": [
+          "REEMBOLSO_ALERTA_DIAS",
+          "REEMBOLSO_PRAZO_DIAS_UTEIS",
+          "checkOverdueRefunds",
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "tests/conteudo-pronto-campanha.test.mjs [dec14-reembolso-texto] (parte textual); fluxo: P2-REFUND"
+      },
+      {
+        "id": "CP-CAMP-16",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-pago] só um mês pago pode ser devolvido: cobrança recusada não é reembolso; transação desconhecida não mexe em mês",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "pendingCycles"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-pago]"
+      },
+      {
+        "id": "CP-CAMP-17",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-parcial] estorno parcial mantém o mês; status desconhecido alerta; baixa do operador não gera alerta inútil",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "pendingCycles"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-REFUND"
+      },
+      {
+        "id": "CP-CAMP-18",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-corrida-reembolso] pedido de reembolso: releitura antes de gravar (409) e um só pedido por mês na lista do proprietário",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-REFUND"
+      },
+      {
+        "id": "CP-CAMP-19",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-confirmar] estorno sem valor claro fica a confirmar; valor BR; operador confirma ou reverte; dedupe e alertas agrupados",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)",
+          "parseAmount",
+          "pendingCycles"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-REFUND"
+      },
+      {
+        "id": "CP-CAMP-20",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-reverter] reverter só devolve mês restaurável: entregue => 409 sem gravar; operador e motivo; idempotente; confirmar uma vez; releitura 409",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleContentOperator",
+          "handleHotmartWebhook",
+          "pendingCycles"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-REFUND"
+      },
+      {
+        "id": "CP-CAMP-21",
+        "file": "tests/conteudo-pronto-campanha.test.mjs",
+        "title": "[camp-fuso] hoje e limite pela data civil de Brasília (viradas UTC, de mês, de ano, 29/02); dia dos alertas; data impossível sem exceção",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleHotmartWebhook",
+          "ownerAlert (zpc:cp:alerts)"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-fuso]; tests/conteudo-pronto-campanha.test.mjs [dec14-fuso] (parte pura)"
+      },
+      {
+        "id": "CP-G1G5-01",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G1] waitUntil cortado (IA lenta): o assinante já está na fila e o cron entrega depois que o lease vence",
+        "state": "RETIRED",
+        "removed_code": [
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs/lease)"
+      },
+      {
+        "id": "CP-G1G5-02",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G2] fila de pendentes: cancelados e entregues na frente não bloqueiam o terceiro assinante",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleHotmartWebhook",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs)"
+      },
+      {
+        "id": "CP-G1G5-03",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G2] falha persistente vai para o fim da fila (rodízio)",
+        "state": "RETIRED",
+        "removed_code": [
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs)"
+      },
+      {
+        "id": "CP-G1G5-04",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G3] IA devolve posts sem hashtags e sem imagem: nada é enviado, o pacote fica pendente",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleHotmartWebhook",
+          "handleBriefing (helpers subscribe/brief)",
+          "zpc:cp:pending (fila KV)"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "tests/conteudo-pronto-g1-g5.test.mjs [G3] validador (mantido) + scripts/cp-nc012-fulfillment.test.mjs"
+      },
+      {
+        "id": "CP-G1G5-05",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G4] falha do Resend: o retry reenvia o MESMO pacote, sem chamar a IA de novo, com o mesmo link e a mesma chave de idempotência",
+        "state": "RETIRED",
+        "removed_code": [
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (outbox Resend retida, idempotência)"
+      },
+      {
+        "id": "CP-G1G5-06",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G5] o link de cada mês abre aquele mês; o token do formulário não abre pacote",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing",
+          "handleHotmartWebhook"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-g03-g04-candidate.test.mjs (token assinado G04)"
+      },
+      {
+        "id": "CP-G1G5-07",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G5] token antigo (valor = chave do assinante) continua abrindo formulário e último pacote",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleBriefing"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-g03-g04-candidate.test.mjs (token assinado G04)"
+      },
+      {
+        "id": "CP-G1G5-08",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G1-intent] queda antes de marcar o postback como processado: a Hotmart reenvia, o ciclo não dobra e o pacote sai uma vez",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleHotmartWebhook",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-g03-g04-candidate.test.mjs (webhook DO idempotente G03)"
+      },
+      {
+        "id": "CP-G1G5-09",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G2-poison] item que falha sempre: limite de tentativas, fila de falhas com alerta e registro; reenvio só com operador e motivo",
+        "state": "RETIRED",
+        "removed_code": [
+          "PENDING_MAX_ATTEMPTS",
+          "requeueDeadPackage",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-10",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[G2-stall] fila parada há mais de 6 h gera alerta (no máximo um por dia)",
+        "state": "RETIRED",
+        "removed_code": [
+          "PENDING_STALL_HOURS",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-11",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[no-silent] em todos os cenários, cada ciclo pago termina entregue, pendente ou na fila de falhas com alerta",
+        "state": "RETIRED",
+        "removed_code": [
+          "PENDING_MAX_ATTEMPTS",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-12",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-kv429] KV com 1 escrita/s por chave: a entrega conclui uma vez, sem reenvio a cada cron",
+        "state": "RETIRED",
+        "removed_code": [
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-13",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-exception] exceção dentro da entrega: o cron não aborta, a tentativa conta, fica no log, alerta gravado e o e-mail não se repete",
+        "state": "RETIRED",
+        "removed_code": [
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-14",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-welcome] e-mail de boas-vindas que falha: não marca processado, fica na fila, alerta gravado, cron reenvia o mesmo link",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleHotmartWebhook",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-15",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-welcome-dead] boas-vindas que nunca saem: limite, fila de falhas com alerta e reenvio pelo operador",
+        "state": "RETIRED",
+        "removed_code": [
+          "PENDING_MAX_ATTEMPTS",
+          "handleHotmartWebhook",
+          "requeueDeadPackage",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-16",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-operator] rota de operador: status sem dados pessoais; reenvio exige operador e motivo",
+        "state": "RETIRED",
+        "removed_code": [
+          "PENDING_MAX_ATTEMPTS",
+          "handleContentOperator",
+          "requeueDeadPackage",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-17",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-dead-history] um segundo dead-letter preserva o histórico de operações",
+        "state": "RETIRED",
+        "removed_code": [
+          "PENDING_MAX_ATTEMPTS",
+          "requeueDeadPackage",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-18",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-lease] lease maior que o pior caso da geração; reenvio do formulário durante a geração não abre outra",
+        "state": "RETIRED",
+        "removed_code": [
+          "generateAndDeliver"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-19",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-low] mutantes sobreviventes: legenda curta, reprocessamento, fila cheia, falha de envio conta tentativa",
+        "state": "RETIRED",
+        "removed_code": [
+          "handleHotmartWebhook",
+          "retryPendingPackages"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante) + DEC-14(b)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-G1G5-20",
+        "file": "tests/conteudo-pronto-g1-g5.test.mjs",
+        "title": "[A-text] textos ao assinante sem prazo não medido e com o limite de tentativas",
+        "state": "RETIRED",
+        "removed_code": [
+          "PENDING_MAX_ATTEMPTS",
+          "handleBriefing",
+          "handleHotmartWebhook"
+        ],
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "scripts/cp-nc012-fulfillment.test.mjs (DO work_jobs / owner_alert_outbox / outbox Resend retida); reenvio pelo operador: P2-OPERADOR"
+      },
+      {
+        "id": "CP-ROT-F",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(f) pacote gravado com canal ou número banido em qualquer campo exibido: bloqueado, bytes intactos, sem vazamento",
+        "state": "REBUILT_WITHOUT_KV",
+        "removed_code": [
+          "handlePackageView"
+        ],
+        "reason": "leitura do pacote (handlePackageView) e regeneração em KV removidas pelo DEC-14(b); as asserções puras de bloqueio (packageBlocked/packageText) foram mantidas no teste de mesmo rótulo",
+        "replacement": "tests/conteudo-pronto-roteiros.test.mjs (f) "
+      },
+      {
+        "id": "CP-ROT-F2",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(f2) regeneração: 2xx do envio só deixa o candidato accepted; entrega confirmada pelo email_id promove a chave nova; v1 limpo legível",
+        "state": "RETIRED",
+        "removed_code": [
+          "REGEN_MSG",
+          "handlePackageView",
+          "retryPendingPackages"
+        ],
+        "removed_by": "DEC-14(b) (regeneração/leitura de pacote em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-LEGACY-PKG"
+      },
+      {
+        "id": "CP-ROT-G1",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(g1) tempo esgotado, 429, 5xx ou envio falso: candidato pending, 202 com protocolo, nada promovido; retomada com a mesma chave",
+        "state": "RETIRED",
+        "removed_code": [
+          "REGEN_MSG",
+          "handlePackageView",
+          "reconcileRegenCandidates"
+        ],
+        "removed_by": "DEC-14(b) (regeneração/leitura de pacote em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-LEGACY-PKG"
+      },
+      {
+        "id": "CP-ROT-G2",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(g2) 4xx permanente: dead na hora com alerta; dead nunca vira atual, nem com delivered tardio; reabrir exige operação registrada",
+        "state": "RETIRED",
+        "removed_code": [
+          "REGEN_MSG",
+          "applyRegenDelivered",
+          "handlePackageView",
+          "reconcileRegenCandidates",
+          "reopenDeadRegenCandidate"
+        ],
+        "removed_by": "DEC-14(b) (regeneração/leitura de pacote em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-LEGACY-PKG"
+      },
+      {
+        "id": "CP-ROT-G3",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(g3) queda entre o envio e a gravação: sem segundo e-mail na retomada; queda na promoção converge; delivered duplicado não promove nem notifica",
+        "state": "RETIRED",
+        "removed_code": [
+          "REGEN_MSG",
+          "applyRegenDelivered",
+          "handlePackageView",
+          "reconcileRegenCandidates"
+        ],
+        "removed_by": "DEC-14(b) (regeneração/leitura de pacote em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-LEGACY-PKG"
+      },
+      {
+        "id": "CP-ROT-G4",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(g4) persistência: candidato ou outbox não gravados => 503 exato, nenhum envio; pacote do candidato imutável e único",
+        "state": "RETIRED",
+        "removed_code": [
+          "REGEN_MSG",
+          "handlePackageView"
+        ],
+        "removed_by": "DEC-14(b) (regeneração/leitura de pacote em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-LEGACY-PKG"
+      },
+      {
+        "id": "CP-ROT-G5",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(g5) janelas: pending > 23 h vira dead sem chamar o Resend; accepted > 72 h sem confirmação vira dead; ambos com alerta",
+        "state": "RETIRED",
+        "removed_code": [
+          "REGEN_ACCEPTED_MAX_HOURS",
+          "REGEN_SEND_WINDOW_HOURS",
+          "handlePackageView",
+          "reconcileRegenCandidates"
+        ],
+        "removed_by": "DEC-14(b) (regeneração/leitura de pacote em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "P2-LEGACY-PKG"
+      },
+      {
+        "id": "CP-ROT-G6",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(g6) pacote v2 gravado contaminado em curta, assunto ou corpo: bloqueado como o legado; candidato nunca sobrescreve o v2 bloqueado",
+        "state": "REBUILT_WITHOUT_KV",
+        "removed_code": [
+          "handlePackageView",
+          "reconcileRegenCandidates"
+        ],
+        "reason": "leitura do pacote (handlePackageView) e regeneração em KV removidas pelo DEC-14(b); as asserções puras de bloqueio (packageBlocked/packageText) foram mantidas no teste de mesmo rótulo",
+        "replacement": "tests/conteudo-pronto-roteiros.test.mjs (g6)"
+      },
+      {
+        "id": "CP-ROT-G7",
+        "file": "tests/conteudo-pronto-roteiros.test.mjs",
+        "title": "(g7) texto ao cliente: nenhuma mensagem de regeneração diz chegou/entregue/enviada; só a de delivered fala em entrega confirmada",
+        "state": "RETIRED",
+        "removed_code": [
+          "REGEN_MSG",
+          "regenResponse"
+        ],
+        "removed_by": "DEC-14(b) (regeneração/leitura de pacote em KV)",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "replacement": "nenhum: textos da regeneração removidos com ela (P2-LEGACY-PKG)"
+      }
+    ]
+  },
+  "mutants": {
+    "total": 178,
+    "active": 59,
+    "retired": 119,
+    "by_category": {
+      "A1_PUBLIC_PAGE_CP_HIDDEN": {
+        "count": 14,
+        "meaning": "trecho ausente já em aafe510: texto do CP em páginas públicas removido (lápide NC-015/NC-016, DEC-04, DEC-06)"
+      },
+      "A2_NC012_CS_DELETED": {
+        "count": 37,
+        "meaning": "trecho ausente já em aafe510: código de worker/content-service.mjs apagado pelo NC-012 (7aed832)"
+      },
+      "B1_DEC14B_KV_REGEN_PACKAGE_VIEW": {
+        "count": 34,
+        "meaning": "presente em aafe510, removido nesta etapa com as escritas KV (DEC-14(b)): regeneração/leitura de pacote"
+      },
+      "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS": {
+        "count": 27,
+        "meaning": "presente em aafe510, removido nesta etapa com as escritas KV (DEC-14(b)): operador, reembolso, alertas e fila de falhas"
+      },
+      "B3_DEAD_AFTER_CONSUMER_REMOVED": {
+        "count": 7,
+        "meaning": "presente em aafe510, removido nesta etapa por ficar sem nenhum consumidor (código puro morto)"
+      }
+    },
+    "reconciliation_46_vs_51": "O censo do GPT-6 em da9f55c/aafe510 achou 51 trechos ausentes (37 em worker/content-service.mjs apagados pelo NC-012 + 14 em páginas públicas do CP ocultadas por NC-015/NC-016/DEC-04/DEC-06), contra os 46 declarados. Nenhum recorte por id reproduz 46; a contagem válida é a por id (51), e todos os 51 estão aposentados aqui com a causa. Os outros 68 aposentados tinham trecho PRESENTE em aafe510 e só perderam o alvo nesta etapa, ao remover as 37 escritas KV (61 em funções KV) ou o código puro que ficou sem consumidor (7).",
+    "campaign_dependency_75": {
+      "count": 75,
+      "kept_and_repointed": [
+        "M106",
+        "M141",
+        "M174",
+        "M176",
+        "M177"
+      ],
+      "retired_target_absent": 70,
+      "note": "Dos 75 mutantes cuja prova primária estava só em testes de campanha aposentados, 5 miram código que continua e foram reapontados para [dec14-*] (KILLED); 70 miram código que não existe mais."
+    },
+    "repointed_active": {
+      "M06": "(b) página (só roda com CP à venda) -> (a) [schema-version]",
+      "M18": "fluxo completo em KV (inexistente) -> (d) [texto-versao-email]",
+      "M29": "(f2) aposentado -> (f) [legacy-clean]",
+      "M106": "[camp-datas] -> [dec14-datas]",
+      "M141": "[camp-reembolso-prazo] -> [dec14-reembolso-texto]",
+      "M174": "[camp-fuso] -> [dec14-fuso]",
+      "M176": "[camp-fuso] -> [dec14-fuso]",
+      "M177": "[camp-fuso] -> [dec14-fuso]",
+      "M15": "SECONDARY [camp-amostra] -> (d)",
+      "M16": "SECONDARY (f2) removido",
+      "M17": "SECONDARY (f2) -> (f)",
+      "M81": "SECONDARY [camp-form] removido",
+      "M88": "SECONDARY [camp-amostra] removido",
+      "M21": "(d) ganhou o rótulo [form] (rótulos de CP_BRIEFING_FIELDS/CAMPANHA_CAMPOS)",
+      "M30": "(d) ganhou o rótulo [aviso]"
+    },
+    "active_ids": [
+      "M01",
+      "M06",
+      "M07",
+      "M08",
+      "M09",
+      "M10",
+      "M11",
+      "M12",
+      "M13",
+      "M14",
+      "M15",
+      "M16",
+      "M17",
+      "M18",
+      "M21",
+      "M22",
+      "M27",
+      "M28",
+      "M29",
+      "M30",
+      "M37",
+      "M38",
+      "M39",
+      "M40",
+      "M41",
+      "M42",
+      "M46",
+      "M47",
+      "M50",
+      "M75",
+      "M76",
+      "M77",
+      "M81",
+      "M82",
+      "M83",
+      "M84",
+      "M85",
+      "M86",
+      "M87",
+      "M88",
+      "M94",
+      "M95",
+      "M97",
+      "M98",
+      "M103",
+      "M104",
+      "M105",
+      "M106",
+      "M111",
+      "M112",
+      "M113",
+      "M114",
+      "M115",
+      "M123",
+      "M141",
+      "M172",
+      "M174",
+      "M176",
+      "M177"
+    ],
+    "retired_items": [
+      {
+        "id": "M02",
+        "description": "hero promete WhatsApp",
+        "file": "conteudo-pronto/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)"
+        ],
+        "primary_label": "conteudo-pronto/index.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em conteudo-pronto/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "para os canais que seus clientes autorizaram.",
+        "mutation": "para WhatsApp."
+      },
+      {
+        "id": "M03",
+        "description": "item da página volta a WhatsApp",
+        "file": "conteudo-pronto/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)"
+        ],
+        "primary_label": "conteudo-pronto/index.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em conteudo-pronto/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "<li>4 roteiros multicanal de venda e acompanhamento, cada um com versão curta e versão de e-mail</li>",
+        "mutation": "<li>4 mensagens de venda e acompanhamento para WhatsApp</li>"
+      },
+      {
+        "id": "M04",
+        "description": "JSON-LD diverge do texto canônico",
+        "file": "conteudo-pronto/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)"
+        ],
+        "primary_label": "JSON-LD = texto canônico",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em conteudo-pronto/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "\"description\": \"Todo mês, uma campanha de promoção de vendas",
+        "mutation": "\"description\": \"Todo mês: uma campanha de promoção de vendas"
+      },
+      {
+        "id": "M05",
+        "description": "data-content-schema removido da página",
+        "file": "conteudo-pronto/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)"
+        ],
+        "primary_label": "página e gerador na mesma versão de schema",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em conteudo-pronto/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": " data-content-schema=\"3\"",
+        "mutation": ""
+      },
+      {
+        "id": "M19",
+        "description": "HTML entregue sem versão de e-mail",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(d)"
+        ],
+        "primary_label": "[html-versao-email]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handlePackageView (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "<h3>Versão de e-mail</h3>",
+        "mutation": "<h3>E-mail</h3>"
+      },
+      {
+        "id": "M20",
+        "description": "boas-vindas voltam a WhatsApp",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(d)"
+        ],
+        "primary_label": "worker/content-service.mjs sem WhatsApp",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "welcomeText (worker/content-service.mjs)",
+        "category": "B3_DEAD_AFTER_CONSUMER_REMOVED",
+        "removed_by": "DEC-14(b): código puro sem nenhum consumidor — boas-vindas legadas: o único chamador (sendWelcome/handleHotmartWebhook) foi removido pelo NC-012",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa",
+        "mutation": "Os roteiros são para WhatsApp; você revisa"
+      },
+      {
+        "id": "M23",
+        "description": "catálogo-fonte volta a WhatsApp",
+        "file": "solucoes/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)"
+        ],
+        "primary_label": "[catalogo]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em solucoes/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "<li>4 roteiros multicanal de venda e acompanhamento por mês</li>",
+        "mutation": "<li>4 mensagens de venda para WhatsApp por mês</li>"
+      },
+      {
+        "id": "M24",
+        "description": "página gerada desatualizada",
+        "file": "sales-public/conteudo-pronto.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)"
+        ],
+        "primary_label": "gerado: conteudo-pronto",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em sales-public/conteudo-pronto.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "<dd>Todo mês, uma campanha de promoção de vendas",
+        "mutation": "<dd>Todo mês, uma campanha de promoção de vendas com mensagens para WhatsApp,"
+      },
+      {
+        "id": "M25",
+        "description": "kit de afiliado volta a mensagens",
+        "file": "kit-afiliado/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)",
+          "(e)"
+        ],
+        "primary_label": "kit-afiliado/index.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em kit-afiliado/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "12 posts e 4 roteiros multicanal de venda no tom do negócio, entregues",
+        "mutation": "12 posts e 4 mensagens de venda no tom do negócio, entregues"
+      },
+      {
+        "id": "M26",
+        "description": "llms.txt gerado volta a mensagens",
+        "file": "sales-public/llms.txt",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)",
+          "(e)"
+        ],
+        "primary_label": "sales-public/llms.txt",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em sales-public/llms.txt",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "recebe 12 posts, 4 roteiros multicanal",
+        "mutation": "recebe 12 posts, 4 mensagens de venda"
+      },
+      {
+        "id": "M31",
+        "description": "guia de nicho (fonte) volta a mensagens",
+        "file": "ia-para-pizzaria/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(e)"
+        ],
+        "primary_label": "roteiros multicanal do contrato — ia-para-pizzaria/index.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em ia-para-pizzaria/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "12 posts e 4 roteiros multicanal de venda e acompanhamento",
+        "mutation": "12 posts e 4 mensagens de venda"
+      },
+      {
+        "id": "M32",
+        "description": "guia de nicho (gerado) volta a mensagens",
+        "file": "sales-public/ia-para-barbearia.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(e)"
+        ],
+        "primary_label": "roteiros multicanal do contrato — sales-public/ia-para-barbearia.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em sales-public/ia-para-barbearia.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "12 posts e 4 roteiros multicanal de venda e acompanhamento",
+        "mutation": "12 posts e 4 mensagens de venda"
+      },
+      {
+        "id": "M33",
+        "description": "guia gerado sai da varredura",
+        "file": "sales-public/ia-para-padaria.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(e)"
+        ],
+        "primary_label": "entrou na varredura: sales-public/ia-para-padaria.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em sales-public/ia-para-padaria.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "Conteúdo Pronto</a>: todo mês, 12 posts",
+        "mutation": "Conteúdo Pronto</a>: todo mês, posts"
+      },
+      {
+        "id": "M34",
+        "description": "página nova descreve com WhatsApp",
+        "file": "afiliados/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(e)"
+        ],
+        "primary_label": "sem mensagens/WhatsApp — afiliados/index.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em afiliados/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "inclusive nas renovações do Conteúdo Pronto)",
+        "mutation": "inclusive nas renovações do Conteúdo Pronto: 12 posts e 4 roteiros multicanal ou mensagens para WhatsApp)"
+      },
+      {
+        "id": "M35",
+        "description": "catálogo gerado desatualizado",
+        "file": "sales-public/solucoes.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(b)"
+        ],
+        "primary_label": "gerado: solucoes",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em sales-public/solucoes.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "<li>4 roteiros multicanal de venda e acompanhamento por mês</li>",
+        "mutation": "<li>4 mensagens de venda por mês</li>"
+      },
+      {
+        "id": "M36",
+        "description": "leitura não bloqueia pacote contaminado",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f)",
+          "(g6)"
+        ],
+        "primary_label": "[legacy-html-leak]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handlePackageView (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (packageBlocked(pkg)) {\n    const cand = eligible",
+        "mutation": "  if (false) {\n    const cand = eligible"
+      },
+      {
+        "id": "M43",
+        "description": "regeneração sobrescreve o pacote antigo",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g1)",
+          "(g4)",
+          "(g6)"
+        ],
+        "primary_label": "[legacy-bytes]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenerateBlockedPackage (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "      if (!(await kv.get(candidate_key))) await kv.put(candidate_key, stored, { expirationTtl: 400 * DAY });",
+        "mutation": "      await kv.put(record.lastPackage, stored, { expirationTtl: 400 * DAY });"
+      },
+      {
+        "id": "M44",
+        "description": "regeneração não é idempotente",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f2)"
+        ],
+        "primary_label": "[regen-idempotent]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handlePackageView (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (!packageBlocked(pkg)) return page(\"Pacote atualizado\"",
+        "mutation": "    if (false) return page(\"Pacote atualizado\""
+      },
+      {
+        "id": "M45",
+        "description": "assinante inativo recebe o botão",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f)"
+        ],
+        "primary_label": "[legacy-inactive]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handlePackageView (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "const eligible = found.record.status === \"active\" && Boolean(found.record.briefing);",
+        "mutation": "const eligible = Boolean(found.record.briefing);"
+      },
+      {
+        "id": "M48",
+        "description": "bloqueio sem oferta de regeneração",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f)",
+          "(g6)"
+        ],
+        "primary_label": "[legacy-offer]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handlePackageView (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "<button type=\"submit\">Gerar versão nova sem custo</button>",
+        "mutation": "<button type=\"submit\">Atualizar</button>"
+      },
+      {
+        "id": "M49",
+        "description": "regeneração não aponta para a versão nova",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f2)",
+          "(g1)",
+          "(g2)"
+        ],
+        "primary_label": "[regen] chave nova com versão",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "applyRegenDelivered (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "{ ...record, lastPackage: cand.candidate_key, blockedPackage: cand.blockedPackage,",
+        "mutation": "{ ...record, blockedPackage: cand.blockedPackage,"
+      },
+      {
+        "id": "M51",
+        "description": "regeneração ignora o retorno do envio",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g1)",
+          "(g2)"
+        ],
+        "primary_label": "[regen-fail]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "attemptSend (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (r.ok) {\n    const accepted",
+        "mutation": "  if (true) {\n    const accepted"
+      },
+      {
+        "id": "M52",
+        "description": "regeneração promove com 2xx (antes da entrega)",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f2)",
+          "(g1)"
+        ],
+        "primary_label": "[regen-accepted]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "attemptSend (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    await putJson(kv, candKey, accepted);\n",
+        "mutation": "    await putJson(kv, candKey, accepted);\n    await putJson(kv, cand.sub, { ...(await readJson(kv, cand.sub, {})), lastPackage: cand.candidate_key });\n"
+      },
+      {
+        "id": "M53",
+        "description": "envio sem Idempotency-Key",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g1)",
+          "(g3)"
+        ],
+        "primary_label": "[regen-idem]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "resendIdempotent (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": ", \"idempotency-key\": idempotencyKey },",
+        "mutation": " },"
+      },
+      {
+        "id": "M54",
+        "description": "Idempotency-Key nova a cada tentativa",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g1)",
+          "(g3)"
+        ],
+        "primary_label": "[regen-idem]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "attemptSend (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "subject: cand.subject, text: cand.text, idempotencyKey: cand.idempotencyKey }",
+        "mutation": "subject: cand.subject, text: cand.text, idempotencyKey: cand.idempotencyKey + \":\" + rand() }"
+      },
+      {
+        "id": "M55",
+        "description": "429/5xx/tempo esgotado tratados como permanentes",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g1)"
+        ],
+        "primary_label": "[regen-fail]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "resendIdempotent (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "transient: resendFailureIsTransient(r.status, data), reason",
+        "mutation": "transient: false, reason"
+      },
+      {
+        "id": "M56",
+        "description": "4xx permanente tratado como temporário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g2)"
+        ],
+        "primary_label": "[regen-dead]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "attemptSend (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (!r.transient) return markDead(",
+        "mutation": "  if (false) return markDead("
+      },
+      {
+        "id": "M57",
+        "description": "dead sem alerta ao proprietário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g2)",
+          "(g5)"
+        ],
+        "primary_label": "[regen-dead] alerta",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "markDead (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  await ownerAlert(env, \"regeneração do Conteúdo Pronto sem entrega\"",
+        "mutation": "  if (0) await ownerAlert(env, \"regeneração do Conteúdo Pronto sem entrega\""
+      },
+      {
+        "id": "M58",
+        "description": "dead promovido por delivered tardio",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g2)"
+        ],
+        "primary_label": "[regen-dead] delivered tardio",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "applyRegenDelivered (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (cand.delivery === \"dead\") return { promoted: false, reason: \"dead_not_promoted\" };\n",
+        "mutation": ""
+      },
+      {
+        "id": "M59",
+        "description": "delivered duplicado reprocessa",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g3)"
+        ],
+        "primary_label": "[regen-dup]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "applyRegenDelivered (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (cand.delivery === \"delivered\" && cand.promotedAt) return { promoted: false, reason: \"duplicate\" };\n",
+        "mutation": ""
+      },
+      {
+        "id": "M60",
+        "description": "reconciliação promove sem evento delivered",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f2)"
+        ],
+        "primary_label": "[regen-accepted] last_event sent",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "reconcileRegenCandidates (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (ev && DELIVERED_EVENTS.has(ev)) {",
+        "mutation": "    if (ev) {"
+      },
+      {
+        "id": "M61",
+        "description": "reconciliação fora do cron",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f2)"
+        ],
+        "primary_label": "[regen-cron]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "retryPendingPackages (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  const regen = await reconcileRegenCandidates(env, fetchImpl).catch(() => ({ ok: false }));",
+        "mutation": "  const regen = { ok: true };"
+      },
+      {
+        "id": "M62",
+        "description": "outro email_id confirma a entrega",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g3)"
+        ],
+        "primary_label": "[regen-emailid]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "applyRegenDelivered (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": " || String(emailId) !== String(cand.email_id)) return",
+        "mutation": ") return"
+      },
+      {
+        "id": "M63",
+        "description": "candidato sem sufixo colide com o v2 bloqueado",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g6)",
+          "(f2)"
+        ],
+        "primary_label": "[v2-bytes]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenerateBlockedPackage (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": " + \":c\" + h.slice(0, 12);",
+        "mutation": ";"
+      },
+      {
+        "id": "M64",
+        "description": "um candidato novo por tentativa",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g4)",
+          "(g3)"
+        ],
+        "primary_label": "[regen-single]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenCandidateKey (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "\"|v\" + CONTENT_SCHEMA_VERSION)).slice(0, 40);",
+        "mutation": "\"|v\" + CONTENT_SCHEMA_VERSION + \"|\" + rand())).slice(0, 40);"
+      },
+      {
+        "id": "M65",
+        "description": "janela de 23 h ignorada",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g5)"
+        ],
+        "primary_label": "[regen-window]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "attemptSend (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (!(now - Date.parse(cand.firstAttemptAt) < REGEN_SEND_WINDOW_HOURS * 3600000)) return markDead(",
+        "mutation": "  if (false) return markDead("
+      },
+      {
+        "id": "M66",
+        "description": "accepted sem prazo de confirmação",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g5)"
+        ],
+        "primary_label": "[regen-accepted-timeout]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "reconcileRegenCandidates (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    else if (!(now - Date.parse(cand.acceptedAt) < REGEN_ACCEPTED_MAX_HOURS * 3600000)) {",
+        "mutation": "    else if (false) {"
+      },
+      {
+        "id": "M67",
+        "description": "bounced não vira dead",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g2)"
+        ],
+        "primary_label": "[regen-bounce]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "reconcileRegenCandidates (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    else if (ev && DEAD_EVENTS.has(ev)) {",
+        "mutation": "    else if (false) {"
+      },
+      {
+        "id": "M68",
+        "description": "reabrir dead sem operação registrada",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g2)"
+        ],
+        "primary_label": "[regen-reopen]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "reopenDeadRegenCandidate (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (!String(operator || \"\").trim() || !String(reason || \"\").trim()) return { ok: false, reason: \"operation_must_be_recorded\" };\n",
+        "mutation": ""
+      },
+      {
+        "id": "M69",
+        "description": "falha de persistência respondida como pendência",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g4)"
+        ],
+        "primary_label": "[regen-persist]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenerateBlockedPackage (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    } catch { return { ok: false, reason: \"persist_failed\" }; }\n  } else if",
+        "mutation": "    } catch { return { ok: false, reason: \"pending\" }; }\n  } else if"
+      },
+      {
+        "id": "M70",
+        "description": "envia sem outbox durável",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g4)"
+        ],
+        "primary_label": "[regen-persist] outbox",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenerateBlockedPackage (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "      await putJson(kv, candKey, cand);\n      await outboxAdd(kv, candKey);\n",
+        "mutation": "      await putJson(kv, candKey, cand);\n      outboxAdd(kv, candKey).catch(() => null);\n"
+      },
+      {
+        "id": "M71",
+        "description": "página afirma entrega com 2xx",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g7)",
+          "(f2)"
+        ],
+        "primary_label": "[regen-copy]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenResponse (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (out.reason === \"accepted\") return [202, REGEN_MSG.accepted];",
+        "mutation": "  if (out.reason === \"accepted\") return [202, REGEN_MSG.delivered];"
+      },
+      {
+        "id": "M80",
+        "description": "accepted responde 200 (entrega não confirmada)",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(f2)",
+          "(g7)",
+          "(g2)"
+        ],
+        "primary_label": "[regen-accepted] POST: 202",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenResponse (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (out.reason === \"accepted\") return [202, REGEN_MSG.accepted];",
+        "mutation": "  if (out.reason === \"accepted\") return [200, REGEN_MSG.accepted];"
+      },
+      {
+        "id": "M72",
+        "description": "pendência responde 503 em vez de 202",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g1)",
+          "(g7)"
+        ],
+        "primary_label": "[regen-fail] tempo esgotado #1: 202",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenResponse (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (out.reason === \"pending\") return [202,",
+        "mutation": "  if (out.reason === \"pending\") return [503,"
+      },
+      {
+        "id": "M73",
+        "description": "queda pós-promoção vira superseded",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g3)"
+        ],
+        "primary_label": "[regen-converge]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "applyRegenDelivered (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (record?.lastPackage === cand.candidate_key) {",
+        "mutation": "  if (false) {"
+      },
+      {
+        "id": "M74",
+        "description": "candidato regravado (não imutável)",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g4)"
+        ],
+        "primary_label": "[regen-immutable]",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenerateBlockedPackage (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "      if (!(await kv.get(candidate_key))) await kv.put(candidate_key, stored,",
+        "mutation": "      await kv.put(candidate_key, JSON.stringify({ ...JSON.parse(stored), regravado: true }),"
+      },
+      {
+        "id": "M78",
+        "description": "409 concorrente tratado como permanente (corpo do erro ignorado)",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g1)"
+        ],
+        "primary_label": "[regen-fail] 409 concurrent_idempotent_requests",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "resendIdempotent (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "transient: resendFailureIsTransient(r.status, data), reason",
+        "mutation": "transient: resendFailureIsTransient(r.status), reason"
+      },
+      {
+        "id": "M79",
+        "description": "POST não converge delivered interrompido",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "(g3)"
+        ],
+        "primary_label": "[regen-converge] promovido na retomada",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenerateBlockedPackage (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  if (cand.delivery === \"delivered\" && !cand.promotedAt) {\n    await applyRegenDelivered(",
+        "mutation": "  if (false) {\n    await applyRegenDelivered("
+      },
+      {
+        "id": "M89",
+        "description": "entrega gera com a campanha do mês anterior",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-renovacao]"
+        ],
+        "primary_label": "[camp-renovacao] entrega recusa sem campanha",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "generateAndDeliver (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-renovacao]"
+        ],
+        "anchor": "  if (record.campanha?.cycle !== cyc || !validateCampaign(record.campanha).ok) return { ok: false, reason: \"campaign_required\" };",
+        "mutation": ""
+      },
+      {
+        "id": "M90",
+        "description": "renovação não pede a campanha do mês",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-renovacao]"
+        ],
+        "primary_label": "[camp-renovacao] status",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "needsForm (worker/content-service.mjs)",
+        "category": "B3_DEAD_AFTER_CONSUMER_REMOVED",
+        "removed_by": "DEC-14(b): código puro sem nenhum consumidor — só era lido por handleHotmartWebhook/handleBriefing, removidos pelo NC-012",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-renovacao]"
+        ],
+        "anchor": "const needsForm = (rec) => !rec.briefing || (campaignTarget(rec) !== null && rec.campanha?.cycle !== campaignTarget(rec));",
+        "mutation": "const needsForm = (rec) => !rec.briefing;"
+      },
+      {
+        "id": "M91",
+        "description": "protocolo do recibo fora do formato",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-entrega]"
+        ],
+        "primary_label": "[camp-entrega] protocolo",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "generateAndDeliver (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "protocolo: \"CP-\" + pkgSha.slice(0, 10).toUpperCase()",
+        "mutation": "protocolo: \"CP-\" + pkgSha.slice(0, 6)"
+      },
+      {
+        "id": "M92",
+        "description": "evento bounced confirma a entrega",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-entrega]"
+        ],
+        "primary_label": "[camp-entrega] bounced",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "confirmPackageDeliveries (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    const entregue = Boolean(ev) && DELIVERED_EVENTS.has(ev);",
+        "mutation": "    const entregue = Boolean(ev);"
+      },
+      {
+        "id": "M93",
+        "description": "recibo sem o id do e-mail",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-entrega]"
+        ],
+        "primary_label": "[camp-entrega] id do e-mail enviado",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "generateAndDeliver (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "sentMark = { at: new Date(now).toISOString(), email_id: typeof sent === \"string\" ? sent : null };",
+        "mutation": "sentMark = { at: new Date(now).toISOString(), email_id: null };"
+      },
+      {
+        "id": "M96",
+        "description": "formulário reaproveita a campanha do mês anterior",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-renovacao]"
+        ],
+        "primary_label": "[camp-renovacao] campanha do mês anterior não é reaproveitada",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleBriefing (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-renovacao]"
+        ],
+        "anchor": "    const cp = found.record.campanha?.cycle === found.record.cycles ? found.record.campanha : {};",
+        "mutation": "    const cp = found.record.campanha || {};"
+      },
+      {
+        "id": "M99",
+        "description": "confirmação grava a cópia antiga do registro",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-corrida]"
+        ],
+        "primary_label": "[camp-corrida] cancelamento preservado",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "confirmPackageDeliveries (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "await patchReceipt(kv, key, cycle, { status: \"confirmed\", confirmedAt: new Date(now).toISOString(), provider_event: ev });",
+        "mutation": "await kv.put(key, JSON.stringify({ ...rec, deliveries: { ...rec.deliveries, [cycle]: { ...rcpt, status: \"confirmed\", confirmedAt: new Date(now).toISOString(), provider_event: ev } } }));"
+      },
+      {
+        "id": "M100",
+        "description": "sem lembretes do formulário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-lembretes]"
+        ],
+        "primary_label": "[camp-lembretes] um lembrete em cada dia, sem repetir",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "remindPendingForms (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-lembretes] (2 testes)"
+        ],
+        "anchor": "const due = CAMPAIGN_REMINDER_DAYS.filter(",
+        "mutation": "const due = [].filter("
+      },
+      {
+        "id": "M101",
+        "description": "lembrete sem alerta ao proprietário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-lembretes]"
+        ],
+        "primary_label": "[camp-lembretes] alerta ao proprietário nos dias 7 e 14",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "remindPendingForms (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-lembretes] (2 testes)"
+        ],
+        "anchor": "if (CAMPAIGN_OWNER_ALERT_DAYS.includes(d)) {",
+        "mutation": "if (false) {"
+      },
+      {
+        "id": "M102",
+        "description": "bounce fora da fila de falhas",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-bounce]"
+        ],
+        "primary_label": "[camp-bounce] falha visível no status",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "confirmPackageDeliveries (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "      await kv.put(PENDING_DEAD, JSON.stringify(dead), { expirationTtl: 400 * DAY });\n      await pendingLog(kv, key, \"delivery_failed\"",
+        "mutation": "      await pendingLog(kv, key, \"delivery_failed\""
+      },
+      {
+        "id": "M107",
+        "description": "regeneração com a campanha de outro mês",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-regen-mes]"
+        ],
+        "primary_label": "[camp-regen-mes] campanha do mês anterior não serve",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "regenerateBlockedPackage (worker/content-service.mjs)",
+        "category": "B1_DEC14B_KV_REGEN_PACKAGE_VIEW",
+        "removed_by": "DEC-14(b): regeneração/leitura de pacote em KV (zpc:cp:regen*, zpc:cp:pkg:, zpc:cp:token:); rota efetiva /conteudo-pronto/pacote = 503 (routePackageNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "      if (record.campanha?.cycle !== record.cycles) return { ok: false, reason: \"campaign_required\" };\n",
+        "mutation": ""
+      },
+      {
+        "id": "M108",
+        "description": "reenvio de bounce reaproveita o token",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-bounce]"
+        ],
+        "primary_label": "[camp-bounce] link novo (nova chave de idempotência)",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "requeueDeadPackage (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); await kv.delete(DELIVERY + d.pkgKey.slice(PKG.length)); }",
+        "mutation": "    if (d.pkgKey) { await kv.delete(SENT + d.pkgKey.slice(PKG.length)); }"
+      },
+      {
+        "id": "M109",
+        "description": "regra do mês fora do contrato",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-regra]"
+        ],
+        "primary_label": "[camp-regra] código lê o contrato",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "MES_SEM_CAMPANHA (worker/content-service.mjs)",
+        "category": "B3_DEAD_AFTER_CONSUMER_REMOVED",
+        "removed_by": "DEC-14(b): código puro sem nenhum consumidor — só era lido pelos lembretes em KV (removidos pelo NC-012); a regra continua no contrato data/politica-unica.json e na página /reembolso ([dec14-reembolso-texto])",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "export const MES_SEM_CAMPANHA = CONTEUDO_PRONTO.mes_sem_campanha;",
+        "mutation": "export const MES_SEM_CAMPANHA = \"O mês fica reservado.\";"
+      },
+      {
+        "id": "M110",
+        "description": "Termos sem a regra",
+        "file": "termos/index.html",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-regra]"
+        ],
+        "primary_label": "[camp-regra] Termos com destaque (CDC art. 54 §4): termos/index.html",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "texto do CP em termos/index.html",
+        "removed_by": "NC-015/NC-016 lápide do CP e DEC-04 (sem links públicos) / DEC-06 (termos e reembolso consolidados da fase 1)",
+        "category": "A1_PUBLIC_PAGE_CP_HIDDEN",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "<strong>A campanha do mês é necessária para gerar o conteúdo. Se ela não for enviada até a próxima renovação, o mês pago vira crédito: você envia a campanha depois, sem custo adicional, e recebe aquele pacote (créditos usados do mais antigo para o mais novo; no máximo 2 meses em crédito: se um terceiro mês ficar sem campanha, o crédito mais antigo é reembolsado). A qualquer momento você pode pedir ao suporte o reembolso de mês pago sem pacote; no cancelamento, todo mês pago sem pacote é reembolsado. O estorno é processado em até 7 dias úteis. O arrependimento de 7 dias continua valendo.</strong> A assinatura é cancelada",
+        "mutation": " A assinatura é cancelada"
+      },
+      {
+        "id": "M116",
+        "description": "operador troca e-mail sem validar",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-operador-email]"
+        ],
+        "primary_label": "[camp-operador-email] e-mail inválido recusado",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "requeueDeadPackage (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (newEmail && !/^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(String(newEmail).trim())) return { ok: false, reason: \"invalid_email\" };\n",
+        "mutation": ""
+      },
+      {
+        "id": "M117",
+        "description": "alerta de novo assinante na renovação sem formulário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-cancelamento]"
+        ],
+        "primary_label": "[camp-cancelamento] alerta certo na renovação sem formulário",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-cancelamento]"
+        ],
+        "anchor": "if (!record.briefing && record.cycles === 1) await ownerAlert(env, \"novo assinante",
+        "mutation": "if (!record.briefing) await ownerAlert(env, \"novo assinante"
+      },
+      {
+        "id": "M118",
+        "description": "lembrete que falha sem alerta",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-cancelamento]"
+        ],
+        "primary_label": "[camp-cancelamento] falha de lembrete alertada uma vez",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "remindPendingForms (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-cancelamento]"
+        ],
+        "anchor": "await ownerAlert(env, \"lembrete do Conteúdo Pronto não saiu\"",
+        "mutation": "if (0) await ownerAlert(env, \"lembrete do Conteúdo Pronto não saiu\""
+      },
+      {
+        "id": "M119",
+        "description": "formulário grava campanha em assinatura cancelada",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-cancelamento]"
+        ],
+        "primary_label": "[camp-cancelamento] cancelamento durante o formulário vence",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleBriefing (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-cancelamento]"
+        ],
+        "anchor": "  if (fresh.status !== \"active\") return page(\"Assinatura inativa\"",
+        "mutation": "  if (false) return page(\"Assinatura inativa\""
+      },
+      {
+        "id": "M120",
+        "description": "lembretes não param no cancelamento",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-cancelamento]"
+        ],
+        "primary_label": "[camp-cancelamento] nenhum lembrete depois do cancelamento",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "remindPendingForms (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-cancelamento]"
+        ],
+        "anchor": "      if (!rec || rec.status !== \"active\" || !needsForm(rec) || rec.cycles !== w.cycle) {",
+        "mutation": "      if (!rec || !needsForm(rec) || rec.cycles !== w.cycle) {"
+      },
+      {
+        "id": "M121",
+        "description": "envio do formulário não encerra os lembretes",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-cancelamento]"
+        ],
+        "primary_label": "[camp-cancelamento] envio do formulário encerra os lembretes",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleBriefing (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-cancelamento]"
+        ],
+        "anchor": "  await clearFormWait(kv, found.key);\n",
+        "mutation": ""
+      },
+      {
+        "id": "M122",
+        "description": "reenvio de bounce de ciclo antigo",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-operador-email]"
+        ],
+        "primary_label": "[camp-operador-email] ciclo antigo não é reenviado",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "requeueDeadPackage (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (Number(dead[key].cycle) !== latest.cycles) return { ok: false, reason: \"cycle_superseded\" };\n",
+        "mutation": ""
+      },
+      {
+        "id": "M124",
+        "description": "renovação perde o mês sem campanha",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-credito]"
+        ],
+        "primary_label": "[camp-credito] mês 2 virou crédito",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-credito]"
+        ],
+        "anchor": "  if (current && current.lastTxn !== txn && prev >= 1 && pendingCycles({ ...current, credits: [] }).includes(prev)) {",
+        "mutation": "  if (false) {"
+      },
+      {
+        "id": "M125",
+        "description": "geração ignora o crédito",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-credito]"
+        ],
+        "primary_label": "[camp-credito] pacote do mês 2 gerado com o crédito",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "generateAndDeliver (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-credito]"
+        ],
+        "anchor": "  const cyc = campaignTarget(record);",
+        "mutation": "  const cyc = Number(record.deliveredCycle || 0) !== Number(record.cycles) ? Number(record.cycles) : null;"
+      },
+      {
+        "id": "M126",
+        "description": "sem limite de créditos",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-credito]"
+        ],
+        "primary_label": "[camp-credito] no máximo 2 créditos",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-credito]"
+        ],
+        "anchor": "    overflow = live.slice(0, Math.max(0, live.length - CREDITOS_MAX)).map((c) => c.cycle);",
+        "mutation": "    overflow = [];"
+      },
+      {
+        "id": "M127",
+        "description": "cancelamento sem reembolso",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reembolso]"
+        ],
+        "primary_label": "[camp-reembolso] cancelamento reembolsa todo mês pago sem pacote",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "      owed = pendingCycles({ ...latest, refundRequests }).filter((c) => !skip.has(c));",
+        "mutation": "      owed = [];"
+      },
+      {
+        "id": "M128",
+        "description": "pedido de reembolso sem alerta",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-credito]"
+        ],
+        "primary_label": "[camp-credito] proprietário avisado do reembolso",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "recordRefundRequests (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-credito]"
+        ],
+        "anchor": "await ownerAlert(env, \"reembolso do Conteúdo Pronto a processar na Hotmart\"",
+        "mutation": "if (0) await ownerAlert(env, \"reembolso do Conteúdo Pronto a processar na Hotmart\""
+      },
+      {
+        "id": "M129",
+        "description": "reembolso não tira o mês dos pendentes",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reembolso]"
+        ],
+        "primary_label": "[camp-reembolso] mês reembolsado sai dos pendentes",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "refundedCycles (worker/content-service.mjs)",
+        "category": "B3_DEAD_AFTER_CONSUMER_REMOVED",
+        "removed_by": "DEC-14(b): código puro sem nenhum consumidor — só era lido pelos fluxos de crédito/reembolso em KV (pendingCycles/handleContentOperator), removidos",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "const refundedCycles = (rec) => new Set((rec?.refundRequests || []).map((r) => Number(r.cycle)));",
+        "mutation": "const refundedCycles = (rec) => new Set();"
+      },
+      {
+        "id": "M130",
+        "description": "status sem os créditos",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-credito]"
+        ],
+        "primary_label": "[camp-credito] crédito visível no status",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-credito]"
+        ],
+        "anchor": "      credits: Object.entries(creditIdx)",
+        "mutation": "      _c: Object.entries(creditIdx)"
+      },
+      {
+        "id": "M131",
+        "description": "estorno de um mês sempre encerra a assinatura",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] estorno do mês pedido mantém a assinatura ativa",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "const ends = event === \"SUBSCRIPTION_CANCELLATION\" || (Boolean(subStatus) && SUB_ENDED_RX.test(subStatus));",
+        "mutation": "const ends = true;"
+      },
+      {
+        "id": "M132",
+        "description": "estorno confirmado não tira o mês",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] mês estornado sai dos pendentes",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (kind === \"total\") updated.refundRequests = [",
+        "mutation": "    if (false) updated.refundRequests = ["
+      },
+      {
+        "id": "M133",
+        "description": "estorno a confirmar sem alerta",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] sem status: proprietário confirma",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "else if (confirm) await ownerAlert(",
+        "mutation": "else if (false) await ownerAlert("
+      },
+      {
+        "id": "M134",
+        "description": "reembolso atrasado sem alerta",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reembolso-prazo]"
+        ],
+        "primary_label": "[camp-reembolso-prazo] alerta de atraso uma vez",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "checkOverdueRefunds (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "tests/conteudo-pronto-campanha.test.mjs [dec14-reembolso-texto] (parte textual); fluxo de reembolso: P2-REFUND"
+        ],
+        "anchor": "  await ownerAlert(env, \"reembolso do Conteúdo Pronto atrasado\"",
+        "mutation": "  if (0) await ownerAlert(env, \"reembolso do Conteúdo Pronto atrasado\""
+      },
+      {
+        "id": "M135",
+        "description": "pedido parado não vira overdue",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reembolso-prazo]"
+        ],
+        "primary_label": "[camp-reembolso-prazo] pedido parado vira overdue",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "checkOverdueRefunds (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "tests/conteudo-pronto-campanha.test.mjs [dec14-reembolso-texto] (parte textual); fluxo de reembolso: P2-REFUND"
+        ],
+        "anchor": "for (const r of late) { r.status = \"overdue\";",
+        "mutation": "for (const r of late) { r.status = \"requested\";"
+      },
+      {
+        "id": "M136",
+        "description": "processado sem pedido aberto",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reembolso-prazo]"
+        ],
+        "primary_label": "[camp-reembolso-prazo] não processa duas vezes",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "tests/conteudo-pronto-campanha.test.mjs [dec14-reembolso-texto] (parte textual); fluxo de reembolso: P2-REFUND"
+        ],
+        "anchor": "    if (!open) return out(400, { ok: false, reason: \"no_open_request\" });\n",
+        "mutation": "    if (!open) return out(200, { ok: true, cycle });\n"
+      },
+      {
+        "id": "M137",
+        "description": "estorno não chega à lista do proprietário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] processado na lista do proprietário",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (txnCycle !== null) await markRefundProcessed(kv, key, txnCycle, \"webhook:\" + event);\n",
+        "mutation": ""
+      },
+      {
+        "id": "M138",
+        "description": "mesma transação sob outro evento dá crédito em dobro",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] sem crédito em dobro pela mesma transação",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "cycles: current?.lastTxn === txn ? Number(current.cycles || 1) :",
+        "mutation": "cycles: false ? Number(current.cycles || 1) :"
+      },
+      {
+        "id": "M139",
+        "description": "transação sem ciclo (estorno não acha o mês)",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] pedido do mês vira processado pelo webhook",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  record.txnCycles = Object.fromEntries([...Object.entries(current?.txnCycles || {}), [txn, record.cycles]].slice(-36));",
+        "mutation": "  record.txnCycles = {};"
+      },
+      {
+        "id": "M140",
+        "description": "status de encerramento ignorado",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] status de encerramento encerra a assinatura",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "SUB_ENDED_RX (worker/content-service.mjs)",
+        "category": "B3_DEAD_AFTER_CONSUMER_REMOVED",
+        "removed_by": "DEC-14(b): código puro sem nenhum consumidor — só era lido por handleHotmartWebhook, removido pelo NC-012",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "const SUB_ENDED_RX = /^(CANCEL|INACTIVE|EXPIRED|ENDED)/;",
+        "mutation": "const SUB_ENDED_RX = /^$/;"
+      },
+      {
+        "id": "M142",
+        "description": "estorno volta a adivinhar o mês pela recorrência",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-pago]"
+        ],
+        "primary_label": "[camp-pago] alerta de cobrança não concluída",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-pago]"
+        ],
+        "anchor": "(Number.isInteger(latest.txnCycles?.[txn]) ? latest.txnCycles[txn] : null)",
+        "mutation": "(Number.isInteger(latest.txnCycles?.[txn]) ? latest.txnCycles[txn] : recNum)"
+      },
+      {
+        "id": "M143",
+        "description": "cobrança recusada sem o alerta certo",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-pago]"
+        ],
+        "primary_label": "[camp-pago] alerta de cobrança não concluída",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-pago]"
+        ],
+        "anchor": "else if (!ends && paidCycle === null && event === \"PURCHASE_CANCELED\") await ownerAlert(",
+        "mutation": "else if (false) await ownerAlert("
+      },
+      {
+        "id": "M144",
+        "description": "recorrência não inteira aceita",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-pago]"
+        ],
+        "primary_label": "[camp-pago] recorrência não inteira descartada",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-pago]"
+        ],
+        "anchor": "/^\\d{1,4}$/.test(String(recRaw ?? \"\").trim()) && Number(recRaw) > 0",
+        "mutation": "Number(recRaw) > 0"
+      },
+      {
+        "id": "M145",
+        "description": "estorno parcial tratado como inteiro",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-parcial]"
+        ],
+        "primary_label": "[camp-parcial] estorno parcial não tira o mês: resposta marca parcial",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "const partial = paidCycle !== null && refundAmt !== null && paidAmt !== null && refundAmt < paidAmt - 0.005;",
+        "mutation": "const partial = false;"
+      },
+      {
+        "id": "M146",
+        "description": "estorno parcial sem alerta",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-parcial]"
+        ],
+        "primary_label": "[camp-parcial] proprietário avisado do parcial",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "if (partial) await ownerAlert(",
+        "mutation": "if (false) await ownerAlert("
+      },
+      {
+        "id": "M147",
+        "description": "valor pago não gravado na renovação",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-parcial]"
+        ],
+        "primary_label": "[camp-parcial] estorno parcial não tira o mês: resposta marca parcial",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  record.txnPaid = Object.fromEntries([...Object.entries(current?.txnPaid || {}), ...(paidValue !== null ? [[txn, paidValue]] : [])].slice(-36));",
+        "mutation": "  record.txnPaid = {};"
+      },
+      {
+        "id": "M148",
+        "description": "status desconhecido sem alerta",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-parcial]"
+        ],
+        "primary_label": "[camp-parcial] status desconhecido alerta: OVERDUE",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "if (unknownStatus) await ownerAlert(",
+        "mutation": "if (false) await ownerAlert("
+      },
+      {
+        "id": "M149",
+        "description": "baixa do operador seguida de alerta inútil",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-parcial]"
+        ],
+        "primary_label": "[camp-parcial] sem alerta de confirmação depois da baixa do operador",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "if (paidCycle !== null && open && !partial) {",
+        "mutation": "if (paidCycle !== null && open && open.status !== \"processed\" && !partial) {"
+      },
+      {
+        "id": "M150",
+        "description": "pedido duplicado na lista do proprietário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-corrida-reembolso]"
+        ],
+        "primary_label": "[camp-corrida-reembolso] um pedido só por mês na lista do proprietário",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "recordRefundRequests (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  const fresh = reqs.filter((r) => !list.some((x) => x.key === key && Number(x.cycle) === r.cycle));",
+        "mutation": "  const fresh = reqs;"
+      },
+      {
+        "id": "M151",
+        "description": "rota de pedido sem a releitura",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-corrida-reembolso]"
+        ],
+        "primary_label": "[camp-corrida-reembolso] releitura detecta o outro escritor",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (!pendingCycles(latest).includes(cycle)) return out(409, { ok: false, reason: \"cycle_changed\" }); // outro escritor chegou antes\n",
+        "mutation": ""
+      },
+      {
+        "id": "M152",
+        "description": "estorno sem pedido tira o mês na hora",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] estorno sem pedido mantém o mês até a confirmação",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    } else if (paidCycle !== null && !partial) { // sem pedido: estorno a confirmar, mês mantido\n      confirm = true;\n",
+        "mutation": "    } else if (paidCycle !== null && !partial) { // sem pedido: estorno a confirmar, mês mantido\n      confirm = true; refundRequests.push({ cycle: paidCycle, reason: \"x\", at, status: \"processed\" });\n"
+      },
+      {
+        "id": "M153",
+        "description": "valor com vírgula ilegível",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] valor em formato brasileiro",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "parseAmount (worker/content-service.mjs)",
+        "category": "B3_DEAD_AFTER_CONSUMER_REMOVED",
+        "removed_by": "DEC-14(b): código puro sem nenhum consumidor — só era lido pelo webhook (NC-012) e pela rota refund-confirm em KV (DEC-14(b)); sem consumidor",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "  else if (/^\\d+,\\d{1,2}$/.test(t)) n = Number(t.replace(\",\", \".\"));\n",
+        "mutation": ""
+      },
+      {
+        "id": "M154",
+        "description": "confirmação sem motivo",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] confirmação exige motivo",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "if (!operator || reason.length < 10) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    if (kind !== \"total\"",
+        "mutation": "if (!operator) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    if (kind !== \"total\""
+      },
+      {
+        "id": "M155",
+        "description": "confirmação parcial tira o mês",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] confirmação parcial mantém o mês",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (kind === \"total\") updated.refundRequests = [",
+        "mutation": "    if (true) updated.refundRequests = ["
+      },
+      {
+        "id": "M156",
+        "description": "reverter não devolve o mês",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]",
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] mês revertido volta aos pendentes",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "refundRequests: latest.refundRequests.filter((r) => Number(r.cycle) !== cycle), revertedRefunds",
+        "mutation": "refundRequests: latest.refundRequests, revertedRefunds"
+      },
+      {
+        "id": "M157",
+        "description": "reverter sem motivo",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] reverter exige motivo",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "if (!operator || reason.length < 10) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];\n    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? \"ambiguous_sub\" : \"not_found\" });\n    const latest = await readJson(kv, keys[0], null);\n    const removed",
+        "mutation": "if (!operator) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];\n    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? \"ambiguous_sub\" : \"not_found\" });\n    const latest = await readJson(kv, keys[0], null);\n    const removed"
+      },
+      {
+        "id": "M158",
+        "description": "reversão fora da lista do proprietário",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] reversão na lista do proprietário",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "Object.assign(r, { status: \"reverted\",",
+        "mutation": "Object.assign(r, { status: r.status,"
+      },
+      {
+        "id": "M159",
+        "description": "cancelamento real descartado como duplicata",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] cancelamento real de transação aprovada não é duplicata",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (!paidNow) return json(200, { ok: true, duplicate: true });",
+        "mutation": "    return json(200, { ok: true, duplicate: true });"
+      },
+      {
+        "id": "M160",
+        "description": "cobrança recusada sem marca de não pago",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] cancelamento real de transação aprovada não é duplicata",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "await markProcessed(paidCycle === null && event === \"PURCHASE_CANCELED\" ? \"unpaid\" : \"1\");",
+        "mutation": "await markProcessed();"
+      },
+      {
+        "id": "M161",
+        "description": "alertas de cobrança recusada sem agrupamento",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] cobranças recusadas agrupadas por dia",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "fetchImpl, { kind: \"cobranca_nao_concluida\", sub: key, daily: true })",
+        "mutation": "fetchImpl, { kind: \"cobranca_nao_concluida\", sub: key })"
+      },
+      {
+        "id": "M162",
+        "description": "estorno a confirmar fora do status",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-estorno]"
+        ],
+        "primary_label": "[camp-estorno] estorno a confirmar no status",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "      refunds_to_confirm: await",
+        "mutation": "      _rtc: await"
+      },
+      {
+        "id": "M163",
+        "description": "reverter mês entregue sem o motivo próprio",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] motivo cycle_already_delivered",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (cycleDelivered(latest, cycle)) return out(409, { ok: false, reason: \"cycle_already_delivered\", cycle });\n",
+        "mutation": ""
+      },
+      {
+        "id": "M164",
+        "description": "reverter mês entregue responde 200",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] mês entregue não é revertido",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (cycleDelivered(latest, cycle)) return out(409, { ok: false, reason: \"cycle_already_delivered\", cycle });\n    const at = new Date(now).toISOString();\n    const updated = { ...latest, refundRequests: latest.refundRequests.filter((r) => Number(r.cycle) !== cycle), revertedRefunds: [...(latest.revertedRefunds || []), { cycle, removed, operator: operator.slice(0, 60), reason: reason.slice(0, 200), at }].slice(-36) };\n    if (!pendingCycles(updated).includes(cycle)) return out(409, { ok: false, reason: \"cycle_not_restorable\", cycle });\n",
+        "mutation": "    const at = new Date(now).toISOString();\n    const updated = { ...latest, refundRequests: latest.refundRequests.filter((r) => Number(r.cycle) !== cycle), revertedRefunds: [...(latest.revertedRefunds || []), { cycle, removed, operator: operator.slice(0, 60), reason: reason.slice(0, 200), at }].slice(-36) };\n"
+      },
+      {
+        "id": "M165",
+        "description": "entrega por crédito não conta como entregue",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] confirmação de mês entregue sinaliza delivered",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "cycleDelivered (worker/content-service.mjs)",
+        "category": "B3_DEAD_AFTER_CONSUMER_REMOVED",
+        "removed_by": "DEC-14(b): código puro sem nenhum consumidor — só era lido pelas rotas refund-confirm/refund-revert em KV, removidas pelo DEC-14(b)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "export const cycleDelivered = (rec, c) => Boolean(rec?.deliveries?.[c]) || Number(rec?.deliveredCycle || 0) === Number(c) || (rec?.creditsUsed || []).some((x) => Number(x.cycle) === Number(c));",
+        "mutation": "export const cycleDelivered = (rec, c) => Number(rec?.deliveredCycle || 0) === Number(c);"
+      },
+      {
+        "id": "M166",
+        "description": "reverter sem a releitura",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] releitura antes de gravar: refund-revert",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (await recordChanged(kv, keys[0], latest)) return out(409, { ok: false, reason: \"record_changed\" }); // outro escritor chegou antes\n    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    const list",
+        "mutation": "    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    const list"
+      },
+      {
+        "id": "M167",
+        "description": "confirmar sem a releitura",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] releitura antes de gravar: refund-confirm",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (await recordChanged(kv, keys[0], latest)) return out(409, { ok: false, reason: \"record_changed\" }); // outro escritor chegou antes\n    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    if (kind",
+        "mutation": "    await kv.put(keys[0], JSON.stringify(updated), { expirationTtl: 400 * DAY });\n    await syncCreditIndex(kv, keys[0], updated);\n    if (kind"
+      },
+      {
+        "id": "M168",
+        "description": "sem estorno a confirmar",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "ABSENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-confirmar]"
+        ],
+        "primary_label": "[camp-confirmar] alerta do estorno com valor",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleHotmartWebhook (worker/content-service.mjs)",
+        "removed_by": "NC-012 commit 7aed832 (pipeline KV substituído pelo DO por assinante)",
+        "category": "A2_NC012_CS_DELETED",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    } else if (paidCycle !== null && !partial) { // sem pedido: estorno a confirmar, mês mantido\n      confirm = true;\n",
+        "mutation": "    } else if (paidCycle !== null && !partial) { // sem pedido: estorno a confirmar, mês mantido\n      confirm = false;\n"
+      },
+      {
+        "id": "M169",
+        "description": "reverter sem operador",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] reverter exige operador",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "if (!operator || reason.length < 10) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];\n    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? \"ambiguous_sub\" : \"not_found\" });\n    const latest = await readJson(kv, keys[0], null);\n    const removed",
+        "mutation": "if (reason.length < 10) return out(400, { ok: false, reason: \"operator_and_reason_required\" });\n    const keys = sub.startsWith(SUB) ? [sub] : sub.length === 12 ? ((await kv.list({ prefix: SUB }))?.keys || []).map((k) => k.name).filter((k) => tail(k) === sub) : [];\n    if (keys.length !== 1) return out(404, { ok: false, reason: keys.length ? \"ambiguous_sub\" : \"not_found\" });\n    const latest = await readJson(kv, keys[0], null);\n    const removed"
+      },
+      {
+        "id": "M170",
+        "description": "reversão dupla aceita",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] segunda reversão recusada",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    if (!removed.length) return out(400, { ok: false, reason: \"no_refund_for_cycle\" });\n",
+        "mutation": ""
+      },
+      {
+        "id": "M171",
+        "description": "confirmação não consome o item",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] confirmação só uma vez",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    const rest = latest.refundsToConfirm.filter((r) => r !== item);",
+        "mutation": "    const rest = latest.refundsToConfirm;"
+      },
+      {
+        "id": "M173",
+        "description": "confirmação de mês entregue sem sinal",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-reverter]"
+        ],
+        "primary_label": "[camp-reverter] confirmação de mês entregue sinaliza delivered",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "handleContentOperator (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "nenhum: alvo removido; requisito da fase 2 em docs/ops/dec14-cp-phase2-prereqs-and-reconciliation.md (P2-BOUNCE/P2-REFUND/P2-OPERADOR/P2-LEGACY-PKG)"
+        ],
+        "anchor": "    const delivered = cycleDelivered(latest, cycle);",
+        "mutation": "    const delivered = false;"
+      },
+      {
+        "id": "M175",
+        "description": "dia dos alertas volta a UTC",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-fuso]"
+        ],
+        "primary_label": "[camp-fuso] alertas agrupados pelo dia de Brasília",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "ownerAlert (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-fuso] + tests/conteudo-pronto-campanha.test.mjs [dec14-fuso]"
+        ],
+        "anchor": "const day = civilDaySP(now), tailSub",
+        "mutation": "const day = new Date(now).toISOString().slice(0, 10), tailSub"
+      },
+      {
+        "id": "M178",
+        "description": "alerta anterior comparado pelo dia UTC",
+        "file": "worker/content-service.mjs",
+        "anchor_at_base": "PRESENT",
+        "anchor_now": "ABSENT",
+        "primary_tests": [
+          "[camp-fuso]"
+        ],
+        "primary_label": "[camp-fuso] alertas agrupados pelo dia de Brasília",
+        "state": "RETIRED",
+        "reason": "aposentado por mudança de escopo, DEC-14/DEC-04",
+        "removed_code": "ownerAlert (worker/content-service.mjs)",
+        "category": "B2_DEC14B_KV_OPERATOR_REFUND_ALERTS",
+        "removed_by": "DEC-14(b): operador/reembolso/alertas/fila de falhas em KV (zpc:cp:sub:, refund-requests, credit-index, alerts, pending-*); rota efetiva /api/admin/conteudo-pronto/* = 503 (routeOperatorNc011)",
+        "replacement": [
+          "scripts/cp-nc014-l1-campaign.test.mjs [do][camp-fuso] + tests/conteudo-pronto-campanha.test.mjs [dec14-fuso]"
+        ],
+        "anchor": "civilDaySP(Date.parse(a.at)) === day",
+        "mutation": "String(a.at).slice(0, 10) === day"
+      }
+    ]
+  }
+}

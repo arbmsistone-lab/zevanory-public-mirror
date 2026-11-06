@@ -1,0 +1,198 @@
+{
+  "schema": "zevanory-p09-sequence/v1",
+  "id": "checklist-v2",
+  "version": "2026-10-25.2",
+  "lead_magnet": "checklist-15-minutos",
+  "note": "Sequência de nutrição do checklist gratuito (P09, Roteiro Mestre v4.7, seção 5). Conteúdo versionado: qualquer mudança de texto muda o arquivo e passa pelo gate scripts/p09/nurture_gate.mjs. Envio DESLIGADO por padrão: só existe envio quando o ambiente define P09_NURTURE_SEND exatamente igual ao id desta sequência, e cada passo respeita o consentimento registrado (P08, worker/lead-magnet.mjs CONSENT_FOLLOWUPS). Nenhum envio a partir do CI; nenhum provedor novo.",
+  "send_switch": {
+    "env": "P09_NURTURE_SEND",
+    "on_value": "checklist-v2",
+    "default": "off"
+  },
+  "retroactive": false,
+  "consent": {
+    "source": "worker/lead-magnet.mjs",
+    "accepted_versions": [
+      "lead-magnet-v1-2026-10-07"
+    ],
+    "note": "Passo 0 é a entrega do checklist; o passo n (n >= 1) só sai se o consentimento registrado do lead permitir n e-mails depois do checklist. O consentimento v1 diz 'até 2 e-mails': com ele, os passos 3 e 4 nunca saem. Para enviá-los é preciso uma nova versão de consentimento (P08), com texto aprovado pelo proprietário.",
+    "coverage_rule": "Nunca retroativo: o passo n (n >= 1) só sai para o contato cujo consentimento registrado cobre n e-mails depois do checklist (CONSENT_FOLLOWUPS[lead.consent_version] >= n). Contatos com o consentimento v1 ('até 2 e-mails') recebem no máximo os passos 0, 1 e 2, mesmo que uma versão nova de consentimento passe a existir."
+  },
+  "metrics": {
+    "decide_by": [
+      "clicks",
+      "actions"
+    ],
+    "never": [
+      "opens"
+    ],
+    "note": "Abertura não decide [3.1]. Cada link leva utm_campaign própria por e-mail; a métrica é clique (utm) e ação (pedido de material, compra quando as vendas abrirem). Taxa de descadastro acompanhada como linha de base (LB)."
+  },
+  "emails": [
+    {
+      "step": 0,
+      "day": 0,
+      "file": "01-checklist.txt",
+      "commercial": false,
+      "campaign": "p09v2-e1-checklist",
+      "metric": "clicks",
+      "links": {
+        "checklist": "https://vendas.zevanory.api.br/checklist-15-minutos"
+      },
+      "numbers": [
+        {
+          "value": "15",
+          "source": {
+            "kind": "repo",
+            "ref": "checklist-15-minutos/index.html",
+            "contains": "15 minutos por dia"
+          }
+        },
+        {
+          "value": "5",
+          "source": {
+            "kind": "repo",
+            "ref": "checklist-15-minutos/index.html",
+            "contains": "Caixa · 5 min"
+          }
+        }
+      ],
+      "claims": []
+    },
+    {
+      "step": 1,
+      "day": 2,
+      "file": "02-vendas.txt",
+      "commercial": false,
+      "campaign": "p09v2-e2-vendas",
+      "metric": "clicks",
+      "links": {
+        "checklist": "https://vendas.zevanory.api.br/checklist-15-minutos"
+      },
+      "numbers": [
+        {
+          "value": "5",
+          "source": {
+            "kind": "repo",
+            "ref": "checklist-15-minutos/index.html",
+            "contains": "Vendas · 5 min"
+          }
+        },
+        {
+          "value": "3",
+          "source": {
+            "kind": "repo",
+            "ref": "checklist-15-minutos/index.html",
+            "contains": "Faça 3 follow-ups"
+          }
+        }
+      ],
+      "claims": []
+    },
+    {
+      "step": 2,
+      "day": 5,
+      "file": "03-ia.txt",
+      "commercial": false,
+      "campaign": "p09v2-e3-ia",
+      "metric": "clicks",
+      "links": {},
+      "numbers": [
+        {
+          "value": "5",
+          "source": {
+            "kind": "repo",
+            "ref": "checklist-15-minutos/index.html",
+            "contains": "IA · 5 min"
+          }
+        }
+      ],
+      "claims": []
+    },
+    {
+      "step": 3,
+      "day": 9,
+      "file": "04-semana.txt",
+      "commercial": false,
+      "campaign": "p09v2-e4-semana",
+      "metric": "clicks",
+      "links": {
+        "calculadora_margem": "https://vendas.zevanory.api.br/calculadora-margem-de-lucro"
+      },
+      "numbers": [
+        {
+          "value": "15",
+          "source": {
+            "kind": "repo",
+            "ref": "checklist-15-minutos/index.html",
+            "contains": "Uma vez por semana · 15 min"
+          }
+        }
+      ],
+      "claims": []
+    },
+    {
+      "step": 4,
+      "day": 14,
+      "file": "05-materiais.txt",
+      "commercial": true,
+      "campaign": "p09v2-e5-materiais",
+      "metric": "actions",
+      "links": {
+        "lucro_e_caixa": "https://vendas.zevanory.api.br/lucro-e-caixa",
+        "vendas_na_pratica": "https://vendas.zevanory.api.br/vendas-na-pratica",
+        "ia_na_pratica": "https://vendas.zevanory.api.br/ia-na-pratica",
+        "negocio_completo": "https://vendas.zevanory.api.br/negocio-completo",
+        "checklist": "https://vendas.zevanory.api.br/checklist-15-minutos"
+      },
+      "numbers": [
+        {
+          "value": "30",
+          "source": {
+            "kind": "repo",
+            "ref": "sales-public/negocio-completo.html",
+            "contains": "Plano integrado de 30 dias"
+          }
+        }
+      ],
+      "claims": [
+        {
+          "slug": "lucro-e-caixa",
+          "text": "planilha de caixa e margem (XLSX)"
+        },
+        {
+          "slug": "lucro-e-caixa",
+          "text": "checklist financeiro semanal"
+        },
+        {
+          "slug": "lucro-e-caixa",
+          "text": "comandos de IA para análise financeira"
+        },
+        {
+          "slug": "vendas-na-pratica",
+          "text": "modelos de mensagens de venda e follow-up"
+        },
+        {
+          "slug": "vendas-na-pratica",
+          "text": "planilha de acompanhamento comercial (XLSX)"
+        },
+        {
+          "slug": "ia-na-pratica",
+          "text": "arquivo de comandos prontos para IA"
+        },
+        {
+          "slug": "ia-na-pratica",
+          "text": "planilha de aplicação (XLSX)"
+        },
+        {
+          "slug": "negocio-completo",
+          "text": "plano integrado de 30 dias (PDF e DOCX)"
+        },
+        {
+          "slug": "negocio-completo",
+          "text": "painel de decisão integrada (XLSX)"
+        }
+      ]
+    }
+  ]
+}

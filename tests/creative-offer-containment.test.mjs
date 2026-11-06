@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import {
   ZEV_CREATIVE_CATALOG, DEFAULT_CREATIVE_OFFER, SALES_ORIGIN,
   brandSafeCreativeViolation, assertBrandSafeCreative, creativeLandingUrl,
@@ -11,10 +12,10 @@ import {
 } from "../worker/creative-autonomy.mjs";
 import { runMultichannelAutonomy, PINTEREST_APPROVED_BRAND_PIN_URL } from "../worker/multichannel-autonomy.mjs";
 
-const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
+const read = (p) => readTextNormalized(new URL(p, import.meta.url));
 const worker = read("../worker/cloudflare-worker.recovered.mjs");
 const products = JSON.parse(read("../data/products.json"));
-const official = { creative_id: "c-zev", offer_id: "ZEV-LCX-011", product: "ZEVANORY Lucro & Caixa", price_brl: 247, brand: "ZEVANORY", title: "Passo a passo para salão", content: "Lucro & Caixa · garantia de 7 dias.", landing_url: "https://vendas.zevanory.api.br/lucro-e-caixa?utm_source=pinterest" };
+const official = { creative_id: "c-zev", offer_id: "ZEV-LCX-011", product: "ZEVANORY Lucro & Caixa", price_brl: 147, brand: "ZEVANORY", title: "Passo a passo para salão", content: "Lucro & Caixa · garantia de 7 dias.", landing_url: "https://vendas.zevanory.api.br/lucro-e-caixa?utm_source=pinterest" };
 const arbm = { creative_id: "c-arbm", offer_id: "OFFER-0001", product: "ARBM SIST", price_brl: 1197, brand: "ZEVANORY", title: "Programa ZEVANORY", content: "Pesquisa e automação com evidência para Gerenciamento de risco. Garantia de 7 dias.", landing_url: "https://zevanory.api.br/solucoes" };
 
 test("1. creative catalog mirrors data/products.json exactly (sku, slug, name, price)", () => {

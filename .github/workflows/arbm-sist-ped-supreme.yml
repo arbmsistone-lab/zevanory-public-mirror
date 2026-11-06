@@ -40,7 +40,7 @@ jobs:
 
       - name: Install browser auditors
         run: |
-          npm install --no-save playwright@1.55.0 axe-core@4.10.3 lighthouse@12
+          npm install --no-save playwright@1.55.0 axe-core@4.10.3 lighthouse@13.5.0
           npx playwright install --with-deps chromium
 
       - name: Serve exact branch without mutation

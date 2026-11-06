@@ -22,7 +22,7 @@ test("database host reports suffix only",()=>{
 });
 test("both audit endpoints require authentication, reject write methods",async()=>{
  for(const p of ["/api/internal/audit/financial-classification","/api/internal/audit/runtime-identity"]){
-  const env={CERTIFICATION_E2E_TOKEN:"x".repeat(40),DATABASE_URL:"postgresql://sensitive:password@db.internal/secret",MERCADOPAGO_ACCESS_TOKEN:"APP_USR-SENSITIVE"};
+  const env={ZEVANORY_OPERATOR_TOKEN:"x".repeat(40),DATABASE_URL:"postgresql://sensitive:password@db.internal/secret",MERCADOPAGO_ACCESS_TOKEN:"APP_USR-SENSITIVE"};
   const r=await handleInternalFinancialAudit(new Request("https://zevanory.api.br"+p),env);
   assert.equal(r.status,401);
   const text=await r.text();

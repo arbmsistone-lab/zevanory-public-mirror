@@ -1,3 +1,4 @@
+import { SHORT_RULE_LABEL } from "../../worker/politica-unica.mjs";
 import { getYoutubeAccessToken } from "./youtube-access.mjs";
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ const fail = code => { throw Error(code); };
 // Only fixed codes reach the public log; never tokens, provider bodies or channel data beyond the id.
 const report_fail=e=>{console.log("::error title=YOUTUBE_PREFLIGHT::"+String(e?.message||e).replace(/[^a-z0-9_:.-]/gi,"_").slice(0,120));process.exit(1);};process.on("unhandledRejection",report_fail);process.on("uncaughtException",report_fail);
 const run = (cmd,args) => { const p=spawnSync(cmd,args,{encoding:"utf8",maxBuffer:8*1024*1024});if(p.status!==0)fail(cmd+"_failed");return p.stdout; };
-const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 197,00. Garantia de 7 dias.",cta:"Conheça a ZEVANORY",price_brl:197};
+const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 197,00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:197};
 const gate=evaluateCreativeWithRewrites(selected,{serverPrice:197});
 if(gate.action!=="publish"||gate.compliance!==100||gate.score<85)fail("f1_gate_rejected");
 const required=["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","GEMINI_API_KEY"];
@@ -34,7 +35,7 @@ const base="/tmp/zevanory-youtube-preflight";
 await writeFile(base+".pcm",pcm);
 run("ffmpeg",["-y","-f","s16le","-ar",String(rate),"-ac","1","-i",base+".pcm","-c:a","libmp3lame","-b:a","128k",base+".mp3"]);
 const audio={provider:"gemini-direct",model:ttsModel};
-await writeFile(base+".txt",["IA prática, com clareza","Organize. Automatize. Meça.","Garantia de 7 dias","zevanory.api.br"].join("\n"));
+await writeFile(base+".txt",["IA prática, com clareza","Organize. Automatize. Meça.",SHORT_RULE_LABEL,"zevanory.api.br"].join("\n"));
 const file="sales-public/brand/social/zevanory-social-profile-1080.png";
 const vf="scale=1080:1080,pad=1080:1920:0:120:color=0x071018,drawtext=textfile="+base+".txt:fontcolor=white:fontsize=49:line_spacing=24:x=(w-text_w)/2:y=1330";
 run("ffmpeg",["-y","-loop","1","-framerate","30","-i",file,"-i",base+".mp3","-filter_complex","[0:v]"+vf+"[v];[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,apad[a]","-map","[v]","-map","[a]","-t","20","-c:v","libx264","-r","30","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart",base+".mp4"]);

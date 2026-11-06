@@ -1,0 +1,15 @@
+# B02 sandbox: Worker descartável zevanory-route-probe, SÓ na zona descartável girolocal.api.br.
+# scripts/ops/router_routes.py (modo sandbox) recusa qualquer padrão fora desta zona e recusa a zona de produção.
+name = "zevanory-route-probe"
+main = "probe-worker.mjs"
+compatibility_date = "2026-10-21"
+account_id = "1b26415802588185a86c1d4d3ebf5bdb"
+workers_dev = false
+preview_urls = false
+routes = [
+  { pattern = "probe.girolocal.api.br/*", zone_name = "girolocal.api.br" },
+  { pattern = "probe.girolocal.api.br/b*", zone_name = "girolocal.api.br" },
+]
+
+[vars]
+PROBE_VERSION = "v1"

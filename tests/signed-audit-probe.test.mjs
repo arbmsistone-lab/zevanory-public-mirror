@@ -12,15 +12,15 @@ async function signed(path,when){
 test("signed read only probe accepted for status and 2 audit endpoints",async()=>{
  const t=Date.parse("2026-10-08T18:20:00Z");
  for(const path of ["/api/status","/api/internal/audit/runtime-identity","/api/internal/audit/financial-classification"]){
-  assert.equal(await verifySignedAuditProbe(await signed(path,t),{CERTIFICATION_E2E_TOKEN:secret},{now:t}),true,path);
+  assert.equal(await verifySignedAuditProbe(await signed(path,t),{ZEVANORY_OPERATOR_TOKEN:secret},{now:t}),true,path);
  }
 });
 test("HMAC fails closed on wrong path, 5-minute expiry, bad key, modified route",async()=>{
  const t=Date.parse("2026-10-08T18:20:00Z");
- assert.equal(await verifySignedAuditProbe(await signed("/api/events/operator",t),{CERTIFICATION_E2E_TOKEN:secret},{now:t}),false);
- assert.equal(await verifySignedAuditProbe(await signed("/api/status",t-301000),{CERTIFICATION_E2E_TOKEN:secret},{now:t}),false);
- assert.equal(await verifySignedAuditProbe(await signed("/api/status",t),{CERTIFICATION_E2E_TOKEN:"b".repeat(64)},{now:t}),false);
+ assert.equal(await verifySignedAuditProbe(await signed("/api/events/operator",t),{ZEVANORY_OPERATOR_TOKEN:secret},{now:t}),false);
+ assert.equal(await verifySignedAuditProbe(await signed("/api/status",t-301000),{ZEVANORY_OPERATOR_TOKEN:secret},{now:t}),false);
+ assert.equal(await verifySignedAuditProbe(await signed("/api/status",t),{ZEVANORY_OPERATOR_TOKEN:"b".repeat(64)},{now:t}),false);
  const req=await signed("/api/status",t);
  const post=new Request(req,{method:"POST"});
- assert.equal(await verifySignedAuditProbe(post,{CERTIFICATION_E2E_TOKEN:secret},{now:t}),false);
+ assert.equal(await verifySignedAuditProbe(post,{ZEVANORY_OPERATOR_TOKEN:secret},{now:t}),false);
 });

@@ -1,3 +1,4 @@
+import { SHORT_RULE_LABEL } from "./politica-unica.mjs";
 export const CREATIVE_AUTOPUBLISH_PAUSE_KEY="zpc:creative-autonomy:paused:v1";
 export const CREATIVE_AUTONOMY_FEED_KEY="zpc:creative-autonomy:feed:v1";
 export const CREATIVE_BANDIT_KEY="zpc:creative-autonomy:bandit:v1";
@@ -16,11 +17,11 @@ const money=v=>Number(Number(v||0).toFixed(2));
 // and again right before publication.
 export const SALES_ORIGIN="https://vendas.zevanory.api.br";
 export const ZEV_CREATIVE_CATALOG=Object.freeze({
- "ZEV-IA-011":Object.freeze({slug:"ia-na-pratica",name:"IA na Prática",price_brl:197}),
- "ZEV-VEN-011":Object.freeze({slug:"vendas-na-pratica",name:"Vendas na Prática",price_brl:197}),
- "ZEV-LCX-011":Object.freeze({slug:"lucro-e-caixa",name:"Lucro & Caixa",price_brl:247}),
- "ZEV-CMB-011":Object.freeze({slug:"combo-ia-vendas",name:"Combo IA + Vendas",price_brl:297}),
- "ZEV-NGC-011":Object.freeze({slug:"negocio-completo",name:"Negócio Completo",price_brl:397})
+ "ZEV-IA-011":Object.freeze({slug:"ia-na-pratica",name:"IA na Prática",price_brl:97}),
+ "ZEV-VEN-011":Object.freeze({slug:"vendas-na-pratica",name:"Vendas na Prática",price_brl:97}),
+ "ZEV-LCX-011":Object.freeze({slug:"lucro-e-caixa",name:"Lucro & Caixa",price_brl:147}),
+ "ZEV-CMB-011":Object.freeze({slug:"combo-ia-vendas",name:"Combo IA + Vendas",price_brl:157}),
+ "ZEV-NGC-011":Object.freeze({slug:"negocio-completo",name:"Negócio Completo",price_brl:247})
 });
 export const DEFAULT_CREATIVE_OFFER="ZEV-IA-011";
 const offerKey=v=>String(v||"").trim().toUpperCase();
@@ -78,8 +79,9 @@ export function scoreCreative(spec={}, {serverPrice=spec.price_brl,visualScore=n
 export function rewriteCreative(spec={}, {serverPrice=spec.price_brl}={}){
  const scrub=v=>String(v||"").replace(forbidden,"").replace(metaRisk,"").replace(personal,"").replace(/\s{2,}/g," ").trim();
  const price=Number(serverPrice)>0?` por R$ ${money(serverPrice).toFixed(2).replace(".",",")}`:"";
- const body=scrub(spec.body).replace(/\bgarantia\s+de\s+\d+\s+dias\b/ig,"").replace(/[. ]+$/,"");
- return Object.freeze({...spec,hook:scrub(spec.hook),body:`${body}${price}. Garantia de 7 dias.`.trim(),cta:words(scrub(spec.cta)).slice(0,7).join(" ")||"Conheça a ZEVANORY"});
+ const body=scrub(spec.body).replace(/\bgarantia\s+de\s+\d+\s+dias\b/ig,"").split(SHORT_RULE_LABEL).join("").replace(/[. ]+$/,"");
+ // P13c: regra curta da política única (data/politica-unica.json), nunca "garantia".
+ return Object.freeze({...spec,hook:scrub(spec.hook),body:`${body}${price}. ${SHORT_RULE_LABEL}.`.trim(),cta:words(scrub(spec.cta)).slice(0,7).join(" ")||"Conheça a ZEVANORY"});
 }
 
 export function evaluateCreativeWithRewrites(spec={},options={}){

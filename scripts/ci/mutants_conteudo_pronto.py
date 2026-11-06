@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+"""Mutantes do Conteúdo Pronto (roteiros multicanal, schema versionado; AVAL Sol #898).
+
+Cada mutante altera UMA CÓPIA temporária da árvore (oferta, contrato, gerador, páginas-fonte ou geradas), roda
+tests/conteudo-pronto-roteiros.test.mjs e tests/content-service.test.mjs contra a cópia e classifica o resultado
+com o classificador COMPARTILHADO scripts/ci/mutant_classifier.py (classify_run; meta-testes em
+tests/test_mutant_classifier.py e `mutant_classifier.py self-check`). O mapa causal
+(scripts/ci/mutants_conteudo_pronto_causality.py, por raciocínio) é traduzido para o formato do classificador
+({primary: [{test_pattern, assertion_pattern}], secondary: [{..., justification}], broad_reason}) e validado por
+load_mutant_config antes de qualquer mutante:
+  KILLED       resumo TAP completo e coerente com a baseline, ao menos uma falha de ASSERÇÃO PRIMARY (teste + rótulo
+               dentro do bloco `not ok`) e toda outra falha em PRIMARY ou em SECONDARY justificada;
+  SURVIVED     rc == 0 e resumo TAP completo igual à baseline;
+  INCONCLUSIVE qualquer outra coisa (queda, erro de sintaxe/módulo, tempo esgotado, contagem incompleta, falha fora
+               de PRIMARY/SECONDARY, rótulo fora do bloco `not ok`, trecho não encontrado). Repetido uma vez;
+               persistindo, o job falha.
+Texto lido em UTF-8 com CRLF normalizado para LF; arquivo mutado gravado em UTF-8/LF; reporter TAP explícito.
+Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 1 sobrevivente; 3 inconclusivo;
+2 baseline falhou; 4 mapa causal inválido (o runner não começa). Uso: python3 scripts/ci/mutants_conteudo_pronto.py [raiz-do-repo]
+"""
+import os, re, shutil, subprocess, sys, tempfile
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mutant_classifier as mc  # noqa: E402  (classificador compartilhado; meta-testes em tests/test_mutant_classifier.py)
+from mutants_conteudo_pronto_causality import CAUSALITY  # noqa: E402  (mapa causal por raciocínio; auditoria Sol 128)
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+_ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+REPO = Path(_ARGS[0] if _ARGS else Path(__file__).resolve().parents[2])
+TESTS = [Path("tests", "conteudo-pronto-roteiros.test.mjs"), Path("tests", "content-service.test.mjs"), Path("tests", "conteudo-pronto-campanha.test.mjs")]
+J = "data/politica-unica.json"
+CS = "worker/content-service.mjs"
+PG = "conteudo-pronto/index.html"
+NODE = shutil.which("node")
+TIMEOUT = 600
+BASELINE_TESTS = 25  # contagem fixada (o job de contrato confere o mesmo número); DEC-14: 51 -> 25 (registro de aposentadoria)
+
+# id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
+M = {
+    "M01 oferta volta a WhatsApp (JSON)": (J, "4 roteiros multicanal de venda e acompanhamento — cada um com versão curta e versão de e-mail — e um calendário",
+        "4 mensagens de venda para WhatsApp e um calendário", "características essenciais = texto canônico"),
+    "M06 versão sobe só no JSON": (J, "\"content_schema_version\": 3",
+        "\"content_schema_version\": 4", "[schema-version]"),
+    "M07 reativação sem consentimento, sem subir versão": (J, "reativar somente cliente com relacionamento ativo ou consentimento registrado para receber contato",
+        "reativar cliente antigo", "contrato mudou: suba content_schema_version"),
+    "M08 objetivo renomeado no contrato": (J, "\"id\": \"oferta_solicitada\"",
+        "\"id\": \"oferta\"", "contrato mudou: suba content_schema_version"),
+    "M09 prompt volta a WhatsApp": (CS, "Crie ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento para o negócio usar em canais",
+        "Crie ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento para WhatsApp e canais", "prompt sem WhatsApp"),
+    "M10 prompt sem as regras dos objetivos": (CS, "`${i + 1}) \"${o.id}\": ${o.regra}`",
+        "`${i + 1}) \"${o.id}\"`", "prompt traz objetivo e regra"),
+    "M11 validador ignora a ordem dos objetivos": (CS, "    if (id !== obj.id) return null;\n",
+        "", "ordem dos objetivos"),
+    "M12 validador de roteiros ignora canal banido": (CS, "    if (FORBIDDEN.test(all) || promessa(all) || contaminated(all)) return null;",
+        "    if (FORBIDDEN.test(all) || promessa(all)) return null;", "termo proibido na curta"),
+    "M13 validador aceita roteiro sem versão de e-mail": (CS, "if (assunto.length < 5 || assunto.length > 120 || corpo.length < 200 || corpo.length > 1600) return null;",
+        "", "versão de e-mail obrigatória"),
+    "M14 pacote com versão de schema fixa 1": (CS, "content_schema_version: CONTENT_SCHEMA_VERSION, servico: SERVICO, cycle",
+        "content_schema_version: 1, servico: SERVICO, cycle", "[pkg-version]"),
+    "M15 calendário com 3 roteiros": (CS, "[0.15, 0.4, 0.65, 0.9].forEach",
+        "[0.15, 0.4, 0.65].forEach", "[calendario]"),
+    "M16 calendário rotula WhatsApp": (CS, "const CAL_LABEL = { post: \"Post\", roteiro: \"Roteiro\" };",
+        "const CAL_LABEL = { post: \"Post\", roteiro: \"WhatsApp\" };", "worker/content-service.mjs sem WhatsApp"),
+    "M17 título do pacote volta a MENSAGENS PARA WHATSAPP": (CS, "export const ROTEIROS_TITULO = `${N_ROTEIROS} ROTEIROS MULTICANAL DE VENDA E ACOMPANHAMENTO`;",
+        "export const ROTEIROS_TITULO = `${N_ROTEIROS} MENSAGENS PARA WHATS` + `APP`;", "e-mail do pacote"),
+    "M18 pacote em texto sem versão de e-mail": (CS, "    if (r.email) lines.push(\"Versão de e-mail:\", `Assunto: ${r.email.assunto}`, r.email.corpo);\n",
+        "", "[texto-versao-email]"),
+    "M21 formulário volta a WhatsApp (escapado na fonte)": (CS, "(ex.: e-mail, Instagram Direct, Telegram, chat do site)",
+        "(Whats\\u0041pp, Instagram, site)", "[form]"),
+    "M22 suporte volta a WhatsApp": ("worker/support-knowledge.mjs", "4 roteiros multicanal de venda e acompanhamento (versão curta",
+        "4 mensagens de venda para WhatsApp (versão curta", "[suporte]"),
+    "M27 gerador volta a emitir o campo mensagens": (CS, "posts, roteiros: m, calendario",
+        "posts, mensagens: m, roteiros: m, calendario", "campo antigo 'mensagens' não é mais gerado"),
+    "M28 objetivo exibido vem do modelo": (CS, "out.push({ objetivo_id: obj.id, objetivo: obj.titulo,",
+        "out.push({ objetivo_id: obj.id, objetivo: id,", "objetivo exibido vem do contrato"),
+    "M29 legado v1 exibe o tipo antigo do calendário": (CS, "const calLabel = (tipo) => CAL_LABEL[tipo] || \"Roteiro\";",
+        "const calLabel = (tipo) => CAL_LABEL[tipo] || (tipo.charAt(0).toUpperCase() + tipo.slice(1));", "[legacy-clean]"),
+    "M30 aviso sem a regra de consentimento": (CS, "Use a reativação só com relacionamento ativo ou consentimento registrado. ",
+        "", "[aviso]"),
+    "M37 detector ignora o calendário": (CS, "  return [...camp, ...posts, ...rots, ...cal]",
+        "  return [...camp, ...posts, ...rots]", "[legacy-detect] calendario.tema"),
+    "M38 detector ignora hashtags": (CS, "p?.cta, ...(Array.isArray(p?.hashtags) ? p.hashtags : [p?.hashtags]), p?.imagem]",
+        "p?.cta, p?.imagem]", "[legacy-detect] posts.hashtags"),
+    "M39 detector ignora o objetivo das mensagens": (CS, "flatMap((r) => [r?.objetivo, r?.curta,",
+        "flatMap((r) => [r?.curta,", "[legacy-detect] mensagens.objetivo"),
+    "M40 número mascarado não detectado": (CS, "  if (MASKED_RES.some((re) => re.test(str))) return true;\n",
+        "", "número banido mascarado"),
+    "M41 número banido em dígitos (completo ou formatado) não detectado": (CS, "    if (BANNED_NUMBERS.some((n) => d.includes(n.slice(-8)))) return true;\n",
+        "", "número banido completo"),
+    "M42 wa.me fora dos termos proibidos": (J, "\"wa\\\\.me\",\n",
+        "", "[legacy-detect] mensagens.texto × wa.me"),
+    "M46 pacote em texto não bloqueia": (CS, "  if (packageBlocked(pkg)) return `Seu pacote Conteúdo Pronto",
+        "  if (false) return `Seu pacote Conteúdo Pronto", "[legacy-text-leak]"),
+    "M47 gerador v2 aceita posts contaminados": (CS, "    if (contaminated([tema, legenda, cta, ...hashtags, imagem].join(\" \"))) return null;\n",
+        "", "[posts-guard]"),
+    "M50 máscara sem âncora no DDD (falso positivo)": (CS, "\\\\(?${n.slice(2, 4)}\\\\)?",
+        "\\\\(?\\\\d{2}\\\\)?", "[number-false-positive]"),
+    # (DEC-14: os mutantes da regeneração em KV foram aposentados; ver docs/ops/dec14-cp-retirement-registry.json.)
+    "M75 detector v2 ignora a versão curta": (CS, "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo])",
+        "flatMap((r) => [r?.objetivo, ...(r?.email ? [] : [r?.curta]), r?.email?.assunto, r?.email?.corpo])", "[v2-detect] roteiros.curta"),
+    "M76 detector v2 ignora o assunto do e-mail": (CS, "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo])",
+        "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.corpo])", "[v2-detect] roteiros.email.assunto"),
+    "M77 detector v2 ignora o corpo do e-mail": (CS, "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo])",
+        "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto])", "[v2-detect] roteiros.email.corpo"),
+    # v3 (Sol AVAL 304): campanha mensal de promoção de vendas.
+    "M81 período da campanha sem limite": (CS, "  if (!(dias >= CAMPANHA.periodo_dias_min && dias <= CAMPANHA.periodo_dias_max)) return",
+        "  if (false) return", "[camp-recusa] 6 dias"),
+    "M82 campo da campanha deixa de ser obrigatório": (CS, "      if (v.length < 2) return { ok: false, error: `Faltou preencher",
+        "      if (false) return { ok: false, error: `Faltou preencher", "[camp-recusa] sem objetivo_comercial"),
+    "M83 campanha aceita promessa de resultado": (CS, "if (FORBIDDEN.test(texto) || CAMPANHA_PROMESSA.test(texto) || promessa(texto) || contaminated(texto))",
+        "if (contaminated(texto))", "[camp-recusa] promessa de resultado"),
+    "M84 post sem a oferta aceito": (CS, "      if (!anchored(legenda + \" \" + cta, campanha.oferta)) return null;\n",
+        "", "[camp-ancora] post sem a oferta"),
+    "M85 post sem fase aceito": (CS, "      if (!FASE_IDS.has(fase)) return null;\n",
+        "", "[camp-ancora] post sem fase"),
+    "M86 e-mail sem a condição comercial aceito": (CS, "      if (!anchored(corpo, campanha.condicao_comercial, { condition: true })) return null;\n",
+        "", "[camp-ancora] e-mail sem a condição comercial"),
+    "M87 fases da campanha não precisam ser cobertas": (CS, "    return out && FASE_IDS.size === new Set([...a, ...out].map((p) => p.fase)).size ? out : null;",
+        "    return out;", "[camp-ancora] fases não cobertas"),
+    "M88 calendário sai do período": (CS, "  const at = (f) => Math.round(f * span);",
+        "  const at = (f) => Math.round(f * (span + 10));", "[camp-pacote] calendário no período e em ordem"),
+    "M94 serviço deixa de ser campanha no contrato": (J, "\"servico\": \"campanha mensal de promoção de vendas\"",
+        "\"servico\": \"pacote mensal de conteúdo\"", "[campanha] serviço"),
+    "M95 descrição Hotmart sem a campanha": (J, "\"descricao_hotmart_proposta\": \"ZEVANORY Conteúdo Pronto: campanha mensal de promoção de vendas.",
+        "\"descricao_hotmart_proposta\": \"ZEVANORY Conteúdo Pronto: pacote mensal de conteúdo.", "[campanha] descricao_hotmart_proposta"),
+    "M97 chat deixa passar qualquer promoção": ("worker/site-chat.mjs", "  const nd = n.replace(/campanha (mensal )?de promocao de vendas/g, \"campanha de vendas\");",
+        "  const nd = n.replace(/promocao/g, \"\");", "[camp-textos] chat ainda bloqueia"),
+    "M98 atendimento deixa passar qualquer promoção": ("worker/whatsapp-conversation.mjs", "  const bodyNoService = body.replace(/campanha (mensal )?de promo[cç][aã]o de vendas/gi, \"campanha de vendas\");",
+        "  const bodyNoService = body.replace(/promo[cç][aã]o/gi, \"\");", "[camp-textos] atendimento ainda bloqueia"),
+    "M103 âncora por substring": (CS, "  if (!(condition ? conditionTerms(ph) : anchorTerms(ph)).length) return false;\n  return new RegExp(",
+        "  return normTxt(text).includes(ph);\n  return new RegExp(", "[camp-ancora-vazia] 'Escovação' não ancora 'Escova'"),
+    "M104 campanha aceita promessa de resultado": (CS, "CAMPANHA_PROMESSA.test(texto) || promessa(texto) ||",
+        "CAMPANHA_PROMESSA.test(texto) ||", "[camp-promessa] condição recusada: dobre suas vendas"),
+    "M105 condição com promessa exigida no e-mail": (CS, "    if (FORBIDDEN.test(all) || promessa(all) || contaminated(all)) return null;\n    if (campanha) {\n      // Condição com promessa nunca é exigida no e-mail (MED-5): sem ela a campanha inteira é recusada (fail-closed).\n      if (promessa(campanha.condicao_comercial) || promessa(campanha.oferta)) return null;\n",
+        "    if (FORBIDDEN.test(all) || contaminated(all)) return null;\n    if (campanha) {\n", "[camp-promessa] promessa nunca exigida no e-mail"),
+    "M106 data inexistente aceita": (CS, "      if (!realDate(v)) return",
+        "      if (!ISO_DATE.test(v)) return", "[camp-datas] 30/02 recusado"),
+    "M111 portão volta a recusar frase promocional comum": (CS, "export const promessa = (t) => PROMESSA_RX.test(normTxt(t));",
+        "export const promessa = (t) => PROMESSA_RX.test(normTxt(t)) || /garantid/.test(normTxt(t));", "[camp-promessa-lista] permite: vaga garantida"),
+    "M112 portão aceita dinheiro devolvido": (CS, "  \"dinheiro\\\\s+(de\\\\s+volta|devolvido)\",",
+        "  \"dinheiro\\\\s+de\\\\s+volta\",", "[camp-promessa-lista] recusa: satisfação total ou seu dinheiro devolvido"),
+    "M113 prompt sem a lista de promessas proibidas": (CS, "sem emojis em excesso. \" + PROMESSAS_PROIBIDAS + \" Responda",
+        "sem emojis em excesso. Responda", "[camp-promessa-lista] lista de promessas proibidas no prompt"),
+    "M114 sem chamada corretiva": (CS, "retryFix = Boolean(parsed) && !corrected && promessa(JSON.stringify(parsed));",
+        "retryFix = false;", "[camp-correcao] a segunda chamada leva a instrução corretiva"),
+    "M115 palavra genérica ancora": (CS, " && !GENERIC.has(w)); }",
+        "); }", "[camp-ancora-vazia] oferta genérica recusada: produto"),
+    "M123 posts sem o portão de promessa": (CS, " || promessa(tema + \" \" + legenda + \" \" + cta)) return null;",
+        ") return null;", "[camp-promessa-lista] post com promessa recusado"),
+    "M141 /reembolso sem o prazo da regra": ("reembolso/index.html", "O estorno é processado em até 7 dias úteis.",
+        "O estorno é processado quando possível.", "[camp-reembolso-prazo] regra do Conteúdo Pronto em reembolso/index.html"),
+    "M172 período do texto trocado": (CS, "`Período: ${br(camp.periodo_inicio)} a ${br(camp.periodo_fim)}`",
+        "`Período: ${br(camp.periodo_fim)} a ${br(camp.periodo_inicio)}`", "[camp-pacote] período do texto = período da campanha"),
+    "M174 hoje do formulário volta a UTC": (CS, "const today = Date.parse(civilDaySP(now) + \"T00:00:00Z\");",
+        "const today = Date.parse(new Date(now).toISOString().slice(0, 10) + \"T00:00:00Z\");", "[camp-fuso] 21h de Brasília ainda é hoje"),
+    "M176 data civil calculada em UTC": (CS, "timeZone: \"America/Sao_Paulo\", year: \"numeric\"",
+        "timeZone: \"UTC\", year: \"numeric\"", "[camp-fuso] data civil de Brasília"),
+    "M177 data impossível sem guarda de Invalid Date": (CS, "const realDate = (v) => { if (!ISO_DATE.test(v)) return false; const t = Date.parse(v + \"T00:00:00Z\"); return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v; };",
+        "const realDate = (v) => ISO_DATE.test(v) && new Date(v + \"T00:00:00Z\").toISOString().slice(0, 10) === v;", "[camp-fuso] data impossível sem exceção"),
+}
+
+
+
+def read_text_normalized(path):
+    return path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+
+
+def write_lf(path, text):
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
+def stage(d):
+    # Cópia da árvore inteira (sem .git/node_modules): o teste (e) varre todas as páginas do repositório.
+    shutil.copytree(REPO, d, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__", "*.pyc"))
+
+
+def run(d):
+    env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0", "NODE_OPTIONS": ""}
+    return mc.run_command([NODE, "--test", "--test-reporter=tap", "--test-reporter-destination=stdout",
+                           *[t.as_posix() for t in TESTS]], cwd=str(d), timeout=TIMEOUT, env=env)
+
+
+def _exact(label):
+    # Rótulo do mapa causal = trecho literal do `error` do bloco `not ok` (mesma semântica de antes: substring exata).
+    return "re:" + re.escape(label)
+
+
+def to_expected(spec):
+    """Mapa causal (p/s/broad) -> formato do classificador compartilhado (primary/secondary/broad_reason)."""
+    out = {"primary": [{"test_pattern": t, "assertion_pattern": _exact(label)} for t, label in spec.get("p") or []],
+           "secondary": [{"test_pattern": t, "assertion_pattern": None, "justification": why}
+                         for t, why in (spec.get("s") or {}).items()],
+           "allowlist": []}
+    if spec.get("broad"):
+        out["broad_reason"] = spec["broad"]
+    return out
+
+
+MIN_JUSTIFICATION = 20  # mais estrito que o classificador (não vazio): justificativa curta demais não é causal
+
+
+def causality_problems():
+    """Mapa causal inválido => o runner não começa (sem justificativa, PRIMARY fora de 1..3, >4 testes sem broad)."""
+    ids = [k.split()[0] for k in M]
+    probs = [f"{m}: sem mapa causal" for m in ids if m not in CAUSALITY]
+    probs += [f"{m}: mapa causal sem mutante" for m in CAUSALITY if m not in ids]
+    for m in ids:
+        if m in CAUSALITY:
+            probs += spec_problems(m, CAUSALITY[m])
+    return probs
+
+
+def spec_problems(m, spec):
+    """Problemas de UM mapa causal: justificativas (>= MIN_JUSTIFICATION) e load_mutant_config do classificador."""
+    if not isinstance(spec, dict):
+        return [f"{m}: mapa causal deve ser dict"]
+    probs = []
+    if len(str(spec.get("why", "")).strip()) < MIN_JUSTIFICATION:
+        probs.append(f"{m}: PRIMARY sem justificativa (why)")
+    for test, why in (spec.get("s") or {}).items():
+        if len(str(why or "").strip()) < MIN_JUSTIFICATION:
+            probs.append(f"{m}: SECONDARY {test!r} sem justificativa causal")
+    if spec.get("broad") is not None and len(str(spec["broad"]).strip()) < MIN_JUSTIFICATION:
+        probs.append(f"{m}: broad_reason curto demais")
+    try:
+        mc.load_mutant_config({m: to_expected(spec)})
+    except (mc.ConfigError, TypeError, ValueError) as e:
+        probs.append(f"{m}: {e}")
+    return probs
+
+
+CONFIG = None  # preenchido em main() por mc.load_mutant_config, depois de causality_problems() vazio
+
+
+def attempt(name, fname, old, new, expect, total):
+    mid = name.split()[0]
+    spec = CONFIG[mid]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        d = Path(tmp)
+        stage(d)
+        f = d.joinpath(*fname.split("/"))
+        text = read_text_normalized(f)
+        if text.count(old) != 1:
+            res = mc.classify(total, 1, {}, expected=spec, anchor_ok=False, mutant_id=mid)
+            return res["verdict"], f"{res['reason']} (trecho ocorre {text.count(old)} vez(es))", False
+        write_lf(f, text.replace(old, new, 1))
+        r = run(d)
+    res = mc.classify_run(total, r, expected=spec, allowlist=spec["allowlist"], anchor_ok=True, mutant_id=mid)
+    return res["verdict"], ("" if res["verdict"] == "KILLED" else res["reason"]), True
+
+
+def causality_md():
+    cell = lambda x: str(x).replace("|", "\\|").replace("\n", " ")
+    rows = ["# Conteúdo Pronto — causalidade dos mutantes",
+            "",
+            "Gerado de `scripts/ci/mutants_conteudo_pronto_causality.py` por `python3 -B scripts/ci/mutants_conteudo_pronto.py --causality-md`",
+            "(o CI confere que este arquivo está em dia). Regra (Sol, auditoria 128): a asserção esperada vem do raciocínio sobre a",
+            "mutação; KILLED exige falha numa asserção PRIMARY e qualquer outra falha em PRIMARY ou em SECONDARY justificada",
+            "(`scripts/ci/mutant_classifier.py`, compartilhado); qualquer outra coisa é INCONCLUSIVE. Contraprova: sem a mutação a baseline passa "
+            f"({BASELINE_TESTS}/{BASELINE_TESTS}) e a asserção primária é exatamente a que a mutação viola. DEC-14: 119 mutantes cujo alvo não existe mais",
+            "estão aposentados, um a um, em `docs/ops/dec14-cp-retirement-registry.json`; os 59 abaixo continuam ativos.",
+            "",
+            "| mutant_id | change | primary assertion | justification | counter-proof |",
+            "|---|---|---|---|---|"]
+    for name, (fname, old, new, expect) in M.items():
+        mid = name.split()[0]
+        spec = CAUSALITY[mid]
+        prim = "; ".join(f"`{t if t.startswith('(') else 'fluxo completo'}` ⟶ `{label}`" for t, label in spec["p"])
+        just = spec["why"]
+        if spec.get("s"):
+            just += " — SECONDARY: " + "; ".join(f"`{t}`: {w}" for t, w in spec["s"].items())
+        if spec.get("broad"):
+            just += f" — broad_reason: {spec['broad']}"
+        # Sem citar o trecho mutado literalmente: o texto mutado da oferta não pode entrar numa página do repositório
+        # (tests/conteudo-pronto-roteiros.test.mjs (e) varre todo .md que descreve o produto).
+        counter = (f"sem a mutação a asserção `{spec['p'][0][1]}` passa (baseline {BASELINE_TESTS}/{BASELINE_TESTS}); aplicando a troca \"{name[len(mid) + 1:]}\" "
+                   f"em `{fname}` (trecho exato em `M[\"{name}\"]`), ela falha")
+        rows.append(f"| {mid} | {cell(name[len(mid) + 1:])} | {cell(prim)} | {cell(just)} | {cell(counter)} |")
+    return "\n".join(rows) + "\n"
+
+
+def one(item, total):
+    # INCONCLUSIVE (queda, tempo esgotado, contagem incompleta, falha fora da allowlist) é repetido UMA vez;
+    # persistindo, fica INCONCLUSIVE e o job falha.
+    name, (fname, old, new, expect) = item
+    why = ""
+    for n in (1, 2):
+        try:
+            verdict, why, retriable = attempt(name, fname, old, new, expect, total)
+        except (OSError, subprocess.SubprocessError, UnicodeError) as e:
+            verdict, why, retriable = "INCONCLUSIVE", f"erro de infraestrutura: {type(e).__name__}: {e}", True
+        if verdict != "INCONCLUSIVE" or not retriable:
+            break
+        why = f"{why} (tentativa {n})"
+    return name, verdict, why, expect
+
+
+def main():
+    if "--causality-md" in sys.argv[1:]:
+        sys.stdout.write(causality_md())
+        return 0
+    global CONFIG
+    probs = causality_problems()
+    if probs:
+        for pr in probs:
+            print(f"MUTANT CAUSALITY INVALID {pr}")
+        print("MUTANT RUNNER REFUSED (mapa causal inválido: corrija a justificativa; não amplie a allowlist)")
+        return 4
+    CONFIG = mc.load_mutant_config({k.split()[0]: to_expected(CAUSALITY[k.split()[0]]) for k in M})
+    if not NODE:
+        print("MUTANT BASELINE INCONCLUSIVE (node ausente no PATH)")
+        return 3
+    try:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            stage(Path(tmp))
+            r = run(Path(tmp))
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"MUTANT BASELINE INCONCLUSIVE ({type(e).__name__}: {e})")
+        return 3
+    parsed = mc.parse_tap(r.get("stdout", ""), stderr=r.get("stderr", ""))
+    total = parsed["summary"].get("tests")
+    b = mc.validate_baseline(total if isinstance(total, int) else -1, r.get("return_code"), parsed["summary"],
+                             parsed["failures"], timed_out=r.get("timed_out", False), signal=r.get("signal"))
+    if total != BASELINE_TESTS or not b["ok"]:
+        print((r.get("stdout", "") + r.get("stderr", ""))[-3000:])
+        print(f"MUTANT BASELINE FAILED (suíte sem mutação não passa ou contagem != {BASELINE_TESTS}) rc={r.get('return_code')} motivo={b['reason']}")
+        return 2
+    print(f"MUTANT BASELINE PASS tests={total} node={subprocess.run([NODE, '--version'], capture_output=True, text=True).stdout.strip()} os={os.name}", flush=True)
+    counts = {"KILLED": 0, "SURVIVED": 0, "INCONCLUSIVE": 0}
+    results = []
+    with ThreadPoolExecutor(max_workers=max(2, min(8, os.cpu_count() or 2))) as ex:
+        for name, verdict, why, expect in ex.map(lambda it: one(it, total), M.items()):
+            mid = name.split()[0]
+            counts[verdict] += 1
+            results.append({"mutant_id": mid, "verdict": verdict})
+            extra = f" [{why}]" if why else ""
+            print(f"MUTANT {mid} {verdict} — {name[len(mid) + 1:]} (asserção: {expect}){extra}", flush=True)
+    print(f"MUTANTS_TOTAL={len(M)} KILLED={counts['KILLED']} SURVIVED={counts['SURVIVED']} INCONCLUSIVE={counts['INCONCLUSIVE']}")
+    code, _ = mc.aggregate(results, baseline_valid=True)  # 0 todos KILLED; 1 sobrevivente; 3 inconclusivo (3 > 1)
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -62,15 +62,15 @@ let ip = 10;
 const req = (path, ua, form) => new Request("https://vendas.zevanory.api.br" + path, { method: "POST", headers: { "user-agent": ua, "cf-connecting-ip": "198.51.100." + (ip++) }, body: form });
 const leadForm = () => { const f = new FormData(); f.set("email", "teste@example.test"); f.set("consentimento", "sim"); return f; };
 
-test("Telegram Android visitor can request the free material and start a purchase (synthetic core, no provider)", async () => {
+test("Telegram Android visitor gets free material; own MP checkout remains blocked", async () => {
   let { env, calls } = core();
   let r = await worker.fetch(req("/material-gratuito/inscrever", TG_ANDROID, leadForm()), env, ctx);
   assert.equal(r.status, 200);
   assert.ok(calls.some((u) => u.startsWith("https://leads.internal/")));
   ({ env, calls } = core());
   r = await worker.fetch(req("/comprar/ZEV-IA-011", TG_ANDROID), env, ctx);
-  assert.equal(r.status, 303);
-  assert.equal(calls.filter((u) => u.startsWith("https://checkout.internal/")).length, 1);
+  assert.equal(r.status,503);
+  assert.equal(calls.filter((u)=>u.startsWith("https://checkout.internal/")).length,0);
 });
 
 test("robots and spoofs still get 403 at purchase and lead form and never reach the core", async () => {
@@ -78,7 +78,7 @@ test("robots and spoofs still get 403 at purchase and lead form and never reach 
     for (const [path, body] of [["/comprar/ZEV-IA-011", undefined], ["/material-gratuito/inscrever", leadForm()]]) {
       const { env, calls } = core();
       const r = await worker.fetch(req(path, ua, body), env, ctx);
-      assert.equal(r.status, 403, name + " " + path);
+      assert.equal(r.status,path.startsWith("/comprar/")?503:403,name+" "+path);
       assert.ok(!calls.some((u) => u.startsWith("https://checkout.internal/") || u.startsWith("https://leads.internal/")), name);
     }
   }

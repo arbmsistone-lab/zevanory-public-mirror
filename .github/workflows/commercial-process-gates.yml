@@ -1,0 +1,97 @@
+name: commercial-process-gates
+
+# P02 (registro auditável de decisões), P24 (página de venda x material entregue) e P25 (revisão semanal, ensaio).
+# Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à produção, token só de leitura.
+# Os zips dos produtos não estão no repositório: o P24 confere o manifesto catalogado (data/p24/delivery-manifest.json)
+# contra o catálogo do Worker e contra as páginas; o manifesto é regenerado localmente por
+# scripts/p24/build_delivery_manifest.py quando um zip muda.
+on:
+  pull_request:
+    branches:
+      - gh-pages
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-process-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  p02:
+    name: p02 / decision-registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Testes negativos (contagem exata 24)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I tests/p02/test_decision_registry_gate.py 2>&1 | tee /tmp/t.txt
+          grep -q "^Ran 24 tests" /tmp/t.txt || { echo "::error::esperado Ran 24 tests"; exit 1; }
+          grep -qx "OK" /tmp/t.txt
+      - name: Registro só cresce (comparação com a base)
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git fetch -q --depth 1 origin "$BASE_SHA"
+          git show "$BASE_SHA:data/p02/decisions.json" > /tmp/base-decisions.json 2>/dev/null || : > /tmp/base-decisions.json
+          python3 -I scripts/p02/decision_registry_gate.py --base /tmp/base-decisions.json
+
+  p24:
+    name: p24 / product-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Testes negativos (contagem exata 19)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I tests/p24/test_product_quality_check.py 2>&1 | tee /tmp/t.txt
+          grep -q "^Ran 19 tests" /tmp/t.txt || { echo "::error::esperado Ran 19 tests"; exit 1; }
+          grep -qx "OK" /tmp/t.txt
+      - name: Página de venda x material entregue
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I scripts/p24/product_quality_check.py --report /tmp/p24-report.json --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p24-report-${{ github.event.pull_request.head.sha }}
+          path: /tmp/p24-report.json
+          retention-days: 30
+
+  p25:
+    name: p25 / weekly-review-dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Testes (contagem exata 7) e ensaio sem gravação
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I tests/p25/test_weekly_learning_review.py 2>&1 | tee /tmp/t.txt
+          grep -q "^Ran 7 tests" /tmp/t.txt || { echo "::error::esperado Ran 7 tests"; exit 1; }
+          grep -qx "OK" /tmp/t.txt
+          python3 -I scripts/p25/weekly_learning_review.py --out /tmp/p25-dry-run.json | tee -a "$GITHUB_STEP_SUMMARY"

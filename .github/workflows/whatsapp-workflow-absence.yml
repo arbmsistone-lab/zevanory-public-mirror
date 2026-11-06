@@ -1,0 +1,35 @@
+name: WhatsApp retired - workflow absence scan
+# PR #896: no workflow may assign SUPPORT_CHANNEL / ZEVANORY_WHATSAPP_* again or carry the banned numbers in any format
+# (mercadopago-exact-sha-recovery.yml used to). Runs on every workflow change, because the Node suites that hold the
+# same check (tests/whatsapp-config-absence.test.mjs, "workflows:") are not triggered by a workflow-only PR.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/**"
+      - "scripts/deploy/public_whatsapp_scan.py"
+      - "tests/whatsapp-config-absence.test.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-workflow-absence-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Workflows carry no retired WhatsApp alias assignment or number
+        run: python3 -B scripts/deploy/public_whatsapp_scan.py --workflows .github/workflows
+      - name: Absence test (wrangler configs, generated config, public assets, workflows)
+        run: |
+          set -euo pipefail
+          node --test tests/whatsapp-config-absence.test.mjs < /dev/null | tee t.txt
+          grep -qx '# tests 7' t.txt && grep -qx '# pass 7' t.txt && grep -qx '# fail 0' t.txt && grep -qx '# skipped 0' t.txt

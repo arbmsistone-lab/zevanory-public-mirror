@@ -40,6 +40,13 @@ jobs:
           python3 -m py_compile scripts/zevanory_crown_gate.py
           python3 -m py_compile scripts/test_crown_negative.py
 
+      - name: Sales promises match the delivered material (P24)
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/ci/sales_promise_consistency.py
+          python3 scripts/ci/sales_promise_consistency.py
+          python3 scripts/ci/sales_promise_consistency.py --self-test
+
       - name: Run fail-closed product audit
         run: |
           set -euo pipefail

@@ -1,0 +1,159 @@
+{
+ "changes": {
+  "PA1 alert rate limit dropped (SQL)": "limite atômico do alerta removido",
+  "PG6 shared read/send budget (retry SQL)": "falha de leitura também incrementa send_failures",
+  "PL1 lease exclusivity dropped": "lease sem exclusividade",
+  "PN1 nonce replay not rejected atomically": "nonce sem ON CONFLICT",
+  "PQ1 sender quota not enforced": "vaga do remetente reservada mais de uma vez",
+  "PQ2 daily cap not enforced": "teto global ignorado",
+  "PR1 reap removed": "reap removido",
+  "PU1 counters reset at ack transition (SQL)": "zera read_failures/send_failures na transição para ack_pending"
+ },
+ "mutants": {
+  "PA1 alert rate limit dropped (SQL)": {
+   "primary": [
+    {
+     "assertion_pattern": "[O11.1]",
+     "test_pattern": "O11",
+     "why": "um único alerta com 3 drenos"
+    }
+   ],
+   "secondary": [
+    {
+     "assertion_pattern": null,
+     "justification": "afirma alerta de morte exatamente uma vez",
+     "test_pattern": "O16"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "afirma alerta de morte exatamente uma vez",
+     "test_pattern": "O18"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "afirma no máximo 1 alerta operacional",
+     "test_pattern": "O10"
+    }
+   ]
+  },
+  "PG6 shared read/send budget (retry SQL)": {
+   "primary": [
+    {
+     "assertion_pattern": "[O14.1]",
+     "test_pattern": "O14",
+     "why": "read_failures 3 e send_failures 0 após 3 falhas de leitura"
+    }
+   ],
+   "secondary": []
+  },
+  "PL1 lease exclusivity dropped": {
+   "broad_reason": "o lease é a única guarda de concorrência; todo teste com consumidores simultâneos e exatamente-uma-vez o observa",
+   "primary": [
+    {
+     "assertion_pattern": "[O03.1]",
+     "test_pattern": "O3",
+     "why": "7 consumidores recebem not_due"
+    },
+    {
+     "assertion_pattern": "[O02.1]",
+     "test_pattern": "O2",
+     "why": "1 encaminhamento por e-mail com 2 drenos"
+    }
+   ],
+   "secondary": [
+    {
+     "assertion_pattern": null,
+     "justification": "afirma not_due com lease ativo",
+     "test_pattern": "O9"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "roda 2 drenos simultâneos e afirma 1 encaminhamento",
+     "test_pattern": "O8"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "webhook duplicado + 2 drenos simultâneos e afirma 1 encaminhamento",
+     "test_pattern": "O12"
+    }
+   ]
+  },
+  "PN1 nonce replay not rejected atomically": {
+   "primary": [
+    {
+     "assertion_pattern": "[O17.1]",
+     "test_pattern": "O17",
+     "why": "[200, 409, 409, 409, 409] com o mesmo nonce"
+    }
+   ],
+   "secondary": []
+  },
+  "PQ1 sender quota not enforced": {
+   "primary": [
+    {
+     "assertion_pattern": "[O04.2]",
+     "test_pattern": "O4",
+     "why": "1 confirmação para 6 e-mails do mesmo remetente"
+    }
+   ],
+   "secondary": []
+  },
+  "PQ2 daily cap not enforced": {
+   "primary": [
+    {
+     "assertion_pattern": "[O05.2]",
+     "test_pattern": "O5",
+     "why": "exatamente 30 confirmações"
+    }
+   ],
+   "secondary": []
+  },
+  "PR1 reap removed": {
+   "broad_reason": "o reap é o único caminho de linha pendente fora do orçamento para *_dead",
+   "primary": [
+    {
+     "assertion_pattern": "[O07.5]",
+     "test_pattern": "O7",
+     "why": "*_dead pelo dreno para linhas estouradas"
+    },
+    {
+     "assertion_pattern": "[O08.3]",
+     "test_pattern": "O8",
+     "why": "forward_dead para a linha de 23h01"
+    },
+    {
+     "assertion_pattern": "[O09.3]",
+     "test_pattern": "O9",
+     "why": "forward_dead depois que o lease vence"
+    }
+   ],
+   "secondary": [
+    {
+     "assertion_pattern": null,
+     "justification": "afirma *_dead para linhas fora do orçamento",
+     "test_pattern": "O10"
+    },
+    {
+     "assertion_pattern": null,
+     "justification": "o alerta de mortas só existe se as linhas virarem dead pelo reap",
+     "test_pattern": "O11"
+    }
+   ]
+  },
+  "PU1 counters reset at ack transition (SQL)": {
+   "primary": [
+    {
+     "assertion_pattern": "[O16.1]",
+     "test_pattern": "O16",
+     "why": "state ack_dead com send_failures 10 após 9+1"
+    },
+    {
+     "assertion_pattern": "[O18.1]",
+     "test_pattern": "O18",
+     "why": "read_failures 9 preservado na transição"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

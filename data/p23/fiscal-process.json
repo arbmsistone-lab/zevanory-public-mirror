@@ -1,0 +1,17 @@
+{
+  "schema": "zevanory-p23-fiscal-process/v1",
+  "status": "NAO_DEFINIDO",
+  "note": "P23 (Roteiro Mestre v4.7, seções 5 e 7, fase F3): 'Nenhuma venda direta pelo checkout próprio antes do processo fiscal definido' (PI). O enquadramento fiscal e o documento fiscal exigido são decisão de classe D do proprietário com o contador (frente marcada para 26/10/2026); o executor não decide, não preenche e não muda 'status'. Enquanto status != DEFINIDO com todos os campos de 'decision', worker/fiscal-process.mjs devolve false e o portão de checkout (worker/commercial-checkout-guard.mjs, sinal 'fiscal') e o status público (/api/sales/status, /api/status) ficam fechados. Validação: scripts/p23/ecommerce_legal_gate.py.",
+  "decision": null,
+  "decision_fields_required": {
+    "regime": "enquadramento tributário informado pelo proprietário e pelo contador",
+    "documento_fiscal": "documento emitido em cada venda (ex.: NFS-e), conforme o contador",
+    "emissor": "sistema ou portal onde o documento é emitido",
+    "decided_by": "proprietario",
+    "accountant_ref": "identificação do contador ou do escritório responsável (sem dado sensível)",
+    "decided_at": "AAAA-MM-DD",
+    "procedure_ref": "{kind: repo, ref, contains}: procedimento escrito de emissão por venda",
+    "test_order_ref": "referência do pedido de teste em que o procedimento foi ensaiado (F3)",
+    "owner_approval_ref": "referência do registro de aprovação do proprietário (classe D)"
+  }
+}

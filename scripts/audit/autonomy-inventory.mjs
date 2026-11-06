@@ -1,6 +1,7 @@
 // Certifiable autonomy (Protocolo Omega, item 9): inventory of business processes, each
 // classified (eligible or owner-reserved; autonomous, partial, blocked, manual) and proven
 // against live evidence. Index = eligible processes autonomous AND proven now ÷ eligible.
+import { evaluateBuyFlow, expectedBuyState, hotmartLockState } from "./funnel-counting.mjs";
 const H = 3600e3;
 const IMPACT = { high: 0, medium: 1, low: 2 };
 
@@ -31,8 +32,23 @@ export function proveProcess(p, ctx, now = Date.now()) {
     case "voice_eval": { const v = ctx.voiceEval; const t = v?.generatedAt ? Date.parse(v.generatedAt) : null; return { proven: fresh(t) && v?.ok === true, failed: fresh(t) && v?.ok === false, lastEvidence: v?.generatedAt || null, how: `voz ponta a ponta: ${v?.scorePct ?? "—"}% das amostras, reserva ${v?.fallback?.ok ? "ok" : "falhou"}` }; }
     case "backup": { const b = ctx.backup; const t = b?.finishedAt ? Date.parse(b.finishedAt) : null; return { proven: fresh(t) && b?.ok === true, failed: fresh(t) && b?.ok === false, lastEvidence: b?.finishedAt || null, how: `cópia e restauração conferidas (${b?.restore?.neon?.ok ?? 0} tabelas, ${b?.restore?.kv?.verified ?? 0} chaves)` }; }
     case "cron_task": { const b = [...(ctx.cronBeats || []), ctx.cronBeat].filter((x) => x?.tasks?.[ev.task]).sort((x, y) => String(y.finishedAt).localeCompare(String(x.finishedAt)))[0]; const t = b?.finishedAt ? Date.parse(b.finishedAt) : null; const st = b?.tasks?.[ev.task]; return { proven: fresh(t) && st === "ok", failed: fresh(t) && String(st || "").startsWith("fail"), lastEvidence: b?.finishedAt || null, how: `ciclo horário do servidor: ${ev.task} ${st || "sem registro"}` }; }
-    case "buyflow": { const ok = (ctx.buyFlow || []).length > 0 && ctx.buyFlow.every((b) => b.state === "checkout"); return { proven: ok, lastEvidence: ok ? new Date(now).toISOString() : null, how: "botão Comprar abre o pagamento" }; }
-    case "hotmart": { const ok = (ctx.hotmart || []).length > 0 && ctx.hotmart.every((h) => h.http === 200 && !h.blockedText); return { proven: ok, lastEvidence: ok ? new Date(now).toISOString() : null, how: "checkouts respondem com o produto" }; }
+    // Buy path vs the owner switch: open => /comprar/ opens the own checkout; closed => it shows the
+    // closed notice (expected, healthy). Unknown switch proves nothing; a mismatch is a failure.
+    case "buyflow": {
+      const recs = evaluateBuyFlow(ctx.buyFlow, ctx.salesOpen);
+      const expected = expectedBuyState(ctx.salesOpen);
+      const ok = recs.length > 0 && expected != null && recs.every((b) => b.ok);
+      const mismatch = expected != null && recs.some((b) => !b.ok && b.state !== "error");
+      return { proven: ok, failed: mismatch, lastEvidence: ok ? new Date(now).toISOString() : null, how: expected === "closed" ? "vendas fechadas: botão Comprar mostra o aviso de fechado (esperado)" : expected === "checkout" ? "vendas abertas: botão Comprar abre o pagamento do checkout próprio" : "interruptor de vendas não verificado" };
+    }
+    // Hotmart offers vs the global lock (six probes): open => offers answer; closed => every offer must show
+    // Hotmart's closed page. Any offer accepting payment while sales are closed is a P0 failure.
+    case "hotmart": {
+      const lock = hotmartLockState(ctx.hotmart, ctx.salesOpen);
+      const ok = lock.state === "selling" || lock.state === "closed";
+      const how = { selling: "vendas abertas: as ofertas Hotmart respondem", closed: `vendas fechadas: ${lock.closed.length}/${lock.total} ofertas Hotmart encerradas (coerente com a trava)`, p0_bypass: `P0: vendas fechadas, mas ${lock.accepting.length} oferta(s) Hotmart aceitando pagamento (encerrar na Hotmart é ato do dono)`, closed_while_open: "vendas abertas, mas as ofertas Hotmart estão encerradas", degraded: "vendas abertas, mas alguma oferta Hotmart não responde", unverified: "vendas fechadas; alguma oferta Hotmart não respondeu à sonda", unknown: "interruptor ou sondas Hotmart não verificados" }[lock.state];
+      return { proven: ok, failed: ["p0_bypass", "closed_while_open", "degraded"].includes(lock.state), lastEvidence: ok ? new Date(now).toISOString() : null, how };
+    }
     case "probes": { const ok = (ctx.probes || []).length > 0 && ctx.probes.every((x) => x.ok); return { proven: ok, lastEvidence: ok ? new Date(now).toISOString() : null, how: "serviços respondendo" }; }
     default: return { proven: false, lastEvidence: null, how: "sem evidência automática ainda" };
   }

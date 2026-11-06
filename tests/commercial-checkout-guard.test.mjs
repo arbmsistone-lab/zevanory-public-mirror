@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {REQUIRED,isCheckoutRoute,allowCheckout,isProductionPilotBlocked,evaluateCheckout,requiresPilotDenial,verifyProductionToken} from "../worker/commercial-checkout-guard.mjs";
-test("every one of 512 flag combinations fails closed except all true",()=>{
+// P23: registro fiscal COMPLETO só de teste (o real está NAO_DEFINIDO e fecha o checkout; ver tests/p23-ecommerce-legal.test.mjs).
+const FISCAL_OK={ status: "DEFINIDO", decision: { regime: "fixture de teste", documento_fiscal: "fixture de teste", emissor: "fixture de teste", decided_by: "proprietario", accountant_ref: "fixture de teste", decided_at: "2026-10-01", procedure_ref: { kind: "repo", ref: "docs/fixture.md", contains: "fixture de teste" }, test_order_ref: "fixture de teste", owner_approval_ref: "fixture de teste" } };
+test("every one of the 2^REQUIRED.length flag combinations fails closed except all true",()=>{
  let passing=0;
  for(let mask=0;mask<2**REQUIRED.length;mask++){
   const flags=Object.fromEntries(REQUIRED.map((f,i)=>[f,Boolean(mask&(1<<i))]));
@@ -22,12 +24,12 @@ test("all public and legacy checkout routes use shared matcher",()=>{
 test("runtime preflight, owner KV, production mode and token must agree",async()=>{
  const at=Date.parse("2026-10-08T17:00:00Z");
  const cfg={SALE_GLOBALLY_ENABLED:"true",PRE_SALE_GATES_APPROVED:"true",ABSOLUTE_RELEASE_APPROVED:"true",CHECKOUT_ENABLED:"true",FINANCIAL_EVENTS_ENABLED:"true",MERCADOPAGO_ENV:"production",ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>JSON.stringify({ok:true,at:new Date(at-4000).toISOString()})}};
- const check=await evaluateCheckout(cfg,{enabled:true},{now:at,verify:async()=>true});
+ const check=await evaluateCheckout(cfg,{enabled:true},{now:at,fiscal:FISCAL_OK,verify:async()=>true});
  assert.equal(check.allowed,true);
- assert.equal((await evaluateCheckout(cfg,{enabled:true},{now:at,verify:async()=>false})).allowed,false);
- assert.equal((await evaluateCheckout(cfg,{enabled:false},{now:at,verify:async()=>true})).allowed,false);
- assert.equal((await evaluateCheckout({...cfg,MERCADOPAGO_ENV:"sandbox"},{enabled:true},{now:at,verify:async()=>true})).allowed,false);
- assert.equal((await evaluateCheckout({...cfg,ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>JSON.stringify({ok:true,at:new Date(at-4*3600000).toISOString()})}},{enabled:true},{now:at,verify:async()=>true})).allowed,false);
+ assert.equal((await evaluateCheckout(cfg,{enabled:true},{now:at,fiscal:FISCAL_OK,verify:async()=>false})).allowed,false);
+ assert.equal((await evaluateCheckout(cfg,{enabled:false},{now:at,fiscal:FISCAL_OK,verify:async()=>true})).allowed,false);
+ assert.equal((await evaluateCheckout({...cfg,MERCADOPAGO_ENV:"sandbox"},{enabled:true},{now:at,fiscal:FISCAL_OK,verify:async()=>true})).allowed,false);
+ assert.equal((await evaluateCheckout({...cfg,ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>JSON.stringify({ok:true,at:new Date(at-4*3600000).toISOString()})}},{enabled:true},{now:at,fiscal:FISCAL_OK,verify:async()=>true})).allowed,false);
 });
 test("production certification invite write is blocked by default",async()=>{
  assert.equal(isProductionPilotBlocked({MERCADOPAGO_ENV:"production"}),true);
@@ -41,19 +43,19 @@ test("unknown/unverified production token never passes",async()=>{
  assert.equal(await verifyProductionToken({MERCADOPAGO_ACCESS_TOKEN:"APP_USR-"+"x".repeat(40),MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16:""}),false);
 });
 
-test("launch prepared with global false opens checkout ONLY with signed owner-authorized KV and all 9 gates",async()=>{
+test("launch prepared with global false opens checkout ONLY with signed owner-authorized KV and all 10 gates",async()=>{
  const now=Date.parse("2026-10-09T18:00:00Z");
  const env={SALE_GLOBALLY_ENABLED:"false",PRE_SALE_GATES_APPROVED:"true",ABSOLUTE_RELEASE_APPROVED:"true",
  CHECKOUT_ENABLED:"true",FINANCIAL_EVENTS_ENABLED:"true",MERCADOPAGO_ENV:"production",
  ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>JSON.stringify({ok:true,at:new Date(now-10000).toISOString()})}};
- const authorized=await evaluateCheckout(env,{enabled:true,authorized:true},{now,verify:async()=>true});
+ const authorized=await evaluateCheckout(env,{enabled:true,authorized:true},{now,fiscal:FISCAL_OK,verify:async()=>true});
  assert.equal(authorized.allowed,true);
  assert.equal(authorized.flags.global,true);
  for(const sw of [{enabled:false,authorized:true},{enabled:true,authorized:false}, {enabled:false,authorized:false}]){
-  const r=await evaluateCheckout(env,sw,{now,verify:async()=>true});assert.equal(r.allowed,false);
+  const r=await evaluateCheckout(env,sw,{now,fiscal:FISCAL_OK,verify:async()=>true});assert.equal(r.allowed,false);
  }
  for(const [field,value] of [["PRE_SALE_GATES_APPROVED","false"],["ABSOLUTE_RELEASE_APPROVED","false"],["MERCADOPAGO_ENV","sandbox"]]){
-  const r=await evaluateCheckout({...env,[field]:value},{enabled:true,authorized:true},{now,verify:async()=>true});
+  const r=await evaluateCheckout({...env,[field]:value},{enabled:true,authorized:true},{now,fiscal:FISCAL_OK,verify:async()=>true});
   assert.equal(r.allowed,false,field);
  }
 });

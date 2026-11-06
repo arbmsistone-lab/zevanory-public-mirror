@@ -186,7 +186,7 @@ def renew(secret, fetch=get_json, retries=9, pause=time.sleep):
 
 def main():
     try:
-        result = renew(os.getenv("CERTIFICATION_E2E_TOKEN", "").strip())
+        result = renew(os.getenv("ZEVANORY_OPERATOR_TOKEN", "").strip())
     except RenewalError as exc:
         print("::error title=ORD12A_FINANCIAL_RENEWAL::" + str(exc))
         return 2

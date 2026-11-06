@@ -1,0 +1,13 @@
+Assunto: Bloco de IA: um comando salvo e uma revisão antes de enviar
+
+{{saudacao}}
+
+O bloco de IA do checklist também leva 5 minutos:
+
+1. Escolha uma tarefa que se repete no seu dia (responder cliente, escrever legenda, montar orçamento) e use um comando salvo para ela.
+2. Revise o que a IA escreveu antes de enviar: fatos, preço e tom. A IA pode errar um valor ou inventar um detalhe. A revisão final é sempre sua.
+3. Quando um comando funcionar bem, guarde-o numa lista para reutilizar.
+
+Com o tempo, essa lista vira o seu caderno de comandos.
+
+{{assinatura}}

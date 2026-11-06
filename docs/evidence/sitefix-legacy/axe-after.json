@@ -1,0 +1,162 @@
+[
+ {
+  "surface": "blog",
+  "path": "/blog?vazio",
+  "scheme": "light",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog?vazio",
+  "scheme": "light",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog?vazio",
+  "scheme": "dark",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog?vazio",
+  "scheme": "dark",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog",
+  "scheme": "light",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog",
+  "scheme": "light",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog",
+  "scheme": "dark",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog",
+  "scheme": "dark",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog/rotina-de-caixa-2026-10-20",
+  "scheme": "light",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog/rotina-de-caixa-2026-10-20",
+  "scheme": "light",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog/rotina-de-caixa-2026-10-20",
+  "scheme": "dark",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "blog",
+  "path": "/blog/rotina-de-caixa-2026-10-20",
+  "scheme": "dark",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/quem-criou/",
+  "scheme": "light",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/quem-criou/",
+  "scheme": "light",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/quem-criou/",
+  "scheme": "dark",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/quem-criou/",
+  "scheme": "dark",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/nao-existe",
+  "scheme": "light",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/nao-existe",
+  "scheme": "light",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/nao-existe",
+  "scheme": "dark",
+  "width": 360,
+  "version": "4.10.3",
+  "violations": []
+ },
+ {
+  "surface": "pages",
+  "path": "/zevanory-public-mirror/nao-existe",
+  "scheme": "dark",
+  "width": 1440,
+  "version": "4.10.3",
+  "violations": []
+ }
+]

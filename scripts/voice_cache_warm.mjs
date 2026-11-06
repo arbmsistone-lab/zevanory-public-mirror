@@ -57,7 +57,7 @@ export async function renderCredentials(env,fetchImpl=fetch,includeGemini=false)
   if(!includeGemini&&env.VOICE_ENCODE_SECRET)return {secret:env.VOICE_ENCODE_SECRET};
   if(!env.OPERATOR_TOKEN)throw Error('operator_token_required');
   const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
-  const r=await fetchImpl('https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:`Bearer ${env.OPERATOR_TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'audit-encoder-key',include_gemini:includeGemini,public_key:publicKey.export({format:'jwk'})})});
+  const r=await fetchImpl('https://zevanory.api.br/api/admin/voice/audit',{method:'POST',headers:{authorization:`Bearer ${env.OPERATOR_TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'audit-encoder-key',include_gemini:includeGemini,public_key:publicKey.export({format:'jwk'})})});
   if(!r.ok)throw Error(`render_credentials_http_${r.status}`);
   const body=await r.json();
   const decrypt=value=>privateDecrypt({key:privateKey,oaepHash:'sha256',padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(value,'base64')).toString();

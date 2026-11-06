@@ -8,6 +8,9 @@ on:
       - "solucoes/**"
       - "quem-criou/**"
       - "assets/renan-bitu.webp"
+      - "assets/fonts/**"
+      - "assets/previews/**"
+      - "docs/evidence/sales-ux/previews-manifest.json"
       - "ia-na-pratica/**"
       - "vendas-na-pratica/**"
       - "lucro-e-caixa/**"
@@ -24,11 +27,18 @@ on:
       - "sales-worker.mjs"
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
+      - "tests/sales-asset-cache.test.mjs"
+      - "tests/contato-publico-whatsapp.test.mjs"
       - "wrangler.sales.toml"
       - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
       - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "data/politica-unica.json"
+      - "tests/p13-politica-nogo.test.mjs"
       - "scripts/premerge_product_audit.py"
+      - "scripts/release/cloudflare_rollback_contract.py"
+      - "tests/test_sales_cloudflare_rollback_contract.py"
       - ".github/workflows/zevanory-sales-public-release.yml"
   push:
     branches: [gh-pages]
@@ -37,6 +47,9 @@ on:
       - "solucoes/**"
       - "quem-criou/**"
       - "assets/renan-bitu.webp"
+      - "assets/fonts/**"
+      - "assets/previews/**"
+      - "docs/evidence/sales-ux/previews-manifest.json"
       - "ia-na-pratica/**"
       - "vendas-na-pratica/**"
       - "lucro-e-caixa/**"
@@ -53,16 +66,29 @@ on:
       - "sales-worker.mjs"
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
+      - "tests/sales-asset-cache.test.mjs"
+      - "tests/contato-publico-whatsapp.test.mjs"
       - "wrangler.sales.toml"
       - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
       - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "data/politica-unica.json"
+      - "tests/p13-politica-nogo.test.mjs"
       - "scripts/premerge_product_audit.py"
+      - "scripts/release/cloudflare_rollback_contract.py"
+      - "tests/test_sales_cloudflare_rollback_contract.py"
       - ".github/workflows/zevanory-sales-public-release.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# P13 (NO-GO): o HTML estático é sempre publicado fechado (sem link de checkout, sem Offer InStock).
+# A reabertura acontece só em tempo de execução, pelo interruptor do proprietário ("LIBERAR VENDAS",
+# KV sales:open:v1 lido via /api/sales/status) — nunca por este build.
+env:
+  ZEVANORY_SALES_PUBLIC_MODE: closed
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-zevanory-sales-public' }}
@@ -87,6 +113,15 @@ jobs:
       - name: Build exact sales-domain assets
         run: python3 scripts/build_sales_public.py
 
+      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)
+        run: |
+          set -euo pipefail
+          test "$ZEVANORY_SALES_PUBLIC_MODE" = closed
+          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*(/comprar/|/assinar/|/hotmart/|pay\.hotmart\.com)" sales-public --include='*.html'; then echo "::error::checkout/subscription href in closed build"; exit 1; fi
+          if grep -RIl 'schema.org/InStock' sales-public --include='*.html'; then echo "::error::InStock in closed build"; exit 1; fi
+          python3 scripts/sales_policy.py --audit sales-public --mode closed
+          echo "P13_NOGO_GREP_GATE=PASS"
+
       - name: Validate product contract
         run: python3 scripts/premerge_product_audit.py
 
@@ -94,7 +129,10 @@ jobs:
         run: |
           node --check sales-worker.mjs
           node --check worker/sales-public-worker.mjs
-          node --test tests/automation-traffic-guard.test.mjs tests/attribution.test.mjs
+          node --test tests/automation-traffic-guard.test.mjs tests/attribution.test.mjs tests/p13-politica-nogo.test.mjs tests/product-consistency.test.mjs tests/hotmart-pages.test.mjs tests/sales-asset-cache.test.mjs tests/contato-publico-whatsapp.test.mjs
+
+      - name: Verify R103 rollback request contract (offline, fail-closed)
+        run: python3 -m unittest -v tests.test_sales_cloudflare_rollback_contract
 
       - name: Cloudflare dry-run
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public
@@ -119,7 +157,9 @@ jobs:
           test -f sales-public/product.css
           test -f sales-public/brand/zevanory-logo-dark.svg
           grep -Fq "ZEVANORY SALES" sales-public/zevanory-sales.html
-          grep -Fq 'href="/product.css"' sales-public/zevanory-sales.html
+          # E2: pages load the content-hashed stylesheet; /product.css stays only for Worker info pages.
+          grep -Eq 'href="/assets/product\.[0-9a-f]{10}\.css"' sales-public/zevanory-sales.html
+          if grep -RIl 'whatsapp-contact' sales-public; then echo "::error::retired contact script referenced"; exit 1; fi
           ! grep -Fq "/zevanory-public-mirror/" sales-public/zevanory-sales.html
           echo "ZEVANORY_SALES_PUBLIC_VERIFY=PASS"
 
@@ -164,6 +204,15 @@ jobs:
       - name: Build exact release assets
         run: python3 scripts/build_sales_public.py
 
+      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)
+        run: |
+          set -euo pipefail
+          test "$ZEVANORY_SALES_PUBLIC_MODE" = closed
+          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*(/comprar/|/assinar/|/hotmart/|pay\.hotmart\.com)" sales-public --include='*.html'; then echo "::error::checkout/subscription href in closed build"; exit 1; fi
+          if grep -RIl 'schema.org/InStock' sales-public --include='*.html'; then echo "::error::InStock in closed build"; exit 1; fi
+          python3 scripts/sales_policy.py --audit sales-public --mode closed
+          echo "P13_NOGO_GREP_GATE=PASS"
+
       - name: Materialize release configs
         run: python3 scripts/ci/materialize_sales_configs.py
 
@@ -171,40 +220,11 @@ jobs:
         run: |
           set -euo pipefail
           code="$(curl -sS -o /tmp/previous-deployments.json -w '%{http_code}'             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments" || true)"
-          python3 - "$code" <<'PY'
-          import json,sys
-          from pathlib import Path
-          code=sys.argv[1]
-          previous=None
-          if code=="200":
-              d=json.load(open("/tmp/previous-deployments.json"))
-              result=d.get("result")
-              if isinstance(result,dict):
-                  deps=result.get("deployments") or []
-              elif isinstance(result,list):
-                  deps=result
-              else:
-                  deps=[]
-              if deps:
-                  previous=deps[0]
-          if previous and previous.get("versions"):
-              body={
-                  "strategy":"percentage",
-                  "versions":[
-                      {"version_id":str(v["version_id"]),"percentage":float(v["percentage"])}
-                      for v in previous["versions"]
-                  ],
-                  "annotations":{
-                      "workers/message":"automatic ZEVANORY SALES rollback snapshot"
-                  }
-              }
-              Path("/tmp/rollback-deployment.json").write_text(json.dumps(body),encoding="utf-8")
-              print("PREVIOUS_DEPLOYMENT_SNAPSHOT=PASS")
-              print("PREVIOUS_DEPLOYMENT_ID="+str(previous.get("id","")))
-          else:
-              Path("/tmp/rollback-deployment.json").write_text("",encoding="utf-8")
-              print("PREVIOUS_DEPLOYMENT_SNAPSHOT=NONE_FIRST_RELEASE")
-          PY
+          if [ "$code" != "200" ]; then
+            echo "::error title=SALES_ROLLBACK_SNAPSHOT_UNAVAILABLE::GET deployments HTTP $code; cannot assert a safe rollback target"
+            exit 1
+          fi
+          python3 scripts/release/cloudflare_rollback_contract.py --snapshot /tmp/previous-deployments.json --output /tmp/rollback-deployment.json
 
       - name: Deploy isolated candidate
         run: npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml
@@ -290,7 +310,10 @@ jobs:
           bash scripts/ci/verify-founder-and-products.sh
           # Legal seller text readback (moved here from sales-legal-publish.yml, now validation-only).
           curl -fsS "$BASE/termos" -o /tmp/termos.html
-          grep -Fq 'inscrita no CNPJ sob o nº 69.077.233/0001-99' /tmp/termos.html
+          grep -Fq 'A ZEVANORY é o nome fantasia de A. RENAN ALVES MOREIRA BITU LTDA, inscrita no CNPJ 69.077.233/0001-99, estabelecida na Rua Francisco de Freitas Neto, nº 96, Alto do Tenente, Várzea Alegre – CE, CEP 63540-000.' /tmp/termos.html
+          grep -Fq 'Nosso canal de suporte é o e-mail <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a>' /tmp/termos.html
+          grep -Fq '<h2>4. Entrega integral imediata</h2>' /tmp/termos.html
+          grep -Fq 'para download na sua área de compras da Hotmart (Minhas compras), sem período adicional de espera.' /tmp/termos.html
           echo "PUBLIC_LEGAL_READBACK=PASS"
           # T1: the effective version (Cloudflare tag + /health) must be exactly this SHA.
           # FAIL fails this step -> rollback. NAO_COMPROVADO (observer unreachable) does not roll back:
@@ -303,7 +326,22 @@ jobs:
         run: |
           set -euo pipefail
           if [ -s /tmp/rollback-deployment.json ]; then
-            curl -fsS -X POST               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               --data-binary @/tmp/rollback-deployment.json               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments"               -o /tmp/rollback-result.json
+            python3 scripts/release/cloudflare_rollback_contract.py --validate /tmp/rollback-deployment.json
+            # Preserve Cloudflare's error response; a 400 alone does not prove which constraint failed.
+            code="$(curl -sS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data-binary @/tmp/rollback-deployment.json "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments" -o /tmp/rollback-result.json -w '%{http_code}' || true)"
+            if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+              ROLLBACK_HTTP="$code" python3 - <<'PY'
+          import json,os
+          try:
+              result=json.load(open("/tmp/rollback-result.json"))
+              errors=result.get("errors") if isinstance(result,dict) else None
+              details="; ".join(str(e.get("code",""))+":"+str(e.get("message",""))[:250] for e in errors if isinstance(e,dict)) if isinstance(errors,list) else "non_json_or_missing_errors"
+          except (OSError,ValueError):
+              details="invalid_api_response"
+          print("::error title=SALES_ROLLBACK_API_REJECTED::HTTP "+os.environ["ROLLBACK_HTTP"]+" "+details)
+          PY
+              exit 1
+            fi
             python3 - <<'PY'
           import json
           d=json.load(open("/tmp/rollback-result.json"))

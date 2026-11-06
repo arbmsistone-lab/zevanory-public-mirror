@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: sigterm.mjs
+not ok 1 - sigterm.mjs
+  ---
+  duration_ms: 48.301459
+  type: 'test'
+  location: '/tmp/mc-live-i7jp48tn/sigterm.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: ~
+  signal: 'SIGTERM'
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 56.942939

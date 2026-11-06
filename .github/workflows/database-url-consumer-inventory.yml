@@ -1,0 +1,111 @@
+name: database-url-consumer-inventory
+
+# B07 T4 (preparo): inventário SÓ LEITURA de para qual banco cada consumidor de DATABASE_URL aponta, por Environment.
+# Imprime só sha256 do host normalizado (e do id de endpoint Neon), nunca usuário/senha/banco. Compara com o sha256 do
+# host do novo projeto zevanory-db-2 (input). Qualquer divergência -> FAIL com o nome do consumidor.
+# Sem escrita, sem deploy, sem banco aberto (nenhuma conexão: só o texto da URL é analisado). Nunca dispara no merge.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_host_sha256:
+        description: "sha256 (64 hex) do host normalizado do zevanory-db-2 (sem -pooler)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-url-consumer-inventory
+  cancel-in-progress: false
+
+jobs:
+  producao-critica:
+    if: github.ref == 'refs/heads/gh-pages'
+    environment: producao-critica
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Inventory (hash of host only)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          EXPECTED_HOST_SHA256: ${{ inputs.expected_host_sha256 }}
+          DBINV_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DBINV_RESTORE_TARGET_DATABASE_URL: ${{ secrets.RESTORE_TARGET_DATABASE_URL }}
+        run: python3 scripts/ops/database_url_inventory.py consumers producao-critica
+
+  gh-pages-automacao:
+    if: github.ref == 'refs/heads/gh-pages'
+    environment: gh-pages-automacao
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Inventory (hash of host only)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          EXPECTED_HOST_SHA256: ${{ inputs.expected_host_sha256 }}
+          DBINV_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python3 scripts/ops/database_url_inventory.py consumers gh-pages-automacao
+
+  sandbox-financial-approved:
+    if: github.ref == 'refs/heads/gh-pages'
+    environment: sandbox-financial-approved
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Inventory (certification DB must be isolated from production)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          EXPECTED_HOST_SHA256: ${{ inputs.expected_host_sha256 }}
+          DBINV_CERTIFICATION_DATABASE_URL: ${{ secrets.CERTIFICATION_DATABASE_URL }}
+        run: python3 scripts/ops/database_url_inventory.py consumers sandbox-financial-approved
+
+  cloudflare-worker:
+    if: github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Worker DATABASE_URL identity via public /api/health (no secret)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          EXPECTED_HOST_SHA256: ${{ inputs.expected_host_sha256 }}
+        run: python3 scripts/ops/database_url_inventory.py worker
+
+  verdict:
+    needs: [producao-critica, gh-pages-automacao, sandbox-financial-approved, cloudflare-worker]
+    if: always() && github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: All consumers point to zevanory-db-2
+        shell: bash
+        env:
+          R_PROD: ${{ needs.producao-critica.result }}
+          R_AUTO: ${{ needs.gh-pages-automacao.result }}
+          R_CERT: ${{ needs.sandbox-financial-approved.result }}
+          R_WORKER: ${{ needs.cloudflare-worker.result }}
+        run: |
+          set -euo pipefail
+          echo "DBURL_VERDICT producao-critica=$R_PROD gh-pages-automacao=$R_AUTO sandbox-financial-approved=$R_CERT cloudflare-worker=$R_WORKER"
+          if [ "$R_PROD$R_AUTO$R_CERT$R_WORKER" != "successsuccesssuccesssuccess" ]; then
+            echo "::error title=DBURL_VERDICT::FAIL — ver o job com falha (consumidor nomeado na anotação)"
+            exit 1
+          fi
+          # 5 vínculos de segredo (4 Environment/segredo + Worker) e 7 consumidores efetivos (6 workflows + Worker).
+          echo "DBURL_VERDICT=PASS secret_bindings=5 effective_consumers=7"

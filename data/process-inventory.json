@@ -175,7 +175,7 @@
       "id": "buy-flow",
       "area": "Vendas",
       "agent": "Central de Comando",
-      "name": "Caminho de compra no site funcionando",
+      "name": "Caminho de compra coerente com o interruptor (checkout próprio)",
       "eligible": true,
       "state": "autonomous",
       "evidence": {
@@ -186,7 +186,7 @@
       "id": "hotmart-checkout",
       "area": "Vendas",
       "agent": "Central de Comando",
-      "name": "Checkouts da Hotmart no ar",
+      "name": "Ofertas Hotmart coerentes com o interruptor de vendas",
       "eligible": true,
       "state": "autonomous",
       "evidence": {

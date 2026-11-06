@@ -24,6 +24,11 @@ contagens e códigos HTTP; sob GITHUB_ACTIONS=true os ids de zona e o token sane
   preflight FOTO   antes do deploy: prova que o token ESCREVE rotas (PUT idempotente de uma rota do próprio script, mesmo
                    padrão e script) e relê a zona igual à foto; sem Workers Routes Write -> 403 e o deploy é recusado
                    antes de qualquer upload (o wrangler subiria o código e só falharia nas rotas)
+
+Modo sandbox (prova real B02 pedida pelo auditor Sol, .github/workflows/sandbox-route-probe.yml): ROUTER_SANDBOX_ZONE e
+ROUTER_CONFIG juntos. A zona tem de estar em SANDBOX_ZONES (só a zona descartável girolocal.api.br), a config tem de estar
+em sandbox/route-probe/, todo padrão/zona tem de ser da zona sandbox, e zevanory.api.br (ou subdomínio) é RECUSADA em
+qualquer ponto (variável, padrão, resposta da API, foto) antes de qualquer chamada de escrita.
 """
 import hashlib
 import json
@@ -37,6 +42,11 @@ import tomllib
 CANONICAL_ACCOUNT = "1b26415802588185a86c1d4d3ebf5bdb"
 API = "https://api.cloudflare.com/client/v4"
 CONFIG = "wrangler.public-router.toml"
+# Modo sandbox: lista fechada de zonas descartáveis; a zona de produção nunca pode ser alvo deste modo.
+SANDBOX_ZONES = ("girolocal.api.br",)
+PRODUCTION_ZONE = "zevanory.api.br"
+SANDBOX_CONFIG_DIR = "sandbox/route-probe/"
+SANDBOX = None
 HEX32 = re.compile(r"[0-9a-f]{32}")
 GHA = os.environ.get("GITHUB_ACTIONS") == "true"
 CODES = []
@@ -60,7 +70,34 @@ def mask(value):
         say(f"::add-mask::{value}")
 
 
+def in_production_zone(name):
+    name = str(name or "").lower().rstrip(".")
+    return PRODUCTION_ZONE in name
+
+
+def sandbox_mode():
+    global CONFIG, SANDBOX
+    zone, cfg = os.environ.get("ROUTER_SANDBOX_ZONE"), os.environ.get("ROUTER_CONFIG")
+    if zone is None and cfg is None:
+        return
+    if not zone or not cfg:
+        raise Fail("ROUTER_SANDBOX_ZONE e ROUTER_CONFIG só valem juntos")
+    if in_production_zone(zone):
+        raise Fail("zona de produção recusada no modo sandbox")
+    if zone not in SANDBOX_ZONES:
+        raise Fail("zona fora da lista sandbox")
+    if ".." in cfg or not re.fullmatch(re.escape(SANDBOX_CONFIG_DIR) + r"[a-z0-9][a-z0-9.-]*\.toml", cfg):
+        raise Fail("config fora de sandbox/route-probe/")
+    CONFIG, SANDBOX = cfg, zone
+
+
+def pattern_host(pattern):
+    host = pattern.split("/", 1)[0].split(":", 1)[0].lower()
+    return host[2:] if host.startswith("*.") else host.lstrip("*")
+
+
 def setup():
+    sandbox_mode()  # antes de tudo: uma recusa do modo sandbox não faz nenhuma chamada de rede
     tok = re.sub(r"\s", "", os.environ.get("CLOUDFLARE_API_TOKEN", ""))
     if not tok:
         raise Fail("token ausente")
@@ -77,6 +114,8 @@ def call(tok, method, url, body=None):
     # Só a API da Cloudflare, só caminhos de zona; o host e o prefixo são fixos aqui.
     if not (url.startswith(f"{API}/zones/") or url.startswith(f"{API}/zones?")):
         raise Fail("URL fora do escopo de zonas")
+    if SANDBOX and "?" in url and not url.startswith(f"{API}/zones?name={SANDBOX}&"):
+        raise Fail("busca de zona fora da zona sandbox — recusada")
     fd, out = tempfile.mkstemp(prefix="cf-", dir=os.environ.get("RUNNER_TEMP") or None)
     os.close(fd)
     args = ["curl", "-sS", "--max-time", "30", "-o", out, "-w", "%{http_code}", "-X", method,
@@ -122,10 +161,18 @@ def expected_patterns():
         raise Fail("toml sem rotas")
     if len({p for p, _ in pats}) != len(pats):
         raise Fail("padrão duplicado no toml")
+    if SANDBOX:
+        for p, zn in pats:
+            host = pattern_host(p)
+            if in_production_zone(p) or in_production_zone(zn) or (zn and zn != SANDBOX) \
+                    or not (host == SANDBOX or host.endswith("." + SANDBOX)):
+                raise Fail("padrão fora da zona sandbox — recusado")
     return pats
 
 
 def zone_candidates(pattern, zone_name):
+    if SANDBOX:
+        return [SANDBOX]
     if zone_name:
         return [zone_name]
     host = pattern.split("/", 1)[0].split(":", 1)[0]
@@ -137,6 +184,8 @@ def zone_candidates(pattern, zone_name):
 def check_zone(z, name):
     if not isinstance(z, dict) or not HEX32.fullmatch(str(z.get("id", ""))) or z.get("name") != name:
         raise Fail("zona com formato inesperado")
+    if SANDBOX and (name != SANDBOX or in_production_zone(z.get("name"))):
+        raise Fail("zona fora do modo sandbox — recusada")
     acct = (z.get("account") or {}).get("id") if isinstance(z.get("account"), dict) else None
     if acct != CANONICAL_ACCOUNT:
         # A conta vem da resposta, não do filtro pedido: uma zona de outra conta nunca entra no inventário.
@@ -201,6 +250,11 @@ def load_snapshot(path, script):
         raise Fail("foto de outra conta — recusada")
     if snap.get("script") != script or not isinstance(snap.get("zones"), dict) or not snap["zones"]:
         raise Fail("foto inválida")
+    if snap.get("sandbox_zone") != SANDBOX:
+        raise Fail("foto de outro modo (sandbox/produção) — recusada")
+    if SANDBOX and any(not isinstance(z, dict) or z.get("name") != SANDBOX or in_production_zone(z.get("name"))
+                       for z in snap["zones"].values()):
+        raise Fail("foto com zona fora do modo sandbox — recusada")
     return snap
 
 
@@ -216,6 +270,8 @@ def cmd_snapshot(tok, script, out):
     pats = expected_patterns()
     zones = resolve_zones(tok, pats)
     snap = {"account": CANONICAL_ACCOUNT, "script": script, "zones": {}}
+    if SANDBOX:
+        snap["sandbox_zone"] = SANDBOX
     conflicts = drift = total = mine = 0
     for (zid, name), expected in zones.items():
         routes = inventory(tok, zid)

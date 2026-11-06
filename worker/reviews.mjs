@@ -5,6 +5,7 @@
 // * Every rating reaches the control panel (Atendimento) so the owner can act on low scores.
 
 import { alertOwnerNow } from "./owner-alerts.mjs";
+import { CUSTOMER_RULE_7D } from "./politica-unica.mjs";
 
 const CORE = "https://zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
@@ -96,6 +97,6 @@ export async function handleReviews(request, env, { sqlFactory } = {}) {
   } catch {}
   if (rating <= 3) await alertOwnerNow(env, { category: "complaint", channel: "Avaliação", contact: orderId, excerpt: comment || `nota ${rating}/5 sem comentário`, reason: `nota ${rating}/5 no ${String(order.offer_id || "")} (pedido ${orderId.slice(0, 8)})` }).catch(() => null);
   return page(200, "Obrigado pela avaliação!", rating <= 3
-    ? "<p>Sentimos que não atendeu como esperado. Nossa equipe vai entrar em contato pelo e-mail da compra para ajudar. Lembre: você tem 7 dias de garantia a partir da compra.</p>"
+    ? `<p>Sentimos que não atendeu como esperado. Nossa equipe vai entrar em contato pelo e-mail da compra para ajudar. Lembre: você pode desistir em ${esc(CUSTOMER_RULE_7D)}, com devolução integral, em <a href="https://zevanory.api.br/pedir-reembolso">zevanory.api.br/pedir-reembolso</a>.</p>`
     : "<p>Sua nota ajuda outros empreendedores a decidir e nos ajuda a melhorar o material.</p>");
 }

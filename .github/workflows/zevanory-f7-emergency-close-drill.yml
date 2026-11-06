@@ -1,6 +1,6 @@
 name: ZEVANORY F7 emergency close drill (sales stay closed)
 # Writes a NEW closed record to sales:open:v1 and times how long production takes to serve it,
-# while proving checkout keeps refusing. It never writes enabled:true. If sales are found open,
+# (checkout refusal is proven offline, never by POSTing to production: R4). It never writes enabled:true. If sales are found open,
 # the drill aborts without touching anything (an operator, not a drill, must handle that).
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
       KV_NAMESPACE_ID: "728a45738e4047f29bcb89934fd533c1"
-      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
     steps:
       - name: Close-again drill with stopwatch
         shell: bash
@@ -26,7 +26,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import hashlib,hmac,json,os,time,urllib.error,urllib.request,datetime,sys
-          tok=os.environ["CLOUDFLARE_API_TOKEN"].strip(); key=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
+          tok=os.environ["CLOUDFLARE_API_TOKEN"].strip(); key=os.environ["ZEVANORY_OPERATOR_TOKEN"].strip()
           base=f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/storage/kv/namespaces/{os.environ['KV_NAMESPACE_ID']}/values/"
           def fail(c):print("::error title=F7_DRILL::"+c);sys.exit(2)
           def req(url,method="GET",data=None,headers=None):
@@ -71,10 +71,8 @@ jobs:
             time.sleep(2)
           if elapsed is None:fail("NEW_CLOSED_REVISION_NOT_SERVED_WITHIN_120S")
           print(f"::notice title=F7_DRILL_PROPAGATION::new closed revision served in {elapsed}s (target <60s, one edge location)")
-          # 4. Checkout keeps refusing after the close.
-          c,b=req("https://zevanory.api.br/api/checkout/mercadopago","POST",b'{"offer_id":"ZEV-IA-011"}',{"Content-Type":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"})
-          print(f"::notice title=F7_DRILL_CHECKOUT::http={c} body_code={(json.loads(b or b'{}').get('error') if b and b[:1]==b'{' else '')}")
-          if c in (200,201,202):fail("CHECKOUT_ACCEPTED_AFTER_CLOSE")
+          # 4. R4: the synthetic POST to the production checkout was removed (never test production with forged
+          #    input). Checkout refusal while closed is proven by the trava-vendas gate on an ephemeral database.
           # 5. Audit record.
           rec={"audit_id":audit_id,"at":at,"action":"emergency_close_drill","enabled":False,"propagation_seconds":elapsed}
           c,_=req(base+"sales:audit:"+audit_id,"PUT",json.dumps(rec).encode(),{**kvh,"Content-Type":"application/json"})

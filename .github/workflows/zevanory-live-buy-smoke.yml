@@ -50,7 +50,6 @@ jobs:
           echo "::notice title=SERVICE_SUBSCRIBE::$loc"
           if [ "$expect" = OPEN ]; then case "$loc" in https://pay.hotmart.com/*) ;; *) fail=1;; esac
           else [ -z "$loc" ] || fail=1; fi
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' https://zevanory.api.br/api/webhooks/hotmart)
-          echo "::notice title=HOTMART_WEBHOOK_UNAUTH::http=$code (expect 401 if hottok configured, 503 if not yet)"
-          case "$code" in 401|503) ;; *) fail=1;; esac
+          # R4: the unauthenticated forged POST to the production /api/webhooks/hotmart was removed; webhook
+          # authentication is proven by tests, never by sending forged input to production.
           exit $fail

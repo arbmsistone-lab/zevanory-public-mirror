@@ -1,0 +1,595 @@
+{
+  "schema": "zevanory.sales-previews.v2",
+  "authorization": "Owner, in writing: \"AUTORIZO PRÉVIAS REAIS DOS PRODUTOS NO SITE\". Per product: the manual cover, ONE inner page, ONE spreadsheet crop; no full files, no downloadable PDFs. Sol 228 content rules applied (no personal data, no credentials, no proprietary formulas, nothing that rebuilds the method).",
+  "source_bundle": "ZEVANORY_HANDOFF_v2.1; every zip SHA-256 equals artifact_sha256 in the production Worker catalog",
+  "source_zips": {
+    "ZEVANORY_IA_na_Pratica_v1.1.zip": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
+    "ZEVANORY_Vendas_na_Pratica_v1.1.zip": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
+    "ZEVANORY_Lucro_e_Caixa_v1.1.zip": "48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f",
+    "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
+    "ZEVANORY_Negocio_Completo_v1.1.zip": "8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e"
+  },
+  "content_checks": [
+    "no personal data (manuals carry no buyer data; examples are fictional per the manuals)",
+    "no credentials",
+    "no formulas (spreadsheets rendered as values; formula bar never shown)",
+    "core method excluded (only cover + first lesson/module; commands and message templates never shown)"
+  ],
+  "per_product": {
+    "ia-na-pratica": [
+      "manual-ia-capa",
+      "manual-ia-aula-a1",
+      "planilha-ia-orcamento"
+    ],
+    "vendas-na-pratica": [
+      "manual-vendas-capa",
+      "manual-vendas-aula-b1",
+      "planilha-vendas-oportunidades"
+    ],
+    "lucro-e-caixa": [
+      "manual-lucro-capa",
+      "manual-lucro-modulo-1",
+      "planilha-lucro-painel"
+    ],
+    "combo-ia-vendas": [
+      "manual-ia-capa",
+      "manual-vendas-aula-b1",
+      "planilha-vendas-oportunidades"
+    ],
+    "negocio-completo": [
+      "plano-30-dias-capa",
+      "plano-30-dias-semana-2",
+      "painel-decisao-integrada"
+    ],
+    "conteudo-pronto": []
+  },
+  "images": [
+    {
+      "id": "manual-ia-capa",
+      "products": [
+        "ia-na-pratica",
+        "combo-ia-vendas"
+      ],
+      "label": "página real do material",
+      "webp": {
+        "file": "assets/previews/manual-ia-capa.webp",
+        "sha256": "4e878c23ef71edcbc2453c4e919785117857940de2b34a05a361752155580bb5",
+        "bytes": 32672
+      },
+      "avif": {
+        "file": "assets/previews/manual-ia-capa.avif",
+        "sha256": "7570bc615b1ec5dbca5fa1c8a5e524ac20b7435af390ed21f8f41f3973dc60ef",
+        "bytes": 24627
+      },
+      "width": 640,
+      "height": 828,
+      "sources": [
+        {
+          "product": "ia-na-pratica",
+          "zip": "ZEVANORY_IA_na_Pratica_v1.1.zip",
+          "zip_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
+          "path_in_zip": "ZEVANORY_IA_Manual_v1.1.pdf",
+          "file_sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246"
+        },
+        {
+          "product": "combo-ia-vendas",
+          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
+          "zip_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
+          "path_in_zip": "01_IA_na_Pratica/ZEVANORY_IA_Manual_v1.1.pdf",
+          "file_sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246"
+        }
+      ],
+      "location": {
+        "page": 1
+      },
+      "crop_box": null,
+      "crop_note": null,
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55"
+      },
+      "why_safe": "Capa do manual: título, público, formato, requisitos e a lista das 8 aulas. Não traz nenhum passo do método, nenhum comando e nenhum dado pessoal."
+    },
+    {
+      "id": "manual-ia-aula-a1",
+      "products": [
+        "ia-na-pratica"
+      ],
+      "label": "página real do material",
+      "webp": {
+        "file": "assets/previews/manual-ia-aula-a1.webp",
+        "sha256": "275ecdef3b1777e93472a9dadbf87fad465772fda729afb5f6c40a201516c6ec",
+        "bytes": 40136
+      },
+      "avif": {
+        "file": "assets/previews/manual-ia-aula-a1.avif",
+        "sha256": "b539f9c091cff20019327957d5b7279d956a2070442106964d8ba12247102b52",
+        "bytes": 30650
+      },
+      "width": 640,
+      "height": 828,
+      "sources": [
+        {
+          "product": "ia-na-pratica",
+          "zip": "ZEVANORY_IA_na_Pratica_v1.1.zip",
+          "zip_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
+          "path_in_zip": "ZEVANORY_IA_Manual_v1.1.pdf",
+          "file_sha256": "506d3d5703bfbfcdff3bd40eed44aac73618588ef4ae2176f85d4d64f8e62246"
+        }
+      ],
+      "location": {
+        "page": 2
+      },
+      "crop_box": null,
+      "crop_note": null,
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55"
+      },
+      "why_safe": "Primeira aula (A1 de 8), introdutória: escolher uma rotina para organizar. Os comandos de IA (arquivo separado) e as aulas A2–A8 (contexto, briefing, orçamento, checklists, revisão) ficam de fora; sozinha, a página não reconstrói o método."
+    },
+    {
+      "id": "planilha-ia-orcamento",
+      "products": [
+        "ia-na-pratica"
+      ],
+      "label": "trecho real da planilha",
+      "webp": {
+        "file": "assets/previews/planilha-ia-orcamento.webp",
+        "sha256": "3c89890c2a427983dae12e4bf9a88e68cfc435eb76b8bca536ae333663e4f5a3",
+        "bytes": 3310
+      },
+      "avif": {
+        "file": "assets/previews/planilha-ia-orcamento.avif",
+        "sha256": "c17fa612829d693dcd76e8226d46969ef9bb6b07d9d37d8bee3d974845371422",
+        "bytes": 2644
+      },
+      "width": 720,
+      "height": 349,
+      "sources": [
+        {
+          "product": "ia-na-pratica",
+          "zip": "ZEVANORY_IA_na_Pratica_v1.1.zip",
+          "zip_sha256": "afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae",
+          "path_in_zip": "ZEVANORY_IA_Planilha.xlsx",
+          "file_sha256": "e30bf6b847d754ecb8bc5cd6350d18b5e5c34488761cbc40cf16aac0a9fd0db4"
+        }
+      ],
+      "location": {
+        "sheet": "Orcamento"
+      },
+      "crop_box": [
+        0,
+        0,
+        888,
+        430
+      ],
+      "crop_note": "pixels, left/top/right/bottom, applied before resize",
+      "redactions": [],
+      "render": {
+        "tool": "LibreOffice headless --convert-to html (no network, JavaScript off), Playwright element screenshot of the sheet table",
+        "resize": "Pillow Lanczos to 720px wide",
+        "encode": "WebP q78 method 6; AVIF q55",
+        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets"
+      },
+      "why_safe": "Cabeçalho e primeiras linhas VAZIAS do modelo (Item, Quantidade, Unitário, Subtotal, Conferência). Sem fórmulas, sem instruções, sem exemplo preenchido."
+    },
+    {
+      "id": "manual-vendas-capa",
+      "products": [
+        "vendas-na-pratica"
+      ],
+      "label": "página real do material",
+      "webp": {
+        "file": "assets/previews/manual-vendas-capa.webp",
+        "sha256": "45c84cb5653f22839d5d48b4259e4311e6faec2bcd33e98000794b015c8c3697",
+        "bytes": 34552
+      },
+      "avif": {
+        "file": "assets/previews/manual-vendas-capa.avif",
+        "sha256": "e925bb1abb390e6fbd86fc64d7fc03620aa60c4eb693ee8abdeed6f0fd2a73b7",
+        "bytes": 25987
+      },
+      "width": 640,
+      "height": 828,
+      "sources": [
+        {
+          "product": "vendas-na-pratica",
+          "zip": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
+          "zip_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
+          "path_in_zip": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "file_sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57"
+        }
+      ],
+      "location": {
+        "page": 1
+      },
+      "crop_box": null,
+      "crop_note": null,
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55"
+      },
+      "why_safe": "Capa do manual: título, público, formato e a lista das 8 aulas. Nenhuma mensagem pronta, nenhum roteiro."
+    },
+    {
+      "id": "manual-vendas-aula-b1",
+      "products": [
+        "vendas-na-pratica",
+        "combo-ia-vendas"
+      ],
+      "label": "página real do material",
+      "webp": {
+        "file": "assets/previews/manual-vendas-aula-b1.webp",
+        "sha256": "bb5028c64513bc2f3c868de7ff2324f6c3bb4b6e294a9318a37dd4c4135db1bd",
+        "bytes": 37332
+      },
+      "avif": {
+        "file": "assets/previews/manual-vendas-aula-b1.avif",
+        "sha256": "35053d5f73226d804f7fcc80b206542343d190ce9acb757d9a41d1178c5e7f26",
+        "bytes": 28151
+      },
+      "width": 640,
+      "height": 828,
+      "sources": [
+        {
+          "product": "vendas-na-pratica",
+          "zip": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
+          "zip_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
+          "path_in_zip": "ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "file_sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57"
+        },
+        {
+          "product": "combo-ia-vendas",
+          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
+          "zip_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
+          "path_in_zip": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Manual_v1.1.pdf",
+          "file_sha256": "bab7cd3ce22a0d17a46bfff41bd8595342c7304bbdb2eea4dc10953194d49c57"
+        }
+      ],
+      "location": {
+        "page": 2
+      },
+      "crop_box": null,
+      "crop_note": null,
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55"
+      },
+      "why_safe": "Primeira aula (B1 de 8), introdutória: definir uma oferta que dá para cumprir. Os modelos de mensagens, follow-up e roteiros de conteúdo (arquivos separados) e as aulas B2–B8 ficam de fora."
+    },
+    {
+      "id": "planilha-vendas-oportunidades",
+      "products": [
+        "vendas-na-pratica",
+        "combo-ia-vendas"
+      ],
+      "label": "trecho real da planilha",
+      "webp": {
+        "file": "assets/previews/planilha-vendas-oportunidades.webp",
+        "sha256": "4f883cbc8c7e93e4f26448e0ff322f78dd9dc2eb151adebd1888e8c0423238f9",
+        "bytes": 3760
+      },
+      "avif": {
+        "file": "assets/previews/planilha-vendas-oportunidades.avif",
+        "sha256": "b149feb0c61e20d027855c2bc7123cf963eda50b323ab8aa3db8d8cd3f512c17",
+        "bytes": 3312
+      },
+      "width": 720,
+      "height": 341,
+      "sources": [
+        {
+          "product": "vendas-na-pratica",
+          "zip": "ZEVANORY_Vendas_na_Pratica_v1.1.zip",
+          "zip_sha256": "97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070",
+          "path_in_zip": "ZEVANORY_Vendas_Planilha.xlsx",
+          "file_sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0"
+        },
+        {
+          "product": "combo-ia-vendas",
+          "zip": "ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
+          "zip_sha256": "99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea",
+          "path_in_zip": "02_Vendas_na_Pratica/ZEVANORY_Vendas_Planilha.xlsx",
+          "file_sha256": "a5b5ad9753d40b4513c1d63201fa9ad94fd1668ade52b2be7f6d982d403d59d0"
+        }
+      ],
+      "location": {
+        "sheet": "Oportunidades"
+      },
+      "crop_box": [
+        0,
+        0,
+        1184,
+        560
+      ],
+      "crop_note": "pixels, left/top/right/bottom, applied before resize",
+      "redactions": [],
+      "render": {
+        "tool": "LibreOffice headless --convert-to html (no network, JavaScript off), Playwright element screenshot of the sheet table",
+        "resize": "Pillow Lanczos to 720px wide",
+        "encode": "WebP q78 method 6; AVIF q55",
+        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets"
+      },
+      "why_safe": "Cabeçalho e primeiras linhas VAZIAS do controle de oportunidades. Sem fórmulas, sem indicadores, sem exemplo."
+    },
+    {
+      "id": "manual-lucro-capa",
+      "products": [
+        "lucro-e-caixa"
+      ],
+      "label": "página real do material",
+      "webp": {
+        "file": "assets/previews/manual-lucro-capa.webp",
+        "sha256": "35910456714be17a487aeaf1b41604bf3c927395900c8273ce7c9f1f794faecd",
+        "bytes": 43222
+      },
+      "avif": {
+        "file": "assets/previews/manual-lucro-capa.avif",
+        "sha256": "33e0e9e2257df38b7d717f83ba06b8848f97b383518c9d58cd1c080139b1a867",
+        "bytes": 32591
+      },
+      "width": 640,
+      "height": 828,
+      "sources": [
+        {
+          "product": "lucro-e-caixa",
+          "zip": "ZEVANORY_Lucro_e_Caixa_v1.1.zip",
+          "zip_sha256": "48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f",
+          "path_in_zip": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "file_sha256": "b0f819e10c4c2259ea4701283a49abd9ca8e11bd2310db703a833d337883aac5"
+        }
+      ],
+      "location": {
+        "page": 1
+      },
+      "crop_box": null,
+      "crop_note": null,
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55"
+      },
+      "why_safe": "Capa e orientação de uso: o que o produto resolve, um quadro de termos e a ordem das abas. Nenhuma conta de margem, preço ou equilíbrio."
+    },
+    {
+      "id": "manual-lucro-modulo-1",
+      "products": [
+        "lucro-e-caixa"
+      ],
+      "label": "página real do material",
+      "webp": {
+        "file": "assets/previews/manual-lucro-modulo-1.webp",
+        "sha256": "08827bb6a531436c3a7af6a58cb9b3975ae3cff1dd285e0357db56693a7c6e22",
+        "bytes": 50984
+      },
+      "avif": {
+        "file": "assets/previews/manual-lucro-modulo-1.avif",
+        "sha256": "a6ae6fc1a4032670da547b5fb7b44112e1ba940f229a1150eb3e6c52def10320",
+        "bytes": 41267
+      },
+      "width": 640,
+      "height": 828,
+      "sources": [
+        {
+          "product": "lucro-e-caixa",
+          "zip": "ZEVANORY_Lucro_e_Caixa_v1.1.zip",
+          "zip_sha256": "48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f",
+          "path_in_zip": "ZEVANORY_Lucro_e_Caixa_Manual_v1.1.pdf",
+          "file_sha256": "b0f819e10c4c2259ea4701283a49abd9ca8e11bd2310db703a833d337883aac5"
+        }
+      ],
+      "location": {
+        "page": 2
+      },
+      "crop_box": null,
+      "crop_note": null,
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55"
+      },
+      "why_safe": "Módulos 1 e 2 de 7, introdutórios: faturamento x resultado e mapear custos. Margem por venda, preço mínimo, desconto, ponto de equilíbrio e caixa (módulos 3–7) ficam de fora."
+    },
+    {
+      "id": "planilha-lucro-painel",
+      "products": [
+        "lucro-e-caixa"
+      ],
+      "label": "página real do material (trechos ocultos)",
+      "webp": {
+        "file": "assets/previews/planilha-lucro-painel.webp",
+        "sha256": "29241f365bebe47a6a7c2abc64159694d9e0a49a165f1b956b8f54b4e54630c6",
+        "bytes": 9400
+      },
+      "avif": {
+        "file": "assets/previews/planilha-lucro-painel.avif",
+        "sha256": "ca3d8b0ae20d2d56a19d97af2ccbad75c084f1d250e63397c1f64d5739fdb8dd",
+        "bytes": 7439
+      },
+      "width": 720,
+      "height": 373,
+      "sources": [
+        {
+          "product": "lucro-e-caixa",
+          "zip": "ZEVANORY_Lucro_e_Caixa_v1.1.zip",
+          "zip_sha256": "48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f",
+          "path_in_zip": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx",
+          "file_sha256": "265758c5a8da359f85bc3986adca192a57870bb82c3df4019c2c9c288951526d"
+        }
+      ],
+      "location": {
+        "sheet": "Dashboard (Painel de Decisão)"
+      },
+      "crop_box": [
+        0,
+        0,
+        1184,
+        614
+      ],
+      "crop_note": "pixels, left/top/right/bottom, applied before resize",
+      "redactions": [
+        {
+          "type": "pixelate+blur",
+          "box": [
+            328,
+            86,
+            652,
+            614
+          ],
+          "coords": "before resize, in the 1184x614 crop",
+          "reason": "column 'Leitura' explains how each indicator is read/derived; hidden so the preview shows layout and headers only"
+        }
+      ],
+      "render": {
+        "tool": "LibreOffice headless --convert-to html (no network, JavaScript off), Playwright element screenshot of the sheet table",
+        "resize": "Pillow Lanczos to 720px wide",
+        "encode": "WebP q78 method 6; AVIF q55",
+        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets"
+      },
+      "why_safe": "Layout do painel com os rótulos dos indicadores e valores vazios; a coluna que explica a leitura de cada indicador está oculta. Fórmulas e abas de entrada não aparecem."
+    },
+    {
+      "id": "plano-30-dias-capa",
+      "products": [
+        "negocio-completo"
+      ],
+      "label": "página real do material",
+      "webp": {
+        "file": "assets/previews/plano-30-dias-capa.webp",
+        "sha256": "d0378593080ef796f9da0c521327f8a00a938d043767193cf0fbfd64f49b2068",
+        "bytes": 24838
+      },
+      "avif": {
+        "file": "assets/previews/plano-30-dias-capa.avif",
+        "sha256": "bbf69068a55c056d2c3277d310e19f16c840330b5ed761cc0be2c95530b82987",
+        "bytes": 19060
+      },
+      "width": 640,
+      "height": 828,
+      "sources": [
+        {
+          "product": "negocio-completo",
+          "zip": "ZEVANORY_Negocio_Completo_v1.1.zip",
+          "zip_sha256": "8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e",
+          "path_in_zip": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+          "file_sha256": "4c5ab87dbe280b810dc94819eb514ece364a703453b31b9524e0f1ef37151d18"
+        }
+      ],
+      "location": {
+        "page": 1
+      },
+      "crop_box": null,
+      "crop_note": null,
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55"
+      },
+      "why_safe": "Capa do plano: modo de uso e a semana 1 em lista de tarefas (ação, execução, critério). É a primeira de quatro semanas."
+    },
+    {
+      "id": "plano-30-dias-semana-2",
+      "products": [
+        "negocio-completo"
+      ],
+      "label": "trecho de página real do material",
+      "webp": {
+        "file": "assets/previews/plano-30-dias-semana-2.webp",
+        "sha256": "e41b69a8436ef86e60b72b237c488cb496583ee14d0027cee7e1165f710f962d",
+        "bytes": 16224
+      },
+      "avif": {
+        "file": "assets/previews/plano-30-dias-semana-2.avif",
+        "sha256": "a861a6f9a215ff826cfb2a59a212f3470ef9206a362928a9f51835966e8d4ddb",
+        "bytes": 11951
+      },
+      "width": 640,
+      "height": 383,
+      "sources": [
+        {
+          "product": "negocio-completo",
+          "zip": "ZEVANORY_Negocio_Completo_v1.1.zip",
+          "zip_sha256": "8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e",
+          "path_in_zip": "04_Plano_Integrado/ZEVANORY_Negocio_Completo_Plano_30_Dias_v1.1.pdf",
+          "file_sha256": "4c5ab87dbe280b810dc94819eb514ece364a703453b31b9524e0f1ef37151d18"
+        }
+      ],
+      "location": {
+        "page": 2
+      },
+      "crop_box": [
+        0,
+        0,
+        935,
+        560
+      ],
+      "crop_note": "pixels, left/top/right/bottom, applied before resize",
+      "redactions": [],
+      "render": {
+        "tool": "pdftoppm -r 110 -png (poppler)",
+        "resize": "Pillow Lanczos to 640px wide",
+        "encode": "WebP q78 method 6; AVIF q55",
+        "crop": "top of page at 110 dpi (the rest of the page is blank)"
+      },
+      "why_safe": "Semana 2 em lista de tarefas, que remete aos materiais (sem o conteúdo deles). As semanas 3 e 4 e o ritual semanal ficam de fora."
+    },
+    {
+      "id": "painel-decisao-integrada",
+      "products": [
+        "negocio-completo"
+      ],
+      "label": "trecho real da planilha",
+      "webp": {
+        "file": "assets/previews/painel-decisao-integrada.webp",
+        "sha256": "b2c1fce7cc1798486e676444e14113f0e3971d01684ebaada936d91e2d6572ca",
+        "bytes": 5040
+      },
+      "avif": {
+        "file": "assets/previews/painel-decisao-integrada.avif",
+        "sha256": "0d31cb896de5405d2ab0f52ac0d087a41c13a2de343455bc21e71932c6b05158",
+        "bytes": 3789
+      },
+      "width": 720,
+      "height": 182,
+      "sources": [
+        {
+          "product": "negocio-completo",
+          "zip": "ZEVANORY_Negocio_Completo_v1.1.zip",
+          "zip_sha256": "8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e",
+          "path_in_zip": "05_Painel_Decisao_Integrada/ZEVANORY_Painel_Decisao_Integrada_v1.0.xlsx",
+          "file_sha256": "af6e25a370e3f35a2cc6ba4acd964392da13b95c18480c30c16793135b18173c"
+        }
+      ],
+      "location": {
+        "sheet": "Painel_Decisao"
+      },
+      "crop_box": [
+        0,
+        0,
+        1184,
+        300
+      ],
+      "crop_note": "pixels, left/top/right/bottom, applied before resize",
+      "redactions": [],
+      "render": {
+        "tool": "LibreOffice headless --convert-to html (no network, JavaScript off), Playwright element screenshot of the sheet table",
+        "resize": "Pillow Lanczos to 720px wide",
+        "encode": "WebP q78 method 6; AVIF q55",
+        "note": "rendered cell values only: no formula bar, no formulas, no hidden sheets"
+      },
+      "why_safe": "Só a linha de títulos das colunas e os rótulos de tipo ('Calculada', 'Opcional'). Nenhuma fórmula, nenhum critério de decisão, nenhum dado."
+    }
+  ],
+  "note_conteudo_pronto": "No deliverable file exists for Conteúdo Pronto; no preview is shown."
+}

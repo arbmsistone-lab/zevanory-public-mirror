@@ -1,0 +1,7 @@
+---
+permalink: /robots.txt
+layout: null
+---
+# Copia antiga sem conteudo: todas as paginas sao redirecionamentos noindex para o site oficial.
+User-agent: *
+Allow: /

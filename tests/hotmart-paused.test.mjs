@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, {HOTMART_CHECKOUT, SERVICE_CHECKOUT} from "../worker/sales-public-worker.mjs";
+import worker, {HOTMART_CHECKOUT} from "../worker/sales-public-worker.mjs";
 
 // Owner decision 14/10/2026: with the owner switch closed, NO Hotmart purchase path may be served.
 const ctx = {waitUntil() {}};
@@ -23,21 +23,23 @@ for (const state of ["closed", "throw"]) {
   });
   test(`sales ${state}: /assinar/conteudo-pronto does not redirect to Hotmart`, async () => {
     const r = await get("/assinar/conteudo-pronto", env(state));
-    assert.equal(r.status, 200);
+    assert.equal(r.status, 404);
     assert.equal(r.headers.get("location"), null);
+    assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow");
     const body = await r.text();
-    assert.match(body, /Assinaturas pausadas/);
-    assert.doesNotMatch(body, /pay\.hotmart\.com/);
+    assert.match(body, /Página indisponível/);
+    assert.doesNotMatch(body, /pay\.hotmart\.com|Assinar agora/);
   });
 }
 
-test("sales open: previous behaviour preserved (Hotmart link and subscribe redirect)", async () => {
+test("sales open: Hotmart kits remain allowed by the owner switch but CP stays inaccessible", async () => {
   const r = await get("/hotmart/ia-na-pratica", env("open"));
   assert.equal(r.status, 200);
   assert.match(await r.text(), /href="https:\/\/pay\.hotmart\.com\//);
   const s = await get("/assinar/conteudo-pronto", env("open"));
-  assert.equal(s.status, 302);
-  assert.ok(String(s.headers.get("location")).startsWith(SERVICE_CHECKOUT.split("?")[0]));
+  assert.equal(s.status, 404);
+  assert.equal(s.headers.get("location"), null);
+  assert.equal(s.headers.get("x-robots-tag"), "noindex, nofollow");
 });
 
 test("unknown slug stays 404 regardless of switch", async () => {
@@ -58,26 +60,27 @@ for (const [label, e] of [["HTTP 500 com open:true", envRaw(500, JSON.stringify(
     const h = await get("/hotmart/ia-na-pratica", e);
     assert.doesNotMatch(await h.text(), /pay\.hotmart\.com/);
     const s = await get("/assinar/conteudo-pronto", e);
-    assert.equal(s.status, 200);
+    assert.equal(s.status, 404);
     assert.equal(s.headers.get("location"), null);
+    assert.equal(s.headers.get("x-robots-tag"), "noindex, nofollow");
   });
 }
 test("respostas com estado comercial nunca são cacheáveis (aberto e fechado)", async () => {
   for (const st of ["open", "closed"]) {
     for (const path of ["/hotmart/ia-na-pratica", "/assinar/conteudo-pronto"]) {
       const r = await get(path, env(st));
-      assert.equal(r.headers.get("cache-control"), "no-store", st + " " + path);
+      assert.match(String(r.headers.get("cache-control")), /^no-store(?:,|$)/, st + " " + path);
     }
   }
 });
-test("métodos: /assinar só GET/HEAD; POST em /hotmart não expõe checkout", async () => {
+test("métodos: CP é 404 em todos, POST em /hotmart não expõe checkout", async () => {
   for (const m of ["POST", "PUT", "DELETE"]) {
     const r = await worker.fetch(new Request("https://vendas.zevanory.api.br/assinar/conteudo-pronto", {method: m}), env("open"), ctx);
-    assert.equal(r.status, 405, m);
+    assert.equal(r.status, 404, m);
     assert.equal(r.headers.get("location"), null, m);
   }
   const h = await get("/assinar/conteudo-pronto", env("closed"));
-  assert.equal(h.status, 200);
+  assert.equal(h.status, 404);
   const head = await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica", {method: "HEAD"}), env("closed"), ctx);
   assert.equal(head.status, 200);
   const p = await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica", {method: "POST"}), {...env("open"), ASSETS: {fetch: async () => new Response("not found", {status: 404})}}, ctx);
