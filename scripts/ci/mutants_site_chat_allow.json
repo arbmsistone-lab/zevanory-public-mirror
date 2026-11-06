@@ -597,6 +597,11 @@
      "test_pattern": "SC10",
      "assertion_pattern": "[SC10.3]",
      "why": "transcrição sem CPF/e-mail/telefone/senha"
+    },
+    {
+     "test_pattern": "SC19",
+     "assertion_pattern": "[SC19.5]",
+     "why": "mensagem sensível persistida já substituída por [conteúdo sensível removido] (NC-R141-PRIV-01)"
     }
    ],
    "secondary": []
