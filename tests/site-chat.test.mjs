@@ -431,6 +431,10 @@ test("SC19 sensitive health/religion content is removed, category retained, stru
     ["Minha saúde r142confidencial precisa de atenção", "r142confidencial"],
     ["Minha orientação sexual r142reservada é assunto privado", "r142reservada"],
     ["Minha biometria r142unica foi compartilhada", "r142unica"],
+    ["meu diagnóstico de depressão", "diagnóstico de depressão"],
+    ["sou evangélico", "evangélico"],
+    ["sou homossexual", "homossexual"],
+    ["biometria facial", "biometria facial"],
   ]) {
     const red = redactSensitive(sample);
     assert.equal(red.text, "[conteúdo sensível removido]", "[SC19.1]");

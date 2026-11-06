@@ -1,10 +1,13 @@
-# R142 | NC-R141-PRIV-01 and Fase B preparation (NO-GO until audited)
-Base: gh-pages b2a13bc14f5efa3803da8f50f72eea558319ec62; Draft only, no merge, deployment, secrets or costs.
+# R143 | NC-R142-01 and NC-R142-02 corrections
+Base PR #977, original branch head a2a21e6dc9f4c71fdcbc6aac0b6e19d450df9cce. Single corrective push; Draft only.
 
-Detected sensitive topics in worker/site-chat.mjs redactSensitive() replace the entire message with "[conteúdo sensível removido]" before insertion in zevanory_site_chat_messages.body. The official ZEV transcript is scrubbed again before registering atendimento and writing the durable outbox payload. Detection is finite and cannot guarantee removing all possible private information. Structured CPF, CNPJ, valid cards, password-like fields, email and telephone retain their existing masking.
+## Privacy correction
+The matcher in worker/site-chat.mjs now checks a lowercase NFD-normalized copy with combining marks removed, including diagnostico, depressao, evangelico, homossexual and biometria. It replaces the entire original message with "[conteúdo sensível removido]" before zevanory_site_chat_messages.body and sanitizes it again before the official ZEV transcript/outbox. It preserves the sensitive_data category and existing CPF, card and password masking. Privacy notice remains bounded: automatic detection is not exhaustive.
 
-PostgreSQL real regression is the second test in tests/integration/r122-official-chat-postgres.test.mjs, using an unreachable fake Resend to keep outbox payload pending and assert that sensitive samples do not survive; never touches production. SC19 in tests/site-chat.test.mjs checks topic detection and preservation of category. Manifest updated, all existing 56 mutants preserved, chat baseline now 34.
+SC19 tests the literal phrases "meu diagnóstico de depressão", "sou evangélico", "sou homossexual", "biometria facial", as well as earlier examples. The real PostgreSQL integration test checks both the exact saved body and the PENDING ZEV outbox payload; every scenario uses a distinct local synthetic IP and mailbox, avoiding rate-limit false failures. No production provider/network is used.
 
-The opt-in text now specifies automatic masking for recognized data and entire-message replacement when certain sensitive topics are detected, with limitations.
+## Activation script removed
+scripts/owner/chat-fase-b.ps1 was deleted entirely from this PR by operator decision. It belongs in the owner's local Downloads/ZEVANORY_CHAT_FASE_B folder, outside version control. This PR does not install or execute it. The SG01 no-synthetic/no-auto-enable guard remains unchanged. No workflow or Wrangler deployment settings modified.
 
-scripts/owner/chat-fase-b.ps1 is ASCII-only PowerShell 5.1. No parameters: read-only secret names from central and sales Workers. -Preparar: both SITE_CHAT_ENABLED=false, other central flags configured and Turnstile sitekey 0x4AAAAAAF2sozEg8we6MsOP via Workers Secrets; Turnstile private secret typed ONLY in Wrangler prompt by owner. -Ligar: enabled=true both Workers. -Desligar: false both. Each put creates a Worker deployment; script is NOT executed by this PR. List/readback shows NAMES, NOT VALUES. It cannot establish actual secret values or runtime health. Before -Ligar, a separate human-authorized readback of all dependencies, Turnstile and no-cost budget is required. No implicit authorization for any operation.
+## CI / governance
+Exact Node manifest remains 1086; chat unit baseline remains 34; two PostgreSQL official tests; all 56 existing site-chat mutants remain unchanged. Governance checks session-guard, verification-with-credentials and merge-impact are not bypassed. CI green must be verified for the exact new SHA, excluding governance explicitly accepted by owner. No merge, deploy, secrets, Cloudflare operation or cost.

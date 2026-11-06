@@ -248,7 +248,10 @@ export function redactSensitive(text) {
   out = out.replace(/\b(rg|cnh|passaporte)\b(\s*(n[ºo°.]*|numero|número|:)?\s*)[\dA-Za-z.-]{5,}/gi, (m, k) => { found = true; return k + " [removido]"; });
   // R142: detected sensitive topics must never survive in the persisted message or ZEV transcript.
   // Remove the ENTIRE message, not just the trigger word: nearby context can identify a person.
-  if (/\b(saude|saúde|medic[oa]|hiv|diagnostic\w*|doenca|doença|laudo|cid[ -]?\d|religiao|religião|orientacao sexual|orientação sexual|biometri\w*)\b/i.test(out))
+  // Check an accent-free copy: JavaScript ASCII word boundaries miss accented Portuguese words.
+  // Never persist the copy; the original full content is replaced before the database write.
+  const normalizedTopic = out.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/\b(saude|medic[oa]|hiv|diagnostic\w*|depressao|doenca|laudo|cid[ -]?\d|religiao|evangelic\w*|homossex\w*|orientacao sexual|biometri\w*)\b/.test(normalizedTopic))
     return { text: "[conteúdo sensível removido]", sensitive: true };
   // E-mail e telefone digitados na conversa também não ficam na transcrição (o e-mail só entra pelo formulário).
   out = out.replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, "[e-mail removido]");

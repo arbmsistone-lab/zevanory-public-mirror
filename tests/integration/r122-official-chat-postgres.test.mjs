@@ -86,17 +86,25 @@ test("R142 PostgreSQL: sensitive topic removed from message body AND pending ZEV
   };
   const fetchImpl=async()=>new Response(JSON.stringify({error:"temporary"}),{status:503,headers:{"content-type":"application/json"}});
   const deps={sqlFactory,fetchImpl,salesOpen:async()=>false,mailer:sinkMailer()};
-  const call=async(path,body)=>{const response=await handleSiteChat(chatRequest(path,body),env,deps);return {status:response.status,body:await response.json()};};
+  const call=async(path,body,ip="203.0.113.7")=>{const response=await handleSiteChat(chatRequest(path,body,{headers:{"x-zev-client-ip":ip}}),env,deps);return {status:response.status,body:await response.json()};};
   const secrets=[
     ["Tenho um diagnóstico de r142doencasecreta que quero tratar", "r142doencasecreta"],
     ["Minha religião r142religiaoprivada é informação particular", "r142religiaoprivada"],
+    ["meu diagnóstico de depressão", "diagnóstico de depressão"],
+    ["sou evangélico", "evangélico"],
+    ["sou homossexual", "homossexual"],
+    ["biometria facial", "biometria facial"],
   ];
-  for(const [message,forbidden] of secrets){
-    const sid=(await call("/api/chat/session",{})).body.session;
-    const reply=await call("/api/chat",{session:sid,message});
+  for(const [idx,entry] of secrets.entries()){
+    const [message,forbidden]=entry;
+    // Independent IP and mailbox for each case avoid conflating privacy with rate-limit gates.
+    const ip="203.0.113."+(20+idx);
+    const email="r142buyer"+idx+"@example.com";
+    const sid=(await call("/api/chat/session",{},ip)).body.session;
+    const reply=await call("/api/chat",{session:sid,message},ip);
     assert.equal(reply.status,200);
     assert.equal(reply.body.category,"sensitive_data");
-    const handoff=await call("/api/chat/handoff",{session:sid,email:"r142buyer@example.com",privacy_ack:true});
+    const handoff=await call("/api/chat/handoff",{session:sid,email,privacy_ack:true},ip);
     assert.equal(handoff.status,200);
     assert.equal(handoff.body.official,true);
     const messages=psql("select body from zevanory_site_chat_messages where role='u' order by id desc limit 1");
