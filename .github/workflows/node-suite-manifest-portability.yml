@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Verificador do manifesto e mutantes (contagem exata 14, zero pulados)
+      - name: Verificador do manifesto e mutantes (contagem exata 15, zero pulados)
         shell: bash
         env:
           PYTHONDONTWRITEBYTECODE: "1"
@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           echo "RUNNER_OS=$RUNNER_OS node=$(node --version) python=$(python --version 2>&1)"
           python -m unittest tests.test_node_suite_manifest -v < /dev/null 2>&1 | tr -d '\r' | tee nm.txt
-          grep -qx "Ran 14 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 14"; exit 1; }
+          grep -qx "Ran 15 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 15"; exit 1; }
           if grep -q "skipped" nm.txt; then echo "::error::testes pulados"; exit 1; fi
           grep -qx "OK" nm.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
-          echo "::notice title=NODE_SUITE_MANIFEST_TESTS ($RUNNER_OS)::Ran 14, OK, skipped 0"
+          echo "::notice title=NODE_SUITE_MANIFEST_TESTS ($RUNNER_OS)::Ran 15, OK, skipped 0"
