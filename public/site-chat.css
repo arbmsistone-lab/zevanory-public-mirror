@@ -44,3 +44,7 @@
   .zc-actions .zc-button{flex:1 1 auto}
 }
 @media (prefers-reduced-motion:reduce){.zc-panel,.zc-entry{scroll-behavior:auto}}
+/* R148: botão do chat no menu superior, ao lado de "Escrever para o suporte" (herda .nav-cta da página). */
+.site-nav .zc-nav-chat{display:inline-flex;align-items:center;min-height:44px;font:inherit;color:inherit;background:transparent;cursor:pointer;margin-right:8px}
+.site-nav .zc-nav-chat:focus-visible{outline:3px solid #ffd166;outline-offset:2px}
+@media (max-width:520px){.site-nav .zc-nav-chat{margin-right:4px;padding:0 10px}}
