@@ -11,3 +11,8 @@ Pausa sem deploy: `zpc:creative-autonomy:paused:v1=1`, via `setCreativeAutopubli
 Protocolo `ZEV-20261106-DA2F6F3C54` no Neon segue owner/customer pending, attempts=1/1, last_error=resend_network, next_attempt_at 11:38:24Z, updated_at 11:36:24Z, lease_until null. Sem logs do Cloudflare não é possível provar execução do cron 14:00Z ou distinguir cron ausente de falha antes do dreno. Janela 23h desde 11:36:23Z, vence por volta de 10:36:23Z em 07/11 (07:36 BRT).
 
 **NO-GO até contra-auditoria e CI:** testes legados esperam autopublicação; atualizar contrato sem apagá-los. Bloquear todos os adaptadores de envio direto e revisar todos os workflows externos antes de considerar a DEC-22 fechada. Nenhuma produção alterada pelo PR Draft.
+
+## R138 | Travamento de adaptadores diretos
+- Adicionados bloqueios `dec22_draft_only` nas funções exportadas de Telegram, Bluesky, Pinterest, TikTok, Instagram, Facebook, Telegram vídeo e YouTube, além do bloqueio do orquestrador criado no R137.
+- Testes anteriores de publicação automática foram convertidos em testes negativos (nenhum provedor contatado) mantendo as quantidades por arquivo. Em especial, P04 Meta não depende apenas de um adaptador de eventos.
+- Nenhuma publicação ou alteração de KV foi feita; isto é somente candidato a código. Liberação depende de CI e contra-auditoria.
