@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { fileURLToPath } from "node:url";
-import { handleAtendimento, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, resendFailureIsTransient, ATENDIMENTO_SQL, MAX_ATTEMPTS, SEND_WINDOW_HOURS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
+import { handleAtendimento, atendimentoContext, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, resendFailureIsTransient, ATENDIMENTO_SQL, MAX_ATTEMPTS, SEND_WINDOW_HOURS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
 import { FORWARD_TO_KV_KEY as SUPPORT_FORWARD_KEY } from "../worker/support-email-forward.mjs";
 import { FORWARD_TO_KV_KEY } from "../worker/atendimento.mjs";
@@ -75,6 +75,40 @@ export function replyChannelViolations(text) {
   if (/"telephone"|itemprop="telephone"|type="tel"/i.test(text)) v.push("telefone");
   return v;
 }
+
+// R133: Cloudflare Workers native fetch throws Illegal invocation when called as a method of an arbitrary object.
+// The default must be wrapped while injected test fetch functions must keep their exact identity.
+test("R133 native fetch maintains Cloudflare-compatible receiver; injected fetch remains untouched", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = function cloudflareNativeLike(url, init) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    calls++;
+    assert.equal(url, "https://api.resend.com/emails");
+    assert.equal(init.method, "POST");
+    return Promise.resolve(new Response(JSON.stringify({ id: "simulated" }), { status: 200 }));
+  };
+  try {
+    const context = await atendimentoContext(CFG, { sqlFactory: () => ({ query: async () => [] }) });
+    assert.equal(context.missing, undefined);
+    const response = await context.fetchImpl("https://api.resend.com/emails", { method: "POST" });
+    assert.equal(response.status, 200);
+    assert.equal(calls, 1);
+    const injected = async () => new Response(null, { status: 204 });
+    const contextWithInjected = await atendimentoContext(CFG, { sqlFactory: () => ({ query: async () => [] }), fetchImpl: injected });
+    assert.equal(contextWithInjected.fetchImpl, injected, "injection for existing tests is preserved");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("R133 /atendimento displays on-screen receipt without falsely promising immediate email", () => {
+  assert.match(formPage(), /Guarde esse número: ele é o seu comprovante de registro/);
+  assert.doesNotMatch(formPage(), /na tela e por e-mail/);
+  const pending = confirmationPage({ protocolo: "ZEV-20261106-DA2F6F3C54", tipo: "suporte", responder_ate: "2026-11-11T11:36:23.884Z" }, { emailSent: false });
+  assert.match(pending, /Guarde esse número: ele é o seu comprovante de registro/);
+  assert.doesNotMatch(pending, /reenviada automaticamente em instantes/);
+});
 
 test("GET /atendimento: formulário acessível, e-mail oficial, 4 tipos, isca, sem WhatsApp", async () => {
   const r = await handleAtendimento(new Request("https://zevanory.api.br/atendimento?tipo=reembolso"), env());
