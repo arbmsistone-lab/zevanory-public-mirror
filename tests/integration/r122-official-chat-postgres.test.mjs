@@ -75,3 +75,41 @@ test("R122 PostgreSQL efêmero: chat -> protocolo oficial ZEV -> outbox real -> 
   assert.equal(again.body.protocol,first.body.protocol);
   assert.equal(sent.size,2,"segunda chamada não duplica avisos");
 });
+
+// R142: actual PostgreSQL writes and the unsent durable official ZEV outbox are inspected.
+// Deliberately reject the fake Resend request so the outbox payload remains queryable.
+test("R142 PostgreSQL: sensitive topic removed from message body AND pending ZEV outbox payload", { skip }, async () => {
+  const env={
+    ...SANDBOX_ENV,ZEVANORY_PRIVATE_ARTIFACTS:fakeKv(),SITE_CHAT_OFFICIAL_PROTOCOLS:"true",
+    LEAD_PRIVACY_SECRET:"r142-isolated-privacy-secret-40-characters-minimum",
+    RESEND_API_KEY:"re_r142_test_sink_only",SUPPORT_FORWARD_TO:"owner@example.org",
+  };
+  const fetchImpl=async()=>new Response(JSON.stringify({error:"temporary"}),{status:503,headers:{"content-type":"application/json"}});
+  const deps={sqlFactory,fetchImpl,salesOpen:async()=>false,mailer:sinkMailer()};
+  const call=async(path,body)=>{const response=await handleSiteChat(chatRequest(path,body),env,deps);return {status:response.status,body:await response.json()};};
+  const secrets=[
+    ["Tenho um diagnóstico de r142doencasecreta que quero tratar", "r142doencasecreta"],
+    ["Minha religião r142religiaoprivada é informação particular", "r142religiaoprivada"],
+  ];
+  for(const [message,forbidden] of secrets){
+    const sid=(await call("/api/chat/session",{})).body.session;
+    const reply=await call("/api/chat",{session:sid,message});
+    assert.equal(reply.status,200);
+    assert.equal(reply.body.category,"sensitive_data");
+    const handoff=await call("/api/chat/handoff",{session:sid,email:"r142buyer@example.com",privacy_ack:true});
+    assert.equal(handoff.status,200);
+    assert.equal(handoff.body.official,true);
+    const messages=psql("select body from zevanory_site_chat_messages where role='u' order by id desc limit 1");
+    assert.equal(messages[0].body,"[conteúdo sensível removido]");
+    const payload=psql("select payload::text as body from zevanory_atendimento_outbox where protocolo="+lit(handoff.body.protocol))[0];
+    assert.ok(payload&&payload.body, "outbox must keep payload while provider is unavailable");
+    assert.match(payload.body,/conteúdo sensível removido/);
+    assert.ok(!payload.body.includes(forbidden), "no sensitive literal in ZEV outbox");
+    assert.ok(!messages[0].body.includes(forbidden), "no sensitive literal in chat message row");
+  }
+  const sid=(await call("/api/chat/session",{})).body.session;
+  await call("/api/chat",{session:sid,message:"Meu CPF 123.456.789-09 cartao 4111 1111 1111 1111 senha: segredoR142"});
+  const masked=psql("select body from zevanory_site_chat_messages where role='u' order by id desc limit 1")[0].body;
+  for(const bad of ["123.456.789-09","4111 1111 1111 1111","segredoR142"])assert.ok(!masked.includes(bad),"structured sensitive literal persisted");
+  assert.match(masked,/\[removido\]/);
+});

@@ -246,7 +246,10 @@ export function redactSensitive(text) {
   out = out.replace(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g, () => { found = true; return "[removido]"; });
   out = out.replace(/\b(senha|password|pin|cvv|codigo de seguranca|código de segurança)\b(\s*(e|é|:|=|eh)?\s*)\S+/gi, (m, k) => { found = true; return k + " [removido]"; });
   out = out.replace(/\b(rg|cnh|passaporte)\b(\s*(n[ºo°.]*|numero|número|:)?\s*)[\dA-Za-z.-]{5,}/gi, (m, k) => { found = true; return k + " [removido]"; });
-  if (/\b(hiv|diagnostic\w*|doenca|doença|laudo|cid[ -]?\d|religiao|religião|orientacao sexual|orientação sexual|biometri\w*)\b/i.test(out)) found = true;
+  // R142: detected sensitive topics must never survive in the persisted message or ZEV transcript.
+  // Remove the ENTIRE message, not just the trigger word: nearby context can identify a person.
+  if (/\b(saude|saúde|medic[oa]|hiv|diagnostic\w*|doenca|doença|laudo|cid[ -]?\d|religiao|religião|orientacao sexual|orientação sexual|biometri\w*)\b/i.test(out))
+    return { text: "[conteúdo sensível removido]", sensitive: true };
   // E-mail e telefone digitados na conversa também não ficam na transcrição (o e-mail só entra pelo formulário).
   out = out.replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, "[e-mail removido]");
   out = out.replace(/\+?\d[\d\s().-]{8,}\d/g, (m) => (m.replace(/\D/g, "").length >= 10 ? "[telefone removido]" : m));
@@ -254,6 +257,8 @@ export function redactSensitive(text) {
 }
 
 export function classify(message, { corrections = 0 } = {}) {
+  // The transcript holds only this sentinel, but must retain the sensitive_data category.
+  if (String(message).trim() === "[conteúdo sensível removido]") return { kind: "escalate", category: "sensitive_data" };
   const n = norm(message);
   if (!n) return { kind: "empty" };
   const red = redactSensitive(message);
@@ -748,6 +753,7 @@ async function handoffRoute(sql, env, body, deps, { ip, now, flags }) {
     if (body.privacy_ack !== true) return json(400,{error:"privacy_ack_required",fallback:FALLBACK});
     const messages=await sql.query("select role, body from zevanory_site_chat_messages where session_hash = $1 order by id desc limit 24",[s.sess]);
     const ordered=(messages||[]).slice().reverse();
+    // Defense in depth: scrub stored text once again before it enters the ZEV outbox.
     const lines=ordered.map(m=>(m.role==="u"?"Consumidor: ":"Assistente: ")+redactSensitive(String(m.body||"")).text);
     const transcript=lines.join("\n").slice(0,3500);
     const categories=ordered.filter(m=>m.role==="u").map(m=>classify(String(m.body||"")).category).filter(Boolean);
