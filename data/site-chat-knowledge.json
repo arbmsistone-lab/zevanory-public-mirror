@@ -1,0 +1,192 @@
+{
+ "source": "sales-public/<slug>.html",
+ "generator": "scripts/build_site_chat_knowledge.py",
+ "products": {
+  "ia-na-pratica": {
+   "receive": [
+    "Manual completo (PDF e DOCX editável)",
+    "Guia rápido em PDF",
+    "Arquivo de comandos prontos para IA",
+    "Planilha de aplicação (XLSX)",
+    "Arquivo 'Comece aqui' com o passo a passo"
+   ],
+   "audience": [
+    "Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo",
+    "Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina",
+    "Quem quer comandos prontos e uma planilha para medir o que mudou"
+   ],
+   "not_for": [
+    "Quem procura automação técnica com programação",
+    "Quem espera resultado sem aplicar o método"
+   ],
+   "topics": [
+    "Pensar antes de pedir: Estrutura simples para transformar uma tarefa vaga em uma solicitação clara e verificável.",
+    "Fluxos práticos: Modelos de aplicação para tarefas reais em vez de exemplos que funcionam apenas em demonstração.",
+    "Revisão e critérios: Maneiras de avaliar resposta, pedir melhoria e reduzir confiança cega no primeiro resultado.",
+    "Rotina de trabalho: Orientação para incorporar IA onde ela reduz esforço sem tirar responsabilidade de quem decide."
+   ],
+   "faq": [
+    {
+     "q": "Preciso saber programação?",
+     "a": "Não. O foco é estruturar uso de IA em tarefas e processos; programação pode ser uma aplicação, mas não é requisito para começar."
+    },
+    {
+     "q": "Serve para qualquer ferramenta de IA?",
+     "a": "Os princípios são amplos e podem ser adaptados. Recursos específicos variam de acordo com cada ferramenta."
+    },
+    {
+     "q": "IA substitui minha análise?",
+     "a": "Não. A metodologia trata a IA como apoio à execução; validação e decisão continuam exigindo responsabilidade humana."
+    }
+   ],
+   "license": "Produto digital (arquivos para download). Licença pessoal e intransferível para uso no seu trabalho ou negócio; não é permitido revender, redistribuir ou publicar os arquivos."
+  },
+  "vendas-na-pratica": {
+   "receive": [
+    "Manual completo (PDF e DOCX editável)",
+    "Guia rápido em PDF",
+    "Modelos de mensagens de venda e follow-up",
+    "Roteiro de conteúdos",
+    "Planilha de acompanhamento comercial (XLSX)",
+    "Arquivo 'Comece aqui' com o passo a passo"
+   ],
+   "audience": [
+    "Quem não tem roteiro de mensagens nem de conteúdo",
+    "Quem quer acompanhar oportunidades em uma planilha simples"
+   ],
+   "not_for": [
+    "Quem busca anúncios pagos",
+    "Quem quer lista de contatos ou disparo em massa"
+   ],
+   "topics": [
+    "Uma oferta que você consegue cumprir: Defina o que oferecer, para quem e com quais limites antes de responder aos pedidos que chegam.",
+    "Como conduzir: Estrutura para entender contexto, necessidade e próxima ação sem perder naturalidade.",
+    "Como apresentar valor: Organização da proposta para conectar solução, necessidade, escopo e limite com clareza.",
+    "Como acompanhar: Cadência e contexto para retomar conversas sem depender de memória ou insistência genérica."
+   ],
+   "faq": [
+    {
+     "q": "É um script pronto de vendas?",
+     "a": "Não. Existem estruturas e roteiros, mas eles servem para orientar raciocínio e execução, não para substituir escuta e contexto."
+    },
+    {
+     "q": "Funciona para qualquer negócio?",
+     "a": "Os princípios são amplos, mas a aplicação deve ser adaptada ao ciclo de venda, cliente e oferta de cada operação."
+    },
+    {
+     "q": "Promete aumentar vendas?",
+     "a": "Não existe garantia legítima de resultado comercial. O objetivo é melhorar processo, disciplina e capacidade de aprendizado."
+    }
+   ],
+   "license": "Produto digital (arquivos para download). Licença pessoal e intransferível para uso no seu trabalho ou negócio; não é permitido revender, redistribuir ou publicar os arquivos."
+  },
+  "lucro-e-caixa": {
+   "receive": [
+    "Manual completo (PDF e DOCX editável)",
+    "Guia rápido (PDF e DOCX)",
+    "Planilha de caixa e margem (XLSX)",
+    "Checklist financeiro semanal",
+    "Comandos de IA para análise financeira",
+    "Arquivo 'Comece aqui' com o passo a passo"
+   ],
+   "audience": [
+    "Quem fatura, mas não sabe quanto sobra no fim do mês",
+    "Quem mistura o dinheiro da empresa com o pessoal",
+    "Quem quer uma rotina semanal curta de caixa e margem"
+   ],
+   "not_for": [
+    "Quem precisa de contabilidade ou obrigações fiscais",
+    "Quem procura recomendação de investimento"
+   ],
+   "topics": [
+    "Entradas e saídas: Estrutura prática para registrar e revisar movimento financeiro sem perder a visão do conjunto.",
+    "Fixos e variáveis: Organização para perceber quais gastos pesam na operação e como se relacionam com receita.",
+    "Preço e resultado: Leitura simples para enxergar se vender mais também está gerando resultado sustentável.",
+    "Revisão financeira: Cadência de acompanhamento para transformar números em decisões recorrentes."
+   ],
+   "faq": [
+    {
+     "q": "Isso substitui meu contador?",
+     "a": "Não. O material ajuda na gestão cotidiana do negócio e não substitui obrigações contábeis, fiscais ou orientação profissional."
+    },
+    {
+     "q": "Preciso dominar finanças?",
+     "a": "Não. A proposta é começar por conceitos e rotinas práticas de leitura do caixa e da margem."
+    },
+    {
+     "q": "Vai me dizer quanto investir ou tomar emprestado?",
+     "a": "Não. Decisões financeiras específicas exigem contexto e, quando necessário, orientação profissional adequada."
+    }
+   ],
+   "license": "Produto digital (arquivos para download). Licença pessoal e intransferível para uso no seu trabalho ou negócio; não é permitido revender, redistribuir ou publicar os arquivos."
+  },
+  "combo-ia-vendas": {
+   "receive": [
+    "IA na Prática completo (manual, guia, comandos e planilha)",
+    "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)"
+   ],
+   "audience": [
+    "Quem está organizando atendimento e conteúdo agora"
+   ],
+   "not_for": [
+    "Quem só precisa organizar as finanças (veja Lucro & Caixa)",
+    "Quem busca anúncios pagos"
+   ],
+   "topics": [
+    "Método de uso: Estruture contexto, pedidos e revisão para obter saídas mais úteis e repetíveis.",
+    "Processo comercial: Organize os pedidos e oportunidades que chegam: atendimento, oferta e follow-up, com critérios claros.",
+    "Uso independente: Use cada treinamento sozinho ou na ordem sugerida: primeiro IA na Prática, depois Vendas na Prática.",
+    "Aprendizado: Use o resultado das interações para ajustar mensagens, critérios e próximas ações."
+   ],
+   "faq": [
+    {
+     "q": "O combo automatiza minhas vendas sozinho?",
+     "a": "Não. IA pode apoiar tarefas, mas relacionamento, contexto, validação e decisão continuam exigindo participação humana."
+    },
+    {
+     "q": "Serve para equipes pequenas?",
+     "a": "A estrutura foi pensada para aplicação prática e pode ser adaptada à escala da operação."
+    }
+   ],
+   "license": "Produto digital (arquivos para download). Licença pessoal e intransferível para uso no seu trabalho ou negócio; não é permitido revender, redistribuir ou publicar os arquivos."
+  },
+  "negocio-completo": {
+   "receive": [
+    "IA na Prática completo",
+    "Vendas na Prática completo",
+    "Lucro & Caixa completo",
+    "Plano integrado de 30 dias (PDF e DOCX)",
+    "Painel de decisão integrada (XLSX)"
+   ],
+   "audience": [
+    "Quem quer organizar IA, vendas e caixa de uma vez",
+    "Quem prefere um plano de 30 dias com começo, meio e fim"
+   ],
+   "not_for": [
+    "Quem quer resolver só um problema específico agora",
+    "Quem precisa de consultoria individual"
+   ],
+   "topics": [
+    "IA na Prática: Método para incorporar IA à rotina sem depender de tentativa aleatória.",
+    "Vendas na Prática: Estrutura para transformar conversa comercial em processo com próxima ação.",
+    "Lucro & Caixa: Leitura simples para enxergar entrada, saída, custo, margem e pressão de caixa.",
+    "Jornada única: Conecte produtividade, venda e resultado em vez de tratar cada área como um projeto isolado."
+   ],
+   "faq": [
+    {
+     "q": "É um sistema de gestão?",
+     "a": "Não. É um pacote de método e conteúdo para organizar execução, processo comercial e leitura financeira."
+    },
+    {
+     "q": "Inclui os três produtos separados?",
+     "a": "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada."
+    },
+    {
+     "q": "Serve para empresas grandes?",
+     "a": "O foco atual é aplicação prática em operações menores e negócios que precisam reduzir improviso. Empresas maiores podem exigir adaptações adicionais."
+    }
+   ],
+   "license": "Produto digital (arquivos para download). Licença pessoal e intransferível para uso no seu trabalho ou negócio; não é permitido revender, redistribuir ou publicar os arquivos."
+  }
+ }
+}

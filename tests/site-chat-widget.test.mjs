@@ -68,7 +68,9 @@ test("SW03 nada proativo: só abre e só envia por ação da pessoa", () => {
   const opens = [...JS.matchAll(/(?<!function )\bopen\(\)/g)].length;
   assert.equal(opens, 0, "[SW03.1] open() nunca é chamado diretamente");
   assert.match(JS, /launch\.addEventListener\("click", open\)/, "[SW03.2]");
-  assert.equal([...JS.matchAll(/addEventListener\("click", open\)/g)].length, 1, "[SW03.3]");
+  // R148: dois gatilhos, ambos clique da pessoa: o botão do bloco e o atalho no menu superior.
+  assert.equal([...JS.matchAll(/addEventListener\("click", open\)/g)].length, 2, "[SW03.3]");
+  assert.match(JS, /headerBtn\.addEventListener\("click", open\)/, "[SW03.7] atalho do menu superior só abre por clique");
   assert.doesNotMatch(JS, /setTimeout\([^)]*(open|send|request)\b/, "[SW03.4]");
   assert.match(fnBody(JS, "open"), /loadStatus\(\)/, "[SW03.5] nem o aviso é buscado antes do clique");
   const top = JS.replace(/function \w+\([^)]*\) \{[\s\S]*?\n  \}/g, "");

@@ -199,6 +199,26 @@ jobs:
           printf '{"sha":"%s","repository":"arbmsistone-lab/zevanory-product-control-edge","workflow_run":"%s"}\n' \
             "$SOURCE_SHA" "${{ github.run_id }}" > dist/zpc-build.json
 
+      - name: R111 fail closed on passphrase secret names before Wrangler deploy
+        if: env.PROMOTE == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          # The candidate must retain the strong-auth implementation; older PIN-only SHAs are forbidden.
+          grep -q "ADMIN_AUTH_MODE" zpc/cf-worker/worker.ts
+          grep -q "passphraseLogin" zpc/cf-worker/backend-index.ts
+          curl --fail --silent --show-error --max-time 20 \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/zevanory-product-control-portable/secrets" \
+            -o "${RUNNER_TEMP}/zpc-r111-secret-names.json"
+          python3 scripts/deploy/worker_secret_name_guard.py --input "${RUNNER_TEMP}/zpc-r111-secret-names.json"
+          rm -f "${RUNNER_TEMP}/zpc-r111-secret-names.json"
+
       - name: Promote exact main SHA and verify production
         if: env.PROMOTE == 'true'
         working-directory: zpc
@@ -213,6 +233,22 @@ jobs:
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           EXPECTED_ZPC_SHA="$SOURCE_SHA" node scripts/cloudflare-authoritative-repair.mjs
+
+      - name: R111 verify secret names survived Wrangler deploy
+        if: env.PROMOTE == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          curl --fail --silent --show-error --max-time 20 \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/zevanory-product-control-portable/secrets" \
+            -o "${RUNNER_TEMP}/zpc-r111-secret-names-after.json"
+          python3 scripts/deploy/worker_secret_name_guard.py --input "${RUNNER_TEMP}/zpc-r111-secret-names-after.json"
+          rm -f "${RUNNER_TEMP}/zpc-r111-secret-names-after.json"
 
       - name: Verify exact trust and artifact readback
         if: env.PROMOTE == 'true'

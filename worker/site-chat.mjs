@@ -38,6 +38,7 @@ import CHAT_POLICY from "../data/site-chat-policy.json" with { type: "json" };
 import {verifyChatTurnstile} from "./r120-chat-turnstile.mjs";
 import {registerRequest as registerOfficialAtendimento, parseInput as parseOfficialAtendimento} from "./atendimento.mjs";
 import PRODUCTS_JSON from "../data/products.json" with { type: "json" };
+import KNOWLEDGE_JSON from "../data/site-chat-knowledge.json" with { type: "json" };
 import { SUPPORT_PRODUCTS, answerSupportQuestion, resolveProduct } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import {
@@ -140,12 +141,51 @@ export const CATALOG = buildCatalog();
 // Versão das fontes registrada internamente em cada sessão (impressão do catálogo + hash da política).
 export const SOURCE_VERSION = `cat:${CATALOG.fingerprint};pol:${fnv64([REFUND_TEXT, DELIVERY_TEXT, SLA_TEXT, CLOSED_PRICE_ANSWER].join("|")).slice(0, 12)}`;
 
+// R148: conhecimento oficial por produto, extraído das páginas publicadas (scripts/build_site_chat_knowledge.py).
+export const KNOWLEDGE = KNOWLEDGE_JSON.products || {};
+const KNOWLEDGE_TEXTS = Object.values(KNOWLEDGE).flatMap((k) => [...k.receive, ...k.audience, ...k.not_for, ...k.topics, k.license, ...k.faq.flatMap((f) => [f.q, f.a])]).filter(Boolean);
+const FACETS = [
+  ["license", /\b(revend\w*|redistribu\w*|compartilh\w*|repass\w*|licenca|emprest\w*|outra pessoa|meu socio|publicar os arquivos|posso dar)\b/],
+  ["not_for", /\b(nao (e|eh|serve) (para|pra) (quem|mim)|para quem nao|pra quem nao|quando nao (serve|vale))\b/],
+  ["audience", /\b(para quem|pra quem|e (para|pra) mim|serve (para|pra) (mim|meu|minha|quem)|publico|indicado (para|pra)|perfil|iniciante|nunca usei)\b/],
+  ["receive", /\b(o que (vem|recebo|vou receber|eu recebo|chega|inclui)|arquivos?|formato|pdf|planilha|xlsx|docx|editavel|inclui|incluid\w*|itens|entregaveis|kit)\b/],
+  ["topics", /\b(o que (ensina|aprendo|vou aprender|tem dentro|aborda)|ensina|aprend\w*|modulos?|aulas?|topicos|assuntos|temas|metodo|como funciona)\b/],
+];
+const STOP = new Set("a o e é de da do das dos um uma para pra que com em no na os as se por mais ou sem seu sua isso esse essa produto voces vcs".split(" "));
+const words = (t) => norm(t).replace(/[^a-z0-9& ]/g, " ").split(" ").filter((w) => w.length > 2 && !STOP.has(w));
+// Pergunta da FAQ oficial mais parecida (mínimo de 2 palavras em comum e metade das palavras da pergunta oficial).
+function faqMatch(k, message) {
+  const mw = new Set(words(message));
+  let best = null;
+  for (const f of k.faq) {
+    const fw = words(f.q);
+    const hits = fw.filter((w) => mw.has(w) || [...mw].some((m) => m.length > 4 && (m.startsWith(w.slice(0, 5)) || w.startsWith(m.slice(0, 5))))).length;
+    if (hits >= 2 && hits / fw.length >= 0.5 && (!best || hits > best.hits)) best = { f, hits };
+  }
+  return best?.f || null;
+}
+export function knowledgeAnswer(slug, message, { name }) {
+  const k = KNOWLEDGE[slug];
+  if (!k) return null;
+  const n = norm(message);
+  const faq = faqMatch(k, message);
+  if (faq) return { facet: "faq", text: `${name} — ${faq.q} ${faq.a}` };
+  const facet = (FACETS.find(([, re]) => re.test(n)) || [null])[0];
+  const list = (arr) => arr.map((x) => `• ${x}`).join("\n");
+  if (facet === "license" && k.license) return { facet, text: `${name}: ${k.license}` };
+  if (facet === "not_for") return { facet, text: `${name} não é indicado para:\n${list(k.not_for)}` };
+  if (facet === "audience") return { facet, text: `${name} é para:\n${list(k.audience)}\nNão é indicado para:\n${list(k.not_for)}` };
+  if (facet === "receive") return { facet, text: `No ${name} você recebe:\n${list(k.receive)}` };
+  if (facet === "topics") return { facet, text: `O que o ${name} aborda:\n${list(k.topics)}` };
+  return { facet: "overview", text: `O que você recebe:\n${list(k.receive)}\nÉ para:\n${list(k.audience)}` };
+}
+
 // Textos de fonte que podem conter prazos/quantidades (o validador só aceita prazo que venha deles).
 function sourceTexts(catalog) {
   const k = answerSupportQuestion({ question: "isso substitui meu contador?" }).answer;
   return [SUPPORT_REFUND_ANSWER, SUPPORT_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER,
     SLA_TEXT, REFUND_TEXT, DELIVERY_TEXT, CONFIRMATION_TEXT, RULE_LINE, SUBSCRIPTION_DELIVERY_TEXT, SUBSCRIPTION_REFUND_TEXT, k,
-    ...Object.values(catalog.items).flatMap((i) => [i.content, i.closedSummary])].filter(Boolean).sort((a, b) => b.length - a.length);
+    ...Object.values(catalog.items).flatMap((i) => [i.content, i.closedSummary]), ...KNOWLEDGE_TEXTS].filter(Boolean).sort((a, b) => b.length - a.length);
 }
 
 // ---------- validador do site (somado ao validador do atendente WhatsApp) ----------
@@ -223,7 +263,10 @@ const FIRST_PERSON_CASE = /\b(quero|preciso|exijo|solicito|pe[cç]o|meu|minha|co
 const CORRECTION = /\b(nao (foi|era|e|eh) (isso|bem isso|o que (eu )?perguntei)|resposta errada|ta errad\w*|esta errad\w*|errou|voce nao entendeu|nao entendeu|nao respondeu|nada a ver|nao e isso)\b/;
 const SLA_Q = /\b(prazo de (resposta|atendimento|retorno)|quanto tempo (voces |o suporte )?(demora|demoram|leva|levam) (para|pra) responder|em quanto tempo (voces )?respondem|\bsla\b)/;
 const GREETING = /^(oi+|ola|bom dia|boa tarde|boa noite|e ai|hello|hi|hey|tudo bem|opa|salve|oie)\b[\s!?.,]*(tudo bem\??)?[\s!?.,]*$/;
-const MENU_Q = /\b((quais|que) (sao (os|as) )?(produtos|solucoes|materiais)|o que voces (vendem|tem|oferecem)|o que vcs (vendem|tem)|me mostra (as )?solucoes|catalogo)\b/;
+const MENU_Q = /\b((quais|que) (sao (os|as) )?(produtos|solucoes|materiais|servicos|cursos|treinamentos)|o que voces (vendem|tem|oferecem|fazem)|o que vcs (vendem|tem|fazem)|o que (a )?(zevanory|empresa|loja) (vende|tem|oferece|faz)|o que (e )?vendido|o que tem (pra|para) (vender|comprar)|lista de produtos|produtos de voces|me mostra (as )?solucoes|catalogo|o que voces trabalham|com o que (voces|a zevanory) trabalha)\b/;
+// R148: dúvidas institucionais (quem é a empresa, dados oficiais, contato) têm resposta fixa, sem escalonar.
+const COMPANY_Q = /\b(quem (e|eh|sao) (a |voces|vcs)?\s*(zevanory|empresa)?|quem sao voces|sobre a (zevanory|empresa)|o que e a zevanory|a zevanory e|zevanory e (uma )?empresa|quem (criou|fundou|e o dono|e o responsavel|esta por tras)|dono da (zevanory|empresa)|criador|fundador|cnpj|razao social|endereco|onde (fica|ficam|voces ficam|e a empresa|esta localizad)|de onde (e|sao) (a empresa|voces)|empresa (e )?(confiavel|seria|registrada|legalizada|de verdade|real)|(e|eh) (confiavel|seguro comprar|seria|empresa de verdade|empresa real)|existe mesmo)\b/;
+const CONTACT_Q = /\b(contato|como (falo|entro em contato|contato|posso falar)|falar com voces|e-?mail de (voces|contato|suporte)|qual (o |e o )?e-?mail|telefone|numero de (contato|telefone)|tem (telefone|celular)|horario de atendimento|canal de atendimento|como (pe[cç]o|pedir) (ajuda|suporte)|suporte)\b/;
 const CONDITION = /(preco|valor|quanto|custa|custo|investimento|parcel|forma(s)? de pagamento|como (eu )?(pago|pagar|faco para pagar)|aceita(m)? (pix|cartao|boleto)|desconto|cupom|promoc|black friday|bonus|brinde|gratis|de graca|\bcomprar\b|\bcompro\b|\bcompra\b|adquirir|assinar|assinatura (custa|sai)|contratar|link de (compra|pagamento)|checkout|disponivel para|tem vaga|reserv|quando (abre|abrem|volta|voltam)|abrir as vendas|vendas (abertas|fechadas)|esta a venda|ta a venda|posso pagar|pagar com|sai por|tabela)/;
 const CONTENT = /(conteudo|o que (vem|tem|inclui|e|eh|ensina|aprendo|vou aprender)|inclui|incluid|modulo|material|aprend|serve para|serve pra|para quem|pra quem|publico|requisito|preciso saber|formato|como funciona o|como funciona a assinatura|do que se trata|explica|explique|me fala (do|da|sobre)|detalhes|sobre o|sobre a|fala sobre|e bom|vale a pena|diferenca|compar|qual (e )?melhor|qual escolher|qual (eu )?devo)/;
 const LIMITS = /\b(substitu\w*|contador|contabilidade|contabil|consultori\w*|garant\w* que|vou vender mais|resultado garantido|vou ficar rico)/;
@@ -281,12 +324,15 @@ export function classify(message, { corrections = 0 } = {}) {
     return { kind: "escalate", category: cat, correction };
   }
   if (SLA_Q.test(n)) return { kind: "policy", topic: "sla", correction };
+  if (MENU_Q.test(n) && !resolveProduct(n)) return { kind: "menu", full: true, correction };
+  if (COMPANY_Q.test(n) && !CONDITION.test(n)) return { kind: "company", correction };
+  if (CONTACT_Q.test(n) && !CONDITION.test(n)) return { kind: "contact", correction };
   if (LIMITS.test(n)) return { kind: "limits", correction };
   if (CONDITION.test(n)) return { kind: "condition", correction };
   if (GREETING.test(n)) return { kind: "greeting", correction };
   const slug = resolveProduct(n);
   if (mentionedProducts(n).length >= 2 && /(diferenca|compar|\bou\b|\bvs\b|versus|o que muda|qual (e )?melhor|qual escolher)/.test(n)) return { kind: "compare", correction };
-  if (slug && (CONTENT.test(n) || n.split(" ").length <= 6)) return { kind: "content", slug, correction };
+  if (slug && (CONTENT.test(n) || n.split(" ").length <= 6 || FACETS.some(([, re]) => re.test(n)) || (KNOWLEDGE[slug] && faqMatch(KNOWLEDGE[slug], message)))) return { kind: "content", slug, correction };
   // Pacotes (combo/completo) citados pela necessidade vencem a menção isolada de um tema; depois o produto
   // citado; depois a necessidade descrita.
   const bundle = NEEDS.slice(0, 2).find(([re]) => re.test(n));
@@ -313,6 +359,15 @@ export function mentionedProducts(message) {
 // ---------- respostas determinísticas ----------
 const PRODUCT_LIST = "IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas, Negócio Completo e Conteúdo Pronto";
 const MENU = `Olá! Sou o assistente automático da ZEVANORY. Posso explicar ${PRODUCT_LIST}, comparar os materiais e as políticas de entrega e arrependimento. Sobre o que você quer saber?`;
+// R148: respostas institucionais fixas (fonte: politica-unica LEGAL_IDENTITY e catálogo). Sem preço, sem link de compra.
+const COMPANY_REPLY = `A ZEVANORY é uma empresa brasileira de materiais digitais práticos para pequenos negócios e profissionais autônomos: IA no dia a dia, vendas, lucro e caixa, e conteúdo pronto para divulgação. Foi criada por Renan Bitu e opera com o próprio método que ensina. Dados oficiais: ${LEGAL_IDENTITY}. Atendimento por e-mail: ${SUPPORT_EMAIL}, ou pelo formulário com protocolo ${ATENDIMENTO_URL}. Veja todas as soluções em ${SALES_ORIGIN}/solucoes`;
+const CONTACT_REPLY = `O atendimento da ZEVANORY é por e-mail: ${SUPPORT_EMAIL}. Você também pode abrir um pedido com protocolo em ${ATENDIMENTO_URL}, ou clicar em "Falar com uma pessoa" aqui no chat. ${SLA_TEXT} Não há atendimento por telefone.`;
+function fullMenu(catalog, salesOpen) {
+  const order = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo", "conteudo-pronto"].filter((s) => catalog.items[s]);
+  const lines = order.map((s) => { const it = catalog.items[s]; return `• ${it.name}: ${s === "conteudo-pronto" ? it.closedSummary : it.content}`; });
+  return [`A ZEVANORY vende materiais digitais práticos para pequenos negócios e profissionais autônomos:`, ...lines,
+    `${salesOpen ? "" : `No momento, ${CLOSED_LABEL}. `}Pergunte sobre qualquer um deles que eu explico em detalhe. Todas as soluções: ${SALES_ORIGIN}/solucoes`].join("\n");
+}
 const INJECTION_REPLY = `Só posso ajudar com os produtos e as políticas oficiais da ZEVANORY. Quer saber sobre ${PRODUCT_LIST}?`;
 const CORRECTION_REPLY = "Desculpe se não entendi. Pode me dizer de outro jeito o que você quer saber? Se preferir, uma pessoa da equipe continua por e-mail.";
 const HANDOFF_ASK = `Informe seu e-mail abaixo para receber a confirmação e a resposta da equipe. Se preferir, escreva para ${SUPPORT_EMAIL} ou use o formulário ${ATENDIMENTO_URL}`;
@@ -364,7 +419,10 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   if (c.kind === "escalate") return { ...escalate(c.category), correction: Boolean(c.correction) };
   if (c.kind === "injection") return { body: INJECTION_REPLY, mode: "injection_refused", category: "injection", actions: [] };
   if (c.kind === "correction") return { body: CORRECTION_REPLY, mode: "correction", category: "correction", correction: true, actions: [{ type: "handoff" }] };
+  if (c.kind === "menu" && c.full && catalog.ok) return { body: fullMenu(catalog, salesOpen), mode: "menu", category: "menu", correction: Boolean(c.correction), actions: [] };
   if (c.kind === "greeting" || c.kind === "menu") return { body: MENU, mode: "menu", category: "menu", correction: Boolean(c.correction), actions: [] };
+  if (c.kind === "company") return { body: COMPANY_REPLY, mode: "company", category: "company", correction: Boolean(c.correction), actions: [] };
+  if (c.kind === "contact") return { body: CONTACT_REPLY, mode: "contact", category: "contact", correction: Boolean(c.correction), actions: [{ type: "handoff" }] };
   // Fonte ausente, vencida ou conflitante: recusa factual e escalonamento (nada de preço ou descrição).
   const needsCatalog = ["condition", "content", "compare", "recommend"].includes(c.kind);
   if (needsCatalog && (!catalog.ok || (slug && catalog.conflicts.includes(slug)))) return escalate("source_conflict");
@@ -394,7 +452,10 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
     det = { body: pick.map((s) => describe(catalog.items[s])).join(" ") + closedTail, mode: "compare", category: "content", product: null };
   } else if (c.kind === "content") {
     if (off("content")) return emailOnly;
-    det = { body: describe(catalog.items[c.slug]) + closedTail, mode: "content", category: "content", product: c.slug };
+    const it = catalog.items[c.slug];
+    const ka = knowledgeAnswer(c.slug, message, { name: it.name });
+    const body = !ka ? describe(it) : ka.facet === "overview" ? `${describe(it)}\n${ka.text}` : `${ka.text}\nPágina: ${it.page}`;
+    det = { body: body + (ka && ka.facet !== "overview" ? closedTail.replace(/^ /, "\n") : closedTail), mode: "content", category: "content", product: c.slug, facet: ka?.facet || null };
   } else if (c.kind === "recommend") {
     if (off("recommendation")) return emailOnly;
     const it = catalog.items[c.slug];

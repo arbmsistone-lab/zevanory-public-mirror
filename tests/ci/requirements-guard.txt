@@ -1,0 +1,3 @@
+# G4: dependências declaradas da suíte e do executor de mutantes do guarda (tests/ci/*required_check_guard*, test_mutants_runner).
+# O executor checa estas dependências no mesmo interpretador da suíte e devolve INCONCLUSIVO se faltarem (fail-closed).
+PyYAML==6.0.2
