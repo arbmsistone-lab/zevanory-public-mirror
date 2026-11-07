@@ -454,6 +454,18 @@ def apply_presentation(slug: str, html: str) -> str:
     # The offer block is part of the offer section too (the Decreto 7.962 tests anchor on the div).
     html = re.sub(r'<aside class="(hero-panel|offer-side)">(.*?)</aside>', r'<div class="\1">\2</div>', html, flags=re.S)
     html = html.replace('<nav class="site-nav"><a ', '<nav class="site-nav" aria-label="Navegação principal"><a ', 1)
+    # P03 (auditoria de todas as páginas): a 2ª navegação também tem nome acessível (landmark-unique).
+    html = html.replace('<nav class="footer-nav">', '<nav class="footer-nav" aria-label="Rodapé">')
+    if slug in LEGAL:
+        # P03: as jurídicas tinham a barra de navegação DENTRO do <main>, sem skip-link nem banner.
+        # Mesma estrutura das páginas de produto: skip-link, <header> com a nav rotulada, <main id="conteudo">.
+        # Nenhuma palavra do texto jurídico muda; só a estrutura de landmarks.
+        html, n = re.subn(r'<body><main>\s*(<nav class="nav">.*?</nav>)\s*',
+                          lambda m: '<body><a class="skip-link" href="#conteudo">Ir para o conteúdo</a><header class="legal-header">'
+                          + m.group(1).replace('<nav class="nav">', '<nav class="nav" aria-label="Navegação principal">', 1)
+                          + '</header><main id="conteudo">\n', html, count=1, flags=re.S)
+        if n != 1:
+            raise SystemExit(f"{slug}: legal header anchor missing")
     if slug in PRICE_PAGES and "sales-notice" not in html:
         # First thing inside <main> (inside a landmark, read right after the skip link).
         html = re.sub(r"(<main\b[^>]*>)", lambda m: m.group(1) + sales_notice(), html, count=1)
@@ -486,7 +498,7 @@ def apply_approved_overlay() -> None:
         path = OUT / f"{slug}.html"
         if slug == "conteudo-pronto":
             # DEC-04: no public subscription collateral in the first-phase build.
-            path.write_text('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>Página indisponível | ZEVANORY</title></head><body><main><h1>Página indisponível</h1><p>Suporte: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>', encoding="utf-8")
+            path.write_text('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Página indisponível | ZEVANORY</title></head><body><main><h1>Página indisponível</h1><p>Suporte: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>', encoding="utf-8")
             continue
         html = path.read_text(encoding="utf-8")
         head, sep, body = html.partition("</head>")

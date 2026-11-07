@@ -363,7 +363,7 @@ main{display:block;overflow:visible;overflow-x:clip}
 .lead-form label,.calc label{font-weight:700}
 input[type=email],input[type=text],input[type=number],select{min-height:48px;padding:0 var(--s-4);border:1px solid var(--linha);border-radius:var(--controle);background:var(--cupom);font-size:1rem}
 .lead-consent{display:flex;gap:var(--s-3);align-items:flex-start;font-weight:400}
-.lead-consent input{width:24px;height:24px;margin-top:var(--s-1);accent-color:var(--azul-cedula)}
+.lead-consent input{flex:0 0 24px;width:24px;height:24px;margin-top:var(--s-1);accent-color:var(--azul-cedula)}
 .lead-note,.calc-hint{margin:0;color:var(--grafite);font-size:var(--t-0)}
 .lead-hp{position:absolute;left:-10000px;width:4px;height:4px;overflow:hidden}
 .checklist-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-5)}

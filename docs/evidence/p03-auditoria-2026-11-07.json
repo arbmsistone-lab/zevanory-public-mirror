@@ -1,0 +1,726 @@
+{
+ "schema": "zevanory.p03-auditoria.v1",
+ "data": "2026-11-07",
+ "base_sha": "9a6f1a86f287eb982fa6e6711d5b27d11fdd5da1",
+ "escopo": "todas as páginas HTML de sales-public/ (servidas pelo Worker real em 127.0.0.1), 360x740 e 1350x900, temas claro e escuro",
+ "ferramentas": {
+  "auditor": "scripts/audit/p03-all-pages-audit.mjs (+ p03-pages-static.mjs, p03-pages-browser.mjs)",
+  "axe_core_local": "4.14.0",
+  "axe_core_ci": "4.10.3",
+  "playwright_local": "1.63.0",
+  "playwright_ci": "1.55.0",
+  "chromium_local": "153.0.8010.12",
+  "axe_tags": [
+   "wcag2a",
+   "wcag2aa",
+   "wcag21a",
+   "wcag21aa",
+   "wcag22aa",
+   "best-practice"
+  ]
+ },
+ "pagina_72": {
+  "arquivo": "sales-public/404.html",
+  "motivo": "gerada em main() de scripts/build_sales_public.py fora de HTML_ROUTES; não existia no head do #867 (71 páginas = 70 rotas + index.html); noindex e fora do sitemap por desenho; servida pelo Worker com status 404 em qualquer rota de página desconhecida",
+  "cobertura_antes": "nenhum gate de acessibilidade a auditava (sales-ux: 10 páginas; #867 aberto: 71)",
+  "resultado": "0 achados antes e depois"
+ },
+ "inventario": {
+  "paginas_html": 72,
+  "html_routes_gerador": 70,
+  "extras": [
+   "index (cópia física de /solucoes, servida em /index.html, canonical /solucoes)",
+   "404 (servida em rota desconhecida, status 404)"
+  ],
+  "sitemap_locs": 68,
+  "fora_do_sitemap": [
+   "404",
+   "checklist-15-minutos",
+   "conteudo-pronto"
+  ],
+  "paginas": [
+   {
+    "slug": "404",
+    "path": "/p03-rota-inexistente",
+    "status": 404,
+    "indexable": false,
+    "inSitemap": false
+   },
+   {
+    "slug": "afiliados",
+    "path": "/afiliados",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "arbm-contador-saloes",
+    "path": "/arbm-contador-saloes",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "calculadora-cmv",
+    "path": "/calculadora-cmv",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "calculadora-fluxo-de-caixa",
+    "path": "/calculadora-fluxo-de-caixa",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "calculadora-margem-de-lucro",
+    "path": "/calculadora-margem-de-lucro",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "calculadora-ponto-de-equilibrio",
+    "path": "/calculadora-ponto-de-equilibrio",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "calculadora-preco-de-venda",
+    "path": "/calculadora-preco-de-venda",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "calculadora-preco-hora-servico",
+    "path": "/calculadora-preco-hora-servico",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "calculadora-taxa-maquininha",
+    "path": "/calculadora-taxa-maquininha",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "checklist-15-minutos",
+    "path": "/checklist-15-minutos",
+    "status": 200,
+    "indexable": false,
+    "inSitemap": false
+   },
+   {
+    "slug": "combo-ia-vendas",
+    "path": "/combo-ia-vendas",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "como-cobrar-cliente-pelo-whatsapp",
+    "path": "/como-cobrar-cliente-pelo-whatsapp",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "como-mandar-orcamento-pelo-whatsapp",
+    "path": "/como-mandar-orcamento-pelo-whatsapp",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "conteudo-pronto",
+    "path": "/conteudo-pronto",
+    "status": 404,
+    "indexable": false,
+    "inSitemap": false
+   },
+   {
+    "slug": "ferramentas",
+    "path": "/ferramentas",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-na-pratica",
+    "path": "/ia-na-pratica",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-academia",
+    "path": "/ia-para-academia",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-acaiteria",
+    "path": "/ia-para-acaiteria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-advocacia",
+    "path": "/ia-para-advocacia",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-agencia-de-viagens",
+    "path": "/ia-para-agencia-de-viagens",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-arquitetura-e-design-de-interiores",
+    "path": "/ia-para-arquitetura-e-design-de-interiores",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-assistencia-tecnica-de-celular",
+    "path": "/ia-para-assistencia-tecnica-de-celular",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-autoescola",
+    "path": "/ia-para-autoescola",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-barbearia",
+    "path": "/ia-para-barbearia",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-clinica-e-consultorio",
+    "path": "/ia-para-clinica-e-consultorio",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-clinica-odontologica",
+    "path": "/ia-para-clinica-odontologica",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-confeitaria",
+    "path": "/ia-para-confeitaria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-contabilidade",
+    "path": "/ia-para-contabilidade",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-deposito-de-bebidas",
+    "path": "/ia-para-deposito-de-bebidas",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-distribuidora-de-gas-e-agua",
+    "path": "/ia-para-distribuidora-de-gas-e-agua",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-eletricista-e-encanador",
+    "path": "/ia-para-eletricista-e-encanador",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-escola-de-idiomas",
+    "path": "/ia-para-escola-de-idiomas",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-estetica",
+    "path": "/ia-para-estetica",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-farmacia",
+    "path": "/ia-para-farmacia",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-fisioterapia",
+    "path": "/ia-para-fisioterapia",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-floricultura",
+    "path": "/ia-para-floricultura",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-fotografo",
+    "path": "/ia-para-fotografo",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-hamburgueria",
+    "path": "/ia-para-hamburgueria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-imobiliaria",
+    "path": "/ia-para-imobiliaria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-lava-jato",
+    "path": "/ia-para-lava-jato",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-loja-de-roupas",
+    "path": "/ia-para-loja-de-roupas",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-manicure",
+    "path": "/ia-para-manicure",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-marmitaria",
+    "path": "/ia-para-marmitaria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-materiais-de-construcao",
+    "path": "/ia-para-materiais-de-construcao",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-mercadinho",
+    "path": "/ia-para-mercadinho",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-nutricionista",
+    "path": "/ia-para-nutricionista",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-oficina-mecanica",
+    "path": "/ia-para-oficina-mecanica",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-otica",
+    "path": "/ia-para-otica",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-padaria",
+    "path": "/ia-para-padaria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-papelaria",
+    "path": "/ia-para-papelaria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-pet-shop",
+    "path": "/ia-para-pet-shop",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-pizzaria",
+    "path": "/ia-para-pizzaria",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-pousada",
+    "path": "/ia-para-pousada",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-psicologo",
+    "path": "/ia-para-psicologo",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-restaurante-e-lanchonete",
+    "path": "/ia-para-restaurante-e-lanchonete",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-para-salao-de-beleza",
+    "path": "/ia-para-salao-de-beleza",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "ia-por-ramo",
+    "path": "/ia-por-ramo",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "index",
+    "path": "/index.html",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "kit-afiliado",
+    "path": "/kit-afiliado",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "lucro-e-caixa",
+    "path": "/lucro-e-caixa",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "material-gratuito",
+    "path": "/material-gratuito",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "mensagem-para-cliente-que-sumiu",
+    "path": "/mensagem-para-cliente-que-sumiu",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "negocio-completo",
+    "path": "/negocio-completo",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "privacidade",
+    "path": "/privacidade",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "quem-criou",
+    "path": "/quem-criou",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "reembolso",
+    "path": "/reembolso",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "solucoes",
+    "path": "/solucoes",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "termos",
+    "path": "/termos",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "vendas-na-pratica",
+    "path": "/vendas-na-pratica",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "zevanory-cfo",
+    "path": "/zevanory-cfo",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   },
+   {
+    "slug": "zevanory-sales",
+    "path": "/zevanory-sales",
+    "status": 200,
+    "indexable": true,
+    "inSitemap": true
+   }
+  ]
+ },
+ "antes": {
+  "build_sha256": "780b6c8d68e20ca65732653c58724f5bb8c7e554a069227a224088f5e8e7769b",
+  "celulas": 288,
+  "achados_estaticos": [
+   {
+    "code": "S08",
+    "page": "afiliados",
+    "msg": "skip-link ausente ou não é o primeiro elemento do body"
+   },
+   {
+    "code": "S09",
+    "page": "afiliados",
+    "msg": "sem <header> (landmark banner)"
+   },
+   {
+    "code": "S09",
+    "page": "checklist-15-minutos",
+    "msg": "várias <nav> e alguma sem rótulo acessível"
+   },
+   {
+    "code": "S07",
+    "page": "conteudo-pronto",
+    "msg": "sem meta viewport width=device-width"
+   },
+   {
+    "code": "S09",
+    "page": "index",
+    "msg": "várias <nav> e alguma sem rótulo acessível"
+   },
+   {
+    "code": "S09",
+    "page": "material-gratuito",
+    "msg": "várias <nav> e alguma sem rótulo acessível"
+   },
+   {
+    "code": "S08",
+    "page": "privacidade",
+    "msg": "skip-link ausente ou não é o primeiro elemento do body"
+   },
+   {
+    "code": "S09",
+    "page": "privacidade",
+    "msg": "sem <header> (landmark banner)"
+   },
+   {
+    "code": "S08",
+    "page": "reembolso",
+    "msg": "skip-link ausente ou não é o primeiro elemento do body"
+   },
+   {
+    "code": "S09",
+    "page": "reembolso",
+    "msg": "sem <header> (landmark banner)"
+   },
+   {
+    "code": "S09",
+    "page": "solucoes",
+    "msg": "várias <nav> e alguma sem rótulo acessível"
+   },
+   {
+    "code": "S08",
+    "page": "termos",
+    "msg": "skip-link ausente ou não é o primeiro elemento do body"
+   },
+   {
+    "code": "S09",
+    "page": "termos",
+    "msg": "sem <header> (landmark banner)"
+   },
+   {
+    "code": "S09",
+    "page": "zevanory-cfo",
+    "msg": "várias <nav> e alguma sem rótulo acessível"
+   }
+  ],
+  "achados_navegador_total": 192,
+  "achados_navegador_agrupados": [
+   {
+    "codigo": "B04",
+    "achado": "1 alvo(s) < 24 px: input\"sim\"",
+    "celulas": 192,
+    "paginas": [
+     "calculadora-cmv",
+     "calculadora-fluxo-de-caixa",
+     "calculadora-margem-de-lucro",
+     "calculadora-ponto-de-equilibrio",
+     "calculadora-preco-de-venda",
+     "calculadora-preco-hora-servico",
+     "calculadora-taxa-maquininha",
+     "ia-para-academia",
+     "ia-para-acaiteria",
+     "ia-para-advocacia",
+     "ia-para-agencia-de-viagens",
+     "ia-para-arquitetura-e-design-de-interiores",
+     "ia-para-assistencia-tecnica-de-celular",
+     "ia-para-autoescola",
+     "ia-para-barbearia",
+     "ia-para-clinica-e-consultorio",
+     "ia-para-clinica-odontologica",
+     "ia-para-confeitaria",
+     "ia-para-contabilidade",
+     "ia-para-deposito-de-bebidas",
+     "ia-para-distribuidora-de-gas-e-agua",
+     "ia-para-eletricista-e-encanador",
+     "ia-para-escola-de-idiomas",
+     "ia-para-estetica",
+     "ia-para-farmacia",
+     "ia-para-fisioterapia",
+     "ia-para-floricultura",
+     "ia-para-fotografo",
+     "ia-para-hamburgueria",
+     "ia-para-imobiliaria",
+     "ia-para-lava-jato",
+     "ia-para-loja-de-roupas",
+     "ia-para-manicure",
+     "ia-para-marmitaria",
+     "ia-para-materiais-de-construcao",
+     "ia-para-mercadinho",
+     "ia-para-nutricionista",
+     "ia-para-oficina-mecanica",
+     "ia-para-otica",
+     "ia-para-padaria",
+     "ia-para-papelaria",
+     "ia-para-pet-shop",
+     "ia-para-pizzaria",
+     "ia-para-pousada",
+     "ia-para-psicologo",
+     "ia-para-restaurante-e-lanchonete",
+     "ia-para-salao-de-beleza",
+     "material-gratuito"
+    ]
+   }
+  ],
+  "por_codigo": {
+   "S08": 4,
+   "S09": 9,
+   "S07": 1,
+   "B04": 192
+  },
+  "paginas_com_achado": 57
+ },
+ "depois": {
+  "build_sha256": "9c815f6be96991373f439d386a5ecd44cba846f839aeac6451c514fbc7633a61",
+  "celulas": 288,
+  "achados_estaticos": 0,
+  "achados_navegador": 0,
+  "axe_moderate_minor": {},
+  "paradas_de_tab": 8804,
+  "pedidos_externos_bloqueados": 0,
+  "pass": true
+ },
+ "observacoes": [
+  {
+   "id": "O1",
+   "tema": "alvo 44 px (padrão interno)",
+   "texto": "a caixa de consentimento mede 24x24 (2.5.8 AA atendido); a área de clique efetiva é o <label> que a envolve (280x180 em 360 px, 1072x71 em 1350 px). Registrado, não falha."
+  },
+  {
+   "id": "O2",
+   "tema": "preço citado sem aviso",
+   "texto": "50 páginas citam preços da tabela C em texto corrido (ex.: 'IA na Prática (R$ 97)') com link para a página do produto, que traz o aviso; o aviso de vendas fechadas é exigido nas páginas com CTA, bloco de preço ou catálogo (todas conformes). Estender o aviso a essas páginas exige incluí-las em SALES_TOGGLE_PAGES do Worker (no-store e consulta ao interruptor por pedido): decisão do proprietário, fora deste PR."
+  },
+  {
+   "id": "O3",
+   "tema": "canonical com barra",
+   "texto": "/quem-criou tem canonical e sitemap em /quem-criou/ (coerentes entre si); os links internos usam /quem-criou e o Worker serve as duas formas com 200. Sem mudança (mudar a canonical indexada é decisão de SEO)."
+  },
+  {
+   "id": "O4",
+   "tema": "tombstone do Conteúdo Pronto",
+   "texto": "/conteudo-pronto é respondida pelo Worker (DEC-04, 404 noindex) antes dos arquivos estáticos; o arquivo gerado nunca é servido no domínio de vendas, mas é publicado no espelho Pages. Ganhou o meta viewport que faltava."
+  },
+  {
+   "id": "O5",
+   "tema": "avaliações via Worker",
+   "texto": "o Worker só insere resumo de avaliações com CORE ligado e >= 3 avaliações reais do banco; no build fechado e no servidor local não há inserção. Não é fabricação, mas não foi exercido aqui."
+  }
+ ]
+}

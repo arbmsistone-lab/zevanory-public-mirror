@@ -1,0 +1,294 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Pn.k]/[Nn.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 arquivo fora do inventário aceito": {
+   "primary": [
+    {
+     "test_pattern": "P2",
+     "assertion_pattern": "[P2.2]"
+    }
+   ]
+  },
+  "M02 rotas do Worker não comparadas": {
+   "primary": [
+    {
+     "test_pattern": "P2",
+     "assertion_pattern": "[P2.3]"
+    }
+   ]
+  },
+  "M03 lang não conferido": {
+   "primary": [
+    {
+     "test_pattern": "P4",
+     "assertion_pattern": "[P4.1]"
+    }
+   ]
+  },
+  "M04 vários h1 aceitos": {
+   "primary": [
+    {
+     "test_pattern": "P4",
+     "assertion_pattern": "[P4.3]"
+    }
+   ]
+  },
+  "M05 viewport não conferido": {
+   "primary": [
+    {
+     "test_pattern": "P4",
+     "assertion_pattern": "[P4.6]"
+    }
+   ]
+  },
+  "M06 skip-link não exigido": {
+   "primary": [
+    {
+     "test_pattern": "P4",
+     "assertion_pattern": "[P4.7]"
+    }
+   ]
+  },
+  "M07 banner não exigido": {
+   "primary": [
+    {
+     "test_pattern": "P4",
+     "assertion_pattern": "[P4.9]"
+    }
+   ]
+  },
+  "M08 link interno quebrado aceito": {
+   "primary": [
+    {
+     "test_pattern": "P5",
+     "assertion_pattern": "[P5.1]"
+    }
+   ]
+  },
+  "M09 âncora local não conferida": {
+   "primary": [
+    {
+     "test_pattern": "P5",
+     "assertion_pattern": "[P5.2]"
+    }
+   ]
+  },
+  "M10 canonical não conferida": {
+   "primary": [
+    {
+     "test_pattern": "P6",
+     "assertion_pattern": "[P6.1]"
+    }
+   ]
+  },
+  "M11 og:url não conferido": {
+   "primary": [
+    {
+     "test_pattern": "P6",
+     "assertion_pattern": "[P6.3]"
+    }
+   ]
+  },
+  "M12 description repetida aceita": {
+   "primary": [
+    {
+     "test_pattern": "P6",
+     "assertion_pattern": "[P6.7]"
+    }
+   ]
+  },
+  "M13 title repetido aceito": {
+   "primary": [
+    {
+     "test_pattern": "P6",
+     "assertion_pattern": "[P6.6]"
+    }
+   ]
+  },
+  "M14 indexável fora do sitemap aceita": {
+   "primary": [
+    {
+     "test_pattern": "P7",
+     "assertion_pattern": "[P7.3]"
+    }
+   ]
+  },
+  "M15 preço citado fora da tabela C aceito": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.1]"
+    }
+   ]
+  },
+  "M16 preço de tabela da página não conferido": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.2]"
+    }
+   ]
+  },
+  "M17 aviso de vendas fechadas não exigido": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.5]"
+    }
+   ]
+  },
+  "M18 avaliação no texto aceita": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.8]"
+    }
+   ]
+  },
+  "M19 preço de/por aceito": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.11]"
+    }
+   ]
+  },
+  "M20 PRICES do Worker não conferido": {
+   "primary": [
+    {
+     "test_pattern": "P9",
+     "assertion_pattern": "[P9.3]"
+    }
+   ]
+  },
+  "M21 tabela C com preço errado": {
+   "primary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.1]",
+     "justification": "com IA na Prática a R$ 87 na tabela C, a citação de R$ 87 do caso P8.1 passa a ser o preço válido e a regra não acusa"
+    },
+    {
+     "test_pattern": "P9",
+     "assertion_pattern": "[P9.0]",
+     "justification": "a fixture de P9 traz data/products.json, gerador e Worker a R$ 97; contra a tabela C mutada os três divergem e P9.0 deixa de ser vazio"
+    },
+    {
+     "test_pattern": "P7",
+     "assertion_pattern": "[P7.0]",
+     "justification": "siteChecks também confere a tabela C contra a fixture (S19); com a tabela mutada o controle P7.0 deixa de ser vazio (acrescentado depois da 1ª execução, que classificou o mutante como INCONCLUSIVE por esta falha não prevista)"
+    }
+   ]
+  },
+  "M22 axe só critical": {
+   "primary": [
+    {
+     "test_pattern": "N3",
+     "assertion_pattern": "[N3.2]"
+    }
+   ]
+  },
+  "M23 rolagem horizontal aceita": {
+   "primary": [
+    {
+     "test_pattern": "N4",
+     "assertion_pattern": "[N4.1]"
+    }
+   ]
+  },
+  "M24 alvo mínimo reduzido": {
+   "primary": [
+    {
+     "test_pattern": "N5",
+     "assertion_pattern": "[N5.1]"
+    }
+   ]
+  },
+  "M25 skip-link não seguido até o main": {
+   "primary": [
+    {
+     "test_pattern": "N6",
+     "assertion_pattern": "[N6.1]"
+    }
+   ]
+  },
+  "M26 foco sem indicador aceito": {
+   "primary": [
+    {
+     "test_pattern": "N7",
+     "assertion_pattern": "[N7.1]"
+    }
+   ]
+  },
+  "M27 tabindex positivo aceito": {
+   "primary": [
+    {
+     "test_pattern": "N8",
+     "assertion_pattern": "[N8.1]"
+    }
+   ]
+  },
+  "M28 sequência de Tab não conferida": {
+   "primary": [
+    {
+     "test_pattern": "N8",
+     "assertion_pattern": "[N8.2]"
+    }
+   ]
+  },
+  "M29 armadilha de teclado não detectada": {
+   "primary": [
+    {
+     "test_pattern": "N9",
+     "assertion_pattern": "[N9.1]"
+    }
+   ]
+  },
+  "M30 erro de console ignorado": {
+   "primary": [
+    {
+     "test_pattern": "N10",
+     "assertion_pattern": "[N10.1]"
+    }
+   ]
+  },
+  "M31 status HTTP não conferido": {
+   "primary": [
+    {
+     "test_pattern": "N2",
+     "assertion_pattern": "[N2.1]"
+    }
+   ]
+  },
+  "M32 regressão: jurídica sem skip-link": {
+   "primary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.3]"
+    }
+   ]
+  },
+  "M33 regressão: rota prevista sem página": {
+   "primary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.2]"
+    }
+   ]
+  },
+  "M34 regressão: rodapé sem nome acessível": {
+   "primary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.3]"
+    }
+   ]
+  }
+ }
+}
