@@ -54,9 +54,10 @@ test("TG01 formato do segredo: só '<token>|<chat_id>' válido liga o alerta", (
   for (const bad of ["", undefined, TOKEN, `${TOKEN}|`, `|${CHAT}`, `abc|${CHAT}`, `${TOKEN}|${CHAT}|x`, `${TOKEN}|chat`]) assert.equal(parseTelegramAlert(bad), null, `[TG01.3] ${bad}`);
 });
 
-test("TG02 texto do alerta: protocolo, tipo e prazo; nenhum dado pessoal do cliente", () => {
+test("TG02 texto do alerta: só tipo e prazo; nenhum dado pessoal nem identificador indireto (protocolo)", () => {
   const t = telegramAlertText({ protocolo: PROTO, tipo: "reclamacao", responder_ate: "2026-11-12T12:00:00.000Z" });
-  assert.ok(t.includes(PROTO), "[TG02.1]");
+  assert.doesNotMatch(t, /ZEV-\d{8}-[0-9A-F]{10}/, "[TG02.1] protocolo nunca vai ao Telegram");
+  assert.match(t, /12\/11\/2026/, "[TG02.3] prazo presente");
   assert.doesNotMatch(t, /@example|cliente|hp123|Mensagem pessoal/i, "[TG02.2] sem e-mail, pedido ou mensagem do cliente");
 });
 
@@ -68,7 +69,7 @@ test("TG03 com segredo: alerta sai uma vez, depois do e-mail oficial, para o cha
   const tg = h.calls.find((c) => c.kind === "telegram");
   assert.equal(tg.url, `${TELEGRAM_API}/bot${TOKEN}/sendMessage`, "[TG03.2]");
   assert.equal(tg.body.chat_id, CHAT, "[TG03.3]");
-  assert.doesNotMatch(JSON.stringify(tg.body), /sigilo|hp123|Mensagem pessoal/, "[TG03.4] nenhum dado pessoal no Telegram");
+  assert.doesNotMatch(JSON.stringify(tg.body), /sigilo|hp123|Mensagem pessoal|ZEV-\d{8}/, "[TG03.4] nenhum dado pessoal nem protocolo no Telegram");
   assert.equal(h.states.owner, "sent"); assert.equal(h.states.customer, "sent");
 });
 

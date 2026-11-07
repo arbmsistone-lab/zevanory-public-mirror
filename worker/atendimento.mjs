@@ -257,10 +257,11 @@ async function resendSend(c, { idempotencyKey, to, subject, text, replyTo }) {
 
 // R150: "toque" no celular do proprietário pelo Telegram, só DEPOIS que o e-mail oficial à equipe saiu.
 // O e-mail continua sendo o registro oficial; o Telegram é melhor esforço (falha não altera nada) e NÃO leva dado
-// pessoal do cliente: só protocolo, tipo e prazo. Segredo único TELEGRAM_ALERT = "<token do robô>|<chat_id>".
+// pessoal do cliente nem identificador indireto: só tipo e prazo (o protocolo fica só no e-mail). Segredo único TELEGRAM_ALERT = "<token do robô>|<chat_id>".
 export const TELEGRAM_API = "https://api.telegram.org";
 export function telegramAlertText(row) {
-  return `ZEVANORY: novo atendimento ${row.protocolo} (${TIPOS[row.tipo] || row.tipo}). Responder até ${brDate(toMs(row.responder_ate))}. Detalhes no e-mail zevanory@gmail.com.`;
+  // Sem protocolo: ele é identificador indireto do cliente. O Telegram só avisa que há algo a ver no e-mail oficial.
+  return `ZEVANORY: novo atendimento (${TIPOS[row.tipo] || row.tipo}). Responder até ${brDate(toMs(row.responder_ate))}. Detalhes e protocolo no e-mail zevanory@gmail.com.`;
 }
 export function parseTelegramAlert(v) {
   const m = String(v || "").trim().match(/^(\d{5,15}:[A-Za-z0-9_-]{20,80})\|(-?\d{4,20})$/);
