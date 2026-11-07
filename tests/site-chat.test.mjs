@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {
   handleSiteChat, handleSiteChatAdmin, composeReply, guardReply, validateSiteReply, classify, redactSensitive,
   resetSiteChatState, buildCatalog, CATALOG, CHAT, CLOSED_PRICE_ANSWER, KILL_KV_KEY, CATEGORIES_OFF_KV_KEY, ESCALATION_CATEGORIES,
-  readSiteChatFlags
+  readSiteChatFlags, KNOWLEDGE, knowledgeAnswer
 } from "../worker/site-chat.mjs";
 import salesWorker, { injectSiteChatHtml, shouldInjectSiteChat, siteChatEnabled, SITE_CHAT_PAGES } from "../worker/sales-public-worker.mjs";
 import { SUPPORT_REFUND_ANSWER, SUPPORT_DELIVERY_ANSWER, SLA_TEXT, SUPPORT_FORM_URL } from "../worker/politica-unica.mjs";
@@ -453,4 +453,35 @@ test("SC19 sensitive health/religion content is removed, category retained, stru
     assert.ok(!ordinary.text.includes(leak), "[SC19.7]");
   }
   assert.match(ordinary.text, /\[removido\]/, "[SC19.8]");
+});
+
+test("SC20 conhecimento oficial (R148): cada item vem da página publicada, passa no validador e responde sem escalar", async () => {
+  const pages = Object.fromEntries(Object.keys(KNOWLEDGE).map((s) => [s, readTextNormalized(new URL(`../sales-public/${s}.html`, import.meta.url))]));
+  const unescape = (t) => t.replace(/&amp;/g, "&").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"');
+  assert.deepEqual(Object.keys(KNOWLEDGE).sort(), ["combo-ia-vendas", "ia-na-pratica", "lucro-e-caixa", "negocio-completo", "vendas-na-pratica"], "[SC20.1]");
+  for (const [slug, k] of Object.entries(KNOWLEDGE)) {
+    const page = unescape(pages[slug]);
+    for (const item of [...k.receive, ...k.audience, ...k.not_for, k.license, ...k.faq.flatMap((f) => [f.q, f.a])].filter(Boolean)) {
+      assert.ok(page.includes(item), `[SC20.2] ${slug}: texto fora da página oficial`);
+      for (const salesOpen of [false, true]) assert.ok(validateSiteReply(item, { salesOpen }).ok, `[SC20.3] ${slug}`);
+    }
+    assert.ok(k.receive.length >= 2 && k.audience.length >= 1, "[SC20.4]");
+  }
+  for (const [q, mode, inc] of [
+    ["O que a ZEVANORY vende?", "menu", "Conteúdo Pronto"],
+    ["Quem é a ZEVANORY?", "company", "69.077.233/0001-99"],
+    ["Qual o telefone?", "contact", "Não há atendimento por telefone."],
+    ["Quais arquivos vêm no Negócio Completo?", "content", "Painel de decisão integrada (XLSX)"],
+    ["Posso revender o IA na Prática?", "content", "não é permitido revender"],
+    ["O Negócio Completo é um sistema de gestão?", "content", "É um pacote de método e conteúdo"],
+  ]) {
+    for (const salesOpen of [false, true]) {
+      const r = await composeReply({ message: q, salesOpen });
+      assert.equal(r.mode, mode, `[SC20.5] ${q}`);
+      assert.ok(r.body.includes(inc), `[SC20.6] ${q}`);
+      assert.ok(validateSiteReply(r.body, { salesOpen }).ok, `[SC20.7] ${q}`);
+    }
+  }
+  assert.equal(knowledgeAnswer("conteudo-pronto", "o que vem?", { name: "x" }), null, "[SC20.8] sem página publicada, sem conhecimento inventado");
+  assert.equal(classify("vocês consertam geladeira?").category, "low_confidence", "[SC20.9] fora do escopo continua indo para pessoa");
 });

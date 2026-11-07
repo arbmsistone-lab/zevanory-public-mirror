@@ -144,10 +144,21 @@
   down.appendChild(downLinks);
   body.appendChild(down);
 
+  // R148: atalho no menu superior, ao lado de "Escrever para o suporte". Só existe quando este arquivo é anexado
+  // (SITE_CHAT_ENABLED=true); com o chat desligado a página não muda.
+  var headerBtn = el("button", { type: "button", className: "nav-cta zc-nav-chat", "aria-label": "Fale com a ZEVANORY", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-controls": "zc-panel" });
+  headerBtn.appendChild(el("span", { className: "zc-nav-long", "aria-hidden": "true" }, "Fale com a ZEVANORY"));
+  headerBtn.appendChild(el("span", { className: "zc-nav-short", "aria-hidden": "true" }, "Chat"));
   function mount() {
     var footer = document.querySelector("footer");
     if (footer && footer.parentNode) footer.parentNode.insertBefore(entry, footer); else document.body.appendChild(entry);
     document.body.appendChild(panel);
+    var nav = document.querySelector(".site-nav");
+    var support = nav && nav.querySelector(".nav-cta");
+    if (nav && !nav.querySelector(".zc-nav-chat")) {
+      if (support) nav.insertBefore(headerBtn, support); else nav.appendChild(headerBtn);
+      headerBtn.addEventListener("click", open);
+    }
   }
 
   // ---------- comportamento ----------
@@ -159,14 +170,14 @@
   function open() {
     state.opener = document.activeElement;
     panel.hidden = false;
-    launch.setAttribute("aria-expanded", "true");
+    launch.setAttribute("aria-expanded", "true"); headerBtn.setAttribute("aria-expanded", "true");
     document.documentElement.classList.add("zc-open");
     document.getElementById("zc-title").focus();
     if (!state.notice) loadStatus();
   }
   function close() {
     panel.hidden = true;
-    launch.setAttribute("aria-expanded", "false");
+    launch.setAttribute("aria-expanded", "false"); headerBtn.setAttribute("aria-expanded", "false");
     document.documentElement.classList.remove("zc-open");
     (state.opener && state.opener.focus ? state.opener : launch).focus();
   }
