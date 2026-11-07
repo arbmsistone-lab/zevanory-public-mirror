@@ -21,10 +21,11 @@ export const ENC_MARK = "$enc";
 export const NONCE_BYTES = 12;
 export const KEY_BYTES = 32;
 export const KID_PREFIX = "zevanory-p20-backup-kid/v1|";
-// Fase 1 (este PR): sem P20_BACKUP_KEY o backup segue em texto claro, marcado "nao_cifrado" com alerta.
-// Fase 2 (PR próprio, depois que o proprietário cadastrar a chave e um ensaio mensal aprovar cópia cifrada): true.
-// Com true, sem chave NADA é gravado em claro: a parte falha (fail-closed).
-export const ENCRYPTION_REQUIRED = false;
+// Fase 1 (#982): sem P20_BACKUP_KEY o backup seguia em texto claro, marcado "nao_cifrado" com alerta.
+// Fase 2 (R154, ativa): a chave foi cadastrada e o ensaio mensal ENSAIO_EM_PRODUCAO run 42401391418 (07/11/2026)
+// restaurou 60/60 tabelas com copia_cifrada=true nas 3 partes. Agora, sem chave NADA é gravado em claro:
+// a parte falha (fail-closed, backup_key_absent_encryption_required) e o consolidado com parte não cifrada falha.
+export const ENCRYPTION_REQUIRED = true;
 
 const te = new TextEncoder();
 const td = new TextDecoder("utf-8", { fatal: true });

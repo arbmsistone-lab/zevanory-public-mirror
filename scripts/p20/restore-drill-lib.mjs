@@ -179,6 +179,9 @@ export function validateInventory(doc) {
   for (const c of doc.classes) {
     if (!isObj(c) || typeof c.id !== "string" || typeof c.fonte_da_verdade !== "string" || typeof c.backup !== "string" || !Array.isArray(c.tables)) throw new Error("INVENTORY_MALFORMED class");
     for (const k of ["rpo_objetivo_h", "rto_objetivo_h"]) if (!(c[k] === null || (isNum(c[k]) && c[k] >= 0))) throw new Error("INVENTORY_MALFORMED " + k + " " + c.id);
+    // RPO 0 só vale por origem versionada (SHA publicado = SHA do Git), nunca por tabela do backup do Neon: uma tabela
+    // gravada em runtime numa classe de RPO 0 herdaria um objetivo que o backup diário não cumpre.
+    if (c.rpo_objetivo_h === 0 && (c.tables.length !== 0 || c.rpo_base !== "origem_versionada")) throw new Error("INVENTORY_MALFORMED rpo_zero_sem_origem_versionada " + c.id);
     for (const t of c.tables) {
       if (!TABLE_RE.test(t)) throw new Error("INVENTORY_MALFORMED table " + t);
       if (owner.has(t)) throw new Error("INVENTORY_MALFORMED duplicate " + t);

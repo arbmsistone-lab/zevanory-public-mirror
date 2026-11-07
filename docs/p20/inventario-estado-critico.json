@@ -85,16 +85,18 @@
     },
     {
       "id": "catalogo_conteudo",
-      "nome": "Catálogo, páginas, conteúdos e base de conhecimento",
-      "onde_vive": "Git (data/products.json, sales-public/, páginas) + KV + tabela knowledge_documents",
+      "nome": "Catálogo, páginas e conteúdos versionados",
+      "onde_vive": "Git (data/products.json, sales-public/, páginas) + cópia publicada no Cloudflare (KV/estático)",
       "fonte_da_verdade": "Git",
-      "reconstrucao_por_conciliacao": "Sim: Git é a fonte",
-      "backup": "Git (versionado); knowledge_documents também entra no bundle diário",
+      "reconstrucao_por_conciliacao": "Sim: Git é a fonte; republica-se o commit",
+      "backup": "Git (versionado). Nenhuma tabela do Neon nesta classe: o bundle diário NÃO é a cópia de segurança dela",
       "rpo_objetivo_h": 0,
+      "rpo_base": "origem_versionada",
+      "rpo_nota": "RPO 0 por origem versionada (SHA publicado = SHA do Git), conferido pelo SHA do commit e pela tag de publicação, nunca pelo RPO medido do backup do Neon (Roteiro Mestre v4.7, seção 9.1, linha 936: “Base de conhecimento do atendimento, conteúdos, páginas … 0 (versionado)”). Conteúdo gravado em runtime no Neon não pertence a esta classe.",
       "rto_objetivo_h": 1,
-      "integridade": "SHA do commit; knowledge_documents também por SHA-256 no manifesto",
+      "integridade": "SHA do commit publicado = SHA do Git",
       "status": "PROPOSTA",
-      "tables": ["knowledge_documents"]
+      "tables": []
     },
     {
       "id": "funil_telemetria",
@@ -106,8 +108,11 @@
       "rpo_objetivo_h": 24,
       "rto_objetivo_h": 24,
       "integridade": "Idem pedidos",
+      "notas_tabelas": {
+        "knowledge_documents": "Gravada em runtime pelo autopiloto (persistAutopilotCycle, worker/cloudflare-worker.recovered.mjs, namespace program_drafts) na MESMA instrução que grava intelligence_snapshots e agent_runs; não tem origem no Git, então não pode herdar o RPO 0 do catálogo. Classe do Roteiro Mestre v4.7, seção 9.1, linha 934: “Eventos internos de funil e telemetria” (eventos internos, sem outra fonte, RPO 24 h, perda afeta medição e nunca dinheiro)."
+      },
       "status": "PROPOSTA",
-      "tables": ["telemetry_events", "zevanory_funnel_daily", "zevanory_funnel_visitors", "attribution_touchpoints", "affiliate_attributions", "media_spend_events", "decision_assignments", "decision_experiments", "journey_instances", "customer_identities", "customer_feature_snapshots", "customer_lifecycle_events", "customer_lifecycle_profiles", "intelligence_snapshots", "unit_economics_snapshots", "sales_actions"]
+      "tables": ["knowledge_documents", "telemetry_events", "zevanory_funnel_daily", "zevanory_funnel_visitors", "attribution_touchpoints", "affiliate_attributions", "media_spend_events", "decision_assignments", "decision_experiments", "journey_instances", "customer_identities", "customer_feature_snapshots", "customer_lifecycle_events", "customer_lifecycle_profiles", "intelligence_snapshots", "unit_economics_snapshots", "sales_actions"]
     },
     {
       "id": "operacional",
@@ -161,6 +166,8 @@
       "reconstrucao_por_conciliacao": "Sim",
       "backup": "Git",
       "rpo_objetivo_h": 0,
+      "rpo_base": "origem_versionada",
+      "rpo_nota": "RPO 0 por origem versionada (SHA publicado = SHA do Git e tag de publicação), nunca pelo RPO medido do backup.",
       "rto_objetivo_h": 1,
       "integridade": "SHA + tag de publicação",
       "status": "PROPOSTA",
