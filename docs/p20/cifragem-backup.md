@@ -75,7 +75,7 @@ Isso custa uma vez a transferência do Neon (teste E8).
 
 ## Fases (transição fail-closed controlada)
 
-**Fase 1 — este PR (`ENCRYPTION_REQUIRED = false`)**
+**Fase 1 — PR #982 (`ENCRYPTION_REQUIRED = false`), encerrada em 07/11/2026**
 
 - Com `P20_BACKUP_KEY` válida no Worker, cada parte é gravada cifrada e o relatório da parte traz
   `encryption.state = "cifrado"` e o kid.
@@ -89,7 +89,12 @@ Isso custa uma vez a transferência do Neon (teste E8).
   releitura estrita (`validateRecord`) recusa um registro que retire a lacuna sem essa prova. Registros antigos, sem o
   campo, continuam válidos.
 
-**Fase 2 — PR próprio, depois de um ensaio mensal `ENSAIO_EM_PRODUCAO` aprovado com `backup.copia_cifrada: true`**
+**Fase 2 — R154, ativa (`ENCRYPTION_REQUIRED = true`)**
+
+Pré-condição cumprida: chave cadastrada pelo proprietário (Worker `P20_BACKUP_KEY` e Environment `producao-critica`
+`P20_BACKUP_KEYS`, cópia sob custódia do proprietário fora do Cloudflare e do GitHub); backup run 42401329189 com as
+3 partes `cifrado`; ensaio mensal `ENSAIO_EM_PRODUCAO` run 42401391418 `APROVADO`, 60/60 tabelas, `copia_cifrada: true`
+nas 3 partes (contra-auditoria GPT-6 de 07/11/2026: PASS e liberação da fase 2). Testes do padrão: E11.
 
 - Trocar `ENCRYPTION_REQUIRED` para `true`. A partir daí, sem chave nada é gravado em texto claro
   (`backup_key_absent_encryption_required`), e o consolidado com qualquer parte não cifrada falha

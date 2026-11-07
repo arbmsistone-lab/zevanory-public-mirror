@@ -347,6 +347,11 @@
      "test_pattern": "E8",
      "assertion_pattern": null,
      "justification": "o incremental depende de reabrir o bundle cifrado (com AAD) e do backup aprovado"
+    },
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": null,
+     "justification": "E11 (fase 2) grava com chave pelo padrão e o ensaio diário reabre o envelope com a AAD esperada: sem AAD a releitura falha e a parte reprova"
     }
    ]
   },
@@ -391,7 +396,13 @@
      "assertion_pattern": "[E7.12]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": null,
+     "justification": "E11 (fase 2) cobre a mesma regra pelo padrão de produção, sem passar encryptionRequired: sem chave a parte falha e nada é gravado"
+    }
+   ]
   },
   "M35 chave inválida grava em claro": {
    "primary": [
@@ -404,7 +415,13 @@
      "assertion_pattern": "[E7.15]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": null,
+     "justification": "E11 (fase 2) cobre a mesma regra pelo padrão de produção: chave inválida falha antes de gravar"
+    }
+   ]
   },
   "M36 ensaio aceita rebaixamento para claro": {
    "primary": [
@@ -472,7 +489,13 @@
      "assertion_pattern": "[E7.13]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": null,
+     "justification": "E11 (fase 2) cobre a mesma regra pelo padrão de produção: consolidado com parte em claro falha"
+    }
+   ]
   },
   "M42 kid desconhecido decifrado com outra chave": {
    "primary": [

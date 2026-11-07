@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { runDataBackup, finalizeBackup, tokenOk, validIdent, manifestHash, sha256, KV_PREFIXES, REPORT_KEY, planRetention } from "../worker/data-backup.mjs";
+import { runDataBackup as runDataBackupReal, finalizeBackup as finalizeBackupReal, tokenOk, validIdent, manifestHash, sha256, KV_PREFIXES, REPORT_KEY, planRetention } from "../worker/data-backup.mjs";
+// R154 (fase 2): o padrão de produção é cifragem obrigatória (ENCRYPTION_REQUIRED=true), coberto em
+// tests/p20-backup-encryption.test.mjs (E7, E11). Estes testes cobrem cópia, partes, incremental e retenção sobre o
+// formato em claro; por isso desligam a obrigatoriedade de forma explícita, só aqui.
+const runDataBackup = (env, opts = {}) => runDataBackupReal(env, { encryptionRequired: false, ...opts });
+const finalizeBackup = (env, opts = {}) => finalizeBackupReal(env, { encryptionRequired: false, ...opts });
 
 function fakeKv(seed = {}) {
   const m = new Map(Object.entries(seed));
