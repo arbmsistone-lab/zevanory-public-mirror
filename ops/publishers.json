@@ -120,6 +120,34 @@
         "scope": "no-credential",
         "note": "roda os testes de scripts/audit/plan-probe.mjs com fetch falso"
       },
+      "b01-recovery-probe.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "sandbox/rollback-secret-probe/cleanup-only.sh"
+        ],
+        "scope": "isolated",
+        "target": "zevanory-rollback-secret-probe",
+        "t1": "gap",
+        "controls": "token de sonda; conta conferida no script; mesmo script de limpeza do probe de rollback",
+        "gap": "Worker de sonda na MESMA conta de produção; escopo efetivo do token de sonda não lido por este gate (condição 4)."
+      },
+      "b01-rollback-secret-probe.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "sandbox/rollback-secret-probe/cleanup-only.sh"
+        ],
+        "scope": "isolated",
+        "target": "zevanory-rollback-secret-probe",
+        "t1": "gap",
+        "controls": "environment sandbox-financial-approved; run_attempt == 1; token de sonda CLOUDFLARE_SANDBOX_PROBE_TOKEN; conta conferida no script",
+        "gap": "Worker de sonda na MESMA conta de produção (1b26…); o escopo efetivo do token de sonda não é lido por este gate (condição 4)."
+      },
       "backup-preserve-archive.yml": {
         "classes": [
           "config-kv"
@@ -431,11 +459,27 @@
           "route"
         ],
         "via": [
+          "sandbox/route-probe/run_route_probe.py",
           "scripts/ci/mutants_sandbox_route_probe.py",
           "scripts/ops/router_routes.py"
         ],
         "scope": "no-credential",
         "note": "contrato e mutantes da sonda de rotas sandbox"
+      },
+      "sandbox-route-probe.yml": {
+        "classes": [
+          "deploy",
+          "route"
+        ],
+        "via": [
+          "sandbox/route-probe/run_route_probe.py",
+          "scripts/ops/router_routes.py"
+        ],
+        "scope": "isolated",
+        "target": "zevanory-route-probe",
+        "t1": "gap",
+        "controls": "token de sonda CF_PROBE_TOKEN / CF_PROBE_TOKEN_NO_ROUTES; router_routes.py em modo sandbox (recusas provadas em tests/test_sandbox_route_probe.py)",
+        "gap": "Workers e rotas de sonda na MESMA conta de produção; escopo efetivo do token de sonda não lido por este gate (condição 4)."
       },
       "sandbox-worker-secret-audit.yml": {
         "classes": [
@@ -665,6 +709,29 @@
       }
     },
     "scripts": {
+      "sandbox/rollback-secret-probe/cleanup-only.sh": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "invoked_by": [
+          "b01-recovery-probe.yml",
+          "b01-rollback-secret-probe.yml"
+        ],
+        "role": "writer",
+        "note": "limpeza do Worker de sonda zevanory-rollback-secret-probe (secret delete, deploy de limpeza)"
+      },
+      "sandbox/route-probe/run_route_probe.py": {
+        "classes": [
+          "deploy"
+        ],
+        "invoked_by": [
+          "sandbox-route-probe-contract.yml",
+          "sandbox-route-probe.yml"
+        ],
+        "role": "writer",
+        "note": "sonda de rotas em Workers zevanory-route-probe (cria/apaga Workers e rotas de sonda)"
+      },
       "scripts/audit/command-center-snapshot.mjs": {
         "classes": [
           "config-kv"
@@ -807,7 +874,8 @@
         "invoked_by": [
           "public-router-contract.yml",
           "public-router-deploy.yml",
-          "sandbox-route-probe-contract.yml"
+          "sandbox-route-probe-contract.yml",
+          "sandbox-route-probe.yml"
         ],
         "role": "writer",
         "note": "rotas de Worker por zona (snapshot/preflight/verify/restore); escrita só em restore e preflight do publicador do roteador"

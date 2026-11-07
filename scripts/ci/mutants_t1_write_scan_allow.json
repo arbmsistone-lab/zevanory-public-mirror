@@ -1,5 +1,5 @@
 {
- "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [WSn.k] que a codifica), escritas antes de rodar. Revisão após a 1ª execução (registrada no PR): M01 sobreviveu às fixtures originais (a janela do REST cobria o curl quebrado); acrescentadas as fixtures pos-continued-wrangler.yml e neg-continued-dry-run.yml e a secundária WS2 de M01.",
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [WSn.k] que a codifica), escritas antes de rodar. Revisão após a 1ª execução (registrada no PR): M01 sobreviveu às fixtures originais (a janela do REST cobria o curl quebrado); acrescentadas as fixtures pos-continued-wrangler.yml e neg-continued-dry-run.yml e a secundária WS2 de M01. M19 e M20 acrescentados junto com a ampliação para sandbox/ e tokens de sonda (expectativas escritas antes de rodar). Na 1ª execução M19 sobreviveu: a fixture de WS3.5 usava sandbox/, que o padrão de diretórios já cobria; a fixture passou a usar ./probe/ (expectativa de M19 inalterada).",
  "mutants": {
   "M01 continuação de linha não é juntada": {
    "primary": [
@@ -252,6 +252,36 @@
      "test_pattern": "WS4",
      "assertion_pattern": "[WS4.1]",
      "justification": "o repositório real tem docstrings com `wrangler rollback` entre crases (scripts/ops/router_routes.py); a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M19 intérprete fora de scripts/ ignorado": {
+   "primary": [
+    {
+     "test_pattern": "WS3",
+     "assertion_pattern": "[WS3.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real chama sandbox/rollback-secret-probe/cleanup-only.sh e sandbox/route-probe/run_route_probe.py por bash/python3; a varredura muda e o inventário deixa de casar"
+    }
+   ]
+  },
+  "M20 token de sonda não conta como credencial": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.12]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "b01-rollback-secret-probe.yml e sandbox-route-probe.yml só têm token de sonda; isolados sem credencial reconhecida viram PRODUCTION_WITHOUT_CREDENTIAL"
     }
    ]
   }

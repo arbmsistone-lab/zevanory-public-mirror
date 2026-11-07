@@ -123,6 +123,17 @@ test("WS3 scripts chamados pelos workflows entram por via, recursivamente; filtr
     assert.deepEqual(s.scripts["scripts/b.mjs"]?.invoked_by, ["w.yml"], "[WS3.3] chamado por");
     assert.deepEqual(s.scripts["scripts/c.py"]?.invoked_by, [], "[WS3.4] script só no filtro de paths é operação manual, não chamada");
   } finally { rmSync(dir, { recursive: true, force: true }); }
+  // Fora de scripts/: qualquer arquivo executado por intérprete (bash sandbox/x.sh); arquivo de teste (tests/) não.
+  const dir2 = mkRepo({
+    workflows: { "p.yml": "jobs:\n  a:\n    steps:\n      - run: bash ./probe/cleanup.sh\n      - run: node --test tests/fx.test.mjs\n" },
+    scripts: { "probe/cleanup.sh": 'npx --yes wrangler@4.143.0 deploy --name "$WORKER" --config w.toml\n', "tests/fx.test.mjs": 'const FX = "npx wrangler secret put K";\n' },
+    registry: {},
+  });
+  try {
+    const s = scanRepo(dir2);
+    assert.deepEqual(s.workflows["p.yml"]?.via, ["probe/cleanup.sh"], "[WS3.5] script fora dos diretórios conhecidos executado por intérprete entra em via");
+    assert.deepEqual(s.workflows["p.yml"]?.classes, ["deploy"], "[WS3.6] arquivo de teste (fixtures em texto) não entra em via");
+  } finally { rmSync(dir2, { recursive: true, force: true }); }
 });
 
 test("WS4 repositório real: todo caminho de escrita está no inventário, com classe, escopo e guard coerentes", () => {
@@ -162,5 +173,6 @@ test("WS6 testes negativos (condição 5): o gate falha em cada violação, isol
   assert.ok(codes(repo((r) => { r.registry.write_paths.workflows["velho.yml"] = { classes: ["deploy"], via: [], scope: "no-credential", note: "x" }; return r; })).includes("STALE_WRITE_PATH"), "[WS6.8] entrada que não escreve mais");
   assert.ok(codes(repo((r) => { r.scripts["scripts/ci/gate.py"] = GATE_PY + 'subprocess.run(["npx", "wrangler", "rollback", "--name", "svc"])\n'; return r; })).includes("NOT_A_WRITER_CHANGED"), "[WS6.9] script declarado não escritor ganha escrita");
   assert.ok(codes(repo((r) => { r.workflows["pub.yml"] = PUB + "      - run: node scripts/ops/kv.mjs\n"; r.scripts["scripts/ops/kv.mjs"] = 'await fetch(`https://api.cloudflare.com/client/v4/accounts/${A}/storage/kv/namespaces/${N}/values/k`, { method: "PUT" });\n'; return r; })).includes("VIA_MISMATCH"), "[WS6.10] script escritor novo chamado por um publicador");
+  assert.ok(codes(repo((r) => { r.workflows["gate.yml"] = NOCRED.replace("    steps:", "    env:\n      T: ${{ secrets.CF_PROBE_TOKEN }}\n    steps:"); return r; })).includes("CREDENTIAL_IN_NO_CREDENTIAL"), "[WS6.12] token de sonda também é credencial");
   assert.ok(codes(repo((r) => { r.registry.services.svc.canonical = "outro.yml"; r.workflows["outro.yml"] = PUB; r.registry.write_paths.workflows["outro.yml"] = { ...r.registry.write_paths.workflows["pub.yml"] }; return r; })).includes("PUBLISHER_NOT_IN_REGISTRY"), "[WS6.11] publicador de produção fora do registro de serviços");
 });

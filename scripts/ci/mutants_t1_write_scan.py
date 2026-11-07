@@ -26,8 +26,8 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/t1-write-scan.test.mjs"]
-# O teste WS4/WS5 varre a árvore real: workflows, todos os scripts e o registro.
-COPY_DIRS = [".github/workflows", "scripts", "tests/t1_scan"]
+# O teste WS4/WS5 varre a árvore real: workflows, scripts/, sandbox/ (scripts chamados) e o registro.
+COPY_DIRS = [".github/workflows", "scripts", "sandbox", "tests/t1_scan"]
 COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/publisher-inventory.test.mjs", "ops/publishers.json"]
 TIMEOUT = 300
 NODE = shutil.which("node") or "node"
@@ -52,6 +52,8 @@ M = {
     "M16 contagem fixa do não escritor ignorada": (S, '      if (e.findings !== found.findings.length) err("NOT_A_WRITER_CHANGED"', '      if (false) err("NOT_A_WRITER_CHANGED"'),
     "M17 via sem recursão": (S, "      for (const x of writersVia(r, seen)) out.add(x);\n", ""),
     "M18 crase em Python não é prosa": (S, 'opts.python ? String(text).replace(/`[^`\\n]*`/g, "``") : text', "text"),
+    "M19 intérprete fora de scripts/ ignorado": (S, "    for (const m of l.text.matchAll(INTERP_REF)) if (!/^(?:\\/|tests\\/)/.test(m[1])) refs.add(m[1].replace(/^\\.\\//, \"\"));\n", ""),
+    "M20 token de sonda não conta como credencial": (S, "secrets\\.(?:CLOUDFLARE_[A-Z0-9_]*TOKEN[A-Z0-9_]*|CF_[A-Z0-9_]*TOKEN[A-Z0-9_]*)\\b", "secrets\\.(?:CLOUDFLARE_API_TOKEN|CLOUDFLARE_PUBLIC_OWNER_API_TOKEN|CF_TOKEN_[A-Z0-9_]+)\\b"),
 }
 
 ALLOW_FILE = Path(os.environ.get("T1_WRITE_SCAN_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_t1_write_scan_allow.json"))

@@ -146,13 +146,17 @@ export function scanText(text, opts = {}) {
   return found;
 }
 
-const SCRIPT_REF = /(?:^|[\s"'=(:./$}])((?:scripts|ops|tools)\/[\w./-]+?\.(?:py|mjs|cjs|js|sh))\b/g;
+const SCRIPT_REF = /(?:^|[\s"'=(:./$}])((?:scripts|ops|tools|sandbox|\.github\/scripts)\/[\w./-]+?\.(?:py|mjs|cjs|js|sh))\b/g;
+// Qualquer arquivo do repositório executado por intérprete (bash x.sh, python3 -I y.py, node z.mjs); só conta se existir.
+const INTERP_REF = /\b(?:bash|sh|python3?|node)\s+(?:-[\w-]+\s+)*["']?(?:\$\{?GITHUB_WORKSPACE\}?\/|\.\/)?([\w-][\w./-]*\.(?:py|mjs|cjs|js|sh))\b/g;
 export function scriptRefs(text) {
   const refs = new Set();
   for (const l of logicalLines(text)) {
     // Item de lista de filtro (on.push.paths: - "scripts/x.py") não é chamada.
     if (/^\s*-\s*["']?[\w./*-]+["']?\s*$/.test(l.text)) continue;
     for (const m of l.text.matchAll(SCRIPT_REF)) refs.add(m[1].replace(/^\.\//, ""));
+    // tests/ fica fora: arquivos de teste rodam com node --test/unittest e carregam fixtures (texto), não publicam.
+    for (const m of l.text.matchAll(INTERP_REF)) if (!/^(?:\/|tests\/)/.test(m[1])) refs.add(m[1].replace(/^\.\//, ""));
   }
   return [...refs].sort();
 }
@@ -215,7 +219,8 @@ export function scanRepo(root) {
   return { workflows, scripts };
 }
 
-const CRED = /secrets\.(?:CLOUDFLARE_API_TOKEN|CLOUDFLARE_PUBLIC_OWNER_API_TOKEN|CF_TOKEN_[A-Z0-9_]+)\b|secrets\[|toJSON\(\s*secrets\s*\)/;
+// Qualquer segredo de token da Cloudflare (conta, dono público, por Worker, sonda sandbox).
+const CRED = /secrets\.(?:CLOUDFLARE_[A-Z0-9_]*TOKEN[A-Z0-9_]*|CF_[A-Z0-9_]*TOKEN[A-Z0-9_]*)\b|secrets\[|toJSON\(\s*secrets\s*\)/;
 const sameSet = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort());
 // Token por Worker (CF_TOKEN_<X>): só no(s) workflow(s) do serviço dono e na certificação de escopo (somente leitura).
 export const TOKEN_OWNER = { CF_TOKEN_ZEVANORY: "zevanory", CF_TOKEN_SALES: "zevanory-sales-public", CF_TOKEN_ROUTER: "zevanory-public-router", CF_TOKEN_PANEL: "zevanory-product-control-portable" };
@@ -274,10 +279,13 @@ export function checkInventory(root, registry = JSON.parse(readFileSync(join(roo
     if (e.t1 === "gap" && !(String(e.gap || "").length > 30)) err("GAP_REASON_MISSING", name);
     if (!(String(e.controls || "").length > 10)) err("CONTROLS_MISSING", name);
     if (e.scope === "isolated") {
-      if (!e.target || !text.includes(e.target)) err("ISOLATED_TARGET_MISSING", `${name}: alvo ${e.target} não aparece no arquivo`);
+      // O alvo aparece no workflow ou num script que ele chama (onde a escrita acontece).
+      const viaTexts = (e.via || []).map((v) => read(v));
+      if (!e.target || ![text, ...viaTexts].some((t) => t.includes(e.target))) err("ISOLATED_TARGET_MISSING", `${name}: alvo ${e.target} não aparece no arquivo nem nos scripts chamados`);
       if (serviceNames.has(e.target)) err("ISOLATED_TARGETS_PRODUCTION", `${name}: alvo ${e.target} é Worker de produção`);
       // Troca de alvo: nenhuma escrita do workflow isolado nomeia um Worker de produção.
-      for (const f of own) for (const svc of serviceNames) {
+      const viaFindings = (e.via || []).flatMap((v) => scan.scripts[v]?.findings || []);
+      for (const f of [...own, ...viaFindings]) for (const svc of serviceNames) {
         if (new RegExp(String.raw`(?:--name[= ]|--script-name[= ]|workers/scripts/)["']?${svc.replace(/-/g, "\\-")}(?![\w-])`).test(f.snippet)) err("ISOLATED_TARGET_SWAP", `${name}:${f.line} escreve em ${svc}`);
       }
       continue;
