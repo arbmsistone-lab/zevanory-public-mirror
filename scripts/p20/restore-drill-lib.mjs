@@ -11,7 +11,11 @@
 // Rótulos (seção 6.4): ENSAIO_EM_PRODUCAO só quando a cópia REAL de produção foi lida; SINTETICA para fixture;
 // sem leitura = null + NOT_AVAILABLE. Nada aqui imprime ou grava dado de linha: só nomes de tabela, contagens,
 // booleanos e prefixos de 16 hex do manifesto (iguais aos que o Worker já publica).
+// Cifragem (docs/p20/cifragem-backup.md): cada bundle pode ser um envelope AES-256-GCM (formato zevanory-backup-enc/v1)
+// ou legado em texto claro. O ensaio lê os dois, decifra com o conjunto de chaves (P20_BACKUP_KEYS), registra
+// copia_cifrada por parte e só tira "copia_cifrada" de not_covered quando TODAS as partes do dia estão cifradas.
 import { createHash } from "node:crypto";
+import { openBundleText } from "./backup-envelope.mjs";
 
 export const SCHEMA_RECORD = "zevanory.p20.restore-drill.v1";
 export const SCHEMA_INVENTORY = "zevanory.p20.inventario.v1";
@@ -30,6 +34,12 @@ export const NOT_COVERED = Object.freeze([
   "diario_d1: diário de eventos críticos no D1 não implementado",
   "copia_cifrada: a cópia Neon -> KV fica em texto claro no KV (a seção 9.1 pede cifrada)",
 ]);
+export const COPIA_CIFRADA_ID = "copia_cifrada";
+const isCopiaCifrada = (s) => typeof s === "string" && s.startsWith(COPIA_CIFRADA_ID + ":");
+// not_covered do registro: "copia_cifrada" só sai com prova (todas as PARTS partes lidas, decifradas e cifradas).
+export function notCoveredFor(allPartsEncrypted) {
+  return NOT_COVERED.filter((s) => !(allPartsEncrypted === true && isCopiaCifrada(s)));
+}
 const TABLE_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const HEX16 = /^[0-9a-f]{16}$/;
@@ -77,7 +87,7 @@ export function rpoHours(partStartedAts, failureAtIso) {
 // readings = { combined: string|null, parts: [string|null x PARTS], bundles: { key: string|null } }
 // Retorna { readable, failures[], day, parts[], tables_json{t: js}, manifest_rows{t:{rows}}, datasets[], totals }.
 // readable=false só quando a fonte não pôde ser lida/entendida (NOT_AVAILABLE); integridade ruim = failures.
-export function assessBackup(readings) {
+export function assessBackup(readings, { keyring = new Map() } = {}) {
   const out = { readable: false, failures: [], day: null, parts: [], tables_json: {}, manifest_rows: {}, datasets: [], totals: { tables: 0, rows: 0 }, excluded: [] };
   const fail = (w) => out.failures.push(w);
   const c = parse(readings?.combined);
@@ -102,7 +112,7 @@ export function assessBackup(readings) {
       || typeof P.neon.manifest !== "string" || !isObj(fp) || typeof fp.bundleKey !== "string" || !isObj(fp.tables)) {
       out.reason = "part_report_malformed:" + p; return out;
     }
-    const info = { part: p, day: P.day, started_at: P.startedAt, finished_at: isIso(P.finishedAt) ? P.finishedAt : null, tables: 0, rows: 0, manifest_ok: false, bundle_read: false };
+    const info = { part: p, day: P.day, started_at: P.startedAt, finished_at: isIso(P.finishedAt) ? P.finishedAt : null, tables: 0, rows: 0, manifest_ok: false, bundle_read: false, copia_cifrada: false };
     out.parts.push(info);
     if (P.day !== R.day) fail(`part_day_mismatch:${p}`);
     if (P.ok !== true || (Array.isArray(P.failures) && P.failures.length)) fail(`part_not_ok:${p}`);
@@ -110,7 +120,13 @@ export function assessBackup(readings) {
     if (!HEX16.test(P.neon.manifest)) fail(`part_manifest_digest_malformed:${p}`);
     const raw = readings.bundles?.[fp.bundleKey];
     if (raw == null) { fail(`bundle_missing:${p}`); continue; }
-    const b = parse(raw);
+    let opened;
+    try { opened = openBundleText(raw, { day: R.day, part: p, bundleKey: fp.bundleKey }, keyring); }
+    catch (e) { fail(`bundle_${String(e?.code || "unreadable").replace(/[^a-z_]/g, "")}:${p}`); continue; }
+    // Rebaixamento: a parte declara cópia cifrada e o bundle chegou em claro (alguém trocou o valor no KV).
+    if (isObj(P.encryption) && P.encryption.state === "cifrado" && !opened.encrypted) { fail(`bundle_encryption_downgrade:${p}`); continue; }
+    info.copia_cifrada = opened.encrypted === true;
+    const b = parse(opened.text);
     if (!b.ok || !isObj(b.v)) { fail(`bundle_malformed:${p}`); continue; }
     info.bundle_read = true;
     const bundle = b.v;
@@ -209,6 +225,7 @@ export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, 
   else verdict = failures.length === 0 && restoreOk ? "APROVADO" : "REPROVADO";
   const restoredTables = restoreOk ? Object.keys(restore.tables || {}) : [];
   const cls = inventory ? byClass(a.datasets || [], restoredTables, inventory, rpo) : { classes: {}, unclassified: [] };
+  const allEncrypted = !!(a.readable && a.parts.length === PARTS && a.parts.every((p) => p.copia_cifrada === true));
   const rec = {
     schema: SCHEMA_RECORD,
     label: verdict === "NOT_AVAILABLE" ? null : label, mode, verdict,
@@ -216,8 +233,9 @@ export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, 
     run_id: String(runId || ""), sha: String(sha || ""),
     backup: a.readable ? {
       day: a.day,
-      parts: a.parts.map((p) => ({ part: p.part, day: p.day, started_at: p.started_at, finished_at: p.finished_at, tables: p.tables, rows: p.rows, manifest_ok: p.manifest_ok })),
+      parts: a.parts.map((p) => ({ part: p.part, day: p.day, started_at: p.started_at, finished_at: p.finished_at, tables: p.tables, rows: p.rows, manifest_ok: p.manifest_ok, copia_cifrada: p.copia_cifrada === true })),
       tables: (a.datasets || []).length, rows: a.totals.rows, excluded_by_policy: a.excluded,
+      copia_cifrada: allEncrypted,
     } : null,
     integrity: a.readable ? {
       tables_checked: (a.datasets || []).length,
@@ -239,7 +257,7 @@ export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, 
     rto_scope: "dados: leitura da copia + conferencia de hash + esquema + carga + conferencia num Postgres efemero; NAO inclui troca de DNS, reconfiguracao do Worker nem o tempo de aprovacao do Environment",
     by_class: cls.classes,
     unclassified_tables: cls.unclassified,
-    not_covered: [...NOT_COVERED],
+    not_covered: notCoveredFor(allEncrypted && verdict !== "NOT_AVAILABLE"),
     scope_complete_9_1: false,
     failures: failures.slice(0, 50),
   };
@@ -261,12 +279,16 @@ export function validateRecord(r) {
   if (!isIso(r.started_at) || !isIso(r.finished_at) || Date.parse(r.finished_at) < Date.parse(r.started_at)) throw new Error("bad_times");
   if (!Array.isArray(r.not_covered) || typeof r.scope_complete_9_1 !== "boolean" || (r.scope_complete_9_1 && r.not_covered.length)) throw new Error("bad_scope");
   if (!Array.isArray(r.failures)) throw new Error("bad_failures");
+  const ccPending = r.not_covered.some(isCopiaCifrada);
+  if (r.verdict === "NOT_AVAILABLE" && !ccPending) throw new Error("copia_cifrada_unproven");
   if (r.verdict === "NOT_AVAILABLE") {
     if (r.rpo_hours !== null || r.rto_seconds !== null || typeof r.reason !== "string") throw new Error("not_available_with_values");
     return r;
   }
   const b = r.backup, i = r.integrity;
   if (!isObj(b) || !isDay(b.day) || !Array.isArray(b.parts) || b.parts.length !== PARTS || !isInt(b.tables) || !isInt(b.rows)) throw new Error("bad_backup");
+  // Registros antigos não têm copia_cifrada (ausente = false); retirar a lacuna exige todas as partes cifradas.
+  if (!ccPending && !(b.copia_cifrada === true && b.parts.every((p) => isObj(p) && p.copia_cifrada === true))) throw new Error("copia_cifrada_unproven");
   if (!isObj(i) || !isInt(i.tables_checked) || !isInt(i.tables_hash_ok) || i.tables_hash_ok > i.tables_checked || !Array.isArray(i.tables_hash_failed)) throw new Error("bad_integrity");
   if (!(isNum(r.rpo_hours) && r.rpo_hours >= 0) && !(r.verdict === "REPROVADO" && r.rpo_hours === null && r.failures.includes("rpo_not_computable"))) throw new Error("bad_rpo");
   if (r.verdict === "APROVADO") {

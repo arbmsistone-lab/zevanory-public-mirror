@@ -11,8 +11,10 @@ const call = async (qs) => {
 };
 for (let p = 0; p < PARTS; p++) {
   const { http, body } = await call(`part=${p}&parts=${PARTS}`);
-  console.log(`::notice title=DATA_BACKUP_PART_${p}::` + JSON.stringify({ http, ok: body.ok, tables: body.neon?.tables, rows: body.neon?.rows, restored: body.restore?.neon?.ok, failures: body.failures }));
+  console.log(`::notice title=DATA_BACKUP_PART_${p}::` + JSON.stringify({ http, ok: body.ok, tables: body.neon?.tables, rows: body.neon?.rows, restored: body.restore?.neon?.ok, encryption: body.encryption?.state ?? null, failures: body.failures }));
 }
 const { http, body: rep } = await call(`finalize=1&parts=${PARTS}`);
 console.log("::notice title=DATA_BACKUP::" + JSON.stringify({ http, ok: rep.ok, day: rep.day, coverage: rep.coverage, kv: rep.kv, neon: { tables: rep.neon?.tables, rows: rep.neon?.rows, excluded: rep.neon?.excluded, skipped: rep.neon?.skipped }, restore: rep.restore, failures: rep.failures }));
+// P20: cópia Neon -> KV não cifrada (segredo P20_BACKUP_KEY ausente no Worker) é alerta na fase 1 (docs/p20/cifragem-backup.md).
+if (rep.encryption?.state !== "cifrado") console.log("::warning title=DATA_BACKUP_NAO_CIFRADO::" + JSON.stringify({ state: rep.encryption?.state ?? null, parts_cifradas: rep.encryption?.parts_cifradas ?? null }));
 if (!rep.ok) { console.log("::error title=DATA_BACKUP::" + (rep.failures || []).join(", ").slice(0, 400)); process.exit(1); }

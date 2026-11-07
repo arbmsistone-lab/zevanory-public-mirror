@@ -97,6 +97,10 @@ def describe_bundles(raw_parts):
         bundle = json.loads(raw)
         if not isinstance(bundle, dict):
             fail(f"bundle_not_object part={part}")
+        if "$enc" in bundle:
+            # Envelope AES-256-GCM do Worker (docs/p20/cifragem-backup.md): esta ferramenta só lê bundles legados em
+            # claro. Falha explícita; kv-extend copia o valor cifrado sem abrir (a AAD fica presa à chave original).
+            fail(f"bundle_encrypted_not_supported part={part}")
         for name, js in bundle.items():
             if not TABLE_RE.match(name) or not isinstance(js, str):
                 fail(f"invalid_table_entry part={part}")

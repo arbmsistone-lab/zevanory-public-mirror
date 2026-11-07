@@ -225,6 +225,9 @@ test("D11 inventário 9.1: arquivo real é PROPOSTA válida; classes cobrem pedi
   const cls = byClass([{ table: "orders", hash_ok: true, rows: 1 }, { table: "tabela_nova", hash_ok: true, rows: 0 }], ["orders", "tabela_nova"], INVENTORY, 3);
   assert.deepEqual(cls.unclassified, ["tabela_nova"], "[D11.6] tabela sem classe é listada, nunca escondida");
   assert.equal(cls.classes.pedidos_pagamentos.rpo_medido_h, 3);
+  const op = INVENTORY.classes.find((x) => x.id === "operacional");
+  assert.ok(op.tables.includes("zevanory_whatsapp_broker_runtime") && /disabled_permanent.*preservada até decisão de retenção/.test(op.notas_tabelas.zevanory_whatsapp_broker_runtime), "[D11.7] legado do WhatsApp classificado, preservado");
+  assert.ok(!op.fora_do_backup_por_politica, "[D11.8] classificar não tira do backup nem apaga");
 });
 
 test("D12 workflow mensal: producao-critica só no ensaio, publicação sem segredo, evidência só em evidence/b0-baseline, nunca gh-pages", () => {
@@ -238,7 +241,7 @@ test("D12 workflow mensal: producao-critica só no ensaio, publicação sem segr
   assert.match(publishJob, /contents: write/);
   assert.match(wf, /EVIDENCE_BRANCH: evidence\/b0-baseline/, "[D12.5]");
   assert.doesNotMatch(wf, /HEAD:gh-pages|push[^\n]*gh-pages|wrangler|-X\s*(POST|PUT|DELETE)/, "[D12.6]");
-  assert.equal((wf.match(/secrets\./g) || []).length, 1, "[D12.7] um único segredo (token do Cloudflare para GET no KV)");
+  assert.equal((wf.match(/secrets\./g) || []).length, 2, "[D12.7] só dois segredos: token do Cloudflare (GET no KV) e chave(s) de decifragem do backup");
   assert.doesNotMatch(wf, /pull_request/, "[D12.8]");
   const src = readTextNormalized(new URL("../scripts/p20/restore-drill.mjs", import.meta.url));
   assert.doesNotMatch(src, /method:\s*"(PUT|POST|DELETE|PATCH)"/, "[D12.9] leitor do KV só faz GET");

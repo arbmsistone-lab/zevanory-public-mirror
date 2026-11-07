@@ -10,7 +10,7 @@
     "kv_para_neon": "Mesmo job: chaves críticas do KV (prefixos zpc:sales:, zpc:cp:, sales:open:v1) na tabela zevanory_kv_backup do Neon (14 dias), com SHA-256 por chave; ensaio diário por amostra (20 chaves) no próprio Worker.",
     "ensaio_mensal_completo": ".github/workflows/p20-monthly-restore-drill.yml: lê a cópia mais recente do KV (somente GET), confere o SHA-256 de cada tabela contra o manifesto, restaura TUDO num Postgres efêmero do runner (esquema das migrações + DDL do Worker) e mede RPO e RTO.",
     "lacunas": [
-      "A cópia Neon -> KV fica em texto claro no KV; a seção 9.1 pede cópia cifrada. Cifra só existe no arquivo de preservação manual (backup-preserve-archive.yml, AES-256-GCM).",
+      "A cópia Neon -> KV ainda fica em texto claro no KV enquanto o segredo P20_BACKUP_KEY não estiver cadastrado no Worker; a seção 9.1 pede cópia cifrada. Com o segredo, o Worker grava cada bundle como envelope AES-256-GCM (docs/p20/cifragem-backup.md) e o ensaio mensal registra copia_cifrada por parte; a lacuna só sai do registro quando as 3 partes do dia estiverem cifradas.",
       "Retenção curta: 8 dias no KV (Neon -> KV) e 14 dias no Neon (KV -> Neon). Não há cópia rotineira num terceiro local.",
       "A cópia KV -> Neon só é legível com a credencial do banco, que hoje só o Worker usa; o ensaio mensal em CI não a restaura (NOT_AVAILABLE).",
       "Diário de eventos críticos no D1 (seção 9.1) não implementado.",
@@ -120,7 +120,10 @@
       "rto_objetivo_h": 24,
       "integridade": "Idem pedidos",
       "status": "PROPOSTA",
-      "tables": ["schema_migrations", "agent_approvals", "agent_control_state", "agent_jobs", "agent_memory", "agent_runs", "agent_tool_audit", "tenants", "tenant_memberships", "nuvemshop_connections", "nuvemshop_webhook_receipts", "whatsapp_evidence", "whatsapp_history", "whatsapp_observations", "whatsapp_stage_events", "kit_alarm_policy", "kit_owner_alert_outbox", "cp_alarm_jobs", "cp_alarm_outbox", "cp_campaign_reminder_outbox", "cp_outbox", "cp_owner_alert_outbox", "cp_regen_jobs", "cp_resend_outbox", "cp_work_events", "cp_work_jobs"]
+      "tables": ["schema_migrations", "agent_approvals", "agent_control_state", "agent_jobs", "agent_memory", "agent_runs", "agent_tool_audit", "tenants", "tenant_memberships", "nuvemshop_connections", "nuvemshop_webhook_receipts", "whatsapp_evidence", "whatsapp_history", "whatsapp_observations", "whatsapp_stage_events", "kit_alarm_policy", "kit_owner_alert_outbox", "cp_alarm_jobs", "cp_alarm_outbox", "cp_campaign_reminder_outbox", "cp_outbox", "cp_owner_alert_outbox", "cp_regen_jobs", "cp_resend_outbox", "cp_work_events", "cp_work_jobs", "zevanory_whatsapp_broker_runtime"],
+      "notas_tabelas": {
+        "zevanory_whatsapp_broker_runtime": "Legado/operacional: WhatsApp aposentado (disabled_permanent); preservada até decisão de retenção. Nenhuma regra de apagamento: continua no backup diário como as demais tabelas desta classe (docs/WHATSAPP_APOSENTADO.md)."
+      }
     },
     {
       "id": "estado_comercial_kv",

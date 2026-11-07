@@ -110,6 +110,12 @@ class PreserveTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
             m.describe_bundles({0: json.dumps({"x; drop": "[]"}).encode()})
 
+    def test_encrypted_bundle_fails_explicitly(self):
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit):
+            m.describe_bundles({0: json.dumps({"$enc": "zevanory-backup-enc/v1", "v": 1, "ct": "AAAA"}).encode()})
+        self.assertIn("bundle_encrypted_not_supported", out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
