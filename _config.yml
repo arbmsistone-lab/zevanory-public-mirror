@@ -83,6 +83,7 @@ exclude:
   - lucro-e-caixa
   - material-gratuito
   - mensagem-para-cliente-que-sumiu
+  - migrations
   - negocio-completo
   - ops
   - privacidade
