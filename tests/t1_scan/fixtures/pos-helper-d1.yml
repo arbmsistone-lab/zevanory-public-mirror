@@ -1,0 +1,21 @@
+# expect: d1
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: |
+          node - <<'JS'
+          async function d1(method, sql) {
+            return fetch(`https://api.cloudflare.com/client/v4/accounts/${A}/d1/database/${DB}/query`, { method, body: JSON.stringify({ sql }) });
+          }
+          const x = 1;
+          const y = 2;
+          const z = 3;
+          const w = 4;
+          const v = 5;
+          const u = 6;
+          const t = 7;
+          const s = 8;
+          const r = 9;
+          await d1("POST", "DELETE FROM pedidos");
+          JS

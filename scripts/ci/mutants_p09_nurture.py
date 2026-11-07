@@ -26,6 +26,7 @@ REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p09-nurture-sequence.test.mjs"]
 COPY_DIRS = ["content/p09", "scripts/p09"]
 COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p09-lead-fakes.mjs", "worker/lead-magnet.mjs", "worker/brand-email.mjs", "worker/activity-ledger.mjs",
+                      "worker/diario-sombra.mjs", "worker/diario-p20.mjs",  # P20 diário (sombra): importados pelo lead-magnet
                       "worker/politica-unica.mjs", "data/politica-unica.json", "data/products.json", "checklist-15-minutos/index.html",
                       "material-gratuito/index.html"] + \
     [f"sales-public/{s}.html" for s in ("lucro-e-caixa", "vendas-na-pratica", "ia-na-pratica", "negocio-completo", "checklist-15-minutos", "material-gratuito")]

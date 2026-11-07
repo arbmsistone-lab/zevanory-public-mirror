@@ -2,6 +2,7 @@
 // Separate sales/activities ledger M3. Never writes the zpc:cp:* namespace.
 import {recordHotmartSale} from "./sales-ledger.mjs";
 import {emitActivity} from "./activity-ledger.mjs";
+import {diarioSombra,eventoEntrega,eventoReembolso} from "./diario-sombra.mjs";
 const ACTIVE=new Set(["PURCHASE_APPROVED","PURCHASE_COMPLETE"]);
 const STOP=new Set(["PURCHASE_REFUNDED","PURCHASE_CHARGEBACK","PURCHASE_CANCELED","PURCHASE_PROTEST","SUBSCRIPTION_CANCELLATION"]);
 const allowed=new Set([...ACTIVE,...STOP,"PURCHASE_EXPIRED","PURCHASE_DELAYED","PURCHASE_BILLET_PRINTED","PURCHASE_OUT_OF_SHOPPING_CART"]);
@@ -31,6 +32,9 @@ export async function handleDigitalHotmartNc012(request,env){
  // Idempotent activity marker in separate shared ledger. An identical webhook
  // may be replayed after an incomplete downstream read; never sends product email.
  if(ACTIVE.has(event))await emitActivity(env,{type:"delivery_sent",channel:"store",status:"hotmart_approved",ref:"hotmart:"+txn}).catch(()=>null);
+ // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+ if(ACTIVE.has(event))diarioSombra(env,null,()=>eventoEntrega({provider:"hotmart",transaction:txn,channel:"store",status:"hotmart_approved"}));
+ if(STOP.has(event))diarioSombra(env,null,()=>eventoReembolso({provider:"hotmart",transaction:txn,stage:"hotmart_"+event.toLowerCase()}));
  if(STOP.has(event))await emitActivity(env,{type:"refund_requested",channel:"store",status:"hotmart_"+event.toLowerCase(),ref:"hotmart:"+txn}).catch(()=>null);
  return json(200,{ok:true,scope:"digital_product",duplicate:result?.reason==="duplicate"});
 }

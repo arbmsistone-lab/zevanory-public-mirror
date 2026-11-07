@@ -1,0 +1,6 @@
+# expect: deploy
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: node /tmp/zpc/scripts/cloudflare-authoritative-repair.mjs --sha "$SHA"

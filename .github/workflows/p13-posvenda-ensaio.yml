@@ -1,0 +1,59 @@
+name: p13-posvenda-ensaio
+
+# P13 Pós-venda (roteiro v4.9.1, seções 5, 7.1 H-6 e 7.3): ensaio SINTÉTICO da política de 7 dias, do
+# procedimento de contestação 7.3 e do pacote de respostas (docs/p13/). Só pull_request: nunca dispara no merge,
+# nenhum segredo, nenhuma requisição à Hotmart, ao Mercado Pago ou à produção. (1) ensaio V1-V14 (14 testes);
+# (2) mutantes causais pelo classificador compartilhado (21, todos KILLED). A suíte completa segue no gate existente.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p13-posvenda-ensaio.yml"
+      - "scripts/p13/**"
+      - "docs/p13/**"
+      - "worker/politica-unica.mjs"
+      - "data/politica-unica.json"
+      - "tests/p13-posvenda-ensaio.test.mjs"
+      - "tests/helpers/text.mjs"
+      - "scripts/ci/mutants_p13_posvenda.py"
+      - "scripts/ci/mutants_p13_posvenda_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: p13-posvenda-ensaio / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ensaio sintético da pós-venda (contagem exata 14, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p13-posvenda-ensaio.test.mjs | tee /tmp/t.txt
+          for l in "# tests 14" "# pass 14" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes causais (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p13_posvenda.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P13_POSVENDA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=21 killed=21 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

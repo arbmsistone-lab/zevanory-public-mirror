@@ -1,0 +1,11 @@
+# expect: 
+# findings: 0
+jobs:
+  a:
+    steps:
+      - run: |
+          # npx wrangler deploy --config wrangler.toml  (comentário: não executa)
+          # curl -X PUT https://api.cloudflare.com/client/v4/accounts/A/workers/scripts/zevanory/secrets
+          curl -fsS -H "Authorization: Bearer $T" "https://api.cloudflare.com/client/v4/accounts/$A/workers/scripts/zevanory/deployments"
+          curl -fsS -X GET "https://api.cloudflare.com/client/v4/accounts/$A/storage/kv/namespaces/$NS/values/k"
+          curl -fsS -X POST -d '{"query":"{}"}' "https://api.cloudflare.com/client/v4/graphql"
