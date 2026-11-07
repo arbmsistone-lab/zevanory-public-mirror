@@ -1,0 +1,68 @@
+name: required-check-guard
+
+# G4 (Ordem 082): guarda dos checks obrigatórios, executada a partir de código CONFIÁVEL.
+# pull_request_target roda a definição deste arquivo da branch padrão (gh-pages) e o checkout é da base: um PR que altere
+# este arquivo, o script do guarda ou os workflows/scripts dos checks obrigatórios NÃO muda o que roda aqui.
+# O conteúdo do PR é só DADO (lista de arquivos, rótulos, eventos e YAML dos workflows alterados, lidos via API e
+# parseados com BaseLoader). NUNCA fazer checkout do head do PR nem executar nada dele aqui. Sem segredos; token só leitura.
+on:
+  pull_request_target:
+    branches: [gh-pages]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: required-check-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: required-check-guard / protected-paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout da base (código confiável)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Coletar arquivos, rótulos, eventos e YAML do PR como dado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/g4/head-wf /tmp/g4/lists
+          gh api --paginate --slurp "repos/$REPO/pulls/$PR/files?per_page=100" > /tmp/g4/files.json
+          gh api --paginate --slurp "repos/$REPO/issues/$PR/labels?per_page=100" > /tmp/g4/labels.json
+          gh api --paginate --slurp "repos/$REPO/issues/$PR/events?per_page=100" > /tmp/g4/events.json
+          # pr_files_to_lists aborta em nome de workflow fora do padrão seguro (fail-closed)
+          python3 -I scripts/ci/pr_files_to_lists.py /tmp/g4/files.json /tmp/g4/lists
+          while IFS= read -r f; do
+            gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$f?ref=$HEAD_SHA" > "/tmp/g4/head-wf/$(basename -- "$f")"
+          done < /tmp/g4/lists/workflows_head.txt
+      - name: Avaliar guarda (FAIL-CLOSED)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED: ${{ github.event.pull_request.changed_files }}
+        run: |
+          set -uo pipefail
+          python3 -I scripts/ci/required_check_guard.py --files /tmp/g4/files.json --head-workflows /tmp/g4/head-wf \
+            --head-sha "$HEAD_SHA" --labels /tmp/g4/labels.json --events /tmp/g4/events.json \
+            --expected-count "$EXPECTED" > /tmp/g4/result.json
+          rc=$?
+          cat /tmp/g4/result.json
+          {
+            echo "## Guarda dos checks obrigatórios (G4) — rc=$rc"
+            echo '```json'; cat /tmp/g4/result.json; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=G4_REQUIRED_CHECK_GUARD::PR altera caminho protegido sem aprovação do proprietário presa ao SHA, ou enfraquece/colide com check obrigatório (ver resumo)."
+          fi
+          exit "$rc"
