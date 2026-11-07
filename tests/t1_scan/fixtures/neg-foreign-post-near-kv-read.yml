@@ -1,0 +1,19 @@
+# expect: 
+# findings: 0
+jobs:
+  a:
+    steps:
+      - run: |
+          node - <<'JS'
+          async function gh(path, init = {}) {
+            const r = await fetch("https://api.github.com/repos/o/r" + path, init);
+            if (init.method === "POST") return r.status;
+            return r.json();
+          }
+          async function kvGet(key) {
+            const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${A}/storage/kv/namespaces/${NS}/values/${key}`);
+            return r.text();
+          }
+          await gh("/dispatches", { method: "POST" });
+          await fetch("https://zevanory.api.br/api/admin/x", { method: "POST" });
+          JS

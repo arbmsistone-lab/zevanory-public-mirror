@@ -1,0 +1,11 @@
+# expect: 
+# findings: 0
+on:
+  push:
+    paths:
+      - "scripts/ops/router_routes.py"
+      - "tests/x.py"
+jobs:
+  a:
+    steps:
+      - run: echo ok

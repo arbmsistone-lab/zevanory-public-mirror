@@ -1,0 +1,22 @@
+# expect: config-kv
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          base=f"https://api.cloudflare.com/client/v4/accounts/{os.environ['A']}/storage/kv/namespaces/{os.environ['NS']}/values/"
+          def req(u, m="GET", d=None, h=None):
+              r = urllib.request.Request(u, data=d, headers=h or {}, method=m)
+              return urllib.request.urlopen(r).status
+          a = 1
+          b = 2
+          c = 3
+          d = 4
+          e = 5
+          f = 6
+          g = 7
+          h = 8
+          req(base+"sales:open:v1", "PUT", json.dumps({"open": False}).encode())
+          PY

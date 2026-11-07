@@ -1,0 +1,10 @@
+# expect: config-kv
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: |
+          endpoint="https://api.cloudflare.com/client/v4/accounts/$A/storage/kv/namespaces/$NS/values/sales:open:v1"
+          echo preparing
+          echo more
+          curl -sS -X PUT -H "Authorization: Bearer $T" --data-binary @v.json "$endpoint"
