@@ -1,0 +1,209 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [DSn.k] que a codifica), escritas antes de rodar. Na primeira execução, S05, S12 e S13 falharam também em testes não previstos: os secundários deles foram acrescentados depois, com justificativa. S02 expôs um defeito real (a fila carregava a rejeição para as gravações seguintes), corrigido no código; a expectativa original ficou.",
+ "mutants": {
+  "S01 gancho do reembolso espera a gravação (bloqueia a resposta)": {
+   "primary": [
+    {
+     "test_pattern": "DS9",
+     "assertion_pattern": "[DS9.6]"
+    },
+    {
+     "test_pattern": "DS11",
+     "assertion_pattern": "[DS11.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "S02 tarefa rejeita em erro (lança)": {
+   "primary": [
+    {
+     "test_pattern": "DS3",
+     "assertion_pattern": "[DS3.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "S03 catch externo relança": {
+   "primary": [
+    {
+     "test_pattern": "DS3",
+     "assertion_pattern": "[DS3.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "S04 evento inteiro no log (vaza PII)": {
+   "primary": [
+    {
+     "test_pattern": "DS4",
+     "assertion_pattern": "[DS4.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "S05 gancho Hotmart tenta gravar o comprador": {
+   "primary": [
+    {
+     "test_pattern": "DS7",
+     "assertion_pattern": "[DS7.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DS11",
+     "assertion_pattern": "[DS11.3]",
+     "justification": "o gancho mutado deixa de ter a forma de construtor protegido (() => eventoX(...)) que DS11.3 exige"
+    }
+   ]
+  },
+  "S06 sem gancho order_created no checkout Mercado Pago": {
+   "primary": [
+    {
+     "test_pattern": "DS10",
+     "assertion_pattern": "[DS10.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "S07 sem gancho payment_status no webhook Mercado Pago": {
+   "primary": [
+    {
+     "test_pattern": "DS10",
+     "assertion_pattern": "[DS10.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DS11",
+     "assertion_pattern": "[DS11.4]",
+     "justification": "DS11.4 conta os ganchos no código; um gancho a menos muda a contagem"
+    }
+   ]
+  },
+  "S08 sem gancho delivery_sent no Hotmart": {
+   "primary": [
+    {
+     "test_pattern": "DS7",
+     "assertion_pattern": "[DS7.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DS11",
+     "assertion_pattern": "[DS11.4]",
+     "justification": "DS11.4 conta os ganchos no código; um gancho a menos muda a contagem"
+    }
+   ]
+  },
+  "S09 sem gancho de consentimento": {
+   "primary": [
+    {
+     "test_pattern": "DS8",
+     "assertion_pattern": "[DS8.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DS11",
+     "assertion_pattern": "[DS11.4]",
+     "justification": "DS11.4 conta os ganchos no código; um gancho a menos muda a contagem"
+    }
+   ]
+  },
+  "S10 sem gancho refund na aprovação": {
+   "primary": [
+    {
+     "test_pattern": "DS9",
+     "assertion_pattern": "[DS9.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DS11",
+     "assertion_pattern": "[DS11.4]",
+     "justification": "DS11.4 conta os ganchos no código; um gancho a menos muda a contagem"
+    }
+   ]
+  },
+  "S11 compat sem o contexto do diário": {
+   "primary": [
+    {
+     "test_pattern": "DS11",
+     "assertion_pattern": "[DS11.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "S12 sem waitUntil": {
+   "primary": [
+    {
+     "test_pattern": "DS2",
+     "assertion_pattern": "[DS2.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DS3",
+     "assertion_pattern": null,
+     "justification": "as tarefas de DS2, que ninguém espera, terminam durante DS3 e entram nos logs e contadores dele"
+    },
+    {
+     "test_pattern": "DS4",
+     "assertion_pattern": null,
+     "justification": "ctx.drain sem tarefas: as linhas e os logs são lidos antes de a gravação terminar"
+    },
+    {
+     "test_pattern": "DS5",
+     "assertion_pattern": null,
+     "justification": "ctx.drain sem tarefas: a cadeia é lida antes de a gravação terminar"
+    },
+    {
+     "test_pattern": "DS6",
+     "assertion_pattern": null,
+     "justification": "DS6.2 confere o waitUntil do contexto"
+    },
+    {
+     "test_pattern": "DS7",
+     "assertion_pattern": null,
+     "justification": "ctx.drain sem tarefas: as linhas são lidas antes de a gravação terminar"
+    },
+    {
+     "test_pattern": "DS8",
+     "assertion_pattern": null,
+     "justification": "ctx.drain sem tarefas: as linhas são lidas antes de a gravação terminar"
+    },
+    {
+     "test_pattern": "DS9",
+     "assertion_pattern": null,
+     "justification": "DS9.1 conta as tarefas entregues ao waitUntil"
+    }
+   ],
+   "broad_reason": "todos os testes de integração esperam as gravações pelo ctx.waitUntil falso; sem waitUntil nenhum deles espera"
+  },
+  "S13 sem fila por isolate (corrida no CAS)": {
+   "primary": [
+    {
+     "test_pattern": "DS5",
+     "assertion_pattern": "[DS5.6]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DS2",
+     "assertion_pattern": null,
+     "justification": "duas gravações simultâneas podem disputar a cabeça"
+    },
+    {
+     "test_pattern": "DS9",
+     "assertion_pattern": null,
+     "justification": "claim e aprovação simultâneos podem disputar a cabeça"
+    },
+    {
+     "test_pattern": "DS3",
+     "assertion_pattern": "[DS3.7]",
+     "justification": "sem fila os logs saem na ordem de término (o construtor que lança termina primeiro), não na ordem da fila"
+    }
+   ]
+  }
+ }
+}
