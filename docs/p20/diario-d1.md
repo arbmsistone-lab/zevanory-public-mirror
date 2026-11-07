@@ -1,8 +1,9 @@
 # P20: diário de eventos críticos no Cloudflare D1 (desenho; PR 1 de 7)
 
 Fonte: Roteiro Mestre v4.7, seção 9.1 ("Diário de eventos críticos" e "Operação durante falha de backup") e
-contestação 0-D, item 1. **Estado: módulo, migração e testes prontos. Nada ligado em produção.** Nenhum Worker
-importa `worker/diario-p20.mjs` neste PR, e nenhum banco D1 foi criado.
+contestação 0-D, item 1. **Estado: módulo, migração e testes prontos (PR 1). O PR 2 liga o binding `DIARIO` do
+Worker central ao banco de produção e aplica a migração no deploy (seção "Binding e migração").** A gravação em modo
+sombra é o PR seguinte; até lá nenhum código lê `env.DIARIO`.
 
 ## Para que serve
 
@@ -72,17 +73,53 @@ de CPF ou telefone é recusado, então use prefixo com letras (`ord_...`).
 ## Plano dos PRs
 
 1. **(este)** Módulo puro, migração, testes num D1 falso com SQL real (node:sqlite) e 10 mutantes.
-2. Binding `DIARIO_P20` no wrangler (banco do proprietário), em **sombra**: grava sem bloquear nada e mede latência
-   e erros.
+2. Binding `DIARIO` no Worker central (banco do proprietário) e migração no deploy (seção "Binding e migração").
+   A gravação em **sombra** (grava sem bloquear nada, mede erros) vem logo depois, independente deste binding.
 3. Fila de pendências e reenvio (webhooks e entregas) e evento `erase` (LGPD: apagar no Neon registra só o hash).
 4. Reconciliação diária Neon × diário, com relatório sem PII.
 5. Integração ao ensaio mensal P20: reconstruir os eventos pós-backup e verificar a cadeia.
 6. Fail-closed no checkout próprio e no formulário de leads, depois de 7 dias em sombra sem divergência.
 7. Certificado: o RPO medido passa a contar o diário. A lacuna do inventário só sai depois de um ensaio aprovado.
 
+## Binding e migração
+
+| Item | Valor |
+|---|---|
+| Banco D1 | `zevanory-diario-p20` (criado pelo proprietário) |
+| UUID | `1b1bfa19-ccc5-423a-bc1f-62d89020c8e2` |
+| Conta | `1b26415802588185a86c1d4d3ebf5bdb` (a mesma do Worker central `zevanory`) |
+| Binding no Worker | `DIARIO` (`env.DIARIO`) |
+| Migrações | `migrations/d1` (`migrations_dir` do binding) |
+| Proibido | `zevanory-certification-only` (`7ff006f3-...`): o gerador recusa com `DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN` |
+
+- **Gerador** (`scripts/deploy/prepare-central-candidate.py`, constante `DIARIO_D1_BINDING`): injeta o binding em
+  `wrangler.central-fix.jsonc`. Recusa o banco de certificação em qualquer posição e um `DIARIO` já presente com outro
+  banco (`DIARIO_D1_BINDING_CONFLICT`). É idempotente.
+- **Orçamento de bindings:** `check-binding-budget.py` conta só secrets e vars. O binding D1 não conta, então o
+  planejado continua **59/60**. O UUID vai no binding `d1_databases`, nunca em var.
+- **Deploy** (`.github/workflows/central-production-deploy.yml`), antes do `wrangler deploy`, no mesmo token e na mesma
+  conta (nenhum segredo novo), sem nunca reprovar o deploy central por causa do diário:
+  1. lê o banco pela API (`GET /accounts/.../d1/database/<UUID>`). Se o token não lê o banco, ou o nome não for
+     `zevanory-diario-p20`, emite `::warning title=DIARIO_D1_MIGRACAO_PENDENTE` (ou `DIARIO_D1_BANCO_DIVERGENTE`) e
+     **tira o binding só deste deploy**: o diário fica desligado (no-op), e o resto do Worker sobe igual;
+  2. roda `wrangler d1 migrations apply zevanory-diario-p20 --remote`. Erro de autorização vira
+     `::warning title=DIARIO_D1_MIGRACAO_PENDENTE`, e o binding fica, porque a gravação em sombra tolera a tabela
+     ausente. Outra falha vira a anotação `::error title=DIARIO_D1_MIGRACAO_FALHOU`, e o deploy também segue;
+  3. depois do deploy, um readback somente leitura (`select count(*) as n from diario_head`) registra
+     `::notice`/`::warning title=DIARIO_D1_READBACK`, com `continue-on-error`. Ele nunca dispara o rollback.
+- Um binding no candidato com banco diferente do UUID acima reprova o passo (`DIARIO_D1_BINDING`), antes do deploy.
+  Isso só acontece se o gerador estiver quebrado.
+- Testes: `tests/test_binding_budget_compaction.py` (classes `DiarioD1*`). Elas rodam o gerador real sobre a base
+  fixada e o texto real dos dois passos do workflow, com `curl` e `npx` falsos.
+
+**O que o proprietário precisa fazer se aparecer `DIARIO_D1_MIGRACAO_PENDENTE`:** dar a permissão **D1:Edit**, na
+conta `1b26415802588185a86c1d4d3ebf5bdb`, ao token que o deploy central já usa (`CLOUDFLARE_PUBLIC_OWNER_API_TOKEN`).
+Nenhum token ou segredo novo é necessário. O próximo deploy aplica a migração sozinho. Até lá, o diário fica sem
+tabela (ou sem binding), e nada mais muda.
+
 ## Dependências do proprietário (nada disso foi feito pelo executor)
 
-- Criar o banco D1 **`zevanory-diario-p20`** na conta `1b26415802588185a86c1d4d3ebf5bdb` e informar o UUID.
+- Criar o banco D1 **`zevanory-diario-p20`** na conta `1b26415802588185a86c1d4d3ebf5bdb` e informar o UUID. **Feito:** UUID acima; banco vazio até o primeiro deploy com a migração.
 - **Nunca** reutilizar `zevanory-certification-only` (`7ff006f3-...`) nem banco de outra conta.
 - Tokens separados: **D1 Edit** só para o deploy e a migração, e **D1 Read** para a reconciliação e o ensaio.
 - **7 dias em sombra** antes de qualquer fail-closed.
