@@ -25,7 +25,8 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p20-diario-d1.test.mjs"]
 COPY_DIRS = ["migrations/d1"]
-COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/d1-sqlite.mjs", "worker/diario-p20.mjs"]
+# worker/diario-sombra.mjs: DJ8.7 confere que ele é o ÚNICO importador do módulo puro (PR 3).
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/d1-sqlite.mjs", "worker/diario-p20.mjs", "worker/diario-sombra.mjs"]
 TIMEOUT = 300
 NODE = shutil.which("node") or "node"
 J, S = "worker/diario-p20.mjs", "migrations/d1/0001_diario_v1.sql"
