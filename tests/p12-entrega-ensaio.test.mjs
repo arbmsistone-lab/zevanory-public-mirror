@@ -11,7 +11,10 @@ import { DatabaseSync } from "node:sqlite";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { handleDigitalHotmartNc012 } from "../worker/cp-nc012-digital-hotmart.mjs";
 import { routeHotmartNc011 } from "../worker/cp-nc011-routing.mjs";
-import { SALES_SUMMARY_KEY } from "../worker/sales-ledger.mjs";
+import {
+  SALES_SUMMARY_KEY, SALES_EVENT_PREFIX, SALES_LEGACY_BASELINE_KEY, SALES_EVENT_TTL_DAYS,
+  recordHotmartSale, deriveSalesSummary, refreshSalesSummary, applySale, saleFacts,
+} from "../worker/sales-ledger.mjs";
 import { ACTIVITY_EVENT_PREFIX } from "../worker/activity-ledger.mjs";
 import { CpSubscriberLedger } from "../worker/cp-durable-ledger.mjs";
 import {
@@ -25,20 +28,39 @@ const T0 = Date.UTC(2026, 10, 7, 15, 0, 0);
 const HOUR = 3_600_000;
 const SLUGS = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"];
 
-// KV em memória com falhas injetáveis por chamada (put/get), contando operações.
-function memKv() {
-  const m = new Map();
-  const faults = [];
+// KV em memória com a semântica do Workers KV usada aqui: get/put/list, metadata, expirationTtl (relógio
+// controlável) e list paginado em ordem lexicográfica com no máximo 1.000 chaves por página. Falhas injetáveis por
+// operação: "before" (a operação não acontece) ou "after" (acontece e a chamada falha mesmo assim).
+function memKv({ clock = () => T0 } = {}) {
+  const m = new Map(), meta = new Map(), exp = new Map();
+  const faults = [], puts = [];
+  const alive = (k) => m.has(k) && !(exp.has(k) && clock() >= exp.get(k));
+  const hit = (op, k, when) => { const f = faults.find((x) => x.op === op && (x.when || "before") === when && x.match(k) && x.left > 0); if (f) { f.left--; throw new Error("kv_" + op + "_falhou"); } };
   const kv = {
-    m, faults,
-    async get(k) { const f = faults.find((x) => x.op === "get" && x.match(k) && x.left > 0); if (f) { f.left--; throw new Error("kv_get_falhou"); } return m.has(k) ? m.get(k) : null; },
-    async put(k, v) { const f = faults.find((x) => x.op === "put" && x.match(k) && x.left > 0); if (f) { f.left--; throw new Error("kv_put_falhou"); } m.set(k, String(v)); },
-    fail(op, match, times = 1) { faults.push({ op, match, left: times }); },
+    m, meta, exp, faults, puts,
+    async get(k) { hit("get", k, "before"); return alive(k) ? m.get(k) : null; },
+    async put(k, v, o = {}) {
+      hit("put", k, "before");
+      m.set(k, String(v));
+      if (o.metadata !== undefined) meta.set(k, JSON.parse(JSON.stringify(o.metadata))); else meta.delete(k);
+      if (o.expirationTtl) exp.set(k, clock() + o.expirationTtl * 1000); else exp.delete(k);
+      puts.push({ k, o });
+      hit("put", k, "after");
+    },
+    async list({ prefix = "", cursor, limit = 1000 } = {}) {
+      hit("list", prefix, "before");
+      if (!(limit >= 1 && limit <= 1000)) throw new Error("kv_list_limite_invalido");
+      const names = [...m.keys()].filter((k) => k.startsWith(prefix) && alive(k)).sort();
+      const start = cursor ? Number(cursor) : 0, page = names.slice(start, start + limit), end = start + page.length;
+      return { keys: page.map((name) => ({ name, ...(meta.has(name) ? { metadata: JSON.parse(JSON.stringify(meta.get(name))) } : {}) })), list_complete: end >= names.length, ...(end < names.length ? { cursor: String(end) } : {}) };
+    },
+    fail(op, match, times = 1, when = "before") { faults.push({ op, match, left: times, when }); },
   };
   return kv;
 }
 const isSummary = (k) => k === SALES_SUMMARY_KEY;
-const isTxnMark = (k) => k.startsWith("zpc:sales:v1:txn:");
+const isSaleEvent = (k) => k.startsWith(SALES_EVENT_PREFIX);
+const saleEvents = (kv) => [...kv.m.keys()].filter(isSaleEvent).sort();
 const isActivityEvent = (k) => k.startsWith(ACTIVITY_EVENT_PREFIX);
 const activities = (kv, type) => [...kv.m.entries()].filter(([k]) => isActivityEvent(k)).map(([, v]) => JSON.parse(v)).filter((a) => !type || a.type === type);
 const summary = (kv) => JSON.parse(kv.m.get(SALES_SUMMARY_KEY) || "null");
@@ -75,10 +97,10 @@ test("E1 aprovado → entrega registrada exatamente uma vez; reentrega e APPROVE
   assert.equal((await r2.json()).duplicate, true, "[E1.4] reentrega marcada como duplicata");
   const r3 = await handleDigitalHotmartNc012(postback("PURCHASE_COMPLETE", "HP-SINT-0001"), env);
   assert.equal(r3.status, 200, "[E1.5] COMPLETE depois de APPROVED aceito");
-  assert.equal(summary(kv).totals.approved, 1, "[E1.6] uma venda, uma entrega registrada");
+  assert.equal(summary(kv)?.totals?.approved, 1, "[E1.6] uma venda, uma entrega registrada");
   assert.equal(activities(kv, "delivery_sent").length, 1, "[E1.7] uma única atividade de entrega");
   assert.equal(net.length, 0, "[E1.8] nenhum fetch: a ZEVANORY não envia e-mail de produto (DEC-06)");
-  assert.ok(![...kv.m.values()].some((v) => v.includes("comprador@") || v.includes("HP-SINT-0001")), "[E1.9] registro sem e-mail nem transação em claro");
+  assert.ok(![...kv.m.values(), ...[...kv.meta.values()].map((x) => JSON.stringify(x)), ...kv.m.keys()].some((v) => v.includes("comprador@") || v.includes("HP-SINT-0001")), "[E1.9] registro (valores, metadata e chaves) sem e-mail nem transação em claro");
 });
 
 test("E2 cancelamento, estorno e contestação: registrados uma vez, sem dupla contagem do estorno", async (t) => {
@@ -90,58 +112,61 @@ test("E2 cancelamento, estorno e contestação: registrados uma vez, sem dupla c
   assert.equal((await handleDigitalHotmartNc012(postback("PURCHASE_REFUNDED", "HP-SINT-0002"), env)).status, 200, "[E2.2] estorno repetido aceito");
   await handleDigitalHotmartNc012(postback("PURCHASE_CHARGEBACK", "HP-SINT-0002"), env);
   const s = summary(kv);
-  assert.equal(s.totals.refunded, 1, "[E2.3] estorno contado uma vez");
-  assert.equal(s.totals.chargeback, 0, "[E2.4] contestação depois do estorno não reverte de novo");
-  assert.equal(s.totals.reversedGrossCents, 14700, "[E2.5] valor revertido uma vez");
+  assert.equal(s?.totals?.refunded, 1, "[E2.3] estorno contado uma vez");
+  assert.equal(s?.totals?.chargeback, 0, "[E2.4] contestação depois do estorno não reverte de novo");
+  assert.equal(s?.totals?.reversedGrossCents, 14700, "[E2.5] valor revertido uma vez");
   assert.equal(activities(kv, "refund_requested").length, 1, "[E2.6] uma atividade de estorno por transação (a contestação posterior não duplica)");
   const c = await handleDigitalHotmartNc012(postback("PURCHASE_CANCELED", "HP-SINT-0003"), env);
   assert.equal(c.status, 200, "[E2.7] cancelamento antes da aprovação aceito");
-  assert.equal(summary(kv).totals.canceled, 1, "[E2.8] cancelamento registrado");
+  assert.equal(summary(kv)?.totals?.canceled, 1, "[E2.8] cancelamento registrado");
   assert.equal(activities(kv, "delivery_sent").length, 1, "[E2.9] cancelamento não gera entrega");
 });
 
-test("E3 KV falha ao gravar o resumo: 503, a reentrega da Hotmart conclui e a venda NÃO some (zero faltante)", async (t) => {
+test("E3 KV falha ao gravar o evento imutável da venda: 503, a reentrega da Hotmart grava e a venda NÃO some (zero faltante)", async (t) => {
   noNetwork(t);
   const kv = memKv(), env = envWith(kv);
-  kv.fail("put", isSummary, 1);
+  kv.fail("put", isSaleEvent, 1);
   const r1 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0004"), env);
-  assert.equal(r1.status, 503, "[E3.1] falha de gravação devolve 503 (a Hotmart reenvia)");
-  assert.equal(kv.m.get(SALES_SUMMARY_KEY), undefined, "[E3.2] nada aplicado ainda");
+  assert.equal(r1.status, 503, "[E3.1] falha de gravação do evento devolve 503 (a Hotmart reenvia)");
+  assert.deepEqual([saleEvents(kv).length, kv.m.get(SALES_SUMMARY_KEY)], [0, undefined], "[E3.2] nada gravado ainda");
   const r2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0004"), env);
   assert.equal(r2.status, 200, "[E3.3] reentrega concluída");
-  assert.equal((await r2.json()).duplicate, false, "[E3.4] a reentrega aplica a venda pendente, não a descarta como duplicata");
-  assert.equal(summary(kv).totals.approved, 1, "[E3.5] venda registrada exatamente uma vez");
+  assert.equal((await r2.json()).duplicate, false, "[E3.4] a reentrega grava a venda, não a descarta como duplicata");
+  assert.equal(summary(kv)?.totals?.approved, 1, "[E3.5] venda registrada exatamente uma vez");
   assert.equal(activities(kv, "delivery_sent").length, 1, "[E3.6] entrega registrada exatamente uma vez");
 });
 
-test("E4 queda entre gravar o resumo e concluir o marcador: a reentrega NÃO conta duas vezes (zero duplicado)", async (t) => {
+test("E4 queda depois do evento e antes da projeção: 200 (a verdade já está gravada), a reentrega NÃO conta duas vezes e a projeção converge", async (t) => {
   noNetwork(t);
   const kv = memKv(), env = envWith(kv);
-  // 1ª gravação do marcador ("pending") passa; a 2ª (conclusão) falha uma vez.
-  let marks = 0;
-  kv.fail("put", (k) => isTxnMark(k) && ++marks === 2, 1);
+  kv.fail("put", isSummary, 1);
   const r1 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env);
-  assert.equal(r1.status, 503, "[E4.1] falha na conclusão devolve 503");
-  assert.equal(summary(kv).totals.approved, 1, "[E4.2] resumo já gravado");
+  assert.equal(r1.status, 200, "[E4.1] falha só da projeção não devolve 503 (não amarra o registro de entrega à cota de list)");
+  assert.equal(kv.m.get(SALES_SUMMARY_KEY), undefined, "[E4.2] projeção ainda não gravada");
+  assert.equal(saleEvents(kv).length, 1, "[E4.3] o evento imutável (fonte de verdade) está gravado");
   const r2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env);
-  assert.equal(r2.status, 200, "[E4.3] reentrega aceita");
-  assert.equal(summary(kv).totals.approved, 1, "[E4.4] a venda continua contada uma vez");
-  assert.equal(activities(kv, "delivery_sent").length, 1, "[E4.5] uma atividade de entrega");
-  assert.equal((await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env)).status, 200, "[E4.6] terceira reentrega estável");
-  assert.equal(summary(kv).totals.approved, 1, "[E4.7] estável depois da conclusão");
+  assert.deepEqual([r2.status, (await r2.json()).duplicate], [200, true], "[E4.4] reentrega aceita como duplicata");
+  assert.equal(summary(kv)?.totals?.approved, 1, "[E4.5] a venda contada uma vez na projeção recalculada");
+  assert.equal(activities(kv, "delivery_sent").length, 1, "[E4.6] uma atividade de entrega");
+  assert.equal((await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env)).status, 200, "[E4.7] terceira reentrega estável");
+  assert.deepEqual([summary(kv)?.totals?.approved, saleEvents(kv).length], [1, 1], "[E4.8] estável: 1 venda, 1 evento");
 });
 
-test("E5 leitura do resumo falha (KV fora): 503 e o resumo existente NÃO é sobrescrito", async (t) => {
+test("E5 KV fora: leitura que falha devolve 503 sem gravar; listagem que falha NÃO recria o resumo vazio nem parcial", async (t) => {
   noNetwork(t);
   const kv = memKv(), env = envWith(kv);
   await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0006"), env);
   await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0007"), env);
-  kv.fail("get", isSummary, 1);
+  kv.fail("get", () => true, 1);
   const r = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0008"), env);
-  assert.equal(r.status, 503, "[E5.1] leitura que falha não recomeça de um resumo vazio");
-  assert.equal(summary(kv).totals.approved, 2, "[E5.2] as duas vendas anteriores continuam no resumo");
-  assert.equal((await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0008"), env)).status, 200, "[E5.3] reentrega conclui");
-  assert.equal(summary(kv).totals.approved, 3, "[E5.4] três vendas, nenhuma perdida");
+  assert.equal(r.status, 503, "[E5.1] leitura que falha devolve 503 (a Hotmart reenvia)");
+  assert.deepEqual([summary(kv)?.totals?.approved, saleEvents(kv).length], [2, 2], "[E5.2] nada gravado; as duas vendas anteriores intactas");
+  kv.fail("list", () => true, 1);
+  const r2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0008"), env);
+  assert.equal(r2.status, 200, "[E5.3] reentrega grava o evento (a projeção fica para depois)");
+  assert.equal(summary(kv)?.totals?.approved, 2, "[E5.4] listagem que falha não sobrescreve o resumo com um vazio ou parcial");
+  await refreshSalesSummary(kv, { now: T0 });
+  assert.equal(summary(kv)?.totals?.approved, 3, "[E5.5] recomputo seguinte: três vendas, nenhuma perdida");
 });
 
 test("E6 atividade de entrega não gravada: 503, a reentrega grava exatamente uma", async (t) => {
@@ -154,7 +179,7 @@ test("E6 atividade de entrega não gravada: 503, a reentrega grava exatamente um
   const r2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0009"), env);
   assert.equal(r2.status, 200, "[E6.3] reentrega conclui");
   assert.equal(activities(kv, "delivery_sent").length, 1, "[E6.4] exatamente uma atividade de entrega");
-  assert.equal(summary(kv).totals.approved, 1, "[E6.5] venda contada uma vez");
+  assert.equal(summary(kv)?.totals?.approved, 1, "[E6.5] venda contada uma vez");
   kv.fail("put", isActivityEvent, 1);
   const s1 = await handleDigitalHotmartNc012(postback("PURCHASE_REFUNDED", "HP-SINT-0009"), env);
   assert.equal(s1.status, 503, "[E6.6] registro de estorno não confirmado devolve 503");
@@ -168,7 +193,7 @@ test("E7 Neon fora: o caminho Hotmart não depende do PostgreSQL nem de rede e c
   const r = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0010"), env);
   assert.equal(r.status, 200, "[E7.1] aprovação registrada com o Neon fora");
   assert.equal(net.length, 0, "[E7.2] nenhuma chamada de rede (nem ao banco)");
-  assert.equal(summary(kv).totals.approved, 1, "[E7.3] venda registrada");
+  assert.equal(summary(kv)?.totals?.approved, 1, "[E7.3] venda registrada");
 });
 
 test("E8 autenticação do postback: hottok inválido 401 e ausente de configuração 503, nada gravado", async (t) => {
@@ -276,5 +301,210 @@ test("E12 roteamento dos 5 produtos: postback Hotmart não-CP vai ao registro di
   const r = await routeHotmartNc011(postback("PURCHASE_APPROVED", "HP-SINT-0012"), env);
   assert.equal(r.status, 200, "[E12.1] rota oficial registra a venda digital");
   assert.equal((await r.json()).scope, "digital_product", "[E12.2] escopo digital, nunca o razão de 192 h (DEC-06)");
-  assert.equal(summary(kv).totals.approved, 1, "[E12.3] uma venda registrada");
+  assert.equal(summary(kv)?.totals?.approved, 1, "[E12.3] uma venda registrada");
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// NC-989-01 (contra-auditoria do PR #989): concorrência sem CAS no KV. Provas abaixo com um AGENDADOR CONTROLADO:
+// cada get/put/list de cada execução fica suspenso até o agendador escolher qual operação acontece, então todos os
+// entrelaçamentos possíveis são alcançáveis (E13 e E14 enumeram TODOS; E15 sorteia com semente fixa). Falhas são
+// injetadas antes e depois de cada gravação, seguidas de reprocessamento (reentrega da Hotmart).
+const DAY_MS = 86_400_000;
+const pdata = (txn, { price = 147, approved = T0, src = "ensaio" } = {}) => ({
+  product: { id: 7000001, name: "Lucro & Caixa" }, buyer: { email: "comprador@example.invalid" },
+  purchase: { transaction: txn, price: { value: price }, approved_date: approved, origin: { src }, payment: { type: "PIX" } },
+  commissions: [{ source: "PRODUCER", value: price * 0.9 }],
+});
+const hook = (event, txn, opts) => ({ event, data: pdata(txn, opts) });
+
+// Executa `procs` (funções que recebem um KV) com as operações de KV serializadas pelo agendador: `pick(n)` escolhe
+// qual das n operações pendentes acontece agora. `fault` = { id, putN, when: "before"|"after" } faz a putN-ésima
+// gravação da execução `id` falhar antes (não grava) ou depois (grava e a chamada falha).
+async function interleave(base, procs, pick, fault = null) {
+  const pending = [];
+  let running = procs.length, wake = null;
+  const ping = () => { if (running === 0 && wake) { const w = wake; wake = null; w(); } };
+  const out = new Array(procs.length);
+  const views = procs.map((_, id) => {
+    let puts = 0;
+    const op = (name, args) => new Promise((res, rej) => { pending.push({ id, name, args, res, rej, putN: name === "put" ? ++puts : 0 }); running--; ping(); });
+    return { get: (...a) => op("get", a), put: (...a) => op("put", a), list: (...a) => op("list", a) };
+  });
+  procs.forEach((p, id) => {
+    Promise.resolve().then(() => p(views[id])).then((v) => { out[id] = { ok: true, v }; }, (e) => { out[id] = { ok: false, e }; }).finally(() => { running--; ping(); });
+  });
+  let steps = 0;
+  for (;;) {
+    await new Promise((r) => { wake = r; ping(); });
+    if (!pending.length) break;
+    pending.sort((a, b) => a.id - b.id);
+    const o = pending.splice(pick(pending.length), 1)[0];
+    steps++;
+    const f = fault && fault.id === o.id && o.name === "put" && fault.putN === o.putN ? fault.when : null;
+    running++;
+    try {
+      if (f === "before") throw new Error("falha_injetada_antes_da_gravacao");
+      const v = await base[o.name](...o.args);
+      if (f === "after") throw new Error("falha_injetada_depois_da_gravacao");
+      o.res(v);
+    } catch (e) { o.rej(e); }
+  }
+  return { out, steps };
+}
+// Busca exaustiva em profundidade sobre as escolhas do agendador. Devolve o número de entrelaçamentos visitados.
+async function forAllSchedules(run) {
+  const stack = [];
+  let count = 0;
+  for (;;) {
+    let depth = 0;
+    await run((n) => { if (depth < stack.length) { stack[depth].n = n; return stack[depth++].i; } stack.push({ i: 0, n }); depth++; return 0; });
+    count++;
+    stack.length = depth;
+    while (stack.length && stack[stack.length - 1].i + 1 >= stack[stack.length - 1].n) stack.pop();
+    if (!stack.length) return count;
+    stack[stack.length - 1].i++;
+  }
+}
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+// Referência: as mesmas entregas, uma por vez, sem falha, num KV novo.
+async function reference(hooks) {
+  const kv = memKv();
+  for (const w of hooks) await recordHotmartSale(kv, w.event, w.data, { refresh: false });
+  return { summary: await deriveSalesSummary(kv, { now: T0 }), events: saleEvents(kv) };
+}
+// Modelo explícito: 1 venda por transação aprovada; 1 reversão por transação (estorno > contestação > protesto).
+function model(hooks) {
+  const appr = new Set(hooks.filter((w) => /APPROVED|COMPLETE/.test(w.event)).map((w) => w.data.purchase.transaction));
+  const rev = {};
+  for (const w of hooks) if (/REFUNDED|CHARGEBACK|PROTEST/.test(w.event)) (rev[w.data.purchase.transaction] ||= new Set()).add(w.event);
+  const pickRev = (set) => ["PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_PROTEST"].find((e) => set.has(e));
+  const kinds = Object.values(rev).map(pickRev);
+  return { approved: appr.size, refunded: kinds.filter((e) => e === "PURCHASE_REFUNDED").length, chargeback: kinds.filter((e) => e === "PURCHASE_CHARGEBACK").length };
+}
+// Uma rodada: execuções concorrentes (agendador), reentrega sequencial das que falharam, recomputo final.
+async function round(hooks, pick, fault, { refresh, seed = [] } = {}) {
+  const kv = memKv();
+  for (const w of seed) await recordHotmartSale(kv, w.event, w.data, { refresh: false });
+  const { out } = await interleave(kv, hooks.map((w, i) => (v) => recordHotmartSale(v, w.event, w.data, { now: T0 + i + 1, refresh })), pick, fault);
+  const projected = kv.m.has(SALES_SUMMARY_KEY) ? JSON.parse(kv.m.get(SALES_SUMMARY_KEY)) : null;
+  for (let i = 0; i < hooks.length; i++) if (!out[i]?.ok) await recordHotmartSale(kv, hooks[i].event, hooks[i].data, { now: T0 + 99, refresh: false });
+  round.lastKv = kv;
+  return { kv, out, projected, final: await deriveSalesSummary(kv, { now: T0 }) };
+}
+const SCEN = {
+  "mesmo webhook 2x": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_APPROVED", "HP-C-1")],
+  "APPROVED+COMPLETE da mesma transação": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_COMPLETE", "HP-C-1")],
+  "webhooks de transações diferentes": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_APPROVED", "HP-C-2", { price: 97 })],
+  "estorno x contestação da mesma transação": [hook("PURCHASE_CHARGEBACK", "HP-C-1"), hook("PURCHASE_REFUNDED", "HP-C-1")],
+  "aprovação x estorno": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_REFUNDED", "HP-C-1")],
+};
+const FAULTS = [null, ...[0, 1].flatMap((id) => ["before", "after"].map((when) => ({ id, putN: 1, when })))];
+
+test("E13 NC-989-01 duas execuções concorrentes, TODOS os entrelaçamentos × falha antes/depois de cada gravação: contagem final = transações únicas", async (t) => {
+  let total = 0;
+  for (const [name, hooks] of Object.entries(SCEN)) {
+    const ref = await reference(hooks), want = model(hooks);
+    for (const fault of FAULTS) {
+      const n = await forAllSchedules(async (pick) => {
+        const { final, kv } = await round(hooks, pick, fault, { refresh: false });
+        const tag = `${name} / falha ${fault ? fault.id + ":" + fault.when : "nenhuma"}`;
+        assert.deepEqual({ approved: final?.totals?.approved, refunded: final?.totals?.refunded, chargeback: final?.totals?.chargeback }, want, `[E13.1] ${tag}: contagem = modelo de transações únicas`);
+        assert.deepEqual(final, ref.summary, `[E13.2] ${tag}: resumo idêntico ao das entregas em sequência`);
+        assert.deepEqual(saleEvents(kv), ref.events, `[E13.3] ${tag}: conjunto de eventos = união das entregas`);
+      });
+      assert.ok(n >= 2, `[E13.4] ${name}: mais de um entrelaçamento explorado (${n})`);
+      total += n;
+    }
+  }
+  t.diagnostic(`E13 entrelaçamentos visitados: ${total}`);
+  assert.ok(total >= 200, `[E13.5] busca exaustiva visitou ${total} entrelaçamentos`);
+});
+
+test("E14 NC-989-01 caminho completo (evento + projeção) de duas entregas concorrentes, TODOS os entrelaçamentos: a projeção nunca conta a mais e converge", async (t) => {
+  const hooks = SCEN["webhooks de transações diferentes"];
+  const faults = [null, { id: 1, putN: 2, when: "before" }];
+  let total = 0;
+  for (const fault of faults) {
+    total += await forAllSchedules(async (pick) => {
+      const { out, projected, final } = await round(hooks, pick, fault, { refresh: true });
+      assert.ok(out.every((o) => o?.ok), "[E14.1] falha da projeção não derruba o registro (sem 503)");
+      assert.ok(projected?.totals?.approved >= 1 && projected?.totals?.approved <= 2, `[E14.2] projeção intermediária nunca vazia nem acima da verdade (${projected?.totals?.approved})`);
+      assert.equal(final?.totals?.approved, 2, "[E14.3] recomputo: as duas vendas");
+      // Qualquer postback seguinte (aqui, a reentrega do primeiro) recalcula a projeção a partir de TODOS os eventos:
+      // uma projeção defasada por corrida nunca fica defasada para sempre (com leitura-modificação-gravação ficaria).
+      const kv2 = round.lastKv;
+      await recordHotmartSale(kv2, hooks[0].event, hooks[0].data, { now: T0 + 50 });
+      assert.equal(JSON.parse(kv2.m.get(SALES_SUMMARY_KEY) || "null")?.totals?.approved, 2, "[E14.5] o postback seguinte corrige a projeção");
+    });
+  }
+  t.diagnostic(`E14 entrelaçamentos visitados: ${total}`);
+  assert.ok(total > 1000, `[E14.4] ${total} entrelaçamentos do caminho completo`);
+});
+
+test("E15 NC-989-01 propriedade com semente fixa: N (2-5) entregas misturadas, entrelaçamento e falha sorteados, reentrega → resumo = sequência", async () => {
+  const r = rng(0x989_01);
+  const txns = ["HP-P-1", "HP-P-2", "HP-P-3"], evs = ["PURCHASE_APPROVED", "PURCHASE_COMPLETE", "PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_PROTEST", "PURCHASE_CANCELED"];
+  for (let c = 0; c < 1000; c++) {
+    const n = 2 + Math.floor(r() * 4);
+    const hooks = Array.from({ length: n }, () => hook(evs[Math.floor(r() * evs.length)], txns[Math.floor(r() * txns.length)]));
+    const refresh = r() < 0.5;
+    const fault = r() < 0.7 ? { id: Math.floor(r() * n), putN: 1 + Math.floor(r() * (refresh ? 2 : 1)), when: r() < 0.5 ? "before" : "after" } : null;
+    const ref = await reference(hooks), want = model(hooks);
+    const { final, projected } = await round(hooks, (k) => Math.floor(r() * k), fault, { refresh });
+    const tag = `caso ${c}: ${hooks.map((w) => w.event.slice(9, 13) + ":" + w.data.purchase.transaction.slice(-1)).join(",")}`;
+    assert.deepEqual({ approved: final?.totals?.approved, refunded: final?.totals?.refunded, chargeback: final?.totals?.chargeback }, want, `[E15.1] ${tag}`);
+    assert.deepEqual(final, ref.summary, `[E15.2] ${tag}: idêntico à sequência`);
+    if (projected) assert.ok(projected?.totals?.approved <= want.approved, `[E15.3] ${tag}: projeção nunca acima da verdade`);
+  }
+});
+
+test("E16 NC-989-01 retenção: evento com 399 dias ainda deduplica; TTL ≥ 400 dias; sem limite de tamanho (2.500 transações, list paginado)", async () => {
+  let now = T0;
+  const kv = memKv({ clock: () => now });
+  assert.equal((await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-R-1"))).recorded, true, "[E16.1] gravado");
+  assert.ok(kv.puts.filter((p) => isSaleEvent(p.k)).every((p) => p.o.expirationTtl >= 400 * 86400) && SALES_EVENT_TTL_DAYS >= 400, "[E16.2] TTL de todo evento ≥ 400 dias");
+  now = T0 + 399 * DAY_MS + 3_600_000;
+  assert.equal((await deriveSalesSummary(kv, { now }))?.totals?.approved, 1, "[E16.3] com 399 dias o evento continua contado");
+  const again = await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-R-1"), { now });
+  assert.equal(again.reason, "duplicate", "[E16.4] reentrega com 399 dias é duplicata");
+  assert.equal((await deriveSalesSummary(kv, { now }))?.totals?.approved, 1, "[E16.5] e não conta de novo");
+  const big = memKv();
+  for (let i = 0; i < 2500; i++) await recordHotmartSale(big, "PURCHASE_APPROVED", pdata("HP-B-" + i), { refresh: false });
+  const lists = [];
+  const wrapped = { get: big.get, put: big.put, list: async (o) => { lists.push(o.limit); return big.list(o); } };
+  assert.equal((await refreshSalesSummary(wrapped, { now: T0 }))?.totals?.approved, 2500, "[E16.6] 2.500 vendas (o limite antigo era 2.000)");
+  assert.ok(lists.length >= 3 && lists.every((l) => l <= 1000), "[E16.7] listagem paginada (≤ 1.000 por página)");
+  assert.equal((await recordHotmartSale(big, "PURCHASE_APPROVED", pdata("HP-B-0"), { refresh: false })).reason, "duplicate", "[E16.8] a transação mais antiga das 2.500 ainda deduplica");
+  big.meta.delete(saleEvents(big)[0]);
+  assert.equal((await deriveSalesSummary(big, { now: T0 }))?.totals?.approved, 2500, "[E16.9] evento sem metadata é lido pelo valor (mesmo conteúdo)");
+});
+
+test("E17 NC-989-01 legado: o resumo anterior vira base congelada, gravada antes da 1ª projeção; transação legada não conta duas vezes", async () => {
+  const kv = memKv();
+  const sha16 = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  let legacy = null;
+  for (const txn of ["HP-L-1", "HP-L-2"]) {
+    legacy = applySale(legacy, saleFacts("PURCHASE_APPROVED", pdata(txn), T0), "approved", await sha16("hotmart:" + txn));
+    kv.m.set("zpc:sales:v1:txn:" + (await sha16("hotmart:" + txn)) + ":approved", "1");
+  }
+  kv.m.set(SALES_SUMMARY_KEY, JSON.stringify(legacy));
+  assert.equal((await refreshSalesSummary(kv, { now: T0 }))?.totals?.approved, 2, "[E17.1] a projeção parte do resumo legado");
+  assert.equal(JSON.parse(kv.m.get(SALES_LEGACY_BASELINE_KEY) || "null")?.totals?.approved, 2, "[E17.2] base legada gravada");
+  assert.equal((await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-L-1"))).reason, "duplicate", "[E17.3] reentrega de transação legada é duplicata");
+  await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-N-1"));
+  await recordHotmartSale(kv, "PURCHASE_REFUNDED", pdata("HP-L-2"));
+  await refreshSalesSummary(kv, { now: T0 });
+  const s = await refreshSalesSummary(kv, { now: T0 });
+  assert.deepEqual([s?.totals?.approved, s?.totals?.refunded], [3, 1], "[E17.4] 2 legadas + 1 nova, estorno da legada uma vez; estável em recomputos repetidos");
+  assert.equal(s?.source?.legacyBaseline, true, "[E17.5] procedência da base declarada");
+});
+
+test("E18 NC-989-01 pelo handler: três entregas simultâneas do mesmo postback → 1 venda e 1 atividade única", async (t) => {
+  noNetwork(t);
+  const kv = memKv(), env = envWith(kv);
+  const rs = await Promise.all([0, 1, 2].map(() => handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0013"), env)));
+  assert.deepEqual(rs.map((r) => r.status), [200, 200, 200], "[E18.1] todas aceitas");
+  await refreshSalesSummary(kv, { now: T0 });
+  assert.deepEqual([summary(kv)?.totals?.approved, saleEvents(kv).length], [1, 1], "[E18.2] 1 venda, 1 evento imutável");
+  assert.equal(new Set(activities(kv, "delivery_sent").map((a) => a.sourceKey)).size, 1, "[E18.3] uma atividade por sourceKey (o consumidor deduplica por sourceKey)");
 });

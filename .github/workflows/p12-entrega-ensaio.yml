@@ -2,8 +2,8 @@ name: p12-entrega-ensaio
 
 # P12 Entrega digital idempotente (roteiro v4.9.1, seções 5, 7 e 12-B.4): ensaio SINTÉTICO de entrega
 # (docs/p12/ensaio-entrega-sintetico.md). Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma
-# requisição à Cloudflare, à Hotmart ou à produção. (1) ensaio E1-E12 com fetch proibido (12 testes);
-# (2) mutantes causais pelo classificador compartilhado (18, todos KILLED). A suíte completa (manifesto) segue
+# requisição à Cloudflare, à Hotmart ou à produção. (1) ensaio E1-E18 com fetch proibido (18 testes; E13-E18 = NC-989-01);
+# (2) mutantes causais pelo classificador compartilhado (28, todos KILLED). A suíte completa (manifesto) segue
 # no gate existente.
 on:
   pull_request:
@@ -35,7 +35,7 @@ jobs:
   tests:
     name: p12-entrega-ensaio / tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
@@ -48,19 +48,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Ensaio sintético de entrega (contagem exata 12, zero pulados)
+      - name: Ensaio sintético de entrega (contagem exata 18, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p12-entrega-ensaio.test.mjs | tee /tmp/t.txt
-          for l in "# tests 12" "# pass 12" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 18" "# pass 18" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Mutantes causais (todos precisam morrer)
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/ci/mutants_p12_entrega.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P12_ENTREGA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=18 killed=18 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=28 killed=28 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

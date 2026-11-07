@@ -27,7 +27,7 @@ export async function handleDigitalHotmartNc012(request,env){
   return json(403,{ok:false,error:"cp_event_misrouted"});
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return json(503,{ok:false,error:"sales_ledger_unavailable"});
- let result;try{result=await recordHotmartSale(kv,event,data)}catch{return json(503,{ok:false,error:"sales_ledger_commit_failed"})}
+ let result;try{result=await recordHotmartSale(kv,event,data,{eventAt:Number(body?.creation_date)||null})}catch{return json(503,{ok:false,error:"sales_ledger_commit_failed"})}
  // Idempotent activity marker in separate shared ledger. An identical webhook
  // may be replayed after an incomplete downstream read; never sends product email.
  // P12 (DEC-06): a entrega é da Hotmart (Minhas compras); aqui só se REGISTRA a entrega/estorno. Registro que

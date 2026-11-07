@@ -33,7 +33,7 @@ test("NC013 C1 genuine digital event remains readable once and never creates CP 
  assert.equal(r.status,200);
  const body=await r.json();
  assert.equal(body.scope,"digital_product");
- assert.ok(h.writes.includes("zpc:sales:v1:summary"));
+ assert.ok(h.writes.some(k=>k.startsWith("zpc:sales:v1:ev:"))); // NC-989-01: evento imutável (fonte); o resumo é projeção
  assert.equal(h.writes.some(k=>k.startsWith("zpc:cp:")),false);
 });
 test("NC013 C1 malformed Hotmart body and missing valid Hottok cannot reach digital ledger",async()=>{

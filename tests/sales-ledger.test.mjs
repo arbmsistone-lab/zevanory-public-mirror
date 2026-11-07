@@ -2,7 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { recordHotmartSale, saleFacts, SALES_SUMMARY_KEY } from "../worker/sales-ledger.mjs";
 
-function memKv() { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); } }; }
+// KV em memória com list paginado e metadata (NC-989-01: o resumo é derivado da listagem dos eventos imutáveis).
+function memKv() {
+  const m = new Map(), meta = new Map();
+  return {
+    m, meta,
+    get: async (k) => m.get(k) ?? null,
+    put: async (k, v, o = {}) => { m.set(k, v); if (o.metadata !== undefined) meta.set(k, o.metadata); },
+    list: async ({ prefix = "" } = {}) => ({ keys: [...m.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => ({ name, metadata: meta.get(name) })), list_complete: true }),
+  };
+}
 const data = (txn, extra = {}) => ({
   product: { id: 123, name: "Lucro & Caixa" },
   buyer: { email: "cliente@example.com", name: "Cliente Real" },
@@ -31,7 +40,7 @@ test("approval counted once across APPROVED + COMPLETE, refund tracked", async (
   assert.equal(s.byProduct["Lucro & Caixa"].approved, 2);
   assert.equal(s.byDay["2026-10-12"].approved, 2);
   assert.equal(s.integrity, "webhook_authenticated");
-  assert.ok(!kv.m.get(SALES_SUMMARY_KEY).includes("cliente@") && !kv.m.get(SALES_SUMMARY_KEY).includes("HP1"));
+  assert.ok(![...kv.m.keys(), ...kv.m.values()].some((v) => String(v).includes("cliente@") || String(v).includes("HP1")));
 });
 
 test("unknown events are ignored", async () => {

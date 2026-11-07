@@ -2,9 +2,9 @@
 """Mutantes causais do ensaio sintético de entrega P12 (DEC-06: entrega na Hotmart; registro idempotente na ZEVANORY),
 classificados pelo classificador COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
-Suíte (uma execução `node --test`, TAP): tests/p12-entrega-ensaio.test.mjs (E1-E12). Sem rede (fetch substituído),
+Suíte (uma execução `node --test`, TAP): tests/p12-entrega-ensaio.test.mjs (E1-E18). Sem rede (fetch substituído),
 sem Cloudflare, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em diretório temporário
-(o repositório nunca é alterado): registro em duas fases (worker/sales-ledger.mjs), 503 em registro de entrega não
+(o repositório nunca é alterado): eventos imutáveis por transação e resumo derivado (worker/sales-ledger.mjs, NC-989-01), 503 em registro de entrega não
 gravado (worker/cp-nc012-digital-hotmart.mjs), chave por ciclo da entrega mensal (worker/cp-durable-ledger.mjs),
 onboarding microvitória (worker/onboarding-microvitoria.mjs) e a matriz 12-B.4 (data/p12-degradacao-12b4.json +
 scripts/ci/p12_degradacao.mjs).
@@ -36,10 +36,6 @@ L, H, C = "worker/sales-ledger.mjs", "worker/cp-nc012-digital-hotmart.mjs", "wor
 O, D, X = "worker/onboarding-microvitoria.mjs", "data/p12-degradacao-12b4.json", "scripts/ci/p12_degradacao.mjs"
 
 M = {
-    "M01 marcador concluído gravado antes do resumo": (L, "if (!mark) await kv.put(stateKey, PENDING,", "if (!mark) await kv.put(stateKey, \"1\","),
-    "M02 marcador pendente tratado como duplicata": (L, "if (mark && mark !== PENDING) return", "if (mark) return"),
-    "M03 conferência das chaves aplicadas removida": (L, "if (txn && applied.includes(appliedKey)) {", "if (false) {"),
-    "M04 falha de leitura do resumo engolida": (L, "const raw = await kv.get(SALES_SUMMARY_KEY);", "const raw = await kv.get(SALES_SUMMARY_KEY).catch(() => null);"),
     "M05 atividade não gravada ignorada": (H, "if(!out||(out.emitted!==true&&out.duplicate!==true))return json(503,", "if(false)return json(503,"),
     "M06 atividade duplicada tratada como falha": (H, "if(!out||(out.emitted!==true&&out.duplicate!==true))return json(503,", "if(!out||out.emitted!==true)return json(503,"),
     "M07 estorno sem registro de atividade": (H, "STOP.has(event)?{type:\"refund_requested\"", "false?{type:\"refund_requested\""),
@@ -52,8 +48,23 @@ M = {
     "M14 avaliador 12-B.4 ignora dependências": (X, ".filter((p) => (p.direitos || []).includes(r) && !(p.deps_recebimento || []).includes(c.falha))", ".filter((p) => (p.direitos || []).includes(r))"),
     "M15 caminho sem dependência aceito": (X, "    if (!Array.isArray(p?.deps_recebimento) || !p.deps_recebimento.length) problems.push(\"sem_deps_recebimento:\" + p?.id);\n", ""),
     "M16 suporte@ sem o direito de acesso na matriz": (D, "\"id\": \"suporte_email\",\n   \"direitos\": [\"acesso_conteudo\", ", "\"id\": \"suporte_email\",\n   \"direitos\": ["),
-    "M17 chaves aplicadas não gravadas no resumo": (L, "if (txn) next.applied = [", "if (false) next.applied = ["),
     "M18 base legal divergente da política publicada": (O, "  referencia: \"LGPD art. 7º, IX\",\n", "  referencia: \"LGPD art. 7º, V\",\n"),
+    # NC-989-01 (contra-auditoria do PR #989): fonte de verdade = eventos imutáveis; resumo = projeção derivada.
+    "M19 resumo por leitura-modificação-gravação como fonte (sem evento imutável)": (L, "  if (!own) await kv.put(k.key, JSON.stringify(meta), { expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: meta });", "  if (!own) await kv.put(SALES_SUMMARY_KEY, JSON.stringify(applySale(parse(await kv.get(SALES_SUMMARY_KEY)), meta.facts, kind, k.ref)));"),
+    "M20 derivação parte do resumo atual (projeção usada como fonte)": (L, "  const s = baseline ? JSON.parse(JSON.stringify(baseline)) : emptySummary();", "  const s = parse(await kv.get(SALES_SUMMARY_KEY)) || emptySummary();"),
+    "M21 projeção incremental por leitura-modificação-gravação no postback": (L, "    try { await refreshSalesSummary(kv, { now, include: [{ name: k.key, metadata: meta }] }); projection = \"ok\"; }", "    try { if (!group) await kv.put(SALES_SUMMARY_KEY, JSON.stringify(applySale(parse(await kv.get(SALES_SUMMARY_KEY)), meta.facts, kind, k.ref))); projection = \"ok\"; }"),
+    "M22 chave por transação não determinística": (L, "  const h = (await sha(\"hotmart:\" + txn)).slice(0, 32);", "  const h = (await sha(\"hotmart:\" + txn + \":\" + Math.random())).slice(0, 32);"),
+    "M23 TTL do evento abaixo de 400 dias": (L, "{ expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: meta }", "{ expirationTtl: (SALES_EVENT_TTL_DAYS - 1) * DAY, metadata: meta }"),
+    "M24 contagem de entradas não únicas (por chave, não por transação+desfecho)": (L, "    const id = m[1] + \":\" + m[2];", "    const id = name;"),
+    "M25 falha da listagem engolida (projeção de lista parcial ou vazia)": (L, "    const page = await kv.list({ prefix: SALES_EVENT_PREFIX, cursor, limit: KV_LIST_LIMIT });", "    const page = await kv.list({ prefix: SALES_EVENT_PREFIX, cursor, limit: KV_LIST_LIMIT }).catch(() => ({ keys: [], list_complete: true }));"),
+    "M26 falha da projeção devolve 503": (L, "    catch { projection = \"stale\"; }", "    catch (e) { throw e; }"),
+    "M27 evento gravado só se o grupo for novo (ordem de chegada decide)": (L, "  if (!own) await kv.put(k.key,", "  if (!group) await kv.put(k.key,"),
+    "M28 representativo pela ordem da listagem, não pela precedência": (L, "    if (!cur || rank(meta.event) < rank(cur.meta.event)) groups.set(id,", "    if (!cur) groups.set(id,"),
+    "M29 marcador legado ignorado": (L, "  if ((await kv.get(LEGACY_TXN_STATE + k.ref + \":\" + k.outcome)) === \"1\") return", "  if (false) return"),
+    "M30 base legada não gravada antes da projeção": (L, "    await kv.put(SALES_LEGACY_BASELINE_KEY, String(rawSummary));\n", ""),
+    "M31 paginação do list ignorada (limite de tamanho)": (L, "    if (page?.list_complete) break;", "    break;"),
+    "M32 falha de gravação do evento engolida": (L, "metadata: meta });\n  let projection", "metadata: meta }).catch(() => {});\n  let projection"),
+    "M33 leitura com falha engolida (KV fora sem 503)": (L, "  if ((await kv.get(LEGACY_TXN_STATE + k.ref + \":\" + k.outcome)) === \"1\") return", "  if ((await kv.get(LEGACY_TXN_STATE + k.ref + \":\" + k.outcome).catch(() => null)) === \"1\") return"),
 }
 
 ALLOW_FILE = Path(os.environ.get("P12_ENTREGA_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p12_entrega_allow.json"))

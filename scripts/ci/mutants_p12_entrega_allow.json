@@ -1,54 +1,6 @@
 {
- "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [En.k] que a codifica), escritas antes de rodar.",
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [En.k] que a codifica), escritas antes de rodar. NC-989-01 (M19-M33): expectativas derivadas por raciocínio e conferidas numa execução; divergências estão descritas em docs/p12/ensaio-entrega-sintetico.md, seção NC-989-01.",
  "mutants": {
-  "M01 marcador concluído gravado antes do resumo": {
-   "primary": [
-    {
-     "test_pattern": "E3",
-     "assertion_pattern": "[E3.4]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "E5",
-     "assertion_pattern": "[E5.4]",
-     "justification": "E5 também perde a venda: a leitura falha depois do marcador concluído, e a reentrega vira duplicata"
-    }
-   ]
-  },
-  "M02 marcador pendente tratado como duplicata": {
-   "primary": [
-    {
-     "test_pattern": "E3",
-     "assertion_pattern": "[E3.4]"
-    }
-   ],
-   "secondary": [
-    {
-     "test_pattern": "E5",
-     "assertion_pattern": "[E5.4]",
-     "justification": "E5 deixa o marcador pendente na tentativa que falhou; a mutação descarta a reentrega como duplicata"
-    }
-   ]
-  },
-  "M03 conferência das chaves aplicadas removida": {
-   "primary": [
-    {
-     "test_pattern": "E4",
-     "assertion_pattern": "[E4.4]"
-    }
-   ],
-   "secondary": []
-  },
-  "M04 falha de leitura do resumo engolida": {
-   "primary": [
-    {
-     "test_pattern": "E5",
-     "assertion_pattern": "[E5.1]"
-    }
-   ],
-   "secondary": []
-  },
   "M05 atividade não gravada ignorada": {
    "primary": [
     {
@@ -73,10 +25,16 @@
     },
     {
      "test_pattern": "E4",
-     "assertion_pattern": "[E4.6]",
-     "justification": "a terceira reentrega encontra a atividade já gravada e a mutação devolve 503"
+     "assertion_pattern": "[E4.4]",
+     "justification": "a reentrega de E4 encontra a atividade já gravada (duplicata), e a mutação devolve 503"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.1]",
+     "justification": "duas das três entregas simultâneas encontram a atividade já gravada e a mutação devolve 503"
     }
-   ]
+   ],
+   "broad_reason": "toda reentrega de entrega já registrada passa pela regra de duplicata da atividade"
   },
   "M07 estorno sem registro de atividade": {
    "primary": [
@@ -174,20 +132,378 @@
    ],
    "secondary": []
   },
-  "M17 chaves aplicadas não gravadas no resumo": {
-   "primary": [
-    {
-     "test_pattern": "E4",
-     "assertion_pattern": "[E4.4]"
-    }
-   ],
-   "secondary": []
-  },
   "M18 base legal divergente da política publicada": {
    "primary": [
     {
      "test_pattern": "E11",
      "assertion_pattern": "[E11.11]"
+    }
+   ],
+   "secondary": []
+  },
+  "M19 resumo por leitura-modificação-gravação como fonte (sem evento imutável)": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    },
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.4]"
+    },
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.1]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.2]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.5]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.3]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E12",
+     "assertion_pattern": "[E12.3]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.3]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.4]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.4]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.2]",
+     "justification": "sem evento imutável o recomputo do postback trata o resumo incremental como legado e o soma de novo, ou não encontra a venda: a contagem diverge"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade: todo teste que conta vendas depende dela"
+  },
+  "M20 derivação parte do resumo atual (projeção usada como fonte)": {
+   "primary": [
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.6]"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.8]"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]",
+     "justification": "cada recomputo soma os eventos de novo sobre a projeção anterior: a contagem cresce a cada postback"
+    },
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.2]",
+     "justification": "cada recomputo soma os eventos de novo sobre a projeção anterior: a contagem cresce a cada postback"
+    },
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.5]",
+     "justification": "cada recomputo soma os eventos de novo sobre a projeção anterior: a contagem cresce a cada postback"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "cada recomputo soma os eventos de novo sobre a projeção anterior: a contagem cresce a cada postback"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.3]",
+     "justification": "cada recomputo soma os eventos de novo sobre a projeção anterior: a contagem cresce a cada postback"
+    },
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.4]",
+     "justification": "cada recomputo soma os eventos de novo sobre a projeção anterior: a contagem cresce a cada postback"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.2]",
+     "justification": "cada recomputo soma os eventos de novo sobre a projeção anterior: a contagem cresce a cada postback"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade: todo teste que conta vendas depende dela"
+  },
+  "M21 projeção incremental por leitura-modificação-gravação no postback": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.5]"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.4]",
+     "justification": "o resumo incremental sem 'source' é tomado como base legada pelo recomputo e somado aos eventos, ou perde a venda da corrida"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "o resumo incremental sem 'source' é tomado como base legada pelo recomputo e somado aos eventos, ou perde a venda da corrida"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.3]",
+     "justification": "o resumo incremental sem 'source' é tomado como base legada pelo recomputo e somado aos eventos, ou perde a venda da corrida"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.2]",
+     "justification": "o resumo incremental sem 'source' é tomado como base legada pelo recomputo e somado aos eventos, ou perde a venda da corrida"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade: todo teste que conta vendas depende dela"
+  },
+  "M22 chave por transação não determinística": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    },
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.4]"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]",
+     "justification": "cada reentrega vira uma transação nova: duplicatas passam a contar e o marcador legado deixa de casar"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.4]",
+     "justification": "cada reentrega vira uma transação nova: duplicatas passam a contar e o marcador legado deixa de casar"
+    },
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.5]",
+     "justification": "cada reentrega vira uma transação nova: duplicatas passam a contar e o marcador legado deixa de casar"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.5]",
+     "justification": "cada reentrega vira uma transação nova: duplicatas passam a contar e o marcador legado deixa de casar"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.2]",
+     "justification": "cada reentrega vira uma transação nova: duplicatas passam a contar e o marcador legado deixa de casar"
+    },
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.3]",
+     "justification": "cada reentrega vira uma transação nova: duplicatas passam a contar e o marcador legado deixa de casar"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.2]",
+     "justification": "cada reentrega vira uma transação nova: duplicatas passam a contar e o marcador legado deixa de casar"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade: todo teste que conta vendas depende dela"
+  },
+  "M23 TTL do evento abaixo de 400 dias": {
+   "primary": [
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M24 contagem de entradas não únicas (por chave, não por transação+desfecho)": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    },
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.6]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.4]",
+     "justification": "estorno e contestação da mesma transação viram duas reversões"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": null,
+     "justification": "casos sorteados com o mesmo desfecho em dois eventos"
+    }
+   ]
+  },
+  "M25 falha da listagem engolida (projeção de lista parcial ou vazia)": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M26 falha da projeção devolve 503": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.1]"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.3]",
+     "justification": "list fora faz a projeção falhar, e a mutação devolve 503"
+    }
+   ]
+  },
+  "M27 evento gravado só se o grupo for novo (ordem de chegada decide)": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": null,
+     "justification": "casos sorteados com dois eventos do mesmo desfecho: o conjunto final depende da ordem"
+    }
+   ]
+  },
+  "M28 representativo pela ordem da listagem, não pela precedência": {
+   "primary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]"
+    },
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": null,
+     "justification": "casos sorteados com reversões diferentes da mesma transação"
+    }
+   ]
+  },
+  "M29 marcador legado ignorado": {
+   "primary": [
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M30 base legada não gravada antes da projeção": {
+   "primary": [
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M31 paginação do list ignorada (limite de tamanho)": {
+   "primary": [
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M32 falha de gravação do evento engolida": {
+   "primary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.1]"
+    },
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": null,
+     "justification": "casos sorteados com falha antes da gravação do evento: o evento falta e não há reentrega"
+    }
+   ]
+  },
+  "M33 leitura com falha engolida (KV fora sem 503)": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.1]"
     }
    ],
    "secondary": []
