@@ -60,9 +60,12 @@ export async function buildFixture({ now, env = process.env, kvSeed = {} }) {
   const sql = psqlSql(env);
   // P20_BACKUP_KEY (opcional, sintética): o Worker grava os bundles cifrados, como em produção com o segredo.
   const wenv = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://fixture-local-only", ...(env.P20_BACKUP_KEY ? { P20_BACKUP_KEY: env.P20_BACKUP_KEY } : {}) };
+  // R154 (fase 2): com a chave, o padrão de produção (cifragem obrigatória). Sem a chave, a fixture gera de
+  // propósito um backup legado em claro (anterior à fase 2), desligando a obrigatoriedade só aqui.
+  const legacy = env.P20_BACKUP_KEY ? {} : { encryptionRequired: false };
   const reports = [];
-  for (let part = 0; part < 3; part++) reports.push(await runDataBackup(wenv, { sqlFactory: () => sql, now, part, parts: 3 }));
-  const final = await finalizeBackup(wenv, { parts: 3, now });
+  for (let part = 0; part < 3; part++) reports.push(await runDataBackup(wenv, { sqlFactory: () => sql, now, part, parts: 3, ...legacy }));
+  const final = await finalizeBackup(wenv, { parts: 3, now, ...legacy });
   return { kv: Object.fromEntries([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:"))), reports, final };
 }
 
