@@ -223,7 +223,10 @@ export function scanRepo(root) {
 const CRED = /secrets\.(?:CLOUDFLARE_[A-Z0-9_]*TOKEN[A-Z0-9_]*|CF_[A-Z0-9_]*TOKEN[A-Z0-9_]*)\b|secrets\[|toJSON\(\s*secrets\s*\)/;
 const sameSet = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort());
 // Token por Worker (CF_TOKEN_<X>): só no(s) workflow(s) do serviço dono e na certificação de escopo (somente leitura).
-export const TOKEN_OWNER = { CF_TOKEN_ZEVANORY: "zevanory", CF_TOKEN_SALES: "zevanory-sales-public", CF_TOKEN_ROUTER: "zevanory-public-router", CF_TOKEN_PANEL: "zevanory-product-control-portable" };
+// DEC-P20-D1-01: credenciais D1 dedicadas do diário (banco zevanory-diario-p20), do serviço zevanory; o passo exato
+// que recebe cada uma é conferido por tests/test_diario_d1_credentials.py (ops/publishers.json -> d1_credentials).
+export const TOKEN_OWNER = { CF_TOKEN_ZEVANORY: "zevanory", CF_TOKEN_SALES: "zevanory-sales-public", CF_TOKEN_ROUTER: "zevanory-public-router", CF_TOKEN_PANEL: "zevanory-product-control-portable",
+  CF_TOKEN_D1_DIARIO_MIGRATE: "zevanory", CF_TOKEN_D1_DIARIO_READ: "zevanory" };
 export const TOKEN_SCOPE_CERTIFIER = "t1-publisher-guard.yml";
 
 // Confere o inventário (ops/publishers.json -> write_paths) contra a varredura. Devolve a lista de erros

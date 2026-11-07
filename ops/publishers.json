@@ -209,7 +209,7 @@
         "guard_evidence": [
           "promotion_guard\\.py --service zevanory "
         ],
-        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987): migração e readback do banco zevanory-diario-p20 dentro do mesmo job, depois do guard, e só com o binding DIARIO; credencial dedicada exigida pela DEC-P20-D1-01 (PR próprio)"
+        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987): migração e readback do banco zevanory-diario-p20 dentro do mesmo job, depois do guard, e só com o binding DIARIO; DEC-P20-D1-01: a migração (d1 migrations apply --remote) usa só CF_TOKEN_D1_DIARIO_MIGRATE (D1 Edit) e o readback só CF_TOKEN_D1_DIARIO_READ (D1 Read), cada um no env do próprio passo, com o token compartilhado vazio ali (services.zevanory.d1_credentials)"
       },
       "certification-isolated-deploy.yml": {
         "classes": [

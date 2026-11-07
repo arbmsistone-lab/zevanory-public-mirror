@@ -274,7 +274,9 @@ sem `waitUntil`.
   e `npx` falsos, que registram o token de cada chamada. Prova que cada token D1 aparece só no seu passo. Prova também
   que, sem o segredo dedicado, há aviso e o deploy sai sem binding, sem nenhuma chamada D1. A migração usa o token
   dedicado, o readback usa o token de leitura (sem queda para outro), o deploy segue com o token atual e o token
-  compartilhado nunca recebe chamada D1. Confere ainda o registro em `ops/publishers.json` e o detector T1 (o do
-  PR #990 quando existir na árvore; sem ele, o mesmo critério da classe `d1`). São 12 mutantes, e todos precisam
+  compartilhado nunca recebe chamada D1. Confere ainda o registro em `ops/publishers.json` e o detector T1
+  (`scripts/deploy/t1-write-scan.mjs`, PR #990: classe `d1` vista na migração, `TOKEN_OWNER` com os dois tokens
+  dedicados do serviço `zevanory`, entrada `write_paths` com a credencial dedicada). Se o detector sair da árvore, o
+  teste usa o mesmo critério da classe `d1`. São 12 mutantes, e todos precisam
   morrer.
 - `.github/workflows/p20-diario-d1-tests.yml` roda só em `pull_request`, sem segredo, com `contents: read`.

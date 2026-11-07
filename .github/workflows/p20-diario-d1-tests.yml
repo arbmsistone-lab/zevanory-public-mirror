@@ -27,6 +27,7 @@ on:
       - ".github/workflows/central-production-deploy.yml"
       - "ops/publishers.json"
       - "tests/test_diario_d1_credentials.py"
+      - "scripts/deploy/t1-write-scan.mjs"
 
 permissions:
   contents: read
