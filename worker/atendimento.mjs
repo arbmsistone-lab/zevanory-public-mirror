@@ -255,6 +255,30 @@ async function resendSend(c, { idempotencyKey, to, subject, text, replyTo }) {
   } catch { return { ok: false, permanent: false, reason: "resend_network" }; }
 }
 
+// R150: "toque" no celular do proprietário pelo Telegram, só DEPOIS que o e-mail oficial à equipe saiu.
+// O e-mail continua sendo o registro oficial; o Telegram é melhor esforço (falha não altera nada) e NÃO leva dado
+// pessoal do cliente: só protocolo, tipo e prazo. Segredo único TELEGRAM_ALERT = "<token do robô>|<chat_id>".
+export const TELEGRAM_API = "https://api.telegram.org";
+export function telegramAlertText(row) {
+  return `ZEVANORY: novo atendimento ${row.protocolo} (${TIPOS[row.tipo] || row.tipo}). Responder até ${brDate(toMs(row.responder_ate))}. Detalhes no e-mail zevanory@gmail.com.`;
+}
+export function parseTelegramAlert(v) {
+  const m = String(v || "").trim().match(/^(\d{5,15}:[A-Za-z0-9_-]{20,80})\|(-?\d{4,20})$/);
+  return m ? { token: m[1], chatId: m[2] } : null;
+}
+export async function telegramAlert(c, row) {
+  const cfg = parseTelegramAlert(c.env?.TELEGRAM_ALERT);
+  if (!cfg) return { sent: false, reason: "not_configured" };
+  try {
+    const r = await c.fetchImpl(`${TELEGRAM_API}/bot${cfg.token}/sendMessage`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: cfg.chatId, text: telegramAlertText(row), disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(5000),
+    });
+    return { sent: r.ok, reason: r.ok ? null : `telegram_${r.status}` };
+  } catch { return { sent: false, reason: "telegram_network" }; }
+}
+
 function ownerMessage(row, p) {
   return {
     subject: `ZEVANORY atendimento ${row.protocolo} — ${TIPOS[row.tipo]}`,
@@ -292,6 +316,7 @@ export async function processAtendimento(c, protocolo) {
   const out = { leased: true, owner: row.owner_status, customer: row.customer_status };
   const o = await sendStep(c, protocolo, { pending: row.owner_status === "pending", windowOk: row.owner_window_ok, key: `atendimento-owner/${protocolo}`, to: c.owner, replyTo: p.email, message: ownerMessage(row, p), sentQ: c.q.ownerSent, failedQ: c.q.ownerFailed, statusCol: "owner_status", attemptsCol: "owner_attempts", hasPayload: Boolean(p.email) });
   if (o) { out.owner = o.status; out.owner_attempts = o.attempts; if (o.reason) out.owner_reason = o.reason; }
+  if (o && o.status === "sent") out.telegram = (await telegramAlert(c, row)).sent ? "sent" : "skipped";
   const k = await sendStep(c, protocolo, { pending: row.customer_status === "pending", windowOk: row.customer_window_ok, key: `atendimento-ack/${protocolo}`, to: p.email, message: customerMessage(row), sentQ: c.q.customerSent, failedQ: c.q.customerFailed, statusCol: "customer_status", attemptsCol: "customer_attempts", hasPayload: Boolean(p.email) });
   if (k) { out.customer = k.status; out.customer_attempts = k.attempts; if (k.reason) out.customer_reason = k.reason; }
   const attempts = Math.max(out.owner === "pending" ? out.owner_attempts || 0 : 0, out.customer === "pending" ? out.customer_attempts || 0 : 0);
