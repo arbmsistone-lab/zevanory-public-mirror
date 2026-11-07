@@ -30,9 +30,9 @@ strong{font-weight:700}
 .nav :focus-visible{outline-color:var(--amarelo-caixa)}
 /* Banner fora do <main> (P03): a barra já ocupa a largura toda; skip-link igual ao das páginas de produto. */
 .legal-header .nav{margin:0}
-.skip-link{position:fixed;left:16px;top:12px;z-index:100;transform:translateY(-200%);padding:12px 16px;background:var(--amarelo-caixa);color:#0e1a2b;font-weight:700;text-decoration:none;border:2px solid #0e1a2b}
+.skip-link{position:fixed;left:16px;top:12px;z-index:100;transform:translateY(-200%);padding:12px 16px;background:var(--amarelo-caixa);color:var(--balcao);font-weight:700;text-decoration:none;border:2px solid var(--balcao)}
 .skip-link:focus{transform:none}
-.skip-link:focus-visible{outline-color:#0e1a2b}
+.skip-link:focus-visible{outline-color:var(--balcao)}
 /* 44 px targets, visible focus (WCAG 2.2 AA + internal standard). */
 .nav a,.legal-brand,.footer-legal a,:where(p,li,dd,td) a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;max-width:100%;overflow-wrap:anywhere}
 :focus-visible{outline:3px solid var(--azul-cedula);outline-offset:3px}

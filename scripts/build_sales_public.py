@@ -649,7 +649,9 @@ def fingerprint_assets() -> dict[str, str]:
         # chrome follows the navy counter bar, identical in both themes.
         html = re.sub(r'<meta name="color-scheme"[^>]*>', "", html)
         html = re.sub(r'<meta name="theme-color"[^>]*>', "", html)
-        html = re.sub(r'(<meta name="viewport"[^>]*>)', r'\1<meta name="color-scheme" content="light dark"><meta name="theme-color" content="#0e1a2b">', html, count=1)
+        # Only pages with a stylesheet: the DEC-04 tombstone has no CSS and keeps the browser defaults.
+        if '<link rel="stylesheet"' in html:
+            html = re.sub(r'(<meta name="viewport"[^>]*>)', r'\1<meta name="color-scheme" content="light dark"><meta name="theme-color" content="#0e1a2b">', html, count=1)
         # Self-hosted fonts (font-src 'self'), preloaded so text paints in the final face early.
         html = re.sub(r'(<link rel="stylesheet" href="/assets/(?:product|legal)\.[0-9a-f]{10}\.css">)', lambda m: preload + m.group(1), html, count=1)
         html_file.write_text(html, encoding="utf-8")
