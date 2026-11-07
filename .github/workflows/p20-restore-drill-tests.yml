@@ -59,7 +59,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Lógica do ensaio e da cifragem (contagem exata 22, zero pulados)
+      - name: Lógica do ensaio e da cifragem (contagem exata 23, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
