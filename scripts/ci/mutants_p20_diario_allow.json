@@ -1,0 +1,112 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [DJn.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 prev_hash fora do hash encadeado": {
+   "primary": [
+    {
+     "test_pattern": "DJ1",
+     "assertion_pattern": "[DJ1.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M02 conflito de event_key aceito como duplicada": {
+   "primary": [
+    {
+     "test_pattern": "DJ4",
+     "assertion_pattern": "[DJ4.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DJ5",
+     "assertion_pattern": "[DJ5.10]",
+     "justification": "DJ5 também confere o conflito quando a mesma chave chega em corrida com payload diferente; a mutação devolve duplicada"
+    }
+   ]
+  },
+  "M03 resultado do compare-and-set ignorado": {
+   "primary": [
+    {
+     "test_pattern": "DJ5",
+     "assertion_pattern": "[DJ5.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M04 assertNoPii desligado": {
+   "primary": [
+    {
+     "test_pattern": "DJ6",
+     "assertion_pattern": "[DJ6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M05 trigger que proíbe UPDATE removido": {
+   "primary": [
+    {
+     "test_pattern": "DJ7",
+     "assertion_pattern": "[DJ7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M06 verifyChain sempre ok": {
+   "primary": [
+    {
+     "test_pattern": "DJ2",
+     "assertion_pattern": "[DJ2.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DJ1",
+     "assertion_pattern": "[DJ1.11]",
+     "justification": "DJ1 compara o retorno completo de verifyChain (cabeça calculada); a mutação devolve head nulo"
+    },
+    {
+     "test_pattern": "DJ5",
+     "assertion_pattern": "[DJ5.4]",
+     "justification": "DJ5 compara o retorno completo de verifyChain após a corrida; a mutação devolve head nulo"
+    }
+   ]
+  },
+  "M07 trigger que proíbe DELETE removido": {
+   "primary": [
+    {
+     "test_pattern": "DJ7",
+     "assertion_pattern": "[DJ7.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M08 uma tentativa só em corrida": {
+   "primary": [
+    {
+     "test_pattern": "DJ5",
+     "assertion_pattern": "[DJ5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M09 CPF não detectado": {
+   "primary": [
+    {
+     "test_pattern": "DJ6",
+     "assertion_pattern": "[DJ6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M10 verifyChain não confere payload_sha": {
+   "primary": [
+    {
+     "test_pattern": "DJ2",
+     "assertion_pattern": "[DJ2.1]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

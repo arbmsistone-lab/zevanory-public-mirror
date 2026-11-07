@@ -1,0 +1,59 @@
+name: p20-diario-d1-tests
+
+# P20 (Roteiro Mestre v4.7, seção 9.1): testes do diário de eventos críticos no D1 (PR 1 de 7, docs/p20/diario-d1.md).
+# Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à Cloudflare ou à produção. (1) lógica
+# num D1 falso que executa SQL de verdade (node:sqlite, migração real com os triggers; 8 testes); (2) mutantes causais
+# pelo classificador compartilhado (10, todos KILLED). A suíte completa (manifesto) segue no gate existente.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p20-diario-d1-tests.yml"
+      - "worker/diario-p20.mjs"
+      - "migrations/d1/**"
+      - "tests/p20-diario-d1.test.mjs"
+      - "tests/helpers/d1-sqlite.mjs"
+      - "tests/helpers/text.mjs"
+      - "scripts/ci/mutants_p20_diario.py"
+      - "scripts/ci/mutants_p20_diario_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "docs/p20/diario-d1.md"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: p20-diario-d1 / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lógica do diário (contagem exata 8, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p20-diario-d1.test.mjs | tee /tmp/t.txt
+          for l in "# tests 8" "# pass 8" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes causais (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p20_diario.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P20_DIARIO_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=10 killed=10 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"
