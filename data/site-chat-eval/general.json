@@ -1782,6 +1782,219 @@
     ]
    },
    "sales_open": true
+  },
+  {
+   "id": "G157",
+   "tag": "r148_conhecimento",
+   "q": "O que a ZEVANORY vende?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "menu"
+    ],
+    "includes": [
+     "IA na Prática",
+     "Lucro & Caixa",
+     "Conteúdo Pronto"
+    ]
+   }
+  },
+  {
+   "id": "G158",
+   "tag": "r148_conhecimento",
+   "q": "Quais são os produtos de vocês?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "menu"
+    ],
+    "includes": [
+     "Vendas na Prática",
+     "Negócio Completo"
+    ]
+   }
+  },
+  {
+   "id": "G159",
+   "tag": "r148_conhecimento",
+   "q": "Quem é a ZEVANORY?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "company"
+    ],
+    "includes": [
+     "69.077.233/0001-99",
+     "Renan Bitu"
+    ]
+   }
+  },
+  {
+   "id": "G160",
+   "tag": "r148_conhecimento",
+   "q": "Qual o CNPJ da empresa?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "company"
+    ],
+    "includes": [
+     "69.077.233/0001-99"
+    ]
+   }
+  },
+  {
+   "id": "G161",
+   "tag": "r148_conhecimento",
+   "q": "A empresa é confiável?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "company"
+    ],
+    "includes": [
+     "A. RENAN ALVES MOREIRA BITU LTDA"
+    ]
+   }
+  },
+  {
+   "id": "G162",
+   "tag": "r148_conhecimento",
+   "q": "Qual o telefone de vocês?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "contact"
+    ],
+    "includes": [
+     "suporte@zevanory.api.br",
+     "Não há atendimento por telefone."
+    ]
+   }
+  },
+  {
+   "id": "G163",
+   "tag": "r148_conhecimento",
+   "q": "Como entro em contato?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "contact"
+    ],
+    "includes": [
+     "suporte@zevanory.api.br"
+    ]
+   }
+  },
+  {
+   "id": "G164",
+   "tag": "r148_conhecimento",
+   "q": "Quais arquivos vêm no IA na Prática?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "content"
+    ],
+    "includes": [
+     "Planilha de aplicação (XLSX)"
+    ]
+   }
+  },
+  {
+   "id": "G165",
+   "tag": "r148_conhecimento",
+   "q": "O Lucro & Caixa é para quem?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "content"
+    ],
+    "includes": [
+     "Quem fatura, mas não sabe quanto sobra no fim do mês"
+    ]
+   }
+  },
+  {
+   "id": "G166",
+   "tag": "r148_conhecimento",
+   "q": "O Negócio Completo é um sistema de gestão?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "content"
+    ],
+    "includes": [
+     "É um pacote de método e conteúdo"
+    ]
+   }
+  },
+  {
+   "id": "G167",
+   "tag": "r148_conhecimento",
+   "q": "Posso revender o Vendas na Prática?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "content"
+    ],
+    "includes": [
+     "não é permitido revender"
+    ]
+   }
+  },
+  {
+   "id": "G168",
+   "tag": "r148_conhecimento",
+   "q": "O que o Combo IA + Vendas ensina?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "content"
+    ],
+    "includes": [
+     "Processo comercial"
+    ]
+   }
+  },
+  {
+   "id": "G169",
+   "tag": "r148_conhecimento",
+   "q": "O Negócio Completo serve para empresa grande?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "content"
+    ],
+    "includes": [
+     "operações menores"
+    ]
+   }
+  },
+  {
+   "id": "G170",
+   "tag": "r148_conhecimento",
+   "q": "Vendas na Prática promete aumentar vendas?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "content"
+    ],
+    "includes": [
+     "Não existe garantia legítima de resultado comercial"
+    ]
+   }
+  },
+  {
+   "id": "G171",
+   "tag": "r148_conhecimento",
+   "q": "O Lucro & Caixa substitui contabilidade?",
+   "expect": {
+    "kind": "answer",
+    "category": [
+     "limits",
+     "content"
+    ]
+   }
   }
  ]
 }

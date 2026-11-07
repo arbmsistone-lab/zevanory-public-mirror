@@ -577,6 +577,11 @@
      "test_pattern": "SE02",
      "assertion_pattern": "[SE02.1]",
      "justification": "os casos críticos de escalonamento passam pela guarda final e perdem a categoria esperada"
+    },
+    {
+     "test_pattern": "SC20",
+     "assertion_pattern": "[SC20.7]",
+     "justification": "R148: as respostas institucionais (empresa e contato) citam o formulário /atendimento; com a URL fora da lista, o validador as reprova"
     }
    ],
    "broad_reason": "o formulário aparece em toda resposta de escalonamento e de categoria desligada; recusá-lo na guarda final muda a categoria de todas essas respostas, e cada teste citado verifica uma delas"

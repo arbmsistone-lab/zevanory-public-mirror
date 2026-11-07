@@ -1,0 +1,15 @@
+# G4 (Ordem 082): caminhos que definem ou alimentam os checks obrigatórios de gh-pages.
+# Só tem efeito de bloqueio quando o proprietário ativar "Require review from Code Owners" (ruleset ou proteção da branch).
+# Mantido em espelho com PROTECTED em scripts/ci/required_check_guard.py (teste T15 confere).
+/.github/                                   @arbmsistone-lab
+/CODEOWNERS                                 @arbmsistone-lab
+/docs/CODEOWNERS                            @arbmsistone-lab
+/scripts/ci/                                @arbmsistone-lab
+/tests/ci/                                  @arbmsistone-lab
+/scripts/premerge_product_audit.py          @arbmsistone-lab
+/scripts/zevanory_10p_excellence_gate.py    @arbmsistone-lab
+/scripts/zevanory_crown_gate.py             @arbmsistone-lab
+/scripts/test_crown_negative.py             @arbmsistone-lab
+/scripts/zees16_evidence_gate.py            @arbmsistone-lab
+/compliance/zevanory-10p-policy.json        @arbmsistone-lab
+/compliance/zevanory-crown-policy.json      @arbmsistone-lab

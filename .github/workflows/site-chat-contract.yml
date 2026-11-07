@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/site-chat.test.mjs tests/site-chat-widget.test.mjs tests/site-chat-no-synthetic-traffic.test.mjs tests/site-chat-eval.test.mjs | tee /tmp/chat.txt
-          grep -qx "# tests 34" /tmp/chat.txt || { echo "::error::contagem de testes diferente de 33"; exit 1; }
+          grep -qx "# tests 35" /tmp/chat.txt || { echo "::error::contagem de testes diferente de 35"; exit 1; }
           grep -qx "# fail 0" /tmp/chat.txt && grep -qx "# skipped 0" /tmp/chat.txt || { echo "::error::falha ou teste pulado"; exit 1; }
       - name: Relatório P10 (gerais Wilson 95% >= 0,90; críticos 100%)
         shell: bash
