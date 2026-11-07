@@ -82,6 +82,7 @@ tests/p09-nurture-sequence.test.mjs 31
 tests/p13-buy-bar-390.test.mjs 3
 tests/p13-decreto-oferta-cache.test.mjs 6
 tests/p13-politica-nogo.test.mjs 8
+tests/p13-posvenda-ensaio.test.mjs 14
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
