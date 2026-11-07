@@ -228,6 +228,19 @@ test("D11 inventário 9.1: arquivo real é PROPOSTA válida; classes cobrem pedi
   const op = INVENTORY.classes.find((x) => x.id === "operacional");
   assert.ok(op.tables.includes("zevanory_whatsapp_broker_runtime") && /disabled_permanent.*preservada até decisão de retenção/.test(op.notas_tabelas.zevanory_whatsapp_broker_runtime), "[D11.7] legado do WhatsApp classificado, preservado");
   assert.ok(!op.fora_do_backup_por_politica, "[D11.8] classificar não tira do backup nem apaga");
+  // R156: catalogo_conteudo tem RPO 0 só por origem versionada (Git); knowledge_documents é gravada em runtime pelo
+  // autopiloto e fica na classe de 24 h (roteiro 9.1, "Eventos internos de funil e telemetria").
+  const cat = INVENTORY.classes.find((x) => x.id === "catalogo_conteudo");
+  assert.ok(cat.rpo_objetivo_h === 0 && cat.rpo_base === "origem_versionada" && cat.tables.length === 0 && /SHA publicado = SHA do Git/.test(cat.rpo_nota), "[D11.9] catálogo: RPO 0 por origem versionada, sem tabela do Neon");
+  const fun = INVENTORY.classes.find((x) => x.id === "funil_telemetria");
+  assert.ok(fun.tables.includes("knowledge_documents") && fun.rpo_objetivo_h === 24 && /persistAutopilotCycle/.test(fun.notas_tabelas.knowledge_documents), "[D11.10] knowledge_documents na classe de 24 h");
+  const kd = byClass([{ table: "knowledge_documents", hash_ok: true, rows: 2 }], ["knowledge_documents"], INVENTORY, 5);
+  assert.ok(!("catalogo_conteudo" in kd.classes) && kd.classes.funil_telemetria.rpo_medido_h === 5 && kd.classes.funil_telemetria.rpo_objetivo_h === 24, "[D11.11] RPO medido do backup nunca atribuído ao catálogo");
+  const zeroComTabela = structuredClone(INVENTORY); zeroComTabela.classes.find((x) => x.id === "catalogo_conteudo").tables.push("knowledge_documents");
+  zeroComTabela.classes.find((x) => x.id === "funil_telemetria").tables = fun.tables.filter((t) => t !== "knowledge_documents");
+  assert.throws(() => validateInventory(zeroComTabela), /rpo_zero_sem_origem_versionada catalogo_conteudo/, "[D11.12] RPO 0 com tabela do Neon recusado");
+  const zeroSemBase = structuredClone(INVENTORY); delete zeroSemBase.classes.find((x) => x.id === "codigo_configuracao").rpo_base;
+  assert.throws(() => validateInventory(zeroSemBase), /rpo_zero_sem_origem_versionada codigo_configuracao/, "[D11.13] RPO 0 exige origem versionada declarada");
 });
 
 test("D12 workflow mensal: producao-critica só no ensaio, publicação sem segredo, evidência só em evidence/b0-baseline, nunca gh-pages", () => {
