@@ -40,7 +40,7 @@ Inventário obtido da API de settings do Worker e confrontado com `worker/**` e 
 | `META_APP_SECRET01` | em uso |
 | `META_VERIFY_TOKEN` | em uso |
 | `NUVEMSHOP_APP_ID` | em uso |
-| `OFFER_SELECTION_APPROVED` | em uso |
+| `OFFER_SELECTION_APPROVED` | em uso; consolidado em `ZEVANORY_RUNTIME_CONFIG` (P20, vaga para `P20_BACKUP_KEY`: `docs/p20/vaga-binding-p20-backup-key.md`) |
 | `OPERATOR_TOKEN` | em uso |
 | `ORGANIC_PUBLISHING_ENABLED` | em uso |
 | `OWNER_DASHBOARD_SECRET` | em uso |
@@ -53,7 +53,7 @@ Inventário obtido da API de settings do Worker e confrontado com `worker/**` e 
 | `RESEND_API_KEY` | em uso |
 | `RESEND_WEBHOOK_SECRET` | em uso |
 | `SALE_GLOBALLY_ENABLED` | em uso |
-| `SERVICE_DELIVERY_MODE` | em uso |
+| `SERVICE_DELIVERY_MODE` | em uso; consolidado em `ZEVANORY_RUNTIME_CONFIG` (P20, vaga para `P20_BACKUP_KEY`: `docs/p20/vaga-binding-p20-backup-key.md`) |
 | `SUPPORT_CHANNEL` | duplicado de `ZEVANORY_WHATSAPP_DISPLAY` |
 | `VOICE_TTS_FAILOVER_ENABLED` | duplicado: consolidado em `ZEVANORY_RUNTIME_CONFIG` |
 | `VOICE_TTS_FREE_ONLY` | em uso |

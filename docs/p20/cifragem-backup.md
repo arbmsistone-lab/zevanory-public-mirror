@@ -126,11 +126,12 @@ Isso custa uma vez a transferência do Neon (teste E8).
 
 ## Passo a passo do proprietário (depois do merge)
 
-> Antes do passo 2: o deploy central só passa se `segredos + vars ≤ 60`. Abra o último `central-production-deploy` e
-> procure `BINDING_BUDGET_PASS planned=N spare=S`. Se `planned` já for 60, libere uma vaga antes. A proposta é apagar
-> `VOICE_TTS_FREE_ONLY`, com prova de impacto e ordem 1) apagar, 2) cadastrar, 3) deploy, em
-> [`vaga-binding-p20-backup-key.md`](vaga-binding-p20-backup-key.md). A alternativa é compactar uma var
-> (`tests/test_binding_budget_compaction.py`). Sem isso, o próximo deploy é bloqueado (fail-closed).
+> Antes do passo 2: o deploy central só passa se `segredos + vars ≤ 60`. Este PR já libera a vaga: compacta
+> `OFFER_SELECTION_APPROVED` e `SERVICE_DELIVERY_MODE` em `ZEVANORY_RUNTIME_CONFIG`, com prova de leitores e de
+> equivalência em [`vaga-binding-p20-backup-key.md`](vaga-binding-p20-backup-key.md). Espere o deploy central depois do
+> merge imprimir `BINDING_BUDGET_PASS planned=58` e só então cadastre a chave. O próximo deploy deve imprimir
+> `planned=59`. Cadastrar antes levaria a 61 e bloquearia o deploy (fail-closed). A remoção de `VOICE_TTS_FREE_ONLY`
+> foi vetada.
 
 1. **Gerar a chave no seu computador.** Ela vai para um arquivo e não aparece na tela:
    `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))" > p20-backup.key`

@@ -280,5 +280,20 @@ for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
 for key in ("ZEVANORY_RELEASE_REF", "AGENT_AUTONOMY_MODE", "AGENT_AI_MAX_RUNS_PER_HOUR"):
     if key in c["vars"]:
         runtime_config[key] = c["vars"].pop(key)
+# P20 (docs/p20/vaga-binding-p20-backup-key.md): frees 2 plain-var slots so the owner can add the ONE new
+# secret P20_BACKUP_KEY (budget 60 -> 58 -> 59). Both are non-secret readiness decisions with a single
+# reader, evaluateActivationReadiness in worker/cloudflare-worker.recovered.mjs, the same function that already
+# reads the compacted ARBM_SIST_* flags through the same env. Every env reaching it resolves
+# ZEVANORY_RUNTIME_CONFIG (patched normalizeEnv above, or process.env after hydrateRuntimeConfig), and neither is in
+# FAIL_CLOSED_RUNTIME_FLAGS. A top-level var wins over the runtime config in both resolvers, so the
+# moved value is the effective one; a different value already in the runtime config would change what the code
+# sees, so it fails closed instead of overwriting or being overwritten. Proof: tests/test_binding_budget_compaction.py.
+P20_COMPACTED_FLAGS = ("OFFER_SELECTION_APPROVED", "SERVICE_DELIVERY_MODE")
+for key in P20_COMPACTED_FLAGS:
+    if key in c["vars"]:
+        value = c["vars"].pop(key)
+        if key in runtime_config and runtime_config[key] != value:
+            raise SystemExit("RUNTIME_CONFIG_COMPACTION_CONFLICT " + key)
+        runtime_config[key] = value
 
 open(p,"w").write(json.dumps(c,indent=2)+"\n")
