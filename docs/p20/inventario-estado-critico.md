@@ -13,12 +13,19 @@ aprovar. O certificado de P20 usa o valor **medido** no ensaio mensal: objetivo 
 | Reembolsos e avaliações | Neon + provedor | Provedor (estorno); Neon (motivo, avaliação) | Idem | 24 h | 4 h | Idem |
 | Leads e consentimentos (LGPD) | Neon | Neon (única fonte) | Idem; nada em claro em log ou evidência | 24 h | 4 h | Idem |
 | Chamados de atendimento | Neon | Neon (a caixa de e-mail guarda só as mensagens) | Idem | 24 h | 8 h | Idem |
-| Catálogo, páginas, conteúdo, base de conhecimento | Git + KV + `knowledge_documents` | Git | Git; `knowledge_documents` também no bundle | 0 | 1 h | SHA do commit |
-| Funil, atribuição, telemetria | Neon / KV | Neon | Bundle diário | 24 h | 24 h | Idem |
+| Catálogo, páginas, conteúdos versionados | Git + cópia publicada no Cloudflare | Git | Git (nenhuma tabela do Neon) | 0 por origem versionada | 1 h | SHA publicado = SHA do Git |
+| Funil, atribuição, telemetria (inclui `knowledge_documents`) | Neon / KV | Neon | Bundle diário | 24 h | 24 h | Idem |
 | Operacional (agentes, integrações, esquema) | Neon | Neon; esquema pelas migrações | Bundle diário | 24 h | 24 h | Idem |
 | Estado comercial P0 (trava, prova, `zpc:sales:`, `zpc:cp:`) | KV | KV; a prova é recalculada, nunca restaurada como válida | Tabela `zevanory_kv_backup` no Neon, 14 dias | 24 h | 1 h | Hash por chave |
 | Credenciais e segredos | Neon, Cloudflare, GitHub | Proprietário (classe D) | Fora do backup por política | — | — | — |
 | Código e configuração | Git + Cloudflare | Git | Git | 0 | 1 h | SHA + tag |
+
+**RPO 0 só por origem versionada.** O catálogo e o código têm RPO 0 porque o SHA publicado é o SHA do Git; isso é
+conferido pelo commit e pela tag, nunca pelo RPO medido do backup do Neon. Por isso essas classes não têm tabela do
+Neon (`validateInventory` recusa classe de RPO 0 com tabela ou sem `rpo_base: "origem_versionada"`), e o ensaio
+mensal nunca atribui a elas `rpo_medido_h`. `knowledge_documents` é gravada em runtime pelo autopiloto
+(`persistAutopilotCycle`, na mesma instrução que `intelligence_snapshots` e `agent_runs`), não vem do Git e fica na
+classe de 24 h do roteiro 9.1 (linha 934, "Eventos internos de funil e telemetria").
 
 A tabela de cada classe do Neon está listada no JSON. O ensaio aponta qualquer tabela sem classe em
 `unclassified_tables`, sem escondê-la.
