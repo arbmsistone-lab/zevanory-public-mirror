@@ -203,14 +203,14 @@ test("E7 Worker, fase 1: com chave grava cifrado; sem chave mantém claro com al
   const fin = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, { parts: 1, now: NOW });
   assert.equal(fin.ok, true);
   assert.deepEqual(fin.encryption, { state: "cifrado", parts_cifradas: 1, parts: 1, kids: [kidOf(KEY)] }, "[E7.5]");
-  // (b) sem chave, fase 1
+  // (b) sem chave, comportamento da fase 1 (só com a obrigatoriedade desligada de forma explícita)
   const kv2 = fakeKv();
-  const r2 = await runDataBackup(wenv(kv2), { sqlFactory: fakeSql().factory, now: NOW, part: 0, parts: 1 });
+  const r2 = await runDataBackup(wenv(kv2), { sqlFactory: fakeSql().factory, now: NOW, part: 0, parts: 1, encryptionRequired: false });
   assert.equal(r2.ok, true, "[E7.6] fase 1: comportamento atual mantido");
   assert.equal(r2.encryption.state, "nao_cifrado", "[E7.7]");
   assert.deepEqual(r2.warnings, ["backup_nao_cifrado"], "[E7.8] alerta registrado");
   assert.equal(typeof JSON.parse(kv2.m.get(bundleKeyFor(DAY, 0))).orders, "string");
-  const fin2 = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv2 }, { parts: 1, now: NOW });
+  const fin2 = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv2 }, { parts: 1, now: NOW, encryptionRequired: false });
   assert.equal(fin2.ok, true);
   assert.equal(fin2.encryption.state, "nao_cifrado", "[E7.9]");
   assert.deepEqual(fin2.warnings, ["backup_nao_cifrado:nao_cifrado"]);
@@ -285,4 +285,37 @@ test("E10 workflows: chave da restauração só no Environment producao-critica;
   const names = new Set([...src.matchAll(/env\.([A-Z][A-Z0-9_]+)/g)].map((m) => m[1]));
   assert.deepEqual([...names].filter((n) => n.startsWith("P20_")), ["P20_BACKUP_KEY"], "[E10.3] um único segredo novo no Worker");
   assert.doesNotMatch(src, /env\.P20_BACKUP_ENCRYPTION|env\.P20_BACKUP_ACTIVE/, "[E10.4] flag de fase no código, não em binding");
+});
+
+test("E11 fase 2 ativa: o padrão de produção é cifragem obrigatória; sem chave, chave inválida ou cópia ilegível nunca grava nem aprova texto claro", async () => {
+  assert.equal(W.ENCRYPTION_REQUIRED, true, "[E11.1] fase 2: ENCRYPTION_REQUIRED=true no código");
+  // (a) padrão (sem passar encryptionRequired), sem chave: a parte falha antes de gravar
+  const kv1 = fakeKv();
+  const r1 = await runDataBackup(wenv(kv1), { sqlFactory: fakeSql().factory, now: NOW, part: 0, parts: 1 });
+  assert.equal(r1.ok, false, "[E11.2]");
+  assert.ok(r1.failures.includes("backup_key_absent_encryption_required"), "[E11.3]");
+  assert.ok(![...kv1.m.keys()].some((x) => x.startsWith("zpc:backup:v1:neon:")), "[E11.4] nenhum bundle em claro");
+  // (b) padrão, chave inválida: falha antes de gravar
+  const kv2 = fakeKv();
+  const r2 = await runDataBackup(wenv(kv2, randomBytes(16).toString("base64")), { sqlFactory: fakeSql().factory, now: NOW, part: 0, parts: 1 });
+  assert.ok(r2.failures.includes("backup_key_invalid"), "[E11.5]");
+  assert.ok(![...kv2.m.keys()].some((x) => x.startsWith("zpc:backup:v1:neon:")), "[E11.6]");
+  // (c) padrão, com chave: grava cifrado e o consolidado padrão aprova
+  const kv3 = fakeKv();
+  const r3 = await runDataBackup(wenv(kv3, KEY_B64), { sqlFactory: fakeSql().factory, now: NOW, part: 0, parts: 1 });
+  assert.equal(r3.ok, true, "[E11.7] " + JSON.stringify(r3.failures));
+  assert.equal(r3.encryption.state, "cifrado");
+  const fin3 = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv3 }, { parts: 1, now: NOW });
+  assert.equal(fin3.ok, true, "[E11.8]");
+  // (d) consolidado padrão com parte em claro (ex.: gravada antes da fase 2) falha
+  const kv4 = fakeKv();
+  await runDataBackup(wenv(kv4), { sqlFactory: fakeSql().factory, now: NOW, part: 0, parts: 1, encryptionRequired: false });
+  const fin4 = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv4 }, { parts: 1, now: NOW });
+  assert.equal(fin4.ok, false, "[E11.9]");
+  assert.ok(fin4.failures.includes("backup_nao_cifrado:nao_cifrado"), "[E11.10]");
+  // (e) padrão, cópia adulterada: falha de decifragem reprova a parte
+  const tamper = fakeKv({}, { onPut: (k, v) => (k.startsWith("zpc:backup:v1:neon:") ? edit(v, (o) => { o.ct = flip(o.ct, -1); }) : v) });
+  const r5 = await runDataBackup(wenv(tamper, KEY_B64), { sqlFactory: fakeSql().factory, now: NOW, part: 0, parts: 1 });
+  assert.equal(r5.ok, false, "[E11.11]");
+  assert.ok(r5.failures.includes("neon_copy_unreadable:decrypt_failed"), "[E11.12]");
 });

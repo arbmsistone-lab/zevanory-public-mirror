@@ -59,12 +59,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Lógica do ensaio e da cifragem (contagem exata 22, zero pulados)
+      - name: Lógica do ensaio e da cifragem (contagem exata 23, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs | tee /tmp/t.txt
-          for l in "# tests 22" "# pass 22" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 23" "# pass 23" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Ponta a ponta no PostgreSQL efêmero (código real do Worker -> ensaio completo)
         shell: bash
         env:
