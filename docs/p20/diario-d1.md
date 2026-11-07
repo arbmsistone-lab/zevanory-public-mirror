@@ -126,9 +126,59 @@ tabela (ou sem binding), e nada mais muda.
 - **Cota:** o D1 Free é por conta e é compartilhado com os bancos ARBM. O volume previsto é bem abaixo de 1% de
   100 mil linhas por dia, mas o uso conjunto precisa ser conferido antes do PR 2.
 
+## Gravação em modo sombra (PR 3)
+
+`worker/diario-sombra.mjs` liga o diário aos eventos críticos **sem mudar nenhum comportamento existente**. É
+independente do binding (PR 2): sem `env.DIARIO`, tudo é no-op.
+
+- **`diarioSombra(env, ctx, ev)`**: `ev` é o evento ou, de preferência, uma função que o constrói. A gravação vai para
+  `ctx.waitUntil`. O gancho nunca é esperado (`await`), nunca lança (o construtor também roda protegido) e não devolve
+  nada que o chamador use. Uma falha (tabela ausente, D1 indisponível, conflito, corrida, PII recusada, `diario_timeout`)
+  vira o log `{"evt":"diario_sombra","tipo","ok","code","seq"}`, **sem PII** (nunca a chave, a `ref` nem o payload), e
+  soma num contador em memória do isolate (`diarioSombraStats`). **Nada vai para KV.**
+- **Contexto por requisição:** o Worker central chama `comDiario(env, ctx, fn)` em volta de `processFetch`. Os ganchos
+  sem `env`/`ctx` (o bundle legado, que roda atrás do servidor `node:http`, e o `recordEvent` do lead-magnet) acham o
+  banco e o `waitUntil` por `AsyncLocalStorage`, carregado sem import estático (`process.getBuiltinModule`). Sem ele,
+  usam o binding guardado em `globalThis.__ZEVANORY_DIARIO__` e deixam a promessa correr sozinha. Nesse caso a gravação
+  pode ser cortada no fim da requisição, o que é aceitável em sombra.
+- **Fila por isolate:** as gravações do mesmo isolate saem uma de cada vez. Sem a fila, gravações simultâneas esgotam o
+  CAS (`diario_corrida`; medido no teste DS5 com 14 eventos). Cada gravação tem limite de 5 s (`diario_timeout`), para
+  que um D1 travado não pare a fila. Uma rejeição nunca passa para a gravação seguinte.
+- **Ids técnicos normalizados** (`techRef`): prefixo de letras mais só `[A-Za-z0-9]`. Pedido: `ord` + 32 hex. Mercado
+  Pago: `mp` + id. Asaas, Stripe e Hotmart: `as`, `st` e `hm` + id. O detector de PII recusa dígitos com formato de CPF
+  ou telefone delimitados por caractere não alfanumérico. Sem a normalização, ele recusava cerca de 1 em cada 10 mil
+  UUIDs aleatórios (último bloco de 12 dígitos lido como `+55` e telefone) e também `mp_1234567890`. A forma é
+  determinística: a reconciliação (PR 4) aplica a mesma função ao valor do Neon.
+
+| Ponto | Arquivo / função | Tipo | Quando |
+|---|---|---|---|
+| Checkout Asaas | `cloudflare-worker.recovered.mjs` `handler11` | `order_created` | pedido novo inserido no Neon |
+| Checkout Mercado Pago | idem `handler12` | `order_created` | idem |
+| Checkout Stripe (certificação) | idem `handleStripeCheckout` | `order_created` | idem |
+| Webhook Asaas | idem `handler15` | `payment_status` | evento financeiro novo (`inserted_count = 1`) |
+| Webhook Mercado Pago | idem `handleMercadoPagoWebhook` | `payment_status` | idem |
+| Entrega Mercado Pago | idem, depois de `ensureMercadoPagoDigitalDelivery` | `delivery_sent` | e-mail de entrega `sent` |
+| Webhook Stripe (certificação) | idem `handleStripeWebhook` | `payment_status` | evento financeiro novo |
+| Entrega Hotmart | `cp-nc012-digital-hotmart.mjs` | `delivery_sent` | `PURCHASE_APPROVED` / `PURCHASE_COMPLETE` |
+| Estorno Hotmart | idem | `refund` | `PURCHASE_REFUNDED`, `CHARGEBACK`, ... |
+| Reembolso próprio | `refund-flow.mjs` `executeRefund` | `refund` | claim gravado (antes do POST ao provedor) e estorno aprovado |
+| Consentimento | `lead-magnet.mjs` `recordEvent` | `consent_given` / `consent_confirmed` / `consent_revoked` | depois do registro no Neon; `ref` = `subject_ref` (HMAC); sem `subject_ref`, nada |
+
+Payloads só com fatos não pessoais: ids técnicos normalizados, valor, moeda, provedor, status, versão do consentimento
+e `artifact_sha256`. Nunca e-mail, nome, CPF ou telefone, e o detector de `appendEvent` continua como última barreira.
+O vigia de entregas pagas (cron) chama o webhook do Mercado Pago fora de `comDiario`. Lá só existe o binding global,
+sem `waitUntil`.
+
 ## Testes e mutantes
 
 - `tests/p20-diario-d1.test.mjs` (DJ1 a DJ8): encadeamento, adulteração, idempotência, conflito, corrida, LGPD,
   triggers e falhas do D1.
 - `scripts/ci/mutants_p20_diario.py` com `mutants_p20_diario_allow.json`: 10 mutantes, todos precisam morrer.
+- `tests/p20-diario-sombra.test.mjs` (DS1 a DS11): no-op sem binding, gravação e encadeamento via `waitUntil`, falhas
+  que não lançam, PII recusada, construtores de cada tipo, contexto da requisição e integração real com Hotmart,
+  lead-magnet e reembolso (resposta idêntica com, sem e com diário quebrado ou travado). Inclui também um teste
+  estático dos 7 ganchos do bundle legado, que não carrega em Node.
+- `scripts/ci/mutants_p20_diario_sombra.py` com `mutants_p20_diario_sombra_allow.json`: 13 mutantes, todos precisam
+  morrer. Cobrem: bloquear a resposta, lançar, vazar PII no log, tentar gravar o comprador, gancho ausente de cada
+  tipo, compat sem contexto, sem `waitUntil` e sem fila.
 - `.github/workflows/p20-diario-d1-tests.yml` roda só em `pull_request`, sem segredo, com `contents: read`.
