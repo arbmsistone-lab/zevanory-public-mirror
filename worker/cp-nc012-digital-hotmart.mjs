@@ -30,7 +30,14 @@ export async function handleDigitalHotmartNc012(request,env){
  let result;try{result=await recordHotmartSale(kv,event,data)}catch{return json(503,{ok:false,error:"sales_ledger_commit_failed"})}
  // Idempotent activity marker in separate shared ledger. An identical webhook
  // may be replayed after an incomplete downstream read; never sends product email.
- if(ACTIVE.has(event))await emitActivity(env,{type:"delivery_sent",channel:"store",status:"hotmart_approved",ref:"hotmart:"+txn}).catch(()=>null);
- if(STOP.has(event))await emitActivity(env,{type:"refund_requested",channel:"store",status:"hotmart_"+event.toLowerCase(),ref:"hotmart:"+txn}).catch(()=>null);
+ // P12 (DEC-06): a entrega é da Hotmart (Minhas compras); aqui só se REGISTRA a entrega/estorno. Registro que
+ // não foi gravado (kv_write_failed, exceção) devolve 503 para a Hotmart reenviar: a venda e a atividade são
+ // idempotentes, então a reentrega conclui sem duplicar. Duplicata (emitted:false, duplicate:true) é sucesso.
+ const activity=ACTIVE.has(event)?{type:"delivery_sent",status:"hotmart_approved"}:
+  STOP.has(event)?{type:"refund_requested",status:"hotmart_"+event.toLowerCase()}:null;
+ if(activity){
+  const out=await emitActivity(env,{...activity,channel:"store",ref:"hotmart:"+txn}).catch(()=>null);
+  if(!out||(out.emitted!==true&&out.duplicate!==true))return json(503,{ok:false,error:"activity_commit_failed"});
+ }
  return json(200,{ok:true,scope:"digital_product",duplicate:result?.reason==="duplicate"});
 }

@@ -1,0 +1,196 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [En.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "M01 marcador concluído gravado antes do resumo": {
+   "primary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.4]",
+     "justification": "E5 também perde a venda: a leitura falha depois do marcador concluído, e a reentrega vira duplicata"
+    }
+   ]
+  },
+  "M02 marcador pendente tratado como duplicata": {
+   "primary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.4]",
+     "justification": "E5 deixa o marcador pendente na tentativa que falhou; a mutação descarta a reentrega como duplicata"
+    }
+   ]
+  },
+  "M03 conferência das chaves aplicadas removida": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M04 falha de leitura do resumo engolida": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M05 atividade não gravada ignorada": {
+   "primary": [
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M06 atividade duplicada tratada como falha": {
+   "primary": [
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.2]",
+     "justification": "o estorno repetido encontra a atividade já gravada e a mutação devolve 503"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.6]",
+     "justification": "a terceira reentrega encontra a atividade já gravada e a mutação devolve 503"
+    }
+   ]
+  },
+  "M07 estorno sem registro de atividade": {
+   "primary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.6]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.6]",
+     "justification": "sem tentar gravar a atividade de estorno, a falha injetada não acontece e o estorno responde 200"
+    }
+   ]
+  },
+  "M08 flag do onboarding aceita qualquer valor": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M09 envio real destravado no código": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.25]"
+    }
+   ],
+   "secondary": []
+  },
+  "M10 prazo da microvitória em 48 h": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "M11 envio depois do prazo permitido": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.17]"
+    }
+   ],
+   "secondary": []
+  },
+  "M12 estorno não cancela a microvitória": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.18]"
+    }
+   ],
+   "secondary": []
+  },
+  "M13 chave da entrega mensal por evento": {
+   "primary": [
+    {
+     "test_pattern": "E10",
+     "assertion_pattern": "[E10.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M14 avaliador 12-B.4 ignora dependências": {
+   "primary": [
+    {
+     "test_pattern": "E9",
+     "assertion_pattern": "[E9.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M15 caminho sem dependência aceito": {
+   "primary": [
+    {
+     "test_pattern": "E9",
+     "assertion_pattern": "[E9.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M16 suporte@ sem o direito de acesso na matriz": {
+   "primary": [
+    {
+     "test_pattern": "E9",
+     "assertion_pattern": "[E9.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M17 chaves aplicadas não gravadas no resumo": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M18 base legal divergente da política publicada": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.11]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

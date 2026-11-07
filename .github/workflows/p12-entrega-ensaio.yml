@@ -1,0 +1,68 @@
+name: p12-entrega-ensaio
+
+# P12 Entrega digital idempotente (roteiro v4.9.1, seções 5, 7 e 12-B.4): ensaio SINTÉTICO de entrega
+# (docs/p12/ensaio-entrega-sintetico.md). Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma
+# requisição à Cloudflare, à Hotmart ou à produção. (1) ensaio E1-E12 com fetch proibido (12 testes);
+# (2) mutantes causais pelo classificador compartilhado (18, todos KILLED). A suíte completa (manifesto) segue
+# no gate existente.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p12-entrega-ensaio.yml"
+      - "worker/sales-ledger.mjs"
+      - "worker/cp-nc012-digital-hotmart.mjs"
+      - "worker/cp-nc011-routing.mjs"
+      - "worker/activity-ledger.mjs"
+      - "worker/cp-durable-ledger.mjs"
+      - "worker/onboarding-microvitoria.mjs"
+      - "worker/politica-unica.mjs"
+      - "data/politica-unica.json"
+      - "data/p12-degradacao-12b4.json"
+      - "sales-public/*.html"
+      - "tests/p12-entrega-ensaio.test.mjs"
+      - "tests/helpers/text.mjs"
+      - "scripts/ci/p12_degradacao.mjs"
+      - "scripts/ci/mutants_p12_entrega.py"
+      - "scripts/ci/mutants_p12_entrega_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "docs/p12/ensaio-entrega-sintetico.md"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: p12-entrega-ensaio / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ensaio sintético de entrega (contagem exata 12, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p12-entrega-ensaio.test.mjs | tee /tmp/t.txt
+          for l in "# tests 12" "# pass 12" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes causais (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p12_entrega.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P12_ENTREGA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=18 killed=18 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

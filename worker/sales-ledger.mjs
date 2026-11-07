@@ -92,6 +92,15 @@ export function applySale(summary, facts, kind, txnRef) {
 
 // Idempotent per transaction and outcome: an approval is counted once even when Hotmart
 // sends both APPROVED and COMPLETE; a reversal is counted once.
+// P12 (zero registro duplicado OU faltante): o marcador da transação tem duas fases. "pending" é gravado
+// ANTES do resumo e "1" (concluído) só DEPOIS de o resumo ser gravado. Se a gravação do resumo falhar (cota
+// de KV, erro transitório), o webhook devolve 503, a Hotmart reenvia e a nova tentativa encontra "pending"
+// e conclui; antes, o marcador "1" gravado primeiro fazia a reentrega virar "duplicate" e a venda sumia do
+// registro. O resumo guarda as últimas APPLIED_MAX chaves aplicadas (ref:resultado, pseudônimas), então uma
+// queda entre gravar o resumo e concluir o marcador não conta a venda duas vezes. Leitura do resumo que
+// FALHA (KV fora) propaga o erro: nunca se recomeça de um resumo vazio por cima do existente.
+const PENDING = "pending";
+const APPLIED_MAX = 2000;
 export async function recordHotmartSale(kv, event, data = {}, { now = Date.now() } = {}) {
   if (!kv?.get || !kv?.put) return { recorded: false, reason: "kv_unavailable" };
   const kind = APPROVED.has(event) ? "approved" : REVERSED[event] || OTHER[event];
@@ -99,15 +108,25 @@ export async function recordHotmartSale(kv, event, data = {}, { now = Date.now()
   const txn = String(data?.purchase?.transaction || "");
   const ref = txn ? (await sha("hotmart:" + txn)).slice(0, 16) : (await sha("hotmart-noref:" + event + ":" + now)).slice(0, 16);
   const outcome = kind === "approved" ? "approved" : REVERSED[event] ? "reversed" : kind;
+  const stateKey = TXN_STATE + ref + ":" + outcome;
   if (txn) {
-    const stateKey = TXN_STATE + ref + ":" + outcome;
-    if (await kv.get(stateKey)) return { recorded: false, reason: "duplicate" };
-    await kv.put(stateKey, "1", { expirationTtl: 400 * DAY });
+    const mark = await kv.get(stateKey);
+    if (mark && mark !== PENDING) return { recorded: false, reason: "duplicate" };
+    if (!mark) await kv.put(stateKey, PENDING, { expirationTtl: 400 * DAY });
   }
   const facts = saleFacts(event, data, now);
+  const raw = await kv.get(SALES_SUMMARY_KEY);
   let current = null;
-  try { current = JSON.parse(String(await kv.get(SALES_SUMMARY_KEY) || "null")); } catch {}
+  try { current = JSON.parse(String(raw || "null")); } catch {}
+  const appliedKey = ref + ":" + outcome;
+  const applied = Array.isArray(current?.applied) ? current.applied : [];
+  if (txn && applied.includes(appliedKey)) {
+    await kv.put(stateKey, "1", { expirationTtl: 400 * DAY });
+    return { recorded: false, reason: "duplicate" };
+  }
   const next = applySale(current, facts, kind, ref);
+  if (txn) next.applied = [appliedKey, ...applied.filter((k) => k !== appliedKey)].slice(0, APPLIED_MAX);
   await kv.put(SALES_SUMMARY_KEY, JSON.stringify(next));
+  if (txn) await kv.put(stateKey, "1", { expirationTtl: 400 * DAY });
   return { recorded: true, kind, ref };
 }
