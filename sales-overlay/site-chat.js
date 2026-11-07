@@ -45,7 +45,7 @@
   }
 
   // ---------- estrutura ----------
-  var entry = el("section", { className: "zc-entry", "aria-labelledby": "zc-entry-title" });
+  var entry = el("section", { id: "fale", className: "zc-entry", "aria-labelledby": "zc-entry-title" });
   entry.appendChild(el("h2", { id: "zc-entry-title", className: "zc-entry-title" }, "Dúvidas? Fale com a ZEVANORY"));
   entry.appendChild(el("p", { className: "zc-entry-text" }, "Converse com o assistente automático ou escreva para " + EMAIL + "."));
   var launch = el("button", { type: "button", className: "zc-button zc-launch", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-controls": "zc-panel" }, "Fale com a ZEVANORY");
@@ -53,7 +53,11 @@
 
   var panel = el("div", { id: "zc-panel", className: "zc-panel", role: "dialog", "aria-modal": "true", "aria-labelledby": "zc-title", hidden: true });
   var head = el("div", { className: "zc-head" });
-  head.appendChild(el("h2", { id: "zc-title", className: "zc-title", tabindex: "-1" }, "Fale com a ZEVANORY"));
+  // R149: selo de confiança — quem atende, de fato (dados públicos do rodapé de todas as páginas).
+  var headText = el("div", { className: "zc-head-text" });
+  headText.appendChild(el("h2", { id: "zc-title", className: "zc-title", tabindex: "-1" }, "Fale com a ZEVANORY"));
+  headText.appendChild(el("p", { className: "zc-seal" }, "Atendimento oficial · CNPJ 69.077.233/0001-99"));
+  head.appendChild(headText);
   var closeBtn = el("button", { type: "button", className: "zc-button zc-close", "aria-label": "Fechar o chat" }, "Fechar");
   head.appendChild(closeBtn);
   panel.appendChild(head);
@@ -159,6 +163,9 @@
       if (support) nav.insertBefore(headerBtn, support); else nav.appendChild(headerBtn);
       headerBtn.addEventListener("click", open);
     }
+    // R149: link dos canais (bio, posts, respostas automáticas) = /solucoes#fale: leva a pessoa até o bloco do chat e destaca o botão.
+    // Não abre nada e não faz chamada de rede: a conversa só começa no clique.
+    if (location.hash === "#fale") { entry.classList.add("zc-entry-focus"); entry.scrollIntoView(); launch.focus(); }
   }
 
   // ---------- comportamento ----------
@@ -226,21 +233,26 @@
       if (j.notice.privacy_href) privacyLink.setAttribute("href", j.notice.privacy_href);
     }).catch(function () { showDown(); });
   }
+  function hhmm() { var d = new Date(); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
   function addMessage(role, text) {
     var li = el("li", { className: "zc-msg zc-" + role, role: "group" });
     li.appendChild(el("span", { className: "zc-sr" }, role === "user" ? "Você disse: " : "Assistente ZEVANORY: "));
     var p = el("span", { className: "zc-text" });
     richText(p, text);
     li.appendChild(p);
+    li.appendChild(el("span", { className: "zc-time" }, hhmm())); // R149: horário de cada mensagem, como num app de conversa
     log.appendChild(li);
     log.scrollTop = log.scrollHeight; // rola o histórico, mas NÃO move o foco (WCAG: nova resposta não sequestra foco)
     return li;
   }
+  // R149: "digitando…" visual enquanto a resposta não chega (só visual: quem usa leitor de tela já ouve "Enviando…").
+  var typing = el("li", { className: "zc-msg zc-bot zc-typing", "aria-hidden": "true" }, "ZEVANORY está digitando…");
   function setBusy(b) {
     state.busy = b;
     log.setAttribute("aria-busy", b ? "true" : "false");
     sendBtn.disabled = b;
     status.textContent = b ? "Enviando…" : "";
+    if (b) { log.appendChild(typing); log.scrollTop = log.scrollHeight; } else if (typing.parentNode) typing.parentNode.removeChild(typing);
   }
   function armIdle() {
     clearTimeout(state.idleTimer); clearTimeout(state.warnTimer);

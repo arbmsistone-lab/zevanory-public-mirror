@@ -52,3 +52,11 @@
 @media (max-width:640px){.site-nav button.zc-nav-chat{padding:0 12px}.zc-nav-long{display:none}.zc-nav-short{display:inline}}
 /* Celular: o logotipo não encolhe; o menu desce para uma segunda linha com os dois botões lado a lado. */
 @media (max-width:480px){.header-inner:has(.zc-nav-chat){flex-wrap:wrap;row-gap:0;padding-bottom:8px}.header-inner:has(.zc-nav-chat) .brand{flex-shrink:0}.site-nav:has(.zc-nav-chat){width:100%;gap:8px}.site-nav:has(.zc-nav-chat) .nav-cta:not(.zc-nav-chat){flex:1;justify-content:center}}
+/* R149: selo de confiança, horário e "digitando…" (sem animação). */
+.zc-head-text{min-width:0}
+.zc-seal{margin:0;font-size:.85rem;line-height:1.3;color:var(--zc-muted)}
+.zc-time{display:block;margin-top:4px;font-size:.75rem;color:var(--zc-muted);text-align:right}
+.zc-typing{color:var(--zc-muted);font-style:italic}
+.zc-user{margin-left:auto;max-width:85%}
+.zc-bot{margin-right:auto;max-width:92%}
+.zc-entry-focus{border-color:var(--zc-accent);border-width:2px}
