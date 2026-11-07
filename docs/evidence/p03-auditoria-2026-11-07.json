@@ -687,14 +687,15 @@
   "paginas_com_achado": 57
  },
  "depois": {
-  "build_sha256": "9c815f6be96991373f439d386a5ecd44cba846f839aeac6451c514fbc7633a61",
+  "build_sha256": "ff66c9a5a01f8517c98cc25e90588a110c5ca1ab29d322b5d81b1a822c4256d3",
   "celulas": 288,
   "achados_estaticos": 0,
   "achados_navegador": 0,
   "axe_moderate_minor": {},
   "paradas_de_tab": 8804,
   "pedidos_externos_bloqueados": 0,
-  "pass": true
+  "pass": true,
+  "head": "10c22860"
  },
  "observacoes": [
   {
