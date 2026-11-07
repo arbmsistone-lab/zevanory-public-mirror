@@ -34,15 +34,15 @@
       },
       "handler_evidence": [
         "worker/cloudflare-worker.compat.mjs:504-514",
-        "worker/data-backup.mjs:1-13",
-        "worker/data-backup.mjs:22",
-        "worker/data-backup.mjs:85",
-        "worker/data-backup.mjs:154",
-        "worker/data-backup.mjs:156-181",
+        "worker/data-backup.mjs:1-17",
+        "worker/data-backup.mjs:26",
+        "worker/data-backup.mjs:97",
         "worker/data-backup.mjs:168",
-        "worker/data-backup.mjs:199",
-        "worker/data-backup.mjs:202-213",
-        "worker/data-backup.mjs:249"
+        "worker/data-backup.mjs:170-201",
+        "worker/data-backup.mjs:189",
+        "worker/data-backup.mjs:220",
+        "worker/data-backup.mjs:223-234",
+        "worker/data-backup.mjs:275"
       ],
       "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
       "risk_acceptance": {
@@ -75,8 +75,8 @@
           ]
         },
         "enforced_by": [
-          "worker/data-backup.mjs:36-46",
-          "worker/data-backup.mjs:202-213"
+          "worker/data-backup.mjs:40-50",
+          "worker/data-backup.mjs:223-234"
         ],
         "tests": [
           "tests/data-backup.test.mjs::retention with only expired copies keeps the newest valid one",

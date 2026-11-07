@@ -17,7 +17,18 @@
      "assertion_pattern": "[D2.4]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.13]",
+     "justification": "E3 também confere que um bundle cifrado adulterado (falha de integridade) nunca chega à restauração; a mutação a chama"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.11]",
+     "justification": "E4 confere que a cópia cifrada sem chave (falha bundle_kid_unknown) nunca é restaurada; a mutação restaura mesmo com falhas"
+    }
+   ]
   },
   "M03 rótulo de produção sem leitura real": {
    "primary": [
@@ -213,7 +224,13 @@
      "assertion_pattern": "[D12.2]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "E10",
+     "assertion_pattern": "[E10.5]",
+     "justification": "E10 lê o mesmo workflow e exige o Environment producao-critica no job que recebe P20_BACKUP_KEYS; a mutação remove essa linha"
+    }
+   ]
   },
   "M23 job de publicação com segredo": {
    "primary": [
@@ -288,6 +305,200 @@
      "justification": "mesma regra (flag complete forjada sobre campo PRESENTE inválido derruba a releitura), verificada também no teste de evolução do esquema do outro processo (P19)"
     }
    ]
+  },
+  "M30 nonce fixo no Worker": {
+   "primary": [
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.2]",
+     "justification": "nonce fixo também repete entre as partes de um backup real"
+    },
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.3]",
+     "justification": "nonce de zeros tem proporção de bits 1 = 0"
+    }
+   ]
+  },
+  "M31 AAD omitida na cifragem do Worker": {
+   "primary": [
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.5]"
+    },
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.7]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": null,
+     "justification": "o ensaio diário do Worker abre o próprio envelope com a AAD esperada: sem AAD na cifragem a releitura falha e o backup cifrado reprova"
+    },
+    {
+     "test_pattern": "E8",
+     "assertion_pattern": null,
+     "justification": "o incremental depende de reabrir o bundle cifrado (com AAD) e do backup aprovado"
+    }
+   ]
+  },
+  "M32 AAD esperada não conferida no ensaio": {
+   "primary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M33 tag GCM não verificada no ensaio": {
+   "primary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.1]"
+    },
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.2]"
+    },
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M34 cifragem obrigatória sem chave cai para claro": {
+   "primary": [
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.10]"
+    },
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.11]"
+    },
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.12]"
+    }
+   ],
+   "secondary": []
+  },
+  "M35 chave inválida grava em claro": {
+   "primary": [
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.14]"
+    },
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.15]"
+    }
+   ],
+   "secondary": []
+  },
+  "M36 ensaio aceita rebaixamento para claro": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.14]"
+    }
+   ],
+   "secondary": []
+  },
+  "M37 lacuna copia_cifrada retirada com cópia parcial": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.0]"
+    },
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.6]"
+    },
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.7]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[RUN]",
+     "justification": "no ensaio com uma parte adulterada as outras duas estão cifradas: a mutação retira a lacuna e a releitura estrita (validateRecord) recusa o registro, então runDrill lança"
+    }
+   ]
+  },
+  "M38 releitura aceita lacuna retirada sem prova": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.12]"
+    }
+   ],
+   "secondary": []
+  },
+  "M39 kid declarado no conjunto não conferido": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M40 Worker relê cópia sem exigir o envelope": {
+   "primary": [
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.17]"
+    }
+   ],
+   "secondary": []
+  },
+  "M41 consolidado obrigatório aceita parte em claro": {
+   "primary": [
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.13]"
+    }
+   ],
+   "secondary": []
+  },
+  "M42 kid desconhecido decifrado com outra chave": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.3]"
+    },
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M43 material de chave na mensagem de erro": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.9]"
+    },
+    {
+     "test_pattern": "E9",
+     "assertion_pattern": "[E9.1]"
+    }
+   ],
+   "secondary": []
   }
  }
 }

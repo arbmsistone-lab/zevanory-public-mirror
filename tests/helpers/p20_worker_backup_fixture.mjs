@@ -58,7 +58,8 @@ export function memoryKv(seed = {}) {
 export async function buildFixture({ now, env = process.env, kvSeed = {} }) {
   const kv = memoryKv(kvSeed);
   const sql = psqlSql(env);
-  const wenv = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://fixture-local-only" };
+  // P20_BACKUP_KEY (opcional, sintética): o Worker grava os bundles cifrados, como em produção com o segredo.
+  const wenv = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://fixture-local-only", ...(env.P20_BACKUP_KEY ? { P20_BACKUP_KEY: env.P20_BACKUP_KEY } : {}) };
   const reports = [];
   for (let part = 0; part < 3; part++) reports.push(await runDataBackup(wenv, { sqlFactory: () => sql, now, part, parts: 3 }));
   const final = await finalizeBackup(wenv, { parts: 3, now });
@@ -70,5 +71,5 @@ if (isMain) {
   const [out, nowIso] = process.argv.slice(2);
   const { kv, final } = await buildFixture({ now: Date.parse(nowIso), kvSeed: { "sales:open:v1": JSON.stringify({ enabled: false }), "zpc:sales:v1:sintetico": JSON.stringify({ ok: true }) } });
   writeFileSync(out, JSON.stringify(kv));
-  console.log(JSON.stringify({ ok: final.ok, day: final.day, tables: final.neon.tables, rows: final.neon.rows, failures: final.failures }));
+  console.log(JSON.stringify({ ok: final.ok, day: final.day, tables: final.neon.tables, rows: final.neon.rows, failures: final.failures, encryption: final.encryption }));
 }

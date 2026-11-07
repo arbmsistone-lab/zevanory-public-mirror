@@ -6,6 +6,9 @@ name: Backup preservation (encrypted archive + verified restore)
 # o artefato é cifrado (AES-256-GCM, scrypt). Somente disparo manual na gh-pages.
 # Modos: inspect (leitura de metadados), archive (lê valores, cifra, verifica), kv-extend (ESCRITA no
 # KV: cópia com retenção estendida, exige frase de confirmação). Nenhum modo altera a cópia original.
+# P20 (docs/p20/cifragem-backup.md): bundle cifrado pelo Worker é arquivado COMO ESTÁ (envelope). P20_BACKUP_KEYS só nos
+# passos archive e verify: com a chave o conteúdo é decifrado em memória e conferido/restaurado; sem ela o envelope é
+# validado pela estrutura e pelo SHA-256 e registrado como cifrado_nao_verificado_conteudo.
 on:
   workflow_dispatch:
     inputs:
@@ -65,7 +68,7 @@ jobs:
         run: python scripts/ops/backup_preserve_archive.py inspect --day "$IN_DAY"
       - name: Archive (encrypt + manifest)
         if: inputs.mode == 'archive'
-        env: { IN_DAY: "${{ inputs.day }}", IN_TABLES: "${{ inputs.expected_tables }}", IN_ROWS: "${{ inputs.expected_rows }}" }
+        env: { IN_DAY: "${{ inputs.day }}", IN_TABLES: "${{ inputs.expected_tables }}", IN_ROWS: "${{ inputs.expected_rows }}", P20_BACKUP_KEYS: "${{ secrets.P20_BACKUP_KEYS }}" }
         run: python scripts/ops/backup_preserve_archive.py archive --day "$IN_DAY" --expected-tables "$IN_TABLES" --expected-rows "$IN_ROWS" --out preserve-out
       - name: Upload encrypted archive (90 days)
         id: upload
@@ -130,4 +133,6 @@ jobs:
       - name: Scale rehearsal on synthetic data (51 tables / 18,142 rows) in the same Postgres
         run: python -m unittest -v tests/test_backup_preserve_scale.py
       - name: Decrypt, check hashes and restore into ephemeral Postgres
+        env:
+          P20_BACKUP_KEYS: ${{ secrets.P20_BACKUP_KEYS }}
         run: python scripts/ops/backup_preserve_archive.py verify --out preserve-out

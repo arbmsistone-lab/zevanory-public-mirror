@@ -11,6 +11,10 @@
 //        KV  : every value re-hashed from Neon; a sample restored into zpc:restore-drill:*
 //              (1 h TTL), read back, compared and deleted.
 //   4. Report (no PII) at zpc:backup:v1:report.
+// P20 (seção 9.1): with the secret P20_BACKUP_KEY the Neon -> KV bundle is stored as an AES-256-GCM envelope
+// (worker/backup-crypto.mjs, docs/p20/cifragem-backup.md); the per-table SHA-256 manifest stays over the plaintext.
+import { ENCRYPTION_REQUIRED, ENC_FORMAT, ENC_ALG, loadBackupKey, sealBundle, openBundle, bundleCtxFromKey } from "./backup-crypto.mjs";
+export { ENCRYPTION_REQUIRED };
 export const REPORT_KEY = "zpc:backup:v1:report";
 // Lead interest keys (personal data, erased on revocation) are deliberately NOT copied: a backup
 // would keep them after the erasure promised by the privacy policy (T3). They are not critical.
@@ -59,13 +63,21 @@ async function listAll(kv, prefix) {
   return names;
 }
 
-export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1 } = {}) {
+export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1, encryptionRequired = ENCRYPTION_REQUIRED } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
   const report = { schema: "zevanory-backup/v1", day, part, parts, startedAt: new Date(now).toISOString(), ok: false, kv: {}, neon: {}, restore: {}, failures: [] };
   const fail = (w) => report.failures.push(w);
   if (!kv?.list || !kv?.get || !kv?.put) { fail("kv_unavailable"); return report; }
   if (!env.DATABASE_URL || !sqlFactory) { fail("database_unavailable"); return report; }
+  // Cifragem (fase 1: sem chave, texto claro marcado "nao_cifrado"; chave inválida ou cifragem obrigatória sem chave:
+  // a parte falha ANTES de qualquer escrita, nunca grava em claro em silêncio).
+  const bk = await loadBackupKey(env.P20_BACKUP_KEY);
+  report.encryption = bk.state === "present" ? { state: "cifrado", format: ENC_FORMAT, alg: ENC_ALG, kid: bk.kid } : { state: "nao_cifrado", format: null, alg: null, kid: null, reason: bk.state === "invalid" ? "key_invalid" : "key_absent" };
+  if (bk.state === "invalid") { fail("backup_key_invalid"); return report; }
+  if (bk.state === "absent" && encryptionRequired) { fail("backup_key_absent_encryption_required"); return report; }
+  report.warnings = bk.state === "present" ? [] : ["backup_nao_cifrado"];
+  const encKeys = bk.state === "present" ? [bk] : [];
   const sql = sqlFactory(String(env.DATABASE_URL));
   try {
     // 1. KV -> Neon (first part only)
@@ -119,7 +131,8 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     for (const t of names) {
       const p = prev.tables && prev.tables[t];
       if (!fpOf[t] || !p || p.fp !== fpOf[t] || !prev.bundleKey) continue;
-      if (prevBundle === null) { try { prevBundle = JSON.parse(String(await kv.get(prev.bundleKey) || "{}")) || {}; } catch { prevBundle = {}; } }
+      // Bundle anterior cifrado com outra chave (rotação) ou ilegível: exportação completa (nunca reaproveita sem prova).
+      if (prevBundle === null) { try { const c = bundleCtxFromKey(prev.bundleKey); prevBundle = c ? JSON.parse((await openBundle(await kv.get(prev.bundleKey), c, encKeys)).text) || {} : {}; } catch { prevBundle = {}; } }
       const j = prevBundle[t];
       if (typeof j === "string" && (await sha256(j)) === p.sha) reused[t] = j;
     }
@@ -144,7 +157,8 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
       bundle[t] = json;
     }
     const bundleKey = `zpc:backup:v1:neon:${day}:part:${part}`;
-    if (exported.length) await kv.put(bundleKey, JSON.stringify(bundle), { expirationTtl: 8 * DAY });
+    const bctx = { day, part, bundleKey };
+    if (exported.length) await kv.put(bundleKey, bk.state === "present" ? await sealBundle(JSON.stringify(bundle), bctx, bk) : JSON.stringify(bundle), { expirationTtl: 8 * DAY });
     {
       const tablesFp = {};
       for (const e of exported) if (fpOf[e.table]) tablesFp[e.table] = { fp: fpOf[e.table], sha: e.sha };
@@ -162,7 +176,14 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
         end loop; end $$`);
     const neonDrill = [];
     let storedBundle = {};
-    try { storedBundle = exported.length ? JSON.parse(String(await kv.get(bundleKey) || "{}")) : {}; } catch { storedBundle = {}; }
+    // Releitura da cópia gravada: decifra (AAD do dia/parte) e exige o envelope quando a chave existe (sem rebaixamento).
+    if (exported.length) {
+      try {
+        const opened = await openBundle(await kv.get(bundleKey), bctx, encKeys);
+        if (bk.state === "present" && !opened.encrypted) fail("neon_copy_not_encrypted");
+        else storedBundle = JSON.parse(opened.text) || {};
+      } catch (e) { fail("neon_copy_unreadable:" + String(e?.code || "error")); storedBundle = {}; }
+    }
     for (const e of exported.filter((x) => drillNames.includes(x.table))) {
       const stored = typeof storedBundle[e.table] === "string" ? storedBundle[e.table] : null;
       if (stored == null || (await sha256(stored)) !== e.sha) { fail("neon_copy_integrity:" + e.table); neonDrill.push({ table: e.table, ok: false }); continue; }
@@ -227,7 +248,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
 
 // Combines today's parts into the single report the panel and the inventory read.
 // OK only when every part ran today, every part passed and no table was left out.
-export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now() } = {}) {
+export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
   const got = [];
@@ -244,6 +265,11 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
     restore: { neon: { tables: sum((r) => r.restore?.neon?.tables), ok: sum((r) => r.restore?.neon?.ok), rows: sum((r) => r.restore?.neon?.rows), isolatedSchema: DRILL }, kv: first.restore?.kv || null },
     failures,
   };
+  // Estado da cifragem do dia: "cifrado" só com TODAS as partes cifradas. Fase 1: alerta; fase 2: falha.
+  const cif = valid.filter((r) => r.encryption?.state === "cifrado");
+  report.encryption = { state: valid.length === parts && cif.length === parts ? "cifrado" : cif.length ? "parcial" : "nao_cifrado", parts_cifradas: cif.length, parts, kids: [...new Set(cif.map((r) => r.encryption.kid))].sort() };
+  report.warnings = report.encryption.state === "cifrado" ? [] : ["backup_nao_cifrado:" + report.encryption.state];
+  if (encryptionRequired && report.encryption.state !== "cifrado") failures.push("backup_nao_cifrado:" + report.encryption.state);
   report.coverage = report.totalTables ? `${report.neon.tables} de ${report.totalTables - report.neon.excluded.length} tabelas (credenciais fora por política: ${report.neon.excluded.length})` : null;
   report.ok = failures.length === 0 && valid.length === parts && report.restore.neon.ok === report.restore.neon.tables && report.totalTables != null && report.neon.tables === report.totalTables - report.neon.excluded.length;
   await kv.put(REPORT_KEY, JSON.stringify(report));

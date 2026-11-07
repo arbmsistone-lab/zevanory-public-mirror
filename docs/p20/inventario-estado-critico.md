@@ -53,7 +53,9 @@ A tabela de cada classe do Neon está listada no JSON. O ensaio aponta qualquer 
 - **Conciliação dos pedidos contra o provedor:** as vendas estão fechadas e o Environment do ensaio não tem
   credencial somente leitura do provedor.
 - **Diário de eventos no D1:** não implementado.
-- **Cópia cifrada:** a cópia no KV fica em texto claro. A cifra só existe no arquivo de preservação manual.
+- **Cópia cifrada:** em transição. Com o segredo `P20_BACKUP_KEY` no Worker, cada bundle vai para o KV como envelope
+  AES-256-GCM; sem ele, continua em texto claro, marcado `nao_cifrado`. O ensaio registra `copia_cifrada` por parte e
+  só retira a lacuna quando as 3 partes do dia estão cifradas. Desenho, fases e passos: `docs/p20/cifragem-backup.md`.
 - **Retenção:** 8 dias no KV e 14 dias no Neon. Não há cópia rotineira num terceiro local.
 
 ## Passos do proprietário

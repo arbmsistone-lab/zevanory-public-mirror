@@ -2,8 +2,8 @@
 """Mutantes causais do ensaio mensal P20 (scripts/p20/*) e da sua ligação ao registro B0 (scripts/b0/*), classificados
 pelo classificador COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
-Suíte (uma execução `node --test`, TAP): tests/p20-restore-drill.test.mjs (D1-D12) e tests/b0-baseline.test.mjs (B0 e
-P20 no registro). Sem rede, sem banco, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em
+Suíte (uma execução `node --test`, TAP): tests/p20-restore-drill.test.mjs (D1-D12), tests/p20-backup-encryption.test.mjs
+(E1-E10, cifragem AES-256-GCM do backup no Worker e no ensaio) e tests/b0-baseline.test.mjs (B0 e P20 no registro). Sem rede, sem banco, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em
 diretório temporário (o repositório nunca é alterado).
 Expectativas (mutants_p20_restore_drill_allow.json, formato load_mutant_config): primary (1-3) com test_pattern E
 assertion_pattern NÃO nulo (marcador [Dn.k]/[B0P20.k] da asserção que codifica a regra) e secondary com justification,
@@ -23,15 +23,17 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
-TESTS = ["tests/p20-restore-drill.test.mjs", "tests/b0-baseline.test.mjs"]
+TESTS = ["tests/p20-restore-drill.test.mjs", "tests/p20-backup-encryption.test.mjs", "tests/b0-baseline.test.mjs"]
 COPY_DIRS = ["scripts/p20", "scripts/b0", "docs/p20", "docs/b0"]
 COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p20-backup-fixture.mjs", "scripts/audit/workers-usage.mjs",
+                      "worker/data-backup.mjs", "worker/backup-crypto.mjs",
                       ".github/workflows/p20-monthly-restore-drill.yml", ".github/workflows/b0-baseline-collector.yml",
                       ".github/workflows/p18-external-monitor.yml", ".github/workflows/b0-baseline-tests.yml", ".github/workflows/p18-monitor-watchdog.yml"]
 TIMEOUT = 300
 NODE = shutil.which("node") or "node"
 L, D, P = "scripts/p20/restore-drill-lib.mjs", "scripts/p20/restore-drill.mjs", "scripts/p20/publish-drill.mjs"
 B, C, W = "scripts/b0/b0-lib.mjs", "scripts/b0/b0-collector.mjs", ".github/workflows/p20-monthly-restore-drill.yml"
+WC, WB, E = "worker/backup-crypto.mjs", "worker/data-backup.mjs", "scripts/p20/backup-envelope.mjs"
 
 M = {
     "M01 hash por tabela não conferido": (L, "      if (h !== m.sha) { fail(`hash_mismatch:${t}`); partOk = false; continue; }\n", ""),
@@ -63,6 +65,20 @@ M = {
     "M27 B0 histórico P20 malformado tratado como vazio": (C, "    try { drills = readDrills(evidenceDir); } catch { drills = null; }", "    try { drills = readDrills(evidenceDir); } catch { drills = []; }"),
     "M28 B0 aprovado com restauração parcial aceito": (B, "    && (v.verdict === \"REPROVADO\" || (v.tables_hash_ok === v.tables_checked && v.tables_restored === v.tables_checked && isNum(v.rpo_hours) && isNum(v.rto_seconds)))", "    && (v.verdict === \"REPROVADO\" || (v.tables_hash_ok === v.tables_checked && isNum(v.rpo_hours) && isNum(v.rto_seconds)))"),
     "M29 B0 flag complete forjada aceita": (B, "    if (e.complete === true && !presentOk) throw new Error(\"complete_flag_mismatch \" + pid);", "    if (false) throw new Error(\"complete_flag_mismatch \" + pid);"),
+    "M30 nonce fixo no Worker": (WC, "  const nonce = randomBytes(NONCE_BYTES);\n  if (!(nonce instanceof Uint8Array)", "  const nonce = new Uint8Array(NONCE_BYTES);\n  if (!(nonce instanceof Uint8Array)"),
+    "M31 AAD omitida na cifragem do Worker": (WC, "iv: nonce, additionalData: te.encode(aadString(ctx)), tagLength: 128 }, k.key, te.encode(String(plaintext))", "iv: nonce, tagLength: 128 }, k.key, te.encode(String(plaintext))"),
+    "M32 AAD esperada não conferida no ensaio": (E, "  if (o.aad.day !== ctx.day || o.aad.part !== ctx.part || o.aad.key !== ctx.bundleKey) throw err(\"aad_mismatch\");\n  const key = ring.get(o.kid);", "  const key = ring.get(o.kid);"),
+    "M33 tag GCM não verificada no ensaio": (E, "    const pt = Buffer.concat([d.update(buf.subarray(0, buf.length - TAG_BYTES)), d.final()]);", "    const pt = d.update(buf.subarray(0, buf.length - TAG_BYTES));"),
+    "M34 cifragem obrigatória sem chave cai para claro": (WB, "  if (bk.state === \"absent\" && encryptionRequired) { fail(\"backup_key_absent_encryption_required\"); return report; }\n", ""),
+    "M35 chave inválida grava em claro": (WB, "  if (bk.state === \"invalid\") { fail(\"backup_key_invalid\"); return report; }\n", ""),
+    "M36 ensaio aceita rebaixamento para claro": (L, "    if (isObj(P.encryption) && P.encryption.state === \"cifrado\" && !opened.encrypted) { fail(`bundle_encryption_downgrade:${p}`); continue; }\n", ""),
+    "M37 lacuna copia_cifrada retirada com cópia parcial": (L, "a.parts.every((p) => p.copia_cifrada === true));", "a.parts.some((p) => p.copia_cifrada === true));"),
+    "M38 releitura aceita lacuna retirada sem prova": (L, "  if (!ccPending && !(b.copia_cifrada === true && b.parts.every((p) => isObj(p) && p.copia_cifrada === true))) throw new Error(\"copia_cifrada_unproven\");\n", ""),
+    "M39 kid declarado no conjunto não conferido": (E, "      if (kidOf(raw) !== kid) throw err(\"backup_keyring_kid_mismatch\");\n", ""),
+    "M40 Worker relê cópia sem exigir o envelope": (WB, "        if (bk.state === \"present\" && !opened.encrypted) fail(\"neon_copy_not_encrypted\");\n        else storedBundle", "        storedBundle"),
+    "M41 consolidado obrigatório aceita parte em claro": (WB, "  if (encryptionRequired && report.encryption.state !== \"cifrado\") failures.push(\"backup_nao_cifrado:\" + report.encryption.state);\n", ""),
+    "M42 kid desconhecido decifrado com outra chave": (E, "  const key = ring.get(o.kid);", "  const key = ring.get(o.kid) || [...ring.values()][0];"),
+    "M43 material de chave na mensagem de erro": (E, "  if (raw.length !== KEY_BYTES) throw err(\"backup_keyring_malformed\");", "  if (raw.length !== KEY_BYTES) throw err(\"backup_keyring_malformed:\" + t);"),
 }
 
 ALLOW_FILE = Path(os.environ.get("P20_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p20_restore_drill_allow.json"))

@@ -21,6 +21,7 @@ import { performance } from "node:perf_hooks";
 import {
   REPORT_KEY, PARTS, partReportKey, assessBackup, assertEphemeralTarget, buildRecord, validateRecord, validateInventory,
 } from "./restore-drill-lib.mjs";
+import { parseKeyring } from "./backup-envelope.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const CF_ACCOUNT = "1b26415802588185a86c1d4d3ebf5bdb";
@@ -84,13 +85,16 @@ export async function runDrill({ mode, env = process.env, fetchImpl = fetch, fix
   const startedAt = now().toISOString();
   const t0 = clock();
   let readings = null, sourceRead = false, naReason = null;
-  try {
+  // Conjunto de chaves (P20_BACKUP_KEYS). Malformado = NOT_AVAILABLE com código; a chave nunca entra em mensagem.
+  let keyring = new Map();
+  try { keyring = parseKeyring(env.P20_BACKUP_KEYS); } catch (e) { naReason = clean(e?.code || "backup_keyring_malformed"); }
+  if (!naReason) try {
     const get = kvReader({ mode, token: env.CLOUDFLARE_API_TOKEN, fixture, fetchImpl });
     readings = await readBackup(get);
     sourceRead = readings.combined != null;
     if (!sourceRead) naReason = "combined_report_absent";
   } catch (e) { naReason = clean(e?.message || e); }
-  const assessment = sourceRead ? assessBackup(readings) : null;
+  const assessment = sourceRead ? assessBackup(readings, { keyring }) : null;
   let restore = null;
   if (assessment?.readable && assessment.failures.length === 0) {
     try {
@@ -116,7 +120,7 @@ export async function main() {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(rec) + "\n");
   console.log("::notice title=P20_RESTORE_DRILL::" + JSON.stringify({ label: rec.label, verdict: rec.verdict, backup_day: rec.backup?.day ?? null, tables: rec.integrity?.tables_checked ?? null,
-    hash_ok: rec.integrity?.tables_hash_ok ?? null, restored: rec.restore?.tables ?? null, rpo_hours: rec.rpo_hours, rto_seconds: rec.rto_seconds, failures: rec.failures.slice(0, 10), reason: rec.reason ?? null }));
+    hash_ok: rec.integrity?.tables_hash_ok ?? null, restored: rec.restore?.tables ?? null, copia_cifrada: rec.backup?.copia_cifrada ?? null, rpo_hours: rec.rpo_hours, rto_seconds: rec.rto_seconds, failures: rec.failures.slice(0, 10), reason: rec.reason ?? null }));
   if (rec.verdict !== "APROVADO") console.log(`::error title=P20_RESTORE_DRILL::${rec.verdict} ${clean((rec.failures[0] || rec.reason || ""))}`);
   return rec.verdict === "APROVADO" ? 0 : 1;
 }
