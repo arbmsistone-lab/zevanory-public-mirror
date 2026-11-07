@@ -1,17 +1,19 @@
 {
   "schema": "zevanory.p18.heartbeat.v1",
-  "last_success_at": "2026-11-07T10:38:46.095Z",
-  "run_id": "42364814712",
-  "run_started_at": "2026-11-07T10:38:42.965Z",
-  "last_probe_at": "2026-11-07T10:38:45.799Z",
+  "last_success_at": "2026-11-07T16:38:32.173Z",
+  "run_id": "42392301705",
+  "run_started_at": "2026-11-07T16:38:29.315Z",
+  "last_probe_at": "2026-11-07T16:38:31.790Z",
   "up": true,
   "open_incident": null,
   "stale_after_min": 15,
   "event": "schedule",
   "window_id": null,
-  "start_window_id": "p18w-20261107T1035Z",
+  "start_window_id": "p18w-20261107T1635Z",
   "dispatch_source": null,
   "dispatched_at": null,
   "dispatch_to_start_s": null,
-  "cf_first_proof_at": "2026-10-26T19:00:33.688Z"
+  "cf_first_proof_at": "2026-10-26T19:00:33.688Z",
+  "perf_state": "SAUDAVEL",
+  "open_perf_incident": null
 }
