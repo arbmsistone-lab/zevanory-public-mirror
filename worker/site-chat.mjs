@@ -74,6 +74,9 @@ export const ATENDIMENTO_URL = SUPPORT_FORM_URL;
 if (SUPPORT_EMAIL !== SUPPLIER.email || SUPPORT_EMAIL !== CHAT.owner_queue_to || CHAT.fallback?.contact_form !== ATENDIMENTO_URL)
   throw new Error("site-chat: e-mail/formulário divergentes de contato_publico (data/politica-unica.json)");
 const FROM = "ZEVANORY suporte <suporte@zevanory.api.br>";
+// R150: sitekey do Turnstile é PÚBLICA (aparece no HTML de toda página com chat). Fica no código para liberar uma
+// vaga no limite de 60 variáveis do Worker central; a variável, se existir, continua tendo precedência.
+export const OFFICIAL_TURNSTILE_SITEKEY = "0x4AAAAAAF2sozEg8we6MsOP";
 export const FALLBACK = Object.freeze({ ...CHAT.fallback });
 export const ESCALATION_CATEGORIES = Object.freeze([
   "complaint", "withdrawal", "cancellation", "refund", "lgpd", "legal", "payment", "delivery", "security",
@@ -684,7 +687,7 @@ export async function handleSiteChat(request, env = {}, deps = {}) {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" }, { allow: "GET" });
     if (!flags.enabled) return json(503, { enabled: false, error: "site_chat_disabled", fallback: FALLBACK });
     const notice = Object.fromEntries(Object.entries(CHAT.notice).map(([k, v]) => [k, fill(v, { legal_identity: LEGAL_IDENTITY })]));
-    return json(200, { enabled: true, generative: flags.generative, idle_minutes: L.session_idle_minutes, message_max_chars: L.message_max_chars, notice, fallback: FALLBACK, turnstile_sitekey: String(env.SITE_CHAT_TURNSTILE_SITEKEY||"") });
+    return json(200, { enabled: true, generative: flags.generative, idle_minutes: L.session_idle_minutes, message_max_chars: L.message_max_chars, notice, fallback: FALLBACK, turnstile_sitekey: String(env.SITE_CHAT_TURNSTILE_SITEKEY||OFFICIAL_TURNSTILE_SITEKEY) });
   }
   if (!flags.enabled) { siteChatLog("disabled"); return json(503, { error: "site_chat_disabled", fallback: FALLBACK }); }
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" }, { allow: "POST" });
