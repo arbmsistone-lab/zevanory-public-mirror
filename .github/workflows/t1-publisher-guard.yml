@@ -35,6 +35,11 @@ on:
       - "scripts/deploy/worker_secret_rotate.py"
       - "tests/test_worker_secret_rotate.py"
       - "tests/t1_sim/**"
+      - "scripts/deploy/t1-write-scan.mjs"
+      - "tests/t1-write-scan.test.mjs"
+      - "tests/t1_scan/**"
+      - "scripts/ci/mutants_t1_write_scan.py"
+      - "scripts/ci/mutants_t1_write_scan_allow.json"
 
 permissions:
   contents: read
@@ -50,6 +55,18 @@ jobs:
           node-version: "22"
       - name: Publisher registry and serialization rules
         run: node --test tests/publisher-inventory.test.mjs
+      - name: "T1 write paths: extended detector + inventory (deploy|secret|config-kv|route|d1), positive and negative fixtures"
+        run: |
+          set -euo pipefail
+          node --test tests/t1-write-scan.test.mjs | tee /tmp/ws.txt
+          for l in "# tests 6" "# pass 6" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/ws.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          node scripts/deploy/t1-write-scan.mjs --check
+          { echo "### T1 write paths (static, this SHA)"; node scripts/deploy/t1-write-scan.mjs; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "T1 write paths: causal mutants (all must be KILLED)"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_t1_write_scan.py < /dev/null | tee /tmp/wsm.txt
+          grep -qx "MUTANTS total=18 killed=18 survived=0 inconclusive=0" /tmp/wsm.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
       - name: Control Worker factory/tick HMAC guard proof (inline and commercial-hmac module layouts)

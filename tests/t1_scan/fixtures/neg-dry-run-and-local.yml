@@ -1,0 +1,13 @@
+# expect: 
+# findings: 0
+jobs:
+  a:
+    steps:
+      - run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.toml
+      - run: npx wrangler versions upload --dry-run --name zevanory
+      - run: npx wrangler kv key put k v --namespace-id "$NS" --local
+      - run: npx wrangler d1 execute db --local --file q.sql
+      - run: npx wrangler d1 migrations apply db --local
+      - run: npx wrangler kv key get k --namespace-id "$NS" --remote
+      - run: npx wrangler secret list --name zevanory
+      - run: npx wrangler tail zevanory --format json
