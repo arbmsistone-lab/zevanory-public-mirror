@@ -103,17 +103,34 @@ Isso custa uma vez a transferência do Neon (teste E8).
 - As cópias estendidas `zpc:backup:v1:preserved:*` (`backup-preserve-archive.yml`, modo `kv-extend`, 75 dias) e o
   arquivo cifrado por senha dessa ferramenta não mudam. As cópias estendidas já gravadas continuam em claro até o TTL
   delas. Apagar antes do prazo é decisão do proprietário, fora deste PR.
-- `scripts/ops/backup_preserve_archive.py` só lê bundles legados. Diante de um envelope, para com
-  `bundle_encrypted_not_supported` em vez de um erro genérico. O `kv-extend` copia o valor como está, e a AAD continua
-  presa à chave original.
+- `scripts/ops/backup_preserve_archive.py` (`backup-preserve-archive.yml`) arquiva o envelope **como está**: o
+  `archive.enc` guarda o valor original de cada parte, cifrado de novo pela senha do proprietário. Nenhum texto claro
+  novo é gravado. Cada parte fica registrada no `manifest.json` (`parts`, `content_state`):
+  - **com `P20_BACKUP_KEYS`** (secret do Environment, só nos passos `archive` e `verify`): o envelope é decifrado só
+    em memória, com a mesma AAD, tag e kid, e as tabelas são conferidas contra o manifesto e restauradas no Postgres
+    efêmero. Estado: `cifrado_verificado_conteudo`. Um kid fora do conjunto derruba (`envelope_kid_unknown`).
+  - **sem a chave**: o envelope passa por validação estrutural (versão, alg, kid, nonce de 12 bytes, tag presente,
+    AAD do dia e da parte) e a integridade é conferida pelo SHA-256 do envelope (`parts_sha256`). Estado:
+    `cifrado_nao_verificado_conteudo`, com anotação `BACKUP_PRESERVE_NAO_VERIFICADO`. Nesse caso, as contagens e a
+    restauração das partes cifradas **não** são provadas.
+  - adulteração do envelope arquivado: `part_hash_mismatch`. Se o atacante tiver a senha e recalcular todos os hashes,
+    a tag GCM pega com a chave (`envelope_decrypt_failed`) e, sem a chave, a estrutura pega o envelope malformado.
+    Envelope trocado por texto claro dá `part_encryption_downgrade`.
+  - limite honesto: sem a chave, um envelope bem formado recifrado por quem tem a senha **e** recalcula todos os
+    hashes só é detectado quando a chave estiver disponível. Por isso o estado fica `cifrado_nao_verificado_conteudo`,
+    nunca "ok".
+  - compatibilidade: o mesmo kid e a mesma AAD de `scripts/p20/backup-envelope.mjs`, provados por um vetor fixo
+    gerado pelo node em `tests/test_backup_preserve_archive.py`.
+  - o `kv-extend` copia o valor como está; a AAD continua presa à chave original do bundle.
 - A cópia inversa KV → Neon (`zevanory_kv_backup`) não muda: ela vive no Neon e não é o objeto da lacuna.
 
 ## Passo a passo do proprietário (depois do merge)
 
 > Antes do passo 2: o deploy central só passa se `segredos + vars ≤ 60`. Abra o último `central-production-deploy` e
-> procure `BINDING_BUDGET_PASS planned=N spare=S`. Se `planned` já for 60, compacte uma var antes (procedimento de
-> `scripts/deploy/prepare-central-candidate.py` e `tests/test_binding_budget_compaction.py`). Sem isso, o próximo deploy
-> é bloqueado (fail-closed).
+> procure `BINDING_BUDGET_PASS planned=N spare=S`. Se `planned` já for 60, libere uma vaga antes. A proposta é apagar
+> `VOICE_TTS_FREE_ONLY`, com prova de impacto e ordem 1) apagar, 2) cadastrar, 3) deploy, em
+> [`vaga-binding-p20-backup-key.md`](vaga-binding-p20-backup-key.md). A alternativa é compactar uma var
+> (`tests/test_binding_budget_compaction.py`). Sem isso, o próximo deploy é bloqueado (fail-closed).
 
 1. **Gerar a chave no seu computador.** Ela vai para um arquivo e não aparece na tela:
    `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))" > p20-backup.key`

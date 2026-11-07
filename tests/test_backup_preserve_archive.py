@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import os
@@ -110,11 +111,152 @@ class PreserveTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
             m.describe_bundles({0: json.dumps({"x; drop": "[]"}).encode()})
 
-    def test_encrypted_bundle_fails_explicitly(self):
+
+
+# ---------------- P20: bundles cifrados pelo Worker (envelope AES-256-GCM) ----------------
+# Vetor fixo gerado por scripts/p20/backup-envelope.mjs (node:crypto) com chave sintética 0x07*32 e nonce fixo
+# 000102..0b SÓ para este vetor: prova que o Python lê exatamente o envelope do Worker/ensaio.
+KAT_KEY = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc="
+KAT_KID = "d14e095550c4e08d"
+KAT_ENV = ('{"$enc":"zevanory-backup-enc/v1","v":1,"alg":"A256GCM","kid":"d14e095550c4e08d","nonce":"AAECAwQFBgcICQoL",'
+           '"aad":{"day":"2026-11-02","part":1,"key":"zpc:backup:v1:neon:2026-11-02:part:1"},'
+           '"ct":"Y6OGAnlsqzpViMfHmQROk4VglLQpTisTc6MC0+KLTz+CTSyN9qBxmIyArsYwmJtQm10AW6n5n8pTJtDQgvopshBtfpxHlUOiFx9a5NU+gbyiiQA="}')
+KAT_PT = json.dumps({"orders": json.dumps([{"id": 1, "email": SECRET_MARK}, {"id": 2}], separators=(",", ":"))}, separators=(",", ":"))
+DAY = "2026-11-02"
+OTHER_KEY = base64.b64encode(bytes(range(32))).decode()
+
+
+def seal(pt, day, part, key_b64):
+    """Envelope de teste (mesmo contrato), cifrado aqui com AESGCM: terceira implementação independente do selo."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    raw, nonce = base64.b64decode(key_b64), os.urandom(12)
+    ct = AESGCM(raw).encrypt(nonce, pt.encode(), m.aad_bytes(day, part))
+    return json.dumps({"$enc": "zevanory-backup-enc/v1", "v": 1, "alg": "A256GCM", "kid": m.kid_of(raw), "nonce": base64.b64encode(nonce).decode(),
+                       "aad": {"day": day, "part": part, "key": m.bundle_key(day, part)}, "ct": base64.b64encode(ct).decode()}, separators=(",", ":"))
+
+
+def enc_parts():
+    """Parte 0 legado em claro; 1 = vetor do node; 2 = envelope cifrado aqui."""
+    return {0: json.dumps({"empty_table": "[]"}).encode(), 1: KAT_ENV.encode(),
+            2: seal(json.dumps({"zevanory_leads": json.dumps([{"email": SECRET_MARK}])}), DAY, 2, KAT_KEY).encode()}
+
+
+class EncryptedBundleTests(unittest.TestCase):
+    def run_mode(self, argv, kv, keys=None):
+        env = {"BACKUP_ARCHIVE_PASSPHRASE": PASS, "CLOUDFLARE_API_TOKEN": "t"}
+        buf = self.last = io.StringIO()
+        with mock.patch.dict(os.environ, env), mock.patch.object(m, "kv_list", kv.list), mock.patch.object(m, "kv_get", kv.get), redirect_stdout(buf):
+            os.environ.pop("P20_BACKUP_KEYS", None)
+            if keys is not None:
+                os.environ["P20_BACKUP_KEYS"] = keys
+            res = m.main(argv)
+        return res, buf.getvalue()
+
+    def verify(self, d, keys=None):
+        buf = self.last = io.StringIO()
+        with mock.patch.dict(os.environ, {"BACKUP_ARCHIVE_PASSPHRASE": PASS}), redirect_stdout(buf):
+            os.environ.pop("P20_BACKUP_KEYS", None)
+            if keys is not None:
+                os.environ["P20_BACKUP_KEYS"] = keys
+            res = m.mode_verify(m.argparse.Namespace(out=d), restore=False)
+        return res, buf.getvalue()
+
+    def archive(self, d, keys=None, parts=None):
+        return self.run_mode(["archive", "--day", DAY, "--out", d, "--expected-tables", "3", "--expected-rows", "3"], FakeKV(parts or enc_parts(), DAY), keys)
+
+    def rewrite(self, d, fn, outer_only=True):
+        """Adultera um envelope DENTRO do archive.enc, recifrando com a senha (atacante que tem a senha). outer_only:
+        recalcula só os hashes do arquivo; senão também parts_sha256 (só a tag/estrutura do envelope pode pegar)."""
+        man = json.load(open(os.path.join(d, "manifest.json")))
+        doc = json.loads(m.decrypt(open(os.path.join(d, "archive.enc"), "rb").read(), PASS))
+        doc["parts"]["1"] = fn(doc["parts"]["1"])
+        pt = json.dumps(doc, separators=(",", ":")).encode()
+        blob = m.encrypt(pt, PASS)
+        open(os.path.join(d, "archive.enc"), "wb").write(blob)
+        man["plaintext_sha256"], man["ciphertext_sha256"] = m.sha256_hex(pt), m.sha256_hex(blob)
+        if not outer_only:
+            man["parts_sha256"]["1"] = m.sha256_hex(doc["parts"]["1"].encode())
+        json.dump(man, open(os.path.join(d, "manifest.json"), "w"))
+
+    def test_kat_node_envelope_opens_in_python(self):
+        ring = m.parse_keyring(KAT_KEY)
+        self.assertEqual(list(ring), [KAT_KID], "kid derivado igual ao do node")
+        self.assertEqual(m.open_envelope(json.loads(KAT_ENV), DAY, 1, ring), KAT_PT)
+        with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            m.open_envelope(json.loads(KAT_ENV), DAY, 2, ring)  # AAD de outra parte
+        with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            m.parse_keyring(json.dumps({"0" * 16: KAT_KEY}))  # kid declarado diferente do derivado
+
+    def test_archive_and_verify_with_key_check_content_and_write_no_new_plaintext(self):
+        with tempfile.TemporaryDirectory() as d:
+            man, log = self.archive(d, KAT_KEY)
+            self.assertEqual(man["content_state"], m.ST_ENC_OK)
+            self.assertEqual(man["totals"], {"parts": 3, "tables": 3, "rows": 3})
+            self.assertEqual({p: i["state"] for p, i in man["parts"].items()}, {"0": m.ST_PLAIN, "1": m.ST_ENC_OK, "2": m.ST_ENC_OK})
+            doc = json.loads(m.decrypt(open(os.path.join(d, "archive.enc"), "rb").read(), PASS))
+            self.assertEqual(doc["parts"]["1"], KAT_ENV, "envelope arquivado como está")
+            self.assertNotIn(SECRET_MARK, json.dumps(doc), "nenhum texto claro novo dentro do arquivo")
+            res, vlog = self.verify(d, KAT_KEY)
+            self.assertEqual((res["content_state"], res["tables"], res["rows"]), (m.ST_ENC_OK, 3, 3))
+            for t in (log, vlog, open(os.path.join(d, "manifest.json")).read()):
+                self.assertNotIn(SECRET_MARK, t)
+                self.assertNotIn(KAT_KEY, t)
+
+    def test_archive_and_verify_without_key_are_opaque_and_say_so(self):
+        with tempfile.TemporaryDirectory() as d:
+            man, log = self.archive(d)
+            self.assertEqual(man["content_state"], m.ST_ENC_OPAQUE)
+            self.assertIn("BACKUP_PRESERVE_NAO_VERIFICADO", log)
+            self.assertEqual(man["parts"]["1"], {"format": "cifrado", "state": m.ST_ENC_OPAQUE, "kid": KAT_KID})
+            self.assertEqual(man["totals"]["tables"], 1, "só a parte legada tem conteúdo contado")
+            res, vlog = self.verify(d)
+            self.assertEqual(res["content_state"], m.ST_ENC_OPAQUE)
+            self.assertIn("::warning title=BACKUP_PRESERVE_NAO_VERIFICADO::", vlog)
+            res2, _ = self.verify(d, KAT_KEY)  # chave disponível depois: o conteúdo passa a ser provado
+            self.assertEqual((res2["content_state"], res2["tables"]), (m.ST_ENC_OK, 3))
+
+    def test_archived_with_key_then_verified_without_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.archive(d, KAT_KEY)
+            res, _ = self.verify(d)
+            self.assertEqual((res["content_state"], res["tables"]), (m.ST_ENC_OPAQUE, 1))
+
+    def fails(self, code, fn, *a):
+        with self.assertRaises(SystemExit):
+            fn(*a)
+        self.assertIn(code, self.last.getvalue())
+
+    def test_tampered_archived_envelope_fails_verify(self):
+        flip = lambda e: json.dumps(dict(json.loads(e), ct=base64.b64encode(bytes([base64.b64decode(json.loads(e)["ct"])[0] ^ 1]) + base64.b64decode(json.loads(e)["ct"])[1:]).decode()), separators=(",", ":"))
+        for keys in (KAT_KEY, None):
+            with tempfile.TemporaryDirectory() as d:
+                self.archive(d, keys)
+                self.rewrite(d, flip)
+                self.fails("part_hash_mismatch part=1", self.verify, d, keys)
+        with tempfile.TemporaryDirectory() as d:  # hashes todos recalculados: só a tag GCM pega (com chave)
+            self.archive(d, KAT_KEY)
+            self.rewrite(d, flip, outer_only=False)
+            self.fails("envelope_decrypt_failed part=1", self.verify, d, KAT_KEY)
+        with tempfile.TemporaryDirectory() as d:  # sem chave: a validação estrutural pega envelope malformado
+            self.archive(d)
+            self.rewrite(d, lambda e: json.dumps(dict(json.loads(e), nonce="AAECAwQFBgc="), separators=(",", ":")), outer_only=False)
+            self.fails("envelope_malformed part=1", self.verify, d)
+        with tempfile.TemporaryDirectory() as d:  # rebaixamento: envelope trocado por texto claro
+            self.archive(d)
+            self.rewrite(d, lambda e: json.dumps({"orders": "[]"}), outer_only=False)
+            self.fails("part_encryption_downgrade part=1", self.verify, d)
+
+    def test_unknown_kid_or_wrong_key_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.fails("envelope_kid_unknown part=1", self.archive, d, OTHER_KEY)
+        with tempfile.TemporaryDirectory() as d:
+            self.archive(d)
+            self.fails("envelope_kid_unknown part=1", self.verify, d, OTHER_KEY)
         out = io.StringIO()
         with redirect_stdout(out), self.assertRaises(SystemExit):
-            m.describe_bundles({0: json.dumps({"$enc": "zevanory-backup-enc/v1", "v": 1, "ct": "AAAA"}).encode()})
-        self.assertIn("bundle_encrypted_not_supported", out.getvalue())
+            m.parse_keyring(KAT_KEY[:-8])
+        self.assertIn("backup_keyring_malformed", out.getvalue())
+        self.assertNotIn(KAT_KEY[:20], out.getvalue())
 
 
 if __name__ == "__main__":

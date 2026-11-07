@@ -15,7 +15,17 @@ Modos:
            estendida em zpc:backup:v1:preserved:<dia>:part:<n>. Nunca altera a original.
 
 Variáveis: CLOUDFLARE_API_TOKEN (leitura/escrita KV conforme o modo), BACKUP_ARCHIVE_PASSPHRASE
-(>= 32 caracteres, criada e guardada SOMENTE pelo proprietário), PG* (modo verify).
+(>= 32 caracteres, criada e guardada SOMENTE pelo proprietário), PG* (modo verify),
+P20_BACKUP_KEYS (opcional; chave(s) do envelope do backup, docs/p20/cifragem-backup.md).
+
+Bundles cifrados pelo Worker (envelope AES-256-GCM zevanory-backup-enc/v1) são ARQUIVADOS COMO ESTÃO: o archive.enc
+guarda o envelope original (cifrado de novo pela senha); nenhum texto claro novo é gravado em disco.
+  - com P20_BACKUP_KEYS: o envelope é decifrado SÓ em memória (AAD do dia/parte, tag GCM), as tabelas conferidas
+    contra o manifesto e, no verify, restauradas no Postgres efêmero. Estado da parte: cifrado_verificado_conteudo.
+  - sem a chave: validação estrutural do envelope (versão, alg, kid, nonce de 12 bytes, tag, AAD do dia/parte) e
+    integridade pelo SHA-256 do envelope (parts_sha256). Estado: cifrado_nao_verificado_conteudo (o conteúdo, as
+    contagens e a restauração dessa parte NÃO são provados; registrado no manifesto e no log).
+Mesmo contrato e mesma derivação de kid de scripts/p20/backup-envelope.mjs (vetor fixo gerado pelo node no teste).
 """
 import argparse
 import base64
@@ -37,6 +47,11 @@ MAGIC = b"ZVBK1"
 KDF = {"name": "scrypt", "n": 2 ** 15, "r": 8, "p": 1, "len": 32}
 TABLE_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+ENC_FORMAT, ENC_VERSION, ENC_ALG, ENC_MARK = "zevanory-backup-enc/v1", 1, "A256GCM", "$enc"
+KID_PREFIX = b"zevanory-p20-backup-kid/v1|"
+B64_RE = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
+KID_RE = re.compile(r"^[0-9a-f]{16}$")
+ST_PLAIN, ST_ENC_OK, ST_ENC_OPAQUE = "claro_verificado", "cifrado_verificado_conteudo", "cifrado_nao_verificado_conteudo"
 
 
 def note(title, payload):
@@ -88,19 +103,112 @@ def kv_put(token, key, value, ttl_seconds):
         fail("kv_put_failed")
 
 
+# ---------------- envelope do backup (P20) ----------------
+def _b64(s):
+    if not isinstance(s, str) or len(s) % 4 or not B64_RE.match(s):
+        raise ValueError
+    return base64.b64decode(s, validate=True)
+
+
+def kid_of(raw):
+    return hashlib.sha256(KID_PREFIX + raw).hexdigest()[:16]
+
+
+def parse_keyring(text):
+    """Mesmo formato de scripts/p20/backup-envelope.mjs: base64, lista 'nova,antiga' ou JSON {kid: base64}.
+    Erros só por código (a chave nunca entra na mensagem)."""
+    ring = {}
+    s = (text or "").strip()
+    if not s:
+        return ring
+
+    def key(b):
+        try:
+            raw = _b64(str(b).strip())
+        except ValueError:
+            fail("backup_keyring_malformed")
+        if len(raw) != 32:
+            fail("backup_keyring_malformed")
+        return raw
+    if s.startswith("{"):
+        try:
+            o = json.loads(s)
+        except ValueError:
+            fail("backup_keyring_malformed")
+        if not isinstance(o, dict) or not o or not all(isinstance(v, str) for v in o.values()):
+            fail("backup_keyring_malformed")
+        for kid, b in o.items():
+            raw = key(b)
+            if kid_of(raw) != kid:
+                fail("backup_keyring_kid_mismatch")
+            ring[kid] = raw
+        return ring
+    for b in re.split(r"[\s,]+", s):
+        if b:
+            raw = key(b)
+            ring[kid_of(raw)] = raw
+    return ring
+
+
+def aad_bytes(day, part):
+    return f"zevanory-backup-enc|v={ENC_VERSION}|alg={ENC_ALG}|day={day}|part={part}|key={bundle_key(day, part)}".encode("utf-8")
+
+
+def check_envelope(o, day, part):
+    """Validação estrutural (sem chave). Devolve (kid, nonce, ct)."""
+    if o.get(ENC_MARK) != ENC_FORMAT or o.get("v") != ENC_VERSION:
+        fail(f"envelope_version_unsupported part={part}")
+    if o.get("alg") != ENC_ALG or not isinstance(o.get("kid"), str) or not KID_RE.match(o["kid"]) or not isinstance(o.get("aad"), dict):
+        fail(f"envelope_malformed part={part}")
+    try:
+        nonce, ct = _b64(o.get("nonce")), _b64(o.get("ct"))
+    except ValueError:
+        fail(f"envelope_malformed part={part}")
+    if len(nonce) != 12 or len(ct) < 16:
+        fail(f"envelope_malformed part={part}")
+    a = o["aad"]
+    if day is None or a.get("day") != day or a.get("part") != part or a.get("key") != bundle_key(day, part):
+        fail(f"envelope_aad_mismatch part={part}")
+    return o["kid"], nonce, ct
+
+
+def open_envelope(o, day, part, ring):
+    """Decifra só em memória. Kid fora do conjunto, tag ou AAD inválidas: falha fechada."""
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    kid, nonce, ct = check_envelope(o, day, part)
+    if kid not in ring:
+        fail(f"envelope_kid_unknown part={part}")
+    try:
+        return AESGCM(ring[kid]).decrypt(nonce, ct, aad_bytes(day, part)).decode("utf-8")
+    except (InvalidTag, UnicodeDecodeError):
+        fail(f"envelope_decrypt_failed part={part}")
+
+
 # ---------------- conteúdo e manifesto ----------------
-def describe_bundles(raw_parts):
-    """raw_parts: {part:int -> bytes}. Retorna tabelas com linhas e SHA-256 (igual ao do Worker:
-    sha256 da string JSON de cada tabela)."""
-    tables = {}
+def describe_parts(raw_parts, day=None, ring=None):
+    """raw_parts: {part:int -> bytes} (valor original do KV, legado ou envelope). Retorna (tables, parts_info, plain)
+    com as tabelas cujo conteúdo foi lido (linhas e SHA-256 igual ao do Worker), o estado de cada parte e o texto claro
+    das partes lidas (SÓ em memória; nunca gravado)."""
+    tables, info, plain = {}, {}, {}
     for part, raw in sorted(raw_parts.items()):
         bundle = json.loads(raw)
         if not isinstance(bundle, dict):
             fail(f"bundle_not_object part={part}")
-        if "$enc" in bundle:
-            # Envelope AES-256-GCM do Worker (docs/p20/cifragem-backup.md): esta ferramenta só lê bundles legados em
-            # claro. Falha explícita; kv-extend copia o valor cifrado sem abrir (a AAD fica presa à chave original).
-            fail(f"bundle_encrypted_not_supported part={part}")
+        i = {"format": "legado_claro", "state": ST_PLAIN, "kid": None, "sha256": sha256_hex(raw)}
+        if ENC_MARK in bundle:
+            i["format"] = "cifrado"
+            if ring:
+                bundle = json.loads(open_envelope(bundle, day, part, ring))
+                if not isinstance(bundle, dict) or ENC_MARK in bundle:
+                    fail(f"bundle_not_object part={part}")
+                i.update(state=ST_ENC_OK, kid=check_envelope(json.loads(raw), day, part)[0])
+            else:
+                i.update(state=ST_ENC_OPAQUE, kid=check_envelope(bundle, day, part)[0])
+                info[part] = i
+                continue
+        info[part] = i
+        plain[part] = bundle
         for name, js in bundle.items():
             if not TABLE_RE.match(name) or not isinstance(js, str):
                 fail(f"invalid_table_entry part={part}")
@@ -110,10 +218,20 @@ def describe_bundles(raw_parts):
             if name in tables:
                 fail(f"duplicate_table {name}")
             tables[name] = {"part": part, "rows": len(rows), "sha256": sha256_hex(js)}
-    return tables
+    return tables, info, plain
 
 
-def build_manifest(day, raw_parts, tables, ciphertext, plaintext, sources):
+def describe_bundles(raw_parts, day=None, ring=None):
+    return describe_parts(raw_parts, day, ring)[0]
+
+
+def content_state(info):
+    st = {i["state"] for i in info.values()}
+    return ST_ENC_OPAQUE if ST_ENC_OPAQUE in st else (ST_ENC_OK if ST_ENC_OK in st else ST_PLAIN)
+
+
+def build_manifest(day, raw_parts, tables, ciphertext, plaintext, sources, info=None):
+    info = info or {}
     return {
         "schema": "zevanory-backup-archive-manifest/v1",
         "day": day,
@@ -125,6 +243,9 @@ def build_manifest(day, raw_parts, tables, ciphertext, plaintext, sources):
         "ciphertext_sha256": sha256_hex(ciphertext),
         "cipher": "AES-256-GCM", "kdf": KDF, "format": "MAGIC|salt16|nonce12|ciphertext+tag",
         "sources": sources,
+        # P20: estado de cada parte (legado_claro | envelope cifrado, conteúdo verificado ou não). Só metadados.
+        "parts": {str(p): {k: v for k, v in i.items() if k != "sha256"} for p, i in sorted(info.items())},
+        "content_state": content_state(info) if info else ST_PLAIN,
     }
 
 
@@ -165,7 +286,12 @@ def mode_inspect(args, token):
         fail("missing_parts " + ",".join(missing))
 
 
-def check_expected(tables, args):
+def check_expected(tables, args, info=None):
+    if info and content_state(info) == ST_ENC_OPAQUE:
+        # Sem a chave as contagens das partes cifradas não são lidas: registrado como não verificado, nunca "ok".
+        note("BACKUP_PRESERVE_NAO_VERIFICADO", {"content_state": ST_ENC_OPAQUE, "expected_counts": "nao_verificado",
+             "parts": {str(p): i["state"] for p, i in sorted(info.items())}})
+        return
     tot_t, tot_r = len(tables), sum(t["rows"] for t in tables.values())
     if args.expected_tables and tot_t != args.expected_tables:
         fail(f"tables_mismatch got={tot_t} expected={args.expected_tables}")
@@ -182,22 +308,25 @@ def mode_archive(args, token):
         if k not in keys:
             fail("missing_part " + k)
         raw[p] = kv_get(token, k)
-    tables = describe_bundles(raw)
-    check_expected(tables, args)
+    ring = parse_keyring(os.environ.get("P20_BACKUP_KEYS"))
+    tables, info, _plain = describe_parts(raw, args.day, ring)
+    check_expected(tables, args, info)
+    # Arquiva o VALOR ORIGINAL de cada parte (envelope cifrado fica cifrado): nenhum texto claro novo.
     plaintext = json.dumps({"schema": "zevanory-backup-archive/v1", "day": args.day,
                             "parts": {str(p): b.decode("utf-8") for p, b in raw.items()}}, separators=(",", ":")).encode("utf-8")
     blob = encrypt(plaintext, passphrase)
     if decrypt(blob, passphrase) != plaintext:
         fail("roundtrip_failed")
     manifest = build_manifest(args.day, raw, tables, blob, plaintext,
-                              {bundle_key(args.day, p): {"expiration": keys[bundle_key(args.day, p)]} for p in range(PARTS)})
+                              {bundle_key(args.day, p): {"expiration": keys[bundle_key(args.day, p)]} for p in range(PARTS)}, info)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "archive.enc"), "wb") as f:
         f.write(blob)
     with open(os.path.join(args.out, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
     note("BACKUP_PRESERVE_ARCHIVE", {"day": args.day, "totals": manifest["totals"], "ciphertext_sha256": manifest["ciphertext_sha256"],
-                                     "plaintext_sha256": manifest["plaintext_sha256"], "sources": manifest["sources"]})
+                                     "plaintext_sha256": manifest["plaintext_sha256"], "sources": manifest["sources"],
+                                     "content_state": manifest["content_state"], "parts": manifest["parts"]})
     return manifest
 
 
@@ -234,14 +363,33 @@ def mode_verify(args, _token=None, restore=True):
         fail("plaintext_hash_mismatch")
     doc = json.loads(plaintext)
     raw = {int(p): v.encode("utf-8") for p, v in doc["parts"].items()}
-    tables = describe_bundles(raw)
-    if tables != manifest["tables"]:
+    # Integridade de cada parte pelo SHA-256 do valor original (envelope ou legado), com ou sem chave.
+    for p, b in raw.items():
+        if sha256_hex(b) != (manifest.get("parts_sha256") or {}).get(str(p)):
+            fail(f"part_hash_mismatch part={p}")
+    ring = parse_keyring(os.environ.get("P20_BACKUP_KEYS"))
+    tables, info, plain = describe_parts(raw, doc.get("day"), ring)
+    # Partes cujo conteúdo o manifesto registrou (manifesto antigo, sem "parts": todas). Uma parte arquivada opaca e
+    # decifrada agora é provada pela tag GCM e pela AAD; as demais precisam bater tabela a tabela com o manifesto.
+    mparts = manifest.get("parts")
+    # Parte sem chave agora fica opaca (provada só por SHA-256 + estrutura) e sai da comparação.
+    known = {p for p in plain if mparts is None or (mparts.get(str(p)) or {}).get("state") != ST_ENC_OPAQUE}
+    for p, i in info.items():  # rebaixamento: parte arquivada como envelope e agora em claro (valor trocado)
+        if (mparts or {}).get(str(p), {}).get("format") == "cifrado" and i["format"] != "cifrado":
+            fail(f"part_encryption_downgrade part={p}")
+    got = {t: v for t, v in tables.items() if v["part"] in known}
+    expected = {t: v for t, v in manifest["tables"].items() if v["part"] in known}
+    if got != expected:
         fail("table_manifest_mismatch")
-    result = {"day": doc["day"], "tables": len(tables), "rows": sum(t["rows"] for t in tables.values()), "hashes": "ok"}
+    state = content_state(info)
+    result = {"day": doc["day"], "tables": len(tables), "rows": sum(t["rows"] for t in tables.values()), "hashes": "ok",
+              "content_state": state, "parts": {str(p): i["state"] for p, i in sorted(info.items())}}
+    if state == ST_ENC_OPAQUE:
+        print("::warning title=BACKUP_PRESERVE_NAO_VERIFICADO::" + json.dumps(result["parts"], separators=(",", ":")), flush=True)
     if restore:
         tables_json = {}
-        for b in raw.values():
-            tables_json.update(json.loads(b))
+        for b in plain.values():
+            tables_json.update(b)
         counts = restore_into_postgres(tables_json)
         bad = [n for n, c in counts.items() if c != tables[n]["rows"]]
         if bad:

@@ -58,6 +58,34 @@ class ScaleTest(unittest.TestCase):
         self.assertEqual(res["restore"], {"tables": 51, "rows": 18142, "ok": True})
         print(f"\nSCALE archive+verify+restore: {elapsed:.1f}s, archive {size/1e6:.2f} MB", file=sys.stderr)
 
+    def test_encrypted_parts_archive_and_restore_with_key(self):
+        """P20: as 3 partes como envelope AES-256-GCM do Worker (chave sintética deste teste); com P20_BACKUP_KEYS o
+        verify decifra só em memória e restaura TUDO; o archive.enc guarda os envelopes, nunca texto claro novo."""
+        import base64
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        key = os.urandom(32)
+        kb64 = base64.b64encode(key).decode()
+        day = "2026-11-02"
+        store = {}
+        for p, raw in synth_parts().items():
+            nonce = os.urandom(12)
+            ct = AESGCM(key).encrypt(nonce, raw, m.aad_bytes(day, p))
+            store[m.bundle_key(day, p)] = json.dumps({"$enc": "zevanory-backup-enc/v1", "v": 1, "alg": "A256GCM", "kid": m.kid_of(key),
+                "nonce": base64.b64encode(nonce).decode(), "aad": {"day": day, "part": p, "key": m.bundle_key(day, p)},
+                "ct": base64.b64encode(ct).decode()}).encode()
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.dict(os.environ, {"BACKUP_ARCHIVE_PASSPHRASE": PASS, "CLOUDFLARE_API_TOKEN": "t", "P20_BACKUP_KEYS": kb64}), \
+             mock.patch.object(m, "kv_list", lambda tok, prefix: [{"name": k, "expiration": None} for k in store if k.startswith(prefix)]), \
+             mock.patch.object(m, "kv_get", lambda tok, k: store[k]), redirect_stdout(io.StringIO()) as out:
+            man = m.main(["archive", "--day", day, "--out", d])
+            res = m.mode_verify(m.argparse.Namespace(out=d), restore=True)
+            inner = m.decrypt(open(os.path.join(d, "archive.enc"), "rb").read(), PASS).decode()
+        self.assertEqual(man["content_state"], m.ST_ENC_OK)
+        self.assertEqual(man["totals"], {"parts": 3, "tables": 51, "rows": 18142})
+        self.assertEqual(res["restore"], {"tables": 51, "rows": 18142, "ok": True})
+        self.assertNotIn("tabela_00", inner, "o arquivo guarda só os envelopes")
+        self.assertNotIn(kb64, out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
