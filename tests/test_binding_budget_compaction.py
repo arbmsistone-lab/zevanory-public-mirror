@@ -482,7 +482,9 @@ def workflow_step(name_prefix):
 
 
 class DiarioD1WorkflowStepTest(unittest.TestCase):
-    """Executa o texto REAL dos dois passos novos do deploy central com curl e npx falsos (nada sai da máquina)."""
+    """Executa o texto REAL dos dois passos novos do deploy central com curl e npx falsos (nada sai da máquina).
+    DEC-P20-D1-01: os passos usam os tokens D1 dedicados (aqui com valores falsos); o isolamento das credenciais,
+    o env efetivo de cada passo e os mutantes ficam em tests/test_diario_d1_credentials.py."""
 
     def run_step(self, prefix, cfg, curl_code="200", curl_body=None, npx_rc=0, npx_out="", extra_env=None):
         _, script, _ = workflow_step(prefix)
@@ -497,7 +499,8 @@ class DiarioD1WorkflowStepTest(unittest.TestCase):
         out = d / "gh_output"
         out.write_text("", encoding="utf-8")
         body = curl_body if curl_body is not None else json.dumps({"success": True, "result": {"name": "zevanory-diario-p20"}})
-        env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", GITHUB_OUTPUT=str(out), CLOUDFLARE_API_TOKEN="fake",
+        env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", GITHUB_OUTPUT=str(out), CLOUDFLARE_API_TOKEN="",
+                   CF_TOKEN_D1_DIARIO_MIGRATE="fake-d1-migrate", CF_TOKEN_D1_DIARIO_READ="fake-d1-read",
                    PUBLIC_OWNER_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb", FAKE_CURL_CODE=curl_code, FAKE_CURL_BODY=body,
                    FAKE_NPX_RC=str(npx_rc), FAKE_NPX_OUT=npx_out, FAKE_NPX_LOG=str(d / "npx.log"), **(extra_env or {}))
         r = subprocess.run(["bash", "-c", script], cwd=d, env=env, capture_output=True, text=True, timeout=60)
@@ -517,11 +520,12 @@ class DiarioD1WorkflowStepTest(unittest.TestCase):
         rb_i, rb, rb_block = workflow_step(self.READ)
         self.assertLess(mig_i, dep_i, "a migração vem ANTES do wrangler deploy")
         self.assertGreater(rb_i, dep_i, "o readback vem depois do deploy")
-        self.assertIn("npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc", mig)
+        self.assertIn('CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc', mig)
         self.assertIn('--command "select count(*) as n from diario_head"', rb)
         self.assertIn("continue-on-error: true", rb_block)
-        for block in (mig_block, rb_block):
-            self.assertNotIn("secrets.", block, "nenhum segredo novo: usa o env do job")
+        for block, own in ((mig_block, "CF_TOKEN_D1_DIARIO_MIGRATE"), (rb_block, "CF_TOKEN_D1_DIARIO_READ")):
+            # DEC-P20-D1-01: cada passo recebe SÓ o seu segredo dedicado (detalhe em tests/test_diario_d1_credentials.py).
+            self.assertEqual(re.findall(r"secrets\.([A-Z0-9_]+)", block), [own], "só o segredo dedicado do passo")
             self.assertNotRegex(block, r"d1 (execute|migrations apply) zevanory-certification-only|7ff006f3")
         self.assertNotRegex(rb, r"(?i)\b(insert|update|delete|drop|create|alter)\b", "readback somente leitura")
         self.assertIn('- "migrations/d1/**"', WORKFLOW.read_text(encoding="utf-8"))
@@ -537,7 +541,7 @@ class DiarioD1WorkflowStepTest(unittest.TestCase):
         r, state, cfg, _ = self.run_step(self.MIG, self.cfg(), npx_rc=1, npx_out="✘ [ERROR] A request to the Cloudflare API failed. Authentication error [code: 10000]")
         self.assertEqual(r.returncode, 0)
         self.assertIn("::warning title=DIARIO_D1_MIGRACAO_PENDENTE::", r.stdout)
-        self.assertIn("D1:Edit", r.stdout)
+        self.assertIn("D1 > Editar", r.stdout)
         self.assertEqual(state, "pendente")
         self.assertEqual(cfg["d1_databases"], [DIARIO_WANTED], "binding mantido: a sombra tolera a tabela ausente")
 
