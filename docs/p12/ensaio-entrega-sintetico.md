@@ -6,8 +6,8 @@ dá no máximo homologação de engenharia. Ela **não** conta como ENSAIO EM PR
 atribui `HOMOLOGADO_075` sozinha (seção P1.4: faltam os critérios 7, 9 a 12).
 
 - Data do ensaio: 07/11/2026. Base: `gh-pages@9a6f1a86`. O SHA do head está no PR.
-- Reprodução: `node --test tests/p12-entrega-ensaio.test.mjs` (21 testes) e
-  `python3 scripts/ci/mutants_p12_entrega.py` (35 mutantes). O gate só de PR é `.github/workflows/p12-entrega-ensaio.yml`.
+- Reprodução: `node --test tests/p12-entrega-ensaio.test.mjs` (22 testes) e
+  `python3 scripts/ci/mutants_p12_entrega.py` (39 mutantes). O gate só de PR é `.github/workflows/p12-entrega-ensaio.yml`.
 - Decisão vigente: **DEC-06.** Depois da aprovação do pagamento, a Hotmart entrega o produto integral imediatamente
   na área de compras (Minhas compras). Não há retenção de 192 h (o modelo B foi revogado). A ZEVANORY não envia
   e-mail de produto. Ela **registra** a entrega e o estorno a partir do postback autenticado (`hottok`).
@@ -19,10 +19,10 @@ atribui `HOMOLOGADO_075` sozinha (seção P1.4: faltam os critérios 7, 9 a 12).
 | Escopo | Postback Hotmart dos 5 produtos v1.3.4 (IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas e Negócio Completo): rota `/api/webhooks/hotmart` → `routeHotmartNc011` → `handleDigitalHotmartNc012` → `recordHotmartSale` (resumo de vendas no KV) + `emitActivity` (atividade `delivery_sent` ou `refund_requested`) |
 | Entradas | `POST` JSON v2 da Hotmart com `x-hotmart-hottok`; eventos `PURCHASE_APPROVED`, `PURCHASE_COMPLETE`, `PURCHASE_REFUNDED`, `PURCHASE_CHARGEBACK`, `PURCHASE_PROTEST`, `PURCHASE_CANCELED` e os demais da lista permitida |
 | Saídas | `200` com `duplicate` verdadeiro ou falso; `401` para `hottok` errado ou ausente; `422` para evento inválido; `503` para configuração ausente ou registro **não gravado** (a Hotmart reenvia) |
-| Estados por transação e resultado | ausente → evento imutável gravado (`zpc:sales:v1:ev:<dia>:<hash>:<desfecho>:<evento>:<hash do conteúdo>`, TTL 400 dias). Não há estado intermediário: a chave existe ou não existe. O desfecho `approved` vale para APPROVED e COMPLETE; `reversed` vale para estorno, contestação e protesto (seções NC-989-01 a 03) |
+| Estados por transação e resultado | ausente → evento imutável gravado (`zpc:sales:v1:ev:<balde>:<hash>:<desfecho>:<evento>:<hash do conteúdo>`, TTL 400 dias). Não há estado intermediário: a chave existe ou não existe. O desfecho `approved` vale para APPROVED e COMPLETE; `reversed` vale para estorno, contestação e protesto (seções NC-989-01 a 04) |
 | Invariante | Cada transação aprovada é contada **exatamente uma vez** no registro, e gera exatamente uma atividade de entrega. Cada reversão é contada no máximo uma vez. Nenhum e-mail, nome ou transação em claro fica no registro |
 | Dependências | KV `ZEVANORY_PRIVATE_ARTIFACTS`. **Não** usa Neon, Resend nem rede |
-| Concorrência e cota | **Resolvidas pelas NC-989-01 a 03.** O resumo é uma projeção. O postback não lista nem recalcula nada, e o recomputo horário lista só os dias quentes, os dias com marcador e um dia de varredura |
+| Concorrência, cota e deduplicação | **Resolvidas pelas NC-989-01 a 04.** O resumo é uma projeção. Os eventos de uma transação caem sempre no mesmo balde (256 baldes pelo hash da transação). O postback recalcula só o seu balde, e o recomputo horário varre 10 baldes e soma as projeções |
 
 ## 2. Defeitos encontrados e corrigidos neste PR
 
@@ -42,8 +42,8 @@ dispara `central-production-deploy` (MERGE_CLASSE_B). Este PR não autoriza merg
 | E1 | APPROVED → reentrega idêntica → COMPLETE | 1 venda, 1 atividade de entrega, nenhum fetch, sem dado pessoal | PASS |
 | E2 | APPROVED → REFUNDED ×2 → CHARGEBACK; CANCELED sem aprovação | estorno contado uma vez, contestação posterior não reverte de novo, cancelamento sem entrega | PASS |
 | E3 | falha na gravação do evento imutável → reentrega | 503, depois 200 aplicado; 1 venda (zero faltante) | PASS |
-| E4 | falha entre o evento e o marcador do dia frio → reentregas | 503; a reentrega é duplicata e grava o marcador; o recomputo conta 1 venda (zero faltante, zero duplicado) | PASS |
-| E5 | leitura que falha (KV fora); depois listagem que falha no recomputo | 503 sem gravar; o recomputo falha e o resumo anterior fica intacto (não vazio); o recomputo seguinte soma | PASS |
+| E4 | falha entre o evento e a projeção do balde → reentregas | 503; a reentrega é duplicata e recalcula o balde; o total conta 1 venda (zero faltante, zero duplicado) | PASS |
+| E5 | leitura que falha (KV fora); depois listagem que falha no recomputo | 503 sem gravar; o recomputo falha e o total anterior fica intacto (não vazio); o recomputo seguinte soma | PASS |
 | E6 | falha na gravação da atividade de entrega e de estorno | 503; a reentrega grava exatamente uma | PASS |
 | E7 | Neon fora (`DATABASE_URL` sintético inalcançável) | 200 sem nenhuma chamada de rede | PASS |
 | E8 | `hottok` errado ou ausente; segredo não configurado | 401, 401, 503; nada gravado | PASS |
@@ -51,18 +51,19 @@ dispara `central-production-deploy` (MERGE_CLASSE_B). Este PR não autoriza merg
 | E10 | entrega mensal (Conteúdo Pronto): webhook × cron, 2 ciclos, resultado ambíguo | uma saída por ciclo com a chave `<id>/delivery/<ciclo>`; ambíguo espera conciliação | PASS |
 | E11 | onboarding com microvitória (seção 5) | flag exata, mesmo plano para APPROVED e COMPLETE, prazo ≤ 24 h, cancelamento por estorno ou descadastro, texto sem oferta, **remetente nunca chamado** | PASS |
 | E12 | rota oficial com a flag de 192 h ligada no ambiente | vai ao registro digital (DEC-06), nunca ao razão de 192 h | PASS |
-| E13 | NC-989-01: 2 execuções concorrentes, **todos** os entrelaçamentos, dia quente (5 cenários) e dia frio (3 cenários, com o marcador), falha antes e depois de cada gravação, reentrega | contagem = transações únicas; resumo e conjunto de eventos iguais aos da sequência | PASS (18.240 entrelaçamentos) |
-| E14 | NC-989-02: recomputo horário concorrente com 2 postbacks em dia frio, semente fixa `0x98902`, 1.500 casos com falha sorteada | o recomputo concorrente nunca conta a mais; o seguinte conta as duas | PASS |
-| E15 | NC-989-01: propriedade, semente fixa `0x98901`, 800 casos de 2 a 5 entregas, dias quentes, frios e sem data, recomputo concorrente e falha sorteados | resumo = sequência; recomputo concorrente nunca acima da verdade | PASS |
-| E16 | NC-989-01: retenção e tamanho | aos 399 dias ainda conta e deduplica; TTL ≥ 400 dias para eventos e projeções; 2.500 transações num dia, com list paginado | PASS |
+| E13 | NC-989-01/04: 2 execuções concorrentes, 7 cenários (incluindo sem data → com data e o inverso), **todos** os entrelaçamentos, falha antes e depois da gravação do evento, reentrega | contagem = transações únicas; resumo e conjunto de eventos iguais aos da sequência | PASS (3.640 entrelaçamentos) |
+| E14 | NC-989-02: caminho completo (evento + projeção do balde + recomputo concorrente), semente fixa `0x98902`, 1.500 casos com falha sorteada | nunca acima da verdade; a varredura conta exatamente as transações únicas | PASS |
+| E15 | NC-989-04: propriedade, semente fixa `0x98901`, 800 casos com a data **variando entre eventos da mesma transação**, recomputo e falha sorteados | resumo = sequência; recomputo concorrente nunca acima da verdade | PASS |
+| E16 | NC-989-01: retenção e tamanho | aos 399 dias ainda conta e deduplica; TTL ≥ 400 dias para eventos e projeções; 2.500 transações com páginas de 3 chaves | PASS |
 | E17 | NC-989-01: migração do resumo legado | base congelada gravada antes da 1ª projeção; transação legada não conta duas vezes | PASS |
 | E18 | NC-989-01: 3 entregas simultâneas pelo handler | 1 venda, 1 evento, 1 atividade por `sourceKey` | PASS |
-| E19 | NC-989-02: orçamento de cota de um dia inteiro com 400 dias de histórico, 100 e 5 vendas/dia, todas as operações contadas | list, gravações e leituras ≤ 50% da cota free; prefixo global nunca listado; resumo do dia certo | PASS (seção NC-989-02) |
-| E20 | NC-989-03: mesma transação, desfecho e evento com conteúdo diferente, **todos** os entrelaçamentos, falhas, dia quente e frio | as duas evidências preservadas; contagem 1; divergência sinalizada | PASS (5.810 entrelaçamentos) |
-| E21 | NC-989-02: ciclo de vida do marcador e recomputo perdido | marcador nunca apagado, regravado depois de 2 h e expirado por TTL; dia sem projeção recuperado | PASS |
+| E19 | NC-989-02: orçamento de cota de um dia inteiro com 400 dias de histórico (256 baldes), 100 e 5 vendas/dia, todas as operações contadas | list, gravações e leituras ≤ 50% da cota free; prefixo global nunca listado; resumo certo | PASS (seção NC-989-02) |
+| E20 | NC-989-03: mesma transação, desfecho e evento com conteúdo diferente, **todos** os entrelaçamentos × falhas | as duas evidências preservadas; contagem 1; divergência sinalizada; representativo independe da ordem | PASS (350 entrelaçamentos) |
+| E21 | NC-989-02: varredura horária | cobre os 256 baldes em 26 h, sem estado; repara a projeção defasada por corrida | PASS |
+| E22 | NC-989-04: transação sem data e depois com data, o inverso, e aprovação sem data com estorno datado; **todos** os entrelaçamentos do caminho completo × falhas | um balde só; contada 1 vez; competência no dia datado | PASS (28.050 entrelaçamentos) |
 
-Contagens: ensaio **21/21** (zero pulados); mutantes **35/35 KILLED** (0 SURVIVED, 0 INCONCLUSIVE), com expectativas
-em `scripts/ci/mutants_p12_entrega_allow.json` (M05 a M16 e M18 escritas antes de rodar; M19 a M40 nas seções NC-989);
+Contagens: ensaio **22/22** (zero pulados); mutantes **39/39 KILLED** (0 SURVIVED, 0 INCONCLUSIVE), com expectativas
+em `scripts/ci/mutants_p12_entrega_allow.json` (M05 a M16 e M18 escritas antes de rodar; M19 a M44 nas seções NC-989);
 suíte do manifesto no PR.
 
 ## 4. Entrega e arrependimento durante indisponibilidade parcial (seção 12-B.4)
@@ -135,7 +136,7 @@ v1.3.4 (P24); (4) decisão do proprietário e nova auditoria para trocar a const
   fabricada).
 - Não é ENSAIO EM PRODUÇÃO nem OPERACIONAL (seção 6.4). A recuperação está escrita e simulada, mas não foi
   exercitada em produção com tempos medidos (critério 9).
-- A concorrência e a cota foram resolvidas sem CAS (seções NC-989-01 a 03). Os resíduos que sobram estão listados lá.
+- A concorrência, a cota e a deduplicação global foram resolvidas sem CAS (seções NC-989-01 a 04). Os resíduos que sobram estão listados lá.
 - Falta o parecer independente sobre o SHA (critério 10), o readback da configuração efetiva (critério 11) e o
   registro das autorizações técnicas (critério 12).
 
@@ -153,8 +154,8 @@ REFUNDED > CHARGEBACK > PROTEST, porque o protesto é provisório), nunca da ord
 de existir.
 
 **Correções aprovadas mantidas.**
-- Venda não some: falha na gravação do evento ou do marcador devolve 503, e a reentrega grava o que faltou (E3, E4, E13).
-- KV fora: leitura que falha devolve 503 sem gravar. A listagem que falha derruba o recomputo antes de gravar o total,
+- Venda não some: falha na gravação do evento ou da projeção do balde devolve 503, e a reentrega grava o que faltou (E3, E4, E13).
+- KV fora: leitura ou listagem que falha no postback devolve 503. A listagem que falha derruba o recomputo antes de gravar o total,
   então nunca se grava total de lista vazia ou parcial (E5).
 - Atividade não gravada: devolve 503 (E6).
 
@@ -168,70 +169,88 @@ Worker principal não está neste repositório. Uma classe, uma migração e um 
 aqui, e um componente a mais ficaria no caminho da entrega (12-B.4). As chaves imutáveis dão prova por construção,
 sem mudar a infraestrutura e sem depender do Neon ou do D1.
 
-## NC-989-02 (capacidade): recomputo sem listar o histórico inteiro
+## NC-989-02 (capacidade): nenhuma listagem do histórico inteiro
 
-**Achado.** A versão anterior listava o prefixo inteiro de eventos no postback e a cada hora. Com 100 vendas/dia por
+**Achado.** A primeira versão listava o prefixo inteiro de eventos no postback e a cada hora. Com 100 vendas/dia por
 400 dias (40.000 eventos), seriam cerca de 40 páginas por recomputo, ou ~4.960 list/dia, acima da cota free de 1.000.
 
-**Desenho.**
-1. **Partição por dia ESTÁVEL da transação.** A chave é
-   `zpc:sales:v1:ev:<AAAAMMDD>:<sha256(transação)[0:32]>:<desfecho>:<evento>:<payloadhash16>`. O dia vem de
-   `approved_date`, senão de `order_date`, do payload. A Hotmart repete esses campos em APPROVED, COMPLETE e estorno
-   da mesma transação. Sem data no payload, a partição é `00000000`. O relógio do servidor nunca é usado, nem o
-   `creation_date` do postback, que muda entre os eventos da mesma transação.
-2. **O postback não lista nem recalcula nada.** Ele grava o evento e, se a partição estiver fria (fora de hoje,
-   ontem e anteontem, em UTC), grava o marcador `zpc:sales:v1:dirty:<dia>`.
-   - O marcador tem TTL de 12 h e só é regravado se tiver mais de 2 h.
-   - O marcador **nunca é apagado** e expira por TTL. Então não existe a corrida de "apagar depois de recalcular":
-     todo evento é seguido de ≥ 10 h de marcador vivo, ou seja, ≥ 9 recomputos horários (E21; o mutante M38, que
-     apaga o marcador, é morto por E14 e E21).
-   - A reentrega de um evento já gravado também regrava o marcador, se ele faltar. Isso cobre a queda entre o evento
-     e o marcador (E4, M26).
-3. **Recomputo horário** (`refreshSalesSummary`, em `/api/internal/funnel/run`). Ele lista só:
-   - os 3 dias quentes, ao vivo (hoje e ontem nunca são gravados);
-   - os dias com marcador;
-   - os dias -2 a -7 que ainda não têm projeção gravada (recuperação de recomputo perdido, E21.6);
-   - 1 dia da varredura rotativa, sem estado (hora mod 400: dias -3 a -401 e a partição sem data, ciclo de ~17 dias);
-   - o prefixo `zpc:sales:v1:day:` (≤ 401 chaves, 1 página).
+**Desenho atual** (balde pela transação, ver NC-989-04):
+1. **Postback.** Grava o evento e recalcula **só o seu balde**: 1 list, que é 1 página no volume de projeto (~170
+   eventos por balde com 400 dias de 100 vendas/dia). A projeção `zpc:sales:v1:bucket:<bb>` só é regravada se a
+   impressão digital do balde mudou. A reentrega de um evento já gravado recalcula o balde, o que cobre a queda
+   entre o evento e a projeção (E4, M26). Um COMPLETE idêntico a um APPROVED já gravado não grava nada.
+2. **Sem marcador e sem documento compartilhado.** Dois postbacks concorrentes no mesmo balde podem gravar uma
+   projeção defasada. Ela nunca fica acima da verdade, porque sai de uma listagem (E14). Quem corrige:
+   - qualquer postback seguinte ao mesmo balde;
+   - a **varredura horária rotativa**: 10 baldes por hora, sem estado (hora × 10 mod 256), ciclo de 25,6 h (E21).
+     Na varredura, a projeção só é regravada se a listagem tiver evento que a projeção gravada não cobre (hash curto
+     de cada nome de evento, `nameHashes`). A saída de eventos expirados por TTL fica para a próxima gravação do
+     balde, para a expiração não custar 1 gravação por balde varrido (M37).
+3. **Recomputo horário** (`/api/internal/funnel/run`): 10 baldes da varredura, o prefixo das projeções (≤ 256 chaves,
+   1 página), as leituras das projeções e 1 gravação do total. Todo list é paginado.
 
-   A projeção do dia `zpc:sales:v1:day:<dia>` só é regravada quando muda a impressão digital (os nomes dos eventos).
-   O total soma as projeções dos dias com a base legada e é gravado 1 vez por hora. Todo `list` é paginado
-   (1.000 por página), então N páginas são tratadas.
-4. **COMPLETE gêmeo não é regravado.** Se já existe um APPROVED da mesma transação com o mesmo conteúdo canônico,
-   o COMPLETE não grava: mesmo desfecho e mesmos fatos, nada a preservar. Isso economiza 1 gravação por venda. Um
-   COMPLETE com conteúdo diferente, ou sem APPROVED, é gravado.
+Desenhos avaliados e descartados pela conta de gravações:
+- **Partição por dia com marcador** (versão 420aa65f): 378 gravações/dia, mas não deduplica entre partições (NC-989-04).
+- **Balde pela transação com marcador `dirty:<balde>`**: cada evento cai num balde diferente, então o marcador custa
+  ~1 gravação por evento. Com a projeção, seriam ~580 gravações/dia (margem de 42%).
 
-**Conta de cota, medida por E19.** A conta cobre um dia inteiro em regime, com 400 dias de histórico já gravados
-(40.000 eventos e 400 projeções de dia, no cenário de 100 vendas/dia). Toda operação de KV do caminho de vendas é
-contada: postback pelo handler (evento, marcador, atividade `delivery_sent` ou `refund_requested`) e 24 recomputos
-horários (listas, leituras, projeções de dia e total).
+**Conta de cota, medida por E19** (256 baldes). A conta cobre um dia inteiro em regime, com 400 dias de histórico já
+gravados (40.000 eventos e 256 projeções). Toda operação de KV do caminho de vendas é contada: postback pelo handler
+(evento, projeção do balde, atividade) e 24 recomputos horários (varredura, listas, leituras e total).
 
 Postbacks do dia:
 - N aprovações novas;
-- COMPLETE de 90% das compras de 8 dias atrás (garantia vencida);
-- estornos de 10% de N, em compras de 1 a 7 dias atrás;
-- contestações de 2% de N, em compras de 30 dias atrás;
+- COMPLETE de 90% das compras de 8 dias atrás;
+- estornos de 10% de N, em compras de 1 a 7 dias;
+- contestações de 2% de N, em compras de 30 dias;
 - 5% de reentregas.
 
 | Cenário | Postbacks | list/dia | Gravações/dia | Leituras/dia |
 |---|---|---|---|---|
-| 100 vendas/dia + estornos | 207 | **218** (21,8% da cota) | **378** (37,8%): eventos 112, atividades 224, total 24, dias 10, marcadores 8 | **10.579** (10,6%) |
-| 5 vendas/dia (teto da abertura) | 13 | **156** (15,6%) | **47** (4,7%): total 24, atividades 14, eventos 7, marcador 1, dia 1 | **9.685** (9,7%) |
+| 100 vendas/dia + estornos | 207 | **381** (38,1% da cota) | **472** (47,2%): eventos 112, projeções de balde 112, atividades 224, total 24 | **7.256** (7,3%) |
+| 5 vendas/dia (teto da abertura) | 13 | **272** (27,2%) | **52** (5,2%): total 24, atividades 14, eventos 7, baldes 7 | **6.260** (6,3%) |
 | Limite exigido (margem ≥ 50%) | — | ≤ 500 | ≤ 500 | ≤ 50.000 |
 
 Leitura da conta:
-- **Listas:** são 24 × (1 de marcadores + 3 quentes + dias sujos + 1 de varredura + 1 de projeções); os dias de
-  recuperação só entram quando falta projeção. Não crescem com o histórico, porque cada dia é 1 página até 1.000
-  eventos.
-- **Leituras:** dominadas pelas ~400 projeções de dia lidas por recomputo (cerca de 9.600/dia, fixas).
-- **Gravações:** crescem cerca de 3,1 por venda (evento + 2 da atividade), mais ~42 fixas. O limite de 50%
-  (500/dia) seria atingido perto de **147 vendas/dia**.
-- **Fora da conta:** o batimento do recomputo (`zpc:cron:v1:funnel`, 24 gravações/dia) já existia e não é do caminho
-  de vendas. Eventos não financeiros em volume (carrinho abandonado, boleto impresso) somam 1 gravação cada e também
-  ficaram fora; acima de ~100/dia, eles pediriam um contador agregado no lugar de um evento por mensagem.
+- **Listas:** 1 por postback que grava (ou reentrega), mais 24 × (10 da varredura + 1 do prefixo das projeções) = 264
+  fixas.
+- **Leituras:** dominadas pelas 256 projeções lidas por recomputo (~6.100/dia).
+- **Gravações:** ~4,1 por venda aprovada (evento, projeção do balde e 2 da atividade), mais as reversões e 24 do
+  total. A margem de 50% (500/dia) seria atingida perto de **107 vendas/dia**.
+- **Comparação:** a partição por dia tinha mais folga de gravação (378), mas contava em dobro a transação que muda de
+  data. Troquei folga por correção. No teto da abertura (5/dia), a margem é de 95%.
+- **Fora da conta:** o batimento `zpc:cron:v1:funnel` (24/dia), que já existia. Eventos não financeiros em volume
+  (carrinho abandonado, boleto impresso) custam ~2 gravações cada (evento + projeção) e também ficaram fora.
 
-Nada depende de mudança manual quando o histórico cresce: listas e gravações não dependem do tamanho do histórico,
-e as leituras crescem até 401 por recomputo, no máximo.
+Listas e gravações não dependem do tamanho do histórico enquanto cada balde couber em 1 página (até ~1.000 eventos
+por balde, ou ~256.000 eventos retidos). Acima disso, o list já é paginado e custa 1 página a mais por balde;
+`BUCKET_HEX = 3` (4.096 baldes) reduz isso, mas multiplica as leituras do total por 16.
+
+## NC-989-04 (deduplicação global entre partições)
+
+**Achado.** Na partição por dia, a mesma transação podia ser contada em duas partições, por exemplo primeiro sem data
+(`00000000`) e depois com data. `computeDay` agrupava só dentro do dia, e o total somava as projeções.
+`source.undated_groups` dava visibilidade, mas não impedia a duplicação financeira.
+
+**Correção.** A partição passou a ser a **transação**, não a data:
+- O balde é formado pelos 2 primeiros hex de `sha256("hotmart:" + transação)`, em 256 baldes. Todos os eventos de uma
+  transação caem **sempre** no mesmo balde, com ou sem data, e a projeção do balde agrupa por transação+desfecho.
+- Uma transação nunca aparece em dois baldes, e o total soma baldes **disjuntos**. A deduplicação é global por
+  construção, sem índice nem documento compartilhado sujeito a concorrência.
+- A data de competência é só atributo do representativo. O evento datado vence o sem data no mesmo nível de
+  precedência, e só ele entra em `byDay`. Sem nenhuma data, a venda conta 1 vez e fica fora de `byDay`
+  (`source.undated_groups`).
+- Quando a mesma transação chega sem data e depois com data, os dois conteúdos ficam preservados (chaves diferentes,
+  NC-989-03) e aparecem em `divergent_events`.
+
+**Provas.**
+- **E22:** transação sem data e depois com data, o inverso, e aprovação sem data com estorno datado. Todos os
+  entrelaçamentos do caminho completo (evento + projeção do balde), com e sem falha antes e depois das gravações e
+  reprocessamento: **28.050 entrelaçamentos**. Resultado: um único balde, contagem 1, competência no dia datado.
+- **E13:** inclui os dois cenários NC-989-04 na busca exaustiva da camada de eventos.
+- **E15:** 800 casos com a data **variando entre eventos da mesma transação**; o resumo é idêntico ao da sequência.
+- **Mutantes:** M40 (partição pela data), M41 (agrupar sem o desfecho), M42 (balde pelo conteúdo, ou seja, somar
+  projeções sem deduplicar) e M43 (competência pelo evento sem data).
 
 ## NC-989-03 (imutabilidade): conteúdo divergente nunca substitui evidência
 
@@ -242,25 +261,28 @@ diferente podia sobrescrever a anterior (KV sem CAS, leitura desatualizada).
 origem, pagamento e data. O nome do evento não entra; ele já está na chave.
 - Conteúdo igual ⇒ mesma chave e valor idêntico: a gravação é idempotente.
 - Conteúdo diferente ⇒ chave diferente: as duas evidências ficam preservadas.
-- A contagem continua 1 por transação+desfecho. O representativo é determinístico: precedência e depois o menor
-  `payloadhash`.
-- Cada variante do mesmo evento com conteúdo diferente aparece em `divergent_events` (dia, ref pseudônima, desfecho,
-  evento, número de variantes), no resumo e na projeção do dia, para revisão humana. A contagem não muda (E20; M34 e M39).
+- A contagem continua 1 por transação+desfecho. O representativo é determinístico: precedência do evento, depois o
+  que tem data, depois o menor `payloadhash`.
+- Cada variante do mesmo evento com conteúdo diferente aparece em `divergent_events` (ref pseudônima, desfecho,
+  evento, número de variantes), no resumo e na projeção do balde, para revisão humana. A contagem não muda (E20; M34 e M39).
+  Um COMPLETE idêntico a um APPROVED gravado pode ou não existir, conforme a corrida; por isso não conta como
+  variante (M44).
 
 ## Leitores do resumo e ajustes
 
 | Leitor | Uso | Ajuste |
 |---|---|---|
-| `scripts/audit/command-center-snapshot.mjs` (+ `funnel-counting.mjs`) | `schema`, `totals`, `byDay`, `bySource`, `byProduct`, `updatedAt` | Nenhum. O esquema `zevanory-sales/v1` foi mantido. `updatedAt` é a hora do recomputo horário, e a hora da última venda está em `lastEventAt`. Campos novos: `source` (dias, eventos, grupos, `undated_groups`, base legada) e `divergent_events`. O resumo é atualizado de hora em hora, antes do snapshot, e não mais no postback |
-| `worker/data-backup.mjs` | copia o prefixo `zpc:sales:` | Nenhum. Inclui eventos, marcadores, projeções de dia e a base legada |
+| `scripts/audit/command-center-snapshot.mjs` (+ `funnel-counting.mjs`) | `schema`, `totals`, `byDay`, `bySource`, `byProduct`, `updatedAt` | Nenhum. O esquema `zevanory-sales/v1` foi mantido. `updatedAt` é a hora do recomputo horário, e a hora da última venda está em `lastEventAt`. Campos novos: `source` (baldes, eventos, grupos, `undated_groups`, base legada) e `divergent_events`. O total é atualizado de hora em hora, antes do snapshot; a projeção do balde, no postback |
+| `worker/data-backup.mjs` | copia o prefixo `zpc:sales:` | Nenhum. Inclui eventos, projeções de balde e a base legada |
 | `tests/sales-ledger.test.mjs` | resumo depois de `recordHotmartSale` | Chama o recomputo antes de ler; as mesmas 3 asserções de contagem |
 | `scripts/cp-nc013-regression.test.mjs` | conferia a gravação do resumo | Confere o evento imutável (`zpc:sales:v1:ev:`) |
 
-## Mutantes NC-989 (M19 a M40, todos KILLED)
+## Mutantes NC-989 (M19 a M44, todos KILLED)
 
-Os antigos M01 a M04 e M17 foram removidos, porque o marcador em duas fases e o `applied` não existem mais.
+Os antigos M01 a M04 e M17 foram removidos, porque o marcador em duas fases e o `applied` não existem mais. Os
+mutantes do marcador `dirty:<dia>` (versão 420aa65f) foram trocados pelos equivalentes do desenho por balde.
 
-| Mutante | Regra quebrada | Morto por |
+| Mutante | Regra quebrada | Morto por (primárias) |
 |---|---|---|
 | M19 | resumo por leitura-modificação-gravação como fonte | E13.1, E1.4, E3.1 |
 | M20 | derivação parte do resumo atual | E4.8, E5.5, E14.2 |
@@ -269,7 +291,7 @@ Os antigos M01 a M04 e M17 foram removidos, porque o marcador em duas fases e o 
 | M23 | TTL do evento abaixo de 400 dias | E16.2 |
 | M24 | contagem de entradas não únicas | E13.1, E20.3 |
 | M25 | falha de listagem engolida | E5.6 |
-| M26 | reentrega não regrava o marcador que faltou | E4.4 |
+| M26 | reentrega não recalcula o balde que faltou | E4.4 |
 | M27 | evento gravado só se o grupo for novo | E13.3 |
 | M28 | representativo pela ordem da listagem | E2.3, E13.1 |
 | M29 | marcador legado ignorado | E17.3 |
@@ -278,32 +300,34 @@ Os antigos M01 a M04 e M17 foram removidos, porque o marcador em duas fases e o 
 | M32 | falha de gravação do evento engolida | E3.1, E13.3, E20.1 |
 | M33 | leitura com falha engolida | E5.1 |
 | M34 | chave sem `payloadhash` | E20.1 |
-| M35 | total recalculado de todos os eventos | E19.2 |
-| M36 | dia frio sem marcador | E4.1, E13.1, E21.1 |
-| M37 | marcador nunca regravado | E21.3 |
-| M38 | marcador apagado depois do recomputo, sem verificação | E21.2, E14.2 |
+| M35 | total recalculado de todos os baldes a cada hora | E19.1 (a cota de list estoura) |
+| M36 | postback não recalcula o balde | E4.1, E3.5 |
+| M37 | varredura nunca repara balde defasado | E21.4, E14.2 |
+| M38 | varredura cobre só metade dos baldes | E21.1 |
 | M39 | divergência não sinalizada | E20.5 |
-| M40 | recuperação de dias sem projeção desligada | E21.6 |
+| M40 | partição pela data da compra (não pela transação) | E22.2, E13.1 |
+| M41 | agrupamento sem o desfecho | E13.1, E2.3 |
+| M42 | balde pelo conteúdo (soma de projeções sem deduplicação) | E22.2, E13.1 |
+| M43 | representativo prefere o evento sem data | E22.3 |
+| M44 | COMPLETE gêmeo contado como divergência | E15.2 |
 
 As expectativas foram derivadas por raciocínio sobre cada mutação e conferidas numa execução de sondagem antes da
-execução oficial. O que mudou depois da sondagem:
-- **M21 e M35:** o primeiro desenho do teste de orçamento estourava o tempo, porque cada postback listava 40 páginas.
-  O KV falso do E19 passou a recusar o list depois de 1.000 por dia, como a cota real, e o teste agora falha por asserção.
-- **M29:** remover a leitura do marcador legado tira uma operação por execução. O piso de entrelaçamentos do E13
-  (E13.5) cai e foi registrado como secundário.
-- **M06** (antigo): os testes E4, E18 e E19 também fazem reentrega com a atividade já gravada e foram incluídos como
-  secundários.
+execução oficial. As secundárias são as falhas que a sondagem mostrou nos outros testes, cada uma com justificativa.
+O que mudou depois da sondagem:
+- **M21:** a primeira versão também listava o prefixo global no caminho sem projeção de E16, e o teste estourava o
+  tempo. A mutação passou a ficar só no caminho que projeta.
+- **M21 e M35:** o KV falso do E19 recusa o list depois de 1.000 por dia, como a cota real, então o teste falha por
+  asserção em vez de estourar o tempo.
 
 ## Resíduos declarados
 
 - **Consistência eventual do KV** (até cerca de 60 s entre locais). Uma entrega pode não ver a chave de outra, e as
-  duas gravam o mesmo valor. A listagem pode atrasar: o marcador, vivo por ≥ 10 h, faz os recomputos seguintes verem
-  o evento.
-- **Transação com data em um evento e sem data em outro**: os eventos caem em partições diferentes e o grupo se
-  divide. A Hotmart envia `approved_date` e `order_date` nos eventos de compra aprovada. A partição sem data é
-  contada à parte em `source.undated_groups`, para revisão.
-- **Cron parado por mais de 7 dias**: os dias que esfriaram nesse período só entram pela varredura, em até cerca de
-  17 dias. Isso nunca conta a mais.
+  duas gravam o mesmo valor. Uma projeção de balde defasada por corrida ou por atraso da listagem nunca fica acima da
+  verdade, e é corrigida pelo próximo postback ao balde ou pela varredura (até 25,6 h).
+- **Expiração** (TTL de 400 dias): a saída de eventos expirados entra no total na próxima gravação do balde, não na
+  varredura. Os totais podem conter vendas com até alguns dias além dos 400; `byDay` mantém os 400 dias mais recentes.
+- **CPU do Worker Free (10 ms):** o recomputo lê e soma 256 projeções. A conta acima é de operações de KV; o tempo
+  de CPU no Worker real **não foi medido** aqui.
 - **Atividade** (`worker/activity-ledger.mjs`, fora destas NC): entregas simultâneas podem gerar mais de um evento com
   o mesmo `sourceKey`, que o consumidor deduplica (E18.3).
 - **Rollback para o código anterior** exige reconciliação pelo painel da Hotmart. Uma venda que já tinha sumido pelo

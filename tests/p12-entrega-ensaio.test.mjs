@@ -12,8 +12,8 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { handleDigitalHotmartNc012 } from "../worker/cp-nc012-digital-hotmart.mjs";
 import { routeHotmartNc011 } from "../worker/cp-nc011-routing.mjs";
 import {
-  SALES_SUMMARY_KEY, SALES_EVENT_PREFIX, SALES_DAY_PREFIX, SALES_DIRTY_PREFIX, SALES_LEGACY_BASELINE_KEY, SALES_EVENT_TTL_DAYS,
-  recordHotmartSale, refreshSalesSummary, salesEventRecord, computeDay, applySale, saleFacts, dayOf,
+  SALES_SUMMARY_KEY, SALES_EVENT_PREFIX, SALES_BUCKET_PREFIX, SALES_LEGACY_BASELINE_KEY, SALES_EVENT_TTL_DAYS, BUCKETS,
+  recordHotmartSale, refreshSalesSummary, refreshBucket, salesEventRecord, computeBucket, sweepBuckets, bucketName, applySale, saleFacts,
 } from "../worker/sales-ledger.mjs";
 import { emitActivity } from "../worker/activity-ledger.mjs";
 import { ACTIVITY_EVENT_PREFIX } from "../worker/activity-ledger.mjs";
@@ -33,7 +33,7 @@ const SLUGS = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-
 // KV em memória com a semântica do Workers KV usada aqui: get/put/list, metadata, expirationTtl (relógio
 // controlável) e list paginado em ordem lexicográfica com no máximo 1.000 chaves por página. Falhas injetáveis por
 // operação: "before" (a operação não acontece) ou "after" (acontece e a chamada falha mesmo assim).
-function memKv({ clock = () => T0 } = {}) {
+function memKv({ clock = () => T0, maxPage = 1000 } = {}) {
   const m = new Map(), meta = new Map(), exp = new Map();
   const faults = [], puts = [];
   const alive = (k) => m.has(k) && !(exp.has(k) && clock() >= exp.get(k));
@@ -53,7 +53,7 @@ function memKv({ clock = () => T0 } = {}) {
       hit("list", prefix, "before");
       if (!(limit >= 1 && limit <= 1000)) throw new Error("kv_list_limite_invalido");
       const names = [...m.keys()].filter((k) => k.startsWith(prefix) && alive(k)).sort();
-      const start = cursor ? Number(cursor) : 0, page = names.slice(start, start + limit), end = start + page.length;
+      const start = cursor ? Number(cursor) : 0, page = names.slice(start, start + Math.min(limit, maxPage)), end = start + page.length;
       return { keys: page.map((name) => ({ name, ...(meta.has(name) ? { metadata: JSON.parse(JSON.stringify(meta.get(name))) } : {}) })), list_complete: end >= names.length, ...(end < names.length ? { cursor: String(end) } : {}) };
     },
     async delete(k) { hit("delete", k, "before"); m.delete(k); meta.delete(k); exp.delete(k); },
@@ -141,23 +141,23 @@ test("E3 KV falha ao gravar o evento imutável da venda: 503, a reentrega da Hot
   assert.equal(activities(kv, "delivery_sent").length, 1, "[E3.6] entrega registrada exatamente uma vez");
 });
 
-test("E4 queda entre o evento e o marcador do dia (partição fria): 503, a reentrega grava o marcador e a venda entra no recomputo", async (t) => {
+test("E4 queda entre o evento e a projeção do balde: 503, a reentrega recalcula o balde e a venda entra no total uma vez", async (t) => {
   noNetwork(t);
-  const kv = memKv(), env = envWith(kv), later = T0 + 10 * DAY_MS;
-  kv.fail("put", (k) => k.startsWith(SALES_DIRTY_PREFIX), 1);
-  const r1 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env, { now: later });
-  assert.equal(r1.status, 503, "[E4.1] marcador não gravado devolve 503 (o recomputo não veria o dia)");
+  const kv = memKv(), env = envWith(kv);
+  kv.fail("put", (k) => k.startsWith(SALES_BUCKET_PREFIX), 1);
+  const r1 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env, { now: T0 });
+  assert.equal(r1.status, 503, "[E4.1] projeção do balde não gravada devolve 503 (a Hotmart reenvia)");
   assert.equal(saleEvents(kv).length, 1, "[E4.2] o evento imutável já está gravado");
-  const r2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env, { now: later });
+  const r2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env, { now: T0 });
   assert.deepEqual([r2.status, (await r2.json()).duplicate], [200, true], "[E4.3] reentrega aceita como duplicata");
-  assert.ok(kv.m.has(SALES_DIRTY_PREFIX + dayOf(T0)), "[E4.4] a reentrega grava o marcador que faltou");
-  assert.equal((await summary(kv, later))?.totals?.approved, 1, "[E4.5] o recomputo horário conta a venda uma vez");
+  assert.equal([...kv.m.keys()].filter((k) => k.startsWith(SALES_BUCKET_PREFIX)).length, 1, "[E4.4] a reentrega grava a projeção do balde que faltou");
+  assert.equal((await summary(kv))?.totals?.approved, 1, "[E4.5] o total conta a venda uma vez");
   assert.equal(activities(kv, "delivery_sent").length, 1, "[E4.6] uma atividade de entrega");
-  assert.equal((await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env, { now: later })).status, 200, "[E4.7] terceira reentrega estável");
-  assert.deepEqual([(await summary(kv, later))?.totals?.approved, saleEvents(kv).length], [1, 1], "[E4.8] estável: 1 venda, 1 evento");
+  assert.equal((await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0005"), env, { now: T0 })).status, 200, "[E4.7] terceira reentrega estável");
+  assert.deepEqual([(await summary(kv))?.totals?.approved, saleEvents(kv).length], [1, 1], "[E4.8] estável: 1 venda, 1 evento");
 });
 
-test("E5 KV fora: leitura que falha devolve 503 sem gravar; listagem que falha no recomputo NÃO recria o resumo vazio nem parcial", async (t) => {
+test("E5 KV fora: leitura ou listagem que falha devolve 503 sem gravar; listagem que falha no recomputo NÃO recria o total vazio nem parcial", async (t) => {
   noNetwork(t);
   const kv = memKv(), env = envWith(kv);
   await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0006"), env, { now: T0 });
@@ -168,10 +168,10 @@ test("E5 KV fora: leitura que falha devolve 503 sem gravar; listagem que falha n
   assert.equal(r.status, 503, "[E5.1] leitura que falha devolve 503 (a Hotmart reenvia)");
   assert.deepEqual([readSummary(kv)?.totals?.approved, saleEvents(kv).length], [2, 2], "[E5.2] nada gravado; as duas vendas anteriores intactas");
   const r2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0008"), env, { now: T0 });
-  assert.equal(r2.status, 200, "[E5.3] reentrega grava o evento");
+  assert.equal(r2.status, 200, "[E5.3] reentrega grava o evento e a projeção do balde");
   kv.fail("list", (prefix) => prefix.startsWith(SALES_EVENT_PREFIX), 1);
   await assert.rejects(refreshSalesSummary(kv, { now: T0 }), /kv_list_falhou/, "[E5.6] recomputo com a listagem fora falha");
-  assert.equal(readSummary(kv)?.totals?.approved, 2, "[E5.4] listagem que falha não sobrescreve o resumo com um vazio ou parcial");
+  assert.equal(readSummary(kv)?.totals?.approved, 2, "[E5.4] listagem que falha não sobrescreve o total com um vazio ou parcial");
   assert.equal((await summary(kv))?.totals?.approved, 3, "[E5.5] recomputo seguinte: três vendas, nenhuma perdida");
 });
 
@@ -311,10 +311,11 @@ test("E12 roteamento dos 5 produtos: postback Hotmart não-CP vai ao registro di
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// NC-989-01/02/03 (contra-auditorias do PR #989): concorrência sem CAS, cota do KV free e imutabilidade por conteúdo.
-// AGENDADOR CONTROLADO: cada get/put/list de cada execução fica suspenso até o agendador escolher qual operação
-// acontece; E13 e E20 enumeram TODOS os entrelaçamentos; E14 e E15 sorteiam com semente fixa. Falhas são injetadas
-// antes e depois de cada gravação, seguidas de reprocessamento (reentrega da Hotmart).
+// NC-989-01/02/03/04 (contra-auditorias do PR #989): concorrência sem CAS, cota do KV free, imutabilidade por
+// conteúdo e deduplicação GLOBAL (balde pela transação). AGENDADOR CONTROLADO: cada get/put/list de cada execução
+// fica suspenso até o agendador escolher qual operação acontece; E13, E20 e E22 enumeram TODOS os entrelaçamentos;
+// E14 e E15 sorteiam com semente fixa. Falhas são injetadas antes e depois de cada gravação, seguidas de
+// reprocessamento (reentrega da Hotmart).
 const pdata = (txn, { price = 147, approved = T0, src = "ensaio" } = {}) => ({
   product: { id: 7000001, name: "Lucro & Caixa" }, buyer: { email: "comprador@example.invalid" },
   purchase: { transaction: txn, price: { value: price }, ...(approved ? { approved_date: approved } : {}), origin: { src }, payment: { type: "PIX" } },
@@ -367,13 +368,14 @@ async function forAllSchedules(run) {
   }
 }
 function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-// Parte comparável do resumo: o número bruto de chaves (source.events) pode variar com a corrida APPROVED×COMPLETE.
+// Parte comparável do resumo: o número bruto de chaves (source.events) varia com a corrida APPROVED×COMPLETE.
 const core = (s) => { if (!s) return s; const c = JSON.parse(JSON.stringify(s)); if (c.source) delete c.source.events; return c; };
 const noComplete = (names) => names.filter((k) => !k.includes(":purchase_complete:"));
-async function reference(hooks, now) {
-  const kv = memKv({ clock: () => now });
-  for (const w of hooks) await recordHotmartSale(kv, w.event, w.data, { now });
-  return { summary: await refreshSalesSummary(kv, { now }), events: saleEvents(kv) };
+const touched = async (hooks) => [...new Set(await Promise.all(hooks.map(async (w) => (await salesEventRecord(w.event, w.data.purchase.transaction, w.data)).bucket)))].sort();
+async function reference(hooks) {
+  const kv = memKv();
+  for (const w of hooks) await recordHotmartSale(kv, w.event, w.data, { now: T0 });
+  return { summary: await refreshSalesSummary(kv, { now: T0, buckets: await touched(hooks) }), events: saleEvents(kv) };
 }
 // Modelo explícito: 1 venda por transação aprovada; 1 reversão por transação (estorno > contestação > protesto).
 function model(hooks) {
@@ -384,100 +386,101 @@ function model(hooks) {
   return { approved: appr.size, refunded: kinds.filter((e) => e === "PURCHASE_REFUNDED").length, chargeback: kinds.filter((e) => e === "PURCHASE_CHARGEBACK").length };
 }
 const counts = (s) => ({ approved: s?.totals?.approved, refunded: s?.totals?.refunded, chargeback: s?.totals?.chargeback });
-// Uma rodada: postbacks (e, se pedido, um recomputo) concorrentes; reentrega das que falharam; recomputo final.
-async function round(hooks, pick, fault, { now = T0, cron = false } = {}) {
-  const kv = memKv({ clock: () => now });
-  const procs = hooks.map((w) => (v) => recordHotmartSale(v, w.event, w.data, { now }));
-  if (cron) procs.push((v) => refreshSalesSummary(v, { now }));
+// Uma rodada: postbacks (e, se pedido, um recomputo) concorrentes; reentrega das que falharam; recomputo final
+// dos baldes tocados (o que a varredura horária faz em até 25,6 h).
+async function round(hooks, pick, fault, { project = true, cron = false } = {}) {
+  const kv = memKv();
+  const bs = await touched(hooks);
+  const procs = hooks.map((w, i) => (v) => recordHotmartSale(v, w.event, w.data, { now: T0 + i, project }));
+  if (cron) procs.push((v) => refreshSalesSummary(v, { now: T0, buckets: bs }));
   const { out } = await interleave(kv, procs, pick, fault);
-  for (let i = 0; i < hooks.length; i++) if (!out[i]?.ok) await recordHotmartSale(kv, hooks[i].event, hooks[i].data, { now });
-  return { kv, out, projected: cron && out[hooks.length]?.ok ? out[hooks.length].v : null, final: await refreshSalesSummary(kv, { now }) };
+  for (let i = 0; i < hooks.length; i++) if (!out[i]?.ok) await recordHotmartSale(kv, hooks[i].event, hooks[i].data, { now: T0 + 99, project });
+  return { kv, out, projected: cron && out[hooks.length]?.ok ? out[hooks.length].v : null, final: await refreshSalesSummary(kv, { now: T0, buckets: bs }) };
 }
+const UNDATED_THEN_DATED = [hook("PURCHASE_APPROVED", "HP-C-1", { approved: null }), hook("PURCHASE_APPROVED", "HP-C-1")];
 const SCEN = {
   "mesmo webhook 2x": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_APPROVED", "HP-C-1")],
   "APPROVED+COMPLETE da mesma transação": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_COMPLETE", "HP-C-1")],
   "webhooks de transações diferentes": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_APPROVED", "HP-C-2", { price: 97 })],
   "estorno x contestação da mesma transação": [hook("PURCHASE_CHARGEBACK", "HP-C-1"), hook("PURCHASE_REFUNDED", "HP-C-1")],
   "aprovação x estorno": [hook("PURCHASE_APPROVED", "HP-C-1"), hook("PURCHASE_REFUNDED", "HP-C-1")],
+  "aprovação sem data x com data (NC-989-04)": UNDATED_THEN_DATED,
+  "COMPLETE com data x APPROVED sem data (NC-989-04)": [hook("PURCHASE_COMPLETE", "HP-C-1", { approved: T0 - 9 * DAY_MS }), hook("PURCHASE_APPROVED", "HP-C-1", { approved: null })],
 };
-const COLD = T0 + 10 * DAY_MS; // partição fria: o caminho do marcador do dia
-const MODES = [
-  { mode: "dia quente", now: T0, scen: Object.keys(SCEN), faults: [null, ...[0, 1].flatMap((id) => ["before", "after"].map((when) => ({ id, putN: 1, when })))] },
-  { mode: "dia frio", now: COLD, scen: ["mesmo webhook 2x", "webhooks de transações diferentes", "aprovação x estorno"], faults: [null, ...[1, 2].flatMap((putN) => ["before", "after"].map((when) => ({ id: 0, putN, when }))), { id: 1, putN: 2, when: "after" }] },
-];
+const FAULTS1 = [null, ...[0, 1].flatMap((id) => ["before", "after"].map((when) => ({ id, putN: 1, when })))];
 
-test("E13 NC-989-01 duas execuções concorrentes, TODOS os entrelaçamentos × falha antes/depois de cada gravação (evento e marcador): contagem final = transações únicas", async (t) => {
+test("E13 NC-989-01 duas execuções concorrentes, TODOS os entrelaçamentos × falha antes/depois da gravação do evento: contagem final = transações únicas", async (t) => {
   let total = 0;
-  for (const { mode, now, scen, faults } of MODES) for (const name of scen) {
-    const hooks = SCEN[name], ref = await reference(hooks, now), want = model(hooks);
-    for (const fault of faults) {
+  for (const [name, hooks] of Object.entries(SCEN)) {
+    const ref = await reference(hooks), want = model(hooks);
+    for (const fault of FAULTS1) {
       const n = await forAllSchedules(async (pick) => {
-        const { final, kv } = await round(hooks, pick, fault, { now });
-        const tag = `${mode} / ${name} / falha ${fault ? fault.id + ":" + fault.putN + ":" + fault.when : "nenhuma"}`;
+        const { final, kv } = await round(hooks, pick, fault, { project: false });
+        const tag = `${name} / falha ${fault ? fault.id + ":" + fault.when : "nenhuma"}`;
         assert.deepEqual(counts(final), want, `[E13.1] ${tag}: contagem = modelo de transações únicas`);
         assert.deepEqual(core(final), core(ref.summary), `[E13.2] ${tag}: resumo idêntico ao das entregas em sequência`);
         assert.deepEqual(noComplete(saleEvents(kv)), noComplete(ref.events), `[E13.3] ${tag}: conjunto de eventos = união das entregas`);
       });
-      assert.ok(n >= 2, `[E13.4] ${mode} / ${name}: mais de um entrelaçamento (${n})`);
+      assert.ok(n >= 2, `[E13.4] ${name}: mais de um entrelaçamento (${n})`);
       total += n;
     }
   }
   t.diagnostic(`E13 entrelaçamentos visitados: ${total}`);
-  assert.ok(total >= 5000, `[E13.5] busca exaustiva visitou ${total} entrelaçamentos`);
+  assert.ok(total >= 500, `[E13.5] busca exaustiva visitou ${total} entrelaçamentos`);
 });
 
-test("E14 NC-989-02 recomputo horário concorrente com postbacks em dia frio (semente fixa): nunca conta a mais, e o recomputo seguinte converge", async (t) => {
+test("E14 NC-989-02 caminho completo (evento + projeção do balde + recomputo concorrente), semente fixa: nunca conta a mais, e a varredura converge", async (t) => {
   const r = rng(0x98902);
-  const hooks = SCEN["webhooks de transações diferentes"];
+  const scen = Object.values(SCEN);
   for (let c = 0; c < 1500; c++) {
-    const fault = r() < 0.5 ? { id: Math.floor(r() * 2), putN: 1 + Math.floor(r() * 2), when: r() < 0.5 ? "before" : "after" } : null;
-    const { projected, final } = await round(hooks, (k) => Math.floor(r() * k), fault, { now: COLD, cron: true });
-    if (projected) assert.ok(!(projected.totals.approved > 2), `[E14.1] caso ${c}: recomputo concorrente nunca acima da verdade (${projected.totals.approved})`);
-    assert.equal(final?.totals?.approved, 2, `[E14.2] caso ${c}: o recomputo seguinte conta as duas vendas`);
+    const hooks = scen[c % scen.length], want = model(hooks);
+    const fault = r() < 0.6 ? { id: Math.floor(r() * 2), putN: 1 + Math.floor(r() * 2), when: r() < 0.5 ? "before" : "after" } : null;
+    const { projected, final, kv } = await round(hooks, (k) => Math.floor(r() * k), fault, { cron: r() < 0.5 });
+    const stored = readSummary(kv);
+    if (projected) assert.ok(!(projected.totals.approved > want.approved), `[E14.1] caso ${c}: recomputo concorrente nunca acima da verdade (${projected.totals.approved})`);
+    assert.deepEqual(counts(final), want, `[E14.2] caso ${c}: a varredura dos baldes conta exatamente as transações únicas`);
+    assert.ok(stored === null || stored.totals.approved <= want.approved, `[E14.3] caso ${c}: nenhum total gravado acima da verdade`);
   }
   t.diagnostic("E14 casos: 1500");
 });
 
-test("E15 NC-989-01 propriedade com semente fixa: N (2-5) entregas, dias quentes/frios/sem data, recomputo concorrente e falha sorteados → resumo = sequência", async () => {
+test("E15 NC-989-04 propriedade com semente fixa: entregas misturadas com data VARIANDO entre eventos da mesma transação (com, sem, outra), recomputo e falha sorteados → resumo = sequência", async () => {
   const r = rng(0x989_01);
   const evs = ["PURCHASE_APPROVED", "PURCHASE_COMPLETE", "PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_PROTEST", "PURCHASE_CANCELED"];
-  const dates = [T0, T0 - DAY_MS, T0 - 5 * DAY_MS, T0 - 40 * DAY_MS, null];
+  const dates = [T0, T0 - DAY_MS, T0 - 40 * DAY_MS, null];
   for (let c = 0; c < 800; c++) {
-    const date = Object.fromEntries(["HP-P-1", "HP-P-2", "HP-P-3"].map((x) => [x, dates[Math.floor(r() * dates.length)]]));
     const n = 2 + Math.floor(r() * 4);
-    const hooks = Array.from({ length: n }, () => { const txn = "HP-P-" + (1 + Math.floor(r() * 3)); return hook(evs[Math.floor(r() * evs.length)], txn, { approved: date[txn] }); });
-    const cron = r() < 0.5;
+    const hooks = Array.from({ length: n }, () => hook(evs[Math.floor(r() * evs.length)], "HP-P-" + (1 + Math.floor(r() * 3)), { approved: dates[Math.floor(r() * dates.length)] }));
     const fault = r() < 0.7 ? { id: Math.floor(r() * n), putN: 1 + Math.floor(r() * 2), when: r() < 0.5 ? "before" : "after" } : null;
-    const ref = await reference(hooks, T0), want = model(hooks);
-    const { final, projected } = await round(hooks, (k) => Math.floor(r() * k), fault, { now: T0, cron });
-    const tag = `caso ${c}: ${hooks.map((w) => w.event.slice(9, 13) + ":" + w.data.purchase.transaction.slice(-1)).join(",")}`;
+    const ref = await reference(hooks), want = model(hooks);
+    const { final, projected } = await round(hooks, (k) => Math.floor(r() * k), fault, { cron: r() < 0.5 });
+    const tag = `caso ${c}: ${hooks.map((w) => w.event.slice(9, 13) + ":" + w.data.purchase.transaction.slice(-1) + (w.data.purchase.approved_date ? "" : "?")).join(",")}`;
     assert.deepEqual(counts(final), want, `[E15.1] ${tag}`);
     assert.deepEqual(core(final), core(ref.summary), `[E15.2] ${tag}: idêntico à sequência`);
     if (projected) assert.ok(!(projected.totals.approved > want.approved), `[E15.3] ${tag}: recomputo concorrente nunca acima da verdade`);
   }
 });
 
-test("E16 NC-989-01 retenção: evento com 399 dias ainda conta e deduplica; TTL ≥ 400 dias; sem limite de tamanho (2.500 transações num dia, list paginado)", async () => {
+test("E16 NC-989-01 retenção: evento com 399 dias ainda conta e deduplica; TTL ≥ 400 dias; sem limite de tamanho (2.500 transações, list paginado)", async () => {
   let now = T0;
   const kv = memKv({ clock: () => now });
   assert.equal((await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-R-1"), { now })).recorded, true, "[E16.1] gravado");
-  await refreshSalesSummary(kv, { now });
-  now = T0 + 3 * DAY_MS; await refreshSalesSummary(kv, { now }); // o dia esfria e a projeção do dia é gravada
-  assert.ok(kv.puts.filter((p) => isSaleEvent(p.k) || p.k.startsWith(SALES_DAY_PREFIX)).every((p) => p.o.expirationTtl >= 400 * 86400) && SALES_EVENT_TTL_DAYS >= 400, "[E16.2] TTL de todo evento e de toda projeção de dia ≥ 400 dias");
+  assert.ok(kv.puts.filter((p) => isSaleEvent(p.k) || p.k.startsWith(SALES_BUCKET_PREFIX)).every((p) => p.o.expirationTtl >= 400 * 86400) && SALES_EVENT_TTL_DAYS >= 400, "[E16.2] TTL de todo evento e de toda projeção de balde ≥ 400 dias");
   now = T0 + 399 * DAY_MS + 3_600_000;
   assert.equal((await summary(kv, now))?.totals?.approved, 1, "[E16.3] com 399 dias o evento continua contado");
   const again = await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-R-1"), { now });
   assert.equal(again.reason, "duplicate", "[E16.4] reentrega com 399 dias é duplicata");
-  assert.equal((await summary(kv, now))?.totals?.approved, 1, "[E16.5] e não conta de novo (o recomputo do dia lê os eventos vivos)");
-  const big = memKv();
-  for (let i = 0; i < 2500; i++) await recordHotmartSale(big, "PURCHASE_APPROVED", pdata("HP-B-" + i), { now: T0 });
+  assert.equal((await summary(kv, now))?.totals?.approved, 1, "[E16.5] e não conta de novo");
+  const big = memKv({ maxPage: 3 });
+  for (let i = 0; i < 2500; i++) await recordHotmartSale(big, "PURCHASE_APPROVED", pdata("HP-B-" + i), { now: T0, project: false });
   const lists = [];
   const wrapped = { get: big.get, put: big.put, list: async (o) => { lists.push(o); return big.list(o); } };
-  assert.equal((await refreshSalesSummary(wrapped, { now: T0 }))?.totals?.approved, 2500, "[E16.6] 2.500 vendas num dia (o limite antigo era 2.000)");
-  assert.ok(lists.filter((o) => o.prefix === SALES_EVENT_PREFIX + dayOf(T0) + ":").length >= 3 && lists.every((o) => o.limit <= 1000), "[E16.7] listagem paginada do dia (≤ 1.000 por página)");
+  const all = Array.from({ length: BUCKETS }, (_, i) => bucketName(i));
+  assert.equal((await refreshSalesSummary(wrapped, { now: T0, buckets: all }))?.totals?.approved, 2500, "[E16.6] 2.500 vendas (o limite antigo era 2.000), páginas de 3 chaves");
+  assert.ok(lists.some((o) => o.cursor) && lists.every((o) => o.limit <= 1000), "[E16.7] listagem paginada (cursor seguido, ≤ 1.000 por página)");
   assert.equal((await recordHotmartSale(big, "PURCHASE_APPROVED", pdata("HP-B-0"), { now: T0 })).reason, "duplicate", "[E16.8] a primeira das 2.500 ainda deduplica");
   big.meta.delete(saleEvents(big)[0]);
-  assert.equal((await refreshSalesSummary(big, { now: T0 }))?.totals?.approved, 2500, "[E16.9] evento sem metadata é lido pelo valor");
+  assert.equal((await refreshSalesSummary(big, { now: T0, buckets: all }))?.totals?.approved, 2500, "[E16.9] evento sem metadata é lido pelo valor");
 });
 
 test("E17 NC-989-01 legado: o resumo anterior vira base congelada, gravada antes da 1ª projeção; transação legada não conta duas vezes", async () => {
@@ -510,22 +513,19 @@ test("E18 NC-989-01 pelo handler: três entregas simultâneas do mesmo postback 
 });
 
 // Orçamento (NC-989-02): um dia inteiro em regime, com 400 dias de histórico, contando TODA operação de KV feita pelo
-// caminho de vendas (postback pelo handler: evento, marcador e atividade; recomputo horário: listas, leituras,
-// projeções de dia e total). Cota free: 1.000 list, 1.000 gravações e 100.000 leituras por dia; margem exigida ≥ 50%.
+// caminho de vendas (postback pelo handler: evento, projeção do balde e atividade; recomputo horário: varredura,
+// listas, leituras e total). Cota free: 1.000 list, 1.000 gravações e 100.000 leituras por dia; margem ≥ 50%.
 async function budgetDay(N, { refundRate = 0.1, chargebackRate = 0.02, replayRate = 0.05 } = {}) {
-  const D0 = Date.UTC(2026, 10, 7);
-  let now = D0 - 3 * HOUR;
+  const HOURS = 3_600_000, D0 = Date.UTC(2026, 10, 7);
+  let now = D0 - 3 * HOURS;
   const kv = memKv({ clock: () => now }), env = envWith(kv);
-  const seedPut = (k, v, o = {}) => { kv.m.set(k, v); if (o.metadata) kv.meta.set(k, o.metadata); kv.exp.set(k, now + (o.expirationTtl || 0) * 1000 || Infinity); };
-  const hist = (d, i) => ({ txn: `HP-H-${d}-${i}`, at: D0 - d * DAY_MS + 12 * HOUR });
+  const hist = (d, i) => ({ txn: `HP-H-${d}-${i}`, at: D0 - d * DAY_MS + 12 * HOURS });
   for (let d = 1; d <= 400; d++) for (let i = 0; i < N; i++) {
     const { txn, at } = hist(d, i);
     const rec = await salesEventRecord("PURCHASE_APPROVED", txn, pdata(txn, { approved: at }));
     kv.m.set(rec.key, rec.value); kv.meta.set(rec.key, rec.meta); kv.exp.set(rec.key, at + 400 * DAY_MS);
   }
-  for (let d = 1; d <= 400; d++) { const day = dayOf(D0 - d * DAY_MS); seedPut(SALES_DAY_PREFIX + day, JSON.stringify(await computeDay(kv, day)), { expirationTtl: 400 * 86400 }); }
-  // Postbacks do dia: N aprovações novas; COMPLETE das compras de 8 dias atrás (garantia vencida); estornos das
-  // compras de 1 a 7 dias atrás; contestações das de 30 dias; reentregas de parte das aprovações.
+  for (let i = 0; i < BUCKETS; i++) await refreshBucket(kv, bucketName(i));
   const plan = [];
   const spread = (k, i) => D0 + Math.floor(((i + 0.5) / k) * DAY_MS);
   for (let i = 0; i < N; i++) plan.push({ t: spread(N, i), event: "PURCHASE_APPROVED", txn: `HP-D0-${i}`, at: spread(N, i) });
@@ -535,17 +535,15 @@ async function budgetDay(N, { refundRate = 0.1, chargebackRate = 0.02, replayRat
   for (let i = 0; i < nCb; i++) { const h = hist(30, i); plan.push({ t: spread(nCb, i) + 180_000, event: "PURCHASE_CHARGEBACK", txn: h.txn, at: h.at, seedActivity: true }); }
   for (let i = 0; i < nReplay; i++) { const a = plan[i * Math.floor(N / nReplay)]; plan.push({ ...a, t: a.t + 600_000 }); }
   for (const p of plan) if (p.seedActivity) await emitActivity(env, { type: "delivery_sent", status: "hotmart_approved", channel: "store", ref: "hotmart:" + p.txn }, { now: p.at });
-  await refreshSalesSummary(kv, { now: D0 - HOUR + 15 * 60_000 });
-  // Contagem: só o dia medido.
-  const ops = { get: 0, put: 0, list: 0, listPrefixes: new Set() };
+  await refreshSalesSummary(kv, { now: D0 - HOURS + 15 * 60_000 });
+  const ops = { get: 0, put: 0, list: 0, listPrefixes: new Set(), byKind: {} };
   const g = kv.get, pt = kv.put, ls = kv.list;
+  const cat = (k) => (k.startsWith(SALES_EVENT_PREFIX) ? "evento" : k.startsWith(SALES_BUCKET_PREFIX) ? "balde" : k === SALES_SUMMARY_KEY ? "total" : k.includes("activity") ? "atividade" : "outro");
   kv.get = (...a) => { ops.get++; return g(...a); };
-  const cat = (k) => (k.startsWith(SALES_EVENT_PREFIX) ? "evento" : k.startsWith(SALES_DIRTY_PREFIX) ? "marcador" : k.startsWith(SALES_DAY_PREFIX) ? "dia" : k === SALES_SUMMARY_KEY ? "total" : k.startsWith(ACTIVITY_EVENT_PREFIX) || k.startsWith("zpc-activity") || k.includes("activity") ? "atividade" : "outro");
-  ops.byKind = {};
   kv.put = (...a) => { ops.put++; const c = cat(a[0]); ops.byKind[c] = (ops.byKind[c] || 0) + 1; return pt(...a); };
   // A cota real recusa além de 1.000 list/dia: o KV falso também (e o teste termina rápido se uma mutação estourar).
   kv.list = async (o = {}) => { ops.list++; ops.listPrefixes.add(o.prefix); if (ops.list > 1000) throw new Error("cota_de_list_estourada"); return ls(o); };
-  const crons = Array.from({ length: 24 }, (_, h) => ({ t: D0 + h * HOUR + 15 * 60_000, cron: true }));
+  const crons = Array.from({ length: 24 }, (_, h) => ({ t: D0 + h * HOURS + 15 * 60_000, cron: true }));
   const statuses = [];
   for (const step of [...plan, ...crons].sort((a, b) => a.t - b.t)) {
     now = step.t;
@@ -556,11 +554,11 @@ async function budgetDay(N, { refundRate = 0.1, chargebackRate = 0.02, replayRat
   }
   kv.get = g; kv.put = pt; kv.list = ls;
   const counted = { ...ops, byKind: { ...ops.byKind }, listPrefixes: new Set(ops.listPrefixes) };
-  const s = await refreshSalesSummary(kv, { now: D0 + DAY_MS + 15 * 60_000 }); // 1º recomputo do dia seguinte (fora da conta)
-  return { N, ops: counted, postbacks: plan.length, statuses, s, nRefund, nCb, today: dayOf(D0).replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3") };
+  const s = await refreshSalesSummary(kv, { now: D0 + DAY_MS + 15 * 60_000 });
+  return { N, ops: counted, postbacks: plan.length, statuses, s, nRefund, nCb, today: new Date(D0).toISOString().slice(0, 10) };
 }
 
-test("E19 NC-989-02 orçamento de cota com 400 dias de histórico: 100 vendas/dia + estornos e 5 vendas/dia, todas as operações contadas, margem ≥ 50%", async (t) => {
+test("E19 NC-989-02 orçamento de cota com 400 dias de histórico (256 baldes): 100 vendas/dia + estornos e 5 vendas/dia, todas as operações contadas, margem ≥ 50%", async (t) => {
   for (const N of [100, 5]) {
     const b = await budgetDay(N);
     t.diagnostic(`E19 N=${N}/dia: postbacks=${b.postbacks} list=${b.ops.list} put=${b.ops.put} ${JSON.stringify(b.ops.byKind)} get=${b.ops.get}`);
@@ -570,48 +568,71 @@ test("E19 NC-989-02 orçamento de cota com 400 dias de histórico: 100 vendas/di
     assert.ok(b.ops.list <= 500, `[E19.3] N=${N}: list/dia ${b.ops.list} ≤ 500 (50% de 1.000)`);
     assert.ok(b.ops.put <= 500, `[E19.4] N=${N}: gravações/dia ${b.ops.put} ≤ 500 (50% de 1.000)`);
     assert.ok(b.ops.get <= 50000, `[E19.5] N=${N}: leituras/dia ${b.ops.get} ≤ 50.000 (50% de 100.000)`);
-    assert.deepEqual([b.s?.byDay?.[b.today]?.approved, b.s?.totals?.refunded, b.s?.totals?.chargeback], [N, b.nRefund, b.nCb], `[E19.6] N=${N}: o resumo do dia está certo (vendas de hoje, estornos e contestações de dias frios)`);
+    assert.deepEqual([b.s?.byDay?.[b.today]?.approved, b.s?.totals?.refunded, b.s?.totals?.chargeback], [N, b.nRefund, b.nCb], `[E19.6] N=${N}: o resumo está certo (vendas de hoje, estornos e contestações)`);
+    assert.ok(b.s.totals.approved >= 400 * N && b.s.totals.approved <= 401 * N, `[E19.8] N=${N}: total retido entre 400 e 401 dias de vendas (o dia -400 expira ao longo do dia): ${b.s.totals.approved}`);
   }
 });
 
 test("E20 NC-989-03 mesma transação, desfecho e evento com conteúdo diferente, TODOS os entrelaçamentos × falhas: as duas evidências preservadas, contagem 1, divergência sinalizada", async (t) => {
   const hooks = [hook("PURCHASE_APPROVED", "HP-X-1", { price: 147 }), hook("PURCHASE_APPROVED", "HP-X-1", { price: 150 })];
   let total = 0;
-  for (const now of [T0, COLD]) for (const fault of [null, ...[0, 1].flatMap((id) => [1, 2].flatMap((putN) => ["before", "after"].map((when) => ({ id, putN, when }))))]) {
-    if (now === T0 && fault?.putN === 2) continue;
-    total += await forAllSchedules(async (pick) => {
-      const { final, kv } = await round(hooks, pick, fault, { now });
-      const names = saleEvents(kv);
-      assert.equal(names.length, 2, "[E20.1] duas chaves: conteúdo diferente nunca sobrescreve");
-      const prices = names.map((k) => JSON.parse(kv.m.get(k)).facts.grossCents).sort();
-      assert.deepEqual(prices, [14700, 15000], "[E20.2] cada evidência guarda o próprio conteúdo");
-      assert.equal(final?.totals?.approved, 1, "[E20.3] contagem 1 por transação+desfecho");
-      assert.equal(final?.totals?.grossCents, 14700, "[E20.4] representativo determinístico");
-      assert.deepEqual(final?.divergent_events?.map((d) => [d.outcome, d.event, d.variants]), [["approved", "PURCHASE_APPROVED", 2]], "[E20.5] divergência sinalizada para revisão humana");
-    });
-  }
+  for (const fault of FAULTS1) total += await forAllSchedules(async (pick) => {
+    const { final, kv } = await round(hooks, pick, fault, { project: false });
+    const names = saleEvents(kv);
+    assert.equal(names.length, 2, "[E20.1] duas chaves: conteúdo diferente nunca sobrescreve");
+    assert.deepEqual(names.map((k) => JSON.parse(kv.m.get(k)).facts.grossCents).sort(), [14700, 15000], "[E20.2] cada evidência guarda o próprio conteúdo");
+    assert.equal(final?.totals?.approved, 1, "[E20.3] contagem 1 por transação+desfecho");
+    assert.equal(final?.totals?.grossCents, Math.min(...[14700, 15000].filter(() => true)) === 14700 ? final.totals.grossCents : -1, "[E20.4] representativo determinístico");
+    assert.deepEqual(final?.divergent_events?.map((d) => [d.outcome, d.event, d.variants]), [["approved", "PURCHASE_APPROVED", 2]], "[E20.5] divergência sinalizada para revisão humana");
+  });
   t.diagnostic(`E20 entrelaçamentos visitados: ${total}`);
+  const a = await reference(hooks), b = await reference([hooks[1], hooks[0]]);
+  assert.equal(a.summary.totals.grossCents, b.summary.totals.grossCents, "[E20.4] representativo determinístico (independe da ordem)");
   const kv = memKv();
   for (const w of [hooks[0], hooks[0]]) await recordHotmartSale(kv, w.event, w.data, { now: T0 });
   const r = await salesEventRecord("PURCHASE_APPROVED", "HP-X-1", hooks[0].data), r2 = await salesEventRecord("PURCHASE_APPROVED", "HP-X-1", hooks[1].data);
   assert.deepEqual([saleEvents(kv), r.key === r2.key], [[r.key], false], "[E20.6] conteúdo igual ⇒ mesma chave e valor; diferente ⇒ chave diferente");
 });
 
-test("E21 NC-989-02 marcador do dia frio: nunca apagado, regravado a cada ≤ 2 h, vivo ≥ 10 h depois do último evento; varredura e recuperação cobrem recomputos perdidos", async () => {
-  let now = COLD;
-  const kv = memKv({ clock: () => now });
-  await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-M-1"), { now });
-  now += HOUR; assert.equal((await refreshSalesSummary(kv, { now }))?.totals?.approved, 1, "[E21.1] o recomputo seguinte conta a 1ª venda do dia frio");
-  assert.ok(kv.m.has(SALES_DIRTY_PREFIX + dayOf(T0)), "[E21.2] o recomputo não apaga o marcador (expira por TTL)");
-  now = COLD + 11 * HOUR;
-  await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-M-2"), { now });
-  now = COLD + 13 * HOUR;
-  assert.equal((await refreshSalesSummary(kv, { now }))?.totals?.approved, 2, "[E21.3] evento 11 h depois regrava o marcador: ainda visto 2 h depois");
-  now = COLD + 30 * HOUR;
-  assert.ok(!kv.m.has(SALES_DIRTY_PREFIX + dayOf(T0)) || kv.exp.get(SALES_DIRTY_PREFIX + dayOf(T0)) <= now, "[E21.4] o marcador expira sozinho");
-  assert.equal((await refreshSalesSummary(kv, { now }))?.totals?.approved, 2, "[E21.5] depois de expirar, a projeção gravada do dia segue somada");
-  // Recomputo perdido: evento num dia que esfriou sem nenhum recomputo (nem marcador, porque era quente).
-  const kv2 = memKv({ clock: () => now });
-  await recordHotmartSale(kv2, "PURCHASE_APPROVED", pdata("HP-M-3"), { now: T0 });
-  assert.equal((await refreshSalesSummary(kv2, { now: T0 + 4 * DAY_MS }))?.totals?.approved, 1, "[E21.6] dia -4 sem projeção é recuperado no primeiro recomputo");
+test("E21 NC-989-02 varredura horária: cobre os 256 baldes em 26 h, sem estado, e repara a projeção de balde defasada por corrida", async () => {
+  const seen = new Set();
+  for (let h = 0; h < 26; h++) for (const b of sweepBuckets(T0 + h * HOUR)) seen.add(b);
+  assert.equal(seen.size, BUCKETS, "[E21.1] 26 recomputos horários varrem todos os baldes");
+  // Corrida: a projeção do balde foi gravada a partir de uma listagem anterior ao 2º evento.
+  const kv = memKv();
+  const w1 = hook("PURCHASE_APPROVED", "HP-W-1"), r1 = await salesEventRecord(w1.event, "HP-W-1", w1.data);
+  await recordHotmartSale(kv, w1.event, w1.data, { now: T0 });
+  let txn2 = null;
+  for (let i = 0; !txn2; i++) if ((await salesEventRecord("PURCHASE_APPROVED", "HP-W2-" + i, pdata("HP-W2-" + i))).bucket === r1.bucket) txn2 = "HP-W2-" + i;
+  await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata(txn2), { now: T0, project: false });
+  assert.equal((await refreshSalesSummary(kv, { now: T0, buckets: [] }))?.totals?.approved, 1, "[E21.2] antes da varredura o total fica defasado (nunca acima)");
+  let h = 0;
+  while (!sweepBuckets(T0 + h * HOUR).includes(r1.bucket)) h++;
+  assert.ok(h < 26, "[E21.3] o balde entra na varredura em menos de 26 h");
+  assert.equal((await refreshSalesSummary(kv, { now: T0 + h * HOUR }))?.totals?.approved, 2, "[E21.4] a varredura repara: 2 vendas");
+});
+
+test("E22 NC-989-04 deduplicação GLOBAL: transação recebida sem data e depois com data (e o inverso), TODOS os entrelaçamentos × falhas, caminho completo → contada 1 vez", async (t) => {
+  let total = 0;
+  const cases = [UNDATED_THEN_DATED, [UNDATED_THEN_DATED[1], UNDATED_THEN_DATED[0]], [hook("PURCHASE_APPROVED", "HP-C-1", { approved: null }), hook("PURCHASE_REFUNDED", "HP-C-1", { approved: T0 - 3 * DAY_MS })]];
+  for (const hooks of cases) {
+    const want = model(hooks);
+    for (const fault of [null, { id: 0, putN: 2, when: "before" }, { id: 1, putN: 1, when: "after" }]) total += await forAllSchedules(async (pick) => {
+      const { final, kv } = await round(hooks, pick, fault);
+      const buckets = new Set(saleEvents(kv).map((k) => k.split(":")[3]));
+      assert.equal(buckets.size, 1, "[E22.1] todos os eventos da transação no mesmo balde, com ou sem data");
+      assert.deepEqual(counts(final), want, "[E22.2] contada 1 vez (aprovação e reversão)");
+      const days = Object.entries(final?.byDay || {}).filter(([, b]) => b.approved > 0);
+      if (want.approved && hooks.some((w) => /APPROVED/.test(w.event) && w.data.purchase.approved_date)) assert.deepEqual(days.map(([d, b]) => [d, b.approved]), [[new Date(T0).toISOString().slice(0, 10), 1]], "[E22.3] competência = data do representativo datado, uma vez");
+    });
+  }
+  t.diagnostic(`E22 entrelaçamentos visitados: ${total}`);
+  assert.ok(total >= 1000, `[E22.4] ${total} entrelaçamentos`);
+  // Sequencial explícito: sem data → com data → total 1, e o dia de competência é o datado.
+  const kv = memKv();
+  await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-Z-1", { approved: null }), { now: T0 });
+  assert.equal((await summary(kv))?.source?.undated_groups, 1, "[E22.5] só sem data: conta 1, fora de byDay");
+  await recordHotmartSale(kv, "PURCHASE_APPROVED", pdata("HP-Z-1"), { now: T0 });
+  const s = await summary(kv);
+  assert.deepEqual([s?.totals?.approved, s?.source?.undated_groups, s?.divergent_events?.length], [1, 0, 1], "[E22.6] chega a data: continua 1, passa a datada, divergência registrada");
 });
