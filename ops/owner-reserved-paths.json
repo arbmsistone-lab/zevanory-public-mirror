@@ -1,0 +1,99 @@
+{
+  "schema": "owner-reserved-paths/v1",
+  "decisao": "Airton Renan, 08/11/2026 18:12: \"APROVO MERGE AUTÔNOMO e tudo mande para contra auditoria\". PR que altere QUALQUER caminho abaixo só é liberado pelo rótulo owner-approved:<12 hex do head SHA> aplicado por login em OWNERS. Fora desta lista, caminho protegido pode ser liberado por autonomo-auditado:<12 hex> + comentário de dono com 'CONTRA-AUDITORIA: PASS <SHA completo do head>'. Lida pelo guarda a partir da BASE (scripts/ci/required_check_guard.py); este arquivo também é reservado. Globs: '**' casa qualquer trecho (inclusive '/'), '*' e '?' não atravessam '/'. Documentação: docs/governanca/merge-autonomo.md.",
+  "classes": {
+    "gasto": {
+      "descricao": "Gastar dinheiro: planos pagos, orçamento de anúncios, limites de custo zero.",
+      "globs": [
+        ".github/workflows/zero-cost-guard.yml",
+        "scripts/zero_cost_guard.py",
+        "wrangler*.toml",
+        "**/wrangler*.toml",
+        ".github/workflows/plan-probe.yml"
+      ]
+    },
+    "fiscal_juridico": {
+      "descricao": "Atos fiscais ou jurídicos: NFS-e, tributos, contratos, termos, privacidade e política de reembolso.",
+      "globs": [
+        "termos/**",
+        "privacidade/**",
+        "reembolso/**",
+        "sales-public/termos.html",
+        "sales-public/privacidade.html",
+        "sales-public/reembolso.html",
+        "pages-mirror/*termos.html",
+        "pages-mirror/*privacidade.html",
+        "pages-mirror/*reembolso.html",
+        "contracts/**",
+        "data/p23/fiscal-process.json",
+        "worker/fiscal-process.mjs",
+        "**/*nfse*",
+        "**/*nfs-e*"
+      ]
+    },
+    "credenciais": {
+      "descricao": "Credenciais: criar/rotacionar tokens, segredos, OAuth e o interruptor de troca de token.",
+      "globs": [
+        "ops/token-cutover.json",
+        "scripts/ci/p21_token_cutover.py",
+        ".github/workflows/*secret*",
+        ".github/workflows/*token*",
+        ".github/workflows/*oauth*",
+        ".github/workflows/*credential*",
+        ".github/workflows/*-key-*",
+        ".github/workflows/voice-gemini-production-provision.yml",
+        "scripts/deploy/worker_secret_rotate.py",
+        "scripts/deploy/credential_inventory.py",
+        "scripts/channels/build-credentials-json.mjs",
+        "worker/owner-oauth.mjs",
+        "worker/operator-credential.mjs",
+        "db/migrations/*oauth*"
+      ]
+    },
+    "marcos_irreversiveis": {
+      "descricao": "Marcos irreversíveis: abrir nível de venda / interruptor de vendas, preços, lançamento de produto novo (P-3).",
+      "globs": [
+        ".github/workflows/zevanory-open-sales.yml",
+        ".github/workflows/zevanory-close-sales.yml",
+        ".github/workflows/sales-switch-contract.yml",
+        "scripts/sales_switch_workflow.py",
+        "worker/sales-control.mjs",
+        "data/products.json",
+        "worker/sales-public-worker.mjs",
+        "data/p18-commercial-allowlist.json"
+      ]
+    },
+    "guardas_de_governanca": {
+      "descricao": "Os próprios guardas de governança, os emissores dos checks obrigatórios e esta lista.",
+      "globs": [
+        "ops/owner-reserved-paths.json",
+        "scripts/ci/required_check_guard.py",
+        "scripts/ci/pr_files_to_lists.py",
+        "scripts/ci/merge_impact.py",
+        ".github/workflows/required-check-guard.yml",
+        ".github/workflows/required-check-guard-selftest.yml",
+        ".github/workflows/merge-impact-evaluator.yml",
+        ".github/workflows/merge-impact-selftest.yml",
+        ".github/workflows/t1-publisher-guard.yml",
+        ".github/workflows/product-pages-premerge.yml",
+        ".github/workflows/required-status-compat.yml",
+        ".github/CODEOWNERS",
+        "CODEOWNERS",
+        "docs/CODEOWNERS",
+        "tests/ci/test_required_check_guard.py",
+        "tests/ci/mutants_required_check_guard.py",
+        "tests/ci/test_mutants_runner.py",
+        "tests/ci/requirements-guard.txt",
+        "tests/ci/test_merge_impact_gate.py",
+        "scripts/premerge_product_audit.py",
+        "scripts/zevanory_10p_excellence_gate.py",
+        "scripts/zevanory_crown_gate.py",
+        "scripts/test_crown_negative.py",
+        "scripts/zees16_evidence_gate.py",
+        "compliance/zevanory-10p-policy.json",
+        "compliance/zevanory-crown-policy.json",
+        "docs/governanca/merge-autonomo.md"
+      ]
+    }
+  }
+}

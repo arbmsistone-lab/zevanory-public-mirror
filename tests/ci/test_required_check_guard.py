@@ -19,6 +19,9 @@ WF = REPO / '.github/workflows'
 SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 OUTRO = 'ffffffffffff0718293a4b5c6d7e8f9012345678'
 OWNER = 'arbmsistone-lab'
+RESERVADOS_ARQ = REPO / 'ops/owner-reserved-paths.json'
+RESERVADOS = G.carregar_reservados(RESERVADOS_ARQ)
+ROTINA = ('.github/workflows/brand-kit.yml', 'scripts/ci/mutants_p18.py', 'tests/ci/p16-target-lifecycle.test.mjs')
 
 
 def base(nome):
@@ -31,15 +34,23 @@ def arq(nome, status='modified', anterior=None):
     return d
 
 
-def rotulo(sha=SHA, ator=OWNER, remover=False):
-    nome = 'owner-approved:' + sha[:12]
+def rotulo(sha=SHA, ator=OWNER, remover=False, prefixo='owner-approved:'):
+    nome = prefixo + sha[:12]
     ev = [{'event': 'labeled', 'label': {'name': nome}, 'actor': {'login': ator}}]
     if remover: ev.append({'event': 'unlabeled', 'label': {'name': nome}, 'actor': {'login': ator}})
     return ([] if remover else [nome]), ev
 
 
-def rodar(arquivos, head=None, labels=(), eventos=(), sha=SHA, esperado=None):
-    return G.avaliar(arquivos, head or {}, sha, list(labels), list(eventos), esperado)
+def autonomo(sha=SHA, ator=OWNER, remover=False):
+    return rotulo(sha, ator, remover, 'autonomo-auditado:')
+
+
+def auditoria(sha=SHA, autor=OWNER, veredito='PASS'):
+    return {'user': {'login': autor}, 'body': f'Contra-auditoria independente.\nCONTRA-AUDITORIA: {veredito} {sha}\nfim'}
+
+
+def rodar(arquivos, head=None, labels=(), eventos=(), sha=SHA, esperado=None, comentarios=(), reservados=RESERVADOS):
+    return G.avaliar(arquivos, head or {}, sha, list(labels), list(eventos), esperado, list(comentarios), reservados)
 
 
 def novo_wf(job_name, extra=''):
@@ -209,11 +220,122 @@ class Guarda(unittest.TestCase):
             def cli(files, extra=()):
                 (d / 'f.json').write_text(json.dumps([files]))
                 return subprocess.run([sys.executable, '-I', str(GUARD), '--files', str(d / 'f.json'), '--head-workflows', str(d / 'h'),
-                                       '--head-sha', SHA, '--labels', str(d / 'l.json'), '--events', str(d / 'e.json'), *extra],
+                                       '--head-sha', SHA, '--labels', str(d / 'l.json'), '--events', str(d / 'e.json'),
+                                       '--reserved', str(RESERVADOS_ARQ), *extra],
                                       capture_output=True, text=True).returncode
             self.assertEqual(cli([arq('index.html')], ['--expected-count', '1']), 0)
             self.assertEqual(cli([arq('.github/workflows/a.yml')]), 1)
             (d / 'e.json').write_text('{quebrado'); self.assertEqual(cli([arq('index.html')]), 2)
+
+    # --- merge autônomo (decisão do proprietário 08/11/2026 18:12): autonomo-auditado + CONTRA-AUDITORIA: PASS <SHA> ---
+    def test_T24_rotina_com_rotulo_autonomo_e_auditoria_do_sha_exato_passa(self):
+        l, e = autonomo()
+        for c in ROTINA:
+            self.assertEqual(G.reservado(c, RESERVADOS), [], c)
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.ok(r); self.assertTrue(r['aprovacao_autonoma']['valida'])
+        self.ok(rodar([arq(c) for c in ROTINA], labels=l, eventos=e,
+                      comentarios=[{'user': {'login': 'Copilot'}, 'body': 'x'}, auditoria()]))
+
+    def test_T25_rotina_com_rotulo_autonomo_sem_auditoria_valida_falha(self):
+        l, e = autonomo()
+        c = ROTINA[0]
+        self.falha(rodar([arq(c)], labels=l, eventos=e), duro=False)
+        self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=[{'user': {'login': OWNER}, 'body': 'LGTM'}]), duro=False)
+        # registro escrito por quem não está em OWNERS não conta
+        self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria(autor='Copilot')]), duro=False)
+        self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=[{'body': f'CONTRA-AUDITORIA: PASS {SHA}'}]), duro=False)
+        # auditoria sem o rótulo não libera
+        self.falha(rodar([arq(c)], comentarios=[auditoria()]), duro=False)
+
+    def test_T26_auditoria_de_outro_sha_ou_reprovada_falha(self):
+        l, e = autonomo()
+        c = ROTINA[1]
+        self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria(OUTRO)]), duro=False)
+        for corpo in (f'CONTRA-AUDITORIA: PASS {SHA[:12]}', f'CONTRA-AUDITORIA: PASS {SHA}0', f'CONTRA-AUDITORIA: PASS {SHA.upper()}',
+                      f'nota: CONTRA-AUDITORIA: PASS {SHA}', f'CONTRA-AUDITORIA: PASSOU {SHA}'):
+            self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=[{'user': {'login': OWNER}, 'body': corpo}]), duro=False)
+        # FAIL de dono para o mesmo SHA derruba o PASS, em qualquer ordem
+        for cs in ([auditoria(), auditoria(veredito='FAIL')], [auditoria(veredito='FAIL'), auditoria()]):
+            self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=cs), duro=False)
+        # FAIL de outro SHA (push anterior) não derruba o PASS do head atual
+        self.ok(rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria(OUTRO, veredito='FAIL'), auditoria()]))
+
+    def test_T27_caminho_reservado_com_rotulo_autonomo_falha(self):
+        l, e = autonomo()
+        for c in ('data/products.json', 'worker/sales-public-worker.mjs', 'data/p18-commercial-allowlist.json',
+                  'termos/index.html', 'privacidade/index.html', 'reembolso/index.html', 'sales-public/termos.html',
+                  'contracts/zevanory-one-saas.v1.json', 'ops/token-cutover.json', 'worker/sales-control.mjs',
+                  'scripts/sales_switch_workflow.py', '.github/workflows/zevanory-open-sales.yml',
+                  '.github/workflows/mercadopago-production-token-rotate.yml', '.github/workflows/owner-oauth-key-bootstrap.yml',
+                  '.github/workflows/gemini-key-to-worker.yml', 'wrangler.sales.toml', '.github/workflows/zero-cost-guard.yml',
+                  'scripts/ci/required_check_guard.py', '.github/workflows/required-check-guard.yml',
+                  '.github/workflows/merge-impact-evaluator.yml', '.github/workflows/t1-publisher-guard.yml',
+                  'tests/ci/test_required_check_guard.py', 'docs/governanca/merge-autonomo.md', 'data/p23/fiscal-process.json'):
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertIn(c, r['caminhos_reservados_alterados'])
+            self.assertFalse(r['aprovacao_autonoma']['valida'], c)
+        # misturar rotina com um único reservado também falha
+        self.falha(rodar([arq(ROTINA[0]), arq('data/products.json')], labels=l, eventos=e, comentarios=[auditoria()]), duro=False)
+        # renomear um reservado para fora conta o nome antigo
+        self.falha(rodar([arq('data/produtos.json', 'renamed', 'data/products.json')], labels=l, eventos=e,
+                         comentarios=[auditoria()]), duro=False)
+
+    def test_T28_caminho_reservado_exige_rotulo_do_dono(self):
+        for c in ('data/products.json', 'termos/index.html', 'ops/token-cutover.json', 'scripts/ci/required_check_guard.py'):
+            self.falha(rodar([arq(c)]), duro=False)  # reservado é brando mesmo fora de PROTECTED
+            l, e = rotulo(); self.ok(rodar([arq(c)], labels=l, eventos=e))
+            lo, eo = rotulo(OUTRO); self.falha(rodar([arq(c)], labels=lo, eventos=eo), duro=False)
+
+    def test_T29_rotulo_autonomo_de_outro_sha_ator_ou_removido_falha(self):
+        c = ROTINA[0]
+        for l, e in (autonomo(OUTRO), autonomo(ator='Copilot')):
+            self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()]), duro=False)
+        l, e = autonomo(remover=True)
+        self.falha(rodar([arq(c)], labels=['autonomo-auditado:' + SHA[:12]], eventos=e, comentarios=[auditoria()]), duro=False)
+        # rótulo autônomo nunca libera violação dura
+        l, e = autonomo()
+        self.falha(rodar([arq('.github/workflows/sombra.yml', 'added')], {'sombra.yml': novo_wf(G.GUARD_NAME)}, l, e,
+                         comentarios=[auditoria()]), 'COLISAO_DE_NOME')
+
+    def test_T30_lista_de_reservados_e_reservada_e_fail_closed(self):
+        l, e = autonomo()
+        r = rodar([arq('ops/owner-reserved-paths.json')], labels=l, eventos=e, comentarios=[auditoria()])
+        self.falha(r, duro=False); self.assertIn('ops/owner-reserved-paths.json', r['caminhos_reservados_alterados'])
+        lo, eo = rotulo(); self.ok(rodar([arq('ops/owner-reserved-paths.json')], labels=lo, eventos=eo))
+        self.falha(rodar([arq('index.html')], reservados=[]), 'LISTA_DE_RESERVADOS_AUSENTE')
+        d = json.loads(RESERVADOS_ARQ.read_text())
+        with tempfile.TemporaryDirectory() as t:
+            ruim = pathlib.Path(t) / 'r.json'
+            sem_si = json.loads(json.dumps(d))
+            sem_si['classes']['guardas_de_governanca']['globs'].remove('ops/owner-reserved-paths.json')
+            for conteudo in (sem_si, dict(d, schema='x'), dict(d, classes={}), dict(d, classes={'a': {'globs': []}})):
+                ruim.write_text(json.dumps(conteudo))
+                with self.assertRaises(ValueError):
+                    G.carregar_reservados(ruim)
+
+    def test_T31_globs_e_cli_do_merge_autonomo(self):
+        rx = G.glob_rx
+        self.assertTrue(rx('termos/**').match('termos/a/b.html')); self.assertFalse(rx('termos/**').match('termos2/a'))
+        self.assertTrue(rx('**/wrangler*.toml').match('wrangler.sales.toml'))
+        self.assertTrue(rx('**/wrangler*.toml').match('sandbox/x/wrangler.toml'))
+        self.assertFalse(rx('.github/workflows/*token*').match('.github/workflows/sub/token.yml'))
+        self.assertFalse(rx('data/products.json').match('data/products.jsonx'))
+        self.assertEqual(G.reservado('index.html', RESERVADOS), [])
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d); (d / 'h').mkdir()
+            (d / 'f.json').write_text(json.dumps([[arq(ROTINA[1])]]))
+            l, e = autonomo()
+            (d / 'l.json').write_text(json.dumps([l])); (d / 'e.json').write_text(json.dumps([e]))
+            def cli(coment, reserved=str(RESERVADOS_ARQ)):
+                (d / 'c.json').write_text(json.dumps([coment]))
+                return subprocess.run([sys.executable, '-I', str(GUARD), '--files', str(d / 'f.json'), '--head-workflows', str(d / 'h'),
+                                       '--head-sha', SHA, '--labels', str(d / 'l.json'), '--events', str(d / 'e.json'),
+                                       '--comments', str(d / 'c.json'), '--reserved', reserved],
+                                      capture_output=True, text=True).returncode
+            self.assertEqual(cli([auditoria()]), 0)
+            self.assertEqual(cli([auditoria(OUTRO)]), 1)
+            self.assertEqual(cli([auditoria()], str(d / 'inexistente.json')), 2)
 
 
 def rodar_com_relatorio(caminho):
