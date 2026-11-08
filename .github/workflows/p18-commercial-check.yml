@@ -52,12 +52,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Testes com fixtures (contagem exata 17, zero pulados)
+      - name: Testes com fixtures (contagem exata 18, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p18-commercial.test.mjs | tee /tmp/t.txt
-          for l in "# tests 17" "# pass 17" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          for l in "# tests 18" "# pass 18" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Modo offline (sem rede)
         shell: bash
         run: |
@@ -70,7 +70,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p18_commercial.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P18_COMMERCIAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=27 killed=27 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=28 killed=28 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

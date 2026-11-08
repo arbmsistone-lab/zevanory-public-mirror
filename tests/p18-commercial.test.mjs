@@ -198,12 +198,13 @@ test("GET seguro: só GET, sem corpo, sem cookie, sem Authorization, redireciona
 });
 
 // Rede falsa para o modo live: trava, rotas do site e checkouts por URL.
-function liveFake({ release = [200, '{"sales_mode":"globally-blocked"}'], site = () => [200, null, FX("site-hotmart-paused.html")], checkout = () => [200, null, FX("hotmart-closed-049.html")] } = {}) {
+function liveFake({ release = [200, '{"sales_mode":"globally-blocked"}'], site = () => [200, null, FX("site-hotmart-paused.html")], checkout = () => [200, null, FX("hotmart-closed-049.html")], hotmart = null } = {}) {
   const calls = [];
   const f = async (url, init) => {
     calls.push({ url, method: init.method });
     let r;
     if (url === allow.release_url) r = release === "throw" ? (() => { throw new Error("ECONNRESET"); })() : [release[0], null, release[1]];
+    else if (hotmart && url === new URL("/api/sales/hotmart-status", allow.release_url).href) r = [hotmart[0], null, hotmart[1]];
     else if (url.startsWith(allow.site_origin)) r = site(url);
     else r = checkout(url);
     return { status: r[0], headers: { get: (k) => (k === "location" ? r[1] : null) }, text: async () => r[2] };
@@ -247,6 +248,46 @@ test("live, trava aberta e trava ilegível", async () => {
   assert.equal(r2.sales_mode, null, "[P18C.15] trava fora do ar");
   assert.equal(r2.counts.fail, r2.counts.total, "[P18C.15] todos os links FAIL");
   assert.ok(r2.results.every((x) => x.reason.startsWith("release_")), "[P18C.15] motivo da trava em cada link");
+});
+
+test("live, modo Hotmart (trava completa fechada + canal Hotmart aberto): kits abertos, Conteúdo Pronto fechado", async () => {
+  const kitSite = (u) => {
+    const p = allow.products.find((x) => u.endsWith(x.site_route));
+    if (p.kind !== "kit") return [200, null, FX("site-hotmart-paused.html")];
+    const href = `https://pay.hotmart.com/${p.checkout_code}?off=${p.offer}&src=site`;
+    return [200, null, `<a href="${href.replace(/&/g, "&amp;")}">Comprar</a>`];
+  };
+  const ck = (state) => (u) => { const p = allow.products.find((x) => u.includes(x.checkout_code)); return [200, null, productFixture(p.slug, p.kind === "kit" ? state : "hotmart-closed-049.html")]; };
+  const f = liveFake({ site: kitSite, checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true,"channel":"hotmart"}'] });
+  const r = await runLive({ allow, fetchImpl: f });
+  assert.equal(r.hotmart_channel, true, "[P18C.H1] canal Hotmart lido");
+  assert.equal(r.verdict, PASS, "[P18C.H1] coerente: " + JSON.stringify(r.results.filter((x) => x.verdict === FAIL)));
+  assert.ok(f.calls.every((c) => c.method === "GET"), "[P18C.H1] só GET");
+  // Plataforma ainda fechada (ex.: verificação da conta pendente): o site vende e a Hotmart recusa = FAIL real.
+  const g = liveFake({ site: kitSite, checkout: ck("hotmart-closed-049.html"), hotmart: [200, '{"open":true}'] });
+  const r2 = await runLive({ allow, fetchImpl: g });
+  assert.deepEqual([...new Set(r2.results.filter((x) => x.verdict === FAIL).map((x) => x.reason))], ["hotmart_closed_while_enabled"], "[P18C.H2] checkout fechado com o canal aberto");
+  // Canal ilegível ou fechado: volta às expectativas da trava fechada (rota com checkout = FAIL).
+  for (const hm of [[500, '{"open":true}'], [200, '{"open":"true"}'], [200, "<html>"], [200, '{"open":false}']]) {
+    const h = liveFake({ site: kitSite, checkout: ck("hotmart-closed-049.html"), hotmart: hm });
+    const r3 = await runLive({ allow, fetchImpl: h });
+    assert.equal(r3.hotmart_channel, false, "[P18C.H3] fail-closed " + hm.join(" "));
+    assert.ok(r3.results.some((x) => x.reason === "site_route_checkout_while_locked"), "[P18C.H3] rota aberta sem canal = FAIL");
+  }
+  // Assinatura nunca abre pelo canal Hotmart.
+  const cp = allow.products.find((x) => x.kind === "subscription");
+  const i = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [302, `https://pay.hotmart.com/${cp.checkout_code}?off=${cp.offer}`, ""] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true}'] });
+  const r4 = await runLive({ allow, fetchImpl: i });
+  assert.deepEqual(r4.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [[cp.slug, "site_route_checkout_while_locked"]], "[P18C.H4] Conteúdo Pronto segue a trava completa");
+  // NC-1004-01: assinatura desativada responde 404 (DEC-04) = PASS; a exceção nunca alcança os kits.
+  const j = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [404, null, "<html>Página indisponível</html>"] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true}'] });
+  const r5 = await runLive({ allow, fetchImpl: j });
+  assert.equal(r5.verdict, PASS, "[P18C.H5] Conteúdo Pronto 404 sem checkout: " + JSON.stringify(r5.results.filter((x) => x.verdict === FAIL)));
+  assert.equal(r5.results.find((x) => x.slug === cp.slug && x.source === "live:site_route").reason, "site_route_subscription_retired_404", "[P18C.H5] motivo");
+  const k = liveFake({ site: (u) => [404, null, "<html>Página indisponível</html>"], checkout: ck("hotmart-closed-049.html") });
+  const r6 = await runLive({ allow, fetchImpl: k });
+  assert.deepEqual(r6.results.filter((x) => x.verdict === FAIL).map((x) => x.slug).sort(), allow.products.filter((x) => x.kind === "kit").map((x) => x.slug).sort(), "[P18C.H5] kit com 404 nunca passa");
+  assert.ok(r6.results.filter((x) => x.verdict === FAIL).every((x) => x.reason === "site_route_not_paused:http_404"), "[P18C.H5] motivo dos kits");
 });
 
 test("relatório: nenhum link conferido nunca é PASS", () => {
