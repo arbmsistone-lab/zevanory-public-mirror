@@ -35,7 +35,8 @@ test("D1 cópia íntegra: todas as tabelas conferidas contra o manifesto, restau
   assert.deepEqual(calls[0].tables, ["knowledge_documents", "orders", "product_support_cases", "service_fulfillment", "telemetry_events", "zevanory_leads"], "[D1.6]");
   assert.equal(rec.backup.rows, 6, "[D1.7]");
   assert.equal(rec.scope_complete_9_1, false, "[D1.8] escopo da seção 9.1 nunca declarado completo com pendências");
-  assert.deepEqual(rec.not_covered, [...NOT_COVERED], "[D1.9]");
+  // Sem a leitura do diário (--diario), a lacuna diario_d1 fica com o motivo medido (scripts/p20/restore-drill-diario.mjs).
+  assert.deepEqual(rec.not_covered, NOT_COVERED.map((s) => (s.startsWith("diario_d1:") ? "diario_d1: leitura_ausente" : s)), "[D1.9]");
   assert.deepEqual(rec.backup.excluded_by_policy, ["provider_oauth_credentials"]);
 });
 
@@ -254,7 +255,7 @@ test("D12 workflow mensal: producao-critica só no ensaio, publicação sem segr
   assert.match(publishJob, /contents: write/);
   assert.match(wf, /EVIDENCE_BRANCH: evidence\/b0-baseline/, "[D12.5]");
   assert.doesNotMatch(wf, /HEAD:gh-pages|push[^\n]*gh-pages|wrangler|-X\s*(POST|PUT|DELETE)/, "[D12.6]");
-  assert.equal((wf.match(/secrets\./g) || []).length, 2, "[D12.7] só dois segredos: token do Cloudflare (GET no KV) e chave(s) de decifragem do backup");
+  assert.equal((wf.match(/secrets\./g) || []).length, 3, "[D12.7] só três segredos: token do Cloudflare (GET no KV), chave(s) de decifragem do backup e token de leitura do D1 (só no passo do diário)");
   assert.doesNotMatch(wf, /pull_request/, "[D12.8]");
   const src = readTextNormalized(new URL("../scripts/p20/restore-drill.mjs", import.meta.url));
   assert.doesNotMatch(src, /method:\s*"(PUT|POST|DELETE|PATCH)"/, "[D12.9] leitor do KV só faz GET");

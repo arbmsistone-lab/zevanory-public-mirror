@@ -11,7 +11,13 @@ as partes; (7) cópia cifrada sem a chave no ensaio reprova sem restaurar nada e
 o Worker real copia as chaves críticas do KV (com TTL e metadados) para zevanory_kv_backup, relê do Neon e grava a cópia
 do dia; o ensaio a restaura em zevanory_kv_backup do banco p20_drill*, RELÊ do Postgres, reconstrói o KV e confere chave a
 chave contra o manifesto da fonte, retirando a lacuna copia_kv_para_neon; (9) idem com a cópia do KV cifrada;
-(10) cópia do KV adulterada (bundle ou valor + hash da linha) reprova e nada é restaurado."""
+(10) cópia do KV adulterada (bundle ou valor + hash da linha) reprova e nada é restaurado;
+(11) com a leitura
+do diário D1 (pedido anterior à cópia e pedido posterior, só no diário), o ensaio valida a cadeia, reaplica o evento
+posterior em p20_diario_reconstruido no banco efêmero, confere restaurado + reconstruído = diário pelas consultas reais
+da reconciliação e tira diario_d1 de not_covered com rpo_critico_medido_s; (12) evento do diário sem origem na cópia:
+diario_d1 continua com o motivo; (13) sem o token ou com a cadeia adulterada: diario_d1 continua com o motivo, e o
+ensaio dos dados segue aprovado (fase sombra)."""
 import base64, datetime, json, os, subprocess, sys, tempfile, unittest
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "scripts", "ops"))
@@ -46,6 +52,8 @@ def build_source(db):
       (gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'exp','ZEV-1',47,'BRL','mercadopago','ref-p20-1','paid');
       insert into knowledge_documents(document_id,namespace,title,content) values (gen_random_uuid(),'suporte','Guia','Conteúdo ç "aspas" $1 $$');
       insert into inbound_followups(followup_key,kind,subject_ref,recipient_hash) values ('cart:p20','cart_recovery','{SEGREDO}','h');""")
+    # Pedido "antigo": 3 h antes do ensaio, 1 h antes da cópia (NOW). Entra na cópia e no diário (costura do ensaio 8).
+    sh(db, "update orders set created_at = now() - interval '3 hours', updated_at = now() - interval '3 hours';")
 
 
 def make_fixture(src_db, out, key=None):
@@ -61,13 +69,24 @@ def make_fixture(src_db, out, key=None):
     return rep
 
 
-def drill(fixture, target_db, extra_env=None):
+def drill(fixture, target_db, extra_env=None, diario=None):
     out = os.path.join(tempfile.mkdtemp(), "drill.json")
     env = dict(os.environ, PGDATABASE=target_db, **(extra_env or {}))
-    r = subprocess.run(["node", "scripts/p20/restore-drill.mjs", "--mode", "sintetica", "--fixture", fixture, "--out", out], cwd=ROOT, env=env, capture_output=True, text=True, timeout=1200)
+    extra = ["--diario", diario] if diario else []
+    r = subprocess.run(["node", "scripts/p20/restore-drill.mjs", "--mode", "sintetica", "--fixture", fixture, "--out", out, *extra], cwd=ROOT, env=env, capture_output=True, text=True, timeout=1200)
     with open(out, encoding="utf-8") as f:
         text = f.read()
     return r, json.loads(text), text
+
+
+def make_diario(src_db, out, extra_ts=None):
+    env = dict(os.environ, PGDATABASE=src_db)
+    lido = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=40)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args = ["node", "tests/helpers/p20_diario_fixture.mjs", out, lido] + ([str(extra_ts)] if extra_ts else [])
+    r = subprocess.run(args, cwd=ROOT, env=env, capture_output=True, text=True, timeout=300)
+    if r.returncode:
+        raise AssertionError(r.stderr[-800:])
+    return json.loads(r.stdout.strip().splitlines()[-1])
 
 
 def public_tables(db):
@@ -86,6 +105,11 @@ class T(unittest.TestCase):
         cls.key = base64.b64encode(os.urandom(32)).decode()  # chave sintética, só deste teste
         cls.enc_fixture = os.path.join(cls.dir, "kv-cifrado.json")
         cls.enc_worker = make_fixture(cls.src, cls.enc_fixture, cls.key)
+        # Pedido posterior à cópia: existe na origem (e no diário), não na cópia restaurada.
+        sh(cls.src, """insert into orders(order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status) values
+          (gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'exp','ZEV-2',47,'BRL','mercadopago','ref-p20-2','created');""")
+        cls.diario = os.path.join(cls.dir, "diario.json")
+        cls.diario_info = make_diario(cls.src, cls.diario)
 
     def test_1_restauracao_completa_com_formato_real_do_worker(self):
         db = fresh("p20_drill_t1")
@@ -248,6 +272,63 @@ class T(unittest.TestCase):
         self.assertIn("kv_copy_manifest_mismatch", rec["failures"])
         self.assertTrue(any(s.startswith("copia_kv_para_neon:") for s in rec["not_covered"]))
         self.assertEqual(public_tables(db), 0, "nada restaurado a partir de cópia do KV adulterada")
+
+    def test_11_diario_reconstroi_eventos_posteriores_a_copia(self):
+        self.assertEqual(self.diario_info["eventos"], 2)
+        db = fresh("p20_drill_t11")
+        r, rec, text = drill(self.fixture, db, diario=self.diario)
+        self.assertEqual(r.returncode, 0, r.stdout[-800:])
+        self.assertEqual(rec["verdict"], "APROVADO")
+        d = rec["diario"]
+        self.assertEqual(d["estado"], "provado", d)
+        self.assertTrue(d["cadeia_ok"] and d["reconstrucao_ok"] and d["conjunto_igual"])
+        self.assertEqual(d["reconstruidos"], 1, "só o pedido posterior à cópia é reaplicado")
+        self.assertEqual(d["restaurados"], 1, "o pedido anterior vem da cópia restaurada")
+        self.assertEqual((d["faltando"], d["sobrando"]), (0, 0))
+        self.assertEqual(sh(db, "select count(*) from p20_diario_reconstruido").strip(), "1")
+        self.assertEqual(sh(db, "select count(*) from orders").strip(), "1", "a cópia não tem o pedido posterior")
+        self.assertFalse(any(x.startswith("diario_d1:") for x in rec["not_covered"]))
+        self.assertFalse(any(x.startswith("copia_kv_para_neon:") for x in rec["not_covered"]), "as duas provas no mesmo ensaio, cada uma com a sua")
+        self.assertTrue(rec["kv_copy"]["entries_manifest_ok"])
+        self.assertIsInstance(rec["rpo_critico_medido_s"], int)
+        self.assertTrue(0 <= rec["rpo_critico_medido_s"] <= 600, rec["rpo_critico_medido_s"])
+        self.assertNotIn("ref-p20-2", text)
+        self.assertNotIn(SEGREDO, text)
+
+    def test_12_evento_do_diario_sem_origem_na_copia_mantem_a_lacuna(self):
+        out = os.path.join(self.dir, "diario-sobra.json")
+        corte_ms = int(datetime.datetime.strptime(NOW, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+        make_diario(self.src, out, extra_ts=corte_ms - 5 * 3600 * 1000)
+        db = fresh("p20_drill_t12")
+        r, rec, _ = drill(self.fixture, db, diario=out)
+        self.assertEqual(rec["verdict"], "APROVADO", "fase sombra: o diário não reprova o ensaio dos dados")
+        self.assertEqual(rec["diario"]["estado"], "nao_provado")
+        self.assertEqual(rec["diario"]["sobrando"], 1)
+        self.assertIn("diario_d1: conjunto_divergente", rec["not_covered"])
+        self.assertFalse(any(x.startswith("copia_kv_para_neon:") for x in rec["not_covered"]), "lacunas independentes: a do KV sai com a própria prova")
+        self.assertIsNone(rec["rpo_critico_medido_s"])
+
+    def test_13_sem_token_ou_cadeia_adulterada_mantem_a_lacuna(self):
+        sem = os.path.join(self.dir, "diario-sem-token.json")
+        with open(sem, "w", encoding="utf-8") as f:
+            json.dump({"schema": "zevanory.p20.diario-leitura.v1", "estado": "sem_token", "lido_em": NOW, "head": None, "rows": [], "consultas": 0, "motivo": "CF_TOKEN_D1_DIARIO_READ ausente"}, f)
+        db = fresh("p20_drill_t13a")
+        r, rec, _ = drill(self.fixture, db, diario=sem)
+        self.assertEqual(rec["verdict"], "APROVADO")
+        self.assertIn("diario_d1: token CF_TOKEN_D1_DIARIO_READ ausente no ensaio", rec["not_covered"])
+        with open(self.diario, encoding="utf-8") as f:
+            d = json.load(f)
+        d["rows"][0]["payload_json"] = d["rows"][0]["payload_json"].replace("47", "48")
+        bad = os.path.join(self.dir, "diario-adulterado.json")
+        with open(bad, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        db = fresh("p20_drill_t13b")
+        r, rec, _ = drill(self.fixture, db, diario=bad)
+        self.assertEqual(rec["verdict"], "APROVADO")
+        self.assertEqual(rec["diario"]["motivo"], "cadeia_quebrada")
+        self.assertIn("diario_d1: cadeia_quebrada", rec["not_covered"])
+        self.assertEqual(public_tables(db) > 0, True, "a restauração dos dados segue")
+        self.assertEqual(sh(db, "select count(*) from information_schema.tables where table_name='p20_diario_reconstruido'").strip(), "0", "nada reaplicado de um diário adulterado")
 
 
 if __name__ == "__main__":

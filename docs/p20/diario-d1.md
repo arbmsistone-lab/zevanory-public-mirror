@@ -77,7 +77,8 @@ de CPF ou telefone é recusado, então use prefixo com letras (`ord_...`).
    A gravação em **sombra** (grava sem bloquear nada, mede erros) vem logo depois, independente deste binding.
 3. Fila de pendências e reenvio (webhooks e entregas) e evento `erase` (LGPD: apagar no Neon registra só o hash).
 4. Reconciliação diária Neon × diário, com relatório sem PII (seção "Reconciliação diária (PR 4)").
-5. Integração ao ensaio mensal P20: reconstruir os eventos pós-backup e verificar a cadeia.
+5. Integração ao ensaio mensal P20: reconstruir os eventos pós-backup e verificar a cadeia (seção "Ensaio mensal lê
+   o diário").
 6. Fail-closed no checkout próprio e no formulário de leads, depois de 7 dias em sombra sem divergência.
 7. Certificado: o RPO medido passa a contar o diário. A lacuna do inventário só sai depois de um ensaio aprovado.
 
@@ -308,6 +309,55 @@ estrito).
 os dois tokens cadastrados e `DATA_BACKUP_DIARIO` com `estado: "ok"` em todas as execuções. Qualquer `divergente` ou
 `incompleto` zera a contagem, e a causa precisa ser explicada antes de recomeçar. O fail-closed do checkout e dos leads
 (item 6 do plano) só vem depois do corte.
+
+## Ensaio mensal lê o diário
+
+O ensaio mensal (`.github/workflows/p20-monthly-restore-drill.yml`) ganhou um passo próprio, antes do ensaio:
+**`P20 diário D1 - leitura para o ensaio`**. Só esse passo recebe `CF_TOKEN_D1_DIARIO_READ` (D1 Read, no `env` do
+passo, nunca do job). Ele roda `scripts/p20/diario-d1-read.mjs`, que usa só `POST /accounts/<conta>/d1/database/<id>/query`
+com duas consultas `SELECT` fixas: a cabeça e uma página de linhas por `seq`, até o `seq` da cabeça lida (retrato
+consistente de um diário só de inclusão). O leitor recusa qualquer outra SQL antes da rede. A leitura vai para um
+arquivo `0600` no `RUNNER_TEMP`, nunca para artefato nem log. Sem o segredo, o passo emite um aviso, e o ensaio dos dados
+segue igual.
+
+Depois da restauração conferida, `scripts/p20/restore-drill-diario.mjs` faz a prova no **mesmo** Postgres efêmero (de
+novo `assertEphemeralTarget`):
+
+1. **Cadeia:** `verifyChain` de todas as linhas, da genesis até a cabeça lida (detecta adulteração e corte do fim).
+2. **Reaplicação mínima:** as linhas com `ts_ms` maior que o corte menos 15 min vão para a tabela
+   `p20_diario_reconstruido` (as colunas do diário) e são relidas. A releitura tem de ser idêntica, coluna a coluna. O
+   corte é o início mais antigo das partes da cópia restaurada.
+3. **Conjunto:** na janela [corte − 48 h, leitura], restaurado ∪ reconstruído = diário. "Restaurado" são as event_key
+   que o banco restaurado gera pelas mesmas consultas e construtores da reconciliação diária (`NEON_FONTES`). Falta é um
+   evento da cópia que o diário não tem. Sobra é um evento do diário que não está nem na cópia nem na reconstrução.
+4. **`rpo_critico_medido_s`** = falha simulada (início do ensaio) − instante da leitura do diário. Só com a prova
+   completa; caso contrário, `null`.
+
+O registro do ensaio leva o bloco `diario` (contagens, booleanos, `seq` da cabeça, até 10 event_key) e
+`rpo_critico_medido_s`. **`diario_d1` só sai de `not_covered` com a prova completa num ensaio `APROVADO`**
+(`diarioProvado`): estado `provado`, cadeia, reaplicação e conjunto conferidos, falta e sobra zero, linhas = `seq` da
+cabeça e RPO crítico igual ao medido. A releitura estrita (`validateRecord`) recusa um registro que tire a lacuna sem
+essa prova (`diario_d1_unproven`) ou que publique RPO crítico sem ela. Sem prova, a linha fica com o motivo medido (por
+exemplo, `diario_d1: token CF_TOKEN_D1_DIARIO_READ ausente no ensaio`, `diario_d1: cadeia_quebrada`,
+`diario_d1: conjunto_divergente`).
+
+**Fase (NC-PR6-01, lista positiva):** em `DIARIO_FASE = "sombra"`, um diário sem prova não reprova o ensaio dos dados.
+Fora da sombra (`"ativo"` ou qualquer valor desconhecido), **só** o estado `provado` com a prova completa passa
+(`DIARIO_ESTADOS_APROVADOS = ["provado"]` e `diarioProvado`). Qualquer outro estado reprova com
+`diario_sem_prova:<estado>[:<motivo>]`: `nao_lido` (token ausente, leitura ausente, incompleta ou com erro),
+`nao_provado` (cadeia, reaplicação, conjunto, exceção), um `provado` sem a prova completa ou um estado desconhecido. A fase
+do registro é sempre a do ensaio (`runDrill({ diarioFase })`), nunca a que a implementação da prova declara, e a releitura
+recusa um APROVADO fora da sombra sem a prova (`diario_ativo_sem_prova`).
+
+**Integração com a cópia KV -> Neon (#999):** `copia_kv_para_neon` e `diario_d1` são lacunas independentes em
+`notCoveredFor(allEncrypted, kvCopyProven, diario)`. Cada uma só sai com a própria prova (`kvProofComplete` e
+`diarioProvado`), e `validateRecord` confere as duas separadamente (`copia_kv_unproven` e `diario_d1_unproven`). O mesmo
+Postgres efêmero recebe a cópia do KV (`zevanory_kv_backup`) e a reconstrução do diário (`p20_diario_reconstruido`).
+
+Testes: `tests/p20-diario-ensaio.test.mjs` (DE1 a DE9: leitor, prova, sem token, cadeia, conjunto, reaplicação,
+releitura estrita, workflow e lista positiva fora da sombra) e `tests/test_p20_restore_drill.py` (testes 11 a 13: código real do Worker, restauração real
+e reaplicação real num PostgreSQL). Mutantes M62 a M83 em `scripts/ci/mutants_p20_restore_drill.py` (M44 a M61 são os da
+cópia KV -> Neon, #999).
 
 ## Testes e mutantes
 

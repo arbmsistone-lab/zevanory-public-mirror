@@ -1,5 +1,5 @@
 {
- "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Dn.k]/[B0P20.k] que a codifica), escritas antes de rodar.",
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Dn.k]/[B0P20.k] que a codifica), escritas antes de rodar. Diário D1 (M62-M78): na primeira execução M71 e M72 também derrubaram D12 (contagem de segredos, D12.7), secundário acrescentado com justificativa; M77 sobreviveu porque DE7.7 zerava o RPO crítico (outra regra derrubava o registro) e o teste foi corrigido; M78 original (retirar a lacuna sempre) quebrava a releitura em quase toda a suíte e foi trocado por uma mutação causal estreita (retirar só pelo estado, sem a prova completa), coberta por DE3.6. M63 também é morto por DE3.6 (mesma regra, lado da construção): secundário com justificativa. Integração com o #999: os mutantes do diário (antes M44-M60) foram renumerados para M62-M78, sem colisão com os do KV (M44-M61). NC-PR6-01: M73 passou a mirar a regra de lista positiva (DE4.6 e DE9.1); M79-M83 cobrem lista negativa, fase desconhecida, estado provado sem prova, releitura e fase escolhida pela implementação. Na integração, M64 também derrubou DE9 (caso cadeia_invalida, mesma regra): secundário com justificativa. M73 e M79-M81 deixam o ensaio passar e a releitura estrita recusa o registro (runDrill lança); DE4.6, DE9.1 e DE9.5 passaram a tratar essa recusa como falha nomeada da própria asserção. M44 (#999) teve a âncora ajustada à linha de notCoveredFor com três argumentos (mesma mutação). M78 também derrubou DE9.3 (provado_forjado), mesma regra: secundário com justificativa.",
  "mutants": {
   "M01 hash por tabela não conferido": {
    "primary": [
@@ -801,6 +801,233 @@
     {
      "test_pattern": "K5",
      "assertion_pattern": "[K5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M62 releitura aceita diario_d1 retirado sem prova": {
+   "primary": [
+    {
+     "test_pattern": "DE7",
+     "assertion_pattern": "[DE7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M63 prova do diário aceita sobra": {
+   "primary": [
+    {
+     "test_pattern": "DE7",
+     "assertion_pattern": "[DE7.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DE3",
+     "justification": "DE3.6 codifica a mesma regra na construção (prova com sobra não retira a lacuna)"
+    }
+   ]
+  },
+  "M64 cadeia do diário não verificada no ensaio": {
+   "primary": [
+    {
+     "test_pattern": "DE4",
+     "assertion_pattern": "[DE4.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DE9",
+     "justification": "DE9 inclui o caso cadeia_invalida (diário adulterado) em fase ativo: sem verificar a cadeia, ele deixa de reprovar"
+    }
+   ]
+  },
+  "M65 cadeia do diário sem a cabeça (fim cortado)": {
+   "primary": [
+    {
+     "test_pattern": "DE4",
+     "assertion_pattern": "[DE4.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M66 reaplicação não conferida": {
+   "primary": [
+    {
+     "test_pattern": "DE6",
+     "assertion_pattern": "[DE6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M67 evento da cópia fora do diário ignorado": {
+   "primary": [
+    {
+     "test_pattern": "DE5",
+     "assertion_pattern": "[DE5.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M68 leitor do D1 aceita SQL arbitrária": {
+   "primary": [
+    {
+     "test_pattern": "DE1",
+     "assertion_pattern": "[DE1.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "M69 leitor do D1 lê além da cabeça": {
+   "primary": [
+    {
+     "test_pattern": "DE1",
+     "assertion_pattern": "[DE1.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "M70 leitor do D1 cai para o token compartilhado": {
+   "primary": [
+    {
+     "test_pattern": "DE8",
+     "assertion_pattern": "[DE8.10]"
+    }
+   ],
+   "secondary": []
+  },
+  "M71 token do D1 no env do job": {
+   "primary": [
+    {
+     "test_pattern": "DE8",
+     "assertion_pattern": "[DE8.8]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "D12",
+     "justification": "D12.7 conta os segredos do workflow mensal; o mutante acrescenta uma referência a secrets.CF_TOKEN_D1_DIARIO_READ"
+    }
+   ]
+  },
+  "M72 passo do ensaio recebe o token do D1": {
+   "primary": [
+    {
+     "test_pattern": "DE8",
+     "assertion_pattern": "[DE8.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "D12",
+     "justification": "D12.7 conta os segredos do workflow mensal; o mutante acrescenta uma referência a secrets.CF_TOKEN_D1_DIARIO_READ"
+    }
+   ]
+  },
+  "M74 RPO crítico publicado sem prova": {
+   "primary": [
+    {
+     "test_pattern": "DE5",
+     "assertion_pattern": "[DE5.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "M75 reconstrução sem a margem do corte": {
+   "primary": [
+    {
+     "test_pattern": "DE5",
+     "assertion_pattern": "[DE5.9]"
+    }
+   ],
+   "secondary": []
+  },
+  "M76 prova do diário sem restauração conferida": {
+   "primary": [
+    {
+     "test_pattern": "DE6",
+     "assertion_pattern": "[DE6.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M77 lacuna do diário retirada em ensaio não aprovado": {
+   "primary": [
+    {
+     "test_pattern": "DE7",
+     "assertion_pattern": "[DE7.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "M78 lacuna do diário retirada só pelo estado, sem a prova completa": {
+   "primary": [
+    {
+     "test_pattern": "DE3",
+     "assertion_pattern": "[DE3.6]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "DE9",
+     "justification": "DE9.3 (caso provado_forjado: estado provado sem a prova completa) codifica a mesma regra: a lacuna não pode sair só pelo estado"
+    }
+   ]
+  },
+  "M73 diário sem prova fora da sombra não reprova": {
+   "primary": [
+    {
+     "test_pattern": "DE4",
+     "assertion_pattern": "[DE4.6]"
+    },
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M79 lista negativa: só nao_provado reprova": {
+   "primary": [
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M80 fase desconhecida tratada como sombra": {
+   "primary": [
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M81 estado provado aceito sem a prova completa": {
+   "primary": [
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M82 releitura aceita aprovado em ativo sem prova": {
+   "primary": [
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "M83 implementação do diário escolhe a própria fase": {
+   "primary": [
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.1]"
     }
    ],
    "secondary": []

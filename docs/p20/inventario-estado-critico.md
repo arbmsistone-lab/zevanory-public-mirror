@@ -97,7 +97,9 @@ a confirma.
   `ENSAIO_EM_PRODUCAO` aprovado depois do deploy do Worker com esta mudança; até lá ela continua registrada.
 - **Conciliação dos pedidos contra o provedor:** as vendas estão fechadas e o Environment do ensaio não tem
   credencial somente leitura do provedor.
-- **Diário de eventos no D1:** não implementado.
+- **Diário de eventos no D1:** em sombra. O ensaio lê o diário com o token de leitura dedicado, valida a cadeia,
+  reconstrói os eventos posteriores à cópia em `p20_diario_reconstruido` e confere restaurado + reconstruído = diário.
+  A lacuna `diario_d1` só sai do registro com essa prova completa num ensaio aprovado (`docs/p20/diario-d1.md`).
 - **Cópia cifrada:** em transição. Com o segredo `P20_BACKUP_KEY` no Worker, cada bundle vai para o KV como envelope
   AES-256-GCM; sem ele, continua em texto claro, marcado `nao_cifrado`. O ensaio registra `copia_cifrada` por parte e
   só retira a lacuna quando as 3 partes do dia estão cifradas. Desenho, fases e passos: `docs/p20/cifragem-backup.md`.

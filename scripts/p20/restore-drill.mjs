@@ -16,6 +16,9 @@
 // pelo Worker. A ponte as carrega em zevanory_kv_backup no MESMO Postgres efêmero e as relê; daqui elas viram um KV em
 // memória conferido chave a chave (valor, TTL, metadados) contra o manifesto da fonte (kvRestoreDrill). Sem credencial
 // do Neon: o Neon de produção nunca é acessado pelo CI.
+// Diário D1 (--diario arquivo): a leitura feita no passo anterior por scripts/p20/diario-d1-read.mjs (token de leitura
+// dedicado, só naquele passo). Depois da restauração conferida, scripts/p20/restore-drill-diario.mjs valida a cadeia,
+// reaplica os eventos posteriores à cópia em p20_diario_reconstruido e confere restaurado ∪ reconstruído = diário.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -28,6 +31,11 @@ import {
 } from "./restore-drill-lib.mjs";
 import { kvRestoreDrill } from "./kv-memory-replay.mjs";
 import { parseKeyring } from "./backup-envelope.mjs";
+// O módulo do diário (que importa worker/diario-*) só é carregado quando há leitura do diário a provar.
+import { diarioNaoLido } from "./restore-drill-lib.mjs";
+// Fase do diário no ensaio: a MESMA de worker/diario-reconcilia.mjs (DIARIO_FASE); tests/p20-diario-ensaio.test.mjs (DE3)
+// confere a igualdade, para que as duas nunca divirjam.
+export const DIARIO_FASE_ENSAIO = "sombra";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const CF_ACCOUNT = "1b26415802588185a86c1d4d3ebf5bdb";
@@ -98,7 +106,10 @@ export function restoreViaPython({ tablesJson, manifestRows, env, kvCopy = null 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
-export async function runDrill({ mode, env = process.env, fetchImpl = fetch, fixture = null, restoreImpl = restoreViaPython, now = () => new Date(), clock = () => performance.now(), inventory = null }) {
+const isObjDiario = (d) => d !== null && typeof d === "object" && !Array.isArray(d);
+
+export async function runDrill({ mode, env = process.env, fetchImpl = fetch, fixture = null, restoreImpl = restoreViaPython, now = () => new Date(), clock = () => performance.now(), inventory = null,
+  diarioLeitura = null, diarioImpl = null, diarioFase = DIARIO_FASE_ENSAIO }) {
   const startedAt = now().toISOString();
   const t0 = clock();
   let readings = null, sourceRead = false, naReason = null;
@@ -129,25 +140,45 @@ export async function runDrill({ mode, env = process.env, fetchImpl = fetch, fix
     else kvCopy = await kvRestoreDrill(restore.kv_rows, kvA, { nowSec: Math.floor(now().getTime() / 1000), prefixes: KV_PREFIXES });
   }
   const rtoSeconds = (clock() - t0) / 1000;
+  // Diário: depois do RTO (a medida da restauração dos dados não muda). Só sobre o banco efêmero já conferido.
+  let diario = null;
+  if (assessment?.readable) {
+    const corteIso = assessment.parts.length ? new Date(Math.min(...assessment.parts.map((p) => Date.parse(p.started_at)))).toISOString() : null;
+    // O banco do diário é o MESMO alvo efêmero da restauração: conferido de novo antes de qualquer psql.
+    const prova = diarioImpl || (async (args) => {
+      const naoLido = diarioNaoLido(args.leitura, args.fase);
+      if (naoLido) return naoLido;
+      if (args.restoreOk) assertEphemeralTarget(env);
+      const { provarDiario, psqlJson, reconstruirNoPostgres } = await import("./restore-drill-diario.mjs");
+      return provarDiario({ ...args, restauradoSql: psqlJson(env), reconstruir: reconstruirNoPostgres(env) });
+    });
+    try { diario = await prova({ leitura: diarioLeitura, corteIso, falhaIso: startedAt, restoreOk: !!(restore && restore.ok === true), fase: diarioFase }); }
+    catch (e) { diario = { estado: "nao_provado", motivo: "excecao:" + clean(e?.message).slice(0, 80), fase: diarioFase, tabela: "p20_diario_reconstruido", rpo_critico_medido_s: null }; }
+    // A fase do registro é sempre a do ensaio (um diarioImpl não escolhe a própria fase).
+    if (isObjDiario(diario)) diario = { ...diario, fase: diarioFase };
+  }
   const rec = buildRecord({ mode, sourceRead: sourceRead && !!assessment?.readable, assessment, restore, startedAt, finishedAt: now().toISOString(), rtoSeconds,
-    runId: env.GITHUB_RUN_ID, sha: env.GITHUB_SHA, inventory, notAvailableReason: naReason, kvCopy });
+    runId: env.GITHUB_RUN_ID, sha: env.GITHUB_SHA, inventory, notAvailableReason: naReason, kvCopy, diario });
   return validateRecord(rec);
 }
 
 function arg(name) { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; }
 
 export async function main() {
-  const mode = arg("--mode"), out = arg("--out"), fixturePath = arg("--fixture");
+  const mode = arg("--mode"), out = arg("--out"), fixturePath = arg("--fixture"), diarioPath = arg("--diario");
   if (!["producao", "sintetica"].includes(mode) || !out) throw new Error("uso: --mode producao|sintetica --out arquivo [--fixture kv.json]");
   if (mode === "producao" && (fixturePath || process.env.P20_FIXTURE)) throw new Error("fixture_forbidden_in_producao");
   const inventory = validateInventory(JSON.parse(readFileSync(join(ROOT, "docs", "p20", "inventario-estado-critico.json"), "utf8")));
   const fixture = mode === "sintetica" ? JSON.parse(readFileSync(fixturePath, "utf8")) : null;
-  const rec = await runDrill({ mode, fixture, inventory });
+  let diarioLeitura = null;
+  if (diarioPath) { try { const { lerArquivoLeitura } = await import("./restore-drill-diario.mjs"); diarioLeitura = lerArquivoLeitura(readFileSync(diarioPath, "utf8")); } catch { diarioLeitura = { estado: "erro", motivo: "leitura_ausente_no_runner", rows: [] }; } }
+  const rec = await runDrill({ mode, fixture, inventory, diarioLeitura });
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(rec) + "\n");
   console.log("::notice title=P20_RESTORE_DRILL::" + JSON.stringify({ label: rec.label, verdict: rec.verdict, backup_day: rec.backup?.day ?? null, tables: rec.integrity?.tables_checked ?? null,
     hash_ok: rec.integrity?.tables_hash_ok ?? null, restored: rec.restore?.tables ?? null, copia_cifrada: rec.backup?.copia_cifrada ?? null,
-    kv_copy: rec.kv_copy ? { keys: rec.kv_copy.keys, restored: rec.kv_copy.restored, expired: rec.kv_copy.expired_at_restore, manifest_ok: rec.kv_copy.entries_manifest_ok } : null, rpo_hours: rec.rpo_hours, rto_seconds: rec.rto_seconds, failures: rec.failures.slice(0, 10), reason: rec.reason ?? null }));
+    kv_copy: rec.kv_copy ? { keys: rec.kv_copy.keys, restored: rec.kv_copy.restored, expired: rec.kv_copy.expired_at_restore, manifest_ok: rec.kv_copy.entries_manifest_ok } : null,
+    diario: rec.diario?.estado ?? null, diario_motivo: rec.diario?.motivo ?? null, rpo_critico_medido_s: rec.rpo_critico_medido_s ?? null, rpo_hours: rec.rpo_hours, rto_seconds: rec.rto_seconds, failures: rec.failures.slice(0, 10), reason: rec.reason ?? null }));
   if (rec.verdict !== "APROVADO") console.log(`::error title=P20_RESTORE_DRILL::${rec.verdict} ${clean((rec.failures[0] || rec.reason || ""))}`);
   return rec.verdict === "APROVADO" ? 0 : 1;
 }

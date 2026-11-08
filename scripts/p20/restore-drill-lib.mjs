@@ -38,7 +38,7 @@ export const CRITICAL_AGE_H = 48; // seção 9.1: falha crítica de P20
 export const NOT_COVERED = Object.freeze([
   "copia_kv_para_neon: restauração completa em CI exige a credencial do Neon (só o Worker a tem); coberta só pelo ensaio diário por amostra do Worker",
   "conciliacao_pedidos_x_provedor: vendas fechadas e nenhuma credencial somente leitura do provedor no Environment do ensaio",
-  "diario_d1: diário de eventos críticos no D1 não implementado",
+  "diario_d1: reconstrução pelo diário D1 não provada neste ensaio",
   "copia_cifrada: a cópia Neon -> KV fica em texto claro no KV (a seção 9.1 pede cifrada)",
 ]);
 export const COPIA_CIFRADA_ID = "copia_cifrada";
@@ -47,8 +47,13 @@ export const COPIA_KV_ID = "copia_kv_para_neon";
 const isCopiaKv = (s) => typeof s === "string" && s.startsWith(COPIA_KV_ID + ":");
 // not_covered do registro: cada lacuna só sai com a SUA prova. "copia_cifrada": todas as PARTS partes lidas,
 // decifradas e cifradas. "copia_kv_para_neon": kvCopyProven (prova completa da restauração do KV, ensaio APROVADO).
-export function notCoveredFor(allPartsEncrypted, kvCopyProven = false) {
-  return NOT_COVERED.filter((s) => !(allPartsEncrypted === true && isCopiaCifrada(s)) && !(kvCopyProven === true && isCopiaKv(s)));
+// "diario_d1": diarioProvado (prova completa do diário, ensaio APROVADO). Sem prova, a linha do diário fica com o motivo
+// medido neste ensaio (ex.: token ausente, cadeia quebrada, conjunto divergente). As três lacunas são independentes.
+export function notCoveredFor(allPartsEncrypted, kvCopyProven = false, diario = null) {
+  const provado = diarioProvado(diario);
+  return NOT_COVERED.filter((s) => !(allPartsEncrypted === true && isCopiaCifrada(s)) && !(kvCopyProven === true && isCopiaKv(s)))
+    .filter((s) => !(provado && isDiarioD1(s)))
+    .map((s) => (isDiarioD1(s) && isObj(diario) && diario.motivo ? `${DIARIO_D1_ID}: ${limpo(diario.motivo)}` : s));
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -128,6 +133,30 @@ export function kvProofComplete(k, backupDay) {
   return isObj(k) && isDay(k.day) && k.day === backupDay && isInt(k.keys) && k.keys >= 1 && isInt(k.restored) && isInt(k.expired_at_restore)
     && k.restored + k.expired_at_restore === k.keys && isInt(k.with_ttl) && isInt(k.with_metadata)
     && k.pg_rows_ok === true && k.values_hash_ok === true && k.ttl_metadata_ok === true && k.entries_manifest_ok === true && typeof k.copia_cifrada === "boolean";
+}
+export const DIARIO_D1_ID = "diario_d1";
+const isDiarioD1 = (s) => typeof s === "string" && s.startsWith(DIARIO_D1_ID + ":");
+export const TABELA_RECONSTRUCAO = "p20_diario_reconstruido";
+const limpo = (s) => String(s || "").replace(/[^A-Za-z0-9_.:,= -]/g, "").slice(0, 120);
+// Leitura do diário que não houve (ausente, sem token, incompleta, com erro): estado "nao_lido" com o motivo. Pura, sem
+// o módulo do diário: o ensaio e os testes que não leem o diário não carregam worker/diario-* (cópias mínimas dos
+// mutantes B0/P18/P19, checkout esparso). Devolve null quando a leitura foi feita ("lido").
+export function diarioNaoLido(leitura, fase) {
+  if (isObj(leitura) && leitura.estado === "lido") return null;
+  const motivo = !isObj(leitura) ? "leitura_ausente" : leitura.estado === "sem_token" ? "token CF_TOKEN_D1_DIARIO_READ ausente no ensaio"
+    : "leitura_" + limpo(leitura.estado).slice(0, 40) + (leitura.motivo ? ":" + limpo(leitura.motivo).slice(0, 60) : "");
+  return { fase, tabela: TABELA_RECONSTRUCAO, rpo_critico_medido_s: null, estado: "nao_lido", motivo };
+}
+// Estados do diário que passam fora da sombra: lista POSITIVA (qualquer outro estado reprova).
+export const DIARIO_ESTADOS_APROVADOS = Object.freeze(["provado"]);
+// A prova é exigida em qualquer fase que não seja exatamente "sombra" (valor desconhecido = lado estrito).
+export const diarioExigido = (d) => !(isObj(d) && d.fase === "sombra");
+export const diarioAprovado = (d) => isObj(d) && DIARIO_ESTADOS_APROVADOS.includes(d.estado) && diarioProvado(d);
+// Prova estrita do diário (a mesma regra na construção e na releitura do registro).
+export function diarioProvado(d) {
+  return isObj(d) && d.estado === "provado" && d.motivo === null && d.cadeia_ok === true && d.reconstrucao_ok === true && d.conjunto_igual === true
+    && d.faltando === 0 && d.sobrando === 0 && isInt(d.reconstruidos) && isInt(d.head_seq) && isInt(d.linhas) && d.linhas === d.head_seq
+    && d.tabela === TABELA_RECONSTRUCAO && isIso(d.lido_em) && isIso(d.corte) && isNum(d.rpo_critico_medido_s) && d.rpo_critico_medido_s >= 0;
 }
 const TABLE_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -304,7 +333,7 @@ export function byClass(datasets, restoredTables, inventory, measuredRpoH) {
 
 // ---------------------------------------------------------------------------------------------------------
 // Registro de evidência (uma linha JSONL em p20/restore-drills-v1.jsonl do ramo evidence/b0-baseline).
-export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, finishedAt, rtoSeconds, runId, sha, inventory, notAvailableReason, kvCopy = null }) {
+export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, finishedAt, rtoSeconds, runId, sha, inventory, notAvailableReason, kvCopy = null, diario = null }) {
   const label = decideLabel(mode, sourceRead);
   const a = assessment || { readable: false, failures: [], datasets: [], parts: [], totals: { tables: 0, rows: 0 }, excluded: [] };
   const restoreOk = !!(restore && restore.ok === true);
@@ -315,6 +344,10 @@ export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, 
   if (a.readable && kvCopy && Array.isArray(kvCopy.failures)) for (const f of kvCopy.failures) if (!failures.includes(f)) failures.push(f);
   const rpo = a.readable ? rpoHours(a.parts.map((p) => p.started_at), startedAt) : null;
   if (a.readable && rpo == null) failures.push("rpo_not_computable");
+  // NC-PR6-01: fora da fase "sombra" (fase "ativo" ou qualquer valor desconhecido), SÓ o estado "provado" com a prova
+  // completa passa (lista positiva). nao_lido (token ausente, leitura ausente, incompleta ou com erro), nao_provado
+  // (cadeia, reaplicação, conjunto) ou qualquer outro estado reprova o ensaio. Em "sombra" (padrão), só fica registrado.
+  if (a.readable && isObj(diario) && diarioExigido(diario) && !diarioAprovado(diario)) failures.push("diario_sem_prova:" + limpo(diario.estado) + (diario.motivo ? ":" + limpo(diario.motivo) : ""));
   let verdict;
   if (!label || !a.readable) verdict = "NOT_AVAILABLE";
   else verdict = failures.length === 0 && restoreOk ? "APROVADO" : "REPROVADO";
@@ -353,7 +386,10 @@ export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, 
     by_class: cls.classes,
     unclassified_tables: cls.unclassified,
     kv_copy: a.readable && kvCopy?.proof ? kvCopy.proof : null,
-    not_covered: notCoveredFor(allEncrypted && verdict !== "NOT_AVAILABLE", verdict === "APROVADO" && !!kvCopy && kvCopy.failures.length === 0 && kvProofComplete(kvCopy.proof, a.day)),
+    diario: verdict === "NOT_AVAILABLE" || !isObj(diario) ? null : diario,
+    rpo_critico_medido_s: verdict === "APROVADO" && diarioProvado(diario) ? diario.rpo_critico_medido_s : null,
+    not_covered: notCoveredFor(allEncrypted && verdict !== "NOT_AVAILABLE", verdict === "APROVADO" && !!kvCopy && kvCopy.failures.length === 0 && kvProofComplete(kvCopy.proof, a.day),
+      verdict === "APROVADO" ? diario : (isObj(diario) && !diarioProvado(diario) ? diario : null)),
     scope_complete_9_1: false,
     failures: failures.slice(0, 50),
   };
@@ -379,6 +415,13 @@ export function validateRecord(r) {
   if (r.verdict === "NOT_AVAILABLE" && !ccPending) throw new Error("copia_cifrada_unproven");
   const kvPending = r.not_covered.some(isCopiaKv);
   if (r.verdict === "NOT_AVAILABLE" && !kvPending) throw new Error("copia_kv_unproven");
+  // diario_d1 só sai de not_covered com a prova completa do diário num ensaio APROVADO; registros antigos (sem o campo
+  // diario) continuam válidos enquanto a lacuna estiver listada.
+  const ddPending = r.not_covered.some(isDiarioD1);
+  if (!ddPending && !(r.verdict === "APROVADO" && diarioProvado(r.diario) && r.rpo_critico_medido_s === r.diario.rpo_critico_medido_s)) throw new Error("diario_d1_unproven");
+  if (ddPending && r.rpo_critico_medido_s != null) throw new Error("diario_d1_rpo_sem_prova");
+  // Fora da sombra, um ensaio APROVADO precisa da prova do diário (registros antigos sem o campo diario: sombra implícita).
+  if (r.verdict === "APROVADO" && isObj(r.diario) && diarioExigido(r.diario) && !diarioAprovado(r.diario)) throw new Error("diario_ativo_sem_prova");
   if (r.verdict === "NOT_AVAILABLE") {
     if (r.rpo_hours !== null || r.rto_seconds !== null || typeof r.reason !== "string") throw new Error("not_available_with_values");
     return r;
