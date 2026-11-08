@@ -18,7 +18,8 @@ for (const [slug, block] of Object.entries(ov.offers)) {
 const cases = [];
 for (const slug of Object.keys(SUPPORT_PRODUCTS)) {
   const name = SUPPORT_PRODUCTS[slug].name;
-  cases.push([slug, `Quanto custa o ${name}?`, "price", (a) => a.includes(expectPrices[slug])]);
+  // Conteúdo Pronto: assinatura só com o interruptor completo aberto; sem ele (aqui, desconhecido) não está disponível e não leva preço.
+  cases.push([slug, `Quanto custa o ${name}?`, "price", (a) => (slug === "conteudo-pronto" ? (/não está disponível/.test(a) && !/R\$/.test(a)) : a.includes(expectPrices[slug]))]);
   cases.push([slug, "Posso pedir reembolso se não gostar?", "refund", (a) => a.includes(CUSTOMER_RULE_7D) && /devolv|devolu/.test(a) && /resposta conclusiva em até 5 dias/.test(a)]);
   cases.push([slug, "Como recebo o acesso depois de pagar?", "delivery", (a) => (slug === "conteudo-pronto" ? (/e-mail/.test(a) && /link (pessoal|privado)/.test(a)) : (a.includes("acesso imediato ao conteúdo integral") && a.includes("Hotmart (Minhas compras)") && !/link (pessoal|privado)|192 horas de espera/i.test(a))) && a.includes(CUSTOMER_RULE_7D)]);
   cases.push([slug, "O que vem no conteúdo?", "content", (a) => a.startsWith(name + ":")]);
@@ -30,6 +31,14 @@ for (const [slug, q, intent, ok] of cases) {
   else failures.push(`${slug} / ${q} -> ${JSON.stringify(r)}`);
 }
 
+// Conteúdo Pronto com o interruptor completo aberto: preço de tabela publicado.
+const cpOpen = answerSupportQuestion({ product: "conteudo-pronto", question: "Quanto custa?", salesOpen: true });
+if (!(cpOpen.answered && cpOpen.answer.includes(expectPrices["conteudo-pronto"]))) failures.push("conteudo-pronto price with full switch open");
+// Modo Hotmart: kit à venda pela Hotmart; Conteúdo Pronto continua indisponível.
+const kitHm = answerSupportQuestion({ product: "lucro-e-caixa", question: "Quanto custa?", salesOpen: false, hotmartOpen: true });
+if (!(kitHm.answer.includes("R$ 147,00") && /à venda/.test(kitHm.answer) && /Hotmart/.test(kitHm.answer))) failures.push("hotmart mode kit answer");
+const cpHm = answerSupportQuestion({ product: "conteudo-pronto", question: "Quanto custa?", salesOpen: false, hotmartOpen: true });
+if (/R\$|Hotmart/.test(cpHm.answer) || !/não está disponível/.test(cpHm.answer)) failures.push("hotmart mode keeps conteudo-pronto unavailable");
 // Product resolved from free text, as a WhatsApp customer would write it.
 const free = answerSupportQuestion({ question: "qual o valor do combo?" });
 if (!(free.product === "combo-ia-vendas" && free.answer.includes("R$ 157,00"))) failures.push("free-text product resolution");

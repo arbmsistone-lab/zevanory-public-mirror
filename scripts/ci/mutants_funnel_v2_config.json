@@ -39,7 +39,12 @@
    "K3 marcador confirmedEventWithoutOrder ignorado": "OWN_MARKERS sem confirmedEventWithoutOrder (restam paidWithoutConfirmedEvent, statusMismatch, extraOrdersSameSession)",
    "K4 marcador extraOrdersSameSession ignorado": "OWN_MARKERS sem extraOrdersSameSession (restam paidWithoutConfirmedEvent, statusMismatch, confirmedEventWithoutOrder)",
    "K5 zero parcial publicado como zero": "salesMetric deixa de publicar o zero PARTIAL como null",
-   "K6 marcadores não exigidos para completo": "combineSales declara completo sem exigir os quatro marcadores zerados"
+   "K6 marcadores não exigidos para completo": "combineSales declara completo sem exigir os quatro marcadores zerados",
+   "H1 modo Hotmart ignorado no estado das ofertas": "hotmartLockState deixa de tratar o modo Hotmart (interruptor completo fechado + hotmart-status aberto): os 5 kits aceitando voltam a p0_bypass",
+   "H2 Conteúdo Pronto aceitando não é P0 no modo Hotmart": "no modo Hotmart, oferta fora dos 5 kits (Conteúdo Pronto) aceitando pagamento deixa de levantar P0",
+   "H3 inventário aceita kit fora do ar no modo Hotmart": "inventário Hotmart aceita degraded_hotmart (kit sem aceitar pagamento) como prova",
+   "H4 painel diz vendas fechadas no modo Hotmart": "snapshot ignora o modo Hotmart no texto do checkoutMode (volta a dizer vendas fechadas)",
+   "H5 caminho de compra ignora o modo Hotmart": "snapshot avalia o caminho de compra sem hotmartOpen: /comprar/ levando à Hotmart vira divergência"
   },
   "mutants": {
    "F1 rótulo Hotmart no ledger próprio é contado": {
@@ -156,7 +161,13 @@
       "why": "5 fechadas + 1 aceitando com vendas fechadas cai em unverified; FU10.6–FU10.8 usam só fechadas"
      }
     ],
-    "secondary": []
+    "secondary": [
+     {
+      "test_pattern": "modo Hotmart: 5 kits aceitando",
+      "assertion_pattern": "[FU19.3]",
+      "justification": "com o modo Hotmart desconhecido (null) o ramo fechado é o mesmo do F11: os 5 kits aceitando deixam de ser p0_bypass; FU19.1/FU19.2 (modo Hotmart aberto) não passam por esse ramo"
+     }
+    ]
    },
    "F12 vendas fechadas esperam checkout": {
     "primary": [
@@ -212,7 +223,13 @@
       "why": "o caso P0 (p0_bypass) passa a proven=true; FU10.13 (seis fechadas) segue true"
      }
     ],
-    "secondary": []
+    "secondary": [
+     {
+      "test_pattern": "modo Hotmart: 5 kits aceitando",
+      "assertion_pattern": "[FU19.12]",
+      "justification": "o P0 do Conteúdo Pronto no modo Hotmart (p0_subscription_bypass) também passa a proven=true pela mesma linha mutada; FU19.11 (selling_hotmart) segue true"
+     }
+    ]
    },
    "F17 painel recomenda levar Comprar à Hotmart": {
     "primary": [
@@ -432,6 +449,56 @@
      }
     ],
     "broad_reason": "a regra 'completo exige os quatro marcadores zerados' é afirmada diretamente em 5 testes (FU04 e os 4 testes de marcador); todos falham na 1ª asserção de completude"
+   },
+   "H1 modo Hotmart ignorado no estado das ofertas": {
+    "primary": [
+     {
+      "test_pattern": "modo Hotmart: 5 kits aceitando",
+      "assertion_pattern": "[FU19.1]",
+      "why": "seis sondas com os 5 kits aceitando e modo Hotmart aberto caem no ramo fechado (p0_bypass) em vez de selling_hotmart"
+     }
+    ],
+    "secondary": []
+   },
+   "H2 Conteúdo Pronto aceitando não é P0 no modo Hotmart": {
+    "primary": [
+     {
+      "test_pattern": "modo Hotmart: 5 kits aceitando",
+      "assertion_pattern": "[FU19.4]",
+      "why": "com o Conteúdo Pronto aceitando, o estado vira selling_hotmart em vez de p0_subscription_bypass; FU19.1–FU19.3 não têm vazamento"
+     }
+    ],
+    "secondary": []
+   },
+   "H3 inventário aceita kit fora do ar no modo Hotmart": {
+    "primary": [
+     {
+      "test_pattern": "modo Hotmart: 5 kits aceitando",
+      "assertion_pattern": "[FU19.16]",
+      "why": "degraded_hotmart passa a proven=true; FU19.11–FU19.15 usam selling_hotmart, P0 ou buyflow"
+     }
+    ],
+    "secondary": []
+   },
+   "H4 painel diz vendas fechadas no modo Hotmart": {
+    "primary": [
+     {
+      "test_pattern": "modo Hotmart: 5 kits aceitando",
+      "assertion_pattern": "[FU19.18]",
+      "why": "checkoutMode volta a 'Vendas fechadas'; as asserções puras FU19.1–FU19.17 não usam o snapshot"
+     }
+    ],
+    "secondary": []
+   },
+   "H5 caminho de compra ignora o modo Hotmart": {
+    "primary": [
+     {
+      "test_pattern": "modo Hotmart: 5 kits aceitando",
+      "assertion_pattern": "[FU19.19]",
+      "why": "sem hotmartOpen o esperado vira closed e o foreign_checkout dos kits diverge; FU19.18 (texto) segue certo"
+     }
+    ],
+    "secondary": []
    }
   }
  },

@@ -36,7 +36,7 @@ CSS = "sales-overlay/site-chat.css"
 GUARD = "tests/site-chat-no-synthetic-traffic.test.mjs"
 POLICY = "data/site-chat-policy.json"
 SUITES = ["tests/site-chat.test.mjs", "tests/site-chat-widget.test.mjs", "tests/site-chat-no-synthetic-traffic.test.mjs", "tests/site-chat-eval.test.mjs"]
-BASELINE_TOTAL = 35  # R148: SC20 official product knowledge; SC19 privacy regression; all 56 existing mutants are preserved
+BASELINE_TOTAL = 36  # SC21 modo Hotmart (08/11); R148: SC20 official product knowledge; SC19 privacy regression; all 56 existing mutants are preserved
 DIRS = ["worker", "data", "tests", "sales-overlay", "sales-public", "scripts", ".github"]
 FILES = ["product.css", "wrangler.sales.toml", "wrangler.public-router.toml"]
 TIMEOUT = 300
@@ -110,6 +110,12 @@ M = {
     "D2 wrangler enables chat": ("wrangler.sales.toml", "[vars]\nZEVANORY_SALES_PUBLIC_RELEASE_SHA", "[vars]\nSITE_CHAT_ENABLED = \"true\"\nZEVANORY_SALES_PUBLIC_RELEASE_SHA"),
     "D3 generator injects widget": ("scripts/build_sales_public.py", "        path.write_text(html, encoding=\"utf-8\")\n    shutil.copy2(ROOT / \"legal.css\"", "        html = html.replace(\"</body>\", '<script src=\"/site-chat.js\" defer></script></body>', 1)\n        path.write_text(html, encoding=\"utf-8\")\n    shutil.copy2(ROOT / \"legal.css\""),
     "D4 sales worker defaults on": (SALES, 'export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"").toLowerCase()==="true";', 'export const siteChatEnabled=env=>String(env?.SITE_CHAT_ENABLED||"true").toLowerCase()==="true";'),
+    # modo Hotmart (5 kits pela Hotmart com o interruptor completo fechado; Conteúdo Pronto fechado)
+    "H1 hotmart mode ignored": (CHAT, "  const hotmartOnly = !salesOpen && (await hotmartOpenNow(deps));", "  const hotmartOnly = false;"),
+    "H2 hotmart status error = open": (CHAT, "  } catch { return false; }\n  finally { clearTimeout(timer); }\n}\n\n// ---------- handler HTTP", "  } catch { return true; }\n  finally { clearTimeout(timer); }\n}\n\n// ---------- handler HTTP"),
+    "H3 subscription sold in hotmart mode": (CHAT, '    if (hotmartOnly && slug === "conteudo-pronto") return { body: SUBSCRIPTION_CLOSED_ANSWER,', '    if (false) return { body: SUBSCRIPTION_CLOSED_ANSWER,'),
+    "H4 subscription price accepted in hotmart mode": (CHAT, '.filter((i) => !(hotmartOnly === true && i.slug === "conteudo-pronto"))', ".filter(() => true)"),
+    "H5 hotmart sentence accepted outside hotmart mode": (CHAT, "  if (hotmartOnly === true) for (const h of HOTMART_SENTENCES)", "  for (const h of HOTMART_SENTENCES)"),
     "D5 central worker defaults on": (CHAT, 'const enabledEnv = String(env.SITE_CHAT_ENABLED || "").toLowerCase() === "true";', 'const enabledEnv = String(env.SITE_CHAT_ENABLED || "true").toLowerCase() === "true";'),
 }
 

@@ -49,6 +49,7 @@ import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
+import { hotmartKitsOpen } from "./sales-lock-content.mjs";
 import { refreshSalesSummary } from "./sales-ledger.mjs";
 import { dbEconomySkip } from "./db-economy.mjs";
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
@@ -126,6 +127,11 @@ const wrapped = {
         sqlFactory:whatsappProofDatabase,
         salesOpen:async()=>{
           const st=await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status",{method:"GET"}),normalized,{sqlFactory:whatsappProofDatabase,worker,ctx});
+          return (await st?.json?.())?.open===true;
+        },
+        // Modo Hotmart: mesma leitura pública /api/sales/hotmart-status (sales:hotmart:v1; erro = fechado).
+        hotmartOpen:async()=>{
+          const st=await handleSalesControl(new Request("https://zevanory.api.br/api/sales/hotmart-status",{method:"GET"}),normalized,{sqlFactory:whatsappProofDatabase,worker,ctx});
           return (await st?.json?.())?.open===true;
         }
       });
@@ -246,6 +252,11 @@ const wrapped = {
         // Autoridade canônica de vendas (mesmo /api/sales/status público), consultada a cada resposta.
         salesOpen: async () => {
           const st = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status", { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
+          return (await st?.json?.())?.open === true;
+        },
+        // Modo Hotmart (5 kits pela Hotmart, interruptor completo fechado): /api/sales/hotmart-status, erro = fechado.
+        hotmartOpen: async () => {
+          const st = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/hotmart-status", { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
           return (await st?.json?.())?.open === true;
         }
       });
@@ -817,7 +828,9 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   // "Too many subrequests by single Worker invocation" (Workers Free: 50 per invocation).
   tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => { mark("delivery_watchdog", out?.ok !== false, out?.reason); console.info("paid_delivery_watchdog", JSON.stringify(out)); }).catch((error) => { mark("delivery_watchdog", false, error instanceof Error ? error.message : error); console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runSupportEvalIfDue(normalized).then((out) => console.info("support_eval", JSON.stringify(out))).catch((error) => console.error("support_eval_failed", error instanceof Error ? error.message : String(error))));
-  tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
+  // Nutrição: ofertas também no modo Hotmart (5 kits pela Hotmart, interruptor completo fechado; erro = fechado).
+  const nurtureHotmartOpen = !salesOpen && (await hotmartKitsOpen(normalized));
+  tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen, hotmartOpen: nurtureHotmartOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
   // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.

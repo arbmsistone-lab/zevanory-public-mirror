@@ -6,10 +6,11 @@
 // a regra dos 7 dias (customer_wording.rule_7d),
 // entrega imediata e integral para download na área de compras da Hotmart (DEC-06), confirmação imediata, plataforma
 // de cobrança avisada imediatamente, crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
-// traz chamada de compra (/comprar, /assinar, Hotmart); com vendas fechadas (interruptor do
+// traz chamada de compra (/comprar, /assinar, Hotmart), salvo o modo Hotmart dos 5 kits (abaixo); com vendas fechadas (interruptor do
 // proprietário, worker/sales-control.mjs) preço e conteúdo avisam que as vendas estão fechadas.
 import { CLOSED_LABEL, SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER } from "./politica-unica.mjs";
 import { readSalesSwitch } from "./sales-control.mjs";
+import { hotmartKit, hotmartKitsOpen } from "./sales-lock-content.mjs";
 
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
@@ -49,7 +50,12 @@ export function resolveProduct(text) {
   return null;
 }
 
-export function answerSupportQuestion({ product, question, salesOpen } = {}) {
+// Modo Hotmart (reabertura de 08/11): com o interruptor completo fechado e sales:hotmart:v1 aberto, os 5 kits estão à
+// venda pela Hotmart (a resposta diz isso e aponta a página do produto). A assinatura Conteúdo Pronto segue o
+// interruptor completo: sem ele aberto (fechado ou desconhecido) ela não está disponível e o preço não é oferecido.
+export const SUBSCRIPTION_UNAVAILABLE = `a assinatura não está disponível para novas contratações (${CLOSED_LABEL})`;
+export const hotmartSaleSentence = (slug) => `Está à venda: a compra é feita pela Hotmart, a partir da página ${SALES_ORIGIN}/${slug}.`;
+export function answerSupportQuestion({ product, question, salesOpen, hotmartOpen } = {}) {
   const q = String(question || "").slice(0, 500);
   const slug = resolveProduct(product) || resolveProduct(q);
   const intent = (INTENTS.find(([, re]) => re.test(q)) || [null])[0];
@@ -70,7 +76,14 @@ export function answerSupportQuestion({ product, question, salesOpen } = {}) {
     return { answered: false, intent, product: null, answer: "Sobre qual produto? IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas ou Negócio Completo.", handoff: false, needs_product: true };
   }
   const p = SUPPORT_PRODUCTS[slug];
+  if (slug === "conteudo-pronto" && salesOpen !== true) {
+    const cp = intent === "price" ? `${p.name}: no momento, ${SUBSCRIPTION_UNAVAILABLE}.` : `${p.name}: ${p.content} No momento, ${CLOSED_LABEL}.`;
+    return { answered: true, intent, product: slug, answer: cp, sources: [`${SALES_ORIGIN}/${slug}`], handoff: false, available: false };
+  }
   const base = intent === "price" ? `${p.name} custa ${brl(p.price_brl)} (preço de tabela).` : `${p.name}: ${p.content}`;
+  if (salesOpen !== true && hotmartOpen === true && hotmartKit(slug)) {
+    return { answered: true, intent, product: slug, answer: `${base} ${hotmartSaleSentence(slug)}`, sources: [`${SALES_ORIGIN}/${slug}`], handoff: false, channel: "hotmart" };
+  }
   // Fail-closed only when the caller knows the switch is closed (false); unknown leaves the fact as is.
   const answer = salesOpen === false ? `${base} No momento, ${CLOSED_LABEL}.` : base;
   return { answered: true, intent, product: slug, answer, sources: [`${SALES_ORIGIN}/${slug}`], handoff: false };
@@ -85,6 +98,7 @@ export async function handleSupportKnowledge(request, env = {}) {
     return new Response(JSON.stringify({ service: "zevanory-support-knowledge", products: Object.keys(SUPPORT_PRODUCTS), usage: "/api/support/knowledge?product=<slug>&q=<pergunta>" }), { status: 200, headers });
   }
   const salesOpen = (await readSalesSwitch(env).catch(() => null))?.enabled === true;
-  const result = answerSupportQuestion({ product: url.searchParams.get("product") || "", question, salesOpen });
+  const hotmartOpen = !salesOpen && (await hotmartKitsOpen(env));
+  const result = answerSupportQuestion({ product: url.searchParams.get("product") || "", question, salesOpen, hotmartOpen });
   return new Response(JSON.stringify(result), { status: 200, headers });
 }

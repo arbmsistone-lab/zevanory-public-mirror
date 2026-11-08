@@ -240,9 +240,13 @@ export function funnelMetrics({ funnel, sales, own, now = Date.now(), funnelAt =
 }
 
 // ---------- buy flow and Hotmart offers vs the owner switch ----------
-export const expectedBuyState = (salesOpen) => (salesOpen === true ? "checkout" : salesOpen === false ? "closed" : null);
-export function evaluateBuyFlow(records, salesOpen) {
-  const expected = expectedBuyState(salesOpen);
+// Modo Hotmart (reabertura de 08/11): interruptor completo fechado + /api/sales/hotmart-status aberto. Os 5 kits
+// vendem pela Hotmart: /comprar/<SKU> redireciona a /hotmart/<slug> (checkout da Hotmart, "foreign_checkout") e é o
+// estado esperado. A assinatura Conteúdo Pronto segue o interruptor completo. Modo Hotmart desconhecido = fechado.
+export const HOTMART_KIT_OFFERS = Object.freeze(["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"]);
+export const expectedBuyState = (salesOpen, hotmartOpen) => (salesOpen === false && hotmartOpen === true ? "foreign_checkout" : salesOpen === true ? "checkout" : salesOpen === false ? "closed" : null);
+export function evaluateBuyFlow(records, salesOpen, hotmartOpen) {
+  const expected = expectedBuyState(salesOpen, hotmartOpen);
   return (records || []).map((r) => ({ ...r, expected, ok: expected != null && r.state === expected }));
 }
 // One Hotmart offer probe. "closed" = Hotmart's own closed page (redirect to /error, e.g. errorMessage=049
@@ -257,12 +261,19 @@ export function classifyHotmartProbe(p) {
   if (p.http === 200) return p.offerMarker ? "accepting" : "inconclusive";
   return "error";
 }
-export function hotmartLockState(probes, salesOpen) {
+export function hotmartLockState(probes, salesOpen, hotmartOpen) {
   const list = (probes || []).map((p) => ({ slug: p.slug, state: classifyHotmartProbe(p), errorCode: p.errorCode || null }));
   const accepting = list.filter((p) => p.state === "accepting").map((p) => p.slug);
   const closed = list.filter((p) => p.state === "closed").map((p) => p.slug);
   const base = { total: list.length, accepting, closed, unverified: list.filter((p) => p.state === "error" || p.state === "inconclusive").map((p) => p.slug), offers: list };
   if (!list.length) return { ...base, state: "unknown", severity: null };
+  // Modo Hotmart: os 5 kits aceitando é o estado normal; qualquer outra oferta aceitando (Conteúdo Pronto) é P0.
+  if (salesOpen === false && hotmartOpen === true) {
+    const leaking = accepting.filter((slug) => !HOTMART_KIT_OFFERS.includes(slug));
+    if (leaking.length) return { ...base, leaking, state: "p0_subscription_bypass", severity: "P0" };
+    const kitsAccepting = HOTMART_KIT_OFFERS.filter((slug) => accepting.includes(slug));
+    return { ...base, leaking, state: kitsAccepting.length === HOTMART_KIT_OFFERS.length ? "selling_hotmart" : "degraded_hotmart", severity: null };
+  }
   if (salesOpen === false) {
     if (accepting.length) return { ...base, state: "p0_bypass", severity: "P0" };
     return { ...base, state: closed.length === list.length ? "closed" : "unverified", severity: null };

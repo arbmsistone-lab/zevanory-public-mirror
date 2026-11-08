@@ -100,7 +100,8 @@ jobs:
           node scripts/b0/p18-commercial.mjs --mode live --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
           code=${PIPESTATUS[0]}
           echo "::notice title=P18_COMMERCIAL::$(grep -E '^P18_COMMERCIAL ' "$RUNNER_TEMP/live.txt")"
-          grep -E '^FAIL ' "$RUNNER_TEMP/live.txt" | head -20 | while read -r l; do echo "::error title=P18_COMMERCIAL_FAIL::$l"; done
+          # Zero FAIL lines is the green case: grep exits 1 then, which must not fail the step (exit code comes from node).
+          { grep -E '^FAIL ' "$RUNNER_TEMP/live.txt" || true; } | head -20 | while read -r l; do echo "::error title=P18_COMMERCIAL_FAIL::$l"; done
           exit "$code"
       - name: Relatório
         if: ${{ always() }}

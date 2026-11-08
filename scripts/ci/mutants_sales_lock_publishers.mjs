@@ -2,7 +2,7 @@
 // Mutantes da trava de vendas nos publicadores de conteúdo (motor de aquisição, Short do YouTube, adaptadores
 // orgânicos). Cada mutante troca âncoras exatas (1 ocorrência cada, texto com EOL normalizado) numa CÓPIA
 // descartável da árvore (o checkout não é tocado), roda tests/sales-lock-publishers.test.mjs (TAP) e só conta
-// KILLED se: rc != 0, contagem igual à linha de base (6), falha de ASSERÇÃO e o teste esperado (rótulo declarado
+// KILLED se: rc != 0, contagem igual à linha de base (8), falha de ASSERÇÃO e o teste esperado (rótulo declarado
 // abaixo ANTES de rodar, pela regra que o mutante quebra) está entre os "not ok". Qualquer outra coisa é
 // SURVIVED/INCONCLUSIVE e o runner sai 1. Offline, sem segredos.
 import { spawnSync } from "node:child_process";
@@ -13,9 +13,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITE = "tests/sales-lock-publishers.test.mjs";
-const BASE_COUNT = 7;
+const BASE_COUNT = 8;
 const COPY = ["worker", "data", "scripts/channels", "assets/brand/export", "tests/helpers", SUITE];
 const ACQ = "worker/acquisition-engine.mjs", LOCK = "worker/sales-lock-content.mjs", YT = "scripts/channels/youtube-daily-short.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
+const H = "H: modo Hotmart", CROSS = "scripts/channels/short-crosspost.mjs";
 const M7 = "D7: Instagram e Facebook fechados", B_CLOSED = "B: trava fechada", B_DRAFT = "B: validateDraft fechada", B_READ = "B: leitura da trava", C = "C: Short fechado", D = "D': adaptador orgânico";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
@@ -40,6 +41,18 @@ const MUTANTS = [
   ["SLP19_meta_outbound_gate_removed", M7, [[REC, '  if (P04_META_CLOSED.has(String(event?.destination || ""))) throw new Error("p04_meta_closed");\n', ""]]],
   ["SLP20_meta_organic_gate_removed", M7, [[REC, ' && !P04_META_CLOSED.has(String(event?.destination || "")) && env.ORGANIC', " && env.ORGANIC"]]],
   ["SLP21_meta_support_bypass_reopened", M7, [[REC, 'if (P04_META_CLOSED.has(String(event?.destination || ""))) throw', 'if (P04_META_CLOSED.has(String(event?.destination || "")) && !supportEventAllowed(event)) throw']]],
+  // Modo Hotmart (reabertura de 08/11): 5 kits com preço e /hotmart/<slug>; falha de leitura = fechado; pausa vale.
+  ["SLP22_engine_ignores_hotmart_mode", H, [[ACQ, " const hotmartOpen=!salesOpen&&await hotmartKitsOpen(env);", " const hotmartOpen=false;"]]],
+  ["SLP23_hotmart_link_to_own_checkout", H, [[ACQ, '(hm?"hotmart/"+page:', '(hm?"comprar/"+entry.product.sku:']]],
+  ["SLP24_hotmart_price_not_required", H, [[ACQ, '  if(!String(draft?.text||"").includes("R$ "+kit.price))reasons.push("hotmart_price_missing");\n', ""]]],
+  ["SLP25_hotmart_filter_removed", H, [[ACQ, '  for(const v of hotmartLockViolations(String(draft?.text||"")+"\\n"+String(draft?.link||""),kit.sku))reasons.push("hotmart_"+v);\n', ""]]],
+  ["SLP26_hotmart_any_kit_link_allowed", H, [[LOCK, '"https://vendas\\\\.zevanory\\\\.api\\\\.br/hotmart/" + escRe(kit.slug)', '"https://vendas\\\\.zevanory\\\\.api\\\\.br/hotmart/[a-z-]+"']]],
+  ["SLP27_hotmart_read_fails_open", H, [[LOCK, "try { return (await readHotmartSwitch(env))?.open === true; } catch { return false; }", "try { return true; } catch { return false; }"]]],
+  ["SLP28_hotmart_opens_subscription", H, [[LOCK, "  if (!hotmartKit(skuOrSlug)) return false;\n", ""]]],
+  ["SLP29_hotmart_any_price_allowed", H, [[LOCK, '"R\\\\$\\\\s*" + kit.price + "(?:,00)?', '"R\\\\$\\\\s*\\\\d+" + "(?:,00)?']]],
+  ["SLP30_short_ignores_hotmart_mode", H, [[YT, "const kit = salesOpen !== true && hotmartOpen === true ? hotmartKit(entry.product.sku) : null;", "const kit = null;"]]],
+  ["SLP31_short_pause_unknown_publishes", H, [[YT, "  if (!kv?.get) return true;\n  try { return String", "  if (!kv?.get) return false;\n  try { return String"]]],
+  ["SLP32_short_pause_error_publishes", H, [[YT, '=== "1"; } catch { return true; }', '=== "1"; } catch { return false; }']]],
 ];
 
 const eol = (s) => s.replace(/\r\n/g, "\n");

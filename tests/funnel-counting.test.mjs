@@ -204,7 +204,7 @@ test("flags fixadas ao código: nenhum emissor de waitlist_click; captura de lea
 });
 
 // Runs the real snapshot main() against an in-memory KV and a closed-sales site; returns the snapshot.
-async function runSnapshot({ funnelSummary = null, ledgerSummary = null, salesOpen = false } = {}) {
+async function runSnapshot({ funnelSummary = null, ledgerSummary = null, salesOpen = false, hotmartOpen, buyHtml = "<h1>Vendas abrem em breve</h1>" } = {}) {
   const store = new Map();
   if (funnelSummary) store.set("zpc-funnel:v1:summary", JSON.stringify(funnelSummary));
   if (ledgerSummary) store.set("zpc:sales:v1:summary", JSON.stringify(ledgerSummary));
@@ -219,7 +219,8 @@ async function runSnapshot({ funnelSummary = null, ledgerSummary = null, salesOp
       return store.has(k) ? res(200, store.get(k)) : res(404, "");
     }
     if (u.includes("/api/sales/status")) return res(200, { open: salesOpen });
-    if (u.includes("/comprar/")) return res(200, "<h1>Vendas abrem em breve</h1>");
+    if (u.includes("/api/sales/hotmart-status")) return res(200, hotmartOpen === undefined ? {} : { open: hotmartOpen });
+    if (u.includes("/comprar/")) return res(200, buyHtml);
     return res(200, {});
   };
   console.log = () => {};
@@ -311,4 +312,37 @@ test("calendário único: Hotmart (dia UTC) na borda da janela torna o total PAR
   assert.equal(ok.conversions.visitorToSale.integrityClass, "COMPLETE", "[FU18.5] mesmo calendário dos dois lados");
   const withHot = funnelMetrics({ funnel: funnel(daily), sales: ledger({ [days[3]]: { approved: 1 } }), own: own({}), now, funnelAt: at, salesAt: at });
   assert.equal(withHot.conversions.visitorToSale.integrityClass, "PARTIAL", "[FU18.6]");
+});
+
+test("modo Hotmart: 5 kits aceitando com o interruptor completo fechado é o normal; Conteúdo Pronto aceitando é P0", async () => {
+  const accept = (slug) => ({ slug, http: 200, finalPath: "/X", offerMarker: true });
+  const shut = (slug) => ({ slug, http: 200, finalPath: "/error", errorCode: "049", offerMarker: false });
+  const KITS = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"];
+  const normal = [...KITS.map(accept), shut("conteudo-pronto")];
+  const leakProbes = [...KITS.map(accept), accept("conteudo-pronto")];
+  const lock = hotmartLockState(normal, false, true);
+  assert.equal(lock.state, "selling_hotmart", "[FU19.1]"); assert.equal(lock.severity, null, "[FU19.2]");
+  assert.equal(hotmartLockState(normal, false, null).state, "p0_bypass", "[FU19.3] modo Hotmart desconhecido = fechado: kits aceitando seguem P0");
+  const leak = hotmartLockState(leakProbes, false, true);
+  assert.equal(leak.state, "p0_subscription_bypass", "[FU19.4]"); assert.equal(leak.severity, "P0", "[FU19.5]");
+  assert.deepEqual(leak.leaking, ["conteudo-pronto"], "[FU19.6]");
+  const degraded = [...KITS.slice(1).map(accept), shut("ia-na-pratica"), shut("conteudo-pronto")];
+  assert.equal(hotmartLockState(degraded, false, true).state, "degraded_hotmart", "[FU19.7]");
+  // /comprar/<SKU> no modo Hotmart leva à compra pela Hotmart (foreign_checkout) — esperado; checkout próprio não.
+  assert.deepEqual(evaluateBuyFlow([{ state: "foreign_checkout" }], false, true).map((r) => r.ok), [true], "[FU19.8]");
+  assert.deepEqual(evaluateBuyFlow([{ state: "foreign_checkout" }], false, null).map((r) => r.ok), [false], "[FU19.9]");
+  assert.deepEqual(evaluateBuyFlow([{ state: "checkout" }], false, true).map((r) => r.ok), [false], "[FU19.10] checkout próprio no modo Hotmart diverge");
+  const inv = (type, ctx) => evaluateInventory({ processes: [{ id: "x", eligible: true, state: "autonomous", evidence: { type } }] }, ctx, now).processes[0];
+  assert.equal(inv("hotmart", { hotmart: normal, salesOpen: false, hotmartOpen: true }).proven, true, "[FU19.11]");
+  const p0 = inv("hotmart", { hotmart: leakProbes, salesOpen: false, hotmartOpen: true });
+  assert.equal(p0.proven, false, "[FU19.12]"); assert.equal(p0.failed, true, "[FU19.13]"); assert.match(p0.how, /^P0: Conteúdo Pronto/, "[FU19.14]");
+  assert.equal(inv("buyflow", { buyFlow: [{ state: "foreign_checkout" }], salesOpen: false, hotmartOpen: true }).proven, true, "[FU19.15]");
+  const deg = inv("hotmart", { hotmart: degraded, salesOpen: false, hotmartOpen: true });
+  assert.equal(deg.proven, false, "[FU19.16] kit fora do ar no modo Hotmart não é prova"); assert.equal(deg.failed, true, "[FU19.17]");
+  // Snapshot lê /api/sales/hotmart-status: modo Hotmart é o estado normal (sem P0, sem divergência do caminho de compra).
+  const snap = await runSnapshot({ hotmartOpen: true, buyHtml: '<a href="https://pay.hotmart.com/F107979716H?off=g9knd34r">Comprar</a>' });
+  assert.match(snap.operations.checkoutMode, /^Vendendo pela Hotmart \(5 kits abertos; interruptor completo fechado/, "[FU19.18]");
+  assert.ok(snap.operations.buyFlow.length > 0 && snap.operations.buyFlow.every((b) => b.state === "foreign_checkout" && b.expected === "foreign_checkout" && b.ok), "[FU19.19]");
+  assert.ok(!snap.recommendations.some((r) => /^P0|Caminho de compra diverge/.test(r.title)), "[FU19.20]");
+  assert.equal(snap.operations.hotmartSwitch, true, "[FU19.21]");
 });

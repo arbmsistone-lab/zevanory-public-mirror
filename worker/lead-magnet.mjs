@@ -187,7 +187,7 @@ function nurtureEmailText(step, { name, optOutUrl, interest = "ia" }) {
   const o = OFFERS[interest] || OFFERS.ia;
   if (step === 0) return { subject: "Seu checklist: 15 minutos por dia para organizar o negócio", text: `${hi}\n\nAqui está o seu checklist gratuito:\n${CHECKLIST_URL}\n\nComece hoje pelo bloco do caixa (5 minutos). Em 2 dias eu te mando dois hábitos simples que evitam perder dinheiro e clientes.` + sign };
   if (step === 1) return { subject: "Dois hábitos que evitam perder dinheiro e clientes", text: `${hi}\n\n1. Toda sexta, olhe três números: quanto entrou, quanto saiu e quanto sobrou. Se quiser fazer a conta de margem em segundos, use a calculadora gratuita:\n${SALES}/calculadora-margem-de-lucro?utm_source=email&utm_medium=nurture&utm_campaign=s1-${interest}\n\n2. Toda conversa com cliente termina com um próximo passo claro (responder a dúvida, mandar a proposta, combinar o retorno). Anote o que ficou combinado para não repetir mensagens.\n\nEsta mensagem é apenas uma dica prática; não contém oferta.` + sign };
-  if (step === 2) return { subject: `${o.name}: o próximo passo depois do checklist`, text: `${hi}\n\nPelo que você estava lendo no nosso site, o material que mais combina com o seu momento é o ${o.name} (R$ ${o.price}, pagamento único).\n\nEle serve para ${o.promise}.\n\nVocê recebe tudo por e-mail após a confirmação do pagamento, em ${DELIVERY_72H}. Se não for para você, pode desistir em ${CUSTOMER_RULE_7D}, sem justificativa e com devolução integral.\n\nVer o que vem dentro:\n${track(o.slug, 2, interest)}\n\nSe preferir comparar todos os materiais: ${SALES}/solucoes?utm_source=email&utm_medium=nurture&utm_campaign=s2-${interest}` + sign };
+  if (step === 2) return { subject: `${o.name}: o próximo passo depois do checklist`, text: `${hi}\n\nPelo que você estava lendo no nosso site, o material que mais combina com o seu momento é o ${o.name} (R$ ${o.price}, pagamento único).\n\nEle serve para ${o.promise}.\n\nEntrega: ${DELIVERY_72H}. Se não for para você, pode desistir em ${CUSTOMER_RULE_7D}, sem justificativa e com devolução integral.\n\nVer o que vem dentro:\n${track(o.slug, 2, interest)}\n\nSe preferir comparar todos os materiais: ${SALES}/solucoes?utm_source=email&utm_medium=nurture&utm_campaign=s2-${interest}` + sign };
   if (step === 3) return { subject: "As dúvidas mais comuns antes de decidir", text: `${hi}\n\nAntes de comprar, quase todo mundo pergunta:\n\n• "Preciso entender de tecnologia?" Não. Tudo vem com o passo a passo no arquivo "Comece aqui".\n• "Quanto tempo leva?" Dá para começar no mesmo dia, seguindo o arquivo "Comece aqui". Depois, a rotina é curta e semanal.\n• "Substitui contador ou consultor?" Não. É um material prático de gestão do dia a dia.\n• "E se eu não gostar?" Você pode desistir em ${CUSTOMER_RULE_7D}, com devolução integral.\n\nSe alguma dúvida ficou, é só responder este e-mail.\n\n${o.name}: ${track(o.slug, 3, interest)}` + sign };
   return { subject: "Último e-mail desta sequência", text: `${hi}\n\nEste é o último e-mail da sequência do checklist. Depois dele, não envio mais nada sobre isso.\n\nSe você quiser resolver tudo de uma vez (IA, vendas e caixa), o Negócio Completo reúne os três materiais e mais um plano de 30 dias, por R$ 247 (separados custariam R$ 341). Arrependimento: ${CUSTOMER_RULE_7D}.\n${track("negocio-completo", 4, interest)}\n\nSe agora não é o momento, tudo bem. O checklist continua sendo seu:\n${CHECKLIST_URL}` + sign };
 }
@@ -240,7 +240,17 @@ async function confirm(env, sql, token) {
 }
 
 const MIN_DAYS_BEFORE = { 1: 2, 2: 5, 3: 3, 4: 4 };
-export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now = Date.now() } = {}) {
+// Ofertas (passos 2 a 4): só com compra possível. Interruptor completo (salesOpen) OU modo Hotmart (hotmartOpen,
+// sales:hotmart:v1): todas as ofertas da sequência (OFFERS e o Negócio Completo do passo 4) são kits vendidos pela Hotmart.
+// Retido pela trava de vendas, o lead NÃO é descartado: espera a reabertura (o limite do consentimento e a retenção
+// LGPD de runLeadRetention, inclusive o teto absoluto INACTIVE_RETENTION_DAYS, continuam valendo; descadastro sai na hora).
+// Os 5 kits do modo Hotmart (mesma lista de worker/sales-lock-content.mjs HOTMART_KITS; este módulo fica sem a importação
+// porque roda isolado nos gates do P09). Conteúdo Pronto nunca é oferta da sequência.
+const HOTMART_KIT_SLUGS = Object.freeze(["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"]);
+export const NURTURE_OFFER_SLUGS = Object.freeze([...new Set([...Object.values(OFFERS).map((o) => o.slug), "negocio-completo"])]);
+export async function runLeadNurture(env, { sqlFactory, salesOpen: fullSwitchOpen = false, hotmartOpen = false, now = Date.now() } = {}) {
+  // salesOpen (aqui) = compra possível para as ofertas da sequência: interruptor completo OU modo Hotmart dos 5 kits.
+  const salesOpen = fullSwitchOpen === true || (hotmartOpen === true && NURTURE_OFFER_SLUGS.every((slug) => HOTMART_KIT_SLUGS.includes(slug)));
   if (!env.DATABASE_URL || !sqlFactory) return { ok: false, reason: "lead_nurture_unconfigured" };
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureLeadSchema(sql);
@@ -258,8 +268,8 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
     const cap = 1 + (CONSENT_FOLLOWUPS[lead.consent_version] ?? 0);
     if (step >= cap) { await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]); out.capped = (out.capped || 0) + 1; continue; }
     if (step >= 2 && !salesOpen) {
-      // Offers only go out while customers can actually buy; give up after 30 days.
-      if (since > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
+      // Offers only go out while customers can actually buy. A lead held by the sales lock is kept (no 30-day
+      // discard): it resumes at the same step when sales reopen (full switch or Hotmart mode).
       out.held += 1; continue;
     }
     if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;

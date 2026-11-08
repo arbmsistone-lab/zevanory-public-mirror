@@ -56,7 +56,12 @@
   "D2 wrangler enables chat": "wrangler.sales.toml liga o chat em [vars]",
   "D3 generator injects widget": "o gerador das páginas injeta o widget no HTML estático",
   "D4 sales worker defaults on": "Worker de vendas liga o chat quando a variável falta",
-  "D5 central worker defaults on": "Worker central liga o chat quando a variável falta"
+  "D5 central worker defaults on": "Worker central liga o chat quando a variável falta",
+  "H1 hotmart mode ignored": "handleSiteChat ignora o modo Hotmart (hotmartOnly sempre false): kit responde vendas fechadas",
+  "H2 hotmart status error = open": "erro/timeout na leitura do modo Hotmart passa a abrir o modo Hotmart",
+  "H3 subscription sold in hotmart mode": "no modo Hotmart a pergunta de preço do Conteúdo Pronto deixa de receber a resposta de assinatura fechada",
+  "H4 subscription price accepted in hotmart mode": "o validador aceita o preço da assinatura (R$ 197) no modo Hotmart",
+  "H5 hotmart sentence accepted outside hotmart mode": "a frase oficial da Hotmart passa a ser mascarada mesmo fora do modo Hotmart"
  },
  "mutants": {
   "K1 env switch ignored": {
@@ -215,8 +220,14 @@
      "test_pattern": "SE02",
      "assertion_pattern": "[SE02.1]",
      "justification": "os casos críticos closed_price exigem a frase exata"
+    },
+    {
+     "test_pattern": "SC21",
+     "assertion_pattern": "[SC21.4]",
+     "justification": "SC21 confere que erro/timeout do modo Hotmart dá a frase exata de preço fechado; sem o ramo fechado o preço do kit é respondido"
     }
-   ]
+   ],
+   "broad_reason": "o ramo de preço fechado é a única saída para pergunta de preço com vendas fechadas: SC04/SC05/SC06 (primárias), SE02 (avaliação P10) e SC21 (falha do modo Hotmart cai no mesmo ramo) dependem dele"
   },
   "P4 stale catalog trusted": {
    "primary": [
@@ -320,7 +331,13 @@
      "why": "checkout sem esquema reprovado"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "SC21",
+     "assertion_pattern": "[SC21.6]",
+     "justification": "SC21 confere que a frase da Hotmart é checkout fora do modo Hotmart; sem a checagem de checkout ela passa"
+    }
+   ]
   },
   "C2 ambiguous sales status = open": {
    "primary": [
@@ -907,6 +924,56 @@
      "test_pattern": "SG04",
      "assertion_pattern": "[SG04.1]",
      "why": "varredura acusa o padrão ligado no código"
+    }
+   ],
+   "secondary": []
+  },
+  "H1 hotmart mode ignored": {
+   "primary": [
+    {
+     "test_pattern": "SC21",
+     "assertion_pattern": "[SC21.1]",
+     "why": "sem o modo Hotmart o preço do kit cai na resposta fechada (CLOSED_PRICE_ANSWER)"
+    }
+   ],
+   "secondary": []
+  },
+  "H2 hotmart status error = open": {
+   "primary": [
+    {
+     "test_pattern": "SC21",
+     "assertion_pattern": "[SC21.4]",
+     "why": "leitura com exceção abre o modo Hotmart e o kit responde com preço"
+    }
+   ],
+   "secondary": []
+  },
+  "H3 subscription sold in hotmart mode": {
+   "primary": [
+    {
+     "test_pattern": "SC21",
+     "assertion_pattern": "[SC21.3]",
+     "why": "o Conteúdo Pronto recebe o preço de tabela (barrado pelo guarda) em vez da resposta de assinatura fechada"
+    }
+   ],
+   "secondary": []
+  },
+  "H4 subscription price accepted in hotmart mode": {
+   "primary": [
+    {
+     "test_pattern": "SC21",
+     "assertion_pattern": "[SC21.5]",
+     "why": "R$ 197 volta ao conjunto de preços aceitos no modo Hotmart"
+    }
+   ],
+   "secondary": []
+  },
+  "H5 hotmart sentence accepted outside hotmart mode": {
+   "primary": [
+    {
+     "test_pattern": "SC21",
+     "assertion_pattern": "[SC21.6]",
+     "why": "a frase da Hotmart deixa de ser checkout fora do modo Hotmart"
     }
    ],
    "secondary": []
