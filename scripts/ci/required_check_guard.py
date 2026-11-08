@@ -20,8 +20,9 @@ DADO (lista de arquivos e YAML lidos pela API, parseados com BaseLoader, nunca e
   auditoria"; docs/governanca/merge-autonomo.md):
     - caminho RESERVADO ao proprietário (ops/owner-reserved-paths.json, lido da BASE: gasto, fiscal/jurídico, credenciais,
       marcos irreversíveis, os próprios guardas e a lista) também é BRANDO e só owner-approved:<12 hex> libera;
-    - sem caminho reservado, o BRANDO também é liberado por autonomo-auditado:<12 hex do head> aplicado por login em
-      OWNERS + comentário de login em OWNERS com a linha exata "CONTRA-AUDITORIA: PASS <SHA completo do head>" e nenhum
+    - caminho de PROTECTED fora da allowlist 'rotina_autonoma' da mesma lista também só é liberado por owner-approved;
+    - sem caminho reservado e com todo protegido na rotina, o BRANDO também é liberado por autonomo-auditado:<12 hex do
+      head> aplicado por login em OWNERS + comentário de login em OWNERS com a linha exata "CONTRA-AUDITORIA: PASS <SHA completo do head>" e nenhum
       "CONTRA-AUDITORIA: FAIL <mesmo SHA>". Lista ausente/inválida -> entrada inválida (rc 2).
 
 Uso: required_check_guard.py --files files.json --head-workflows DIR --head-sha SHA --labels labels.json
@@ -109,6 +110,25 @@ def carregar_reservados(caminho):
         if not any(rx.match(c) for _, _, rx in regras):
             raise ValueError(f'lista de reservados não reserva {c}')
     return regras
+
+
+def carregar_rotina(caminho):
+    """Allowlist 'rotina_autonoma': ÚNICOS protegidos que autonomo-auditado pode liberar. [(glob, regex)]; ValueError se
+    inválida ou se cobrir o próprio guarda, a lista ou qualquer coisa em .github/ (fail-closed)."""
+    d = json.loads(pathlib.Path(caminho).read_text())
+    r = d.get('rotina_autonoma') if isinstance(d, dict) else None
+    gl = r.get('globs') if isinstance(r, dict) else None
+    if not isinstance(gl, list) or not gl or not all(isinstance(g, str) and g.strip() == g and g for g in gl):
+        raise ValueError('lista de reservados: rotina_autonoma sem globs válidos')
+    regras = [(g, glob_rx(g)) for g in gl]
+    for c in RESERVED_SELF + ('.github/workflows/x.yml', '.github/CODEOWNERS', '.github/actions/a/action.yml'):
+        if any(rx.match(c) for _, rx in regras):
+            raise ValueError(f'rotina_autonoma não pode cobrir {c}')
+    return regras
+
+
+def rotineiro(caminho, rotina):
+    return any(rx.match(caminho) for _, rx in rotina)
 
 
 def reservado(caminho, regras):
@@ -268,7 +288,7 @@ def contra_auditoria(head_sha, comentarios):
     return True, passa
 
 
-def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None, comentarios=(), reservados=None):
+def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None, comentarios=(), reservados=None, rotina=()):
     duro, brando, reserv = [], [], {}
     if not reservados:
         duro.append('LISTA_DE_RESERVADOS_AUSENTE (ops/owner-reserved-paths.json)')
@@ -303,8 +323,11 @@ def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None, comenta
         duro += analisar_workflow(arquivo, texto)
     ok_dono, motivo = aprovado(head_sha or '', labels, eventos) if brando else (False, 'não necessário')
     ok_auto, motivo_auto = False, 'não necessário'
+    fora_rotina = [c for c in brando if c not in reserv and protegido(c) and not rotineiro(c, rotina or ())]
     if brando and reserv:
         motivo_auto = f'caminho reservado ao proprietário alterado ({len(reserv)}): só {LABEL_PREFIX} libera'
+    elif brando and fora_rotina:
+        motivo_auto = f'caminho protegido fora de rotina_autonoma ({len(fora_rotina)}): só {LABEL_PREFIX} libera'
     elif brando:
         ok_auto, motivo_auto = aprovado(head_sha or '', labels, eventos, AUTO_PREFIX)
         if ok_auto:
@@ -312,11 +335,11 @@ def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None, comenta
     passou = not duro and (not brando or ok_dono or ok_auto)
     return {'resultado': 'PASS' if passou else 'FAIL', 'head_sha': head_sha,
             'violacoes_duras': duro, 'caminhos_protegidos_alterados': brando,
-            'caminhos_reservados_alterados': reserv,
+            'caminhos_reservados_alterados': reserv, 'protegidos_fora_da_rotina': fora_rotina,
             'aprovacao_do_proprietario': {'valida': ok_dono, 'motivo': motivo,
                                           'rotulo_exigido': LABEL_PREFIX + (head_sha or '')[:12] if brando else None},
             'aprovacao_autonoma': {'valida': ok_auto, 'motivo': motivo_auto,
-                                   'rotulo': AUTO_PREFIX + (head_sha or '')[:12] if brando and not reserv else None}}
+                                   'rotulo': AUTO_PREFIX + (head_sha or '')[:12] if brando and not reserv and not fora_rotina else None}}
 
 
 def main(argv=None):
@@ -328,6 +351,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         reservados = carregar_reservados(a.reserved)
+        rotina = carregar_rotina(a.reserved)
         comentarios = achatar(json.load(open(a.comments))) if a.comments else []
         arquivos = achatar(json.load(open(a.files)))
         labels = [l['name'] if isinstance(l, dict) else str(l) for l in achatar(json.load(open(a.labels)))]
@@ -336,7 +360,7 @@ def main(argv=None):
                    if f.is_file()}
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(json.dumps({'resultado': 'FAIL', 'erro': f'entrada inválida: {e}'}, ensure_ascii=False)); return 2
-    r = avaliar(arquivos, head_wf, a.head_sha, labels, eventos, a.expected_count, comentarios, reservados)
+    r = avaliar(arquivos, head_wf, a.head_sha, labels, eventos, a.expected_count, comentarios, reservados, rotina)
     print(json.dumps(r, ensure_ascii=False, indent=1))
     return 0 if r['resultado'] == 'PASS' else 1
 

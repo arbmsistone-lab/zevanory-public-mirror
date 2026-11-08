@@ -51,7 +51,8 @@ MUTANTES = {
                                  {T + 'T13_filtro_de_caminho_ou_gatilho_removido_falha': PASS_FAIL}),
     'M11_permite_remover_gatilho': ("if ev not in g:", "if False:",
                                     {T + 'T13_filtro_de_caminho_ou_gatilho_removido_falha': r'GATILHO_OBRIGATORIO_REMOVIDO ausente|' + PASS_FAIL}),
-    'M12_github_desprotegido': ("r'^\\.github/',", "", {T + 'T07_scripts_e_politicas_dos_checks_sao_protegidos': PASS_FAIL}),
+    # .github/** também é reservado (segue brando): o espelho PROTECTED/CODEOWNERS (T22) é quem mata
+    'M12_github_desprotegido': ("r'^\\.github/',", "", {T + 'T22_codeowners_espelha_caminhos_protegidos': r'False is not true'}),
     'M13_scripts_obrigatorios_desprotegidos': ("+ [re.compile('^' + re.escape(s) + '$') for s in REQUIRED_SCRIPTS]", "",
                                                # também reservados (seguem brandos): o espelho PROTECTED/CODEOWNERS (T22) é quem mata
                                                {T + 'T22_codeowners_espelha_caminhos_protegidos': r'False is not true'}),
@@ -86,6 +87,15 @@ MUTANTES = {
                                    {T + 'T30_lista_de_reservados_e_reservada_e_fail_closed': r'ValueError not raised'}),
     'M28_lista_ausente_tolerada': ("duro.append('LISTA_DE_RESERVADOS_AUSENTE (ops/owner-reserved-paths.json)')", "pass",
                                    {T + 'T30_lista_de_reservados_e_reservada_e_fail_closed': PASS_FAIL + '|LISTA_DE_RESERVADOS_AUSENTE ausente'}),
+    # NC-1 da contra-auditoria: autonomo-auditado só libera protegidos da allowlist rotina_autonoma
+    'M29_protegido_fora_da_rotina_livre': ("if c not in reserv and protegido(c) and not rotineiro(c, rotina or ())]",
+                                           "if False]",
+                                           {T + 'T35_autonomo_so_libera_protegido_da_allowlist_de_rotina': PASS_FAIL}),
+    'M30_rotina_cobre_qualquer_coisa': ("for c in RESERVED_SELF + ('.github/workflows/x.yml', '.github/CODEOWNERS', '.github/actions/a/action.yml'):",
+                                        "for c in ():",
+                                        {T + 'T35_autonomo_so_libera_protegido_da_allowlist_de_rotina': r'ValueError not raised'}),
+    'M31_rotina_vazia_aceita': ("raise ValueError('lista de reservados: rotina_autonoma sem globs válidos')", "return []",
+                                {T + 'T35_autonomo_so_libera_protegido_da_allowlist_de_rotina': r'ValueError not raised'}),
 }
 
 # mutante -> {(teste, tipo da exceção)} aceitos como morte causal mesmo sem ser asserção. VAZIA de propósito: nenhum caso

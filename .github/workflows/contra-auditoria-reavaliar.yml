@@ -1,0 +1,57 @@
+name: contra-auditoria-reavaliar
+
+# Merge autônomo (decisão do proprietário 08/11/2026 18:12, docs/governanca/merge-autonomo.md): um comentário de PR que
+# cria, edita ou apaga um registro "CONTRA-AUDITORIA:" re-executa a última execução do guarda
+# (required-check-guard.yml) no head atual do PR. O guarda relê rótulos, eventos e comentários pela API, então um
+# "CONTRA-AUDITORIA: FAIL <SHA>" posterior, ou a edição/remoção do PASS, retira o verde de
+# "required-check-guard / protected-paths". issue_comment roda a definição da branch padrão; sem checkout, sem segredos.
+# Evento do comentário só via env (nunca interpolado em run:).
+on:
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  actions: write
+  checks: read
+  pull-requests: read
+
+concurrency:
+  group: contra-auditoria-reavaliar-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  reavaliar:
+    name: contra-auditoria / reavaliar-guarda
+    if: ${{ github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Re-executar o guarda no head do PR quando o registro de contra-auditoria muda
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          ACAO: ${{ github.event.action }}
+          CORPO: ${{ github.event.comment.body }}
+          ANTES: ${{ github.event.changes.body.from }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s\n%s\n' "$CORPO" "$ANTES" | grep -q 'CONTRA-AUDITORIA'; then
+            echo "comentário ($ACAO) sem registro de contra-auditoria: nada a reavaliar"; exit 0
+          fi
+          head=$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha')
+          for i in $(seq 1 30); do
+            # o check do guarda fica no head do PR; o id da execução vem do details_url (.../actions/runs/<id>/job/...)
+            run=$(gh api -X GET "repos/$REPO/commits/$head/check-runs" -f check_name="required-check-guard / protected-paths" \
+              -f per_page=1 --jq '.check_runs[0] | "\((.details_url // "") | capture("/actions/runs/(?<id>[0-9]+)/").id // "") \(.status)"')
+            id=${run%% *}; st=${run##* }
+            if [ -z "$id" ] || [ "$id" = "null" ]; then
+              echo "::error title=GUARDA_SEM_EXECUCAO::nenhuma execução do guarda para $head"; exit 1
+            fi
+            if [ "$st" = "completed" ]; then
+              gh api -X POST "repos/$REPO/actions/runs/$id/rerun" >/dev/null
+              echo "guarda re-executado (run $id, head $head, comentário $ACAO)"; exit 0
+            fi
+            sleep 15
+          done
+          echo "::error title=GUARDA_OCUPADO::execução $id do guarda não terminou a tempo"; exit 1

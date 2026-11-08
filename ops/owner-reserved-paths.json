@@ -1,6 +1,6 @@
 {
   "schema": "owner-reserved-paths/v1",
-  "decisao": "Airton Renan, 08/11/2026 18:12: \"APROVO MERGE AUTÔNOMO e tudo mande para contra auditoria\". PR que altere QUALQUER caminho abaixo só é liberado pelo rótulo owner-approved:<12 hex do head SHA> aplicado por login em OWNERS. Fora desta lista, caminho protegido pode ser liberado por autonomo-auditado:<12 hex> + comentário de dono com 'CONTRA-AUDITORIA: PASS <SHA completo do head>'. Lida pelo guarda a partir da BASE (scripts/ci/required_check_guard.py); este arquivo também é reservado. Globs: '**' casa qualquer trecho (inclusive '/'), '*' e '?' não atravessam '/'. Documentação: docs/governanca/merge-autonomo.md.",
+  "decisao": "Airton Renan, 08/11/2026 18:12: \"APROVO MERGE AUTÔNOMO e tudo mande para contra auditoria\". Regra (fail-closed): PR que altere QUALQUER caminho de 'classes' só é liberado pelo rótulo owner-approved:<12 hex do head SHA> aplicado por login em OWNERS. Caminho da lista protegida do guarda (PROTECTED) que NÃO casar com 'rotina_autonoma' também continua exigindo owner-approved. autonomo-auditado:<12 hex> + comentário de dono 'CONTRA-AUDITORIA: PASS <SHA completo do head>' só libera protegidos que estão em 'rotina_autonoma' e fora de 'classes'. Lida pelo guarda a partir da BASE (scripts/ci/required_check_guard.py); este arquivo também é reservado. Globs: '**' casa qualquer trecho (inclusive '/'), '*' e '?' não atravessam '/'. Globs sem arquivo hoje são intencionais para arquivos futuros (ex.: *nfse*). Documentação: docs/governanca/merge-autonomo.md.",
   "classes": {
     "gasto": {
       "descricao": "Gastar dinheiro: planos pagos, orçamento de anúncios, limites de custo zero.",
@@ -28,30 +28,59 @@
         "data/p23/fiscal-process.json",
         "worker/fiscal-process.mjs",
         "**/*nfse*",
-        "**/*nfs-e*"
+        "**/*nfse*/**",
+        "**/*nfs-e*",
+        "worker/politica-unica.mjs",
+        "data/politica-unica.json",
+        "worker/refund-flow.mjs",
+        "worker/refund-provider-claims.mjs",
+        "worker/asaas-pix-refund-auth.mjs",
+        "db/migrations/*refund*",
+        "scripts/ci/mutants_p23_legal*"
       ]
     },
     "credenciais": {
-      "descricao": "Credenciais: criar/rotacionar tokens, segredos, OAuth e o interruptor de troca de token.",
+      "descricao": "Credenciais: criar/rotacionar tokens, segredos, OAuth e o interruptor de troca de token. Todo workflow alcança secrets.*, por isso .github/** inteiro é reservado.",
       "globs": [
+        ".github/**",
         "ops/token-cutover.json",
         "scripts/ci/p21_token_cutover.py",
-        ".github/workflows/*secret*",
-        ".github/workflows/*token*",
-        ".github/workflows/*oauth*",
-        ".github/workflows/*credential*",
-        ".github/workflows/*-key-*",
-        ".github/workflows/voice-gemini-production-provision.yml",
         "scripts/deploy/worker_secret_rotate.py",
         "scripts/deploy/credential_inventory.py",
         "scripts/channels/build-credentials-json.mjs",
         "worker/owner-oauth.mjs",
         "worker/operator-credential.mjs",
-        "db/migrations/*oauth*"
+        "db/migrations/*oauth*",
+        "scripts/ci/cloudflare-build.sh",
+        "scripts/ci/cloudflare-post-deploy-verify.sh",
+        "scripts/ci/secret_scan.py",
+        "scripts/ci/credential_separation_gate.py",
+        "scripts/ci/credential_identity_readback.py",
+        "scripts/ci/operator_token_gate.py",
+        "scripts/ci/operator-token-github-presence.sh",
+        "scripts/ci/production-secret-names.mjs",
+        "scripts/ci/production-worker-state.sh",
+        "scripts/ci/p21_credential_scope.py",
+        "scripts/ci/control_edge_hmac_probe.mjs",
+        "scripts/ci/no_forged_production_input.py",
+        "scripts/ci/no_forged_production_input_allow.json",
+        "scripts/ci/materialize_sales_configs.py",
+        "scripts/ci/live_lock_check.py",
+        "scripts/ci/verify-founder-and-products.sh",
+        "scripts/ci/t1_verdict.py",
+        "scripts/ci/mutants_credential_separation*",
+        "scripts/ci/mutants_operator_token*",
+        "scripts/ci/mutants_no_forged_production_input*",
+        "scripts/ci/mutants_resend_receiving_key*",
+        "scripts/ci/mutants_public_router*",
+        "scripts/ci/mutants_t1_write_scan*",
+        "tests/ci/credential-separation-gate.test.mjs",
+        "tests/ci/operator-token-*",
+        "tests/ci/production-worker-state.test.mjs"
       ]
     },
     "marcos_irreversiveis": {
-      "descricao": "Marcos irreversíveis: abrir nível de venda / interruptor de vendas, preços, lançamento de produto novo (P-3).",
+      "descricao": "Marcos irreversíveis: abrir nível de venda / interruptor de vendas, preços, lançamento de produto novo (P-3). Inclui o escopo/trava comercial, o guarda de checkout, a expiração de link de pagamento e o razão de vendas (contabilidade).",
       "globs": [
         ".github/workflows/zevanory-open-sales.yml",
         ".github/workflows/zevanory-close-sales.yml",
@@ -60,7 +89,17 @@
         "worker/sales-control.mjs",
         "data/products.json",
         "worker/sales-public-worker.mjs",
-        "data/p18-commercial-allowlist.json"
+        "data/p18-commercial-allowlist.json",
+        "worker/nc015-sales-scope.mjs",
+        "worker/commercial-checkout-guard.mjs",
+        "worker/payment-link-expiry.mjs",
+        "worker/sales-ledger.mjs",
+        "worker/sales-lock-content.mjs",
+        "db/migrations/*checkout*",
+        "scripts/ci/mutants_p18_commercial*",
+        "scripts/ci/mutants_sales_lock_publishers*",
+        "scripts/ci/mutants_mp_webhook*",
+        "scripts/ci/sales_promise_consistency.py"
       ]
     },
     "guardas_de_governanca": {
@@ -95,5 +134,16 @@
         "docs/governanca/merge-autonomo.md"
       ]
     }
+  },
+  "rotina_autonoma": {
+    "descricao": "ÚNICOS caminhos da lista protegida do guarda que autonomo-auditado pode liberar (se não casarem com 'classes', que sempre vencem). Todo o resto de PROTECTED exige owner-approved.",
+    "globs": [
+      "scripts/ci/mutants_*.py",
+      "scripts/ci/mutants_*.json",
+      "scripts/ci/mutants_*.mjs",
+      "scripts/ci/test_mutants_conteudo_pronto_classifier.py",
+      "scripts/ci/*.test.mjs",
+      "tests/ci/**"
+    ]
   }
 }

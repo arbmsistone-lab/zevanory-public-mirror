@@ -21,7 +21,8 @@ OUTRO = 'ffffffffffff0718293a4b5c6d7e8f9012345678'
 OWNER = 'arbmsistone-lab'
 RESERVADOS_ARQ = REPO / 'ops/owner-reserved-paths.json'
 RESERVADOS = G.carregar_reservados(RESERVADOS_ARQ)
-ROTINA = ('.github/workflows/brand-kit.yml', 'scripts/ci/mutants_p18.py', 'tests/ci/p16-target-lifecycle.test.mjs')
+ROTINA_RX = G.carregar_rotina(RESERVADOS_ARQ)
+ROTINA = ('scripts/ci/mutants_p18.py', 'scripts/ci/mutants_p03_pages_allow.json', 'tests/ci/p16-target-lifecycle.test.mjs')
 
 
 def base(nome):
@@ -49,8 +50,9 @@ def auditoria(sha=SHA, autor=OWNER, veredito='PASS'):
     return {'user': {'login': autor}, 'body': f'Contra-auditoria independente.\nCONTRA-AUDITORIA: {veredito} {sha}\nfim'}
 
 
-def rodar(arquivos, head=None, labels=(), eventos=(), sha=SHA, esperado=None, comentarios=(), reservados=RESERVADOS):
-    return G.avaliar(arquivos, head or {}, sha, list(labels), list(eventos), esperado, list(comentarios), reservados)
+def rodar(arquivos, head=None, labels=(), eventos=(), sha=SHA, esperado=None, comentarios=(), reservados=RESERVADOS,
+          rotina=ROTINA_RX):
+    return G.avaliar(arquivos, head or {}, sha, list(labels), list(eventos), esperado, list(comentarios), reservados, rotina)
 
 
 def novo_wf(job_name, extra=''):
@@ -231,7 +233,7 @@ class Guarda(unittest.TestCase):
     def test_T24_rotina_com_rotulo_autonomo_e_auditoria_do_sha_exato_passa(self):
         l, e = autonomo()
         for c in ROTINA:
-            self.assertEqual(G.reservado(c, RESERVADOS), [], c)
+            self.assertEqual(G.reservado(c, RESERVADOS), [], c); self.assertTrue(G.protegido(c) and G.rotineiro(c, ROTINA_RX), c)
             r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
             self.ok(r); self.assertTrue(r['aprovacao_autonoma']['valida'])
         self.ok(rodar([arq(c) for c in ROTINA], labels=l, eventos=e,
@@ -336,6 +338,78 @@ class Guarda(unittest.TestCase):
             self.assertEqual(cli([auditoria()]), 0)
             self.assertEqual(cli([auditoria(OUTRO)]), 1)
             self.assertEqual(cli([auditoria()], str(d / 'inexistente.json')), 2)
+
+    # --- contra-auditoria NC-1/NC-2: .github inteiro e deploy/segredos reservados; autônomo só na allowlist de rotina ---
+    def test_T32_qualquer_workflow_com_rotulo_autonomo_falha(self):
+        l, e = autonomo()
+        wfs = sorted(f.name for f in WF.glob('*.y*ml'))
+        self.assertGreater(len(wfs), 200)
+        for nome in wfs + ['novo-qualquer.yml']:
+            c = '.github/workflows/' + nome
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertIn('credenciais:.github/**', r['caminhos_reservados_alterados'][c], c)
+        for c in ('.github/actions/a/action.yml', '.github/dependabot.yml'):
+            self.falha(rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()]), duro=False)
+
+    def test_T33_script_de_deploy_ou_segredo_com_rotulo_autonomo_falha(self):
+        l, e = autonomo()
+        for c in ('scripts/ci/cloudflare-build.sh', 'scripts/ci/cloudflare-post-deploy-verify.sh', 'scripts/ci/secret_scan.py',
+                  'scripts/ci/credential_separation_gate.py', 'scripts/ci/operator_token_gate.py',
+                  'scripts/ci/production-secret-names.mjs', 'scripts/ci/production-worker-state.sh',
+                  'scripts/ci/mutants_credential_separation.py', 'scripts/ci/mutants_operator_token_allow.json',
+                  'tests/ci/operator-token-gate.test.mjs'):
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertTrue(r['caminhos_reservados_alterados'].get(c), c)
+
+    def test_T34_arquivo_comercial_ou_de_reembolso_com_rotulo_autonomo_falha(self):
+        l, e = autonomo()
+        for c in ('worker/nc015-sales-scope.mjs', 'worker/politica-unica.mjs', 'data/politica-unica.json', 'worker/refund-flow.mjs',
+                  'worker/refund-provider-claims.mjs', 'worker/asaas-pix-refund-auth.mjs', 'worker/commercial-checkout-guard.mjs',
+                  'worker/payment-link-expiry.mjs', 'worker/sales-ledger.mjs', 'worker/sales-lock-content.mjs',
+                  'db/migrations/003_orders_checkout.sql', 'db/migrations/004_partial_refund_snapshots.sql', 'docs/nfse/x.md', 'worker/nfse-emissor.mjs'):
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertTrue(r['caminhos_reservados_alterados'].get(c), c)
+            lo, eo = rotulo(); self.ok(rodar([arq(c)], labels=lo, eventos=eo))
+        # worker comum não é protegido nem reservado: segue sem rótulo
+        self.ok(rodar([arq('worker/site-chat.mjs')]))
+
+    def test_T35_autonomo_so_libera_protegido_da_allowlist_de_rotina(self):
+        l, e = autonomo()
+        for c in ('scripts/ci/nc015-kit-harness.mjs', 'scripts/ci/site_crawl_baseline.json', 'scripts/ci/node_suite_check.py',
+                  'scripts/ci/novo_gate.py', 'scripts/ci/sub/x.py'):
+            self.assertEqual(G.reservado(c, RESERVADOS), [], c); self.assertTrue(G.protegido(c), c)
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertIn(c, r['protegidos_fora_da_rotina'])
+            lo, eo = rotulo(); self.ok(rodar([arq(c)], labels=lo, eventos=eo))
+        # sem allowlist carregada nenhum protegido é rotina (fail-closed)
+        self.falha(rodar([arq(ROTINA[0])], labels=l, eventos=e, comentarios=[auditoria()], rotina=()), duro=False)
+        d = json.loads(RESERVADOS_ARQ.read_text())
+        with tempfile.TemporaryDirectory() as t:
+            ruim = pathlib.Path(t) / 'r.json'
+            for rot in (None, {'globs': []}, {'globs': ['.github/**']}, {'globs': ['**']}, {'globs': ['scripts/ci/*.py']},
+                        {'globs': ['ops/*.json']}):
+                x = dict(d)
+                if rot is None: x.pop('rotina_autonoma')
+                else: x['rotina_autonoma'] = rot
+                ruim.write_text(json.dumps(x))
+                with self.assertRaises(ValueError):
+                    G.carregar_rotina(ruim)
+
+    def test_T36_comentario_de_contra_auditoria_reexecuta_o_guarda(self):
+        import yaml
+        t = base('contra-auditoria-reavaliar.yml'); y = yaml.load(t, Loader=yaml.BaseLoader)
+        self.assertEqual(sorted(y['on']), ['issue_comment'])
+        self.assertEqual(sorted(y['on']['issue_comment']['types']), ['created', 'deleted', 'edited'])
+        self.assertEqual(y['permissions'], {'actions': 'write', 'checks': 'read', 'pull-requests': 'read'})
+        job = y['jobs']['reavaliar']; passos = job['steps']
+        self.assertNotIn(job['name'], G.REQUIRED_CHECKS)
+        self.assertFalse(any('uses' in p for p in passos)); self.assertNotRegex(t, r'secrets\s*[.\[]')
+        for p in passos:
+            self.assertNotIn('${{', p.get('run', ''), p.get('name'))
+        run = passos[-1]['run']
+        self.assertIn('check_name="required-check-guard / protected-paths"', run)
+        self.assertIn('/rerun', run); self.assertIn('CONTRA-AUDITORIA', run)
+        self.assertEqual(G.analisar_workflow('contra-auditoria-reavaliar.yml', t), [])
 
 
 def rodar_com_relatorio(caminho):
