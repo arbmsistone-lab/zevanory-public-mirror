@@ -2,7 +2,7 @@
 """Mutantes causais do ensaio sintético de entrega P12 (DEC-06: entrega na Hotmart; registro idempotente na ZEVANORY),
 classificados pelo classificador COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
-Suíte (uma execução `node --test`, TAP): tests/p12-entrega-ensaio.test.mjs (E1-E18). Sem rede (fetch substituído),
+Suíte (uma execução `node --test`, TAP): tests/p12-entrega-ensaio.test.mjs (E1-E21). Sem rede (fetch substituído),
 sem Cloudflare, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em diretório temporário
 (o repositório nunca é alterado): eventos imutáveis por transação e resumo derivado (worker/sales-ledger.mjs, NC-989-01), 503 em registro de entrega não
 gravado (worker/cp-nc012-digital-hotmart.mjs), chave por ciclo da entrega mensal (worker/cp-durable-ledger.mjs),
@@ -49,22 +49,30 @@ M = {
     "M15 caminho sem dependência aceito": (X, "    if (!Array.isArray(p?.deps_recebimento) || !p.deps_recebimento.length) problems.push(\"sem_deps_recebimento:\" + p?.id);\n", ""),
     "M16 suporte@ sem o direito de acesso na matriz": (D, "\"id\": \"suporte_email\",\n   \"direitos\": [\"acesso_conteudo\", ", "\"id\": \"suporte_email\",\n   \"direitos\": ["),
     "M18 base legal divergente da política publicada": (O, "  referencia: \"LGPD art. 7º, IX\",\n", "  referencia: \"LGPD art. 7º, V\",\n"),
-    # NC-989-01 (contra-auditoria do PR #989): fonte de verdade = eventos imutáveis; resumo = projeção derivada.
-    "M19 resumo por leitura-modificação-gravação como fonte (sem evento imutável)": (L, "  if (!own) await kv.put(k.key, JSON.stringify(meta), { expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: meta });", "  if (!own) await kv.put(SALES_SUMMARY_KEY, JSON.stringify(applySale(parse(await kv.get(SALES_SUMMARY_KEY)), meta.facts, kind, k.ref)));"),
+    # NC-989-01/02/03 (contra-auditorias do PR #989): eventos imutáveis por conteúdo, partição por dia estável,
+    # resumo derivado só dos dias quentes/sujos, marcador com TTL e orçamento de cota.
+    "M19 resumo por leitura-modificação-gravação como fonte (sem evento imutável)": (L, "  await kv.put(r.key, r.value, { expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: r.meta });", "  await kv.put(SALES_SUMMARY_KEY, JSON.stringify(applySale(parse(await kv.get(SALES_SUMMARY_KEY)), r.meta.facts, kind, r.ref)));"),
     "M20 derivação parte do resumo atual (projeção usada como fonte)": (L, "  const s = baseline ? JSON.parse(JSON.stringify(baseline)) : emptySummary();", "  const s = parse(await kv.get(SALES_SUMMARY_KEY)) || emptySummary();"),
-    "M21 projeção incremental por leitura-modificação-gravação no postback": (L, "    try { await refreshSalesSummary(kv, { now, include: [{ name: k.key, metadata: meta }] }); projection = \"ok\"; }", "    try { if (!group) await kv.put(SALES_SUMMARY_KEY, JSON.stringify(applySale(parse(await kv.get(SALES_SUMMARY_KEY)), meta.facts, kind, k.ref))); projection = \"ok\"; }"),
+    "M21 postback lista o prefixo global de eventos": (L, "metadata: r.meta });\n  if (cold)", "metadata: r.meta });\n  await listNames(kv, SALES_EVENT_PREFIX);\n  if (cold)"),
     "M22 chave por transação não determinística": (L, "  const h = (await sha(\"hotmart:\" + txn)).slice(0, 32);", "  const h = (await sha(\"hotmart:\" + txn + \":\" + Math.random())).slice(0, 32);"),
-    "M23 TTL do evento abaixo de 400 dias": (L, "{ expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: meta }", "{ expirationTtl: (SALES_EVENT_TTL_DAYS - 1) * DAY, metadata: meta }"),
-    "M24 contagem de entradas não únicas (por chave, não por transação+desfecho)": (L, "    const id = m[1] + \":\" + m[2];", "    const id = name;"),
-    "M25 falha da listagem engolida (projeção de lista parcial ou vazia)": (L, "    const page = await kv.list({ prefix: SALES_EVENT_PREFIX, cursor, limit: KV_LIST_LIMIT });", "    const page = await kv.list({ prefix: SALES_EVENT_PREFIX, cursor, limit: KV_LIST_LIMIT }).catch(() => ({ keys: [], list_complete: true }));"),
-    "M26 falha da projeção devolve 503": (L, "    catch { projection = \"stale\"; }", "    catch (e) { throw e; }"),
-    "M27 evento gravado só se o grupo for novo (ordem de chegada decide)": (L, "  if (!own) await kv.put(k.key,", "  if (!group) await kv.put(k.key,"),
-    "M28 representativo pela ordem da listagem, não pela precedência": (L, "    if (!cur || rank(meta.event) < rank(cur.meta.event)) groups.set(id,", "    if (!cur) groups.set(id,"),
-    "M29 marcador legado ignorado": (L, "  if ((await kv.get(LEGACY_TXN_STATE + k.ref + \":\" + k.outcome)) === \"1\") return", "  if (false) return"),
+    "M23 TTL do evento abaixo de 400 dias": (L, "{ expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: r.meta }", "{ expirationTtl: (SALES_EVENT_TTL_DAYS - 1) * DAY, metadata: r.meta }"),
+    "M24 contagem de entradas não únicas (por chave, não por transação+desfecho)": (L, "    const id = m[2] + \":\" + m[3];", "    const id = name;"),
+    "M25 falha da listagem engolida (projeção de lista parcial ou vazia)": (L, "    const page = await kv.list({ prefix, cursor, limit: KV_LIST_LIMIT });", "    const page = await kv.list({ prefix, cursor, limit: KV_LIST_LIMIT }).catch(() => ({ keys: [], list_complete: true }));"),
+    "M26 reentrega não regrava o marcador que faltou": (L, "    if (cold) await markDirty(kv, r.day, now);\n    return", "    return"),
+    "M27 evento gravado só se o grupo for novo (ordem de chegada decide)": (L, "  if (event === \"PURCHASE_COMPLETE\" && approvedTwin) return", "  if (group) return"),
+    "M28 representativo pela ordem da listagem, não pela precedência": (L, "    if (!g.rep || rank(meta.event) < rank(g.rep.meta.event) || (meta.event === g.rep.meta.event && m[5] < g.rep.ph)) g.rep =", "    if (!g.rep) g.rep ="),
+    "M29 marcador legado ignorado": (L, "  if ((await kv.get(LEGACY_TXN_STATE + r.ref + \":\" + r.outcome)) === \"1\") return", "  if (false) return"),
     "M30 base legada não gravada antes da projeção": (L, "    await kv.put(SALES_LEGACY_BASELINE_KEY, String(rawSummary));\n", ""),
     "M31 paginação do list ignorada (limite de tamanho)": (L, "    if (page?.list_complete) break;", "    break;"),
-    "M32 falha de gravação do evento engolida": (L, "metadata: meta });\n  let projection", "metadata: meta }).catch(() => {});\n  let projection"),
-    "M33 leitura com falha engolida (KV fora sem 503)": (L, "  if ((await kv.get(LEGACY_TXN_STATE + k.ref + \":\" + k.outcome)) === \"1\") return", "  if ((await kv.get(LEGACY_TXN_STATE + k.ref + \":\" + k.outcome).catch(() => null)) === \"1\") return"),
+    "M32 falha de gravação do evento engolida": (L, "metadata: r.meta });\n  if (cold)", "metadata: r.meta }).catch(() => {});\n  if (cold)"),
+    "M33 leitura com falha engolida (KV fora sem 503)": (L, "  if ((await kv.get(LEGACY_TXN_STATE + r.ref + \":\" + r.outcome)) === \"1\") return", "  if ((await kv.get(LEGACY_TXN_STATE + r.ref + \":\" + r.outcome).catch(() => null)) === \"1\") return"),
+    "M34 chave do evento sem payloadhash (conteúdo diferente sobrescreve)": (L, "key: base + event.toLowerCase() + \":\" + ph,", "key: base + event.toLowerCase() + \":\" + \"0\".repeat(16),"),
+    "M35 total recalculado de todos os eventos (lista global)": (L, "  const touch = [...new Set([...hot, ...dirty, ...catchUp, sweepDay(now)])].sort();", "  const touch = [...new Set([...hot, ...dirty, ...catchUp, sweepDay(now), ...[...(await listNames(kv, SALES_EVENT_PREFIX)).keys()].map((k) => k.slice(SALES_EVENT_PREFIX.length, SALES_EVENT_PREFIX.length + 8))])].sort();"),
+    "M36 dia frio sem marcador": (L, "  if (cold) await markDirty(kv, r.day, now);\n  return group", "  return group"),
+    "M37 marcador nunca regravado (sem renovação a cada 2 h)": (L, "  if (Number.isFinite(at) && at > now - DIRTY_REFRESH_MS) return false;", "  if (Number.isFinite(at) && at > 0) return false;"),
+    "M38 marcador apagado depois do recomputo sem verificação": (L, "    computed.set(day, p);\n", "    computed.set(day, p);\n    if (dirty.includes(day)) await kv.delete(SALES_DIRTY_PREFIX + day);\n"),
+    "M39 divergência de conteúdo não sinalizada": (L, "    for (const [event, set] of g.variants) if (set.size > 1) divergent.push(", "    for (const [event, set] of g.variants) if (false) divergent.push("),
+    "M40 recuperação de dias sem projeção desligada": (L, "  const catchUp = Array.from({ length: CATCH_UP_DAYS }", "  const catchUp = Array.from({ length: 0 }"),
 }
 
 ALLOW_FILE = Path(os.environ.get("P12_ENTREGA_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p12_entrega_allow.json"))

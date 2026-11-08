@@ -11,7 +11,7 @@ function equal(a,b){
  if(!aa.length||aa.length!==bb.length)return false;
  let v=0;for(let i=0;i<aa.length;i++)v|=aa[i]^bb[i];return v===0;
 }
-export async function handleDigitalHotmartNc012(request,env){
+export async function handleDigitalHotmartNc012(request,env,{now=Date.now()}={}){
  if(request.method!=="POST")return json(405,{ok:false,error:"method_not_allowed"});
  let cfg={};try{cfg=typeof env.CHANNEL_CREDENTIALS_JSON==="string"?JSON.parse(env.CHANNEL_CREDENTIALS_JSON):env.CHANNEL_CREDENTIALS_JSON||{}}catch{}
  const secret=String(env.HOTMART_HOTTOK||cfg.HOTMART_HOTTOK||"").trim();
@@ -27,7 +27,7 @@ export async function handleDigitalHotmartNc012(request,env){
   return json(403,{ok:false,error:"cp_event_misrouted"});
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return json(503,{ok:false,error:"sales_ledger_unavailable"});
- let result;try{result=await recordHotmartSale(kv,event,data,{eventAt:Number(body?.creation_date)||null})}catch{return json(503,{ok:false,error:"sales_ledger_commit_failed"})}
+ let result;try{result=await recordHotmartSale(kv,event,data,{now})}catch{return json(503,{ok:false,error:"sales_ledger_commit_failed"})}
  // Idempotent activity marker in separate shared ledger. An identical webhook
  // may be replayed after an incomplete downstream read; never sends product email.
  // P12 (DEC-06): a entrega é da Hotmart (Minhas compras); aqui só se REGISTRA a entrega/estorno. Registro que
@@ -36,7 +36,7 @@ export async function handleDigitalHotmartNc012(request,env){
  const activity=ACTIVE.has(event)?{type:"delivery_sent",status:"hotmart_approved"}:
   STOP.has(event)?{type:"refund_requested",status:"hotmart_"+event.toLowerCase()}:null;
  if(activity){
-  const out=await emitActivity(env,{...activity,channel:"store",ref:"hotmart:"+txn}).catch(()=>null);
+  const out=await emitActivity(env,{...activity,channel:"store",ref:"hotmart:"+txn},{now}).catch(()=>null);
   if(!out||(out.emitted!==true&&out.duplicate!==true))return json(503,{ok:false,error:"activity_commit_failed"});
  }
  return json(200,{ok:true,scope:"digital_product",duplicate:result?.reason==="duplicate"});

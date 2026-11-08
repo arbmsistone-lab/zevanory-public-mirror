@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recordHotmartSale, saleFacts, SALES_SUMMARY_KEY } from "../worker/sales-ledger.mjs";
+import { recordHotmartSale, refreshSalesSummary, saleFacts, SALES_SUMMARY_KEY } from "../worker/sales-ledger.mjs";
 
 // KV em memória com list paginado e metadata (NC-989-01: o resumo é derivado da listagem dos eventos imutáveis).
 function memKv() {
@@ -34,6 +34,7 @@ test("approval counted once across APPROVED + COMPLETE, refund tracked", async (
   await recordHotmartSale(kv, "PURCHASE_APPROVED", data("HP2", { purchase: { ...data("HP2").purchase, origin: {} } }));
   await recordHotmartSale(kv, "PURCHASE_REFUNDED", data("HP1"));
   await recordHotmartSale(kv, "PURCHASE_REFUNDED", data("HP1"));
+  await refreshSalesSummary(kv, { now: Date.UTC(2026, 9, 12, 16) }); // NC-989-02: o resumo é o recomputo horário
   const s = JSON.parse(kv.m.get(SALES_SUMMARY_KEY));
   assert.equal(s.totals.approved, 2); assert.equal(s.totals.grossCents, 49400); assert.equal(s.totals.refunded, 1);
   assert.equal(s.bySource.youtube.approved, 1); assert.equal(s.bySource["sem-origem"].approved, 1);

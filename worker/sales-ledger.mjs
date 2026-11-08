@@ -89,108 +89,176 @@ export function applySale(summary, facts, kind, txnRef) {
   return s;
 }
 
-// NC-989-01 (contra-auditoria do PR #989): a FONTE DE VERDADE deixa de ser o resumo. O KV do Cloudflare não tem
-// compare-and-set nem exclusão mútua, então qualquer leitura-modificação-gravação de um documento compartilhado
-// perde incrementos entre entregas simultâneas. Cada postback grava uma chave IMUTÁVEL por transação, desfecho e
-// evento: zpc:sales:v1:ev:<sha256("hotmart:"+transação)[0:32]>:<desfecho>:<evento>. O valor (e o metadata) é
-// derivado SÓ do payload: a mesma entrada gera o mesmo par chave/valor, então gravações concorrentes ou
-// repetidas são idempotentes por construção (last-writer-wins entre valores idênticos). O conteúdo final do
-// prefixo é a UNIÃO dos eventos entregues com sucesso, qualquer que seja o entrelaçamento.
-// O resumo (SALES_SUMMARY_KEY) é só PROJEÇÃO: deriveSalesSummary lista o prefixo (paginado, sem limite de
-// tamanho), agrupa por transação+desfecho (1 venda por transação aprovada, 1 reversão por transação) e escolhe o
-// representativo por precedência fixa, nunca pela ordem de chegada. A projeção é regravada no próprio postback
-// (melhor esforço: uma falha da projeção não devolve 503, porque a verdade já está gravada) e a cada hora em
-// /api/internal/funnel/run (chamado pelo snapshot da central antes de ler o resumo).
-// Retenção: TTL de SALES_EVENT_TTL_DAYS (400) dias por evento, desde a primeira gravação (a reentrega de um evento
-// já gravado não regrava nem estende o TTL).
-// Legado (antes desta mudança): o resumo antigo é copiado UMA vez para SALES_LEGACY_BASELINE_KEY antes da primeira
-// projeção (cópia byte a byte, idempotente) e somado como base congelada; o marcador antigo
-// zpc:sales:v1:txn:<ref>:<desfecho> = "1" faz a reentrega de uma transação já contada no legado virar duplicata.
+// NC-989-01/02/03 (contra-auditorias do PR #989). O KV do Cloudflare não tem compare-and-set: a FONTE DE VERDADE
+// são chaves imutáveis, e todo resumo é projeção.
+//
+// Evento (NC-989-03, imutável por conteúdo):
+//   zpc:sales:v1:ev:<AAAAMMDD>:<txhash32>:<desfecho>:<evento>:<payloadhash16>
+//   AAAAMMDD = dia UTC ESTÁVEL da transação (approved_date, senão order_date do payload; os mesmos em APPROVED,
+//   COMPLETE e estorno). Sem data no payload: partição "00000000" (nunca o relógio do servidor).
+//   payloadhash = sha256 dos fatos canônicos (sem o nome do evento). Conteúdo igual ⇒ mesma chave e valor
+//   idêntico; conteúdo diferente ⇒ chave diferente. Nenhuma gravação substitui evidência de outro conteúdo.
+//   A contagem continua 1 por transação+desfecho; variantes do mesmo evento com conteúdo diferente ficam
+//   preservadas e aparecem em divergent_events para revisão humana, sem mudar a contagem.
+// Cota (NC-989-02): o postback NÃO lista nem recalcula nada. Grava o evento e, se a partição for "fria" (fora de
+// hoje/ontem/anteontem UTC), um marcador zpc:sales:v1:dirty:<dia> com TTL de 12 h, regravado no máximo a cada 2 h.
+// O marcador nunca é apagado: expira sozinho. Então não existe corrida de "apagar depois de recalcular"; todo
+// evento é seguido de ≥ 10 h de marcador vivo (≥ 9 recomputos horários). O recomputo horário
+// (refreshSalesSummary, em /api/internal/funnel/run) lista SÓ: os 3 dias quentes (ao vivo, sem gravar hoje e
+// ontem), os dias com marcador, 1 dia da varredura rotativa (sem estado: hora mod 400, ciclo de ~17 dias) e o
+// prefixo zpc:sales:v1:day: (≤ 401 chaves, 1 página); dias -2 a -7 ainda sem projeção gravada (recomputo perdido)
+// também são calculados e gravados, mesmo vazios. A projeção do dia zpc:sales:v1:day:<dia> só é regravada
+// quando a impressão digital (nomes dos eventos) muda. O total soma as projeções dos dias.
+// COMPLETE com APPROVED de mesmo conteúdo já gravado não é regravado (mesmo desfecho e mesmos fatos: nada a
+// preservar; economiza 1 gravação por venda).
+// Legado: o resumo anterior é copiado UMA vez para SALES_LEGACY_BASELINE_KEY antes da primeira projeção; o
+// marcador antigo zpc:sales:v1:txn:<ref>:<desfecho> = "1" deduplica.
 export const SALES_EVENT_PREFIX = "zpc:sales:v1:ev:";
+export const SALES_DAY_PREFIX = "zpc:sales:v1:day:";
+export const SALES_DIRTY_PREFIX = "zpc:sales:v1:dirty:";
 export const SALES_LEGACY_BASELINE_KEY = "zpc:sales:v1:legacy-baseline";
 export const SALES_EVENT_TTL_DAYS = 400;
+export const UNDATED = "00000000";
+export const HOT_DAYS = 3;
+export const DIRTY_TTL_S = 12 * 3600;
+export const DIRTY_REFRESH_MS = 2 * 3600 * 1000;
+export const SWEEP_SLOTS = 400;
+export const CATCH_UP_DAYS = 6;
 const LEGACY_TXN_STATE = "zpc:sales:v1:txn:";
-const EVENT_SCHEMA = "zevanory-sales-event/v1";
+const EVENT_SCHEMA = "zevanory-sales-event/v2";
+const DAY_SCHEMA = "zevanory-sales-day/v1";
 const KV_LIST_LIMIT = 1000;
-// Precedência do representativo de cada grupo transação+desfecho (independe da ordem de chegada):
-// APPROVED antes de COMPLETE; estorno definitivo antes de contestação e de protesto (o protesto é provisório).
+const DAY_MS = DAY * 1000;
+// Precedência do representativo de cada grupo transação+desfecho (independe da ordem de chegada).
 const PRECEDENCE = ["PURCHASE_APPROVED", "PURCHASE_COMPLETE", "PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_PROTEST"];
 const rank = (event) => { const i = PRECEDENCE.indexOf(event); return i < 0 ? PRECEDENCE.length : i; };
 const kindOf = (event) => (APPROVED.has(event) ? "approved" : REVERSED[event] || OTHER[event] || null);
 const outcomeOf = (event) => (APPROVED.has(event) ? "approved" : REVERSED[event] ? "reversed" : OTHER[event] || null);
-const EVENT_NAME_RE = /^zpc:sales:v1:ev:([0-9a-f]{32}):([a-z_]+):([a-z_]+)$/;
+const EVENT_NAME_RE = /^zpc:sales:v1:ev:(\d{8}):([0-9a-f]{32}):([a-z_]+):([a-z_]+):([0-9a-f]{16})$/;
+const parse = (raw) => { try { return JSON.parse(String(raw ?? "null")); } catch { return null; } };
+const isSummary = (s) => s && s.schema === "zevanory-sales/v1";
+export const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10).replaceAll("-", "");
+const dayMinus = (now, n) => dayOf(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate()) - n * DAY_MS);
+export const hotDays = (now) => Array.from({ length: HOT_DAYS }, (_, i) => dayMinus(now, i));
+// Dia da varredura rotativa desta hora: -3 a -401 dias e a partição sem data, um por hora, sem estado.
+export function sweepDay(now) { const i = Math.floor(now / 3600000) % SWEEP_SLOTS; return i === SWEEP_SLOTS - 1 ? UNDATED : dayMinus(now, HOT_DAYS + i); }
 
-// Fatos determinísticos do evento: só o payload (data da compra; senão o creation_date do postback; senão sem data).
-export function eventFacts(event, data = {}, { eventAt = null } = {}) {
+// Fatos determinísticos: só o payload. Sem data da compra: sem data (nunca o relógio do servidor).
+export function eventFacts(event, data = {}) {
   const purchase = data.purchase || {};
-  const when = Number(purchase.approved_date || purchase.order_date || eventAt || 0);
+  const when = Number(purchase.approved_date || purchase.order_date || 0);
   const known = Number.isFinite(when) && when > 1e12;
   const f = saleFacts(event, data, known ? when : 0);
   if (!known) { f.at = null; f.day = null; }
+  delete f.event;
   return f;
 }
 
-function eventRecord(event, data, opts) {
-  const facts = eventFacts(event, data, opts);
-  // metadata do KV tem limite de 1.024 bytes: o nome do produto é encurtado de forma determinística se preciso.
-  let meta = { schema: EVENT_SCHEMA, event, facts };
-  if (enc.encode(JSON.stringify(meta)).length > 1000) meta = { schema: EVENT_SCHEMA, event, facts: { ...facts, product: facts.product.slice(0, 24) } };
-  return meta;
-}
-
-export async function salesEventKey(event, txn) {
+// Chave e valor do evento. Tudo derivado do payload: mesma entrada ⇒ mesmo par.
+export async function salesEventRecord(event, txn, data = {}) {
   const outcome = outcomeOf(event);
   if (!outcome || !txn) return null;
+  const facts = eventFacts(event, data);
+  // metadata do KV: ≤ 1.024 bytes; o nome do produto é encurtado de forma determinística se preciso.
+  if (enc.encode(JSON.stringify(facts)).length > 800) facts.product = facts.product.slice(0, 24);
+  const canon = JSON.stringify(facts);
+  const ph = (await sha("facts:" + canon)).slice(0, 16);
   const h = (await sha("hotmart:" + txn)).slice(0, 32);
-  return { h, ref: h.slice(0, 16), outcome, group: SALES_EVENT_PREFIX + h + ":" + outcome + ":", key: SALES_EVENT_PREFIX + h + ":" + outcome + ":" + event.toLowerCase() };
+  const day = facts.at ? facts.at.slice(0, 10).replaceAll("-", "") : UNDATED;
+  const base = SALES_EVENT_PREFIX + day + ":" + h + ":" + outcome + ":";
+  const meta = { schema: EVENT_SCHEMA, event, facts };
+  return { day, h, ref: h.slice(0, 16), outcome, ph, base, key: base + event.toLowerCase() + ":" + ph, meta, value: JSON.stringify(meta) };
 }
 
-export async function recordHotmartSale(kv, event, data = {}, { now = Date.now(), eventAt = null, refresh = true } = {}) {
+async function markDirty(kv, day, now) {
+  const at = Number(await kv.get(SALES_DIRTY_PREFIX + day));
+  if (Number.isFinite(at) && at > now - DIRTY_REFRESH_MS) return false;
+  await kv.put(SALES_DIRTY_PREFIX + day, String(now), { expirationTtl: DIRTY_TTL_S });
+  return true;
+}
+
+export async function recordHotmartSale(kv, event, data = {}, { now = Date.now() } = {}) {
   if (!kv?.get || !kv?.put) return { recorded: false, reason: "kv_unavailable" };
   const kind = kindOf(event);
   if (!kind) return { recorded: false, reason: "ignored_event" };
   const txn = String(data?.purchase?.transaction || "");
   if (!txn) return { recorded: false, reason: "missing_transaction" };
-  const k = await salesEventKey(event, txn);
+  const r = await salesEventRecord(event, txn, data);
   // Leituras que FALHAM (KV fora) propagam: o handler devolve 503 e nada é gravado.
-  if ((await kv.get(LEGACY_TXN_STATE + k.ref + ":" + k.outcome)) === "1") return { recorded: false, reason: "duplicate", ref: k.ref, legacy: true };
-  const siblings = PRECEDENCE.filter((e) => outcomeOf(e) === k.outcome);
-  const events = siblings.includes(event) ? siblings : [event];
-  let own = false, group = false;
-  for (const e of events) {
-    const v = await kv.get(k.group + e.toLowerCase());
-    if (v != null) { group = true; if (e === event) own = true; }
+  if ((await kv.get(LEGACY_TXN_STATE + r.ref + ":" + r.outcome)) === "1") return { recorded: false, reason: "duplicate", ref: r.ref, legacy: true };
+  const cold = !hotDays(now).includes(r.day);
+  if ((await kv.get(r.key)) != null) {
+    // Já gravado (reentrega). Garante o marcador: a tentativa anterior pode ter caído entre o evento e o marcador.
+    if (cold) await markDirty(kv, r.day, now);
+    return { recorded: false, reason: "duplicate", kind, ref: r.ref };
   }
-  const meta = eventRecord(event, data, { eventAt });
+  let group = false, approvedTwin = false;
+  for (const e of PRECEDENCE.filter((x) => x !== event && outcomeOf(x) === r.outcome)) {
+    if ((await kv.get(r.base + e.toLowerCase() + ":" + r.ph)) != null) { group = true; if (e === "PURCHASE_APPROVED") approvedTwin = true; }
+  }
+  if (event === "PURCHASE_COMPLETE" && approvedTwin) return { recorded: false, reason: "duplicate", kind, ref: r.ref };
   // Gravação única e idempotente da verdade. Falha propaga (503) e a reentrega regrava o MESMO par chave/valor.
-  if (!own) await kv.put(k.key, JSON.stringify(meta), { expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: meta });
-  let projection = "skipped";
-  if (refresh) {
-    try { await refreshSalesSummary(kv, { now, include: [{ name: k.key, metadata: meta }] }); projection = "ok"; }
-    catch { projection = "stale"; }
-  }
-  return group ? { recorded: false, reason: "duplicate", kind, ref: k.ref, projection } : { recorded: true, kind, ref: k.ref, projection };
+  await kv.put(r.key, r.value, { expirationTtl: SALES_EVENT_TTL_DAYS * DAY, metadata: r.meta });
+  if (cold) await markDirty(kv, r.day, now);
+  return group ? { recorded: false, reason: "duplicate", kind, ref: r.ref } : { recorded: true, kind, ref: r.ref };
 }
 
-async function listEvents(kv) {
+async function listNames(kv, prefix) {
   if (!kv?.list) throw new Error("kv_list_unavailable");
   const out = new Map();
   let cursor;
-  do {
-    const page = await kv.list({ prefix: SALES_EVENT_PREFIX, cursor, limit: KV_LIST_LIMIT });
+  for (;;) {
+    const page = await kv.list({ prefix, cursor, limit: KV_LIST_LIMIT });
     for (const key of page?.keys || []) out.set(key.name, key.metadata ?? null);
     if (page?.list_complete) break;
     cursor = page?.cursor;
     if (!cursor) throw new Error("kv_list_cursor_missing");
-  } while (true);
+  }
   return out;
 }
 
-const parse = (raw) => { try { return JSON.parse(String(raw ?? "null")); } catch { return null; } };
-const isSummary = (s) => s && s.schema === "zevanory-sales/v1";
+// Projeção de UM dia: lista só o prefixo daquele dia (paginado). Falha de listagem ou leitura propaga.
+export async function computeDay(kv, day) {
+  const names = await listNames(kv, SALES_EVENT_PREFIX + day + ":");
+  const groups = new Map();
+  for (const [name, meta0] of names) {
+    const m = EVENT_NAME_RE.exec(name);
+    if (!m || m[1] !== day) continue;
+    let meta = meta0;
+    if (meta?.schema !== EVENT_SCHEMA) meta = parse(await kv.get(name));
+    if (meta?.schema !== EVENT_SCHEMA || meta.event?.toLowerCase() !== m[4] || outcomeOf(meta.event) !== m[3]) continue;
+    const id = m[2] + ":" + m[3];
+    const g = groups.get(id) || { h: m[2], outcome: m[3], variants: new Map(), rep: null };
+    groups.set(id, g);
+    const vs = g.variants.get(meta.event) || new Set();
+    vs.add(m[5]);
+    g.variants.set(meta.event, vs);
+    if (!g.rep || rank(meta.event) < rank(g.rep.meta.event) || (meta.event === g.rep.meta.event && m[5] < g.rep.ph)) g.rep = { meta, ph: m[5], name };
+  }
+  const s = emptySummary();
+  const divergent = [];
+  const reps = [...groups.values()].sort((a, b) => String(a.rep.meta.facts?.at || "").localeCompare(String(b.rep.meta.facts?.at || "")) || a.rep.name.localeCompare(b.rep.name));
+  for (const g of reps) {
+    applySale(s, g.rep.meta.facts, kindOf(g.rep.meta.event), g.h.slice(0, 16));
+    for (const [event, set] of g.variants) if (set.size > 1) divergent.push({ ref: g.h.slice(0, 16), outcome: g.outcome, event, variants: set.size });
+  }
+  delete s.updatedAt;
+  const fingerprint = (await sha([...names.keys()].sort().join("\n"))).slice(0, 32);
+  return { schema: DAY_SCHEMA, day, fingerprint, events: names.size, groups: groups.size, divergent_events: divergent, summary: s };
+}
 
-// Base congelada do resumo anterior a NC-989-01. Lida do SALES_LEGACY_BASELINE_KEY; na primeira vez, o resumo
-// atual que NÃO é projeção (sem "source") é copiado para lá ANTES de qualquer projeção sobrescrevê-lo.
+function mergeInto(t, part) {
+  if (!isSummary(part)) return;
+  for (const [k, v] of Object.entries(part.totals || {})) t.totals[k] = (t.totals[k] || 0) + (Number(v) || 0);
+  for (const dim of ["byDay", "byProduct", "bySource"]) for (const [k, b] of Object.entries(part[dim] || {})) {
+    const cur = (t[dim][k] = t[dim][k] || {});
+    for (const [f, v] of Object.entries(b || {})) cur[f] = (cur[f] || 0) + (Number(v) || 0);
+  }
+  for (const [k, v] of Object.entries(part.byPayment || {})) t.byPayment[k] = (t.byPayment[k] || 0) + (Number(v) || 0);
+  t.recent = [...(t.recent || []), ...(part.recent || [])];
+}
+
+// Base congelada do resumo anterior a NC-989-01 (copiada antes de a primeira projeção sobrescrevê-lo).
 async function legacyBaseline(kv) {
   const rawSummary = await kv.get(SALES_SUMMARY_KEY);
   const current = parse(rawSummary);
@@ -202,37 +270,53 @@ async function legacyBaseline(kv) {
   return { baseline: isSummary(base) ? base : null, existing: Boolean(current) };
 }
 
-// Projeção pura do conjunto de eventos (+ base legada). Qualquer falha de leitura ou listagem propaga: a projeção
-// nunca é calculada a partir de uma lista parcial ou vazia.
-export async function deriveSalesSummary(kv, { now = Date.now(), include = [] } = {}) {
+// Recomputo horário. Grava as projeções de dia que mudaram (exceto hoje e ontem, sempre ao vivo) e o total.
+// Qualquer falha de listagem ou leitura propaga ANTES de gravar o total: nunca há total de lista parcial ou vazia.
+export async function refreshSalesSummary(kv, { now = Date.now() } = {}) {
   const { baseline, existing } = await legacyBaseline(kv);
-  const names = await listEvents(kv);
-  for (const e of include) if (e?.name) names.set(e.name, e.metadata ?? names.get(e.name) ?? null);
-  const groups = new Map();
-  for (const [name, meta0] of names) {
-    const m = EVENT_NAME_RE.exec(name);
-    if (!m) continue;
-    let meta = meta0;
-    if (meta?.schema !== EVENT_SCHEMA) meta = parse(await kv.get(name));
-    if (meta?.schema !== EVENT_SCHEMA || meta.event?.toLowerCase() !== m[3] || outcomeOf(meta.event) !== m[2]) continue;
-    const id = m[1] + ":" + m[2];
-    const cur = groups.get(id);
-    if (!cur || rank(meta.event) < rank(cur.meta.event)) groups.set(id, { h: m[1], meta, name });
+  const hot = hotDays(now);
+  const live = new Set(hot.slice(0, 2));
+  const dirty = [...(await listNames(kv, SALES_DIRTY_PREFIX)).keys()].map((k) => k.slice(SALES_DIRTY_PREFIX.length)).filter((d) => /^\d{8}$/.test(d));
+  const stored = new Set([...(await listNames(kv, SALES_DAY_PREFIX)).keys()].map((k) => k.slice(SALES_DAY_PREFIX.length)));
+  // Recuperação de recomputos perdidos: dias -2 a -7 sem projeção gravada são calculados e gravados (mesmo vazios).
+  const catchUp = Array.from({ length: CATCH_UP_DAYS }, (_, i) => dayMinus(now, 2 + i)).filter((d) => !stored.has(d));
+  const touch = [...new Set([...hot, ...dirty, ...catchUp, sweepDay(now)])].sort();
+  const computed = new Map();
+  for (const day of touch) {
+    const p = await computeDay(kv, day);
+    computed.set(day, p);
+    if (live.has(day)) continue;
+    const prev = stored.has(day) ? parse(await kv.get(SALES_DAY_PREFIX + day)) : null;
+    if (prev?.fingerprint === p.fingerprint) continue;
+    if (!p.events && !prev && !catchUp.includes(day)) continue;
+    await kv.put(SALES_DAY_PREFIX + day, JSON.stringify(p), { expirationTtl: SALES_EVENT_TTL_DAYS * DAY });
   }
-  if (!groups.size && !baseline && !existing) return null; // nenhum postback registrado: não prova zero
+  const days = new Map(computed);
+  for (const day of stored) {
+    if (days.has(day)) continue;
+    const p = parse(await kv.get(SALES_DAY_PREFIX + day));
+    if (p?.schema === DAY_SCHEMA) days.set(day, p);
+  }
+  const parts = [...days.values()].filter((p) => p.events > 0);
+  if (!parts.length && !baseline && !existing) return null; // nenhum postback registrado: não prova zero
   const s = baseline ? JSON.parse(JSON.stringify(baseline)) : emptySummary();
   delete s.applied;
-  const reps = [...groups.values()].sort((a, b) => String(a.meta.facts?.at || "").localeCompare(String(b.meta.facts?.at || "")) || a.name.localeCompare(b.name));
-  for (const r of reps) applySale(s, r.meta.facts, kindOf(r.meta.event), r.h.slice(0, 16));
-  const last = reps.map((r) => r.meta.facts?.at).filter(Boolean).sort().pop() || null;
+  s.recent = s.recent || [];
+  const divergent = [];
+  let events = 0, groups = 0, undated = 0;
+  for (const p of parts.sort((a, b) => a.day.localeCompare(b.day))) {
+    mergeInto(s, p.summary);
+    divergent.push(...(p.divergent_events || []).map((d) => ({ day: p.day, ...d })));
+    events += p.events; groups += p.groups;
+    if (p.day === UNDATED) undated = p.groups;
+  }
+  s.recent = s.recent.sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")) || String(a.ref).localeCompare(String(b.ref))).slice(0, 40);
+  const keep = Object.keys(s.byDay).sort().slice(-400);
+  for (const d of Object.keys(s.byDay)) if (!keep.includes(d)) delete s.byDay[d];
   s.updatedAt = new Date(now).toISOString();
-  s.lastEventAt = last;
-  s.source = { kind: "derived", prefix: SALES_EVENT_PREFIX, events: groups.size, legacyBaseline: Boolean(baseline) };
-  return s;
-}
-
-export async function refreshSalesSummary(kv, opts = {}) {
-  const s = await deriveSalesSummary(kv, opts);
-  if (s) await kv.put(SALES_SUMMARY_KEY, JSON.stringify(s));
+  s.lastEventAt = s.recent.map((r) => r.at).filter(Boolean).sort().pop() || null;
+  s.divergent_events = divergent;
+  s.source = { kind: "derived", prefix: SALES_EVENT_PREFIX, days: parts.length, events, groups, undated_groups: undated, legacyBaseline: Boolean(baseline) };
+  await kv.put(SALES_SUMMARY_KEY, JSON.stringify(s));
   return s;
 }
