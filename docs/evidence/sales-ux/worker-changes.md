@@ -76,3 +76,12 @@ variant now target those strings:
     - (d) checkout and purchase routes are identical to gh-pages, closed and open;
     - (e) security headers and CSP are identical.
 - `tests/sales-design.test.mjs` (a): the built `404.html` contract.
+
+## P03 O2: `/index.html` served as the catalog page (2026-11-07)
+
+- `/index.html` (the physical copy of `/solucoes`, canonical `/solucoes`) now maps to page `solucoes`, so the
+  sales switch rewrites it like `/solucoes` (buy CTAs and no closed notice when open; `no-store`). Served raw,
+  it kept the static "vendas temporariamente fechadas" notice even with sales open.
+- `tests/sales-worker-differential.test.mjs` pins the new blob, reverse-applies this one hunk and requires the
+  result to be byte-identical to the R124 candidate; `/index.html` is outside its matrix. The behaviour is
+  proven by `tests/p03-pages-audit.test.mjs` P10 (every page served closed and open) and mutant M45.
