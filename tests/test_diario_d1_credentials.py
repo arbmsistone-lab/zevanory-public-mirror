@@ -17,7 +17,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+import sys
 import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import gh_actions_sim  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/central-production-deploy.yml"
@@ -112,26 +116,10 @@ def _job(block):
 
 
 def evaluate(value, secrets, outputs):
-    """Avalia o pouco de expressão do GitHub que o arquivo usa: secrets.A || secrets.B || 'lit', steps.*, aspas."""
-    m = re.fullmatch(r"\$\{\{\s*(.+?)\s*\}\}", value)
-    if not m:
-        return value[1:-1] if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'" else value
-    for alt in [a.strip() for a in m.group(1).split("||")]:
-        if alt.startswith("secrets."):
-            v = secrets.get(alt[len("secrets."):], "")
-        elif alt.startswith("steps."):
-            v = outputs.get(alt, "")
-        elif alt.startswith("vars."):  # variáveis de configuração do repositório: não são credenciais
-            v = "fake-" + alt
-        elif alt in ("github.sha", "github.token"):
-            v = "fake-" + alt
-        elif alt[:1] == alt[-1:] == "'":
-            v = alt[1:-1]
-        else:
-            raise AssertionError("expressão não suportada pelo simulador: " + alt)
-        if v:
-            return v
-    return ""
+    """Avalia a expressão do GitHub (tests/gh_actions_sim.py: ||, &&, ==, !=, secrets.*, steps.*, needs.*, aspas).
+    P21 (ops/token-cutover.json): sem saída explícita, o interruptor do job p21_token vale 'false' (estado de hoje)."""
+    outs = {"needs.p21_token.outputs.cutover": "false", **(outputs or {})}
+    return gh_actions_sim.evaluate_value(value, gh_actions_sim.resolver(secrets, outs))
 
 
 def effective_env(job, step, secrets, outputs=None):

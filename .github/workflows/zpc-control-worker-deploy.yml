@@ -39,12 +39,70 @@ concurrency:
   queue: max
 
 jobs:
+  p21_token:
+    # P21 / R18: interruptor versionado ops/token-cutover.json lido no SHA deste run (sem segredos);
+    # os jobs com credencial dependem dele. docs/p21/tokens-por-worker.md
+    uses: ./.github/workflows/p21-token-cutover.yml
+    permissions:
+      contents: read
+    with:
+      service: zevanory-product-control-portable
+
   deploy:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
+    needs: p21_token
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: P21 credencial Cloudflare dedicada (interruptor ops/token-cutover.json)
+        shell: bash
+        env:
+          P21_SERVICE: zevanory-product-control-portable
+          P21_SECRET: CF_TOKEN_PANEL
+          P21_SECRET_ESPERADO: ${{ needs.p21_token.outputs.secret }}
+          P21_CUTOVER: ${{ needs.p21_token.outputs.cutover }}
+          P21_TOKEN_ID: ${{ needs.p21_token.outputs.token_id }}
+          P21_ACCOUNT: ${{ needs.p21_token.outputs.account }}
+          P21_DEDICADO_PRESENTE: ${{ secrets.CF_TOKEN_PANEL != '' }}
+          CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_PANEL || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
+        run: |
+          set -euo pipefail
+          case "${P21_CUTOVER:-}" in
+            false)
+              echo "::warning title=TOKEN_LEGADO_EM_USO::serviço $P21_SERVICE com cutover=false em ops/token-cutover.json: este job usa o token legado (CLOUDFLARE_PUBLIC_OWNER_API_TOKEN/CLOUDFLARE_API_TOKEN, alcance da conta). Transição P21: docs/p21/tokens-por-worker.md"
+              ;;
+            true)
+              # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+              CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"
+              if [ "${P21_SECRET_ESPERADO:-}" != "$P21_SECRET" ]; then
+                echo "::error title=TOKEN_CUTOVER_DIVERGENTE::o workflow declara $P21_SECRET mas ops/token-cutover.json registra ${P21_SECRET_ESPERADO:-nada} para $P21_SERVICE"
+                exit 1
+              fi
+              if [ "${P21_DEDICADO_PRESENTE:-}" != "true" ] || [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+                echo "::error title=TOKEN_DEDICADO_AUSENTE::serviço $P21_SERVICE com cutover=true exige o segredo $P21_SECRET no environment deste job; o token legado nunca é usado. Cadastre o segredo ou volte cutover=false por PR (docs/p21/tokens-por-worker.md)."
+                exit 1
+              fi
+              verify="$(curl -sS --max-time 20 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$P21_ACCOUNT/tokens/verify" || true)"
+              got="$(printf '%s' "$verify" | python3 -c 'import json, sys
+          try:
+              d = json.load(sys.stdin)
+          except Exception:
+              d = {}
+          r = d.get("result") if isinstance(d, dict) else None
+          ok = isinstance(d, dict) and d.get("success") is True and isinstance(r, dict) and r.get("status") == "active"
+          print(r.get("id", "") if ok else "")' || true)"
+              if [ -z "$got" ] || [ "$got" != "${P21_TOKEN_ID:-}" ]; then
+                echo "::error title=TOKEN_ID_DIVERGENTE::o segredo $P21_SECRET não é o token ativo ${P21_TOKEN_ID:-sem-id} registrado em ops/token-cutover.json para $P21_SERVICE (verify na conta $P21_ACCOUNT: ${got:-falhou})"
+                exit 1
+              fi
+              echo "::notice title=TOKEN_DEDICADO_EM_USO::serviço $P21_SERVICE usa $P21_SECRET (token $got, conta $P21_ACCOUNT); o legado está vazio neste job"
+              ;;
+            *)
+              echo "::error title=TOKEN_CUTOVER_ILEGIVEL::interruptor de $P21_SERVICE ilegível (${P21_CUTOVER:-vazio}); nenhum token é entregue"
+              exit 1
+              ;;
+          esac
       - uses: actions/checkout@v4
 
       - name: Resolve exact source SHA
@@ -69,7 +127,7 @@ jobs:
           REPO_OWNER: ${{ github.repository_owner }}
           EVENT: ${{ github.event_name }}
           SKIP_IF_LIVE: ${{ inputs.skip_if_live == true && 'true' || 'false' }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_PANEL || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
           CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         run: |
           set -euo pipefail
@@ -202,7 +260,7 @@ jobs:
       - name: R111 fail closed on passphrase secret names before Wrangler deploy
         if: env.PROMOTE == 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_PANEL || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
           CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         shell: bash
         run: |
@@ -223,7 +281,7 @@ jobs:
         if: env.PROMOTE == 'true'
         working-directory: zpc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_PANEL || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
           CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
           # R9-D1: same non-secret window flag as the main Worker; edge >= #211 validates it (ceiling 2026-12-31) and
           # passes it as --var. Absent => window closed (today's behaviour). Older edge sources ignore it.
@@ -237,7 +295,7 @@ jobs:
       - name: R111 verify secret names survived Wrangler deploy
         if: env.PROMOTE == 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_PANEL || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
           CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         shell: bash
         run: |
@@ -254,7 +312,7 @@ jobs:
         if: env.PROMOTE == 'true'
         shell: bash
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_PANEL || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
           CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         run: |
           set -euo pipefail

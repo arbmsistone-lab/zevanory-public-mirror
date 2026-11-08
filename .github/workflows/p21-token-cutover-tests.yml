@@ -1,0 +1,80 @@
+name: p21-token-cutover-tests
+
+# P21 / R18 (docs/p21/tokens-por-worker.md): contrato e testes do interruptor de token dedicado por serviço.
+# Só pull_request: nenhum segredo, nenhuma requisição à Cloudflare. (1) contrato estático de todos os workflows
+# listados em ops/token-cutover.json; (2) testes que executam os passos reais com curl/npx falsos (11 testes, 22
+# mutantes); (3) escopo efetivo dos tokens pelo credential-scope (7 testes, 12 mutantes); (4) regressão do D1 (#996).
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p21-token-cutover-tests.yml"
+      - ".github/workflows/p21-token-cutover.yml"
+      - ".github/workflows/central-production-deploy.yml"
+      - ".github/workflows/zevanory-sales-public-release.yml"
+      - ".github/workflows/public-router-deploy.yml"
+      - ".github/workflows/zpc-control-worker-deploy.yml"
+      - ".github/workflows/t1-publisher-guard.yml"
+      - "ops/token-cutover.json"
+      - "ops/publishers.json"
+      - "scripts/ci/p21_token_cutover.py"
+      - "scripts/ci/p21_credential_scope.py"
+      - "scripts/ci/materialize_sales_configs.py"
+      - "scripts/deploy/sales-candidate-parked.mjs"
+      - "scripts/ci/t1_verdict.py"
+      - "scripts/release/publication_chain_check.py"
+      - "tests/gh_actions_sim.py"
+      - "tests/test_p21_token_cutover.py"
+      - "tests/test_p21_credential_scope.py"
+      - "tests/test_diario_d1_credentials.py"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: p21-token-cutover / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Contrato estático do interruptor
+        run: python3 scripts/ci/p21_token_cutover.py check
+      - name: Interruptor nos passos reais (contagem exata 11, 22 mutantes mortos)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v tests/test_p21_token_cutover.py < /dev/null 2>&1 | tee /tmp/p21.txt
+          grep -Eq '^Ran 11 tests in ' /tmp/p21.txt || { echo "::error::esperados 11 testes"; exit 1; }
+          grep -qx "OK" /tmp/p21.txt || { echo "::error::teste do interruptor falhou"; exit 1; }
+          grep -qx "MUTANTS total=22 killed=22 survived=0" /tmp/p21.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Escopo efetivo dos tokens (contagem exata 7, 12 mutantes mortos)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v tests/test_p21_credential_scope.py < /dev/null 2>&1 | tee /tmp/cs.txt
+          grep -Eq '^Ran 7 tests in ' /tmp/cs.txt || { echo "::error::esperados 7 testes"; exit 1; }
+          grep -qx "OK" /tmp/cs.txt || { echo "::error::teste de escopo falhou"; exit 1; }
+          grep -qx "MUTANTS total=12 killed=12 survived=0" /tmp/cs.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Regressão das credenciais D1 (#996)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests/test_diario_d1_credentials.py < /dev/null 2>&1 | tee /tmp/d1.txt
+          grep -qx "OK" /tmp/d1.txt
+      - name: Detector T1 e sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/deploy/t1-write-scan.mjs --check
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"
