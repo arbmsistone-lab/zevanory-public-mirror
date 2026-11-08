@@ -1,0 +1,57 @@
+name: p21-token-cutover
+
+# P21 / R18 (docs/p21/tokens-por-worker.md): lê o interruptor VERSIONADO ops/token-cutover.json do serviço pedido,
+# no SHA do próprio run, e devolve só valores não secretos (cutover, token_id, secret, account). Chamado como job
+# `p21_token` por cada workflow listado no arquivo; os jobs com credencial dependem dele (needs) e montam o token
+# pela forma canônica de scripts/ci/p21_token_cutover.py (true: só o dedicado; false: só o legado; senão vazio).
+# Sem segredos, sem environment, sem rede além do checkout; arquivo ilegível = falha (o job com credencial não roda).
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "chave do serviço em ops/token-cutover.json"
+        required: true
+        type: string
+    outputs:
+      cutover:
+        description: "true | false"
+        value: ${{ jobs.read.outputs.cutover }}
+      token_id:
+        description: "id (não secreto) do token dedicado registrado; vazio com cutover=false"
+        value: ${{ jobs.read.outputs.token_id }}
+      secret:
+        description: "nome do segredo dedicado registrado para o serviço"
+        value: ${{ jobs.read.outputs.secret }}
+      account:
+        description: "conta Cloudflare registrada"
+        value: ${{ jobs.read.outputs.account }}
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    name: interruptor ${{ inputs.service }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      cutover: ${{ steps.c.outputs.cutover }}
+      token_id: ${{ steps.c.outputs.token_id }}
+      secret: ${{ steps.c.outputs.secret }}
+      account: ${{ steps.c.outputs.account }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            ops/token-cutover.json
+            scripts/ci/p21_token_cutover.py
+          sparse-checkout-cone-mode: false
+      - name: Ler ops/token-cutover.json
+        id: c
+        shell: bash
+        env:
+          SERVICE: ${{ inputs.service }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/p21_token_cutover.py emit --service "$SERVICE" >> "$GITHUB_OUTPUT"

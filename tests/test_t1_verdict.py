@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
 import t1_verdict as tv  # noqa: E402
 
-OWNER_ONLY = {("1", "1b"), ("2", "2:workers-builds"), ("4", "4a"), ("4", "4b"), ("5", "5c"), ("6", "6c")}
+OWNER_ONLY = {("1", "1b"), ("2", "2:workers-builds"), ("4", "4a"), ("4", "4b"), ("4", "4c"), ("5", "5c"), ("6", "6c")}
 
 
 def git_init(d: Path):

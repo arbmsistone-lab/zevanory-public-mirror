@@ -176,6 +176,35 @@ def negative_tests(repo: Repo) -> dict:
     return {"present": True, "ok": ok, "text": text, "evidence": [repo.evidence(rel)]}
 
 
+def p21_cutover_check(repo: Repo) -> dict:
+    """4c (P21/R18): interruptor ops/token-cutover.json. PROVEN só com TODOS os serviços em cutover=true e o contrato
+    estático (scripts/ci/p21_token_cutover.py check) aprovado neste SHA; cutover=false = token legado em uso."""
+    rel, tool = "ops/token-cutover.json", "scripts/ci/p21_token_cutover.py"
+    what = "token dedicado por serviço em uso (interruptor P21 com cutover=true em todos os serviços)"
+    action = "criar cada token dedicado, cadastrar o segredo e virar o serviço para cutover=true por PR (docs/p21/tokens-por-worker.md)"
+    cfg = repo.json(rel)
+    ev = [repo.evidence(rel), repo.evidence(tool)]
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("services"), dict) or not cfg["services"]:
+        return check("4c", NOT_PROVEN, what, ev, "interruptor ops/token-cutover.json ausente ou ilegível neste SHA", action)
+    false = sorted(n for n, s in cfg["services"].items() if not (isinstance(s, dict) and s.get("cutover") is True))
+    ok, out = False, "ferramenta ausente"
+    py = shutil.which("python3") or sys.executable
+    if repo.exists(tool) and py:
+        try:
+            p = subprocess.run([py, str(repo.path(tool)), "check", "--root", str(repo.root)], capture_output=True, text=True, timeout=120)
+            ok, out = p.returncode == 0, ((p.stdout.strip().splitlines() or [""])[-1])
+        except (OSError, subprocess.TimeoutExpired) as e:
+            out = type(e).__name__
+    if false or not ok:
+        why = []
+        if false:
+            why.append(f"{len(false)} serviço(s) com cutover=false (token legado da conta inteira em uso): {', '.join(false)}")
+        if not ok:
+            why.append(f"contrato estático do interruptor reprovado: {out}")
+        return check("4c", NOT_PROVEN, what, ev, "; ".join(why), action)
+    return check("4c", PROVEN, what + f": {len(cfg['services'])} serviço(s), contrato aprovado ({out})", ev)
+
+
 def evaluate(root: Path) -> dict:
     repo = Repo(root)
     reg = repo.json("ops/publishers.json") or {}
@@ -265,6 +294,7 @@ def evaluate(root: Path) -> dict:
           check("4b", NOT_PROVEN, "permissões efetivas lidas de cada token de escrita", [repo.evidence(".github/workflows/t1-publisher-guard.yml")],
                 "a leitura das políticas (job credential-scope) exige credencial e rede; não é verificável por este veredito offline." + owner_declared(repo, "token_scope"),
                 "rodar credential-scope em gh-pages e anexar o run com EDIT_PROVEN/SCOPE_READY de cada token; incluir os tokens de sonda")]
+    c4.append(p21_cutover_check(repo))
     conds["4"] = c4
 
     # 5. Testes negativos em CI.

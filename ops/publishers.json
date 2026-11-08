@@ -130,6 +130,24 @@
   "rollback_policy": "A deliberate rollback is a git revert merged by the owner: a FORWARD promotion whose authorisation trail is the reviewed pull request. promotion_guard.py has no backwards path. Automatic recovery inside a failed release (central wrangler rollback, sales snapshot restore) only returns to the version that was live before that same run; the sales release never deletes the production script.",
   "recovery_when_production_unreadable": "Not automatic: the guard refuses. The owner dispatches the canonical workflow after confirming the live version manually (Cloudflare dashboard) or after restoring the readback endpoint; the run is recorded.",
   "credentials": "All 19 publishing workflows use the same account-wide tokens (CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN), so credential-level exclusivity does not exist today. Cloudflare supports account-owned API tokens scoped to Specified Workers with the Editor role (changelog 2026-09-15). Target: one token per Worker held only by that Worker's publishers, then revoke the shared tokens. Owner action.",
+  "credentials_p21": {
+    "decision": "P21/R18 (contra-auditor GPT-6): a queda para o token compartilhado não é solução final. Cada publicador referencia o seu token dedicado; durante a transição um interruptor VERSIONADO por serviço (ops/token-cutover.json) decide: cutover=false = expressão legada idêntica à anterior + ::warning TOKEN_LEGADO_EM_USO; cutover=true = só o dedicado, o legado vira vazio na própria expressão e o gate falha com TOKEN_DEDICADO_AUSENTE/TOKEN_ID_DIVERGENTE.",
+    "cutover_file": "ops/token-cutover.json",
+    "reader": ".github/workflows/p21-token-cutover.yml (job p21_token, sem segredos)",
+    "contract": "scripts/ci/p21_token_cutover.py check (forma canônica das expressões, gate como primeiro passo, needs p21_token, dedicado só nos workflows listados)",
+    "scope_proof": "job credential-scope de t1-publisher-guard.yml: scripts/ci/p21_credential_scope.py lê as políticas de cada token dedicado com CF_TOKEN_AUDIT (Account API Tokens Read) e reprova alcance de conta, >1 Worker (vendas: 2 com o candidato fixo), zona não declarada, token ausente/inativo/sem TTL; NOT_PROVEN enquanto houver cutover=false",
+    "verdict": "scripts/ci/t1_verdict.py condição 4c: NOT_PROVEN enquanto qualquer serviço tiver cutover=false ou o contrato falhar; 4a continua NOT_PROVEN enquanto algum workflow citar os tokens compartilhados (remoção final depois da revogação)",
+    "migrated": [
+      "central-production-deploy.yml",
+      "zevanory-sales-public-release.yml",
+      "public-router-deploy.yml",
+      "zpc-control-worker-deploy.yml"
+    ],
+    "pending_migration": "escritores de segredo do zevanory, escritores de KV e leitores: PR seguinte (docs/p21/tokens-por-worker.md, seção 'Fase 2')",
+    "tests": "tests/test_p21_token_cutover.py",
+    "tests_scope": "tests/test_p21_credential_scope.py",
+    "doc": "docs/p21/tokens-por-worker.md"
+  },
   "write_paths": {
     "schema": "t1-write-paths/v1",
     "rule": "Gerado e conferido por scripts/deploy/t1-write-scan.mjs (tests/t1-write-scan.test.mjs): todo workflow ou script com comando capaz de escrever na Cloudflare (classes abaixo) está aqui com classe, escopo e guard. Caminho detectado e não registrado, classe divergente, script chamado não declarado em via, ou entrada que não escreve mais = falha. t1=gap é o registro honesto de rota sem guard T1 antes da escrita: conta como NOT_PROVEN na condição 3 do T1_EXCLUSIVITY.",
@@ -734,7 +752,7 @@
         "pre_guard_isolated": [
           {
             "match": "--config wrangler\\.sales\\.preview\\.toml",
-            "reason": "candidato isolado zevanory-sales-candidate-<run_id> (scripts/ci/materialize_sales_configs.py troca o name e remove as rotas); apagado depois pelo DELETE da mesma execução"
+            "reason": "candidato isolado zevanory-sales-candidate-<run_id> (scripts/ci/materialize_sales_configs.py troca o name e remove as rotas); apagado depois pelo DELETE da mesma execução. P21 com cutover=true: candidato FIXO zevanory-sales-candidate (Editor por Worker não cria nem apaga Worker), estacionado no fim com scripts/deploy/sales-candidate-parked.mjs (410)"
           }
         ],
         "controls": "promotion_guard (tag) antes do deploy canônico; readback /health; restauração do snapshot em FAIL; grupo deploy-zevanory-sales-public"
