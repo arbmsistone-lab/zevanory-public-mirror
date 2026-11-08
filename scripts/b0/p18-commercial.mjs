@@ -123,6 +123,22 @@ export function readSalesMode(status, bodyText) {
   return { mode: null, reason: "release_sales_mode_unknown:" + String(m).slice(0, 30) };
 }
 
+// Modo Hotmart (roteiro v5.0, Nível 1, PR #1003): com a trava completa fechada, o canal próprio
+// /api/sales/hotmart-status pode abrir SÓ a compra pela Hotmart dos kits. Falha fechada: qualquer resposta que
+// não seja HTTP 200 com {"open": true} conta como canal fechado (as expectativas da trava fechada continuam).
+export function readHotmartChannel(status, bodyText) {
+  if (status !== 200) return { open: false, reason: "hotmart_channel_http_" + status };
+  let j;
+  try { j = JSON.parse(bodyText); } catch { return { open: false, reason: "hotmart_channel_not_json" }; }
+  return isObj(j) && j.open === true ? { open: true, reason: "hotmart_channel_open" } : { open: false, reason: "hotmart_channel_closed" };
+}
+// Expectativa efetiva por produto: no modo Hotmart só os kits são julgados como abertos; assinatura e serviço
+// (Conteúdo Pronto) seguem a trava completa.
+export function effectiveSalesMode(mode, hotmartOpen, product) {
+  if (mode === "globally-blocked" && hotmartOpen === true && product && product.kind === "kit") return "enabled";
+  return mode;
+}
+
 // ---------------------------------------------------------------- classificação do checkout
 // Retorna { state: "closed" | "open" | "unverifiable" | "mismatch", reason, identity }.
 export function classifyCheckout({ status, body }, product, allow) {
@@ -304,22 +320,29 @@ export async function runLive({ allow, fetchImpl = fetch, renderCheckout = null,
   const siteHost = hostOf(allow.site_origin), relHost = hostOf(allow.release_url);
   const rel = await safeGetNoFollow(allow.release_url, { fetchImpl, allowHosts: [relHost] });
   const sm = readSalesMode(rel.status, rel.body);
+  // Canal Hotmart só é consultado com a trava completa fechada (mesmo host da trava; somente GET).
+  let hc = { open: false, reason: "hotmart_channel_not_consulted" };
+  if (sm.mode === "globally-blocked") {
+    const h = await safeGetNoFollow(new URL("/api/sales/hotmart-status", allow.release_url).href, { fetchImpl, allowHosts: [relHost] });
+    hc = readHotmartChannel(h.status, h.body);
+  }
   const results = [];
   for (const p of allow.products) {
+    const em = effectiveSalesMode(sm.mode, hc.open, p);
     const routeUrl = allow.site_origin + p.site_route;
     const route = await safeGetNoFollow(routeUrl, { fetchImpl, allowHosts: [siteHost] });
-    const rd = decideSiteRoute(sm.mode, route, p, allow);
+    const rd = decideSiteRoute(em, route, p, allow);
     results.push({ link: routeUrl, source: "live:site_route", slug: p.slug, verdict: rd.verdict, reason: sm.mode ? rd.reason : sm.reason, http_status: route.status });
     const href = `https://${allow.checkout_hosts[0]}/${p.checkout_code}?off=${p.offer}`;
     const shape = checkLinkShape(href, allow, { pageSlug: p.slug });
     if (!shape.ok) { results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: FAIL, reason: shape.reason }); continue; }
     const got = renderCheckout ? await renderCheckout(href) : await safeGet(href, { fetchImpl, allowHosts: allow.redirect_hosts });
     const cls = got.error && !got.body ? { state: "unverifiable", reason: got.error, identity: null } : classifyCheckout(got, p, allow);
-    const d = decideCheckout(sm.mode, cls);
+    const d = decideCheckout(em, cls);
     results.push({ link: href, source: "live:checkout", slug: p.slug, verdict: d.verdict, reason: sm.mode ? d.reason : sm.reason,
       http_status: got.status, hops: got.hops || [], state: cls.state, identity: cls.identity, ...(got.blocked_non_get !== undefined ? { blocked_non_get: got.blocked_non_get } : {}) });
   }
-  return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason });
+  return buildReport("live", results, { started_at: started, finished_at: new Date(now()).toISOString(), sales_mode: sm.mode, sales_mode_reason: sm.reason, hotmart_channel: hc.open, hotmart_channel_reason: hc.reason });
 }
 
 // ---------------------------------------------------------------- CLI
@@ -337,7 +360,7 @@ async function main(argv) {
   const json = JSON.stringify(report, null, 2) + "\n";
   if (out) writeFileSync(out, json);
   for (const r of report.results) console.log(`${r.verdict} ${r.source} ${r.slug ?? "-"} ${r.reason}${r.link ? " " + r.link : ""}`);
-  console.log(`P18_COMMERCIAL mode=${report.mode} verdict=${report.verdict} total=${report.counts.total} pass=${report.counts.pass} fail=${report.counts.fail}${report.sales_mode !== undefined ? " sales_mode=" + report.sales_mode : ""}`);
+  console.log(`P18_COMMERCIAL mode=${report.mode} verdict=${report.verdict} total=${report.counts.total} pass=${report.counts.pass} fail=${report.counts.fail}${report.sales_mode !== undefined ? " sales_mode=" + report.sales_mode : ""}${report.hotmart_channel !== undefined ? " hotmart_channel=" + report.hotmart_channel : ""}`);
   return report.verdict === PASS ? 0 : 1;
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) main(process.argv.slice(2)).then((c) => { process.exitCode = c; }, (e) => { console.error(String(e?.stack || e)); process.exitCode = 2; });

@@ -114,7 +114,13 @@
      "assertion_pattern": "[P18C.12]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+     "assertion_pattern": "[P18C.H2]",
+     "justification": "no modo Hotmart os kits são julgados pela regra da trava aberta; com o checkout fechado (049) e o canal aberto, o mutante faz o FAIL hotmart_closed_while_enabled virar PASS"
+    }
+   ]
   },
   "K12 trava lida sem HTTP 200": {
    "primary": [
@@ -190,7 +196,13 @@
      "assertion_pattern": "[P18C.14]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+     "assertion_pattern": "[P18C.H3]",
+     "justification": "com o canal Hotmart ilegível ou fechado, a rota do kit com checkout volta à regra da trava fechada; sem a regra, site_route_checkout_while_locked não aparece"
+    }
+   ]
   },
   "K20 Location do 302 ignorado": {
    "primary": [
@@ -204,6 +216,11 @@
      "test_pattern": "live, trava aberta e trava ilegível",
      "assertion_pattern": "[P18C.15]",
      "justification": "no live com trava aberta, /assinar/conteudo-pronto responde 302 e fica sem checkout conferido"
+    },
+    {
+     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+     "assertion_pattern": "[P18C.H4]",
+     "justification": "no modo Hotmart, /assinar/conteudo-pronto com 302 para a Hotmart só é detectado pelo Location; ignorado, a rota da assinatura passa como pausada"
     }
    ]
   },
@@ -270,6 +287,11 @@
      "test_pattern": "live, trava aberta e trava ilegível",
      "assertion_pattern": "[P18C.15]",
      "justification": "sem as rotas, o relatório da trava aberta continua PASS, mas o da trava fora do ar perde metade das linhas; a 1ª asserção que pode falhar é a contagem/estado do 1º bloco"
+    },
+    {
+     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+     "assertion_pattern": "[P18C.H3]",
+     "justification": "sem conferir as rotas no live, a rota do kit com checkout e canal fechado deixa de gerar site_route_checkout_while_locked"
     }
    ]
   },
