@@ -13,7 +13,7 @@
       "A cópia Neon -> KV ainda fica em texto claro no KV enquanto o segredo P20_BACKUP_KEY não estiver cadastrado no Worker; a seção 9.1 pede cópia cifrada. Com o segredo, o Worker grava cada bundle como envelope AES-256-GCM (docs/p20/cifragem-backup.md) e o ensaio mensal registra copia_cifrada por parte; a lacuna só sai do registro quando as 3 partes do dia estiverem cifradas.",
       "Retenção curta: 8 dias no KV (Neon -> KV) e 14 dias no Neon (KV -> Neon). Não há cópia rotineira num terceiro local.",
       "A cópia KV -> Neon só é legível com a credencial do banco, que hoje só o Worker usa; o ensaio mensal em CI não a restaura (NOT_AVAILABLE).",
-      "Diário de eventos críticos no D1 (seção 9.1) não implementado.",
+      "Diário de eventos críticos no D1 (seção 9.1): gravação em sombra e reconciliação diária implementadas; o ensaio mensal lê o diário (CF_TOKEN_D1_DIARIO_READ) e reconstrói os eventos posteriores à cópia em p20_diario_reconstruido, mas a lacuna diario_d1 só sai do registro com a prova completa num ensaio aprovado (docs/p20/diario-d1.md).",
       "Conciliação dos pedidos restaurados contra o provedor (Mercado Pago/Hotmart) não executada no ensaio: vendas fechadas e nenhuma credencial somente leitura do provedor no Environment do ensaio."
     ]
   },

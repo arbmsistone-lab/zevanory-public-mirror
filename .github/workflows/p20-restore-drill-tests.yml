@@ -2,11 +2,13 @@ name: p20-restore-drill-tests
 
 # P20 (Roteiro Mestre v4.7, seção 9.1): testes do ensaio mensal de restauração completa. Evidência SINTETICA.
 # Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à produção, nunca escreve no ramo de
-# evidência. (1) lógica (node, rede falsa, 12 testes do ensaio + 11 da cifragem AES-256-GCM + 8 da cópia KV -> Neon);
+# evidência. (1) lógica (node, rede falsa, 12 testes do ensaio + 11 da cifragem AES-256-GCM + 8 da cópia KV -> Neon +
+# 9 do diário D1 no ensaio = 40);
 # (2) ponta a ponta num PostgreSQL efêmero: o CÓDIGO REAL do Worker (worker/data-backup.mjs) grava o backup (em claro e
 # cifrado, chave sintética) num KV em memória e o ensaio restaura TUDO num banco p20_drill* com contagem e hash de
 # conteúdo por tabela, inclusive a cópia KV -> Neon (zevanory_kv_backup), relida do Postgres e conferida chave a chave
-# com TTL e metadados num KV reconstruído (10 testes); (3) mutantes causais pelo classificador compartilhado (61, todos KILLED).
+# com TTL e metadados num KV reconstruído, e os eventos posteriores à cópia reconstruídos a partir do diário D1 em
+# p20_diario_reconstruido (10 + 3 = 13 testes); (3) mutantes causais pelo classificador compartilhado (61 da cópia KV e cifragem + 22 do diário D1 = 83, todos KILLED).
 on:
   pull_request:
     branches: [gh-pages]
@@ -20,6 +22,13 @@ on:
       - "tests/p20-restore-drill.test.mjs"
       - "tests/p20-backup-encryption.test.mjs"
       - "tests/p20-kv-copy-drill.test.mjs"
+      - "tests/p20-diario-ensaio.test.mjs"
+      - "tests/helpers/p20_diario_fixture.mjs"
+      - "tests/helpers/d1-sqlite.mjs"
+      - "worker/diario-p20.mjs"
+      - "worker/diario-sombra.mjs"
+      - "worker/diario-reconcilia.mjs"
+      - "migrations/d1/**"
       - "tests/test_p20_restore_drill.py"
       - "tests/b0-baseline.test.mjs"
       - "tests/helpers/p20-backup-fixture.mjs"
@@ -64,12 +73,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Lógica do ensaio, da cifragem e da cópia KV -> Neon (contagem exata 31, zero pulados)
+      - name: Lógica do ensaio, da cifragem, da cópia KV -> Neon e do diário D1 (contagem exata 40, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs tests/p20-kv-copy-drill.test.mjs | tee /tmp/t.txt
-          for l in "# tests 31" "# pass 31" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs tests/p20-kv-copy-drill.test.mjs tests/p20-diario-ensaio.test.mjs | tee /tmp/t.txt
+          for l in "# tests 40" "# pass 40" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Ponta a ponta no PostgreSQL efêmero (código real do Worker -> ensaio completo)
         shell: bash
         env:
@@ -81,7 +90,7 @@ jobs:
           set -euo pipefail
           command -v psql >/dev/null || sudo apt-get install -y -qq postgresql-client > /dev/null
           python -m unittest -v tests/test_p20_restore_drill.py 2>&1 | tee /tmp/py.txt
-          grep -qE '^Ran 10 tests' /tmp/py.txt && grep -qx 'OK' /tmp/py.txt || { echo "::error::esperados 10 testes OK sem pulos"; exit 1; }
+          grep -qE '^Ran 13 tests' /tmp/py.txt && grep -qx 'OK' /tmp/py.txt || { echo "::error::esperados 13 testes OK sem pulos"; exit 1; }
           if grep -q 'skipped' /tmp/py.txt; then echo "::error::teste pulado"; exit 1; fi
       - name: Mutantes causais (todos precisam morrer)
         shell: bash
@@ -89,7 +98,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p20_restore_drill.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P20_RESTORE_DRILL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=61 killed=61 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=83 killed=83 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

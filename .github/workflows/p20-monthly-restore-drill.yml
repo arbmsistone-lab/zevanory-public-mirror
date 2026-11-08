@@ -14,6 +14,8 @@ name: P20 monthly full restore drill
 # memória e confere chave a chave (valor, TTL, metadados) contra o manifesto da fonte. Nenhuma credencial do Neon aqui.
 # Cifragem (docs/p20/cifragem-backup.md): P20_BACKUP_KEYS (secret do Environment producao-critica, cadastrado pelo
 # proprietário) decifra os bundles AES-256-GCM; bundles legados em claro continuam legíveis e são marcados não cifrados.
+# Diário D1 (docs/p20/diario-d1.md, "Ensaio mensal lê o diário"): um passo próprio lê o diário com CF_TOKEN_D1_DIARIO_READ
+# (D1 Read, só SELECT) e o ensaio reconstrói no Postgres efêmero os eventos posteriores à cópia (p20_diario_reconstruido).
 on:
   schedule:
     - cron: '23 7 2 * *'   # dia 2 de cada mês, 07:23 UTC (depois do data-backup das 05:10)
@@ -58,17 +60,23 @@ jobs:
         with:
           python-version: "3.12"
       - name: Testes da lógica do ensaio (sintéticos, sem segredo)
-        run: node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs tests/p20-kv-copy-drill.test.mjs
+        run: node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs tests/p20-kv-copy-drill.test.mjs tests/p20-diario-ensaio.test.mjs
       - name: Banco descartável do ensaio
         run: |
           command -v psql >/dev/null || sudo apt-get install -y -qq postgresql-client > /dev/null
           psql -v ON_ERROR_STOP=1 -d postgres -c "create database p20_drill"
+      # DEC-P20-D1-01: o token de leitura do D1 entra SÓ neste passo (env do passo, nunca do job). Só SELECT fixo pela API
+      # REST de consulta do D1 (scripts/p20/diario-d1-read.mjs). Sem o segredo: aviso e diario_d1 fica em not_covered.
+      - name: P20 diário D1 - leitura para o ensaio (somente SELECT; token de leitura dedicado)
+        env:
+          CF_TOKEN_D1_DIARIO_READ: ${{ secrets.CF_TOKEN_D1_DIARIO_READ }}
+        run: node scripts/p20/diario-d1-read.mjs --out "$RUNNER_TEMP/p20/diario.json"
       - name: Ensaio completo com a cópia REAL mais recente (somente GET no KV; restauração só no Postgres local)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           P20_BACKUP_KEYS: ${{ secrets.P20_BACKUP_KEYS }}  # chave(s) de decifragem; ausente = bundles cifrados reprovam
           PGDATABASE: p20_drill
-        run: node scripts/p20/restore-drill.mjs --mode producao --out "$RUNNER_TEMP/p20/drill.json"
+        run: node scripts/p20/restore-drill.mjs --mode producao --out "$RUNNER_TEMP/p20/drill.json" --diario "$RUNNER_TEMP/p20/diario.json"
       - name: Registro do ensaio (só metadados)
         if: always()
         uses: actions/upload-artifact@v4
