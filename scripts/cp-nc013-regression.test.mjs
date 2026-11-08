@@ -19,7 +19,8 @@ function setup(){
  const storage={sql,setAlarm:async at=>alarm.push(at),transactionSync(fn){db.exec("BEGIN IMMEDIATE");try{const value=fn();db.exec("COMMIT");return value}catch(error){db.exec("ROLLBACK");throw error}}};
  const obj=new ContentProntoSubscriberDO({id:{toString:()=>("ab".repeat(32))},storage});
  const writes=[];
- const kv={get:async k=>null,put:async(k,v)=>{if(k.startsWith("zpc:cp:"))throw Error("CP_KV_WRITE");writes.push(k)},delete:async(k)=>{throw Error("KV_DELETE_FORBIDDEN")}};
+ // NC-989-04: o postback recalcula o balde de vendas pela listagem do KV (API real do Workers KV).
+ const kv={get:async k=>null,put:async(k,v)=>{if(k.startsWith("zpc:cp:"))throw Error("CP_KV_WRITE");writes.push(k)},delete:async(k)=>{throw Error("KV_DELETE_FORBIDDEN")},list:async()=>({keys:[],list_complete:true})};
  const env={HOTMART_HOTTOK:SECRET,HOTMART_SERVICE_PRODUCT_IDS:CP_ID,CP_FORM_SIGNING_KEY:"synthetic-form-signing-key-123456789",CP_DO_ROUTING_KEY:"synthetic-do-routing-key-123456789",ZEVANORY_PRIVATE_ARTIFACTS:kv,
    CP_SUBSCRIBER_DO:{idFromName:name=>name,get:()=>({fetch:(url,init)=>obj.fetch(new Request(url,init))})}};
  const post=(productId,txn,event="PURCHASE_APPROVED")=>new Request("https://zevanory.api.br/api/webhooks/hotmart",{method:"POST",headers:{"x-hotmart-hottok":SECRET,"content-type":"application/json"},body:JSON.stringify({event,version:"2.0.0",data:{

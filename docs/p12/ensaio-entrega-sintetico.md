@@ -275,7 +275,8 @@ origem, pagamento e data. O nome do evento não entra; ele já está na chave.
 | `scripts/audit/command-center-snapshot.mjs` (+ `funnel-counting.mjs`) | `schema`, `totals`, `byDay`, `bySource`, `byProduct`, `updatedAt` | Nenhum. O esquema `zevanory-sales/v1` foi mantido. `updatedAt` é a hora do recomputo horário, e a hora da última venda está em `lastEventAt`. Campos novos: `source` (baldes, eventos, grupos, `undated_groups`, base legada) e `divergent_events`. O total é atualizado de hora em hora, antes do snapshot; a projeção do balde, no postback |
 | `worker/data-backup.mjs` | copia o prefixo `zpc:sales:` | Nenhum. Inclui eventos, projeções de balde e a base legada |
 | `tests/sales-ledger.test.mjs` | resumo depois de `recordHotmartSale` | Chama o recomputo antes de ler; as mesmas 3 asserções de contagem |
-| `scripts/cp-nc013-regression.test.mjs` | conferia a gravação do resumo | Confere o evento imutável (`zpc:sales:v1:ev:`) |
+| `scripts/cp-nc013-regression.test.mjs` | conferia a gravação do resumo | Confere o evento imutável (`zpc:sales:v1:ev:`); o KV falso ganhou `list` (o postback recalcula o balde pela listagem) |
+| `tests/content-service.test.mjs` | postback digital pelo roteador | O KV falso ganhou `list`, pelo mesmo motivo; as asserções não mudaram |
 
 ## Mutantes NC-989 (M19 a M44, todos KILLED)
 
