@@ -9,6 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { calendarEntry, generateNative, validateDraft, runAcquisitionEngine, productLink, verifyProductLink } from "../worker/acquisition-engine.mjs";
@@ -277,4 +278,34 @@ test("H: modo Hotmart (interruptor completo fechado + sales:hotmart:v1) => 5 kit
   assert.equal(await channelPublishPaused(null), true, "sem KV = desconhecido = pausado");
   assert.equal(await channelPublishPaused(pk("0", true)), true, "erro de leitura = pausado");
   resetSalesSwitchCache(); resetHotmartSwitchCache();
+});
+
+// KV falso do Cloudflare (API REST) carregado antes do script: só GET de valores; pausa = "1". Qualquer outra chamada
+// de rede é registrada e reprova o teste (nada de YouTube, Gemini, TikTok, Meta ou Telegram).
+const PAUSED_KV = "data:text/javascript," + encodeURIComponent(`
+const calls = [];
+globalThis.fetch = async (u, o = {}) => {
+  u = String(u); calls.push((o.method || "GET") + " " + u.replace(/^https:\\/\\/[^/]+/, ""));
+  process.on("exit", () => console.log("FETCH_CALLS=" + JSON.stringify(calls)));
+  const m = u.match(/^https:\\/\\/api\\.cloudflare\\.com\\/client\\/v4\\/accounts\\/acc\\/storage\\/kv\\/namespaces\\/ns\\/values\\/([^?]+)$/);
+  if (!m || (o.method || "GET") !== "GET") return new Response("blocked", { status: 599 });
+  const k = decodeURIComponent(m[1]);
+  return k === "zpc:creative-autonomy:paused:v1" ? new Response("1", { status: 200 }) : new Response("", { status: 404 });
+};`);
+test("P: pausa criativa = \"1\" com o KV lendo normalmente => Short e cross-post não publicam", () => {
+  const env = { ...process.env, CLOUDFLARE_API_TOKEN: "tok", CLOUDFLARE_ACCOUNT_ID: "acc", KV_NAMESPACE_ID: "ns", YOUTUBE_CLIENT_ID: "", GEMINI_API_KEY: "", TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@c" };
+  const run = (script) => spawnSync(process.execPath, ["--import", PAUSED_KV, script, "--slot=oferta", "--day=2026-11-08"], { cwd: new URL("..", import.meta.url), env, encoding: "utf8", timeout: 60000 });
+  const yt = run("scripts/channels/youtube-daily-short.mjs");
+  assert.equal(yt.status, 0, yt.stdout + yt.stderr);
+  assert.match(yt.stdout, /sales_open=false hotmart_open=false/, "KV lido (interruptores ausentes = fechados)");
+  assert.match(yt.stdout, /creative_autopublish_paused_or_unknown: no Short published/);
+  assert.doesNotMatch(yt.stdout, /window /, "parou antes de planejar/renderizar/publicar");
+  const ytCalls = JSON.parse((yt.stdout.match(/FETCH_CALLS=(.*)/) || [])[1] || "[]");
+  assert.ok(ytCalls.length > 0 && ytCalls.every((c) => c.startsWith("GET /client/v4/accounts/acc/storage/kv/")), "só leituras do KV: " + ytCalls);
+  assert.ok(ytCalls.some((c) => c.includes("zpc%3Acreative-autonomy%3Apaused%3Av1")), "a chave da pausa foi lida");
+  const cross = run("scripts/channels/short-crosspost.mjs");
+  assert.equal(cross.status, 0, cross.stdout + cross.stderr);
+  assert.match(cross.stdout, /SHORT_CROSSPOST::creative_autopublish_paused_or_unknown/);
+  const crossCalls = JSON.parse((cross.stdout.match(/FETCH_CALLS=(.*)/) || [])[1] || "[]");
+  assert.deepEqual(crossCalls, ["GET /client/v4/accounts/acc/storage/kv/namespaces/ns/values/zpc%3Acreative-autonomy%3Apaused%3Av1"], "cross-post: só a leitura da pausa, nenhum envio");
 });

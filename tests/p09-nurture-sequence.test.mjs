@@ -207,3 +207,22 @@ test("N31 sequência declarada retroativa reprova no gate", () => {
   fails(gate(seqJson((s) => { s.retroactive = true; return s; })), /retroactive deve ser false/, "[N31.1]");
   fails(gate(seqJson((s) => { delete s.consent.coverage_rule; return s; })), /coverage_rule deve declarar a regra 'nunca retroativo'/, "[N31.2]");
 });
+
+test("N32 oferta retida pela trava: até 60 dias desde o passo 2, depois fim da sequência; retidos não tiram a vez das dicas", async () => {
+  const db = fakeDb(); const sent = mailbox(); const store = kv();
+  const env = { DATABASE_URL: "x", RESEND_API_KEY: ["fake", "mailer", "key"].join("-"), LEAD_PRIVACY_SECRET: "k".repeat(40), ZEVANORY_PRIVATE_ARTIFACTS: store };
+  const ago = (d) => new Date(Date.now() - d * 864e5).toISOString();
+  const lead = (email, step, days) => db.rows.set(email, { email, email_hash: "", subject_ref: null, name: "", consent_version: "lead-magnet-v1-2026-10-07", status: "confirmed", nurture_step: step, nurture_at: ago(days) });
+  lead("r59@x.com", 2, 59); lead("r61@x.com", 2, 61);
+  for (let i = 0; i < 60; i++) lead(`h${i}@x.com`, 2, 10 + i * 0.01); // 60 retidos mais antigos que a dica
+  lead("dica@x.com", 1, 3);
+  const out = await runLeadNurture(env, { sqlFactory: db.factory, salesOpen: false });
+  assert.equal(db.rows.get("r61@x.com").nurture_step, 5, "[N32.1] retido há 61 dias: sequência encerrada");
+  assert.ok(Date.now() - Date.parse(db.rows.get("r61@x.com").nurture_at) < 60e3, "[N32.2] fim da sequência agora: a retenção apaga 30 dias depois");
+  assert.equal(db.rows.get("r59@x.com").nurture_step, 2, "[N32.3] retido há 59 dias continua esperando a reabertura");
+  assert.equal(out.expired_held, 1, "[N32.4]"); assert.equal(out.held, 61, "[N32.5]");
+  assert.equal(out.sent, 1, "[N32.6] 60+ retidos não bloqueiam o passo 1 (dica)");
+  assert.equal(db.rows.get("dica@x.com").nurture_step, 2, "[N32.7]");
+  assert.ok(sent.every((m) => !/R\$/.test(m.text)), "[N32.8] nenhuma oferta com vendas fechadas");
+  assert.ok(db.rows.has("r61@x.com"), "[N32.9] não apaga na hora (prazo de 30 dias depois do fim)");
+});

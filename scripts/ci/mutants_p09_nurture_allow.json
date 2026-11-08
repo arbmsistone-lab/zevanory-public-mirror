@@ -358,6 +358,22 @@
      "assertion_pattern": "[N27.7]"
     }
    ]
+  },
+  "M39 oferta retida sem limite de 60 dias": {
+   "primary": [
+    {
+     "test_pattern": "N32",
+     "assertion_pattern": "[N32.1]"
+    }
+   ]
+  },
+  "M40 retidos voltam ao lote com vendas fechadas": {
+   "primary": [
+    {
+     "test_pattern": "N32",
+     "assertion_pattern": "[N32.6]"
+    }
+   ]
   }
  }
 }

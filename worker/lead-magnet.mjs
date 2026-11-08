@@ -33,8 +33,12 @@ const CONSENT_VERSION = "lead-magnet-v1-2026-10-07";
 export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 2 };
 export const PENDING_GRACE_DAYS = 7;
 export const INACTIVE_RETENTION_DAYS = 730;
-// After the last e-mail the consent allows (or the held offer was abandoned), the purpose is fulfilled.
+// After the last e-mail the consent allows (or the held offer expired: HELD_OFFER_MAX_DAYS), the purpose is fulfilled
+// and the lead is erased SEQUENCE_END_GRACE_DAYS later ("até 30 dias depois do fim da sequência", política de privacidade).
 export const SEQUENCE_END_GRACE_DAYS = 30;
+// Offer (step >= 2) held by the sales lock: kept at most 60 days since it reached the offer step (nurture_at of the
+// step-2 claim), then the sequence ends (NURTURE_DONE, nurture_at=now) and the existing retention erases it 30 days later.
+export const HELD_OFFER_MAX_DAYS = 60;
 export const DEFAULT_EVENT_RETENTION_DAYS = 730;
 const RETENTION_BATCH = 200;
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
@@ -242,8 +246,9 @@ async function confirm(env, sql, token) {
 const MIN_DAYS_BEFORE = { 1: 2, 2: 5, 3: 3, 4: 4 };
 // Ofertas (passos 2 a 4): só com compra possível. Interruptor completo (salesOpen) OU modo Hotmart (hotmartOpen,
 // sales:hotmart:v1): todas as ofertas da sequência (OFFERS e o Negócio Completo do passo 4) são kits vendidos pela Hotmart.
-// Retido pela trava de vendas, o lead NÃO é descartado: espera a reabertura (o limite do consentimento e a retenção
-// LGPD de runLeadRetention, inclusive o teto absoluto INACTIVE_RETENTION_DAYS, continuam valendo; descadastro sai na hora).
+// Retido pela trava de vendas, o lead espera a reabertura por até HELD_OFFER_MAX_DAYS (60 dias desde o passo 2); depois
+// a sequência termina (NURTURE_DONE) e runLeadRetention apaga em SEQUENCE_END_GRACE_DAYS (30). Descadastro sai na hora.
+// Retidos não entram no lote de envio com vendas fechadas: os passos 0/1 (dicas) nunca ficam sem vez.
 // Os 5 kits do modo Hotmart (mesma lista de worker/sales-lock-content.mjs HOTMART_KITS; este módulo fica sem a importação
 // porque roda isolado nos gates do P09). Conteúdo Pronto nunca é oferta da sequência.
 const HOTMART_KIT_SLUGS = Object.freeze(["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"]);
@@ -258,9 +263,20 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen: fullSwitchOpe
   for (const [version, followups] of Object.entries(CONSENT_FOLLOWUPS)) {
     await sql.query("update zevanory_leads set nurture_step=$1 where status='confirmed' and consent_version=$2 and nurture_step >= $3 and nurture_step < $1", [NURTURE_DONE, version, 1 + followups]);
   }
+  // Held offers (sales closed): ONE query ends those held for more than HELD_OFFER_MAX_DAYS and counts the rest.
+  let heldNow = 0, expiredHeld = 0;
+  if (!salesOpen) {
+    const h = (await sql.query(`with expired as (update zevanory_leads set nurture_step=$1, nurture_at=now()
+        where status='confirmed' and nurture_step >= 2 and nurture_step < $1 and nurture_at < now() - make_interval(days => $2::int) returning 1)
+      select (select count(*) from expired)::int as expired,
+             (select count(*) from zevanory_leads where status='confirmed' and nurture_step >= 2 and nurture_step < $1)::int as held`, [NURTURE_DONE, HELD_OFFER_MAX_DAYS]))[0] || {};
+    expiredHeld = Number(h.expired) || 0;
+    heldNow = Math.max(0, (Number(h.held) || 0) - expiredHeld);
+  }
+  // With sales closed only the tips (steps 0/1) enter the batch, so held offers never starve them.
   const due = await sql.query(`select email, name, nurture_step, nurture_at, consent_version, subject_ref from zevanory_leads
-      where status='confirmed' and nurture_step < $1 and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, [NURTURE_DONE]);
-  const out = { ok: true, checked: due.length, sent: 0, held: 0 };
+      where status='confirmed' and nurture_step < $1 and (nurture_step < 2 or $2::boolean) and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, [NURTURE_DONE, salesOpen === true]);
+  const out = { ok: true, checked: due.length, sent: 0, held: heldNow, ...(expiredHeld ? { expired_held: expiredHeld } : {}) };
   for (const lead of due) {
     const step = Number(lead.nurture_step);
     const since = now - new Date(lead.nurture_at).getTime();
@@ -268,9 +284,9 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen: fullSwitchOpe
     const cap = 1 + (CONSENT_FOLLOWUPS[lead.consent_version] ?? 0);
     if (step >= cap) { await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]); out.capped = (out.capped || 0) + 1; continue; }
     if (step >= 2 && !salesOpen) {
-      // Offers only go out while customers can actually buy. A lead held by the sales lock is kept (no 30-day
-      // discard): it resumes at the same step when sales reopen (full switch or Hotmart mode).
-      out.held += 1; continue;
+      // Offers only go out while customers can actually buy (defensive: the batch query already leaves held offers
+      // out while sales are closed; they are counted and expired above).
+      continue;
     }
     if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;
     const ref = lead.subject_ref || null;

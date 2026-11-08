@@ -2,7 +2,7 @@
 // Mutantes da trava de vendas nos publicadores de conteúdo (motor de aquisição, Short do YouTube, adaptadores
 // orgânicos). Cada mutante troca âncoras exatas (1 ocorrência cada, texto com EOL normalizado) numa CÓPIA
 // descartável da árvore (o checkout não é tocado), roda tests/sales-lock-publishers.test.mjs (TAP) e só conta
-// KILLED se: rc != 0, contagem igual à linha de base (8), falha de ASSERÇÃO e o teste esperado (rótulo declarado
+// KILLED se: rc != 0, contagem igual à linha de base (9), falha de ASSERÇÃO e o teste esperado (rótulo declarado
 // abaixo ANTES de rodar, pela regra que o mutante quebra) está entre os "not ok". Qualquer outra coisa é
 // SURVIVED/INCONCLUSIVE e o runner sai 1. Offline, sem segredos.
 import { spawnSync } from "node:child_process";
@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITE = "tests/sales-lock-publishers.test.mjs";
-const BASE_COUNT = 8;
+const BASE_COUNT = 9;
 const COPY = ["worker", "data", "scripts/channels", "assets/brand/export", "tests/helpers", SUITE];
 const ACQ = "worker/acquisition-engine.mjs", LOCK = "worker/sales-lock-content.mjs", YT = "scripts/channels/youtube-daily-short.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
-const H = "H: modo Hotmart", CROSS = "scripts/channels/short-crosspost.mjs";
+const H = "H: modo Hotmart", P = "P: pausa criativa", CROSS = "scripts/channels/short-crosspost.mjs";
 const M7 = "D7: Instagram e Facebook fechados", B_CLOSED = "B: trava fechada", B_DRAFT = "B: validateDraft fechada", B_READ = "B: leitura da trava", C = "C: Short fechado", D = "D': adaptador orgânico";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
@@ -53,6 +53,8 @@ const MUTANTS = [
   ["SLP30_short_ignores_hotmart_mode", H, [[YT, "const kit = salesOpen !== true && hotmartOpen === true ? hotmartKit(entry.product.sku) : null;", "const kit = null;"]]],
   ["SLP31_short_pause_unknown_publishes", H, [[YT, "  if (!kv?.get) return true;\n  try { return String", "  if (!kv?.get) return false;\n  try { return String"]]],
   ["SLP32_short_pause_error_publishes", H, [[YT, '=== "1"; } catch { return true; }', '=== "1"; } catch { return false; }']]],
+  ["SLP33_short_main_ignores_pause", P, [[YT, "  if (!dry && await channelPublishPaused(lockKv)) {", "  if (false) {"]]],
+  ["SLP34_crosspost_main_ignores_pause", P, [[CROSS, "  if (await channelPublishPaused(kv)) {", "  if (false) {"]]],
 ];
 
 const eol = (s) => s.replace(/\r\n/g, "\n");

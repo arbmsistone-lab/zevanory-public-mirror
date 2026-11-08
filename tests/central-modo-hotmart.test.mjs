@@ -90,7 +90,7 @@ test("atendimento: kits à venda pela Hotmart no modo Hotmart; Conteúdo Pronto 
   fresh();
 });
 
-test("nutrição: ofertas saem no modo Hotmart; lead retido pela trava não é descartado depois de 30 dias; descadastro respeitado", async () => {
+test("nutrição: ofertas saem no modo Hotmart; retido pela trava espera até 60 dias (61 => fim da sequência); retidos não bloqueiam dicas; descadastro respeitado", async () => {
   const db = fakeDb(); const sent = mailbox(); const kvs = leadKv();
   const env = { DATABASE_URL: "x", RESEND_API_KEY: ["fake", "mailer", "key"].join("-"), LEAD_PRIVACY_SECRET: "a".repeat(40), ZEVANORY_PRIVATE_ARTIFACTS: kvs };
   const ref = await subjectRef(env, "lead@empresa.com.br");
@@ -98,10 +98,20 @@ test("nutrição: ofertas saem no modo Hotmart; lead retido pela trava não é d
   db.rows.set("lead@empresa.com.br", { email: "lead@empresa.com.br", email_hash: "", subject_ref: ref, name: "Bia", consent_version: "lead-magnet-v1-2026-10-07", status: "confirmed", nurture_step: 2, nurture_at: old });
   db.rows.set("saiu@empresa.com.br", { email: "saiu@empresa.com.br", email_hash: "", subject_ref: "r2", name: "", consent_version: "lead-magnet-v1-2026-10-07", status: "unsubscribed", nurture_step: 2, nurture_at: old });
   kvs.m.set("zpc:lead:interest:" + ref, "caixa");
+  const row = (email, step, days) => db.rows.set(email, { email, email_hash: "", subject_ref: null, name: "", consent_version: "lead-magnet-v1-2026-10-07", status: "confirmed", nurture_step: step, nurture_at: new Date(Date.now() - days * 86400e3).toISOString() });
+  row("velho@empresa.com.br", 2, 61);
+  for (let i = 0; i < 60; i++) row(`retido${i}@empresa.com.br`, 2, 20 + i * 0.01);
+  row("dica@empresa.com.br", 1, 3);
   const held = await runLeadNurture(env, { sqlFactory: db.factory, salesOpen: false, hotmartOpen: false });
-  assert.equal(held.held, 1); assert.equal(sent.length, 0);
-  assert.equal(db.rows.get("lead@empresa.com.br").nurture_step, 2, "retido pela trava há 40 dias: continua no passo 2 (não é encerrado)");
+  assert.equal(held.held, 61, "lead (40 dias) + 60 retidos"); assert.equal(held.expired_held, 1);
+  assert.equal(db.rows.get("lead@empresa.com.br").nurture_step, 2, "retido pela trava há 40 dias: continua no passo 2 (dentro dos 60 dias)");
   assert.notEqual(db.rows.get("lead@empresa.com.br").nurture_step, NURTURE_DONE);
+  assert.equal(db.rows.get("velho@empresa.com.br").nurture_step, NURTURE_DONE, "retido há 61 dias: sequência encerrada");
+  assert.ok(Date.now() - Date.parse(db.rows.get("velho@empresa.com.br").nurture_at) < 60e3, "fim agora: apagamento 30 dias depois pelo fluxo existente");
+  assert.equal(held.sent, 1, "60+ retidos não bloqueiam o passo 1"); assert.equal(sent.length, 1); assert.doesNotMatch(sent[0].text, /R\$/, "só a dica sai");
+  assert.equal(db.rows.get("dica@empresa.com.br").nurture_step, 2);
+  for (const e of [...db.rows.keys()]) if (e !== "lead@empresa.com.br" && e !== "saiu@empresa.com.br") db.rows.delete(e);
+  sent.length = 0;
   const out = await runLeadNurture(env, { sqlFactory: db.factory, salesOpen: false, hotmartOpen: true });
   assert.equal(out.sent, 1, "modo Hotmart: a oferta do kit sai");
   assert.equal(sent.length, 1); assert.deepEqual(sent[0].to, ["lead@empresa.com.br"], "descadastrado não recebe");
@@ -163,3 +173,4 @@ test("Short: sem leitura da pausa (sem KV) o job não publica nada (fail-closed)
   assert.match(r.stdout, /creative_autopublish_paused_or_unknown: no Short published/);
   assert.doesNotMatch(r.stdout, /window /, "parou antes de planejar/renderizar");
 });
+

@@ -1,8 +1,8 @@
 name: Sales lock publishers
 # Trava de vendas nos publicadores de conteúdo: motor de aquisição (Telegram/Bluesky), Short do YouTube e adaptadores
 # orgânicos do bundle. Com a trava fechada, ilegível ou incompleta nenhum texto publicado leva preço, /comprar,
-# Hotmart/checkout ou chamada de compra. Testes comportamentais (exatamente 8) + mutantes (exatamente 32 KILLED pelo
-# teste esperado). H = modo Hotmart (5 kits pela Hotmart com o interruptor completo fechado). Só pull request: nunca dispara no merge. Offline, sem segredos, somente leitura.
+# Hotmart/checkout ou chamada de compra. Testes comportamentais (exatamente 9) + mutantes (exatamente 34 KILLED pelo
+# teste esperado). H = modo Hotmart (5 kits pela Hotmart com o interruptor completo fechado); P = pausa criativa. Só pull request: nunca dispara no merge. Offline, sem segredos, somente leitura.
 on:
   pull_request:
     branches: [gh-pages]
@@ -35,16 +35,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Testes (exatamente 8)
+      - name: Testes (exatamente 9)
         run: |
           set -euo pipefail
           node --test tests/sales-lock-publishers.test.mjs < /dev/null | tee t.txt
-          grep -qx '# tests 8' t.txt && grep -qx '# pass 8' t.txt && grep -qx '# fail 0' t.txt && grep -qx '# skipped 0' t.txt
-      - name: Mutantes (exatamente 32 KILLED)
+          grep -qx '# tests 9' t.txt && grep -qx '# pass 9' t.txt && grep -qx '# fail 0' t.txt && grep -qx '# skipped 0' t.txt
+      - name: Mutantes (exatamente 34 KILLED)
         run: |
           set -euo pipefail
           node scripts/ci/mutants_sales_lock_publishers.mjs < /dev/null | tee mut.txt
-          grep -qx 'BASELINE PASS tests=8' mut.txt
-          grep -qx 'MUTANTS PASS killed=32/32' mut.txt
-          test "$(grep -c ' KILLED by=' mut.txt)" = "32"
+          grep -qx 'BASELINE PASS tests=9' mut.txt
+          grep -qx 'MUTANTS PASS killed=34/34' mut.txt
+          test "$(grep -c ' KILLED by=' mut.txt)" = "34"
           git diff --exit-code -- worker scripts tests

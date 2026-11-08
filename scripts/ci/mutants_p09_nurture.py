@@ -73,6 +73,8 @@ M = {
     "M36 gate aceita sequência retroativa": (G, "  if (seq.retroactive !== false) err(", "  if (false) err("),
     "M37 chave de idempotência com e-mail": (S, '  if (!/^[0-9a-f]{16,64}$/.test(String(contactRef || ""))) throw new Error("contact_ref_required");\n', ""),
     "M38 descadastro do Worker não apaga o lead": ("worker/lead-magnet.mjs", "    const rows = await sql.query(`delete from zevanory_leads where ${match.column}=$1 returning email, subject_ref, consent_version`, [match.value]);", "    const rows = [];"),
+    "M39 oferta retida sem limite de 60 dias": ("worker/lead-magnet.mjs", "export const HELD_OFFER_MAX_DAYS = 60;", "export const HELD_OFFER_MAX_DAYS = 730;"),
+    "M40 retidos voltam ao lote com vendas fechadas": ("worker/lead-magnet.mjs", "[NURTURE_DONE, salesOpen === true]);", "[NURTURE_DONE, true]);"),
     "M31 prepareEmail ignora a decisão": (S, '  if (!decision.ok) return { send: false, reason: decision.reason };\n  return { send: true, reason: "ok", message: renderEmail(args) };', '  return { send: true, reason: "ok", message: renderEmail(args) };'),
 }
 
