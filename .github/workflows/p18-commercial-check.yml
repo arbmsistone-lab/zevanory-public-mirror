@@ -1,0 +1,112 @@
+name: P18 commercial check (read-only)
+
+# Roteiro v4.9, seção 5/P18, R15, VC-H controles 7 e 10: verificação COMERCIAL de cada link de compra (produto pela
+# lista fechada data/p18-commercial-allowlist.json, identidade comercial A. RENAN ALVES MOREIRA BITU LTDA /
+# CNPJ 69.077.233/0001-99, checkout legítimo, coerência com a trava global sales_mode de /api/release). HTTP 200
+# sozinho nunca é PASS. Somente GET, sem cookie, sem POST, sem transação (scripts/b0/p18-commercial.mjs; o
+# navegador opcional aborta toda requisição que não seja GET).
+#   pull_request: testes com fixtures (sem rede), modo offline (lista fechada x catálogo x Worker x páginas) e
+#                 mutantes causais (todos precisam morrer).
+#   schedule / workflow_dispatch: modo live no gh-pages; relatório JSON como artefato; FAIL derruba o job
+#                 (notificação de falha de workflow do GitHub). Nenhum segredo, nenhuma escrita (contents: read).
+# Orçamento por execução: 1 GET na trava + 6 GET nas rotas do site + 6 navegações GET nos checkouts Hotmart.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p18-commercial-check.yml"
+      - "scripts/b0/p18-commercial.mjs"
+      - "scripts/b0/p18-commercial-browser.mjs"
+      - "data/p18-commercial-allowlist.json"
+      - "data/products.json"
+      - "worker/sales-public-worker.mjs"
+      - "sales-public/**"
+      - "tests/p18-commercial.test.mjs"
+      - "tests/fixtures/p18-commercial/**"
+      - "scripts/ci/mutants_p18_commercial.py"
+      - "scripts/ci/mutants_p18_commercial_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+  schedule:
+    - cron: '11,41 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p18-commercial-check-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: p18-commercial / offline + mutantes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testes com fixtures (contagem exata 17, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p18-commercial.test.mjs | tee /tmp/t.txt
+          for l in "# tests 17" "# pass 17" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Modo offline (sem rede)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/b0/p18-commercial.mjs --mode offline --out /tmp/p18c-offline.json | tee /tmp/off.txt
+          grep -q "^P18_COMMERCIAL mode=offline verdict=PASS " /tmp/off.txt
+      - name: Mutantes causais (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p18_commercial.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=P18_COMMERCIAL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=27 killed=27 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"
+
+  live:
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages' }}
+    name: p18-commercial / live (somente GET)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/b0
+            data
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Navegador (Chromium) para checkouts SPA
+        run: npm i --no-save --no-audit --no-fund playwright@1.48.2 && npx playwright install --with-deps chromium
+      - name: Verificação comercial live
+        shell: bash
+        run: |
+          set -uo pipefail
+          node scripts/b0/p18-commercial.mjs --mode live --browser --out "$RUNNER_TEMP/p18-commercial.json" | tee "$RUNNER_TEMP/live.txt"
+          code=${PIPESTATUS[0]}
+          echo "::notice title=P18_COMMERCIAL::$(grep -E '^P18_COMMERCIAL ' "$RUNNER_TEMP/live.txt")"
+          grep -E '^FAIL ' "$RUNNER_TEMP/live.txt" | head -20 | while read -r l; do echo "::error title=P18_COMMERCIAL_FAIL::$l"; done
+          exit "$code"
+      - name: Relatório
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: p18-commercial-${{ github.run_id }}
+          path: ${{ runner.temp }}/p18-commercial.json
+          if-no-files-found: warn
+          retention-days: 30
