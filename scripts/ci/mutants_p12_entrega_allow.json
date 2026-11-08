@@ -8,7 +8,13 @@
      "assertion_pattern": "[E6.1]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.4]",
+     "justification": "E18.4 codifica a mesma regra (marcador da atividade não gravado = 503 para a Hotmart reenviar); com a mutação o handler responde 200"
+    }
+   ]
   },
   "M06 atividade duplicada tratada como falha": {
    "primary": [
@@ -790,6 +796,15 @@
     {
      "test_pattern": "E15",
      "assertion_pattern": "[E15.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M45 chave da atividade com o relógio (reentrega após gravação parcial duplica)": {
+   "primary": [
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.5]"
     }
    ],
    "secondary": []

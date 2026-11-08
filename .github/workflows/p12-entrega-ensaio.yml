@@ -3,7 +3,7 @@ name: p12-entrega-ensaio
 # P12 Entrega digital idempotente (roteiro v4.9.1, seções 5, 7 e 12-B.4): ensaio SINTÉTICO de entrega
 # (docs/p12/ensaio-entrega-sintetico.md). Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma
 # requisição à Cloudflare, à Hotmart ou à produção. (1) ensaio E1-E22 com fetch proibido (22 testes; E13-E22 = NC-989-01/02/03/04);
-# (2) mutantes causais pelo classificador compartilhado (39, todos KILLED). A suíte completa (manifesto) segue
+# (2) mutantes causais pelo classificador compartilhado (40, todos KILLED). A suíte completa (manifesto) segue
 # no gate existente.
 on:
   pull_request:
@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p12_entrega.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P12_ENTREGA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=39 killed=39 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=40 killed=40 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

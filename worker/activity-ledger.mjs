@@ -79,7 +79,9 @@ export async function emitActivity(env, {type, channel, status, ref, link, amoun
       evidence:[type,"source:zevanory-worker",new Date(now).toISOString()],
       at:new Date(now).toISOString()
     };
-    const key=ACTIVITY_EVENT_PREFIX+now+":"+id;
+    // Chave determinística (sem o relógio): uma reentrega depois de gravação parcial (evento gravado, marcador não;
+    // o handler devolve 503 e a Hotmart reenvia) regrava a MESMA chave em vez de criar um segundo evento.
+    const key=ACTIVITY_EVENT_PREFIX+id;
     await kv.put(key,JSON.stringify(value),{expirationTtl:ACTIVITY_TTL_SECONDS});
     // Deliberately written after durable outbox entry: a crash cannot silently
     // consume the event. Control-panel consumer deduplicates sourceKey too.

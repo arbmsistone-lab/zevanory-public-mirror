@@ -293,8 +293,9 @@ de `zpc:backup:v1:report`, e `scripts/ops/data-backup.mjs` imprime `DATA_BACKUP_
 - **Cadeia:** `verifyChain` do trecho a partir da âncora. Quebra = divergência.
 - **Resultado:** `{estado, fase, janela, esperados, presentes, faltando, sobrando, cadeia_ok, cadeia, por_tipo,
   fora_escopo, amostra (até 20 chaves de cada lado), neon.fontes, d1.consultas, d1.linhas}`. Estados: `ok`,
-  `divergente`, `incompleto` (fonte do Neon com erro, D1 indisponível, páginas excedidas) e `nao_configurado` (sem
-  `env.DIARIO`: nenhuma consulta, sem falha e sem alerta). Tabela de origem ainda inexistente conta como fonte vazia.
+  `divergente`, `incompleto` (fonte do Neon com erro ou com linha que os construtores recusam, `fonte:linha_invalida`;
+  D1 indisponível; páginas excedidas) e `nao_configurado` (sem `env.DIARIO`: nenhuma consulta; sem falha e sem alerta
+  em sombra, falha de P20 `diario_nao_configurado` em ativo). Tabela de origem ainda inexistente conta como fonte vazia.
 - **Cota:** por dia, 5 consultas ao Neon e 1 consulta D1 por página. As linhas lidas no D1 ficam proporcionais à janela
   (centenas por dia no volume previsto), muito abaixo de 30% da cota do D1 Free (5 milhões de linhas lidas por dia).
 
@@ -389,6 +390,6 @@ cópia KV -> Neon, #999).
   índice, fontes ausentes ou com erro, sombra contra ativo no relatório e os ganchos reais de consentimento e de
   `reconcileRefund`. `tests/integration/diario-reconcilia-postgres.test.mjs` roda as consultas reais num PostgreSQL
   descartável (opcional, com `DIARIO_PG_HOST`).
-- `scripts/ci/mutants_p20_diario_reconcilia.py` com `mutants_p20_diario_reconcilia_allow.json`: 18 mutantes, todos
+- `scripts/ci/mutants_p20_diario_reconcilia.py` com `mutants_p20_diario_reconcilia_allow.json`: 20 mutantes, todos
   precisam morrer.
 - `.github/workflows/p20-diario-d1-tests.yml` roda só em `pull_request`, sem segredo, com `contents: read`.

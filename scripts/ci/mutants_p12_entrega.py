@@ -34,6 +34,7 @@ TIMEOUT = 300
 NODE = shutil.which("node") or "node"
 L, H, C = "worker/sales-ledger.mjs", "worker/cp-nc012-digital-hotmart.mjs", "worker/cp-durable-ledger.mjs"
 O, D, X = "worker/onboarding-microvitoria.mjs", "data/p12-degradacao-12b4.json", "scripts/ci/p12_degradacao.mjs"
+A = "worker/activity-ledger.mjs"
 
 M = {
     "M05 atividade não gravada ignorada": (H, "if(!out||(out.emitted!==true&&out.duplicate!==true))return json(503,", "if(false)return json(503,"),
@@ -77,6 +78,8 @@ M = {
     "M42 balde pelo conteúdo (soma de projeções sem deduplicação)": (L, "  const bucket = h.slice(0, BUCKET_HEX);", "  const bucket = ph.slice(0, BUCKET_HEX);"),
     "M43 representativo prefere o evento sem data": (L, "(a.meta.facts?.at ? 0 : 1) - (b.meta.facts?.at ? 0 : 1)", "(a.meta.facts?.at ? 1 : 0) - (b.meta.facts?.at ? 1 : 0)"),
     "M44 COMPLETE gêmeo contado como divergência": (L, "      const set = event === \"PURCHASE_COMPLETE\" ? new Set([...set0].filter((ph) => !twins.has(ph))) : set0;", "      const set = set0;"),
+    # Chave do evento de atividade determinística (worker/activity-ledger.mjs): gravação parcial + reentrega não duplica.
+    "M45 chave da atividade com o relógio (reentrega após gravação parcial duplica)": (A, "    const key=ACTIVITY_EVENT_PREFIX+id;", "    const key=ACTIVITY_EVENT_PREFIX+now+\":\"+id;"),
 }
 
 ALLOW_FILE = Path(os.environ.get("P12_ENTREGA_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p12_entrega_allow.json"))

@@ -43,6 +43,7 @@ M = {
     "M08 uma tentativa só em corrida": (J, "export const MAX_TENTATIVAS = 3;", "export const MAX_TENTATIVAS = 1;"),
     "M09 CPF não detectado": (J, "  if (RE_CPF.test(s)) return \"cpf\";\n", ""),
     "M10 verifyChain não confere payload_sha": (J, "    if ((await sha256Hex(r.payload_json)) !== r.payload_sha) return bad(\"payload_sha\");\n", ""),
+    "M11 verifyChain não confere tipo × event_key": (J, "    if (!TIPO_SET.has(r.tipo) || typeof r.event_key !== \"string\" || !r.event_key.startsWith(r.tipo + \":\")) return bad(\"tipo_chave\");\n", ""),
 }
 
 ALLOW_FILE = Path(os.environ.get("P20_DIARIO_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p20_diario_allow.json"))

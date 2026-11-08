@@ -126,6 +126,9 @@ M = {
     "M81 estado provado aceito sem a prova completa": (L, "export const diarioAprovado = (d) => isObj(d) && DIARIO_ESTADOS_APROVADOS.includes(d.estado) && diarioProvado(d);", "export const diarioAprovado = (d) => isObj(d) && DIARIO_ESTADOS_APROVADOS.includes(d.estado);"),
     "M82 releitura aceita aprovado em ativo sem prova": (L, "  if (r.verdict === \"APROVADO\" && isObj(r.diario) && diarioExigido(r.diario) && !diarioAprovado(r.diario)) throw new Error(\"diario_ativo_sem_prova\");\n", ""),
     "M83 implementação do diário escolhe a própria fase": (D, "    if (isObjDiario(diario)) diario = { ...diario, fase: diarioFase };\n", ""),
+    # Reforço pós-auditoria: fora da sombra, diario que não é objeto (null, lista, texto) também reprova.
+    "M84 diario não objeto fora da sombra passa": (L, "  if (a.readable && fase !== \"sombra\" && !isObj(diario)) diario = {", "  if (false) diario = {"),
+    "M85 ensaio não passa a fase ao registro": (D, "notAvailableReason: naReason, kvCopy, diario, diarioFase });", "notAvailableReason: naReason, kvCopy, diario });"),
 }
 
 ALLOW_FILE = Path(os.environ.get("P20_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p20_restore_drill_allow.json"))

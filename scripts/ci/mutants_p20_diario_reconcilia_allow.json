@@ -1,5 +1,5 @@
 {
- "note": "Expectativas primárias derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [RCn.k] que a codifica), escritas antes de rodar. Na primeira execução R01, R06, R12 e R13 falharam também em testes não previstos e ficaram INCONCLUSIVE; os secundários foram acrescentados depois, com justificativa: R01, R12 e R13 mudam a derivação ou a classificação de todo o cenário compartilhado (cenario()), então RC3-RC6 e RC8, que partem do cenário limpo como 'ok', também falham; R06 faz a sombra falhar, o que RC8.4 (alerta de incompleto em sombra) também codifica.",
+ "note": "Expectativas primárias derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [RCn.k] que a codifica), escritas antes de rodar. Na primeira execução R01, R06, R12 e R13 falharam também em testes não previstos e ficaram INCONCLUSIVE; os secundários foram acrescentados depois, com justificativa: R01, R12 e R13 mudam a derivação ou a classificação de todo o cenário compartilhado (cenario()), então RC3-RC6 e RC8, que partem do cenário limpo como 'ok', também falham; R06 faz a sombra falhar, o que RC8.4 (alerta de incompleto em sombra) também codifica. R19/R20 (reforços pós-auditoria): R07 e R08 passaram a falhar também em RC1.5, que aplica a mesma regra de fase ao estado nao_configurado; registrados como secundários.",
  "mutants": {
   "R01 normalização diferente da do gancho (pedido)": {
    "primary": [
@@ -93,7 +93,13 @@
      "assertion_pattern": "[RC3.8]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "RC1",
+     "assertion_pattern": "[RC1.5]",
+     "justification": "RC1.5 codifica a mesma regra para o estado nao_configurado: em ativo, o efeito é falha de P20; com a mutação o ramo ativo devolve só alerta"
+    }
+   ]
   },
   "R08 fase desconhecida cai na sombra": {
    "primary": [
@@ -102,7 +108,13 @@
      "assertion_pattern": "[RC3.11]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "RC1",
+     "assertion_pattern": "[RC1.5]",
+     "justification": "RC1.5 também confere que fase desconhecida com nao_configurado cai no lado estrito (falha); com a mutação ela vira sombra e o efeito some"
+    }
+   ]
   },
   "R09 sem binding consulta o Neon": {
    "primary": [
@@ -230,6 +242,24 @@
     {
      "test_pattern": "RC7",
      "assertion_pattern": "[RC7.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "R19 nao_configurado não falha em ativo": {
+   "primary": [
+    {
+     "test_pattern": "RC1",
+     "assertion_pattern": "[RC1.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "R20 linha inválida do Neon ignorada": {
+   "primary": [
+    {
+     "test_pattern": "RC8",
+     "assertion_pattern": "[RC8.8]"
     }
    ],
    "secondary": []

@@ -107,6 +107,11 @@ test("RC1 sem binding DIARIO: nao_configurado, nenhuma consulta, relatório do b
   assert.equal(neon.calls.length, 0, "[RC1.2] sem binding, nenhuma consulta ao Neon");
   assert.deepEqual(efeitoNoRelatorio(r), { falha: null, alerta: null }, "[RC1.3] sem falha e sem alerta");
   assert.equal(DIARIO_FASE, "sombra", "[RC1.4] fase do código: sombra até o corte documentado");
+  // Depois do corte para "ativo", o diário é obrigatório: sem binding, falha de P20 (nunca "ok" silencioso).
+  const ativo = await reconciliaDiario({ DATABASE_URL: "postgres://sintetico" }, { sqlFactory: neon.factory, now: NOW, fase: "ativo" });
+  assert.equal(ativo.estado, "nao_configurado", "[RC1.5] ativo sem binding: nao_configurado");
+  assert.deepEqual(efeitoNoRelatorio(ativo), { falha: "diario_nao_configurado", alerta: null }, "[RC1.5] em ativo, nao_configurado é falha de P20");
+  assert.deepEqual(efeitoNoRelatorio({ estado: "nao_configurado", fase: "qualquer" }), { falha: "diario_nao_configurado", alerta: null }, "[RC1.5] fase desconhecida: lado estrito");
 });
 
 test("RC2 tudo casa: mesmas chaves dos ganchos, cadeia íntegra, Hotmart fora do escopo", async () => {
@@ -247,6 +252,12 @@ test("RC8 Neon: tabela ainda inexistente = fonte vazia; erro de fonte ou D1 indi
   assert.equal(d.motivo, "d1_indisponivel", "[RC8.6] motivo");
   const semNeon = await reconciliaDiario({ DIARIO: db }, { sqlFactory: fakeNeon(neon).factory, now: NOW });
   assert.equal(semNeon.estado, "incompleto", "[RC8.7] binding sem DATABASE_URL: incompleto");
+  // Linha do Neon que os construtores recusam (pedido sem id): o esperado dela não foi derivado; nunca "ok".
+  const comInvalida = { ...neon, orders: [...neon.orders, { order_id: null, provider: "mercadopago", ts_ms: NOW - 4 * H }] };
+  const inv = await reconciliaDiario(ENV(db), { sqlFactory: fakeNeon(comInvalida, { ausente: ["refund_provider_claims"] }).factory, now: NOW });
+  assert.equal(inv.neon.fontes["orders:linha_invalida"], 1, "[RC8.8] linha inválida contada na fonte");
+  assert.equal(inv.estado, "incompleto", "[RC8.8] linha inválida do Neon: incompleto, nunca ok");
+  assert.match(inv.motivo, /^neon_fonte_erro:.*orders:linha_invalida/, "[RC8.8] motivo nomeia a fonte com linha inválida");
 });
 
 test("RC9 consentimento real (lead-magnet): o gancho usa o instante do Neon e a reconciliação deriva a mesma chave", async () => {

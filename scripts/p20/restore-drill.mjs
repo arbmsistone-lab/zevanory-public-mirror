@@ -158,7 +158,7 @@ export async function runDrill({ mode, env = process.env, fetchImpl = fetch, fix
     if (isObjDiario(diario)) diario = { ...diario, fase: diarioFase };
   }
   const rec = buildRecord({ mode, sourceRead: sourceRead && !!assessment?.readable, assessment, restore, startedAt, finishedAt: now().toISOString(), rtoSeconds,
-    runId: env.GITHUB_RUN_ID, sha: env.GITHUB_SHA, inventory, notAvailableReason: naReason, kvCopy, diario });
+    runId: env.GITHUB_RUN_ID, sha: env.GITHUB_SHA, inventory, notAvailableReason: naReason, kvCopy, diario, diarioFase });
   return validateRecord(rec);
 }
 

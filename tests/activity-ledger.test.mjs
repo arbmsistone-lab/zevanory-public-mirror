@@ -84,3 +84,16 @@ test("a legacy marker (old prefix) still counts as already emitted",async()=>{
  m.set("zpc-activity:v1:ref:"+createHash("sha256").update("deploy:"+arg.ref).digest("hex"),"x");
  assert.equal((await emitActivity({ZEVANORY_PRIVATE_ARTIFACTS:kv},arg,{now:1})).duplicate,true);
 });
+test("partial write (event stored, marker put failed) then retry at a later clock: same deterministic key, one stored event",async()=>{
+ const {createHash}=await import("node:crypto");
+ const m=new Map();let failMarker=1;
+ const kv={get:async k=>m.get(k)??null,put:async(k,v)=>{if(k.startsWith(ACTIVITY_REF_PREFIX)&&failMarker>0){failMarker--;throw Error("kv_put_failed");}m.set(k,v)}};
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:kv},arg={type:"delivery_sent",channel:"store",status:"hotmart_approved",ref:"hotmart:HP-RETRY-1"};
+ const first=await emitActivity(env,arg,{now:fixed});
+ assert.deepEqual(first,{emitted:false,reason:"kv_write_failed"},"marker write failed: caller sees a failure (handler answers 503)");
+ const retry=await emitActivity(env,arg,{now:fixed+60000});
+ assert.equal(retry.emitted,true,"retry completes");
+ assert.equal(retry.key,ACTIVITY_EVENT_PREFIX+createHash("sha256").update("delivery_sent:"+arg.ref).digest("hex").slice(0,32),"key has no clock component");
+ assert.equal([...m.keys()].filter(k=>k.startsWith(ACTIVITY_EVENT_PREFIX)).length,1,"exactly one stored delivery event after partial failure + retry");
+ assert.equal((await emitActivity(env,arg,{now:fixed+120000})).duplicate,true,"marker now present");
+});

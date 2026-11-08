@@ -223,6 +223,9 @@ export async function verifyChain(rows, opts = {}) {
     const bad = (reason) => ({ ok: false, broken_at: at, reason });
     if (!r || Number(r.seq) !== expectSeq) return bad("seq_fora_de_ordem");
     if (r.prev_hash !== prev) return bad("prev_hash");
+    // A coluna tipo não entra no hash; a reconciliação (compara) classifica pela coluna. A chave (que entra no hash)
+    // precisa começar por "<tipo>:", como appendEvent exige, senão um tipo trocado passaria pela cadeia.
+    if (!TIPO_SET.has(r.tipo) || typeof r.event_key !== "string" || !r.event_key.startsWith(r.tipo + ":")) return bad("tipo_chave");
     let parsed;
     try { parsed = JSON.parse(r.payload_json); } catch { return bad("payload_json"); }
     let canon;
