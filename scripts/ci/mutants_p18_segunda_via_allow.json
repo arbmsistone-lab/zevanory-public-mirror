@@ -72,6 +72,12 @@
     "test_11_200_sem_conteudo_valido_conta_como_queda"
    ],
    "marker": "[P18SV.11]"
+  },
+  "S13 destino do Resend livre": {
+   "tests": [
+    "test_15_destinos_e_destinatario_fixos"
+   ],
+   "marker": "[P18SV.15]"
   }
  }
 }

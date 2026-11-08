@@ -44,13 +44,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Testes da segunda via (contagem exata 15, zero pulados, tempos medidos)
+      - name: Testes da segunda via (contagem exata 16, zero pulados, tempos medidos)
         shell: bash
         run: |
           set -euo pipefail
           command -v psql >/dev/null || sudo apt-get install -y -qq postgresql-client > /dev/null
           python -m unittest -v tests/test_p18_segunda_via.py 2>&1 | tee /tmp/t.txt
-          grep -qE '^Ran 15 tests' /tmp/t.txt && grep -qx 'OK' /tmp/t.txt || { echo "::error::esperados 15 testes OK"; exit 1; }
+          grep -qE '^Ran 16 tests' /tmp/t.txt && grep -qx 'OK' /tmp/t.txt || { echo "::error::esperados 16 testes OK"; exit 1; }
           if grep -q 'skipped' /tmp/t.txt; then echo "::error::teste pulado"; exit 1; fi
           grep -o 'P18SV_MEASURE.*' /tmp/t.txt | while read -r l; do echo "::notice title=P18SV_TEMPO_ATE_ALERTA::$l"; done
       - name: Mutantes causais do SQL (todos precisam morrer)
@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p18_segunda_via.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P18SV_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=12 killed=12 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=13 killed=13 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"

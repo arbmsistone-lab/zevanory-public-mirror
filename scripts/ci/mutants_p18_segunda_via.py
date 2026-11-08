@@ -35,6 +35,7 @@ M = {
     "S11 sem lembrete": (SQL, "    elsif i.confirmed_at is not null and p_now - coalesce(i.last_alert_at, i.confirmed_at) >= make_interval(secs => c.reminder_every_s) then",
                          "    elsif false then"),
     "S12 trava com caixa trocada aceita": (SQL, "    ok := (j->>'sales_mode') in ('globally-blocked', 'enabled');", "    ok := lower(j->>'sales_mode') in ('globally-blocked', 'enabled');"),
+    "S13 destino do Resend livre": (SQL, "    alter table p18sv.config add constraint p18sv_resend_url_fixa check (resend_url = 'https://api.resend.com/emails');", "    null;"),
 }
 
 

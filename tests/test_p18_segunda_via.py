@@ -10,7 +10,7 @@ tempos e recuperação; (8) canal sem chave/destinatário registra erro e não f
 incidente próprio; (10) mudança da trava gera aviso; (11) sales_mode desconhecido, health ready=false, página sem
 marca e JSON quebrado contam como queda; (12) a chave do Resend só vai no cabeçalho do POST ao Resend e nunca é
 gravada em p18sv; (13) dois ticks no mesmo instante não duplicam a rodada; (14) agendar recusa canal não configurado;
-desligar remove o job."""
+desligar remove o job; (15) destinos e destinatário fixos (NC-995-01): UPDATE para outro host/e-mail é recusado."""
 import datetime, json, os, subprocess, unittest, uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
@@ -55,7 +55,7 @@ class Sim:
         self.net = self.good
         if configure:
             psql(self.db, f"insert into vault.decrypted_secrets values ('p18sv_resend_api_key', '{FAKE_RESEND}');"
-                          "update p18sv.config set alert_to = '{dono@example.invalid}' where id = 1;")
+                          "update p18sv.config set alert_to = '{zevanory@gmail.com}' where id = 1;")
             psql(self.db, read(os.path.join(SQL, "002_agendar.sql")))
 
     def now(self):
@@ -273,6 +273,21 @@ class SegundaVia(unittest.TestCase):
         self.assertEqual(s.q("select count(*) from p18sv.round;"), "1", "[P18SV.13] uma rodada")
         self.assertEqual(s.q("select count(*) from net._stub_requests;"), "4", "[P18SV.13] quatro GET")
 
+    def test_15_destinos_e_destinatario_fixos(self):
+        s = Sim(self)
+        for col, bad in (("health_url", "https://evil.example/h"), ("release_url", "https://evil.example/r"), ("sales_url", "http://169.254.169.254/"),
+                         ("primary_heartbeat_url", "https://evil.example/p"), ("resend_url", "https://evil.example/emails")):
+            with self.assertRaises(AssertionError, msg=f"[P18SV.15] {col} para outro host recusado"):
+                s.q(f"update p18sv.config set {col} = '{bad}' where id = 1;")
+        for bad in ("{atacante@example.com}", "{zevanory@gmail.com,atacante@example.com}"):
+            with self.assertRaises(AssertionError, msg=f"[P18SV.15] alert_to {bad} recusado"):
+                s.q(f"update p18sv.config set alert_to = '{bad}' where id = 1;")
+        self.assertEqual(s.q("select resend_url || ' ' || array_to_string(alert_to, ',') from p18sv.config;"),
+                         "https://api.resend.com/emails zevanory@gmail.com", "[P18SV.15] valores originais preservados")
+        # Bloco idempotente: rodar a migração de novo não falha nem duplica restrições.
+        s.q(read(os.path.join(SQL, "001_p18_segunda_via.sql")))
+        self.assertEqual(s.q("select count(*) from pg_constraint where conname like 'p18sv_%_fixa' or conname = 'p18sv_alert_to_dono';"), "6", "[P18SV.15] 6 restrições")
+
     def test_14_agendar_e_desligar(self):
         s = Sim(self, configure=False)
         agendar = read(os.path.join(SQL, "002_agendar.sql"))
@@ -280,7 +295,7 @@ class SegundaVia(unittest.TestCase):
         with self.assertRaises(AssertionError, msg="[P18SV.14] agendar sem destinatário recusado"):
             s.q(agendar)
         self.assertEqual(s.q("select count(*) || ' ' || (select enabled::text from p18sv.config) from cron.job;"), "0 false", "[P18SV.14] sem destinatário nada agendado")
-        s.q("update p18sv.config set alert_to = '{dono@example.invalid}' where id = 1; delete from vault.decrypted_secrets;")
+        s.q("update p18sv.config set alert_to = '{zevanory@gmail.com}' where id = 1; delete from vault.decrypted_secrets;")
         with self.assertRaises(AssertionError, msg="[P18SV.14] agendar sem segredo recusado"):
             s.q(agendar)
         self.assertEqual(s.q("select count(*) || ' ' || (select enabled::text from p18sv.config) from cron.job;"), "0 false", "[P18SV.14] sem segredo nada agendado")

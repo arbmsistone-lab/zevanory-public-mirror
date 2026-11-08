@@ -53,6 +53,29 @@ create table if not exists p18sv.config (
   drill_until           timestamptz,
   updated_at            timestamptz not null default now()
 );
+-- NC-995-01: lista fechada de destinos e de destinatário. Os 4 GETs, o POST ao Resend (que leva a chave no
+-- cabeçalho) e a caixa que recebe os alertas são constantes: um UPDATE para outro host ou outro e-mail é recusado
+-- pelo banco. Bloco idempotente para uma tabela criada antes desta versão.
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'p18sv_health_url_fixa') then
+    alter table p18sv.config add constraint p18sv_health_url_fixa check (health_url = 'https://zevanory.api.br/api/health');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'p18sv_release_url_fixa') then
+    alter table p18sv.config add constraint p18sv_release_url_fixa check (release_url = 'https://zevanory.api.br/api/release');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'p18sv_sales_url_fixa') then
+    alter table p18sv.config add constraint p18sv_sales_url_fixa check (sales_url = 'https://vendas.zevanory.api.br/');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'p18sv_primary_url_fixa') then
+    alter table p18sv.config add constraint p18sv_primary_url_fixa check (primary_heartbeat_url = 'https://raw.githubusercontent.com/arbmsistone-lab/zevanory-public-mirror/evidence/b0-baseline/p18/heartbeat.json');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'p18sv_resend_url_fixa') then
+    alter table p18sv.config add constraint p18sv_resend_url_fixa check (resend_url = 'https://api.resend.com/emails');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'p18sv_alert_to_dono') then
+    alter table p18sv.config add constraint p18sv_alert_to_dono check (alert_to <@ array['zevanory@gmail.com']::text[]);
+  end if;
+end $$;
 insert into p18sv.config (id) values (1) on conflict (id) do nothing;
 
 create table if not exists p18sv.round (
