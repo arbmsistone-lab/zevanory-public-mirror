@@ -27,7 +27,7 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p03-pages-audit.test.mjs", "tests/ci/p03-pages-browser.test.mjs"]
 COPY_DIRS = ["sales-public"]
-COPY_FILES = TESTS + ["scripts/audit/p03-pages-static.mjs", "scripts/audit/p03-pages-browser.mjs",
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "scripts/audit/p03-pages-static.mjs", "scripts/audit/p03-pages-browser.mjs",
                       "scripts/build_sales_public.py", "worker/sales-public-worker.mjs", "data/products.json",
                       # P10 importa o Worker real, que importa estes (e data/politica-unica.json).
                       "worker/politica-unica.mjs", "worker/nc015-sales-scope.mjs", "data/politica-unica.json"]
