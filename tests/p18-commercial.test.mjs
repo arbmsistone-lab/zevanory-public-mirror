@@ -3,7 +3,8 @@
 // mutantes (scripts/ci/mutants_p18_commercial.py).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -11,7 +12,7 @@ import {
   decideSiteRoute, safeGet, safeInit, assertSafeInit, runOffline, runLive, buildReport, workerCheckoutLinks, PASS, FAIL, MAX_REDIRECTS,
 } from "../scripts/b0/p18-commercial.mjs";
 
-const FX = (n) => readFileSync(new URL("./fixtures/p18-commercial/" + n, import.meta.url), "utf8");
+const FX = (n) => readTextNormalized(new URL("./fixtures/p18-commercial/" + n, import.meta.url));
 const allow = loadAllowlist(".");
 const P = (slug) => allow.products.find((p) => p.slug === slug);
 const IA = P("ia-na-pratica");
@@ -56,9 +57,9 @@ test("modo offline reprova: link de compra em página estática, URL solta no Wo
   assert.equal(clean.verdict, PASS, "[P18C.17] árvore mínima limpa passa");
   const page = offlineTree((d) => writeFileSync(join(d, "sales-public", "ia-na-pratica.html"), FX("site-hotmart-open.html")));
   assert.deepEqual(page.results.filter((x) => x.verdict === FAIL).map((x) => x.reason), ["static_page_buy_link:in_closed_list"], "[P18C.17] página estática com checkout (mesmo da lista) reprova");
-  const loose = offlineTree((d) => { const f = join(d, "worker/sales-public-worker.mjs"); writeFileSync(f, readFileSync(f, "utf8") + '\nconst LEGACY="https://pay.hotmart.com/Q1?off=z";\n'); });
+  const loose = offlineTree((d) => { const f = join(d, "worker/sales-public-worker.mjs"); writeFileSync(f, readTextNormalized(f) + '\nconst LEGACY="https://pay.hotmart.com/Q1?off=z";\n'); });
   assert.deepEqual(loose.results.filter((x) => x.verdict === FAIL).map((x) => x.reason), ["checkout_url_outside_registered_pairs"], "[P18C.17] URL de checkout solta no Worker reprova");
-  const cat = offlineTree((d) => { const f = join(d, "data/products.json"); const j = JSON.parse(readFileSync(f, "utf8")); j.products[0].name = "IA Pro"; writeFileSync(f, JSON.stringify(j)); });
+  const cat = offlineTree((d) => { const f = join(d, "data/products.json"); const j = JSON.parse(readTextNormalized(f)); j.products[0].name = "IA Pro"; writeFileSync(f, JSON.stringify(j)); });
   assert.deepEqual(cat.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [["ia-na-pratica", "catalog_name_or_sku_diverges"]], "[P18C.17] catálogo divergente reprova");
 });
 
