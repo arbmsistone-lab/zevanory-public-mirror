@@ -5,6 +5,9 @@ name: required-check-guard
 # este arquivo, o script do guarda ou os workflows/scripts dos checks obrigatórios NÃO muda o que roda aqui.
 # O conteúdo do PR é só DADO (lista de arquivos, rótulos, eventos e YAML dos workflows alterados, lidos via API e
 # parseados com BaseLoader). NUNCA fazer checkout do head do PR nem executar nada dele aqui. Sem segredos; token só leitura.
+# Merge autônomo (decisão do proprietário 08/11/2026 18:12, docs/governanca/merge-autonomo.md): a lista de caminhos
+# reservados vem da BASE (ops/owner-reserved-paths.json) e os comentários do PR (registro "CONTRA-AUDITORIA: PASS <SHA>")
+# são lidos como dado. Ordem: comentar a contra-auditoria ANTES de aplicar autonomo-auditado:<12 hex> (o rótulo re-dispara).
 on:
   pull_request_target:
     branches: [gh-pages]
@@ -30,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.base.sha }}
-      - name: Coletar arquivos, rótulos, eventos e YAML do PR como dado
+      - name: Coletar arquivos, rótulos, eventos, comentários e YAML do PR como dado
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -42,6 +45,7 @@ jobs:
           gh api --paginate --slurp "repos/$REPO/pulls/$PR/files?per_page=100" > /tmp/g4/files.json
           gh api --paginate --slurp "repos/$REPO/issues/$PR/labels?per_page=100" > /tmp/g4/labels.json
           gh api --paginate --slurp "repos/$REPO/issues/$PR/events?per_page=100" > /tmp/g4/events.json
+          gh api --paginate --slurp "repos/$REPO/issues/$PR/comments?per_page=100" > /tmp/g4/comments.json
           # pr_files_to_lists aborta em nome de workflow fora do padrão seguro (fail-closed)
           python3 -I scripts/ci/pr_files_to_lists.py /tmp/g4/files.json /tmp/g4/lists
           while IFS= read -r f; do
@@ -55,6 +59,7 @@ jobs:
           set -uo pipefail
           python3 -I scripts/ci/required_check_guard.py --files /tmp/g4/files.json --head-workflows /tmp/g4/head-wf \
             --head-sha "$HEAD_SHA" --labels /tmp/g4/labels.json --events /tmp/g4/events.json \
+            --comments /tmp/g4/comments.json --reserved ops/owner-reserved-paths.json \
             --expected-count "$EXPECTED" > /tmp/g4/result.json
           rc=$?
           cat /tmp/g4/result.json
@@ -63,6 +68,6 @@ jobs:
             echo '```json'; cat /tmp/g4/result.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$rc" -ne 0 ]; then
-            echo "::error title=G4_REQUIRED_CHECK_GUARD::PR altera caminho protegido sem aprovação do proprietário presa ao SHA, ou enfraquece/colide com check obrigatório (ver resumo)."
+            echo "::error title=G4_REQUIRED_CHECK_GUARD::PR altera caminho protegido sem aprovação do proprietário (ou autônoma auditada, fora dos reservados) presa ao SHA, ou enfraquece/colide com check obrigatório (ver resumo)."
           fi
           exit "$rc"

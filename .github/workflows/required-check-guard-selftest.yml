@@ -1,6 +1,6 @@
 name: required-check-guard-selftest
 
-# G4: reprodução da suíte do guarda (23 testes), dos autotestes do executor de mutantes e dos 20 mutantes, com
+# G4: reprodução da suíte do guarda (36 testes), dos autotestes do executor de mutantes e dos 31 mutantes, com
 # classificação honesta (AVAL 090): baseline obrigatório; MORTO só por asserção em teste esperado; dependência ausente,
 # import, sintaxe, timeout ou coleta -> INCONCLUSIVO (falha o job). INFORMATIVO: roda a versão do PR (pull_request),
 # portanto não é evidência de controle. O controle é o job required-check-guard / protected-paths (pull_request_target).
@@ -10,8 +10,10 @@ on:
     paths:
       - "scripts/ci/required_check_guard.py"
       - "scripts/ci/pr_files_to_lists.py"
+      - "ops/owner-reserved-paths.json"
       - ".github/workflows/required-check-guard.yml"
       - ".github/workflows/required-check-guard-selftest.yml"
+      - ".github/workflows/contra-auditoria-reavaliar.yml"
       - ".github/workflows/product-pages-premerge.yml"
       - ".github/workflows/required-status-compat.yml"
       - ".github/CODEOWNERS"
@@ -43,7 +45,8 @@ jobs:
       - name: Suíte, autotestes do executor e mutantes
         run: |
           set -euo pipefail
-          sha256sum scripts/ci/required_check_guard.py .github/workflows/required-check-guard.yml tests/ci/mutants_required_check_guard.py | tee -a "$GITHUB_STEP_SUMMARY"
-          python -I -B tests/ci/test_required_check_guard.py .
+          sha256sum scripts/ci/required_check_guard.py .github/workflows/required-check-guard.yml tests/ci/mutants_required_check_guard.py ops/owner-reserved-paths.json | tee -a "$GITHUB_STEP_SUMMARY"
+          python -I -B tests/ci/test_required_check_guard.py . 2>&1 | tee /tmp/suite.txt
+          grep -qE '^Ran 36 tests' /tmp/suite.txt || { echo "::error::suíte do guarda deveria rodar exatamente 36 testes"; exit 1; }
           python -I -B tests/ci/test_mutants_runner.py .
           python -I -B tests/ci/mutants_required_check_guard.py . | tee -a "$GITHUB_STEP_SUMMARY"

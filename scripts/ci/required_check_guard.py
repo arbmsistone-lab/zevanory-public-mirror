@@ -16,9 +16,18 @@ DADO (lista de arquivos e YAML lidos pela API, parseados com BaseLoader, nunca e
     - qualquer alteração em caminho protegido (.github/**, scripts/ci/**, scripts dos checks obrigatórios, políticas e
       tests/ci/**). Rótulo exigido: owner-approved:<12 primeiros hex do head SHA>, aplicado por login em OWNERS
       (verificado no histórico de eventos do PR). Novo push muda o SHA e invalida o rótulo.
+  MERGE AUTÔNOMO (decisão do proprietário Airton Renan, 08/11/2026 18:12: "APROVO MERGE AUTÔNOMO e tudo mande para contra
+  auditoria"; docs/governanca/merge-autonomo.md):
+    - caminho RESERVADO ao proprietário (ops/owner-reserved-paths.json, lido da BASE: gasto, fiscal/jurídico, credenciais,
+      marcos irreversíveis, os próprios guardas e a lista) também é BRANDO e só owner-approved:<12 hex> libera;
+    - caminho de PROTECTED fora da allowlist 'rotina_autonoma' da mesma lista também só é liberado por owner-approved;
+    - sem caminho reservado e com todo protegido na rotina, o BRANDO também é liberado por autonomo-auditado:<12 hex do
+      head> aplicado por login em OWNERS + comentário de login em OWNERS com a linha exata "CONTRA-AUDITORIA: PASS <SHA completo do head>" e nenhum
+      "CONTRA-AUDITORIA: FAIL <mesmo SHA>". Lista ausente/inválida -> entrada inválida (rc 2).
 
 Uso: required_check_guard.py --files files.json --head-workflows DIR --head-sha SHA --labels labels.json
-                             --events events.json [--expected-count N]
+                             --events events.json --reserved ops/owner-reserved-paths.json
+                             [--comments comments.json] [--expected-count N]
 Saída: JSON. Código 0 = PASS, 1 = FAIL, 2 = entrada inválida (fail-closed)."""
 import argparse, json, pathlib, re, sys
 
@@ -30,6 +39,12 @@ except ImportError:  # pragma: no cover - runner do GitHub tem python3-yaml
 GUARD_NAME = 'required-check-guard / protected-paths'
 OWNERS = frozenset({'arbmsistone-lab'})
 LABEL_PREFIX = 'owner-approved:'
+AUTO_PREFIX = 'autonomo-auditado:'
+RESERVED_SCHEMA = 'owner-reserved-paths/v1'
+# a lista precisa reservar a si mesma e o guarda; sem isso é inválida (um PR não pode se tornar autônomo tirando-os dela)
+RESERVED_SELF = ('ops/owner-reserved-paths.json', 'scripts/ci/required_check_guard.py',
+                 '.github/workflows/required-check-guard.yml')
+AUDIT_LINE = re.compile(r'^[ \t]*CONTRA-AUDITORIA:[ \t]*(PASS|FAIL)[ \t]+([0-9a-f]{40})[ \t]*$', re.M)
 
 # check obrigatório -> {arquivo canônico: job_id}. Qualquer outro emissor do mesmo nome é colisão.
 REQUIRED_CHECKS = {
@@ -65,6 +80,59 @@ NOME_SEGURO = re.compile(r'^[A-Za-z0-9._/@+-][A-Za-z0-9._/@+ -]*$')
 
 def protegido(caminho):
     return any(p.search(caminho) for p in PROTECTED)
+
+
+def glob_rx(g):
+    """Glob da lista de reservados -> regex de caminho inteiro. '**' casa qualquer trecho; '*' e '?' não cruzam '/'."""
+    out, i = '', 0
+    while i < len(g):
+        if g.startswith('**/', i): out += '(?:.*/)?'; i += 3
+        elif g.startswith('**', i): out += '.*'; i += 2
+        elif g[i] == '*': out += '[^/]*'; i += 1
+        elif g[i] == '?': out += '[^/]'; i += 1
+        else: out += re.escape(g[i]); i += 1
+    return re.compile(out + r'\Z', re.S)
+
+
+def carregar_reservados(caminho):
+    """Lê ops/owner-reserved-paths.json. Devolve [(classe, glob, regex)]; ValueError se inválido (fail-closed)."""
+    d = json.loads(pathlib.Path(caminho).read_text())
+    if not isinstance(d, dict) or d.get('schema') != RESERVED_SCHEMA or not isinstance(d.get('classes'), dict) \
+            or not d['classes']:
+        raise ValueError('lista de reservados: schema/classes inválidos')
+    regras = []
+    for classe, c in d['classes'].items():
+        gl = c.get('globs') if isinstance(c, dict) else None
+        if not isinstance(gl, list) or not gl or not all(isinstance(g, str) and g.strip() == g and g for g in gl):
+            raise ValueError(f'lista de reservados: classe {classe!r} sem globs válidos')
+        regras += [(classe, g, glob_rx(g)) for g in gl]
+    for c in RESERVED_SELF:
+        if not any(rx.match(c) for _, _, rx in regras):
+            raise ValueError(f'lista de reservados não reserva {c}')
+    return regras
+
+
+def carregar_rotina(caminho):
+    """Allowlist 'rotina_autonoma': ÚNICOS protegidos que autonomo-auditado pode liberar. [(glob, regex)]; ValueError se
+    inválida ou se cobrir o próprio guarda, a lista ou qualquer coisa em .github/ (fail-closed)."""
+    d = json.loads(pathlib.Path(caminho).read_text())
+    r = d.get('rotina_autonoma') if isinstance(d, dict) else None
+    gl = r.get('globs') if isinstance(r, dict) else None
+    if not isinstance(gl, list) or not gl or not all(isinstance(g, str) and g.strip() == g and g for g in gl):
+        raise ValueError('lista de reservados: rotina_autonoma sem globs válidos')
+    regras = [(g, glob_rx(g)) for g in gl]
+    for c in RESERVED_SELF + ('.github/workflows/x.yml', '.github/CODEOWNERS', '.github/actions/a/action.yml'):
+        if any(rx.match(c) for _, rx in regras):
+            raise ValueError(f'rotina_autonoma não pode cobrir {c}')
+    return regras
+
+
+def rotineiro(caminho, rotina):
+    return any(rx.match(caminho) for _, rx in rotina)
+
+
+def reservado(caminho, regras):
+    return [f'{classe}:{g}' for classe, g, rx in regras if rx.match(caminho)]
 
 
 def sombreia(caminho):
@@ -185,8 +253,8 @@ def achatar(paginas):
     return [x for p in paginas for x in (p if isinstance(p, list) else [p])]
 
 
-def aprovado(head_sha, labels, eventos):
-    rotulo = LABEL_PREFIX + head_sha[:12]
+def aprovado(head_sha, labels, eventos, prefixo=LABEL_PREFIX):
+    rotulo = prefixo + head_sha[:12]
     if rotulo not in labels:
         return False, f'rótulo {rotulo!r} ausente'
     ultimo = None
@@ -201,8 +269,30 @@ def aprovado(head_sha, labels, eventos):
     return True, f'rótulo {rotulo!r} aplicado por {ator}'
 
 
-def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None):
-    duro, brando = [], []
+def contra_auditoria(head_sha, comentarios):
+    """Registro da contra-auditoria: comentário de login em OWNERS com 'CONTRA-AUDITORIA: PASS <SHA completo do head>'.
+    Qualquer 'CONTRA-AUDITORIA: FAIL <mesmo SHA>' de dono derruba. SHA diferente não conta."""
+    passa = None
+    for c in comentarios:
+        autor = (c.get('user') or {}).get('login') if isinstance(c, dict) else None
+        if autor not in OWNERS:
+            continue
+        for veredito, sha in AUDIT_LINE.findall(str(c.get('body') or '')):
+            if sha != head_sha:
+                continue
+            if veredito == 'FAIL':
+                return False, f'CONTRA-AUDITORIA: FAIL {head_sha} registrada por {autor}'
+            passa = passa or f'CONTRA-AUDITORIA: PASS {head_sha} registrada por {autor}'
+    if not passa:
+        return False, f'sem comentário de OWNERS com "CONTRA-AUDITORIA: PASS {head_sha}"'
+    return True, passa
+
+
+def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None, comentarios=(), reservados=None, rotina=()):
+    duro, brando, reserv = [], [], {}
+    if not reservados:
+        duro.append('LISTA_DE_RESERVADOS_AUSENTE (ops/owner-reserved-paths.json)')
+        reservados = []
     if not re.fullmatch(r'[0-9a-f]{40}', head_sha or ''):
         duro.append(f'HEAD_SHA_INVALIDO {head_sha!r}')
     if esperado is not None and esperado != len(arquivos):
@@ -220,7 +310,10 @@ def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None):
     for c in caminhos:
         if sombreia(c):
             duro.append(f'SOMBRA_DE_MODULO {c} (sequestraria import dos scripts obrigatórios)')
-        if protegido(c):
+        hits = reservado(c, reservados)
+        if hits:
+            reserv[c] = hits
+        if protegido(c) or hits:
             brando.append(c)
     for r in removidos:
         base = r.rsplit('/', 1)[-1]
@@ -228,12 +321,25 @@ def avaliar(arquivos, head_wf, head_sha, labels, eventos, esperado=None):
             duro.append(f'EMISSOR_OBRIGATORIO_REMOVIDO {r}')
     for arquivo, texto in sorted(head_wf.items()):
         duro += analisar_workflow(arquivo, texto)
-    ok_aprov, motivo = aprovado(head_sha or '', labels, eventos) if brando else (False, 'não necessário')
-    passou = not duro and (not brando or ok_aprov)
+    ok_dono, motivo = aprovado(head_sha or '', labels, eventos) if brando else (False, 'não necessário')
+    ok_auto, motivo_auto = False, 'não necessário'
+    fora_rotina = [c for c in brando if c not in reserv and protegido(c) and not rotineiro(c, rotina or ())]
+    if brando and reserv:
+        motivo_auto = f'caminho reservado ao proprietário alterado ({len(reserv)}): só {LABEL_PREFIX} libera'
+    elif brando and fora_rotina:
+        motivo_auto = f'caminho protegido fora de rotina_autonoma ({len(fora_rotina)}): só {LABEL_PREFIX} libera'
+    elif brando:
+        ok_auto, motivo_auto = aprovado(head_sha or '', labels, eventos, AUTO_PREFIX)
+        if ok_auto:
+            ok_auto, motivo_auto = contra_auditoria(head_sha or '', comentarios)
+    passou = not duro and (not brando or ok_dono or ok_auto)
     return {'resultado': 'PASS' if passou else 'FAIL', 'head_sha': head_sha,
             'violacoes_duras': duro, 'caminhos_protegidos_alterados': brando,
-            'aprovacao_do_proprietario': {'valida': ok_aprov, 'motivo': motivo,
-                                          'rotulo_exigido': LABEL_PREFIX + (head_sha or '')[:12] if brando else None}}
+            'caminhos_reservados_alterados': reserv, 'protegidos_fora_da_rotina': fora_rotina,
+            'aprovacao_do_proprietario': {'valida': ok_dono, 'motivo': motivo,
+                                          'rotulo_exigido': LABEL_PREFIX + (head_sha or '')[:12] if brando else None},
+            'aprovacao_autonoma': {'valida': ok_auto, 'motivo': motivo_auto,
+                                   'rotulo': AUTO_PREFIX + (head_sha or '')[:12] if brando and not reserv and not fora_rotina else None}}
 
 
 def main(argv=None):
@@ -241,8 +347,12 @@ def main(argv=None):
     ap.add_argument('--files', required=True); ap.add_argument('--head-workflows', required=True)
     ap.add_argument('--head-sha', required=True); ap.add_argument('--labels', required=True)
     ap.add_argument('--events', required=True); ap.add_argument('--expected-count', type=int)
+    ap.add_argument('--reserved', required=True); ap.add_argument('--comments')
     a = ap.parse_args(argv)
     try:
+        reservados = carregar_reservados(a.reserved)
+        rotina = carregar_rotina(a.reserved)
+        comentarios = achatar(json.load(open(a.comments))) if a.comments else []
         arquivos = achatar(json.load(open(a.files)))
         labels = [l['name'] if isinstance(l, dict) else str(l) for l in achatar(json.load(open(a.labels)))]
         eventos = achatar(json.load(open(a.events)))
@@ -250,7 +360,7 @@ def main(argv=None):
                    if f.is_file()}
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(json.dumps({'resultado': 'FAIL', 'erro': f'entrada inválida: {e}'}, ensure_ascii=False)); return 2
-    r = avaliar(arquivos, head_wf, a.head_sha, labels, eventos, a.expected_count)
+    r = avaliar(arquivos, head_wf, a.head_sha, labels, eventos, a.expected_count, comentarios, reservados, rotina)
     print(json.dumps(r, ensure_ascii=False, indent=1))
     return 0 if r['resultado'] == 'PASS' else 1
 

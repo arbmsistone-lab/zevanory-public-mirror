@@ -29,13 +29,13 @@ DEPENDENCIAS = {'yaml': 'PyYAML'}
 
 # mutante -> (trecho original, substituto, {teste esperado: regex da mensagem de asserção})
 MUTANTES = {
-    'M01_aprova_sempre': ("passou = not duro and (not brando or ok_aprov)", "passou = True",
+    'M01_aprova_sempre': ("passou = not duro and (not brando or ok_dono or ok_auto)", "passou = True",
                           {T + 'T02_editar_workflow_obrigatorio_sem_rotulo_falha': PASS_FAIL}),
-    'M02_rotulo_libera_violacao_dura': ("passou = not duro and (not brando or ok_aprov)",
-                                        "passou = (not duro and not brando) or ok_aprov",
+    'M02_rotulo_libera_violacao_dura': ("passou = not duro and (not brando or ok_dono or ok_auto)",
+                                        "passou = (not duro and not brando) or ok_dono",
                                         {T + 'T08_novo_workflow_com_mesmo_nome_de_check_falha_mesmo_com_rotulo': PASS_FAIL}),
-    'M03_rotulo_sem_sha': ("rotulo = LABEL_PREFIX + head_sha[:12]",
-                           "rotulo = next((l for l in labels if l.startswith(LABEL_PREFIX)), LABEL_PREFIX)",
+    'M03_rotulo_sem_sha': ("rotulo = prefixo + head_sha[:12]",
+                           "rotulo = next((l for l in labels if l.startswith(prefixo)), prefixo)",
                            {T + 'T04_rotulo_de_outro_sha_falha': PASS_FAIL}),
     'M04_qualquer_ator': ("if ator not in OWNERS:", "if False:", {T + 'T05_rotulo_aplicado_por_nao_dono_falha': PASS_FAIL}),
     'M05_ignora_unlabeled': ("if not ultimo or ultimo.get('event') != 'labeled':", "if not ultimo:",
@@ -51,9 +51,11 @@ MUTANTES = {
                                  {T + 'T13_filtro_de_caminho_ou_gatilho_removido_falha': PASS_FAIL}),
     'M11_permite_remover_gatilho': ("if ev not in g:", "if False:",
                                     {T + 'T13_filtro_de_caminho_ou_gatilho_removido_falha': r'GATILHO_OBRIGATORIO_REMOVIDO ausente|' + PASS_FAIL}),
-    'M12_github_desprotegido': ("r'^\\.github/',", "", {T + 'T07_scripts_e_politicas_dos_checks_sao_protegidos': PASS_FAIL}),
+    # .github/** também é reservado (segue brando): o espelho PROTECTED/CODEOWNERS (T22) é quem mata
+    'M12_github_desprotegido': ("r'^\\.github/',", "", {T + 'T22_codeowners_espelha_caminhos_protegidos': r'False is not true'}),
     'M13_scripts_obrigatorios_desprotegidos': ("+ [re.compile('^' + re.escape(s) + '$') for s in REQUIRED_SCRIPTS]", "",
-                                               {T + 'T07_scripts_e_politicas_dos_checks_sao_protegidos': PASS_FAIL}),
+                                               # também reservados (seguem brandos): o espelho PROTECTED/CODEOWNERS (T22) é quem mata
+                                               {T + 'T22_codeowners_espelha_caminhos_protegidos': r'False is not true'}),
     'M14_sem_sombra': ("def sombreia(caminho):\n", "def sombreia(caminho):\n    return False\n",
                        {T + 'T16_sombra_de_modulo_falha': PASS_FAIL}),
     'M15_sem_truncamento': ("if esperado is not None and esperado != len(arquivos):", "if False:",
@@ -68,6 +70,32 @@ MUTANTES = {
                                 {T + 'T17_lista_truncada_yaml_invalido_nome_inesperado_falha': r'WORKFLOW_YAML_INVALIDO ausente|' + PASS_FAIL}),
     'M20_continue_on_error_job': ("if 'continue-on-error' in job:", "if False:",
                                   {T + 'T12_passo_condicional_ou_continue_on_error_falha': r'JOB_OBRIGATORIO_CONTINUE_ON_ERROR ausente|' + PASS_FAIL}),
+    # merge autônomo (decisão do proprietário 08/11/2026 18:12)
+    'M21_autonomo_sem_auditoria': ("            ok_auto, motivo_auto = contra_auditoria(head_sha or '', comentarios)", "            pass",
+                                   {T + 'T25_rotina_com_rotulo_autonomo_sem_auditoria_valida_falha': PASS_FAIL}),
+    'M22_auditoria_de_qualquer_sha': ("if sha != head_sha:", "if False:",
+                                      {T + 'T26_auditoria_de_outro_sha_ou_reprovada_falha': PASS_FAIL}),
+    'M23_reservado_aceita_autonomo': ("if brando and reserv:", "if False:",
+                                      {T + 'T27_caminho_reservado_com_rotulo_autonomo_falha': PASS_FAIL}),
+    'M24_reservado_fora_de_protected_livre': ("if protegido(c) or hits:", "if protegido(c):",
+                                              {T + 'T28_caminho_reservado_exige_rotulo_do_dono': PASS_FAIL}),
+    'M25_auditoria_de_qualquer_autor': ("if autor not in OWNERS:", "if False:",
+                                        {T + 'T25_rotina_com_rotulo_autonomo_sem_auditoria_valida_falha': PASS_FAIL}),
+    'M26_ignora_auditoria_fail': ("if veredito == 'FAIL':", "if False:",
+                                  {T + 'T26_auditoria_de_outro_sha_ou_reprovada_falha': PASS_FAIL}),
+    'M27_lista_sem_autorreserva': ("for c in RESERVED_SELF:", "for c in ():",
+                                   {T + 'T30_lista_de_reservados_e_reservada_e_fail_closed': r'ValueError not raised'}),
+    'M28_lista_ausente_tolerada': ("duro.append('LISTA_DE_RESERVADOS_AUSENTE (ops/owner-reserved-paths.json)')", "pass",
+                                   {T + 'T30_lista_de_reservados_e_reservada_e_fail_closed': PASS_FAIL + '|LISTA_DE_RESERVADOS_AUSENTE ausente'}),
+    # NC-1 da contra-auditoria: autonomo-auditado só libera protegidos da allowlist rotina_autonoma
+    'M29_protegido_fora_da_rotina_livre': ("if c not in reserv and protegido(c) and not rotineiro(c, rotina or ())]",
+                                           "if False]",
+                                           {T + 'T35_autonomo_so_libera_protegido_da_allowlist_de_rotina': PASS_FAIL}),
+    'M30_rotina_cobre_qualquer_coisa': ("for c in RESERVED_SELF + ('.github/workflows/x.yml', '.github/CODEOWNERS', '.github/actions/a/action.yml'):",
+                                        "for c in ():",
+                                        {T + 'T35_autonomo_so_libera_protegido_da_allowlist_de_rotina': r'ValueError not raised'}),
+    'M31_rotina_vazia_aceita': ("raise ValueError('lista de reservados: rotina_autonoma sem globs válidos')", "return []",
+                                {T + 'T35_autonomo_so_libera_protegido_da_allowlist_de_rotina': r'ValueError not raised'}),
 }
 
 # mutante -> {(teste, tipo da exceção)} aceitos como morte causal mesmo sem ser asserção. VAZIA de propósito: nenhum caso
