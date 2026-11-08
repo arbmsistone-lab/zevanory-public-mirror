@@ -103,10 +103,10 @@ async function salesOpen(env){
 const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","conteudo-pronto"]);
 const SUBSCRIPTION_PATHS=Object.freeze({"conteudo-pronto":"/assinar/conteudo-pronto"});
 const SALES_ORIGIN="https://vendas.zevanory.api.br";
-export function openSalesHtml(html,slug){
+export function openSalesHtml(html,slug,{subscriptions=true}={}){
   let out=String(html);
   out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sku="(ZEV-[A-Z0-9-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sku,label)=>PRICES[sku]?`<a ${pre}href="/comprar/${sku}" rel="nofollow">${label}</a>`:m);
-  out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sub="([a-z-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sub,label)=>Object.prototype.hasOwnProperty.call(SUBSCRIPTION_PATHS,sub)?`<a ${pre}href="${SUBSCRIPTION_PATHS[sub]}">${label}</a>`:m);
+  if(subscriptions)out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sub="([a-z-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sub,label)=>Object.prototype.hasOwnProperty.call(SUBSCRIPTION_PATHS,sub)?`<a ${pre}href="${SUBSCRIPTION_PATHS[sub]}">${label}</a>`:m);
   out=out.replace(/<(span|p)([^>]*?) data-zev-open-text="([^"]*)">[^<]*<\/\1>/g,"<$1$2>$3</$1>");
   out=out.replace(/<(p|span)\b[^>]*\sdata-zev-closed[^>]*>[^<]*<\/\1>/g,"");
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===slug);
@@ -124,7 +124,18 @@ export function openSalesHtml(html,slug){
 // owner switch again (/api/sales/status, itself capped < 60 s), so a close is reflected on the next
 // request, and those pages are never stored by browsers or the edge (Cache-Control: no-store).
 export function resetPageSwitchCache(){}  // kept for callers; there is no page-level cache any more
-async function salesOpenForPages(env){return salesOpen(env)}
+// Modo Hotmart (roteiro v5.0, Nível 1): canal próprio, lido em /api/sales/hotmart-status (chave sales:hotmart:v1).
+// Abre só a compra pela Hotmart dos 5 produtos; o Conteúdo Pronto e o checkout próprio seguem o interruptor completo.
+async function hotmartOpen(env){
+  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/hotmart-status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}
+}
+async function purchaseOpen(env){return (await salesOpen(env))||(await hotmartOpen(env))}
+// Estado da página dependente do interruptor: {open, subs}. subs=false no modo Hotmart (assinatura fechada).
+async function salesOpenForPages(env,page){
+  if(await salesOpen(env))return {open:true,subs:true};
+  if(page!=="conteudo-pronto"&&await hotmartOpen(env))return {open:true,subs:false};
+  return {open:false,subs:false};
+}
 export const SWITCH_DEPENDENT_CACHE_CONTROL="no-store, no-transform";
 export const isSwitchDependentPage=page=>SALES_TOGGLE_PAGES.has(page);
 async function overLimit(env,ip){
@@ -138,7 +149,7 @@ async function handleBuy(request,env,sku,ctx){
   // fail-closed Hotmart variant. POST never creates an own-checkout transaction.
   if(!isMpPhase1CheckoutEnabled()){
     if(request.method!=="GET"&&request.method!=="HEAD")return infoPage(503,"Checkout próprio indisponível","<p>Na primeira fase, os guias e kits usam somente a Hotmart.</p>");
-    if(!(await salesOpen(env)))return infoPage(200,"Vendas abrem em breve",`<p>O ${PRICES[sku][0]} ainda não está à venda. Para dúvidas, escreva para ${CONTACT_HTML}.</p>`);
+    if(!(await purchaseOpen(env)))return infoPage(200,"Vendas abrem em breve",`<p>O ${PRICES[sku][0]} ainda não está à venda. Para dúvidas, escreva para ${CONTACT_HTML}.</p>`);
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/hotmart/"+slug,"cache-control":"no-store"}))});
   }
   if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
@@ -248,7 +259,7 @@ const SALES_PAUSED_HTML=(name,slug)=>`<p>As vendas do ${name.replace(/&/g,"&amp;
 export const HOTMART_NAMES=Object.freeze({"ia-na-pratica":"IA na Prática","vendas-na-pratica":"Vendas na Prática","lucro-e-caixa":"Lucro & Caixa","combo-ia-vendas":"Combo IA + Vendas","negocio-completo":"Negócio Completo","conteudo-pronto":"Conteúdo Pronto"});
 async function handleHotmart(request,env,slug,ctx){
   if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
-  if(!(await salesOpen(env)))return infoPage(200,"Vendas pausadas",SALES_PAUSED_HTML(HOTMART_NAMES[slug]||"produto",slug));
+  if(!(await purchaseOpen(env)))return infoPage(200,"Vendas pausadas",SALES_PAUSED_HTML(HOTMART_NAMES[slug]||"produto",slug));
   const {src}=attribution(request,new URL(request.url));
   countView(request,env,ctx,slug,"hotmart_view");
   // Hotmart reports sales per "src", so the origin survives up to the actual sale.
@@ -435,6 +446,9 @@ export default{async fetch(request,env,ctx){
   }
   let page="";
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
+  // P03 O2: /index.html (physical copy of the catalog, canonical /solucoes) is the catalog page too, so the
+  // sales switch rewrites it like /solucoes; served raw it kept "vendas fechadas" even with sales open.
+  else if(url.pathname==="/index.html") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
   let response=await env.ASSETS.fetch(new Request(url,request));
   // Designed 404 for unknown PAGE paths (no file extension); asset 404s stay plain. Never cached.
@@ -443,9 +457,10 @@ export default{async fetch(request,env,ctx){
     if(nf.status===200) return new Response(request.method==="HEAD"?null:nf.body,{status:404,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
   }
   // Switch state of this response (null = not a switch-dependent page): drives the open HTML and the exposure count.
-  const toggleOpen=response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)?await salesOpenForPages(env):null;
+  const toggleState=response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)?await salesOpenForPages(env,page):null;
+  const toggleOpen=toggleState===null?null:toggleState.open===true;
   if(toggleOpen)
-    {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page),{status:200,statusText:response.statusText,headers:h});}
+    {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page,{subscriptions:toggleState.subs===true}),{status:200,statusText:response.statusText,headers:h});}
   if(response.status===200&&request.method==="GET"&&shouldInjectSiteChat(page,env))
     {const h=new Headers(response.headers);h.delete("content-length");response=new Response(injectSiteChatHtml(await response.text()),{status:200,statusText:response.statusText,headers:h});}
   if(response.status===200&&page) countView(request,env,ctx,page,"views",toggleOpen===null?null:{cta:toggleOpen?"buy":"waitlist"});

@@ -7,6 +7,8 @@ class MapKV {
  async get(k){return this.data.get(k)||null}
  async put(k,v){if(k.startsWith("zpc:cp:"))throw Error("legacy_cp_writer_forbidden");this.data.set(k,String(v))}
  async delete(k){if(k.startsWith("zpc:cp:"))throw Error("legacy_cp_delete_forbidden");this.data.delete(k)}
+ // NC-989-04: o postback recalcula o balde de vendas pela listagem do KV (API real do Workers KV).
+ async list({prefix=""}={}){return {keys:[...this.data.keys()].filter(k=>k.startsWith(prefix)).sort().map(name=>({name})),list_complete:true}}
 }
 const token="hottok-test-1234567890abcdef";
 function post(body,tok=token){

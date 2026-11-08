@@ -51,6 +51,14 @@
             "writes": [],
             "reads": [
               "wrangler d1 execute zevanory-diario-p20 --remote --command \"select count(*) as n from diario_head\""
+            ],
+            "readers": [
+              {
+                "workflow": "p20-monthly-restore-drill.yml",
+                "step": "P20 diário D1 - leitura para o ensaio (somente SELECT; token de leitura dedicado)",
+                "script": "scripts/p20/diario-d1-read.mjs",
+                "reads": "POST /accounts/<conta>/d1/database/<id>/query com só duas SELECT fixas (diario_head e diario_v1 por seq); nenhuma outra SQL é aceita"
+              }
             ]
           },
           "deploy": {

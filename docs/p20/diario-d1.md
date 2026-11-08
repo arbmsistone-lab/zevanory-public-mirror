@@ -76,8 +76,9 @@ de CPF ou telefone é recusado, então use prefixo com letras (`ord_...`).
 2. Binding `DIARIO` no Worker central (banco do proprietário) e migração no deploy (seção "Binding e migração").
    A gravação em **sombra** (grava sem bloquear nada, mede erros) vem logo depois, independente deste binding.
 3. Fila de pendências e reenvio (webhooks e entregas) e evento `erase` (LGPD: apagar no Neon registra só o hash).
-4. Reconciliação diária Neon × diário, com relatório sem PII.
-5. Integração ao ensaio mensal P20: reconstruir os eventos pós-backup e verificar a cadeia.
+4. Reconciliação diária Neon × diário, com relatório sem PII (seção "Reconciliação diária (PR 4)").
+5. Integração ao ensaio mensal P20: reconstruir os eventos pós-backup e verificar a cadeia (seção "Ensaio mensal lê
+   o diário").
 6. Fail-closed no checkout próprio e no formulário de leads, depois de 7 dias em sombra sem divergência.
 7. Certificado: o RPO medido passa a contar o diário. A lacuna do inventário só sai depois de um ensaio aprovado.
 
@@ -257,6 +258,107 @@ e `artifact_sha256`. Nunca e-mail, nome, CPF ou telefone, e o detector de `appen
 O vigia de entregas pagas (cron) chama o webhook do Mercado Pago fora de `comDiario`. Lá só existe o binding global,
 sem `waitUntil`.
 
+## Reconciliação diária (PR 4)
+
+`worker/diario-reconcilia.mjs` (`reconciliaDiario`) roda dentro de `finalizeBackup` (o passo final do backup diário,
+`/api/internal/backup/run?finalize=1`), que agora recebe o `sqlFactory` do Neon. O resultado vai para o campo `diario`
+de `zpc:backup:v1:report`, e `scripts/ops/data-backup.mjs` imprime `DATA_BACKUP_DIARIO` (aviso quando não está `ok`).
+
+- **Janela:** de T−48h a T−1h. A última hora fica de fora porque um evento pode ainda estar na fila do isolate. Cada
+  evento é conferido em duas execuções seguidas.
+- **Esperado (Neon):** uma consulta por fonte, sem nenhuma coluna pessoal. Cada linha passa pelos **mesmos
+  construtores dos ganchos** (`eventoPedidoCriado`, `eventoPagamento`, `eventoEntrega`, `eventoReembolso`,
+  `eventoConsentimento`), então a normalização (`techRef`, `parte`) é uma só:
+
+  | Fonte | Linhas | Evento esperado |
+  |---|---|---|
+  | `orders` | `created_at` na janela | `order_created` |
+  | `financial_events` | `received_at` na janela, com `order_id` | `payment_status` (status do provedor e `refunded_total`) |
+  | `service_fulfillment` + `orders` | Mercado Pago, `delivered`, evidência com `email_status` `sent`, `delivered_at` na janela | `delivery_sent` (canal `email`) |
+  | `refund_provider_claims` | `claimed_at` na janela (exceto `legacy_unknown`); `reconciled_status` `approved` com `reconciled_at` na janela | `refund` `provider_call_may_have_been_sent`; `refund` `approved` |
+  | `zevanory_lead_events` | `consent_given`, `confirmed`, `revoked_and_erased` com `subject_ref` | `consent_*` |
+
+  O id do estorno do provedor fica só no KV, então o `refund approved` é conferido pela chave-base mais `:`
+  (qualquer `refund_ref`). A chave de consentimento leva o instante: o gancho agora usa o instante gravado no Neon
+  (`insert ... returning`, expressão `neonTsMs` compartilhada), e a reconciliação usa a mesma expressão. O estorno
+  confirmado pela consulta ao provedor (`reconcileRefund`) ganhou o gancho `refund approved` que faltava.
+- **Fora do escopo** (contados em `fora_escopo`, nunca como sobra): eventos Hotmart (vivem no KV e no provedor) e os
+  tipos `erase` e `fiscal_ref`.
+- **Presente (D1):** uma consulta fixa (`SQL_JANELA_D1`, só `SELECT`) por página de 500 linhas, ordenada por `seq`.
+  Os limites da janela são achados por `ts_ms` com o índice `diario_v1_ts` (migração `0002_diario_v1_ts.sql`, só um
+  índice), e a linha anterior ao trecho vem junto como âncora. Acima de 40 páginas, o resultado é `incompleto`.
+- **Margem de 15 min:** o `ts_ms` do diário é o relógio do Worker; o do Neon é o `now()` da transação. Falta =
+  esperado no núcleo da janela e ausente no diário lido com margem; sobra = presente no núcleo e sem origem no Neon lido
+  com margem.
+- **Cadeia:** `verifyChain` do trecho a partir da âncora. Quebra = divergência.
+- **Resultado:** `{estado, fase, janela, esperados, presentes, faltando, sobrando, cadeia_ok, cadeia, por_tipo,
+  fora_escopo, amostra (até 20 chaves de cada lado), neon.fontes, d1.consultas, d1.linhas}`. Estados: `ok`,
+  `divergente`, `incompleto` (fonte do Neon com erro, D1 indisponível, páginas excedidas) e `nao_configurado` (sem
+  `env.DIARIO`: nenhuma consulta, sem falha e sem alerta). Tabela de origem ainda inexistente conta como fonte vazia.
+- **Cota:** por dia, 5 consultas ao Neon e 1 consulta D1 por página. As linhas lidas no D1 ficam proporcionais à janela
+  (centenas por dia no volume previsto), muito abaixo de 30% da cota do D1 Free (5 milhões de linhas lidas por dia).
+
+### Fase: sombra agora, corte para "ativo" depois
+
+`DIARIO_FASE = "sombra"` no código. Em sombra, `divergente` e `incompleto` viram o alerta
+`diario_<estado>:sombra` em `warnings`, e o backup **não** reprova. Em `"ativo"`, viram a falha de P20
+`diario_<estado>` em `failures`, e o relatório sai com `ok: false`. Um valor desconhecido cai em `"ativo"` (o lado
+estrito).
+
+**Corte para "ativo"** (um PR revisado que muda só a constante): depois de **7 dias seguidos** com o binding ligado,
+os dois tokens cadastrados e `DATA_BACKUP_DIARIO` com `estado: "ok"` em todas as execuções. Qualquer `divergente` ou
+`incompleto` zera a contagem, e a causa precisa ser explicada antes de recomeçar. O fail-closed do checkout e dos leads
+(item 6 do plano) só vem depois do corte.
+
+## Ensaio mensal lê o diário
+
+O ensaio mensal (`.github/workflows/p20-monthly-restore-drill.yml`) ganhou um passo próprio, antes do ensaio:
+**`P20 diário D1 - leitura para o ensaio`**. Só esse passo recebe `CF_TOKEN_D1_DIARIO_READ` (D1 Read, no `env` do
+passo, nunca do job). Ele roda `scripts/p20/diario-d1-read.mjs`, que usa só `POST /accounts/<conta>/d1/database/<id>/query`
+com duas consultas `SELECT` fixas: a cabeça e uma página de linhas por `seq`, até o `seq` da cabeça lida (retrato
+consistente de um diário só de inclusão). O leitor recusa qualquer outra SQL antes da rede. A leitura vai para um
+arquivo `0600` no `RUNNER_TEMP`, nunca para artefato nem log. Sem o segredo, o passo emite um aviso, e o ensaio dos dados
+segue igual.
+
+Depois da restauração conferida, `scripts/p20/restore-drill-diario.mjs` faz a prova no **mesmo** Postgres efêmero (de
+novo `assertEphemeralTarget`):
+
+1. **Cadeia:** `verifyChain` de todas as linhas, da genesis até a cabeça lida (detecta adulteração e corte do fim).
+2. **Reaplicação mínima:** as linhas com `ts_ms` maior que o corte menos 15 min vão para a tabela
+   `p20_diario_reconstruido` (as colunas do diário) e são relidas. A releitura tem de ser idêntica, coluna a coluna. O
+   corte é o início mais antigo das partes da cópia restaurada.
+3. **Conjunto:** na janela [corte − 48 h, leitura], restaurado ∪ reconstruído = diário. "Restaurado" são as event_key
+   que o banco restaurado gera pelas mesmas consultas e construtores da reconciliação diária (`NEON_FONTES`). Falta é um
+   evento da cópia que o diário não tem. Sobra é um evento do diário que não está nem na cópia nem na reconstrução.
+4. **`rpo_critico_medido_s`** = falha simulada (início do ensaio) − instante da leitura do diário. Só com a prova
+   completa; caso contrário, `null`.
+
+O registro do ensaio leva o bloco `diario` (contagens, booleanos, `seq` da cabeça, até 10 event_key) e
+`rpo_critico_medido_s`. **`diario_d1` só sai de `not_covered` com a prova completa num ensaio `APROVADO`**
+(`diarioProvado`): estado `provado`, cadeia, reaplicação e conjunto conferidos, falta e sobra zero, linhas = `seq` da
+cabeça e RPO crítico igual ao medido. A releitura estrita (`validateRecord`) recusa um registro que tire a lacuna sem
+essa prova (`diario_d1_unproven`) ou que publique RPO crítico sem ela. Sem prova, a linha fica com o motivo medido (por
+exemplo, `diario_d1: token CF_TOKEN_D1_DIARIO_READ ausente no ensaio`, `diario_d1: cadeia_quebrada`,
+`diario_d1: conjunto_divergente`).
+
+**Fase (NC-PR6-01, lista positiva):** em `DIARIO_FASE = "sombra"`, um diário sem prova não reprova o ensaio dos dados.
+Fora da sombra (`"ativo"` ou qualquer valor desconhecido), **só** o estado `provado` com a prova completa passa
+(`DIARIO_ESTADOS_APROVADOS = ["provado"]` e `diarioProvado`). Qualquer outro estado reprova com
+`diario_sem_prova:<estado>[:<motivo>]`: `nao_lido` (token ausente, leitura ausente, incompleta ou com erro),
+`nao_provado` (cadeia, reaplicação, conjunto, exceção), um `provado` sem a prova completa ou um estado desconhecido. A fase
+do registro é sempre a do ensaio (`runDrill({ diarioFase })`), nunca a que a implementação da prova declara, e a releitura
+recusa um APROVADO fora da sombra sem a prova (`diario_ativo_sem_prova`).
+
+**Integração com a cópia KV -> Neon (#999):** `copia_kv_para_neon` e `diario_d1` são lacunas independentes em
+`notCoveredFor(allEncrypted, kvCopyProven, diario)`. Cada uma só sai com a própria prova (`kvProofComplete` e
+`diarioProvado`), e `validateRecord` confere as duas separadamente (`copia_kv_unproven` e `diario_d1_unproven`). O mesmo
+Postgres efêmero recebe a cópia do KV (`zevanory_kv_backup`) e a reconstrução do diário (`p20_diario_reconstruido`).
+
+Testes: `tests/p20-diario-ensaio.test.mjs` (DE1 a DE9: leitor, prova, sem token, cadeia, conjunto, reaplicação,
+releitura estrita, workflow e lista positiva fora da sombra) e `tests/test_p20_restore_drill.py` (testes 11 a 13: código real do Worker, restauração real
+e reaplicação real num PostgreSQL). Mutantes M62 a M83 em `scripts/ci/mutants_p20_restore_drill.py` (M44 a M61 são os da
+cópia KV -> Neon, #999).
+
 ## Testes e mutantes
 
 - `tests/p20-diario-d1.test.mjs` (DJ1 a DJ8): encadeamento, adulteração, idempotência, conflito, corrida, LGPD,
@@ -266,6 +368,9 @@ sem `waitUntil`.
   que não lançam, PII recusada, construtores de cada tipo, contexto da requisição e integração real com Hotmart,
   lead-magnet e reembolso (resposta idêntica com, sem e com diário quebrado ou travado). Inclui também um teste
   estático dos 7 ganchos do bundle legado, que não carrega em Node.
+  O limite de 5 s de cada gravação usa um agendador injetável (`configurarDiarioSombra({ agendar })`): os testes usam
+  um relógio manual que só dispara quando o teste manda, então uma gravação legítima lenta (máquina carregada) nunca vira
+  `diario_timeout` por acaso, e "a resposta sai com a gravação pendente" não depende do tempo real.
 - `scripts/ci/mutants_p20_diario_sombra.py` com `mutants_p20_diario_sombra_allow.json`: 13 mutantes, todos precisam
   morrer. Cobrem: bloquear a resposta, lançar, vazar PII no log, tentar gravar o comprador, gancho ausente de cada
   tipo, compat sem contexto, sem `waitUntil` e sem fila.
@@ -279,4 +384,11 @@ sem `waitUntil`.
   dedicados do serviço `zevanory`, entrada `write_paths` com a credencial dedicada). Se o detector sair da árvore, o
   teste usa o mesmo critério da classe `d1`. São 12 mutantes, e todos precisam
   morrer.
+- `tests/p20-diario-reconcilia.test.mjs` (RC1 a RC10): D1 falso com as migrações reais e Neon falso. Cobre sem
+  binding, tudo casa, falta, sobra, normalização diferente, cadeia e âncora adulteradas, bordas da janela, paginação e
+  índice, fontes ausentes ou com erro, sombra contra ativo no relatório e os ganchos reais de consentimento e de
+  `reconcileRefund`. `tests/integration/diario-reconcilia-postgres.test.mjs` roda as consultas reais num PostgreSQL
+  descartável (opcional, com `DIARIO_PG_HOST`).
+- `scripts/ci/mutants_p20_diario_reconcilia.py` com `mutants_p20_diario_reconcilia_allow.json`: 18 mutantes, todos
+  precisam morrer.
 - `.github/workflows/p20-diario-d1-tests.yml` roda só em `pull_request`, sem segredo, com `contents: read`.

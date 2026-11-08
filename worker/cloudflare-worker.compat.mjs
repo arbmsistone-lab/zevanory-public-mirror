@@ -49,6 +49,7 @@ import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
+import { refreshSalesSummary } from "./sales-ledger.mjs";
 import { dbEconomySkip } from "./db-economy.mjs";
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
@@ -557,7 +558,7 @@ const wrapped = {
       if (!verifyOperatorToken(normalized, request.headers.get("x-backup-token"))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
       const report = url.searchParams.get("finalize") === "1"
-        ? await finalizeBackup(normalized, { parts })
+        ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase })
         : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts });
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
@@ -575,6 +576,10 @@ const wrapped = {
       } catch (error) {
         beat.tasks.funnel = "fail:" + String(error instanceof Error ? error.message : error).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120);
       }
+      // NC-989-01: projeção do resumo de vendas Hotmart recalculada dos eventos imutáveis (kv.list paginado),
+      // logo antes de o snapshot da central ler zpc:sales:v1:summary. Não muda o status desta rota.
+      try { await refreshSalesSummary(normalized.ZEVANORY_PRIVATE_ARTIFACTS); beat.tasks.sales_summary = "ok"; }
+      catch (error) { beat.tasks.sales_summary = "fail:" + String(error instanceof Error ? error.message : error).slice(0, 80); }
       try { await putBeat(normalized.ZEVANORY_PRIVATE_ARTIFACTS, "zpc:cron:v1:funnel", beat); } catch {}
       return new Response(JSON.stringify(beat), { status: beat.tasks.funnel === "ok" ? 200 : 500, headers });
     }

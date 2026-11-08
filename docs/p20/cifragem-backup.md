@@ -127,7 +127,9 @@ nas 3 partes (contra-auditoria GPT-6 de 07/11/2026: PASS e liberação da fase 2
   - compatibilidade: o mesmo kid e a mesma AAD de `scripts/p20/backup-envelope.mjs`, provados por um vetor fixo
     gerado pelo node em `tests/test_backup_preserve_archive.py`.
   - o `kv-extend` copia o valor como está; a AAD continua presa à chave original do bundle.
-- A cópia inversa KV → Neon (`zevanory_kv_backup`) não muda: ela vive no Neon e não é o objeto da lacuna.
+- A cópia inversa KV → Neon (`zevanory_kv_backup`) vive no Neon. Para o ensaio mensal, o Worker grava as linhas do dia
+  relidas do Neon em `zpc:backup:v1:kv:<dia>`, no **mesmo envelope** (mesma chave, AAD com `part=0` e a chave da cópia);
+  o ensaio recusa o rebaixamento para claro (`kv_copy_encryption_downgrade`). Desenho em `inventario-estado-critico.md`.
 
 ## Passo a passo do proprietário (depois do merge)
 

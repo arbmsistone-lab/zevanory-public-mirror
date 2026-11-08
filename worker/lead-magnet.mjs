@@ -1,4 +1,4 @@
-import { diarioSombra, eventoConsentimento } from "./diario-sombra.mjs";
+import { diarioSombra, eventoConsentimento, neonTsMs } from "./diario-sombra.mjs";
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { CUSTOMER_RULE_7D, DELIVERY_72H, hasCheckoutCta } from "./politica-unica.mjs";
@@ -98,10 +98,12 @@ export async function leadOptOutLink(env, email, storedRef = null) {
 }
 
 async function recordEvent(sql, ref, event, consentVersion = null) {
-  await sql.query("insert into zevanory_lead_events (subject_ref, event, consent_version) values ($1, $2, $3)", [ref || null, event, consentVersion]);
+  const rows = await sql.query("insert into zevanory_lead_events (subject_ref, event, consent_version) values ($1, $2, $3) returning " + neonTsMs("at") + " as ts_ms", [ref || null, event, consentVersion]);
   // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
   // Só depois do registro no Neon; ref = subject_ref HMAC; eventos sem tipo no diário e sem ref não geram nada.
-  diarioSombra(null, null, () => eventoConsentimento({ event, subjectRef: ref, consentVersion }));
+  // ts = instante gravado no Neon (a reconciliação diária deriva a mesma chave dele); sem ele, o relógio do Worker.
+  const at = Number(Array.isArray(rows) ? rows[0]?.ts_ms : NaN);
+  diarioSombra(null, null, () => eventoConsentimento({ event, subjectRef: ref, consentVersion, ts: Number.isSafeInteger(at) ? at : undefined }));
 }
 
 // Erases the personal data of one lead (row already deleted by the caller) and its interest keys,
