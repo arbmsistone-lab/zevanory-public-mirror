@@ -1,0 +1,103 @@
+name: p03-all-pages-audit
+# P03 (páginas de venda). Auditoria de acessibilidade e navegação de TODAS as páginas HTML de sales-public/
+# (pedido do contra-auditor: "72ª página, auditoria de acessibilidade e navegação"; os gates anteriores
+# cobriam 10 páginas no sales-ux e 71 no #867). O inventário é exato: os arquivos precisam ser HTML_ROUTES
+# do gerador + index.html + 404.html, e as rotas do Worker precisam ser as do gerador.
+#   Estática: links internos, títulos/h1 únicos, lang, landmarks, skip-link, canonical/meta, sitemap e
+#   coerência comercial (tabela C, aviso de vendas fechadas, sem depoimento/avaliação fabricados, sem preço "de").
+#   Navegador: cada página em 360 px e 1350 px, claro e escuro, servida pelo Worker real em localhost:
+#   axe-core WCAG 2.2 AA + best-practice (zero serious/critical), teclado (skip-link, foco visível e não
+#   encoberto, ordem do DOM, ciclo completo sem armadilha), alvos >= 24 px, sem rolagem horizontal, sem erro
+#   de console/CSP nem sub-recurso quebrado.
+# Orçamento zero: qualquer achado derruba o job. Testes com contagem exata e mutantes (scripts/ci/mutants_p03_pages.py).
+# Somente leitura: sem segredos, sem deploy, sem rede além de checkout, npm e localhost.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "sales-public/**"
+      - "product.css"
+      - "legal.css"
+      - "data/products.json"
+      - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "worker/sales-public-worker.mjs"
+      - "worker/nc015-sales-scope.mjs"
+      - "scripts/audit/sales-local-server.mjs"
+      - "scripts/audit/p03-*.mjs"
+      - "tests/p03-pages-audit.test.mjs"
+      - "tests/ci/p03-pages-browser.test.mjs"
+      - "scripts/ci/mutants_p03_pages.py"
+      - "scripts/ci/mutants_p03_pages_allow.json"
+      - ".github/workflows/p03-all-pages-audit.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p03-all-pages-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  audit:
+    name: p03 / all-pages-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QUALITY_MODULES: /tmp/q/node_modules
+      ZEVANORY_SALES_PUBLIC_MODE: closed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: O build commitado é o que o gerador produz
+        run: |
+          set -euo pipefail
+          python3 scripts/build_sales_public.py >/dev/null
+          git diff --exit-code -- sales-public
+      - name: Testes estáticos (contagem exata, zero pulados)
+        run: |
+          set -euo pipefail
+          node --test tests/p03-pages-audit.test.mjs | tee /tmp/p03-static.txt
+          grep -qx "# tests 9" /tmp/p03-static.txt && grep -qx "# pass 9" /tmp/p03-static.txt && grep -qx "# fail 0" /tmp/p03-static.txt && grep -qx "# skipped 0" /tmp/p03-static.txt
+      - name: Instalar Playwright 1.55.0 e axe-core 4.10.3 (mesmos pins do sales-ux)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/q && echo '{"private":true}' > /tmp/q/package.json
+          npm install --prefix /tmp/q --no-audit --no-fund axe-core@4.10.3 playwright@1.55.0 >/dev/null
+          /tmp/q/node_modules/.bin/playwright install --with-deps chromium >/dev/null
+      - name: Testes do navegador (contagem exata, zero pulados)
+        run: |
+          set -euo pipefail
+          node --test tests/ci/p03-pages-browser.test.mjs | tee /tmp/p03-browser.txt
+          grep -qx "# tests 10" /tmp/p03-browser.txt && grep -qx "# pass 10" /tmp/p03-browser.txt && grep -qx "# fail 0" /tmp/p03-browser.txt && grep -qx "# skipped 0" /tmp/p03-browser.txt
+      - name: Auditoria de todas as páginas (360 e 1350 px, claro e escuro)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/p03
+          node scripts/audit/p03-all-pages-audit.mjs --out /tmp/p03/p03-auditoria.json --schemes light,dark | tee /tmp/p03/p03-auditoria.log
+          python3 - <<'EOF'
+          import json
+          r = json.load(open("/tmp/p03/p03-auditoria.json"))
+          t = r["totals"]
+          assert r["pass"] is True, "auditoria reprovada"
+          assert t["pages_audited"] == t["pages"] == r["inventory"]["expected"], t
+          assert t["cells"] == t["pages"] * 4, t
+          print(f"::notice title=P03_ALL_PAGES::páginas={t['pages']} células={t['cells']} achados=0 axe={r.get('axe_version')}")
+          EOF
+      - name: Mutantes (34, todos KILLED)
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p03_pages.py < /dev/null | tee /tmp/p03/mutants.txt
+          grep -qx "MUTANTS total=34 killed=34 survived=0 inconclusive=0" /tmp/p03/mutants.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p03-all-pages-audit
+          path: /tmp/p03
+          retention-days: 30
