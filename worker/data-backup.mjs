@@ -20,6 +20,7 @@
 // P20 (seção 9.1): with the secret P20_BACKUP_KEY the Neon -> KV bundle is stored as an AES-256-GCM envelope
 // (worker/backup-crypto.mjs, docs/p20/cifragem-backup.md); the per-table SHA-256 manifest stays over the plaintext.
 import { ENCRYPTION_REQUIRED, ENC_FORMAT, ENC_ALG, loadBackupKey, sealBundle, openBundle, bundleCtxFromKey } from "./backup-crypto.mjs";
+import { reconciliaDiario, efeitoNoRelatorio, DIARIO_FASE } from "./diario-reconcilia.mjs";
 export { ENCRYPTION_REQUIRED };
 export const REPORT_KEY = "zpc:backup:v1:report";
 // Lead interest keys (personal data, erased on revocation) are deliberately NOT copied: a backup
@@ -285,7 +286,9 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
 
 // Combines today's parts into the single report the panel and the inventory read.
 // OK only when every part ran today, every part passed and no table was left out.
-export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED } = {}) {
+// P20 diário D1 (PR 4): com sqlFactory, a reconciliação diária Neon × diário entra no relatório (campo diario). Em
+// DIARIO_FASE "sombra" a divergência é alerta (warnings); em "ativo", falha de P20. Sem env.DIARIO: "nao_configurado".
+export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED, sqlFactory = null, diarioFase = DIARIO_FASE } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
   const got = [];
@@ -308,6 +311,10 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
   report.warnings = report.encryption.state === "cifrado" ? [] : ["backup_nao_cifrado:" + report.encryption.state];
   if (encryptionRequired && report.encryption.state !== "cifrado") failures.push("backup_nao_cifrado:" + report.encryption.state);
   report.coverage = report.totalTables ? `${report.neon.tables} de ${report.totalTables - report.neon.excluded.length} tabelas (credenciais fora por política: ${report.neon.excluded.length})` : null;
+  try { report.diario = await reconciliaDiario(env, { sqlFactory, now, fase: diarioFase }); } catch { report.diario = { estado: "incompleto", motivo: "reconciliacao_excecao", fase: diarioFase, cadeia_ok: null }; }
+  const efeito = efeitoNoRelatorio(report.diario);
+  if (efeito.alerta) report.warnings.push(efeito.alerta);
+  if (efeito.falha) failures.push(efeito.falha);
   report.ok = failures.length === 0 && valid.length === parts && report.restore.neon.ok === report.restore.neon.tables && report.totalTables != null && report.neon.tables === report.totalTables - report.neon.excluded.length;
   await kv.put(REPORT_KEY, JSON.stringify(report));
   return report;

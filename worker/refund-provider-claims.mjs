@@ -1,5 +1,6 @@
 // Durable Mercado Pago refund claims and GET-only recovery.
 // No automatic financial POST is permitted from this module.
+import { diarioSombra, eventoReembolso } from "./diario-sombra.mjs";
 const MP = "https://api.mercadopago.com";
 const KEY = (id) => "refund:req:" + id;
 const TTL = 90 * 24 * 3600;
@@ -100,7 +101,13 @@ export async function reconcileRefund(env, sql, kv, oid) {
   const approvedFull = !missing.length && refunds.length === 1 && refunds[0]?.status === "approved" &&
     refunds[0]?.id != null && moneyMatches(refunds[0]?.amount, rec.amount) && moneyMatches(total, rec.amount);
   if (approvedFull) {
-    try { return await markRefundApproved(sql, kv, rec, refunds[0].id, "provider-get-reconciliation"); }
+    try {
+      const out = await markRefundApproved(sql, kv, rec, refunds[0].id, "provider-get-reconciliation");
+      // P20 diário (sombra, docs/p20/diario-d1.md): o estorno confirmado pela consulta ao provedor também é um evento
+      // "refund approved" (sem ele, a reconciliação diária acusaria falta). Best-effort, nunca bloqueia nem lança.
+      diarioSombra(env, null, () => eventoReembolso({ orderId: oid, provider: "mercadopago", stage: "approved", refundId: refunds[0].id, amount: rec.amount, certification: rec.test === true }));
+      return out;
+    }
     catch { return { status: 503, body: { error: "refund_persistence_unavailable" } }; }
   }
   const age = Date.now() - Date.parse(claim.claimed_at);

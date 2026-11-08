@@ -23,7 +23,25 @@ const T0 = Date.UTC(2026, 10, 7, 12, 0, 0);
 const OID = "3f2a9c1e-7b4d-4abc-9def-0123456789ab";
 const REF = "a".repeat(64);
 const PII = /@|Cliente|cliente/;
-configurarDiarioSombra({ timeoutMs: 200 }); // D1 travado vira diario_timeout rápido (produção: 5 s)
+// Relógio manual do limite de gravação (produção: setTimeout de 5 s). O limite só dispara quando o teste chama
+// relogio.disparar(): uma gravação legítima lenta (máquina carregada) nunca vira diario_timeout por acaso, e "a resposta
+// sai com a gravação pendente" fica determinístico (a gravação travada só termina depois do disparo).
+const relogio = {
+  pendentes: new Set(),
+  agendar(fn) { const h = { fn }; relogio.pendentes.add(h); return () => relogio.pendentes.delete(h); },
+  disparar() { const hs = [...relogio.pendentes]; relogio.pendentes.clear(); for (const h of hs) h.fn(); return hs.length; },
+};
+configurarDiarioSombra({ agendar: relogio.agendar });
+// Esvazia a fila de um D1 travado: dispara o limite de cada gravação pendente, uma de cada vez (a fila só agenda o
+// limite da próxima depois que a anterior termina).
+async function esvaziar(ctx) {
+  for (let i = 0; i < 20 && ctx.pending() > 0; i++) { relogio.disparar(); await new Promise((r) => setImmediate(r)); }
+  const out = await ctx.drain();
+  // comDiario guardou o D1 travado como binding global (fallback sem contexto): sem esta limpeza, o teste seguinte que
+  // roda "sem diário" e sem comDiario grava nele e fica preso na fila (antes, o limite real de 200 ms escondia isso).
+  if (globalThis.__ZEVANORY_DIARIO__ && globalThis.__ZEVANORY_DIARIO__ !== null) globalThis.__ZEVANORY_DIARIO__ = null;
+  return out;
+}
 
 const fakeCtx = () => {
   const tasks = [], settled = [];
@@ -37,7 +55,18 @@ function captureLogs() {
 }
 // D1 que nunca responde: prova que o gancho não segura a resposta.
 const hangingD1 = () => ({ prepare: () => ({ bind() { return this; }, first: () => new Promise(() => {}), all: () => new Promise(() => {}), run: () => new Promise(() => {}) }), batch: () => new Promise(() => {}) });
-const within = (p, ms = 1500) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("resposta bloqueada pelo diário")), ms))]);
+// Resposta com prazo. Se o prazo vence (a resposta esperou a gravação travada), solta o relógio manual para o teste
+// seguir e marca bloqueou=true: as asserções de "gravação ainda pendente" e "não bloqueou" seguintes acusam o bloqueio
+// como asserção nomeada (não como erro solto), sem depender de quanto a máquina está carregada.
+async function within(p, ms = 1500) {
+  let done = false;
+  const pr = Promise.resolve(p).finally(() => { done = true; });
+  const t = await Promise.race([pr.then((v) => ({ v })), new Promise((r) => setTimeout(() => r(null), ms))]);
+  if (t) return t.v;
+  for (let i = 0; i < 50 && !done; i++) { relogio.disparar(); await new Promise((r) => setImmediate(r)); }
+  const v = await pr;
+  return Object.assign(v, { bloqueou: true });
+}
 const respDump = async (r) => ({ status: r.status, body: await r.text(), type: r.headers.get("content-type") });
 
 test("DS1 sem env.DIARIO é no-op: nada é chamado, nada é agendado", async () => {
@@ -173,6 +202,12 @@ test("DS5 construtores de evento: fatos não pessoais, chaves determinísticas, 
   const db2 = createD1(MIGRATION);
   const r = await diarioSombra({ DIARIO: db2 }, null, eventoPedidoCriado({ orderId: "11111111-2222-4333-8444-555555555555", provider: "mercadopago", amount: 1 })).task;
   assert.equal(r.ok, true, "[DS5.10] UUID com bloco de 12 dígitos é aceito pelo diário real");
+  // Máquina carregada: um batch de 250 ms é uma gravação legítima. Com o relógio manual, o limite só dispara quando o
+  // teste manda; sem ele (limite real curto), isto virava diario_timeout e o DS5.6 oscilava no CI.
+  const lento = createD1(MIGRATION);
+  lento.hooks.beforeBatch = () => new Promise((res) => setTimeout(res, 250));
+  const rl = await diarioSombra({ DIARIO: lento }, null, eventoPedidoCriado({ orderId: "22222222-3333-4444-8555-666666666666", provider: "mercadopago", amount: 1 })).task;
+  assert.equal(rl.ok, true, "[DS5.11] gravação lenta legítima não vira diario_timeout");
 });
 
 test("DS6 contexto da requisição: ganchos sem env/ctx usam o banco e o waitUntil do comDiario", async () => {
@@ -224,7 +259,8 @@ test("DS7 Hotmart real: entrega e estorno gravados; resposta idêntica com, sem 
   const pendurado = await within(run(hangingD1(), "PURCHASE_APPROVED"));
   assert.deepEqual(pendurado.dump, sem.dump, "[DS7.6] D1 que não responde não segura a resposta");
   assert.equal(pendurado.ctx.pending(), 1, "[DS7.10] a resposta sai com a gravação ainda pendente");
-  assert.deepEqual((await pendurado.ctx.drain()).map((r) => r.code), ["diario_timeout"], "[DS7.7] gravação travada vira diario_timeout");
+  assert.equal(pendurado.bloqueou, undefined, "[DS7.11] a resposta não esperou o prazo da gravação travada");
+  assert.deepEqual((await esvaziar(pendurado.ctx)).map((r) => r.code), ["diario_timeout"], "[DS7.7] gravação travada vira diario_timeout");
   const depois = await run(db, "PURCHASE_COMPLETE");
   assert.deepEqual((await depois.ctx.drain()).map((r) => r.ok), [true], "[DS7.9] a gravação depois do D1 travado roda");
   assert.equal(db.rows().length, 2, "[DS7.8] a fila segue depois do D1 travado (mesma transação: duplicata idempotente)");
@@ -272,7 +308,8 @@ test("DS8 consentimento real (lead-magnet): consent_given com subject_ref HMAC; 
     const pendurado = await within(run(hangingD1()));
     assert.deepEqual(pendurado.dump, sem.dump, "[DS8.7] D1 que não responde não segura a resposta");
     assert.equal(pendurado.ctx.pending(), 1, "[DS8.8] a resposta sai com a gravação ainda pendente");
-    await pendurado.ctx.drain();
+    assert.equal(pendurado.bloqueou, undefined, "[DS8.9] a resposta não esperou o prazo da gravação travada");
+    await esvaziar(pendurado.ctx);
   } finally { globalThis.fetch = origFetch; }
 });
 
@@ -315,7 +352,8 @@ test("DS9 reembolso real: claim e aprovação gravados; resposta idêntica e nun
     const pendurado = await within(run(hangingD1()));
     assert.deepEqual(pendurado.dump, sem.dump, "[DS9.5] D1 que não responde não segura a resposta");
     assert.equal(pendurado.ctx.pending(), 2, "[DS9.6] a resposta sai com as gravações ainda pendentes");
-    await pendurado.ctx.drain();
+    assert.equal(pendurado.bloqueou, undefined, "[DS9.7] a resposta não esperou o prazo da gravação travada");
+    await esvaziar(pendurado.ctx);
   } finally { globalThis.fetch = origFetch; }
 });
 

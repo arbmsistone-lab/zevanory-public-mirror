@@ -91,6 +91,7 @@ tests/p18-commercial.test.mjs 18
 tests/p18-latency.test.mjs 12
 tests/p20-backup-encryption.test.mjs 11
 tests/p20-diario-d1.test.mjs 8
+tests/p20-diario-reconcilia.test.mjs 10
 tests/p20-diario-sombra.test.mjs 11
 tests/p20-kv-copy-drill.test.mjs 8
 tests/p20-restore-drill.test.mjs 12

@@ -557,7 +557,7 @@ const wrapped = {
       if (!verifyOperatorToken(normalized, request.headers.get("x-backup-token"))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
       const report = url.searchParams.get("finalize") === "1"
-        ? await finalizeBackup(normalized, { parts })
+        ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase })
         : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts });
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
