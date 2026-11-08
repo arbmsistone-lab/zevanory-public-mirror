@@ -37,7 +37,12 @@ for line in strip_routes(source):
 assert inserted and not any(l.strip().startswith("routes") for l in deploy), "deploy config must not manage routes"
 Path("wrangler.sales.deploy.toml").write_text("\n".join(deploy)+"\n",encoding="utf-8")
 
-candidate=f"zevanory-sales-candidate-{os.environ['GITHUB_RUN_ID']}"
+# P21 (ops/token-cutover.json): com o token dedicado de vendas (Editor só nos Workers de vendas) o candidato é o
+# Worker FIXO zevanory-sales-candidate, criado uma vez pelo proprietário; qualquer outro valor é recusado.
+fixed=os.environ.get("P21_SALES_FIXED_CANDIDATE","")
+if fixed not in ("","zevanory-sales-candidate"):
+    raise SystemExit("P21_SALES_FIXED_CANDIDATE inválido: "+fixed)
+candidate=fixed or f"zevanory-sales-candidate-{os.environ['GITHUB_RUN_ID']}"
 lines=[]
 skipping_routes=False
 inserted_workers_dev=False

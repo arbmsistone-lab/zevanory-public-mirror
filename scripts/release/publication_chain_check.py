@@ -75,7 +75,10 @@ def static_checks(chk):
     # C3: pré-guarda T1 antes da promoção.
     cj = central["jobs"]
     chk("C3 central: guard job (promotion_guard, env producao-critica) precedes deploy",
-        cj["deploy"].get("needs") in ("guard", ["guard"]) and cj["guard"].get("environment") == ENV
+        # P21: o deploy também depende do leitor do interruptor (job p21_token, sem segredos); nada além disso.
+        (cj["deploy"].get("needs") in ("guard", ["guard"]) or (isinstance(cj["deploy"].get("needs"), list)
+         and "guard" in cj["deploy"]["needs"] and set(cj["deploy"]["needs"]) <= {"guard", "p21_token"}))
+        and cj["guard"].get("environment") == ENV
         and "promotion_guard.py" in cj["guard"]["steps"][-1].get("run", "") and "decision == 'promote'" in cj["deploy"]["if"])
     st = steps_text(sales["jobs"]["deploy"])
     names = [n for n, _, _, _ in st]

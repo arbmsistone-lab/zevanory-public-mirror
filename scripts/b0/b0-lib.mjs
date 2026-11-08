@@ -214,9 +214,9 @@ export const PROCESSES = Object.freeze({
     sources: [
       { id: "data_backup_annotation", status: "PRESENT", note: "anotação DATA_BACKUP do run agendado/manual em gh-pages" },
       { id: "monthly_full_restore_drill", status: "PRESENT", note: "p20-monthly-restore-drill.yml (Environment producao-critica, cada execução exige aprovação do proprietário) grava p20/restore-drills-v1.jsonl no ramo de evidência; só ENSAIO_EM_PRODUCAO medido em até 31 dias conta" },
-      { id: "kv_copy_full_restore", status: "MISSING", note: "a cópia KV -> Neon (zevanory_kv_backup) só é legível com a credencial do Neon, que só o Worker usa; o ensaio mensal em CI não a restaura" },
+      { id: "kv_copy_full_restore", status: "MISSING", note: "a cópia KV -> Neon (zevanory_kv_backup) passa a ir cifrada para o ensaio mensal (zpc:backup:v1:kv:<dia>) e a ser restaurada e conferida chave a chave sem credencial do Neon; continua MISSING até o primeiro ENSAIO_EM_PRODUCAO aprovado depois do deploy do Worker" },
       { id: "provider_reconciliation", status: "MISSING", note: "seção 9.1: conciliação dos pedidos restaurados contra o provedor; vendas fechadas e nenhuma credencial somente leitura do provedor no ensaio" },
-      { id: "event_journal_d1", status: "MISSING", note: "seção 9.1: diário de eventos críticos no D1 não implementado" },
+      { id: "event_journal_d1", status: "MISSING", note: "seção 9.1: diário de eventos críticos no D1 em sombra; sem ensaio mensal em produção com a prova do diário" },
     ],
   },
   P22: {

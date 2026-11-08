@@ -15,6 +15,12 @@ on:
         required: true
         default: true
         type: boolean
+      channel:
+        description: 'hotmart = Nível 1 (só a compra pela Hotmart); completo = interruptor completo com checkout próprio'
+        required: true
+        default: hotmart
+        type: choice
+        options: [hotmart, completo]
 permissions:
   contents: read
   actions: read
@@ -36,6 +42,7 @@ jobs:
       MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ vars.MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16 }}
       MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ vars.MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED }}
       DRY_RUN: ${{ inputs.dry_run }}
+      CHANNEL: ${{ inputs.channel }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,10 +51,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          case "$CHANNEL" in
+            hotmart) ACTION=open-hotmart ;;
+            completo) ACTION=open ;;
+            *) echo '::error::CHANNEL_VALUE_INVALID'; exit 1 ;;
+          esac
           if [ "$DRY_RUN" = 'true' ]; then
-            python3 scripts/sales_switch_workflow.py open --dry-run
+            python3 scripts/sales_switch_workflow.py "$ACTION" --dry-run
           elif [ "$DRY_RUN" = 'false' ]; then
-            python3 scripts/sales_switch_workflow.py open
+            python3 scripts/sales_switch_workflow.py "$ACTION"
           else
             echo '::error::DRY_RUN_VALUE_INVALID'
             exit 1

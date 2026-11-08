@@ -3,7 +3,10 @@ name: p20-diario-d1-tests
 # P20 (Roteiro Mestre v4.7, seção 9.1): testes do diário de eventos críticos no D1 (PR 1 de 7, docs/p20/diario-d1.md).
 # Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à Cloudflare ou à produção. (1) lógica
 # num D1 falso que executa SQL de verdade (node:sqlite, migração real com os triggers; 8 testes); (2) mutantes causais
-# pelo classificador compartilhado (10, todos KILLED). A suíte completa (manifesto) segue no gate existente.
+# pelo classificador compartilhado (10, todos KILLED); (3) gravação em modo sombra (PR 3: 11 testes, 13 mutantes);
+# (4) credenciais D1 dedicadas (DEC-P20-D1-01: 13 testes, 12 mutantes), com curl e npx falsos; (5) reconciliação
+# diária Neon × diário (PR 4: 10 testes, 18 mutantes), com Neon falso.
+# A suíte completa (manifesto) segue no gate existente.
 on:
   pull_request:
     branches: [gh-pages]
@@ -18,6 +21,21 @@ on:
       - "scripts/ci/mutants_p20_diario_allow.json"
       - "scripts/ci/mutant_classifier.py"
       - "docs/p20/diario-d1.md"
+      - "worker/diario-sombra.mjs"
+      - "tests/p20-diario-sombra.test.mjs"
+      - "scripts/ci/mutants_p20_diario_sombra.py"
+      - "scripts/ci/mutants_p20_diario_sombra_allow.json"
+      - ".github/workflows/central-production-deploy.yml"
+      - "ops/publishers.json"
+      - "tests/test_diario_d1_credentials.py"
+      - "scripts/deploy/t1-write-scan.mjs"
+      - "worker/diario-reconcilia.mjs"
+      - "worker/data-backup.mjs"
+      - "worker/lead-magnet.mjs"
+      - "worker/refund-provider-claims.mjs"
+      - "tests/p20-diario-reconcilia.test.mjs"
+      - "scripts/ci/mutants_p20_diario_reconcilia.py"
+      - "scripts/ci/mutants_p20_diario_reconcilia_allow.json"
 
 permissions:
   contents: read
@@ -52,6 +70,40 @@ jobs:
           python3 scripts/ci/mutants_p20_diario.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P20_DIARIO_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
           grep -qx "MUTANTS total=10 killed=10 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Gravação em modo sombra (contagem exata 11, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p20-diario-sombra.test.mjs | tee /tmp/s.txt
+          for l in "# tests 11" "# pass 11" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/s.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes da sombra (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p20_diario_sombra.py < /dev/null | tee /tmp/muts.txt
+          echo "::notice title=P20_DIARIO_SOMBRA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/muts.txt)"
+          grep -qx "MUTANTS total=13 killed=13 survived=0 inconclusive=0" /tmp/muts.txt || { echo "::error::mutante da sombra sobreviveu ou contagem mudou"; exit 1; }
+      - name: Credenciais D1 dedicadas, DEC-P20-D1-01 (contagem exata 13, 12 mutantes mortos)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v tests/test_diario_d1_credentials.py < /dev/null 2>&1 | tee /tmp/cred.txt
+          grep -qx "Ran 13 tests in .*" <(grep -E '^Ran ' /tmp/cred.txt) || { echo "::error::esperados 13 testes"; exit 1; }
+          grep -qx "OK" /tmp/cred.txt || { echo "::error::teste de credenciais D1 falhou"; exit 1; }
+          grep -qx "MUTANTS total=12 killed=12 survived=0" /tmp/cred.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Reconciliação diária Neon × diário (contagem exata 10, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/p20-diario-reconcilia.test.mjs | tee /tmp/r.txt
+          for l in "# tests 10" "# pass 10" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/r.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes da reconciliação (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_p20_diario_reconcilia.py < /dev/null | tee /tmp/mutr.txt
+          echo "::notice title=P20_DIARIO_RECONCILIA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mutr.txt)"
+          grep -qx "MUTANTS total=18 killed=18 survived=0 inconclusive=0" /tmp/mutr.txt || { echo "::error::mutante da reconciliação sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

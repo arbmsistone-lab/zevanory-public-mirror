@@ -1,0 +1,55 @@
+{
+  "schema": "p21-token-cutover/v1",
+  "rule": "P21 / R18 (roteiro l.236, l.583): interruptor de transição para o token Cloudflare DEDICADO de cada serviço. Fonte única e versionada: cada workflow listado em `workflows` lê o seu serviço daqui (job p21_token -> .github/workflows/p21-token-cutover.yml) ANTES de qualquer passo com credencial. cutover=false: o workflow usa o token legado (expressão idêntica à anterior) e emite ::warning title=TOKEN_LEGADO_EM_USO::. cutover=true: o workflow usa SÓ secrets.<secret>; o legado vira vazio na própria expressão (sem queda) e o primeiro passo do job falha com ::error title=TOKEN_DEDICADO_AUSENTE:: se o segredo não existir, ou TOKEN_ID_DIVERGENTE se o token cadastrado não for o `token_id` registrado aqui. Virar um serviço para true exige token_id preenchido (scripts/ci/p21_token_cutover.py check). Enquanto qualquer serviço estiver false, credential-scope e t1_verdict (condição 4c) marcam NOT_PROVEN. Roteiro do proprietário: docs/p21/tokens-por-worker.md.",
+  "account": "1b26415802588185a86c1d4d3ebf5bdb",
+  "legacy_secrets": [
+    "CLOUDFLARE_PUBLIC_OWNER_API_TOKEN",
+    "CLOUDFLARE_API_TOKEN"
+  ],
+  "services": {
+    "zevanory": {
+      "secret": "CF_TOKEN_ZEVANORY",
+      "cutover": false,
+      "token_id": null,
+      "cloudflare_token_name": "p21-zevanory-deploy",
+      "environment": "producao-critica",
+      "edit_workers": ["zevanory"],
+      "edit_zones": [],
+      "permissions": "Conta > Workers (Specified Workers: zevanory) > Editor; Conta > Configurações da conta > Ler. Sem KV, sem D1 (D1 tem tokens próprios, DEC-P20-D1-01), sem rotas.",
+      "workflows": ["central-production-deploy.yml"]
+    },
+    "zevanory-sales-public": {
+      "secret": "CF_TOKEN_SALES",
+      "cutover": false,
+      "token_id": null,
+      "cloudflare_token_name": "p21-sales-deploy",
+      "environment": "producao-critica",
+      "edit_workers": ["zevanory-sales-public", "zevanory-sales-candidate"],
+      "edit_zones": [],
+      "permissions": "Conta > Workers (Specified Workers: zevanory-sales-public, zevanory-sales-candidate) > Editor; Conta > Configurações da conta > Ler. Com cutover=true o candidato é o Worker FIXO zevanory-sales-candidate (criado uma vez pelo proprietário: Editor por Worker não cria nem apaga Workers) e, no fim, é estacionado (sales-public/candidate-parked.mjs) em vez de apagado.",
+      "workflows": ["zevanory-sales-public-release.yml"]
+    },
+    "zevanory-public-router": {
+      "secret": "CF_TOKEN_ROUTER",
+      "cutover": false,
+      "token_id": null,
+      "cloudflare_token_name": "p21-router-deploy",
+      "environment": "producao-critica",
+      "edit_workers": ["zevanory-public-router"],
+      "edit_zones": ["d8a21b6cfd37843e34f38c3e4ad4030a"],
+      "permissions": "Conta > Workers (Specified Workers: zevanory-public-router) > Editor; Conta > Configurações da conta > Ler; Zona zevanory.api.br > Workers Routes > Editar; Zona zevanory.api.br > Zona > Ler.",
+      "workflows": ["public-router-deploy.yml"]
+    },
+    "zevanory-product-control-portable": {
+      "secret": "CF_TOKEN_PANEL",
+      "cutover": false,
+      "token_id": null,
+      "cloudflare_token_name": "p21-panel-deploy",
+      "environment": "producao-critica",
+      "edit_workers": ["zevanory-product-control-portable"],
+      "edit_zones": [],
+      "permissions": "Conta > Workers (Specified Workers: zevanory-product-control-portable) > Editor; Zona zevanory.api.br > Zona > Ler (o script do painel confere a zona por GET /zones?name=). Sem KV: o deploy só sobe o binding (developers.cloudflare.com/workers/authorization/#bindings). Sem rotas: o script tira routes/custom_domain antes do deploy.",
+      "workflows": ["zpc-control-worker-deploy.yml"]
+    }
+  }
+}

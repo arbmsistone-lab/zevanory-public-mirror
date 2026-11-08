@@ -224,5 +224,8 @@ test("DJ8 falhas do D1 e isolamento: indisponível e sem cabeça falham fechado;
   const workerDir = new URL("../worker/", import.meta.url);
   const importers = readdirSync(workerDir).filter((f) => /\.m?js$/.test(f) && f !== "diario-p20.mjs")
     .filter((f) => /diario-p20/.test(readTextNormalized(new URL(f, workerDir))));
-  assert.deepEqual(importers, [], "[DJ8.7] nenhum Worker usa o diário neste PR");
+  // PR 3 (docs/p20/diario-d1.md, "Gravação em modo sombra"): só o adaptador de sombra importa o módulo puro.
+  // PR 4 ("Reconciliação diária"): a reconciliação importa só verifyChain (leitura); nenhum outro módulo usa o diário.
+  assert.deepEqual(importers, ["diario-reconcilia.mjs", "diario-sombra.mjs"], "[DJ8.7] só worker/diario-sombra.mjs e worker/diario-reconcilia.mjs usam o diário");
+  assert.match(readTextNormalized(new URL("diario-reconcilia.mjs", workerDir)), /^import \{ verifyChain \} from "\.\/diario-p20\.mjs";$/m, "[DJ8.8] a reconciliação só lê (verifyChain)");
 });

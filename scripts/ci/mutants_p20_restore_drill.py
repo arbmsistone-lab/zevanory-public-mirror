@@ -3,7 +3,8 @@
 pelo classificador COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
 Suíte (uma execução `node --test`, TAP): tests/p20-restore-drill.test.mjs (D1-D12), tests/p20-backup-encryption.test.mjs
-(E1-E10, cifragem AES-256-GCM do backup no Worker e no ensaio) e tests/b0-baseline.test.mjs (B0 e P20 no registro). Sem rede, sem banco, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em
+(E1-E10, cifragem AES-256-GCM do backup no Worker e no ensaio), tests/p20-kv-copy-drill.test.mjs (K1-K8, cópia KV -> Neon
+restaurada e conferida chave a chave) e tests/b0-baseline.test.mjs (B0 e P20 no registro). Sem rede, sem banco, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em
 diretório temporário (o repositório nunca é alterado).
 Expectativas (mutants_p20_restore_drill_allow.json, formato load_mutant_config): primary (1-3) com test_pattern E
 assertion_pattern NÃO nulo (marcador [Dn.k]/[B0P20.k] da asserção que codifica a regra) e secondary com justification,
@@ -23,10 +24,11 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
-TESTS = ["tests/p20-restore-drill.test.mjs", "tests/p20-backup-encryption.test.mjs", "tests/b0-baseline.test.mjs"]
-COPY_DIRS = ["scripts/p20", "scripts/b0", "docs/p20", "docs/b0"]
-COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p20-backup-fixture.mjs", "scripts/audit/workers-usage.mjs",
-                      "worker/data-backup.mjs", "worker/backup-crypto.mjs",
+TESTS = ["tests/p20-restore-drill.test.mjs", "tests/p20-backup-encryption.test.mjs", "tests/p20-kv-copy-drill.test.mjs", "tests/b0-baseline.test.mjs", "tests/p20-diario-ensaio.test.mjs"]
+COPY_DIRS = ["scripts/p20", "scripts/b0", "docs/p20", "docs/b0", "migrations/d1"]
+# P20 diário D1: data-backup importa a reconciliação diária (PR 4) e o ensaio importa a cadeia e a derivação (PR 6).
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p20-backup-fixture.mjs", "tests/helpers/d1-sqlite.mjs", "scripts/audit/workers-usage.mjs",
+                      "worker/data-backup.mjs", "worker/backup-crypto.mjs", "worker/diario-p20.mjs", "worker/diario-sombra.mjs", "worker/diario-reconcilia.mjs",
                       ".github/workflows/p20-monthly-restore-drill.yml", ".github/workflows/b0-baseline-collector.yml",
                       ".github/workflows/p18-external-monitor.yml", ".github/workflows/b0-baseline-tests.yml", ".github/workflows/p18-monitor-watchdog.yml"]
 TIMEOUT = 300
@@ -34,6 +36,8 @@ NODE = shutil.which("node") or "node"
 L, D, P = "scripts/p20/restore-drill-lib.mjs", "scripts/p20/restore-drill.mjs", "scripts/p20/publish-drill.mjs"
 B, C, W = "scripts/b0/b0-lib.mjs", "scripts/b0/b0-collector.mjs", ".github/workflows/p20-monthly-restore-drill.yml"
 WC, WB, E = "worker/backup-crypto.mjs", "worker/data-backup.mjs", "scripts/p20/backup-envelope.mjs"
+R = "scripts/p20/kv-memory-replay.mjs"  # reconstrução do KV em memória (não é escritor de KV)
+DD, DR = "scripts/p20/restore-drill-diario.mjs", "scripts/p20/diario-d1-read.mjs"
 
 M = {
     "M01 hash por tabela não conferido": (L, "      if (h !== m.sha) { fail(`hash_mismatch:${t}`); partOk = false; continue; }\n", ""),
@@ -79,6 +83,49 @@ M = {
     "M41 consolidado obrigatório aceita parte em claro": (WB, "  if (encryptionRequired && report.encryption.state !== \"cifrado\") failures.push(\"backup_nao_cifrado:\" + report.encryption.state);\n", ""),
     "M42 kid desconhecido decifrado com outra chave": (E, "  const key = ring.get(o.kid);", "  const key = ring.get(o.kid) || [...ring.values()][0];"),
     "M43 material de chave na mensagem de erro": (E, "  if (raw.length !== KEY_BYTES) throw err(\"backup_keyring_malformed\");", "  if (raw.length !== KEY_BYTES) throw err(\"backup_keyring_malformed:\" + t);"),
+    # Cópia KV -> Neon (lacuna copia_kv_para_neon): só sai de not_covered com prova completa.
+    "M44 lacuna copia_kv retirada com cópia só declarada": (L, "verdict === \"APROVADO\" && !!kvCopy && kvCopy.failures.length === 0 && kvProofComplete(kvCopy.proof, a.day),", "!!kvCopy,"),
+    "M45 lacuna copia_kv retirada por valor não estritamente true": (L, "!(kvCopyProven === true && isCopiaKv(s))", "!(kvCopyProven && isCopiaKv(s))"),
+    "M46 releitura aceita lacuna copia_kv retirada sem prova": (L, "  if (!kvPending && !(r.verdict === \"APROVADO\" && kvProofComplete(r.kv_copy, b.day) && (b.copia_cifrada !== true || r.kv_copy.copia_cifrada === true))) throw new Error(\"copia_kv_unproven\");\n", ""),
+    "M47 NOT_AVAILABLE sem lacuna copia_kv aceito": (L, "  if (r.verdict === \"NOT_AVAILABLE\" && !kvPending) throw new Error(\"copia_kv_unproven\");\n", ""),
+    "M48 prova do KV com chave a menos aceita": (L, "    && k.restored + k.expired_at_restore === k.keys && isInt(k.with_ttl)", "    && isInt(k.with_ttl)"),
+    "M49 manifesto da fonte (valor+TTL+metadados) não conferido": (L, "  if (manifestHash(digests) !== entriesManifest) failures.push(`${prefix}_manifest_mismatch`);\n", ""),
+    "M50 hash do valor por chave não conferido": (L, "  if (sha256(r.value) !== r.sha256) return \"value_hash_mismatch\";\n", ""),
+    "M51 TTL não recriado na restauração do KV": (R, "    if (exp != null) opts.expiration = exp;\n", ""),
+    "M52 metadados não recriados na restauração do KV": (R, "    if (r.metadata != null) opts.metadata = JSON.parse(r.metadata);\n", ""),
+    "M53 chave fora dos prefixos críticos aceita": (L, " && KV_PREFIXES.some((p) => k.startsWith(p)) && !k.startsWith(\"zpc:restore-drill:\");", " && !k.startsWith(\"zpc:restore-drill:\");"),
+    "M54 rebaixamento da cópia do KV para claro aceito": (L, "  if (isObj(p0.v.encryption) && p0.v.encryption.state === \"cifrado\" && !opened.encrypted) { fail(\"kv_copy_encryption_downgrade\"); return out; }\n", ""),
+    "M55 SHA da cópia do KV não conferido": (L, "  if (sha256(opened.text) !== c.sha) { fail(\"kv_copy_hash_mismatch\"); return out; }\n", ""),
+    "M56 Worker grava a cópia do KV a partir da fonte, não do Neon": (WB, "      const copyJson = JSON.stringify(backed);", "      const copyJson = JSON.stringify(present.map(([k, v]) => ({ snapshot_day: day, key: k, value: v, sha256: hashes[k], expiration: metaOf(k).expiration, metadata: metaOf(k).metadata })));"),
+    "M57 Worker não copia o TTL para o Neon": (WB, "present.map(([k]) => metaOf(k).expiration), present.map(([k]) => metaOf(k).metadata)],", "present.map(() => null), present.map(([k]) => metaOf(k).metadata)],"),
+    "M58 Worker não confere TTL e metadados relidos do Neon": (WB, " || entries[r.key] !== (await kvEntryDigest({ sha: r.sha256, expiration: r.expiration, metadata: r.metadata }))) mismatch++;", ") mismatch++;"),
+    "M59 ensaio lê a cópia do KV fora do namespace do backup": (D, "  if (typeof kvKey === \"string\" && KV_COPY_KEY.test(kvKey)) kvCopy = await get(kvKey);", "  if (typeof kvKey === \"string\") kvCopy = await get(kvKey);"),
+    "M60 chave expirada recriada na restauração": (R, "    if (exp != null && exp < nowSec + KV_MIN_TTL_S) { expired.push(r.key); continue; }\n", ""),
+    "M61 restauração do KV não roda e a prova não é exigida": (D, "    if (!Array.isArray(restore.kv_rows)) kvCopy.failures.push(\"kv_restore_not_run\");\n    else kvCopy", "    if (Array.isArray(restore.kv_rows)) kvCopy"),
+    # Diário D1 no ensaio mensal (scripts/p20/diario-d1-read.mjs, restore-drill-diario.mjs e a releitura do registro).
+    "M62 releitura aceita diario_d1 retirado sem prova": (L, "  if (!ddPending && !(r.verdict === \"APROVADO\" && diarioProvado(r.diario) && r.rpo_critico_medido_s === r.diario.rpo_critico_medido_s)) throw new Error(\"diario_d1_unproven\");\n", ""),
+    "M63 prova do diário aceita sobra": (L, " && d.faltando === 0 && d.sobrando === 0 &&", " && d.faltando === 0 &&"),
+    "M64 cadeia do diário não verificada no ensaio": (DD, "  const cadeia = await verifyChain(rows, { head });", "  const cadeia = { ok: true };"),
+    "M65 cadeia do diário sem a cabeça (fim cortado)": (DD, "  const cadeia = await verifyChain(rows, { head });", "  const cadeia = await verifyChain(rows, {});"),
+    "M66 reaplicação não conferida": (DD, "  const reconstrucaoOk = Array.isArray(relidas) && relidas.length === cauda.length && cauda.every((r, i) => igual(r, relidas[i]));", "  const reconstrucaoOk = true;"),
+    "M67 evento da cópia fora do diário ignorado": (DD, "  const conjuntoIgual = reconstrucaoOk && faltando.length === 0 && sobrando.length === 0", "  const conjuntoIgual = reconstrucaoOk && sobrando.length === 0"),
+    "M68 leitor do D1 aceita SQL arbitrária": (DR, "    if (!SQL_PERMITIDAS.includes(sql)) throw new Error(\"d1_sql_nao_permitida\");\n", ""),
+    "M69 leitor do D1 lê além da cabeça": (DR, "      const page = await q(SQL_PAGINA, [cursor, topo, pagina]);", "      const page = await q(SQL_PAGINA, [cursor, Number.MAX_SAFE_INTEGER, pagina]);"),
+    "M70 leitor do D1 cai para o token compartilhado": (DR, "  const r = await lerDiario({ token: process.env.CF_TOKEN_D1_DIARIO_READ || \"\" });", "  const r = await lerDiario({ token: process.env.CF_TOKEN_D1_DIARIO_READ || process.env.CLOUDFLARE_API_TOKEN || \"\" });"),
+    "M71 token do D1 no env do job": (W, "      PGPASSWORD: p20-drill-local-only\n    steps:\n", "      PGPASSWORD: p20-drill-local-only\n      CF_TOKEN_D1_DIARIO_READ: ${{ secrets.CF_TOKEN_D1_DIARIO_READ }}\n    steps:\n"),
+    "M72 passo do ensaio recebe o token do D1": (W, "          P20_BACKUP_KEYS: ${{ secrets.P20_BACKUP_KEYS }}  # chave(s) de decifragem; ausente = bundles cifrados reprovam\n", "          P20_BACKUP_KEYS: ${{ secrets.P20_BACKUP_KEYS }}  # chave(s) de decifragem; ausente = bundles cifrados reprovam\n          CF_TOKEN_D1_DIARIO_READ: ${{ secrets.CF_TOKEN_D1_DIARIO_READ }}\n"),
+    "M73 diário sem prova fora da sombra não reprova": (L, "  if (a.readable && isObj(diario) && diarioExigido(diario) && !diarioAprovado(diario)) failures.push(\"diario_sem_prova:\" + limpo(diario.estado) + (diario.motivo ? \":\" + limpo(diario.motivo) : \"\"));\n", ""),
+    "M74 RPO crítico publicado sem prova": (DD, "  if (!conjuntoIgual) return { ...resumo, estado: \"nao_provado\",", "  if (!conjuntoIgual) return { ...resumo, rpo_critico_medido_s: rpo, estado: \"nao_provado\","),
+    "M75 reconstrução sem a margem do corte": (DD, "  const cauda = rows.filter((r) => Number(r.ts_ms) > corte - MARGEM_MS);", "  const cauda = rows.filter((r) => Number(r.ts_ms) > corte);"),
+    "M76 prova do diário sem restauração conferida": (DD, "  if (!restoreOk) return nao(\"restauracao_nao_aprovada\", { ...comum, cadeia_ok: true });\n", ""),
+    "M77 lacuna do diário retirada em ensaio não aprovado": (L, "  if (!ddPending && !(r.verdict === \"APROVADO\" && diarioProvado(r.diario)", "  if (!ddPending && !(diarioProvado(r.diario)"),
+    "M78 lacuna do diário retirada só pelo estado, sem a prova completa": (L, "    .filter((s) => !(provado && isDiarioD1(s)))", "    .filter((s) => !(isObj(diario) && diario.estado === \"provado\" && isDiarioD1(s)))"),
+    # NC-PR6-01: fora da sombra, lista positiva (só "provado" com a prova completa passa).
+    "M79 lista negativa: só nao_provado reprova": (L, "diarioExigido(diario) && !diarioAprovado(diario)) failures.push(", "diarioExigido(diario) && diario.estado === \"nao_provado\") failures.push("),
+    "M80 fase desconhecida tratada como sombra": (L, "export const diarioExigido = (d) => !(isObj(d) && d.fase === \"sombra\");", "export const diarioExigido = (d) => isObj(d) && d.fase === \"ativo\";"),
+    "M81 estado provado aceito sem a prova completa": (L, "export const diarioAprovado = (d) => isObj(d) && DIARIO_ESTADOS_APROVADOS.includes(d.estado) && diarioProvado(d);", "export const diarioAprovado = (d) => isObj(d) && DIARIO_ESTADOS_APROVADOS.includes(d.estado);"),
+    "M82 releitura aceita aprovado em ativo sem prova": (L, "  if (r.verdict === \"APROVADO\" && isObj(r.diario) && diarioExigido(r.diario) && !diarioAprovado(r.diario)) throw new Error(\"diario_ativo_sem_prova\");\n", ""),
+    "M83 implementação do diário escolhe a própria fase": (D, "    if (isObjDiario(diario)) diario = { ...diario, fase: diarioFase };\n", ""),
 }
 
 ALLOW_FILE = Path(os.environ.get("P20_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p20_restore_drill_allow.json"))

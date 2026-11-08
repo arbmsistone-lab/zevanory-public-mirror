@@ -102,12 +102,23 @@ on:
       - "scripts/financial_e2e_stripe.py"
       - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
+      # P20 diário D1: uma migração nova chega ao banco pelo passo de migração deste deploy.
+      - "migrations/d1/**"
 concurrency:
   group: deploy-zevanory
   cancel-in-progress: false
   queue: max
 
 jobs:
+  p21_token:
+    # P21 / R18: interruptor versionado ops/token-cutover.json lido no SHA deste run (sem segredos);
+    # os jobs com credencial dependem dele. docs/p21/tokens-por-worker.md
+    uses: ./.github/workflows/p21-token-cutover.yml
+    permissions:
+      contents: read
+    with:
+      service: zevanory
+
   guard:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
@@ -116,15 +127,63 @@ jobs:
     # history, a mismatch between the Cloudflare effective version and /api/release, or an
     # unreadable production with a candidate that is not the branch tip refuse the promotion.
     runs-on: ubuntu-latest
+    needs: p21_token
     timeout-minutes: 5
     permissions:
       contents: read
     outputs:
       decision: ${{ steps.guard.outputs.decision }}
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_ZEVANORY || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
     steps:
+      - name: P21 credencial Cloudflare dedicada (interruptor ops/token-cutover.json)
+        shell: bash
+        env:
+          P21_SERVICE: zevanory
+          P21_SECRET: CF_TOKEN_ZEVANORY
+          P21_SECRET_ESPERADO: ${{ needs.p21_token.outputs.secret }}
+          P21_CUTOVER: ${{ needs.p21_token.outputs.cutover }}
+          P21_TOKEN_ID: ${{ needs.p21_token.outputs.token_id }}
+          P21_ACCOUNT: ${{ needs.p21_token.outputs.account }}
+          P21_DEDICADO_PRESENTE: ${{ secrets.CF_TOKEN_ZEVANORY != '' }}
+        run: |
+          set -euo pipefail
+          case "${P21_CUTOVER:-}" in
+            false)
+              echo "::warning title=TOKEN_LEGADO_EM_USO::serviço $P21_SERVICE com cutover=false em ops/token-cutover.json: este job usa o token legado (CLOUDFLARE_PUBLIC_OWNER_API_TOKEN/CLOUDFLARE_API_TOKEN, alcance da conta). Transição P21: docs/p21/tokens-por-worker.md"
+              ;;
+            true)
+              # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+              CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"
+              if [ "${P21_SECRET_ESPERADO:-}" != "$P21_SECRET" ]; then
+                echo "::error title=TOKEN_CUTOVER_DIVERGENTE::o workflow declara $P21_SECRET mas ops/token-cutover.json registra ${P21_SECRET_ESPERADO:-nada} para $P21_SERVICE"
+                exit 1
+              fi
+              if [ "${P21_DEDICADO_PRESENTE:-}" != "true" ] || [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+                echo "::error title=TOKEN_DEDICADO_AUSENTE::serviço $P21_SERVICE com cutover=true exige o segredo $P21_SECRET no environment deste job; o token legado nunca é usado. Cadastre o segredo ou volte cutover=false por PR (docs/p21/tokens-por-worker.md)."
+                exit 1
+              fi
+              verify="$(curl -sS --max-time 20 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$P21_ACCOUNT/tokens/verify" || true)"
+              got="$(printf '%s' "$verify" | python3 -c 'import json, sys
+          try:
+              d = json.load(sys.stdin)
+          except Exception:
+              d = {}
+          r = d.get("result") if isinstance(d, dict) else None
+          ok = isinstance(d, dict) and d.get("success") is True and isinstance(r, dict) and r.get("status") == "active"
+          print(r.get("id", "") if ok else "")' || true)"
+              if [ -z "$got" ] || [ "$got" != "${P21_TOKEN_ID:-}" ]; then
+                echo "::error title=TOKEN_ID_DIVERGENTE::o segredo $P21_SECRET não é o token ativo ${P21_TOKEN_ID:-sem-id} registrado em ops/token-cutover.json para $P21_SERVICE (verify na conta $P21_ACCOUNT: ${got:-falhou})"
+                exit 1
+              fi
+              echo "::notice title=TOKEN_DEDICADO_EM_USO::serviço $P21_SERVICE usa $P21_SECRET (token $got, conta $P21_ACCOUNT); o legado está vazio neste job"
+              ;;
+            *)
+              echo "::error title=TOKEN_CUTOVER_ILEGIVEL::interruptor de $P21_SERVICE ilegível (${P21_CUTOVER:-vazio}); nenhum token é entregue"
+              exit 1
+              ;;
+          esac
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -138,7 +197,7 @@ jobs:
             --cloudflare-script zevanory
   deploy:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
-    needs: guard
+    needs: [guard, p21_token]
     if: ${{ github.ref == 'refs/heads/gh-pages' && (needs.guard.outputs.decision == 'promote') }}  # B01 patch 05b
     permissions:
       contents: read
@@ -146,8 +205,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      # P21: com cutover=false os dois valores são exatamente os de antes; com true o legado fica vazio (sem queda).
+      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'false' && secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || '' }}
+      CLOUDFLARE_API_TOKEN: ${{ needs.p21_token.outputs.cutover == 'true' && secrets.CF_TOKEN_ZEVANORY || needs.p21_token.outputs.cutover == 'false' && (secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN) || '' }}
       PUBLIC_OWNER_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
       MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
@@ -160,6 +220,53 @@ jobs:
       # Deploy the exact merged source SHA; sales remain fail-closed by configuration.
       TARGET_RUNTIME_SHA: ${{ github.sha }}
     steps:
+      - name: P21 credencial Cloudflare dedicada (interruptor ops/token-cutover.json)
+        shell: bash
+        env:
+          P21_SERVICE: zevanory
+          P21_SECRET: CF_TOKEN_ZEVANORY
+          P21_SECRET_ESPERADO: ${{ needs.p21_token.outputs.secret }}
+          P21_CUTOVER: ${{ needs.p21_token.outputs.cutover }}
+          P21_TOKEN_ID: ${{ needs.p21_token.outputs.token_id }}
+          P21_ACCOUNT: ${{ needs.p21_token.outputs.account }}
+          P21_DEDICADO_PRESENTE: ${{ secrets.CF_TOKEN_ZEVANORY != '' }}
+        run: |
+          set -euo pipefail
+          case "${P21_CUTOVER:-}" in
+            false)
+              echo "::warning title=TOKEN_LEGADO_EM_USO::serviço $P21_SERVICE com cutover=false em ops/token-cutover.json: este job usa o token legado (CLOUDFLARE_PUBLIC_OWNER_API_TOKEN/CLOUDFLARE_API_TOKEN, alcance da conta). Transição P21: docs/p21/tokens-por-worker.md"
+              ;;
+            true)
+              # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+              CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"
+              if [ "${P21_SECRET_ESPERADO:-}" != "$P21_SECRET" ]; then
+                echo "::error title=TOKEN_CUTOVER_DIVERGENTE::o workflow declara $P21_SECRET mas ops/token-cutover.json registra ${P21_SECRET_ESPERADO:-nada} para $P21_SERVICE"
+                exit 1
+              fi
+              if [ "${P21_DEDICADO_PRESENTE:-}" != "true" ] || [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+                echo "::error title=TOKEN_DEDICADO_AUSENTE::serviço $P21_SERVICE com cutover=true exige o segredo $P21_SECRET no environment deste job; o token legado nunca é usado. Cadastre o segredo ou volte cutover=false por PR (docs/p21/tokens-por-worker.md)."
+                exit 1
+              fi
+              verify="$(curl -sS --max-time 20 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$P21_ACCOUNT/tokens/verify" || true)"
+              got="$(printf '%s' "$verify" | python3 -c 'import json, sys
+          try:
+              d = json.load(sys.stdin)
+          except Exception:
+              d = {}
+          r = d.get("result") if isinstance(d, dict) else None
+          ok = isinstance(d, dict) and d.get("success") is True and isinstance(r, dict) and r.get("status") == "active"
+          print(r.get("id", "") if ok else "")' || true)"
+              if [ -z "$got" ] || [ "$got" != "${P21_TOKEN_ID:-}" ]; then
+                echo "::error title=TOKEN_ID_DIVERGENTE::o segredo $P21_SECRET não é o token ativo ${P21_TOKEN_ID:-sem-id} registrado em ops/token-cutover.json para $P21_SERVICE (verify na conta $P21_ACCOUNT: ${got:-falhou})"
+                exit 1
+              fi
+              echo "::notice title=TOKEN_DEDICADO_EM_USO::serviço $P21_SERVICE usa $P21_SECRET (token $got, conta $P21_ACCOUNT); o legado está vazio neste job"
+              ;;
+            *)
+              echo "::error title=TOKEN_CUTOVER_ILEGIVEL::interruptor de $P21_SERVICE ilegível (${P21_CUTOVER:-vazio}); nenhum token é entregue"
+              exit 1
+              ;;
+          esac
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -177,6 +284,8 @@ jobs:
       - name: Determine authenticated public-owner deployment authority
         id: auth
         shell: bash
+        env:
+          P21_CUTOVER: ${{ needs.p21_token.outputs.cutover }}
         run: |
           set -euo pipefail
           echo "available=false" >> "$GITHUB_OUTPUT"
@@ -184,7 +293,9 @@ jobs:
             echo "CLOUDFLARE_AUTH_ROUTE=ABSENT_FAIL_CLOSED"
             exit 0
           fi
-          if [ -n "${CLOUDFLARE_PUBLIC_OWNER_API_TOKEN:-}" ]; then
+          if [ "${P21_CUTOVER:-}" = "true" ]; then
+            echo "CLOUDFLARE_AUTH_SOURCE=P21_DEDICATED_TOKEN_CF_TOKEN_ZEVANORY"
+          elif [ -n "${CLOUDFLARE_PUBLIC_OWNER_API_TOKEN:-}" ]; then
             echo "CLOUDFLARE_AUTH_SOURCE=PUBLIC_OWNER_DEDICATED_TOKEN"
           else
             echo "CLOUDFLARE_AUTH_SOURCE=LEGACY_FALLBACK_TOKEN"
@@ -265,7 +376,7 @@ jobs:
           node --check public/control-plane-vnext.js
           npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
       - name: Authenticate Cloudflare
-        if: steps.auth.outputs.available == 'true'
+        if: steps.auth.outputs.available == 'true' && needs.p21_token.outputs.cutover != 'true'
         run: npx --yes wrangler@4.135.0 whoami
       - name: Verify legacy production bridge route
         if: steps.auth.outputs.available == 'true'
@@ -282,17 +393,25 @@ jobs:
             exit 22
           fi
       - name: Discover production KV namespaces
-        if: steps.auth.outputs.available == 'true'
+        if: steps.auth.outputs.available == 'true' && needs.p21_token.outputs.cutover != 'true'
         run: |
           set -euo pipefail
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" -o /tmp/kv.json
           python3 scripts/deploy/inspect-kv.py
       - name: Discover Worker service bindings
-        if: steps.auth.outputs.available == 'true'
+        if: steps.auth.outputs.available == 'true' && needs.p21_token.outputs.cutover != 'true'
         run: |
           set -euo pipefail
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
           python3 scripts/deploy/inspect-workers.py
+      - name: P21 token dedicado - descoberta sem permissão extra
+        if: steps.auth.outputs.available == 'true' && needs.p21_token.outputs.cutover == 'true'
+        run: |
+          # CF_TOKEN_ZEVANORY só tem Editor no Worker zevanory (+ leitura da conta): o gate já provou o token por
+          # /accounts/<conta>/tokens/verify (no lugar de wrangler whoami); a lista de namespaces KV e de Workers da
+          # conta era só informativa e não é lida (subir binding KV/serviço só exige Editor no Worker:
+          # developers.cloudflare.com/workers/authorization/#bindings). As configurações do zevanory seguem lidas abaixo.
+          echo "::notice title=P21_DISCOVERY::whoami, KV namespaces e lista de Workers não lidos com o token dedicado (sem permissão de conta)"
       - name: Inspect current zevanory bindings
         if: steps.auth.outputs.available == 'true'
         run: |
@@ -331,6 +450,63 @@ jobs:
             exit 1
           fi
 
+      - name: P20 diário D1 - migrações (best-effort, nunca bloqueia o deploy)
+        # docs/p20/diario-d1.md, seções "Binding e migração" e "Credenciais dedicadas (DEC-P20-D1-01)".
+        # DEC-P20-D1-01: o D1 só é tocado com o token DEDICADO de migração (CF_TOKEN_D1_DIARIO_MIGRATE, D1 Edit,
+        # environment producao-critica), entregue SÓ a este passo. Os dois nomes do token compartilhado do deploy
+        # ficam vazios aqui, então nenhuma chamada D1 deste passo pode sair com ele. O wrangler deploy não precisa
+        # de permissão D1 para subir um binding D1 (Workers, "Roles and permissions" > Bindings).
+        # O diário roda em modo sombra e tolera tabela ausente, então nada aqui reprova o deploy central:
+        #  - segredo dedicado ausente: aviso DIARIO_D1_TOKEN_DEDICADO_AUSENTE e o binding DIARIO sai SÓ deste deploy;
+        #  - token dedicado sem acesso ao banco: aviso DIARIO_D1_MIGRACAO_PENDENTE e o binding sai SÓ deste deploy;
+        #  - token dedicado sem D1 Edit na migração: aviso DIARIO_D1_MIGRACAO_PENDENTE, binding mantido;
+        #  - qualquer outra falha da migração: anotação de erro visível, deploy segue.
+        id: diariomig
+        if: steps.auth.outputs.available == 'true'
+        env:
+          CF_TOKEN_D1_DIARIO_MIGRATE: ${{ secrets.CF_TOKEN_D1_DIARIO_MIGRATE }}
+          CLOUDFLARE_API_TOKEN: ""
+          CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ""
+          CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "state=pendente" >> "$GITHUB_OUTPUT"
+          DB_ID="$(python3 -c 'import json;r=[d for d in json.load(open("wrangler.central-fix.jsonc")).get("d1_databases",[]) if d.get("binding")=="DIARIO"];print(r[0]["database_id"] if len(r)==1 else "")')"
+          case "$DB_ID" in
+            1b1bfa19-ccc5-423a-bc1f-62d89020c8e2) ;;
+            *) echo "::error title=DIARIO_D1_BINDING::binding DIARIO ausente ou com banco inesperado no candidato; o gerador deveria ter recusado"; exit 1 ;;
+          esac
+          drop_binding() {
+            python3 -c 'import json;p="wrangler.central-fix.jsonc";c=json.load(open(p));c["d1_databases"]=[d for d in c.get("d1_databases",[]) if d.get("binding")!="DIARIO"] or None;c.get("d1_databases") is None and c.pop("d1_databases");open(p,"w").write(json.dumps(c,indent=2)+"\n")'
+            echo "state=binding_removido" >> "$GITHUB_OUTPUT"
+          }
+          if [ -z "${CF_TOKEN_D1_DIARIO_MIGRATE:-}" ]; then
+            echo "::warning title=DIARIO_D1_TOKEN_DEDICADO_AUSENTE::segredo CF_TOKEN_D1_DIARIO_MIGRATE ausente no environment producao-critica (DEC-P20-D1-01: o token compartilhado do deploy nunca toca o D1). Este deploy segue SEM o binding DIARIO (diário em sombra desligado, no-op). Roteiro do proprietário: docs/p20/diario-d1.md, seção Credenciais dedicadas."
+            drop_binding
+            exit 0
+          fi
+          code="$(curl -sS -o /tmp/diario-d1.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN_D1_DIARIO_MIGRATE" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/d1/database/$DB_ID" || true)"
+          name="$(python3 -c 'import json;print((json.load(open("/tmp/diario-d1.json")).get("result") or {}).get("name",""))' 2>/dev/null || true)"
+          if [ "$code" != "200" ]; then
+            echo "::warning title=DIARIO_D1_MIGRACAO_PENDENTE::o token dedicado CF_TOKEN_D1_DIARIO_MIGRATE não lê o banco D1 zevanory-diario-p20 (HTTP $code). Ele precisa de Conta > D1 > Editar na conta 1b26415802588185a86c1d4d3ebf5bdb. Este deploy segue SEM o binding DIARIO (diário em sombra desligado, no-op)."
+            drop_binding
+            exit 0
+          fi
+          if [ "$name" != "zevanory-diario-p20" ]; then
+            echo "::warning title=DIARIO_D1_BANCO_DIVERGENTE::o UUID do binding DIARIO não corresponde ao banco zevanory-diario-p20; este deploy segue SEM o binding DIARIO"
+            drop_binding
+            exit 0
+          fi
+          if CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc > /tmp/diario-mig.log 2>&1; then
+            echo "state=aplicada" >> "$GITHUB_OUTPUT"
+            echo "::notice title=DIARIO_D1_MIGRACAO::$(grep -Eio 'no migrations to apply|migrations? applied|✅[^|]*' /tmp/diario-mig.log | head -3 | tr '\n' ' ' | cut -c1-300)"
+          elif grep -Eqi 'authentication error|code: ?10000|code: ?7403|not authorized|unauthori[sz]ed|forbidden|permission' /tmp/diario-mig.log; then
+            echo "::warning title=DIARIO_D1_MIGRACAO_PENDENTE::o token dedicado CF_TOKEN_D1_DIARIO_MIGRATE não tem permissão para aplicar a migração no D1. Ele precisa de Conta > D1 > Editar na conta 1b26415802588185a86c1d4d3ebf5bdb. O deploy segue: o diário em sombra tolera a tabela ausente."
+          else
+            tail -8 /tmp/diario-mig.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=DIARIO_D1_MIGRACAO_FALHOU::(não bloqueia o deploy) /'; echo
+          fi
+          exit 0
       - name: Deploy repaired production worker
         id: deployworker
         if: steps.auth.outputs.available == 'true'
@@ -473,6 +649,39 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/ci/credential_identity_readback.py https://zevanory.api.br
+      - name: P20 diário D1 - readback somente leitura (nunca reprova)
+        # DEC-P20-D1-01: leitura com credencial PRÓPRIA (CF_TOKEN_D1_DIARIO_READ, só D1 Read), entregue só a este passo;
+        # sem ela o readback não roda (nunca cai para o token de migração nem para o compartilhado do deploy).
+        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        continue-on-error: true
+        env:
+          DIARIO_MIG_STATE: ${{ steps.diariomig.outputs.state }}
+          CF_TOKEN_D1_DIARIO_READ: ${{ secrets.CF_TOKEN_D1_DIARIO_READ }}
+          CLOUDFLARE_API_TOKEN: ""
+          CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ""
+          CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ "${DIARIO_MIG_STATE:-}" = "binding_removido" ]; then
+            echo "::warning title=DIARIO_D1_READBACK::binding DIARIO fora deste deploy (token dedicado de migração ausente ou sem acesso ao D1); readback não executado"
+            exit 0
+          fi
+          if [ -z "${CF_TOKEN_D1_DIARIO_READ:-}" ]; then
+            echo "::warning title=DIARIO_D1_READBACK::segredo CF_TOKEN_D1_DIARIO_READ ausente no environment producao-critica; readback não executado (DEC-P20-D1-01: leitura só com a credencial de leitura); migração=${DIARIO_MIG_STATE:-?}"
+            exit 0
+          fi
+          if CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_READ" npx --yes wrangler@4.143.0 d1 execute zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc --json --command "select count(*) as n from diario_head" > /tmp/diario-readback.json 2>/tmp/diario-readback.err; then
+            n="$(python3 -c 'import json;d=json.load(open("/tmp/diario-readback.json"));print(d[0]["results"][0]["n"])' 2>/dev/null || echo "?")"
+            if [ "$n" = "1" ]; then
+              echo "::notice title=DIARIO_D1_READBACK::diario_head presente (linhas=$n); migração=${DIARIO_MIG_STATE:-?}"
+            else
+              echo "::warning title=DIARIO_D1_READBACK::diario_head com linhas=$n (esperado 1); migração=${DIARIO_MIG_STATE:-?}"
+            fi
+          else
+            echo "::warning title=DIARIO_D1_READBACK::leitura de diario_head falhou (tabela ausente ou token de leitura sem D1 Read); migração=${DIARIO_MIG_STATE:-?}: $(tail -3 /tmp/diario-readback.err | tr '\n' ' ' | cut -c1-400)"
+          fi
+          exit 0
       - name: Dispatch exact-production ZEES-16 provider evidence
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         continue-on-error: true

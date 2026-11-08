@@ -1,0 +1,53 @@
+{
+ "schema": "zevanory.p12.degradacao-12b4.v1",
+ "nota": "Roteiro v4.9.1, seção 12-B.4: para cada cenário de indisponibilidade parcial, o cliente consegue acessar o conteúdo comprado, avisar falha de entrega e exercer o arrependimento de 7 dias (CDC art. 49; Decreto 7.962/2013, art. 5º). 'deps_recebimento' são os componentes necessários para o PEDIDO ser feito e ganhar carimbo de horário (o prazo legal conta da solicitação); 'deps_tratamento' são os necessários para a ZEVANORY tratar o pedido, que pode ficar diferido até o componente voltar. Canal com dependência fora do controle da ZEVANORY tem a hipótese marcada em 'nao_verificado'. Avaliado por scripts/ci/p12_degradacao.mjs e tests/p12-entrega-ensaio.test.mjs (E9). DEC-06: entrega imediata e integral na área de compras da Hotmart.",
+ "componentes": ["site", "worker", "neon", "kv", "resend", "hotmart"],
+ "direitos": ["acesso_conteudo", "avisar_falha_entrega", "arrependimento_7d"],
+ "cenarios": [
+  {"id": "site_fora", "falha": "site", "descricao": "páginas estáticas de zevanory.api.br e vendas.zevanory.api.br indisponíveis"},
+  {"id": "worker_fora", "falha": "worker", "descricao": "Worker principal indisponível (webhooks, /atendimento, encaminhamento de suporte@)"},
+  {"id": "neon_fora", "falha": "neon", "descricao": "PostgreSQL (Neon) indisponível"},
+  {"id": "kv_fora", "falha": "kv", "descricao": "KV indisponível ou com cota de gravação esgotada"},
+  {"id": "email_fora", "falha": "resend", "descricao": "provedor de e-mail (Resend: envio e recebimento) indisponível"},
+  {"id": "plataforma_fora", "falha": "hotmart", "descricao": "plataforma de pagamento e entrega (Hotmart) indisponível"}
+ ],
+ "caminhos": [
+  {
+   "id": "hotmart_minhas_compras",
+   "direitos": ["acesso_conteudo"],
+   "deps_recebimento": ["hotmart"],
+   "deps_tratamento": ["hotmart"],
+   "carimbo": "não se aplica (acesso direto ao arquivo)",
+   "informado_em": "Minhas compras",
+   "nao_verificado": "disponibilidade da área de compras sob falha dos sistemas da ZEVANORY: premissa de arquitetura (a Hotmart entrega sem consultar a ZEVANORY), confirmada só por compra de teste autorizada"
+  },
+  {
+   "id": "hotmart_reembolso",
+   "direitos": ["arrependimento_7d"],
+   "deps_recebimento": ["hotmart"],
+   "deps_tratamento": ["hotmart"],
+   "carimbo": "data da solicitação registrada pela Hotmart",
+   "informado_em": "refund.hotmart.com",
+   "nao_verificado": "prazo de resposta da plataforma (5 dias corridos, item H-6) e configuração de garantia por produto (item H-4)"
+  },
+  {
+   "id": "suporte_email",
+   "direitos": ["acesso_conteudo", "avisar_falha_entrega", "arrependimento_7d"],
+   "deps_recebimento": ["resend"],
+   "deps_tratamento": ["resend", "worker", "neon"],
+   "carimbo": "horário de recebimento no Resend Receiving (email.received)",
+   "informado_em": "suporte@zevanory.api.br",
+   "acesso_manual": "com a Hotmart fora, o suporte envia o arquivo da versão vendida ao endereço do comprador (procedimento manual, docs/p12/ensaio-entrega-sintetico.md)",
+   "nao_verificado": "calendário de reenvio do webhook do Resend; depois de uma queda longa do Worker ou do Neon, o proprietário confere a caixa do Resend Receiving no período da queda"
+  },
+  {
+   "id": "atendimento_formulario",
+   "direitos": ["avisar_falha_entrega", "arrependimento_7d"],
+   "deps_recebimento": ["worker", "neon"],
+   "deps_tratamento": ["worker", "neon", "resend"],
+   "carimbo": "protocolo gravado em zevanory_atendimento_outbox antes de qualquer envio",
+   "informado_em": "/atendimento",
+   "nao_verificado": "nenhum"
+  }
+ ]
+}

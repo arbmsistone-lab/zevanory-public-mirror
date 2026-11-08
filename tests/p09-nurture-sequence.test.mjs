@@ -17,6 +17,7 @@ import { fakeDb, kv, mailbox } from "./helpers/p09-lead-fakes.mjs";
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SEQ_DIR = "content/p09/checklist-v2";
 const FILES = ["worker/lead-magnet.mjs", "worker/brand-email.mjs", "worker/activity-ledger.mjs", "worker/politica-unica.mjs", "data/politica-unica.json",
+  "worker/diario-sombra.mjs", "worker/diario-p20.mjs", // P20 diário (sombra): importados pelo lead-magnet
   "data/products.json", "checklist-15-minutos/index.html", "material-gratuito/index.html",
   ...["lucro-e-caixa", "vendas-na-pratica", "ia-na-pratica", "negocio-completo", "checklist-15-minutos", "material-gratuito"].map((s) => `sales-public/${s}.html`),
   ...readdirSync(join(REPO, "scripts/p09")).map((f) => `scripts/p09/${f}`), ...readdirSync(join(REPO, SEQ_DIR)).map((f) => `${SEQ_DIR}/${f}`)];

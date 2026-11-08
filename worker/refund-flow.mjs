@@ -1,5 +1,6 @@
 import { CONTACT_HTML, CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
 import { handleAtendimento } from "./atendimento.mjs";
+import { diarioSombra, eventoReembolso } from "./diario-sombra.mjs";
 import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
 export { reconcileRefund } from "./refund-provider-claims.mjs";
@@ -143,7 +144,7 @@ async function createRequest(env, sql, kv, { oid, email }) {
   return { status: 200, body: { received: true, status: "pending", message: "Pedido de reembolso registrado. Você receberá a confirmação por e-mail." } };
 }
 
-async function executeRefund(env, sql, kv, oid, { actor }) {
+async function executeRefund(env, sql, kv, oid, { actor, ctx = null }) {
   const record = JSON.parse(await kv.get(KEY(oid)) || "null");
   if (!record) return { status: 404, body: { error: "refund_request_not_found" } };
   if (record.status === "refunded" || record.status === "approved") {
@@ -171,6 +172,8 @@ async function executeRefund(env, sql, kv, oid, { actor }) {
   try {
     if (!await acquireRefundClaim(sql, record)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
   } catch { return { status: 503, body: { error: "refund_claim_store_unavailable" } }; }
+  // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+  diarioSombra(env, ctx, () => eventoReembolso({ orderId: oid, provider: "mercadopago", stage: "provider_call_may_have_been_sent", amount: record.amount, certification: record.test === true }));
   let r;
   try {
     r = await fetch(MP + "/v1/payments/" + encodeURIComponent(record.payment_id) + "/refunds", {
@@ -195,6 +198,8 @@ async function executeRefund(env, sql, kv, oid, { actor }) {
   }
   const outcome = await markRefundApproved(sql, kv, record, body.id, actor).catch(() =>
     ({ status: 503, body: { error: "refund_persistence_unavailable_reconciliation_required" } }));
+  // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança. O provedor já confirmou o estorno.
+  diarioSombra(env, ctx, () => eventoReembolso({ orderId: oid, provider: "mercadopago", stage: "approved", refundId: body.id, amount: record.amount, certification: record.test === true }));
   if (outcome.status === 200) {
     try {
       const payment = await mpPayment(env, record.payment_id, record.test);
@@ -284,7 +289,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     const oid = String(url.searchParams.get("order_id") || "").toLowerCase();
     const record = JSON.parse(await kv.get(KEY(oid)) || "null");
     if (!record?.test) return json(403, { error: "certification_refund_only_for_test_orders" });
-    const out = path.endsWith("/refund-reconcile") ? await reconcileRefund(env, sql(), kv, oid) : await executeRefund(env, sql(), kv, oid, { actor: "certification-e2e" });
+    const out = path.endsWith("/refund-reconcile") ? await reconcileRefund(env, sql(), kv, oid) : await executeRefund(env, sql(), kv, oid, { actor: "certification-e2e", ctx });
     if (out.status === 200 && out.body?.status === "approved" && record.test === true && worker?.fetch) {
       // Ingest the provider refund state through the signed test webhook (same path as sandbox reconciliation).
       const secret = String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "");
@@ -316,7 +321,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     const oid = String(form?.get("order_id") || "").toLowerCase();
     const action = String(form?.get("action") || "");
     if (!UUID.test(oid)) return json(400, { error: "order_id_invalid" });
-    const out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner" }) : action === "reject" ? await rejectRequest(kv, sql(), oid, "owner") : { status: 400, body: { error: "action_invalid" } };
+    const out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner", ctx }) : action === "reject" ? await rejectRequest(kv, sql(), oid, "owner") : { status: 400, body: { error: "action_invalid" } };
     if (out.status >= 400) return html(out.status, `<p style="font-family:system-ui">Não foi possível: ${esc(out.body.error)}</p><p><a href="/admin/refunds">Voltar</a></p>`);
     return Response.redirect(`${ORIGIN}/admin/refunds`, 303);
   }

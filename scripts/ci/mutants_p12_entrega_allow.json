@@ -1,0 +1,798 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [En.k] que a codifica), escritas antes de rodar. NC-989-01 a 04 (M19-M44): expectativas derivadas por raciocínio e conferidas numa execução de sondagem; divergências descritas em docs/p12/ensaio-entrega-sintetico.md.",
+ "mutants": {
+  "M05 atividade não gravada ignorada": {
+   "primary": [
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M06 atividade duplicada tratada como falha": {
+   "primary": [
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.2]",
+     "justification": "a reentrega encontra a atividade já gravada (duplicata) e a mutação devolve 503"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.7]",
+     "justification": "a reentrega encontra a atividade já gravada (duplicata) e a mutação devolve 503"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.1]",
+     "justification": "a reentrega encontra a atividade já gravada (duplicata) e a mutação devolve 503"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.1]",
+     "justification": "a reentrega encontra a atividade já gravada (duplicata) e a mutação devolve 503"
+    }
+   ],
+   "broad_reason": "toda reentrega de entrega já registrada passa pela regra de duplicata da atividade"
+  },
+  "M07 estorno sem registro de atividade": {
+   "primary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.6]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.6]",
+     "justification": "sem tentar gravar a atividade de estorno, a falha injetada não acontece e o estorno responde 200"
+    }
+   ]
+  },
+  "M08 flag do onboarding aceita qualquer valor": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M09 envio real destravado no código": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.25]"
+    }
+   ],
+   "secondary": []
+  },
+  "M10 prazo da microvitória em 48 h": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "M11 envio depois do prazo permitido": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.17]"
+    }
+   ],
+   "secondary": []
+  },
+  "M12 estorno não cancela a microvitória": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.18]"
+    }
+   ],
+   "secondary": []
+  },
+  "M13 chave da entrega mensal por evento": {
+   "primary": [
+    {
+     "test_pattern": "E10",
+     "assertion_pattern": "[E10.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M14 avaliador 12-B.4 ignora dependências": {
+   "primary": [
+    {
+     "test_pattern": "E9",
+     "assertion_pattern": "[E9.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M15 caminho sem dependência aceito": {
+   "primary": [
+    {
+     "test_pattern": "E9",
+     "assertion_pattern": "[E9.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M16 suporte@ sem o direito de acesso na matriz": {
+   "primary": [
+    {
+     "test_pattern": "E9",
+     "assertion_pattern": "[E9.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M18 base legal divergente da política publicada": {
+   "primary": [
+    {
+     "test_pattern": "E11",
+     "assertion_pattern": "[E11.11]"
+    }
+   ],
+   "secondary": []
+  },
+  "M19 resumo por leitura-modificação-gravação como fonte (sem evento imutável)": {
+   "primary": [
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.4]"
+    },
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.1]"
+    },
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.0]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.5]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E7",
+     "assertion_pattern": "[E7.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E12",
+     "assertion_pattern": "[E12.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.6]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E20",
+     "assertion_pattern": "[E20.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E21",
+     "assertion_pattern": "[E21.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M20 derivação parte do resumo atual (projeção usada como fonte)": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.8]"
+    },
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.5]"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.5]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.6]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E21",
+     "assertion_pattern": "[E21.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.6]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M21 postback lista o prefixo global de eventos": {
+   "primary": [
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M22 chave por transação não determinística": {
+   "primary": [
+    {
+     "test_pattern": "E1",
+     "assertion_pattern": "[E1.4]"
+    },
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E6",
+     "assertion_pattern": "[E6.5]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E18",
+     "assertion_pattern": "[E18.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E20",
+     "assertion_pattern": "[E20.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E21",
+     "assertion_pattern": "[E21.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M23 TTL do evento abaixo de 400 dias": {
+   "primary": [
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M24 contagem de entradas não únicas (por chave, não por transação+desfecho)": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    },
+    {
+     "test_pattern": "E20",
+     "assertion_pattern": "[E20.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M25 falha da listagem engolida (projeção de lista parcial ou vazia)": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M26 reentrega não recalcula o balde que faltou": {
+   "primary": [
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M27 evento gravado só se o grupo for novo (ordem de chegada decide)": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ]
+  },
+  "M28 representativo pela ordem da listagem, não pela precedência": {
+   "primary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]"
+    },
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ]
+  },
+  "M29 marcador legado ignorado": {
+   "primary": [
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M30 base legada não gravada antes da projeção": {
+   "primary": [
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M31 paginação do list ignorada (limite de tamanho)": {
+   "primary": [
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M32 falha de gravação do evento engolida": {
+   "primary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.1]"
+    },
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.3]"
+    },
+    {
+     "test_pattern": "E20",
+     "assertion_pattern": "[E20.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M33 leitura com falha engolida (KV fora sem 503)": {
+   "primary": [
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M34 chave do evento sem payloadhash (conteúdo diferente sobrescreve)": {
+   "primary": [
+    {
+     "test_pattern": "E20",
+     "assertion_pattern": "[E20.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M35 total recalculado de todos os baldes a cada hora": {
+   "primary": [
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M36 postback não recalcula o balde": {
+   "primary": [
+    {
+     "test_pattern": "E3",
+     "assertion_pattern": "[E3.5]"
+    },
+    {
+     "test_pattern": "E4",
+     "assertion_pattern": "[E4.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.8]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E5",
+     "assertion_pattern": "[E5.0]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E12",
+     "assertion_pattern": "[E12.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E16",
+     "assertion_pattern": "[E16.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E17",
+     "assertion_pattern": "[E17.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.6]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E21",
+     "assertion_pattern": "[E21.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.4]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M37 varredura nunca repara balde defasado": {
+   "primary": [
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]"
+    },
+    {
+     "test_pattern": "E21",
+     "assertion_pattern": "[E21.4]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ]
+  },
+  "M38 varredura cobre só metade dos baldes": {
+   "primary": [
+    {
+     "test_pattern": "E21",
+     "assertion_pattern": "[E21.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M39 divergência de conteúdo não sinalizada": {
+   "primary": [
+    {
+     "test_pattern": "E20",
+     "assertion_pattern": "[E20.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.6]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ]
+  },
+  "M40 partição pela data da compra (não pela transação)": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M41 agrupamento sem o desfecho": {
+   "primary": [
+    {
+     "test_pattern": "E2",
+     "assertion_pattern": "[E2.3]"
+    },
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E19",
+     "assertion_pattern": "[E19.6]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M42 balde pelo conteúdo (soma de projeções sem deduplicação)": {
+   "primary": [
+    {
+     "test_pattern": "E13",
+     "assertion_pattern": "[E13.1]"
+    },
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "E14",
+     "assertion_pattern": "[E14.2]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.1]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    },
+    {
+     "test_pattern": "E20",
+     "assertion_pattern": "[E20.3]",
+     "justification": "consequência direta da mesma regra quebrada: a contagem ou o conjunto de eventos diverge também neste cenário"
+    }
+   ],
+   "broad_reason": "regra central da fonte de verdade ou da partição: todo teste que conta vendas depende dela"
+  },
+  "M43 representativo prefere o evento sem data": {
+   "primary": [
+    {
+     "test_pattern": "E22",
+     "assertion_pattern": "[E22.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M44 COMPLETE gêmeo contado como divergência": {
+   "primary": [
+    {
+     "test_pattern": "E15",
+     "assertion_pattern": "[E15.2]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}

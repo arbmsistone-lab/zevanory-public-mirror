@@ -35,6 +35,11 @@ on:
       - "scripts/deploy/worker_secret_rotate.py"
       - "tests/test_worker_secret_rotate.py"
       - "tests/t1_sim/**"
+      - "scripts/deploy/t1-write-scan.mjs"
+      - "tests/t1-write-scan.test.mjs"
+      - "tests/t1_scan/**"
+      - "scripts/ci/mutants_t1_write_scan.py"
+      - "scripts/ci/mutants_t1_write_scan_allow.json"
 
 permissions:
   contents: read
@@ -50,6 +55,18 @@ jobs:
           node-version: "22"
       - name: Publisher registry and serialization rules
         run: node --test tests/publisher-inventory.test.mjs
+      - name: "T1 write paths: extended detector + inventory (deploy|secret|config-kv|route|d1), positive and negative fixtures"
+        run: |
+          set -euo pipefail
+          node --test tests/t1-write-scan.test.mjs | tee /tmp/ws.txt
+          for l in "# tests 6" "# pass 6" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/ws.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          node scripts/deploy/t1-write-scan.mjs --check
+          { echo "### T1 write paths (static, this SHA)"; node scripts/deploy/t1-write-scan.mjs; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "T1 write paths: causal mutants (all must be KILLED)"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_t1_write_scan.py < /dev/null | tee /tmp/wsm.txt
+          grep -qx "MUTANTS total=20 killed=20 survived=0 inconclusive=0" /tmp/wsm.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
       - name: Control Worker factory/tick HMAC guard proof (inline and commercial-hmac module layouts)
@@ -125,25 +142,27 @@ jobs:
     # Read-only. Distinguishes READ REACH (what a token can list) from EDIT PERMISSION (what its
     # policies grant). Edit permission is reported as proven only when the token's own policies
     # are readable; otherwise NAO_COMPROVADO. No write call is ever made.
-    # Also certifies optional per-Worker tokens (CF_TOKEN_<SERVICE>) BEFORE any workflow uses
-    # them: each must see exactly its Worker and read its deployments and settings.
+    # P21 (docs/p21/tokens-por-worker.md): the dedicated per-Worker tokens live in the environment of their
+    # publishers (producao-critica), not here; their EFFECTIVE scope is read from their own policies with
+    # CF_TOKEN_AUDIT (Account API Tokens Read only) by scripts/ci/p21_credential_scope.py, against
+    # ops/token-cutover.json: FAIL for a cutover=true token that is absent, inactive, without TTL or that can
+    # write to the whole account, to more than its Worker(s) or to an undeclared zone; NOT_PROVEN while any
+    # service is still cutover=false.
     if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b: pós-merge com credencial (antes: só PR)
     runs-on: ubuntu-latest
     env:
       ACCOUNT: 1b26415802588185a86c1d4d3ebf5bdb
       T_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       T_CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
-      T_CF_TOKEN_ZEVANORY: ${{ secrets.CF_TOKEN_ZEVANORY }}
-      T_CF_TOKEN_SALES: ${{ secrets.CF_TOKEN_SALES }}
-      T_CF_TOKEN_ROUTER: ${{ secrets.CF_TOKEN_ROUTER }}
-      T_CF_TOKEN_PANEL: ${{ secrets.CF_TOKEN_PANEL }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Read reach vs edit permission of each credential
         run: |
           set -uo pipefail
           api() { curl -sS -H "Authorization: Bearer $1" "https://api.cloudflare.com/client/v4$2"; }
-          declare -A WORKER=([CF_TOKEN_ZEVANORY]=zevanory [CF_TOKEN_SALES]=zevanory-sales-public [CF_TOKEN_ROUTER]=zevanory-public-router [CF_TOKEN_PANEL]=zevanory-product-control-portable)
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_PUBLIC_OWNER_API_TOKEN CF_TOKEN_ZEVANORY CF_TOKEN_SALES CF_TOKEN_ROUTER CF_TOKEN_PANEL; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_PUBLIC_OWNER_API_TOKEN; do
             var="T_$name"; tok="${!var:-}"
             if [ -z "$tok" ]; then echo "::notice title=CRED_$name::not configured"; continue; fi
             av="$(api "$tok" "/accounts/$ACCOUNT/tokens/verify")"; uv="$(api "$tok" /user/tokens/verify)"
@@ -162,20 +181,35 @@ jobs:
             else
               echo "::notice title=CRED_$name::status=$status reach=$reach edit_permission=NAO_COMPROVADO (token policies not readable with this token)"
             fi
-            # Per-Worker tokens: certify scope before any workflow uses them.
-            if [ -n "${WORKER[$name]:-}" ]; then
-              w="${WORKER[$name]}"
-              dep="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts/$w/deployments" | jq -r '.success')"
-              set_="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts/$w/settings" | jq -r '.success')"
-              if [ "$names" = "$w" ] && [ "$dep" = true ] && [ "$set_" = true ]; then
-                echo "::notice title=CRED_$name::SCOPE_READY only=$w deployments=read settings=read"
-              else
-                echo "::error title=CRED_$name::SCOPE_NOT_READY visible=[$names] expected=[$w] deployments=$dep settings=$set_"
-                fail=1
-              fi
-            fi
           done
           exit "${fail:-0}"
+      - name: P21 effective scope of the dedicated per-Worker tokens (policies, read-only)
+        if: always()
+        env:
+          CF_TOKEN_AUDIT: ${{ secrets.CF_TOKEN_AUDIT }}
+        run: |
+          set -uo pipefail
+          T="${RUNNER_TEMP:?}"
+          if [ -z "${CF_TOKEN_AUDIT:-}" ]; then
+            echo "::warning title=CRED_P21_AUDIT::CF_TOKEN_AUDIT ausente em gh-pages-automacao: escopo dos tokens dedicados não comprovável"
+            python3 scripts/ci/p21_credential_scope.py --cutover ops/token-cutover.json --audit-unavailable
+            exit $?
+          fi
+          args=(); page=1
+          while [ "$page" -le 10 ]; do
+            code="$(curl -sS -o "$T/p21-tokens-$page.json" -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN_AUDIT" \
+              "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/tokens?per_page=50&page=$page" || true)"
+            if [ "$code" != "200" ]; then
+              echo "::warning title=CRED_P21_AUDIT::GET /accounts/<conta>/tokens http=$code"
+              python3 scripts/ci/p21_credential_scope.py --cutover ops/token-cutover.json --audit-unavailable
+              exit $?
+            fi
+            args+=(--tokens "$T/p21-tokens-$page.json")
+            n="$(jq -r '.result | length' "$T/p21-tokens-$page.json" 2>/dev/null || echo 0)"
+            [ "$n" -lt 50 ] && break
+            page=$((page + 1))
+          done
+          python3 scripts/ci/p21_credential_scope.py --cutover ops/token-cutover.json "${args[@]}"
 
   lead-privacy-source:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
