@@ -185,8 +185,14 @@ def main():
         if args.dry_run:
             annotate("OPEN_HOTMART_DRY_RUN", "PASS_NO_KV_WRITE_NO_NETWORK")
             return
-        if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch" or os.environ.get("GITHUB_REF") != "refs/heads/gh-pages":
-            raise RuntimeError("CANONICAL_DISPATCH_REQUIRED")
+        # NC-1003-02: SHA canônico atual e deploy central bem-sucedido desse SHA (mesma prova da ação open).
+        sha, deploy_run = production_sha_and_deploy()
+        annotate("OPEN_HOTMART_DEPLOY_SHA", sha)
+        annotate("OPEN_HOTMART_DEPLOY_RUN", deploy_run)
+        # NC-1003-01: o modo Hotmart só abre com o interruptor completo confirmadamente fechado; leitura
+        # indisponível ou qualquer valor diferente de False interrompe antes de qualquer escrita.
+        if public_sales_open().get("open") is not False:
+            raise RuntimeError("FULL_SWITCH_NOT_CONFIRMED_CLOSED_BEFORE_HOTMART")
         if public_hotmart_open().get("open") is not False:
             raise RuntimeError("HOTMART_NOT_CONFIRMED_CLOSED_BEFORE_OPEN")
         token, ns = cf_binding()
@@ -196,6 +202,9 @@ def main():
         try:
             if not await_status(True, public_hotmart_open):
                 raise RuntimeError("OPEN_HOTMART_NOT_OBSERVED_WITHIN_60_SECONDS")
+            # NC-1003-01: depois de abrir, o interruptor completo continua fechado; senão, reverte.
+            if public_sales_open().get("open") is not False:
+                raise RuntimeError("FULL_SWITCH_OPEN_AFTER_HOTMART")
             annotate("OPEN_HOTMART", "PASS")
         except Exception:
             kv_write(token, ns, {"enabled": False}, key=HOTMART_KEY)

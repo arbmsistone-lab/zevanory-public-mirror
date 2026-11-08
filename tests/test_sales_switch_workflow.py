@@ -49,14 +49,55 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
         states = iter([{"open": False}, {"open": True}])
         with patch.dict(os.environ, env), patch.object(sys, "argv", ["x", "open-hotmart"]), \
              patch.object(mod, "cf_binding", return_value=("t", "n")), \
+             patch.object(mod, "production_sha_and_deploy", return_value=("a" * 40, 1)) as canon, \
+             patch.object(mod, "public_sales_open", return_value={"open": False}) as full, \
              patch.object(mod, "public_hotmart_open", side_effect=lambda: next(states)), \
              patch.object(mod, "kv_write", side_effect=lambda t, n, v, key=mod.KEY: writes.append((key, v))), \
              patch.object(mod, "preflight_guard", side_effect=AssertionError("preflight must not be read")), \
              contextlib.redirect_stdout(io.StringIO()):
             mod.main()
         self.assertEqual([k for k, _ in writes], ["sales:hotmart:v1"])
+        canon.assert_called_once()
+        self.assertEqual(full.call_count, 2)  # fechado antes e depois da abertura
         self.assertEqual(writes[0][1]["channel"], "hotmart")
         self.assertEqual(writes[0][1]["authorization"], "LIBERAR VENDAS")
+    def _open_hotmart(self, canon, full_states, hotmart_states=({"open": False}, {"open": True})):
+        writes = []
+        env = {"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123",
+               "GITHUB_EVENT_NAME":"workflow_dispatch", "GITHUB_REF":"refs/heads/gh-pages"}
+        full = iter(full_states); hot = iter(hotmart_states)
+        with patch.dict(os.environ, env), patch.object(sys, "argv", ["x", "open-hotmart"]), \
+             patch.object(mod, "cf_binding", return_value=("t", "n")), \
+             patch.object(mod, "production_sha_and_deploy", side_effect=canon), \
+             patch.object(mod, "public_sales_open", side_effect=lambda: next(full)), \
+             patch.object(mod, "public_hotmart_open", side_effect=lambda: next(hot)), \
+             patch.object(mod, "await_status", side_effect=lambda expected, reader=None: (reader or mod.public_sales_open)().get("open") is expected), \
+             patch.object(mod, "kv_write", side_effect=lambda t, n, v, key=mod.KEY: writes.append((key, v))), \
+             contextlib.redirect_stdout(io.StringIO()):
+            try:
+                mod.main(); err = None
+            except Exception as e:
+                err = e
+        return err, writes
+    def test_open_hotmart_refuses_while_full_switch_is_open_or_unreadable(self):
+        ok = lambda: ("a" * 40, 1)
+        for states in ([{"open": True}], [{"open": None}], [{}]):
+            err, writes = self._open_hotmart(ok, states)
+            self.assertRegex(str(err), "FULL_SWITCH_NOT_CONFIRMED_CLOSED_BEFORE_HOTMART")
+            self.assertEqual(writes, [])
+        err, writes = self._open_hotmart(ok, [])  # StopIteration simula leitura indisponível
+        self.assertIsNotNone(err); self.assertEqual(writes, [])
+    def test_open_hotmart_requires_canonical_sha_and_central_deploy(self):
+        def no_deploy():
+            raise RuntimeError("CENTRAL_DEPLOY_NOT_SUCCESS_ON_CANONICAL_SHA")
+        err, writes = self._open_hotmart(no_deploy, [{"open": False}])
+        self.assertRegex(str(err), "CENTRAL_DEPLOY_NOT_SUCCESS_ON_CANONICAL_SHA")
+        self.assertEqual(writes, [])
+    def test_open_hotmart_rolls_back_if_full_switch_appears_open_after(self):
+        err, writes = self._open_hotmart(lambda: ("a" * 40, 1), [{"open": False}, {"open": True}])
+        self.assertRegex(str(err), "FULL_SWITCH_OPEN_AFTER_HOTMART")
+        self.assertEqual([k for k, _ in writes], ["sales:hotmart:v1", "sales:hotmart:v1"])
+        self.assertIs(writes[1][1]["enabled"], False)
     def test_close_dry_run_never_contacts_network_or_writes_kv(self):
         out = subprocess.run([sys.executable, str(SCRIPT), "close", "--dry-run"], text=True, capture_output=True)
         self.assertEqual(out.returncode, 0, out.stdout+out.stderr)
