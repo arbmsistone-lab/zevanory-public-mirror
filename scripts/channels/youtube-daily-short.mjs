@@ -17,9 +17,12 @@ import { CLOSED_LABEL, SHORT_RULE_LABEL, SHORT_RULE_SPOKEN } from "../../worker/
 import { readSalesSwitch } from "../../worker/sales-control.mjs";
 import { hotmartKitsOpen, hotmartKit } from "../../worker/sales-lock-content.mjs";
 import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "../../worker/creative-autonomy.mjs";
+import { PRICE_BY_SKU } from "../../worker/product-prices.mjs";
 
 export const TARGET_CHANNEL = "UCMl8-SxMVv77S2tz2H63P3A";
-export const PRICES = Object.freeze({ "ZEV-IA-011": 197, "ZEV-VEN-011": 197, "ZEV-LCX-011": 247, "ZEV-CMB-011": 297, "ZEV-NGC-011": 397 });
+// NC-1006-02: era uma tabela própria e velha (197/197/247/297/397) que o Short usaria com vendas abertas; agora é a
+// tabela canônica data/products.json (worker/product-prices.mjs).
+export const PRICES = PRICE_BY_SKU;
 const NICHE_LABEL = { "salão": "salões de beleza", "loja": "lojas de bairro", "prestador de serviço": "prestadores de serviço", "delivery": "negócios de delivery", "autônomo": "profissionais autônomos" };
 const ANGLE_HOOK = { "dor": "Menos retrabalho", "tutorial": "Passo a passo", "caso de uso": "Um caso prático", "objeção": "Sem tempo para organizar?", "comparação": "Manual ou assistido?" };
 const ANGLE_LINE = {

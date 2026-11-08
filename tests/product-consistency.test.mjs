@@ -5,6 +5,9 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { FUNNEL_PRODUCTS } from "../worker/funnel.mjs";
 import { HOTMART_CHECKOUT, openSalesHtml } from "../worker/sales-public-worker.mjs";
+import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
+import { calendarEntry } from "../worker/acquisition-engine.mjs";
+import { nurtureEmail } from "../worker/lead-magnet.mjs";
 
 const official = JSON.parse(readFileSync(new URL("../data/products.json", import.meta.url)));
 const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
@@ -18,20 +21,31 @@ test("funnel, Hotmart and buy routes know every official product", () => {
 });
 
 test("site checkout prices, acquisition engine, support agent and e-mails agree with the official price", () => {
+  // NC-1006-02: motor, atendimento e e-mails DERIVAM o preço de data/products.json (worker/product-prices.mjs);
+  // aqui confere o valor efetivo (runtime), e o gate tests/governanca/price-gate.mjs reprova literal divergente.
   const worker = read("worker/sales-public-worker.mjs");
-  const engine = read("worker/acquisition-engine.mjs");
-  const support = read("worker/support-knowledge.mjs");
-  const mail = read("worker/lead-magnet.mjs");
   for (const p of official.products) {
     assert.match(worker, new RegExp(`"${p.sku}":\\["${p.name.replace(/[+&]/g, (c) => "\\" + c)}",${p.price}\\]`), "sales worker " + p.slug);
-    assert.match(engine, new RegExp(`sku:"${p.sku}",name:"${p.name.replace(/[+&]/g, (c) => "\\" + c)}",price:${p.price}`), "engine " + p.slug);
-    assert.match(support, new RegExp(`"${p.slug}": \\{ name: "${p.name.replace(/[+&]/g, (c) => "\\" + c)}[^"]*", price_brl: ${p.price}`), "support " + p.slug);
+    assert.equal(SUPPORT_PRODUCTS[p.slug]?.price_brl, p.price, "support " + p.slug);
   }
-  for (const [name, price] of [...mail.matchAll(/name: "([^"]+)", price: (\d+)/g)].map((m) => [m[1], Number(m[2])])) {
-    const p = official.products.find((x) => x.name === name);
-    assert.ok(p, "e-mail product " + name); assert.equal(price, p.price, "e-mail price " + name);
+  assert.equal(SUPPORT_PRODUCTS[official.subscription.slug]?.price_brl, official.subscription.price, "support assinatura");
+  const seen = new Map();
+  for (let i = 0; i < 5; i++) { const e = calendarEntry(new Date(Date.UTC(2026, 10, 1 + i)).toISOString().slice(0, 10)); seen.set(e.product.sku, e.product); }
+  for (const p of official.products) {
+    assert.equal(seen.get(p.sku)?.name, p.name, "engine " + p.slug); assert.equal(seen.get(p.sku)?.price, p.price, "engine " + p.slug);
   }
-  for (const m of mail.matchAll(/R\$ (\d+)/g)) assert.ok([...official.products.map((p) => p.price), 341].includes(Number(m[1])), "e-mail mentions R$ " + m[1]);
+  const byName = Object.fromEntries(official.products.map((p) => [p.name, p.price]));
+  const ia = byName["IA na Prática"], ven = byName["Vendas na Prática"], lcx = byName["Lucro & Caixa"];
+  const allowed = [...official.products.map((p) => p.price), ia + ven + lcx];
+  for (const [interest, name] of [["ia", "IA na Prática"], ["vendas", "Vendas na Prática"], ["caixa", "Lucro & Caixa"]]) {
+    assert.ok(nurtureEmail(2, { interest, salesOpen: true, optOutUrl: "x" }).text.includes(`${name} (R$ ${byName[name]},`), "e-mail " + name);
+    for (let step = 0; step < 5; step++) {
+      const m = nurtureEmail(step, { interest, salesOpen: true, optOutUrl: "x" });
+      for (const r of (m.subject + " " + m.text).matchAll(/R\$ (\d+)/g)) assert.ok(allowed.includes(Number(r[1])), "e-mail mentions R$ " + r[1]);
+    }
+  }
+  const last = nurtureEmail(4, { interest: "ia", salesOpen: true, optOutUrl: "x" }).text;
+  assert.ok(last.includes(`por R$ ${byName["Negócio Completo"]} (separados custariam R$ ${ia + ven + lcx})`), "e-mail Negócio Completo");
 });
 
 test("published product pages show the official price everywhere (buttons, schema, buy bar)", () => {

@@ -12,6 +12,8 @@ on:
     paths:
       - "worker/**"
       - "data/politica-unica.json"
+      # NC-1006-02: tabela canônica de preços importada por worker/product-prices.mjs.
+      - "data/products.json"
       # P23: registro fiscal lido pelo portão de checkout (worker/fiscal-process.mjs).
       - "data/p23/fiscal-process.json"
       - "tests/integration/**"

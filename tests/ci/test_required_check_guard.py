@@ -411,6 +411,67 @@ class Guarda(unittest.TestCase):
         self.assertIn('/rerun', run); self.assertIn('CONTRA-AUDITORIA', run)
         self.assertEqual(G.analisar_workflow('contra-auditoria-reavaliar.yml', t), [])
 
+    # --- NC-1006-02 (contra-auditoria GPT-6): preço em fonte única + gate reservado no check obrigatório ---
+    PRECO = ('data/products.json', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',
+             'tests/governanca/price-consistency-gate.test.mjs', 'tests/governanca/novo.test.mjs')
+
+    def test_T37_gate_de_preco_e_reservado_e_fora_da_rotina(self):
+        l, e = autonomo()
+        for c in self.PRECO:
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertIn(c, r['caminhos_reservados_alterados'])
+            self.assertFalse(G.rotineiro(c, ROTINA_RX), c)
+            lo, eo = rotulo(); self.ok(rodar([arq(c)], labels=lo, eventos=eo))
+        d = json.loads(RESERVADOS_ARQ.read_text())
+        with tempfile.TemporaryDirectory() as t:
+            ruim = pathlib.Path(t) / 'r.json'
+            # tirar o gate da lista torna a lista inválida (um PR não se torna autônomo desreservando o gate)
+            sem_gate = json.loads(json.dumps(d))
+            sem_gate['classes']['guardas_de_governanca']['globs'].remove('tests/governanca/**')
+            ruim.write_text(json.dumps(sem_gate))
+            with self.assertRaises(ValueError):
+                G.carregar_reservados(ruim)
+            # e a rotina não pode passar a cobrir o gate
+            for rot in (['tests/**'], ['tests/governanca/*.mjs'], ['**/*.test.mjs']):
+                ruim.write_text(json.dumps(dict(d, rotina_autonoma={'globs': rot})))
+                with self.assertRaises(ValueError):
+                    G.carregar_rotina(ruim)
+
+    def test_T38_preco_em_arquivo_comum_com_rotulo_autonomo_e_barrado_pelo_gate_obrigatorio(self):
+        import shutil
+        c = 'worker/lead-magnet.mjs'
+        l, e = autonomo()
+        # o guarda não segura (arquivo comum, nem protegido nem reservado) ...
+        r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+        self.ok(r); self.assertEqual(r['caminhos_protegidos_alterados'], []); self.assertEqual(G.reservado(c, RESERVADOS), [])
+        # ... quem segura é o gate de preço, que roda nos DOIS emissores do check obrigatório (sem if/continue-on-error)
+        for nome, (jid, cmd) in G.REQUIRED_STEP.items():
+            self.assertEqual(G.REQUIRED_CHECKS['product-pages / static-audit'].get(nome), jid, nome)
+            self.assertEqual(G.analisar_workflow(nome, base(nome)), [], nome)
+            self.assertIn(cmd, base(nome))
+        # ... e reprova (rc 1 = CI vermelho) a troca de um preço de kit em cópia do lead-magnet.mjs
+        node = shutil.which('node')
+        self.assertTrue(node, 'node ausente: o gate de preço não pode ser verificado (fail-closed)')
+        src = (REPO / c).read_text()
+        de = 'price: priceBySlug("ia-na-pratica")'
+        self.assertIn(de, src)
+        for conteudo, rc in ((src, 0), (src.replace(de, 'price: 99', 1), 1),
+                             (src.replace('por R$ ${priceBySlug("negocio-completo")}', 'por R$ 199', 1), 1)):
+            with tempfile.TemporaryDirectory() as t:
+                t = pathlib.Path(t); (t / 'data').mkdir(); (t / 'worker').mkdir()
+                (t / 'data/products.json').write_text((REPO / 'data/products.json').read_text())
+                (t / c).write_text(conteudo)
+                p = subprocess.run([node, str(REPO / 'tests/governanca/price-gate.mjs'), '--root', str(t)],
+                                   capture_output=True, text=True, timeout=60)
+                self.assertEqual(p.returncode, rc, p.stdout[-800:] + p.stderr[-400:])
+
+    def test_T39_emissor_obrigatorio_sem_gate_de_preco_falha(self):
+        lo, eo = rotulo()
+        for nome, (jid, cmd) in G.REQUIRED_STEP.items():
+            for ruim in (base(nome).replace(cmd, 'node --version'), base(nome).replace(cmd, cmd.replace('price-consistency-gate', 'outro'))):
+                r = rodar([arq('.github/workflows/' + nome)], {nome: ruim}, lo, eo)
+                self.falha(r, 'GATE_DE_PRECO_AUSENTE')
+
 
 def rodar_com_relatorio(caminho):
     """Executa a suíte e grava, por teste, o desfecho. 'falha' = AssertionError levantada pela SUÍTE (nenhum quadro do

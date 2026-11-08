@@ -2,6 +2,7 @@ import { CLOSED_LABEL, CONTACT_HTML, LEGAL_IDENTITY, SHORT_RULE_LABEL } from "./
 import { readSalesSwitch } from "./sales-control.mjs";
 import { hotmartKitsOpen, hotmartKit } from "./sales-lock-content.mjs";
 import { blogShell } from "./blog-layout.mjs";
+import { PRICE_BY_SKU } from "./product-prices.mjs";
 // P13c: the blog product link follows the owner switch (closed => product page + closed notice, never /comprar/).
 const BLOG_PRODUCT_PAGES=Object.freeze({"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"});
 import { resolveOwnerPublisherToken } from "./owner-oauth.mjs";
@@ -120,7 +121,7 @@ export const BLOG_DAILY_KEY_PREFIX = "zpc:blog:daily:";
 
 // One new article per local day. KV marker is written only after the article and
 // rolling index are persisted; retrying the hourly cron never publishes twice.
-export const BLOG_TABLE_C_PRICES=Object.freeze({"ZEV-IA-011":97,"ZEV-VEN-011":97,"ZEV-LCX-011":147,"ZEV-CMB-011":157,"ZEV-NGC-011":247});
+export const BLOG_TABLE_C_PRICES=PRICE_BY_SKU; // tabela C = data/products.json (worker/product-prices.mjs)
 export const BLOG_DRAFT_KEY_PREFIX="zpc:blog:draft:v1:";
 export const BLOG_OWNER_APPROVAL_PREFIX="zpc:blog:owner-approval:v1:";
 export const BLOG_PUBLICATION_STAGE_PREFIX="zpc:blog:publication-stage:v1:";

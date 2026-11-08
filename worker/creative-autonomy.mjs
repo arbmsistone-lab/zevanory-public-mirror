@@ -1,4 +1,5 @@
 import { SHORT_RULE_LABEL } from "./politica-unica.mjs";
+import { priceBySku } from "./product-prices.mjs";
 export const CREATIVE_AUTOPUBLISH_PAUSE_KEY="zpc:creative-autonomy:paused:v1";
 export const CREATIVE_AUTONOMY_FEED_KEY="zpc:creative-autonomy:feed:v1";
 export const CREATIVE_BANDIT_KEY="zpc:creative-autonomy:bandit:v1";
@@ -17,11 +18,11 @@ const money=v=>Number(Number(v||0).toFixed(2));
 // and again right before publication.
 export const SALES_ORIGIN="https://vendas.zevanory.api.br";
 export const ZEV_CREATIVE_CATALOG=Object.freeze({
- "ZEV-IA-011":Object.freeze({slug:"ia-na-pratica",name:"IA na Prática",price_brl:97}),
- "ZEV-VEN-011":Object.freeze({slug:"vendas-na-pratica",name:"Vendas na Prática",price_brl:97}),
- "ZEV-LCX-011":Object.freeze({slug:"lucro-e-caixa",name:"Lucro & Caixa",price_brl:147}),
- "ZEV-CMB-011":Object.freeze({slug:"combo-ia-vendas",name:"Combo IA + Vendas",price_brl:157}),
- "ZEV-NGC-011":Object.freeze({slug:"negocio-completo",name:"Negócio Completo",price_brl:247})
+ "ZEV-IA-011":Object.freeze({slug:"ia-na-pratica",name:"IA na Prática",price_brl:priceBySku("ZEV-IA-011")}),
+ "ZEV-VEN-011":Object.freeze({slug:"vendas-na-pratica",name:"Vendas na Prática",price_brl:priceBySku("ZEV-VEN-011")}),
+ "ZEV-LCX-011":Object.freeze({slug:"lucro-e-caixa",name:"Lucro & Caixa",price_brl:priceBySku("ZEV-LCX-011")}),
+ "ZEV-CMB-011":Object.freeze({slug:"combo-ia-vendas",name:"Combo IA + Vendas",price_brl:priceBySku("ZEV-CMB-011")}),
+ "ZEV-NGC-011":Object.freeze({slug:"negocio-completo",name:"Negócio Completo",price_brl:priceBySku("ZEV-NGC-011")})
 });
 export const DEFAULT_CREATIVE_OFFER="ZEV-IA-011";
 const offerKey=v=>String(v||"").trim().toUpperCase();

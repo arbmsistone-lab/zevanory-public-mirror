@@ -89,10 +89,38 @@ CONTRA-AUDITORIA: PASS <SHA completo de 40 hex do head>
 A central só faz o merge autônomo depois de: contra-auditoria independente PASS para o SHA exato, todo o CI verde no
 mesmo SHA e guarda verde. Qualquer dúvida de classificação vai para o proprietário (fail-closed).
 
+## Preço em fonte única (NC-1006-02, contra-auditoria GPT-6)
+
+Reservar só os arquivos "de preço" não bastava: e-mails, motor de aquisição, atendimento, criativos, blog, Shorts,
+páginas e dados também citam preço e condição. Por isso:
+
+- **Fonte canônica única:** `data/products.json` (5 kits + Conteúdo Pronto). Combo IA + Vendas economiza 37 sobre 194;
+  Negócio Completo economiza 94 sobre 341 — sempre derivados da tabela (`worker/product-prices.mjs`, reservado).
+  `worker/lead-magnet.mjs`, `worker/acquisition-engine.mjs`, `worker/support-knowledge.mjs`, `worker/creative-autonomy.mjs`,
+  `worker/multichannel-autonomy.mjs` e `scripts/channels/{youtube-daily-short,render-youtube-short,youtube-preflight}.mjs`
+  importam o preço em vez de repetir literais (o Short diário e o de boas-vindas ainda tinham a tabela velha 197/247/297/397).
+- **Gate reservado:** `tests/governanca/price-gate.mjs` + `tests/governanca/price-consistency-gate.test.mjs` varrem as fontes
+  de produção (worker/**, scripts/** exceto scripts/ci, sales-public/**, páginas, pages-mirror, data/**, content/**,
+  sales-overlay/**) atrás de "R$ N"/"N reais" perto de nome/slug/SKU, campos de preço em objeto com produto e mapas
+  SKU→preço; qualquer valor fora da tabela (ou dos derivados documentados: soma/economia do pacote, comissão de 50%)
+  reprova. Exceções só em lista fechada dentro do gate, com quantidade exata.
+- **Onde roda:** no check obrigatório `product-pages / static-audit` (`product-pages-premerge.yml:audit` e
+  `required-status-compat.yml:product-status`), com contagem exata (`# tests 8`). O guarda trata a ausência desse passo
+  num emissor canônico como violação DURA (`GATE_DE_PRECO_AUSENTE`) e exige que a lista reserve a tabela, o módulo de
+  derivação e o gate (`RESERVED_SELF`), que `rotina_autonoma` não pode cobrir.
+- Resultado: um PR `autonomo-auditado` que mude só um preço em `worker/lead-magnet.mjs` passa no guarda mas fica com o
+  check obrigatório vermelho; mudar o gate ou a tabela exige `owner-approved:<12 hex>`.
+- Também reservados agora (condições comerciais além do preço): `worker/affiliate-program.mjs` (taxa de comissão e prazo
+  de atribuição), páginas de afiliado (`afiliados/**`, `kit-afiliado/**`, `sales-public/{afiliados,kit-afiliado}.html`,
+  `pages-mirror/*afiliad*`) e `sales-overlay/approved.json` (textos de arrependimento/garantia/termos). Checkout
+  (`HOTMART_CHECKOUT`/`SERVICE_CHECKOUT` em `worker/sales-public-worker.mjs`), garantia (`data/products.json`) e
+  prazos/reembolso (`data/politica-unica.json`) já eram reservados.
+
 ## Implementação e testes
 
 - `scripts/ci/required_check_guard.py`: `carregar_reservados`, `carregar_rotina`, `reservado`, `rotineiro`,
   `contra_auditoria`, `avaliar`.
 - `.github/workflows/required-check-guard.yml`: coleta `issues/<PR>/comments` e passa `--reserved` da base.
-- `tests/ci/test_required_check_guard.py` T24–T36 e `tests/ci/mutants_required_check_guard.py` M21–M31
-  (`required-check-guard / selftest`: 36 testes, 31 mutantes, todos MORTOS).
+- `tests/ci/test_required_check_guard.py` T24–T39 e `tests/ci/mutants_required_check_guard.py` M21–M34
+  (`required-check-guard / selftest`: 39 testes, 34 mutantes, todos MORTOS). T37–T39/M32–M34: gate de preço reservado,
+  barreira no check obrigatório para preço em arquivo comum com rótulo autônomo, emissor sem o gate.

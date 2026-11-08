@@ -32,6 +32,17 @@ jobs:
           set -euo pipefail
           git rev-parse HEAD
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Preço em fonte única (NC-1006-02; gate reservado tests/governanca/**, contagem exata)
+        run: |
+          set -euo pipefail
+          node --version
+          node --test tests/governanca/price-consistency-gate.test.mjs | tee price-gate.txt
+          grep -qx "# tests 8" price-gate.txt && grep -qx "# pass 8" price-gate.txt && grep -qx "# fail 0" price-gate.txt && grep -qx "# skipped 0" price-gate.txt && grep -qx "# todo 0" price-gate.txt && grep -qx "# cancelled 0" price-gate.txt
+
       - name: Compile audit scripts
         run: |
           set -euo pipefail

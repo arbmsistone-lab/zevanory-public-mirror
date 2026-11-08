@@ -9,7 +9,8 @@ DADO (lista de arquivos e YAML lidos pela API, parseados com BaseLoader, nunca e
   DURO (nenhum rótulo libera):
     - um workflow do PR emite job com nome de check obrigatório fora do emissor canônico (colisão de nome);
     - o emissor canônico é enfraquecido: job removido/renomeado, `if:` no job ou em passo, `continue-on-error`,
-      gatilho `pull_request` removido ou com filtro de caminho/branch que deixa o check "pendente"/"skipped";
+      gatilho `pull_request` removido ou com filtro de caminho/branch que deixa o check "pendente"/"skipped", ou sem o
+      passo do gate de preço em fonte única (NC-1006-02, tests/governanca/price-consistency-gate.test.mjs);
     - arquivo que sombreia módulo da biblioteca padrão onde os scripts obrigatórios importam (raiz, scripts/, scripts/ci/);
     - YAML de workflow inválido, nome de arquivo inesperado ou lista de arquivos truncada.
   BRANDO (liberado só por rótulo do proprietário preso ao SHA exato do head):
@@ -43,7 +44,10 @@ AUTO_PREFIX = 'autonomo-auditado:'
 RESERVED_SCHEMA = 'owner-reserved-paths/v1'
 # a lista precisa reservar a si mesma e o guarda; sem isso é inválida (um PR não pode se tornar autônomo tirando-os dela)
 RESERVED_SELF = ('ops/owner-reserved-paths.json', 'scripts/ci/required_check_guard.py',
-                 '.github/workflows/required-check-guard.yml')
+                 '.github/workflows/required-check-guard.yml') + (
+    # NC-1006-02: tabela canônica de preços, módulo que deriva dela e o gate de consistência (fora de rotina_autonoma)
+    'data/products.json', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',
+    'tests/governanca/price-consistency-gate.test.mjs')
 AUDIT_LINE = re.compile(r'^[ \t]*CONTRA-AUDITORIA:[ \t]*(PASS|FAIL)[ \t]+([0-9a-f]{40})[ \t]*$', re.M)
 
 # check obrigatório -> {arquivo canônico: job_id}. Qualquer outro emissor do mesmo nome é colisão.
@@ -52,6 +56,10 @@ REQUIRED_CHECKS = {
     'zees16-evidence / fail-closed': {'required-status-compat.yml': 'zees-status'},
     GUARD_NAME: {'required-check-guard.yml': 'guard'},
 }
+# NC-1006-02: passo que cada emissor canônico de "product-pages / static-audit" precisa manter: o gate de preço em fonte
+# única. Sem ele, um preço trocado em arquivo não reservado (ex.: worker/lead-magnet.mjs) passaria no check obrigatório.
+PRICE_GATE_CMD = 'node --test tests/governanca/price-consistency-gate.test.mjs'
+REQUIRED_STEP = {'product-pages-premerge.yml': ('audit', PRICE_GATE_CMD), 'required-status-compat.yml': ('product-status', PRICE_GATE_CMD)}
 # gatilho que cada emissor canônico precisa manter (sem filtros que pulem o check)
 TRIGGER = {'product-pages-premerge.yml': 'pull_request', 'required-status-compat.yml': 'pull_request',
            'required-check-guard.yml': 'pull_request_target'}
@@ -221,6 +229,11 @@ def analisar_workflow(arquivo, texto):
                 for chave in ('if', 'continue-on-error'):
                     if chave in passo:
                         v.append(f'PASSO_OBRIGATORIO_{chave.upper().replace("-", "_")} {arquivo}:{jid} passo {i}')
+    if arquivo in REQUIRED_STEP:
+        jid, cmd = REQUIRED_STEP[arquivo]
+        passos = (jobs.get(jid) or {}).get('steps') if isinstance(jobs.get(jid), dict) else None
+        if jid in jobs and not any(isinstance(p, dict) and cmd in str(p.get('run', '')) for p in (passos or [])):
+            v.append(f'GATE_DE_PRECO_AUSENTE {arquivo}:{jid} sem o passo {cmd!r}')
     if arquivo in TRIGGER:
         ev = TRIGGER[arquivo]
         g = gatilhos(y)
