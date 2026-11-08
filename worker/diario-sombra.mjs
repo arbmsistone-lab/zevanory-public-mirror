@@ -195,8 +195,12 @@ export function eventoReembolso({ orderId = null, provider, transaction = null, 
   return { tipo: "refund", event_key: eventKey("refund", ...partes), ts_ms: now(ts), ref: order_ref || transaction_ref, payload };
 }
 
-// Consentimento (lead-magnet recordEvent). ref = subject_ref HMAC já existente (64 hex). Sem ref, não há como chavear
+// Consentimento (lead-magnet recordEvent). ts = instante do registro no Neon (coluna at, por neonTsMs), para que a
+// reconciliação derive a mesma chave. ref = subject_ref HMAC já existente (64 hex). Sem ref, não há como chavear
 // o titular sem dado pessoal: nenhum evento. Eventos sem tipo no diário (erase_kv_pending, ...) também não geram nada.
+// Instante do Neon em ms (inteiro), a mesma expressão no gancho (RETURNING do insert) e na reconciliação (PR 4): o
+// event_key de consentimento leva o instante, então os dois lados precisam do MESMO arredondamento.
+export const neonTsMs = (col) => `(floor(extract(epoch from ${col}) * 1000))::bigint`;
 export const LEAD_EVENTO_TIPO = Object.freeze({ consent_given: "consent_given", confirmed: "consent_confirmed", revoked_and_erased: "consent_revoked" });
 export function eventoConsentimento({ event, subjectRef, consentVersion = null, ts } = {}) {
   const tipo = LEAD_EVENTO_TIPO[str(event)];

@@ -1,0 +1,238 @@
+{
+ "note": "Expectativas primárias derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [RCn.k] que a codifica), escritas antes de rodar. Na primeira execução R01, R06, R12 e R13 falharam também em testes não previstos e ficaram INCONCLUSIVE; os secundários foram acrescentados depois, com justificativa: R01, R12 e R13 mudam a derivação ou a classificação de todo o cenário compartilhado (cenario()), então RC3-RC6 e RC8, que partem do cenário limpo como 'ok', também falham; R06 faz a sombra falhar, o que RC8.4 (alerta de incompleto em sombra) também codifica.",
+ "mutants": {
+  "R01 normalização diferente da do gancho (pedido)": {
+   "primary": [
+    {
+     "test_pattern": "RC2",
+     "assertion_pattern": "[RC2.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "RC3",
+     "justification": "a normalização do pedido muda a chave esperada de todos os pedidos do cenário compartilhado; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC4",
+     "justification": "a normalização do pedido muda a chave esperada de todos os pedidos do cenário compartilhado; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC5",
+     "justification": "a normalização do pedido muda a chave esperada de todos os pedidos do cenário compartilhado; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC6",
+     "justification": "a normalização do pedido muda a chave esperada de todos os pedidos do cenário compartilhado; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC8",
+     "justification": "a normalização do pedido muda a chave esperada de todos os pedidos do cenário compartilhado; os testes que partem do cenário limpo deixam de ver 'ok'"
+    }
+   ],
+   "broad_reason": "mutação na derivação ou classificação usada pelo cenário compartilhado de RC2-RC6 e RC8"
+  },
+  "R02 Neon lido sem margem": {
+   "primary": [
+    {
+     "test_pattern": "RC6",
+     "assertion_pattern": "[RC6.2]"
+    },
+    {
+     "test_pattern": "RC2",
+     "assertion_pattern": "[RC2.11]"
+    }
+   ],
+   "secondary": []
+  },
+  "R03 diário lido sem margem": {
+   "primary": [
+    {
+     "test_pattern": "RC6",
+     "assertion_pattern": "[RC6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "R04 cadeia quebrada não é divergência": {
+   "primary": [
+    {
+     "test_pattern": "RC5",
+     "assertion_pattern": "[RC5.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "R05 trecho verificado sem a âncora": {
+   "primary": [
+    {
+     "test_pattern": "RC5",
+     "assertion_pattern": "[RC5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "R06 sombra vira falha": {
+   "primary": [
+    {
+     "test_pattern": "RC3",
+     "assertion_pattern": "[RC3.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "RC8",
+     "justification": "RC8.4 codifica a mesma regra (incompleto em sombra = alerta, nunca falha)"
+    }
+   ]
+  },
+  "R07 ativo não falha": {
+   "primary": [
+    {
+     "test_pattern": "RC3",
+     "assertion_pattern": "[RC3.8]"
+    }
+   ],
+   "secondary": []
+  },
+  "R08 fase desconhecida cai na sombra": {
+   "primary": [
+    {
+     "test_pattern": "RC3",
+     "assertion_pattern": "[RC3.11]"
+    }
+   ],
+   "secondary": []
+  },
+  "R09 sem binding consulta o Neon": {
+   "primary": [
+    {
+     "test_pattern": "RC1",
+     "assertion_pattern": "[RC1.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "R10 só a primeira página": {
+   "primary": [
+    {
+     "test_pattern": "RC7",
+     "assertion_pattern": "[RC7.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "R11 fonte com erro tratada como vazia": {
+   "primary": [
+    {
+     "test_pattern": "RC8",
+     "assertion_pattern": "[RC8.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "R12 Hotmart contado como sobra": {
+   "primary": [
+    {
+     "test_pattern": "RC2",
+     "assertion_pattern": "[RC2.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "RC3",
+     "justification": "o evento Hotmart do cenário compartilhado passa a sobrar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC4",
+     "justification": "o evento Hotmart do cenário compartilhado passa a sobrar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC5",
+     "justification": "o evento Hotmart do cenário compartilhado passa a sobrar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC6",
+     "justification": "o evento Hotmart do cenário compartilhado passa a sobrar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC8",
+     "justification": "o evento Hotmart do cenário compartilhado passa a sobrar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    }
+   ],
+   "broad_reason": "mutação na derivação ou classificação usada pelo cenário compartilhado de RC2-RC6 e RC8"
+  },
+  "R13 estorno aprovado exige chave exata": {
+   "primary": [
+    {
+     "test_pattern": "RC2",
+     "assertion_pattern": "[RC2.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "RC3",
+     "justification": "o estorno aprovado do cenário compartilhado (com refund_ref) deixa de casar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC4",
+     "justification": "o estorno aprovado do cenário compartilhado (com refund_ref) deixa de casar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC5",
+     "justification": "o estorno aprovado do cenário compartilhado (com refund_ref) deixa de casar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    },
+    {
+     "test_pattern": "RC6",
+     "justification": "o estorno aprovado do cenário compartilhado (com refund_ref) deixa de casar; os testes que partem do cenário limpo deixam de ver 'ok'"
+    }
+   ],
+   "broad_reason": "mutação na derivação ou classificação usada pelo cenário compartilhado de RC2-RC6 e RC8"
+  },
+  "R14 núcleo ignora a janela": {
+   "primary": [
+    {
+     "test_pattern": "RC6",
+     "assertion_pattern": "[RC6.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "R15 finalize não registra o alerta": {
+   "primary": [
+    {
+     "test_pattern": "RC3",
+     "assertion_pattern": "[RC3.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "R16 consentimento sem o instante do Neon": {
+   "primary": [
+    {
+     "test_pattern": "RC9",
+     "assertion_pattern": "[RC9.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "R17 reconcileRefund sem gancho": {
+   "primary": [
+    {
+     "test_pattern": "RC10",
+     "assertion_pattern": "[RC10.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "R18 sem índice de ts_ms": {
+   "primary": [
+    {
+     "test_pattern": "RC7",
+     "assertion_pattern": "[RC7.6]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}
