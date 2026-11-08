@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { join, normalize } from "node:path";
 import { auditStatic, checkPage, siteChecks, inventory, commercial, availability, urlFor, visibleText, PRICE_CITE, SALES_ORIGIN } from "../scripts/audit/p03-pages-static.mjs";
 import worker from "../worker/sales-public-worker.mjs";
@@ -151,7 +151,7 @@ const DIR = join(ROOT, "sales-public");
 const ASSETS = { async fetch(req) {
   const file = normalize(join(DIR, decodeURIComponent(new URL(req.url).pathname)));
   if (!file.startsWith(DIR)) return new Response("x", { status: 404 });
-  try { return new Response(await readFile(file), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }); } catch { return new Response("x", { status: 404 }); }
+  try { return new Response(readTextNormalized(file), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }); } catch { return new Response("x", { status: 404 }); }
 } };
 const serve = async (path, open) => {
   const env = { ASSETS, CORE: { fetch: async () => new Response(JSON.stringify({ open }), { status: 200, headers: { "content-type": "application/json" } }) } };
