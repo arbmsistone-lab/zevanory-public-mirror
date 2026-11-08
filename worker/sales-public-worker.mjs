@@ -435,6 +435,9 @@ export default{async fetch(request,env,ctx){
   }
   let page="";
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
+  // P03 O2: /index.html (physical copy of the catalog, canonical /solucoes) is the catalog page too, so the
+  // sales switch rewrites it like /solucoes; served raw it kept "vendas fechadas" even with sales open.
+  else if(url.pathname==="/index.html") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
   let response=await env.ASSETS.fetch(new Request(url,request));
   // Designed 404 for unknown PAGE paths (no file extension); asset 404s stay plain. Never cached.

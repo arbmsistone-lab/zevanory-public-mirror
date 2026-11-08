@@ -1,0 +1,8 @@
+# expect: secret
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: |
+          printf "%s" "$K" | npx --yes wrangler@4.143.0 \
+            secret put K --name zevanory

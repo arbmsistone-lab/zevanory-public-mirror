@@ -1,0 +1,13 @@
+# expect: deploy
+# findings: 5
+name: fx
+on: workflow_dispatch
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx --yes wrangler@4.143.0 deploy --config wrangler.toml --tag "$GITHUB_SHA"
+      - run: npx wrangler rollback "$PREV" --name zevanory
+      - run: ./node_modules/.bin/wrangler versions upload --name zevanory
+      - run: pnpm wrangler versions deploy "$V@100%" --name zevanory --yes
+      - run: bunx wrangler delete --name zevanory-probe --force

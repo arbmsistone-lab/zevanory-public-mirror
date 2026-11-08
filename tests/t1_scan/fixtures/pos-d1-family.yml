@@ -1,0 +1,8 @@
+# expect: d1
+# findings: 3
+jobs:
+  a:
+    steps:
+      - run: npx wrangler d1 execute zevanory-diario --remote --file q.sql
+      - run: npx wrangler d1 migrations apply zevanory-diario --remote
+      - run: npx wrangler d1 execute zevanory-diario --command "DELETE FROM t"

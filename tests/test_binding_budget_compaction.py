@@ -347,5 +347,244 @@ class P20BindingVacancyStaticTest(unittest.TestCase):
         self.assertIn("rollback --name zevanory", (wf / "central-production-deploy.yml").read_text(encoding="utf-8"))
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# P20 diário D1 (PR2, docs/p20/diario-d1.md, seção "Binding e migração"): o gerador injeta o binding DIARIO do banco
+# de produção zevanory-diario-p20. Prova com o gerador REAL sobre a base fixada: binding presente, id exato, recusa do
+# banco de certificação (7ff006f3) e de um DIARIO divergente, e orçamento de bindings inalterado (D1 não é var/secret).
+DIARIO_WANTED = {
+    "binding": "DIARIO",
+    "database_name": "zevanory-diario-p20",
+    "database_id": "1b1bfa19-ccc5-423a-bc1f-62d89020c8e2",
+    "migrations_dir": "migrations/d1",
+}
+CERT_D1_ID = "7ff006f3-1daf-44c5-9494-aabab600608e"
+
+
+def _diario_injector():
+    """Extrai do gerador real a constante e a função de injeção (sem rodar o resto do script)."""
+    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+    names = {"DIARIO_D1_BINDING", "DIARIO_D1_FORBIDDEN_PREFIX", "_inject_diario_d1"}
+    body = [n for n in tree.body if (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in names for t in n.targets))
+            or (isinstance(n, ast.FunctionDef) and n.name in names)]
+    ns = {}
+    exec(compile(ast.Module(body=body, type_ignores=[]), str(SCRIPT), "exec"), ns)
+    return ns
+
+
+class DiarioD1BindingUnitTest(unittest.TestCase):
+    def setUp(self):
+        self.ns = _diario_injector()
+
+    def test_constante_documentada_e_exata(self):
+        self.assertEqual(self.ns["DIARIO_D1_BINDING"], DIARIO_WANTED)
+        self.assertEqual(self.ns["DIARIO_D1_FORBIDDEN_PREFIX"], "7ff006f3")
+        self.assertTrue((ROOT / "migrations/d1/0001_diario_v1.sql").is_file(), "migrations_dir aponta para a migração real")
+        doc = (ROOT / "docs/p20/diario-d1.md").read_text(encoding="utf-8")
+        self.assertIn("## Binding e migração", doc)
+        self.assertIn(DIARIO_WANTED["database_id"], doc)
+
+    def test_injeta_uma_vez_e_e_idempotente(self):
+        c = {"d1_databases": [{"binding": "OUTRO", "database_id": "aaaa"}]}
+        self.ns["_inject_diario_d1"](c)
+        self.ns["_inject_diario_d1"](c)
+        self.assertEqual([r for r in c["d1_databases"] if r["binding"] == "DIARIO"], [DIARIO_WANTED])
+        self.assertEqual(len(c["d1_databases"]), 2)
+
+    def test_recusa_banco_de_certificacao(self):
+        inj = self.ns["_inject_diario_d1"]
+        with self.assertRaisesRegex(SystemExit, "DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN"):
+            inj({}, dict(DIARIO_WANTED, database_id=CERT_D1_ID))
+        with self.assertRaisesRegex(SystemExit, "DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN"):
+            inj({}, dict(DIARIO_WANTED, database_id=CERT_D1_ID.upper()))
+        with self.assertRaisesRegex(SystemExit, "DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN"):
+            inj({"d1_databases": [{"binding": "X", "database_id": CERT_D1_ID}]})
+
+    def test_recusa_diario_divergente(self):
+        inj = self.ns["_inject_diario_d1"]
+        for other in (dict(DIARIO_WANTED, database_id="22222222-2222-4222-8222-222222222222"),
+                      dict(DIARIO_WANTED, database_name="outro"), {"binding": "DIARIO", "database_id": DIARIO_WANTED["database_id"]}):
+            with self.assertRaisesRegex(SystemExit, "DIARIO_D1_BINDING_CONFLICT"):
+                inj({"d1_databases": [other]})
+        with self.assertRaisesRegex(SystemExit, "DIARIO_D1_BINDING_CONFLICT"):
+            inj({"d1_databases": [dict(DIARIO_WANTED), dict(DIARIO_WANTED)]})
+
+
+@unittest.skipUnless(_base_available(), "deploy base 83620c6 not in this checkout (CI fetches it before this step)")
+class DiarioD1BindingGeneratorTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.cfg, out = build_candidate(pathlib.Path(cls.tmp, "g"), SCRIPT.read_text(encoding="utf-8"))
+        assert cls.cfg, out[-600:]
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_binding_presente_com_id_exato(self):
+        d1 = self.cfg["d1_databases"]
+        self.assertEqual(d1, [DIARIO_WANTED], "a base 83620c6 não tem D1; o único é o DIARIO")
+        self.assertFalse(any(str(r.get("database_id", "")).startswith("7ff006f3") for r in d1))
+        self.assertNotIn("DIARIO", self.cfg["vars"])
+        self.assertNotIn(DIARIO_WANTED["database_id"], json.dumps(self.cfg["vars"]), "o UUID não vai em var")
+
+    def test_orcamento_de_bindings_inalterado(self):
+        # Mesmo cenário do teste da vaga P20: hoje 59/60 com P20_BACKUP_KEY. O D1 não conta.
+        n_vars = len(self.cfg["vars"])
+        secrets = [f"SYNTHETIC_SECRET_{i:02d}" for i in range(60 - n_vars - 1 - 2)] + ["P20_BACKUP_KEY"]
+        sem_d1 = {k: v for k, v in self.cfg.items() if k != "d1_databases"}
+        self.assertEqual(budget(self.cfg, secrets), (0, 59))
+        self.assertEqual(budget(sem_d1, secrets), budget(self.cfg, secrets))
+
+    def test_recusa_certificacao_na_base(self):
+        def cert(base):
+            base["d1_databases"] = [{"binding": "MAIN_DB", "database_id": CERT_D1_ID}]
+        with tempfile.TemporaryDirectory() as d:
+            cfg, out = build_candidate(d, SCRIPT.read_text(encoding="utf-8"), cert)
+        self.assertIsNone(cfg)
+        self.assertIn("DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN", out)
+
+    def test_recusa_diario_divergente_na_base(self):
+        def other(base):
+            base["d1_databases"] = [dict(DIARIO_WANTED, database_id="22222222-2222-4222-8222-222222222222")]
+        with tempfile.TemporaryDirectory() as d:
+            cfg, out = build_candidate(d, SCRIPT.read_text(encoding="utf-8"), other)
+        self.assertIsNone(cfg)
+        self.assertIn("DIARIO_D1_BINDING_CONFLICT", out)
+
+
+
+WORKFLOW = ROOT / ".github/workflows/central-production-deploy.yml"
+FAKE_CURL = r"""#!/usr/bin/env bash
+out=""; while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift;; esac; shift; done
+[ -n "$out" ] && printf '%s' "$FAKE_CURL_BODY" > "$out"
+printf '%s' "$FAKE_CURL_CODE"
+"""
+FAKE_NPX = r"""#!/usr/bin/env bash
+echo "$*" >> "$FAKE_NPX_LOG"
+printf '%s\n' "$FAKE_NPX_OUT"
+exit "${FAKE_NPX_RC:-0}"
+"""
+
+
+def workflow_step(name_prefix):
+    """Devolve (índice, texto do run) do passo do job deploy cujo nome começa com name_prefix, sem depender de PyYAML."""
+    lines = WORKFLOW.read_text(encoding="utf-8").split("\n")
+    names = [i for i, l in enumerate(lines) if l.startswith("      - name: ")]
+    start = [i for i in names if lines[i][len("      - name: "):].startswith(name_prefix)]
+    assert len(start) == 1, (name_prefix, start)
+    i = start[0]
+    end = next((j for j in names if j > i), len(lines))
+    block = lines[i:end]
+    r = next(k for k, l in enumerate(block) if l.strip() == "run: |")
+    body = [l[10:] if l.startswith(" " * 10) else l.strip() for l in block[r + 1:]]
+    return i, "\n".join(body), "\n".join(block)
+
+
+class DiarioD1WorkflowStepTest(unittest.TestCase):
+    """Executa o texto REAL dos dois passos novos do deploy central com curl e npx falsos (nada sai da máquina).
+    DEC-P20-D1-01: os passos usam os tokens D1 dedicados (aqui com valores falsos); o isolamento das credenciais,
+    o env efetivo de cada passo e os mutantes ficam em tests/test_diario_d1_credentials.py."""
+
+    def run_step(self, prefix, cfg, curl_code="200", curl_body=None, npx_rc=0, npx_out="", extra_env=None):
+        _, script, _ = workflow_step(prefix)
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        binp = d / "bin"
+        binp.mkdir()
+        for n, body in (("curl", FAKE_CURL), ("npx", FAKE_NPX)):
+            (binp / n).write_text(body, encoding="utf-8")
+            (binp / n).chmod(0o755)
+        (d / "wrangler.central-fix.jsonc").write_text(json.dumps(cfg), encoding="utf-8")
+        out = d / "gh_output"
+        out.write_text("", encoding="utf-8")
+        body = curl_body if curl_body is not None else json.dumps({"success": True, "result": {"name": "zevanory-diario-p20"}})
+        env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", GITHUB_OUTPUT=str(out), CLOUDFLARE_API_TOKEN="",
+                   CF_TOKEN_D1_DIARIO_MIGRATE="fake-d1-migrate", CF_TOKEN_D1_DIARIO_READ="fake-d1-read",
+                   PUBLIC_OWNER_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb", FAKE_CURL_CODE=curl_code, FAKE_CURL_BODY=body,
+                   FAKE_NPX_RC=str(npx_rc), FAKE_NPX_OUT=npx_out, FAKE_NPX_LOG=str(d / "npx.log"), **(extra_env or {}))
+        r = subprocess.run(["bash", "-c", script], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+        state = [l.split("=", 1)[1] for l in out.read_text(encoding="utf-8").split("\n") if l.startswith("state=")]
+        npx = (d / "npx.log").read_text(encoding="utf-8") if (d / "npx.log").exists() else ""
+        return r, (state[-1] if state else None), json.loads((d / "wrangler.central-fix.jsonc").read_text(encoding="utf-8")), npx
+
+    def cfg(self):
+        return {"name": "zevanory", "d1_databases": [dict(DIARIO_WANTED)]}
+
+    MIG = "P20 diário D1 - migrações"
+    READ = "P20 diário D1 - readback"
+
+    def test_ordem_e_comandos(self):
+        mig_i, mig, mig_block = workflow_step(self.MIG)
+        dep_i, _, _ = workflow_step("Deploy repaired production worker")
+        rb_i, rb, rb_block = workflow_step(self.READ)
+        self.assertLess(mig_i, dep_i, "a migração vem ANTES do wrangler deploy")
+        self.assertGreater(rb_i, dep_i, "o readback vem depois do deploy")
+        self.assertIn('CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc', mig)
+        self.assertIn('--command "select count(*) as n from diario_head"', rb)
+        self.assertIn("continue-on-error: true", rb_block)
+        for block, own in ((mig_block, "CF_TOKEN_D1_DIARIO_MIGRATE"), (rb_block, "CF_TOKEN_D1_DIARIO_READ")):
+            # DEC-P20-D1-01: cada passo recebe SÓ o seu segredo dedicado (detalhe em tests/test_diario_d1_credentials.py).
+            self.assertEqual(re.findall(r"secrets\.([A-Z0-9_]+)", block), [own], "só o segredo dedicado do passo")
+            self.assertNotRegex(block, r"d1 (execute|migrations apply) zevanory-certification-only|7ff006f3")
+        self.assertNotRegex(rb, r"(?i)\b(insert|update|delete|drop|create|alter)\b", "readback somente leitura")
+        self.assertIn('- "migrations/d1/**"', WORKFLOW.read_text(encoding="utf-8"))
+
+    def test_migracao_aplicada(self):
+        r, state, cfg, npx = self.run_step(self.MIG, self.cfg(), npx_out="✅ 0001_diario_v1.sql")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(state, "aplicada")
+        self.assertEqual(cfg["d1_databases"], [DIARIO_WANTED])
+        self.assertIn("d1 migrations apply zevanory-diario-p20 --remote", npx)
+
+    def test_token_sem_d1_na_migracao_avisa_e_segue(self):
+        r, state, cfg, _ = self.run_step(self.MIG, self.cfg(), npx_rc=1, npx_out="✘ [ERROR] A request to the Cloudflare API failed. Authentication error [code: 10000]")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("::warning title=DIARIO_D1_MIGRACAO_PENDENTE::", r.stdout)
+        self.assertIn("D1 > Editar", r.stdout)
+        self.assertEqual(state, "pendente")
+        self.assertEqual(cfg["d1_databases"], [DIARIO_WANTED], "binding mantido: a sombra tolera a tabela ausente")
+
+    def test_token_sem_leitura_do_banco_tira_o_binding_e_segue(self):
+        r, state, cfg, npx = self.run_step(self.MIG, self.cfg(), curl_code="403", curl_body='{"success":false}')
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("::warning title=DIARIO_D1_MIGRACAO_PENDENTE::", r.stdout)
+        self.assertEqual(state, "binding_removido")
+        self.assertNotIn("d1_databases", cfg)
+        self.assertEqual(npx, "", "sem acesso ao banco, nem tenta migrar")
+
+    def test_banco_divergente_tira_o_binding(self):
+        r, state, cfg, _ = self.run_step(self.MIG, self.cfg(), curl_body='{"success":true,"result":{"name":"outro"}}')
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(state, "binding_removido")
+        self.assertNotIn("d1_databases", cfg)
+
+    def test_outra_falha_anota_erro_sem_reprovar(self):
+        r, state, _, _ = self.run_step(self.MIG, self.cfg(), npx_rc=1, npx_out="SQLITE_ERROR: near x: syntax error")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("::error title=DIARIO_D1_MIGRACAO_FALHOU::", r.stdout)
+        self.assertEqual(state, "pendente")
+
+    def test_banco_inesperado_no_candidato_reprova(self):
+        for cfg in ({"d1_databases": [dict(DIARIO_WANTED, database_id=CERT_D1_ID)]}, {"name": "zevanory"}):
+            r, _, _, npx = self.run_step(self.MIG, cfg)
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("::error title=DIARIO_D1_BINDING::", r.stdout)
+            self.assertEqual(npx, "")
+
+    def test_readback_nunca_reprova(self):
+        ok = json.dumps([{"results": [{"n": 1}], "success": True}])
+        r, _, _, npx = self.run_step(self.READ, self.cfg(), npx_out=ok, extra_env={"DIARIO_MIG_STATE": "aplicada"})
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("::notice title=DIARIO_D1_READBACK::diario_head presente (linhas=1)", r.stdout)
+        self.assertIn("d1 execute zevanory-diario-p20 --remote", npx)
+        r, _, _, _ = self.run_step(self.READ, self.cfg(), npx_rc=1, npx_out="no such table: diario_head", extra_env={"DIARIO_MIG_STATE": "pendente"})
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("::warning title=DIARIO_D1_READBACK::", r.stdout)
+        r, _, _, npx = self.run_step(self.READ, self.cfg(), extra_env={"DIARIO_MIG_STATE": "binding_removido"})
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(npx, "")
+
+
 if __name__ == "__main__":
     unittest.main()
