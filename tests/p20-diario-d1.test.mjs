@@ -224,5 +224,6 @@ test("DJ8 falhas do D1 e isolamento: indisponível e sem cabeça falham fechado;
   const workerDir = new URL("../worker/", import.meta.url);
   const importers = readdirSync(workerDir).filter((f) => /\.m?js$/.test(f) && f !== "diario-p20.mjs")
     .filter((f) => /diario-p20/.test(readTextNormalized(new URL(f, workerDir))));
-  assert.deepEqual(importers, [], "[DJ8.7] nenhum Worker usa o diário neste PR");
+  // PR 3 (docs/p20/diario-d1.md, "Gravação em modo sombra"): só o adaptador de sombra importa o módulo puro.
+  assert.deepEqual(importers, ["diario-sombra.mjs"], "[DJ8.7] só worker/diario-sombra.mjs usa o diário");
 });

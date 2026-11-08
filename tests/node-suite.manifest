@@ -83,12 +83,14 @@ tests/p12-entrega-ensaio.test.mjs 22
 tests/p13-buy-bar-390.test.mjs 3
 tests/p13-decreto-oferta-cache.test.mjs 6
 tests/p13-politica-nogo.test.mjs 8
+tests/p13-posvenda-ensaio.test.mjs 14
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
 tests/p18-latency.test.mjs 12
 tests/p20-backup-encryption.test.mjs 11
 tests/p20-diario-d1.test.mjs 8
+tests/p20-diario-sombra.test.mjs 11
 tests/p20-restore-drill.test.mjs 12
 tests/p22-proof-renewal-investigation.test.mjs 17
 tests/p23-ecommerce-legal.test.mjs 19
@@ -141,6 +143,7 @@ tests/support-drain-scheduled.test.mjs 2
 tests/support-email-forward.test.mjs 37
 tests/support-eval.test.mjs 3
 tests/system-matrix.test.mjs 5
+tests/t1-write-scan.test.mjs 6
 tests/telegram-inapp-browser.test.mjs 4
 tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4

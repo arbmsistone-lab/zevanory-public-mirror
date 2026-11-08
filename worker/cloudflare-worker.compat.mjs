@@ -1,3 +1,4 @@
+import { comDiario } from "./diario-sombra.mjs";
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
 import { legacyTrustProjection, guardTrustChain } from "./trust-projection.mjs";
@@ -104,7 +105,8 @@ const wrapped = {
     // Only route words: any segment that could carry an id or token becomes "*" (public census).
     try { path = new URL(request.url).pathname.split("/").slice(0, 4).map((seg) => (seg === "" || /^[a-z][a-z-]{0,23}$/.test(seg) ? seg : "*")).join("/") || "/"; } catch {}
     const meteredEnv=withMeteredKv(env, "fetch:" + path);
-    const response=await wrapped.processFetch(request, meteredEnv, ctx);
+    // P20 diário (sombra): contexto da requisição para os ganchos sem env/ctx; sem env.DIARIO chama direto (no-op).
+    const response=await comDiario(env, ctx, () => wrapped.processFetch(request, meteredEnv, ctx));
     return injectInstitutionalChat(request, normalizeEnv(productionEnvView(meteredEnv)), response);
   },
   async processFetch(request, env, ctx) {

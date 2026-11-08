@@ -1,0 +1,289 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [WSn.k] que a codifica), escritas antes de rodar. Revisão após a 1ª execução (registrada no PR): M01 sobreviveu às fixtures originais (a janela do REST cobria o curl quebrado); acrescentadas as fixtures pos-continued-wrangler.yml e neg-continued-dry-run.yml e a secundária WS2 de M01. M19 e M20 acrescentados junto com a ampliação para sandbox/ e tokens de sonda (expectativas escritas antes de rodar). Na 1ª execução M19 sobreviveu: a fixture de WS3.5 usava sandbox/, que o padrão de diretórios já cobria; a fixture passou a usar ./probe/ (expectativa de M19 inalterada).",
+ "mutants": {
+  "M01 continuação de linha não é juntada": {
+   "primary": [
+    {
+     "test_pattern": "WS1",
+     "assertion_pattern": "[WS1.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS2",
+     "assertion_pattern": "[WS2.2]",
+     "justification": "neg-continued-dry-run.yml tem o --dry-run na linha continuada; sem juntar, o deploy da primeira linha vira escrita"
+    },
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem curl de escrita quebrado com \\ (voice-final-closure-reconcile, whatsapp-broker-protocol-v2); a varredura muda e o inventário write_paths deixa de casar"
+    },
+    {
+     "test_pattern": "WS5",
+     "assertion_pattern": "[WS5.2]",
+     "justification": "se um workflow do detector anterior só escreve em curl quebrado em linhas, o novo deixa de pegá-lo"
+    }
+   ]
+  },
+  "M02 --dry-run não exclui mais": {
+   "primary": [
+    {
+     "test_pattern": "WS2",
+     "assertion_pattern": "[WS2.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem vários `wrangler deploy --dry-run` em workflows sem credencial; a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M03 --local não exclui mais": {
+   "primary": [
+    {
+     "test_pattern": "WS2",
+     "assertion_pattern": "[WS2.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem possível uso de --local em algum workflow; a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M04 versions secret não detectado": {
+   "primary": [
+    {
+     "test_pattern": "WS1",
+     "assertion_pattern": "[WS1.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem worker_secret_rotate.py com `versions secret bulk|delete` em lista; a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M05 wrangler kv key/bulk não detectado": {
+   "primary": [
+    {
+     "test_pattern": "WS1",
+     "assertion_pattern": "[WS1.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS2",
+     "assertion_pattern": "[WS2.4]",
+     "justification": "WS2.4 conta um kv key put com --local e --remote; sem o padrão, nenhuma escrita"
+    },
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem zees16-control-reconciler.yml com `wrangler kv key put --remote`; a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M06 curl com corpo sem -X não conta como escrita": {
+   "primary": [
+    {
+     "test_pattern": "WS1",
+     "assertion_pattern": "[WS1.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem possível curl de escrita só com -F/--data; a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M07 URL de outro host não encerra a busca do endereço": {
+   "primary": [
+    {
+     "test_pattern": "WS2",
+     "assertion_pattern": "[WS2.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem scripts/ops/engine-dispatcher.mjs (POST ao GitHub perto de leitura do KV); a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M08 função auxiliar de escrita ignorada": {
+   "primary": [
+    {
+     "test_pattern": "WS1",
+     "assertion_pattern": "[WS1.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem scripts/audit/system-matrix.mjs e backup_preserve_archive.py (kv(\"PUT\"...)/_cf(... method=\"PUT\")); a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M09 variável com caminho de escrita ignorada": {
+   "primary": [
+    {
+     "test_pattern": "WS1",
+     "assertion_pattern": "[WS1.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem zevanory-f7-emergency-close-drill.yml (base=f\"...storage/kv...\" longe do PUT); a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M10 item de filtro paths conta como chamada": {
+   "primary": [
+    {
+     "test_pattern": "WS2",
+     "assertion_pattern": "[WS2.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS3",
+     "assertion_pattern": "[WS3.1]",
+     "justification": "o workflow sintético de WS3 lista scripts/c.py (escritor) no filtro paths; passa a entrar em via"
+    },
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem filtros paths que citam scripts escritores (t1-publisher-guard.yml cita worker_secret_rotate.py); a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M11 guard depois da escrita aceito": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M12 troca de alvo do isolado aceita": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "M13 token de outro Worker aceito": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M14 credencial em no-credential aceita": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M15 caminho não registrado aceito": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M16 contagem fixa do não escritor ignorada": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.9]"
+    }
+   ],
+   "secondary": []
+  },
+  "M17 via sem recursão": {
+   "primary": [
+    {
+     "test_pattern": "WS3",
+     "assertion_pattern": "[WS3.1]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem possível escritor alcançado só por script intermediário; a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M18 crase em Python não é prosa": {
+   "primary": [
+    {
+     "test_pattern": "WS2",
+     "assertion_pattern": "[WS2.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real tem docstrings com `wrangler rollback` entre crases (scripts/ops/router_routes.py); a varredura muda e o inventário write_paths deixa de casar"
+    }
+   ]
+  },
+  "M19 intérprete fora de scripts/ ignorado": {
+   "primary": [
+    {
+     "test_pattern": "WS3",
+     "assertion_pattern": "[WS3.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "o repositório real chama sandbox/rollback-secret-probe/cleanup-only.sh e sandbox/route-probe/run_route_probe.py por bash/python3; a varredura muda e o inventário deixa de casar"
+    }
+   ]
+  },
+  "M20 token de sonda não conta como credencial": {
+   "primary": [
+    {
+     "test_pattern": "WS6",
+     "assertion_pattern": "[WS6.12]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "WS4",
+     "assertion_pattern": "[WS4.1]",
+     "justification": "b01-rollback-secret-probe.yml e sandbox-route-probe.yml só têm token de sonda; isolados sem credencial reconhecida viram PRODUCTION_WITHOUT_CREDENTIAL"
+    }
+   ]
+  }
+ }
+}

@@ -1,5 +1,6 @@
 import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
 import { databaseHostSha256 } from "./database-identity.mjs";
+import { diarioSombra, eventoPedidoCriado, eventoPagamento, eventoEntrega } from "./diario-sombra.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
@@ -14199,6 +14200,8 @@ async function handler11(req, res) {
     let order;
     if (inserted.length) {
       order = { order_id: orderId, external_reference: externalReference, status: "created" };
+      // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+      diarioSombra(null, null, () => eventoPedidoCriado({ orderId, provider: "asaas", offerId: input.offer.id, amount: effectiveOffer.price_brl, certification: Boolean(pilot?.authorized) }));
     } else {
       const existing = await sql.query(`
         SELECT order_id,session_id,offer_id,external_reference,status,checkout_url
@@ -14439,6 +14442,8 @@ async function handler12(req, res) {
   try {
     const inserted = await sql.query(`INSERT INTO orders (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot,certification_pilot_invite_id) VALUES ($1,$2,$3,$4,$5,$6,'BRL','mercadopago',$7,'created',$8,$9) ON CONFLICT (request_id) DO NOTHING RETURNING order_id`, [orderId, input.requestId, input.sessionId, PROJECT.experimentId, input.offer.id, effectiveOffer.price_brl, externalReference, Boolean(pilot?.authorized), pilot?.invite_id || null]);
     let order = inserted.length ? { order_id: orderId, external_reference: externalReference, status: "created" } : (await sql.query(`SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider,updated_at::text AS updated_at FROM orders WHERE request_id=$1`, [input.requestId]))[0];
+    // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+    if (inserted.length) diarioSombra(null, null, () => eventoPedidoCriado({ orderId, provider: "mercadopago", offerId: input.offer.id, amount: effectiveOffer.price_brl, certification: Boolean(pilot?.authorized) }));
     if (!order) return json9(res, 503, { error: "order_lookup_failed" });
     if (order.provider && order.provider !== "mercadopago") return json9(res, 409, { error: "request_id_provider_conflict" });
     if (!inserted.length) {
@@ -14556,6 +14561,8 @@ async function handleStripeCheckout(req, res) {
   try {
     const inserted = await sql.query(`INSERT INTO orders (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot,certification_pilot_invite_id) VALUES ($1,$2,$3,$4,$5,$6,'BRL','stripe',$7,'created',true,$8) ON CONFLICT (request_id) DO NOTHING RETURNING order_id`, [orderId, input.requestId, input.sessionId, PROJECT.experimentId, input.offer.id, effectiveOffer.price_brl, externalReference, pilot.invite_id || null]);
     let order = inserted.length ? { order_id: orderId, external_reference: externalReference, status: "created" } : (await sql.query(`SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider,provider_checkout_id FROM orders WHERE request_id=$1`, [input.requestId]))[0];
+    // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+    if (inserted.length) diarioSombra(null, null, () => eventoPedidoCriado({ orderId, provider: "stripe", offerId: input.offer.id, amount: effectiveOffer.price_brl, certification: true }));
     if (!order) return json9(res, 503, { error: "order_lookup_failed" });
     if (order.provider && order.provider !== "stripe") return json9(res, 409, { error: "request_id_provider_conflict" });
     if (!inserted.length) {
@@ -14818,6 +14825,8 @@ async function handler15(req, res) {
     const outcome = rows[0] || {};
     if (Number(outcome.target_count) !== 1) return json11(res, 409, { error: "order_state_invalid", accepted: false });
     if (Number(outcome.inserted_count) === 1 && !outcome.order_status) return json11(res, 503, { error: "order_state_update_failed", accepted: false });
+    // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+    if (Number(outcome.inserted_count) === 1) diarioSombra(null, null, () => eventoPagamento({ orderId, provider: "asaas", paymentId: webhook.paymentId, status: String(payment.status || ""), normalized, amount: Number(payment.value), refundedTotal, certification: orders[0].certification_pilot === true }));
     if (Number(outcome.inserted_count) === 1) {
       try {
         await queueOutcomeLearningReview(sql, { idempotencyKey: `learning:financial:${webhook.providerEventId}`, source: `financial:${normalized}` });
@@ -15069,6 +15078,8 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
     if (Number(outcome.target_count) !== 1) return json12(res, 409, { error: "order_state_invalid", accepted: false });
     if (Number(outcome.inserted_count) === 1 && !outcome.order_status) return json12(res, 503, { error: "order_state_update_failed", accepted: false });
     if (Number(outcome.inserted_count) === 1) await applyAffiliateOrderOutcome(sql,{databaseUrl:process.env.DATABASE_URL,orderId:String(orders[0].order_id),event:event.normalized}).catch(()=>null);
+    // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+    if (Number(outcome.inserted_count) === 1) diarioSombra(null, null, () => eventoPagamento({ orderId: String(orders[0].order_id), provider: "mercadopago", paymentId: webhook.paymentId, status: String(payment.status || ""), normalized: event.normalized, amount: Number(payment.transaction_amount), refundedTotal: event.refundedTotal, certification: certificationOnly || orders[0].certification_pilot === true }));
     let deliveryEvidence = null;
     if (event.normalized === "payment_confirmed" && String(outcome.order_status || outcome.current_status) === "paid") {
       try {
@@ -15078,6 +15089,8 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
         return json12(res, 503, { error: "paid_order_delivery_pending", accepted: false, payment_reconciled: true, order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId), retry_required: true });
       }
     }
+    // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+    if (deliveryEvidence?.email_status === "sent") diarioSombra(null, null, () => eventoEntrega({ orderId: String(orders[0].order_id), provider: "mercadopago", channel: "email", artifactSha256: deliveryEvidence.artifact_sha256 || null }));
     if (Number(outcome.inserted_count) === 1) {
       if (!certificationOnly) {
         try {
@@ -16764,6 +16777,8 @@ async function handleStripeWebhook(req, res) {
     `, [providerEventId,paymentIntentId,normalized,eventName,String(intent?.status || ""),externalReference,amount,orderId,refundedTotal,fulfillmentId]);
     const outcome = rows[0] || {};
     if (Number(outcome.target_count) !== 1) return json12(res, 409, { error: "order_state_invalid", accepted: false });
+    // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
+    if (Number(outcome.inserted_count) === 1) diarioSombra(null, null, () => eventoPagamento({ orderId, provider: "stripe", paymentId: paymentIntentId, status: String(intent?.status || ""), normalized, amount, refundedTotal, certification: orders[0].certification_pilot === true }));
     if (Number(outcome.inserted_count) === 1) {
       try {
         await recordVerifiedLifecycleEvidence(sql, { dimension: normalized === "payment_confirmed" ? "payment" : "reconciliation", source_class: "provider_webhook", source: "stripe-test", subject_ref: orderId, idempotency_key: `${normalized}-evidence:stripe:${providerEventId}`, metadata: { provider: "stripe", certification_pilot: true, sandbox: true, refunded_total: refundedTotal } });
