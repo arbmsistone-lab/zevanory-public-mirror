@@ -64,6 +64,13 @@ export async function reserveChatNeurons(sql,now=Date.now()){
   return Array.isArray(rows)&&rows.length===1&&Number(rows[0].n)<=CHAT_NEURON_DAILY_CEILING;
 }
 export const CLOSED_PRICE_ANSWER = CHAT.closed_price_answer;
+// Modo Hotmart (interruptor completo fechado, sales:hotmart:v1 aberto): os 5 kits estão à venda com pagamento na Hotmart;
+// a assinatura Conteúdo Pronto segue o interruptor completo (fechada). Só estas frases EXATAS citam a Hotmart como lugar
+// de pagamento, e só no modo Hotmart o validador as aceita; qualquer outra menção continua bloqueada.
+export const HOTMART_SALE_NOTE = "Está à venda: o pagamento é feito na Hotmart, a plataforma de pagamento oficial da ZEVANORY, a partir da página do produto.";
+export const HOTMART_KITS_NOTE = `Os kits estão à venda, com pagamento na Hotmart, a plataforma de pagamento oficial da ZEVANORY; a assinatura Conteúdo Pronto está com ${CLOSED_LABEL}.`;
+export const SUBSCRIPTION_CLOSED_ANSWER = `A assinatura Conteúdo Pronto não está disponível para novas contratações no momento (${CLOSED_LABEL}).`;
+const HOTMART_SENTENCES = [HOTMART_SALE_NOTE, HOTMART_KITS_NOTE];
 export const KILL_KV_KEY = "site-chat:kill:v1";
 export const CATEGORIES_OFF_KV_KEY = "site-chat:categories-off:v1";
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
@@ -207,12 +214,13 @@ export function hasPhoneNumber(text) {
 const CHECKOUT_RE = /\/comprar\b|\/assinar\b|checkout|pay\.[a-z]|mercadopago\.com|mpago\.la|hotmart|kiwify|eduzz|monetizze|stripe|asaas|pagseguro|paypal|picpay/i;
 // DEC-01 v3 / DEC-06: frases oficiais EXATAS que citam a Hotmart como local pós-compra (download em Minhas compras,
 // reembolso em refund.hotmart.com, linha oficial da garantia da Hotmart) são mascaradas por politica-unica; qualquer outra menção bloqueia.
-export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG } = {}) {
+export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG, hotmartOnly = false } = {}) {
   const body = String(text || "").trim();
   const issues = [];
   if (!body) issues.push("empty");
   if (body.length > 1500) issues.push("too_long");
-  const unmasked = maskOfficialPlatformMentions(body);
+  let unmasked = maskOfficialPlatformMentions(body);
+  if (hotmartOnly === true) for (const h of HOTMART_SENTENCES) unmasked = unmasked.split(h).join(" ");
   if (hasCheckoutCta(unmasked) || CHECKOUT_RE.test(unmasked)) issues.push("checkout");
   // WhatsApp foi banido (#892): nenhuma menção, link curto (wa.me) ou da API do WhatsApp, nem o número banido. O validador base
   // (whatsapp-conversation.mjs) DESCONTA o número banido antes de procurar telefone; aqui ele reprova sempre.
@@ -225,7 +233,8 @@ export function validateSiteReply(text, { salesOpen = false, catalog = CATALOG }
   const n = norm(body);
   if (!salesOpen && (/r\$|\breais\b|\bbrl\b|\b\d+\s*(conto|pila|mil)\b|\bpreco de tabela\b/.test(n))) issues.push("money_closed");
   if (salesOpen) {
-    const prices = new Set(Object.values(catalog.items).map((i) => i.price));
+    // Modo Hotmart: só os preços dos kits; o da assinatura (fechada) fica fora.
+    const prices = new Set(Object.values(catalog.items).filter((i) => !(hotmartOnly === true && i.slug === "conteudo-pronto")).map((i) => i.price));
     for (const m of body.matchAll(/R\$\s*([\d.]+)(?:,(\d{1,2}))?/g)) if (Number(m[2] || 0) !== 0 || !prices.has(Number(m[1].replace(/\./g, "")))) issues.push("price_outside_catalog");
     if (/\b\d+([.,]\d+)?\s*(reais|conto|pila)\b/.test(n)) issues.push("money_outside_catalog");
   }
@@ -365,11 +374,11 @@ const MENU = `Olá! Sou o assistente automático da ZEVANORY. Posso explicar ${P
 // R148: respostas institucionais fixas (fonte: politica-unica LEGAL_IDENTITY e catálogo). Sem preço, sem link de compra.
 const COMPANY_REPLY = `A ZEVANORY é uma empresa brasileira de materiais digitais práticos para pequenos negócios e profissionais autônomos: IA no dia a dia, vendas, lucro e caixa, e conteúdo pronto para divulgação. Foi criada por Renan Bitu e opera com o próprio método que ensina. Dados oficiais: ${LEGAL_IDENTITY}. Atendimento por e-mail: ${SUPPORT_EMAIL}, ou pelo formulário com protocolo ${ATENDIMENTO_URL}. Veja todas as soluções em ${SALES_ORIGIN}/solucoes`;
 const CONTACT_REPLY = `O atendimento da ZEVANORY é por e-mail: ${SUPPORT_EMAIL}. Você também pode abrir um pedido com protocolo em ${ATENDIMENTO_URL}, ou clicar em "Falar com uma pessoa" aqui no chat. ${SLA_TEXT} Não há atendimento por telefone.`;
-function fullMenu(catalog, salesOpen) {
+function fullMenu(catalog, salesOpen, hotmartOnly = false) {
   const order = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo", "conteudo-pronto"].filter((s) => catalog.items[s]);
   const lines = order.map((s) => { const it = catalog.items[s]; return `• ${it.name}: ${s === "conteudo-pronto" ? it.closedSummary : it.content}`; });
   return [`A ZEVANORY vende materiais digitais práticos para pequenos negócios e profissionais autônomos:`, ...lines,
-    `${salesOpen ? "" : `No momento, ${CLOSED_LABEL}. `}Pergunte sobre qualquer um deles que eu explico em detalhe. Todas as soluções: ${SALES_ORIGIN}/solucoes`].join("\n");
+    `${salesOpen ? (hotmartOnly ? HOTMART_KITS_NOTE + " " : "") : `No momento, ${CLOSED_LABEL}. `}Pergunte sobre qualquer um deles que eu explico em detalhe. Todas as soluções: ${SALES_ORIGIN}/solucoes`].join("\n");
 }
 const INJECTION_REPLY = `Só posso ajudar com os produtos e as políticas oficiais da ZEVANORY. Quer saber sobre ${PRODUCT_LIST}?`;
 const CORRECTION_REPLY = "Desculpe se não entendi. Pode me dizer de outro jeito o que você quer saber? Se preferir, uma pessoa da equipe continua por e-mail.";
@@ -403,8 +412,11 @@ const waitlistAction = (slug, catalog) => {
 };
 
 // Núcleo puro: decide a resposta. Não toca rede nem banco. `ai` só é usado se `generative` e a categoria permitir.
-export async function composeReply({ message, salesOpen = false, session = {}, catalog = CATALOG, ai = null, generative = false, categoriesOff = new Set(), onAiFailure = () => {} } = {}) {
+export async function composeReply({ message, salesOpen = false, hotmartOnly = false, session = {}, catalog = CATALOG, ai = null, generative = false, categoriesOff = new Set(), onAiFailure = () => {} } = {}) {
   const c = classify(message, session);
+  // hotmartOnly: salesOpen veio do modo Hotmart (só os 5 kits); a assinatura Conteúdo Pronto segue fechada.
+  hotmartOnly = salesOpen === true && hotmartOnly === true;
+  const openFor = (s) => salesOpen && !(hotmartOnly && s === "conteudo-pronto");
   const slug = c.slug || resolveProduct(norm(message));
   const off = (cat) => categoriesOff.has(cat);
   const emailOnly = { body: FALLBACK.message, mode: "category_off", category: "category_off", actions: [...EMAIL_ONLY_ACTIONS] };
@@ -422,7 +434,7 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   if (c.kind === "escalate") return { ...escalate(c.category), correction: Boolean(c.correction) };
   if (c.kind === "injection") return { body: INJECTION_REPLY, mode: "injection_refused", category: "injection", actions: [] };
   if (c.kind === "correction") return { body: CORRECTION_REPLY, mode: "correction", category: "correction", correction: true, actions: [{ type: "handoff" }] };
-  if (c.kind === "menu" && c.full && catalog.ok) return { body: fullMenu(catalog, salesOpen), mode: "menu", category: "menu", correction: Boolean(c.correction), actions: [] };
+  if (c.kind === "menu" && c.full && catalog.ok) return { body: fullMenu(catalog, salesOpen, hotmartOnly), mode: "menu", category: "menu", correction: Boolean(c.correction), actions: [] };
   if (c.kind === "greeting" || c.kind === "menu") return { body: MENU, mode: "menu", category: "menu", correction: Boolean(c.correction), actions: [] };
   if (c.kind === "company") return { body: COMPANY_REPLY, mode: "company", category: "company", correction: Boolean(c.correction), actions: [] };
   if (c.kind === "contact") return { body: CONTACT_REPLY, mode: "contact", category: "contact", correction: Boolean(c.correction), actions: [{ type: "handoff" }] };
@@ -441,12 +453,14 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   if (c.kind === "condition") {
     if (off("condition")) return emailOnly;
     if (!salesOpen) return { body: CLOSED_PRICE_ANSWER, mode: "closed_condition", category: "condition", actions: [waitlistAction(slug, catalog)] };
+    if (hotmartOnly && slug === "conteudo-pronto") return { body: SUBSCRIPTION_CLOSED_ANSWER, mode: "closed_condition", category: "condition", product: slug, actions: [waitlistAction(slug, catalog)] };
     if (!slug) return { body: `Sobre qual produto? ${PRODUCT_LIST}.`, mode: "ask_product", category: "condition", actions: [] };
     const it = catalog.items[slug];
-    return { body: `${it.name}: R$ ${it.price},00 (preço de tabela). Os detalhes e a contratação estão na página do produto: ${it.page}`, mode: "price_field", category: "condition", actions: [] };
+    return { body: `${it.name}: R$ ${it.price},00 (preço de tabela). Os detalhes e a contratação estão na página do produto: ${it.page}${hotmartOnly ? " " + HOTMART_SALE_NOTE : ""}`, mode: "price_field", category: "condition", product: slug, actions: [] };
   }
-  const describe = (it) => `${it.name}: ${salesOpen ? it.content : it.closedSummary} Página: ${it.page}`;
-  const closedTail = salesOpen ? "" : ` No momento, ${CLOSED_LABEL}.`;
+  const describe = (it) => `${it.name}: ${openFor(it.slug) ? it.content : it.closedSummary} Página: ${it.page}`;
+  const closedTailFor = (s) => (!salesOpen ? ` No momento, ${CLOSED_LABEL}.` : !hotmartOnly ? "" : s === "conteudo-pronto" ? " " + SUBSCRIPTION_CLOSED_ANSWER : s ? " " + HOTMART_SALE_NOTE : " " + HOTMART_KITS_NOTE);
+  const closedTail = closedTailFor(c.kind === "compare" ? null : c.slug);
   let det;
   if (c.kind === "compare") {
     if (off("content")) return emailOnly;
@@ -466,10 +480,10 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
   } else {
     return escalate("low_confidence");
   }
-  const actions = salesOpen ? [] : [waitlistAction(det.product, catalog)];
+  const actions = openFor(det.product) ? [] : [waitlistAction(det.product, catalog)];
   // Geração (desligada por padrão): só reescreve descrição/recomendação; preço/condição nunca passam aqui.
   if (generative && ai?.run && !off("generative")) {
-    const gen = await generate({ ai, message, salesOpen, catalog, product: det.product });
+    const gen = await generate({ ai, message, salesOpen, hotmartOnly, catalog, product: det.product });
     if (gen.error) onAiFailure(gen.error);
     // R120 DEC-20: provider free-quota exhaustion cannot be mistaken for an answered chat.
     // No paid retry, no alternate provider, no checkout. Expose the existing human protocol form.
@@ -483,18 +497,18 @@ export async function composeReply({ message, salesOpen = false, session = {}, c
 
 // R122: single Free-compatible lower-neuron model; no fallback to a more expensive model.
 const MODELS = ["@cf/meta/llama-3.1-8b-instruct-fp8-fast"];
-function generationPrompt({ salesOpen, catalog }) {
-  const lines = Object.values(catalog.items).map((i) => `- ${i.name}: ${salesOpen ? i.content : i.closedSummary} Página: ${i.page}`);
+function generationPrompt({ salesOpen, catalog, hotmartOnly = false }) {
+  const lines = Object.values(catalog.items).map((i) => `- ${i.name}: ${salesOpen && !(hotmartOnly && i.slug === "conteudo-pronto") ? i.content : i.closedSummary} Página: ${i.page}`);
   return [
     "Você é o assistente automático do site da ZEVANORY. Responda em português do Brasil, em até 3 frases, sem markdown.",
     "Use SOMENTE as descrições abaixo. Nunca mencione preço, valor, desconto, condição de pagamento, prazo, garantia, bônus, urgência ou link de compra.",
     "Nunca prometa resultado. Nunca diga que algo está disponível para compra. Pode incluir a página do produto exatamente como abaixo.",
-    salesOpen ? "" : `As vendas estão fechadas (${CLOSED_LABEL}).`,
+    salesOpen ? (hotmartOnly ? `A assinatura Conteúdo Pronto está com ${CLOSED_LABEL}.` : "") : `As vendas estão fechadas (${CLOSED_LABEL}).`,
     "CATÁLOGO APROVADO:", ...lines,
   ].filter(Boolean).join("\n");
 }
-async function generate({ ai, message, salesOpen, catalog }) {
-  const prompt=generationPrompt({salesOpen,catalog});
+async function generate({ ai, message, salesOpen, catalog, hotmartOnly = false }) {
+  const prompt=generationPrompt({salesOpen,catalog,hotmartOnly});
   if(prompt.length+String(message||"").length>8000)return {error:"chat_neuron_quota_guard"};
   for (const model of MODELS) {
     let timer;
@@ -513,8 +527,8 @@ async function generate({ ai, message, salesOpen, catalog }) {
 }
 
 // Guarda final sobre QUALQUER resposta (determinística ou gerada): reprovou => resposta segura + escalonamento.
-export function guardReply(reply, { salesOpen, catalog = CATALOG }) {
-  const v = validateSiteReply(reply.body, { salesOpen, catalog });
+export function guardReply(reply, { salesOpen, catalog = CATALOG, hotmartOnly = false }) {
+  const v = validateSiteReply(reply.body, { salesOpen, catalog, hotmartOnly: salesOpen === true && hotmartOnly === true });
   if (v.ok) return { ...reply, guard: [] };
   return { body: fill(ESC_TEXT.low_confidence, {}) + " " + HANDOFF_ASK, mode: "guard_blocked", category: "low_confidence", escalate: { category: "low_confidence" }, actions: [{ type: "handoff" }], guard: v.issues };
 }
@@ -677,6 +691,17 @@ async function salesOpenNow(deps) {
   finally { clearTimeout(timer); }
 }
 
+// Modo Hotmart (sales:hotmart:v1 lido pelo chamador); erro, timeout ou valor ambíguo = fechado.
+async function hotmartOpenNow(deps) {
+  if (typeof deps.hotmartOpen !== "function") return false;
+  let timer;
+  try {
+    const v = await Promise.race([deps.hotmartOpen(), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("timeout")), L.sales_status_timeout_ms); })]);
+    return v === true ? true : false;
+  } catch { return false; }
+  finally { clearTimeout(timer); }
+}
+
 // ---------- handler HTTP (somente via service binding: host chat.internal) ----------
 export async function handleSiteChat(request, env = {}, deps = {}) {
   const url = new URL(request.url);
@@ -768,6 +793,9 @@ async function messageRoute(sql, env, body, deps, { ip, now, flags }) {
   }
   // Autoridade canônica a CADA resposta; erro/timeout = fechado.
   const salesOpen = await salesOpenNow(deps);
+  // Modo Hotmart: os 5 kits à venda pela Hotmart com o interruptor completo fechado (Conteúdo Pronto continua fechado).
+  const hotmartOnly = !salesOpen && (await hotmartOpenNow(deps));
+  const chatOpen = salesOpen || hotmartOnly;
   let generative = flags.generative && !generationBreakerOpen(now);
   let neuronBudgetUnavailable=false;
   if (generative) {
@@ -778,8 +806,8 @@ async function messageRoute(sql, env, body, deps, { ip, now, flags }) {
   }
   const composed = neuronBudgetUnavailable
     ? {body:FALLBACK.message,mode:"ai_budget_fallback",category:"ai_quota",actions:[...EMAIL_ONLY_ACTIONS]}
-    : await composeReply({ message, salesOpen, session: s.row, catalog: deps.catalog || CATALOG, ai: env.AI, generative, categoriesOff: flags.categoriesOff, onAiFailure: (dep) => breakerFailure("ai:" + dep, now) });
-  const reply = guardReply(composed, { salesOpen, catalog: deps.catalog || CATALOG });
+    : await composeReply({ message, salesOpen: chatOpen, hotmartOnly, session: s.row, catalog: deps.catalog || CATALOG, ai: env.AI, generative, categoriesOff: flags.categoriesOff, onAiFailure: (dep) => breakerFailure("ai:" + dep, now) });
+  const reply = guardReply(composed, { salesOpen: chatOpen, hotmartOnly, catalog: deps.catalog || CATALOG });
   const officialMode=String(env.SITE_CHAT_OFFICIAL_PROTOCOLS||"")==="true";
   let protocol = null, due = null;
   // A draft escalation is not a ZC ticket in official mode. The ZEV outbox is the ONLY consumer protocol.

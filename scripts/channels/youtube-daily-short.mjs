@@ -15,6 +15,8 @@ import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { CLOSED_LABEL, SHORT_RULE_LABEL, SHORT_RULE_SPOKEN } from "../../worker/politica-unica.mjs";
 import { readSalesSwitch } from "../../worker/sales-control.mjs";
+import { hotmartKitsOpen, hotmartKit } from "../../worker/sales-lock-content.mjs";
+import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "../../worker/creative-autonomy.mjs";
 
 export const TARGET_CHANNEL = "UCMl8-SxMVv77S2tz2H63P3A";
 export const PRICES = Object.freeze({ "ZEV-IA-011": 197, "ZEV-VEN-011": 197, "ZEV-LCX-011": 247, "ZEV-CMB-011": 297, "ZEV-NGC-011": 397 });
@@ -96,20 +98,40 @@ export async function channelSalesOpen(kv) {
   if (!kv?.get) return false;
   return (await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv }).catch(() => null))?.enabled === true;
 }
+// Modo Hotmart (sales:hotmart:v1, mesmo readHotmartSwitch do Worker): só vale com o interruptor completo fechado.
+// Fail-closed: sem KV ou com erro de leitura => {salesOpen:false, hotmartOpen:false}.
+export async function channelPurchaseMode(kv) {
+  const salesOpen = await channelSalesOpen(kv);
+  if (salesOpen || !kv?.get) return { salesOpen, hotmartOpen: false };
+  return { salesOpen: false, hotmartOpen: await hotmartKitsOpen({ ZEVANORY_PRIVATE_ARTIFACTS: kv }) };
+}
+// Pausa da autopublicação criativa (painel /criativos, chave zpc:creative-autonomy:paused:v1, mesma regra do Worker:
+// "1" = pausado). Estado desconhecido (sem KV, erro de leitura) = pausado: o Short não é publicado.
+export async function channelPublishPaused(kv) {
+  if (!kv?.get) return true;
+  try { return String((await kv.get(CREATIVE_AUTOPUBLISH_PAUSE_KEY)) ?? "") === "1"; } catch { return true; }
+}
 const PRODUCT_PAGES = Object.freeze({ "ZEV-IA-011": "ia-na-pratica", "ZEV-VEN-011": "vendas-na-pratica", "ZEV-LCX-011": "lucro-e-caixa", "ZEV-CMB-011": "combo-ia-vendas", "ZEV-NGC-011": "negocio-completo" });
 
 // Closed (default): the link goes to the product page (never /comprar/) and the text says sales are closed.
-export function planShort(day, { salesOpen = false } = {}) {
-  const entry = calendarEntry(day), price = PRICES[entry.product.sku];
-  if (!price) throw new Error("youtube_price_unknown");
+// Hotmart mode (full switch closed, Hotmart switch open): the 5 kits show their table price and the link goes to the
+// Hotmart purchase path of the sales site (/hotmart/<slug>), never to the own checkout.
+export function planShort(day, { salesOpen = false, hotmartOpen = false } = {}) {
+  const entry = calendarEntry(day), tablePrice = PRICES[entry.product.sku];
+  if (!tablePrice) throw new Error("youtube_price_unknown");
+  const kit = salesOpen !== true && hotmartOpen === true ? hotmartKit(entry.product.sku) : null;
+  const price = kit ? kit.price : tablePrice;
   const niche = NICHE_LABEL[entry.niche];
   const hook = ANGLE_HOOK[entry.angle] + " para " + niche;
   const spec = { creative_id: "youtube-short-" + day, brand: "ZEVANORY", site: "zevanory.api.br", width: 1080, height: 1920, hook, body: entry.product.name + " por R$ " + price + ",00. " + SHORT_RULE_LABEL + ".", cta: "Veja o guia digital", price_brl: price };
   const gate = evaluateCreativeWithRewrites(spec, { serverPrice: price, visualScore: 1 });
-  const checkout = productLink(entry, "blog", { salesOpen: true }).replace("utm_source=blog", "utm_source=youtube");
-  const page = new URL(checkout); page.pathname = "/" + PRODUCT_PAGES[entry.product.sku];
+  const ownCheckout = productLink(entry, "blog", { salesOpen: true }).replace("utm_source=blog", "utm_source=youtube");
+  const page = new URL(ownCheckout); page.pathname = "/" + PRODUCT_PAGES[entry.product.sku];
   if (!PRODUCT_PAGES[entry.product.sku]) throw new Error("youtube_product_page_unknown");
-  const open = salesOpen === true;
+  const hotmart = new URL(page.toString()); hotmart.pathname = "/hotmart/" + PRODUCT_PAGES[entry.product.sku];
+  // Purchase link: own checkout with the full switch, the Hotmart purchase path in Hotmart mode.
+  const checkout = kit ? hotmart.toString() : ownCheckout;
+  const open = salesOpen === true || kit != null;
   const link = open ? checkout : page.toString();
   const marker = "zevanory-short-key:" + createHash("sha256").update(day + "|" + entry.theme_id + "|short-v1").digest("hex").slice(0, 16);
   const title = (ANGLE_HOOK[entry.angle] + " para " + niche + " · " + entry.product.name).slice(0, 95);
@@ -134,7 +156,7 @@ export function planShort(day, { salesOpen = false } = {}) {
     product: entry.product.name, offer: open ? "R$ " + price + " · " + SHORT_RULE_LABEL : closedLabel,
     cta: "Link na descrição", url: "vendas.zevanory.api.br"
   };
-  return { day, slot: "oferta", entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", entry.product.name] };
+  return { day, slot: "oferta", purchase: salesOpen === true ? "checkout" : kit ? "hotmart" : "closed", entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", entry.product.name] };
 }
 
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
@@ -408,14 +430,16 @@ if (isMain) {
   const slots = slotArg === "all" ? SLOTS : [slotArg];
   let failed = 0;
   const lockKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
-  const salesOpen = await channelSalesOpen(lockKv);
-  note("notice", "sales_open=" + salesOpen);
+  const { salesOpen, hotmartOpen } = await channelPurchaseMode(lockKv);
+  note("notice", "sales_open=" + salesOpen + " hotmart_open=" + hotmartOpen);
+  // Creative-autonomy pause (or unknown state) => nothing is published; a dry run still renders for review.
+  if (!dry && await channelPublishPaused(lockKv)) { note("notice", "creative_autopublish_paused_or_unknown: no Short published"); process.exit(0); }
   for (const slot of slots) {
     try {
       const window = publicationWindow({ day, slot, now: Date.now() });
       note("notice", "window " + JSON.stringify(window));
       if (window.action !== "publish" && !dry) { note("notice", slot + ": not published (" + window.reason + ") — " + (window.action === "wait" ? "the planned run publishes it" : "documented as missed for " + day)); continue; }
-      const plan = planSlot(day, slot, { salesOpen });
+      const plan = planSlot(day, slot, { salesOpen, hotmartOpen });
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected");
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
       const usageKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;

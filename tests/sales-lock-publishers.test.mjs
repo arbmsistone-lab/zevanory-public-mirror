@@ -9,17 +9,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { calendarEntry, generateNative, validateDraft, runAcquisitionEngine, productLink, verifyProductLink } from "../worker/acquisition-engine.mjs";
-import { resetSalesSwitchCache } from "../worker/sales-control.mjs";
+import { resetSalesSwitchCache, resetHotmartSwitchCache } from "../worker/sales-control.mjs";
 import { CLOSED_LABEL } from "../worker/politica-unica.mjs";
-import { salesLockViolations, payloadSalesLockViolations, contentSalesOpen } from "../worker/sales-lock-content.mjs";
-import { planShort } from "../scripts/channels/youtube-daily-short.mjs";
+import { salesLockViolations, payloadSalesLockViolations, contentSalesOpen, hotmartLockViolations, purchaseOpenFor, hotmartKitsOpen } from "../worker/sales-lock-content.mjs";
+import { planShort, channelPublishPaused } from "../scripts/channels/youtube-daily-short.mjs";
 
 const PNG = readFileSync(new URL("../assets/brand/export/post-01.png", import.meta.url));
 const DAY = new Date("2026-10-10T23:00:00Z"); // depois do pico de Telegram (12h) e Bluesky (19h) em São Paulo
-const SALES = "sales:open:v1", PREFLIGHT = "zpc-sales-preflight:v1";
+const SALES = "sales:open:v1", PREFLIGHT = "zpc-sales-preflight:v1", HOTMART = "sales:hotmart:v1", PAUSE = "zpc:creative-autonomy:paused:v1";
 
 function kvWith(state) {
   const m = new Map();
@@ -36,9 +37,15 @@ function kvWith(state) {
     m.set(SALES, JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner-test", at: nowIso, ref: "teste/sales-lock" }));
     m.set(PREFLIGHT, JSON.stringify({ ok: true, at: new Date(Date.now() - 4 * 3600_000).toISOString() }));
   }
+  // Modo Hotmart (sales:hotmart:v1, registro do dono com channel "hotmart"); o interruptor completo segue fechado.
+  const hotmartRecord = (extra = {}) => JSON.stringify({ enabled: true, channel: "hotmart", authorization: "LIBERAR VENDAS", by: "owner-test", at: nowIso, ref: "teste/hotmart-mode", ...extra });
+  if (state === "hotmart" || state === "hotmart_paused" || state === "hotmart_throw") m.set(HOTMART, hotmartRecord());
+  if (state === "hotmart_paused") m.set(PAUSE, "1");
+  if (state === "hotmart_wrong_channel") m.set(HOTMART, hotmartRecord({ channel: "mercadopago" }));
+  if (state === "hotmart_incomplete") m.set(HOTMART, hotmartRecord({ authorization: "" }));
   return {
     m,
-    async get(k) { if (state === "throw" && k === SALES) throw new Error("kv_down"); return m.get(k) ?? null; },
+    async get(k) { if (state === "throw" && k === SALES) throw new Error("kv_down"); if (state === "hotmart_throw" && k === HOTMART) throw new Error("kv_down"); return m.get(k) ?? null; },
     async put(k, v) { m.set(k, String(v)); },
   };
 }
@@ -58,12 +65,12 @@ function network() {
 }
 
 async function runEngine(state) {
-  resetSalesSwitchCache();
+  resetSalesSwitchCache(); resetHotmartSwitchCache();
   const kv = kvWith(state);
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory", BLUESKY_HANDLE: "zevanory.bsky.social", BLUESKY_APP_PASSWORD: "app" };
   const net = network();
   const out = await runAcquisitionEngine(env, DAY, net.fetchImpl);
-  resetSalesSwitchCache();
+  resetSalesSwitchCache(); resetHotmartSwitchCache();
   const texts = [...net.sent.telegram.map((b) => String(b.caption || b.text || "")), ...net.sent.bluesky.map((r) => String(r.record?.text || ""))];
   return { out, texts, sent: net.sent, kv };
 }
@@ -205,4 +212,100 @@ test("D7: Instagram e Facebook fechados sem P04 certificado, com vendas abertas 
   }
   const other = { event_type: "publish_content", destination: "channel:linkedin", payload: { organic_only: true, content: "Uma dica prática para organizar a semana.", title: "Dica" } };
   assert.doesNotThrow(() => box.ensureOutboundAllowed(other, env, closed), "canal não Meta segue a regra comercial normal");
+});
+
+test("H: modo Hotmart (interruptor completo fechado + sales:hotmart:v1) => 5 kits com preço e /hotmart/<slug>; falha = fechado; pausa vale", async () => {
+  // Engine (Telegram + Bluesky): kit do dia (IA na Prática, R$ 97) com o caminho de compra pela Hotmart.
+  const { out, texts, sent } = await runEngine("hotmart");
+  for (const ch of ["telegram", "bluesky"]) assert.equal(out.outcomes.find((x) => x.channel === ch)?.status, "publicado", "hotmart: " + ch);
+  assert.equal(sent.telegram.length, 1); assert.equal(sent.bluesky.length, 1);
+  for (const t of texts) {
+    assert.match(t, /https:\/\/vendas\.zevanory\.api\.br\/hotmart\/ia-na-pratica\?utm_source=(telegram|bluesky)/, "hotmart: caminho de compra do kit: " + t);
+    assert.ok(t.includes("R$ 97"), "hotmart: preço da tabela: " + t);
+    assert.doesNotMatch(t, /\/comprar/, "hotmart: nunca o checkout próprio");
+    assert.ok(!t.includes(CLOSED_LABEL), "hotmart: sem aviso de fechado");
+    assert.deepEqual(hotmartLockViolations(t, "ZEV-IA-011"), [], "hotmart: só preço e link do kit: " + t);
+  }
+  // O interruptor completo continua fechado; Conteúdo Pronto nunca abre pelo modo Hotmart.
+  resetSalesSwitchCache(); resetHotmartSwitchCache();
+  const hm = { ZEVANORY_PRIVATE_ARTIFACTS: kvWith("hotmart") };
+  assert.equal(await contentSalesOpen(hm), false, "interruptor completo fechado");
+  assert.equal(await hotmartKitsOpen(hm), true);
+  assert.equal(await purchaseOpenFor(hm, "ZEV-IA-011"), true); assert.equal(await purchaseOpenFor(hm, "negocio-completo"), true);
+  assert.equal(await purchaseOpenFor(hm, "conteudo-pronto"), false, "assinatura fechada no modo Hotmart");
+  assert.equal(await purchaseOpenFor(hm, "ZEV-XYZ-999"), false);
+  // Fail-closed: canal errado, registro incompleto, exceção na leitura => versão fechada (página + aviso).
+  for (const state of ["hotmart_wrong_channel", "hotmart_incomplete", "hotmart_throw"]) {
+    resetSalesSwitchCache(); resetHotmartSwitchCache();
+    assert.equal(await hotmartKitsOpen({ ZEVANORY_PRIVATE_ARTIFACTS: kvWith(state) }), false, state);
+    assert.equal(await purchaseOpenFor({ ZEVANORY_PRIVATE_ARTIFACTS: kvWith(state) }, "ZEV-IA-011"), false, state);
+    const r = await runEngine(state);
+    for (const t of r.texts) { assert.ok(t.includes(CLOSED_LABEL), state + ": " + t); assert.deepEqual(salesLockViolations(t), [], state); }
+  }
+  // A pausa da autopublicação criativa continua valendo no modo Hotmart.
+  const paused = await runEngine("hotmart_paused");
+  for (const ch of ["telegram", "bluesky"]) assert.equal(paused.out.outcomes.find((x) => x.channel === ch)?.status, "pausado", "pausa: " + ch);
+  assert.equal(paused.sent.telegram.length + paused.sent.bluesky.length, 0, "pausa: nada publicado");
+  // validateDraft no modo Hotmart: só o preço e o caminho DESTE kit; preço obrigatório; nada mais.
+  const entry = calendarEntry("2026-10-10");
+  for (const ch of ["telegram", "bluesky", "blog"]) {
+    const d = generateNative(entry, ch, { hotmartOpen: true });
+    assert.equal(validateDraft({ draft: d, entry, hotmartOpen: true }).ok, true, ch + ": rascunho Hotmart válido");
+    assert.equal(validateDraft({ draft: d, entry }).ok, false, ch + ": rascunho Hotmart barrado com tudo fechado");
+  }
+  const d = generateNative(entry, "telegram", { hotmartOpen: true });
+  const reasons = (text) => validateDraft({ draft: { ...d, text }, entry, hotmartOpen: true }).reasons;
+  assert.ok(reasons(d.text + " Por R$ 197,00.").includes("hotmart_price"), "outro preço");
+  assert.ok(reasons(d.text + " https://pay.hotmart.com/X1").includes("hotmart_checkout_link"), "checkout externo");
+  assert.ok(reasons(d.text + " https://vendas.zevanory.api.br/hotmart/lucro-e-caixa").includes("hotmart_checkout_link"), "outro kit");
+  assert.ok(reasons(d.text + " https://vendas.zevanory.api.br/comprar/ZEV-IA-011").includes("hotmart_checkout_link"), "checkout próprio");
+  assert.ok(reasons(d.text + " Compre agora!").includes("hotmart_purchase_cta"), "chamada de compra");
+  assert.ok(reasons(d.text.replace("R$ 97", "")).includes("hotmart_price_missing"), "preço obrigatório");
+  assert.equal(await verifyProductLink(productLink(entry, "telegram", { hotmartOpen: true })), 200);
+  // Short do YouTube: preço do kit (97) e /hotmart/<slug>; sem o modo, fechado como antes.
+  const p = planShort("2026-10-10", { hotmartOpen: true });
+  assert.equal(p.purchase, "hotmart"); assert.equal(p.price, 97);
+  assert.match(p.link, /^https:\/\/vendas\.zevanory\.api\.br\/hotmart\/ia-na-pratica\?utm_source=youtube/);
+  assert.match(p.screen.offer, /^R\$ 97 · /);
+  assert.deepEqual(hotmartLockViolations(Object.values(p.screen).join(" ") + " " + p.description, "ZEV-IA-011"), []);
+  assert.equal(planShort("2026-10-10").purchase, "closed");
+  assert.equal(planShort("2026-10-10", { salesOpen: true, hotmartOpen: true }).purchase, "checkout", "interruptor completo prevalece");
+  // Pausa no job do Short: "1" = pausado; sem KV ou erro de leitura = pausado (não publica).
+  const pk = (v, fail = false) => ({ async get(k) { if (fail) throw new Error("kv_down"); return k === PAUSE ? v : null; } });
+  assert.equal(await channelPublishPaused(pk("1")), true);
+  assert.equal(await channelPublishPaused(pk("0")), false);
+  assert.equal(await channelPublishPaused(pk(null)), false);
+  assert.equal(await channelPublishPaused(null), true, "sem KV = desconhecido = pausado");
+  assert.equal(await channelPublishPaused(pk("0", true)), true, "erro de leitura = pausado");
+  resetSalesSwitchCache(); resetHotmartSwitchCache();
+});
+
+// KV falso do Cloudflare (API REST) carregado antes do script: só GET de valores; pausa = "1". Qualquer outra chamada
+// de rede é registrada e reprova o teste (nada de YouTube, Gemini, TikTok, Meta ou Telegram).
+const PAUSED_KV = "data:text/javascript," + encodeURIComponent(`
+const calls = [];
+globalThis.fetch = async (u, o = {}) => {
+  u = String(u); calls.push((o.method || "GET") + " " + u.replace(/^https:\\/\\/[^/]+/, ""));
+  process.on("exit", () => console.log("FETCH_CALLS=" + JSON.stringify(calls)));
+  const m = u.match(/^https:\\/\\/api\\.cloudflare\\.com\\/client\\/v4\\/accounts\\/acc\\/storage\\/kv\\/namespaces\\/ns\\/values\\/([^?]+)$/);
+  if (!m || (o.method || "GET") !== "GET") return new Response("blocked", { status: 599 });
+  const k = decodeURIComponent(m[1]);
+  return k === "zpc:creative-autonomy:paused:v1" ? new Response("1", { status: 200 }) : new Response("", { status: 404 });
+};`);
+test("P: pausa criativa = \"1\" com o KV lendo normalmente => Short e cross-post não publicam", () => {
+  const env = { ...process.env, CLOUDFLARE_API_TOKEN: "tok", CLOUDFLARE_ACCOUNT_ID: "acc", KV_NAMESPACE_ID: "ns", YOUTUBE_CLIENT_ID: "", GEMINI_API_KEY: "", TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@c" };
+  const run = (script) => spawnSync(process.execPath, ["--import", PAUSED_KV, script, "--slot=oferta", "--day=2026-11-08"], { cwd: new URL("..", import.meta.url), env, encoding: "utf8", timeout: 60000 });
+  const yt = run("scripts/channels/youtube-daily-short.mjs");
+  assert.equal(yt.status, 0, yt.stdout + yt.stderr);
+  assert.match(yt.stdout, /sales_open=false hotmart_open=false/, "KV lido (interruptores ausentes = fechados)");
+  assert.match(yt.stdout, /creative_autopublish_paused_or_unknown: no Short published/);
+  assert.doesNotMatch(yt.stdout, /window /, "parou antes de planejar/renderizar/publicar");
+  const ytCalls = JSON.parse((yt.stdout.match(/FETCH_CALLS=(.*)/) || [])[1] || "[]");
+  assert.ok(ytCalls.length > 0 && ytCalls.every((c) => c.startsWith("GET /client/v4/accounts/acc/storage/kv/")), "só leituras do KV: " + ytCalls);
+  assert.ok(ytCalls.some((c) => c.includes("zpc%3Acreative-autonomy%3Apaused%3Av1")), "a chave da pausa foi lida");
+  const cross = run("scripts/channels/short-crosspost.mjs");
+  assert.equal(cross.status, 0, cross.stdout + cross.stderr);
+  assert.match(cross.stdout, /SHORT_CROSSPOST::creative_autopublish_paused_or_unknown/);
+  const crossCalls = JSON.parse((cross.stdout.match(/FETCH_CALLS=(.*)/) || [])[1] || "[]");
+  assert.deepEqual(crossCalls, ["GET /client/v4/accounts/acc/storage/kv/namespaces/ns/values/zpc%3Acreative-autonomy%3Apaused%3Av1"], "cross-post: só a leitura da pausa, nenhum envio");
 });

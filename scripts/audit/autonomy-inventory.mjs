@@ -35,19 +35,21 @@ export function proveProcess(p, ctx, now = Date.now()) {
     // Buy path vs the owner switch: open => /comprar/ opens the own checkout; closed => it shows the
     // closed notice (expected, healthy). Unknown switch proves nothing; a mismatch is a failure.
     case "buyflow": {
-      const recs = evaluateBuyFlow(ctx.buyFlow, ctx.salesOpen);
-      const expected = expectedBuyState(ctx.salesOpen);
+      const recs = evaluateBuyFlow(ctx.buyFlow, ctx.salesOpen, ctx.hotmartOpen);
+      const expected = expectedBuyState(ctx.salesOpen, ctx.hotmartOpen);
       const ok = recs.length > 0 && expected != null && recs.every((b) => b.ok);
       const mismatch = expected != null && recs.some((b) => !b.ok && b.state !== "error");
-      return { proven: ok, failed: mismatch, lastEvidence: ok ? new Date(now).toISOString() : null, how: expected === "closed" ? "vendas fechadas: botão Comprar mostra o aviso de fechado (esperado)" : expected === "checkout" ? "vendas abertas: botão Comprar abre o pagamento do checkout próprio" : "interruptor de vendas não verificado" };
+      return { proven: ok, failed: mismatch, lastEvidence: ok ? new Date(now).toISOString() : null, how: expected === "foreign_checkout" ? "modo Hotmart: botão Comprar leva à compra pela Hotmart dos 5 kits (esperado)" : expected === "closed" ? "vendas fechadas: botão Comprar mostra o aviso de fechado (esperado)" : expected === "checkout" ? "vendas abertas: botão Comprar abre o pagamento do checkout próprio" : "interruptor de vendas não verificado" };
     }
     // Hotmart offers vs the global lock (six probes): open => offers answer; closed => every offer must show
     // Hotmart's closed page. Any offer accepting payment while sales are closed is a P0 failure.
     case "hotmart": {
-      const lock = hotmartLockState(ctx.hotmart, ctx.salesOpen);
+      const lock = hotmartLockState(ctx.hotmart, ctx.salesOpen, ctx.hotmartOpen);
       const ok = lock.state === "selling" || lock.state === "closed";
-      const how = { selling: "vendas abertas: as ofertas Hotmart respondem", closed: `vendas fechadas: ${lock.closed.length}/${lock.total} ofertas Hotmart encerradas (coerente com a trava)`, p0_bypass: `P0: vendas fechadas, mas ${lock.accepting.length} oferta(s) Hotmart aceitando pagamento (encerrar na Hotmart é ato do dono)`, closed_while_open: "vendas abertas, mas as ofertas Hotmart estão encerradas", degraded: "vendas abertas, mas alguma oferta Hotmart não responde", unverified: "vendas fechadas; alguma oferta Hotmart não respondeu à sonda", unknown: "interruptor ou sondas Hotmart não verificados" }[lock.state];
-      return { proven: ok, failed: ["p0_bypass", "closed_while_open", "degraded"].includes(lock.state), lastEvidence: ok ? new Date(now).toISOString() : null, how };
+      // Modo Hotmart: 5 kits aceitando com o interruptor completo fechado é o estado esperado.
+      const okHotmart = lock.state === "selling_hotmart";
+      const how = { selling: "vendas abertas: as ofertas Hotmart respondem", closed: `vendas fechadas: ${lock.closed.length}/${lock.total} ofertas Hotmart encerradas (coerente com a trava)`, p0_bypass: `P0: vendas fechadas, mas ${lock.accepting.length} oferta(s) Hotmart aceitando pagamento (encerrar na Hotmart é ato do dono)`, closed_while_open: "vendas abertas, mas as ofertas Hotmart estão encerradas", degraded: "vendas abertas, mas alguma oferta Hotmart não responde", unverified: "vendas fechadas; alguma oferta Hotmart não respondeu à sonda", selling_hotmart: `modo Hotmart: ${lock.accepting.length}/${lock.total} ofertas aceitando (os 5 kits), Conteúdo Pronto fechado (esperado)`, degraded_hotmart: "modo Hotmart, mas algum dos 5 kits não está aceitando pagamento", p0_subscription_bypass: `P0: Conteúdo Pronto aceitando pagamento com a assinatura fechada (${(lock.leaking || []).join(", ")})`, unknown: "interruptor ou sondas Hotmart não verificados" }[lock.state];
+      return { proven: ok || okHotmart, failed: ["p0_bypass", "closed_while_open", "degraded", "p0_subscription_bypass", "degraded_hotmart"].includes(lock.state), lastEvidence: ok || okHotmart ? new Date(now).toISOString() : null, how };
     }
     case "probes": { const ok = (ctx.probes || []).length > 0 && ctx.probes.every((x) => x.ok); return { proven: ok, lastEvidence: ok ? new Date(now).toISOString() : null, how: "serviços respondendo" }; }
     default: return { proven: false, lastEvidence: null, how: "sem evidência automática ainda" };

@@ -90,6 +90,8 @@ jobs:
           DAY="$(TZ=America/Sao_Paulo date +%F)"
           if [ "$SCHEDULE" = "30 23 * * *" ]; then DAY="$(TZ=America/Sao_Paulo date -d '-6 hours' +%F)"; fi
           echo "SHORT_DAY=$DAY" >> "$GITHUB_ENV"
+          # The cross-post step runs in another shell: export the resolved slot (dica/calc/all were never cross-posted).
+          echo "SLOT=$SLOT" >> "$GITHUB_ENV"
           echo "::notice title=SHORT_TARGET::slot=$SLOT day=$DAY schedule=${SCHEDULE:-dispatch}"
           if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT" --day="$DAY"; else node scripts/channels/youtube-daily-short.mjs --slot="$SLOT" --day="$DAY"; fi
       - name: Cross-post the Short (TikTok, Instagram Reels, Facebook, Telegram)
@@ -102,7 +104,7 @@ jobs:
           META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-        run: node scripts/channels/short-crosspost.mjs --slot="$SLOT" --day="${SHORT_DAY:-}"
+        run: node scripts/channels/short-crosspost.mjs --slot="${SLOT:-oferta}" --day="${SHORT_DAY:-}"
       - name: Keep the dry-run preview for the owner to watch (3 days)
         if: ${{ inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4

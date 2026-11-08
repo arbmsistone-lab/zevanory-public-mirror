@@ -5,7 +5,8 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen } from "./youtube-daily-short.mjs";
+import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, channelPurchaseMode, channelPublishPaused } from "./youtube-daily-short.mjs";
+import { hotmartLockViolations } from "../../worker/sales-lock-content.mjs";
 import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta } from "../../worker/politica-unica.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { getPublisherAccessToken } from "./publisher-access.mjs";
@@ -17,6 +18,8 @@ const sleepMs = ms => new Promise(r => setTimeout(r, ms));
 export function captionFor(plan, channel, { salesOpen = false } = {}) {
   const caption = captionText(plan, channel, salesOpen === true);
   if (salesOpen !== true && hasCheckoutCta(caption)) throw new Error("caption_checkout_cta_while_closed");
+  // Hotmart mode: only this kit's price and /hotmart/<slug> purchase path may appear.
+  if (plan.purchase === "hotmart" && hotmartLockViolations(caption, plan.entry.product.sku).length) throw new Error("caption_outside_hotmart_kit");
   return caption;
 }
 function captionText(plan, channel, open) {
@@ -92,9 +95,12 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
   return { provider_post_id: String(j.result.message_id), url: handle ? `https://t.me/${handle}/${j.result.message_id}` : null };
 }
 
-export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen }) {
-  const open = typeof salesOpen === "boolean" ? salesOpen : await channelSalesOpen(kv);
-  const plan = { ...planSlot(day, slot, { salesOpen: open }), salesOpen: open }, report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
+export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, hotmartOpen }) {
+  const mode = typeof salesOpen === "boolean" ? { salesOpen, hotmartOpen: salesOpen ? false : hotmartOpen === true } : await channelPurchaseMode(kv);
+  const open = mode.salesOpen === true;
+  const planned = planSlot(day, slot, { salesOpen: open, hotmartOpen: mode.hotmartOpen === true });
+  // Caption lock: purchase open for this plan = full switch, or Hotmart mode for an offer Short of one of the 5 kits.
+  const plan = { ...planned, salesOpen: open || planned.purchase === "hotmart" }, report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
   const done = async ch => { const v = await kv.get(`zpc:acquisition:daily:${day}:${ch}${sfx}`); return v ? JSON.parse(v) : null; };
   const record = async (ch, r) => {
     await kv.put(`zpc:acquisition:daily:${day}:${ch}${sfx}`, JSON.stringify({ channel: ch, day, status: "publicado", provider_post_id: r.provider_post_id, url: r.url, privacy: r.privacy || "public", product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 400 * 86400 });
@@ -140,6 +146,8 @@ if (isMain) {
   const day = (process.argv.find(a => a.startsWith("--day=")) || "").slice(6) || localDay();
   const slotArg = (process.argv.find(a => a.startsWith("--slot=")) || "").slice(7) || "oferta";
   const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
+  // Creative-autonomy pause (or unknown state): no cross-post, same rule as the YouTube step.
+  if (await channelPublishPaused(kv)) { console.log("::notice title=SHORT_CROSSPOST::creative_autopublish_paused_or_unknown"); process.exit(0); }
   let errors = 0;
   for (const slot of slotArg === "all" ? ["dica", "oferta", "calc"] : [slotArg]) {
     const window = publicationWindow({ day, slot, now: Date.now() });

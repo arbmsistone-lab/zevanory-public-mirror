@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {
   handleSiteChat, handleSiteChatAdmin, composeReply, guardReply, validateSiteReply, classify, redactSensitive,
   resetSiteChatState, buildCatalog, CATALOG, CHAT, CLOSED_PRICE_ANSWER, KILL_KV_KEY, CATEGORIES_OFF_KV_KEY, ESCALATION_CATEGORIES,
-  readSiteChatFlags, KNOWLEDGE, knowledgeAnswer
+  readSiteChatFlags, KNOWLEDGE, knowledgeAnswer, HOTMART_SALE_NOTE, SUBSCRIPTION_CLOSED_ANSWER
 } from "../worker/site-chat.mjs";
 import salesWorker, { injectSiteChatHtml, shouldInjectSiteChat, siteChatEnabled, SITE_CHAT_PAGES } from "../worker/sales-public-worker.mjs";
 import { SUPPORT_REFUND_ANSWER, SUPPORT_DELIVERY_ANSWER, SLA_TEXT, SUPPORT_FORM_URL } from "../worker/politica-unica.mjs";
@@ -15,11 +15,11 @@ import { fakeSql, fakeKv, sinkMailer, fakeAi, captureLogs, SANDBOX_ENV, AI_OUTPU
 
 const CHECKOUT = /\/comprar\b|\/assinar\b|hotmart|mercadopago\.com|pay\.|checkout/i;
 const ORIGIN = "https://vendas.zevanory.api.br";
-function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, mailer = sinkMailer(), ai, catalog, fetchImpl, registerOfficial } = {}) {
+function harness({ env = {}, kv = fakeKv(), sql = fakeSql(), salesOpen = async () => false, hotmartOpen, mailer = sinkMailer(), ai, catalog, fetchImpl, registerOfficial } = {}) {
   resetSiteChatState();
   const factoryCalls = { n: 0 };
   const fullEnv = { ...SANDBOX_ENV, ZEVANORY_PRIVATE_ARTIFACTS: kv, ...(ai ? { AI: ai } : {}), ...env };
-  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, mailer, ...(catalog ? { catalog } : {}), ...(fetchImpl ? { fetchImpl } : {}), ...(registerOfficial ? { registerOfficialAtendimento: registerOfficial } : {}) };
+  const deps = { sqlFactory: () => { factoryCalls.n += 1; return sql; }, salesOpen, ...(hotmartOpen ? { hotmartOpen } : {}), mailer, ...(catalog ? { catalog } : {}), ...(fetchImpl ? { fetchImpl } : {}), ...(registerOfficial ? { registerOfficialAtendimento: registerOfficial } : {}) };
   const call = async (path, body, { method = "POST", headers = {} } = {}) => {
     const res = await handleSiteChat(new Request("https://chat.internal" + path, { method, headers: { "content-type": "application/json", "x-zev-client-ip": "203.0.113.7", ...headers }, body: method === "GET" ? undefined : JSON.stringify(body || {}) }), fullEnv, deps);
     return { status: res.status, body: await res.json() };
@@ -484,4 +484,23 @@ test("SC20 conhecimento oficial (R148): cada item vem da página publicada, pass
   }
   assert.equal(knowledgeAnswer("conteudo-pronto", "o que vem?", { name: "x" }), null, "[SC20.8] sem página publicada, sem conhecimento inventado");
   assert.equal(classify("vocês consertam geladeira?").category, "low_confidence", "[SC20.9] fora do escopo continua indo para pessoa");
+});
+
+test("SC21 modo Hotmart: 5 kits à venda pela Hotmart com o interruptor completo fechado; Conteúdo Pronto fechado; falha = fechado", async () => {
+  const h = harness({ hotmartOpen: async () => true });
+  const s = await h.session();
+  const kit = await h.say(s, "Quanto custa o Lucro & Caixa?");
+  assert.ok(kit.body.reply.includes("R$ 147,00") && kit.body.reply.includes(HOTMART_SALE_NOTE), "[SC21.1] kit com preço e pagamento pela Hotmart: " + kit.body.reply);
+  assert.equal(kit.body.category, "condition", "[SC21.2]");
+  const cp = await h.say(s, "Quanto custa o Conteúdo Pronto?");
+  assert.equal(cp.body.reply, SUBSCRIPTION_CLOSED_ANSWER, "[SC21.3] assinatura segue fechada no modo Hotmart");
+  for (const hotmartOpen of [async () => { throw new Error("kv_down"); }, async () => "true", async () => new Promise(() => {})]) {
+    const c = harness({ hotmartOpen });
+    const r = await c.say(await c.session(), "Quanto custa o Lucro & Caixa?");
+    assert.equal(r.body.reply, CLOSED_PRICE_ANSWER, "[SC21.4] erro/valor ambíguo/timeout do modo Hotmart = fechado");
+  }
+  assert.ok(validateSiteReply("Conteúdo Pronto (assinatura mensal): R$ 197,00.", { salesOpen: true, hotmartOnly: true }).issues.includes("price_outside_catalog"), "[SC21.5] preço da assinatura fora no modo Hotmart");
+  assert.ok(validateSiteReply(HOTMART_SALE_NOTE, { salesOpen: true }).issues.includes("checkout"), "[SC21.6] frase da Hotmart só vale no modo Hotmart");
+  assert.ok(validateSiteReply(HOTMART_SALE_NOTE, { salesOpen: true, hotmartOnly: true }).ok, "[SC21.7]");
+  assert.ok(validateSiteReply("Compre na Hotmart: https://pay.hotmart.com/X1", { salesOpen: true, hotmartOnly: true }).issues.includes("checkout"), "[SC21.8] outra menção à Hotmart continua bloqueada");
 });

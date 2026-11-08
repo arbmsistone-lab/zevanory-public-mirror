@@ -340,14 +340,18 @@ export function updateUptime(prev, probes, now = Date.now()) {
 
 export async function main() {
   const now = Date.now();
-  const [funnel, sales, reach, runs, pubs, health, salesStatus, coreStatus, site, control] = await Promise.all([
+  const [funnel, sales, reach, runs, pubs, health, salesStatus, coreStatus, site, control, hotmartStatusRead] = await Promise.all([
     kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublications(now),
     probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), j("https://zevanory.api.br/api/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
+    j("https://zevanory.api.br/api/sales/hotmart-status").catch(() => null),
   ]);
   const prevSnapshot = await kvGet(SNAPSHOT_KEY).catch(() => null);
   const uptime = updateUptime(prevSnapshot?.operations?.uptime, [health, site, control], now);
   const salesOpen = salesStatus && !salesStatus._http ? salesStatus.open === true : null;
-  const buyFlow = evaluateBuyFlow(await probeBuyFlow().catch(() => []), salesOpen);
+  // Modo Hotmart (5 kits pela Hotmart com o interruptor completo fechado): estado normal esperado, não vazamento.
+  // Leitura falha/ambígua = null (tratado como fechado: os alarmes de vazamento continuam valendo).
+  const hotmartOpen = hotmartStatusRead && !hotmartStatusRead._http && typeof hotmartStatusRead.open === "boolean" ? hotmartStatusRead.open : null;
+  const buyFlow = evaluateBuyFlow(await probeBuyFlow().catch(() => []), salesOpen, hotmartOpen);
   const hotmart = await probeHotmart().catch(() => []);
   const videos = await collectShortVideos().catch(() => []);
   let registry = null;
@@ -372,7 +376,7 @@ export async function main() {
   const cronBeat = await kvGet("zpc:cron:v1:hourly");
   const isolatedBeat = await kvGet("zpc:cron:v1:isolated");
   const funnelBeat = await kvGet("zpc:cron:v1:funnel");
-  const inventory = evaluateInventory(inventoryDef, { support, voiceEval, backup, cronBeats: [cronBeat, isolatedBeat, funnelBeat].filter(Boolean), marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, salesOpen, probes: [health, site, control] }, now);
+  const inventory = evaluateInventory(inventoryDef, { support, voiceEval, backup, cronBeats: [cronBeat, isolatedBeat, funnelBeat].filter(Boolean), marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, salesOpen, hotmartOpen, probes: [health, site, control] }, now);
   const experiments = evaluateExperiments(registry, { videos, productDaily: funnel?.productDaily || {}, campaigns: funnel?.topCampaigns || [] }, now);
 
   // Reach history: one point per local day (latest of the day wins), 120 days.
@@ -406,8 +410,9 @@ export async function main() {
   const salesCount = salesKnown.value;
   const grossKnown = (c, m) => (knownCount(m).value == null ? null : knownCount(m).lowerBound ? null : c.grossCents);
   const salesGoal = (base, value, m) => ({ ...base, current: value, integrityClass: m.integrityClass, lowerBound: knownCount(m).lowerBound, source: m.source });
-  const hotmartLock = hotmartLockState(hotmart, salesOpen);
-  if (hotmartLock.severity === "P0") console.log("::error title=P0_HOTMART_BYPASS::" + JSON.stringify({ accepting: hotmartLock.accepting, salesOpen }));
+  const hotmartLock = hotmartLockState(hotmart, salesOpen, hotmartOpen);
+  const hotmartMode = salesOpen === false && hotmartOpen === true;
+  if (hotmartLock.severity === "P0") console.log("::error title=P0_HOTMART_BYPASS::" + JSON.stringify({ accepting: hotmartLock.accepting, leaking: hotmartLock.leaking || hotmartLock.accepting, salesOpen, hotmartOpen }));
 
   const autonomy = runs ? computeAutonomy(runs.filter((r) => ENGINE_WORKFLOWS.some((w) => r.path.endsWith(w))), now) : null;
   const publications = computePublications(pubs.byDay);
@@ -501,8 +506,9 @@ export async function main() {
       uptime,
       kvQuota, salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
       // Derived from the switch and the six Hotmart probes; never a constant.
-      checkoutMode: (salesOpen === true ? "Vendas abertas: checkout próprio vendendo" : salesOpen === false ? "Vendas fechadas (interruptor do dono): checkout próprio e rotas Hotmart do site fechados" : "Interruptor de vendas NÃO VERIFICADO nesta leitura") + "; " + hotmartModeText(hotmartLock) + (hotmartLock.severity === "P0" ? " — P0: oferta Hotmart aceitando pagamento com vendas fechadas" : ""),
+      checkoutMode: (salesOpen === true ? "Vendas abertas: checkout próprio vendendo" : hotmartMode ? "Vendendo pela Hotmart (5 kits abertos; interruptor completo fechado: checkout próprio e Conteúdo Pronto fechados)" : salesOpen === false ? "Vendas fechadas (interruptor do dono): checkout próprio e rotas Hotmart do site fechados" : "Interruptor de vendas NÃO VERIFICADO nesta leitura") + "; " + hotmartModeText(hotmartLock) + (hotmartLock.severity === "P0" ? (hotmartMode ? " — P0: Conteúdo Pronto aceitando pagamento com a assinatura fechada" : " — P0: oferta Hotmart aceitando pagamento com vendas fechadas") : ""),
       hotmartLock,
+      hotmartSwitch: hotmartOpen,
       buyFlow,
       runtime: coreStatus && !coreStatus._http ? coreStatus.runtime || null : null,
       hotmart,
@@ -519,13 +525,13 @@ export async function main() {
     support: support ? { generatedAt: support.generatedAt, scorePct: support.scorePct, aiAnsweredPct: support.aiAnsweredPct, questions: support.questions, failures: support.failures || [], method: support.method } : null,
     market: market ? { generatedAt: market.generatedAt, method: market.method, integrity: market.integrity, top: (market.ranking || []).slice(0, 12).map((r) => ({ name: r.name, slug: r.slug, score: r.score, product: r.product, topQueries: (r.topQueries || []).slice(0, 3) })), ideas: market.ideas || [] } : null,
     recommendations: [
-      ...(hotmartLock.severity === "P0" ? [{ title: "P0: oferta Hotmart aceitando pagamento com vendas fechadas", evidence: `${hotmartLock.accepting.join(", ")}: página da oferta respondeu sem o aviso de vendas encerradas`, action: "Dono: encerrar a oferta na Hotmart agora; fechar release comercial e registrar incidente P0", confidence: "alta", risk: "crítico", cost: "R$ 0" }] : []),
-      ...(buyFlow.some((b) => b.expected != null && !b.ok && b.state !== "error") ? [{ title: "Caminho de compra diverge do interruptor de vendas", evidence: buyFlow.filter((b) => b.expected != null && !b.ok).map((b) => `${b.sku}: ${b.state} (esperado ${b.expected})`).join("; "), action: salesOpen ? "Conferir /api/sales/status e o Worker de vendas: com vendas abertas o botão deve abrir o pagamento" : "Fechar imediatamente o caminho de compra: com vendas fechadas nenhum pagamento pode abrir", confidence: "alta", risk: "alto", cost: "R$ 0" }] : []),
+      ...(hotmartLock.severity === "P0" ? [{ title: hotmartMode ? "P0: Conteúdo Pronto aceitando pagamento com a assinatura fechada" : "P0: oferta Hotmart aceitando pagamento com vendas fechadas", evidence: `${(hotmartLock.leaking || hotmartLock.accepting).join(", ")}: página da oferta respondeu sem o aviso de vendas encerradas`, action: "Dono: encerrar a oferta na Hotmart agora; fechar release comercial e registrar incidente P0", confidence: "alta", risk: "crítico", cost: "R$ 0" }] : []),
+      ...(buyFlow.some((b) => b.expected != null && !b.ok && b.state !== "error") ? [{ title: "Caminho de compra diverge do interruptor de vendas", evidence: buyFlow.filter((b) => b.expected != null && !b.ok).map((b) => `${b.sku}: ${b.state} (esperado ${b.expected})`).join("; "), action: salesOpen ? "Conferir /api/sales/status e o Worker de vendas: com vendas abertas o botão deve abrir o pagamento" : hotmartMode ? "Conferir /api/sales/hotmart-status e o Worker de vendas: no modo Hotmart o botão Comprar dos 5 kits deve levar à compra pela Hotmart" : "Fechar imediatamente o caminho de compra: com vendas fechadas nenhum pagamento pode abrir", confidence: "alta", risk: "alto", cost: "R$ 0" }] : []),
       ...recommend({ funnel, reach, publications, salesKnown }),
     ],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, workersUsage: workersUsage || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesOpen, sales: salesCount, salesClass: salesKnown.integrityClass, salesBySource: { checkoutProprio: salesAllc.checkoutProprio.total, hotmart: salesAllc.hotmart.total }, salesIntegrity: fm.sales30.integrityClass, hotmartLock: { state: hotmartLock.state, accepting: hotmartLock.accepting.length, closed: hotmartLock.closed.length, total: hotmartLock.total }, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, workersUsage: workersUsage || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesOpen, hotmartSwitch: hotmartOpen, sales: salesCount, salesClass: salesKnown.integrityClass, salesBySource: { checkoutProprio: salesAllc.checkoutProprio.total, hotmart: salesAllc.hotmart.total }, salesIntegrity: fm.sales30.integrityClass, hotmartLock: { state: hotmartLock.state, accepting: hotmartLock.accepting.length, closed: hotmartLock.closed.length, total: hotmartLock.total }, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
   // Aggregate-only commercial diagnosis (no PII): clean page/source/campaign/traffic-class counts since
   // the bot filter. Visitor-controlled labels (utm) outside our own naming are masked as "outro" because
   // this notice is public. "visitorDays" = sum of daily uniques (the hash rotates daily), not people.

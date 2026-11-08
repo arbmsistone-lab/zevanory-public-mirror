@@ -32,7 +32,13 @@ function fakeDb() {
       for (const r of rows.values()) if (r.status === "confirmed" && r.consent_version === params[1] && r.nurture_step >= params[2] && r.nurture_step < params[0]) r.nurture_step = params[0];
       return [];
     }
-    if (/^select email, name, nurture_step/i.test(t)) return [...rows.values()].filter((r) => r.status === "confirmed" && r.nurture_step < params[0] && Date.parse(r.nurture_at) < Date.now() - 2 * DAY);
+    if (/^select email, name, nurture_step/i.test(t)) return [...rows.values()].filter((r) => r.status === "confirmed" && r.nurture_step < params[0] && (r.nurture_step < 2 || params[1] === true) && Date.parse(r.nurture_at) < Date.now() - 2 * DAY).sort((x, y) => Date.parse(x.nurture_at) - Date.parse(y.nurture_at)).slice(0, 50);
+    if (/^with expired as \(update zevanory_leads set nurture_step=\$1, nurture_at=now\(\)/.test(t)) {
+      const held = [...rows.values()].filter((r) => r.status === "confirmed" && r.nurture_step >= 2 && r.nurture_step < params[0]);
+      const expired = held.filter((r) => Date.parse(r.nurture_at) < Date.now() - params[1] * DAY);
+      for (const r of expired) { r.nurture_step = params[0]; r.nurture_at = new Date().toISOString(); }
+      return [{ expired: expired.length, held: held.length }];
+    }
     if (/^update zevanory_leads set nurture_step=\$2, nurture_at=now\(\) where email=\$1 and status='confirmed' and nurture_step=\$3 returning email/.test(t)) {
       hooks.beforeClaim?.(params[0]);
       const r = rows.get(params[0]);

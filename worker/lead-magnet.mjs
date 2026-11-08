@@ -33,8 +33,12 @@ const CONSENT_VERSION = "lead-magnet-v1-2026-10-07";
 export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 2 };
 export const PENDING_GRACE_DAYS = 7;
 export const INACTIVE_RETENTION_DAYS = 730;
-// After the last e-mail the consent allows (or the held offer was abandoned), the purpose is fulfilled.
+// After the last e-mail the consent allows (or the held offer expired: HELD_OFFER_MAX_DAYS), the purpose is fulfilled
+// and the lead is erased SEQUENCE_END_GRACE_DAYS later ("até 30 dias depois do fim da sequência", política de privacidade).
 export const SEQUENCE_END_GRACE_DAYS = 30;
+// Offer (step >= 2) held by the sales lock: kept at most 60 days since it reached the offer step (nurture_at of the
+// step-2 claim), then the sequence ends (NURTURE_DONE, nurture_at=now) and the existing retention erases it 30 days later.
+export const HELD_OFFER_MAX_DAYS = 60;
 export const DEFAULT_EVENT_RETENTION_DAYS = 730;
 const RETENTION_BATCH = 200;
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
@@ -187,7 +191,7 @@ function nurtureEmailText(step, { name, optOutUrl, interest = "ia" }) {
   const o = OFFERS[interest] || OFFERS.ia;
   if (step === 0) return { subject: "Seu checklist: 15 minutos por dia para organizar o negócio", text: `${hi}\n\nAqui está o seu checklist gratuito:\n${CHECKLIST_URL}\n\nComece hoje pelo bloco do caixa (5 minutos). Em 2 dias eu te mando dois hábitos simples que evitam perder dinheiro e clientes.` + sign };
   if (step === 1) return { subject: "Dois hábitos que evitam perder dinheiro e clientes", text: `${hi}\n\n1. Toda sexta, olhe três números: quanto entrou, quanto saiu e quanto sobrou. Se quiser fazer a conta de margem em segundos, use a calculadora gratuita:\n${SALES}/calculadora-margem-de-lucro?utm_source=email&utm_medium=nurture&utm_campaign=s1-${interest}\n\n2. Toda conversa com cliente termina com um próximo passo claro (responder a dúvida, mandar a proposta, combinar o retorno). Anote o que ficou combinado para não repetir mensagens.\n\nEsta mensagem é apenas uma dica prática; não contém oferta.` + sign };
-  if (step === 2) return { subject: `${o.name}: o próximo passo depois do checklist`, text: `${hi}\n\nPelo que você estava lendo no nosso site, o material que mais combina com o seu momento é o ${o.name} (R$ ${o.price}, pagamento único).\n\nEle serve para ${o.promise}.\n\nVocê recebe tudo por e-mail após a confirmação do pagamento, em ${DELIVERY_72H}. Se não for para você, pode desistir em ${CUSTOMER_RULE_7D}, sem justificativa e com devolução integral.\n\nVer o que vem dentro:\n${track(o.slug, 2, interest)}\n\nSe preferir comparar todos os materiais: ${SALES}/solucoes?utm_source=email&utm_medium=nurture&utm_campaign=s2-${interest}` + sign };
+  if (step === 2) return { subject: `${o.name}: o próximo passo depois do checklist`, text: `${hi}\n\nPelo que você estava lendo no nosso site, o material que mais combina com o seu momento é o ${o.name} (R$ ${o.price}, pagamento único).\n\nEle serve para ${o.promise}.\n\nEntrega: ${DELIVERY_72H}. Se não for para você, pode desistir em ${CUSTOMER_RULE_7D}, sem justificativa e com devolução integral.\n\nVer o que vem dentro:\n${track(o.slug, 2, interest)}\n\nSe preferir comparar todos os materiais: ${SALES}/solucoes?utm_source=email&utm_medium=nurture&utm_campaign=s2-${interest}` + sign };
   if (step === 3) return { subject: "As dúvidas mais comuns antes de decidir", text: `${hi}\n\nAntes de comprar, quase todo mundo pergunta:\n\n• "Preciso entender de tecnologia?" Não. Tudo vem com o passo a passo no arquivo "Comece aqui".\n• "Quanto tempo leva?" Dá para começar no mesmo dia, seguindo o arquivo "Comece aqui". Depois, a rotina é curta e semanal.\n• "Substitui contador ou consultor?" Não. É um material prático de gestão do dia a dia.\n• "E se eu não gostar?" Você pode desistir em ${CUSTOMER_RULE_7D}, com devolução integral.\n\nSe alguma dúvida ficou, é só responder este e-mail.\n\n${o.name}: ${track(o.slug, 3, interest)}` + sign };
   return { subject: "Último e-mail desta sequência", text: `${hi}\n\nEste é o último e-mail da sequência do checklist. Depois dele, não envio mais nada sobre isso.\n\nSe você quiser resolver tudo de uma vez (IA, vendas e caixa), o Negócio Completo reúne os três materiais e mais um plano de 30 dias, por R$ 247 (separados custariam R$ 341). Arrependimento: ${CUSTOMER_RULE_7D}.\n${track("negocio-completo", 4, interest)}\n\nSe agora não é o momento, tudo bem. O checklist continua sendo seu:\n${CHECKLIST_URL}` + sign };
 }
@@ -240,7 +244,18 @@ async function confirm(env, sql, token) {
 }
 
 const MIN_DAYS_BEFORE = { 1: 2, 2: 5, 3: 3, 4: 4 };
-export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now = Date.now() } = {}) {
+// Ofertas (passos 2 a 4): só com compra possível. Interruptor completo (salesOpen) OU modo Hotmart (hotmartOpen,
+// sales:hotmart:v1): todas as ofertas da sequência (OFFERS e o Negócio Completo do passo 4) são kits vendidos pela Hotmart.
+// Retido pela trava de vendas, o lead espera a reabertura por até HELD_OFFER_MAX_DAYS (60 dias desde o passo 2); depois
+// a sequência termina (NURTURE_DONE) e runLeadRetention apaga em SEQUENCE_END_GRACE_DAYS (30). Descadastro sai na hora.
+// Retidos não entram no lote de envio com vendas fechadas: os passos 0/1 (dicas) nunca ficam sem vez.
+// Os 5 kits do modo Hotmart (mesma lista de worker/sales-lock-content.mjs HOTMART_KITS; este módulo fica sem a importação
+// porque roda isolado nos gates do P09). Conteúdo Pronto nunca é oferta da sequência.
+const HOTMART_KIT_SLUGS = Object.freeze(["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"]);
+export const NURTURE_OFFER_SLUGS = Object.freeze([...new Set([...Object.values(OFFERS).map((o) => o.slug), "negocio-completo"])]);
+export async function runLeadNurture(env, { sqlFactory, salesOpen: fullSwitchOpen = false, hotmartOpen = false, now = Date.now() } = {}) {
+  // salesOpen (aqui) = compra possível para as ofertas da sequência: interruptor completo OU modo Hotmart dos 5 kits.
+  const salesOpen = fullSwitchOpen === true || (hotmartOpen === true && NURTURE_OFFER_SLUGS.every((slug) => HOTMART_KIT_SLUGS.includes(slug)));
   if (!env.DATABASE_URL || !sqlFactory) return { ok: false, reason: "lead_nurture_unconfigured" };
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureLeadSchema(sql);
@@ -248,9 +263,20 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
   for (const [version, followups] of Object.entries(CONSENT_FOLLOWUPS)) {
     await sql.query("update zevanory_leads set nurture_step=$1 where status='confirmed' and consent_version=$2 and nurture_step >= $3 and nurture_step < $1", [NURTURE_DONE, version, 1 + followups]);
   }
+  // Held offers (sales closed): ONE query ends those held for more than HELD_OFFER_MAX_DAYS and counts the rest.
+  let heldNow = 0, expiredHeld = 0;
+  if (!salesOpen) {
+    const h = (await sql.query(`with expired as (update zevanory_leads set nurture_step=$1, nurture_at=now()
+        where status='confirmed' and nurture_step >= 2 and nurture_step < $1 and nurture_at < now() - make_interval(days => $2::int) returning 1)
+      select (select count(*) from expired)::int as expired,
+             (select count(*) from zevanory_leads where status='confirmed' and nurture_step >= 2 and nurture_step < $1)::int as held`, [NURTURE_DONE, HELD_OFFER_MAX_DAYS]))[0] || {};
+    expiredHeld = Number(h.expired) || 0;
+    heldNow = Math.max(0, (Number(h.held) || 0) - expiredHeld);
+  }
+  // With sales closed only the tips (steps 0/1) enter the batch, so held offers never starve them.
   const due = await sql.query(`select email, name, nurture_step, nurture_at, consent_version, subject_ref from zevanory_leads
-      where status='confirmed' and nurture_step < $1 and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, [NURTURE_DONE]);
-  const out = { ok: true, checked: due.length, sent: 0, held: 0 };
+      where status='confirmed' and nurture_step < $1 and (nurture_step < 2 or $2::boolean) and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, [NURTURE_DONE, salesOpen === true]);
+  const out = { ok: true, checked: due.length, sent: 0, held: heldNow, ...(expiredHeld ? { expired_held: expiredHeld } : {}) };
   for (const lead of due) {
     const step = Number(lead.nurture_step);
     const since = now - new Date(lead.nurture_at).getTime();
@@ -258,9 +284,9 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
     const cap = 1 + (CONSENT_FOLLOWUPS[lead.consent_version] ?? 0);
     if (step >= cap) { await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]); out.capped = (out.capped || 0) + 1; continue; }
     if (step >= 2 && !salesOpen) {
-      // Offers only go out while customers can actually buy; give up after 30 days.
-      if (since > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
-      out.held += 1; continue;
+      // Offers only go out while customers can actually buy (defensive: the batch query already leaves held offers
+      // out while sales are closed; they are counted and expired above).
+      continue;
     }
     if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;
     const ref = lead.subject_ref || null;

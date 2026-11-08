@@ -2,7 +2,7 @@
 """Mutantes do Funil v2 (vendas multimeios, lista de espera, intenção real, conversões, Hotmart P0), classificados
 pelo classificador COMPARTILHADO scripts/ci/mutant_classifier.py (#901), sem modificação.
 
-  suíte unit  tests/funnel-counting.test.mjs                         (21 testes, sem rede)
+  suíte unit  tests/funnel-counting.test.mjs                         (22 testes, sem rede)
   suíte pg    tests/integration/funnel-own-sales-postgres.test.mjs     (4 testes, PostgreSQL real: T4_PG_HOST/T4_PG_PORT)
 
 Expectativas: scripts/ci/mutants_funnel_v2_config.json, seções "unit"/"pg" -> "mutants" no formato de
@@ -14,7 +14,7 @@ qual asserção a codifica e é a primeira a falhar no teste), antes de rodá-la
 Ordem (fail-closed):
   1. config carregada e validada por load_mutant_config + regras deste runner (primária sem marcador, mutante sem
      config, config órfã, sem descrição da mudança) ANTES de rodar qualquer coisa  -> exit 2 (CONFIG_INVALID);
-  2. baseline sem mutação: SURVIVED pelo classificador e total fixado (21 / 4); cada test_pattern casa com
+  2. baseline sem mutação: SURVIVED pelo classificador e total fixado (22 / 4); cada test_pattern casa com
      exatamente 1 teste da baseline                                                   -> exit 2;
   3. cada mutante numa cópia temporária (o original nunca é tocado); âncora não única => INCONCLUSIVE.
 KILLED só com asserção PRIMÁRIA casada; falha só em secundária, falha não relacionada, outra asserção do teste
@@ -49,7 +49,7 @@ COPY = ["worker", "scripts/audit", "scripts/channels", "data", "db/migrations", 
 FC, SNAP, INV = "scripts/audit/funnel-counting.mjs", "scripts/audit/command-center-snapshot.mjs", "scripts/audit/autonomy-inventory.mjs"
 FUN, SPW = "worker/funnel.mjs", "worker/sales-public-worker.mjs"
 SUITES = {
-    "unit": {"test": "tests/funnel-counting.test.mjs", "total": 21, "timeout": 300},
+    "unit": {"test": "tests/funnel-counting.test.mjs", "total": 22, "timeout": 300},
     "pg": {"test": "tests/integration/funnel-own-sales-postgres.test.mjs", "total": 4, "timeout": 600},
 }
 NODE = shutil.which("node") or "node"
@@ -91,6 +91,12 @@ M_UNIT = {
     "K4 marcador extraOrdersSameSession ignorado": (FC, _MARKERS, _MARKERS.replace(', "extraOrdersSameSession"', "")),
     "K5 zero parcial publicado como zero": (FC, 'const partialZero = cls === "PARTIAL" && c.total === 0;', "const partialZero = false;"),
     "K6 marcadores não exigidos para completo": (FC, 'const complete = ownTotal != null && hs === "ledger" && markers.clean;', 'const complete = ownTotal != null && hs === "ledger";'),
+    # Modo Hotmart (reabertura de 08/11): 5 kits aceitando com o interruptor completo fechado é o normal.
+    "H1 modo Hotmart ignorado no estado das ofertas": (FC, "  if (salesOpen === false && hotmartOpen === true) {", "  if (false) {"),
+    "H2 Conteúdo Pronto aceitando não é P0 no modo Hotmart": (FC, '    if (leaking.length) return { ...base, leaking, state: "p0_subscription_bypass", severity: "P0" };\n', ""),
+    "H3 inventário aceita kit fora do ar no modo Hotmart": (INV, '      const okHotmart = lock.state === "selling_hotmart";', '      const okHotmart = lock.state.endsWith("_hotmart");'),
+    "H4 painel diz vendas fechadas no modo Hotmart": (SNAP, "  const hotmartMode = salesOpen === false && hotmartOpen === true;", "  const hotmartMode = false;"),
+    "H5 caminho de compra ignora o modo Hotmart": (SNAP, "evaluateBuyFlow(await probeBuyFlow().catch(() => []), salesOpen, hotmartOpen)", "evaluateBuyFlow(await probeBuyFlow().catch(() => []), salesOpen)"),
 }
 M_PG = {
     "S1 failover na mesma sessão conta 2": (FUN, "coalesce(o.session_id::text, o.order_id::text) as purchase", "o.order_id::text as purchase"),
@@ -212,7 +218,7 @@ def render_doc(raw):
     if notes:
         lines += ["## Primeira execução estrita", ""] + [f"- {n}" for n in notes] + [""]
     head = ["| mutant | change | primary | justification | counter-proof |", "|---|---|---|---|---|"]
-    for suite, title in (("unit", "Suíte unitária (`tests/funnel-counting.test.mjs`, 21 testes)"),
+    for suite, title in (("unit", "Suíte unitária (`tests/funnel-counting.test.mjs`, 22 testes)"),
                          ("pg", "Suíte PostgreSQL 16 real (`tests/integration/funnel-own-sales-postgres.test.mjs`, 4 testes)")):
         sec = raw[suite]
         lines += [f"## {title} — {len(sec['mutants'])} mutantes", ""] + head

@@ -10,8 +10,8 @@ const textPart=(v,n)=>[...new Intl.Segmenter("pt-BR",{granularity:"grapheme"}).s
 export const BLUESKY_TAGS=Object.freeze(["empreendedorismo","pequenosnegocios","ia"]);
 export function blueskyPostText({title,hook,value,cta,productUrl,day}){
  const u=new URL(productUrl);
- // Checkout (/comprar/<SKU>, só com vendas abertas) ou página do produto (vendas fechadas); nada mais.
- if(u.protocol!=="https:"||u.hostname!=="vendas.zevanory.api.br"||!/^\/(?:comprar\/ZEV-[A-Z0-9-]+|ia-na-pratica|vendas-na-pratica|lucro-e-caixa|combo-ia-vendas|negocio-completo)$/.test(u.pathname))throw new Error("bluesky_product_link_invalid");
+ // Checkout (/comprar/<SKU>, só com vendas abertas), compra pela Hotmart (/hotmart/<slug>, modo Hotmart) ou página do produto (vendas fechadas); nada mais.
+ if(u.protocol!=="https:"||u.hostname!=="vendas.zevanory.api.br"||!/^\/(?:comprar\/ZEV-[A-Z0-9-]+|(?:hotmart\/)?(?:ia-na-pratica|vendas-na-pratica|lucro-e-caixa|combo-ia-vendas|negocio-completo))$/.test(u.pathname))throw new Error("bluesky_product_link_invalid");
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw new Error("bluesky_day_invalid");
  u.searchParams.set("utm_source","bluesky");u.searchParams.set("utm_medium","organic");u.searchParams.set("utm_campaign","conteudo_"+day.replace(/-/g,""));
  const link=u.toString();
