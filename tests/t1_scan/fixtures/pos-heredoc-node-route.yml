@@ -1,0 +1,10 @@
+# expect: route
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: |
+          node - <<'JS'
+          const z = process.env.ZONE;
+          await fetch(`https://api.cloudflare.com/client/v4/zones/${z}/workers/routes`, { method: "POST", body: JSON.stringify({ pattern: "x/*", script: "zevanory" }) });
+          JS

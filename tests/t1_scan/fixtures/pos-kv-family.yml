@@ -1,0 +1,9 @@
+# expect: config-kv
+# findings: 4
+jobs:
+  a:
+    steps:
+      - run: npx --yes wrangler@4.135.0 kv key put "control:v2:state" --path s.json --namespace-id "$NS" --remote
+      - run: npx wrangler kv bulk put entries.json --namespace-id "$NS"
+      - run: npx wrangler kv:key put k v --namespace-id "$NS"
+      - run: npx wrangler kv key delete k --namespace-id "$NS"
