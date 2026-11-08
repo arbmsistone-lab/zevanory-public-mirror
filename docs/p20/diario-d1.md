@@ -97,31 +97,119 @@ de CPF ou telefone é recusado, então use prefixo com letras (`ord_...`).
   banco (`DIARIO_D1_BINDING_CONFLICT`). É idempotente.
 - **Orçamento de bindings:** `check-binding-budget.py` conta só secrets e vars. O binding D1 não conta, então o
   planejado continua **59/60**. O UUID vai no binding `d1_databases`, nunca em var.
-- **Deploy** (`.github/workflows/central-production-deploy.yml`), antes do `wrangler deploy`, no mesmo token e na mesma
-  conta (nenhum segredo novo), sem nunca reprovar o deploy central por causa do diário:
-  1. lê o banco pela API (`GET /accounts/.../d1/database/<UUID>`). Se o token não lê o banco, ou o nome não for
-     `zevanory-diario-p20`, emite `::warning title=DIARIO_D1_MIGRACAO_PENDENTE` (ou `DIARIO_D1_BANCO_DIVERGENTE`) e
-     **tira o binding só deste deploy**: o diário fica desligado (no-op), e o resto do Worker sobe igual;
-  2. roda `wrangler d1 migrations apply zevanory-diario-p20 --remote`. Erro de autorização vira
-     `::warning title=DIARIO_D1_MIGRACAO_PENDENTE`, e o binding fica, porque a gravação em sombra tolera a tabela
-     ausente. Outra falha vira a anotação `::error title=DIARIO_D1_MIGRACAO_FALHOU`, e o deploy também segue;
-  3. depois do deploy, um readback somente leitura (`select count(*) as n from diario_head`) registra
-     `::notice`/`::warning title=DIARIO_D1_READBACK`, com `continue-on-error`. Ele nunca dispara o rollback.
+- **Deploy** (`.github/workflows/central-production-deploy.yml`), antes do `wrangler deploy`, sempre com a credencial
+  D1 **dedicada** de cada passo (seção "Credenciais dedicadas (DEC-P20-D1-01)"), sem nunca reprovar o deploy central
+  por causa do diário:
+  1. sem o segredo `CF_TOKEN_D1_DIARIO_MIGRATE`, emite `::warning title=DIARIO_D1_TOKEN_DEDICADO_AUSENTE` e **tira o
+     binding só deste deploy** (diário desligado, no-op). Nenhuma chamada D1 sai, e não há queda para outro token;
+  2. lê o banco pela API (`GET /accounts/.../d1/database/<UUID>`) com o token de migração. Se ele não lê o banco, ou
+     se o nome não for `zevanory-diario-p20`, emite `::warning title=DIARIO_D1_MIGRACAO_PENDENTE` (ou
+     `DIARIO_D1_BANCO_DIVERGENTE`) e tira o binding só deste deploy;
+  3. roda `wrangler d1 migrations apply zevanory-diario-p20 --remote` com o token de migração. Erro de autorização
+     vira `::warning title=DIARIO_D1_MIGRACAO_PENDENTE`, e o binding fica, porque a gravação em sombra tolera a
+     tabela ausente. Outra falha vira a anotação `::error title=DIARIO_D1_MIGRACAO_FALHOU`, e o deploy também segue;
+  4. depois do deploy, um readback somente leitura (`select count(*) as n from diario_head`) roda com o token de
+     leitura `CF_TOKEN_D1_DIARIO_READ` e registra `::notice`/`::warning title=DIARIO_D1_READBACK`, com
+     `continue-on-error`. Sem esse segredo, o readback não roda (aviso). Ele nunca dispara o rollback.
 - Um binding no candidato com banco diferente do UUID acima reprova o passo (`DIARIO_D1_BINDING`), antes do deploy.
   Isso só acontece se o gerador estiver quebrado.
 - Testes: `tests/test_binding_budget_compaction.py` (classes `DiarioD1*`). Elas rodam o gerador real sobre a base
-  fixada e o texto real dos dois passos do workflow, com `curl` e `npx` falsos.
+  fixada e o texto real dos dois passos do workflow, com `curl` e `npx` falsos. O isolamento das credenciais está em
+  `tests/test_diario_d1_credentials.py`.
 
-**O que o proprietário precisa fazer se aparecer `DIARIO_D1_MIGRACAO_PENDENTE`:** dar a permissão **D1:Edit**, na
-conta `1b26415802588185a86c1d4d3ebf5bdb`, ao token que o deploy central já usa (`CLOUDFLARE_PUBLIC_OWNER_API_TOKEN`).
-Nenhum token ou segredo novo é necessário. O próximo deploy aplica a migração sozinho. Até lá, o diário fica sem
-tabela (ou sem binding), e nada mais muda.
+**O que o proprietário precisa fazer se aparecer `DIARIO_D1_TOKEN_DEDICADO_AUSENTE` ou `DIARIO_D1_MIGRACAO_PENDENTE`:**
+criar e cadastrar os tokens dedicados (roteiro na seção "Credenciais dedicadas (DEC-P20-D1-01)"). **Não** dê permissão
+D1 ao token do deploy central: o contra-auditor recusou isso (DEC-P20-D1-01), e o deploy não precisa dela. O próximo
+deploy aplica a migração sozinho. Até lá, o diário fica sem binding (ou sem tabela), e nada mais muda.
+
+## Credenciais dedicadas (DEC-P20-D1-01)
+
+**Decisão.** O contra-auditor GPT-6 deu NO-GO para ampliar o token compartilhado do deploy. Cada papel tem a sua
+credencial, e a CI entrega cada uma **só** ao passo autorizado, no `env` do passo (nunca no do job):
+
+| Papel | Segredo (environment `producao-critica`) | Permissão mínima | Único passo que recebe |
+|---|---|---|---|
+| Deploy do Worker | `CLOUDFLARE_PUBLIC_OWNER_API_TOKEN` (ou o legado `CLOUDFLARE_API_TOKEN`), sem mudança | **nenhuma permissão D1** | todos os passos do deploy, exceto os dois passos D1 |
+| Migração D1 | `CF_TOKEN_D1_DIARIO_MIGRATE` | Conta > **D1 > Editar**, só a conta `1b26415802588185a86c1d4d3ebf5bdb` | `P20 diário D1 - migrações` |
+| Leitura D1 (readback) | `CF_TOKEN_D1_DIARIO_READ` | Conta > **D1 > Ler**, só a mesma conta | `P20 diário D1 - readback` |
+
+Nos dois passos D1, `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_PUBLIC_OWNER_API_TOKEN` ficam **vazios**. O token
+compartilhado não chega ao processo, e cada chamada D1 passa o token dedicado de forma explícita. O registro está em
+`ops/publishers.json` (`services.zevanory.d1_credentials`).
+
+**O que a documentação da Cloudflare diz** (consultada em 07/11/2026):
+
+- Para subir um Worker com binding D1, basta o papel **Editor no Worker**. Nenhuma permissão é necessária no banco
+  vinculado. Permissão no recurso só é necessária para acessá-lo diretamente, por exemplo para consultar o D1
+  ([Workers, Roles and permissions, Bindings](https://developers.cloudflare.com/workers/authorization/#bindings)).
+  Por isso o token do deploy continua **sem D1**, e o upload com o binding não depende de nenhuma credencial D1.
+- As permissões D1 de token são **D1 Read** e **D1 Edit** (na API, "D1 Write"), na categoria Conta
+  ([API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)). A
+  documentação não oferece escopo por banco para D1: o recorte mínimo documentado é a **conta**.
+- `wrangler d1 execute --remote` usa o endpoint de consulta, que aceita **D1 Read** ou D1 Write
+  ([Query D1 Database](https://developers.cloudflare.com/api/operations/cloudflare-d1-query-database)). O
+  `GET` do banco também aceita D1 Read
+  ([Get D1 Database](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/get/)). Logo,
+  D1 Read basta para o readback.
+- `wrangler d1 migrations apply --remote` grava (DDL e a tabela `d1_migrations`), e por isso precisa de **D1 Edit**.
+  Erros `10000` e `7403` significam token sem a permissão do endpoint
+  ([Debug D1](https://developers.cloudflare.com/d1/observability/debug-d1/)).
+- O Wrangler usa as permissões do token em `CLOUDFLARE_API_TOKEN`, com `CLOUDFLARE_ACCOUNT_ID` definido. A CI fixa a
+  conta nos dois passos
+  ([Use granular permissions with Wrangler](https://developers.cloudflare.com/workers/authorization/#use-granular-permissions-with-wrangler)).
+
+### Roteiro do proprietário: criar e cadastrar os dois tokens
+
+Nunca envie o valor de um token a ninguém, nem ao executor, nem em issue, PR ou chat. Ele vai direto do painel da
+Cloudflare para o GitHub.
+
+**Token de migração (`CF_TOKEN_D1_DIARIO_MIGRATE`)**
+
+1. No painel da Cloudflare, abra **Perfil** (ícone do usuário, canto superior direito) > **Tokens de API** >
+   **Criar token** > **Criar token personalizado** (modelo personalizado, "Começar").
+2. **Nome do token:** `zevanory-d1-diario-migrate`.
+3. **Permissões:** uma única linha, **Conta** > **D1** > **Editar**. Não adicione mais nada: nem Workers, nem KV, nem
+   Zona, nem Usuário.
+4. **Recursos da conta:** **Incluir** > a conta `1b26415802588185a86c1d4d3ebf5bdb` (a conta "Zevanory@gmail.com's
+   Account"). Não use "Todas as contas". Se a tela oferecer a escolha de um banco D1 específico, escolha só
+   `zevanory-diario-p20`. A documentação atual não oferece essa opção, então a conta é o recorte esperado.
+5. **Filtragem de endereço IP:** deixe em branco. Os executores do GitHub Actions mudam de IP, e um filtro quebraria o
+   deploy.
+6. **TTL:** defina uma data de término, por exemplo 90 dias, e anote para renovar antes.
+7. **Continuar para o resumo**. Confira que o resumo mostra só "D1:Edit" em uma conta. Depois clique em **Criar
+   token** e **copie o valor uma vez** (ele não aparece de novo).
+
+**Token de leitura (`CF_TOKEN_D1_DIARIO_READ`)**
+
+Repita os passos 1 a 7, com duas diferenças: o nome é `zevanory-d1-diario-read`, e a permissão é **Conta** >
+**D1** > **Ler**.
+
+**Cadastrar no GitHub (para cada token)**
+
+1. Em `github.com/arbmsistone-lab/zevanory-public-mirror`, abra **Settings** > **Environments** >
+   **producao-critica** > **Environment secrets** > **Add environment secret**.
+2. **Name:** `CF_TOKEN_D1_DIARIO_MIGRATE` (ou `CF_TOKEN_D1_DIARIO_READ`). **Value:** cole o token. Clique em
+   **Add secret**. Use o environment, não "Repository secrets": só o job do deploy (`environment: producao-critica`)
+   pode ler.
+
+**Depois de cadastrar**
+
+- O próximo deploy central deve mostrar `::notice title=DIARIO_D1_MIGRACAO` e, após o deploy,
+  `::notice title=DIARIO_D1_READBACK::diario_head presente (linhas=1)`.
+- **Token do deploy sem D1:** se em algum momento você adicionou uma permissão D1 ao token do deploy central, remova-a
+  (Perfil > Tokens de API > editar o token). O deploy não precisa dela.
+- **P21 (token por Worker):** o token por Worker do `zevanory` também **não** precisa de D1. A documentação garante
+  que subir o binding exige só Editor no Worker. Se um deploy real contrariar isso (falha do upload que cite o D1),
+  o caminho mínimo é dar **D1 Read** (nunca Edit) só a esse token por Worker. Ele não seria usado em nenhuma chamada
+  D1 da CI. Essa mudança exigiria nova decisão do contra-auditor.
+- **Limitação:** a CI não consegue provar o escopo real de um token. Ela garante só *qual* segredo chega a cada passo.
+  Conferir no resumo do painel que cada token tem só a permissão da tabela é responsabilidade do proprietário.
 
 ## Dependências do proprietário (nada disso foi feito pelo executor)
 
 - Criar o banco D1 **`zevanory-diario-p20`** na conta `1b26415802588185a86c1d4d3ebf5bdb` e informar o UUID. **Feito:** UUID acima; banco vazio até o primeiro deploy com a migração.
 - **Nunca** reutilizar `zevanory-certification-only` (`7ff006f3-...`) nem banco de outra conta.
-- Tokens separados: **D1 Edit** só para o deploy e a migração, e **D1 Read** para a reconciliação e o ensaio.
+- Tokens separados (DEC-P20-D1-01): **D1 Edit** só para a migração (`CF_TOKEN_D1_DIARIO_MIGRATE`) e **D1 Read** para o readback, a reconciliação e o ensaio (`CF_TOKEN_D1_DIARIO_READ`). O token do deploy fica sem D1. **Pendente:** criação e cadastro pelo proprietário (roteiro acima).
 - **7 dias em sombra** antes de qualquer fail-closed.
 - **Cota:** o D1 Free é por conta e é compartilhado com os bancos ARBM. O volume previsto é bem abaixo de 1% de
   100 mil linhas por dia, mas o uso conjunto precisa ser conferido antes do PR 2.
@@ -181,4 +269,14 @@ sem `waitUntil`.
 - `scripts/ci/mutants_p20_diario_sombra.py` com `mutants_p20_diario_sombra_allow.json`: 13 mutantes, todos precisam
   morrer. Cobrem: bloquear a resposta, lançar, vazar PII no log, tentar gravar o comprador, gancho ausente de cada
   tipo, compat sem contexto, sem `waitUntil` e sem fila.
+- `tests/test_diario_d1_credentials.py` (C1 a C13, DEC-P20-D1-01). Lê o workflow real e simula o `env` que o GitHub
+  monta em cada passo de cada job, com segredos falsos de valores distintos. Depois executa os passos reais com `curl`
+  e `npx` falsos, que registram o token de cada chamada. Prova que cada token D1 aparece só no seu passo. Prova também
+  que, sem o segredo dedicado, há aviso e o deploy sai sem binding, sem nenhuma chamada D1. A migração usa o token
+  dedicado, o readback usa o token de leitura (sem queda para outro), o deploy segue com o token atual e o token
+  compartilhado nunca recebe chamada D1. Confere ainda o registro em `ops/publishers.json` e o detector T1
+  (`scripts/deploy/t1-write-scan.mjs`, PR #990: classe `d1` vista na migração, `TOKEN_OWNER` com os dois tokens
+  dedicados do serviço `zevanory`, entrada `write_paths` com a credencial dedicada). Se o detector sair da árvore, o
+  teste usa o mesmo critério da classe `d1`. São 12 mutantes, e todos precisam
+  morrer.
 - `.github/workflows/p20-diario-d1-tests.yml` roda só em `pull_request`, sem segredo, com `contents: read`.

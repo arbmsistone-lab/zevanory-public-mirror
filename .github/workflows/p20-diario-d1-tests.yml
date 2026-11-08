@@ -3,7 +3,8 @@ name: p20-diario-d1-tests
 # P20 (Roteiro Mestre v4.7, seção 9.1): testes do diário de eventos críticos no D1 (PR 1 de 7, docs/p20/diario-d1.md).
 # Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à Cloudflare ou à produção. (1) lógica
 # num D1 falso que executa SQL de verdade (node:sqlite, migração real com os triggers; 8 testes); (2) mutantes causais
-# pelo classificador compartilhado (10, todos KILLED); (3) gravação em modo sombra (PR 3: 11 testes, 13 mutantes).
+# pelo classificador compartilhado (10, todos KILLED); (3) gravação em modo sombra (PR 3: 11 testes, 13 mutantes);
+# (4) credenciais D1 dedicadas (DEC-P20-D1-01: 13 testes, 12 mutantes), com curl e npx falsos.
 # A suíte completa (manifesto) segue no gate existente.
 on:
   pull_request:
@@ -23,6 +24,10 @@ on:
       - "tests/p20-diario-sombra.test.mjs"
       - "scripts/ci/mutants_p20_diario_sombra.py"
       - "scripts/ci/mutants_p20_diario_sombra_allow.json"
+      - ".github/workflows/central-production-deploy.yml"
+      - "ops/publishers.json"
+      - "tests/test_diario_d1_credentials.py"
+      - "scripts/deploy/t1-write-scan.mjs"
 
 permissions:
   contents: read
@@ -70,6 +75,14 @@ jobs:
           python3 scripts/ci/mutants_p20_diario_sombra.py < /dev/null | tee /tmp/muts.txt
           echo "::notice title=P20_DIARIO_SOMBRA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/muts.txt)"
           grep -qx "MUTANTS total=13 killed=13 survived=0 inconclusive=0" /tmp/muts.txt || { echo "::error::mutante da sombra sobreviveu ou contagem mudou"; exit 1; }
+      - name: Credenciais D1 dedicadas, DEC-P20-D1-01 (contagem exata 13, 12 mutantes mortos)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v tests/test_diario_d1_credentials.py < /dev/null 2>&1 | tee /tmp/cred.txt
+          grep -qx "Ran 13 tests in .*" <(grep -E '^Ran ' /tmp/cred.txt) || { echo "::error::esperados 13 testes"; exit 1; }
+          grep -qx "OK" /tmp/cred.txt || { echo "::error::teste de credenciais D1 falhou"; exit 1; }
+          grep -qx "MUTANTS total=12 killed=12 survived=0" /tmp/cred.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

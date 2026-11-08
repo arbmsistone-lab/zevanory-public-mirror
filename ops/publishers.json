@@ -24,6 +24,42 @@
       ],
       "owner_authorized_serialization": {
         "mercadopago-production-token-rotate.yml": "Written owner authorization: \"AUTORIZO SERIALIZAR mercadopago-production-token-rotate.yml NO GRUPO deploy-zevanory\". Only the concurrency block changed (group deploy-zevanory, cancel-in-progress false, queue max, workflow level, same as the other publishers); recoverability analysis in docs/ops/ROTACAO_MERCADOPAGO.md section 1.1."
+      },
+      "d1_credentials": {
+        "decision": "DEC-P20-D1-01 (contra-auditor GPT-6): NO-GO para ampliar o token compartilhado do deploy; uma credencial por papel, cada uma só no passo autorizado.",
+        "database": {
+          "name": "zevanory-diario-p20",
+          "id": "1b1bfa19-ccc5-423a-bc1f-62d89020c8e2",
+          "account": "1b26415802588185a86c1d4d3ebf5bdb"
+        },
+        "workflow": "central-production-deploy.yml",
+        "environment": "producao-critica",
+        "roles": {
+          "migrate": {
+            "secret": "CF_TOKEN_D1_DIARIO_MIGRATE",
+            "step": "P20 diário D1 - migrações",
+            "permission": "Conta > D1 > Editar (API: D1 Write), só a conta acima",
+            "writes": [
+              "GET /accounts/<conta>/d1/database/<id> (pré-checagem)",
+              "wrangler d1 migrations apply zevanory-diario-p20 --remote"
+            ]
+          },
+          "read": {
+            "secret": "CF_TOKEN_D1_DIARIO_READ",
+            "step": "P20 diário D1 - readback",
+            "permission": "Conta > D1 > Ler (API: D1 Read), só a conta acima",
+            "writes": [],
+            "reads": [
+              "wrangler d1 execute zevanory-diario-p20 --remote --command \"select count(*) as n from diario_head\""
+            ]
+          },
+          "deploy": {
+            "secret": "CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || CLOUDFLARE_API_TOKEN",
+            "d1": "nenhuma: subir um binding D1 só exige Editor no Worker (developers.cloudflare.com/workers/authorization/#bindings); vazio nos dois passos D1"
+          }
+        },
+        "absent_secret": "migrate ausente: aviso DIARIO_D1_TOKEN_DEDICADO_AUSENTE e deploy sem o binding DIARIO; read ausente: readback não roda (aviso). Nunca há queda para outro token.",
+        "tests": "tests/test_diario_d1_credentials.py"
       }
     },
     "zevanory-sales-public": {
@@ -173,7 +209,7 @@
         "guard_evidence": [
           "promotion_guard\\.py --service zevanory "
         ],
-        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987): migração e readback do banco zevanory-diario-p20 dentro do mesmo job, depois do guard, e só com o binding DIARIO; credencial dedicada exigida pela DEC-P20-D1-01 (PR próprio)"
+        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987): migração e readback do banco zevanory-diario-p20 dentro do mesmo job, depois do guard, e só com o binding DIARIO; DEC-P20-D1-01: a migração (d1 migrations apply --remote) usa só CF_TOKEN_D1_DIARIO_MIGRATE (D1 Edit) e o readback só CF_TOKEN_D1_DIARIO_READ (D1 Read), cada um no env do próprio passo, com o token compartilhado vazio ali (services.zevanory.d1_credentials)"
       },
       "certification-isolated-deploy.yml": {
         "classes": [
