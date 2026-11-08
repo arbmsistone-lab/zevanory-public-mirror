@@ -60,6 +60,7 @@ M = {
     "K25 código 049 solto vira aviso": (C, '"(?:erro|error|c[oó]digo|code)\\\\W{0,12}" + c + "\\\\b"', "c"),
     "K26 rota do site não conferida no live": (C, '    results.push({ link: routeUrl, source: "live:site_route"', '    if (false) results.push({ link: routeUrl, source: "live:site_route"'),
     "K27 relatório vazio passa": (C, "  const verdict = results.length > 0 && fail === 0 ? PASS : FAIL;", "  const verdict = fail === 0 ? PASS : FAIL;"),
+    "K28 404 da assinatura aceito para kit": (C, '    if (status === 404 && product.kind === "subscription" && !loc)', '    if (status === 404 && !loc)'),
 }
 
 ALLOW_FILE = Path(os.environ.get("P18C_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p18_commercial_allow.json"))

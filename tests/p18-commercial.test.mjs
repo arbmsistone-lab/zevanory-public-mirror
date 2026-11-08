@@ -279,6 +279,15 @@ test("live, modo Hotmart (trava completa fechada + canal Hotmart aberto): kits a
   const i = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [302, `https://pay.hotmart.com/${cp.checkout_code}?off=${cp.offer}`, ""] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true}'] });
   const r4 = await runLive({ allow, fetchImpl: i });
   assert.deepEqual(r4.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [[cp.slug, "site_route_checkout_while_locked"]], "[P18C.H4] Conteúdo Pronto segue a trava completa");
+  // NC-1004-01: assinatura desativada responde 404 (DEC-04) = PASS; a exceção nunca alcança os kits.
+  const j = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [404, null, "<html>Página indisponível</html>"] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true}'] });
+  const r5 = await runLive({ allow, fetchImpl: j });
+  assert.equal(r5.verdict, PASS, "[P18C.H5] Conteúdo Pronto 404 sem checkout: " + JSON.stringify(r5.results.filter((x) => x.verdict === FAIL)));
+  assert.equal(r5.results.find((x) => x.slug === cp.slug && x.source === "live:site_route").reason, "site_route_subscription_retired_404", "[P18C.H5] motivo");
+  const k = liveFake({ site: (u) => [404, null, "<html>Página indisponível</html>"], checkout: ck("hotmart-closed-049.html") });
+  const r6 = await runLive({ allow, fetchImpl: k });
+  assert.deepEqual(r6.results.filter((x) => x.verdict === FAIL).map((x) => x.slug).sort(), allow.products.filter((x) => x.kind === "kit").map((x) => x.slug).sort(), "[P18C.H5] kit com 404 nunca passa");
+  assert.ok(r6.results.filter((x) => x.verdict === FAIL).every((x) => x.reason === "site_route_not_paused:http_404"), "[P18C.H5] motivo dos kits");
 });
 
 test("relatório: nenhum link conferido nunca é PASS", () => {

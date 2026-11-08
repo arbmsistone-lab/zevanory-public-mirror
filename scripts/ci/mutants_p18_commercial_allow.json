@@ -303,6 +303,15 @@
     }
    ],
    "secondary": []
+  },
+  "K28 404 da assinatura aceito para kit": {
+   "primary": [
+    {
+     "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
+     "assertion_pattern": "[P18C.H5]"
+    }
+   ],
+   "secondary": []
   }
  }
 }
