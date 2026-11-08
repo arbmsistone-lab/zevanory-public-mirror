@@ -1,0 +1,83 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> teste e marcador [P18SV.n] da asserção que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "S01 confirma na 1ª falha": {
+   "tests": [
+    "test_04_falha_isolada_nao_alerta"
+   ],
+   "marker": "[P18SV.4]"
+  },
+  "S02 recuperação sem e-mail": {
+   "tests": [
+    "test_05_recuperacao_um_email"
+   ],
+   "marker": "[P18SV.5]"
+  },
+  "S03 sem resposta nunca vira falha": {
+   "tests": [
+    "test_03b_queda_sem_resposta_alerta_em_ate_10_min"
+   ],
+   "marker": "[P18SV.3]"
+  },
+  "S04 ensaio ignorado": {
+   "tests": [
+    "test_07_ensaio_mede_tempos"
+   ],
+   "marker": "[P18SV.7]"
+  },
+  "S05 health 200 basta": {
+   "tests": [
+    "test_11_200_sem_conteudo_valido_conta_como_queda"
+   ],
+   "marker": "[P18SV.11]"
+  },
+  "S06 chave gravada no alerta": {
+   "tests": [
+    "test_12_chave_nunca_gravada"
+   ],
+   "marker": "[P18SV.12]"
+  },
+  "S07 rodada a cada tick": {
+   "tests": [
+    "test_02_saudavel_orcamento_e_somente_get"
+   ],
+   "marker": "[P18SV.2]"
+  },
+  "S08 mudança da trava silenciosa": {
+   "tests": [
+    "test_10_mudanca_da_trava_avisa"
+   ],
+   "marker": "[P18SV.10]"
+  },
+  "S09 primário velho aceito": {
+   "tests": [
+    "test_09_monitor_primario_parado"
+   ],
+   "marker": "[P18SV.9]"
+  },
+  "S10 agendar sem canal": {
+   "tests": [
+    "test_14_agendar_e_desligar"
+   ],
+   "marker": "[P18SV.14]"
+  },
+  "S11 sem lembrete": {
+   "tests": [
+    "test_06_lembrete_a_cada_6h"
+   ],
+   "marker": "[P18SV.6]"
+  },
+  "S12 trava com caixa trocada aceita": {
+   "tests": [
+    "test_11_200_sem_conteudo_valido_conta_como_queda"
+   ],
+   "marker": "[P18SV.11]"
+  },
+  "S13 destino do Resend livre": {
+   "tests": [
+    "test_15_destinos_e_destinatario_fixos"
+   ],
+   "marker": "[P18SV.15]"
+  }
+ }
+}
