@@ -3,7 +3,8 @@
 pelo classificador COMPARTILHADO scripts/ci/mutant_classifier.py (sem modificação).
 
 Suíte (uma execução `node --test`, TAP): tests/p20-restore-drill.test.mjs (D1-D12), tests/p20-backup-encryption.test.mjs
-(E1-E10, cifragem AES-256-GCM do backup no Worker e no ensaio) e tests/b0-baseline.test.mjs (B0 e P20 no registro). Sem rede, sem banco, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em
+(E1-E10, cifragem AES-256-GCM do backup no Worker e no ensaio), tests/p20-kv-copy-drill.test.mjs (K1-K8, cópia KV -> Neon
+restaurada e conferida chave a chave) e tests/b0-baseline.test.mjs (B0 e P20 no registro). Sem rede, sem banco, sem segredos. Cada mutante altera UMA regra numa cópia mínima da árvore em
 diretório temporário (o repositório nunca é alterado).
 Expectativas (mutants_p20_restore_drill_allow.json, formato load_mutant_config): primary (1-3) com test_pattern E
 assertion_pattern NÃO nulo (marcador [Dn.k]/[B0P20.k] da asserção que codifica a regra) e secondary com justification,
@@ -23,7 +24,7 @@ import mutant_classifier as mc  # noqa: E402  (sem modificação)
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
-TESTS = ["tests/p20-restore-drill.test.mjs", "tests/p20-backup-encryption.test.mjs", "tests/b0-baseline.test.mjs"]
+TESTS = ["tests/p20-restore-drill.test.mjs", "tests/p20-backup-encryption.test.mjs", "tests/p20-kv-copy-drill.test.mjs", "tests/b0-baseline.test.mjs"]
 COPY_DIRS = ["scripts/p20", "scripts/b0", "docs/p20", "docs/b0"]
 COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p20-backup-fixture.mjs", "scripts/audit/workers-usage.mjs",
                       "worker/data-backup.mjs", "worker/backup-crypto.mjs",
@@ -34,6 +35,7 @@ NODE = shutil.which("node") or "node"
 L, D, P = "scripts/p20/restore-drill-lib.mjs", "scripts/p20/restore-drill.mjs", "scripts/p20/publish-drill.mjs"
 B, C, W = "scripts/b0/b0-lib.mjs", "scripts/b0/b0-collector.mjs", ".github/workflows/p20-monthly-restore-drill.yml"
 WC, WB, E = "worker/backup-crypto.mjs", "worker/data-backup.mjs", "scripts/p20/backup-envelope.mjs"
+R = "scripts/p20/kv-memory-replay.mjs"  # reconstrução do KV em memória (não é escritor de KV)
 
 M = {
     "M01 hash por tabela não conferido": (L, "      if (h !== m.sha) { fail(`hash_mismatch:${t}`); partOk = false; continue; }\n", ""),
@@ -79,6 +81,25 @@ M = {
     "M41 consolidado obrigatório aceita parte em claro": (WB, "  if (encryptionRequired && report.encryption.state !== \"cifrado\") failures.push(\"backup_nao_cifrado:\" + report.encryption.state);\n", ""),
     "M42 kid desconhecido decifrado com outra chave": (E, "  const key = ring.get(o.kid);", "  const key = ring.get(o.kid) || [...ring.values()][0];"),
     "M43 material de chave na mensagem de erro": (E, "  if (raw.length !== KEY_BYTES) throw err(\"backup_keyring_malformed\");", "  if (raw.length !== KEY_BYTES) throw err(\"backup_keyring_malformed:\" + t);"),
+    # Cópia KV -> Neon (lacuna copia_kv_para_neon): só sai de not_covered com prova completa.
+    "M44 lacuna copia_kv retirada com cópia só declarada": (L, "verdict === \"APROVADO\" && !!kvCopy && kvCopy.failures.length === 0 && kvProofComplete(kvCopy.proof, a.day)),", "!!kvCopy),"),
+    "M45 lacuna copia_kv retirada por valor não estritamente true": (L, "!(kvCopyProven === true && isCopiaKv(s))", "!(kvCopyProven && isCopiaKv(s))"),
+    "M46 releitura aceita lacuna copia_kv retirada sem prova": (L, "  if (!kvPending && !(r.verdict === \"APROVADO\" && kvProofComplete(r.kv_copy, b.day) && (b.copia_cifrada !== true || r.kv_copy.copia_cifrada === true))) throw new Error(\"copia_kv_unproven\");\n", ""),
+    "M47 NOT_AVAILABLE sem lacuna copia_kv aceito": (L, "  if (r.verdict === \"NOT_AVAILABLE\" && !kvPending) throw new Error(\"copia_kv_unproven\");\n", ""),
+    "M48 prova do KV com chave a menos aceita": (L, "    && k.restored + k.expired_at_restore === k.keys && isInt(k.with_ttl)", "    && isInt(k.with_ttl)"),
+    "M49 manifesto da fonte (valor+TTL+metadados) não conferido": (L, "  if (manifestHash(digests) !== entriesManifest) failures.push(`${prefix}_manifest_mismatch`);\n", ""),
+    "M50 hash do valor por chave não conferido": (L, "  if (sha256(r.value) !== r.sha256) return \"value_hash_mismatch\";\n", ""),
+    "M51 TTL não recriado na restauração do KV": (R, "    if (exp != null) opts.expiration = exp;\n", ""),
+    "M52 metadados não recriados na restauração do KV": (R, "    if (r.metadata != null) opts.metadata = JSON.parse(r.metadata);\n", ""),
+    "M53 chave fora dos prefixos críticos aceita": (L, " && KV_PREFIXES.some((p) => k.startsWith(p)) && !k.startsWith(\"zpc:restore-drill:\");", " && !k.startsWith(\"zpc:restore-drill:\");"),
+    "M54 rebaixamento da cópia do KV para claro aceito": (L, "  if (isObj(p0.v.encryption) && p0.v.encryption.state === \"cifrado\" && !opened.encrypted) { fail(\"kv_copy_encryption_downgrade\"); return out; }\n", ""),
+    "M55 SHA da cópia do KV não conferido": (L, "  if (sha256(opened.text) !== c.sha) { fail(\"kv_copy_hash_mismatch\"); return out; }\n", ""),
+    "M56 Worker grava a cópia do KV a partir da fonte, não do Neon": (WB, "      const copyJson = JSON.stringify(backed);", "      const copyJson = JSON.stringify(present.map(([k, v]) => ({ snapshot_day: day, key: k, value: v, sha256: hashes[k], expiration: metaOf(k).expiration, metadata: metaOf(k).metadata })));"),
+    "M57 Worker não copia o TTL para o Neon": (WB, "present.map(([k]) => metaOf(k).expiration), present.map(([k]) => metaOf(k).metadata)],", "present.map(() => null), present.map(([k]) => metaOf(k).metadata)],"),
+    "M58 Worker não confere TTL e metadados relidos do Neon": (WB, " || entries[r.key] !== (await kvEntryDigest({ sha: r.sha256, expiration: r.expiration, metadata: r.metadata }))) mismatch++;", ") mismatch++;"),
+    "M59 ensaio lê a cópia do KV fora do namespace do backup": (D, "  if (typeof kvKey === \"string\" && KV_COPY_KEY.test(kvKey)) kvCopy = await get(kvKey);", "  if (typeof kvKey === \"string\") kvCopy = await get(kvKey);"),
+    "M60 chave expirada recriada na restauração": (R, "    if (exp != null && exp < nowSec + KV_MIN_TTL_S) { expired.push(r.key); continue; }\n", ""),
+    "M61 restauração do KV não roda e a prova não é exigida": (D, "    if (!Array.isArray(restore.kv_rows)) kvCopy.failures.push(\"kv_restore_not_run\");\n    else kvCopy", "    if (Array.isArray(restore.kv_rows)) kvCopy"),
 }
 
 ALLOW_FILE = Path(os.environ.get("P20_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p20_restore_drill_allow.json"))

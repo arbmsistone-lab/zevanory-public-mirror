@@ -40,7 +40,7 @@ function fakeSql(tables = { orders: [{ id: 1, email: SEGREDO }], zevanory_leads:
   const query = async (text, params = []) => {
     const t = text.trim();
     if (/^insert into zevanory_kv_backup/.test(t)) { const [, k, v, h] = params; k.forEach((key, i) => backup.push({ key, value: v[i], sha256: h[i] })); return []; }
-    if (/select key, value, sha256 from zevanory_kv_backup/.test(t)) return backup;
+    if (/key, value, sha256, expiration, metadata from zevanory_kv_backup/.test(t)) return backup;
     if (/from information_schema.tables/.test(t)) return Object.entries(tables).map(([n, rows]) => ({ t: n, n: rows.length }));
     if (/^with ins as/.test(t)) { const rows = JSON.parse(params[0]); return [{ n: rows.length, h: "same", hb: "same" }]; }
     if (/json_agg/.test(t)) { calls.dumped.push(...params[0]); return params[0].map((n) => ({ t: n, j: JSON.stringify(tables[n]) })); }

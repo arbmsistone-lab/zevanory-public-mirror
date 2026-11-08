@@ -2,7 +2,8 @@
 // (the only place that holds the database credential). Cost: R$ 0. The endpoint that triggers it
 // never returns data: only a report with counts and hashes.
 //
-//   1. KV  -> Neon : critical KV keys into zevanory_kv_backup (14 days kept).
+//   1. KV  -> Neon : critical KV keys into zevanory_kv_backup (14 days kept), with each key's TTL (absolute
+//                    expiration) and metadata as returned by kv.list (no extra subrequest).
 //   2. Neon -> KV  : every public table (row cap) as JSON into zpc:backup:v1:neon:<day>:<table>
 //                    (8 days kept). The JSON is produced by the database itself.
 //   3. Restore drill, read back from the backup copy (never from the source):
@@ -10,6 +11,11 @@
 //              KV copy, row count and content hash compared with the copy, then dropped.
 //        KV  : every value re-hashed from Neon; a sample restored into zpc:restore-drill:*
 //              (1 h TTL), read back, compared and deleted.
+//        KV copy for the MONTHLY drill (P20, seção 9.1): today's rows of zevanory_kv_backup, as READ BACK FROM NEON
+//              (the copy, never the source), go to zpc:backup:v1:kv:<day> (AES-256-GCM envelope with the backup key,
+//              8 days). The source manifest (per-key SHA-256 + TTL + metadata, kv.entries_manifest) is computed from
+//              the KV itself before the copy. The CI drill restores those rows into an ephemeral Postgres, rebuilds a
+//              KV from them and checks it key by key against that manifest, without any Neon credential.
 //   4. Report (no PII) at zpc:backup:v1:report.
 // P20 (seção 9.1): with the secret P20_BACKUP_KEY the Neon -> KV bundle is stored as an AES-256-GCM envelope
 // (worker/backup-crypto.mjs, docs/p20/cifragem-backup.md); the per-table SHA-256 manifest stays over the plaintext.
@@ -25,6 +31,8 @@ export const DEFAULT_PARTS = 3;
 // Credentials are not duplicated into another store: they can be re-issued, a copy only widens exposure.
 export const SENSITIVE = /credential|oauth|secret|token|password/i;
 export const DRILL_SAMPLE = 20;
+export const KV_COPY_FORMAT = "zevanory-kv-copy/v1";
+export const kvCopyKeyFor = (day) => `zpc:backup:v1:kv:${day}`;
 const BACKUP_TABLE = "zevanory_kv_backup";
 const DRILL = "zevanory_restore_drill";
 const DAY = 86400;
@@ -48,6 +56,11 @@ export function planRetention({ today, snapshots = [], keepDays = RETENTION_DAYS
 
 export const validIdent = (s) => /^[a-z_][a-z0-9_]{0,62}$/.test(String(s));
 export async function manifestHash(entries) { return sha256(Object.keys(entries).sort().map((k) => k + "=" + entries[k]).join("\n")); }
+// Per-key entry of the KV source manifest: value hash, absolute expiration (s) and metadata hash (JSON text).
+// Contract shared with scripts/p20/restore-drill-lib.mjs kvEntryDigest (independent implementation, tested together).
+export async function kvEntryDigest({ sha, expiration, metadata }) {
+  return `${sha}|${expiration == null ? "" : String(expiration)}|${metadata == null ? "" : await sha256(metadata)}`;
+}
 
 // Constant-time token check for the trigger endpoint.
 export function tokenOk(provided, expected) {
@@ -57,10 +70,15 @@ export function tokenOk(provided, expected) {
   return diff === 0;
 }
 
+// kv.list already returns each key's expiration (unix seconds) and metadata: captured at no extra cost.
 async function listAll(kv, prefix) {
-  const names = []; let cursor;
-  do { const page = await kv.list({ prefix, cursor, limit: 1000 }); for (const k of page.keys) names.push(k.name); cursor = page.list_complete ? undefined : page.cursor; } while (cursor);
-  return names;
+  const out = []; let cursor;
+  do {
+    const page = await kv.list({ prefix, cursor, limit: 1000 });
+    for (const k of page.keys) out.push({ name: k.name, expiration: Number.isInteger(k.expiration) ? k.expiration : null, metadata: k.metadata == null ? null : JSON.stringify(k.metadata) });
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return out;
 }
 
 export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1, encryptionRequired = ENCRYPTION_REQUIRED } = {}) {
@@ -82,19 +100,25 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   try {
     // 1. KV -> Neon (first part only)
     const kvPart = part === 0;
-    const keys = !kvPart ? [] : [...new Set((await Promise.all(KV_PREFIXES.map((p) => listAll(kv, p)))).flat())].filter((k) => !k.startsWith("zpc:restore-drill:"));
+    const listed = new Map();
+    if (kvPart) for (const e of (await Promise.all(KV_PREFIXES.map((p) => listAll(kv, p)))).flat()) if (!e.name.startsWith("zpc:restore-drill:") && !listed.has(e.name)) listed.set(e.name, e);
+    const keys = [...listed.keys()];
     const present = (await Promise.all(keys.map(async (k) => [k, await kv.get(k)]))).filter(([, v]) => v != null);
     const hashes = Object.fromEntries(await Promise.all(present.map(async ([k, v]) => [k, await sha256(v)])));
-    await sql.query(`create table if not exists ${BACKUP_TABLE} (snapshot_day date not null, key text not null, value text not null, sha256 text not null, taken_at timestamptz not null default now(), primary key (snapshot_day, key))`);
+    const metaOf = (k) => listed.get(k) || { expiration: null, metadata: null };
+    // Source manifest of the KV (value hash + TTL + metadata per key), computed from the KV BEFORE the copy.
+    const entries = Object.fromEntries(await Promise.all(present.map(async ([k]) => [k, await kvEntryDigest({ sha: hashes[k], ...metaOf(k) })])));
+    await sql.query(`create table if not exists ${BACKUP_TABLE} (snapshot_day date not null, key text not null, value text not null, sha256 text not null, taken_at timestamptz not null default now(), expiration bigint, metadata text, primary key (snapshot_day, key))`);
+    if (kvPart) await sql.query(`alter table zevanory_kv_backup add column if not exists expiration bigint, add column if not exists metadata text`);
     if (present.length) {
       await sql.query(
-        `insert into ${BACKUP_TABLE}(snapshot_day,key,value,sha256) select $1::date, k, v, h from unnest($2::text[], $3::text[], $4::text[]) as t(k, v, h)
-         on conflict (snapshot_day, key) do update set value = excluded.value, sha256 = excluded.sha256, taken_at = now()`,
-        [day, present.map(([k]) => k), present.map(([, v]) => v), present.map(([k]) => hashes[k])],
+        `insert into ${BACKUP_TABLE}(snapshot_day,key,value,sha256,expiration,metadata) select $1::date, k, v, h, e, m from unnest($2::text[], $3::text[], $4::text[], $5::bigint[], $6::text[]) as t(k, v, h, e, m)
+         on conflict (snapshot_day, key) do update set value = excluded.value, sha256 = excluded.sha256, expiration = excluded.expiration, metadata = excluded.metadata, taken_at = now()`,
+        [day, present.map(([k]) => k), present.map(([, v]) => v), present.map(([k]) => hashes[k]), present.map(([k]) => metaOf(k).expiration), present.map(([k]) => metaOf(k).metadata)],
       );
     }
     // Retention runs only AFTER today's copy is proven (manifest + integrity + drill): see step 3c below.
-    if (kvPart) report.kv = { keys: present.length, bytes: present.reduce((s, [, v]) => s + v.length, 0), manifest: (await manifestHash(hashes)).slice(0, 16) };
+    if (kvPart) report.kv = { keys: present.length, bytes: present.reduce((s, [, v]) => s + v.length, 0), manifest: (await manifestHash(hashes)).slice(0, 16), entries_manifest: await manifestHash(entries) };
 
     // 2. Neon -> KV: counts and JSON produced by the database in one round trip.
     const stats = await sql.query(
@@ -203,9 +227,10 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     if (report.fp) report.fp.lastFullDrill = drillAll && neonDrill.length === exported.length && neonDrill.every((d) => d.ok) ? new Date(now).toISOString() : (prev.lastFullDrill || null);
 
     // 3b. KV restore drill from the Neon copy (first part only).
-    const backed = kvPart ? await sql.query(`select key, value, sha256 from ${BACKUP_TABLE} where snapshot_day = $1::date`, [day]) : [];
+    const backed = (kvPart ? await sql.query(`select to_char(snapshot_day, 'YYYY-MM-DD') as snapshot_day, key, value, sha256, expiration, metadata from ${BACKUP_TABLE} where snapshot_day = $1::date order by key`, [day]) : [])
+      .map((r) => ({ snapshot_day: r.snapshot_day == null ? day : String(r.snapshot_day), key: String(r.key), value: String(r.value), sha256: String(r.sha256), expiration: r.expiration == null ? null : Number(r.expiration), metadata: r.metadata == null ? null : String(r.metadata) }));
     let mismatch = 0;
-    for (const r of backed) if ((await sha256(r.value)) !== r.sha256 || hashes[r.key] !== r.sha256) mismatch++;
+    for (const r of backed) if ((await sha256(r.value)) !== r.sha256 || hashes[r.key] !== r.sha256 || entries[r.key] !== (await kvEntryDigest({ sha: r.sha256, expiration: r.expiration, metadata: r.metadata }))) mismatch++;
     const missing = present.length - backed.filter((r) => hashes[r.key]).length;
     if (mismatch || missing) fail(`kv_copy_integrity:${mismatch}:${missing}`);
     const sample = backed.slice(0, DRILL_SAMPLE);
@@ -220,6 +245,18 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
       await kv.delete(drillKey);
     }
     if (!sampleOk) fail("kv_restore_drill");
+    // KV copy for the monthly drill: exactly the rows Neon returned above (never the KV source), one KV write.
+    if (kvPart && backed.length) {
+      const copyKey = kvCopyKeyFor(day);
+      const copyJson = JSON.stringify(backed);
+      const cctx = { day, part: 0, bundleKey: copyKey };
+      await kv.put(copyKey, bk.state === "present" ? await sealBundle(copyJson, cctx, bk) : copyJson, { expirationTtl: 8 * DAY });
+      const copySha = await sha256(copyJson);
+      let backOk = false;
+      try { const o = await openBundle(await kv.get(copyKey), cctx, encKeys); backOk = (bk.state !== "present" || o.encrypted) && (await sha256(o.text)) === copySha; } catch { backOk = false; }
+      if (!backOk) fail("kv_copy_bundle_integrity");
+      report.kv.copy = { format: KV_COPY_FORMAT, bundleKey: copyKey, rows: backed.length, sha: copySha };
+    }
     // 3c. Retention (own copies only): never deletes the last intact recoverable copy. Today's copy is proven valid
     // only when its manifest equals the source manifest, every row re-hashes, nothing is missing and the drill passed;
     // older copies are not re-verified here, so without a proven copy today nothing is deleted.

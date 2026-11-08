@@ -7,7 +7,11 @@ p20_drill* vazio, com contagem e hash de conteúdo por tabela, RPO e RTO; (2) bu
 restaurado; (3) alvo não efêmero recusado antes de conectar (JS e Python); (4) nenhum dado de linha no registro;
 (5) toda tabela do esquema real tem classe no inventário da seção 9.1; (6) com P20_BACKUP_KEY o Worker real grava os
 bundles cifrados (AES-256-GCM) e o ensaio, com P20_BACKUP_KEYS, decifra, restaura TUDO e marca copia_cifrada em todas
-as partes; (7) cópia cifrada sem a chave no ensaio reprova sem restaurar nada e sem vazar a chave."""
+as partes; (7) cópia cifrada sem a chave no ensaio reprova sem restaurar nada e sem vazar a chave; (8) cópia KV -> Neon:
+o Worker real copia as chaves críticas do KV (com TTL e metadados) para zevanory_kv_backup, relê do Neon e grava a cópia
+do dia; o ensaio a restaura em zevanory_kv_backup do banco p20_drill*, RELÊ do Postgres, reconstrói o KV e confere chave a
+chave contra o manifesto da fonte, retirando a lacuna copia_kv_para_neon; (9) idem com a cópia do KV cifrada;
+(10) cópia do KV adulterada (bundle ou valor + hash da linha) reprova e nada é restaurado."""
 import base64, datetime, json, os, subprocess, sys, tempfile, unittest
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "scripts", "ops"))
@@ -184,6 +188,66 @@ class T(unittest.TestCase):
         self.assertIn("bundle_kid_unknown:0", rec["failures"])
         self.assertEqual(public_tables(db), 0)
         self.assertNotIn(self.key, text + r.stdout + r.stderr)
+
+    def _kv_copy(self, path):
+        with open(path, encoding="utf-8") as f:
+            kv = json.load(f)
+        key = next(k for k in kv if k.startswith("zpc:backup:v1:kv:"))
+        return kv, key
+
+    def test_8_copia_kv_restaurada_no_postgres_e_conferida_chave_a_chave(self):
+        self.assertEqual(self.worker["kv_keys"], 4, "trava, resumo, chave com TTL e chave com metadados; lead fora")
+        kv, key = self._kv_copy(self.fixture)
+        self.assertNotIn("fora-da-copia@example.invalid", kv[key])
+        db = fresh("p20_drill_t8")
+        r, rec, text = drill(self.fixture, db)
+        self.assertEqual(r.returncode, 0, r.stdout[-800:])
+        self.assertEqual(rec["verdict"], "APROVADO")
+        k = rec["kv_copy"]
+        self.assertEqual((k["keys"], k["restored"], k["expired_at_restore"], k["with_ttl"], k["with_metadata"]), (4, 4, 0, 1, 1))
+        self.assertTrue(k["pg_rows_ok"] and k["values_hash_ok"] and k["ttl_metadata_ok"] and k["entries_manifest_ok"])
+        self.assertFalse(any(s.startswith("copia_kv_para_neon:") for s in rec["not_covered"]))
+        self.assertTrue(any(s.startswith("copia_cifrada:") for s in rec["not_covered"]), "cópia em claro: essa lacuna continua")
+        # A cópia foi restaurada na tabela do Worker DENTRO do banco efêmero, com TTL e metadados.
+        self.assertEqual(sh(db, "select count(*), count(expiration), count(metadata) from zevanory_kv_backup").strip(), "4|1|1")
+        self.assertEqual(sh(db, "select count(*) from zevanory_kv_backup where key like 'zpc:interest:%'").strip(), "0")
+        for out in (text, r.stdout, r.stderr):
+            self.assertNotIn("acentuação", out)
+            self.assertNotIn('"enabled"', out)
+
+    def test_9_copia_kv_cifrada_pelo_worker_real(self):
+        kv, key = self._kv_copy(self.enc_fixture)
+        self.assertTrue(kv[key].startswith('{"$enc":"zevanory-backup-enc/v1"'))
+        self.assertNotIn("enabled", kv[key])
+        db = fresh("p20_drill_t9")
+        r, rec, text = drill(self.enc_fixture, db, {"P20_BACKUP_KEYS": self.key})
+        self.assertEqual(r.returncode, 0, r.stdout[-800:])
+        self.assertEqual(rec["verdict"], "APROVADO")
+        self.assertTrue(rec["kv_copy"]["copia_cifrada"])
+        self.assertEqual([s.split(":")[0] for s in rec["not_covered"]], ["conciliacao_pedidos_x_provedor", "diario_d1"])
+        self.assertEqual(sh(db, "select count(*) from zevanory_kv_backup").strip(), "4")
+        self.assertNotIn(self.key, text + r.stdout + r.stderr)
+
+    def test_10_copia_kv_adulterada_reprova_e_nada_e_restaurado(self):
+        kv, key = self._kv_copy(self.fixture)
+        rows = json.loads(kv[key])
+        i = next(n for n, x in enumerate(rows) if x["key"] == "sales:open:v1")
+        rows[i]["value"] = json.dumps({"enabled": True})  # trava aberta forjada, com hash da linha refeito
+        rows[i]["sha256"] = __import__("hashlib").sha256(rows[i]["value"].encode()).hexdigest()
+        kv[key] = json.dumps(rows, separators=(",", ":"), ensure_ascii=False)
+        p0 = json.loads(kv["zpc:backup:v1:report:part:0"])
+        p0["kv"]["copy"]["sha"] = __import__("hashlib").sha256(kv[key].encode()).hexdigest()
+        kv["zpc:backup:v1:report:part:0"] = json.dumps(p0)
+        bad = os.path.join(self.dir, "kv-copia-kv-adulterada.json")
+        with open(bad, "w", encoding="utf-8") as f:
+            json.dump(kv, f)
+        db = fresh("p20_drill_t10")
+        r, rec, _ = drill(bad, db)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(rec["verdict"], "REPROVADO")
+        self.assertIn("kv_copy_manifest_mismatch", rec["failures"])
+        self.assertTrue(any(s.startswith("copia_kv_para_neon:") for s in rec["not_covered"]))
+        self.assertEqual(public_tables(db), 0, "nada restaurado a partir de cópia do KV adulterada")
 
 
 if __name__ == "__main__":

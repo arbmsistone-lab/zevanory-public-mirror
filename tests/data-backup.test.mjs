@@ -27,12 +27,12 @@ function fakeSql({ tables = { zevanory_leads: [{ id: 1, email_hash: "a" }, { id:
   const query = async (text, params = []) => {
     calls.push(text.replace(/\s+/g, " ").slice(0, 60));
     if (/^delete from zevanory_kv_backup/.test(text.trim())) { deletes.push(params); return []; }
-    if (corruptCopy && /select key, value, sha256 from zevanory_kv_backup/.test(text)) return backup.map((r, i) => (i === 0 ? { ...r, value: r.value + "#tampered" } : r));
+    if (corruptCopy && /key, value, sha256, expiration, metadata from zevanory_kv_backup/.test(text)) return backup.map((r, i) => (i === 0 ? { ...r, value: r.value + "#tampered" } : r));
     if (/^insert into zevanory_kv_backup/.test(text.trim())) { const [, k, v, h] = params; k.forEach((key, i) => backup.push({ key, value: v[i], sha256: h[i] })); return []; }
     if (/from information_schema.tables/.test(text)) return Object.entries(tables).map(([t, rows]) => ({ t, n: rows.length }));
     if (/json_agg/.test(text)) return params[0].map((t) => ({ t, j: JSON.stringify(tables[t]) }));
     if (/^with ins as/.test(text.trim())) { const rows = JSON.parse(params[0]); return [{ n: rows.length, h: corruptRestore ? "x" : "same", hb: "same" }]; }
-    if (/select key, value, sha256 from zevanory_kv_backup/.test(text)) return backup;
+    if (/key, value, sha256, expiration, metadata from zevanory_kv_backup/.test(text)) return backup;
     return [];
   };
   return { factory: () => ({ query }), calls, deletes };
@@ -127,7 +127,7 @@ function fakeSqlFp(tables) {
     if (/ as fp\b/.test(text)) return Promise.all(params[0].map(async (t) => ({ t, fp: await md5ish(JSON.stringify(tables[t])) })));
     if (/json_agg/.test(text)) { dumped.push(...params[0]); return params[0].map((t) => ({ t, j: JSON.stringify(tables[t]) })); }
     if (/^with ins as/.test(text.trim())) { const rows = JSON.parse(params[0]); return [{ n: rows.length, h: "same", hb: "same" }]; }
-    if (/select key, value, sha256 from zevanory_kv_backup/.test(text)) return backup.filter((r) => r.day === params[0]);
+    if (/key, value, sha256, expiration, metadata from zevanory_kv_backup/.test(text)) return backup.filter((r) => r.day === params[0]);
     return [];
   };
   return { factory: () => ({ query }), dumped };

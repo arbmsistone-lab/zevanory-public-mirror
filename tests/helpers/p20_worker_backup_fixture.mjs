@@ -44,14 +44,42 @@ export function psqlSql(env = process.env) {
   };
 }
 
+// KV em memória com a semântica do Cloudflare que o backup usa: list devolve expiration (s, absoluta) e metadata.
+// Semente: { chave: "valor" } ou { chave: { value, expiration?, metadata? } } (TTL e metadados sintéticos).
 export function memoryKv(seed = {}) {
-  const m = new Map(Object.entries(seed));
+  const m = new Map(), meta = new Map();
+  for (const [k, v] of Object.entries(seed)) {
+    if (v !== null && typeof v === "object") { m.set(k, String(v.value)); meta.set(k, { expiration: v.expiration ?? null, metadata: v.metadata ?? null }); }
+    else m.set(k, String(v));
+  }
   return {
-    m,
+    m, meta,
     async get(k) { return m.has(k) ? m.get(k) : null; },
-    async put(k, v) { m.set(k, String(v)); },
-    async delete(k) { m.delete(k); },
-    async list({ prefix = "" } = {}) { return { keys: [...m.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => ({ name })), list_complete: true }; },
+    async put(k, v, opts = {}) {
+      m.set(k, String(v));
+      const expiration = opts.expiration ?? (opts.expirationTtl ? Math.floor(Date.now() / 1000) + opts.expirationTtl : null);
+      meta.set(k, { expiration, metadata: opts.metadata ?? null });
+    },
+    async delete(k) { m.delete(k); meta.delete(k); },
+    async list({ prefix = "" } = {}) {
+      return { keys: [...m.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => {
+        const e = meta.get(name) || {};
+        return { name, ...(e.expiration != null ? { expiration: e.expiration } : {}), ...(e.metadata != null ? { metadata: e.metadata } : {}) };
+      }), list_complete: true };
+    },
+  };
+}
+
+// Semente sintética do KV crítico: trava, resumo de vendas, uma chave de transação com TTL (como sales-ledger.mjs,
+// 400 dias) e uma chave com metadados. "zpc:interest:" (dado pessoal, fora da cópia por política T3) não entra.
+export function syntheticKvSeed(nowMs) {
+  const s = Math.floor(nowMs / 1000);
+  return {
+    "sales:open:v1": JSON.stringify({ enabled: false }),
+    "zpc:sales:v1:sintetico": JSON.stringify({ ok: true }),
+    "zpc:sales:v1:txn:00000000000000a1:approved": { value: "1", expiration: s + 400 * 86400 },
+    "zpc:cp:sub:sintetico": { value: JSON.stringify({ plan: "cp", ç: "acentuação \"aspas\" $1 $$" }), metadata: { kind: "sub", v: 1 } },
+    "zpc:interest:sintetico": "fora-da-copia@example.invalid",
   };
 }
 
@@ -72,7 +100,7 @@ export async function buildFixture({ now, env = process.env, kvSeed = {} }) {
 const isMain = process.argv[1] && import.meta.url.endsWith("/p20_worker_backup_fixture.mjs") && process.argv[1].endsWith("p20_worker_backup_fixture.mjs");
 if (isMain) {
   const [out, nowIso] = process.argv.slice(2);
-  const { kv, final } = await buildFixture({ now: Date.parse(nowIso), kvSeed: { "sales:open:v1": JSON.stringify({ enabled: false }), "zpc:sales:v1:sintetico": JSON.stringify({ ok: true }) } });
+  const { kv, final } = await buildFixture({ now: Date.parse(nowIso), kvSeed: syntheticKvSeed(Date.parse(nowIso)) });
   writeFileSync(out, JSON.stringify(kv));
-  console.log(JSON.stringify({ ok: final.ok, day: final.day, tables: final.neon.tables, rows: final.neon.rows, failures: final.failures, encryption: final.encryption }));
+  console.log(JSON.stringify({ ok: final.ok, day: final.day, tables: final.neon.tables, rows: final.neon.rows, failures: final.failures, encryption: final.encryption, kv_keys: final.kv?.keys ?? null }));
 }
