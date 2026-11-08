@@ -168,6 +168,14 @@ test("WS6 testes negativos (condição 5): o gate falha em cada violação, isol
   assert.ok(codes(repo((r) => { r.workflows["pub.yml"] = PUB.replace(/ {6}- run: python3 scripts\/deploy\/promotion_guard[^\n]*\n/, ""); return r; })).includes("GUARD_ABSENT"), "[WS6.3] sem guard");
   assert.ok(codes(repo((r) => { r.workflows["iso.yml"] = ISO.replace("--name svc-certification", "--name svc"); return r; })).includes("ISOLATED_TARGET_SWAP"), "[WS6.4] troca de alvo de produção num workflow isolado");
   assert.ok(codes(repo((r) => { r.workflows["iso.yml"] = ISO.replace("secrets.CLOUDFLARE_API_TOKEN", "secrets.CF_TOKEN_SALES"); return r; })).includes("TOKEN_CROSS_WORKER"), "[WS6.5] token de outro Worker (token excessivo para o alvo)");
+  // Leitor registrado de credencial D1 somente leitura (P20 ensaio mensal lê o diário): só com papel sem escrita e o
+  // workflow listado em readers; papel com escrita ou leitor não listado continua TOKEN_CROSS_WORKER.
+  const d1Reader = (writes, wf) => (r) => { r.workflows["iso.yml"] = ISO.replace("secrets.CLOUDFLARE_API_TOKEN", "secrets.CF_TOKEN_D1_DIARIO_READ");
+    r.registry.services.zevanory = { group: "deploy-z", canonical: "pub.yml", config_publishers: [], d1_credentials: { roles: { read: { secret: "CF_TOKEN_D1_DIARIO_READ", writes, readers: [{ workflow: wf, step: "leitura", reads: "SELECT fixo do diário" }] } } } };
+    return r; };
+  assert.ok(!codes(repo(d1Reader([], "iso.yml"))).includes("TOKEN_CROSS_WORKER"), "[WS6.5a] leitor D1 registrado, papel sem escrita: aceito");
+  assert.ok(codes(repo(d1Reader(["wrangler d1 migrations apply"], "iso.yml"))).includes("TOKEN_CROSS_WORKER"), "[WS6.5b] papel com escrita nunca libera leitor");
+  assert.ok(codes(repo(d1Reader([], "outro.yml"))).includes("TOKEN_CROSS_WORKER"), "[WS6.5c] workflow fora de readers: recusado");
   assert.ok(codes(repo((r) => { r.workflows["gate.yml"] = NOCRED.replace("    steps:", "    env:\n      T: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n    steps:"); return r; })).includes("CREDENTIAL_IN_NO_CREDENTIAL"), "[WS6.6] credencial em workflow declarado sem credencial");
   assert.ok(codes(repo((r) => { r.workflows["pub.yml"] = PUB + "      - run: npx wrangler secret put K --name svc\n"; return r; })).includes("CLASS_MISMATCH"), "[WS6.7] classe nova num publicador");
   assert.ok(codes(repo((r) => { r.registry.write_paths.workflows["velho.yml"] = { classes: ["deploy"], via: [], scope: "no-credential", note: "x" }; return r; })).includes("STALE_WRITE_PATH"), "[WS6.8] entrada que não escreve mais");

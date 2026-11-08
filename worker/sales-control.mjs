@@ -158,6 +158,11 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
       blocked: open ? null : (sw.blocked || (sw.enabled ? (released ? "fiscal_process_undefined" : "release_or_financial_proof_pending") : null)),
       revision: sw.revision || null });
   }
+  if (path === "/api/sales/hotmart-status") {
+    if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
+    const hs = await readHotmartSwitch(env);
+    return json(200, { open: hs.open === true, channel: "hotmart", revision: hs.revision || null });
+  }
   if (path === "/entrega/reenviar") {
     return request.method === "GET" || request.method === "HEAD" ? html(200, RESEND_PAGE) : json(405, { error: "method_not_allowed" });
   }
@@ -183,3 +188,24 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
     return json(503, { message: "Não conseguimos enviar agora. Escreva para suporte@zevanory.api.br que enviamos manualmente." });
   }
 }
+
+// Modo Hotmart (roteiro v5.0, Nível 1 Hotmart-only): a frase do proprietário abre SOMENTE os caminhos
+// de compra /hotmart/ do site de vendas. Chave própria (sales:hotmart:v1), registro com channel "hotmart"
+// e a mesma validação do registro do proprietário. Não depende do preflight do Mercado Pago, não abre o
+// checkout próprio, o funil, o blog nem nenhum outro consumidor de sales:open:v1 (que continua fechado).
+// Falha fechada: KV ausente, JSON inválido, canal diferente ou registro incompleto = fechado.
+export const HOTMART_SALES_KEY = "sales:hotmart:v1";
+let hotmartCached = { at: 0, value: null };
+export async function readHotmartSwitch(env, now = Date.now()) {
+  if (now >= hotmartCached.at && now - hotmartCached.at < CACHE_MS && hotmartCached.value) return hotmartCached.value;
+  let value = { open: false, revision: "" };
+  try {
+    const raw = await env?.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(HOTMART_SALES_KEY, { cacheTtl: KV_EDGE_TTL_S });
+    const parsed = raw ? JSON.parse(raw) : null;
+    const revision = String(parsed?.at || "").slice(0, 40);
+    value = { open: parsed?.channel === "hotmart" && validOwnerAuthorization(parsed, now), revision };
+  } catch {}
+  hotmartCached = { at: now, value };
+  return value;
+}
+export function resetHotmartSwitchCache() { hotmartCached = { at: 0, value: null }; }

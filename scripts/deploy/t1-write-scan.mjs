@@ -243,6 +243,13 @@ export function checkInventory(root, registry = JSON.parse(readFileSync(join(roo
   const owner = new Map();
   for (const [svc, s] of Object.entries(services)) for (const w of [s.canonical, ...(s.config_publishers || []), ...(s.pending_owner_authorization || [])]) owner.set(w, svc);
   for (const w of Object.keys(registry.unserialized_known || {})) if (!owner.has(w)) owner.set(w, "unserialized");
+  // Leitores registrados de uma credencial D1 SOMENTE LEITURA (services.<svc>.d1_credentials.roles.<papel>.readers, com
+  // writes vazio): o workflow pode receber aquele token sem ser publicador do serviço. Papel com escrita nunca libera.
+  const readers = new Map();
+  for (const [svc, s] of Object.entries(services)) for (const role of Object.values(s.d1_credentials?.roles || {})) {
+    if (!role || typeof role.secret !== "string" || !Array.isArray(role.writes) || role.writes.length !== 0 || !Array.isArray(role.readers)) continue;
+    for (const rd of role.readers) if (rd && typeof rd.workflow === "string" && typeof rd.step === "string" && String(rd.reads || "").length > 10) readers.set(rd.workflow + "\n" + role.secret, svc);
+  }
   const isolated = new Set(Object.values(registry.isolated || {}));
   const read = (rel) => readFileSync(join(root, rel), "utf8").replace(/\r\n/g, "\n");
   const lineOf = (text, re) => { const ls = logicalLines(text); const hit = ls.find((l) => re.test(l.text)); return hit ? hit.line : null; };
@@ -324,6 +331,7 @@ export function checkInventory(root, registry = JSON.parse(readFileSync(join(roo
       const svc = TOKEN_OWNER[m[1]];
       if (f === TOKEN_SCOPE_CERTIFIER) continue;
       if (!svc) { err("TOKEN_UNKNOWN", `${f}: ${m[1]} sem dono em TOKEN_OWNER`); continue; }
+      if (readers.get(f + "\n" + m[1]) === svc) continue;
       if (owner.get(f) !== svc) err("TOKEN_CROSS_WORKER", `${f} usa ${m[1]} (dono ${svc}) mas é ${owner.get(f) || "não registrado"}`);
     }
   }

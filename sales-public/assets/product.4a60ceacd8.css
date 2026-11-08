@@ -109,6 +109,8 @@ main{display:block;overflow:visible;overflow-x:clip}
 
 /* The one honest site notice (pages with prices). The Worker removes it when sales open. */
 .sales-notice{margin:0;max-width:none;padding:var(--s-3) max(16px,calc((100% - 1120px)/2));background:var(--cupom);border-bottom:1px solid var(--linha-suave);color:var(--tinta);font-size:var(--t-0)}
+/* P03 O2: aviso neutro de disponibilidade junto de preços citados fora das páginas do interruptor. */
+.price-note{margin:var(--s-3) 0 0;padding:var(--s-2) var(--s-3);background:var(--cupom);border-left:3px solid var(--linha-suave);color:var(--tinta);font-size:var(--t-0)}
 
 /* Type helpers. */
 .kicker{margin:0 0 var(--s-3);font-family:var(--display);font-stretch:100%;font-weight:700;font-size:var(--t-1);color:var(--azul-cedula)}
@@ -363,7 +365,7 @@ main{display:block;overflow:visible;overflow-x:clip}
 .lead-form label,.calc label{font-weight:700}
 input[type=email],input[type=text],input[type=number],select{min-height:48px;padding:0 var(--s-4);border:1px solid var(--linha);border-radius:var(--controle);background:var(--cupom);font-size:1rem}
 .lead-consent{display:flex;gap:var(--s-3);align-items:flex-start;font-weight:400}
-.lead-consent input{width:24px;height:24px;margin-top:var(--s-1);accent-color:var(--azul-cedula)}
+.lead-consent input{flex:0 0 24px;width:24px;height:24px;margin-top:var(--s-1);accent-color:var(--azul-cedula)}
 .lead-note,.calc-hint{margin:0;color:var(--grafite);font-size:var(--t-0)}
 .lead-hp{position:absolute;left:-10000px;width:4px;height:4px;overflow:hidden}
 .checklist-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-5)}

@@ -43,17 +43,23 @@ export function resetDiarioSombraStats() {
 // valendo. Cada gravação tem um limite de tempo para que um D1 travado não pare a fila: vira diario_timeout.
 export const GRAVACAO_TIMEOUT_MS = 5000;
 let timeoutMs = GRAVACAO_TIMEOUT_MS;
-// Só para testes: encurta o limite de tempo de cada gravação.
-export function configurarDiarioSombra({ timeoutMs: ms } = {}) {
+// Agendador do limite de tempo: agendar(fn, ms) -> cancelar(). Produção: setTimeout real.
+const AGENDAR_REAL = (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); };
+let agendar = AGENDAR_REAL;
+// Só para testes: encurta o limite de tempo de cada gravação ou injeta um relógio manual (agendar), para que o limite
+// só dispare quando o teste mandar. Sem isso, uma gravação legítima numa máquina carregada passava do limite curto e
+// virava diario_timeout (instabilidade do DS5.6 sob carga).
+export function configurarDiarioSombra({ timeoutMs: ms, agendar: ag } = {}) {
   timeoutMs = Number.isSafeInteger(ms) && ms > 0 ? ms : GRAVACAO_TIMEOUT_MS;
+  agendar = typeof ag === "function" ? ag : AGENDAR_REAL;
 }
 let fila = Promise.resolve();
 function comLimite(p, ms) {
-  let timer;
+  let cancelar = null;
   const limite = new Promise((resolve) => {
-    timer = setTimeout(() => resolve({ ok: false, code: "diario_timeout" }), ms);
+    cancelar = agendar(() => resolve({ ok: false, code: "diario_timeout" }), ms);
   });
-  return Promise.race([p, limite]).finally(() => clearTimeout(timer));
+  return Promise.race([p, limite]).finally(() => { try { if (typeof cancelar === "function") cancelar(); } catch {} });
 }
 
 const dbOk = (db) => Boolean(db) && typeof db.prepare === "function" && typeof db.batch === "function";
@@ -195,8 +201,12 @@ export function eventoReembolso({ orderId = null, provider, transaction = null, 
   return { tipo: "refund", event_key: eventKey("refund", ...partes), ts_ms: now(ts), ref: order_ref || transaction_ref, payload };
 }
 
-// Consentimento (lead-magnet recordEvent). ref = subject_ref HMAC já existente (64 hex). Sem ref, não há como chavear
+// Consentimento (lead-magnet recordEvent). ts = instante do registro no Neon (coluna at, por neonTsMs), para que a
+// reconciliação derive a mesma chave. ref = subject_ref HMAC já existente (64 hex). Sem ref, não há como chavear
 // o titular sem dado pessoal: nenhum evento. Eventos sem tipo no diário (erase_kv_pending, ...) também não geram nada.
+// Instante do Neon em ms (inteiro), a mesma expressão no gancho (RETURNING do insert) e na reconciliação (PR 4): o
+// event_key de consentimento leva o instante, então os dois lados precisam do MESMO arredondamento.
+export const neonTsMs = (col) => `(floor(extract(epoch from ${col}) * 1000))::bigint`;
 export const LEAD_EVENTO_TIPO = Object.freeze({ consent_given: "consent_given", confirmed: "consent_confirmed", revoked_and_erased: "consent_revoked" });
 export function eventoConsentimento({ event, subjectRef, consentVersion = null, ts } = {}) {
   const tipo = LEAD_EVENTO_TIPO[str(event)];

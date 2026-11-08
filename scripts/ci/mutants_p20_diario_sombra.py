@@ -43,7 +43,7 @@ M = {
     "S06 sem gancho order_created no checkout Mercado Pago": (RC, '    if (inserted.length) diarioSombra(null, null, () => eventoPedidoCriado({ orderId, provider: "mercadopago",', '    if (false) diarioSombra(null, null, () => eventoPedidoCriado({ orderId, provider: "mercadopago",'),
     "S07 sem gancho payment_status no webhook Mercado Pago": (RC, '    if (Number(outcome.inserted_count) === 1) diarioSombra(null, null, () => eventoPagamento({ orderId: String(orders[0].order_id), provider: "mercadopago"', '    if (Number(outcome.inserted_count) === 1) void (null, null, () => eventoPagamento({ orderId: String(orders[0].order_id), provider: "mercadopago"'),
     "S08 sem gancho delivery_sent no Hotmart": (HM, HOT_OK, ""),
-    "S09 sem gancho de consentimento": (LM, "  diarioSombra(null, null, () => eventoConsentimento({ event, subjectRef: ref, consentVersion }));\n", ""),
+    "S09 sem gancho de consentimento": (LM, "  diarioSombra(null, null, () => eventoConsentimento({ event, subjectRef: ref, consentVersion, ts: Number.isSafeInteger(at) ? at : undefined }));\n", ""),
     "S10 sem gancho refund na aprovação": (RF, REFUND_OK, ""),
     "S11 compat sem o contexto do diário": (CP, "    const response=await comDiario(env, ctx, () => wrapped.processFetch(request, meteredEnv, ctx));\n", "    const response=await wrapped.processFetch(request, meteredEnv, ctx);\n"),
     "S12 sem waitUntil": (SB, "    if (host) { try { host.waitUntil(task); } catch {} }\n", ""),
