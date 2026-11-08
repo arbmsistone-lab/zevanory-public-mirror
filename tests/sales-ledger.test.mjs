@@ -1,8 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recordHotmartSale, saleFacts, SALES_SUMMARY_KEY } from "../worker/sales-ledger.mjs";
+import { recordHotmartSale, refreshSalesSummary, saleFacts, SALES_SUMMARY_KEY } from "../worker/sales-ledger.mjs";
 
-function memKv() { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); } }; }
+// KV em memória com list paginado e metadata (NC-989-01: o resumo é derivado da listagem dos eventos imutáveis).
+function memKv() {
+  const m = new Map(), meta = new Map();
+  return {
+    m, meta,
+    get: async (k) => m.get(k) ?? null,
+    put: async (k, v, o = {}) => { m.set(k, v); if (o.metadata !== undefined) meta.set(k, o.metadata); },
+    list: async ({ prefix = "" } = {}) => ({ keys: [...m.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => ({ name, metadata: meta.get(name) })), list_complete: true }),
+  };
+}
 const data = (txn, extra = {}) => ({
   product: { id: 123, name: "Lucro & Caixa" },
   buyer: { email: "cliente@example.com", name: "Cliente Real" },
@@ -25,13 +34,14 @@ test("approval counted once across APPROVED + COMPLETE, refund tracked", async (
   await recordHotmartSale(kv, "PURCHASE_APPROVED", data("HP2", { purchase: { ...data("HP2").purchase, origin: {} } }));
   await recordHotmartSale(kv, "PURCHASE_REFUNDED", data("HP1"));
   await recordHotmartSale(kv, "PURCHASE_REFUNDED", data("HP1"));
+  await refreshSalesSummary(kv, { now: Date.UTC(2026, 9, 12, 16) }); // NC-989-02: o resumo é o recomputo horário
   const s = JSON.parse(kv.m.get(SALES_SUMMARY_KEY));
   assert.equal(s.totals.approved, 2); assert.equal(s.totals.grossCents, 49400); assert.equal(s.totals.refunded, 1);
   assert.equal(s.bySource.youtube.approved, 1); assert.equal(s.bySource["sem-origem"].approved, 1);
   assert.equal(s.byProduct["Lucro & Caixa"].approved, 2);
   assert.equal(s.byDay["2026-10-12"].approved, 2);
   assert.equal(s.integrity, "webhook_authenticated");
-  assert.ok(!kv.m.get(SALES_SUMMARY_KEY).includes("cliente@") && !kv.m.get(SALES_SUMMARY_KEY).includes("HP1"));
+  assert.ok(![...kv.m.keys(), ...kv.m.values()].some((v) => String(v).includes("cliente@") || String(v).includes("HP1")));
 });
 
 test("unknown events are ignored", async () => {
