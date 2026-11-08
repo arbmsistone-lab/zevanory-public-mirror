@@ -2,13 +2,14 @@
 // do servidor local (scripts/audit/sales-local-server.mjs, através do Worker real) e qualquer pedido
 // fora de 127.0.0.1 é abortado e registrado. Sem bypassCSP: o axe entra por page.evaluate (CDP), então a
 // CSP de produção continua valendo e um erro de CSP aparece como erro de console.
-// Códigos (B01...B09) estáveis, usados pelo relatório, pelos testes e pelos mutantes.
+// B10 (P03 O3): a canonical é o endereço efetivamente servido (mesmo caminho, 200, sem redirect).
+// Códigos (B01...B10) estáveis, usados pelo relatório, pelos testes e pelos mutantes.
 export const VIEWPORTS = Object.freeze({ "360": { width: 360, height: 740 }, "1350": { width: 1350, height: 900 } });
 export const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 export const MIN_TARGET = 24;   // WCAG 2.2 AA 2.5.8 (o padrão interno de 44 px é medido à parte e só reportado)
 export const MAX_TABS = 400;
 
-export async function auditPage(browser, url, { viewport = "360", scheme = "light", axeSource, expectStatus = 200 } = {}) {
+export async function auditPage(browser, url, { viewport = "360", scheme = "light", axeSource, expectStatus = 200, canonicalPath } = {}) {
   const vp = VIEWPORTS[viewport];
   const mobile = viewport === "360";
   const ctx = await browser.newContext({ viewport: vp, colorScheme: scheme, reducedMotion: "reduce", isMobile: mobile, hasTouch: mobile });
@@ -31,6 +32,18 @@ export async function auditPage(browser, url, { viewport = "360", scheme = "ligh
     const status = res ? res.status() : 0;
     info.status = status;
     if (status !== expectStatus) p("B01", `HTTP ${status} (esperado ${expectStatus})`);
+    // B10: o documento chegou sem redirect e a canonical (quando há) é o caminho servido, que responde 200
+    // direto (maxRedirects 0). canonicalPath só difere do caminho pedido na cópia declarada (/index.html).
+    const from = res && res.request().redirectedFrom();
+    if (from) p("B10", `redirect ${new URL(from.url()).pathname} -> ${new URL(res.url()).pathname} (página servida com redirect)`);
+    const canon = await page.evaluate(() => [...document.querySelectorAll('link[rel="canonical"]')].map((l) => l.getAttribute("href")));
+    info.canonical = canon;
+    if (canon.length === 1 && canon[0]) {
+      const cp = new URL(canon[0], url).pathname, want = canonicalPath || new URL(url).pathname;
+      if (cp !== want) p("B10", `canonical ${cp} != endereço servido ${want}`);
+      const cr = await page.request.get(new URL(cp, url).href, { maxRedirects: 0 });
+      if (cr.status() !== 200 || cr.headers()["location"]) p("B10", `canonical ${cp} responde HTTP ${cr.status()}${cr.headers()["location"] ? " -> " + cr.headers()["location"] : ""} (esperado 200 sem redirect)`);
+    }
     await page.evaluate(() => document.fonts && document.fonts.ready);
     // B02: axe-core WCAG 2.0/2.1/2.2 A+AA + best-practice; serious/critical = falha, o resto é registrado.
     await page.evaluate(axeSource);

@@ -4,7 +4,7 @@
 //      landmarks, canonical/meta, sitemap e coerência comercial (tabela C, aviso, sem fabricação);
 //   2. navegador (scripts/audit/p03-pages-browser.mjs): cada página em 360 px e 1350 px, servida pelo
 //      Worker real em 127.0.0.1 (scripts/audit/sales-local-server.mjs): axe WCAG 2.2 AA, teclado,
-//      alvos >= 24 px, overflow horizontal, erros de console/CSP.
+//      alvos >= 24 px, overflow horizontal, erros de console/CSP, canonical = endereço servido (200, sem redirect).
 // Falha (exit 1) com QUALQUER achado: o orçamento é zero, então qualquer regressão derruba o gate.
 // Uso: node scripts/audit/p03-all-pages-audit.mjs [--out p03.json] [--pages a,b] [--static-only]
 //        [--dir sales-public] [--schemes light,dark] [--viewports 360,1350]
@@ -58,7 +58,7 @@ if (!staticOnly) {
       while (next < cells.length) {
         const [slug, vp, sc] = cells[next++];
         const u = urlFor(slug);
-        const r = await auditPage(browser, `http://127.0.0.1:${port}${u.path}`, { viewport: vp, scheme: sc, axeSource, expectStatus: u.status });
+        const r = await auditPage(browser, `http://127.0.0.1:${port}${u.path}`, { viewport: vp, scheme: sc, axeSource, expectStatus: u.status, canonicalPath: u.canonical });
         (report.browser.pages[slug] ||= { path: u.path, cells: {} }).cells[`${vp}-${sc}`] = r;
         report.browser.cells++;
       }

@@ -36,11 +36,15 @@ const V = {
   console: CLEAN.replace("<!--M-->", '<script>console.error("falha proposital")</script>'),
   asset: CLEAN.replace("<!--M-->", '<img src="/nao-existe.png" alt="figura" width="10" height="10">'),
 };
+// O3 (B10): canonical = endereço servido, 200 sem redirect.
+const canon = (path) => CLEAN.replace("<title>", `<link rel="canonical" href="https://vendas.zevanory.api.br${path}"><title>`);
+Object.assign(V, { canon: canon("/canon"), canonslash: canon("/canonslash/"), canonidx: canon("/sumiu"), canonredir: canon("/moved") });
 let server, browser, base;
 before(async () => {
   server = createServer((q, r) => {
     const k = q.url.slice(1).split("?")[0];
-    if (V[k]) { r.writeHead(200, { "content-type": "text/html; charset=utf-8" }); r.end(V[k]); }
+    if (k === "moved") { r.writeHead(301, { location: "/canon" }); r.end(); }
+    else if (V[k]) { r.writeHead(200, { "content-type": "text/html; charset=utf-8" }); r.end(V[k]); }
     else { r.writeHead(404, { "content-type": "text/plain" }); r.end("x"); }
   });
   await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
@@ -76,4 +80,11 @@ test("N9 armadilha de teclado", async () => { assert.ok((await run("trap")).prob
 test("N10 erro de console e sub-recurso quebrado", async () => {
   assert.ok(codes(await run("console")).includes("B09"), "[N10.1] console.error");
   assert.ok(codes(await run("asset")).includes("B09"), "[N10.2] imagem 404");
+});
+test("N11 canonical = endereço servido (200, sem redirect)", async () => {
+  assert.deepEqual((await run("canon")).problems, [], "[N11.0] canonical igual ao caminho servido");
+  assert.ok((await run("canonslash")).problems.some((p) => p.code === "B10" && /!= endereço servido/.test(p.msg)), "[N11.1] canonical com barra final != caminho servido");
+  assert.ok((await run("moved")).problems.some((p) => p.code === "B10" && /redirect/.test(p.msg)), "[N11.2] página servida via redirect");
+  assert.ok((await run("canonidx", { canonicalPath: "/sumiu" })).problems.some((p) => p.code === "B10" && /HTTP 404/.test(p.msg)), "[N11.3] canonical que não responde 200");
+  assert.ok((await run("canonredir", { canonicalPath: "/moved" })).problems.some((p) => p.code === "B10" && /HTTP 301/.test(p.msg)), "[N11.3] canonical que redireciona");
 });

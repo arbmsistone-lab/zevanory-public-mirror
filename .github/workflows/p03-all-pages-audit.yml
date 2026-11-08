@@ -21,6 +21,9 @@ on:
       - "data/products.json"
       - "scripts/build_sales_public.py"
       - "scripts/sales_policy.py"
+      - "worker/politica-unica.mjs"
+      - "quem-criou/index.html"
+      - "sitemap.xml"
       - "worker/sales-public-worker.mjs"
       - "worker/nc015-sales-scope.mjs"
       - "scripts/audit/sales-local-server.mjs"
@@ -64,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/p03-pages-audit.test.mjs | tee /tmp/p03-static.txt
-          grep -qx "# tests 9" /tmp/p03-static.txt && grep -qx "# pass 9" /tmp/p03-static.txt && grep -qx "# fail 0" /tmp/p03-static.txt && grep -qx "# skipped 0" /tmp/p03-static.txt
+          grep -qx "# tests 10" /tmp/p03-static.txt && grep -qx "# pass 10" /tmp/p03-static.txt && grep -qx "# fail 0" /tmp/p03-static.txt && grep -qx "# skipped 0" /tmp/p03-static.txt
       - name: Instalar Playwright 1.55.0 e axe-core 4.10.3 (mesmos pins do sales-ux)
         run: |
           set -euo pipefail
@@ -75,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/ci/p03-pages-browser.test.mjs | tee /tmp/p03-browser.txt
-          grep -qx "# tests 10" /tmp/p03-browser.txt && grep -qx "# pass 10" /tmp/p03-browser.txt && grep -qx "# fail 0" /tmp/p03-browser.txt && grep -qx "# skipped 0" /tmp/p03-browser.txt
+          grep -qx "# tests 11" /tmp/p03-browser.txt && grep -qx "# pass 11" /tmp/p03-browser.txt && grep -qx "# fail 0" /tmp/p03-browser.txt && grep -qx "# skipped 0" /tmp/p03-browser.txt
       - name: Auditoria de todas as páginas (360 e 1350 px, claro e escuro)
         run: |
           set -euo pipefail
@@ -90,11 +93,11 @@ jobs:
           assert t["cells"] == t["pages"] * 4, t
           print(f"::notice title=P03_ALL_PAGES::páginas={t['pages']} células={t['cells']} achados=0 axe={r.get('axe_version')}")
           EOF
-      - name: Mutantes (34, todos KILLED)
+      - name: Mutantes (46, todos KILLED)
         run: |
           set -euo pipefail
           python3 scripts/ci/mutants_p03_pages.py < /dev/null | tee /tmp/p03/mutants.txt
-          grep -qx "MUTANTS total=34 killed=34 survived=0 inconclusive=0" /tmp/p03/mutants.txt
+          grep -qx "MUTANTS total=46 killed=46 survived=0 inconclusive=0" /tmp/p03/mutants.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

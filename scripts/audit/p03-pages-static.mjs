@@ -5,7 +5,11 @@
 // Worker para rotas desconhecidas); as rotas do Worker (htmlRoutes) precisam ser as mesmas do gerador.
 // Cada página: lang, title, h1, main, skip-link, viewport, links internos, canonical/meta, sitemap e
 // coerência comercial (preços da tabela C, aviso de vendas fechadas, sem depoimento/avaliação
-// fabricados, sem preço "de" fictício). Cada achado tem um código estável (S01...S19).
+// fabricados, sem preço "de" fictício). Cada achado tem um código estável (S01...S21).
+// S20/S21 (P03 O2): toda página que cita preço da tabela C traz um aviso que nunca mente: nas páginas que o
+// Worker atualiza pelo interruptor (SALES_TOGGLE_PAGES), o aviso de vendas fechadas data-zev-closed (que o
+// Worker remove quando abre); em todas as outras, o aviso neutro .price-note, verdadeiro nos dois estados.
+// Um data-zev-closed fora das páginas do interruptor ficaria falso com as vendas abertas (S21).
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -24,7 +28,7 @@ export const DERIVED = Object.freeze({ "combo-ia-vendas": [194, 37, 78.5], "nego
 // /conteudo-pronto é interceptada pelo Worker (DEC-04: tombstone 404, igual ao arquivo gerado);
 // index.html é a cópia física do catálogo, servida em /index.html (a raiz / reescreve para /solucoes).
 export const NOT_FOUND_PROBE = "/p03-rota-inexistente";
-export const SPECIAL = Object.freeze({ index: { path: "/index.html", status: 200 }, "404": { path: NOT_FOUND_PROBE, status: 404 },
+export const SPECIAL = Object.freeze({ index: { path: "/index.html", status: 200, canonical: "/solucoes" }, "404": { path: NOT_FOUND_PROBE, status: 404 },
   "conteudo-pronto": { path: "/conteudo-pronto", status: 404 } });
 // Caminhos dinâmicos do Worker que não são arquivos (aceitos como destino de link interno).
 const WORKER_PATHS = [/^\/comprar\/ZEV-[A-Z0-9-]+$/, /^\/assinar\/[a-z-]+$/, /^\/api\/[a-z0-9/_-]+$/, /^\/lista-de-espera$/];
@@ -48,6 +52,16 @@ export function parseWorkerRoutes(src) {
   if (!m) throw new Error("htmlRoutes ausente no Worker");
   return [...m[1].matchAll(/"([a-z0-9-]+)"/g)].map((x) => x[1]);
 }
+// Páginas cujo HTML o Worker reescreve conforme o interruptor de vendas, e apelidos servidos como elas
+// (/index.html -> página solucoes, para a cópia física nunca mostrar "fechadas" com vendas abertas).
+export function parseWorkerToggle(src) {
+  const m = src.match(/const SALES_TOGGLE_PAGES=new Set\(\[([^\]]*)\]\)/);
+  if (!m) throw new Error("SALES_TOGGLE_PAGES ausente no Worker");
+  const toggle = [...m[1].matchAll(/"([a-z0-9-]+)"/g)].map((x) => x[1]);
+  const aliases = {};
+  for (const a of src.matchAll(/url\.pathname==="\/([a-z0-9-]+)\.html"\)\s*\{\s*url\.pathname="\/([a-z0-9-]+)\.html";\s*page="\2";/g)) aliases[a[1]] = a[2];
+  return { togglePages: toggle, workerAliases: aliases };
+}
 export function parseSitemap(xml) {
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].trim());
 }
@@ -64,7 +78,7 @@ export function loadSite(root, dir = join(root, "sales-public")) {
   const wsrc = readFileSync(join(root, "worker/sales-public-worker.mjs"), "utf8");
   const wm = wsrc.match(/const PRICES=(\{[^;]*\});/);
   const workerPrices = wm ? Object.fromEntries(Object.values(JSON.parse(wm[1])).map(([n, p]) => [n, p])) : {};
-  return { dir, routes, workerRoutes, files, pages, sitemap, products, genPrices, workerPrices };
+  return { dir, routes, workerRoutes, files, pages, sitemap, products, genPrices, workerPrices, ...parseWorkerToggle(wsrc) };
 }
 
 // Caminho público de cada arquivo e status esperado.
@@ -129,13 +143,36 @@ export function checkPage(slug, html, site) {
     if (canon.length !== 1) p("S11", `${canon.length} canonical (esperado 1)`);
     else {
       const want = slug === "index" ? `${SALES_ORIGIN}/solucoes` : `${SALES_ORIGIN}/${slug}`;
-      if (canon[0] !== want && canon[0] !== want + "/") p("S11", `canonical ${canon[0]} != ${want}`);
+      // O3: exatamente o endereço servido (/slug, 200 sem redirect; /slug/ é outra URL, nunca a canônica).
+      if (canon[0] !== want) p("S11", `canonical ${canon[0]} != ${want} (endereço servido)`);
       const og = meta(html, "property", "og:url");
       if (og.length && og[0] !== canon[0]) p("S11", `og:url ${og[0]} != canonical ${canon[0]}`);
     }
     if (meta(html, "name", "description").filter(Boolean).length !== 1) p("S12", "meta description ausente ou duplicada");
   } else if (canon.length > 1) p("S11", "várias canonical numa página noindex");
   out.push(...commercial(slug, html));
+  out.push(...availability(slug, html, site));
+  return out;
+}
+
+// Preço da tabela C citado no texto visível (R$ 97, R$ 97,00...; não casa R$ 97,50 nem R$ 1.970).
+export const PRICE_CITE = new RegExp(`R\\$ ?(?:${[...new Set(Object.values(TABLE_C).map(([, v]) => v))].join("|")})(?:,00)?(?!\\d|[.,]\\d)`);
+export const AVAILABILITY_NOTE_RE = /<p class="price-note">([^<]*)<\/p>/;
+// O aviso neutro tem de dizer as duas coisas verdadeiras nos dois estados (e nada de "fechadas" afirmativo).
+export const noteTextOk = (t) => /Confira a disponibilidade na página do produto/.test(t) && /as vendas podem estar temporariamente fechadas/.test(t);
+export const togglePageOf = (slug, site) => (site.workerAliases || {})[slug] || slug;
+export function availability(slug, html, site) {
+  const out = [];
+  const p = (code, msg) => out.push({ code, page: slug, msg });
+  const toggled = (site.togglePages || []).includes(togglePageOf(slug, site));
+  const priced = PRICE_CITE.test(visibleText(html)) || /class="catalog-price"|Preço de tabela:/.test(html);
+  if (/\sdata-zev-closed\b/.test(html) && !toggled) p("S21", "aviso fixo de vendas fechadas numa página que o Worker não atualiza (ficaria falso com as vendas abertas)");
+  if (priced && !toggled) {
+    const m = html.match(AVAILABILITY_NOTE_RE);
+    if (!m) p("S20", "preço da tabela C sem aviso de disponibilidade (.price-note)");
+    else if (!noteTextOk(m[1])) p("S20", `aviso de disponibilidade com texto fora do padrão: ${m[1].slice(0, 80)}`);
+  }
+  if (priced && toggled && !/<p class="sales-notice" data-zev-closed>[^<]*vendas temporariamente fechadas/.test(html)) p("S20", "página do interruptor com preço e sem o aviso de vendas fechadas");
   return out;
 }
 
