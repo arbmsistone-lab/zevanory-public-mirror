@@ -24,6 +24,42 @@
       ],
       "owner_authorized_serialization": {
         "mercadopago-production-token-rotate.yml": "Written owner authorization: \"AUTORIZO SERIALIZAR mercadopago-production-token-rotate.yml NO GRUPO deploy-zevanory\". Only the concurrency block changed (group deploy-zevanory, cancel-in-progress false, queue max, workflow level, same as the other publishers); recoverability analysis in docs/ops/ROTACAO_MERCADOPAGO.md section 1.1."
+      },
+      "d1_credentials": {
+        "decision": "DEC-P20-D1-01 (contra-auditor GPT-6): NO-GO para ampliar o token compartilhado do deploy; uma credencial por papel, cada uma só no passo autorizado.",
+        "database": {
+          "name": "zevanory-diario-p20",
+          "id": "1b1bfa19-ccc5-423a-bc1f-62d89020c8e2",
+          "account": "1b26415802588185a86c1d4d3ebf5bdb"
+        },
+        "workflow": "central-production-deploy.yml",
+        "environment": "producao-critica",
+        "roles": {
+          "migrate": {
+            "secret": "CF_TOKEN_D1_DIARIO_MIGRATE",
+            "step": "P20 diário D1 - migrações",
+            "permission": "Conta > D1 > Editar (API: D1 Write), só a conta acima",
+            "writes": [
+              "GET /accounts/<conta>/d1/database/<id> (pré-checagem)",
+              "wrangler d1 migrations apply zevanory-diario-p20 --remote"
+            ]
+          },
+          "read": {
+            "secret": "CF_TOKEN_D1_DIARIO_READ",
+            "step": "P20 diário D1 - readback",
+            "permission": "Conta > D1 > Ler (API: D1 Read), só a conta acima",
+            "writes": [],
+            "reads": [
+              "wrangler d1 execute zevanory-diario-p20 --remote --command \"select count(*) as n from diario_head\""
+            ]
+          },
+          "deploy": {
+            "secret": "CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || CLOUDFLARE_API_TOKEN",
+            "d1": "nenhuma: subir um binding D1 só exige Editor no Worker (developers.cloudflare.com/workers/authorization/#bindings); vazio nos dois passos D1"
+          }
+        },
+        "absent_secret": "migrate ausente: aviso DIARIO_D1_TOKEN_DEDICADO_AUSENTE e deploy sem o binding DIARIO; read ausente: readback não roda (aviso). Nunca há queda para outro token.",
+        "tests": "tests/test_diario_d1_credentials.py"
       }
     },
     "zevanory-sales-public": {
@@ -85,5 +121,835 @@
   },
   "rollback_policy": "A deliberate rollback is a git revert merged by the owner: a FORWARD promotion whose authorisation trail is the reviewed pull request. promotion_guard.py has no backwards path. Automatic recovery inside a failed release (central wrangler rollback, sales snapshot restore) only returns to the version that was live before that same run; the sales release never deletes the production script.",
   "recovery_when_production_unreadable": "Not automatic: the guard refuses. The owner dispatches the canonical workflow after confirming the live version manually (Cloudflare dashboard) or after restoring the readback endpoint; the run is recorded.",
-  "credentials": "All 19 publishing workflows use the same account-wide tokens (CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN), so credential-level exclusivity does not exist today. Cloudflare supports account-owned API tokens scoped to Specified Workers with the Editor role (changelog 2026-09-15). Target: one token per Worker held only by that Worker's publishers, then revoke the shared tokens. Owner action."
+  "credentials": "All 19 publishing workflows use the same account-wide tokens (CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN), so credential-level exclusivity does not exist today. Cloudflare supports account-owned API tokens scoped to Specified Workers with the Editor role (changelog 2026-09-15). Target: one token per Worker held only by that Worker's publishers, then revoke the shared tokens. Owner action.",
+  "write_paths": {
+    "schema": "t1-write-paths/v1",
+    "rule": "Gerado e conferido por scripts/deploy/t1-write-scan.mjs (tests/t1-write-scan.test.mjs): todo workflow ou script com comando capaz de escrever na Cloudflare (classes abaixo) está aqui com classe, escopo e guard. Caminho detectado e não registrado, classe divergente, script chamado não declarado em via, ou entrada que não escreve mais = falha. t1=gap é o registro honesto de rota sem guard T1 antes da escrita: conta como NOT_PROVEN na condição 3 do T1_EXCLUSIVITY.",
+    "classes": {
+      "deploy": "wrangler deploy | rollback | delete | versions upload | versions deploy; REST de escrita em /workers/scripts/<nome>[/content|versions|deployments|settings]",
+      "secret": "wrangler [versions] secret put|delete|bulk; REST /workers/scripts/<nome>/secrets",
+      "config-kv": "wrangler kv key|bulk put|delete e kv namespace create|delete (salvo --local); REST /storage/kv/namespaces",
+      "route": "wrangler triggers deploy; REST /zones/<id>/workers/routes, /workers/domains, /workers/scripts/<nome>/subdomain|schedules",
+      "d1": "wrangler d1 execute | d1 migrations apply (salvo --local explícito); REST /d1/database"
+    },
+    "guard_required": {
+      "deploy": "promotion_guard.py (autoridade, SHA vivo pela tag da Cloudflare + readback R7) ANTES da escrita, no grupo único do serviço, environment producao-critica; readback pós-promoção e rollback ensaiado",
+      "secret": "no grupo do serviço, environment producao-critica, versão nova marcada com a tag viva (worker_secret_rotate.py) e verificação do nome; nunca `wrangler secret put` direto",
+      "config-kv": "lista fechada de chaves por escritor, verificada no CI; chave que governa venda (sales:*) só por um grupo único; abrir venda exige producao-critica; readback do valor",
+      "route": "snapshot/preflight/verify/restore (scripts/ops/router_routes.py) dentro do publicador do roteador, depois do guard do roteador",
+      "d1": "migração remota só pelo publicador do serviço, environment producao-critica, com dry-run local e readback do schema"
+    },
+    "scopes": {
+      "production": "escreve em recurso de produção: precisa de credencial Cloudflare; t1=guarded exige guard_evidence presente ANTES da primeira escrita de produção do próprio arquivo",
+      "isolated": "alvo fora da produção (target aparece no arquivo); t1=gap enquanto o token for o compartilhado da conta (condição 5)",
+      "no-credential": "o arquivo não recebe nenhuma credencial Cloudflare (verificado): não consegue escrever"
+    },
+    "limits": "Fora do alcance estático: URL montada fora do arquivo, comando guardado em variável ($WRANGLER deploy), Workers Builds e operações no painel da Cloudflare, escrita de configuração de zona que não é de Worker (DNS, e-mail: sandbox-mail-routing.yml) e escrita da aplicação pelos endpoints /api/admin dos próprios Workers.",
+    "workflows": {
+      "b0-baseline-tests.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/audit/plan-probe.mjs"
+        ],
+        "scope": "no-credential",
+        "note": "roda os testes de scripts/audit/plan-probe.mjs com fetch falso"
+      },
+      "b01-recovery-probe.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "sandbox/rollback-secret-probe/cleanup-only.sh"
+        ],
+        "scope": "isolated",
+        "target": "zevanory-rollback-secret-probe",
+        "t1": "gap",
+        "controls": "token de sonda; conta conferida no script; mesmo script de limpeza do probe de rollback",
+        "gap": "Worker de sonda na MESMA conta de produção; escopo efetivo do token de sonda não lido por este gate (condição 4)."
+      },
+      "b01-rollback-secret-probe.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "sandbox/rollback-secret-probe/cleanup-only.sh"
+        ],
+        "scope": "isolated",
+        "target": "zevanory-rollback-secret-probe",
+        "t1": "gap",
+        "controls": "environment sandbox-financial-approved; run_attempt == 1; token de sonda CLOUDFLARE_SANDBOX_PROBE_TOKEN; conta conferida no script",
+        "gap": "Worker de sonda na MESMA conta de produção (1b26…); o escopo efetivo do token de sonda não é lido por este gate (condição 4)."
+      },
+      "backup-preserve-archive.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/ops/backup_preserve_archive.py"
+        ],
+        "scope": "production",
+        "service": "kv:backup-preserve",
+        "t1": "gap",
+        "controls": "grupo backup-preserve; environment producao-critica (revisor)",
+        "gap": "PUT no KV de produção com o token compartilhado da conta, sem promotion_guard e sem lista fechada de chaves verificada no CI."
+      },
+      "central-production-deploy.yml": {
+        "classes": [
+          "d1",
+          "deploy"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "guarded",
+        "guard_evidence": [
+          "promotion_guard\\.py --service zevanory "
+        ],
+        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987): migração e readback do banco zevanory-diario-p20 dentro do mesmo job, depois do guard, e só com o binding DIARIO; DEC-P20-D1-01: a migração (d1 migrations apply --remote) usa só CF_TOKEN_D1_DIARIO_MIGRATE (D1 Edit) e o readback só CF_TOKEN_D1_DIARIO_READ (D1 Read), cada um no env do próprio passo, com o token compartilhado vazio ali (services.zevanory.d1_credentials)"
+      },
+      "certification-isolated-deploy.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [],
+        "scope": "isolated",
+        "target": "zevanory-certification",
+        "t1": "gap",
+        "controls": "environment sandbox-financial-approved; vars.SANDBOX_FINANCIAL_ENABLED; run_attempt == 1",
+        "gap": "token compartilhado da conta: o alvo isolado é só configuração (troca de alvo de produção não é barrada pela credencial, condição 5)."
+      },
+      "channel-credentials-sync.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita."
+      },
+      "channel-production-bootstrap.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita."
+      },
+      "command-center-snapshot.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/audit/command-center-snapshot.mjs"
+        ],
+        "scope": "production",
+        "service": "kv:zpc:command",
+        "t1": "gap",
+        "controls": "grupo command-center-snapshot; environment gh-pages-automacao",
+        "gap": "snapshot do painel e zpc:kv:v1:budget; escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "credential-separation-behaviour.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "scripts/ci/credential_separation_gate.py",
+          "scripts/ci/mutants_credential_separation.py"
+        ],
+        "scope": "no-credential",
+        "note": "gate e mutantes: os comandos aparecem como TEXTO procurado, não executado"
+      },
+      "credential-separation-gate.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [
+          "scripts/ci/credential_separation_gate.py"
+        ],
+        "scope": "no-credential",
+        "note": "gate estático: o padrão `wrangler deploy --var` é texto procurado"
+      },
+      "financial-e2e-stripe.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "environment producao-critica; alvo declarado zevanory-certification",
+        "gap": "secret bulk com o token compartilhado da conta (o alvo é só o --name do comando: troca de alvo não é barrada pela credencial); fora do grupo; pending_owner_authorization."
+      },
+      "funnel-v2.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/audit/command-center-snapshot.mjs"
+        ],
+        "scope": "no-credential",
+        "note": "testes do snapshot do painel com fetch falso"
+      },
+      "gemini-key-to-worker.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita."
+      },
+      "lead-privacy-secret-to-worker.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "scripts/deploy/worker_secret_rotate.py"
+        ],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "guarded",
+        "guard_evidence": [
+          "worker_secret_rotate\\.py --apply"
+        ],
+        "controls": "worker_secret_rotate.py: UMA versão com a tag viva (SHA preservado), versions deploy, rollback e --verify; grupo deploy-zevanory (queue: max) + environment producao-critica"
+      },
+      "market-weekly.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/intel/market-weekly.mjs"
+        ],
+        "scope": "production",
+        "service": "kv:zpc:market:v1:weekly",
+        "t1": "gap",
+        "controls": "environment gh-pages-automacao",
+        "gap": "escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "mercadopago-exact-sha-recovery.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "environment producao-critica; deploy com --tag do SHA alvo",
+        "gap": "rota de recuperação fora do grupo deploy-zevanory e sem promotion_guard (pending_owner_authorization: fluxo financeiro, mudança só com autorização escrita)."
+      },
+      "mercadopago-production-token-rotate.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica; rollback para PREV_VERSION_ID em falha",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita. Fluxo financeiro: mudança só com autorização escrita do proprietário."
+      },
+      "owner-oauth-key-bootstrap.yml": {
+        "classes": [
+          "config-kv",
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory-product-control-portable",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory-product-control-portable; environment producao-critica; uma vez só, recusa se o segredo existe",
+        "gap": "secret put + PUT em KV de produção sem promotion_guard; versão nova sem tag de SHA."
+      },
+      "p20-restore-drill-tests.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/audit/plan-probe.mjs"
+        ],
+        "scope": "no-credential",
+        "note": "testes com fetch falso"
+      },
+      "plan-probe.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/audit/plan-probe.mjs"
+        ],
+        "scope": "production",
+        "service": "kv:plan-probe",
+        "t1": "gap",
+        "controls": "environment gh-pages-automacao",
+        "gap": "escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "production-test-secret-cleanup.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita."
+      },
+      "public-router-contract.yml": {
+        "classes": [
+          "deploy",
+          "route"
+        ],
+        "via": [
+          "scripts/ci/mutants_public_router.py",
+          "scripts/ops/router_routes.py"
+        ],
+        "scope": "no-credential",
+        "note": "contrato e mutantes do roteador sobre cópias temporárias"
+      },
+      "public-router-deploy.yml": {
+        "classes": [
+          "deploy",
+          "route"
+        ],
+        "via": [
+          "scripts/ops/router_routes.py"
+        ],
+        "scope": "production",
+        "service": "zevanory-public-router",
+        "t1": "gap",
+        "controls": "snapshot/preflight/verify/restore de rotas (scripts/ops/router_routes.py) e rollback da versão; environment producao-critica; grupo public-router-deploy",
+        "gap": "sem promotion_guard.py (autoridade + SHA vivo) antes de `wrangler deploy`; execuções de PR compartilham o grupo de deploy (registro t1_unchanged)."
+      },
+      "r9-operator-token.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "scripts/ci/credential_separation_gate.py",
+          "scripts/ci/mutants_credential_separation.py"
+        ],
+        "scope": "no-credential",
+        "note": "mutantes da separação de credenciais"
+      },
+      "r9-pilot-removal.yml": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "via": [
+          "scripts/ci/credential_separation_gate.py",
+          "scripts/ci/mutants_credential_separation.py"
+        ],
+        "scope": "no-credential",
+        "note": "mutantes da separação de credenciais"
+      },
+      "release-chain-proof.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [
+          "scripts/release/publication_chain_check.py"
+        ],
+        "scope": "no-credential",
+        "note": "verificador estático da cadeia de publicação"
+      },
+      "sales-lock-publishers.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/channels/youtube-daily-short.mjs"
+        ],
+        "scope": "no-credential",
+        "note": "testes do publicador de shorts com KV falso"
+      },
+      "sales-switch-contract.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/sales_switch_workflow.py"
+        ],
+        "scope": "no-credential",
+        "note": "contrato do interruptor com KV falso"
+      },
+      "sandbox-route-probe-contract.yml": {
+        "classes": [
+          "deploy",
+          "route"
+        ],
+        "via": [
+          "sandbox/route-probe/run_route_probe.py",
+          "scripts/ci/mutants_sandbox_route_probe.py",
+          "scripts/ops/router_routes.py"
+        ],
+        "scope": "no-credential",
+        "note": "contrato e mutantes da sonda de rotas sandbox"
+      },
+      "sandbox-route-probe.yml": {
+        "classes": [
+          "deploy",
+          "route"
+        ],
+        "via": [
+          "sandbox/route-probe/run_route_probe.py",
+          "scripts/ops/router_routes.py"
+        ],
+        "scope": "isolated",
+        "target": "zevanory-route-probe",
+        "t1": "gap",
+        "controls": "token de sonda CF_PROBE_TOKEN / CF_PROBE_TOKEN_NO_ROUTES; router_routes.py em modo sandbox (recusas provadas em tests/test_sandbox_route_probe.py)",
+        "gap": "Workers e rotas de sonda na MESMA conta de produção; escopo efetivo do token de sonda não lido por este gate (condição 4)."
+      },
+      "sandbox-worker-secret-audit.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "PATCH /workers/scripts/zevanory/settings (bindings) sem promotion_guard antes da escrita; dispara em push."
+      },
+      "short-pack.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "kv:zpc:media:short",
+        "t1": "gap",
+        "controls": "environment gh-pages-automacao",
+        "gap": "escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "system-matrix.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/audit/system-matrix.mjs"
+        ],
+        "scope": "production",
+        "service": "kv:zpc:matrix:v1",
+        "t1": "gap",
+        "controls": "environment gh-pages-automacao",
+        "gap": "escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "voice-cache-warm.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/voice_cache_warm.mjs"
+        ],
+        "scope": "production",
+        "service": "kv:ZEVANORY_PRIVATE_ARTIFACTS",
+        "t1": "gap",
+        "controls": "grupo voice-cache-warm; environment gh-pages-automacao",
+        "gap": "escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "voice-final-closure-reconcile.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "kv:voice-final-closure",
+        "t1": "gap",
+        "controls": "environment gh-pages-automacao",
+        "gap": "PUT do certificado final de voz no KV privado; escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "voice-gemini-auth-key-probe.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita."
+      },
+      "voice-gemini-production-provision.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita."
+      },
+      "voice-workers-ai-binding-probe.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "isolated",
+        "target": "zevanory-voice-ai-probe",
+        "t1": "gap",
+        "controls": "environment producao-critica (revisor)",
+        "gap": "`wrangler delete` com o token compartilhado da conta; o nome do alvo é só um argumento (condição 5)."
+      },
+      "voice-zero-spend-enable.yml": {
+        "classes": [
+          "secret"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory",
+        "t1": "gap",
+        "controls": "grupo deploy-zevanory (queue: max) + environment producao-critica",
+        "gap": "`wrangler secret put|delete|bulk` cria e implanta uma versão NOVA sem tag de SHA (ver scripts/deploy/worker_secret_rotate.py): não passa por promotion_guard.py e quebra a amarração tag->SHA lida pelo readback R7 até o próximo deploy. Guard exigido: worker_secret_rotate.py (versão marcada com a tag viva) ou promotion_guard antes da escrita."
+      },
+      "whatsapp-broker-protocol-v2.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "giro-whatsapp-bridge",
+        "t1": "gap",
+        "controls": "environment producao-critica",
+        "gap": "POST de script via API sem guard e fora do grupo (unserialized_known); falha antes da escrita porque o Worker não existe."
+      },
+      "whatsapp-zero-spend-broker.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "giro-whatsapp-bridge",
+        "t1": "gap",
+        "controls": "environment producao-critica",
+        "gap": "deploy sem promotion_guard; Worker ausente da conta (registro 13/10/2026)."
+      },
+      "youtube-autonomous-short.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/channels/youtube-daily-short.mjs"
+        ],
+        "scope": "production",
+        "service": "kv:youtube-short",
+        "t1": "gap",
+        "controls": "grupo youtube-autonomous-short; environment gh-pages-automacao",
+        "gap": "escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "zees16-control-reconciler.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "kv:control:v2",
+        "t1": "gap",
+        "controls": "environment gh-pages-automacao",
+        "gap": "escreve control:v2:state:zevanory e eventos; dispara em push, pull_request, schedule e workflow_run; escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "zevanory-close-sales.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/sales_switch_workflow.py"
+        ],
+        "scope": "production",
+        "service": "kv:sales:open:v1",
+        "t1": "gap",
+        "controls": "grupo zevanory-owner-sales-switch; environment gh-pages-automacao; direção segura (fecha a venda)",
+        "gap": "interruptor de venda sales:open:v1 escrito sem promotion_guard; grupo diferente do drill F7 (zevanory-sales-switch-writes): escritas concorrentes na mesma chave não são serializadas; escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "zevanory-control-plane-v2-proof.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "no-credential",
+        "note": "lista de comandos PROIBIDOS (texto) num verificador"
+      },
+      "zevanory-f7-emergency-close-drill.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "kv:sales:open:v1",
+        "t1": "gap",
+        "controls": "grupo zevanory-sales-switch-writes; environment gh-pages-automacao",
+        "gap": "drill escreve sales:open:v1 e sales:audit:* em produção em grupo diferente do interruptor do dono; escreve no KV de produção com o token compartilhado da conta, sem promotion_guard, sem lista fechada de chaves verificada no CI e sem o grupo do serviço; environment gh-pages-automacao sem revisor (só restrição de branch)."
+      },
+      "zevanory-open-sales.yml": {
+        "classes": [
+          "config-kv"
+        ],
+        "via": [
+          "scripts/sales_switch_workflow.py"
+        ],
+        "scope": "production",
+        "service": "kv:sales:open:v1",
+        "t1": "gap",
+        "controls": "grupo zevanory-owner-sales-switch; environment producao-critica (revisor)",
+        "gap": "abre a venda (sales:open:v1) sem promotion_guard/verificação de SHA; mesma chave escrita por zevanory-close-sales.yml e pelo drill F7 em grupo diferente."
+      },
+      "zevanory-sales-public-release.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory-sales-public",
+        "t1": "guarded",
+        "guard_evidence": [
+          "promotion_guard\\.py --service zevanory-sales-public"
+        ],
+        "pre_guard_isolated": [
+          {
+            "match": "--config wrangler\\.sales\\.preview\\.toml",
+            "reason": "candidato isolado zevanory-sales-candidate-<run_id> (scripts/ci/materialize_sales_configs.py troca o name e remove as rotas); apagado depois pelo DELETE da mesma execução"
+          }
+        ],
+        "controls": "promotion_guard (tag) antes do deploy canônico; readback /health; restauração do snapshot em FAIL; grupo deploy-zevanory-sales-public"
+      },
+      "zpc-control-worker-deploy.yml": {
+        "classes": [
+          "deploy"
+        ],
+        "via": [],
+        "scope": "production",
+        "service": "zevanory-product-control-portable",
+        "t1": "guarded",
+        "guard_evidence": [
+          "promotion_guard\\.py --service zevanory-product-control-portable"
+        ],
+        "controls": "promotion_guard (tag + version.json) antes do repair script; rollback documentado só pelo dono"
+      }
+    },
+    "scripts": {
+      "sandbox/rollback-secret-probe/cleanup-only.sh": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "invoked_by": [
+          "b01-recovery-probe.yml",
+          "b01-rollback-secret-probe.yml"
+        ],
+        "role": "writer",
+        "note": "limpeza do Worker de sonda zevanory-rollback-secret-probe (secret delete, deploy de limpeza)"
+      },
+      "sandbox/route-probe/run_route_probe.py": {
+        "classes": [
+          "deploy"
+        ],
+        "invoked_by": [
+          "sandbox-route-probe-contract.yml",
+          "sandbox-route-probe.yml"
+        ],
+        "role": "writer",
+        "note": "sonda de rotas em Workers zevanory-route-probe (cria/apaga Workers e rotas de sonda)"
+      },
+      "scripts/audit/command-center-snapshot.mjs": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "command-center-snapshot.yml",
+          "funnel-v2.yml"
+        ],
+        "role": "writer",
+        "note": "snapshot do painel e orçamento de KV"
+      },
+      "scripts/audit/plan-probe.mjs": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "b0-baseline-tests.yml",
+          "p20-restore-drill-tests.yml",
+          "plan-probe.yml"
+        ],
+        "role": "writer",
+        "note": "sonda do plano (KV)"
+      },
+      "scripts/audit/system-matrix.mjs": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "system-matrix.yml"
+        ],
+        "role": "writer",
+        "note": "zpc:matrix:v1"
+      },
+      "scripts/channels/youtube-daily-short.mjs": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "sales-lock-publishers.yml",
+          "youtube-autonomous-short.yml"
+        ],
+        "role": "writer",
+        "note": "mídia de shorts no KV"
+      },
+      "scripts/ci/cloudflare-post-deploy-verify.sh": {
+        "classes": [
+          "deploy"
+        ],
+        "invoked_by": [],
+        "role": "not-a-writer",
+        "findings": 1,
+        "note": "imprime a instrução de rollback (echo); não executa wrangler"
+      },
+      "scripts/ci/credential_separation_gate.py": {
+        "classes": [
+          "deploy"
+        ],
+        "invoked_by": [
+          "credential-separation-behaviour.yml",
+          "credential-separation-gate.yml",
+          "r9-operator-token.yml",
+          "r9-pilot-removal.yml"
+        ],
+        "role": "not-a-writer",
+        "findings": 1,
+        "note": "gate estático: o comando é texto procurado e mensagem de erro"
+      },
+      "scripts/ci/mutants_credential_separation.py": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "invoked_by": [
+          "credential-separation-behaviour.yml",
+          "r9-operator-token.yml",
+          "r9-pilot-removal.yml"
+        ],
+        "role": "not-a-writer",
+        "findings": 3,
+        "note": "mutantes: comandos aparecem como texto de âncora/substituição em cópias temporárias"
+      },
+      "scripts/ci/mutants_public_router.py": {
+        "classes": [
+          "deploy"
+        ],
+        "invoked_by": [
+          "public-router-contract.yml"
+        ],
+        "role": "not-a-writer",
+        "findings": 1,
+        "note": "mutantes do roteador: texto de âncora em cópia temporária"
+      },
+      "scripts/ci/mutants_sandbox_route_probe.py": {
+        "classes": [
+          "deploy",
+          "route"
+        ],
+        "invoked_by": [
+          "sandbox-route-probe-contract.yml"
+        ],
+        "role": "not-a-writer",
+        "findings": 2,
+        "note": "mutantes da sonda sandbox: texto de âncora em cópia temporária"
+      },
+      "scripts/deploy/worker_secret_rotate.py": {
+        "classes": [
+          "deploy",
+          "secret"
+        ],
+        "invoked_by": [
+          "lead-privacy-secret-to-worker.yml"
+        ],
+        "role": "writer",
+        "note": "escritor de segredos com versão marcada (guard do T3)"
+      },
+      "scripts/intel/market-weekly.mjs": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "market-weekly.yml"
+        ],
+        "role": "writer",
+        "note": "zpc:market:v1:weekly"
+      },
+      "scripts/ops/backup_preserve_archive.py": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "backup-preserve-archive.yml"
+        ],
+        "role": "writer",
+        "note": "preservação de backup no KV"
+      },
+      "scripts/ops/router_routes.py": {
+        "classes": [
+          "route"
+        ],
+        "invoked_by": [
+          "public-router-contract.yml",
+          "public-router-deploy.yml",
+          "sandbox-route-probe-contract.yml",
+          "sandbox-route-probe.yml"
+        ],
+        "role": "writer",
+        "note": "rotas de Worker por zona (snapshot/preflight/verify/restore); escrita só em restore e preflight do publicador do roteador"
+      },
+      "scripts/release/publication_chain_check.py": {
+        "classes": [
+          "deploy"
+        ],
+        "invoked_by": [
+          "release-chain-proof.yml"
+        ],
+        "role": "not-a-writer",
+        "findings": 3,
+        "note": "verificador estático da cadeia de publicação (só lê workflows)"
+      },
+      "scripts/sales_switch_workflow.py": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "sales-switch-contract.yml",
+          "zevanory-close-sales.yml",
+          "zevanory-open-sales.yml"
+        ],
+        "role": "writer",
+        "note": "interruptor sales:open:v1"
+      },
+      "scripts/voice_cache_warm.mjs": {
+        "classes": [
+          "config-kv"
+        ],
+        "invoked_by": [
+          "voice-cache-warm.yml"
+        ],
+        "role": "writer",
+        "note": "cache de voz no KV privado"
+      }
+    }
+  }
 }

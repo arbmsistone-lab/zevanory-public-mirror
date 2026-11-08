@@ -1,0 +1,6 @@
+# expect: route
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: npx wrangler triggers deploy --name zevanory

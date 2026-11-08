@@ -280,6 +280,33 @@ for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
 for key in ("ZEVANORY_RELEASE_REF", "AGENT_AUTONOMY_MODE", "AGENT_AI_MAX_RUNS_PER_HOUR"):
     if key in c["vars"]:
         runtime_config[key] = c["vars"].pop(key)
+# P20 diário D1 (docs/p20/diario-d1.md, seção "Binding e migração"): o Worker central recebe o binding DIARIO, que
+# aponta para o banco D1 de PRODUÇÃO criado pelo proprietário na conta 1b26415802588185a86c1d4d3ebf5bdb. Um binding
+# d1_databases NÃO é var nem secret, então não entra no orçamento de check-binding-budget.py (continua 59/60).
+# O banco de certificação (zevanory-certification-only, 7ff006f3-...) nunca pode ser usado aqui: o gerador recusa.
+# Um binding DIARIO já presente na base com outro banco também é recusado (nunca sobrescreve em silêncio).
+DIARIO_D1_BINDING = {
+    "binding": "DIARIO",
+    "database_name": "zevanory-diario-p20",
+    "database_id": "1b1bfa19-ccc5-423a-bc1f-62d89020c8e2",
+    "migrations_dir": "migrations/d1",
+}
+DIARIO_D1_FORBIDDEN_PREFIX = "7ff006f3"  # zevanory-certification-only
+def _inject_diario_d1(cfg, wanted=DIARIO_D1_BINDING):
+    if str(wanted.get("database_id", "")).lower().startswith(DIARIO_D1_FORBIDDEN_PREFIX):
+        raise SystemExit("DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN")
+    d1 = cfg.setdefault("d1_databases", [])
+    for row in d1:
+        if str(row.get("database_id", "")).lower().startswith(DIARIO_D1_FORBIDDEN_PREFIX):
+            raise SystemExit("DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN")
+    same = [row for row in d1 if row.get("binding") == wanted["binding"]]
+    if same:
+        if len(same) > 1 or same[0] != wanted:
+            raise SystemExit("DIARIO_D1_BINDING_CONFLICT")
+        return cfg
+    d1.append(dict(wanted))
+    return cfg
+_inject_diario_d1(c)
 # P20 (docs/p20/vaga-binding-p20-backup-key.md): frees 2 plain-var slots so the owner can add the ONE new
 # secret P20_BACKUP_KEY (budget 60 -> 58 -> 59). Both are non-secret readiness decisions with a single
 # reader, evaluateActivationReadiness in worker/cloudflare-worker.recovered.mjs, the same function that already

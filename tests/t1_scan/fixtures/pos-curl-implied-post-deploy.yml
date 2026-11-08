@@ -1,0 +1,6 @@
+# expect: deploy
+# findings: 1
+jobs:
+  a:
+    steps:
+      - run: curl -sS -H "Authorization: Bearer $T" -F "metadata=@m.json" "https://api.cloudflare.com/client/v4/accounts/$A/workers/scripts/zevanory"

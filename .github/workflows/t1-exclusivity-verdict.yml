@@ -1,0 +1,41 @@
+name: t1-exclusivity-verdict
+
+# P17 / T1 (roteiro seção 15, condições 1-7; VC-H l.1217 e controle 13): veredito estrito T1_EXCLUSIVITY ligado à
+# evidência do SHA do PR, publicado no resumo do job. Somente leitura: contents: read, nenhum segredo, nenhuma
+# chamada à Cloudflare; o veredito só lê arquivos e executa localmente o detector e os testes negativos se existirem.
+# NOT_PROVEN não reprova o job (é o estado honesto até as ações do proprietário); erro de execução reprova.
+on:
+  pull_request:
+    branches: [gh-pages]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: t1-exclusivity-verdict-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verdict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testes do veredito (repositórios sintéticos; ausência de evidência nunca vira PROVEN)
+        run: python3 -m unittest -v tests/test_t1_verdict.py
+      - name: Veredito T1_EXCLUSIVITY no SHA do PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/t1_verdict.py --markdown > /tmp/verdict.txt
+          python3 scripts/ci/t1_verdict.py --json > /tmp/verdict.json
+          sed -n '/^## T1_EXCLUSIVITY/,$p' /tmp/verdict.txt | grep -v '^T1_EXCLUSIVITY=' >> "$GITHUB_STEP_SUMMARY"
+          line="$(grep -E '^T1_EXCLUSIVITY=' /tmp/verdict.txt)"
+          echo "::notice title=T1_EXCLUSIVITY::$line"

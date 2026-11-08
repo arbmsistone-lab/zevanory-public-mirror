@@ -102,6 +102,8 @@ on:
       - "scripts/financial_e2e_stripe.py"
       - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
+      # P20 diário D1: uma migração nova chega ao banco pelo passo de migração deste deploy.
+      - "migrations/d1/**"
 concurrency:
   group: deploy-zevanory
   cancel-in-progress: false
@@ -331,6 +333,63 @@ jobs:
             exit 1
           fi
 
+      - name: P20 diário D1 - migrações (best-effort, nunca bloqueia o deploy)
+        # docs/p20/diario-d1.md, seções "Binding e migração" e "Credenciais dedicadas (DEC-P20-D1-01)".
+        # DEC-P20-D1-01: o D1 só é tocado com o token DEDICADO de migração (CF_TOKEN_D1_DIARIO_MIGRATE, D1 Edit,
+        # environment producao-critica), entregue SÓ a este passo. Os dois nomes do token compartilhado do deploy
+        # ficam vazios aqui, então nenhuma chamada D1 deste passo pode sair com ele. O wrangler deploy não precisa
+        # de permissão D1 para subir um binding D1 (Workers, "Roles and permissions" > Bindings).
+        # O diário roda em modo sombra e tolera tabela ausente, então nada aqui reprova o deploy central:
+        #  - segredo dedicado ausente: aviso DIARIO_D1_TOKEN_DEDICADO_AUSENTE e o binding DIARIO sai SÓ deste deploy;
+        #  - token dedicado sem acesso ao banco: aviso DIARIO_D1_MIGRACAO_PENDENTE e o binding sai SÓ deste deploy;
+        #  - token dedicado sem D1 Edit na migração: aviso DIARIO_D1_MIGRACAO_PENDENTE, binding mantido;
+        #  - qualquer outra falha da migração: anotação de erro visível, deploy segue.
+        id: diariomig
+        if: steps.auth.outputs.available == 'true'
+        env:
+          CF_TOKEN_D1_DIARIO_MIGRATE: ${{ secrets.CF_TOKEN_D1_DIARIO_MIGRATE }}
+          CLOUDFLARE_API_TOKEN: ""
+          CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ""
+          CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "state=pendente" >> "$GITHUB_OUTPUT"
+          DB_ID="$(python3 -c 'import json;r=[d for d in json.load(open("wrangler.central-fix.jsonc")).get("d1_databases",[]) if d.get("binding")=="DIARIO"];print(r[0]["database_id"] if len(r)==1 else "")')"
+          case "$DB_ID" in
+            1b1bfa19-ccc5-423a-bc1f-62d89020c8e2) ;;
+            *) echo "::error title=DIARIO_D1_BINDING::binding DIARIO ausente ou com banco inesperado no candidato; o gerador deveria ter recusado"; exit 1 ;;
+          esac
+          drop_binding() {
+            python3 -c 'import json;p="wrangler.central-fix.jsonc";c=json.load(open(p));c["d1_databases"]=[d for d in c.get("d1_databases",[]) if d.get("binding")!="DIARIO"] or None;c.get("d1_databases") is None and c.pop("d1_databases");open(p,"w").write(json.dumps(c,indent=2)+"\n")'
+            echo "state=binding_removido" >> "$GITHUB_OUTPUT"
+          }
+          if [ -z "${CF_TOKEN_D1_DIARIO_MIGRATE:-}" ]; then
+            echo "::warning title=DIARIO_D1_TOKEN_DEDICADO_AUSENTE::segredo CF_TOKEN_D1_DIARIO_MIGRATE ausente no environment producao-critica (DEC-P20-D1-01: o token compartilhado do deploy nunca toca o D1). Este deploy segue SEM o binding DIARIO (diário em sombra desligado, no-op). Roteiro do proprietário: docs/p20/diario-d1.md, seção Credenciais dedicadas."
+            drop_binding
+            exit 0
+          fi
+          code="$(curl -sS -o /tmp/diario-d1.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN_D1_DIARIO_MIGRATE" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/d1/database/$DB_ID" || true)"
+          name="$(python3 -c 'import json;print((json.load(open("/tmp/diario-d1.json")).get("result") or {}).get("name",""))' 2>/dev/null || true)"
+          if [ "$code" != "200" ]; then
+            echo "::warning title=DIARIO_D1_MIGRACAO_PENDENTE::o token dedicado CF_TOKEN_D1_DIARIO_MIGRATE não lê o banco D1 zevanory-diario-p20 (HTTP $code). Ele precisa de Conta > D1 > Editar na conta 1b26415802588185a86c1d4d3ebf5bdb. Este deploy segue SEM o binding DIARIO (diário em sombra desligado, no-op)."
+            drop_binding
+            exit 0
+          fi
+          if [ "$name" != "zevanory-diario-p20" ]; then
+            echo "::warning title=DIARIO_D1_BANCO_DIVERGENTE::o UUID do binding DIARIO não corresponde ao banco zevanory-diario-p20; este deploy segue SEM o binding DIARIO"
+            drop_binding
+            exit 0
+          fi
+          if CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc > /tmp/diario-mig.log 2>&1; then
+            echo "state=aplicada" >> "$GITHUB_OUTPUT"
+            echo "::notice title=DIARIO_D1_MIGRACAO::$(grep -Eio 'no migrations to apply|migrations? applied|✅[^|]*' /tmp/diario-mig.log | head -3 | tr '\n' ' ' | cut -c1-300)"
+          elif grep -Eqi 'authentication error|code: ?10000|code: ?7403|not authorized|unauthori[sz]ed|forbidden|permission' /tmp/diario-mig.log; then
+            echo "::warning title=DIARIO_D1_MIGRACAO_PENDENTE::o token dedicado CF_TOKEN_D1_DIARIO_MIGRATE não tem permissão para aplicar a migração no D1. Ele precisa de Conta > D1 > Editar na conta 1b26415802588185a86c1d4d3ebf5bdb. O deploy segue: o diário em sombra tolera a tabela ausente."
+          else
+            tail -8 /tmp/diario-mig.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=DIARIO_D1_MIGRACAO_FALHOU::(não bloqueia o deploy) /'; echo
+          fi
+          exit 0
       - name: Deploy repaired production worker
         id: deployworker
         if: steps.auth.outputs.available == 'true'
@@ -473,6 +532,39 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/ci/credential_identity_readback.py https://zevanory.api.br
+      - name: P20 diário D1 - readback somente leitura (nunca reprova)
+        # DEC-P20-D1-01: leitura com credencial PRÓPRIA (CF_TOKEN_D1_DIARIO_READ, só D1 Read), entregue só a este passo;
+        # sem ela o readback não roda (nunca cai para o token de migração nem para o compartilhado do deploy).
+        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        continue-on-error: true
+        env:
+          DIARIO_MIG_STATE: ${{ steps.diariomig.outputs.state }}
+          CF_TOKEN_D1_DIARIO_READ: ${{ secrets.CF_TOKEN_D1_DIARIO_READ }}
+          CLOUDFLARE_API_TOKEN: ""
+          CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ""
+          CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ "${DIARIO_MIG_STATE:-}" = "binding_removido" ]; then
+            echo "::warning title=DIARIO_D1_READBACK::binding DIARIO fora deste deploy (token dedicado de migração ausente ou sem acesso ao D1); readback não executado"
+            exit 0
+          fi
+          if [ -z "${CF_TOKEN_D1_DIARIO_READ:-}" ]; then
+            echo "::warning title=DIARIO_D1_READBACK::segredo CF_TOKEN_D1_DIARIO_READ ausente no environment producao-critica; readback não executado (DEC-P20-D1-01: leitura só com a credencial de leitura); migração=${DIARIO_MIG_STATE:-?}"
+            exit 0
+          fi
+          if CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_READ" npx --yes wrangler@4.143.0 d1 execute zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc --json --command "select count(*) as n from diario_head" > /tmp/diario-readback.json 2>/tmp/diario-readback.err; then
+            n="$(python3 -c 'import json;d=json.load(open("/tmp/diario-readback.json"));print(d[0]["results"][0]["n"])' 2>/dev/null || echo "?")"
+            if [ "$n" = "1" ]; then
+              echo "::notice title=DIARIO_D1_READBACK::diario_head presente (linhas=$n); migração=${DIARIO_MIG_STATE:-?}"
+            else
+              echo "::warning title=DIARIO_D1_READBACK::diario_head com linhas=$n (esperado 1); migração=${DIARIO_MIG_STATE:-?}"
+            fi
+          else
+            echo "::warning title=DIARIO_D1_READBACK::leitura de diario_head falhou (tabela ausente ou token de leitura sem D1 Read); migração=${DIARIO_MIG_STATE:-?}: $(tail -3 /tmp/diario-readback.err | tr '\n' ' ' | cut -c1-400)"
+          fi
+          exit 0
       - name: Dispatch exact-production ZEES-16 provider evidence
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         continue-on-error: true

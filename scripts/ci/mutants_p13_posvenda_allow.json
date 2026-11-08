@@ -1,0 +1,200 @@
+{
+ "note": "Expectativas derivadas por raciocínio sobre cada mutação (regra quebrada -> asserção [Vn.k] que a codifica), escritas antes de rodar.",
+ "mutants": {
+  "N01 prazo medido no tratamento e não na solicitação": {
+   "primary": [
+    {
+     "test_pattern": "V3",
+     "assertion_pattern": "[V3.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N02 decisão anterior ignorada": {
+   "primary": [
+    {
+     "test_pattern": "V5",
+     "assertion_pattern": "[V5.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N03 já reembolsado não conferido": {
+   "primary": [
+    {
+     "test_pattern": "V4",
+     "assertion_pattern": "[V4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N04 contestação aberta não conferida": {
+   "primary": [
+    {
+     "test_pattern": "V6",
+     "assertion_pattern": "[V6.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N05 exceção aceita sem validação": {
+   "primary": [
+    {
+     "test_pattern": "V7",
+     "assertion_pattern": "[V7.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "N06 exceção autorizada por qualquer pessoa": {
+   "primary": [
+    {
+     "test_pattern": "V7",
+     "assertion_pattern": "[V7.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "N07 assunto sensível sem revisão humana": {
+   "primary": [
+    {
+     "test_pattern": "V8",
+     "assertion_pattern": "[V8.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "N08 prazo H-6 de 7 dias": {
+   "primary": [
+    {
+     "test_pattern": "V1",
+     "assertion_pattern": "[V1.5]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "V3",
+     "assertion_pattern": "[V3.2]",
+     "justification": "V3 trata o pedido 6 dias depois da solicitação; com 7 dias o alerta H-6 não dispara (acrescentada depois da 1ª execução, que acusou a omissão)"
+    }
+   ]
+  },
+  "N09 vício tratado como fora do prazo comum": {
+   "primary": [
+    {
+     "test_pattern": "V7",
+     "assertion_pattern": "[V7.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "N10 recebimento ignorado no legado": {
+   "primary": [
+    {
+     "test_pattern": "V10",
+     "assertion_pattern": "[V10.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N11 evidência sem checagem de privacidade": {
+   "primary": [
+    {
+     "test_pattern": "V12",
+     "assertion_pattern": "[V12.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "N12 resposta de disputa sem revisão humana": {
+   "primary": [
+    {
+     "test_pattern": "V12",
+     "assertion_pattern": "[V12.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "N13 prazo perdido não detectado": {
+   "primary": [
+    {
+     "test_pattern": "V12",
+     "assertion_pattern": "[V12.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "N14 falha crítica de P12 não marcada": {
+   "primary": [
+    {
+     "test_pattern": "V12",
+     "assertion_pattern": "[V12.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "N15 evidência de entrega não exigida": {
+   "primary": [
+    {
+     "test_pattern": "V12",
+     "assertion_pattern": "[V12.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "N16 verificador aceita e-mail não oficial": {
+   "primary": [
+    {
+     "test_pattern": "V13",
+     "assertion_pattern": "[V13.4]"
+    }
+   ],
+   "secondary": []
+  },
+  "N17 resposta pública sem revisão aceita": {
+   "primary": [
+    {
+     "test_pattern": "V13",
+     "assertion_pattern": "[V13.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "N18 decisão sensível sem revisão aceita": {
+   "primary": [
+    {
+     "test_pattern": "V13",
+     "assertion_pattern": "[V13.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "N19 texto de prazo fora da política aceito": {
+   "primary": [
+    {
+     "test_pattern": "V13",
+     "assertion_pattern": "[V13.9]"
+    }
+   ],
+   "secondary": []
+  },
+  "N20 campo fora da lista aceito": {
+   "primary": [
+    {
+     "test_pattern": "V13",
+     "assertion_pattern": "[V13.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "N21 pacote com contestação sem revisão obrigatória": {
+   "primary": [
+    {
+     "test_pattern": "V13",
+     "assertion_pattern": "[V13.1]"
+    }
+   ],
+   "secondary": []
+  }
+ }
+}
