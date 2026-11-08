@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { readHotmartSwitch, resetHotmartSwitchCache, readSalesSwitch, resetSalesSwitchCache, handleSalesControl, HOTMART_SALES_KEY } from "../worker/sales-control.mjs";
 import worker, { HOTMART_CHECKOUT, openSalesHtml } from "../worker/sales-public-worker.mjs";
 
@@ -48,7 +49,7 @@ test("canal Hotmart falha fechado: ausente, inválido, canal errado, registro in
 
 // Site de vendas: CORE responde por rota (interruptor completo × canal Hotmart).
 const ctx = { waitUntil() {} };
-const page = (p) => { try { return readFileSync(new URL("../sales-public" + p, import.meta.url), "utf8"); } catch { return null; } };
+const page = (p) => { try { return readTextNormalized(fileURLToPath(new URL("../sales-public" + p, import.meta.url))); } catch { return null; } };
 const env = ({ full = false, hotmart = false } = {}) => ({
   CORE: { fetch: async (u) => new Response(JSON.stringify({ open: String(u).includes("/api/sales/hotmart-status") ? hotmart : full }), { status: 200 }) },
   ASSETS: { fetch: async (req) => { const p = new URL(req.url).pathname; const h = page(p); return h === null ? new Response("nf", { status: 404 }) : new Response(h, { status: 200, headers: { "content-type": "text/html" } }); } },
