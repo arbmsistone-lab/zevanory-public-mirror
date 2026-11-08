@@ -43,17 +43,23 @@ export function resetDiarioSombraStats() {
 // valendo. Cada gravação tem um limite de tempo para que um D1 travado não pare a fila: vira diario_timeout.
 export const GRAVACAO_TIMEOUT_MS = 5000;
 let timeoutMs = GRAVACAO_TIMEOUT_MS;
-// Só para testes: encurta o limite de tempo de cada gravação.
-export function configurarDiarioSombra({ timeoutMs: ms } = {}) {
+// Agendador do limite de tempo: agendar(fn, ms) -> cancelar(). Produção: setTimeout real.
+const AGENDAR_REAL = (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); };
+let agendar = AGENDAR_REAL;
+// Só para testes: encurta o limite de tempo de cada gravação ou injeta um relógio manual (agendar), para que o limite
+// só dispare quando o teste mandar. Sem isso, uma gravação legítima numa máquina carregada passava do limite curto e
+// virava diario_timeout (instabilidade do DS5.6 sob carga).
+export function configurarDiarioSombra({ timeoutMs: ms, agendar: ag } = {}) {
   timeoutMs = Number.isSafeInteger(ms) && ms > 0 ? ms : GRAVACAO_TIMEOUT_MS;
+  agendar = typeof ag === "function" ? ag : AGENDAR_REAL;
 }
 let fila = Promise.resolve();
 function comLimite(p, ms) {
-  let timer;
+  let cancelar = null;
   const limite = new Promise((resolve) => {
-    timer = setTimeout(() => resolve({ ok: false, code: "diario_timeout" }), ms);
+    cancelar = agendar(() => resolve({ ok: false, code: "diario_timeout" }), ms);
   });
-  return Promise.race([p, limite]).finally(() => clearTimeout(timer));
+  return Promise.race([p, limite]).finally(() => { try { if (typeof cancelar === "function") cancelar(); } catch {} });
 }
 
 const dbOk = (db) => Boolean(db) && typeof db.prepare === "function" && typeof db.batch === "function";

@@ -318,6 +318,9 @@ os dois tokens cadastrados e `DATA_BACKUP_DIARIO` com `estado: "ok"` em todas as
   que não lançam, PII recusada, construtores de cada tipo, contexto da requisição e integração real com Hotmart,
   lead-magnet e reembolso (resposta idêntica com, sem e com diário quebrado ou travado). Inclui também um teste
   estático dos 7 ganchos do bundle legado, que não carrega em Node.
+  O limite de 5 s de cada gravação usa um agendador injetável (`configurarDiarioSombra({ agendar })`): os testes usam
+  um relógio manual que só dispara quando o teste manda, então uma gravação legítima lenta (máquina carregada) nunca vira
+  `diario_timeout` por acaso, e "a resposta sai com a gravação pendente" não depende do tempo real.
 - `scripts/ci/mutants_p20_diario_sombra.py` com `mutants_p20_diario_sombra_allow.json`: 13 mutantes, todos precisam
   morrer. Cobrem: bloquear a resposta, lançar, vazar PII no log, tentar gravar o comprador, gancho ausente de cada
   tipo, compat sem contexto, sem `waitUntil` e sem fila.

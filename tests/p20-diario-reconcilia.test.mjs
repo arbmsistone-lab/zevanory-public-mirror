@@ -16,7 +16,8 @@ import { reconcileRefund } from "../worker/refund-provider-claims.mjs";
 
 const MIGRATION = readTextNormalized(new URL("../migrations/d1/0001_diario_v1.sql", import.meta.url))
   + "\n" + readTextNormalized(new URL("../migrations/d1/0002_diario_v1_ts.sql", import.meta.url));
-configurarDiarioSombra({ timeoutMs: 500 });
+// Relógio manual que nunca dispara: nenhum D1 aqui trava, e uma gravação lenta (máquina carregada) nunca vira timeout.
+configurarDiarioSombra({ agendar: () => () => {} });
 const NOW = Date.UTC(2026, 10, 8, 6, 0, 0);
 const H = 3600 * 1000;
 const O1 = "3f2a9c1e-7b4d-4abc-9def-0123456789ab"; // Mercado Pago

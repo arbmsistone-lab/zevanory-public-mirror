@@ -30,6 +30,9 @@ on:
       - "scripts/ops/restore_new_database.py"
       - "scripts/ops/backup_preserve_archive.py"
       - "worker/data-backup.mjs"
+      - "worker/diario-p20.mjs"
+      - "worker/diario-sombra.mjs"
+      - "worker/diario-reconcilia.mjs"
       - "worker/backup-crypto.mjs"
       - "db/migrations/**"
 

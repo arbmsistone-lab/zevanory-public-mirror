@@ -28,6 +28,8 @@ TESTS = ["tests/p20-restore-drill.test.mjs", "tests/p20-backup-encryption.test.m
 COPY_DIRS = ["scripts/p20", "scripts/b0", "docs/p20", "docs/b0"]
 COPY_FILES = TESTS + ["tests/helpers/text.mjs", "tests/helpers/p20-backup-fixture.mjs", "scripts/audit/workers-usage.mjs",
                       "worker/data-backup.mjs", "worker/backup-crypto.mjs",
+                      # P20 diário D1, PR 4: data-backup importa a reconciliação diária (e ela, a cadeia e os construtores).
+                      "worker/diario-p20.mjs", "worker/diario-sombra.mjs", "worker/diario-reconcilia.mjs",
                       ".github/workflows/p20-monthly-restore-drill.yml", ".github/workflows/b0-baseline-collector.yml",
                       ".github/workflows/p18-external-monitor.yml", ".github/workflows/b0-baseline-tests.yml", ".github/workflows/p18-monitor-watchdog.yml"]
 TIMEOUT = 300
