@@ -98,6 +98,11 @@ test("DJ2 adulteração: payload, hash, ordem, remoção e corte do fim são det
   assert.equal((await verifyChain(t8)).broken_at, 2, "[DJ2.8] ts_ms adulterado");
   const t9 = structuredClone(rows); t9[2].payload_json = JSON.stringify(JSON.parse(t9[2].payload_json), null, 1); t9[2].payload_sha = sha(t9[2].payload_json);
   assert.equal((await verifyChain(t9)).reason, "payload_nao_canonico", "[DJ2.9]");
+  // A coluna tipo não entra no hash: trocá-la (a reconciliação classifica por ela) precisa quebrar a cadeia.
+  const t10 = structuredClone(rows); t10[4].tipo = t10[4].tipo === "refund" ? "payment_status" : "refund";
+  assert.deepEqual(await verifyChain(t10), { ok: false, broken_at: 5, reason: "tipo_chave" }, "[DJ2.10] tipo que não prefixa a event_key");
+  const t11 = structuredClone(rows); t11[2].tipo = "tipo_inventado";
+  assert.equal((await verifyChain(t11)).reason, "tipo_chave", "[DJ2.10] tipo desconhecido");
 });
 
 test("DJ3 idempotência: mesma event_key com o mesmo payload é duplicada sem gravar nada", async () => {

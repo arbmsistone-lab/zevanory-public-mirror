@@ -3,9 +3,9 @@ name: p20-diario-d1-tests
 # P20 (Roteiro Mestre v4.7, seção 9.1): testes do diário de eventos críticos no D1 (PR 1 de 7, docs/p20/diario-d1.md).
 # Só pull_request: nunca dispara no merge, nenhum segredo, nenhuma requisição à Cloudflare ou à produção. (1) lógica
 # num D1 falso que executa SQL de verdade (node:sqlite, migração real com os triggers; 8 testes); (2) mutantes causais
-# pelo classificador compartilhado (10, todos KILLED); (3) gravação em modo sombra (PR 3: 11 testes, 13 mutantes);
+# pelo classificador compartilhado (11, todos KILLED); (3) gravação em modo sombra (PR 3: 11 testes, 13 mutantes);
 # (4) credenciais D1 dedicadas (DEC-P20-D1-01: 13 testes, 12 mutantes), com curl e npx falsos; (5) reconciliação
-# diária Neon × diário (PR 4: 10 testes, 18 mutantes), com Neon falso.
+# diária Neon × diário (PR 4: 10 testes, 20 mutantes), com Neon falso.
 # A suíte completa (manifesto) segue no gate existente.
 on:
   pull_request:
@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p20_diario.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P20_DIARIO_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=10 killed=10 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=11 killed=11 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Gravação em modo sombra (contagem exata 11, zero pulados)
         shell: bash
         run: |
@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p20_diario_reconcilia.py < /dev/null | tee /tmp/mutr.txt
           echo "::notice title=P20_DIARIO_RECONCILIA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mutr.txt)"
-          grep -qx "MUTANTS total=18 killed=18 survived=0 inconclusive=0" /tmp/mutr.txt || { echo "::error::mutante da reconciliação sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=20 killed=20 survived=0 inconclusive=0" /tmp/mutr.txt || { echo "::error::mutante da reconciliação sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

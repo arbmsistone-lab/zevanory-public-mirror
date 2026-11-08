@@ -1031,6 +1031,24 @@
     }
    ],
    "secondary": []
+  },
+  "M84 diario não objeto fora da sombra passa": {
+   "primary": [
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M85 ensaio não passa a fase ao registro": {
+   "primary": [
+    {
+     "test_pattern": "DE9",
+     "assertion_pattern": "[DE9.1]"
+    }
+   ],
+   "secondary": []
   }
  }
 }

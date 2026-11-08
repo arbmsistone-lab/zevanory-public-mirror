@@ -107,6 +107,15 @@
     }
    ],
    "secondary": []
+  },
+  "M11 verifyChain não confere tipo × event_key": {
+   "primary": [
+    {
+     "test_pattern": "DJ2",
+     "assertion_pattern": "[DJ2.10]"
+    }
+   ],
+   "secondary": []
   }
  }
 }

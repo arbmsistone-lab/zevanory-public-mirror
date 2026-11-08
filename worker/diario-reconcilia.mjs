@@ -11,7 +11,8 @@
 //
 // Fase: DIARIO_FASE = "sombra" (PR 3). Em sombra a divergência vira ALERTA no relatório (warnings), nunca falha; o
 // corte para "ativo" (divergência = falha de P20) é uma mudança de código revisada, depois de 7 dias seguidos em sombra
-// com estado "ok" (docs/p20/diario-d1.md). Sem env.DIARIO: estado "nao_configurado", sem falha e sem alerta.
+// com estado "ok" (docs/p20/diario-d1.md). Sem env.DIARIO: estado "nao_configurado", sem falha e sem alerta em sombra;
+// em ativo, falha de P20 (diario_nao_configurado).
 //
 // Relatório sem PII: só contagens, tipos e uma amostra de event_key (ids técnicos normalizados e HMAC de titular, que
 // já são a forma gravada no diário). Nenhum e-mail, nome ou payload.
@@ -181,7 +182,9 @@ export async function reconciliaDiario(env = {}, { sqlFactory, now = Date.now(),
   }
   const cadeia = from && from.chain_hash == null ? { ok: false, broken_at: lido.seq_ini, reason: "ancora_ausente" } : await verifyChain(trecho, from ? { from } : {});
   const c = compara(neon.esperados, trecho, { de, ate });
-  const fontesErro = Object.entries(neon.fontes).filter(([, v]) => v === "erro").map(([k]) => k);
+  // Linha do Neon que os construtores recusam (fonte:linha_invalida) é fonte com erro: o esperado daquela linha não
+  // foi derivado, então o resultado é "incompleto", nunca "ok".
+  const fontesErro = Object.entries(neon.fontes).filter(([k, v]) => v === "erro" || (k.endsWith(":linha_invalida") && v > 0)).map(([k]) => k);
   const incompleto = !lido.completo || fontesErro.length > 0;
   const divergente = c.faltando.length > 0 || c.sobrando.length > 0 || cadeia.ok !== true;
   return {
@@ -202,10 +205,12 @@ export async function reconciliaDiario(env = {}, { sqlFactory, now = Date.now(),
   };
 }
 
-// Efeito no relatório do backup. "ok" e "nao_configurado": nada. Divergência ou resultado incompleto: em sombra,
-// alerta; em ativo, falha de P20.
+// Efeito no relatório do backup. "ok": nada. "nao_configurado" (sem binding DIARIO): nada em sombra; em ativo, falha
+// de P20 (o diário é obrigatório depois do corte). Divergência ou resultado incompleto: em sombra, alerta; em ativo,
+// falha de P20.
 export function efeitoNoRelatorio(diario) {
-  if (!diario || diario.estado === "ok" || diario.estado === "nao_configurado") return { falha: null, alerta: null };
+  if (!diario || diario.estado === "ok") return { falha: null, alerta: null };
+  if (diario.estado === "nao_configurado" && faseDe(diario.fase) === "sombra") return { falha: null, alerta: null };
   const code = "diario_" + diario.estado;
   return faseDe(diario.fase) === "sombra" ? { falha: null, alerta: code + ":sombra" } : { falha: code, alerta: null };
 }

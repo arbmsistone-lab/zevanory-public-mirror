@@ -226,6 +226,10 @@ test("DE9 NC-PR6-01: fora da sombra, só o estado provado com a prova completa p
     ["estado_desconhecido", { diarioImpl: async () => ({ ...provado, estado: "quase_provado" }) }, /^diario_sem_prova:quase_provado/],
     ["excecao", { diarioImpl: async () => { throw new Error("boom"); } }, /^diario_sem_prova:nao_provado:excecao/],
     ["impl_declara_sombra", { diarioImpl: async () => ({ estado: "nao_lido", motivo: "x", fase: "sombra" }) }, /^diario_sem_prova:nao_lido/],
+    // Implementação que não devolve objeto: fora da sombra o ensaio reprova (antes passava por não ser objeto).
+    ["impl_devolve_null", { diarioImpl: async () => null }, /^diario_sem_prova:ausente:diario_nao_devolvido$/],
+    ["impl_devolve_lista", { diarioImpl: async () => [] }, /^diario_sem_prova:ausente:diario_nao_devolvido$/],
+    ["impl_devolve_texto", { diarioImpl: async () => "provado" }, /^diario_sem_prova:ausente:diario_nao_devolvido$/],
   ];
   for (const [nome, extra, re] of casos) {
     const a = await ensaio({ ...extra, diarioFase: "ativo" }).catch((e) => assert.fail(`[DE9.1] ativo + ${nome}: o ensaio devia sair REPROVADO, mas o registro foi recusado: ${e.message}`));

@@ -8,7 +8,7 @@ name: p20-restore-drill-tests
 # cifrado, chave sintética) num KV em memória e o ensaio restaura TUDO num banco p20_drill* com contagem e hash de
 # conteúdo por tabela, inclusive a cópia KV -> Neon (zevanory_kv_backup), relida do Postgres e conferida chave a chave
 # com TTL e metadados num KV reconstruído, e os eventos posteriores à cópia reconstruídos a partir do diário D1 em
-# p20_diario_reconstruido (10 + 3 = 13 testes); (3) mutantes causais pelo classificador compartilhado (61 da cópia KV e cifragem + 22 do diário D1 = 83, todos KILLED).
+# p20_diario_reconstruido (10 + 3 = 13 testes); (3) mutantes causais pelo classificador compartilhado (61 da cópia KV e cifragem + 24 do diário D1 = 85, todos KILLED).
 on:
   pull_request:
     branches: [gh-pages]
@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p20_restore_drill.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=P20_RESTORE_DRILL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=83 killed=83 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=85 killed=85 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Sem bytecode rastreado
         shell: bash
         run: |

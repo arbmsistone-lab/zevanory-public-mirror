@@ -16,7 +16,7 @@ import {
   recordHotmartSale, refreshSalesSummary, refreshBucket, salesEventRecord, computeBucket, sweepBuckets, bucketName, applySale, saleFacts,
 } from "../worker/sales-ledger.mjs";
 import { emitActivity } from "../worker/activity-ledger.mjs";
-import { ACTIVITY_EVENT_PREFIX } from "../worker/activity-ledger.mjs";
+import { ACTIVITY_EVENT_PREFIX, ACTIVITY_REF_PREFIX } from "../worker/activity-ledger.mjs";
 import { CpSubscriberLedger } from "../worker/cp-durable-ledger.mjs";
 import {
   MICROVITORIAS, BASE_LEGAL_MICROVITORIA, MICROVITORIA_DEADLINE_MS, onboardingEnabled,
@@ -503,13 +503,23 @@ test("E17 NC-989-01 legado: o resumo anterior vira base congelada, gravada antes
   assert.equal(s?.source?.legacyBaseline, true, "[E17.5] procedência da base declarada");
 });
 
-test("E18 NC-989-01 pelo handler: três entregas simultâneas do mesmo postback → 1 venda e 1 atividade única", async (t) => {
+test("E18 NC-989-01 pelo handler: três entregas simultâneas do mesmo postback → 1 venda e 1 atividade única; gravação parcial + reentrega não duplica", async (t) => {
   noNetwork(t);
   const kv = memKv(), env = envWith(kv);
   const rs = await Promise.all([0, 1, 2].map(() => handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0013"), env, { now: T0 })));
   assert.deepEqual(rs.map((r) => r.status), [200, 200, 200], "[E18.1] todas aceitas");
   assert.deepEqual([(await summary(kv))?.totals?.approved, saleEvents(kv).length], [1, 1], "[E18.2] 1 venda, 1 evento imutável");
-  assert.equal(new Set(activities(kv, "delivery_sent").map((a) => a.sourceKey)).size, 1, "[E18.3] uma atividade por sourceKey (o consumidor deduplica por sourceKey)");
+  assert.equal(activities(kv, "delivery_sent").length, 1, "[E18.3] uma atividade de entrega gravada (não só um sourceKey)");
+  // Gravação parcial: o evento de atividade entra, o marcador de deduplicação não; o handler devolve 503 e a Hotmart
+  // reenvia mais tarde (outro relógio). A chave do evento é determinística: a reentrega regrava a MESMA chave.
+  const kv2 = memKv(), env2 = envWith(kv2);
+  kv2.fail("put", (k) => k.startsWith(ACTIVITY_REF_PREFIX), 1);
+  const p1 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0018"), env2, { now: T0 });
+  assert.equal(p1.status, 503, "[E18.4] marcador não gravado: 503 para a Hotmart reenviar");
+  assert.equal(activities(kv2, "delivery_sent").length, 1, "[E18.4] o evento já ficou gravado (gravação parcial)");
+  const p2 = await handleDigitalHotmartNc012(postback("PURCHASE_APPROVED", "HP-SINT-0018"), env2, { now: T0 + 5 * 60_000 });
+  assert.equal(p2.status, 200, "[E18.5] reentrega conclui");
+  assert.equal(activities(kv2, "delivery_sent").length, 1, "[E18.5] gravação parcial + reentrega: exatamente um evento de entrega gravado");
 });
 
 // Orçamento (NC-989-02): um dia inteiro em regime, com 400 dias de histórico, contando TODA operação de KV feita pelo

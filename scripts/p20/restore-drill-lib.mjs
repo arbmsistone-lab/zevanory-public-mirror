@@ -333,9 +333,16 @@ export function byClass(datasets, restoredTables, inventory, measuredRpoH) {
 
 // ---------------------------------------------------------------------------------------------------------
 // Registro de evidência (uma linha JSONL em p20/restore-drills-v1.jsonl do ramo evidence/b0-baseline).
-export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, finishedAt, rtoSeconds, runId, sha, inventory, notAvailableReason, kvCopy = null, diario = null }) {
+// diarioFase: a fase do ensaio (runDrill sempre a passa). Ausente (chamadas antigas, registro NOT_AVAILABLE): vale a
+// fase declarada no próprio diario e, sem diario, a sombra implícita dos registros antigos.
+export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, finishedAt, rtoSeconds, runId, sha, inventory, notAvailableReason, kvCopy = null, diario = null, diarioFase }) {
   const label = decideLabel(mode, sourceRead);
   const a = assessment || { readable: false, failures: [], datasets: [], parts: [], totals: { tables: 0, rows: 0 }, excluded: [] };
+  // Fora da sombra, um diario ausente ou que não é objeto (null, lista, texto: implementação que não devolveu prova) é
+  // registrado como estado "ausente" e cai na regra abaixo (reprova); o registro fica autodescritivo para a releitura
+  // (validateRecord recusa um APROVADO com esse diario fora da sombra).
+  const fase = diarioFase !== undefined ? diarioFase : isObj(diario) ? diario.fase : "sombra";
+  if (a.readable && fase !== "sombra" && !isObj(diario)) diario = { fase, tabela: TABELA_RECONSTRUCAO, rpo_critico_medido_s: null, estado: "ausente", motivo: "diario_nao_devolvido" };
   const restoreOk = !!(restore && restore.ok === true);
   const failures = [...(a.failures || [])];
   if (a.readable && !failures.length && !restoreOk) failures.push("restore_failed:" + String(restore?.error || "not_run").replace(/[^A-Za-z0-9_.:,= -]/g, "").slice(0, 120));

@@ -52,6 +52,8 @@ M = {
     "R16 consentimento sem o instante do Neon": (LM, "consentVersion, ts: Number.isSafeInteger(at) ? at : undefined }));", "consentVersion }));"),
     "R17 reconcileRefund sem gancho": (RP, '      diarioSombra(env, null, () => eventoReembolso({ orderId: oid, provider: "mercadopago", stage: "approved", refundId: refunds[0].id, amount: rec.amount, certification: rec.test === true }));\n', ""),
     "R18 sem índice de ts_ms": (MG, "CREATE INDEX IF NOT EXISTS diario_v1_ts ON diario_v1 (ts_ms);", "SELECT 1;"),
+    "R19 nao_configurado não falha em ativo": (RC, '  if (diario.estado === "nao_configurado" && faseDe(diario.fase) === "sombra") return { falha: null, alerta: null };', '  if (diario.estado === "nao_configurado") return { falha: null, alerta: null };'),
+    "R20 linha inválida do Neon ignorada": (RC, '.filter(([k, v]) => v === "erro" || (k.endsWith(":linha_invalida") && v > 0))', '.filter(([, v]) => v === "erro")'),
 }
 
 ALLOW_FILE = Path(os.environ.get("P20_DIARIO_RECONCILIA_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p20_diario_reconcilia_allow.json"))
