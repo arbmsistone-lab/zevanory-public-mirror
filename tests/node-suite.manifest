@@ -125,6 +125,7 @@ tests/sales-candidate-visual.test.mjs 3
 tests/sales-control.test.mjs 6
 tests/sales-design.test.mjs 6
 tests/sales-evidence.test.mjs 3
+tests/sales-hotmart-mode.test.mjs 7
 tests/sales-ledger.test.mjs 3
 tests/sales-lock-publishers.test.mjs 7
 tests/sales-public-gzip.test.mjs 2

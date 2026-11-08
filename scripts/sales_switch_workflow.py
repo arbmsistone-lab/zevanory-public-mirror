@@ -14,6 +14,7 @@ import urllib.request
 REPO = "arbmsistone-lab/zevanory-public-mirror"
 CF_ACCOUNT = "1b26415802588185a86c1d4d3ebf5bdb"
 KEY = "sales:open:v1"
+HOTMART_KEY = "sales:hotmart:v1"  # roteiro v5.0 Nível 1: abre só a compra pela Hotmart
 EMERGENCY_CLOSE_NAMESPACE = "728a45738e4047f29bcb89934fd533c1"  # F7 verified production KV
 PREFLIGHT = "zpc-sales-preflight:v1"
 ROOT = "https://zevanory.api.br"
@@ -110,8 +111,8 @@ def kv_read(token, namespace, key):
     return json.loads(request(kv_url(namespace, key), token=token))
 
 
-def kv_write(token, namespace, value):
-    request(kv_url(namespace, KEY), method="PUT", token=token,
+def kv_write(token, namespace, value, key=KEY):
+    request(kv_url(namespace, key), method="PUT", token=token,
             body=json.dumps(value, separators=(",", ":"), ensure_ascii=True).encode(), cf=True)
 
 
@@ -153,10 +154,15 @@ def public_sales_open():
     return json.loads(request(ROOT + "/api/sales/status"))
 
 
-def await_status(expected):
+def public_hotmart_open():
+    return json.loads(request(ROOT + "/api/sales/hotmart-status"))
+
+
+def await_status(expected, reader=None):
     # 11 GET reads at 0..50 s; bound < 60 s, account for the 10 s worker cache.
+    reader = reader or public_sales_open
     for n in range(11):
-        out = public_sales_open()
+        out = reader()
         if out.get("open") is expected:
             return True
         if n < 10:
@@ -166,9 +172,45 @@ def await_status(expected):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["open", "close"])
+    parser.add_argument("action", choices=["open", "open-hotmart", "close"])
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if args.action == "open-hotmart":
+        # Nível 1 Hotmart-only: só a frase do proprietário e a referência escrita. Não exige o preflight
+        # nem as provas do Mercado Pago (checkout próprio continua fechado em sales:open:v1).
+        confirm = os.environ.get("CONFIRM", "")
+        ref = os.environ.get("ORDER_REF", "")
+        if confirm != "LIBERAR VENDAS" or not validate_ref(ref):
+            raise RuntimeError("OWNER_ORDER_CONFIRMATION_INVALID")
+        if args.dry_run:
+            annotate("OPEN_HOTMART_DRY_RUN", "PASS_NO_KV_WRITE_NO_NETWORK")
+            return
+        # NC-1003-02: SHA canônico atual e deploy central bem-sucedido desse SHA (mesma prova da ação open).
+        sha, deploy_run = production_sha_and_deploy()
+        annotate("OPEN_HOTMART_DEPLOY_SHA", sha)
+        annotate("OPEN_HOTMART_DEPLOY_RUN", deploy_run)
+        # NC-1003-01: o modo Hotmart só abre com o interruptor completo confirmadamente fechado; leitura
+        # indisponível ou qualquer valor diferente de False interrompe antes de qualquer escrita.
+        if public_sales_open().get("open") is not False:
+            raise RuntimeError("FULL_SWITCH_NOT_CONFIRMED_CLOSED_BEFORE_HOTMART")
+        if public_hotmart_open().get("open") is not False:
+            raise RuntimeError("HOTMART_NOT_CONFIRMED_CLOSED_BEFORE_OPEN")
+        token, ns = cf_binding()
+        record = {"enabled": True, "authorization": "LIBERAR VENDAS", "channel": "hotmart",
+                  "by": "owner", "at": ISO(), "ref": ref}
+        kv_write(token, ns, record, key=HOTMART_KEY)
+        try:
+            if not await_status(True, public_hotmart_open):
+                raise RuntimeError("OPEN_HOTMART_NOT_OBSERVED_WITHIN_60_SECONDS")
+            # NC-1003-01: depois de abrir, o interruptor completo continua fechado; senão, reverte.
+            if public_sales_open().get("open") is not False:
+                raise RuntimeError("FULL_SWITCH_OPEN_AFTER_HOTMART")
+            annotate("OPEN_HOTMART", "PASS")
+        except Exception:
+            kv_write(token, ns, {"enabled": False}, key=HOTMART_KEY)
+            annotate("OPEN_HOTMART_ROLLBACK", "CLOSED_ON_VERIFICATION_ERROR")
+            raise
+        return
     if args.action == "open":
         confirm = os.environ.get("CONFIRM", "")
         ref = os.environ.get("ORDER_REF", "")
@@ -213,8 +255,18 @@ def main():
         token, ns = close_binding()
         kv_write(token, ns, {"enabled": False, "at": ISO(), "by": "owner-close"})
         annotate("CLOSE_SALES_KV", "ENABLED_FALSE")
+        # Fecha também o canal Hotmart; a escrita vem antes de qualquer leitura e nunca é condicionada.
+        kv_write(token, ns, {"enabled": False, "at": ISO(), "by": "owner-close"}, key=HOTMART_KEY)
+        annotate("CLOSE_HOTMART_KV", "ENABLED_FALSE")
         if not await_status(False):
             raise RuntimeError("CLOSE_SALES_STATUS_NOT_OBSERVED_WITHIN_60_SECONDS")
+        try:
+            hotmart_closed = await_status(False, public_hotmart_open)
+        except urllib.error.HTTPError as error:
+            # Worker anterior ao modo Hotmart (rota inexistente) não tem canal Hotmart para abrir.
+            hotmart_closed = error.code == 404
+        if not hotmart_closed:
+            raise RuntimeError("CLOSE_HOTMART_STATUS_NOT_OBSERVED_WITHIN_60_SECONDS")
         annotate("CLOSE_SALES", "PASS")
 
 
