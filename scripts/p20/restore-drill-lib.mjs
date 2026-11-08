@@ -120,84 +120,8 @@ export function assessKvCopy(readings, { day, keyring = new Map() } = {}) {
   return out;
 }
 
-// KV em memória com a semântica do Cloudflare usada na restauração (valor, expiração absoluta, metadados).
-export function memoryKvStore({ nowSec }) {
-  const m = new Map();
-  return {
-    async put(key, value, opts = {}) {
-      if (typeof value !== "string") throw new Error("kv_value_not_string");
-      if (opts.expiration != null && !(Number.isSafeInteger(opts.expiration) && opts.expiration >= nowSec + KV_MIN_TTL_S)) throw new Error("kv_expiration_invalid");
-      if (opts.metadata !== undefined && Buffer.byteLength(JSON.stringify(opts.metadata), "utf8") > KV_METADATA_MAX_BYTES) throw new Error("kv_metadata_too_large");
-      m.set(key, { value, expiration: opts.expiration ?? null, metadata: opts.metadata === undefined ? null : opts.metadata });
-    },
-    async get(key) { return m.has(key) ? m.get(key).value : null; },
-    async list({ prefix = "" } = {}) {
-      return { keys: [...m.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => { const e = m.get(name); return { name, ...(e.expiration != null ? { expiration: e.expiration } : {}), ...(e.metadata != null ? { metadata: e.metadata } : {}) }; }), list_complete: true };
-    },
-  };
-}
-
-// Plano de restauração do KV a partir das linhas da cópia (o MESMO usado numa recuperação real): uma escrita por
-// chave com o valor, a expiração absoluta e os metadados. Chave já expirada no instante da restauração (ou a menos de
-// 60 s de expirar) não é recriada: no KV de origem ela também já não existiria.
-export function planKvRestore(rows, { nowSec }) {
-  const puts = [], expired = [];
-  for (const r of rows) {
-    const exp = r.expiration ?? null;
-    if (exp != null && exp < nowSec + KV_MIN_TTL_S) { expired.push(r.key); continue; }
-    const opts = {};
-    if (exp != null) opts.expiration = exp;
-    if (r.metadata != null) opts.metadata = JSON.parse(r.metadata);
-    puts.push({ key: r.key, value: r.value, opts });
-  }
-  return { puts, expired };
-}
-
-// Ensaio da restauração do KV: linhas RELIDAS do Postgres efêmero -> KV reconstruído -> conferência chave a chave
-// (valor, TTL, metadados) contra o manifesto da fonte gravado pelo Worker. Saída só com contagens e booleanos.
-export async function kvRestoreDrill(restoredRows, kvAssessment, { nowSec, store = null } = {}) {
-  const A = kvAssessment;
-  const proof = { day: A.day, keys: A.keys, restored: 0, expired_at_restore: 0, with_ttl: 0, with_metadata: 0,
-    pg_rows_ok: false, values_hash_ok: false, ttl_metadata_ok: false, entries_manifest_ok: false, copia_cifrada: A.copia_cifrada === true,
-    restored_into: "KV em memória reconstruído das linhas de zevanory_kv_backup relidas do Postgres efêmero" };
-  const failures = [];
-  const pg = checkKvRows(restoredRows, { day: A.day, keys: A.keys, entriesManifest: A.entries_manifest, prefix: "kv_restore_pg" });
-  failures.push(...pg.failures);
-  if (failures.length) return { proof, failures };
-  proof.pg_rows_ok = true;
-  let plan;
-  try { plan = planKvRestore(restoredRows, { nowSec }); } catch { failures.push("kv_restore_metadata_invalid"); return { proof, failures }; }
-  const kv = store || memoryKvStore({ nowSec });
-  try { for (const p of plan.puts) await kv.put(p.key, p.value, p.opts); } catch (e) { failures.push("kv_restore_put_failed:" + String(e?.message || "x").replace(/[^a-z_]/g, "").slice(0, 40)); return { proof, failures }; }
-  // Releitura do KV reconstruído: list (nome, expiração, metadados) + get (valor), por prefixo crítico.
-  const listed = new Map();
-  for (const pre of KV_PREFIXES) for (const k of (await kv.list({ prefix: pre })).keys) listed.set(k.name, k);
-  const rowsBy = new Map(restoredRows.map((r) => [r.key, r]));
-  const digests = {};
-  let valueBad = 0, metaBad = 0;
-  for (const [name, k] of listed) {
-    const v = await kv.get(name);
-    const r = rowsBy.get(name);
-    if (!r || typeof v !== "string" || sha256(v) !== r.sha256) { valueBad++; continue; }
-    const exp = Number.isSafeInteger(k.expiration) ? k.expiration : null;
-    const meta = k.metadata == null ? null : JSON.stringify(k.metadata);
-    if (exp !== (r.expiration ?? null) || meta !== (r.metadata ?? null)) metaBad++;
-    if (exp != null) proof.with_ttl++;
-    if (meta != null) proof.with_metadata++;
-    digests[name] = kvEntryDigest({ sha: sha256(v), expiration: exp, metadata: meta });
-  }
-  for (const key of plan.expired) { const r = rowsBy.get(key); digests[key] = kvEntryDigest({ sha: r.sha256, expiration: r.expiration ?? null, metadata: r.metadata ?? null }); }
-  proof.restored = listed.size;
-  proof.expired_at_restore = plan.expired.length;
-  if (valueBad) failures.push("kv_restore_value_mismatch:" + valueBad);
-  if (metaBad) failures.push("kv_restore_ttl_metadata_mismatch:" + metaBad);
-  if (listed.size !== plan.puts.length || proof.restored + proof.expired_at_restore !== A.keys) failures.push("kv_restore_key_count_mismatch");
-  proof.values_hash_ok = valueBad === 0;
-  proof.ttl_metadata_ok = metaBad === 0;
-  proof.entries_manifest_ok = manifestHash(digests) === A.entries_manifest;
-  if (!proof.entries_manifest_ok) failures.push("kv_restore_manifest_mismatch");
-  return { proof, failures };
-}
+// A reconstrução do KV em memória (kvRestoreDrill, planKvRestore, memKvReplay) vive em scripts/p20/kv-memory-replay.mjs:
+// é uma estrutura em memória do ensaio, não um escritor de KV, e recebe os prefixos críticos por parâmetro (KV_PREFIXES).
 
 // Prova completa da restauração do KV (o que validateRecord exige para a lacuna sair de not_covered).
 export function kvProofComplete(k, backupDay) {

@@ -11,8 +11,11 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import * as W from "../worker/data-backup.mjs";
 import {
   NOT_COVERED, COPIA_KV_ID, KV_PREFIXES, KV_COPY_FORMAT, kvCopyKeyFor, kvEntryDigest, sha256, manifestHash, partReportKey, bundleKeyFor,
-  buildRecord, validateRecord, notCoveredFor, planKvRestore, memoryKvStore, kvRestoreDrill, assessKvCopy, kvProofComplete,
+  buildRecord, validateRecord, notCoveredFor, assessKvCopy, kvProofComplete,
 } from "../scripts/p20/restore-drill-lib.mjs";
+import { planKvRestore, memKvReplay, kvRestoreDrill as kvRestoreDrillRaw } from "../scripts/p20/kv-memory-replay.mjs";
+// Prefixos críticos: sempre a lista oficial (o módulo de reconstrução não tem prefixo de produção próprio).
+const kvRestoreDrill = (rows, A, opts = {}) => kvRestoreDrillRaw(rows, A, { prefixes: KV_PREFIXES, ...opts });
 import { runDrill as runDrillRaw, CF_ACCOUNT, NAMESPACE } from "../scripts/p20/restore-drill.mjs";
 import { parseKeyring } from "../scripts/p20/backup-envelope.mjs";
 import { makeBackup, KV_ROWS, kvRowsFull, DAY } from "./helpers/p20-backup-fixture.mjs";
@@ -201,25 +204,28 @@ test("K6 KV reconstruído: TTL e metadados recriados, chave expirada não recria
   const A = assessKvCopy({ parts: [JSON.stringify({ kv: (() => { const k = JSON.parse(makeBackup({ kv: { rows: KV_ROWS } })[partReportKey(0)]).kv; return k; })() })], kv_copy: JSON.stringify(rows) }, { day: DAY });
   assert.deepEqual(A.failures, [], "[K6.0] " + A.failures.join(","));
   const plan = planKvRestore(rows, { nowSec: NOW_S });
-  assert.deepEqual(plan.puts.find((p) => p.key.includes(":txn:")).opts, { expiration: 1800000000 }, "[K6.1] TTL absoluto no put");
-  assert.deepEqual(plan.puts.find((p) => p.key === "zpc:cp:sub:sintetico").opts, { metadata: { kind: "sub", v: 1 } }, "[K6.2] metadados no put");
+  assert.deepEqual(plan.entries.find((p) => p.key.includes(":txn:")).opts, { expiration: 1800000000 }, "[K6.1] TTL absoluto na entrada");
+  assert.deepEqual(plan.entries.find((p) => p.key === "zpc:cp:sub:sintetico").opts, { metadata: { kind: "sub", v: 1 } }, "[K6.2] metadados na entrada");
   const good = await kvRestoreDrill(rows, A, { nowSec: NOW_S });
   assert.deepEqual(good.failures, [], "[K6.3]");
   assert.ok(kvProofComplete(good.proof, DAY) && good.proof.with_ttl === 1 && good.proof.with_metadata === 1, "[K6.4]");
   const late = await kvRestoreDrill(rows, A, { nowSec: 1800000000 - 30 });
   assert.ok(late.failures.length === 0 && late.proof.expired_at_restore === 1 && late.proof.restored === 3 && late.proof.entries_manifest_ok, "[K6.5] expirada não recriada, contada e o manifesto confere");
-  const inner = memoryKvStore({ nowSec: NOW_S });
-  const dropTtl = { ...inner, async put(k, v, o = {}) { const { expiration, ...rest } = o; void expiration; return inner.put(k, v, rest); } };
-  const bad = await kvRestoreDrill(rows, A, { nowSec: NOW_S, store: dropTtl });
+  const inner = memKvReplay({ nowSec: NOW_S });
+  const dropTtl = { ...inner, async set(k, v, o = {}) { const { expiration, ...rest } = o; void expiration; return inner.set(k, v, rest); } };
+  const bad = await kvRestoreDrill(rows, A, { nowSec: NOW_S, mem: dropTtl });
   assert.ok(bad.failures.includes("kv_restore_ttl_metadata_mismatch:1") && !bad.proof.entries_manifest_ok && !kvProofComplete(bad.proof, DAY), "[K6.6] restauração sem TTL reprova");
-  const inner2 = memoryKvStore({ nowSec: NOW_S });
-  const dropMeta = { ...inner2, async put(k, v, o = {}) { const { metadata, ...rest } = o; void metadata; return inner2.put(k, v, rest); } };
-  assert.ok((await kvRestoreDrill(rows, A, { nowSec: NOW_S, store: dropMeta })).failures.includes("kv_restore_ttl_metadata_mismatch:1"), "[K6.7] restauração sem metadados reprova");
-  const inner3 = memoryKvStore({ nowSec: NOW_S });
-  const lossy = { ...inner3, async put(k, v, o) { if (k.startsWith("zpc:cp:")) return; return inner3.put(k, v, o); } };
-  const l = await kvRestoreDrill(rows, A, { nowSec: NOW_S, store: lossy });
+  const inner2 = memKvReplay({ nowSec: NOW_S });
+  const dropMeta = { ...inner2, async set(k, v, o = {}) { const { metadata, ...rest } = o; void metadata; return inner2.set(k, v, rest); } };
+  assert.ok((await kvRestoreDrill(rows, A, { nowSec: NOW_S, mem: dropMeta })).failures.includes("kv_restore_ttl_metadata_mismatch:1"), "[K6.7] restauração sem metadados reprova");
+  const inner3 = memKvReplay({ nowSec: NOW_S });
+  const lossy = { ...inner3, async set(k, v, o) { if (k.startsWith(KV_PREFIXES[1])) return; return inner3.set(k, v, o); } };
+  const l = await kvRestoreDrill(rows, A, { nowSec: NOW_S, mem: lossy });
   assert.ok(l.failures.includes("kv_restore_key_count_mismatch") && l.failures.includes("kv_restore_manifest_mismatch"), "[K6.8] chave não recriada reprova");
-  await assert.rejects(memoryKvStore({ nowSec: NOW_S }).put("zpc:sales:x", "1", { expiration: NOW_S + 10 }), /kv_expiration_invalid/, "[K6.9] semântica do Cloudflare: TTL mínimo de 60 s");
+  await assert.rejects(memKvReplay({ nowSec: NOW_S }).set("zpc:sales:x", "1", { expiration: NOW_S + 10 }), /kv_expiration_invalid/, "[K6.9] semântica do Cloudflare: TTL mínimo de 60 s");
+  assert.deepEqual((await kvRestoreDrillRaw(rows, A, { nowSec: NOW_S })).failures, ["kv_restore_prefixes_missing"], "[K6.10] sem a lista oficial de prefixos, a prova não roda");
+  const replaySrc = readTextNormalized(new URL("../scripts/p20/kv-memory-replay.mjs", import.meta.url));
+  assert.ok(!KV_PREFIXES.some((p) => replaySrc.includes(p)) && !/\.put\s*\(/.test(replaySrc), "[K6.11] reconstrução em memória: sem prefixo de produção literal e sem método de escrita da API do KV");
 });
 
 test("K7 registro estrito: a lacuna só sai com prova completa, num ensaio APROVADO; mutantes de remoção sem prova morrem", async () => {

@@ -74,8 +74,10 @@ dar ao CI uma credencial do Neon, o próprio backup diário leva a prova até o 
    cada valor e o manifesto da fonte. Qualquer falha reprova **antes** de restaurar.
 4. **Restauração:** a ponte (`scripts/p20/restore_bridge.py`) carrega as linhas em `zevanory_kv_backup` do mesmo
    Postgres efêmero (DDL do próprio Worker), confere contagem e hash de conteúdo e **relê do Postgres**.
-5. **KV reconstruído:** das linhas relidas, o plano de restauração (`planKvRestore`, o mesmo de uma recuperação real)
-   faz uma escrita por chave com valor, expiração absoluta e metadados num KV em memória com a semântica do Cloudflare
+5. **KV reconstruído:** das linhas relidas, o plano de restauração (`planKvRestore`, o mesmo de uma recuperação real,
+   em `scripts/p20/kv-memory-replay.mjs`) gera uma entrada por chave com valor, expiração absoluta e metadados numa
+   estrutura em memória do ensaio (`memKvReplay`: `set`/`get`/`list` sobre um `Map`, sem binding, API nem credencial;
+   não é um escritor de KV, e os prefixos críticos chegam por parâmetro da lista oficial) com a semântica do Cloudflare
    (expiração ≥ agora + 60 s; metadados ≤ 1024 B). Chave já expirada no instante da restauração não é recriada e é
    contada (`expired_at_restore`). O ensaio relê o KV reconstruído (`list` + `get`) e confere **chave a chave** valor,
    TTL e metadados, e o manifesto inteiro contra `kv.entries_manifest`.

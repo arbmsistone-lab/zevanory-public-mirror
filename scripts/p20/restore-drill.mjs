@@ -24,8 +24,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 import {
   REPORT_KEY, PARTS, partReportKey, assessBackup, assertEphemeralTarget, buildRecord, validateRecord, validateInventory,
-  assessKvCopy, kvRestoreDrill, KV_COPY_TABLE,
+  assessKvCopy, KV_COPY_TABLE, KV_PREFIXES,
 } from "./restore-drill-lib.mjs";
+import { kvRestoreDrill } from "./kv-memory-replay.mjs";
 import { parseKeyring } from "./backup-envelope.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -125,7 +126,7 @@ export async function runDrill({ mode, env = process.env, fetchImpl = fetch, fix
   let kvCopy = kvA?.present ? { proof: null, failures: [] } : null;
   if (kvCopy && restore?.ok === true) {
     if (!Array.isArray(restore.kv_rows)) kvCopy.failures.push("kv_restore_not_run");
-    else kvCopy = await kvRestoreDrill(restore.kv_rows, kvA, { nowSec: Math.floor(now().getTime() / 1000) });
+    else kvCopy = await kvRestoreDrill(restore.kv_rows, kvA, { nowSec: Math.floor(now().getTime() / 1000), prefixes: KV_PREFIXES });
   }
   const rtoSeconds = (clock() - t0) / 1000;
   const rec = buildRecord({ mode, sourceRead: sourceRead && !!assessment?.readable, assessment, restore, startedAt, finishedAt: now().toISOString(), rtoSeconds,

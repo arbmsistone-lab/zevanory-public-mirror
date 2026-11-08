@@ -35,6 +35,7 @@ NODE = shutil.which("node") or "node"
 L, D, P = "scripts/p20/restore-drill-lib.mjs", "scripts/p20/restore-drill.mjs", "scripts/p20/publish-drill.mjs"
 B, C, W = "scripts/b0/b0-lib.mjs", "scripts/b0/b0-collector.mjs", ".github/workflows/p20-monthly-restore-drill.yml"
 WC, WB, E = "worker/backup-crypto.mjs", "worker/data-backup.mjs", "scripts/p20/backup-envelope.mjs"
+R = "scripts/p20/kv-memory-replay.mjs"  # reconstrução do KV em memória (não é escritor de KV)
 
 M = {
     "M01 hash por tabela não conferido": (L, "      if (h !== m.sha) { fail(`hash_mismatch:${t}`); partOk = false; continue; }\n", ""),
@@ -88,8 +89,8 @@ M = {
     "M48 prova do KV com chave a menos aceita": (L, "    && k.restored + k.expired_at_restore === k.keys && isInt(k.with_ttl)", "    && isInt(k.with_ttl)"),
     "M49 manifesto da fonte (valor+TTL+metadados) não conferido": (L, "  if (manifestHash(digests) !== entriesManifest) failures.push(`${prefix}_manifest_mismatch`);\n", ""),
     "M50 hash do valor por chave não conferido": (L, "  if (sha256(r.value) !== r.sha256) return \"value_hash_mismatch\";\n", ""),
-    "M51 TTL não recriado na restauração do KV": (L, "    if (exp != null) opts.expiration = exp;\n", ""),
-    "M52 metadados não recriados na restauração do KV": (L, "    if (r.metadata != null) opts.metadata = JSON.parse(r.metadata);\n", ""),
+    "M51 TTL não recriado na restauração do KV": (R, "    if (exp != null) opts.expiration = exp;\n", ""),
+    "M52 metadados não recriados na restauração do KV": (R, "    if (r.metadata != null) opts.metadata = JSON.parse(r.metadata);\n", ""),
     "M53 chave fora dos prefixos críticos aceita": (L, " && KV_PREFIXES.some((p) => k.startsWith(p)) && !k.startsWith(\"zpc:restore-drill:\");", " && !k.startsWith(\"zpc:restore-drill:\");"),
     "M54 rebaixamento da cópia do KV para claro aceito": (L, "  if (isObj(p0.v.encryption) && p0.v.encryption.state === \"cifrado\" && !opened.encrypted) { fail(\"kv_copy_encryption_downgrade\"); return out; }\n", ""),
     "M55 SHA da cópia do KV não conferido": (L, "  if (sha256(opened.text) !== c.sha) { fail(\"kv_copy_hash_mismatch\"); return out; }\n", ""),
@@ -97,7 +98,7 @@ M = {
     "M57 Worker não copia o TTL para o Neon": (WB, "present.map(([k]) => metaOf(k).expiration), present.map(([k]) => metaOf(k).metadata)],", "present.map(() => null), present.map(([k]) => metaOf(k).metadata)],"),
     "M58 Worker não confere TTL e metadados relidos do Neon": (WB, " || entries[r.key] !== (await kvEntryDigest({ sha: r.sha256, expiration: r.expiration, metadata: r.metadata }))) mismatch++;", ") mismatch++;"),
     "M59 ensaio lê a cópia do KV fora do namespace do backup": (D, "  if (typeof kvKey === \"string\" && KV_COPY_KEY.test(kvKey)) kvCopy = await get(kvKey);", "  if (typeof kvKey === \"string\") kvCopy = await get(kvKey);"),
-    "M60 chave expirada recriada na restauração": (L, "    if (exp != null && exp < nowSec + KV_MIN_TTL_S) { expired.push(r.key); continue; }\n", ""),
+    "M60 chave expirada recriada na restauração": (R, "    if (exp != null && exp < nowSec + KV_MIN_TTL_S) { expired.push(r.key); continue; }\n", ""),
     "M61 restauração do KV não roda e a prova não é exigida": (D, "    if (!Array.isArray(restore.kv_rows)) kvCopy.failures.push(\"kv_restore_not_run\");\n    else kvCopy", "    if (Array.isArray(restore.kv_rows)) kvCopy"),
 }
 
