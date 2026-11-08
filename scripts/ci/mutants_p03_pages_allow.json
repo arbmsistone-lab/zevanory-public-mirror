@@ -289,6 +289,116 @@
      "assertion_pattern": "[P1.3]"
     }
    ]
+  },
+  "M35 canonical com barra final aceita": {
+   "primary": [
+    {
+     "test_pattern": "P6",
+     "assertion_pattern": "[P6.8]"
+    }
+   ]
+  },
+  "M36 regressão: quem-criou com canonical em barra": {
+   "primary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.3]"
+    }
+   ]
+  },
+  "M37 canonical diferente do caminho servido aceita (navegador)": {
+   "primary": [
+    {
+     "test_pattern": "N11",
+     "assertion_pattern": "[N11.1]"
+    }
+   ]
+  },
+  "M38 página servida com redirect aceita": {
+   "primary": [
+    {
+     "test_pattern": "N11",
+     "assertion_pattern": "[N11.2]"
+    }
+   ]
+  },
+  "M39 canonical que não responde 200 aceita": {
+   "primary": [
+    {
+     "test_pattern": "N11",
+     "assertion_pattern": "[N11.3]"
+    }
+   ]
+  },
+  "M40 aviso de disponibilidade não exigido": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.13]"
+    }
+   ]
+  },
+  "M41 data-zev-closed fora do interruptor aceito": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.14]"
+    }
+   ]
+  },
+  "M42 texto do aviso de disponibilidade não conferido": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.15]"
+    }
+   ]
+  },
+  "M43 página do interruptor sem aviso de fechadas aceita": {
+   "primary": [
+    {
+     "test_pattern": "P8",
+     "assertion_pattern": "[P8.16]"
+    }
+   ]
+  },
+  "M44 regressão: ramo com preço sem aviso": {
+   "primary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.3]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P10",
+     "assertion_pattern": "[P10.1]",
+     "justification": "o mesmo build servido pelo Worker com vendas fechadas: a página do ramo cita R$ 97 sem aviso, então P10.1 também falha"
+    }
+   ]
+  },
+  "M45 regressão: /index.html servido cru pelo Worker": {
+   "primary": [
+    {
+     "test_pattern": "P10",
+     "assertion_pattern": "[P10.2]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "P1",
+     "assertion_pattern": "[P1.3]",
+     "justification": "sem o apelido no Worker, a auditoria estática vê data-zev-closed em index fora do interruptor (S21) e o preço de index sem aviso neutro (S20)"
+    }
+   ]
+  },
+  "M46 regressão: Worker não remove o aviso de fechadas ao abrir": {
+   "primary": [
+    {
+     "test_pattern": "P10",
+     "assertion_pattern": "[P10.2]"
+    }
+   ]
   }
  }
 }

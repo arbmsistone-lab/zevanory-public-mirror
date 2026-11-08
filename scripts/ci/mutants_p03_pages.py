@@ -27,8 +27,10 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/p03-pages-audit.test.mjs", "tests/ci/p03-pages-browser.test.mjs"]
 COPY_DIRS = ["sales-public"]
-COPY_FILES = TESTS + ["scripts/audit/p03-pages-static.mjs", "scripts/audit/p03-pages-browser.mjs",
-                      "scripts/build_sales_public.py", "worker/sales-public-worker.mjs", "data/products.json"]
+COPY_FILES = TESTS + ["tests/helpers/text.mjs", "scripts/audit/p03-pages-static.mjs", "scripts/audit/p03-pages-browser.mjs",
+                      "scripts/build_sales_public.py", "worker/sales-public-worker.mjs", "data/products.json",
+                      # P10 importa o Worker real, que importa estes (e data/politica-unica.json).
+                      "worker/politica-unica.mjs", "worker/nc015-sales-scope.mjs", "data/politica-unica.json"]
 TIMEOUT = 600
 NODE = shutil.which("node") or "node"
 A = "scripts/audit/p03-pages-static.mjs"
@@ -44,7 +46,7 @@ M = {
     "M07 banner não exigido": (A, '    if (!/<header\\b/.test(html)) p("S09"', '    if (false) p("S09"'),
     "M08 link interno quebrado aceito": (A, '    if (!r.ok) p("S10"', '    if (false) p("S10"'),
     "M09 âncora local não conferida": (A, '{ frag = href.slice(1); if (frag && !own.has(frag)) p("S10"', '{ frag = href.slice(1); if (false) p("S10"'),
-    "M10 canonical não conferida": (A, '      if (canon[0] !== want && canon[0] !== want + "/") p("S11"', '      if (false) p("S11"'),
+    "M10 canonical não conferida": (A, '      if (canon[0] !== want) p("S11"', '      if (false) p("S11"'),
     "M11 og:url não conferido": (A, "      if (og.length && og[0] !== canon[0])", "      if (false)"),
     "M12 description repetida aceita": (A, '      if (d) { if (seenD.has(d)) p("S12"', '      if (d) { if (false) p("S12"'),
     "M13 title repetido aceito": (A, '    if (t) { if (seenT.has(t)) p("S04"', '    if (t) { if (false) p("S04"'),
@@ -69,6 +71,20 @@ M = {
     "M32 regressão: jurídica sem skip-link": ("sales-public/termos.html", '<body><a class="skip-link" href="#conteudo">Ir para o conteúdo</a>', "<body>"),
     "M33 regressão: rota prevista sem página": ("scripts/build_sales_public.py", '    "como-mandar-orcamento-pelo-whatsapp",\n)', '    "como-mandar-orcamento-pelo-whatsapp",\n    "pagina-fantasma",\n)'),
     "M34 regressão: rodapé sem nome acessível": ("sales-public/solucoes.html", '<nav class="footer-nav" aria-label="Rodapé">', '<nav class="footer-nav">'),
+    # O3: canonical = endereço servido (/slug, 200, sem redirect).
+    "M35 canonical com barra final aceita": (A, '      if (canon[0] !== want) p("S11"', '      if (canon[0] !== want && canon[0] !== want + "/") p("S11"'),
+    "M36 regressão: quem-criou com canonical em barra": ("sales-public/quem-criou.html", '<link rel="canonical" href="https://vendas.zevanory.api.br/quem-criou">', '<link rel="canonical" href="https://vendas.zevanory.api.br/quem-criou/">'),
+    "M37 canonical diferente do caminho servido aceita (navegador)": (B, '      if (cp !== want) p("B10"', '      if (false) p("B10"'),
+    "M38 página servida com redirect aceita": (B, '    if (from) p("B10"', '    if (false) p("B10"'),
+    "M39 canonical que não responde 200 aceita": (B, '      if (cr.status() !== 200 || cr.headers()["location"]) p("B10"', '      if (false) p("B10"'),
+    # O2: aviso que nunca mente em toda página com preço da tabela C.
+    "M40 aviso de disponibilidade não exigido": (A, '    if (!m) p("S20"', '    if (!m) void ("S20"'),
+    "M41 data-zev-closed fora do interruptor aceito": (A, '  if (/\\sdata-zev-closed\\b/.test(html) && !toggled) p("S21"', '  if (false) p("S21"'),
+    "M42 texto do aviso de disponibilidade não conferido": (A, "    else if (!noteTextOk(m[1])) p(", "    else if (false) p("),
+    "M43 página do interruptor sem aviso de fechadas aceita": (A, "  if (priced && toggled && !/<p class=\"sales-notice\"", "  if (false && priced && toggled && !/<p class=\"sales-notice\""),
+    "M44 regressão: ramo com preço sem aviso": ("sales-public/ia-para-academia.html", '<p class="price-note">', '<p class="price-note-x">'),
+    "M45 regressão: /index.html servido cru pelo Worker": ("worker/sales-public-worker.mjs", '  else if(url.pathname==="/index.html") { url.pathname="/solucoes.html"; page="solucoes"; }\n', ""),
+    "M46 regressão: Worker não remove o aviso de fechadas ao abrir": ("worker/sales-public-worker.mjs", '  out=out.replace(/<(p|span)\\b[^>]*\\sdata-zev-closed[^>]*>[^<]*<\\/\\1>/g,"");\n', ""),
 }
 
 ALLOW_FILE = Path(os.environ.get("P03_MUTANTS_ALLOW_FILE") or Path(__file__).with_name("mutants_p03_pages_allow.json"))

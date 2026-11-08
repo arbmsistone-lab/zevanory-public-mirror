@@ -5,7 +5,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { auditStatic, checkPage, siteChecks, inventory, commercial, SALES_ORIGIN } from "../scripts/audit/p03-pages-static.mjs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { join, normalize } from "node:path";
+import { auditStatic, checkPage, siteChecks, inventory, commercial, availability, urlFor, visibleText, PRICE_CITE, SALES_ORIGIN } from "../scripts/audit/p03-pages-static.mjs";
+import worker from "../worker/sales-public-worker.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const O = SALES_ORIGIN;
@@ -21,10 +24,13 @@ const site = (pages, extra = {}) => ({ dir: "/nao-existe", routes: Object.keys(p
   products: [["ia-na-pratica", "IA na Prática", 97], ["vendas-na-pratica", "Vendas na Prática", 97], ["lucro-e-caixa", "Lucro & Caixa", 147],
     ["combo-ia-vendas", "Combo IA + Vendas", 157], ["negocio-completo", "Negócio Completo", 247]].map(([slug, name, price]) => ({ slug, name, price })),
   genPrices: { "ia-na-pratica": 97, "vendas-na-pratica": 97, "lucro-e-caixa": 147, "combo-ia-vendas": 157, "negocio-completo": 247 },
-  workerPrices: { "IA na Prática": 97, "Vendas na Prática": 97, "Lucro & Caixa": 147, "Combo IA + Vendas": 157, "Negócio Completo": 247 }, ...extra });
+  workerPrices: { "IA na Prática": 97, "Vendas na Prática": 97, "Lucro & Caixa": 147, "Combo IA + Vendas": 157, "Negócio Completo": 247 },
+  togglePages: ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo", "solucoes", "conteudo-pronto"],
+  workerAliases: { index: "solucoes" }, ...extra });
 const codes = (list) => list.map((p) => p.code);
 const one = (html, slug = "x", s = site({ x: html, y: page({ slug: "y" }) })) => codes(checkPage(slug, html, s));
 const NOTICE = '<p class="sales-notice" data-zev-closed>Aviso: vendas temporariamente fechadas. Os preços são informativos.</p>';
+const NOTE = '<p class="price-note">Valores de tabela, para referência. Confira a disponibilidade na página do produto; as vendas podem estar temporariamente fechadas.</p>';
 
 test("P1 árvore real: 72 páginas inventariadas e zero achados estáticos", () => {
   const r = auditStatic(ROOT);
@@ -87,6 +93,7 @@ test("P6 canonical, og:url, descrição e unicidade", () => {
   assert.ok(codes(siteChecks(dupT)).includes("S04"), "[P6.6] title repetido");
   const dupD = site({ a: page({ slug: "a", desc: "Igual" }), b: page({ slug: "b", desc: "Igual" }) });
   assert.ok(codes(siteChecks(dupD)).includes("S12"), "[P6.7] description repetida");
+  assert.ok(one(page({ canon: `${O}/x/` })).includes("S11"), "[P6.8] canonical com barra final (/x/) != endereço servido /x");
 });
 
 test("P7 sitemap coerente com as páginas indexáveis", () => {
@@ -115,6 +122,16 @@ test("P8 coerência comercial: tabela C, aviso de vendas fechadas e nada fabrica
   assert.ok(c("<p><s>R$ 197</s> R$ 97</p>").includes("S16"), "[P8.10] preço riscado");
   assert.ok(c("<p>de R$ 197 por R$ 97</p>").includes("S16"), "[P8.11] preço de/por");
   assert.ok(c("<p>Últimas vagas: restam 3</p>").includes("S17"), "[P8.12] escassez fictícia");
+  // O2: aviso que nunca mente (S20/S21), conforme a página seja ou não atualizada pelo interruptor do Worker.
+  const a = (body, slug = "x") => codes(availability(slug, page({ slug, body }), site({})));
+  assert.ok(a('<ul><li><a href="/ia-na-pratica">IA na Prática</a> (R$ 97).</li></ul>').includes("S20"), "[P8.13] preço citado fora do interruptor sem aviso de disponibilidade");
+  assert.deepEqual(a('<ul><li><a href="/ia-na-pratica">IA na Prática</a> (R$ 97).</li></ul>' + NOTE), [], "[P8.13] com o aviso neutro");
+  assert.deepEqual(a("<p>Exemplo: venda de R$ 97,50 e custo de R$ 1.970.</p>"), [], "[P8.13] valor que não é preço da tabela C");
+  assert.ok(a(NOTICE + "<p>Lucro & Caixa (R$ 147)</p>").includes("S21"), "[P8.14] data-zev-closed fora das páginas do interruptor (ficaria falso com vendas abertas)");
+  assert.deepEqual(a(NOTICE + "<p>Preço de tabela: R$ 97</p>", "ia-na-pratica"), [], "[P8.14] aviso de fechadas na página do interruptor");
+  assert.ok(a(NOTICE + "<p>x</p>", "index").length === 0 && a(NOTICE + "<p>Preço de tabela: R$ 97</p>", "index").length === 0, "[P8.14] /index.html é servido como solucoes");
+  assert.ok(a('<p>IA na Prática (R$ 97)</p><p class="price-note">Vendas fechadas.</p>').includes("S20"), "[P8.15] aviso de disponibilidade com texto fora do padrão");
+  assert.ok(a("<p>Preço de tabela: R$ 97</p>", "ia-na-pratica").includes("S20"), "[P8.16] página do interruptor com preço e sem aviso de fechadas");
 });
 
 test("P9 tabela C igual em data/products.json, no gerador e no Worker", () => {
@@ -123,4 +140,42 @@ test("P9 tabela C igual em data/products.json, no gerador e no Worker", () => {
   assert.ok(codes(siteChecks({ ...s, products: s.products.map((p) => p.slug === "lucro-e-caixa" ? { ...p, price: 197 } : p) })).includes("S19"), "[P9.1] products.json divergente");
   assert.ok(codes(siteChecks({ ...s, genPrices: { ...s.genPrices, "negocio-completo": 297 } })).includes("S19"), "[P9.2] gerador divergente");
   assert.ok(codes(siteChecks({ ...s, workerPrices: { ...s.workerPrices, "IA na Prática": 67 } })).includes("S19"), "[P9.3] Worker divergente");
+});
+
+// P10 (O2, prova): o estado do aviso nunca diverge do estado de vendas. As 72 páginas passam pelo Worker real
+// (worker/sales-public-worker.mjs) com o interruptor FECHADO e ABERTO (CORE simulado em /api/sales/status).
+// Fechado: toda página com preço da tabela C diz "vendas temporariamente fechadas" (interruptor) ou traz o
+// aviso neutro. Aberto: nenhuma resposta afirma vendas fechadas, o aviso neutro continua (verdadeiro) e as
+// páginas de produto têm o link de compra.
+const DIR = join(ROOT, "sales-public");
+const ASSETS = { async fetch(req) {
+  const file = normalize(join(DIR, decodeURIComponent(new URL(req.url).pathname)));
+  if (!file.startsWith(DIR)) return new Response("x", { status: 404 });
+  try { return new Response(readTextNormalized(file), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }); } catch { return new Response("x", { status: 404 }); }
+} };
+const serve = async (path, open) => {
+  const env = { ASSETS, CORE: { fetch: async () => new Response(JSON.stringify({ open }), { status: 200, headers: { "content-type": "application/json" } }) } };
+  const r = await worker.fetch(new Request("https://vendas.zevanory.api.br" + path, { headers: { "user-agent": "Mozilla/5.0" } }), env, { waitUntil() {} });
+  return { status: r.status, html: await r.text() };
+};
+test("P10 aviso de vendas coerente com o interruptor em todas as páginas servidas (fechado e aberto)", async () => {
+  const st = auditStatic(ROOT);
+  let priced = 0, notes = 0;
+  for (const { slug } of st.inventory.pages) {
+    const u = urlFor(slug);
+    const closed = await serve(u.path, false), open = await serve(u.path, true);
+    assert.equal(closed.status, u.status, `[P10.0] ${slug} status fechado`);
+    assert.equal(open.status, u.status, `[P10.0] ${slug} status aberto`);
+    const hasPrice = PRICE_CITE.test(visibleText(closed.html));
+    if (hasPrice) {
+      priced++;
+      const ok = /data-zev-closed>[^<]*vendas temporariamente fechadas/.test(closed.html) || /<p class="price-note">[^<]*as vendas podem estar temporariamente fechadas/.test(closed.html);
+      assert.ok(ok, `[P10.1] ${slug}: preço sem aviso com vendas fechadas`);
+    }
+    assert.doesNotMatch(open.html, /data-zev-closed|vendas temporariamente fechadas/, `[P10.2] ${slug}: afirma vendas fechadas com o interruptor aberto`);
+    if (/class="price-note"/.test(closed.html)) { notes++; assert.match(open.html, /<p class="price-note">/, `[P10.3] ${slug}: aviso neutro some com vendas abertas`); }
+    if (["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"].includes(slug)) assert.match(open.html, /href="\/comprar\/ZEV-/, `[P10.4] ${slug}: sem link de compra com vendas abertas`);
+    assert.doesNotMatch(closed.html, /href="\/comprar\//, `[P10.4] ${slug}: link de compra com vendas fechadas`);
+  }
+  assert.deepEqual([priced, notes], [57, 50], "[P10.5] 57 páginas com preço (5 produtos + solucoes + index + 50 com aviso neutro)");
 });

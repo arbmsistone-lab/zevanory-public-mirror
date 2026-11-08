@@ -19,6 +19,7 @@ p,li{max-width:66ch;hyphens:auto;-webkit-hyphens:auto;text-wrap:pretty}
 .footer-legal,.meta,.notice{font-variant-numeric:tabular-nums lining-nums}
 strong{font-weight:700}
 .meta,.notice{background:var(--cupom);border-top:2px solid var(--regua);padding:16px 20px}
+.price-note{background:var(--cupom);border-left:3px solid var(--linha-suave);padding:8px 12px}
 .notice{margin:24px 0}
 .muted{color:var(--grafite);font-size:.875rem}
 /* Header: the same ink bar as the sales pages (the official logo is drawn for dark grounds). */

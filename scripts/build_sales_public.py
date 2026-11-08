@@ -442,6 +442,29 @@ def sales_notice() -> str:
     return (f'<p class="sales-notice" data-zev-closed>Aviso: {policy.CLOSED_LABEL}. Os preços são informativos; '
             'entre na lista de espera e avisamos por e-mail quando abrir.</p>')
 
+# P03 O2 (contra-auditor): páginas fora do interruptor de vendas (ramos, calculadoras, ferramentas, kit de
+# afiliado, termos) citam preços da tabela C em texto corrido. O Worker só atualiza o aviso de vendas
+# fechadas nas páginas de SALES_TOGGLE_PAGES; nessas outras um "vendas fechadas" fixo ficaria FALSO quando o
+# interruptor abrir (abrir vendas é o KV sales:open:v1, sem rebuild nem release). Por isso o aviso aqui é
+# neutro e verdadeiro nos dois estados, sem link de compra, logo depois do bloco que traz o primeiro preço.
+TABLE_PRICES = tuple(sorted({c["price"] for c in COMMERCE.values()}))
+PRICE_CITE_RE = re.compile(r"R\$(?:\s|&nbsp;)?(?:" + "|".join(map(str, TABLE_PRICES)) + r")(?:,00)?(?!\d|[.,]\d)")
+AVAILABILITY_NOTE = ('<p class="price-note">Valores de tabela, para referência. Confira a disponibilidade na página do produto; '
+                     'as vendas podem estar temporariamente fechadas.</p>')
+
+def add_availability_note(slug: str, html: str) -> str:
+    """Neutral availability note on every page outside PRICE_PAGES whose <main> cites a table-C price."""
+    if slug in PRICE_PAGES or "price-note" in html:
+        return html
+    start = html.find("<main")
+    m = PRICE_CITE_RE.search(html, start if start >= 0 else 0)
+    if not m:
+        return html
+    end = re.compile(r"</(?:ul|ol|p|table|dl)>").search(html, m.end())
+    if not end:
+        raise SystemExit(f"{slug}: price block end not found for the availability note")
+    return html[: end.end()] + AVAILABILITY_NOTE + html[end.end():]
+
 def apply_presentation(slug: str, html: str) -> str:
     """Design pass (docs/design/sales-site-identity.md), applied after every content/legal step:
     the hero label stays (sentence case, no caps), every other eyebrow/kicker goes; no arrow tics;
@@ -469,7 +492,7 @@ def apply_presentation(slug: str, html: str) -> str:
     if slug in PRICE_PAGES and "sales-notice" not in html:
         # First thing inside <main> (inside a landmark, read right after the skip link).
         html = re.sub(r"(<main\b[^>]*>)", lambda m: m.group(1) + sales_notice(), html, count=1)
-    return html
+    return add_availability_note(slug, html)
 
 def add_legal_footer(html: str) -> str:
     if "footer-legal" in html:
@@ -478,6 +501,14 @@ def add_legal_footer(html: str) -> str:
     if "</main>" in html:
         return html.replace("</main>", LEGAL_FOOTER + "</main>", 1)
     return html.replace("</body>", LEGAL_FOOTER + "</body>", 1)
+
+# P03 O3: the Worker serves every page at /<slug> (html_handling = "none"; /<slug>/ is the same 200, never a
+# redirect) and every internal link uses /<slug>. Canonical, og:url, JSON-LD and sitemap therefore name
+# /<slug> without the trailing slash (quem-criou used to declare /quem-criou/).
+_ROUTE_SLASH_RE = re.compile(re.escape(SALES_ORIGIN) + r"/(" + "|".join(map(re.escape, HTML_ROUTES)) + r")/(?=[\"'<#?\s]|$)")
+
+def no_trailing_slash(text: str) -> str:
+    return _ROUTE_SLASH_RE.sub(lambda m: f"{SALES_ORIGIN}/{m.group(1)}", text)
 
 def copy_text_page(slug: str) -> None:
     source = ROOT / slug / "index.html"
@@ -511,6 +542,7 @@ def apply_approved_overlay() -> None:
             if 'rel="canonical"' not in head:
                 head = head.replace("<title>", f'<link rel="canonical" href="{SALES_ORIGIN}/{slug}"><title>', 1)
         html = head + sep + body
+        html = no_trailing_slash(html)
         # Structured data identity also points to the serving domain (approved).
         html = re.sub(
             r'(<script type="application/ld\+json">)(.*?)(</script>)',
@@ -701,7 +733,7 @@ def main() -> int:
     sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
     sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/</loc>.*?</url>", "", sitemap, count=1, flags=re.S)
     sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/blog(?:/[^<]+)?</loc>.*?</url>", "", sitemap, flags=re.S)
-    sitemap = sitemap.replace("<loc>https://zevanory.api.br/", "<loc>https://vendas.zevanory.api.br/")
+    sitemap = no_trailing_slash(sitemap.replace("<loc>https://zevanory.api.br/", "<loc>https://vendas.zevanory.api.br/"))
     (OUT / "sitemap.xml").write_text(sitemap, encoding="utf-8")
     shutil.copytree(ROOT / "brand", OUT / "brand")
     (OUT / "assets").mkdir(exist_ok=True)
