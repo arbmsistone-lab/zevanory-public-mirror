@@ -19,6 +19,7 @@ p,li{max-width:66ch;hyphens:auto;-webkit-hyphens:auto;text-wrap:pretty}
 .footer-legal,.meta,.notice{font-variant-numeric:tabular-nums lining-nums}
 strong{font-weight:700}
 .meta,.notice{background:var(--cupom);border-top:2px solid var(--regua);padding:16px 20px}
+.price-note{background:var(--cupom);border-left:3px solid var(--linha-suave);padding:8px 12px}
 .notice{margin:24px 0}
 .muted{color:var(--grafite);font-size:.875rem}
 /* Header: the same ink bar as the sales pages (the official logo is drawn for dark grounds). */
@@ -28,6 +29,11 @@ strong{font-weight:700}
 .legal-brand{margin-right:auto;justify-content:flex-start!important}
 .legal-brand img{display:block;width:140px;height:32px;object-fit:contain;object-position:left center}
 .nav :focus-visible{outline-color:var(--amarelo-caixa)}
+/* Banner fora do <main> (P03): a barra já ocupa a largura toda; skip-link igual ao das páginas de produto. */
+.legal-header .nav{margin:0}
+.skip-link{position:fixed;left:16px;top:12px;z-index:100;transform:translateY(-200%);padding:12px 16px;background:var(--amarelo-caixa);color:var(--balcao);font-weight:700;text-decoration:none;border:2px solid var(--balcao)}
+.skip-link:focus{transform:none}
+.skip-link:focus-visible{outline-color:var(--balcao)}
 /* 44 px targets, visible focus (WCAG 2.2 AA + internal standard). */
 .nav a,.legal-brand,.footer-legal a,:where(p,li,dd,td) a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;max-width:100%;overflow-wrap:anywhere}
 :focus-visible{outline:3px solid var(--azul-cedula);outline-offset:3px}
@@ -40,4 +46,4 @@ strong{font-weight:700}
 @media(max-width:760px){.footer-legal{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:560px){.legal-brand{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
-@media print{:root{color-scheme:light;--papel:#fff;--cupom:#fff;--tinta:#000;--grafite:#333;--azul-cedula:#000;--linha-suave:#999;--regua:#000;--balcao:#fff;--balcao-texto:#000}.nav{background:white}.nav a{color:black}.legal-brand img{filter:invert(1)}a[href^="http"]::after{content:" (" attr(href) ")";font-size:9pt}}
+@media print{.skip-link{display:none}:root{color-scheme:light;--papel:#fff;--cupom:#fff;--tinta:#000;--grafite:#333;--azul-cedula:#000;--linha-suave:#999;--regua:#000;--balcao:#fff;--balcao-texto:#000}.nav{background:white}.nav a{color:black}.legal-brand img{filter:invert(1)}a[href^="http"]::after{content:" (" attr(href) ")";font-size:9pt}}

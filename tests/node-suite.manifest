@@ -78,6 +78,7 @@ tests/order7-whatsapp-commercial.test.mjs 11
 tests/owner-alert-policy.test.mjs 2
 tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
+tests/p03-pages-audit.test.mjs 10
 tests/p09-nurture-sequence.test.mjs 31
 tests/p13-buy-bar-390.test.mjs 3
 tests/p13-decreto-oferta-cache.test.mjs 6
@@ -86,6 +87,7 @@ tests/p13-posvenda-ensaio.test.mjs 14
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
+tests/p18-commercial.test.mjs 18
 tests/p18-latency.test.mjs 12
 tests/p20-backup-encryption.test.mjs 11
 tests/p20-diario-d1.test.mjs 8
@@ -126,6 +128,7 @@ tests/sales-candidate-visual.test.mjs 3
 tests/sales-control.test.mjs 6
 tests/sales-design.test.mjs 6
 tests/sales-evidence.test.mjs 3
+tests/sales-hotmart-mode.test.mjs 7
 tests/sales-ledger.test.mjs 3
 tests/sales-lock-publishers.test.mjs 7
 tests/sales-public-gzip.test.mjs 2

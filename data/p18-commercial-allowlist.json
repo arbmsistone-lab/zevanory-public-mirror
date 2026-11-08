@@ -1,0 +1,36 @@
+{
+  "schema": "zevanory.p18.commercial-allowlist.v1",
+  "note": "P18 verificação comercial (Roteiro v4.9, seção 5/P18, R15, VC-H controle 7 e 10). Lista FECHADA de identificadores comerciais: um link de compra só passa se o host, o código do checkout, a oferta e o produto da página batem com uma linha daqui. Lida por scripts/b0/p18-commercial.mjs e conferida contra data/products.json e worker/sales-public-worker.mjs em todo PR (tests/p18-commercial.test.mjs). Mudar um link de venda exige mudar esta lista no MESMO PR, com revisão explícita.",
+  "id_mapping_source": "checkout_code e offer vêm de worker/sales-public-worker.mjs (HOTMART_CHECKOUT, SERVICE_CHECKOUT) e de .github/workflows/hotmart-identity-audit.yml; hotmart_product_id vem dos IDs informados pelo proprietário (8704733, 8704826, 8704851, 8704861, 8704871, 8704905), na mesma ordem de criação. A correspondência código do checkout <-> ID do produto NÃO foi conferida na Hotmart por este PR: passo do proprietário (Hotmart > Produtos > cada produto > Links de checkout).",
+  "checkout_hosts": ["pay.hotmart.com"],
+  "redirect_hosts": ["pay.hotmart.com"],
+  "informational_hosts": ["refund.hotmart.com", "app.hotmart.com", "help.hotmart.com"],
+  "payment_host_suffixes": ["hotmart.com", "mercadopago.com", "mercadopago.com.br", "mpago.la", "kiwify.com.br", "eduzz.com", "monetizze.com.br", "pagseguro.uol.com.br", "stripe.com", "asaas.com", "pagar.me", "ticto.com.br", "braip.com", "perfectpay.com.br"],
+  "allowed_extra_params": ["src"],
+  "src_pattern": "^[A-Za-z0-9_-]{1,64}$",
+  "producer": {
+    "legal_name": "A. RENAN ALVES MOREIRA BITU LTDA",
+    "cnpj": "69077233000199",
+    "brand": "ZEVANORY",
+    "forbidden_names": ["Zeva Nory"]
+  },
+  "release_url": "https://zevanory.api.br/api/release",
+  "site_origin": "https://vendas.zevanory.api.br",
+  "closed_markers": ["vendas temporariamente encerradas", "vendas deste produto estão temporariamente encerradas", "temporariamente encerrad"],
+  "closed_error_codes": ["049"],
+  "site_paused_markers": ["vendas pausadas", "assinaturas pausadas", "estão pausadas no momento"],
+  "products": [
+    { "slug": "ia-na-pratica", "kind": "kit", "sku": "ZEV-IA-011", "name": "IA na Prática", "hotmart_name": "ZEVANORY IA na Prática",
+      "hotmart_product_id": "8704733", "checkout_code": "F107979716H", "offer": "g9knd34r", "site_route": "/hotmart/ia-na-pratica" },
+    { "slug": "vendas-na-pratica", "kind": "kit", "sku": "ZEV-VEN-011", "name": "Vendas na Prática", "hotmart_name": "ZEVANORY Vendas na Prática",
+      "hotmart_product_id": "8704826", "checkout_code": "Y107979937I", "offer": "8mg88sdd", "site_route": "/hotmart/vendas-na-pratica" },
+    { "slug": "lucro-e-caixa", "kind": "kit", "sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "hotmart_name": "ZEVANORY Lucro & Caixa",
+      "hotmart_product_id": "8704851", "checkout_code": "L107979973K", "offer": "ksb5di36", "site_route": "/hotmart/lucro-e-caixa" },
+    { "slug": "combo-ia-vendas", "kind": "kit", "sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "hotmart_name": "ZEVANORY Combo IA + Vendas",
+      "hotmart_product_id": "8704861", "checkout_code": "H107979990T", "offer": "b3ytmah4", "site_route": "/hotmart/combo-ia-vendas" },
+    { "slug": "negocio-completo", "kind": "kit", "sku": "ZEV-NGC-011", "name": "Negócio Completo", "hotmart_name": "ZEVANORY Negócio Completo",
+      "hotmart_product_id": "8704871", "checkout_code": "U107980005X", "offer": "weo47apk", "site_route": "/hotmart/negocio-completo" },
+    { "slug": "conteudo-pronto", "kind": "subscription", "sku": null, "name": "Conteúdo Pronto", "hotmart_name": "ZEVANORY Conteúdo Pronto",
+      "hotmart_product_id": "8704905", "checkout_code": "X107980075B", "offer": "4ydutio7", "site_route": "/assinar/conteudo-pronto" }
+  ]
+}
