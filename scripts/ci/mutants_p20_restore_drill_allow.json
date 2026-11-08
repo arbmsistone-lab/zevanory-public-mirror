@@ -27,8 +27,19 @@
      "test_pattern": "E4",
      "assertion_pattern": "[E4.11]",
      "justification": "E4 confere que a cópia cifrada sem chave (falha bundle_kid_unknown) nunca é restaurada; a mutação restaura mesmo com falhas"
+    },
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[K2.5]",
+     "justification": "K2 confere que a cópia do KV vinda de um Neon divergente (falha kv_copy_value_hash_mismatch) nunca chega à restauração; a mutação restaura mesmo com falhas"
+    },
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.1]",
+     "justification": "K4 confere que nenhuma cópia do KV adulterada chega à restauração; a mutação restaura com falhas de integridade"
     }
-   ]
+   ],
+   "broad_reason": "a regra 'cópia com falha nunca é restaurada' é conferida em cada família de adulteração: tabelas (D2), envelope cifrado (E3, E4) e cópia do KV (K2, K4); a mutação restaura em todas"
   },
   "M03 rótulo de produção sem leitura real": {
    "primary": [
@@ -69,6 +80,11 @@
      "test_pattern": "D12",
      "assertion_pattern": "[D12.9]",
      "justification": "a guarda estática D12.9 lê o mesmo fonte e proíbe method PUT no leitor; a mutação a viola diretamente"
+    },
+    {
+     "test_pattern": "K8",
+     "assertion_pattern": "[K8.6]",
+     "justification": "K8 confere que o ensaio de produção, agora com a leitura da cópia do KV, só faz GET; a mutação troca o método"
     }
    ]
   },
@@ -352,8 +368,14 @@
      "test_pattern": "E11",
      "assertion_pattern": null,
      "justification": "E11 (fase 2) grava com chave pelo padrão e o ensaio diário reabre o envelope com a AAD esperada: sem AAD a releitura falha e a parte reprova"
+    },
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.0]",
+     "justification": "K3 roda o Worker real com chave; sem AAD na cifragem a releitura do próprio Worker (que exige a AAD) falha e o consolidado do dia não fica ok"
     }
-   ]
+   ],
+   "broad_reason": "sem AAD a releitura de toda cópia cifrada pelo Worker falha: tabelas (E7, E8, E11), cópia do KV (K3) e o vetor entre implementações (E1)"
   },
   "M32 AAD esperada não conferida no ensaio": {
    "primary": [
@@ -519,6 +541,266 @@
     {
      "test_pattern": "E9",
      "assertion_pattern": "[E9.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M44 lacuna copia_kv retirada com cópia só declarada": {
+   "primary": [
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[RUN]"
+    },
+    {
+     "test_pattern": "K5",
+     "assertion_pattern": "[RUN]"
+    },
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[RUN]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[RUN]",
+     "justification": "cópia do KV vinda do Neon divergente: a mutação retira a lacuna num ensaio REPROVADO e a releitura estrita (validateRecord) recusa, então runDrill lança"
+    },
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[RUN]",
+     "justification": "rebaixamento e chave ausente reprovam com a cópia declarada: a mutação retira a lacuna e validateRecord recusa o registro, runDrill lança"
+    },
+    {
+     "test_pattern": "K8",
+     "assertion_pattern": "[RUN]",
+     "justification": "K8 tem um relatório que aponta a cópia para fora do namespace (kv_copy_report_malformed, ensaio REPROVADO); a mutação retira a lacuna e validateRecord recusa, então runDrill lança"
+    }
+   ],
+   "broad_reason": "a mutação retira a lacuna sempre que o Worker declara a cópia, então TODO ensaio com cópia declarada e prova incompleta (K2, K3, K4, K5, K7, K8) produz um registro que a releitura estrita recusa"
+  },
+  "M45 lacuna copia_kv retirada por valor não estritamente true": {
+   "primary": [
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[K7.10]"
+    }
+   ],
+   "secondary": []
+  },
+  "M46 releitura aceita lacuna copia_kv retirada sem prova": {
+   "primary": [
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[K7.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M47 NOT_AVAILABLE sem lacuna copia_kv aceito": {
+   "primary": [
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[K7.6]"
+    }
+   ],
+   "secondary": []
+  },
+  "M48 prova do KV com chave a menos aceita": {
+   "primary": [
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[K7.3]"
+    }
+   ],
+   "secondary": []
+  },
+  "M49 manifesto da fonte (valor+TTL+metadados) não conferido": {
+   "primary": [
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.3]"
+    },
+    {
+     "test_pattern": "K5",
+     "assertion_pattern": "[K5.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M50 hash do valor por chave não conferido": {
+   "primary": [
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.2]"
+    },
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[K2.4]"
+    },
+    {
+     "test_pattern": "K5",
+     "assertion_pattern": "[K5.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M51 TTL não recriado na restauração do KV": {
+   "primary": [
+    {
+     "test_pattern": "K6",
+     "assertion_pattern": "[K6.1]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.6]"
+    },
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[K7.1b]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.4]",
+     "justification": "toda prova positiva do KV (ensaio com cópia íntegra) passa a reprovar: a cópia cifrada tem a chave com TTL e a releitura do KV reconstruído acusa o TTL perdido"
+    },
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.0]",
+     "justification": "toda prova positiva do KV (ensaio com cópia íntegra) passa a reprovar: o caso de controle íntegro de K4 reprova"
+    },
+    {
+     "test_pattern": "K8",
+     "assertion_pattern": "[K8.4]",
+     "justification": "toda prova positiva do KV (ensaio com cópia íntegra) passa a reprovar: o ensaio de produção com cópia íntegra mantém a lacuna"
+    }
+   ],
+   "broad_reason": "o TTL perdido na restauração quebra a regra central (KV reconstruído igual à fonte), então todo ensaio positivo da cópia do KV (K1, K3, K4.0, K7, K8) reprova além da asserção direta do plano (K6)"
+  },
+  "M52 metadados não recriados na restauração do KV": {
+   "primary": [
+    {
+     "test_pattern": "K6",
+     "assertion_pattern": "[K6.2]"
+    },
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.6]"
+    },
+    {
+     "test_pattern": "K7",
+     "assertion_pattern": "[K7.1b]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.4]",
+     "justification": "toda prova positiva do KV (ensaio com cópia íntegra) passa a reprovar: a cópia cifrada tem a chave com metadados e a releitura acusa"
+    },
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.0]",
+     "justification": "toda prova positiva do KV (ensaio com cópia íntegra) passa a reprovar: o caso de controle íntegro de K4 reprova"
+    },
+    {
+     "test_pattern": "K8",
+     "assertion_pattern": "[K8.4]",
+     "justification": "toda prova positiva do KV (ensaio com cópia íntegra) passa a reprovar: o ensaio de produção com cópia íntegra mantém a lacuna"
+    }
+   ],
+   "broad_reason": "metadados perdidos na restauração quebram a regra central (KV reconstruído igual à fonte), então todo ensaio positivo da cópia do KV (K1, K3, K4.0, K7, K8) reprova além da asserção direta do plano (K6)"
+  },
+  "M53 chave fora dos prefixos críticos aceita": {
+   "primary": [
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M54 rebaixamento da cópia do KV para claro aceito": {
+   "primary": [
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "M55 SHA da cópia do KV não conferido": {
+   "primary": [
+    {
+     "test_pattern": "K4",
+     "assertion_pattern": "[K4.1]"
+    }
+   ],
+   "secondary": []
+  },
+  "M56 Worker grava a cópia do KV a partir da fonte, não do Neon": {
+   "primary": [
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[K2.2]"
+    }
+   ],
+   "secondary": []
+  },
+  "M57 Worker não copia o TTL para o Neon": {
+   "primary": [
+    {
+     "test_pattern": "K1",
+     "assertion_pattern": "[K1.0]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "K3",
+     "assertion_pattern": "[K3.0]",
+     "justification": "mesmo Worker real com cifragem: a releitura do Neon sem TTL diverge do manifesto da fonte e o consolidado do dia falha"
+    },
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[K2.1]",
+     "justification": "no ensaio com o Neon divergente, a releitura também perde o TTL, então o Worker acusa 2 divergências (kv_copy_integrity:2:0) em vez da 1 esperada"
+    }
+   ]
+  },
+  "M58 Worker não confere TTL e metadados relidos do Neon": {
+   "primary": [
+    {
+     "test_pattern": "K2",
+     "assertion_pattern": "[K2.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "M59 ensaio lê a cópia do KV fora do namespace do backup": {
+   "primary": [
+    {
+     "test_pattern": "K8",
+     "assertion_pattern": "[K8.7]"
+    }
+   ],
+   "secondary": []
+  },
+  "M60 chave expirada recriada na restauração": {
+   "primary": [
+    {
+     "test_pattern": "K6",
+     "assertion_pattern": "[K6.5]"
+    }
+   ],
+   "secondary": []
+  },
+  "M61 restauração do KV não roda e a prova não é exigida": {
+   "primary": [
+    {
+     "test_pattern": "K5",
+     "assertion_pattern": "[K5.1]"
     }
    ],
    "secondary": []

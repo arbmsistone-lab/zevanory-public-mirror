@@ -9,6 +9,9 @@ name: P20 monthly full restore drill
 # publish: job SEM segredos e SEM Environment; acrescenta o registro em p20/restore-drills-v1.jsonl do ramo
 #          evidence/b0-baseline (nunca gh-pages). Registro ausente vira NOT_AVAILABLE explícito.
 # Rótulo: ENSAIO_EM_PRODUCAO só quando a cópia real de produção foi lida; o coletor B0 nunca conta SINTETICA.
+# Cópia KV -> Neon (estado comercial): lê também (GET) zpc:backup:v1:kv:<dia>, as linhas do dia de zevanory_kv_backup
+# relidas do Neon pelo Worker; restaura em zevanory_kv_backup do MESMO Postgres efêmero, relê, reconstrói um KV em
+# memória e confere chave a chave (valor, TTL, metadados) contra o manifesto da fonte. Nenhuma credencial do Neon aqui.
 # Cifragem (docs/p20/cifragem-backup.md): P20_BACKUP_KEYS (secret do Environment producao-critica, cadastrado pelo
 # proprietário) decifra os bundles AES-256-GCM; bundles legados em claro continuam legíveis e são marcados não cifrados.
 on:
@@ -55,7 +58,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Testes da lógica do ensaio (sintéticos, sem segredo)
-        run: node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs
+        run: node --test tests/p20-restore-drill.test.mjs tests/p20-backup-encryption.test.mjs tests/p20-kv-copy-drill.test.mjs
       - name: Banco descartável do ensaio
         run: |
           command -v psql >/dev/null || sudo apt-get install -y -qq postgresql-client > /dev/null

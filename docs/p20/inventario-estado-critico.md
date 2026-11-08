@@ -16,7 +16,7 @@ aprovar. O certificado de P20 usa o valor **medido** no ensaio mensal: objetivo 
 | Catálogo, páginas, conteúdos versionados | Git + cópia publicada no Cloudflare | Git | Git (nenhuma tabela do Neon) | 0 por origem versionada | 1 h | SHA publicado = SHA do Git |
 | Funil, atribuição, telemetria (inclui `knowledge_documents`) | Neon / KV | Neon | Bundle diário | 24 h | 24 h | Idem |
 | Operacional (agentes, integrações, esquema) | Neon | Neon; esquema pelas migrações | Bundle diário | 24 h | 24 h | Idem |
-| Estado comercial P0 (trava, prova, `zpc:sales:`, `zpc:cp:`) | KV | KV; a prova é recalculada, nunca restaurada como válida | Tabela `zevanory_kv_backup` no Neon, 14 dias | 24 h | 1 h | Hash por chave |
+| Estado comercial P0 (trava, prova, `zpc:sales:`, `zpc:cp:`) | KV | KV; a prova é recalculada, nunca restaurada como válida | Tabela `zevanory_kv_backup` no Neon, 14 dias (valor, TTL e metadados por chave) | 24 h | 1 h | SHA-256 por chave + manifesto da fonte (valor + TTL + metadados) |
 | Credenciais e segredos | Neon, Cloudflare, GitHub | Proprietário (classe D) | Fora do backup por política | — | — | — |
 | Código e configuração | Git + Cloudflare | Git | Git | 0 | 1 h | SHA + tag |
 
@@ -36,8 +36,9 @@ A tabela de cada classe do Neon está listada no JSON. O ensaio aponta qualquer 
 - **Onde:** Environment `producao-critica`, o mesmo que já lê a cópia do backup no KV
   (`backup-preserve-archive.yml`). **Toda execução espera a aprovação do proprietário**, inclusive a primeira.
 - **O que lê:** só `GET` na API do KV do Cloudflare: `zpc:backup:v1:report`, `zpc:backup:v1:report:part:{0,1,2}`
-  (manifesto: SHA-256 por tabela) e os 3 bundles `zpc:backup:v1:neon:<dia>:part:<n>` da cópia mais recente.
-  Nada é gravado, apagado ou listado em produção.
+  (manifesto: SHA-256 por tabela) e os 3 bundles `zpc:backup:v1:neon:<dia>:part:<n>` da cópia mais recente, mais
+  a cópia KV -> Neon do dia `zpc:backup:v1:kv:<dia>` declarada pela parte 0. Nada é gravado, apagado ou listado em
+  produção. O Neon de produção nunca é acessado pelo CI.
 - **O que prova:**
   1. a cópia está íntegra: relatório consolidado ok; as 3 partes são do mesmo dia; o SHA-256 de cada tabela confere
      com o manifesto; o resumo do manifesto confere;
@@ -46,17 +47,52 @@ A tabela de cada classe do Neon está listada no JSON. O ensaio aponta qualquer 
   3. o **RPO** medido é o instante da falha simulada (início do ensaio) menos o início mais antigo das partes. Acima
      de 26 h ele é sinalizado; acima de 48 h é falha crítica;
   4. o **RTO de dados** vai do início do ensaio até a restauração conferida. Ele não inclui DNS, a reconfiguração do
-     Worker nem o tempo de aprovação.
+     Worker nem o tempo de aprovação;
+  5. a **cópia KV -> Neon** (estado comercial) restaura por completo: ver a seção abaixo.
 - **Evidência:** `p20/restore-drills-v1.jsonl` no ramo `evidence/b0-baseline` (nunca `gh-pages`), gravada por um job
   sem segredos. O rótulo é `ENSAIO_EM_PRODUCAO` só quando a cópia real foi lida. Fixture é `SINTETICA`. Sem
   leitura, o veredito é `NOT_AVAILABLE` com rótulo nulo. O registro não leva dado de linha.
 - **B0:** o coletor preenche `P20.monthly_full_restore_drill` com o ensaio `ENSAIO_EM_PRODUCAO` medido nos últimos
   31 dias. Ensaio `SINTETICA`, `NOT_AVAILABLE`, antigo ou com histórico malformado nunca completa o dia.
 
+## Cópia KV -> Neon no ensaio mensal (sem credencial do Neon no CI)
+
+A cópia do estado comercial vive no Neon (`zevanory_kv_backup`), e a credencial do Neon só existe no Worker. Em vez de
+dar ao CI uma credencial do Neon, o próprio backup diário leva a prova até o ensaio:
+
+1. **Worker, parte 0** (`worker/data-backup.mjs`): lista as chaves de `KV_PREFIXES` (`zpc:sales:`, `zpc:cp:`,
+   `sales:open:v1`). O `kv.list` já devolve a expiração absoluta e os metadados de cada chave, sem custo extra. O Worker
+   calcula, **a partir do KV**, o manifesto da fonte `kv.entries_manifest`: SHA-256 das linhas
+   `chave=sha256(valor)|expiração|sha256(metadados)`. Grava valor, hash, expiração e metadados em `zevanory_kv_backup`
+   (colunas novas `expiration bigint` e `metadata text`, criadas com `add column if not exists`).
+2. **Worker relê do Neon** as linhas do dia e confere cada uma contra a fonte (valor, TTL e metadados). Grava
+   **essas linhas relidas** (a cópia, nunca a fonte) em `zpc:backup:v1:kv:<dia>`: envelope AES-256-GCM com a mesma
+   chave do backup e AAD própria (`part=0`, chave da cópia), 8 dias, **uma** escrita a mais no KV por dia. A parte 0
+   declara `kv.copy = { format, bundleKey, rows, sha }`.
+3. **Ensaio mensal** (`scripts/p20/restore-drill*.mjs`): lê a cópia só com GET, confere o envelope (sem rebaixamento
+   para claro), o SHA-256 declarado, a forma, o dia, os prefixos (chave de lead `zpc:interest:` é recusada), o hash de
+   cada valor e o manifesto da fonte. Qualquer falha reprova **antes** de restaurar.
+4. **Restauração:** a ponte (`scripts/p20/restore_bridge.py`) carrega as linhas em `zevanory_kv_backup` do mesmo
+   Postgres efêmero (DDL do próprio Worker), confere contagem e hash de conteúdo e **relê do Postgres**.
+5. **KV reconstruído:** das linhas relidas, o plano de restauração (`planKvRestore`, o mesmo de uma recuperação real)
+   faz uma escrita por chave com valor, expiração absoluta e metadados num KV em memória com a semântica do Cloudflare
+   (expiração ≥ agora + 60 s; metadados ≤ 1024 B). Chave já expirada no instante da restauração não é recriada e é
+   contada (`expired_at_restore`). O ensaio relê o KV reconstruído (`list` + `get`) e confere **chave a chave** valor,
+   TTL e metadados, e o manifesto inteiro contra `kv.entries_manifest`.
+6. **Registro:** `kv_copy` só com contagens e booleanos (nenhum valor nem hash completo). A lacuna
+   `copia_kv_para_neon` só sai de `not_covered` com a prova completa num ensaio `APROVADO`, do mesmo dia da cópia, e
+   cifrada quando a cópia do dia é cifrada (`validateRecord` recusa qualquer outra combinação). Worker anterior, sem
+   a cópia: a lacuna continua, sem reprovar.
+
+Limites honestos: o ensaio prova a cópia do Neon **como estava no dia do backup** (o mesmo vale para as tabelas). A
+prova financeira (`zpc-sales-preflight:v1`) está fora de `KV_PREFIXES` e por isso nunca é restaurada como válida: ela é
+recalculada. A trava `sales:open:v1` restaurada volta com o último valor copiado; numa recuperação real o proprietário
+a confirma.
+
 ## O que o ensaio NÃO cobre (lacunas; P20 continua fora de B0_VALIDA)
 
-- **Cópia KV -> Neon:** para restaurá-la por completo em CI seria preciso a credencial do Neon, que só o Worker
-  usa. Só o ensaio diário por amostra do Worker a cobre.
+- **Cópia KV -> Neon:** coberta em código pelo desenho acima. A lacuna só sai do registro no primeiro ensaio mensal
+  `ENSAIO_EM_PRODUCAO` aprovado depois do deploy do Worker com esta mudança; até lá ela continua registrada.
 - **Conciliação dos pedidos contra o provedor:** as vendas estão fechadas e o Environment do ensaio não tem
   credencial somente leitura do provedor.
 - **Diário de eventos no D1:** não implementado.
@@ -71,6 +107,5 @@ A tabela de cada classe do Neon está listada no JSON. O ensaio aponta qualquer 
    disparo manual depois do merge.
 2. Revisar e aprovar (ou ajustar) os RPO e RTO por classe no JSON: trocar `status` para `APPROVED` e preencher
    `approved_by` e `approved_at` num PR revisado.
-3. Para cobrir a cópia KV -> Neon no ensaio: decidir se cria uma credencial **somente leitura** do Neon para o
-   Environment `producao-critica` (papel com `SELECT` apenas em `zevanory_kv_backup`). Sem essa decisão, a lacuna
-   permanece registrada.
+3. Cópia KV -> Neon: **nenhuma credencial nova**. Basta o deploy normal do Worker com esta mudança e a aprovação do
+   próximo ensaio mensal (passo 1).

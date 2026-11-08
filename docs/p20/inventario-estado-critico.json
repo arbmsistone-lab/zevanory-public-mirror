@@ -142,7 +142,7 @@
       "integridade": "Hash por chave + verificação de assinatura da prova",
       "status": "PROPOSTA",
       "tables": [],
-      "ensaio_mensal_em_ci": "NOT_AVAILABLE: a cópia vive no Neon e só o Worker tem a credencial; o ensaio diário do Worker confere o hash de todas as chaves e restaura uma amostra"
+      "ensaio_mensal_em_ci": "Sem credencial do Neon no CI: o Worker grava as linhas do dia de zevanory_kv_backup relidas do Neon em zpc:backup:v1:kv:<dia> (cifrado) e o manifesto da fonte (valor + TTL + metadados por chave); o ensaio mensal restaura as linhas no Postgres efêmero, relê, reconstrói o KV e confere chave a chave. A lacuna copia_kv_para_neon só sai com essa prova num ENSAIO_EM_PRODUCAO aprovado (docs/p20/inventario-estado-critico.md)"
     },
     {
       "id": "credenciais",

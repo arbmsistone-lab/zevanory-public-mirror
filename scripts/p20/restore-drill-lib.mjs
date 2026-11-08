@@ -14,6 +14,13 @@
 // Cifragem (docs/p20/cifragem-backup.md): cada bundle pode ser um envelope AES-256-GCM (formato zevanory-backup-enc/v1)
 // ou legado em texto claro. O ensaio lê os dois, decifra com o conjunto de chaves (P20_BACKUP_KEYS), registra
 // copia_cifrada por parte e só tira "copia_cifrada" de not_covered quando TODAS as partes do dia estão cifradas.
+// Cópia KV -> Neon (seção 9.1, "Trava de vendas, prova financeira, estado comercial"): o Worker grava, junto com o
+// backup, as linhas do dia de zevanory_kv_backup RELIDAS DO NEON num envelope próprio (zpc:backup:v1:kv:<dia>) e o
+// manifesto da FONTE (KV) no relatório da parte 0 (kv.entries_manifest: SHA-256 do valor + TTL + metadados por chave).
+// O ensaio confere essa cópia, restaura as linhas na tabela zevanory_kv_backup do Postgres efêmero, RELÊ do Postgres,
+// reconstrói um KV em memória com a mesma semântica do Cloudflare (valor, expiração absoluta, metadados) e confere
+// chave a chave contra o manifesto da fonte. Só com essa prova completa "copia_kv_para_neon" sai de not_covered.
+// Nenhuma credencial do Neon no CI: a leitura continua sendo só GET em zpc:backup:v1:* no KV.
 import { createHash } from "node:crypto";
 import { openBundleText } from "./backup-envelope.mjs";
 
@@ -36,9 +43,167 @@ export const NOT_COVERED = Object.freeze([
 ]);
 export const COPIA_CIFRADA_ID = "copia_cifrada";
 const isCopiaCifrada = (s) => typeof s === "string" && s.startsWith(COPIA_CIFRADA_ID + ":");
-// not_covered do registro: "copia_cifrada" só sai com prova (todas as PARTS partes lidas, decifradas e cifradas).
-export function notCoveredFor(allPartsEncrypted) {
-  return NOT_COVERED.filter((s) => !(allPartsEncrypted === true && isCopiaCifrada(s)));
+export const COPIA_KV_ID = "copia_kv_para_neon";
+const isCopiaKv = (s) => typeof s === "string" && s.startsWith(COPIA_KV_ID + ":");
+// not_covered do registro: cada lacuna só sai com a SUA prova. "copia_cifrada": todas as PARTS partes lidas,
+// decifradas e cifradas. "copia_kv_para_neon": kvCopyProven (prova completa da restauração do KV, ensaio APROVADO).
+export function notCoveredFor(allPartsEncrypted, kvCopyProven = false) {
+  return NOT_COVERED.filter((s) => !(allPartsEncrypted === true && isCopiaCifrada(s)) && !(kvCopyProven === true && isCopiaKv(s)));
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Cópia KV -> Neon. Contrato com worker/data-backup.mjs (implementação independente; testadas juntas).
+export const KV_PREFIXES = Object.freeze(["zpc:sales:", "zpc:cp:", "sales:open:v1"]);
+export const KV_COPY_TABLE = "zevanory_kv_backup";
+export const KV_COPY_FORMAT = "zevanory-kv-copy/v1";
+export const kvCopyKeyFor = (day) => `zpc:backup:v1:kv:${day}`;
+// Semântica do Cloudflare KV que a restauração respeita: expiração absoluta >= agora + 60 s; metadados JSON <= 1024 B.
+export const KV_MIN_TTL_S = 60;
+export const KV_METADATA_MAX_BYTES = 1024;
+export const kvEntryDigest = ({ sha, expiration, metadata }) => `${sha}|${expiration == null ? "" : String(expiration)}|${metadata == null ? "" : sha256(metadata)}`;
+const kvKeyAllowed = (k) => typeof k === "string" && k.length > 0 && k.length <= 512 && KV_PREFIXES.some((p) => k.startsWith(p)) && !k.startsWith("zpc:restore-drill:");
+const isExp = (v) => v === null || (Number.isSafeInteger(v) && v > 0);
+
+// Confere UMA linha da cópia (mesmo formato no bundle e na releitura do Postgres). Devolve o motivo ou null.
+function kvRowProblem(r, day) {
+  if (!isObj(r) || typeof r.key !== "string" || typeof r.value !== "string" || typeof r.sha256 !== "string" || !HEX64.test(r.sha256)) return "row_malformed";
+  if (r.snapshot_day !== day) return "row_other_day";
+  if (!isExp(r.expiration ?? null) || !(r.metadata == null || typeof r.metadata === "string")) return "row_malformed";
+  if (!kvKeyAllowed(r.key)) return "key_outside_prefixes";
+  if (sha256(r.value) !== r.sha256) return "value_hash_mismatch";
+  return null;
+}
+
+// Confere um conjunto de linhas da cópia contra o manifesto da fonte: forma, dia, prefixo, hash do valor por chave,
+// chave duplicada, contagem e o manifesto de entradas (valor + TTL + metadados). failures com prefixo dado.
+export function checkKvRows(rows, { day, keys, entriesManifest, prefix }) {
+  const failures = [];
+  if (!Array.isArray(rows)) return { failures: [prefix + "_not_array"], digests: {} };
+  const digests = {}, bad = {};
+  for (const r of rows) {
+    const why = kvRowProblem(r, day);
+    if (why) { bad[why] = (bad[why] || 0) + 1; continue; }
+    if (r.key in digests) { bad.duplicate_key = (bad.duplicate_key || 0) + 1; continue; }
+    digests[r.key] = kvEntryDigest({ sha: r.sha256, expiration: r.expiration ?? null, metadata: r.metadata ?? null });
+  }
+  for (const [why, n] of Object.entries(bad).sort()) failures.push(`${prefix}_${why}:${n}`);
+  if (rows.length !== keys) failures.push(`${prefix}_row_count_mismatch`);
+  if (manifestHash(digests) !== entriesManifest) failures.push(`${prefix}_manifest_mismatch`);
+  return { failures, digests };
+}
+
+// Avalia a cópia do KV lida do KV de produção (envelope próprio + relatório da parte 0). Não restaura nada.
+// present=false: o Worker ainda não grava a cópia (versão anterior): a lacuna continua, sem falha.
+export function assessKvCopy(readings, { day, keyring = new Map() } = {}) {
+  const out = { present: false, failures: [], day, keys: 0, json: null, copia_cifrada: false };
+  const p0 = parse(readings?.parts?.[0]);
+  const kv = p0.ok && isObj(p0.v) ? p0.v.kv : null;
+  if (!isObj(kv) || kv.copy === undefined) return out;
+  out.present = true;
+  const fail = (w) => out.failures.push(w);
+  const c = kv.copy;
+  if (!isDay(day) || !isObj(c) || c.format !== KV_COPY_FORMAT || c.bundleKey !== kvCopyKeyFor(day) || !isInt(kv.keys) || kv.keys < 1 || c.rows !== kv.keys
+    || typeof c.sha !== "string" || !HEX64.test(c.sha) || typeof kv.entries_manifest !== "string" || !HEX64.test(kv.entries_manifest)) { fail("kv_copy_report_malformed"); return out; }
+  out.keys = kv.keys; out.entries_manifest = kv.entries_manifest;
+  const raw = readings?.kv_copy;
+  if (raw == null) { fail("kv_copy_bundle_missing"); return out; }
+  let opened;
+  try { opened = openBundleText(raw, { day, part: 0, bundleKey: c.bundleKey }, keyring); }
+  catch (e) { fail(`kv_copy_bundle_${String(e?.code || "unreadable").replace(/[^a-z_]/g, "")}`); return out; }
+  if (isObj(p0.v.encryption) && p0.v.encryption.state === "cifrado" && !opened.encrypted) { fail("kv_copy_encryption_downgrade"); return out; }
+  out.copia_cifrada = opened.encrypted === true;
+  if (sha256(opened.text) !== c.sha) { fail("kv_copy_hash_mismatch"); return out; }
+  const rows = parse(opened.text);
+  if (!rows.ok || !Array.isArray(rows.v)) { fail("kv_copy_malformed"); return out; }
+  out.failures.push(...checkKvRows(rows.v, { day, keys: kv.keys, entriesManifest: kv.entries_manifest, prefix: "kv_copy" }).failures);
+  if (!out.failures.length) out.json = opened.text;
+  return out;
+}
+
+// KV em memória com a semântica do Cloudflare usada na restauração (valor, expiração absoluta, metadados).
+export function memoryKvStore({ nowSec }) {
+  const m = new Map();
+  return {
+    async put(key, value, opts = {}) {
+      if (typeof value !== "string") throw new Error("kv_value_not_string");
+      if (opts.expiration != null && !(Number.isSafeInteger(opts.expiration) && opts.expiration >= nowSec + KV_MIN_TTL_S)) throw new Error("kv_expiration_invalid");
+      if (opts.metadata !== undefined && Buffer.byteLength(JSON.stringify(opts.metadata), "utf8") > KV_METADATA_MAX_BYTES) throw new Error("kv_metadata_too_large");
+      m.set(key, { value, expiration: opts.expiration ?? null, metadata: opts.metadata === undefined ? null : opts.metadata });
+    },
+    async get(key) { return m.has(key) ? m.get(key).value : null; },
+    async list({ prefix = "" } = {}) {
+      return { keys: [...m.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => { const e = m.get(name); return { name, ...(e.expiration != null ? { expiration: e.expiration } : {}), ...(e.metadata != null ? { metadata: e.metadata } : {}) }; }), list_complete: true };
+    },
+  };
+}
+
+// Plano de restauração do KV a partir das linhas da cópia (o MESMO usado numa recuperação real): uma escrita por
+// chave com o valor, a expiração absoluta e os metadados. Chave já expirada no instante da restauração (ou a menos de
+// 60 s de expirar) não é recriada: no KV de origem ela também já não existiria.
+export function planKvRestore(rows, { nowSec }) {
+  const puts = [], expired = [];
+  for (const r of rows) {
+    const exp = r.expiration ?? null;
+    if (exp != null && exp < nowSec + KV_MIN_TTL_S) { expired.push(r.key); continue; }
+    const opts = {};
+    if (exp != null) opts.expiration = exp;
+    if (r.metadata != null) opts.metadata = JSON.parse(r.metadata);
+    puts.push({ key: r.key, value: r.value, opts });
+  }
+  return { puts, expired };
+}
+
+// Ensaio da restauração do KV: linhas RELIDAS do Postgres efêmero -> KV reconstruído -> conferência chave a chave
+// (valor, TTL, metadados) contra o manifesto da fonte gravado pelo Worker. Saída só com contagens e booleanos.
+export async function kvRestoreDrill(restoredRows, kvAssessment, { nowSec, store = null } = {}) {
+  const A = kvAssessment;
+  const proof = { day: A.day, keys: A.keys, restored: 0, expired_at_restore: 0, with_ttl: 0, with_metadata: 0,
+    pg_rows_ok: false, values_hash_ok: false, ttl_metadata_ok: false, entries_manifest_ok: false, copia_cifrada: A.copia_cifrada === true,
+    restored_into: "KV em memória reconstruído das linhas de zevanory_kv_backup relidas do Postgres efêmero" };
+  const failures = [];
+  const pg = checkKvRows(restoredRows, { day: A.day, keys: A.keys, entriesManifest: A.entries_manifest, prefix: "kv_restore_pg" });
+  failures.push(...pg.failures);
+  if (failures.length) return { proof, failures };
+  proof.pg_rows_ok = true;
+  let plan;
+  try { plan = planKvRestore(restoredRows, { nowSec }); } catch { failures.push("kv_restore_metadata_invalid"); return { proof, failures }; }
+  const kv = store || memoryKvStore({ nowSec });
+  try { for (const p of plan.puts) await kv.put(p.key, p.value, p.opts); } catch (e) { failures.push("kv_restore_put_failed:" + String(e?.message || "x").replace(/[^a-z_]/g, "").slice(0, 40)); return { proof, failures }; }
+  // Releitura do KV reconstruído: list (nome, expiração, metadados) + get (valor), por prefixo crítico.
+  const listed = new Map();
+  for (const pre of KV_PREFIXES) for (const k of (await kv.list({ prefix: pre })).keys) listed.set(k.name, k);
+  const rowsBy = new Map(restoredRows.map((r) => [r.key, r]));
+  const digests = {};
+  let valueBad = 0, metaBad = 0;
+  for (const [name, k] of listed) {
+    const v = await kv.get(name);
+    const r = rowsBy.get(name);
+    if (!r || typeof v !== "string" || sha256(v) !== r.sha256) { valueBad++; continue; }
+    const exp = Number.isSafeInteger(k.expiration) ? k.expiration : null;
+    const meta = k.metadata == null ? null : JSON.stringify(k.metadata);
+    if (exp !== (r.expiration ?? null) || meta !== (r.metadata ?? null)) metaBad++;
+    if (exp != null) proof.with_ttl++;
+    if (meta != null) proof.with_metadata++;
+    digests[name] = kvEntryDigest({ sha: sha256(v), expiration: exp, metadata: meta });
+  }
+  for (const key of plan.expired) { const r = rowsBy.get(key); digests[key] = kvEntryDigest({ sha: r.sha256, expiration: r.expiration ?? null, metadata: r.metadata ?? null }); }
+  proof.restored = listed.size;
+  proof.expired_at_restore = plan.expired.length;
+  if (valueBad) failures.push("kv_restore_value_mismatch:" + valueBad);
+  if (metaBad) failures.push("kv_restore_ttl_metadata_mismatch:" + metaBad);
+  if (listed.size !== plan.puts.length || proof.restored + proof.expired_at_restore !== A.keys) failures.push("kv_restore_key_count_mismatch");
+  proof.values_hash_ok = valueBad === 0;
+  proof.ttl_metadata_ok = metaBad === 0;
+  proof.entries_manifest_ok = manifestHash(digests) === A.entries_manifest;
+  if (!proof.entries_manifest_ok) failures.push("kv_restore_manifest_mismatch");
+  return { proof, failures };
+}
+
+// Prova completa da restauração do KV (o que validateRecord exige para a lacuna sair de not_covered).
+export function kvProofComplete(k, backupDay) {
+  return isObj(k) && isDay(k.day) && k.day === backupDay && isInt(k.keys) && k.keys >= 1 && isInt(k.restored) && isInt(k.expired_at_restore)
+    && k.restored + k.expired_at_restore === k.keys && isInt(k.with_ttl) && isInt(k.with_metadata)
+    && k.pg_rows_ok === true && k.values_hash_ok === true && k.ttl_metadata_ok === true && k.entries_manifest_ok === true && typeof k.copia_cifrada === "boolean";
 }
 const TABLE_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -215,12 +380,15 @@ export function byClass(datasets, restoredTables, inventory, measuredRpoH) {
 
 // ---------------------------------------------------------------------------------------------------------
 // Registro de evidência (uma linha JSONL em p20/restore-drills-v1.jsonl do ramo evidence/b0-baseline).
-export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, finishedAt, rtoSeconds, runId, sha, inventory, notAvailableReason }) {
+export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, finishedAt, rtoSeconds, runId, sha, inventory, notAvailableReason, kvCopy = null }) {
   const label = decideLabel(mode, sourceRead);
   const a = assessment || { readable: false, failures: [], datasets: [], parts: [], totals: { tables: 0, rows: 0 }, excluded: [] };
   const restoreOk = !!(restore && restore.ok === true);
   const failures = [...(a.failures || [])];
   if (a.readable && !failures.length && !restoreOk) failures.push("restore_failed:" + String(restore?.error || "not_run").replace(/[^A-Za-z0-9_.:,= -]/g, "").slice(0, 120));
+  // Falhas da restauração do KV (kvRestoreDrill) reprovam o ensaio. As da cópia (assessKvCopy) já chegam em
+  // a.failures e impedem a restauração. Cópia ausente (Worker anterior) não falha: só mantém a lacuna.
+  if (a.readable && kvCopy && Array.isArray(kvCopy.failures)) for (const f of kvCopy.failures) if (!failures.includes(f)) failures.push(f);
   const rpo = a.readable ? rpoHours(a.parts.map((p) => p.started_at), startedAt) : null;
   if (a.readable && rpo == null) failures.push("rpo_not_computable");
   let verdict;
@@ -260,7 +428,8 @@ export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, 
     rto_scope: "dados: leitura da copia + conferencia de hash + esquema + carga + conferencia num Postgres efemero; NAO inclui troca de DNS, reconfiguracao do Worker nem o tempo de aprovacao do Environment",
     by_class: cls.classes,
     unclassified_tables: cls.unclassified,
-    not_covered: notCoveredFor(allEncrypted && verdict !== "NOT_AVAILABLE"),
+    kv_copy: a.readable && kvCopy?.proof ? kvCopy.proof : null,
+    not_covered: notCoveredFor(allEncrypted && verdict !== "NOT_AVAILABLE", verdict === "APROVADO" && !!kvCopy && kvCopy.failures.length === 0 && kvProofComplete(kvCopy.proof, a.day)),
     scope_complete_9_1: false,
     failures: failures.slice(0, 50),
   };
@@ -284,6 +453,8 @@ export function validateRecord(r) {
   if (!Array.isArray(r.failures)) throw new Error("bad_failures");
   const ccPending = r.not_covered.some(isCopiaCifrada);
   if (r.verdict === "NOT_AVAILABLE" && !ccPending) throw new Error("copia_cifrada_unproven");
+  const kvPending = r.not_covered.some(isCopiaKv);
+  if (r.verdict === "NOT_AVAILABLE" && !kvPending) throw new Error("copia_kv_unproven");
   if (r.verdict === "NOT_AVAILABLE") {
     if (r.rpo_hours !== null || r.rto_seconds !== null || typeof r.reason !== "string") throw new Error("not_available_with_values");
     return r;
@@ -292,6 +463,9 @@ export function validateRecord(r) {
   if (!isObj(b) || !isDay(b.day) || !Array.isArray(b.parts) || b.parts.length !== PARTS || !isInt(b.tables) || !isInt(b.rows)) throw new Error("bad_backup");
   // Registros antigos não têm copia_cifrada (ausente = false); retirar a lacuna exige todas as partes cifradas.
   if (!ccPending && !(b.copia_cifrada === true && b.parts.every((p) => isObj(p) && p.copia_cifrada === true))) throw new Error("copia_cifrada_unproven");
+  // Lacuna da cópia KV -> Neon só some com a prova completa, num ensaio APROVADO, do mesmo dia da cópia, e cifrada
+  // quando a cópia do dia é cifrada (registros antigos não têm kv_copy: a lacuna precisa estar presente).
+  if (!kvPending && !(r.verdict === "APROVADO" && kvProofComplete(r.kv_copy, b.day) && (b.copia_cifrada !== true || r.kv_copy.copia_cifrada === true))) throw new Error("copia_kv_unproven");
   if (!isObj(i) || !isInt(i.tables_checked) || !isInt(i.tables_hash_ok) || i.tables_hash_ok > i.tables_checked || !Array.isArray(i.tables_hash_failed)) throw new Error("bad_integrity");
   if (!(isNum(r.rpo_hours) && r.rpo_hours >= 0) && !(r.verdict === "REPROVADO" && r.rpo_hours === null && r.failures.includes("rpo_not_computable"))) throw new Error("bad_rpo");
   if (r.verdict === "APROVADO") {
