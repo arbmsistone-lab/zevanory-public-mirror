@@ -30,6 +30,33 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
         out = subprocess.run([sys.executable, str(SCRIPT), "open", "--dry-run"], env=env, text=True, capture_output=True)
         self.assertEqual(out.returncode, 0, out.stdout+out.stderr)
         self.assertIn("PASS_NO_KV_WRITE_NO_NETWORK", out.stdout)
+    def test_open_hotmart_dry_run_needs_only_owner_phrase_and_reference(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("MERCADOPAGO_", "ZEVANORY_LAUNCH"))}
+        env.update({"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123", "CLOUDFLARE_API_TOKEN":""})
+        out = subprocess.run([sys.executable, str(SCRIPT), "open-hotmart", "--dry-run"], env=env, text=True, capture_output=True)
+        self.assertEqual(out.returncode, 0, out.stdout+out.stderr)
+        self.assertIn("OPEN_HOTMART_DRY_RUN=PASS_NO_KV_WRITE_NO_NETWORK", out.stdout)
+    def test_open_hotmart_wrong_phrase_or_reference_is_blocked(self):
+        for confirm, ref in (("SIM", "https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123"), ("LIBERAR VENDAS", "https://evil.example/x/issues/1")):
+            env = {**os.environ, "CONFIRM": confirm, "ORDER_REF": ref}
+            out = subprocess.run([sys.executable, str(SCRIPT), "open-hotmart", "--dry-run"], env=env, text=True, capture_output=True)
+            self.assertNotEqual(out.returncode, 0)
+            self.assertIn("OWNER_ORDER_CONFIRMATION_INVALID", out.stdout)
+    def test_open_hotmart_writes_only_the_hotmart_key_with_channel(self):
+        writes = []
+        env = {"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123",
+               "GITHUB_EVENT_NAME":"workflow_dispatch", "GITHUB_REF":"refs/heads/gh-pages"}
+        states = iter([{"open": False}, {"open": True}])
+        with patch.dict(os.environ, env), patch.object(sys, "argv", ["x", "open-hotmart"]), \
+             patch.object(mod, "cf_binding", return_value=("t", "n")), \
+             patch.object(mod, "public_hotmart_open", side_effect=lambda: next(states)), \
+             patch.object(mod, "kv_write", side_effect=lambda t, n, v, key=mod.KEY: writes.append((key, v))), \
+             patch.object(mod, "preflight_guard", side_effect=AssertionError("preflight must not be read")), \
+             contextlib.redirect_stdout(io.StringIO()):
+            mod.main()
+        self.assertEqual([k for k, _ in writes], ["sales:hotmart:v1"])
+        self.assertEqual(writes[0][1]["channel"], "hotmart")
+        self.assertEqual(writes[0][1]["authorization"], "LIBERAR VENDAS")
     def test_close_dry_run_never_contacts_network_or_writes_kv(self):
         out = subprocess.run([sys.executable, str(SCRIPT), "close", "--dry-run"], text=True, capture_output=True)
         self.assertEqual(out.returncode, 0, out.stdout+out.stderr)
@@ -77,15 +104,19 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
                 with contextlib.redirect_stdout(out):
                     mod.main()
         settings.assert_called_once()
-        write.assert_called_once()
-        token, namespace, record = write.call_args.args
+        # Modo Hotmart: o fechamento escreve as duas chaves (completo e Hotmart) no namespace F7.
+        self.assertEqual(write.call_count, 2)
+        self.assertEqual(write.call_args_list[1].kwargs, {"key": "sales:hotmart:v1"})
+        self.assertEqual(write.call_args_list[1].args[:2], ("test-token", mod.EMERGENCY_CLOSE_NAMESPACE))
+        token, namespace, record = write.call_args_list[0].args
         self.assertEqual(token, "test-token")
         self.assertEqual(namespace, mod.EMERGENCY_CLOSE_NAMESPACE)
         self.assertEqual(namespace, "728a45738e4047f29bcb89934fd533c1")
         self.assertIs(record["enabled"], False)
         self.assertEqual(record["by"], "owner-close")
         self.assertRegex(record["at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-        observed.assert_called_once_with(False)
+        self.assertEqual(observed.call_args_list[0].args, (False,))
+        self.assertEqual(observed.call_args_list[1].args, (False, mod.public_hotmart_open))
         self.assertIn("KNOWN_NAMESPACE_FALLBACK", out.getvalue())
         self.assertIn("CLOSE_SALES=PASS", out.getvalue())
 
