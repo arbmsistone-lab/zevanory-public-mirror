@@ -40,6 +40,7 @@ import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
 import { handleSupportInboundWebhook, handleSupportDrainRequest, dispatchSupportDrain } from "./support-email-forward.mjs";
 import { ATENDIMENTO_DRAIN_PATH, handleAtendimentoDrainRequest, dispatchAtendimentoDrain } from "./atendimento-drain-dispatch.mjs";
+import { DRAIN_PATH as ABANDONO_DRAIN_PATH, RETENTION_PATH as ABANDONO_RETENTION_PATH, OPTOUT_PATH as ABANDONO_OPTOUT_PATH, handleAbandonmentDrainRequest, handleAbandonmentRetentionRequest, handleAbandonmentOptOut, dispatchAbandonmentDrain, dispatchAbandonmentRetention } from "./abandono-hotmart.mjs";
 import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
@@ -119,6 +120,11 @@ const wrapped = {
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     // R138: isolated drainer before sales lookup or other application subrequests.
     if(new URL(request.url).pathname===ATENDIMENTO_DRAIN_PATH)return handleAtendimentoDrainRequest(request,normalized,{sqlFactory:whatsappProofDatabase});
+    // Lembrete de abandono Hotmart: dreno e retenção em invocação própria (SELF, token HMAC de minuto), antes de
+    // qualquer outra subrequisição. Em ABANDONO_STAGE "desligado" o cron nunca chama estas rotas.
+    { const p=new URL(request.url).pathname;
+      if(p===ABANDONO_DRAIN_PATH)return handleAbandonmentDrainRequest(request,normalized);
+      if(p===ABANDONO_RETENTION_PATH)return handleAbandonmentRetentionRequest(request,normalized); }
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     // R139: chat stays OFF without SITE_CHAT_ENABLED=true; internal SELF drain R138 runs before this.
@@ -141,6 +147,8 @@ const wrapped = {
     if (url.pathname === "/kit/baixar") return handleKitDownloadNc015(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
     if (url.pathname === "/api/webhooks/hotmart") return routeHotmartNc011(request,normalized,ctx);
+    // Descadastro de 1 clique do lembrete de abandono (GET e POST One-Click, RFC 8058).
+    if (url.pathname === ABANDONO_OPTOUT_PATH) return handleAbandonmentOptOut(request,normalized);
     // suporte@/contato@ (e-mail oficial do consumidor): Resend email.received assinado -> encaminha ao dono.
     // Devolve null para outros eventos/destinatários (entregas, prova-sandbox@): o handler legado segue igual.
     if (url.pathname === "/api/webhooks/resend" && request.method === "POST") {
@@ -804,6 +812,19 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   // disputam as 50 subrequisições desta invocação (2026-10-24: retentativas não rodavam no cron).
   let supportOverdue = false;
   await dispatchSupportDrain(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => { supportOverdue = out.result?.overdue === true; console.info("support_outbox", JSON.stringify({ via: out.via, status: out.status ?? null, checked: out.result?.checked ?? null, done: out.result?.done ?? null, pending: out.result?.pending ?? null, dead: out.result?.dead ?? null, backlog: out.result?.backlog ?? null, oldest_min: out.result?.oldest_min ?? null, overdue: supportOverdue })); }).catch(() => console.error("support_outbox_failed", "exception"));
+  // Lembrete de abandono Hotmart (plano de abandono, Revisão 5b): dreno via SELF só em ABANDONO_STAGE "ativo" e
+  // retenção diária (06 UTC) via SELF em "aquecimento"/"ativo". Em "desligado" nenhum dos dois chama o SELF, lê ou
+  // grava nada, e nada entra no batimento. Nunca roda inline.
+  const abandonoBeat = {};
+  try {
+    const hourUtc = new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours();
+    const drain = await dispatchAbandonmentDrain(normalized);
+    if (drain?.skipped !== "disabled") { abandonoBeat.abandono = drain; console.info("abandono_drain", JSON.stringify(drain)); }
+    if (hourUtc === 6) {
+      const ret = await dispatchAbandonmentRetention(normalized);
+      if (ret?.skipped !== "disabled") { abandonoBeat.abandono_retencao = ret; console.info("abandono_retencao", JSON.stringify(ret)); if (ret.alerta === true) console.error("abandono_retencao_atrasada"); }
+    }
+  } catch { console.error("abandono_dispatch_failed"); }
   // R138: /atendimento dispatch also runs BEFORE preflight/other hourly tasks, via isolated SELF.
   await dispatchAtendimentoDrain(normalized).then((out) => console.info("atendimento_outbox", JSON.stringify({via:out.via,status:out.status??null,ok:out.result?.ok===true,checked:out.result?.checked??null,done:out.result?.done??null,pending:out.result?.pending??null,dead:out.result?.dead??null,reason:out.result?.reason||null}))).catch(()=>console.error("atendimento_outbox_failed","exception"));
   await runSalesPreflight(normalized).then((out) => console.info("sales_preflight", JSON.stringify({ ok: out.ok, failed: out.checks.filter((c) => !c.ok).map((c) => c.id) }))).catch((error) => console.error("sales_preflight_failed", error instanceof Error ? error.message : String(error)));
@@ -822,7 +843,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
     })
     .catch(() => console.error("commercial_metrics_proof_unavailable")));
   // Heartbeat of the hourly cycle (no data): when it ran and how each tracked task ended.
-  const beat = { at: new Date().toISOString(), cron: String(controller?.cron || ""), tasks: {} };
+  const beat = { at: new Date().toISOString(), cron: String(controller?.cron || ""), tasks: {}, ...abandonoBeat };
   const mark = (name, ok, why = "") => { beat.tasks[name] = ok ? "ok" : "fail:" + String(why).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120); };
   // The funnel consolidation runs in the isolated "15,45" invocation: in this hourly one it hit
   // "Too many subrequests by single Worker invocation" (Workers Free: 50 per invocation).
