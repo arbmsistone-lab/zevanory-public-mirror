@@ -1,6 +1,6 @@
 name: required-check-guard-selftest
 
-# G4: reprodução da suíte do guarda (36 testes), dos autotestes do executor de mutantes e dos 31 mutantes, com
+# G4: reprodução da suíte do guarda (39 testes), dos autotestes do executor de mutantes e dos 34 mutantes, com
 # classificação honesta (AVAL 090): baseline obrigatório; MORTO só por asserção em teste esperado; dependência ausente,
 # import, sintaxe, timeout ou coleta -> INCONCLUSIVO (falha o job). INFORMATIVO: roda a versão do PR (pull_request),
 # portanto não é evidência de controle. O controle é o job required-check-guard / protected-paths (pull_request_target).
@@ -21,6 +21,12 @@ on:
       - "tests/ci/mutants_required_check_guard.py"
       - "tests/ci/test_mutants_runner.py"
       - "tests/ci/requirements-guard.txt"
+      # NC-1006-02: T38 roda o gate de preço (node) sobre cópia do lead-magnet.mjs
+      - "tests/governanca/**"
+      - "worker/product-prices.mjs"
+      - "worker/lead-magnet.mjs"
+      - "data/products.json"
+      - "data/affiliates.json"
 
 permissions:
   contents: read
@@ -37,6 +43,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Dependências declaradas (tests/ci/requirements-guard.txt)
         run: |
           set -euo pipefail
@@ -47,6 +56,6 @@ jobs:
           set -euo pipefail
           sha256sum scripts/ci/required_check_guard.py .github/workflows/required-check-guard.yml tests/ci/mutants_required_check_guard.py ops/owner-reserved-paths.json | tee -a "$GITHUB_STEP_SUMMARY"
           python -I -B tests/ci/test_required_check_guard.py . 2>&1 | tee /tmp/suite.txt
-          grep -qE '^Ran 36 tests' /tmp/suite.txt || { echo "::error::suíte do guarda deveria rodar exatamente 36 testes"; exit 1; }
+          grep -qE '^Ran 39 tests' /tmp/suite.txt || { echo "::error::suíte do guarda deveria rodar exatamente 39 testes"; exit 1; }
           python -I -B tests/ci/test_mutants_runner.py .
           python -I -B tests/ci/mutants_required_check_guard.py . | tee -a "$GITHUB_STEP_SUMMARY"

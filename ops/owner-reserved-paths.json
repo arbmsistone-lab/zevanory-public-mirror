@@ -36,7 +36,8 @@
         "worker/refund-provider-claims.mjs",
         "worker/asaas-pix-refund-auth.mjs",
         "db/migrations/*refund*",
-        "scripts/ci/mutants_p23_legal*"
+        "scripts/ci/mutants_p23_legal*",
+        "sales-overlay/approved.json"
       ]
     },
     "credenciais": {
@@ -80,7 +81,7 @@
       ]
     },
     "marcos_irreversiveis": {
-      "descricao": "Marcos irreversíveis: abrir nível de venda / interruptor de vendas, preços, lançamento de produto novo (P-3). Inclui o escopo/trava comercial, o guarda de checkout, a expiração de link de pagamento e o razão de vendas (contabilidade).",
+      "descricao": "Marcos irreversíveis: abrir nível de venda / interruptor de vendas, preços, lançamento de produto novo (P-3). Inclui o escopo/trava comercial, o guarda de checkout, a expiração de link de pagamento e o razão de vendas (contabilidade). NC-1006-02: preço tem fonte única (data/products.json, derivada por worker/product-prices.mjs) e o gate tests/governanca/** reprova, no check obrigatório product-pages / static-audit, qualquer preço divergente em arquivo não reservado; condições comerciais além do preço (comissão e atribuição de afiliado, páginas de afiliado) também são reservadas.",
       "globs": [
         ".github/workflows/zevanory-open-sales.yml",
         ".github/workflows/zevanory-close-sales.yml",
@@ -99,7 +100,15 @@
         "scripts/ci/mutants_p18_commercial*",
         "scripts/ci/mutants_sales_lock_publishers*",
         "scripts/ci/mutants_mp_webhook*",
-        "scripts/ci/sales_promise_consistency.py"
+        "scripts/ci/sales_promise_consistency.py",
+        "worker/product-prices.mjs",
+        "worker/affiliate-program.mjs",
+        "data/affiliates.json",
+        "afiliados/**",
+        "kit-afiliado/**",
+        "sales-public/afiliados.html",
+        "sales-public/kit-afiliado.html",
+        "pages-mirror/*afiliad*"
       ]
     },
     "guardas_de_governanca": {
@@ -131,7 +140,8 @@
         "scripts/zees16_evidence_gate.py",
         "compliance/zevanory-10p-policy.json",
         "compliance/zevanory-crown-policy.json",
-        "docs/governanca/merge-autonomo.md"
+        "docs/governanca/merge-autonomo.md",
+        "tests/governanca/**"
       ]
     }
   },

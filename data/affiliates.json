@@ -1,0 +1,17 @@
+{
+  "schema": "zevanory-affiliates/v1",
+  "nota": "NC-1008-03: fonte única (reservada ao proprietário) das condições de afiliado. Valores = os PUBLICADOS hoje; nenhuma taxa foi decidida aqui. PENDENTE decisão do proprietário (30% recomendado no F0): hoje há duas taxas publicadas, 50% no mercado de afiliados da Hotmart (sales-public/kit-afiliado.html, sales-public/afiliados.html) e 30% no programa próprio por link /?ref= (sales-public/afiliados.html, worker/affiliate-program.mjs). Lido por worker/affiliate-program.mjs e pelo gate tests/governanca/price-gate.mjs (comissão derivada só nas páginas de afiliado reservadas).",
+  "hotmart_commission_pct": 50,
+  "own_program_commission_pct": 30,
+  "own_program_attribution_days": 30,
+  "pages": [
+    "afiliados/index.html",
+    "kit-afiliado/index.html",
+    "sales-public/afiliados.html",
+    "sales-public/kit-afiliado.html",
+    "pages-mirror/afiliados.html",
+    "pages-mirror/kit-afiliado.html",
+    "pages-mirror/sales-public__afiliados.html",
+    "pages-mirror/sales-public__kit-afiliado.html"
+  ]
+}

@@ -5,16 +5,17 @@ import { publishBluesky, blueskyReady, blueskyPostText, graphemeCount } from "./
 import { emitActivity } from "./activity-ledger.mjs";
 import { creativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { CLOSED_LABEL } from "./politica-unica.mjs";
+import { priceBySku } from "./product-prices.mjs";
 import { contentSalesOpen, salesLockViolations, hotmartKitsOpen, hotmartKit, hotmartLockViolations } from "./sales-lock-content.mjs";
 export const ACQUISITION_STATE_PREFIX="zpc:acquisition:daily:";
 export const ACQUISITION_CALENDAR_KEY="zpc:acquisition:calendar:v1";
 const DAY=86400000;
 const PRODUCTS=Object.freeze([
- {sku:"ZEV-IA-011",name:"IA na Prática",price:97},
- {sku:"ZEV-VEN-011",name:"Vendas na Prática",price:97},
- {sku:"ZEV-LCX-011",name:"Lucro & Caixa",price:147},
- {sku:"ZEV-CMB-011",name:"Combo IA + Vendas",price:157},
- {sku:"ZEV-NGC-011",name:"Negócio Completo",price:247}
+ {sku:"ZEV-IA-011",name:"IA na Prática",price:priceBySku("ZEV-IA-011")},
+ {sku:"ZEV-VEN-011",name:"Vendas na Prática",price:priceBySku("ZEV-VEN-011")},
+ {sku:"ZEV-LCX-011",name:"Lucro & Caixa",price:priceBySku("ZEV-LCX-011")},
+ {sku:"ZEV-CMB-011",name:"Combo IA + Vendas",price:priceBySku("ZEV-CMB-011")},
+ {sku:"ZEV-NGC-011",name:"Negócio Completo",price:priceBySku("ZEV-NGC-011")}
 ]);
 const NICHES=Object.freeze(["salão","loja","prestador de serviço","delivery","autônomo"]);
 const ANGLES=Object.freeze(["dor","tutorial","caso de uso","objeção","comparação"]);

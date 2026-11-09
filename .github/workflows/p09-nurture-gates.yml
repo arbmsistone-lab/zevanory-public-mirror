@@ -16,6 +16,7 @@ on:
       - "worker/lead-magnet.mjs"
       - "worker/politica-unica.mjs"
       - "worker/brand-email.mjs"
+      - "worker/product-prices.mjs"
       - "data/politica-unica.json"
       - "data/products.json"
       - "**.html"
