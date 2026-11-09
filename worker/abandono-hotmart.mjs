@@ -191,9 +191,16 @@ export function abandonmentEmail(slug, { optOutUrl: unsubscribe } = {}) {
   const subject = abandonmentSubject(p.name);
   return { slug: p.slug, name: p.name, price: p.price, subject, text, html: brandedEmailHtml(text, { unsubscribeUrl: unsubscribe }) };
 }
+// O filtro roda sobre TUDO o que vai ao Resend: texto, assunto e o html efetivamente enviado (O-1010-03).
+// No html as frases chegam escapadas como em brandedEmailHtml (& < > " '); mascara as duas formas, por igualdade exata.
+const escHtml = (v) => String(v).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+const maskFixed = (mail, value) => fixedSentences(mail.name).flatMap((s) => [s, escHtml(s)]).reduce((t, s) => t.split(s).join(" "), String(value || ""));
 export function abandonmentLockViolations(mail) {
-  const masked = fixedSentences(mail.name).reduce((t, s) => t.split(s).join(" "), String(mail.text || ""));
-  const out = new Set([...hotmartLockViolations(masked, mail.slug), ...hotmartLockViolations(mail.subject, mail.slug)]);
+  const out = new Set([
+    ...hotmartLockViolations(maskFixed(mail, mail.text), mail.slug),
+    ...hotmartLockViolations(mail.subject, mail.slug),
+    ...hotmartLockViolations(maskFixed(mail, mail.html), mail.slug),
+  ]);
   return [...out];
 }
 
@@ -284,9 +291,11 @@ export async function noteHotmartPurchase(env, data, opts = {}) {
   if (!privacySecret(env)) return { skipped: "privacy_not_configured" };
   const ref = await abandonoRef(env, data.buyer.email);
   const wrote = await d1(env, (db) => run(db, "INSERT INTO abandono_compra_v1 (ref, criado_ms) VALUES (?1, ?2) ON CONFLICT(ref) DO UPDATE SET criado_ms=excluded.criado_ms", ref, now));
-  if (wrote.unavailable) return { skipped: "d1_unavailable" };
+  // A pendência sai SEMPRE, mesmo se o D1 falhou (O-1010-02): sem marcador gravado, o dreno ainda não pode enviar a
+  // quem comprou, porque a pendência que ele enviaria já não existe.
   const kv = env?.ZEVANORY_PRIVATE_ARTIFACTS;
   try { if (kv?.get && (await kv.get(PEND_PREFIX + ref))) await kv.delete(PEND_PREFIX + ref); } catch {}
+  if (wrote.unavailable) return { skipped: "d1_unavailable" };
   return { recorded: true };
 }
 
@@ -367,7 +376,8 @@ export async function reconcileLookup(env, fetchImpl, { ref, email, subject, cri
         if (!candidates.includes(id)) candidates.push(id);
       }
     }
-    if (!listed.has_more || !listed.data.length || oldest < start) { complete = true; break; }
+    if (listed.has_more && !listed.data.length) return { incomplete: "empty_page" };
+    if (!listed.has_more || oldest < start) { complete = true; break; }
     const last = listed.data[listed.data.length - 1];
     after = typeof last?.id === "string" && RESEND_ID_RE.test(last.id) ? last.id : null;
     if (!after) return { incomplete: "cursor" };
@@ -650,7 +660,8 @@ export async function handleAbandonmentOptOut(request, env, opts = {}) {
 export async function handleAbandonmentManualSuppression(request, env, opts = {}) {
   const now = Number.isFinite(opts.now) ? opts.now : Date.now();
   if (request.method !== "POST") return json(405, { ok: false, error: "method_not_allowed" });
-  const bearer = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
+  const auth = String(request.headers.get("authorization") || "");
+  const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
   if (!bearer || !verifyOperatorToken(env, bearer, { minLength: 32, log: null })) return json(401, { ok: false, error: "unauthorized" });
   if (stageOf(opts) === "desligado") return json(503, { ok: false, error: "abandono_desligado" });
   if (!String(request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) return json(415, { ok: false, error: "json_required" });

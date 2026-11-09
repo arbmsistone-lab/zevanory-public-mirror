@@ -3,7 +3,7 @@
 # subtestes contam, igual ao "# tests" do TAP). O total esperado pelo gate é a SOMA destas linhas.
 # Ao adicionar, remover ou mudar testes, atualize SÓ a linha do arquivo afetado no mesmo PR (revisão explícita).
 # Ordem alfabética; regenerar: ver docs no topo de scripts/ci/node_suite_check.py (--print-manifest).
-tests/abandono-hotmart.test.mjs 91
+tests/abandono-hotmart.test.mjs 94
 tests/acquisition-engine.test.mjs 16
 tests/activity-ledger.test.mjs 7
 tests/affiliate-program.test.mjs 3

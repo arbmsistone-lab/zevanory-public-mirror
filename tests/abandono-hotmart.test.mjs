@@ -448,6 +448,23 @@ test("AB4.20 consulta incompleta nunca vira enviado: limite de páginas, has_mor
   }
 });
 
+test("AB4.21 página vazia com has_more:true é consulta incompleta, nunca encerra a busca (O-1010-01)", async () => {
+  const ref = await refOf();
+  const subject = AB.abandonmentSubject(productBySlug("ia-na-pratica").name);
+  const tags = [AB.RESEND_TAG, { name: "abandono_ref", value: ref.slice(0, 40) }];
+  const target = { id: "alvo-1", to: [EMAIL], subject, created_at: new Date(T0 + 62 * MIN).toISOString(), tags };
+  const pages = [{ has_more: true, data: [target] }, { has_more: true, data: [] }];
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === "/emails") { const i = u.searchParams.get("after") ? 1 : 0; return Response.json({ object: "list", ...pages[i] }); }
+    return Response.json({ id: "alvo-1", to: [EMAIL], subject, tags });
+  };
+  const out = await AB.reconcileLookup({ RESEND_API_KEY: "x" }, fetchImpl, { ref, email: EMAIL, subject, criadoMs: T0 + 61 * MIN });
+  assert.deepEqual(out, { incomplete: "empty_page" }, "[AB4.21] lista truncada não confirma, mesmo com um candidato antes dela");
+  const first = async () => Response.json({ object: "list", has_more: true, data: [] });
+  assert.deepEqual(await AB.reconcileLookup({ RESEND_API_KEY: "x" }, first, { ref, email: EMAIL, subject, criadoMs: T0 }), { incomplete: "empty_page" }, "[AB4.21/a] primeira página vazia com has_more");
+});
+
 // ------------------------------------------------------------------------------------------------- AB5 compra
 for (const [id, ev] of [["AB5.1", "PURCHASE_APPROVED"], ["AB5.2", "PURCHASE_COMPLETE"]]) {
   test(`${id} ${ev} entre a pendência e o envio: pendência apagada e a reserva atômica barra o envio`, async () => {
@@ -571,23 +588,32 @@ test("AB5.8 BILLET_PRINTED do CP 8704905: não-2xx e sem gravação", async () =
   assert.ok(r.status < 200 || r.status >= 300, "[AB5.8] não-2xx: " + r.status);
   assert.equal(kv.writes() - before + d1Touched(env.DIARIO), 0, "[AB5.8/b] sem gravação");
 });
-// Condição (b) do GPT-6: compra registrada antes da reserva barra o envio mesmo se as leituras viessem de réplica atrasada.
+// Condição (b) do GPT-6: compra registrada antes da reserva barra o envio; nada depende de leitura em réplica atrasada.
 test("AB5.9 compra antes da reserva barra o envio sem depender de leitura atrasada; sem sessões/réplicas", async () => {
+  // (1) D1 com read replication (lag): sem sessões, o binding lê no PRIMÁRIO. A compra gravada só no primário é vista
+  // na ingestão e no dreno. Se o módulo abrisse uma sessão (withSession), as leituras viriam da réplica atrasada.
   const env = makeEnv({ d1: createAbandonoD1({ lag: true }) }); const rs = fakeResend();
   env.DIARIO.sql("INSERT INTO abandono_compra_v1 (ref, criado_ms) VALUES (?, ?)", await refOf(), T0 - MIN); // só no primário
   const r = await ingest(env, abandon());
-  assert.equal(r.body.code, "queued", "[AB5.9/z] a leitura atrasada não vê a compra");
+  assert.equal(r.body.code, "buyer", "[AB5.9] leitura da ingestão no primário vê a compra (sem sessão/réplica)");
+  await seedPend(env);
   const out = await drain(env, rs);
-  assert.equal(rs.posts.length, 0, "[AB5.9] a reserva (instrução única no primário) barra o envio");
-  assert.equal(envio(env.DIARIO).length, 0, "[AB5.9/b] nenhuma reserva");
-  assert.equal(env.DIARIO.stats.sessions, 0, "[AB5.9/c] withSession nunca chamado");
-  env.DIARIO.replicate();
-  await drain(env, rs, { now: T0 + 2 * H });
-  assert.equal(rs.posts.length, 0, "[AB5.9/d] continua sem envio");
-  assert.ok(out.canceled === 0 && out.sent === 0, "[AB5.9/e] motivo não confirmado na leitura atrasada: mantém, sem POST");
-  const src = readTextNormalized(new URL("../worker/abandono-hotmart.mjs", import.meta.url)).replace(/^\s*\/\/.*$/gm, "");
-  assert.ok(!/withSession|first-primary|first-unconstrained|bookmark/.test(src), "[AB5.9/f] código sem API de sessões");
-  // gancho de compra aguardado grava no primário e a reserva seguinte o vê
+  assert.equal(rs.posts.length, 0, "[AB5.9/a] sem envio");
+  assert.equal(out.canceled, 1, "[AB5.9/h] o dreno lê o motivo no primário e cancela");
+  assert.equal(env.DIARIO.stats.sessions + env.DIARIO.stats.replicaReads, 0, "[AB5.9/c] nenhuma sessão nem leitura de réplica");
+  // (2) Hipótese mais forte (staleReads): mesmo que TODA leitura viesse atrasada, a reserva (instrução única de
+  // gravação, avaliada no primário) barra o envio.
+  const st = makeEnv({ d1: createAbandonoD1({ staleReads: true }) }); const rs3 = fakeResend();
+  st.DIARIO.sql("INSERT INTO abandono_compra_v1 (ref, criado_ms) VALUES (?, ?)", await refOf(), T0 - MIN);
+  assert.equal((await ingest(st, abandon())).body.code, "queued", "[AB5.9/z] a leitura atrasada não vê a compra");
+  const out3 = await drain(st, rs3);
+  assert.equal(rs3.posts.length, 0, "[AB5.9/i] a reserva barra o envio");
+  assert.equal(envio(st.DIARIO).length, 0, "[AB5.9/b] nenhuma reserva");
+  assert.ok(out3.canceled === 0 && out3.sent === 0, "[AB5.9/e] motivo não confirmado na leitura atrasada: mantém, sem POST");
+  st.DIARIO.replicate();
+  await drain(st, rs3, { now: T0 + 2 * H });
+  assert.equal(rs3.posts.length, 0, "[AB5.9/d] continua sem envio");
+  // (3) gancho de compra aguardado grava no primário e a reserva seguinte o vê
   const tr = await tree("ativo");
   const env2 = makeEnv({ d1: createAbandonoD1({ lag: true }) }); const rs2 = fakeResend();
   await ingest(env2, abandon(), {}, tr.ab);
@@ -596,6 +622,23 @@ test("AB5.9 compra antes da reserva barra o envio sem depender de leitura atrasa
   env2.ZEVANORY_PRIVATE_ARTIFACTS.m.set(AB.PEND_PREFIX + (await refOf()), pend);
   await drain(env2, rs2, {}, tr.ab);
   assert.equal(rs2.posts.length, 0, "[AB5.9/g] gravação impeditiva do gancho vale sem replicação");
+  const src = readTextNormalized(new URL("../worker/abandono-hotmart.mjs", import.meta.url)).replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(!/withSession|first-primary|first-unconstrained|bookmark/.test(src), "[AB5.9/f] código sem API de sessões");
+});
+
+test("AB5.10 D1 com falha transitória no gancho de compra: pendência apagada, dreno sem envio (O-1010-02)", async () => {
+  const tr = await tree("ativo");
+  const env = makeEnv(); const rs = fakeResend();
+  await ingest(env, abandon(), {}, tr.ab);
+  assert.notEqual(await pendOf(env), null, "[AB5.10/z] pendência criada");
+  env.DIARIO.mode.failAll = true; // falha transitória durante a compra
+  const r = await viaRoute(tr, env, purchase("PURCHASE_APPROVED", { txn: "HP-SINT-TRANS01" }));
+  assert.equal(r.status, 200, "[AB5.10/a] resposta da compra inalterada");
+  assert.equal(await pendOf(env), null, "[AB5.10] a pendência sai mesmo sem o marcador gravado");
+  env.DIARIO.mode.failAll = false; // o D1 volta
+  await drain(env, rs, {}, tr.ab);
+  assert.equal(rs.posts.length, 0, "[AB5.10/b] 0 envios");
+  assert.deepEqual(await tr.ab.noteHotmartPurchase(env, purchase().data, { now: T0 }), { recorded: true }, "[AB5.10/c] com D1 de volta grava o marcador");
 });
 
 // ------------------------------------------------------------------------------------------------- AB6 descadastro
@@ -688,6 +731,10 @@ test("AB6.8 supressão manual: sem token/errado 401, GET 405, e-mail inválido 4
   assert.equal(await st(manualReq({ email: EMAIL }, { token: null })), 401, "[AB6.8] sem token");
   assert.equal(await st(manualReq({ email: EMAIL }, { token: OPERATOR.slice(0, -1) + "x" })), 401, "[AB6.8/a] token errado");
   assert.equal(await st(manualReq({ email: EMAIL }, { method: "GET" })), 405, "[AB6.8/b] GET");
+  const raw = new Request("https://zevanory.api.br" + AB.MANUAL_SUPPRESSION_PATH, { method: "POST", headers: { authorization: OPERATOR, "content-type": "application/json" }, body: JSON.stringify({ email: EMAIL }) });
+  assert.equal(await st(raw), 401, "[AB6.8/j] token sem o prefixo Bearer");
+  const lower = new Request("https://zevanory.api.br" + AB.MANUAL_SUPPRESSION_PATH, { method: "POST", headers: { authorization: "bearer " + OPERATOR, "content-type": "application/json" }, body: JSON.stringify({ email: EMAIL }) });
+  assert.equal(await st(lower), 401, "[AB6.8/k] prefixo diferente de \"Bearer \"");
   assert.equal(await st(manualReq({ email: "sem-arroba" })), 400, "[AB6.8/c] e-mail inválido");
   assert.equal(await st(manualReq("{", {})), 400, "[AB6.8/d] JSON inválido");
   assert.equal(await st(manualReq({ email: EMAIL }, { type: "text/plain" })), 415, "[AB6.8/e] só JSON");
@@ -906,6 +953,24 @@ test("AB9.6 regra estática de preço: nenhum literal de preço no módulo; prod
   const literals = [...code.matchAll(/(?<![\w.$])\d+(?![\w.])/g)].map((m) => m[0]).filter((n) => official.has(n));
   assert.deepEqual(literals, [], "[AB9.6/f] nenhum número igual a um preço oficial");
   assert.ok(!/HOTMART_KITS|PRICE_BY_SKU|priceBySku|priceBySlug/.test(code), "[AB9.6/g] só productBySlug como fonte");
+});
+
+test("AB9.7 o filtro de conteúdo checa também o html enviado (O-1010-03)", async () => {
+  for (const slug of SLUGS) {
+    const mail = AB.abandonmentEmail(slug, { optOutUrl: await AB.optOutUrl({ LEAD_PRIVACY_SECRET: SECRET }, await refOf()) });
+    assert.deepEqual(AB.abandonmentLockViolations(mail), [], "[AB9.7] html real sem violação: " + slug);
+    const other = SLUGS.find((x) => x !== slug);
+    const bad = { ...mail, html: mail.html.replace("</main>", '<a href="https://pay.hotmart.com/X0">Compre agora</a></main>') };
+    assert.ok(AB.abandonmentLockViolations(bad).includes("checkout_link"), "[AB9.7/a] link de checkout só no html: " + slug);
+    const price = { ...mail, html: mail.html.replace("</main>", `<p>R$ ${productBySlug(other).price}</p></main>`) };
+    if (productBySlug(other).price !== productBySlug(slug).price) assert.ok(AB.abandonmentLockViolations(price).includes("price"), "[AB9.7/b] outro preço só no html: " + slug);
+  }
+  // no envio: o html que vai no corpo do POST é o que o filtro checou
+  const env = makeEnv(); const rs = fakeResend();
+  await ingest(env, abandon());
+  await drain(env, rs);
+  const sent = rs.posts[0].body;
+  assert.deepEqual(AB.abandonmentLockViolations({ ...AB.abandonmentEmail("ia-na-pratica", {}), text: sent.text, html: sent.html, subject: sent.subject }), [], "[AB9.7/c] corpo enviado sem violação");
 });
 
 // ------------------------------------------------------------------------------------------------- AB10 estágio, falhas

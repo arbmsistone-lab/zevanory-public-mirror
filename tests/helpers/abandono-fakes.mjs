@@ -1,8 +1,10 @@
 // Fakes locais do lembrete de abandono Hotmart (worker/abandono-hotmart.mjs). Sem rede, sem Cloudflare, sem Resend.
 //  - createAbandonoD1: D1 que executa SQL de VERDADE (node:sqlite) com as migrações reais de migrations/d1. Cada
 //    chamada cede a vez ao laço de eventos (setImmediate) ANTES de executar, como numa ida e volta de rede: execuções
-//    em Promise.all intercalam instrução a instrução. Modos: lag (SELECT puro respondido por uma RÉPLICA atrasada,
-//    gravações só no primário), falha total, falha por regex, resultado sem meta. withSession é um espião que lança.
+//    em Promise.all intercalam instrução a instrução. Modos: lag (como o D1 real: o binding direto, sem a API de
+//    sessões, lê e grava no PRIMÁRIO; withSession() devolve uma sessão cujo SELECT puro vem de uma RÉPLICA atrasada e
+//    cuja gravação vai ao primário), staleReads (hipotético, mais forte: até o binding direto lê da réplica atrasada),
+//    falha total, falha por regex, resultado sem meta. stats.sessions conta as sessões abertas.
 //  - memKv: KV em memória com TTL (expirationTtl registrado), list por prefixo e contadores de leitura/gravação.
 //  - fakeResend: POST /emails com Idempotency-Key como no Resend (mesma chave + mesmo corpo = mesma resposta sem novo
 //    envio; corpo diferente = 409 invalid_idempotent_request), roteiro de respostas, GET /emails paginado (cursor
@@ -20,10 +22,10 @@ export const ALL_MIGRATIONS = ["0001_diario_v1.sql", "0002_diario_v1_ts.sql", "0
 const isRead = (sql) => /^\s*(select|with|pragma)\b/i.test(sql) && !/\breturning\b/i.test(sql);
 const tick = () => new Promise((r) => setImmediate(r));
 
-export function createAbandonoD1({ migrations = ALL_MIGRATIONS, lag = false, yieldEach = true } = {}) {
+export function createAbandonoD1({ migrations = ALL_MIGRATIONS, lag = false, staleReads = false, yieldEach = true } = {}) {
   const primary = new DatabaseSync(":memory:");
   if (migrations) primary.exec(migrations);
-  const replica = lag ? new DatabaseSync(":memory:") : null;
+  const replica = lag || staleReads ? new DatabaseSync(":memory:") : null;
   if (replica && migrations) replica.exec(migrations);
   const log = []; // gravações ainda não replicadas
   const mode = { failAll: false, failOn: null, noMeta: false, delayOn: null, onWrite: null };
@@ -34,14 +36,14 @@ export function createAbandonoD1({ migrations = ALL_MIGRATIONS, lag = false, yie
     const r = st.run(...params);
     return { results: [], success: true, meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
   };
-  const execute = async (sql, params) => {
+  const execute = async (sql, params, viaSession = false) => {
     if (yieldEach) await tick();
     if (mode.failAll) throw new Error("D1_ERROR: network connection lost (simulado)");
     if (mode.failOn && mode.failOn.test(sql)) throw new Error("D1_ERROR: falha simulada");
     stats.statements.push(sql.replace(/\s+/g, " ").trim());
     if (isRead(sql)) {
       stats.reads++;
-      if (replica) { stats.replicaReads++; return exec(replica, sql, params); }
+      if (replica && (staleReads || viaSession)) { stats.replicaReads++; return exec(replica, sql, params); }
       return exec(primary, sql, params);
     }
     stats.writes++;
@@ -53,14 +55,14 @@ export function createAbandonoD1({ migrations = ALL_MIGRATIONS, lag = false, yie
     return out;
   };
   class Stmt {
-    constructor(sql, params = []) { this.sql = sql; this.params = params; }
+    constructor(sql, params = [], viaSession = false) { this.sql = sql; this.params = params; this.viaSession = viaSession; }
     bind(...params) {
       if (params.some((p) => p === undefined)) throw new TypeError("D1_TYPE_ERROR: undefined não é aceito em bind");
-      return new Stmt(this.sql, params);
+      return new Stmt(this.sql, params, this.viaSession);
     }
-    async first(col) { const row = (await execute(this.sql, this.params)).results[0] ?? null; return col ? (row ? row[col] ?? null : null) : row; }
-    async all() { return execute(this.sql, this.params); }
-    async run() { return execute(this.sql, this.params); }
+    async first(col) { const row = (await execute(this.sql, this.params, this.viaSession)).results[0] ?? null; return col ? (row ? row[col] ?? null : null) : row; }
+    async all() { return execute(this.sql, this.params, this.viaSession); }
+    async run() { return execute(this.sql, this.params, this.viaSession); }
   }
   return {
     primary, replica, mode, stats,
@@ -71,7 +73,8 @@ export function createAbandonoD1({ migrations = ALL_MIGRATIONS, lag = false, yie
       primary.exec("BEGIN");
       try { const out = stmts.map((s) => exec(primary, s.sql, s.params)); primary.exec("COMMIT"); return out; } catch (e) { primary.exec("ROLLBACK"); throw e; }
     },
-    withSession() { stats.sessions++; throw new Error("withSession proibido no abandono (read replicas)"); },
+    // Sessão do D1 (read replication): leituras podem vir de uma réplica atrasada; gravações vão ao primário.
+    withSession() { stats.sessions++; return { prepare: (sql) => { if (mode.failAll) throw new Error("D1_ERROR: binding indisponível (simulado)"); return new Stmt(sql, [], true); }, getBookmark: () => null }; },
     replicate() { if (!replica) return; for (const [sql, params] of log.splice(0)) exec(replica, sql, params); },
     rows: (table) => primary.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map((r) => ({ ...r })),
     sql: (text, ...params) => exec(primary, text, params),
