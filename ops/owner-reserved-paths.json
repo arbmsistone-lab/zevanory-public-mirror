@@ -9,7 +9,8 @@
         "scripts/zero_cost_guard.py",
         "wrangler*.toml",
         "**/wrangler*.toml",
-        ".github/workflows/plan-probe.yml"
+        ".github/workflows/plan-probe.yml",
+        "scripts/deploy/prepare-central-candidate.py"
       ]
     },
     "fiscal_juridico": {

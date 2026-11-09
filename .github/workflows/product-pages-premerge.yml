@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           node --version
           node --test tests/governanca/price-consistency-gate.test.mjs | tee price-gate.txt
-          grep -qx "# tests 11" price-gate.txt && grep -qx "# pass 11" price-gate.txt && grep -qx "# fail 0" price-gate.txt && grep -qx "# skipped 0" price-gate.txt && grep -qx "# todo 0" price-gate.txt && grep -qx "# cancelled 0" price-gate.txt
+          grep -qx "# tests 12" price-gate.txt && grep -qx "# pass 12" price-gate.txt && grep -qx "# fail 0" price-gate.txt && grep -qx "# skipped 0" price-gate.txt && grep -qx "# todo 0" price-gate.txt && grep -qx "# cancelled 0" price-gate.txt
 
       - name: Compile audit scripts
         run: |

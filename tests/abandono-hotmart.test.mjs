@@ -660,6 +660,52 @@ test("AB6.6 comparação do t usa timingSafeEqual sobre digests", async () => {
   assert.ok(!/\bt\s*[!=]==?\s*expected|expected\s*[!=]==?\s*t\b/.test(src), "[AB6.6/b] sem === entre t e o esperado");
 });
 
+// Supressão manual (oposição recebida em suporte@): token de operador, só o pseudônimo.
+const OPERATOR = "test-operator-" + "o".repeat(24); // sintético, gerado em runtime
+const manualReq = (body, { token = OPERATOR, method = "POST", type = "application/json" } = {}) => new Request("https://zevanory.api.br" + AB.MANUAL_SUPPRESSION_PATH, {
+  method, headers: { ...(token ? { authorization: "Bearer " + token } : {}), ...(type ? { "content-type": type } : {}) }, ...(method === "POST" ? { body: typeof body === "string" ? body : JSON.stringify(body) } : {}),
+});
+test("AB6.7 supressão manual com token de operador: grava só o pseudônimo, apaga pendência, cancela reserva", async () => {
+  const env = makeEnv({ extra: { ZEVANORY_OPERATOR_TOKEN: OPERATOR } });
+  const ref = await seedPend(env);
+  await seedRow(env.DIARIO, { ref, estado: "reservado" });
+  const before = CAPTURED.lines.length;
+  const r = await AB.handleAbandonmentManualSuppression(manualReq({ email: "  Comprador.Teste@Example.com " }), env, { now: T0, stage: "ativo" });
+  assert.equal(r.status, 200, "[AB6.7] 200");
+  assert.deepEqual(await r.json(), { ok: true, kv: true, d1: true }, "[AB6.7/a] resposta sem e-mail nem ref");
+  assert.deepEqual(env.DIARIO.rows("abandono_supressao_v1").map((x) => x.ref), [ref], "[AB6.7/b] supressão pelo pseudônimo normalizado");
+  assert.ok(env.ZEVANORY_PRIVATE_ARTIFACTS.m.has(AB.SUPKV_PREFIX + ref), "[AB6.7/c] supkv gravado");
+  assert.equal(await pendOf(env), null, "[AB6.7/d] pendência apagada");
+  assert.equal(envio(env.DIARIO)[0].estado, "cancelado", "[AB6.7/e] reserva cancelada");
+  const stored = JSON.stringify([...env.ZEVANORY_PRIVATE_ARTIFACTS.m.entries()].filter(([k]) => k.startsWith("abandono:"))) + JSON.stringify(env.DIARIO.rows("abandono_supressao_v1"));
+  assert.ok(!/example\.com|comprador/i.test(stored), "[AB6.7/f] e-mail nunca gravado");
+  assert.ok(!/example\.com|comprador/i.test(CAPTURED.lines.slice(before).join("\n")), "[AB6.7/g] e-mail nunca logado");
+  assert.equal((await ingest(env, abandon())).body.code, "suppressed", "[AB6.7/h] novo abandono suprimido");
+});
+test("AB6.8 supressão manual: sem token/errado 401, GET 405, e-mail inválido 400, desligado 503 sem gravar", async () => {
+  const env = makeEnv({ extra: { ZEVANORY_OPERATOR_TOKEN: OPERATOR } });
+  const st = async (req, stage = "ativo") => (await AB.handleAbandonmentManualSuppression(req, env, stage === null ? { now: T0 } : { now: T0, stage })).status;
+  assert.equal(await st(manualReq({ email: EMAIL }, { token: null })), 401, "[AB6.8] sem token");
+  assert.equal(await st(manualReq({ email: EMAIL }, { token: OPERATOR.slice(0, -1) + "x" })), 401, "[AB6.8/a] token errado");
+  assert.equal(await st(manualReq({ email: EMAIL }, { method: "GET" })), 405, "[AB6.8/b] GET");
+  assert.equal(await st(manualReq({ email: "sem-arroba" })), 400, "[AB6.8/c] e-mail inválido");
+  assert.equal(await st(manualReq("{", {})), 400, "[AB6.8/d] JSON inválido");
+  assert.equal(await st(manualReq({ email: EMAIL }, { type: "text/plain" })), 415, "[AB6.8/e] só JSON");
+  assert.equal(await st(manualReq({ email: EMAIL }), "desligado"), 503, "[AB6.8/f] desligado");
+  assert.equal(await st(manualReq({ email: EMAIL }), null), 503, "[AB6.8/g] estágio do fonte (desligado)");
+  assert.equal(abandonoKeys(env.ZEVANORY_PRIVATE_ARTIFACTS).length + env.DIARIO.stats.writes, 0, "[AB6.8/h] nada gravado");
+  const noTok = makeEnv();
+  assert.equal((await AB.handleAbandonmentManualSuppression(manualReq({ email: EMAIL }), noTok, { now: T0, stage: "ativo" })).status, 401, "[AB6.8/i] sem token configurado: fail-closed");
+});
+test("AB6.9 supressão manual com D1 fora grava supkv; com KV e D1 fora, 503", async () => {
+  const env = makeEnv({ extra: { ZEVANORY_OPERATOR_TOKEN: OPERATOR } }); env.DIARIO.mode.failAll = true;
+  const r = await safe(AB.handleAbandonmentManualSuppression(manualReq({ email: EMAIL }), env, { now: T0, stage: "ativo" }));
+  assert.equal(r.status, 200, "[AB6.9] 200 com supkv");
+  assert.ok(env.ZEVANORY_PRIVATE_ARTIFACTS.m.has(AB.SUPKV_PREFIX + (await refOf())), "[AB6.9/a] supkv");
+  const both = makeEnv({ extra: { ZEVANORY_OPERATOR_TOKEN: OPERATOR } }); both.DIARIO.mode.failAll = true; both.ZEVANORY_PRIVATE_ARTIFACTS.mode.failPut = true;
+  assert.equal((await safe(AB.handleAbandonmentManualSuppression(manualReq({ email: EMAIL }), both, { now: T0, stage: "ativo" }))).status, 503, "[AB6.9/b] 503");
+});
+
 // ------------------------------------------------------------------------------------------------- AB7 retenção
 test("AB7.1 retenção: pend TTL <= 72 h; apaga envio e compra > 30 dias; não toca a supressão", async () => {
   const env = makeEnv();
@@ -715,6 +761,25 @@ test("AB7.4c demonstração: INSERT OR REPLACE escapa do gatilho com recursive_t
   d1.primary.exec("PRAGMA recursive_triggers = OFF");
   d1.sql("INSERT OR REPLACE INTO abandono_supressao_v1 (ref, criado_ms) VALUES (?, ?)", "f".repeat(64), T0 + 5);
   assert.deepEqual(d1.rows("abandono_supressao_v1").map((r) => r.criado_ms), [T0 + 5], "[AB7.4c] o REPLACE muda a linha sem disparar o gatilho");
+});
+test("AB7.4d regra estática: em worker/** nenhum DDL das tabelas do abandono e nenhum DELETE/UPDATE na supressão", () => {
+  const { readdirSync, statSync } = process.getBuiltinModule("node:fs");
+  const base = fileURLToPath(new URL("../worker/", import.meta.url));
+  const files = [];
+  const walk = (d) => { for (const n of readdirSync(d)) { const f = d + "/" + n; if (statSync(f).isDirectory()) walk(f); else if (/\.(mjs|js|cjs)$/.test(n)) files.push(f); } };
+  walk(base.replace(/\/$/, ""));
+  assert.ok(files.length > 50, "[AB7.4d/a] varredura de worker/**");
+  const hits = [];
+  for (const f of files) {
+    const src = readTextNormalized(f);
+    if (!/abandono_/.test(src)) continue;
+    const rel = f.slice(base.length);
+    if (/\b(?:CREATE|DROP|ALTER)\s+(?:TABLE|TRIGGER|INDEX|VIEW)\b[^;`"]*abandono_/i.test(src)) hits.push(rel + ": DDL");
+    if (/\b(?:DROP|ALTER)\s+(?:TABLE|TRIGGER)\b/i.test(src) && rel === "abandono-hotmart.mjs") hits.push(rel + ": DROP/ALTER");
+    if (/\bDELETE\s+FROM\s+abandono_supressao_v1\b|\bUPDATE\s+abandono_supressao_v1\b/i.test(src)) hits.push(rel + ": DELETE/UPDATE na supressão");
+    if (/PRAGMA\s+recursive_triggers/i.test(src)) hits.push(rel + ": PRAGMA");
+  }
+  assert.deepEqual(hits, [], "[AB7.4d] esquema só por migrations/d1; supressão só INSERT OR IGNORE");
 });
 const selfFor = (env, stage, handler) => ({ calls: [], async fetch(r) { this.calls.push(new URL(r.url).pathname); return handler(r, env, { stage, nowMs: T0 + 6 * H }); } });
 test("AB7.5 retenção isolada às 06 UTC em aquecimento e ativo, via SELF com token; desligado sem SELF", async () => {

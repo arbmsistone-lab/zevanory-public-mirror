@@ -40,7 +40,7 @@ import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
 import { handleSupportInboundWebhook, handleSupportDrainRequest, dispatchSupportDrain } from "./support-email-forward.mjs";
 import { ATENDIMENTO_DRAIN_PATH, handleAtendimentoDrainRequest, dispatchAtendimentoDrain } from "./atendimento-drain-dispatch.mjs";
-import { DRAIN_PATH as ABANDONO_DRAIN_PATH, RETENTION_PATH as ABANDONO_RETENTION_PATH, OPTOUT_PATH as ABANDONO_OPTOUT_PATH, handleAbandonmentDrainRequest, handleAbandonmentRetentionRequest, handleAbandonmentOptOut, dispatchAbandonmentDrain, dispatchAbandonmentRetention } from "./abandono-hotmart.mjs";
+import { DRAIN_PATH as ABANDONO_DRAIN_PATH, RETENTION_PATH as ABANDONO_RETENTION_PATH, OPTOUT_PATH as ABANDONO_OPTOUT_PATH, MANUAL_SUPPRESSION_PATH as ABANDONO_MANUAL_SUPPRESSION_PATH, handleAbandonmentManualSuppression, handleAbandonmentDrainRequest, handleAbandonmentRetentionRequest, handleAbandonmentOptOut, dispatchAbandonmentDrain, dispatchAbandonmentRetention } from "./abandono-hotmart.mjs";
 import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
@@ -149,6 +149,8 @@ const wrapped = {
     if (url.pathname === "/api/webhooks/hotmart") return routeHotmartNc011(request,normalized,ctx);
     // Descadastro de 1 clique do lembrete de abandono (GET e POST One-Click, RFC 8058).
     if (url.pathname === ABANDONO_OPTOUT_PATH) return handleAbandonmentOptOut(request,normalized);
+    // Supressão manual (oposição recebida em suporte@): token de operador; grava só o pseudônimo.
+    if (url.pathname === ABANDONO_MANUAL_SUPPRESSION_PATH) return handleAbandonmentManualSuppression(request,normalized);
     // suporte@/contato@ (e-mail oficial do consumidor): Resend email.received assinado -> encaminha ao dono.
     // Devolve null para outros eventos/destinatários (entregas, prova-sandbox@): o handler legado segue igual.
     if (url.pathname === "/api/webhooks/resend" && request.method === "POST") {

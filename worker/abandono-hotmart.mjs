@@ -24,6 +24,7 @@ import { purchaseOpenFor, hotmartLockViolations } from "./sales-lock-content.mjs
 import { currentBudgetPct, SHED_AT_PCT } from "./kv-meter.mjs";
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { LEGAL_IDENTITY } from "./politica-unica.mjs";
+import { verifyOperatorToken } from "./operator-credential.mjs";
 import ALLOW from "../data/p18-commercial-allowlist.json" with { type: "json" };
 
 export const ABANDONO_STAGE = "desligado"; // "desligado" | "aquecimento" | "ativo"; cada troca = PR com rótulo
@@ -42,6 +43,7 @@ export const MAX_PER_RUN = 5;
 export const DRAIN_PATH = "/api/internal/abandono/drain";
 export const RETENTION_PATH = "/api/internal/abandono/retencao";
 export const OPTOUT_PATH = "/abandono/sair";
+export const MANUAL_SUPPRESSION_PATH = "/api/internal/abandono/supressao";
 export const PEND_PREFIX = "abandono:v1:pend:";
 export const SUPKV_PREFIX = "abandono:v1:supkv:";
 export const RETENTION_FAIL_KEY = "abandono:v1:retencao:falhas";
@@ -636,4 +638,33 @@ export async function handleAbandonmentOptOut(request, env, opts = {}) {
   if (!kvOk && db.unavailable) return page(503, "Indisponível", `Não foi possível registrar agora. Escreva para ${SUPPORT} que a gente faz o descadastro.`);
   console.info("abandono_optout", "ok");
   return page(200, "Pronto", "Você não vai receber lembretes de compra da ZEVANORY.");
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Supressão MANUAL (oposição pedida por e-mail a suporte@, política de privacidade): o proprietário ou a central
+// registra a partir do e-mail informado. POST /api/internal/abandono/supressao, Authorization: Bearer <token de
+// operador> (ZEVANORY_OPERATOR_TOKEN, verifyOperatorToken, tempo constante), corpo JSON {"email": "..."}.
+// Grava SÓ o pseudônimo (supkv: no KV e INSERT OR IGNORE em abandono_supressao_v1), apaga a pendência e cancela uma
+// reserva; o e-mail nunca é gravado, devolvido nem logado. Em "desligado" não grava nada (503 abandono_desligado):
+// pedidos recebidos nesse estágio ficam na caixa do suporte e são registrados ao iniciar o aquecimento.
+export async function handleAbandonmentManualSuppression(request, env, opts = {}) {
+  const now = Number.isFinite(opts.now) ? opts.now : Date.now();
+  if (request.method !== "POST") return json(405, { ok: false, error: "method_not_allowed" });
+  const bearer = String(request.headers.get("authorization") || "").replace(/^Bearer /, "");
+  if (!bearer || !verifyOperatorToken(env, bearer, { minLength: 32, log: null })) return json(401, { ok: false, error: "unauthorized" });
+  if (stageOf(opts) === "desligado") return json(503, { ok: false, error: "abandono_desligado" });
+  if (!String(request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) return json(415, { ok: false, error: "json_required" });
+  let body;
+  try { const raw = await request.text(); if (raw.length > 2048) return json(413, { ok: false, error: "too_large" }); body = JSON.parse(raw); } catch { return json(400, { ok: false, error: "invalid_json" }); }
+  if (!validEmail(body?.email)) return json(400, { ok: false, error: "invalid_email" });
+  if (!privacySecret(env)) return json(503, { ok: false, error: "privacy_not_configured" });
+  const ref = await abandonoRef(env, body.email);
+  const kv = env?.ZEVANORY_PRIVATE_ARTIFACTS;
+  let kvOk = false;
+  try { await kv.put(SUPKV_PREFIX + ref, JSON.stringify({ at: now })); kvOk = true; } catch {}
+  try { await kv?.delete?.(PEND_PREFIX + ref); } catch {}
+  const db = await d1(env, async (d) => { await run(d, SQL_SUPRIME, ref, now); await run(d, "UPDATE abandono_envio_v1 SET estado='cancelado' WHERE ref=?1 AND estado='reservado'", ref); return true; });
+  if (!kvOk && db.unavailable) return json(503, { ok: false, error: "suppression_not_recorded" });
+  console.info("abandono_supressao_manual", JSON.stringify({ kv: kvOk, d1: !db.unavailable }));
+  return json(200, { ok: true, kv: kvOk, d1: !db.unavailable });
 }
