@@ -1,11 +1,11 @@
 {
   "schema": "zevanory-p25-weekly-review/v1",
   "process": "P25",
-  "week": "2026-W45",
-  "reviewed_on": "2026-11-02",
+  "week": "2026-W46",
+  "reviewed_on": "2026-11-09",
   "run": {
-    "run_id": "41519684962",
-    "commit_sha": "d01dd5ea8b85df2dbf8ccad2c6a9d6a95210f6d8"
+    "run_id": "42698763568",
+    "commit_sha": "39b72e5c19230c33268a25ec9bcd08c2aa069b1c"
   },
   "evidence_label": "SINTÉTICA (revisão automática de registros; nenhuma ocorrência real avaliada)",
   "sources": [
