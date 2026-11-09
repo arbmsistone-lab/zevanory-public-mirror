@@ -1,0 +1,100 @@
+name: abandono-contract
+
+# Lembrete único de compra não concluída na Hotmart (plano de abandono, Revisão 5b, PR-3). Só pull_request: nunca
+# dispara no merge, nenhum segredo, nenhuma requisição à Cloudflare, à Hotmart, ao Resend ou à produção.
+# (1) lógica e regressão do webhook (tests/abandono-hotmart.test.mjs: 94 testes, D1 com SQL real via node:sqlite e as
+# migrações reais); (2) ensaios de concorrência, supressão, retenção e reconciliação paginada
+# (tests/abandono-ensaio.test.mjs: 7 testes; 200 reservas concorrentes = exatamente 20); (3) mutantes causais M01-M65
+# pelo classificador compartilhado (todos KILLED; M54-M58 = condições do GPT-6; M59-M61 = supressão manual e DDL; M62-M65 = observações da contra-auditoria); (4) gate de preço.
+# A suíte completa (manifesto) segue no gate existente trava-vendas-integracao-postgres.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/abandono-contract.yml"
+      - "worker/abandono-hotmart.mjs"
+      - "worker/cp-nc011-routing.mjs"
+      - "worker/cp-nc012-digital-hotmart.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/sales-lock-content.mjs"
+      - "worker/sales-control.mjs"
+      - "worker/product-prices.mjs"
+      - "worker/kv-meter.mjs"
+      - "worker/brand-email.mjs"
+      - "worker/politica-unica.mjs"
+      - "worker/owner-alerts.mjs"
+      - "worker/operator-credential.mjs"
+      - "tests/governanca/price-consistency-gate.test.mjs"
+      - "data/products.json"
+      - "data/p18-commercial-allowlist.json"
+      - "migrations/d1/**"
+      - "tests/abandono-hotmart.test.mjs"
+      - "tests/abandono-ensaio.test.mjs"
+      - "tests/helpers/abandono-*.mjs"
+      - "tests/helpers/text.mjs"
+      - "tests/t4_sim/**"
+      - "scripts/ci/mutants_abandono.py"
+      - "scripts/ci/mutants_abandono_allow.json"
+      - "scripts/ci/mutant_classifier.py"
+      - "tests/governanca/price-gate.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: abandono-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: abandono-contract / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lógica e regressão do webhook (contagem exata 94, zero pulados)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/abandono-hotmart.test.mjs | tee /tmp/ab.txt
+          for l in "# tests 94" "# pass 94" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/ab.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Ensaios de concorrência, supressão, retenção e reconciliação (contagem exata 7)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/abandono-ensaio.test.mjs | tee /tmp/en.txt
+          for l in "# tests 7" "# pass 7" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/en.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+      - name: Mutantes causais M01-M65 (todos precisam morrer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_abandono.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=ABANDONO_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "BASELINE PASS tests=101" /tmp/mut.txt || { echo "::error::baseline dos mutantes diferente de 101"; exit 1; }
+          grep -qx "MUTANTS total=65 killed=65 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+      - name: Gate de preço (fonte única)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/governanca/price-gate.mjs
+      - name: Estágio do fonte desligado e sem wrangler alterado pelo abandono
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qx 'export const ABANDONO_STAGE = "desligado"; // "desligado" | "aquecimento" | "ativo"; cada troca = PR com rótulo' worker/abandono-hotmart.mjs || { echo "::error::ABANDONO_STAGE do fonte não é desligado"; exit 1; }
+          if grep -RIl "abandono" wrangler*.toml 2>/dev/null; then echo "::error::wrangler*.toml não pode referenciar o abandono"; exit 1; fi
+      - name: Sem bytecode rastreado
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files '*.pyc' '**/__pycache__/**')"
