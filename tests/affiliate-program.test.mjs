@@ -6,9 +6,9 @@ test("report exposes no payout action and declares owner approval",async()=>{res
 // Regressão do #1008: o DDL fica LITERAL (o restore drill recusa DDL interpolado), mas o default de
 // affiliate_commissions.commission_rate não pode divergir da taxa do programa próprio em data/affiliates.json.
 test("DDL literal: default de commission_rate = taxa do programa próprio em data/affiliates.json, sem interpolação no DDL",async()=>{
- const {readFileSync}=await import("node:fs");
- const src=readFileSync(new URL("../worker/affiliate-program.mjs",import.meta.url),"utf8");
- const af=JSON.parse(readFileSync(new URL("../data/affiliates.json",import.meta.url),"utf8"));
+ const {readTextNormalized}=await import("./helpers/text.mjs");
+ const src=readTextNormalized(new URL("../worker/affiliate-program.mjs",import.meta.url));
+ const af=JSON.parse(readTextNormalized(new URL("../data/affiliates.json",import.meta.url)));
  const ddls=[...src.matchAll(/create table if not exists\s+(\w+)\s*\(/gi)].map(m=>{let d=0,j=m.index+m[0].length-1;for(;j<src.length;j++){if(src[j]==="(")d++;else if(src[j]===")"&&--d===0)break;}return [m[1],src.slice(m.index,j+1)];});
  assert.deepEqual(ddls.map(x=>x[0]).sort(),["affiliate_attributions","affiliate_commissions"]);
  for(const [name,ddl] of ddls)assert.ok(!ddl.includes("${"),"DDL interpolado: "+name);
