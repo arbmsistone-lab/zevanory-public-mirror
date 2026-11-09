@@ -329,6 +329,7 @@ Os crons do próprio Worker não enviam a credencial.
     {"path": "worker/cloudflare-worker.compat.mjs", "role": "verifica: backup, funil, voice-eval, convite do piloto (recusado na produção), voice audit"},
     {"path": "worker/cloudflare-worker.recovered.mjs", "role": "verifica: telegram-proof, channel evidence, whatsapp stats-refresh, handler Node e2e/status (repasse interno)"},
     {"path": "worker/internal-financial-audit.mjs", "role": "verifica: /api/internal/audit/* e expõe categorias no readback"},
+    {"path": "worker/abandono-hotmart.mjs", "role": "verifica: supressão manual do lembrete de abandono (POST /api/internal/abandono/supressao; grava só o pseudônimo)"},
     {"path": "worker/signed-audit-probe.mjs", "role": "verifica: sondas HMAC de leitura (todos os candidatos)"},
     {"path": "worker/voice-chunks.mjs", "role": "verifica: voice encode audit"},
     {"path": "worker/post-sale.mjs", "role": "verifica: pós-venda de certificação"},
