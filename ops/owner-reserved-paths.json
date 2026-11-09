@@ -13,7 +13,7 @@
       ]
     },
     "fiscal_juridico": {
-      "descricao": "Atos fiscais ou jurídicos: NFS-e, tributos, contratos, termos, privacidade e política de reembolso.",
+      "descricao": "Atos fiscais ou jurídicos: NFS-e, tributos, contratos, termos, privacidade e política de reembolso. Plano do e-mail de abandono (PR-1, Revisão 5, NC-R4-2): a LIA (docs/lgpd/lia-abandono-hotmart.md), o módulo e o teste do abandono, e migrations/d1/** (diário P20 e tabelas abandono_*_v1, inclusive os gatilhos da supressão permanente).",
       "globs": [
         "termos/**",
         "privacidade/**",
@@ -37,7 +37,11 @@
         "worker/asaas-pix-refund-auth.mjs",
         "db/migrations/*refund*",
         "scripts/ci/mutants_p23_legal*",
-        "sales-overlay/approved.json"
+        "sales-overlay/approved.json",
+        "docs/lgpd/lia-abandono-hotmart.md",
+        "worker/abandono-hotmart.mjs",
+        "tests/abandono-hotmart.test.mjs",
+        "migrations/d1/**"
       ]
     },
     "credenciais": {
