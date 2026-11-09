@@ -110,6 +110,10 @@ páginas e dados também citam preço e condição. Por isso:
   aritmética sobre preço (priceBy*, PRICE_BY_SKU, *.price) e literal em campo de preço, mapa/par SKU→número e Map;
   cupom/desconto/"% off"/"por cento" junto de produto reprova fora de arquivo reservado. Um teste IMPORTA os módulos
   (e-mails, motor de aquisição, atendimento, Shorts/legendas, criativos, blog) e confere o preço renderizado.
+- **Literal em variável/template (NC-1008-04):** em JS de produção não reservado também reprova variável com nome de
+  preço = literal, variável = literal usada em `"R$ "+x`, `` `R$ ${x}` `` ou campo de preço, literal direto em
+  `"R$ " + N` / `` `R$ ${N}` ``, e aritmética sobre qualquer variável que recebe priceBy*/PRICE_BY_SKU/bundle*. Os
+  scripts do Short de boas-vindas exportam `welcomeCreative()` e o teste runtime confere o preço renderizado.
 - **Comissão (NC-1008-03):** taxa só em `data/affiliates.json` (reservado): 50% Hotmart e 30% programa próprio, os valores
   publicados hoje, marcados "PENDENTE decisão do proprietário (30% recomendado no F0)". `worker/affiliate-program.mjs` lê a
   taxa e o prazo de atribuição dessa fonte; o gate só aceita a comissão derivada nas páginas de afiliado listadas nela.

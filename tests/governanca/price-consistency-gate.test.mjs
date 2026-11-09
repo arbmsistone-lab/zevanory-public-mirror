@@ -211,6 +211,18 @@ const DESVIOS = [
   ["worker/x.mjs", 'const s = "Use o cupom ZEV10 no Combo IA + Vendas";', "DESCONTO"],
   ["worker/x.mjs", 'const s = "Negócio Completo por cinquenta por cento a menos";', "DESCONTO"],
   ["sales-public/combo-ia-vendas.html", "<p>Black Friday: leve agora</p>", "DESCONTO"],
+  // NC-1008-04: literal guardado em variável ou em expressão de template
+  ["scripts/channels/render-youtube-short.mjs", "const WELCOME_PRICE = 197;", "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", "const s = `R$ ${297}`;", "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", 'const s = "R$ " + 297 + ",00";', "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", 'const s = "R$ " + (200 + 97);', "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", 'const P = 197;\nconst s = "Organize por R$ " + P + ",00";', "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", "const P = 197;\nconst s = `por R$ ${P},00`;", "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", "const P = 197;\nconst g = evaluate(c, { serverPrice: P });", "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", "let valorKit = 147;", "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", 'const ia = priceBySlug("ia-na-pratica");\nconst t = ia+100;', "ARITMETICA_DE_PRECO"],
+  ["worker/x.mjs", "const k = PRICE_BY_SKU[sku];\nk *= 0.8;", "ARITMETICA_DE_PRECO"],
+  ["worker/x.mjs", "let total = o.price;\ntotal = o.price;\no.price -= 50;", "ARITMETICA_DE_PRECO"],
 ];
 
 test("G09 NEGATIVO: os desvios da contra-auditoria NC-1008-01 reprovam (HTML com tag no meio, sem R$, por extenso, BRL, longe, aninhado, Map, JSON-LD, aritmética, cupom)", () => {
@@ -231,6 +243,15 @@ test("G09 NEGATIVO: os desvios da contra-auditoria NC-1008-01 reprovam (HTML com
   assert.ok(r.out.violacoes.some((v) => v.regra === "ARITMETICA_DE_PRECO"));
   r = fixture(["worker/lead-magnet.mjs"], { "worker/lead-magnet.mjs": ['price: priceBySlug("ia-na-pratica")', "price: 0.8 * priceBySlug(\"ia-na-pratica\")"] });
   assert.equal(r.rc, 1, "aritmética à esquerda");
+  // NC-1008-04: o cenário do auditor nos dois scripts reais do Short de boas-vindas
+  for (const f of ["scripts/channels/render-youtube-short.mjs", "scripts/channels/youtube-preflight.mjs"]) {
+    assert.equal(fixture([f]).rc, 0, "base " + f);
+    r = fixture([f], { [f]: ['const WELCOME_PRICE = priceBySku("ZEV-IA-011");', "const WELCOME_PRICE = 197;"] });
+    assert.equal(r.rc, 1, "WELCOME_PRICE literal passou em " + f);
+    assert.ok(r.out.violacoes.some((v) => v.regra === "LITERAL_DE_PRECO" && v.valor === 197), f);
+    r = fixture([f], { [f]: ['"Organize tarefas repetitivas por R$ "+WELCOME_PRICE+",00. "', '`Organize tarefas repetitivas por R$ ${197},00. `'] });
+    assert.equal(r.rc, 1, "template com literal passou em " + f);
+  }
   // fora dos desvios: valores legítimos continuam passando
   for (const [f, s] of [["worker/x.mjs", 'const s = "R$ " + priceBySlug("ia-na-pratica") + ",00";'], ["worker/x.mjs", "const s = `por R$ ${o.price},00`;"],
     ["worker/x.mjs", "const s = \"IA na Prática não tem desconto nem cupom.\";"], ["worker/x.mjs", 'const s = "Conteúdo Pronto: campanha mensal de promoção de vendas";'],
@@ -280,6 +301,15 @@ test("G10 runtime: os módulos de produção IMPORTADOS renderizam só os preço
       prose(`short-${day}`, [plan.title, plan.description, ...(plan.lines || []), plan.speech, JSON.stringify(plan.screen || ""), plan.spec?.body].join("\n"));
       for (const ch of ["tiktok", "instagram", "facebook", "telegram"]) { try { prose(`cap-${ch}-${day}`, captionFor(plan, ch, opt)); } catch { /* canal sem legenda */ } }
     }
+  }
+  // NC-1008-04: criativo de boas-vindas (builder exportado dos dois scripts) com o preço do IA na Prática da tabela
+  for (const f of ["../../scripts/channels/render-youtube-short.mjs", "../../scripts/channels/youtube-preflight.mjs"]) {
+    const { welcomeCreative } = await import(f);
+    const c = welcomeCreative();
+    assert.equal(c.price_brl, price["ZEV-IA-011"], f);
+    assert.ok(c.body.includes(`R$ ${price["ZEV-IA-011"]},00`), f + ": " + c.body);
+    for (const m of moneyIn(c.body)) assert.equal(m.value, price["ZEV-IA-011"], f);
+    prose("welcome-" + f.split("/").pop(), JSON.stringify(c));
   }
   const { ZEV_CREATIVE_CATALOG } = await import("../../worker/creative-autonomy.mjs");
   for (const [sku, c] of Object.entries(ZEV_CREATIVE_CATALOG)) assert.equal(c.price_brl, price[sku], "criativo " + sku);

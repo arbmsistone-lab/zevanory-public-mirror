@@ -2,6 +2,8 @@ import { SHORT_RULE_LABEL } from "../../worker/politica-unica.mjs";
 import { getYoutubeAccessToken } from "./youtube-access.mjs";
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
 import { priceBySku } from "../../worker/product-prices.mjs";
 // NC-1006-02: o Short de boas-vindas (IA prática) usava R$ 197,00, preço velho; agora é o da tabela canônica.
@@ -9,9 +11,15 @@ const WELCOME_PRICE = priceBySku("ZEV-IA-011");
 const TARGET = "UCMl8-SxMVv77S2tz2H63P3A";
 const fail = code => { throw Error(code); };
 // Only fixed codes reach the public log; never tokens, provider bodies or channel data beyond the id.
-const report_fail=e=>{console.log("::error title=YOUTUBE_PREFLIGHT::"+String(e?.message||e).replace(/[^a-z0-9_:.-]/gi,"_").slice(0,120));process.exit(1);};process.on("unhandledRejection",report_fail);process.on("uncaughtException",report_fail);
+const report_fail=e=>{console.log("::error title=YOUTUBE_PREFLIGHT::"+String(e?.message||e).replace(/[^a-z0-9_:.-]/gi,"_").slice(0,120));process.exit(1);};
 const run = (cmd,args) => { const p=spawnSync(cmd,args,{encoding:"utf8",maxBuffer:8*1024*1024});if(p.status!==0)fail(cmd+"_failed");return p.stdout; };
-const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ "+WELCOME_PRICE+",00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:WELCOME_PRICE};
+// G10/NC-1008-04: o criativo de boas-vindas é montado por um builder exportado (o teste importa e confere o preço).
+export function welcomeCreative(){return {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ "+WELCOME_PRICE+",00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:WELCOME_PRICE};}
+const isMain=process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1]);
+if(isMain)await main();
+async function main(){
+process.on("unhandledRejection",report_fail);process.on("uncaughtException",report_fail);
+const selected = welcomeCreative();
 const gate=evaluateCreativeWithRewrites(selected,{serverPrice:WELCOME_PRICE});
 if(gate.action!=="publish"||gate.compliance!==100||gate.score<85)fail("f1_gate_rejected");
 const required=["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","GEMINI_API_KEY"];
@@ -51,3 +59,4 @@ const report=({channelId:TARGET,dryRun:true,uploaded:false,technicalCheck:"PASS"
 console.log(JSON.stringify(report));
 await writeFile(base+".json",JSON.stringify(report));
 console.log("::notice title=YOUTUBE_PREFLIGHT::"+JSON.stringify(report));
+}

@@ -23,7 +23,10 @@
 //                         produto (o próprio objeto ou um ancestral) é conhecido: = tabela (centavos = x100).
 //   C2 MAPA_DE_PRECO      "<sku|slug>": N | "N" | ["nome", N], par ["<sku|slug>", N] (Map/array de pares).
 //   J1 ARITMETICA_DE_PRECO  (JS de produção não reservado) priceBy*/PRICE_BY_SKU/PRICES/*price* com - * / % ou + número.
-//   J2 LITERAL_DE_PRECO     (idem) qualquer literal numérico em propriedade price/preco/valor/amount, e par [sku|slug, N].
+//   J2 LITERAL_DE_PRECO     (idem) qualquer literal numérico em propriedade price/preco/valor/amount, par [sku|slug, N],
+//                           variável com nome de preço = literal, variável = literal usada em "R$ "+x / `R$ ${x}` /
+//                           campo de preço, e literal direto em "R$ " + N / `R$ ${N}` (NC-1008-04).
+//   J1 também cobre toda variável que recebe priceBy*/PRICE_BY_SKU/PRICES/bundle* (const ia = priceBySlug(..); ia + 100).
 // Exceções: só as de EXCECOES (arquivo + regra + produto + valor + quantidade EXATA + motivo).
 // Uso: node tests/governanca/price-gate.mjs [--root DIR] [--json]   (rc 0 = PASS, 1 = FAIL, 2 = entrada inválida)
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
@@ -88,6 +91,9 @@ export const EXCECOES = Object.freeze([
   ...legacy("scripts/mercadopago_combo_sandbox.py", "MAPA_DE_PRECO", [["ia-na-pratica", 197], ["vendas-na-pratica", 197],
     ["lucro-e-caixa", 247], ["combo-ia-vendas", 297], ["negocio-completo", 397]],
     "prova de sandbox manual espelha o catálogo legado do resolvedor de certificação"),
+  // Prova de sandbox v2: valor sintético congelado de pedido de teste antigo (comentado no código como "NOT current catalog price").
+  ...legacy("worker/sandbox-proof-v2.mjs", "LITERAL_DE_PRECO", [["SANDBOX_AMOUNT_BRL", 297]],
+    "valor sintético congelado da prova de sandbox v2 (pedido de teste legado), não é preço de catálogo"),
   // Registro histórico de ordem do dono (o que estava em produção em 12-13/10); texto de evidência, não oferta.
   ...legacy("data/commitments.json", "VALOR_EM_REAIS", [["ia-na-pratica", 197]],
     "evidência histórica do compromisso offer-0001-containment (12-13/10)"),
@@ -410,14 +416,29 @@ function scanCode(file, text, canon, mr, { isReserved }, found) {
   // J2: par [sku|slug|id, N] com identificador em variável (new Map([[sku, 47]]))
   for (const m of text.matchAll(/\[\s*(sku|slug|productSlug|offerId|offer_id)\s*,\s*["']?(\d+(?:\.\d+)?)\s*["']?\s*\]/g))
     push(found, file, "LITERAL_DE_PRECO", "-", Number(m[2]), text, m.index);
-  // J1: aritmética sobre preço
+  // NC-1008-04 (2): literal direto em string de dinheiro — "R$ " + 47, "R$ " + (..., `R$ ${47}` — no código BRUTO
+  for (const m of text.matchAll(/(?:R\$|BRL)\s*["']\s*\+\s*[\d(]|(?:R\$|BRL)\s*\$\{\s*[\d(]/g))
+    push(found, file, "LITERAL_DE_PRECO", "-", m[0], text, m.index);
   const code = stripJs(text);
-  const PRICE_EXPR = /(?:\b(?:priceBySlug|priceBySku|bundleSeparateTotal|bundleSavings)\s*\((?:[^()]|\([^()]*\))*\)|\b(?:PRICE_BY_SKU|PRICES|BLOG_TABLE_C_PRICES)\s*\[[^\]]*\]|(?<![\w$])[A-Za-z_$][\w$]*(?:\.[\w$]+)*?(?:\.|\b|_)(?:[a-z_]*price[a-z_]*|[A-Za-z]*Price[A-Za-z_]*|PRICE[A-Z_]*)(?![\w$])(?:\[[^\]]*\])?)/g;
+  // NC-1008-04 (1): variável que recebe literal numérico e tem nome de preço, ou entra em texto/campo de preço
+  const literalVars = new Set();
+  for (const m of code.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])\s*\(?\s*-?(\d+(?:\.\d+)?)\s*\)?(?=\s*(?:[;,)}\]]|\n|$))/g)) {
+    const [, id, v] = m;
+    const uso = new RegExp(`(?:R\\$|BRL)\\s*["']\\s*\\+\\s*${esc(id)}\\s*(?=[+;,)\\n]|$)|(?:R\\$|BRL)\\s*\\$\\{\\s*${esc(id)}\\s*\\}|\\b[\\w$]*(?:price|preco|valor|amount)[\\w$]*["']?\\s*:\\s*${esc(id)}\\s*(?=[,}\\n])`, "i");
+    if (/price|preco|valor|amount/i.test(id) || uso.test(text)) { literalVars.add(id); push(found, file, "LITERAL_DE_PRECO", id, Number(v), text, m.index); }
+  }
+  // NC-1008-04 (3): todo identificador que recebe priceBy*/PRICE_BY_SKU/PRICES/bundle* é expressão de preço
+  const tainted = new Set();
+  for (const m of code.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])\s*(?:\b(?:priceBySlug|priceBySku|bundleSeparateTotal|bundleSavings)\s*\(|\b(?:PRICE_BY_SKU|PRICES|BLOG_TABLE_C_PRICES)\s*\[)/g))
+    if (!/^(PRICES|BLOG_TABLE_C_PRICES|PRICE_BY_SKU)$/.test(m[1])) tainted.add(m[1]);
+  // J1: aritmética sobre preço (inclusive += -= *= /= em nome de preço ou variável tingida)
+  const TAINT = tainted.size ? `|(?<![\\w$.])(?:${[...tainted].map(esc).join("|")})(?![\\w$])` : "";
+  const PRICE_EXPR = new RegExp(`(?:\\b(?:priceBySlug|priceBySku|bundleSeparateTotal|bundleSavings)\\s*\\((?:[^()]|\\([^()]*\\))*\\)|\\b(?:PRICE_BY_SKU|PRICES|BLOG_TABLE_C_PRICES)\\s*\\[[^\\]]*\\]|(?<![\\w$])[A-Za-z_$][\\w$]*(?:\\.[\\w$]+)*?(?:\\.|\\b|_)(?:[a-z_]*price[a-z_]*|[A-Za-z]*Price[A-Za-z_]*|PRICE[A-Z_]*)(?![\\w$])(?:\\[[^\\]]*\\])?${TAINT})`, "g");
   for (const m of code.matchAll(PRICE_EXPR)) {
     if (/^(import|export)$/.test(m[0])) continue;
     const after = code.slice(m.index + m[0].length, m.index + m[0].length + 12), before = code.slice(Math.max(0, m.index - 12), m.index);
     if (/^\s*\(/.test(after) && !/\)$/.test(m[0])) continue; // chamada de função com nome de preço (ex.: priceFor(...))
-    const opAfter = /^\s*(?:[-*/%](?![-=*/>])|\+\s*(?:\d|\())/.test(after);
+    const opAfter = /^\s*(?:[-*/%](?![-=*/>])|\+\s*(?:\d|\()|[-+*/%]=(?!=))/.test(after);
     const opBefore = /(?:[\d)]\s*[-+*/%]|(?<![+\-*/%=!<>&|?:,(\[{]\s*)[-*/%])\s*$/.test(before) || /(?:^|[^+])[*/%]\s*$/.test(before) || /\d\s*[-+]\s*$/.test(before);
     if (opAfter || opBefore) push(found, file, "ARITMETICA_DE_PRECO", "-", m[0], text, m.index);
   }
