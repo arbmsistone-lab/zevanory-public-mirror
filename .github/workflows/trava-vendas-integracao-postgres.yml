@@ -14,6 +14,8 @@ on:
       - "data/politica-unica.json"
       # NC-1006-02: tabela canônica de preços importada por worker/product-prices.mjs.
       - "data/products.json"
+      # NC-1008-03: taxas de afiliado lidas por worker/affiliate-program.mjs.
+      - "data/affiliates.json"
       # P23: registro fiscal lido pelo portão de checkout (worker/fiscal-process.mjs).
       - "data/p23/fiscal-process.json"
       - "tests/integration/**"

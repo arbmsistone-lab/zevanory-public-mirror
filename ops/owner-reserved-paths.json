@@ -103,6 +103,7 @@
         "scripts/ci/sales_promise_consistency.py",
         "worker/product-prices.mjs",
         "worker/affiliate-program.mjs",
+        "data/affiliates.json",
         "afiliados/**",
         "kit-afiliado/**",
         "sales-public/afiliados.html",

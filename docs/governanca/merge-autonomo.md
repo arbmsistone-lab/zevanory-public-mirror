@@ -104,8 +104,18 @@ páginas e dados também citam preço e condição. Por isso:
   sales-overlay/**) atrás de "R$ N"/"N reais" perto de nome/slug/SKU, campos de preço em objeto com produto e mapas
   SKU→preço; qualquer valor fora da tabela (ou dos derivados documentados: soma/economia do pacote, comissão de 50%)
   reprova. Exceções só em lista fechada dentro do gate, com quantidade exata.
+- **Contra-auditoria do #1008 (NC-1008-01):** HTML lido só por nós de texto (tag no meio do valor não esconde nada) +
+  JSON-LD (offers aninhados e textos do FAQ); página de produto exige que TODO valor da página seja do produto; valores
+  sem R$, por extenso, "BRL N" e produto longe na mesma frase contam; em JS de produção não reservado é proibida
+  aritmética sobre preço (priceBy*, PRICE_BY_SKU, *.price) e literal em campo de preço, mapa/par SKU→número e Map;
+  cupom/desconto/"% off"/"por cento" junto de produto reprova fora de arquivo reservado. Um teste IMPORTA os módulos
+  (e-mails, motor de aquisição, atendimento, Shorts/legendas, criativos, blog) e confere o preço renderizado.
+- **Comissão (NC-1008-03):** taxa só em `data/affiliates.json` (reservado): 50% Hotmart e 30% programa próprio, os valores
+  publicados hoje, marcados "PENDENTE decisão do proprietário (30% recomendado no F0)". `worker/affiliate-program.mjs` lê a
+  taxa e o prazo de atribuição dessa fonte; o gate só aceita a comissão derivada nas páginas de afiliado listadas nela.
 - **Onde roda:** no check obrigatório `product-pages / static-audit` (`product-pages-premerge.yml:audit` e
-  `required-status-compat.yml:product-status`), com contagem exata (`# tests 8`). O guarda trata a ausência desse passo
+  `required-status-compat.yml:product-status`), com contagem exata (`# tests 11`). Pendente fora do PR (NC-1008-02):
+  `required-check-guard / protected-paths` precisa virar check obrigatório na proteção de branch de gh-pages. O guarda trata a ausência desse passo
   num emissor canônico como violação DURA (`GATE_DE_PRECO_AUSENTE`) e exige que a lista reserve a tabela, o módulo de
   derivação e o gate (`RESERVED_SELF`), que `rotina_autonoma` não pode cobrir.
 - Resultado: um PR `autonomo-auditado` que mude só um preço em `worker/lead-magnet.mjs` passa no guarda mas fica com o

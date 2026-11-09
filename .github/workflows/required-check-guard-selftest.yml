@@ -26,6 +26,7 @@ on:
       - "worker/product-prices.mjs"
       - "worker/lead-magnet.mjs"
       - "data/products.json"
+      - "data/affiliates.json"
 
 permissions:
   contents: read

@@ -412,7 +412,7 @@ class Guarda(unittest.TestCase):
         self.assertEqual(G.analisar_workflow('contra-auditoria-reavaliar.yml', t), [])
 
     # --- NC-1006-02 (contra-auditoria GPT-6): preço em fonte única + gate reservado no check obrigatório ---
-    PRECO = ('data/products.json', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',
+    PRECO = ('data/products.json', 'data/affiliates.json', 'worker/affiliate-program.mjs', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',
              'tests/governanca/price-consistency-gate.test.mjs', 'tests/governanca/novo.test.mjs')
 
     def test_T37_gate_de_preco_e_reservado_e_fora_da_rotina(self):
@@ -455,11 +455,12 @@ class Guarda(unittest.TestCase):
         src = (REPO / c).read_text()
         de = 'price: priceBySlug("ia-na-pratica")'
         self.assertIn(de, src)
-        for conteudo, rc in ((src, 0), (src.replace(de, 'price: 99', 1), 1),
+        for conteudo, rc in ((src, 0), (src.replace(de, 'price: 99', 1), 1), (src.replace(de, de + ' - 50', 1), 1),
                              (src.replace('por R$ ${priceBySlug("negocio-completo")}', 'por R$ 199', 1), 1)):
             with tempfile.TemporaryDirectory() as t:
                 t = pathlib.Path(t); (t / 'data').mkdir(); (t / 'worker').mkdir()
-                (t / 'data/products.json').write_text((REPO / 'data/products.json').read_text())
+                for dado in ('data/products.json', 'data/affiliates.json'):
+                    (t / dado).write_text((REPO / dado).read_text())
                 (t / c).write_text(conteudo)
                 p = subprocess.run([node, str(REPO / 'tests/governanca/price-gate.mjs'), '--root', str(t)],
                                    capture_output=True, text=True, timeout=60)

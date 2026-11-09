@@ -98,7 +98,7 @@ MUTANTES = {
                                 {T + 'T35_autonomo_so_libera_protegido_da_allowlist_de_rotina': r'ValueError not raised'}),
     # NC-1006-02: gate de preço em fonte única reservado e obrigatório nos emissores de product-pages / static-audit
     'M32_gate_de_preco_fora_da_autorreserva': ("    'data/products.json', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',\n"
-                                               "    'tests/governanca/price-consistency-gate.test.mjs')", "    )",
+                                               "    'tests/governanca/price-consistency-gate.test.mjs', 'data/affiliates.json')", "    )",
                                                {T + 'T37_gate_de_preco_e_reservado_e_fora_da_rotina': r'ValueError not raised'}),
     'M33_emissor_sem_gate_de_preco': ("if jid in jobs and not any(isinstance(p, dict) and cmd in str(p.get('run', ''))",
                                       "if False and not any(isinstance(p, dict) and cmd in str(p.get('run', ''))",

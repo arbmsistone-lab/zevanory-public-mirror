@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { runGate, loadCanon, scanText, listFiles, BUNDLES, EXCECOES, pageProduct } from "./price-gate.mjs";
+import { runGate, loadCanon, scanText, listFiles, BUNDLES, EXCECOES, pageProduct, moneyIn } from "./price-gate.mjs";
 import * as PP from "../../worker/product-prices.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -21,7 +21,7 @@ const canon = loadCanon(ROOT);
 // Fixture: cópia mínima do repositório (tabela + arquivos dados) com uma troca de texto; roda o gate pela CLI.
 function fixture(files, mutate = {}) {
   const dir = mkdtempSync(join(tmpdir(), "price-gate-"));
-  for (const f of ["data/products.json", ...files]) {
+  for (const f of ["data/products.json", "data/affiliates.json", "ops/owner-reserved-paths.json", ...files]) {
     mkdirSync(dirname(join(dir, f)), { recursive: true });
     copyFileSync(join(ROOT, f), join(dir, f));
   }
@@ -121,11 +121,12 @@ test("G05 NEGATIVO: valor novo em R$ ao lado de nome/slug/SKU que não está na 
   // valores que não são preço de produto: exemplo de calculadora, custo zero, cédula de R$ 100
   assert.equal(t("Se você fatura R$ 40.000 e o CMV é R$ 13.000, a margem bruta é R$ 27.000.", "sales-public/calculadora-cmv.html").length, 0);
   assert.equal(t("// Cost: R$ 0. ZEVANORY").length, 0);
-  // valores derivados documentados: economia/soma do pacote e comissão de 50% do afiliado
+  // valores derivados documentados: economia/soma do pacote; comissão (taxa de data/affiliates.json) SÓ em página de afiliado reservada
   assert.equal(t("Combo IA + Vendas por R$ 157 (economia de R$ 37; separados R$ 194)").length, 0);
   assert.equal(t("Negócio Completo R$ 247 — economia de R$ 94 em relação à compra separada (R$ 341)").length, 0);
-  assert.equal(t("IA na Prática · R$ 97 · comissão de 50% (R$ 48,50)").length, 0);
-  assert.equal(t("IA na Prática · R$ 97 · comissão de 50% (R$ 50,00)").length, 1);
+  assert.equal(t("<p>IA na Prática · R$ 97 · comissão de 50% (R$ 48,50)</p>", "sales-public/kit-afiliado.html").length, 0);
+  assert.equal(t("<p>IA na Prática · R$ 97 · comissão de 50% (R$ 50,00)</p>", "sales-public/kit-afiliado.html").length, 1);
+  assert.ok(t('const s = "IA na Prática · R$ 97 · comissão de 50% (R$ 48,50)";').some((v) => v.regra === "VALOR_EM_REAIS" && v.valor === 48.5), "comissão fora da página de afiliado");
   assert.equal(t("Combo IA + Vendas: economia de R$ 94").length, 1, "economia de outro pacote");
   // HTML: atributo de texto e página do produto contam como contexto
   assert.equal(pageProduct("sales-public/combo-ia-vendas.html", canon), "combo-ia-vendas");
@@ -137,7 +138,7 @@ test("G05 NEGATIVO: valor novo em R$ ao lado de nome/slug/SKU que não está na 
 });
 
 test("G06 exceções documentadas são exatas: ocorrência a mais ou exceção que sumiu reprova", () => {
-  assert.ok(EXCECOES.length >= 1 && EXCECOES.every((e) => e.arquivo && e.regra && e.produto && Number.isFinite(e.valor) && e.quantidade >= 1 && e.motivo.length > 20));
+  assert.ok(EXCECOES.length >= 1 && EXCECOES.every((e) => e.arquivo && e.regra && e.produto && e.valor !== undefined && e.quantidade >= 1 && e.motivo.length > 20));
   const f = "worker/cloudflare-worker.recovered.mjs";
   assert.equal(fixture([f]).rc, 0);
   // mais uma ocorrência legada no mesmo arquivo
@@ -162,7 +163,7 @@ test("G07 o gate roda nos emissores do check obrigatório e os módulos derivam 
     const rest = y.slice(start + 1); const next = rest.slice(1).search(/\n  [a-z][\w-]*:\n/);
     const body = next >= 0 ? rest.slice(0, next + 1) : rest;
     assert.ok(body.includes(cmd), `${wf}:${job} não roda o gate`);
-    assert.match(body, /grep -qx "# tests 8"/, `${wf}:${job} sem contagem exata`);
+    assert.match(body, /grep -qx "# tests 11"/, `${wf}:${job} sem contagem exata`);
     assert.match(body, /grep -qx "# fail 0"/); assert.match(body, /grep -qx "# skipped 0"/);
   }
   for (const f of ["worker/lead-magnet.mjs", "worker/acquisition-engine.mjs", "worker/support-knowledge.mjs", "worker/creative-autonomy.mjs",
@@ -177,10 +178,136 @@ test("G08 o gate, o módulo de derivação e a tabela são reservados ao proprie
   const reservados = Object.values(d.classes).flatMap((c) => c.globs).map(rx);
   const rotina = d.rotina_autonoma.globs.map(rx);
   for (const c of ["tests/governanca/price-gate.mjs", "tests/governanca/price-consistency-gate.test.mjs", "tests/governanca/novo.mjs",
-    "worker/product-prices.mjs", "data/products.json", "worker/sales-public-worker.mjs", "worker/sales-lock-content.mjs"]) {
+    "worker/product-prices.mjs", "data/products.json", "data/affiliates.json", "worker/affiliate-program.mjs", "worker/sales-public-worker.mjs", "worker/sales-lock-content.mjs"]) {
     assert.ok(reservados.some((r) => r.test(c)), "não reservado: " + c);
     assert.ok(!rotina.some((r) => r.test(c)), "coberto por rotina_autonoma: " + c);
   }
   // arquivo comum com preço continua NÃO reservado: quem segura é este gate no check obrigatório
   assert.ok(!reservados.some((r) => r.test("worker/lead-magnet.mjs")));
+});
+
+// NC-1008-01 (contra-auditoria do #1008): cada desvio achado pelo auditor vira fixture que TEM de reprovar.
+const DESVIOS = [
+  ["sales-public/ia-na-pratica.html", '<p class="receipt-total"><span>Total</span><span>R$ <b class="v">47</b></span></p>', "PAGINA_DE_PRODUTO"],
+  ["sales-public/x.html", '<li>IA na Prática por R$ <b class="v">47</b></li>', "VALOR_EM_REAIS"],
+  ["worker/x.mjs", 'const O = { ia: { name: "IA na Prática", price: priceBySlug("ia-na-pratica") - 50 } };', "ARITMETICA_DE_PRECO"],
+  ["sales-public/ia-na-pratica.html", "<p>Preço: 47,00 à vista</p>", "PAGINA_DE_PRODUTO"],
+  ["worker/x.mjs", 'const s = "IA na Prática: 47,00 à vista";', "VALOR_EM_REAIS"],
+  ["worker/x.mjs", 'const s = "IA na Prática por quarenta e sete reais";', "VALOR_EM_REAIS"],
+  ["worker/x.mjs", 'const s = "IA na Prática por BRL 47";', "VALOR_EM_REAIS"],
+  ["worker/x.mjs", 'const s = "Por apenas R$ 47 você leva para casa hoje mesmo, sem demora, o material completo IA na Prática";', "VALOR_EM_REAIS"],
+  ["worker/x.mjs", 'const k = { sku: "ZEV-IA-011", offer: { price: 47 } };', "CAMPO_DE_PRECO"],
+  ["data/x.json", '{"items":[{"sku":"ZEV-IA-011","offer":{"price":"47"}}]}', "CAMPO_DE_PRECO"],
+  ["worker/x.mjs", 'const m = { "ZEV-IA-011": "47" };', "MAPA_DE_PRECO"],
+  ["worker/x.mjs", "const m = new Map([[sku, 47]]);", "LITERAL_DE_PRECO"],
+  ["worker/x.mjs", 'const m = new Map([["ZEV-IA-011", 47]]);', "MAPA_DE_PRECO"],
+  ["worker/x.mjs", "const OFFER = { label: \"oferta\", price: 47 };", "LITERAL_DE_PRECO"],
+  ["sales-public/x.html", '<script type="application/ld+json">{"@type":"ItemList","itemListElement":[{"@type":"Product","name":"IA na Prática","offers":{"@type":"Offer","price":"47.00"}}]}</script>', "JSON_LD"],
+  ["sales-public/ia-na-pratica.html", '<script type="application/ld+json">{"@type":"Product","offers":{"@type":"AggregateOffer","offers":[{"price":"47.00"}]}}</script>', "JSON_LD"],
+  ["worker/x.mjs", "const t = `${o.name} (R$ ${o.price * 0.8})`;", "ARITMETICA_DE_PRECO"],
+  ["worker/x.mjs", 'const p = priceBySku("ZEV-IA-011") * 0.8;', "ARITMETICA_DE_PRECO"],
+  ["worker/x.mjs", "const p = PRICE_BY_SKU[sku] - 50;", "ARITMETICA_DE_PRECO"],
+  ["worker/x.mjs", 'const s = "IA na Prática com 20% de desconto";', "DESCONTO"],
+  ["worker/x.mjs", 'const s = "Use o cupom ZEV10 no Combo IA + Vendas";', "DESCONTO"],
+  ["worker/x.mjs", 'const s = "Negócio Completo por cinquenta por cento a menos";', "DESCONTO"],
+  ["sales-public/combo-ia-vendas.html", "<p>Black Friday: leve agora</p>", "DESCONTO"],
+];
+
+test("G09 NEGATIVO: os desvios da contra-auditoria NC-1008-01 reprovam (HTML com tag no meio, sem R$, por extenso, BRL, longe, aninhado, Map, JSON-LD, aritmética, cupom)", () => {
+  for (const [f, s, regra] of DESVIOS) {
+    const v = scanText(f, s, canon);
+    assert.ok(v.some((x) => x.regra === regra), `${regra} não detectado: ${f} ${s} -> ${JSON.stringify(v.map((x) => x.regra))}`);
+  }
+  assert.deepEqual(moneyIn("cento e quarenta e sete reais").map((m) => m.value), [147]);
+  assert.deepEqual(moneyIn("mil e noventa e sete reais").map((m) => m.value), [1097]);
+  // pela CLI, em cópias reais: página do produto e lead-magnet
+  const pg = "sales-public/ia-na-pratica.html";
+  let r = fixture([pg], { [pg]: ["<span>Total</span><span>R$ 97</span>", '<span>Total</span><span>R$ <b class="v">47</b></span>'] });
+  assert.equal(r.rc, 1, "tag no meio do valor da página (Total)");
+  r = fixture([pg], { [pg]: ['<span class="status-pill">R$ 97 · pagamento único</span>', '<span class="status-pill">R$ <b class="v">47</b> · pagamento único</span>'] });
+  assert.equal(r.rc, 1, "tag no meio do valor da página (selo)");
+  r = fixture(["worker/lead-magnet.mjs"], { "worker/lead-magnet.mjs": ['price: priceBySlug("ia-na-pratica")', 'price: priceBySlug("ia-na-pratica") - 50'] });
+  assert.equal(r.rc, 1, "aritmética sobre o preço importado");
+  assert.ok(r.out.violacoes.some((v) => v.regra === "ARITMETICA_DE_PRECO"));
+  r = fixture(["worker/lead-magnet.mjs"], { "worker/lead-magnet.mjs": ['price: priceBySlug("ia-na-pratica")', "price: 0.8 * priceBySlug(\"ia-na-pratica\")"] });
+  assert.equal(r.rc, 1, "aritmética à esquerda");
+  // fora dos desvios: valores legítimos continuam passando
+  for (const [f, s] of [["worker/x.mjs", 'const s = "R$ " + priceBySlug("ia-na-pratica") + ",00";'], ["worker/x.mjs", "const s = `por R$ ${o.price},00`;"],
+    ["worker/x.mjs", "const s = \"IA na Prática não tem desconto nem cupom.\";"], ["worker/x.mjs", 'const s = "Conteúdo Pronto: campanha mensal de promoção de vendas";'],
+    ["sales-public/calculadora-cmv.html", "<p>A margem é de 32,5% sobre R$ 40.000.</p><p>Próximo passo: Lucro & Caixa</p>"]])
+    assert.deepEqual(scanText(f, s, canon).map((x) => x.regra), [], s);
+});
+
+test("G10 runtime: os módulos de produção IMPORTADOS renderizam só os preços da tabela", async () => {
+  const d = JSON.parse(read("data/products.json"));
+  const price = Object.fromEntries(d.products.map((p) => [p.sku, p.price]));
+  const bySlug = Object.fromEntries([...d.products, d.subscription].map((p) => [p.slug, p]));
+  const prose = (label, text) => {
+    const v = scanText("render/" + label + ".txt", String(text), canon);
+    assert.deepEqual(v.map((x) => `${x.regra} ${x.produto}=${x.valor}`), [], label + ": " + String(text).slice(0, 160));
+  };
+  const { nurtureEmail } = await import("../../worker/lead-magnet.mjs");
+  for (const [interest, slug] of [["ia", "ia-na-pratica"], ["vendas", "vendas-na-pratica"], ["caixa", "lucro-e-caixa"]]) {
+    for (let step = 0; step < 5; step++) { const m = nurtureEmail(step, { interest, salesOpen: true, optOutUrl: "x" }); prose(`lead-${interest}-${step}`, m.subject + "\n" + m.text); }
+    assert.ok(nurtureEmail(2, { interest, salesOpen: true, optOutUrl: "x" }).text.includes(`(R$ ${bySlug[slug].price},`), "oferta " + slug);
+  }
+  const { calendarEntry, generateNative } = await import("../../worker/acquisition-engine.mjs");
+  const seen = new Set();
+  for (let i = 0; i < 25; i++) {
+    const e = calendarEntry(new Date(Date.UTC(2026, 10, 1 + i)).toISOString().slice(0, 10)); seen.add(e.product.sku);
+    assert.equal(e.product.price, price[e.product.sku], "motor " + e.product.sku);
+    for (const ch of ["blog", "telegram", "bluesky"]) {
+      const g = generateNative(e, ch, { hotmartOpen: true }); const txt = JSON.stringify(g);
+      prose(`acq-${ch}-${i}`, txt.replace(/\\n/g, "\n"));
+      assert.ok(txt.includes("R$ " + price[e.product.sku]), `rascunho Hotmart sem o preço da tabela: ${e.product.sku}`);
+    }
+  }
+  assert.equal(seen.size, 5);
+  const { answerSupportQuestion, SUPPORT_PRODUCTS } = await import("../../worker/support-knowledge.mjs");
+  for (const slug of Object.keys(SUPPORT_PRODUCTS)) {
+    const a = answerSupportQuestion({ product: slug, question: "Quanto custa?", salesOpen: true }).answer;
+    const brl = "R$ " + bySlug[slug].price + ",00";
+    assert.ok(a.includes(brl), `atendimento ${slug}: ${a}`); prose("support-" + slug, a);
+  }
+  const yt = await import("../../scripts/channels/youtube-daily-short.mjs");
+  const { captionFor } = await import("../../scripts/channels/short-crosspost.mjs");
+  for (let i = 0; i < 15; i++) {
+    const day = new Date(Date.UTC(2026, 10, 1 + i)).toISOString().slice(0, 10);
+    for (const opt of [{ salesOpen: true }, { hotmartOpen: true }]) {
+      const plan = yt.planShort(day, opt);
+      if (!plan.entry?.product?.sku || plan.price == null) continue;
+      assert.equal(plan.price, price[plan.entry.product.sku], `Short ${day} ${JSON.stringify(opt)}`);
+      prose(`short-${day}`, [plan.title, plan.description, ...(plan.lines || []), plan.speech, JSON.stringify(plan.screen || ""), plan.spec?.body].join("\n"));
+      for (const ch of ["tiktok", "instagram", "facebook", "telegram"]) { try { prose(`cap-${ch}-${day}`, captionFor(plan, ch, opt)); } catch { /* canal sem legenda */ } }
+    }
+  }
+  const { ZEV_CREATIVE_CATALOG } = await import("../../worker/creative-autonomy.mjs");
+  for (const [sku, c] of Object.entries(ZEV_CREATIVE_CATALOG)) assert.equal(c.price_brl, price[sku], "criativo " + sku);
+  const { BLOG_TABLE_C_PRICES } = await import("../../worker/multichannel-autonomy.mjs");
+  assert.deepEqual({ ...BLOG_TABLE_C_PRICES }, price);
+});
+
+test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo programa e pelo gate; valor derivado só nas páginas de afiliado", async () => {
+  const af = JSON.parse(read("data/affiliates.json"));
+  assert.equal(af.schema, "zevanory-affiliates/v1");
+  assert.match(af.nota, /PENDENTE decisão do proprietário \(30% recomendado no F0\)/);
+  assert.deepEqual([af.hotmart_commission_pct, af.own_program_commission_pct], [50, 30], "valores publicados hoje (nenhuma taxa decidida aqui)");
+  const { AFFILIATE_COMMISSION_RATE } = await import("../../worker/affiliate-program.mjs");
+  assert.equal(AFFILIATE_COMMISSION_RATE, af.own_program_commission_pct / 100);
+  const src = read("worker/affiliate-program.mjs");
+  assert.match(src, /from "\.\.\/data\/affiliates\.json" with \{ type: "json" \}/);
+  assert.doesNotMatch(src, /0\.3000|amount\*0\.30|commission_rate:0\.30|comissão: 30%/, "taxa literal no programa");
+  assert.doesNotMatch(read("tests/governanca/price-gate.mjs"), /AFFILIATE_RATE\s*=|\*\s*0\.5\b/, "taxa literal no gate");
+  for (const p of af.pages) assert.ok(existsSync(join(ROOT, p)), "página de afiliado inexistente: " + p);
+  // página de afiliado: comissão derivada da taxa da fonte; outra taxa reprova
+  const f = "sales-public/kit-afiliado.html";
+  assert.equal(fixture([f]).rc, 0);
+  assert.equal(fixture([f], { [f]: ["R$ 48,50", "R$ 38,80"] }).rc, 1, "comissão de 40% inventada");
+  // trocar a taxa NA FONTE muda o que o gate aceita (prova de que ele lê a fonte)
+  const dir = mkdtempSync(join(tmpdir(), "price-gate-"));
+  for (const x of ["data/products.json", "ops/owner-reserved-paths.json", f]) { mkdirSync(dirname(join(dir, x)), { recursive: true }); copyFileSync(join(ROOT, x), join(dir, x)); }
+  writeFileSync(join(dir, "data/affiliates.json"), JSON.stringify({ ...af, hotmart_commission_pct: 40 }));
+  const x = spawnSync(process.execPath, [GATE, "--root", dir], { encoding: "utf8" });
+  rmSync(dir, { recursive: true, force: true });
+  assert.equal(x.status, 1, "com 40% na fonte, a página que diz 50% reprova");
 });

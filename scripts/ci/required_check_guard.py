@@ -47,7 +47,7 @@ RESERVED_SELF = ('ops/owner-reserved-paths.json', 'scripts/ci/required_check_gua
                  '.github/workflows/required-check-guard.yml') + (
     # NC-1006-02: tabela canônica de preços, módulo que deriva dela e o gate de consistência (fora de rotina_autonoma)
     'data/products.json', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',
-    'tests/governanca/price-consistency-gate.test.mjs')
+    'tests/governanca/price-consistency-gate.test.mjs', 'data/affiliates.json')
 AUDIT_LINE = re.compile(r'^[ \t]*CONTRA-AUDITORIA:[ \t]*(PASS|FAIL)[ \t]+([0-9a-f]{40})[ \t]*$', re.M)
 
 # check obrigatório -> {arquivo canônico: job_id}. Qualquer outro emissor do mesmo nome é colisão.
