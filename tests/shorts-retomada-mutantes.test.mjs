@@ -4,10 +4,11 @@
 // youtube-daily-short.mjs mutado roda numa árvore espelho (scripts/channels copiado; worker/ e data/ por link).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdtempSync, rmSync, copyFileSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
+import { writeFileSync, mkdtempSync, rmSync, copyFileSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { readTextNormalized } from "./helpers/text.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SRC = {
@@ -15,7 +16,7 @@ const SRC = {
   dispatcher: join(ROOT, "scripts/ops/engine-dispatcher.mjs"),
   short: join(ROOT, "scripts/channels/youtube-daily-short.mjs"),
 };
-const CFG = JSON.parse(readFileSync(join(ROOT, "data/shorts-rampa.json"), "utf8"));
+const CFG = JSON.parse(readTextNormalized(join(ROOT, "data/shorts-rampa.json")));
 const TMP = mkdtempSync(join(tmpdir(), "zevanory-shorts-mut-"));
 test.after(() => rmSync(TMP, { recursive: true, force: true }));
 // Árvore espelho para os imports relativos do Short: ../../worker, ../../data e ../../assets apontam para o repositório.
@@ -26,7 +27,7 @@ for (const f of readdirSync(join(ROOT, "scripts/channels"))) if (f.endsWith(".mj
 
 let seq = 0;
 async function load(kind, find, replace) {
-  const src = readFileSync(SRC[kind], "utf8");
+  const src = readTextNormalized(SRC[kind]);
   let out = src;
   if (find != null) {
     assert.equal(src.split(find).length - 1, 1, `trecho do mutante deve existir uma única vez em ${kind}: ${find.slice(0, 80)}`);

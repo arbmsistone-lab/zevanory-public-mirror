@@ -3,7 +3,7 @@
 // martelar 422 com o workflow desativado. Os mutantes destas regras estão em tests/shorts-retomada-mutantes.test.mjs.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import {
   textoProibido, violacoesShort, ctaPermitido, nivelRampa, decisaoSlot, avaliarPreflight, avaliarPosUpload,
   congelamentoAtivo, gravarUmaVez, diasDaJanela, somarDias, eQcFalha, CANAL_ESPERADO, CHAVE_CONGELADO
@@ -12,7 +12,7 @@ import { planSlot, SLOTS, RAMPA_CONFIG, historicoRampa, preflightCanal, congelar
 import { captionFor } from "../scripts/channels/short-crosspost.mjs";
 import { decide, workflowGate, shortSlotsAllowed } from "../scripts/ops/engine-dispatcher.mjs";
 
-const CFG = JSON.parse(readFileSync(new URL("../data/shorts-rampa.json", import.meta.url), "utf8"));
+const CFG = JSON.parse(readTextNormalized(new URL("../data/shorts-rampa.json", import.meta.url)));
 const memKv = () => { const m = new Map(); let puts = 0; return { m, get puts() { return puts; }, get: async (k) => m.get(k) ?? null, put: async (k, v) => { puts++; m.set(k, v); } }; };
 const PROIBIDO = /whats\s*-?\s*app|uótsap|\bzap\b|wa\.me|lista\s+de\s+espera/i;
 const MODES = [{ salesOpen: false, hotmartOpen: false }, { salesOpen: false, hotmartOpen: true }];
@@ -208,8 +208,8 @@ test("dispatcher: só dispara os slots da rampa; canal congelado = nenhum Short"
 });
 
 test("o workflow do Short e o short-pack não são reativados nem alterados por este PR (estado do proprietário)", () => {
-  const wf = readFileSync(new URL("../.github/workflows/youtube-autonomous-short.yml", import.meta.url), "utf8");
+  const wf = readTextNormalized(new URL("../.github/workflows/youtube-autonomous-short.yml", import.meta.url));
   assert.match(wf, /node scripts\/channels\/youtube-daily-short\.mjs/);
-  const disp = readFileSync(new URL("../scripts/ops/engine-dispatcher.mjs", import.meta.url), "utf8");
+  const disp = readTextNormalized(new URL("../scripts/ops/engine-dispatcher.mjs", import.meta.url));
   assert.doesNotMatch(disp, /\/enable["`]/, "o dispatcher nunca chama a API de reativação");
 });
