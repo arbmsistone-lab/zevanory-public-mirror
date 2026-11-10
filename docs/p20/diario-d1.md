@@ -5,6 +5,10 @@ contestação 0-D, item 1. **Estado: módulo, migração e testes prontos (PR 1)
 Worker central ao banco de produção e aplica a migração no deploy (seção "Binding e migração").** A gravação em modo
 sombra é o PR seguinte; até lá nenhum código lê `env.DIARIO`.
 
+**Desde o NO-GO do GPT-6 sobre o primeiro deploy (NC-P2b-DEP-01/02/03), o binding só entra num deploy disparado com
+`diario_d1=certificar` e `motivo=d1-config`, que é fail-closed; todo o resto sai sem `DIARIO` (seção "Primeiro deploy
+com D1: modos off, certificar e rollback").**
+
 ## Para que serve
 
 Todo pedido, consentimento (opt-in, confirmação e revogação), entrega, pagamento ou estorno e referência fiscal é
@@ -94,34 +98,123 @@ de CPF ou telefone é recusado, então use prefixo com letras (`ord_...`).
 | Proibido | `zevanory-certification-only` (`7ff006f3-...`): o gerador recusa com `DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN` |
 
 - **Gerador** (`scripts/deploy/prepare-central-candidate.py`, constante `DIARIO_D1_BINDING`): injeta o binding em
-  `wrangler.central-fix.jsonc`. Recusa o banco de certificação em qualquer posição e um `DIARIO` já presente com outro
-  banco (`DIARIO_D1_BINDING_CONFLICT`). É idempotente.
+  `wrangler.central-fix.jsonc` **só quando `DIARIO_D1_MODO=certificar`**. Em `off`, `rollback` ou sem modo (push,
+  dry-runs e os outros workflows que chamam o gerador), o candidato sai **sem** `DIARIO`, e um `DIARIO` que viesse da
+  base é tirado. Modo desconhecido é recusado (`DIARIO_D1_MODO_INVALIDO`). Recusa o banco de certificação em qualquer
+  posição e em qualquer modo, e um `DIARIO` já presente com outro banco (`DIARIO_D1_BINDING_CONFLICT`). É idempotente.
 - **Orçamento de bindings:** `check-binding-budget.py` conta só secrets e vars. O binding D1 não conta, então o
   planejado continua **59/60**. O UUID vai no binding `d1_databases`, nunca em var.
-- **Deploy** (`.github/workflows/central-production-deploy.yml`), antes do `wrangler deploy`, sempre com a credencial
-  D1 **dedicada** de cada passo (seção "Credenciais dedicadas (DEC-P20-D1-01)"), sem nunca reprovar o deploy central
-  por causa do diário:
-  1. sem o segredo `CF_TOKEN_D1_DIARIO_MIGRATE`, emite `::warning title=DIARIO_D1_TOKEN_DEDICADO_AUSENTE` e **tira o
-     binding só deste deploy** (diário desligado, no-op). Nenhuma chamada D1 sai, e não há queda para outro token;
-  2. lê o banco pela API (`GET /accounts/.../d1/database/<UUID>`) com o token de migração. Se ele não lê o banco, ou
-     se o nome não for `zevanory-diario-p20`, emite `::warning title=DIARIO_D1_MIGRACAO_PENDENTE` (ou
-     `DIARIO_D1_BANCO_DIVERGENTE`) e tira o binding só deste deploy;
-  3. roda `wrangler d1 migrations apply zevanory-diario-p20 --remote` com o token de migração. Erro de autorização
-     vira `::warning title=DIARIO_D1_MIGRACAO_PENDENTE`, e o binding fica, porque a gravação em sombra tolera a
-     tabela ausente. Outra falha vira a anotação `::error title=DIARIO_D1_MIGRACAO_FALHOU`, e o deploy também segue;
-  4. depois do deploy, um readback somente leitura (`select count(*) as n from diario_head`) roda com o token de
-     leitura `CF_TOKEN_D1_DIARIO_READ` e registra `::notice`/`::warning title=DIARIO_D1_READBACK`, com
-     `continue-on-error`. Sem esse segredo, o readback não roda (aviso). Ele nunca dispara o rollback.
-- Um binding no candidato com banco diferente do UUID acima reprova o passo (`DIARIO_D1_BINDING`), antes do deploy.
-  Isso só acontece se o gerador estiver quebrado.
-- Testes: `tests/test_binding_budget_compaction.py` (classes `DiarioD1*`). Elas rodam o gerador real sobre a base
-  fixada e o texto real dos dois passos do workflow, com `curl` e `npx` falsos. O isolamento das credenciais está em
-  `tests/test_diario_d1_credentials.py`.
+- **Deploy** (`.github/workflows/central-production-deploy.yml`): o comportamento depende do input `diario_d1`
+  (seção "Primeiro deploy com D1: modos off, certificar e rollback"). Até o #1015 a migração e o readback eram
+  best-effort; o GPT-6 deu NO-GO (NC-P2b-DEP-01/02/03) e agora `certificar` é fail-closed e `off` é o padrão.
+- Testes: `tests/test_binding_budget_compaction.py` (classes `DiarioD1*`) e `tests/test_diario_d1_credentials.py`.
+  Elas rodam o gerador real sobre a base fixada, o texto real dos passos do workflow, o `promotion_guard.py` real e o
+  `scripts/deploy/diario_d1_certify.py` real, com `curl` e `npx` falsos. Os mutantes estão nos dois arquivos.
 
-**O que o proprietário precisa fazer se aparecer `DIARIO_D1_TOKEN_DEDICADO_AUSENTE` ou `DIARIO_D1_MIGRACAO_PENDENTE`:**
-criar e cadastrar os tokens dedicados (roteiro na seção "Credenciais dedicadas (DEC-P20-D1-01)"). **Não** dê permissão
-D1 ao token do deploy central: o contra-auditor recusou isso (DEC-P20-D1-01), e o deploy não precisa dela. O próximo
-deploy aplica a migração sozinho. Até lá, o diário fica sem binding (ou sem tabela), e nada mais muda.
+## Primeiro deploy com D1: modos off, certificar e rollback
+
+**Por quê.** O GPT-6 deu NO-GO para o primeiro deploy central com o D1. Os segredos `CF_TOKEN_D1_DIARIO_MIGRATE` e
+`CF_TOKEN_D1_DIARIO_READ` já estavam cadastrados no environment `producao-critica`. Com o workflow anterior, qualquer
+deploy central (inclusive um push rotineiro) teria migrado e ligado o binding em modo best-effort: uma migração que
+falhasse só gerava aviso, o binding podia ficar, e um readback que falhasse não reprovava o job. Os três pontos:
+
+| NC | O que pedia | Como ficou |
+|---|---|---|
+| NC-P2b-DEP-01 | Rollback real: redeploy controlado sem `DIARIO`, com conferência na Cloudflare, sem apagar tabelas | `diario_d1=rollback` (e o rollback automático de uma certificação que falha) |
+| NC-P2b-DEP-02 | Migração e readback fail-closed; aviso nunca vira PASS | `diario_d1=certificar` |
+| NC-P2b-DEP-03 | Promover o MESMO SHA quando a mudança é só de configuração, sem afrouxar a proteção contra regressão | `motivo=d1-config` no `promotion_guard.py` |
+
+**Os modos (input `diario_d1` do `workflow_dispatch`).** O job `guard` valida o modo e o motivo antes de tudo
+(passo `P20 diário D1 - modo e motivo do dispatch`). Push e dispatch sem input valem `off`/`rotina`.
+
+| Modo | Binding `DIARIO` | Chamadas D1 | Segredos D1 no passo | Falha |
+|---|---|---|---|---|
+| `off` (padrão) | nunca, mesmo com os segredos cadastrados | nenhuma | valor vazio (a expressão só entrega em `certificar`) | binding presente depois do deploy reprova (e dispara o rollback automático); API da Cloudflare inalcançável vira aviso **"NAO_COMPROVADO (não é PASS)"** |
+| `certificar` | só se toda a pré-promoção passar | migração + SELECT de certificação (token de migração) antes; SELECT de certificação (token de leitura) depois | só aqui | qualquer falha antes da promoção tira o binding **e reprova o job antes do deploy** (produção fica como estava); qualquer falha depois reprova o job e o rollback automático volta à versão anterior (sem `DIARIO`) |
+| `rollback` | nunca | nenhuma | valor vazio | binding ainda presente **ou** configuração efetiva não comprovada reprova |
+
+`certificar` e `rollback` exigem `motivo=d1-config`, e `d1-config` só vale com eles. Push com qualquer modo D1 é
+recusado. Nenhum caminho do workflow apaga tabela, índice, gatilho ou banco D1 (há teste disso): o rollback só tira o
+binding, e as tabelas e as migrações ficam no banco para a próxima certificação.
+
+**`certificar`, passo a passo** (`scripts/deploy/diario_d1_certify.py` faz as conferências; ele não grava nada):
+
+1. o gerador injeta `DIARIO` (UUID `1b1bfa19-...`); o passo `P20 diário D1 - migrações` confere o UUID no candidato;
+2. segredo de migração ausente, `GET /d1/database/<UUID>` sem 200 ou com outro nome: `::error` e reprova;
+3. `wrangler d1 migrations apply zevanory-diario-p20 --remote` (aplica 0001, 0002 e 0003 que faltarem): falha reprova;
+4. um único SELECT só de leitura (`diario_d1_certify.py sql`) devolve `diario_head`, `d1_migrations`, os objetos de
+   `sqlite_master` e as contagens `abandono_*`. `check --fase antes` exige: `diario_head` = 1 linha; `d1_migrations` =
+   exatamente `0001_diario_v1.sql`, `0002_diario_v1_ts.sql`, `0003_abandono_v1.sql`, nessa ordem; os objetos iguais aos
+   `CREATE ... IF NOT EXISTS` das três migrações mais `d1_migrations` (6 tabelas, 4 índices, 6 gatilhos; sem faltar e
+   sem sobrar); `abandono_envio_v1`, `abandono_compra_v1` e `abandono_supressao_v1` com 0 linhas (o abandono está no
+   estágio desligado). Uma migração nova em `migrations/d1` recusa a certificação até ser revisada
+   (`DIARIO_D1_MIGRACOES_NAO_REVISADAS`);
+5. só então o `wrangler deploy` sobe o Worker com o binding;
+6. `P20 diário D1 - binding efetivo no Worker publicado`: lê na Cloudflare o deployment ativo (uma versão a 100%), a
+   tag dessa versão (= este SHA) e os bindings da versão e de `/settings`; exige `DIARIO` do tipo `d1` com o UUID certo
+   nas fontes que trazem a lista, concordando entre si;
+7. `P20 diário D1 - readback obrigatório da certificação`: com o token de leitura, o mesmo SELECT; `check --fase
+   depois` exige tudo do item 4 **e** igualdade com o resumo de antes (migrações, objetos, `diario_head`, contagens
+   `abandono_*`). Exige também o PASS do item 6. Sem `continue-on-error`. Só aqui sai
+   `::notice title=DIARIO_D1_CERTIFICACAO::PASS`.
+
+**Qual token lê a configuração efetiva.** O token do **deploy** deste job (`CF_TOKEN_ZEVANORY` com cutover P21, ou o
+legado). Ele já lê `/workers/scripts/zevanory/settings` no passo `Inspect current zevanory bindings` e
+`/deployments` + `/versions/<id>` no `promotion_guard.py`, ou seja, já tem a leitura de scripts do Worker `zevanory`
+que essas rotas exigem. O `CF_TOKEN_D1_DIARIO_READ` é só D1 Read e **não** lê Worker; dar Workers a ele quebraria a
+separação do DEC-P20-D1-01. Se um dia o token do deploy perder essa leitura, a conferência sai `NAO_COMPROVADO`:
+reprova em `certificar` e `rollback`. A alternativa, nesse caso, é um token próprio só com **Workers Scripts Read** na
+conta, entregue só ao passo de conferência (decisão do GPT-6), e nunca ampliar o token D1.
+
+**NC-P2b-DEP-03: o guard e o mesmo SHA.** Lido no código (`scripts/deploy/promotion_guard.py`, `decide`), o guard de
+rotina **já** promove o mesmo SHA (`promote`, `same_as_live_redeploy`) quando as fontes concordam ou só uma é
+legível; `skip-superseded` só acontece com candidato mais antigo que o vivo. O que impede um dispatch do mesmo SHA é
+`refuse` (fontes divergentes ou produção ilegível). O risco real era outro: o dispatch roda na **ponta** de
+`gh-pages`, e se a ponta tiver commits que não dispararam deploy (como o #1015), um dispatch "só de configuração"
+promoveria código junto (`forward_of_live`). Por isso `--motivo d1-config` é estreito: promove só se o candidato for
+**exatamente** o SHA vivo e as **duas** fontes (tag da Cloudflare e `/api/release`) estiverem legíveis e iguais
+(`same_sha_config_only_d1`). Candidato à frente (`config_only_candidate_not_live`), mais antigo
+(`config_only_candidate_older_than_live`, que na rotina seria `skip-superseded`), divergente, com uma fonte só ou
+motivo desconhecido: `refuse`. A rotina não mudou. Teste: `DiarioD1PromotionGuardTest`.
+
+**Quando `off` deixa de ser o padrão.** Não é decisão deste PR. Depois de uma certificação PASS (e dos 7 dias em
+sombra), o proprietário e o GPT-6 decidem se e quando o padrão passa a manter o binding em todo deploy, e com qual
+modo (um `manter` que confere sem migrar, por exemplo). Até essa decisão, **todo deploy rotineiro sai sem `DIARIO`**:
+um push depois da certificação tira o binding de novo. Para manter o diário ligado nesse intervalo, cada deploy que
+precise dele é seguido de um dispatch `certificar` + `d1-config` do mesmo SHA.
+
+### Roteiro do primeiro deploy com D1
+
+Pré-condições: este PR mergeado; o push do merge dispara um deploy `off` (sem `DIARIO`) que precisa terminar verde;
+os dois segredos D1 no environment `producao-critica`.
+
+1. **Confirmar o SHA vivo.** Em Actions > ZEVANORY central production deploy, o run do push do merge: no job
+   `guard`, `PROMOTION_GUARD_zevanory: promote` e, no job `deploy`, `DIARIO_D1_MODO::diario_d1=off`,
+   `DIARIO_D1_BINDING_EFETIVO::PASS: binding DIARIO ausente` e `POST_PROMOTION_zevanory: PASS`. Anote o SHA. A ponta de
+   `gh-pages` precisa ser esse SHA (sem merge depois dele); se não for, primeiro deixe o deploy rotineiro da ponta
+   terminar.
+2. **Disparar a certificação.** Run workflow em `gh-pages` com `diario_d1 = certificar` e `motivo = d1-config`.
+3. **No log, em ordem:**
+   - job `guard`: `DIARIO_D1_MODO::diario_d1=certificar motivo=d1-config`, depois
+     `PROMOTION_GUARD_zevanory::promote (same_sha_config_only_d1) cloudflare=<SHA> readback=<SHA>`;
+   - `Reconstruct exact production candidate`: `DIARIO_D1_CANDIDATO=com_binding modo=certificar`;
+   - `P20 diário D1 - migrações`: `DIARIO_D1_MIGRACAO::...`, `DIARIO_D1_CHECK_ANTES=PASS head=1 migracoes=3 objetos=16
+     abandono=0` e `DIARIO_D1_PRE_PROMOCAO::PASS`;
+   - `Deploy repaired production worker`: a tabela de bindings do wrangler lista `env.DIARIO (zevanory-diario-p20)`;
+   - `P20 diário D1 - binding efetivo`: `DIARIO_D1_BINDING_EFETIVO={... "estado": "PASS" ...}` e o notice PASS;
+   - `P20 diário D1 - readback obrigatório`: `DIARIO_D1_CHECK_DEPOIS=PASS ...` e
+     `DIARIO_D1_CERTIFICACAO::PASS`;
+   - `Post-promotion effective version (T1)`: `POST_PROMOTION_zevanory: PASS`.
+4. **O que reprova** (o run fica vermelho e nada disso é "aviso"): qualquer `::error` com título `DIARIO_D1_*`,
+   `DIARIO_D1_MODO_INVALIDO`, `MOTIVO_INVALIDO` ou `PROMOTION_GUARD_zevanory::refuse (config_only_...)`. Antes do deploy
+   (migrações e conferência), a produção fica como estava, sem `DIARIO`. Depois do deploy, o rollback automático roda
+   e confere `DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa sem o binding DIARIO`; se essa conferência falhar, rode o
+   item 5.
+5. **Rollback manual (se precisar desligar o D1 depois de uma certificação PASS):** Run workflow com
+   `diario_d1 = rollback` e `motivo = d1-config` no mesmo SHA vivo. Verde só com `DIARIO_D1_MODO::diario_d1=rollback`,
+   `DIARIO_D1_CANDIDATO=sem_binding modo=rollback` e `DIARIO_D1_BINDING_EFETIVO::PASS: binding DIARIO ausente`. As
+   tabelas e as migrações ficam no banco. Um deploy `off` (push) também tira o binding, mas sem o rigor do rollback
+   (em `off`, API inalcançável é só "não comprovado").
 
 ## Credenciais dedicadas (DEC-P20-D1-01)
 
@@ -131,8 +224,8 @@ credencial, e a CI entrega cada uma **só** ao passo autorizado, no `env` do pas
 | Papel | Segredo (environment `producao-critica`) | Permissão mínima | Único passo que recebe |
 |---|---|---|---|
 | Deploy do Worker | `CLOUDFLARE_PUBLIC_OWNER_API_TOKEN` (ou o legado `CLOUDFLARE_API_TOKEN`), sem mudança | **nenhuma permissão D1** | todos os passos do deploy, exceto os dois passos D1 |
-| Migração D1 | `CF_TOKEN_D1_DIARIO_MIGRATE` | Conta > **D1 > Editar**, só a conta `1b26415802588185a86c1d4d3ebf5bdb` | `P20 diário D1 - migrações` |
-| Leitura D1 (readback) | `CF_TOKEN_D1_DIARIO_READ` | Conta > **D1 > Ler**, só a mesma conta | `P20 diário D1 - readback` |
+| Migração D1 | `CF_TOKEN_D1_DIARIO_MIGRATE` | Conta > **D1 > Editar**, só a conta `1b26415802588185a86c1d4d3ebf5bdb` | `P20 diário D1 - migrações`, e só com `diario_d1=certificar` |
+| Leitura D1 (readback) | `CF_TOKEN_D1_DIARIO_READ` | Conta > **D1 > Ler**, só a mesma conta | `P20 diário D1 - readback`, e só com `diario_d1=certificar` |
 
 Nos dois passos D1, `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_PUBLIC_OWNER_API_TOKEN` ficam **vazios**. O token
 compartilhado não chega ao processo, e cada chamada D1 passa o token dedicado de forma explícita. O registro está em
@@ -195,8 +288,8 @@ Repita os passos 1 a 7, com duas diferenças: o nome é `zevanory-d1-diario-read
 
 **Depois de cadastrar**
 
-- O próximo deploy central deve mostrar `::notice title=DIARIO_D1_MIGRACAO` e, após o deploy,
-  `::notice title=DIARIO_D1_READBACK::diario_head presente (linhas=1)`.
+- Nenhum deploy rotineiro usa os tokens (`diario_d1=off` é o padrão). Eles só entram na certificação disparada pelo
+  proprietário (seção "Primeiro deploy com D1: modos off, certificar e rollback", roteiro).
 - **Token do deploy sem D1:** se em algum momento você adicionou uma permissão D1 ao token do deploy central, remova-a
   (Perfil > Tokens de API > editar o token). O deploy não precisa dela.
 - **P21 (token por Worker):** o token por Worker do `zevanory` também **não** precisa de D1. A documentação garante
@@ -375,16 +468,22 @@ cópia KV -> Neon, #999).
 - `scripts/ci/mutants_p20_diario_sombra.py` com `mutants_p20_diario_sombra_allow.json`: 13 mutantes, todos precisam
   morrer. Cobrem: bloquear a resposta, lançar, vazar PII no log, tentar gravar o comprador, gancho ausente de cada
   tipo, compat sem contexto, sem `waitUntil` e sem fila.
-- `tests/test_diario_d1_credentials.py` (C1 a C13, DEC-P20-D1-01). Lê o workflow real e simula o `env` que o GitHub
-  monta em cada passo de cada job, com segredos falsos de valores distintos. Depois executa os passos reais com `curl`
-  e `npx` falsos, que registram o token de cada chamada. Prova que cada token D1 aparece só no seu passo. Prova também
-  que, sem o segredo dedicado, há aviso e o deploy sai sem binding, sem nenhuma chamada D1. A migração usa o token
-  dedicado, o readback usa o token de leitura (sem queda para outro), o deploy segue com o token atual e o token
-  compartilhado nunca recebe chamada D1. Confere ainda o registro em `ops/publishers.json` e o detector T1
-  (`scripts/deploy/t1-write-scan.mjs`, PR #990: classe `d1` vista na migração, `TOKEN_OWNER` com os dois tokens
-  dedicados do serviço `zevanory`, entrada `write_paths` com a credencial dedicada). Se o detector sair da árvore, o
-  teste usa o mesmo critério da classe `d1`. São 12 mutantes, e todos precisam
-  morrer.
+- `tests/test_diario_d1_credentials.py` (C1 a C16, DEC-P20-D1-01 e NO-GO do primeiro deploy). Lê o workflow real e
+  simula o `env` que o GitHub monta em cada passo de cada job, em cada modo, com segredos falsos de valores distintos.
+  Depois executa os passos reais com `curl` e `npx` falsos, que registram o token de cada chamada. Prova que cada token
+  D1 aparece só no seu passo e só em `certificar`; que `off` e `rollback` não fazem nenhuma chamada D1 e saem sem
+  binding mesmo com os segredos; que em `certificar` segredo ausente, banco inacessível ou divergente, migração que
+  falha e esquema que não confere (head, migrações, gatilho ausente, objeto a mais, abandono com linha, SELECT que
+  falha) tiram o binding e reprovam; que o readback certifica com o token de leitura e que toda falha dele reprova o job
+  (sem `continue-on-error`); que o deploy segue com o token atual, que o compartilhado nunca recebe chamada D1 e que
+  nenhum caminho apaga tabela. Confere ainda o registro em `ops/publishers.json` e o detector T1
+  (`scripts/deploy/t1-write-scan.mjs`). São 22 mutantes, e todos precisam morrer.
+- `tests/test_binding_budget_compaction.py`, classes `DiarioD1*`: gerador real nos modos (sem modo, `off`,
+  `rollback`, `certificar`, inválido), validação do modo e do motivo no job `guard`, ordem dos passos, conferência do
+  binding efetivo com a API falsa (presente, ausente, UUID errado, tag errada, rollout parcial, API inalcançável),
+  `promotion_guard.py` com `motivo=d1-config` (mesmo SHA promove; à frente, mais antigo, divergente e uma fonte só
+  recusam) e o script de certificação rodando a SQL real num SQLite com as migrações reais. 36 mutantes (guard, script,
+  gerador e workflow), todos precisam morrer.
 - `tests/p20-diario-reconcilia.test.mjs` (RC1 a RC10): D1 falso com as migrações reais e Neon falso. Cobre sem
   binding, tudo casa, falta, sobra, normalização diferente, cadeia e âncora adulteradas, bordas da janela, paginação e
   índice, fontes ausentes ou com erro, sombra contra ativo no relatório e os ganchos reais de consentimento e de

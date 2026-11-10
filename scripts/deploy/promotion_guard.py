@@ -23,7 +23,11 @@ procedure documented in ops/publishers.json (owner-dispatched, audited).
 Usage:
   promotion_guard.py --service zevanory --candidate <sha>
                      [--readback-url URL --readback-path deployment.commit_sha]
-                     [--cloudflare-script zevanory]
+                     [--cloudflare-script zevanory] [--motivo rotina|d1-config]
+
+--motivo d1-config (NC-P2b-DEP-03, docs/p20/diario-d1.md): a mudança é SÓ de configuração (binding D1) e o candidato
+precisa ser exatamente o SHA vivo, confirmado pelas duas fontes; qualquer outro caso é refuse (inclusive o SHA mais
+antigo, que na rotina é skip-superseded). O padrão "rotina" mantém a decisão de sempre.
 Writes `decision`, `live_sha` and `reason` to $GITHUB_OUTPUT when present.
 """
 from __future__ import annotations
@@ -125,7 +129,28 @@ def is_ancestor(older: str, newer: str, repo: str) -> bool:
                           capture_output=True).returncode == 0
 
 
-def decide(candidate: str, live_http: str | None, live_cf: str | None, ancestor) -> tuple[str, str | None, str]:
+MOTIVOS = ("rotina", "d1-config")
+
+
+def decide(candidate: str, live_http: str | None, live_cf: str | None, ancestor, motivo: str = "rotina") -> tuple[str, str | None, str]:
+    """motivo="rotina": regra de sempre. motivo="d1-config" (NC-P2b-DEP-03): promoção EXPLÍCITA e ESTREITA do MESMO SHA
+    para uma mudança só de configuração (binding D1): exige as duas fontes legíveis, iguais entre si e iguais ao candidato.
+    Candidato à frente (traria código novo), mais antigo (regressão) ou divergente: refuse. Nunca afrouxa a regra de rotina."""
+    if motivo not in MOTIVOS:
+        return "refuse", None, "motivo_invalido"
+    decision, live, reason = _decide_rotina(candidate, live_http, live_cf, ancestor)
+    if motivo == "rotina":
+        return decision, live, reason
+    if decision != "promote":
+        return "refuse", live, "config_only_" + reason
+    if not (live_http and live_cf):
+        return "refuse", live, "config_only_requires_both_sources"
+    if reason != "same_as_live_redeploy":
+        return "refuse", live, "config_only_candidate_not_live"
+    return "promote", live, "same_sha_config_only_d1"
+
+
+def _decide_rotina(candidate: str, live_http: str | None, live_cf: str | None, ancestor) -> tuple[str, str | None, str]:
     candidate = norm(candidate) or ""
     if not candidate:
         return "refuse", None, "candidate_sha_invalid"
@@ -152,6 +177,7 @@ def main(argv=None) -> int:
     ap.add_argument("--readback-url")
     ap.add_argument("--readback-path")
     ap.add_argument("--cloudflare-script")
+    ap.add_argument("--motivo", default="rotina", help="rotina | d1-config (promove só o MESMO SHA já vivo; NC-P2b-DEP-03)")
     ap.add_argument("--preview", action="store_true", help="report the decision without failing (pre-merge evidence)")
     ap.add_argument("--verify-promoted", action="store_true", help="after promotion: the effective version must BE the candidate")
     ap.add_argument("--unproven-exit", type=int, default=2, help="exit code for NAO_COMPROVADO (0 = defer to a later certification gate)")
@@ -163,8 +189,8 @@ def main(argv=None) -> int:
 
     live_http = readback_sha(args.readback_url, args.readback_path)
     live_cf = cloudflare_sha(args.cloudflare_script)
-    decision, live, reason = decide(args.candidate, live_http, live_cf, lambda a, b: is_ancestor(a, b, args.repo))
-    record = {"service": args.service, "candidate": args.candidate, "live_cloudflare": live_cf,
+    decision, live, reason = decide(args.candidate, live_http, live_cf, lambda a, b: is_ancestor(a, b, args.repo), args.motivo)
+    record = {"service": args.service, "candidate": args.candidate, "motivo": args.motivo, "live_cloudflare": live_cf,
               "live_readback": live_http, "decision": decision, "reason": reason, "preview": args.preview}
     print("PROMOTION_GUARD=" + json.dumps(record, sort_keys=True))
     out = os.environ.get("GITHUB_OUTPUT")

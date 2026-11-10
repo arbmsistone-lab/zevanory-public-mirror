@@ -280,7 +280,10 @@ for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
 for key in ("ZEVANORY_RELEASE_REF", "AGENT_AUTONOMY_MODE", "AGENT_AI_MAX_RUNS_PER_HOUR"):
     if key in c["vars"]:
         runtime_config[key] = c["vars"].pop(key)
-# P20 diário D1 (docs/p20/diario-d1.md, seção "Binding e migração"): o Worker central recebe o binding DIARIO, que
+# P20 diário D1 (docs/p20/diario-d1.md, seções "Binding e migração" e "Primeiro deploy com D1"): o Worker central só
+# recebe o binding DIARIO quando DIARIO_D1_MODO=certificar (input diario_d1 do dispatch, validado no job guard). Em
+# qualquer outro valor, ausente inclusive (push, dry-run, outros workflows), o candidato sai SEM DIARIO, mesmo com os
+# segredos D1 cadastrados: nenhum deploy rotineiro liga o D1 sem querer (NO-GO do GPT-6, NC-P2b-DEP-02). O binding
 # aponta para o banco D1 de PRODUÇÃO criado pelo proprietário na conta 1b26415802588185a86c1d4d3ebf5bdb. Um binding
 # d1_databases NÃO é var nem secret, então não entra no orçamento de check-binding-budget.py (continua 59/60).
 # O banco de certificação (zevanory-certification-only, 7ff006f3-...) nunca pode ser usado aqui: o gerador recusa.
@@ -306,7 +309,28 @@ def _inject_diario_d1(cfg, wanted=DIARIO_D1_BINDING):
         return cfg
     d1.append(dict(wanted))
     return cfg
-_inject_diario_d1(c)
+DIARIO_D1_MODOS = ("off", "certificar", "rollback")
+def _apply_diario_d1(cfg, modo, wanted=DIARIO_D1_BINDING):
+    """certificar: injeta (com as recusas acima). off/rollback: tira QUALQUER binding DIARIO (o certificado também),
+    mantendo as recusas do banco de certificação. Valor desconhecido: recusa (nunca adivinha um modo)."""
+    modo = modo or "off"
+    if modo not in DIARIO_D1_MODOS:
+        raise SystemExit("DIARIO_D1_MODO_INVALIDO " + modo)
+    if modo == "certificar":
+        return _inject_diario_d1(cfg, wanted)
+    d1 = cfg.get("d1_databases") or []
+    for row in d1:
+        if str(row.get("database_id", "")).lower().startswith(DIARIO_D1_FORBIDDEN_PREFIX):
+            raise SystemExit("DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN")
+    rest = [row for row in d1 if row.get("binding") != wanted["binding"]]
+    if rest:
+        cfg["d1_databases"] = rest
+    else:
+        cfg.pop("d1_databases", None)
+    return cfg
+_diario_modo = os.environ.get("DIARIO_D1_MODO", "").strip() or "off"
+_apply_diario_d1(c, _diario_modo)
+print(f"DIARIO_D1_CANDIDATO={'com_binding' if any(r.get('binding') == 'DIARIO' for r in c.get('d1_databases') or []) else 'sem_binding'} modo={_diario_modo}")
 # P20 (docs/p20/vaga-binding-p20-backup-key.md): frees 2 plain-var slots so the owner can add the ONE new
 # secret P20_BACKUP_KEY (budget 60 -> 58 -> 59). Both are non-secret readiness decisions with a single
 # reader, evaluateActivationReadiness in worker/cloudflare-worker.recovered.mjs, the same function that already

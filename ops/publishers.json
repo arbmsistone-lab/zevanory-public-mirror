@@ -41,7 +41,8 @@
             "permission": "Conta > D1 > Editar (API: D1 Write), só a conta acima",
             "writes": [
               "GET /accounts/<conta>/d1/database/<id> (pré-checagem)",
-              "wrangler d1 migrations apply zevanory-diario-p20 --remote"
+              "wrangler d1 migrations apply zevanory-diario-p20 --remote",
+              "wrangler d1 execute zevanory-diario-p20 --remote --json --command \"$SQL\" (SELECT único de certificação de scripts/deploy/diario_d1_certify.py sql, só leitura, antes da promoção)"
             ]
           },
           "read": {
@@ -50,7 +51,7 @@
             "permission": "Conta > D1 > Ler (API: D1 Read), só a conta acima",
             "writes": [],
             "reads": [
-              "wrangler d1 execute zevanory-diario-p20 --remote --command \"select count(*) as n from diario_head\""
+              "wrangler d1 execute zevanory-diario-p20 --remote --json --command \"$SQL\" (o mesmo SELECT único de certificação: diario_head, d1_migrations, sqlite_master e contagens abandono_*)"
             ],
             "readers": [
               {
@@ -66,8 +67,17 @@
             "d1": "nenhuma: subir um binding D1 só exige Editor no Worker (developers.cloudflare.com/workers/authorization/#bindings); vazio nos dois passos D1"
           }
         },
-        "absent_secret": "migrate ausente: aviso DIARIO_D1_TOKEN_DEDICADO_AUSENTE e deploy sem o binding DIARIO; read ausente: readback não roda (aviso). Nunca há queda para outro token.",
-        "tests": "tests/test_diario_d1_credentials.py"
+        "absent_secret": "certificar: segredo de migração ausente reprova o job antes da promoção e o candidato sai sem DIARIO; segredo de leitura ausente reprova a certificação depois do deploy (rollback automático para a versão sem DIARIO). off/rollback: os segredos não são entregues. Nunca há queda para outro token.",
+        "tests": "tests/test_diario_d1_credentials.py",
+        "modes": {
+          "input": "workflow_dispatch diario_d1 (validado no job guard; push e dispatch sem input = off)",
+          "default": "off",
+          "only_in": "certificar: só neste modo os dois segredos D1 chegam ao env dos passos (expressão needs.guard.outputs.diario_d1 == 'certificar' && secrets.X || ''), o gerador injeta o binding DIARIO e a migração roda; falha tira o binding e reprova antes da promoção; readback obrigatório reprova depois",
+          "off": "nenhuma chamada D1, segredos vazios, candidato sem DIARIO; conferência do binding efetivo ausente (token do deploy)",
+          "rollback": "redeploy do MESMO SHA (motivo=d1-config) sem DIARIO e conferência obrigatória da versão ativa sem o binding; nenhuma tabela é apagada",
+          "binding_check": "scripts/deploy/diario_d1_certify.py binding: GET /workers/scripts/zevanory/deployments, /versions/<id> e /settings com o token do DEPLOY (Workers Scripts Read no zevanory); CF_TOKEN_D1_DIARIO_READ não lê Worker",
+          "doc": "docs/p20/diario-d1.md, seção Primeiro deploy com D1"
+        }
       }
     },
     "zevanory-sales-public": {
@@ -235,7 +245,7 @@
         "guard_evidence": [
           "promotion_guard\\.py --service zevanory "
         ],
-        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987): migração e readback do banco zevanory-diario-p20 dentro do mesmo job, depois do guard, e só com o binding DIARIO; DEC-P20-D1-01: a migração (d1 migrations apply --remote) usa só CF_TOKEN_D1_DIARIO_MIGRATE (D1 Edit) e o readback só CF_TOKEN_D1_DIARIO_READ (D1 Read), cada um no env do próprio passo, com o token compartilhado vazio ali (services.zevanory.d1_credentials)"
+        "controls": "promotion_guard (tag Cloudflare + /api/release) antes do deploy; readback pós-promoção; rollback automático só em FAIL; grupo deploy-zevanory (queue: max) + environment producao-critica; D1 (#987, NO-GO GPT-6 NC-P2b-DEP-01/02/03): input diario_d1 off (padrão: sem binding e sem nenhuma chamada D1, mesmo com os segredos) | certificar (fail-closed: migração e conferência antes da promoção, readback obrigatório depois, binding efetivo conferido na Cloudflare) | rollback (redeploy sem DIARIO com conferência); certificar e rollback exigem motivo=d1-config, que no promotion_guard promove só o MESMO SHA já vivo; DEC-P20-D1-01: a migração (d1 migrations apply --remote) usa só CF_TOKEN_D1_DIARIO_MIGRATE (D1 Edit) e o readback só CF_TOKEN_D1_DIARIO_READ (D1 Read), cada um no env do próprio passo e só em certificar, com o token compartilhado vazio ali (services.zevanory.d1_credentials)"
       },
       "certification-isolated-deploy.yml": {
         "classes": [
