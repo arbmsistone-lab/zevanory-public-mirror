@@ -6,6 +6,7 @@ import {handleDigitalHotmartNc012} from "./cp-nc012-digital-hotmart.mjs";
 import {KIT_ORDER_INGEST_ENABLED,isKitProductNc015,ingestVerifiedKitCandidate} from "./kit-nc015-ingress.mjs";
 import {kitDeferred192hEnabled} from "./kit-deferred-192h-flag.mjs";
 import { handleCpDoWebhookCandidate, inspectCpFormTokenCandidate, submitCpFormCandidate, enqueueCpFormWorkCandidate } from "./cp-g03-g04-candidate.mjs";
+import {handleHotmartAbandonment,noteHotmartPurchase,PURCHASE_HOOK_EVENTS} from "./abandono-hotmart.mjs";
 
 const json=(status,body)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -16,9 +17,19 @@ function configuredIds(env){
  let json={};try{json=typeof env.CHANNEL_CREDENTIALS_JSON==="string"?JSON.parse(env.CHANNEL_CREDENTIALS_JSON):env.CHANNEL_CREDENTIALS_JSON||{}}catch{}
  return String(env.HOTMART_SERVICE_PRODUCT_IDS||json.HOTMART_SERVICE_PRODUCT_IDS||"8704905");
 }
+// Gancho do marcador de compra do lembrete de abandono: AGUARDADO (o marcador existe no D1 primário antes de a
+// resposta voltar à Hotmart) e só depois de o nc012 ter autenticado e respondido ok. Nunca muda a resposta da compra:
+// erro é engolido. Em ABANDONO_STAGE "desligado" não lê nem grava nada.
+async function abandonoPurchaseHook(env,body){
+ if(!PURCHASE_HOOK_EVENTS.includes(String(body?.event||"").toUpperCase()))return;
+ try{await noteHotmartPurchase(env,body?.data).catch(()=>null)}catch{}
+}
 export async function routeHotmartNc011(request,env,ctx){
  if(request.method!=="POST")return json(405,{ok:false,error:"method_not_allowed"});
  let body;try{body=await request.clone().json()}catch{return json(400,{ok:false,error:"invalid_json"})}
+ // Lembrete de abandono (PURCHASE_OUT_OF_SHOPPING_CART não traz purchase): módulo próprio, ANTES do CP e do nc012
+ // (que responderia 422 por falta de purchase.transaction). O filtro dos 5 kits fica no módulo.
+ if(String(body?.event||"").toUpperCase()==="PURCHASE_OUT_OF_SHOPPING_CART")return handleHotmartAbandonment(request,env);
  const ids=configuredIds(env);
  if(isServiceProduct(body?.data,ids)){
   // The only CP path is authenticated Hottok -> HMAC-routed SQLite DO.
@@ -33,10 +44,13 @@ export async function routeHotmartNc011(request,env,ctx){
  if(KIT_ORDER_INGEST_ENABLED&&kitDeferred192hEnabled(env)&&isKitProductNc015(body?.data,env)){
   const digital=await handleDigitalHotmartNc012(request.clone(),env);
   if(!digital.ok)return digital;
+  await abandonoPurchaseHook(env,body);
   const recorded=await ingestVerifiedKitCandidate(request,env);
   return recorded.ok?digital:recorded;
  }
- return handleDigitalHotmartNc012(request,env);
+ const digital=await handleDigitalHotmartNc012(request,env);
+ if(digital.ok)await abandonoPurchaseHook(env,body);
+ return digital;
 }
 export async function routeBriefingNc011(request,env){
  if(!["GET","POST"].includes(request.method))return page("Método inválido","<h1>Método inválido</h1>",405);

@@ -163,7 +163,7 @@ test("G07 o gate roda nos emissores do check obrigatório e os módulos derivam 
     const rest = y.slice(start + 1); const next = rest.slice(1).search(/\n  [a-z][\w-]*:\n/);
     const body = next >= 0 ? rest.slice(0, next + 1) : rest;
     assert.ok(body.includes(cmd), `${wf}:${job} não roda o gate`);
-    assert.match(body, /grep -qx "# tests 11"/, `${wf}:${job} sem contagem exata`);
+    assert.match(body, /grep -qx "# tests 12"/, `${wf}:${job} sem contagem exata`);
     assert.match(body, /grep -qx "# fail 0"/); assert.match(body, /grep -qx "# skipped 0"/);
   }
   for (const f of ["worker/lead-magnet.mjs", "worker/acquisition-engine.mjs", "worker/support-knowledge.mjs", "worker/creative-autonomy.mjs",
@@ -344,4 +344,26 @@ test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo
   const x = spawnSync(process.execPath, [GATE, "--root", dir], { encoding: "utf8" });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(x.status, 1, "com 40% na fonte, a página que diz 50% reprova");
+});
+
+// Plano do e-mail de abandono (PR-2; contra-auditoria do PR-1): worker/abandono-hotmart.mjs é RESERVADO (#1009), então o
+// price-gate não aplica J2 nem a regra de desconto a ele. Esta regra estática cobre o módulo no check obrigatório: nenhum
+// literal de preço, nome e preço só de productBySlug(slug) (data/products.json), nenhuma outra fonte de preço.
+test("G12 lembrete de abandono: sem literal de preço e productBySlug obrigatório em worker/abandono-hotmart.mjs", () => {
+  const code = read("worker/abandono-hotmart.mjs").replace(/\r\n/g, "\n").replace(/^\s*\/\/.*$/gm, "");
+  assert.match(code, /import\s*\{\s*productBySlug\s*\}\s*from\s*"\.\/product-prices\.mjs"/, "importa productBySlug");
+  assert.match(code, /export function abandonmentEmail\(slug[^)]*\)\s*\{\s*\n\s*const p = productBySlug\(slug\);/, "o texto deriva de productBySlug(slug)");
+  assert.match(code, /R\$ \$\{p\.price\}/, "preço do texto = productBySlug(slug).price");
+  assert.doesNotMatch(code, /R\$\s*\d|\bBRL\s*\d|\d+\s*reais\b|(?<![{\d])\d+,\d{2}(?![\d}])/i, "valor em reais literal");
+  assert.doesNotMatch(code, /\b(?:price|preco|preço|valor|amount)\s*[:=]\s*-?\d/i, "campo de preço literal");
+  assert.doesNotMatch(code, /\b(?:price|preco|valor)\s*[+\-*/%]\s*\d|\d\s*[+\-*/%]\s*\w*\.price\b/i, "aritmética de preço");
+  assert.doesNotMatch(code, /HOTMART_KITS|PRICE_BY_SKU|priceBySku|priceBySlug|products\.json/, "outra fonte de preço");
+  const official = new Set([...PP.OFFICIAL_PRODUCTS, PP.SUBSCRIPTION].map((p) => String(p.price)));
+  const literals = [...code.matchAll(/(?<![\w.$])\d+(?![\w.])/g)].map((m) => m[0]).filter((n) => official.has(n));
+  assert.deepEqual(literals, [], "número igual a um preço oficial no módulo");
+  // prova de que a regra pega o mutante M34 (preço por literal): a mesma checagem sobre o texto mutado reprova
+  const p0 = PP.productBySlug("ia-na-pratica").price;
+  const mutated = code.replace("const p = productBySlug(slug);", `const p = { ...productBySlug(slug), price: ${p0} };`);
+  assert.notEqual(mutated, code, "âncora do mutante presente");
+  assert.match(mutated, /\b(?:price|preco|preço|valor|amount)\s*[:=]\s*-?\d/i, "a regra reprova o literal do mutante");
 });

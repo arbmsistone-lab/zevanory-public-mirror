@@ -6,7 +6,8 @@ import { emitActivity } from "./activity-ledger.mjs";
 //   KV; the hourly cron emails one digest and deletes them.
 
 export const ESCALATION_RE = /golpe|fraude|procon|advogad|processo|absurdo|n[aã]o recebi|cad[eê] (meu|o) (produto|acesso|link)|reembols|estorno|cancelar|reclama[cç][aã]o|reclame aqui/i;
-const ALLOWED_OWNER_ALERTS = new Set(["channel_down", "compliance_rejected_3x", "refund", "complaint", "financial_proof_stale"]);
+// abandono_retencao_atrasada: retenção de 30 dias do lembrete de abandono atrasada (worker/abandono-hotmart.mjs; só contagens).
+const ALLOWED_OWNER_ALERTS = new Set(["channel_down", "compliance_rejected_3x", "refund", "complaint", "financial_proof_stale", "abandono_retencao_atrasada"]);
 
 async function sha256Hex(value) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
