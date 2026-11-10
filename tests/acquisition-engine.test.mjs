@@ -1,7 +1,10 @@
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest,CATALOG_SKUS} from "../worker/acquisition-engine.mjs";
+import {calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest,CATALOG_SKUS,textVariant,DAILY_TIPS,recordBlueskyFailure,blueskyStatusKey,BLUESKY_STATUS_PREFIX,BLUESKY_STATUS_TTL} from "../worker/acquisition-engine.mjs";
+import {blueskyPostText} from "../worker/bluesky-publisher.mjs";
+import {CLOSED_LABEL} from "../worker/politica-unica.mjs";
+import {hotmartKit,salesLockViolations} from "../worker/sales-lock-content.mjs";
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)??null,put:async(k,v)=>{m.set(k,String(v))}}};
 test("30-day calendar rotates five real SKUs, five niches, five angles",()=>{
  const c=planCalendar(new Date("2026-10-10T12:00:00Z"));
@@ -172,4 +175,129 @@ test("legacy Telegram receipt is adopted without a duplicate remote post",async(
  assert.equal(result.outcomes.find(x=>x.channel==="telegram").status,"publicado");
  assert.equal(result.outcomes.find(x=>x.channel==="telegram").provenance,"legacy");
  assert.equal(requests,0);
+});
+
+// ---- Plano Mestre F1: variação de texto contra o gate de similaridade + status de falha do Bluesky ----
+const DAYMS=86400000;
+const dayAt=(start,i)=>new Date(Date.parse(start+"T00:00:00Z")+i*DAYMS).toISOString().slice(0,10);
+const MODES=[{},{hotmartOpen:true},{salesOpen:true}];
+// Template fixo anterior (até 10/11/2026): um texto por ângulo, repetido a cada ciclo de 25 dias.
+const LEGACY_GUIDANCE={"dor":"Identifique uma dúvida recorrente e registre o que precisa de confirmação antes de responder.","tutorial":"Escolha uma tarefa pequena, documente o processo e revise cada resultado com uma pessoa.","caso de uso":"Simule um atendimento com dados fictícios e confira informações antes de enviar.","objeção":"Compare o trabalho manual com uma rotina assistida, sem presumir economia ou faturamento.","comparação":"Avalie clareza, privacidade e possibilidade de desfazer cada automação antes de adotá-la."};
+function legacyDraft(entry,channel,{salesOpen=false,hotmartOpen=false}={}){
+ const open=salesOpen===true,kit=!open&&hotmartOpen===true?hotmartKit(entry.product.sku):null;
+ const hook=(entry.angle==="tutorial"?"Passo a passo":entry.angle==="comparação"?"O que avaliar":"Uma ideia prática")+" para "+entry.niche;
+ const value=entry.product.name+(kit?" (R$ "+kit.price+")":(open?"":" ("+CLOSED_LABEL+")"))+": "+LEGACY_GUIDANCE[entry.angle]+" Use o guia para organizar a rotina.";
+ const cta="Veja o guia digital",link=productLink(entry,channel,{salesOpen:open,hotmartOpen:kit!=null});
+ if(channel==="telegram")return {channel,hook,value,cta,link,text:hook+"\n\n"+value+"\n\n"+cta+": "+link+"\n#ZEVANORY #Negocios"};
+ const g=blueskyPostText({hook,value,cta,productUrl:link,day:entry.day});return {channel,hook,value,cta,link:g.link,text:g.text};
+}
+// Mesma regra de produção: gate contra os 30 últimos posts publicados; só o publicado entra no histórico.
+function simulate(gen,{start,days,channel,mode,seed=[]}){
+ const hist=[...seed],rejected=[];let max=0;
+ for(let i=0;i<days;i++){
+  const entry=calendarEntry(dayAt(start,i)),draft=gen(entry,channel,mode);
+  const gate=validateDraft({draft,entry,priorPosts:hist,...mode});max=Math.max(max,gate.similarity_max);
+  if(gate.ok){hist.push({day:entry.day,text:draft.text});if(hist.length>30)hist.shift();}else rejected.push(entry.day+":"+gate.reasons.join(","));
+ }
+ return {rejected,max};
+}
+// Histórico real do ar: os 30 posts anteriores ainda são do template fixo.
+const legacySeed=(channel,mode)=>Array.from({length:30},(_,i)=>{const e=calendarEntry(dayAt("2026-10-07",i));return {day:e.day,text:legacyDraft(e,channel,mode).text};});
+test("F1: 60 dias seguidos com histórico, Bluesky e Telegram, 3 modos: 0 reprovações por similaridade",()=>{
+ for(const mode of MODES)for(const channel of ["bluesky","telegram"]){
+  const r=simulate(generateNative,{start:"2026-11-06",days:60,channel,mode,seed:legacySeed(channel,mode)});
+  assert.deepEqual(r.rejected,[],JSON.stringify(mode)+" "+channel);
+  assert.ok(r.max<0.5,JSON.stringify(mode)+" "+channel+" max="+r.max);
+ }
+ // O gate não foi afrouxado: continua reprovando >= 0,5 contra os 30 últimos.
+ const src=readFileSync(new URL("../worker/acquisition-engine.mjs",import.meta.url),"utf8");
+ assert.ok(src.includes('if(priorPosts.slice(-30).some(p=>textSimilarity(draft.text,p.text)>=0.5))reasons.push("similarity");'));
+ const e=calendarEntry("2026-11-10"),d=generateNative(e,"bluesky");
+ assert.deepEqual(validateDraft({draft:d,entry:e,priorPosts:[{text:d.text}]}).reasons,["similarity"]);
+});
+test("F1 mutante: template fixo (legado ou variante constante) volta a reprovar por similaridade",async()=>{
+ for(const mode of MODES){
+  const r=simulate(legacyDraft,{start:"2026-11-06",days:60,channel:"bluesky",mode,seed:legacySeed("bluesky",mode)});
+  assert.ok(r.rejected.filter(x=>x.endsWith(":similarity")).length>=30,JSON.stringify(mode)+" legado reprovou só "+r.rejected.length);
+ }
+ // Mutante de fonte: textVariant constante (sem rotação de dica, gancho e chamada) tem de reprovar.
+ const base=new URL("../worker/",import.meta.url);
+ const orig=readFileSync(new URL("acquisition-engine.mjs",base),"utf8");
+ const target=" return {tip:mod(n,DAILY_TIPS.length),hook:mod(Math.floor(n/25),4),cta:mod(n,CTAS.length)};";
+ assert.ok(orig.includes(target),"alvo do mutante ausente");
+ const mutated=orig.replace(target," return {tip:0,hook:0,cta:0};").replace(/from "\.\/([a-z0-9-]+\.mjs)"/g,(_,f)=>'from "'+new URL(f,base).href+'"');
+ const mut=await import("data:text/javascript;base64,"+Buffer.from(mutated).toString("base64"));
+ const r=simulate(mut.generateNative,{start:"2026-11-06",days:60,channel:"bluesky",mode:{}});
+ assert.ok(r.rejected.length>=10,"mutante sobreviveu: "+r.rejected.length);
+});
+test("F1: banco de dicas, ganchos e chamadas sem promessa nem chamada de compra; rotação sem repetição em 30 dias",()=>{
+ assert.equal(DAILY_TIPS.length,37);
+ const opening=DAILY_TIPS.map(t=>t.toLocaleLowerCase("pt-BR").match(/[\p{L}\p{N}]+/gu).slice(0,2).join(" "));
+ assert.equal(new Set(opening).size,DAILY_TIPS.length,"duas dicas abrem com as mesmas palavras");
+ for(let i=0;i<120;i++){
+  const w=Array.from({length:30},(_,k)=>textVariant(dayAt("2026-10-10",i+k)).tip);
+  assert.equal(new Set(w).size,30);
+ }
+ assert.throws(()=>textVariant("10/11/2026"),/calendar_day_invalid/);
+ for(let i=0;i<100;i++)for(const mode of MODES)for(const ch of ["bluesky","telegram"]){
+  const e=calendarEntry(dayAt("2026-11-06",i)),d=generateNative(e,ch,mode);
+  const gate=validateDraft({draft:d,entry:e,...mode});
+  assert.ok(gate.ok,e.day+" "+ch+" "+JSON.stringify(mode)+" "+gate.reasons);
+  assert.ok(d.text.includes(e.niche)&&d.text.includes(e.product.name));
+  if(ch==="bluesky")assert.ok(!/\S…\S/.test(d.text)&&!/[^\s…]\n[A-Z]/.test(d.value||""),"corte no meio de palavra");
+ }
+ for(const t of DAILY_TIPS)assert.deepEqual(salesLockViolations(t),[],t);
+});
+test("F1: reprovação do gate grava UMA chave bluesky:status:AAAAMMDD com TTL; sucesso não grava",async()=>{
+ const store=kv(),puts=[],orig=store.put;store.put=async(k,v,o)=>{puts.push([k,o]);return orig(k,v,o);};
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"zevanoryoficial.bsky.social",BLUESKY_APP_PASSWORD:"app"};
+ const day="2026-11-10",entry=calendarEntry(day);
+ // Histórico com o próprio texto do dia: colisão real, o gate tem de reprovar.
+ await orig("zpc:acquisition:history:bluesky",JSON.stringify([{day:"2026-11-09",text:generateNative(entry,"bluesky").text}]));
+ let network=0;const mock=async()=>{network++;return{ok:true,status:200,json:async()=>({})};};
+ const t=new Date("2026-11-10T22:35:00Z");
+ for(let i=0;i<5;i++){
+  const out=await runAcquisitionEngine(env,new Date(t.getTime()+i*1800000),mock);
+  const b=out.outcomes.find(x=>x.channel==="bluesky");
+  assert.equal(b.status,"erro");assert.equal(b.code,"similarity");
+ }
+ assert.equal(network,0,"nada sai para a rede com o gate reprovado");
+ assert.equal(blueskyStatusKey(day),"bluesky:status:20261110");
+ const statusPuts=puts.filter(([k])=>k.startsWith(BLUESKY_STATUS_PREFIX));
+ assert.equal(statusPuts.length,1,"no máximo 1 gravação por dia");
+ assert.deepEqual(statusPuts[0],["bluesky:status:20261110",{expirationTtl:BLUESKY_STATUS_TTL}]);
+ const st=JSON.parse(await store.get("bluesky:status:20261110"));
+ assert.equal(st.ok,false);assert.equal(st.motivo,"similarity");assert.equal(st.similaridade,1);assert.equal(st.day,day);
+ assert.equal(await store.get("zpc:acquisition:daily:"+day+":bluesky"),null,"a reprovação continua sem reservar o rkey");
+ // Publicação bem-sucedida não grava status.
+ const ok=kv(),okPuts=[],okOrig=ok.put;ok.put=async(k,v,o)=>{okPuts.push(k);return okOrig(k,v,o);};
+ const pub=async(url,req={})=>{if(url.endsWith("createSession"))return{ok:true,json:async()=>({did:"did:plc:abc",accessJwt:"access"})};
+  if(url.endsWith("createRecord")){const r=JSON.parse(req.body);return{ok:true,json:async()=>({uri:"at://did:plc:abc/app.bsky.feed.post/"+r.rkey,cid:"cid"})};}
+  return{ok:true,status:200,json:async()=>({})};};
+ const done=await runAcquisitionEngine({...env,ZEVANORY_PRIVATE_ARTIFACTS:ok},t,pub);
+ assert.equal(done.outcomes.find(x=>x.channel==="bluesky").status,"publicado");
+ assert.equal(okPuts.some(k=>k.startsWith(BLUESKY_STATUS_PREFIX)),false);
+});
+test("F1: falha de publicação também grava o status; regravação só quando o motivo muda",async()=>{
+ const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"zevanoryoficial.bsky.social",BLUESKY_APP_PASSWORD:"app"};
+ const mock=async(url)=>{if(url.endsWith("createSession"))return{ok:true,json:async()=>({did:"did:plc:abc",accessJwt:"access"})};
+  if(url.endsWith("createRecord"))return{ok:false,status:400,headers:{get:()=>null}};
+  if(url.includes("getRecord"))return{ok:false,status:400};return{ok:true,status:200,json:async()=>({})};};
+ await runAcquisitionEngine(env,new Date("2026-11-10T22:35:00Z"),mock);
+ const st=JSON.parse(await store.get("bluesky:status:20261110"));
+ assert.deepEqual([st.ok,st.motivo,st.similaridade],[false,"bluesky_http_400",null]);
+ const now=new Date("2026-11-10T23:00:00Z");
+ assert.equal((await recordBlueskyFailure(store,"2026-11-10",now,{motivo:"bluesky_http_400"})).written,false);
+ assert.equal((await recordBlueskyFailure(store,"2026-11-10",now,{motivo:"similarity",similaridade:0.61234})).written,true);
+ assert.equal(JSON.parse(await store.get("bluesky:status:20261110")).similaridade,0.612);
+ assert.equal((await recordBlueskyFailure(store,"2026-11-10",now,{motivo:"Texto Livre <x>"})).written,true);
+ assert.equal(JSON.parse(await store.get("bluesky:status:20261110")).motivo,"desconhecido");
+ const broken={get:async()=>null,put:async()=>{throw new Error("kv_quota");}};
+ assert.equal((await recordBlueskyFailure(broken,"2026-11-10",now,{motivo:"similarity"})).written,false);
+ assert.throws(()=>blueskyStatusKey("20261110"),/calendar_day_invalid/);
+ // Exceção do motor também fica registrada.
+ const s2=kv(),bad={get:s2.get,put:async(k,v,o)=>{if(k==="zpc:acquisition:daily:2026-11-10:bluesky")throw new Error("boom");return s2.put(k,v,o);}};
+ const out=await runAcquisitionEngine({...env,ZEVANORY_PRIVATE_ARTIFACTS:bad},new Date("2026-11-10T22:35:00Z"),mock);
+ assert.equal(out.outcomes.find(x=>x.channel==="bluesky").code,"engine_exception");
+ assert.equal(JSON.parse(await s2.get("bluesky:status:20261110")).motivo,"engine_exception");
 });

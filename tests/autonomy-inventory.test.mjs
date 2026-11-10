@@ -77,3 +77,17 @@ test("funnel proof comes from whichever server cycle ran it most recently", () =
   assert.equal(p.find((x) => x.id === "funnel").proven, true);
   assert.equal(p.find((x) => x.id === "nurture").proven, true);
 });
+
+test("F1: falha registrada do Bluesky aparece como \"bluesky erro: <motivo>\" e marca o processo como falho", () => {
+  const ctx = { byDay: { "2026-10-13": { bluesky: { status: "erro", code: "similarity", at: "2026-10-13T11:00:00Z" } }, "2026-10-12": { bluesky: { status: "publicado", at: "2026-10-11T22:00:00Z" } } } };
+  const p = Object.fromEntries(evaluateInventory(inv, ctx, now).processes.map((x) => [x.id, x]));
+  assert.equal(p.bluesky.proven, false); assert.equal(p.bluesky.failed, true);
+  assert.equal(p.bluesky.how, "bluesky erro: similarity");
+  // Publicação mais nova que o erro prova o processo e não marca falha.
+  const ok = { byDay: { ...ctx.byDay, "2026-10-13": { bluesky: { status: "publicado", at: "2026-10-13T11:30:00Z" } } } };
+  const q = Object.fromEntries(evaluateInventory(inv, ok, now).processes.map((x) => [x.id, x]));
+  assert.equal(q.bluesky.proven, true); assert.equal(q.bluesky.failed, false); assert.equal(q.bluesky.how, "publicação confirmada pelo provedor");
+  // Erro antigo (fora da janela) não acusa falha.
+  const stale = { byDay: { "2026-10-10": { bluesky: { status: "erro", code: "similarity", at: "2026-10-10T11:00:00Z" } } } };
+  assert.equal(evaluateInventory(inv, stale, now).processes.find((x) => x.id === "bluesky").failed, false);
+});
