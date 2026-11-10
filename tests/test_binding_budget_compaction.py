@@ -692,7 +692,7 @@ def check_wf_order_and_wiring(text):
     assert krun.index("order12a-financial-proof-renewal.yml") < krun.index("case \"${DIARIO_D1_MODO:-off}\" in"), "a renovação financeira não depende da conferência D1"
     assert "::error title=AUTO_ROLLBACK_HEALTH_FAIL::" in krun
     _, gate, _ = workflow_step("Certification gate", text=text)
-    assert 'if [ "${DIARIO_D1_MODO:-off}" = "certificar" ]; then' in gate
+    assert 'case "${DIARIO_D1_MODO:-off}" in' in gate and "certificar|manter)" in gate
     # Guard: o passo de modo lê o arquivo versionado, então vem depois do checkout e antes do guard.
     lines = text.split("\n")
     g0 = lines.index("  guard:")
@@ -718,8 +718,71 @@ def check_wf_postpromo(text):
     for modo in ("certificar", "manter", "off", "rollback", ""):
         for state in ("NAO_COMPROVADO", "PASS", "FAIL", ""):
             got = postd1_runs(modo, state, text=text)
-            want = 1 if (modo, state) == ("certificar", "NAO_COMPROVADO") else None
+            want = 1 if (modo in ("certificar", "manter") and state == "NAO_COMPROVADO") else None
             assert got == want, (modo, state, got)
+
+
+FAKE_NPX_RB = r"""#!/usr/bin/env bash
+printf 'npx %s\n' "$*" >> "$FAKE_CALL_LOG"
+exit 0
+"""
+FAKE_GH = r"""#!/usr/bin/env bash
+printf 'gh %s\n' "$*" >> "$FAKE_CALL_LOG"
+exit 0
+"""
+
+
+def run_auto_rollback(modo, routes, text=None):
+    """EXECUTA o passo real de rollback automático (NC-1018-03/A2): wrangler rollback, gh e curl falsos; health 200."""
+    _, script, _ = workflow_step("Automatic rollback after failed post-deploy smoke", text=text)
+    routes = dict(routes, **{"/api/health": ["200", json.dumps({"live": True, "ready": True})]})
+    d = pathlib.Path(tempfile.mkdtemp())
+    try:
+        (d / "bin").mkdir()
+        for n, body in (("curl", FAKE_CURL_ROUTES), ("npx", FAKE_NPX_RB), ("gh", FAKE_GH)):
+            (d / "bin" / n).write_text(body, encoding="utf-8")
+            (d / "bin" / n).chmod(0o755)
+        for rel in ("scripts", "migrations"):
+            (d / rel).symlink_to(ROOT / rel)
+        base = {k: v for k, v in os.environ.items() if not k.startswith(("CLOUDFLARE_", "CF_TOKEN_", "DIARIO_"))}
+        env = dict(base, PATH=f"{d / 'bin'}:{os.environ['PATH']}", FAKE_CALL_LOG=str(d / "calls"), FAKE_ROUTES=json.dumps(routes),
+                   DIARIO_D1_MODO=modo, TARGET_RUNTIME_SHA=SHA_C, CLOUDFLARE_API_TOKEN="tok-deploy",
+                   CLOUDFLARE_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb", GITHUB_REPOSITORY="o/r", PYTHONDONTWRITEBYTECODE="1")
+        p = subprocess.run(["bash", "-c", script], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+        calls = (d / "calls").read_text(encoding="utf-8").splitlines() if (d / "calls").exists() else []
+        return p, calls
+    finally:
+        shutil.rmtree(d, True)
+
+
+def check_wf_auto_rollback(text):
+    """O passo é EXECUTADO: a conferência D1 depois do rollback precisa decidir o exit (um `|| true` morre aqui)."""
+    for modo, routes, rc, marca in (
+            ("certificar", cf_routes(diario=False), 0, "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa sem o binding DIARIO"),
+            ("certificar", cf_routes(diario=True), 1, "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::"),
+            ("certificar", cf_routes(diario=False, versao_bindings=False), 1, "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::"),
+            ("manter", cf_routes(diario=True), 0, "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa com a configuração do DIARIO coerente"),
+            ("manter", cf_routes(diario=False), 0, "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::"),
+            ("manter", cf_routes(db="22222222-2222-4222-8222-222222222222"), 1, "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::"),
+            ("manter", cf_routes(settings_code="500"), 1, "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::"),
+            ("rollback", cf_routes(), 0, "::error title=DIARIO_D1_ROLLBACK_NAO_CONCLUIDO::"),
+            ("off", cf_routes(), 0, "AUTO_ROLLBACK_FINANCIAL_PROOF_RENEWAL_DISPATCH=PASS")):
+        p, calls = run_auto_rollback(modo, routes, text=text)
+        assert p.returncode == rc and marca in p.stdout, (modo, rc, p.returncode, p.stdout[-600:], p.stderr[-300:])
+        assert any(c.startswith("npx ") and " rollback --name zevanory " in c for c in calls), calls
+        assert any(c.startswith("gh workflow run order12a-financial-proof-renewal.yml") for c in calls), "renovação antes da conferência"
+        cf = [c for c in calls if "/workers/scripts/zevanory/" in c]
+        assert bool(cf) == (modo in ("certificar", "manter")), (modo, cf)
+
+
+def check_wf_certification_gate(text):
+    """EXECUTA o gate: em certificar/manter ele reprova com a mensagem do rollback; nos outros, a de sempre (NC-1018-03/A3)."""
+    _, script, _ = workflow_step("Certification gate", text=text)
+    for modo, marca in (("certificar", "disparou o rollback automático"), ("manter", "disparou o rollback automático"),
+                        ("off", "kept live"), ("rollback", "kept live"), ("", "kept live")):
+        env = dict(os.environ, DIARIO_D1_MODO=modo, POST_REASON="x", TARGET_RUNTIME_SHA=SHA_C)
+        p = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+        assert p.returncode == 1 and "::error title=CERTIFICATION_NAO_COMPROVADO::" in p.stdout and marca in p.stdout, (modo, p.returncode, p.stdout)
 
 
 def check_wf_modo_validation(text):
@@ -727,14 +790,15 @@ def check_wf_modo_validation(text):
           (("workflow_dispatch", "", "", "off"), ("off", "rotina")), (("workflow_dispatch", "padrao", "", "manter"), ("manter", "rotina")),
           (("workflow_dispatch", "padrao", "rotina", "off"), ("off", "rotina")),
           (("workflow_dispatch", "off", "rotina", "manter"), ("off", "rotina")),
-          (("workflow_dispatch", "manter", "rotina", "off"), ("manter", "rotina")),
+          (("workflow_dispatch", "manter", "rotina", "manter"), ("manter", "rotina")),
           (("workflow_dispatch", "certificar", "d1-config", "off"), ("certificar", "d1-config")),
           (("workflow_dispatch", "certificar", "d1-config", "manter"), ("certificar", "d1-config")),
           (("workflow_dispatch", "rollback", "d1-config", "manter"), ("rollback", "d1-config"))]
     for (ev, modo, motivo, padrao), want in ok:
         p, so, _ = run_modo_step(ev, modo, motivo, text=text, padrao=padrao)
         assert p.returncode == 0 and (so.get("diario_d1"), so.get("motivo")) == want, ((ev, modo, motivo, padrao), p.stdout, so)
-    bad = [("workflow_dispatch", "certificar", "rotina", "off"), ("workflow_dispatch", "certificar", "", "off"),
+    bad = [("workflow_dispatch", "manter", "rotina", "off"),  # NC-1018-01: manter só com o padrão versionado em manter
+           ("workflow_dispatch", "certificar", "rotina", "off"), ("workflow_dispatch", "certificar", "", "off"),
            ("workflow_dispatch", "rollback", "rotina", "off"), ("workflow_dispatch", "off", "d1-config", "off"),
            ("workflow_dispatch", "manter", "d1-config", "off"), ("workflow_dispatch", "padrao", "d1-config", "manter"),
            ("workflow_dispatch", "ligado", "d1-config", "off"), ("workflow_dispatch", "certificar", "codigo", "off"),
@@ -795,6 +859,12 @@ class DiarioD1WorkflowStepTest(unittest.TestCase):
 
     def test_pos_promocao_nao_comprovado_em_certificar_dispara_rollback(self):
         check_wf_postpromo(self.TEXT)
+
+    def test_rollback_automatico_executado_com_conferencia(self):
+        check_wf_auto_rollback(self.TEXT)
+
+    def test_certification_gate_executado(self):
+        check_wf_certification_gate(self.TEXT)
 
 
 # --- NC-P2b-DEP-03: promotion_guard com motivo=d1-config ------------------------------------------------------
@@ -1003,6 +1073,30 @@ def check_certify_binding(c):
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+    # NC-1018-02: lista vazia ou sem o sentinela, em qualquer fonte, é NAO_COMPROVADO (nunca "ausente").
+    def mexe(routes, chave, fn):
+        r2 = {k: list(v) for k, v in routes.items()}
+        body = json.loads(r2[chave][1])
+        alvo = body["result"]["resources"] if chave.startswith("/versions") else body["result"]
+        alvo["bindings"] = fn(alvo["bindings"])
+        r2[chave][1] = json.dumps(body)
+        return r2
+    for chave in ("/settings", "/versions/v1"):
+        for expect in ("ausente", "presente", "coerente"):
+            for duas in (False, True):
+                vazia = mexe(cf_routes(diario=False), chave, lambda b: [])
+                assert c.avalia_binding(fetch_from(vazia), expect, SHA_C, duas_fontes=duas)[0] == c.NAO_COMPROVADO, (chave, expect, duas)
+                sem_sent = mexe(cf_routes(diario=False), chave, lambda b: [x for x in b if x["name"] != "ZEVANORY_PRIVATE_ARTIFACTS"] + [{"name": "OUTRO", "type": "kv_namespace"}])
+                assert c.avalia_binding(fetch_from(sem_sent), expect, SHA_C, duas_fontes=duas)[0] == c.NAO_COMPROVADO, (chave, expect, duas)
+    # Coerência entre as fontes: nomes diferentes (fora o DIARIO) é NAO_COMPROVADO.
+    diverge = mexe(cf_routes(), "/versions/v1", lambda b: b + [{"name": "EXTRA", "type": "plain_text"}])
+    for expect in ("presente", "coerente"):
+        assert c.avalia_binding(fetch_from(diverge), expect, SHA_C, duas_fontes=True)[0] == c.NAO_COMPROVADO, expect
+    # coerente (rollback automático de um manter): ausente nas duas ou presente certo nas duas.
+    assert c.avalia_binding(fetch_from(cf_routes()), "coerente", None, duas_fontes=True)[0] == c.PASS
+    assert c.avalia_binding(fetch_from(cf_routes(diario=False)), "coerente", None, duas_fontes=True)[0] == c.PASS
+    assert c.avalia_binding(fetch_from(cf_routes(db="22222222-2222-4222-8222-222222222222")), "coerente", None, duas_fontes=True)[0] == c.FAIL
+    assert c.avalia_binding(fetch_from(rv), "coerente", None, duas_fontes=True)[0] == c.FAIL
     # settings sem lista: não comprovado.
     rn = cf_routes()
     rn["/settings"][1] = json.dumps({"success": True, "result": {}})
@@ -1053,7 +1147,8 @@ def _generator_violations(text):
 
 def _workflow_violations(text):
     out = []
-    for chk in (check_wf_order_and_wiring, check_wf_modo_validation, check_wf_binding_step, check_wf_postpromo):
+    for chk in (check_wf_order_and_wiring, check_wf_modo_validation, check_wf_binding_step, check_wf_postpromo,
+                check_wf_auto_rollback, check_wf_certification_gate):
         try:
             chk(text)
         except Exception as e:  # noqa: BLE001
@@ -1092,6 +1187,10 @@ SCRIPT_MUTANTS = {
     "P6 manter não religa o binding": (SCRIPT, '    if modo in ("certificar", "manter"):', '    if modo == "certificar":'),
     "S15 duas fontes ignorado": (CERTIFY, '    if duas_fontes and "versao" not in fontes:', '    if False:'),
     "S16 --duas-fontes não chega à avaliação": (CERTIFY, "args.expect, args.candidate, args.duas_fontes)", "args.expect, args.candidate)"),
+    "S17 sem o sentinela (lista vazia vira ausente)": (CERTIFY, "        if not nomes or SENTINELA not in nomes:", "        if False:"),
+    "S18 fontes com nomes divergentes aceitas": (CERTIFY, "        if a != b:", "        if False:"),
+    "S19 coerente aceita DIARIO numa fonte só": (CERTIFY, '    if expect == "coerente" and len(set(presentes)) != 1:', "    if False:"),
+    "S20 coerente aceita DIARIO errado": (CERTIFY, '        if expect == "coerente" and not d:\n            continue', '        if expect == "coerente":\n            continue'),
     "P5 off sem a recusa do banco de certificação": (SCRIPT, '    d1 = cfg.get("d1_databases") or []\n    for row in d1:', '    d1 = cfg.get("d1_databases") or []\n    for row in []:'),
 }
 WF_MUTANTS = {
@@ -1107,12 +1206,18 @@ WF_MUTANTS = {
     "W10 rollback automático sem conferência": ('diario_d1_certify.py binding --expect ausente --duas-fontes ||', 'true ||'),
     "W11 readback depois do rollback automático": ("      - name: P20 diário D1 - readback", "      - name: P20 diario D1 - readback"),
     "W12 certificar/manter com uma fonte só": ('certificar|manter) esperado="presente"; fontes="--duas-fontes" ;;', 'certificar|manter) esperado="presente"; fontes="" ;;'),
-    "W13 exceção do pós-promoção em todo modo": ("needs.guard.outputs.diario_d1 == 'certificar' && steps.postpromo.outputs.state == 'NAO_COMPROVADO'", "steps.postpromo.outputs.state == 'NAO_COMPROVADO'"),
+    "W13 exceção do pós-promoção em todo modo": ("(needs.guard.outputs.diario_d1 == 'certificar' || needs.guard.outputs.diario_d1 == 'manter') && steps.postpromo.outputs.state == 'NAO_COMPROVADO'", "steps.postpromo.outputs.state == 'NAO_COMPROVADO'"),
     "W14 exceção do pós-promoção não falha": ("rollback automático a seguir (NC-1017-01)\"\n          exit 1", "rollback automático a seguir (NC-1017-01)\"\n          exit 0"),
     "W18 regra geral T1 trocada": ("--verify-promoted --unproven-exit 0 --service zevanory", "--verify-promoted --unproven-exit 2 --service zevanory"),
     "W19 exceção depois do rollback": ("      - name: P20 diário D1 - pós-promoção NAO_COMPROVADO", "      - name: P20 diario D1 - pos-promocao NAO_COMPROVADO"),
     "W15 padrão versionado ignorado": ('if [ -z "$modo" ] || [ "$modo" = "padrao" ]; then modo="$padrao"; fi', 'if [ -z "$modo" ] || [ "$modo" = "padrao" ]; then modo="off"; fi'),
     "W16 risco residual do rollback calado": ('echo "::error title=DIARIO_D1_ROLLBACK_NAO_CONCLUIDO::', 'echo "::notice title=DIARIO_D1_ROLLBACK_NAO_CONCLUIDO::'),
+    "W20 dispatch manter com padrão off (NC-1018-01)": ('if [ "$modo" = "manter" ] && [ "$padrao" != "manter" ]; then', 'if false; then'),
+    "W21 exceção do pós-promoção só em certificar": ("(needs.guard.outputs.diario_d1 == 'certificar' || needs.guard.outputs.diario_d1 == 'manter') && steps.postpromo", "needs.guard.outputs.diario_d1 == 'certificar' && steps.postpromo"),
+    "A2 conferência pós-rollback neutralizada": ("binding --expect ausente --duas-fontes || {", "binding --expect ausente --duas-fontes || true || {"),
+    "A2b conferência pós-rollback de manter neutralizada": ("binding --expect coerente --duas-fontes || {", "binding --expect coerente --duas-fontes || true || {"),
+    "A3 gate de certificação não reprova em certificar": ('disparou o rollback automático (NC-1017-01); ver DIARIO_D1_ROLLBACK_AUTOMATICO."\n              exit 1', 'disparou o rollback automático (NC-1017-01); ver DIARIO_D1_ROLLBACK_AUTOMATICO."\n              exit 0'),
+    "W22 renovação depois da conferência": ('              gh workflow run order12a-financial-proof-renewal.yml --repo "$GITHUB_REPOSITORY" --ref gh-pages\n', ''),
     "W17 manter conferido como ausente": ('certificar|manter) esperado="presente"; fontes="--duas-fontes" ;;', 'certificar) esperado="presente"; fontes="--duas-fontes" ;;\n            manter) esperado="ausente"; fontes="" ;;'),
 }
 

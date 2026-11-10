@@ -386,6 +386,18 @@ def check_runtime_manter(text):
     assert p.returncode == 1 and "::error title=DIARIO_D1_READBACK::" in p.stdout, p.stdout
 
 
+def check_runtime_uuid_check(text):
+    """NC-1018-03/A5: o passo confere o UUID do DIARIO no candidato antes de qualquer chamada D1 (certificar e manter)."""
+    for modo in ("certificar", "manter"):
+        for row in (dict(DIARIO, database_id="22222222-2222-4222-8222-222222222222"), dict(DIARIO, database_id="7ff006f3-1daf-44c5-9494-aabab600608e")):
+            p, so, cfg, calls, _ = run_step(text, MIG, SECRETS, modo=modo, cfg={"name": "zevanory", "d1_databases": [row]})
+            _assert_fail_closed(p, so, cfg, "DIARIO_D1_BINDING")
+            assert calls == [], (modo, calls)
+        p, so, cfg, calls, _ = run_step(text, MIG, SECRETS, modo=modo, cfg={"name": "zevanory"})
+        _assert_fail_closed(p, so, cfg, "DIARIO_D1_BINDING")
+        assert calls == [], (modo, calls)
+
+
 def check_runtime_off_and_rollback_never_touch_d1(text):
     """off (padrão) e rollback: nenhuma chamada D1 e candidato sem DIARIO, MESMO com os segredos cadastrados (e mesmo se
     um segredo vazasse para o env do passo)."""
@@ -509,7 +521,7 @@ def check_t1_detector(text):
 CHECKS = [check_secret_only_in_its_step, check_effective_env_isolation, check_d1_calls_only_in_authorized_steps,
           check_runtime_certificar_ok, check_runtime_missing_migrate_secret, check_runtime_dedicated_without_access,
           check_runtime_migration_failure_no_binding, check_runtime_schema_mismatch_no_binding,
-          check_runtime_manter, check_runtime_off_and_rollback_never_touch_d1, check_runtime_readback_certifies, check_runtime_readback_fails_job,
+          check_runtime_manter, check_runtime_uuid_check, check_runtime_off_and_rollback_never_touch_d1, check_runtime_readback_certifies, check_runtime_readback_fails_job,
           check_runtime_deploy_keeps_shared_token_and_no_d1, check_pipeline_shared_token_never_reaches_d1,
           check_registry_matches_workflow, check_t1_detector]
 
@@ -560,6 +572,7 @@ MUTANTS = {
     "M24 segredo de leitura no passo de migração em qualquer modo": _sub("needs.guard.outputs.diario_d1 == 'manter' && secrets.CF_TOKEN_D1_DIARIO_READ", "secrets.CF_TOKEN_D1_DIARIO_READ"),
     "M25 manter sem a guarda do segredo de leitura": _sub('[ -n "${CF_TOKEN_D1_DIARIO_READ:-}" ] || falha', "true || falha"),
     "M26 manter segue o caminho de migração": _in_step(MIG, 'if [ "$modo" = "certificar" ]; then', 'if [ "$modo" = "certificar" ] || [ "$modo" = "manter" ]; then'),
+    "A5 UUID do DIARIO não conferido no passo": _in_step(MIG, "            1b1bfa19-ccc5-423a-bc1f-62d89020c8e2) ;;\n", "            *) ;;\n"),
     "M27 manter tratado como off (sem binding)": _in_step(MIG, "            certificar|manter) ;;\n", "            certificar) ;;\n"),
     "M15 off migra (sem a guarda do modo no passo)": _in_step(MIG, 'case "$modo" in\n            certificar|manter) ;;', 'case "certificar" in\n            certificar|manter) ;;'),
     "M16 falha da certificação não reprova (vira best-effort)": _in_step(MIG, FALHA_EXIT, FALHA_EXIT[:-1] + "0"),
@@ -632,6 +645,9 @@ class DiarioD1DedicatedCredentialsTest(unittest.TestCase):
 
     def test_c17_manter_religa_so_banco_certificado_com_token_de_leitura(self):
         check_runtime_manter(self.TEXT)
+
+    def test_c18_uuid_do_diario_conferido_antes_de_qualquer_chamada(self):
+        check_runtime_uuid_check(self.TEXT)
 
     def test_c16_mutantes_morrem(self):
         self.assertEqual(violations(self.TEXT), [], "o workflow real passa em todas as verificações")

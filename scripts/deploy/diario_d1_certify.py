@@ -10,7 +10,7 @@ Subcomandos (nenhum deles grava nada em lugar nenhum):
                             confere a saída JSON de `wrangler d1 execute --json` contra o esperado DERIVADO das
                             migrações em migrations/d1 (fixadas em MIGRACOES_ESPERADAS). Em `depois` exige igualdade
                             com o resumo de `antes`. Imprime RESUMO=<json>. Saída 0 = PASS, 1 = FAIL.
-  binding --expect presente|ausente [--candidate SHA] [--duas-fontes]
+  binding --expect presente|ausente|coerente [--candidate SHA] [--duas-fontes]
                             lê na API da Cloudflare a configuração EFETIVA do Worker publicado: deployment ativo
                             (uma versão a 100%), a tag dessa versão (= SHA do candidato) e os bindings da versão e
                             de /settings. Usa o token do DEPLOY (CLOUDFLARE_API_TOKEN, o mesmo que já lê /settings e
@@ -20,6 +20,11 @@ Subcomandos (nenhum deles grava nada em lugar nenhum):
                             exige a lista de bindings em /settings E em /versions/<id> (result.resources.bindings). A
                             documentação pública da Cloudflare não garante esse campo na resposta de /versions/<id>; sem
                             ele o resultado é NAO_COMPROVADO, que reprova nesses modos (fail-closed).
+                            NC-1018-02: em QUALQUER fonte lida, lista vazia ou sem o binding sentinela
+                            ZEVANORY_PRIVATE_ARTIFACTS (que todo candidato carrega) é NAO_COMPROVADO, nunca "ausente";
+                            com as duas fontes, os nomes dos bindings precisam coincidir.
+                            --expect coerente (rollback automático de um manter): DIARIO ausente, ou presente com o UUID
+                            certo, igual nas fontes.
 
 Doc: docs/p20/diario-d1.md, seção "Primeiro deploy com D1: modos off, certificar e rollback".
 """
@@ -41,6 +46,7 @@ MIG_DIR = ROOT / "migrations" / "d1"
 DB_NAME = "zevanory-diario-p20"
 DB_ID = "1b1bfa19-ccc5-423a-bc1f-62d89020c8e2"
 BINDING = "DIARIO"
+SENTINELA = "ZEVANORY_PRIVATE_ARTIFACTS"  # binding KV que o gerador sempre injeta: lista sem ele não é uma leitura válida
 SCRIPT = "zevanory"
 # Fixadas de propósito: uma migração nova exige revisar esta certificação (e o GPT-6) antes de chegar à produção.
 MIGRACOES_ESPERADAS = ("0001_diario_v1.sql", "0002_diario_v1_ts.sql", "0003_abandono_v1.sql")
@@ -213,8 +219,16 @@ def avalia_binding(fetch, expect, candidate=None, duas_fontes=False):
     if duas_fontes and "versao" not in fontes:
         return NAO_COMPROVADO, "versão ativa sem lista de bindings em /versions (exigidas as duas fontes; fail-closed)", reg
     for nome, bindings in fontes.items():
+        nomes = [b.get("name") for b in bindings if isinstance(b, dict)]
+        if not nomes or SENTINELA not in nomes:
+            return NAO_COMPROVADO, f"lista de bindings de {nome} vazia ou sem o sentinela {SENTINELA} (leitura não confiável)", reg
+    presentes = []
+    for nome, bindings in fontes.items():
         d = _diario(bindings)
         reg[nome] = [{k: b.get(k) for k in ("name", "type", "id", "database_id")} for b in d]
+        presentes.append(bool(d))
+        if expect == "coerente" and not d:
+            continue
         if expect == "ausente":
             if d:
                 return FAIL, f"binding {BINDING} PRESENTE em {nome} (esperado ausente)", reg
@@ -225,6 +239,12 @@ def avalia_binding(fetch, expect, candidate=None, duas_fontes=False):
             bid = str(b.get("id") or b.get("database_id") or "").lower()
             if b.get("type") != "d1" or bid != DB_ID:
                 return FAIL, f"binding {BINDING} em {nome} com tipo {b.get('type')!r} e banco {bid[:8] or '?'} (esperado d1 {DB_ID[:8]})", reg
+    if expect == "coerente" and len(set(presentes)) != 1:
+        return FAIL, f"binding {BINDING} presente numa fonte e ausente na outra", reg
+    if len(fontes) == 2:
+        a, b = (sorted(str(x.get("name")) for x in fontes[k] if isinstance(x, dict)) for k in ("settings", "versao"))
+        if a != b:
+            return NAO_COMPROVADO, f"/settings e /versions divergem nos nomes dos bindings ({sorted(set(a) ^ set(b))[:6]})", reg
     reg["fontes"] = sorted(fontes)
     return PASS, f"binding {BINDING} {expect} na versão ativa ({', '.join(sorted(fontes))})", reg
 
@@ -252,7 +272,7 @@ def main(argv=None):
     c.add_argument("--antes")
     c.add_argument("arquivo")
     b = sub.add_parser("binding")
-    b.add_argument("--expect", choices=("presente", "ausente"), required=True)
+    b.add_argument("--expect", choices=("presente", "ausente", "coerente"), required=True)
     b.add_argument("--candidate")
     b.add_argument("--duas-fontes", action="store_true")
     args = ap.parse_args(argv)

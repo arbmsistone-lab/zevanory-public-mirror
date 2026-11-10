@@ -232,6 +232,11 @@ jobs:
           [ -n "$motivo" ] || motivo="rotina"
           case "$modo" in off|manter|certificar|rollback) ;; *) echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=$modo (aceitos: off, manter, certificar, rollback)"; exit 1 ;; esac
           case "$motivo" in rotina|d1-config) ;; *) echo "::error title=MOTIVO_INVALIDO::motivo=$motivo (aceitos: rotina, d1-config)"; exit 1 ;; esac
+          if [ "$modo" = "manter" ] && [ "$padrao" != "manter" ]; then
+            # NC-1018-01: manter só com o padrão versionado em manter (decisão do proprietário/GPT-6 no arquivo protegido);
+            # um dispatch manter com o padrão em off ligaria o D1 junto com código novo por fora do arquivo.
+            echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=manter só com .github/diario-d1-modo.json em \"padrao\": \"manter\" (hoje: $padrao). Para ligar o D1 use certificar + d1-config."; exit 1
+          fi
           case "$modo" in
             certificar|rollback)
               if [ "$motivo" != "d1-config" ]; then
@@ -782,16 +787,18 @@ jobs:
             --candidate "$TARGET_RUNTIME_SHA" \
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
-      - name: P20 diário D1 - pós-promoção NAO_COMPROVADO em certificar dispara o rollback (NC-1017-01)
+      - name: P20 diário D1 - pós-promoção NAO_COMPROVADO em certificar ou manter dispara o rollback (NC-1017-01)
         # A regra geral (T1) continua: um observador inalcançável não desfaz uma versão boa (--unproven-exit 0 acima; o
-        # Certification gate reprova depois). Exceção explícita e estreita: em diario_d1=certificar, a promoção só troca a
-        # configuração do D1 do MESMO SHA já vivo (motivo=d1-config), então "não comprovado" falha aqui e o rollback
-        # automático volta à versão anterior (mesmo código, sem DIARIO), conferindo --expect ausente nas duas fontes.
-        if: steps.auth.outputs.available == 'true' && needs.guard.outputs.diario_d1 == 'certificar' && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
+        # Certification gate reprova depois). Exceção explícita e estreita para os deploys que ligam o DIARIO:
+        #  - certificar: a promoção só troca a configuração do D1 do MESMO SHA já vivo (motivo=d1-config); o rollback volta
+        #    ao mesmo código sem DIARIO, conferindo --expect ausente nas duas fontes;
+        #  - manter (NC-1018-01): um deploy com o D1 ligado não fica no ar sem prova da versão efetiva; o rollback volta à
+        #    versão anterior (o código anterior também), conferindo que a configuração do DIARIO ficou coerente.
+        if: steps.auth.outputs.available == 'true' && (needs.guard.outputs.diario_d1 == 'certificar' || needs.guard.outputs.diario_d1 == 'manter') && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
         env:
           POST_REASON: ${{ steps.postpromo.outputs.reason }}
         run: |
-          echo "::error title=DIARIO_D1_POS_PROMOCAO_NAO_COMPROVADO::diario_d1=certificar: pós-promoção NAO_COMPROVADO ($POST_REASON); sem prova da versão efetiva a certificação não fica no ar: rollback automático a seguir (NC-1017-01)"
+          echo "::error title=DIARIO_D1_POS_PROMOCAO_NAO_COMPROVADO::diario_d1=${DIARIO_D1_MODO:-?}: pós-promoção NAO_COMPROVADO ($POST_REASON); sem prova da versão efetiva a certificação não fica no ar: rollback automático a seguir (NC-1017-01)"
           exit 1
       - name: Automatic rollback after failed post-deploy smoke
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
@@ -818,6 +825,13 @@ jobs:
                   python3 scripts/deploy/diario_d1_certify.py binding --expect ausente --duas-fontes || { echo "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa depois do rollback ainda com DIARIO ou não comprovada. Recuperação: dispatch diario_d1=rollback motivo=d1-config no mesmo SHA (docs/p20/diario-d1.md, Riscos residuais)"; exit 1; }
                   echo "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa sem o binding DIARIO"
                   ;;
+                manter)
+                  # NC-1018-04: a versão anterior pode ter o DIARIO (deploy manter anterior) ou não (antes da troca do
+                  # padrão). Confere nas duas fontes que a configuração ficou COERENTE (DIARIO ausente, ou presente com o
+                  # UUID certo); qualquer outra coisa reprova com o procedimento.
+                  python3 scripts/deploy/diario_d1_certify.py binding --expect coerente --duas-fontes || { echo "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa depois do rollback de um manter com DIARIO incoerente ou não comprovado. Recuperação: dispatch diario_d1=off (rotina) ou rollback + d1-config (docs/p20/diario-d1.md, Riscos residuais)"; exit 1; }
+                  echo "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa com a configuração do DIARIO coerente (diario_d1=manter)"
+                  ;;
                 rollback)
                   # Risco residual documentado: o rollback automático de um diario_d1=rollback volta à versão ANTERIOR, que
                   # tinha o DIARIO. A saúde vem primeiro (a sombra tolera o binding); o D1 continua ligado e o job reprova.
@@ -836,10 +850,12 @@ jobs:
         env:
           POST_REASON: ${{ steps.postpromo.outputs.reason }}
         run: |
-          if [ "${DIARIO_D1_MODO:-off}" = "certificar" ]; then
-            echo "::error title=CERTIFICATION_NAO_COMPROVADO::diario_d1=certificar: pós-promoção NAO_COMPROVADO ($POST_REASON) disparou o rollback automático (NC-1017-01); ver DIARIO_D1_ROLLBACK_AUTOMATICO."
-            exit 1
-          fi
+          case "${DIARIO_D1_MODO:-off}" in
+            certificar|manter)
+              echo "::error title=CERTIFICATION_NAO_COMPROVADO::diario_d1=$DIARIO_D1_MODO: pós-promoção NAO_COMPROVADO ($POST_REASON) disparou o rollback automático (NC-1017-01); ver DIARIO_D1_ROLLBACK_AUTOMATICO."
+              exit 1
+              ;;
+          esac
           echo "::error title=CERTIFICATION_NAO_COMPROVADO::release $TARGET_RUNTIME_SHA kept live (smokes passed, no contrary evidence) but NOT certified: $POST_REASON. No rollback without independent evidence; re-check with t1-publisher-guard (workflow_dispatch: recheck_service=zevanory)."
           exit 1
       - name: R9 credential identity readback (names and categories only)

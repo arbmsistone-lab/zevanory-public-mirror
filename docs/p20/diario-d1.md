@@ -135,11 +135,14 @@ promoção (passo `P20 diário D1 - modo e motivo do dispatch`, depois do checko
 | Modo | Binding `DIARIO` | Chamadas D1 | Segredos D1 no passo | Falha |
 |---|---|---|---|---|
 | `off` (padrão de hoje) | nunca, mesmo com os segredos cadastrados | nenhuma | valor vazio (a expressão só entrega no modo que usa o segredo) | binding presente depois do deploy reprova (e dispara o rollback automático); API da Cloudflare inalcançável vira aviso **"NAO_COMPROVADO (não é PASS)"** |
-| `manter` (sombra, depois de uma certificação) | religa só se o banco **já** estiver certificado | SELECT de conferência antes (token de **leitura**); o mesmo SELECT depois (token de leitura); **nunca** migra | só `CF_TOKEN_D1_DIARIO_READ`; o de migração fica vazio | banco não certificado, token ausente ou qualquer conferência que falhe: tira o binding **e reprova antes do deploy**; falha depois reprova e o rollback automático volta à versão anterior; binding efetivo exige as **duas** fontes |
+| `manter` (sombra, depois de uma certificação; **só** com `"padrao": "manter"` no arquivo versionado) | religa só se o banco **já** estiver certificado | SELECT de conferência antes (token de **leitura**); o mesmo SELECT depois (token de leitura); **nunca** migra | só `CF_TOKEN_D1_DIARIO_READ`; o de migração fica vazio | banco não certificado, token ausente ou qualquer conferência que falhe: tira o binding **e reprova antes do deploy**; falha depois (inclusive pós-promoção `NAO_COMPROVADO`) reprova e o rollback automático volta à versão anterior, conferindo a configuração do `DIARIO` (coerente) nas duas fontes; binding efetivo exige as **duas** fontes |
 | `certificar` | só se toda a pré-promoção passar | migração + SELECT de certificação (token de migração) antes; SELECT de certificação (token de leitura) depois | migração só aqui; leitura aqui e em `manter` | qualquer falha antes da promoção tira o binding **e reprova o job antes do deploy** (produção fica como estava); qualquer falha depois, **inclusive pós-promoção `NAO_COMPROVADO`** (NC-1017-01), reprova o job e o rollback automático volta à versão anterior (sem `DIARIO`), com conferência nas duas fontes |
 | `rollback` | nunca | nenhuma | valor vazio | binding ainda presente **ou** configuração efetiva não comprovada reprova |
 
-`certificar` e `rollback` exigem `motivo=d1-config`, e `d1-config` só vale com eles (`manter` e `off` são rotina). Nenhum caminho do workflow apaga tabela, índice, gatilho ou banco D1 (há teste disso): o rollback só tira o
+`certificar` e `rollback` exigem `motivo=d1-config`, e `d1-config` só vale com eles (`manter` e `off` são rotina).
+`manter` por dispatch só é aceito com o padrão versionado em `manter` (NC-1018-01): com o padrão em `off`, um dispatch
+`manter` é erro (`DIARIO_D1_MODO_INVALIDO`), senão ele ligaria o D1 junto com código novo por fora do arquivo protegido.
+O único caminho para ligar o D1 com o padrão em `off` é `certificar` + `d1-config` (mesmo SHA). Nenhum caminho do workflow apaga tabela, índice, gatilho ou banco D1 (há teste disso): o rollback só tira o
 binding, e as tabelas e as migrações ficam no banco para a próxima certificação.
 
 **`certificar`, passo a passo** (`scripts/deploy/diario_d1_certify.py` faz as conferências; ele não grava nada):
@@ -161,7 +164,9 @@ binding, e as tabelas e as migrações ficam no banco para a próxima certifica�
    certo nas duas, concordando entre si. A documentação pública da Cloudflare não garante a lista de bindings na
    resposta de `/versions/<id>`; se ela não vier, o resultado é `NAO_COMPROVADO` e a certificação **reprova**
    (fail-closed). Se isso acontecer no primeiro dispatch, a correção é revisar a fonte com o GPT-6, nunca aceitar uma
-   fonte só;
+   fonte só. Em **qualquer** fonte lida e em qualquer modo, uma lista **vazia** ou sem o binding sentinela
+   `ZEVANORY_PRIVATE_ARTIFACTS` (que todo candidato carrega) é `NAO_COMPROVADO`, nunca "ausente"; com as duas fontes,
+   os nomes dos bindings precisam coincidir, senão também é `NAO_COMPROVADO` (NC-1018-02);
 7. `P20 diário D1 - readback obrigatório da certificação`: com o token de leitura, o mesmo SELECT; `check --fase
    depois` exige tudo do item 4 **e** igualdade com o resumo de antes (migrações, objetos, `diario_head`, contagens
    `abandono_*`). Exige também o PASS do item 6. Sem `continue-on-error`. Só aqui sai
@@ -186,15 +191,19 @@ promoveria código junto (`forward_of_live`). Por isso `--motivo d1-config` é e
 (`config_only_candidate_older_than_live`, que na rotina seria `skip-superseded`), divergente, com uma fonte só ou
 motivo desconhecido: `refuse`. A rotina não mudou. Teste: `DiarioD1PromotionGuardTest`.
 
-**NC-1017-01: pós-promoção `NAO_COMPROVADO` em `certificar`.** O passo `Post-promotion effective version (T1)` roda o
+**NC-1017-01: pós-promoção `NAO_COMPROVADO` em `certificar` (e em `manter`, NC-1018-01).** O passo `Post-promotion effective version (T1)` roda o
 guard com `--unproven-exit 0` em todos os modos de rotina: um observador inalcançável não desfaz uma versão boa, e o
 `Certification gate` reprova o run depois. Em `certificar` isso contradizia a promessa "qualquer falha depois do deploy
 dispara o rollback". Agora, só em `certificar`, o passo próprio `P20 diário D1 - pós-promoção NAO_COMPROVADO em
 certificar dispara o rollback`, logo depois do pós-promoção, falha com `::error title=DIARIO_D1_POS_PROMOCAO_NAO_COMPROVADO`;
 o rollback automático (que roda em `failure()`) volta à versão anterior e confere `--expect ausente --duas-fontes`. A
 regra geral (`--unproven-exit 0`) e os testes do T1 que a fixam ficam intactos. É seguro porque `certificar` só promove o SHA já
-vivo (`d1-config`): o rollback volta à versão anterior do **mesmo código**, sem o `DIARIO`. Nos outros modos o
-comportamento não mudou. Teste: `check_wf_postpromo`.
+vivo (`d1-config`): o rollback volta à versão anterior do **mesmo código**, sem o `DIARIO`. A mesma exceção vale para
+`manter` (recomendação do GPT-6 na NC-1018-01): um deploy com o D1 ligado não fica no ar sem prova da versão efetiva.
+Em `manter` o rollback volta também o código anterior (é um deploy de rotina) e confere, nas duas fontes, que a
+configuração do `DIARIO` ficou **coerente** (`--expect coerente`: ausente nas duas fontes, ou presente com o UUID certo
+nas duas). Em `off` e `rollback` o comportamento não mudou. Testes: `check_wf_postpromo`, `check_wf_auto_rollback` e
+`check_wf_certification_gate` (os dois últimos **executam** os passos).
 
 **Período de sombra: por que `manter` e não congelamento.** Depois de uma certificação PASS, um push rotineiro em `off`
 tiraria o binding sem querer. Avaliei duas saídas:
@@ -233,6 +242,18 @@ e-mail de abandono (estágio além de "desligado") exige rever essa regra antes,
   tabela; o banco fica intacto para a próxima certificação.
 - **Rollback automático de uma certificação sem conferência** (API inalcançável depois do `wrangler rollback`):
   `::error title=DIARIO_D1_ROLLBACK_AUTOMATICO`. Recuperação: `diario_d1=rollback` + `d1-config` no mesmo SHA.
+- **Rollback automático de um `manter`** confere a configuração (`--expect coerente --duas-fontes`). Incoerente ou não
+  comprovada: `::error title=DIARIO_D1_ROLLBACK_AUTOMATICO`. Recuperação: dispatch `diario_d1=off` (rotina) ou
+  `rollback` + `d1-config`, e conferir o binding efetivo verde.
+- **Padrão em `manter` com o banco quebrado** (NC-1018-04). Se o banco deixar de passar na conferência (migração
+  faltando, objeto a mais, `diario_head` diferente de 1, `abandono_*` com linhas, token de leitura revogado, API D1
+  fora), **todo** deploy de rotina reprova antes da promoção e nada novo vai ao ar. A versão anterior, **com** o
+  `DIARIO`, continua servindo (a sombra tolera o banco quebrado: falha do diário não afeta a resposta). Procedimento:
+  (1) ler o `::error` do passo `P20 diário D1 - migrações` (título `DIARIO_D1_*`) para saber o que falhou;
+  (2) para destravar os deploys **já**: dispatch `diario_d1=off` (rotina, sai sem `DIARIO`) ou `rollback` +
+  `d1-config` (mesmo SHA, com conferência obrigatória); (3) PR que volta `.github/diario-d1-modo.json` para `"off"`,
+  senão o próximo push tenta `manter` de novo; (4) corrigir o banco ou o token e só então recertificar (`certificar` +
+  `d1-config`) e voltar o padrão para `manter`. Nenhum passo apaga tabela.
 
 ### Roteiro do primeiro deploy com D1
 
@@ -534,15 +555,17 @@ cópia KV -> Neon, #999).
   falha) tiram o binding e reprovam; que o readback certifica com o token de leitura e que toda falha dele reprova o job
   (sem `continue-on-error`); que o deploy segue com o token atual, que o compartilhado nunca recebe chamada D1 e que
   nenhum caminho apaga tabela. Confere ainda o registro em `ops/publishers.json` e o detector T1
-  (`scripts/deploy/t1-write-scan.mjs`). Cobre também o modo `manter` (token de leitura, nunca migra, banco não certificado reprova). São 27 mutantes,
+  (`scripts/deploy/t1-write-scan.mjs`). Cobre também o modo `manter` (token de leitura, nunca migra, banco não certificado reprova) e a conferência do UUID do
+  `DIARIO` no candidato antes de qualquer chamada D1. São 28 mutantes,
   e todos precisam morrer.
 - `tests/test_binding_budget_compaction.py`, classes `DiarioD1*`: gerador real nos modos (sem modo, `off`,
   `rollback`, `certificar`, inválido), validação do modo e do motivo no job `guard`, ordem dos passos, conferência do
   binding efetivo com a API falsa (presente, ausente, UUID errado, tag errada, rollout parcial, API inalcançável),
   `promotion_guard.py` com `motivo=d1-config` (mesmo SHA promove; à frente, mais antigo, divergente e uma fonte só
-  recusam), o padrão versionado, o pós-promoção `NAO_COMPROVADO` em `certificar` (rollback), as duas fontes do binding
-  e o script de certificação rodando a SQL real num SQLite com as migrações reais. 45 mutantes (guard, script, gerador
-  e workflow), todos precisam morrer.
+  recusam), o padrão versionado (`manter` por dispatch só com o padrão em `manter`), o pós-promoção `NAO_COMPROVADO` em
+  `certificar` e `manter` (rollback), o rollback automático e o gate de certificação **executados**, as duas fontes do
+  binding (lista vazia ou sem sentinela, nomes divergentes, `coerente`) e o script de certificação rodando a SQL real
+  num SQLite com as migrações reais. 57 mutantes (guard, script, gerador e workflow), todos precisam morrer.
 - `tests/p20-diario-reconcilia.test.mjs` (RC1 a RC10): D1 falso com as migrações reais e Neon falso. Cobre sem
   binding, tudo casa, falta, sobra, normalização diferente, cadeia e âncora adulteradas, bordas da janela, paginação e
   índice, fontes ausentes ou com erro, sombra contra ativo no relatório e os ganchos reais de consentimento e de

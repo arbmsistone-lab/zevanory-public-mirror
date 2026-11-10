@@ -592,8 +592,8 @@ class P21TokenCutoverTest(unittest.TestCase):
 # dispara o rollback automático, padrão versionado em .github/diario-d1-modo.json.
 BASE_FINGERPRINT.update(json.loads(r'''{
  "central-production-deploy.yml": {
-  "guard": "9d9a1ff1c18d0a680e13afb0c0aea833f3b28c22bfdbc40b46edbc7d8a17c544",
-  "deploy": "4e665cf55e7b5006a3011c7ffccaa02b2b98253656b84a2268d404ea76c01c74"
+  "guard": "db836b0748bc7a392daedbbb3c722f9d6c2bfa1574e7c78afce5c04cdcce7ea0",
+  "deploy": "1ea781fa623bee7ffcc9efe0475a5bc03e2287113578c0b461428d6b2291b02c"
  },
  "zevanory-sales-public-release.yml": {
   "verify": "68088b29097abe4c20476c2c60c6e8db4ebb51bf97a7ba8eb125f74638e324b3",
