@@ -5,13 +5,33 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, channelPurchaseMode, channelPublishPaused } from "./youtube-daily-short.mjs";
+import { readFileSync } from "node:fs";
+import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, channelPurchaseMode, channelPublishPaused, RAMPA_CONFIG } from "./youtube-daily-short.mjs";
+import { congelamentoAtivo, CHAVE_CONGELADO, CHAVES_PUBLICADO } from "./shorts-retomada.mjs";
 import { hotmartLockViolations } from "../../worker/sales-lock-content.mjs";
 import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta } from "../../worker/politica-unica.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { getPublisherAccessToken } from "./publisher-access.mjs";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
+// DEC-23: IG/FB só com prova aprovada registrada no repositório.
+export const META_PROVA = JSON.parse(String(readFileSync(new URL("../../data/meta-prova-dec23.json", import.meta.url), "utf8")).replace(/\r\n/g, "\n"));
+export const metaLiberada = (r = META_PROVA) => r?.teste_permissao_ok === true && /^\d+$/.test(String(r?.prova_instagram_media_id ?? "")) && /^\d+$/.test(String(r?.prova_facebook_video_id ?? "")) && r?.aprovado_por === "proprietario" && /^\d{4}-\d{2}-\d{2}$/.test(String(r?.aprovado_em ?? ""));
+
+// NC-02: o cross-post só roda se o YouTube publicou o Short do slot como PÚBLICO (registro gravado por
+// recordPublication: zpc:acquisition:daily:<dia>:youtube[_dica|_calc] com status "publicado" e privacy "public")
+// e o canal não está congelado (zpc:shorts:congelado:v1 sem liberação em data/shorts-rampa.json).
+export async function youtubePublicoENaoCongelado({ kv, day, slot, config = RAMPA_CONFIG }) {
+  const yk = CHAVES_PUBLICADO[slot];
+  if (!yk || !kv?.get) return { ok: false, motivo: "sem_kv_ou_slot" };
+  const parse = (v) => { try { return v == null ? null : JSON.parse(String(v)); } catch { return null; } };
+  try {
+    const yt = parse(await kv.get(`zpc:acquisition:daily:${day}:${yk}`));
+    if (yt?.status !== "publicado" || yt?.privacy !== "public") return { ok: false, motivo: "youtube_nao_publico" };
+    if (congelamentoAtivo({ config, registro: parse(await kv.get(CHAVE_CONGELADO)) })) return { ok: false, motivo: "canal_congelado" };
+    return { ok: true, motivo: "youtube_publico" };
+  } catch { return { ok: false, motivo: "kv_indisponivel" }; }
+}
 const sleepMs = ms => new Promise(r => setTimeout(r, ms));
 // P13c: the offer line follows the single policy (data/politica-unica.json) and the commercial lock:
 // closed (default, fail-closed) => no price, no rule pitch, no checkout link, only "vendas fechadas".
@@ -100,7 +120,7 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
 // publicação (publishTelegramVideo) continua aqui, só não é chamado; nada é gravado no KV pelo canal desligado.
 export const OWNER_DISABLED_CHANNELS = Object.freeze(["telegram"]);
 export const CHANNEL_DISABLED_CODE = "canal_desligado_decisao_proprietario";
-export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, hotmartOpen }) {
+export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, hotmartOpen, metaProva = META_PROVA }) {
   const mode = typeof salesOpen === "boolean" ? { salesOpen, hotmartOpen: salesOpen ? false : hotmartOpen === true } : await channelPurchaseMode(kv);
   const open = mode.salesOpen === true;
   const planned = planSlot(day, slot, { salesOpen: open, hotmartOpen: mode.hotmartOpen === true });
@@ -139,6 +159,7 @@ export async function crosspost({ day, slot = "oferta", mp4, env = process.env, 
     ["instagram", metaToken && igId, () => publishInstagramReel(plan, videoUrl, { token: metaToken, igId, fetchImpl, sleep })],
     ["facebook", metaToken && pageId, () => publishFacebookVideo(plan, mp4, { token: metaToken, pageId, fetchImpl })]]) {
     try {
+      if (!metaLiberada(metaProva)) { report[ch] = "bloqueado:dec23_sem_prova"; continue; }
       if (await done(ch)) { report[ch] = "already_published"; continue; }
       if (!ready) { report[ch] = "waiting:meta_credentials"; continue; }
       const r = await run(); await record(ch, r); report[ch] = "published";
@@ -158,6 +179,8 @@ if (isMain) {
   for (const slot of slotArg === "all" ? ["dica", "oferta", "calc"] : [slotArg]) {
     const window = publicationWindow({ day, slot, now: Date.now() });
     if (window.action !== "publish") { console.log(`::notice title=SHORT_CROSSPOST::${slot}=skipped_${window.reason}`); continue; }
+    const yt = await youtubePublicoENaoCongelado({ kv, day, slot });
+    if (!yt.ok) { console.log(`::notice title=SHORT_CROSSPOST::${slot}=skipped_youtube_nao_publico_ou_congelado (${yt.motivo})`); continue; }
     let mp4; try { mp4 = await readFile("/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot) + ".mp4"); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
     const report = await crosspost({ day, slot, mp4, kv });
     for (const [ch, v] of Object.entries(report)) { if (v.startsWith("error")) errors++; console.log(`::${v.startsWith("error") ? "error" : "notice"} title=SHORT_CROSSPOST::${slot}:${ch}=${String(v).replace(/[\r\n]+/g, " ")}`); }

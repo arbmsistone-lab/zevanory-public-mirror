@@ -121,6 +121,28 @@ async function bateriaCrosspost(m) {
   const r = await m.crosspost({ day: "2026-10-12", slot: "oferta", mp4: Buffer.from("x"), env: { TELEGRAM_BOT_TOKEN: "1:a", TELEGRAM_CHANNEL_ID: "@z" }, kv, fetchImpl, sleep: async () => {}, salesOpen: false, hotmartOpen: false });
   assert.equal(r.telegram_video, "desligado:canal_desligado_decisao_proprietario");
   assert.equal(tg.length, 0);
+  // NC-01 (DEC-23): sem prova aprovada, IG/FB bloqueados e 0 chamadas à Graph API, mesmo com META_* presentes.
+  const graph = [];
+  const gfetch = async (url, o = {}) => {
+    const u = String(url);
+    if (/graph(-video)?\.facebook\.com/.test(u)) { graph.push(u); return { ok: true, status: 200, json: async () => (u.endsWith("/media") ? { id: "c1" } : u.includes("status_code") ? { status_code: "FINISHED" } : u.endsWith("/media_publish") ? { id: "9" } : u.includes("permalink") ? { permalink: "https://www.instagram.com/reel/x/" } : { id: "7" }) }; }
+    return { ok: true, status: 200, json: async () => ({ connected: false }) };
+  };
+  const metaEnv = { META_ACCESS_TOKEN: "t", INSTAGRAM_BUSINESS_ACCOUNT_ID: "17", META_PAGE_ID: "99" };
+  const r2 = await m.crosspost({ day: "2026-10-12", slot: "oferta", mp4: Buffer.from("x"), env: metaEnv, kv, fetchImpl: gfetch, sleep: async () => {}, salesOpen: false, hotmartOpen: false });
+  assert.equal(r2.instagram, "bloqueado:dec23_sem_prova"); assert.equal(graph.length, 0);
+  const prova = { teste_permissao_ok: true, prova_instagram_media_id: "1", prova_facebook_video_id: "2", aprovado_por: "proprietario", aprovado_em: "2026-11-11" };
+  assert.equal(m.metaLiberada(prova), true);
+  assert.equal(m.metaLiberada({ ...prova, aprovado_por: "claude" }), false);
+  // NC-02: só com o Short PÚBLICO registrado e o canal não congelado.
+  const k2 = new Map(), kv2 = { get: async (k) => k2.get(k) ?? null };
+  assert.equal((await m.youtubePublicoENaoCongelado({ kv: kv2, day: "2026-11-12", slot: "dica" })).ok, false);
+  k2.set("zpc:acquisition:daily:2026-11-12:youtube_dica", JSON.stringify({ status: "publicado", privacy: "private" }));
+  assert.equal((await m.youtubePublicoENaoCongelado({ kv: kv2, day: "2026-11-12", slot: "dica" })).ok, false);
+  k2.set("zpc:acquisition:daily:2026-11-12:youtube_dica", JSON.stringify({ status: "publicado", privacy: "public" }));
+  assert.equal((await m.youtubePublicoENaoCongelado({ kv: kv2, day: "2026-11-12", slot: "dica" })).ok, true);
+  k2.set("zpc:shorts:congelado:v1", JSON.stringify({ desde: "2026-11-12" }));
+  assert.equal((await m.youtubePublicoENaoCongelado({ kv: kv2, day: "2026-11-12", slot: "dica" })).ok, false);
 }
 
 const BATERIA = { retomada: bateriaRetomada, dispatcher: bateriaDispatcher, short: bateriaShort, crosspost: bateriaCrosspost };
@@ -154,6 +176,10 @@ const MUTANTES = [
   ["Y03", "short", 'const page = new URL(shortUrl(calculatorFor(day).slug, "oferta_" + PRODUCT_PAGES[entry.product.sku].replace(/-/g, "_")));', "const page = productPage;"],
   ["T01", "crosspost", 'export const OWNER_DISABLED_CHANNELS = Object.freeze(["telegram"]);', "export const OWNER_DISABLED_CHANNELS = Object.freeze([]);"],
   ["T02", "crosspost", 'if (OWNER_DISABLED_CHANNELS.includes("telegram")) report.telegram_video', 'if (false) report.telegram_video'],
+  ["N01", "crosspost", "if (!metaLiberada(metaProva)) { report[ch]", "if (false) { report[ch]"],
+  ["N02", "crosspost", ' && r?.aprovado_por === "proprietario"', ""],
+  ["N03", "crosspost", 'if (yt?.status !== "publicado" || yt?.privacy !== "public") return', "if (false) return"],
+  ["N04", "crosspost", 'if (congelamentoAtivo({ config, registro: parse(await kv.get(CHAVE_CONGELADO)) })) return', "if (false) return"],
   ["Y04", "short", 'path: "hotmart/" + hotmart.slug', 'path: "hotmart/" + hotmart.slug + "-zap"'],
 ];
 
