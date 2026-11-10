@@ -9,6 +9,29 @@
   "own_program_commission_pct": 30,
   "own_program_attribution_days": 30,
   "own_program_payout_approval": "manual",
+  "hotmart_kits_nota": "Links oficiais de recrutamento de afiliados da Hotmart (Produtos > Sou Produtor > Ver links de divulgação > Recrutamento de Afiliados), um por kit; copiados do painel pela coordenação em 10/11 (decisão Claude + GPT-6, delegada pelo proprietário). Nunca é link de checkout (pay.hotmart). Lido pelo teste tests/affiliate-recruitment.test.mjs.",
+  "hotmart_kits": {
+    "ia-na-pratica": {
+      "hotmart_product_id": 8704733,
+      "recruitment_url": "https://affiliate.hotmart.com/affiliate-recruiting/view/2303Z107979737"
+    },
+    "vendas-na-pratica": {
+      "hotmart_product_id": 8704826,
+      "recruitment_url": "https://affiliate.hotmart.com/affiliate-recruiting/view/2483Z107979958"
+    },
+    "lucro-e-caixa": {
+      "hotmart_product_id": 8704851,
+      "recruitment_url": "https://affiliate.hotmart.com/affiliate-recruiting/view/2520Z107979994"
+    },
+    "combo-ia-vendas": {
+      "hotmart_product_id": 8704861,
+      "recruitment_url": "https://affiliate.hotmart.com/affiliate-recruiting/view/2533Z107980011"
+    },
+    "negocio-completo": {
+      "hotmart_product_id": 8704871,
+      "recruitment_url": "https://affiliate.hotmart.com/affiliate-recruiting/view/2545Z107980026"
+    }
+  },
   "pages": [
     "afiliados/index.html",
     "kit-afiliado/index.html",
