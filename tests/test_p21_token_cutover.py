@@ -588,10 +588,12 @@ class P21TokenCutoverTest(unittest.TestCase):
 # central-production-deploy.yml re-fixado no PR d1-primeiro-deploy-certificado (NO-GO do GPT-6, NC-P2b-DEP-01/02/03):
 # passos D1 (modo/motivo no guard, migração fail-closed, binding efetivo, readback obrigatório, conferência no rollback
 # automático) mudaram de propósito; os passos P21 e os tokens de cada passo não mudaram (P3/P4/P6 continuam provando).
+# Re-fixado de novo no follow-up d1-certificar-followup (NC-1017-01): modo manter, duas fontes, NAO_COMPROVADO em certificar
+# dispara o rollback automático, padrão versionado em .github/diario-d1-modo.json.
 BASE_FINGERPRINT.update(json.loads(r'''{
  "central-production-deploy.yml": {
-  "guard": "cdf3c96b54d3b88e003ca95072faa926104980affaabf94cc9c06e3ee460a330",
-  "deploy": "743a68e0c36cb6c0c34f3c0011ff58286006308f2271f27182cd3637f8f4ea46"
+  "guard": "9d9a1ff1c18d0a680e13afb0c0aea833f3b28c22bfdbc40b46edbc7d8a17c544",
+  "deploy": "4e665cf55e7b5006a3011c7ffccaa02b2b98253656b84a2268d404ea76c01c74"
  },
  "zevanory-sales-public-release.yml": {
   "verify": "68088b29097abe4c20476c2c60c6e8db4ebb51bf97a7ba8eb125f74638e324b3",

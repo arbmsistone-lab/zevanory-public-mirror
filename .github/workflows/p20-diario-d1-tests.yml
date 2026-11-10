@@ -5,7 +5,7 @@ name: p20-diario-d1-tests
 # num D1 falso que executa SQL de verdade (node:sqlite, migração real com os triggers; 8 testes); (2) mutantes causais
 # pelo classificador compartilhado (11, todos KILLED); (3) gravação em modo sombra (PR 3: 11 testes, 13 mutantes);
 # (4) credenciais D1 dedicadas (DEC-P20-D1-01) e modos off/certificar/rollback do primeiro deploy com D1 (NO-GO do
-# GPT-6, NC-P2b-DEP-01/02: 16 testes, 22 mutantes), com curl e npx falsos; (5) reconciliação
+# GPT-6, NC-P2b-DEP-01/02 e NC-1017-01: 17 testes, 27 mutantes), com curl e npx falsos; (5) reconciliação
 # diária Neon × diário (PR 4: 10 testes, 20 mutantes), com Neon falso.
 # A suíte completa (manifesto) segue no gate existente.
 on:
@@ -31,6 +31,7 @@ on:
       - "tests/test_diario_d1_credentials.py"
       - "tests/gh_actions_sim.py"
       - "scripts/deploy/diario_d1_certify.py"
+      - ".github/diario-d1-modo.json"
       - "scripts/deploy/t1-write-scan.mjs"
       - "worker/diario-reconcilia.mjs"
       - "worker/data-backup.mjs"
@@ -86,14 +87,14 @@ jobs:
           python3 scripts/ci/mutants_p20_diario_sombra.py < /dev/null | tee /tmp/muts.txt
           echo "::notice title=P20_DIARIO_SOMBRA_MUTANTS::$(grep -E '^MUTANTS ' /tmp/muts.txt)"
           grep -qx "MUTANTS total=13 killed=13 survived=0 inconclusive=0" /tmp/muts.txt || { echo "::error::mutante da sombra sobreviveu ou contagem mudou"; exit 1; }
-      - name: Credenciais D1 dedicadas e modos do primeiro deploy, DEC-P20-D1-01 + NC-P2b-DEP (contagem exata 16, 22 mutantes mortos)
+      - name: Credenciais D1 dedicadas e modos do primeiro deploy, DEC-P20-D1-01 + NC-P2b-DEP (contagem exata 17, 27 mutantes mortos)
         shell: bash
         run: |
           set -euo pipefail
           python3 -m unittest -v tests/test_diario_d1_credentials.py < /dev/null 2>&1 | tee /tmp/cred.txt
-          grep -qx "Ran 16 tests in .*" <(grep -E '^Ran ' /tmp/cred.txt) || { echo "::error::esperados 16 testes"; exit 1; }
+          grep -qx "Ran 17 tests in .*" <(grep -E '^Ran ' /tmp/cred.txt) || { echo "::error::esperados 17 testes"; exit 1; }
           grep -qx "OK" /tmp/cred.txt || { echo "::error::teste de credenciais D1 falhou"; exit 1; }
-          grep -qx "MUTANTS total=22 killed=22 survived=0" /tmp/cred.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=27 killed=27 survived=0" /tmp/cred.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
       - name: Reconciliação diária Neon × diário (contagem exata 10, zero pulados)
         shell: bash
         run: |

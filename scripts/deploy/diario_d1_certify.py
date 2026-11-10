@@ -10,12 +10,16 @@ Subcomandos (nenhum deles grava nada em lugar nenhum):
                             confere a saída JSON de `wrangler d1 execute --json` contra o esperado DERIVADO das
                             migrações em migrations/d1 (fixadas em MIGRACOES_ESPERADAS). Em `depois` exige igualdade
                             com o resumo de `antes`. Imprime RESUMO=<json>. Saída 0 = PASS, 1 = FAIL.
-  binding --expect presente|ausente [--candidate SHA]
+  binding --expect presente|ausente [--candidate SHA] [--duas-fontes]
                             lê na API da Cloudflare a configuração EFETIVA do Worker publicado: deployment ativo
                             (uma versão a 100%), a tag dessa versão (= SHA do candidato) e os bindings da versão e
                             de /settings. Usa o token do DEPLOY (CLOUDFLARE_API_TOKEN, o mesmo que já lê /settings e
                             /deployments no guard): o token CF_TOKEN_D1_DIARIO_READ é só D1 Read e não lê Worker.
                             Saída 0 = PASS, 1 = FAIL (evidência positiva), 3 = NAO_COMPROVADO (API inalcançável).
+                            --duas-fontes (certificar, manter e o rollback automático de uma certificação; NC-1017-01):
+                            exige a lista de bindings em /settings E em /versions/<id> (result.resources.bindings). A
+                            documentação pública da Cloudflare não garante esse campo na resposta de /versions/<id>; sem
+                            ele o resultado é NAO_COMPROVADO, que reprova nesses modos (fail-closed).
 
 Doc: docs/p20/diario-d1.md, seção "Primeiro deploy com D1: modos off, certificar e rollback".
 """
@@ -176,9 +180,9 @@ def _diario(bindings):
     return [b for b in bindings if isinstance(b, dict) and b.get("name") == BINDING]
 
 
-def avalia_binding(fetch, expect, candidate=None):
+def avalia_binding(fetch, expect, candidate=None, duas_fontes=False):
     """(código, motivo, registro). fetch(caminho_relativo_ao_script) -> result (ou levanta Inalcancavel)."""
-    reg = {"expect": expect, "candidate": candidate}
+    reg = {"expect": expect, "candidate": candidate, "duas_fontes": duas_fontes}
     try:
         dep = fetch("/deployments") or {}
         deployments = dep.get("deployments") or []
@@ -206,6 +210,8 @@ def avalia_binding(fetch, expect, candidate=None):
         fontes["versao"] = vb
     if "settings" not in fontes:
         return NAO_COMPROVADO, "settings sem lista de bindings", reg
+    if duas_fontes and "versao" not in fontes:
+        return NAO_COMPROVADO, "versão ativa sem lista de bindings em /versions (exigidas as duas fontes; fail-closed)", reg
     for nome, bindings in fontes.items():
         d = _diario(bindings)
         reg[nome] = [{k: b.get(k) for k in ("name", "type", "id", "database_id")} for b in d]
@@ -230,7 +236,7 @@ def cmd_binding(args):
         code, motivo, reg = NAO_COMPROVADO, "token do deploy ou conta ausente", {"expect": args.expect}
     else:
         base = f"https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/{SCRIPT}"
-        code, motivo, reg = avalia_binding(lambda path: curl_get(base + path, token), args.expect, args.candidate)
+        code, motivo, reg = avalia_binding(lambda path: curl_get(base + path, token), args.expect, args.candidate, args.duas_fontes)
     estado = {PASS: "PASS", FAIL: "FAIL", NAO_COMPROVADO: "NAO_COMPROVADO"}[code]
     reg.update(estado=estado, motivo=motivo)
     print("DIARIO_D1_BINDING_EFETIVO=" + json.dumps(reg, sort_keys=True, ensure_ascii=False))
@@ -248,6 +254,7 @@ def main(argv=None):
     b = sub.add_parser("binding")
     b.add_argument("--expect", choices=("presente", "ausente"), required=True)
     b.add_argument("--candidate")
+    b.add_argument("--duas-fontes", action="store_true")
     args = ap.parse_args(argv)
     if args.cmd == "sql":
         try:

@@ -1,0 +1,9 @@
+{
+  "schema": "zevanory-diario-d1-modo/v1",
+  "padrao": "off",
+  "valores": {
+    "off": "deploy sem input não liga o binding DIARIO e não faz nenhuma chamada D1 (estado desde o NO-GO do GPT-6)",
+    "manter": "deploy sem input religa o binding DIARIO só se o banco JÁ estiver certificado (3 migrações, objetos, diario_head=1, abandono_*=0), com readback obrigatório e fail-closed; nunca migra"
+  },
+  "decisao": "Trocar para manter é decisão do proprietário e do GPT-6, por PR, depois de uma certificação PASS (diario_d1=certificar). Lido pelo job guard de .github/workflows/central-production-deploy.yml no SHA do run. Doc: docs/p20/diario-d1.md, seção Primeiro deploy com D1."
+}
