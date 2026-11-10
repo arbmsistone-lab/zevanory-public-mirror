@@ -135,6 +135,11 @@ páginas e dados também citam preço e condição. Por isso:
 - `scripts/ci/required_check_guard.py`: `carregar_reservados`, `carregar_rotina`, `reservado`, `rotineiro`,
   `contra_auditoria`, `avaliar`.
 - `.github/workflows/required-check-guard.yml`: coleta `issues/<PR>/comments` e passa `--reserved` da base.
-- `tests/ci/test_required_check_guard.py` T24–T39 e `tests/ci/mutants_required_check_guard.py` M21–M34
-  (`required-check-guard / selftest`: 39 testes, 34 mutantes, todos MORTOS). T37–T39/M32–M34: gate de preço reservado,
+- `tests/ci/test_required_check_guard.py` T24–T42 e `tests/ci/mutants_required_check_guard.py` M21–M38
+  (`required-check-guard / selftest`: 42 testes, 38 mutantes, todos MORTOS). T37–T39/M32–M34: gate de preço reservado,
   barreira no check obrigatório para preço em arquivo comum com rótulo autônomo, emissor sem o gate.
+  T40–T42/M35–M38 (contra-auditoria do #1008): `scripts/ci/runtime_ddl_gate.py` (reservado) roda nos dois emissores de
+  `product-pages / static-audit`, sem filtro de caminho e sem Postgres; reprova DDL interpolado em qualquer `worker/*.mjs`
+  (escaneamento próprio + `runtime_ddl()`/`dynamic_ddl()` de `scripts/ops/restore_new_database.py`, que precisam
+  concordar). O guarda exige o passo com as linhas exatas (`set -euo pipefail`, `--self-test`, execução), sem
+  `shell:`/`env:`; ausência é violação dura `GATE_DDL_AUSENTE`.

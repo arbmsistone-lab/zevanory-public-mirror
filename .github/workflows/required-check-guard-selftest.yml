@@ -1,6 +1,6 @@
 name: required-check-guard-selftest
 
-# G4: reprodução da suíte do guarda (39 testes), dos autotestes do executor de mutantes e dos 34 mutantes, com
+# G4: reprodução da suíte do guarda (42 testes), dos autotestes do executor de mutantes e dos 38 mutantes, com
 # classificação honesta (AVAL 090): baseline obrigatório; MORTO só por asserção em teste esperado; dependência ausente,
 # import, sintaxe, timeout ou coleta -> INCONCLUSIVO (falha o job). INFORMATIVO: roda a versão do PR (pull_request),
 # portanto não é evidência de controle. O controle é o job required-check-guard / protected-paths (pull_request_target).
@@ -27,6 +27,11 @@ on:
       - "worker/lead-magnet.mjs"
       - "data/products.json"
       - "data/affiliates.json"
+      # contra-auditoria do #1008: T41 roda o gate de DDL (python + node) sobre cópia do affiliate-program.mjs
+      - "scripts/ci/runtime_ddl_gate.py"
+      - "scripts/ops/restore_new_database.py"
+      - "worker/affiliate-program.mjs"
+      - "worker/whatsapp-neon-store.mjs"
 
 permissions:
   contents: read
@@ -56,6 +61,6 @@ jobs:
           set -euo pipefail
           sha256sum scripts/ci/required_check_guard.py .github/workflows/required-check-guard.yml tests/ci/mutants_required_check_guard.py ops/owner-reserved-paths.json | tee -a "$GITHUB_STEP_SUMMARY"
           python -I -B tests/ci/test_required_check_guard.py . 2>&1 | tee /tmp/suite.txt
-          grep -qE '^Ran 39 tests' /tmp/suite.txt || { echo "::error::suíte do guarda deveria rodar exatamente 39 testes"; exit 1; }
+          grep -qE '^Ran 42 tests' /tmp/suite.txt || { echo "::error::suíte do guarda deveria rodar exatamente 42 testes"; exit 1; }
           python -I -B tests/ci/test_mutants_runner.py .
           python -I -B tests/ci/mutants_required_check_guard.py . | tee -a "$GITHUB_STEP_SUMMARY"

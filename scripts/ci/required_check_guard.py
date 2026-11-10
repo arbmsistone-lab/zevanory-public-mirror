@@ -10,7 +10,9 @@ DADO (lista de arquivos e YAML lidos pela API, parseados com BaseLoader, nunca e
     - um workflow do PR emite job com nome de check obrigatório fora do emissor canônico (colisão de nome);
     - o emissor canônico é enfraquecido: job removido/renomeado, `if:` no job ou em passo, `continue-on-error`,
       gatilho `pull_request` removido ou com filtro de caminho/branch que deixa o check "pendente"/"skipped", ou sem o
-      passo do gate de preço em fonte única (NC-1006-02, tests/governanca/price-consistency-gate.test.mjs);
+      passo do gate de preço em fonte única (NC-1006-02, tests/governanca/price-consistency-gate.test.mjs), ou sem o
+      passo do gate de DDL do Worker (contra-auditoria do #1008, scripts/ci/runtime_ddl_gate.py: linhas exatas, set -euo
+      pipefail, sem `shell:`/`env:` no passo);
     - arquivo que sombreia módulo da biblioteca padrão onde os scripts obrigatórios importam (raiz, scripts/, scripts/ci/);
     - YAML de workflow inválido, nome de arquivo inesperado ou lista de arquivos truncada.
   BRANDO (liberado só por rótulo do proprietário preso ao SHA exato do head):
@@ -47,7 +49,9 @@ RESERVED_SELF = ('ops/owner-reserved-paths.json', 'scripts/ci/required_check_gua
                  '.github/workflows/required-check-guard.yml') + (
     # NC-1006-02: tabela canônica de preços, módulo que deriva dela e o gate de consistência (fora de rotina_autonoma)
     'data/products.json', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',
-    'tests/governanca/price-consistency-gate.test.mjs', 'data/affiliates.json')
+    'tests/governanca/price-consistency-gate.test.mjs', 'data/affiliates.json') + (
+    # contra-auditoria do #1008: gate de DDL do Worker que roda no check obrigatório (fora de rotina_autonoma)
+    'scripts/ci/runtime_ddl_gate.py',)
 AUDIT_LINE = re.compile(r'^[ \t]*CONTRA-AUDITORIA:[ \t]*(PASS|FAIL)[ \t]+([0-9a-f]{40})[ \t]*$', re.M)
 
 # check obrigatório -> {arquivo canônico: job_id}. Qualquer outro emissor do mesmo nome é colisão.
@@ -60,6 +64,13 @@ REQUIRED_CHECKS = {
 # única. Sem ele, um preço trocado em arquivo não reservado (ex.: worker/lead-magnet.mjs) passaria no check obrigatório.
 PRICE_GATE_CMD = 'node --test tests/governanca/price-consistency-gate.test.mjs'
 REQUIRED_STEP = {'product-pages-premerge.yml': ('audit', PRICE_GATE_CMD), 'required-status-compat.yml': ('product-status', PRICE_GATE_CMD)}
+# Contra-auditoria do #1008: DDL interpolado em worker/*.mjs quebra o restore (restore_new_database.runtime_ddl), mas o
+# check p20-restore-drill tem filtro de caminho e não é obrigatório. Cada emissor de "product-pages / static-audit" precisa
+# de UM passo com estas linhas EXATAS (não basta conter o texto: `cmd || true` ou só o --self-test não valem), começando por
+# `set -euo pipefail` e sem `shell:`/`env:` próprios.
+DDL_GATE_LINES = ('set -euo pipefail', 'python3 -I -B scripts/ci/runtime_ddl_gate.py --self-test',
+                  'python3 -I -B scripts/ci/runtime_ddl_gate.py')
+REQUIRED_DDL_STEP = {'product-pages-premerge.yml': 'audit', 'required-status-compat.yml': 'product-status'}
 # gatilho que cada emissor canônico precisa manter (sem filtros que pulem o check)
 TRIGGER = {'product-pages-premerge.yml': 'pull_request', 'required-status-compat.yml': 'pull_request',
            'required-check-guard.yml': 'pull_request_target'}
@@ -234,6 +245,11 @@ def analisar_workflow(arquivo, texto):
         passos = (jobs.get(jid) or {}).get('steps') if isinstance(jobs.get(jid), dict) else None
         if jid in jobs and not any(isinstance(p, dict) and cmd in str(p.get('run', '')) for p in (passos or [])):
             v.append(f'GATE_DE_PRECO_AUSENTE {arquivo}:{jid} sem o passo {cmd!r}')
+    if arquivo in REQUIRED_DDL_STEP:
+        jid = REQUIRED_DDL_STEP[arquivo]
+        passos_ddl = (jobs.get(jid) or {}).get('steps') if isinstance(jobs.get(jid), dict) else None
+        if jid in jobs and not any(passo_ddl_valido(p) for p in (passos_ddl or [])):
+            v.append(f'GATE_DDL_AUSENTE {arquivo}:{jid} sem o passo exato {list(DDL_GATE_LINES)!r}')
     if arquivo in TRIGGER:
         ev = TRIGGER[arquivo]
         g = gatilhos(y)
@@ -256,6 +272,14 @@ def analisar_workflow(arquivo, texto):
                 if faltam:
                     v.append(f'GATILHO_OBRIGATORIO_FILTRADO {arquivo}: {ev}.types sem {sorted(faltam)}')
     return v
+
+
+def passo_ddl_valido(passo):
+    """Passo cujo `run` tem exatamente as linhas de DDL_GATE_LINES (ignorando brancos e comentários), shell e ambiente padrão."""
+    if not isinstance(passo, dict) or 'shell' in passo or 'env' in passo:
+        return False
+    linhas = [l.strip() for l in str(passo.get('run', '')).splitlines()]
+    return [l for l in linhas if l and not l.startswith('#')] == list(DDL_GATE_LINES)
 
 
 def canon_de(check):
