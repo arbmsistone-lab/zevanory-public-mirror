@@ -64,7 +64,7 @@ export const DAILY_TIPS=Object.freeze([
  "Reserve 15 minutos na sexta para revisar a agenda da semana seguinte.",
  "Anote toda saída do caixa no mesmo dia, mesmo as pequenas.",
  "Peça à IA um rascunho de resposta e revise antes de enviar.",
- "Crie uma etiqueta no WhatsApp para orçamentos ainda sem retorno.",
+ "Crie uma etiqueta para orçamentos ainda sem retorno.",
  "Confira os 5 itens que mais saem antes de abrir as portas.",
  "Escreva em uma folha o roteiro do atendimento mais repetido.",
  "Responda primeiro quem espera há mais tempo, não quem chamou por último.",
@@ -77,7 +77,7 @@ export const DAILY_TIPS=Object.freeze([
  "Monte uma saudação curta com endereço e horário de funcionamento.",
  "Marque um lembrete para retomar contato com quem sumiu há um mês.",
  "Dinheiro do negócio e dinheiro de casa: mantenha separados.",
- "Peça permissão antes de incluir alguém na lista de novidades.",
+ "Peça permissão antes de enviar novidades a alguém.",
  "Revise com calma todo texto gerado por IA que cite valores ou prazos.",
  "Registre de onde veio cada cliente novo: indicação, rede social ou passagem.",
  "Calcule o custo de cada serviço antes de conceder desconto.",
@@ -100,14 +100,14 @@ export const DAILY_TIPS=Object.freeze([
 ]);
 // Variantes vizinhas (mesmo produto, nicho e ângulo 25 dias depois) mudam a preposição e a posição do nicho,
 // para que nem as junções de palavras em volta do nicho se repitam.
-const ANGLE_HOOKS=Object.freeze({
- "dor":["Gargalo comum para {n}","Na rotina de {n}, menos retrabalho","Para {n}: menos mensagem repetida","Dia corrido de {n}? Comece aqui"],
+export const ANGLE_HOOKS=Object.freeze({
+ "dor":["Gargalo comum para {n}","Na rotina de {n}, um ajuste simples","Para {n}: mensagens que se repetem","Dia corrido de {n}? Comece aqui"],
  "tutorial":["Mini tutorial para {n}","Rotina de {n}: ajuste de 15 min","Para {n}: um passo para hoje","Dia a dia de {n}: teste hoje"],
  "caso de uso":["Exemplo de uso para {n}","No dia a dia de {n}, um caso","Para {n}: um caso simples","Rotina de {n}: um exemplo"],
- "objeção":["Sem tempo? Começo leve para {n}","Sem sistema caro: rotina de {n}","Para {n}: comece pequeno","Parece difícil? Rotina de {n}, aos poucos"],
+ "objeção":["Sem tempo? Começo leve para {n}","Sem sistema novo: rotina de {n}","Para {n}: comece pequeno","Parece difícil? Rotina de {n}, aos poucos"],
  "comparação":["Manual ou assistido? Para {n}","Rotina de {n}: o que comparar","Para {n}: dois jeitos de organizar","Antes de trocar o método de {n}, compare"]
 });
-const CTAS=Object.freeze(["Veja o guia","Saiba mais","Leia o guia","Confira","Detalhes no link","Mais no link","Conheça o guia"]);
+export const CTAS=Object.freeze(["Veja o guia","Saiba mais","Leia o guia","Confira","Detalhes no link","Mais no link","Conheça o guia"]);
 const mod=(a,b)=>((a%b)+b)%b;
 export function textVariant(day){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day)))throw new Error("calendar_day_invalid");

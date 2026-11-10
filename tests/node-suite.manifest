@@ -5,7 +5,7 @@
 # Ordem alfabética; regenerar: ver docs no topo de scripts/ci/node_suite_check.py (--print-manifest).
 tests/abandono-ensaio.test.mjs 7
 tests/abandono-hotmart.test.mjs 94
-tests/acquisition-engine.test.mjs 22
+tests/acquisition-engine.test.mjs 24
 tests/activity-ledger.test.mjs 7
 tests/affiliate-program.test.mjs 4
 tests/atendimento-drain-dispatch.test.mjs 3
@@ -14,7 +14,7 @@ tests/atendimento.test.mjs 15
 tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
-tests/autonomy-inventory.test.mjs 7
+tests/autonomy-inventory.test.mjs 8
 tests/b0-baseline.test.mjs 36
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3

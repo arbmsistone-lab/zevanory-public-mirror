@@ -1,7 +1,7 @@
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {OWNER_DISABLED_CHANNELS,calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest,CATALOG_SKUS,textVariant,DAILY_TIPS,recordBlueskyFailure,blueskyStatusKey,BLUESKY_STATUS_PREFIX,BLUESKY_STATUS_TTL} from "../worker/acquisition-engine.mjs";
+import {OWNER_DISABLED_CHANNELS,calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest,CATALOG_SKUS,textVariant,DAILY_TIPS,ANGLE_HOOKS,CTAS,recordBlueskyFailure,blueskyStatusKey,BLUESKY_STATUS_PREFIX,BLUESKY_STATUS_TTL} from "../worker/acquisition-engine.mjs";
 import {blueskyPostText} from "../worker/bluesky-publisher.mjs";
 import {CLOSED_LABEL} from "../worker/politica-unica.mjs";
 import {hotmartKit,salesLockViolations} from "../worker/sales-lock-content.mjs";
@@ -324,4 +324,18 @@ test("F1: falha de publicação também grava o status; regravação só quando 
  const out=await runAcquisitionEngine({...env,ZEVANORY_PRIVATE_ARTIFACTS:bad},new Date("2026-11-10T22:35:00Z"),mock);
  assert.equal(out.outcomes.find(x=>x.channel==="bluesky").code,"engine_exception");
  assert.equal(JSON.parse(await s2.get("bluesky:status:20261110")).motivo,"engine_exception");
+});
+// Auditoria independente (NC-1/NC-2): nenhum texto de divulgação cita WhatsApp nem lista de espera.
+const BANNED_COPY=/whatsapp|lista de espera/i;
+const copyViolations=({tips,hooks,ctas})=>[...tips,...Object.values(hooks).flat(),...ctas].filter(t=>BANNED_COPY.test(t));
+test("F1: dicas, ganchos e chamadas sem \"whatsapp\" nem \"lista de espera\" (qualquer caixa)",()=>{
+ assert.ok(DAILY_TIPS.length&&Object.keys(ANGLE_HOOKS).length===5&&CTAS.length);
+ assert.deepEqual(copyViolations({tips:DAILY_TIPS,hooks:ANGLE_HOOKS,ctas:CTAS}),[]);
+ for(let i=0;i<60;i++)for(const mode of MODES){const e=calendarEntry(dayAt("2026-11-06",i));for(const ch of ["bluesky","telegram"])assert.doesNotMatch(generateNative(e,ch,mode).text,BANNED_COPY,e.day+" "+ch);}
+});
+test("F1 mutante: dica, gancho ou chamada com WhatsApp/lista de espera é detectada",()=>{
+ const mut=[{tips:[...DAILY_TIPS.slice(1),"Crie uma etiqueta no WhatsApp para orçamentos."],hooks:ANGLE_HOOKS,ctas:CTAS},
+  {tips:DAILY_TIPS,hooks:{...ANGLE_HOOKS,"dor":["Entre na LISTA DE ESPERA, {n}",...ANGLE_HOOKS["dor"].slice(1)]},ctas:CTAS},
+  {tips:DAILY_TIPS,hooks:ANGLE_HOOKS,ctas:[...CTAS.slice(1),"Chame no Whatsapp"]}];
+ for(const m of mut)assert.equal(copyViolations(m).length,1);
 });

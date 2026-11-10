@@ -13,14 +13,14 @@ test("without evidence nothing counts as autonomous", () => {
 
 test("fresh evidence proves, stale does not; reserved acts never enter the denominator", () => {
   const ctx = {
-    byDay: { "2026-10-13": { telegram: { status: "publicado", at: "2026-10-13T10:00:00Z" }, blog: { status: "publicado", at: "2026-10-11T10:00:00Z" } } },
+    byDay: { "2026-10-13": { bluesky: { status: "publicado", at: "2026-10-13T10:00:00Z" }, blog: { status: "publicado", at: "2026-10-11T10:00:00Z" } } },
     runs: [{ path: ".github/workflows/indexnow-submit.yml", event: "schedule", conclusion: "success", created_at: "2026-10-13T09:40:00Z" }, { path: ".github/workflows/indexnow-submit.yml", event: "workflow_dispatch", conclusion: "success", created_at: "2026-10-13T11:00:00Z" }],
     funnelAt: "2026-10-13T11:30:00Z",
     buyFlow: [{ state: "checkout" }], hotmart: [{ http: 200, blockedText: false }], probes: [{ ok: true }],
   };
   const r = evaluateInventory(inv, ctx, now);
   const p = Object.fromEntries(r.processes.map((x) => [x.id, x]));
-  assert.equal(p.telegram.proven, true); assert.equal(p.blog.proven, false);
+  assert.equal(p.bluesky.proven, true); assert.equal(p.blog.proven, false);
   assert.equal(p.indexnow.proven, true); assert.equal(p.funnel.proven, false); // funnel needs the server heartbeat now
   assert.equal(p.contracts.eligible, false);
   assert.equal(r.eligible, inv.processes.filter((x) => x.eligible).length);
@@ -90,4 +90,13 @@ test("F1: falha registrada do Bluesky aparece como \"bluesky erro: <motivo>\" e 
   // Erro antigo (fora da janela) não acusa falha.
   const stale = { byDay: { "2026-10-10": { bluesky: { status: "erro", code: "similarity", at: "2026-10-10T11:00:00Z" } } } };
   assert.equal(evaluateInventory(inv, stale, now).processes.find((x) => x.id === "bluesky").failed, false);
+});
+
+test("F0 nº 7: Telegram de divulgação fora do denominador (desligado por decisão do proprietário)", () => {
+  const t = inv.processes.find((x) => x.id === "telegram");
+  assert.deepEqual([t.eligible, t.state, t.note], [false, "desligado", "Decisão F0 nº 7 do proprietário (10/11/2026)"]);
+  const r = evaluateInventory(inv, { byDay: { "2026-10-13": { telegram: { status: "publicado", at: "2026-10-13T10:00:00Z" } } } }, now);
+  const p = r.processes.find((x) => x.id === "telegram");
+  assert.equal(p.eligible, false); assert.equal(p.proven, false);
+  assert.equal(r.dependencies.some((d) => d.id === "telegram"), false);
 });
