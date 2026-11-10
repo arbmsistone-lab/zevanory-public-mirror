@@ -19,6 +19,8 @@
 //   T4 VALOR_DA_MARCA     oferta "por/custa/preço R$ N" com a marca ZEVANORY por perto e sem produto: N tem de ser de kit.
 //   T5 DESCONTO           cupom/desconto/promoção/"% off"/"por cento"/"N%" na mesma frase de um produto (ou em página de
 //                         produto), fora de arquivo reservado.
+//   T6 COMISSAO_PCT       percentual de comissão em texto ("N% de comissão", "comissão de N%", "N por cento de comissão"),
+//                         em QUALQUER arquivo de produção (reservado ou não): N tem de ser uma das taxas de data/affiliates.json.
 //   C1 CAMPO_DE_PRECO     campo price/preco/valor/amount (inclusive aninhado: {sku, offer:{price:N}}) em objeto cujo
 //                         produto (o próprio objeto ou um ancestral) é conhecido: = tabela (centavos = x100).
 //   C2 MAPA_DE_PRECO      "<sku|slug>": N | "N" | ["nome", N], par ["<sku|slug>", N] (Map/array de pares).
@@ -37,6 +39,8 @@ export const WINDOW_BEFORE = 200;
 export const WINDOW_BEFORE_HTML = 700;
 const SAVINGS_CTX = /(economi|separad|custaria|avulso|somad|em vez de|comprar os|\bcompletos\b)/i;
 const COMMISSION_CTX = /comiss/i;
+// T6: "30% de comissão", "30 por cento de comissão", "comissão de 30%", "comissão: 30%" (N inteiro ou decimal)
+const COMMISSION_PCT = /(?<![\d.,])(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por cento)\s*(?:de\s+|da\s+|na\s+)?comiss|comiss(?:ão|ao|ões|oes)\b[\s:]*(?:de\s+)?(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por cento)/giu;
 const BRAND = /\bZEVANORY\b/;
 const OFFER_CTX = /\b(por|custa|pre[cç]o|valor|investimento|apenas|s[oó])\b[\s:(]*((R\$|BRL)\s*)?$/i;
 const DISCOUNT = /\b(cupom|cupons|cupon|coupon|coupons|descontos?|promo[cç](?:[aã]o|[oõ]es)|black friday|liquida[cç][aã]o|por cento)\b|\d+(?:,\d+)?\s*%(?:\s*off\b)?/gi;
@@ -287,6 +291,11 @@ function scanProse(file, text, canon, mr, { page, html, isReserved }, found) {
     }
     if (!m.bare && OFFER_CTX.test(text.slice(Math.max(0, m.at - 30), m.at)) && BRAND.test(text.slice(Math.max(0, m.at - WINDOW_BEFORE), m.end + 80)) && !canon.kitUnion.has(m.value))
       push(found, file, "VALOR_DA_MARCA", "marca", m.value, text, m.at);
+  }
+  // T6: percentual de comissão fora das taxas da fonte reservada reprova (inclusive em página de afiliado reservada)
+  for (const c of text.matchAll(COMMISSION_PCT)) {
+    const pct = Number(String(c[1] ?? c[2]).replace(",", "."));
+    if (!canon.commissionPcts.includes(pct)) push(found, file, "COMISSAO_PCT", "afiliado", pct, text, c.index);
   }
   if (isReserved) return;
   if (DISCOUNT_EXEMPT.some((rx) => rx.test(file))) return;

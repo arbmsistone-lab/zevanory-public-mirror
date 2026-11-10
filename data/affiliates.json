@@ -1,9 +1,15 @@
 {
   "schema": "zevanory-affiliates/v1",
-  "nota": "NC-1008-03: fonte única (reservada ao proprietário) das condições de afiliado. Valores = os PUBLICADOS hoje; nenhuma taxa foi decidida aqui. PENDENTE decisão do proprietário (30% recomendado no F0): hoje há duas taxas publicadas, 50% no mercado de afiliados da Hotmart (sales-public/kit-afiliado.html, sales-public/afiliados.html) e 30% no programa próprio por link /?ref= (sales-public/afiliados.html, worker/affiliate-program.mjs). Lido por worker/affiliate-program.mjs e pelo gate tests/governanca/price-gate.mjs (comissão derivada só nas páginas de afiliado reservadas).",
-  "hotmart_commission_pct": 50,
+  "nota": "NC-1008-03: fonte única (reservada ao proprietário) das condições de afiliado. DECISÃO DO PROPRIETÁRIO (F0, item 4), literal: \"Aprovo afiliados 30%, último clique, 60 dias, aprovação manual.\" Vale para os dois canais: mercado de afiliados da Hotmart (sales-public/kit-afiliado.html, sales-public/afiliados.html; configuração feita pelo proprietário no painel da Hotmart) e programa próprio por link /?ref= (sales-public/afiliados.html, worker/affiliate-program.mjs). Lido por worker/affiliate-program.mjs e pelo gate tests/governanca/price-gate.mjs (comissão derivada só nas páginas de afiliado reservadas; percentual de comissão diferente destas taxas reprova).",
+  "decisao": "F0 item 4 (proprietário): afiliados 30%, último clique, 60 dias, aprovação manual",
+  "hotmart_commission_pct": 30,
+  "hotmart_commission_rule": "last_click",
+  "hotmart_cookie_days": 60,
+  "hotmart_affiliation_approval": "manual",
   "own_program_commission_pct": 30,
-  "own_program_attribution_days": 30,
+  "own_program_attribution_days": 60,
+  "own_program_attribution_rule": "last_click",
+  "own_program_payout_approval": "manual",
   "pages": [
     "afiliados/index.html",
     "kit-afiliado/index.html",

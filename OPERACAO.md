@@ -55,7 +55,7 @@ dono. A matriz de certificação (`system-matrix.yml`, KV `zpc:matrix:v1`) mostr
 | TikTok | Ativo por agendamento | API proibida para conta própria (diretrizes do TikTok); pacote a cada 10 dias + executor |
 | Instagram / Facebook | Aguardando Meta | Ao aprovar: secrets `META_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID`, `META_PAGE_ID` → Reels e vídeo diários entram sozinhos |
 | Pinterest | Aguardando aprovação | Ao aprovar: `PINTEREST_CLIENT_ID/SECRET`, conectar no painel, `PINTEREST_BOARD_ID` |
-| Hotmart | 1 vendendo, 5 em análise | Webhook ativo; afiliados 50%; links com `src` de origem |
+| Hotmart | 1 vendendo, 5 em análise | Webhook ativo; afiliados 30%, último clique, cookie de 60 dias, aprovação manual, fora do Mercado de Afiliados (decisão F0 item 4; aplicar no painel de cada kit); links com `src` de origem |
 
 ## 4. Tarefas recorrentes do executor (geradas prontas pela ZEVANORY)
 

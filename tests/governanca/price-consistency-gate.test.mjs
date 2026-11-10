@@ -98,7 +98,7 @@ test("G04 NEGATIVO: o mesmo vale nos demais módulos, páginas e dados que citam
     ["sales-public/solucoes.html", '<p class="catalog-price">R$ 247<', '<p class="catalog-price">R$ 257<'],
     ["sales-public/combo-ia-vendas.html", "Economia de R$ 37", "Economia de R$ 47"],
     ["data/p24/promise-map.json", "Economia de R$ 37", "Economia de R$ 40"],
-    ["kit-afiliado/index.html", "R$ 48,50", "R$ 58,50"],
+    ["kit-afiliado/index.html", "R$ 29,10", "R$ 48,50"],
   ];
   for (const [f, de, para] of casos) {
     if (!existsSync(join(ROOT, f))) continue;
@@ -124,9 +124,15 @@ test("G05 NEGATIVO: valor novo em R$ ao lado de nome/slug/SKU que não está na 
   // valores derivados documentados: economia/soma do pacote; comissão (taxa de data/affiliates.json) SÓ em página de afiliado reservada
   assert.equal(t("Combo IA + Vendas por R$ 157 (economia de R$ 37; separados R$ 194)").length, 0);
   assert.equal(t("Negócio Completo R$ 247 — economia de R$ 94 em relação à compra separada (R$ 341)").length, 0);
-  assert.equal(t("<p>IA na Prática · R$ 97 · comissão de 50% (R$ 48,50)</p>", "sales-public/kit-afiliado.html").length, 0);
-  assert.equal(t("<p>IA na Prática · R$ 97 · comissão de 50% (R$ 50,00)</p>", "sales-public/kit-afiliado.html").length, 1);
-  assert.ok(t('const s = "IA na Prática · R$ 97 · comissão de 50% (R$ 48,50)";').some((v) => v.regra === "VALOR_EM_REAIS" && v.valor === 48.5), "comissão fora da página de afiliado");
+  assert.equal(t("<p>IA na Prática · R$ 97 · comissão de 30% (R$ 29,10)</p>", "sales-public/kit-afiliado.html").length, 0);
+  assert.equal(t("<p>IA na Prática · R$ 97 · comissão de 30% (R$ 30,00)</p>", "sales-public/kit-afiliado.html").length, 1);
+  assert.ok(t('const s = "IA na Prática · R$ 97 · comissão de 30% (R$ 29,10)";').some((v) => v.regra === "VALOR_EM_REAIS" && v.valor === 29.1), "comissão fora da página de afiliado");
+  // F0 item 4 (30%): a comissão antiga de 50% volta a reprovar, em R$ derivado e em percentual (T6), mesmo na página reservada
+  assert.deepEqual(t("<p>IA na Prática · R$ 97 · comissão de 50% (R$ 48,50)</p>", "sales-public/kit-afiliado.html").map((v) => v.regra).sort(), ["COMISSAO_PCT", "VALOR_EM_REAIS"]);
+  for (const s of ["<p>Divulgue e receba 50% de comissão pela Hotmart.</p>", "<p>comissão de 50 por cento</p>", "<p>comissão: 50%</p>"])
+    assert.deepEqual(t(s, "sales-public/kit-afiliado.html").map((v) => [v.regra, v.valor]), [["COMISSAO_PCT", 50]], s);
+  assert.equal(t('const s = "Afiliados: 50% de comissão";').length, 1, "percentual de comissão fora da página de afiliado");
+  assert.equal(t("<p>Receba 30% de comissão pela Hotmart.</p>", "sales-public/kit-afiliado.html").length, 0);
   assert.equal(t("Combo IA + Vendas: economia de R$ 94").length, 1, "economia de outro pacote");
   // HTML: atributo de texto e página do produto contam como contexto
   assert.equal(pageProduct("sales-public/combo-ia-vendas.html", canon), "combo-ia-vendas");
@@ -320,8 +326,8 @@ test("G10 runtime: os módulos de produção IMPORTADOS renderizam só os preço
 test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo programa e pelo gate; valor derivado só nas páginas de afiliado", async () => {
   const af = JSON.parse(read("data/affiliates.json"));
   assert.equal(af.schema, "zevanory-affiliates/v1");
-  assert.match(af.nota, /PENDENTE decisão do proprietário \(30% recomendado no F0\)/);
-  assert.deepEqual([af.hotmart_commission_pct, af.own_program_commission_pct], [50, 30], "valores publicados hoje (nenhuma taxa decidida aqui)");
+  assert.match(af.nota, /"Aprovo afiliados 30%, último clique, 60 dias, aprovação manual\."/);
+  assert.deepEqual([af.hotmart_commission_pct, af.own_program_commission_pct], [30, 30], "decisão do proprietário (F0 item 4)");
   const { AFFILIATE_COMMISSION_RATE } = await import("../../worker/affiliate-program.mjs");
   assert.equal(AFFILIATE_COMMISSION_RATE, af.own_program_commission_pct / 100);
   const src = read("worker/affiliate-program.mjs");
@@ -336,14 +342,14 @@ test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo
   // página de afiliado: comissão derivada da taxa da fonte; outra taxa reprova
   const f = "sales-public/kit-afiliado.html";
   assert.equal(fixture([f]).rc, 0);
-  assert.equal(fixture([f], { [f]: ["R$ 48,50", "R$ 38,80"] }).rc, 1, "comissão de 40% inventada");
+  assert.equal(fixture([f], { [f]: ["R$ 29,10", "R$ 38,80"] }).rc, 1, "comissão de 40% inventada");
   // trocar a taxa NA FONTE muda o que o gate aceita (prova de que ele lê a fonte)
   const dir = mkdtempSync(join(tmpdir(), "price-gate-"));
   for (const x of ["data/products.json", "ops/owner-reserved-paths.json", f]) { mkdirSync(dirname(join(dir, x)), { recursive: true }); copyFileSync(join(ROOT, x), join(dir, x)); }
-  writeFileSync(join(dir, "data/affiliates.json"), JSON.stringify({ ...af, hotmart_commission_pct: 40 }));
+  writeFileSync(join(dir, "data/affiliates.json"), JSON.stringify({ ...af, hotmart_commission_pct: 40, own_program_commission_pct: 40 }));
   const x = spawnSync(process.execPath, [GATE, "--root", dir], { encoding: "utf8" });
   rmSync(dir, { recursive: true, force: true });
-  assert.equal(x.status, 1, "com 40% na fonte, a página que diz 50% reprova");
+  assert.equal(x.status, 1, "com 40% na fonte, a página que diz 30% reprova");
 });
 
 // Plano do e-mail de abandono (PR-2; contra-auditoria do PR-1): worker/abandono-hotmart.mjs é RESERVADO (#1009), então o

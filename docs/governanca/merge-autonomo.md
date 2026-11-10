@@ -114,9 +114,10 @@ páginas e dados também citam preço e condição. Por isso:
   preço = literal, variável = literal usada em `"R$ "+x`, `` `R$ ${x}` `` ou campo de preço, literal direto em
   `"R$ " + N` / `` `R$ ${N}` ``, e aritmética sobre qualquer variável que recebe priceBy*/PRICE_BY_SKU/bundle*. Os
   scripts do Short de boas-vindas exportam `welcomeCreative()` e o teste runtime confere o preço renderizado.
-- **Comissão (NC-1008-03):** taxa só em `data/affiliates.json` (reservado): 50% Hotmart e 30% programa próprio, os valores
-  publicados hoje, marcados "PENDENTE decisão do proprietário (30% recomendado no F0)". `worker/affiliate-program.mjs` lê a
-  taxa e o prazo de atribuição dessa fonte; o gate só aceita a comissão derivada nas páginas de afiliado listadas nela.
+- **Comissão (NC-1008-03):** taxa só em `data/affiliates.json` (reservado): 30% na Hotmart e 30% no programa próprio, último
+  clique, 60 dias, aprovação manual (decisão do proprietário, F0 item 4). `worker/affiliate-program.mjs` lê a taxa e o prazo de
+  atribuição dessa fonte; o gate só aceita a comissão derivada nas páginas de afiliado listadas nela, e a regra T6
+  (`COMISSAO_PCT`) reprova em qualquer arquivo de produção um percentual de comissão que não seja uma dessas taxas.
 - **Onde roda:** no check obrigatório `product-pages / static-audit` (`product-pages-premerge.yml:audit` e
   `required-status-compat.yml:product-status`), com contagem exata (`# tests 11`). Pendente fora do PR (NC-1008-02):
   `required-check-guard / protected-paths` precisa virar check obrigatório na proteção de branch de gh-pages. O guarda trata a ausência desse passo
