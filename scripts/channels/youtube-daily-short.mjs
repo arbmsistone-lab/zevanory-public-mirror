@@ -18,6 +18,7 @@ import { readSalesSwitch } from "../../worker/sales-control.mjs";
 import { hotmartKitsOpen, hotmartKit } from "../../worker/sales-lock-content.mjs";
 import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "../../worker/creative-autonomy.mjs";
 import { PRICE_BY_SKU } from "../../worker/product-prices.mjs";
+import { textoProibido, violacoesShort, nivelRampa, decisaoSlot, avaliarPreflight, avaliarPosUpload, congelamentoAtivo, eQcFalha, gravarUmaVez, diasDaJanela, CHAVE_STATUS_DIA, CHAVE_QC_FALHA, CHAVE_CONGELADO, CHAVES_PUBLICADO } from "./shorts-retomada.mjs";
 
 export const TARGET_CHANNEL = "UCMl8-SxMVv77S2tz2H63P3A";
 // NC-1006-02: era uma tabela própria e velha (197/197/247/297/397) que o Short usaria com vendas abertas; agora é a
@@ -58,21 +59,35 @@ export function publicationWindow({ day, slot, now = Date.now() }) {
   return { ...base, action: "publish", late: delayMin > LATE_TOLERANCE_MIN, delayMin };
 }
 const BANK = JSON.parse(readFileSync(new URL("../../data/short-bank.json", import.meta.url), "utf8"));
+// Retomada controlada (Plano Mestre F1): rampa, voz e travas do canal em data/shorts-rampa.json.
+export const RAMPA_CONFIG = Object.freeze(JSON.parse(readFileSync(new URL("../../data/shorts-rampa.json", import.meta.url), "utf8")));
+// Calculadora gratuita do dia (CTA quando a compra pela Hotmart não está aberta).
+export const calculatorFor = (day, offset = 0) => BANK.calculators[(((dayIndex(day) + offset) % BANK.calculators.length) + BANK.calculators.length) % BANK.calculators.length];
+const shortUrl = (path, campaign) => `https://vendas.zevanory.api.br/${path}?utm_source=youtube&utm_medium=short&utm_campaign=${campaign}`;
 const dayIndex = day => Math.floor(Date.parse(day + "T12:00:00Z") / 86400000);
 const VALUE_RISK = /\b(gr[aá]tis|renda garantida|lucro garantido|ganhe dinheiro|resultado garantido|fature|enrique[cç]a|antes e depois|cura|milagre|voc[eê] sofre)\b/i;
 const lowerFirst = t => t.charAt(0).toLowerCase() + t.slice(1);
-export function planValueShort(day, slot) {
+export function planValueShort(day, slot, { salesOpen = false, hotmartOpen = false } = {}) {
   const i = dayIndex(day);
+  // CTA da dica: o kit IA na Prática pela Hotmart (modo Hotmart) ou a calculadora gratuita do dia.
+  const hotmart = salesOpen !== true && hotmartOpen === true ? hotmartKit("ia-na-pratica") : null;
   let item, use, url, screen, said, title, lead, campaign;
   if (slot === "dica") {
     item = BANK.guides[((i % BANK.guides.length) + BANK.guides.length) % BANK.guides.length];
     const k0 = Math.floor(i / BANK.guides.length) % item.uses.length;
-    use = ([...item.uses.slice(k0), ...item.uses.slice(0, k0)].find(u => !VALUE_RISK.test(u)) || item.uses[0]).replace(/[.\s]+$/, "");
+    // Retomada: nenhum uso que cite WhatsApp (canal banido) ou lista de espera vai para roteiro, tela ou descrição.
+    const safe = [...item.uses.slice(k0), ...item.uses.slice(0, k0)].filter(u => !VALUE_RISK.test(u) && textoProibido(u).length === 0);
+    use = (safe[0] || "").replace(/[.\s]+$/, "");
     campaign = "dica_" + item.slug.replace(/^ia-para-/, "");
     title = "IA para " + lowerFirst(item.name) + ": 1 dica prática #shorts";
-    screen = { hook: "IA para " + lowerFirst(item.name), niche: "uma dica para aplicar hoje", tip: use + ".", product: "Guia gratuito", offer: "5 usos + mensagens prontas", cta: "Link na descrição", url: "vendas.zevanory.api.br" };
-    said = [["IA para " + lowerFirst(item.name) + "?", "Uma dica prática."], [use + "."], ["No guia gratuito tem mais quatro usos e mensagens prontas."], ["O link está na descrição."]];
-    lead = use + ". Mais 4 usos práticos, mensagens prontas para o WhatsApp e checklist da semana no guia gratuito para " + item.plural + ".";
+    const calc = calculatorFor(day);
+    const cta = hotmart
+      ? { path: "hotmart/" + hotmart.slug, product: hotmart.name, offer: "Kit com usos prontos", said: "No kit " + hotmart.name + " tem mais usos prontos para o seu negócio.", lead: "Mais usos prontos no kit " + hotmart.name + ", à venda pela Hotmart." }
+      : { path: calc.slug, product: "Calculadora gratuita", offer: "Sem cadastro", said: "Faça também as contas do negócio na calculadora gratuita, sem cadastro.", lead: "Faça também as contas do seu negócio na " + lowerFirst(calc.name) + " gratuita da ZEVANORY, sem cadastro." };
+    screen = { hook: "IA para " + lowerFirst(item.name), niche: "uma dica para aplicar hoje", tip: use + ".", product: cta.product, offer: cta.offer, cta: "Link na descrição", url: "vendas.zevanory.api.br" };
+    said = [["IA para " + lowerFirst(item.name) + "?", "Uma dica prática."], [use + "."], [cta.said], ["O link está na descrição."]];
+    lead = use + ". " + cta.lead;
+    url = shortUrl(cta.path, campaign);
   } else {
     item = BANK.calculators[((i % BANK.calculators.length) + BANK.calculators.length) % BANK.calculators.length];
     campaign = "calc_" + item.slug.replace(/^calculadora-/, "");
@@ -81,18 +96,23 @@ export function planValueShort(day, slot) {
     said = [[item.hook], [item.tip], ["Use a calculadora gratuita da ZEVANORY, sem cadastro."], ["O link está na descrição."]];
     lead = item.tip + " Faça a conta em segundos na calculadora gratuita da ZEVANORY, sem cadastro.";
   }
-  url = `https://vendas.zevanory.api.br/${item.slug}?utm_source=youtube&utm_medium=short&utm_campaign=${campaign}`;
+  if (slot !== "dica") url = shortUrl(item.slug, campaign);
   const marker = "zevanory-short-key:" + createHash("sha256").update(day + "|" + slot + "|" + item.slug + "|short-v2").digest("hex").slice(0, 16);
   const description = [lead, "", url, "", "#Shorts #ZEVANORY #PequenosNegocios #Empreendedorismo", "", marker].join("\n");
   const speech = said.map(b => b.join(" ")).join(" ");
   const text = [screen.hook, screen.tip, speech, description].join(" ");
-  const gate = VALUE_RISK.test(text) ? { action: "discard", score: 0, compliance: 0, reason: "value_risk_term" } : { action: "publish", score: 100, compliance: 100, reason: "value_gate_ok" };
-  const entry = { theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: null } };
-  return { day, slot, entry, price: null, spec: null, gate, link: url, marker, title, description, lines: [], speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", slot === "dica" ? item.name : item.name] };
+  const gate = !use && slot === "dica" ? { action: "discard", score: 0, compliance: 0, reason: "sem_uso_seguro" } : VALUE_RISK.test(text) ? { action: "discard", score: 0, compliance: 0, reason: "value_risk_term" } : { action: "publish", score: 100, compliance: 100, reason: "value_gate_ok" };
+  const entry = { theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: slot === "dica" && hotmart ? hotmart.sku : null } };
+  // purchase: "hotmart" quando a dica linka /hotmart/<slug> (as legendas do crosspost liberam o link de compra só nesse caso).
+  return { day, slot, purchase: slot === "dica" && hotmart ? "hotmart" : "closed", entry, price: null, spec: null, gate, link: url, marker, title, description, lines: [], speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", slot === "dica" ? item.name : item.name] };
 }
 export function planSlot(day, slot = "oferta", opts = {}) {
   if (!SLOTS.includes(slot)) throw new Error("short_slot_unknown");
-  return slot === "oferta" ? planShort(day, opts) : planValueShort(day, slot);
+  const plan = slot === "oferta" ? planShort(day, opts) : planValueShort(day, slot, opts);
+  // Retomada (fail-closed): WhatsApp, lista de espera ou CTA fora de /hotmart/<slug> e da calculadora gratuita => descartado.
+  const hotmartOpen = opts.salesOpen !== true && opts.hotmartOpen === true;
+  const v = violacoesShort(plan, { hotmartOpen });
+  return v.length ? { ...plan, gate: { action: "discard", score: 0, compliance: 0, reason: "retomada:" + v.join(",") }, violations: v } : plan;
 }
 
 // P13c: commercial lock = owner switch (KV sales:open:v1 + "LIBERAR VENDAS" + green preflight), read
@@ -129,19 +149,21 @@ export function planShort(day, { salesOpen = false, hotmartOpen = false } = {}) 
   const spec = { creative_id: "youtube-short-" + day, brand: "ZEVANORY", site: "zevanory.api.br", width: 1080, height: 1920, hook, body: entry.product.name + " por R$ " + price + ",00. " + SHORT_RULE_LABEL + ".", cta: "Veja o guia digital", price_brl: price };
   const gate = evaluateCreativeWithRewrites(spec, { serverPrice: price, visualScore: 1 });
   const ownCheckout = productLink(entry, "blog", { salesOpen: true }).replace("utm_source=blog", "utm_source=youtube");
-  const page = new URL(ownCheckout); page.pathname = "/" + PRODUCT_PAGES[entry.product.sku];
+  const productPage = new URL(ownCheckout); productPage.pathname = "/" + PRODUCT_PAGES[entry.product.sku];
   if (!PRODUCT_PAGES[entry.product.sku]) throw new Error("youtube_product_page_unknown");
-  const hotmart = new URL(page.toString()); hotmart.pathname = "/hotmart/" + PRODUCT_PAGES[entry.product.sku];
+  const hotmart = new URL(productPage.toString()); hotmart.pathname = "/hotmart/" + PRODUCT_PAGES[entry.product.sku];
   // Purchase link: own checkout with the full switch, the Hotmart purchase path in Hotmart mode.
   const checkout = kit ? hotmart.toString() : ownCheckout;
   const open = salesOpen === true || kit != null;
+  // Retomada: com a compra fechada o CTA é a calculadora gratuita do dia (a página do produto pode ter lista de espera).
+  const page = new URL(shortUrl(calculatorFor(day).slug, "oferta_" + PRODUCT_PAGES[entry.product.sku].replace(/-/g, "_")));
   const link = open ? checkout : page.toString();
   const marker = "zevanory-short-key:" + createHash("sha256").update(day + "|" + entry.theme_id + "|short-v1").digest("hex").slice(0, 16);
   const title = (ANGLE_HOOK[entry.angle] + " para " + niche + " · " + entry.product.name).slice(0, 95);
   const description = [
     ANGLE_LINE[entry.angle] + " Um guia prático da ZEVANORY para " + niche + ", com revisão humana e sem promessas de faturamento.",
     "",
-    entry.product.name + (open ? " — R$ " + price + ",00 · " + SHORT_RULE_LABEL : " — " + CLOSED_LABEL) + ": " + link,
+    open ? entry.product.name + " — R$ " + price + ",00 · " + SHORT_RULE_LABEL + ": " + link : entry.product.name + " — " + CLOSED_LABEL + ". Enquanto isso, use a calculadora gratuita: " + link,
     "",
     "#Shorts #ZEVANORY #PequenosNegocios",
     "",
@@ -164,8 +186,9 @@ export function planShort(day, { salesOpen = false, hotmartOpen = false } = {}) 
 
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
 
-async function geminiSpeech(text, key) {
-  if (!key) { console.log("::warning title=SHORT_VOICE::gemini not used; trying the free local voice"); return piperSpeech(text); }
+async function geminiSpeech(text, key, { allowLocal = true } = {}) {
+  const local = () => { if (allowLocal) return piperSpeech(text); console.log("::warning title=SHORT_VOICE::local voice disabled (data/shorts-rampa.json voz.permitir_voz_local=false)"); return null; };
+  if (!key) { console.log("::warning title=SHORT_VOICE::gemini not used; trying the free local voice"); return local(); }
   const STYLE = "Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.";
   const errors = [];
   // Modern Interactions API first, then the classic generateContent TTS models.
@@ -190,7 +213,7 @@ async function geminiSpeech(text, key) {
   }
   // Only provider status codes, never the key.
   console.log("::warning title=SHORT_VOICE::gemini unavailable (" + errors.join(", ") + "); trying the free local voice");
-  return piperSpeech(text);
+  return local();
 }
 
 // Free, local, open-source neural voice (Piper, pt_BR). Zero cost; used when the Gemini free
@@ -281,8 +304,9 @@ export function audioQuality(stderrEbur, silenceEnds, silenceStarts, voiceSecond
   if (maxGap > 1.6) reasons.push("dead_air_" + maxGap.toFixed(1));
   return { ok: reasons.length === 0, lufs, peak, maxGap: Math.round(maxGap * 10) / 10, reasons };
 }
-export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY } = {}) {
-  const voice = await geminiSpeech(plan.speech, geminiKey);
+export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, allowLocalVoice = true, requireVoice = false } = {}) {
+  const voice = await geminiSpeech(plan.speech, geminiKey, { allowLocal: allowLocalVoice });
+  if (requireVoice && !(voice && voice.pcm.length >= voice.rate)) throw new Error("voz_indisponivel");
   let audioInput, voiceSeconds = 0, pauses = [];
   if (voice && voice.pcm.length >= voice.rate) {
     voiceSeconds = voice.pcm.length / 2 / voice.rate;
@@ -424,6 +448,42 @@ export async function recordPublication(kv, plan, result, { now = Date.now() } =
   return activity;
 }
 
+const parseJson = (v) => { try { return v == null ? null : JSON.parse(String(v)); } catch { return null; } };
+// Histórico da rampa a partir do KV (somente leitura): Shorts PÚBLICOS por dia e falhas de QC registradas.
+// Erro de leitura => histórico vazio => nível 1 (falha para o volume menor, nunca para o maior).
+export async function historicoRampa(kv, config, day) {
+  const h = {};
+  if (!kv?.get) return h;
+  try {
+    for (const d of diasDaJanela(config, day)) {
+      let publicados = 0;
+      for (const k of Object.values(CHAVES_PUBLICADO)) {
+        const r = parseJson(await kv.get("zpc:acquisition:daily:" + d + ":" + k));
+        if (r?.status === "publicado" && r?.privacy === "public") publicados++;
+      }
+      h[d] = { publicados, qc_falha: (await kv.get(CHAVE_QC_FALHA(d))) != null };
+    }
+    return h;
+  } catch { return {}; }
+}
+export async function publicadosNoDia(kv, day) {
+  const out = {};
+  for (const [slot, k] of Object.entries(CHAVES_PUBLICADO)) out[slot] = parseJson(await kv.get("zpc:acquisition:daily:" + day + ":" + k).catch(() => null))?.status === "publicado";
+  return out;
+}
+export async function preflightCanal({ accessToken, fetchImpl = fetch, avisoManual = false }) {
+  let resp;
+  try {
+    const r = await fetchImpl("https://www.googleapis.com/youtube/v3/channels?part=id,status&mine=true", { headers: { authorization: "Bearer " + accessToken } });
+    resp = { ok: r.ok, status: r.status, json: await r.json().catch(() => ({})) };
+  } catch { resp = { ok: false, status: "fetch_error" }; }
+  return avaliarPreflight(resp, { canalEsperado: TARGET_CHANNEL, avisoManual });
+}
+// Congela o canal (no máximo uma gravação: a chave só é criada se ausente).
+export async function congelarCanal(kv, day, motivos, { now = Date.now() } = {}) {
+  return gravarUmaVez(kv, CHAVE_CONGELADO, { desde: day, motivos, at: new Date(now).toISOString(), liberar: "data/shorts-rampa.json canal.congelamento_liberado_em >= desde, depois da checagem no YouTube Studio" }, {});
+}
+
 const note = (level, msg) => console.log(`::${level} title=YOUTUBE_DAILY_SHORT::${String(msg).replace(/[\r\n]+/g, " ")}`);
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) {
@@ -431,45 +491,77 @@ if (isMain) {
   const day = (process.argv.find(a => a.startsWith("--day=")) || "").slice(6) || localDay();
   const slotArg = (process.argv.find(a => a.startsWith("--slot=")) || "").slice(7) || "oferta";
   const slots = slotArg === "all" ? SLOTS : [slotArg];
+  const cfg = RAMPA_CONFIG;
   let failed = 0;
   const lockKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
   const { salesOpen, hotmartOpen } = await channelPurchaseMode(lockKv);
   note("notice", "sales_open=" + salesOpen + " hotmart_open=" + hotmartOpen);
   // Creative-autonomy pause (or unknown state) => nothing is published; a dry run still renders for review.
   if (!dry && await channelPublishPaused(lockKv)) { note("notice", "creative_autopublish_paused_or_unknown: no Short published"); process.exit(0); }
+  // Retomada controlada: nível da rampa (só leitura), congelamento persistido e preflight do canal ANTES de renderizar.
+  const rampa = nivelRampa({ config: cfg, dia: day, historico: await historicoRampa(lockKv, cfg, day), avisoHoje: cfg.canal?.aviso_manual === true });
+  const congelado = congelamentoAtivo({ config: cfg, registro: parseJson(lockKv ? await lockKv.get(CHAVE_CONGELADO).catch(() => null) : null) });
+  note("notice", "SHORTS_RAMPA " + JSON.stringify({ day, ...rampa, congelado, dry_run: dry }));
+  let accessToken = null, preflight = { estado: "nao_executado", motivos: [] };
+  const credsOk = ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"].every(n => process.env[n]);
+  if (!congelado && (credsOk || !dry)) {
+    try {
+      for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
+      const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
+      accessToken = await getYoutubeAccessToken();
+      preflight = await preflightCanal({ accessToken, avisoManual: cfg.canal?.aviso_manual === true });
+    } catch (e) { preflight = { estado: "indisponivel", motivos: [String(e?.message || e).replace(/[^a-z0-9_]/gi, "_").slice(0, 60)] }; }
+  }
+  note(preflight.estado === "restricao" ? "error" : "notice", "SHORTS_PREFLIGHT " + JSON.stringify(preflight));
+  const estado = congelado ? "congelado" : preflight.estado === "restricao" ? "congelado" : preflight.estado === "indisponivel" ? "canal_indisponivel" : "ativo";
+  if (!dry && lockKv) {
+    if (!congelado && preflight.estado === "restricao") await congelarCanal(lockKv, day, preflight.motivos).catch(() => null);
+    await gravarUmaVez(lockKv, CHAVE_STATUS_DIA(day), { day, nivel: rampa.nivel, por_dia: rampa.por_dia, slots: estado === "congelado" ? [] : rampa.slots, dias_limpos: rampa.dias_limpos, estado, motivos: preflight.motivos, at: new Date().toISOString() }, { expirationTtl: 45 * 86400 }).catch(() => null);
+  }
+  if (!dry && estado !== "ativo") { note(estado === "congelado" ? "error" : "warning", "SHORTS_STATUS " + estado + ": nenhum Short publicado em " + day + " (" + preflight.motivos.join(",") + ")"); process.exit(0); }
+  const jaHoje = !dry && lockKv ? await publicadosNoDia(lockKv, day) : {};
   for (const slot of slots) {
     try {
       const window = publicationWindow({ day, slot, now: Date.now() });
       note("notice", "window " + JSON.stringify(window));
       if (window.action !== "publish" && !dry) { note("notice", slot + ": not published (" + window.reason + ") — " + (window.action === "wait" ? "the planned run publishes it" : "documented as missed for " + day)); continue; }
+      if (!dry && jaHoje[slot]) { note("notice", slot + ": ja_publicado_hoje"); continue; }
+      const publicadosHoje = Object.entries(jaHoje).filter(([s, v]) => s !== slot && v).length;
+      const dec = decisaoSlot({ rampa, slot, publicadosHoje, congelado: false });
+      if (!dec.publicar && !dry) { note("notice", slot + ": " + dec.motivo + " (nivel " + rampa.nivel + ", " + rampa.por_dia + "/dia, slots " + rampa.slots.join("+") + ")"); continue; }
       const plan = planSlot(day, slot, { salesOpen, hotmartOpen });
-      if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected");
+      if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected:" + String(plan.gate.reason || "").replace(/[^a-z0-9_:,]/gi, "_"));
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
-      const usageKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
-      const usage = usageKv ? await getUsage(usageKv) : {};
+      const usage = lockKv ? await getUsage(lockKv) : {};
+      const allowLocalVoice = cfg.voz?.permitir_voz_local === true;
       const geminiAllowed = process.env.FORCE_LOCAL_VOICE !== "true" && allow(usage, "gemini_tts_calls", 4);
-      if (!geminiAllowed) note("warning", process.env.FORCE_LOCAL_VOICE === "true" ? "local voice forced (test)" : "zero-cost guard: gemini daily guard reached, using the free local voice");
+      if (!geminiAllowed) note("warning", process.env.FORCE_LOCAL_VOICE === "true" ? "local voice forced (test)" : "zero-cost guard: gemini daily guard reached" + (allowLocalVoice ? ", using the free local voice" : "; local voice disabled"));
       let rendered;
-      try { rendered = await renderShort(plan, base, { geminiKey: geminiAllowed ? process.env.GEMINI_API_KEY : "" }); }
+      try { rendered = await renderShort(plan, base, { geminiKey: geminiAllowed ? process.env.GEMINI_API_KEY : "", allowLocalVoice, requireVoice: true }); }
       catch (e) {
-        // A narration that fails the audio gate is regenerated once with the free local voice.
-        if (!String(e?.message).startsWith("audio_qc_failed") || !geminiAllowed) throw e;
+        // With the local voice allowed, a narration that fails the audio gate is regenerated once with it.
+        if (!String(e?.message).startsWith("audio_qc_failed") || !geminiAllowed || !allowLocalVoice) throw e;
         note("warning", slot + ": " + e.message + " — regenerating with the local voice");
-        rendered = await renderShort(plan, base, { geminiKey: "" });
+        rendered = await renderShort(plan, base, { geminiKey: "", allowLocalVoice, requireVoice: true });
       }
-      if (usageKv && String(rendered.voice).startsWith("gemini")) await addUsage(usageKv, "gemini_tts_calls", 1).catch(() => null);
-      note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, dry_run: dry }));
+      if (lockKv && String(rendered.voice).startsWith("gemini")) await addUsage(lockKv, "gemini_tts_calls", 1).catch(() => null);
+      note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, decisao: dec.motivo, dry_run: dry }));
       if (dry) continue;
-      for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
-      const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
-      const accessToken = await getYoutubeAccessToken();
-      const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
+      const kv = lockKv;
       if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
       const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
       await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
       const activity = await recordPublication(kv, plan, result);
+      jaHoje[slot] = true;
       note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
-    } catch (e) { failed++; note("error", slot + ":" + String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); }
+      const pos = avaliarPosUpload(result, plan.privacyStatus);
+      if (pos.estado === "restricao") { await congelarCanal(kv, day, pos.motivos).catch(() => null); note("error", "SHORTS_STATUS congelado: " + pos.motivos.join(",")); break; }
+    } catch (e) {
+      failed++;
+      const msg = String(e?.message || e);
+      if (!dry && lockKv && eQcFalha(msg)) await gravarUmaVez(lockKv, CHAVE_QC_FALHA(day), { day, slot, motivo: msg.slice(0, 120), at: new Date().toISOString() }, { expirationTtl: 45 * 86400 }).catch(() => null);
+      note("error", slot + ":" + msg.replace(/[^a-z0-9_:.,-]/gi, "_").slice(0, 140));
+    }
   }
   if (failed) process.exit(1);
 }

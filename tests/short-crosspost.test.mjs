@@ -78,7 +78,7 @@ test("pack renders the tip and the offer for each day with ready captions", asyn
   assert.equal(n, 6);
   const txt = await readFile(join(out, "legendas.txt"), "utf8");
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
-  assert.ok(txt.includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(txt), false); assert.match(txt, /Guia gratuito/);
+  assert.ok(txt.includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(txt), false); assert.match(txt, /Calculadora gratuita/); assert.doesNotMatch(txt, /whats\s*app|lista de espera/i);
 });
 test("Telegram channel receives the day's video once, with caption and a provider-confirmed message id", async () => {
   const kv = memKv(); let sent = 0;
@@ -88,9 +88,13 @@ test("Telegram channel receives the day's video once, with caption and a provide
     return ok({});
   };
   const env = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHANNEL_ID: "@zevanory" };
-  const r1 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {} });
+  // Retomada F1: o Telegram está fora da Onda 1 por padrão (data/shorts-rampa.json crosspost.telegram=false).
+  const off = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {} });
+  assert.equal(off.telegram_video, "fora_da_onda_1"); assert.equal(sent, 0);
+  const rampa = { crosspost: { telegram: true } };
+  const r1 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, rampa });
   assert.equal(r1.telegram_video, "published");
-  const r2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {} });
+  const r2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, rampa });
   assert.equal(r2.telegram_video, "already_published"); assert.equal(sent, 1);
   assert.match(kv.m.get("zpc:acquisition:daily:2026-10-12:telegram_video"), /t\.me\/zevanory\/42/);
 });
