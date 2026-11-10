@@ -31,7 +31,6 @@ on:
       - "tests/test_auto_rerun_decision.py"
       - "tests/fixtures/auto_rerun/**"
       - "scripts/deploy/prepare-central-candidate.py"
-      - "scripts/deploy/diario_d1_certify.py"
       - "tests/test_binding_budget_compaction.py"
       - "scripts/deploy/worker_secret_rotate.py"
       - "tests/test_worker_secret_rotate.py"
