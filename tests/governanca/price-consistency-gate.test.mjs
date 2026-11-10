@@ -44,12 +44,28 @@ const T6_CASOS = [
   // --- reprovam: brechas da NC-1014-05 (cupom/pix longe do número não silenciam a regra)
   [X6, 'const s = "Divulgue e receba 50% de comissão em cada venda, mesmo paga no pix.";', [50]],
   [X6, 'const s = "Use o cupom ZEV10 à vontade: afiliados ganham 50% de comissão.";', [50]],
+  [H6, "<p>Seja parceiro: 50% de comissão em cada venda, mesmo paga no cartão.</p>", [50]],
   // --- reprovam: inversões do 70% (NC-1014-04: não há exceção de "produtor")
   [X6, 'const s = "Afiliado fica com 70% e o produtor com 30%.";', [70]],
   [X6, 'const s = "O afiliado recebe 70% e o produtor 30% na Hotmart.";', [70]],
   [X6, 'const s = "Produtor fica com 30% e o afiliado com 70%.";', [70]],
   [X6, 'const s = "Afiliado recebe 30% e o produtor 60% na Hotmart.";', [60]],
   [X6, 'const s = "Afiliado recebe 50% e o produtor 50% na Hotmart.";', [50, 50]],
+  // --- reprovam: NC-1014-06 (contexto explícito/página de afiliado ignora taxa ao lado; verbo de ganho colado ao número)
+  [X6, 'const s = "Receba 50% de comissão da Hotmart.";', [50]],
+  [X6, 'const s = "Divulgue a ZEVANORY e ganhe 50% de comissão da Hotmart.";', [50]],
+  [K6, '<meta name="description" content="Divulgue a ZEVANORY e ganhe 50% de comissão da Hotmart.">', [50]],
+  [X6, 'const s = "A Hotmart fica com 50% para você, afiliado.";', [50]],
+  [X6, 'const s = "Afiliados: 50% de comissão por transação.";', [50]],
+  [X6, 'const s = "Afiliados ganham 50% em vendas no cartão.";', [50]],
+  [X6, 'const s = "Afiliados: 50% de comissão, sem taxa de adesão.";', [50]],
+  [X6, 'const s = "Afiliados: comissão de 50% via plataforma Hotmart.";', [50]],
+  [X6, 'const s = "Seja afiliado no marketplace: 50% de comissão.";', [50]],
+  [X6, 'const s = "Indique e receba 50% de comissão pix.";', [50]],
+  [X6, 'const s = "Divulgue: a Hotmart fica com 50% para você.";', [50]],
+  [K6, "<p>Comissão de 50% via plataforma, por transação.</p>", [50]],
+  // --- falso positivo residual ACEITO (documentado no PR): divisão com o produtor reprova o 70%
+  [X6, 'const s = "Afiliado recebe 30% e o produtor 70%.";', [70]],
   // --- passam: falsos positivos da NC-1014-05 (taxa de plataforma/pagamento ao lado do número; ganho de outro ofício)
   [X6, 'const s = "A comissão da Hotmart sobre a venda é de 9,9%.";', []],
   [X6, 'const s = "A Hotmart cobra 9,9% de comissão por venda.";', []],
@@ -57,6 +73,7 @@ const T6_CASOS = [
   [H6, "<p>Comissão da Hotmart: 9,9% por venda aprovada.</p>", []],
   [X6, 'const s = "Parceiros de logística cobram comissão de 12%.";', []],
   [X6, 'const s = "Divulgamos que a comissão do marketplace é de 15%.";', []],
+  [X6, 'const s = "Receba 30% de comissão da Hotmart.";', []],
   [H6, "<p>No salão, a profissional recebe 40% de comissão por atendimento.</p>", []],
   // --- passam: divisões legítimas com 30% e a taxa válida
   [X6, 'const s = "O afiliado recebe 30% e o produtor fica com o restante.";', []],
@@ -414,17 +431,17 @@ test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo
   // mutantes do T6 (NC-1014-02): cada enfraquecimento do gate muda o veredito de pelo menos um caso de T6_CASOS
   const gsrc = read("tests/governanca/price-gate.mjs");
   const mutantes = {
-    "T6M1 sem contexto (todo percentual)": ["if (AFFILIATE_CTX.test(frase) || ganho || (affPage && COMMISSION_CTX.test(frase))) push(", "push("],
-    "T6M2 só contexto explícito": ["AFFILIATE_CTX.test(frase) || ganho ||", "AFFILIATE_CTX.test(frase) ||"],
+    "T6M1 sem contexto (todo percentual)": ["    if (!explicito) {", "    if (false) {"],
+    "T6M2 só contexto explícito": ["      if (!ganho) continue;", "      continue;"],
     "T6M3 sem número por extenso": ["m[2] !== undefined ? parseExtenso(m[2]) : 50", "m[2] !== undefined ? 30 : 50"],
     "T6M4 sem 'metade'": ["m[2] !== undefined ? parseExtenso(m[2]) : 50", "m[2] !== undefined ? parseExtenso(m[2]) : 30"],
     "T6M5 sem meta/og/twitter": ["for (const a of parts.pctAttrs) commissionPctIn(file, a, canon, found);", ""],
-    "T6M6 sem exclusão de taxa ao lado do número": [" || FEE_NEAR.test(antes) || FEE_NEAR.test(depois)", ""],
-    "T6M6b desconto 'off' conta": ["if (PCT_NOT_COMMISSION_AFTER.test(depois) ||", "if (false ||"],
-    "T6M7 nunca reprova": ['push(found, file, "COMISSAO_PCT", "afiliado", pct, text, ini);', "0;"],
+    "T6M6 sem exclusão de taxa no contexto fraco": ["if (!colado && (FEE_NEAR.test(antes) || FEE_NEAR.test(depois))) continue;", ""],
+    "T6M6b desconto 'off' conta": ["if (PCT_NOT_COMMISSION_AFTER.test(depois)) continue;", ""],
+    "T6M7 nunca reprova": ['    push(found, file, "COMISSAO_PCT", "afiliado", pct, text, ini);', ""],
     "T6M7b taxa válida da fonte ignorada": ["if (pct === null || canon.commissionPcts.includes(pct)) continue;", "if (pct === null) continue;"],
     "T6M8 'até' quebra a leitura": ["(?<![\\\\d.,])(\\\\d{1,3}(?:[.,]\\\\d+)?)\\\\s*(?:%|por", "(?<![\\\\d.,]|até )(\\\\d{1,3}(?:[.,]\\\\d+)?)\\\\s*(?:%|por"],
-    "T6M9 exclusão na frase inteira (desenho antigo)": ["export const FEE_WINDOW = 25;", "export const FEE_WINDOW = 400;"],
+    "T6M9 exclusão pela frase inteira": ["export const FEE_WINDOW = 25;", "export const FEE_WINDOW = 400;"],
     "T6M10 exceção do produtor de volta (NC-1014-04)": ["if (pct === null || canon.commissionPcts.includes(pct)) continue;",
       "if (pct === null || canon.commissionPcts.includes(pct)) continue; if (/produtor/i.test(text.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30)) && canon.commissionPcts.some((v) => v + pct === 100)) continue;"],
     "T6M11 qualquer verbo de ganho, sem divulg/parceir/hotmart": ["const ganho = SPREAD_CTX.test(frase) && (", "const ganho = ("],
@@ -432,6 +449,13 @@ test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo
     "T6M13 sem 'comissão de N%'": ["/comiss[aã]o\\s+(?:de\\s+)?(?:at[eé]\\s+)?$/i.test(antes) ||", "false ||"],
     "T6M14 sem 'N% de comissão'": ["|| /^\\s*(?:de|em)\\s+comiss/i.test(depois));", ");"],
     "T6M15 sem 'Hotmart cobra/fica com' ao lado do número": ["|da\\s+hotmart|hotmart\\s+(?:fica\\s+com|recebe|ret[eé]m|leva)\\b", ""],
+    "T6M16 explícito tratado como fraco (NC-1014-06)": ["const explicito = AFFILIATE_CTX.test(frase) || (affPage && COMMISSION_CTX.test(frase));", "const explicito = false;"],
+    "T6M17 exclusão de taxa antes do contexto (desenho do e34e1ed)": ["    const explicito = AFFILIATE_CTX", "    if (FEE_NEAR.test(antes) || FEE_NEAR.test(depois)) continue;\n    const explicito = AFFILIATE_CTX"],
+    "T6M18 página de afiliado sem prioridade": ["|| (affPage && COMMISSION_CTX.test(frase));", ";"],
+    "T6M19 verbo colado ignorado": ["if (!colado && (FEE_NEAR", "if ((FEE_NEAR"],
+    "T6M20 'fica com … você' ignorado": ["|| (STAY_WITH_BEFORE.test(antes) && /voc[eê]/i.test(depois))", ""],
+    "T6M21 'fica com' colado sem 'você'": ["(STAY_WITH_BEFORE.test(antes) && /voc[eê]/i.test(depois))", "STAY_WITH_BEFORE.test(antes)"],
+    "T6M22 sem 'indique'": ["|\\bindique\\b", ""],
   };
   const mdir = mkdtempSync(join(tmpdir(), "price-gate-t6-"));
   try {

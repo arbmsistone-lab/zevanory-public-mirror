@@ -25,8 +25,10 @@
 //                         link de divulgação, venda indicada, programa de afiliados; em página de afiliado reservada também
 //                         basta "comiss"; NC-1014-05: também ganho de quem divulga = verbo "receba/ganhe/ganha/recebe/fica com"
 //                         ou "comissão de N%"/"N% de comissão", com divulg/parceir/hotmart na frase), tem de ser uma das taxas
-//                         de data/affiliates.json. Taxa de plataforma/pagamento/desconto só exclui se o termo estiver a até
-//                         FEE_WINDOW caracteres do número ("A Hotmart cobra 9,9%", "comissão do marketplace é de 15%").
+//                         de data/affiliates.json. Precedência (NC-1014-06): página de afiliado ou contexto explícito (afiliad*,
+//                         indicação, indique, ...) reprova qualquer outro N%, sem exclusão de taxa; só no contexto fraco a taxa
+//                         de plataforma/pagamento/desconto a até FEE_WINDOW caracteres do número exclui ("A Hotmart cobra 9,9%"),
+//                         salvo verbo de ganho colado ao número ("Receba 50% de comissão da Hotmart"). "N% off" nunca conta.
 //   C1 CAMPO_DE_PRECO     campo price/preco/valor/amount (inclusive aninhado: {sku, offer:{price:N}}) em objeto cujo
 //                         produto (o próprio objeto ou um ancestral) é conhecido: = tabela (centavos = x100).
 //   C2 MAPA_DE_PRECO      "<sku|slug>": N | "N" | ["nome", N], par ["<sku|slug>", N] (Map/array de pares).
@@ -46,13 +48,16 @@ export const WINDOW_BEFORE_HTML = 700;
 const SAVINGS_CTX = /(economi|separad|custaria|avulso|somad|em vez de|comprar os|\bcompletos\b)/i;
 const COMMISSION_CTX = /comiss/i;
 // T6 (ver cabeçalho). NUM_WORDS é declarado abaixo; PCT_RX é montado sob demanda.
-export const AFFILIATE_CTX = /afiliad|indica[cç](?:[aã]o|[oõ]es)|\bindicad[ao]s?\b|link\s+de\s+divulga|venda\s+indicada|programa\s+de\s+(?:afiliad|parceir)|\?ref=/i;
+export const AFFILIATE_CTX = /afiliad|indica[cç](?:[aã]o|[oõ]es)|\bindicad[ao]s?\b|\bindique\b|link\s+de\s+divulga|venda\s+indicada|programa\s+de\s+(?:afiliad|parceir)|\?ref=/i;
 const PCT_NOT_COMMISSION_AFTER = /^\s*(?:off\b|de\s+desconto|desconto|em\s+desconto)/i;
 // NC-1014-05: ganho de quem divulga = verbo de ganho, "comissão de N%" ou "N% de/em comissão", com divulg/parceir/hotmart na frase
 export const SPREAD_CTX = /divulg|parceir|hotmart/i;
 export const EARN_VERB = /\b(?:receba|recebe|recebem|ganhe|ganha|ganham|fica\s+com|ficam\s+com)\b/i;
 // taxa de plataforma/pagamento: só a até FEE_WINDOW caracteres do número (nunca a frase inteira)
 export const FEE_WINDOW = 25;
+// NC-1014-06: verbo de ganho colado ao número (ou a "comissão de N%"): a taxa ao lado não anula o contexto fraco
+export const EARN_GLUED_BEFORE = /\b(?:receba|recebe|recebem|ganhe|ganha|ganham)\s+(?:at[eé]\s+)?(?:(?:uma\s+)?comiss[aã]o\s+de\s+(?:at[eé]\s+)?)?$/i;
+export const STAY_WITH_BEFORE = /\b(?:fica|ficam)\s+com\s+(?:at[eé]\s+)?$/i;
 export const FEE_NEAR = /cobra|taxa|plataforma|por\s+transa[cç]|marketplace|maquininha|cart[aã]o|\bpix\b|boleto|gateway|adquirente|desconto|cupom|da\s+hotmart|hotmart\s+(?:fica\s+com|recebe|ret[eé]m|leva)\b/i;
 const BRAND = /\bZEVANORY\b/;
 const OFFER_CTX = /\b(por|custa|pre[cç]o|valor|investimento|apenas|s[oó])\b[\s:(]*((R\$|BRL)\s*)?$/i;
@@ -297,12 +302,21 @@ export function commissionPctIn(file, text, canon, found) {
     if (pct === null || canon.commissionPcts.includes(pct)) continue;
     const ini = m.index, fim = m.index + m[0].length;
     const antes = text.slice(Math.max(0, ini - FEE_WINDOW), ini), depois = text.slice(fim, fim + FEE_WINDOW);
-    if (PCT_NOT_COMMISSION_AFTER.test(depois) || FEE_NEAR.test(antes) || FEE_NEAR.test(depois)) continue; // taxa/desconto ao lado do número
+    if (PCT_NOT_COMMISSION_AFTER.test(depois)) continue; // "N% off" / "N% de desconto": o número é desconto, não comissão
     const [s, e] = sentence(text, ini, fim);
     const frase = text.slice(s, e);
     if (m[3] !== undefined && !COMMISSION_CTX.test(frase)) continue; // "metade" só como fração de comissão
-    const ganho = SPREAD_CTX.test(frase) && (EARN_VERB.test(frase) || /comiss[aã]o\s+(?:de\s+)?(?:at[eé]\s+)?$/i.test(antes) || /^\s*(?:de|em)\s+comiss/i.test(depois));
-    if (AFFILIATE_CTX.test(frase) || ganho || (affPage && COMMISSION_CTX.test(frase))) push(found, file, "COMISSAO_PCT", "afiliado", pct, text, ini);
+    // 1) página de afiliado ou contexto explícito: a exclusão de taxa NÃO se aplica
+    const explicito = AFFILIATE_CTX.test(frase) || (affPage && COMMISSION_CTX.test(frase));
+    if (!explicito) {
+      // 2) contexto fraco: ganho de quem divulga com divulg/parceir/hotmart; taxa a até FEE_WINDOW do número exclui,
+      //    salvo verbo de ganho colado ao número ("receba 50%", "ganhe comissão de 50%", "fica com 50% para você")
+      const ganho = SPREAD_CTX.test(frase) && (EARN_VERB.test(frase) || /comiss[aã]o\s+(?:de\s+)?(?:at[eé]\s+)?$/i.test(antes) || /^\s*(?:de|em)\s+comiss/i.test(depois));
+      if (!ganho) continue;
+      const colado = EARN_GLUED_BEFORE.test(antes) || (STAY_WITH_BEFORE.test(antes) && /voc[eê]/i.test(depois));
+      if (!colado && (FEE_NEAR.test(antes) || FEE_NEAR.test(depois))) continue;
+    }
+    push(found, file, "COMISSAO_PCT", "afiliado", pct, text, ini);
   }
 }
 
