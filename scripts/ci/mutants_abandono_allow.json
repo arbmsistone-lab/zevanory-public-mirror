@@ -1,0 +1,1107 @@
+{
+ "note": "Primárias: as asserções que codificam a regra mutada (tabela 5.2 do plano de abandono; M54-M58 = condições do GPT-6; M59-M61 = supressão manual e regra de DDL; M62-M65 = observações da contra-auditoria). Secundárias: falhas que a mutação implica causalmente, cada uma justificada e conferida contra a mutação. Marcadores: [ID] ou [ID/sufixo], únicos por teste.",
+ "mutants": {
+  "M01 hottok sempre aceito": {
+   "primary": [
+    {
+     "test_pattern": "AB1.1",
+     "assertion_pattern": "re:\\[AB1\\.1(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB1.2",
+     "assertion_pattern": "re:\\[AB1\\.2(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB1.3",
+     "assertion_pattern": "re:\\[AB1\\.3(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M02 hottok comparado por startsWith": {
+   "primary": [
+    {
+     "test_pattern": "AB1.3",
+     "assertion_pattern": "re:\\[AB1\\.3(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M03 segredo ausente aceita o evento": {
+   "primary": [
+    {
+     "test_pattern": "AB1.4",
+     "assertion_pattern": "re:\\[AB1\\.4(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M04 lista de produtos aceita qualquer ID": {
+   "primary": [
+    {
+     "test_pattern": "AB2.1",
+     "assertion_pattern": "re:\\[AB2\\.1(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB1.7",
+     "assertion_pattern": "re:\\[AB1\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "a sonda de payload sem produto da lista espera product_allowed:false; com qualquer ID aceito ele vira true"
+    },
+    {
+     "test_pattern": "AB10.2",
+     "assertion_pattern": "re:\\[AB10\\.2(?:/[a-z0-9]+)?\\]",
+     "justification": "o abandono do CP 8704905 roteado espera product_not_allowed; o mutante aceita o CP"
+    }
+   ]
+  },
+  "M05 purchaseOpenFor ignorado na ingestão": {
+   "primary": [
+    {
+     "test_pattern": "AB3.1",
+     "assertion_pattern": "re:\\[AB3\\.1(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M06 purchaseOpenFor ignorado no envio": {
+   "primary": [
+    {
+     "test_pattern": "AB3.2",
+     "assertion_pattern": "re:\\[AB3\\.2(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M07 dedupe por produto em vez de global": {
+   "primary": [
+    {
+     "test_pattern": "AB4.2",
+     "assertion_pattern": "re:\\[AB4\\.2(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M08 e-mail sem normalização no ref": {
+   "primary": [
+    {
+     "test_pattern": "AB4.3",
+     "assertion_pattern": "re:\\[AB4\\.3(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB6.7",
+     "assertion_pattern": "re:\\[AB6\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "a supressão manual recebe o e-mail com caixa e espaços e precisa gravar o mesmo pseudônimo normalizado"
+    }
+   ]
+  },
+  "M09 meta.changes da reserva ignorado": {
+   "primary": [
+    {
+     "test_pattern": "AB4.4",
+     "assertion_pattern": "re:\\[AB4\\.4(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB4.10",
+     "assertion_pattern": "re:\\[AB4\\.10(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB4.5",
+     "assertion_pattern": "re:\\[AB4\\.5(?:/[a-z0-9]+)?\\]",
+     "justification": "o mesmo envio/reconciliação passa pela reserva: sem o resultado da reserva, a execução seguinte trata a linha existente como nova e faz POST dentro do lease de 30 min"
+    },
+    {
+     "test_pattern": "AB4.7",
+     "assertion_pattern": "re:\\[AB4\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "a retomada antes do lease também faz POST e o teste conta o estado na janela errada"
+    },
+    {
+     "test_pattern": "AB4.8",
+     "assertion_pattern": "re:\\[AB4\\.8(?:/[a-z0-9]+)?\\]",
+     "justification": "a linha antiga (tentativas>=3 / >23 h) não é encerrada: a reserva é ignorada e o POST acontece"
+    },
+    {
+     "test_pattern": "AB4.9",
+     "assertion_pattern": "re:\\[AB4\\.9(?:/[a-z0-9]+)?\\]",
+     "justification": "o teto barra a reserva (changes 0), mas o mutante segue para o POST"
+    },
+    {
+     "test_pattern": "AB4.11",
+     "assertion_pattern": "re:\\[AB4\\.11(?:/[a-z0-9]+)?\\]",
+     "justification": "com a linha em reconciliar, as execuções seguintes deixam de respeitar a linha e refazem o POST"
+    },
+    {
+     "test_pattern": "AB4.12",
+     "assertion_pattern": "re:\\[AB4\\.12(?:/[a-z0-9]+)?\\]",
+     "justification": "idem AB4.11 para concurrent_idempotent_requests"
+    },
+    {
+     "test_pattern": "AB4.13",
+     "assertion_pattern": "re:\\[AB4\\.13(?:/[a-z0-9]+)?\\]",
+     "justification": "a execução de reconciliação refaz o POST antes de reconciliar"
+    },
+    {
+     "test_pattern": "AB4.14",
+     "assertion_pattern": "re:\\[AB4\\.14(?:/[a-z0-9]+)?\\]",
+     "justification": "idem: POST novo na execução de reconciliação"
+    },
+    {
+     "test_pattern": "AB4.15",
+     "assertion_pattern": "re:\\[AB4\\.15(?:/[a-z0-9]+)?\\]",
+     "justification": "as 3 reconciliações viram 3 POSTs novos"
+    },
+    {
+     "test_pattern": "AB4.16",
+     "assertion_pattern": "re:\\[AB4\\.16(?:/[a-z0-9]+)?\\]",
+     "justification": "a retomada com corpo diferente faz POST em vez de ir para reconciliar"
+    },
+    {
+     "test_pattern": "AB4.18",
+     "assertion_pattern": "re:\\[AB4\\.18(?:/[a-z0-9]+)?\\]",
+     "justification": "POST novo na execução de reconciliação paginada"
+    },
+    {
+     "test_pattern": "AB4.19",
+     "assertion_pattern": "re:\\[AB4\\.19(?:/[a-z0-9]+)?\\]",
+     "justification": "POST novo nas execuções de reconciliação ambígua"
+    },
+    {
+     "test_pattern": "AB4.20",
+     "assertion_pattern": "re:\\[AB4\\.20(?:/[a-z0-9]+)?\\]",
+     "justification": "POST novo nas execuções de reconciliação incompleta"
+    },
+    {
+     "test_pattern": "AB5.1",
+     "assertion_pattern": "re:\\[AB5\\.1(?:/[a-z0-9]+)?\\]",
+     "justification": "a compra barra a reserva (changes 0), mas o mutante faz o POST"
+    },
+    {
+     "test_pattern": "AB5.2",
+     "assertion_pattern": "re:\\[AB5\\.2(?:/[a-z0-9]+)?\\]",
+     "justification": "idem AB5.1 para PURCHASE_COMPLETE"
+    },
+    {
+     "test_pattern": "AB5.3b",
+     "assertion_pattern": "re:\\[AB5\\.3b(?:/[a-z0-9]+)?\\]",
+     "justification": "a compra gravada na corrida barra a reserva, mas o mutante faz o POST"
+    },
+    {
+     "test_pattern": "AB5.9",
+     "assertion_pattern": "re:\\[AB5\\.9(?:/[a-z0-9]+)?\\]",
+     "justification": "a compra no primário barra a reserva, mas o mutante faz o POST"
+    },
+    {
+     "test_pattern": "AB6.4",
+     "assertion_pattern": "re:\\[AB6\\.4(?:/[a-z0-9]+)?\\]",
+     "justification": "a supressão no D1 barra a reserva, mas o mutante faz o POST"
+    }
+   ],
+   "broad_reason": "a reserva atômica é a porta única de todo envio, retomada e reconciliação: ignorar o seu meta.changes afeta todos os testes que dependem de uma reserva barrada ou já existente"
+  },
+  "M10 compra não apaga a pendência": {
+   "primary": [
+    {
+     "test_pattern": "AB5.1",
+     "assertion_pattern": "re:\\[AB5\\.1(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB5.2",
+     "assertion_pattern": "re:\\[AB5\\.2(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB5.5",
+     "assertion_pattern": "re:\\[AB5\\.5(?:/[a-z0-9]+)?\\]",
+     "justification": "PURCHASE_BILLET_PRINTED passa pelo mesmo gancho e também deixa de apagar a pendência"
+    },
+    {
+     "test_pattern": "AB5.10",
+     "assertion_pattern": "re:\\[AB5\\.10(?:/[a-z0-9]+)?\\]",
+     "justification": "com o D1 falhando o gancho também deixa de apagar a pendência"
+    }
+   ]
+  },
+  "M11 marcador de compra não consultado na ingestão": {
+   "primary": [
+    {
+     "test_pattern": "AB5.3",
+     "assertion_pattern": "re:\\[AB5\\.3(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB5.9",
+     "assertion_pattern": "re:\\[AB5\\.9(?:/[a-z0-9]+)?\\]",
+     "justification": "a primeira parte do AB5.9 confere que a ingestão vê no primário a compra gravada e responde buyer"
+    },
+    {
+     "test_pattern": "AB5.3d",
+     "assertion_pattern": "re:\\[AB5\\.3d(?:/[a-z0-9]+)?\\]",
+     "justification": "depois do aquecimento, o abandono do comprador em ativo deixa de ser barrado na ingestão (mesmo primeiro ponto de consulta)"
+    }
+   ]
+  },
+  "M12 retenção apaga a supressão": {
+   "primary": [
+    {
+     "test_pattern": "AB7.1",
+     "assertion_pattern": "re:\\[AB7\\.1(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN3",
+     "assertion_pattern": "re:\\[EN3(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB7.8",
+     "assertion_pattern": "re:\\[AB7\\.8(?:/[a-z0-9]+)?\\]",
+     "justification": "a instrução extra de DELETE na supressão aparece na sequência de gravações da fusão de AB7.8 (sem linhas antigas, o gatilho não aborta)"
+    },
+    {
+     "test_pattern": "AB7.4d",
+     "assertion_pattern": "re:\\[AB7\\.4d(?:/[a-z0-9]+)?\\]",
+     "justification": "a regra estática de worker/** acha o DELETE FROM abandono_supressao_v1 que a mutação acrescenta"
+    }
+   ]
+  },
+  "M13 supressão fora da instrução de reserva": {
+   "primary": [
+    {
+     "test_pattern": "AB6.4",
+     "assertion_pattern": "re:\\[AB6\\.4(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M14 retenção de abandono_envio_v1 de 1 dia": {
+   "primary": [
+    {
+     "test_pattern": "AB7.1",
+     "assertion_pattern": "re:\\[AB7\\.1(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN4",
+     "assertion_pattern": "re:\\[EN4(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M15 descarte de pendência velha removido": {
+   "primary": [
+    {
+     "test_pattern": "AB7.2",
+     "assertion_pattern": "re:\\[AB7\\.2(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M16 console.info com o e-mail": {
+   "primary": [
+    {
+     "test_pattern": "AB8.1",
+     "assertion_pattern": "re:\\[AB8\\.1(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M17 ABANDONO_STAGE ignorado na ingestão": {
+   "primary": [
+    {
+     "test_pattern": "AB10.1",
+     "assertion_pattern": "re:\\[AB10\\.1(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB5.3d",
+     "assertion_pattern": "re:\\[AB5\\.3d(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB10.2",
+     "assertion_pattern": "re:\\[AB10\\.2(?:/[a-z0-9]+)?\\]",
+     "justification": "o roteamento em desligado espera 200 disabled; o mutante segue a ingestão"
+    },
+    {
+     "test_pattern": "REG.4",
+     "assertion_pattern": "re:\\[REG\\.4(?:/[a-z0-9]+)?\\]",
+     "justification": "o Worker real em desligado espera disabled; o mutante segue a ingestão"
+    }
+   ]
+  },
+  "M18 desvio de roteamento removido": {
+   "primary": [
+    {
+     "test_pattern": "AB10.2",
+     "assertion_pattern": "re:\\[AB10\\.2(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB5.3d",
+     "assertion_pattern": "re:\\[AB5\\.3d(?:/[a-z0-9]+)?\\]",
+     "justification": "o abandono roteado em aquecimento cai no nc012 (sem purchase) em vez do módulo"
+    },
+    {
+     "test_pattern": "REG.4",
+     "assertion_pattern": "re:\\[REG\\.4(?:/[a-z0-9]+)?\\]",
+     "justification": "o webhook real de abandono cai no nc012 e não responde disabled"
+    }
+   ]
+  },
+  "M19 hotmartLockViolations não checado": {
+   "primary": [
+    {
+     "test_pattern": "AB9.5",
+     "assertion_pattern": "re:\\[AB9\\.5(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M20 List-Unsubscribe-Post removido": {
+   "primary": [
+    {
+     "test_pattern": "AB6.5",
+     "assertion_pattern": "re:\\[AB6\\.5(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M21 guarda desligado removida de noteHotmartPurchase": {
+   "primary": [
+    {
+     "test_pattern": "AB10.1b",
+     "assertion_pattern": "re:\\[AB10\\.1b(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "REG.1",
+     "assertion_pattern": "re:\\[REG\\.1(?:/[a-z0-9]+)?\\]",
+     "justification": "a regressão do webhook em desligado também confere que o desvio não toca as tabelas do abandono"
+    },
+    {
+     "test_pattern": "REG.2",
+     "assertion_pattern": "re:\\[REG\\.2(?:/[a-z0-9]+)?\\]",
+     "justification": "idem REG.1 com a sequência de eventos"
+    }
+   ]
+  },
+  "M22 erro do Resend apaga a pendência": {
+   "primary": [
+    {
+     "test_pattern": "AB4.5",
+     "assertion_pattern": "re:\\[AB4\\.5(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB4.7",
+     "assertion_pattern": "re:\\[AB4\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "o timeout é erro comum: a pendência apagada impede a retomada que confirma o id"
+    },
+    {
+     "test_pattern": "AB4.16",
+     "assertion_pattern": "re:\\[AB4\\.16(?:/[a-z0-9]+)?\\]",
+     "justification": "o 500 inicial apaga a pendência e a retomada com corpo diferente não chega a acontecer"
+    }
+   ]
+  },
+  "M23 erro do Resend marca nao_confirmado": {
+   "primary": [
+    {
+     "test_pattern": "AB4.5",
+     "assertion_pattern": "re:\\[AB4\\.5(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB4.7",
+     "assertion_pattern": "re:\\[AB4\\.7(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB4.16",
+     "assertion_pattern": "re:\\[AB4\\.16(?:/[a-z0-9]+)?\\]",
+     "justification": "o 500 inicial encerra a linha e a retomada com corpo diferente não chega a acontecer"
+    }
+   ]
+  },
+  "M24 teto diário com <= em vez de <": {
+   "primary": [
+    {
+     "test_pattern": "AB4.9",
+     "assertion_pattern": "re:\\[AB4\\.9(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB4.10",
+     "assertion_pattern": "re:\\[AB4\\.10(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN1",
+     "assertion_pattern": "re:\\[EN1(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M25 429 não interrompe a execução": {
+   "primary": [
+    {
+     "test_pattern": "AB4.6",
+     "assertion_pattern": "re:\\[AB4\\.6(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M26 regra de país trocada por XX": {
+   "primary": [
+    {
+     "test_pattern": "AB10.3b",
+     "assertion_pattern": "re:\\[AB10\\.3b(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M27 sonda depois da checagem de version/event": {
+   "primary": [
+    {
+     "test_pattern": "AB1.6",
+     "assertion_pattern": "re:\\[AB1\\.6(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M28 sonda loga e-mail e ID do produto": {
+   "primary": [
+    {
+     "test_pattern": "AB1.6",
+     "assertion_pattern": "re:\\[AB1\\.6(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB1.7",
+     "assertion_pattern": "re:\\[AB1\\.7(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB8.1",
+     "assertion_pattern": "re:\\[AB8\\.1(?:/[a-z0-9]+)?\\]",
+     "justification": "a varredura global de logs acha o e-mail que a sonda passou a logar"
+    }
+   ]
+  },
+  "M29 BILLET_PRINTED fora do gancho": {
+   "primary": [
+    {
+     "test_pattern": "AB5.5",
+     "assertion_pattern": "re:\\[AB5\\.5(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M30 gancho fora do ramo KIT_ORDER_INGEST_ENABLED": {
+   "primary": [
+    {
+     "test_pattern": "AB5.7",
+     "assertion_pattern": "re:\\[AB5\\.7(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M31 token t comparado com !==": {
+   "primary": [
+    {
+     "test_pattern": "AB6.6",
+     "assertion_pattern": "re:\\[AB6\\.6(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M32 dreno inline quando o SELF falha": {
+   "primary": [
+    {
+     "test_pattern": "AB11.3",
+     "assertion_pattern": "re:\\[AB11\\.3(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M33 rota de dreno aceita sem token": {
+   "primary": [
+    {
+     "test_pattern": "AB11.2",
+     "assertion_pattern": "re:\\[AB11\\.2(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M34 preço por literal no texto": {
+   "primary": [
+    {
+     "test_pattern": "AB9.6",
+     "assertion_pattern": "re:\\[AB9\\.6(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB9.1",
+     "assertion_pattern": "re:\\[AB9\\.1(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB9.7",
+     "assertion_pattern": "re:\\[AB9\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "com o preço literal, o html dos kits de outro preço cita um preço que não é o do kit e o filtro acusa"
+    }
+   ]
+  },
+  "M35 409 de idempotência marcado como enviado": {
+   "primary": [
+    {
+     "test_pattern": "AB4.11",
+     "assertion_pattern": "re:\\[AB4\\.11(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB4.12",
+     "assertion_pattern": "re:\\[AB4\\.12(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB4.13",
+     "assertion_pattern": "re:\\[AB4\\.13(?:/[a-z0-9]+)?\\]",
+     "justification": "o 409 vira enviado sem passar pela reconciliação que o teste confere"
+    },
+    {
+     "test_pattern": "AB4.14",
+     "assertion_pattern": "re:\\[AB4\\.14(?:/[a-z0-9]+)?\\]",
+     "justification": "o 409 vira enviado e a reconciliação negativa nunca roda"
+    },
+    {
+     "test_pattern": "AB4.15",
+     "assertion_pattern": "re:\\[AB4\\.15(?:/[a-z0-9]+)?\\]",
+     "justification": "o 409 vira enviado em vez de encerrar em nao_confirmado"
+    },
+    {
+     "test_pattern": "AB4.18",
+     "assertion_pattern": "re:\\[AB4\\.18(?:/[a-z0-9]+)?\\]",
+     "justification": "o 409 vira enviado sem a reconciliação paginada"
+    },
+    {
+     "test_pattern": "AB4.19",
+     "assertion_pattern": "re:\\[AB4\\.19(?:/[a-z0-9]+)?\\]",
+     "justification": "o 409 ambíguo vira enviado"
+    },
+    {
+     "test_pattern": "AB4.20",
+     "assertion_pattern": "re:\\[AB4\\.20(?:/[a-z0-9]+)?\\]",
+     "justification": "o 409 com consulta incompleta vira enviado"
+    }
+   ],
+   "broad_reason": "todos os testes de reconciliação partem de um 409 de idempotência; marcá-lo como enviado elimina a reconciliação que cada um confere"
+  },
+  "M36 dispatchAbandonmentDrain sem conferir o estágio": {
+   "primary": [
+    {
+     "test_pattern": "AB11.4",
+     "assertion_pattern": "re:\\[AB11\\.4(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB5.3d",
+     "assertion_pattern": "re:\\[AB5\\.3d(?:/[a-z0-9]+)?\\]",
+     "justification": "em aquecimento o dreno passa a chamar o SELF"
+    },
+    {
+     "test_pattern": "REG.4",
+     "assertion_pattern": "re:\\[REG\\.4(?:/[a-z0-9]+)?\\]",
+     "justification": "no cron real em desligado o SELF do abandono passa a ser chamado"
+    }
+   ]
+  },
+  "M37 409 tratado como erro comum": {
+   "primary": [
+    {
+     "test_pattern": "AB4.11",
+     "assertion_pattern": "re:\\[AB4\\.11(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB4.12",
+     "assertion_pattern": "re:\\[AB4\\.12(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB4.13",
+     "assertion_pattern": "re:\\[AB4\\.13(?:/[a-z0-9]+)?\\]",
+     "justification": "o 409 vira erro comum e a retomada faz novo POST em vez de reconciliar"
+    },
+    {
+     "test_pattern": "AB4.14",
+     "assertion_pattern": "re:\\[AB4\\.14(?:/[a-z0-9]+)?\\]",
+     "justification": "idem: novo POST em vez de reconciliar"
+    },
+    {
+     "test_pattern": "AB4.15",
+     "assertion_pattern": "re:\\[AB4\\.15(?:/[a-z0-9]+)?\\]",
+     "justification": "idem: novo POST em vez de reconciliar e encerrar"
+    },
+    {
+     "test_pattern": "AB4.18",
+     "assertion_pattern": "re:\\[AB4\\.18(?:/[a-z0-9]+)?\\]",
+     "justification": "idem: novo POST em vez da reconciliação paginada"
+    },
+    {
+     "test_pattern": "AB4.19",
+     "assertion_pattern": "re:\\[AB4\\.19(?:/[a-z0-9]+)?\\]",
+     "justification": "idem: novo POST em vez da reconciliação ambígua"
+    },
+    {
+     "test_pattern": "AB4.20",
+     "assertion_pattern": "re:\\[AB4\\.20(?:/[a-z0-9]+)?\\]",
+     "justification": "idem: novo POST em vez da reconciliação incompleta"
+    }
+   ],
+   "broad_reason": "todos os testes de reconciliação partem de um 409 de idempotência; tratá-lo como erro comum troca a reconciliação por um novo POST"
+  },
+  "M38 reconciliação sem conferir a tag": {
+   "primary": [
+    {
+     "test_pattern": "AB4.14",
+     "assertion_pattern": "re:\\[AB4\\.14(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN5c",
+     "assertion_pattern": "re:\\[EN5c(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M39 RECONCILE_MAX ignorado": {
+   "primary": [
+    {
+     "test_pattern": "AB4.15",
+     "assertion_pattern": "re:\\[AB4\\.15(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB4.19",
+     "assertion_pattern": "re:\\[AB4\\.19(?:/[a-z0-9]+)?\\]",
+     "justification": "a reconciliação ambígua só encerra por RECONCILE_MAX"
+    },
+    {
+     "test_pattern": "AB4.20",
+     "assertion_pattern": "re:\\[AB4\\.20(?:/[a-z0-9]+)?\\]",
+     "justification": "a reconciliação incompleta só encerra por RECONCILE_MAX"
+    }
+   ]
+  },
+  "M40 retomada além de 23 h": {
+   "primary": [
+    {
+     "test_pattern": "AB4.8",
+     "assertion_pattern": "re:\\[AB4\\.8(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M41 retomada sem conferir body_sha": {
+   "primary": [
+    {
+     "test_pattern": "AB4.16",
+     "assertion_pattern": "re:\\[AB4\\.16(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M42 marcador de compra fora da instrução de reserva": {
+   "primary": [
+    {
+     "test_pattern": "AB5.1",
+     "assertion_pattern": "re:\\[AB5\\.1(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB5.3b",
+     "assertion_pattern": "re:\\[AB5\\.3b(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB5.9",
+     "assertion_pattern": "re:\\[AB5\\.9(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB5.2",
+     "assertion_pattern": "re:\\[AB5\\.2(?:/[a-z0-9]+)?\\]",
+     "justification": "idem AB5.1 com PURCHASE_COMPLETE"
+    },
+    {
+     "test_pattern": "EN2b",
+     "assertion_pattern": "re:\\[EN2b(?:/[a-z0-9]+)?\\]",
+     "justification": "o ensaio de 200 reservas com compra gravada no meio deixa de ser barrado"
+    }
+   ],
+   "broad_reason": "o marcador dentro da reserva é a única barreira depois da criação da pendência; os testes de compra concorrente (rota, corrida, réplica atrasada e ensaio) dependem dele"
+  },
+  "M43 gancho de compra não aguardado": {
+   "primary": [
+    {
+     "test_pattern": "AB5.3e",
+     "assertion_pattern": "re:\\[AB5\\.3e(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB5.1",
+     "assertion_pattern": "re:\\[AB5\\.1(?:/[a-z0-9]+)?\\]",
+     "justification": "a resposta da compra volta antes de o marcador apagar a pendência"
+    },
+    {
+     "test_pattern": "AB5.2",
+     "assertion_pattern": "re:\\[AB5\\.2(?:/[a-z0-9]+)?\\]",
+     "justification": "idem AB5.1"
+    },
+    {
+     "test_pattern": "AB5.3d",
+     "assertion_pattern": "re:\\[AB5\\.3d(?:/[a-z0-9]+)?\\]",
+     "justification": "o marcador do aquecimento ainda não existe quando o teste lê o D1 logo após a resposta"
+    },
+    {
+     "test_pattern": "AB5.7",
+     "assertion_pattern": "re:\\[AB5\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "no ramo de kit o marcador é gravado depois da ingestão (não aguardado)"
+    }
+   ],
+   "broad_reason": "o gancho não aguardado muda o instante do marcador em todos os testes que leem o D1 logo depois da resposta da compra"
+  },
+  "M44 aquecimento cria pendência": {
+   "primary": [
+    {
+     "test_pattern": "AB5.3d",
+     "assertion_pattern": "re:\\[AB5\\.3d(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M45 sem D1 a ingestão cria pendência": {
+   "primary": [
+    {
+     "test_pattern": "AB10.6",
+     "assertion_pattern": "re:\\[AB10\\.6(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB10.7",
+     "assertion_pattern": "re:\\[AB10\\.7(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M46 batimento do dreno com ref": {
+   "primary": [
+    {
+     "test_pattern": "AB4.15",
+     "assertion_pattern": "re:\\[AB4\\.15(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB4.9",
+     "assertion_pattern": "re:\\[AB4\\.9(?:/[a-z0-9]+)?\\]",
+     "justification": "o campo due do batimento é sobrescrito pela lista de chaves e o contador deixa de ser número"
+    }
+   ]
+  },
+  "M47 d1() relança o erro": {
+   "primary": [
+    {
+     "test_pattern": "AB10.7",
+     "assertion_pattern": "re:\\[AB10\\.7(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB10.7b",
+     "assertion_pattern": "re:\\[AB10\\.7b(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB7.6",
+     "assertion_pattern": "re:\\[AB7\\.6(?:/[a-z0-9]+)?\\]",
+     "justification": "a retenção com D1 sem tabela passa a lançar em vez de d1_unavailable"
+    },
+    {
+     "test_pattern": "AB7.7",
+     "assertion_pattern": "re:\\[AB7\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "a falha simulada do DELETE lança e a retenção não mede a idade"
+    },
+    {
+     "test_pattern": "AB7.8",
+     "assertion_pattern": "re:\\[AB7\\.8(?:/[a-z0-9]+)?\\]",
+     "justification": "o descadastro com D1 fora passa a lançar"
+    },
+    {
+     "test_pattern": "AB6.9",
+     "assertion_pattern": "re:\\[AB6\\.9(?:/[a-z0-9]+)?\\]",
+     "justification": "a supressão manual com D1 fora passa a lançar"
+    },
+    {
+     "test_pattern": "AB5.10",
+     "assertion_pattern": "re:\\[AB5\\.10(?:/[a-z0-9]+)?\\]",
+     "justification": "com o D1 falhando no gancho, d1() lança antes de a pendência ser apagada"
+    }
+   ],
+   "broad_reason": "d1() é o único ponto de acesso ao D1: relançar afeta todo teste que simula falha do D1"
+  },
+  "M48 gatilho de DELETE removido da 0003": {
+   "primary": [
+    {
+     "test_pattern": "AB7.4",
+     "assertion_pattern": "re:\\[AB7\\.4(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN3",
+     "assertion_pattern": "re:\\[EN3(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M49 retenção só no estágio ativo": {
+   "primary": [
+    {
+     "test_pattern": "AB7.5",
+     "assertion_pattern": "re:\\[AB7\\.5(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M50 descadastro sem supkv": {
+   "primary": [
+    {
+     "test_pattern": "AB10.7b",
+     "assertion_pattern": "re:\\[AB10\\.7b(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB7.8",
+     "assertion_pattern": "re:\\[AB7\\.8(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB10.6",
+     "assertion_pattern": "re:\\[AB10\\.6(?:/[a-z0-9]+)?\\]",
+     "justification": "o descadastro sem binding depende do supkv para responder Pronto"
+    },
+    {
+     "test_pattern": "AB10.7",
+     "assertion_pattern": "re:\\[AB10\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "idem com o binding sem tabela"
+    }
+   ]
+  },
+  "M51 reconciliação compara o to antes do subject": {
+   "primary": [
+    {
+     "test_pattern": "AB4.14",
+     "assertion_pattern": "re:\\[AB4\\.14(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M52 supressão gravada com INSERT OR REPLACE": {
+   "primary": [
+    {
+     "test_pattern": "AB7.4b",
+     "assertion_pattern": "re:\\[AB7\\.4b(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "EN3",
+     "assertion_pattern": "re:\\[EN3(?:/[a-z0-9]+)?\\]",
+     "justification": "o descadastro repetido com REPLACE troca o criado_ms da supressão"
+    }
+   ]
+  },
+  "M53 descadastro 503 mesmo com supkv gravado": {
+   "primary": [
+    {
+     "test_pattern": "AB10.7b",
+     "assertion_pattern": "re:\\[AB10\\.7b(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB7.8",
+     "assertion_pattern": "re:\\[AB7\\.8(?:/[a-z0-9]+)?\\]",
+     "justification": "o descadastro com D1 fora responde 503 em vez de Pronto"
+    },
+    {
+     "test_pattern": "AB10.6",
+     "assertion_pattern": "re:\\[AB10\\.6(?:/[a-z0-9]+)?\\]",
+     "justification": "idem sem binding"
+    },
+    {
+     "test_pattern": "AB10.7",
+     "assertion_pattern": "re:\\[AB10\\.7(?:/[a-z0-9]+)?\\]",
+     "justification": "idem com binding sem tabela"
+    }
+   ]
+  },
+  "M54 reconciliação lê só a primeira página": {
+   "primary": [
+    {
+     "test_pattern": "AB4.18",
+     "assertion_pattern": "re:\\[AB4\\.18(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN5",
+     "assertion_pattern": "re:\\[EN5(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "EN5c",
+     "assertion_pattern": "re:\\[EN5c(?:/[a-z0-9]+)?\\]",
+     "justification": "a parada antecipada conta páginas lidas"
+    },
+    {
+     "test_pattern": "AB4.20",
+     "assertion_pattern": "re:\\[AB4\\.20(?:/[a-z0-9]+)?\\]",
+     "justification": "o limite de páginas deixa de produzir consulta incompleta"
+    },
+    {
+     "test_pattern": "AB4.21",
+     "assertion_pattern": "re:\\[AB4\\.21(?:/[a-z0-9]+)?\\]",
+     "justification": "a página vazia com has_more da 2ª página nunca é lida, e o candidato da 1ª é confirmado"
+    }
+   ],
+   "broad_reason": "todos os testes de paginação (achado na 3ª página, limite, página vazia, parada antecipada e o ensaio por página) dependem de ler além da primeira página"
+  },
+  "M55 reconciliação ambígua vira enviado": {
+   "primary": [
+    {
+     "test_pattern": "AB4.19",
+     "assertion_pattern": "re:\\[AB4\\.19(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN5c",
+     "assertion_pattern": "re:\\[EN5c(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M56 consulta incompleta tratada como completa": {
+   "primary": [
+    {
+     "test_pattern": "AB4.20",
+     "assertion_pattern": "re:\\[AB4\\.20(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN5",
+     "assertion_pattern": "re:\\[EN5(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M57 compra decidida por leitura separada antes da reserva": {
+   "primary": [
+    {
+     "test_pattern": "AB5.9",
+     "assertion_pattern": "re:\\[AB5\\.9(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "EN2b",
+     "assertion_pattern": "re:\\[EN2b(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M58 D1 com API de sessões (read replicas)": {
+   "primary": [
+    {
+     "test_pattern": "AB5.9",
+     "assertion_pattern": "re:\\[AB5\\.9(?:/[a-z0-9]+)?\\]"
+    },
+    {
+     "test_pattern": "AB10.8",
+     "assertion_pattern": "re:\\[AB10\\.8(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M62 página vazia com has_more tratada como fim da lista": {
+   "primary": [
+    {
+     "test_pattern": "AB4.21",
+     "assertion_pattern": "re:\\[AB4\\.21(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M63 gancho de compra retorna antes de apagar a pendência quando o D1 falha": {
+   "primary": [
+    {
+     "test_pattern": "AB5.10",
+     "assertion_pattern": "re:\\[AB5\\.10(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M64 filtro de conteúdo não checa o html enviado": {
+   "primary": [
+    {
+     "test_pattern": "AB9.7",
+     "assertion_pattern": "re:\\[AB9\\.7(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M65 supressão manual sem exigir o prefixo Bearer": {
+   "primary": [
+    {
+     "test_pattern": "AB6.8",
+     "assertion_pattern": "re:\\[AB6\\.8(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M59 supressão manual sem token de operador": {
+   "primary": [
+    {
+     "test_pattern": "AB6.8",
+     "assertion_pattern": "re:\\[AB6\\.8(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M60 supressão manual grava o e-mail": {
+   "primary": [
+    {
+     "test_pattern": "AB6.7",
+     "assertion_pattern": "re:\\[AB6\\.7(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": []
+  },
+  "M61 retenção remove o gatilho da supressão (DDL no worker)": {
+   "primary": [
+    {
+     "test_pattern": "AB7.4d",
+     "assertion_pattern": "re:\\[AB7\\.4d(?:/[a-z0-9]+)?\\]"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "AB7.8",
+     "assertion_pattern": "re:\\[AB7\\.8(?:/[a-z0-9]+)?\\]",
+     "justification": "a instrução DROP TRIGGER da supressão aparece na sequência de gravações da fusão que AB7.8 registra"
+    }
+   ]
+  }
+ }
+}
