@@ -54,6 +54,13 @@ function problemas(page, html) {
 
 test("R02 cada página do kit aponta cada kit para o SEU link; cabeçalho leva à seção dos kits; sem mailto de afiliação", () => {
   for (const page of PAGES) assert.deepEqual(problemas(page, read(page)), []);
+  // NC-A (auditoria independente de 0b3baac): vigência dos 30% na Hotmart, sem citar a taxa antiga
+  const VIG = "A comissão de 30% vale para vendas a partir de 13/11/2026; até essa data, a Hotmart ainda aplica a taxa anterior.";
+  for (const page of [...PAGES, "afiliados/index.html", "sales-public/afiliados.html"]) {
+    const html = read(page);
+    assert.equal(html.split(VIG).length - 1, 1, page + ": frase de vigência");
+    assert.doesNotMatch(html, /\b50\s*%|cinquenta por cento|\bmetade\b/i, page + ": taxa antiga citada");
+  }
 });
 
 test("R03 NEGATIVO: troca entre kits, checkout, Mercado, mailto, cabeçalho e texto são detectados", () => {
@@ -72,4 +79,57 @@ test("R03 NEGATIVO: troca entre kits, checkout, Mercado, mailto, cabeçalho e te
     assert.notEqual(h, html, "mutante sem efeito: " + nome);
     assert.notDeepEqual(problemas(page, h), [], "mutante sobreviveu: " + nome);
   }
+});
+
+test("R04 P18 (NC-D): só /affiliate-recruiting/view/<id> em affiliate.hotmart.com é isento; outro caminho ou subdomínio é link de compra", async () => {
+  const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { pathToFileURL } = await import("node:url");
+  const ALLOW = JSON.parse(read("data/p18-commercial-allowlist.json"));
+  assert.ok(!ALLOW.informational_hosts.some((h) => /affiliate\.hotmart\.com$/.test(h)), "affiliate.hotmart.com não pode ser isento por host inteiro");
+  assert.deepEqual(ALLOW.informational_paths.map((x) => [x.host, x.path_prefix]), [["affiliate.hotmart.com", "/affiliate-recruiting/view/"]]);
+  const ok = Object.values(AF.hotmart_kits).map((k) => k.recruitment_url);
+  const id = ok[0].split("/").pop();
+  const ruins = [
+    "https://affiliate.hotmart.com/checkout/" + id,
+    "https://affiliate.hotmart.com/affiliate-recruiting/" + id,
+    "https://affiliate.hotmart.com/affiliate-recruiting/view/",
+    "https://affiliate.hotmart.com/affiliate-recruiting/view/" + id + "/pay",
+    "https://affiliate.hotmart.com/affiliate-recruiting/view/" + id + "?off=abc",
+    "https://affiliate.hotmart.com/affiliate-recruiting/view/../../pay/" + id,
+    "https://x.affiliate.hotmart.com/affiliate-recruiting/view/" + id,
+    "https://affiliate.hotmart.com.evil.example/affiliate-recruiting/view/" + id,
+    "https://affiliate.hotmart.com:8443/affiliate-recruiting/view/" + id,
+    "http://affiliate.hotmart.com/affiliate-recruiting/view/" + id,
+    "https://pay.hotmart.com/affiliate-recruiting/view/" + id,
+  ];
+  const page = (hrefs) => hrefs.map((h) => `<a href="${h}">x</a>`).join("");
+  const comprasDe = (mod, h) => mod.extractPurchaseLinks(page([h]), ALLOW, { source: "t", slug: "kit-afiliado" });
+  const avalia = (mod) => ({
+    oks: ok.every((h) => comprasDe(mod, h).length === 0),
+    // domínio fora de payment_host_suffixes (.evil.example) não é link de compra para o P18; os demais têm de ser
+    ruins: ruins.filter((h) => !h.includes(".evil.example")).every((h) => comprasDe(mod, h).length > 0) && !mod.isInformationalPath(ruins[7], ALLOW),
+  });
+  const real = await import(pathToFileURL(join(ROOT, "scripts/b0/p18-commercial.mjs")).href);
+  assert.deepEqual(avalia(real), { oks: true, ruins: true });
+  for (const h of ok) assert.equal(real.isInformationalPath(h, ALLOW), true, h);
+  // mutantes do código da isenção: cada um tem de mudar o veredito
+  const src = read("scripts/b0/p18-commercial.mjs");
+  const mutantes = {
+    "isenção pelo host inteiro": ["host === x.host && u.pathname.startsWith(x.path_prefix)\n    && /^[A-Za-z0-9]+$/.test(u.pathname.slice(x.path_prefix.length))", "host === x.host"],
+    "subdomínio aceito": ["host === x.host && u.pathname", "(host === x.host || host.endsWith(\".\" + x.host)) && u.pathname"],
+    "qualquer sufixo após o prefixo": ["/^[A-Za-z0-9]+$/.test(u.pathname.slice(x.path_prefix.length))", "true"],
+    "query/porta/http aceitos": ['if (u.protocol !== "https:" || u.port || u.username || u.password || u.search || u.hash) return false;', ""],
+    "isenção desligada": ["|| isInformationalPath(h, allow)) continue;", ") continue;"],
+  };
+  const dir = mkdtempSync(join(tmpdir(), "p18-ncd-"));
+  try {
+    for (const [nome, [de, para]] of Object.entries(mutantes)) {
+      assert.ok(src.includes(de), "âncora ausente: " + nome);
+      const f = join(dir, nome.replace(/\W+/g, "_") + ".mjs");
+      writeFileSync(f, src.replace(de, para));
+      const mod = await import(pathToFileURL(f).href);
+      assert.notDeepEqual(avalia(mod), { oks: true, ruins: true }, "mutante sobreviveu: " + nome);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
