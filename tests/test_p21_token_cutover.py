@@ -585,10 +585,13 @@ class P21TokenCutoverTest(unittest.TestCase):
         print(f"\nMUTANTS total={len(MUTANTS)} killed={len(MUTANTS) - len(survived)} survived={len(survived)}")
 
 
+# central-production-deploy.yml re-fixado no PR d1-primeiro-deploy-certificado (NO-GO do GPT-6, NC-P2b-DEP-01/02/03):
+# passos D1 (modo/motivo no guard, migração fail-closed, binding efetivo, readback obrigatório, conferência no rollback
+# automático) mudaram de propósito; os passos P21 e os tokens de cada passo não mudaram (P3/P4/P6 continuam provando).
 BASE_FINGERPRINT.update(json.loads(r'''{
  "central-production-deploy.yml": {
-  "guard": "d04d0473a1b9533b07a59b55afaee04ffa5483ce94d13088aa8d668bb3887716",
-  "deploy": "34087023b0690cca9b0e1c0f2d2e9fb2c2c8607b02043bf5ccbfc06cd3fc4d9c"
+  "guard": "cdf3c96b54d3b88e003ca95072faa926104980affaabf94cc9c06e3ee460a330",
+  "deploy": "743a68e0c36cb6c0c34f3c0011ff58286006308f2271f27182cd3637f8f4ea46"
  },
  "zevanory-sales-public-release.yml": {
   "verify": "68088b29097abe4c20476c2c60c6e8db4ebb51bf97a7ba8eb125f74638e324b3",

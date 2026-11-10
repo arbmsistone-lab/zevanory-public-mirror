@@ -123,7 +123,7 @@ def _base_available():
     return _git("cat-file", "-e", BASE + "^{commit}").returncode == 0
 
 
-def build_candidate(tmp, script_text, base_mutator=None):
+def build_candidate(tmp, script_text, base_mutator=None, extra_env=None):
     """Runs the generator exactly as central-production-deploy.yml does (base wrangler.jsonc + public/ of 83620c6)."""
     tmp = pathlib.Path(tmp)
     for rel in ("scripts/deploy/public_whatsapp_scan.py", "worker/binding-aliases.mjs", "worker/cloudflare-worker.recovered.mjs",
@@ -137,8 +137,8 @@ def build_candidate(tmp, script_text, base_mutator=None):
     if base_mutator:
         base_mutator(base)
     (tmp / "wrangler.central-fix.jsonc").write_text(json.dumps(base), encoding="utf-8")
-    env = {k: v for k, v in os.environ.items() if k not in ("ZEVANORY_LAUNCH_AUTHORIZATION", "OPERATOR_TOKEN_MIGRATION_UNTIL")}
-    env.update(PUBLIC_OWNER_ACCOUNT_ID="0" * 32, TARGET_RUNTIME_SHA="a" * 40, PYTHONDONTWRITEBYTECODE="1")
+    env = {k: v for k, v in os.environ.items() if k not in ("ZEVANORY_LAUNCH_AUTHORIZATION", "OPERATOR_TOKEN_MIGRATION_UNTIL", "DIARIO_D1_MODO")}
+    env.update(PUBLIC_OWNER_ACCOUNT_ID="0" * 32, TARGET_RUNTIME_SHA="a" * 40, PYTHONDONTWRITEBYTECODE="1", **(extra_env or {}))
     r = subprocess.run([sys.executable, "scripts/deploy/prepare-central-candidate.py"], cwd=tmp, env=env, capture_output=True, text=True)
     if r.returncode:
         return None, r.stdout + r.stderr
@@ -347,10 +347,18 @@ class P20BindingVacancyStaticTest(unittest.TestCase):
         self.assertIn("rollback --name zevanory", (wf / "central-production-deploy.yml").read_text(encoding="utf-8"))
 
 
+
+
 # ---------------------------------------------------------------------------------------------------------------
-# P20 diário D1 (PR2, docs/p20/diario-d1.md, seção "Binding e migração"): o gerador injeta o binding DIARIO do banco
-# de produção zevanory-diario-p20. Prova com o gerador REAL sobre a base fixada: binding presente, id exato, recusa do
-# banco de certificação (7ff006f3) e de um DIARIO divergente, e orçamento de bindings inalterado (D1 não é var/secret).
+# P20 diário D1 (docs/p20/diario-d1.md, seções "Binding e migração" e "Primeiro deploy com D1"). NO-GO do GPT-6
+# (NC-P2b-DEP-01/02/03): o gerador só injeta o binding DIARIO em DIARIO_D1_MODO=certificar; off (padrão, push e
+# dispatch sem input) e rollback saem SEM DIARIO, mesmo com os segredos D1 cadastrados. Prova com o gerador REAL sobre a
+# base fixada, o texto REAL dos passos do workflow (curl/npx falsos), o promotion_guard REAL (motivo=d1-config) e o
+# script REAL de certificação. Mutantes no fim (DiarioD1MutantsTest). O isolamento das credenciais D1 e os ramos de
+# migração/readback com os segredos falsos estão em tests/test_diario_d1_credentials.py.
+import importlib.util  # noqa: E402
+import types  # noqa: E402
+
 DIARIO_WANTED = {
     "binding": "DIARIO",
     "database_name": "zevanory-diario-p20",
@@ -358,17 +366,54 @@ DIARIO_WANTED = {
     "migrations_dir": "migrations/d1",
 }
 CERT_D1_ID = "7ff006f3-1daf-44c5-9494-aabab600608e"
+CERTIFY = ROOT / "scripts/deploy/diario_d1_certify.py"
+GUARD = ROOT / "scripts/deploy/promotion_guard.py"
+WORKFLOW = ROOT / ".github/workflows/central-production-deploy.yml"
+SHA_A, SHA_B, SHA_C, SHA_X = "a" * 40, "b" * 40, "c" * 40, "e" * 40  # A <- B <- C (ponta); X divergente
 
 
-def _diario_injector():
-    """Extrai do gerador real a constante e a função de injeção (sem rodar o resto do script)."""
-    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
-    names = {"DIARIO_D1_BINDING", "DIARIO_D1_FORBIDDEN_PREFIX", "_inject_diario_d1"}
+def _module_from(path, text=None, name=None):
+    mod = types.ModuleType(name or path.stem)
+    mod.__file__ = str(path)
+    exec(compile(text if text is not None else path.read_text(encoding="utf-8"), str(path), "exec"), mod.__dict__)
+    return mod
+
+
+def _diario_injector(text=None):
+    """Extrai do gerador real a constante e as funções de injeção (sem rodar o resto do script)."""
+    tree = ast.parse(text if text is not None else SCRIPT.read_text(encoding="utf-8"))
+    names = {"DIARIO_D1_BINDING", "DIARIO_D1_FORBIDDEN_PREFIX", "DIARIO_D1_MODOS", "_inject_diario_d1", "_apply_diario_d1"}
     body = [n for n in tree.body if (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in names for t in n.targets))
             or (isinstance(n, ast.FunctionDef) and n.name in names)]
     ns = {}
     exec(compile(ast.Module(body=body, type_ignores=[]), str(SCRIPT), "exec"), ns)
     return ns
+
+
+# --- verificações do gerador (recebem o namespace para os mutantes passarem pelo mesmo crivo) -------------------
+def check_generator_modes(ns):
+    apply = ns["_apply_diario_d1"]
+    assert ns["DIARIO_D1_BINDING"] == DIARIO_WANTED
+    c = apply({}, "certificar")
+    assert c["d1_databases"] == [DIARIO_WANTED], c
+    for modo in ("off", "rollback", "", None):
+        c = apply({"d1_databases": [dict(DIARIO_WANTED)]}, modo)
+        assert "d1_databases" not in c, (modo, c)
+        c = apply({"d1_databases": [dict(DIARIO_WANTED), {"binding": "OUTRO", "database_id": "aaaa"}]}, modo)
+        assert c["d1_databases"] == [{"binding": "OUTRO", "database_id": "aaaa"}], (modo, c)
+        try:
+            apply({"d1_databases": [{"binding": "X", "database_id": CERT_D1_ID}]}, modo)
+        except SystemExit as e:
+            assert "DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN" in str(e)
+        else:
+            raise AssertionError(f"banco de certificação aceito em modo {modo!r}")
+    for bad in ("CERTIFICAR", "on", "certificar "):
+        try:
+            apply({}, bad)
+        except SystemExit as e:
+            assert "DIARIO_D1_MODO_INVALIDO" in str(e)
+        else:
+            raise AssertionError(f"modo inválido aceito: {bad!r}")
 
 
 class DiarioD1BindingUnitTest(unittest.TestCase):
@@ -381,6 +426,7 @@ class DiarioD1BindingUnitTest(unittest.TestCase):
         self.assertTrue((ROOT / "migrations/d1/0001_diario_v1.sql").is_file(), "migrations_dir aponta para a migração real")
         doc = (ROOT / "docs/p20/diario-d1.md").read_text(encoding="utf-8")
         self.assertIn("## Binding e migração", doc)
+        self.assertIn("## Primeiro deploy com D1: modos off, certificar e rollback", doc)
         self.assertIn(DIARIO_WANTED["database_id"], doc)
 
     def test_injeta_uma_vez_e_e_idempotente(self):
@@ -408,182 +454,568 @@ class DiarioD1BindingUnitTest(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "DIARIO_D1_BINDING_CONFLICT"):
             inj({"d1_databases": [dict(DIARIO_WANTED), dict(DIARIO_WANTED)]})
 
+    def test_modos_off_certificar_rollback(self):
+        check_generator_modes(self.ns)
+
 
 @unittest.skipUnless(_base_available(), "deploy base 83620c6 not in this checkout (CI fetches it before this step)")
 class DiarioD1BindingGeneratorTest(unittest.TestCase):
+    """O gerador REAL sobre a base fixada, nos três modos e sem modo (push, dry-runs e os outros workflows)."""
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
-        cls.cfg, out = build_candidate(pathlib.Path(cls.tmp, "g"), SCRIPT.read_text(encoding="utf-8"))
-        assert cls.cfg, out[-600:]
+        cls.cfgs, cls.outs = {}, {}
+        for modo in ("", "off", "certificar", "rollback"):
+            cfg, out = build_candidate(pathlib.Path(cls.tmp, modo or "padrao"), SCRIPT.read_text(encoding="utf-8"),
+                                       extra_env={"DIARIO_D1_MODO": modo} if modo else None)
+            assert cfg, (modo, out[-600:])
+            cls.cfgs[modo], cls.outs[modo] = cfg, out
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def test_binding_presente_com_id_exato(self):
-        d1 = self.cfg["d1_databases"]
-        self.assertEqual(d1, [DIARIO_WANTED], "a base 83620c6 não tem D1; o único é o DIARIO")
-        self.assertFalse(any(str(r.get("database_id", "")).startswith("7ff006f3") for r in d1))
-        self.assertNotIn("DIARIO", self.cfg["vars"])
-        self.assertNotIn(DIARIO_WANTED["database_id"], json.dumps(self.cfg["vars"]), "o UUID não vai em var")
+    def test_sem_modo_off_e_rollback_saem_sem_diario(self):
+        for modo in ("", "off", "rollback"):
+            self.assertNotIn("d1_databases", self.cfgs[modo], modo)
+            self.assertIn(f"DIARIO_D1_CANDIDATO=sem_binding modo={modo or 'off'}", self.outs[modo])
+
+    def test_certificar_com_binding_e_id_exato(self):
+        cfg = self.cfgs["certificar"]
+        self.assertEqual(cfg["d1_databases"], [DIARIO_WANTED], "a base 83620c6 não tem D1; o único é o DIARIO")
+        self.assertIn("DIARIO_D1_CANDIDATO=com_binding modo=certificar", self.outs["certificar"])
+        self.assertNotIn("DIARIO", cfg["vars"])
+        self.assertNotIn(DIARIO_WANTED["database_id"], json.dumps(cfg["vars"]), "o UUID não vai em var")
+        # O resto do candidato é idêntico entre os modos: o modo só decide o binding.
+        sem = {k: v for k, v in cfg.items() if k != "d1_databases"}
+        self.assertEqual(sem, self.cfgs["off"])
+
+    def test_modo_invalido_recusa(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg, out = build_candidate(d, SCRIPT.read_text(encoding="utf-8"), extra_env={"DIARIO_D1_MODO": "ligado"})
+        self.assertIsNone(cfg)
+        self.assertIn("DIARIO_D1_MODO_INVALIDO", out)
 
     def test_orcamento_de_bindings_inalterado(self):
         # Mesmo cenário do teste da vaga P20: hoje 59/60 com P20_BACKUP_KEY. O D1 não conta.
-        n_vars = len(self.cfg["vars"])
+        cfg = self.cfgs["certificar"]
+        n_vars = len(cfg["vars"])
         secrets = [f"SYNTHETIC_SECRET_{i:02d}" for i in range(60 - n_vars - 1 - 2)] + ["P20_BACKUP_KEY"]
-        sem_d1 = {k: v for k, v in self.cfg.items() if k != "d1_databases"}
-        self.assertEqual(budget(self.cfg, secrets), (0, 59))
-        self.assertEqual(budget(sem_d1, secrets), budget(self.cfg, secrets))
+        self.assertEqual(budget(cfg, secrets), (0, 59))
+        self.assertEqual(budget(self.cfgs["off"], secrets), budget(cfg, secrets))
 
-    def test_recusa_certificacao_na_base(self):
+    def test_recusa_certificacao_na_base_em_qualquer_modo(self):
         def cert(base):
             base["d1_databases"] = [{"binding": "MAIN_DB", "database_id": CERT_D1_ID}]
-        with tempfile.TemporaryDirectory() as d:
-            cfg, out = build_candidate(d, SCRIPT.read_text(encoding="utf-8"), cert)
-        self.assertIsNone(cfg)
-        self.assertIn("DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN", out)
+        for modo in ("", "certificar"):
+            with tempfile.TemporaryDirectory() as d:
+                cfg, out = build_candidate(d, SCRIPT.read_text(encoding="utf-8"), cert, {"DIARIO_D1_MODO": modo})
+            self.assertIsNone(cfg, modo)
+            self.assertIn("DIARIO_D1_CERTIFICATION_DATABASE_FORBIDDEN", out)
 
-    def test_recusa_diario_divergente_na_base(self):
+    def test_recusa_diario_divergente_na_base_em_certificar(self):
         def other(base):
             base["d1_databases"] = [dict(DIARIO_WANTED, database_id="22222222-2222-4222-8222-222222222222")]
         with tempfile.TemporaryDirectory() as d:
-            cfg, out = build_candidate(d, SCRIPT.read_text(encoding="utf-8"), other)
+            cfg, out = build_candidate(d, SCRIPT.read_text(encoding="utf-8"), other, {"DIARIO_D1_MODO": "certificar"})
         self.assertIsNone(cfg)
         self.assertIn("DIARIO_D1_BINDING_CONFLICT", out)
 
 
-
-WORKFLOW = ROOT / ".github/workflows/central-production-deploy.yml"
-FAKE_CURL = r"""#!/usr/bin/env bash
-out=""; while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift;; esac; shift; done
-[ -n "$out" ] && printf '%s' "$FAKE_CURL_BODY" > "$out"
-printf '%s' "$FAKE_CURL_CODE"
+# --- workflow: texto real dos passos ----------------------------------------------------------------------------
+FAKE_CURL_ROUTES = r"""#!/usr/bin/env bash
+out=""; url=""; tok=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift;;
+    -H) case "$2" in "Authorization: Bearer "*) tok="${2#Authorization: Bearer }";; esac; shift;;
+    http*) url="$1";;
+  esac; shift
+done
+printf 'curl token=%s url=%s\n' "$tok" "$url" >> "$FAKE_CALL_LOG"
+python3 - "$url" "$out" <<'PY'
+import json, os, sys
+url, out = sys.argv[1], sys.argv[2]
+routes = json.loads(os.environ.get("FAKE_ROUTES", "{}"))
+code, body = "404", '{"success":false}'
+for suffix, (c, b) in routes.items():
+    if url.endswith(suffix):
+        code, body = c, b
+if out:
+    open(out, "w").write(body if isinstance(body, str) else json.dumps(body))
+sys.stdout.write(code)
+PY
 """
-FAKE_NPX = r"""#!/usr/bin/env bash
-echo "$*" >> "$FAKE_NPX_LOG"
-printf '%s\n' "$FAKE_NPX_OUT"
-exit "${FAKE_NPX_RC:-0}"
-"""
 
 
-def workflow_step(name_prefix):
-    """Devolve (índice, texto do run) do passo do job deploy cujo nome começa com name_prefix, sem depender de PyYAML."""
-    lines = WORKFLOW.read_text(encoding="utf-8").split("\n")
-    names = [i for i, l in enumerate(lines) if l.startswith("      - name: ")]
-    start = [i for i in names if lines[i][len("      - name: "):].startswith(name_prefix)]
-    assert len(start) == 1, (name_prefix, start)
-    i = start[0]
-    end = next((j for j in names if j > i), len(lines))
-    block = lines[i:end]
-    r = next(k for k, l in enumerate(block) if l.strip() == "run: |")
-    body = [l[10:] if l.startswith(" " * 10) else l.strip() for l in block[r + 1:]]
-    return i, "\n".join(body), "\n".join(block)
+def workflow_blocks(text=None):
+    """{(job, nome do passo): (índice da linha, run, bloco)} sem depender de PyYAML."""
+    lines = (text if text is not None else WORKFLOW.read_text(encoding="utf-8")).split("\n")
+    jobs_at = lines.index("jobs:")
+    job_starts = [i for i in range(jobs_at + 1, len(lines)) if re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i])]
+    out = {}
+    for n, js in enumerate(job_starts):
+        je = job_starts[n + 1] if n + 1 < len(job_starts) else len(lines)
+        names = [i for i in range(js, je) if lines[i].startswith("      - ")]
+        for k, i in enumerate(names):
+            e = names[k + 1] if k + 1 < len(names) else je
+            block = lines[i:e]
+            m = re.match(r"^      - name: (.*)$", block[0])
+            if not m:
+                continue
+            r = next((x for x, l in enumerate(block) if l.strip() == "run: |"), None)
+            run = "\n".join(l[10:] if l.startswith(" " * 10) else l.strip() for l in block[r + 1:]) if r is not None else ""
+            out[(lines[js].strip()[:-1], m.group(1))] = (i, run, "\n".join(block))
+    return out
+
+
+def workflow_step(name_prefix, job="deploy", text=None):
+    hit = [(k, v) for k, v in workflow_blocks(text).items() if k[0] == job and k[1].startswith(name_prefix)]
+    assert len(hit) == 1, (name_prefix, [k for k, _ in hit])
+    return hit[0][1]
+
+
+MODO = "P20 diário D1 - modo e motivo"
+BIND = "P20 diário D1 - binding efetivo"
+MIGP = "P20 diário D1 - migrações"
+READP = "P20 diário D1 - readback"
+
+
+def run_text(script, env_extra, cwd=None):
+    d = pathlib.Path(tempfile.mkdtemp())
+    try:
+        (d / "bin").mkdir()
+        (d / "bin" / "curl").write_text(FAKE_CURL_ROUTES, encoding="utf-8")
+        (d / "bin" / "curl").chmod(0o755)
+        for rel in ("scripts", "migrations"):
+            (d / rel).symlink_to(ROOT / rel)
+        (d / "out").write_text("", encoding="utf-8")
+        base = {k: v for k, v in os.environ.items() if not k.startswith(("CLOUDFLARE_", "CF_TOKEN_", "DIARIO_"))}
+        env = dict(base, PATH=f"{d / 'bin'}:{os.environ['PATH']}", GITHUB_OUTPUT=str(d / "out"), FAKE_CALL_LOG=str(d / "calls"),
+                   PYTHONDONTWRITEBYTECODE="1", **env_extra)
+        p = subprocess.run(["bash", "-c", script], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+        so = dict(l.split("=", 1) for l in (d / "out").read_text(encoding="utf-8").split("\n") if "=" in l)
+        calls = (d / "calls").read_text(encoding="utf-8").splitlines() if (d / "calls").exists() else []
+        return p, so, calls
+    finally:
+        shutil.rmtree(d, True)
+
+
+def cf_routes(tag=SHA_C, diario=True, db=DIARIO_WANTED["database_id"], versao_bindings=True, settings_code="200",
+              deployments=None):
+    b = [{"name": "ZEVANORY_PRIVATE_ARTIFACTS", "type": "kv_namespace", "namespace_id": "728a"}]
+    if diario:
+        b.append({"name": "DIARIO", "type": "d1", "id": db})
+    ver = {"id": "v1", "annotations": {"workers/tag": tag}}
+    if versao_bindings:
+        ver["resources"] = {"bindings": b}
+    dep = deployments if deployments is not None else {"deployments": [{"versions": [{"version_id": "v1", "percentage": 100}]}]}
+    return {"/deployments": ["200", json.dumps({"success": True, "result": dep})],
+            "/versions/v1": ["200", json.dumps({"success": True, "result": ver})],
+            "/settings": [settings_code, json.dumps({"success": True, "result": {"bindings": b}})]}
+
+
+def run_binding_step(modo, routes, text=None):
+    _, script, _ = workflow_step(BIND, text=text)
+    return run_text(script, {"DIARIO_D1_MODO": modo, "TARGET_RUNTIME_SHA": SHA_C, "CLOUDFLARE_API_TOKEN": "tok-deploy",
+                             "CLOUDFLARE_ACCOUNT_ID": "1b26415802588185a86c1d4d3ebf5bdb", "FAKE_ROUTES": json.dumps(routes)})
+
+
+def run_modo_step(evento, modo, motivo, text=None):
+    _, script, _ = workflow_step(MODO, job="guard", text=text)
+    return run_text(script, {"EVENTO": evento, "DIARIO_D1_INPUT": modo, "MOTIVO_INPUT": motivo})
+
+
+# Verificações do workflow (recebem o texto para os mutantes de DiarioD1MutantsTest).
+def check_wf_order_and_wiring(text):
+    b = workflow_blocks(text)
+    idx = {k[1]: v[0] for k, v in b.items() if k[0] == "deploy"}
+    name = lambda p: next(n for n in idx if n.startswith(p))  # noqa: E731
+    gen = name("Reconstruct exact production candidate")
+    mig, dep, bind, rb = name(MIGP), name("Deploy repaired production worker"), name(BIND), name(READP)
+    post, rbk = name("Post-promotion effective version"), name("Automatic rollback after failed post-deploy smoke")
+    assert idx[gen] < idx[mig] < idx[dep] < idx[bind] < idx[rb] < idx[post] < idx[rbk], "ordem: gerador, migração, deploy, binding, readback, pós-promoção, rollback"
+    assert "\n      DIARIO_D1_MODO: ${{ needs.guard.outputs.diario_d1 }}\n" in text, "o modo validado chega ao job deploy (gerador e passos)"
+    assert "diario_d1: ${{ steps.modo.outputs.diario_d1 }}" in text and "motivo: ${{ steps.modo.outputs.motivo }}" in text
+    assert "needs.guard.outputs.decision == 'promote'" in text, "o deploy só roda com promote"
+    _, grun, gblock = workflow_step("Pre-promotion guard", job="guard", text=text)
+    assert '--motivo "${PROMOTION_MOTIVO:-rotina}"' in grun and "PROMOTION_MOTIVO: ${{ steps.modo.outputs.motivo }}" in gblock
+    assert idx[gen] >= 0 and "python3 scripts/deploy/prepare-central-candidate.py" in b[("deploy", gen)][1]
+    _, rrun, rblock = workflow_step(READP, text=text)
+    assert "continue-on-error" not in rblock, "readback da certificação reprova o job"
+    _, brun, bblock = workflow_step(BIND, text=text)
+    assert "continue-on-error" not in bblock and "secrets." not in bblock, "conferência com o token do deploy do job, sem segredo próprio"
+    _, krun, _ = workflow_step("Automatic rollback after failed post-deploy smoke", text=text)
+    assert 'if [ "${DIARIO_D1_MODO:-off}" = "certificar" ]; then' in krun and "diario_d1_certify.py binding --expect ausente ||" in krun
+    on = text[:text.index("concurrency:")]
+    for frag in ('diario_d1:', 'options: ["off", "certificar", "rollback"]', 'default: "off"', 'motivo:', 'options: ["rotina", "d1-config"]',
+                 'default: "rotina"', '- "migrations/d1/**"', '- "scripts/deploy/diario_d1_certify.py"'):
+        assert frag in on, frag
+
+
+def check_wf_modo_validation(text):
+    ok = {("push", "", ""): ("off", "rotina"), ("workflow_dispatch", "", ""): ("off", "rotina"),
+          ("workflow_dispatch", "off", "rotina"): ("off", "rotina"),
+          ("workflow_dispatch", "certificar", "d1-config"): ("certificar", "d1-config"),
+          ("workflow_dispatch", "rollback", "d1-config"): ("rollback", "d1-config")}
+    for args, want in ok.items():
+        p, so, _ = run_modo_step(*args, text=text)
+        assert p.returncode == 0 and (so.get("diario_d1"), so.get("motivo")) == want, (args, p.stdout, so)
+    bad = [("workflow_dispatch", "certificar", "rotina"), ("workflow_dispatch", "certificar", ""),
+           ("workflow_dispatch", "rollback", "rotina"), ("workflow_dispatch", "off", "d1-config"),
+           ("workflow_dispatch", "ligado", "d1-config"), ("workflow_dispatch", "certificar", "codigo"),
+           ("push", "certificar", "d1-config"), ("push", "", "d1-config")]
+    for args in bad:
+        p, so, _ = run_modo_step(*args, text=text)
+        assert p.returncode == 1 and "::error title=" in p.stdout and "diario_d1" not in so, (args, p.stdout, so)
+
+
+def check_wf_binding_step(text):
+    cases = [
+        ("certificar", cf_routes(), 0, "PASS"),
+        ("certificar", cf_routes(versao_bindings=False), 0, "PASS"),
+        ("certificar", cf_routes(diario=False), 1, "FAIL"),
+        ("certificar", cf_routes(db="22222222-2222-4222-8222-222222222222"), 1, "FAIL"),
+        ("certificar", cf_routes(tag=SHA_B), 1, "FAIL"),
+        ("certificar", cf_routes(settings_code="500"), 1, "NAO_COMPROVADO"),
+        ("off", cf_routes(diario=False), 0, "PASS"),
+        ("off", cf_routes(diario=True), 1, "FAIL"),
+        ("off", cf_routes(settings_code="500"), 0, "NAO_COMPROVADO"),
+        ("", cf_routes(diario=False), 0, "PASS"),
+        ("rollback", cf_routes(diario=False), 0, "PASS"),
+        ("rollback", cf_routes(diario=True), 1, "FAIL"),
+        ("rollback", cf_routes(settings_code="500"), 1, "NAO_COMPROVADO"),
+        ("rollback", cf_routes(diario=False, deployments={"deployments": [{"versions": [
+            {"version_id": "v1", "percentage": 50}, {"version_id": "v0", "percentage": 50}]}]}), 1, "FAIL"),
+    ]
+    for modo, routes, rc, state in cases:
+        p, so, calls = run_binding_step(modo, routes, text=text)
+        assert p.returncode == rc and so.get("state") == state, (modo, state, p.stdout, p.stderr, so)
+        if state == "NAO_COMPROVADO" and rc == 0:
+            assert "::warning title=DIARIO_D1_BINDING_EFETIVO::NAO_COMPROVADO (não é PASS)" in p.stdout, p.stdout
+            assert "PASS:" not in p.stdout
+        assert calls and all("token=tok-deploy" in c and "/workers/scripts/zevanory/" in c for c in calls), calls
 
 
 class DiarioD1WorkflowStepTest(unittest.TestCase):
-    """Executa o texto REAL dos dois passos novos do deploy central com curl e npx falsos (nada sai da máquina).
-    DEC-P20-D1-01: os passos usam os tokens D1 dedicados (aqui com valores falsos); o isolamento das credenciais,
-    o env efetivo de cada passo e os mutantes ficam em tests/test_diario_d1_credentials.py."""
+    """Texto REAL dos passos com curl falso (nada sai da máquina). Os passos de migração e readback com os segredos D1
+    falsos estão em tests/test_diario_d1_credentials.py."""
+    TEXT = WORKFLOW.read_text(encoding="utf-8")
 
-    def run_step(self, prefix, cfg, curl_code="200", curl_body=None, npx_rc=0, npx_out="", extra_env=None):
-        _, script, _ = workflow_step(prefix)
-        d = pathlib.Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, d, True)
-        binp = d / "bin"
-        binp.mkdir()
-        for n, body in (("curl", FAKE_CURL), ("npx", FAKE_NPX)):
-            (binp / n).write_text(body, encoding="utf-8")
-            (binp / n).chmod(0o755)
-        (d / "wrangler.central-fix.jsonc").write_text(json.dumps(cfg), encoding="utf-8")
-        out = d / "gh_output"
-        out.write_text("", encoding="utf-8")
-        body = curl_body if curl_body is not None else json.dumps({"success": True, "result": {"name": "zevanory-diario-p20"}})
-        env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", GITHUB_OUTPUT=str(out), CLOUDFLARE_API_TOKEN="",
-                   CF_TOKEN_D1_DIARIO_MIGRATE="fake-d1-migrate", CF_TOKEN_D1_DIARIO_READ="fake-d1-read",
-                   PUBLIC_OWNER_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb", FAKE_CURL_CODE=curl_code, FAKE_CURL_BODY=body,
-                   FAKE_NPX_RC=str(npx_rc), FAKE_NPX_OUT=npx_out, FAKE_NPX_LOG=str(d / "npx.log"), **(extra_env or {}))
-        r = subprocess.run(["bash", "-c", script], cwd=d, env=env, capture_output=True, text=True, timeout=60)
-        state = [l.split("=", 1)[1] for l in out.read_text(encoding="utf-8").split("\n") if l.startswith("state=")]
-        npx = (d / "npx.log").read_text(encoding="utf-8") if (d / "npx.log").exists() else ""
-        return r, (state[-1] if state else None), json.loads((d / "wrangler.central-fix.jsonc").read_text(encoding="utf-8")), npx
+    def test_ordem_e_ligacoes(self):
+        check_wf_order_and_wiring(self.TEXT)
 
-    def cfg(self):
-        return {"name": "zevanory", "d1_databases": [dict(DIARIO_WANTED)]}
+    def test_validacao_do_modo_e_do_motivo(self):
+        check_wf_modo_validation(self.TEXT)
 
-    MIG = "P20 diário D1 - migrações"
-    READ = "P20 diário D1 - readback"
+    def test_binding_efetivo_na_cloudflare(self):
+        check_wf_binding_step(self.TEXT)
 
-    def test_ordem_e_comandos(self):
-        mig_i, mig, mig_block = workflow_step(self.MIG)
-        dep_i, _, _ = workflow_step("Deploy repaired production worker")
-        rb_i, rb, rb_block = workflow_step(self.READ)
-        self.assertLess(mig_i, dep_i, "a migração vem ANTES do wrangler deploy")
-        self.assertGreater(rb_i, dep_i, "o readback vem depois do deploy")
-        self.assertIn('CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc', mig)
-        self.assertIn('--command "select count(*) as n from diario_head"', rb)
-        self.assertIn("continue-on-error: true", rb_block)
-        for block, own in ((mig_block, "CF_TOKEN_D1_DIARIO_MIGRATE"), (rb_block, "CF_TOKEN_D1_DIARIO_READ")):
-            # DEC-P20-D1-01: cada passo recebe SÓ o seu segredo dedicado (detalhe em tests/test_diario_d1_credentials.py).
-            self.assertEqual(re.findall(r"secrets\.([A-Z0-9_]+)", block), [own], "só o segredo dedicado do passo")
-            self.assertNotRegex(block, r"d1 (execute|migrations apply) zevanory-certification-only|7ff006f3")
-        self.assertNotRegex(rb, r"(?i)\b(insert|update|delete|drop|create|alter)\b", "readback somente leitura")
-        self.assertIn('- "migrations/d1/**"', WORKFLOW.read_text(encoding="utf-8"))
 
-    def test_migracao_aplicada(self):
-        r, state, cfg, npx = self.run_step(self.MIG, self.cfg(), npx_out="✅ 0001_diario_v1.sql")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(state, "aplicada")
-        self.assertEqual(cfg["d1_databases"], [DIARIO_WANTED])
-        self.assertIn("d1 migrations apply zevanory-diario-p20 --remote", npx)
+# --- NC-P2b-DEP-03: promotion_guard com motivo=d1-config ------------------------------------------------------
+def _ancestor(older, newer):
+    order = [SHA_A, SHA_B, SHA_C]
+    if older == newer:
+        return True
+    return older in order and newer in order and order.index(older) < order.index(newer)
 
-    def test_token_sem_d1_na_migracao_avisa_e_segue(self):
-        r, state, cfg, _ = self.run_step(self.MIG, self.cfg(), npx_rc=1, npx_out="✘ [ERROR] A request to the Cloudflare API failed. Authentication error [code: 10000]")
-        self.assertEqual(r.returncode, 0)
-        self.assertIn("::warning title=DIARIO_D1_MIGRACAO_PENDENTE::", r.stdout)
-        self.assertIn("D1 > Editar", r.stdout)
-        self.assertEqual(state, "pendente")
-        self.assertEqual(cfg["d1_databases"], [DIARIO_WANTED], "binding mantido: a sombra tolera a tabela ausente")
 
-    def test_token_sem_leitura_do_banco_tira_o_binding_e_segue(self):
-        r, state, cfg, npx = self.run_step(self.MIG, self.cfg(), curl_code="403", curl_body='{"success":false}')
-        self.assertEqual(r.returncode, 0)
-        self.assertIn("::warning title=DIARIO_D1_MIGRACAO_PENDENTE::", r.stdout)
-        self.assertEqual(state, "binding_removido")
-        self.assertNotIn("d1_databases", cfg)
-        self.assertEqual(npx, "", "sem acesso ao banco, nem tenta migrar")
+def check_guard(pg):
+    d = lambda cand, http=None, cf=None, motivo="rotina": pg.decide(cand, http, cf, _ancestor, motivo)  # noqa: E731
+    # Comportamento de HOJE (rotina), lido no código: o MESMO SHA promove (same_as_live_redeploy); não há caminho em que
+    # o mesmo SHA vire skip-superseded. O que barra um redeploy do mesmo SHA são fontes divergentes ou produção ilegível.
+    assert d(SHA_C, SHA_C, SHA_C) == ("promote", SHA_C, "same_as_live_redeploy")
+    assert d(SHA_C, SHA_C, None) == ("promote", SHA_C, "same_as_live_redeploy")
+    assert d(SHA_C, SHA_C, SHA_B)[0] == "refuse" and d(SHA_C)[0] == "refuse"
+    assert d(SHA_C, SHA_B, SHA_B) == ("promote", SHA_B, "forward_of_live")
+    assert d(SHA_A, SHA_C, SHA_C) == ("skip-superseded", SHA_C, "candidate_older_than_live")
+    # d1-config: explícito e estreito.
+    assert d(SHA_C, SHA_C, SHA_C, "d1-config") == ("promote", SHA_C, "same_sha_config_only_d1")
+    assert d(SHA_C, SHA_C, None, "d1-config") == ("refuse", SHA_C, "config_only_requires_both_sources")
+    assert d(SHA_C, None, SHA_C, "d1-config") == ("refuse", SHA_C, "config_only_requires_both_sources")
+    assert d(SHA_C, SHA_B, SHA_B, "d1-config") == ("refuse", SHA_B, "config_only_candidate_not_live"), "código novo não viaja com d1-config"
+    assert d(SHA_A, SHA_C, SHA_C, "d1-config") == ("refuse", SHA_C, "config_only_candidate_older_than_live"), "SHA antigo continua bloqueado"
+    assert d(SHA_X, SHA_C, SHA_C, "d1-config")[0] == "refuse"
+    assert d(SHA_C, SHA_C, SHA_B, "d1-config")[0] == "refuse"
+    assert d(SHA_C, None, None, "d1-config")[0] == "refuse"
+    assert d(SHA_C, SHA_C, SHA_C, "D1-CONFIG") == ("refuse", None, "motivo_invalido")
+    assert d(SHA_C, SHA_C, SHA_C, "") == ("refuse", None, "motivo_invalido")
 
-    def test_banco_divergente_tira_o_binding(self):
-        r, state, cfg, _ = self.run_step(self.MIG, self.cfg(), curl_body='{"success":true,"result":{"name":"outro"}}')
-        self.assertEqual(r.returncode, 0)
-        self.assertEqual(state, "binding_removido")
-        self.assertNotIn("d1_databases", cfg)
 
-    def test_outra_falha_anota_erro_sem_reprovar(self):
-        r, state, _, _ = self.run_step(self.MIG, self.cfg(), npx_rc=1, npx_out="SQLITE_ERROR: near x: syntax error")
-        self.assertEqual(r.returncode, 0)
-        self.assertIn("::error title=DIARIO_D1_MIGRACAO_FALHOU::", r.stdout)
-        self.assertEqual(state, "pendente")
+def check_guard_cli(pg):
+    """main() real com as duas leituras substituídas: --motivo chega à decisão e às saídas do job."""
+    for motivo, live, want, rc in (("d1-config", SHA_C, "promote", 0), ("d1-config", SHA_B, "refuse", 1),
+                                   ("rotina", SHA_B, "promote", 0), ("rotina", SHA_C, "promote", 0)):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp, "o")
+            out.write_text("", encoding="utf-8")
+            old = (pg.readback_sha, pg.cloudflare_sha, pg.is_ancestor, os.environ.get("GITHUB_OUTPUT"))
+            pg.readback_sha = lambda *a, **k: live
+            pg.cloudflare_sha = lambda *a, **k: live
+            pg.is_ancestor = lambda a, b, repo: _ancestor(a, b)
+            os.environ["GITHUB_OUTPUT"] = str(out)
+            try:
+                import contextlib, io
+                with contextlib.redirect_stdout(io.StringIO()):
+                    got = pg.main(["--service", "zevanory", "--candidate", SHA_C, "--motivo", motivo])
+            finally:
+                pg.readback_sha, pg.cloudflare_sha, pg.is_ancestor = old[:3]
+                if old[3] is None:
+                    os.environ.pop("GITHUB_OUTPUT", None)
+                else:
+                    os.environ["GITHUB_OUTPUT"] = old[3]
+            text = out.read_text(encoding="utf-8")
+        assert got == rc and f"decision={want}\n" in text, (motivo, live, got, text)
 
-    def test_banco_inesperado_no_candidato_reprova(self):
-        for cfg in ({"d1_databases": [dict(DIARIO_WANTED, database_id=CERT_D1_ID)]}, {"name": "zevanory"}):
-            r, _, _, npx = self.run_step(self.MIG, cfg)
-            self.assertEqual(r.returncode, 1)
-            self.assertIn("::error title=DIARIO_D1_BINDING::", r.stdout)
-            self.assertEqual(npx, "")
 
-    def test_readback_nunca_reprova(self):
-        ok = json.dumps([{"results": [{"n": 1}], "success": True}])
-        r, _, _, npx = self.run_step(self.READ, self.cfg(), npx_out=ok, extra_env={"DIARIO_MIG_STATE": "aplicada"})
-        self.assertEqual(r.returncode, 0)
-        self.assertIn("::notice title=DIARIO_D1_READBACK::diario_head presente (linhas=1)", r.stdout)
-        self.assertIn("d1 execute zevanory-diario-p20 --remote", npx)
-        r, _, _, _ = self.run_step(self.READ, self.cfg(), npx_rc=1, npx_out="no such table: diario_head", extra_env={"DIARIO_MIG_STATE": "pendente"})
-        self.assertEqual(r.returncode, 0)
-        self.assertIn("::warning title=DIARIO_D1_READBACK::", r.stdout)
-        r, _, _, npx = self.run_step(self.READ, self.cfg(), extra_env={"DIARIO_MIG_STATE": "binding_removido"})
-        self.assertEqual(r.returncode, 0)
-        self.assertEqual(npx, "")
+class DiarioD1PromotionGuardTest(unittest.TestCase):
+    def test_mesmo_sha_rotina_e_d1_config(self):
+        check_guard(_module_from(GUARD))
+
+    def test_cli_motivo(self):
+        check_guard_cli(_module_from(GUARD))
+
+
+# --- script de certificação -------------------------------------------------------------------------------------
+def _row(**kw):
+    c = _module_from(CERTIFY)
+    row = {"diario_head": 1, "migracoes": ",".join(c.MIGRACOES_ESPERADAS),
+           "objetos": ",".join(sorted(f"{t}:{n}" for t, n in c.objetos_esperados()))}
+    row.update({t: 0 for t in c.tabelas_abandono()})
+    row.update(kw)
+    return [{"results": [row], "success": True}]
+
+
+def check_certify(c):
+    assert c.MIGRACOES_ESPERADAS == ("0001_diario_v1.sql", "0002_diario_v1_ts.sql", "0003_abandono_v1.sql")
+    assert c.migracoes_no_repositorio() == c.MIGRACOES_ESPERADAS
+    objs = c.objetos_esperados()
+    for o in [("table", "diario_v1"), ("table", "diario_head"), ("table", "d1_migrations"), ("table", "abandono_envio_v1"),
+              ("table", "abandono_compra_v1"), ("table", "abandono_supressao_v1"), ("trigger", "diario_v1_sem_update"),
+              ("trigger", "diario_v1_sem_delete"), ("trigger", "diario_head_so_avanca"), ("trigger", "diario_head_sem_delete"),
+              ("trigger", "abandono_supressao_v1_sem_update"), ("trigger", "abandono_supressao_v1_sem_delete"),
+              ("index", "diario_v1_ts")]:
+        assert o in objs, o
+    assert c.tabelas_abandono() == ["abandono_compra_v1", "abandono_envio_v1", "abandono_supressao_v1"]
+    sql = c.sql_certificacao()
+    assert sql.lower().startswith("select ") and ";" not in sql
+    assert not re.search(r"(?i)\b(insert|update|delete|drop|create|alter|replace|pragma|attach)\b", sql), sql
+    # Executa a SQL real num SQLite com as migrações reais: o resumo confere.
+    import sqlite3
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TEXT)")
+    for m in c.MIGRACOES_ESPERADAS:
+        db.executescript((ROOT / "migrations/d1" / m).read_text(encoding="utf-8"))
+        db.execute("insert into d1_migrations(name, applied_at) values (?, 'x')", (m,))
+    cur = db.execute(sql)
+    row = dict(zip([x[0] for x in cur.description], cur.fetchone()))
+    r = c.resumo([{"results": [row], "success": True}])
+    assert c.verifica(r) == [] and c.verifica(r, antes=r) == [], c.verifica(r)
+    db.execute("insert into abandono_compra_v1(ref, criado_ms) values ('x', 1)")
+    cur = db.execute(sql)
+    r2 = c.resumo([{"results": [dict(zip([x[0] for x in cur.description], cur.fetchone()))], "success": True}])
+    assert any("DIARIO_D1_ABANDONO" in e for e in c.verifica(r2)) and any("ANTES_DEPOIS" in e for e in c.verifica(r2, antes=r))
+    base = c.resumo(_row())
+    assert c.verifica(base) == []
+    for kw, marca in ((dict(diario_head=0), "DIARIO_D1_HEAD"), (dict(diario_head=2), "DIARIO_D1_HEAD"),
+                      (dict(migracoes="0001_diario_v1.sql,0002_diario_v1_ts.sql"), "DIARIO_D1_MIGRACOES"),
+                      (dict(migracoes="0002_diario_v1_ts.sql,0001_diario_v1.sql,0003_abandono_v1.sql"), "DIARIO_D1_MIGRACOES"),
+                      (dict(objetos=""), "DIARIO_D1_OBJETOS"), (dict(abandono_envio_v1=3), "DIARIO_D1_ABANDONO"),
+                      (dict(objetos=_row()[0]["results"][0]["objetos"] + ",table:intrusa"), "DIARIO_D1_OBJETOS")):
+        assert any(e.startswith(marca) for e in c.verifica(c.resumo(_row(**kw)))), (kw, marca)
+    try:
+        c.resumo([{"results": [], "success": True}])
+    except c.Falha:
+        pass
+    else:
+        raise AssertionError("saída sem linha aceita")
+    # Migração nova sem revisar a certificação: recusa.
+    with tempfile.TemporaryDirectory() as d:
+        for m in c.MIGRACOES_ESPERADAS:
+            shutil.copyfile(ROOT / "migrations/d1" / m, pathlib.Path(d, m))
+        pathlib.Path(d, "0004_nova.sql").write_text("CREATE TABLE IF NOT EXISTS nova (x);", encoding="utf-8")
+        try:
+            c.objetos_esperados(d)
+        except c.Falha as e:
+            assert "DIARIO_D1_MIGRACOES_NAO_REVISADAS" in str(e)
+        else:
+            raise AssertionError("migração não revisada aceita")
+    # CLI check: depois exige --antes e compara.
+    with tempfile.TemporaryDirectory() as d:
+        a, b = pathlib.Path(d, "a.json"), pathlib.Path(d, "b.json")
+        a.write_text(json.dumps(_row()), encoding="utf-8")
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            assert c.main(["check", "--fase", "antes", str(a)]) == 0
+        resumo = [l[len("RESUMO="):] for l in buf.getvalue().splitlines() if l.startswith("RESUMO=")][0]
+        b.write_text(resumo, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert c.main(["check", "--fase", "depois", str(a)]) == 1, "depois sem --antes"
+            assert c.main(["check", "--fase", "depois", "--antes", str(b), str(a)]) == 0
+            b.write_text(json.dumps(dict(json.loads(resumo), diario_head=2)), encoding="utf-8")
+            assert c.main(["check", "--fase", "depois", "--antes", str(b), str(a)]) == 1
+            b.write_text("", encoding="utf-8")
+            assert c.main(["check", "--fase", "depois", "--antes", str(b), str(a)]) == 1
+
+
+def check_certify_binding(c):
+    def fetch_from(routes, fail=()):
+        def fetch(path):
+            if path in fail:
+                raise c.Inalcancavel("x")
+            return json.loads(routes[path][1])["result"]
+        return fetch
+    r = cf_routes()
+    assert c.avalia_binding(fetch_from(r), "presente", SHA_C)[0] == c.PASS
+    assert c.avalia_binding(fetch_from(r), "ausente", SHA_C)[0] == c.FAIL
+    assert c.avalia_binding(fetch_from(cf_routes(diario=False)), "ausente", SHA_C)[0] == c.PASS
+    assert c.avalia_binding(fetch_from(cf_routes(diario=False)), "presente", SHA_C)[0] == c.FAIL
+    assert c.avalia_binding(fetch_from(r), "presente", SHA_B)[0] == c.FAIL, "versão ativa precisa ser o candidato"
+    assert c.avalia_binding(fetch_from(r), "presente", None)[0] == c.PASS
+    assert c.avalia_binding(fetch_from(cf_routes(db="22222222-2222-4222-8222-222222222222")), "presente", SHA_C)[0] == c.FAIL
+    parcial = {"deployments": [{"versions": [{"version_id": "v1", "percentage": 50}]}]}
+    assert c.avalia_binding(fetch_from(cf_routes(deployments=parcial)), "presente", SHA_C)[0] == c.FAIL
+    for fail in ("/deployments", "/versions/v1", "/settings"):
+        assert c.avalia_binding(fetch_from(r, {fail}), "presente", SHA_C)[0] == c.NAO_COMPROVADO, fail
+    # versão e settings discordam: FAIL.
+    rv = cf_routes(diario=False)
+    rv["/versions/v1"] = cf_routes()["/versions/v1"]
+    assert c.avalia_binding(fetch_from(rv), "ausente", SHA_C)[0] == c.FAIL
+    assert c.avalia_binding(fetch_from(rv), "presente", SHA_C)[0] == c.FAIL
+    # tipo errado ou dois DIARIO: FAIL.
+    rt = cf_routes()
+    s = json.loads(rt["/settings"][1])
+    s["result"]["bindings"].append({"name": "DIARIO", "type": "d1", "id": DIARIO_WANTED["database_id"]})
+    rt["/settings"][1] = json.dumps(s)
+    assert c.avalia_binding(fetch_from(rt), "presente", SHA_C)[0] == c.FAIL
+    rk = cf_routes()
+    s = json.loads(rk["/settings"][1])
+    s["result"]["bindings"][-1]["type"] = "kv_namespace"
+    rk["/settings"][1] = json.dumps(s)
+    assert c.avalia_binding(fetch_from(rk), "presente", SHA_C)[0] == c.FAIL
+    # settings sem lista: não comprovado.
+    rn = cf_routes()
+    rn["/settings"][1] = json.dumps({"success": True, "result": {}})
+    assert c.avalia_binding(fetch_from(rn), "ausente", SHA_C)[0] == c.NAO_COMPROVADO
+
+
+class DiarioD1CertifyScriptTest(unittest.TestCase):
+    def test_esquema_migracoes_e_contagens(self):
+        check_certify(_module_from(CERTIFY))
+
+    def test_binding_efetivo(self):
+        check_certify_binding(_module_from(CERTIFY))
+
+
+# --- mutantes: cada um precisa ser pego por pelo menos uma verificação ------------------------------------------
+def _sub_text(src, old, new):
+    assert src.count(old) >= 1, "mutante não aplicável: " + old[:80]
+    return src.replace(old, new, 1)
+
+
+def _guard_violations(text):
+    try:
+        pg = _module_from(GUARD, text)
+        check_guard(pg)
+        check_guard_cli(pg)
+        return []
+    except Exception as e:  # noqa: BLE001
+        return [str(e)[:200] or type(e).__name__]
+
+
+def _certify_violations(text):
+    try:
+        c = _module_from(CERTIFY, text)
+        check_certify(c)
+        check_certify_binding(c)
+        return []
+    except Exception as e:  # noqa: BLE001
+        return [str(e)[:200] or type(e).__name__]
+
+
+def _generator_violations(text):
+    try:
+        check_generator_modes(_diario_injector(text))
+        return []
+    except BaseException as e:  # noqa: BLE001 - SystemExit inesperado também mata
+        return [str(e)[:200] or type(e).__name__]
+
+
+def _workflow_violations(text):
+    out = []
+    for chk in (check_wf_order_and_wiring, check_wf_modo_validation, check_wf_binding_step):
+        try:
+            chk(text)
+        except Exception as e:  # noqa: BLE001
+            out.append(f"{chk.__name__}: {e}"[:200])
+    return out
+
+
+SCRIPT_MUTANTS = {
+    # promotion_guard (NC-P2b-DEP-03)
+    "G1 d1-config promove candidato à frente": (GUARD, '        return "refuse", live, "config_only_candidate_not_live"', '        return "promote", live, "config_only_candidate_not_live"'),
+    "G2 d1-config com uma fonte só": (GUARD, '    if not (live_http and live_cf):\n        return "refuse", live, "config_only_requires_both_sources"', '    if False:\n        return "refuse", live, "config_only_requires_both_sources"'),
+    "G3 d1-config deixa SHA antigo passar": (GUARD, '    if decision != "promote":\n        return "refuse", live, "config_only_" + reason', '    if decision == "refuse":\n        return "refuse", live, "config_only_" + reason'),
+    "G4 motivo desconhecido vira rotina": (GUARD, '    if motivo not in MOTIVOS:\n        return "refuse", None, "motivo_invalido"', '    if motivo not in MOTIVOS:\n        motivo = "rotina"'),
+    "G5 --motivo ignorado na CLI": (GUARD, "lambda a, b: is_ancestor(a, b, args.repo), args.motivo)", "lambda a, b: is_ancestor(a, b, args.repo))"),
+    "G6 rotina mesmo SHA vira skip": (GUARD, '        return "promote", live, "same_as_live_redeploy"', '        return "skip-superseded", live, "same_as_live_redeploy"'),
+    # script de certificação (NC-P2b-DEP-02)
+    "S1 diario_head não conferido": (CERTIFY, '    if r["diario_head"] != 1:', '    if False:'),
+    "S2 migrações não conferidas": (CERTIFY, '    if r["migracoes"] != list(MIGRACOES_ESPERADAS):', '    if not r["migracoes"]:'),
+    "S3 objetos: só falta conta (sobra passa)": (CERTIFY, '    if r["objetos"] != esperado:', '    if set(esperado) - set(r["objetos"]):'),
+    "S4 abandono com linha passa": (CERTIFY, "        if n != 0:", "        if n not in (0, 1, 2, 3):"),
+    "S5 antes x depois não comparados": (CERTIFY, "    if antes is not None:", "    if False:"),
+    "S6 migração nova sem revisão aceita": (CERTIFY, "    if achadas != MIGRACOES_ESPERADAS:", "    if False:"),
+    "S7 SQL sem gatilhos": (CERTIFY, "where type in ('table', 'index', 'trigger')", "where type in ('table', 'index')"),
+    "S8 binding: tag não conferida": (CERTIFY, "    if candidate and tag != candidate.lower():", "    if False:"),
+    "S9 binding: ausente aceita presente": (CERTIFY, "            if d:\n", "            if False:\n"),
+    "S10 binding: UUID não conferido": (CERTIFY, '            if b.get("type") != "d1" or bid != DB_ID:', '            if b.get("type") != "d1":'),
+    "S11 binding: API inalcançável vira PASS": (CERTIFY, '        return NAO_COMPROVADO, f"API inalcançável: {e}", reg', '        return PASS, f"API inalcançável: {e}", reg'),
+    "S12 binding: versão a 100% não exigida": (CERTIFY, 'if int(v.get("percentage") or 0) == 100]', "]"),
+    "S13 binding: versão e settings não precisam concordar": (CERTIFY, "    for nome, bindings in fontes.items():", "    for nome, bindings in list(fontes.items())[:1]:"),
+    "S14 depois com resumo antes vazio passa": (CERTIFY, '            if not isinstance(antes, dict):\n                raise Falha', '            if False:\n                raise Falha'),
+    # gerador (NC-P2b-DEP-02: off é o padrão)
+    "P1 padrão certificar": (SCRIPT, '    modo = modo or "off"', '    modo = modo or "certificar"'),
+    "P2 off injeta": (SCRIPT, '    if modo == "certificar":\n        return _inject_diario_d1(cfg, wanted)', '    if modo in ("certificar", "off"):\n        return _inject_diario_d1(cfg, wanted)'),
+    "P3 rollback mantém o DIARIO da base": (SCRIPT, '    rest = [row for row in d1 if row.get("binding") != wanted["binding"]]', '    rest = list(d1)'),
+    "P4 modo inválido vira off": (SCRIPT, '        raise SystemExit("DIARIO_D1_MODO_INVALIDO " + modo)', '        modo = "off"'),
+    "P5 off sem a recusa do banco de certificação": (SCRIPT, '    d1 = cfg.get("d1_databases") or []\n    for row in d1:', '    d1 = cfg.get("d1_databases") or []\n    for row in []:'),
+}
+WF_MUTANTS = {
+    "W1 modo vazio vira certificar": ('[ -n "$modo" ] || modo="off"\n          [ -n "$motivo" ] || motivo="rotina"', '[ -n "$modo" ] || modo="certificar"\n          [ -n "$motivo" ] || motivo="d1-config"'),
+    "W2 certificar sem d1-config": ('if [ "$modo" != "off" ] && [ "$motivo" != "d1-config" ]; then', 'if false; then'),
+    "W3 push com modo D1": ('if [ "$EVENTO" != "workflow_dispatch" ] && {', 'if false && {'),
+    "W4 d1-config com off": ('if [ "$motivo" = "d1-config" ] && [ "$modo" = "off" ]; then', 'if false; then'),
+    "W5 guard sem --motivo": (' --motivo "${PROMOTION_MOTIVO:-rotina}"', ''),
+    "W6 job deploy sem o modo": ("\n      DIARIO_D1_MODO: ${{ needs.guard.outputs.diario_d1 }}\n", "\n"),
+    "W7 off aceita API inalcançável em certificar": ('              if [ "$modo" = "off" ]; then\n                echo "::warning title=DIARIO_D1_BINDING_EFETIVO::NAO_COMPROVADO', '              if true; then\n                echo "::warning title=DIARIO_D1_BINDING_EFETIVO::NAO_COMPROVADO'),
+    "W8 conferência espera presente em off": ("            off|rollback) esperado=\"ausente\" ;;", "            off|rollback) esperado=\"presente\" ;;"),
+    "W9 FAIL do binding não reprova": ('echo "::error title=DIARIO_D1_BINDING_EFETIVO::FAIL: binding DIARIO não está $esperado na versão ativa (diario_d1=$modo); ver DIARIO_D1_BINDING_EFETIVO no log"\n              exit 1', 'echo "::error title=DIARIO_D1_BINDING_EFETIVO::FAIL: binding DIARIO não está $esperado na versão ativa (diario_d1=$modo); ver DIARIO_D1_BINDING_EFETIVO no log"\n              exit 0'),
+    "W10 rollback automático sem conferência": ('diario_d1_certify.py binding --expect ausente ||', 'true ||'),
+    "W11 readback depois do rollback automático": ("      - name: P20 diário D1 - readback", "      - name: P20 diario D1 - readback"),
+}
+
+
+class DiarioD1MutantsTest(unittest.TestCase):
+    def test_mutantes_morrem(self):
+        sources = {p: p.read_text(encoding="utf-8") for p in (GUARD, CERTIFY, SCRIPT)}
+        checker = {GUARD: _guard_violations, CERTIFY: _certify_violations, SCRIPT: _generator_violations}
+        wf = WORKFLOW.read_text(encoding="utf-8")
+        for p, src in sources.items():
+            self.assertEqual(checker[p](src), [], f"{p.name}: a fonte real passa")
+        self.assertEqual(_workflow_violations(wf), [], "o workflow real passa")
+        survived = []
+        for name, (p, old, new) in SCRIPT_MUTANTS.items():
+            if not checker[p](_sub_text(sources[p], old, new)):
+                survived.append(name)
+        for name, (old, new) in WF_MUTANTS.items():
+            if not _workflow_violations(_sub_text(wf, old, new)):
+                survived.append(name)
+        total = len(SCRIPT_MUTANTS) + len(WF_MUTANTS)
+        print(f"\nDIARIO_D1_MUTANTS total={total} killed={total - len(survived)} survived={len(survived)}")
+        self.assertEqual(survived, [])
 
 
 if __name__ == "__main__":
