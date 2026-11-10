@@ -3,7 +3,7 @@
 // nenhuma rede real, nenhum KV real, nenhum e-mail enviado, nenhum segredo.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { REGRAS_DIAGNOSTICO, esperadasNoDia, canaisAtivos, lerStatusDoDia, diagnosticarDia, autonomiaDoDia, autonomiaDaJanela, indiceAutonomia, classeDoMotivo } from "../worker/diagnostico-diario.mjs";
 import { montarRelatorioDiario, estadoVendasHotmart, funilDoDia } from "../worker/relatorio-diario.mjs";
 import { runOwnerDailyDigest } from "../worker/acquisition-engine.mjs";
@@ -19,7 +19,7 @@ const ALL_ACTIVE = { blog: { ativo: true }, telegram: { ativo: true }, bluesky: 
 const CHECKLIST_OK = [{ id: "telegram", configured: true }, { id: "bluesky", configured: true }];
 
 test("regras versionadas: só CANAL_PARADO, sem ação automática; esperadas por canal, dia da semana e hora limite", () => {
-  const raw = JSON.parse(readFileSync(new URL("../data/regras-diagnostico.json", import.meta.url), "utf8"));
+  const raw = JSON.parse(readTextNormalized(new URL("../data/regras-diagnostico.json", import.meta.url)));
   assert.equal(raw.schema, "zevanory-regras-diagnostico/v1"); assert.match(raw.versao, /^\d+\.\d+\.\d+$/);
   assert.deepEqual(raw.regras.map((r) => [r.id, r.ativa, r.acao_automatica]), [["CANAL_PARADO", true, false]]);
   assert.deepEqual(REGRAS_DIAGNOSTICO, raw);
