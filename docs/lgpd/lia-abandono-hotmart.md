@@ -61,7 +61,7 @@ Não é perfilamento, venda de lista nem reuso em outras campanhas. O lembrete s
 
 ## 5. Assinaturas
 
-- **Assinatura do proprietário (P2a, antes do P3):** Airton Renan Alves Moreira Bitu, sócio-administrador de A. RENAN ALVES MOREIRA BITU LTDA (CNPJ 69.077.233/0001-99), pela frase literal "Assino a LIA do e-mail de abandono", enviada no canal de trabalho com o Claude em 10/11/2026 às 10:42 (America/Sao_Paulo). Versão assinada: o conteúdo deste arquivo no commit gh-pages 2667ed1 (#1009), sem alteração de texto além deste registro (data: 10/11/2026).
+- **Assinatura do proprietário (P2a, antes do P3):** Airton Renan Alves Moreira Bitu, em nome da controladora A. RENAN ALVES MOREIRA BITU LTDA (CNPJ 69.077.233/0001-99), pela frase literal "Assino a LIA do e-mail de abandono", enviada no canal de trabalho com o Claude em 10/11/2026 às 10:42 (America/Sao_Paulo). Versão assinada: o conteúdo deste arquivo no commit gh-pages 2667ed1 (#1009), sem alteração de texto além deste registro (data: 10/11/2026).
 - **Reconfirmação com o resultado da P5 (P6):** __________ (data: __________). Inclui o aceite expresso da supressão permanente por pseudônimo e, conforme a P5, a manutenção ou a retirada da salvaguarda de país.
 
 Sem a assinatura do P2a, o evento de abandono não é assinado no painel da Hotmart (P3): o primeiro dado pessoal de abandono só pode chegar com esta avaliação já assinada.
