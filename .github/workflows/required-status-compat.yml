@@ -29,7 +29,7 @@ jobs:
           node --version
           node --test tests/governanca/price-consistency-gate.test.mjs | tee price-gate.txt
           grep -qx "# tests 12" price-gate.txt && grep -qx "# pass 12" price-gate.txt && grep -qx "# fail 0" price-gate.txt && grep -qx "# skipped 0" price-gate.txt && grep -qx "# todo 0" price-gate.txt && grep -qx "# cancelled 0" price-gate.txt
-      - name: DDL do Worker literal (contra-auditoria do #1008; runtime_ddl/dynamic_ddl do restore, sem Postgres, sem filtro de caminho)
+      - name: "DDL do Worker literal (contra-auditoria do #1008; runtime_ddl/dynamic_ddl do restore, sem Postgres, sem filtro de caminho)"
         run: |
           set -euo pipefail
           python3 -I -B scripts/ci/runtime_ddl_gate.py --self-test

@@ -142,4 +142,9 @@ páginas e dados também citam preço e condição. Por isso:
   `product-pages / static-audit`, sem filtro de caminho e sem Postgres; reprova DDL interpolado em qualquer `worker/*.mjs`
   (escaneamento próprio + `runtime_ddl()`/`dynamic_ddl()` de `scripts/ops/restore_new_database.py`, que precisam
   concordar). O guarda exige o passo com as linhas exatas (`set -euo pipefail`, `--self-test`, execução), sem
-  `shell:`/`env:`; ausência é violação dura `GATE_DDL_AUSENTE`.
+  `shell:`/`env:`; ausência é violação dura `GATE_DDL_AUSENTE`. NC-1013-01/02: reprova também valor concatenado no
+  corpo do DDL (delimitador JS de abertura dentro do corpo); compara com o restore a lista exata de comandos (não só os
+  nomes) e o DDL dinâmico pelos 12 comandos esperados; as exceções de nome (`${BACKUP_TABLE}` com valor fixo e a
+  concatenação do whatsapp-neon-store) valem para exatamente um comando cada. `scripts/ops/restore_new_database.py`
+  passou a ser reservado. `tests/ci/mutants_runtime_ddl_gate.py`: 7 mutantes do gate, mortos pelo `--self-test`
+  (10 casos). Fora do escopo (follow-up): `alter table ... add column` interpolado também é pulado pelo restore.

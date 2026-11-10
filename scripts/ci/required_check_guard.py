@@ -50,8 +50,9 @@ RESERVED_SELF = ('ops/owner-reserved-paths.json', 'scripts/ci/required_check_gua
     # NC-1006-02: tabela canônica de preços, módulo que deriva dela e o gate de consistência (fora de rotina_autonoma)
     'data/products.json', 'worker/product-prices.mjs', 'tests/governanca/price-gate.mjs',
     'tests/governanca/price-consistency-gate.test.mjs', 'data/affiliates.json') + (
-    # contra-auditoria do #1008: gate de DDL do Worker que roda no check obrigatório (fora de rotina_autonoma)
-    'scripts/ci/runtime_ddl_gate.py',)
+    # contra-auditoria do #1008: gate de DDL do Worker que roda no check obrigatório (fora de rotina_autonoma) e o restore
+    # cujo runtime_ddl()/dynamic_ddl() o gate executa e compara (NC-1013-02: fonte única também reservada)
+    'scripts/ci/runtime_ddl_gate.py', 'scripts/ops/restore_new_database.py',)
 AUDIT_LINE = re.compile(r'^[ \t]*CONTRA-AUDITORIA:[ \t]*(PASS|FAIL)[ \t]+([0-9a-f]{40})[ \t]*$', re.M)
 
 # check obrigatório -> {arquivo canônico: job_id}. Qualquer outro emissor do mesmo nome é colisão.

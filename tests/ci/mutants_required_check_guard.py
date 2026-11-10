@@ -107,7 +107,7 @@ MUTANTES = {
                                           "passos = [p for j in jobs.values() if isinstance(j, dict) for p in (j.get('steps') or [])] + [{'run': cmd}]",
                                           {T + 'T39_emissor_obrigatorio_sem_gate_de_preco_falha': PASS_FAIL + '|GATE_DE_PRECO_AUSENTE ausente'}),
     # contra-auditoria do #1008: gate de DDL do Worker reservado e obrigatório (linhas exatas) nos emissores do static-audit
-    'M35_gate_de_ddl_fora_da_autorreserva': ("    'scripts/ci/runtime_ddl_gate.py',)", "    )",
+    'M35_gate_de_ddl_fora_da_autorreserva': ("    'scripts/ci/runtime_ddl_gate.py', 'scripts/ops/restore_new_database.py',)", "    )",
                                              {T + 'T40_gate_de_ddl_reservado_e_nos_dois_emissores_do_check_obrigatorio': r'not found in'}),
     'M36_emissor_sem_gate_de_ddl': ("if jid in jobs and not any(passo_ddl_valido(p)", "if False and not any(passo_ddl_valido(p)",
                                     {T + 'T42_emissor_obrigatorio_sem_gate_de_ddl_falha': PASS_FAIL + '|GATE_DDL_AUSENTE ausente'}),

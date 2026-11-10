@@ -147,7 +147,8 @@
         "compliance/zevanory-crown-policy.json",
         "docs/governanca/merge-autonomo.md",
         "tests/governanca/**",
-        "scripts/ci/runtime_ddl_gate.py"
+        "scripts/ci/runtime_ddl_gate.py",
+        "scripts/ops/restore_new_database.py"
       ]
     }
   },

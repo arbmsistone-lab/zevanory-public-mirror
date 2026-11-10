@@ -484,21 +484,23 @@ class Guarda(unittest.TestCase):
     DDL_CMD = 'python3 -I -B scripts/ci/runtime_ddl_gate.py'
 
     def test_T40_gate_de_ddl_reservado_e_nos_dois_emissores_do_check_obrigatorio(self):
-        c = 'scripts/ci/runtime_ddl_gate.py'
-        self.assertIn(c, G.RESERVED_SELF)
-        l, e = autonomo()
-        r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
-        self.falha(r, duro=False); self.assertIn(c, r['caminhos_reservados_alterados'])
-        self.assertFalse(G.rotineiro(c, ROTINA_RX), c)
-        lo, eo = rotulo(); self.ok(rodar([arq(c)], labels=lo, eventos=eo))
+        # o gate e o restore cuja saída ele compara (NC-1013-02) são reservados
+        for c in ('scripts/ci/runtime_ddl_gate.py', 'scripts/ops/restore_new_database.py'):
+            self.assertIn(c, G.RESERVED_SELF)
+            l, e = autonomo()
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertIn(c, r['caminhos_reservados_alterados'])
+            self.assertFalse(G.rotineiro(c, ROTINA_RX), c)
+            lo, eo = rotulo(); self.ok(rodar([arq(c)], labels=lo, eventos=eo))
         d = json.loads(RESERVADOS_ARQ.read_text())
         with tempfile.TemporaryDirectory() as t:
             ruim = pathlib.Path(t) / 'r.json'
-            sem = json.loads(json.dumps(d)); sem['classes']['guardas_de_governanca']['globs'].remove(c)
-            ruim.write_text(json.dumps(sem))
-            with self.assertRaises(ValueError):
-                G.carregar_reservados(ruim)
-            for rot in (['scripts/ci/*.py'], ['scripts/ci/runtime_*']):
+            for c in ('scripts/ci/runtime_ddl_gate.py', 'scripts/ops/restore_new_database.py'):
+                sem = json.loads(json.dumps(d)); sem['classes']['guardas_de_governanca']['globs'].remove(c)
+                ruim.write_text(json.dumps(sem))
+                with self.assertRaises(ValueError):
+                    G.carregar_reservados(ruim)
+            for rot in (['scripts/ci/*.py'], ['scripts/ci/runtime_*'], ['scripts/ops/*.py']):
                 ruim.write_text(json.dumps(dict(d, rotina_autonoma={'globs': rot})))
                 with self.assertRaises(ValueError):
                     G.carregar_rotina(ruim)
@@ -526,7 +528,11 @@ class Guarda(unittest.TestCase):
         ruim = ruim.replace(de, 'commission_rate numeric(5,4) not null default ${RATE4}', 1)
         fim = ruim.index('default ${RATE4}'); fim = ruim.index('now())")', fim)
         ruim = ruim[:fim] + 'now())`' + ruim[fim + len('now())"'):]
-        for conteudo, rc, codigos in ((src, 0, ()), (ruim, 1, ('DDL_INTERPOLADO affiliate-program.mjs', 'RESTORE_RUNTIME_DDL_FALHOU'))):
+        # NC-1013-01: o mesmo valor concatenado (`"... default "+RATE4+",..."`) passa pelo restore, que extrai SQL quebrado
+        concat = src.replace(de, 'commission_rate numeric(5,4) not null default "+RATE4+"', 1)
+        self.assertNotEqual(concat, src)
+        for conteudo, rc, codigos in ((src, 0, ()), (ruim, 1, ('DDL_INTERPOLADO affiliate-program.mjs', 'RESTORE_RUNTIME_DDL_FALHOU')),
+                                      (concat, 1, ('DDL_CONCATENADO affiliate-program.mjs:affiliate_commissions',))):
             with tempfile.TemporaryDirectory() as t:
                 (pathlib.Path(t) / 'affiliate-program.mjs').write_text(conteudo)
                 p = subprocess.run(gate + ['--worker-dir', t], capture_output=True, text=True, timeout=120)
