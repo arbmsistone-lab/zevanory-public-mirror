@@ -1,0 +1,32 @@
+{
+  "schema": "zevanory-regras-diagnostico/v1",
+  "versao": "1.0.0",
+  "fonte": "Plano Mestre ZEVANORY v1.2, seções 2 e 4 (aprovado em 10/11/2026). Diagnosticador v1: só diagnostica e reporta no relatório diário; nenhuma ação automática.",
+  "fuso": "America/Sao_Paulo",
+  "canais": {
+    "blog": { "ativacao": "automatica", "esperadas_por_dia": 1, "dias_semana": [1, 3, 5], "hora_limite": 9, "chave_status": "zpc:blog:status:v1:{dia}" },
+    "telegram": { "ativacao": "credencial", "esperadas_por_dia": 1, "dias_semana": [0, 1, 2, 3, 4, 5, 6], "hora_limite": 12 },
+    "bluesky": { "ativacao": "credencial", "esperadas_por_dia": 1, "dias_semana": [0, 1, 2, 3, 4, 5, 6], "hora_limite": 19 },
+    "youtube": { "ativacao": "desligada", "esperadas_por_dia": 0, "dias_semana": [], "hora_limite": 13, "motivo_desligado": "Shorts desligados até a F1 item 1 (checagem do YouTube Studio e dry-run do CTA /hotmart)" }
+  },
+  "regras": [
+    {
+      "id": "CANAL_PARADO",
+      "versao": 1,
+      "ativa": true,
+      "sinal": "publicações reais < esperadas em um canal ativo no dia, depois da hora limite do canal",
+      "motivo": "lido das chaves de status do dia (zpc:acquisition:daily:<dia>[:<canal>] e zpc:blog:status:v1:<dia>)",
+      "classe_acao_futura": "B",
+      "acao_automatica": false,
+      "escalonamento": "credencial ausente, expirada ou inválida vai para a classe D (Plano Mestre, seção 4)"
+    }
+  ],
+  "classe_por_motivo": {
+    "aguardando credencial": "D",
+    "credential_expired": "D",
+    "telegram_credentials_missing": "D",
+    "bluesky_session_invalid": "D",
+    "bluesky_http_401": "D",
+    "telegram_http_401": "D"
+  }
+}

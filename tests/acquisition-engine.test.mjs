@@ -155,7 +155,7 @@ test("daily owner digest requires existing opt-in owner email and real receipts"
  const sent=[];const mock=async(url,options)=>{assert.equal(url,"https://api.resend.com/emails");sent.push(JSON.parse(options.body));return{ok:true,json:async()=>({id:"email-123"})};};
  const receipt=await runOwnerDailyDigest(env,now,mock);
  assert.equal(receipt.status,"publicado");assert.equal(receipt.provider_post_id,"email-123");
- assert.match(sent[0].text,/https:\/\/zevanory.api.br\/blog\/verified/);assert.match(sent[0].text,/Vendas: sem dados/);
+ assert.match(sent[0].text,/https:\/\/zevanory.api.br\/blog\/verified/);assert.match(sent[0].text,/Vendas aprovadas Hotmart: NÃO TESTADO/);assert.doesNotMatch(sent[0].text,/sem dados/,"Plano Mestre F1: no fixed placeholder");
  assert.equal((await runOwnerDailyDigest(env,now,mock)).status,"publicado");assert.equal(sent.length,1);
 });
 test("owner digest waits until peak and does not send with missing credential",async()=>{

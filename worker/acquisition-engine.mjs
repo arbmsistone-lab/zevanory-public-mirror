@@ -4,6 +4,7 @@ import { ensureDailyBlog, publishTelegram, channelChecklist, resolveChannelCrede
 import { publishBluesky, blueskyReady, blueskyPostText, graphemeCount } from "./bluesky-publisher.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { creativeAutopublishPaused } from "./creative-autonomy.mjs";
+import { montarRelatorioDiario } from "./relatorio-diario.mjs";
 import { CLOSED_LABEL } from "./politica-unica.mjs";
 import { priceBySku } from "./product-prices.mjs";
 import { contentSalesOpen, salesLockViolations, hotmartKitsOpen, hotmartKit, hotmartLockViolations } from "./sales-lock-content.mjs";
@@ -225,24 +226,24 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
  return {ok:true,...state,ownerDigest};
 }
-// 20:00 Sao Paulo owner digest: only real receipts, no invented funnel counts.
+// 20:00 Sao Paulo owner digest (Plano Mestre v1.2, seção 2): one screen with real data from the existing KV
+// (worker/relatorio-diario.mjs) and the Diagnosticador v1 (worker/diagnostico-diario.mjs, CANAL_PARADO). No invented
+// numbers: missing sources say "não medido"/"NÃO TESTADO". The receipt keeps the diagnoses (NC-01: operational KV).
 export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localDay(now),hour=localHour(now),key="zpc:acquisition:owner-digest:"+day;
  if(hour<20)return {status:"agendado",day};
  if(!kv?.get||!kv?.put)return {status:"erro",code:"kv_unavailable"};
  const existing=await safeJson(kv,key,null);if(existing)return existing;
  if(!env.RESEND_API_KEY||!env.OWNER_ALERT_EMAIL)return {status:"aguardando credencial",missing:["RESEND_API_KEY","OWNER_ALERT_EMAIL"].filter(x=>!env[x])};
- const state=await safeJson(kv,ACQUISITION_STATE_PREFIX+day,null);
- const actual=(state?.outcomes||[]).filter(x=>x.status==="publicado"&&x.url);
- const lines=actual.map(x=>"• "+x.channel+": "+x.url);
- const subject="ZEVANORY | Resumo de divulgação "+day;
- const content=["Publicações confirmadas:",...(lines.length?lines:["Sem publicações comprovadas."]),"","Leads: sem dados","Checkouts: sem dados","Vendas: sem dados","Alertas: sem dados","Agenda de amanhã: "+(calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject),"","Painel: https://controle.zevanory.api.br"].join("\n");
+ const report=await montarRelatorioDiario(env,{day,hour,now,checklist:channelChecklist(resolveChannelCredentials(env)),agendaAmanha:calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject});
+ const actual=report.publicacoes.filter(x=>x.publicadas>0);
+ const subject=report.subject,content=report.text;
  await kv.put(key,JSON.stringify({status:"pending",day,at:now.toISOString()}),{expirationTtl:7*86400});
  try{
   const response=await fetchImpl("https://api.resend.com/emails",{method:"POST",headers:{"authorization":"Bearer "+String(env.RESEND_API_KEY),"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[String(env.OWNER_ALERT_EMAIL)],subject,text:content}),signal:AbortSignal.timeout(10000)});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data?.id)throw new Error("owner_digest_provider_unverified");
-  const receipt={status:"publicado",day,at:now.toISOString(),provider_post_id:String(data.id),channels:actual.map(x=>x.channel)};
+  const receipt={status:"publicado",day,at:now.toISOString(),provider_post_id:String(data.id),channels:actual.map(x=>x.canal),diagnosticos:report.diagnosticos,autonomia:{valor:report.autonomia.valor,devidas:report.autonomia.devidas,concluidas:report.autonomia.concluidas},vendas_hotmart:report.vendas.estado,regras:report.regras};
   await emitActivity(env,{type:"email_sent",channel:"owner",status:"sent",ref:"owner-digest:"+day},{now:now.getTime()}).catch(()=>null);
   await kv.put(key,JSON.stringify(receipt),{expirationTtl:45*86400});
   return receipt;
