@@ -1,6 +1,6 @@
 {
   "schema": "shorts-rampa/v1",
-  "descricao": "Retomada controlada dos Shorts (Plano Mestre v1.2, F1; seção 9, linha Shorts). Volume inicial de 1 Short por dia. Sobe para 2 e depois 3 por dia só depois de 7 dias limpos seguidos no nível atual. Dia limpo: publicou ao menos o volume do nível, o QC de áudio e vídeo não falhou e o canal não tem aviso. Falha de QC desce um nível. Aviso ou restrição do canal congela a publicação até a liberação expressa em canal.congelamento_liberado_em. Lido por scripts/channels/youtube-daily-short.mjs, scripts/channels/short-crosspost.mjs e scripts/ops/engine-dispatcher.mjs; a lógica pura fica em scripts/channels/shorts-retomada.mjs.",
+  "descricao": "Retomada controlada dos Shorts (Plano Mestre v1.2, F1; seção 9, linha Shorts). Volume inicial de 1 Short por dia. Sobe para 2 e depois 3 por dia só depois de 7 dias limpos seguidos no nível atual. Dia limpo: publicou ao menos o volume do nível, o QC de áudio e vídeo não falhou e o canal não tem aviso. Falha de QC desce um nível. Aviso ou restrição do canal congela a publicação até a liberação expressa em canal.congelamento_liberado_em. Lido por scripts/channels/youtube-daily-short.mjs e scripts/ops/engine-dispatcher.mjs (o Telegram fica desligado por constante em short-crosspost.mjs, decisão F0 nº 7, sem chave aqui); a lógica pura fica em scripts/channels/shorts-retomada.mjs.",
   "contar_a_partir_de": "2026-11-10",
   "janela_maxima_dias": 30,
   "niveis": [
@@ -11,6 +11,5 @@
   "qc_falha_desce_um_nivel": true,
   "voz": { "permitir_voz_local": false },
   "canal": { "aviso_manual": false, "congelamento_liberado_em": null },
-  "crosspost": { "telegram": false },
   "dispatcher": { "sondagem_estado_desconhecido_min": 60 }
 }

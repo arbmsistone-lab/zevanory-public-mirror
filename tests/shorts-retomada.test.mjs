@@ -18,14 +18,14 @@ const PROIBIDO = /whats\s*-?\s*app|uótsap|\bzap\b|wa\.me|lista\s+de\s+espera/i;
 const MODES = [{ salesOpen: false, hotmartOpen: false }, { salesOpen: false, hotmartOpen: true }];
 const days = (n, start = "2026-11-10") => Array.from({ length: n }, (_, i) => somarDias(start, i));
 
-test("configuração versionada: começa com 1 Short por dia (dica), sobe para 2 e 3 após 7 dias limpos; sem voz local nem Telegram", () => {
+test("configuração versionada: começa com 1 Short por dia (dica), sobe para 2 e 3 após 7 dias limpos; sem voz local; sem chave que religue o Telegram", () => {
   assert.equal(CFG.schema, "shorts-rampa/v1");
   assert.deepEqual(RAMPA_CONFIG, CFG);
   assert.deepEqual(CFG.niveis.map((n) => n.por_dia), [1, 2, 3]);
   assert.deepEqual(CFG.niveis[0].slots, ["dica"]);
   assert.equal(CFG.niveis[0].dias_limpos_para_subir, 7); assert.equal(CFG.niveis[1].dias_limpos_para_subir, 7);
   for (const n of CFG.niveis) { assert.equal(n.slots.length, n.por_dia); for (const s of n.slots) assert.ok(SLOTS.includes(s)); }
-  assert.equal(CFG.voz.permitir_voz_local, false); assert.equal(CFG.crosspost.telegram, false);
+  assert.equal(CFG.voz.permitir_voz_local, false); assert.equal("crosspost" in CFG, false, "Telegram desligado por constante, não por configuração");
   assert.equal(CFG.canal.aviso_manual, false); assert.equal(CFG.canal.congelamento_liberado_em, null);
   assert.equal(CFG.contar_a_partir_de, "2026-11-10");
 });

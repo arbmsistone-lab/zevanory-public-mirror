@@ -15,6 +15,7 @@ const SRC = {
   retomada: join(ROOT, "scripts/channels/shorts-retomada.mjs"),
   dispatcher: join(ROOT, "scripts/ops/engine-dispatcher.mjs"),
   short: join(ROOT, "scripts/channels/youtube-daily-short.mjs"),
+  crosspost: join(ROOT, "scripts/channels/short-crosspost.mjs"),
 };
 const CFG = JSON.parse(readTextNormalized(join(ROOT, "data/shorts-rampa.json")));
 const TMP = mkdtempSync(join(tmpdir(), "zevanory-shorts-mut-"));
@@ -34,7 +35,7 @@ async function load(kind, find, replace) {
     out = src.replace(find, () => replace);
   }
   seq += 1;
-  const file = kind === "short" ? join(MIRROR_CH, `mutante-${seq}-youtube-daily-short.mjs`) : join(TMP, `${kind}-${seq}.mjs`);
+  const file = kind === "short" || kind === "crosspost" ? join(MIRROR_CH, `mutante-${seq}-${kind}.mjs`) : join(TMP, `${kind}-${seq}.mjs`);
   writeFileSync(file, out);
   return import(pathToFileURL(file).href);
 }
@@ -111,7 +112,18 @@ async function bateriaShort(m) {
   assert.equal(bad.gate.action, "discard");
 }
 
-const BATERIA = { retomada: bateriaRetomada, dispatcher: bateriaDispatcher, short: bateriaShort };
+// Bateria do crosspost: Telegram desligado por decisão do proprietário (F0 nº 7) mesmo com credenciais presentes.
+async function bateriaCrosspost(m) {
+  assert.deepEqual([...m.OWNER_DISABLED_CHANNELS], ["telegram"]);
+  const mp = new Map(), kv = { get: async (k) => mp.get(k) ?? null, put: async (k, v) => { mp.set(k, v); }, putBinary: async (k, v) => { mp.set(k, v); } };
+  const tg = [];
+  const fetchImpl = async (url) => { if (String(url).includes("api.telegram.org")) tg.push(url); return { ok: true, status: 200, json: async () => (String(url).includes("api.telegram.org") ? { ok: true, result: { message_id: 1, chat: { username: "z" } } } : { connected: false }) }; };
+  const r = await m.crosspost({ day: "2026-10-12", slot: "oferta", mp4: Buffer.from("x"), env: { TELEGRAM_BOT_TOKEN: "1:a", TELEGRAM_CHANNEL_ID: "@z" }, kv, fetchImpl, sleep: async () => {}, salesOpen: false, hotmartOpen: false });
+  assert.equal(r.telegram_video, "desligado:canal_desligado_decisao_proprietario");
+  assert.equal(tg.length, 0);
+}
+
+const BATERIA = { retomada: bateriaRetomada, dispatcher: bateriaDispatcher, short: bateriaShort, crosspost: bateriaCrosspost };
 
 const MUTANTES = [
   ["M01", "retomada", 'whats\\s*-?\\s*app|uótsap|\\bzap(?:zap)?\\b|wa\\.me\\b|api\\.whatsapp\\.com', "(?!)"],
@@ -140,6 +152,8 @@ const MUTANTES = [
   ["Y01", "short", "return v.length ? {", "return false ? {"],
   ["Y02", "short", ".filter(u => !VALUE_RISK.test(u) && textoProibido(u).length === 0)", ".filter(u => !VALUE_RISK.test(u))"],
   ["Y03", "short", 'const page = new URL(shortUrl(calculatorFor(day).slug, "oferta_" + PRODUCT_PAGES[entry.product.sku].replace(/-/g, "_")));', "const page = productPage;"],
+  ["T01", "crosspost", 'export const OWNER_DISABLED_CHANNELS = Object.freeze(["telegram"]);', "export const OWNER_DISABLED_CHANNELS = Object.freeze([]);"],
+  ["T02", "crosspost", 'if (OWNER_DISABLED_CHANNELS.includes("telegram")) report.telegram_video', 'if (false) report.telegram_video'],
   ["Y04", "short", 'path: "hotmart/" + hotmart.slug', 'path: "hotmart/" + hotmart.slug + "-zap"'],
 ];
 

@@ -5,7 +5,7 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, channelPurchaseMode, channelPublishPaused, RAMPA_CONFIG } from "./youtube-daily-short.mjs";
+import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, channelPurchaseMode, channelPublishPaused } from "./youtube-daily-short.mjs";
 import { hotmartLockViolations } from "../../worker/sales-lock-content.mjs";
 import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta } from "../../worker/politica-unica.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
@@ -95,7 +95,12 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
   return { provider_post_id: String(j.result.message_id), url: handle ? `https://t.me/${handle}/${j.result.message_id}` : null };
 }
 
-export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, hotmartOpen, rampa = RAMPA_CONFIG }) {
+// Decisão F0 nº 7 do proprietário (10/11/2026): o Telegram de divulgação fica DESLIGADO, como no motor de aquisição
+// (#1019). Sem flag, variável de ambiente ou configuração que o religue: só um PR que mude esta constante. O código de
+// publicação (publishTelegramVideo) continua aqui, só não é chamado; nada é gravado no KV pelo canal desligado.
+export const OWNER_DISABLED_CHANNELS = Object.freeze(["telegram"]);
+export const CHANNEL_DISABLED_CODE = "canal_desligado_decisao_proprietario";
+export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, hotmartOpen }) {
   const mode = typeof salesOpen === "boolean" ? { salesOpen, hotmartOpen: salesOpen ? false : hotmartOpen === true } : await channelPurchaseMode(kv);
   const open = mode.salesOpen === true;
   const planned = planSlot(day, slot, { salesOpen: open, hotmartOpen: mode.hotmartOpen === true });
@@ -122,8 +127,7 @@ export async function crosspost({ day, slot = "oferta", mp4, env = process.env, 
   // Telegram channel video
   try {
     const tgToken = String(env.TELEGRAM_BOT_TOKEN || "").trim(), tgChat = String(env.TELEGRAM_CHANNEL_ID || "").trim();
-    // Plano Mestre v1.2 (seção 3): Telegram fora da Onda 1; só volta com crosspost.telegram=true em data/shorts-rampa.json.
-    if (rampa?.crosspost?.telegram !== true) report.telegram_video = "fora_da_onda_1";
+    if (OWNER_DISABLED_CHANNELS.includes("telegram")) report.telegram_video = "desligado:" + CHANNEL_DISABLED_CODE;
     else if (slot !== "oferta") report.telegram_video = "offer_slot_only";
     else if (await done("telegram_video")) report.telegram_video = "already_published";
     else if (!tgToken || !tgChat) report.telegram_video = "waiting:telegram_credentials";

@@ -80,23 +80,26 @@ test("pack renders the tip and the offer for each day with ready captions", asyn
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
   assert.ok(txt.includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(txt), false); assert.match(txt, /Calculadora gratuita/); assert.doesNotMatch(txt, /whats\s*app|lista de espera/i);
 });
-test("Telegram channel receives the day's video once, with caption and a provider-confirmed message id", async () => {
-  const kv = memKv(); let sent = 0;
+test("Telegram DESLIGADO por decisão do proprietário (F0 nº 7): com credenciais presentes, 0 chamadas à API do Telegram; código preservado", async () => {
+  const { OWNER_DISABLED_CHANNELS, CHANNEL_DISABLED_CODE, publishTelegramVideo } = await import("../scripts/channels/short-crosspost.mjs");
+  assert.deepEqual([...OWNER_DISABLED_CHANNELS], ["telegram"]); assert.ok(Object.isFrozen(OWNER_DISABLED_CHANNELS));
+  const kv = memKv(); const telegramCalls = [];
   const fetchImpl = async (url, o = {}) => {
-    if (url.includes("tiktok-access")) return ok({ connected: false });
-    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.ok(o.body.get("caption").includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(o.body.get("caption")), false); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
+    if (String(url).includes("api.telegram.org")) { telegramCalls.push(String(url)); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
+    if (String(url).includes("tiktok-access")) return ok({ connected: false });
     return ok({});
   };
   const env = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHANNEL_ID: "@zevanory" };
-  // Retomada F1: o Telegram está fora da Onda 1 por padrão (data/shorts-rampa.json crosspost.telegram=false).
-  const off = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {} });
-  assert.equal(off.telegram_video, "fora_da_onda_1"); assert.equal(sent, 0);
-  const rampa = { crosspost: { telegram: true } };
-  const r1 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, rampa });
-  assert.equal(r1.telegram_video, "published");
-  const r2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, rampa });
-  assert.equal(r2.telegram_video, "already_published"); assert.equal(sent, 1);
-  assert.match(kv.m.get("zpc:acquisition:daily:2026-10-12:telegram_video"), /t\.me\/zevanory\/42/);
+  for (const [slot, mode] of [["oferta", {}], ["oferta", { salesOpen: false, hotmartOpen: true }], ["dica", {}], ["calc", {}]]) {
+    const r = await crosspost({ day: "2026-10-12", slot, mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, ...mode });
+    assert.equal(r.telegram_video, "desligado:" + CHANNEL_DISABLED_CODE, slot);
+  }
+  assert.equal(CHANNEL_DISABLED_CODE, "canal_desligado_decisao_proprietario");
+  assert.deepEqual(telegramCalls, [], "nenhuma chamada à API do Telegram");
+  assert.equal([...kv.m.keys()].some((k) => k.includes("telegram")), false, "nada gravado no KV pelo canal desligado");
+  // O código de publicação continua no arquivo (só não é chamado pelo crosspost).
+  const direct = await publishTelegramVideo(planShort("2026-10-12"), Buffer.from("mp4"), { token: "123:abc", chatId: "@zevanory", fetchImpl });
+  assert.equal(direct.provider_post_id, "42"); assert.equal(telegramCalls.length, 1);
 });
 
 test("pack produces the executor command ZEVANORY e-mails to the owner: 2 per day (tip 12:00, offer 19:00)", async () => {

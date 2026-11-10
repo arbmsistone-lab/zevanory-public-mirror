@@ -141,7 +141,7 @@ tests/sales-worker-differential.test.mjs 6
 tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
 tests/short-crosspost.test.mjs 8
-tests/shorts-retomada-mutantes.test.mjs 28
+tests/shorts-retomada-mutantes.test.mjs 30
 tests/shorts-retomada.test.mjs 13
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2
