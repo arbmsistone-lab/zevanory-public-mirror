@@ -326,7 +326,11 @@ test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo
   assert.equal(AFFILIATE_COMMISSION_RATE, af.own_program_commission_pct / 100);
   const src = read("worker/affiliate-program.mjs");
   assert.match(src, /from "\.\.\/data\/affiliates\.json" with \{ type: "json" \}/);
-  assert.doesNotMatch(src, /0\.3000|amount\*0\.30|commission_rate:0\.30|comissão: 30%/, "taxa literal no programa");
+  // DML/relatório sem taxa literal; o ÚNICO literal permitido é o default do DDL (restore drill recusa DDL interpolado),
+  // e ele tem de ser igual à taxa da fonte (tests/affiliate-program.test.mjs também confere)
+  assert.doesNotMatch(src, /amount,0\.3000|amount\*0\.30|commission_rate:0\.30|comissão: 30%/, "taxa literal no programa");
+  assert.deepEqual([...src.matchAll(/0\.30+\b/g)].map((m) => src.slice(0, m.index).endsWith("commission_rate numeric(5,4) not null default ")), [true]);
+  assert.equal(Number(src.match(/commission_rate numeric\(5,4\) not null default ([0-9.]+)/)[1]), af.own_program_commission_pct / 100);
   assert.doesNotMatch(read("tests/governanca/price-gate.mjs"), /AFFILIATE_RATE\s*=|\*\s*0\.5\b/, "taxa literal no gate");
   for (const p of af.pages) assert.ok(existsSync(join(ROOT, p)), "página de afiliado inexistente: " + p);
   // página de afiliado: comissão derivada da taxa da fonte; outra taxa reprova
