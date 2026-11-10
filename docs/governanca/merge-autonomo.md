@@ -118,10 +118,11 @@ páginas e dados também citam preço e condição. Por isso:
   aprovação manual (decisão do proprietário, F0 item 4); programa próprio 30% com atribuição de 30 dias (mantida). `worker/affiliate-program.mjs` lê a taxa e o prazo de
   atribuição dessa fonte; o gate só aceita a comissão derivada nas páginas de afiliado listadas nela, e a regra T6
   (`COMISSAO_PCT`) reprova, em qualquer arquivo de produção (inclusive meta/og/twitter), um percentual de afiliado ("N%",
-  "até N%", "N% em comissão", número por extenso, "metade") que não seja uma dessas taxas, só em frase com contexto de afiliado
-  (afiliad*, indicação, link de divulgação, venda indicada; "comiss" junto de hotmart/divulg/parceir fora de frase de meio de
-  pagamento; em página de afiliado também "comiss" sozinho). Desconto, cartão e "comissão de 4% da maquininha" não contam;
-  "30% afiliado / 70% produtor" é aceito.
+  "até N%", "N% em comissão", número por extenso, "metade") que não seja uma dessas taxas, quando a frase tem contexto de
+  afiliado explícito (afiliad*, indicação, link de divulgação, venda indicada, programa de afiliados/parceiros, `?ref=`) ou
+  ganho de quem divulga (receba/ganhe/ganha/recebe/fica com, "comissão de N%" ou "N% de comissão", com divulg/parceir/hotmart
+  na frase); em página de afiliado também "comiss" sozinho. Taxa de plataforma/pagamento/desconto só exclui com o termo a até
+  25 caracteres do número. Não há exceção de "produtor".
 - **Onde roda:** no check obrigatório `product-pages / static-audit` (`product-pages-premerge.yml:audit` e
   `required-status-compat.yml:product-status`), com contagem exata (`# tests 11`). Pendente fora do PR (NC-1008-02):
   `required-check-guard / protected-paths` precisa virar check obrigatório na proteção de branch de gh-pages. O guarda trata a ausência desse passo
