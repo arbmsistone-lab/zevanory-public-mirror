@@ -1,7 +1,8 @@
 // DEC-23: teste de permissão da Meta (somente leitura). fetch mockado; nenhuma chamada de rede real.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -83,7 +84,7 @@ test("somente leitura: só GET, só graph v21.0, token só no cabeçalho, nenhum
     assert.doesNotMatch(c.url, /access_token=/);
     assert.doesNotMatch(c.path, /\/(media|media_publish|feed|photos|videos|comments|messages)\b/);
   }
-  const src = readFileSync(SRC_URL, "utf8");
+  const src = readTextNormalized(SRC_URL);
   assert.doesNotMatch(src, /method:\s*"(POST|PUT|DELETE|PATCH)"/);
   assert.doesNotMatch(src, /media_publish|\/feed\b/);
 });
@@ -153,7 +154,7 @@ const MUTANTS = [
 
 for (const [name, edits] of MUTANTS) {
   test(`mutante morto pelo detector de vazamento: ${name}`, async () => {
-    let src = readFileSync(SRC_URL, "utf8");
+    let src = readTextNormalized(SRC_URL);
     for (const [from, to] of edits) { assert.ok(src.includes(from), "âncora do mutante presente: " + from); src = src.replace(from, to); }
     const dir = mkdtempSync(join(tmpdir(), "meta-mut-"));
     try {
@@ -169,7 +170,7 @@ for (const [name, edits] of MUTANTS) {
 }
 
 test("barreira final: relatório que contivesse o token é suprimido e reprova", async () => {
-  const src = readFileSync(SRC_URL, "utf8");
+  const src = readTextNormalized(SRC_URL);
   const from = 'const report = { schema: "meta-permission-check/v1",';
   assert.ok(src.includes(from));
   const dir = mkdtempSync(join(tmpdir(), "meta-bar-"));
