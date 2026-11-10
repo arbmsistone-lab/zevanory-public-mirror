@@ -366,10 +366,16 @@ class Guarda(unittest.TestCase):
         for c in ('worker/nc015-sales-scope.mjs', 'worker/politica-unica.mjs', 'data/politica-unica.json', 'worker/refund-flow.mjs',
                   'worker/refund-provider-claims.mjs', 'worker/asaas-pix-refund-auth.mjs', 'worker/commercial-checkout-guard.mjs',
                   'worker/payment-link-expiry.mjs', 'worker/sales-ledger.mjs', 'worker/sales-lock-content.mjs',
-                  'db/migrations/003_orders_checkout.sql', 'db/migrations/004_partial_refund_snapshots.sql', 'docs/nfse/x.md', 'worker/nfse-emissor.mjs'):
+                  'db/migrations/003_orders_checkout.sql', 'db/migrations/004_partial_refund_snapshots.sql', 'docs/nfse/x.md', 'worker/nfse-emissor.mjs',
+                  # plano do e-mail de abandono, PR-1 (Revisão 5, NC-R4-2): LIA, módulo, teste e migrações do D1
+                  'docs/lgpd/lia-abandono-hotmart.md', 'worker/abandono-hotmart.mjs', 'tests/abandono-hotmart.test.mjs',
+                  'migrations/d1/0001_diario_v1.sql', 'migrations/d1/0003_abandono_v1.sql'):
             r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
             self.falha(r, duro=False); self.assertTrue(r['caminhos_reservados_alterados'].get(c), c)
             lo, eo = rotulo(); self.ok(rodar([arq(c)], labels=lo, eventos=eo))
+        for c in ('docs/lgpd/lia-abandono-hotmart.md', 'worker/abandono-hotmart.mjs', 'tests/abandono-hotmart.test.mjs', 'migrations/d1/0003_abandono_v1.sql'):
+            self.assertTrue(any(x.startswith('fiscal_juridico:') for x in G.reservado(c, RESERVADOS)), c)
+            self.assertFalse(G.rotineiro(c, ROTINA_RX), c)
         # worker comum não é protegido nem reservado: segue sem rótulo
         self.ok(rodar([arq('worker/site-chat.mjs')]))
 
