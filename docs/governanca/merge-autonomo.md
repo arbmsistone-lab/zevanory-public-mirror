@@ -119,8 +119,9 @@ páginas e dados também citam preço e condição. Por isso:
   atribuição dessa fonte; o gate só aceita a comissão derivada nas páginas de afiliado listadas nela, e a regra T6
   (`COMISSAO_PCT`) reprova, em qualquer arquivo de produção (inclusive meta/og/twitter), um percentual de afiliado ("N%",
   "até N%", "N% em comissão", número por extenso, "metade") que não seja uma dessas taxas, só em frase com contexto de afiliado
-  (afiliad*, indicação, link de divulgação, venda indicada; em página de afiliado também "comiss"). Desconto e "comissão de 4%
-  da maquininha" não contam.
+  (afiliad*, indicação, link de divulgação, venda indicada; "comiss" junto de hotmart/divulg/parceir fora de frase de meio de
+  pagamento; em página de afiliado também "comiss" sozinho). Desconto, cartão e "comissão de 4% da maquininha" não contam;
+  "30% afiliado / 70% produtor" é aceito.
 - **Onde roda:** no check obrigatório `product-pages / static-audit` (`product-pages-premerge.yml:audit` e
   `required-status-compat.yml:product-status`), com contagem exata (`# tests 11`). Pendente fora do PR (NC-1008-02):
   `required-check-guard / protected-paths` precisa virar check obrigatório na proteção de branch de gh-pages. O guarda trata a ausência desse passo

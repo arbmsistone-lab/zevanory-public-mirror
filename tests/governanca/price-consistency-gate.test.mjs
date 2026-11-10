@@ -20,7 +20,7 @@ const canon = loadCanon(ROOT);
 
 // T6 COMISSAO_PCT (NC-1014-02, contra-auditoria do #1014): [arquivo, texto, percentuais reprovados]. Positivos = toda grafia
 // de "50% de afiliado" que o auditor listou; negativos = 30% (taxa da fonte), percentual fora de contexto de afiliado e desconto.
-const K6 = "sales-public/kit-afiliado.html", X6 = "worker/x.mjs";
+const K6 = "sales-public/kit-afiliado.html", X6 = "worker/x.mjs", H6 = "sales-public/ia-na-pratica.html";
 const T6_CASOS = [
   [K6, "<p>Afiliados: comissão de até 50% por venda.</p>", [50]],
   [X6, 'const s = "Afiliado ganha 50% em comissão";', [50]],
@@ -40,6 +40,20 @@ const T6_CASOS = [
   [X6, 'const s = "Metade dos clientes volta";', []],
   [K6, "<p>Afiliado não pode oferecer 10% de desconto.</p>", []],
   [X6, 'const s = "Afiliados: 50% off no curso";', []],
+  // NC-1014-03: fora das páginas de afiliado, "comiss" + hotmart/divulg/parceir é contexto de afiliado
+  [X6, 'const s = "Divulgue a ZEVANORY e receba 50% de comissão pela Hotmart.";', [50]],
+  [H6, "<p>Ganhe 50% de comissão divulgando a ZEVANORY.</p>", [50]],
+  [X6, 'const s = "Comissão de 50% na Hotmart.";', [50]],
+  [H6, "<p>Seja parceiro: 50% de comissão em cada venda.</p>", [50]],
+  [X6, 'const s = "Programa de parceiros com 50% de comissão.";', [50]],
+  [X6, 'const s = "Afiliado recebe 70% na Hotmart.";', [70]],
+  [X6, 'const s = "Afiliado recebe 50% e o produtor 50% na Hotmart.";', [50, 50]],
+  [X6, 'const s = "Afiliado recebe 30% e o produtor 60% na Hotmart.";', [60]],
+  [X6, 'const s = "Na Hotmart, a comissão do cartão é 4,99%.";', []],
+  [H6, "<p>A comissão da maquininha no cartão é de 3% na Hotmart.</p>", []],
+  [X6, 'const s = "Receba 30% de comissão pela Hotmart.";', []],
+  [H6, "<p>Seja parceiro: 30% de comissão em cada venda.</p>", []],
+  [X6, 'const s = "Afiliado recebe 30% e o produtor 70% na Hotmart.";', []],
 ];
 const t6 = (mod, c, f, s) => mod.scanText(f, s, c).filter((v) => v.regra === "COMISSAO_PCT").map((v) => v.valor);
 
@@ -381,13 +395,18 @@ test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo
   // mutantes do T6 (NC-1014-02): cada enfraquecimento do gate muda o veredito de pelo menos um caso de T6_CASOS
   const gsrc = read("tests/governanca/price-gate.mjs");
   const mutantes = {
-    "T6M1 sem contexto de afiliado": ["if (!(AFFILIATE_CTX.test(frase) || (affPage && COMMISSION_CTX.test(frase)))) continue;", ""],
+    "T6M1 sem contexto de afiliado": ["if (!(AFFILIATE_CTX.test(frase) || fraco || (affPage && COMMISSION_CTX.test(frase)))) continue;", ""],
     "T6M2 contexto = só 'comiss' (regra antiga)": ["if (!(AFFILIATE_CTX.test(frase) ||", "if (!(COMMISSION_CTX.test(frase) ||"],
     "T6M3 sem número por extenso": ["m[2] !== undefined ? parseExtenso(m[2]) : 50", "m[2] !== undefined ? 30 : 50"],
     "T6M4 sem 'metade'": ["m[2] !== undefined ? parseExtenso(m[2]) : 50", "m[2] !== undefined ? parseExtenso(m[2]) : 30"],
     "T6M5 sem meta/og/twitter": ["for (const a of parts.pctAttrs) commissionPctIn(file, a, canon, found);", ""],
     "T6M6 desconto conta como comissão": ["if (PCT_NOT_COMMISSION_AFTER.test(", "if (false && PCT_NOT_COMMISSION_AFTER.test("],
-    "T6M7 taxa da fonte ignorada": ['if (!canon.commissionPcts.includes(pct)) push(found, file, "COMISSAO_PCT"', 'if (false) push(found, file, "COMISSAO_PCT"'],
+    "T6M7 nunca reprova": ['push(found, file, "COMISSAO_PCT", "afiliado", pct, text, m.index);', ""],
+    "T6M7b taxa válida da fonte ignorada": ["if (canon.commissionPcts.includes(pct)) continue;", ""],
+    "T6M9 sem contexto fraco hotmart/divulg/parceir": ["AFFILIATE_CTX.test(frase) || fraco ||", "AFFILIATE_CTX.test(frase) ||"],
+    "T6M10 sem exclusão de meio de pagamento": ["AFFILIATE_WEAK_CTX.test(frase) && !PAYMENT_CTX.test(frase)", "AFFILIATE_WEAK_CTX.test(frase)"],
+    "T6M11 divisão com o produtor não aceita": ["if (/produtor/i.test(perto) &&", "if (false && /produtor/i.test(perto) &&"],
+    "T6M12 qualquer complemento aceito como produtor": ["canon.commissionPcts.some((v) => v + pct === 100)", "true"],
     "T6M8 'até' quebra a leitura": ["(?<![\\\\d.,])(\\\\d{1,3}(?:[.,]\\\\d+)?)\\\\s*(?:%|por", "(?<![\\\\d.,]|até )(\\\\d{1,3}(?:[.,]\\\\d+)?)\\\\s*(?:%|por"],
   };
   const mdir = mkdtempSync(join(tmpdir(), "price-gate-t6-"));
