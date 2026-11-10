@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { runGate, loadCanon, scanText, listFiles, BUNDLES, EXCECOES, pageProduct, moneyIn } from "./price-gate.mjs";
 import * as PP from "../../worker/product-prices.mjs";
@@ -17,6 +17,31 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "tests/governanca/price-gate.mjs");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
 const canon = loadCanon(ROOT);
+
+// T6 COMISSAO_PCT (NC-1014-02, contra-auditoria do #1014): [arquivo, texto, percentuais reprovados]. Positivos = toda grafia
+// de "50% de afiliado" que o auditor listou; negativos = 30% (taxa da fonte), percentual fora de contexto de afiliado e desconto.
+const K6 = "sales-public/kit-afiliado.html", X6 = "worker/x.mjs";
+const T6_CASOS = [
+  [K6, "<p>Afiliados: comissão de até 50% por venda.</p>", [50]],
+  [X6, 'const s = "Afiliado ganha 50% em comissão";', [50]],
+  [X6, 'const s = "Afiliados recebem cinquenta por cento de comissão";', [50]],
+  [K6, "<p>Metade do valor vira comissão para você.</p>", [50]],
+  [X6, 'const s = "Ganhe 50% por venda indicada";', [50]],
+  [X6, 'const s = "Afiliados recebem 50%";', [50]],
+  [X6, 'const s = "Link de divulgação paga trinta e cinco por cento";', [35]],
+  [K6, '<meta name="description" content="Receba 50% de comissão pela Hotmart">', [50]],
+  [K6, "<p>Divulgue e receba 50% de comissão pela Hotmart.</p>", [50]],
+  [K6, "<p>comissão de 50 por cento</p>", [50]],
+  [X6, 'const s = "Afiliados recebem 30%";', []],
+  [X6, 'const s = "Afiliados recebem trinta por cento";', []],
+  [K6, "<p>Receba 30% de comissão pela Hotmart.</p>", []],
+  ["sales-public/calculadora-taxa-maquininha.html", "<p>A maquininha cobra comissão de 4% da venda.</p>", []],
+  [X6, 'const s = "Comissão de 4% da maquininha";', []],
+  [X6, 'const s = "Metade dos clientes volta";', []],
+  [K6, "<p>Afiliado não pode oferecer 10% de desconto.</p>", []],
+  [X6, 'const s = "Afiliados: 50% off no curso";', []],
+];
+const t6 = (mod, c, f, s) => mod.scanText(f, s, c).filter((v) => v.regra === "COMISSAO_PCT").map((v) => v.valor);
 
 // Fixture: cópia mínima do repositório (tabela + arquivos dados) com uma troca de texto; roda o gate pela CLI.
 function fixture(files, mutate = {}) {
@@ -99,6 +124,12 @@ test("G04 NEGATIVO: o mesmo vale nos demais módulos, páginas e dados que citam
     ["sales-public/combo-ia-vendas.html", "Economia de R$ 37", "Economia de R$ 47"],
     ["data/p24/promise-map.json", "Economia de R$ 37", "Economia de R$ 40"],
     ["kit-afiliado/index.html", "R$ 29,10", "R$ 48,50"],
+    // T6: percentual de afiliado antigo (50%) reintroduzido nas páginas reais, em várias grafias
+    ["sales-public/kit-afiliado.html", "receba 30% de comissão pela Hotmart.</p>", "receba 50% de comissão pela Hotmart.</p>"],
+    ["sales-public/kit-afiliado.html", 'content="30% de comissão pela Hotmart', 'content="50% de comissão pela Hotmart'],
+    ["sales-public/afiliados.html", "com 30% de comissão", "com cinquenta por cento de comissão"],
+    ["sales-public/afiliados.html", "comissão de 30% sobre o valor", "comissão de até 50% sobre o valor"],
+    ["kit-afiliado/index.html", "Programa próprio da ZEVANORY (30%, link ?ref=)", "Programa próprio da ZEVANORY (metade da venda em comissão, link ?ref=)"],
   ];
   for (const [f, de, para] of casos) {
     if (!existsSync(join(ROOT, f))) continue;
@@ -129,10 +160,7 @@ test("G05 NEGATIVO: valor novo em R$ ao lado de nome/slug/SKU que não está na 
   assert.ok(t('const s = "IA na Prática · R$ 97 · comissão de 30% (R$ 29,10)";').some((v) => v.regra === "VALOR_EM_REAIS" && v.valor === 29.1), "comissão fora da página de afiliado");
   // F0 item 4 (30%): a comissão antiga de 50% volta a reprovar, em R$ derivado e em percentual (T6), mesmo na página reservada
   assert.deepEqual(t("<p>IA na Prática · R$ 97 · comissão de 50% (R$ 48,50)</p>", "sales-public/kit-afiliado.html").map((v) => v.regra).sort(), ["COMISSAO_PCT", "VALOR_EM_REAIS"]);
-  for (const s of ["<p>Divulgue e receba 50% de comissão pela Hotmart.</p>", "<p>comissão de 50 por cento</p>", "<p>comissão: 50%</p>"])
-    assert.deepEqual(t(s, "sales-public/kit-afiliado.html").map((v) => [v.regra, v.valor]), [["COMISSAO_PCT", 50]], s);
-  assert.equal(t('const s = "Afiliados: 50% de comissão";').length, 1, "percentual de comissão fora da página de afiliado");
-  assert.equal(t("<p>Receba 30% de comissão pela Hotmart.</p>", "sales-public/kit-afiliado.html").length, 0);
+  for (const [f, s, esperado] of T6_CASOS) assert.deepEqual(t6({ scanText }, canon, f, s), esperado, `T6 ${f}: ${s}`);
   assert.equal(t("Combo IA + Vendas: economia de R$ 94").length, 1, "economia de outro pacote");
   // HTML: atributo de texto e página do produto contam como contexto
   assert.equal(pageProduct("sales-public/combo-ia-vendas.html", canon), "combo-ia-vendas");
@@ -350,6 +378,30 @@ test("G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo
   const x = spawnSync(process.execPath, [GATE, "--root", dir], { encoding: "utf8" });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(x.status, 1, "com 40% na fonte, a página que diz 30% reprova");
+  // mutantes do T6 (NC-1014-02): cada enfraquecimento do gate muda o veredito de pelo menos um caso de T6_CASOS
+  const gsrc = read("tests/governanca/price-gate.mjs");
+  const mutantes = {
+    "T6M1 sem contexto de afiliado": ["if (!(AFFILIATE_CTX.test(frase) || (affPage && COMMISSION_CTX.test(frase)))) continue;", ""],
+    "T6M2 contexto = só 'comiss' (regra antiga)": ["if (!(AFFILIATE_CTX.test(frase) ||", "if (!(COMMISSION_CTX.test(frase) ||"],
+    "T6M3 sem número por extenso": ["m[2] !== undefined ? parseExtenso(m[2]) : 50", "m[2] !== undefined ? 30 : 50"],
+    "T6M4 sem 'metade'": ["m[2] !== undefined ? parseExtenso(m[2]) : 50", "m[2] !== undefined ? parseExtenso(m[2]) : 30"],
+    "T6M5 sem meta/og/twitter": ["for (const a of parts.pctAttrs) commissionPctIn(file, a, canon, found);", ""],
+    "T6M6 desconto conta como comissão": ["if (PCT_NOT_COMMISSION_AFTER.test(", "if (false && PCT_NOT_COMMISSION_AFTER.test("],
+    "T6M7 taxa da fonte ignorada": ['if (!canon.commissionPcts.includes(pct)) push(found, file, "COMISSAO_PCT"', 'if (false) push(found, file, "COMISSAO_PCT"'],
+    "T6M8 'até' quebra a leitura": ["(?<![\\\\d.,])(\\\\d{1,3}(?:[.,]\\\\d+)?)\\\\s*(?:%|por", "(?<![\\\\d.,]|até )(\\\\d{1,3}(?:[.,]\\\\d+)?)\\\\s*(?:%|por"],
+  };
+  const mdir = mkdtempSync(join(tmpdir(), "price-gate-t6-"));
+  try {
+    for (const [nome, [de, para]] of Object.entries(mutantes)) {
+      assert.ok(gsrc.includes(de), "âncora do mutante ausente: " + nome);
+      const arq = join(mdir, nome.split(" ")[0] + ".mjs");
+      writeFileSync(arq, gsrc.replace(de, para));
+      const mod = await import(pathToFileURL(arq).href);
+      const mc = mod.loadCanon(ROOT);
+      const pego = T6_CASOS.some(([f, s, esperado]) => JSON.stringify(t6(mod, mc, f, s)) !== JSON.stringify(esperado));
+      assert.ok(pego, "mutante sobreviveu: " + nome);
+    }
+  } finally { rmSync(mdir, { recursive: true, force: true }); }
 });
 
 // Plano do e-mail de abandono (PR-2; contra-auditoria do PR-1): worker/abandono-hotmart.mjs é RESERVADO (#1009), então o

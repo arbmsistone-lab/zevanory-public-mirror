@@ -1,14 +1,13 @@
 {
   "schema": "zevanory-affiliates/v1",
-  "nota": "NC-1008-03: fonte única (reservada ao proprietário) das condições de afiliado. DECISÃO DO PROPRIETÁRIO (F0, item 4), literal: \"Aprovo afiliados 30%, último clique, 60 dias, aprovação manual.\" Vale para os dois canais: mercado de afiliados da Hotmart (sales-public/kit-afiliado.html, sales-public/afiliados.html; configuração feita pelo proprietário no painel da Hotmart) e programa próprio por link /?ref= (sales-public/afiliados.html, worker/affiliate-program.mjs). Lido por worker/affiliate-program.mjs e pelo gate tests/governanca/price-gate.mjs (comissão derivada só nas páginas de afiliado reservadas; percentual de comissão diferente destas taxas reprova).",
-  "decisao": "F0 item 4 (proprietário): afiliados 30%, último clique, 60 dias, aprovação manual",
+  "nota": "NC-1008-03: fonte única (reservada ao proprietário) das condições de afiliado. DECISÃO DO PROPRIETÁRIO (F0, item 4), literal: \"Aprovo afiliados 30%, último clique, 60 dias, aprovação manual.\" Aplicada ao mercado de afiliados da Hotmart (sales-public/kit-afiliado.html, sales-public/afiliados.html; configuração feita pelo proprietário no painel da Hotmart): 30%, último clique, cookie de 60 dias, aprovação manual. Programa próprio por link /?ref= (sales-public/afiliados.html, worker/affiliate-program.mjs): 30%, atribuição de 30 dias MANTIDA (mudar o prazo altera cookie e intervalo SQL; aguarda confirmação do proprietário em outro PR). Lido por worker/affiliate-program.mjs e pelo gate tests/governanca/price-gate.mjs (comissão derivada só nas páginas de afiliado reservadas; percentual de comissão de afiliado diferente destas taxas reprova).",
+  "decisao": "F0 item 4 (proprietário): afiliados 30%, último clique, 60 dias, aprovação manual (Hotmart); programa próprio mantém 30 dias",
   "hotmart_commission_pct": 30,
   "hotmart_commission_rule": "last_click",
   "hotmart_cookie_days": 60,
   "hotmart_affiliation_approval": "manual",
   "own_program_commission_pct": 30,
-  "own_program_attribution_days": 60,
-  "own_program_attribution_rule": "last_click",
+  "own_program_attribution_days": 30,
   "own_program_payout_approval": "manual",
   "pages": [
     "afiliados/index.html",

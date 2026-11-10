@@ -19,8 +19,12 @@
 //   T4 VALOR_DA_MARCA     oferta "por/custa/preço R$ N" com a marca ZEVANORY por perto e sem produto: N tem de ser de kit.
 //   T5 DESCONTO           cupom/desconto/promoção/"% off"/"por cento"/"N%" na mesma frase de um produto (ou em página de
 //                         produto), fora de arquivo reservado.
-//   T6 COMISSAO_PCT       percentual de comissão em texto ("N% de comissão", "comissão de N%", "N por cento de comissão"),
-//                         em QUALQUER arquivo de produção (reservado ou não): N tem de ser uma das taxas de data/affiliates.json.
+//   T6 COMISSAO_PCT       percentual de AFILIADO (F0 item 4), em QUALQUER arquivo de produção (reservado ou não), inclusive
+//                         meta/og/twitter: "N%", "N %", "N por cento", número por extenso ("cinquenta por cento") e "metade",
+//                         com ou sem "até"/"em comissão", numa frase com contexto de afiliado (afiliad*, indicação/indicad*,
+//                         link de divulgação, venda indicada, programa de afiliados; em página de afiliado reservada também
+//                         basta "comiss"), tem de ser uma das taxas de data/affiliates.json. Fora desse contexto (ex.: "comissão
+//                         de 4% da maquininha") e percentual de desconto ("N% off", "N% de desconto") não contam.
 //   C1 CAMPO_DE_PRECO     campo price/preco/valor/amount (inclusive aninhado: {sku, offer:{price:N}}) em objeto cujo
 //                         produto (o próprio objeto ou um ancestral) é conhecido: = tabela (centavos = x100).
 //   C2 MAPA_DE_PRECO      "<sku|slug>": N | "N" | ["nome", N], par ["<sku|slug>", N] (Map/array de pares).
@@ -39,8 +43,9 @@ export const WINDOW_BEFORE = 200;
 export const WINDOW_BEFORE_HTML = 700;
 const SAVINGS_CTX = /(economi|separad|custaria|avulso|somad|em vez de|comprar os|\bcompletos\b)/i;
 const COMMISSION_CTX = /comiss/i;
-// T6: "30% de comissão", "30 por cento de comissão", "comissão de 30%", "comissão: 30%" (N inteiro ou decimal)
-const COMMISSION_PCT = /(?<![\d.,])(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por cento)\s*(?:de\s+|da\s+|na\s+)?comiss|comiss(?:ão|ao|ões|oes)\b[\s:]*(?:de\s+)?(\d{1,3}(?:[.,]\d+)?)\s*(?:%|por cento)/giu;
+// T6 (ver cabeçalho). NUM_WORDS é declarado abaixo; PCT_RX é montado sob demanda.
+export const AFFILIATE_CTX = /afiliad|indica[cç](?:[aã]o|[oõ]es)|\bindicad[ao]s?\b|link\s+de\s+divulga|venda\s+indicada|programa\s+de\s+afiliad|\?ref=/i;
+const PCT_NOT_COMMISSION_AFTER = /^\s*(?:off\b|de\s+desconto|desconto|em\s+desconto)/i;
 const BRAND = /\bZEVANORY\b/;
 const OFFER_CTX = /\b(por|custa|pre[cç]o|valor|investimento|apenas|s[oó])\b[\s:(]*((R\$|BRL)\s*)?$/i;
 const DISCOUNT = /\b(cupom|cupons|cupon|coupon|coupons|descontos?|promo[cç](?:[aã]o|[oõ]es)|black friday|liquida[cç][aã]o|por cento)\b|\d+(?:,\d+)?\s*%(?:\s*off\b)?/gi;
@@ -123,7 +128,7 @@ export const normalize = (text) => decode(text);
 const INLINE = /^(a|abbr|b|bdi|bdo|cite|code|data|del|dfn|em|font|i|ins|kbd|mark|q|s|samp|small|span|strong|sub|sup|time|u|var|wbr)$/i;
 // HTML -> { text (só nós de texto), attrs [trechos de atributo com dinheiro], jsonld [objetos], scripts [código] }
 export function htmlParts(html) {
-  const jsonld = [], scripts = [], attrs = [];
+  const jsonld = [], scripts = [], attrs = [], pctAttrs = [];
   let h = String(html).replace(/<!--[\s\S]*?-->/g, " ");
   h = h.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (_, a, body) => {
     if (/application\/ld\+json/i.test(a)) { try { jsonld.push(JSON.parse(decode(body))); } catch { jsonld.push({ __invalido__: body.slice(0, 80) }); } }
@@ -133,9 +138,10 @@ export function htmlParts(html) {
   h = h.replace(/<\/?([A-Za-z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/g, (_, n, a) => {
     const vals = [...a.matchAll(/=\s*(?:"([^"]*)"|'([^']*)')/g)].map((m) => decode(m[1] ?? m[2]));
     if (vals.some((v) => /R\$|BRL|\breais\b/i.test(v))) attrs.push(vals.filter((v) => !/^(https?:|mailto:|\/|#|data:)/i.test(v)).join(" · "));
+    for (const v of vals) if (/%|por\s+cento|metade/i.test(v) && !/^(https?:|mailto:|\/|#|data:)/i.test(v)) pctAttrs.push(v);
     return INLINE.test(n) ? "" : "\n";
   });
-  return { text: decode(h), attrs, jsonld, scripts };
+  return { text: decode(h), attrs, jsonld, scripts, pctAttrs };
 }
 
 export function loadCanon(root) {
@@ -268,6 +274,28 @@ const push = (found, file, regra, produto, valor, text, at, extra = {}) =>
   found.push({ file, regra, produto, valor, linha: lineOf(text, at), trecho: text.slice(Math.max(0, at - 70), at + 40).replace(/\s+/g, " "), ...extra });
 function lineOf(text, at) { let n = 1; for (let i = 0; i < at && i < text.length; i++) if (text.charCodeAt(i) === 10) n++; return n; }
 
+// T6: percentuais (algarismo, extenso, "metade") com contexto de afiliado na mesma frase
+let PCT_RX = null;
+function pctRegex() {
+  if (PCT_RX) return PCT_RX;
+  const w = Object.keys(NUM_WORDS).filter((k) => NUM_WORDS[k] < 1000).sort((a, b) => b.length - a.length).join("|");
+  PCT_RX = new RegExp(`(?<![\\d.,])(\\d{1,3}(?:[.,]\\d+)?)\\s*(?:%|por\\s+cento\\b)|(?<![\\wÀ-ÿ])((?:${w})(?:\\s+e\\s+(?:${w}))*)\\s+por\\s+cento\\b|(?<![\\wÀ-ÿ])(metade)(?![\\wÀ-ÿ])`, "giu");
+  return PCT_RX;
+}
+export function commissionPctIn(file, text, canon, found) {
+  const affPage = canon.affiliatePages.has(file);
+  for (const m of text.matchAll(pctRegex())) {
+    const pct = m[1] !== undefined ? Number(m[1].replace(",", ".")) : m[2] !== undefined ? parseExtenso(m[2]) : 50;
+    if (pct === null) continue;
+    if (PCT_NOT_COMMISSION_AFTER.test(text.slice(m.index + m[0].length, m.index + m[0].length + 20))) continue;
+    const [s, e] = sentence(text, m.index, m.index + m[0].length);
+    const frase = text.slice(s, e);
+    if (m[3] !== undefined && !COMMISSION_CTX.test(frase)) continue; // "metade" só como fração de comissão
+    if (!(AFFILIATE_CTX.test(frase) || (affPage && COMMISSION_CTX.test(frase)))) continue;
+    if (!canon.commissionPcts.includes(pct)) push(found, file, "COMISSAO_PCT", "afiliado", pct, text, m.index);
+  }
+}
+
 // T1/T2/T4/T5 sobre um trecho de texto
 function scanProse(file, text, canon, mr, { page, html, isReserved }, found) {
   const ms = mentions(text, mr);
@@ -292,11 +320,7 @@ function scanProse(file, text, canon, mr, { page, html, isReserved }, found) {
     if (!m.bare && OFFER_CTX.test(text.slice(Math.max(0, m.at - 30), m.at)) && BRAND.test(text.slice(Math.max(0, m.at - WINDOW_BEFORE), m.end + 80)) && !canon.kitUnion.has(m.value))
       push(found, file, "VALOR_DA_MARCA", "marca", m.value, text, m.at);
   }
-  // T6: percentual de comissão fora das taxas da fonte reservada reprova (inclusive em página de afiliado reservada)
-  for (const c of text.matchAll(COMMISSION_PCT)) {
-    const pct = Number(String(c[1] ?? c[2]).replace(",", "."));
-    if (!canon.commissionPcts.includes(pct)) push(found, file, "COMISSAO_PCT", "afiliado", pct, text, c.index);
-  }
+  commissionPctIn(file, text, canon, found); // T6 (inclusive em página de afiliado reservada)
   if (isReserved) return;
   if (DISCOUNT_EXEMPT.some((rx) => rx.test(file))) return;
   for (const d of text.matchAll(DISCOUNT)) {
@@ -460,6 +484,7 @@ export function scanText(file, rawText, canon, mr = mentionRegex(canon)) {
     const parts = htmlParts(rawText);
     scanProse(file, parts.text, canon, mr, { page, html: true, isReserved }, found);
     for (const a of parts.attrs) scanProse(file, a, canon, mr, { page, html: true, isReserved }, found);
+    for (const a of parts.pctAttrs) commissionPctIn(file, a, canon, found); // T6 em meta/og/twitter/aria/title
     for (const j of parts.jsonld) {
       scanJson(file, j, canon, mr, { page, regra: "JSON_LD" }, found);
       // textos do JSON-LD (FAQ, descrição) também são prosa da página

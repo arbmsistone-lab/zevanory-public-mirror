@@ -102,7 +102,7 @@ páginas e dados também citam preço e condição. Por isso:
 - **Gate reservado:** `tests/governanca/price-gate.mjs` + `tests/governanca/price-consistency-gate.test.mjs` varrem as fontes
   de produção (worker/**, scripts/** exceto scripts/ci, sales-public/**, páginas, pages-mirror, data/**, content/**,
   sales-overlay/**) atrás de "R$ N"/"N reais" perto de nome/slug/SKU, campos de preço em objeto com produto e mapas
-  SKU→preço; qualquer valor fora da tabela (ou dos derivados documentados: soma/economia do pacote, comissão de 50%)
+  SKU→preço; qualquer valor fora da tabela (ou dos derivados documentados: soma/economia do pacote, comissão à taxa de `data/affiliates.json`)
   reprova. Exceções só em lista fechada dentro do gate, com quantidade exata.
 - **Contra-auditoria do #1008 (NC-1008-01):** HTML lido só por nós de texto (tag no meio do valor não esconde nada) +
   JSON-LD (offers aninhados e textos do FAQ); página de produto exige que TODO valor da página seja do produto; valores
@@ -114,10 +114,13 @@ páginas e dados também citam preço e condição. Por isso:
   preço = literal, variável = literal usada em `"R$ "+x`, `` `R$ ${x}` `` ou campo de preço, literal direto em
   `"R$ " + N` / `` `R$ ${N}` ``, e aritmética sobre qualquer variável que recebe priceBy*/PRICE_BY_SKU/bundle*. Os
   scripts do Short de boas-vindas exportam `welcomeCreative()` e o teste runtime confere o preço renderizado.
-- **Comissão (NC-1008-03):** taxa só em `data/affiliates.json` (reservado): 30% na Hotmart e 30% no programa próprio, último
-  clique, 60 dias, aprovação manual (decisão do proprietário, F0 item 4). `worker/affiliate-program.mjs` lê a taxa e o prazo de
+- **Comissão (NC-1008-03):** taxa só em `data/affiliates.json` (reservado): Hotmart 30%, último clique, cookie de 60 dias,
+  aprovação manual (decisão do proprietário, F0 item 4); programa próprio 30% com atribuição de 30 dias (mantida). `worker/affiliate-program.mjs` lê a taxa e o prazo de
   atribuição dessa fonte; o gate só aceita a comissão derivada nas páginas de afiliado listadas nela, e a regra T6
-  (`COMISSAO_PCT`) reprova em qualquer arquivo de produção um percentual de comissão que não seja uma dessas taxas.
+  (`COMISSAO_PCT`) reprova, em qualquer arquivo de produção (inclusive meta/og/twitter), um percentual de afiliado ("N%",
+  "até N%", "N% em comissão", número por extenso, "metade") que não seja uma dessas taxas, só em frase com contexto de afiliado
+  (afiliad*, indicação, link de divulgação, venda indicada; em página de afiliado também "comiss"). Desconto e "comissão de 4%
+  da maquininha" não contam.
 - **Onde roda:** no check obrigatório `product-pages / static-audit` (`product-pages-premerge.yml:audit` e
   `required-status-compat.yml:product-status`), com contagem exata (`# tests 11`). Pendente fora do PR (NC-1008-02):
   `required-check-guard / protected-paths` precisa virar check obrigatório na proteção de branch de gh-pages. O guarda trata a ausência desse passo
