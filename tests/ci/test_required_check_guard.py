@@ -480,6 +480,92 @@ class Guarda(unittest.TestCase):
                 self.falha(r, 'GATE_DE_PRECO_AUSENTE')
 
 
+    # --- Contra-auditoria do #1008: DDL interpolado no Worker passou porque p20-restore-drill tem filtro de caminho ---
+    DDL_CMD = 'python3 -I -B scripts/ci/runtime_ddl_gate.py'
+
+    def test_T40_gate_de_ddl_reservado_e_nos_dois_emissores_do_check_obrigatorio(self):
+        # o gate e o restore cuja saída ele compara (NC-1013-02) são reservados
+        for c in ('scripts/ci/runtime_ddl_gate.py', 'scripts/ops/restore_new_database.py'):
+            self.assertIn(c, G.RESERVED_SELF)
+            l, e = autonomo()
+            r = rodar([arq(c)], labels=l, eventos=e, comentarios=[auditoria()])
+            self.falha(r, duro=False); self.assertIn(c, r['caminhos_reservados_alterados'])
+            self.assertFalse(G.rotineiro(c, ROTINA_RX), c)
+            lo, eo = rotulo(); self.ok(rodar([arq(c)], labels=lo, eventos=eo))
+        d = json.loads(RESERVADOS_ARQ.read_text())
+        with tempfile.TemporaryDirectory() as t:
+            ruim = pathlib.Path(t) / 'r.json'
+            for c in ('scripts/ci/runtime_ddl_gate.py', 'scripts/ops/restore_new_database.py'):
+                sem = json.loads(json.dumps(d)); sem['classes']['guardas_de_governanca']['globs'].remove(c)
+                ruim.write_text(json.dumps(sem))
+                with self.assertRaises(ValueError):
+                    G.carregar_reservados(ruim)
+            for rot in (['scripts/ci/*.py'], ['scripts/ci/runtime_*'], ['scripts/ops/*.py']):
+                ruim.write_text(json.dumps(dict(d, rotina_autonoma={'globs': rot})))
+                with self.assertRaises(ValueError):
+                    G.carregar_rotina(ruim)
+        # os mesmos emissores de product-pages / static-audit, sem filtro de caminho, e o passo válido nos dois
+        self.assertEqual(G.REQUIRED_DDL_STEP, G.REQUIRED_CHECKS['product-pages / static-audit'])
+        for nome, jid in G.REQUIRED_DDL_STEP.items():
+            self.assertEqual(G.analisar_workflow(nome, base(nome)), [], nome)
+            self.assertEqual(sum(G.passo_ddl_valido(p) for p in yaml_passos(base(nome), jid)), 1, nome)
+
+    def test_T41_ddl_interpolado_em_worker_comum_e_barrado_pelo_gate_obrigatorio(self):
+        import shutil
+        c = 'worker/affiliate-program.mjs'
+        self.assertTrue(shutil.which('node'), 'node ausente: dynamic_ddl não pode ser verificado (fail-closed)')
+        gate = [sys.executable, '-I', '-B', str(REPO / 'scripts/ci/runtime_ddl_gate.py')]
+        # repositório atual passa; autoteste dos fixtures passa
+        for extra in ([], ['--self-test']):
+            p = subprocess.run(gate + extra, capture_output=True, text=True, timeout=120)
+            self.assertEqual(p.returncode, 0, p.stdout[-800:] + p.stderr[-400:])
+        # a regressão do #1008 (default ${RATE4} no DDL) num worker comum reprova (rc 1 = CI vermelho), pelo escaneamento
+        # independente E pelo próprio runtime_ddl do restore
+        src = (REPO / c).read_text()
+        de = 'commission_rate numeric(5,4) not null default 0.3000'
+        self.assertIn(de, src)
+        ruim = src.replace('await sql.query("create table if not exists affiliate_commissions', 'await sql.query(`create table if not exists affiliate_commissions', 1)
+        ruim = ruim.replace(de, 'commission_rate numeric(5,4) not null default ${RATE4}', 1)
+        fim = ruim.index('default ${RATE4}'); fim = ruim.index('now())")', fim)
+        ruim = ruim[:fim] + 'now())`' + ruim[fim + len('now())"'):]
+        # NC-1013-01: o mesmo valor concatenado (`"... default "+RATE4+",..."`) passa pelo restore, que extrai SQL quebrado
+        concat = src.replace(de, 'commission_rate numeric(5,4) not null default "+RATE4+"', 1)
+        self.assertNotEqual(concat, src)
+        for conteudo, rc, codigos in ((src, 0, ()), (ruim, 1, ('DDL_INTERPOLADO affiliate-program.mjs', 'RESTORE_RUNTIME_DDL_FALHOU')),
+                                      (concat, 1, ('DDL_CONCATENADO affiliate-program.mjs:affiliate_commissions',))):
+            with tempfile.TemporaryDirectory() as t:
+                (pathlib.Path(t) / 'affiliate-program.mjs').write_text(conteudo)
+                p = subprocess.run(gate + ['--worker-dir', t], capture_output=True, text=True, timeout=120)
+                self.assertEqual(p.returncode, rc, p.stdout[-800:] + p.stderr[-400:])
+                for cod in codigos:
+                    self.assertIn(cod, p.stdout)
+
+    def test_T42_emissor_obrigatorio_sem_gate_de_ddl_falha(self):
+        lo, eo = rotulo()
+        cmd = self.DDL_CMD
+        for nome in G.REQUIRED_DDL_STEP:
+            b = base(nome)
+            self.assertIn(cmd + ' --self-test\n', b); self.assertIn(cmd + '\n', b)
+            ruins = (
+                b.replace(cmd + '\n', 'node --version\n'),                       # só o autoteste
+                b.replace(cmd + '\n', cmd + ' || true\n'),                       # falha engolida
+                b.replace(cmd + ' --self-test\n', ''),                             # sem autoteste (teste negativo)
+                b.replace('set -euo pipefail\n          ' + cmd + ' --self-test', 'set +e\n          ' + cmd + ' --self-test'),
+                b.replace('          ' + cmd + ' --self-test\n', '          ' + cmd + ' --self-test\n          exit 0\n'),
+                b.replace("        run: |\n          set -euo pipefail\n          " + cmd, "        shell: bash {0}\n        run: |\n          set -euo pipefail\n          " + cmd),
+                b.replace("        run: |\n          set -euo pipefail\n          " + cmd, "        env:\n          NODE_OPTIONS: x\n        run: |\n          set -euo pipefail\n          " + cmd),
+            )
+            for i, ruim in enumerate(ruins):
+                self.assertNotEqual(ruim, b, (nome, i))
+                r = rodar([arq('.github/workflows/' + nome)], {nome: ruim}, lo, eo)
+                self.falha(r, 'GATE_DDL_AUSENTE')
+
+
+def yaml_passos(texto, jid):
+    import yaml
+    return yaml.load(texto, Loader=yaml.BaseLoader)['jobs'][jid]['steps']
+
+
 def rodar_com_relatorio(caminho):
     """Executa a suíte e grava, por teste, o desfecho. 'falha' = AssertionError levantada pela SUÍTE (nenhum quadro do
     traceback dentro do guarda); AssertionError originada no código sob teste é registrada como 'erro'."""
