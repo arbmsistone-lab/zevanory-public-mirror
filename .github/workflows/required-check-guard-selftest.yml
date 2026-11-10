@@ -1,7 +1,7 @@
 name: required-check-guard-selftest
 
 # G4: reprodução da suíte do guarda (42 testes), dos autotestes do executor de mutantes, dos 38 mutantes do guarda e dos
-# 7 mutantes do gate de DDL do Worker (tests/ci/mutants_runtime_ddl_gate.py), com
+# 20 mutantes do gate de DDL do Worker (tests/ci/mutants_runtime_ddl_gate.py; G08-G20: follow-up do #1013), com
 # classificação honesta (AVAL 090): baseline obrigatório; MORTO só por asserção em teste esperado; dependência ausente,
 # import, sintaxe, timeout ou coleta -> INCONCLUSIVO (falha o job). INFORMATIVO: roda a versão do PR (pull_request),
 # portanto não é evidência de controle. O controle é o job required-check-guard / protected-paths (pull_request_target).
@@ -67,8 +67,8 @@ jobs:
           grep -qE '^Ran 42 tests' /tmp/suite.txt || { echo "::error::suíte do guarda deveria rodar exatamente 42 testes"; exit 1; }
           python -I -B tests/ci/test_mutants_runner.py .
           python -I -B tests/ci/mutants_required_check_guard.py . | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: "Mutantes do gate de DDL do Worker (contra-auditoria do #1008/#1013; mortos pelo --self-test, contagem exata)"
+      - name: "Mutantes do gate de DDL do Worker (contra-auditoria do #1008/#1013 e follow-up; mortos pelo --self-test, contagem exata)"
         run: |
           set -euo pipefail
           python3 -I -B tests/ci/mutants_runtime_ddl_gate.py . | tee /tmp/ddl-mut.txt | tee -a "$GITHUB_STEP_SUMMARY"
-          grep -qx "MUTANTS total=7 killed=7 survived=0 inconclusive=0" /tmp/ddl-mut.txt || { echo "::error::mutante do gate de DDL sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=20 killed=20 survived=0 inconclusive=0" /tmp/ddl-mut.txt || { echo "::error::mutante do gate de DDL sobreviveu ou contagem mudou"; exit 1; }

@@ -147,4 +147,11 @@ páginas e dados também citam preço e condição. Por isso:
   nomes) e o DDL dinâmico pelos 12 comandos esperados; as exceções de nome (`${BACKUP_TABLE}` com valor fixo e a
   concatenação do whatsapp-neon-store) valem para exatamente um comando cada. `scripts/ops/restore_new_database.py`
   passou a ser reservado. `tests/ci/mutants_runtime_ddl_gate.py`: 7 mutantes do gate, mortos pelo `--self-test`
-  (10 casos). Fora do escopo (follow-up): `alter table ... add column` interpolado também é pulado pelo restore.
+  (10 casos). Follow-up do #1013: (OBS-1013-03) o DDL dinâmico precisa ser igual, por inteiro e com espaços
+  normalizados, à fonte própria lida estaticamente do array `ddl` de `worker/whatsapp-neon-store.mjs` (coluna ou
+  restrição trocada com os mesmos nomes reprova; forma não extraível reprova `FONTE_DINAMICA_NAO_EXTRAIVEL`); reprova
+  `alter table` interpolado, concatenado ou não capturado inteiro pela regex do restore, `create index` não literal,
+  `create table` fora do formato do restore (espaço duplo, sem IF NOT EXISTS) e DDL em `.js`/subdiretório de `worker/`.
+  Exceções estreitas com cota exata: `create table ${DRILL}.%I` do ensaio em `data-backup.mjs`, os 2 `create index`
+  concatenados do whatsapp e os ALTERs multi-coluna de `zevanory_kv_backup` e `zevanory_support_inbound`, aceitos só se
+  redundantes com o CREATE TABLE literal da mesma tabela. 20 mutantes (G01–G20), mortos pelo `--self-test` (29 casos).

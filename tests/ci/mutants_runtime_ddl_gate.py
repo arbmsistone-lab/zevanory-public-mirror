@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Mutantes do gate de DDL do Worker (scripts/ci/runtime_ddl_gate.py), mortos pelo próprio --self-test.
+G01-G07: #1013. G08-G20: follow-up (OBS-1013-03, ALTER/CREATE INDEX/formatos que o restore pula em silêncio).
 
 Classificação honesta (mesmo critério da AVAL 090): o baseline (gate sem mutação) precisa dar
 `SELFTEST total=N pass=N` com código 0. Cada mutante é MORTO só se o --self-test terminar com código != 0, imprimir a
@@ -21,6 +22,36 @@ MUTANTES = {
                                    'if len(BACKUP_ATRIB.findall(src)) != 1:', 'backup_table_trocado'),
     'G07_excecao_vale_em_qualquer_arquivo': ('if chave in EXCECOES_NOME:', "if chave[1] in ('+', '${BACKUP_TABLE}'):",
                                              'nome_concatenado'),
+    # OBS-1013-03: DDL dinâmico igual, por inteiro, à fonte própria extraída do worker
+    'G08_dinamico_comparado_so_por_nomes': ('    if a != b:\n', '    if False:\n', 'restore_dinamico_coluna_trocada'),
+    'G09_fonte_igual_ao_proprio_restore': ('a, b = [normalizar(s) for s in dinamico], [normalizar(s) for s in fonte]',
+                                           'a, b = [normalizar(s) for s in dinamico], [normalizar(s) for s in dinamico]',
+                                           'fonte_coluna_alterada'),
+    'G10_normalizacao_so_cabecalho': ("    s = ' '.join(s.split())\n", "    s = ' '.join(s.split()[:5])\n",
+                                      'restore_dinamico_restricao_trocada'),
+    'G11_fonte_nao_extraivel_ignorada': (
+        "        return [f'FONTE_DINAMICA_NAO_EXTRAIVEL {FONTE_DINAMICA}: {e} (adapte o extrator ou fixe sha256 sob rótulo)']\n",
+        '        return []\n', 'fonte_nao_extraivel'),
+    # follow-up do #1013: ALTER / CREATE INDEX / formatos que o restore pula em silêncio
+    'G12_alter_aceito_sem_captura_integral': (
+        "if limpo and cap and (fim == cap.end() or (src[cap.end()] == ';' and fim == cap.end() + 1)):", 'if limpo:',
+        'alter_default_truncado'),
+    'G13_alter_concatenado_aceito': ("limpo = d and fim is not None and not concat and '${' not in texto",
+                                     "limpo = d and fim is not None and '${' not in texto", 'alter_concatenado'),
+    'G14_index_interpolado_aceito': ("not concat and '${' not in texto and INDEX_LITERAL.match(texto)",
+                                     'not concat and INDEX_LITERAL.match(texto)', 'index_interpolado'),
+    'G15_index_concatenado_aceito': ("if d and fim is not None and not concat and '${' not in texto and INDEX_LITERAL",
+                                     "if d and fim is not None and '${' not in texto and INDEX_LITERAL", 'index_concatenado'),
+    'G16_create_table_fora_do_formato_aceito': ('    for m in QUALQUER_TABELA.finditer(src):\n', '    for m in []:\n',
+                                                'create_espaco_duplo'),
+    'G17_mjs_em_subdiretorio_aceito': ("if f.parent == wd and f.suffix == '.mjs':", "if f.suffix == '.mjs':",
+                                       'mjs_em_subdiretorio'),
+    'G18_arquivo_js_ignorado': ("EXT_JS = ('.mjs', '.js', '.cjs', '.ts', '.mts', '.cts')", "EXT_JS = ('.mjs',)", 'arquivo_js'),
+    'G19_alter_multicoluna_sem_redundancia': (
+        '            if not alter_redundante(texto, creates.get(multi.group(1).lower())):\n', '            if False:\n',
+        'alter_multicoluna_nao_redundante'),
+    'G20_drill_sem_valor': ('if src.count(DRILL_CONST) != 1 or len(DRILL_ATRIB.findall(src)) != 1:',
+                            'if len(DRILL_ATRIB.findall(src)) != 1:', 'drill_trocado'),
 }
 
 
