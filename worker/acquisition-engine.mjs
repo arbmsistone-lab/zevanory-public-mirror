@@ -257,6 +257,11 @@ export async function recordBlueskyFailure(kv,day,now,{motivo,similaridade=null}
  try{await kv.put(key,JSON.stringify({...status,at:now.toISOString()}),{expirationTtl:BLUESKY_STATUS_TTL});}catch{return {written:false,key};}
  return {written:true,key};
 }
+// Decisão F0 nº 7 do proprietário (10/11/2026): o Telegram de divulgação fica DESLIGADO. Sem flag, variável de
+// ambiente ou chave de KV que o religue: religar exige mudar este código (PR com decisão do dono). O código de
+// publicação no Telegram continua aqui, só não é chamado pelo motor. Nada é gravado no KV pelo canal desligado.
+export const OWNER_DISABLED_CHANNELS=Object.freeze(["telegram"]);
+export const CHANNEL_DISABLED_CODE="canal_desligado_decisao_proprietario";
 export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch){
  env=resolveChannelCredentials(env);
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
@@ -279,6 +284,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  }
  for(const channel of ["telegram","bluesky"]){
   if(hour<PEAK_HOURS[channel])continue;
+  if(OWNER_DISABLED_CHANNELS.includes(channel)){outcomes.push({channel,status:"desligado",code:CHANNEL_DISABLED_CODE,day});continue;}
   if(paused){outcomes.push({channel,status:"pausado",code:"creative_autopublish_paused",day});continue;}
   if(!active(channel)){
    outcomes.push({channel,status:"aguardando credencial",day});

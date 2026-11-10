@@ -1,7 +1,7 @@
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest,CATALOG_SKUS,textVariant,DAILY_TIPS,recordBlueskyFailure,blueskyStatusKey,BLUESKY_STATUS_PREFIX,BLUESKY_STATUS_TTL} from "../worker/acquisition-engine.mjs";
+import {OWNER_DISABLED_CHANNELS,calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest,CATALOG_SKUS,textVariant,DAILY_TIPS,recordBlueskyFailure,blueskyStatusKey,BLUESKY_STATUS_PREFIX,BLUESKY_STATUS_TTL} from "../worker/acquisition-engine.mjs";
 import {blueskyPostText} from "../worker/bluesky-publisher.mjs";
 import {CLOSED_LABEL} from "../worker/politica-unica.mjs";
 import {hotmartKit,salesLockViolations} from "../worker/sales-lock-content.mjs";
@@ -76,20 +76,42 @@ test("a definitive Bluesky rejection is retried on a later tick (max 3/day), nev
  for(let i=0;i<5;i++)await runAcquisitionEngine(e2,new Date(t.getTime()+i*1800000),mock);
  assert.equal(createRecord,3);
 });
-test("ambiguous Telegram failure stays pending (no blind repost); definitive 4xx is retried",async()=>{
- const brand=()=>new Response(readFileSync(new URL("../assets/brand/export/post-01.png",import.meta.url)),{status:200});
- const run=async(mode)=>{
-  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory"};let sends=0,first=true;
-  const mock=async(url)=>{if(url.endsWith("/brand/export/post-01.png"))return brand();
-   if(url.includes("api.telegram.org")){sends++;if(mode==="timeout"&&first){first=false;const e=new Error("timed out");e.name="TimeoutError";throw e;}if(mode==="400"&&sends<=2)return{status:400,json:async()=>({ok:false})};return{status:200,json:async()=>({ok:true,result:{message_id:5}})};}
-   return{ok:true,status:200,json:async()=>({})};};
-  const t=new Date("2026-10-10T15:30:00Z");
-  await runAcquisitionEngine(env,t,mock);const b=await runAcquisitionEngine(env,new Date(t.getTime()+1800000),mock);
-  return {sends,status:b.outcomes.find(x=>x.channel==="telegram").status};
- };
- const amb=await run("timeout");assert.equal(amb.status,"pending");
- assert.equal(amb.sends,1);
- const def=await run("400");assert.equal(def.status,"publicado");assert.equal(def.sends,3);
+// Decisão F0 nº 7 do proprietário (10/11/2026): Telegram de divulgação desligado no motor, sem flag que o religue.
+async function telegramScenario(gen=runAcquisitionEngine){
+ const store=kv(),puts=[],orig=store.put;store.put=async(k,v,o)=>{puts.push(k);return orig(k,v,o);};
+ // Credenciais presentes, flags "de religar" plausíveis e um registro legado: nada disso pode religar o canal.
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory",TELEGRAM_PROMO_ENABLED:"1",TELEGRAM_ENABLED:"true",ACQUISITION_TELEGRAM:"on"};
+ await orig("zpc:telegram:enabled:v1","1");
+ let sends=0;const mock=async(url)=>{if(String(url).includes("api.telegram.org")){sends++;return{status:200,json:async()=>({ok:true,result:{message_id:5}})};}
+  if(String(url).endsWith("/brand/export/post-01.png"))return new Response(readFileSync(new URL("../assets/brand/export/post-01.png",import.meta.url)),{status:200});
+  return{ok:true,status:200,json:async()=>({})};};
+ const outs=[];
+ for(const at of ["2026-11-10T15:35:00Z","2026-11-10T16:35:00Z","2026-11-10T22:35:00Z"])outs.push(await gen(env,new Date(at),mock));
+ return {outs,sends,puts};
+}
+test("F0 nº 7: o motor não publica no Telegram (desligado, sem flag), sem chamada à API e sem chave do canal no KV",async()=>{
+ const {outs,sends,puts}=await telegramScenario();
+ assert.equal(sends,0,"nenhuma chamada à API do Telegram");
+ for(const out of outs){const tg=out.outcomes.find(x=>x.channel==="telegram");assert.equal(tg.status,"desligado");assert.equal(tg.code,"canal_desligado_decisao_proprietario");}
+ assert.equal(puts.some(k=>/telegram/.test(k)),false,"nenhuma chave do Telegram gravada: "+puts.filter(k=>/telegram/.test(k)));
+ // O código de publicação do Telegram continua no módulo (não removido), apenas não é chamado.
+ const src=readFileSync(new URL("../worker/acquisition-engine.mjs",import.meta.url),"utf8");
+ assert.ok(src.includes("await publishTelegram({env,payload:{content:draft.text"));
+ assert.deepEqual([...OWNER_DISABLED_CHANNELS],["telegram"]);
+ assert.equal(/OWNER_DISABLED_CHANNELS[^\n]*(env\.|kv\.|process\.)/.test(src),false,"desligamento não pode depender de env/KV");
+});
+test("F0 nº 7 mutante: religar o Telegram (remover o desligamento) faz o teste falhar",async()=>{
+ const base=new URL("../worker/",import.meta.url);
+ const orig=readFileSync(new URL("acquisition-engine.mjs",base),"utf8");
+ const target='  if(OWNER_DISABLED_CHANNELS.includes(channel)){outcomes.push({channel,status:"desligado",code:CHANNEL_DISABLED_CODE,day});continue;}\n';
+ const variants=[orig.replace(target,""),orig.replace('export const OWNER_DISABLED_CHANNELS=Object.freeze(["telegram"]);','export const OWNER_DISABLED_CHANNELS=Object.freeze([]);')];
+ for(const m of variants){
+  assert.notEqual(m,orig,"alvo do mutante ausente");
+  const mod=await import("data:text/javascript;base64,"+Buffer.from(m.replace(/from "\.\/([a-z0-9-]+\.mjs)"/g,(_,f)=>'from "'+new URL(f,base).href+'"')).toString("base64"));
+  const {sends,outs}=await telegramScenario(mod.runAcquisitionEngine);
+  assert.ok(sends>=1,"mutante sobreviveu: Telegram não publicou");
+  assert.equal(outs[0].outcomes.find(x=>x.channel==="telegram").status,"publicado");
+ }
 });
 test("acquisition runs only at the :35 tick of the isolated 5,35 cron (no new account cron)",()=>{
  const src=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
@@ -104,7 +126,7 @@ test("acquisition runs only at the :35 tick of the isolated 5,35 cron (no new ac
  const prep=readFileSync(new URL("../scripts/deploy/prepare-central-candidate.py",import.meta.url),"utf8");
  assert.equal(/crons\.append\("25,55/.test(prep),false);
 });
-test("one cycle publishes Telegram and Bluesky after peak, then never duplicates",async()=>{
+test("one cycle publishes Bluesky after peak (Telegram desligado, F0 nº 7), then never duplicates",async()=>{
  const store=kv(),counts={telegram:0,createRecord:0},env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory",BLUESKY_HANDLE:"zevanory.bsky.social",BLUESKY_APP_PASSWORD:"password"};
  const mock=async(url,req={})=>{
   if(req.method==="HEAD")return{status:200};
@@ -117,17 +139,18 @@ test("one cycle publishes Telegram and Bluesky after peak, then never duplicates
  const date=new Date("2026-10-10T23:00:00Z");
  const a=await runAcquisitionEngine(env,date,mock);
  assert.equal(a.ok,true);
- assert.deepEqual(a.outcomes.filter(x=>x.status==="publicado").map(x=>x.channel).sort(),["bluesky","telegram"]);
+ assert.deepEqual(a.outcomes.filter(x=>x.status==="publicado").map(x=>x.channel).sort(),["bluesky"]);
+ assert.equal(a.outcomes.find(x=>x.channel==="telegram").status,"desligado");
  assert.equal(a.outcomes.find(x=>x.channel==="blog").status,"rascunho");
  assert.equal(await store.get("zpc:blog:index:v1"),null,"R117: acquisition cannot publish blog by default");
  const b=await runAcquisitionEngine(env,date,mock);
- assert.equal(counts.telegram,1);assert.equal(counts.createRecord,1);
+ assert.equal(counts.telegram,0);assert.equal(counts.createRecord,1);
  assert.ok(b.outcomes.some(x=>x.channel==="bluesky"&&x.url));
  const snapshot=await acquisitionSnapshot(env,date);
  assert.ok(snapshot.today.some(x=>x.channel==="bluesky"&&x.status==="publicado"&&x.link));
  assert.equal(snapshot.metrics.sales,null);
 });
-test("a failing Bluesky provider does not prevent Telegram evidence",async()=>{
+test("a failing Bluesky provider is reported; Telegram stays desligado (F0 nº 7)",async()=>{
  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory",BLUESKY_HANDLE:"zevanory.bsky.social",BLUESKY_APP_PASSWORD:"bad"};
  const mock=async(url,req={})=>{
   if(req.method==="HEAD")return{status:200};
@@ -137,14 +160,14 @@ test("a failing Bluesky provider does not prevent Telegram evidence",async()=>{
   return{status:200,ok:true,json:async()=>({})};
  };
  const result=await runAcquisitionEngine(env,new Date("2026-10-10T23:00:00Z"),mock);
- assert.equal(result.outcomes.find(x=>x.channel==="telegram").status,"publicado");
+ assert.equal(result.outcomes.find(x=>x.channel==="telegram").status,"desligado");
  assert.equal(result.outcomes.find(x=>x.channel==="bluesky").code,"credential_expired");
 });
 test("unconfigured external channel is waiting rather than a false error",async()=>{
  const env={ZEVANORY_PRIVATE_ARTIFACTS:kv()};
  const out=await runAcquisitionEngine(env,new Date("2026-10-10T23:00:00Z"),async()=>({status:200,ok:true,json:async()=>({})}));
  assert.equal(out.outcomes.find(x=>x.channel==="bluesky").status,"aguardando credencial");
- assert.equal(out.outcomes.find(x=>x.channel==="telegram").status,"aguardando credencial");
+ assert.equal(out.outcomes.find(x=>x.channel==="telegram").status,"desligado");
 });
 test("peak schedule delays Bluesky until 19:00 Sao Paulo",async()=>{
  const env={ZEVANORY_PRIVATE_ARTIFACTS:kv(),BLUESKY_HANDLE:"abc",BLUESKY_APP_PASSWORD:"xyz"};
@@ -166,14 +189,14 @@ test("owner digest waits until peak and does not send with missing credential",a
  assert.equal((await runOwnerDailyDigest(env,new Date("2026-10-10T19:00:00Z"))).status,"agendado");
  assert.equal((await runOwnerDailyDigest(env,new Date("2026-10-10T23:00:00Z"))).status,"aguardando credencial");
 });
-test("legacy Telegram receipt is adopted without a duplicate remote post",async()=>{
+test("legacy Telegram receipt does not relight the channel: desligado, no remote post (F0 nº 7)",async()=>{
  const store=kv(),day="2026-10-10";
  await store.put("zpc:multichannel:evidence:telegram:daily:"+day,JSON.stringify({channel:"telegram",provider_post_id:"17",url:"https://t.me/zevanory/17",publishedAt:"2026-10-10T14:00:00Z"}));
  const env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"};
  let requests=0;const mock=async(url,req)=>{if(url.includes("api.telegram.org"))requests++;return{ok:true,status:200,json:async()=>({})};};
  const result=await runAcquisitionEngine(env,new Date("2026-10-10T23:00:00Z"),mock);
- assert.equal(result.outcomes.find(x=>x.channel==="telegram").status,"publicado");
- assert.equal(result.outcomes.find(x=>x.channel==="telegram").provenance,"legacy");
+ assert.equal(result.outcomes.find(x=>x.channel==="telegram").status,"desligado");
+ assert.equal(await store.get("zpc:acquisition:daily:"+day+":telegram"),null);
  assert.equal(requests,0);
 });
 
