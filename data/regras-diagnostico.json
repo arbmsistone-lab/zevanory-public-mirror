@@ -5,7 +5,7 @@
   "fuso": "America/Sao_Paulo",
   "canais": {
     "blog": { "ativacao": "automatica", "esperadas_por_dia": 1, "dias_semana": [1, 3, 5], "hora_limite": 9, "chave_status": "zpc:blog:status:v1:{dia}" },
-    "telegram": { "ativacao": "credencial", "esperadas_por_dia": 1, "dias_semana": [0, 1, 2, 3, 4, 5, 6], "hora_limite": 12 },
+    "telegram": { "ativacao": "desligada", "esperadas_por_dia": 0, "dias_semana": [], "hora_limite": 12, "motivo_desligado": "Decisão F0 nº 7 do proprietário (10/11/2026)" },
     "bluesky": { "ativacao": "credencial", "esperadas_por_dia": 1, "dias_semana": [0, 1, 2, 3, 4, 5, 6], "hora_limite": 19 },
     "youtube": { "ativacao": "desligada", "esperadas_por_dia": 0, "dias_semana": [], "hora_limite": 13, "motivo_desligado": "Shorts desligados até a F1 item 1 (checagem do YouTube Studio e dry-run do CTA /hotmart)" }
   },

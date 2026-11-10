@@ -13,15 +13,15 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITE = "tests/diagnostico-diario.test.mjs";
-const BASE_COUNT = 7;
+const BASE_COUNT = 8;
 const COPY = ["worker", "data", "scripts/audit", "scripts/channels", "tests/helpers", SUITE];
 const DG = "worker/diagnostico-diario.mjs", RL = "worker/relatorio-diario.mjs", FN = "worker/funnel.mjs", SN = "scripts/audit/command-center-snapshot.mjs", AQ = "worker/acquisition-engine.mjs";
-const R = "regras versionadas", CP = "CANAL_PARADO", AU = "autonomia real", HV = "vendas Hotmart", REL = "relatório das 20h", FU = "funil:", AV = "aviso público";
+const TG = "Telegram desligado", R = "regras versionadas", CP = "CANAL_PARADO", AU = "autonomia real", HV = "vendas Hotmart", REL = "relatório das 20h", FU = "funil:", AV = "aviso público";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
   ["DD01_hora_limite_ignorada", R, [[DG, "  if (!(Number(hour) >= Number(c.hora_limite))) return 0;\n", ""]]],
   ["DD02_dias_da_semana_ignorados", R, [[DG, "  if (!(Array.isArray(c.dias_semana) && c.dias_semana.includes(weekdayOf(day)))) return 0;\n", ""]]],
-  ["DD03_canal_desligado_vira_ativo", R, [[DG, '{ ativo: false, motivo: c.motivo_desligado || "desligado" }', "{ ativo: true, motivo: null }"]]],
+  ["DD03_canal_desligado_vira_ativo", R, [[DG, '{ ativo: false, desligado: true, motivo: c.motivo_desligado || "desligado" }', "{ ativo: true, motivo: null }"]]],
   ["DD04_credencial_nao_exigida", R, [[DG, "out[canal] = row?.configured === true ?", "out[canal] = true ?"]]],
   ["DD05_canal_parado_nunca_diagnostica", CP, [[DG, "    if (publicadas >= esperadas) continue;\n", "    continue;\n"]]],
   ["DD06_motivo_do_gate_do_blog_ignorado", CP, [[DG, 'if (blogStatus?.resultado === "rejeitado") return', "if (false) return"]]],
@@ -45,6 +45,11 @@ const MUTANTS = [
   ["DD24_funil_ignora_views_br", FU, [[FN, "if (brClasses.includes(m)) b.views_br += n;", "if (false) b.views_br += n;"]]],
   ["DD25_aviso_mistura_hotmart_na_serie_antiga", AV, [[SN, "b.legacyMixedClicks = (b.legacyMixedClicks || 0) + (v?.checkout_intent || 0) + (v?.subscribe_click || 0);", "b.legacyMixedClicks = (b.legacyMixedClicks || 0) + (v?.checkout_intent || 0) + (v?.hotmart_view || 0) + (v?.subscribe_click || 0);"]]],
   ["DD26_linha_hotmart_view_removida", AV, [[SN, 'console.log("::notice title=HOTMART_VIEW::"', 'void ("::notice title=HOTMART_VIEW::"']]],
+  // Telegram desligado por decisão do proprietário (F0 nº 7; auditoria do #1019, NC-5).
+  ["DD28_desligada_volta_a_ser_devida", TG, [[DG, 'if (!c || c.ativacao === "desligada") return 0;', "if (!c) return 0;"]]],
+  ["DD29_desligado_sem_decisao_do_proprietario", TG, [[RL, '? "decisão do proprietário" : a.motivo', "? a.motivo : a.motivo"]]],
+  ["DD30_desligado_exibido_como_inativo", TG, [[RL, "const linha = desligado ? desligado :", "const linha = false ? desligado :"]]],
+  ["DD31_credencial_religa_canal_desligado", TG, [[DG, 'else if (c.ativacao === "desligada") out[canal] =', 'else if (c.ativacao === "desligada" && false) out[canal] =']]],
   ["DD27_autonomia_falsa_100", AV, [[SN, 'pct: autonomiaReal.valor ?? "não medido"', "pct: autonomiaReal.valor ?? 100"]]],
 ];
 

@@ -17,6 +17,8 @@ const readJson = async (kv, key) => {
 };
 
 // Publicações esperadas de um canal no dia local, já vencidas na hora local informada (24 = dia encerrado).
+// Canal com ativacao "desligada" (ex.: Telegram, decisão F0 nº 7 do proprietário) nunca é devido, qualquer que seja a
+// agenda: sem CANAL_PARADO e fora do denominador da autonomia.
 export function esperadasNoDia(canal, day, hour, regras = REGRAS) {
   const c = regras?.canais?.[canal];
   if (!c || c.ativacao === "desligada") return 0;
@@ -30,7 +32,7 @@ export function canaisAtivos(checklist = [], regras = REGRAS) {
   const out = {};
   for (const [canal, c] of Object.entries(regras?.canais || {})) {
     if (c.ativacao === "automatica") out[canal] = { ativo: true, motivo: null };
-    else if (c.ativacao === "desligada") out[canal] = { ativo: false, motivo: c.motivo_desligado || "desligado" };
+    else if (c.ativacao === "desligada") out[canal] = { ativo: false, desligado: true, motivo: c.motivo_desligado || "desligado" };
     else {
       const row = (Array.isArray(checklist) ? checklist : []).find((x) => x?.id === canal);
       out[canal] = row?.configured === true ? { ativo: true, motivo: null } : { ativo: false, motivo: row?.external_verification_pending ? "aguardando aprovação" : "aguardando credencial" };

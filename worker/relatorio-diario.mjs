@@ -59,7 +59,8 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
     const esperadas = a?.ativo ? esperadasNoDia(canal, day, hour, regras) : 0;
     const publicadas = s.publicadas || 0;
     const extra = s.url ? s.url : s.id ? "id " + s.id : publicadas < esperadas ? s.motivo : s.status && s.status !== "publicado" ? s.status : null;
-    const linha = !a?.ativo ? `• ${canal}: inativo (${a?.motivo || "sem regra"})` : `• ${canal}: esperado ${esperadas} × real ${publicadas}` + (extra ? ` — ${extra}` : "");
+    const desligado = a?.desligado === true ? `• ${canal}: desligado (${/propriet[aá]rio/i.test(String(a.motivo || "")) ? "decisão do proprietário" : a.motivo})` : null;
+    const linha = desligado ? desligado : !a?.ativo ? `• ${canal}: inativo (${a?.motivo || "sem regra"})` : `• ${canal}: esperado ${esperadas} × real ${publicadas}` + (extra ? ` — ${extra}` : "");
     return { canal, ativo: a?.ativo === true, esperadas, publicadas, url: s.url || null, id: s.id || null, linha };
   });
 

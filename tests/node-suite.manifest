@@ -45,7 +45,7 @@ tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
-tests/diagnostico-diario.test.mjs 7
+tests/diagnostico-diario.test.mjs 8
 tests/engine-dispatcher.test.mjs 4
 tests/experiments.test.mjs 5
 tests/financial-audit-mp-retry.test.mjs 5
