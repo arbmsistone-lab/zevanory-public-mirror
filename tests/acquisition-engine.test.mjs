@@ -103,7 +103,8 @@ test("F0 nº 7: o motor não publica no Telegram (desligado, sem flag), sem cham
 test("F0 nº 7 mutante: religar o Telegram (remover o desligamento) faz o teste falhar",async()=>{
  const base=new URL("../worker/",import.meta.url);
  const orig=readFileSync(new URL("acquisition-engine.mjs",base),"utf8");
- const target='  if(OWNER_DISABLED_CHANNELS.includes(channel)){outcomes.push({channel,status:"desligado",code:CHANNEL_DISABLED_CODE,day});continue;}\n';
+ const target='  if(OWNER_DISABLED_CHANNELS.includes(channel)){outcomes.push({channel,status:"desligado",code:CHANNEL_DISABLED_CODE,day});continue;}';
+ // Alvo sem fim de linha: o checkout CRLF (Windows) termina as linhas em CR+LF.
  const variants=[orig.replace(target,""),orig.replace('export const OWNER_DISABLED_CHANNELS=Object.freeze(["telegram"]);','export const OWNER_DISABLED_CHANNELS=Object.freeze([]);')];
  for(const m of variants){
   assert.notEqual(m,orig,"alvo do mutante ausente");
