@@ -195,8 +195,10 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  if(hour>=PEAK_HOURS.blog){
   try{
    const blog=await ensureDailyBlog(env,now,fetchImpl);
-   outcomes.push({channel:"blog",status:blog.latest?"publicado":blog.draft?"rascunho":"erro",url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day,code:blog.latest?null:blog.reason||"blog_unavailable"});
-   if(blog.latest)await emitActivity(env,{type:"post_published",channel:"blog",status:"published",ref:"blog:"+day+":"+blog.latest.slug,link:blog.latest.url},{now:now.getTime()}).catch(()=>null);
+   // Plano Mestre v1.2 (DEC-21 substituída): publicado, fora da agenda (só seg/qua/sex), pausado ou erro com o motivo do gate.
+   const blogStatus=blog.latest?"publicado":blog.reason==="not_publication_day"?"fora_da_agenda":blog.reason==="creative_autopublish_paused"?"pausado":"erro";
+   outcomes.push({channel:"blog",status:blogStatus,url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day,code:blog.latest?null:blog.reason||"blog_unavailable"});
+   if(blog.created?.length&&blog.latest)await emitActivity(env,{type:"post_published",channel:"blog",status:"published",ref:"blog:"+day+":"+blog.latest.slug,link:blog.latest.url},{now:now.getTime()}).catch(()=>null);
   }catch{outcomes.push({channel:"blog",status:"erro",code:"blog_generation_failed",day});}
  }
  for(const channel of ["telegram","bluesky"]){

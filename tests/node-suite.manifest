@@ -18,6 +18,7 @@ tests/autonomy-inventory.test.mjs 6
 tests/b0-baseline.test.mjs 36
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
+tests/blog-autopublicacao.test.mjs 7
 tests/blog-editorial-uniqueness.test.mjs 1
 tests/blog-editorial.test.mjs 6
 tests/blog-layout.test.mjs 5
@@ -116,7 +117,6 @@ tests/production-staging-health.test.mjs 3
 tests/public-html-internal-markers.test.mjs 2
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 12
-tests/r117-blog-owner-gate.test.mjs 5
 tests/r120-dec20-chat.test.mjs 4
 tests/r120-public-chat.test.mjs 4
 tests/r120-turnstile.test.mjs 4
