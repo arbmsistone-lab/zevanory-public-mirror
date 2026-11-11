@@ -274,6 +274,18 @@ export async function recordBlueskyFailure(kv,day,now,{motivo,similaridade=null}
  try{await kv.put(key,JSON.stringify({...status,at:now.toISOString()}),{expirationTtl:BLUESKY_STATUS_TTL});}catch{return {written:false,key};}
  return {written:true,key};
 }
+// Recuperação só depois de ler integralmente os 30 dias locais (hoje e 29 anteriores).
+// Ausência real é legítima; um único recibo ilegível impede qualquer escrita do histórico.
+export async function rebuildChannelHistory(kv,day,channel){
+ const recovered=[];
+ for(let i=29;i>=0;i--){
+  const d=new Date(Date.parse(day+"T12:00:00Z")-i*DAY).toISOString().slice(0,10);
+  const read=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+d+":"+channel,v=>receiptShape(v)&&(v.day===undefined||v.day===d)&&(v.status!=="publicado"||typeof v.text==="string"));
+  if(!read.ok)return {ok:false};
+  if(read.value?.status==="publicado")recovered.push({day:d,text:read.value.text,product:read.value.product??null});
+ }
+ return {ok:true,history:recovered};
+}
 // Decisão F0 nº 7 do proprietário (10/11/2026): o Telegram de divulgação fica DESLIGADO. Sem flag, variável de
 // ambiente ou chave de KV que o religue: religar exige mudar este código (PR com decisão do dono). O código de
 // publicação no Telegram continua aqui, só não é chamado pelo motor. Nada é gravado no KV pelo canal desligado.
@@ -310,7 +322,16 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
    continue;
   }
   try{
-   const historyRead=await readAcquisitionKv(kv,"zpc:acquisition:history:"+channel,historyShape);
+   let historyRead=await readAcquisitionKv(kv,"zpc:acquisition:history:"+channel,historyShape);
+   let historyRebuilt=false;
+   if(!historyRead.ok){
+    const rebuilt=await rebuildChannelHistory(kv,day,channel);
+    if(rebuilt.ok){
+     await kv.put("zpc:acquisition:history:"+channel,JSON.stringify(rebuilt.history),{expirationTtl:45*86400});
+     historyRead={ok:true,value:rebuilt.history};historyRebuilt=true;
+     if(channel==="bluesky")await recordBlueskyFailure(kv,day,now,{motivo:"history_rebuilt"});
+    }
+   }
    if(!historyRead.ok){
     outcomes.push({channel,status:"erro",code:"history_unreadable",day});
     if(channel==="bluesky")await recordBlueskyFailure(kv,day,now,{motivo:"history_unreadable"});
@@ -318,6 +339,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
    }
    const archive=historyRead.value??[];
    const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:archive,salesOpen,hotmartOpen});
+   if(historyRebuilt)result.history_rebuilt=true;
    outcomes.push(result);
    if(channel==="bluesky"&&result.status==="erro")await recordBlueskyFailure(kv,day,now,{motivo:result.code,similaridade:result.gate?.similarity_max});
    if(result.status==="publicado"&&!archive.some(p=>p.day===day)){
