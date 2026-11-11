@@ -46,3 +46,11 @@ NC-CL-1025-03: GET confirma visualmente; apenas POST descadastra.
 
 12 testes adicionais em f2b-hotmart-secondary, incluindo 4 mutantes causais: retorno 503, enqueue antes da atividade, provedor sem etapa vencida e GET gravando. Os dez mutantes anteriores continuam ativos; a âncora do de estorno foi ajustada para também remover a nova pré-checagem, sem reduzir a prova.
 Reprodução oficial adv1025.mjs do anexo executada sem alterações: HTTP 200, venda true, atividade true, apenas log de falha do efeito secundário. Suíte e gates finais informados na entrega do SHA; nenhuma conta real ou segredo foi consultado.
+
+## NC-R2-1025-04 — histórico e reconciliação
+
+A cota usa o endpoint oficial GET /usage do Resend (https://resend.com/docs/api-reference/usage/retrieve-usage), sem listar o histórico. Valida consumo, limite e data de renovação das janelas diária e mensal. Aplica o menor limite entre a conta e a política de 100/dia e 3.000/mês; limite diário nulo não remove a política. Erro, resposta inválida ou janela vencida bloqueiam novos envios sem gravar tentativa. Uma leitura válida posterior permite recuperação. A chave existente precisa autorizar esse endpoint; nenhuma credencial real foi consultada.
+
+A reconciliação de envio desconhecido usa uma página por etapa a cada execução, cursor e candidatos persistidos em KV com a mesma expiração do pedido. Há orçamento compartilhado de nove leituras de reconciliação por execução, além da leitura de cota. Não se presume ordenação temporal da lista. Evidência exige destinatário, assunto, corpo e janela de tentativa compatíveis. Falha de leitura mantém a etapa desconhecida; cursor corrompido reinicia apenas a busca de evidência por GET, mantendo a etapa desconhecida sem outro POST e sem bloquear pedidos independentes. Esgotar uma busca nunca prova ausência de envio; a próxima busca pode reiniciar para encontrar evidência tardia. Os checkpoints guardam somente hash do corpo e referências do provedor.
+
+Onze testes adicionais cobrem 1.100 registros históricos, cota diária/mensal, falha e recuperação de leitura, retomada além de dez páginas, isolamento de falha de histórico e candidatos pendentes. Quatro mutantes restauram dependência do histórico, convertem uso inválido em zero, descartam cursor e descartam candidatos; todos devem morrer por asserção do cenário.

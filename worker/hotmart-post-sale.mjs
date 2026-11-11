@@ -74,15 +74,13 @@ async function salesAllowed(kv,now){
  return sw!==null&&validOwnerAuthorization(sw,now);
 }
 async function providerGet(env,fetchImpl,path){const r=await fetchImpl('https://api.resend.com'+path,{headers:{authorization:'Bearer '+env.RESEND_API_KEY},signal:AbortSignal.timeout(10000)});if(r.status!==200)throw Error('provider_read_failed');return r.json();}
-async function providerList(env,fetchImpl,now){
- const rows=[];let after='';
- for(let page=0;page<10;page++){
-  const v=await providerGet(env,fetchImpl,'/emails?limit=100'+(after?'&after='+encodeURIComponent(after):''));
-  if(!object(v)||!Array.isArray(v.data)||typeof v.has_more!=='boolean'||!v.data.every(x=>object(x)&&typeof x.id==='string'&&Number.isFinite(Date.parse(x.created_at))))throw Error('provider_list_invalid');
-  rows.push(...v.data);
-  if(!v.has_more)return rows;
-  after=v.data.at(-1)?.id;if(!after||page===9)throw Error('provider_list_incomplete');
- }
+// Quota is independent of the sent-email history. Official GET /usage counts
+// the account's rolling daily window and calendar month, including other flows.
+async function providerUsage(env,fetchImpl,now){
+ const v=await providerGet(env,fetchImpl,'/usage');
+ const valid=(w,maxWindow,nullable)=>object(w)&&Number.isSafeInteger(w.used)&&w.used>=0&&(nullable&&w.limit===null||Number.isSafeInteger(w.limit)&&w.limit>=0)&&typeof w.resets_at==='string'&&Number.isFinite(Date.parse(w.resets_at))&&Date.parse(w.resets_at)>now&&Date.parse(w.resets_at)<=now+maxWindow;
+ if(v?.object!=='usage'||!valid(v?.emails?.daily,DAY+60000,true)||!valid(v?.emails?.monthly,32*DAY,false))throw Error('provider_usage_invalid');
+ return {used:v.emails.daily.used,dailyLimit:Math.min(100,v.emails.daily.limit??100),monthlyUsed:v.emails.monthly.used,monthlyLimit:Math.min(3000,v.emails.monthly.limit)};
 }
 async function mailBody(order,step,env,ref){const kit=KITS.find(k=>k.hotmart_product_id===order.product),content=transactionalContent(step,kit);if(!safeTransactionalContent(content))throw Error('content_rejected');
  const opt='https://zevanory.api.br'+HOTMART_POSTSALE_OPTOUT+'?i='+ref+'&t='+await hmac(env,ref);
@@ -90,13 +88,37 @@ async function mailBody(order,step,env,ref){const kit=KITS.find(k=>k.hotmart_pro
  if(!safeTransactionalContent({subject:content.subject,text}))throw Error('content_rejected');
  return {from:String(env.RESEND_FROM_ADDRESS||'ZEVANORY <contato@zevanory.api.br>'),to:[order.email],reply_to:'suporte@zevanory.api.br',subject:content.subject,text,headers:{'List-Unsubscribe':'<'+opt+'>','List-Unsubscribe-Post':'List-Unsubscribe=One-Click'},tags:[{name:'flow',value:'hotmart_posvenda'},{name:'reference',value:ref.slice(0,32)+'_'+step}]};
 }
-async function reconcile(env,fetchImpl,rows,body,state){
- const matches=rows.filter(x=>x.subject===body.subject&&Array.isArray(x.to)&&x.to.includes(body.to[0])&&Date.parse(x.created_at)>=state.firstAttempt-60000&&Date.parse(x.created_at)<=state.lastAttempt+60000);
- for(const row of matches.slice(0,10)){
-  const v=await providerGet(env,fetchImpl,'/emails/'+encodeURIComponent(row.id));
-  if(v.id===row.id&&JSON.stringify(v.to)===JSON.stringify(body.to)&&v.subject===body.subject&&v.text===body.text)return row.id;
- }
- return null;
+// At most one list page per unknown stage/tick. The cursor and remaining
+// candidates survive the tick; neither exhaustion nor read failure permits POST.
+async function reconcile(env,fetchImpl,kv,key,body,state,{ttl,budget}){
+ const cursorKey=key+':reconciliacao';
+ const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v);
+ const shape=v=>object(v)&&v.bodyHash===state.bodyHash&&(v.after===null||validId(v.after))&&Array.isArray(v.candidates)&&v.candidates.length<=100&&v.candidates.every(validId);
+ const rawCursor=await kv.get(cursorKey);let savedCursor=null;
+ if(rawCursor!==null){try{const v=JSON.parse(rawCursor);if(shape(v))savedCursor=v;}catch{}}
+ // This is a disposable search projection, never an attempt receipt. Restarting
+ // a corrupt cursor only repeats GETs; the unknown-stage POST prohibition remains.
+ let cursor=savedCursor||{bodyHash:state.bodyHash,after:null,candidates:[]};
+ const get=async path=>{if(budget.remaining<=0)throw Error('reconcile_budget');budget.remaining--;return providerGet(env,fetchImpl,path);};
+ const drain=async()=>{
+  while(cursor.candidates.length&&budget.remaining>0){
+   const id=cursor.candidates[0],v=await get('/emails/'+encodeURIComponent(id));
+   if(!object(v)||v.id!==id||!Array.isArray(v.to)||typeof v.subject!=='string'||typeof v.text!=='string')throw Error('reconcile_detail_invalid');
+   if(JSON.stringify(v.to)===JSON.stringify(body.to)&&v.subject===body.subject&&v.text===body.text)return id;
+   cursor={...cursor,candidates:cursor.candidates.slice(1)};await kv.put(cursorKey,JSON.stringify(cursor),ttl);
+  }
+  return null;
+ };
+ if(cursor.candidates.length)return drain();
+ if(budget.remaining<=0)return null;
+ const page=await get('/emails?limit=100'+(cursor.after?'&after='+encodeURIComponent(cursor.after):''));
+ if(!object(page)||!Array.isArray(page.data)||typeof page.has_more!=='boolean'||!page.data.every(x=>object(x)&&validId(x.id)&&Number.isFinite(Date.parse(x.created_at))))throw Error('reconcile_list_invalid');
+ const after=page.has_more?page.data.at(-1)?.id:null;
+ if(page.has_more&&(!after||after===cursor.after))throw Error('reconcile_cursor_invalid');
+ const candidates=page.data.filter(x=>x.subject===body.subject&&Array.isArray(x.to)&&x.to.includes(body.to[0])&&Date.parse(x.created_at)>=state.firstAttempt-60000&&Date.parse(x.created_at)<=state.lastAttempt+60000).map(x=>x.id);
+ cursor={bodyHash:state.bodyHash,after,candidates};
+ await kv.put(cursorKey,JSON.stringify(cursor),ttl);
+ return drain();
 }
 const running=new WeakSet();
 export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch,cron='0 * * * *'}={}){
@@ -126,8 +148,8 @@ export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch,cro
    if(hasDue)break;
   }
   if(!hasDue)return {ok:true,sent:0,priority:1,code:'no_due_steps'};
-  const rows=await providerList(env,fetchImpl,now),today=new Date(now).toISOString().slice(0,10);
-  let used=rows.filter(x=>x.created_at.slice(0,10)===today).length;
+  let {used,dailyLimit,monthlyUsed,monthlyLimit}=await providerUsage(env,fetchImpl,now);
+  const reconciliationBudget={remaining:9};let reconciliationPending=0;
   for(const [ref,order] of orders.sort((a,b)=>a[1].approvedAt-b[1].approvedAt)){
    if(now>=order.expiresAt||await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker))continue;
    for(const step of STEPS){
@@ -139,14 +161,14 @@ export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch,cro
     const prior=confirmation.corrupt||attempt.corrupt?{status:'unknown',attempts:2,bodyHash,firstAttempt:order.approvedAt,lastAttempt:now}:attempt.value;
     if(prior&&prior.bodyHash!==bodyHash)throw Error('body_changed');
     if(prior&&['attempting','unknown','sent'].includes(prior.status)){
-     const id=await reconcile(env,fetchImpl,rows,body,prior);if(id)await kv.put(key+':confirmado',JSON.stringify({id,bodyHash}),ttl);
+     try{const id=await reconcile(env,fetchImpl,kv,key,body,prior,{ttl,budget:reconciliationBudget});if(id)await kv.put(key+':confirmado',JSON.stringify({id,bodyHash}),ttl);else reconciliationPending++;}catch{reconciliationPending++;}
      continue; // unknown never permits another POST, even after the provider key expires
     }
     if(prior&&(prior.attempts>=2||now-prior.firstAttempt>=23*3600000||now-prior.lastAttempt<3600000))continue;
-    if(used>=100||sent>=3)break;
+    if(used>=dailyLimit||monthlyUsed>=monthlyLimit||sent>=3)break;
     if(await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker)||!await salesAllowed(kv,now))break;
     const state={status:'attempting',attempts:(prior?.attempts||0)+1,bodyHash,firstAttempt:prior?.firstAttempt??now,lastAttempt:now};
-    await kv.put(key,JSON.stringify(state),ttl);used++;
+    await kv.put(key,JSON.stringify(state),ttl);used++;monthlyUsed++;
     let response;try{response=await fetchImpl('https://api.resend.com/emails',{method:'POST',headers:{authorization:'Bearer '+env.RESEND_API_KEY,'content-type':'application/json','Idempotency-Key':'hm-posvenda-'+ref+'-'+step.id},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});}catch{}
     let v;try{v=await response?.json();}catch{}
     if(response?.status===200&&typeof v?.id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v.id)){
@@ -155,7 +177,7 @@ export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch,cro
     await kv.put(key,JSON.stringify(state),ttl);
    }
   }
-  return {ok:true,sent,priority:1};
+  return {ok:true,sent,priority:1,reconciliationPending};
  }catch{return {ok:false,sent,priority:1,code:'post_sale_inconclusive'};}finally{running.delete(kv);}
 }
 export async function handleHotmartPostSaleOptOut(request,env){

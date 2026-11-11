@@ -51,6 +51,7 @@ tests/f1-bluesky-kv.test.mjs 11
 tests/f1b-bluesky-recovery.test.mjs 5
 tests/f2-hotmart-post-sale.test.mjs 30
 tests/f2b-hotmart-secondary.test.mjs 12
+tests/f2c-hotmart-provider-recovery.test.mjs 11
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5
