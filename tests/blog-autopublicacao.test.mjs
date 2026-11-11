@@ -227,7 +227,7 @@ test("NC-F1-A3-01: erro de leitura, JSON ou estrutura inválida em status, legad
     const extra = { [BLOG_INDEX_KEY]: indiceAnterior };
     if (falha.raw !== undefined) extra[chaves[nome]] = falha.raw;
     const x = fake(extra);
-    if (falha.throwOn) { const get = x.kv.get; x.kv.get = async (k) => { if (k === falha.throwOn) throw new Error("kv_down"); return get(k); }; }
+    { const get = x.kv.get; x.kv.get = async (k) => { if (k === falha.throwOn || (nome === "indice" && k === BLOG_STATUS_PREFIX + "2026-10-11")) throw new Error("kv_down"); return get(k); }; }
     const out = await ensureDailyBlog(x.env, at(MON), x.fetchImpl);
     assert.equal(out.reason, "kv_leitura_invalida:" + nome + ":" + erro, nome + "/" + erro);
     assert.deepEqual(x.writes, [], "nenhuma gravação: " + nome + "/" + erro);
@@ -237,7 +237,7 @@ test("NC-F1-A3-01: erro de leitura, JSON ou estrutura inválida em status, legad
   // Cenário reproduzido: o índice ilegível não pode ser sobrescrito por 1 artigo; quando volta a ler, o novo entra no fim.
   const y = fake({ [BLOG_INDEX_KEY]: indiceAnterior });
   const get = y.kv.get; let falhar = true;
-  y.kv.get = async (k) => { if (falhar && k === BLOG_INDEX_KEY) throw new Error("kv_down"); return get(k); };
+  y.kv.get = async (k) => { if (falhar && (k === BLOG_INDEX_KEY || k === BLOG_STATUS_PREFIX + "2026-10-11")) throw new Error("kv_down"); return get(k); };
   assert.equal((await ensureDailyBlog(y.env, at(MON), y.fetchImpl)).reason, "kv_leitura_invalida:indice:leitura");
   assert.equal(y.data.get(BLOG_INDEX_KEY), indiceAnterior);
   falhar = false;
@@ -246,6 +246,7 @@ test("NC-F1-A3-01: erro de leitura, JSON ou estrutura inválida em status, legad
   assert.equal(idx.length, 13); assert.deepEqual(idx.slice(0, 12), anteriores);
   // O motor reporta a interrupção como erro com o motivo, sem gravar nada do blog.
   const z = fake({ [BLOG_INDEX_KEY]: "{quebrado" });
+  const zget=z.kv.get;z.kv.get=async k=>{if(k===BLOG_STATUS_PREFIX+"2026-10-11")throw Error("source_unreadable");return zget(k);};
   const eng = await runAcquisitionEngine({ ZEVANORY_PRIVATE_ARTIFACTS: z.kv }, at(MON), z.fetchImpl);
   assert.deepEqual(((o) => [o.status, o.code])(eng.outcomes.find((o) => o.channel === "blog")), ["erro", "kv_leitura_invalida:indice:json"]);
   assert.equal(z.writes.some((k) => k.startsWith("zpc:blog:")), false);

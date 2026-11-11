@@ -40,7 +40,7 @@ const MUTANTS = [
   ["BG19_gate_ignorado", RJ, [[MCA, "if(!gate.ok)return reject(", "if(false)return reject("]]],
   ["BG20_pausa_criativa_ignorada", RJ, [[MCA, 'if(pause==="1")return', "if(false)return"]]],
   ["BG21_cta_ignora_modo_hotmart", HM, [[MCA, "const ctaUrl=blogCtaUrl(source,mode);", "const ctaUrl=blogCtaUrl(source,{});"]]],
-  ["BG22_indice_duplica_na_nova_tentativa", ID, [[MCA, "articles:[...(index.articles||[]).filter(x=>x?.slug!==article.slug),article]", "articles:[...(index.articles||[]),article]"]]],
+  ["BG22_indice_duplica_na_nova_tentativa", ID, [[MCA, ".filter(x=>x.slug!==article.slug)", ""]]],
   ["BG23_contador_regravado_na_nova_tentativa", ID, [[MCA, "if(!weekDays.includes(day))await kv.put(weekKey", "await kv.put(weekKey"]]],
   // Auditoria do #1020: gerador sem edição repete o tema na janela de 45; revisão por amostragem (1 de cada 3).
   ["BG24_edicao_fixa_repete_artigo", ANO, [[ED, "const edition = ((Math.floor(n / 25) % EDITIONS.length) + EDITIONS.length) % EDITIONS.length;", "const edition = ((Math.floor(n / 25) % 2) + 2) % 2;"]]],
@@ -49,7 +49,7 @@ const MUTANTS = [
   ["BG27_erro_de_leitura_vira_vazio", N1, [[MCA, 'catch{return {ok:false,erro:"leitura"};}', "catch{return {ok:true,v:null};}"]]],
   ["BG28_json_invalido_vira_vazio", N1, [[MCA, 'catch{return {ok:false,erro:"json"};}', "catch{return {ok:true,v:null};}"]]],
   ["BG29_estrutura_nao_validada", N1, [[MCA, '  if(!valid(v))return {ok:false,erro:"estrutura"};\n', ""]]],
-  ["BG30_falha_de_leitura_nao_interrompe", N1, [[MCA, 'if(!r.ok)return {created:[],latest:null,day,reason:"kv_leitura_invalida:"+nome+":"+r.erro};', "if(!r.ok){lido[nome]=null;continue;}"]]],
+  ["BG30_falha_de_leitura_nao_interrompe", N1, [[MCA, 'if(!r.ok&&nome!=="indice")return {created:[],latest:null,day,reason:"kv_leitura_invalida:"+nome+":"+r.erro};', "if(!r.ok){lido[nome]=null;continue;}"]]],
   ["BG31_contador_semanal_sem_forma", N1, [[MCA, 'semana:v=>isObj(v)&&Array.isArray(v.days)&&v.days.every(d=>typeof d==="string"&&DAY_RE.test(d)),', "semana:v=>isObj(v),"]]],
   ["BG32_dominio_reservado_aceito", N2, [[GATE, "if (RESERVED_TLD.test(host) || RESERVED_HOST.test(host)", "if (RESERVED_HOST.test(host)"]]],
   ["BG33_ip_literal_aceito", N2, [[GATE, ' || /^[\\d.]+$/.test(host)) return false;', ") return false;"]]],

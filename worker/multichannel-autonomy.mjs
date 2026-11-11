@@ -151,7 +151,7 @@ export const BLOG_KV_SHAPES=Object.freeze({
   status:v=>isObj(v)&&(v.resultado==="ok"?typeof v.slug==="string"&&typeof v.url==="string"&&typeof v.at==="string":v.resultado==="rejeitado"&&Array.isArray(v.motivos)&&v.motivos.every(x=>typeof x==="string")),
   legado:v=>isObj(v)&&typeof v.slug==="string"&&v.slug.length>0,
   semana:v=>isObj(v)&&Array.isArray(v.days)&&v.days.every(d=>typeof d==="string"&&DAY_RE.test(d)),
-  indice:v=>isObj(v)&&Array.isArray(v.articles)&&v.articles.every(a=>isObj(a)&&typeof a.slug==="string"&&typeof a.title==="string"&&typeof a.body==="string"),
+  indice:v=>isObj(v)&&Array.isArray(v.articles),
 });
 export async function readKvStrict(kv,key,valid=()=>true){
   let raw;try{raw=await kv.get(key);}catch{return {ok:false,erro:"leitura"};}
@@ -159,6 +159,22 @@ export async function readKvStrict(kv,key,valid=()=>true){
   let v;try{v=JSON.parse(String(raw));}catch{return {ok:false,erro:"json"};}
   if(!valid(v))return {ok:false,erro:"estrutura"};
   return {ok:true,v};
+}
+export const validBlogIndexArticle=a=>isObj(a)&&typeof a.slug==="string"&&typeof a.title==="string"&&typeof a.body==="string";
+// Decisão do proprietário nesta rodada: legado reconhecível sem body é tolerado, preservado e não é corrupção.
+const knownLegacyArticle=a=>isObj(a)&&typeof a.slug==="string"&&typeof a.title==="string"&&!Object.hasOwn(a,"body");
+export async function rebuildBlogIndex(kv,day){
+ const articles=[];
+ for(let i=104;i>=0;i--){
+  const d=new Date(Date.parse(day+"T12:00:00Z")-i*86400000).toISOString().slice(0,10);
+  const status=await readKvStrict(kv,BLOG_STATUS_PREFIX+d,v=>isObj(v)&&["ok","rejeitado"].includes(v.resultado)&&(v.resultado!=="ok"||typeof v.slug==="string"));
+  if(!status.ok)return {ok:false};
+  if(status.v?.resultado!=="ok")continue;
+  const article=await readKvStrict(kv,"zpc:blog:article:"+status.v.slug,v=>validBlogIndexArticle(v)&&v.slug===status.v.slug);
+  if(!article.ok||!article.v)return {ok:false};
+  if(!articles.some(a=>a.slug===article.v.slug))articles.push(article.v);
+ }
+ return {ok:true,articles};
 }
 export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localContentDay(now),statusKey=BLOG_STATUS_PREFIX+day;
@@ -168,10 +184,11 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   // do cron tenta de novo); o motivo volta para o motor de aquisição, que o reporta como erro.
   const week=isoWeekOf(day),weekKey=BLOG_WEEK_PREFIX+week;
   const leituras=[["status",statusKey,BLOG_KV_SHAPES.status],["legado",BLOG_DAILY_KEY_PREFIX+day,BLOG_KV_SHAPES.legado],["semana",weekKey,BLOG_KV_SHAPES.semana],["indice",BLOG_INDEX_KEY,BLOG_KV_SHAPES.indice]];
-  const lido={};
+  const lido={};let indexError=null;
   for(const [nome,chave,forma] of leituras){
     const r=await readKvStrict(kv,chave,forma);
-    if(!r.ok)return {created:[],latest:null,day,reason:"kv_leitura_invalida:"+nome+":"+r.erro};
+    if(!r.ok&&nome!=="indice")return {created:[],latest:null,day,reason:"kv_leitura_invalida:"+nome+":"+r.erro};
+    if(!r.ok)indexError=r.erro;
     lido[nome]=r.v;
   }
   // Idempotência diária: o resultado do dia (ok ou rejeitado) é definitivo; reexecuções do cron não regravam nada.
@@ -193,9 +210,20 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   let pause;try{pause=await kv.get("zpc:creative-autonomy:paused:v1");}catch{return {created:[],latest:null,day,reason:"kv_leitura_invalida:pausa:leitura"};}
   if(pause!==null&&pause!=="0"&&pause!=="1")return {created:[],latest:null,day,reason:"kv_leitura_invalida:pausa:estrutura"};
   if(pause==="1")return {created:[],latest:null,day,reason:"creative_autopublish_paused"};
+  let index=lido.indice||{articles:[]};
+  const preserved=index.articles.filter(a=>!validBlogIndexArticle(a));
+  const corrupt=index.articles.filter(a=>!validBlogIndexArticle(a)&&!knownLegacyArticle(a));
+  if(corrupt.length>index.articles.length/2)indexError="maioria";
+  let indexRebuilt=false;
+  if(indexError){
+    const rebuilt=await rebuildBlogIndex(kv,day);
+    if(!rebuilt.ok||(indexError==="maioria"&&!rebuilt.articles.length))return {created:[],latest:null,day,reason:"kv_leitura_invalida:indice:"+indexError};
+    index={articles:[...preserved,...rebuilt.articles]};indexRebuilt=true;
+  }
+  const ignored=index.articles.filter(a=>!validBlogIndexArticle(a)).length;
   const at=now.toISOString();
   const reject=async(motivos,extra={})=>{
-    const status={schema:"zpc.blog.status.v1",day,resultado:"rejeitado",motivos,gate:BLOG_GATE_VERSION,at,...extra};
+    const status={schema:"zpc.blog.status.v1",day,resultado:"rejeitado",motivos,gate:BLOG_GATE_VERSION,at,indice_entradas_ignoradas:ignored,...extra};
     await kv.put(statusKey,JSON.stringify(status),{expirationTtl:120*DAY});
     return {created:[],latest:null,day,reason:"rejected:"+motivos.join(","),status};
   };
@@ -208,18 +236,18 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   const rubric=evaluateCreativeWithRewrites({brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1080,hook:source.title.slice(0,90),body:source.description+" Guia digital por R$ "+price+",00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:price},{serverPrice:price,visualScore:1});
   const mode=await readPurchaseMode(env).catch(()=>({full:false,hotmart:false}));
   const ctaUrl=blogCtaUrl(source,mode);
-  let index=lido.indice||{articles:[]};
-  const gate=blogQualityGate({article:source,priorArticles:index.articles||[],rubric,ctaUrl,mode});
+  const gate=blogQualityGate({article:source,priorArticles:index.articles.filter(validBlogIndexArticle),rubric,ctaUrl,mode});
+  if(indexRebuilt)await kv.put(BLOG_INDEX_KEY,JSON.stringify({schema:"zevanory.blog-daily/v1",articles:index.articles,updatedAt:at}),{expirationTtl:370*DAY});
   if(!gate.ok)return reject(gate.reasons,{slug:source.slug,similarity_max:gate.similarityMax});
   // Amostra de revisão: determinística pelo contador da semana (o mesmo dia sempre recebe a mesma marca na nova tentativa).
   const amostraRevisao=weekDays.filter(d=>d!==day).length%3===0;
   const article={...source,amostra_revisao:amostraRevisao,publishedAt:at,cta_url:ctaUrl,cta_kind:/\/hotmart\//.test(ctaUrl)?"hotmart":"material_gratuito",status:"published",tableCPrice:price,score:rubric.score,compliance:rubric.compliance,gate:{version:gate.version,similarity_max:gate.similarityMax,words:gate.words,sections:gate.sections}};
-  index={schema:"zevanory.blog-daily/v1",updatedAt:at,articles:[...(index.articles||[]).filter(x=>x?.slug!==article.slug),article].slice(-45)};
+  index={schema:"zevanory.blog-daily/v1",updatedAt:at,articles:[...index.articles.filter(x=>!validBlogIndexArticle(x)),...[...index.articles.filter(validBlogIndexArticle).filter(x=>x.slug!==article.slug),article].slice(-45)]};
   // Ordem segura para nova tentativa: artigo -> índice -> contador da semana -> status do dia (o status fecha o dia).
   await kv.put("zpc:blog:article:"+article.slug,JSON.stringify(article),{expirationTtl:370*DAY});
   await kv.put(BLOG_INDEX_KEY,JSON.stringify(index),{expirationTtl:370*DAY});
   if(!weekDays.includes(day))await kv.put(weekKey,JSON.stringify({schema:"zpc.blog.week.v1",week,days:[...weekDays,day].sort(),cap:BLOG_WEEKLY_CAP}),{expirationTtl:21*DAY});
-  const status={schema:"zpc.blog.status.v1",day,resultado:"ok",slug:article.slug,url:article.url,amostra_revisao:amostraRevisao,cta:article.cta_kind,gate:gate.version,score:rubric.score,compliance:rubric.compliance,week,at};
+  const status={schema:"zpc.blog.status.v1",day,resultado:"ok",indice_entradas_ignoradas:ignored,indice_reconstruido:indexRebuilt,slug:article.slug,url:article.url,amostra_revisao:amostraRevisao,cta:article.cta_kind,gate:gate.version,score:rubric.score,compliance:rubric.compliance,week,at};
   await kv.put(statusKey,JSON.stringify(status),{expirationTtl:120*DAY});
   if(clean(env.INDEXNOW_KEY))await fetchImpl("https://api.indexnow.org/indexnow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({host:new URL(baseUrl(env)).host,key:clean(env.INDEXNOW_KEY,200),urlList:[article.url]}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
   return {created:[{id:article.slug,url:article.url}],latest:article,total:index.articles.length,day,reason:"published",status};
