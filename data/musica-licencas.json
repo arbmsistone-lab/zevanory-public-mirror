@@ -1,0 +1,117 @@
+{
+  "schema": "musica-licencas/v1",
+  "faixas": [
+    {
+      "arquivo": "assets/musica/ia-1.flac",
+      "sha256": "71bac7eb8858bd28d1b80a8c806728eacd387e04c12ba3eb851dd8f9807f9374",
+      "titulo": "ZEVANORY eletronica_leve 1",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 108,
+      "clima": "eletronica_leve",
+      "temas_permitidos": [
+        "ia"
+      ]
+    },
+    {
+      "arquivo": "assets/musica/ia-2.flac",
+      "sha256": "d08360e3d116e6e8aae2d7942deba792564f00a9ef899ac9cc2ed3b9601143a8",
+      "titulo": "ZEVANORY eletronica_leve 2",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 108,
+      "clima": "eletronica_leve",
+      "temas_permitidos": [
+        "ia"
+      ]
+    },
+    {
+      "arquivo": "assets/musica/vendas-1.flac",
+      "sha256": "425ebfe2cde6aa62772bbec40aff9eb85e9668cd56963b2c6c1504cfd4ca71d1",
+      "titulo": "ZEVANORY animada_motivacional 1",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 116,
+      "clima": "animada_motivacional",
+      "temas_permitidos": [
+        "vendas"
+      ]
+    },
+    {
+      "arquivo": "assets/musica/vendas-2.flac",
+      "sha256": "c7d41e07cc8fbf095146e34f0916f63575db303cf306460a62e94264f40c9469",
+      "titulo": "ZEVANORY animada_motivacional 2",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 116,
+      "clima": "animada_motivacional",
+      "temas_permitidos": [
+        "vendas"
+      ]
+    },
+    {
+      "arquivo": "assets/musica/financas-1.flac",
+      "sha256": "8edebc522f1bab1729491639314bb953cfbc05462b4309e6ca9f0f075f58ab42",
+      "titulo": "ZEVANORY corporativa_calma 1",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 84,
+      "clima": "corporativa_calma",
+      "temas_permitidos": [
+        "financas"
+      ]
+    },
+    {
+      "arquivo": "assets/musica/financas-2.flac",
+      "sha256": "0f3ba48ad9dabbc682e77af42332de8cdced65a362fd9f4d49bc51ea957f3ee9",
+      "titulo": "ZEVANORY corporativa_calma 2",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 84,
+      "clima": "corporativa_calma",
+      "temas_permitidos": [
+        "financas"
+      ]
+    },
+    {
+      "arquivo": "assets/musica/dicas-1.flac",
+      "sha256": "db74f9147cc7e453394d584f53a8225868ac3e4ee65264ca83def18ab09080fd",
+      "titulo": "ZEVANORY lofi_leve 1",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 88,
+      "clima": "lofi_leve",
+      "temas_permitidos": [
+        "dicas"
+      ]
+    },
+    {
+      "arquivo": "assets/musica/dicas-2.flac",
+      "sha256": "32f88d57a7ea866af19e2d620644f51ff5fafe9ea40a095cb8322bfc9085e00c",
+      "titulo": "ZEVANORY lofi_leve 2",
+      "autor": "ZEVANORY — sintese procedural original",
+      "fonte": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/feat/shorts-padrao-v2/scripts/shorts-v2/generate-music.py",
+      "licenca": "CC0-1.0",
+      "verificado_em": "2026-11-11",
+      "bpm": 88,
+      "clima": "lofi_leve",
+      "temas_permitidos": [
+        "dicas"
+      ]
+    }
+  ]
+}

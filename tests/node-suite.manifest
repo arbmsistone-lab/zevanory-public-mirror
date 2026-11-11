@@ -148,6 +148,7 @@ tests/sandbox_proof_v2.test.mjs 18
 tests/short-crosspost.test.mjs 10
 tests/shorts-retomada-mutantes.test.mjs 47
 tests/shorts-retomada.test.mjs 15
+tests/shorts-v2.test.mjs 24
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2
 tests/site-chat-no-synthetic-traffic.test.mjs 5
