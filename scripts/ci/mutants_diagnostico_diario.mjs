@@ -53,7 +53,7 @@ const MUTANTS = [
   // Auditoria do #1021: trigger cron/manual, custo não medido, dia local, amostras de revisão do blog.
   ["DD32_workflow_dispatch_e_externo_contam", TR, [[DG, "row?.trigger === TRIGGER_AUTONOMO && ", '[TRIGGER_AUTONOMO, "workflow_dispatch", "externo"].includes(row?.trigger) && ']]],
   ["DD33_trigger_do_estado_ignorado", TR, [[DG, "trigger: row0.trigger ?? resumo?.trigger ?? estado.v?.trigger ?? null", "trigger: row0.trigger ?? null"]]],
-  ["DD34_motor_assume_cron_por_padrao", TR, [[AQ, '{trigger:triggerOpt="manual"}={}', '{trigger:triggerOpt="cron"}={}']]],
+  ["DD34_motor_assume_cron_por_padrao", TR, [[AQ, 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";', 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"cron";']]],
   ["DD35_motor_nao_preserva_primeiro_trigger", TR, [[AQ, 'trigger:o.status==="publicado"&&priorTrigger[o.channel]?priorTrigger[o.channel]:trigger', "trigger"]]],
   ["DD36_cron_do_worker_sem_trigger", TR, [[CP2, 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"cron"})', 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"manual"})']]],
   ["DD37_snapshot_perde_trigger", TR, [[SN, "e.trigger = o?.trigger || st?.trigger || null;", "e.trigger = null;"]]],

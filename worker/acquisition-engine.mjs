@@ -10,6 +10,10 @@ import { priceBySku } from "./product-prices.mjs";
 import { contentSalesOpen, salesLockViolations, hotmartKitsOpen, hotmartKit, hotmartLockViolations } from "./sales-lock-content.mjs";
 export const ACQUISITION_STATE_PREFIX="zpc:acquisition:daily:";
 export const ACQUISITION_CALENDAR_KEY="zpc:acquisition:calendar:v1";
+// trigger (Plano Mestre §6, auditoria do #1021): quem disparou runAcquisitionEngine, no 4º argumento {trigger}. Só o cron
+// do Worker passa "cron"; o padrão é "manual", e "workflow_dispatch"/"externo" também são aceitos. Nunca autodeclarado:
+// o índice de autonomia só conta "cron". (A assinatura não muda, para não colidir com o #1019.)
+export const ENGINE_TRIGGERS=Object.freeze(["cron","manual","workflow_dispatch","externo"]);
 const DAY=86400000;
 const PRODUCTS=Object.freeze([
  {sku:"ZEV-IA-011",name:"IA na Prática",price:priceBySku("ZEV-IA-011")},
@@ -180,14 +184,11 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
   return failed;
  }
 }
-// trigger (Plano Mestre §6, auditoria do #1021): quem disparou a execução. Só o cron do Worker passa "cron"; o padrão é
-// "manual", e "workflow_dispatch"/"externo" também são aceitos. Nunca autodeclarado: o índice de autonomia só conta "cron".
-export const ENGINE_TRIGGERS=Object.freeze(["cron","manual","workflow_dispatch","externo"]);
-export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch,{trigger:triggerOpt="manual"}={}){
- const trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";
+export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch){
  env=resolveChannelCredentials(env);
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return {ok:false,code:"kv_unavailable"};
+ const triggerOpt=arguments[3]?.trigger,trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";
  const day=localContentDay(now),entry=calendarEntry(day),hour=localHour(now),channels=channelChecklist(env);
  const active=channel=>channels.find(x=>x.id===channel)?.configured===true;
  const paused=await creativeAutopublishPaused(env);
