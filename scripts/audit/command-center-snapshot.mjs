@@ -346,14 +346,15 @@ export function updateUptime(prev, probes, now = Date.now()) {
 
 // Trigger de cada publicação (auditoria do #1021): o motor grava "cron" ou "manual" (também "workflow_dispatch" ou
 // "externo") em cada outcome do estado do dia; o índice real de autonomia só conta "cron". Puro: anota byDay com o
-// trigger do outcome do canal (ou do próprio estado) quando a entrada ainda não o tem; sem trigger fica null.
+// trigger do outcome DESTE canal quando a entrada ainda não o tem. NC-F1-A4-01: o trigger geral da execução
+// (estado.trigger) não é herdado; sem origem vinculada ao outcome, fica null (desconhecida, fora do numerador).
 export function anotarTrigger(byDay = {}, estados = {}) {
   for (const [day, entries] of Object.entries(byDay || {})) {
     const st = estados[day];
     for (const [ch, e] of Object.entries(entries || {})) {
       if (!e || e.trigger) continue;
       const o = (Array.isArray(st?.outcomes) ? st.outcomes : []).find((x) => x?.channel === ch);
-      e.trigger = o?.trigger || st?.trigger || null;
+      e.trigger = o?.trigger || null;
     }
   }
   return byDay;

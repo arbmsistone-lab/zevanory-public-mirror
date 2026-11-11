@@ -71,8 +71,10 @@ export async function lerStatusDoDia(kv, day, regras = REGRAS) {
     const resumo = (Array.isArray(estado.v?.outcomes) ? estado.v.outcomes : []).find((o) => o?.channel === canal) || null;
     const blogStatus = c.chave_status ? (await readJson(kv, String(c.chave_status).replace("{dia}", day))).v : null;
     const row0 = detalhe.v || resumo;
-    // O detalhe por canal não guarda o trigger: vem do outcome do estado do dia (ou do próprio estado).
-    const row = row0 ? { ...row0, trigger: row0.trigger ?? resumo?.trigger ?? estado.v?.trigger ?? null } : null;
+    // NC-F1-A4-01 (contra-auditoria GPT-6): a origem vem SÓ do recibo ou do outcome DESTE canal. O trigger geral da
+    // execução (estado.trigger) nunca comprova a origem de uma publicação; origem ausente fica desconhecida (null) e
+    // não entra no numerador da autonomia.
+    const row = row0 ? { ...row0, trigger: row0.trigger ?? resumo?.trigger ?? null } : null;
     const okBlog = blogStatus?.resultado === "ok";
     const publicada = row?.status === "publicado" || okBlog;
     porCanal[canal] = {

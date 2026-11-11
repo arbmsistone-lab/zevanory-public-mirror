@@ -121,7 +121,7 @@ test("relatório das 20h em uma tela com dados reais; envio grava só o recibo c
   assert.doesNotMatch(t, /sem dados|100%|0 comprovad/i);
   assert.ok(t.split("\n").length <= 40, "uma tela");
   assert.doesNotMatch(t, /R\$ 0,00/, "custo nunca afirmado sem fonte");
-  assert.match(t, /FUNIL E VENDAS \(dia 2026-10-12, America\/Sao_Paulo; resumo/);
+  assert.match(t, /FUNIL E VENDAS \(dia UTC 2026-10-12; intervalo diferente do dia America\/Sao_Paulo; resumo/, "NC-F1-A4-02: rótulo UTC mesmo com as datas coincidindo");
   assert.deepEqual(x.writes, []);
   // Credencial ausente: decisão pendente de classe D; funil ausente: não medido + falha.
   const y = fake({ ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "bluesky", status: "aguardando credencial" }] } });
@@ -191,7 +191,7 @@ test("Telegram desligado (decisão F0 nº 7 do proprietário): não devido, sem 
   // "desligada" vence qualquer agenda: mesmo com dias e quantidade preenchidos, nada é devido.
   const agendaCheia = { ...REGRAS_DIAGNOSTICO, canais: { ...REGRAS_DIAGNOSTICO.canais, telegram: { ...REGRAS_DIAGNOSTICO.canais.telegram, esperadas_por_dia: 1, dias_semana: [0, 1, 2, 3, 4, 5, 6] } } };
   assert.equal(esperadasNoDia("telegram", MON, 24, agendaCheia), 0);
-  const x = fake({ ["zpc:acquisition:daily:" + MON]: { trigger: "cron", outcomes: [{ channel: "blog", status: "publicado", url: "https://zevanory.api.br/blog/a" }, { channel: "telegram", status: "erro", code: "telegram_http_403" }, { channel: "bluesky", status: "publicado", url: "https://bsky.app/profile/x/post/2" }] } });
+  const x = fake({ ["zpc:acquisition:daily:" + MON]: { trigger: "cron", outcomes: [{ channel: "blog", status: "publicado", url: "https://zevanory.api.br/blog/a", trigger: "cron" }, { channel: "telegram", status: "erro", code: "telegram_http_403", trigger: "cron" }, { channel: "bluesky", status: "publicado", url: "https://bsky.app/profile/x/post/2", trigger: "cron" }] } });
   for (const regras of [REGRAS_DIAGNOSTICO, agendaCheia]) {
     const status = await lerStatusDoDia(x.kv, MON, regras);
     const forcado = { ...ALL_ACTIVE, telegram: { ativo: true } };
@@ -210,10 +210,30 @@ test("trigger: só 'cron' conta como autônomo; manual, workflow_dispatch, exter
   // Regras e Diagnosticador: a mesma publicação muda de autônoma para não autônoma conforme o trigger.
   assert.deepEqual(REGRAS_DIAGNOSTICO.autonomia.trigger_autonomo, "cron");
   for (const [trigger, conta] of [["cron", 1], ["manual", 0], ["workflow_dispatch", 0], ["externo", 0], [undefined, 0]]) {
-    const st = await lerStatusDoDia(fake({ ["zpc:acquisition:daily:" + MON]: { ...(trigger ? { trigger } : {}), outcomes: [{ channel: "blog", status: "publicado", url: "https://zevanory.api.br/blog/b" }] } }).kv, MON);
+    const st = await lerStatusDoDia(fake({ ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "blog", status: "publicado", url: "https://zevanory.api.br/blog/b", ...(trigger ? { trigger } : {}) }] } }).kv, MON);
     assert.equal(st.porCanal.blog.semComando, conta, String(trigger));
     assert.equal(autonomiaDaJanela({ [MON]: { blog: { status: "publicado", ...(trigger ? { trigger } : {}) } } }).concluidas, conta, String(trigger));
   }
+  // NC-F1-A4-01 (cenário do auditor): o estado da execução diz "cron", mas o outcome e o recibo do canal não têm
+  // origem. A origem não é herdada: fica desconhecida e não entra no numerador (Diagnosticador e snapshot).
+  const semOrigem = fake({
+    ["zpc:acquisition:daily:" + MON]: { trigger: "cron", outcomes: [{ channel: "blog", status: "publicado", url: "https://zevanory.api.br/blog/c" }, { channel: "bluesky", status: "publicado", url: "https://bsky.app/profile/x/post/3" }] },
+    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "publicado", url: "https://bsky.app/profile/x/post/3", provider_post_id: "at://did/3" },
+    ["zpc:blog:status:v1:" + MON]: { resultado: "ok", url: "https://zevanory.api.br/blog/c" },
+  });
+  const so = await lerStatusDoDia(semOrigem.kv, MON);
+  assert.deepEqual([so.porCanal.blog.publicadas, so.porCanal.blog.semComando, so.porCanal.bluesky.publicadas, so.porCanal.bluesky.semComando], [1, 0, 1, 0]);
+  assert.deepEqual(((a) => [a.devidas, a.concluidas, a.valor])(autonomiaDoDia({ day: MON, hour: 24, ativos: ALL_ACTIVE, status: so })), [2, 0, 0]);
+  // Caminho real do motor: o recibo por canal (zpc:acquisition:daily:<dia>:bluesky) não guarda trigger; o outcome DESTE
+  // canal no estado do dia guarda "cron" e é ele que vincula a origem à publicação.
+  const vinculado = await lerStatusDoDia(fake({
+    ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "bluesky", status: "publicado", url: "https://bsky.app/profile/x/post/4", trigger: "cron" }] },
+    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "publicado", url: "https://bsky.app/profile/x/post/4", provider_post_id: "at://did/4" },
+  }).kv, MON);
+  assert.deepEqual([vinculado.porCanal.bluesky.publicadas, vinculado.porCanal.bluesky.semComando], [1, 1]);
+  const bySo = { [MON]: { blog: { status: "publicado" }, bluesky: { status: "publicado" } } };
+  anotarTrigger(bySo, { [MON]: { trigger: "cron", outcomes: [{ channel: "blog", status: "publicado" }] } });
+  assert.deepEqual([bySo[MON].blog.trigger, bySo[MON].bluesky.trigger, autonomiaDaJanela(bySo).concluidas], [null, null, 0]);
   // Motor: padrão "manual"; o cron passa "cron"; outcome já publicado mantém o trigger da 1ª publicação; valor estranho vira manual.
   const x = fake();
   const manual = await runAcquisitionEngine({ ZEVANORY_PRIVATE_ARTIFACTS: x.kv }, new Date("2026-10-12T12:35:00Z"), async () => ({ ok: true, status: 200, json: async () => ({}) }));
@@ -249,10 +269,10 @@ test("trigger: só 'cron' conta como autônomo; manual, workflow_dispatch, exter
   // Snapshot: anota o trigger do outcome do estado (ou do estado) nas entradas sem trigger; sem fonte fica null.
   const byDay = { [MON]: { blog: { status: "publicado" }, bluesky: { status: "publicado" }, youtube: { status: "publicado", trigger: "workflow_dispatch" } }, [TUE]: { bluesky: { status: "publicado" } } };
   anotarTrigger(byDay, { [MON]: { trigger: "manual", outcomes: [{ channel: "blog", trigger: "cron" }] } });
-  assert.deepEqual([byDay[MON].blog.trigger, byDay[MON].bluesky.trigger, byDay[MON].youtube.trigger, byDay[TUE].bluesky.trigger], ["cron", "manual", "workflow_dispatch", null]);
+  assert.deepEqual([byDay[MON].blog.trigger, byDay[MON].bluesky.trigger, byDay[MON].youtube.trigger, byDay[TUE].bluesky.trigger], ["cron", null, "workflow_dispatch", null], "trigger do estado não é herdado");
 });
 
-test("relatório: dia local de São Paulo para funil e vendas; amostras de revisão do blog listadas; custo não medido", async () => {
+test("relatório: funil e vendas rotulados como dia UTC (balde da data do relatório); amostras de revisão do blog listadas; custo não medido", async () => {
   const x = fake({
     "zpc-funnel:v1:summary": { generatedAt: "2026-10-13T02:20:00Z", porDiaUtc: { [MON]: { views_br: 12, hotmart_view: 2, lead_submit: 0 }, [TUE]: { views_br: 99, hotmart_view: 99, lead_submit: 99 } } },
     "zpc:sales:v1:summary": { schema: "zevanory-sales/v1", integrity: "webhook_authenticated", byDay: { [MON]: { approved: 1 }, [TUE]: { approved: 7 } } },
@@ -260,9 +280,10 @@ test("relatório: dia local de São Paulo para funil e vendas; amostras de revis
     ["zpc:blog:status:v1:2026-10-09"]: { resultado: "ok", url: "https://zevanory.api.br/blog/sem-amostra", amostra_revisao: false },
     ["zpc:blog:status:v1:2026-10-05"]: { resultado: "ok", url: "https://zevanory.api.br/blog/fora-da-janela", amostra_revisao: true },
   });
-  // 23:30 de São Paulo = 02:30 UTC do dia seguinte: o relatório usa o dia local (segunda), nunca o dia UTC (terça).
+  // 23:30 de São Paulo = 02:30 UTC do dia seguinte: o relatório lê o balde com a data do relatório (segunda), não o da
+  // data UTC corrente (terça), e o rótulo diz que é dia UTC (NC-F1-A4-02).
   const r = await montarRelatorioDiario({ ZEVANORY_PRIVATE_ARTIFACTS: x.kv }, { day: MON, hour: 23, now: new Date("2026-10-13T02:30:00Z"), checklist: CHECKLIST_OK });
-  assert.match(r.text, /FUNIL E VENDAS \(dia 2026-10-12, America\/Sao_Paulo; fonte datada em UTC, dia diferente/);
+  assert.match(r.text, /FUNIL E VENDAS \(dia UTC 2026-10-12; intervalo diferente do dia America\/Sao_Paulo; resumo/);
   assert.match(r.text, /Views BR \(filtro de robôs e datacenter\): 12/); assert.match(r.text, /Vendas aprovadas Hotmart: 1 \(PENDENTE/);
   assert.match(r.text, /AMOSTRA PARA REVISÃO \(blog, 1 de cada 3 publicações, últimos 7 dias\)\n• 2026-10-12: https:\/\/zevanory\.api\.br\/blog\/amostra-1\n\n/);
   assert.doesNotMatch(r.text, /sem-amostra|fora-da-janela/);

@@ -50,10 +50,9 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
   const status = await lerStatusDoDia(kv, day, regras);
   const diagnosticos = diagnosticarDia({ day, hour, ativos, status, regras });
   const autonomia = autonomiaDoDia({ day, hour, ativos, status, regras });
-  // Dia local de São Paulo do relatório (auditoria do #1021) para funil e vendas. Os baldes do funil e do ledger
-  // Hotmart são datados pelo relógio UTC; o relatório sai entre 20h e 21h de São Paulo (23h-00h UTC), quando o dia é
-  // o mesmo. Fora dessa janela a linha avisa que a fonte é por dia UTC.
-  const mesmoDiaUtc = now.toISOString().slice(0, 10) === day;
+  // Funil e vendas: os baldes do funil e do ledger Hotmart são agregados por dia UTC. O relatório lê o balde com a
+  // data do dia local e, enquanto a agregação for UTC, SEMPRE rotula (NC-F1-A4-02, contra-auditoria GPT-6):
+  // "dia UTC; intervalo diferente do dia America/Sao_Paulo", mesmo quando as datas coincidem.
   const funil = funilDoDia(await readJson(kv, FUNNEL_SUMMARY_KEY), day, now.getTime());
   const vendas = estadoVendasHotmart(await readJson(kv, SALES_SUMMARY_KEY), day);
   // Revisão por amostragem do blog (auditoria do #1020): publicações marcadas amostra_revisao nos últimos 7 dias locais.
@@ -94,7 +93,7 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
     "PUBLICADO HOJE (esperado × real)",
     ...publicacoes.map((p) => p.linha),
     "",
-    `FUNIL E VENDAS (dia ${day}, America/Sao_Paulo${mesmoDiaUtc ? "" : "; fonte datada em UTC, dia diferente"}${funil.geradoEm ? `; resumo das ${funil.geradoEm.slice(11, 16)}Z` : ""})`,
+    `FUNIL E VENDAS (dia UTC ${day}; intervalo diferente do dia America/Sao_Paulo${funil.geradoEm ? `; resumo das ${funil.geradoEm.slice(11, 16)}Z` : ""})`,
     `• Views BR (filtro de robôs e datacenter): ${fmt(funil.viewsBr)}`,
     `• Cliques /hotmart (hotmart_view): ${fmt(funil.hotmartView)}`,
     `• Leads: ${fmt(funil.leadsFormulario)} no formulário hoje; ${fmt(funil.leadsConfirmados7)} confirmados em 7 dias`,

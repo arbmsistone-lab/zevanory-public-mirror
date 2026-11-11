@@ -16,7 +16,7 @@ const SUITE = "tests/diagnostico-diario.test.mjs";
 const BASE_COUNT = 10;
 const COPY = ["worker", "data", "scripts/audit", "scripts/channels", "tests/helpers", SUITE];
 const DG = "worker/diagnostico-diario.mjs", RL = "worker/relatorio-diario.mjs", FN = "worker/funnel.mjs", SN = "scripts/audit/command-center-snapshot.mjs", AQ = "worker/acquisition-engine.mjs";
-const TR = "trigger:", LD = "relatório: dia local", CP2 = "worker/cloudflare-worker.compat.mjs", TG = "Telegram desligado", R = "regras versionadas", CP = "CANAL_PARADO", AU = "autonomia real", HV = "vendas Hotmart", REL = "relatório das 20h", FU = "funil:", AV = "aviso público";
+const TR = "trigger:", LD = "relatório: funil e vendas rotulados", CP2 = "worker/cloudflare-worker.compat.mjs", TG = "Telegram desligado", R = "regras versionadas", CP = "CANAL_PARADO", AU = "autonomia real", HV = "vendas Hotmart", REL = "relatório das 20h", FU = "funil:", AV = "aviso público";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
   ["DD01_hora_limite_ignorada", R, [[DG, "  if (!(Number(hour) >= Number(c.hora_limite))) return 0;\n", ""]]],
@@ -52,11 +52,16 @@ const MUTANTS = [
   ["DD31_credencial_religa_canal_desligado", TG, [[DG, 'else if (c.ativacao === "desligada") out[canal] =', 'else if (c.ativacao === "desligada" && false) out[canal] =']]],
   // Auditoria do #1021: trigger cron/manual, custo não medido, dia local, amostras de revisão do blog.
   ["DD32_workflow_dispatch_e_externo_contam", TR, [[DG, "row?.trigger === TRIGGER_AUTONOMO && ", '[TRIGGER_AUTONOMO, "workflow_dispatch", "externo"].includes(row?.trigger) && ']]],
-  ["DD33_trigger_do_estado_ignorado", TR, [[DG, "trigger: row0.trigger ?? resumo?.trigger ?? estado.v?.trigger ?? null", "trigger: row0.trigger ?? null"]]],
+  // NC-F1-A4-01 (contra-auditoria GPT-6): origem só do recibo/outcome do canal, nunca herdada do estado da execução.
+  ["DD33_herda_trigger_do_estado", TR, [[DG, "trigger: row0.trigger ?? resumo?.trigger ?? null", "trigger: row0.trigger ?? resumo?.trigger ?? estado.v?.trigger ?? null"]]],
+  ["DD43_outcome_do_canal_ignorado", TR, [[DG, "trigger: row0.trigger ?? resumo?.trigger ?? null", "trigger: row0.trigger ?? null"]]],
+  ["DD44_snapshot_herda_trigger_do_estado", TR, [[SN, "e.trigger = o?.trigger || null;", "e.trigger = o?.trigger || st?.trigger || null;"]]],
+  // NC-F1-A4-02: rótulo UTC obrigatório, mesmo com as datas coincidindo.
+  ["DD45_rotulo_utc_removido", REL, [[RL, "`FUNIL E VENDAS (dia UTC ${day}; intervalo diferente do dia America/Sao_Paulo", "`FUNIL E VENDAS (dia ${day}, America/Sao_Paulo"]]],
   ["DD34_motor_assume_cron_por_padrao", TR, [[AQ, 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";', 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"cron";']]],
   ["DD35_motor_nao_preserva_primeiro_trigger", TR, [[AQ, 'trigger:o.status==="publicado"&&priorTrigger[o.channel]?priorTrigger[o.channel]:trigger', "trigger"]]],
   ["DD36_cron_do_worker_sem_trigger", TR, [[CP2, 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"cron"})', 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"manual"})']]],
-  ["DD37_snapshot_perde_trigger", TR, [[SN, "e.trigger = o?.trigger || st?.trigger || null;", "e.trigger = null;"]]],
+  ["DD37_snapshot_perde_trigger", TR, [[SN, "e.trigger = o?.trigger || null;", "e.trigger = null;"]]],
   ["DD38_custo_volta_a_zero_fixo", LD, [[RL, '"Custo do dia: não medido (sem fonte de custo)",', '"Custo do dia: R$ 0,00 (sem fonte de custo)",']]],
   ["DD39_funil_pelo_dia_utc", LD, [[RL, "funilDoDia(await readJson(kv, FUNNEL_SUMMARY_KEY), day,", "funilDoDia(await readJson(kv, FUNNEL_SUMMARY_KEY), now.toISOString().slice(0, 10),"]]],
   ["DD40_vendas_pelo_dia_utc", LD, [[RL, "estadoVendasHotmart(await readJson(kv, SALES_SUMMARY_KEY), day)", "estadoVendasHotmart(await readJson(kv, SALES_SUMMARY_KEY), now.toISOString().slice(0, 10))"]]],
