@@ -23,7 +23,6 @@ test.after(() => rmSync(TMP, { recursive: true, force: true }));
 // Árvore espelho para os imports relativos do Short: ../../worker, ../../data e ../../assets apontam para o repositório.
 const MIRROR = join(TMP, "mirror"), MIRROR_CH = join(MIRROR, "scripts/channels");
 mkdirSync(MIRROR_CH, { recursive: true });
-symlinkSync(join(ROOT,"scripts/shorts-v2"),join(MIRROR,"scripts/shorts-v2"),process.platform === "win32" ? "junction" : "dir");
 for (const d of ["worker", "data", "assets"]) symlinkSync(join(ROOT, d), join(MIRROR, d), process.platform === "win32" ? "junction" : "dir");
 for (const f of readdirSync(join(ROOT, "scripts/channels"))) if (f.endsWith(".mjs")) copyFileSync(join(ROOT, "scripts/channels", f), join(MIRROR_CH, f));
 

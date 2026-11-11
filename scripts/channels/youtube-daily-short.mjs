@@ -1,5 +1,3 @@
-import {planV2} from '../shorts-v2/core.mjs';
-import {renderV2} from '../shorts-v2/render.mjs';
 // P1-5: autonomous daily YouTube Short (scheduled GitHub Actions job; Workers Free
 // cannot render video). One Short per local day from the content calendar, with
 // the official brand template, F1 creative gate, idempotent upload (marker in the
@@ -277,6 +275,7 @@ export function audioQuality(stderrEbur, silenceEnds, silenceStarts, voiceSecond
   return { ok: reasons.length === 0, lufs, peak, maxGap: Math.round(maxGap * 10) / 10, reasons };
 }
 export async function renderShort(plan,base="/tmp/zevanory-daily-short",options={}){
+  const {renderV2}=await import("../shorts-v2/render.mjs");
   return renderV2(plan,base,options);
 }
 
@@ -441,6 +440,7 @@ if (isMain) {
       const publicadosHoje = Object.entries(jaHoje).filter(([s, v]) => s !== slot && v).length;
       const dec = decisaoSlot({ rampa, slot, publicadosHoje, congelado: false });
       if (!dec.publicar && !dry) { note("notice", slot + ": " + dec.motivo + " (nivel " + rampa.nivel + ", " + rampa.por_dia + "/dia, slots " + rampa.slots.join("+") + ")"); continue; }
+      const {planV2}=await import("../shorts-v2/core.mjs");
       const plan = planV2(planSlot(day, slot, { salesOpen, hotmartOpen }),{hotmartOpen});
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected:" + String(plan.gate.reason || "").replace(/[^a-z0-9_:,]/gi, "_"));
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
