@@ -1,3 +1,4 @@
+import {runHotmartPostSale,handleHotmartPostSaleOptOut,HOTMART_POSTSALE_OPTOUT} from "./hotmart-post-sale.mjs";
 import { comDiario } from "./diario-sombra.mjs";
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
@@ -118,6 +119,7 @@ const wrapped = {
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
+    if(new URL(request.url).pathname===HOTMART_POSTSALE_OPTOUT)return handleHotmartPostSaleOptOut(request,normalized);
     // R138: isolated drainer before sales lookup or other application subrequests.
     if(new URL(request.url).pathname===ATENDIMENTO_DRAIN_PATH)return handleAtendimentoDrainRequest(request,normalized,{sqlFactory:whatsappProofDatabase});
     // Lembrete de abandono Hotmart: dreno e retenção em invocação própria (SELF, token HMAC de minuto), antes de
@@ -833,6 +835,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   resetSalesSwitchCache();
   const salesSwitchState = await readSalesSwitch(normalized);
   const salesOpen = applySalesSwitch(salesSwitchState);
+  await runHotmartPostSale(normalized).then(out=>console.info("hotmart_post_sale_run",JSON.stringify(out))).catch(()=>console.error("hotmart_post_sale_failed"));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
   tasks.push(recordLaunchEpoch(normalized, salesSwitchState)
     .then(() => refreshFinancialProofSnapshot(normalized, { sqlFactory: whatsappProofDatabase }))
