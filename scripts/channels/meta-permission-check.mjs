@@ -1,7 +1,12 @@
 // DEC-23 (plano-mestre, seção 9): teste de permissão da Meta Graph API ANTES da ativação contínua.
 // Somente leitura: só faz GET. Não publica nada, não cria contêiner de mídia, não grava em lugar nenhum
-// além do log e do step summary. O token do usuário de sistema vem de env (META_ACCESS_TOKEN), é mascarado
-// com ::add-mask:: antes da primeira chamada e vai só no cabeçalho Authorization (nunca na URL do log).
+// além do log e do step summary. O token do usuário de sistema vem de env (META_ACCESS_TOKEN) e é mascarado
+// com ::add-mask:: antes da primeira chamada. A autenticação usa o cabeçalho Authorization. A chamada
+// /debug_token TAMBÉM envia o token inspecionado no parâmetro input_token da URL: nenhuma URL é registrada
+// (nem em sucesso nem em erro) e mensagens de erro passam por redact(), que remove input_token/access_token.
+// Se o app_id não puder ser verificado, app_identity = "NAO_COMPROVADA" e pronto_para_prova = false: isso
+// NÃO constitui aprovação para publicação.
+// Página e Instagram precisam ser EXATAMENTE os da ZEVANORY (EXPECTED); divergência reprova antes da API.
 // O token da Página, se obtido, também é mascarado na hora e descartado: só registramos true/false.
 // Saída: um JSON curto (ok/falha por item + mensagem de erro da API), sem token e sem dados pessoais.
 import { appendFileSync } from "node:fs";
@@ -27,6 +32,8 @@ export function redact(text, secrets) {
   let s = String(text ?? "");
   for (const v of secrets) if (v && v.length >= 4) s = s.split(v).join("[redacted]");
   // Qualquer coisa com cara de token da Meta (EAA...) ou parâmetro access_token também sai.
+  // Nenhuma URL é registrada (a do debug_token carrega o token em input_token).
+  s = s.replace(/https?:\/\/[^\s"']+/gi, "[url]");
   return s.replace(/EAA[A-Za-z0-9]{10,}/g, "[redacted]").replace(/(access_token|input_token)=[^&\s"]+/gi, "$1=[redacted]").slice(0, 200);
 }
 
@@ -54,7 +61,7 @@ export async function runCheck({ env = process.env, fetchImpl = globalThis.fetch
   const secrets = [];
   const token = env.META_ACCESS_TOKEN || "";
   if (token) { secrets.push(token); mask(token); } // máscara ANTES de qualquer chamada
-  const report = { schema: "meta-permission-check/v1", graph: "v21.0", read_only: true, published: false, items: {} };
+  const report = { schema: "meta-permission-check/v1", graph: "v21.0", read_only: true, published: false, app_identity: "NAO_COMPROVADA", pronto_para_prova: false, items: {} };
   try {
     return await checks({ env, fetchImpl, log, mask, summary, secrets, token, report });
   } catch (e) {
@@ -74,6 +81,16 @@ async function checks({ env, fetchImpl, log, mask, summary, secrets, token, repo
   }
   const pageId = String(env.META_PAGE_ID).trim();
   const igId = String(env.INSTAGRAM_BUSINESS_ACCOUNT_ID).trim();
+  // NC-F1-A6-01: IDs divergentes dos da ZEVANORY reprovam ANTES de qualquer chamada à API.
+  const idMismatch = [];
+  if (pageId !== EXPECTED.page_id) idMismatch.push("page_id");
+  if (igId !== EXPECTED.ig_id) idMismatch.push("ig_id");
+  if (idMismatch.length) {
+    report.ok = false;
+    report.failed = idMismatch;
+    report.error = "id_mismatch:" + idMismatch.join(",");
+    return finish(report, 1, log, summary, secrets);
+  }
   const it = report.items;
 
   // 1. Token válido e do usuário de sistema.
@@ -127,7 +144,8 @@ async function checks({ env, fetchImpl, log, mask, summary, secrets, token, repo
     it.publishing_limit = { ok: typeof row.quota_usage === "number", quota_usage: row.quota_usage ?? null, quota_total: row.config?.quota_total ?? null, quota_duration: row.config?.quota_duration ?? null };
   } else it.publishing_limit = { ok: false, error: q.error };
 
-  // 5. debug_token (opcional: falha aqui não reprova).
+  // 5. debug_token (opcional: falha aqui não reprova, mas deixa a identidade do app NAO_COMPROVADA).
+  // A URL leva o token inspecionado em input_token: ela nunca é registrada; erros passam por redact().
   const dbg = await graphGet(fetchImpl, token, `/debug_token?input_token=${encodeURIComponent(token)}`, secrets);
   if (dbg.ok) {
     const d = dbg.body.data || {};
@@ -147,6 +165,10 @@ async function checks({ env, fetchImpl, log, mask, summary, secrets, token, repo
   const dt = it.debug_token;
   if (dt && (dt.app_id_matches_expected === false || dt.app_id_forbidden === true)) report.failed.push("app_id");
   report.ok = report.failed.length === 0;
+  // NC-F1-A6-02: só há identidade comprovada com app_id lido e igual ao esperado; sem isso, não está pronto para prova.
+  report.app_identity = dt?.app_id_matches_expected === true && dt?.app_id_forbidden === false ? "COMPROVADA"
+    : report.failed.includes("app_id") ? "DIVERGENTE" : "NAO_COMPROVADA";
+  report.pronto_para_prova = report.ok && report.app_identity === "COMPROVADA";
   return finish(report, report.ok ? 0 : 1, log, summary, secrets);
 }
 
@@ -158,7 +180,7 @@ function finish(report, exitCode, log, summary, secrets) {
   log(line);
   const icon = (o) => (o ? "ok" : "falha");
   const rows = leaked ? [] : Object.entries(report.items || {}).map(([k, v]) => `| ${k} | ${icon(v.ok)}${v.optional ? " (opcional)" : ""} | ${String(v.error || "").replace(/\|/g, "/")} |`);
-  summary(["## Meta permission check (somente leitura, nada publicado)", "", `Resultado: **${report.ok && !leaked ? "ok" : "falha"}**`, "", "| item | status | erro da API |", "|---|---|---|", ...rows, "", "```json", line, "```", ""].join("\n"));
+  summary(["## Meta permission check (somente leitura, nada publicado)", "", `Resultado: **${report.ok && !leaked ? "ok" : "falha"}** | identidade do app: **${report.app_identity ?? "NAO_COMPROVADA"}** | pronto para prova: **${report.pronto_para_prova === true && !leaked ? "sim" : "não"}**`, "", "| item | status | erro da API |", "|---|---|---|", ...rows, "", "```json", line, "```", ""].join("\n"));
   return { report: leaked ? JSON.parse(line) : report, exitCode: leaked ? 1 : exitCode };
 }
 

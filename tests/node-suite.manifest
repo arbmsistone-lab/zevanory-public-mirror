@@ -71,7 +71,7 @@ tests/market-weekly.test.mjs 2
 tests/mercadopago-preference-expiry.test.mjs 3
 tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
-tests/meta-permission-check.test.mjs 30
+tests/meta-permission-check.test.mjs 44
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
 tests/nc015-cp-no-public-links.test.mjs 4

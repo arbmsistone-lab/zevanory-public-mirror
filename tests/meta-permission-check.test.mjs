@@ -67,6 +67,8 @@ test("caminho feliz: todos os itens ok, JSON curto, token mascarado antes da 1a 
   assert.equal(r.report.items.debug_token.never_expires, true);
   assert.equal(r.report.items.debug_token.has_publish_video, false);
   assert.equal(r.report.items.debug_token.app_id_matches_expected, true);
+  assert.equal(r.report.app_identity, "COMPROVADA");
+  assert.equal(r.report.pronto_para_prova, true);
   assert.equal(r.report.published, false);
   assert.deepEqual(leakedTokens(r.out + r.summary), []);
   assert.ok(!JSON.stringify(r.report).includes("user_id"), "sem user_id do debug_token");
@@ -78,7 +80,7 @@ test("caminho feliz: todos os itens ok, JSON curto, token mascarado antes da 1a 
   assert.ok(calls.length >= 5);
 });
 
-test("somente leitura: só GET, só graph v21.0, token só no cabeçalho, nenhum endpoint de publicação", async () => {
+test("somente leitura: só GET, só graph v21.0, autenticação no Authorization (debug_token também leva input_token), nenhum endpoint de publicação", async () => {
   const { calls, fetchImpl } = graphMock();
   await run({ runCheck }, ENV, fetchImpl);
   for (const c of calls) {
@@ -86,6 +88,8 @@ test("somente leitura: só GET, só graph v21.0, token só no cabeçalho, nenhum
     assert.ok(c.url.startsWith(GRAPH + "/"), c.url);
     assert.equal(c.auth, "Bearer " + USER_TOKEN);
     assert.doesNotMatch(c.url, /access_token=/);
+    if (c.path === "/debug_token") assert.ok(c.url.includes("input_token="), "debug_token envia o token inspecionado em input_token");
+    else assert.ok(!c.url.includes(USER_TOKEN) && !c.url.includes(encodeURIComponent(USER_TOKEN)), "token fora da URL: " + c.path);
     assert.doesNotMatch(c.path, /\/(media|media_publish|feed|photos|videos|comments|messages)\b/);
   }
   const src = readTextNormalized(SRC_URL);
@@ -124,6 +128,8 @@ test("debug_token falhando é opcional e não reprova", async () => {
   assert.equal(r.exitCode, 0);
   assert.equal(r.report.items.debug_token.ok, false);
   assert.equal(r.report.items.debug_token.optional, true);
+  assert.equal(r.report.app_identity, "NAO_COMPROVADA");
+  assert.equal(r.report.pronto_para_prova, false);
 });
 
 test("username do Instagram diferente, cota sem número e /me de outro usuário reprovam", async () => {
@@ -239,6 +245,68 @@ for (const [name, edits, killers] of AUDIT_MUTANTS) {
       const mod = await import(pathToFileURL(file).href);
       const verdicts = [];
       for (const k of killers) verdicts.push(await SCENARIOS[k](mod));
+      assert.ok(verdicts.some((v) => v === false), `mutante sobreviveu a: ${killers.join(" | ")}`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
+
+// ---- Contra-auditoria GPT-6 (NO-GO no 26fa2e2): NC-F1-A6-01 e NC-F1-A6-02, cada uma com cenário e mutante.
+const ODD_TOKEN = "tok/sentinel+0003=x?y";
+const DBG_URL_RX = /debug_token\?input_token=(?!\[redacted\])/;
+const visible = (r) => r.out + "\n" + r.summary;
+const A6 = {
+  // NC-F1-A6-01
+  "Página fictícia reprova antes da API": async (mod) => { const m = graphMock(); const r = await run(mod, { ...ENV, META_PAGE_ID: "1111111111111111" }, m.fetchImpl); return r.exitCode === 1 && r.report.ok === false && r.report.failed?.join() === "page_id" && m.calls.length === 0; },
+  "Instagram fictício reprova antes da API": async (mod) => { const m = graphMock(); const r = await run(mod, { ...ENV, INSTAGRAM_BUSINESS_ACCOUNT_ID: "17840000000000001" }, m.fetchImpl); return r.exitCode === 1 && r.report.ok === false && r.report.failed?.join() === "ig_id" && m.calls.length === 0; },
+  "Página e Instagram fictícios (mock coerente) reprovam": async (mod) => {
+    const P = "2222222222222222", I = "17849999999999999";
+    const fetchImpl = async (url) => { const u = new URL(String(url)); const p = u.pathname.replace("/v21.0", "");
+      if (p === "/" + P && u.searchParams.get("fields") !== "access_token") return ok({ id: P, name: "Fake", instagram_business_account: { id: I } });
+      if (p === "/" + I) return ok({ id: I, username: "zevanory_" });
+      if (p === "/me/accounts") return ok({ data: [{ id: P, access_token: PAGE_TOKEN }] });
+      if (p === `/${I}/content_publishing_limit`) return ok({ data: [{ quota_usage: 0, config: { quota_total: 100 } }] });
+      return graphMock().fetchImpl(url); };
+    const r = await run(mod, { ...ENV, META_PAGE_ID: P, INSTAGRAM_BUSINESS_ACCOUNT_ID: I }, fetchImpl);
+    return r.exitCode === 1 && r.report.ok === false && r.report.pronto_para_prova === false;
+  },
+  // NC-F1-A6-02
+  "debug_token falhando: NAO_COMPROVADA e pronto_para_prova false": async (mod) => { const r = await run(mod, ENV, graphMock({ debug: () => fail(400, { code: 100, message: "app token required" }) }).fetchImpl); return r.report.app_identity === "NAO_COMPROVADA" && r.report.pronto_para_prova === false && /NAO_COMPROVADA/.test(r.summary); },
+  "debug_token sem app_id: NAO_COMPROVADA": async (mod) => { const r = await run(mod, ENV, graphMock({ debug: () => ok({ data: { is_valid: true, scopes: [] } }) }).fetchImpl); return r.report.app_identity === "NAO_COMPROVADA" && r.report.pronto_para_prova === false; },
+  "URL do debug_token nunca é registrada (erro de rede com a URL)": async (mod) => {
+    const env = { ...ENV, META_ACCESS_TOKEN: ODD_TOKEN };
+    const fetchImpl = async (url, init) => { if (String(url).includes("/debug_token")) throw new Error(`request to ${url} failed, reason: ECONNRESET`); return graphMock().fetchImpl(url, init); };
+    const r = await run(mod, env, fetchImpl);
+    const v = visible(r);
+    return leakedTokens(v, [ODD_TOKEN]).length === 0 && !DBG_URL_RX.test(v) && !v.includes("graph.facebook.com") && r.report.app_identity === "NAO_COMPROVADA";
+  },
+  "input_token fora de URL também é redigido": async (mod) => {
+    const env = { ...ENV, META_ACCESS_TOKEN: ODD_TOKEN };
+    const r = await run(mod, env, graphMock({ debug: () => fail(400, { code: 190, message: "bad input_token=" + encodeURIComponent(ODD_TOKEN) }) }).fetchImpl);
+    return leakedTokens(visible(r), [ODD_TOKEN]).length === 0;
+  },
+};
+for (const [name, sc] of Object.entries(A6)) test(`contra-auditoria A6: ${name}`, async () => assert.equal(await sc({ runCheck }), true));
+
+const A6_MUTANTS = [
+  ["A6-01 sem checagem do page_id", [['if (pageId !== EXPECTED.page_id) idMismatch.push("page_id");', ""]], ["Página fictícia reprova antes da API"]],
+  ["A6-01 sem checagem do ig_id", [['if (igId !== EXPECTED.ig_id) idMismatch.push("ig_id");', ""]], ["Instagram fictício reprova antes da API"]],
+  ["A6-01 checagem só depois da API", [["  if (idMismatch.length) {\n    report.ok = false;", "  if (false) {\n    report.ok = false;"]], ["Página fictícia reprova antes da API", "Página e Instagram fictícios (mock coerente) reprovam"]],
+  ["A6-02 identidade sempre comprovada", [['report.app_identity = dt?.app_id_matches_expected === true && dt?.app_id_forbidden === false ? "COMPROVADA"', 'report.app_identity = true ? "COMPROVADA"']], ["debug_token falhando: NAO_COMPROVADA e pronto_para_prova false", "debug_token sem app_id: NAO_COMPROVADA"]],
+  ["A6-02 pronto_para_prova = ok", [['report.pronto_para_prova = report.ok && report.app_identity === "COMPROVADA";', "report.pronto_para_prova = report.ok;"]], ["debug_token falhando: NAO_COMPROVADA e pronto_para_prova false"]],
+  ["A6-02 URL registrada", [[String.raw`s = s.replace(/https?:\/\/[^\s"']+/gi, "[url]");`, ""]], ["URL do debug_token nunca é registrada (erro de rede com a URL)"]],
+  ["A6-02 input_token sem redação", [[String.raw`(access_token|input_token)=[^&\s"]+`, String.raw`(access_token)=[^&\s"]+`]], ["input_token fora de URL também é redigido"]],
+];
+for (const [name, edits, killers] of A6_MUTANTS) {
+  test(`mutante da contra-auditoria A6 morto: ${name}`, async () => {
+    let src = readTextNormalized(SRC_URL);
+    for (const [from, to] of edits) { assert.ok(src.includes(from), "âncora do mutante presente: " + from); src = src.replace(from, to); }
+    const dir = mkdtempSync(join(tmpdir(), "meta-a6-"));
+    try {
+      const file = join(dir, "m.mjs");
+      writeFileSync(file, src);
+      const mod = await import(pathToFileURL(file).href);
+      const verdicts = [];
+      for (const k of killers) verdicts.push(await A6[k](mod));
       assert.ok(verdicts.some((v) => v === false), `mutante sobreviveu a: ${killers.join(" | ")}`);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
