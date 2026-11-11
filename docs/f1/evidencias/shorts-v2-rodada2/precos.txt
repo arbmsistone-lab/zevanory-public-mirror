@@ -1,20 +1,7 @@
-✔ G01 tabela canônica: 5 kits + Conteúdo Pronto e economias derivadas (Combo 37 vs 194; Negócio Completo 94 vs 341) (1.50441ms)
-✔ G02 o repositório atual passa e a varredura cobre as fontes de produção (2341.020675ms)
-✔ G03 NEGATIVO: preço de kit trocado em worker/lead-magnet.mjs (arquivo NÃO reservado) reprova o gate (352.947299ms)
-✔ G04 NEGATIVO: o mesmo vale nos demais módulos, páginas e dados que citam preço (1551.799815ms)
-✔ G05 NEGATIVO: valor novo em R$ ao lado de nome/slug/SKU que não está na tabela reprova; valor sem produto não (1.871069ms)
-✔ G06 exceções documentadas são exatas: ocorrência a mais ou exceção que sumiu reprova (5918.696691ms)
-✔ G07 o gate roda nos emissores do check obrigatório e os módulos derivam da tabela canônica (0.724634ms)
-✔ G08 o gate, o módulo de derivação e a tabela são reservados ao proprietário e ficam fora de rotina_autonoma (1.431852ms)
-✔ G09 NEGATIVO: os desvios da contra-auditoria NC-1008-01 reprovam (HTML com tag no meio, sem R$, por extenso, BRL, longe, aninhado, Map, JSON-LD, aritmética, cupom) (510.454948ms)
-✔ G10 runtime: os módulos de produção IMPORTADOS renderizam só os preços da tabela (50.288806ms)
-✔ G11 comissão: taxa só na fonte reservada data/affiliates.json, lida pelo programa e pelo gate; valor derivado só nas páginas de afiliado (154.499572ms)
-✔ G12 lembrete de abandono: sem literal de preço e productBySlug obrigatório em worker/abandono-hotmart.mjs (1.007126ms)
-ℹ tests 12
-ℹ suites 0
-ℹ pass 12
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 10986.517831
+Resumo da execução registrada; saída bruta não versionada.
+# tests 12
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

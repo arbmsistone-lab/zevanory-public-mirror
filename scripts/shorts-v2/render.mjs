@@ -4,6 +4,7 @@ import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {dirname} from 'node:path';
 import {scriptHistory} from './script-history.mjs';
+import {musicPublications,lastPublishedMusic} from './music-publications.mjs';
 import {visualMetrics,contactSheet} from './visual.mjs';
 import {STYLE,CTA,assertVoice,licensedTrack,alignedWords,captions,quality,musicHistory} from './core.mjs';
 export function command(cmd,args,{buffer=false}={}){const p=spawnSync(cmd,args,{encoding:buffer?null:'utf8',maxBuffer:128*1024*1024});if(p.status!==0)throw Error('media_tool_failed:'+cmd);return buffer?p.stdout:String(p.stdout||'')+String(p.stderr||'');}
@@ -39,7 +40,11 @@ export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config
  await scriptHistory(stateKv,plan,{reserve:!preview});
  const manifest=JSON.parse(await readFile(new URL('../../data/musica-licencas.json',import.meta.url),'utf8'));
  const last=await musicHistory(stateKv,plan.day,{files:manifest.faixas.map(r=>r.arquivo),repair:!preview});
- const track=await licensedTrack({theme:plan.theme,last,manifest});
+ const musicPublished=await musicPublications(stateKv,plan.day);
+ const rawAttempt=await stateKv.get('zpc:shorts:v2:musica:receipt:'+plan.day+':'+plan.slot),attempt=rawAttempt===null?null:JSON.parse(rawAttempt);
+ if(attempt&&(!manifest.faixas.some(r=>r.arquivo===attempt.arquivo)||!Number.isSafeInteger(attempt.em)||attempt.em<=0))throw Error('music_attempt_unreadable');
+ const track=await licensedTrack({theme:plan.theme,last:lastPublishedMusic(musicPublished,last,attempt),manifest,history:musicPublished});
+ plan.description+='\nzevanory-music-key:'+track.arquivo+':'+track.sha256;
  if(track.credito&&!plan.description.includes(track.credito))plan.description+='\nMúsica: '+track.credito;
  // Reserving the chosen bed before any render avoids immediate repetition after failure.
  if(!preview){const receipt=JSON.stringify({arquivo:track.arquivo,em:Date.now()});await stateKv.put('zpc:shorts:v2:musica:receipt:'+plan.day+':'+plan.slot,receipt);await stateKv.put('zpc:shorts:v2:musica:last',receipt);}

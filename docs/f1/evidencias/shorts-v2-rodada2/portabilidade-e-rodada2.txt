@@ -1,25 +1,21 @@
-✔ toda tests/*.test.mjs respeita R1–R5 (helper de texto, preflight de ferramenta, tmp único) (14.009853ms)
-✔ o verificador detecta cada violação (mutantes sintéticos) e aceita a forma canônica (0.343254ms)
-✔ helpers: CRLF vira LF e ferramenta ausente falha com TOOL_MISSING explícito (8.210458ms)
-✔ NC01: track evidence and original download hash are mandatory (1.554288ms)
-✔ NC01 mutant: accept missing license evidence (6.394548ms)
-✔ NC02: 30 real calendar days are distinct and below 40 percent overlap (21.537899ms)
-✔ NC02 mutant: fixed theme script (1.711704ms)
-✔ NC02: duplicate episode and more than 40 percent shared sentences rejected (0.388111ms)
-✔ NC02 mutant: repetition guard disabled (0.98143ms)
-✔ NC02: corrupt projection needs readable receipt; preview never erases history (3.029057ms)
-✔ NC05: model must match approved model (0.168873ms)
-✔ NC05 mutant: a different model accepted (1.273377ms)
-✔ NC05: 3.8 Interactions and 2.5 generateContent use distinct protocols without fallback (1.192937ms)
-✔ NC05: comparison is exactly 4 voices times 2 models; approvals remain pending (0.203535ms)
-✔ NC06: exact SKU and word boundaries; ambiguous classifications use dicas (0.38064ms)
-✔ NC06 mutant: IA substring inside farmacia accepted (1.963942ms)
-✔ NC05: comparison writer processes all eight identities with exactly the same phrase (10.093608ms)
-ℹ tests 17
-ℹ suites 0
-ℹ pass 17
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 194.4326
+Resumo da execução registrada; saída bruta não versionada.
+# tests 17
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+✔ NC01: track evidence and original download hash are mandatory
+✔ NC01 mutant: accept missing license evidence
+✔ NC02: 30 real calendar days are distinct and below 40 percent overlap
+✔ NC02 mutant: fixed theme script
+✔ NC02: duplicate episode and more than 40 percent shared sentences rejected
+✔ NC02 mutant: repetition guard disabled
+✔ NC02: corrupt projection needs readable receipt; preview never erases history
+✔ NC05: model must match approved model
+✔ NC05 mutant: a different model accepted
+✔ NC05: 3.8 Interactions and 2.5 generateContent use distinct protocols without fallback
+✔ NC05: comparison is exactly 4 voices times 2 models; approvals remain pending
+✔ NC06: exact SKU and word boundaries; ambiguous classifications use dicas
+✔ NC06 mutant: IA substring inside farmacia accepted
+✔ NC05: comparison writer processes all eight identities with exactly the same phrase

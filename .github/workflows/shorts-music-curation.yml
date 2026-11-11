@@ -1,0 +1,86 @@
+name: Shorts music curation (disabled pending reviews)
+on:
+  schedule:
+    - cron: '0 12 1 * *' # monthly discovery; no manual dispatch entry
+    - cron: '30 11 * *' # read-only Analytics and daily report after activation
+permissions:
+  contents: read
+concurrency:
+  group: shorts-music-curation
+  cancel-in-progress: false
+jobs:
+  curate:
+    if: ${{ github.ref == 'refs/heads/gh-pages' && vars.SHORTS_MUSIC_CURATION_ENABLED == 'true' }}
+    environment: gh-pages-automacao
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require explicit owner activation and both independent approvals
+        id: activation
+        run: |
+          node --input-type=module - <<'JS'
+          import {readFileSync,appendFileSync} from 'node:fs';
+          import {assertActivation} from './scripts/shorts-v2/music-policy.mjs';
+          const p=JSON.parse(readFileSync('data/musica-perfil.json','utf8'));
+          try { assertActivation(p); appendFileSync(process.env.GITHUB_OUTPUT,'enabled=true\n'); }
+          catch { appendFileSync(process.env.GITHUB_OUTPUT,'enabled=false\n'); console.log('Curadoria desligada; nenhuma chamada externa ou promoção.'); }
+          JS
+      - name: Install local audio analysis only after activation
+        if: steps.activation.outputs.enabled == 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+          python3 -m pip install --user numpy==2.2.6 ai-edge-litert==1.4.0
+          curl -fsSL --max-time 60 https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite -o "$RUNNER_TEMP/yamnet.tflite"
+          echo "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf  $RUNNER_TEMP/yamnet.tflite" | sha256sum -c -
+      - name: Curate or read performance (never upload or change videos)
+        if: steps.activation.outputs.enabled == 'true'
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          SHORTS_VOCAL_MODEL: ${{ runner.temp }}/yamnet.tflite
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+          KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
+        run: |
+          if [ "$SCHEDULE" = '0 12 1 * *' ]; then
+            node scripts/shorts-v2/curadoria-musica.mjs --monthly
+          else
+            node scripts/shorts-v2/curadoria-musica.mjs
+          fi
+      - name: Commit only admitted music and its state, without force or merge
+        if: steps.activation.outputs.enabled == 'true'
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add assets/musica data/musica-licencas.json data/musica-curadoria.json data/musica-perfil.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore(shorts): admitted music curation and verified performance'
+            git push origin HEAD:gh-pages
+          fi
+      - name: Register daily owner report after the atomic repository update
+        if: steps.activation.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+          KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
+        run: node scripts/shorts-v2/curadoria-musica.mjs --publish-report
+      - name: Keep curation evidence outside the site
+        if: ${{ !cancelled() && steps.activation.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: music-curation-report
+          path: ${{ runner.temp }}/music-curation-report/
+          if-no-files-found: error
+          retention-days: 14

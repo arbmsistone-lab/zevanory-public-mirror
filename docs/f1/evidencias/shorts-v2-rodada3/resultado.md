@@ -15,7 +15,7 @@ A primeira execução do teste novo sobre a base reprovou por script_repeated_60
 
 ## Cobertura
 
-2026-11-12 a 2027-05-10, 180 dias consecutivos: dica 180/180, calc 180/180, oferta 180/180, total 540, zero falhas de cobertura, repetição ou roteiro inválido. Histórico acumulado entre os três slots. Saída completa: simulacao-180-dias.json.
+2026-11-12 a 2027-05-10, 180 dias consecutivos: dica 180/180, calc 180/180, oferta 180/180, total 540, zero falhas de cobertura, repetição ou roteiro inválido. Histórico acumulado entre os três slots. A simulação completa é reproduzida no artefato `shorts-v2-review` do job de mídia.
 
 ## Limites
 
@@ -25,8 +25,8 @@ A cama de referência normalizada e a redução durante a fala foram medidas sep
 
 ## Resultado final executado
 
-- Suíte geral: **1.559 PASS / 0 FAIL**, nos 171 arquivos de tests/*.test.mjs. Quatro lotes de 474, 394, 352 e 339 testes, para respeitar o limite de duração do terminal. A lista completa de arquivos está em lotes-testes.json; nenhuma exclusão de arquivo.
-- Mídia: **9 PASS / 0 FAIL**, em três lotes disjuntos de 3 testes. Logs midia-lote-1.txt a midia-lote-3.txt.
+- Suíte geral: **1.559 PASS / 0 FAIL**, nos 171 arquivos de tests/*.test.mjs. Quatro lotes de 474, 394, 352 e 339 testes, para respeitar o limite de duração do terminal. Registro histórico de execução em lotes; a rodada 4 reconfere a soma pelo manifesto oficial.
+- Mídia: **9 PASS / 0 FAIL**, em três lotes disjuntos de 3 testes. Evidência bruta transferida para entrega por artefato, fora do site.
 - Total sem duplicar os testes direcionados: **1.568 PASS / 0 FAIL**.
 - Direcionados (incluídos na suíte): 67 PASS / 0 FAIL.
 - Simulação: **540/540**, zero falhas, antirrepetição de 30/60 dias intacta.
@@ -42,7 +42,7 @@ A cama de referência normalizada e a redução durante a fala foram medidas sep
 
 Inspeção visual: os três contatos foram abertos. Gancho sem corte lateral, sem glifos ausentes, títulos sem sobreposição, frases inteiras e legenda fora dos cartões. Um contato pode mostrar a mesma frase em quadros sucessivos: são amostras do realce dentro da mesma cena, não novos fragmentos.
 
-[Previews técnicos](previews.html) · [Oito trilhas separadas](musicas.html). MP4, contato, ASS, roteiro, cenas e QC de cada dia estão nesta pasta.
+Previews técnicos, músicas, MP4, contato, ASS, roteiro, cenas e QC são entregues exclusivamente no artefato `shorts-v2-review` do Actions. As páginas e os arquivos gerados foram removidos desta pasta na rodada 4.
 
 ### Achados adicionais corrigidos durante a execução
 

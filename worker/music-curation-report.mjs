@@ -1,0 +1,4 @@
+// Read-only supplement to the already-existing owner digest. No mail sender here.
+export async function musicCurationDigest(kv){
+ try{const raw=await kv.get('zpc:shorts:v2:musica:curadoria:diario');if(raw===null)return '';const r=JSON.parse(raw);if(r.schema!==1||!/^\d{4}-\d{2}-\d{2}$/.test(r.day)||typeof r.text!=='string'||r.text.length>8000||!r.text.startsWith('Curadoria musical:'))throw Error('shape');const links=r.text.match(/https?:\/\/\S+/g)||[];if(links.some(u=>!/^https:\/\/raw\.githubusercontent\.com\/arbmsistone-lab\/zevanory-public-mirror\/gh-pages\/assets\/musica\/[a-z0-9-]+\.ogg$/.test(u)))throw Error('link');return r.text;}catch{return 'Curadoria musical: atualização não confirmada; sem decisão por desempenho.';}
+}

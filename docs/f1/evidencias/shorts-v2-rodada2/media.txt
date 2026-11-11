@@ -1,16 +1,14 @@
-✔ V2: FFmpeg sidechain actually attenuates music by at least 10 dB (590.00545ms)
-✔ V2 mutant: actual sidechain removed (737.246425ms)
-PREVIEW_PATH=/tmp/zev-v2-render-KHr384/short.mp4
-✔ NC03/04: branded offline render measures ASS, final MP4 cuts, hook and contact sheet (20786.737631ms)
-✔ NC03 render mutant: subtitle moved to y1800 is rejected from serialized ASS (17988.804032ms)
-✔ NC03 render mutant: five-second cuts rejected by final MP4 scene detector (15795.130118ms)
-✔ NC04 render mutant: 58px hook rejected from actual filter (15477.957078ms)
-✔ NC01: all actual music excerpts fit 40 seconds and combined 6 MB budget (335.217741ms)
-ℹ tests 7
-ℹ suites 0
-ℹ pass 7
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 71822.726698
+Resumo da execução registrada; saída bruta não versionada.
+# tests 7
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+✔ V2: FFmpeg sidechain actually attenuates music by at least 10 dB
+✔ V2 mutant: actual sidechain removed
+✔ NC03/04: branded offline render measures ASS, final MP4 cuts, hook and contact sheet
+✔ NC03 render mutant: subtitle moved to y1800 is rejected from serialized ASS
+✔ NC03 render mutant: five-second cuts rejected by final MP4 scene detector
+✔ NC04 render mutant: 58px hook rejected from actual filter
+✔ NC01: all actual music excerpts fit 40 seconds and combined 6 MB budget

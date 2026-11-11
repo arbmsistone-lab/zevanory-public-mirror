@@ -23,61 +23,28 @@
       "trecho_inicio": 8,
       "trecho_segundos": 36,
       "credito": "Arpent — Kevin MacLeod / FreePD (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
+      "audicao_curadoria": "Aprovada pelo proprietario em 2026-11-11",
       "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Kevin MacLeod . Upbeat, uplifting and inspiring. Technology and innovation. This music is available for commercial and non-commercial purposes."
-    },
-    {
-      "arquivo": "assets/musica/ia-2.ogg",
-      "sha256": "9f266fa60bbc9725c2d081dadda617b8e03a6dcd99e7831aa94da47b1a9e5e80",
-      "sha256_original": "e950afff85274572226e6a9f8b4a4bf260f9df2ad6509435cacee8afa5f8bb59",
-      "titulo": "Hear What They Say",
-      "autor": "Kevin MacLeod",
-      "fonte": "https://a.ocv.me/pub/stuff/music/freepd/electronic/Hear%20What%20They%20Say.mp3",
-      "licenca": "CC0-1.0",
-      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/electronic.php#:~:text=Hear%20What%20They%20Say",
-      "evidencia_licenca": "Creative Commons 0",
-      "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/electronic/#Hear%20What%20They%20Say.mp3",
-      "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
-      "verificado_em": "2026-11-11",
-      "bpm": 115,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
-      "clima": "eletronica_leve",
-      "temas_permitidos": [
-        "ia"
-      ],
-      "trecho_inicio": 8,
-      "trecho_segundos": 36,
-      "credito": "Hear What They Say — Kevin MacLeod / FreePD (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
-      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Kevin MacLeod . 8bit synths playing epic triumph tune. It doesn't get more electronic than this! This music is available for commercial and non-commercial purposes."
-    },
-    {
-      "arquivo": "assets/musica/vendas-1.ogg",
-      "sha256": "94313bf0ff20d6d60406dd13c41df18f85b77ddeebbd96bda0219f0a2cc41e6f",
-      "sha256_original": "6f0d4433cf788304d60add551cc460dd877865e6d84a2ab3fa7d15ba3f55d6ce",
-      "titulo": "Advertime",
-      "autor": "Rafael Krux",
-      "fonte": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/Advertime.mp3",
-      "licenca": "CC0-1.0",
-      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/upbeat.php#:~:text=Advertime",
-      "evidencia_licenca": "Creative Commons 0",
-      "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/#Advertime.mp3",
-      "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
-      "verificado_em": "2026-11-11",
-      "bpm": 120,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
-      "clima": "animada",
-      "temas_permitidos": [
-        "vendas"
-      ],
-      "trecho_inicio": 8,
-      "trecho_segundos": 36,
-      "credito": "Advertime — Rafael Krux / FreePD (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
-      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Rafael Krux . Uplifting, positive and light track made with acoustic guitars, piano and light percussion. Perfect for commercials, advertising or generally happy moments. This music is available for commercial and non-commercial purposes."
+      "descricao_original": "Kevin MacLeod . Upbeat, uplifting and inspiring. Technology and innovation. This music is available for commercial and non-commercial purposes.",
+      "atributos": {
+        "schema": 1,
+        "audio_sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+        "bpm": 60.0,
+        "rms": 0.0455978,
+        "centroide_hz": 1063.818,
+        "lra": 2.6,
+        "modo": "maior",
+        "tonica": 3,
+        "modo_confianca": 0.1799,
+        "vocal": {
+          "status": "ausente",
+          "max_score": 0.0,
+          "music_mean": 0.99457,
+          "janelas": 72,
+          "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
+        },
+        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto"
+      }
     },
     {
       "arquivo": "assets/musica/vendas-2.ogg",
@@ -96,117 +63,35 @@
       "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
       "clima": "animada",
       "temas_permitidos": [
-        "vendas"
+        "vendas",
+        "financas",
+        "dicas"
       ],
       "trecho_inicio": 8,
       "trecho_segundos": 36,
       "credito": "Funshine — Kevin MacLeod / FreePD (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
+      "audicao_curadoria": "Aprovada pelo proprietario em 2026-11-11",
       "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Kevin MacLeod . Moog and Ukulele. Because it had to happen. Do you see what you all have done to me!?? Now that this is done... I'm going back to my life of horrible depression. You're welcome. [ed. Dark, man! Seriously... lighten this description up!] This music is available for commercial and non-commercial purposes."
-    },
-    {
-      "arquivo": "assets/musica/financas-1.ogg",
-      "sha256": "1e891183ff193c6190cec60b452daba1861bd36cb7876f4bc77df2b6b00cfbb5",
-      "sha256_original": "dd20cb51c948a14e45d71b9a03b9d6afc48a4b7fd7b5020da623fbd86390b519",
-      "titulo": "From Page to Practice",
-      "autor": "Bryan Teoh",
-      "fonte": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/From%20Page%20to%20Practice.mp3",
-      "licenca": "CC0-1.0",
-      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/upbeat.php#:~:text=From%20Page%20to%20Practice",
-      "evidencia_licenca": "Creative Commons 0",
-      "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/#From%20Page%20to%20Practice.mp3",
-      "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
-      "verificado_em": "2026-11-11",
-      "bpm": 80,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
-      "clima": "corporativa_calma",
-      "temas_permitidos": [
-        "financas"
-      ],
-      "trecho_inicio": 8,
-      "trecho_segundos": 36,
-      "credito": "From Page to Practice — Bryan Teoh / FreePD (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
-      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Bryan Teoh . Inspired by new day and you're anticipating a big good life change. Maybe it's no longer 2020. This music is available for commercial and non-commercial purposes."
-    },
-    {
-      "arquivo": "assets/musica/financas-2.ogg",
-      "sha256": "ab514882069092a35a966971e5817fbabd55fd3b524088d9d2aa91b36c20f9aa",
-      "sha256_original": "a254227da398809c79a0c753073a3a92c7341672abc92bb0166b6326e126f0b4",
-      "titulo": "Inspiration",
-      "autor": "Rafael Krux",
-      "fonte": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/Inspiration.mp3",
-      "licenca": "CC0-1.0",
-      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/upbeat.php#:~:text=Inspiration",
-      "evidencia_licenca": "Creative Commons 0",
-      "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/#Inspiration.mp3",
-      "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
-      "verificado_em": "2026-11-11",
-      "bpm": 60,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
-      "clima": "corporativa_calma",
-      "temas_permitidos": [
-        "financas"
-      ],
-      "trecho_inicio": 8,
-      "trecho_segundos": 36,
-      "credito": "Inspiration — Rafael Krux / FreePD (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
-      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Rafael Krux . Positive, uplifting and inspiring track suitable for commercials and advertising. This music is available for commercial and non-commercial purposes."
-    },
-    {
-      "arquivo": "assets/musica/dicas-1.ogg",
-      "sha256": "4be07665d294e02b8785de672e699eb0194178608d24438de95ae7364062ce70",
-      "sha256_original": "9cba2a3c2d1c9d364220db1691f618a0f25b8d9cf6f2a857fe389ef614fd18a4",
-      "titulo": "Study and Relax",
-      "autor": "Kevin MacLeod",
-      "fonte": "https://a.ocv.me/pub/stuff/music/freepd/chill/Study%20and%20Relax.mp3",
-      "licenca": "CC0-1.0",
-      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/misc.php#:~:text=Study%20and%20Relax",
-      "evidencia_licenca": "Creative Commons 0",
-      "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/chill/#Study%20and%20Relax.mp3",
-      "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
-      "verificado_em": "2026-11-11",
-      "bpm": 72,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
-      "clima": "lofi",
-      "temas_permitidos": [
-        "dicas"
-      ],
-      "trecho_inicio": 8,
-      "trecho_segundos": 36,
-      "credito": "Study and Relax — Kevin MacLeod / FreePD (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
-      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Kevin MacLeod . Like a worn out record with a mis-punched spindle hole. Thanks, izope! :-) This music is available for commercial and non-commercial purposes."
-    },
-    {
-      "arquivo": "assets/musica/dicas-2.ogg",
-      "sha256": "6c7c3c13ed67aea049fd2d52bd197c41da7c73fea625ff37ef0bd674dd4bec22",
-      "sha256_original": "1b5916797fe6341663a7172d8f653e95691d9462be51537c56ebfaabd81b8696",
-      "titulo": "Blue Skies",
-      "autor": "HoliznaCC0",
-      "fonte": "https://opengameart.org/sites/default/files/03_holiznacc0_-_blue_skies.mp3.mp3",
-      "licenca": "CC0-1.0",
-      "pagina_licenca": "https://opengameart.org/content/happy-lo-fi-lofi-collection",
-      "evidencia_licenca": "This music is public domain Cc0, so use it how you want!",
-      "pagina_faixa": "https://opengameart.org/content/happy-lo-fi-lofi-collection",
-      "verificado_em": "2026-11-11",
-      "bpm": 109,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
-      "clima": "lofi",
-      "temas_permitidos": [
-        "dicas"
-      ],
-      "trecho_inicio": 8,
-      "trecho_segundos": 36,
-      "credito": "Blue Skies — HoliznaCC0 / OpenGameArt (CC0).",
-      "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
-      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
-      "descricao_original": "Happy Lo-Fi (Lofi Collection); author Holizna; tags lo-fi, lofi; CC0. Track 03 HoliznaCC0 - Blue Skies is the public audio preview on the same page."
+      "descricao_original": "Kevin MacLeod . Moog and Ukulele. Because it had to happen. Do you see what you all have done to me!?? Now that this is done... I'm going back to my life of horrible depression. You're welcome. [ed. Dark, man! Seriously... lighten this description up!] This music is available for commercial and non-commercial purposes.",
+      "atributos": {
+        "schema": 1,
+        "audio_sha256": "c404d836e82626299fc3eb06ca3731196504354fe62055f2206a85117de6ed9f",
+        "bpm": 96.774,
+        "rms": 0.0450723,
+        "centroide_hz": 1608.074,
+        "lra": 0.9,
+        "modo": "maior",
+        "tonica": 9,
+        "modo_confianca": 0.0065,
+        "vocal": {
+          "status": "ausente",
+          "max_score": 0.00391,
+          "music_mean": 0.97401,
+          "janelas": 72,
+          "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
+        },
+        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto"
+      }
     }
   ]
 }

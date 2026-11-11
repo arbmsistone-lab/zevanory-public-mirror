@@ -296,10 +296,11 @@ export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, 
   const ch = await chRes.json().catch(() => ({}));
   if (!chRes.ok || ch.items?.length !== 1 || ch.items[0].id !== TARGET_CHANNEL) throw new Error("youtube_channel_id_mismatch");
   const uploads = ch.items[0].contentDetails?.relatedPlaylists?.uploads;
-  let videoId = "";
+  let videoId = "", musicDescription=plan.description;
   if (uploads) {
     const pl = await (await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${encodeURIComponent(uploads)}`, { headers: auth })).json().catch(() => ({}));
-    videoId = (pl.items || []).find(i => String(i.snippet?.description || "").includes(plan.marker))?.snippet?.resourceId?.videoId || "";
+    const existing=(pl.items || []).find(i => String(i.snippet?.description || "").includes(plan.marker));
+    videoId=existing?.snippet?.resourceId?.videoId||"";if(videoId)musicDescription=String(existing.snippet?.description||"");
   }
   const reused = Boolean(videoId);
   if (!reused) {
@@ -323,7 +324,8 @@ export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, 
   if (!v) throw new Error("youtube_video_lookup_failed");
   const uploadStatus = v.status?.uploadStatus, privacy = v.status?.privacyStatus;
   if (uploadStatus !== "processed" && uploadStatus !== "uploaded") throw new Error("youtube_not_processed_" + String(uploadStatus).replace(/[^a-z]/g, ""));
-  return { video_id: videoId, url: "https://www.youtube.com/shorts/" + videoId, reused, upload_status: uploadStatus, privacy_status: privacy,
+  const musicProof=/zevanory-music-key:(assets\/musica\/[a-z0-9-]+\.ogg):([a-f0-9]{64})/.exec(musicDescription||"");
+  return { ...(musicProof?{music_file:musicProof[1],music_sha256:musicProof[2]}:{}),video_id: videoId, url: "https://www.youtube.com/shorts/" + videoId, reused, upload_status: uploadStatus, privacy_status: privacy,
     // YouTube locks uploads from unaudited API projects to private until the audit passes.
     visibility_note: privacy === plan.privacyStatus ? "as_requested" : "provider_locked_" + String(privacy || "unknown") + "_pending_api_audit" };
 }
@@ -457,6 +459,8 @@ if (isMain) {
       if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
       const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
       await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
+      const {recordMusicPublication}=await import("../shorts-v2/music-publications.mjs");
+      await recordMusicPublication(kv,plan,result,rendered.track);
       const activity = await recordPublication(kv, plan, result);
       jaHoje[slot] = true;
       note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));

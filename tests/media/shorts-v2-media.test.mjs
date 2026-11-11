@@ -46,7 +46,7 @@ test('NC03 render mutant: subtitle moved to y1800 is rejected from serialized AS
 test('NC03 render mutant: five-second cuts rejected by final MP4 scene detector',()=>renderMutation('sceneSpan=duration/sceneCount','sceneSpan=5','visual_rhythm'));
 test('NC04 render mutant: 58px hook rejected from actual filter',()=>renderMutation("plan.sentences[0],96,'white'","plan.sentences[0],58,'white'",'hook'));
 
-test('NC01: all actual music excerpts fit 40 seconds and combined 6 MB budget',async()=>{let total=0;for(const row of manifest.faixas){const path=new URL('../../'+row.arquivo,import.meta.url).pathname;total+=(await readFile(path)).length;const probe=JSON.parse(renderer.command('ffprobe',['-v','error','-show_format','-of','json',path]));assert.ok(Number(probe.format.duration)>0&&Number(probe.format.duration)<=40);}assert.ok(total<=6000000);assert.equal(manifest.faixas.length,8);});
+test('NC01: all actual music excerpts fit 40 seconds and combined 6 MB budget',async()=>{let total=0;for(const row of manifest.faixas){const path=new URL('../../'+row.arquivo,import.meta.url).pathname;total+=(await readFile(path)).length;const probe=JSON.parse(renderer.command('ffprobe',['-v','error','-show_format','-of','json',path]));assert.ok(Number(probe.format.duration)>0&&Number(probe.format.duration)<=40);}assert.ok(total<=6000000);assert.equal(manifest.faixas.length,2);});
 
 test('NC09 render mutant: light caption band fails measured MP4 contrast',()=>renderMutation('drawbox=x=60:y=1410:w=920:h=210:color=0x0b0f16','drawbox=x=60:y=1410:w=920:h=210:color=0xffffff','caption_contrast'));
 test('NC10 render mutant: music at minus 40 LUFS fails audible balance',()=>renderMutation('loudnorm=I=-23:TP=-4','loudnorm=I=-40:TP=-4','voice_music_balance'));

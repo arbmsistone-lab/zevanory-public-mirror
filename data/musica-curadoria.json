@@ -1,0 +1,28 @@
+{
+  "schema": "musica-curadoria/v1",
+  "meses": {},
+  "faixas": {
+    "assets/musica/ia-1.ogg": {
+      "sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+      "status": "ativa",
+      "peso": 1,
+      "badWindows": 0,
+      "videos": 0,
+      "desde": "2026-11-11"
+    },
+    "assets/musica/vendas-2.ogg": {
+      "sha256": "c404d836e82626299fc3eb06ca3731196504354fe62055f2206a85117de6ed9f",
+      "status": "ativa",
+      "peso": 1,
+      "badWindows": 0,
+      "videos": 0,
+      "desde": "2026-11-11"
+    }
+  },
+  "eventos": [],
+  "analytics": {
+    "status": "sem_dados",
+    "day": null,
+    "reason": "nao_ativada"
+  }
+}
