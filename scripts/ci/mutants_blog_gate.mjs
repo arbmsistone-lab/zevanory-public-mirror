@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITE = "tests/blog-autopublicacao.test.mjs";
-const BASE_COUNT = 7;
+const BASE_COUNT = 8;
 const COPY = ["worker", "data", "tests/helpers", SUITE];
-const GATE = "worker/blog-quality-gate.mjs", MCA = "worker/multichannel-autonomy.mjs";
-const BOM = "caso bom", G = "gate:", HM = "modo Hotmart", AG = "agenda e teto", ID = "idempotência", RJ = "rejeição ponta a ponta";
+const GATE = "worker/blog-quality-gate.mjs", MCA = "worker/multichannel-autonomy.mjs", ED = "worker/blog-editorial.mjs";
+const BOM = "caso bom", G = "gate:", HM = "modo Hotmart", AG = "agenda e teto", ID = "idempotência", RJ = "rejeição ponta a ponta", ANO = "365 dias";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
   ["BG01_fonte_nao_exigida", G, [[GATE, '  if (hasFactualClaim(text) && !sources.some(verifiableSource)) reasons.push("fonte_ausente");\n', ""]]],
@@ -42,6 +42,10 @@ const MUTANTS = [
   ["BG21_cta_ignora_modo_hotmart", HM, [[MCA, "const ctaUrl=blogCtaUrl(source,mode);", "const ctaUrl=blogCtaUrl(source,{});"]]],
   ["BG22_indice_duplica_na_nova_tentativa", ID, [[MCA, "articles:[...(index.articles||[]).filter(x=>x?.slug!==article.slug),article]", "articles:[...(index.articles||[]),article]"]]],
   ["BG23_contador_regravado_na_nova_tentativa", ID, [[MCA, "if(!weekDays.includes(day))await kv.put(weekKey", "await kv.put(weekKey"]]],
+  // Auditoria do #1020: gerador sem edição repete o tema na janela de 45; revisão por amostragem (1 de cada 3).
+  ["BG24_edicao_fixa_repete_artigo", ANO, [[ED, "const edition = ((Math.floor(n / 25) % EDITIONS.length) + EDITIONS.length) % EDITIONS.length;", "const edition = ((Math.floor(n / 25) % 2) + 2) % 2;"]]],
+  ["BG25_amostra_de_revisao_desligada", BOM, [[MCA, "const amostraRevisao=weekDays.filter(d=>d!==day).length%3===0;", "const amostraRevisao=false;"]]],
+  ["BG26_amostra_de_revisao_em_toda_publicacao", AG, [[MCA, "const amostraRevisao=weekDays.filter(d=>d!==day).length%3===0;", "const amostraRevisao=true;"]]],
 ];
 
 const eol = (s) => s.replace(/\r\n/g, "\n");

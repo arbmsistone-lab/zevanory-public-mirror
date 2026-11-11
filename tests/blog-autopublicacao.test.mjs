@@ -40,7 +40,7 @@ test("caso bom: segunda-feira publica 1 artigo com URL, CTA do material gratuito
   assert.equal(art.cta_kind, "material_gratuito"); assert.equal(art.compliance, 100); assert.ok(art.score >= 85);
   assert.doesNotMatch(JSON.stringify(art), /\/comprar\//, "nenhum checkout próprio com vendas fechadas");
   const status = json(x, BLOG_STATUS_PREFIX + MON);
-  assert.deepEqual([status.resultado, status.url, status.slug], ["ok", art.url, art.slug]);
+  assert.deepEqual([status.resultado, status.url, status.slug, status.amostra_revisao, art.amostra_revisao], ["ok", art.url, art.slug, true, true], "1ª da semana é amostra de revisão");
   assert.deepEqual(json(x, BLOG_WEEK_PREFIX + isoWeekOf(MON)).days, [MON]);
   assert.equal(json(x, BLOG_INDEX_KEY).articles.at(-1).slug, art.slug);
   assert.equal(x.writes.filter((k) => k === BLOG_STATUS_PREFIX + MON).length, 1);
@@ -128,6 +128,10 @@ test("agenda e teto: só seg/qua/sex; no máximo 3 por semana ISO; o teto rejeit
   for (const d of published) perWeek[isoWeekOf(d)] = (perWeek[isoWeekOf(d)] || 0) + 1;
   assert.ok(Object.values(perWeek).every((n) => n <= BLOG_WEEKLY_CAP), JSON.stringify(perWeek));
   assert.equal(published.length, 12);
+  // Revisão por amostragem: 1 de cada 3 publicações (a primeira de cada semana ISO) leva amostra_revisao:true.
+  const amostras = published.filter((d) => json(x, BLOG_STATUS_PREFIX + d).amostra_revisao === true);
+  assert.deepEqual(amostras, published.filter((_, i) => i % 3 === 0));
+  assert.ok(published.every((d) => typeof json(x, BLOG_STATUS_PREFIX + d).amostra_revisao === "boolean"));
   // Contador já cheio com outros 3 dias (ex.: publicação recuperada): sexta é rejeitada pelo teto.
   const y = fake({ [BLOG_WEEK_PREFIX + isoWeekOf(FRI)]: JSON.stringify({ days: ["2026-10-12", "2026-10-13", "2026-10-14"] }) });
   const capped = await ensureDailyBlog(y.env, at(FRI), y.fetchImpl);
@@ -188,4 +192,20 @@ test("motor de aquisição: segunda após as 9h publica o blog com URL e evidên
   assert.equal(json(x, BLOG_INDEX_KEY).articles.length, 1);
   const s = await runAcquisitionEngine({ ZEVANORY_PRIVATE_ARTIFACTS: fake().kv }, at("2026-10-17"), x.fetchImpl);
   assert.deepEqual(((o) => [o.status, o.code])(s.outcomes.find((o) => o.channel === "blog")), ["fora_da_agenda", "not_publication_day"]);
+});
+
+test("365 dias: o gerador varia por edição e o gate publica >= 95% dos dias de agenda (sem duplicata na janela de 45)", async () => {
+  fresh();
+  const x = fake();
+  let agenda = 0, ok = 0;
+  const reasons = {};
+  for (let i = 0; i < 365; i++) {
+    const day = new Date(Date.UTC(2026, 10, 11) + i * 864e5).toISOString().slice(0, 10);
+    if (![1, 3, 5].includes(new Date(day + "T12:00:00Z").getUTCDay())) continue;
+    agenda++;
+    const out = await ensureDailyBlog(x.env, at(day), x.fetchImpl);
+    if (out.reason === "published") ok++; else reasons[out.reason] = (reasons[out.reason] || 0) + 1;
+  }
+  assert.ok(ok / agenda >= 0.95, `publicadas ${ok}/${agenda} ${JSON.stringify(reasons)}`);
+  assert.equal(json(x, BLOG_INDEX_KEY).articles.length, 45);
 });

@@ -138,7 +138,9 @@ export async function blogDraftDigest(article) {
 //     utilidade mínima, compliance 100 e score >= 85, CTA válido para a trava de vendas e o modo Hotmart;
 //   - registro do resultado (ok com URL, ou rejeitado com motivos) em UMA chave de status por dia local
 //     (zpc:blog:status:v1:<dia>), gravada no máximo 1 vez por dia; sem D1, sem binding DIARIO;
-//   - a pausa criativa (zpc:creative-autonomy:paused:v1) continua parando a publicação.
+//   - a pausa criativa (zpc:creative-autonomy:paused:v1) continua parando a publicação;
+//   - revisão por amostragem (auditoria do #1020, MÉDIA): 1 de cada 3 publicações (a primeira de cada semana ISO, com a
+//     agenda seg/qua/sex) sai com amostra_revisao:true no artigo e no status, para o relatório diário listar.
 export const BLOG_STATUS_PREFIX="zpc:blog:status:v1:";
 export const BLOG_WEEK_PREFIX="zpc:blog:week:v1:";
 const readKvJson=async(kv,key)=>{try{return JSON.parse(String(await kv.get(key)||"null"));}catch{return null;}};
@@ -176,13 +178,15 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   let index={articles:[]};try{index=JSON.parse(String(await kv.get(BLOG_INDEX_KEY)||"null"))||index;}catch{}
   const gate=blogQualityGate({article:source,priorArticles:index.articles||[],rubric,ctaUrl,mode});
   if(!gate.ok)return reject(gate.reasons,{slug:source.slug,similarity_max:gate.similarityMax});
-  const article={...source,publishedAt:at,cta_url:ctaUrl,cta_kind:/\/hotmart\//.test(ctaUrl)?"hotmart":"material_gratuito",status:"published",tableCPrice:price,score:rubric.score,compliance:rubric.compliance,gate:{version:gate.version,similarity_max:gate.similarityMax,words:gate.words,sections:gate.sections}};
+  // Amostra de revisão: determinística pelo contador da semana (o mesmo dia sempre recebe a mesma marca na nova tentativa).
+  const amostraRevisao=weekDays.filter(d=>d!==day).length%3===0;
+  const article={...source,amostra_revisao:amostraRevisao,publishedAt:at,cta_url:ctaUrl,cta_kind:/\/hotmart\//.test(ctaUrl)?"hotmart":"material_gratuito",status:"published",tableCPrice:price,score:rubric.score,compliance:rubric.compliance,gate:{version:gate.version,similarity_max:gate.similarityMax,words:gate.words,sections:gate.sections}};
   index={schema:"zevanory.blog-daily/v1",updatedAt:at,articles:[...(index.articles||[]).filter(x=>x?.slug!==article.slug),article].slice(-45)};
   // Ordem segura para nova tentativa: artigo -> índice -> contador da semana -> status do dia (o status fecha o dia).
   await kv.put("zpc:blog:article:"+article.slug,JSON.stringify(article),{expirationTtl:370*DAY});
   await kv.put(BLOG_INDEX_KEY,JSON.stringify(index),{expirationTtl:370*DAY});
   if(!weekDays.includes(day))await kv.put(weekKey,JSON.stringify({schema:"zpc.blog.week.v1",week,days:[...weekDays,day].sort(),cap:BLOG_WEEKLY_CAP}),{expirationTtl:21*DAY});
-  const status={schema:"zpc.blog.status.v1",day,resultado:"ok",slug:article.slug,url:article.url,cta:article.cta_kind,gate:gate.version,score:rubric.score,compliance:rubric.compliance,week,at};
+  const status={schema:"zpc.blog.status.v1",day,resultado:"ok",slug:article.slug,url:article.url,amostra_revisao:amostraRevisao,cta:article.cta_kind,gate:gate.version,score:rubric.score,compliance:rubric.compliance,week,at};
   await kv.put(statusKey,JSON.stringify(status),{expirationTtl:120*DAY});
   if(clean(env.INDEXNOW_KEY))await fetchImpl("https://api.indexnow.org/indexnow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({host:new URL(baseUrl(env)).host,key:clean(env.INDEXNOW_KEY,200),urlList:[article.url]}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
   return {created:[{id:article.slug,url:article.url}],latest:article,total:index.articles.length,day,reason:"published",status};
