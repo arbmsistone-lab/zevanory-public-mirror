@@ -47,6 +47,7 @@ tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/engine-dispatcher.test.mjs 4
 tests/experiments.test.mjs 5
+tests/f1-meta-identity.test.mjs 10
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5

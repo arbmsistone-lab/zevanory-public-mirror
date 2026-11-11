@@ -109,11 +109,13 @@ async function checks({ env, fetchImpl, log, mask, summary, secrets, token, repo
   } else it.page = { ok: false, error: page.error };
   let pageToken = null, pageTokenVia = null, pageTokenError = null;
   const accounts = await graphGet(fetchImpl, token, "/me/accounts?fields=id,access_token&limit=100", secrets);
-  if (accounts.ok) {
-    const row = (accounts.body.data || []).find((p) => String(p?.id) === pageId);
+  const accountsMalformed = accounts.ok && !Array.isArray(accounts.body.data);
+  if (accountsMalformed) pageTokenError = "me_accounts: invalid_data_array";
+  else if (accounts.ok) {
+    const row = accounts.body.data.find((p) => String(p?.id) === pageId);
     if (row?.access_token) { pageToken = String(row.access_token); pageTokenVia = "me_accounts"; }
   } else pageTokenError = "me_accounts: " + accounts.error;
-  if (!pageToken) {
+  if (!pageToken && !accountsMalformed) {
     const direct = await graphGet(fetchImpl, token, `/${encodeURIComponent(pageId)}?fields=access_token`, secrets);
     if (direct.ok && direct.body.access_token) { pageToken = String(direct.body.access_token); pageTokenVia = "page_field"; }
     else if (!direct.ok) pageTokenError = [pageTokenError, "page_field: " + direct.error].filter(Boolean).join(" | ").slice(0, 200);
@@ -151,10 +153,10 @@ async function checks({ env, fetchImpl, log, mask, summary, secrets, token, repo
     const d = dbg.body.data || {};
     const scopes = Array.isArray(d.scopes) ? d.scopes.map(String).sort() : [];
     it.debug_token = {
-      ok: d.is_valid === true, optional: true, is_valid: d.is_valid ?? null, type: d.type ?? null,
+      ok: d.is_valid === true && d.type === "SYSTEM_USER" && d.expires_at === 0, optional: true, is_valid: d.is_valid ?? null, type: d.type ?? null,
       app_id_matches_expected: d.app_id != null ? String(d.app_id) === EXPECTED.app_id : null,
       app_id_forbidden: d.app_id != null ? EXPECTED.forbidden_app_ids.includes(String(d.app_id)) : null,
-      expires_at: d.expires_at ?? null, never_expires: d.expires_at === 0, data_access_expires_at: d.data_access_expires_at ?? null,
+      expires_at: d.expires_at ?? null, data_access_expires_at: d.data_access_expires_at ?? null,
       scopes, has_instagram_content_publish: scopes.includes("instagram_content_publish"), has_pages_manage_posts: scopes.includes("pages_manage_posts"), has_publish_video: scopes.includes("publish_video"),
     };
   } else it.debug_token = { ok: false, optional: true, error: dbg.error };
@@ -164,9 +166,15 @@ async function checks({ env, fetchImpl, log, mask, summary, secrets, token, repo
   // NC-1: debug_token é opcional, mas se informar um app_id diferente do esperado (ou o do WhatsApp), reprova.
   const dt = it.debug_token;
   if (dt && (dt.app_id_matches_expected === false || dt.app_id_forbidden === true)) report.failed.push("app_id");
+  // Campos nativos do debug_token: nunca confiar em um eventual never_expires da resposta.
+  if (dbg.ok && dt?.ok !== true) report.failed.push("token_identity");
   report.ok = report.failed.length === 0;
-  // NC-F1-A6-02: só há identidade comprovada com app_id lido e igual ao esperado; sem isso, não está pronto para prova.
-  report.app_identity = dt?.app_id_matches_expected === true && dt?.app_id_forbidden === false ? "COMPROVADA"
+  // NC-F1-A6-03: app certo + is_valid true + type SYSTEM_USER + expires_at numérico zero.
+  // expires_at=0 é "sem expiração"; não se usa campo never_expires da resposta.
+  // data_access_expires_at é apenas informado, nunca usado para aprovar.
+  // Referências: https://developers.facebook.com/docs/graph-api/reference/debug_token/
+  // https://github.com/meta/agentic-tools/blob/main/plugins/devtools/skills/debug-access-token/SKILL.md
+  report.app_identity = dt?.ok === true && dt?.app_id_matches_expected === true && dt?.app_id_forbidden === false ? "COMPROVADA"
     : report.failed.includes("app_id") ? "DIVERGENTE" : "NAO_COMPROVADA";
   report.pronto_para_prova = report.ok && report.app_identity === "COMPROVADA";
   return finish(report, report.ok ? 0 : 1, log, summary, secrets);

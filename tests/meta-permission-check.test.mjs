@@ -64,7 +64,7 @@ test("caminho feliz: todos os itens ok, JSON curto, token mascarado antes da 1a 
   assert.equal(r.report.items.page_token.obtained, true);
   assert.equal(r.report.items.instagram.username, "zevanory_");
   assert.equal(r.report.items.publishing_limit.quota_total, 100);
-  assert.equal(r.report.items.debug_token.never_expires, true);
+  assert.equal(r.report.items.debug_token.expires_at, 0);
   assert.equal(r.report.items.debug_token.has_publish_video, false);
   assert.equal(r.report.items.debug_token.app_id_matches_expected, true);
   assert.equal(r.report.app_identity, "COMPROVADA");
@@ -291,7 +291,7 @@ const A6_MUTANTS = [
   ["A6-01 sem checagem do page_id", [['if (pageId !== EXPECTED.page_id) idMismatch.push("page_id");', ""]], ["Página fictícia reprova antes da API"]],
   ["A6-01 sem checagem do ig_id", [['if (igId !== EXPECTED.ig_id) idMismatch.push("ig_id");', ""]], ["Instagram fictício reprova antes da API"]],
   ["A6-01 checagem só depois da API", [["  if (idMismatch.length) {\n    report.ok = false;", "  if (false) {\n    report.ok = false;"]], ["Página fictícia reprova antes da API", "Página e Instagram fictícios (mock coerente) reprovam"]],
-  ["A6-02 identidade sempre comprovada", [['report.app_identity = dt?.app_id_matches_expected === true && dt?.app_id_forbidden === false ? "COMPROVADA"', 'report.app_identity = true ? "COMPROVADA"']], ["debug_token falhando: NAO_COMPROVADA e pronto_para_prova false", "debug_token sem app_id: NAO_COMPROVADA"]],
+  ["A6-02 identidade sempre comprovada", [['report.app_identity = dt?.ok === true && dt?.app_id_matches_expected === true && dt?.app_id_forbidden === false ? "COMPROVADA"', 'report.app_identity = true ? "COMPROVADA"']], ["debug_token falhando: NAO_COMPROVADA e pronto_para_prova false", "debug_token sem app_id: NAO_COMPROVADA"]],
   ["A6-02 pronto_para_prova = ok", [['report.pronto_para_prova = report.ok && report.app_identity === "COMPROVADA";', "report.pronto_para_prova = report.ok;"]], ["debug_token falhando: NAO_COMPROVADA e pronto_para_prova false"]],
   ["A6-02 URL registrada", [[String.raw`s = s.replace(/https?:\/\/[^\s"']+/gi, "[url]");`, ""]], ["URL do debug_token nunca é registrada (erro de rede com a URL)"]],
   ["A6-02 input_token sem redação", [[String.raw`(access_token|input_token)=[^&\s"]+`, String.raw`(access_token)=[^&\s"]+`]], ["input_token fora de URL também é redigido"]],
