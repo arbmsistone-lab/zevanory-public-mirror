@@ -41,8 +41,10 @@ export function canaisAtivos(checklist = [], regras = REGRAS) {
   return out;
 }
 
-// Concluída sem comando: publicada pelo motor; um registro marcado como disparado por pessoa ou agente não conta.
-export const semComando = (row) => row?.status === "publicado" && row?.trigger !== "manual" && row?.manual !== true;
+// Concluída sem comando (auditoria do #1021): publicada E disparada pelo cron ("cron" gravado pelo motor). Disparo
+// manual, workflow_dispatch, correção externa (agente de engenharia) ou registro sem trigger NÃO contam como autônomos.
+export const TRIGGER_AUTONOMO = "cron";
+export const semComando = (row) => row?.status === "publicado" && row?.trigger === TRIGGER_AUTONOMO && row?.manual !== true;
 
 // Motivo, das chaves de status do dia: rejeição do gate do blog > código do provedor/gate > status > ausência de registro.
 export function motivoDe(row, blogStatus, fonte) {
@@ -68,12 +70,14 @@ export async function lerStatusDoDia(kv, day, regras = REGRAS) {
     const detalhe = c.ativacao === "desligada" ? { ok: true, v: null } : await readJson(kv, ACQUISITION_DAILY_PREFIX + day + ":" + canal);
     const resumo = (Array.isArray(estado.v?.outcomes) ? estado.v.outcomes : []).find((o) => o?.channel === canal) || null;
     const blogStatus = c.chave_status ? (await readJson(kv, String(c.chave_status).replace("{dia}", day))).v : null;
-    const row = detalhe.v || resumo;
+    const row0 = detalhe.v || resumo;
+    // O detalhe por canal não guarda o trigger: vem do outcome do estado do dia (ou do próprio estado).
+    const row = row0 ? { ...row0, trigger: row0.trigger ?? resumo?.trigger ?? estado.v?.trigger ?? null } : null;
     const okBlog = blogStatus?.resultado === "ok";
     const publicada = row?.status === "publicado" || okBlog;
     porCanal[canal] = {
       publicadas: publicada ? 1 : 0,
-      semComando: (semComando(row) || (okBlog && row?.trigger !== "manual")) ? 1 : 0,
+      semComando: (semComando(row) || (okBlog && semComando({ status: "publicado", trigger: row?.trigger }))) ? 1 : 0,
       status: okBlog ? "publicado" : row?.status || null,
       url: row?.url || (okBlog ? blogStatus.url : null) || null,
       id: row?.provider_post_id ? String(row.provider_post_id).slice(0, 120) : null,

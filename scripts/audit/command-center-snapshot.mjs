@@ -344,10 +344,32 @@ export function updateUptime(prev, probes, now = Date.now()) {
   return { history, last24h: window(24 * 3600e3), last7d: window(UPTIME_KEEP_MS), since: history[0]?.t || null };
 }
 
+// Trigger de cada publicação (auditoria do #1021): o motor grava "cron" ou "manual" (também "workflow_dispatch" ou
+// "externo") em cada outcome do estado do dia; o índice real de autonomia só conta "cron". Puro: anota byDay com o
+// trigger do outcome do canal (ou do próprio estado) quando a entrada ainda não o tem; sem trigger fica null.
+export function anotarTrigger(byDay = {}, estados = {}) {
+  for (const [day, entries] of Object.entries(byDay || {})) {
+    const st = estados[day];
+    for (const [ch, e] of Object.entries(entries || {})) {
+      if (!e || e.trigger) continue;
+      const o = (Array.isArray(st?.outcomes) ? st.outcomes : []).find((x) => x?.channel === ch);
+      e.trigger = o?.trigger || st?.trigger || null;
+    }
+  }
+  return byDay;
+}
+async function collectPublicationsWithTrigger(now) {
+  const pubs = await collectPublications(now);
+  const estados = {};
+  for (const day of Object.keys(pubs.byDay)) estados[day] = await kvGet("zpc:acquisition:daily:" + day).catch(() => null);
+  anotarTrigger(pubs.byDay, estados);
+  return pubs;
+}
+
 export async function main() {
   const now = Date.now();
   const [funnel, sales, reach, runs, pubs, health, salesStatus, coreStatus, site, control, hotmartStatusRead] = await Promise.all([
-    kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublications(now),
+    kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublicationsWithTrigger(now),
     probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), j("https://zevanory.api.br/api/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
     j("https://zevanory.api.br/api/sales/hotmart-status").catch(() => null),
   ]);

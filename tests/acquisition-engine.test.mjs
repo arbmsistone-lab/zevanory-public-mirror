@@ -94,7 +94,7 @@ test("acquisition runs only at the :35 tick of the isolated 5,35 cron (no new ac
  const end=src.indexOf('if (controller?.cron === "15,45 * * * *")',start);
  assert.ok(start>0&&end>start);
  const block=src.slice(start,end);
- const tick=block.indexOf("tickMinute >= 30"),acq=block.indexOf("runAcquisitionEngine(normalized,new Date())"),brand=block.indexOf("await syncBrandProfiles(normalized)");
+ const tick=block.indexOf("tickMinute >= 30"),acq=block.indexOf("runAcquisitionEngine(normalized,new Date()"),brand=block.indexOf("await syncBrandProfiles(normalized)");
  assert.ok(tick>0&&acq>tick&&brand>acq,"acquisition in the :35 branch, profiles in the :05 branch");
  assert.equal(src.split("runAcquisitionEngine(normalized").length-1,1);
  assert.equal(src.includes('"25,55 * * * *"'),false);

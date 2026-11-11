@@ -1,6 +1,6 @@
 {
   "schema": "zevanory-regras-diagnostico/v1",
-  "versao": "1.0.0",
+  "versao": "1.1.0",
   "fonte": "Plano Mestre ZEVANORY v1.2, seções 2 e 4 (aprovado em 10/11/2026). Diagnosticador v1: só diagnostica e reporta no relatório diário; nenhuma ação automática.",
   "fuso": "America/Sao_Paulo",
   "canais": {
@@ -21,6 +21,7 @@
       "escalonamento": "credencial ausente, expirada ou inválida vai para a classe D (Plano Mestre, seção 4)"
     }
   ],
+  "autonomia": { "formula": "concluídas sem comando ÷ devidas", "trigger_autonomo": "cron", "nao_autonomos": ["manual", "workflow_dispatch", "externo", "ausente"] },
   "classe_por_motivo": {
     "aguardando credencial": "D",
     "credential_expired": "D",

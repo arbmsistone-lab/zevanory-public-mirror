@@ -28,10 +28,10 @@ export function estadoVendasHotmart(leitura, day) {
 }
 
 // Funil do dia (resumo horário do Worker em zpc-funnel:v1:summary, bloco porDiaUtc). Ausente ou antigo = não medido.
-export function funilDoDia(leitura, dayUtc, now = Date.now()) {
+export function funilDoDia(leitura, dia, now = Date.now()) {
   const s = leitura?.ok ? leitura.v : null;
   const at = Date.parse(String(s?.generatedAt || ""));
-  const d = s?.porDiaUtc && typeof s.porDiaUtc === "object" ? s.porDiaUtc[dayUtc] || { views_br: 0, hotmart_view: 0, lead_submit: 0 } : null;
+  const d = s?.porDiaUtc && typeof s.porDiaUtc === "object" ? s.porDiaUtc[dia] || { views_br: 0, hotmart_view: 0, lead_submit: 0 } : null;
   const fresco = Number.isFinite(at) && now - at <= FUNNEL_FRESH_MS;
   return {
     medido: Boolean(d),
@@ -50,9 +50,20 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
   const status = await lerStatusDoDia(kv, day, regras);
   const diagnosticos = diagnosticarDia({ day, hour, ativos, status, regras });
   const autonomia = autonomiaDoDia({ day, hour, ativos, status, regras });
-  const dayUtc = now.toISOString().slice(0, 10);
-  const funil = funilDoDia(await readJson(kv, FUNNEL_SUMMARY_KEY), dayUtc, now.getTime());
-  const vendas = estadoVendasHotmart(await readJson(kv, SALES_SUMMARY_KEY), dayUtc);
+  // Dia local de São Paulo do relatório (auditoria do #1021) para funil e vendas. Os baldes do funil e do ledger
+  // Hotmart são datados pelo relógio UTC; o relatório sai entre 20h e 21h de São Paulo (23h-00h UTC), quando o dia é
+  // o mesmo. Fora dessa janela a linha avisa que a fonte é por dia UTC.
+  const mesmoDiaUtc = now.toISOString().slice(0, 10) === day;
+  const funil = funilDoDia(await readJson(kv, FUNNEL_SUMMARY_KEY), day, now.getTime());
+  const vendas = estadoVendasHotmart(await readJson(kv, SALES_SUMMARY_KEY), day);
+  // Revisão por amostragem do blog (auditoria do #1020): publicações marcadas amostra_revisao nos últimos 7 dias locais.
+  const chaveBlog = regras.canais?.blog?.chave_status;
+  const amostras = [];
+  if (chaveBlog) for (let i = 0; i < 7; i++) {
+    const d = new Date(Date.parse(day + "T12:00:00Z") - i * 86400000).toISOString().slice(0, 10);
+    const st = (await readJson(kv, String(chaveBlog).replace("{dia}", d))).v;
+    if (st?.resultado === "ok" && st.amostra_revisao === true) amostras.push(`• ${d}: ${st.url || st.slug || "sem URL"}`);
+  }
 
   const publicacoes = Object.keys(regras.canais || {}).map((canal) => {
     const a = ativos[canal], s = status.porCanal[canal] || {};
@@ -83,7 +94,7 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
     "PUBLICADO HOJE (esperado × real)",
     ...publicacoes.map((p) => p.linha),
     "",
-    `FUNIL E VENDAS (dia UTC ${dayUtc}${funil.geradoEm ? `, resumo das ${funil.geradoEm.slice(11, 16)}Z` : ""})`,
+    `FUNIL E VENDAS (dia ${day}, America/Sao_Paulo${mesmoDiaUtc ? "" : "; fonte datada em UTC, dia diferente"}${funil.geradoEm ? `; resumo das ${funil.geradoEm.slice(11, 16)}Z` : ""})`,
     `• Views BR (filtro de robôs e datacenter): ${fmt(funil.viewsBr)}`,
     `• Cliques /hotmart (hotmart_view): ${fmt(funil.hotmartView)}`,
     `• Leads: ${fmt(funil.leadsFormulario)} no formulário hoje; ${fmt(funil.leadsConfirmados7)} confirmados em 7 dias`,
@@ -98,7 +109,11 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
     "DECISÕES PENDENTES (CLASSE D)",
     ...(decisoesD.length ? decisoesD : ["• nenhuma"]),
     "",
-    "Custo do dia: R$ 0,00 (custo zero; nenhum gasto autorizado)",
+    "AMOSTRA PARA REVISÃO (blog, 1 de cada 3 publicações, últimos 7 dias)",
+    ...(amostras.length ? amostras : ["• nenhuma"]),
+    "",
+    // Auditoria do #1021: sem fonte de custo medida, o custo não é afirmado (nunca R$ 0,00 fixo).
+    "Custo do dia: não medido (sem fonte de custo)",
     `Autonomia real: ${autonomia.texto}`,
     ...(agendaAmanha ? ["Agenda de amanhã: " + agendaAmanha] : []),
     "Painel: https://controle.zevanory.api.br",
@@ -107,6 +122,6 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
     subject: `ZEVANORY | Relatório do dia ${day}`,
     text: lines.join("\n"),
     publicacoes: publicacoes.map(({ linha, ...p }) => p),
-    funil, vendas, falhas: falhas.length, diagnosticos, decisoesD: decisoesD.length, autonomia, custoDiaBRL: 0, regras: regras.versao,
+    funil, vendas, falhas: falhas.length, diagnosticos, decisoesD: decisoesD.length, autonomia, custoDiaBRL: null, amostrasRevisao: amostras.length, regras: regras.versao,
   };
 }

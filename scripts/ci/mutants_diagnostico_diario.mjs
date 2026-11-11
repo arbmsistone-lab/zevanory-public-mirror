@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITE = "tests/diagnostico-diario.test.mjs";
-const BASE_COUNT = 8;
+const BASE_COUNT = 10;
 const COPY = ["worker", "data", "scripts/audit", "scripts/channels", "tests/helpers", SUITE];
 const DG = "worker/diagnostico-diario.mjs", RL = "worker/relatorio-diario.mjs", FN = "worker/funnel.mjs", SN = "scripts/audit/command-center-snapshot.mjs", AQ = "worker/acquisition-engine.mjs";
-const TG = "Telegram desligado", R = "regras versionadas", CP = "CANAL_PARADO", AU = "autonomia real", HV = "vendas Hotmart", REL = "relatório das 20h", FU = "funil:", AV = "aviso público";
+const TR = "trigger:", LD = "relatório: dia local", CP2 = "worker/cloudflare-worker.compat.mjs", TG = "Telegram desligado", R = "regras versionadas", CP = "CANAL_PARADO", AU = "autonomia real", HV = "vendas Hotmart", REL = "relatório das 20h", FU = "funil:", AV = "aviso público";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
   ["DD01_hora_limite_ignorada", R, [[DG, "  if (!(Number(hour) >= Number(c.hora_limite))) return 0;\n", ""]]],
@@ -30,7 +30,7 @@ const MUTANTS = [
   ["DD09_classe_D_ignorada", R, [[DG, '? "D" : "B";', '? "B" : "B";']]],
   ["DD10_falha_de_leitura_vira_sem_registro", CP, [[DG, 'const fonte = !estado.ok ? "falha_leitura" :', 'const fonte = !estado.ok ? "sem_registro" :']]],
   ["DD11_autonomia_sem_fonte_medida", AU, [[DG, "if (!fonteOk || d === 0) return {", "if (d === 0) return {"]]],
-  ["DD12_comando_manual_conta_como_autonomo", AU, [[DG, 'row?.status === "publicado" && row?.trigger !== "manual" && row?.manual !== true', 'row?.status === "publicado"']]],
+  ["DD12_trigger_ausente_conta_como_autonomo", TR, [[DG, "row?.trigger === TRIGGER_AUTONOMO && ", 'row?.trigger !== "manual" && ']]],
   ["DD13_concluidas_sem_limite", AU, [[DG, "c = Math.min(d, Math.max(0, Number(concluidas) || 0));", "c = Math.max(0, Number(concluidas) || 0);"]]],
   ["DD14_janela_conta_dia_sem_registro", AU, [[DG, "if (!entries || !Object.keys(entries).length) continue;", "if (!entries) continue;"]]],
   ["DD15_aguardando_credencial_devido", AU, [[DG, '(!e || AGUARDANDO.test(String(e.status || "")))', "!e"]]],
@@ -50,6 +50,18 @@ const MUTANTS = [
   ["DD29_desligado_sem_decisao_do_proprietario", TG, [[RL, '? "decisão do proprietário" : a.motivo', "? a.motivo : a.motivo"]]],
   ["DD30_desligado_exibido_como_inativo", TG, [[RL, "const linha = desligado ? desligado :", "const linha = false ? desligado :"]]],
   ["DD31_credencial_religa_canal_desligado", TG, [[DG, 'else if (c.ativacao === "desligada") out[canal] =', 'else if (c.ativacao === "desligada" && false) out[canal] =']]],
+  // Auditoria do #1021: trigger cron/manual, custo não medido, dia local, amostras de revisão do blog.
+  ["DD32_workflow_dispatch_e_externo_contam", TR, [[DG, "row?.trigger === TRIGGER_AUTONOMO && ", '[TRIGGER_AUTONOMO, "workflow_dispatch", "externo"].includes(row?.trigger) && ']]],
+  ["DD33_trigger_do_estado_ignorado", TR, [[DG, "trigger: row0.trigger ?? resumo?.trigger ?? estado.v?.trigger ?? null", "trigger: row0.trigger ?? null"]]],
+  ["DD34_motor_assume_cron_por_padrao", TR, [[AQ, '{trigger:triggerOpt="manual"}={}', '{trigger:triggerOpt="cron"}={}']]],
+  ["DD35_motor_nao_preserva_primeiro_trigger", TR, [[AQ, 'trigger:o.status==="publicado"&&priorTrigger[o.channel]?priorTrigger[o.channel]:trigger', "trigger"]]],
+  ["DD36_cron_do_worker_sem_trigger", TR, [[CP2, 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"cron"})', 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"manual"})']]],
+  ["DD37_snapshot_perde_trigger", TR, [[SN, "e.trigger = o?.trigger || st?.trigger || null;", "e.trigger = null;"]]],
+  ["DD38_custo_volta_a_zero_fixo", LD, [[RL, '"Custo do dia: não medido (sem fonte de custo)",', '"Custo do dia: R$ 0,00 (sem fonte de custo)",']]],
+  ["DD39_funil_pelo_dia_utc", LD, [[RL, "funilDoDia(await readJson(kv, FUNNEL_SUMMARY_KEY), day,", "funilDoDia(await readJson(kv, FUNNEL_SUMMARY_KEY), now.toISOString().slice(0, 10),"]]],
+  ["DD40_vendas_pelo_dia_utc", LD, [[RL, "estadoVendasHotmart(await readJson(kv, SALES_SUMMARY_KEY), day)", "estadoVendasHotmart(await readJson(kv, SALES_SUMMARY_KEY), now.toISOString().slice(0, 10))"]]],
+  ["DD41_amostras_nao_listadas", LD, [[RL, 'if (st?.resultado === "ok" && st.amostra_revisao === true) amostras.push', "if (false) amostras.push"]]],
+  ["DD42_amostras_sem_filtro", LD, [[RL, '&& st.amostra_revisao === true) amostras.push', ") amostras.push"]]],
   ["DD27_autonomia_falsa_100", AV, [[SN, 'pct: autonomiaReal.valor ?? "não medido"', "pct: autonomiaReal.valor ?? 100"]]],
 ];
 

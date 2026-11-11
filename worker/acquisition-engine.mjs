@@ -180,7 +180,11 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
   return failed;
  }
 }
-export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch){
+// trigger (Plano Mestre §6, auditoria do #1021): quem disparou a execução. Só o cron do Worker passa "cron"; o padrão é
+// "manual", e "workflow_dispatch"/"externo" também são aceitos. Nunca autodeclarado: o índice de autonomia só conta "cron".
+export const ENGINE_TRIGGERS=Object.freeze(["cron","manual","workflow_dispatch","externo"]);
+export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch,{trigger:triggerOpt="manual"}={}){
+ const trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";
  env=resolveChannelCredentials(env);
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return {ok:false,code:"kv_unavailable"};
@@ -220,9 +224,12 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  const days=planCalendar(now);
  let priorCal=null;try{priorCal=JSON.parse(String(await kv.get(ACQUISITION_CALENDAR_KEY)||"null"));}catch{}
  if(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
- const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,outcomes};
  let priorState=null;try{priorState=JSON.parse(String(await kv.get(ACQUISITION_STATE_PREFIX+day)||"null"));}catch{}
- if(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(outcomes)||priorState.product!==state.product)await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
+ // Cada outcome leva o trigger da execução; um outcome já publicado mantém o trigger da primeira publicação.
+ const priorTrigger=Object.fromEntries((priorState?.outcomes||[]).filter(o=>o?.status==="publicado"&&o.trigger).map(o=>[o.channel,o.trigger]));
+ const stamped=outcomes.map(o=>({...o,trigger:o.status==="publicado"&&priorTrigger[o.channel]?priorTrigger[o.channel]:trigger}));
+ const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,trigger,outcomes:stamped};
+ if(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(stamped)||priorState.product!==state.product)await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
  const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
  return {ok:true,...state,ownerDigest};
 }
