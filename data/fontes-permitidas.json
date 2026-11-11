@@ -1,0 +1,13 @@
+{
+  "schema": "zevanory-fontes-permitidas/v1",
+  "versao": "1.0.0",
+  "fonte": "Contra-auditoria GPT-6 do #1020 (NC-F1-A3-02). Lista curada de domínios aceitos como fonte de dado factual no blog. Uma URL desta lista é condição necessária, não prova: a detecção de afirmação factual por expressão regular é parcial e uma URL não comprova que o dado citado está nela. Ampliar a lista é mudança de código revisada.",
+  "dominios": [
+    "gov.br",
+    "ibge.gov.br",
+    "bcb.gov.br",
+    "ipea.gov.br",
+    "sebrae.com.br",
+    "fgv.br"
+  ]
+}

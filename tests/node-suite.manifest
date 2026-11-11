@@ -18,7 +18,7 @@ tests/autonomy-inventory.test.mjs 6
 tests/b0-baseline.test.mjs 36
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
-tests/blog-autopublicacao.test.mjs 8
+tests/blog-autopublicacao.test.mjs 10
 tests/blog-editorial-uniqueness.test.mjs 1
 tests/blog-editorial.test.mjs 6
 tests/blog-layout.test.mjs 5

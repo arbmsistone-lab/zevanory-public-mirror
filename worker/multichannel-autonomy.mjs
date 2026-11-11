@@ -144,18 +144,46 @@ export async function blogDraftDigest(article) {
 export const BLOG_STATUS_PREFIX="zpc:blog:status:v1:";
 export const BLOG_WEEK_PREFIX="zpc:blog:week:v1:";
 const readKvJson=async(kv,key)=>{try{return JSON.parse(String(await kv.get(key)||"null"));}catch{return null;}};
+// NC-F1-A3-01 (contra-auditoria GPT-6): leitura ESTRITA das chaves que alimentam gates e gravações. Chave ausente vale
+// vazio ({ok:true,v:null}); erro de leitura, JSON inválido ou estrutura inválida NUNCA viram vazio ({ok:false}).
+const isObj=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
+const DAY_RE=/^\d{4}-\d{2}-\d{2}$/;
+export const BLOG_KV_SHAPES=Object.freeze({
+  status:v=>isObj(v)&&["ok","rejeitado"].includes(v.resultado),
+  legado:v=>isObj(v),
+  semana:v=>isObj(v)&&Array.isArray(v.days)&&v.days.every(d=>typeof d==="string"&&DAY_RE.test(d)),
+  indice:v=>isObj(v)&&Array.isArray(v.articles)&&v.articles.every(a=>isObj(a)&&typeof a.slug==="string"),
+});
+export async function readKvStrict(kv,key,valid=()=>true){
+  let raw;try{raw=await kv.get(key);}catch{return {ok:false,erro:"leitura"};}
+  if(raw===null||raw===undefined)return {ok:true,v:null};
+  let v;try{v=JSON.parse(String(raw));}catch{return {ok:false,erro:"json"};}
+  if(!valid(v))return {ok:false,erro:"estrutura"};
+  return {ok:true,v};
+}
 export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localContentDay(now),statusKey=BLOG_STATUS_PREFIX+day;
   if(!kv?.get||!kv?.put)return {created:[],latest:null,reason:"kv_unavailable"};
+  // NC-F1-A3-01: status, marcador legado, contador semanal e índice são lidos ANTES de qualquer gravação, em modo
+  // estrito. Qualquer falha interrompe a publicação sem gravar artigo, índice, contador nem status (a próxima execução
+  // do cron tenta de novo); o motivo volta para o motor de aquisição, que o reporta como erro.
+  const week=isoWeekOf(day),weekKey=BLOG_WEEK_PREFIX+week;
+  const leituras=[["status",statusKey,BLOG_KV_SHAPES.status],["legado",BLOG_DAILY_KEY_PREFIX+day,BLOG_KV_SHAPES.legado],["semana",weekKey,BLOG_KV_SHAPES.semana],["indice",BLOG_INDEX_KEY,BLOG_KV_SHAPES.indice]];
+  const lido={};
+  for(const [nome,chave,forma] of leituras){
+    const r=await readKvStrict(kv,chave,forma);
+    if(!r.ok)return {created:[],latest:null,day,reason:"kv_leitura_invalida:"+nome+":"+r.erro};
+    lido[nome]=r.v;
+  }
   // Idempotência diária: o resultado do dia (ok ou rejeitado) é definitivo; reexecuções do cron não regravam nada.
-  const prior=await readKvJson(kv,statusKey);
+  const prior=lido.status;
   if(prior?.resultado==="ok"){
     const existing=prior.slug?await readKvJson(kv,"zpc:blog:article:"+prior.slug):null;
     return {created:[],latest:existing||{slug:prior.slug,url:prior.url,publishedAt:prior.at},day,reason:"already_published",status:prior};
   }
   if(prior?.resultado==="rejeitado")return {created:[],latest:null,day,reason:"rejected:"+(prior.motivos||[]).join(","),status:prior};
   // Marcador do publicador anterior à DEC-21: um dia já publicado nunca publica de novo.
-  const legacy=await readKvJson(kv,BLOG_DAILY_KEY_PREFIX+day);
+  const legacy=lido.legado;
   if(legacy?.slug){const existing=await readKvJson(kv,"zpc:blog:article:"+legacy.slug);if(existing)return {created:[],latest:existing,day,reason:"already_published"};}
   if(!isPublicationDay(day))return {created:[],latest:null,day,reason:"not_publication_day"};
   if(await creativeAutopublishPaused(env))return {created:[],latest:null,day,reason:"creative_autopublish_paused"};
@@ -165,9 +193,8 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
     await kv.put(statusKey,JSON.stringify(status),{expirationTtl:120*DAY});
     return {created:[],latest:null,day,reason:"rejected:"+motivos.join(","),status};
   };
-  const week=isoWeekOf(day),weekKey=BLOG_WEEK_PREFIX+week;
-  const counter=await readKvJson(kv,weekKey);
-  const weekDays=Array.isArray(counter?.days)?[...new Set(counter.days.map(String))]:[];
+  const counter=lido.semana;
+  const weekDays=counter?[...new Set(counter.days)]:[];
   if(!weekDays.includes(day)&&weekDays.length>=BLOG_WEEKLY_CAP)return reject(["teto_semanal"],{week});
   let source,price;
   try{source=dailyEditorialArticle(day,{baseUrl:baseUrl(env),now});price=BLOG_TABLE_C_PRICES[source.product];if(!Number.isInteger(price))throw new Error("blog_unknown_table_c_sku");}
@@ -175,7 +202,7 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   const rubric=evaluateCreativeWithRewrites({brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1080,hook:source.title.slice(0,90),body:source.description+" Guia digital por R$ "+price+",00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:price},{serverPrice:price,visualScore:1});
   const mode=await readPurchaseMode(env).catch(()=>({full:false,hotmart:false}));
   const ctaUrl=blogCtaUrl(source,mode);
-  let index={articles:[]};try{index=JSON.parse(String(await kv.get(BLOG_INDEX_KEY)||"null"))||index;}catch{}
+  let index=lido.indice||{articles:[]};
   const gate=blogQualityGate({article:source,priorArticles:index.articles||[],rubric,ctaUrl,mode});
   if(!gate.ok)return reject(gate.reasons,{slug:source.slug,similarity_max:gate.similarityMax});
   // Amostra de revisão: determinística pelo contador da semana (o mesmo dia sempre recebe a mesma marca na nova tentativa).

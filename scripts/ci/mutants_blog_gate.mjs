@@ -13,14 +13,14 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITE = "tests/blog-autopublicacao.test.mjs";
-const BASE_COUNT = 8;
+const BASE_COUNT = 10;
 const COPY = ["worker", "data", "tests/helpers", SUITE];
 const GATE = "worker/blog-quality-gate.mjs", MCA = "worker/multichannel-autonomy.mjs", ED = "worker/blog-editorial.mjs";
-const BOM = "caso bom", G = "gate:", HM = "modo Hotmart", AG = "agenda e teto", ID = "idempotência", RJ = "rejeição ponta a ponta", ANO = "365 dias";
+const BOM = "caso bom", G = "gate:", HM = "modo Hotmart", AG = "agenda e teto", ID = "idempotência", RJ = "rejeição ponta a ponta", ANO = "365 dias", N1 = "NC-F1-A3-01", N2 = "NC-F1-A3-02";
 // [id, rótulo do teste esperado, [[arquivo, de, para], ...]]
 const MUTANTS = [
   ["BG01_fonte_nao_exigida", G, [[GATE, '  if (hasFactualClaim(text) && !sources.some(verifiableSource)) reasons.push("fonte_ausente");\n', ""]]],
-  ["BG02_fonte_do_proprio_site_aceita", G, [[GATE, " && !OWN_HOSTS.test(u.hostname);", ";"]]],
+  ["BG02_fonte_do_proprio_site_aceita", N2, [[GATE, " || RESERVED_HOST.test(host) || OWN_HOSTS.test(host)) return false;", " || RESERVED_HOST.test(host)) return false;"]]],
   ["BG03_duplicata_ignorada", G, [[GATE, "|| similarityMax >= BLOG_DUPLICATE_THRESHOLD)", "|| similarityMax > 1)"]]],
   ["BG04_filtro_forbidden_desligado", G, [[GATE, "CREATIVE_FORBIDDEN_RE.test(str(text)) || CLAIMS_RE.test(str(text))", "CLAIMS_RE.test(str(text))"]]],
   ["BG05_promessas_desligadas", G, [[GATE, "CREATIVE_FORBIDDEN_RE.test(str(text)) || CLAIMS_RE.test(str(text))", "CREATIVE_FORBIDDEN_RE.test(str(text))"]]],
@@ -45,6 +45,18 @@ const MUTANTS = [
   // Auditoria do #1020: gerador sem edição repete o tema na janela de 45; revisão por amostragem (1 de cada 3).
   ["BG24_edicao_fixa_repete_artigo", ANO, [[ED, "const edition = ((Math.floor(n / 25) % EDITIONS.length) + EDITIONS.length) % EDITIONS.length;", "const edition = ((Math.floor(n / 25) % 2) + 2) % 2;"]]],
   ["BG25_amostra_de_revisao_desligada", BOM, [[MCA, "const amostraRevisao=weekDays.filter(d=>d!==day).length%3===0;", "const amostraRevisao=false;"]]],
+  // Contra-auditoria GPT-6 do #1020: NC-F1-A3-01 (leitura de KV nunca vira vazio) e NC-F1-A3-02 (fonte curada).
+  ["BG27_erro_de_leitura_vira_vazio", N1, [[MCA, 'catch{return {ok:false,erro:"leitura"};}', "catch{return {ok:true,v:null};}"]]],
+  ["BG28_json_invalido_vira_vazio", N1, [[MCA, 'catch{return {ok:false,erro:"json"};}', "catch{return {ok:true,v:null};}"]]],
+  ["BG29_estrutura_nao_validada", N1, [[MCA, '  if(!valid(v))return {ok:false,erro:"estrutura"};\n', ""]]],
+  ["BG30_falha_de_leitura_nao_interrompe", N1, [[MCA, 'if(!r.ok)return {created:[],latest:null,day,reason:"kv_leitura_invalida:"+nome+":"+r.erro};', "if(!r.ok){lido[nome]=null;continue;}"]]],
+  ["BG31_contador_semanal_sem_forma", N1, [[MCA, 'semana:v=>isObj(v)&&Array.isArray(v.days)&&v.days.every(d=>typeof d==="string"&&DAY_RE.test(d)),', "semana:v=>isObj(v),"]]],
+  ["BG32_dominio_reservado_aceito", N2, [[GATE, "if (RESERVED_TLD.test(host) || RESERVED_HOST.test(host)", "if (RESERVED_HOST.test(host)"]]],
+  ["BG33_ip_literal_aceito", N2, [[GATE, ' || /^[\\d.]+$/.test(host)) return false;', ") return false;"]]],
+  ["BG34_porta_aceita", N2, [[GATE, '(u.protocol !== "https:" || u.username || u.password || u.port) return false;\n  const host', '(u.protocol !== "https:" || u.username || u.password) return false;\n  const host']]],
+  ["BG35_lista_curada_ignorada", N2, [[GATE, 'return dominios.some((d) => host === d || host.endsWith("." + d));', "return true;"]]],
+  ["BG36_numero_por_extenso_ignorado", N2, [[GATE, "setenta|oitenta|noventa|cem)", "setenta|noventa|cem)"]]],
+  ["BG37_proporcao_ignorada", N2, [[GATE, "(?:metade|maioria|minoria|maior\\\\s+parte|um\\\\s+terço|dois\\\\s+terços|um\\\\s+quarto|três\\\\s+quartos)", "(?:minoria)"]]],
   ["BG26_amostra_de_revisao_em_toda_publicacao", AG, [[MCA, "const amostraRevisao=weekDays.filter(d=>d!==day).length%3===0;", "const amostraRevisao=true;"]]],
 ];
 

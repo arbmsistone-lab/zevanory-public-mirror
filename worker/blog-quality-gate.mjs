@@ -13,6 +13,7 @@
 import { CREATIVE_FORBIDDEN_RE } from "./creative-autonomy.mjs";
 import { trigramSimilarity } from "./blog-editorial.mjs";
 import { hotmartKit, hotmartLockViolations, salesLockViolations } from "./sales-lock-content.mjs";
+import FONTES from "../data/fontes-permitidas.json" with { type: "json" };
 
 export const BLOG_GATE_VERSION = "blog-gate/v1";
 export const BLOG_WEEKLY_CAP = 3;
@@ -28,9 +29,13 @@ export const BLOG_GATE_REASONS = Object.freeze(["fonte_ausente", "duplicado", "p
 
 // Promessas de ganho e falsa prova social (mesma lista do validateDraft do motor de aquisição, com fronteiras Unicode).
 const CLAIMS_RE = /(?<![\p{L}\p{N}])(?:lucro garantido|renda garantida|renda extra garantida|faturamento garantido|ganhe dinheiro|dinheiro f[aá]cil|fique rico|resultado garantido|retorno garantido|depoimento real|cliente comprovou)(?![\p{L}\p{N}])/iu;
-// Dado factual que exige fonte: percentual, "segundo/de acordo com" + pesquisa/estudo/instituto, pesquisa/estudo citados,
-// institutos e órgãos com estatística pública, ano explícito.
-const FACTUAL_RE = /\d+(?:[.,]\d+)?\s*(?:%|por cento)|(?<![\p{L}])(?:segundo|de acordo com|conforme)\s+(?:(?:o|a|os|as|um|uma)\s+)?(?:pesquisa|estudo|levantamento|relat[oó]rio|censo|ibge|sebrae|ipea|fgv|serasa|banco central)(?![\p{L}])|(?<![\p{L}])(?:pesquisa|estudo|levantamento|censo)\s+(?:do|da|de|realizad[oa]|publicad[oa]|recente)(?![\p{L}])|(?<![\p{L}\p{N}])(?:ibge|sebrae|ipea|fgv|serasa|banco central|receita federal)(?![\p{L}\p{N}])|(?<![\p{N}])(?:19|20)\d{2}(?![\p{N}])/iu;
+// Dado factual que exige fonte: percentual (em algarismos ou por extenso), proporção ("metade dos", "a maioria das",
+// "um terço", "três em cada quatro"), "segundo/de acordo com" + pesquisa/estudo/instituto, pesquisa/estudo citados,
+// institutos e órgãos com estatística pública, ano explícito. LIMITAÇÃO (NC-F1-A3-02): a detecção por expressão
+// regular é PARCIAL; ela reduz, não elimina, afirmação factual sem fonte. Por isso o gerador editorial não produz
+// afirmação com número sobre clientes, empresas ou pessoas, e o gate só aceita fonte da lista curada.
+const NUM_EXTENSO = "(?:um|uma|dois|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem)";
+const FACTUAL_RE = new RegExp("(?<![\\p{L}\\p{N}])" + NUM_EXTENSO + "(?:\\s+e\\s+" + NUM_EXTENSO + ")?\\s+por\\s+cento(?![\\p{L}])|(?<![\\p{L}])(?:a\\s+)?(?:metade|maioria|minoria|maior\\s+parte|um\\s+terço|dois\\s+terços|um\\s+quarto|três\\s+quartos)\\s+(?:dos|das|de)\\s+(?:\\p{L}+\\s+){0,2}(?:clientes|empresas|pessoas|consumidores|negócios|brasileiros|brasileiras|lojas|empreendedores|usuários|compradores)(?![\\p{L}])|(?<![\\p{L}\\p{N}])(?:\\d+|" + NUM_EXTENSO + ")\\s+(?:em|de)\\s+cada\\s+(?:\\d+|" + NUM_EXTENSO + ")(?![\\p{L}])|" + /\d+(?:[.,]\d+)?\s*(?:%|por cento)|(?<![\p{L}])(?:segundo|de acordo com|conforme)\s+(?:(?:o|a|os|as|um|uma)\s+)?(?:pesquisa|estudo|levantamento|relat[oó]rio|censo|ibge|sebrae|ipea|fgv|serasa|banco central)(?![\p{L}])|(?<![\p{L}])(?:pesquisa|estudo|levantamento|censo)\s+(?:do|da|de|realizad[oa]|publicad[oa]|recente)(?![\p{L}])|(?<![\p{L}\p{N}])(?:ibge|sebrae|ipea|fgv|serasa|banco central|receita federal)(?![\p{L}\p{N}])|(?<![\p{N}])(?:19|20)\d{2}(?![\p{N}])/iu.source, "iu");
 const PRACTICAL_RE = /(?<![\p{L}])(?:roteiro|passo a passo|passos|exemplo|caso pr[aá]tico|checklist)(?![\p{L}])/iu;
 const FREE_PATH_RE = /^\/(?:material-gratuito|calculadora-[a-z-]{2,60}|ferramentas)$/;
 const OWN_HOSTS = /(^|\.)zevanory\.api\.br$/;
@@ -49,10 +54,20 @@ export const isoWeekOf = (day) => {
   return `${t.getUTCFullYear()}-W${String(Math.ceil(((t - y) / 86400000 + 1) / 7)).padStart(2, "0")}`;
 };
 
-// Fonte verificável: URL https externa, sem credencial nem porta, com host público (não é o próprio site).
-export function verifiableSource(src) {
+// Fonte aceita (NC-F1-A3-02): URL https SINTATICAMENTE válida E de domínio da lista curada data/fontes-permitidas.json.
+// Rejeita credencial, porta, IP literal (v4 ou v6, inclusive loopback, privado e link-local), localhost e domínios
+// reservados (.invalid, .test, .example, .localhost, .local, example.com/net/org). Isso NÃO verifica que a página
+// contém o dado nem que é pertinente à afirmação: é condição necessária, não prova; a revisão por amostragem continua.
+export const FONTES_PERMITIDAS = Object.freeze([...FONTES.dominios]);
+const RESERVED_TLD = /\.(?:invalid|test|example|localhost|local|internal|lan|home|arpa)$/;
+const RESERVED_HOST = /^(?:localhost|(?:[^.]+\.)*example\.(?:com|net|org))$/;
+export function verifiableSource(src, { dominios = FONTES_PERMITIDAS } = {}) {
   let u; try { u = new URL(str(src?.url ?? src)); } catch { return false; }
-  return u.protocol === "https:" && !u.username && !u.password && !u.port && u.hostname.includes(".") && !OWN_HOSTS.test(u.hostname);
+  if (u.protocol !== "https:" || u.username || u.password || u.port) return false;
+  const host = u.hostname.toLowerCase().replace(/\.$/, "");
+  if (!host.includes(".") || host.startsWith("[") || /^[\d.]+$/.test(host)) return false;
+  if (RESERVED_TLD.test(host) || RESERVED_HOST.test(host) || OWN_HOSTS.test(host)) return false;
+  return dominios.some((d) => host === d || host.endsWith("." + d));
 }
 
 export function usefulness(article = {}) {

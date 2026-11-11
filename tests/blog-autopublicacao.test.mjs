@@ -7,7 +7,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ensureDailyBlog, BLOG_STATUS_PREFIX, BLOG_WEEK_PREFIX, BLOG_INDEX_KEY, renderBlogArticle } from "../worker/multichannel-autonomy.mjs";
-import { blogQualityGate, blogCtaUrl, isoWeekOf, BLOG_WEEKLY_CAP, BLOG_GATE_REASONS } from "../worker/blog-quality-gate.mjs";
+import { blogQualityGate, blogCtaUrl, isoWeekOf, BLOG_WEEKLY_CAP, BLOG_GATE_REASONS, verifiableSource, hasFactualClaim, FONTES_PERMITIDAS } from "../worker/blog-quality-gate.mjs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { dailyEditorialArticle } from "../worker/blog-editorial.mjs";
 import { runAcquisitionEngine } from "../worker/acquisition-engine.mjs";
 import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "../worker/creative-autonomy.mjs";
@@ -208,4 +209,68 @@ test("365 dias: o gerador varia por edição e o gate publica >= 95% dos dias de
   }
   assert.ok(ok / agenda >= 0.95, `publicadas ${ok}/${agenda} ${JSON.stringify(reasons)}`);
   assert.equal(json(x, BLOG_INDEX_KEY).articles.length, 45);
+});
+
+// NC-F1-A3-01 (contra-auditoria GPT-6 do #1020): erro de leitura ou estrutura inválida nunca vira "vazio".
+test("NC-F1-A3-01: erro de leitura, JSON ou estrutura inválida em status, legado, semana ou índice interrompe sem gravar e preserva o índice", async () => {
+  fresh();
+  const anteriores = Array.from({ length: 12 }, (_, i) => ({ slug: "antigo-" + i, title: "Antigo " + i, body: "corpo antigo " + i, url: "https://zevanory.api.br/blog/antigo-" + i, publishedAt: "2026-10-0" + ((i % 9) + 1) + "T12:00:00Z" }));
+  const indiceAnterior = JSON.stringify({ schema: "zevanory.blog-daily/v1", articles: anteriores });
+  const chaves = { status: BLOG_STATUS_PREFIX + MON, legado: "zpc:blog:daily:" + MON, semana: BLOG_WEEK_PREFIX + isoWeekOf(MON), indice: BLOG_INDEX_KEY };
+  const casos = [];
+  for (const nome of Object.keys(chaves)) {
+    casos.push([nome, "leitura", { throwOn: chaves[nome] }]);
+    casos.push([nome, "json", { raw: "{nao-e-json" }]);
+    casos.push([nome, "estrutura", { raw: JSON.stringify(nome === "semana" ? { days: "2026-10-12" } : nome === "indice" ? { articles: "x" } : nome === "status" ? { resultado: "talvez" } : ["lista"]) }]);
+  }
+  for (const [nome, erro, falha] of casos) {
+    const extra = { [BLOG_INDEX_KEY]: indiceAnterior };
+    if (falha.raw !== undefined) extra[chaves[nome]] = falha.raw;
+    const x = fake(extra);
+    if (falha.throwOn) { const get = x.kv.get; x.kv.get = async (k) => { if (k === falha.throwOn) throw new Error("kv_down"); return get(k); }; }
+    const out = await ensureDailyBlog(x.env, at(MON), x.fetchImpl);
+    assert.equal(out.reason, "kv_leitura_invalida:" + nome + ":" + erro, nome + "/" + erro);
+    assert.deepEqual(x.writes, [], "nenhuma gravação: " + nome + "/" + erro);
+    assert.equal(x.data.get(BLOG_INDEX_KEY), extra[BLOG_INDEX_KEY], "índice anterior preservado integralmente: " + nome + "/" + erro);
+    assert.deepEqual(x.fetches, [], "sem IndexNow");
+  }
+  // Cenário reproduzido: o índice ilegível não pode ser sobrescrito por 1 artigo; quando volta a ler, o novo entra no fim.
+  const y = fake({ [BLOG_INDEX_KEY]: indiceAnterior });
+  const get = y.kv.get; let falhar = true;
+  y.kv.get = async (k) => { if (falhar && k === BLOG_INDEX_KEY) throw new Error("kv_down"); return get(k); };
+  assert.equal((await ensureDailyBlog(y.env, at(MON), y.fetchImpl)).reason, "kv_leitura_invalida:indice:leitura");
+  assert.equal(y.data.get(BLOG_INDEX_KEY), indiceAnterior);
+  falhar = false;
+  assert.equal((await ensureDailyBlog(y.env, at(MON), y.fetchImpl)).reason, "published");
+  const idx = json(y, BLOG_INDEX_KEY).articles;
+  assert.equal(idx.length, 13); assert.deepEqual(idx.slice(0, 12), anteriores);
+  // O motor reporta a interrupção como erro com o motivo, sem gravar nada do blog.
+  const z = fake({ [BLOG_INDEX_KEY]: "{quebrado" });
+  const eng = await runAcquisitionEngine({ ZEVANORY_PRIVATE_ARTIFACTS: z.kv }, at(MON), z.fetchImpl);
+  assert.deepEqual(((o) => [o.status, o.code])(eng.outcomes.find((o) => o.channel === "blog")), ["erro", "kv_leitura_invalida:indice:json"]);
+  assert.equal(z.writes.some((k) => k.startsWith("zpc:blog:")), false);
+});
+
+// NC-F1-A3-02 (contra-auditoria GPT-6 do #1020): URL qualquer não comprova dado factual; números por extenso detectados.
+test("NC-F1-A3-02: fonte só da lista curada; locais, privados, reservados, IP e porta rejeitados; números por extenso detectados", () => {
+  const raw = JSON.parse(readTextNormalized(new URL("../data/fontes-permitidas.json", import.meta.url)));
+  assert.deepEqual(FONTES_PERMITIDAS, raw.dominios); assert.ok(raw.dominios.includes("ibge.gov.br") && raw.dominios.includes("sebrae.com.br"));
+  const good = dailyEditorialArticle(MON), cta = blogCtaUrl(good, CLOSED);
+  const gate = (frase, sources) => blogQualityGate({ article: { ...good, body: good.body + "\n\n## Nota\n\n" + frase, ...(sources ? { sources } : {}) }, rubric: RUBRIC_OK, ctaUrl: cta, mode: CLOSED }).reasons;
+  // Cenários reproduzidos pelo auditor.
+  for (const url of ["https://evidence.invalid/relatorio", "https://127.0.0.1/estudo"]) assert.deepEqual(gate("Cerca de 62% dos clientes respondem tarde.", [{ url }]), ["fonte_ausente"], url);
+  assert.deepEqual(gate("Oitenta por cento dos clientes respondem tarde."), ["fonte_ausente"]);
+  for (const frase of ["Oitenta por cento dos clientes respondem tarde.", "A maioria dos clientes prefere mensagem.", "Metade das pequenas empresas não controla o caixa.", "Três em cada quatro pessoas desistem.", "Vinte e cinco por cento das lojas fecham cedo.", "Um terço dos consumidores compara preço."]) {
+    assert.equal(hasFactualClaim(frase), true, frase);
+    assert.deepEqual(gate(frase), ["fonte_ausente"], frase);
+    assert.deepEqual(gate(frase, [{ url: "https://www.ibge.gov.br/estatisticas/sociais" }]), [], "com fonte curada: " + frase);
+  }
+  assert.equal(hasFactualClaim("Imagine vinte contatos de clientes, metade deles com a mesma dúvida."), false, "cenário fictício sem proporção sobre um grupo");
+  // Só a lista curada passa; URL sintaticamente válida não basta.
+  for (const url of ["https://pt.wikipedia.org/wiki/Varejo", "https://fakegov.br/x", "https://ibge.gov.br.evil.com/x", "http://www.ibge.gov.br/x", "https://user:pw@www.ibge.gov.br/x"]) assert.equal(verifiableSource({ url }), false, url);
+  for (const url of ["https://www.ibge.gov.br/x", "https://sebrae.com.br/x", "https://www.gov.br/fazenda"]) assert.equal(verifiableSource({ url }), true, url);
+  // Camadas independentes da lista: mesmo com a lista mal configurada, locais, privados, reservados, IP e porta caem.
+  const listaRuim = { dominios: ["invalid", "test", "example", "localhost", "local", "example.com", "0.1", "1", "168.0.1", "254.1.1", "api.br", "ibge.gov.br"] };
+  for (const url of ["https://evidence.invalid/x", "https://a.test/x", "https://a.example/x", "https://localhost/x", "https://servidor.local/x", "https://www.example.com/x",
+    "https://127.0.0.1/x", "https://10.0.0.1/x", "https://192.168.0.1/x", "https://169.254.1.1/x", "https://[::1]/x", "https://[fe80::1]/x", "https://www.ibge.gov.br:8443/x", "https://zevanory.api.br/blog/x", "https://vendas.zevanory.api.br/x"]) assert.equal(verifiableSource({ url }, listaRuim), false, url);
 });
