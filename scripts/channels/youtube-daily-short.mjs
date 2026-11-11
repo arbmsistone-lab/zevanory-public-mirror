@@ -440,8 +440,9 @@ if (isMain) {
       const publicadosHoje = Object.entries(jaHoje).filter(([s, v]) => s !== slot && v).length;
       const dec = decisaoSlot({ rampa, slot, publicadosHoje, congelado: false });
       if (!dec.publicar && !dry) { note("notice", slot + ": " + dec.motivo + " (nivel " + rampa.nivel + ", " + rampa.por_dia + "/dia, slots " + rampa.slots.join("+") + ")"); continue; }
-      const {planV2}=await import("../shorts-v2/core.mjs");
-      const plan = planV2(planSlot(day, slot, { salesOpen, hotmartOpen }),{hotmartOpen});
+      const {planV2WithHistory}=await import("../shorts-v2/core.mjs");
+      const plan = await planV2WithHistory(planSlot(day, slot, { salesOpen, hotmartOpen }),{hotmartOpen,kv:lockKv,note});
+      if(!plan)continue; // Planning is a skipped slot, never a QC failure of the ramp.
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected:" + String(plan.gate.reason || "").replace(/[^a-z0-9_:,]/gi, "_"));
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
       const usage = lockKv ? await getUsage(lockKv) : {};

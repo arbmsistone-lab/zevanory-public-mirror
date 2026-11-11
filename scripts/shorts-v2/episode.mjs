@@ -48,17 +48,21 @@ const recipes={
 };
 const angles=['dor','tutorial','caso de uso','objeção','comparação'];
 export function episodeScript(plan){
- const e=plan.entry,n= niches[e?.niche],row=recipes[e?.product?.sku]?.[(angles.indexOf(e?.angle)+(e?.short_variant||0))%5];
+ const e=plan.entry,n= niches[e?.niche],row=recipes[e?.product?.sku]?.[(angles.indexOf(e?.angle)+((e?.short_variant||0)+(plan.v2Variant||0)))%5];
  if(plan.slot==='dica'||plan.slot==='calc'){
   const lesson=EPISODES.episodes.find(x=>x.theme_id===e?.theme_id&&x.tip===plan.screen?.tip);
   if(!lesson)throw Error('episode_steps_missing_for_calendar_task');
-  return {...lesson,context:{theme_id:e.theme_id,tip:lesson.tip,hook:plan.screen.hook,niche:e.short_context?.name,product:e.product?.sku}};
+  const selected=plan.v2Variant>0?lesson.variants?.[(plan.v2Variant-1)%lesson.variants.length]:lesson;
+  if(!selected)throw Error('episode_variant_missing');
+  return {...lesson,...selected,context:{theme_id:e.theme_id,tip:lesson.tip,hook:plan.screen.hook,niche:e.short_context?.name,product:e.product?.sku}};
  }
  const tip=String(plan.screen?.tip||'').trim().replace(/\bIA\b/g,'inteligência artificial');
  if(!n||!row||!tip||!plan.screen?.hook)throw Error('episode_content_missing');
  const fill=s=>s.replace(/\{(\w+)\}/g,(_,key)=>n[key]);
- const issue=['o atendimento está gerando retrabalho','faltam etapas para conferir','quer testar um caso concreto','parece difícil começar pequeno','qual método deixa tudo mais claro'][(angles.indexOf(e.angle)+(e.short_variant||0))%5];
+ const issue=['o atendimento está gerando retrabalho','faltam etapas para conferir','quer testar um caso concreto','parece difícil começar pequeno','qual método deixa tudo mais claro'][(angles.indexOf(e.angle)+((e.short_variant||0)+(plan.v2Variant||0)))%5];
  const question=`Em ${n.label}, ${issue}?`;
- const steps=[tip,...row.slice(0,3).map(fill)];
+ const rows=recipes[e.product.sku],v=plan.v2Variant||0;
+ const steps=[tip,...[0,1,2].map(j=>fill(rows[(angles.indexOf(e.angle)+(e.short_variant||0)+Math.floor(v/5**j))%5][j]))];
+ if(steps[0].split(/\s+/).length>12||/whatsapp|telegram|R\$|gr[aá]tis/i.test(steps[0]))steps[0]='Confira as condições do kit antes de escolher sua aplicação.';
  return {hook:question,steps,result:fill(row[3]),followup:fill('Confira esse {item} na {record} amanhã.'),context:{theme_id:e.theme_id,niche:e.niche,product:e.product.sku,hook:plan.screen.hook,tip}};
 }

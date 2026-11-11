@@ -1,0 +1,4 @@
+import {writeFile} from 'node:fs/promises';
+import {planSlot} from '../channels/youtube-daily-short.mjs';import {planV2} from './core.mjs';import {fingerprint,assertNovel} from './script-history.mjs';
+const history=[],rows=[],counts={dica:0,calc:0,oferta:0};for(let i=0;i<180;i++){const day=new Date(Date.parse('2026-11-12')+i*86400000).toISOString().slice(0,10);for(const slot of ['dica','calc','oferta']){const raw=planSlot(day,slot,{hotmartOpen:true}),p=planV2(raw,{hotmartOpen:true,history}),record=fingerprint(p);assertNovel(record,history);history.push(record);counts[slot]++;rows.push({day,slot,theme:p.entry.theme_id,variant:p.v2Variant,sha256:record.sha256,sentences:p.sentences});}}
+const result={start:'2026-11-12',end:rows.at(-1).day,days:180,counts,failures:0,total:rows.length,rows};if(process.argv[2])await writeFile(process.argv[2],JSON.stringify(result,null,2));console.log(JSON.stringify({...result,rows:undefined},null,2));

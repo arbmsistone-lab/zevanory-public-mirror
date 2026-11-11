@@ -12,7 +12,7 @@ const source=new URL('../../scripts/shorts-v2/core.mjs',import.meta.url),renderS
 const approved={modelo:'gemini-3.8-flash-tts',voz_fixa:'Achird',comparacao_aprovada:true,nivel_gratuito_confirmado:true,publicacao_aprovada:true};
 async function mixProof(m){const dir=await mkdtemp(join(tmpdir(),'zev-v2-mix-'));try{renderer.command('ffmpeg',['-y','-f','lavfi','-i','sine=frequency=330:sample_rate=24000:duration=4','-af','volume=2',dir+'/voice.wav']);renderer.command('ffmpeg',['-y','-i',dir+'/voice.wav','-i',new URL('../../assets/musica/ia-1.ogg',import.meta.url).pathname,'-filter_complex',m.mixGraph(4),'-map','[mix]','-t','4',dir+'/mix.wav','-map','[reference]','-t','4',dir+'/reference.wav','-map','[stem]','-t','4',dir+'/stem.wav']);const raw=f=>renderer.command('ffmpeg',['-v','error','-i',f,'-f','f32le','-ar','24000','-ac','1','pipe:1'],{buffer:true});const windows=[{start:1,end:2.5}],ref=renderer.rmsDb(raw(dir+'/reference.wav'),windows),duck=renderer.rmsDb(raw(dir+'/stem.wav'),windows);assert.ok(ref-duck>=10,'measured sidechain reduction');}finally{await rm(dir,{recursive:true,force:true});}}
 test('V2: FFmpeg sidechain actually attenuates music by at least 10 dB',()=>mixProof(renderer));
-test('V2 mutant: actual sidechain removed',()=>killedMutation(renderSource,[["sidechaincompress=threshold=0.04:ratio=12:attack=10:release=250:makeup=1","amix=inputs=2:normalize=0"]],mixProof));
+test('V2 mutant: actual sidechain removed',()=>killedMutation(renderSource,[["sidechaincompress=threshold=0.06:ratio=12:attack=10:release=250:makeup=1","amix=inputs=2:normalize=0"]],mixProof));
 async function renderProof(m,{reason=null,retain=false}={}){
  const dir=await mkdtemp(join(tmpdir(),'zev-v2-render-'));
  try{
@@ -42,8 +42,11 @@ async function renderMutation(from,to,reason){
   await renderProof(m,{reason});
  }finally{await rm(file,{force:true});}
 }
-test('NC03 render mutant: subtitle moved to y1800 is rejected from serialized ASS',()=>renderMutation("captions(words)","captions(words).replaceAll('pos(500,1420)','pos(500,1800)')",'caption_safe_area'));
+test('NC03 render mutant: subtitle moved to y1800 is rejected from serialized ASS',()=>renderMutation("captions(words)","captions(words).replaceAll('pos(500,1530)','pos(500,1800)')",'caption_safe_area'));
 test('NC03 render mutant: five-second cuts rejected by final MP4 scene detector',()=>renderMutation('sceneSpan=duration/sceneCount','sceneSpan=5','visual_rhythm'));
-test('NC04 render mutant: 58px hook rejected from actual filter',()=>renderMutation('fontsize=96:fontcolor=white','fontsize=58:fontcolor=white','hook'));
+test('NC04 render mutant: 58px hook rejected from actual filter',()=>renderMutation("plan.sentences[0],96,'white'","plan.sentences[0],58,'white'",'hook'));
 
 test('NC01: all actual music excerpts fit 40 seconds and combined 6 MB budget',async()=>{let total=0;for(const row of manifest.faixas){const path=new URL('../../'+row.arquivo,import.meta.url).pathname;total+=(await readFile(path)).length;const probe=JSON.parse(renderer.command('ffprobe',['-v','error','-show_format','-of','json',path]));assert.ok(Number(probe.format.duration)>0&&Number(probe.format.duration)<=40);}assert.ok(total<=6000000);assert.equal(manifest.faixas.length,8);});
+
+test('NC09 render mutant: light caption band fails measured MP4 contrast',()=>renderMutation('drawbox=x=60:y=1410:w=920:h=210:color=0x0b0f16','drawbox=x=60:y=1410:w=920:h=210:color=0xffffff','caption_contrast'));
+test('NC10 render mutant: music at minus 40 LUFS fails audible balance',()=>renderMutation('loudnorm=I=-23:TP=-4','loudnorm=I=-40:TP=-4','voice_music_balance'));

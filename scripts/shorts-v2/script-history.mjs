@@ -18,7 +18,7 @@ export function assertNovel(current,history){
   if(age<=30&&shared>.4)throw Error('script_similar_30d');
  }
 }
-export async function scriptHistory(kv,plan,{reserve=false}={}){
+export async function scriptHistory(kv,plan,{reserve=false,historyOnly=false}={}){
  if(!kv?.get||!kv?.put)throw Error('script_history_unavailable');
  const current=fingerprint(plan),history=[];
  // Missing is valid only when both the projection and its immutable receipt are
@@ -31,10 +31,11 @@ export async function scriptHistory(kv,plan,{reserve=false}={}){
    const verified=receipt===null?null:decode(receipt,day,slot);
    let record;try{record=decode(raw,day,slot);}catch{if(!verified)throw Error('script_history_unknown');record=verified;}
    if(verified&&record.sha256!==verified.sha256)throw Error('script_history_conflict');
-   if(day===plan.day&&slot===plan.slot){if(record.sha256!==current.sha256)throw Error('script_slot_conflict');continue;}
+   if(day===plan.day&&slot===plan.slot){if(historyOnly){history.push(record);continue;}if(record.sha256!==current.sha256)throw Error('script_slot_conflict');continue;}
    history.push(record);
   }
  }
+ if(historyOnly)return history;
  assertNovel(current,history);
  if(reserve){const value=JSON.stringify(current),opts={expirationTtl:65*86400};await kv.put(prefix+'receipt:'+plan.day+':'+plan.slot,value,opts);await kv.put(prefix+plan.day+':'+plan.slot,value,opts);}
  return current;
