@@ -33,13 +33,9 @@
       "area": "Aquisição",
       "agent": "Motor Social",
       "name": "Post diário no Telegram",
-      "eligible": true,
-      "state": "autonomous",
-      "evidence": {
-        "type": "publication",
-        "channel": "telegram",
-        "maxAgeHours": 30
-      }
+      "eligible": false,
+      "state": "desligado",
+      "note": "Decisão F0 nº 7 do proprietário (10/11/2026)"
     },
     {
       "id": "bluesky",

@@ -301,6 +301,12 @@ async function collectShortVideos() {
   return out;
 }
 
+// Mesmo prefixo de worker/acquisition-engine.mjs BLUESKY_STATUS_PREFIX (igualdade garantida por teste).
+export const BLUESKY_STATUS_PREFIX = "bluesky:status:";
+export function blueskyStatusEntry(v) {
+  if (v?.ok !== false) return null;
+  return { status: "erro", url: null, at: v.at || null, code: String(v.motivo || "desconhecido"), similarity: typeof v.similaridade === "number" ? v.similaridade : null };
+}
 async function collectPublications(now) {
   const byDay = {};
   const today = [];
@@ -316,6 +322,8 @@ async function collectPublications(now) {
     const state = await kvGet("zpc:acquisition:daily:" + day);
     const blog = (state?.outcomes || []).find((o) => o.channel === "blog");
     if (blog) entries.blog = { status: blog.status, url: blog.url || null, at: blog.at || null };
+    // Reprovação do gate do Bluesky não grava a chave por canal: o status do dia (bluesky:status:AAAAMMDD) a torna visível.
+    if (!entries.bluesky) { const st = blueskyStatusEntry(await kvGet(BLUESKY_STATUS_PREFIX + day.replaceAll("-", ""))); if (st) entries.bluesky = st; }
     byDay[day] = entries;
     if (i === 0) for (const [ch, e] of Object.entries(entries)) today.push({ channel: ch, ...e });
   }
