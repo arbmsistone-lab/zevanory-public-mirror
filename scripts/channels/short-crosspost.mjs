@@ -7,7 +7,7 @@
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, channelPurchaseMode, channelPublishPaused, RAMPA_CONFIG } from "./youtube-daily-short.mjs";
-import { congelamentoAtivo, CHAVE_CONGELADO, CHAVES_PUBLICADO } from "./shorts-retomada.mjs";
+import { congelamentoAtivo, lerCongelamento, CHAVES_PUBLICADO } from "./shorts-retomada.mjs";
 import { hotmartLockViolations } from "../../worker/sales-lock-content.mjs";
 import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta } from "../../worker/politica-unica.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
@@ -20,7 +20,8 @@ export const metaLiberada = (r = META_PROVA) => r?.teste_permissao_ok === true &
 
 // NC-02: o cross-post só roda se o YouTube publicou o Short do slot como PÚBLICO (registro gravado por
 // recordPublication: zpc:acquisition:daily:<dia>:youtube[_dica|_calc] com status "publicado" e privacy "public")
-// e o canal não está congelado (zpc:shorts:congelado:v1 sem liberação em data/shorts-rampa.json).
+// e o canal não tem episódio de congelamento ativo (zpc:shorts:congelado:v1; registro ilegível = ativo; erro de
+// leitura do KV = não roda).
 export async function youtubePublicoENaoCongelado({ kv, day, slot, config = RAMPA_CONFIG }) {
   const yk = CHAVES_PUBLICADO[slot];
   if (!yk || !kv?.get) return { ok: false, motivo: "sem_kv_ou_slot" };
@@ -28,7 +29,9 @@ export async function youtubePublicoENaoCongelado({ kv, day, slot, config = RAMP
   try {
     const yt = parse(await kv.get(`zpc:acquisition:daily:${day}:${yk}`));
     if (yt?.status !== "publicado" || yt?.privacy !== "public") return { ok: false, motivo: "youtube_nao_publico" };
-    if (congelamentoAtivo({ config, registro: parse(await kv.get(CHAVE_CONGELADO)) })) return { ok: false, motivo: "canal_congelado" };
+    const cg = await lerCongelamento(kv);
+    if (cg.erro) return { ok: false, motivo: "kv_indisponivel" };
+    if (congelamentoAtivo({ config, registro: cg.registro })) return { ok: false, motivo: "canal_congelado" };
     return { ok: true, motivo: "youtube_publico" };
   } catch { return { ok: false, motivo: "kv_indisponivel" }; }
 }

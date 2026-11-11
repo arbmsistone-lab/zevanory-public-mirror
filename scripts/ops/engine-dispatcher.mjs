@@ -40,11 +40,12 @@ export function workflowGate(state, minutes, sondagemMin = 60) {
 }
 
 // Slots de Short que a rampa permite hoje: registro do dia gravado pelo próprio Short (zpc:shorts:rampa:<dia>);
-// sem registro, os slots do nível 1. Canal congelado (e não liberado) => nenhum slot.
-export function shortSlotsAllowed({ config, statusDia = null, congelamento = null, dia } = {}) {
-  const lib = config?.canal?.congelamento_liberado_em;
-  const congelado = Boolean(congelamento && /^\d{4}-\d{2}-\d{2}$/.test(String(congelamento.desde)) && !(/^\d{4}-\d{2}-\d{2}$/.test(String(lib)) && lib >= congelamento.desde));
-  if (congelado || config?.canal?.aviso_manual === true) return { slots: [], motivo: "canal_congelado" };
+// sem registro, os slots do nível 1. Episódio de congelamento ativo => nenhum slot. congelado=null (KV ilegível)
+// também => nenhum slot: erro de leitura nunca vira "não congelado". A decisão de congelamento vem de
+// congelamentoAtivo (scripts/channels/shorts-retomada.mjs), a mesma regra por episódio do Short.
+export function shortSlotsAllowed({ config, statusDia = null, congelado = null, dia } = {}) {
+  if (congelado !== false) return { slots: [], motivo: congelado === true ? "canal_congelado" : "congelamento_ilegivel" };
+  if (config?.canal?.aviso_manual === true) return { slots: [], motivo: "canal_congelado" };
   if (statusDia && statusDia.day === dia && Array.isArray(statusDia.slots)) return { slots: statusDia.slots.filter((x) => typeof x === "string"), motivo: "registro_do_dia:" + String(statusDia.estado || "") };
   const n1 = Array.isArray(config?.niveis) && config.niveis[0] && Array.isArray(config.niveis[0].slots) ? config.niveis[0].slots : [];
   return { slots: [...n1], motivo: "nivel_1_padrao" };
@@ -84,6 +85,17 @@ async function gh(path, init = {}) {
   if (!r.ok) console.log("::warning title=ENGINE_DISPATCHER::GET " + path.split("?")[0] + " http " + r.status);
   return r.ok ? r.json() : {};
 }
+// Leitura crua para o congelamento: 404 = null; qualquer outra falha (sem token, HTTP, rede) LANÇA.
+function kvRaw() {
+  const { CLOUDFLARE_API_TOKEN: tk, CLOUDFLARE_ACCOUNT_ID: ac, KV_NAMESPACE_ID: ns } = process.env;
+  return { async get(key) {
+    if (!tk) throw new Error("kv_sem_token");
+    const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ac}/storage/kv/namespaces/${ns}/values/${encodeURIComponent(key)}`, { headers: { authorization: "Bearer " + tk } });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("kv_get_http_" + r.status);
+    return r.text();
+  } };
+}
 async function kvGet(key) {
   const { CLOUDFLARE_API_TOKEN: tk, CLOUDFLARE_ACCOUNT_ID: ac, KV_NAMESPACE_ID: ns } = process.env;
   if (!tk) return null;
@@ -109,7 +121,10 @@ export async function main() {
   }
   const kvDone = {};
   for (const ch of ["youtube", "youtube_dica", "youtube_calc"]) kvDone[ch] = (await kvGet(`zpc:acquisition:daily:${L.day}:${ch}`))?.status === "publicado";
-  const shorts = shortSlotsAllowed({ config: rampa, statusDia: await kvGet(`zpc:shorts:rampa:${L.day}`), congelamento: await kvGet("zpc:shorts:congelado:v1"), dia: L.day });
+  const { lerCongelamento, congelamentoAtivo } = await import("../channels/shorts-retomada.mjs");
+  const cg = await lerCongelamento(kvRaw());
+  const congelado = cg.erro ? null : congelamentoAtivo({ config: rampa, registro: cg.registro });
+  const shorts = shortSlotsAllowed({ config: rampa, statusDia: await kvGet(`zpc:shorts:rampa:${L.day}`), congelado, dia: L.day });
   const sondagemMin = Number(rampa?.dispatcher?.sondagem_estado_desconhecido_min) || 60;
   const due = decide({ now, runs, kvDone, workflowStates, shortSlots: shorts.slots, sondagemMin });
   const started = [];

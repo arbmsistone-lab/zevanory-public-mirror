@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
 import {
   textoProibido, violacoesShort, ctaPermitido, nivelRampa, decisaoSlot, avaliarPreflight, avaliarPosUpload,
-  congelamentoAtivo, gravarUmaVez, diasDaJanela, somarDias, eQcFalha, CANAL_ESPERADO, CHAVE_CONGELADO
+  congelamentoAtivo, gravarUmaVez, diasDaJanela, somarDias, eQcFalha, CANAL_ESPERADO, CHAVE_CONGELADO, lerCongelamento, idEpisodio, ID_ILEGIVEL
 } from "../scripts/channels/shorts-retomada.mjs";
 import { planSlot, SLOTS, RAMPA_CONFIG, historicoRampa, preflightCanal, congelarCanal, publicadosNoDia } from "../scripts/channels/youtube-daily-short.mjs";
 import { captionFor } from "../scripts/channels/short-crosspost.mjs";
@@ -26,7 +26,7 @@ test("configuração versionada: começa com 1 Short por dia (dica), sobe para 2
   assert.equal(CFG.niveis[0].dias_limpos_para_subir, 7); assert.equal(CFG.niveis[1].dias_limpos_para_subir, 7);
   for (const n of CFG.niveis) { assert.equal(n.slots.length, n.por_dia); for (const s of n.slots) assert.ok(SLOTS.includes(s)); }
   assert.equal(CFG.voz.permitir_voz_local, false); assert.equal("crosspost" in CFG, false, "Telegram desligado por constante, não por configuração");
-  assert.equal(CFG.canal.aviso_manual, false); assert.equal(CFG.canal.congelamento_liberado_em, null);
+  assert.equal(CFG.canal.aviso_manual, false); assert.equal(CFG.canal.congelamento_liberado_id, null); assert.equal("congelamento_liberado_em" in CFG.canal, false);
   assert.equal(CFG.contar_a_partir_de, "2026-11-10");
 });
 
@@ -143,7 +143,7 @@ test("preflight do canal: público só sem restrição; restrição congela; fal
   assert.equal(avaliarPosUpload({ privacy_status: "unlisted" }).estado, "restricao");
 });
 
-test("preflight real usa channels?part=id,status (somente leitura) e congela no máximo uma vez; liberação só por data >= desde", async () => {
+test("preflight real usa channels?part=id,status (somente leitura); congelamento por episódio não é sobrescrito enquanto ativo", async () => {
   const calls = [];
   const fetchImpl = async (url, init = {}) => { calls.push([String(url), init.method || "GET"]); return { ok: true, status: 200, json: async () => ({ items: [{ id: CANAL_ESPERADO, status: { privacyStatus: "public", longUploadsStatus: "disallowed" } }] }) }; };
   const pf = await preflightCanal({ accessToken: "t", fetchImpl });
@@ -151,14 +151,17 @@ test("preflight real usa channels?part=id,status (somente leitura) e congela no 
   const down = await preflightCanal({ accessToken: "t", fetchImpl: async () => { throw new Error("net"); } });
   assert.equal(down.estado, "indisponivel");
   const kv = memKv();
-  assert.equal((await congelarCanal(kv, "2026-11-12", pf.motivos)).gravado, true);
-  assert.equal((await congelarCanal(kv, "2026-11-13", pf.motivos)).gravado, false);
-  assert.equal(kv.puts, 1, "uma gravação só");
+  const e1 = await congelarCanal(kv, "2026-11-12", pf.motivos, { now: Date.parse("2026-11-12T13:00:00Z") });
+  assert.equal(e1.gravado, true); assert.match(e1.episodio_id, /^2026-11-12T13:00:00\.000Z\|recursos_intermediarios_revogados$/);
+  const e2 = await congelarCanal(kv, "2026-11-13", ["outro"], { now: Date.parse("2026-11-13T13:00:00Z") });
+  assert.deepEqual(e2, { gravado: false, motivo: "episodio_ativo", episodio_id: e1.episodio_id }, "episódio ativo não é sobrescrito");
+  assert.equal(kv.puts, 1);
   const reg = JSON.parse(kv.m.get(CHAVE_CONGELADO));
-  assert.equal(reg.desde, "2026-11-12");
+  assert.equal(reg.desde, "2026-11-12"); assert.equal(idEpisodio(reg), e1.episodio_id);
   assert.equal(congelamentoAtivo({ config: CFG, registro: reg }), true);
-  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_em: "2026-11-11" } }, registro: reg }), true, "liberação anterior ao congelamento não vale");
-  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_em: "2026-11-12" } }, registro: reg }), false);
+  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_id: "2026-11-12T12:59:59.000Z|x" } }, registro: reg }), true, "liberar outro id não vale");
+  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_id: e1.episodio_id } }, registro: reg }), false);
+  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_em: "2026-12-31" } }, registro: reg }), true, "liberação por data não existe mais");
   assert.equal(congelamentoAtivo({ config: CFG, registro: null }), false);
   const kv2 = memKv();
   assert.equal((await gravarUmaVez(kv2, "k", { a: 1 })).gravado, true); assert.equal((await gravarUmaVez(kv2, "k", { a: 2 })).motivo, "ja_registrado");
@@ -199,12 +202,16 @@ test("dispatcher: só dispara os slots da rampa; canal congelado = nenhum Short"
   assert.deepEqual(ids(["dica"]), ["short-dica"]);
   assert.deepEqual(ids([]), []);
   assert.deepEqual(decide({ now: late, shortSlots: ["dica"], kvDone: { youtube_dica: true } }).filter((e) => e.workflow === SHORT_WF), [], "dica feito: oferta e calc fora da rampa não disparam");
-  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-10" }), { slots: ["dica"], motivo: "nivel_1_padrao" });
-  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20", statusDia: { day: "2026-11-20", slots: ["dica", "calc"], estado: "ativo" } }).slots, ["dica", "calc"]);
-  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-21", statusDia: { day: "2026-11-20", slots: ["dica", "calc"] } }).slots, ["dica"], "registro de outro dia não vale");
-  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelamento: { desde: "2026-11-15" } }), { slots: [], motivo: "canal_congelado" });
-  assert.deepEqual(shortSlotsAllowed({ config: { ...CFG, canal: { congelamento_liberado_em: "2026-11-16" } }, dia: "2026-11-20", congelamento: { desde: "2026-11-15" } }).slots, ["dica"]);
-  assert.deepEqual(shortSlotsAllowed({ config: { ...CFG, canal: { aviso_manual: true } }, dia: "2026-11-20" }).slots, []);
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-10", congelado: false }), { slots: ["dica"], motivo: "nivel_1_padrao" });
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: false, statusDia: { day: "2026-11-20", slots: ["dica", "calc"], estado: "ativo" } }).slots, ["dica", "calc"]);
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-21", congelado: false, statusDia: { day: "2026-11-20", slots: ["dica", "calc"] } }).slots, ["dica"], "registro de outro dia não vale");
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: true }), { slots: [], motivo: "canal_congelado" });
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: null }), { slots: [], motivo: "congelamento_ilegivel" }, "erro de leitura do KV nunca vira ok");
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20" }).slots, [], "sem leitura do congelamento = nenhum Short");
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: false }).slots, ["dica"]);
+  // Registro do dia gravado com o canal congelado guarda os slots do nível: liberado o episódio, o mesmo dia volta.
+  assert.deepEqual(shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: false, statusDia: { day: "2026-11-20", slots: ["dica"], estado: "congelado" } }).slots, ["dica"]);
+  assert.deepEqual(shortSlotsAllowed({ config: { ...CFG, canal: { aviso_manual: true } }, dia: "2026-11-20", congelado: false }).slots, []);
 });
 
 test("o workflow do Short e o short-pack não são reativados nem alterados por este PR (estado do proprietário)", () => {
@@ -212,4 +219,48 @@ test("o workflow do Short e o short-pack não são reativados nem alterados por 
   assert.match(wf, /node scripts\/channels\/youtube-daily-short\.mjs/);
   const disp = readTextNormalized(new URL("../scripts/ops/engine-dispatcher.mjs", import.meta.url));
   assert.doesNotMatch(disp, /\/enable["`]/, "o dispatcher nunca chama a API de reativação");
+});
+
+test("NC-F1-A5-01: congelar → liberar → nova restrição (inclusive no mesmo dia) volta a congelar; liberação nunca vale para episódio posterior", async () => {
+  const kv = memKv();
+  const e1 = await congelarCanal(kv, "2026-11-10", ["recursos_intermediarios_revogados"], { now: Date.parse("2026-11-10T13:00:00Z") });
+  const liberado1 = { canal: { congelamento_liberado_id: e1.episodio_id } };
+  assert.equal(congelamentoAtivo({ config: liberado1, registro: (await lerCongelamento(kv)).registro }), false, "liberado em 11/11");
+  // Cenário do GPT-6: nova restrição em 12/11 com o episódio de 10/11 liberado.
+  const e2 = await congelarCanal(kv, "2026-11-12", ["canal_nao_publico_private"], { now: Date.parse("2026-11-12T13:00:00Z"), config: liberado1 });
+  assert.equal(e2.gravado, true); assert.notEqual(e2.episodio_id, e1.episodio_id);
+  assert.equal(congelamentoAtivo({ config: liberado1, registro: (await lerCongelamento(kv)).registro }), true, "a liberação de 10/11 não vale para 12/11");
+  // Mesmo dia: liberado às 14:00, nova restrição às 18:00 do mesmo dia.
+  const liberado2 = { canal: { congelamento_liberado_id: e2.episodio_id } };
+  assert.equal(congelamentoAtivo({ config: liberado2, registro: (await lerCongelamento(kv)).registro }), false);
+  const e3 = await congelarCanal(kv, "2026-11-12", ["provedor_mudou_visibilidade_private"], { now: Date.parse("2026-11-12T21:00:00Z"), config: liberado2 });
+  assert.equal(e3.gravado, true);
+  assert.equal(congelamentoAtivo({ config: liberado2, registro: (await lerCongelamento(kv)).registro }), true, "mesmo dia: episódio novo continua congelado");
+  // Restrições repetidas com o episódio ainda ativo não regravam (1 gravação por episódio).
+  const antes = kv.puts;
+  assert.equal((await congelarCanal(kv, "2026-11-12", ["x"], { now: Date.parse("2026-11-12T22:00:00Z"), config: liberado2 })).motivo, "episodio_ativo");
+  assert.equal(kv.puts, antes);
+  // Leitura falha ao congelar: grava (congelar é o lado seguro).
+  const m = new Map(); let n = 0;
+  const kvErr = { get: async () => { throw new Error("kv_get_http_500"); }, put: async (k, v) => { n++; m.set(k, v); } };
+  assert.equal((await congelarCanal(kvErr, "2026-11-12", ["x"])).gravado, true); assert.equal(n, 1);
+});
+
+test("leituras do KV que falham nunca viram ok: congelamento ilegível = ativo; erro = não publica; contagem do dia propaga o erro", async () => {
+  assert.deepEqual(await lerCongelamento({ get: async () => { throw new Error("kv_get_http_500"); } }), { erro: true, registro: null });
+  assert.deepEqual(await lerCongelamento(null), { erro: true, registro: null });
+  assert.deepEqual(await lerCongelamento({ get: async () => null }), { erro: false, registro: null });
+  const lixo = await lerCongelamento({ get: async () => "{nao json" });
+  assert.equal(lixo.erro, false); assert.equal(idEpisodio(lixo.registro), ID_ILEGIVEL);
+  assert.equal(congelamentoAtivo({ config: CFG, registro: lixo.registro }), true, "registro ilegível = episódio ativo");
+  assert.equal(congelamentoAtivo({ config: CFG, registro: { desde: "2026-11-10" } }), true, "registro sem id = episódio ativo");
+  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_id: ID_ILEGIVEL } }, registro: lixo.registro }), false, "só sai por liberação expressa do id");
+  await assert.rejects(publicadosNoDia({ get: async () => { throw new Error("kv_get_http_500"); } }, "2026-11-12"), /kv_get_http_500/);
+  // O main do Short não publica com o congelamento ou a contagem do dia ilegíveis.
+  const src = readTextNormalized(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url));
+  const main = src.slice(src.indexOf("if (isMain)"));
+  assert.ok(main.includes('if (!dry && cg.erro) { note("warning", "SHORTS_STATUS kv_indisponivel'));
+  assert.ok(main.includes('catch { note("warning", "SHORTS_STATUS kv_indisponivel: contagem do dia ilegível'));
+  assert.doesNotMatch(main, /get\(CHAVE_CONGELADO\)\.catch/);
+  assert.match(main, /slots: rampa\.slots, dias_limpos/, "registro do dia nunca grava [] por causa do congelamento");
 });

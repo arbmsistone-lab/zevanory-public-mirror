@@ -18,7 +18,7 @@ import { readSalesSwitch } from "../../worker/sales-control.mjs";
 import { hotmartKitsOpen, hotmartKit } from "../../worker/sales-lock-content.mjs";
 import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "../../worker/creative-autonomy.mjs";
 import { PRICE_BY_SKU } from "../../worker/product-prices.mjs";
-import { textoProibido, violacoesShort, nivelRampa, decisaoSlot, avaliarPreflight, avaliarPosUpload, congelamentoAtivo, eQcFalha, gravarUmaVez, diasDaJanela, CHAVE_STATUS_DIA, CHAVE_QC_FALHA, CHAVE_CONGELADO, CHAVES_PUBLICADO } from "./shorts-retomada.mjs";
+import { textoProibido, violacoesShort, nivelRampa, decisaoSlot, avaliarPreflight, avaliarPosUpload, congelamentoAtivo, lerCongelamento, congelarEpisodio, idEpisodio, eQcFalha, gravarUmaVez, diasDaJanela, CHAVE_STATUS_DIA, CHAVE_QC_FALHA, CHAVE_CONGELADO, CHAVES_PUBLICADO } from "./shorts-retomada.mjs";
 
 export const TARGET_CHANNEL = "UCMl8-SxMVv77S2tz2H63P3A";
 // NC-1006-02: era uma tabela própria e velha (197/197/247/297/397) que o Short usaria com vendas abertas; agora é a
@@ -466,9 +466,11 @@ export async function historicoRampa(kv, config, day) {
     return h;
   } catch { return {}; }
 }
+// Slots já publicados hoje. Erro de leitura do KV PROPAGA (quem chama não publica): tratar como "não publicado"
+// deixaria passar do limite diário da rampa.
 export async function publicadosNoDia(kv, day) {
   const out = {};
-  for (const [slot, k] of Object.entries(CHAVES_PUBLICADO)) out[slot] = parseJson(await kv.get("zpc:acquisition:daily:" + day + ":" + k).catch(() => null))?.status === "publicado";
+  for (const [slot, k] of Object.entries(CHAVES_PUBLICADO)) out[slot] = parseJson(await kv.get("zpc:acquisition:daily:" + day + ":" + k))?.status === "publicado";
   return out;
 }
 export async function preflightCanal({ accessToken, fetchImpl = fetch, avisoManual = false }) {
@@ -479,9 +481,10 @@ export async function preflightCanal({ accessToken, fetchImpl = fetch, avisoManu
   } catch { resp = { ok: false, status: "fetch_error" }; }
   return avaliarPreflight(resp, { canalEsperado: TARGET_CHANNEL, avisoManual });
 }
-// Congela o canal (no máximo uma gravação: a chave só é criada se ausente).
-export async function congelarCanal(kv, day, motivos, { now = Date.now() } = {}) {
-  return gravarUmaVez(kv, CHAVE_CONGELADO, { desde: day, motivos, at: new Date(now).toISOString(), liberar: "data/shorts-rampa.json canal.congelamento_liberado_em >= desde, depois da checagem no YouTube Studio" }, {});
+// Congela o canal registrando um EPISÓDIO (NC-F1-A5-01): grava um novo episódio se não houver um ativo; episódio
+// liberado pelo proprietário é substituído; episódio ativo continua (não é sobrescrito).
+export async function congelarCanal(kv, day, motivos, { now = Date.now(), config = RAMPA_CONFIG } = {}) {
+  return congelarEpisodio(kv, { config, dia: day, motivos, now });
 }
 
 const note = (level, msg) => console.log(`::${level} title=YOUTUBE_DAILY_SHORT::${String(msg).replace(/[\r\n]+/g, " ")}`);
@@ -500,8 +503,11 @@ if (isMain) {
   if (!dry && await channelPublishPaused(lockKv)) { note("notice", "creative_autopublish_paused_or_unknown: no Short published"); process.exit(0); }
   // Retomada controlada: nível da rampa (só leitura), congelamento persistido e preflight do canal ANTES de renderizar.
   const rampa = nivelRampa({ config: cfg, dia: day, historico: await historicoRampa(lockKv, cfg, day), avisoHoje: cfg.canal?.aviso_manual === true });
-  const congelado = congelamentoAtivo({ config: cfg, registro: parseJson(lockKv ? await lockKv.get(CHAVE_CONGELADO).catch(() => null) : null) });
-  note("notice", "SHORTS_RAMPA " + JSON.stringify({ day, ...rampa, congelado, dry_run: dry }));
+  // Erro de leitura do congelamento NUNCA vira "não congelado": sem a leitura, não publica (dry-run só relata).
+  const cg = await lerCongelamento(lockKv);
+  const congelado = !cg.erro && congelamentoAtivo({ config: cfg, registro: cg.registro });
+  note("notice", "SHORTS_RAMPA " + JSON.stringify({ day, ...rampa, congelado, episodio_id: congelado ? idEpisodio(cg.registro) : null, congelamento_kv_erro: cg.erro, dry_run: dry }));
+  if (!dry && cg.erro) { note("warning", "SHORTS_STATUS kv_indisponivel: congelamento ilegível, nenhum Short publicado em " + day); process.exit(0); }
   let accessToken = null, preflight = { estado: "nao_executado", motivos: [] };
   const credsOk = ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"].every(n => process.env[n]);
   if (!congelado && (credsOk || !dry)) {
@@ -515,11 +521,17 @@ if (isMain) {
   note(preflight.estado === "restricao" ? "error" : "notice", "SHORTS_PREFLIGHT " + JSON.stringify(preflight));
   const estado = congelado ? "congelado" : preflight.estado === "restricao" ? "congelado" : preflight.estado === "indisponivel" ? "canal_indisponivel" : "ativo";
   if (!dry && lockKv) {
-    if (!congelado && preflight.estado === "restricao") await congelarCanal(lockKv, day, preflight.motivos).catch(() => null);
-    await gravarUmaVez(lockKv, CHAVE_STATUS_DIA(day), { day, nivel: rampa.nivel, por_dia: rampa.por_dia, slots: estado === "congelado" ? [] : rampa.slots, dias_limpos: rampa.dias_limpos, estado, motivos: preflight.motivos, at: new Date().toISOString() }, { expirationTtl: 45 * 86400 }).catch(() => null);
+    if (!congelado && preflight.estado === "restricao") { const ep = await congelarCanal(lockKv, day, preflight.motivos).catch(() => null); note("error", "SHORTS_CONGELADO " + JSON.stringify(ep)); }
+    // Registro do dia (1 gravação): guarda os slots do NÍVEL, nunca [] por causa do congelamento. Quem decide se o canal
+    // está congelado é sempre a chave do episódio, lida de novo a cada execução; assim a liberação vale no mesmo dia.
+    await gravarUmaVez(lockKv, CHAVE_STATUS_DIA(day), { day, nivel: rampa.nivel, por_dia: rampa.por_dia, slots: rampa.slots, dias_limpos: rampa.dias_limpos, estado, motivos: preflight.motivos, at: new Date().toISOString() }, { expirationTtl: 45 * 86400 }).catch(() => null);
   }
   if (!dry && estado !== "ativo") { note(estado === "congelado" ? "error" : "warning", "SHORTS_STATUS " + estado + ": nenhum Short publicado em " + day + " (" + preflight.motivos.join(",") + ")"); process.exit(0); }
-  const jaHoje = !dry && lockKv ? await publicadosNoDia(lockKv, day) : {};
+  let jaHoje = {};
+  if (!dry && lockKv) {
+    try { jaHoje = await publicadosNoDia(lockKv, day); }
+    catch { note("warning", "SHORTS_STATUS kv_indisponivel: contagem do dia ilegível, nenhum Short publicado em " + day); process.exit(0); }
+  }
   for (const slot of slots) {
     try {
       const window = publicationWindow({ day, slot, now: Date.now() });
@@ -555,7 +567,7 @@ if (isMain) {
       jaHoje[slot] = true;
       note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
       const pos = avaliarPosUpload(result, plan.privacyStatus);
-      if (pos.estado === "restricao") { await congelarCanal(kv, day, pos.motivos).catch(() => null); note("error", "SHORTS_STATUS congelado: " + pos.motivos.join(",")); break; }
+      if (pos.estado === "restricao") { const ep = await congelarCanal(kv, day, pos.motivos).catch(() => null); note("error", "SHORTS_STATUS congelado: " + pos.motivos.join(",") + " " + JSON.stringify(ep)); break; }
     } catch (e) {
       failed++;
       const msg = String(e?.message || e);

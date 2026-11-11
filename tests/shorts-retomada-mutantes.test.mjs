@@ -78,9 +78,29 @@ async function bateriaRetomada(m) {
   assert.equal(m.avaliarPreflight(chan({ privacyStatus: "private", longUploadsStatus: "allowed" })).estado, "restricao");
   assert.equal(m.avaliarPreflight({ ok: false, status: 500 }).estado, "indisponivel");
   assert.equal(m.avaliarPosUpload({ privacy_status: "private" }).estado, "restricao");
-  const reg = { desde: "2026-11-12" };
-  assert.equal(m.congelamentoAtivo({ config: { canal: { congelamento_liberado_em: "2026-11-11" } }, registro: reg }), true);
-  assert.equal(m.congelamentoAtivo({ config: { canal: { congelamento_liberado_em: "2026-11-12" } }, registro: reg }), false);
+  // Congelamento por episódio (NC-F1-A5-01): congelar → liberar → nova restrição, inclusive no mesmo dia.
+  const reg = { episodio_id: "2026-11-12T13:00:00.000Z|x", desde: "2026-11-12" };
+  assert.equal(m.congelamentoAtivo({ config: {}, registro: reg }), true);
+  assert.equal(m.congelamentoAtivo({ config: { canal: { congelamento_liberado_id: "2026-11-12T12:00:00.000Z|x" } }, registro: reg }), true);
+  assert.equal(m.congelamentoAtivo({ config: { canal: { congelamento_liberado_id: reg.episodio_id } }, registro: reg }), false);
+  assert.equal(m.congelamentoAtivo({ config: {}, registro: null }), false);
+  assert.equal(m.congelamentoAtivo({ config: {}, registro: { desde: "2026-11-12" } }), true, "sem id = ativo");
+  const fk = new Map(); let fp = 0; const fkv = { get: async (k) => fk.get(k) ?? null, put: async (k, v) => { fp++; fk.set(k, v); } };
+  const e1 = await m.congelarEpisodio(fkv, { config: {}, dia: "2026-11-12", motivos: ["r"], now: Date.parse("2026-11-12T13:00:00Z") });
+  assert.equal(e1.gravado, true);
+  assert.equal((await m.congelarEpisodio(fkv, { config: {}, dia: "2026-11-12", motivos: ["r"], now: Date.parse("2026-11-12T14:00:00Z") })).gravado, false, "ativo não é sobrescrito");
+  assert.equal(JSON.parse(fk.get(m.CHAVE_CONGELADO)).episodio_id, e1.episodio_id); assert.equal(fp, 1);
+  const lib1 = { canal: { congelamento_liberado_id: e1.episodio_id } };
+  const e2 = await m.congelarEpisodio(fkv, { config: lib1, dia: "2026-11-12", motivos: ["r"], now: Date.parse("2026-11-12T21:00:00Z") });
+  assert.equal(e2.gravado, true, "liberado: novo episódio no mesmo dia");
+  assert.equal(m.congelamentoAtivo({ config: lib1, registro: (await m.lerCongelamento(fkv)).registro }), true, "liberação não vale para o episódio posterior");
+  const ek = { get: async () => { throw new Error("kv"); }, put: async () => { fp++; } };
+  const antes = fp;
+  assert.equal((await m.congelarEpisodio(ek, { config: {}, dia: "2026-11-12", motivos: ["r"] })).gravado, true); assert.equal(fp, antes + 1);
+  // Leitura: erro = erro (nunca ok); ilegível = episódio ativo.
+  assert.equal((await m.lerCongelamento(ek)).erro, true);
+  const lx = await m.lerCongelamento({ get: async () => "{x" });
+  assert.equal(m.congelamentoAtivo({ config: {}, registro: lx.registro }), true);
   const mp = new Map(); let puts = 0; const kv = { get: async (k) => mp.get(k) ?? null, put: async (k, v) => { puts++; mp.set(k, v); } };
   await m.gravarUmaVez(kv, "k", 1); await m.gravarUmaVez(kv, "k", 2);
   assert.equal(puts, 1);
@@ -95,8 +115,9 @@ async function bateriaDispatcher(m) {
   assert.ok(!m.decide({ now: Date.parse("2026-11-10T14:27:00Z"), workflowStates: { [WF]: "unknown" } }).some((e) => e.workflow === WF));
   assert.ok(m.decide({ now: Date.parse("2026-11-10T14:07:00Z"), workflowStates: { [WF]: "unknown" } }).some((e) => e.workflow === WF));
   assert.deepEqual(m.decide({ now: late, shortSlots: ["dica"], kvDone: { youtube_dica: true } }).filter((e) => e.workflow === WF), []);
-  assert.deepEqual(m.shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelamento: { desde: "2026-11-15" } }).slots, []);
-  assert.deepEqual(m.shortSlotsAllowed({ config: CFG, dia: "2026-11-20" }).slots, ["dica"]);
+  assert.deepEqual(m.shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: true }).slots, []);
+  assert.deepEqual(m.shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: null }).slots, []);
+  assert.deepEqual(m.shortSlotsAllowed({ config: CFG, dia: "2026-11-20", congelado: false }).slots, ["dica"]);
 }
 
 // Bateria da integração no Short: planos publicáveis sem WhatsApp, CTA na política em todos os modos.
@@ -110,6 +131,12 @@ async function bateriaShort(m) {
   }
   const bad = m.planSlot("2026-11-10", "oferta", { salesOpen: true });
   assert.equal(bad.gate.action, "discard");
+  // Leituras do KV que falham não viram ok: a contagem do dia propaga o erro.
+  await assert.rejects(m.publicadosNoDia({ get: async () => { throw new Error("kv"); } }, "2026-11-12"));
+  const src = readTextNormalized(join(MIRROR_CH, `mutante-${seq}-short.mjs`));
+  const main = src.slice(src.indexOf("if (isMain)"));
+  assert.ok(main.includes('if (!dry && cg.erro) { note("warning", "SHORTS_STATUS kv_indisponivel'));
+  assert.match(main, /slots: rampa\.slots, dias_limpos/);
 }
 
 // Bateria do crosspost: Telegram desligado por decisão do proprietário (F0 nº 7) mesmo com credenciais presentes.
@@ -141,7 +168,9 @@ async function bateriaCrosspost(m) {
   assert.equal((await m.youtubePublicoENaoCongelado({ kv: kv2, day: "2026-11-12", slot: "dica" })).ok, false);
   k2.set("zpc:acquisition:daily:2026-11-12:youtube_dica", JSON.stringify({ status: "publicado", privacy: "public" }));
   assert.equal((await m.youtubePublicoENaoCongelado({ kv: kv2, day: "2026-11-12", slot: "dica" })).ok, true);
-  k2.set("zpc:shorts:congelado:v1", JSON.stringify({ desde: "2026-11-12" }));
+  const kvCgErro = { get: async (k) => { if (k === "zpc:shorts:congelado:v1") throw new Error("kv"); return k2.get(k) ?? null; } };
+  assert.deepEqual(await m.youtubePublicoENaoCongelado({ kv: kvCgErro, day: "2026-11-12", slot: "dica" }), { ok: false, motivo: "kv_indisponivel" });
+  k2.set("zpc:shorts:congelado:v1", JSON.stringify({ episodio_id: "2026-11-12T13:00:00.000Z|x", desde: "2026-11-12" }));
   assert.equal((await m.youtubePublicoENaoCongelado({ kv: kv2, day: "2026-11-12", slot: "dica" })).ok, false);
 }
 
@@ -162,14 +191,23 @@ const MUTANTES = [
   ["M12", "retomada", 'if (st.privacyStatus !== "public") motivos.push', "if (false) motivos.push"],
   ["M13", "retomada", 'if (!resp || resp.ok !== true) return { estado: "indisponivel"', 'if (!resp || resp.ok !== true) return { estado: "ok"'],
   ["M14", "retomada", "if (result.privacy_status !== pedido)", "if (false)"],
-  ["M15", "retomada", "return !(diaValido(lib) && lib >= registro.desde);", "return !diaValido(lib);"],
+  ["F01", "retomada", "return id !== config?.canal?.congelamento_liberado_id;", "return true;"],
+  ["F02", "retomada", "return id !== config?.canal?.congelamento_liberado_id;", "return false;"],
+  ["F03", "retomada", 'return typeof id === "string" && id.length > 0 ? id : ID_ILEGIVEL;', 'return typeof id === "string" && id.length > 0 ? id : null;'],
+  ["F04", "retomada", "try { raw = await kv.get(CHAVE_CONGELADO); } catch { return { erro: true, registro: null }; }", "try { raw = await kv.get(CHAVE_CONGELADO); } catch { return { erro: false, registro: null }; }"],
+  ["F05", "retomada", "catch { return { erro: false, registro: {} }; }", "catch { return { erro: false, registro: null }; }"],
+  ["F06", "retomada", "if (!atual.erro && congelamentoAtivo({ config, registro: atual.registro })) return", "if (atual.registro != null) return"],
+  ["F07", "retomada", "if (!atual.erro && congelamentoAtivo({ config, registro: atual.registro })) return", "if (false) return"],
+  ["F08", "retomada", "if (!atual.erro && congelamentoAtivo({ config, registro: atual.registro })) return", "if (atual.erro || congelamentoAtivo({ config, registro: atual.registro })) return"],
+  ["F09", "retomada", 'episodio_id: at + "|" +', 'episodio_id: dia + "|" +'],
   ["M16", "retomada", 'if ((await kv.get(chave)) != null) return { gravado: false, motivo: "ja_registrado" };', ""],
   ["M17", "retomada", "if (d >= inicio) out.push(d);", "out.push(d);"],
   ["M18", "retomada", "if (avisoHoje === true) return", "if (false) return"],
   ["D01", "dispatcher", 'return { dispatch: false, status: "workflow_" +', 'return { dispatch: true, status: "workflow_" +'],
   ["D02", "dispatcher", "minutes % janela < 20 ?", "true ?"],
   ["D03", "dispatcher", "if (e.inputs.slot && Array.isArray(shortSlots) && !shortSlots.includes(e.inputs.slot)) continue;", ""],
-  ["D04", "dispatcher", 'if (congelado || config?.canal?.aviso_manual === true) return { slots: [], motivo: "canal_congelado" };', ""],
+  ["D04", "dispatcher", 'if (congelado !== false) return { slots: [], motivo:', 'if (congelado === true) return { slots: [], motivo:'],
+  ["D06", "dispatcher", 'if (congelado !== false) return { slots: [], motivo:', 'if (false) return { slots: [], motivo:'],
   ["D05", "dispatcher", "if (!workflowGate(workflowStates[e.workflow], L.minutes, sondagemMin).dispatch) continue;", ""],
   ["Y01", "short", "return v.length ? {", "return false ? {"],
   ["Y02", "short", ".filter(u => !VALUE_RISK.test(u) && textoProibido(u).length === 0)", ".filter(u => !VALUE_RISK.test(u))"],
@@ -179,7 +217,11 @@ const MUTANTES = [
   ["N01", "crosspost", "if (!metaLiberada(metaProva)) { report[ch]", "if (false) { report[ch]"],
   ["N02", "crosspost", ' && r?.aprovado_por === "proprietario"', ""],
   ["N03", "crosspost", 'if (yt?.status !== "publicado" || yt?.privacy !== "public") return', "if (false) return"],
-  ["N04", "crosspost", 'if (congelamentoAtivo({ config, registro: parse(await kv.get(CHAVE_CONGELADO)) })) return', "if (false) return"],
+  ["N04", "crosspost", 'if (congelamentoAtivo({ config, registro: cg.registro })) return', "if (false) return"],
+  ["N05", "crosspost", 'if (cg.erro) return { ok: false, motivo: "kv_indisponivel" };', ""],
+  ["Y05", "short", 'parseJson(await kv.get("zpc:acquisition:daily:" + day + ":" + k))?.status', 'parseJson(await kv.get("zpc:acquisition:daily:" + day + ":" + k).catch(() => null))?.status'],
+  ["Y06", "short", "if (!dry && cg.erro) {", "if (false) {"],
+  ["Y07", "short", "slots: rampa.slots, dias_limpos", 'slots: estado === "congelado" ? [] : rampa.slots, dias_limpos'],
   ["Y04", "short", 'path: "hotmart/" + hotmart.slug', 'path: "hotmart/" + hotmart.slug + "-zap"'],
 ];
 

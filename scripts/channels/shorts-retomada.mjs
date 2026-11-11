@@ -114,11 +114,44 @@ export function avaliarPosUpload(result, pedido = "public") {
   return { estado: "ok", motivos: [] };
 }
 
-// Congelamento persistido ({desde: dia}) vale até o proprietário liberar com canal.congelamento_liberado_em >= desde.
+// Congelamento por EPISÓDIO (NC-F1-A5-01). Cada restrição grava um episódio com id próprio (instante + motivos).
+// O proprietário libera um episódio pelo id exato em data/shorts-rampa.json (canal.congelamento_liberado_id); a
+// liberação nunca vale para um episódio posterior, nem do mesmo dia. Registro presente mas ilegível ou sem id conta
+// como episódio ATIVO (fail-closed), com id "ilegivel", que também só sai por liberação expressa desse id.
+export const ID_ILEGIVEL = "ilegivel";
+export function idEpisodio(registro) {
+  if (registro == null) return null;
+  const id = typeof registro === "object" ? registro.episodio_id : null;
+  return typeof id === "string" && id.length > 0 ? id : ID_ILEGIVEL;
+}
 export function congelamentoAtivo({ config, registro } = {}) {
-  if (!registro || !diaValido(registro.desde)) return false;
-  const lib = config?.canal?.congelamento_liberado_em;
-  return !(diaValido(lib) && lib >= registro.desde);
+  const id = idEpisodio(registro);
+  if (id == null) return false;
+  return id !== config?.canal?.congelamento_liberado_id;
+}
+export function novoEpisodio({ dia, motivos = [], now = Date.now() } = {}) {
+  const at = new Date(now).toISOString();
+  const m = (Array.isArray(motivos) ? motivos : []).map((x) => String(x).replace(/[^a-z0-9_]/gi, "")).filter(Boolean);
+  return { episodio_id: at + "|" + (m.join("+") || "sem_motivo"), desde: dia, at, motivos: m, liberar: "data/shorts-rampa.json canal.congelamento_liberado_id = este episodio_id, depois da checagem no YouTube Studio" };
+}
+// Leitura do congelamento: {erro:true} quando o KV falha (quem chama trata como NÃO publicar, nunca como ok);
+// valor ilegível vira registro sem id (episódio ativo).
+export async function lerCongelamento(kv) {
+  if (!kv?.get) return { erro: true, registro: null };
+  let raw;
+  try { raw = await kv.get(CHAVE_CONGELADO); } catch { return { erro: true, registro: null }; }
+  if (raw == null) return { erro: false, registro: null };
+  try { const v = JSON.parse(String(raw)); return { erro: false, registro: v && typeof v === "object" ? v : {} }; } catch { return { erro: false, registro: {} }; }
+}
+// Registra um novo episódio. Só não grava se já houver episódio ATIVO (não liberado): esse continua valendo.
+// Episódio liberado é substituído pelo novo. Falha de leitura grava mesmo assim (congelar é o lado seguro).
+export async function congelarEpisodio(kv, { config, dia, motivos, now = Date.now() } = {}) {
+  if (!kv?.put) return { gravado: false, motivo: "sem_kv" };
+  const atual = await lerCongelamento(kv);
+  if (!atual.erro && congelamentoAtivo({ config, registro: atual.registro })) return { gravado: false, motivo: "episodio_ativo", episodio_id: idEpisodio(atual.registro) };
+  const ep = novoEpisodio({ dia, motivos, now });
+  await kv.put(CHAVE_CONGELADO, JSON.stringify(ep));
+  return { gravado: true, episodio_id: ep.episodio_id };
 }
 
 // Falhas que contam como "QC de áudio e vídeo reprovado" (descem um nível). Voz indisponível não é QC: só perde o dia.

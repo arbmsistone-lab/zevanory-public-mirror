@@ -158,9 +158,12 @@ test("NC-02: o cross-post só roda com o Short do slot PÚBLICO no YouTube e o c
     const kvp = memKv();
     await recordPublication(kvp, planSlot(day, slot), { video_id: "V2", url: "https://www.youtube.com/shorts/V2", privacy_status: "public" }, { now: Date.parse(day + "T20:00:00Z") });
     assert.deepEqual(await youtubePublicoENaoCongelado({ kv: kvp, day, slot }), { ok: true, motivo: "youtube_publico" }, slot);
-    kvp.m.set("zpc:shorts:congelado:v1", JSON.stringify({ desde: "2026-11-12", motivos: ["x"] }));
+    kvp.m.set("zpc:shorts:congelado:v1", JSON.stringify({ episodio_id: "2026-11-12T13:00:00.000Z|x", desde: "2026-11-12", motivos: ["x"] }));
     assert.equal((await youtubePublicoENaoCongelado({ kv: kvp, day, slot })).motivo, "canal_congelado");
-    assert.equal((await youtubePublicoENaoCongelado({ kv: kvp, day, slot, config: { canal: { congelamento_liberado_em: "2026-11-12" } } })).ok, true);
+    assert.equal((await youtubePublicoENaoCongelado({ kv: kvp, day, slot, config: { canal: { congelamento_liberado_id: "2026-11-12T13:00:00.000Z|x" } } })).ok, true);
+    assert.equal((await youtubePublicoENaoCongelado({ kv: kvp, day, slot, config: { canal: { congelamento_liberado_id: "2026-11-12T12:00:00.000Z|y" } } })).ok, false, "liberar outro episódio não vale");
+    kvp.m.set("zpc:shorts:congelado:v1", "{ilegivel");
+    assert.equal((await youtubePublicoENaoCongelado({ kv: kvp, day, slot })).motivo, "canal_congelado", "registro ilegível = congelado");
   }
   assert.equal((await youtubePublicoENaoCongelado({ kv: { get: async () => { throw new Error("kv"); } }, day, slot: "dica" })).ok, false);
   // O main do cross-post consulta a condição antes de ler o MP4 e chamar crosspost().
