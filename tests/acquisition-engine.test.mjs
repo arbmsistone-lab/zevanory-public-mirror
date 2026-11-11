@@ -302,7 +302,7 @@ test("F1: reprovação do gate grava UMA chave bluesky:status:AAAAMMDD com TTL; 
  assert.equal(done.outcomes.find(x=>x.channel==="bluesky").status,"publicado");
  assert.equal(okPuts.some(k=>k.startsWith(BLUESKY_STATUS_PREFIX)),false);
 });
-test("F1: falha de publicação também grava o status; regravação só quando o motivo muda",async()=>{
+test("F1: falha de publicação também grava o status; status do dia nunca é regravado",async()=>{
  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"zevanoryoficial.bsky.social",BLUESKY_APP_PASSWORD:"app"};
  const mock=async(url)=>{if(url.endsWith("createSession"))return{ok:true,json:async()=>({did:"did:plc:abc",accessJwt:"access"})};
   if(url.endsWith("createRecord"))return{ok:false,status:400,headers:{get:()=>null}};
@@ -311,11 +311,16 @@ test("F1: falha de publicação também grava o status; regravação só quando 
  const st=JSON.parse(await store.get("bluesky:status:20261110"));
  assert.deepEqual([st.ok,st.motivo,st.similaridade],[false,"bluesky_http_400",null]);
  const now=new Date("2026-11-10T23:00:00Z");
+ // NC-F1-A1-01: com status válido no dia, nada é regravado, mesmo com motivo ou similaridade diferentes.
  assert.equal((await recordBlueskyFailure(store,"2026-11-10",now,{motivo:"bluesky_http_400"})).written,false);
- assert.equal((await recordBlueskyFailure(store,"2026-11-10",now,{motivo:"similarity",similaridade:0.61234})).written,true);
- assert.equal(JSON.parse(await store.get("bluesky:status:20261110")).similaridade,0.612);
- assert.equal((await recordBlueskyFailure(store,"2026-11-10",now,{motivo:"Texto Livre <x>"})).written,true);
- assert.equal(JSON.parse(await store.get("bluesky:status:20261110")).motivo,"desconhecido");
+ assert.equal((await recordBlueskyFailure(store,"2026-11-10",now,{motivo:"similarity",similaridade:0.61234})).written,false);
+ assert.equal(JSON.parse(await store.get("bluesky:status:20261110")).motivo,"bluesky_http_400");
+ // Dia seguinte: chave nova.
+ assert.equal((await recordBlueskyFailure(store,"2026-11-11",now,{motivo:"similarity",similaridade:0.61234})).written,true);
+ assert.equal(JSON.parse(await store.get("bluesky:status:20261111")).similaridade,0.612);
+ const free=kv();
+ assert.equal((await recordBlueskyFailure(free,"2026-11-10",now,{motivo:"Texto Livre <x>"})).written,true);
+ assert.equal(JSON.parse(await free.get("bluesky:status:20261110")).motivo,"desconhecido");
  const broken={get:async()=>null,put:async()=>{throw new Error("kv_quota");}};
  assert.equal((await recordBlueskyFailure(broken,"2026-11-10",now,{motivo:"similarity"})).written,false);
  assert.throws(()=>blueskyStatusKey("20261110"),/calendar_day_invalid/);
@@ -338,4 +343,37 @@ test("F1 mutante: dica, gancho ou chamada com WhatsApp/lista de espera é detect
   {tips:DAILY_TIPS,hooks:{...ANGLE_HOOKS,"dor":["Entre na LISTA DE ESPERA, {n}",...ANGLE_HOOKS["dor"].slice(1)]},ctas:CTAS},
   {tips:DAILY_TIPS,hooks:ANGLE_HOOKS,ctas:[...CTAS.slice(1),"Chame no Whatsapp"]}];
  for(const m of mut)assert.equal(copyViolations(m).length,1);
+});
+// NC-F1-A1-01 (contra-auditoria GPT-6): motivos diferentes no mesmo dia => exatamente 1 gravação do status.
+async function statusWritesWithChangingMotive(engine=runAcquisitionEngine){
+ const store=kv(),puts=[],orig=store.put;store.put=async(k,v,o)=>{puts.push(k);return orig(k,v,o);};
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"zevanoryoficial.bsky.social",BLUESKY_APP_PASSWORD:"app"};
+ const day="2026-11-10",entry=calendarEntry(day);
+ let fail400=true;const mock=async(url,req={})=>{if(url.endsWith("createSession"))return{ok:true,json:async()=>({did:"did:plc:abc",accessJwt:"access"})};
+  if(url.endsWith("createRecord")){if(fail400)return{ok:false,status:400,headers:{get:()=>null}};return{ok:false,status:401,headers:{get:()=>null}};}
+  if(url.includes("getRecord"))return{ok:false,status:400};return{ok:true,status:200,json:async()=>({})};};
+ // 19:35: gate reprova por similaridade.
+ await orig("zpc:acquisition:history:bluesky",JSON.stringify([{day:"2026-11-09",text:generateNative(entry,"bluesky").text}]));
+ const a=await engine(env,new Date("2026-11-10T22:35:00Z"),mock);
+ // 20:35: histórico limpo, a publicação falha com 400; 21:35: falha com 401 (motivos diferentes no mesmo dia).
+ await orig("zpc:acquisition:history:bluesky","[]");
+ const b=await engine(env,new Date("2026-11-10T23:35:00Z"),mock);fail400=false;
+ const c=await engine(env,new Date("2026-11-11T00:35:00Z"),mock);
+ return {codes:[a,b,c].map(o=>o.outcomes.find(x=>x.channel==="bluesky").code),writes:puts.filter(k=>k==="bluesky:status:20261110").length,status:JSON.parse(await store.get("bluesky:status:20261110"))};
+}
+test("F1 (NC-F1-A1-01): motivos diferentes no mesmo dia gravam o status exatamente 1 vez",async()=>{
+ const r=await statusWritesWithChangingMotive();
+ assert.deepEqual(r.codes,["similarity","bluesky_http_400","credential_expired"]);
+ assert.equal(r.writes,1);
+ assert.deepEqual([r.status.ok,r.status.motivo,r.status.similaridade],[false,"similarity",1]);
+});
+test("F1 mutante (NC-F1-A1-01): regravar quando o motivo muda produz mais de 1 gravação no dia",async()=>{
+ const base=new URL("../worker/",import.meta.url);
+ const orig=readFileSync(new URL("acquisition-engine.mjs",base),"utf8");
+ const target=" if(prior?.ok===false&&prior.day===day)return {written:false,key};";
+ assert.ok(orig.includes(target),"alvo do mutante ausente");
+ const m=orig.replace(target," if(prior?.ok===false&&prior.motivo===status.motivo&&prior.similaridade===status.similaridade)return {written:false,key};");
+ const mod=await import("data:text/javascript;base64,"+Buffer.from(m.replace(/from "\.\/([a-z0-9-]+\.mjs)"/g,(_,f)=>'from "'+new URL(f,base).href+'"')).toString("base64"));
+ const r=await statusWritesWithChangingMotive(mod.runAcquisitionEngine);
+ assert.ok(r.writes>1,"mutante sobreviveu: "+r.writes+" gravação(ões)");
 });

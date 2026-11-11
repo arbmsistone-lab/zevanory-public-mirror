@@ -243,8 +243,10 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
 }
 // Status de falha do Bluesky (Plano Mestre F1). Uma reprovação do gate não grava a chave por canal
 // (zpc:acquisition:daily:<dia>:bluesky), então de 06/11 em diante a falha não aparecia no painel nem gerava alerta.
-// Reprovação do gate ou falha de publicação grava UMA chave do dia, com TTL; a gravação só acontece se o conteúdo
-// mudou (as execuções seguintes do mesmo dia com o mesmo motivo não regravam: cota de KV). Sucesso não grava nada.
+// Reprovação do gate ou falha de publicação grava UMA chave do dia, com TTL. Se já existe um status válido para o
+// dia, ele não é regravado, mesmo que o motivo ou a similaridade mudem (NC-F1-A1-01; cota de KV): no máximo 1
+// gravação por dia em execuções sequenciais. A leitura seguida de escrita no KV NÃO protege contra execuções
+// concorrentes (o KV não tem escrita condicional); o cron do motor é sequencial. Sucesso não grava nada.
 export const BLUESKY_STATUS_PREFIX="bluesky:status:";
 export const BLUESKY_STATUS_TTL=14*86400;
 export const blueskyStatusKey=day=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day)))throw new Error("calendar_day_invalid");return BLUESKY_STATUS_PREFIX+String(day).replaceAll("-","");};
@@ -253,7 +255,7 @@ export async function recordBlueskyFailure(kv,day,now,{motivo,similaridade=null}
  const sim=typeof similaridade==="number"&&Number.isFinite(similaridade)?Math.round(similaridade*1000)/1000:null;
  const status={ok:false,motivo:/^[a-z0-9_,]{1,120}$/.test(String(motivo||""))?String(motivo):"desconhecido",similaridade:sim,day};
  const prior=await safeJson(kv,key,null);
- if(prior?.ok===false&&prior.motivo===status.motivo&&prior.similaridade===status.similaridade)return {written:false,key};
+ if(prior?.ok===false&&prior.day===day)return {written:false,key};
  try{await kv.put(key,JSON.stringify({...status,at:now.toISOString()}),{expirationTtl:BLUESKY_STATUS_TTL});}catch{return {written:false,key};}
  return {written:true,key};
 }
