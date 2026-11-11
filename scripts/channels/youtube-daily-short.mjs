@@ -468,9 +468,19 @@ export async function historicoRampa(kv, config, day) {
 }
 // Slots já publicados hoje. Erro de leitura do KV PROPAGA (quem chama não publica): tratar como "não publicado"
 // deixaria passar do limite diário da rampa.
-export async function publicadosNoDia(kv, day) {
+export async function publicadosNoDia(kv, day, {warn=console.warn}={}) {
   const out = {};
-  for (const [slot, k] of Object.entries(CHAVES_PUBLICADO)) out[slot] = parseJson(await kv.get("zpc:acquisition:daily:" + day + ":" + k))?.status === "publicado";
+  for (const [slot,k] of Object.entries(CHAVES_PUBLICADO)){
+    const raw=await kv.get("zpc:acquisition:daily:"+day+":"+k);
+    if(raw===null){out[slot]=false;continue;}
+    const receipt=parseJson(raw);
+    if(!receipt||typeof receipt!=="object"||!["publicado","pending","erro"].includes(receipt.status)){
+      out[slot]=true; // presente mas ilegível: publicado desconhecido, nunca republicar
+      warn("::warning title=SHORTS_RECEIPT::"+slot+" publicado_desconhecido: recibo ilegível");
+      continue;
+    }
+    out[slot]=receipt.status==="publicado";
+  }
   return out;
 }
 export async function preflightCanal({ accessToken, fetchImpl = fetch, avisoManual = false }) {

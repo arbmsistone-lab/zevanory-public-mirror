@@ -1,4 +1,5 @@
-// Retomada controlada dos Shorts (Plano Mestre v1.2, F1). Lógica pura, sem import nem I/O, para que os testes de
+import { createHash } from "node:crypto";
+// Retomada controlada dos Shorts (Plano Mestre v1.2, F1). Sem I/O; hash usa node:crypto. Os testes de
 // mutantes possam copiar este arquivo para um diretório temporário e importá-lo mutado.
 // - rampa: 1 Short por dia; sobe para 2 e 3 por dia só com dias limpos seguidos (QC ok, volume cumprido, sem aviso);
 // - texto: roteiro, tela, título, descrição e tags nunca citam WhatsApp (canal banido) nem lista de espera;
@@ -117,12 +118,13 @@ export function avaliarPosUpload(result, pedido = "public") {
 // Congelamento por EPISÓDIO (NC-F1-A5-01). Cada restrição grava um episódio com id próprio (instante + motivos).
 // O proprietário libera um episódio pelo id exato em data/shorts-rampa.json (canal.congelamento_liberado_id); a
 // liberação nunca vale para um episódio posterior, nem do mesmo dia. Registro presente mas ilegível ou sem id conta
-// como episódio ATIVO (fail-closed), com id "ilegivel", que também só sai por liberação expressa desse id.
+// como episódio ATIVO, id ilegivel:<sha256(raw)[0:16]>. A liberação não cobre conteúdo corrompido diferente.
 export const ID_ILEGIVEL = "ilegivel";
+export const idCorrupcao=raw=>ID_ILEGIVEL+":"+createHash("sha256").update(String(raw)).digest("hex").slice(0,16);
 export function idEpisodio(registro) {
   if (registro == null) return null;
   const id = typeof registro === "object" ? registro.episodio_id : null;
-  return typeof id === "string" && id.length > 0 ? id : ID_ILEGIVEL;
+  return typeof id === "string" && id.length > 0 ? id : idCorrupcao(typeof registro==="string"?registro:JSON.stringify(registro));
 }
 export function congelamentoAtivo({ config, registro } = {}) {
   const id = idEpisodio(registro);
@@ -141,7 +143,9 @@ export async function lerCongelamento(kv) {
   let raw;
   try { raw = await kv.get(CHAVE_CONGELADO); } catch { return { erro: true, registro: null }; }
   if (raw == null) return { erro: false, registro: null };
-  try { const v = JSON.parse(String(raw)); return { erro: false, registro: v && typeof v === "object" ? v : {} }; } catch { return { erro: false, registro: {} }; }
+  let v;try{v=JSON.parse(String(raw));}catch{}
+  const valid=v&&typeof v==="object"&&typeof v.episodio_id==="string"&&v.episodio_id.length>0;
+  return {erro:false,registro:valid?v:{episodio_id:idCorrupcao(raw),ilegivel:true}};
 }
 // Registra um novo episódio. Só não grava se já houver episódio ATIVO (não liberado): esse continua valendo.
 // Episódio liberado é substituído pelo novo. Falha de leitura grava mesmo assim (congelar é o lado seguro).

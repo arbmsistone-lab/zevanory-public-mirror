@@ -251,10 +251,10 @@ test("leituras do KV que falham nunca viram ok: congelamento ilegível = ativo; 
   assert.deepEqual(await lerCongelamento(null), { erro: true, registro: null });
   assert.deepEqual(await lerCongelamento({ get: async () => null }), { erro: false, registro: null });
   const lixo = await lerCongelamento({ get: async () => "{nao json" });
-  assert.equal(lixo.erro, false); assert.equal(idEpisodio(lixo.registro), ID_ILEGIVEL);
+  assert.equal(lixo.erro, false); assert.match(idEpisodio(lixo.registro), /^ilegivel:[a-f0-9]{16}$/);
   assert.equal(congelamentoAtivo({ config: CFG, registro: lixo.registro }), true, "registro ilegível = episódio ativo");
   assert.equal(congelamentoAtivo({ config: CFG, registro: { desde: "2026-11-10" } }), true, "registro sem id = episódio ativo");
-  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_id: ID_ILEGIVEL } }, registro: lixo.registro }), false, "só sai por liberação expressa do id");
+  assert.equal(congelamentoAtivo({ config: { canal: { congelamento_liberado_id: idEpisodio(lixo.registro) } }, registro: lixo.registro }), false, "só sai por liberação expressa do id");
   await assert.rejects(publicadosNoDia({ get: async () => { throw new Error("kv_get_http_500"); } }, "2026-11-12"), /kv_get_http_500/);
   // O main do Short não publica com o congelamento ou a contagem do dia ilegíveis.
   const src = readTextNormalized(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url));
