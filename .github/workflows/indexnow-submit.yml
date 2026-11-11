@@ -1,7 +1,6 @@
 name: IndexNow submit (Bing, Yandex, Seznam, Naver)
 
-# Tells IndexNow-enabled search engines about every URL in both sitemaps so new
-# pages (guides, offers, blog) are crawled in hours, not weeks. Public key only.
+# IndexNow: changed repository-backed pages only, one URL per publication. Public key only.
 on:
   workflow_dispatch:
   schedule:
@@ -13,28 +12,52 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: indexnow-planner
+  cancel-in-progress: false
+  queue: max
+
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_work: ${{ steps.plan.outputs.has_work }}
+      day: ${{ steps.plan.outputs.day }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - id: plan
+        run: node scripts/indexnow-publication.mjs plan
   submit:
+    name: indexnow-${{ matrix.id }}-${{ matrix.revision }}-${{ needs.plan.outputs.day }}
+    needs: plan
+    if: needs.plan.outputs.has_work == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      group: indexnow-url-${{ matrix.id }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       KEY: 4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922
+      PUBLICATION_URL: ${{ matrix.url }}
+      PUBLICATION_REVISION: ${{ matrix.revision }}
+      PUBLICATION_DAY: ${{ needs.plan.outputs.day }}
     steps:
-      - name: Submit both hosts
-        shell: bash
-        run: |
-          set -uo pipefail
-          sleep 120  # let the sales/apex deploys publish the new sitemap first
-          for host in zevanory.api.br vendas.zevanory.api.br; do
-            curl -fsS -A "ZEVANORY-Monitor/1.0" "https://$host/sitemap.xml" -o /tmp/s.xml || { echo "::warning title=INDEXNOW::sitemap_unavailable $host"; continue; }
-            key_ok=$(curl -s -o /dev/null -w '%{http_code}' -A "ZEVANORY-Monitor/1.0" "https://$host/$KEY.txt")
-            python3 - "$host" > /tmp/body.json <<'PY'
-          import json,re,sys,os
-          host=sys.argv[1]
-          urls=[u for u in re.findall(r"<loc>([^<]+)</loc>",open('/tmp/s.xml').read()) if u.startswith("https://"+host+"/")][:10000]
-          print(json.dumps({"host":host,"key":os.environ["KEY"],"keyLocation":f"https://{host}/{os.environ['KEY']}.txt","urlList":urls}))
-          PY
-            n=$(python3 -c "import json;print(len(json.load(open('/tmp/body.json'))['urlList']))")
-            code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST -H 'content-type: application/json; charset=utf-8' --data-binary @/tmp/body.json https://api.indexnow.org/indexnow)
-            echo "::notice title=INDEXNOW $host::key_file=$key_ok urls=$n http=$code"
-          done
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - id: attempt
+        run: node scripts/indexnow-publication.mjs prepare
+      - name: Submit one changed publication
+        if: steps.attempt.outputs.ready == 'true'
+        run: node scripts/indexnow-publication.mjs submit
