@@ -22,6 +22,15 @@ const ANGLES=Object.freeze(["dor","tutorial","caso de uso","objeção","compara�
 const TIMEZONE="America/Sao_Paulo";
 const PEAK_HOURS=Object.freeze({blog:9,telegram:12,bluesky:19});
 const safeJson=async(kv,key,fallback)=>{try{return JSON.parse(String(await kv?.get?.(key)||"null"))??fallback;}catch{return fallback;}};
+// Ausência real é legítima; falha/JSON/estrutura inválida nunca alimenta gate ou idempotência.
+const obj=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
+export async function readAcquisitionKv(kv,key,valid){
+ try{const raw=await kv.get(key);if(raw===null)return {ok:true,value:null};
+ const value=JSON.parse(String(raw));return valid(value)?{ok:true,value}:{ok:false};}catch{return {ok:false};}
+}
+const receiptShape=v=>obj(v)&&["pending","erro","publicado"].includes(v.status);
+const stateShape=v=>obj(v)&&Array.isArray(v.outcomes)&&v.outcomes.every(o=>obj(o)&&typeof o.channel==="string"&&typeof o.status==="string");
+const historyShape=v=>Array.isArray(v)&&v.every(p=>obj(p)&&typeof p.text==="string"&&typeof p.day==="string");
 const dayOrdinal=day=>Math.floor(Date.parse(day+"T00:00:00Z")/DAY);
 const localHour=now=>Number(new Intl.DateTimeFormat("en-GB",{timeZone:TIMEZONE,hour:"2-digit",hourCycle:"h23"}).format(now));
 const localDay=now=>new Intl.DateTimeFormat("en-CA",{timeZone:TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).format(now);
@@ -197,7 +206,9 @@ const MAX_DAILY_ATTEMPTS=3;
 const definitiveFailure=message=>/^(bluesky_http_4\d\d|bluesky_session_invalid|bluesky_receipt_mismatch|telegram_http_4\d\d|provider_http_4\d\d|bluesky_product_link_invalid|bluesky_link_too_long|bluesky_grapheme_limit|telegram_credentials_missing|brand_[a-z0-9_]+)$/.test(String(message||""))&&!/_(408|429)$/.test(String(message||""));
 async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesOpen=false,hotmartOpen=false}){
  const key=ACQUISITION_STATE_PREFIX+entry.day+":"+channel;
- const prior=await safeJson(kv,key,null);
+ const read=await readAcquisitionKv(kv,key,receiptShape);
+ if(!read.ok)return {channel,day:entry.day,status:"erro",code:"receipt_unreadable"};
+ const prior=read.value;
  const attempts=Number(prior?.attempts||(prior?1:0));
  if(prior){
   const retryable=prior.status!=="publicado"&&attempts<MAX_DAILY_ATTEMPTS&&(channel==="bluesky"||(prior.status==="erro"&&prior.definitive===true));
@@ -205,7 +216,9 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
  }
  // Preserve legacy Telegram publish-once marker during cutover. Never produce two posts in a day.
  if(channel==="telegram"&&!prior){
-  const previous=await safeJson(kv,"zpc:multichannel:evidence:telegram:daily:"+entry.day,null);
+  const legacyRead=await readAcquisitionKv(kv,"zpc:multichannel:evidence:telegram:daily:"+entry.day,obj);
+  if(!legacyRead.ok)return {channel,day:entry.day,status:"erro",code:"legacy_receipt_unreadable"};
+  const previous=legacyRead.value;
   if(previous){
    const adopted=previous.provider_post_id&&previous.url
     ?{channel,day:entry.day,status:"publicado",provider_post_id:String(previous.provider_post_id),url:previous.url,at:previous.publishedAt||null,product:null,provenance:"legacy"}
@@ -254,7 +267,9 @@ export async function recordBlueskyFailure(kv,day,now,{motivo,similaridade=null}
  const key=blueskyStatusKey(day);
  const sim=typeof similaridade==="number"&&Number.isFinite(similaridade)?Math.round(similaridade*1000)/1000:null;
  const status={ok:false,motivo:/^[a-z0-9_,]{1,120}$/.test(String(motivo||""))?String(motivo):"desconhecido",similaridade:sim,day};
- const prior=await safeJson(kv,key,null);
+ const read=await readAcquisitionKv(kv,key,v=>obj(v)&&v.ok===false&&v.day===day&&typeof v.motivo==="string");
+ if(!read.ok)return {written:false,key,code:"status_unreadable"};
+ const prior=read.value;
  if(prior?.ok===false&&prior.day===day)return {written:false,key};
  try{await kv.put(key,JSON.stringify({...status,at:now.toISOString()}),{expirationTtl:BLUESKY_STATUS_TTL});}catch{return {written:false,key};}
  return {written:true,key};
@@ -270,7 +285,9 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  if(!kv?.get||!kv?.put)return {ok:false,code:"kv_unavailable"};
  const day=localContentDay(now),entry=calendarEntry(day),hour=localHour(now),channels=channelChecklist(env);
  const active=channel=>channels.find(x=>x.id===channel)?.configured===true;
- const paused=await creativeAutopublishPaused(env);
+ let pause;try{pause=await kv.get("zpc:creative-autonomy:paused:v1");}catch{return {ok:false,code:"pause_unreadable",outcomes:[]};}
+ if(pause!==null&&pause!=="0"&&pause!=="1")return {ok:false,code:"pause_unreadable",outcomes:[]};
+ const paused=pause==="1";
  // Trava canônica de vendas (KV sales:open:v1 via readSalesSwitch), lida uma vez por execução; erro = fechada.
  const salesOpen=await contentSalesOpen(env);
  // Modo Hotmart (sales:hotmart:v1 via readHotmartSwitch; erro = fechado): só vale com o interruptor completo fechado.
@@ -293,8 +310,14 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
    continue;
   }
   try{
-   const archive=await safeJson(kv,"zpc:acquisition:history:"+channel,[]);
-   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:Array.isArray(archive)?archive:[],salesOpen,hotmartOpen});
+   const historyRead=await readAcquisitionKv(kv,"zpc:acquisition:history:"+channel,historyShape);
+   if(!historyRead.ok){
+    outcomes.push({channel,status:"erro",code:"history_unreadable",day});
+    if(channel==="bluesky")await recordBlueskyFailure(kv,day,now,{motivo:"history_unreadable"});
+    continue;
+   }
+   const archive=historyRead.value??[];
+   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:archive,salesOpen,hotmartOpen});
    outcomes.push(result);
    if(channel==="bluesky"&&result.status==="erro")await recordBlueskyFailure(kv,day,now,{motivo:result.code,similaridade:result.gate?.similarity_max});
    if(result.status==="publicado"&&!archive.some(p=>p.day===day)){
@@ -307,11 +330,13 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  }
  // KV write budget (account-wide 1,000/day): the calendar changes once a day, not every run.
  const days=planCalendar(now);
- let priorCal=null;try{priorCal=JSON.parse(String(await kv.get(ACQUISITION_CALENDAR_KEY)||"null"));}catch{}
- if(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
+ const calendarRead=await readAcquisitionKv(kv,ACQUISITION_CALENDAR_KEY,v=>obj(v)&&Array.isArray(v.days));
+ const priorCal=calendarRead.value;
+ if(calendarRead.ok&&(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days)))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
  const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,outcomes};
- let priorState=null;try{priorState=JSON.parse(String(await kv.get(ACQUISITION_STATE_PREFIX+day)||"null"));}catch{}
- if(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(outcomes)||priorState.product!==state.product)await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
+ const stateRead=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+day,stateShape);
+ const priorState=stateRead.value;
+ if(stateRead.ok&&(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(outcomes)||priorState.product!==state.product))await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
  const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
  return {ok:true,...state,ownerDigest};
 }
@@ -320,9 +345,13 @@ export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch)
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localDay(now),hour=localHour(now),key="zpc:acquisition:owner-digest:"+day;
  if(hour<20)return {status:"agendado",day};
  if(!kv?.get||!kv?.put)return {status:"erro",code:"kv_unavailable"};
- const existing=await safeJson(kv,key,null);if(existing)return existing;
+ const markerRead=await readAcquisitionKv(kv,key,receiptShape);
+ if(!markerRead.ok)return {status:"erro",code:"digest_marker_unreadable"};
+ const existing=markerRead.value;if(existing)return existing;
  if(!env.RESEND_API_KEY||!env.OWNER_ALERT_EMAIL)return {status:"aguardando credencial",missing:["RESEND_API_KEY","OWNER_ALERT_EMAIL"].filter(x=>!env[x])};
- const state=await safeJson(kv,ACQUISITION_STATE_PREFIX+day,null);
+ const sourceRead=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+day,stateShape);
+ if(!sourceRead.ok)return {status:"erro",code:"digest_source_unreadable"};
+ const state=sourceRead.value;
  const actual=(state?.outcomes||[]).filter(x=>x.status==="publicado"&&x.url);
  const lines=actual.map(x=>"• "+x.channel+": "+x.url);
  const subject="ZEVANORY | Resumo de divulgação "+day;
