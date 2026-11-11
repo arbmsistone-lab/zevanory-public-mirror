@@ -12,7 +12,7 @@ async function lifecycle(m){const s=fixture();assert.equal((await enqueue(s,m)).
 async function unknown(m){const s=fixture();await enqueue(s,m);s.mode('unknown');await run(s,m);s.emails.length=0;await run(s,m,T+3600000);assert.equal(s.posts.length,1);s.mode('sent');await run(s,m,T+2*3600000);assert.equal(s.posts.length,1);}
 async function refund(m){const s=fixture();await enqueue(s,m);await run(s,m);assert.equal((await enqueue(s,m,{...s.body,event:'PURCHASE_REFUNDED'})).canceled,true);await run(s,m,T+5*DAY);assert.equal(s.posts.length,1);}
 async function other(m){const s=fixture();for(const id of [0,123456,8704905]){const body=structuredClone(s.body);body.data.product.id=id;assert.equal((await enqueue(s,m,body)).ignored,true);}assert.equal(s.writes.length,0);await run(s,m);assert.equal(s.posts.length,0);}
-async function testRoute(m){const s=fixture();await enqueue(s,m,s.body,'/api/webhooks/hotmart/teste');await run(s,m);assert.equal(s.posts.length,0);assert.equal(s.writes.length,0);}
+async function testRoute(m){const s=fixture();await enqueue(s,m,s.body,'/api/webhooks/hotmart/teste');await run(s,m);assert.equal(s.posts.length,0);assert.deepEqual(s.writes.map(w=>w.k),[BASE+'status:v1']);}
 async function privacy(m){const s=fixture(),logs=[];const old=console.log;console.log=(...a)=>logs.push(a.join(' '));try{await enqueue(s,m);await run(s,m);}finally{console.log=old;}assert.equal(logs.some(x=>x.includes(s.body.data.buyer.email)),false);}
 test('F2 B: three transactional stages, stable idempotency, minimum data and fixed retention',()=>lifecycle(mod));
 test('F2 B: unknown result never resends, even without reconciliation evidence',()=>unknown(mod));

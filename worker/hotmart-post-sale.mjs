@@ -120,11 +120,42 @@ async function reconcile(env,fetchImpl,kv,key,body,state,{ttl,budget}){
  await kv.put(cursorKey,JSON.stringify(cursor),ttl);
  return drain();
 }
+const STATUS=BASE+'status:v1',HOUR=3600000;
+const statusShape=v=>object(v)&&Object.keys(v).sort().join(',')==='codigo,em,pendentes,resultado'&&typeof v.em==='string'&&Number.isFinite(Date.parse(v.em))&&new Date(Date.parse(v.em)).toISOString()===v.em&&['ok','inconclusivo','reconciliacao_pendente'].includes(v.resultado)&&typeof v.codigo==='string'&&/^[a-z_]{1,64}$/.test(v.codigo)&&Number.isSafeInteger(v.pendentes)&&v.pendentes>=0&&(v.resultado==='reconciliacao_pendente'?v.pendentes>0:v.pendentes===0);
+export async function readHotmartPostSaleStatus(kv,{now=Date.now()}={}){
+ try{const value=await read(kv,STATUS,statusShape);if(!value)return {status:'NAO_EXECUTADO',value:null};if(Date.parse(value.em)>now||now-Date.parse(value.em)>=7*DAY)throw Error('stale_status');return {status:'ok',value};}
+ catch{return {status:'LEITURA_INCONCLUSIVA',value:null};}
+}
+const statusTasks=new WeakMap(),statusLastWrite=new WeakMap();
+async function persistRunStatus(kv,out,now){
+ if(!kv?.get||!kv?.put)return false;
+ const previous=statusTasks.get(kv)||Promise.resolve();
+ const task=previous.catch(()=>{}).then(async()=>{
+  const raw=await kv.get(STATUS);let prior=null;
+  if(raw!==null){try{const v=JSON.parse(raw);if(statusShape(v))prior=v;}catch{}}
+  const resultado=!out.ok?'inconclusivo':out.reconciliationPending>0?'reconciliacao_pendente':'ok';
+  const value={em:new Date(now).toISOString(),resultado,codigo:out.code||(resultado==='reconciliacao_pendente'?'reconciliation_pending':'completed'),pendentes:resultado==='reconciliacao_pendente'?out.reconciliationPending:0};
+  const last=Math.max(prior?Date.parse(prior.em):-Infinity,statusLastWrite.get(kv)??-Infinity);
+  if(now-last<HOUR)return true;
+  if(prior&&prior.resultado===value.resultado&&prior.codigo===value.codigo&&prior.pendentes===value.pendentes)return true;
+  await kv.put(STATUS,JSON.stringify(value),{expirationTtl:7*86400});
+  statusLastWrite.set(kv,now);return true;
+ });
+ statusTasks.set(kv,task);
+ try{return await task;}catch{return false;}finally{if(statusTasks.get(kv)===task)statusTasks.delete(kv);}
+}
+export async function runHotmartPostSale(env,options={}){
+ const now=options.now??Date.now(),out=await runHotmartPostSaleInternal(env,{...options,now});
+ if(out.code==='already_running'||(options.cron??'0 * * * *')!=='0 * * * *')return out;
+ const statusPersisted=await persistRunStatus(env.ZEVANORY_PRIVATE_ARTIFACTS,out,now);
+ if(!statusPersisted)console.error('hotmart_post_sale_status_unavailable');
+ return {...out,statusPersisted};
+}
 const running=new WeakSet();
-export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch,cron='0 * * * *'}={}){
+async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cron='0 * * * *'}={}){
  if(cron!=='0 * * * *')return {ok:true,sent:0,priority:1,code:'not_hourly_tick'};
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;if(!kv?.list||!env.RESEND_API_KEY)return {ok:false,code:'not_configured',sent:0,priority:1};
- if(running.has(kv))return {ok:true,sent:0,priority:1};running.add(kv);
+ if(running.has(kv))return {ok:true,sent:0,priority:1,code:'already_running'};running.add(kv);
  let sent=0;
  try{
   if(!await salesAllowed(kv,now))return {ok:true,sent:0,priority:1,code:'sales_closed'};
@@ -173,7 +204,7 @@ export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch,cro
     let v;try{v=await response?.json();}catch{}
     if(response?.status===200&&typeof v?.id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v.id)){
      await kv.put(key+':confirmado',JSON.stringify({id:v.id,bodyHash}),ttl);state.status='sent';sent++;
-    }else state.status=response?.status===429?'rejected':'unknown';
+    }else{state.status=response?.status===429?'rejected':'unknown';if(state.status==='unknown')reconciliationPending++;}
     await kv.put(key,JSON.stringify(state),ttl);
    }
   }
