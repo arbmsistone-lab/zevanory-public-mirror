@@ -18,12 +18,18 @@ concurrency:
   queue: max
 
 jobs:
-  plan:
+  submit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has_work: ${{ steps.plan.outputs.has_work }}
       day: ${{ steps.plan.outputs.day }}
+      attempt: ${{ steps.plan.outputs.attempt }}
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,15 +37,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - id: plan
+      - name: Plan changed publications
+        id: plan
         run: node scripts/indexnow-publication.mjs plan
-  submit:
-    name: indexnow-${{ matrix.id }}-${{ matrix.revision }}-${{ needs.plan.outputs.day }}
-    needs: plan
-    if: needs.plan.outputs.has_work == 'true'
+  notify:
+    name: indexnow-${{ matrix.id }}-${{ matrix.revision }}-${{ needs.submit.outputs.day }}
+    needs: submit
+    if: needs.submit.outputs.has_work == 'true'
     strategy:
+      max-parallel: 1
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.submit.outputs.matrix) }}
     concurrency:
       group: indexnow-url-${{ matrix.id }}
       cancel-in-progress: false
@@ -49,15 +57,12 @@ jobs:
     env:
       KEY: 4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922
       PUBLICATION_URL: ${{ matrix.url }}
-      PUBLICATION_REVISION: ${{ matrix.revision }}
-      PUBLICATION_DAY: ${{ needs.plan.outputs.day }}
+      PUBLICATION_DAY: ${{ needs.submit.outputs.day }}
+      PUBLICATION_PLANNED_ATTEMPT: ${{ needs.submit.outputs.attempt }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - id: attempt
-        run: node scripts/indexnow-publication.mjs prepare
       - name: Submit one changed publication
-        if: steps.attempt.outputs.ready == 'true'
         run: node scripts/indexnow-publication.mjs submit
