@@ -75,19 +75,21 @@ async function runEngine(state) {
   return { out, texts, sent: net.sent, kv };
 }
 
-test("B: trava fechada, ilegível ou incompleta => Telegram e Bluesky sem preço, sem /comprar, sem CTA e com CLOSED_LABEL", async () => {
+test("B: trava fechada, ilegível ou incompleta => Bluesky (Telegram desligado, F0 nº 7) sem preço, sem /comprar, sem CTA e com CLOSED_LABEL", async () => {
   for (const state of ["closed", "throw", "incomplete", "stale_preflight"]) {
     const { out, texts, sent } = await runEngine(state);
-    for (const ch of ["telegram", "bluesky"]) assert.equal(out.outcomes.find((x) => x.channel === ch)?.status, "publicado", state + ": " + ch + " publica a versão fechada");
-    assert.equal(sent.telegram.length, 1, state); assert.equal(sent.bluesky.length, 1, state);
+    assert.equal(out.outcomes.find((x) => x.channel === "bluesky")?.status, "publicado", state + ": bluesky publica a versão fechada");
+    // Decisão F0 nº 7 (10/11/2026): Telegram de divulgação desligado no motor.
+    assert.equal(out.outcomes.find((x) => x.channel === "telegram")?.status, "desligado", state);
+    assert.equal(sent.telegram.length, 0, state); assert.equal(sent.bluesky.length, 1, state);
     for (const t of texts) {
       assert.deepEqual(salesLockViolations(t), [], state + ": " + t);
       assert.doesNotMatch(t, /\/comprar/, state);
       assert.ok(t.includes(CLOSED_LABEL), state + ": aviso de vendas fechadas: " + t);
       assert.match(t, /https:\/\/vendas\.zevanory\.api\.br\/ia-na-pratica\?utm_source=(telegram|bluesky)/, state + ": página do produto");
     }
-    const tg = out.outcomes.find((x) => x.channel === "telegram");
-    assert.doesNotMatch(tg.utm, /\/comprar/, state);
+    const bs = out.outcomes.find((x) => x.channel === "bluesky");
+    assert.doesNotMatch(bs.utm, /\/comprar/, state);
     // Blog do mesmo ciclo: artigo salvo sem preço nem checkout (o link de compra é decidido na renderização).
     const blog = JSON.parse((await runEngine(state)).kv.m.get("zpc:blog:index:v1") || "{}").articles?.at(-1);
     if (blog) assert.deepEqual(salesLockViolations(blog.body + " " + blog.description), [], state + ": blog");
@@ -95,8 +97,10 @@ test("B: trava fechada, ilegível ou incompleta => Telegram e Bluesky sem preço
 });
 
 test("B: trava aberta (dono + preflight verde) => link de checkout /comprar/<SKU>, comportamento atual preservado", async () => {
-  const { out, texts } = await runEngine("open");
-  for (const ch of ["telegram", "bluesky"]) assert.equal(out.outcomes.find((x) => x.channel === ch)?.status, "publicado", ch);
+  const { out, texts, sent } = await runEngine("open");
+  assert.equal(out.outcomes.find((x) => x.channel === "bluesky")?.status, "publicado");
+  assert.equal(out.outcomes.find((x) => x.channel === "telegram")?.status, "desligado"); assert.equal(sent.telegram.length, 0);
+  assert.equal(texts.length, 1);
   for (const t of texts) { assert.match(t, /https:\/\/vendas\.zevanory\.api\.br\/comprar\/ZEV-IA-011\?utm_source=/); assert.ok(!t.includes(CLOSED_LABEL)); }
 });
 
@@ -215,10 +219,11 @@ test("D7: Instagram e Facebook fechados sem P04 certificado, com vendas abertas 
 });
 
 test("H: modo Hotmart (interruptor completo fechado + sales:hotmart:v1) => 5 kits com preço e /hotmart/<slug>; falha = fechado; pausa vale", async () => {
-  // Engine (Telegram + Bluesky): kit do dia (IA na Prática, R$ 97) com o caminho de compra pela Hotmart.
+  // Engine (Bluesky; Telegram desligado pela decisão F0 nº 7): kit do dia (IA na Prática, R$ 97) com o caminho de compra pela Hotmart.
   const { out, texts, sent } = await runEngine("hotmart");
-  for (const ch of ["telegram", "bluesky"]) assert.equal(out.outcomes.find((x) => x.channel === ch)?.status, "publicado", "hotmart: " + ch);
-  assert.equal(sent.telegram.length, 1); assert.equal(sent.bluesky.length, 1);
+  assert.equal(out.outcomes.find((x) => x.channel === "bluesky")?.status, "publicado", "hotmart: bluesky");
+  assert.equal(out.outcomes.find((x) => x.channel === "telegram")?.status, "desligado", "hotmart: telegram desligado");
+  assert.equal(sent.telegram.length, 0); assert.equal(sent.bluesky.length, 1); assert.equal(texts.length, 1);
   for (const t of texts) {
     assert.match(t, /https:\/\/vendas\.zevanory\.api\.br\/hotmart\/ia-na-pratica\?utm_source=(telegram|bluesky)/, "hotmart: caminho de compra do kit: " + t);
     assert.ok(t.includes("R$ 97"), "hotmart: preço da tabela: " + t);
@@ -244,7 +249,8 @@ test("H: modo Hotmart (interruptor completo fechado + sales:hotmart:v1) => 5 kit
   }
   // A pausa da autopublicação criativa continua valendo no modo Hotmart.
   const paused = await runEngine("hotmart_paused");
-  for (const ch of ["telegram", "bluesky"]) assert.equal(paused.out.outcomes.find((x) => x.channel === ch)?.status, "pausado", "pausa: " + ch);
+  assert.equal(paused.out.outcomes.find((x) => x.channel === "bluesky")?.status, "pausado", "pausa: bluesky");
+  assert.equal(paused.out.outcomes.find((x) => x.channel === "telegram")?.status, "desligado", "pausa: telegram segue desligado");
   assert.equal(paused.sent.telegram.length + paused.sent.bluesky.length, 0, "pausa: nada publicado");
   // validateDraft no modo Hotmart: só o preço e o caminho DESTE kit; preço obrigatório; nada mais.
   const entry = calendarEntry("2026-10-10");
