@@ -48,6 +48,7 @@ tests/db-economy.test.mjs 5
 tests/engine-dispatcher.test.mjs 4
 tests/experiments.test.mjs 5
 tests/f1-bluesky-kv.test.mjs 11
+tests/f1-meta-identity.test.mjs 10
 tests/f1b-bluesky-recovery.test.mjs 5
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
@@ -73,6 +74,7 @@ tests/market-weekly.test.mjs 2
 tests/mercadopago-preference-expiry.test.mjs 3
 tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
+tests/meta-permission-check.test.mjs 44
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
 tests/nc015-cp-no-public-links.test.mjs 4

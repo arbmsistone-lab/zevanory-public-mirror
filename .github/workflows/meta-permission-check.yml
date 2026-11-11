@@ -1,0 +1,31 @@
+name: Meta permission check (read-only, no publish)
+# DEC-23 (plano-mestre, seção 9): teste de permissão da Graph API antes da ativação contínua.
+# Somente leitura: GET /me, Página (+ token da Página só true/false), conta do Instagram, cota de publicação
+# e debug_token (opcional). Não publica nada. Disparo manual apenas.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: meta-permission-check
+  cancel-in-progress: false
+jobs:
+  check:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+      - name: Meta Graph API v21.0 permission check (read-only)
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+        # O script emite ::add-mask:: do token antes da primeira chamada e nunca imprime tokens.
+        run: node scripts/channels/meta-permission-check.mjs
