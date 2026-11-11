@@ -1,3 +1,4 @@
+import {readHotmartPostback} from "../../worker/hotmart-test-webhook.mjs";
 // ZEVANORY Revenue Command Center snapshot (read-only, hourly, zero cost).
 // Collects every number the owner panel shows, each with provenance:
 //   { value, source, updatedAt, definition, integrity }
@@ -418,6 +419,7 @@ export async function main() {
   const salesCount = salesKnown.value;
   const grossKnown = (c, m) => (knownCount(m).value == null ? null : knownCount(m).lowerBound ? null : c.grossCents);
   const salesGoal = (base, value, m) => ({ ...base, current: value, integrityClass: m.integrityClass, lowerBound: knownCount(m).lowerBound, source: m.source });
+  const postback = await readHotmartPostback({get:async key=>{const r=await kvApi("values/"+encodeURIComponent(key));if(r.status===404)return null;if(!r.ok)throw Error("postback_read_failed");return r.text();}});
   const hotmartLock = hotmartLockState(hotmart, salesOpen, hotmartOpen);
   const hotmartMode = salesOpen === false && hotmartOpen === true;
   if (hotmartLock.severity === "P0") console.log("::error title=P0_HOTMART_BYPASS::" + JSON.stringify({ accepting: hotmartLock.accepting, leaking: hotmartLock.leaking || hotmartLock.accepting, salesOpen, hotmartOpen }));
@@ -515,6 +517,7 @@ export async function main() {
       kvQuota, salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
       // Derived from the switch and the six Hotmart probes; never a constant.
       checkoutMode: (salesOpen === true ? "Vendas abertas: checkout próprio vendendo" : hotmartMode ? "Vendendo pela Hotmart (5 kits abertos; interruptor completo fechado: checkout próprio e Conteúdo Pronto fechados)" : salesOpen === false ? "Vendas fechadas (interruptor do dono): checkout próprio e rotas Hotmart do site fechados" : "Interruptor de vendas NÃO VERIFICADO nesta leitura") + "; " + hotmartModeText(hotmartLock) + (hotmartLock.severity === "P0" ? (hotmartMode ? " — P0: Conteúdo Pronto aceitando pagamento com a assinatura fechada" : " — P0: oferta Hotmart aceitando pagamento com vendas fechadas") : ""),
+      postback,
       hotmartLock,
       hotmartSwitch: hotmartOpen,
       buyFlow,
