@@ -27,6 +27,14 @@ const ANGLES=Object.freeze(["dor","tutorial","caso de uso","objeção","compara�
 const TIMEZONE="America/Sao_Paulo";
 const PEAK_HOURS=Object.freeze({blog:9,telegram:12,bluesky:19});
 const safeJson=async(kv,key,fallback)=>{try{return JSON.parse(String(await kv?.get?.(key)||"null"))??fallback;}catch{return fallback;}};
+// Mesmo contrato de leitura estrita do #1019, para preservar a ordem de integração.
+const obj=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
+export async function readAcquisitionKv(kv,key,valid){
+ try{const raw=await kv.get(key);if(raw===null)return {ok:true,value:null};
+ const value=JSON.parse(String(raw));return valid(value)?{ok:true,value}:{ok:false};}catch{return {ok:false};}
+}
+const receiptShape=v=>obj(v)&&["pending","erro","publicado"].includes(v.status);
+const stateShape=v=>obj(v)&&Array.isArray(v.outcomes)&&v.outcomes.every(o=>obj(o)&&typeof o.channel==="string"&&typeof o.status==="string");
 const dayOrdinal=day=>Math.floor(Date.parse(day+"T00:00:00Z")/DAY);
 const localHour=now=>Number(new Intl.DateTimeFormat("en-GB",{timeZone:TIMEZONE,hour:"2-digit",hourCycle:"h23"}).format(now));
 const localDay=now=>new Intl.DateTimeFormat("en-CA",{timeZone:TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).format(now);
@@ -138,13 +146,15 @@ const MAX_DAILY_ATTEMPTS=3;
 // Telegram, which has no idempotency key. Bluesky reuses a deterministic record
 // key and adopts an existing record, so it can safely retry either way.
 const definitiveFailure=message=>/^(bluesky_http_4\d\d|bluesky_session_invalid|bluesky_receipt_mismatch|telegram_http_4\d\d|provider_http_4\d\d|bluesky_product_link_invalid|bluesky_link_too_long|bluesky_grapheme_limit|telegram_credentials_missing|brand_[a-z0-9_]+)$/.test(String(message||""))&&!/_(408|429)$/.test(String(message||""));
-async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesOpen=false,hotmartOpen=false}){
+async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesOpen=false,hotmartOpen=false,trigger="manual"}){
  const key=ACQUISITION_STATE_PREFIX+entry.day+":"+channel;
- const prior=await safeJson(kv,key,null);
+ const read=await readAcquisitionKv(kv,key,receiptShape);
+ if(!read.ok)return {channel,day:entry.day,status:"erro",code:"receipt_unreadable"};
+ const prior=read.value;
  const attempts=Number(prior?.attempts||(prior?1:0));
  if(prior){
   const retryable=prior.status!=="publicado"&&attempts<MAX_DAILY_ATTEMPTS&&(channel==="bluesky"||(prior.status==="erro"&&prior.definitive===true));
-  if(!retryable)return prior; // published, or ambiguous Telegram pending: never blindly repost
+  if(!retryable)return {...prior,trigger:prior.trigger??null}; // published, or ambiguous Telegram pending: never blindly repost
  }
  // Preserve legacy Telegram publish-once marker during cutover. Never produce two posts in a day.
  if(channel==="telegram"&&!prior){
@@ -162,14 +172,14 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
  const linkHttpStatus=await verifyProductLink(draft.link);
  const gate=validateDraft({draft,entry,priorPosts:past,linkHttpStatus,salesOpen:open,hotmartOpen:hotmartOpen===true});
  if(!gate.ok){return {channel,day:entry.day,status:"erro",code:gate.reasons.join(","),gate};}
- const reservation={channel,day:entry.day,status:"pending",startedAt:now.toISOString(),theme_id:entry.theme_id,attempts:attempts+1};
+ const reservation={channel,day:entry.day,status:"pending",trigger,startedAt:now.toISOString(),theme_id:entry.theme_id,attempts:attempts+1};
  await kv.put(key,JSON.stringify(reservation),{expirationTtl:45*86400});
  try{
   const receipt=channel==="telegram"
    ?await publishTelegram({env,payload:{content:draft.text,media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl})
    :await publishBluesky({env,title:draft.hook,hook:draft.hook,value:draft.value,cta:draft.cta,productUrl:draft.link,day:entry.day,topic:entry.product.sku,fetchImpl});
   if(!receipt?.url||!receipt?.provider_post_id)throw new Error("provider_receipt_missing");
-  const outcome={channel,day:entry.day,status:"publicado",provider_post_id:receipt.provider_post_id,url:receipt.url,product:entry.product.sku,utm:draft.link,text:draft.text,at:now.toISOString(),attempts:attempts+1,gate};
+  const outcome={channel,day:entry.day,status:"publicado",trigger:receipt.adopted===true?(prior?.trigger??null):trigger,provider_post_id:receipt.provider_post_id,url:receipt.url,product:entry.product.sku,utm:draft.link,text:draft.text,at:now.toISOString(),attempts:attempts+1,gate};
   await kv.put(key,JSON.stringify(outcome),{expirationTtl:45*86400});
   // An independent, masked activity record; a failed outbox must not repost to the provider.
   await emitActivity(env,{type:"post_published",channel,status:"published",ref:channel+":"+entry.day+":"+entry.theme_id,link:receipt.url},{now:now.getTime()}).catch(()=>null);
@@ -214,7 +224,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
   }
   try{
    const archive=await safeJson(kv,"zpc:acquisition:history:"+channel,[]);
-   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:Array.isArray(archive)?archive:[],salesOpen,hotmartOpen});
+   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:Array.isArray(archive)?archive:[],salesOpen,hotmartOpen,trigger});
    outcomes.push(result);
    if(result.status==="publicado"&&!archive.some(p=>p.day===day)){
     await kv.put("zpc:acquisition:history:"+channel,JSON.stringify([...archive,{day,text:result.text,product:result.product}].slice(-30)),{expirationTtl:45*86400});
@@ -225,12 +235,12 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  const days=planCalendar(now);
  let priorCal=null;try{priorCal=JSON.parse(String(await kv.get(ACQUISITION_CALENDAR_KEY)||"null"));}catch{}
  if(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
- let priorState=null;try{priorState=JSON.parse(String(await kv.get(ACQUISITION_STATE_PREFIX+day)||"null"));}catch{}
- // Cada outcome leva o trigger da execução; um outcome já publicado mantém o trigger da primeira publicação.
- const priorTrigger=Object.fromEntries((priorState?.outcomes||[]).filter(o=>o?.status==="publicado"&&o.trigger).map(o=>[o.channel,o.trigger]));
- const stamped=outcomes.map(o=>({...o,trigger:o.status==="publicado"&&priorTrigger[o.channel]?priorTrigger[o.channel]:trigger}));
+ const stateRead=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+day,stateShape);
+ const priorState=stateRead.value;
+ // Origem de publicação pertence ao recibo, nunca ao tick que a reencontrou.
+ const stamped=outcomes.map(o=>({...o,trigger:o.status==="publicado"?(o.trigger??null):trigger}));
  const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,trigger,outcomes:stamped};
- if(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(stamped)||priorState.product!==state.product)await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
+ if(stateRead.ok&&(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(stamped)||priorState.product!==state.product))await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
  const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
  return {ok:true,...state,ownerDigest};
 }
