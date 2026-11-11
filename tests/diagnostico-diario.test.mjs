@@ -91,7 +91,7 @@ test("autonomia real = concluídas sem comando ÷ devidas; sem fonte ou sem devi
 test("vendas Hotmart: sem eventos = NÃO TESTADO (nunca 0 comprovado); ledger = PENDENTE; falha = INCONCLUSIVO; reconciliado = COMPROVADO", () => {
   assert.equal(estadoVendasHotmart({ ok: true, v: null }, MON).estado, "NAO_TESTADO");
   assert.match(estadoVendasHotmart({ ok: true, v: null }, MON).texto, /^NÃO TESTADO/);
-  assert.equal(estadoVendasHotmart({ ok: true, v: { schema: "outro" } }, MON).estado, "NAO_TESTADO");
+  assert.equal(estadoVendasHotmart({ ok: true, v: { schema: "outro", byDay: {} } }, MON).estado, "INCONCLUSIVO");
   assert.equal(estadoVendasHotmart({ ok: false, v: null }, MON).estado, "INCONCLUSIVO");
   const zero = estadoVendasHotmart({ ok: true, v: { schema: "zevanory-sales/v1", integrity: "webhook_authenticated", byDay: {} } }, MON);
   assert.deepEqual([zero.estado, zero.aprovadas], ["PENDENTE", 0]); assert.doesNotMatch(zero.texto, /COMPROVADO/);

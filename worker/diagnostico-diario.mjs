@@ -11,9 +11,15 @@ export const ACQUISITION_DAILY_PREFIX = "zpc:acquisition:daily:";
 const AGUARDANDO = /^aguardando/;
 
 export const weekdayOf = (day) => new Date(String(day) + "T12:00:00Z").getUTCDay();
-const readJson = async (kv, key) => {
+const object = v => v !== null && typeof v === "object" && !Array.isArray(v);
+const readJson = async (kv, key, valid = object) => {
   if (!kv?.get) return { ok: false, v: null };
-  try { return { ok: true, v: JSON.parse(String((await kv.get(key)) || "null")) }; } catch { return { ok: false, v: null }; }
+  try {
+    const raw = await kv.get(key);
+    if (raw === null) return { ok: true, v: null };
+    const v = JSON.parse(String(raw));
+    return valid(v) ? { ok: true, v } : { ok: false, v: null };
+  } catch { return { ok: false, v: null }; }
 };
 
 // Publicações esperadas de um canal no dia local, já vencidas na hora local informada (24 = dia encerrado).
@@ -63,13 +69,19 @@ export function classeDoMotivo(motivo, regras = REGRAS) {
 // Lê o estado do dia (zpc:acquisition:daily:<dia>), o detalhe por canal (zpc:acquisition:daily:<dia>:<canal>) e a chave de
 // status própria do canal, quando a regra declara uma (blog: zpc:blog:status:v1:<dia>). Só leitura.
 export async function lerStatusDoDia(kv, day, regras = REGRAS) {
-  const estado = await readJson(kv, ACQUISITION_DAILY_PREFIX + day);
-  const fonte = !estado.ok ? "falha_leitura" : estado.v ? "registro" : "sem_registro";
+  const estado = await readJson(kv, ACQUISITION_DAILY_PREFIX + day, v=>object(v)&&Array.isArray(v.outcomes)&&v.outcomes.every(o=>object(o)&&typeof o.channel==="string"&&typeof o.status==="string"));
+  let fonte = !estado.ok ? "falha_leitura" : estado.v ? "registro" : "sem_registro";
   const porCanal = {};
   for (const [canal, c] of Object.entries(regras?.canais || {})) {
-    const detalhe = c.ativacao === "desligada" ? { ok: true, v: null } : await readJson(kv, ACQUISITION_DAILY_PREFIX + day + ":" + canal);
+    const detalhe = c.ativacao === "desligada" ? { ok: true, v: null } : await readJson(kv, ACQUISITION_DAILY_PREFIX + day + ":" + canal, v=>object(v)&&typeof v.status==="string");
     const resumo = (Array.isArray(estado.v?.outcomes) ? estado.v.outcomes : []).find((o) => o?.channel === canal) || null;
-    const blogStatus = c.chave_status ? (await readJson(kv, String(c.chave_status).replace("{dia}", day))).v : null;
+    const blogRead = c.chave_status ? await readJson(kv, String(c.chave_status).replace("{dia}", day), v=>object(v)&&(v.resultado==="ok"?(typeof v.url==="string"||typeof v.slug==="string"):v.resultado==="rejeitado"&&Array.isArray(v.motivos))) : {ok:true,v:null};
+    const blogStatus = blogRead.v;
+    if(c.ativacao!=="desligada"&&(!estado.ok||!detalhe.ok||!blogRead.ok)){
+      fonte="falha_leitura";
+      porCanal[canal]={publicadas:null,semComando:0,status:"erro",url:null,id:null,motivo:"falha ao ler as chaves de status do dia (não lido)",leitura:"erro"};
+      continue;
+    }
     const row0 = detalhe.v || resumo;
     // NC-F1-A4-01 (contra-auditoria GPT-6): a origem vem SÓ do recibo ou do outcome DESTE canal. O trigger geral da
     // execução (estado.trigger) nunca comprova a origem de uma publicação; origem ausente fica desconhecida (null) e
@@ -98,10 +110,10 @@ export function diagnosticarDia({ day, hour, ativos = {}, status = { porCanal: {
     if (ativos[canal]?.ativo !== true) continue;
     const esperadas = esperadasNoDia(canal, day, hour, regras);
     const s = status.porCanal?.[canal] || {};
-    const publicadas = Number(s.publicadas) || 0;
-    if (publicadas >= esperadas) continue;
+    const publicadas = s.leitura === "erro" ? null : Number(s.publicadas) || 0;
+    if (!esperadas || (publicadas !== null && publicadas >= esperadas)) continue;
     const motivo = s.motivo || motivoDe(null, null, status.fonte);
-    out.push({ regra: "CANAL_PARADO", versao_regra: regra.versao, versao_regras: regras.versao, dia: day, canal, esperadas, publicadas, motivo, classe: classeDoMotivo(motivo, regras), acao_automatica: "nenhuma" });
+    out.push({ regra: s.leitura === "erro" ? "LEITURA_INCONCLUSIVA" : "CANAL_PARADO", versao_regra: regra.versao, versao_regras: regras.versao, dia: day, canal, esperadas, publicadas, motivo, classe: classeDoMotivo(motivo, regras), acao_automatica: "nenhuma" });
   }
   return out;
 }
