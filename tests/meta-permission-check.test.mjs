@@ -22,12 +22,13 @@ function graphMock(over = {}) {
     const u = new URL(String(url));
     calls.push({ url: String(url), path: u.pathname.replace("/v21.0", ""), method: init.method || "GET", auth: init.headers?.authorization });
     const p = u.pathname.replace("/v21.0", "");
-    const key = p === "/me" ? "me" : p === "/me/accounts" ? "accounts" : p === `/${EXPECTED.page_id}` && u.searchParams.get("fields") === "access_token" ? "pageField"
+    const key = p === "/me" ? "me" : p === "/me/accounts" ? "accounts" : p === "/me/permissions" ? "perms" : p === `/${EXPECTED.page_id}` && u.searchParams.get("fields") === "access_token" ? "pageField"
       : p === `/${EXPECTED.page_id}` ? "page" : p === `/${EXPECTED.ig_id}` ? "ig" : p.endsWith("/content_publishing_limit") ? "quota" : p === "/debug_token" ? "debug" : "unknown";
     if (over[key]) return over[key](u);
     switch (key) {
       case "me": return ok({ id: "61500000000001", name: "zevanory-publisher" });
-      case "page": return ok({ id: EXPECTED.page_id, name: "Zevanory" });
+      case "page": return ok({ id: EXPECTED.page_id, name: "Zevanory", instagram_business_account: { id: EXPECTED.ig_id } });
+      case "perms": return ok({ data: [...EXPECTED.required_permissions, "business_management"].map((permission) => ({ permission, status: "granted" })).concat([{ permission: "publish_video", status: "declined" }]) });
       case "accounts": return ok({ data: [{ id: EXPECTED.page_id, access_token: PAGE_TOKEN }] });
       case "pageField": return ok({ id: EXPECTED.page_id, access_token: PAGE_TOKEN });
       case "ig": return ok({ id: EXPECTED.ig_id, username: "zevanory_" });
@@ -51,12 +52,15 @@ export function leakedTokens(text, tokens = [USER_TOKEN, PAGE_TOKEN]) {
   return tokens.filter((t) => text.includes(t) || text.includes(encodeURIComponent(t)));
 }
 
-test("caminho feliz: 5 itens ok, JSON curto, token mascarado antes da 1a chamada e nunca impresso", async () => {
+test("caminho feliz: todos os itens ok, JSON curto, token mascarado antes da 1a chamada e nunca impresso", async () => {
   const { calls, fetchImpl } = graphMock();
   const r = await run({ runCheck }, ENV, fetchImpl);
   assert.equal(r.exitCode, 0);
   assert.equal(r.report.ok, true);
-  for (const k of ["me", "page", "page_token", "instagram", "publishing_limit", "debug_token"]) assert.equal(r.report.items[k].ok, true, k);
+  for (const k of ["me", "page", "page_token", "permissions", "instagram", "publishing_limit", "debug_token"]) assert.equal(r.report.items[k].ok, true, k);
+  assert.deepEqual(r.report.failed, []);
+  assert.equal(r.report.items.page.linked_instagram_matches, true);
+  assert.deepEqual(r.report.items.permissions.warnings, ["publish_video_not_granted"]);
   assert.equal(r.report.items.page_token.obtained, true);
   assert.equal(r.report.items.instagram.username, "zevanory_");
   assert.equal(r.report.items.publishing_limit.quota_total, 100);
@@ -184,3 +188,58 @@ test("barreira final: relatório que contivesse o token é suprimido e reprova",
     assert.match(r.out, /report_suppressed_secret_detected/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---- Correções da auditoria independente (PASS COM CORREÇÕES no 48abe10): NC-1..NC-4, cada uma com cenário e mutante.
+const WHATSAPP_APP = "1071149631917061";
+const dbgWith = (app_id) => () => ok({ data: { app_id, type: "SYSTEM_USER", is_valid: true, expires_at: 0, scopes: [] } });
+const SCENARIOS = {
+  // NC-1
+  "app_id diferente do esperado reprova": async (mod) => { const r = await run(mod, ENV, graphMock({ debug: dbgWith("999") }).fetchImpl); return r.exitCode === 1 && r.report.ok === false && r.report.failed.includes("app_id"); },
+  "app_id do WhatsApp reprova": async (mod) => { const r = await run(mod, ENV, graphMock({ debug: dbgWith(WHATSAPP_APP) }).fetchImpl); return r.exitCode === 1 && r.report.failed.includes("app_id") && r.report.items.debug_token.app_id_forbidden === true; },
+  // NC-2
+  "permissão obrigatória ausente reprova": async (mod) => {
+    const r = await run(mod, ENV, graphMock({ perms: () => ok({ data: [{ permission: "instagram_basic", status: "granted" }, { permission: "instagram_content_publish", status: "declined" }, { permission: "pages_show_list", status: "granted" }, { permission: "pages_read_engagement", status: "granted" }] }) }).fetchImpl);
+    return r.exitCode === 1 && r.report.failed.includes("permissions") && r.report.items.permissions.missing.join() === "instagram_content_publish,pages_manage_posts";
+  },
+  "/me/permissions com erro reprova": async (mod) => { const r = await run(mod, ENV, graphMock({ perms: () => fail(403, { code: 10, message: "denied" }) }).fetchImpl); return r.exitCode === 1 && r.report.failed.includes("permissions"); },
+  "publish_video ausente só avisa": async (mod) => { const r = await run(mod, ENV, graphMock().fetchImpl); return r.exitCode === 0 && r.report.items.permissions?.warnings?.includes("publish_video_not_granted") === true; },
+  // NC-3
+  "Página ligada a outro Instagram reprova": async (mod) => { const r = await run(mod, ENV, graphMock({ page: () => ok({ id: EXPECTED.page_id, name: "Zevanory", instagram_business_account: { id: "17840000000000000" } }) }).fetchImpl); return r.exitCode === 1 && r.report.failed.includes("page"); },
+  "Página sem Instagram ligado reprova": async (mod) => { const r = await run(mod, ENV, graphMock({ page: () => ok({ id: EXPECTED.page_id, name: "Zevanory" }) }).fetchImpl); return r.exitCode === 1 && r.report.items.page.error === "instagram_business_account_missing"; },
+  "pede o campo instagram_business_account": async (mod) => { const m = graphMock(); await run(mod, ENV, m.fetchImpl); return m.calls.some((c) => c.path === "/" + EXPECTED.page_id && /fields=id%2Cname%2Cinstagram_business_account|fields=id,name,instagram_business_account/.test(c.url)); },
+  // NC-4
+  "json() nulo vira item com falha, sem exceção": async (mod) => { const r = await run(mod, ENV, graphMock({ me: () => ({ ok: true, status: 200, json: async () => null }) }).fetchImpl); return r.exitCode === 1 && r.report.items.me?.ok === false && r.report.error === undefined; },
+  "exceção inesperada vira relatório com erro redigido": async (mod) => {
+    const boom = () => ({ ok: true, status: 200, json: async () => ({ get error() { throw new Error("boom " + USER_TOKEN); } }) });
+    let r; try { r = await run(mod, ENV, graphMock({ quota: boom }).fetchImpl); } catch { return false; }
+    return r.exitCode === 1 && /^exception: boom \[redacted\]/.test(r.report.error || "") && leakedTokens(r.out + r.summary).length === 0;
+  },
+};
+const ORIGINAL = { runCheck };
+for (const [name, sc] of Object.entries(SCENARIOS)) test(`auditoria: ${name}`, async () => assert.equal(await sc(ORIGINAL), true));
+
+const AUDIT_MUTANTS = [
+  ["NC-1 app_id não reprova", [['if (dt && (dt.app_id_matches_expected === false || dt.app_id_forbidden === true)) report.failed.push("app_id");', ""]], ["app_id diferente do esperado reprova", "app_id do WhatsApp reprova"]],
+  ["NC-1 lista do WhatsApp ignorada", [['dt.app_id_matches_expected === false || dt.app_id_forbidden === true', "dt.app_id_matches_expected === false"], ['app_id_matches_expected: d.app_id != null ? String(d.app_id) === EXPECTED.app_id : null,', 'app_id_matches_expected: true,']], ["app_id do WhatsApp reprova"]],
+  ["NC-2 permissions fora dos obrigatórios", [['const required = ["me", "page", "page_token", "permissions", "instagram", "publishing_limit"];', 'const required = ["me", "page", "page_token", "instagram", "publishing_limit"];']], ["permissão obrigatória ausente reprova", "/me/permissions com erro reprova"]],
+  ["NC-2 publish_video vira obrigatório", [['required_permissions: Object.freeze(["instagram_basic",', 'required_permissions: Object.freeze(["publish_video", "instagram_basic",']], ["publish_video ausente só avisa"]],
+  ["NC-3 vínculo não exigido", [["const linkedOk = linked === igId;", "const linkedOk = true;"]], ["Página ligada a outro Instagram reprova", "Página sem Instagram ligado reprova"]],
+  ["NC-3 campo não pedido", [["?fields=id,name,instagram_business_account`", "?fields=id,name`"]], ["pede o campo instagram_business_account"]],
+  ["NC-4 json nulo volta a quebrar", [["const body = (await res.json().catch(() => null)) ?? {};", "const body = await res.json().catch(() => ({}));"]], ["json() nulo vira item com falha, sem exceção"]],
+  ["NC-4 sem try/catch", [["    return await checks({ env, fetchImpl, log, mask, summary, secrets, token, report });\n  } catch (e) {", "    return await checks({ env, fetchImpl, log, mask, summary, secrets, token, report });\n  } catch (e) { throw e;"]], ["exceção inesperada vira relatório com erro redigido"]],
+];
+for (const [name, edits, killers] of AUDIT_MUTANTS) {
+  test(`mutante da auditoria morto: ${name}`, async () => {
+    let src = readTextNormalized(SRC_URL);
+    for (const [from, to] of edits) { assert.ok(src.includes(from), "âncora do mutante presente: " + from); src = src.replace(from, to); }
+    const dir = mkdtempSync(join(tmpdir(), "meta-aud-"));
+    try {
+      const file = join(dir, "m.mjs");
+      writeFileSync(file, src);
+      const mod = await import(pathToFileURL(file).href);
+      const verdicts = [];
+      for (const k of killers) verdicts.push(await SCENARIOS[k](mod));
+      assert.ok(verdicts.some((v) => v === false), `mutante sobreviveu a: ${killers.join(" | ")}`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}

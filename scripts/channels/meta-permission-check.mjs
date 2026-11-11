@@ -14,6 +14,11 @@ export const EXPECTED = Object.freeze({
   page_id: "1249902628211703",
   ig_id: "17841434063364846",
   ig_username: "zevanory_",
+  // NC-1: o app do WhatsApp (desativado pela Meta em 10/10) nunca pode ser o dono deste token.
+  forbidden_app_ids: Object.freeze(["1071149631917061"]),
+  // NC-2: permissões que precisam estar "granted" em /me/permissions; publish_video só gera aviso.
+  required_permissions: Object.freeze(["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement", "pages_manage_posts"]),
+  warn_permissions: Object.freeze(["publish_video"]),
 });
 const REQUIRED_ENV = ["META_ACCESS_TOKEN", "META_PAGE_ID", "INSTAGRAM_BUSINESS_ACCOUNT_ID"];
 
@@ -32,7 +37,7 @@ async function graphGet(fetchImpl, token, path, secrets) {
   } catch (e) {
     return { ok: false, error: redact("network: " + (e?.message || e), secrets) };
   }
-  const body = await res.json().catch(() => ({}));
+  const body = (await res.json().catch(() => null)) ?? {};
   if (!res.ok || body?.error) {
     const er = body?.error || {};
     const parts = [`http_${res.status}`, er.type, er.code != null ? `code_${er.code}` : null, er.error_subcode != null ? `sub_${er.error_subcode}` : null, er.message];
@@ -42,7 +47,7 @@ async function graphGet(fetchImpl, token, path, secrets) {
 }
 
 /**
- * Roda as 5 verificações. Injeções: env, fetchImpl, log (linhas de relatório), mask (só ::add-mask::),
+ * Roda as verificações. Injeções: env, fetchImpl, log (linhas de relatório), mask (só ::add-mask::),
  * summary (texto do step summary). Retorna { report, exitCode }.
  */
 export async function runCheck({ env = process.env, fetchImpl = globalThis.fetch, log = console.log, mask = (v) => process.stdout.write(`::add-mask::${v}\n`), summary = () => {} } = {}) {
@@ -50,6 +55,17 @@ export async function runCheck({ env = process.env, fetchImpl = globalThis.fetch
   const token = env.META_ACCESS_TOKEN || "";
   if (token) { secrets.push(token); mask(token); } // máscara ANTES de qualquer chamada
   const report = { schema: "meta-permission-check/v1", graph: "v21.0", read_only: true, published: false, items: {} };
+  try {
+    return await checks({ env, fetchImpl, log, mask, summary, secrets, token, report });
+  } catch (e) {
+    // NC-4: exceção inesperada (resposta malformada etc.) vira falha com relatório, nunca stack com dados.
+    report.ok = false;
+    report.error = "exception: " + redact(e?.message || e, secrets);
+    return finish(report, 1, log, summary, secrets);
+  }
+}
+
+async function checks({ env, fetchImpl, log, mask, summary, secrets, token, report }) {
   const missing = REQUIRED_ENV.filter((n) => !env[n]);
   if (missing.length) {
     report.ok = false;
@@ -67,10 +83,13 @@ export async function runCheck({ env = process.env, fetchImpl = globalThis.fetch
     : { ok: false, error: me.error };
 
   // 2. Página + token da Página (só true/false).
-  const page = await graphGet(fetchImpl, token, `/${encodeURIComponent(pageId)}?fields=id,name`, secrets);
-  it.page = page.ok
-    ? { ok: String(page.body.id) === pageId, id_matches_expected: pageId === EXPECTED.page_id, name: String(page.body.name || "").slice(0, 60) || null }
-    : { ok: false, error: page.error };
+  // NC-3: a Página precisa estar ligada exatamente à conta do Instagram configurada.
+  const page = await graphGet(fetchImpl, token, `/${encodeURIComponent(pageId)}?fields=id,name,instagram_business_account`, secrets);
+  if (page.ok) {
+    const linked = page.body.instagram_business_account?.id != null ? String(page.body.instagram_business_account.id) : null;
+    const linkedOk = linked === igId;
+    it.page = { ok: String(page.body.id) === pageId && linkedOk, id_matches_expected: pageId === EXPECTED.page_id, name: String(page.body.name || "").slice(0, 60) || null, linked_instagram_matches: linkedOk, ...(linkedOk ? {} : { error: linked ? "instagram_business_account_mismatch" : "instagram_business_account_missing" }) };
+  } else it.page = { ok: false, error: page.error };
   let pageToken = null, pageTokenVia = null, pageTokenError = null;
   const accounts = await graphGet(fetchImpl, token, "/me/accounts?fields=id,access_token&limit=100", secrets);
   if (accounts.ok) {
@@ -85,6 +104,15 @@ export async function runCheck({ env = process.env, fetchImpl = globalThis.fetch
   if (pageToken) { secrets.push(pageToken); mask(pageToken); }
   it.page_token = { ok: !!pageToken, obtained: !!pageToken, via: pageTokenVia, ...(pageToken ? {} : { error: pageTokenError || "not_returned" }) };
   pageToken = null; // descartado: nunca é usado nem impresso
+
+  // NC-2: permissões concedidas ao usuário de sistema.
+  const perms = await graphGet(fetchImpl, token, "/me/permissions", secrets);
+  if (perms.ok) {
+    const granted = new Set((Array.isArray(perms.body.data) ? perms.body.data : []).filter((p) => p?.status === "granted").map((p) => String(p.permission)));
+    const missing = EXPECTED.required_permissions.filter((n) => !granted.has(n));
+    const warnings = EXPECTED.warn_permissions.filter((n) => !granted.has(n)).map((n) => n + "_not_granted");
+    it.permissions = { ok: missing.length === 0, missing, warnings, has_publish_video: granted.has("publish_video"), ...(missing.length ? { error: "missing_permissions:" + missing.join(",") } : {}) };
+  } else it.permissions = { ok: false, error: perms.error };
 
   // 3. Conta do Instagram.
   const ig = await graphGet(fetchImpl, token, `/${encodeURIComponent(igId)}?fields=id,username`, secrets);
@@ -107,14 +135,18 @@ export async function runCheck({ env = process.env, fetchImpl = globalThis.fetch
     it.debug_token = {
       ok: d.is_valid === true, optional: true, is_valid: d.is_valid ?? null, type: d.type ?? null,
       app_id_matches_expected: d.app_id != null ? String(d.app_id) === EXPECTED.app_id : null,
+      app_id_forbidden: d.app_id != null ? EXPECTED.forbidden_app_ids.includes(String(d.app_id)) : null,
       expires_at: d.expires_at ?? null, never_expires: d.expires_at === 0, data_access_expires_at: d.data_access_expires_at ?? null,
       scopes, has_instagram_content_publish: scopes.includes("instagram_content_publish"), has_pages_manage_posts: scopes.includes("pages_manage_posts"), has_publish_video: scopes.includes("publish_video"),
     };
   } else it.debug_token = { ok: false, optional: true, error: dbg.error };
 
-  const required = ["me", "page", "page_token", "instagram", "publishing_limit"];
-  report.ok = required.every((k) => it[k]?.ok === true);
+  const required = ["me", "page", "page_token", "permissions", "instagram", "publishing_limit"];
   report.failed = required.filter((k) => it[k]?.ok !== true);
+  // NC-1: debug_token é opcional, mas se informar um app_id diferente do esperado (ou o do WhatsApp), reprova.
+  const dt = it.debug_token;
+  if (dt && (dt.app_id_matches_expected === false || dt.app_id_forbidden === true)) report.failed.push("app_id");
+  report.ok = report.failed.length === 0;
   return finish(report, report.ok ? 0 : 1, log, summary, secrets);
 }
 
