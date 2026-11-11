@@ -238,7 +238,10 @@ test("trigger: só 'cron' conta como autônomo; manual, workflow_dispatch, exter
   assert.deepEqual(((o) => [o.status, o.trigger])(b1.outcomes.find((o) => o.channel === "bluesky")), ["publicado", "cron"]);
   const b2 = await runAcquisitionEngine(bsky, new Date("2026-10-12T23:35:00Z"), mock, { trigger: "externo" });
   assert.deepEqual(((o) => [o.status, o.trigger])(b2.outcomes.find((o) => o.channel === "bluesky")), ["publicado", "cron"]);
-  assert.equal(b2.outcomes.find((o) => o.channel === "blog").trigger, "externo");
+  // Outcomes não publicados levam o trigger desta execução; publicados (Bluesky e, com o blog do #1020, o blog) mantêm "cron".
+  const naoPublicados = b2.outcomes.filter((o) => o.status !== "publicado");
+  assert.ok(naoPublicados.length > 0 && naoPublicados.every((o) => o.trigger === "externo"));
+  assert.ok(b2.outcomes.filter((o) => o.status === "publicado").every((o) => o.trigger === "cron"));
   // Cron do Worker é o único que passa "cron".
   const compat = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
   assert.equal(compat.split('{trigger:"cron"}').length - 1, 1);
