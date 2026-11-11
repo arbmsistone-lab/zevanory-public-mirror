@@ -1,11 +1,20 @@
 {
   "schema": "shorts-padrao/v2",
   "voz_fixa": "Achird",
-  "candidatas": ["Achird", "Puck", "Kore", "Leda"],
+  "candidatas": [
+    "Achird",
+    "Puck",
+    "Kore",
+    "Leda"
+  ],
   "comparacao_aprovada": false,
-  "motivo": "Achird e a referencia atual, nao uma vencedora auditiva. Comparacao real de quatro amostras pendente, sem segredo ou dispatch nesta entrega.",
-  "modelo": "gemini-2.5-flash-preview-tts",
+  "motivo": "Referencia 3.8/Achird preservada; comparacao real de 8 amostras e nivel gratuito pendentes.",
+  "modelo": "gemini-3.8-flash-tts",
   "nivel_gratuito_confirmado": false,
   "publicacao_aprovada": false,
-  "pronuncia": "zê-va-nó-ri"
+  "pronuncia": "zê-va-nó-ri",
+  "modelos_comparacao": [
+    "gemini-3.8-flash-tts",
+    "gemini-2.5-flash-preview-tts"
+  ]
 }

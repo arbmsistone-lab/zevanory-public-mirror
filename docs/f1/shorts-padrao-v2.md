@@ -1,50 +1,74 @@
-# Shorts — padrão v2
+# Shorts padrão v2 — rodada 2 do PR #1028
 
-Base gh-pages: a76ae60893b44f132094a048a2b1e8a26ad1f7ba. Branch própria feat/shorts-padrao-v2. Sem merge, rótulo, dispatch, deploy ou reativação. O workflow foi declarado pausado pelo proprietário; nenhuma operação de habilitação foi realizada. A implementação adiciona também uma trava de configuração false para publicação, independente do estado do workflow.
+Implementação para reauditoria; não é aprovação para publicar. Base auditada: `3a6fa5c8afabcae4d9c47afc18d0f286689446bb`. Mesmo ramo `feat/shorts-padrao-v2`. Especificação: [codex-shorts-v2-rodada2](https://docs.google.com/document/d/1W0aP-i-80um_oqbIA29DNEDMmt3DZiwp1_ZV2AZVVwA/edit).
 
-## Implementado
+Não houve merge, rótulo, dispatch, deploy, acesso a segredo ou reabilitação. `ops/executor.json` permanece intacto; a falha T1 não será contornada. Comparação de voz, confirmação do nível gratuito e aprovação do vídeo continuam falsas.
 
-O caminho ativo do renderizador usa scripts/shorts-v2, sem trocar regras de preço, catálogo ou travas de venda. O plano v2 só oferece um kit se o modo Hotmart já estiver permitido. Dicas financeiras apontam ao kit Lucro & Caixa, vendas ao Vendas na Prática, tecnologia ao IA na Prática e dicas gerais ao Negócio de Verdade, sempre pela allowlist existente, sem alterá-la. Link contém utm_source=youtube, utm_medium=shorts, utm_campaign=<tema>. Vendas fechadas não viram vendas abertas por causa do vídeo. O código legado de planos/exportações permanece para regressões; o novo consumidor exige QC v2 100/100 antes de upload.
+## NC01 — gravações humanas e provas de licença
 
-Roteiro de fala com 68–75 palavras de referência: pergunta concreta no gancho, frases de até 12 palavras, sem saudação, lista lida ou sigla soletrada. A dica específica do episódio substitui uma frase de referência quando respeita o limite e o filtro; texto longo/proibido reprova em vez de ser truncado em uma fala artificial. Direção do Gemini: conversa com amigo, energia no gancho, 150–170 ppm, sorriso na voz e pronúncia zê-va-nó-ri. O CTA é “Kit completo no link da descrição”. Preço, promessa de ganho, WhatsApp e Telegram são barrados.
+As oito senoides procedurais e `generate-music.py` foram removidos. Há oito gravações de compositores identificados, cortadas em 36 segundos (a partir de 8 s), normalizadas e codificadas em OGG Vorbis. Total abaixo de 6.000.000 bytes, medido pelo teste de mídia.
 
-O Gemini gratuito é o único sintetizador ativo. Sem fallback para Piper ou outra voz; a etapa que baixava Piper e o input que forçava voz local foram removidos. O modelo de API é gemini-2.5-flash-preview-tts, com voz fixa configurada. O uso diário é reservado antes da tentativa, inclusive em falha. A implementação não confirma billing nem cria credencial. Se o nível gratuito não estiver confirmado, bloqueia sem chamada. Referência oficial: https://ai.google.dev/gemini-api/docs/speech-generation .
+| Tema | Faixas | Fonte |
+|---|---|---|
+| IA | Arpent; Hear What They Say — Kevin MacLeod | FreePD, categoria Electronic |
+| Vendas | Advertime — Rafael Krux; Funshine — Kevin MacLeod | FreePD, categoria Upbeat |
+| Finanças | From Page to Practice — Bryan Teoh; Inspiration — Rafael Krux | FreePD, categoria Upbeat; trechos suaves propostos para locução |
+| Dicas | Study and Relax — Kevin MacLeod; Blue Skies — HoliznaCC0 | FreePD e coleção Happy Lo-Fi do autor no OpenGameArt |
 
-Voz isolada: passa-alta 80 Hz, de-esser suave, compressor 2:1 e loudnorm −16 LUFS. QC mede ppm, silêncio interno máximo 0,9 s, clipping do PCM original e pico processado, voz −16 ±1 LUFS e duração final de 25–35 s. Não se limita a confiar na duração declarada pelo gerador.
+`data/musica-licencas.json` registra URL do áudio, página original de licença, trecho literal, autor, título, SHA-256 do download original e do OGG entregue, início/duração do corte, clima e BPM estimado. As páginas arquivadas do FreePD identificam cada faixa e declaram **Creative Commons 0** na mesma página; o manifesto usa uma âncora de texto para a faixa. Blue Skies é a prévia pública da coleção Happy Lo-Fi, cuja página declara CC0. Evidências e SHA-256 das páginas consultadas: `docs/f1/evidencias/shorts-v2-rodada2/licencas.json`.
 
-As palavras são alinhadas localmente ao áudio real, em português, pelo stable-ts 2.19.1 / Whisper base; não se inventam timestamps uniformes para TTS. Sequência de palavras divergente, timestamps fora da duração ou fora de ordem reprovam. Legendas ASS grandes, grossas, contrastantes e com destaque na palavra falada, na área central segura (fora da coluna direita e dos 15% inferiores). O gancho aparece desde o primeiro frame; a marca só entra depois de dois segundos. As cenas alternam posições/cores em intervalos distribuídos entre dois e três segundos. CTA no final por três a quatro segundos; seu início é conferido contra o alinhamento real.
+Não foram usados Pixabay, YouTube, música de IA ou download dependente de conta. Os arquivos são anteriores a esta implementação; Blue Skies tem data 2022-05-15 no áudio original. O crédito acompanha a descrição do upload e a prévia. `import-music.py` permite conferir o download pelo hash e reproduzir o corte, sem substituir silenciosamente hashes aprovados. O serial do contêiner OGG pode variar entre codificações.
 
-O mix mantém referência da música a −28 LUFS, ducking por sidechain, fade-in 0,5 s e fade-out 1,5 s; mix final −14 LUFS, alvo TP −1,5 dBTP. QC lê os stems e o MP4 codificado: música presente, atenuação medida ≥10 dB, diferença voz/música ≥12 dB, mix −14 ±1 LUFS e true peak ≤−1 dBTP. Falta de medição reprova. Bibliotecas, motor e ferramentas locais são gratuitos; não há serviço de alinhamento pago.
+A classificação de clima é uma proposta de curadoria, não uma audição certificada. BPM é uma estimativa por autocorrelação; não foi inventado como metadado do compositor. CC0 documenta o direito de uso; não certifica ausência de reivindicação automática falsa. Não foi comprovada inscrição legítima dessas gravações em Content ID. A reauditoria deve ouvir a trilha no vídeo antes de liberar este item editorialmente.
 
-## Música e licença
+## NC02 — conteúdo do episódio e histórico estrito
 
-Oito faixas FLAC locais (duas por clima), sintetizadas integralmente pelo gerador determinístico do repositório, sem samples ou gravação de terceiros:
+Não existe mais um roteiro inteiro por tema musical. No slot principal `dica`, `data/shorts-episodios-v2.json` contém 40 episódios específicos, ligados ao **theme_id e à dica exata** do calendário. Cada episódio tem pergunta sobre a tarefa, quatro ações concretas e resultado sem promessa de ganho. Há também sete episódios para as calculadoras. Não são permutações de conectivos: o passo da receita da padaria difere do controle de validade, que difere do atendimento do pet shop. Dica sem passos correspondentes é bloqueada; não há resumo truncado nem preenchimento genérico.
 
-| Tema | Clima | Faixas | BPM |
-|---|---|---|---|
-| IA/tecnologia | eletrônica leve | ia-1 / ia-2 | 108 |
-| Vendas | animada/motivacional | vendas-1 / vendas-2 | 116 |
-| Finanças/caixa | corporativa calma | financas-1 / financas-2 | 84 |
-| Dicas gerais | lo-fi leve | dicas-1 / dicas-2 | 88 |
+No slot `oferta`, o construtor usa produto, nicho, ângulo e variante do episódio registrado no plano, a dica da tela e documentos próprios daquele nicho. O kit é resolvido pela SKU real, na allowlist existente, com UTMs `youtube/shorts/<tema>`. Cada frase tem até 12 palavras; o CTA permanece “Kit completo no link da descrição”.
 
-Cada registro em data/musica-licencas.json inclui arquivo, SHA-256, título, autor, URL do gerador, CC0-1.0, verificação em 11/11/2026, BPM, clima e temas. Ausência, licença inválida, arquivo faltante ou hash divergente bloqueiam. CC0 não exige crédito; o preview inclui a licença. Não há material de YouTube “no copyright” nem melodia de terceiro.
+A prova percorre **30 dias reais de dica e oferta: 60 roteiros distintos**, comparando todas as frases com o histórico dos demais. O plano não promete gerar conteúdo novo indefinidamente: quando o calendário não tiver uma lição correspondente, ou voltar a uma lição repetida, bloqueia e exige conteúdo novo.
 
-A seleção exclui a última faixa. O KV mantém recibo por episódio e projeção da última seleção. Erro de leitura nunca vira ausência. Projeção corrompida pode ser reconstruída somente a partir dos recibos legíveis dos últimos 30 dias; qualquer recibo ilegível ou ausência de evidência mantém o bloqueio. Preview lê o histórico mas não o escreve; a alternância é garantida para tentativas de produção serializadas pelo workflow, não para renders avulsos offline. Não há escrita no registro financeiro nem descarte de venda.
+Antes da síntese, `scriptHistory()` lê os últimos 60 dias dos três slots. `sha256(speech)` igual reprova em 60 dias; mais de 40% das frases iguais reprova em 30 dias. Impressões ficam em `zpc:shorts:v2:roteiro:<dia>:<slot>` e recibos `zpc:shorts:v2:roteiro:receipt:<dia>:<slot>`, com TTL de 65 dias. Estado corrupto só é recuperado de recibo legível e consistente. Ausência é aceita apenas quando projeção e recibo estão realmente ausentes. Prévia não reserva nem apaga histórico. Repetição idêntica do mesmo slot permite somente retentativa idempotente; não permite reusar outro dia ou slot.
 
-## Pendência real: comparação e aprovação da voz
+## NC03 — QC obtido dos artefatos
 
-**NÃO CONCLUÍDA: não foram geradas nem ouvidas quatro amostras Gemini reais.** Fazer isso exigiria usar a credencial existente em uma execução; esta tarefa proíbe acesso a segredos e dispatch. Os testes usam áudio sintético local e não comprovam naturalidade. Achird é apenas a referência já usada, não uma vencedora declarada.
+O render grava `-legendas.ass` e `-filter.txt`. `inspect-captions.py` lê os Dialogues, posição, alinhamento, tamanho e largura medida pela fonte Inter usada no render. Texto e tempos do ASS são confrontados com o alinhamento; não se injeta `aligned:true`.
 
-Candidatas oficiais preparadas: Achird (Friendly), Puck (Upbeat), Kore (Firm) e Leda (Youthful). compare-voices.mjs usa exatamente a mesma frase, gera quatro WAV e um comparacao.json, não publica, não decide por score técnico qual soa mais humana e não altera a seleção. Também bloqueia enquanto nivel_gratuito_confirmado=false. Não foi executado. Não se propõe plano pago; qualquer decisão de gasto volta ao proprietário.
+`visualMetrics()` lê início, duração e tamanho do gancho no filtro executado. Confere os textos ativos antes de 2 s e a máscara que oculta o logotipo já embutido no template nesse intervalo. O gancho fica do frame zero ao final da primeira frase, com 96 px.
 
-data/shorts-padrao-v2.json mantém comparacao_aprovada=false, nivel_gratuito_confirmado=false e publicacao_aprovada=false. Essas condições precisam ser resolvidas de forma auditada, com comparação real e motivo da escolha registrado, antes de um preview de marca e de reativação. Uma voz diferente da fixa reprova. Mesmo depois de escolher uma voz, publicação segue bloqueada até o proprietário aprovar o vídeo final. Esta entrega deve ser auditada como implementação técnica com pendência de voz, não como autorização de publicação.
+As trocas são detectadas **no MP4 final** por `select='gt(scene,0.12)',showinfo`, e os intervalos incluem as bordas inicial e final. Não vêm da conta usada para desenhar. As métricas e os instantes detectados ficam em `-visual.json` e no QC. Render com legenda em y=1800, cenas de 5 s ou gancho de 58 px é reprovado pelos artefatos gerados. Os mutantes realmente alteram `render.mjs`.
 
-## Artefatos e verificação
+O ensaio usa sinal de voz sintético local e alinhamento conhecido. Não comprova a naturalidade do Gemini nem substitui o teste posterior do alinhador real com fala humana sintética.
 
-O dry-run futuro conserva short-preview com MP4, qc.json, roteiro, faixa, licença e alinhamento. O upload de diagnóstico roda mesmo se o gate posterior falhar; falta total de arquivos reprova. O upload YouTube já marca containsSyntheticMedia=true e continua assim: usa-se divulgação conservadora porque há voz sintética realista. Não se alega que todas as animações institucionais são obrigadas à marcação. Referência: https://developers.google.com/youtube/v3/docs/videos/insert .
+## NC04 — visual da marca
 
-24 testes portáteis novos e três provas adicionais de mídia local: mix/ducking real com FFmpeg, mutante que retira o sidechain e render completo de 28 segundos com voz artificial de teste (não Gemini e não voz de marca). Foram preservados os testes antigos, incluindo seus mutantes; o carregamento do renderizador é adiado até a renderização, preservando o isolamento dos espelhos dos laboratórios existentes. Os oito mutantes obrigatórios e os adicionais morrem por asserção, sem contar falha de importação como detecção. O alinhador real não foi executado: o ensaio de mídia usa timestamps conhecidos do sinal sintético que ele próprio gera; a comparação real deverá exercitar o alinhador.
+Template `assets/brand/export/short.png`, Inter ExtraBold, zoom suave, barra de progresso, gancho grande e cartão final com o kit. Cada passo tem número e detalhes do conteúdo do episódio; o trecho exibido acompanha os tempos das palavras alinhadas. A máscara do texto antigo ocupa a área necessária, sem deixar resíduos nas laterais após o zoom.
 
-CI de mídia separado roda em pull_request, sem ambiente de produção, segredo ou TTS externo. A suíte portátil não exige FFmpeg no Windows; a prova real roda no job Linux com ferramentas instaladas. Manifesto ordenado, manifest-tests, preço, DDL e tests/guards devem passar antes do push.
+A fonte Inter foi obtida de `https://github.com/rsms/inter/blob/master/docs/font-files/InterVariable.ttf`, instanciada em peso 800/opsz 32 e registrada como Inter ExtraBold. Licença OFL em `assets/fonts/OFL-Inter.txt`. Não depende da fonte instalada no host.
 
-Reservados tocados: .github/workflows/youtube-autonomous-short.yml e .github/workflows/shorts-v2-checks.yml. Permitidos pelo documento do proprietário; merge exige owner-approved:<12 hex do SHA>. Nenhum rótulo aplicado. Nenhum outro PR alterado.
+`-contato.png` reúne um frame de cada cena detectada. O artefato `short-preview` inclui MP4, QC, visual medido, ASS, filtro, roteiro, alinhamento, faixa e licença.
+
+## NC05 — modelo aprovado e matriz de oito amostras
+
+`data/shorts-padrao-v2.json` preserva `gemini-3.8-flash-tts` como referência. Produção usa somente o modelo e a voz fixos; resultado sem modelo declarado ou com modelo divergente reprova. Não existe fallback automático entre modelos.
+
+O protocolo 3.8 usa Interactions, conforme o v1; o 2.5 usa generateContent. Testes com transporte falso verificam payload, identidade e uma única tentativa. Não são provas de disponibilidade comercial ou de nível gratuito.
+
+`compare-voices.mjs` prepara Achird, Puck, Kore e Leda nos dois modelos, com a mesma frase, oito WAVs e métricas por identidade. O teste verifica a matriz com substitutos locais; **nenhum WAV Gemini real foi gerado nesta rodada**. O comando exige confirmação do nível gratuito e credencial de execução autorizada. Não escolhe uma vencedora, não publica e não modifica as aprovações. A geração real e a escuta ficam pendentes para a etapa autorizada seguinte.
+
+## NC06 — classificação explícita
+
+SKU conhecida tem precedência. Identificadores e nomes usam fronteiras de palavra; `farmacia` e `diaria` não contêm uma palavra `ia`. Ambiguidade leva a `dicas` e ao aviso `theme_ambiguous_using_dicas` no plano. O teste cobre prioridade de produto, acentos, substring e ambiguidade; o mutante remove a fronteira.
+
+## Reprodução e evidências
+
+```bash
+node --test tests/shorts-v2.test.mjs tests/shorts-v2-round2.test.mjs
+node --test tests/media/shorts-v2-media.test.mjs
+node --test tests/*.test.mjs
+```
+
+O job de mídia roda em Linux, sem ambiente de produção nem segredos, com FFmpeg e Pillow. A suíte portátil não exige esses programas. Não executar `compare-voices.mjs`, workflow de publicação ou importação de música como parte dos testes.
+
+Resultados e limites desta rodada em `docs/f1/evidencias/shorts-v2-rodada2/resultado.md`. O SHA definitivo e o estado observado do CI serão registrados na descrição do PR após o push.

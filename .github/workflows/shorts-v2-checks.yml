@@ -8,8 +8,11 @@ on:
       - 'assets/musica/**'
       - 'data/musica-licencas.json'
       - 'data/shorts-padrao-v2.json'
+      - 'data/shorts-episodios-v2.json'
       - 'tests/shorts-v2.test.mjs'
       - 'tests/media/shorts-v2-media.test.mjs'
+      - 'tests/shorts-v2-round2.test.mjs'
+      - 'assets/fonts/Inter-ExtraBold.ttf'
       - '.github/workflows/shorts-v2-checks.yml'
 permissions:
   contents: read
@@ -26,5 +29,7 @@ jobs:
           node-version: '22'
       - name: Install offline media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - name: Install caption measurement
+        run: python3 -m pip install --user Pillow==12.0.0
       - name: Test gates mutations and synthetic media (no credentials or TTS API)
-        run: node --test tests/shorts-v2.test.mjs tests/media/shorts-v2-media.test.mjs
+        run: node --test tests/shorts-v2.test.mjs tests/shorts-v2-round2.test.mjs tests/media/shorts-v2-media.test.mjs

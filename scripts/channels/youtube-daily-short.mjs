@@ -102,7 +102,7 @@ export function planValueShort(day, slot, { salesOpen = false, hotmartOpen = fal
   const speech = said.map(b => b.join(" ")).join(" ");
   const text = [screen.hook, screen.tip, speech, description].join(" ");
   const gate = !use && slot === "dica" ? { action: "discard", score: 0, compliance: 0, reason: "sem_uso_seguro" } : VALUE_RISK.test(text) ? { action: "discard", score: 0, compliance: 0, reason: "value_risk_term" } : { action: "publish", score: 100, compliance: 100, reason: "value_gate_ok" };
-  const entry = { theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: slot === "dica" && hotmart ? hotmart.sku : null } };
+  const entry = { short_context: {name:item.name,slug:item.slug}, theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: slot === "dica" && hotmart ? hotmart.sku : null } };
   // purchase: "hotmart" quando a dica linka /hotmart/<slug> (as legendas do crosspost liberam o link de compra só nesse caso).
   return { day, slot, purchase: slot === "dica" && hotmart ? "hotmart" : "closed", entry, price: null, spec: null, gate, link: url, marker, title, description, lines: [], speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", slot === "dica" ? item.name : item.name] };
 }
@@ -140,7 +140,7 @@ const PRODUCT_PAGES = Object.freeze({ "ZEV-IA-011": "ia-na-pratica", "ZEV-VEN-01
 // Hotmart mode (full switch closed, Hotmart switch open): the 5 kits show their table price and the link goes to the
 // Hotmart purchase path of the sales site (/hotmart/<slug>), never to the own checkout.
 export function planShort(day, { salesOpen = false, hotmartOpen = false } = {}) {
-  const entry = calendarEntry(day), tablePrice = PRICES[entry.product.sku];
+  const entry = {...calendarEntry(day),short_variant:Math.floor((dayIndex(day)-dayIndex("2026-10-10"))/25)}, tablePrice = PRICES[entry.product.sku];
   if (!tablePrice) throw new Error("youtube_price_unknown");
   const kit = salesOpen !== true && hotmartOpen === true ? hotmartKit(entry.product.sku) : null;
   const price = kit ? kit.price : tablePrice;

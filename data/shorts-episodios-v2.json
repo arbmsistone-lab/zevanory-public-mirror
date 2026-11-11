@@ -1,0 +1,569 @@
+{
+  "schema": "shorts-episodios/v2",
+  "episodes": [
+    {
+      "theme_id": "dica:ia-para-pet-shop",
+      "tip": "Montar pacotes mensais de banho.",
+      "hook": "Seu pet shop explica direito o pacote mensal de banho?",
+      "steps": [
+        "Liste quantidade de banhos, porte atendido e condições do pacote mensal.",
+        "Peça um rascunho que explique cada condição sem esconder os limites.",
+        "Confira as condições com quem executa os banhos antes de divulgar.",
+        "Teste a explicação com uma pergunta frequente dos tutores da loja."
+      ],
+      "result": "O tutor consegue comparar o pacote com o atendimento avulso."
+    },
+    {
+      "theme_id": "dica:ia-para-contabilidade",
+      "tip": "Escrever propostas de serviço objetivas.",
+      "hook": "A proposta contábil deixa claro o que está incluído?",
+      "steps": [
+        "Separe as atividades incluídas e os serviços cobrados fora do contrato.",
+        "Peça uma proposta curta usando somente um perfil fictício de empresa.",
+        "Confira prazos, entregas e responsabilidades antes de compartilhar com um interessado.",
+        "Mostre uma seção por assunto para facilitar a leitura da proposta."
+      ],
+      "result": "O cliente consegue identificar o escopo antes de aceitar o serviço."
+    },
+    {
+      "theme_id": "dica:ia-para-imobiliaria",
+      "tip": "Acompanhar quem visitou e não decidiu.",
+      "hook": "O interessado visitou o imóvel e ficou sem próximo passo?",
+      "steps": [
+        "Registre as dúvidas da visita, sem copiar documentos pessoais para ferramentas.",
+        "Prepare uma pergunta curta sobre o que ainda falta para decidir.",
+        "Confirme disponibilidade e condições do imóvel antes de sugerir outra visita.",
+        "Registre a resposta recebida e respeite quem preferir encerrar o contato."
+      ],
+      "result": "Você acompanha o interesse sem repetir mensagens ou pressionar o comprador."
+    },
+    {
+      "theme_id": "dica:ia-para-deposito-de-bebidas",
+      "tip": "Pedir avaliação no Google depois da entrega.",
+      "hook": "Seu depósito pede avaliação quando a entrega já terminou?",
+      "steps": [
+        "Confirme primeiro se o pedido chegou completo e nas condições combinadas.",
+        "Prepare uma mensagem curta convidando o cliente a avaliar a experiência.",
+        "Confira o endereço público da avaliação antes de colocar na mensagem.",
+        "Envie apenas um convite, sem condicionar benefício a uma avaliação positiva."
+      ],
+      "result": "O retorno ajuda a enxergar como o atendimento foi percebido."
+    },
+    {
+      "theme_id": "dica:ia-para-padaria",
+      "tip": "Organizar a ficha de cada receita com custo de farinha, fermento e gás para saber quanto custa o cento de salgado.",
+      "hook": "Sua padaria sabe o custo completo do cento de salgados?",
+      "steps": [
+        "Anote farinha, fermento e os demais ingredientes usados em uma receita.",
+        "Registre o rendimento real e a parcela de gás dessa produção.",
+        "Peça uma tabela simples, usando valores fictícios durante o primeiro teste.",
+        "Confira o cálculo e substitua pelos registros da sua própria receita."
+      ],
+      "result": "A ficha permite comparar lotes sem esquecer itens do preparo."
+    },
+    {
+      "theme_id": "dica:ia-para-pizzaria",
+      "tip": "Resumir reclamações de atraso ou pizza fria para descobrir em que horário e em que bairro o problema mais acontece.",
+      "hook": "Pizza fria e atraso aparecem nos mesmos bairros ou horários?",
+      "steps": [
+        "Separe horário, região e motivo de cada reclamação sem identificar clientes.",
+        "Peça um resumo que agrupe os problemas por bairro e período.",
+        "Confira o resumo com os registros originais antes de tirar conclusões.",
+        "Escolha um grupo recorrente para revisar o preparo e a saída."
+      ],
+      "result": "O agrupamento ajuda a localizar onde investigar a operação da pizzaria."
+    },
+    {
+      "theme_id": "dica:ia-para-hamburgueria",
+      "tip": "Organizar o roteiro do motoboy por região quando entram vários pedidos de bairros diferentes ao mesmo tempo.",
+      "hook": "Os pedidos da hamburgueria estão saindo em direções opostas?",
+      "steps": [
+        "Separe os pedidos prontos por região e pelo horário combinado.",
+        "Confira quais trajetos seguem o mesmo sentido antes de agrupar entregas.",
+        "Peça uma lista organizada usando endereços fictícios durante o primeiro ensaio.",
+        "Valide a sequência com o entregador antes de alterar qualquer saída."
+      ],
+      "result": "O roteiro deixa visíveis os agrupamentos que precisam de conferência."
+    },
+    {
+      "theme_id": "dica:ia-para-acaiteria",
+      "tip": "Montar o controle de validade dos complementos e das caixas no freezer para nada vencer escondido no fundo.",
+      "hook": "Tem complemento vencendo escondido no freezer da sua açaíteria?",
+      "steps": [
+        "Liste cada caixa aberta, sua identificação e a validade indicada.",
+        "Organize os complementos pela data mais próxima sem misturar lotes diferentes.",
+        "Peça um modelo de controle usando exemplos fictícios de produtos.",
+        "Confira o controle com as embalagens antes de organizar a reposição."
+      ],
+      "result": "A lista ajuda a localizar os itens que precisam de atenção."
+    },
+    {
+      "theme_id": "dica:ia-para-confeitaria",
+      "tip": "Montar o cronograma da semana com o que assar, rechear e decorar em cada dia para não acumular na véspera.",
+      "hook": "A confeitaria está deixando toda a decoração para a véspera?",
+      "steps": [
+        "Liste as encomendas confirmadas e o horário de retirada de cada.",
+        "Separe o que precisa assar, rechear e decorar em cada pedido.",
+        "Peça um cronograma respeitando capacidade, conservação e os prazos de preparo.",
+        "Confira a sequência antes de distribuir as atividades ao longo da semana."
+      ],
+      "result": "Você consegue enxergar os dias em que as tarefas se acumulam."
+    },
+    {
+      "theme_id": "dica:ia-para-farmacia",
+      "tip": "Preparar o roteiro de conferência do estoque de dermocosméticos e fraldas, com o que repor primeiro.",
+      "hook": "Fraldas e dermocosméticos faltam quando o cliente chega à farmácia?",
+      "steps": [
+        "Separe os itens de maior saída e confira a quantidade disponível.",
+        "Anote validade, unidade da embalagem e o prazo informado pelo fornecedor.",
+        "Peça uma lista de reposição sem incluir dados pessoais dos clientes.",
+        "Confira cada sugestão no estoque físico antes de decidir a compra."
+      ],
+      "result": "O roteiro organiza a conferência dos produtos antes da reposição."
+    },
+    {
+      "theme_id": "dica:ia-para-otica",
+      "tip": "Explicar em linguagem simples a diferença entre lente multifocal, antirreflexo e filtro de luz azul no orçamento.",
+      "hook": "O orçamento da ótica mistura tratamentos e tipos de lente?",
+      "steps": [
+        "Separe tipo de lente, tratamento e os recursos descritos pelo fabricante.",
+        "Peça uma explicação simples usando apenas as características técnicas já documentadas.",
+        "Confira o texto com o profissional responsável antes de apresentar opções.",
+        "Mostre cada item do orçamento separadamente, sem prometer benefício clínico individual."
+      ],
+      "result": "O cliente consegue perguntar sobre cada componente com mais clareza."
+    },
+    {
+      "theme_id": "dica:ia-para-papelaria",
+      "tip": "Planejar o estoque de cadernos, mochilas e itens de volta às aulas comparando com as vendas do ano anterior.",
+      "hook": "A papelaria compra material escolar sem olhar o ano anterior?",
+      "steps": [
+        "Liste cadernos, mochilas e outros itens vendidos na última volta às aulas.",
+        "Separe quantidade vendida, estoque restante e os produtos que ficaram parados.",
+        "Peça uma tabela comparativa sem transformar o histórico numa previsão garantida.",
+        "Confira os registros e os prazos dos fornecedores antes de comprar."
+      ],
+      "result": "A comparação ajuda a enxergar diferenças entre saída e estoque disponível."
+    },
+    {
+      "theme_id": "dica:ia-para-materiais-de-construcao",
+      "tip": "Acompanhar orçamentos que não fecharam e lembrar o vendedor de retornar para o cliente em dois ou três dias.",
+      "hook": "Os orçamentos de material de construção estão ficando sem retorno?",
+      "steps": [
+        "Separe os orçamentos pendentes e a última data de contato registrada.",
+        "Confira validade, disponibilidade e as condições que foram apresentadas ao cliente.",
+        "Prepare uma pergunta curta para saber se alguma dúvida ficou pendente.",
+        "Agende o retorno combinado e respeite quem não quiser continuar a conversa."
+      ],
+      "result": "Você acompanha o orçamento sem insistir com mensagens fora de contexto."
+    },
+    {
+      "theme_id": "dica:ia-para-assistencia-tecnica-de-celular",
+      "tip": "Registrar cada aparelho que entra com modelo, defeito relatado, estado da tela e senha, numa ficha padrão.",
+      "hook": "A assistência registra como o celular chegou antes do reparo?",
+      "steps": [
+        "Anote modelo, defeito relatado e o estado externo informado na entrada.",
+        "Peça uma ficha com campos claros, usando somente um aparelho fictício.",
+        "Confira os campos com o técnico, sem solicitar senha nessa ficha.",
+        "Registre a conferência com o cliente antes de iniciar o atendimento."
+      ],
+      "result": "O registro ajuda a comparar o relato inicial com a avaliação."
+    },
+    {
+      "theme_id": "dica:ia-para-autoescola",
+      "tip": "Organizar a agenda de aulas práticas por instrutor, veículo e horário, evitando choque e carro parado.",
+      "hook": "Dois alunos foram marcados no mesmo carro da autoescola?",
+      "steps": [
+        "Separe instrutor, veículo e o horário de cada aula já confirmada.",
+        "Peça uma tabela de agenda usando apenas nomes fictícios no teste.",
+        "Procure horários sobrepostos e confira a disponibilidade real de cada veículo.",
+        "Resolva os conflitos antes de confirmar novas aulas com os alunos."
+      ],
+      "result": "A agenda permite localizar os choques antes de alterar os horários."
+    },
+    {
+      "theme_id": "dica:ia-para-escola-de-idiomas",
+      "tip": "Identificar alunos com várias faltas seguidas para a coordenação conversar antes de a pessoa desistir.",
+      "hook": "A escola percebe as faltas antes de perder contato com alunos?",
+      "steps": [
+        "Confira as presenças registradas e separe as ausências consecutivas para revisão.",
+        "Peça um modelo de acompanhamento com nomes fictícios durante o teste.",
+        "Valide os apontamentos com a coordenação antes de conversar com alguém.",
+        "Prepare um contato acolhedor, sem presumir o motivo das ausências."
+      ],
+      "result": "O acompanhamento ajuda a iniciar uma conversa com contexto e cuidado."
+    },
+    {
+      "theme_id": "dica:ia-para-clinica-odontologica",
+      "tip": "Organizar a lista de materiais e insumos do consultório que estão acabando para a reposição da semana.",
+      "hook": "A clínica odontológica só percebe o insumo quando ele acaba?",
+      "steps": [
+        "Liste os materiais usados na semana e a quantidade ainda disponível.",
+        "Confira validade, lote e consumo registrado antes de apontar uma falta.",
+        "Peça uma tabela de reposição usando exemplos fictícios de materiais.",
+        "Revise as quantidades com o responsável antes de encaminhar a compra."
+      ],
+      "result": "A lista permite conferir os insumos antes da próxima reposição."
+    },
+    {
+      "theme_id": "dica:ia-para-psicologo",
+      "tip": "Rascunhar textos educativos gerais para redes sociais, que você revisa conforme o Código de Ética do CFP.",
+      "hook": "O texto educativo do consultório parece uma orientação individual?",
+      "steps": [
+        "Escolha uma dúvida geral sem incluir relatos ou informações de pacientes.",
+        "Peça um rascunho educativo que não faça diagnóstico nem prometa resultados.",
+        "Revise o conteúdo técnico e as regras profissionais antes de publicar.",
+        "Retire exemplos identificáveis e confirme se a mensagem permanece realmente geral."
+      ],
+      "result": "O texto informa sem transformar uma postagem em atendimento psicológico individual."
+    },
+    {
+      "theme_id": "dica:ia-para-nutricionista",
+      "tip": "Rascunhar textos educativos para redes sociais, que você revisa conforme o Código de Ética do Nutricionista.",
+      "hook": "Seu post de nutrição está parecendo uma prescrição para todos?",
+      "steps": [
+        "Escolha um assunto educativo sem usar histórias ou dados de pacientes.",
+        "Peça um rascunho geral sem prescrever dieta ou prometer mudanças corporais.",
+        "Revise o conteúdo e as regras profissionais aplicáveis antes de publicar.",
+        "Confira se exemplos e imagens não identificam ninguém nem sugerem garantias."
+      ],
+      "result": "A publicação ajuda a explicar o assunto mantendo o contexto educativo."
+    },
+    {
+      "theme_id": "dica:ia-para-fisioterapia",
+      "tip": "Responder dúvidas sobre convênios, documentos, pedido médico e o que vestir para a sessão.",
+      "hook": "O paciente chega à fisioterapia sem saber quais documentos levar?",
+      "steps": [
+        "Liste os documentos realmente solicitados e os convênios atendidos pela clínica.",
+        "Confirme com a recepção quando existe necessidade de encaminhamento ou autorização.",
+        "Peça uma resposta simples sem incluir informações clínicas de pacientes.",
+        "Revise as orientações de vestuário com o responsável antes de enviar."
+      ],
+      "result": "A pessoa recebe as informações de preparação sem depender de suposições."
+    },
+    {
+      "theme_id": "dica:ia-para-estetica",
+      "tip": "Montar ficha de anamnese padrão para a profissional revisar, com alergias, medicamentos e cuidados de pele.",
+      "hook": "A ficha de estética está deixando informações importantes sem conferência?",
+      "steps": [
+        "Liste os campos necessários para a avaliação feita pela profissional responsável.",
+        "Peça um modelo vazio, sem inserir histórico ou dados de clientes.",
+        "Revise campos sobre alergias, medicamentos e cuidados com a profissional habilitada.",
+        "Defina como proteger o preenchimento antes de usar qualquer ficha real."
+      ],
+      "result": "O modelo organiza a coleta para revisão, sem substituir a avaliação."
+    },
+    {
+      "theme_id": "dica:ia-para-manicure",
+      "tip": "Criar legendas para fotos dos trabalhos com o nome da técnica e das cores, sem prometer durabilidade exata.",
+      "hook": "A legenda da manicure promete uma durabilidade que varia entre clientes?",
+      "steps": [
+        "Anote técnica, acabamento e as cores realmente usadas no trabalho fotografado.",
+        "Peça uma legenda curta usando somente essas informações sobre o serviço.",
+        "Retire promessas de duração exata e confira a descrição da técnica.",
+        "Confirme a autorização da imagem antes de mostrar o resultado publicado."
+      ],
+      "result": "A legenda explica o trabalho sem apresentar uma duração como garantida."
+    },
+    {
+      "theme_id": "dica:ia-para-lava-jato",
+      "tip": "Lembrar clientes de plano mensal ou de quem lava com frequência quando passa o prazo de costume.",
+      "hook": "O lava-jato lembra o cliente sem conferir o plano contratado?",
+      "steps": [
+        "Separe os planos ativos e confira o que cada contratação inclui.",
+        "Identifique quem pediu lembrete ou mantém uma rotina de atendimento combinada.",
+        "Peça uma mensagem curta sem expor dados pessoais na ferramenta.",
+        "Confira o intervalo combinado antes de enviar apenas o lembrete pertinente."
+      ],
+      "result": "O contato mantém contexto sem transformar a rotina numa sequência de cobranças."
+    },
+    {
+      "theme_id": "dica:ia-para-eletricista-e-encanador",
+      "tip": "Lembrar clientes antigos que pediram aviso de manutenção preventiva, como caixa d'água e quadro de energia.",
+      "hook": "A manutenção preventiva está sendo lembrada só depois do problema?",
+      "steps": [
+        "Liste os serviços anteriores e quem pediu aviso para uma próxima revisão.",
+        "Confira qual manutenção foi combinada, sem presumir necessidade de reparo novo.",
+        "Prepare um lembrete com linguagem clara e sem alarmar o cliente.",
+        "Revise o texto e o consentimento antes de encaminhar qualquer aviso."
+      ],
+      "result": "O lembrete retoma um combinado e permite ao cliente decidir."
+    },
+    {
+      "theme_id": "dica:ia-para-fotografo",
+      "tip": "Escrever legendas e textos de portfólio sobre cada trabalho, com autorização de uso de imagem dos clientes.",
+      "hook": "O portfólio explica o trabalho sem expor quem foi fotografado?",
+      "steps": [
+        "Escolha uma sessão com autorização documentada para o uso das imagens.",
+        "Anote o objetivo do ensaio e as escolhas técnicas que pode divulgar.",
+        "Peça uma legenda baseada nessas informações, sem inventar relatos do cliente.",
+        "Confira a autorização e os detalhes antes de incluir no portfólio."
+      ],
+      "result": "A apresentação mostra o trabalho respeitando o que pode ser publicado."
+    },
+    {
+      "theme_id": "dica:ia-para-arquitetura-e-design-de-interiores",
+      "tip": "Preparar resumos das reuniões e decisões do cliente, para registrar o que foi aprovado e evitar retrabalho.",
+      "hook": "A reunião de arquitetura termina sem registrar o que foi aprovado?",
+      "steps": [
+        "Separe os pontos discutidos e as decisões efetivamente confirmadas pelo cliente.",
+        "Peça um resumo organizado por ambiente, usando um projeto fictício no teste.",
+        "Diferencie sugestão, pendência e aprovação antes de validar o documento da reunião.",
+        "Envie para conferência pelo canal combinado antes de executar qualquer alteração."
+      ],
+      "result": "O registro ajuda a consultar decisões sem tratar sugestão como aprovação."
+    },
+    {
+      "theme_id": "dica:ia-para-advocacia",
+      "tip": "Escrever textos informativos para redes sociais dentro das regras do Provimento 205/2021 da OAB.",
+      "hook": "O texto do escritório jurídico está parecendo uma promessa de resultado?",
+      "steps": [
+        "Escolha uma dúvida informativa sem usar detalhes de casos ou clientes.",
+        "Peça um rascunho educativo sem captação direta nem promessa de decisão favorável.",
+        "Revise a informação e as regras profissionais vigentes antes de publicar.",
+        "Confira exemplos, chamadas e linguagem com o responsável pela comunicação do escritório."
+      ],
+      "result": "A postagem explica o assunto sem antecipar o resultado de um caso."
+    },
+    {
+      "theme_id": "dica:ia-para-agencia-de-viagens",
+      "tip": "Organizar a lista de quem viajou e pediu para receber ofertas de feriados e férias escolares.",
+      "hook": "A agência separa quem realmente pediu ofertas para as férias?",
+      "steps": [
+        "Organize os pedidos de novidades pelo período e destino de interesse informado.",
+        "Confira o consentimento e retire quem pediu para não receber mensagens.",
+        "Peça um modelo de lista usando somente perfis fictícios de viajantes.",
+        "Valide interesse, disponibilidade e condições antes de preparar um contato pertinente."
+      ],
+      "result": "A organização permite consultar pedidos anteriores sem enviar ofertas a todos."
+    },
+    {
+      "theme_id": "dica:ia-para-floricultura",
+      "tip": "Organizar a rota de entregas por região e horário, separando o que precisa chegar de manhã.",
+      "hook": "A floricultura mistura entregas da manhã com pedidos sem horário?",
+      "steps": [
+        "Separe os pedidos pelo período de chegada combinado com cada comprador.",
+        "Confira as regiões e os trajetos que podem ser percorridos em sequência.",
+        "Peça uma lista organizada usando endereços fictícios durante o primeiro teste.",
+        "Valide o roteiro com a equipe antes de confirmar a saída."
+      ],
+      "result": "A sequência mostra os horários que precisam orientar cada deslocamento."
+    },
+    {
+      "theme_id": "dica:ia-para-marmitaria",
+      "tip": "Responder dúvidas sobre opção fit, sem glúten ou vegetariana, informando os ingredientes conforme a receita.",
+      "hook": "A marmitaria responde sobre ingredientes sem conferir a receita atual?",
+      "steps": [
+        "Liste os ingredientes e as substituições efetivamente usadas no preparo do dia.",
+        "Separe o que é preferência alimentar de uma necessidade relacionada a alergia.",
+        "Peça uma resposta simples sem afirmar ausência de contaminação sem comprovação.",
+        "Confira as informações com a cozinha antes de responder ao cliente."
+      ],
+      "result": "A resposta descreve o preparo sem inventar garantias sobre restrições alimentares."
+    },
+    {
+      "theme_id": "dica:ia-para-pousada",
+      "tip": "Responder avaliações nos sites de reserva com educação, inclusive as negativas, sem discutir com o hóspede.",
+      "hook": "A resposta da pousada está virando discussão com o hóspede?",
+      "steps": [
+        "Leia a avaliação e separe os fatos que a equipe consegue verificar.",
+        "Peça uma resposta educada sem incluir dados da reserva ou do hóspede.",
+        "Reconheça o relato e explique apenas as providências que foram confirmadas.",
+        "Revise o tom antes de responder pelo canal adequado da plataforma."
+      ],
+      "result": "A resposta mantém contexto sem expor a pessoa nem alimentar uma discussão."
+    },
+    {
+      "theme_id": "dica:ia-para-distribuidora-de-gas-e-agua",
+      "tip": "Criar orientações de segurança para o cliente, como checar a validade da mangueira e do regulador.",
+      "hook": "A distribuidora envia orientação de segurança sem conferir a fonte?",
+      "steps": [
+        "Separe as instruções oficiais aplicáveis à mangueira, ao regulador e à instalação.",
+        "Peça um resumo fiel sem inventar procedimentos ou atalhos de manutenção.",
+        "Confira cada frase nas instruções do fabricante com o profissional responsável.",
+        "Indique atendimento qualificado para dúvidas que exijam avaliação da instalação do cliente."
+      ],
+      "result": "A mensagem ajuda a consultar a informação sem improvisar orientação técnica."
+    },
+    {
+      "theme_id": "dica:ia-para-salao-de-beleza",
+      "tip": "Montar pacotes (escova + hidratação, por exemplo) e escrever a oferta em linguagem simples.",
+      "hook": "O pacote do salão explica o que acontece em cada etapa?",
+      "steps": [
+        "Liste os serviços incluídos e as condições de uso do pacote.",
+        "Peça uma explicação simples usando um exemplo fictício de escova e hidratação.",
+        "Confira duração estimada, disponibilidade e limites com quem executa os serviços.",
+        "Revise a mensagem antes de apresentar as opções para a cliente."
+      ],
+      "result": "A pessoa consegue comparar o pacote com os serviços contratados separadamente."
+    },
+    {
+      "theme_id": "dica:ia-para-barbearia",
+      "tip": "Mandar lembrete automático de retorno 3 a 4 semanas depois do corte.",
+      "hook": "A barbearia manda lembrete de retorno sem respeitar o combinado?",
+      "steps": [
+        "Confira quem pediu lembrete e qual intervalo foi combinado após o corte.",
+        "Separe os horários disponíveis antes de sugerir uma nova visita ao cliente.",
+        "Peça uma mensagem curta com linguagem próxima ao atendimento da barbearia.",
+        "Revise a data e envie apenas o lembrete pertinente, sem insistência."
+      ],
+      "result": "O contato retoma a preferência registrada sem presumir interesse em agendar."
+    },
+    {
+      "theme_id": "dica:ia-para-restaurante-e-lanchonete",
+      "tip": "Escrever o cardápio do dia e a promoção em texto curto e atrativo.",
+      "hook": "O cardápio do restaurante sai com informação que a cozinha mudou?",
+      "steps": [
+        "Confira os pratos disponíveis, os ingredientes e o período do atendimento.",
+        "Peça uma versão curta usando somente as opções confirmadas para o dia.",
+        "Revise a descrição com a cozinha antes de divulgar qualquer mensagem.",
+        "Separe itens indisponíveis e confirme as condições antes de responder aos pedidos."
+      ],
+      "result": "O texto apresenta o cardápio sem criar expectativa sobre opções que faltam."
+    },
+    {
+      "theme_id": "dica:ia-para-loja-de-roupas",
+      "tip": "Descrever peças novas com tamanho, tecido e sugestão de combinação.",
+      "hook": "A descrição da roupa deixa tamanho e tecido para o cliente adivinhar?",
+      "steps": [
+        "Confira a etiqueta e registre tamanho, composição e as medidas disponíveis.",
+        "Peça uma descrição curta sem inventar caimento ou características do tecido.",
+        "Acrescente uma combinação possível usando as peças que a loja realmente tem.",
+        "Revise a descrição e compare com a peça antes de publicar."
+      ],
+      "result": "A apresentação ajuda o cliente a perguntar sobre uma peça bem identificada."
+    },
+    {
+      "theme_id": "dica:ia-para-mercadinho",
+      "tip": "Responder pedidos de entrega com confirmação e valor total.",
+      "hook": "O mercadinho confirma a entrega antes de conferir todos os itens?",
+      "steps": [
+        "Confira disponibilidade, quantidades e os produtos solicitados antes de fechar o pedido.",
+        "Separe o valor dos itens e as condições de entrega previamente combinadas.",
+        "Peça um modelo de confirmação usando apenas um pedido fictício no teste.",
+        "Revise os dados e confirme o combinado antes de liberar a saída."
+      ],
+      "result": "A confirmação permite conferir o pedido sem depender de mensagens espalhadas."
+    },
+    {
+      "theme_id": "dica:ia-para-oficina-mecanica",
+      "tip": "Avisar o cliente quando o carro estiver pronto.",
+      "hook": "A oficina avisa que o carro está pronto sem conferir a conclusão?",
+      "steps": [
+        "Confira com o responsável se o serviço autorizado já foi efetivamente concluído.",
+        "Separe o que pode ser informado sobre retirada e próximos procedimentos.",
+        "Peça uma mensagem objetiva sem incluir dados pessoais do cliente na ferramenta.",
+        "Revise o texto e os horários antes de avisar pelo canal combinado."
+      ],
+      "result": "O cliente recebe uma orientação de retirada baseada no serviço confirmado."
+    },
+    {
+      "theme_id": "dica:ia-para-clinica-e-consultorio",
+      "tip": "Confirmar consultas na véspera e reduzir faltas.",
+      "hook": "A clínica confirma a consulta sem conferir alterações recentes da agenda?",
+      "steps": [
+        "Confira horário, profissional e eventuais mudanças registradas antes de preparar o lembrete.",
+        "Peça um texto simples sem incluir o motivo clínico da consulta.",
+        "Valide endereço e as orientações administrativas com a equipe da recepção.",
+        "Encaminhe pelo canal autorizado e registre a resposta sem duplicar o contato."
+      ],
+      "result": "A confirmação ajuda a localizar dúvidas de agenda antes do atendimento."
+    },
+    {
+      "theme_id": "dica:ia-para-academia",
+      "tip": "Chamar de volta alunos que pararam de treinar, com educação.",
+      "hook": "A academia convida o aluno a voltar sem entender o contato anterior?",
+      "steps": [
+        "Confira quem autorizou contato e quando ocorreu a última conversa registrada.",
+        "Prepare uma pergunta acolhedora sem presumir o motivo da saída das aulas.",
+        "Peça um rascunho curto sem prometer mudanças físicas ou resultados individuais.",
+        "Revise o tom e respeite quem não quiser receber outra mensagem."
+      ],
+      "result": "O convite abre uma conversa sem cobrar retorno nem fazer julgamento."
+    },
+    {
+      "theme_id": "calc:calculadora-preco-de-venda",
+      "tip": "Divida o custo por um menos a soma de impostos, taxas, despesas e margem.",
+      "hook": "Seu preço cobre custos e as taxas da venda?",
+      "steps": [
+        "Separe custo do produto, despesas e as taxas aplicáveis ao pedido.",
+        "Registre os percentuais na mesma base antes de somar os valores.",
+        "Preencha a calculadora e confira se as parcelas fazem sentido juntas.",
+        "Revise o preço calculado com seus registros antes de tomar uma decisão."
+      ],
+      "result": "O cálculo permite conferir os componentes usados na formação do preço."
+    },
+    {
+      "theme_id": "calc:calculadora-margem-de-lucro",
+      "tip": "Margem é o lucro dividido pelo preço, não pelo custo.",
+      "hook": "Você está chamando markup de margem na hora de comparar?",
+      "steps": [
+        "Separe o preço da venda e o custo considerado nesse cálculo.",
+        "Subtraia o custo do preço para identificar a diferença entre eles.",
+        "Divida essa diferença pelo preço, mantendo a mesma base de valores.",
+        "Compare com a calculadora antes de confundir esse percentual com markup."
+      ],
+      "result": "A conferência ajuda a distinguir as duas formas de calcular percentuais."
+    },
+    {
+      "theme_id": "calc:calculadora-ponto-de-equilibrio",
+      "tip": "Divida os custos fixos pelo que sobra de cada venda.",
+      "hook": "Quantas vendas cobrem as despesas fixas do seu negócio?",
+      "steps": [
+        "Liste as despesas fixas do período que você pretende analisar agora.",
+        "Separe preço e custos variáveis para conferir o restante de cada venda.",
+        "Preencha a calculadora usando valores do mesmo período e a mesma unidade.",
+        "Confira as hipóteses antes de tratar o cálculo como uma meta comercial."
+      ],
+      "result": "A simulação mostra o equilíbrio nas condições que você informou."
+    },
+    {
+      "theme_id": "calc:calculadora-fluxo-de-caixa",
+      "tip": "Some o saldo e as entradas, tire as saídas e veja quantos dias o caixa aguenta.",
+      "hook": "O saldo de hoje cobre as contas dos próximos dias?",
+      "steps": [
+        "Anote o saldo disponível e as entradas previstas para cada data.",
+        "Liste os pagamentos programados, sem confundir previsão com dinheiro já recebido.",
+        "Organize os movimentos em ordem de data antes de preencher a calculadora.",
+        "Confira quais dias ficam com saldo menor e revise os registros originais."
+      ],
+      "result": "A sequência permite enxergar períodos que precisam de uma conferência antecipada."
+    },
+    {
+      "theme_id": "calc:calculadora-preco-hora-servico",
+      "tip": "Divida renda e custos pelas horas que você realmente consegue cobrar.",
+      "hook": "Sua hora de serviço considera o tempo que consegue cobrar?",
+      "steps": [
+        "Liste os custos do trabalho e a remuneração considerada no período.",
+        "Separe as horas disponíveis das horas que realmente podem ser cobradas.",
+        "Preencha a calculadora mantendo todos os valores na mesma referência de tempo.",
+        "Revise o resultado com seus registros antes de apresentar um novo orçamento."
+      ],
+      "result": "A conta deixa visíveis as hipóteses usadas para estimar sua hora."
+    },
+    {
+      "theme_id": "calc:calculadora-taxa-maquininha",
+      "tip": "Para receber o valor cheio, divida o preço por um menos a taxa.",
+      "hook": "A taxa da maquininha está entrando corretamente no seu cálculo?",
+      "steps": [
+        "Confira na contratação a taxa aplicável à modalidade escolhida para receber.",
+        "Separe o valor pretendido e verifique a base usada pelo percentual.",
+        "Preencha a calculadora e compare com o demonstrativo de uma venda anterior.",
+        "Confira prazos e outras cobranças antes de usar apenas a taxa informada."
+      ],
+      "result": "Você consegue localizar quais condições ainda precisam entrar na comparação."
+    },
+    {
+      "theme_id": "calc:calculadora-cmv",
+      "tip": "Estoque inicial mais compras, menos estoque final.",
+      "hook": "Quanto do estoque foi consumido nas vendas desse período?",
+      "steps": [
+        "Anote o estoque inicial pelo custo de aquisição, mantendo critérios consistentes.",
+        "Some as compras do período e confira as movimentações registradas nesse intervalo.",
+        "Subtraia o estoque final usando a mesma base de avaliação inicial.",
+        "Compare o cálculo com os registros antes de interpretar qualquer diferença encontrada."
+      ],
+      "result": "O resultado permite conferir o custo considerado para as mercadorias consumidas."
+    }
+  ]
+}

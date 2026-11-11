@@ -57,7 +57,7 @@ jobs:
       - name: Install media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter && fc-match -f "%{file}\n" "Inter:style=ExtraBold"
       - name: Local forced alignment (no paid service)
-        run: python3 -m pip install --user stable-ts==2.19.1
+        run: python3 -m pip install --user stable-ts==2.19.1 Pillow==12.0.0
       - name: Unit tests (plan, idempotency, recording)
         run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs
       - name: Render, gate and publish today's Short
@@ -101,8 +101,12 @@ jobs:
             /tmp/zevanory-daily-short*.mp4
             /tmp/zevanory-daily-short*-qc.json
             /tmp/zevanory-daily-short*-roteiro.txt
-            /tmp/zevanory-daily-short*-musica.flac
+            /tmp/zevanory-daily-short*-musica.*
             /tmp/zevanory-daily-short*-licenca.json
             /tmp/zevanory-daily-short*-alignment.json
+            /tmp/zevanory-daily-short*-contato.png
+            /tmp/zevanory-daily-short*-visual.json
+            /tmp/zevanory-daily-short*-filter.txt
+            /tmp/zevanory-daily-short*-legendas.ass
           if-no-files-found: error
           retention-days: 3
