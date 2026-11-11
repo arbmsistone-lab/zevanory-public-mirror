@@ -1,4 +1,4 @@
-import {recordHotmartPostSale} from "./hotmart-post-sale.mjs";
+import {enqueueHotmartPostSaleSecondary} from "./hotmart-post-sale.mjs";
 // NC-012 digital-products Hotmart ingestion (NOT Conteudo Pronto).
 // Separate sales/activities ledger M3. Never writes the zpc:cp:* namespace.
 import {recordHotmartSale} from "./sales-ledger.mjs";
@@ -30,8 +30,6 @@ export async function handleDigitalHotmartNc012(request,env,{now=Date.now()}={})
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return json(503,{ok:false,error:"sales_ledger_unavailable"});
  let result;try{result=await recordHotmartSale(kv,event,data,{now})}catch{return json(503,{ok:false,error:"sales_ledger_commit_failed"})}
- const followUp=await recordHotmartPostSale(request,env,body,{now});
- if(!followUp.ok)return json(503,{ok:false,error:"post_sale_commit_pending"});
  // Idempotent activity marker in separate shared ledger. An identical webhook
  // may be replayed after an incomplete downstream read; never sends product email.
  // P12 (DEC-06): a entrega é da Hotmart (Minhas compras); aqui só se REGISTRA a entrega/estorno. Registro que
@@ -46,5 +44,6 @@ export async function handleDigitalHotmartNc012(request,env,{now=Date.now()}={})
  // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
  if(ACTIVE.has(event))diarioSombra(env,null,()=>eventoEntrega({provider:"hotmart",transaction:txn,channel:"store",status:"hotmart_approved"}));
  if(STOP.has(event))diarioSombra(env,null,()=>eventoReembolso({provider:"hotmart",transaction:txn,stage:"hotmart_"+event.toLowerCase()}));
+ await enqueueHotmartPostSaleSecondary(request,env,body,{now});
  return json(200,{ok:true,scope:"digital_product",duplicate:result?.reason==="duplicate"});
 }

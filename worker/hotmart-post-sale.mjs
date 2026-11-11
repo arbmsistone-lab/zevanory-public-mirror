@@ -99,7 +99,8 @@ async function reconcile(env,fetchImpl,rows,body,state){
  return null;
 }
 const running=new WeakSet();
-export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch}={}){
+export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch,cron='0 * * * *'}={}){
+ if(cron!=='0 * * * *')return {ok:true,sent:0,priority:1,code:'not_hourly_tick'};
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;if(!kv?.list||!env.RESEND_API_KEY)return {ok:false,code:'not_configured',sent:0,priority:1};
  if(running.has(kv))return {ok:true,sent:0,priority:1};running.add(kv);
  let sent=0;
@@ -107,14 +108,26 @@ export async function runHotmartPostSale(env,{now=Date.now(),fetchImpl=fetch}={}
   if(!await salesAllowed(kv,now))return {ok:true,sent:0,priority:1,code:'sales_closed'};
   const budget=await read(kv,'zpc:kv:v1:budget',v=>object(v)&&typeof v.pct==='number'&&Number.isFinite(v.pct)&&typeof v.at==='string'&&Number.isFinite(Date.parse(v.at)));
   if(budget&&(budget.pct>=60||now-Date.parse(budget.at)>DAY))return {ok:true,sent:0,priority:1,code:'kv_budget_hold'};
-  const rows=await providerList(env,fetchImpl,now),today=new Date(now).toISOString().slice(0,10);
-  let used=rows.filter(x=>x.created_at.slice(0,10)===today).length;
   let cursor;const orders=[];
   for(let page=0;page<10;page++){
    const p=await kv.list({prefix:ORDER,limit:100,cursor});if(!object(p)||!Array.isArray(p.keys)||typeof p.list_complete!=='boolean'||!p.keys.every(k=>typeof k.name==='string'&&k.name.startsWith(ORDER)))throw Error('queue_unreadable');
    for(const key of p.keys){const order=await read(kv,key.name,orderShape);if(order)orders.push([key.name.slice(ORDER.length),order]);}
    if(p.list_complete)break;cursor=p.cursor;if(!cursor||page===9)throw Error('queue_incomplete');
   }
+  let hasDue=false;
+  for(const [ref,order] of orders){
+   if(now>=order.expiresAt)continue;
+   if(await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker))continue;
+   for(const step of STEPS){if(now<order.approvedAt+step.days*DAY)continue;
+    const raw=await kv.get(BASE+order.transaction+':'+step.id+':confirmado');
+    if(raw===null){hasDue=true;break;}
+    try{if(!confirmedShape(JSON.parse(raw)))hasDue=true;}catch{hasDue=true;}
+   }
+   if(hasDue)break;
+  }
+  if(!hasDue)return {ok:true,sent:0,priority:1,code:'no_due_steps'};
+  const rows=await providerList(env,fetchImpl,now),today=new Date(now).toISOString().slice(0,10);
+  let used=rows.filter(x=>x.created_at.slice(0,10)===today).length;
   for(const [ref,order] of orders.sort((a,b)=>a[1].approvedAt-b[1].approvedAt)){
    if(now>=order.expiresAt||await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker))continue;
    for(const step of STEPS){
@@ -150,9 +163,35 @@ export async function handleHotmartPostSaleOptOut(request,env){
  if(!['GET','POST'].includes(request.method))return json(405,{ok:false});
  const id=url.searchParams.get('i')||'',token=url.searchParams.get('t')||'';
  try{if(!/^[a-f0-9]{64}$/.test(id)||!eq(await hmac(env,id),token))return json(403,{ok:false});
+  if(request.method==='GET')return new Response('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Interromper acompanhamento</title><main><h1>Interromper o acompanhamento?</h1><p>Confirme abaixo para parar de receber estes e-mails da ZEVANORY.</p><form method="post"><button type="submit">Confirmar descadastro</button></form></main></html>',{status:200,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','content-security-policy':"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}});
   const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;let prior;
   const raw=await kv.get(OPT+id);if(raw!==null){try{prior=JSON.parse(raw);if(!marker(prior))prior=null;}catch{prior=null;}}
   if(!prior)await kv.put(OPT+id,JSON.stringify({stopped:true}),{expirationTtl:400*86400});
-  return request.method==='GET'?new Response('Acompanhamento interrompido.',{status:200,headers:{'content-type':'text/plain; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer'}}):json(200,{ok:true,unsubscribed:true});
+  return json(200,{ok:true,unsubscribed:true});
  }catch{return json(503,{ok:false,error:'suppression_unavailable'});}
+}
+
+// Secondary effect only. Every failure path remains unable to change sales ingress.
+export async function enqueueHotmartPostSaleSecondary(request,env,body,{now=Date.now()}={}){
+ try{
+  const out=await recordHotmartPostSale(request,env,body,{now});
+  if(out.ok){
+   if(out.queued||out.duplicate||out.canceled){try{const key=BASE+'falha:'+await sha(String(body?.data?.purchase?.transaction||''));const old=await read(env.ZEVANORY_PRIVATE_ARTIFACTS,key,v=>object(v)&&typeof v.failed==='boolean');if(old?.failed)await env.ZEVANORY_PRIVATE_ARTIFACTS.put(key,JSON.stringify({failed:false}),{expirationTtl:7*86400});}catch{}}
+   return true;
+  }
+ }catch{}
+ console.error('hotmart_post_sale_enqueue_failed');
+ try{const transaction=String(body?.data?.purchase?.transaction||'');if(txnRe.test(transaction))await env.ZEVANORY_PRIVATE_ARTIFACTS.put(BASE+'falha:'+await sha(transaction),JSON.stringify({failed:true}),{expirationTtl:7*86400});}catch{}
+ return false;
+}
+export async function readHotmartPostSaleFailures(kv){
+ try{let count=0,cursor;
+  for(let page=0;page<100;page++){
+   const result=await kv.list({prefix:BASE+'falha:',limit:100,cursor});
+   if(!object(result)||!Array.isArray(result.keys)||typeof result.list_complete!=='boolean')throw Error('shape');
+   for(const key of result.keys){if(!/^zpc:posvenda:hotmart:falha:[a-f0-9]{64}$/.test(key?.name))throw Error('shape');const value=await read(kv,key.name,v=>object(v)&&Object.keys(v).length===1&&typeof v.failed==='boolean');if(value?.failed)count++;}
+   if(result.list_complete)return {status:'ok',count,label:'pós-venda não enfileirado ('+count+')'};
+   cursor=result.cursor;if(!cursor)throw Error('cursor');
+  }throw Error('limit');
+ }catch{return {status:'LEITURA_INCONCLUSIVA',count:null,label:'pós-venda não enfileirado: leitura inconclusiva'};}
 }
