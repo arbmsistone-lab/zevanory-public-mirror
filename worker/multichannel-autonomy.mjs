@@ -143,20 +143,19 @@ export async function blogDraftDigest(article) {
 //     agenda seg/qua/sex) sai com amostra_revisao:true no artigo e no status, para o relatório diário listar.
 export const BLOG_STATUS_PREFIX="zpc:blog:status:v1:";
 export const BLOG_WEEK_PREFIX="zpc:blog:week:v1:";
-const readKvJson=async(kv,key)=>{try{return JSON.parse(String(await kv.get(key)||"null"));}catch{return null;}};
 // NC-F1-A3-01 (contra-auditoria GPT-6): leitura ESTRITA das chaves que alimentam gates e gravações. Chave ausente vale
 // vazio ({ok:true,v:null}); erro de leitura, JSON inválido ou estrutura inválida NUNCA viram vazio ({ok:false}).
 const isObj=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
 const DAY_RE=/^\d{4}-\d{2}-\d{2}$/;
 export const BLOG_KV_SHAPES=Object.freeze({
-  status:v=>isObj(v)&&["ok","rejeitado"].includes(v.resultado),
-  legado:v=>isObj(v),
+  status:v=>isObj(v)&&(v.resultado==="ok"?typeof v.slug==="string"&&typeof v.url==="string"&&typeof v.at==="string":v.resultado==="rejeitado"&&Array.isArray(v.motivos)&&v.motivos.every(x=>typeof x==="string")),
+  legado:v=>isObj(v)&&typeof v.slug==="string"&&v.slug.length>0,
   semana:v=>isObj(v)&&Array.isArray(v.days)&&v.days.every(d=>typeof d==="string"&&DAY_RE.test(d)),
-  indice:v=>isObj(v)&&Array.isArray(v.articles)&&v.articles.every(a=>isObj(a)&&typeof a.slug==="string"),
+  indice:v=>isObj(v)&&Array.isArray(v.articles)&&v.articles.every(a=>isObj(a)&&typeof a.slug==="string"&&typeof a.title==="string"&&typeof a.body==="string"),
 });
 export async function readKvStrict(kv,key,valid=()=>true){
   let raw;try{raw=await kv.get(key);}catch{return {ok:false,erro:"leitura"};}
-  if(raw===null||raw===undefined)return {ok:true,v:null};
+  if(raw===null)return {ok:true,v:null};
   let v;try{v=JSON.parse(String(raw));}catch{return {ok:false,erro:"json"};}
   if(!valid(v))return {ok:false,erro:"estrutura"};
   return {ok:true,v};
@@ -178,15 +177,22 @@ export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
   // Idempotência diária: o resultado do dia (ok ou rejeitado) é definitivo; reexecuções do cron não regravam nada.
   const prior=lido.status;
   if(prior?.resultado==="ok"){
-    const existing=prior.slug?await readKvJson(kv,"zpc:blog:article:"+prior.slug):null;
-    return {created:[],latest:existing||{slug:prior.slug,url:prior.url,publishedAt:prior.at},day,reason:"already_published",status:prior};
+    const existing=await readKvStrict(kv,"zpc:blog:article:"+prior.slug,v=>isObj(v)&&v.slug===prior.slug&&typeof v.body==="string");
+    if(!existing.ok||!existing.v)return {created:[],latest:null,day,reason:"kv_leitura_invalida:artigo:"+(!existing.ok?existing.erro:"ausente")};
+    return {created:[],latest:existing.v,day,reason:"already_published",status:prior};
   }
   if(prior?.resultado==="rejeitado")return {created:[],latest:null,day,reason:"rejected:"+(prior.motivos||[]).join(","),status:prior};
   // Marcador do publicador anterior à DEC-21: um dia já publicado nunca publica de novo.
   const legacy=lido.legado;
-  if(legacy?.slug){const existing=await readKvJson(kv,"zpc:blog:article:"+legacy.slug);if(existing)return {created:[],latest:existing,day,reason:"already_published"};}
+  if(legacy?.slug){
+    const existing=await readKvStrict(kv,"zpc:blog:article:"+legacy.slug,v=>isObj(v)&&v.slug===legacy.slug&&typeof v.body==="string");
+    if(!existing.ok||!existing.v)return {created:[],latest:null,day,reason:"kv_leitura_invalida:artigo:"+(!existing.ok?existing.erro:"ausente")};
+    return {created:[],latest:existing.v,day,reason:"already_published"};
+  }
   if(!isPublicationDay(day))return {created:[],latest:null,day,reason:"not_publication_day"};
-  if(await creativeAutopublishPaused(env))return {created:[],latest:null,day,reason:"creative_autopublish_paused"};
+  let pause;try{pause=await kv.get("zpc:creative-autonomy:paused:v1");}catch{return {created:[],latest:null,day,reason:"kv_leitura_invalida:pausa:leitura"};}
+  if(pause!==null&&pause!=="0"&&pause!=="1")return {created:[],latest:null,day,reason:"kv_leitura_invalida:pausa:estrutura"};
+  if(pause==="1")return {created:[],latest:null,day,reason:"creative_autopublish_paused"};
   const at=now.toISOString();
   const reject=async(motivos,extra={})=>{
     const status={schema:"zpc.blog.status.v1",day,resultado:"rejeitado",motivos,gate:BLOG_GATE_VERSION,at,...extra};

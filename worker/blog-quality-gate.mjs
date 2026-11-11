@@ -63,7 +63,9 @@ const RESERVED_TLD = /\.(?:invalid|test|example|localhost|local|internal|lan|hom
 const RESERVED_HOST = /^(?:localhost|(?:[^.]+\.)*example\.(?:com|net|org))$/;
 export function verifiableSource(src, { dominios = FONTES_PERMITIDAS } = {}) {
   let u; try { u = new URL(str(src?.url ?? src)); } catch { return false; }
-  if (u.protocol !== "https:" || u.username || u.password || u.port) return false;
+  // URL normaliza :443 para porta vazia: inspecionar também a autoridade original.
+  const authority = str(src?.url ?? src).match(/^https:\/\/([^/?#]+)/i)?.[1] || "";
+  if (u.protocol !== "https:" || u.username || u.password || u.port || authority.includes(":")) return false;
   const host = u.hostname.toLowerCase().replace(/\.$/, "");
   if (!host.includes(".") || host.startsWith("[") || /^[\d.]+$/.test(host)) return false;
   if (RESERVED_TLD.test(host) || RESERVED_HOST.test(host) || OWN_HOSTS.test(host)) return false;
