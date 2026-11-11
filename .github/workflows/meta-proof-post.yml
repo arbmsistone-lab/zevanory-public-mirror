@@ -1,0 +1,54 @@
+name: Meta proof post DEC-23
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: meta-proof-dec23-once
+  cancel-in-progress: false
+jobs:
+  proof:
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}
+    environment: producao-critica
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+      INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+      META_PROOF_STATE_PATH: ${{ runner.temp }}/meta-proof-dec23/state.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      # Monotonic workflow run number survives artifact expiry/deletion. A failed
+      # first attempt requires a separately reviewed recovery, never a rerun.
+      - name: First attempt only
+        run: test "$GITHUB_RUN_NUMBER" = 1 && test "$GITHUB_RUN_ATTEMPT" = 1
+      - name: Permission check and reserve (no POST)
+        run: |
+          node scripts/channels/meta-permission-check.mjs
+          node scripts/channels/meta-proof-post.mjs --reserve
+      - name: Persist reservation before publishing
+        id: reservation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: meta-proof-dec23-reservation-${{ github.run_id }}
+          path: ${{ env.META_PROOF_STATE_PATH }}
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish one institutional image to each channel
+        env:
+          RESERVATION_ARTIFACT_ID: ${{ steps.reservation.outputs.artifact-id }}
+        run: node scripts/channels/meta-proof-post.mjs --publish
+      - name: Preserve outcome including partial or unknown
+        if: ${{ always() && steps.reservation.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: meta-proof-dec23-outcome-${{ github.run_id }}
+          path: ${{ env.META_PROOF_STATE_PATH }}
+          if-no-files-found: error
+          retention-days: 90
