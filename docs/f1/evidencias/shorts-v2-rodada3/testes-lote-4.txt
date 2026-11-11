@@ -1,0 +1,807 @@
+✔ facts are PII-free and split gross/net/fees (22.16417ms)
+✔ approval counted once across APPROVED + COMPLETE, refund tracked (91.190975ms)
+✔ unknown events are ignored (0.256991ms)
+✔ B: trava fechada, ilegível ou incompleta => Bluesky (Telegram desligado, F0 nº 7) sem preço, sem /comprar, sem CTA e com CLOSED_LABEL (184.532875ms)
+✔ B: trava aberta (dono + preflight verde) => link de checkout /comprar/<SKU>, comportamento atual preservado (13.536834ms)
+✔ B: validateDraft fechada rejeita R$, /comprar, Hotmart e chamada de compra; não exige /comprar; aberta exige (9.052443ms)
+✔ B: leitura da trava é fail-closed (exceção, ausente, incompleta, preflight vencido) (0.547954ms)
+✔ C: Short fechado => sem preço na tela nem na voz; CLOSED_LABEL na tela, na voz e na descrição; aberto mantém o preço (21.930348ms)
+✔ D': adaptador orgânico com vendas fechadas recusa texto com preço, checkout ou CTA (não só landing_url) (10.525019ms)
+✔ D7: Instagram e Facebook fechados sem P04 certificado, com vendas abertas ou fechadas e texto limpo (9.385206ms)
+✔ H: modo Hotmart (interruptor completo fechado + sales:hotmart:v1) => 5 kits com preço e /hotmart/<slug>; falha = fechado; pausa vale (51.688416ms)
+✔ P: pausa criativa = "1" com o KV lendo normalmente => Short e cross-post não publicam (467.936082ms)
+✔ sales pages are no-transform (no edge script injection) and gzipped by the Worker (73.677111ms)
+✔ clients without gzip get the plain page (1.339036ms)
+✔ support response time: one wording everywhere, matches Termos and Reembolso, nothing contradicts it (16.924606ms)
+✔ 7-day withdrawal: trust copy == Worker RULE_7D == Termos/Reembolso (5.039646ms)
+✔ DEC-06: immediate full download at the Hotmart purchase area matches Worker, products, Termos and Reembolso (29.644241ms)
+✔ company name, CNPJ and address: trust block, seller list and footer == Worker SUPPLIER == legal pages (20.819912ms)
+SALES_WORKER_DIFFERENTIAL compared=412 intended_differences=40
+✔ differential: gh-pages Worker vs #914 Worker — only the intended differences (2407.305362ms)
+✔ (a) 404 only for unknown page paths; known routes, /api, /comprar, assets, tombstone, robots/sitemap/legal unchanged (45.937405ms)
+✔ (c) sales closed: no buy CTA, /comprar link, checkout or InStock on any page served by the Worker (302.877802ms)
+✔ (e) security headers and CSP byte-identical to gh-pages on pages, assets and checkout routes (37.116335ms)
+✔ (b) base page and Hotmart variant carry the same Hotmart payment and DEC-06 immediate-download delivery (DEC-05/DEC-06) (17.330841ms)
+✔ (d) checkout and purchase routes return exactly what gh-pages returned (closed and open) (25.362564ms)
+✔ deployment preserves sandbox and production credential separation (34.732602ms)
+✔ variable compaction inherits secrets and preserves voice values (68.078175ms)
+operator_token_auth {"category":"none"}
+operator_token_auth {"category":"primary"}
+✔ inbox token digest constant matches a 64-hex sha256 (2.665743ms)
+✔ fails closed when sales are enabled or env is not sandbox (30.814401ms)
+✔ capabilities require certification token and report v2 with sales blocked (4.486906ms)
+✔ checkout delegates order and preference creation to the canonical Mercado Pago checkout (7.164805ms)
+✔ sandbox checkout facade contains no direct INSERT or UPDATE of orders (2.191704ms)
+✔ checkout rejects generic buyer, other recipients and other offers (4.308092ms)
+✔ checkout reuses an unpaid sandbox order from today before creating a new one (1.544031ms)
+✔ daily limit caps sandbox orders (0.739362ms)
+✔ status projection marks signature only from receiver provenance (0.809629ms)
+✔ resend received email matches only exact address and order header (0.810846ms)
+✔ inbox requires the read token and stores only the isolated address (16.548023ms)
+✔ quoted-printable soft breaks are joined so the link survives (0.574425ms)
+✔ recovered delivery only relaxes live_mode for registered v2 orders on the isolated inbox (22.416575ms)
+✔ approved-payment reconciliation uses the signed canonical sandbox webhook and records source (5.181359ms)
+✔ reconciliation never certifies a non-approved canonical event (1.197248ms)
+✔ sandbox offers mirror the canonical public catalog prices (8.595168ms)
+✔ checkout accepts each catalog SKU and forwards it with its table price (8.783346ms)
+✔ an unpaid order of another SKU is never reused (3.652615ms)
+✔ without connections every channel waits honestly and nothing is recorded as published (11.951142ms)
+✔ TikTok direct post uses the most private allowed level until the audit, waits for completion (3.432762ms)
+✔ Instagram Reel publishes only after the container is FINISHED (1.765882ms)
+✔ captions carry the product, the single 7-day rule (open) and channel UTM; TikTok avoids dead links (1.599111ms)
+✔ P13c: com vendas fechadas (padrão) legenda e descrição não têm /comprar/, preço nem regra como chamada (1.326474ms)
+✔ pack renders the tip and the offer for each day with ready captions (26.027882ms)
+✔ Telegram DESLIGADO por decisão do proprietário (F0 nº 7): com credenciais presentes, 0 chamadas à API do Telegram; código preservado (30.983278ms)
+✔ pack produces the executor command ZEVANORY e-mails to the owner: 2 per day (tip 12:00, offer 19:00) (6.326829ms)
+✔ NC-01 DEC-23: com META_* presentes e o registro padrão (nulo), 0 chamadas à Graph API e nada no KV; com prova aprovada, publica (4.773854ms)
+✔ NC-02: o cross-post só roda com o Short do slot PÚBLICO no YouTube e o canal não congelado (formato real do recordPublication) (8.160509ms)
+✔ linha de base: as três baterias passam no código original (256.966993ms)
+✔ mutante M01 (retomada) é morto (3.259754ms)
+✔ mutante M02 (retomada) é morto (14.539676ms)
+✔ mutante M03 (retomada) é morto (2.799016ms)
+✔ mutante M04 (retomada) é morto (2.586801ms)
+✔ mutante M05 (retomada) é morto (3.209997ms)
+✔ mutante M06 (retomada) é morto (4.650496ms)
+✔ mutante M07 (retomada) é morto (8.745913ms)
+✔ mutante M08 (retomada) é morto (3.852498ms)
+✔ mutante M09 (retomada) é morto (8.450909ms)
+✔ mutante M10 (retomada) é morto (3.753549ms)
+✔ mutante M11 (retomada) é morto (5.287944ms)
+✔ mutante M12 (retomada) é morto (6.761229ms)
+✔ mutante M13 (retomada) é morto (2.958339ms)
+✔ mutante M14 (retomada) é morto (5.452283ms)
+✔ mutante F01 (retomada) é morto (5.206648ms)
+✔ mutante F02 (retomada) é morto (3.525808ms)
+✔ mutante F03 (retomada) é morto (7.53182ms)
+✔ mutante F04 (retomada) é morto (7.119242ms)
+✔ mutante F05 (retomada) é morto (8.272252ms)
+✔ mutante F06 (retomada) é morto (7.387097ms)
+✔ mutante F07 (retomada) é morto (3.702626ms)
+✔ mutante F08 (retomada) é morto (8.973629ms)
+✔ mutante F09 (retomada) é morto (6.799989ms)
+✔ mutante M16 (retomada) é morto (3.643964ms)
+✔ mutante M17 (retomada) é morto (7.240425ms)
+✔ mutante M18 (retomada) é morto (7.250321ms)
+✔ mutante D01 (dispatcher) é morto (6.688997ms)
+✔ mutante D02 (dispatcher) é morto (8.128917ms)
+✔ mutante D03 (dispatcher) é morto (5.931773ms)
+✔ mutante D04 (dispatcher) é morto (5.198706ms)
+✔ mutante D06 (dispatcher) é morto (6.363166ms)
+✔ mutante D05 (dispatcher) é morto (4.916984ms)
+✔ mutante Y01 (short) é morto (57.208537ms)
+✔ mutante Y02 (short) é morto (14.885842ms)
+✔ mutante Y03 (short) é morto (23.040969ms)
+✔ mutante T01 (crosspost) é morto (9.125534ms)
+✔ mutante T02 (crosspost) é morto (58.49478ms)
+✔ mutante N01 (crosspost) é morto (53.568445ms)
+✔ mutante N02 (crosspost) é morto (12.54505ms)
+✔ mutante N03 (crosspost) é morto (14.643043ms)
+✔ mutante N04 (crosspost) é morto (9.132232ms)
+✔ mutante N05 (crosspost) é morto (9.219471ms)
+✔ mutante Y05 (short) é morto (105.217329ms)
+✔ mutante Y06 (short) é morto (92.170385ms)
+✔ mutante Y07 (short) é morto (96.553451ms)
+✔ mutante Y04 (short) é morto (17.514445ms)
+✔ configuração versionada: começa com 1 Short por dia (dica), sobe para 2 e 3 após 7 dias limpos; sem voz local; sem chave que religue o Telegram (1.550523ms)
+✔ reprova qualquer menção a WhatsApp (canal banido) ou lista de espera em roteiro, tela, título, descrição e tags (2.701856ms)
+✔ nenhum Short planejado (3 slots × 80 dias × modo fechado e Hotmart) cita WhatsApp ou lista de espera, nem nas legendas do crosspost (97.669894ms)
+✔ CTA: /hotmart/<slug> com UTM no modo Hotmart; calculadora gratuita com UTM com a compra fechada; nunca /comprar/ nem a página com lista de espera (17.354066ms)
+✔ rampa: 1/dia nos primeiros 7 dias; 2/dia após 7 dias limpos; 3/dia após mais 7; publicações de outubro não contam (2.547768ms)
+✔ rampa: falha de QC de áudio/vídeo desce um nível; aviso do canal não deixa subir e zera os slots do dia (0.442195ms)
+✔ decisão do slot: só os slots do nível, no máximo por_dia Shorts no dia, nada com o canal congelado (1.113081ms)
+✔ preflight do canal: público só sem restrição; restrição congela; falha da API só pula o dia (0.339713ms)
+✔ preflight real usa channels?part=id,status (somente leitura); congelamento por episódio não é sobrescrito enquanto ativo (0.73464ms)
+✔ histórico da rampa só conta Shorts públicos e lê falhas de QC; erro de leitura volta ao nível 1 (2.667556ms)
+✔ dispatcher: workflow desativado não é disparado (sem 422); estado desconhecido só 1 tentativa por hora; outros motores seguem (31.708656ms)
+✔ dispatcher: só dispara os slots da rampa; canal congelado = nenhum Short (0.600065ms)
+✔ o workflow do Short e o short-pack não são reativados nem alterados por este PR (estado do proprietário) (12.091224ms)
+✔ NC-F1-A5-01: congelar → liberar → nova restrição (inclusive no mesmo dia) volta a congelar; liberação nunca vale para episódio posterior (1.271621ms)
+✔ leituras do KV que falham nunca viram ok: congelamento ilegível = ativo; erro = não publica; contagem do dia propaga o erro (13.454157ms)
+✔ NC01: track evidence and original download hash are mandatory (1.765324ms)
+✔ NC01 mutant: accept missing license evidence (22.782968ms)
+✔ NC02: 30 real calendar days are distinct and below 40 percent overlap (31.154464ms)
+✔ NC02 mutant: fixed theme script (10.26032ms)
+✔ NC02: duplicate episode and more than 40 percent shared sentences rejected (0.531969ms)
+✔ NC02 mutant: repetition guard disabled (3.286645ms)
+✔ NC02: corrupt projection needs readable receipt; preview never erases history (3.022485ms)
+✔ NC05: model must match approved model (0.169844ms)
+✔ NC05 mutant: a different model accepted (8.931095ms)
+✔ NC05: 3.8 Interactions and 2.5 generateContent use distinct protocols without fallback (1.097737ms)
+✔ NC05: comparison is exactly 4 voices times 2 models; approvals remain pending (2.1336ms)
+✔ NC06: exact SKU and word boundaries; ambiguous classifications use dicas (0.455039ms)
+✔ NC06 mutant: IA substring inside farmacia accepted (7.535193ms)
+✔ NC05: comparison writer processes all eight identities with exactly the same phrase (16.237847ms)
+✔ NC07: 180 consecutive days, three slots, accumulated history (369.974812ms)
+✔ NC07: every authored calendar lesson is addressable (19.141074ms)
+✔ NC07 mutant: removing one lesson fails catalog coverage (15.382242ms)
+✔ NC08: complete sentences use actual aligned word boundaries (1.267145ms)
+✔ NC08 mutant: fixed 2.5 second grid fails boundaries (4.211957ms)
+✔ NC08: fragment ending in article rejected; accented nouns accepted (1.902899ms)
+✔ NC10: music too quiet is explicitly rejected (0.555019ms)
+✔ NC10 mutant: removing upper balance bound fails (11.042193ms)
+✔ NC09: insufficient contrast rejected (0.178483ms)
+✔ NC09 mutant: accepting low contrast fails (10.844ms)
+✔ NC07: missing plan warns and performs no KV writes or QC downgrade (13.679711ms)
+✔ NC07: planner respects persisted receipts and retries same variant idempotently (557.018668ms)
+✔ NC07 composed mutant: deleting a used lesson breaks the full 180-day simulation (41.512918ms)
+✔ NC08: text exceeding frame width is rejected (0.339013ms)
+✔ NC08: a partial video stream is rejected even when container duration is valid (0.166198ms)
+✔ V2: 100/100 requires complete finite voice music and visual evidence (5.53791ms)
+✔ V2: episode scripts have a question hook short sentences neutral CTA and no banned channel (3.805635ms)
+✔ V2: theme selects matching kit with exact UTMs and preserves closed sales lock (3.288225ms)
+✔ V2: one fixed voice requires real comparison free tier and owner preview approval (0.427185ms)
+✔ V2: eight downloaded licensed tracks cover four moods with alternate nonrepeating selection (56.909502ms)
+✔ V2: unregistered license missing file checksum or unreadable history blocks music (9.775619ms)
+✔ V2: true word alignment required, invented timestamps or reordered words rejected (1.057792ms)
+✔ V2: corrupt music projection recovers only from readable episode receipts (4.585865ms)
+✔ V2: no paid or local fallback, no synthesis when free tier is unconfirmed (3.600909ms)
+✔ V2: workflow removes Piper and retains preview MP4 QC script music and license without enabling (2.785582ms)
+✔ V2 mutant: sem musica (10.265048ms)
+✔ V2 mutant: ducking desligado (6.685363ms)
+✔ V2 mutant: voz rapida (8.055651ms)
+✔ V2 mutant: gancho tardio (12.398545ms)
+✔ V2 mutant: legenda insegura (4.96183ms)
+✔ V2 mutant: CTA com preco (4.878817ms)
+✔ V2 mutant: duas vozes (8.4488ms)
+✔ V2 mutant: mix alto (8.718968ms)
+✔ V2 mutant: silencio longo (9.115466ms)
+✔ V2 mutant: clipping (8.752923ms)
+✔ V2 mutant: duracao curta (5.16933ms)
+✔ V2 mutant: ritmo parado (9.652155ms)
+✔ V2 mutant: faixa sem registro de licenca (18.343324ms)
+✔ V2 mutant: two different requested voices accepted (5.671895ms)
+operator_token_auth {"category":"primary"}
+✔ signed read only probe accepted for status and 2 audit endpoints (69.764423ms)
+operator_token_auth {"category":"none"}
+✔ HMAC fails closed on wrong path, 5-minute expiry, bad key, modified route (6.911668ms)
+✔ SE01 conjuntos P10 bem formados: ids únicos, expectativa em todo caso, tamanhos mínimos (9.067017ms)
+✔ SE02 P10: gerais com Wilson 95% >= 0,90 e críticos 100% (código real, fakes locais) (2708.589841ms)
+✔ SG01 repositório: nenhum workflow/script/wrangler gera tráfego sintético no chat de produção, liga a sandbox ou liga o chat por padrão (1586.303645ms)
+✔ SG02 a guarda pega cada padrão proibido (autoteste em diretório temporário) (1.134137ms)
+✔ SG03 testes do chat só usam fakes locais: nenhum alvo de produção fora do handler/worker local, nenhum fetch real (5.265412ms)
+✔ SG04 padrão desligado: política, wrangler, gerador, workflows e Workers não ligam o chat por padrão (4462.978696ms)
+✔ SG05 a guarda do padrão desligado pega cada fonte (autoteste em diretório temporário, com controle positivo) (1.606106ms)
+✔ SW01 marcação acessível: diálogo rotulado, log com aria-live polite, rótulos, aria-expanded/controls, Esc, Tab e retorno do foco (1.723814ms)
+✔ SW02 nova resposta não sequestra o foco; histórico navegável; tempo ajustável (aviso + continuar) (0.854942ms)
+✔ SW03 nada proativo: só abre e só envia por ação da pessoa (0.652088ms)
+✔ SW04 CSP e privacidade: sem innerHTML/eval/estilo inline/cookie/localStorage/terceiros; links só https dos nossos domínios e nunca checkout (0.896026ms)
+✔ SW05 cabe em 390/320/256 px e não invade a .buy-bar: painel tela cheia acima da barra, sem largura fixa, alvos de 44 px, foco visível (5.759488ms)
+✔ SW06 contraste AA dos tokens (texto >= 4.5:1; foco >= 3:1) (0.697841ms)
+✔ SW07 aviso pré-chat completo (quem responde, erros, dados proibidos, controlador, finalidade, dados, base legal, operadores, compartilhamento, transferência, retenção, direitos) e renderizado pelo widget (0.603106ms)
+✔ SW08 chat opcional: páginas do chat seguem com e-mail sem JavaScript; cópias publicadas idênticas à fonte; nenhum checkout (32.959324ms)
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+SITE_CHAT {"event":"disabled"}
+✔ SC01 interruptor: sem SITE_CHAT_ENABLED=true todas as rotas dão 503 com e-mail/formulários e o banco nem é aberto (40.622684ms)
+✔ SC02 interruptor de emergência no KV: 'off', KV ausente ou KV com erro => 503 (fail-closed) (2.667067ms)
+✔ SC03 só via service binding: host público não é atendido por este módulo (1.181734ms)
+✔ SC04 preço inventado pelo modelo é bloqueado (vendas fechadas e abertas) e pergunta de preço nunca chega ao modelo (19.039364ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"dependency_failure","dep":"sales_status","n":1}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"dependency_failure","dep":"sales_status","n":1}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+✔ SC05 vendas fechadas: nenhuma resposta tem checkout, nem com modelo adversarial, nem com a autoridade com erro/timeout (2532.188906ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"condition","mode":"price_field","created":false}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+✔ SC06 autoridade canônica consultada a CADA resposta; aberta => preço do campo do catálogo, ainda sem /comprar/ (12.253695ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"menu","mode":"menu","created":false}
+SITE_CHAT {"event":"reply","category":"menu","mode":"menu","created":false}
+SITE_CHAT {"event":"reply","category":"menu","mode":"menu","created":false}
+SITE_CHAT {"event":"reply","category":"menu","mode":"menu","created":false}
+SITE_CHAT {"event":"reply","category":"menu","mode":"menu","created":false}
+SITE_CHAT {"event":"reply","category":"menu","mode":"menu","created":false}
+SITE_CHAT {"event":"rate_limited","reason":"s:m"}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"rate_limited","reason":"g:m"}
+SITE_CHAT {"event":"session_created","sandbox":true}
+✔ SC07 limites: por sessão/minuto, global/minuto, turnos, tamanho e corpo; contadores só no PostgreSQL (zero escrita KV) (28.581309ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"refund","mode":"escalation","created":true}
+SITE_CHAT {"event":"reply","category":"complaint","mode":"escalation","created":true}
+SITE_CHAT {"event":"handoff","status":"sent","sandbox":true}
+SITE_CHAT {"event":"handoff","status":"already_sent","sandbox":true}
+✔ SC08 escalonamento: protocolo idempotente por sessão, e-mail ao dono SEM conteúdo e confirmação ao cliente uma vez só (22.641242ms)
+✔ SC09 categorias obrigatórias de escalonamento e o robô nunca nega direito do consumidor (7.238083ms)
+SITE_CHAT {"event":"synthetic_rejected","reason":"synthetic_header"}
+SITE_CHAT {"event":"synthetic_rejected","reason":"synthetic_token"}
+✔ SC10 sem dado pessoal nem conteúdo nos logs; transcrição guardada com dados sensíveis removidos (6.668651ms)
+SITE_CHAT {"event":"session_created","sandbox":false}
+SITE_CHAT {"event":"synthetic_rejected","reason":"synthetic_email"}
+SITE_CHAT {"event":"synthetic_rejected","reason":"synthetic_email"}
+SITE_CHAT {"event":"synthetic_rejected","reason":"production_token_in_sandbox"}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"handoff","status":"sandbox_sink_missing","sandbox":true}
+✔ SC11 isolamento de testes: produção recusa marcadores sintéticos; sandbox exige sink e nunca usa o Resend (5.947849ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"category_off","mode":"category_off","created":false}
+SITE_CHAT {"event":"reply","category":"refund","mode":"category_off","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"dependency_failure","dep":"ai:ai_down","n":1}
+SITE_CHAT {"event":"reply","category":"content","mode":"content_grounded_fallback","created":false}
+SITE_CHAT {"event":"dependency_failure","dep":"ai:ai_down","n":2}
+SITE_CHAT {"event":"reply","category":"content","mode":"content_grounded_fallback","created":false}
+SITE_CHAT {"event":"dependency_failure","dep":"ai:ai_down","n":3}
+SITE_CHAT {"event":"reply","category":"content","mode":"content_grounded_fallback","created":false}
+SITE_CHAT {"event":"reply","category":"content","mode":"content","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"content","mode":"content","created":false}
+✔ SC12 interruptores por categoria e disjuntor: geração desliga após falhas e o resto continua (10.335407ms)
+SITE_CHAT {"event":"dependency_failure","dep":"database"}
+SITE_CHAT {"event":"disabled"}
+✔ SC13 falha do banco => 503 com e-mail/formulários; catálogo vencido ou conflitante => recusa factual + escalonamento (1.962938ms)
+✔ SC14 validador do site: bloqueia valor, checkout, desconto, promessa, negação de direito e prazo fora da fonte; aceita a política oficial (4.856935ms)
+✔ SC15 Worker de vendas: desligado => 503 local sem chamar o central e sem widget; ligado => widget só nas páginas do chat, proxy com mesma origem (8.848476ms)
+✔ SC16 fila do proprietário exige autenticação de administrador (0.574292ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"refund","mode":"escalation","created":true}
+SITE_CHAT {"event":"handoff","status":"sent","sandbox":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+✔ SC17 escalonamento aponta só para suporte@ ou /atendimento e nunca cita WhatsApp, wa.me ou telefone (32.133683ms)
+✔ SC18 padrão desligado em tempo de execução: sem variável, vazia, "1", "yes" ou "false" => desligado nos dois Workers (0.526123ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"sensitive_data","mode":"escalation","created":true}
+✔ SC19 sensitive health/religion content is removed, category retained, structured identifiers remain masked (35.012633ms)
+✔ SC20 conhecimento oficial (R148): cada item vem da página publicada, passa no validador e responde sem escalar (40.17022ms)
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"condition","mode":"price_field","created":false}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+SITE_CHAT {"event":"session_created","sandbox":true}
+SITE_CHAT {"event":"reply","category":"condition","mode":"closed_condition","created":false}
+✔ SC21 modo Hotmart: 5 kits à venda pela Hotmart com o interruptor completo fechado; Conteúdo Pronto fechado; falha = fechado (2515.411373ms)
+✔ jargon is counted in visible text only (4.633803ms)
+✔ a compliant stub passes; each defect is caught (6.917442ms)
+✔ committed Pages layer: generator output is current and every stub is compliant (905.195258ms)
+✔ receipt lines (formerly start-guide links) keep a 44 px touch target (1.18758ms)
+✔ the published sales stylesheet is the built copy of the source (0.227978ms)
+✔ receipt destinations: each everyday problem jumps to the card of the product that solves it (5.451543ms)
+✔ cron horário chama o dreno do outbox primeiro, via SELF, com token HMAC aceito (1050.827475ms)
+✔ fila do suporte@ vencida deixa a execução do cron horário VERMELHA (as demais tarefas rodam antes) (989.146746ms)
+SUPPORT_EMAIL {"event":"signature_rejected"}
+SUPPORT_EMAIL {"event":"signature_rejected"}
+SUPPORT_EMAIL {"event":"signature_rejected"}
+SUPPORT_EMAIL {"event":"signature_rejected"}
+SUPPORT_EMAIL {"event":"signature_rejected"}
+SUPPORT_EMAIL {"event":"signature_rejected"}
+✔ assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito (41.841119ms)
+✔ suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos (7.037623ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"contato","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"contato"}
+SUPPORT_EMAIL {"event":"unconfigured","alias":"suporte","missing":["forward_to"]}
+SUPPORT_EMAIL {"event":"unconfigured","alias":"suporte","missing":["forward_to"]}
+✔ contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código (8.60948ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"unconfigured","alias":"suporte","missing":["privacy_secret"]}
+SUPPORT_EMAIL {"event":"unconfigured","alias":"suporte","missing":["privacy_secret"]}
+✔ remetente pseudonimizado com HMAC (LEAD_PRIVACY_SECRET); sem segredo => 503, nunca hash simples (11.275126ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+✔ redelivery do mesmo email_id depois de concluído: duplicado, nenhum envio novo (5.489662ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":1,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+✔ falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez (7.54287ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"ack_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+SUPPORT_EMAIL {"event":"ack_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":3,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":1,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+✔ falha na confirmação depois do encaminhamento: fica ack_pending e a recuperação envia exatamente uma confirmação (7.103652ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":4,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":4}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":12,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":5}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":28,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":6}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":60,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":7}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":124}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":124,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":8}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":252,"overdue":true,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":9}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":508}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":508,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"send","reason":"send_http_5xx","failures":10}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["dead"],"dead":1,"pending":0,"oldest_min":0}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":0,"dead":1,"backlog":0,"oldest_min":0,"overdue":false,"alerts":["dead"]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+✔ lease impede processamento concorrente; tentativas esgotadas => forward_dead e o cron para (11.369ms)
+SUPPORT_EMAIL {"event":"unconfigured","alias":"suporte","missing":["receiving_key"]}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"skipped":"unconfigured","missing":["receiving_key"]}
+✔ sem a chave de leitura do Resend: 503 ANTES de aceitar (nenhuma linha, nenhuma chamada) (7.58996ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["dead"],"dead":1,"pending":0,"oldest_min":0}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":["dead"]}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"read","reason":"budget_exhausted","failures":1}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"read","reason":"budget_exhausted","failures":1}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"read","reason":"budget_exhausted","failures":11}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"read","reason":"budget_exhausted","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["dead"],"dead":1,"pending":0,"oldest_min":0}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":["dead"]}
+✔ orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código) (7.131264ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+✔ 409 invalid_idempotent_request no encaminhamento = já encaminhado antes: não reenvia (4.90429ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":2,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":6,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":4}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":14,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":5}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":30,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":6}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":62,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":7}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":126}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":126,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":8}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":254,"overdue":true,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":9}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":510}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":510,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"send","reason":"send_http_5xx","failures":10}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["dead"],"dead":1,"pending":0,"oldest_min":0}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":0,"dead":1,"backlog":0,"oldest_min":0,"overdue":false,"alerts":["dead"]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":5,"done":0,"pending":5,"dead":0,"backlog":5,"oldest_min":3,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":5,"oldest_min":4}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":5,"oldest_min":4,"overdue":false,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":5,"done":0,"pending":5,"dead":0,"backlog":5,"oldest_min":64,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":119,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":121}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":1,"oldest_min":121,"overdue":true,"alerts":["backlog"]}
+✔ alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar (31.411674ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"rate_limited_sender"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"rate_limited_daily"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"rate_limited_daily"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"disabled"}
+✔ confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável (76.614418ms)
+✔ cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado (2.42763ms)
+✔ SQL lease: só linha pendente, vencida, sem lease ativo e dentro do orçamento; marca lease e conta tentativa (2.446429ms)
+✔ SQL due e reap: dreno só pega linha elegível; reap mata quem estourou orçamento/janela (3.410962ms)
+✔ SQL de registro e conclusão: insert idempotente e transições só a partir do estado certo (2.621234ms)
+✔ SQL retry: contadores de leitura e de envio são distintos (cada falha incrementa só o seu tipo) (2.124769ms)
+✔ transição para a confirmação preserva os contadores globais (SQL e cadeia em código) (1.897565ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+✔ HTML higienizado por lista de permissão e com teto de tamanho (11.803322ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":5,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+✔ anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados (3.952859ms)
+✔ prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito (2.457143ms)
+✔ Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@ (9.242423ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_401_key_permission","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_403_key_permission","failures":1}
+✔ leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status (12.474146ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+✔ dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção (3.800083ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"self","ok":true,"checked":1,"done":1,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain_replay_rejected"}
+SUPPORT_EMAIL {"event":"drain","source":"self","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain_replay_rejected"}
+SUPPORT_EMAIL {"event":"drain_replay_rejected"}
+SUPPORT_EMAIL {"event":"drain","source":"self","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain","source":"self","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain_dispatch","via":"self","status":200}
+SUPPORT_EMAIL {"event":"drain","source":"self","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain_dispatch","via":"self","status":200}
+SUPPORT_EMAIL {"event":"drain","source":"cron_inline","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+✔ dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica (12.81263ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":2,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":6,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":4}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":14,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":5}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":30,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":6}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":62,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":7}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":126}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":126,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":8}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":254,"overdue":true,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":9}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":510}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":510,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"ack_dead","kind":"send","reason":"send_http_5xx","failures":10}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["dead"],"dead":1,"pending":0,"oldest_min":0}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":0,"dead":1,"backlog":0,"oldest_min":0,"overdue":false,"alerts":["dead"]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+✔ orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento (7.708922ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":2,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":6,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":4}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":14,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":5}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":30,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":6}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":62,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":7}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":126}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":126,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":8}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":254,"overdue":true,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":9}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":510}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":510,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"ack_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":870,"overdue":true,"alerts":[]}
+SUPPORT_EMAIL {"event":"ack_dead","kind":"read","reason":"content_http_5xx","failures":10}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["dead"],"dead":1,"pending":0,"oldest_min":0}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":0,"dead":1,"backlog":0,"oldest_min":0,"overdue":false,"alerts":["dead"]}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":0,"done":0,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+✔ orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado (9.369547ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+✔ supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório (3.267113ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+✔ Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa (16.132442ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_sender_invalid"}
+✔ remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido (3.648408ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":3,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":3,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":13,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"skipped_automated_provider"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":1,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"redelivery","alias":"suporte","state":"not_due"}
+✔ provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação (3.404494ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_404_not_found","failures":1}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":1,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_404_not_found","failures":1}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"read","reason":"content_http_404_not_found_permanent","failures":2}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["dead"],"dead":1,"pending":0,"oldest_min":0}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":0,"dead":1,"backlog":0,"oldest_min":0,"overdue":false,"alerts":["dead"]}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"read","reason":"content_http_400_invalid_request","failures":1}
+SUPPORT_EMAIL {"event":"forward_dead","kind":"read","reason":"content_http_422_invalid_request","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_429_rate_limited","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_timeout","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_network_dns","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_network_reset","failures":1}
+✔ leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios (11.604937ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":2,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":6,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":4}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":14,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"read","reason":"content_http_5xx","failures":5}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":30,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":62,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":2}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":64,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":3}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":68,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":4}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":76,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":5}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":92,"overdue":false,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":6}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":124}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":124,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":7}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":188,"overdue":true,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":8}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":316,"overdue":true,"alerts":[]}
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":9}
+SUPPORT_EMAIL {"event":"owner_alert","kinds":["backlog"],"dead":0,"pending":1,"oldest_min":572}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":0,"pending":1,"dead":0,"backlog":1,"oldest_min":572,"overdue":true,"alerts":["backlog"]}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":1,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+✔ orçamentos separados: falhas de leitura não consomem tentativas de envio (6.875022ms)
+✔ nenhuma chamada à supressão global do Resend: só /emails e /emails/receiving/* (6.201501ms)
+SUPPORT_EMAIL {"event":"forward_retry","kind":"send","reason":"send_http_5xx","failures":1}
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+SUPPORT_EMAIL {"event":"drain","source":"direct","ok":true,"checked":1,"done":1,"pending":0,"dead":0,"backlog":0,"oldest_min":0,"overdue":false,"alerts":[]}
+✔ logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue (7.526894ms)
+SUPPORT_EMAIL {"event":"forwarded","alias":"suporte","attachments":0,"ack":"pending"}
+SUPPORT_EMAIL {"event":"acked","alias":"suporte"}
+✔ corpo não confiável: instruções e endereços no corpo não mudam destinatário, supressão, estado nem fluxo (5.759015ms)
+✔ the grounded fallback alone already answers the battery safely (7.103497ms)
+✔ an invented price or a refund promise fails the score (0.243139ms)
+✔ worker runner uses the AI binding weekly and records which runtime answered (2.677929ms)
+✔ no run is NOT_TESTED, never PASS; failure is FAIL; disabled is BLOCKED; stale is NOT_TESTED (4.00116ms)
+✔ processes: proven PASS, third party BLOCKED externo, owner-reserved excluded (0.962953ms)
+✔ retirement list never contains security, financial-gate or quality gates (5.038499ms)
+✔ owner-gated proofs: every entry names a gate that really exists in the workflow file (11.018751ms)
+✔ a routine whose recent runs were cancelled by concurrency is judged by its last completed run (0.385183ms)
+✔ WS1 fixtures positivas: cada forma de escrita é detectada com a classe e a quantidade certas (25.391195ms)
+✔ WS2 fixtures negativas: dry-run, --local, leitura, comentário e POST para outro host não contam (10.539394ms)
+✔ WS3 scripts chamados pelos workflows entram por via, recursivamente; filtro de paths não (1.996785ms)
+✔ WS4 repositório real: todo caminho de escrita está no inventário, com classe, escopo e guard coerentes (3252.493361ms)
+✔ WS5 o detector ampliado cobre tudo o que o detector anterior (publisher-inventory) cobria (4940.04622ms)
+✔ WS6 testes negativos (condição 5): o gate falha em cada violação, isolado de produção (14.152551ms)
+✔ before/after matrix: humans pass, robots and spoofs stay blocked, same verdict in both Workers (1.269755ms)
+✔ Telegram Android visitor is counted as a view; Telegram preview robot is not (0.225232ms)
+✔ Telegram Android visitor gets free material; own MP checkout remains blocked (41.678257ms)
+✔ robots and spoofs still get 403 at purchase and lead form and never reach the core (24.449754ms)
+✔ todo arquivo do fecho (código, testes, dados lidos) está coberto pelo filtro de caminhos (149.137336ms)
+✔ nenhuma entrada que escape da prova estática: import dinâmico calculado, require externo ou leitura não literal (182.717508ms)
+✔ o gate exige contagem exata, roda este teste e nunca aceita teste pulado nem segredo (0.518845ms)
+✔ legacy indicators alone never produce GREEN (they produce UNVERIFIED) (1.215443ms)
+✔ legacy projection is BLOCKED when indicators fail (0.314387ms)
+✔ a canonical GREEN without a proven quorum is demoted; a proven one is kept (0.370552ms)
+✔ the worker routes every trust_chain through the guard (3.170864ms)
+✔ canonical 10/10 on the exact release => UNVERIFIED (not BLOCKED by the deprecated block, never GREEN) (2.415881ms)
+✔ canonical evaluation incomplete, unbound or fail-closed => BLOCKED (0.443676ms)
+✔ SHA comparison is case-insensitive (0.229605ms)
+✔ vnext dialog does not default a missing quorum to 3 / minimum 2 (4.608401ms)
+✔ word error rate (1.716576ms)
+✔ base64 of binary audio round-trips (4.550644ms)
+✔ passes only when audio is understood, the answer is right and our voice is intelligible (20.273933ms)
+✔ endpoint is authenticated, uncached and stores only the report (3.187876ms)
+✔ a free-tier rate limit is retried once after a pause, not reported as a voice defect (3.435992ms)
+✔ voice samples: fixed core plus two rotating questions; the whole battery is covered over the weeks (0.787668ms)
+✔ wrangler configs: no tracked wrangler*.toml/json/jsonc carries a WhatsApp alias or retired number (39.864767ms)
+✔ generated candidate config: prepare-central-candidate.py emits no WhatsApp alias, channel closed (107.693583ms)
+✔ no over-stripping: META_VERIFY_TOKEN and every other META_/FACEBOOK_/INSTAGRAM_ key survive the generator (100.078611ms)
+✔ generated public assets: wa.me injector and JSON-LD telephone of the frozen snapshot are neutralized (86.098602ms)
+✔ fail-closed: any leftover wa.me, api.whatsapp.com or number (any format) in public assets aborts the generator (417.83913ms)
+✔ generator source: never assigns SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_* nor re-enables WhatsApp sales (2.06398ms)
+✔ workflows: no .github/workflows/*.yml assigns SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_* or carries either number (1027.569958ms)
+✔ shared classifier: labelled primary inside the block is KILLED; clean run is SURVIVED (587.180092ms)
+✔ shared classifier: a failure ONLY in a secondary assertion is INCONCLUSIVE (139.685385ms)
+✔ shared classifier: an unrelated failure, or the primary test failing on another assertion, is INCONCLUSIVE (637.179631ms)
+✔ runner refuses to start (exit 4) on an unjustified secondary, before any suite or mutant runs (155.382076ms)
+✔ runner refuses to start (exit 4) on a primary without assertion_pattern or an over-broad entry (221.540853ms)
+✔ real config: 51 mutants, every primary labelled, every literal label present in the suites (14.873978ms)
+✔ memoizes one store and runs Neon-compatible single-statement DDL once per DATABASE_URL (6.483877ms)
+✔ writes operational records only to Neon and reads historical KV as fallback (5.361094ms)
+✔ without DATABASE_URL operational writes are no-op and legacy reads remain available (0.273562ms)
+✔ hourly stats publish only counts and timestamps to KV for three days (0.870693ms)
+✔ audit-observe reads observation and history from Neon (15.595029ms)
+✔ live proof refreshes stats through a private token and then reads the KV artifact (29.640132ms)
+{"timestamp":"2026-11-11T21:44:17.277Z","level":"error","event":"readiness_degraded","request_id":"d65ae2ec-948d-428d-9319-5c0c2a5a5d63","route":"/api/health","status":503,"duration_ms":1,"database_reachable":false,"schema_ready":false,"schema_check_error":false}
+✔ kill-switch: retirement is a code constant; env values that would re-enable WhatsApp or the instant reply are ignored (763.204812ms)
+{"timestamp":"2026-11-11T21:44:17.305Z","level":"error","event":"operational_status_unavailable","request_id":"488ac418-e51c-4b1b-a94d-dd8d350e7218","route":"/api/status","status":503,"duration_ms":1,"read_attempts":0}
+{"timestamp":"2026-11-11T21:44:17.329Z","level":"error","event":"readiness_degraded","request_id":"f00bbb3f-a477-4b19-846a-1213d086e543","route":"/api/health","status":503,"duration_ms":1,"database_reachable":false,"schema_ready":false,"schema_check_error":false}
+{"timestamp":"2026-11-11T21:44:17.343Z","level":"error","event":"operational_status_unavailable","request_id":"438d93cf-e719-4b6e-b8b3-5217e55f1f49","route":"/api/status","status":503,"duration_ms":0,"read_attempts":0}
+{"kvw":"meta:webhook:last-verify","op":"put","src":"fetch:/api/webhooks/meta"}
+✔ retired: no fetch to graph.facebook.com or the broker from status/health/continuity/control-plane/voice/config/webhook paths (125.49903ms)
+✔ status surfaces: whatsapp_mode disabled_permanent, identity not attempted, distribution and instant-status exclude WhatsApp (43.750315ms)
+✔ projection: runtime.whatsapp disabled_permanent with reason, never 'enabled' even if a transport looks operational (1.653688ms)
+✔ provider independence: a retired WhatsApp never counts toward continuity quorum (2.322975ms)
+✔ Meta webhook: WhatsApp deliveries get 200 ack only (no processing, no stored content, no provider call) (16.916266ms)
+✔ Meta webhook: Instagram/Facebook, oversized and unclassifiable deliveries are never silently acknowledged (95.774411ms)
+✔ bundle layer (node handler): WhatsApp delivery acked without processing; broker never used for signature or verify token (10.871706ms)
+operator_token_source {"category":"legacy_fallback","name":"CERTIFICATION_E2E_TOKEN","expected":"ZEVANORY_OPERATOR_TOKEN"}
+operator_token_auth {"category":"none"}
+operator_token_auth {"category":"legacy_fallback"}
+✔ onboarding routes and the synthetic delivery proof are 410 Gone for any method and credential (26.503382ms)
+✔ broker tombstone: every route 410, reads no binding/secret/DB and performs no fetch (4.021429ms)
+✔ sender primitives refuse while retired: Graph send, voice upload, media download, broker call (4.612524ms)
+✔ outbound adapter channel:whatsapp refuses before any gate, token or fetch (1.40692ms)
+✔ instant reply: exported replyWhatsappConversation never answers, whatever the environment says (0.870474ms)
+✔ webhook handler: even with WHATSAPP_CHANNEL_RETIRED=false and WHATSAPP_INSTANT_REPLY=true the bot never replies or processes (2.126229ms)
+✔ static: no forged/self-signed Meta webhook generator anywhere outside tests/ (2325.279622ms)
+✔ static: retired workflows carry no proof job, no secret and no literal-false WhatsApp leftovers (745.456982ms)
+✔ static: retired onboarding module has no Graph, broker, HMAC or signing code (6.64323ms)
+✔ daily plan follows the calendar, passes the F1 gate and is public with an idempotency marker (18.085717ms)
+✔ uploads once as public and reports provider-locked privacy honestly (1.378659ms)
+✔ a retry with the same day reuses the existing video (no duplicate upload) (0.526801ms)
+✔ wrong channel fails closed before any upload (0.599302ms)
+✔ publication is recorded as a masked post_published activity plus per-day outcome (15.160906ms)
+✔ Cloudflare KV REST adapter maps 404 to null and passes the TTL (0.653745ms)
+✔ scheduled workflow: three daily slots + backstop, single concurrency, no secret echo (2.501781ms)
+✔ Short lasts as long as the narration (no dead air) and reveals every line before it ends (0.734182ms)
+✔ beats snap to the real pauses of the voice and keep their order (0.29942ms)
+✔ every calendar day has a full on-screen script that wraps within the frame (7.290798ms)
+✔ reach mix: value Shorts rotate across the 40 guides and 7 calculators, safe wording, distinct markers, offer marker unchanged (9.875228ms)
+✔ audio gate: loudness, peak and dead air (0.375994ms)
+✔ local voice reads the brand and prices correctly (0.29852ms)
+✔ publication window: never early, late only inside the same commercial day (0.439012ms)
+✔ ZEES-16: a evidência não grava 'proved' fixo (0.75653ms)
+✔ ZEES-16: o passo real grava proved só com job success e failed nos demais casos (56.399106ms)
+ℹ tests 339
+ℹ suites 0
+ℹ pass 339
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46162.813813

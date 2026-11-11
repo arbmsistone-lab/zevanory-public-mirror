@@ -1,0 +1,11 @@
+✔ V2: FFmpeg sidechain actually attenuates music by at least 10 dB (1667.523747ms)
+✔ V2 mutant: actual sidechain removed (1987.849578ms)
+✔ NC03/04: branded offline render measures ASS, final MP4 cuts, hook and contact sheet (100893.60021ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 104855.651346

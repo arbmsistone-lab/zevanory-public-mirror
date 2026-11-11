@@ -72,3 +72,27 @@ node --test tests/*.test.mjs
 O job de mídia roda em Linux, sem ambiente de produção nem segredos, com FFmpeg e Pillow. A suíte portátil não exige esses programas. Não executar `compare-voices.mjs`, workflow de publicação ou importação de música como parte dos testes.
 
 Resultados e limites desta rodada em `docs/f1/evidencias/shorts-v2-rodada2/resultado.md`. O SHA definitivo e o estado observado do CI serão registrados na descrição do PR após o push.
+
+## Rodada 3 — NC-CL-1028-07 a 10
+
+Esta seção substitui a grade fixa de cartões e o balanço sem limite superior descritos na rodada anterior. Publicação continua bloqueada; voz, nível gratuito e preview do proprietário permanecem pendentes.
+
+- **07 / calendário:** 185 lições endereçadas por tarefa exata do calendário, com campos operacionais e abordagens de conferência, comparação, ensaio, exceção e acompanhamento. As calculadoras têm cenários numéricos fictícios por episódio, sem tratar simulação como promessa comercial. O planejador procura a próxima variação válida; não muda os limites de 30/60 dias. Lê projeções e recibos persistidos, preserva a variação de uma retomada e não escreve no preview. Falha de planejamento emite SHORT_PLAN como warning, pula o slot e não cria falha de QC da rampa.
+- **08 / cenas:** cada frase ocupa uma cena com os limites das palavras alinhadas. Frases longas permanecem inteiras; não há corte automático por número de palavras. O realce muda a cada 2–3 segundos dentro da cena, independentemente da duração da frase. O gancho só aparece no topo; depois, há título persistente por etapa. A troca de cena usa limite final exclusivo para evitar títulos sobrepostos. O QC compara os textos e intervalos efetivamente gravados no filtro com as frases e o alinhamento.
+- **09 / legenda:** faixa escura exclusiva abaixo dos cartões. O QC decodifica o MP4, amostra cada palavra no instante médio e calcula contraste entre tinta e fundo observados, exigindo 4,5:1. Desenho de texto por linha evita o glifo ausente que o FFmpeg local exibiu nas quebras de linha.
+- **10 / áudio:** cama normalizada para −23 LUFS e sidechain ajustado para manter a música perceptível. QC exige redução de pelo menos 10 dB e diferença voz/música entre 12 e 22 dB durante as janelas de palavras. A cama de referência deve medir entre −24 e −22 LUFS; o mix segue −14 LUFS. A escuta do proprietário e a conferência com fala real continuam necessárias; um tom sintético não certifica naturalidade nem pausas de locução.
+
+Reprodução offline:
+
+```sh
+node scripts/shorts-v2/simulate-round3.mjs /tmp/simulacao.json
+node --test tests/shorts-v2-round3.test.mjs
+node --test tests/media/shorts-v2-media.test.mjs
+node scripts/shorts-v2/preview-round3.mjs /tmp/zev-shorts-round3
+```
+
+Ferramentas: Node compatível com import attributes (22+), FFmpeg/FFprobe com libass/drawtext, Python 3 + Pillow, fonte Inter do repositório. Os previews usam tom de teste e timestamps explícitos; não chamam Gemini, não acessam credenciais nem fazem upload.
+
+Evidência: [resultado da rodada 3](evidencias/shorts-v2-rodada3/resultado.md). [Escuta das oito trilhas](evidencias/shorts-v2-rodada3/musicas.html). Hear What They Say permanece curadoria pendente, sem aprovação automática pelo rótulo de tema.
+
+Provas finais da rodada 3: 1.559 testes gerais + 9 de mídia, todos PASS. O QC também mede a largura dos textos pela fonte real e confirma a duração/quantidade de quadros da faixa de vídeo para recusar MP4 parcial. Código validado: 8e8cd6e7117fe2f799308010abd61a0df17e78a5.

@@ -1,0 +1,724 @@
+{
+  "score": 100,
+  "ok": true,
+  "reasons": [],
+  "metrics": {
+    "musicBedLufs": -23,
+    "ppm": 152.14285714285714,
+    "internalSilence": 0,
+    "clipping": false,
+    "voiceLufs": -16,
+    "duration": 29,
+    "musicDetected": true,
+    "duckingDb": 11.113296462332418,
+    "voiceMusicDb": 20.949454653553353,
+    "mixLufs": -14,
+    "truePeak": -6.9,
+    "videoDuration": 29,
+    "videoFrames": 870,
+    "textRight": 964.453125,
+    "sceneSentenceAligned": true,
+    "captionContrast": 14.707026806268992,
+    "captionContrastSamples": 71,
+    "hookStart": 0,
+    "hookFont": 96,
+    "hookEnd": 3.959375,
+    "firstSentenceEnd": 3.959375,
+    "hookQuestion": true,
+    "opensWithLogo": false,
+    "captionX": 239.0078125,
+    "captionRight": 760.9921875,
+    "captionBottom": 1576.5,
+    "captionFont": 86,
+    "aligned": true,
+    "sceneMinGap": 2.3999999999999986,
+    "sceneMaxGap": 2.433334000000002,
+    "sceneCuts": [
+      2.433333,
+      4.833333,
+      7.266667,
+      9.666667,
+      12.1,
+      14.5,
+      16.933333,
+      19.333333,
+      21.766667,
+      24.166667,
+      26.6
+    ],
+    "captionMeasurements": [
+      {
+        "word": "Você",
+        "start": "0:00:00.00",
+        "end": "0:00:00.37",
+        "left": 391.796875,
+        "right": 608.203125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "está",
+        "start": "0:00:00.40",
+        "end": "0:00:00.77",
+        "left": 404.265625,
+        "right": 595.734375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "chamando",
+        "start": "0:00:00.80",
+        "end": "0:00:01.17",
+        "left": 278.5234375,
+        "right": 721.4765625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "markup",
+        "start": "0:00:01.20",
+        "end": "0:00:01.57",
+        "left": 337.15625,
+        "right": 662.84375,
+        "bottom": 1575.5,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:01.59",
+        "end": "0:00:01.97",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "margem",
+        "start": "0:00:01.99",
+        "end": "0:00:02.37",
+        "left": 324.3671875,
+        "right": 675.6328125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "na",
+        "start": "0:00:02.39",
+        "end": "0:00:02.76",
+        "left": 443.7578125,
+        "right": 556.2421875,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "hora",
+        "start": "0:00:02.79",
+        "end": "0:00:03.16",
+        "left": 401.4921875,
+        "right": 598.5078125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:03.19",
+        "end": "0:00:03.56",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "comparar?",
+        "start": "0:00:03.59",
+        "end": "0:00:03.96",
+        "left": 271,
+        "right": 729,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "Separe",
+        "start": "0:00:03.98",
+        "end": "0:00:04.36",
+        "left": 348.2421875,
+        "right": 651.7578125,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "o",
+        "start": "0:00:04.38",
+        "end": "0:00:04.76",
+        "left": 468.4921875,
+        "right": 531.5078125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "preço",
+        "start": "0:00:04.78",
+        "end": "0:00:05.15",
+        "left": 376.3828125,
+        "right": 623.6171875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "da",
+        "start": "0:00:05.18",
+        "end": "0:00:05.55",
+        "left": 443.3359375,
+        "right": 556.6640625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "venda",
+        "start": "0:00:05.58",
+        "end": "0:00:05.95",
+        "left": 369.078125,
+        "right": 630.921875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "e",
+        "start": "0:00:05.98",
+        "end": "0:00:06.35",
+        "left": 469.4140625,
+        "right": 530.5859375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "o",
+        "start": "0:00:06.38",
+        "end": "0:00:06.75",
+        "left": 468.4921875,
+        "right": 531.5078125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "custo",
+        "start": "0:00:06.77",
+        "end": "0:00:07.15",
+        "left": 378.0234375,
+        "right": 621.9765625,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "considerado",
+        "start": "0:00:07.17",
+        "end": "0:00:07.55",
+        "left": 240.015625,
+        "right": 759.984375,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "nesse",
+        "start": "0:00:07.57",
+        "end": "0:00:07.94",
+        "left": 372.671875,
+        "right": 627.328125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "cálculo.",
+        "start": "0:00:07.97",
+        "end": "0:00:08.34",
+        "left": 335.546875,
+        "right": 664.453125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "Subtraia",
+        "start": "0:00:08.37",
+        "end": "0:00:08.74",
+        "left": 319.4921875,
+        "right": 680.5078125,
+        "bottom": 1568.5,
+        "font": 86
+      },
+      {
+        "word": "o",
+        "start": "0:00:08.77",
+        "end": "0:00:09.14",
+        "left": 468.4921875,
+        "right": 531.5078125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "custo",
+        "start": "0:00:09.16",
+        "end": "0:00:09.54",
+        "left": 378.0234375,
+        "right": 621.9765625,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "do",
+        "start": "0:00:09.56",
+        "end": "0:00:09.94",
+        "left": 442.2265625,
+        "right": 557.7734375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "preço",
+        "start": "0:00:09.96",
+        "end": "0:00:10.33",
+        "left": 376.3828125,
+        "right": 623.6171875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "para",
+        "start": "0:00:10.36",
+        "end": "0:00:10.73",
+        "left": 401.8046875,
+        "right": 598.1953125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "identificar",
+        "start": "0:00:10.76",
+        "end": "0:00:11.13",
+        "left": 283.46875,
+        "right": 716.53125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "a",
+        "start": "0:00:11.16",
+        "end": "0:00:11.53",
+        "left": 469.6015625,
+        "right": 530.3984375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "diferença",
+        "start": "0:00:11.55",
+        "end": "0:00:11.93",
+        "left": 298.78125,
+        "right": 701.21875,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "entre",
+        "start": "0:00:11.95",
+        "end": "0:00:12.33",
+        "left": 385.3046875,
+        "right": 614.6953125,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "eles.",
+        "start": "0:00:12.35",
+        "end": "0:00:12.73",
+        "left": 399.4765625,
+        "right": 600.5234375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "Divida",
+        "start": "0:00:12.75",
+        "end": "0:00:13.12",
+        "left": 365.921875,
+        "right": 634.078125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "essa",
+        "start": "0:00:13.15",
+        "end": "0:00:13.52",
+        "left": 398.703125,
+        "right": 601.296875,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "diferença",
+        "start": "0:00:13.55",
+        "end": "0:00:13.92",
+        "left": 298.78125,
+        "right": 701.21875,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "pelo",
+        "start": "0:00:13.95",
+        "end": "0:00:14.32",
+        "left": 406.3828125,
+        "right": 593.6171875,
+        "bottom": 1575.5,
+        "font": 86
+      },
+      {
+        "word": "preço,",
+        "start": "0:00:14.34",
+        "end": "0:00:14.72",
+        "left": 365.4453125,
+        "right": 634.5546875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "mantendo",
+        "start": "0:00:14.74",
+        "end": "0:00:15.12",
+        "left": 286.1640625,
+        "right": 713.8359375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "a",
+        "start": "0:00:15.14",
+        "end": "0:00:15.51",
+        "left": 469.6015625,
+        "right": 530.3984375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "mesma",
+        "start": "0:00:15.54",
+        "end": "0:00:15.91",
+        "left": 344.296875,
+        "right": 655.703125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "base",
+        "start": "0:00:15.94",
+        "end": "0:00:16.31",
+        "left": 395.21875,
+        "right": 604.78125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:16.34",
+        "end": "0:00:16.71",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "valores.",
+        "start": "0:00:16.73",
+        "end": "0:00:17.11",
+        "left": 333.5703125,
+        "right": 666.4296875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "Compare",
+        "start": "0:00:17.13",
+        "end": "0:00:17.51",
+        "left": 305.984375,
+        "right": 694.015625,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "com",
+        "start": "0:00:17.53",
+        "end": "0:00:17.90",
+        "left": 405.2734375,
+        "right": 594.7265625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "a",
+        "start": "0:00:17.93",
+        "end": "0:00:18.30",
+        "left": 469.6015625,
+        "right": 530.3984375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "calculadora",
+        "start": "0:00:18.33",
+        "end": "0:00:18.70",
+        "left": 254.6640625,
+        "right": 745.3359375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "antes",
+        "start": "0:00:18.73",
+        "end": "0:00:19.10",
+        "left": 379.40625,
+        "right": 620.59375,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:19.13",
+        "end": "0:00:19.50",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "confundir",
+        "start": "0:00:19.52",
+        "end": "0:00:19.90",
+        "left": 295.0078125,
+        "right": 704.9921875,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "esse",
+        "start": "0:00:19.92",
+        "end": "0:00:20.30",
+        "left": 398.515625,
+        "right": 601.484375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "percentual",
+        "start": "0:00:20.32",
+        "end": "0:00:20.69",
+        "left": 273.1015625,
+        "right": 726.8984375,
+        "bottom": 1575.5,
+        "font": 86
+      },
+      {
+        "word": "com",
+        "start": "0:00:20.72",
+        "end": "0:00:21.09",
+        "left": 405.2734375,
+        "right": 594.7265625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "markup.",
+        "start": "0:00:21.12",
+        "end": "0:00:21.49",
+        "left": 326.21875,
+        "right": 673.78125,
+        "bottom": 1575.5,
+        "font": 86
+      },
+      {
+        "word": "A",
+        "start": "0:00:21.52",
+        "end": "0:00:21.89",
+        "left": 462.2734375,
+        "right": 537.7265625,
+        "bottom": 1567,
+        "font": 86
+      },
+      {
+        "word": "conferência",
+        "start": "0:00:21.91",
+        "end": "0:00:22.29",
+        "left": 249.6328125,
+        "right": 750.3671875,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "ajuda",
+        "start": "0:00:22.31",
+        "end": "0:00:22.69",
+        "left": 381.796875,
+        "right": 618.203125,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "a",
+        "start": "0:00:22.71",
+        "end": "0:00:23.08",
+        "left": 469.6015625,
+        "right": 530.3984375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "distinguir",
+        "start": "0:00:23.11",
+        "end": "0:00:23.48",
+        "left": 298.6484375,
+        "right": 701.3515625,
+        "bottom": 1576.5,
+        "font": 86
+      },
+      {
+        "word": "as",
+        "start": "0:00:23.51",
+        "end": "0:00:23.88",
+        "left": 446.4453125,
+        "right": 553.5546875,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "duas",
+        "start": "0:00:23.91",
+        "end": "0:00:24.28",
+        "left": 394.3359375,
+        "right": 605.6640625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "formas",
+        "start": "0:00:24.30",
+        "end": "0:00:24.68",
+        "left": 348.1015625,
+        "right": 651.8984375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:24.70",
+        "end": "0:00:25.08",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "calcular",
+        "start": "0:00:25.10",
+        "end": "0:00:25.48",
+        "left": 330.671875,
+        "right": 669.328125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "percentuais.",
+        "start": "0:00:25.50",
+        "end": "0:00:25.83",
+        "left": 239.0078125,
+        "right": 760.9921875,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "Kit",
+        "start": "0:00:25.86",
+        "end": "0:00:26.19",
+        "left": 435.2734375,
+        "right": 564.7265625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "completo",
+        "start": "0:00:26.21",
+        "end": "0:00:26.55",
+        "left": 301.046875,
+        "right": 698.953125,
+        "bottom": 1575.5,
+        "font": 86
+      },
+      {
+        "word": "no",
+        "start": "0:00:26.57",
+        "end": "0:00:26.90",
+        "left": 442.6484375,
+        "right": 557.3515625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "link",
+        "start": "0:00:26.93",
+        "end": "0:00:27.26",
+        "left": 421.21875,
+        "right": 578.78125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "da",
+        "start": "0:00:27.29",
+        "end": "0:00:27.62",
+        "left": 443.3359375,
+        "right": 556.6640625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "descrição.",
+        "start": "0:00:27.64",
+        "end": "0:00:27.98",
+        "left": 281.40625,
+        "right": 718.59375,
+        "bottom": 1576,
+        "font": 86
+      }
+    ],
+    "ctaSeconds": 3.1428571428571423,
+    "cta": "Kit completo no link da descrição",
+    "voiceFixed": true
+  },
+  "voice": "Achird",
+  "track": {
+    "arquivo": "assets/musica/financas-1.ogg",
+    "sha256": "1e891183ff193c6190cec60b452daba1861bd36cb7876f4bc77df2b6b00cfbb5",
+    "sha256_original": "dd20cb51c948a14e45d71b9a03b9d6afc48a4b7fd7b5020da623fbd86390b519",
+    "titulo": "From Page to Practice",
+    "autor": "Bryan Teoh",
+    "fonte": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/From%20Page%20to%20Practice.mp3",
+    "licenca": "CC0-1.0",
+    "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/upbeat.php#:~:text=From%20Page%20to%20Practice",
+    "evidencia_licenca": "Creative Commons 0",
+    "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/#From%20Page%20to%20Practice.mp3",
+    "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
+    "verificado_em": "2026-11-11",
+    "bpm": 80,
+    "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
+    "clima": "corporativa_calma",
+    "temas_permitidos": [
+      "financas"
+    ],
+    "trecho_inicio": 8,
+    "trecho_segundos": 36,
+    "credito": "From Page to Practice — Bryan Teoh / FreePD (CC0).",
+    "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
+    "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
+    "descricao_original": "Bryan Teoh . Inspired by new day and you're anticipating a big good life change. Maybe it's no longer 2020. This music is available for commercial and non-commercial purposes."
+  },
+  "model": "gemini-3.8-flash-tts",
+  "containsSyntheticMedia": true,
+  "mode": "preview"
+}

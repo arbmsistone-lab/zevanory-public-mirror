@@ -1,0 +1,715 @@
+{
+  "score": 100,
+  "ok": true,
+  "reasons": [],
+  "metrics": {
+    "musicBedLufs": -23.2,
+    "ppm": 150,
+    "internalSilence": 0,
+    "clipping": false,
+    "voiceLufs": -16,
+    "duration": 29,
+    "musicDetected": true,
+    "duckingDb": 11.109521902753084,
+    "voiceMusicDb": 17.951680060406353,
+    "mixLufs": -14,
+    "truePeak": -5.5,
+    "videoDuration": 29,
+    "videoFrames": 870,
+    "textRight": 978.9375,
+    "sceneSentenceAligned": true,
+    "captionContrast": 14.707429125079905,
+    "captionContrastSamples": 70,
+    "hookStart": 0,
+    "hookFont": 96,
+    "hookEnd": 3.617857142857143,
+    "firstSentenceEnd": 3.617857142857143,
+    "hookQuestion": true,
+    "opensWithLogo": false,
+    "captionX": 119.5546875,
+    "captionRight": 880.4453125,
+    "captionBottom": 1576,
+    "captionFont": 86,
+    "aligned": true,
+    "sceneMinGap": 2.3999999999999986,
+    "sceneMaxGap": 2.433334000000002,
+    "sceneCuts": [
+      2.433333,
+      4.833333,
+      7.266667,
+      9.666667,
+      12.1,
+      14.5,
+      16.933333,
+      19.333333,
+      21.766667,
+      24.166667,
+      26.6
+    ],
+    "captionMeasurements": [
+      {
+        "word": "A",
+        "start": "0:00:00.00",
+        "end": "0:00:00.38",
+        "left": 462.2734375,
+        "right": 537.7265625,
+        "bottom": 1567,
+        "font": 86
+      },
+      {
+        "word": "proposta",
+        "start": "0:00:00.40",
+        "end": "0:00:00.78",
+        "left": 308.484375,
+        "right": 691.515625,
+        "bottom": 1572.5,
+        "font": 86
+      },
+      {
+        "word": "contábil",
+        "start": "0:00:00.81",
+        "end": "0:00:01.19",
+        "left": 327.859375,
+        "right": 672.140625,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "deixa",
+        "start": "0:00:01.21",
+        "end": "0:00:01.59",
+        "left": 384.25,
+        "right": 615.75,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "claro",
+        "start": "0:00:01.62",
+        "end": "0:00:02.00",
+        "left": 391.578125,
+        "right": 608.421875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "o",
+        "start": "0:00:02.02",
+        "end": "0:00:02.40",
+        "left": 468.4921875,
+        "right": 531.5078125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "que",
+        "start": "0:00:02.43",
+        "end": "0:00:02.81",
+        "left": 417.3046875,
+        "right": 582.6953125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "está",
+        "start": "0:00:02.83",
+        "end": "0:00:03.21",
+        "left": 404.265625,
+        "right": 595.734375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "incluído?",
+        "start": "0:00:03.24",
+        "end": "0:00:03.62",
+        "left": 307.171875,
+        "right": 692.828125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "Separe",
+        "start": "0:00:03.64",
+        "end": "0:00:04.02",
+        "left": 348.2421875,
+        "right": 651.7578125,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "as",
+        "start": "0:00:04.05",
+        "end": "0:00:04.43",
+        "left": 446.4453125,
+        "right": 553.5546875,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "atividades",
+        "start": "0:00:04.45",
+        "end": "0:00:04.83",
+        "left": 280.9921875,
+        "right": 719.0078125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "incluídas",
+        "start": "0:00:04.86",
+        "end": "0:00:05.24",
+        "left": 310.28125,
+        "right": 689.71875,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "e",
+        "start": "0:00:05.26",
+        "end": "0:00:05.64",
+        "left": 469.4140625,
+        "right": 530.5859375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "os",
+        "start": "0:00:05.67",
+        "end": "0:00:06.05",
+        "left": 445.3359375,
+        "right": 554.6640625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "serviços",
+        "start": "0:00:06.07",
+        "end": "0:00:06.45",
+        "left": 319.703125,
+        "right": 680.296875,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "cobrados",
+        "start": "0:00:06.48",
+        "end": "0:00:06.86",
+        "left": 301.703125,
+        "right": 698.296875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "fora",
+        "start": "0:00:06.88",
+        "end": "0:00:07.26",
+        "left": 410.6875,
+        "right": 589.3125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "do",
+        "start": "0:00:07.29",
+        "end": "0:00:07.67",
+        "left": 442.2265625,
+        "right": 557.7734375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "contrato.",
+        "start": "0:00:07.69",
+        "end": "0:00:08.07",
+        "left": 307.140625,
+        "right": 692.859375,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "Peça",
+        "start": "0:00:08.10",
+        "end": "0:00:08.48",
+        "left": 393.8125,
+        "right": 606.1875,
+        "bottom": 1575.5,
+        "font": 86
+      },
+      {
+        "word": "uma",
+        "start": "0:00:08.50",
+        "end": "0:00:08.88",
+        "left": 404.9765625,
+        "right": 595.0234375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "proposta",
+        "start": "0:00:08.90",
+        "end": "0:00:09.28",
+        "left": 308.484375,
+        "right": 691.515625,
+        "bottom": 1572.5,
+        "font": 86
+      },
+      {
+        "word": "curta",
+        "start": "0:00:09.31",
+        "end": "0:00:09.69",
+        "left": 384.3046875,
+        "right": 615.6953125,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "usando",
+        "start": "0:00:09.71",
+        "end": "0:00:10.09",
+        "left": 342.984375,
+        "right": 657.015625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "somente",
+        "start": "0:00:10.12",
+        "end": "0:00:10.50",
+        "left": 314.9296875,
+        "right": 685.0703125,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "um",
+        "start": "0:00:10.52",
+        "end": "0:00:10.90",
+        "left": 429.375,
+        "right": 570.625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "perfil",
+        "start": "0:00:10.93",
+        "end": "0:00:11.31",
+        "left": 385.71875,
+        "right": 614.28125,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "fictício",
+        "start": "0:00:11.33",
+        "end": "0:00:11.71",
+        "left": 351.9140625,
+        "right": 648.0859375,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:11.74",
+        "end": "0:00:12.12",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "empresa.",
+        "start": "0:00:12.14",
+        "end": "0:00:12.52",
+        "left": 304.46875,
+        "right": 695.53125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "Confira",
+        "start": "0:00:12.55",
+        "end": "0:00:12.93",
+        "left": 341.8828125,
+        "right": 658.1171875,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "prazos,",
+        "start": "0:00:12.95",
+        "end": "0:00:13.33",
+        "left": 344.8203125,
+        "right": 655.1796875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "entregas",
+        "start": "0:00:13.36",
+        "end": "0:00:13.74",
+        "left": 311.484375,
+        "right": 688.515625,
+        "bottom": 1573,
+        "font": 86
+      },
+      {
+        "word": "e",
+        "start": "0:00:13.76",
+        "end": "0:00:14.14",
+        "left": 469.4140625,
+        "right": 530.5859375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "responsabilidades",
+        "start": "0:00:14.17",
+        "end": "0:00:14.55",
+        "left": 119.5546875,
+        "right": 880.4453125,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "antes",
+        "start": "0:00:14.57",
+        "end": "0:00:14.95",
+        "left": 379.40625,
+        "right": 620.59375,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:14.98",
+        "end": "0:00:15.36",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "compartilhar",
+        "start": "0:00:15.38",
+        "end": "0:00:15.76",
+        "left": 229.8515625,
+        "right": 770.1484375,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "com",
+        "start": "0:00:15.79",
+        "end": "0:00:16.17",
+        "left": 405.2734375,
+        "right": 594.7265625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "um",
+        "start": "0:00:16.19",
+        "end": "0:00:16.57",
+        "left": 429.375,
+        "right": 570.625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "interessado.",
+        "start": "0:00:16.60",
+        "end": "0:00:16.98",
+        "left": 240.875,
+        "right": 759.125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "Mostre",
+        "start": "0:00:17.00",
+        "end": "0:00:17.38",
+        "left": 347.578125,
+        "right": 652.421875,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "uma",
+        "start": "0:00:17.40",
+        "end": "0:00:17.78",
+        "left": 404.9765625,
+        "right": 595.0234375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "seção",
+        "start": "0:00:17.81",
+        "end": "0:00:18.19",
+        "left": 371.5390625,
+        "right": 628.4609375,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "por",
+        "start": "0:00:18.21",
+        "end": "0:00:18.59",
+        "left": 425.3046875,
+        "right": 574.6953125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "assunto",
+        "start": "0:00:18.62",
+        "end": "0:00:19.00",
+        "left": 329.484375,
+        "right": 670.515625,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "para",
+        "start": "0:00:19.02",
+        "end": "0:00:19.40",
+        "left": 401.8046875,
+        "right": 598.1953125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "facilitar",
+        "start": "0:00:19.43",
+        "end": "0:00:19.81",
+        "left": 336.484375,
+        "right": 663.515625,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "a",
+        "start": "0:00:19.83",
+        "end": "0:00:20.21",
+        "left": 469.6015625,
+        "right": 530.3984375,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "leitura",
+        "start": "0:00:20.24",
+        "end": "0:00:20.62",
+        "left": 362.7890625,
+        "right": 637.2109375,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "da",
+        "start": "0:00:20.64",
+        "end": "0:00:21.02",
+        "left": 443.3359375,
+        "right": 556.6640625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "proposta.",
+        "start": "0:00:21.05",
+        "end": "0:00:21.43",
+        "left": 297.546875,
+        "right": 702.453125,
+        "bottom": 1572.5,
+        "font": 86
+      },
+      {
+        "word": "O",
+        "start": "0:00:21.45",
+        "end": "0:00:21.83",
+        "left": 461.8984375,
+        "right": 538.1015625,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "cliente",
+        "start": "0:00:21.86",
+        "end": "0:00:22.24",
+        "left": 355.421875,
+        "right": 644.578125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "consegue",
+        "start": "0:00:22.26",
+        "end": "0:00:22.64",
+        "left": 293.7734375,
+        "right": 706.2265625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "identificar",
+        "start": "0:00:22.67",
+        "end": "0:00:23.05",
+        "left": 283.46875,
+        "right": 716.53125,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "o",
+        "start": "0:00:23.07",
+        "end": "0:00:23.45",
+        "left": 468.4921875,
+        "right": 531.5078125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "escopo",
+        "start": "0:00:23.48",
+        "end": "0:00:23.86",
+        "left": 344.5390625,
+        "right": 655.4609375,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "antes",
+        "start": "0:00:23.88",
+        "end": "0:00:24.26",
+        "left": 379.40625,
+        "right": 620.59375,
+        "bottom": 1564.5,
+        "font": 86
+      },
+      {
+        "word": "de",
+        "start": "0:00:24.29",
+        "end": "0:00:24.67",
+        "left": 443.1484375,
+        "right": 556.8515625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "aceitar",
+        "start": "0:00:24.69",
+        "end": "0:00:25.07",
+        "left": 350.578125,
+        "right": 649.421875,
+        "bottom": 1568,
+        "font": 86
+      },
+      {
+        "word": "o",
+        "start": "0:00:25.10",
+        "end": "0:00:25.48",
+        "left": 468.4921875,
+        "right": 531.5078125,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "serviço.",
+        "start": "0:00:25.50",
+        "end": "0:00:25.83",
+        "left": 331.921875,
+        "right": 668.078125,
+        "bottom": 1576,
+        "font": 86
+      },
+      {
+        "word": "Kit",
+        "start": "0:00:25.86",
+        "end": "0:00:26.19",
+        "left": 435.2734375,
+        "right": 564.7265625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "completo",
+        "start": "0:00:26.21",
+        "end": "0:00:26.55",
+        "left": 301.046875,
+        "right": 698.953125,
+        "bottom": 1575.5,
+        "font": 86
+      },
+      {
+        "word": "no",
+        "start": "0:00:26.57",
+        "end": "0:00:26.90",
+        "left": 442.6484375,
+        "right": 557.3515625,
+        "bottom": 1559,
+        "font": 86
+      },
+      {
+        "word": "link",
+        "start": "0:00:26.93",
+        "end": "0:00:27.26",
+        "left": 421.21875,
+        "right": 578.78125,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "da",
+        "start": "0:00:27.29",
+        "end": "0:00:27.62",
+        "left": 443.3359375,
+        "right": 556.6640625,
+        "bottom": 1567.5,
+        "font": 86
+      },
+      {
+        "word": "descrição.",
+        "start": "0:00:27.64",
+        "end": "0:00:27.98",
+        "left": 281.40625,
+        "right": 718.59375,
+        "bottom": 1576,
+        "font": 86
+      }
+    ],
+    "ctaSeconds": 3.1428571428571423,
+    "cta": "Kit completo no link da descrição",
+    "voiceFixed": true
+  },
+  "voice": "Achird",
+  "track": {
+    "arquivo": "assets/musica/ia-1.ogg",
+    "sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+    "sha256_original": "ef06d8b524c196a31954dfb1f3261e7d37459e43f4afd9df31ee2965c6094a56",
+    "titulo": "Arpent",
+    "autor": "Kevin MacLeod",
+    "fonte": "https://a.ocv.me/pub/stuff/music/freepd/electronic/Arpent.mp3",
+    "licenca": "CC0-1.0",
+    "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/electronic.php#:~:text=Arpent",
+    "evidencia_licenca": "Creative Commons 0",
+    "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/electronic/#Arpent.mp3",
+    "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
+    "verificado_em": "2026-11-11",
+    "bpm": 80,
+    "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
+    "clima": "eletronica_leve",
+    "temas_permitidos": [
+      "ia"
+    ],
+    "trecho_inicio": 8,
+    "trecho_segundos": 36,
+    "credito": "Arpent — Kevin MacLeod / FreePD (CC0).",
+    "audicao_curadoria": "pendente de auditoria humana; clima proposto, nao certificado",
+    "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
+    "descricao_original": "Kevin MacLeod . Upbeat, uplifting and inspiring. Technology and innovation. This music is available for commercial and non-commercial purposes."
+  },
+  "model": "gemini-3.8-flash-tts",
+  "containsSyntheticMedia": true,
+  "mode": "preview"
+}

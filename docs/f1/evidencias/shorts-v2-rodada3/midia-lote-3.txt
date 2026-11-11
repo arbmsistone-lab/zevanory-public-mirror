@@ -1,0 +1,11 @@
+✔ NC01: all actual music excerpts fit 40 seconds and combined 6 MB budget (1191.514383ms)
+✔ NC09 render mutant: light caption band fails measured MP4 contrast (97954.411972ms)
+✔ NC10 render mutant: music at minus 40 LUFS fails audible balance (69764.609225ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 169237.509773

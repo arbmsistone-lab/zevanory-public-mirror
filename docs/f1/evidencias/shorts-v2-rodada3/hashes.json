@@ -1,0 +1,299 @@
+{
+  "code_commit": "8e8cd6e7117fe2f799308010abd61a0df17e78a5",
+  "files": [
+    {
+      "file": ".github/workflows/shorts-v2-checks.yml",
+      "bytes": 1385,
+      "md5": "c914a4412090ba708ed8f8ce1656e4ed",
+      "sha256": "eee058b2abe956e1ea161d472ed841b75fade8674ccec2861de143beeefd4048"
+    },
+    {
+      "file": "data/shorts-episodios-v2.json",
+      "bytes": 858877,
+      "md5": "978aafa22574bc8aa7fb8c688a2d2739",
+      "sha256": "df3fff4f4e0d64fefed790923afbcd0f956fabb123a2b1de0babc900701fbd0f"
+    },
+    {
+      "file": "scripts/channels/youtube-daily-short.mjs",
+      "bytes": 38289,
+      "md5": "a655ead99ad1a3e3f29d448a59257f15",
+      "sha256": "5be428e4d7c905748c647d2b7d0f7a3684e1cf26fa569ebb56df7ce70c13be71"
+    },
+    {
+      "file": "scripts/shorts-v2/core.mjs",
+      "bytes": 9381,
+      "md5": "7b816a5d9cb1298962ad6310e27dc795",
+      "sha256": "3646363a830f2983aefcb0cb05a8f222661d32a09a5c8de1e4045304a8085cb3"
+    },
+    {
+      "file": "scripts/shorts-v2/episode.mjs",
+      "bytes": 8977,
+      "md5": "f091509cd881ed3c08f083fd5d4eeb18",
+      "sha256": "921b545ddf7704089e8717019a91a8552df34adcd751f3e242ad2f6868486585"
+    },
+    {
+      "file": "scripts/shorts-v2/inspect-contrast.py",
+      "bytes": 1423,
+      "md5": "b5ee3054a9ada9ad47aad914e307997e",
+      "sha256": "d0459bfe7d89c8d4bd1c4f155c4c05829052f1a55d7b3351e5b57274be510c1a"
+    },
+    {
+      "file": "scripts/shorts-v2/inspect-text.py",
+      "bytes": 560,
+      "md5": "82dfffacedfb869ded4558e8ec4abcb0",
+      "sha256": "636bdda661d86c67c3b72710cdfe879c19277a45ebf09b88669e8661264bc669"
+    },
+    {
+      "file": "scripts/shorts-v2/preview-round3.mjs",
+      "bytes": 1770,
+      "md5": "687d947e95025d1c037ddc5ac406cf90",
+      "sha256": "79cf020146dfc20c60c648b9f223551503bd11b5986def995161dada68cb07aa"
+    },
+    {
+      "file": "scripts/shorts-v2/render.mjs",
+      "bytes": 12238,
+      "md5": "662a70a494256a51e7dd040a6bf7b29e",
+      "sha256": "9f79505c280f96363e31810eee6c0ed48771f6bbb3970327748a36d4cf83322f"
+    },
+    {
+      "file": "scripts/shorts-v2/scenes.mjs",
+      "bytes": 1102,
+      "md5": "8e5366b3783f8bbdb05e4501da6a357b",
+      "sha256": "eb8f56f0887dc08e51eb22013da010a597761b9fab978ff0d12cd8aaf8474471"
+    },
+    {
+      "file": "scripts/shorts-v2/script-history.mjs",
+      "bytes": 3001,
+      "md5": "0d763cf94f37dcd6c43c45f4c28b07e2",
+      "sha256": "ac037dfc6ac18ded3554bea878cce16d9f063cbef6f74af7b3337a2a4a752c63"
+    },
+    {
+      "file": "scripts/shorts-v2/simulate-round3.mjs",
+      "bytes": 943,
+      "md5": "cfa11bdafdb75e39821eb87f16016d42",
+      "sha256": "8e103d3ee69bd1617e1e94a8a7f08bf0c8b407a5b1ee04c53ee98a2e37601c46"
+    },
+    {
+      "file": "scripts/shorts-v2/visual.mjs",
+      "bytes": 4498,
+      "md5": "4de19ef8d1fe6e3aa168625460c48988",
+      "sha256": "fe9b0bb45c1950635a24ec6605581a87c85f1d142f18e8d93fa20e18d9747f55"
+    },
+    {
+      "file": "scripts/shorts-v2/wrap-text.py",
+      "bytes": 470,
+      "md5": "c62b62090be52010a171077d9110cddb",
+      "sha256": "5795b4fad29653f4b832592c591955d0be2fd5649ee1703ef89ec4d82441ce4a"
+    },
+    {
+      "file": "tests/media/shorts-v2-media.test.mjs",
+      "bytes": 6024,
+      "md5": "24e7e806e47d101e2f301b3060c36ee6",
+      "sha256": "3aee5725c3aa4ef5a20a98662712234f331708480b30967ac37330cb77743764"
+    },
+    {
+      "file": "tests/shorts-v2-round3.test.mjs",
+      "bytes": 5945,
+      "md5": "51bbe10a53c86383ad19b694d3bdb5ee",
+      "sha256": "31b22e501b05281badd7fe31995d47083e2aec543088b9ab969598c825485c7f"
+    },
+    {
+      "file": "tests/shorts-v2.test.mjs",
+      "bytes": 7744,
+      "md5": "bf6c3856cb1ed7727bfe626631f5a41e",
+      "sha256": "333e520e4b6b7288e343e08ea58d3b8ffcf6ed8a44d00d178a56fc235e7b2eb1"
+    },
+    {
+      "file": "docs/f1/shorts-padrao-v2.md",
+      "bytes": 11872,
+      "md5": "efda4bd3c05743809b3e8093430b2578",
+      "sha256": "367f789ec958ef2b10636e544c79c79b288cee9ef45a1b0cb6c989113d85a643"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-12-dica-contato.png",
+      "bytes": 284685,
+      "md5": "f96d083285edf2824aaa17cd2b69d7cd",
+      "sha256": "d7d4e0031762553b02d1f1d1a134a11fdae7994996fd04df95fc55e2da02a00d"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-12-dica-legendas.ass",
+      "bytes": 5376,
+      "md5": "49293fbd2639adb3c9f19c1ca89e4423",
+      "sha256": "bc59fb24f7fd742d1dee2e97e7c4a76f4ee9c8701f2d76b77fb4971005266926"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-12-dica-qc.json",
+      "bytes": 17082,
+      "md5": "2e31d86c4e720e0e19d0297ed28c10a2",
+      "sha256": "45d62c0db4208e87d6f78a9884d7bdae42920931d1634fc5d2aa844ae8f8a053"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-12-dica-roteiro.txt",
+      "bytes": 463,
+      "md5": "5b7bcdc2448d1b135e20982b7c3b12ef",
+      "sha256": "3b950c48c859aeef4c4cfc38ee47eab439536dfbdb82a77985fce027e6d3e74a"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-12-dica-scenes.json",
+      "bytes": 1515,
+      "md5": "e23375fb8412080ed07217e4c99ec69c",
+      "sha256": "ad8a462018080caf0c6924b2f32145ebb02916813c20880f3717969cbe44d5aa"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-12-dica.mp4",
+      "bytes": 1358599,
+      "md5": "3ea2ec045df50e4d741109f11d423cd9",
+      "sha256": "66940c1d47619dc31ea95ae29af499c9a5db2b64672de6ab0b85de808b399d05"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-13-calc-contato.png",
+      "bytes": 284126,
+      "md5": "8e8ad9130f844503834e03cb53c7092a",
+      "sha256": "653e65b9324ea4ab400fc54e572aeaa7e9be09318767b0d7d47e8321c4da6edb"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-13-calc-legendas.ass",
+      "bytes": 5420,
+      "md5": "3aa4ab4938e7316ad03cfa8f734ce481",
+      "sha256": "870e429b3e992093c973e9ead0defe514644030ec120a382664a39aefc17025a"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-13-calc-qc.json",
+      "bytes": 17431,
+      "md5": "3e2238cb05631918df4e6d80248d6b8e",
+      "sha256": "459efb9daf603e8a639b06ece985f29e349efd16f6e70abeca12758d7f60be07"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-13-calc-roteiro.txt",
+      "bytes": 444,
+      "md5": "79e407e1c397a53a02c3634c2749a4c9",
+      "sha256": "643b530575618173e9058756ebfbd46f589a3895d9260c7457eaed6ed8c75821"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-13-calc-scenes.json",
+      "bytes": 1436,
+      "md5": "7d827c509fb1e241fcd07fd90c9e1c15",
+      "sha256": "7686c9c3c4c752dac4fc91731193a68cbe2b96fc235408cc180c0a0df5f6d8eb"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-13-calc.mp4",
+      "bytes": 1357502,
+      "md5": "4dcc95e764ba347c6945d4cfdd053846",
+      "sha256": "be2272a839c2a055f2be626518966c272721a41e1567d14492a7ee85f1627c6a"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-14-oferta-contato.png",
+      "bytes": 289444,
+      "md5": "c509a24d2bb4bf5f91dca2e6a0da54ae",
+      "sha256": "38fc60b51d8540aed299684f6c4b4d12a2f53567c07ca42be47a379f46a8f861"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-14-oferta-legendas.ass",
+      "bytes": 5302,
+      "md5": "ca8ce746c26d52400130134897c5afb9",
+      "sha256": "101599388dec58bfeb0cad150985d8e713a3c0f4b1bc14fd95b6b792b176a441"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-14-oferta-qc.json",
+      "bytes": 16925,
+      "md5": "5be54a05182f12333fd64162595fed9a",
+      "sha256": "42276c3616dddef19e00c7d674e1d620c3a934ffccd5a1f7d6a67801220e06b3"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-14-oferta-roteiro.txt",
+      "bytes": 452,
+      "md5": "9f3bae8c069eb0df386c6074ddbb28ab",
+      "sha256": "1b31ebb51b7c71e82d26d33ee12461ce1a0788156299844a97b1386763e485bd"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-14-oferta-scenes.json",
+      "bytes": 1695,
+      "md5": "134b7343d9e1d5ecade3604e6a270d1e",
+      "sha256": "2e1948f1a2e415ef4c9958ffad5e9db5f03eece0b6b608f2e6c5e0a66260ff5c"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/2026-11-14-oferta.mp4",
+      "bytes": 1371647,
+      "md5": "2af0e802bf8332de16e6a69e06fb254d",
+      "sha256": "b94d134c4931769b751f797fad131fba60803dcbf26cb38f169c7aa1eca4b60b"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/lotes-testes.json",
+      "bytes": 6768,
+      "md5": "e217f8c8d121d68675eab0bf7f99b7cf",
+      "sha256": "7276e0c0d47c8524037a9f962ed484debc2d580a36c33242e8dc8309c0c62128"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/midia-lote-1.txt",
+      "bytes": 365,
+      "md5": "4fe2e53513bf3850dcea72b0b1c42e36",
+      "sha256": "6599d0ba08847a6c17c02f0bdfa1ba8d01aeafe3ffa7970818c13bc258d97177"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/midia-lote-2.txt",
+      "bytes": 388,
+      "md5": "616dcae56d7af176b0887f26544e01aa",
+      "sha256": "02b059319a8c565a1dbaf63a266f8ca2f73d8861705e4936f7feeffdb38fd205"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/midia-lote-3.txt",
+      "bytes": 384,
+      "md5": "20e5169e4edc8b39d129437e749cdbdb",
+      "sha256": "f12a1a83bc8c66a102dc56f3efb319a61aa9fa4f95a4123e9a4f72efbb55c1ca"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/musicas.html",
+      "bytes": 3697,
+      "md5": "b3a95c61855c787a448f54b1c7000e27",
+      "sha256": "f5d27afbb0cf2bd7981af613ce6a84d7a8bb56752ab2b467e25a03178817e3c2"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/previews.html",
+      "bytes": 1311,
+      "md5": "e0eb1891b0131510a7920f1d3d05affd",
+      "sha256": "a92cc8f2de005a4b4ead320e6901aef82e67f3aa1d457b94e7a690d28c3fc17a"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/reports.json",
+      "bytes": 62016,
+      "md5": "442fef65df609713f0bc8d7ea7839ea4",
+      "sha256": "9adef4f6fbedab17317f2dffe58d35cec7e5a932893a52fb92007264efe25837"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/resultado.md",
+      "bytes": 4870,
+      "md5": "05e889d570982e65fe5b23d4c5e1fb67",
+      "sha256": "fbc05a217eb4359f5a1f8c1e14cfab10357ef790cbf3b8fbb8181a6c32a142c7"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/simulacao-180-dias.json",
+      "bytes": 404111,
+      "md5": "ea4ff24bce20e02432b037608b2d11a3",
+      "sha256": "208ec4eed956a46852c9226ad8d53750cadbe62baa425f92a3f9d500f7873083"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/testes-lote-1.txt",
+      "bytes": 54345,
+      "md5": "7cce04017558069aedfc94c80e22bb7b",
+      "sha256": "ddc56be2e4555fcd933bf7aafca9dd47cbf0b3c69ba66ea9e9952397e2bffcca"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/testes-lote-2.txt",
+      "bytes": 45915,
+      "md5": "2b62be54ecba42b7e4f44508e62abc60",
+      "sha256": "651f8cedec1bb3bbbe88cce9e5abc608189831faa338ee8feabe0b54aba152db"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/testes-lote-3.txt",
+      "bytes": 40907,
+      "md5": "7d9f0aef4cf8c30a796fdeba667307a3",
+      "sha256": "f3aefc1434e62b106a859e6f8230f126a6bfc7d7e1b90dcb46fe32c048f351e3"
+    },
+    {
+      "file": "docs/f1/evidencias/shorts-v2-rodada3/testes-lote-4.txt",
+      "bytes": 76123,
+      "md5": "d19fce468d1996569ffba94d2711f29f",
+      "sha256": "5a7f51fa16f293b86bb725d94592ca245c71d4f5aabbf1bdd45980ae39b770d7"
+    }
+  ]
+}

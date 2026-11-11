@@ -1,0 +1,65 @@
+[
+  {
+    "index": 0,
+    "text": "Você está chamando markup de margem na hora de comparar?",
+    "start": 0,
+    "end": 3.984375,
+    "from": 0,
+    "to": 10,
+    "title": ""
+  },
+  {
+    "index": 1,
+    "text": "Separe o preço da venda e o custo considerado nesse cálculo.",
+    "start": 3.984375,
+    "end": 8.3671875,
+    "from": 10,
+    "to": 21,
+    "title": "PASSO 1 de 4"
+  },
+  {
+    "index": 2,
+    "text": "Subtraia o custo do preço para identificar a diferença entre eles.",
+    "start": 8.3671875,
+    "end": 12.75,
+    "from": 21,
+    "to": 32,
+    "title": "PASSO 2 de 4"
+  },
+  {
+    "index": 3,
+    "text": "Divida essa diferença pelo preço, mantendo a mesma base de valores.",
+    "start": 12.75,
+    "end": 17.1328125,
+    "from": 32,
+    "to": 43,
+    "title": "PASSO 3 de 4"
+  },
+  {
+    "index": 4,
+    "text": "Compare com a calculadora antes de confundir esse percentual com markup.",
+    "start": 17.1328125,
+    "end": 21.515625,
+    "from": 43,
+    "to": 54,
+    "title": "PASSO 4 de 4"
+  },
+  {
+    "index": 5,
+    "text": "A conferência ajuda a distinguir as duas formas de calcular percentuais.",
+    "start": 21.515625,
+    "end": 25.857142857142858,
+    "from": 54,
+    "to": 65,
+    "title": "NA PRÁTICA"
+  },
+  {
+    "index": 6,
+    "text": "Kit completo no link da descrição.",
+    "start": 25.857142857142858,
+    "end": 29,
+    "from": 65,
+    "to": 71,
+    "title": "KIT COMPLETO"
+  }
+]

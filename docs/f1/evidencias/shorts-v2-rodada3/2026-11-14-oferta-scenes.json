@@ -1,0 +1,74 @@
+[
+  {
+    "index": 0,
+    "text": "Em seu serviço, parece difícil começar pequeno?",
+    "start": 0,
+    "end": 2.879032258064516,
+    "from": 0,
+    "to": 7,
+    "title": ""
+  },
+  {
+    "index": 1,
+    "text": "Teste com dados fictícios antes de mudar a rotina.",
+    "start": 2.879032258064516,
+    "end": 6.580645161290323,
+    "from": 7,
+    "to": 16,
+    "title": "PASSO 1 de 4"
+  },
+  {
+    "index": 2,
+    "text": "Escolha apenas um orçamento simples para testar hoje.",
+    "start": 6.580645161290323,
+    "end": 9.870967741935484,
+    "from": 16,
+    "to": 24,
+    "title": "PASSO 2 de 4"
+  },
+  {
+    "index": 3,
+    "text": "Informe à inteligência artificial os limites concretos de seu serviço.",
+    "start": 9.870967741935484,
+    "end": 13.983870967741936,
+    "from": 24,
+    "to": 34,
+    "title": "PASSO 3 de 4"
+  },
+  {
+    "index": 4,
+    "text": "Revise o rascunho antes de copiar para a pasta de orçamentos.",
+    "start": 13.983870967741936,
+    "end": 18.508064516129032,
+    "from": 34,
+    "to": 45,
+    "title": "PASSO 4 de 4"
+  },
+  {
+    "index": 5,
+    "text": "Assim você experimenta uma tarefa sem mudar toda a operação.",
+    "start": 18.508064516129032,
+    "end": 22.620967741935484,
+    "from": 45,
+    "to": 55,
+    "title": "NA PRÁTICA"
+  },
+  {
+    "index": 6,
+    "text": "Confira esse orçamento na pasta de orçamentos amanhã.",
+    "start": 22.620967741935484,
+    "end": 25.857142857142858,
+    "from": 55,
+    "to": 63,
+    "title": "NA PRÁTICA"
+  },
+  {
+    "index": 7,
+    "text": "Kit completo no link da descrição.",
+    "start": 25.857142857142858,
+    "end": 29,
+    "from": 63,
+    "to": 69,
+    "title": "KIT COMPLETO"
+  }
+]
