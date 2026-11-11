@@ -50,6 +50,7 @@ tests/experiments.test.mjs 5
 tests/f1-bluesky-kv.test.mjs 11
 tests/f1-meta-identity.test.mjs 10
 tests/f1b-bluesky-recovery.test.mjs 5
+tests/f1b-shorts-corruption.test.mjs 4
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5
@@ -144,7 +145,9 @@ tests/sales-trust-consistency.test.mjs 4
 tests/sales-worker-differential.test.mjs 6
 tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
-tests/short-crosspost.test.mjs 8
+tests/short-crosspost.test.mjs 10
+tests/shorts-retomada-mutantes.test.mjs 47
+tests/shorts-retomada.test.mjs 15
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2
 tests/site-chat-no-synthetic-traffic.test.mjs 5
