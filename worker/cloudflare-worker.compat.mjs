@@ -45,6 +45,7 @@ import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
+import { handleOwnerChat, runOwnerChatSentinel } from "./owner-chat.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
@@ -272,6 +273,8 @@ const wrapped = {
       });
       return chat || new Response("not_found", { status: 404 });
     }
+    // Chat do Proprietário: Basic auth do console, escrita só same-origin (worker/owner-chat.mjs).
+    if (url.pathname === "/admin/proprietario" || url.pathname.startsWith("/api/admin/owner-chat/")) return handleOwnerChat(request, normalized, { isAdminAuthorized });
     if (url.pathname.startsWith("/api/admin/site-chat/") || url.pathname === "/admin/chat-protocolos") return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
@@ -735,6 +738,13 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
         console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status,code:x.code||null}))}));
       } catch {
         console.error("acquisition_cycle_failed");
+      }
+      // Sentinela do Chat do Proprietário: logo depois do motor, com os resultados do ciclo.
+      try {
+        const chat=await runOwnerChatSentinel(normalized,new Date());
+        console.info("owner_chat_sentinel",JSON.stringify(chat));
+      } catch {
+        console.error("owner_chat_sentinel_failed");
       }
     } else {
     try {
