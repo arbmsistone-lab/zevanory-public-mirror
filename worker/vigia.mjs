@@ -78,8 +78,11 @@ export function observePostSale(read, now) {
   if (now - at > 3 * HOUR) return []; // vencido = desconhecido
   const out = [{ key: "vigia:sem-dados:pos-venda", health: "saudavel", at }];
   const code = POST_SALE_CODES[v.codigo] || "código não reconhecido";
-  out.push(v.resultado === "inconclusivo" ? { key: "pos-venda:inconclusivo", health: "falha", at, text: `O pós-venda não conseguiu concluir (${code}). Nenhum e-mail foi reenviado às cegas.`, fix: "Nível 1: nova tentativa no próximo ciclo; se persistir, nível 2." } : { key: "pos-venda:inconclusivo", health: "saudavel", at });
-  out.push(v.resultado === "reconciliacao_pendente" ? { key: "pos-venda:pendente", health: "falha", at, text: `${v.pendentes} e-mail(s) do pós-venda com entrega não confirmada; estou conferindo, sem reenviar.`, fix: "Nível 1: reconciliação automática a cada hora." } : { key: "pos-venda:pendente", health: "saudavel", at });
+  // Saúde só por igualdade EXPLÍCITA (NC-G6-1025-02): nenhum valor fora do esperado vira saudável por exclusão.
+  if (v.resultado === "inconclusivo") out.push({ key: "pos-venda:inconclusivo", health: "falha", at, text: `O pós-venda não conseguiu concluir (${code}). Nenhum e-mail foi reenviado às cegas.`, fix: "Nível 1: nova tentativa no próximo ciclo; se persistir, nível 2." });
+  else if (v.resultado === "ok" || v.resultado === "reconciliacao_pendente") out.push({ key: "pos-venda:inconclusivo", health: "saudavel", at });
+  if (v.resultado === "reconciliacao_pendente") out.push({ key: "pos-venda:pendente", health: "falha", at, text: `${v.pendentes} e-mail(s) do pós-venda com entrega não confirmada; estou conferindo, sem reenviar.`, fix: "Nível 1: reconciliação automática a cada hora." });
+  else if (v.resultado === "ok") out.push({ key: "pos-venda:pendente", health: "saudavel", at });
   return out;
 }
 

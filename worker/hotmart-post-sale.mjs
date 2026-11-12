@@ -130,7 +130,7 @@ export const POST_SALE_STATUS_CODES=Object.freeze({
  inconclusivo:Object.freeze(['not_configured','quota_ledger_unreadable','post_sale_inconclusive']),
  reconciliacao_pendente:Object.freeze(['reconciliation_pending','provider_restricted'])
 });
-export const validPostSaleStatusShape=v=>object(v)&&Object.keys(v).sort().join(',')==='codigo,em,pendentes,resultado'&&typeof v.em==='string'&&Number.isFinite(Date.parse(v.em))&&new Date(Date.parse(v.em)).toISOString()===v.em&&Object.hasOwn(POST_SALE_STATUS_CODES,v.resultado)&&typeof v.codigo==='string'&&POST_SALE_STATUS_CODES[v.resultado].includes(v.codigo)&&Number.isSafeInteger(v.pendentes)&&v.pendentes>=0&&(v.resultado==='reconciliacao_pendente'?v.pendentes>0:v.pendentes===0);
+export const validPostSaleStatusShape=v=>object(v)&&Object.keys(v).sort().join(',')==='codigo,em,pendentes,resultado'&&typeof v.em==='string'&&Number.isFinite(Date.parse(v.em))&&new Date(Date.parse(v.em)).toISOString()===v.em&&typeof v.resultado==='string'&&Object.hasOwn(POST_SALE_STATUS_CODES,v.resultado)&&typeof v.codigo==='string'&&POST_SALE_STATUS_CODES[v.resultado].includes(v.codigo)&&Number.isSafeInteger(v.pendentes)&&v.pendentes>=0&&(v.resultado==='reconciliacao_pendente'?v.pendentes>0:v.pendentes===0);
 const statusShape=validPostSaleStatusShape;
 export async function readHotmartPostSaleStatus(kv,{now=Date.now()}={}){
  try{const value=await read(kv,STATUS,statusShape);if(!value)return {status:'NAO_EXECUTADO',value:null};if(Date.parse(value.em)>now||now-Date.parse(value.em)>=7*DAY)throw Error('stale_status');return {status:'ok',value};}
