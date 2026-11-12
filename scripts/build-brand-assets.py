@@ -91,6 +91,9 @@ def main():
         exports[name]=render((SRC/source).read_bytes(),w,h,OUT/name)
     for name,w,h,a,b,c in POSTS:
         exports[name]=render(post_svg(w,h,a,b,c).encode(),w,h,OUT/name)
+    proof=(ROOT/"brand"/"social"/"zevanory-proof-dec23.jpg").read_bytes()
+    (OUT/"zevanory-proof-dec23.jpg").write_bytes(proof)
+    exports["zevanory-proof-dec23.jpg"]=hashlib.sha256(proof).hexdigest()
     for name in exports:
         LIVE.mkdir(parents=True,exist_ok=True)
         shutil.copyfile(OUT/name,LIVE/name)
