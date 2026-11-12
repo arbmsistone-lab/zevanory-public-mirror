@@ -21,9 +21,9 @@ export const TABLE_C = Object.freeze({
   "lucro-e-caixa": ["Lucro & Caixa", 147], "combo-ia-vendas": ["Combo IA + Vendas", 157],
   "negocio-completo": ["Negócio Completo", 247],
 });
-// Valores derivados que o próprio material declara (soma separada, economia, comissão de 50%).
-export const DERIVED = Object.freeze({ "combo-ia-vendas": [194, 37, 78.5], "negocio-completo": [341, 94, 123.5],
-  "ia-na-pratica": [48.5], "vendas-na-pratica": [48.5], "lucro-e-caixa": [73.5] });
+// Valores derivados que o próprio material declara (soma separada, economia, comissão de 30% de data/affiliates.json).
+export const DERIVED = Object.freeze({ "combo-ia-vendas": [194, 37, 47.1], "negocio-completo": [341, 94, 74.1],
+  "ia-na-pratica": [29.1], "vendas-na-pratica": [29.1], "lucro-e-caixa": [44.1] });
 // Rotas especiais: a página 404 é servida pelo Worker em qualquer rota desconhecida (status 404);
 // /conteudo-pronto é interceptada pelo Worker (DEC-04: tombstone 404, igual ao arquivo gerado);
 // index.html é a cópia física do catálogo, servida em /index.html (a raiz / reescreve para /solucoes).
