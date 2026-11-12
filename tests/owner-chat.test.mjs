@@ -4,6 +4,7 @@ import { writeFile, rm } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
 import * as chat from "../worker/owner-chat.mjs";
+import { fakeSql } from "./helpers/owner-chat-fakes.mjs";
 
 const ORIGIN = "https://zevanory.api.br";
 const PAUSE = "zpc:creative-autonomy:paused:v1";
@@ -15,35 +16,6 @@ function memKv(init = {}, { failGet = () => false, failPut = () => false } = {})
   return { data, writes, get reads() { return reads; },
     get: async (k) => { reads++; if (failGet(k)) throw new Error("kv"); return data.has(k) ? data.get(k) : null; },
     put: async (k, v) => { if (failPut(k)) throw new Error("kv"); writes.push(k); data.set(k, String(v)); } };
-}
-// Banco falso que reproduz a semântica das consultas marcadas (chave única, UPDATE condicional atômico).
-function fakeSql() {
-  const rows = []; let seq = 0; const ai = new Map(); const log = []; let clock = Date.parse("2026-11-12T23:00:00Z");
-  const lock = { holder: null, since: null }; const neurons = { n: 0, fail: false };
-  const out = (r) => ({ id: String(r.id), created_at: new Date(r.created_at).toISOString(), sender: r.sender, kind: r.kind, body: r.body, action_type: r.action_type, action_expires_at: r.action_expires_at ? new Date(r.action_expires_at).toISOString() : null, action_state: r.action_state });
-  return { rows, log, lock, neurons, tick: (ms) => { clock += ms; }, query: async (text, p = []) => {
-    const tag = (/\/\*owner-chat:([a-z-]+)\*\//.exec(text) || [])[1] || (/\/\*chat:neurons\*\//.test(text) ? "neurons" : /^\s*(create|alter)\b/i.test(text) ? "ddl" : "?");
-    log.push(tag);
-    if (tag === "ddl") return [];
-    if (tag === "insert") {
-      if (p[5] !== null && rows.some((r) => r.dedupe_key === p[5])) { seq++; return []; }
-      const r = { id: ++seq, created_at: clock, sender: p[0], kind: p[1], body: p[2], action_type: p[3], action_expires_at: p[3] ? clock + p[4] * 1000 : null, action_state: p[3] ? "proposta" : null, dedupe_key: p[5] };
-      rows.push(r); return [out(r)];
-    }
-    if (tag === "feed") return rows.slice().sort((a, b) => b.id - a.id).slice(0, p[0]).map(out);
-    if (tag === "feed-after") return rows.filter((r) => r.id > Number(p[0])).sort((a, b) => a.id - b.id).slice(0, p[1]).map(out);
-    if (tag === "lock") { if (lock.holder !== null) return []; lock.holder = String(p[0]); lock.since = clock; return [{ holder: lock.holder }]; }
-    if (tag === "unlock") { if (lock.holder === String(p[0])) { lock.holder = null; lock.since = null; } return []; }
-    if (tag === "lock-read") return lock.holder === null ? [] : [{ holder: lock.holder, age: Math.floor((clock - lock.since) / 1000) }];
-    if (tag === "neurons") { if (neurons.fail) throw new Error("db"); if (neurons.n + p[1] > p[2]) return []; neurons.n += p[1]; return [{ n: neurons.n }]; }
-    if (tag === "claim") { const r = rows.find((x) => String(x.id) === p[0] && x.action_state === "proposta" && x.action_expires_at > clock); if (!r) return []; r.action_state = "executando"; return [{ action_type: r.action_type }]; }
-    if (tag === "action-state") { const r = rows.find((x) => String(x.id) === p[0] && x.action_type); return r ? [{ action_state: r.action_state, action_type: r.action_type, live: r.action_expires_at > clock }] : []; }
-    if (tag === "settle") { const r = rows.find((x) => String(x.id) === p[0] && ["executando", "incerto"].includes(x.action_state)); if (r) r.action_state = p[1]; return []; }
-    if (tag === "ai-reserve") { const n = ai.get(p[0]) || 0; if (n >= p[1]) return []; ai.set(p[0], n + 1); return [{ n: n + 1 }]; }
-    if (tag === "retention") { const before = rows.length; for (let i = rows.length - 1; i >= 0; i--) if (rows[i].created_at < clock - 180 * 86400000) rows.splice(i, 1); return [{ n: before - rows.length }]; }
-    if (tag === "retention-ai") { let n = 0; for (const d of [...ai.keys()]) if (Date.parse(d) < clock - 60 * 86400000) { ai.delete(d); n++; } return [{ n }]; }
-    throw new Error("consulta desconhecida: " + text.slice(0, 60));
-  } };
 }
 const snap = (rows) => async () => ({ day: "2026-11-12", today: rows });
 const ledger = (approved, gross, extra = {}) => JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved, grossCents: gross, refunded: 0 }, byDay: { "2026-11-12": { approved, grossCents: gross } }, ...extra });
@@ -243,7 +215,7 @@ test("ação aplicada e falha ao gravar o recibo: INCERTO, sem 'não executado',
   assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "incerto");
   const p2 = (await send(h, "pausar"))[1];
   assert.equal((await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p2.id } }))).status, 409);
-  h.sql.tick(61000);
+  h.sql.tick(91000);
   await chat.reconcileActions(h.sql, kv);
   assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "executado");
   assert.ok(h.sql.rows.some((x) => /Conferi: a ordem foi aplicada/.test(x.body)));
@@ -256,7 +228,7 @@ test("ação incerta não aplicada: conferência diz NÃO aplicada; leitura indi
   const p = (await send(h, "retomar"))[1];
   kv.put = async (k, v) => { if (k === PAUSE) throw new Error("rejeitado"); kv.data.set(k, String(v)); };
   assert.equal((await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }))).status, 202);
-  h.sql.tick(61000);
+  h.sql.tick(91000);
   const get = kv.get; kv.get = async (k) => { if (k === PAUSE) throw new Error("kv"); return get(k); };
   await chat.reconcileActions(h.sql, kv);
   assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "incerto");
@@ -272,10 +244,11 @@ test("falha no recibo depois do efeito deixa 'executando' com trava; a conferên
   const h = harness({ kv });
   const p = (await send(h, "retomar"))[1];
   const q = h.sql.query; h.sql.query = async (t, a) => { if (/owner-chat:settle/.test(t)) throw new Error("db"); return q(t, a); };
-  assert.equal((await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }))).status, 503);
+  const r = await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }));
+  assert.equal(r.status, 202); assert.equal((await r.json()).state, "incerto", "erro depois do efeito nunca vira 'não executado'");
   h.sql.query = q;
   assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "executando"); assert.equal(h.sql.lock.holder, p.id);
-  h.sql.tick(61000); await chat.reconcileActions(h.sql, kv);
+  h.sql.tick(91000); await chat.reconcileActions(h.sql, kv);
   assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "executado");
 });
 
@@ -286,23 +259,45 @@ test("propostas opostas clicadas ao mesmo tempo: só uma executa (NC-CX-1030-02)
   assert.deepEqual(st.map((r) => r.status).sort(), [200, 409]);
 });
 
-test("feed com cursor: falha no marcador, commit fora de ordem e mais de 500 mensagens (NC-CX-1030-05)", async () => {
+test("feed por sequência de commit: 1.100 mensagens chegam todas, em ordem, sem pular nem repetir (NC-CX-1030-05)", async () => {
   const kv = memKv({ [PAUSE]: "0", [chat.OWNER_CHAT_VERSION_KEY]: "velha" }, { failPut: (k) => k === chat.OWNER_CHAT_VERSION_KEY });
   const h = harness({ kv });
-  await send(h, "status");
-  const forced = await (await h.call(req("/api/admin/owner-chat/feed?after=0"))).json();
-  assert.equal(forced.messages.length, 2);
-  h.sql.rows.push({ id: 0, created_at: Date.now(), sender: "zevanory", kind: "alerta", body: "tardio", action_type: null, action_expires_at: null, action_state: null, dedupe_key: "t" });
-  const again = await (await h.call(req("/api/admin/owner-chat/feed?after=2"))).json();
-  assert.ok(again.messages.some((m) => m.text === "tardio"));
-  for (let i = 0; i < 520; i++) h.sql.rows.push({ id: 100 + i, created_at: Date.now(), sender: "owner", kind: "chat", body: "m" + i, action_type: null, action_expires_at: null, action_state: null, dedupe_key: null });
-  const p1 = await (await h.call(req("/api/admin/owner-chat/feed?after=2"))).json();
-  assert.equal(p1.more, true);
-  const last = p1.messages.filter((m) => m.text.startsWith("m")).at(-1).id;
-  const p2 = await (await h.call(req("/api/admin/owner-chat/feed?after=" + last))).json();
-  assert.equal(p2.more, false); assert.ok(p2.messages.some((m) => m.text === "m519"));
+  const first = await (await h.call(req("/api/admin/owner-chat/feed"))).json();
+  assert.equal(first.cursor, "0");
+  for (let i = 0; i < 550; i++) await send(h, "ajuda");
+  // o cliente segue SÓ o cursor devolvido pelo servidor, como a página faz
+  let cur = first.cursor, seen = [], polls = 0;
+  for (;;) { const j = await (await h.call(req("/api/admin/owner-chat/feed?after=" + cur))).json(); seen.push(...j.messages.map((m) => m.seq)); cur = j.cursor; polls++; if (!j.more) break; }
+  assert.equal(seen.length, 1100); assert.equal(new Set(seen).size, 1100); assert.equal(polls, 3);
+  assert.deepEqual(seen.map(Number), [...seen.map(Number)].sort((a, b) => a - b));
+  const again = await (await h.call(req("/api/admin/owner-chat/feed?after=" + cur))).json();
+  assert.deepEqual([again.messages.length, again.cursor], [0, cur]);
+  const src = readTextNormalized(new URL("../worker/owner-chat.mjs", import.meta.url));
+  assert.match(src, /with c as \(insert into zevanory_owner_chat_seq \(k, n\) values \(1, 1\)\s+on conflict \(k\) do update set n = zevanory_owner_chat_seq\.n \+ 1 returning n\)/);
+  assert.match(src, /where seq > \$1::bigint order by seq asc/); assert.doesNotMatch(src, /RECENT_OVERLAP/);
   const page = await (await h.call(req("/api/admin/owner-chat/app"))).text();
-  assert.match(page, /qs\.set\('after',maxId\)/); assert.match(page, /if\(j\.more\)setTimeout\(poll,0\)/);
+  assert.match(page, /qs\.set\('after',cur\)/); assert.match(page, /cur=j\.cursor/); assert.doesNotMatch(page, /maxId/);
+});
+
+test("ação: rótulo segue o estado devolvido; 202 incerto nunca aparece como 'Executado' (NC-CX-1030-02)", async () => {
+  const page = await (await harness().call(req("/api/admin/owner-chat/app"))).text();
+  assert.match(page, /k\.textContent=j\.state==='executado'\?'Executado':j\.state==='incerto'\?'Resultado incerto/);
+  assert.doesNotMatch(page, /r\.ok\?'Executado'/);
+});
+
+test("ação: nota gravada antes de soltar a trava; falha na nota = conferência avisa; ordem sem efeito é dita como tal (NC-CX-1030-02)", async () => {
+  const kv = memKv({ [PAUSE]: "1" }); const h = harness({ kv });
+  const p = (await send(h, "retomar"))[1];
+  const q = h.sql.query; h.sql.query = async (t, a) => { if (/owner-chat:insert/.test(t) && a[5] === "acao:" + p.id) throw new Error("db"); return q(t, a); };
+  const r = await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }));
+  h.sql.query = q;
+  assert.equal(r.status, 202); assert.equal(h.sql.lock.holder, p.id, "trava segura até a confirmação");
+  h.sql.tick(91000); kv.data.set(PAUSE, "1"); // mesmo que o valor mude depois, o recibo gravado manda
+  await chat.reconcileActions(h.sql, kv);
+  assert.ok(h.sql.rows.some((x) => /Conferi: a ordem foi aplicada/.test(x.body))); assert.equal(h.sql.lock.holder, null);
+  const h2 = harness({ kv: memKv({ [PAUSE]: "0" }) }); const p2 = (await send(h2, "retomar"))[1];
+  const j2 = await (await h2.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p2.id } }))).json();
+  assert.equal(j2.state, "executado"); assert.match(j2.messages[0].text, /Já estava assim/); assert.equal(h2.kv.writes.filter((k) => k === PAUSE).length, 0);
 });
 
 test("orçamento compartilhado de neurônios: esgotado ou indisponível = zero IA, mesmo com saldo local (NC-CX-1030-06)", async () => {
@@ -387,11 +382,20 @@ test("mutantes morrem", async () => {
     await m.classifyWithAi({ AI: { run: async () => { calls++; return { response: "status" }; } } }, sql, "x", "2026-11-12");
     return calls === 0;
   });
-  await mutant("feed-sem-sobreposicao", "const byId = new Map([...recent, ...page.slice(0, FEED_PAGE)]", "const byId = new Map([...page.slice(0, FEED_PAGE)]", async (m) => {
+  await mutant("cursor-salta", "cursor: rows.length ? rows.at(-1).seq : after, more", "cursor: rows.length ? String(Number(rows.at(-1).seq) + 1) : after, more", async (m) => {
     const h = harness(); const H2 = (r) => m.handleOwnerChat(r, h.env, h.deps);
-    await H2(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" } }));
-    h.sql.rows.push({ id: 0, created_at: Date.now(), sender: "zevanory", kind: "alerta", body: "tardio", action_type: null, action_expires_at: null, action_state: null, dedupe_key: "t" });
-    return (await (await H2(req("/api/admin/owner-chat/feed?after=2"))).json()).messages.some((x) => x.text === "tardio");
+    for (let i = 0; i < 3; i++) await H2(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "ajuda" } }));
+    const a = await (await H2(req("/api/admin/owner-chat/feed?after=0"))).json();
+    for (let i = 0; i < 2; i++) await H2(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "ajuda" } }));
+    const b = await (await H2(req("/api/admin/owner-chat/feed?after=" + a.cursor))).json();
+    return a.messages.length + b.messages.length === 10;
+  });
+  await mutant("nota-depois-da-trava", "          const note = await insertMessage(sql, { from: \"zevanory\", kind: \"sistema\", text: (already ? \"✅ Já estava assim. \" : \"✅ \") + def.done, dedupe: \"acao:\" + id });\n          await release();", "          await release();\n          const note = await insertMessage(sql, { from: \"zevanory\", kind: \"sistema\", text: (already ? \"✅ Já estava assim. \" : \"✅ \") + def.done, dedupe: \"acao:\" + id });", async (m) => {
+    const kv = memKv({ [PAUSE]: "1" }); const h = harness({ kv }); const H2 = (r) => m.handleOwnerChat(r, h.env, h.deps);
+    const p = (await (await H2(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "retomar" } }))).json()).messages[1];
+    const q = h.sql.query; h.sql.query = async (t, a) => { if (/owner-chat:insert/.test(t) && a[5] === "acao:" + p.id) throw new Error("db"); return q(t, a); };
+    await H2(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } })); h.sql.query = q;
+    return h.sql.lock.holder === p.id;
   });
   await mutant("pausa-sem-motivo", "facts.pause === \"pausada\" ? \"pausado\"", "false ? \"pausado\"", async (m) =>
     /PAUSADA/.test(m.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "pausada", snap: { today: [{ channel: "bluesky", status: "sem dados" }] } }).find((s) => s.channel === "bluesky")?.text || ""));

@@ -15,8 +15,11 @@
 //   fechada; toda resposta exibida é determinística e vem dos dados (NC-03). Cota diária reservada no banco
 //   ANTES da chamada (no máximo 40/dia; NC-06).
 // * Livro de vendas validado campo a campo (inteiros seguros >= 0); qualquer desvio = "ilegível" (NC-04).
-// * Feed devolve as últimas 100 mensagens por id e o cliente deduplica por id: commits fora de ordem não somem
-//   atrás do cursor (NC-05). Marcador de versão no KV evita acordar o banco em cada consulta.
+// * Feed por SEQUÊNCIA DE COMMIT (NC-CX-1030-05, rodada 5): cada mensagem recebe seq de um contador numa linha
+//   única travada até o commit (UPSERT no mesmo comando do INSERT). Quem pega seq N espera o commit de N-1, então
+//   seq visível implica todas as menores visíveis: o cursor "seq > after" nunca pula commit atrasado. O servidor
+//   devolve o cursor (última seq da página); sem sobreposição que faça o cliente saltar. Marcador KV é só dica.
+
 // * Sentinela proativa (cron 5,35, depois do motor): canal esperado sem publicação depois do horário vira
 //   "CANAL PARADO" com o motivo (pausado, sem credencial, erro); venda aprovada nova vira aviso.
 import { acquisitionSnapshot, OWNER_DISABLED_CHANNELS } from "./acquisition-engine.mjs";
@@ -28,7 +31,7 @@ export const OWNER_CHAT_VERSION_KEY = "zpc:owner-chat:versao:v1";
 export const OWNER_CHAT_HINT_PREFIX = "zpc:owner-chat:avisados:";
 export const OWNER_CHAT_PATHS = Object.freeze({ page: "/admin/proprietario", app: "/api/admin/owner-chat/app" });
 export const AI_DAILY_LIMIT = 40;
-const MAX_TEXT = 1500, ACTION_TTL_SECONDS = 600, FEED_LIMIT = 100, FEED_PAGE = 500, RECENT_OVERLAP = 20, RECONCILE_AFTER_S = 60;
+const MAX_TEXT = 1500, ACTION_TTL_SECONDS = 600, FEED_LIMIT = 100, FEED_PAGE = 500, RECONCILE_AFTER_S = 90;
 export const EXPECTED_HOUR = Object.freeze({ blog: 9, bluesky: 19 });
 const TOLERANCE_H = 1;
 const AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8-fast";
@@ -52,24 +55,30 @@ const schemaReady = new WeakSet();
 export async function ensureOwnerChatSchema(sql) {
   if (schemaReady.has(sql)) return;
   await sql.query(`create table if not exists zevanory_owner_chat_messages (
-    id bigserial primary key, created_at timestamptz not null default now(), sender text not null, kind text not null,
+    id bigserial primary key, seq bigint not null unique, created_at timestamptz not null default now(), sender text not null, kind text not null,
     body text not null, action_type text, action_expires_at timestamptz, action_state text, dedupe_key text unique)`, []);
+  await sql.query(`create table if not exists zevanory_owner_chat_seq (
+    k smallint primary key, n bigint not null)`, []);
   await sql.query(`create table if not exists zevanory_owner_chat_ai_usage (
     day date primary key, n integer not null default 0)`, []);
   await sql.query(`create table if not exists zevanory_owner_chat_action_lock (
     k smallint primary key, holder bigint, since timestamptz)`, []);
   schemaReady.add(sql);
 }
-const ROW = "id::text as id, created_at, sender, kind, body, action_type, action_expires_at, action_state";
-const toMessage = (r) => ({ id: String(r.id), at: new Date(r.created_at).toISOString(), from: r.sender, kind: r.kind, text: r.body,
+const ROW = "id::text as id, seq::text as seq, created_at, sender, kind, body, action_type, action_expires_at, action_state";
+const toMessage = (r) => ({ id: String(r.id), seq: String(r.seq), at: new Date(r.created_at).toISOString(), from: r.sender, kind: r.kind, text: r.body,
   ...(r.action_type ? { action: { type: r.action_type, expiresAt: Date.parse(r.action_expires_at), state: r.action_state } } : {}) });
 
 async function insertMessage(sql, { from, kind, text, action = null, dedupe = null }) {
-  const rows = await sql.query(`/*owner-chat:insert*/ insert into zevanory_owner_chat_messages (sender, kind, body, action_type, action_expires_at, action_state, dedupe_key)
-    values ($1, $2, $3, $4, case when $4::text is null then null else now() + ($5::integer * interval '1 second') end, case when $4::text is null then null else 'proposta' end, $6)
+  // O contador é travado pelo UPSERT até o commit deste comando: seq segue a ordem de commit.
+  const rows = await sql.query(`/*owner-chat:insert*/ with c as (insert into zevanory_owner_chat_seq (k, n) values (1, 1)
+      on conflict (k) do update set n = zevanory_owner_chat_seq.n + 1 returning n)
+    insert into zevanory_owner_chat_messages (seq, sender, kind, body, action_type, action_expires_at, action_state, dedupe_key)
+    select c.n, $1, $2, $3, $4, case when $4::text is null then null else now() + ($5::integer * interval '1 second') end, case when $4::text is null then null else 'proposta' end, $6 from c
     on conflict (dedupe_key) do nothing returning ${ROW}`, [from, kind, String(text).slice(0, 4000), action, ACTION_TTL_SECONDS, dedupe]);
   return rows[0] ? toMessage(rows[0]) : null;
 }
+export async function insertOwnerMessage(sql, m) { await ensureOwnerChatSchema(sql); return insertMessage(sql, m); }
 async function bumpVersion(kv) { try { await kv?.put?.(OWNER_CHAT_VERSION_KEY, Date.now() + "-" + crypto.randomUUID().slice(0, 8), { expirationTtl: 30 * 86400 }); return true; } catch { return false; } }
 // O marcador KV é só otimização (NC-G6-1030-08): a página refaz a leitura completa no PostgreSQL pelo menos a cada
 // FEED_MAX_STALE_MS, então falha de atualização, colisão ou marcador velho nunca escondem mensagem por mais que isso.
@@ -108,6 +117,13 @@ export async function gatherFacts(env, now = new Date(), { snapshot = acquisitio
   return { day, hour, snap: obj(snap) && Array.isArray(snap.today) ? snap : null, sales, pause };
 }
 
+// Só códigos conhecidos do motor (worker/acquisition-engine.mjs) aparecem em texto; o resto vira categoria fixa
+// (NC-CX-1031-04: nada de texto livre que possa carregar segredo).
+export const KNOWN_CHANNEL_STATUS = Object.freeze(["publicado", "erro", "pausado", "desligado", "agendado", "aguardando credencial", "aguardando aprovação", "sem dados", "fora_da_agenda", "rascunho", "pending", "published", "sent"]);
+export const KNOWN_CHANNEL_CODES = Object.freeze(["blog_generation_failed", "creative_autopublish_paused", "digest_marker_unreadable", "digest_source_unreadable", "engine_exception", "history_unreadable", "kv_unavailable", "legacy_receipt_unreadable", "legacy_telegram_unverified", "owner_digest_unverified", "pause_unreadable", "receipt_unreadable", "status_unreadable", "draft_only_publication_disabled"]);
+const safeStatus = (v) => (KNOWN_CHANNEL_STATUS.includes(v) ? v : "status_nao_reconhecido");
+const safeCode = (v) => (v === null || v === undefined || v === "" ? null : KNOWN_CHANNEL_CODES.includes(v) ? v : "erro_nao_classificado");
+const safeLink = (v) => { try { const u = new URL(String(v)); return u.protocol === "https:" && !u.username && !u.password ? u.origin + u.pathname : null; } catch { return null; } };
 export function findStoppedChannels(facts) {
   if (!facts.snap) return [{ channel: "motor", reason: "snapshot_indisponivel", text: "Não consegui ler o estado de publicação de hoje." }];
   const out = [];
@@ -116,7 +132,7 @@ export function findStoppedChannels(facts) {
     const row = facts.snap.today.find((r) => r?.channel === channel);
     // A agenda é a do próprio motor (NC-G6-1030-10): dia sem publicação prevista chega como "fora_da_agenda".
     if (["publicado", "fora_da_agenda", "desligado"].includes(row?.status)) continue;
-    const reason = facts.pause === "pausada" ? "pausado" : row?.status === "aguardando credencial" ? "sem_credencial" : String(row?.error || row?.status || "sem_registro").replace(/[^a-z0-9_ ]/gi, "").slice(0, 60) || "sem_registro";
+    const reason = facts.pause === "pausada" ? "pausado" : row?.status === "aguardando credencial" ? "sem_credencial" : !row ? "sem_registro" : safeCode(row.error) || safeStatus(row.status);
     const why = reason === "pausado" ? "A autopublicação está PAUSADA" : reason === "sem_credencial" ? "A credencial do canal está ausente" : reason === "sem_registro" || reason === "sem dados" ? "O motor não registrou nenhuma execução hoje" : `Motivo: ${reason}`;
     out.push({ channel, reason, text: `${channel}: não publicou hoje (esperado às ${h}h). ${why}.` });
   }
@@ -124,7 +140,7 @@ export function findStoppedChannels(facts) {
 }
 function statusText(facts) {
   if (!facts.snap) return "Não consegui ler o estado de publicação agora. Tente de novo em alguns minutos.";
-  const lines = facts.snap.today.filter((r) => obj(r) && r.channel !== "whatsapp").map((r) => `• ${r.channel}: ${r.status}${r.link ? " — " + r.link : ""}${r.error && r.status !== "publicado" ? ` (${r.error})` : ""}`);
+  const lines = facts.snap.today.filter((r) => obj(r) && r.channel !== "whatsapp").filter((r) => Object.hasOwn(EXPECTED_HOUR, r.channel) || r.channel === "telegram").map((r) => { const link = safeLink(r.link), code = safeCode(r.error); return `• ${r.channel}: ${safeStatus(r.status)}${link ? " — " + link : ""}${code && r.status !== "publicado" ? ` (${code})` : ""}`; });
   return [`Hoje (${facts.day}), publicações:`, ...lines, `Autopublicação: ${facts.pause}.`].join("\n");
 }
 function salesText(facts) {
@@ -225,7 +241,7 @@ export async function runOwnerChatRetention(env, { sqlFactory } = {}) {
 }
 
 // ---------- Ações: conferência do resultado ----------
-const INCERTO_TEXT = "⚠️ Resultado incerto: a ordem pode ter sido aplicada. Vou conferir sozinho em até 1 minuto e te aviso. Não peça de novo agora.";
+const INCERTO_TEXT = "⚠️ Resultado incerto: a ordem pode ter sido aplicada. Vou conferir sozinho em até 2 minutos e te aviso. Não peça de novo agora.";
 async function settleAction(sql, id, state) {
   await sql.query(`/*owner-chat:settle*/ update zevanory_owner_chat_messages set action_state = $2 where id = $1::bigint and action_state in ('executando', 'incerto')`, [id, state]);
 }
@@ -241,10 +257,15 @@ export async function reconcileActions(sql, kv) {
     await sql.query(`/*owner-chat:unlock*/ update zevanory_owner_chat_action_lock set holder = null, since = null where k = 1 and holder = $1::bigint`, [id]);
     return { reconciled: 0 };
   }
-  let current;
-  try { current = await kv.get(CREATIVE_AUTOPUBLISH_PAUSE_KEY); } catch { return { reconciled: 0 }; }
-  const ok = current === def.value || (def.value === "0" && current === null);
-  await settleAction(sql, id, ok ? "executado" : "nao_aplicado");
+  // Já liquidada (recibo gravado, nota/trava pendentes): a conferência repete o resultado gravado, sem reler o KV.
+  let ok;
+  if (msg[0].action_state === "executado" || msg[0].action_state === "nao_aplicado") ok = msg[0].action_state === "executado";
+  else {
+    let current;
+    try { current = await kv.get(CREATIVE_AUTOPUBLISH_PAUSE_KEY); } catch { return { reconciled: 0 }; }
+    ok = current === def.value || (def.value === "0" && current === null);
+    await settleAction(sql, id, ok ? "executado" : "nao_aplicado");
+  }
   await insertMessage(sql, { from: "zevanory", kind: "sistema", dedupe: "conferido:" + id, text: ok ? "✅ Conferi: a ordem foi aplicada. " + def.done : "Conferi: a ordem NÃO foi aplicada. Nada mudou. Pode pedir de novo." });
   await sql.query(`/*owner-chat:unlock*/ update zevanory_owner_chat_action_lock set holder = null, since = null where k = 1 and holder = $1::bigint`, [id]);
   await bumpVersion(kv);
@@ -279,16 +300,15 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
       const sql = sqlFactory(env.DATABASE_URL);
       await ensureOwnerChatSchema(sql);
       await reconcileActions(sql, kv).catch(() => null);
-      // Sem cursor: as últimas FEED_LIMIT. Com cursor: tudo depois dele (em páginas) + as RECENT_OVERLAP mais novas,
-      // que pegam commits fora de ordem (id menor confirmado depois). O cliente deduplica por id (NC-CX-1030-05).
+      // Sem cursor: as últimas FEED_LIMIT (histórico inicial). Com cursor: seq > after, em páginas de FEED_PAGE, em
+      // ordem; o cursor devolvido é a última seq entregue (nunca a de uma sobreposição).
       if (after === null) {
-        const rows = await sql.query(`/*owner-chat:feed*/ select ${ROW} from zevanory_owner_chat_messages order by id desc limit $1`, [FEED_LIMIT]);
-        return json({ v: version, messages: rows.map(toMessage).reverse(), more: false });
+        const rows = (await sql.query(`/*owner-chat:feed*/ select ${ROW} from zevanory_owner_chat_messages order by seq desc limit $1`, [FEED_LIMIT])).map(toMessage).reverse();
+        return json({ v: version, messages: rows, cursor: rows.length ? rows.at(-1).seq : "0", more: false });
       }
-      const page = await sql.query(`/*owner-chat:feed-after*/ select ${ROW} from zevanory_owner_chat_messages where id > $1::bigint order by id asc limit $2`, [after, FEED_PAGE + 1]);
-      const recent = await sql.query(`/*owner-chat:feed*/ select ${ROW} from zevanory_owner_chat_messages order by id desc limit $1`, [RECENT_OVERLAP]);
-      const byId = new Map([...recent, ...page.slice(0, FEED_PAGE)].map((r) => [String(r.id), r]));
-      return json({ v: version, messages: [...byId.values()].map(toMessage).sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1)), more: page.length > FEED_PAGE });
+      const page = await sql.query(`/*owner-chat:feed-after*/ select ${ROW} from zevanory_owner_chat_messages where seq > $1::bigint order by seq asc limit $2`, [after, FEED_PAGE + 1]);
+      const rows = page.slice(0, FEED_PAGE).map(toMessage);
+      return json({ v: version, messages: rows, cursor: rows.length ? rows.at(-1).seq : after, more: page.length > FEED_PAGE });
     }
     if (request.method !== "POST" || !sameOrigin(request, url)) return json({ error: "forbidden" }, 403);
     const body = await request.json().catch(() => null);
@@ -325,19 +345,30 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
       const def = ACTIONS[claimed[0].action_type];
       // Antes do efeito, falha comprovada = nada foi feito. Depois de tentar o PUT, erro = INCERTO (pode ter sido aplicado).
       if (!def) { await settleAction(sql, id, "nao_aplicado"); await release(); return json({ error: "action_unknown" }, 409); }
-      let applied = false;
-      try { await kv.put(CREATIVE_AUTOPUBLISH_PAUSE_KEY, def.value); applied = true; } catch {}
-      if (applied) {
-        await settleAction(sql, id, "executado");
-        await release();
-        const note = await insertMessage(sql, { from: "zevanory", kind: "sistema", text: "✅ " + def.done, dedupe: "acao:" + id });
+      // Ordem que não muda nada (já estava no estado pedido) é dita como tal, sem escrita; assim "conferi: aplicada"
+      // nunca se apoia num valor que já existia antes da ordem.
+      let prior = "desconhecido";
+      try { prior = await kv.get(CREATIVE_AUTOPUBLISH_PAUSE_KEY); } catch {}
+      const already = prior === def.value || (def.value === "0" && prior === null);
+      let applied = already;
+      if (!already) { try { await kv.put(CREATIVE_AUTOPUBLISH_PAUSE_KEY, def.value); applied = true; } catch {} }
+      // Daqui em diante, qualquer erro = INCERTO com a trava segura: a conferência (até 2 min) liquida e avisa.
+      // A trava só é liberada DEPOIS do recibo e da nota gravados, então nenhuma confirmação se perde.
+      try {
+        if (applied) {
+          await settleAction(sql, id, "executado");
+          const note = await insertMessage(sql, { from: "zevanory", kind: "sistema", text: (already ? "✅ Já estava assim. " : "✅ ") + def.done, dedupe: "acao:" + id });
+          await release();
+          await bumpVersion(kv);
+          return json({ ok: true, state: "executado", messages: [note].filter(Boolean) });
+        }
+        await settleAction(sql, id, "incerto");
+        const note = await insertMessage(sql, { from: "zevanory", kind: "sistema", text: INCERTO_TEXT, dedupe: "acao:" + id }).catch(() => null);
         await bumpVersion(kv);
-        return json({ ok: true, state: "executado", messages: [note].filter(Boolean) });
+        return json({ ok: false, state: "incerto", messages: [note].filter(Boolean) }, 202);
+      } catch {
+        return json({ ok: false, state: "incerto", messages: [] }, 202);
       }
-      await settleAction(sql, id, "incerto");
-      const note = await insertMessage(sql, { from: "zevanory", kind: "sistema", text: INCERTO_TEXT, dedupe: "acao:" + id }).catch(() => null);
-      await bumpVersion(kv);
-      return json({ ok: false, state: "incerto", messages: [note].filter(Boolean) }, 202);
     }
     return json({ error: "not_found" }, 404);
   } catch {
@@ -345,7 +376,7 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
   }
 }
 
-export const OWNER_CHAT_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>ZEVANORY — Chat do Proprietário</title>
+export const OWNER_CHAT_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Epaminondas — Chat do Proprietário · ZEVANORY</title>
 <style>:root{--bg:#0b1220;--card:#121b2e;--me:#1d4ed8;--zv:#1e293b;--tx:#e5e7eb;--mu:#94a3b8;--al:#b45309;--ok:#15803d}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;flex-direction:column;height:100dvh}
 header{padding:12px 16px;background:var(--card);font-weight:700;display:flex;justify-content:space-between;align-items:center}header small{color:var(--mu);font-weight:400}
@@ -354,15 +385,15 @@ header{padding:12px 16px;background:var(--card);font-weight:700;display:flex;jus
 .alerta{border-left:4px solid var(--al)}.venda{border-left:4px solid var(--ok)}.t{display:block;color:var(--mu);font-size:12px;margin-top:4px}
 button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:#2563eb;color:#fff;cursor:pointer}button:disabled{opacity:.5}
 form{display:flex;gap:8px;padding:12px 16px;background:var(--card)}input{flex:1;font:inherit;padding:12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:var(--tx)}
-</style></head><body><header>ZEVANORY <small id="st">conectando…</small></header><main id="log" aria-live="polite"></main>
-<form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Fale com a ZEVANORY (ex.: status, vendas, o que está parado)"><button id="b">Enviar</button></form>
+</style></head><body><header>Epaminondas · ZEVANORY <small id="st">conectando…</small></header><main id="log" aria-live="polite"></main>
+<form id="f"><input id="q" autocomplete="off" maxlength="1500" placeholder="Fale com o Epaminondas (ex.: status, vendas, o que está parado)"><button id="b">Enviar</button></form>
 <script>(()=>{const log=document.getElementById('log'),st=document.getElementById('st'),q=document.getElementById('q'),b=document.getElementById('b');let ver='';const nodes=new Map();
 const H={'content-type':'application/json','x-owner-chat':'1'};
 function render(m){const d=document.createElement('div');d.className='m '+m.from+' '+m.kind;d.textContent=m.text;
-if(m.action&&m.action.state==='proposta'&&Date.now()<m.action.expiresAt){const k=document.createElement('button');k.textContent='Confirmar';k.style.marginTop='8px';k.style.display='block';k.onclick=async()=>{k.disabled=true;const r=await fetch('/api/admin/owner-chat/action',{method:'POST',headers:H,body:JSON.stringify({id:m.id})});const j=await r.json().catch(()=>({}));(j.messages||[]).forEach(add);k.textContent=r.ok?'Executado':j.state==='incerto'?'Resultado incerto — conferindo':j.error==='action_in_progress'?'Outra ordem em andamento':'Não executado ('+(j.error||r.status)+')';};d.appendChild(k);}
+if(m.action&&m.action.state==='proposta'&&Date.now()<m.action.expiresAt){const k=document.createElement('button');k.textContent='Confirmar';k.style.marginTop='8px';k.style.display='block';k.onclick=async()=>{k.disabled=true;const r=await fetch('/api/admin/owner-chat/action',{method:'POST',headers:H,body:JSON.stringify({id:m.id})});const j=await r.json().catch(()=>({}));(j.messages||[]).forEach(add);k.textContent=j.state==='executado'?'Executado':j.state==='incerto'?'Resultado incerto — conferindo':r.status>=500?'Sem confirmação — vou conferir e avisar':j.error==='action_in_progress'?'Outra ordem em andamento':'Não executado ('+(j.error||r.status)+')';};d.appendChild(k);}
 const t=document.createElement('span');t.className='t';t.textContent=new Date(m.at).toLocaleString('pt-BR');d.appendChild(t);return d;}
 function add(m){if(!m||nodes.has(m.id))return;const d=render(m);d.dataset.id=m.id;nodes.set(m.id,d);
-const after=[...log.children].find(x=>BigInt(x.dataset.id)>BigInt(m.id));log.insertBefore(d,after||null);log.scrollTop=log.scrollHeight;}
-let full=0,maxId='';async function poll(){if(document.hidden)return;const force=Date.now()-full>=${FEED_MAX_STALE_MS};const qs=new URLSearchParams();if(maxId)qs.set('after',maxId);if(!force&&ver)qs.set('v',ver);try{const r=await fetch('/api/admin/owner-chat/feed?'+qs);const j=await r.json();if(r.ok){if(force)full=Date.now();if(!j.same)(j.messages||[]).forEach(m=>{add(m);if(!maxId||BigInt(m.id)>BigInt(maxId))maxId=m.id;});if(j.v)ver=j.v;st.textContent='ao vivo';if(j.more)setTimeout(poll,0);}else st.textContent='instável ('+(j.error||r.status)+')';}catch{st.textContent='sem conexão';}}
+d.dataset.seq=m.seq;const after=[...log.children].find(x=>BigInt(x.dataset.seq)>BigInt(m.seq));log.insertBefore(d,after||null);log.scrollTop=log.scrollHeight;}
+let full=0,cur='';async function poll(){if(document.hidden)return;const force=Date.now()-full>=${FEED_MAX_STALE_MS};const qs=new URLSearchParams();if(cur)qs.set('after',cur);if(!force&&ver)qs.set('v',ver);try{const r=await fetch('/api/admin/owner-chat/feed?'+qs);const j=await r.json();if(r.ok){if(force)full=Date.now();if(!j.same){(j.messages||[]).forEach(add);if(/^\\d+$/.test(j.cursor||'')&&(!cur||BigInt(j.cursor)>BigInt(cur)))cur=j.cursor;}if(j.v)ver=j.v;st.textContent='ao vivo';if(j.more)setTimeout(poll,0);}else st.textContent='instável ('+(j.error||r.status)+')';}catch{st.textContent='sem conexão';}}
 document.getElementById('f').onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text)return;b.disabled=true;q.value='';try{const r=await fetch('/api/admin/owner-chat/message',{method:'POST',headers:H,body:JSON.stringify({text})});const j=await r.json().catch(()=>({}));(j.messages||[]).forEach(add);if(!r.ok)st.textContent='erro ('+(j.error||r.status)+')';}finally{b.disabled=false;q.focus();}};
 document.addEventListener('visibilitychange',poll);poll();setInterval(poll,5000);})();</script></body></html>`;
