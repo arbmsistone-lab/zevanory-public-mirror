@@ -100,13 +100,13 @@ jobs:
           set -euo pipefail
           node --test tests/diagnostico-diario.test.mjs < /dev/null | tee dg.txt
           grep -qx '# tests 10' dg.txt && grep -qx '# pass 10' dg.txt && grep -qx '# fail 0' dg.txt && grep -qx '# skipped 0' dg.txt
-      - name: Mutantes do relatório e do Diagnosticador (exatamente 45 KILLED)
+      - name: Mutantes do relatório e do Diagnosticador (exatamente 49 KILLED)
         run: |
           set -euo pipefail
           node scripts/ci/mutants_diagnostico_diario.mjs < /dev/null | tee dgmut.txt
           grep -qx 'BASELINE PASS tests=10' dgmut.txt
-          grep -qx 'MUTANTS PASS killed=45/45' dgmut.txt
-          test "$(grep -c ' KILLED by=' dgmut.txt)" = "45"
+          grep -qx 'MUTANTS PASS killed=49/49' dgmut.txt
+          test "$(grep -c ' KILLED by=' dgmut.txt)" = "49"
           git diff --exit-code -- worker scripts tests data
 
   # Portabilidade (AVAL Sol): Node 24 (reporter padrão "spec") em Linux e Windows. Sem PostgreSQL aqui, só
