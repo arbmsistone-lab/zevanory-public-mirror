@@ -747,7 +747,7 @@ def main() -> int:
     # Pages reference /brand/export/<file>.png on the sales domain; without this copy they 404'd.
     exports = ROOT / "assets" / "brand" / "export"
     (OUT / "brand" / "export").mkdir(parents=True, exist_ok=True)
-    for png in sorted(exports.glob("*.png")):
+    for png in sorted([*exports.glob("*.png"), exports / "zevanory-proof-dec23.jpg"]):
         shutil.copy2(png, OUT / "brand" / "export" / png.name)
     if not (OUT / "brand" / "export" / "link-card.png").is_file():
         raise SystemExit("official link-card export missing from sales build")

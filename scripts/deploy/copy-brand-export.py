@@ -12,7 +12,7 @@ NAMES={
 "post-02.png":(1080,1080),"post-03.png":(1080,1080),
 "pin.png":(1000,1500),"short.png":(1080,1920),
 "link-card.png":(1200,630),"blog-card.png":(1200,630),
-"email-card.png":(1200,630)
+"email-card.png":(1200,630),"zevanory-proof-dec23.jpg":(1080,1080)
 }
 if set(MANIFEST)!=set(NAMES):raise SystemExit("BRAND_MISSING_OR_UNEXPECTED_ASSET")
 DEST=ROOT/"public/brand/export"
@@ -21,8 +21,28 @@ for name,(width,height) in NAMES.items():
     source=SRC/name
     if source.is_symlink() or not source.is_file():raise SystemExit("BRAND_FILE_ABSENT "+name)
     raw=source.read_bytes()
-    if len(raw)>1_000_000 or raw[:8]!=b"\x89PNG\r\n\x1a\n":raise SystemExit("BRAND_INVALID_PNG "+name)
-    if struct.unpack(">II",raw[16:24])!=(width,height):raise SystemExit("BRAND_DIMENSIONS_MISMATCH "+name)
+    if len(raw)>1_000_000:raise SystemExit("BRAND_ASSET_TOO_LARGE "+name)
+    if name.endswith(".jpg"):
+        if raw[:2]!=b"\xff\xd8":raise SystemExit("BRAND_INVALID_JPEG "+name)
+        pos=2;dimensions=None
+        while pos+4<=len(raw):
+            if raw[pos]!=255:raise SystemExit("BRAND_INVALID_JPEG "+name)
+            while pos<len(raw) and raw[pos]==255:pos+=1
+            if pos>=len(raw):break
+            marker=raw[pos];pos+=1
+            if marker in (0xd9,0xda):break
+            if marker in (0xd8,0x01) or 0xd0<=marker<=0xd7:continue
+            if pos+2>len(raw):break
+            length=struct.unpack(">H",raw[pos:pos+2])[0]
+            if length<2 or pos+length>len(raw):raise SystemExit("BRAND_INVALID_JPEG "+name)
+            if marker in (0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf):
+                if length<8:raise SystemExit("BRAND_INVALID_JPEG "+name)
+                h,w=struct.unpack(">HH",raw[pos+3:pos+7]);dimensions=(w,h);break
+            pos+=length
+        if dimensions!=(width,height):raise SystemExit("BRAND_DIMENSIONS_MISMATCH "+name)
+    else:
+        if raw[:8]!=b"\x89PNG\r\n\x1a\n":raise SystemExit("BRAND_INVALID_PNG "+name)
+        if struct.unpack(">II",raw[16:24])!=(width,height):raise SystemExit("BRAND_DIMENSIONS_MISMATCH "+name)
     digest=hashlib.sha256(raw).hexdigest()
     if digest!=MANIFEST[name]["sha256"] or len(raw)!=MANIFEST[name]["size"]:raise SystemExit("BRAND_MANIFEST_MISMATCH "+name)
     shutil.copyfile(source,DEST/name)
