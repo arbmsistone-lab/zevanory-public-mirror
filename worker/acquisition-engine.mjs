@@ -1,3 +1,4 @@
+import {musicCurationDigest} from "./music-curation-report.mjs";
 // Acquisition V1: independent channel outcomes, evidence-first and zero cold outreach.
 // Cron ingress remains the existing Cloudflare hourly schedule; this module selects peak slots.
 import { ensureDailyBlog, publishTelegram, channelChecklist, resolveChannelCredentials, localContentDay } from "./multichannel-autonomy.mjs";
@@ -392,7 +393,9 @@ export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch)
  if(!sourceRead.ok)return {status:"erro",code:"digest_source_unreadable"};
  const report=await montarRelatorioDiario(env,{day,hour,now,checklist:channelChecklist(resolveChannelCredentials(env)),agendaAmanha:calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject});
  const actual=report.publicacoes.filter(x=>x.publicadas>0);
- const subject=report.subject,content=report.text;
+ // Curadoria musical (#1029) continua no resumo do proprietário, ao fim do relatório real (#1021).
+ const musica=await musicCurationDigest(kv);
+ const subject=report.subject,content=musica?report.text+"\n\n"+musica:report.text;
  await kv.put(key,JSON.stringify({status:"pending",day,at:now.toISOString()}),{expirationTtl:7*86400});
  try{
   const response=await fetchImpl("https://api.resend.com/emails",{method:"POST",headers:{"authorization":"Bearer "+String(env.RESEND_API_KEY),"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[String(env.OWNER_ALERT_EMAIL)],subject,text:content}),signal:AbortSignal.timeout(10000)});

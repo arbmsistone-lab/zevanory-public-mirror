@@ -21,6 +21,7 @@ on:
       - 'scripts/build-brand-assets.py'
       - 'scripts/deploy/copy-brand-export.py'
       - 'scripts/deploy/verify-brand-assets-live.py'
+      - 'tests/test_brand_live_formats.py'
       - '.github/workflows/brand-kit.yml'
   workflow_dispatch:
 permissions:
@@ -42,6 +43,8 @@ jobs:
         run: python3 scripts/build-brand-assets.py
       - name: Verify exact static assets in canonical Worker package
         run: python3 scripts/deploy/copy-brand-export.py
+      - name: Live brand verifier accepts every manifest format (PNG and JPEG) with exact bytes
+        run: python3 -m unittest discover -s tests -p 'test_brand_live_formats.py' -v
       - name: Brand source and negative image-gate tests
         run: node --test tests/brand-kit.test.mjs tests/multichannel-autonomy.test.mjs tests/brand-profiles.test.mjs tests/brand-email.test.mjs tests/acquisition-engine.test.mjs
       - name: Verify generated exports are committed exactly

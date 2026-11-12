@@ -1,0 +1,5 @@
+CC0 1.0 Universal — https://creativecommons.org/publicdomain/zero/1.0/
+Faixas sintetizadas integralmente pelo código deste repositório, sem samples,
+sem gravações ou melodias de terceiros. Dedicação ao domínio público na máxima
+extensão permitida. Autor declarado: ZEVANORY. Sem atribuição obrigatória.
+Registro verificável e hashes: data/musica-licencas.json.

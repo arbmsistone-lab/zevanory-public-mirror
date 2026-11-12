@@ -1,0 +1,52 @@
+[
+  {
+    "titulo": "Arpent",
+    "sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+    "features": {
+      "schema": 1,
+      "audio_sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+      "bpm": 60.0,
+      "rms": 0.0455978,
+      "centroide_hz": 1063.818,
+      "lra": 2.6,
+      "modo": "maior",
+      "tonica": 3,
+      "modo_confianca": 0.1799,
+      "vocal": {
+        "status": "ausente",
+        "max_score": 0.0,
+        "music_mean": 0.99457,
+        "janelas": 72,
+        "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
+      },
+      "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+      "bpm_confiavel": false,
+      "bpm_confianca": 0.51488
+    }
+  },
+  {
+    "titulo": "Funshine",
+    "sha256": "c404d836e82626299fc3eb06ca3731196504354fe62055f2206a85117de6ed9f",
+    "features": {
+      "schema": 1,
+      "audio_sha256": "c404d836e82626299fc3eb06ca3731196504354fe62055f2206a85117de6ed9f",
+      "bpm": 96.774,
+      "rms": 0.0450723,
+      "centroide_hz": 1608.074,
+      "lra": 0.9,
+      "modo": "maior",
+      "tonica": 9,
+      "modo_confianca": 0.0065,
+      "vocal": {
+        "status": "ausente",
+        "max_score": 0.00391,
+        "music_mean": 0.97401,
+        "janelas": 72,
+        "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
+      },
+      "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+      "bpm_confiavel": true,
+      "bpm_confianca": 0.40841
+    }
+  }
+]

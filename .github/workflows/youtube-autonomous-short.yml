@@ -22,13 +22,9 @@ on:
         required: false
         default: "false"
       slot:
-        description: "dica | oferta | calc | all"
+        description: "dica | oferta | calc | all | amostras (dry_run=true)"
         required: false
         default: "oferta"
-      force_local_voice:
-        description: "true = skip Gemini and narrate with the free local voice (test)"
-        required: false
-        default: "false"
 
 concurrency:
   group: youtube-autonomous-short
@@ -40,7 +36,7 @@ permissions:
 jobs:
   short:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
-    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
+    if: ${{ github.ref == 'refs/heads/gh-pages' && inputs.slot != 'amostras' }}  # B01 patch 05b
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -60,22 +56,13 @@ jobs:
           node-version: "22"
       - name: Install media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter && fc-match -f "%{file}\n" "Inter:style=ExtraBold"
-      - name: Free local voice (Piper, open source) for the zero-cost fallback
-        continue-on-error: true
-        run: |
-          python3 -m pip install --quiet --user piper-tts
-          mkdir -p "$HOME/piper" && cd "$HOME/piper"
-          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium
-          curl -fsSL -o pt_BR-faber-medium.onnx "$base/pt_BR-faber-medium.onnx"
-          curl -fsSL -o pt_BR-faber-medium.onnx.json "$base/pt_BR-faber-medium.onnx.json"
-          echo "PIPER_MODEL=$HOME/piper/pt_BR-faber-medium.onnx" >> "$GITHUB_ENV"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Local forced alignment (no paid service)
+        run: python3 -m pip install --user stable-ts==2.19.1 Pillow==12.0.0
       - name: Unit tests (plan, idempotency, recording)
         run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs
       - name: Render, gate and publish today's Short
         env:
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
-          FORCE_LOCAL_VOICE: ${{ inputs.force_local_voice || 'false' }}
           SCHEDULE: ${{ github.event.schedule }}
           SLOT_INPUT: ${{ inputs.slot }}
         run: |
@@ -106,12 +93,55 @@ jobs:
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: node scripts/channels/short-crosspost.mjs --slot="${SLOT:-oferta}" --day="${SHORT_DAY:-}"
       - name: Keep the dry-run preview for the owner to watch (3 days)
-        if: ${{ inputs.dry_run == 'true' }}
+        if: ${{ always() && inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: short-preview
           path: |
             /tmp/zevanory-daily-short*.mp4
-            /tmp/zevanory-daily-short*.mp3
-          if-no-files-found: warn
+            /tmp/zevanory-daily-short*-qc.json
+            /tmp/zevanory-daily-short*-roteiro.txt
+            /tmp/zevanory-daily-short*-musica.*
+            /tmp/zevanory-daily-short*-licenca.json
+            /tmp/zevanory-daily-short*-alignment.json
+            /tmp/zevanory-daily-short*-contato.png
+            /tmp/zevanory-daily-short*-visual.json
+            /tmp/zevanory-daily-short*-filter.txt
+            /tmp/zevanory-daily-short*-legendas.ass
+          if-no-files-found: error
           retention-days: 3
+
+  voice_samples:
+    if: ${{ github.ref == 'refs/heads/gh-pages' && github.event_name == 'workflow_dispatch' && inputs.slot == 'amostras' }}
+    environment: gh-pages-automacao
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reject samples without dry_run
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node --input-type=module -e "import {assertSamplesMode} from './scripts/shorts-v2/voice-samples-mode.mjs'; assertSamplesMode('amostras',process.env.DRY_RUN)"
+      - name: Install sample audio tools
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - name: Generate eight samples only (no videos or runtime writes)
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/shorts-v2/compare-voices.mjs --samples "$RUNNER_TEMP/voice-samples"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voice-samples
+          path: |
+            ${{ runner.temp }}/voice-samples/*.wav
+            ${{ runner.temp }}/voice-samples/comparacao.json
+            ${{ runner.temp }}/voice-samples/index.html
+          if-no-files-found: error
+          retention-days: 7

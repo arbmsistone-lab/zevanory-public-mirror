@@ -1,0 +1,4 @@
+Resumo da execução registrada; saída bruta não versionada.
+# mutants 34
+# killed 34
+# survived 0

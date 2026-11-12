@@ -39,3 +39,15 @@ test("estado do dia ilegível: resumo do proprietário bloqueia (digest_source_u
   const r = await runAcquisitionEngine({ ZEVANORY_PRIVATE_ARTIFACTS: w.kv, RESEND_API_KEY: "re_test", OWNER_ALERT_EMAIL: "dono@example.test" }, new Date("2026-10-12T23:30:00Z"), async (u) => { if (String(u).includes("resend")) posts++; return ok(); });
   assert.equal(r.ownerDigest.code, "digest_source_unreadable"); assert.equal(posts, 0);
 });
+
+test("integração #1029 × #1021: o resumo das 20h traz o relatório real E a curadoria musical", async () => {
+  const { runOwnerDailyDigest } = await import("../worker/acquisition-engine.mjs");
+  const w = world(); let body = null;
+  w.data.set(DAYKEY, JSON.stringify({ day: "2026-10-12", outcomes: [] }));
+  w.data.set("zpc:shorts:v2:musica:curadoria:diario", JSON.stringify({ schema: 1, day: "2026-10-12", text: "Curadoria musical: nenhuma faixa nova hoje." }));
+  const fetchImpl = async (u, o) => { if (String(u).includes("resend")) { body = JSON.parse(o.body); return { ok: true, json: async () => ({ id: "re_1" }) }; } return ok(); };
+  const r = await runOwnerDailyDigest({ ZEVANORY_PRIVATE_ARTIFACTS: w.kv, RESEND_API_KEY: "re_test", OWNER_ALERT_EMAIL: "dono@example.test" }, new Date("2026-10-12T23:30:00Z"), fetchImpl);
+  assert.equal(r.status, "publicado");
+  assert.match(body.text, /PUBLICADO HOJE/, "relatório real do #1021");
+  assert.match(body.text, /Curadoria musical: nenhuma faixa nova hoje\./, "curadoria do #1029 preservada");
+});

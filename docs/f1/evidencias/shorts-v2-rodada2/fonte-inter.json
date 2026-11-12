@@ -1,0 +1,11 @@
+{
+  "source": "https://raw.githubusercontent.com/rsms/inter/master/docs/font-files/InterVariable.ttf",
+  "source_sha256": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
+  "instance": {
+    "wght": 800,
+    "opsz": 32
+  },
+  "arquivo": "assets/fonts/Inter-ExtraBold.ttf",
+  "sha256": "44c888957fcc7da22f2b16f9a92eb5a54ebcf43dbbadd8968d68a106d796c1e3",
+  "licenca": "SIL OFL 1.1; assets/fonts/OFL-Inter.txt"
+}
