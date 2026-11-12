@@ -1,0 +1,5 @@
+Resumo da execução registrada; saída bruta não versionada.
+# selftests 29
+# pass 29
+# fail 0
+Varredura estrutural: PASS.

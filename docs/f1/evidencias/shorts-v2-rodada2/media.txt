@@ -1,0 +1,14 @@
+Resumo da execução registrada; saída bruta não versionada.
+# tests 7
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+✔ V2: FFmpeg sidechain actually attenuates music by at least 10 dB
+✔ V2 mutant: actual sidechain removed
+✔ NC03/04: branded offline render measures ASS, final MP4 cuts, hook and contact sheet
+✔ NC03 render mutant: subtitle moved to y1800 is rejected from serialized ASS
+✔ NC03 render mutant: five-second cuts rejected by final MP4 scene detector
+✔ NC04 render mutant: 58px hook rejected from actual filter
+✔ NC01: all actual music excerpts fit 40 seconds and combined 6 MB budget

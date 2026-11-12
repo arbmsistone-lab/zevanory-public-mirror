@@ -1,0 +1,21 @@
+Resumo da execução registrada; saída bruta não versionada.
+# tests 17
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+✔ NC01: track evidence and original download hash are mandatory
+✔ NC01 mutant: accept missing license evidence
+✔ NC02: 30 real calendar days are distinct and below 40 percent overlap
+✔ NC02 mutant: fixed theme script
+✔ NC02: duplicate episode and more than 40 percent shared sentences rejected
+✔ NC02 mutant: repetition guard disabled
+✔ NC02: corrupt projection needs readable receipt; preview never erases history
+✔ NC05: model must match approved model
+✔ NC05 mutant: a different model accepted
+✔ NC05: 3.8 Interactions and 2.5 generateContent use distinct protocols without fallback
+✔ NC05: comparison is exactly 4 voices times 2 models; approvals remain pending
+✔ NC06: exact SKU and word boundaries; ambiguous classifications use dicas
+✔ NC06 mutant: IA substring inside farmacia accepted
+✔ NC05: comparison writer processes all eight identities with exactly the same phrase

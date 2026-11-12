@@ -1,0 +1,22 @@
+{
+  "coletado_em": "2026-11-11",
+  "metodo": "Pagina original arquivada: titulo e autor na linha da faixa, declaracao Creative Commons 0 no cabecalho/rodape da mesma pagina. Downloads do espelho indicado na auditoria.",
+  "faixas": [
+    {
+      "titulo": "Arpent",
+      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/electronic.php#:~:text=Arpent",
+      "pagina_html_sha256": "ea701b9cd451a4a4e48d26b28c3e41b7da15560986dcf5ec868be33083255fcf",
+      "declaracao_literal": "Creative Commons 0",
+      "linha_da_faixa": "🕹😀👍 Arpent Your browser does not support the audio element. Time: 2:42 Download Written by Kevin MacLeod . Upbeat, uplifting and inspiring. Technology and innovation. This music is available for commercial and non-commercial purposes.",
+      "licenca_geral_complementar": "https://a.ocv.me/pub/stuff/music/freepd/README.md"
+    },
+    {
+      "titulo": "Funshine",
+      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/upbeat.php#:~:text=Funshine",
+      "pagina_html_sha256": "aab2dadb2b8df856c1be435b49fd1cbe0d61315b3e5014b4071b0388bb0f3dcc",
+      "declaracao_literal": "Creative Commons 0",
+      "linha_da_faixa": "🤪🐶🚼↗️ Funshine Your browser does not support the audio element. Time: 2:45 Download Written by Kevin MacLeod . Moog and Ukulele. Because it had to happen. Do you see what you all have done to me!?? Now that this is done... I'm going back to my life of horrible depression. You're welcome. [ed. Dark, man! Seriously... lighten this description up!] This music is available for commercial and non-commercial purposes.",
+      "licenca_geral_complementar": "https://a.ocv.me/pub/stuff/music/freepd/README.md"
+    }
+  ]
+}

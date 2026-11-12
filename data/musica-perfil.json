@@ -1,0 +1,126 @@
+{
+  "schema": "musica-perfil/v1",
+  "descoberta": {
+    "enabled": false,
+    "aprovacoes": {
+      "proprietario": false,
+      "claude": false,
+      "gpt6": false
+    },
+    "limiar": 0.72,
+    "max_por_mes": 2,
+    "max_candidatas": 12
+  },
+  "vetos_tags": [
+    "8bit",
+    "8-bit",
+    "chiptune",
+    "epic",
+    "dark",
+    "sad",
+    "horror",
+    "trailer"
+  ],
+  "aprovadas": [
+    {
+      "arquivo": "assets/musica/ia-1.ogg",
+      "sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+      "titulo": "Arpent",
+      "em": "2026-11-11",
+      "motivo": "Aprovacao explicita do proprietario; referencia de gosto",
+      "medidas": {
+        "schema": 1,
+        "audio_sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+        "bpm": 60.0,
+        "rms": 0.0455978,
+        "centroide_hz": 1063.818,
+        "lra": 2.6,
+        "modo": "maior",
+        "tonica": 3,
+        "modo_confianca": 0.1799,
+        "vocal": {
+          "status": "ausente",
+          "max_score": 0.0,
+          "music_mean": 0.99457,
+          "janelas": 72,
+          "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
+        },
+        "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": false,
+        "bpm_confianca": 0.51488
+      },
+      "sha256_original": "ef06d8b524c196a31954dfb1f3261e7d37459e43f4afd9df31ee2965c6094a56"
+    },
+    {
+      "arquivo": "assets/musica/vendas-2.ogg",
+      "sha256": "c404d836e82626299fc3eb06ca3731196504354fe62055f2206a85117de6ed9f",
+      "titulo": "Funshine",
+      "em": "2026-11-11",
+      "motivo": "Aprovacao explicita do proprietario. O comentario editorial dark na descricao original de Funshine nao revoga essa escolha; veto posterior explicito sempre prevalece.",
+      "medidas": {
+        "schema": 1,
+        "audio_sha256": "c404d836e82626299fc3eb06ca3731196504354fe62055f2206a85117de6ed9f",
+        "bpm": 96.774,
+        "rms": 0.0450723,
+        "centroide_hz": 1608.074,
+        "lra": 0.9,
+        "modo": "maior",
+        "tonica": 9,
+        "modo_confianca": 0.0065,
+        "vocal": {
+          "status": "ausente",
+          "max_score": 0.00391,
+          "music_mean": 0.97401,
+          "janelas": 72,
+          "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
+        },
+        "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": true,
+        "bpm_confianca": 0.40841
+      },
+      "sha256_original": "b98b226927367a977377fe4f75d1cf59e4366ca2f444c2c7d23d13e7f506f532"
+    }
+  ],
+  "recusadas": [
+    {
+      "arquivo": "assets/musica/ia-2.ogg",
+      "sha256": "9f266fa60bbc9725c2d081dadda617b8e03a6dcd99e7831aa94da47b1a9e5e80",
+      "titulo": "Hear What They Say",
+      "em": "2026-11-11",
+      "motivo": "Veto do proprietario: 8-bit/chiptune; som de videogame",
+      "tags": [
+        "8bit",
+        "chiptune"
+      ],
+      "medidas": {
+        "schema": 1,
+        "audio_sha256": "9f266fa60bbc9725c2d081dadda617b8e03a6dcd99e7831aa94da47b1a9e5e80",
+        "bpm": 76.923,
+        "rms": 0.026397,
+        "centroide_hz": 2018.941,
+        "lra": 4.8,
+        "modo": "maior",
+        "tonica": 6,
+        "modo_confianca": 0.0464,
+        "vocal": {
+          "status": "ausente",
+          "max_score": 0.00391,
+          "music_mean": 0.91059,
+          "janelas": 72,
+          "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
+        },
+        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": false,
+        "bpm_confianca": 0
+      },
+      "sha256_original": "e950afff85274572226e6a9f8b4a4bf260f9df2ad6509435cacee8afa5f8bb59"
+    }
+  ],
+  "detector_vocal": {
+    "url": "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite",
+    "sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf",
+    "versao": "YAMNet 1 / ai-edge-litert 1.4.0",
+    "licenca": "Apache-2.0; https://github.com/tensorflow/models/tree/master/research/audioset/yamnet"
+  },
+  "observacao": "BPM, modo e vocal sao estimativas locais. Vocal incerto ou modelo ausente bloqueiam descoberta; aprovacao nao simula disponibilidade de API."
+}
