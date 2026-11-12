@@ -50,5 +50,9 @@
   "short.png": {
     "sha256": "dae516edb857fc0c9dddc2d3ad792b7a70b8db9d8baa6f3fae81ab1bfb8bb216",
     "size": 59639
+  },
+  "zevanory-proof-dec23.jpg": {
+    "sha256": "014781d1a1da56d5d1cd4ba7b0acc045ca2b24a6b6214698c4cc767d08b79d56",
+    "size": 172602
   }
 }

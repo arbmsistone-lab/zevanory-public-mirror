@@ -1,8 +1,14 @@
 name: Meta proof post DEC-23
 on:
   workflow_dispatch:
+    inputs:
+      preflight_run_id:
+        required: true
+        description: Successful read-only preflight run ID on the same SHA (24h)
+        type: string
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: meta-proof-dec23-once
   cancel-in-progress: false
@@ -13,6 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
+      PREFLIGHT_RUN_ID: ${{ inputs.preflight_run_id }}
+      GITHUB_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
       META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
       META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
       INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
@@ -24,11 +35,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      # Monotonic workflow run number survives artifact expiry/deletion. A failed
-      # first attempt requires a separately reviewed recovery, never a rerun.
-      - name: First attempt only
-        run: test "$GITHUB_RUN_NUMBER" = 1 && test "$GITHUB_RUN_ATTEMPT" = 1
-      - name: Permission check and reserve (no POST)
+      - name: Verify preflight and absence of reservation, then reserve (no POST)
         run: |
           node scripts/channels/meta-permission-check.mjs
           node scripts/channels/meta-proof-post.mjs --reserve

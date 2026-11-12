@@ -4,13 +4,15 @@ import {appendFileSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
+import {authorizeProof,PROOF_KEY} from './meta-proof-authorization.mjs';
+import {cloudflareKv} from './youtube-daily-short.mjs';
 import {runCheck,GRAPH,EXPECTED,redact} from './meta-permission-check.mjs';
-export const IMAGE_URL='https://zevanory.api.br/brand/social/zevanory-proof-dec23.jpg';
+export const IMAGE_URL='https://zevanory.api.br/brand/export/zevanory-proof-dec23.jpg';
 export const CAPTION='ZEVANORY. Conheça a nossa marca e os nossos materiais: https://zevanory.api.br';
 export const forbidden=/R\$|\b(?:BRL|reais|pre[cç]o|whatsapp|telegram|gr[aá]tis|renda garantida|lucro garantido|ganhe dinheiro|resultado garantido|fature|enrique[cç]a|desconto|promo[cç][aã]o|oferta|milagre|cura)\b|\b\d+[,.]\d{2}\b/i;
 export function safeCaption(s){return typeof s==='string'&&s===CAPTION&&!forbidden.test(s);}
 const numeric=s=>typeof s==='string'&&/^\d+$/.test(s);
-function workflowContext(env){return env.GITHUB_EVENT_NAME==='workflow_dispatch'&&env.GITHUB_REF==='refs/heads/gh-pages'&&env.GITHUB_RUN_NUMBER==='1'&&env.GITHUB_RUN_ATTEMPT==='1'&&numeric(env.GITHUB_RUN_ID);}
+function workflowContext(env){return env.GITHUB_EVENT_NAME==='workflow_dispatch'&&env.GITHUB_REF==='refs/heads/gh-pages'&&env.GITHUB_RUN_ATTEMPT==='1'&&numeric(env.GITHUB_RUN_ID);}
 const stateShape=s=>s!==null&&typeof s==='object'&&!Array.isArray(s)&&s.schema==='meta-proof-dec23/v1'&&['reserved','unknown','published'].includes(s.status)&&numeric(s.run_id)&&Object.keys(s).every(k=>['schema','status','run_id','instagram_media_id','facebook_post_id'].includes(k))&&(s.instagram_media_id===undefined||numeric(s.instagram_media_id))&&(s.facebook_post_id===undefined||typeof s.facebook_post_id==='string'&&/^\d+_\d+$/.test(s.facebook_post_id));
 const clean=s=>({schema:'meta-proof-dec23/v1',status:s.status,run_id:s.run_id,instagram_media_id:s.instagram_media_id??null,facebook_post_id:s.facebook_post_id??null});
 export function fileStore(path){return {
@@ -19,12 +21,13 @@ export function fileStore(path){return {
  reserve:async value=>{await mkdir(dirname(path),{recursive:true,mode:0o700});const f=await open(path,'wx',0o600);try{await f.writeFile(JSON.stringify(value));await f.sync();}finally{await f.close();}},
  write:async value=>{const f=await open(path,'r+');try{await f.truncate(0);await f.writeFile(JSON.stringify(value));await f.sync();}finally{await f.close();}}
 };}
-export async function runProof({mode,env=process.env,store,fetchImpl=fetch,check=runCheck,log=console.log,mask=v=>process.stdout.write('::add-mask::'+v.replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A')+'\n'),summary=()=>{},caption=CAPTION,imageHash,approvedRecord=null,sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){
+export async function runProof({mode,env=process.env,store,fetchImpl=fetch,check=runCheck,authorize=authorizeProof,kv,log=console.log,mask=v=>process.stdout.write('::add-mask::'+v.replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A')+'\n'),summary=()=>{},caption=CAPTION,imageHash,approvedRecord=null,sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){
  const secrets=[env.META_ACCESS_TOKEN].filter(Boolean);let state=null;
  const emit=out=>{const line=JSON.stringify(out);if(secrets.some(s=>line.includes(s)))throw Error('output_suppressed');log(line);summary('## Prova Meta DEC-23\n\n```json\n'+line+'\n```\n');return out;};
  try{
   for(const secret of secrets)mask(secret);
   if(!workflowContext(env))throw Error('workflow_attempt_blocked');
+  await authorize({mode,env,kv,fetchImpl});
   if(!safeCaption(caption))throw Error('caption_forbidden');
   if(approvedRecord&&Object.entries(approvedRecord).some(([k,v])=>k.startsWith('prova_')&&v!==null&&v!==undefined))throw Error('proof_record_exists');
   const loaded=await store.read();
@@ -41,11 +44,7 @@ export async function runProof({mode,env=process.env,store,fetchImpl=fetch,check
    await store.reserve(state);return emit(clean(state));
   }
   await store.begin(); // exclusive local publisher claim; no second process can POST
-  // Verify that the public JPEG is the exact reviewed derivative, before POST.
-  const image=await fetchImpl(IMAGE_URL,{redirect:'error',signal:AbortSignal.timeout(15000)});
-  if(!image.ok||image.headers.get('content-type')?.split(';')[0]!=='image/jpeg')throw Error('image_unavailable');
-  const bytes=Buffer.from(await image.arrayBuffer());
-  if(!/^[a-f0-9]{64}$/.test(imageHash??'')||createHash('sha256').update(bytes).digest('hex')!==imageHash)throw Error('image_hash_mismatch');
+  await verifyProofImage({fetchImpl,imageHash});
   const get=async(path,token)=>{const r=await fetchImpl(GRAPH+path,{headers:{authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});const b=await r.json();if(!r.ok||b.error)throw Error('graph_read_failed');return b;};
   const p=await get('/'+EXPECTED.page_id+'?fields=id,access_token',env.META_ACCESS_TOKEN);
   if(p.id!==EXPECTED.page_id||typeof p.access_token!=='string'||!p.access_token)throw Error('page_token_missing');
@@ -72,13 +71,22 @@ export async function runProof({mode,env=process.env,store,fetchImpl=fetch,check
   return emit(out);
  }
 }
+export async function verifyProofImage({url=IMAGE_URL,fetchImpl=fetch,imageHash}){
+ if(url!=='https://zevanory.api.br/brand/export/zevanory-proof-dec23.jpg')throw Error('image_path_unapproved');
+ const image=await fetchImpl(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(15000)});
+ if(!image.ok||image.headers.get('content-type')?.split(';')[0]!=='image/jpeg')throw Error('image_unavailable');
+ const bytes=Buffer.from(await image.arrayBuffer());if(!/^[a-f0-9]{64}$/.test(imageHash??'')||createHash('sha256').update(bytes).digest('hex')!==imageHash)throw Error('image_hash_mismatch');return true;
+}
+export async function runPreflight({env,fetchImpl=fetch,check=runCheck,imageHash,log=console.log}){const result=await check({env,fetchImpl,log});if(result.report?.pronto_para_prova!==true||result.exitCode!==0)throw Error('permission_not_ready');await verifyProofImage({fetchImpl,imageHash});return {ok:true,mode:'preflight',image_sha256:imageHash};}
 if(import.meta.url===pathToFileURL(process.argv[1]||'').href){
- const env=process.env,path=env.META_PROOF_STATE_PATH;
- if(!path){console.error('proof_state_path_missing');process.exitCode=1;}
+ const env=process.env;try{
+ const bytes=await readFile(new URL('../../assets/brand/export/zevanory-proof-dec23.jpg',import.meta.url)),imageHash=createHash('sha256').update(bytes).digest('hex');
+ if(process.argv.includes('--preflight'))console.log(JSON.stringify(await runPreflight({env,imageHash})));
  else{
-  const record=JSON.parse(await readFile(new URL('../../data/meta-prova-dec23.json',import.meta.url),'utf8'));
-  const bytes=await readFile(new URL('../../brand/social/zevanory-proof-dec23.jpg',import.meta.url));
-  const out=await runProof({mode:process.argv.includes('--reserve')?'reserve':'publish',env,store:fileStore(path),approvedRecord:record,imageHash:createHash('sha256').update(bytes).digest('hex'),summary:t=>{if(env.GITHUB_STEP_SUMMARY)appendFileSync(env.GITHUB_STEP_SUMMARY,t);}});
-  if(out.ok===false)process.exitCode=1;
+ const record=JSON.parse(await readFile(new URL('../../data/meta-prova-dec23.json',import.meta.url),'utf8'));if(!env.META_PROOF_STATE_PATH)throw Error('proof_state_path_missing');
+ const local=fileStore(env.META_PROOF_STATE_PATH),kv=cloudflareKv({token:env.CLOUDFLARE_API_TOKEN,account:env.CLOUDFLARE_ACCOUNT_ID,namespace:env.KV_NAMESPACE_ID});
+ const store={...local,reserve:async v=>{await kv.put(PROOF_KEY,JSON.stringify(v));await local.reserve(v);},write:async v=>{await kv.put(PROOF_KEY,JSON.stringify(v));await local.write(v);}};
+ const out=await runProof({mode:process.argv.includes('--reserve')?'reserve':'publish',env,kv,store,approvedRecord:record,imageHash,summary:t=>{if(env.GITHUB_STEP_SUMMARY)appendFileSync(env.GITHUB_STEP_SUMMARY,t);}});if(out.ok===false)process.exitCode=1;
  }
+ }catch{console.error('proof_blocked');process.exitCode=1;}
 }
