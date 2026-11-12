@@ -1,0 +1,318 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "language": "pt-BR",
+    "owner": "Codex acquisition workstream",
+    "methodology": "Demand signals from authoritative national sources plus repository asset reuse. Scores are prioritization aids, not search-volume or revenue forecasts.",
+    "publication_allowed": false,
+    "limitations": [
+      "O score não mede volume de busca, conversão, receita ou causalidade.",
+      "A TIC Empresas representa empresas formais com 10 ou mais pessoas ocupadas; não representa diretamente MEI ou negócios menores.",
+      "Empates são resolvidos apenas por ordem lexicográfica do identificador para produzir saída determinística."
+    ]
+  },
+  "sources": [
+    {
+      "id": "cetic-tic-empresas-2024",
+      "publisher": "Cetic.br / CGI.br",
+      "title": "Pesquisa TIC Empresas 2024",
+      "url": "https://www.cetic.br/pt/publicacao/pesquisa-sobre-o-uso-das-tecnologias-de-informacao-e-comunicacao-nas-empresas-brasileiras-tic-empresas-2024/",
+      "published": "2025-05-13",
+      "signals": [
+        "74% das empresas formais com 10 ou mais pessoas ocupadas usaram WhatsApp ou Telegram em 2024",
+        "84% das empresas de 10 a 49 pessoas ocupadas que venderam online usaram mensagens de WhatsApp, Skype ou chat do Facebook como canal",
+        "13% das empresas formais com 10 ou mais pessoas ocupadas declararam uso de IA; H9 foi coletado entre empresas com especialista/área de TI e apresentado para o total"
+      ],
+      "population": "Empresas formais com 10 ou mais pessoas ocupadas; porte pequeno = 10 a 49.",
+      "indicator_urls": [
+        "https://cetic.br/pt/tics/pesquisa/2024/empresas/E2C/expandido/",
+        "https://cetic.br/pt/tics/pesquisa/2024/empresas/H9/",
+        "https://www.cetic.br/pt/arquivos/pesquisa/2024/empresas/"
+      ]
+    },
+    {
+      "id": "sebrae-visao-ia-2025",
+      "publisher": "Sebrae",
+      "title": "Inteligência Artificial — Estudo de Visão de Futuro 2025",
+      "url": "https://ia.sebrae.com.br/estudo/2025/index.html",
+      "published": "2025",
+      "signals": [
+        "Atendimento via WhatsApp, geração de conteúdo e respostas a dúvidas aparecem entre usos acessíveis para pequenos negócios"
+      ]
+    },
+    {
+      "id": "bcb-pix-2023-2025",
+      "publisher": "Banco Central do Brasil",
+      "title": "Relatório de Gestão do Pix 2023–2025",
+      "url": "https://www.bcb.gov.br/detalhenoticia/21227/noticia",
+      "published": "2026",
+      "signals": [
+        "12,8 milhões de empresas haviam enviado ou recebido ao menos um Pix ao final de 2025",
+        "quase 80 bilhões de transações Pix ocorreram em 2025 no conjunto do sistema, não apenas em pagamentos empresariais"
+      ],
+      "population": "Pessoas jurídicas que haviam enviado ou recebido ao menos um Pix ao final de 2025; sem recorte de porte."
+    },
+    {
+      "id": "sebrae-fluxo-caixa",
+      "publisher": "Sebrae",
+      "title": "Como controlar o fluxo de caixa",
+      "url": "https://sebrae.com.br/sites/PortalSebrae/cursosonline/como-controlar-o-fluxo-de-caixa%2C45b0b8a6a28bb610VgnVCM1000004c00210aRCRD",
+      "published": "current",
+      "signals": [
+        "Há curso e ferramenta gratuitos, confirmando interesse e elevando a exigência de diferenciação do conteúdo pago"
+      ]
+    },
+    {
+      "id": "sebrae-ia-pratica",
+      "publisher": "Sebrae",
+      "title": "IA na prática para pequenos negócios",
+      "url": "https://pa.loja.sebrae.com.br/ia-na-pratica-para-pequenos-negocios-1-372000104947",
+      "published": "current",
+      "signals": [
+        "Há capacitação gratuita em IA aplicada a marketing e atendimento, confirmando demanda e pressão competitiva"
+      ]
+    }
+  ],
+  "products": [
+    {
+      "id": "ia-na-pratica",
+      "sku": "ZEV-IA-011",
+      "name": "IA na Prática",
+      "status": "paid-current"
+    },
+    {
+      "id": "vendas-na-pratica",
+      "sku": "ZEV-VEN-011",
+      "name": "Vendas na Prática",
+      "status": "paid-current"
+    },
+    {
+      "id": "lucro-e-caixa",
+      "sku": "ZEV-LCX-011",
+      "name": "Lucro & Caixa",
+      "status": "paid-current"
+    },
+    {
+      "id": "combo-ia-vendas",
+      "sku": "ZEV-CMB-011",
+      "name": "Combo IA + Vendas",
+      "status": "paid-current"
+    },
+    {
+      "id": "negocio-completo",
+      "sku": "ZEV-NGC-011",
+      "name": "Negócio Completo",
+      "status": "paid-current"
+    }
+  ],
+  "scoring": {
+    "range_per_dimension": [
+      0,
+      3
+    ],
+    "dimensions": [
+      "national_evidence",
+      "problem_intent",
+      "product_fit",
+      "owned_asset_reuse"
+    ],
+    "note": "Total de 0 a 12; não representa volume de busca, conversão ou receita.",
+    "tie_breaker": "lexicographic_opportunity_id_for_determinism_only",
+    "tie_interpretation": "Empate não comprova superioridade comercial; Pix e WhatsApp são hipóteses equivalentes no score atual."
+  },
+  "opportunities": [
+    {
+      "id": "vendas-whatsapp-follow-up",
+      "audience": "MEI e pequenos negócios que vendem por conversa",
+      "problem": "organizar atendimento, orçamento, cobrança e follow-up sem perder contexto",
+      "keywords": [
+        "vendas pelo whatsapp",
+        "mensagem de follow up",
+        "como cobrar cliente pelo whatsapp"
+      ],
+      "products": [
+        "vendas-na-pratica",
+        "combo-ia-vendas"
+      ],
+      "evidence": [
+        "cetic-tic-empresas-2024",
+        "sebrae-visao-ia-2025"
+      ],
+      "reuse": [
+        "/material-gratuito",
+        "/ia-por-ramo",
+        "PR #806 do Claude; não duplicar páginas"
+      ],
+      "next_test": "Medir visitas brasileiras e clique de intenção por origem em conteúdos já aprovados; só propor nova pauta após observar lacuna.",
+      "utm": {
+        "source": "blog",
+        "medium": "organic",
+        "campaign": "c1_whatsapp_followup"
+      },
+      "score": {
+        "national_evidence": 3,
+        "problem_intent": 3,
+        "product_fit": 3,
+        "owned_asset_reuse": 3
+      },
+      "claims": "Métodos práticos para organizar conversas e próximas ações, sem promessa de resultado financeiro."
+    },
+    {
+      "id": "fluxo-caixa-diario-pix",
+      "audience": "MEI, comércio e prestadores que recebem por Pix",
+      "problem": "registrar entradas e saídas, separar saldo de caixa e acompanhar contas",
+      "keywords": [
+        "fluxo de caixa diário",
+        "controle de pix para empresa",
+        "entradas e saídas do negócio"
+      ],
+      "products": [
+        "lucro-e-caixa",
+        "negocio-completo"
+      ],
+      "evidence": [
+        "bcb-pix-2023-2025",
+        "sebrae-fluxo-caixa",
+        "cetic-tic-empresas-2024"
+      ],
+      "reuse": [
+        "/calculadora-fluxo-de-caixa",
+        "/ferramentas",
+        "/material-gratuito"
+      ],
+      "next_test": "Criar pauta auditável que leva primeiro à calculadora gratuita e medir visita, retorno e intenção agregados.",
+      "utm": {
+        "source": "blog",
+        "medium": "organic",
+        "campaign": "c1_fluxo_caixa_pix"
+      },
+      "score": {
+        "national_evidence": 3,
+        "problem_intent": 3,
+        "product_fit": 3,
+        "owned_asset_reuse": 3
+      },
+      "claims": "Rotina educativa de controle; não substitui contabilidade e não promete lucro."
+    },
+    {
+      "id": "ia-atendimento-por-ramo",
+      "audience": "salões, lojas, delivery, autônomos e prestadores de serviço",
+      "problem": "traduzir IA genérica em tarefas pequenas de atendimento e conteúdo",
+      "keywords": [
+        "ia para pequenos negócios",
+        "ia para salão de beleza",
+        "ia para atendimento whatsapp"
+      ],
+      "products": [
+        "ia-na-pratica",
+        "combo-ia-vendas"
+      ],
+      "evidence": [
+        "cetic-tic-empresas-2024",
+        "sebrae-visao-ia-2025",
+        "sebrae-ia-pratica"
+      ],
+      "reuse": [
+        "/ia-por-ramo",
+        "/material-gratuito",
+        "worker/acquisition-engine.mjs"
+      ],
+      "next_test": "Selecionar dois ramos existentes com melhor tráfego brasileiro e testar variações editoriais sem publicar automaticamente.",
+      "utm": {
+        "source": "blog",
+        "medium": "organic",
+        "campaign": "c1_ia_atendimento_ramo"
+      },
+      "score": {
+        "national_evidence": 3,
+        "problem_intent": 2,
+        "product_fit": 3,
+        "owned_asset_reuse": 3
+      },
+      "claims": "Aplicações assistidas e revisáveis de IA; sem alegar substituição de pessoas ou ganho garantido."
+    },
+    {
+      "id": "preco-margem-caixa",
+      "audience": "comércio e serviços que formam preço sem rotina documentada",
+      "problem": "distinguir preço, margem, custos e caixa antes de decidir",
+      "keywords": [
+        "como calcular preço de venda",
+        "calculadora margem de lucro",
+        "ponto de equilíbrio negócio"
+      ],
+      "products": [
+        "lucro-e-caixa",
+        "negocio-completo"
+      ],
+      "evidence": [
+        "sebrae-fluxo-caixa",
+        "bcb-pix-2023-2025"
+      ],
+      "reuse": [
+        "/calculadora-preco-de-venda",
+        "/calculadora-margem-de-lucro",
+        "/calculadora-ponto-de-equilibrio",
+        "/ferramentas"
+      ],
+      "next_test": "Organizar cluster editorial em torno das calculadoras existentes e medir uso agregado antes de alterar páginas.",
+      "utm": {
+        "source": "blog",
+        "medium": "organic",
+        "campaign": "c1_preco_margem_caixa"
+      },
+      "score": {
+        "national_evidence": 2,
+        "problem_intent": 3,
+        "product_fit": 3,
+        "owned_asset_reuse": 3
+      },
+      "claims": "Ferramentas de simulação e educação; resultados dependem dos dados informados."
+    },
+    {
+      "id": "rotina-integrada-15-minutos",
+      "audience": "dono de pequeno negócio que concentra atendimento, venda e caixa",
+      "problem": "executar uma rotina curta que conecte IA, vendas e finanças",
+      "keywords": [
+        "organizar pequeno negócio",
+        "rotina de gestão diária",
+        "ia vendas fluxo de caixa"
+      ],
+      "products": [
+        "negocio-completo",
+        "combo-ia-vendas"
+      ],
+      "evidence": [
+        "cetic-tic-empresas-2024",
+        "sebrae-visao-ia-2025",
+        "sebrae-fluxo-caixa"
+      ],
+      "reuse": [
+        "/material-gratuito",
+        "/ia-por-ramo",
+        "/ferramentas"
+      ],
+      "next_test": "Usar o checklist gratuito como entrada e medir progressão agregada para guias e ferramentas, sem campanha paga.",
+      "utm": {
+        "source": "blog",
+        "medium": "organic",
+        "campaign": "c1_rotina_15_min"
+      },
+      "score": {
+        "national_evidence": 2,
+        "problem_intent": 2,
+        "product_fit": 2,
+        "owned_asset_reuse": 3
+      },
+      "claims": "Checklist para reduzir improviso; não promete economia, vendas ou faturamento."
+    }
+  ],
+  "priority_order": [
+    "fluxo-caixa-diario-pix",
+    "vendas-whatsapp-follow-up",
+    "ia-atendimento-por-ramo",
+    "preco-margem-caixa",
+    "rotina-integrada-15-minutos"
+  ]
+}

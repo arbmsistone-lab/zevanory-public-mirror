@@ -1,0 +1,27 @@
+name: Codex acquisition intelligence CI
+
+on:
+  pull_request:
+    paths:
+      - 'growth/codex-acquisition-20261014/**'
+      - '.github/workflows/codex-acquisition-intelligence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-demand-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit tests
+        run: node --test growth/codex-acquisition-20261014/validate.test.mjs
+      - name: Validate prioritized plan
+        run: node growth/codex-acquisition-20261014/validate.mjs growth/codex-acquisition-20261014/opportunities.json
