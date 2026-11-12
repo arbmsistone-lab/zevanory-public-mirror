@@ -1,14 +1,11 @@
-# Shorts padrão v2 — situação vigente na rodada 4b
+# Shorts v2 — escopo congelado do PR #1028
 
-PR #1028, ramo `feat/shorts-padrao-v2`. A implementação de conteúdo auditada em `e7381e9d55cb472602f65ce91c363969982d7d4d` foi preservada. A rodada 4b corrige manifesto e entrega de evidências, limita a música a Arpent/Funshine e acrescenta a curadoria musical com ativação bloqueada.
+Este PR entrega somente o vídeo: roteiro por episódio com histórico, identidade visual, legendas alinhadas, mixagem e QC medidos no arquivo final. As correções de manifesto, resumos de evidência e pacote de prévias fora do site permanecem.
 
-- [Resultado vigente, NC11–14, testes, mutantes e limites](evidencias/shorts-v2-rodada4/resultado.md).
-- [Resumo de testes sem saída bruta](evidencias/shorts-v2-rodada4/resumo-testes.txt).
-- [Medições das duas faixas aprovadas](evidencias/shorts-v2-rodada4/medidas-aprovadas.json).
-- [Histórico da rodada 3: conteúdo, cartões, contraste e audibilidade](evidencias/shorts-v2-rodada3/resultado.md).
+A biblioteca fixa contém apenas **Arpent** e **Funshine**, aprovadas pelo proprietário, com licença CC0 comprovada e hashes conferidos. A seleção não repete a última música; com duas faixas, elas alternam. O tema só decide a primeira escolha, quando ainda não há faixa anterior. Histórico de publicação e reserva de render continuam separados, inclusive em retentativas.
 
-Previews e páginas de escuta são entregues exclusivamente no artefato `shorts-v2-review` do Actions, fora do site. O pacote tem arquivos relativos e pode ser aberto depois de baixar e extrair. O render técnico usa sinal sintético local; não certifica a naturalidade de nenhuma voz Gemini.
+A curadoria automática, seu workflow, perfil, estado, análise, relatório e testes da rodada 4 foram separados para `feat/shorts-curadoria-musical`, em PR DRAFT dependente desta entrega. Nenhuma correção da rodada 5 foi incorporada: seus defeitos continuam pendentes no PR separado. Só deverá entrar depois dos Shorts no ar, com nova auditoria e autorização.
 
-Somente Arpent (preferência IA) e Funshine (preferência vendas/finanças/dicas) estão na biblioteca ativa. Veto explícito do proprietário prevalece sobre aprovação antiga e desempenho. A curadoria nova tem configuração de ativação e três aprovações falsas. O workflow de publicação existente não foi reabilitado; comparação de voz, confirmação do plano gratuito e aprovação do vídeo continuam pendentes.
+As prévias técnicas e músicas ficam no artefato `shorts-v2-review` do Actions, fora do repositório. São ensaios com voz sintética local; não certificam a voz Gemini. Comparação de oito amostras, plano gratuito e aprovação de vídeo com voz real continuam pendentes. Publicação permanece desligada.
 
-Não houve merge, rótulo, dispatch ou deploy. O SHA definitivo e o estado dos checks remotos são informados no PR.
+Sem merge, rótulo, dispatch, deploy ou reabilitação nesta entrega. Ideias novas exigem PR novo.

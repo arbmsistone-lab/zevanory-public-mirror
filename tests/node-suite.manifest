@@ -150,7 +150,6 @@ tests/shorts-retomada-mutantes.test.mjs 47
 tests/shorts-retomada.test.mjs 15
 tests/shorts-v2-round2.test.mjs 14
 tests/shorts-v2-round3.test.mjs 15
-tests/shorts-v2-round4.test.mjs 32
 tests/shorts-v2.test.mjs 24
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2
