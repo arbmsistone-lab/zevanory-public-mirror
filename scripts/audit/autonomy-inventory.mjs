@@ -15,6 +15,17 @@ function latestPublication(byDay, channel) {
   }
   return best;
 }
+// Falha registrada (status "erro") mais recente do canal: a matriz mostra "<canal> erro: <motivo>".
+function latestPublicationError(byDay, channel) {
+  let best = null;
+  for (const [day, entries] of Object.entries(byDay || {})) {
+    const e = entries?.[channel];
+    if (e?.status !== "erro") continue;
+    const t = Date.parse(e.at || day + "T12:00:00Z");
+    if (!best || t > best.t) best = { t, code: String(e.code || "desconhecido") };
+  }
+  return best;
+}
 function latestRun(runs, workflow) {
   const ok = (runs || []).filter((r) => r.path?.endsWith(workflow) && (r.event === "schedule" || r.event === "workflow_run" || (r.event === "workflow_dispatch" && r.actor === "github-actions[bot]")) && r.conclusion === "success");
   return ok.length ? Math.max(...ok.map((r) => Date.parse(r.updated_at || r.created_at))) : null;
@@ -24,7 +35,12 @@ export function proveProcess(p, ctx, now = Date.now()) {
   const ev = p.evidence || { type: "none" };
   const fresh = (t) => t != null && now - t <= (ev.maxAgeHours || 30) * H;
   switch (ev.type) {
-    case "publication": { const t = latestPublication(ctx.byDay, ev.channel); return { proven: fresh(t), lastEvidence: t ? new Date(t).toISOString() : null, how: "publicação confirmada pelo provedor" }; }
+    case "publication": {
+      const t = latestPublication(ctx.byDay, ev.channel);
+      const err = fresh(t) ? null : latestPublicationError(ctx.byDay, ev.channel);
+      const failed = err != null && fresh(err.t) && (t == null || err.t > t);
+      return { proven: fresh(t), failed, lastEvidence: t ? new Date(t).toISOString() : null, how: failed ? `${ev.channel} erro: ${err.code}` : "publicação confirmada pelo provedor" };
+    }
     case "workflow": { const t = latestRun(ctx.runs, ev.workflow); return { proven: fresh(t), lastEvidence: t ? new Date(t).toISOString() : null, how: "execução agendada concluída" }; }
     case "freshness": { const t = ctx.funnelAt ? Date.parse(ctx.funnelAt) : null; return { proven: fresh(t), lastEvidence: ctx.funnelAt || null, how: "consolidado horário atualizado" }; }
     case "market": { const t = ctx.marketAt ? Date.parse(ctx.marketAt) : null; return { proven: fresh(t), lastEvidence: ctx.marketAt || null, how: "pesquisa semanal gravada" }; }
