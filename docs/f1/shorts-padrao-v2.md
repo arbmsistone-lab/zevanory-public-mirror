@@ -1,14 +1,11 @@
-# Shorts padrão v2 — situação vigente na rodada 4b
+# Shorts — vídeo separado da curadoria
 
-PR #1028, ramo `feat/shorts-padrao-v2`. A implementação de conteúdo auditada em `e7381e9d55cb472602f65ce91c363969982d7d4d` foi preservada. A rodada 4b corrige manifesto e entrega de evidências, limita a música a Arpent/Funshine e acrescenta a curadoria musical com ativação bloqueada.
+O vídeo permanece no PR #1028, com Arpent/Funshine. A curadoria é um recurso posterior no PR DRAFT #1029, desativado até revisão e autorização.
 
-- [Resultado vigente, NC11–14, testes, mutantes e limites](evidencias/shorts-v2-rodada4/resultado.md).
-- [Resumo de testes sem saída bruta](evidencias/shorts-v2-rodada4/resumo-testes.txt).
-- [Medições das duas faixas aprovadas](evidencias/shorts-v2-rodada4/medidas-aprovadas.json).
-- [Histórico da rodada 3: conteúdo, cartões, contraste e audibilidade](evidencias/shorts-v2-rodada3/resultado.md).
+- [NC15–17, estado no KV, limites, recuperação e BPM](shorts-curadoria-musical-rodada5.md).
+- [Histórico da rodada 4b](evidencias/shorts-v2-rodada4/resultado.md).
+- [Medições das sementes](evidencias/shorts-v2-rodada4/medidas-aprovadas.json).
 
-Previews e páginas de escuta são entregues exclusivamente no artefato `shorts-v2-review` do Actions, fora do site. O pacote tem arquivos relativos e pode ser aberto depois de baixar e extrair. O render técnico usa sinal sintético local; não certifica a naturalidade de nenhuma voz Gemini.
+Com duas faixas, a seleção alterna sem repetir. Com três ou mais, o tema tem prioridade entre alternativas válidas; só há fallback para outro tema se nenhuma alternativa daquele tema respeitar as demais regras.
 
-Somente Arpent (preferência IA) e Funshine (preferência vendas/finanças/dicas) estão na biblioteca ativa. Veto explícito do proprietário prevalece sobre aprovação antiga e desempenho. A curadoria nova tem configuração de ativação e três aprovações falsas. O workflow de publicação existente não foi reabilitado; comparação de voz, confirmação do plano gratuito e aprovação do vídeo continuam pendentes.
-
-Não houve merge, rótulo, dispatch ou deploy. O SHA definitivo e o estado dos checks remotos são informados no PR.
+O repositório só contém as duas gravações aprovadas. Descoberta e desempenho persistem no KV; o workflow tem contents: read, sem commit ou push. Previews técnicos ficam em artefato do Actions. Nenhuma automação foi ligada nesta entrega.

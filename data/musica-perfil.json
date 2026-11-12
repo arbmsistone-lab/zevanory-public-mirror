@@ -45,7 +45,9 @@
           "janelas": 72,
           "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
         },
-        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto"
+        "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": false,
+        "bpm_confianca": 0.51488
       },
       "sha256_original": "ef06d8b524c196a31954dfb1f3261e7d37459e43f4afd9df31ee2965c6094a56"
     },
@@ -72,7 +74,9 @@
           "janelas": 72,
           "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
         },
-        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto"
+        "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": true,
+        "bpm_confianca": 0.40841
       },
       "sha256_original": "b98b226927367a977377fe4f75d1cf59e4366ca2f444c2c7d23d13e7f506f532"
     }
@@ -105,7 +109,9 @@
           "janelas": 72,
           "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
         },
-        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto"
+        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": false,
+        "bpm_confianca": 0
       },
       "sha256_original": "e950afff85274572226e6a9f8b4a4bf260f9df2ad6509435cacee8afa5f8bb59"
     }

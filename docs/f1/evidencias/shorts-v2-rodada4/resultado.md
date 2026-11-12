@@ -1,4 +1,6 @@
-# PR #1028 — rodada 4b, NC11–14
+# Histórico — rodada 4b, NC11–14
+
+Este registro descreve o snapshot dd84edf9. A curadoria foi separada no PR #1029; o estado vigente está em [NC15–17](../../shorts-curadoria-musical-rodada5.md). As referências abaixo a persistência no repositório/push foram substituídas pelo KV, sem escrita na gh-pages.
 
 Base: `e7381e9d55cb472602f65ce91c363969982d7d4d`. Mesmo ramo. Especificação: [codex-shorts-v2-rodada4b](https://docs.google.com/document/d/11o2IpYZz6hg7B1IJpuyEpF5EPfHdhwFSDWPFNtA7kCk/edit). Esta rodada não aprova publicação nem ativa a curadoria.
 

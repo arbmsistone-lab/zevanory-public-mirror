@@ -1,0 +1,2 @@
+export function validateCrons(text){for(const match of text.matchAll(/-\s+cron:\s*['"]([^'"]+)['"]/g))if(match[1].trim().split(/\s+/).length!==5)throw Error('cron_five_fields_required');return true;}
+export function validateCurationWorkflow(text){validateCrons(text);if(/contents:\s*write|git\s+(push|commit)|--publish-report/.test(text))throw Error('curation_repository_write_forbidden');if(!text.includes('contents: read')||!text.includes("SHORTS_MUSIC_CURATION_ENABLED == 'true'"))throw Error('curation_activation_or_permissions');return true;}

@@ -14,8 +14,8 @@
       "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/electronic/#Arpent.mp3",
       "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
       "verificado_em": "2026-11-11",
-      "bpm": 80,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
+      "bpm": 60.0,
+      "bpm_metodo": "DSP v2; borda ou baixa confianca sao ignoradas na similaridade",
       "clima": "eletronica_leve",
       "temas_permitidos": [
         "ia"
@@ -43,8 +43,11 @@
           "janelas": 72,
           "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
         },
-        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto"
-      }
+        "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": false,
+        "bpm_confianca": 0.51488
+      },
+      "bpm_confiavel": false
     },
     {
       "arquivo": "assets/musica/vendas-2.ogg",
@@ -59,8 +62,8 @@
       "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/#Funshine.mp3",
       "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
       "verificado_em": "2026-11-11",
-      "bpm": 97,
-      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
+      "bpm": 96.774,
+      "bpm_metodo": "DSP v2; borda ou baixa confianca sao ignoradas na similaridade",
       "clima": "animada",
       "temas_permitidos": [
         "vendas",
@@ -90,8 +93,11 @@
           "janelas": 72,
           "model_sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf"
         },
-        "metodo": "DSP v1 + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto"
-      }
+        "metodo": "DSP v2 (tempo com confianca) + YAMNet AudioSet 521/LiteRT 1.4.0; estimativas, nao garantia de ausencia de canto",
+        "bpm_confiavel": true,
+        "bpm_confianca": 0.40841
+      },
+      "bpm_confiavel": true
     }
   ]
 }
