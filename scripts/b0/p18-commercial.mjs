@@ -46,6 +46,9 @@ export function validateAllowlist(a) {
   for (const k of ["checkout_hosts", "redirect_hosts", "informational_hosts", "payment_host_suffixes", "allowed_extra_params", "closed_markers", "closed_error_codes", "site_paused_markers"])
     if (!Array.isArray(a[k]) || !a[k].every(isStr)) fail(k);
   if (a.checkout_hosts.length === 0) fail("checkout_hosts_empty");
+  // #1014 NC-D: isenção por CAMINHO (opcional), host exato + prefixo; nunca host inteiro nem subdomínio
+  if (a.informational_paths !== undefined && (!Array.isArray(a.informational_paths) || !a.informational_paths.every((x) => isObj(x)
+    && /^[a-z0-9.-]+$/.test(x.host || "") && /^\/[A-Za-z0-9/_-]+\/$/.test(x.path_prefix || "")))) fail("informational_paths");
   if (!isObj(a.producer) || !isStr(a.producer.legal_name) || !/^\d{14}$/.test(a.producer.cnpj || "") || !isStr(a.producer.brand)) fail("producer");
   if (!Array.isArray(a.products) || a.products.length === 0) fail("products");
   const seen = { slug: new Set(), checkout_code: new Set(), hotmart_product_id: new Set(), offer: new Set() };
@@ -78,6 +81,15 @@ const norm = (s) => String(s).toLowerCase().normalize("NFC");
 // ---------------------------------------------------------------- extração de links das páginas
 const hostOf = (href) => { try { return new URL(href).hostname.toLowerCase(); } catch { return null; } };
 const hostMatches = (host, suffixes) => suffixes.some((s) => host === s || host.endsWith("." + s));
+// #1014 NC-D: link informativo por caminho (ex.: recrutamento de afiliados da Hotmart). Estrito: https, host idêntico
+// (sem subdomínio), sem porta/credencial/query/fragmento e exatamente UM segmento alfanumérico após o prefixo.
+export function isInformationalPath(href, allow) {
+  let u; try { u = new URL(href); } catch { return false; }
+  if (u.protocol !== "https:" || u.port || u.username || u.password || u.search || u.hash) return false;
+  const host = u.hostname.toLowerCase();
+  return (allow.informational_paths || []).some((x) => host === x.host && u.pathname.startsWith(x.path_prefix)
+    && /^[A-Za-z0-9]+$/.test(u.pathname.slice(x.path_prefix.length)));
+}
 export function extractPurchaseLinks(html, allow, { source = "?", slug = null } = {}) {
   const out = [], seen = new Set();
   const add = (href, kind) => { const k = kind + " " + href; if (!seen.has(k)) { seen.add(k); out.push({ href, kind, source, page_slug: slug }); } };
@@ -86,7 +98,7 @@ export function extractPurchaseLinks(html, allow, { source = "?", slug = null } 
   for (const h of [...hrefs, ...bare]) {
     if (/^\/(comprar|assinar|hotmart)\//i.test(h)) { add(h, "internal_buy"); continue; }
     const host = hostOf(h);
-    if (!host || hostMatches(host, allow.informational_hosts)) continue;
+    if (!host || hostMatches(host, allow.informational_hosts) || isInformationalPath(h, allow)) continue;
     if (hostMatches(host, allow.payment_host_suffixes) || allow.checkout_hosts.includes(host)) add(h, "external_checkout");
   }
   return out;
