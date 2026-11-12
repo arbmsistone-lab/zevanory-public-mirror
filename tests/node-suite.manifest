@@ -166,8 +166,11 @@ tests/short-crosspost.test.mjs 10
 tests/shorts-preparation.test.mjs 6
 tests/shorts-retomada-mutantes.test.mjs 47
 tests/shorts-retomada.test.mjs 15
+tests/shorts-v2-music-continuity.test.mjs 9
 tests/shorts-v2-round2.test.mjs 14
 tests/shorts-v2-round3.test.mjs 15
+tests/shorts-v2-round4.test.mjs 32
+tests/shorts-v2-round5.test.mjs 16
 tests/shorts-v2.test.mjs 24
 tests/shorts-voice-samples.test.mjs 5
 tests/signed-audit-probe.test.mjs 2

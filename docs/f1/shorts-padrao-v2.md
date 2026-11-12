@@ -1,10 +1,14 @@
-# Shorts v2 — escopo congelado do PR #1028
+# Shorts — vídeo separado da curadoria
 
-Este PR entrega somente o vídeo: roteiro por episódio com histórico, identidade visual, legendas alinhadas, mixagem e QC medidos no arquivo final. As correções de manifesto, resumos de evidência e pacote de prévias fora do site permanecem.
+O vídeo permanece no PR #1028, com Arpent/Funshine. A curadoria é um recurso posterior no PR DRAFT #1029, desativado até revisão e autorização.
 
-A biblioteca fixa contém apenas **Arpent** e **Funshine**, aprovadas pelo proprietário, com licença CC0 comprovada e hashes conferidos. A seleção não repete a última música; com duas faixas, elas alternam. O tema só decide a primeira escolha, quando ainda não há faixa anterior. Histórico de publicação e reserva de render continuam separados, inclusive em retentativas.
+- [NC15–17, estado no KV, limites, recuperação e BPM](shorts-curadoria-musical-rodada5.md).
+- [Histórico da rodada 4b](evidencias/shorts-v2-rodada4/resultado.md).
+- [Medições das sementes](evidencias/shorts-v2-rodada4/medidas-aprovadas.json).
 
-A curadoria automática, seu workflow, perfil, estado, análise, relatório e testes da rodada 4 foram separados para `feat/shorts-curadoria-musical`, em PR DRAFT dependente desta entrega. Nenhuma correção da rodada 5 foi incorporada: seus defeitos continuam pendentes no PR separado. Só deverá entrar depois dos Shorts no ar, com nova auditoria e autorização.
+Com duas faixas, a seleção alterna sem repetir. Com três ou mais, o tema tem prioridade entre alternativas válidas; só há fallback para outro tema se nenhuma alternativa daquele tema respeitar as demais regras.
+
+O repositório só contém as duas gravações aprovadas. Descoberta e desempenho persistem no KV; o workflow tem contents: read, sem commit ou push. Previews técnicos ficam em artefato do Actions. Nenhuma automação foi ligada nesta entrega.
 
 As prévias técnicas e músicas ficam no artefato `shorts-v2-review` do Actions, fora do repositório. São ensaios com voz sintética local; não certificam a voz Gemini. Comparação de oito amostras, plano gratuito e aprovação de vídeo com voz real continuam pendentes. Publicação permanece desligada.
 

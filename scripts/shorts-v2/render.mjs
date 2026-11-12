@@ -1,3 +1,6 @@
+import PROFILE from '../../data/musica-perfil.json' with {type:'json'};
+import BASE_STATE from '../../data/musica-curadoria.json' with {type:'json'};
+import {runtimeLibrary,writeMusicReport} from './music-kv.mjs';
 import {sceneTimeline} from './scenes.mjs';
 import {spawnSync} from 'node:child_process';
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
@@ -32,18 +35,20 @@ export function audioMetrics(file){const out=command('ffmpeg',['-hide_banner','-
 function pcm(file){return command('ffmpeg',['-v','error','-i',file,'-f','f32le','-ac','1','-ar','24000','pipe:1'],{buffer:true});}
 export function rmsDb(bytes,windows){let sum=0,n=0;for(const w of windows){for(let i=Math.max(0,Math.ceil(w.start*24000));i<Math.min(bytes.length/4,Math.floor(w.end*24000));i++){const v=bytes.readFloatLE(i*4);sum+=v*v;n++;}}return n&&sum>0?10*Math.log10(sum/n):-Infinity;}
 export function mixGraph(duration){return `[0:a]apad=whole_dur=${duration},asplit=2[voice][side];[1:a]loudnorm=I=-23:TP=-4:LRA=7,afade=t=in:d=0.5,afade=t=out:st=${duration-1.5}:d=1.5,asplit=2[reference][bed];[bed][side]sidechaincompress=threshold=0.06:ratio=12:attack=10:release=250:makeup=1,asplit=2[ducked][stem];[voice][ducked]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=7[mix]`;}
-export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config:injectedConfig,align,synthesize=tts}={}){
+export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config:injectedConfig,align,synthesize=tts,note=(level,message)=>console.warn(message)}={}){
  if(plan.v2!==true)throw Error('v2_plan_required');
  const config=injectedConfig||JSON.parse(await readFile(new URL('../../data/shorts-padrao-v2.json',import.meta.url),'utf8'));
  assertVoice(config,config.voz_fixa,{preview});
  if(!stateKv?.get||!stateKv?.put)throw Error('music_history_unavailable');
  await scriptHistory(stateKv,plan,{reserve:!preview});
  const manifest=JSON.parse(await readFile(new URL('../../data/musica-licencas.json',import.meta.url),'utf8'));
- const last=await musicHistory(stateKv,plan.day,{files:manifest.faixas.map(r=>r.arquivo),repair:!preview});
+ const library=await runtimeLibrary({kv:stateKv,manifest,profile:PROFILE,baseState:BASE_STATE,note});
+ if(library.warnings.length){try{await writeMusicReport(stateKv,library.profile,library.state,plan.day,library.warnings);}catch{note('warning','SHORT_MUSIC report_write_failed');}}
+ const last=await musicHistory(stateKv,plan.day,{repair:!preview});
  const musicPublished=await musicPublications(stateKv,plan.day);
  const rawAttempt=await stateKv.get('zpc:shorts:v2:musica:receipt:'+plan.day+':'+plan.slot),attempt=rawAttempt===null?null:JSON.parse(rawAttempt);
- if(attempt&&(!manifest.faixas.some(r=>r.arquivo===attempt.arquivo)||!Number.isSafeInteger(attempt.em)||attempt.em<=0))throw Error('music_attempt_unreadable');
- const track=await licensedTrack({theme:plan.theme,last:lastPublishedMusic(musicPublished,last,attempt),manifest,history:musicPublished});
+ if(attempt&&(!/^assets\/musica\/[a-z0-9-]+\.ogg$/.test(attempt.arquivo)||!Number.isSafeInteger(attempt.em)||attempt.em<=0))throw Error('music_attempt_unreadable');
+ const track=await licensedTrack({theme:plan.theme,last:lastPublishedMusic(musicPublished,last,attempt),manifest:library.manifest,profile:library.profile,state:library.state,buffers:library.buffers,history:musicPublished});
  plan.description+='\nzevanory-music-key:'+track.arquivo+':'+track.sha256;
  if(track.credito&&!plan.description.includes(track.credito))plan.description+='\nMúsica: '+track.credito;
  // Reserving the chosen bed before any render avoids immediate repetition after failure.
@@ -61,7 +66,8 @@ export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config
  await writeFile(base+'-legendas.ass',captions(words));
  const ctaStart=duration-3.5,firstCta=words.slice(-CTA.split(/\s+/).length)[0]?.start;
  if(!(firstCta>=duration-4&&firstCta<=duration-3))throw Error('cta_alignment_failed');
- const trackPath=fileURLToPath(new URL('../../'+track.arquivo,import.meta.url));
+ let trackPath=fileURLToPath(new URL('../../'+track.arquivo,import.meta.url));
+ if(library.buffers.has(track.arquivo)){trackPath=base+'-selected.ogg';await writeFile(trackPath,library.buffers.get(track.arquivo));}
  command('ffmpeg',['-y','-i',base+'-voz.wav','-i',trackPath,'-filter_complex',mixGraph(duration),'-map','[mix]','-t',String(duration),base+'-mix.wav','-map','[reference]','-t',String(duration),base+'-musica-reference.wav','-map','[stem]','-t',String(duration),base+'-musica-ducked.wav']);
  // Brand template + smooth push, with the baked-in logo masked for t < 2s.
  if(/[\[\]';:,\\]/.test(base))throw Error('unsafe_media_path');
