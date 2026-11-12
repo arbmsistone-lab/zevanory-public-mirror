@@ -6,7 +6,8 @@ Worker central ao banco de produção e aplica a migração no deploy (seção "
 sombra é o PR seguinte; até lá nenhum código lê `env.DIARIO`.
 
 **Desde o NO-GO do GPT-6 sobre o primeiro deploy (NC-P2b-DEP-01/02/03), o binding só entra num deploy disparado com
-`diario_d1=certificar` e `motivo=d1-config`, que é fail-closed; todo o resto sai sem `DIARIO` (seção "Primeiro deploy
+`diario_d1=certificar` e `motivo=d1-config`, que é fail-closed, ou, depois de uma certificação PASS e da troca do padrão
+versionado, no modo `manter` (religa só um banco já certificado); todo o resto sai sem `DIARIO` (seção "Primeiro deploy
 com D1: modos off, certificar e rollback").**
 
 ## Para que serve
@@ -123,18 +124,25 @@ falhasse só gerava aviso, o binding podia ficar, e um readback que falhasse nã
 | NC-P2b-DEP-01 | Rollback real: redeploy controlado sem `DIARIO`, com conferência na Cloudflare, sem apagar tabelas | `diario_d1=rollback` (e o rollback automático de uma certificação que falha) |
 | NC-P2b-DEP-02 | Migração e readback fail-closed; aviso nunca vira PASS | `diario_d1=certificar` |
 | NC-P2b-DEP-03 | Promover o MESMO SHA quando a mudança é só de configuração, sem afrouxar a proteção contra regressão | `motivo=d1-config` no `promotion_guard.py` |
+| NC-1017-01 (follow-up) | "Qualquer falha depois do deploy dispara rollback" valia para FAIL, mas o pós-promoção `NAO_COMPROVADO` mantinha a versão e só reprovava depois | em `certificar`, `NAO_COMPROVADO` também dispara o rollback automático; conferência do binding exige as duas fontes; modo `manter` para a sombra |
 
-**Os modos (input `diario_d1` do `workflow_dispatch`).** O job `guard` valida o modo e o motivo antes de tudo
-(passo `P20 diário D1 - modo e motivo do dispatch`). Push e dispatch sem input valem `off`/`rotina`.
+**Os modos (input `diario_d1` do `workflow_dispatch`).** O job `guard` valida o modo e o motivo antes do guard de
+promoção (passo `P20 diário D1 - modo e motivo do dispatch`, depois do checkout). Push e dispatch com
+`diario_d1=padrao` usam o **padrão versionado** em `.github/diario-d1-modo.json` (`"padrao": "off"` hoje; só `off` ou
+`manter` são aceitos ali; arquivo ausente ou inválido reprova com `DIARIO_D1_PADRAO_INVALIDO`). O motivo padrão é
+`rotina`. Push não aceita input.
 
 | Modo | Binding `DIARIO` | Chamadas D1 | Segredos D1 no passo | Falha |
 |---|---|---|---|---|
-| `off` (padrão) | nunca, mesmo com os segredos cadastrados | nenhuma | valor vazio (a expressão só entrega em `certificar`) | binding presente depois do deploy reprova (e dispara o rollback automático); API da Cloudflare inalcançável vira aviso **"NAO_COMPROVADO (não é PASS)"** |
-| `certificar` | só se toda a pré-promoção passar | migração + SELECT de certificação (token de migração) antes; SELECT de certificação (token de leitura) depois | só aqui | qualquer falha antes da promoção tira o binding **e reprova o job antes do deploy** (produção fica como estava); qualquer falha depois reprova o job e o rollback automático volta à versão anterior (sem `DIARIO`) |
+| `off` (padrão de hoje) | nunca, mesmo com os segredos cadastrados | nenhuma | valor vazio (a expressão só entrega no modo que usa o segredo) | binding presente depois do deploy reprova (e dispara o rollback automático); API da Cloudflare inalcançável vira aviso **"NAO_COMPROVADO (não é PASS)"** |
+| `manter` (sombra, depois de uma certificação; **só** com `"padrao": "manter"` no arquivo versionado) | religa só se o banco **já** estiver certificado | SELECT de conferência antes (token de **leitura**); o mesmo SELECT depois (token de leitura); **nunca** migra | só `CF_TOKEN_D1_DIARIO_READ`; o de migração fica vazio | banco não certificado, token ausente ou qualquer conferência que falhe: tira o binding **e reprova antes do deploy**; falha depois (inclusive pós-promoção `NAO_COMPROVADO`) reprova e o rollback automático volta à versão anterior, conferindo a configuração do `DIARIO` (coerente) nas duas fontes; binding efetivo exige as **duas** fontes |
+| `certificar` | só se toda a pré-promoção passar | migração + SELECT de certificação (token de migração) antes; SELECT de certificação (token de leitura) depois | migração só aqui; leitura aqui e em `manter` | qualquer falha antes da promoção tira o binding **e reprova o job antes do deploy** (produção fica como estava); qualquer falha depois, **inclusive pós-promoção `NAO_COMPROVADO`** (NC-1017-01), reprova o job e o rollback automático volta à versão anterior (sem `DIARIO`), com conferência nas duas fontes |
 | `rollback` | nunca | nenhuma | valor vazio | binding ainda presente **ou** configuração efetiva não comprovada reprova |
 
-`certificar` e `rollback` exigem `motivo=d1-config`, e `d1-config` só vale com eles. Push com qualquer modo D1 é
-recusado. Nenhum caminho do workflow apaga tabela, índice, gatilho ou banco D1 (há teste disso): o rollback só tira o
+`certificar` e `rollback` exigem `motivo=d1-config`, e `d1-config` só vale com eles (`manter` e `off` são rotina).
+`manter` por dispatch só é aceito com o padrão versionado em `manter` (NC-1018-01): com o padrão em `off`, um dispatch
+`manter` é erro (`DIARIO_D1_MODO_INVALIDO`), senão ele ligaria o D1 junto com código novo por fora do arquivo protegido.
+O único caminho para ligar o D1 com o padrão em `off` é `certificar` + `d1-config` (mesmo SHA). Nenhum caminho do workflow apaga tabela, índice, gatilho ou banco D1 (há teste disso): o rollback só tira o
 binding, e as tabelas e as migrações ficam no banco para a próxima certificação.
 
 **`certificar`, passo a passo** (`scripts/deploy/diario_d1_certify.py` faz as conferências; ele não grava nada):
@@ -151,8 +159,14 @@ binding, e as tabelas e as migrações ficam no banco para a próxima certifica�
    (`DIARIO_D1_MIGRACOES_NAO_REVISADAS`);
 5. só então o `wrangler deploy` sobe o Worker com o binding;
 6. `P20 diário D1 - binding efetivo no Worker publicado`: lê na Cloudflare o deployment ativo (uma versão a 100%), a
-   tag dessa versão (= este SHA) e os bindings da versão e de `/settings`; exige `DIARIO` do tipo `d1` com o UUID certo
-   nas fontes que trazem a lista, concordando entre si;
+   tag dessa versão (= este SHA) e os bindings da versão (`result.resources.bindings` de `/versions/<id>`) e de
+   `/settings`; em `certificar` e `manter` exige as **duas** listas (NC-1017-01), com `DIARIO` do tipo `d1` e o UUID
+   certo nas duas, concordando entre si. A documentação pública da Cloudflare não garante a lista de bindings na
+   resposta de `/versions/<id>`; se ela não vier, o resultado é `NAO_COMPROVADO` e a certificação **reprova**
+   (fail-closed). Se isso acontecer no primeiro dispatch, a correção é revisar a fonte com o GPT-6, nunca aceitar uma
+   fonte só. Em **qualquer** fonte lida e em qualquer modo, uma lista **vazia** ou sem o binding sentinela
+   `ZEVANORY_PRIVATE_ARTIFACTS` (que todo candidato carrega) é `NAO_COMPROVADO`, nunca "ausente"; com as duas fontes,
+   os nomes dos bindings precisam coincidir, senão também é `NAO_COMPROVADO` (NC-1018-02);
 7. `P20 diário D1 - readback obrigatório da certificação`: com o token de leitura, o mesmo SELECT; `check --fase
    depois` exige tudo do item 4 **e** igualdade com o resumo de antes (migrações, objetos, `diario_head`, contagens
    `abandono_*`). Exige também o PASS do item 6. Sem `continue-on-error`. Só aqui sai
@@ -177,11 +191,69 @@ promoveria código junto (`forward_of_live`). Por isso `--motivo d1-config` é e
 (`config_only_candidate_older_than_live`, que na rotina seria `skip-superseded`), divergente, com uma fonte só ou
 motivo desconhecido: `refuse`. A rotina não mudou. Teste: `DiarioD1PromotionGuardTest`.
 
-**Quando `off` deixa de ser o padrão.** Não é decisão deste PR. Depois de uma certificação PASS (e dos 7 dias em
-sombra), o proprietário e o GPT-6 decidem se e quando o padrão passa a manter o binding em todo deploy, e com qual
-modo (um `manter` que confere sem migrar, por exemplo). Até essa decisão, **todo deploy rotineiro sai sem `DIARIO`**:
-um push depois da certificação tira o binding de novo. Para manter o diário ligado nesse intervalo, cada deploy que
-precise dele é seguido de um dispatch `certificar` + `d1-config` do mesmo SHA.
+**NC-1017-01: pós-promoção `NAO_COMPROVADO` em `certificar` (e em `manter`, NC-1018-01).** O passo `Post-promotion effective version (T1)` roda o
+guard com `--unproven-exit 0` em todos os modos de rotina: um observador inalcançável não desfaz uma versão boa, e o
+`Certification gate` reprova o run depois. Em `certificar` isso contradizia a promessa "qualquer falha depois do deploy
+dispara o rollback". Agora, só em `certificar`, o passo próprio `P20 diário D1 - pós-promoção NAO_COMPROVADO em
+certificar dispara o rollback`, logo depois do pós-promoção, falha com `::error title=DIARIO_D1_POS_PROMOCAO_NAO_COMPROVADO`;
+o rollback automático (que roda em `failure()`) volta à versão anterior e confere `--expect ausente --duas-fontes`. A
+regra geral (`--unproven-exit 0`) e os testes do T1 que a fixam ficam intactos. É seguro porque `certificar` só promove o SHA já
+vivo (`d1-config`): o rollback volta à versão anterior do **mesmo código**, sem o `DIARIO`. A mesma exceção vale para
+`manter` (recomendação do GPT-6 na NC-1018-01): um deploy com o D1 ligado não fica no ar sem prova da versão efetiva.
+Em `manter` o rollback volta também o código anterior (é um deploy de rotina) e confere, nas duas fontes, que a
+configuração do `DIARIO` ficou **coerente** (`--expect coerente`: ausente nas duas fontes, ou presente com o UUID certo
+nas duas). Em `off` e `rollback` o comportamento não mudou. Testes: `check_wf_postpromo`, `check_wf_auto_rollback` e
+`check_wf_certification_gate` (os dois últimos **executam** os passos).
+
+**Período de sombra: por que `manter` e não congelamento.** Depois de uma certificação PASS, um push rotineiro em `off`
+tiraria o binding sem querer. Avaliei duas saídas:
+
+- **congelar os deploys por 7 dias** (push/rotina recusados enquanto houver certificação ativa): bloqueia correções
+  urgentes do Worker central por uma semana e exige um estado "certificação ativa" fora do Git (ou outro interruptor)
+  e uma válvula de escape, que reabre o problema;
+- **`manter`** (escolhido): um modo de rotina que religa o binding **só se o banco já estiver certificado** (a mesma
+  conferência do item 4: 3 migrações, objetos, `diario_head` = 1, `abandono_*` = 0), com o token de **leitura**, sem
+  nunca migrar, com o binding efetivo nas duas fontes e o readback obrigatório. Qualquer falha tira o binding e
+  reprova antes do deploy. Os deploys de código continuam fluindo, e o D1 nunca é ligado num banco não certificado.
+
+O padrão é versionado (`.github/diario-d1-modo.json`, caminho reservado ao proprietário porque está em `.github/**`), e
+o push do merge que troca o padrão já roda no novo modo. A ordem é obrigatória: **primeiro** a certificação PASS,
+**depois** o PR que troca `"padrao": "off"` por `"manter"` (decisão do proprietário e do GPT-6). Ao contrário, todo push
+reprovaria até a certificação, e o dispatch `certificar` (que exige o SHA vivo) não teria como rodar. Entre a
+certificação e o merge da troca, não mescle outro PR que dispare o deploy central (ele rodaria em `off` e tiraria o
+binding; seguro, mas exigiria nova certificação). Para desligar o D1 de propósito durante a sombra: dispatch
+`diario_d1=off` (rotina) ou `rollback` + `d1-config`. Limite conhecido: a conferência exige `abandono_*` = 0; ligar o
+e-mail de abandono (estágio além de "desligado") exige rever essa regra antes, senão `manter` reprova.
+
+**Riscos residuais e recuperação determinística.**
+
+- **Smoke falha num `diario_d1=rollback`.** O redeploy sem `DIARIO` falhou num smoke, e o rollback automático volta à
+  versão **anterior**, que tinha o `DIARIO`. A saúde vem primeiro: a sombra tolera o binding. O log mostra
+  `::error title=DIARIO_D1_ROLLBACK_NAO_CONCLUIDO` e o run fica vermelho. Recuperação: (1) ler o smoke que falhou
+  (é o mesmo código, então a causa não é o D1); (2) corrigir a causa ou esperar a instabilidade passar; (3) repetir
+  `diario_d1=rollback` + `motivo=d1-config` no mesmo SHA vivo até verde. Enquanto isso, o diário segue em sombra.
+- **Health não volta depois do rollback automático** (`AUTO_ROLLBACK_HEALTH=FAIL`, `::error title=AUTO_ROLLBACK_HEALTH_FAIL`).
+  A produção está num estado não comprovado. Recuperação: (1) não disparar nada às cegas; (2) conferir no painel da
+  Cloudflare a versão ativa e se ela tem `DIARIO` (Workers > zevanory > Deployments/Settings); (3) se `/api/release` e
+  `/api/health` voltarem, rodar `t1-publisher-guard` com `recheck_service=zevanory` e, se o `DIARIO` precisar sair,
+  `diario_d1=rollback` + `d1-config`; (4) se a produção seguir ilegível, o guard recusa qualquer deploy
+  (`production_version_unknown`) e vale o procedimento `recovery_when_production_unreadable` de
+  `ops/publishers.json` (o proprietário confirma a versão viva e dispara o workflow canônico). Nenhum passo apaga
+  tabela; o banco fica intacto para a próxima certificação.
+- **Rollback automático de uma certificação sem conferência** (API inalcançável depois do `wrangler rollback`):
+  `::error title=DIARIO_D1_ROLLBACK_AUTOMATICO`. Recuperação: `diario_d1=rollback` + `d1-config` no mesmo SHA.
+- **Rollback automático de um `manter`** confere a configuração (`--expect coerente --duas-fontes`). Incoerente ou não
+  comprovada: `::error title=DIARIO_D1_ROLLBACK_AUTOMATICO`. Recuperação: dispatch `diario_d1=off` (rotina) ou
+  `rollback` + `d1-config`, e conferir o binding efetivo verde.
+- **Padrão em `manter` com o banco quebrado** (NC-1018-04). Se o banco deixar de passar na conferência (migração
+  faltando, objeto a mais, `diario_head` diferente de 1, `abandono_*` com linhas, token de leitura revogado, API D1
+  fora), **todo** deploy de rotina reprova antes da promoção e nada novo vai ao ar. A versão anterior, **com** o
+  `DIARIO`, continua servindo (a sombra tolera o banco quebrado: falha do diário não afeta a resposta). Procedimento:
+  (1) ler o `::error` do passo `P20 diário D1 - migrações` (título `DIARIO_D1_*`) para saber o que falhou;
+  (2) para destravar os deploys **já**: dispatch `diario_d1=off` (rotina, sai sem `DIARIO`) ou `rollback` +
+  `d1-config` (mesmo SHA, com conferência obrigatória); (3) PR que volta `.github/diario-d1-modo.json` para `"off"`,
+  senão o próximo push tenta `manter` de novo; (4) corrigir o banco ou o token e só então recertificar (`certificar` +
+  `d1-config`) e voltar o padrão para `manter`. Nenhum passo apaga tabela.
 
 ### Roteiro do primeiro deploy com D1
 
@@ -190,7 +262,8 @@ os dois segredos D1 no environment `producao-critica`.
 
 1. **Confirmar o SHA vivo.** Em Actions > ZEVANORY central production deploy, o run do push do merge: no job
    `guard`, `PROMOTION_GUARD_zevanory: promote` e, no job `deploy`, `DIARIO_D1_MODO::diario_d1=off`,
-   `DIARIO_D1_BINDING_EFETIVO::PASS: binding DIARIO ausente` e `POST_PROMOTION_zevanory: PASS`. Anote o SHA. A ponta de
+   `DIARIO_D1_BINDING_EFETIVO::PASS: binding DIARIO ausente` e `POST_PROMOTION_zevanory: PASS`. Anote o SHA. Este
+   follow-up (NC-1017-01) também precisa estar mesclado e com o deploy dele verde antes do dispatch. A ponta de
    `gh-pages` precisa ser esse SHA (sem merge depois dele); se não for, primeiro deixe o deploy rotineiro da ponta
    terminar.
 2. **Disparar a certificação.** Run workflow em `gh-pages` com `diario_d1 = certificar` e `motivo = d1-config`.
@@ -208,13 +281,18 @@ os dois segredos D1 no environment `producao-critica`.
 4. **O que reprova** (o run fica vermelho e nada disso é "aviso"): qualquer `::error` com título `DIARIO_D1_*`,
    `DIARIO_D1_MODO_INVALIDO`, `MOTIVO_INVALIDO` ou `PROMOTION_GUARD_zevanory::refuse (config_only_...)`. Antes do deploy
    (migrações e conferência), a produção fica como estava, sem `DIARIO`. Depois do deploy, o rollback automático roda
-   e confere `DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa sem o binding DIARIO`; se essa conferência falhar, rode o
-   item 5.
-5. **Rollback manual (se precisar desligar o D1 depois de uma certificação PASS):** Run workflow com
+   (também quando o pós-promoção sai `NAO_COMPROVADO`) e confere `DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa sem o
+   binding DIARIO`; se essa conferência falhar, rode o item 6.
+5. **Período de sombra:** depois do PASS, abrir o PR que troca `.github/diario-d1-modo.json` para `"padrao": "manter"`
+   (decisão do proprietário e do GPT-6). No push desse merge: `DIARIO_D1_MODO::diario_d1=manter ... padrao=manter`,
+   `DIARIO_D1_PRE_PROMOCAO::PASS (diario_d1=manter)`, binding efetivo PASS nas duas fontes e
+   `DIARIO_D1_CERTIFICACAO::PASS (diario_d1=manter)`. Nenhuma linha `DIARIO_D1_MIGRACAO`.
+6. **Rollback manual (se precisar desligar o D1 depois de uma certificação PASS):** Run workflow com
    `diario_d1 = rollback` e `motivo = d1-config` no mesmo SHA vivo. Verde só com `DIARIO_D1_MODO::diario_d1=rollback`,
    `DIARIO_D1_CANDIDATO=sem_binding modo=rollback` e `DIARIO_D1_BINDING_EFETIVO::PASS: binding DIARIO ausente`. As
-   tabelas e as migrações ficam no banco. Um deploy `off` (push) também tira o binding, mas sem o rigor do rollback
-   (em `off`, API inalcançável é só "não comprovado").
+   tabelas e as migrações ficam no banco. Um deploy `off` também tira o binding, mas sem o rigor do rollback (em
+   `off`, API inalcançável é só "não comprovado"). Com o padrão em `manter`, volte também o arquivo para `off` por PR,
+   senão o próximo push religa o binding (o banco continua certificado).
 
 ## Credenciais dedicadas (DEC-P20-D1-01)
 
@@ -477,13 +555,17 @@ cópia KV -> Neon, #999).
   falha) tiram o binding e reprovam; que o readback certifica com o token de leitura e que toda falha dele reprova o job
   (sem `continue-on-error`); que o deploy segue com o token atual, que o compartilhado nunca recebe chamada D1 e que
   nenhum caminho apaga tabela. Confere ainda o registro em `ops/publishers.json` e o detector T1
-  (`scripts/deploy/t1-write-scan.mjs`). São 22 mutantes, e todos precisam morrer.
+  (`scripts/deploy/t1-write-scan.mjs`). Cobre também o modo `manter` (token de leitura, nunca migra, banco não certificado reprova) e a conferência do UUID do
+  `DIARIO` no candidato antes de qualquer chamada D1. São 28 mutantes,
+  e todos precisam morrer.
 - `tests/test_binding_budget_compaction.py`, classes `DiarioD1*`: gerador real nos modos (sem modo, `off`,
   `rollback`, `certificar`, inválido), validação do modo e do motivo no job `guard`, ordem dos passos, conferência do
   binding efetivo com a API falsa (presente, ausente, UUID errado, tag errada, rollout parcial, API inalcançável),
   `promotion_guard.py` com `motivo=d1-config` (mesmo SHA promove; à frente, mais antigo, divergente e uma fonte só
-  recusam) e o script de certificação rodando a SQL real num SQLite com as migrações reais. 36 mutantes (guard, script,
-  gerador e workflow), todos precisam morrer.
+  recusam), o padrão versionado (`manter` por dispatch só com o padrão em `manter`), o pós-promoção `NAO_COMPROVADO` em
+  `certificar` e `manter` (rollback), o rollback automático e o gate de certificação **executados**, as duas fontes do
+  binding (lista vazia ou sem sentinela, nomes divergentes, `coerente`) e o script de certificação rodando a SQL real
+  num SQLite com as migrações reais. 57 mutantes (guard, script, gerador e workflow), todos precisam morrer.
 - `tests/p20-diario-reconcilia.test.mjs` (RC1 a RC10): D1 falso com as migrações reais e Neon falso. Cobre sem
   binding, tudo casa, falta, sobra, normalização diferente, cadeia e âncora adulteradas, bordas da janela, paginação e
   índice, fontes ausentes ou com erro, sombra contra ativo no relatório e os ganchos reais de consentimento e de

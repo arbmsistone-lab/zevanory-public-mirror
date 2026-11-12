@@ -51,7 +51,8 @@
             "permission": "Conta > D1 > Ler (API: D1 Read), só a conta acima",
             "writes": [],
             "reads": [
-              "wrangler d1 execute zevanory-diario-p20 --remote --json --command \"$SQL\" (o mesmo SELECT único de certificação: diario_head, d1_migrations, sqlite_master e contagens abandono_*)"
+              "wrangler d1 execute zevanory-diario-p20 --remote --json --command \"$SQL\" (o mesmo SELECT único de certificação: diario_head, d1_migrations, sqlite_master e contagens abandono_*)",
+              "no modo manter, o mesmo SELECT único antes da promoção, no passo P20 diário D1 - migrações, e GET /accounts/<conta>/d1/database/<id>"
             ],
             "readers": [
               {
@@ -60,6 +61,10 @@
                 "script": "scripts/p20/diario-d1-read.mjs",
                 "reads": "POST /accounts/<conta>/d1/database/<id>/query com só duas SELECT fixas (diario_head e diario_v1 por seq); nenhuma outra SQL é aceita"
               }
+            ],
+            "steps": [
+              "P20 diário D1 - readback (certificar e manter)",
+              "P20 diário D1 - migrações (só a conferência pré-promoção do manter; nunca migra)"
             ]
           },
           "deploy": {
@@ -70,13 +75,15 @@
         "absent_secret": "certificar: segredo de migração ausente reprova o job antes da promoção e o candidato sai sem DIARIO; segredo de leitura ausente reprova a certificação depois do deploy (rollback automático para a versão sem DIARIO). off/rollback: os segredos não são entregues. Nunca há queda para outro token.",
         "tests": "tests/test_diario_d1_credentials.py",
         "modes": {
-          "input": "workflow_dispatch diario_d1 (validado no job guard; push e dispatch sem input = off)",
+          "input": "workflow_dispatch diario_d1 (padrao | off | manter | certificar | rollback), validado no job guard; push e dispatch com padrao usam .github/diario-d1-modo.json",
           "default": "off",
-          "only_in": "certificar: só neste modo os dois segredos D1 chegam ao env dos passos (expressão needs.guard.outputs.diario_d1 == 'certificar' && secrets.X || ''), o gerador injeta o binding DIARIO e a migração roda; falha tira o binding e reprova antes da promoção; readback obrigatório reprova depois",
+          "only_in": "certificar: só neste modo CF_TOKEN_D1_DIARIO_MIGRATE chega ao env (needs.guard.outputs.diario_d1 == 'certificar' && secrets.X || ''), o gerador injeta o binding DIARIO e a migração roda; falha tira o binding e reprova antes da promoção; readback obrigatório reprova depois; pós-promoção NAO_COMPROVADO também dispara o rollback automático (NC-1017-01)",
           "off": "nenhuma chamada D1, segredos vazios, candidato sem DIARIO; conferência do binding efetivo ausente (token do deploy)",
           "rollback": "redeploy do MESMO SHA (motivo=d1-config) sem DIARIO e conferência obrigatória da versão ativa sem o binding; nenhuma tabela é apagada",
-          "binding_check": "scripts/deploy/diario_d1_certify.py binding: GET /workers/scripts/zevanory/deployments, /versions/<id> e /settings com o token do DEPLOY (Workers Scripts Read no zevanory); CF_TOKEN_D1_DIARIO_READ não lê Worker",
-          "doc": "docs/p20/diario-d1.md, seção Primeiro deploy com D1"
+          "binding_check": "scripts/deploy/diario_d1_certify.py binding: GET /workers/scripts/zevanory/deployments, /versions/<id> e /settings com o token do DEPLOY (Workers Scripts Read no zevanory); em certificar/manter (--duas-fontes) exige a lista de bindings em /settings E em /versions, sem ela NAO_COMPROVADO (fail-closed); CF_TOKEN_D1_DIARIO_READ não lê Worker; em qualquer fonte, lista vazia ou sem o sentinela ZEVANORY_PRIVATE_ARTIFACTS é NAO_COMPROVADO, e com duas fontes os nomes precisam coincidir (NC-1018-02)",
+          "doc": "docs/p20/diario-d1.md, seção Primeiro deploy com D1",
+          "default_file": ".github/diario-d1-modo.json",
+          "manter": "sombra depois de uma certificação PASS; aceito SÓ com padrao=manter em .github/diario-d1-modo.json (PR do proprietário/GPT-6; dispatch manter com padrão off é erro, NC-1018-01): CF_TOKEN_D1_DIARIO_READ (D1 Read) na conferência pré-promoção e no readback; nunca migra; só religa o DIARIO se o banco já estiver certificado (3 migrações, objetos, diario_head=1, abandono_*=0); falha tira o binding e reprova; pós-promoção NAO_COMPROVADO dispara o rollback automático, que confere a configuração coerente nas duas fontes"
         }
       }
     },

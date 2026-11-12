@@ -2,15 +2,15 @@ name: ZEVANORY central production deploy
 on:
   workflow_dispatch:
     inputs:
-      # P20 diário D1, NO-GO do GPT-6 (NC-P2b-DEP-01/02/03). docs/p20/diario-d1.md, seção "Primeiro deploy com D1".
-      # Push e dispatch sem input = "off": nenhum deploy rotineiro migra ou liga o binding DIARIO, mesmo com os segredos
-      # D1 cadastrados. Mudar o padrão é decisão futura do proprietário e do GPT-6, depois da certificação.
+      # P20 diário D1, NO-GO do GPT-6 (NC-P2b-DEP-01/02/03 e NC-1017-01). docs/p20/diario-d1.md, seção "Primeiro deploy
+      # com D1". Push e dispatch sem input usam o padrão VERSIONADO em .github/diario-d1-modo.json ("off" até o
+      # proprietário e o GPT-6 trocarem para "manter" por PR, depois de uma certificação PASS).
       diario_d1:
-        description: "D1 do diário: off (padrão, sem binding e sem migração), certificar (fail-closed) ou rollback (redeploy sem binding, com conferência)"
+        description: "D1 do diário: padrao (o de .github/diario-d1-modo.json); off (sem binding), manter (religa só se o banco já está certificado), certificar (fail-closed) ou rollback (redeploy sem binding)"
         required: false
         type: choice
-        options: ["off", "certificar", "rollback"]
-        default: "off"
+        options: ["padrao", "off", "manter", "certificar", "rollback"]
+        default: "padrao"
       motivo:
         description: "rotina (padrão) ou d1-config: promove só o MESMO SHA já vivo (mudança só de configuração); exigido por certificar e rollback"
         required: false
@@ -121,6 +121,8 @@ on:
       # P20 diário D1: uma migração nova chega ao banco pelo passo de migração deste deploy.
       - "migrations/d1/**"
       - "scripts/deploy/diario_d1_certify.py"
+      # Trocar o padrão (off <-> manter) entra em vigor no próprio merge.
+      - ".github/diario-d1-modo.json"
 concurrency:
   group: deploy-zevanory
   cancel-in-progress: false
@@ -203,8 +205,12 @@ jobs:
               exit 1
               ;;
           esac
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: P20 diário D1 - modo e motivo do dispatch (validação, fail-closed)
-        # NC-P2b-DEP-02/03 (docs/p20/diario-d1.md, "Primeiro deploy com D1"). Vazio (push, dispatch sem input) = off/rotina.
+        # NC-P2b-DEP-02/03 e NC-1017-01 (docs/p20/diario-d1.md, "Primeiro deploy com D1"). Sem input (push, dispatch
+        # sem escolha): o padrão versionado de .github/diario-d1-modo.json ("off" ou "manter"), lido neste SHA.
         # certificar e rollback só com motivo=d1-config (mesmo SHA já vivo, só configuração); d1-config só com eles.
         id: modo
         shell: bash
@@ -214,26 +220,38 @@ jobs:
           EVENTO: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          padrao="$(python3 -c 'import json;d=json.load(open(".github/diario-d1-modo.json"));p=d.get("padrao");print(p if p in ("off","manter") else "INVALIDO")' 2>/dev/null || echo INVALIDO)"
+          if [ "$padrao" = "INVALIDO" ]; then
+            echo "::error title=DIARIO_D1_PADRAO_INVALIDO::.github/diario-d1-modo.json ausente ou com padrao fora de off|manter"; exit 1
+          fi
           modo="${DIARIO_D1_INPUT:-}"; motivo="${MOTIVO_INPUT:-}"
-          [ -n "$modo" ] || modo="off"
+          if [ "$EVENTO" != "workflow_dispatch" ] && { [ -n "$modo" ] || [ -n "$motivo" ]; }; then
+            echo "::error title=DIARIO_D1_MODO_INVALIDO::evento $EVENTO não aceita input de modo ou motivo"; exit 1
+          fi
+          if [ -z "$modo" ] || [ "$modo" = "padrao" ]; then modo="$padrao"; fi
           [ -n "$motivo" ] || motivo="rotina"
-          case "$modo" in off|certificar|rollback) ;; *) echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=$modo (aceitos: off, certificar, rollback)"; exit 1 ;; esac
+          case "$modo" in off|manter|certificar|rollback) ;; *) echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=$modo (aceitos: off, manter, certificar, rollback)"; exit 1 ;; esac
           case "$motivo" in rotina|d1-config) ;; *) echo "::error title=MOTIVO_INVALIDO::motivo=$motivo (aceitos: rotina, d1-config)"; exit 1 ;; esac
-          if [ "$EVENTO" != "workflow_dispatch" ] && { [ "$modo" != "off" ] || [ "$motivo" != "rotina" ]; }; then
-            echo "::error title=DIARIO_D1_MODO_INVALIDO::evento $EVENTO só roda com diario_d1=off e motivo=rotina"; exit 1
+          if [ "$modo" = "manter" ] && [ "$padrao" != "manter" ]; then
+            # NC-1018-01: manter só com o padrão versionado em manter (decisão do proprietário/GPT-6 no arquivo protegido);
+            # um dispatch manter com o padrão em off ligaria o D1 junto com código novo por fora do arquivo.
+            echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=manter só com .github/diario-d1-modo.json em \"padrao\": \"manter\" (hoje: $padrao). Para ligar o D1 use certificar + d1-config."; exit 1
           fi
-          if [ "$modo" != "off" ] && [ "$motivo" != "d1-config" ]; then
-            echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=$modo exige motivo=d1-config (promove só o MESMO SHA já vivo; a mudança de D1 nunca viaja junto com código)"; exit 1
-          fi
-          if [ "$motivo" = "d1-config" ] && [ "$modo" = "off" ]; then
-            echo "::error title=MOTIVO_INVALIDO::motivo=d1-config só com diario_d1=certificar ou rollback"; exit 1
-          fi
+          case "$modo" in
+            certificar|rollback)
+              if [ "$motivo" != "d1-config" ]; then
+                echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=$modo exige motivo=d1-config (promove só o MESMO SHA já vivo; a mudança de D1 nunca viaja junto com código)"; exit 1
+              fi
+              ;;
+            *)
+              if [ "$motivo" = "d1-config" ]; then
+                echo "::error title=MOTIVO_INVALIDO::motivo=d1-config só com diario_d1=certificar ou rollback"; exit 1
+              fi
+              ;;
+          esac
           echo "diario_d1=$modo" >> "$GITHUB_OUTPUT"
           echo "motivo=$motivo" >> "$GITHUB_OUTPUT"
-          echo "::notice title=DIARIO_D1_MODO::diario_d1=$modo motivo=$motivo evento=$EVENTO"
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+          echo "::notice title=DIARIO_D1_MODO::diario_d1=$modo motivo=$motivo evento=$EVENTO padrao=$padrao"
       - name: Pre-promotion guard
         id: guard
         env:
@@ -503,21 +521,22 @@ jobs:
             exit 1
           fi
 
-      - name: P20 diário D1 - migrações e certificação antes da promoção (fail-closed só em certificar)
+      - name: P20 diário D1 - migrações e certificação antes da promoção (fail-closed em certificar e manter)
         # docs/p20/diario-d1.md, seções "Binding e migração", "Credenciais dedicadas (DEC-P20-D1-01)" e "Primeiro deploy
-        # com D1" (NO-GO do GPT-6, NC-P2b-DEP-02). DEC-P20-D1-01: o D1 só é tocado com o token DEDICADO de migração
-        # (CF_TOKEN_D1_DIARIO_MIGRATE, D1 Edit), entregue SÓ a este passo; os dois nomes do token compartilhado ficam
-        # vazios aqui. O wrangler deploy não precisa de permissão D1 para subir um binding D1.
-        #  - off/rollback: NENHUMA chamada D1, mesmo com os segredos cadastrados; o candidato precisa estar sem DIARIO
-        #    (o gerador tirou); se estiver com ele, reprova antes do deploy.
-        #  - certificar: aplica 0001, 0002 e 0003 ANTES da promoção e confere d1_migrations (as 3), os objetos esperados
-        #    (tabelas, índices e gatilhos), diario_head = 1 e abandono_* = 0. Qualquer falha tira o binding DIARIO do
-        #    candidato E reprova o job aqui: nada é promovido e a produção fica como estava (sem D1).
+        # com D1" (NO-GO do GPT-6, NC-P2b-DEP-02 e follow-up NC-1017-01). DEC-P20-D1-01: o D1 só é tocado com token
+        # DEDICADO, entregue SÓ a este passo e só no modo que o usa; os dois nomes do token compartilhado ficam vazios aqui.
+        #  - off/rollback: NENHUMA chamada D1, mesmo com os segredos cadastrados; o candidato precisa estar sem DIARIO.
+        #  - certificar: token de MIGRAÇÃO (D1 Edit); aplica 0001, 0002 e 0003 ANTES da promoção e confere d1_migrations
+        #    (as 3), objetos (tabelas, índices e gatilhos), diario_head = 1 e abandono_* = 0.
+        #  - manter (sombra, depois de uma certificação): token de LEITURA (D1 Read); NUNCA migra; só religa o binding se
+        #    o banco já estiver certificado (a mesma conferência).
+        # Qualquer falha em certificar/manter tira o binding DIARIO do candidato E reprova o job aqui: nada é promovido.
         id: diariomig
         if: steps.auth.outputs.available == 'true'
         env:
-          # Só em certificar o segredo chega ao processo; em off/rollback o valor é vazio.
+          # Cada segredo só chega ao processo no modo que o usa; nos outros o valor é vazio.
           CF_TOKEN_D1_DIARIO_MIGRATE: ${{ needs.guard.outputs.diario_d1 == 'certificar' && secrets.CF_TOKEN_D1_DIARIO_MIGRATE || '' }}
+          CF_TOKEN_D1_DIARIO_READ: ${{ needs.guard.outputs.diario_d1 == 'manter' && secrets.CF_TOKEN_D1_DIARIO_READ || '' }}
           CLOUDFLARE_API_TOKEN: ""
           CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ""
           CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
@@ -534,42 +553,57 @@ jobs:
           falha() {
             drop_binding
             echo "state=falhou" >> "$GITHUB_OUTPUT"
-            echo "::error title=$1::$2 Modo certificar é fail-closed: o candidato sai SEM o binding DIARIO e este deploy NÃO é promovido (a produção fica como estava)."
+            echo "::error title=$1::$2 Modo $modo é fail-closed: o candidato sai SEM o binding DIARIO e este deploy NÃO é promovido (a produção fica como estava)."
             exit 1
           }
-          if [ "$modo" != "certificar" ]; then
-            if [ -n "$DB_ID" ]; then
-              drop_binding
-              echo "::error title=DIARIO_D1_BINDING::binding DIARIO no candidato com diario_d1=$modo; o gerador deveria ter tirado. Deploy reprovado antes da promoção."
-              exit 1
-            fi
-            echo "state=desligado" >> "$GITHUB_OUTPUT"
-            echo "::notice title=DIARIO_D1_MODO::diario_d1=$modo: nenhuma migração, nenhuma chamada D1 e candidato SEM o binding DIARIO (segredos D1 não usados)"
-            exit 0
-          fi
+          case "$modo" in
+            certificar|manter) ;;
+            *)
+              if [ -n "$DB_ID" ]; then
+                drop_binding
+                echo "::error title=DIARIO_D1_BINDING::binding DIARIO no candidato com diario_d1=$modo; o gerador deveria ter tirado. Deploy reprovado antes da promoção."
+                exit 1
+              fi
+              echo "state=desligado" >> "$GITHUB_OUTPUT"
+              echo "::notice title=DIARIO_D1_MODO::diario_d1=$modo: nenhuma migração, nenhuma chamada D1 e candidato SEM o binding DIARIO (segredos D1 não usados)"
+              exit 0
+              ;;
+          esac
           case "$DB_ID" in
             1b1bfa19-ccc5-423a-bc1f-62d89020c8e2) ;;
             *) falha DIARIO_D1_BINDING "binding DIARIO ausente ou com banco inesperado no candidato ($DB_ID); o gerador deveria ter injetado o banco certo." ;;
           esac
-          [ -n "${CF_TOKEN_D1_DIARIO_MIGRATE:-}" ] || falha DIARIO_D1_TOKEN_DEDICADO_AUSENTE "segredo CF_TOKEN_D1_DIARIO_MIGRATE ausente no environment producao-critica (DEC-P20-D1-01: o token compartilhado nunca toca o D1)."
-          code="$(curl -sS -o /tmp/diario-d1.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN_D1_DIARIO_MIGRATE" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/d1/database/$DB_ID" || true)"
-          name="$(python3 -c 'import json;print((json.load(open("/tmp/diario-d1.json")).get("result") or {}).get("name",""))' 2>/dev/null || true)"
-          [ "$code" = "200" ] || falha DIARIO_D1_BANCO_INACESSIVEL "o token CF_TOKEN_D1_DIARIO_MIGRATE não lê o banco zevanory-diario-p20 (HTTP $code); ele precisa de Conta > D1 > Editar na conta 1b26415802588185a86c1d4d3ebf5bdb."
-          [ "$name" = "zevanory-diario-p20" ] || falha DIARIO_D1_BANCO_DIVERGENTE "o UUID do binding DIARIO não corresponde ao banco zevanory-diario-p20."
-          if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc > /tmp/diario-mig.log 2>&1; then
-            falha DIARIO_D1_MIGRACAO_FALHOU "migrations apply falhou: $(tail -8 /tmp/diario-mig.log | tr '\n' ' ' | cut -c1-700)"
-          fi
-          echo "::notice title=DIARIO_D1_MIGRACAO::$(grep -Eio 'no migrations to apply|migrations? applied|✅[^|]*' /tmp/diario-mig.log | head -3 | tr '\n' ' ' | cut -c1-300)"
           SQL="$(python3 scripts/deploy/diario_d1_certify.py sql)" || falha DIARIO_D1_MIGRACOES_NAO_REVISADAS "migrations/d1 diverge das migrações revisadas pela certificação."
-          if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 execute zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc --json --command "$SQL" > /tmp/diario-antes.json 2>/tmp/diario-antes.err; then
-            falha DIARIO_D1_VERIFICACAO_FALHOU "SELECT de certificação falhou: $(tail -3 /tmp/diario-antes.err | tr '\n' ' ' | cut -c1-400)"
+          if [ "$modo" = "certificar" ]; then
+            [ -n "${CF_TOKEN_D1_DIARIO_MIGRATE:-}" ] || falha DIARIO_D1_TOKEN_DEDICADO_AUSENTE "segredo CF_TOKEN_D1_DIARIO_MIGRATE ausente no environment producao-critica (DEC-P20-D1-01: o token compartilhado nunca toca o D1)."
+            code="$(curl -sS -o /tmp/diario-d1.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN_D1_DIARIO_MIGRATE" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/d1/database/$DB_ID" || true)"
+            name="$(python3 -c 'import json;print((json.load(open("/tmp/diario-d1.json")).get("result") or {}).get("name",""))' 2>/dev/null || true)"
+            [ "$code" = "200" ] || falha DIARIO_D1_BANCO_INACESSIVEL "o token CF_TOKEN_D1_DIARIO_MIGRATE não lê o banco zevanory-diario-p20 (HTTP $code); ele precisa de Conta > D1 > Editar na conta 1b26415802588185a86c1d4d3ebf5bdb."
+            [ "$name" = "zevanory-diario-p20" ] || falha DIARIO_D1_BANCO_DIVERGENTE "o UUID do binding DIARIO não corresponde ao banco zevanory-diario-p20."
+            if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations apply zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc > /tmp/diario-mig.log 2>&1; then
+              falha DIARIO_D1_MIGRACAO_FALHOU "migrations apply falhou: $(tail -8 /tmp/diario-mig.log | tr '\n' ' ' | cut -c1-700)"
+            fi
+            echo "::notice title=DIARIO_D1_MIGRACAO::$(grep -Eio 'no migrations to apply|migrations? applied|✅[^|]*' /tmp/diario-mig.log | head -3 | tr '\n' ' ' | cut -c1-300)"
+            if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 execute zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc --json --command "$SQL" > /tmp/diario-antes.json 2>/tmp/diario-antes.err; then
+              falha DIARIO_D1_VERIFICACAO_FALHOU "SELECT de certificação falhou: $(tail -3 /tmp/diario-antes.err | tr '\n' ' ' | cut -c1-400)"
+            fi
+          else
+            # manter: nenhuma migração; só religa o binding se o banco JÁ estiver certificado. Token de leitura.
+            [ -n "${CF_TOKEN_D1_DIARIO_READ:-}" ] || falha DIARIO_D1_TOKEN_DEDICADO_AUSENTE "segredo CF_TOKEN_D1_DIARIO_READ ausente no environment producao-critica (manter só lê o D1)."
+            code="$(curl -sS -o /tmp/diario-d1.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN_D1_DIARIO_READ" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/d1/database/$DB_ID" || true)"
+            name="$(python3 -c 'import json;print((json.load(open("/tmp/diario-d1.json")).get("result") or {}).get("name",""))' 2>/dev/null || true)"
+            [ "$code" = "200" ] || falha DIARIO_D1_BANCO_INACESSIVEL "o token CF_TOKEN_D1_DIARIO_READ não lê o banco zevanory-diario-p20 (HTTP $code); ele precisa de Conta > D1 > Ler."
+            [ "$name" = "zevanory-diario-p20" ] || falha DIARIO_D1_BANCO_DIVERGENTE "o UUID do binding DIARIO não corresponde ao banco zevanory-diario-p20."
+            if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_READ" npx --yes wrangler@4.143.0 d1 execute zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc --json --command "$SQL" > /tmp/diario-antes.json 2>/tmp/diario-antes.err; then
+              falha DIARIO_D1_VERIFICACAO_FALHOU "SELECT de conferência falhou (banco não certificado?): $(tail -3 /tmp/diario-antes.err | tr '\n' ' ' | cut -c1-400)"
+            fi
           fi
           python3 scripts/deploy/diario_d1_certify.py check --fase antes /tmp/diario-antes.json > /tmp/diario-antes.out 2>&1; rc=$?
           cat /tmp/diario-antes.out
           [ "$rc" = "0" ] || falha DIARIO_D1_ESQUEMA_INESPERADO "$(grep -E '=FAIL' /tmp/diario-antes.out | tr '\n' ' ' | cut -c1-700)"
           echo "antes=$(sed -n 's/^RESUMO=//p' /tmp/diario-antes.out | tail -1)" >> "$GITHUB_OUTPUT"
           echo "state=certificado_pre" >> "$GITHUB_OUTPUT"
-          echo "::notice title=DIARIO_D1_PRE_PROMOCAO::PASS: 3 migrações, objetos esperados, diario_head=1, abandono_*=0; o binding DIARIO segue no candidato"
+          echo "::notice title=DIARIO_D1_PRE_PROMOCAO::PASS (diario_d1=$modo): 3 migrações, objetos esperados, diario_head=1, abandono_*=0; o binding DIARIO segue no candidato"
       - name: Deploy repaired production worker
         id: deployworker
         if: steps.auth.outputs.available == 'true'
@@ -665,9 +699,10 @@ jobs:
         # NC-P2b-DEP-01/02: lê na Cloudflare a configuração EFETIVA da versão ativa (deployment a 100%, tag = este SHA,
         # bindings da versão e de /settings) com o token do DEPLOY deste job, que já lê /settings e /deployments
         # (Workers Scripts Read no zevanory). O token CF_TOKEN_D1_DIARIO_READ é só D1 Read e não lê Worker.
-        # certificar: DIARIO presente com o UUID certo. off/rollback: DIARIO ausente. FAIL reprova (e dispara o rollback
-        # automático abaixo). NAO_COMPROVADO (API inalcançável) reprova em certificar e rollback; em off vira aviso
-        # explícito de "não comprovado", nunca PASS.
+        # certificar/manter: DIARIO presente com o UUID certo nas DUAS fontes (/settings E a lista de bindings de
+        # /versions/<id>; sem a lista de /versions é NAO_COMPROVADO, fail-closed: NC-1017-01). off/rollback: DIARIO
+        # ausente. FAIL reprova (e dispara o rollback automático abaixo). NAO_COMPROVADO reprova em certificar, manter e
+        # rollback; em off vira aviso explícito de "não comprovado", nunca PASS.
         id: diariobinding
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         shell: bash
@@ -675,11 +710,11 @@ jobs:
           set -uo pipefail
           modo="${DIARIO_D1_MODO:-}"; [ -n "$modo" ] || modo="off"
           case "$modo" in
-            certificar) esperado="presente" ;;
-            off|rollback) esperado="ausente" ;;
+            certificar|manter) esperado="presente"; fontes="--duas-fontes" ;;
+            off|rollback) esperado="ausente"; fontes="" ;;
             *) echo "::error title=DIARIO_D1_MODO_INVALIDO::diario_d1=$modo"; exit 1 ;;
           esac
-          python3 scripts/deploy/diario_d1_certify.py binding --expect "$esperado" --candidate "$TARGET_RUNTIME_SHA" > /tmp/diario-binding.out 2>&1; rc=$?
+          python3 scripts/deploy/diario_d1_certify.py binding --expect "$esperado" --candidate "$TARGET_RUNTIME_SHA" $fontes > /tmp/diario-binding.out 2>&1; rc=$?
           cat /tmp/diario-binding.out
           case "$rc" in
             0)
@@ -701,19 +736,20 @@ jobs:
               exit 1
               ;;
           esac
-      - name: P20 diário D1 - readback obrigatório da certificação (reprova o job)
+      - name: P20 diário D1 - readback obrigatório da certificação (certificar e manter; reprova o job)
         # DEC-P20-D1-01: leitura com credencial PRÓPRIA (CF_TOKEN_D1_DIARIO_READ, só D1 Read), entregue só a este passo;
         # sem ela a certificação reprova (nunca cai para o token de migração nem para o compartilhado do deploy).
         # NC-P2b-DEP-02: em certificar, prova diario_head = 1, as 3 migrações, os objetos, abandono_* = 0 e iguais aos
         # de antes da promoção, e exige o binding efetivo PASS do passo anterior. Falha reprova o job e o rollback
-        # automático abaixo volta à versão anterior (sem DIARIO). off/rollback: não se aplica, nenhuma chamada D1.
+        # automático abaixo volta à versão anterior. manter: a mesma prova, com o resumo da conferência pré-promoção.
+        # off/rollback: não se aplica, nenhuma chamada D1.
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         env:
           DIARIO_MIG_STATE: ${{ steps.diariomig.outputs.state }}
           DIARIO_ANTES: ${{ steps.diariomig.outputs.antes }}
           DIARIO_BINDING_STATE: ${{ steps.diariobinding.outputs.state }}
-          # Só em certificar o segredo chega ao processo; em off/rollback o valor é vazio.
-          CF_TOKEN_D1_DIARIO_READ: ${{ needs.guard.outputs.diario_d1 == 'certificar' && secrets.CF_TOKEN_D1_DIARIO_READ || '' }}
+          # Só em certificar e manter o segredo chega ao processo; em off/rollback o valor é vazio.
+          CF_TOKEN_D1_DIARIO_READ: ${{ (needs.guard.outputs.diario_d1 == 'certificar' || needs.guard.outputs.diario_d1 == 'manter') && secrets.CF_TOKEN_D1_DIARIO_READ || '' }}
           CLOUDFLARE_API_TOKEN: ""
           CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ""
           CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
@@ -721,7 +757,7 @@ jobs:
         run: |
           set -uo pipefail
           modo="${DIARIO_D1_MODO:-}"; [ -n "$modo" ] || modo="off"
-          if [ "$modo" != "certificar" ]; then
+          if [ "$modo" != "certificar" ] && [ "$modo" != "manter" ]; then
             echo "::notice title=DIARIO_D1_READBACK::diario_d1=$modo: readback D1 não se aplica (sem binding DIARIO, nenhuma chamada D1)"
             exit 0
           fi
@@ -737,7 +773,7 @@ jobs:
           python3 scripts/deploy/diario_d1_certify.py check --fase depois --antes /tmp/diario-antes-resumo.json /tmp/diario-depois.json > /tmp/diario-depois.out 2>&1; rc=$?
           cat /tmp/diario-depois.out
           [ "$rc" = "0" ] || reprova "$(grep -E '=FAIL' /tmp/diario-depois.out | tr '\n' ' ' | cut -c1-700)"
-          echo "::notice title=DIARIO_D1_CERTIFICACAO::PASS: binding DIARIO efetivo (UUID 1b1bfa19), d1_migrations com as 3, objetos esperados, diario_head=1, abandono_* = 0 antes e depois"
+          echo "::notice title=DIARIO_D1_CERTIFICACAO::PASS (diario_d1=$modo): binding DIARIO efetivo nas duas fontes (UUID 1b1bfa19), d1_migrations com as 3, objetos esperados, diario_head=1, abandono_* = 0 antes e depois"
       - name: Post-promotion effective version (T1)
         id: postpromo
         if: steps.auth.outputs.available == 'true'
@@ -746,10 +782,24 @@ jobs:
           # FAIL (positive evidence) fails this step -> automatic rollback below.
           # NAO_COMPROVADO (observer unreachable) does NOT roll back: --unproven-exit 0 and the
           # certification gate after the rollback step fails the run instead.
+          # Exceção D1 (NC-1017-01) no passo seguinte, só em diario_d1=certificar.
           python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory \
             --candidate "$TARGET_RUNTIME_SHA" \
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
+      - name: P20 diário D1 - pós-promoção NAO_COMPROVADO em certificar ou manter dispara o rollback (NC-1017-01)
+        # A regra geral (T1) continua: um observador inalcançável não desfaz uma versão boa (--unproven-exit 0 acima; o
+        # Certification gate reprova depois). Exceção explícita e estreita para os deploys que ligam o DIARIO:
+        #  - certificar: a promoção só troca a configuração do D1 do MESMO SHA já vivo (motivo=d1-config); o rollback volta
+        #    ao mesmo código sem DIARIO, conferindo --expect ausente nas duas fontes;
+        #  - manter (NC-1018-01): um deploy com o D1 ligado não fica no ar sem prova da versão efetiva; o rollback volta à
+        #    versão anterior (o código anterior também), conferindo que a configuração do DIARIO ficou coerente.
+        if: steps.auth.outputs.available == 'true' && (needs.guard.outputs.diario_d1 == 'certificar' || needs.guard.outputs.diario_d1 == 'manter') && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
+        env:
+          POST_REASON: ${{ steps.postpromo.outputs.reason }}
+        run: |
+          echo "::error title=DIARIO_D1_POS_PROMOCAO_NAO_COMPROVADO::diario_d1=${DIARIO_D1_MODO:-?}: pós-promoção NAO_COMPROVADO ($POST_REASON); sem prova da versão efetiva a certificação não fica no ar: rollback automático a seguir (NC-1017-01)"
+          exit 1
       - name: Automatic rollback after failed post-deploy smoke
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         env:
@@ -764,27 +814,48 @@ jobs:
             if [ "$code" = "200" ] && python3 scripts/deploy/verify-rollback-health.py /tmp/rollback-health.json;
             then
               echo "AUTO_ROLLBACK_HEALTH=PASS"
-              if [ "${DIARIO_D1_MODO:-off}" = "certificar" ]; then
-                # NC-P2b-DEP-01: depois do rollback de uma certificação, confere na Cloudflare que a versão ativa está SEM
-                # o binding DIARIO (as tabelas nunca são apagadas; este workflow não tem DROP).
-                python3 scripts/deploy/diario_d1_certify.py binding --expect ausente || { echo "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa depois do rollback ainda com DIARIO ou não comprovada; rode diario_d1=rollback motivo=d1-config"; exit 1; }
-                echo "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa sem o binding DIARIO"
-              fi
               # Never renew on an unhealthy rollback. Dispatch the existing
               # signed, GET-only financial proof workflow after health is proven.
               gh workflow run order12a-financial-proof-renewal.yml --repo "$GITHUB_REPOSITORY" --ref gh-pages
               echo "AUTO_ROLLBACK_FINANCIAL_PROOF_RENEWAL_DISPATCH=PASS"
+              case "${DIARIO_D1_MODO:-off}" in
+                certificar)
+                  # NC-P2b-DEP-01/NC-1017-01: depois do rollback de uma certificação, confere nas DUAS fontes que a versão
+                  # ativa está SEM o binding DIARIO (as tabelas nunca são apagadas; este workflow não tem DROP).
+                  python3 scripts/deploy/diario_d1_certify.py binding --expect ausente --duas-fontes || { echo "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa depois do rollback ainda com DIARIO ou não comprovada. Recuperação: dispatch diario_d1=rollback motivo=d1-config no mesmo SHA (docs/p20/diario-d1.md, Riscos residuais)"; exit 1; }
+                  echo "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa sem o binding DIARIO"
+                  ;;
+                manter)
+                  # NC-1018-04: a versão anterior pode ter o DIARIO (deploy manter anterior) ou não (antes da troca do
+                  # padrão). Confere nas duas fontes que a configuração ficou COERENTE (DIARIO ausente, ou presente com o
+                  # UUID certo); qualquer outra coisa reprova com o procedimento.
+                  python3 scripts/deploy/diario_d1_certify.py binding --expect coerente --duas-fontes || { echo "::error title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa depois do rollback de um manter com DIARIO incoerente ou não comprovado. Recuperação: dispatch diario_d1=off (rotina) ou rollback + d1-config (docs/p20/diario-d1.md, Riscos residuais)"; exit 1; }
+                  echo "::notice title=DIARIO_D1_ROLLBACK_AUTOMATICO::versão ativa com a configuração do DIARIO coerente (diario_d1=manter)"
+                  ;;
+                rollback)
+                  # Risco residual documentado: o rollback automático de um diario_d1=rollback volta à versão ANTERIOR, que
+                  # tinha o DIARIO. A saúde vem primeiro (a sombra tolera o binding); o D1 continua ligado e o job reprova.
+                  echo "::error title=DIARIO_D1_ROLLBACK_NAO_CONCLUIDO::o smoke do redeploy sem DIARIO falhou e o rollback automático restaurou a versão anterior (COM o binding DIARIO). Recuperação: corrigir a causa do smoke e repetir diario_d1=rollback motivo=d1-config (docs/p20/diario-d1.md, Riscos residuais)"
+                  ;;
+              esac
               exit 0
             fi
             sleep 5
           done
           echo "AUTO_ROLLBACK_HEALTH=FAIL"
+          echo "::error title=AUTO_ROLLBACK_HEALTH_FAIL::health não voltou depois do rollback automático (diario_d1=${DIARIO_D1_MODO:-off}). Recuperação determinística: docs/p20/diario-d1.md, seção Riscos residuais (health depois do rollback)."
           exit 1
       - name: Certification gate (T1, after rollback decision)
         if: always() && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
         env:
           POST_REASON: ${{ steps.postpromo.outputs.reason }}
         run: |
+          case "${DIARIO_D1_MODO:-off}" in
+            certificar|manter)
+              echo "::error title=CERTIFICATION_NAO_COMPROVADO::diario_d1=$DIARIO_D1_MODO: pós-promoção NAO_COMPROVADO ($POST_REASON) disparou o rollback automático (NC-1017-01); ver DIARIO_D1_ROLLBACK_AUTOMATICO."
+              exit 1
+              ;;
+          esac
           echo "::error title=CERTIFICATION_NAO_COMPROVADO::release $TARGET_RUNTIME_SHA kept live (smokes passed, no contrary evidence) but NOT certified: $POST_REASON. No rollback without independent evidence; re-check with t1-publisher-guard (workflow_dispatch: recheck_service=zevanory)."
           exit 1
       - name: R9 credential identity readback (names and categories only)

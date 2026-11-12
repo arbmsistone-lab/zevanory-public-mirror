@@ -49,7 +49,7 @@ SHARED_NAMES = ("CLOUDFLARE_PUBLIC_OWNER_API_TOKEN", "CLOUDFLARE_API_TOKEN")
 SECRETS = {"CLOUDFLARE_PUBLIC_OWNER_API_TOKEN": "tok-shared-owner", "CLOUDFLARE_API_TOKEN": "tok-shared-legacy",
            MIG_NAME: "tok-d1-migrate", RD_NAME: "tok-d1-read"}
 SHARED_VALUES = ("tok-shared-owner", "tok-shared-legacy")
-MODOS = ("certificar", "off", "rollback", "")
+MODOS = ("certificar", "manter", "off", "rollback", "")
 # Mesmo critério do detector T1 do PR #990 (classe d1): comando D1 remoto ou REST /d1/database.
 D1_CALL = re.compile(r"""d1[\s"',]+(?:execute|migrations[\s"',]+apply)\b|/d1/database\b""")
 SQL_WRITE = re.compile(r"(?i)\b(insert|update|delete|drop|create|alter|replace|pragma|attach|vacuum)\b")
@@ -180,7 +180,7 @@ def run_step(text, prefix, secrets, modo="certificar", cfg=None, outputs=None, c
         for rel in ("scripts", "migrations"):
             (d / rel).symlink_to(ROOT / rel)
         if cfg is None:
-            cfg = {"name": "zevanory", "d1_databases": [dict(DIARIO)]} if modo == "certificar" else {"name": "zevanory"}
+            cfg = {"name": "zevanory", "d1_databases": [dict(DIARIO)]} if modo in ("certificar", "manter") else {"name": "zevanory"}
         (d / "wrangler.central-fix.jsonc").write_text(json.dumps(cfg), encoding="utf-8")
         (d / "out").write_text("", encoding="utf-8")
         outs = {"needs.guard.outputs.diario_d1": modo, **(outputs or {})}
@@ -228,18 +228,27 @@ def read_outputs(**kw):
 
 # ---------------------------------------------------------------------------------------------------------------
 # Verificações (recebem o TEXTO do workflow para que os mutantes passem pelo mesmo crivo).
+GATE_MIG = "${{ needs.guard.outputs.diario_d1 == 'certificar' && secrets.CF_TOKEN_D1_DIARIO_MIGRATE || '' }}"
+GATE_READ_MIG = "${{ needs.guard.outputs.diario_d1 == 'manter' && secrets.CF_TOKEN_D1_DIARIO_READ || '' }}"
+GATE_READ_RB = "${{ (needs.guard.outputs.diario_d1 == 'certificar' || needs.guard.outputs.diario_d1 == 'manter') && secrets.CF_TOKEN_D1_DIARIO_READ || '' }}"
+
+
 def check_secret_only_in_its_step(text):
+    """MIGRATE: só no passo de migração e só em certificar. READ: no readback (certificar e manter) e na conferência
+    pré-promoção do manter (passo de migração, só em manter). Nunca no env de job, nunca com queda para outro segredo."""
     jobs = parse(text)
-    for secret, prefix in ((MIG_NAME, MIG), (RD_NAME, READ)):
+    allowed = {MIG_NAME: {MIG: GATE_MIG}, RD_NAME: {MIG: GATE_READ_MIG, READ: GATE_READ_RB}}
+    for secret, where in allowed.items():
         refs = re.findall(r"secrets\." + secret + r"\b", text)
-        assert len(refs) == 1, f"{secret}: exatamente uma referência no workflow (achadas {len(refs)})"
+        assert len(refs) == len(where), f"{secret}: {len(where)} referência(s) no workflow (achadas {len(refs)})"
         for jn, job in jobs.items():
             assert not any(secret in v for v in job["env"].values()), f"{secret} no env do job {jn}"
             for s in job["steps"]:
                 has = any("secrets." + secret in v for v in s["env"].values())
-                assert has == (jn == "deploy" and s["name"].startswith(prefix)), f"{secret} no passo errado: {jn}/{s['name']}"
-        want = "${{ needs.guard.outputs.diario_d1 == 'certificar' && secrets.%s || '' }}" % secret
-        assert find_step(jobs, prefix)["env"][secret] == want, f"{secret}: só em certificar e sem queda para outro segredo"
+                ok = jn == "deploy" and any(s["name"].startswith(p) for p in where)
+                assert has == ok, f"{secret} no passo errado: {jn}/{s['name']}"
+        for prefix, want in where.items():
+            assert find_step(jobs, prefix)["env"][secret] == want, f"{secret} em {prefix}: expressão do modo e sem queda"
 
 
 def check_effective_env_isolation(text):
@@ -254,9 +263,10 @@ def check_effective_env_isolation(text):
                                                           "needs.guard.outputs.diario_d1": modo})
                     vals = set(env.values())
                     is_mig, is_read = jn == "deploy" and s["name"].startswith(MIG), jn == "deploy" and s["name"].startswith(READ)
-                    cert = modo == "certificar"
+                    cert, man = modo == "certificar", modo == "manter"
                     assert ("tok-d1-migrate" in vals) == (cert and is_mig and MIG_NAME in secrets), f"token de migração em {jn}/{s['name']} (modo {modo!r})"
-                    assert ("tok-d1-read" in vals) == (cert and is_read and RD_NAME in secrets), f"token de leitura em {jn}/{s['name']} (modo {modo!r})"
+                    want_read = RD_NAME in secrets and ((man and is_mig) or ((cert or man) and is_read))
+                    assert ("tok-d1-read" in vals) == want_read, f"token de leitura em {jn}/{s['name']} (modo {modo!r})"
                     if is_mig or is_read:
                         leak = [k for k, v in env.items() if v in SHARED_VALUES]
                         assert not leak, f"token compartilhado visível no passo D1 {s['name']}: {leak}"
@@ -273,7 +283,9 @@ def check_d1_calls_only_in_authorized_steps(text):
     mig, rb = find_step(jobs, MIG)["run"], find_step(jobs, READ)["run"]
     for line in mig.split("\n"):
         if D1_CALL.search(line):
-            assert "CF_TOKEN_D1_DIARIO_MIGRATE" in line, "chamada D1 da migração sem o token dedicado explícito: " + line.strip()
+            assert ("CF_TOKEN_D1_DIARIO_MIGRATE" in line) != ("CF_TOKEN_D1_DIARIO_READ" in line), "chamada D1 sem exatamente um token dedicado explícito: " + line.strip()
+        if re.search(r"d1[\s\"',]+migrations[\s\"',]+apply", line):
+            assert "CF_TOKEN_D1_DIARIO_MIGRATE" in line and "CF_TOKEN_D1_DIARIO_READ" not in line, "só o token de migração aplica migração"
     reads = [l for l in rb.split("\n") if D1_CALL.search(l)]
     assert len(reads) == 1, reads
     assert "CF_TOKEN_D1_DIARIO_READ" in reads[0], "chamada D1 do readback sem o token de leitura explícito"
@@ -346,6 +358,44 @@ def check_runtime_schema_mismatch_no_binding(text):
         title = "DIARIO_D1_VERIFICACAO_FALHOU" if name == "SELECT falha" else "DIARIO_D1_ESQUEMA_INESPERADO"
         _assert_fail_closed(p, so, cfg, title)
         assert "antes" not in so, name
+
+
+def check_runtime_manter(text):
+    """manter (sombra): token de LEITURA, nenhuma migração; só religa o binding se o banco já estiver certificado."""
+    p, so, cfg, calls, env = run_step(text, MIG, SECRETS, modo="manter", npx_out="✅ nunca deveria rodar")
+    assert p.returncode == 0 and so.get("state") == "certificado_pre" and cfg["d1_databases"] == [DIARIO], (p.stdout, p.stderr, so)
+    assert env.get(MIG_NAME) == "", "manter nunca recebe o token de migração"
+    assert len(calls) == 2 and calls[0].startswith("curl ") and " d1 execute " in calls[1], calls
+    assert not any("migrations apply" in c for c in calls), "manter nunca migra"
+    assert tokens(calls) == ["tok-d1-read", "tok-d1-read"], calls
+    assert json.loads(so["antes"]) == json.loads(antes_ok())
+    for name, kw in (("banco não certificado (só 2 migrações)", dict(exec_stdout=exec_out(migs=CERT.MIGRACOES_ESPERADAS[:2]))),
+                     ("banco vazio (SELECT falha)", dict(exec_rc=1, exec_stdout="no such table: diario_head")),
+                     ("head 0", dict(exec_stdout=exec_out(head=0)))):
+        p, so, cfg, calls, _ = run_step(text, MIG, SECRETS, modo="manter", **kw)
+        assert p.returncode == 1 and so.get("state") == "falhou" and not has_diario(cfg), (name, p.stdout)
+        assert not any("migrations apply" in c for c in calls), name
+    p, so, cfg, calls, _ = run_step(text, MIG, without(RD_NAME), modo="manter")
+    _assert_fail_closed(p, so, cfg, "DIARIO_D1_TOKEN_DEDICADO_AUSENTE")
+    assert calls == [], calls
+    p, so, cfg, calls, _ = run_step(text, MIG, SECRETS, modo="manter", curl_code="403", curl_body='{"success":false}')
+    _assert_fail_closed(p, so, cfg, "DIARIO_D1_BANCO_INACESSIVEL")
+    p, _, _, calls, _ = run_step(text, READ, SECRETS, modo="manter", outputs=read_outputs())
+    assert p.returncode == 0 and "DIARIO_D1_CERTIFICACAO::PASS (diario_d1=manter)" in p.stdout and tokens(calls) == ["tok-d1-read"], (p.stdout, calls)
+    p, _, _, calls, _ = run_step(text, READ, SECRETS, modo="manter", outputs=read_outputs(), exec_stdout=exec_out(abandono=1))
+    assert p.returncode == 1 and "::error title=DIARIO_D1_READBACK::" in p.stdout, p.stdout
+
+
+def check_runtime_uuid_check(text):
+    """NC-1018-03/A5: o passo confere o UUID do DIARIO no candidato antes de qualquer chamada D1 (certificar e manter)."""
+    for modo in ("certificar", "manter"):
+        for row in (dict(DIARIO, database_id="22222222-2222-4222-8222-222222222222"), dict(DIARIO, database_id="7ff006f3-1daf-44c5-9494-aabab600608e")):
+            p, so, cfg, calls, _ = run_step(text, MIG, SECRETS, modo=modo, cfg={"name": "zevanory", "d1_databases": [row]})
+            _assert_fail_closed(p, so, cfg, "DIARIO_D1_BINDING")
+            assert calls == [], (modo, calls)
+        p, so, cfg, calls, _ = run_step(text, MIG, SECRETS, modo=modo, cfg={"name": "zevanory"})
+        _assert_fail_closed(p, so, cfg, "DIARIO_D1_BINDING")
+        assert calls == [], (modo, calls)
 
 
 def check_runtime_off_and_rollback_never_touch_d1(text):
@@ -424,7 +474,9 @@ def check_registry_matches_workflow(text):
     assert roles["read"]["secret"] == RD_NAME and roles["read"]["step"] == READ and roles["read"]["writes"] == []
     assert "D1 > Editar" in roles["migrate"]["permission"] and "D1 > Ler" in roles["read"]["permission"]
     assert roles["deploy"]["d1"].startswith("nenhuma")
-    assert "certificar" in reg["modes"]["only_in"] and reg["modes"]["default"] == "off"
+    assert "certificar" in reg["modes"]["only_in"] and reg["modes"]["default"] == "off" and "manter" in reg["modes"]
+    assert reg["modes"]["default_file"] == ".github/diario-d1-modo.json"
+    assert json.loads((ROOT / ".github/diario-d1-modo.json").read_text(encoding="utf-8"))["padrao"] == reg["modes"]["default"]
     jobs = parse(text)
     assert "environment: producao-critica" in "\n".join(l for l in text.split("\n") if l.startswith("    environment:"))
     for role in ("migrate", "read"):
@@ -469,7 +521,7 @@ def check_t1_detector(text):
 CHECKS = [check_secret_only_in_its_step, check_effective_env_isolation, check_d1_calls_only_in_authorized_steps,
           check_runtime_certificar_ok, check_runtime_missing_migrate_secret, check_runtime_dedicated_without_access,
           check_runtime_migration_failure_no_binding, check_runtime_schema_mismatch_no_binding,
-          check_runtime_off_and_rollback_never_touch_d1, check_runtime_readback_certifies, check_runtime_readback_fails_job,
+          check_runtime_manter, check_runtime_uuid_check, check_runtime_off_and_rollback_never_touch_d1, check_runtime_readback_certifies, check_runtime_readback_fails_job,
           check_runtime_deploy_keeps_shared_token_and_no_d1, check_pipeline_shared_token_never_reaches_d1,
           check_registry_matches_workflow, check_t1_detector]
 
@@ -500,7 +552,7 @@ MUTANTS = {
     "M3 queda do dedicado para o compartilhado": _sub("secrets.CF_TOKEN_D1_DIARIO_MIGRATE || ''", "secrets.CF_TOKEN_D1_DIARIO_MIGRATE || secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN"),
     "M4 token de migração no env do job": lambda t: _sub(MIG_ENV_MIG, "")(t).replace(
         "    env:\n      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN:", "    env:\n" + MIG_ENV_MIG[4:] + "      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN:", 1),
-    "M5 readback com o token de migração": _sub("secrets.CF_TOKEN_D1_DIARIO_READ ||", "secrets.CF_TOKEN_D1_DIARIO_MIGRATE ||"),
+    "M5 readback com o token de migração": _in_step(READ, "secrets.CF_TOKEN_D1_DIARIO_READ ||", "secrets.CF_TOKEN_D1_DIARIO_MIGRATE ||"),
     "M6 pré-checagem com o token do job": _sub('-H "Authorization: Bearer $CF_TOKEN_D1_DIARIO_MIGRATE"', '-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"'),
     "M7 migração sem o token dedicado no wrangler": _sub('if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 migrations', "if ! npx --yes wrangler@4.143.0 d1 migrations"),
     "M8 sem a guarda do segredo de migração ausente": _sub('[ -n "${CF_TOKEN_D1_DIARIO_MIGRATE:-}" ] || falha', "true || falha"),
@@ -513,11 +565,19 @@ MUTANTS = {
     "M12 falha da certificação mantém o binding": _in_step(MIG, "falha() {\n            drop_binding\n", "falha() {\n            true\n"),
     # NO-GO do GPT-6 (NC-P2b-DEP-02): modos e fail-closed.
     "M13 segredo de migração entregue também em off/rollback": _sub(GATE + "secrets.CF_TOKEN_D1_DIARIO_MIGRATE", "secrets.CF_TOKEN_D1_DIARIO_MIGRATE"),
-    "M14 segredo de leitura entregue também em off/rollback": _sub(GATE + "secrets.CF_TOKEN_D1_DIARIO_READ", "secrets.CF_TOKEN_D1_DIARIO_READ"),
-    "M15 off migra (sem a guarda do modo no passo)": _in_step(MIG, 'if [ "$modo" != "certificar" ]; then', "if false; then"),
+    "M14 segredo de leitura entregue também em off/rollback": _in_step(READ, "(needs.guard.outputs.diario_d1 == 'certificar' || needs.guard.outputs.diario_d1 == 'manter') && ", ""),
+    # Follow-up NC-1017-01: modo manter.
+    "M23 manter faz o SELECT com o token de migração": _sub('if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_READ" npx --yes wrangler@4.143.0 d1 execute zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc --json --command "$SQL" > /tmp/diario-antes.json',
+                                                            'if ! CLOUDFLARE_API_TOKEN="$CF_TOKEN_D1_DIARIO_MIGRATE" npx --yes wrangler@4.143.0 d1 execute zevanory-diario-p20 --remote --config wrangler.central-fix.jsonc --json --command "$SQL" > /tmp/diario-antes.json'),
+    "M24 segredo de leitura no passo de migração em qualquer modo": _sub("needs.guard.outputs.diario_d1 == 'manter' && secrets.CF_TOKEN_D1_DIARIO_READ", "secrets.CF_TOKEN_D1_DIARIO_READ"),
+    "M25 manter sem a guarda do segredo de leitura": _sub('[ -n "${CF_TOKEN_D1_DIARIO_READ:-}" ] || falha', "true || falha"),
+    "M26 manter segue o caminho de migração": _in_step(MIG, 'if [ "$modo" = "certificar" ]; then', 'if [ "$modo" = "certificar" ] || [ "$modo" = "manter" ]; then'),
+    "A5 UUID do DIARIO não conferido no passo": _in_step(MIG, "            1b1bfa19-ccc5-423a-bc1f-62d89020c8e2) ;;\n", "            *) ;;\n"),
+    "M27 manter tratado como off (sem binding)": _in_step(MIG, "            certificar|manter) ;;\n", "            certificar) ;;\n"),
+    "M15 off migra (sem a guarda do modo no passo)": _in_step(MIG, 'case "$modo" in\n            certificar|manter) ;;', 'case "certificar" in\n            certificar|manter) ;;'),
     "M16 falha da certificação não reprova (vira best-effort)": _in_step(MIG, FALHA_EXIT, FALHA_EXIT[:-1] + "0"),
     "M17 migração ignora o resultado da conferência do esquema": _in_step(MIG, '[ "$rc" = "0" ] || falha', "true || falha"),
-    "M18 off segue com DIARIO no candidato": _in_step(MIG, "Deploy reprovado antes da promoção.\"\n              exit 1", "Deploy reprovado antes da promoção.\"\n              exit 0"),
+    "M18 off segue com DIARIO no candidato": _in_step(MIG, "Deploy reprovado antes da promoção.\"\n                exit 1", "Deploy reprovado antes da promoção.\"\n                exit 0"),
     "M19 readback com continue-on-error": _in_step(READ, "        shell: bash\n", "        continue-on-error: true\n        shell: bash\n"),
     "M20 readback que falha vira aviso": _in_step(READ, "volta à versão sem DIARIO.\"; exit 1; }", "volta à versão sem DIARIO.\"; exit 0; }"),
     "M21 readback não exige o binding efetivo PASS": _in_step(READ, '[ "${DIARIO_BINDING_STATE:-}" = "PASS" ] || reprova', "true || reprova"),
@@ -582,6 +642,12 @@ class DiarioD1DedicatedCredentialsTest(unittest.TestCase):
 
     def test_c15_detector_t1_registra_a_escrita_d1_com_a_credencial_dedicada(self):
         check_t1_detector(self.TEXT)
+
+    def test_c17_manter_religa_so_banco_certificado_com_token_de_leitura(self):
+        check_runtime_manter(self.TEXT)
+
+    def test_c18_uuid_do_diario_conferido_antes_de_qualquer_chamada(self):
+        check_runtime_uuid_check(self.TEXT)
 
     def test_c16_mutantes_morrem(self):
         self.assertEqual(violations(self.TEXT), [], "o workflow real passa em todas as verificações")
