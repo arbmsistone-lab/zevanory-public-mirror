@@ -1,0 +1,7 @@
+Resumo da execução registrada; saída bruta não versionada.
+# tests 12
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

@@ -1,0 +1,59 @@
+{
+  "schema": "musica-licencas/v2",
+  "faixas": [
+    {
+      "arquivo": "assets/musica/ia-1.ogg",
+      "sha256": "d8ab08f0a176b5876cd7e8516ccbf9a5fc29df57f2b1b9afa8a91f372dc3887e",
+      "sha256_original": "ef06d8b524c196a31954dfb1f3261e7d37459e43f4afd9df31ee2965c6094a56",
+      "titulo": "Arpent",
+      "autor": "Kevin MacLeod",
+      "fonte": "https://a.ocv.me/pub/stuff/music/freepd/electronic/Arpent.mp3",
+      "licenca": "CC0-1.0",
+      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/electronic.php#:~:text=Arpent",
+      "evidencia_licenca": "Creative Commons 0",
+      "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/electronic/#Arpent.mp3",
+      "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
+      "verificado_em": "2026-11-11",
+      "bpm": 80,
+      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
+      "clima": "eletronica_leve",
+      "temas_permitidos": [
+        "ia"
+      ],
+      "trecho_inicio": 8,
+      "trecho_segundos": 36,
+      "credito": "Arpent — Kevin MacLeod / FreePD (CC0).",
+      "audicao_curadoria": "Aprovada pelo proprietario em 2026-11-11",
+      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
+      "descricao_original": "Kevin MacLeod . Upbeat, uplifting and inspiring. Technology and innovation. This music is available for commercial and non-commercial purposes."
+    },
+    {
+      "arquivo": "assets/musica/vendas-2.ogg",
+      "sha256": "c404d836e82626299fc3eb06ca3731196504354fe62055f2206a85117de6ed9f",
+      "sha256_original": "b98b226927367a977377fe4f75d1cf59e4366ca2f444c2c7d23d13e7f506f532",
+      "titulo": "Funshine",
+      "autor": "Kevin MacLeod",
+      "fonte": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/Funshine.mp3",
+      "licenca": "CC0-1.0",
+      "pagina_licenca": "https://web.archive.org/web/20241217205507/https://freepd.com/upbeat.php#:~:text=Funshine",
+      "evidencia_licenca": "Creative Commons 0",
+      "pagina_faixa": "https://a.ocv.me/pub/stuff/music/freepd/upbeat/#Funshine.mp3",
+      "indice_original": "https://a.ocv.me/pub/stuff/music/freepd/original-listing.html",
+      "verificado_em": "2026-11-11",
+      "bpm": 97,
+      "bpm_metodo": "estimativa por autocorrelacao de onsets, 60-180 BPM; nao certifica genero",
+      "clima": "animada",
+      "temas_permitidos": [
+        "vendas",
+        "financas",
+        "dicas"
+      ],
+      "trecho_inicio": 8,
+      "trecho_segundos": 36,
+      "credito": "Funshine — Kevin MacLeod / FreePD (CC0).",
+      "audicao_curadoria": "Aprovada pelo proprietario em 2026-11-11",
+      "content_id": "Nenhuma inscricao comprovada; CC0 permite uso, mas nao garante ausencia de reivindicacao automatica.",
+      "descricao_original": "Kevin MacLeod . Moog and Ukulele. Because it had to happen. Do you see what you all have done to me!?? Now that this is done... I'm going back to my life of horrible depression. You're welcome. [ed. Dark, man! Seriously... lighten this description up!] This music is available for commercial and non-commercial purposes."
+    }
+  ]
+}

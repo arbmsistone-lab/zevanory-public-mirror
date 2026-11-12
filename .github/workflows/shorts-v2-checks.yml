@@ -1,0 +1,52 @@
+name: Shorts v2 offline media checks
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - 'scripts/shorts-v2/**'
+      - 'scripts/channels/youtube-daily-short.mjs'
+      - 'assets/musica/**'
+      - 'data/musica-licencas.json'
+      - 'data/shorts-padrao-v2.json'
+      - 'data/shorts-episodios-v2.json'
+      - 'tests/shorts-v2.test.mjs'
+      - 'tests/media/shorts-v2-media.test.mjs'
+      - 'tests/shorts-v2-round2.test.mjs'
+      - 'tests/shorts-v2-round3.test.mjs'
+      - 'assets/fonts/Inter-ExtraBold.ttf'
+      - '.github/workflows/shorts-v2-checks.yml'
+permissions:
+  contents: read
+jobs:
+  media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install offline media tools
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - name: Install caption measurement
+        run: python3 -m pip install --user Pillow==12.0.0
+      - name: Test gates mutations and synthetic media (no credentials or TTS API)
+        run: node --test tests/shorts-v2.test.mjs tests/shorts-v2-round2.test.mjs tests/shorts-v2-round3.test.mjs tests/media/shorts-v2-media.test.mjs
+      - name: Render offline review previews (no credentials, no upload to channels)
+        run: node scripts/shorts-v2/preview-round3.mjs "$RUNNER_TEMP/shorts-v2-render"
+      - name: Package portable previews and licensed music outside the checkout
+        run: |
+          node scripts/shorts-v2/simulate-round3.mjs "$RUNNER_TEMP/shorts-v2-render/simulacao-180-dias.json"
+          node scripts/shorts-v2/review-package.mjs "$RUNNER_TEMP/shorts-v2-review" "$RUNNER_TEMP/shorts-v2-render"
+      - name: Keep review pages, audio and technical previews as Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorts-v2-review
+          path: ${{ runner.temp }}/shorts-v2-review/
+          if-no-files-found: error
+          retention-days: 7

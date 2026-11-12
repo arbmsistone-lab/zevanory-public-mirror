@@ -1,0 +1,90 @@
+name: Shorts v2 samples and preview (no publication)
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: Preparar amostras ou previa; nao aprova publicacao
+        type: choice
+        options: [amostras, previa]
+        required: true
+      nivel_gratuito_confirmado:
+        description: Confirmo nivel gratuito para esta execucao autorizada no chat
+        type: boolean
+        default: false
+        required: true
+      dia:
+        description: Data YYYY-MM-DD da previa (ignorada nas amostras)
+        type: string
+        default: '2026-11-12'
+      slot:
+        type: choice
+        options: [oferta, dica, calc]
+        default: oferta
+permissions:
+  contents: read
+concurrency:
+  group: shorts-v2-preparation
+  cancel-in-progress: false
+jobs:
+  amostras:
+    if: ${{ github.ref == 'refs/heads/gh-pages' && inputs.modo == 'amostras' }}
+    environment: gh-pages-automacao
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DRY_RUN: 'true'
+      FREE_TIER_CONFIRMED: ${{ inputs.nivel_gratuito_confirmado }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Require explicit free preparation confirmation
+        run: node --input-type=module -e "import {assertPreparation} from './scripts/shorts-v2/preparation.mjs'; assertPreparation('amostras',process.env.DRY_RUN,process.env.FREE_TIER_CONFIRMED)"
+      - name: Install local audio tools
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - name: Generate eight WAV samples without publication
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/shorts-v2/compare-voices.mjs --samples "$RUNNER_TEMP/voice-samples"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shorts-v2-voice-samples
+          path: ${{ runner.temp }}/voice-samples/
+          if-no-files-found: error
+          retention-days: 7
+  previa:
+    if: ${{ github.ref == 'refs/heads/gh-pages' && inputs.modo == 'previa' }}
+    environment: gh-pages-automacao
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DRY_RUN: 'true'
+      FREE_TIER_CONFIRMED: ${{ inputs.nivel_gratuito_confirmado }}
+      PREVIEW_DAY: ${{ inputs.dia }}
+      PREVIEW_SLOT: ${{ inputs.slot }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Require explicit free preparation confirmation
+        run: node --input-type=module -e "import {assertPreparation} from './scripts/shorts-v2/preparation.mjs'; assertPreparation('previa',process.env.DRY_RUN,process.env.FREE_TIER_CONFIRMED)"
+      - name: Install local media and alignment tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-inter
+          python3 -m pip install --user stable-ts==2.19.1 Pillow==12.0.0
+      - name: Render actual selected voice with comparison and free-tier gates
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/shorts-v2/preparation.mjs "$RUNNER_TEMP/shorts-preview"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shorts-v2-preview
+          path: ${{ runner.temp }}/shorts-preview/
+          if-no-files-found: error
+          retention-days: 7

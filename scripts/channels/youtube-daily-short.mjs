@@ -102,7 +102,7 @@ export function planValueShort(day, slot, { salesOpen = false, hotmartOpen = fal
   const speech = said.map(b => b.join(" ")).join(" ");
   const text = [screen.hook, screen.tip, speech, description].join(" ");
   const gate = !use && slot === "dica" ? { action: "discard", score: 0, compliance: 0, reason: "sem_uso_seguro" } : VALUE_RISK.test(text) ? { action: "discard", score: 0, compliance: 0, reason: "value_risk_term" } : { action: "publish", score: 100, compliance: 100, reason: "value_gate_ok" };
-  const entry = { theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: slot === "dica" && hotmart ? hotmart.sku : null } };
+  const entry = { short_context: {name:item.name,slug:item.slug}, theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: slot === "dica" && hotmart ? hotmart.sku : null } };
   // purchase: "hotmart" quando a dica linka /hotmart/<slug> (as legendas do crosspost liberam o link de compra só nesse caso).
   return { day, slot, purchase: slot === "dica" && hotmart ? "hotmart" : "closed", entry, price: null, spec: null, gate, link: url, marker, title, description, lines: [], speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", slot === "dica" ? item.name : item.name] };
 }
@@ -140,7 +140,7 @@ const PRODUCT_PAGES = Object.freeze({ "ZEV-IA-011": "ia-na-pratica", "ZEV-VEN-01
 // Hotmart mode (full switch closed, Hotmart switch open): the 5 kits show their table price and the link goes to the
 // Hotmart purchase path of the sales site (/hotmart/<slug>), never to the own checkout.
 export function planShort(day, { salesOpen = false, hotmartOpen = false } = {}) {
-  const entry = calendarEntry(day), tablePrice = PRICES[entry.product.sku];
+  const entry = {...calendarEntry(day),short_variant:Math.floor((dayIndex(day)-dayIndex("2026-10-10"))/25)}, tablePrice = PRICES[entry.product.sku];
   if (!tablePrice) throw new Error("youtube_price_unknown");
   const kit = salesOpen !== true && hotmartOpen === true ? hotmartKit(entry.product.sku) : null;
   const price = kit ? kit.price : tablePrice;
@@ -185,36 +185,6 @@ export function planShort(day, { salesOpen = false, hotmartOpen = false } = {}) 
 }
 
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
-
-async function geminiSpeech(text, key, { allowLocal = true } = {}) {
-  const local = () => { if (allowLocal) return piperSpeech(text); console.log("::warning title=SHORT_VOICE::local voice disabled (data/shorts-rampa.json voz.permitir_voz_local=false)"); return null; };
-  if (!key) { console.log("::warning title=SHORT_VOICE::gemini not used; trying the free local voice"); return local(); }
-  const STYLE = "Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.";
-  const errors = [];
-  // Modern Interactions API first, then the classic generateContent TTS models.
-  const chain = [["gemini-3.8-flash-tts", true], ["gemini-3.8-flash-lite-tts", true], ["gemini-3.1-flash-tts-preview", false], ["gemini-2.5-flash-preview-tts", false]];
-  for (const [model, modern] of chain) {
-    const url = modern ? "https://generativelanguage.googleapis.com/v1beta/interactions" : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const body = modern
-      ? { model, input: [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style: STYLE }] }] }], response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 }, generation_config: { speech_config: [{ voice: "Achird" }] } }
-      : { contents: [{ parts: [{ text: STYLE + "\n\n" + text }] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Achird" } } } } };
-    const r = await fetch(url, { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) }).catch((e) => ({ ok: false, status: "fetch_" + (e?.name || "error") }));
-    if (!r?.ok) { errors.push(model + ":" + r?.status); continue; }
-    const json = await r.json().catch(() => ({}));
-    const part = modern
-      ? (json.steps || []).filter((x) => x.type === "model_output").flatMap((x) => x.content || []).find((x) => x.type === "audio" && x.data)
-      : (json?.candidates?.[0]?.content?.parts || []).find((x) => x?.inlineData?.data || x?.inline_data?.data);
-    const data = part?.data || part?.inlineData?.data || part?.inline_data?.data;
-    if (!data) { errors.push(model + ":no_audio"); continue; }
-    const mime = String(part?.mime_type || part?.inlineData?.mimeType || part?.inline_data?.mime_type || "");
-    const rate = Number(part?.sample_rate || (mime.match(/rate=(\d+)/i) || [])[1]) || 24000;
-    console.log("::notice title=SHORT_VOICE::" + model + " ok");
-    return { pcm: Buffer.from(data, "base64"), rate, model };
-  }
-  // Only provider status codes, never the key.
-  console.log("::warning title=SHORT_VOICE::gemini unavailable (" + errors.join(", ") + "); trying the free local voice");
-  return local();
-}
 
 // Free, local, open-source neural voice (Piper, pt_BR). Zero cost; used when the Gemini free
 // quota is exhausted or unavailable.
@@ -304,90 +274,9 @@ export function audioQuality(stderrEbur, silenceEnds, silenceStarts, voiceSecond
   if (maxGap > 1.6) reasons.push("dead_air_" + maxGap.toFixed(1));
   return { ok: reasons.length === 0, lufs, peak, maxGap: Math.round(maxGap * 10) / 10, reasons };
 }
-export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, allowLocalVoice = true, requireVoice = false } = {}) {
-  const voice = await geminiSpeech(plan.speech, geminiKey, { allowLocal: allowLocalVoice });
-  if (requireVoice && !(voice && voice.pcm.length >= voice.rate)) throw new Error("voz_indisponivel");
-  let audioInput, voiceSeconds = 0, pauses = [];
-  if (voice && voice.pcm.length >= voice.rate) {
-    voiceSeconds = voice.pcm.length / 2 / voice.rate;
-    await writeFile(base + ".pcm", voice.pcm);
-    run("ffmpeg", ["-y", "-f", "s16le", "-ar", String(voice.rate), "-ac", "1", "-i", base + ".pcm", "-c:a", "libmp3lame", "-b:a", "128k", base + ".mp3"]);
-    audioInput = ["-i", base + ".mp3"];
-    pauses = voicePauses(base + ".mp3");
-  } else {
-    audioInput = ["-f", "lavfi", "-i", "anullsrc=channel_layout=mono:sample_rate=24000"];
-  }
-  const { duration } = shortTiming(voiceSeconds, 1);
-  const [, tTip, tOffer, tCta] = beatTimes(plan.said, voiceSeconds, pauses, duration);
-  const XB = fontFile("ExtraBold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf");
-  const SB = fontFile("SemiBold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf");
-  const MD = fontFile("Medium", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-  // Width ratios measured on Inter for every string the calendar can produce; the
-  // DejaVu fallback is wider, so it gets a wider ratio and never overflows.
-  const R = /inter/i.test(XB) ? { xb: 0.58, sb: 0.54, md: 0.55 } : { xb: 0.68, sb: 0.64, md: 0.64 };
-  const sc = plan.screen, draws = [];
-  let n = 0;
-  // Anything on screen at t=0 is fully visible on the first frame (that frame is the
-  // feed preview); later beats fade in.
-  const fade = (a, b) => a === 0 ? (b == null ? "" : `:enable='lt(t,${b})'`) : b == null ? `:alpha='min(1,max(0,(t-${a})/0.18))'` : `:alpha='if(between(t,${a},${b}),min(1,(t-${a})/0.18),0)'`;
-  // y is the baseline: every line of a block sits on an even rhythm regardless of glyphs.
-  const text = async (str, font, size, color, baseline, a, b, center = true, x = 96) => {
-    const file = `${base}.t${n++}.txt`;
-    await writeFile(file, str);
-    draws.push(`drawtext=fontfile=${font}:textfile=${file}:fontsize=${size}:fontcolor=${color}:x=${center ? "(w-text_w)/2" : x}:y=${baseline}-ascent${fade(a, b)}`);
-  };
-  // Hook block (top), visible from the first frame.
-  const hook = fitText(sc.hook, [120, 112, 104, 96, 88], 900, R.xb, 3);
-  let y = 270;
-  for (const line of hook.lines) { y += Math.round(hook.size * 1.08); await text(line, XB, hook.size, "0xf5f7fb", y, 0, null, false); }
-  const niche = fitText(sc.niche, [62, 56, 50], 900, R.sb, 2);
-  y += 14;
-  for (const line of niche.lines) { y += Math.round(niche.size * 1.3); await text(line, SB, niche.size, "0x8fb8ff", y, 0, null, false); }
-  // Card beats, vertically centred in the card (y 1000..1600).
-  const block = async (items, a, b) => {
-    const h = items.reduce((s, it) => s + it.lines.length * Math.round(it.size * 1.25) + (it.gap || 0), 0);
-    let cy = 1300 - Math.round(h / 2);
-    for (const it of items) { cy += it.gap || 0; for (const line of it.lines) { cy += Math.round(it.size * 1.25); await text(line, it.font, it.size, it.color, cy - Math.round(it.size * 0.25), a, b); } }
-  };
-  // Beat 1: the card is never empty; it promises the payoff while the hook is spoken.
-  await block([{ ...fitText("1 dica prática", [84, 76], 820, R.xb, 1), font: XB, color: "0x8fb8ff" }, { ...fitText("para aplicar ainda hoje", [52, 46], 820, R.sb, 1), font: SB, color: "0xf5f7fb", gap: 18 }], 0, tTip);
-  const tip = fitText(sc.tip, [66, 60, 54, 48], 820, R.md, 5, 3);
-  await block([{ ...tip, font: MD, color: "0xf5f7fb" }], tTip, tOffer);
-  const prod = fitText(sc.product, [88, 80, 72], 820, R.xb, 2), offer = fitText(sc.offer, [52, 46], 820, R.sb, 2);
-  await block([{ ...prod, font: XB, color: "0xf5f7fb" }, { ...offer, font: SB, color: "0xa8f0d0", gap: 22 }], tOffer, tCta);
-  const cta = fitText(sc.cta, [84, 76, 68], 820, R.xb, 2), url = fitText(sc.url, [52, 46], 820, R.sb, 1);
-  await block([{ ...cta, font: XB, color: "0x21e6f3" }, { ...url, font: SB, color: "0xf5f7fb", gap: 26 }], tCta, null);
-  const template = "assets/brand/export/short.png";
-  const frames = Math.round(duration * 30);
-  const vf = [
-    "scale=1080:1920",
-    "drawbox=x=56:y=600:w=968:h=560:color=0x0b0f16:t=fill", // clear the template's static headline
-    `zoompan=z='1+0.04*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30`,
-    "drawbox=x=96:y=228:w=220:h=8:color=0x00b8ff:t=fill",
-      "drawbox=x=76:y=1000:w=928:h=600:color=0x0c1c2b@0.95:t=fill",
-    "drawbox=x=76:y=1000:w=10:h=600:color=0x00b8ff:t=fill",
-    ...draws
-  ].join(",");
-  // Progress bar: a cyan strip slides into an 888x10 track (overlay clips it), then
-  // the track is placed on the frame; drawbox sizes are not per-frame on all ffmpeg builds.
-  const bar = `color=c=0x202a38:s=888x10:r=30:d=${duration}[track];color=c=0x00b8ff:s=888x10:r=30:d=${duration}[fill];[track][fill]overlay=x='-888+888*t/${duration}':y=0:shortest=1[bar];[base][bar]overlay=x=96:y=1724:shortest=1[v]`;
-  run("ffmpeg", ["-y", "-loop", "1", "-framerate", "30", "-i", template, ...audioInput, "-filter_complex", "[0:v]" + vf + "[base];" + bar + ";[1:a]" + (voice ? "loudnorm=I=-16:TP=-1.5:LRA=11," : "") + "apad[a]", "-map", "[v]", "-map", "[a]", "-t", String(duration), "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", base + ".mp4"]);
-  const probe = JSON.parse(run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", base + ".mp4"]));
-  const v = probe.streams.find(s => s.codec_type === "video"), a = probe.streams.find(s => s.codec_type === "audio"), real = Number(probe.format.duration);
-  if (!v || v.width !== 1080 || v.height !== 1920 || !a || !(Math.abs(real - duration) <= 0.5)) throw new Error("youtube_mp4_technical_gate_failed");
-  const black = spawnSync("ffmpeg", ["-hide_banner", "-i", base + ".mp4", "-vf", "blackdetect=d=0.6:pix_th=0.02", "-an", "-f", "null", "-"], { encoding: "utf8" });
-  if (black.status !== 0 || /black_start:/.test(black.stderr)) throw new Error("youtube_black_frames_detected");
-  let audio = null;
-  if (voice) {
-    const e = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", base + ".mp4", "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8" });
-    const sd = spawnSync("ffmpeg", ["-hide_banner", "-i", base + ".mp4", "-vn", "-af", "silencedetect=n=-40dB:d=1.2", "-f", "null", "-"], { encoding: "utf8" });
-    const starts = [...String(sd.stderr || "").matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
-    const ends = [...String(sd.stderr || "").matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
-    audio = audioQuality(String(e.stderr || ""), ends, starts, voiceSeconds);
-    console.log("::notice title=SHORT_AUDIO_QC::" + JSON.stringify({ voice: voice.model, ...audio }));
-    if (!audio.ok) throw new Error("audio_qc_failed:" + audio.reasons.join("+"));
-  }
-  return { file: base + ".mp4", duration: real, voice: voice ? voice.model : "none", audio, beats: { tip: tTip, offer: tOffer, cta: tCta } };
+export async function renderShort(plan,base="/tmp/zevanory-daily-short",options={}){
+  const {renderV2}=await import("../shorts-v2/render.mjs");
+  return renderV2(plan,base,options);
 }
 
 // Cloudflare KV REST adapter so the CI job writes the exact emitActivity schema.
@@ -407,10 +296,11 @@ export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, 
   const ch = await chRes.json().catch(() => ({}));
   if (!chRes.ok || ch.items?.length !== 1 || ch.items[0].id !== TARGET_CHANNEL) throw new Error("youtube_channel_id_mismatch");
   const uploads = ch.items[0].contentDetails?.relatedPlaylists?.uploads;
-  let videoId = "";
+  let videoId = "", musicDescription=plan.description;
   if (uploads) {
     const pl = await (await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${encodeURIComponent(uploads)}`, { headers: auth })).json().catch(() => ({}));
-    videoId = (pl.items || []).find(i => String(i.snippet?.description || "").includes(plan.marker))?.snippet?.resourceId?.videoId || "";
+    const existing=(pl.items || []).find(i => String(i.snippet?.description || "").includes(plan.marker));
+    videoId=existing?.snippet?.resourceId?.videoId||"";if(videoId)musicDescription=String(existing.snippet?.description||"");
   }
   const reused = Boolean(videoId);
   if (!reused) {
@@ -434,7 +324,8 @@ export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, 
   if (!v) throw new Error("youtube_video_lookup_failed");
   const uploadStatus = v.status?.uploadStatus, privacy = v.status?.privacyStatus;
   if (uploadStatus !== "processed" && uploadStatus !== "uploaded") throw new Error("youtube_not_processed_" + String(uploadStatus).replace(/[^a-z]/g, ""));
-  return { video_id: videoId, url: "https://www.youtube.com/shorts/" + videoId, reused, upload_status: uploadStatus, privacy_status: privacy,
+  const musicProof=/zevanory-music-key:(assets\/musica\/[a-z0-9-]+\.ogg):([a-f0-9]{64})/.exec(musicDescription||"");
+  return { ...(musicProof?{music_file:musicProof[1],music_sha256:musicProof[2]}:{}),video_id: videoId, url: "https://www.youtube.com/shorts/" + videoId, reused, upload_status: uploadStatus, privacy_status: privacy,
     // YouTube locks uploads from unaudited API projects to private until the audit passes.
     visibility_note: privacy === plan.privacyStatus ? "as_requested" : "provider_locked_" + String(privacy || "unknown") + "_pending_api_audit" };
 }
@@ -551,28 +442,25 @@ if (isMain) {
       const publicadosHoje = Object.entries(jaHoje).filter(([s, v]) => s !== slot && v).length;
       const dec = decisaoSlot({ rampa, slot, publicadosHoje, congelado: false });
       if (!dec.publicar && !dry) { note("notice", slot + ": " + dec.motivo + " (nivel " + rampa.nivel + ", " + rampa.por_dia + "/dia, slots " + rampa.slots.join("+") + ")"); continue; }
-      const plan = planSlot(day, slot, { salesOpen, hotmartOpen });
+      const {planV2WithHistory}=await import("../shorts-v2/core.mjs");
+      const plan = await planV2WithHistory(planSlot(day, slot, { salesOpen, hotmartOpen }),{hotmartOpen,kv:lockKv,note});
+      if(!plan)continue; // Planning is a skipped slot, never a QC failure of the ramp.
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected:" + String(plan.gate.reason || "").replace(/[^a-z0-9_:,]/gi, "_"));
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
       const usage = lockKv ? await getUsage(lockKv) : {};
-      const allowLocalVoice = cfg.voz?.permitir_voz_local === true;
-      const geminiAllowed = process.env.FORCE_LOCAL_VOICE !== "true" && allow(usage, "gemini_tts_calls", 4);
-      if (!geminiAllowed) note("warning", process.env.FORCE_LOCAL_VOICE === "true" ? "local voice forced (test)" : "zero-cost guard: gemini daily guard reached" + (allowLocalVoice ? ", using the free local voice" : "; local voice disabled"));
-      let rendered;
-      try { rendered = await renderShort(plan, base, { geminiKey: geminiAllowed ? process.env.GEMINI_API_KEY : "", allowLocalVoice, requireVoice: true }); }
-      catch (e) {
-        // With the local voice allowed, a narration that fails the audio gate is regenerated once with it.
-        if (!String(e?.message).startsWith("audio_qc_failed") || !geminiAllowed || !allowLocalVoice) throw e;
-        note("warning", slot + ": " + e.message + " — regenerating with the local voice");
-        rendered = await renderShort(plan, base, { geminiKey: "", allowLocalVoice, requireVoice: true });
-      }
-      if (lockKv && String(rendered.voice).startsWith("gemini")) await addUsage(lockKv, "gemini_tts_calls", 1).catch(() => null);
+      if(!allow(usage,"gemini_tts_calls",4))throw Error("zero_cost_guard_gemini_quota");
+      // Reserve usage before synthesis, including failed attempts. No fallback voice.
+      if(lockKv)await addUsage(lockKv,"gemini_tts_calls",1);
+      const rendered = await renderShort(plan, base, {geminiKey:process.env.GEMINI_API_KEY,stateKv:lockKv,preview:dry});
       note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, decisao: dec.motivo, dry_run: dry }));
+      if(rendered.qc?.score!==100||rendered.qc?.ok!==true)throw Error("v2_qc_gate_failed");
       if (dry) continue;
       const kv = lockKv;
       if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
       const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
       await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
+      const {recordMusicPublication}=await import("../shorts-v2/music-publications.mjs");
+      await recordMusicPublication(kv,plan,result,rendered.track);
       const activity = await recordPublication(kv, plan, result);
       jaHoje[slot] = true;
       note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
