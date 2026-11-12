@@ -55,7 +55,13 @@ tests/f1-meta-identity.test.mjs 10
 tests/f1b-blog-recovery.test.mjs 7
 tests/f1b-bluesky-recovery.test.mjs 5
 tests/f1b-shorts-corruption.test.mjs 4
+tests/f2-hotmart-post-sale.test.mjs 30
+tests/f2-hotmart-restricted.test.mjs 16
 tests/f2-hotmart-test-route.test.mjs 11
+tests/f2b-hotmart-secondary.test.mjs 12
+tests/f2c-hotmart-provider-recovery.test.mjs 11
+tests/f2d-hotmart-run-status.test.mjs 10
+tests/f2e-hotmart-status-contract.test.mjs 7
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5
