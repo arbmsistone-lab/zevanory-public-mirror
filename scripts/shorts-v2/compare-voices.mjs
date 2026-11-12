@@ -2,6 +2,7 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {tts,command,audioMetrics} from './render.mjs';
+import {assertSamplesMode,sampleTts} from './voice-samples-mode.mjs';
 import {resolve} from 'node:path';
 export const phrase='Tá refazendo a mesma tarefa todo dia? Escolha um passo pequeno. Na ZEVANORY, a gente começa pelo que dá pra conferir.';
 export function comparisons(config){
@@ -21,9 +22,15 @@ export async function compareVoices(config,dest,{key,synthesize=tts,run=command,
   report.candidates.push({voice,model,metrics:measure(dest+'/'+name+'.wav'),file:name+'.wav'});
   await writeFile(dest+'/comparacao.json',JSON.stringify(report,null,2));
  }
+ await writeFile(dest+'/index.html','<!doctype html><meta charset="utf-8"><title>Amostras de voz</title><h1>Escolha a voz ZEVANORY</h1><p>Mesma frase, quatro vozes e dois modelos. Nenhuma vencedora automática.</p>'+report.candidates.map(r=>'<section><h2>'+r.model+' — '+r.voice+'</h2><audio controls src="'+r.file+'"></audio><pre>'+JSON.stringify(r.metrics)+'</pre></section>').join(''));
  return report;
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){
+ const samples=process.argv[2]==='--samples';
+ try{
+ if(samples)assertSamplesMode('amostras',process.env.DRY_RUN);
  const config=JSON.parse(await readFile(new URL('../../data/shorts-padrao-v2.json',import.meta.url),'utf8'));
- await compareVoices(config,resolve(process.argv[2]||'/tmp/zevanory-voice-comparison'),{key:process.env.GEMINI_API_KEY});
+ // Owner confirmed no billing on 12/11; comparison permission does not approve publication.
+ await compareVoices(samples?{...config,nivel_gratuito_confirmado:true}:config,resolve(process.argv[samples?3:2]||'/tmp/zevanory-voice-comparison'),{key:process.env.GEMINI_API_KEY,...(samples?{synthesize:sampleTts}:{})});
+ }catch(e){console.error('::error title=GEMINI::'+String(e.geminiCode||e.message).replace(/[^a-zA-Z0-9_:.-]/g,'_'));process.exitCode=1;}
 }
