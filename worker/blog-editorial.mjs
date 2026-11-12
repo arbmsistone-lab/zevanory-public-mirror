@@ -27,7 +27,8 @@ const NICHE = {
     context: "Em um salão de beleza, a agenda é o centro da operação. Clientes pedem horário pelo WhatsApp, remarcam em cima da hora, perguntam preço de serviço que muda conforme o comprimento do cabelo e querem saber qual profissional está disponível. Ao mesmo tempo, a dona ou o dono do salão atende, corta, colore e ainda tenta responder mensagens nos intervalos. O resultado comum é uma fila de conversas sem resposta no fim do dia, horários vagos que poderiam ter sido preenchidos e pouca clareza sobre quais serviços realmente sustentam o mês. Qualquer melhoria precisa caber nessa rotina picada, sem exigir horas de computador.",
     cautions: [
       "Antes de deixar qualquer resposta pronta circular, separe o que é estável do que depende de avaliação. Duração de escova, endereço e formas de pagamento podem ser padronizados. Preço de química, tempo de coloração e indicação de tratamento dependem de ver o cabelo e precisam passar pela profissional. Também vale combinar uma regra simples para remarcações: até quando o horário pode ser trocado sem custo e quem confirma a troca. Registre essas decisões em um documento curto e revise uma vez por semana com a equipe, porque é ali que aparecem as perguntas novas que ainda não têm resposta segura.",
-      "Cuidado com dados de clientes. Fotos de antes e depois, alergias informadas e telefone pessoal não devem ser colados em ferramentas sem necessidade. Use apelidos ou iniciais quando estiver organizando a agenda com ajuda de IA e mantenha a ficha completa só onde o salão já guarda essas informações. Outra atenção: mensagens automáticas de lembrete precisam respeitar quem pediu para não receber. Comece com um único lembrete na véspera, observe como as clientes reagem durante duas semanas e só então decida se vale acrescentar algo."
+      "Cuidado com dados de clientes. Fotos de antes e depois, alergias informadas e telefone pessoal não devem ser colados em ferramentas sem necessidade. Use apelidos ou iniciais quando estiver organizando a agenda com ajuda de IA e mantenha a ficha completa só onde o salão já guarda essas informações. Outra atenção: mensagens automáticas de lembrete precisam respeitar quem pediu para não receber. Comece com um único lembrete na véspera, observe como as clientes reagem durante duas semanas e só então decida se vale acrescentar algo.",
+      "Ao padronizar mensagens de confirmação e lembrete, evite expor a agenda de outras clientes ou detalhes de procedimentos em grupos e listas abertas. Cada lembrete deve ir só para a pessoa agendada, com o mínimo de informação necessária. Também vale combinar com a equipe como tratar remarcações em cima da hora, para que a resposta automática não ofereça um horário que já foi ocupado. Quando a cliente pedir indicação de tratamento, a conversa segue para a profissional responsável, que avalia pessoalmente antes de recomendar qualquer procedimento."
     ]
   },
   "loja": {
@@ -35,7 +36,8 @@ const NICHE = {
     context: "Uma loja de bairro vive de relacionamento e de giro de estoque. A mesma pessoa abre a porta, atende no balcão, responde perguntas sobre tamanho e cor pelo celular, confere entregas de fornecedor e fecha o caixa. Muitas vendas começam com uma foto enviada por mensagem e terminam no balcão, o que torna difícil saber de onde veio cada cliente. Promoções são decididas no impulso, e o controle de quanto sobrou no mês costuma ficar para depois. Nesse contexto, organização não significa sistema caro: significa poucas rotinas repetidas com disciplina, que liberam tempo para atender bem quem entra.",
     cautions: [
       "Disponibilidade de produto é a informação que mais gera desgaste quando está errada. Nunca deixe uma resposta automática afirmar que há tamanho ou cor em estoque sem conferência; prefira uma frase que avise que a equipe vai confirmar em seguida. O mesmo vale para preço em promoção: defina data de início e fim por escrito antes de divulgar. Ao testar qualquer melhoria, escolha uma categoria de produto por vez, acompanhe por uma semana e compare com a semana anterior usando números simples que a loja já tem, como quantidade de pedidos e de trocas.",
-      "Evite copiar mensagens prontas de outras lojas. O cliente do bairro reconhece o jeito de falar de quem atende, e um texto genérico quebra essa confiança. Use modelos apenas como ponto de partida e ajuste ao vocabulário da loja. Também é importante não acumular listas de contatos sem permissão: envie novidades só para quem pediu para receber, e ofereça sempre uma forma fácil de sair da lista. Isso protege a reputação da loja e evita bloqueios no aplicativo de mensagens."
+      "Evite copiar mensagens prontas de outras lojas. O cliente do bairro reconhece o jeito de falar de quem atende, e um texto genérico quebra essa confiança. Use modelos apenas como ponto de partida e ajuste ao vocabulário da loja. Também é importante não acumular listas de contatos sem permissão: envie novidades só para quem pediu para receber, e ofereça sempre uma forma fácil de sair da lista. Isso protege a reputação da loja e evita bloqueios no aplicativo de mensagens.",
+      "Fotos de produtos enviadas por mensagem costumam circular entre vários aparelhos da equipe. Antes de usar essas imagens em modelos de resposta ou em ferramentas de inteligência artificial, confira se não aparecem rostos de clientes, endereços de entrega ou comprovantes. Mantenha um álbum separado só com fotos aprovadas do estoque. Outro cuidado é com trocas e devoluções: a regra precisa estar escrita de forma clara e igual em todos os canais, para que ninguém receba uma informação diferente da que foi dada no balcão."
     ]
   },
   "prestador de serviço": {
@@ -43,7 +45,8 @@ const NICHE = {
     context: "Quem presta serviço, como eletricista, técnico de manutenção, fotógrafo ou consultor, vende tempo e confiança. Cada orçamento exige entender o problema, estimar horas e materiais e explicar o que está incluído. Boa parte do dia é gasta em deslocamento e execução, e os pedidos de orçamento se acumulam no celular. Quando a resposta demora, o cliente fecha com outro; quando sai apressada, o preço fica mal calculado e a margem desaparece. O desafio é transformar um atendimento que hoje depende da memória de uma pessoa em passos claros que podem ser repetidos sem perder o cuidado técnico.",
     cautions: [
       "Orçamento não é texto de marketing: cada valor precisa ter origem. Antes de padronizar respostas, liste o que entra em todo serviço (deslocamento, visita técnica, garantia) e o que depende de avaliação no local. Nenhuma ferramenta deve informar prazo de execução ou preço final sem essa conferência. Registre também os motivos de orçamentos recusados, mesmo que de forma resumida, porque eles mostram se o problema está no preço, na demora da resposta ou na explicação do serviço.",
-      "Guarde fotos e endereços de clientes apenas pelo tempo necessário para executar e dar garantia ao serviço. Ao usar IA para redigir propostas, troque nomes e endereços por referências genéricas e preencha os dados reais só no documento final. Outra atenção é com promessas de prazo em mensagens automáticas: prefira informar quando o orçamento será enviado, e não quando o serviço ficará pronto, até que a agenda esteja confirmada pela pessoa responsável."
+      "Guarde fotos e endereços de clientes apenas pelo tempo necessário para executar e dar garantia ao serviço. Ao usar IA para redigir propostas, troque nomes e endereços por referências genéricas e preencha os dados reais só no documento final. Outra atenção é com promessas de prazo em mensagens automáticas: prefira informar quando o orçamento será enviado, e não quando o serviço ficará pronto, até que a agenda esteja confirmada pela pessoa responsável.",
+      "Antes de automatizar o envio de propostas, defina quais serviços exigem visita técnica e quais podem ser orçados à distância. Uma proposta enviada sem avaliação pode deixar de fora material, deslocamento ou risco de segurança, e corrigir depois desgasta a relação. Guarde um modelo de proposta para cada tipo de serviço, com espaço para as observações da visita. Também é importante registrar o que foi combinado sobre garantia e prazo de retorno, para que a mensagem automática nunca contradiga o que o profissional disse pessoalmente."
     ]
   },
   "delivery": {
@@ -51,7 +54,8 @@ const NICHE = {
     context: "Em um negócio de delivery, a pressão chega em ondas. No horário de pico, pedidos entram por aplicativo, telefone e mensagem ao mesmo tempo, enquanto a cozinha produz e o entregador espera. Fora do pico, sobra pouco tempo para olhar números, ajustar cardápio ou responder avaliações. Erros pequenos, como um item esquecido ou um endereço incompleto, viram reclamação pública e custo de reenvio. Taxas de plataforma e embalagens consomem parte do valor de cada pedido, e nem sempre fica claro quais pratos realmente compensam. Melhorar a operação significa reduzir retrabalho no pico e criar momentos curtos de análise fora dele.",
     cautions: [
       "Nunca automatize a confirmação de um pedido sem conferir disponibilidade de ingredientes e tempo de preparo do momento. Uma mensagem que promete entrega em trinta minutos durante o pico cria uma expectativa difícil de cumprir. Defina faixas de tempo realistas por período do dia e revise quando houver mudança de equipe. Para alergias e restrições alimentares, a resposta deve sempre passar por uma pessoa da cozinha; nenhuma ferramenta deve afirmar que um prato é seguro sem essa verificação.",
-      "Tenha cuidado ao analisar avaliações e reclamações com IA: copie apenas o texto do comentário, sem nome, telefone ou endereço do cliente. Use o resumo para encontrar padrões, como atraso em um bairro específico ou embalagem que vaza, e não para responder automaticamente. Respostas públicas a avaliações negativas devem ser escritas ou revisadas pelo responsável, com tom respeitoso e uma proposta concreta de solução."
+      "Tenha cuidado ao analisar avaliações e reclamações com IA: copie apenas o texto do comentário, sem nome, telefone ou endereço do cliente. Use o resumo para encontrar padrões, como atraso em um bairro específico ou embalagem que vaza, e não para responder automaticamente. Respostas públicas a avaliações negativas devem ser escritas ou revisadas pelo responsável, com tom respeitoso e uma proposta concreta de solução.",
+      "Cardápio e disponibilidade mudam ao longo do dia, e uma resposta automática desatualizada gera pedido que não pode ser atendido. Defina quem atualiza a lista de itens indisponíveis e em que horários essa conferência acontece. Mensagens sobre alergias e ingredientes merecem atenção especial: a resposta deve vir de alguém que conhece a receita do dia, nunca de um texto genérico. Por fim, evite guardar endereços e telefones em planilhas soltas; mantenha esses dados apenas no sistema de pedidos que o negócio já utiliza."
     ]
   },
   "autônomo": {
@@ -59,7 +63,8 @@ const NICHE = {
     context: "O profissional autônomo acumula todas as funções: produz, vende, cobra, responde mensagens e cuida da própria agenda. Não existe equipe para dividir tarefas nem horário fixo para administração, então o trabalho invisível fica para a noite ou para o fim de semana. É comum que a renda varie bastante de um mês para outro, que cobranças fiquem esquecidas e que propostas sejam escritas do zero a cada novo cliente. Para quem trabalha sozinho, qualquer rotina nova precisa economizar mais tempo do que consome e ser simples o bastante para continuar funcionando em semanas corridas.",
     cautions: [
       "Separe desde o início o dinheiro pessoal do dinheiro do trabalho, nem que seja com duas contas ou duas planilhas. Sem essa separação, nenhuma análise de caixa ou de preço faz sentido. Ao criar modelos de proposta ou de cobrança, revise cada envio antes de mandar: um valor desatualizado ou um prazo errado em um texto padrão se repete em todos os clientes. Comece com um único modelo, use durante um mês e ajuste com base nas dúvidas que os clientes realmente fizeram.",
-      "Proteja informações de clientes mesmo trabalhando sozinho. Contratos, documentos e conversas não devem ser colados inteiros em ferramentas de IA; extraia só o trecho necessário e retire dados pessoais. Defina também limites de atendimento: um horário de resposta informado na saudação evita a sensação de que é preciso estar disponível o tempo todo e ajuda a manter a qualidade do trabalho principal."
+      "Proteja informações de clientes mesmo trabalhando sozinho. Contratos, documentos e conversas não devem ser colados inteiros em ferramentas de IA; extraia só o trecho necessário e retire dados pessoais. Defina também limites de atendimento: um horário de resposta informado na saudação evita a sensação de que é preciso estar disponível o tempo todo e ajuda a manter a qualidade do trabalho principal.",
+      "Quem trabalha sozinho costuma usar o mesmo celular para a vida pessoal e para os clientes. Antes de criar respostas automáticas, separe os contatos de trabalho e defina horários em que essas respostas valem. Assim, um familiar não recebe por engano uma mensagem de orçamento, e um cliente não fica sem retorno fora do expediente sem saber o motivo. Revise também os modelos de cobrança: valores, datas e dados bancários devem ser conferidos a cada envio, porque um detalhe errado compromete a confiança construída com cada cliente."
     ]
   }
 };
@@ -69,35 +74,40 @@ const PRODUCT = {
     role: "O IA na Prática organiza o uso de inteligência artificial em processos que podem ser repetidos, revisados e adaptados à rotina, em vez de depender de tentativas soltas a cada tarefa. A proposta começa pela clareza de entrada: definir contexto, objetivo, restrições e critério de qualidade antes de pedir qualquer resposta. A partir de uma boa tentativa, o método transforma o resultado em um fluxo reutilizável, com revisão humana no final. O foco não é colecionar ferramentas novas, e sim escolher tarefas reais do negócio em que a IA ajuda a preparar, organizar ou revisar trabalho.",
     steps: [
       "Escolha uma tarefa que se repete toda semana e que hoje consome tempo, como responder perguntas frequentes ou redigir uma mensagem de retorno. Escreva em poucas linhas o contexto do negócio, o objetivo da tarefa e o que não pode acontecer. Faça três tentativas com a mesma estrutura de pedido e compare os resultados lado a lado. Fique com a versão mais clara, anote o que precisou ser corrigido e transforme isso em um modelo de pedido. Na semana seguinte, use o modelo novamente e registre se a revisão ficou mais rápida. Só depois disso passe para a próxima tarefa.",
-      "Monte uma pequena biblioteca com no máximo cinco modelos de pedido para tarefas diferentes. Para cada modelo, anote quem revisa o resultado e em que situação ele não deve ser usado. Reserve quinze minutos na sexta-feira para olhar o que funcionou: quais modelos foram usados, quais respostas precisaram de muita correção e quais dúvidas novas surgiram. Ajuste um modelo por semana em vez de reescrever tudo. Com o tempo, a biblioteca reflete o jeito do negócio trabalhar e fica mais fácil treinar outra pessoa para usá-la."
+      "Monte uma pequena biblioteca com no máximo cinco modelos de pedido para tarefas diferentes. Para cada modelo, anote quem revisa o resultado e em que situação ele não deve ser usado. Reserve quinze minutos na sexta-feira para olhar o que funcionou: quais modelos foram usados, quais respostas precisaram de muita correção e quais dúvidas novas surgiram. Ajuste um modelo por semana em vez de reescrever tudo. Com o tempo, a biblioteca reflete o jeito do negócio trabalhar e fica mais fácil treinar outra pessoa para usá-la.",
+      "Depois de duas semanas de uso, revise os pedidos que você escreveu para a inteligência artificial. Separe os que geraram respostas aproveitadas quase sem ajuste dos que exigiram reescrita completa. Para os primeiros, registre o modelo de pedido como padrão e indique quem pode usá-lo. Para os segundos, anote o que faltou: contexto do negócio, tom de voz, limites ou exemplos. Reescreva um desses pedidos acrescentando um exemplo anônimo de resposta boa e teste de novo com três situações diferentes antes de incluí-lo na biblioteca."
     ]
   },
   "ZEV-VEN-011": {
     role: "O Vendas na Prática organiza os pedidos e oportunidades que chegam, com atendimento, oferta e acompanhamento em uma sequência que pode ser executada, medida e melhorada. A ideia central é que cada conversa termine com uma próxima ação definida e que cada oportunidade esteja em uma etapa conhecida do funil, em vez de viver só na memória de quem atende. O material trata de padronizar o atendimento sem transformar a conversa em roteiro robótico e de criar uma cadência de retorno que não vire insistência. É um processo comercial pensado para caber na rotina de quem tem pouco tempo.",
     steps: [
       "Liste as etapas que um cliente percorre hoje, do primeiro contato ao pagamento, usando palavras do próprio negócio. Para cada etapa, defina um critério simples que indica que o cliente avançou. Em seguida, pegue as conversas abertas da semana e classifique cada uma em uma etapa. Para todas que estiverem paradas, escreva a próxima ação e uma data. No fim da semana, conte quantas avançaram e quantas ficaram no mesmo lugar. Esse retrato simples já mostra onde o processo trava e qual mensagem merece ser melhorada primeiro.",
-      "Defina uma cadência de acompanhamento com no máximo três contatos depois de um orçamento ou de uma dúvida sem resposta, com intervalos combinados e um motivo diferente em cada contato: esclarecer uma dúvida, oferecer uma alternativa e, por fim, encerrar com respeito. Escreva essas três mensagens como base e adapte ao cliente antes de enviar. Registre em uma lista simples quem recebeu cada contato. Ao final de quinze dias, observe em que contato as respostas aparecem e ajuste a cadência, sem aumentar a frequência de mensagens."
+      "Defina uma cadência de acompanhamento com no máximo três contatos depois de um orçamento ou de uma dúvida sem resposta, com intervalos combinados e um motivo diferente em cada contato: esclarecer uma dúvida, oferecer uma alternativa e, por fim, encerrar com respeito. Escreva essas três mensagens como base e adapte ao cliente antes de enviar. Registre em uma lista simples quem recebeu cada contato. Ao final de quinze dias, observe em que contato as respostas aparecem e ajuste a cadência, sem aumentar a frequência de mensagens.",
+      "Escolha um dia da semana para revisar as oportunidades paradas há mais de sete dias. Para cada uma, confira a última mensagem enviada, o que o cliente pediu e se existe uma próxima ação marcada. Quando não houver, decida entre retomar com uma informação nova, oferecer uma alternativa mais simples ou encerrar com cordialidade. Registre a decisão na própria lista, com a data. Ao fim de um mês, observe quais motivos de parada se repetem e ajuste a forma de apresentar orçamento ou prazo nesses pontos."
     ]
   },
   "ZEV-LCX-011": {
     role: "O Lucro & Caixa transforma a movimentação financeira em uma rotina de leitura simples para enxergar caixa, margem e decisões do negócio. Ele parte de uma distinção que muita gente sente na prática: faturar não significa necessariamente sobrar dinheiro. O material ajuda a separar entrada de lucro, organizar custos que passam despercebidos e criar um acompanhamento curto e frequente, em vez de olhar os números só quando aparece um problema. Não é contabilidade completa; é uma forma de transformar informação básica em visão útil para decidir preços, compras e prioridades.",
     steps: [
       "Durante uma semana, anote todas as entradas e saídas do negócio em uma única lista, com data, valor e uma categoria curta. No fim da semana, some por categoria e compare com o que você imaginava antes de anotar. Identifique os três custos recorrentes que mais surpreenderam e verifique se cada um ainda é necessário. Depois, escolha o produto ou serviço mais vendido e calcule quanto sobra em cada venda depois dos custos diretos. Esse número, mesmo aproximado, é a base para decidir promoções e reajustes com mais segurança.",
-      "Crie um ritual financeiro de vinte minutos em um dia fixo da semana. Nesse horário, confira o saldo disponível, as contas a pagar dos próximos quinze dias e os valores a receber. Marque em vermelho qualquer semana em que as saídas previstas superam as entradas e decida com antecedência o que pode ser adiado ou renegociado. Uma vez por mês, revise a margem dos três itens mais vendidos. O objetivo é que nenhuma decisão de compra ou de desconto seja tomada sem olhar esse quadro."
+      "Crie um ritual financeiro de vinte minutos em um dia fixo da semana. Nesse horário, confira o saldo disponível, as contas a pagar dos próximos quinze dias e os valores a receber. Marque em vermelho qualquer semana em que as saídas previstas superam as entradas e decida com antecedência o que pode ser adiado ou renegociado. Uma vez por mês, revise a margem dos três itens mais vendidos. O objetivo é que nenhuma decisão de compra ou de desconto seja tomada sem olhar esse quadro.",
+      "Monte uma tabela simples com os produtos ou serviços que mais saem e, para cada um, anote o preço praticado, o custo direto e o tempo gasto. Calcule quanto sobra em cada venda depois do custo direto e compare os itens entre si. Muitas vezes o item mais procurado não é o que mais contribui para pagar as despesas fixas. Com essa leitura, revise a ordem em que os itens aparecem no atendimento e decida, com calma, se algum preço precisa de ajuste antes da próxima reposição."
     ]
   },
   "ZEV-CMB-011": {
     role: "O Combo IA + Vendas reúne dois treinamentos completos: IA na Prática, para organizar pedidos, rascunhos, tarefas e revisão com inteligência artificial, e Vendas na Prática, para organizar os pedidos e oportunidades que chegam, com atendimento, oferta e follow-up. A premissa é direta: a IA acelera o que já existe, inclusive a desorganização. Os dois treinamentos se complementam e funcionam de forma independente; para quem quer usar ambos, a ordem sugerida é começar pelo método de IA e depois estruturar o processo comercial, mantendo funil, conversa e acompanhamento guiados por processo.",
     steps: [
       "Antes de usar IA em vendas, desenhe em uma folha as etapas do seu atendimento e marque onde hoje você perde mais tempo. Escolha só uma dessas etapas, por exemplo o resumo de uma conversa antes do retorno. Crie um modelo de pedido que recebe o histórico da conversa sem dados pessoais e devolve três pontos: o que o cliente quer, a dúvida principal e a próxima ação sugerida. Revise o resultado e só então escreva a mensagem. Repita com dez conversas e veja se a qualidade do retorno melhorou.",
-      "Organize uma rotina semanal em duas partes. Na primeira, revise o funil e escolha as oportunidades que merecem atenção, com base na etapa e na data da última conversa. Na segunda, use a IA apenas para preparar o material dessas oportunidades: uma resposta a uma objeção, um resumo do serviço ou uma comparação entre opções. Envie só depois de ajustar ao cliente. Registre quais materiais foram reaproveitados e quais precisaram ser refeitos, para melhorar os modelos aos poucos."
+      "Organize uma rotina semanal em duas partes. Na primeira, revise o funil e escolha as oportunidades que merecem atenção, com base na etapa e na data da última conversa. Na segunda, use a IA apenas para preparar o material dessas oportunidades: uma resposta a uma objeção, um resumo do serviço ou uma comparação entre opções. Envie só depois de ajustar ao cliente. Registre quais materiais foram reaproveitados e quais precisaram ser refeitos, para melhorar os modelos aos poucos.",
+      "Crie um roteiro de retorno para orçamentos enviados e ainda sem resposta. Use a inteligência artificial apenas para propor três versões curtas da mensagem, cada uma com um motivo diferente para o contato: tirar uma dúvida, apresentar uma opção mais enxuta ou confirmar se o cliente prefere encerrar a conversa. Escolha a versão, ajuste ao seu jeito de falar e registre na lista de oportunidades qual foi enviada e quando. Depois de algumas semanas, compare as respostas recebidas e mantenha só as versões que geraram conversas úteis."
     ]
   },
   "ZEV-NGC-011": {
     role: "O Negócio Completo conecta IA aplicada, processo comercial e visão financeira em uma só jornada, para reduzir o improviso nas três áreas que mais pressionam a rotina de um pequeno negócio. A lógica é que melhorar uma área isolada costuma apenas mudar o problema de lugar: produzir mais sem vender melhor, vender mais sem enxergar margem ou controlar o caixa sem melhorar a execução. O pacote propõe uma sequência coerente entre produzir com método, vender com processo e acompanhar o resultado, para que as decisões do dia a dia considerem as três dimensões ao mesmo tempo.",
     steps: [
       "Faça um diagnóstico de uma página com três perguntas: qual tarefa operacional mais consome tempo, em que etapa as vendas mais travam e qual número financeiro você não sabe responder hoje. Escolha uma ação pequena para cada área e distribua ao longo de três semanas, uma área por semana. Na primeira, padronize a tarefa operacional; na segunda, organize o acompanhamento das oportunidades; na terceira, calcule a margem dos itens principais. Ao final, compare o tempo gasto e as decisões tomadas antes e depois.",
-      "Monte um painel simples, em papel ou planilha, com um indicador por área: horas gastas na tarefa mais repetitiva, número de oportunidades com próxima ação definida e saldo previsto para as próximas duas semanas. Atualize o painel em um horário fixo da semana. Quando um indicador piorar, investigue a causa antes de mudar qualquer coisa nas outras áreas. Esse hábito evita decisões isoladas, como dar desconto para vender mais sem verificar se a margem permite."
+      "Monte um painel simples, em papel ou planilha, com um indicador por área: horas gastas na tarefa mais repetitiva, número de oportunidades com próxima ação definida e saldo previsto para as próximas duas semanas. Atualize o painel em um horário fixo da semana. Quando um indicador piorar, investigue a causa antes de mudar qualquer coisa nas outras áreas. Esse hábito evita decisões isoladas, como dar desconto para vender mais sem verificar se a margem permite.",
+      "Reserve uma manhã por mês para uma revisão integrada do negócio. Comece pelo caixa: confira o saldo previsto para as próximas semanas e os compromissos que vencem. Em seguida, olhe as vendas: quantas oportunidades avançaram, quantas pararam e por quê. Por último, avalie a operação: qual tarefa repetitiva ainda consome mais tempo e se algum modelo pronto poderia ajudar. Escolha uma única melhoria para o mês, escreva quem cuida dela e qual sinal vai mostrar que funcionou, e retome esse registro na revisão seguinte."
     ]
   }
 };
@@ -148,6 +158,20 @@ const TITLES = {
   "comparação": ["Manual ou assistido: como {niche} podem avaliar o {product}", "Antes de adotar o {product}: uma comparação honesta para {niche}"]
 };
 
+// Cinco edições por tema (auditoria do #1020, ALTA). O tema (produto × nicho × ângulo) volta a cada 25 dias; a edição
+// muda a cada bloco de 25 dias e só se repete depois de 125 dias, além da janela de 45 artigos do índice do blog.
+// Cada edição usa 5 dos 10 parágrafos do tema (2 de ângulo; contexto, papel do produto; 3 roteiros; 3 cuidados), com
+// no máximo 2 parágrafos do nicho e 2 do produto. Duas edições compartilham no máximo 2 parágrafos, e dois temas
+// diferentes do mesmo bloco têm no máximo uma categoria em comum: nenhum par na janela chega a 3 parágrafos iguais.
+// Toda edição tem ângulo e pelo menos um roteiro prático.
+const EDITIONS = Object.freeze([
+  Object.freeze({ tag: "", parts: ["a0", "a1", "ctx", "role", "s0"] }),
+  Object.freeze({ tag: " — segunda leitura", parts: ["a0", "ctx", "s1", "s2", "c0"] }),
+  Object.freeze({ tag: " — revisão da rotina", parts: ["a0", "role", "s1", "c1", "c2"] }),
+  Object.freeze({ tag: " — notas de campo", parts: ["a1", "role", "s2", "c0", "c1"] }),
+  Object.freeze({ tag: " — guia de bolso", parts: ["a1", "s0", "s1", "c0", "c2"] }),
+]);
+export const EDITORIAL_EDITIONS = EDITIONS.length;
 const dayOrdinal = day => Math.floor(Date.parse(day + "T00:00:00Z") / DAY);
 const capital = s => s.charAt(0).toLocaleUpperCase("pt-BR") + s.slice(1);
 export function slugify(text) {
@@ -162,21 +186,32 @@ export function editorialCalendar(day) {
   const product = EDITORIAL_PRODUCTS[((n % 5) + 5) % 5];
   const niche = EDITORIAL_NICHES[((Math.floor(n / 5) % 5) + 5) % 5];
   const angle = EDITORIAL_ANGLES[((n * 3 + Math.floor(n / 5)) % 5 + 5) % 5];
-  const variant = ((Math.floor(n / 25) % 2) + 2) % 2;
-  return { day, n, product, niche, angle, variant };
+  // Edição (auditoria do #1020, ALTA): o tema (produto × nicho × ângulo) volta a cada 25 dias; a edição muda a cada
+  // bloco de 25 dias e só se repete depois de 5 blocos (125 dias), além da janela de 45 artigos do índice do blog.
+  const edition = ((Math.floor(n / 25) % EDITIONS.length) + EDITIONS.length) % EDITIONS.length;
+  const variant = edition % 2;
+  return { day, n, product, niche, angle, variant, edition };
 }
 export function dailyEditorialArticle(day, { baseUrl = "https://zevanory.api.br", now = new Date() } = {}) {
   const e = editorialCalendar(day);
   const nd = NICHE[e.niche], pd = PRODUCT[e.product.sku], ad = ANGLE[e.angle];
-  const title = TITLES[e.angle][e.variant].replaceAll("{Niche}", capital(nd.label)).replaceAll("{niche}", nd.label).replaceAll("{product}", e.product.name);
+  const title = TITLES[e.angle][e.variant].replaceAll("{Niche}", capital(nd.label)).replaceAll("{niche}", nd.label).replaceAll("{product}", e.product.name) + EDITIONS[e.edition].tag;
   const slug = slugify(title) + "-" + day;
   const link = "https://vendas.zevanory.api.br/comprar/" + e.product.sku + "?utm_source=blog&utm_medium=organic&utm_campaign=conteudo_" + day.replaceAll("-", "");
+  const ed = EDITIONS[e.edition].parts, seen = {};
+  const head = (group, first, next) => (seen[group] = (seen[group] || 0) + 1) === 1 ? first : next;
+  const part = {
+    a0: () => [head("a", "## " + ad.heading, "## Outro olhar sobre o tema"), ad.text[0]], a1: () => [head("a", "## " + ad.heading, "## Outro olhar sobre o tema"), ad.text[1]],
+    ctx: () => ["## O contexto em " + nd.label, nd.context], role: () => ["## Onde o " + e.product.name + " ajuda", pd.role],
+    s0: () => [head("s", "## Roteiro prático desta semana", "## Próxima etapa do roteiro"), pd.steps[0]],
+    s1: () => [head("s", "## Roteiro prático desta semana", "## Próxima etapa do roteiro"), pd.steps[1]],
+    s2: () => [head("s", "## Roteiro prático desta semana", "## Próxima etapa do roteiro"), pd.steps[2]],
+    c0: () => [head("c", "## Cuidados antes de automatizar", "## Mais um cuidado com dados e prazos"), nd.cautions[0]],
+    c1: () => [head("c", "## Cuidados antes de automatizar", "## Mais um cuidado com dados e prazos"), nd.cautions[1]],
+    c2: () => [head("c", "## Cuidados antes de automatizar", "## Mais um cuidado com dados e prazos"), nd.cautions[2]],
+  };
   const sections = [
-    ["## " + ad.heading, ad.text[e.variant]],
-    ["## O contexto em " + nd.label, nd.context],
-    ["## Onde o " + e.product.name + " ajuda", pd.role],
-    ["## Roteiro prático desta semana", pd.steps[e.variant]],
-    ["## Cuidados antes de automatizar", nd.cautions[e.variant]],
+    ...["a0", "a1", "ctx", "role", "s0", "s1", "s2", "c0", "c1", "c2"].filter(k => ed.includes(k)).map(k => part[k]()),
     ["## Próximo passo", "Se o tema fizer sentido para a sua operação, conheça o " + e.product.name + " e veja escopo, limites e garantia antes de decidir. Comece pela menor mudança possível e meça antes de ampliar."]
   ];
   const body = sections.map(([h, t]) => h + "\n\n" + t).join("\n\n");
@@ -187,7 +222,7 @@ export function dailyEditorialArticle(day, { baseUrl = "https://zevanory.api.br"
     slug, title, description, body, word_count: wordCount,
     url: baseUrl.replace(/\/$/, "") + "/blog/" + slug,
     publishedAt: now.toISOString(), day,
-    theme_id: [e.product.sku, e.niche, e.angle].join(":"), product: e.product.sku, niche: e.niche, angle: e.angle, variant: e.variant,
+    theme_id: [e.product.sku, e.niche, e.angle].join(":"), product: e.product.sku, niche: e.niche, angle: e.angle, variant: e.variant, edition: e.edition,
     cta_url: link,
     faq: [
       { q: "O " + e.product.name + " substitui a revisão humana?", a: "Não. O material organiza a rotina e os modelos de trabalho, mas preços, prazos, disponibilidade e qualquer informação sensível continuam passando por uma pessoa responsável antes de chegar ao cliente." },
