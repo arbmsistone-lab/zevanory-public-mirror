@@ -55,6 +55,7 @@ tests/f1-meta-identity.test.mjs 10
 tests/f1b-blog-recovery.test.mjs 7
 tests/f1b-bluesky-recovery.test.mjs 5
 tests/f1b-shorts-corruption.test.mjs 4
+tests/f2-hotmart-test-route.test.mjs 11
 tests/f2-indexnow-publication.test.mjs 12
 tests/f2b-indexnow-auth.test.mjs 12
 tests/f2c-indexnow-continuity.test.mjs 10
@@ -91,6 +92,7 @@ tests/operator-token-transition.test.mjs 8
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
 tests/order7-whatsapp-commercial.test.mjs 11
 tests/owner-alert-policy.test.mjs 2
+tests/owner-chat.test.mjs 27
 tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
 tests/p03-pages-audit.test.mjs 10
@@ -170,6 +172,7 @@ tests/telegram-inapp-browser.test.mjs 4
 tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
+tests/vigia.test.mjs 14
 tests/voice-eval.test.mjs 6
 tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6
