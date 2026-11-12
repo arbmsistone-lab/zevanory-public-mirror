@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual, createHash } from "node:crypto";
-// NC-1008-03: taxa e prazo vêm da fonte reservada data/affiliates.json (PENDENTE decisão do proprietário), nunca de literal.
+// NC-1008-03: taxa e prazo vêm da fonte reservada data/affiliates.json (decisão do proprietário, F0 item 4), nunca de literal.
 import AFFILIATES from "../data/affiliates.json" with { type: "json" };
 const PCT=Number(AFFILIATES.own_program_commission_pct),ATTR_DAYS=Number(AFFILIATES.own_program_attribution_days);
 if(!Number.isInteger(PCT)||PCT<=0||PCT>=100||!Number.isInteger(ATTR_DAYS)||ATTR_DAYS<1||ATTR_DAYS>365)throw new Error("affiliates_config_invalid");

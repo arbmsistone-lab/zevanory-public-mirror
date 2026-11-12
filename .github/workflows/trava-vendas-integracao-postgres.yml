@@ -18,6 +18,8 @@ on:
       - "data/affiliates.json"
       # P23: registro fiscal lido pelo portão de checkout (worker/fiscal-process.mjs).
       - "data/p23/fiscal-process.json"
+      # NC-F1-A3-02 (#1020): lista curada de fontes lida pelo gate do blog (worker/blog-quality-gate.mjs).
+      - "data/fontes-permitidas.json"
       - "tests/integration/**"
       - "tests/t4_sim/**"
       - "tests/trava-vendas-gate-paths.test.mjs"

@@ -28,9 +28,10 @@ export async function compareVoices(config,dest,{key,synthesize=tts,run=command,
 if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){
  const samples=process.argv[2]==='--samples';
  try{
- if(samples)assertSamplesMode('amostras',process.env.DRY_RUN);
+ if(samples){assertSamplesMode('amostras',process.env.DRY_RUN);if(process.env.FREE_TIER_CONFIRMED!=='true')throw Error('samples_free_tier_confirmation_pending');}
  const config=JSON.parse(await readFile(new URL('../../data/shorts-padrao-v2.json',import.meta.url),'utf8'));
- // Owner confirmed no billing on 12/11; comparison permission does not approve publication.
+ // AI Studio screenshot of 12/11 showed no billing configured; explicit per-run confirmation is still required.
+ // Sampling never changes comparison, free-tier or publication approval in the committed configuration.
  await compareVoices(samples?{...config,nivel_gratuito_confirmado:true}:config,resolve(process.argv[samples?3:2]||'/tmp/zevanory-voice-comparison'),{key:process.env.GEMINI_API_KEY,...(samples?{synthesize:sampleTts}:{})});
  }catch(e){console.error('::error title=GEMINI::'+String(e.geminiCode||e.message).replace(/[^a-zA-Z0-9_:.-]/g,'_'));process.exitCode=1;}
 }

@@ -5,6 +5,7 @@
   "checkout_hosts": ["pay.hotmart.com"],
   "redirect_hosts": ["pay.hotmart.com"],
   "informational_hosts": ["refund.hotmart.com", "app.hotmart.com", "help.hotmart.com"],
+  "informational_paths": [{"host": "affiliate.hotmart.com", "path_prefix": "/affiliate-recruiting/view/", "note": "#1014 NC-D: só a página oficial de recrutamento de afiliados (um segmento alfanumérico após o prefixo, https, host exato, sem subdomínio, porta, credencial, query ou fragmento). Qualquer outro caminho em affiliate.hotmart.com ou subdomínio cai em payment_host_suffixes (hotmart.com) e é link de compra."}],
   "payment_host_suffixes": ["hotmart.com", "mercadopago.com", "mercadopago.com.br", "mpago.la", "kiwify.com.br", "eduzz.com", "monetizze.com.br", "pagseguro.uol.com.br", "stripe.com", "asaas.com", "pagar.me", "ticto.com.br", "braip.com", "perfectpay.com.br"],
   "allowed_extra_params": ["src"],
   "src_pattern": "^[A-Za-z0-9_-]{1,64}$",
