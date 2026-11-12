@@ -19,9 +19,10 @@ function memKv(init = {}, { failGet = () => false, failPut = () => false } = {})
 // Banco falso que reproduz a semântica das consultas marcadas (chave única, UPDATE condicional atômico).
 function fakeSql() {
   const rows = []; let seq = 0; const ai = new Map(); const log = []; let clock = Date.parse("2026-11-12T23:00:00Z");
+  const lock = { holder: null, since: null }; const neurons = { n: 0, fail: false };
   const out = (r) => ({ id: String(r.id), created_at: new Date(r.created_at).toISOString(), sender: r.sender, kind: r.kind, body: r.body, action_type: r.action_type, action_expires_at: r.action_expires_at ? new Date(r.action_expires_at).toISOString() : null, action_state: r.action_state });
-  return { rows, log, tick: (ms) => { clock += ms; }, query: async (text, p = []) => {
-    const tag = (/\/\*owner-chat:([a-z-]+)\*\//.exec(text) || [])[1] || (/create table/.test(text) ? "ddl" : "?");
+  return { rows, log, lock, neurons, tick: (ms) => { clock += ms; }, query: async (text, p = []) => {
+    const tag = (/\/\*owner-chat:([a-z-]+)\*\//.exec(text) || [])[1] || (/\/\*chat:neurons\*\//.test(text) ? "neurons" : /^\s*(create|alter)\b/i.test(text) ? "ddl" : "?");
     log.push(tag);
     if (tag === "ddl") return [];
     if (tag === "insert") {
@@ -30,9 +31,14 @@ function fakeSql() {
       rows.push(r); return [out(r)];
     }
     if (tag === "feed") return rows.slice().sort((a, b) => b.id - a.id).slice(0, p[0]).map(out);
+    if (tag === "feed-after") return rows.filter((r) => r.id > Number(p[0])).sort((a, b) => a.id - b.id).slice(0, p[1]).map(out);
+    if (tag === "lock") { if (lock.holder !== null) return []; lock.holder = String(p[0]); lock.since = clock; return [{ holder: lock.holder }]; }
+    if (tag === "unlock") { if (lock.holder === String(p[0])) { lock.holder = null; lock.since = null; } return []; }
+    if (tag === "lock-read") return lock.holder === null ? [] : [{ holder: lock.holder, age: Math.floor((clock - lock.since) / 1000) }];
+    if (tag === "neurons") { if (neurons.fail) throw new Error("db"); if (neurons.n + p[1] > p[2]) return []; neurons.n += p[1]; return [{ n: neurons.n }]; }
     if (tag === "claim") { const r = rows.find((x) => String(x.id) === p[0] && x.action_state === "proposta" && x.action_expires_at > clock); if (!r) return []; r.action_state = "executando"; return [{ action_type: r.action_type }]; }
-    if (tag === "action-state") { const r = rows.find((x) => String(x.id) === p[0] && x.action_type); return r ? [{ action_state: r.action_state, live: r.action_expires_at > clock }] : []; }
-    if (tag === "settle") { const r = rows.find((x) => String(x.id) === p[0] && x.action_state === "executando"); if (r) r.action_state = p[1]; return []; }
+    if (tag === "action-state") { const r = rows.find((x) => String(x.id) === p[0] && x.action_type); return r ? [{ action_state: r.action_state, action_type: r.action_type, live: r.action_expires_at > clock }] : []; }
+    if (tag === "settle") { const r = rows.find((x) => String(x.id) === p[0] && ["executando", "incerto"].includes(x.action_state)); if (r) r.action_state = p[1]; return []; }
     if (tag === "ai-reserve") { const n = ai.get(p[0]) || 0; if (n >= p[1]) return []; ai.set(p[0], n + 1); return [{ n: n + 1 }]; }
     if (tag === "retention") { const before = rows.length; for (let i = rows.length - 1; i >= 0; i--) if (rows[i].created_at < clock - 180 * 86400000) rows.splice(i, 1); return [{ n: before - rows.length }]; }
     if (tag === "retention-ai") { let n = 0; for (const d of [...ai.keys()]) if (Date.parse(d) < clock - 60 * 86400000) { ai.delete(d); n++; } return [{ n }]; }
@@ -40,6 +46,7 @@ function fakeSql() {
   } };
 }
 const snap = (rows) => async () => ({ day: "2026-11-12", today: rows });
+const ledger = (approved, gross, extra = {}) => JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved, grossCents: gross, refunded: 0 }, byDay: { "2026-11-12": { approved, grossCents: gross } }, ...extra });
 function harness({ kv = memKv({ [PAUSE]: "0" }), sql = fakeSql(), rows = [], ai } = {}) {
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "x", ...(ai ? { AI: ai } : {}) };
   let factory = 0;
@@ -100,14 +107,6 @@ test("gravações concorrentes não apagam mensagens nem alertas (NC-01)", async
   assert.equal(h.sql.rows.filter((r) => r.kind === "alerta" && /bluesky/.test(r.body)).length, 1, "alerta único mesmo com duas sentinelas");
 });
 
-test("vendas: sem livro, livro ilegível e livro com valor inválido nunca viram número falso (NC-04)", async () => {
-  assert.match((await send(harness(), "vendeu algo?"))[1].text, /Ainda não há nenhuma venda/);
-  for (const bad of ["{quebrado", JSON.stringify({ totals: { approved: "2" } }), JSON.stringify({ totals: { approved: 1, grossCents: "x" } }), JSON.stringify({ totals: { approved: 1, grossCents: 100 }, byDay: { "2026-11-12": { approved: 1, grossCents: -5 } } })]) {
-    const t = (await send(harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": bad }) }), "vendas"))[1].text;
-    assert.match(t, /ilegível/); assert.doesNotMatch(t, /NaN/);
-  }
-});
-
 test("ação: proposta, execução única mesmo com cliques simultâneos, expiração (NC-02)", async () => {
   const h = harness({ kv: memKv({ [PAUSE]: "1" }) });
   const proposal = (await send(h, "retomar a publicação"))[1];
@@ -119,16 +118,6 @@ test("ação: proposta, execução única mesmo com cliques simultâneos, expira
   h2.sql.tick(11 * 60 * 1000);
   assert.equal((await h2.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p2.id } }))).status, 410);
   assert.equal(h2.kv.data.get(PAUSE), "0");
-});
-
-test("ação que falha ao gravar: responde erro, fica 'falhou' e NÃO pode ser repetida (NC-02)", async () => {
-  const kv = memKv({ [PAUSE]: "1" }, { failPut: (k) => k === PAUSE });
-  const h = harness({ kv });
-  const p = (await send(h, "retomar"))[1];
-  const r = await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }));
-  assert.equal(r.status, 502); assert.match((await r.json()).messages[0].text, /Não consegui/);
-  assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "falhou");
-  assert.equal((await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }))).status, 409);
 });
 
 test("feed: últimas mensagens por id (sem cursor que esconda commit fora de ordem) e marcador evita o banco (NC-05)", async () => {
@@ -157,18 +146,6 @@ test("sentinela: canal pausado vira CANAL PARADO com motivo; sem novidade não a
   assert.equal(h.sql.log.length, before);
 });
 
-test("sentinela: antes do horário e canal publicado não alertam; venda nova avisada uma vez", async () => {
-  const h = harness();
-  assert.equal((await chat.runOwnerChatSentinel(h.env, new Date("2026-11-12T12:00:00Z"), { sqlFactory: h.deps.sqlFactory, snapshot: snap([]) })).alerts, 0);
-  const summary = JSON.stringify({ totals: { approved: 1, grossCents: 9700 }, byDay: { "2026-11-12": { approved: 1, grossCents: 9700 } } });
-  const h2 = harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": summary }), rows: [{ channel: "bluesky", status: "publicado" }, { channel: "blog", status: "publicado" }] });
-  const o = { sqlFactory: h2.deps.sqlFactory, snapshot: h2.deps.snapshot };
-  await chat.runOwnerChatSentinel(h2.env, new Date("2026-11-12T23:10:00Z"), o);
-  await chat.runOwnerChatSentinel(h2.env, new Date("2026-11-12T23:40:00Z"), o);
-  const v = h2.sql.rows.filter((r) => r.kind === "venda");
-  assert.equal(v.length, 1); assert.match(v[0].body, /R\$\s?97,00/);
-});
-
 test("IA só classifica; texto exibido é sempre determinístico (NC-03)", async () => {
   const lies = { run: async () => ({ response: "Você vendeu 37 kits hoje e o Bluesky publicou 5 vezes." }) };
   const t = (await send(harness({ ai: lies }), "me fala um resumo da semana"))[1].text;
@@ -178,7 +155,7 @@ test("IA só classifica; texto exibido é sempre determinístico (NC-03)", async
 });
 
 test("cota da IA reservada no banco antes da chamada: no máximo 40 por dia (NC-06)", async () => {
-  let calls = 0; const sql = fakeSql();
+  let calls = 0; const sql = fakeSql(); sql.neurons.n = -1e9;
   const env = { AI: { run: async () => { calls++; return { response: "status" }; } } };
   for (let i = 0; i < chat.AI_DAILY_LIMIT + 5; i++) await chat.classifyWithAi(env, sql, "algo", "2026-11-12");
   assert.equal(calls, chat.AI_DAILY_LIMIT);
@@ -234,13 +211,119 @@ test("NC-G6-1030-10: blog fora da agenda não é CANAL PARADO; dia previsto atra
   assert.equal(f("rascunho")[0].channel, "blog");
 });
 
-test("ordem aceita pelo KV aparece como executada, mesmo que a releitura imediata venha defasada", async () => {
+test("vendas: chave ausente = sem vendas; livro incompleto ou fora do esquema = inconclusivo, nunca zero (NC-CX-1030-04)", async () => {
+  assert.match((await send(harness(), "vendeu algo?"))[1].text, /Ainda não há nenhuma venda/);
+  assert.match((await send(harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": ledger(2, 19400) }) }), "vendas"))[1].text, /total: 2 \(R\$\s?194,00/);
+  const bad = [
+    "{quebrado",
+    JSON.stringify({ totals: { approved: 1, grossCents: 100, refunded: 0 }, byDay: {} }),
+    JSON.stringify({ schema: "wrong", totals: { approved: 1, grossCents: 100, refunded: 0 }, byDay: {} }),
+    JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved: 1 }, byDay: {} }),
+    JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved: 1, grossCents: 100, refunded: 0 } }),
+    JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved: 1, grossCents: 100, refunded: 0 }, byDay: { "2026-11-12": { grossCents: 100 } } }),
+    JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved: "2", grossCents: 100, refunded: 0 }, byDay: {} }),
+    JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved: 1, grossCents: -5, refunded: 0 }, byDay: {} }),
+    '{"schema":"zevanory-sales/v1","totals":{"approved":1,"grossCents":1e400,"refunded":0},"byDay":{}}',
+    JSON.stringify({ schema: "zevanory-sales/v1", totals: { approved: 2 ** 60, grossCents: 1, refunded: 0 }, byDay: {} }),
+  ];
+  for (const b of bad) {
+    const t = (await send(harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": b }) }), "vendas"))[1].text;
+    assert.match(t, /ilegível/, b); assert.doesNotMatch(t, /NaN|R\$ 0,00/);
+  }
+});
+
+test("ação aplicada e falha ao gravar o recibo: INCERTO, sem 'não executado', trava segura e conferência confirma (NC-CX-1030-02)", async () => {
   const kv = memKv({ [PAUSE]: "1" });
-  const realGet = kv.get; kv.get = async (k) => (k === PAUSE ? "1" : realGet(k)); // leitura defasada
   const h = harness({ kv });
   const p = (await send(h, "retomar"))[1];
+  kv.put = async (k, v) => { kv.data.set(k, String(v)); if (k === PAUSE) throw new Error("timeout depois de aplicar"); };
   const r = await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }));
-  assert.equal(r.status, 200); assert.equal(kv.data.get(PAUSE), "0");
+  const j = await r.json();
+  assert.equal(r.status, 202); assert.equal(j.state, "incerto"); assert.match(j.messages[0].text, /incerto/); assert.doesNotMatch(j.messages[0].text, /Não consegui|Peça de novo/);
+  assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "incerto");
+  const p2 = (await send(h, "pausar"))[1];
+  assert.equal((await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p2.id } }))).status, 409);
+  h.sql.tick(61000);
+  await chat.reconcileActions(h.sql, kv);
+  assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "executado");
+  assert.ok(h.sql.rows.some((x) => /Conferi: a ordem foi aplicada/.test(x.body)));
+  assert.equal(h.sql.lock.holder, null);
+});
+
+test("ação incerta não aplicada: conferência diz NÃO aplicada; leitura indisponível mantém incerta (NC-CX-1030-02)", async () => {
+  const kv = memKv({ [PAUSE]: "1" });
+  const h = harness({ kv });
+  const p = (await send(h, "retomar"))[1];
+  kv.put = async (k, v) => { if (k === PAUSE) throw new Error("rejeitado"); kv.data.set(k, String(v)); };
+  assert.equal((await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }))).status, 202);
+  h.sql.tick(61000);
+  const get = kv.get; kv.get = async (k) => { if (k === PAUSE) throw new Error("kv"); return get(k); };
+  await chat.reconcileActions(h.sql, kv);
+  assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "incerto");
+  kv.get = get;
+  await chat.reconcileActions(h.sql, kv);
+  assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "nao_aplicado");
+  assert.ok(h.sql.rows.some((x) => /NÃO foi aplicada/.test(x.body)));
+  assert.equal(h.sql.lock.holder, null);
+});
+
+test("falha no recibo depois do efeito deixa 'executando' com trava; a conferência resolve (NC-CX-1030-02)", async () => {
+  const kv = memKv({ [PAUSE]: "1" });
+  const h = harness({ kv });
+  const p = (await send(h, "retomar"))[1];
+  const q = h.sql.query; h.sql.query = async (t, a) => { if (/owner-chat:settle/.test(t)) throw new Error("db"); return q(t, a); };
+  assert.equal((await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }))).status, 503);
+  h.sql.query = q;
+  assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "executando"); assert.equal(h.sql.lock.holder, p.id);
+  h.sql.tick(61000); await chat.reconcileActions(h.sql, kv);
+  assert.equal(h.sql.rows.find((x) => String(x.id) === p.id).action_state, "executado");
+});
+
+test("propostas opostas clicadas ao mesmo tempo: só uma executa (NC-CX-1030-02)", async () => {
+  const kv = memKv({ [PAUSE]: "1" }); const h = harness({ kv });
+  const a = (await send(h, "retomar"))[1], b = (await send(h, "pausar"))[1];
+  const st = await Promise.all([a, b].map((m) => h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: m.id } }))));
+  assert.deepEqual(st.map((r) => r.status).sort(), [200, 409]);
+});
+
+test("feed com cursor: falha no marcador, commit fora de ordem e mais de 500 mensagens (NC-CX-1030-05)", async () => {
+  const kv = memKv({ [PAUSE]: "0", [chat.OWNER_CHAT_VERSION_KEY]: "velha" }, { failPut: (k) => k === chat.OWNER_CHAT_VERSION_KEY });
+  const h = harness({ kv });
+  await send(h, "status");
+  const forced = await (await h.call(req("/api/admin/owner-chat/feed?after=0"))).json();
+  assert.equal(forced.messages.length, 2);
+  h.sql.rows.push({ id: 0, created_at: Date.now(), sender: "zevanory", kind: "alerta", body: "tardio", action_type: null, action_expires_at: null, action_state: null, dedupe_key: "t" });
+  const again = await (await h.call(req("/api/admin/owner-chat/feed?after=2"))).json();
+  assert.ok(again.messages.some((m) => m.text === "tardio"));
+  for (let i = 0; i < 520; i++) h.sql.rows.push({ id: 100 + i, created_at: Date.now(), sender: "owner", kind: "chat", body: "m" + i, action_type: null, action_expires_at: null, action_state: null, dedupe_key: null });
+  const p1 = await (await h.call(req("/api/admin/owner-chat/feed?after=2"))).json();
+  assert.equal(p1.more, true);
+  const last = p1.messages.filter((m) => m.text.startsWith("m")).at(-1).id;
+  const p2 = await (await h.call(req("/api/admin/owner-chat/feed?after=" + last))).json();
+  assert.equal(p2.more, false); assert.ok(p2.messages.some((m) => m.text === "m519"));
+  const page = await (await h.call(req("/api/admin/owner-chat/app"))).text();
+  assert.match(page, /qs\.set\('after',maxId\)/); assert.match(page, /if\(j\.more\)setTimeout\(poll,0\)/);
+});
+
+test("orçamento compartilhado de neurônios: esgotado ou indisponível = zero IA, mesmo com saldo local (NC-CX-1030-06)", async () => {
+  let calls = 0; const env = { AI: { run: async () => { calls++; return { response: "status" }; } } };
+  const sql = fakeSql(); sql.neurons.n = 6000;
+  assert.equal(await chat.classifyWithAi(env, sql, "algo", "2026-11-12"), "livre"); assert.equal(calls, 0);
+  const sql2 = fakeSql(); sql2.neurons.fail = true;
+  assert.equal(await chat.classifyWithAi(env, sql2, "algo", "2026-11-12"), "livre"); assert.equal(calls, 0);
+  const sql3 = fakeSql();
+  assert.equal(await chat.classifyWithAi(env, sql3, "algo", "2026-11-12"), "status"); assert.equal(calls, 1); assert.equal(sql3.neurons.n, 160);
+});
+
+test("sentinela: antes do horário e canal publicado não alertam; venda nova avisada uma vez", async () => {
+  const h = harness();
+  assert.equal((await chat.runOwnerChatSentinel(h.env, new Date("2026-11-12T12:00:00Z"), { sqlFactory: h.deps.sqlFactory, snapshot: snap([]) })).alerts, 0);
+  const h2 = harness({ kv: memKv({ [PAUSE]: "0", "zpc:sales:v1:summary": ledger(1, 9700) }), rows: [{ channel: "bluesky", status: "publicado" }, { channel: "blog", status: "publicado" }] });
+  const o = { sqlFactory: h2.deps.sqlFactory, snapshot: h2.deps.snapshot };
+  await chat.runOwnerChatSentinel(h2.env, new Date("2026-11-12T23:10:00Z"), o);
+  await chat.runOwnerChatSentinel(h2.env, new Date("2026-11-12T23:40:00Z"), o);
+  const v = h2.sql.rows.filter((r) => r.kind === "venda");
+  assert.equal(v.length, 1); assert.match(v[0].body, /R\$\s?97,00/);
 });
 
 // Mutantes: cada um reverte uma garantia e precisa ser detectado.
@@ -274,7 +357,7 @@ test("mutantes morrem", async () => {
     return /não vou inventar/.test(t);
   });
   await mutant("sem-cota", "if (!(await reserveAi(sql, day).catch(() => false))) return \"livre\";", "", async (m) => {
-    let calls = 0; const env = { AI: { run: async () => { calls++; return { response: "status" }; } } }; const sql = fakeSql();
+    let calls = 0; const env = { AI: { run: async () => { calls++; return { response: "status" }; } } }; const sql = fakeSql(); sql.neurons.n = -1e9;
     for (let i = 0; i < m.AI_DAILY_LIMIT + 3; i++) await m.classifyWithAi(env, sql, "x", "2026-11-12");
     return calls === m.AI_DAILY_LIMIT;
   });
@@ -285,6 +368,31 @@ test("mutantes morrem", async () => {
   });
   await mutant("agenda-ignorada", "if ([\"publicado\", \"fora_da_agenda\", \"desligado\"].includes(row?.status)) continue;", "if (row?.status === \"publicado\") continue;", async (m) =>
     m.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "ativa", snap: { today: [{ channel: "blog", status: "fora_da_agenda" }, { channel: "bluesky", status: "publicado" }] } }).length === 0);
+  await mutant("incerto-vira-falha", "await settleAction(sql, id, \"incerto\");", "await settleAction(sql, id, \"nao_aplicado\");", async (m) => {
+    const kv = memKv({ [PAUSE]: "1" }); const h = harness({ kv }); const H2 = (r) => m.handleOwnerChat(r, h.env, h.deps);
+    const p = (await (await H2(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "retomar" } }))).json()).messages[1];
+    kv.put = async (k, v) => { kv.data.set(k, String(v)); if (k === PAUSE) throw new Error("x"); };
+    await H2(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }));
+    return h.sql.rows.find((x) => String(x.id) === p.id).action_state === "incerto";
+  });
+  await mutant("sem-trava", "if (!locked[0]) return json({ error: \"action_in_progress\", messages: [] }, 409);", "", async (m) => {
+    const h = harness({ kv: memKv({ [PAUSE]: "1" }) }); const H2 = (r) => m.handleOwnerChat(r, h.env, h.deps);
+    h.sql.lock.holder = "999"; h.sql.lock.since = Date.parse("2026-11-12T23:00:00Z");
+    const p = (await (await H2(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "pausar" } }))).json()).messages[1];
+    return (await H2(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }))).status === 409;
+  });
+  await mutant("vendas-sem-esquema", "v.schema !== \"zevanory-sales/v1\" ||", "", async (m) => !m.validSalesSummary({ schema: "x", totals: { approved: 1, grossCents: 1, refunded: 0 }, byDay: {} }));
+  await mutant("sem-orcamento-compartilhado", "if (!(await reserveChatNeurons(sql))) return \"livre\";", "", async (m) => {
+    let calls = 0; const sql = fakeSql(); sql.neurons.n = 6000;
+    await m.classifyWithAi({ AI: { run: async () => { calls++; return { response: "status" }; } } }, sql, "x", "2026-11-12");
+    return calls === 0;
+  });
+  await mutant("feed-sem-sobreposicao", "const byId = new Map([...recent, ...page.slice(0, FEED_PAGE)]", "const byId = new Map([...page.slice(0, FEED_PAGE)]", async (m) => {
+    const h = harness(); const H2 = (r) => m.handleOwnerChat(r, h.env, h.deps);
+    await H2(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" } }));
+    h.sql.rows.push({ id: 0, created_at: Date.now(), sender: "zevanory", kind: "alerta", body: "tardio", action_type: null, action_expires_at: null, action_state: null, dedupe_key: "t" });
+    return (await (await H2(req("/api/admin/owner-chat/feed?after=2"))).json()).messages.some((x) => x.text === "tardio");
+  });
   await mutant("pausa-sem-motivo", "facts.pause === \"pausada\" ? \"pausado\"", "false ? \"pausado\"", async (m) =>
     /PAUSADA/.test(m.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "pausada", snap: { today: [{ channel: "bluesky", status: "sem dados" }] } }).find((s) => s.channel === "bluesky")?.text || ""));
 });
