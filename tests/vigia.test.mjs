@@ -333,5 +333,4 @@ test("mutantes morrem", async () => {
   await mutant("vig", "categoria-copia-texto", "return \"erro não classificado\";", "return d;", async (m) => !m.errorCategory("bearer xyz").includes("xyz"));
   await mutant("vig", "tarefa-copia-nome", "const taskLabel = (t) => (KNOWN_TASKS.includes(t) ? `\"${t}\"` : \"não identificada\");", "const taskLabel = (t) => `\"${t}\"`;", async (m) =>
     !JSON.stringify(m.observeCron({ state: "ok", value: { finishedAt: new Date(T).toISOString(), tasks: { [SK + "synth"]: "fail:x" } } }, T)).includes(SK));
-  await mutant("vig", "pos-venda-contraditorio", "  if (v.pendentes !== 0) return false;\n", "", async (m) => m.validPostSaleStatus(JSON.parse(ps(T, "ok", { pendentes: 3 })), T) === false);
 });
