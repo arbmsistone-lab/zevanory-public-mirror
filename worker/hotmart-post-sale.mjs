@@ -122,7 +122,16 @@ async function reconcile(env,fetchImpl,kv,key,body,state,{ttl,budget}){
  return drain();
 }
 const STATUS=BASE+'status:v1',HOUR=3600000;
-const statusShape=v=>object(v)&&Object.keys(v).sort().join(',')==='codigo,em,pendentes,resultado'&&typeof v.em==='string'&&Number.isFinite(Date.parse(v.em))&&new Date(Date.parse(v.em)).toISOString()===v.em&&['ok','inconclusivo','reconciliacao_pendente'].includes(v.resultado)&&typeof v.codigo==='string'&&/^[a-z_]{1,64}$/.test(v.codigo)&&Number.isSafeInteger(v.pendentes)&&v.pendentes>=0&&(v.resultado==='reconciliacao_pendente'?v.pendentes>0:v.pendentes===0);
+// Contrato ÚNICO do status (NC-G6-1025-02): tipos, campos e COERÊNCIA entre resultado, código e pendentes, com os
+// códigos que o próprio gravador emite. Estado contraditório = LEITURA_INCONCLUSIVA (value:null). O Vigia
+// (worker/vigia.mjs) importa esta mesma função, então os dois não divergem.
+export const POST_SALE_STATUS_CODES=Object.freeze({
+ ok:Object.freeze(['completed','no_due_steps','kv_budget_hold','sales_closed']),
+ inconclusivo:Object.freeze(['not_configured','quota_ledger_unreadable','post_sale_inconclusive']),
+ reconciliacao_pendente:Object.freeze(['reconciliation_pending','provider_restricted'])
+});
+export const validPostSaleStatusShape=v=>object(v)&&Object.keys(v).sort().join(',')==='codigo,em,pendentes,resultado'&&typeof v.em==='string'&&Number.isFinite(Date.parse(v.em))&&new Date(Date.parse(v.em)).toISOString()===v.em&&Object.hasOwn(POST_SALE_STATUS_CODES,v.resultado)&&typeof v.codigo==='string'&&POST_SALE_STATUS_CODES[v.resultado].includes(v.codigo)&&Number.isSafeInteger(v.pendentes)&&v.pendentes>=0&&(v.resultado==='reconciliacao_pendente'?v.pendentes>0:v.pendentes===0);
+const statusShape=validPostSaleStatusShape;
 export async function readHotmartPostSaleStatus(kv,{now=Date.now()}={}){
  try{const value=await read(kv,STATUS,statusShape);if(!value)return {status:'NAO_EXECUTADO',value:null};if(Date.parse(value.em)>now||now-Date.parse(value.em)>=7*DAY)throw Error('stale_status');return {status:'ok',value};}
  catch{return {status:'LEITURA_INCONCLUSIVA',value:null};}

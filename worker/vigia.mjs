@@ -6,6 +6,7 @@
 //    outbox idempotente: concorrência e falhas de gravação não duplicam nem perdem avisos (NC-CX-1031-02/03);
 //  * texto montado só de códigos/campos permitidos; nada de corpo livre de erro, query de URL ou credencial (04).
 // Este módulo observa (sem rede, sem escrita). A persistência/notificação fica em runVigia (owner-chat.mjs).
+import { validPostSaleStatusShape } from "./hotmart-post-sale.mjs";
 export const CRON_BEAT_KEY = "zpc:cron:v1:hourly";
 export const POST_SALE_STATUS_KEY = "zpc:posvenda:hotmart:status:v1";
 export const VIGIA_ACTIONS_KEY = "zpc:vigia:actions:v2";
@@ -37,7 +38,7 @@ export const KNOWN_TASKS = Object.freeze(["delivery_watchdog", "nurture", "owner
 const fnv = (t) => { let h = 0x811c9dc5; for (const c of String(t)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, "0"); };
 const taskKey = (t) => (KNOWN_TASKS.includes(t) ? t : "desconhecida_" + fnv(t));
 const taskLabel = (t) => (KNOWN_TASKS.includes(t) ? `"${t}"` : "não identificada");
-const POST_SALE_CODES = Object.freeze({ provider_restricted: "chave do Resend sem permissão de leitura", quota_ledger_unreadable: "livro de cota ilegível", post_sale_inconclusive: "resultado inconclusivo", provider_usage_invalid: "resposta de uso inválida", reconciliation_pending: "entrega aguardando confirmação" });
+const POST_SALE_CODES = Object.freeze({ not_configured: "configuração ausente", provider_restricted: "chave do Resend sem permissão de leitura", quota_ledger_unreadable: "livro de cota ilegível", post_sale_inconclusive: "resultado inconclusivo", provider_usage_invalid: "resposta de uso inválida", reconciliation_pending: "entrega aguardando confirmação" });
 
 async function readJson(kv, key) {
   let raw;
@@ -64,19 +65,10 @@ export function observeCron(read, now) {
   return out;
 }
 
-// Mesmo contrato do gravador (worker/hotmart-post-sale.mjs, #1025): exatamente {em,resultado,codigo,pendentes},
-// em ISO canônico e não futuro, e coerência entre resultado, código e pendentes. Estado contraditório (ex.: "ok"
-// com pendentes, "ok" com código de falha, "inconclusivo" com "completed") é ILEGÍVEL, nunca saúde (NC-CX-1031-01).
-const POST_SALE_FAIL_CODES = Object.freeze(["post_sale_inconclusive", "provider_restricted", "quota_ledger_unreadable", "provider_usage_invalid", "reconciliation_pending"]);
+// Contrato ÚNICO do gravador (worker/hotmart-post-sale.mjs, NC-G6-1025-02): tipos, campos e coerência entre
+// resultado, código e pendentes vêm da mesma função; aqui só se acrescenta "não futuro". Contradição = ILEGÍVEL.
 export function validPostSaleStatus(v, now) {
-  if (!obj(v) || Object.keys(v).sort().join(",") !== "codigo,em,pendentes,resultado") return false;
-  if (typeof v.em !== "string" || !Number.isFinite(Date.parse(v.em)) || new Date(Date.parse(v.em)).toISOString() !== v.em || Date.parse(v.em) > now + 5 * 60000) return false;
-  if (!["ok", "inconclusivo", "reconciliacao_pendente"].includes(v.resultado) || typeof v.codigo !== "string" || !/^[a-z_]{1,64}$/.test(v.codigo)) return false;
-  if (!Number.isSafeInteger(v.pendentes) || v.pendentes < 0) return false;
-  if (v.resultado === "reconciliacao_pendente") return v.pendentes > 0;
-  if (v.pendentes !== 0) return false;
-  if (v.resultado === "ok") return !POST_SALE_FAIL_CODES.includes(v.codigo);
-  return v.codigo !== "completed";
+  return validPostSaleStatusShape(v) && Date.parse(v.em) <= now + SKEW_MS;
 }
 export function observePostSale(read, now) {
   if (read.state === "ausente") return [];

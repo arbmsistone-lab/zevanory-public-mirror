@@ -61,6 +61,7 @@ tests/f2-hotmart-test-route.test.mjs 11
 tests/f2b-hotmart-secondary.test.mjs 12
 tests/f2c-hotmart-provider-recovery.test.mjs 11
 tests/f2d-hotmart-run-status.test.mjs 10
+tests/f2e-hotmart-status-contract.test.mjs 4
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5
