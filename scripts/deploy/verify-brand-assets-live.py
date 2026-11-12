@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read back the EXACT public PNG bytes after the canonical Cloudflare deploy.
+"""Read back the EXACT public image bytes (PNG and, since #1027, JPEG) after the canonical Cloudflare deploy.
 
 Use curl, matching the established release/health probes. A binary mismatch,
 redirect, WAF denial, missing object or stale cache is a real deployment failure.
@@ -17,6 +17,31 @@ MANIFEST = json.loads((ROOT / "assets/brand/export/manifest.json").read_text(enc
 BASE = "https://zevanory.api.br/brand/export/"
 MAX_ATTEMPTS = 18
 RETRY_SECONDS = 5
+# Formato pela EXTENSÃO do arquivo do manifesto (o #1027 trouxe a primeira imagem JPEG, a prova Meta DEC-23).
+# Assinatura, Content-Type, tamanho e SHA-256 continuam exatos; extensão fora da lista = falha.
+FORMATS = {
+    ".png": (b"\x89PNG\r\n\x1a\n", "image/png"),
+    ".jpg": (b"\xff\xd8\xff", "image/jpeg"),
+    ".jpeg": (b"\xff\xd8\xff", "image/jpeg"),
+}
+
+
+def expected_format(filename):
+    suffix = Path(filename).suffix.lower()
+    if suffix not in FORMATS:
+        raise SystemExit("BRAND_LIVE_UNSUPPORTED_FORMAT " + filename)
+    return FORMATS[suffix]
+
+
+def exact_asset(response, raw, digest, expected, filename):
+    magic, content_type = expected_format(filename)
+    return (
+        response["curl_exit"] == 0 and response["status"] == "200"
+        and response["content_type"].split(";")[0].strip() == content_type
+        and raw.startswith(magic)
+        and len(raw) == expected["size"]
+        and digest == expected["sha256"]
+    )
 
 
 def probe(filename, base=None, accept="image/png"):
@@ -56,7 +81,7 @@ def verify():
     for filename, expected in sorted(MANIFEST.items()):
         last = None
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            response = probe(filename)
+            response = probe(filename, accept=expected_format(filename)[1])
             raw = response["body"]
             digest = hashlib.sha256(raw).hexdigest()
             last = {
@@ -70,13 +95,7 @@ def verify():
                 "stderr": response["stderr"],
                 "attempt": attempt,
             }
-            if (
-                response["curl_exit"] == 0 and response["status"] == "200"
-                and response["content_type"].startswith("image/")
-                and raw.startswith(b"\x89PNG\r\n\x1a\n")
-                and len(raw) == expected["size"]
-                and digest == expected["sha256"]
-            ):
+            if exact_asset(response, raw, digest, expected, filename):
                 print("BRAND_LIVE_ASSET=PASS", filename, len(raw), digest[:12])
                 verified.append(filename)
                 break
