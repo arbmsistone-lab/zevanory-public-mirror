@@ -27,7 +27,7 @@ const ANGLES=Object.freeze(["dor","tutorial","caso de uso","objeção","compara�
 const TIMEZONE="America/Sao_Paulo";
 const PEAK_HOURS=Object.freeze({blog:9,telegram:12,bluesky:19});
 const safeJson=async(kv,key,fallback)=>{try{return JSON.parse(String(await kv?.get?.(key)||"null"))??fallback;}catch{return fallback;}};
-// Mesmo contrato de leitura estrita do #1019, para preservar a ordem de integração.
+// Ausência real é legítima; falha/JSON/estrutura inválida nunca alimenta gate ou idempotência.
 const obj=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
 export async function readAcquisitionKv(kv,key,valid){
  try{const raw=await kv.get(key);if(raw===null)return {ok:true,value:null};
@@ -35,6 +35,7 @@ export async function readAcquisitionKv(kv,key,valid){
 }
 const receiptShape=v=>obj(v)&&["pending","erro","publicado"].includes(v.status);
 const stateShape=v=>obj(v)&&Array.isArray(v.outcomes)&&v.outcomes.every(o=>obj(o)&&typeof o.channel==="string"&&typeof o.status==="string");
+const historyShape=v=>Array.isArray(v)&&v.every(p=>obj(p)&&typeof p.text==="string"&&typeof p.day==="string");
 const dayOrdinal=day=>Math.floor(Date.parse(day+"T00:00:00Z")/DAY);
 const localHour=now=>Number(new Intl.DateTimeFormat("en-GB",{timeZone:TIMEZONE,hour:"2-digit",hourCycle:"h23"}).format(now));
 const localDay=now=>new Intl.DateTimeFormat("en-CA",{timeZone:TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).format(now);
@@ -65,27 +66,89 @@ export function productLink(entry,channel,{salesOpen=false,hotmartOpen=false}={}
  u.searchParams.set("utm_source",channel);u.searchParams.set("utm_medium","organic");u.searchParams.set("utm_campaign","conteudo_"+entry.day.replaceAll("-",""));
  return u.toString();
 }
-const guidance=Object.freeze({
- "dor":"Identifique uma dúvida recorrente e registre o que precisa de confirmação antes de responder.",
- "tutorial":"Escolha uma tarefa pequena, documente o processo e revise cada resultado com uma pessoa.",
- "caso de uso":"Simule um atendimento com dados fictícios e confira informações antes de enviar.",
- "objeção":"Compare o trabalho manual com uma rotina assistida, sem presumir economia ou faturamento.",
- "comparação":"Avalie clareza, privacidade e possibilidade de desfazer cada automação antes de adotá-la."
+// Variação de texto (Plano Mestre F1). O template fixo por ângulo repetia o mesmo texto a cada ciclo de 25 dias
+// do calendário, e o gate de similaridade (>= 0,5 contra os 30 últimos posts) passou a reprovar todo post do
+// Bluesky a partir de 06/11 sem gravar nada no KV. Agora cada dia combina, de forma determinística pela data:
+// uma dica concreta de um banco de 37 (primo: não se repete em 30 dias), um gancho entre 4 por ângulo (troca a
+// cada ciclo de 25 dias) e uma chamada entre 7 (produto e chamada só voltam a coincidir após 35 dias). Sem LLM, sem
+// dependência nova. Nenhuma frase promete resultado; o gate de compliance e a trava de vendas continuam iguais.
+const CALENDAR_EPOCH="2026-10-10";
+export const DAILY_TIPS=Object.freeze([
+ "Separe as 3 perguntas mais comuns e deixe uma resposta base para cada.",
+ "Reserve 15 minutos na sexta para revisar a agenda da semana seguinte.",
+ "Anote toda saída do caixa no mesmo dia, mesmo as pequenas.",
+ "Peça à IA um rascunho de resposta e revise antes de enviar.",
+ "Crie uma etiqueta para orçamentos ainda sem retorno.",
+ "Confira os 5 itens que mais saem antes de abrir as portas.",
+ "Escreva em uma folha o roteiro do atendimento mais repetido.",
+ "Responda primeiro quem espera há mais tempo, não quem chamou por último.",
+ "Mantenha uma tabela curta de valores revisada toda segunda.",
+ "Guarde cada comprovante de pagamento em uma pasta por mês.",
+ "Defina um horário fixo para responder mensagens e avise os clientes.",
+ "Teste um modelo de mensagem por uma semana antes de trocar.",
+ "Compare entradas e saídas no fim de cada semana.",
+ "Use dados fictícios ao testar a IA: nada de nome ou telefone real.",
+ "Monte uma saudação curta com endereço e horário de funcionamento.",
+ "Marque um lembrete para retomar contato com quem sumiu há um mês.",
+ "Dinheiro do negócio e dinheiro de casa: mantenha separados.",
+ "Peça permissão antes de enviar novidades a alguém.",
+ "Revise com calma todo texto gerado por IA que cite valores ou prazos.",
+ "Registre de onde veio cada cliente novo: indicação, rede social ou passagem.",
+ "Calcule o custo de cada serviço antes de conceder desconto.",
+ "Deixe pronta uma resposta educada para pedidos de desconto.",
+ "Organize fotos dos trabalhos em um álbum fácil de enviar.",
+ "Confirme o horário na véspera com uma mensagem simples.",
+ "Escolha um único indicador para acompanhar neste mês, como pedidos por dia.",
+ "Liste as tarefas que só você sabe fazer e descreva como fazê-las.",
+ "Combine por escrito prazo e forma de pagamento antes de começar.",
+ "Faça um resumo do dia em três linhas antes de fechar.",
+ "Gere com a IA três versões de um aviso e escolha a mais clara.",
+ "Uma vez por mês, corte os gastos fixos que você não usa.",
+ "Explique num roteiro curto como funciona a entrega.",
+ "Agrupe tarefas parecidas, como cobranças, num mesmo horário.",
+ "Salve as respostas que funcionaram bem num documento compartilhado.",
+ "Envie a mensagem para o seu próprio celular antes de mandar aos clientes.",
+ "Quando um cliente reclama, siga um passo a passo combinado.",
+ "Acompanhe as contas a receber numa lista com data de vencimento.",
+ "Pergunte a dois clientes por semana o que poderia melhorar."
+]);
+// Variantes vizinhas (mesmo produto, nicho e ângulo 25 dias depois) mudam a preposição e a posição do nicho,
+// para que nem as junções de palavras em volta do nicho se repitam.
+export const ANGLE_HOOKS=Object.freeze({
+ "dor":["Gargalo comum para {n}","Na rotina de {n}, um ajuste simples","Para {n}: mensagens que se repetem","Dia corrido de {n}? Comece aqui"],
+ "tutorial":["Mini tutorial para {n}","Rotina de {n}: ajuste de 15 min","Para {n}: um passo para hoje","Dia a dia de {n}: teste hoje"],
+ "caso de uso":["Exemplo de uso para {n}","No dia a dia de {n}, um caso","Para {n}: um caso simples","Rotina de {n}: um exemplo"],
+ "objeção":["Sem tempo? Começo leve para {n}","Sem sistema novo: rotina de {n}","Para {n}: comece pequeno","Parece difícil? Rotina de {n}, aos poucos"],
+ "comparação":["Manual ou assistido? Para {n}","Rotina de {n}: o que comparar","Para {n}: dois jeitos de organizar","Antes de trocar o método de {n}, compare"]
 });
+export const CTAS=Object.freeze(["Veja o guia","Saiba mais","Leia o guia","Confira","Detalhes no link","Mais no link","Conheça o guia"]);
+const mod=(a,b)=>((a%b)+b)%b;
+export function textVariant(day){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day)))throw new Error("calendar_day_invalid");
+ const n=dayOrdinal(day)-dayOrdinal(CALENDAR_EPOCH);
+ return {tip:mod(n,DAILY_TIPS.length),hook:mod(Math.floor(n/25),4),cta:mod(n,CTAS.length)};
+}
 export function generateNative(entry,channel,{salesOpen=false,hotmartOpen=false}={}){
  const open=salesOpen===true;
  // Modo Hotmart: o kit leva o preço da tabela (R$ <preço>) no lugar do aviso de vendas fechadas.
  const kit=!open&&hotmartOpen===true?hotmartKit(entry?.product?.sku):null;
- const headline=entry.angle==="tutorial"?"Passo a passo":entry.angle==="comparação"?"O que avaliar":"Uma ideia prática";
- const hook=headline+" para "+entry.niche;
+ const variant=textVariant(entry.day);
+ const hook=ANGLE_HOOKS[entry.angle][variant.hook].replaceAll("{n}",entry.niche);
+ const tip=DAILY_TIPS[variant.tip];
  // Fechada: o aviso vem logo após o nome do produto, antes de qualquer corte de tamanho (Bluesky).
- const value=entry.product.name+(kit?" (R$ "+kit.price+")":(open?"":" ("+CLOSED_LABEL+")"))+": "+guidance[entry.angle]+" Use o guia para organizar a rotina.";
- const cta="Veja o guia digital";
+ const prefix=entry.product.name+(kit?" (R$ "+kit.price+")":(open?"":" ("+CLOSED_LABEL+")"));
+ const value=prefix+": "+tip;
+ const cta=CTAS[variant.cta];
  const link=productLink(entry,channel,{salesOpen:open,hotmartOpen:kit!=null});
  if(channel==="telegram")return {channel,hook,value,cta,link,text:hook+"\n\n"+value+"\n\n"+cta+": "+link+"\n#ZEVANORY #Negocios"};
  if(channel==="bluesky"){
-  const generated=blueskyPostText({hook,value,cta,productUrl:link,day:entry.day});
-  return {channel,hook,value,cta,link:generated.link,text:generated.text};
+  // Limite de 300 grafemas: só a dica é encurtada, por palavra inteira e com reticências; nome, aviso e preço ficam.
+  const words=tip.split(" ");
+  for(let k=words.length;k>=0;k--){
+   const v=k===0?prefix:prefix+": "+words.slice(0,k).join(" ")+(k<words.length?"…":"");
+   const generated=blueskyPostText({hook,value:v,cta,productUrl:link,day:entry.day});
+   if(k===0||generated.text.includes(hook+"\n"+v+"\n"+cta+"\n"))return {channel,hook,value:v,cta,link:generated.link,text:generated.text};
+  }
  }
  if(channel==="blog")return {channel,hook,value,cta,link,text:hook+". "+value+" "+cta+": "+link};
  throw new Error("channel_not_enabled");
@@ -158,7 +221,9 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
  }
  // Preserve legacy Telegram publish-once marker during cutover. Never produce two posts in a day.
  if(channel==="telegram"&&!prior){
-  const previous=await safeJson(kv,"zpc:multichannel:evidence:telegram:daily:"+entry.day,null);
+  const legacyRead=await readAcquisitionKv(kv,"zpc:multichannel:evidence:telegram:daily:"+entry.day,obj);
+  if(!legacyRead.ok)return {channel,day:entry.day,status:"erro",code:"legacy_receipt_unreadable"};
+  const previous=legacyRead.value;
   if(previous){
    const adopted=previous.provider_post_id&&previous.url
     ?{channel,day:entry.day,status:"publicado",provider_post_id:String(previous.provider_post_id),url:previous.url,at:previous.publishedAt||null,product:null,provenance:"legacy"}
@@ -194,6 +259,43 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
   return failed;
  }
 }
+// Status de falha do Bluesky (Plano Mestre F1). Uma reprovação do gate não grava a chave por canal
+// (zpc:acquisition:daily:<dia>:bluesky), então de 06/11 em diante a falha não aparecia no painel nem gerava alerta.
+// Reprovação do gate ou falha de publicação grava UMA chave do dia, com TTL. Se já existe um status válido para o
+// dia, ele não é regravado, mesmo que o motivo ou a similaridade mudem (NC-F1-A1-01; cota de KV): no máximo 1
+// gravação por dia em execuções sequenciais. A leitura seguida de escrita no KV NÃO protege contra execuções
+// concorrentes (o KV não tem escrita condicional); o cron do motor é sequencial. Sucesso não grava nada.
+export const BLUESKY_STATUS_PREFIX="bluesky:status:";
+export const BLUESKY_STATUS_TTL=14*86400;
+export const blueskyStatusKey=day=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day)))throw new Error("calendar_day_invalid");return BLUESKY_STATUS_PREFIX+String(day).replaceAll("-","");};
+export async function recordBlueskyFailure(kv,day,now,{motivo,similaridade=null}={}){
+ const key=blueskyStatusKey(day);
+ const sim=typeof similaridade==="number"&&Number.isFinite(similaridade)?Math.round(similaridade*1000)/1000:null;
+ const status={ok:false,motivo:/^[a-z0-9_,]{1,120}$/.test(String(motivo||""))?String(motivo):"desconhecido",similaridade:sim,day};
+ const read=await readAcquisitionKv(kv,key,v=>obj(v)&&v.ok===false&&v.day===day&&typeof v.motivo==="string");
+ if(!read.ok)return {written:false,key,code:"status_unreadable"};
+ const prior=read.value;
+ if(prior?.ok===false&&prior.day===day)return {written:false,key};
+ try{await kv.put(key,JSON.stringify({...status,at:now.toISOString()}),{expirationTtl:BLUESKY_STATUS_TTL});}catch{return {written:false,key};}
+ return {written:true,key};
+}
+// Recuperação só depois de ler integralmente os 30 dias locais (hoje e 29 anteriores).
+// Ausência real é legítima; um único recibo ilegível impede qualquer escrita do histórico.
+export async function rebuildChannelHistory(kv,day,channel){
+ const recovered=[];
+ for(let i=29;i>=0;i--){
+  const d=new Date(Date.parse(day+"T12:00:00Z")-i*DAY).toISOString().slice(0,10);
+  const read=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+d+":"+channel,v=>receiptShape(v)&&(v.day===undefined||v.day===d)&&(v.status!=="publicado"||typeof v.text==="string"));
+  if(!read.ok)return {ok:false};
+  if(read.value?.status==="publicado")recovered.push({day:d,text:read.value.text,product:read.value.product??null});
+ }
+ return {ok:true,history:recovered};
+}
+// Decisão F0 nº 7 do proprietário (10/11/2026): o Telegram de divulgação fica DESLIGADO. Sem flag, variável de
+// ambiente ou chave de KV que o religue: religar exige mudar este código (PR com decisão do dono). O código de
+// publicação no Telegram continua aqui, só não é chamado pelo motor. Nada é gravado no KV pelo canal desligado.
+export const OWNER_DISABLED_CHANNELS=Object.freeze(["telegram"]);
+export const CHANNEL_DISABLED_CODE="canal_desligado_decisao_proprietario";
 export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch){
  env=resolveChannelCredentials(env);
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
@@ -201,7 +303,9 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  const triggerOpt=arguments[3]?.trigger,trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";
  const day=localContentDay(now),entry=calendarEntry(day),hour=localHour(now),channels=channelChecklist(env);
  const active=channel=>channels.find(x=>x.id===channel)?.configured===true;
- const paused=await creativeAutopublishPaused(env);
+ let pause;try{pause=await kv.get("zpc:creative-autonomy:paused:v1");}catch{return {ok:false,code:"pause_unreadable",outcomes:[]};}
+ if(pause!==null&&pause!=="0"&&pause!=="1")return {ok:false,code:"pause_unreadable",outcomes:[]};
+ const paused=pause==="1";
  // Trava canônica de vendas (KV sales:open:v1 via readSalesSwitch), lida uma vez por execução; erro = fechada.
  const salesOpen=await contentSalesOpen(env);
  // Modo Hotmart (sales:hotmart:v1 via readHotmartSwitch; erro = fechado): só vale com o interruptor completo fechado.
@@ -211,34 +315,62 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  if(hour>=PEAK_HOURS.blog){
   try{
    const blog=await ensureDailyBlog(env,now,fetchImpl);
-   outcomes.push({channel:"blog",status:blog.latest?"publicado":blog.draft?"rascunho":"erro",url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day,code:blog.latest?null:blog.reason||"blog_unavailable"});
-   if(blog.latest)await emitActivity(env,{type:"post_published",channel:"blog",status:"published",ref:"blog:"+day+":"+blog.latest.slug,link:blog.latest.url},{now:now.getTime()}).catch(()=>null);
+   // Plano Mestre v1.2 (DEC-21 substituída): publicado, fora da agenda (só seg/qua/sex), pausado ou erro com o motivo do gate.
+   const blogStatus=blog.latest?"publicado":blog.reason==="not_publication_day"?"fora_da_agenda":blog.reason==="creative_autopublish_paused"?"pausado":"erro";
+   // Origem do blog vinculada ao recibo: criado NESTA execução = esta origem; já existente = herdado do estado do dia
+   // pela mesma URL (abaixo); sem prova = desconhecida (null), nunca a do tick que o reencontrou.
+   const blogTrigger=blog.latest&&Array.isArray(blog.created)&&blog.created.some(a=>a?.url&&a.url===blog.latest.url)?trigger:null;
+   outcomes.push({channel:"blog",status:blogStatus,url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day,code:blog.latest?null:blog.reason||"blog_unavailable",...(blogStatus==="publicado"?{trigger:blogTrigger}:{})});
+   if(blog.created?.length&&blog.latest)await emitActivity(env,{type:"post_published",channel:"blog",status:"published",ref:"blog:"+day+":"+blog.latest.slug,link:blog.latest.url},{now:now.getTime()}).catch(()=>null);
   }catch{outcomes.push({channel:"blog",status:"erro",code:"blog_generation_failed",day});}
  }
  for(const channel of ["telegram","bluesky"]){
   if(hour<PEAK_HOURS[channel])continue;
+  if(OWNER_DISABLED_CHANNELS.includes(channel)){outcomes.push({channel,status:"desligado",code:CHANNEL_DISABLED_CODE,day});continue;}
   if(paused){outcomes.push({channel,status:"pausado",code:"creative_autopublish_paused",day});continue;}
   if(!active(channel)){
    outcomes.push({channel,status:"aguardando credencial",day});
    continue;
   }
   try{
-   const archive=await safeJson(kv,"zpc:acquisition:history:"+channel,[]);
-   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:Array.isArray(archive)?archive:[],salesOpen,hotmartOpen,trigger});
+   let historyRead=await readAcquisitionKv(kv,"zpc:acquisition:history:"+channel,historyShape);
+   let historyRebuilt=false;
+   if(!historyRead.ok){
+    const rebuilt=await rebuildChannelHistory(kv,day,channel);
+    if(rebuilt.ok){
+     await kv.put("zpc:acquisition:history:"+channel,JSON.stringify(rebuilt.history),{expirationTtl:45*86400});
+     historyRead={ok:true,value:rebuilt.history};historyRebuilt=true;
+     if(channel==="bluesky")await recordBlueskyFailure(kv,day,now,{motivo:"history_rebuilt"});
+    }
+   }
+   if(!historyRead.ok){
+    outcomes.push({channel,status:"erro",code:"history_unreadable",day});
+    if(channel==="bluesky")await recordBlueskyFailure(kv,day,now,{motivo:"history_unreadable"});
+    continue;
+   }
+   const archive=historyRead.value??[];
+   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:archive,salesOpen,hotmartOpen,trigger});
+   if(historyRebuilt)result.history_rebuilt=true;
    outcomes.push(result);
+   if(channel==="bluesky"&&result.status==="erro")await recordBlueskyFailure(kv,day,now,{motivo:result.code,similaridade:result.gate?.similarity_max});
    if(result.status==="publicado"&&!archive.some(p=>p.day===day)){
     await kv.put("zpc:acquisition:history:"+channel,JSON.stringify([...archive,{day,text:result.text,product:result.product}].slice(-30)),{expirationTtl:45*86400});
    }
-  }catch{outcomes.push({channel,status:"erro",code:"engine_exception",day});}
+  }catch{
+   outcomes.push({channel,status:"erro",code:"engine_exception",day});
+   if(channel==="bluesky")await recordBlueskyFailure(kv,day,now,{motivo:"engine_exception"}).catch(()=>null);
+  }
  }
  // KV write budget (account-wide 1,000/day): the calendar changes once a day, not every run.
  const days=planCalendar(now);
- let priorCal=null;try{priorCal=JSON.parse(String(await kv.get(ACQUISITION_CALENDAR_KEY)||"null"));}catch{}
- if(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
+ const calendarRead=await readAcquisitionKv(kv,ACQUISITION_CALENDAR_KEY,v=>obj(v)&&Array.isArray(v.days));
+ const priorCal=calendarRead.value;
+ if(calendarRead.ok&&(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days)))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
  const stateRead=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+day,stateShape);
  const priorState=stateRead.value;
  // Origem de publicação pertence ao recibo, nunca ao tick que a reencontrou.
- const stamped=outcomes.map(o=>({...o,trigger:o.status==="publicado"?(o.trigger??null):trigger}));
+ const prevOutcomes=Array.isArray(priorState?.outcomes)?priorState.outcomes:[];
+ const stamped=outcomes.map(o=>o.status!=="publicado"?{...o,trigger}:{...o,trigger:o.trigger??(prevOutcomes.find(p=>p.channel===o.channel&&p.status==="publicado"&&p.url&&p.url===o.url)?.trigger??null)});
  const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,trigger,outcomes:stamped};
  if(stateRead.ok&&(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(stamped)||priorState.product!==state.product))await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
  const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
@@ -251,8 +383,13 @@ export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch)
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localDay(now),hour=localHour(now),key="zpc:acquisition:owner-digest:"+day;
  if(hour<20)return {status:"agendado",day};
  if(!kv?.get||!kv?.put)return {status:"erro",code:"kv_unavailable"};
- const existing=await safeJson(kv,key,null);if(existing)return existing;
+ const markerRead=await readAcquisitionKv(kv,key,receiptShape);
+ if(!markerRead.ok)return {status:"erro",code:"digest_marker_unreadable"};
+ const existing=markerRead.value;if(existing)return existing;
  if(!env.RESEND_API_KEY||!env.OWNER_ALERT_EMAIL)return {status:"aguardando credencial",missing:["RESEND_API_KEY","OWNER_ALERT_EMAIL"].filter(x=>!env[x])};
+ // Fonte do dia ilegível bloqueia o resumo (#1020); com fonte legível, relatório real (#1021).
+ const sourceRead=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+day,stateShape);
+ if(!sourceRead.ok)return {status:"erro",code:"digest_source_unreadable"};
  const report=await montarRelatorioDiario(env,{day,hour,now,checklist:channelChecklist(resolveChannelCredentials(env)),agendaAmanha:calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject});
  const actual=report.publicacoes.filter(x=>x.publicadas>0);
  const subject=report.subject,content=report.text;

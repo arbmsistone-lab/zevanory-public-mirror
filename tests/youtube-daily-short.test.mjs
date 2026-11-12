@@ -120,11 +120,12 @@ test("reach mix: value Shorts rotate across the 40 guides and 7 calculators, saf
     const tip = planSlot(day, "dica"), calc = planSlot(day, "calc"), offer = planSlot(day, "oferta");
     for (const p of [tip, calc]) {
       assert.equal(p.gate.action, "publish"); assert.doesNotMatch(p.speech + p.description, /gr[aá]tis|antes e depois/i);
-      assert.match(p.link, /^https:\/\/vendas\.zevanory\.api\.br\/(ia-para|calculadora)-[a-z-]+\?utm_source=youtube&utm_medium=short&utm_campaign=(dica|calc)_[a-z-]+$/);
+      // Retomada F1: o CTA é a calculadora gratuita (vendas fechadas) ou /hotmart/<slug>; nunca o guia /ia-para-*.
+      assert.match(p.link, /^https:\/\/vendas\.zevanory\.api\.br\/calculadora-[a-z-]+\?utm_source=youtube&utm_medium=short&utm_campaign=(dica|calc)_[a-z-]+$/);
       assert.equal(p.said.length, 4); assert.ok(p.title.length <= 100); assert.doesNotMatch(p.screen.tip, /\.\.$/);
     }
     assert.notEqual(tip.marker, offer.marker); assert.notEqual(calc.marker, offer.marker);
-    seen.add(tip.link.split("?")[0]); calcs.add(calc.link.split("?")[0]);
+    seen.add(tip.entry.theme_id); calcs.add(calc.link.split("?")[0]);
   }
   assert.equal(seen.size, 40); assert.equal(calcs.size, 7);
   assert.equal(planSlot("2026-10-11", "oferta").marker, planShort("2026-10-11").marker);

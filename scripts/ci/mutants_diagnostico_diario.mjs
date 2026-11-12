@@ -59,7 +59,7 @@ const MUTANTS = [
   // NC-F1-A4-02: rótulo UTC obrigatório, mesmo com as datas coincidindo.
   ["DD45_rotulo_utc_removido", REL, [[RL, "`FUNIL E VENDAS (dia UTC ${day}; intervalo diferente do dia America/Sao_Paulo", "`FUNIL E VENDAS (dia ${day}, America/Sao_Paulo"]]],
   ["DD34_motor_assume_cron_por_padrao", TR, [[AQ, 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";', 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"cron";']]],
-  ["DD35_motor_nao_preserva_primeiro_trigger", TR, [[AQ, 'trigger:o.status==="publicado"?(o.trigger??null):trigger', "trigger"]]],
+  ["DD35_motor_nao_preserva_primeiro_trigger", TR, [[AQ, '{...o,trigger:o.trigger??(prevOutcomes.find(p=>p.channel===o.channel&&p.status==="publicado"&&p.url&&p.url===o.url)?.trigger??null)}', "{...o,trigger}"]]],
   ["DD36_cron_do_worker_sem_trigger", TR, [[CP2, 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"cron"})', 'runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"manual"})']]],
   ["DD37_snapshot_perde_trigger", TR, [[SN, "e.trigger = o?.trigger || null;", "e.trigger = null;"]]],
   ["DD38_custo_volta_a_zero_fixo", LD, [[RL, '"Custo do dia: não medido (sem fonte de custo)",', '"Custo do dia: R$ 0,00 (sem fonte de custo)",']]],

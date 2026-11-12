@@ -1,6 +1,7 @@
 import { CLOSED_LABEL, CONTACT_HTML, LEGAL_IDENTITY, SHORT_RULE_LABEL } from "./politica-unica.mjs";
 import { readSalesSwitch } from "./sales-control.mjs";
-import { hotmartKitsOpen, hotmartKit } from "./sales-lock-content.mjs";
+import { hotmartKitsOpen, hotmartKit, readPurchaseMode } from "./sales-lock-content.mjs";
+import { BLOG_GATE_VERSION, BLOG_WEEKLY_CAP, blogCtaUrl, blogQualityGate, isPublicationDay, isoWeekOf } from "./blog-quality-gate.mjs";
 import { blogShell } from "./blog-layout.mjs";
 import { PRICE_BY_SKU } from "./product-prices.mjs";
 // P13c: the blog product link follows the owner switch (closed => product page + closed notice, never /comprar/).
@@ -130,32 +131,126 @@ export async function blogDraftDigest(article) {
   const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload));
   return Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,"0")).join("");
 }
-// The cron may prepare a private draft, but CANNOT authorize it. A future independently
-// authenticated owner action must write a matching one-time approval keyed by day/digest.
-// Merely setting BLOG_AUTOPUBLISH=true does not enable uncontrolled publication.
+// Plano Mestre v1.2, seção 9 (aprovado pelo proprietário em 10/11/2026, PASS do GPT-6): a DEC-21 ("blog só rascunho",
+// R123/R124) foi SUBSTITUÍDA por publicação automática com gate de qualidade (worker/blog-quality-gate.mjs):
+//   - no máximo 3 artigos por semana ISO (segunda, quarta e sexta), contador idempotente por semana;
+//   - gate obrigatório: fonte verificável para dado factual, sem duplicata, sem promessa de ganho nem termo proibido,
+//     utilidade mínima, compliance 100 e score >= 85, CTA válido para a trava de vendas e o modo Hotmart;
+//   - registro do resultado (ok com URL, ou rejeitado com motivos) em UMA chave de status por dia local
+//     (zpc:blog:status:v1:<dia>), gravada no máximo 1 vez por dia; sem D1, sem binding DIARIO;
+//   - a pausa criativa (zpc:creative-autonomy:paused:v1) continua parando a publicação;
+//   - revisão por amostragem (auditoria do #1020, MÉDIA): 1 de cada 3 publicações (a primeira de cada semana ISO, com a
+//     agenda seg/qua/sex) sai com amostra_revisao:true no artigo e no status, para o relatório diário listar.
+export const BLOG_STATUS_PREFIX="zpc:blog:status:v1:";
+export const BLOG_WEEK_PREFIX="zpc:blog:week:v1:";
+// NC-F1-A3-01 (contra-auditoria GPT-6): leitura ESTRITA das chaves que alimentam gates e gravações. Chave ausente vale
+// vazio ({ok:true,v:null}); erro de leitura, JSON inválido ou estrutura inválida NUNCA viram vazio ({ok:false}).
+const isObj=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
+const DAY_RE=/^\d{4}-\d{2}-\d{2}$/;
+export const BLOG_KV_SHAPES=Object.freeze({
+  status:v=>isObj(v)&&(v.resultado==="ok"?typeof v.slug==="string"&&typeof v.url==="string"&&typeof v.at==="string":v.resultado==="rejeitado"&&Array.isArray(v.motivos)&&v.motivos.every(x=>typeof x==="string")),
+  legado:v=>isObj(v)&&typeof v.slug==="string"&&v.slug.length>0,
+  semana:v=>isObj(v)&&Array.isArray(v.days)&&v.days.every(d=>typeof d==="string"&&DAY_RE.test(d)),
+  indice:v=>isObj(v)&&Array.isArray(v.articles),
+});
+export async function readKvStrict(kv,key,valid=()=>true){
+  let raw;try{raw=await kv.get(key);}catch{return {ok:false,erro:"leitura"};}
+  if(raw===null)return {ok:true,v:null};
+  let v;try{v=JSON.parse(String(raw));}catch{return {ok:false,erro:"json"};}
+  if(!valid(v))return {ok:false,erro:"estrutura"};
+  return {ok:true,v};
+}
+export const validBlogIndexArticle=a=>isObj(a)&&typeof a.slug==="string"&&typeof a.title==="string"&&typeof a.body==="string";
+// Decisão do proprietário nesta rodada: legado reconhecível sem body é tolerado, preservado e não é corrupção.
+const knownLegacyArticle=a=>isObj(a)&&typeof a.slug==="string"&&typeof a.title==="string"&&!Object.hasOwn(a,"body");
+export async function rebuildBlogIndex(kv,day){
+ const articles=[];
+ for(let i=104;i>=0;i--){
+  const d=new Date(Date.parse(day+"T12:00:00Z")-i*86400000).toISOString().slice(0,10);
+  const status=await readKvStrict(kv,BLOG_STATUS_PREFIX+d,v=>isObj(v)&&["ok","rejeitado"].includes(v.resultado)&&(v.resultado!=="ok"||typeof v.slug==="string"));
+  if(!status.ok)return {ok:false};
+  if(status.v?.resultado!=="ok")continue;
+  const article=await readKvStrict(kv,"zpc:blog:article:"+status.v.slug,v=>validBlogIndexArticle(v)&&v.slug===status.v.slug);
+  if(!article.ok||!article.v)return {ok:false};
+  if(!articles.some(a=>a.slug===article.v.slug))articles.push(article.v);
+ }
+ return {ok:true,articles};
+}
 export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
-  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localContentDay(now),key=BLOG_DAILY_KEY_PREFIX+day;
+  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localContentDay(now),statusKey=BLOG_STATUS_PREFIX+day;
   if(!kv?.get||!kv?.put)return {created:[],latest:null,reason:"kv_unavailable"};
-  let marker=null;try{marker=JSON.parse(String(await kv.get(key)||"null"));}catch{}
-  if(marker?.slug){
-    let existing=null;try{existing=JSON.parse(String(await kv.get("zpc:blog:article:"+marker.slug)||"null"));}catch{}
-    if(existing)return {created:[],latest:existing,day,reason:"already_published"};
+  // NC-F1-A3-01: status, marcador legado, contador semanal e índice são lidos ANTES de qualquer gravação, em modo
+  // estrito. Qualquer falha interrompe a publicação sem gravar artigo, índice, contador nem status (a próxima execução
+  // do cron tenta de novo); o motivo volta para o motor de aquisição, que o reporta como erro.
+  const week=isoWeekOf(day),weekKey=BLOG_WEEK_PREFIX+week;
+  const leituras=[["status",statusKey,BLOG_KV_SHAPES.status],["legado",BLOG_DAILY_KEY_PREFIX+day,BLOG_KV_SHAPES.legado],["semana",weekKey,BLOG_KV_SHAPES.semana],["indice",BLOG_INDEX_KEY,BLOG_KV_SHAPES.indice]];
+  const lido={};let indexError=null;
+  for(const [nome,chave,forma] of leituras){
+    const r=await readKvStrict(kv,chave,forma);
+    if(!r.ok&&nome!=="indice")return {created:[],latest:null,day,reason:"kv_leitura_invalida:"+nome+":"+r.erro};
+    if(!r.ok)indexError=r.erro;
+    lido[nome]=r.v;
   }
-  const source=dailyEditorialArticle(day,{baseUrl:baseUrl(env),now});
-  const price=BLOG_TABLE_C_PRICES[source.product];
-  if(!Number.isInteger(price))throw new Error("blog_unknown_table_c_sku");
+  // Idempotência diária: o resultado do dia (ok ou rejeitado) é definitivo; reexecuções do cron não regravam nada.
+  const prior=lido.status;
+  if(prior?.resultado==="ok"){
+    const existing=await readKvStrict(kv,"zpc:blog:article:"+prior.slug,v=>isObj(v)&&v.slug===prior.slug&&typeof v.body==="string");
+    if(!existing.ok||!existing.v)return {created:[],latest:null,day,reason:"kv_leitura_invalida:artigo:"+(!existing.ok?existing.erro:"ausente")};
+    return {created:[],latest:existing.v,day,reason:"already_published",status:prior};
+  }
+  if(prior?.resultado==="rejeitado")return {created:[],latest:null,day,reason:"rejected:"+(prior.motivos||[]).join(","),status:prior};
+  // Marcador do publicador anterior à DEC-21: um dia já publicado nunca publica de novo.
+  const legacy=lido.legado;
+  if(legacy?.slug){
+    const existing=await readKvStrict(kv,"zpc:blog:article:"+legacy.slug,v=>isObj(v)&&v.slug===legacy.slug&&typeof v.body==="string");
+    if(!existing.ok||!existing.v)return {created:[],latest:null,day,reason:"kv_leitura_invalida:artigo:"+(!existing.ok?existing.erro:"ausente")};
+    return {created:[],latest:existing.v,day,reason:"already_published"};
+  }
+  if(!isPublicationDay(day))return {created:[],latest:null,day,reason:"not_publication_day"};
+  let pause;try{pause=await kv.get("zpc:creative-autonomy:paused:v1");}catch{return {created:[],latest:null,day,reason:"kv_leitura_invalida:pausa:leitura"};}
+  if(pause!==null&&pause!=="0"&&pause!=="1")return {created:[],latest:null,day,reason:"kv_leitura_invalida:pausa:estrutura"};
+  if(pause==="1")return {created:[],latest:null,day,reason:"creative_autopublish_paused"};
+  let index=lido.indice||{articles:[]};
+  const preserved=index.articles.filter(a=>!validBlogIndexArticle(a));
+  const corrupt=index.articles.filter(a=>!validBlogIndexArticle(a)&&!knownLegacyArticle(a));
+  if(corrupt.length>index.articles.length/2)indexError="maioria";
+  let indexRebuilt=false;
+  if(indexError){
+    const rebuilt=await rebuildBlogIndex(kv,day);
+    if(!rebuilt.ok||(indexError==="maioria"&&!rebuilt.articles.length))return {created:[],latest:null,day,reason:"kv_leitura_invalida:indice:"+indexError};
+    index={articles:[...preserved,...rebuilt.articles]};indexRebuilt=true;
+  }
+  const ignored=index.articles.filter(a=>!validBlogIndexArticle(a)).length;
+  const at=now.toISOString();
+  const reject=async(motivos,extra={})=>{
+    const status={schema:"zpc.blog.status.v1",day,resultado:"rejeitado",motivos,gate:BLOG_GATE_VERSION,at,indice_entradas_ignoradas:ignored,...extra};
+    await kv.put(statusKey,JSON.stringify(status),{expirationTtl:120*DAY});
+    return {created:[],latest:null,day,reason:"rejected:"+motivos.join(","),status};
+  };
+  const counter=lido.semana;
+  const weekDays=counter?[...new Set(counter.days)]:[];
+  if(!weekDays.includes(day)&&weekDays.length>=BLOG_WEEKLY_CAP)return reject(["teto_semanal"],{week});
+  let source,price;
+  try{source=dailyEditorialArticle(day,{baseUrl:baseUrl(env),now});price=BLOG_TABLE_C_PRICES[source.product];if(!Number.isInteger(price))throw new Error("blog_unknown_table_c_sku");}
+  catch(error){return reject(["geracao_falhou"],{erro:String(error?.message||"").replace(/[^a-z0-9_:]/gi,"_").slice(0,80)});}
   const rubric=evaluateCreativeWithRewrites({brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1080,hook:source.title.slice(0,90),body:source.description+" Guia digital por R$ "+price+",00. "+SHORT_RULE_LABEL+".",cta:"Conheça a ZEVANORY",price_brl:price},{serverPrice:price,visualScore:1});
-  if(rubric.action!=="publish"||rubric.compliance!==100||rubric.score<85)throw new Error("blog_compliance_rejected");
-  // Never persist a checkout URL or a publication timestamp in an unapproved draft.
-  const draft={...source,publishedAt:null,cta_url:null,status:"pending_owner_approval",tableCPrice:price,score:rubric.score,compliance:rubric.compliance};
-  const digest=await blogDraftDigest(draft);
-  const draftKey=BLOG_DRAFT_KEY_PREFIX+day;
-  let existingDraft=null;try{existingDraft=JSON.parse(String(await kv.get(draftKey)||"null"));}catch{}
-  if(existingDraft?.digest!==digest)await kv.put(draftKey,JSON.stringify({schema:"zpc.blog.draft.v1",day,slug:draft.slug,digest,article:draft}),{expirationTtl:370*DAY});
-  // DEC-21 / R123: PRIVATE DRAFTS ONLY. No approval token, flag, cron or
-  // runtime binding can turn this function into a public publisher.
-  // Future publication requires a separately reviewed implementation and owner authorization.
-  return {created:[],latest:null,draft:{day,slug:draft.slug,digest},day,reason:"draft_only_publication_disabled"};
+  const mode=await readPurchaseMode(env).catch(()=>({full:false,hotmart:false}));
+  const ctaUrl=blogCtaUrl(source,mode);
+  const gate=blogQualityGate({article:source,priorArticles:index.articles.filter(validBlogIndexArticle),rubric,ctaUrl,mode});
+  if(indexRebuilt)await kv.put(BLOG_INDEX_KEY,JSON.stringify({schema:"zevanory.blog-daily/v1",articles:index.articles,updatedAt:at}),{expirationTtl:370*DAY});
+  if(!gate.ok)return reject(gate.reasons,{slug:source.slug,similarity_max:gate.similarityMax});
+  // Amostra de revisão: determinística pelo contador da semana (o mesmo dia sempre recebe a mesma marca na nova tentativa).
+  const amostraRevisao=weekDays.filter(d=>d!==day).length%3===0;
+  const article={...source,amostra_revisao:amostraRevisao,publishedAt:at,cta_url:ctaUrl,cta_kind:/\/hotmart\//.test(ctaUrl)?"hotmart":"material_gratuito",status:"published",tableCPrice:price,score:rubric.score,compliance:rubric.compliance,gate:{version:gate.version,similarity_max:gate.similarityMax,words:gate.words,sections:gate.sections}};
+  index={schema:"zevanory.blog-daily/v1",updatedAt:at,articles:[...index.articles.filter(x=>!validBlogIndexArticle(x)),...[...index.articles.filter(validBlogIndexArticle).filter(x=>x.slug!==article.slug),article].slice(-45)]};
+  // Ordem segura para nova tentativa: artigo -> índice -> contador da semana -> status do dia (o status fecha o dia).
+  await kv.put("zpc:blog:article:"+article.slug,JSON.stringify(article),{expirationTtl:370*DAY});
+  await kv.put(BLOG_INDEX_KEY,JSON.stringify(index),{expirationTtl:370*DAY});
+  if(!weekDays.includes(day))await kv.put(weekKey,JSON.stringify({schema:"zpc.blog.week.v1",week,days:[...weekDays,day].sort(),cap:BLOG_WEEKLY_CAP}),{expirationTtl:21*DAY});
+  const status={schema:"zpc.blog.status.v1",day,resultado:"ok",indice_entradas_ignoradas:ignored,indice_reconstruido:indexRebuilt,slug:article.slug,url:article.url,amostra_revisao:amostraRevisao,cta:article.cta_kind,gate:gate.version,score:rubric.score,compliance:rubric.compliance,week,at};
+  await kv.put(statusKey,JSON.stringify(status),{expirationTtl:120*DAY});
+  if(clean(env.INDEXNOW_KEY))await fetchImpl("https://api.indexnow.org/indexnow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({host:new URL(baseUrl(env)).host,key:clean(env.INDEXNOW_KEY,200),urlList:[article.url]}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
+  return {created:[{id:article.slug,url:article.url}],latest:article,total:index.articles.length,day,reason:"published",status};
 }
 
 export async function recordChannelProof(env={},proof={}){const id=clean(proof.channel,40);if(!["telegram","youtube"].includes(id)||!clean(proof.provider_post_id,200))throw new Error("channel_proof_invalid");const row={channel:id,provider_post_id:clean(proof.provider_post_id,200),url:clean(proof.url,1000)||null,publishedAt:clean(proof.publishedAt,80)||new Date().toISOString()};await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(`${CHANNEL_PROOF_PREFIX}${id}`,JSON.stringify(row),{expirationTtl:370*DAY});return row;}
@@ -243,5 +338,5 @@ export function blogCampaign(a){
 }
 // Modo Hotmart (interruptor completo fechado, sales:hotmart:v1 aberto; erro = fechado): o CTA vai à página do kit no
 // site de vendas com o preço da tabela; o checkout próprio /comprar/ continua só com o interruptor completo.
-export async function renderBlogArticle(env={},slug="",{salesOpen,hotmartOpen}={}){const open=typeof salesOpen==="boolean"?salesOpen:(await readSalesSwitch(env).catch(()=>null))?.enabled===true;const hm=!open&&(typeof hotmartOpen==="boolean"?hotmartOpen:await hotmartKitsOpen(env));let a=null;try{a=JSON.parse(String(await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(`zpc:blog:article:${slug}`)||"null"));}catch{}if(!a)return null;const camp=blogCampaign(a);const schema={"@context":"https://schema.org","@type":"Article",headline:a.title,datePublished:a.publishedAt,mainEntityOfPage:a.url,publisher:{"@type":"Organization",name:"ZEVANORY"}};const faq={"@context":"https://schema.org","@type":"FAQPage",mainEntity:(a.faq||[]).map(x=>({"@type":"Question",name:x.q,acceptedAnswer:{"@type":"Answer",text:x.a}}))};const head=`<meta property="og:type" content="article"><meta property="og:title" content="${esc(a.title)} · ZEVANORY"><meta property="og:description" content="${esc(a.description)}"><meta property="og:image" content="https://zevanory.api.br/brand/export/blog-card.png"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://zevanory.api.br/brand/export/blog-card.png"><script type="application/ld+json">${JSON.stringify(schema)}</script><script type="application/ld+json">${JSON.stringify(faq)}</script>`;const q=`utm_source=blog&utm_medium=organic&utm_campaign=${camp}`;const main=`<p class="breadcrumb"><a href="/blog">Blog</a></p><article><h1>${esc(a.title)}</h1><p class="byline">Por ZEVANORY · Criada por Renan Bitu, Várzea Alegre/CE${a.publishedAt?` · <time datetime="${esc(a.publishedAt)}">${esc(blogDate(a.publishedAt))}</time>`:""}</p><img class="post-hero" src="/brand/export/blog-card.png" alt="ZEVANORY · Menos improviso. Mais execução." width="1200" height="630" loading="eager">${String(a.body||"").split("\n\n").map(p=>p.startsWith("## ")?`<h2>${esc(p.slice(3))}</h2>`:`<p>${esc(p)}</p>`).join("")}<h2>Perguntas frequentes</h2>${(a.faq||[]).map(x=>`<h3>${esc(x.q)}</h3><p>${esc(x.a)}</p>`).join("")}<section class="next-steps" aria-labelledby="proximos"><h2 id="proximos">Próximos passos</h2><ul><li><a href="${SALES_ORIGIN}/material-gratuito?${q}">Acessar material gratuito</a></li><li><a href="https://vendas.zevanory.api.br/ia-por-ramo?${q}">Guias de IA por ramo de negócio</a></li><li><a href="https://vendas.zevanory.api.br/vendas-na-pratica?${q}">Vendas na Prática: roteiros e follow-up</a></li></ul>${(()=>{const sku=Object.prototype.hasOwnProperty.call(BLOG_PRODUCT_PAGES,String(a.product||""))?String(a.product):"ZEV-IA-011";const kit=hm?hotmartKit(sku):null;if(kit)return `<p><a href="https://vendas.zevanory.api.br/${BLOG_PRODUCT_PAGES[sku]}?${q}">Conhecer o produto</a></p><p class="sales-open">${esc(kit.name)}: R$ ${kit.price},00 · pagamento pela Hotmart.</p>`;return open?`<p><a href="https://vendas.zevanory.api.br/comprar/${esc(sku)}?${q}">Conhecer o produto</a></p>`:`<p><a href="https://vendas.zevanory.api.br/${BLOG_PRODUCT_PAGES[sku]}?${q}">Conhecer o produto</a></p><p class="sales-closed">Preço informativo: ${esc(CLOSED_LABEL)}.</p>`;})()}</section></article>`;return blogShell({title:`${a.title} · ZEVANORY`,description:a.description,canonical:a.url,head,main});}
+export async function renderBlogArticle(env={},slug="",{salesOpen,hotmartOpen}={}){const open=typeof salesOpen==="boolean"?salesOpen:(await readSalesSwitch(env).catch(()=>null))?.enabled===true;const hm=!open&&(typeof hotmartOpen==="boolean"?hotmartOpen:await hotmartKitsOpen(env));let a=null;try{a=JSON.parse(String(await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(`zpc:blog:article:${slug}`)||"null"));}catch{}if(!a)return null;const camp=blogCampaign(a);const schema={"@context":"https://schema.org","@type":"Article",headline:a.title,datePublished:a.publishedAt,mainEntityOfPage:a.url,publisher:{"@type":"Organization",name:"ZEVANORY"}};const faq={"@context":"https://schema.org","@type":"FAQPage",mainEntity:(a.faq||[]).map(x=>({"@type":"Question",name:x.q,acceptedAnswer:{"@type":"Answer",text:x.a}}))};const head=`<meta property="og:type" content="article"><meta property="og:title" content="${esc(a.title)} · ZEVANORY"><meta property="og:description" content="${esc(a.description)}"><meta property="og:image" content="https://zevanory.api.br/brand/export/blog-card.png"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://zevanory.api.br/brand/export/blog-card.png"><script type="application/ld+json">${JSON.stringify(schema)}</script><script type="application/ld+json">${JSON.stringify(faq)}</script>`;const q=`utm_source=blog&utm_medium=organic&utm_campaign=${camp}`;const main=`<p class="breadcrumb"><a href="/blog">Blog</a></p><article><h1>${esc(a.title)}</h1><p class="byline">Por ZEVANORY · Criada por Renan Bitu, Várzea Alegre/CE${a.publishedAt?` · <time datetime="${esc(a.publishedAt)}">${esc(blogDate(a.publishedAt))}</time>`:""}</p><img class="post-hero" src="/brand/export/blog-card.png" alt="ZEVANORY · Menos improviso. Mais execução." width="1200" height="630" loading="eager">${String(a.body||"").split("\n\n").map(p=>p.startsWith("## ")?`<h2>${esc(p.slice(3))}</h2>`:`<p>${esc(p)}</p>`).join("")}<h2>Perguntas frequentes</h2>${(a.faq||[]).map(x=>`<h3>${esc(x.q)}</h3><p>${esc(x.a)}</p>`).join("")}<section class="next-steps" aria-labelledby="proximos"><h2 id="proximos">Próximos passos</h2><ul><li><a href="${SALES_ORIGIN}/material-gratuito?${q}">Acessar material gratuito</a></li><li><a href="https://vendas.zevanory.api.br/ia-por-ramo?${q}">Guias de IA por ramo de negócio</a></li><li><a href="https://vendas.zevanory.api.br/vendas-na-pratica?${q}">Vendas na Prática: roteiros e follow-up</a></li></ul>${(()=>{const sku=Object.prototype.hasOwnProperty.call(BLOG_PRODUCT_PAGES,String(a.product||""))?String(a.product):"ZEV-IA-011";const kit=hm?hotmartKit(sku):null;if(kit)return `<p><a href="https://vendas.zevanory.api.br/${BLOG_PRODUCT_PAGES[sku]}?${q}">Conhecer o produto</a></p><p><a href="https://vendas.zevanory.api.br/hotmart/${esc(kit.slug)}?${q}">Comprar pela Hotmart</a></p><p class="sales-open">${esc(kit.name)}: R$ ${kit.price},00 · pagamento pela Hotmart.</p>`;return open?`<p><a href="https://vendas.zevanory.api.br/comprar/${esc(sku)}?${q}">Conhecer o produto</a></p>`:`<p><a href="https://vendas.zevanory.api.br/${BLOG_PRODUCT_PAGES[sku]}?${q}">Conhecer o produto</a></p><p class="sales-closed">Preço informativo: ${esc(CLOSED_LABEL)}.</p>`;})()}</section></article>`;return blogShell({title:`${a.title} · ZEVANORY`,description:a.description,canonical:a.url,head,main});}
 export async function appendBlogSitemap(env={},xml=""){const articles=await readBlogIndex(env);const entries=articles.length?`<url><loc>${esc(baseUrl(env))}/blog</loc></url>`+articles.map(x=>`<url><loc>${esc(x.url)}</loc><lastmod>${esc(x.publishedAt)}</lastmod></url>`).join(""):"";return String(xml).replace("</urlset>",`${entries}</urlset>`);}

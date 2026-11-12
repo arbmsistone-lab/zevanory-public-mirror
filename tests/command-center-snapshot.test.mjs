@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeAutonomy, computePublications, forecastSales, nextRun, recommend, metric, AGENDA } from "../scripts/audit/command-center-snapshot.mjs";
+import { computeAutonomy, computePublications, forecastSales, nextRun, recommend, metric, AGENDA, BLUESKY_STATUS_PREFIX, blueskyStatusEntry } from "../scripts/audit/command-center-snapshot.mjs";
+import { BLUESKY_STATUS_PREFIX as ENGINE_BLUESKY_STATUS_PREFIX, blueskyStatusKey } from "../worker/acquisition-engine.mjs";
 
 const now = Date.parse("2026-10-12T12:00:00Z");
 const run = (path, event, conclusion, at) => ({ path: ".github/workflows/" + path, event, status: "completed", conclusion, created_at: at, updated_at: at });
@@ -83,4 +84,15 @@ test("KV quota early warning: 60% or a projection over 90% warns before the 70% 
   assert.equal(kvQuotaForecast(q(500), at(11)).level, "critical", "projected 1090 would close sales");
   assert.equal(kvQuotaForecast(q(5), at(0.1)).level, "ok", "first hour is not extrapolated from minutes");
   assert.equal(kvQuotaForecast({ verified: false }), null);
+});
+
+test("F1: status de falha do Bluesky (bluesky:status:AAAAMMDD) vira entrada \"erro\" na matriz de publicações", () => {
+  assert.equal(BLUESKY_STATUS_PREFIX, ENGINE_BLUESKY_STATUS_PREFIX);
+  assert.equal(BLUESKY_STATUS_PREFIX + "2026-11-10".replaceAll("-", ""), blueskyStatusKey("2026-11-10"));
+  const e = blueskyStatusEntry({ ok: false, motivo: "similarity", similaridade: 0.95, day: "2026-11-10", at: "2026-11-10T22:35:00Z" });
+  assert.deepEqual(e, { status: "erro", url: null, at: "2026-11-10T22:35:00Z", code: "similarity", similarity: 0.95 });
+  assert.equal(blueskyStatusEntry(null), null); assert.equal(blueskyStatusEntry({ ok: true }), null);
+  assert.equal(blueskyStatusEntry({ ok: false }).code, "desconhecido");
+  const pubs = computePublications({ "2026-11-10": { bluesky: e } });
+  assert.deepEqual([pubs.expected, pubs.published], [1, 0]);
 });

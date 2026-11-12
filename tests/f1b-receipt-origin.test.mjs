@@ -21,7 +21,7 @@ async function scenario(mod,trigger='manual',legacy=false){
 test('CL1021 manual publication stays manual when the next cron cannot read state',()=>scenario(engine));
 test('CL1021 cron receipt proves autonomous origin despite state read failure',()=>scenario(engine,'cron'));
 test('CL1021 legacy receipt without trigger stays unknown',()=>scenario(engine,'manual',true));
-test('CL1021 mutant: stamp current trigger on published receipt',async()=>{await scenario(engine);await killedMutation(source,[['trigger:o.status==="publicado"?(o.trigger??null):trigger','trigger']],scenario);});
+test('CL1021 mutant: stamp current trigger on published receipt',async()=>{await scenario(engine);await killedMutation(source,[['{...o,trigger:o.trigger??(prevOutcomes.find(p=>p.channel===o.channel&&p.status==="publicado"&&p.url&&p.url===o.url)?.trigger??null)}','{...o,trigger}']],scenario);});
 test('CL1021 mutant: publish without trigger in receipt',async()=>{await scenario(engine);await killedMutation(source,[['const outcome={channel,day:entry.day,status:"publicado",trigger:receipt.adopted===true?(prior?.trigger??null):trigger,','const outcome={channel,day:entry.day,status:"publicado",']],scenario);});
 test('CL1021 mutant: rewrite unreadable daily state',async()=>{await scenario(engine);await killedMutation(source,[['if(stateRead.ok&&(!priorState||','if((!priorState||']],scenario);});
 

@@ -112,7 +112,7 @@ test("P8 coerência comercial: tabela C, aviso de vendas fechadas e nada fabrica
   assert.ok(c("<p>IA na Prática (R$ 87)</p>").includes("S13"), "[P8.1] preço citado fora da tabela C");
   assert.ok(c(NOTICE + "<p>Preço de tabela: R$ 99</p>", "lucro-e-caixa").includes("S13"), "[P8.2] preço de tabela da página de produto");
   assert.ok(c(NOTICE + '<article class="catalog-card"><div class="cc-main"><h3><a href="/negocio-completo">N</a></h3></div><p class="catalog-price">R$ 297<span>x</span></p></article>').includes("S13"), "[P8.3] preço do catálogo");
-  assert.deepEqual(c(NOTICE + "<p>Preço de tabela: R$ 157</p><p>Combo IA + Vendas · R$ 157 · comissão de 50% (R$ 78,50)</p>", "combo-ia-vendas"), [], "[P8.4] preço e derivados corretos");
+  assert.deepEqual(c(NOTICE + "<p>Preço de tabela: R$ 157</p><p>Combo IA + Vendas · R$ 157 · comissão de 30% (R$ 47,10)</p>", "combo-ia-vendas"), [], "[P8.4] preço e derivados corretos");
   assert.ok(c('<a class="button" href="/x" data-zev-sku="ZEV-IA-011">Entrar na lista</a>').includes("S14"), "[P8.5] CTA sem aviso de vendas fechadas");
   assert.ok(c(NOTICE + '<a href="/comprar/ZEV-IA-011">Comprar</a>').includes("S14"), "[P8.6] link de compra no build fechado");
   assert.ok(codes(commercial("x", page({ head: '<script type="application/ld+json">{"@type":"Product","aggregateRating":{"ratingValue":5}}</script>' }))).includes("S15"), "[P8.7] AggregateRating");
