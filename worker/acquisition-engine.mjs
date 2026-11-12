@@ -1,3 +1,4 @@
+import {musicCurationDigest} from "./music-curation-report.mjs";
 // Acquisition V1: independent channel outcomes, evidence-first and zero cold outreach.
 // Cron ingress remains the existing Cloudflare hourly schedule; this module selects peak slots.
 import { ensureDailyBlog, publishTelegram, channelChecklist, resolveChannelCredentials, localContentDay } from "./multichannel-autonomy.mjs";
@@ -377,7 +378,7 @@ export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch)
  const actual=(state?.outcomes||[]).filter(x=>x.status==="publicado"&&x.url);
  const lines=actual.map(x=>"• "+x.channel+": "+x.url);
  const subject="ZEVANORY | Resumo de divulgação "+day;
- const content=["Publicações confirmadas:",...(lines.length?lines:["Sem publicações comprovadas."]),"","Leads: sem dados","Checkouts: sem dados","Vendas: sem dados","Alertas: sem dados","Agenda de amanhã: "+(calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject),"","Painel: https://controle.zevanory.api.br"].join("\n");
+ const content=["Publicações confirmadas:",...(lines.length?lines:["Sem publicações comprovadas."]),"","Leads: sem dados","Checkouts: sem dados","Vendas: sem dados","Alertas: sem dados",await musicCurationDigest(kv),"","Agenda de amanhã: "+(calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject),"","Painel: https://controle.zevanory.api.br"].join("\n");
  await kv.put(key,JSON.stringify({status:"pending",day,at:now.toISOString()}),{expirationTtl:7*86400});
  try{
   const response=await fetchImpl("https://api.resend.com/emails",{method:"POST",headers:{"authorization":"Bearer "+String(env.RESEND_API_KEY),"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[String(env.OWNER_ALERT_EMAIL)],subject,text:content}),signal:AbortSignal.timeout(10000)});
