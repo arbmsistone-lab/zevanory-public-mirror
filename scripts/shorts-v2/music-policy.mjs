@@ -23,6 +23,7 @@ export function learnedProfile(profile,manifest){const p=structuredClone(profile
 export function assertActivation(profile){if(profile.descoberta.max_por_mes!==2||!Number.isInteger(profile.descoberta.max_candidatas)||profile.descoberta.max_candidatas<1||profile.descoberta.max_candidatas>12||!Number.isFinite(profile.descoberta.limiar)||profile.descoberta.limiar<.7||profile.descoberta.limiar>1)throw Error('music_profile_invalid');if(profile.descoberta.enabled!==true||!['proprietario','claude','gpt6'].every(k=>profile.descoberta.aprovacoes[k]===true))throw Error('music_curation_disabled_pending_reviews');}
 export function promote(candidates,profile,state,day,{availableBytes=Infinity,maxPromotions=2}={}){
  const next=structuredClone(state),month=day.slice(0,7);next.meses[month]??=[];const promoted=[];
+ if((next.meses_bloqueados||[]).includes(month))return {state:next,promoted}; // mês bloqueado (inicialização/perda dupla): nenhuma promoção
  for(const row of [...candidates].sort((a,b)=>similarity(b,profile)-similarity(a,profile)||a.arquivo.localeCompare(b.arquivo))){
   if(next.meses[month].length>=Math.min(2,profile.descoberta.max_por_mes)||promoted.length>=maxPromotions)break;
   if(next.faixas[row.arquivo]||profile.aprovadas.some(r=>sameTrack(r,row))||Object.values(next.faixas).some(r=>r.sha256===row.sha256))continue;

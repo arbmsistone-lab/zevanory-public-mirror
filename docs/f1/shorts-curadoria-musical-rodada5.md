@@ -19,3 +19,10 @@ Arpent mediu 60 BPM na borda: `bpm_confiavel:false`. Funshine mediu aproximadame
 Com três ou mais faixas, entre alternativas válidas que respeitam veto, última faixa e teto de participação, o tema tem prioridade real; outro tema só é usado quando não há alternativa válida daquele tema. Com duas, vale a alternância aceita pelo proprietário.
 
 Os testes de mídia incluem dois MP4s adicionais: uma faixa verificada do KV e a recuperação de estado ilegível com música da base. O handoff de publicação é simulado localmente: não houve upload real nem prova de voz Gemini. O SHA, as saídas dos testes e o CI ficam na descrição do PR.
+
+## NC-G6-1029-01 — continuidade do livro mensal (12/11/2026)
+- `zpc:shorts:v2:musica:continuidade` (sem expiração) guarda promoções por mês (arquivo + sha256) e meses bloqueados, gravada ANTES do estado.
+- Estado ausente + continuidade presente = **perda**: o livro mensal é reconstruído da continuidade; faixas perdidas ficam como `retirada`; aviso `music_kv_state_lost_ledger_restored`.
+- Estado e continuidade ausentes = **inicialização**: só com a curadoria ativada (bootstrap aprovado) e com o mês corrente **bloqueado** para promoções (`music_kv_bootstrap_month_locked`); nem uma perda dupla libera promoção adicional no mês.
+- Continuidade ilegível/contraditória = erro, nenhuma promoção. O render segue com Arpent/Funshine e aviso `music_kv_state_absent_using_repository`, sem gravar estado.
+- Prova: `tests/shorts-v2-music-continuity.test.mjs` (9, com 2 mutantes): duas promoções no mês → exclusão do estado → nova execução = 0 promoções.
