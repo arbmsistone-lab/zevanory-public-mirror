@@ -1,31 +1,40 @@
 # Publicação de prova DEC-23
 
-Base: gh-pages `a76ae60893b44f132094a048a2b1e8a26ad1f7ba`. Este PR somente prepara uma execução manual; não aprova a prova nem ativa publicação contínua.
+Este PR prepara uma execução manual; não aprova a prova nem ativa publicação contínua.
 
-## Execução futura, mediante autorização
+## Execução futura, mediante autorização do proprietário no chat
 
-`meta-proof-post.yml` aceita somente workflow_dispatch em gh-pages, usa `producao-critica`, permissions contents: read e ações fixadas por SHA. Não modifica gatilhos de outros workflows. O proprietário deve confirmar antes do dispatch que esse ambiente tem sua revisão obrigatória configurada e os três segredos META_ACCESS_TOKEN, META_PAGE_ID e INSTAGRAM_BUSINESS_ACCOUNT_ID. As proteções do ambiente não podem ser impostas apenas pelo YAML; sua configuração não foi alterada nem comprovada pela conexão disponível.
+O disparo é exclusivamente manual, por `workflow_dispatch` em `gh-pages`, e só pode acontecer após autorização explícita do proprietário no chat. Publicador (`meta-proof-post.yml`) e pré-voo (`meta-proof-preflight.yml`) usam `gh-pages-automacao`, o ambiente dos workflows Meta existentes. Mantêm os segredos META_ACCESS_TOKEN, META_PAGE_ID e INSTAGRAM_BUSINESS_ACCOUNT_ID, e o publicador usa `secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN` para o recibo KV. Nenhum segredo ou configuração de ambiente foi lido ou alterado nesta correção. Revisores obrigatórios não foram certificados; o YAML não substitui a autorização no chat.
 
-O script existente `meta-permission-check.mjs` roda antes da reserva; o publicador também chama `runCheck` antes de reservar e de publicar. Só aceita pronto_para_prova estritamente true, IDs oficiais e primeira execução/primeira tentativa do workflow. O token da Página é obtido por GET autenticado, mascarado e usado nos três POSTs. Nenhum segredo vai a arquivo, URL de POST, relatório ou artefato. O único canal que recebe o valor literal é o comando nativo de mascaramento `::add-mask::`; logs e summary não contêm token. Erros de publicação usam mensagem fixa, sem corpo/stack da Meta.
+Primeiro implantar a imagem revisada pelo processo autorizado de deploy do Worker. Depois executar o pré-voo somente leitura no mesmo SHA destinado à prova e informar seu `preflight_run_id` ao publicador. A API Actions valida workflow, evento workflow_dispatch, sucesso, mesmo SHA e idade máxima de 24 horas. O pré-voo é repetível: consulta permissões e imagem pública, sem reservar nem publicar.
 
-Uma imagem por canal: Instagram /media, consulta limitada de status FINISHED e /media_publish; Facebook /{page}/photos com published=true. A legenda é fixa, institucional, com https://zevanory.api.br, passa por `forbidden` e não contém preço, promessa ou mensageria. A mesma arte post-01.png já existente foi convertida para JPEG (RGB, qualidade 95, sem redesenho), em brand/social/zevanory-proof-dec23.jpg. O PNG permanece inalterado. A pasta brand é copiada pelo build existente. Antes do POST, exige que a URL pública retorne image/jpeg e bytes com o mesmo SHA-256 do arquivo revisado; 404, redirecionamento, conteúdo diferente ou imagem ainda não publicada bloqueiam a prova.
+Ações permanecem fixadas por SHA, permissões de leitura (contents: read; também actions: read no publicador), sem mudança nos gatilhos de outros workflows. O verificador exige pronto_para_prova estritamente true e IDs oficiais antes de reservar e publicar. Token da Página obtido por GET autenticado é mascarado e usado nos três POSTs; não vai a arquivo, URL de POST, relatório ou artefato. Erros de publicação não expõem corpo/stack da Meta.
 
-## Idempotência e falha desconhecida
+## Imagem e publicação
 
-A primeira execução pode fazer uma única tentativa; número do run diferente de 1 ou run_attempt diferente de 1 bloqueiam tanto o workflow quanto o script. O contador monotônico do GitHub independe da retenção dos artefatos. A reserva é exclusiva em disco e enviada como artefato antes de qualquer POST. O script exige o ID desse upload e adquire uma trava local exclusiva de publicação. Concorrência do workflow é serializada, sem cancelar uma execução ativa.
+Uma imagem por canal: Instagram /media, consulta limitada de FINISHED e /media_publish; Facebook /{page}/photos com published=true. Legenda institucional fixa com https://zevanory.api.br, validada por forbidden, sem preço, promessa ou mensageria.
 
-Cada POST é precedido de recibo local unknown, sincronizado em disco. Após IDs confirmados, eles são gravados imediatamente. Estado existente, publicado, parcial, ilegível ou desconhecido nunca autoriza novo POST. A saída final preserva instagram_media_id e facebook_post_id no summary e no artefato; o segundo upload roda mesmo em falha posterior à reserva. Artefatos têm retenção de 90 dias; a trava de run/attempt continua bloqueando depois dessa retenção, inclusive se artefatos forem removidos. Não se deve excluir/recriar/renomear o workflow para reiniciar seu contador.
+A arte post-01.png foi convertida para JPEG RGB, qualidade 95, sem redesenho; PNG preservado. A cópia canônica revisada está em `assets/brand/export/zevanory-proof-dec23.jpg`, registrada nos manifestos e nos pipelines de build/export. URL obrigatória: `https://zevanory.api.br/brand/export/zevanory-proof-dec23.jpg`. Antes do POST exige image/jpeg e SHA-256 idêntico ao arquivo revisado. 404, redirecionamento ou bytes diferentes bloqueiam.
 
-Escolha conservadora: uma primeira execução que falhe antes de publicar também consome a tentativa. Não há retentativa automática, nem recuperação por apagar arquivo/artefato. Uma tentativa adicional exige proposta separada e auditoria do que aconteceu na Meta. Não existe garantia de completar ambos os canais em transação atômica; sucesso parcial fica registrado sem republicação. Timeout ou resposta sem ID é desconhecido.
+## Reserva e resultado desconhecido
+
+Não há bloqueio por GITHUB_RUN_NUMBER==1. Falha anterior sem reserva não consome a prova. GITHUB_RUN_ATTEMPT continua exigido igual a 1.
+
+A autorização percorre de forma paginada os artefatos dos runs anteriores e lê o recibo permanente `zpc:meta:prova:dec23:v1` no KV, sem TTL. Artefato de reserva existente (inclusive expirado), recibo existente/ilegível ou falha de leitura bloqueiam nova reserva. Concorrência do workflow é serializada, sem cancelar execução ativa. Reserva local exclusiva, recibo KV e upload do artefato antecedem qualquer POST. Publicar exige o ID do próprio upload, recibo reserved do mesmo run e trava local exclusiva.
+
+Cada POST é precedido de estado unknown persistido localmente e no KV. IDs confirmados são gravados imediatamente. Estado publicado, parcial, ilegível ou desconhecido nunca autoriza novo POST. Summary e artefato preservam instagram_media_id e facebook_post_id; o upload de resultado roda mesmo após falha posterior à reserva. Artefatos: 90 dias; recibo KV: sem expiração. Não apagar recibos/artefatos nem recriar workflow para contornar a trava.
+
+Não há retentativa automática nem transação atômica entre canais. Timeout ou resposta sem ID é desconhecido; sucesso parcial não é republicado. Tentativa adicional exige proposta separada e auditoria do resultado real na Meta.
 
 ## Aprovação e governança
 
-Não altera data/meta-prova-dec23.json. O registro da aprovação fica para PR separado, com os IDs efetivamente retornados e assinatura do proprietário. O esquema atual usa prova_facebook_video_id; uma prova de foto retorna facebook_post_id (normalmente PAGE_POST). Este PR não preenche nem converte esse campo: o PR de aprovação deverá definir a representação correta sem fingir que uma foto é vídeo. A trava de DEC-23 para o crosspost continua intacta.
+`data/meta-prova-dec23.json` continua com aprovação pendente. Um PR separado registrará os IDs efetivos e a aprovação do proprietário. Campo canônico: `prova_facebook_post_id`, no formato PAGE_POST. O leitor aceita o legado numérico prova_facebook_video_id somente quando o canônico está ausente/nulo; canônico presente e inválido bloqueia mesmo com legado válido. Não representar foto como vídeo. A trava DEC-23 do crosspost permanece.
 
-Caminho reservado autorizado para criação: .github/workflows/meta-proof-post.yml. Merge exige owner-approved:<12 hex do head SHA>, aplicado pelo proprietário. Não foi aplicado rótulo. Nenhum outro reservado, preço, T6/P03, produto ou interruptor foi alterado. Sem merge, dispatch, reativação ou deploy. Nenhuma chamada de publicação real foi feita.
+Merge segue a aprovação vigente, incluindo owner-approved:<12 hex do head SHA> quando aplicável. Esta correção não aplica rótulo, faz merge, deploy, dispatch ou reativação. Não altera preços, T6/P03, produtos ou interruptores. Nenhuma publicação real.
 
 ## Provas
 
-31 testes locais, com respostas simuladas e sem credenciais reais. Incluem gate falso/ausente, IDs e token da Página, repetição, falhas antes de cada POST, estado parcial/desconhecido, escrita exclusiva, imagem inválida, legenda proibida e invariantes do workflow. Treze mutantes de execução e seis mutantes do workflow devem morrer por asserção; incluem obrigatoriamente gate removido, segunda publicação, token no log e legenda com preço.
+Testes offline e mutantes cobrem reserva, pré-voo, resultados incertos, imagem, credenciais, legenda e invariantes do workflow. O contrato exige publicador e pré-voo em gh-pages-automacao, preserva o fallback Cloudflare e rejeita ambiente divergente (mutante producao-critica).
 
-Referências oficiais: https://developers.facebook.com/docs/instagram-platform/content-publishing/ ; https://developers.facebook.com/docs/graph-api/reference/page/photos/ ; https://docs.github.com/en/actions/reference/workflows-and-actions/variables ; https://github.com/actions/upload-artifact .
+Referências: https://developers.facebook.com/docs/instagram-platform/content-publishing/ ; https://developers.facebook.com/docs/graph-api/reference/page/photos/ ; https://docs.github.com/en/actions/reference/workflows-and-actions/variables ; https://github.com/actions/upload-artifact .
+

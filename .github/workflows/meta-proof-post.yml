@@ -15,7 +15,7 @@ concurrency:
 jobs:
   proof:
     if: ${{ github.ref == 'refs/heads/gh-pages' }}
-    environment: producao-critica
+    environment: gh-pages-automacao
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -59,3 +59,4 @@ jobs:
           path: ${{ env.META_PROOF_STATE_PATH }}
           if-no-files-found: error
           retention-days: 90
+
