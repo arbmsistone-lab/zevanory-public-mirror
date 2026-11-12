@@ -45,7 +45,7 @@ import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
-import { handleOwnerChat, runOwnerChatSentinel } from "./owner-chat.mjs";
+import { handleOwnerChat, runOwnerChatSentinel, isOwnerChatPath } from "./owner-chat.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
@@ -126,6 +126,8 @@ const wrapped = {
     { const p=new URL(request.url).pathname;
       if(p===ABANDONO_DRAIN_PATH)return handleAbandonmentDrainRequest(request,normalized);
       if(p===ABANDONO_RETENTION_PATH)return handleAbandonmentRetentionRequest(request,normalized); }
+    // Chat do Proprietário: autenticação ANTES de qualquer KV/banco (NC-1030-07), antes do interruptor de vendas.
+    if (isOwnerChatPath(new URL(request.url).pathname)) return handleOwnerChat(request, normalized, { isAdminAuthorized, sqlFactory: whatsappProofDatabase });
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     // R139: chat stays OFF without SITE_CHAT_ENABLED=true; internal SELF drain R138 runs before this.
@@ -273,8 +275,6 @@ const wrapped = {
       });
       return chat || new Response("not_found", { status: 404 });
     }
-    // Chat do Proprietário: Basic auth do console, escrita só same-origin (worker/owner-chat.mjs).
-    if (url.pathname === "/admin/proprietario" || url.pathname.startsWith("/api/admin/owner-chat/")) return handleOwnerChat(request, normalized, { isAdminAuthorized });
     if (url.pathname.startsWith("/api/admin/site-chat/") || url.pathname === "/admin/chat-protocolos") return handleSiteChatAdmin(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
@@ -741,7 +741,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
       }
       // Sentinela do Chat do Proprietário: logo depois do motor, com os resultados do ciclo.
       try {
-        const chat=await runOwnerChatSentinel(normalized,new Date());
+        const chat=await runOwnerChatSentinel(normalized,new Date(),{sqlFactory:whatsappProofDatabase});
         console.info("owner_chat_sentinel",JSON.stringify(chat));
       } catch {
         console.error("owner_chat_sentinel_failed");
