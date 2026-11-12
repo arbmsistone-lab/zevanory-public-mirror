@@ -835,7 +835,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   resetSalesSwitchCache();
   const salesSwitchState = await readSalesSwitch(normalized);
   const salesOpen = applySalesSwitch(salesSwitchState);
-  if(controller?.cron==="0 * * * *")await runHotmartPostSale(normalized,{cron:controller.cron}).then(out=>console.info("hotmart_post_sale_run",JSON.stringify(out))).catch(()=>console.error("hotmart_post_sale_failed"));
+  if(controller?.cron==="0 * * * *")await runHotmartPostSale(normalized,{cron:controller.cron,sqlFactory:whatsappProofDatabase}).then(out=>console.info("hotmart_post_sale_run",JSON.stringify(out))).catch(()=>console.error("hotmart_post_sale_failed"));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
   tasks.push(recordLaunchEpoch(normalized, salesSwitchState)
     .then(() => refreshFinancialProofSnapshot(normalized, { sqlFactory: whatsappProofDatabase }))

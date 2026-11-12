@@ -1,10 +1,40 @@
-const PREFIX='zpc:posvenda:hotmart:cota:';
-export async function restrictedQuota(kv,now){
- const day=new Date(now).toISOString().slice(0,10),month=day.slice(0,7);
- const read=async period=>{try{const raw=await kv.get(PREFIX+period);if(raw===null)return 0;const v=JSON.parse(raw);if(!v||Object.keys(v).sort().join(',')!=='periodo,schema,used'||v.schema!==1||v.periodo!==period||!Number.isSafeInteger(v.used)||v.used<0)throw Error('shape');return v.used;}catch{throw Error('quota_ledger_unreadable');}};
- return {restricted:true,used:await read(day),dailyLimit:40,monthlyUsed:await read(month),monthlyLimit:1200,day,month};
+// One row per UTC month: a single row lock covers BOTH daily and monthly counters.
+// A reservation is consumed even if its response or the later email outcome is uncertain.
+const ready=new WeakSet();
+export async function ensureRestrictedQuota(sql){
+ if(!sql?.query)throw Error('quota_ledger_unreadable');
+ if(ready.has(sql))return;
+ await sql.query(`create table if not exists zevanory_posvenda_cota (
+  periodo text primary key, used integer not null check (used >= 0 and used <= 1200),
+  dias jsonb not null check (jsonb_typeof(dias) = 'object'))`,[]);
+ ready.add(sql);
 }
-export async function reserveRestrictedQuota(kv,now){
- const q=await restrictedQuota(kv,now);if(q.used>=q.dailyLimit||q.monthlyUsed>=q.monthlyLimit)return false;
- try{for(const [period,used] of [[q.day,q.used+1],[q.month,q.monthlyUsed+1]]){const value=JSON.stringify({schema:1,periodo:period,used});await kv.put(PREFIX+period,value,{expirationTtl:400*86400});const actual=await kv.get(PREFIX+period);if(actual!==value)throw Error('unconfirmed');}}catch{throw Error('quota_ledger_unreadable');}return true;
+const periods=now=>{const day=new Date(now).toISOString().slice(0,10);return {day,month:day.slice(0,7)};};
+function validMonth(row,month){
+ if(!row||row.periodo!==month||!Number.isSafeInteger(row.used)||row.used<0||row.used>1200||!row.dias||typeof row.dias!=='object'||Array.isArray(row.dias))return false;
+ let sum=0;for(const [day,n]of Object.entries(row.dias)){if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||day.slice(0,7)!==month||new Date(day+'T00:00:00Z').toISOString().slice(0,10)!==day||!Number.isSafeInteger(n)||n<0||n>40)return false;sum+=n;}
+ return sum===row.used;
+}
+export async function restrictedQuota(sql,now){
+ try{
+  await ensureRestrictedQuota(sql);const {day,month}=periods(now);
+  const rows=await sql.query(`/*posvenda:quota-read*/ select periodo, used, dias from zevanory_posvenda_cota where periodo = $1`,[month]);
+  if(!Array.isArray(rows)||rows.length>1||rows[0]&&!validMonth(rows[0],month))throw Error('shape');
+  return {restricted:true,used:rows[0]?.dias[day]??0,dailyLimit:40,monthlyUsed:rows[0]?.used??0,monthlyLimit:1200,day,month};
+ }catch{throw Error('quota_ledger_unreadable');}
+}
+export async function reserveRestrictedQuota(sql,now){
+ try{
+  const q=await restrictedQuota(sql,now);
+  // No separate daily increment: neither counter advances unless BOTH limits permit it.
+  const rows=await sql.query(`/*posvenda:quota-reserve*/ insert into zevanory_posvenda_cota (periodo, used, dias)
+   values ($1, 1, jsonb_build_object($2::text, 1))
+   on conflict (periodo) do update set used = zevanory_posvenda_cota.used + 1,
+    dias = jsonb_set(zevanory_posvenda_cota.dias, array[$2::text], to_jsonb(coalesce((zevanory_posvenda_cota.dias ->> $2::text)::integer, 0) + 1))
+   where zevanory_posvenda_cota.used < $3
+    and coalesce((zevanory_posvenda_cota.dias ->> $2::text)::integer, 0) < $4
+   returning periodo, used, dias`,[q.month,q.day,q.monthlyLimit,q.dailyLimit]);
+  if(!Array.isArray(rows)||rows.length>1||rows[0]&&!validMonth(rows[0],q.month))throw Error('shape');
+  return rows.length===1;
+ }catch{throw Error('quota_ledger_unreadable');}
 }

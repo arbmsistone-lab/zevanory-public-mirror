@@ -153,7 +153,7 @@ export async function runHotmartPostSale(env,options={}){
  return {...out,statusPersisted};
 }
 const running=new WeakSet();
-async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cron='0 * * * *'}={}){
+async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cron='0 * * * *',sqlFactory}={}){
  if(cron!=='0 * * * *')return {ok:true,sent:0,priority:1,code:'not_hourly_tick'};
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;if(!kv?.list||!env.RESEND_API_KEY)return {ok:false,code:'not_configured',sent:0,priority:1};
  if(running.has(kv))return {ok:true,sent:0,priority:1,code:'already_running'};running.add(kv);
@@ -182,7 +182,8 @@ async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cr
   if(!hasDue)return {ok:true,sent:0,priority:1,code:'no_due_steps'};
   const usage=await providerUsage(env,fetchImpl,now);
   const restricted=usage.restricted===true;
-  let {used,dailyLimit,monthlyUsed,monthlyLimit}=restricted?await restrictedQuota(kv,now):usage;
+  const quotaSql=restricted&&env.DATABASE_URL&&typeof sqlFactory==='function'?sqlFactory(env.DATABASE_URL):null;
+  let {used,dailyLimit,monthlyUsed,monthlyLimit}=restricted?await restrictedQuota(quotaSql,now):usage;
   const reconciliationBudget={remaining:9};let reconciliationPending=0;
   for(const [ref,order] of orders.sort((a,b)=>a[1].approvedAt-b[1].approvedAt)){
    if(now>=order.expiresAt||await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker))continue;
@@ -203,7 +204,7 @@ async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cr
     if(used>=dailyLimit||monthlyUsed>=monthlyLimit||sent>=3)break;
     if(await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker)||!await salesAllowed(kv,now))break;
     const state={status:'attempting',attempts:(prior?.attempts||0)+1,bodyHash,firstAttempt:prior?.firstAttempt??now,lastAttempt:now};
-    if(restricted&&!await reserveRestrictedQuota(kv,now))break;
+    if(restricted&&!await reserveRestrictedQuota(quotaSql,now))break;
     await kv.put(key,JSON.stringify(state),ttl);used++;monthlyUsed++;
     let response;try{response=await fetchImpl('https://api.resend.com/emails',{method:'POST',headers:{authorization:'Bearer '+env.RESEND_API_KEY,'content-type':'application/json','Idempotency-Key':'hm-posvenda-'+ref+'-'+step.id},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});}catch{}
     let v;try{v=await response?.json();}catch{}
