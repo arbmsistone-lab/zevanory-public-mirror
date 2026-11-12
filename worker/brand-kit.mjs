@@ -9,6 +9,7 @@ export const BRAND_SOURCE = Object.freeze({
   palette: Object.freeze(["#05070b", "#0b0f16", "#101722", "#202a38", "#f5f7fb", "#8fb8ff", "#a8f0d0", "#1578ff", "#00b8ff", "#21e6f3"]),
 });
 export const BRAND_SIZES = Object.freeze({
+  "zevanory-proof-dec23.jpg": [1080,1080],
   "avatar-400.png": [400,400], "avatar-800.png": [800,800],
   "banner-bluesky.png": [1500,500], "banner-youtube.png": [2560,1440],
   "banner-facebook.png": [1640,624],

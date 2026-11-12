@@ -47,7 +47,7 @@ test("caso bom: segunda-feira publica 1 artigo com URL, CTA do material gratuito
   assert.equal(x.writes.filter((k) => k === BLOG_STATUS_PREFIX + MON).length, 1);
   assert.deepEqual(x.writes.filter((k) => !/^zpc:blog:(article:|index:v1$|week:v1:|status:v1:)/.test(k)), [], "só chaves do blog");
   assert.equal(x.writes.some((k) => k.startsWith("zpc:blog:draft:")), false, "rascunho privado da DEC-21 não é mais gravado");
-  assert.deepEqual(x.fetches, ["https://api.indexnow.org/indexnow"]);
+  assert.deepEqual(x.fetches, [], "NC-G6-1026-01: blog publishes but cannot bypass the IndexNow journal");
   assert.match(await renderBlogArticle(env, art.slug, { salesOpen: false, hotmartOpen: false }), /<h1>/);
 });
 

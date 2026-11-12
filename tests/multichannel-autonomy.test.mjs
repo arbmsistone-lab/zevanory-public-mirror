@@ -44,7 +44,7 @@ const store=kv(),writes=[],wrapped={get:store.get,put:async(k,v)=>{writes.push(k
  }
  assert.equal(new Set(slugs).size,slugs.length);assert.ok(slugs.length>=24);
  assert.ok(Object.values(perWeek).every(n=>n<=3));
- assert.equal(pings,slugs.length,"IndexNow once per published article");
+ assert.equal(pings,0,"NC-G6-1026-01: dynamic blog IndexNow is held until journaled integration");
  assert.ok(writes.every(k=>/^zpc:blog:(article:|index:v1$|week:v1:|status:v1:)/.test(k)),"only blog publication keys");
  assert.equal(writes.some(k=>k.startsWith("zpc:blog:draft:")),false,"no private DEC-21 drafts anymore");
 });
