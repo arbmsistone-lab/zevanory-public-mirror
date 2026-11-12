@@ -1,0 +1,234 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "scope": "C5 recurring revenue research",
+    "commercial_metrics_accessed": false,
+    "actual_willingness_to_pay_known": false,
+    "actual_retention_known": false,
+    "personal_data_used": false,
+    "paid_research_used": false,
+    "production_change_allowed": false,
+    "publication_allowed": false,
+    "contact_allowed": false,
+    "transaction_allowed": false
+  },
+  "scoring": {
+    "scale": "1 weak / 5 strong",
+    "criteria": [
+      {
+        "id": "demand_evidence",
+        "direction": "higher_is_better"
+      },
+      {
+        "id": "recurring_frequency",
+        "direction": "higher_is_better"
+      },
+      {
+        "id": "infrastructure_reuse",
+        "direction": "higher_is_better"
+      },
+      {
+        "id": "delivery_economics",
+        "direction": "higher_is_better"
+      },
+      {
+        "id": "retention_potential",
+        "direction": "higher_is_better"
+      },
+      {
+        "id": "risk_inverse",
+        "direction": "higher_is_better"
+      }
+    ],
+    "caveat": "scores are analyst judgments for prioritization, not measured demand, conversion, revenue or churn"
+  },
+  "opportunities": [
+    {
+      "rank": 1,
+      "id": "conteudo-pronto-setorial",
+      "name": "Conteúdo Pronto setorial",
+      "status": "existing_offer_to_validate",
+      "target": "MEIs and small local businesses that sell through WhatsApp and social networks but lack time or process for weekly communication",
+      "offer": "keep the existing monthly package: 12 posts, 4 WhatsApp sales messages and a 30-day calendar, adapted to the business segment; customer remains responsible for approval and publication",
+      "differentiation": "Brazilian Portuguese, small-business context, segment adaptation and no account custody or promise of sales",
+      "observed_price_brl_month": 197,
+      "hypothetical_validation_price_brl_month": 197,
+      "price_status": "existing_list_price_and_unvalidated_wtp",
+      "delivery_cost_estimate": {
+        "status": "not_quantified",
+        "qualitative": "low_to_moderate_if_existing_automation_is_reliable",
+        "drivers": [
+          "generation runtime",
+          "email delivery",
+          "quality review",
+          "support",
+          "rework"
+        ],
+        "required_measurement": "three internal dry runs recording machine usage and human review minutes before any commercial test"
+      },
+      "frequency": "weekly use; monthly replenishment",
+      "retention_hypothesis": "medium_high_if_each_month_is genuinely specific and saves preparation time",
+      "cancellation_risk": "medium_high: generic output, publication effort, seasonality and free AI alternatives",
+      "infrastructure_reuse": [
+        "Conteúdo Pronto page and declared fulfillment",
+        "existing email delivery",
+        "IA na Prática",
+        "Vendas na Prática",
+        "40 sector guides",
+        "existing acquisition channels"
+      ],
+      "evidence": [
+        "internal-catalog",
+        "internal-conteudo-pronto",
+        "cetic-empresas-2024",
+        "sebrae-mei-marketing",
+        "mlabs-subscription",
+        "mlabs-service-benchmark"
+      ],
+      "scores": {
+        "demand_evidence": 5,
+        "recurring_frequency": 5,
+        "infrastructure_reuse": 5,
+        "delivery_economics": 4,
+        "retention_potential": 4,
+        "risk_inverse": 3
+      },
+      "total": 26
+    },
+    {
+      "rank": 2,
+      "id": "whatsapp-followup-routine",
+      "name": "Rotina de follow-up para WhatsApp",
+      "status": "hypothesis_only",
+      "target": "owner-operated businesses that sell by messaging and lose track of next actions",
+      "offer": "weekly follow-up board, prioritized next-action prompts and reusable message variants; no message sending, contact storage or WhatsApp API in the initial concept",
+      "differentiation": "lighter than a CRM and designed for one owner-operator; guidance rather than account integration",
+      "observed_price_brl_month": null,
+      "hypothetical_validation_price_brl_month": 49,
+      "price_status": "hypothesis_not_wtp",
+      "delivery_cost_estimate": {
+        "status": "not_quantified",
+        "qualitative": "low_for_templates_but_unknown_if_personalization_or_support_is_added",
+        "drivers": [
+          "template generation",
+          "support",
+          "quality review",
+          "future integration costs"
+        ],
+        "required_measurement": "prototype generation timing without customer data or WhatsApp integration"
+      },
+      "frequency": "daily or weekly",
+      "retention_hypothesis": "high_if_it becomes the next-action routine",
+      "cancellation_risk": "high: free CRM availability, manual upkeep, WhatsApp policy/integration expectations",
+      "infrastructure_reuse": [
+        "Vendas na Prática",
+        "WhatsApp guides",
+        "campaign C1-C3 materials"
+      ],
+      "evidence": [
+        "cetic-empresas-2024",
+        "sebrae-mei-marketing",
+        "rd-crm-pricing",
+        "rd-conversas-pricing"
+      ],
+      "scores": {
+        "demand_evidence": 5,
+        "recurring_frequency": 5,
+        "infrastructure_reuse": 4,
+        "delivery_economics": 4,
+        "retention_potential": 4,
+        "risk_inverse": 2
+      },
+      "total": 24
+    },
+    {
+      "rank": 3,
+      "id": "caixa-em-dia",
+      "name": "Caixa em Dia",
+      "status": "hypothesis_only",
+      "target": "MEIs and small businesses that need a short recurring cash routine but are not ready for a full financial SaaS",
+      "offer": "weekly cash checklist, monthly closing guide and interpretation prompts built around customer-entered aggregate totals; no bank access and no financial execution",
+      "differentiation": "short routine and educational interpretation between a free spreadsheet and a full financial system",
+      "observed_price_brl_month": null,
+      "hypothetical_validation_price_brl_month": 69,
+      "price_status": "hypothesis_not_wtp",
+      "delivery_cost_estimate": {
+        "status": "not_quantified",
+        "qualitative": "low_for_static_guidance; higher and privacy-sensitive if data ingestion or human review is introduced",
+        "drivers": [
+          "support",
+          "data handling",
+          "review",
+          "future automation"
+        ],
+        "required_measurement": "zero-data prototype and task-time measurement; no customer financial data"
+      },
+      "frequency": "daily entries, weekly review and monthly closing",
+      "retention_hypothesis": "medium_high_if the routine is sustained",
+      "cancellation_risk": "high: habit fatigue, free spreadsheets, full SaaS competition and trust requirements",
+      "infrastructure_reuse": [
+        "Lucro & Caixa",
+        "free pricing/margin/break-even calculators",
+        "financial education content"
+      ],
+      "evidence": [
+        "sebrae-cash-routine",
+        "nibo-pricing",
+        "granatum-pricing",
+        "internal-catalog"
+      ],
+      "scores": {
+        "demand_evidence": 4,
+        "recurring_frequency": 5,
+        "infrastructure_reuse": 4,
+        "delivery_economics": 3,
+        "retention_potential": 4,
+        "risk_inverse": 2
+      },
+      "total": 22
+    }
+  ],
+  "recommendation": {
+    "opportunity_id": "conteudo-pronto-setorial",
+    "reason": "it is the only shortlisted recurring offer already represented in the catalog and fulfillment description, has direct recurring communication demand signals, and requires validation rather than another product build",
+    "non_claims": [
+      "no subscriber count was accessed",
+      "R$197 is not proven willingness to pay",
+      "retention and delivery margin are unknown",
+      "market percentages do not predict ZEVANORY conversion"
+    ],
+    "demand_test_without_charge": {
+      "status": "proposal_only_owner_approval_required",
+      "audience": "qualified visitors already arriving at free sector guides or existing organic channels",
+      "treatment": "unpublished interest page or mockup describing the existing monthly deliverables and the R$197 hypothetical validation price",
+      "primary_metric": "qualified_interest_click_rate",
+      "secondary_metrics": [
+        "price_acceptance_choice",
+        "preferred_segment",
+        "stated_main_objection"
+      ],
+      "collection_rule": "aggregate counts only; no payment and no personal data required for the initial click test",
+      "minimum_exposure": 200,
+      "maximum_days": 28,
+      "success_criterion": "pre-register a threshold before launch; do not set it from observed results",
+      "stop_conditions": [
+        "any payment path becomes reachable",
+        "personal data becomes required",
+        "support or generation cost cannot be measured",
+        "content quality fails internal review",
+        "owner approval is absent"
+      ],
+      "forbidden": [
+        "charge",
+        "subscription creation",
+        "customer contact",
+        "production publication",
+        "promises of sales",
+        "discount manipulation"
+      ]
+    },
+    "next_decision": "only after demand and dry-run cost evidence, decide whether to keep, narrow by segment, reprice or reject"
+  }
+}
