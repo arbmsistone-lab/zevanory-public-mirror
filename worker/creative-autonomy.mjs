@@ -5,6 +5,8 @@ export const CREATIVE_AUTONOMY_FEED_KEY="zpc:creative-autonomy:feed:v1";
 export const CREATIVE_BANDIT_KEY="zpc:creative-autonomy:bandit:v1";
 const DAY=86400;
 const forbidden=/\b(gr[aá]tis|renda garantida|lucro garantido|ganhe dinheiro|resultado garantido|fature|enrique[cç]a|desconto de|economize \d+%)\b/i;
+// Plano Mestre v1.2 (F1, blog): o gate de qualidade do blog reaproveita este mesmo filtro, sem cópia.
+export const CREATIVE_FORBIDDEN_RE=forbidden;
 const personal=/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b|\b\+?\d[\d ().-]{7,}\d\b|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/i;
 const metaRisk=/\b(voc[eê] sofre|voc[eê] tem|sua doen[cç]a|sua d[ií]vida|antes e depois|cura|milagre)\b/i;
 const n=v=>Math.max(0,Math.min(100,Math.round(Number(v)||0)));
