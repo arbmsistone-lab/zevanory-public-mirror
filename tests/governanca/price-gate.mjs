@@ -19,6 +19,16 @@
 //   T4 VALOR_DA_MARCA     oferta "por/custa/preço R$ N" com a marca ZEVANORY por perto e sem produto: N tem de ser de kit.
 //   T5 DESCONTO           cupom/desconto/promoção/"% off"/"por cento"/"N%" na mesma frase de um produto (ou em página de
 //                         produto), fora de arquivo reservado.
+//   T6 COMISSAO_PCT       percentual de AFILIADO (F0 item 4), em QUALQUER arquivo de produção (reservado ou não), inclusive
+//                         meta/og/twitter: "N%", "N %", "N por cento", número por extenso ("cinquenta por cento") e "metade",
+//                         com ou sem "até"/"em comissão", numa frase com contexto de afiliado (afiliad*, indicação/indicad*,
+//                         link de divulgação, venda indicada, programa de afiliados; em página de afiliado reservada também
+//                         basta "comiss"; NC-1014-05: também ganho de quem divulga = verbo "receba/ganhe/ganha/recebe/fica com"
+//                         ou "comissão de N%"/"N% de comissão", com divulg/parceir/hotmart na frase), tem de ser uma das taxas
+//                         de data/affiliates.json. Precedência (NC-1014-06): página de afiliado ou contexto explícito (afiliad*,
+//                         indicação, indique, ...) reprova qualquer outro N%, sem exclusão de taxa; só no contexto fraco a taxa
+//                         de plataforma/pagamento/desconto a até FEE_WINDOW caracteres do número exclui ("A Hotmart cobra 9,9%"),
+//                         salvo verbo de ganho colado ao número ("Receba 50% de comissão da Hotmart"). "N% off" nunca conta.
 //   C1 CAMPO_DE_PRECO     campo price/preco/valor/amount (inclusive aninhado: {sku, offer:{price:N}}) em objeto cujo
 //                         produto (o próprio objeto ou um ancestral) é conhecido: = tabela (centavos = x100).
 //   C2 MAPA_DE_PRECO      "<sku|slug>": N | "N" | ["nome", N], par ["<sku|slug>", N] (Map/array de pares).
@@ -37,6 +47,18 @@ export const WINDOW_BEFORE = 200;
 export const WINDOW_BEFORE_HTML = 700;
 const SAVINGS_CTX = /(economi|separad|custaria|avulso|somad|em vez de|comprar os|\bcompletos\b)/i;
 const COMMISSION_CTX = /comiss/i;
+// T6 (ver cabeçalho). NUM_WORDS é declarado abaixo; PCT_RX é montado sob demanda.
+export const AFFILIATE_CTX = /afiliad|indica[cç](?:[aã]o|[oõ]es)|\bindicad[ao]s?\b|\bindique\b|link\s+de\s+divulga|venda\s+indicada|programa\s+de\s+(?:afiliad|parceir)|\?ref=/i;
+const PCT_NOT_COMMISSION_AFTER = /^\s*(?:off\b|de\s+desconto|desconto|em\s+desconto)/i;
+// NC-1014-05: ganho de quem divulga = verbo de ganho, "comissão de N%" ou "N% de/em comissão", com divulg/parceir/hotmart na frase
+export const SPREAD_CTX = /divulg|parceir|hotmart/i;
+export const EARN_VERB = /\b(?:receba|recebe|recebem|ganhe|ganha|ganham|fica\s+com|ficam\s+com)\b/i;
+// taxa de plataforma/pagamento: só a até FEE_WINDOW caracteres do número (nunca a frase inteira)
+export const FEE_WINDOW = 25;
+// NC-1014-06: verbo de ganho colado ao número (ou a "comissão de N%"): a taxa ao lado não anula o contexto fraco
+export const EARN_GLUED_BEFORE = /\b(?:receba|recebe|recebem|ganhe|ganha|ganham)\s+(?:at[eé]\s+)?(?:(?:uma\s+)?comiss[aã]o\s+de\s+(?:at[eé]\s+)?)?$/i;
+export const STAY_WITH_BEFORE = /\b(?:fica|ficam)\s+com\s+(?:at[eé]\s+)?$/i;
+export const FEE_NEAR = /cobra|taxa|plataforma|por\s+transa[cç]|marketplace|maquininha|cart[aã]o|\bpix\b|boleto|gateway|adquirente|desconto|cupom|da\s+hotmart|hotmart\s+(?:fica\s+com|recebe|ret[eé]m|leva)\b/i;
 const BRAND = /\bZEVANORY\b/;
 const OFFER_CTX = /\b(por|custa|pre[cç]o|valor|investimento|apenas|s[oó])\b[\s:(]*((R\$|BRL)\s*)?$/i;
 const DISCOUNT = /\b(cupom|cupons|cupon|coupon|coupons|descontos?|promo[cç](?:[aã]o|[oõ]es)|black friday|liquida[cç][aã]o|por cento)\b|\d+(?:,\d+)?\s*%(?:\s*off\b)?/gi;
@@ -119,7 +141,7 @@ export const normalize = (text) => decode(text);
 const INLINE = /^(a|abbr|b|bdi|bdo|cite|code|data|del|dfn|em|font|i|ins|kbd|mark|q|s|samp|small|span|strong|sub|sup|time|u|var|wbr)$/i;
 // HTML -> { text (só nós de texto), attrs [trechos de atributo com dinheiro], jsonld [objetos], scripts [código] }
 export function htmlParts(html) {
-  const jsonld = [], scripts = [], attrs = [];
+  const jsonld = [], scripts = [], attrs = [], pctAttrs = [];
   let h = String(html).replace(/<!--[\s\S]*?-->/g, " ");
   h = h.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (_, a, body) => {
     if (/application\/ld\+json/i.test(a)) { try { jsonld.push(JSON.parse(decode(body))); } catch { jsonld.push({ __invalido__: body.slice(0, 80) }); } }
@@ -129,9 +151,10 @@ export function htmlParts(html) {
   h = h.replace(/<\/?([A-Za-z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/g, (_, n, a) => {
     const vals = [...a.matchAll(/=\s*(?:"([^"]*)"|'([^']*)')/g)].map((m) => decode(m[1] ?? m[2]));
     if (vals.some((v) => /R\$|BRL|\breais\b/i.test(v))) attrs.push(vals.filter((v) => !/^(https?:|mailto:|\/|#|data:)/i.test(v)).join(" · "));
+    for (const v of vals) if (/%|por\s+cento|metade/i.test(v) && !/^(https?:|mailto:|\/|#|data:)/i.test(v)) pctAttrs.push(v);
     return INLINE.test(n) ? "" : "\n";
   });
-  return { text: decode(h), attrs, jsonld, scripts };
+  return { text: decode(h), attrs, jsonld, scripts, pctAttrs };
 }
 
 export function loadCanon(root) {
@@ -264,6 +287,39 @@ const push = (found, file, regra, produto, valor, text, at, extra = {}) =>
   found.push({ file, regra, produto, valor, linha: lineOf(text, at), trecho: text.slice(Math.max(0, at - 70), at + 40).replace(/\s+/g, " "), ...extra });
 function lineOf(text, at) { let n = 1; for (let i = 0; i < at && i < text.length; i++) if (text.charCodeAt(i) === 10) n++; return n; }
 
+// T6: percentuais (algarismo, extenso, "metade") com contexto de afiliado na mesma frase
+let PCT_RX = null;
+function pctRegex() {
+  if (PCT_RX) return PCT_RX;
+  const w = Object.keys(NUM_WORDS).filter((k) => NUM_WORDS[k] < 1000).sort((a, b) => b.length - a.length).join("|");
+  PCT_RX = new RegExp(`(?<![\\d.,])(\\d{1,3}(?:[.,]\\d+)?)\\s*(?:%|por\\s+cento\\b)|(?<![\\wÀ-ÿ])((?:${w})(?:\\s+e\\s+(?:${w}))*)\\s+por\\s+cento\\b|(?<![\\wÀ-ÿ])(metade)(?![\\wÀ-ÿ])`, "giu");
+  return PCT_RX;
+}
+export function commissionPctIn(file, text, canon, found) {
+  const affPage = canon.affiliatePages.has(file);
+  for (const m of text.matchAll(pctRegex())) {
+    const pct = m[1] !== undefined ? Number(m[1].replace(",", ".")) : m[2] !== undefined ? parseExtenso(m[2]) : 50;
+    if (pct === null || canon.commissionPcts.includes(pct)) continue;
+    const ini = m.index, fim = m.index + m[0].length;
+    const antes = text.slice(Math.max(0, ini - FEE_WINDOW), ini), depois = text.slice(fim, fim + FEE_WINDOW);
+    if (PCT_NOT_COMMISSION_AFTER.test(depois)) continue; // "N% off" / "N% de desconto": o número é desconto, não comissão
+    const [s, e] = sentence(text, ini, fim);
+    const frase = text.slice(s, e);
+    if (m[3] !== undefined && !COMMISSION_CTX.test(frase)) continue; // "metade" só como fração de comissão
+    // 1) página de afiliado ou contexto explícito: a exclusão de taxa NÃO se aplica
+    const explicito = AFFILIATE_CTX.test(frase) || (affPage && COMMISSION_CTX.test(frase));
+    if (!explicito) {
+      // 2) contexto fraco: ganho de quem divulga com divulg/parceir/hotmart; taxa a até FEE_WINDOW do número exclui,
+      //    salvo verbo de ganho colado ao número ("receba 50%", "ganhe comissão de 50%", "fica com 50% para você")
+      const ganho = SPREAD_CTX.test(frase) && (EARN_VERB.test(frase) || /comiss[aã]o\s+(?:de\s+)?(?:at[eé]\s+)?$/i.test(antes) || /^\s*(?:de|em)\s+comiss/i.test(depois));
+      if (!ganho) continue;
+      const colado = EARN_GLUED_BEFORE.test(antes) || (STAY_WITH_BEFORE.test(antes) && /voc[eê]/i.test(depois));
+      if (!colado && (FEE_NEAR.test(antes) || FEE_NEAR.test(depois))) continue;
+    }
+    push(found, file, "COMISSAO_PCT", "afiliado", pct, text, ini);
+  }
+}
+
 // T1/T2/T4/T5 sobre um trecho de texto
 function scanProse(file, text, canon, mr, { page, html, isReserved }, found) {
   const ms = mentions(text, mr);
@@ -288,6 +344,7 @@ function scanProse(file, text, canon, mr, { page, html, isReserved }, found) {
     if (!m.bare && OFFER_CTX.test(text.slice(Math.max(0, m.at - 30), m.at)) && BRAND.test(text.slice(Math.max(0, m.at - WINDOW_BEFORE), m.end + 80)) && !canon.kitUnion.has(m.value))
       push(found, file, "VALOR_DA_MARCA", "marca", m.value, text, m.at);
   }
+  commissionPctIn(file, text, canon, found); // T6 (inclusive em página de afiliado reservada)
   if (isReserved) return;
   if (DISCOUNT_EXEMPT.some((rx) => rx.test(file))) return;
   for (const d of text.matchAll(DISCOUNT)) {
@@ -451,6 +508,7 @@ export function scanText(file, rawText, canon, mr = mentionRegex(canon)) {
     const parts = htmlParts(rawText);
     scanProse(file, parts.text, canon, mr, { page, html: true, isReserved }, found);
     for (const a of parts.attrs) scanProse(file, a, canon, mr, { page, html: true, isReserved }, found);
+    for (const a of parts.pctAttrs) commissionPctIn(file, a, canon, found); // T6 em meta/og/twitter/aria/title
     for (const j of parts.jsonld) {
       scanJson(file, j, canon, mr, { page, regra: "JSON_LD" }, found);
       // textos do JSON-LD (FAQ, descrição) também são prosa da página

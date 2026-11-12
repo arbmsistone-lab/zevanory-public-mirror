@@ -8,6 +8,7 @@ tests/abandono-hotmart.test.mjs 94
 tests/acquisition-engine.test.mjs 26
 tests/activity-ledger.test.mjs 7
 tests/affiliate-program.test.mjs 4
+tests/affiliate-recruitment.test.mjs 4
 tests/atendimento-drain-dispatch.test.mjs 3
 tests/atendimento-telegram.test.mjs 6
 tests/atendimento.test.mjs 15
