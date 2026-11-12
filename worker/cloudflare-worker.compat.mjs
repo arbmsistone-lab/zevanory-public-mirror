@@ -1,3 +1,5 @@
+import {runHotmartPostSale,handleHotmartPostSaleOptOut,HOTMART_POSTSALE_OPTOUT} from "./hotmart-post-sale.mjs";
+import { HOTMART_TEST_PATH, handleHotmartTestWebhook } from "./hotmart-test-webhook.mjs";
 import { comDiario } from "./diario-sombra.mjs";
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { retiredPublicAssetResponse } from "./retired-public-assets.mjs";
@@ -45,6 +47,7 @@ import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
+import { handleOwnerChat, runOwnerChatSentinel, runOwnerChatRetention, isOwnerChatPath } from "./owner-chat.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
@@ -118,6 +121,8 @@ const wrapped = {
     // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
     let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
+    if(new URL(request.url).pathname===HOTMART_POSTSALE_OPTOUT)return handleHotmartPostSaleOptOut(request,normalized);
+    if(new URL(request.url).pathname===HOTMART_TEST_PATH)return handleHotmartTestWebhook(request,normalized);
     // R138: isolated drainer before sales lookup or other application subrequests.
     if(new URL(request.url).pathname===ATENDIMENTO_DRAIN_PATH)return handleAtendimentoDrainRequest(request,normalized,{sqlFactory:whatsappProofDatabase});
     // Lembrete de abandono Hotmart: dreno e retenção em invocação própria (SELF, token HMAC de minuto), antes de
@@ -125,6 +130,8 @@ const wrapped = {
     { const p=new URL(request.url).pathname;
       if(p===ABANDONO_DRAIN_PATH)return handleAbandonmentDrainRequest(request,normalized);
       if(p===ABANDONO_RETENTION_PATH)return handleAbandonmentRetentionRequest(request,normalized); }
+    // Chat do Proprietário: autenticação ANTES de qualquer KV/banco (NC-1030-07), antes do interruptor de vendas.
+    if (isOwnerChatPath(new URL(request.url).pathname)) return handleOwnerChat(request, normalized, { isAdminAuthorized, sqlFactory: whatsappProofDatabase });
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     // R139: chat stays OFF without SITE_CHAT_ENABLED=true; internal SELF drain R138 runs before this.
@@ -736,6 +743,13 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
       } catch {
         console.error("acquisition_cycle_failed");
       }
+      // Sentinela do Chat do Proprietário: logo depois do motor, com os resultados do ciclo.
+      try {
+        const chat=await runOwnerChatSentinel(normalized,new Date(),{sqlFactory:whatsappProofDatabase});
+        console.info("owner_chat_sentinel",JSON.stringify(chat));
+      } catch {
+        console.error("owner_chat_sentinel_failed");
+      }
     } else {
     try {
       const brand=await syncBrandProfiles(normalized);
@@ -833,6 +847,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   resetSalesSwitchCache();
   const salesSwitchState = await readSalesSwitch(normalized);
   const salesOpen = applySalesSwitch(salesSwitchState);
+  if(controller?.cron==="0 * * * *")await runHotmartPostSale(normalized,{cron:controller.cron,sqlFactory:whatsappProofDatabase}).then(out=>console.info("hotmart_post_sale_run",JSON.stringify(out))).catch(()=>console.error("hotmart_post_sale_failed"));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
   tasks.push(recordLaunchEpoch(normalized, salesSwitchState)
     .then(() => refreshFinancialProofSnapshot(normalized, { sqlFactory: whatsappProofDatabase }))
@@ -858,6 +873,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
   // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.
   if (new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours() === 6) tasks.push(runSiteChatRetention(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("site_chat_retention", JSON.stringify(out))).catch(() => console.error("site_chat_retention_failed")));
+  // Retenção do Chat do Proprietário (180 dias de mensagens, 60 de cota da IA): uma vez por dia, às 06 UTC.
+  if (new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours() === 6) tasks.push(runOwnerChatRetention(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => { mark("owner_chat_retention", out?.ok !== false, out?.code); console.info("owner_chat_retention", JSON.stringify(out)); }).catch(() => { mark("owner_chat_retention", false, "exception"); console.error("owner_chat_retention_failed"); }));
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);

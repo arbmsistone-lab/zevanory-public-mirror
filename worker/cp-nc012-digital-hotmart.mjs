@@ -1,3 +1,4 @@
+import {enqueueHotmartPostSaleSecondary} from "./hotmart-post-sale.mjs";
 // NC-012 digital-products Hotmart ingestion (NOT Conteudo Pronto).
 // Separate sales/activities ledger M3. Never writes the zpc:cp:* namespace.
 import {recordHotmartSale} from "./sales-ledger.mjs";
@@ -43,5 +44,6 @@ export async function handleDigitalHotmartNc012(request,env,{now=Date.now()}={})
  // P20 diário (sombra, docs/p20/diario-d1.md): best-effort, nunca bloqueia nem lança.
  if(ACTIVE.has(event))diarioSombra(env,null,()=>eventoEntrega({provider:"hotmart",transaction:txn,channel:"store",status:"hotmart_approved"}));
  if(STOP.has(event))diarioSombra(env,null,()=>eventoReembolso({provider:"hotmart",transaction:txn,stage:"hotmart_"+event.toLowerCase()}));
+ await enqueueHotmartPostSaleSecondary(request,env,body,{now});
  return json(200,{ok:true,scope:"digital_product",duplicate:result?.reason==="duplicate"});
 }

@@ -8,6 +8,7 @@ tests/abandono-hotmart.test.mjs 94
 tests/acquisition-engine.test.mjs 26
 tests/activity-ledger.test.mjs 7
 tests/affiliate-program.test.mjs 4
+tests/affiliate-recruitment.test.mjs 4
 tests/atendimento-drain-dispatch.test.mjs 3
 tests/atendimento-telegram.test.mjs 6
 tests/atendimento.test.mjs 15
@@ -18,6 +19,7 @@ tests/autonomy-inventory.test.mjs 8
 tests/b0-baseline.test.mjs 36
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
+tests/blog-autopublicacao.test.mjs 10
 tests/blog-editorial-uniqueness.test.mjs 1
 tests/blog-editorial.test.mjs 6
 tests/blog-layout.test.mjs 5
@@ -47,10 +49,23 @@ tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/engine-dispatcher.test.mjs 4
 tests/experiments.test.mjs 5
+tests/f1-blog-kv.test.mjs 5
 tests/f1-bluesky-kv.test.mjs 11
 tests/f1-meta-identity.test.mjs 10
+tests/f1b-blog-recovery.test.mjs 7
 tests/f1b-bluesky-recovery.test.mjs 5
 tests/f1b-shorts-corruption.test.mjs 4
+tests/f2-hotmart-post-sale.test.mjs 30
+tests/f2-hotmart-restricted.test.mjs 16
+tests/f2-hotmart-test-route.test.mjs 11
+tests/f2-indexnow-publication.test.mjs 12
+tests/f2b-hotmart-secondary.test.mjs 12
+tests/f2b-indexnow-auth.test.mjs 12
+tests/f2c-hotmart-provider-recovery.test.mjs 11
+tests/f2c-indexnow-continuity.test.mjs 10
+tests/f2d-hotmart-run-status.test.mjs 10
+tests/f2d-indexnow-single-emitter.test.mjs 5
+tests/f2e-hotmart-status-contract.test.mjs 7
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5
@@ -86,6 +101,7 @@ tests/operator-token-transition.test.mjs 8
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
 tests/order7-whatsapp-commercial.test.mjs 11
 tests/owner-alert-policy.test.mjs 2
+tests/owner-chat.test.mjs 27
 tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
 tests/p03-pages-audit.test.mjs 10
@@ -123,7 +139,6 @@ tests/production-staging-health.test.mjs 3
 tests/public-html-internal-markers.test.mjs 2
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 12
-tests/r117-blog-owner-gate.test.mjs 5
 tests/r120-dec20-chat.test.mjs 4
 tests/r120-public-chat.test.mjs 4
 tests/r120-turnstile.test.mjs 4
@@ -166,6 +181,7 @@ tests/telegram-inapp-browser.test.mjs 4
 tests/trava-vendas-gate-paths.test.mjs 3
 tests/trust-chain-no-false-green.test.mjs 4
 tests/trust-projection-canonical.test.mjs 4
+tests/vigia.test.mjs 14
 tests/voice-eval.test.mjs 6
 tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6

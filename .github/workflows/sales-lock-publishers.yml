@@ -18,6 +18,14 @@ on:
       - "scripts/channels/short-crosspost.mjs"
       - "tests/sales-lock-publishers.test.mjs"
       - "scripts/ci/mutants_sales_lock_publishers.mjs"
+      # Blog com publicação automática e gate de qualidade (Plano Mestre v1.2 §9; inclui a trava de vendas do blog).
+      - "worker/blog-quality-gate.mjs"
+      - "worker/blog-editorial.mjs"
+      - "worker/multichannel-autonomy.mjs"
+      - "worker/creative-autonomy.mjs"
+      - "data/fontes-permitidas.json"
+      - "tests/blog-autopublicacao.test.mjs"
+      - "scripts/ci/mutants_blog_gate.mjs"
       - ".github/workflows/sales-lock-publishers.yml"
 permissions:
   contents: read
@@ -27,7 +35,7 @@ concurrency:
 jobs:
   sales-lock:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,4 +55,17 @@ jobs:
           grep -qx 'BASELINE PASS tests=9' mut.txt
           grep -qx 'MUTANTS PASS killed=34/34' mut.txt
           test "$(grep -c ' KILLED by=' mut.txt)" = "34"
+          git diff --exit-code -- worker scripts tests
+      - name: Blog com gate de qualidade (exatamente 10 testes)
+        run: |
+          set -euo pipefail
+          node --test tests/blog-autopublicacao.test.mjs < /dev/null | tee b.txt
+          grep -qx '# tests 10' b.txt && grep -qx '# pass 10' b.txt && grep -qx '# fail 0' b.txt && grep -qx '# skipped 0' b.txt
+      - name: Mutantes do blog (exatamente 37 KILLED)
+        run: |
+          set -euo pipefail
+          node scripts/ci/mutants_blog_gate.mjs < /dev/null | tee bmut.txt
+          grep -qx 'BASELINE PASS tests=10' bmut.txt
+          grep -qx 'MUTANTS PASS killed=37/37' bmut.txt
+          test "$(grep -c ' KILLED by=' bmut.txt)" = "37"
           git diff --exit-code -- worker scripts tests
