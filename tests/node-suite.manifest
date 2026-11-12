@@ -85,7 +85,7 @@ tests/operator-token-transition.test.mjs 8
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
 tests/order7-whatsapp-commercial.test.mjs 11
 tests/owner-alert-policy.test.mjs 2
-tests/owner-chat.test.mjs 16
+tests/owner-chat.test.mjs 21
 tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
 tests/p03-pages-audit.test.mjs 10

@@ -67,7 +67,10 @@ async function insertMessage(sql, { from, kind, text, action = null, dedupe = nu
     on conflict (dedupe_key) do nothing returning ${ROW}`, [from, kind, String(text).slice(0, 4000), action, ACTION_TTL_SECONDS, dedupe]);
   return rows[0] ? toMessage(rows[0]) : null;
 }
-async function bumpVersion(kv) { try { await kv?.put?.(OWNER_CHAT_VERSION_KEY, String(Date.now()), { expirationTtl: 30 * 86400 }); } catch {} }
+async function bumpVersion(kv) { try { await kv?.put?.(OWNER_CHAT_VERSION_KEY, Date.now() + "-" + crypto.randomUUID().slice(0, 8), { expirationTtl: 30 * 86400 }); return true; } catch { return false; } }
+// O marcador KV é só otimização (NC-G6-1030-08): a página refaz a leitura completa no PostgreSQL pelo menos a cada
+// FEED_MAX_STALE_MS, então falha de atualização, colisão ou marcador velho nunca escondem mensagem por mais que isso.
+export const FEED_MAX_STALE_MS = 30000;
 
 // ---------- Dados reais ----------
 export function validSalesSummary(v) {
@@ -106,7 +109,8 @@ export function findStoppedChannels(facts) {
   for (const [channel, h] of Object.entries(EXPECTED_HOUR)) {
     if (OWNER_DISABLED_CHANNELS.includes(channel) || facts.hour < h + TOLERANCE_H) continue;
     const row = facts.snap.today.find((r) => r?.channel === channel);
-    if (row?.status === "publicado") continue;
+    // A agenda é a do próprio motor (NC-G6-1030-10): dia sem publicação prevista chega como "fora_da_agenda".
+    if (["publicado", "fora_da_agenda", "desligado"].includes(row?.status)) continue;
     const reason = facts.pause === "pausada" ? "pausado" : row?.status === "aguardando credencial" ? "sem_credencial" : String(row?.error || row?.status || "sem_registro").replace(/[^a-z0-9_ ]/gi, "").slice(0, 60) || "sem_registro";
     const why = reason === "pausado" ? "A autopublicação está PAUSADA" : reason === "sem_credencial" ? "A credencial do canal está ausente" : reason === "sem_registro" || reason === "sem dados" ? "O motor não registrou nenhuma execução hoje" : `Motivo: ${reason}`;
     out.push({ channel, reason, text: `${channel}: não publicou hoje (esperado às ${h}h). ${why}.` });
@@ -196,9 +200,20 @@ export async function runOwnerChatSentinel(env, now = new Date(), { sqlFactory, 
   for (const m of todo) if (await insertMessage(sql, m)) added++;
   try { await kv.put(hintKey, JSON.stringify([...hint, ...todo.map((m) => m.dedupe)].slice(-50)), { expirationTtl: 2 * 86400 }); } catch {}
   if (added) await bumpVersion(kv);
-  // Retenção: 180 dias, uma vez por dia (madrugada).
-  if (facts.hour === 3) await sql.query(`/*owner-chat:retention*/ delete from zevanory_owner_chat_messages where created_at < now() - interval '180 days'`, []).catch(() => null);
   return { ok: true, alerts: added };
+}
+
+// Retenção diária identificável e independente de novidades (NC-G6-1030-09). Chamada pelo cron horário às 06 UTC;
+// falha é registrada e a próxima execução tenta de novo (DELETE é idempotente).
+export async function runOwnerChatRetention(env, { sqlFactory } = {}) {
+  if (!sqlFactory || !env.DATABASE_URL) return { ok: false, code: "not_configured" };
+  try {
+    const sql = sqlFactory(env.DATABASE_URL);
+    await ensureOwnerChatSchema(sql);
+    const m = await sql.query(`/*owner-chat:retention*/ with d as (delete from zevanory_owner_chat_messages where created_at < now() - interval '180 days' returning 1) select count(*)::int as n from d`, []);
+    const a = await sql.query(`/*owner-chat:retention-ai*/ with d as (delete from zevanory_owner_chat_ai_usage where day < current_date - 60 returning 1) select count(*)::int as n from d`, []);
+    return { ok: true, messages: Number(m[0]?.n || 0), ai_days: Number(a[0]?.n || 0) };
+  } catch { return { ok: false, code: "retention_failed" }; }
 }
 
 // ---------- HTTP ----------
@@ -256,7 +271,9 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
       }
       const def = ACTIONS[claimed[0].action_type];
       let ok = false;
-      if (def) { try { await kv.put(CREATIVE_AUTOPUBLISH_PAUSE_KEY, def.value); ok = (await kv.get(CREATIVE_AUTOPUBLISH_PAUSE_KEY)) === def.value; } catch {} }
+      // Sucesso = o PUT foi aceito. Sem releitura imediata: o KV é eventualmente consistente e uma leitura defasada
+      // faria uma ordem executada aparecer como falha.
+      if (def) { try { await kv.put(CREATIVE_AUTOPUBLISH_PAUSE_KEY, def.value); ok = true; } catch {} }
       await sql.query(`/*owner-chat:settle*/ update zevanory_owner_chat_messages set action_state = $2 where id = $1::bigint and action_state = 'executando'`, [id, ok ? "executado" : "falhou"]);
       const note = await insertMessage(sql, { from: "zevanory", kind: "sistema", text: ok ? "✅ " + def.done : "❌ Não consegui executar a ordem. Nada foi repetido. Peça de novo se quiser tentar outra vez." });
       await bumpVersion(kv);
@@ -286,6 +303,6 @@ if(m.action&&m.action.state==='proposta'&&Date.now()<m.action.expiresAt){const k
 const t=document.createElement('span');t.className='t';t.textContent=new Date(m.at).toLocaleString('pt-BR');d.appendChild(t);return d;}
 function add(m){if(!m||nodes.has(m.id))return;const d=render(m);d.dataset.id=m.id;nodes.set(m.id,d);
 const after=[...log.children].find(x=>BigInt(x.dataset.id)>BigInt(m.id));log.insertBefore(d,after||null);log.scrollTop=log.scrollHeight;}
-async function poll(){if(document.hidden)return;try{const r=await fetch('/api/admin/owner-chat/feed?v='+encodeURIComponent(ver));const j=await r.json();if(r.ok){if(!j.same)(j.messages||[]).forEach(add);if(j.v)ver=j.v;st.textContent='ao vivo';}else st.textContent='instável ('+(j.error||r.status)+')';}catch{st.textContent='sem conexão';}}
+let full=0;async function poll(){if(document.hidden)return;const force=Date.now()-full>=${FEED_MAX_STALE_MS};try{const r=await fetch('/api/admin/owner-chat/feed'+(force?'':'?v='+encodeURIComponent(ver)));if(force)full=Date.now();const j=await r.json();if(r.ok){if(!j.same)(j.messages||[]).forEach(add);if(j.v)ver=j.v;st.textContent='ao vivo';}else st.textContent='instável ('+(j.error||r.status)+')';}catch{st.textContent='sem conexão';}}
 document.getElementById('f').onsubmit=async e=>{e.preventDefault();const text=q.value.trim();if(!text)return;b.disabled=true;q.value='';try{const r=await fetch('/api/admin/owner-chat/message',{method:'POST',headers:H,body:JSON.stringify({text})});const j=await r.json().catch(()=>({}));(j.messages||[]).forEach(add);if(!r.ok)st.textContent='erro ('+(j.error||r.status)+')';}finally{b.disabled=false;q.focus();}};
 document.addEventListener('visibilitychange',poll);poll();setInterval(poll,5000);})();</script></body></html>`;

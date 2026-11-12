@@ -34,7 +34,8 @@ function fakeSql() {
     if (tag === "action-state") { const r = rows.find((x) => String(x.id) === p[0] && x.action_type); return r ? [{ action_state: r.action_state, live: r.action_expires_at > clock }] : []; }
     if (tag === "settle") { const r = rows.find((x) => String(x.id) === p[0] && x.action_state === "executando"); if (r) r.action_state = p[1]; return []; }
     if (tag === "ai-reserve") { const n = ai.get(p[0]) || 0; if (n >= p[1]) return []; ai.set(p[0], n + 1); return [{ n: n + 1 }]; }
-    if (tag === "retention") return [];
+    if (tag === "retention") { const before = rows.length; for (let i = rows.length - 1; i >= 0; i--) if (rows[i].created_at < clock - 180 * 86400000) rows.splice(i, 1); return [{ n: before - rows.length }]; }
+    if (tag === "retention-ai") { let n = 0; for (const d of [...ai.keys()]) if (Date.parse(d) < clock - 60 * 86400000) { ai.delete(d); n++; } return [{ n }]; }
     throw new Error("consulta desconhecida: " + text.slice(0, 60));
   } };
 }
@@ -192,6 +193,56 @@ test("intenções básicas", () => {
   assert.equal(chat.intentOf("status"), "status"); assert.equal(chat.intentOf("bom dia"), "livre");
 });
 
+test("NC-G6-1030-08: falha ao atualizar o marcador não esconde mensagem além do prazo declarado", async () => {
+  const kv = memKv({ [PAUSE]: "0" });
+  const h = harness({ kv });
+  const v0 = (await (await h.call(req("/api/admin/owner-chat/feed"))).json()).v;
+  kv.put = async (k, v) => { if (k === chat.OWNER_CHAT_VERSION_KEY) throw new Error("kv"); kv.data.set(k, String(v)); };
+  const r = await h.call(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "status" } }));
+  assert.equal(r.status, 200);
+  // com o marcador antigo, o atalho pode responder "same"; a leitura completa (sem v) SEMPRE vai ao banco:
+  const full = await (await h.call(req("/api/admin/owner-chat/feed"))).json();
+  assert.equal(full.messages.length, 2);
+  assert.ok(chat.FEED_MAX_STALE_MS <= 30000);
+  const page = await (await h.call(req("/api/admin/owner-chat/app"))).text();
+  assert.match(page, new RegExp("Date.now\\(\\)-full>=" + chat.FEED_MAX_STALE_MS));
+  void v0;
+});
+
+test("NC-G6-1030-08: versões são únicas mesmo no mesmo milissegundo", async () => {
+  const kv = memKv(); const h = harness({ kv }); const seen = new Set();
+  for (let i = 0; i < 5; i++) { await send(h, "ajuda"); seen.add(kv.data.get(chat.OWNER_CHAT_VERSION_KEY)); }
+  assert.equal(seen.size, 5);
+});
+
+test("NC-G6-1030-09: retenção roda sem alerta nem venda e apaga só o vencido", async () => {
+  const sql = fakeSql();
+  sql.rows.push({ id: 1, created_at: Date.parse("2026-01-01T00:00:00Z"), sender: "zevanory", kind: "chat", body: "velha", action_type: null, action_state: null, dedupe_key: null });
+  sql.rows.push({ id: 2, created_at: Date.parse("2026-11-12T22:00:00Z"), sender: "zevanory", kind: "chat", body: "nova", action_type: null, action_state: null, dedupe_key: null });
+  const out = await chat.runOwnerChatRetention({ DATABASE_URL: "x" }, { sqlFactory: () => sql });
+  assert.deepEqual([out.ok, out.messages], [true, 1]); assert.deepEqual(sql.rows.map((r) => r.body), ["nova"]);
+  const fail = await chat.runOwnerChatRetention({ DATABASE_URL: "x" }, { sqlFactory: () => ({ query: async () => { throw new Error("db"); } }) });
+  assert.deepEqual(fail, { ok: false, code: "retention_failed" });
+  const src = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
+  assert.match(src, /getUTCHours\(\) === 6\) tasks\.push\(runOwnerChatRetention\(/);
+});
+
+test("NC-G6-1030-10: blog fora da agenda não é CANAL PARADO; dia previsto atrasado é", () => {
+  const f = (status) => chat.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "ativa", snap: { today: [{ channel: "blog", status }, { channel: "bluesky", status: "publicado" }] } });
+  assert.deepEqual(f("fora_da_agenda"), []);
+  assert.equal(f("erro")[0].channel, "blog");
+  assert.equal(f("rascunho")[0].channel, "blog");
+});
+
+test("ordem aceita pelo KV aparece como executada, mesmo que a releitura imediata venha defasada", async () => {
+  const kv = memKv({ [PAUSE]: "1" });
+  const realGet = kv.get; kv.get = async (k) => (k === PAUSE ? "1" : realGet(k)); // leitura defasada
+  const h = harness({ kv });
+  const p = (await send(h, "retomar"))[1];
+  const r = await h.call(req("/api/admin/owner-chat/action", { method: "POST", body: { id: p.id } }));
+  assert.equal(r.status, 200); assert.equal(kv.data.get(PAUSE), "0");
+});
+
 // Mutantes: cada um reverte uma garantia e precisa ser detectado.
 const SRC = fileURLToPath(new URL("../worker/owner-chat.mjs", import.meta.url));
 async function mutant(name, from, to, check) {
@@ -232,6 +283,8 @@ test("mutantes morrem", async () => {
     const t = (await (await h.call(req("/api/admin/owner-chat/message", { method: "POST", body: { text: "vendas" } }))).json()).messages[1].text;
     return !/NaN/.test(t);
   });
+  await mutant("agenda-ignorada", "if ([\"publicado\", \"fora_da_agenda\", \"desligado\"].includes(row?.status)) continue;", "if (row?.status === \"publicado\") continue;", async (m) =>
+    m.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "ativa", snap: { today: [{ channel: "blog", status: "fora_da_agenda" }, { channel: "bluesky", status: "publicado" }] } }).length === 0);
   await mutant("pausa-sem-motivo", "facts.pause === \"pausada\" ? \"pausado\"", "false ? \"pausado\"", async (m) =>
     /PAUSADA/.test(m.findStoppedChannels({ day: "2026-11-12", hour: 20, pause: "pausada", snap: { today: [{ channel: "bluesky", status: "sem dados" }] } }).find((s) => s.channel === "bluesky")?.text || ""));
 });

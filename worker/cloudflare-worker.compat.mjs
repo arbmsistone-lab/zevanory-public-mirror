@@ -45,7 +45,7 @@ import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
-import { handleOwnerChat, runOwnerChatSentinel, isOwnerChatPath } from "./owner-chat.mjs";
+import { handleOwnerChat, runOwnerChatSentinel, runOwnerChatRetention, isOwnerChatPath } from "./owner-chat.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
@@ -868,6 +868,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
   // Retenção do chat do site (30 dias / 180 dias após encerramento / contadores 2 dias): uma vez por dia, às 06 UTC.
   if (new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours() === 6) tasks.push(runSiteChatRetention(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("site_chat_retention", JSON.stringify(out))).catch(() => console.error("site_chat_retention_failed")));
+  // Retenção do Chat do Proprietário (180 dias de mensagens, 60 de cota da IA): uma vez por dia, às 06 UTC.
+  if (new Date(Number(controller?.scheduledTime) || Date.now()).getUTCHours() === 6) tasks.push(runOwnerChatRetention(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => { mark("owner_chat_retention", out?.ok !== false, out?.code); console.info("owner_chat_retention", JSON.stringify(out)); }).catch(() => { mark("owner_chat_retention", false, "exception"); console.error("owner_chat_retention_failed"); }));
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
