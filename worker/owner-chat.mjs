@@ -19,13 +19,14 @@
 //   única travada até o commit (UPSERT no mesmo comando do INSERT). Quem pega seq N espera o commit de N-1, então
 //   seq visível implica todas as menores visíveis: o cursor "seq > after" nunca pula commit atrasado. O servidor
 //   devolve o cursor (última seq da página); sem sobreposição que faça o cliente saltar. Marcador KV é só dica.
-
 // * Sentinela proativa (cron 5,35, depois do motor): canal esperado sem publicação depois do horário vira
 //   "CANAL PARADO" com o motivo (pausado, sem credencial, erro); venda aprovada nova vira aviso.
 import { acquisitionSnapshot, OWNER_DISABLED_CHANNELS } from "./acquisition-engine.mjs";
 import { SALES_SUMMARY_KEY } from "./sales-ledger.mjs";
 import { CREATIVE_AUTOPUBLISH_PAUSE_KEY } from "./creative-autonomy.mjs";
 import { ensureSiteChatSchema, reserveChatNeurons } from "./site-chat.mjs";
+import { collectObservations } from "./vigia.mjs";
+import { runIncidents } from "./vigia-incidents.mjs";
 
 export const OWNER_CHAT_VERSION_KEY = "zpc:owner-chat:versao:v1";
 export const OWNER_CHAT_HINT_PREFIX = "zpc:owner-chat:avisados:";
@@ -109,12 +110,13 @@ const brl = (cents) => (cents / 100).toLocaleString("pt-BR", { style: "currency"
 export async function gatherFacts(env, now = new Date(), { snapshot = acquisitionSnapshot } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const { day, hour } = localParts(now);
-  const [snap, sales, pause] = await Promise.all([
+  const [snap, sales, pause, vigia] = await Promise.all([
     snapshot(env, now).catch(() => null),
     salesSummary(kv).catch(() => ({ ok: false, value: null })),
     pauseState(kv).catch(() => "ilegivel"),
+    collectObservations(env, now).catch(() => []),
   ]);
-  return { day, hour, snap: obj(snap) && Array.isArray(snap.today) ? snap : null, sales, pause };
+  return { day, hour, snap: obj(snap) && Array.isArray(snap.today) ? snap : null, sales, pause, vigia };
 }
 
 // Só códigos conhecidos do motor (worker/acquisition-engine.mjs) aparecem em texto; o resto vira categoria fixa
@@ -151,10 +153,10 @@ function salesText(facts) {
   return [`Vendas aprovadas no total: ${s.totals.approved} (${brl(s.totals.grossCents)} bruto).`, today ? `Hoje: ${today.approved} (${brl(today.grossCents)}).` : "Hoje: nenhuma até agora.", s.totals.refunded ? `Reembolsos: ${s.totals.refunded}.` : ""].filter(Boolean).join("\n");
 }
 function problemsText(facts) {
-  const stopped = findStoppedChannels(facts);
-  return stopped.length ? ["O que está parado agora:", ...stopped.map((s) => "• " + s.text)].join("\n") : "Nenhum canal esperado está parado neste momento.";
+  const failing = [...findStoppedChannels(facts).map((s) => s.text), ...(facts.vigia || []).filter((o) => o.health === "falha").map((o) => o.text.split("\n")[0] + (o.fix ? " → " + o.fix : ""))];
+  return failing.length ? ["Problemas abertos agora:", ...failing.map((t) => "• " + t)].join("\n") : "Nenhum problema observado agora: canais, ciclo automático, pós-venda e workflows sem falha registrada. O que não tenho como observar não conto como saudável.";
 }
-const HELP = "Posso responder: \"status\" (o que publicou hoje), \"vendas\", \"o que está parado\", \"pausar\" ou \"retomar\" a autopublicação. Também te aviso sozinha quando um canal parar ou entrar uma venda.";
+const HELP = "Sou o Epaminondas, o vigia da ZEVANORY e a ponte direta com você. Posso responder: \"status\" (o que publicou hoje), \"vendas\", \"o que está parado\", \"pausar\" ou \"retomar\" a autopublicação. Também te aviso sozinho quando algo parar, falhar ou entrar uma venda, digo o que já corrigi e só aviso RESOLVIDO com prova de que voltou ao normal.";
 const UNKNOWN = "Ainda não sei responder isso com dados confiáveis, então não vou inventar. " + HELP;
 
 export function intentOf(text) {
@@ -205,26 +207,47 @@ export async function answer(env, sql, text, facts) {
 }
 
 // ---------- Sentinela ----------
+// Canais como observações do vigia: "publicado" é evidência saudável (com o horário da publicação); dia sem agenda,
+// canal desligado, snapshot ausente ou antes do horário = desconhecido (sem observação).
+export function observeChannels(facts, now) {
+  if (!facts.snap) return [];
+  const out = [];
+  for (const [channel] of Object.entries(EXPECTED_HOUR)) {
+    if (OWNER_DISABLED_CHANNELS.includes(channel)) continue;
+    const row = facts.snap.today.find((r) => r?.channel === channel);
+    // Publicação só é evidência com data válida, de hoje e não futura (NC-CX-1031-01); sem data = desconhecido.
+    if (row?.status === "publicado") { const at = Date.parse(row.at); if (Number.isFinite(at) && at <= now.getTime() + 5 * 60000 && localParts(new Date(at)).day === facts.day) out.push({ key: "canal:" + channel, health: "saudavel", at }); }
+  }
+  for (const s of findStoppedChannels(facts)) {
+    if (s.channel === "motor") continue;
+    out.push({ key: "canal:" + s.channel, health: "falha", at: now.getTime(), text: "CANAL PARADO — " + s.text + (s.reason === "pausado" ? " Diga \"retomar\" para religar." : ""), fix: s.reason === "pausado" ? "Nível 2: um toque seu (retomar)." : s.reason === "sem_credencial" ? "Nível 2: refazer o login da plataforma." : "Nível 1: o motor tenta de novo no próximo horário; se repetir, nível 3." });
+  }
+  return out;
+}
+
 export async function runOwnerChatSentinel(env, now = new Date(), { sqlFactory, snapshot } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.get || !sqlFactory || !env.DATABASE_URL) return { ok: false, code: "not_configured" };
   const facts = await gatherFacts(env, now, snapshot ? { snapshot } : {});
-  const pending = findStoppedChannels(facts).map((s) => ({ from: "zevanory", kind: "alerta", dedupe: `alerta:${facts.day}:${s.channel}:${s.reason}`, text: "⚠️ CANAL PARADO — " + s.text + (s.reason === "pausado" ? " Diga \"retomar\" para religar." : "") }));
-  const approved = facts.sales.ok ? facts.sales.value?.totals?.approved ?? 0 : null;
-  if (approved) pending.push({ from: "zevanory", kind: "venda", dedupe: `venda:${approved}`, text: `💰 Venda aprovada! Total de vendas: ${approved}.\n${salesText(facts)}` });
-  // Dica no KV (não é a verdade: a chave única do banco é): evita acordar o banco a cada 30 min por um aviso já dado.
-  const hintKey = OWNER_CHAT_HINT_PREFIX + facts.day;
-  let hint = [];
-  try { const raw = await kv.get(hintKey); const v = raw === null ? [] : JSON.parse(raw); if (Array.isArray(v) && v.every((x) => typeof x === "string")) hint = v; } catch {}
-  const todo = pending.filter((m) => !hint.includes(m.dedupe));
-  if (!todo.length) return { ok: true, alerts: 0 }; // nada novo: não acorda o banco
   const sql = sqlFactory(env.DATABASE_URL);
-  await ensureOwnerChatSchema(sql);
-  let added = 0;
-  for (const m of todo) if (await insertMessage(sql, m)) added++;
-  try { await kv.put(hintKey, JSON.stringify([...hint, ...todo.map((m) => m.dedupe)].slice(-50)), { expirationTtl: 2 * 86400 }); } catch {}
-  if (added) await bumpVersion(kv);
-  return { ok: true, alerts: added };
+  let ensured = false;
+  const insert = async (db, m) => { if (!ensured) { await ensureOwnerChatSchema(db); ensured = true; } return insertMessage(db, m); };
+  // Incidentes (abrir, resolver com evidência posterior, outbox idempotente) — worker/vigia-incidents.mjs.
+  const inc = await runIncidents({ sql, kv, observations: [...observeChannels(facts, now), ...(facts.vigia || [])], insertMessage: insert, now: now.getTime() });
+  // Venda nova: aviso único por total aprovado (chave única no banco; dica no KV evita acordar o banco).
+  let sales = 0;
+  const approved = facts.sales.ok ? facts.sales.value?.totals?.approved ?? 0 : null;
+  if (approved) {
+    const hintKey = OWNER_CHAT_HINT_PREFIX + "venda";
+    let last = null; try { last = await kv.get(hintKey); } catch {}
+    if (last !== String(approved)) {
+      if (await insert(sql, { from: "zevanory", kind: "venda", dedupe: `venda:${approved}`, text: `💰 Venda aprovada! Total de vendas: ${approved}.\n${salesText(facts)}` })) sales++;
+      try { await kv.put(hintKey, String(approved), { expirationTtl: 30 * 86400 }); } catch {}
+    }
+  }
+  if (inc.delivered || sales) await bumpVersion(kv);
+  if (inc.db) await reconcileActions(sql, kv).catch(() => null);
+  return { ok: true, alerts: inc.delivered + sales, opened: inc.opened, resolved: inc.resolved };
 }
 
 // Retenção diária identificável e independente de novidades (NC-G6-1030-09). Chamada pelo cron horário às 06 UTC;
