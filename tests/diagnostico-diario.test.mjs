@@ -38,17 +38,20 @@ test("regras versionadas: só CANAL_PARADO, sem ação automática; esperadas po
 
 test("CANAL_PARADO: cada canal ativo abaixo do esperado gera diagnóstico com o motivo lido das chaves de status", async () => {
   const x = fake({
-    ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "blog", status: "erro", code: "rejected:duplicado" }, { channel: "bluesky", status: "erro", code: "bluesky_http_500" }] },
-    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "bluesky_http_500" },
+    ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "blog", status: "erro", code: "rejected:duplicado" }, { channel: "bluesky", status: "erro", code: "bluesky_http_400", definitive: true }] },
+    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "bluesky_http_400", definitive: true, needs_reconciliation: false },
     ["zpc:blog:status:v1:" + MON]: { resultado: "rejeitado", motivos: ["duplicado"] },
   });
   const status = await lerStatusDoDia(x.kv, MON);
   const d = diagnosticarDia({ day: MON, hour: 20, ativos: ALL_ACTIVE, status });
   assert.deepEqual(d.map((y) => [y.regra, y.canal, y.publicadas, y.esperadas, y.motivo, y.classe, y.acao_automatica]), [
     ["CANAL_PARADO", "blog", 0, 1, "gate do blog: duplicado", "B", "nenhuma"],
-    ["CANAL_PARADO", "bluesky", 0, 1, "bluesky_http_500", "B", "nenhuma"],
+    ["CANAL_PARADO", "bluesky", 0, 1, "bluesky_http_400", "B", "nenhuma"],
   ]);
   assert.equal(d[0].versao_regras, REGRAS_DIAGNOSTICO.versao);
+  // NC-G6-1021-01 r2: erro não definitivo / aguardando conferência não é prova de zero.
+  const incerto = await lerStatusDoDia(fake({ ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "bluesky", status: "erro", code: "bluesky_http_500", definitive: false }] } }).kv, MON);
+  assert.deepEqual(diagnosticarDia({ day: MON, hour: 20, ativos: { bluesky: { ativo: true } }, status: incerto }).map((y) => [y.regra, y.publicadas]), [["RESULTADO_INCERTO", null]]);
   assert.deepEqual(x.writes, [], "o Diagnosticador v1 só lê");
   // Sem registro do motor no dia (NC-G6-1021-01): SEM_EVIDENCIA com publicadas null, nunca CANAL_PARADO nem "real 0".
   const vazio = await lerStatusDoDia(fake().kv, MON);
@@ -59,7 +62,7 @@ test("CANAL_PARADO: cada canal ativo abaixo do esperado gera diagnóstico com o 
   assert.deepEqual(diagnosticarDia({ day: MON, hour: 8, ativos: ALL_ACTIVE, status: vazio }), []);
   assert.deepEqual(diagnosticarDia({ day: MON, hour: 20, ativos: { blog: { ativo: false } }, status: vazio }), []);
   assert.deepEqual(diagnosticarDia({ day: MON, hour: 20, ativos: ALL_ACTIVE, status: vazio, regras: { ...REGRAS_DIAGNOSTICO, regras: [{ id: "CANAL_PARADO", ativa: false }] } }), []);
-  const exp = await lerStatusDoDia(fake({ ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "credential_expired" }, ["zpc:acquisition:daily:" + MON]: { outcomes: [] } }).kv, MON);
+  const exp = await lerStatusDoDia(fake({ ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "credential_expired", definitive: true }, ["zpc:acquisition:daily:" + MON]: { outcomes: [] } }).kv, MON);
   assert.equal(diagnosticarDia({ day: MON, hour: 20, ativos: ALL_ACTIVE, status: exp }).find((y) => y.canal === "bluesky").classe, "D");
   // Falha de leitura do KV vira motivo explícito, nunca "publicado".
   const falha = await lerStatusDoDia(fake({}, { throwOn: () => true }).kv, MON);
@@ -108,16 +111,16 @@ test("vendas Hotmart: sem eventos = NÃO TESTADO (nunca 0 comprovado); ledger = 
 
 test("relatório das 20h em uma tela com dados reais; envio grava só o recibo com diagnósticos e autonomia", async () => {
   const x = fake({
-    ["zpc:acquisition:daily:" + MON]: { trigger: "cron", outcomes: [{ channel: "blog", status: "publicado", url: "https://zevanory.api.br/blog/roteiro-2026-10-12", at: "2026-10-12T12:35:00Z", trigger: "cron" }, { channel: "bluesky", status: "erro", code: "bluesky_http_500" }] },
-    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "bluesky_http_500" },
+    ["zpc:acquisition:daily:" + MON]: { trigger: "cron", outcomes: [{ channel: "blog", status: "publicado", url: "https://zevanory.api.br/blog/roteiro-2026-10-12", at: "2026-10-12T12:35:00Z", trigger: "cron" }, { channel: "bluesky", status: "erro", code: "bluesky_http_400", definitive: true }] },
+    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "bluesky_http_400", definitive: true, needs_reconciliation: false },
     "zpc-funnel:v1:summary": { generatedAt: "2026-10-12T22:40:00Z", porDiaUtc: { [MON]: { views_br: 37, hotmart_view: 5, lead_submit: 1 } }, last7Days: { leadsConfirmed: 2 } },
   });
   const r = await montarRelatorioDiario({ ZEVANORY_PRIVATE_ARTIFACTS: x.kv }, { day: MON, hour: 20, now: NOW_MON_20H, checklist: CHECKLIST_OK, agendaAmanha: "loja · Vendas na Prática · dor" });
   const t = r.text;
-  for (const re of [/PUBLICADO HOJE \(esperado × real\)/, /• blog: esperado 1 × real 1 — https:\/\/zevanory\.api\.br\/blog\/roteiro-2026-10-12/, /• bluesky: esperado 1 × real 0 — bluesky_http_500/,
+  for (const re of [/PUBLICADO HOJE \(esperado × real\)/, /• blog: esperado 1 × real 1 — https:\/\/zevanory\.api\.br\/blog\/roteiro-2026-10-12/, /• bluesky: esperado 1 × real 0 — bluesky_http_400/,
     /• telegram: desligado \(decisão do proprietário\)/, /• youtube: desligado \(Shorts desligados/, /Views BR \(filtro de robôs e datacenter\): 37/, /Cliques \/hotmart \(hotmart_view\): 5/,
-    /Leads: 1 no formulário hoje; 2 confirmados em 7 dias/, /Vendas aprovadas Hotmart: NÃO TESTADO \(webhook Hotmart sem eventos registrados\)/, /FALHAS DETECTADAS\n• bluesky: erro — bluesky_http_500/,
-    /CANAL_PARADO bluesky: 0\/1 — motivo: bluesky_http_500 — classe B; ação automática: nenhuma/, /DECISÕES PENDENTES \(CLASSE D\)\n• nenhuma/, /Custo do dia: não medido \(sem fonte de custo\)/, /Autonomia real: 50% \(1 de 2 devidas concluídas sem comando\)/]) assert.match(t, re);
+    /Leads: 1 no formulário hoje; 2 confirmados em 7 dias/, /Vendas aprovadas Hotmart: NÃO TESTADO \(webhook Hotmart sem eventos registrados\)/, /FALHAS DETECTADAS\n• bluesky: erro — bluesky_http_400/,
+    /CANAL_PARADO bluesky: 0\/1 — motivo: bluesky_http_400 — classe B; ação automática: nenhuma/, /DECISÕES PENDENTES \(CLASSE D\)\n• nenhuma/, /Custo do dia: não medido \(sem fonte de custo\)/, /Autonomia real: 50% \(1 de 2 devidas concluídas sem comando\)/]) assert.match(t, re);
   assert.doesNotMatch(t, /sem dados|100%|0 comprovad/i);
   assert.ok(t.split("\n").length <= 40, "uma tela");
   assert.doesNotMatch(t, /R\$ 0,00/, "custo nunca afirmado sem fonte");

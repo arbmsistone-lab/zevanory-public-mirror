@@ -59,7 +59,7 @@ tests/f1b-bluesky-recovery.test.mjs 5
 tests/f1b-receipt-origin.test.mjs 7
 tests/f1b-shorts-corruption.test.mjs 4
 tests/f1c-blog-origin-integration.test.mjs 4
-tests/f1d-report-absent-evidence.test.mjs 4
+tests/f1d-report-absent-evidence.test.mjs 6
 tests/f2-hotmart-test-route.test.mjs 11
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3

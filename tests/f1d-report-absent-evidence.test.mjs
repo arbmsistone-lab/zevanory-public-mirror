@@ -26,10 +26,10 @@ test("fontes apagadas depois de uma publicação: sem evidência, não 'real 0'"
   assert.deepEqual(d.map((x) => [x.regra, x.publicadas]), [["SEM_EVIDENCIA", null]]);
 });
 
-test("zero só com evidência válida de não publicação (erro registrado, blog rejeitado)", async () => {
+test("controle positivo: zero só com prova de não publicação (erro definitivo, rejeição do gate antes de publicar, blog rejeitado)", async () => {
   const st = await lerStatusDoDia(store({
-    ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "bluesky", status: "erro", code: "bluesky_http_500" }] },
-    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "bluesky_http_500" },
+    ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "bluesky", status: "erro", code: "bluesky_http_400", definitive: true }] },
+    ["zpc:acquisition:daily:" + MON + ":bluesky"]: { status: "erro", code: "bluesky_http_400", definitive: true, needs_reconciliation: false },
     ["zpc:blog:status:v1:" + MON]: { resultado: "rejeitado", motivos: ["duplicado"] },
   }).kv, MON);
   assert.equal(st.porCanal.bluesky.publicadas, 0); assert.equal(st.porCanal.blog.publicadas, 0);
@@ -39,4 +39,26 @@ test("zero só com evidência válida de não publicação (erro registrado, blo
 test("canal pulado no estado do dia (sem outcome nem recibo) também é sem evidência", async () => {
   const st = await lerStatusDoDia(store({ ["zpc:acquisition:daily:" + MON]: { outcomes: [] } }).kv, MON);
   assert.equal(st.porCanal.bluesky.publicadas, null);
+});
+
+test("gate reprovou ANTES de publicar (sem recibo, outcome com gate.ok false) = zero comprovado", async () => {
+  const st = await lerStatusDoDia(store({ ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "bluesky", status: "erro", code: "similaridade_alta", gate: { ok: false, reasons: ["similaridade_alta"] } }] } }).kv, MON);
+  assert.equal(st.porCanal.bluesky.publicadas, 0);
+  assert.equal(diagnosticarDia({ day: MON, hour: 21, ativos: { bluesky: { ativo: true } }, status: st })[0].regra, "CANAL_PARADO");
+});
+
+test("resultado incerto (pending, needs_reconciliation, erro não definitivo, status desconhecido) = null e RESULTADO_INCERTO, nunca real 0", async () => {
+  const casos = [
+    { status: "pending", code: "provider_unverified", needs_reconciliation: true },
+    { status: "erro", code: "bluesky_http_500", definitive: false, needs_reconciliation: true },
+    { status: "erro", code: "bluesky_http_500" },
+    { status: "erro", code: "provider_unverified", definitive: true, needs_reconciliation: true },
+    { status: "algo_novo" },
+  ];
+  for (const r of casos) {
+    const st = await lerStatusDoDia(store({ ["zpc:acquisition:daily:" + MON]: { outcomes: [{ channel: "bluesky", ...r }] }, ["zpc:acquisition:daily:" + MON + ":bluesky"]: r }).kv, MON);
+    assert.equal(st.porCanal.bluesky.publicadas, null, JSON.stringify(r)); assert.equal(st.porCanal.bluesky.leitura, "incerto", JSON.stringify(r));
+    const d = diagnosticarDia({ day: MON, hour: 21, ativos: { bluesky: { ativo: true } }, status: st });
+    assert.deepEqual(d.map((x) => [x.regra, x.publicadas]), [["RESULTADO_INCERTO", null]], JSON.stringify(r));
+  }
 });

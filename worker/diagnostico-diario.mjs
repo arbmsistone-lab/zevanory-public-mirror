@@ -52,6 +52,23 @@ export function canaisAtivos(checklist = [], regras = REGRAS) {
 export const TRIGGER_AUTONOMO = "cron";
 export const semComando = (row) => row?.status === "publicado" && row?.trigger === TRIGGER_AUTONOMO && row?.manual !== true;
 
+// NC-G6-1021-01 (r2): o que PROVA que não houve publicação. Só isto vale zero:
+// * blog rejeitado pelo gate (zpc:blog:status:v1 resultado "rejeitado");
+// * canal não tentado por estado conhecido (pausado, desligado, aguardando credencial/aprovação, fora da agenda,
+//   rascunho);
+// * erro DEFINITIVO do provedor (definitive:true, sem needs_reconciliation) ou rejeição do gate ANTES da publicação
+//   (gate.ok === false).
+// pending, needs_reconciliation:true, erro não definitivo e status não reconhecido = RESULTADO INCERTO (null).
+export const STATUS_NAO_TENTADO = Object.freeze(["pausado", "desligado", "aguardando credencial", "aguardando aprovação", "fora_da_agenda", "rascunho"]);
+export function provaDeNaoPublicacao(row, blogStatus) {
+  if (blogStatus?.resultado === "rejeitado") return true;
+  if (!object(row) || row.status === "publicado") return false;
+  if (row.status === "pending" || row.needs_reconciliation === true) return false;
+  if (STATUS_NAO_TENTADO.includes(row.status)) return true;
+  if (row.status === "erro") return row.definitive === true || (object(row.gate) && row.gate.ok === false);
+  return false;
+}
+
 // Motivo, das chaves de status do dia: rejeição do gate do blog > código do provedor/gate > status > ausência de registro.
 export function motivoDe(row, blogStatus, fonte) {
   if (blogStatus?.resultado === "rejeitado") return "gate do blog: " + (Array.isArray(blogStatus.motivos) ? blogStatus.motivos.join(",") : "sem motivo");
@@ -95,6 +112,11 @@ export async function lerStatusDoDia(kv, day, regras = REGRAS) {
       porCanal[canal] = { publicadas: null, semComando: 0, status: null, url: null, id: null, motivo: "sem evidência: nenhum estado, recibo ou status do canal no dia", leitura: "ausente" };
       continue;
     }
+    if (!publicada && !provaDeNaoPublicacao(row, blogStatus)) {
+      const st = typeof row?.status === "string" ? row.status.slice(0, 40) : "desconhecido";
+      porCanal[canal] = { publicadas: null, semComando: 0, status: row?.status || null, url: null, id: row?.provider_post_id ? String(row.provider_post_id).slice(0, 120) : null, motivo: `resultado incerto (${st}${row?.code ? ": " + String(row.code).slice(0, 60) : ""}${row?.needs_reconciliation === true ? ", aguardando conferência" : ""})`, leitura: "incerto" };
+      continue;
+    }
     porCanal[canal] = {
       publicadas: publicada ? 1 : 0,
       semComando: (semComando(row) || (okBlog && semComando({ status: "publicado", trigger: row?.trigger }))) ? 1 : 0,
@@ -117,11 +139,11 @@ export function diagnosticarDia({ day, hour, ativos = {}, status = { porCanal: {
     const esperadas = esperadasNoDia(canal, day, hour, regras);
     const s = status.porCanal?.[canal] || {};
     // Sem leitura ou sem evidência: publicadas null; nunca CANAL_PARADO como fato confirmado (NC-G6-1021-01).
-    const semFato = s.leitura === "erro" || s.leitura === "ausente" || !Number.isInteger(s.publicadas);
+    const semFato = s.leitura === "erro" || s.leitura === "ausente" || s.leitura === "incerto" || !Number.isInteger(s.publicadas);
     const publicadas = semFato ? null : s.publicadas;
     if (!esperadas || (publicadas !== null && publicadas >= esperadas)) continue;
     const motivo = s.motivo || motivoDe(null, null, status.fonte);
-    out.push({ regra: s.leitura === "erro" ? "LEITURA_INCONCLUSIVA" : semFato ? "SEM_EVIDENCIA" : "CANAL_PARADO", versao_regra: regra.versao, versao_regras: regras.versao, dia: day, canal, esperadas, publicadas, motivo, classe: classeDoMotivo(motivo, regras), acao_automatica: "nenhuma" });
+    out.push({ regra: s.leitura === "erro" ? "LEITURA_INCONCLUSIVA" : s.leitura === "incerto" ? "RESULTADO_INCERTO" : semFato ? "SEM_EVIDENCIA" : "CANAL_PARADO", versao_regra: regra.versao, versao_regras: regras.versao, dia: day, canal, esperadas, publicadas, motivo, classe: classeDoMotivo(motivo, regras), acao_automatica: "nenhuma" });
   }
   return out;
 }

@@ -24,7 +24,7 @@ const MUTANTS = [
   ["DD03_canal_desligado_vira_ativo", R, [[DG, '{ ativo: false, desligado: true, motivo: c.motivo_desligado || "desligado" }', "{ ativo: true, motivo: null }"]]],
   ["DD04_credencial_nao_exigida", R, [[DG, "out[canal] = row?.configured === true ?", "out[canal] = true ?"]]],
   ["DD05_canal_parado_nunca_diagnostica", CP, [[DG, "    if (!esperadas || (publicadas !== null && publicadas >= esperadas)) continue;\n", "    continue;\n"]]],
-  ["DD06_motivo_do_gate_do_blog_ignorado", CP, [[DG, 'if (blogStatus?.resultado === "rejeitado") return', "if (false) return"]]],
+  ["DD06_motivo_do_gate_do_blog_ignorado", CP, [[DG, 'if (blogStatus?.resultado === "rejeitado") return "gate do blog: "', 'if (false) return "gate do blog: "']]],
   ["DD07_regra_desligada_ainda_diagnostica", CP, [[DG, 'r.id === "CANAL_PARADO" && r.ativa === true', 'r.id === "CANAL_PARADO"']]],
   ["DD08_canal_inativo_diagnosticado", CP, [[DG, "    if (ativos[canal]?.ativo !== true) continue;\n    const esperadas", "    const esperadas"]]],
   ["DD09_classe_D_ignorada", R, [[DG, '? "D" : "B";', '? "B" : "B";']]],
@@ -59,6 +59,8 @@ const MUTANTS = [
   // NC-F1-A4-02: rótulo UTC obrigatório, mesmo com as datas coincidindo.
   ["DD46_ausencia_vira_zero", CP, [[DG, "if (!publicada && !row && !blogStatus) {", "if (false) {"]]],
   ["DD47_sem_evidencia_vira_canal_parado", CP, [[DG, 'semFato ? "SEM_EVIDENCIA" : "CANAL_PARADO"', '"CANAL_PARADO"']]],
+  ["DD48_erro_incerto_vira_zero", CP, [[DG, 'if (row.status === "erro") return row.definitive === true || (object(row.gate) && row.gate.ok === false);', 'if (row.status === "erro") return true;']]],
+  ["DD49_incerto_vira_canal_parado", CP, [[DG, 's.leitura === "incerto" ? "RESULTADO_INCERTO" : ', '']]],
   ["DD45_rotulo_utc_removido", REL, [[RL, "`FUNIL E VENDAS (dia UTC ${day}; intervalo diferente do dia America/Sao_Paulo", "`FUNIL E VENDAS (dia ${day}, America/Sao_Paulo"]]],
   ["DD34_motor_assume_cron_por_padrao", TR, [[AQ, 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";', 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"cron";']]],
   ["DD35_motor_nao_preserva_primeiro_trigger", TR, [[AQ, '{...o,trigger:o.trigger??(prevOutcomes.find(p=>p.channel===o.channel&&p.status==="publicado"&&p.url&&p.url===o.url)?.trigger??null)}', "{...o,trigger}"]]],
