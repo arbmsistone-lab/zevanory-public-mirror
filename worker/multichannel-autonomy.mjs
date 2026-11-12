@@ -1,3 +1,4 @@
+import {withoutDirectIndexNow} from './indexnow-policy.mjs';
 import { CLOSED_LABEL, CONTACT_HTML, LEGAL_IDENTITY, SHORT_RULE_LABEL } from "./politica-unica.mjs";
 import { readSalesSwitch } from "./sales-control.mjs";
 import { hotmartKitsOpen, hotmartKit, readPurchaseMode } from "./sales-lock-content.mjs";
@@ -177,6 +178,7 @@ export async function rebuildBlogIndex(kv,day){
  return {ok:true,articles};
 }
 export async function ensureDailyBlog(env={},now=new Date(),fetchImpl=fetch) {
+  fetchImpl=withoutDirectIndexNow(fetchImpl);
   const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localContentDay(now),statusKey=BLOG_STATUS_PREFIX+day;
   if(!kv?.get||!kv?.put)return {created:[],latest:null,reason:"kv_unavailable"};
   // NC-F1-A3-01: status, marcador legado, contador semanal e índice são lidos ANTES de qualquer gravação, em modo
