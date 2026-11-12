@@ -18,4 +18,4 @@ test('Continuity mutant: initialization authorization bypassed',()=>killedMutati
 test('Continuity: committed initialization stays pending and does not invent a baseline',()=>{const v=JSON.parse(readTextNormalized(new URL('../data/indexnow-continuity.json',import.meta.url)));assert.equal(v.authorized,false);assert.throws(()=>mod.continuityAnchor(v));});
 async function noBypass(m){let calls=0;const safe=m.withoutDirectIndexNow(async()=>{calls++;return new Response('{}',{status:200});});const r=await safe('https://api.indexnow.org/indexnow',{method:'POST'});assert.equal(r.status,409);assert.equal(calls,0);await safe('https://example.test/status');assert.equal(calls,1);}
 test('Continuity: direct blog emitter cannot bypass journaled planner',()=>noBypass(direct));
-test('Continuity mutant: unjournaled direct post restored',()=>killedMutation(guard,[["if(url.hostname==='api.indexnow.org')","if(false)"]],noBypass));
+test('Continuity mutant: unjournaled direct post restored',()=>killedMutation(guard,[["if(isIndexNowEndpoint(input))","if(false)"]],noBypass));

@@ -59,6 +59,7 @@ tests/f2-hotmart-test-route.test.mjs 11
 tests/f2-indexnow-publication.test.mjs 12
 tests/f2b-indexnow-auth.test.mjs 12
 tests/f2c-indexnow-continuity.test.mjs 10
+tests/f2d-indexnow-single-emitter.test.mjs 5
 tests/financial-audit-mp-retry.test.mjs 5
 tests/financial-ddl-readonly.test.mjs 3
 tests/financial-proof-invalidation-evidence.test.mjs 5
