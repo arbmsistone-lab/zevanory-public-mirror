@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "canonical_sha": "c3717aeb325e7acc6108177426ca420e565bb575",
+    "contains_personal_data": false,
+    "publication_allowed": false
+  },
+  "sources": [
+    {
+      "id": "code-funnel",
+      "kind": "internal_code",
+      "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/c3717aeb325e7acc6108177426ca420e565bb575/worker/funnel.mjs",
+      "supports": [
+        "Métricas agregadas de páginas, visitantes, origem, campanha, intenções, checkout, pagamento e erro.",
+        "A série diária por produto soma views e intenções, mas não preserva jornada individual.",
+        "Diagnóstico de checkout é agregado e exclui dados pessoais."
+      ]
+    },
+    {
+      "id": "code-sales-router",
+      "kind": "internal_code",
+      "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/c3717aeb325e7acc6108177426ca420e565bb575/worker/sales-public-worker.mjs",
+      "supports": [
+        "UTM é preservada apenas para links /comprar, /hotmart, /assinar e /material-gratuito.",
+        "GET de /comprar registra checkout_intent e POST cria checkout.",
+        "Checkout Pro redireciona para domínio do Mercado Pago; páginas de retorno não constituem prova de pagamento."
+      ]
+    },
+    {
+      "id": "code-store",
+      "kind": "internal_code",
+      "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/c3717aeb325e7acc6108177426ca420e565bb575/sales-public/index.html",
+      "supports": [
+        "O catálogo apresenta produtos em breve, cinco produtos digitais, uma assinatura, guias e ferramentas na mesma página.",
+        "Os cinco produtos digitais exibem preço e entrega imediata no catálogo."
+      ]
+    },
+    {
+      "id": "code-lead-magnet",
+      "kind": "internal_code",
+      "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/c3717aeb325e7acc6108177426ca420e565bb575/sales-public/material-gratuito.html",
+      "supports": [
+        "O formulário solicita e-mail, nome opcional e consentimento.",
+        "O checklist abre após o envio; marketing permanece protegido por double opt-in."
+      ]
+    },
+    {
+      "id": "code-product-pages",
+      "kind": "internal_code",
+      "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/tree/c3717aeb325e7acc6108177426ca420e565bb575/sales-public",
+      "supports": [
+        "As cinco páginas de produto repetem preço, escopo, entrega, garantia, adequação e CTA.",
+        "Product/Offer e FAQ estruturados existem nas páginas auditadas."
+      ]
+    },
+    {
+      "id": "live-store",
+      "kind": "public_readback",
+      "url": "https://vendas.zevanory.api.br/",
+      "observed_at": "2026-10-14",
+      "supports": [
+        "A vitrine pública abriu e exibiu as categorias e ofertas descritas no código."
+      ]
+    },
+    {
+      "id": "live-lead-magnet",
+      "kind": "public_readback",
+      "url": "https://vendas.zevanory.api.br/material-gratuito",
+      "observed_at": "2026-10-14",
+      "supports": [
+        "A página pública exibiu formulário curto, consentimento explícito e promessa de abertura imediata do checklist."
+      ]
+    },
+    {
+      "id": "live-product",
+      "kind": "public_readback",
+      "url": "https://vendas.zevanory.api.br/lucro-e-caixa",
+      "observed_at": "2026-10-14",
+      "supports": [
+        "A página pública exibiu preço, conteúdo, entrega, garantia, suporte, adequação e CTAs de compra.",
+        "UTMs válidas foram carregadas nos links /comprar pelo rewriter existente."
+      ]
+    },
+    {
+      "id": "baymard-checkout",
+      "kind": "external_research",
+      "scope": "referência geral de e-commerce; não mede a ZEVANORY",
+      "url": "https://baymard.com/research-articles/ecommerce-checkout-usability-report-and-benchmark",
+      "supports": [
+        "Checkout longo ou complicado é causa declarada de abandono em pesquisa geral.",
+        "Os números de abandono e potencial de melhoria não devem ser tratados como baseline da ZEVANORY."
+      ]
+    },
+    {
+      "id": "google-web-vitals",
+      "kind": "official_guidance",
+      "url": "https://web.dev/articles/vitals",
+      "supports": [
+        "Core Web Vitals cobrem carregamento, interatividade e estabilidade visual.",
+        "Os limiares de boa experiência são LCP até 2,5 s, INP até 200 ms e CLS até 0,1 no percentil 75.",
+        "Medição de laboratório não substitui dados de campo."
+      ]
+    },
+    {
+      "id": "bcb-pix",
+      "kind": "official_brazil_data",
+      "url": "https://www.bcb.gov.br/estabilidadefinanceira/pix-em-numeros-estatisticas",
+      "supports": [
+        "Pix é amplamente usado no Brasil.",
+        "Popularidade nacional do Pix não prova conversão específica da ZEVANORY."
+      ]
+    },
+    {
+      "id": "mercadopago-redirect",
+      "kind": "official_provider_docs",
+      "url": "https://www.mercadopago.com.br/developers/pt/docs/checkout-pro-orders/web-integration/redirect-buyer-to-checkout?scope=prod",
+      "supports": [
+        "Checkout Pro redireciona o comprador ao ambiente do Mercado Pago e retorna pelas URLs configuradas.",
+        "O redirecionamento é parte esperada da integração e não deve ser removido sem avaliação operacional."
+      ]
+    },
+    {
+      "id": "mercadopago-returns",
+      "kind": "official_provider_docs",
+      "url": "https://www.mercadopago.com.br/developers/pt/docs/checkout-pro-preferences/configure-back-urls",
+      "supports": [
+        "URLs de retorno distinguem estados de sucesso, pendência e erro.",
+        "Retorno do navegador não substitui notificação de pagamento."
+      ]
+    },
+    {
+      "id": "consumer-rights-br",
+      "kind": "official_brazil_guidance",
+      "url": "https://www.gov.br/mj/pt-br/assuntos/noticias-1/dia-dos-pais-conheca-os-direitos-do-consumidor-na-compra-de-presentes",
+      "supports": [
+        "Compras a distância têm direito de arrependimento de sete dias conforme orientação oficial.",
+        "Informação de garantia deve permanecer clara e não ser apresentada como favor comercial."
+      ]
+    },
+    {
+      "id": "google-product-data",
+      "kind": "official_guidance",
+      "url": "https://developers.google.com/search/docs/appearance/structured-data/product-snippet",
+      "supports": [
+        "Product/Offer pode expor preço e disponibilidade em resultados elegíveis.",
+        "Elegibilidade não garante exibição nem conversão."
+      ]
+    }
+  ]
+}
