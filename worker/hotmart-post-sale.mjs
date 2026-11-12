@@ -1,3 +1,4 @@
+import {restrictedQuota,reserveRestrictedQuota} from "./hotmart-post-sale-quota.mjs";
 import {containsForbiddenCreativeText} from "./creative-autonomy.mjs";
 import PRODUCTS from '../data/products.json' with {type:'json'};
 import ALLOW from '../data/p18-commercial-allowlist.json' with {type:'json'};
@@ -73,11 +74,11 @@ async function salesAllowed(kv,now){
  const sw=await read(kv,'sales:hotmart:v1',v=>object(v)&&v.channel==='hotmart'&&typeof v.enabled==='boolean');
  return sw!==null&&validOwnerAuthorization(sw,now);
 }
-async function providerGet(env,fetchImpl,path){const r=await fetchImpl('https://api.resend.com'+path,{headers:{authorization:'Bearer '+env.RESEND_API_KEY},signal:AbortSignal.timeout(10000)});if(r.status!==200)throw Error('provider_read_failed');return r.json();}
+async function providerGet(env,fetchImpl,path){const r=await fetchImpl('https://api.resend.com'+path,{headers:{authorization:'Bearer '+env.RESEND_API_KEY},signal:AbortSignal.timeout(10000)});if(r.status!==200){const e=Error('provider_read_failed');e.status=r.status;throw e;}return r.json();}
 // Quota is independent of the sent-email history. Official GET /usage counts
 // the account's rolling daily window and calendar month, including other flows.
 async function providerUsage(env,fetchImpl,now){
- const v=await providerGet(env,fetchImpl,'/usage');
+ let v;try{v=await providerGet(env,fetchImpl,'/usage');}catch(error){if(error.status===401||error.status===403)return {restricted:true};throw error;}
  const valid=(w,maxWindow,nullable)=>object(w)&&Number.isSafeInteger(w.used)&&w.used>=0&&(nullable&&w.limit===null||Number.isSafeInteger(w.limit)&&w.limit>=0)&&typeof w.resets_at==='string'&&Number.isFinite(Date.parse(w.resets_at))&&Date.parse(w.resets_at)>now&&Date.parse(w.resets_at)<=now+maxWindow;
  if(v?.object!=='usage'||!valid(v?.emails?.daily,DAY+60000,true)||!valid(v?.emails?.monthly,32*DAY,false))throw Error('provider_usage_invalid');
  return {used:v.emails.daily.used,dailyLimit:Math.min(100,v.emails.daily.limit??100),monthlyUsed:v.emails.monthly.used,monthlyLimit:Math.min(3000,v.emails.monthly.limit)};
@@ -179,7 +180,9 @@ async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cr
    if(hasDue)break;
   }
   if(!hasDue)return {ok:true,sent:0,priority:1,code:'no_due_steps'};
-  let {used,dailyLimit,monthlyUsed,monthlyLimit}=await providerUsage(env,fetchImpl,now);
+  const usage=await providerUsage(env,fetchImpl,now);
+  const restricted=usage.restricted===true;
+  let {used,dailyLimit,monthlyUsed,monthlyLimit}=restricted?await restrictedQuota(kv,now):usage;
   const reconciliationBudget={remaining:9};let reconciliationPending=0;
   for(const [ref,order] of orders.sort((a,b)=>a[1].approvedAt-b[1].approvedAt)){
    if(now>=order.expiresAt||await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker))continue;
@@ -192,6 +195,7 @@ async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cr
     const prior=confirmation.corrupt||attempt.corrupt?{status:'unknown',attempts:2,bodyHash,firstAttempt:order.approvedAt,lastAttempt:now}:attempt.value;
     if(prior&&prior.bodyHash!==bodyHash)throw Error('body_changed');
     if(prior&&['attempting','unknown','sent'].includes(prior.status)){
+     if(restricted){reconciliationPending++;continue;}
      try{const id=await reconcile(env,fetchImpl,kv,key,body,prior,{ttl,budget:reconciliationBudget});if(id)await kv.put(key+':confirmado',JSON.stringify({id,bodyHash}),ttl);else reconciliationPending++;}catch{reconciliationPending++;}
      continue; // unknown never permits another POST, even after the provider key expires
     }
@@ -199,6 +203,7 @@ async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cr
     if(used>=dailyLimit||monthlyUsed>=monthlyLimit||sent>=3)break;
     if(await read(kv,STOP+ref,marker)||await read(kv,OPT+ref,marker)||!await salesAllowed(kv,now))break;
     const state={status:'attempting',attempts:(prior?.attempts||0)+1,bodyHash,firstAttempt:prior?.firstAttempt??now,lastAttempt:now};
+    if(restricted&&!await reserveRestrictedQuota(kv,now))break;
     await kv.put(key,JSON.stringify(state),ttl);used++;monthlyUsed++;
     let response;try{response=await fetchImpl('https://api.resend.com/emails',{method:'POST',headers:{authorization:'Bearer '+env.RESEND_API_KEY,'content-type':'application/json','Idempotency-Key':'hm-posvenda-'+ref+'-'+step.id},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});}catch{}
     let v;try{v=await response?.json();}catch{}
@@ -208,8 +213,8 @@ async function runHotmartPostSaleInternal(env,{now=Date.now(),fetchImpl=fetch,cr
     await kv.put(key,JSON.stringify(state),ttl);
    }
   }
-  return {ok:true,sent,priority:1,reconciliationPending};
- }catch{return {ok:false,sent,priority:1,code:'post_sale_inconclusive'};}finally{running.delete(kv);}
+  return {ok:true,sent,priority:1,reconciliationPending,...(restricted&&reconciliationPending>0?{code:'provider_restricted'}:{})};
+ }catch(e){return {ok:false,sent,priority:1,code:e.message==='quota_ledger_unreadable'?'quota_ledger_unreadable':'post_sale_inconclusive'};}finally{running.delete(kv);}
 }
 export async function handleHotmartPostSaleOptOut(request,env){
  const url=new URL(request.url);if(url.pathname!==HOTMART_POSTSALE_OPTOUT)return null;

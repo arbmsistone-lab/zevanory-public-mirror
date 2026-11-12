@@ -50,6 +50,7 @@ tests/experiments.test.mjs 5
 tests/f1-bluesky-kv.test.mjs 11
 tests/f1b-bluesky-recovery.test.mjs 5
 tests/f2-hotmart-post-sale.test.mjs 30
+tests/f2-hotmart-restricted.test.mjs 10
 tests/f2b-hotmart-secondary.test.mjs 12
 tests/f2c-hotmart-provider-recovery.test.mjs 11
 tests/f2d-hotmart-run-status.test.mjs 10
