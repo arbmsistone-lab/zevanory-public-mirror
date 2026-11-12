@@ -16,7 +16,7 @@ import { getPublisherAccessToken } from "./publisher-access.mjs";
 const GRAPH = "https://graph.facebook.com/v21.0";
 // DEC-23: IG/FB só com prova aprovada registrada no repositório.
 export const META_PROVA = JSON.parse(String(readFileSync(new URL("../../data/meta-prova-dec23.json", import.meta.url), "utf8")).replace(/\r\n/g, "\n"));
-export const metaLiberada = (r = META_PROVA) => r?.teste_permissao_ok === true && /^\d+$/.test(String(r?.prova_instagram_media_id ?? "")) && /^\d+$/.test(String(r?.prova_facebook_video_id ?? "")) && r?.aprovado_por === "proprietario" && /^\d{4}-\d{2}-\d{2}$/.test(String(r?.aprovado_em ?? ""));
+export const metaLiberada = (r = META_PROVA) => r?.teste_permissao_ok === true && /^\d+$/.test(String(r?.prova_instagram_media_id ?? "")) && (r?.prova_facebook_post_id != null ? /^\d+_\d+$/.test(String(r.prova_facebook_post_id)) : /^\d+$/.test(String(r?.prova_facebook_video_id ?? ""))) && r?.aprovado_por === "proprietario" && /^\d{4}-\d{2}-\d{2}$/.test(String(r?.aprovado_em ?? ""));
 
 // NC-02: o cross-post só roda se o YouTube publicou o Short do slot como PÚBLICO (registro gravado por
 // recordPublication: zpc:acquisition:daily:<dia>:youtube[_dica|_calc] com status "publicado" e privacy "public")
