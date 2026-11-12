@@ -45,23 +45,38 @@ export async function submitPublication({url,key,urls=[url]},fetchImpl=fetch){
 }
 const PENDING_MARKER='INDEXNOW_PENDING_V1=';
 const validItem=p=>p&&typeof p.url==='string'&&p.id===sha(canonical(p.url))&&/^[a-f0-9]{64}$/.test(p.revision)&&typeof p.file==='string'&&/^[A-Za-z0-9_./-]+\.(html|md)$/.test(p.file)&&!p.file.includes('..');
-export async function readAttemptJournal({repo,runId,attempt,token,now=Date.now()},fetchImpl=fetch,warn=console.warn){
+export function continuityAnchor(value){
+ if(!value||value.schema!==1||value.authorized!==true||!Number.isSafeInteger(value.anchorRunId)||value.anchorRunId<1||!Number.isSafeInteger(value.anchorRunNumber)||value.anchorRunNumber<1||!Array.isArray(value.rows)||!Array.isArray(value.pending)||!value.pending.every(validItem)||!value.rows.every(r=>r&&/^[a-f0-9]{64}$/.test(r.id)&&/^[a-f0-9]{64}$/.test(r.revision)&&/^\d{4}-\d{2}-\d{2}$/.test(r.day)))throw Error('continuity_not_initialized');
+ return value;
+}
+export async function readAttemptJournal({repo,runId,runNumber,attempt,token,continuity,now=Date.now()},fetchImpl=fetch,warn=console.warn){
  try{
   if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)||!Number.isSafeInteger(runId)||!Number.isSafeInteger(attempt)||!token)throw Error('journal_config');
+  const anchor=continuityAnchor(continuity);if(!Number.isSafeInteger(runNumber)||runNumber<anchor.anchorRunNumber)throw Error('continuity_number');
+  const seen=new Map([[runNumber,runId]]);
   const request=async path=>{const r=await fetchImpl('https://api.github.com/repos/'+repo+path,{headers:{accept:'application/vnd.github+json',authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});if(r.status!==200)throw Error('journal_http');return r;};
-  const rows=[];let pending=null,backlogAt=-Infinity;
-  const since=now-48*3600000;
+  const rows=[...anchor.rows];let pending=anchor.pending,backlogAt=-Infinity;
+  const finish=()=>{
+   if(seen.get(anchor.anchorRunNumber)!==anchor.anchorRunId)throw Error('continuity_anchor_missing');
+   if(runNumber-anchor.anchorRunNumber>999)throw Error('continuity_compaction_required');
+   for(let n=anchor.anchorRunNumber;n<=runNumber;n++)if(!seen.has(n))throw Error('continuity_gap');
+   return {rows,pending};
+  };
   for(let page=1;page<=10;page++){
    const result=await (await request('/actions/workflows/indexnow-submit.yml/runs?per_page=100&page='+page)).json();
    if(!Array.isArray(result.workflow_runs))throw Error('journal_shape');
    for(const run of result.workflow_runs){
-    if(!Number.isSafeInteger(run.id)||!Number.isFinite(Date.parse(run.created_at)))throw Error('journal_shape');
+    if(!Number.isSafeInteger(run.id)||!Number.isSafeInteger(run.run_number)||!Number.isFinite(Date.parse(run.created_at)))throw Error('journal_shape');
+    if(run.run_number>runNumber)throw Error('continuity_newer_run');
+    if(run.run_number<anchor.anchorRunNumber)continue;
+    if(seen.has(run.run_number)&&seen.get(run.run_number)!==run.id)throw Error('continuity_duplicate');
+    seen.set(run.run_number,run.id);
     if(run.id===runId&&attempt===1)continue;
     const attempts=run.id===runId?Array.from({length:attempt-1},(_,i)=>'/attempts/'+(i+1)+'/jobs?'):['/jobs?filter=all&'];
     for(const endpoint of attempts){
      for(let jp=1;jp<=10;jp++){
       const items=await (await request('/actions/runs/'+run.id+endpoint+'per_page=100&page='+jp)).json();
-      if(!Array.isArray(items.jobs))throw Error('journal_shape');
+      if(!Array.isArray(items.jobs)||jp===1&&items.jobs.length===0)throw Error('journal_jobs_missing');
       for(const job of items.jobs){
        if(typeof job.name!=='string')throw Error('journal_shape');
        if(job.status==='queued'||job.started_at===null)continue;
@@ -76,6 +91,7 @@ export async function readAttemptJournal({repo,runId,attempt,token,now=Date.now(
          if(!Number.isSafeInteger(job.id))throw Error('journal_shape');
          const logs=await (await request('/actions/jobs/'+job.id+'/logs')).text();
          const lines=logs.split('\n').filter(line=>line.includes(PENDING_MARKER));
+         if(lines.length!==1)throw Error('continuity_planner_log_missing');
          if(lines.length){
           const raw=lines.at(-1).slice(lines.at(-1).indexOf(PENDING_MARKER)+PENDING_MARKER.length).trim();
           const value=JSON.parse(raw);if(!Array.isArray(value)||value.length>5000||!value.every(validItem))throw Error('pending_shape');
@@ -87,10 +103,10 @@ export async function readAttemptJournal({repo,runId,attempt,token,now=Date.now(
       if(items.jobs.length<100)break;if(jp===10)throw Error('journal_limit');
      }
     }
-    // Keep recent attempts, plus the last durable backlog and that run's attempts.
-    if(Date.parse(run.created_at)<since&&(pending!==null||rows.some(x=>x.legacy)))return {rows,pending:pending||[]};
+    // Do not stop at a recent backlog: every run number back to the approved anchor is required.
+    if(run.run_number===anchor.anchorRunNumber)return finish();
    }
-   if(result.workflow_runs.length<100)return {rows,pending:pending||[]};
+   if(result.workflow_runs.length<100)return finish();
   }
   throw Error('journal_limit');
  }catch{warn('::warning title=INDEXNOW::journal_unreadable');throw Error('journal_unreadable');}
@@ -123,7 +139,8 @@ async function main(){
    if(!/^[a-f0-9]{40}$/.test(before)||/^0+$/.test(before))throw Error('baseline_unavailable');
    fresh=changedPublications({before,after,changed:git('diff','--name-only',before,after).trim().split('\n'),readBlob});
   }
-  const journal=await readAttemptJournal({repo:process.env.GITHUB_REPOSITORY,runId:Number(process.env.GITHUB_RUN_ID),attempt:Number(process.env.GITHUB_RUN_ATTEMPT),token:process.env.GITHUB_TOKEN,now});
+  const continuity=JSON.parse(readFileSync(new URL('../data/indexnow-continuity.json',import.meta.url),'utf8'));
+  const journal=await readAttemptJournal({repo:process.env.GITHUB_REPOSITORY,runId:Number(process.env.GITHUB_RUN_ID),runNumber:Number(process.env.GITHUB_RUN_NUMBER),attempt:Number(process.env.GITHUB_RUN_ATTEMPT),token:process.env.GITHUB_TOKEN,continuity,now});
   // Resolve old backlog against current files; removed files are never announced.
   journal.pending=journal.pending.flatMap(p=>{const body=readBlob(after,p.file);return body===null?[]:[{...p,revision:sha(body)}];});
   const {selected,pending}=selectDailyPublications(fresh,journal,day);
