@@ -142,8 +142,9 @@ test("one cycle publishes Bluesky after peak (Telegram desligado, F0 nº 7), the
  assert.equal(a.ok,true);
  assert.deepEqual(a.outcomes.filter(x=>x.status==="publicado").map(x=>x.channel).sort(),["bluesky"]);
  assert.equal(a.outcomes.find(x=>x.channel==="telegram").status,"desligado");
- assert.equal(a.outcomes.find(x=>x.channel==="blog").status,"rascunho");
- assert.equal(await store.get("zpc:blog:index:v1"),null,"R117: acquisition cannot publish blog by default");
+ // Plano Mestre §9: sábado fica fora da agenda seg/qua/sex do blog.
+ assert.equal(a.outcomes.find(x=>x.channel==="blog").status,"fora_da_agenda");
+ assert.equal(await store.get("zpc:blog:index:v1"),null,"no blog publication outside the Mon/Wed/Fri agenda");
  const b=await runAcquisitionEngine(env,date,mock);
  assert.equal(counts.telegram,0);assert.equal(counts.createRecord,1);
  assert.ok(b.outcomes.some(x=>x.channel==="bluesky"&&x.url));
