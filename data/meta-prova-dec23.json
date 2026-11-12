@@ -1,0 +1,9 @@
+{
+  "schema": "meta-prova-dec23/v1",
+  "descricao": "DEC-23 (Plano Mestre v1.2, seção 9): Instagram e Facebook só publicam pelo crosspost dos Shorts depois do teste de permissão e de uma publicação de prova bem-sucedida, aprovados pelo proprietário. Preencher por PR: teste_permissao_ok=true, IDs numéricos devolvidos pela Graph API nas provas, aprovado_por=\"proprietario\" e aprovado_em=AAAA-MM-DD. Qualquer campo nulo ou inválido mantém IG/FB bloqueados (status bloqueado:dec23_sem_prova).",
+  "teste_permissao_ok": null,
+  "prova_instagram_media_id": null,
+  "prova_facebook_video_id": null,
+  "aprovado_por": null,
+  "aprovado_em": null
+}

@@ -8,6 +8,7 @@ tests/abandono-hotmart.test.mjs 94
 tests/acquisition-engine.test.mjs 26
 tests/activity-ledger.test.mjs 7
 tests/affiliate-program.test.mjs 4
+tests/affiliate-recruitment.test.mjs 4
 tests/atendimento-drain-dispatch.test.mjs 3
 tests/atendimento-telegram.test.mjs 6
 tests/atendimento.test.mjs 15
@@ -48,7 +49,9 @@ tests/db-economy.test.mjs 5
 tests/engine-dispatcher.test.mjs 4
 tests/experiments.test.mjs 5
 tests/f1-bluesky-kv.test.mjs 11
+tests/f1-meta-identity.test.mjs 10
 tests/f1b-bluesky-recovery.test.mjs 5
+tests/f1b-shorts-corruption.test.mjs 4
 tests/f2-hotmart-post-sale.test.mjs 30
 tests/f2-hotmart-restricted.test.mjs 10
 tests/f2b-hotmart-secondary.test.mjs 12
@@ -78,6 +81,7 @@ tests/market-weekly.test.mjs 2
 tests/mercadopago-preference-expiry.test.mjs 3
 tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
+tests/meta-permission-check.test.mjs 44
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
 tests/nc015-cp-no-public-links.test.mjs 4
@@ -147,7 +151,9 @@ tests/sales-trust-consistency.test.mjs 4
 tests/sales-worker-differential.test.mjs 6
 tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
-tests/short-crosspost.test.mjs 8
+tests/short-crosspost.test.mjs 10
+tests/shorts-retomada-mutantes.test.mjs 47
+tests/shorts-retomada.test.mjs 15
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2
 tests/site-chat-no-synthetic-traffic.test.mjs 5
