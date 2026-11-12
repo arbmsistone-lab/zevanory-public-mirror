@@ -89,6 +89,12 @@ export async function lerStatusDoDia(kv, day, regras = REGRAS) {
     const row = row0 ? { ...row0, trigger: row0.trigger ?? resumo?.trigger ?? null } : null;
     const okBlog = blogStatus?.resultado === "ok";
     const publicada = row?.status === "publicado" || okBlog;
+    // NC-G6-1021-01: zero só com evidência VÁLIDA de não publicação (registro do canal com outro status, ou blog
+    // rejeitado). Sem estado, recibo nem status do canal = SEM EVIDÊNCIA: publicadas null, nunca "real 0".
+    if (!publicada && !row && !blogStatus) {
+      porCanal[canal] = { publicadas: null, semComando: 0, status: null, url: null, id: null, motivo: "sem evidência: nenhum estado, recibo ou status do canal no dia", leitura: "ausente" };
+      continue;
+    }
     porCanal[canal] = {
       publicadas: publicada ? 1 : 0,
       semComando: (semComando(row) || (okBlog && semComando({ status: "publicado", trigger: row?.trigger }))) ? 1 : 0,
@@ -110,10 +116,12 @@ export function diagnosticarDia({ day, hour, ativos = {}, status = { porCanal: {
     if (ativos[canal]?.ativo !== true) continue;
     const esperadas = esperadasNoDia(canal, day, hour, regras);
     const s = status.porCanal?.[canal] || {};
-    const publicadas = s.leitura === "erro" ? null : Number(s.publicadas) || 0;
+    // Sem leitura ou sem evidência: publicadas null; nunca CANAL_PARADO como fato confirmado (NC-G6-1021-01).
+    const semFato = s.leitura === "erro" || s.leitura === "ausente" || !Number.isInteger(s.publicadas);
+    const publicadas = semFato ? null : s.publicadas;
     if (!esperadas || (publicadas !== null && publicadas >= esperadas)) continue;
     const motivo = s.motivo || motivoDe(null, null, status.fonte);
-    out.push({ regra: s.leitura === "erro" ? "LEITURA_INCONCLUSIVA" : "CANAL_PARADO", versao_regra: regra.versao, versao_regras: regras.versao, dia: day, canal, esperadas, publicadas, motivo, classe: classeDoMotivo(motivo, regras), acao_automatica: "nenhuma" });
+    out.push({ regra: s.leitura === "erro" ? "LEITURA_INCONCLUSIVA" : semFato ? "SEM_EVIDENCIA" : "CANAL_PARADO", versao_regra: regra.versao, versao_regras: regras.versao, dia: day, canal, esperadas, publicadas, motivo, classe: classeDoMotivo(motivo, regras), acao_automatica: "nenhuma" });
   }
   return out;
 }

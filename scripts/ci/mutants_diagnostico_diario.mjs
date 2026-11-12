@@ -57,6 +57,8 @@ const MUTANTS = [
   ["DD43_outcome_do_canal_ignorado", TR, [[DG, "trigger: row0.trigger ?? resumo?.trigger ?? null", "trigger: row0.trigger ?? null"]]],
   ["DD44_snapshot_herda_trigger_do_estado", TR, [[SN, "e.trigger = o?.trigger || null;", "e.trigger = o?.trigger || st?.trigger || null;"]]],
   // NC-F1-A4-02: rótulo UTC obrigatório, mesmo com as datas coincidindo.
+  ["DD46_ausencia_vira_zero", CP, [[DG, "if (!publicada && !row && !blogStatus) {", "if (false) {"]]],
+  ["DD47_sem_evidencia_vira_canal_parado", CP, [[DG, 'semFato ? "SEM_EVIDENCIA" : "CANAL_PARADO"', '"CANAL_PARADO"']]],
   ["DD45_rotulo_utc_removido", REL, [[RL, "`FUNIL E VENDAS (dia UTC ${day}; intervalo diferente do dia America/Sao_Paulo", "`FUNIL E VENDAS (dia ${day}, America/Sao_Paulo"]]],
   ["DD34_motor_assume_cron_por_padrao", TR, [[AQ, 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";', 'trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"cron";']]],
   ["DD35_motor_nao_preserva_primeiro_trigger", TR, [[AQ, '{...o,trigger:o.trigger??(prevOutcomes.find(p=>p.channel===o.channel&&p.status==="publicado"&&p.url&&p.url===o.url)?.trigger??null)}', "{...o,trigger}"]]],

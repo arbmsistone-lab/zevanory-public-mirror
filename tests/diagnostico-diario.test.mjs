@@ -50,11 +50,11 @@ test("CANAL_PARADO: cada canal ativo abaixo do esperado gera diagnóstico com o 
   ]);
   assert.equal(d[0].versao_regras, REGRAS_DIAGNOSTICO.versao);
   assert.deepEqual(x.writes, [], "o Diagnosticador v1 só lê");
-  // Sem registro do motor no dia: o canal ativo aparece como parado com motivo sem_registro.
+  // Sem registro do motor no dia (NC-G6-1021-01): SEM_EVIDENCIA com publicadas null, nunca CANAL_PARADO nem "real 0".
   const vazio = await lerStatusDoDia(fake().kv, MON);
   assert.equal(vazio.fonte, "sem_registro");
-  assert.deepEqual(diagnosticarDia({ day: MON, hour: 20, ativos: ALL_ACTIVE, status: vazio }).map((y) => y.canal), ["blog", "bluesky"]);
-  assert.match(diagnosticarDia({ day: MON, hour: 20, ativos: ALL_ACTIVE, status: vazio })[0].motivo, /^sem_registro/);
+  assert.deepEqual(diagnosticarDia({ day: MON, hour: 20, ativos: ALL_ACTIVE, status: vazio }).map((y) => [y.regra, y.canal, y.publicadas]), [["SEM_EVIDENCIA", "blog", null], ["SEM_EVIDENCIA", "bluesky", null]]);
+  assert.match(diagnosticarDia({ day: MON, hour: 20, ativos: ALL_ACTIVE, status: vazio })[0].motivo, /^sem evidência/);
   // Antes da hora limite, canal inativo e regra desligada não diagnosticam; credencial expirada é classe D.
   assert.deepEqual(diagnosticarDia({ day: MON, hour: 8, ativos: ALL_ACTIVE, status: vazio }), []);
   assert.deepEqual(diagnosticarDia({ day: MON, hour: 20, ativos: { blog: { ativo: false } }, status: vazio }), []);

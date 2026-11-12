@@ -79,10 +79,11 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
   const publicacoes = Object.keys(regras.canais || {}).map((canal) => {
     const a = ativos[canal], s = status.porCanal[canal] || {};
     const esperadas = a?.ativo ? esperadasNoDia(canal, day, hour, regras) : 0;
-    const publicadas = s.leitura === "erro" ? null : s.publicadas || 0;
+    // Sem leitura ou sem evidência = null ("não lido"/"sem evidência"), nunca 0 (NC-G6-1021-01).
+    const publicadas = s.leitura === "erro" || s.leitura === "ausente" || !Number.isInteger(s.publicadas) ? null : s.publicadas;
     const extra = s.url ? s.url : s.id ? "id " + s.id : publicadas < esperadas ? s.motivo : s.status && s.status !== "publicado" ? s.status : null;
     const desligado = a?.desligado === true ? `• ${canal}: desligado (${/propriet[aá]rio/i.test(String(a.motivo || "")) ? "decisão do proprietário" : a.motivo})` : null;
-    const linha = desligado ? desligado : !a?.ativo ? `• ${canal}: inativo (${a?.motivo || "sem regra"})` : `• ${canal}: esperado ${esperadas} × real ${publicadas === null ? "não lido" : publicadas}` + (extra ? ` — ${extra}` : "");
+    const linha = desligado ? desligado : !a?.ativo ? `• ${canal}: inativo (${a?.motivo || "sem regra"})` : `• ${canal}: esperado ${esperadas} × real ${publicadas === null ? (s.leitura === "erro" ? "não lido" : "sem evidência") : publicadas}` + (extra ? ` — ${extra}` : "");
     return { canal, ativo: a?.ativo === true, esperadas, publicadas, url: s.url || null, id: s.id || null, linha };
   });
 
@@ -99,7 +100,7 @@ export async function montarRelatorioDiario(env = {}, { day, hour = 20, now = ne
     ...Object.entries(ativos).filter(([, a]) => !a.ativo && /^aguardando/.test(String(a.motivo || ""))).map(([canal, a]) => `• ${canal}: ${a.motivo} (credencial é classe D; a central não cria nem vê credencial)`),
     ...diagnosticos.filter((d) => d.classe === "D").map((d) => `• ${d.canal}: ${d.motivo} (renovar ou trocar a credencial)`),
   ];
-  const diag = diagnosticos.map((d) => `• ${d.regra} ${d.canal}: ${d.publicadas === null ? "não lido" : d.publicadas}/${d.esperadas} — motivo: ${d.motivo} — classe ${d.classe}; ação automática: nenhuma (v1 só diagnostica)`);
+  const diag = diagnosticos.map((d) => `• ${d.regra} ${d.canal}: ${d.publicadas === null ? (d.regra === "SEM_EVIDENCIA" ? "sem evidência" : "não lido") : d.publicadas}/${d.esperadas} — motivo: ${d.motivo} — classe ${d.classe}; ação automática: nenhuma (v1 só diagnostica)`);
 
   const lines = [
     `ZEVANORY | Relatório do dia ${day} (${String(hour).padStart(2, "0")}h, America/Sao_Paulo)`,
