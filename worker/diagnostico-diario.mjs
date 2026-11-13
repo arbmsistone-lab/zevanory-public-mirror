@@ -1,0 +1,187 @@
+// Diagnosticador v1 (Plano Mestre ZEVANORY v1.2, seções 2 e 4; F1 item 5). Regras versionadas em
+// data/regras-diagnostico.json. Implementa SÓ a regra CANAL_PARADO: para cada canal ativo, publicações reais menores
+// que as esperadas no dia (depois da hora limite do canal) geram um diagnóstico com o motivo lido das chaves de status
+// do dia. O módulo só diagnostica e reporta (relatório diário das 20h): nenhuma ação automática, nenhuma gravação,
+// nenhum segredo. Também calcula o índice REAL de autonomia (seção 6): concluídas sem comando ÷ devidas; sem fonte,
+// "não medido", nunca 100.
+import REGRAS from "../data/regras-diagnostico.json" with { type: "json" };
+
+export const REGRAS_DIAGNOSTICO = REGRAS;
+export const ACQUISITION_DAILY_PREFIX = "zpc:acquisition:daily:";
+const AGUARDANDO = /^aguardando/;
+
+export const weekdayOf = (day) => new Date(String(day) + "T12:00:00Z").getUTCDay();
+const object = v => v !== null && typeof v === "object" && !Array.isArray(v);
+const readJson = async (kv, key, valid = object) => {
+  if (!kv?.get) return { ok: false, v: null };
+  try {
+    const raw = await kv.get(key);
+    if (raw === null) return { ok: true, v: null };
+    const v = JSON.parse(String(raw));
+    return valid(v) ? { ok: true, v } : { ok: false, v: null };
+  } catch { return { ok: false, v: null }; }
+};
+
+// Publicações esperadas de um canal no dia local, já vencidas na hora local informada (24 = dia encerrado).
+// Canal com ativacao "desligada" (ex.: Telegram, decisão F0 nº 7 do proprietário) nunca é devido, qualquer que seja a
+// agenda: sem CANAL_PARADO e fora do denominador da autonomia.
+export function esperadasNoDia(canal, day, hour, regras = REGRAS) {
+  const c = regras?.canais?.[canal];
+  if (!c || c.ativacao === "desligada") return 0;
+  if (!(Array.isArray(c.dias_semana) && c.dias_semana.includes(weekdayOf(day)))) return 0;
+  if (!(Number(hour) >= Number(c.hora_limite))) return 0;
+  return Math.max(0, Math.floor(Number(c.esperadas_por_dia) || 0));
+}
+
+// Canal ativo: automático sempre; por credencial só com a credencial configurada (channelChecklist); desligado nunca.
+export function canaisAtivos(checklist = [], regras = REGRAS) {
+  const out = {};
+  for (const [canal, c] of Object.entries(regras?.canais || {})) {
+    if (c.ativacao === "automatica") out[canal] = { ativo: true, motivo: null };
+    else if (c.ativacao === "desligada") out[canal] = { ativo: false, desligado: true, motivo: c.motivo_desligado || "desligado" };
+    else {
+      const row = (Array.isArray(checklist) ? checklist : []).find((x) => x?.id === canal);
+      out[canal] = row?.configured === true ? { ativo: true, motivo: null } : { ativo: false, motivo: row?.external_verification_pending ? "aguardando aprovação" : "aguardando credencial" };
+    }
+  }
+  return out;
+}
+
+// Concluída sem comando (auditoria do #1021): publicada E disparada pelo cron ("cron" gravado pelo motor). Disparo
+// manual, workflow_dispatch, correção externa (agente de engenharia) ou registro sem trigger NÃO contam como autônomos.
+export const TRIGGER_AUTONOMO = "cron";
+export const semComando = (row) => row?.status === "publicado" && row?.trigger === TRIGGER_AUTONOMO && row?.manual !== true;
+
+// NC-G6-1021-01 (r2): o que PROVA que não houve publicação. Só isto vale zero:
+// * blog rejeitado pelo gate (zpc:blog:status:v1 resultado "rejeitado");
+// * canal não tentado por estado conhecido (pausado, desligado, aguardando credencial/aprovação, fora da agenda,
+//   rascunho);
+// * erro DEFINITIVO do provedor (definitive:true, sem needs_reconciliation) ou rejeição do gate ANTES da publicação
+//   (gate.ok === false).
+// pending, needs_reconciliation:true, erro não definitivo e status não reconhecido = RESULTADO INCERTO (null).
+export const STATUS_NAO_TENTADO = Object.freeze(["pausado", "desligado", "aguardando credencial", "aguardando aprovação", "fora_da_agenda", "rascunho"]);
+export function provaDeNaoPublicacao(row, blogStatus) {
+  if (blogStatus?.resultado === "rejeitado") return true;
+  if (!object(row) || row.status === "publicado") return false;
+  if (row.status === "pending" || row.needs_reconciliation === true) return false;
+  if (STATUS_NAO_TENTADO.includes(row.status)) return true;
+  if (row.status === "erro") return row.definitive === true || (object(row.gate) && row.gate.ok === false);
+  return false;
+}
+
+// Motivo, das chaves de status do dia: rejeição do gate do blog > código do provedor/gate > status > ausência de registro.
+export function motivoDe(row, blogStatus, fonte) {
+  if (blogStatus?.resultado === "rejeitado") return "gate do blog: " + (Array.isArray(blogStatus.motivos) ? blogStatus.motivos.join(",") : "sem motivo");
+  if (row?.code) return String(row.code).slice(0, 120);
+  if (row?.status && row.status !== "publicado") return String(row.status).slice(0, 60);
+  if (fonte === "falha_leitura") return "falha ao ler as chaves de status do dia";
+  return "sem_registro: o motor não registrou execução do canal no dia";
+}
+
+export function classeDoMotivo(motivo, regras = REGRAS) {
+  const m = String(motivo || "");
+  return Object.entries(regras?.classe_por_motivo || {}).some(([k]) => m === k || m.includes(k)) ? "D" : "B";
+}
+
+// Lê o estado do dia (zpc:acquisition:daily:<dia>), o detalhe por canal (zpc:acquisition:daily:<dia>:<canal>) e a chave de
+// status própria do canal, quando a regra declara uma (blog: zpc:blog:status:v1:<dia>). Só leitura.
+export async function lerStatusDoDia(kv, day, regras = REGRAS) {
+  const estado = await readJson(kv, ACQUISITION_DAILY_PREFIX + day, v=>object(v)&&Array.isArray(v.outcomes)&&v.outcomes.every(o=>object(o)&&typeof o.channel==="string"&&typeof o.status==="string"));
+  let fonte = !estado.ok ? "falha_leitura" : estado.v ? "registro" : "sem_registro";
+  const porCanal = {};
+  for (const [canal, c] of Object.entries(regras?.canais || {})) {
+    const detalhe = c.ativacao === "desligada" ? { ok: true, v: null } : await readJson(kv, ACQUISITION_DAILY_PREFIX + day + ":" + canal, v=>object(v)&&typeof v.status==="string");
+    const resumo = (Array.isArray(estado.v?.outcomes) ? estado.v.outcomes : []).find((o) => o?.channel === canal) || null;
+    const blogRead = c.chave_status ? await readJson(kv, String(c.chave_status).replace("{dia}", day), v=>object(v)&&(v.resultado==="ok"?(typeof v.url==="string"||typeof v.slug==="string"):v.resultado==="rejeitado"&&Array.isArray(v.motivos))) : {ok:true,v:null};
+    const blogStatus = blogRead.v;
+    if(c.ativacao!=="desligada"&&(!estado.ok||!detalhe.ok||!blogRead.ok)){
+      fonte="falha_leitura";
+      porCanal[canal]={publicadas:null,semComando:0,status:"erro",url:null,id:null,motivo:"falha ao ler as chaves de status do dia (não lido)",leitura:"erro"};
+      continue;
+    }
+    const row0 = detalhe.v || resumo;
+    // NC-F1-A4-01 (contra-auditoria GPT-6): a origem vem SÓ do recibo ou do outcome DESTE canal. O trigger geral da
+    // execução (estado.trigger) nunca comprova a origem de uma publicação; origem ausente fica desconhecida (null) e
+    // não entra no numerador da autonomia.
+    const row = row0 ? { ...row0, trigger: row0.trigger ?? resumo?.trigger ?? null } : null;
+    const okBlog = blogStatus?.resultado === "ok";
+    const publicada = row?.status === "publicado" || okBlog;
+    // NC-G6-1021-01: zero só com evidência VÁLIDA de não publicação (registro do canal com outro status, ou blog
+    // rejeitado). Sem estado, recibo nem status do canal = SEM EVIDÊNCIA: publicadas null, nunca "real 0".
+    if (!publicada && !row && !blogStatus) {
+      porCanal[canal] = { publicadas: null, semComando: 0, status: null, url: null, id: null, motivo: "sem evidência: nenhum estado, recibo ou status do canal no dia", leitura: "ausente" };
+      continue;
+    }
+    if (!publicada && !provaDeNaoPublicacao(row, blogStatus)) {
+      const st = typeof row?.status === "string" ? row.status.slice(0, 40) : "desconhecido";
+      porCanal[canal] = { publicadas: null, semComando: 0, status: row?.status || null, url: null, id: row?.provider_post_id ? String(row.provider_post_id).slice(0, 120) : null, motivo: `resultado incerto (${st}${row?.code ? ": " + String(row.code).slice(0, 60) : ""}${row?.needs_reconciliation === true ? ", aguardando conferência" : ""})`, leitura: "incerto" };
+      continue;
+    }
+    porCanal[canal] = {
+      publicadas: publicada ? 1 : 0,
+      semComando: (semComando(row) || (okBlog && semComando({ status: "publicado", trigger: row?.trigger }))) ? 1 : 0,
+      status: okBlog ? "publicado" : row?.status || null,
+      url: row?.url || (okBlog ? blogStatus.url : null) || null,
+      id: row?.provider_post_id ? String(row.provider_post_id).slice(0, 120) : null,
+      motivo: publicada ? null : motivoDe(row, blogStatus, detalhe.ok ? fonte : "falha_leitura"),
+    };
+  }
+  return { day, fonte, porCanal };
+}
+
+// Regra CANAL_PARADO (v1): só diagnostica. acao_automatica fica "nenhuma" até o Decisor existir (F2).
+export function diagnosticarDia({ day, hour, ativos = {}, status = { porCanal: {} }, regras = REGRAS } = {}) {
+  const regra = (regras?.regras || []).find((r) => r.id === "CANAL_PARADO" && r.ativa === true);
+  if (!regra) return [];
+  const out = [];
+  for (const canal of Object.keys(regras?.canais || {})) {
+    if (ativos[canal]?.ativo !== true) continue;
+    const esperadas = esperadasNoDia(canal, day, hour, regras);
+    const s = status.porCanal?.[canal] || {};
+    // Sem leitura ou sem evidência: publicadas null; nunca CANAL_PARADO como fato confirmado (NC-G6-1021-01).
+    const semFato = s.leitura === "erro" || s.leitura === "ausente" || s.leitura === "incerto" || !Number.isInteger(s.publicadas);
+    const publicadas = semFato ? null : s.publicadas;
+    if (!esperadas || (publicadas !== null && publicadas >= esperadas)) continue;
+    const motivo = s.motivo || motivoDe(null, null, status.fonte);
+    out.push({ regra: s.leitura === "erro" ? "LEITURA_INCONCLUSIVA" : s.leitura === "incerto" ? "RESULTADO_INCERTO" : semFato ? "SEM_EVIDENCIA" : "CANAL_PARADO", versao_regra: regra.versao, versao_regras: regras.versao, dia: day, canal, esperadas, publicadas, motivo, classe: classeDoMotivo(motivo, regras), acao_automatica: "nenhuma" });
+  }
+  return out;
+}
+
+export function indiceAutonomia({ devidas = 0, concluidas = 0, fonteOk = false } = {}) {
+  const d = Math.max(0, Number(devidas) || 0), c = Math.min(d, Math.max(0, Number(concluidas) || 0));
+  if (!fonteOk || d === 0) return { valor: null, texto: "não medido", devidas: d, concluidas: c, formula: "concluídas sem comando ÷ devidas" };
+  const valor = Math.round((1000 * c) / d) / 10;
+  return { valor, texto: `${String(valor).replace(".", ",")}% (${c} de ${d} devidas concluídas sem comando)`, devidas: d, concluidas: c, formula: "concluídas sem comando ÷ devidas" };
+}
+
+// Autonomia do dia: soma, nos canais ativos, as publicações devidas até a hora e as concluídas sem comando.
+export function autonomiaDoDia({ day, hour, ativos = {}, status = { porCanal: {} }, regras = REGRAS } = {}) {
+  let devidas = 0, concluidas = 0;
+  for (const canal of Object.keys(regras?.canais || {})) {
+    if (ativos[canal]?.ativo !== true) continue;
+    const e = esperadasNoDia(canal, day, hour, regras);
+    devidas += e; concluidas += Math.min(e, Number(status.porCanal?.[canal]?.semComando) || 0);
+  }
+  return indiceAutonomia({ devidas, concluidas, fonteOk: status.fonte === "registro" });
+}
+
+// Autonomia de uma janela (painel/snapshot): byDay = {dia: {canal: {status, ...}}} vindo do registro de ações no KV.
+// Dia sem registro não entra (sem fonte). Canal por credencial sem registro ou "aguardando ..." no dia não é devido.
+export function autonomiaDaJanela(byDay = {}, { hoje = null, horaHoje = 24, regras = REGRAS } = {}) {
+  let devidas = 0, concluidas = 0, diasComFonte = 0;
+  for (const [day, entries] of Object.entries(byDay || {})) {
+    if (!entries || !Object.keys(entries).length) continue;
+    diasComFonte++;
+    const hour = day === hoje ? horaHoje : 24;
+    for (const [canal, c] of Object.entries(regras?.canais || {})) {
+      if (c.ativacao === "desligada") continue;
+      const e = entries[canal];
+      if (c.ativacao === "credencial" && (!e || AGUARDANDO.test(String(e.status || "")))) continue;
+      const esp = esperadasNoDia(canal, day, hour, regras);
+      if (!esp) continue;
+      devidas += esp; if (semComando(e)) concluidas += 1;
+    }
+  }
+  return { ...indiceAutonomia({ devidas, concluidas, fonteOk: diasComFonte > 0 }), diasComFonte, fonte: "zpc:acquisition:daily:<dia>[:<canal>] (registro de ações)" };
+}

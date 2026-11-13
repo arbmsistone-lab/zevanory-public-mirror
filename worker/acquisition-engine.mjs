@@ -5,11 +5,16 @@ import { ensureDailyBlog, publishTelegram, channelChecklist, resolveChannelCrede
 import { publishBluesky, blueskyReady, blueskyPostText, graphemeCount } from "./bluesky-publisher.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { creativeAutopublishPaused } from "./creative-autonomy.mjs";
+import { montarRelatorioDiario } from "./relatorio-diario.mjs";
 import { CLOSED_LABEL } from "./politica-unica.mjs";
 import { priceBySku } from "./product-prices.mjs";
 import { contentSalesOpen, salesLockViolations, hotmartKitsOpen, hotmartKit, hotmartLockViolations } from "./sales-lock-content.mjs";
 export const ACQUISITION_STATE_PREFIX="zpc:acquisition:daily:";
 export const ACQUISITION_CALENDAR_KEY="zpc:acquisition:calendar:v1";
+// trigger (Plano Mestre §6, auditoria do #1021): quem disparou runAcquisitionEngine, no 4º argumento {trigger}. Só o cron
+// do Worker passa "cron"; o padrão é "manual", e "workflow_dispatch"/"externo" também são aceitos. Nunca autodeclarado:
+// o índice de autonomia só conta "cron". (A assinatura não muda, para não colidir com o #1019.)
+export const ENGINE_TRIGGERS=Object.freeze(["cron","manual","workflow_dispatch","externo"]);
 const DAY=86400000;
 const PRODUCTS=Object.freeze([
  {sku:"ZEV-IA-011",name:"IA na Prática",price:priceBySku("ZEV-IA-011")},
@@ -205,7 +210,7 @@ const MAX_DAILY_ATTEMPTS=3;
 // Telegram, which has no idempotency key. Bluesky reuses a deterministic record
 // key and adopts an existing record, so it can safely retry either way.
 const definitiveFailure=message=>/^(bluesky_http_4\d\d|bluesky_session_invalid|bluesky_receipt_mismatch|telegram_http_4\d\d|provider_http_4\d\d|bluesky_product_link_invalid|bluesky_link_too_long|bluesky_grapheme_limit|telegram_credentials_missing|brand_[a-z0-9_]+)$/.test(String(message||""))&&!/_(408|429)$/.test(String(message||""));
-async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesOpen=false,hotmartOpen=false}){
+async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesOpen=false,hotmartOpen=false,trigger="manual"}){
  const key=ACQUISITION_STATE_PREFIX+entry.day+":"+channel;
  const read=await readAcquisitionKv(kv,key,receiptShape);
  if(!read.ok)return {channel,day:entry.day,status:"erro",code:"receipt_unreadable"};
@@ -213,7 +218,7 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
  const attempts=Number(prior?.attempts||(prior?1:0));
  if(prior){
   const retryable=prior.status!=="publicado"&&attempts<MAX_DAILY_ATTEMPTS&&(channel==="bluesky"||(prior.status==="erro"&&prior.definitive===true));
-  if(!retryable)return prior; // published, or ambiguous Telegram pending: never blindly repost
+  if(!retryable)return {...prior,trigger:prior.trigger??null}; // published, or ambiguous Telegram pending: never blindly repost
  }
  // Preserve legacy Telegram publish-once marker during cutover. Never produce two posts in a day.
  if(channel==="telegram"&&!prior){
@@ -233,14 +238,14 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[],salesO
  const linkHttpStatus=await verifyProductLink(draft.link);
  const gate=validateDraft({draft,entry,priorPosts:past,linkHttpStatus,salesOpen:open,hotmartOpen:hotmartOpen===true});
  if(!gate.ok){return {channel,day:entry.day,status:"erro",code:gate.reasons.join(","),gate};}
- const reservation={channel,day:entry.day,status:"pending",startedAt:now.toISOString(),theme_id:entry.theme_id,attempts:attempts+1};
+ const reservation={channel,day:entry.day,status:"pending",trigger,startedAt:now.toISOString(),theme_id:entry.theme_id,attempts:attempts+1};
  await kv.put(key,JSON.stringify(reservation),{expirationTtl:45*86400});
  try{
   const receipt=channel==="telegram"
    ?await publishTelegram({env,payload:{content:draft.text,media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl})
    :await publishBluesky({env,title:draft.hook,hook:draft.hook,value:draft.value,cta:draft.cta,productUrl:draft.link,day:entry.day,topic:entry.product.sku,fetchImpl});
   if(!receipt?.url||!receipt?.provider_post_id)throw new Error("provider_receipt_missing");
-  const outcome={channel,day:entry.day,status:"publicado",provider_post_id:receipt.provider_post_id,url:receipt.url,product:entry.product.sku,utm:draft.link,text:draft.text,at:now.toISOString(),attempts:attempts+1,gate};
+  const outcome={channel,day:entry.day,status:"publicado",trigger:receipt.adopted===true?(prior?.trigger??null):trigger,provider_post_id:receipt.provider_post_id,url:receipt.url,product:entry.product.sku,utm:draft.link,text:draft.text,at:now.toISOString(),attempts:attempts+1,gate};
   await kv.put(key,JSON.stringify(outcome),{expirationTtl:45*86400});
   // An independent, masked activity record; a failed outbox must not repost to the provider.
   await emitActivity(env,{type:"post_published",channel,status:"published",ref:channel+":"+entry.day+":"+entry.theme_id,link:receipt.url},{now:now.getTime()}).catch(()=>null);
@@ -296,6 +301,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  env=resolveChannelCredentials(env);
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return {ok:false,code:"kv_unavailable"};
+ const triggerOpt=arguments[3]?.trigger,trigger=ENGINE_TRIGGERS.includes(triggerOpt)?triggerOpt:"manual";
  const day=localContentDay(now),entry=calendarEntry(day),hour=localHour(now),channels=channelChecklist(env);
  const active=channel=>channels.find(x=>x.id===channel)?.configured===true;
  let pause;try{pause=await kv.get("zpc:creative-autonomy:paused:v1");}catch{return {ok:false,code:"pause_unreadable",outcomes:[]};}
@@ -312,7 +318,10 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
    const blog=await ensureDailyBlog(env,now,fetchImpl);
    // Plano Mestre v1.2 (DEC-21 substituída): publicado, fora da agenda (só seg/qua/sex), pausado ou erro com o motivo do gate.
    const blogStatus=blog.latest?"publicado":blog.reason==="not_publication_day"?"fora_da_agenda":blog.reason==="creative_autopublish_paused"?"pausado":"erro";
-   outcomes.push({channel:"blog",status:blogStatus,url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day,code:blog.latest?null:blog.reason||"blog_unavailable"});
+   // Origem do blog vinculada ao recibo: criado NESTA execução = esta origem; já existente = herdado do estado do dia
+   // pela mesma URL (abaixo); sem prova = desconhecida (null), nunca a do tick que o reencontrou.
+   const blogTrigger=blog.latest&&Array.isArray(blog.created)&&blog.created.some(a=>a?.url&&a.url===blog.latest.url)?trigger:null;
+   outcomes.push({channel:"blog",status:blogStatus,url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day,code:blog.latest?null:blog.reason||"blog_unavailable",...(blogStatus==="publicado"?{trigger:blogTrigger}:{})});
    if(blog.created?.length&&blog.latest)await emitActivity(env,{type:"post_published",channel:"blog",status:"published",ref:"blog:"+day+":"+blog.latest.slug,link:blog.latest.url},{now:now.getTime()}).catch(()=>null);
   }catch{outcomes.push({channel:"blog",status:"erro",code:"blog_generation_failed",day});}
  }
@@ -341,7 +350,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
     continue;
    }
    const archive=historyRead.value??[];
-   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:archive,salesOpen,hotmartOpen});
+   const result=await publishChannel({channel,entry,env,now,kv,fetchImpl,past:archive,salesOpen,hotmartOpen,trigger});
    if(historyRebuilt)result.history_rebuilt=true;
    outcomes.push(result);
    if(channel==="bluesky"&&result.status==="erro")await recordBlueskyFailure(kv,day,now,{motivo:result.code,similaridade:result.gate?.similarity_max});
@@ -358,14 +367,19 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  const calendarRead=await readAcquisitionKv(kv,ACQUISITION_CALENDAR_KEY,v=>obj(v)&&Array.isArray(v.days));
  const priorCal=calendarRead.value;
  if(calendarRead.ok&&(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days)))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
- const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,outcomes};
  const stateRead=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+day,stateShape);
  const priorState=stateRead.value;
- if(stateRead.ok&&(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(outcomes)||priorState.product!==state.product))await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
+ // Origem de publicação pertence ao recibo, nunca ao tick que a reencontrou.
+ const prevOutcomes=Array.isArray(priorState?.outcomes)?priorState.outcomes:[];
+ const stamped=outcomes.map(o=>o.status!=="publicado"?{...o,trigger}:{...o,trigger:o.trigger??(prevOutcomes.find(p=>p.channel===o.channel&&p.status==="publicado"&&p.url&&p.url===o.url)?.trigger??null)});
+ const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,trigger,outcomes:stamped};
+ if(stateRead.ok&&(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(stamped)||priorState.product!==state.product))await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
  const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
  return {ok:true,...state,ownerDigest};
 }
-// 20:00 Sao Paulo owner digest: only real receipts, no invented funnel counts.
+// 20:00 Sao Paulo owner digest (Plano Mestre v1.2, seção 2): one screen with real data from the existing KV
+// (worker/relatorio-diario.mjs) and the Diagnosticador v1 (worker/diagnostico-diario.mjs, CANAL_PARADO). No invented
+// numbers: missing sources say "não medido"/"NÃO TESTADO". The receipt keeps the diagnoses (NC-01: operational KV).
 export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localDay(now),hour=localHour(now),key="zpc:acquisition:owner-digest:"+day;
  if(hour<20)return {status:"agendado",day};
@@ -374,19 +388,20 @@ export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch)
  if(!markerRead.ok)return {status:"erro",code:"digest_marker_unreadable"};
  const existing=markerRead.value;if(existing)return existing;
  if(!env.RESEND_API_KEY||!env.OWNER_ALERT_EMAIL)return {status:"aguardando credencial",missing:["RESEND_API_KEY","OWNER_ALERT_EMAIL"].filter(x=>!env[x])};
+ // Fonte do dia ilegível bloqueia o resumo (#1020); com fonte legível, relatório real (#1021).
  const sourceRead=await readAcquisitionKv(kv,ACQUISITION_STATE_PREFIX+day,stateShape);
  if(!sourceRead.ok)return {status:"erro",code:"digest_source_unreadable"};
- const state=sourceRead.value;
- const actual=(state?.outcomes||[]).filter(x=>x.status==="publicado"&&x.url);
- const lines=actual.map(x=>"• "+x.channel+": "+x.url);
- const subject="ZEVANORY | Resumo de divulgação "+day;
- const content=["Publicações confirmadas:",...(lines.length?lines:["Sem publicações comprovadas."]),"","Leads: sem dados","Checkouts: sem dados","Vendas: sem dados","Alertas: sem dados",await musicCurationDigest(kv),"","Agenda de amanhã: "+(calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject),"","Painel: https://controle.zevanory.api.br"].join("\n");
+ const report=await montarRelatorioDiario(env,{day,hour,now,checklist:channelChecklist(resolveChannelCredentials(env)),agendaAmanha:calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject});
+ const actual=report.publicacoes.filter(x=>x.publicadas>0);
+ // Curadoria musical (#1029) continua no resumo do proprietário, ao fim do relatório real (#1021).
+ const musica=await musicCurationDigest(kv);
+ const subject=report.subject,content=musica?report.text+"\n\n"+musica:report.text;
  await kv.put(key,JSON.stringify({status:"pending",day,at:now.toISOString()}),{expirationTtl:7*86400});
  try{
   const response=await fetchImpl("https://api.resend.com/emails",{method:"POST",headers:{"authorization":"Bearer "+String(env.RESEND_API_KEY),"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[String(env.OWNER_ALERT_EMAIL)],subject,text:content}),signal:AbortSignal.timeout(10000)});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data?.id)throw new Error("owner_digest_provider_unverified");
-  const receipt={status:"publicado",day,at:now.toISOString(),provider_post_id:String(data.id),channels:actual.map(x=>x.channel)};
+  const receipt={status:"publicado",day,at:now.toISOString(),provider_post_id:String(data.id),channels:actual.map(x=>x.canal),diagnosticos:report.diagnosticos,autonomia:{valor:report.autonomia.valor,devidas:report.autonomia.devidas,concluidas:report.autonomia.concluidas},vendas_hotmart:report.vendas.estado,regras:report.regras};
   await emitActivity(env,{type:"email_sent",channel:"owner",status:"sent",ref:"owner-digest:"+day},{now:now.getTime()}).catch(()=>null);
   await kv.put(key,JSON.stringify(receipt),{expirationTtl:45*86400});
   return receipt;

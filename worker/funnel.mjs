@@ -254,6 +254,23 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
       where day > (now() at time zone 'America/Sao_Paulo')::date - 30 and ((page = $1 and metric = 'site_visitors') or (page = any($2) and metric = any($3))) group by day, metric`,
     [SITE_PAGE, [...Object.keys(FUNNEL_PRODUCTS), "conteudo-pronto"], ["buy_cta_view", "waitlist_cta_view", "waitlist_click", "waitlist_click_raw", "own_checkout_started", "own_checkout_started_raw"]]).catch(() => null);
   for (const row of dailyRows || []) { const d = (daily[String(row.day).slice(0, 10)] = daily[String(row.day).slice(0, 10)] || {}); d[row.metric] = (d[row.metric] || 0) + (Number(row.n) || 0); }
+  // Relatório diário ao proprietário (Plano Mestre v1.2, F1): views BR (classes de tráfego *_br, já sem robôs e datacenter),
+  // cliques /hotmart (hotmart_view, separado da série antiga misturada) e formulários de lead, por dia UTC (hoje e ontem).
+  // Só leitura, agregado, sem dado pessoal. Falha da consulta = bloco ausente ("não medido" no relatório).
+  const brClasses = ["mobile_al_br", "mobile_noal_br", "desktop_al_br", "desktop_noal_br"].map((c) => "cls:" + c);
+  const recentRows = await sql.query(`select day::text as day, metric, sum(n)::int as n from zevanory_funnel_daily
+      where day >= current_date - 1 and metric = any($1) group by day, metric /* relatorio-diario */`, [[...brClasses, "hotmart_view", "lead_submit"]]).catch(() => null);
+  let porDiaUtc = null;
+  if (Array.isArray(recentRows)) {
+    porDiaUtc = {};
+    for (const row of recentRows) {
+      const d = String(row?.day || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+      const b = (porDiaUtc[d] = porDiaUtc[d] || { views_br: 0, hotmart_view: 0, lead_submit: 0 });
+      const n = Number(row.n) || 0, m = String(row.metric || "");
+      if (brClasses.includes(m)) b.views_br += n; else if (m === "hotmart_view") b.hotmart_view += n; else if (m === "lead_submit") b.lead_submit += n;
+    }
+  }
   const ownCheckout = await buildOwnCheckoutSales(sql, { production });
   const clean7 = await sql.query("select metric, coalesce(sum(n),0)::int as n from zevanory_funnel_daily where day >= greatest(current_date - 6, $1::date) and metric in ('views','visitors') group by metric", [CLEAN_SINCE]).catch(() => []);
   const cleanM = Object.fromEntries((clean7 || []).map(row=>[row.metric,Number(row.n)||0]));
@@ -275,6 +292,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     checkoutDiag,
     taxonomy: "zevanory-funnel/v2",
     daily: dailyRows ? daily : null,
+    porDiaUtc,
     ownCheckout,
     topCampaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([campaign, views]) => ({ campaign, views })),
   };

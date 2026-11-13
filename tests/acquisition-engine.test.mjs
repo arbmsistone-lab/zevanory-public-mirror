@@ -120,7 +120,7 @@ test("acquisition runs only at the :35 tick of the isolated 5,35 cron (no new ac
  const end=src.indexOf('if (controller?.cron === "15,45 * * * *")',start);
  assert.ok(start>0&&end>start);
  const block=src.slice(start,end);
- const tick=block.indexOf("tickMinute >= 30"),acq=block.indexOf("runAcquisitionEngine(normalized,new Date())"),brand=block.indexOf("await syncBrandProfiles(normalized)");
+ const tick=block.indexOf("tickMinute >= 30"),acq=block.indexOf("runAcquisitionEngine(normalized,new Date()"),brand=block.indexOf("await syncBrandProfiles(normalized)");
  assert.ok(tick>0&&acq>tick&&brand>acq,"acquisition in the :35 branch, profiles in the :05 branch");
  assert.equal(src.split("runAcquisitionEngine(normalized").length-1,1);
  assert.equal(src.includes('"25,55 * * * *"'),false);
@@ -183,7 +183,7 @@ test("daily owner digest requires existing opt-in owner email and real receipts"
  const sent=[];const mock=async(url,options)=>{assert.equal(url,"https://api.resend.com/emails");sent.push(JSON.parse(options.body));return{ok:true,json:async()=>({id:"email-123"})};};
  const receipt=await runOwnerDailyDigest(env,now,mock);
  assert.equal(receipt.status,"publicado");assert.equal(receipt.provider_post_id,"email-123");
- assert.match(sent[0].text,/https:\/\/zevanory.api.br\/blog\/verified/);assert.match(sent[0].text,/Vendas: sem dados/);
+ assert.match(sent[0].text,/https:\/\/zevanory.api.br\/blog\/verified/);assert.match(sent[0].text,/Vendas aprovadas Hotmart: NÃO TESTADO/);assert.doesNotMatch(sent[0].text,/sem dados/,"Plano Mestre F1: no fixed placeholder");
  assert.equal((await runOwnerDailyDigest(env,now,mock)).status,"publicado");assert.equal(sent.length,1);
 });
 test("owner digest waits until peak and does not send with missing credential",async()=>{

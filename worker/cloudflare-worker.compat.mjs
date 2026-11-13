@@ -738,7 +738,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
     const tickMinute = new Date(Number(controller?.scheduledTime) || Date.now()).getUTCMinutes();
     if (tickMinute >= 30) {
       try {
-        const out=await runAcquisitionEngine(normalized,new Date());
+        // Único disparo autônomo do motor: o cron do Worker (trigger "cron"; qualquer outra chamada é "manual").
+        const out=await runAcquisitionEngine(normalized,new Date(),undefined,{trigger:"cron"});
         console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status,code:x.code||null}))}));
       } catch {
         console.error("acquisition_cycle_failed");

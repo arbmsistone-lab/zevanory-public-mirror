@@ -17,11 +17,14 @@ test("autonomy counts recoveries, manual runs and MTTR from real runs", () => {
   ], now);
   assert.equal(a.scheduledRuns, 4); assert.equal(a.failed, 2); assert.equal(a.recoveredAutomatically, 1);
   assert.equal(a.unrecovered, 1); assert.equal(a.manualRuns, 1); assert.equal(a.mttrMinutes, 60);
-  assert.equal(a.autonomyPct, 60); // (2 ok + 1 recovered) / (4 scheduled + 1 manual)
+  assert.equal(a.runSuccessPct, 60); // (2 ok + 1 recovered) / (4 scheduled + 1 manual)
+  // Plano Mestre v1.2 §9: run success is not autonomy; the real index comes from the action record (main()).
+  assert.equal(a.autonomyPct, null);
 });
 
 test("no runs means no autonomy number, never a fake 100%", () => {
   assert.equal(computeAutonomy([], now).autonomyPct, null);
+  assert.equal(computeAutonomy([], now).runSuccessPct, null);
 });
 
 test("publication completion only counts recorded slots", () => {

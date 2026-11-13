@@ -13,6 +13,14 @@ on:
       - "worker/lead-magnet.mjs"
       - "scripts/audit/funnel-counting.mjs"
       - "scripts/audit/command-center-snapshot.mjs"
+      # Relatório diário real + Diagnosticador v1 (Plano Mestre v1.2, F1): mesmo snapshot e funil deste workflow.
+      - "worker/diagnostico-diario.mjs"
+      - "worker/relatorio-diario.mjs"
+      - "worker/acquisition-engine.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "data/regras-diagnostico.json"
+      - "tests/diagnostico-diario.test.mjs"
+      - "scripts/ci/mutants_diagnostico_diario.mjs"
       - "scripts/audit/autonomy-inventory.mjs"
       - "data/process-inventory.json"
       - "db/migrations/**"
@@ -33,7 +41,7 @@ concurrency:
 jobs:
   funil:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
@@ -87,6 +95,19 @@ jobs:
           grep -qx "MUTANTS_FUNNEL_V2 total=45 killed=45 survived=0 inconclusive=0 exit=0" m.txt
           echo "::notice title=FUNNEL_V2::unit=$(python3 -c 'import json;d=json.load(open("ub.json"));print(d["counts"])') pg=$(python3 -c 'import json;d=json.load(open("pb.json"));print(d["counts"])') $(grep '^RETRIES=' m.txt) $(tail -1 m.txt)"
           test -z "$(git status --porcelain --ignored -- '*.pyc' '**/__pycache__')"
+      - name: Relatório diário e Diagnosticador v1 (exatamente 10 testes)
+        run: |
+          set -euo pipefail
+          node --test tests/diagnostico-diario.test.mjs < /dev/null | tee dg.txt
+          grep -qx '# tests 10' dg.txt && grep -qx '# pass 10' dg.txt && grep -qx '# fail 0' dg.txt && grep -qx '# skipped 0' dg.txt
+      - name: Mutantes do relatório e do Diagnosticador (exatamente 49 KILLED)
+        run: |
+          set -euo pipefail
+          node scripts/ci/mutants_diagnostico_diario.mjs < /dev/null | tee dgmut.txt
+          grep -qx 'BASELINE PASS tests=10' dgmut.txt
+          grep -qx 'MUTANTS PASS killed=49/49' dgmut.txt
+          test "$(grep -c ' KILLED by=' dgmut.txt)" = "49"
+          git diff --exit-code -- worker scripts tests data
 
   # Portabilidade (AVAL Sol): Node 24 (reporter padrão "spec") em Linux e Windows. Sem PostgreSQL aqui, só
   # o unitário, as contraprovas e os mutantes unitários; o runner força TAP e o parser compartilhado aceita
