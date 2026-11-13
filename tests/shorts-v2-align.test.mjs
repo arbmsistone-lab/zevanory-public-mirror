@@ -75,3 +75,24 @@ test("escolha do Python concorda com alignedWords do core.mjs", async () => {
     assert.equal(alignedWords(r.json, "Kit completo agora", 2).length, 3);
   }
 });
+
+// Diagnóstico por tentativa (só tipo, índice e tempos; nunca palavras) + tentativas reais extras (vad, refine).
+test("diagnóstico de cada tentativa inválida: tipo, índice e tempos, sem conteúdo de palavra", () => {
+  const r = run({ default: instant, fast: [["Kit", 0, 0.4], ["completa", 0.4, 0.9], ["agora", 0.9, 1.3]], nosup: ok });
+  assert.match(r.stdout, /ALIGN_ATTEMPT padrao_min_word_dur invalid duracao_zero@0:0\.50-0\.50/);
+  assert.match(r.stdout, /ALIGN_ATTEMPT fast_mode invalid palavra@1\n/);
+  assert.doesNotMatch(r.stdout, /completa|Kit|agora/i, "nenhuma palavra no log");
+});
+test("vad=True (configuração real) é tentada depois das três primeiras", () => {
+  const r = run({ default: instant, fast: instant, nosup: instant, vad: ok });
+  assert.match(r.stdout, /ALIGN_ATTEMPT vad ok/); assert.equal(r.json.fake_options.vad, true);
+});
+test("refine do próprio alinhador sobre o resultado padrão é a última tentativa", () => {
+  const r = run({ default: instant, fast: instant, nosup: instant, vad: instant, refine: ok });
+  assert.match(r.stdout, /ALIGN_ATTEMPT refinado ok/); assert.equal(r.json.fake_options.refine_of.min_word_dur, 0.1);
+  assert.deepEqual(r.json.segments[0].words.map((w) => [w.start, w.end]), ok.map(([, s, e]) => [s, e]), "tempos do refine, sem ajuste nosso");
+});
+test("opção não suportada pela versão instalada: registra erro e segue para a próxima", () => {
+  const r = run({ raise: "default", fast: ok });
+  assert.match(r.stdout, /ALIGN_ATTEMPT padrao_min_word_dur erro TypeError[\s\S]*fast_mode ok/);
+});

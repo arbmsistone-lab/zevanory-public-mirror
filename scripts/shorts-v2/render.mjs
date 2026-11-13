@@ -61,7 +61,7 @@ export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config
  const voiceDuration=pcmBytes.length/2/24000,duration=voiceDuration+1.0;
  if(duration<25||duration>35)throw Error('v2_duration_failed');
  command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af','highpass=f=80,deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100,loudnorm=I=-16:TP=-1.5:LRA=7','-c:a','pcm_s16le',base+'-voz.wav']);
- let alignment;if(align)alignment=await align(base+'-voz.wav',plan.speech);else{command('python3',[fileURLToPath(new URL('./align.py',import.meta.url)),base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
+ let alignment;if(align)alignment=await align(base+'-voz.wav',plan.speech);else{{const out=command('python3',[fileURLToPath(new URL('./align.py',import.meta.url)),base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);for(const line of out.split('\n'))if(/^ALIGN_ATTEMPT [a-z_]+ (ok|invalid|none|erro)\b/.test(line))console.log(line.slice(0,200));}alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
  const words=alignedWords(alignment,plan.speech,voiceDuration);
  await writeFile(base+'-legendas.ass',captions(words));
  const ctaStart=duration-3.5,firstCta=words.slice(-CTA.split(/\s+/).length)[0]?.start;
