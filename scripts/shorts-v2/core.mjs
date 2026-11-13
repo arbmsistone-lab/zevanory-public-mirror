@@ -34,19 +34,22 @@ function candidatePlan(plan,{hotmartOpen=false}={}){
 export function assertVoice(config,voice,{preview=false,model=config?.modelo}={}){if(!config||voice!==config.voz_fixa)throw Error('brand_voice_changed');if(!config.modelo||model!==config.modelo)throw Error('brand_model_changed');if(config.comparacao_aprovada!==true||config.nivel_gratuito_confirmado!==true)throw Error('voice_comparison_or_free_tier_pending');if(!preview&&config.publicacao_aprovada!==true)throw Error('owner_preview_approval_pending');}
 export async function licensedTrack({theme,last=null,manifest,root=new URL('../../',import.meta.url),profile=PROFILE,state=MUSIC_STATE,history=[],buffers=new Map()}){if(last!==null&&(!last||typeof last.arquivo!=='string'||!Number.isFinite(last.em)))throw Error('music_history_unreadable');if(manifest?.faixas?.some(r=>! /^[a-f0-9]{64}$/.test(r.sha256||'')))throw Error('music_hash_mismatch');profile=learnedProfile(profile,manifest||{faixas:[]});const row=selectMusic({theme,last,manifest:manifest||{faixas:[]},profile,state,history});if(row.licenca!=='CC0-1.0'||!/^assets\/musica\/[a-z0-9-]+\.(?:flac|ogg)$/.test(row.arquivo)||!/^https:\/\//.test(row.fonte)||!row.autor||!row.titulo||!/^https:\/\//.test(row.pagina_licenca||'')||!/(CC0|Creative Commons 0|public.domain|domínio público)/i.test(row.evidencia_licenca||'')||! /^[a-f0-9]{64}$/.test(row.sha256_original||'')||!/^\d{4}-\d{2}-\d{2}$/.test(row.verificado_em))throw Error('music_license_invalid');const bytes=buffers.get(row.arquivo)||await readFile(new URL(row.arquivo,root));if(createHash('sha256').update(bytes).digest('hex')!==row.sha256)throw Error('music_hash_mismatch');return row;}
 const normalized=s=>s.normalize('NFD').replace(/\p{M}/gu,'').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
-// Critério inalterado (nada é estimado nem aceito a mais). Só o DIAGNÓSTICO mudou: o erro diz o motivo, o índice e a
-// contagem de cada tipo de problema, para corrigir com prova (prévia real de 13/11/2026 falhou duas vezes sem motivo).
-const tag=s=>normalized(String(s??'')).slice(0,24)||'∅';
+// Critério inalterado (nada é estimado nem aceito a mais). Só o DIAGNÓSTICO mudou: o erro diz o TIPO do problema,
+// o índice, as contagens e os tempos — nunca o conteúdo das palavras (observadas ou esperadas), que vai para o log.
+// Palavra com tipo diferente de texto é reprovada (sem coerção). Prévia real de 13/11/2026 falhou sem motivo.
 const t2=n=>Number.isFinite(n)?n.toFixed(2):'NaN';
+const word=w=>typeof w?.word==='string'?normalized(w.word):null;
 export function alignmentIssues(alignment,text,duration){
  const words=alignment?.segments?.flatMap(s=>s.words||[])||[];const expected=text.split(/\s+/).map(normalized).filter(Boolean);const issues=[];
- if(words.length!==expected.length){const i=expected.findIndex((e,k)=>normalized(String(words[k]?.word??''))!==e);issues.push({tipo:'contagem',texto:`contagem:${words.length}/${expected.length}`+(i>=0?`@${i}:${tag(words[i]?.word)}≠${tag(expected[i])}`:'')});}
+ if(words.length!==expected.length){const i=expected.findIndex((e,k)=>word(words[k])!==e);issues.push({tipo:'contagem',texto:`contagem:${words.length}/${expected.length}`+(i>=0?`@${i}`:'')});}
  else words.forEach((w,i)=>{
-  if(normalized(String(w?.word??''))!==expected[i])issues.push({tipo:'palavra',texto:`palavra@${i}:${tag(w.word)}≠${tag(expected[i])}`});
-  if(!Number.isFinite(w.start)||!Number.isFinite(w.end)||w.start<0)issues.push({tipo:'tempo',texto:`tempo@${i}:${t2(w.start)}-${t2(w.end)}`});
-  else if(w.end<=w.start)issues.push({tipo:'duracao_zero',texto:`duracao_zero@${i}:${tag(w.word)}:${t2(w.start)}-${t2(w.end)}`});
+  const got=word(w);
+  if(got===null)issues.push({tipo:'tipo_palavra',texto:`tipo_palavra@${i}`});
+  else if(got!==expected[i])issues.push({tipo:'palavra',texto:`palavra@${i}`});
+  if(!Number.isFinite(w?.start)||!Number.isFinite(w?.end)||w.start<0)issues.push({tipo:'tempo',texto:`tempo@${i}:${t2(w?.start)}-${t2(w?.end)}`});
+  else if(w.end<=w.start)issues.push({tipo:'duracao_zero',texto:`duracao_zero@${i}:${t2(w.start)}-${t2(w.end)}`});
   else if(w.end>duration)issues.push({tipo:'apos_fim',texto:`apos_fim@${i}:${t2(w.end)}>${t2(duration)}`});
-  if(i>0&&w.start<words[i-1].end-.02)issues.push({tipo:'sobreposicao',texto:`sobreposicao@${i}:${t2(w.start)}<${t2(words[i-1].end)}`});
+  if(i>0&&Number.isFinite(w?.start)&&Number.isFinite(words[i-1]?.end)&&w.start<words[i-1].end-.02)issues.push({tipo:'sobreposicao',texto:`sobreposicao@${i}:${t2(w.start)}<${t2(words[i-1].end)}`});
  });
  return {words,expected,issues};
 }
