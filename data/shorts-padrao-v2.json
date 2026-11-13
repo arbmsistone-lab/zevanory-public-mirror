@@ -7,10 +7,10 @@
     "Kore",
     "Leda"
   ],
-  "comparacao_aprovada": false,
-  "motivo": "Referencia 3.8/Achird preservada; comparacao real de 8 amostras e nivel gratuito pendentes.",
+  "comparacao_aprovada": true,
+  "motivo": "Proprietário escolheu gemini-3.8-flash-tts/Achird em 13/11/2026 após ouvir as 8 amostras reais (run 43426684732), geradas na chave do projeto ZEVANORY Automation (nível gratuito, sem faturamento). Publicação continua pendente da aprovação da prévia.",
   "modelo": "gemini-3.8-flash-tts",
-  "nivel_gratuito_confirmado": false,
+  "nivel_gratuito_confirmado": true,
   "publicacao_aprovada": false,
   "pronuncia": "zê-va-nó-ri",
   "modelos_comparacao": [
