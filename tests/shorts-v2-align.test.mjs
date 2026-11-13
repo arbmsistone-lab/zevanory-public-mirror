@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
-import { readTextNormalized } from "./helpers/text.mjs";
+import { normalizeEol, readTextNormalized } from "./helpers/text.mjs";
 import { requireTool } from "./helpers/toolchain.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,7 +80,7 @@ test("escolha do Python concorda com alignedWords do core.mjs", async () => {
 test("diagnóstico de cada tentativa inválida: tipo, índice e tempos, sem conteúdo de palavra", () => {
   const r = run({ default: instant, fast: [["Kit", 0, 0.4], ["completa", 0.4, 0.9], ["agora", 0.9, 1.3]], nosup: ok });
   assert.match(r.stdout, /ALIGN_ATTEMPT padrao_min_word_dur invalid duracao_zero@0:0\.50-0\.50/);
-  assert.match(r.stdout.replace(/\r\n/g, "\n"), /ALIGN_ATTEMPT fast_mode invalid palavra@1\n/);
+  assert.match(normalizeEol(r.stdout), /ALIGN_ATTEMPT fast_mode invalid palavra@1\n/);
   assert.doesNotMatch(r.stdout, /completa|Kit|agora/i, "nenhuma palavra no log");
 });
 test("vad=True (configuração real) é tentada depois das três primeiras", () => {
