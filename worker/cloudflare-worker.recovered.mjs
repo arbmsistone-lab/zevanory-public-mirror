@@ -286,7 +286,6 @@ var init_arbmContadorSaloesOffer = __esm({
         release: "COMMERCIAL_RELEASE_1_0",
         package_version: "0.1.0",
         git_sha: "20705d1620f640cee1b2a0aac97986d312c3e808",
-        production_worker: "https://arbm-mei-api.zevanory.workers.dev",
         cloudflare_version_id: "6fa21b6b-d636-4726-a6fb-dd9d74605f6f"
       }),
       price_status: "product_specific_pricing_approved_global_sales_locked",
@@ -17763,46 +17762,7 @@ async function handleArtifactDownload(request, env) {
 }
 __name(handleArtifactDownload, "handleArtifactDownload");
 
-// src/internalAuthMailer.mjs
-var JSON_HEADERS = Object.freeze({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-var PRODUCT = "arbm-contador-saloes";
-var RESET_ORIGIN = "https://arbm-mei-api.zevanory.workers.dev";
-var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-var response = /* @__PURE__ */ __name((status, body) => new Response(JSON.stringify(body), { status, headers: JSON_HEADERS }), "response");
-function validResetUrl(value) {
-  try {
-    const url = new URL(String(value || ""));
-    return url.origin === RESET_ORIGIN && url.pathname === "/" && url.searchParams.has("reset_token") && url.searchParams.get("reset_token").length >= 32;
-  } catch {
-    return false;
-  }
-}
-__name(validResetUrl, "validResetUrl");
-async function handleInternalAuthMailer(request, env) {
-  const url = new URL(request.url);
-  if (url.hostname !== "zevanory.internal" || url.pathname !== "/internal/auth/password-reset") return response(404, { error: "not_found" });
-  if (request.method !== "POST") return response(405, { error: "method_not_allowed" });
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return response(400, { error: "invalid_json" });
-  }
-  const product = String(body?.product || ""), email = String(body?.email || "").trim().toLowerCase(), resetUrl = String(body?.resetUrl || "");
-  if (product !== PRODUCT || email.length > 254 || !EMAIL_RE.test(email) || !validResetUrl(resetUrl)) return response(400, { error: "invalid_request" });
-  const apiKey = String(env.RESEND_API_KEY || "");
-  if (!apiKey) return response(503, { error: "mailer_unavailable" });
-  const from = String(env.RESEND_FROM_ADDRESS || "ZEVANORY <suporte@zevanory.api.br>");
-  const subject = "Redefina sua senha do ARBM Contador";
-  const text = `Recebemos uma solicita\xE7\xE3o para redefinir sua senha. Use este link em at\xE9 15 minutos: ${resetUrl}
-
-Se n\xE3o foi voc\xEA, ignore esta mensagem.`;
-  const sent = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ from, to: [email], subject, text }) });
-  const provider = await sent.json().catch(() => null);
-  if (!sent.ok || !provider?.id) return response(502, { error: "provider_rejected" });
-  return response(202, { accepted: true, provider: "resend" });
-}
-__name(handleInternalAuthMailer, "handleInternalAuthMailer");
+// src/internalAuthMailer.mjs — removido: ARBM Contador desativado (separação ZEVANORY/ARBM, 13/11/2026).
 
 // src/runtimeConfigHydration.mjs
 var FAIL_CLOSED_RUNTIME_FLAGS = Object.freeze(["CERTIFICATION_PILOT_ENABLED", "SALE_GLOBALLY_ENABLED", "PRE_SALE_GATES_APPROVED", "CHECKOUT_ENABLED", "WHATSAPP_SALES_ENABLED", "FINANCIAL_EVENTS_ENABLED"]);
@@ -18512,7 +18472,7 @@ var cloudflare_worker_default = {
       headers2.set("x-zevanory-owner-authenticated", "1");
       return handleAsNodeRequest(PORT, new Request(target, { method: request.method, headers: headers2, body: ["GET", "HEAD"].includes(request.method) ? void 0 : request.body, redirect: "manual" }));
     }
-    if (url.hostname === "zevanory.internal") return handleInternalAuthMailer(request, env);
+    if (url.hostname === "zevanory.internal") return new Response(JSON.stringify({ error: "not_found" }), { status: 404, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     if (url.pathname === "/api/control-plane") {
       if (request.method !== "GET") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
       let certification = null;
