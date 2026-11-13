@@ -2,10 +2,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { requireTool } from "./helpers/toolchain.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+requireTool("python3");
 const SCRIPT = fileURLToPath(new URL("../scripts/shorts-v2/align.py", import.meta.url));
 const FAKE = fileURLToPath(new URL("./fixtures/fake-stable-whisper", import.meta.url));
 function wav(dir, seconds) {
@@ -19,7 +22,7 @@ function run(scenario, seconds = 2) {
   writeFileSync(script, "Kit completo agora");
   let stdout = "", failed = null;
   try { stdout = execFileSync("python3", [SCRIPT, audio, script, out], { env: { ...process.env, PYTHONPATH: FAKE, FAKE_ALIGN_SCENARIO: JSON.stringify(scenario) }, encoding: "utf8" }); } catch (e) { failed = String(e.stderr || e.message); }
-  let json = null; try { json = JSON.parse(readFileSync(out, "utf8")); } catch {}
+  let json = null; try { json = JSON.parse(readTextNormalized(out)); } catch {}
   return { stdout, json, failed };
 }
 const ok = [["Kit", 0, 0.4], ["completo", 0.4, 0.9], ["agora", 0.9, 1.3]];
