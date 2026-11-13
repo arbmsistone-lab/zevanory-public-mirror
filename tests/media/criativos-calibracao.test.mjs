@@ -23,7 +23,7 @@ for(const caso of CASOS)test('CAL '+caso.nome,()=>{const dir=mkdtempSync(join(tm
 // de 1 quadro por fala, mas é pego pela medição do MP4 inteiro (todos os estados visuais).
 test('CAL R01 erro só entre duas amostras: amostragem por fala não vê; MP4 inteiro reprova',()=>{requireTool('ffmpeg',['-version']);const dir=mkdtempSync(join(tmpdir(),'zev-r01-'));try{
   const prep=prepararCaso(CASOS.find(c=>c.tipo==='positivo'),dir),q=prep.quadros,flash=join(dir,'flash.png');
-  const py=(...a)=>{const r=spawnSync('python3',['-I',...a],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);};
+  const py=(...a)=>{const r=spawnSync('python3',['-E','-P',...a],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);};
   py('-c',"import sys;from PIL import Image,ImageDraw,ImageFont;im=Image.open(sys.argv[1]).convert('RGB');ImageDraw.Draw(im).text((120,1250),'Lucro garantido: R$ 97',font=ImageFont.truetype(sys.argv[3],64),fill=(255,255,255));im.save(sys.argv[2])",q[2],flash,join(ROOT,'assets/fonts/Inter-ExtraBold.ttf'));
   const seq=[...q.slice(0,2).map(f=>[f,1]),[flash,0.4],...q.slice(2).map(f=>[f,1])];
   writeFileSync(join(dir,'lista.txt'),seq.map(([f,d])=>`file '${f}'\nduration ${d}`).join('\n')+`\nfile '${q.at(-1)}'\n`);
@@ -34,7 +34,7 @@ test('CAL R01 erro só entre duas amostras: amostragem por fala não vê; MP4 in
   const porFala=checar(medirCaso({...prep,quadros:amostras},dir));
   assert.ok(!porFala.some(m=>/R\$97|lucro/.test(m)),'premissa: a amostragem por fala não enxerga o flash ('+porFala.join(',')+')');
   writeFileSync(join(dir,'medir-video.json'),JSON.stringify({video:mp4,pasta_estados:join(dir,'estados'),provas:prep.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura}))}));
-  const r=spawnSync('python3',['-I',join(ROOT,'scripts/criativos/medir.py'),join(dir,'medir-video.json')],{encoding:'utf8',maxBuffer:64*1024*1024});assert.equal(r.status,0,r.stderr);
+  const r=spawnSync('python3',['-E','-P',join(ROOT,'scripts/criativos/medir.py'),join(dir,'medir-video.json')],{encoding:'utf8',maxBuffer:64*1024*1024});assert.equal(r.status,0,r.stderr);
   const inteiro=checar(JSON.parse(r.stdout));
   assert.ok(inteiro.includes('valor_nao_conferido:R$97'),'MP4 inteiro pega o valor falso do flash: '+inteiro.join(','));
   assert.ok(inteiro.some(m=>/lucro|promessa|politica/.test(m)),'e a promessa de lucro: '+inteiro.join(','));

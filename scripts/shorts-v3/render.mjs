@@ -4,7 +4,7 @@
 // 3 palavras na área segura. Antes de qualquer uso, o próprio Laboratório de Criativos avalia e decide.
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
-import {dirname,join} from 'node:path';
+import {dirname,join,isAbsolute} from 'node:path';
 import MANIFEST from '../../data/musica-licencas.json' with {type:'json'};
 import {command,runAligner,tts,audioMetrics,rmsDb,mixGraph,normalizeTwoPass} from '../shorts-v2/render.mjs';
 import {CTA,alignedWords,shortTiming,licensedTrack,assertVoice,quality} from '../shorts-v2/core.mjs';
@@ -21,11 +21,12 @@ export async function carregarSpec(path){
 }
 // Todo número mostrado precisa bater com a conta e com o que a planilha real calculou (proveniência versionada).
 // NC-R05: integridade da prova — proveniência e capturas precisam bater com o manifesto de hashes.
+const noRepo=f=>isAbsolute(f)?f:join(ROOT,f);
 export async function conferirManifesto(spec){
  if(typeof spec.manifesto!=='string')throw Error('v3_manifesto_ausente');
- const M=JSON.parse(await readFile(join(ROOT,spec.manifesto),'utf8')),req=[spec.proveniencia_numeros,...spec.provas.map(p=>p.captura).filter(p=>p.startsWith('assets/shorts-v3/'))];
- for(const f of req){const h=M.arquivos?.[f];if(!h)throw Error('v3_manifesto_sem:'+f);const real=createHash('sha256').update(await readFile(join(ROOT,f))).digest('hex');if(real!==h)throw Error('v3_proveniencia_adulterada:'+f);}
- return JSON.parse(await readFile(join(ROOT,spec.proveniencia_numeros),'utf8'));
+ const M=JSON.parse(await readFile(noRepo(spec.manifesto),'utf8')),req=[spec.proveniencia_numeros,...spec.provas.map(p=>p.captura).filter(p=>p.startsWith('assets/shorts-v3/'))];
+ for(const f of req){const h=M.arquivos?.[f];if(!h)throw Error('v3_manifesto_sem:'+f);const bruto=await readFile(noRepo(f)),real=createHash('sha256').update(/\.json$/.test(f)?Buffer.from(bruto.toString('utf8').replace(/\r\n/g,'\n')):bruto).digest('hex');if(real!==h)throw Error('v3_proveniencia_adulterada:'+f);}
+ return JSON.parse(await readFile(noRepo(spec.proveniencia_numeros),'utf8'));
 }
 export async function conferirNumeros(spec){
  const N=spec.numeros,P=await conferirManifesto(spec),E=P.entradas,R=P.resultados_calculados_pela_planilha,motivos=[];
@@ -80,7 +81,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  command('ffmpeg',['-y','-i',base+'-voz.wav','-i',trackPath,'-filter_complex',mixGraph(duration),'-map','[mix]','-t',String(duration),base+'-mix-pass1.wav','-map','[reference]','-t',String(duration),base+'-musica-reference.wav','-map','[stem]','-t',String(duration),base+'-musica-ducked.wav']);
  normalizeTwoPass(base+'-mix-pass1.wav',base+'-mix.wav');
  // Quadros desenhados (as medidas do desenho NÃO são usadas na avaliação; quem mede é medir.py no vídeo).
- const desenho=JSON.parse(command('python3',['-I',join(ROOT,'scripts/shorts-v3/quadros.py'),ROOT,join(ROOT,specPath),base+'-quadros']));
+ const desenho=JSON.parse(command('python3',['-E','-P',join(ROOT,'scripts/shorts-v3/quadros.py'),ROOT,join(ROOT,specPath),base+'-quadros']));
  await writeFile(base+'-legendas.ass',legendasV3(words,spec.falas.map(f=>f.texto.split(/\s+/).filter(Boolean).length)));
  // Cortes secos entre quadros (sem transição deslizante/fundida): todo estado do vídeo é um quadro desenhado inteiro,
  // dentro da área segura — a varredura completa do MP4 (medir.py) não encontra texto cortado ou em movimento.
@@ -106,7 +107,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  for(const c of cenas){const t=String(Math.min(c.end-0.05,c.start+Math.min(1.2,(c.end-c.start)*0.7))),p=`${base}-medir-${quadros.length}.png`,pj=`${base}-juri-${quadros.length}.png`;
   command('ffmpeg',['-y','-v','error','-ss',t,'-i',base+'.mp4','-frames:v','1',p]);command('ffmpeg',['-y','-v','error','-i',p,'-vf','scale=540:960',pj]);quadros.push(p);quadrosJuri.push(await readFile(pj));}
  await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:spec.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura}))}));
- const medicao=JSON.parse(command('python3',['-I',join(ROOT,'scripts/criativos/medir.py'),base+'-medir.json']));
+ const medicao=JSON.parse(command('python3',['-E','-P',join(ROOT,'scripts/criativos/medir.py'),base+'-medir.json']));
  const O=spec.oferta,cat=precosOficiais()[spec.sku];
  let oficial=null;try{oficial=await oferta(spec.slug);}catch(e){note('OFERTA_PUBLICADA indisponivel '+String(e.message||e).slice(0,60));}
  const criativo={sku:spec.sku,falas:spec.falas.map(f=>f.texto),oferta:{nome:O.nome,preco:O.preco}};

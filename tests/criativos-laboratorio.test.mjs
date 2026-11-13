@@ -2,8 +2,9 @@
 // medidas só do vídeo renderizado; afirmações conferidas contra o cálculo e a oferta publicada; decisão persistida e
 // exigida pelo gate de publicação. Sem rede: fetch falso. A calibração com OCR real fica em tests/media.
 import test from "node:test";
-import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { conferirManifesto, conferirNumeros } from "../scripts/shorts-v3/render.mjs";
 import assert from "node:assert/strict";
@@ -131,7 +132,7 @@ test("decisão assinada (NC-R03): gate exige chave, assinatura HMAC, APROVADO, m
   assert.deepEqual([rep.decisao, rep.motivos], ["DESCARTADO", ["quadro_vazio"]]);
 });
 test("proveniência (NC-R05, adversarial): números permitidos só vêm da planilha íntegra; adulterar dados ou manifesto bloqueia", async () => {
-  const spec = JSON.parse(readFileSync("data/shorts-v3/lcx.json", "utf8"));
+  const spec = JSON.parse(readTextNormalized("data/shorts-v3/lcx.json"));
   const P = await conferirManifesto(spec);
   const perm = permitidosDaProveniencia(P, 147);
   for (const v of [180, 132, 9, 39, 176, 147]) assert.ok(perm.reais.includes(v), "R$ " + v);
@@ -140,9 +141,9 @@ test("proveniência (NC-R05, adversarial): números permitidos só vêm da plani
   assert.throws(() => permitidosDaProveniencia({ ...P, resultados_calculados_pela_planilha: { ...P.resultados_calculados_pela_planilha, Status: "ERRO" } }, 147), /proveniencia_invalida/);
   assert.throws(() => permitidosDaProveniencia(null, 147), /proveniencia_invalida/);
   assert.ok((await conferirNumeros({ ...spec, numeros: { ...spec.numeros, margem_antes_fixas: 60 } })).includes("margem_divergente"), "número do roteiro fora da planilha");
-  const d = mkdtempSync(join(tmpdir(), "prov-")), rel = (f) => relative(process.cwd(), join(d, f));
+  const d = mkdtempSync(join(tmpdir(), "prov-")), rel = (f) => join(d, f);
   writeFileSync(join(d, "prov.json"), JSON.stringify({ ...P, entradas: { ...P.entradas, "Preço atual": 250 } }));
-  const M = JSON.parse(readFileSync(spec.manifesto, "utf8"));
+  const M = JSON.parse(readTextNormalized(spec.manifesto));
   writeFileSync(join(d, "man.json"), JSON.stringify({ arquivos: { ...M.arquivos, [rel("prov.json")]: M.arquivos[spec.proveniencia_numeros] } }));
   await assert.rejects(() => conferirManifesto({ ...spec, manifesto: rel("man.json"), proveniencia_numeros: rel("prov.json") }), /v3_proveniencia_adulterada/, "planilha adulterada com hash antigo");
   writeFileSync(join(d, "man2.json"), JSON.stringify({ arquivos: { [spec.proveniencia_numeros]: M.arquivos[spec.proveniencia_numeros] } }));

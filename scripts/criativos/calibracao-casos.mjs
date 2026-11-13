@@ -20,13 +20,13 @@ export const CASOS=Object.freeze([
  {nome:'negativo-baixo-contraste',esperado:['texto_nao_reconhecido'],pintar:['gancho',120,1300,'condições especiais importantes',40,'45,55,70']},
  {nome:'negativo-v2-reprovado',esperado:['sem_prova_real_do_produto','preco_oficial_ausente_no_video','concordancia_genero','texto_artificial_ficticio'],v2:true}
 ]);
-const py=a=>{const r=spawnSync('python3',['-I',...a],{encoding:'utf8',maxBuffer:64*1024*1024});if(r.status!==0)throw Error('calibracao_python:'+String(r.stderr).slice(-300));return r.stdout;};
+const py=a=>{const r=spawnSync('python3',['-E','-P',...a],{encoding:'utf8',maxBuffer:64*1024*1024});if(r.status!==0)throw Error('calibracao_python:'+String(r.stderr).slice(-300));return r.stdout;};
 export function spec(){return JSON.parse(readFileSync(join(ROOT,'data/shorts-v3/lcx.json'),'utf8'));}
 export function prepararCaso(caso,dir){
  mkdirSync(dir,{recursive:true});const s=spec();
  if(caso.v2){const d=join(ROOT,'docs/criativos/calibracao/v2-reprovado'),c=JSON.parse(readFileSync(join(d,'criativo.json'),'utf8'));
   const quadros=readdirSync(d).filter(f=>f.endsWith('.png')).sort().map(f=>{const t=join(dir,f);copyFileSync(join(d,f),t);return t;});
-  return {criativo:{sku:c.sku,falas:c.textos,oferta:{nome:'',preco:0}},quadros,provas:s.provas};}
+  return {criativo:{sku:c.sku,falas:c.textos,oferta:{nome:'',preco:null}},quadros,provas:s.provas};}
  if(caso.mutar)caso.mutar(s);
  writeFileSync(join(dir,'spec.json'),JSON.stringify(s));
  const q=JSON.parse(py([join(ROOT,'scripts/shorts-v3/quadros.py'),ROOT,join(dir,'spec.json'),join(dir,'q')])).quadros;
