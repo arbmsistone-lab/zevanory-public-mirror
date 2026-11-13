@@ -45,7 +45,7 @@ tests/conteudo-pronto-roteiros.test.mjs 9
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
-tests/criativos-laboratorio.test.mjs 8
+tests/criativos-laboratorio.test.mjs 9
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10
@@ -204,5 +204,5 @@ tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6
 tests/whatsapp-neon-store.test.mjs 6
 tests/whatsapp-retirement.test.mjs 17
-tests/youtube-daily-short.test.mjs 14
+tests/youtube-daily-short.test.mjs 15
 tests/zees16-evidence-honesty.test.mjs 2

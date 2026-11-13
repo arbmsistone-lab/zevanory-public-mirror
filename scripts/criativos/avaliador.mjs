@@ -22,6 +22,14 @@ export function permitidosDe(numeros,preco){
  return {reais:[n.preco_venda,n.custo_produto_frete,n.taxa_cartao,n.margem_antes_fixas,n.preco_minimo,preco].filter(Number.isFinite),
   pct:[n.taxa_cartao_pct,pct(n.margem_pct),pct(n.desconto_maximo),n.meta_margem_pct].filter(Number.isFinite),outros:[7]};
 }
+// NC-R05: o conjunto permitido vem da PROVENIÊNCIA do cálculo (planilha real recalculada), não do roteiro.
+export function permitidosDaProveniencia(P,preco){
+ const E=P?.entradas,R=P?.resultados_calculados_pela_planilha;
+ if(!E||!R||R.Status!=='OK')throw Error('proveniencia_invalida');
+ const r1=v=>Math.round(v*1000)/10;
+ return {reais:[E['Preço atual'],E['Custo direto unit.']+E['Outros custos var. unit.'],Math.round(E['Preço atual']*E['Taxa pagamento %']*100)/100,R['Contribuição/unit.'],R['Preço mínimo p/ margem alvo'],preco].filter(Number.isFinite),
+  pct:[r1(E['Taxa pagamento %']),r1(R['Margem contribuição %']),r1(R['Desconto máx. p/ margem alvo']),r1(P.margem_alvo_config)].filter(Number.isFinite),outros:[7]};
+}
 export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=precosOficiais()){
  const motivos=[],cat=precos[criativo?.sku];
  if(!cat)return ['sku_fora_do_catalogo'];
@@ -37,6 +45,7 @@ export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=
  if(md.quadrosVazios!==0)motivos.push('quadro_vazio');
  if(md.foraAreaSegura!==0)motivos.push('conteudo_fora_da_area_segura');
  if(md.provaReal!==true)motivos.push('sem_prova_real_do_produto');
+ if(md.textoNaoReconhecido!==0)motivos.push('texto_nao_reconhecido');
  motivos.push(...conferirAfirmacoes({falas:criativo.falas||[],telas,permitidos:permitidos||{reais:[],pct:[]}}));
  return motivos;
 }
@@ -92,17 +101,26 @@ export async function cicloCriativo({gerar,avaliarCriativo,max=MAX_TENTATIVAS}){
  const ultimo=historico.at(-1);
  return {estado:'BLOQUEADO',historico,relatorio:`Criativo bloqueado após ${max} tentativas. Última nota: ${ultimo?.nota_geral??'n/d'}. Motivos: ${(ultimo?.motivos||[]).join(', ')||'n/d'}.`};
 }
-// NC-06: decisão persistida e consumível pelo gate de publicação. A publicação só aceita um vídeo cujo sha256 bate
-// com uma decisão APROVADO recente; qualquer ausência, divergência ou formato inválido BLOQUEIA (fail-closed).
-import {createHash} from 'node:crypto';
+// NC-06/NC-R03: decisão persistida, ASSINADA (HMAC-SHA256 com a chave CRIATIVOS_DECISAO_KEY, que só existe nos
+// ambientes do laboratório/publicação) e exigida no caminho real de upload (publishShort). Sem chave, a decisão sai
+// sem assinatura e NUNCA publica. Arquivo diferente, registro alterado/forjado, reprovado, vencido = BLOQUEIO.
+import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 const sha256=b=>createHash('sha256').update(b).digest('hex');
-export function registrarDecisao({videoBytes,sku,avaliacao,padrao,commit,oficial,em=new Date().toISOString()}){
- return {schema:1,sha256_video:sha256(videoBytes),sku,decisao:avaliacao.aprovado===true?'APROVADO':'DESCARTADO',aprovado:avaliacao.aprovado===true,
+const canonico=v=>Array.isArray(v)?'['+v.map(canonico).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).filter(k=>k!=='assinatura').sort().map(k=>JSON.stringify(k)+':'+canonico(v[k])).join(',')+'}':JSON.stringify(v);
+const hmac=(d,chave)=>'hmac-sha256:'+createHmac('sha256',chave).update(canonico(d)).digest('hex');
+const chaveValida=c=>typeof c==='string'&&c.length>=32;
+export function registrarDecisao({videoBytes,sku,avaliacao,padrao,commit,oficial,chave=null,em=new Date().toISOString()}){
+ const d={schema:2,sha256_video:sha256(videoBytes),sku,decisao:avaliacao.aprovado===true?'APROVADO':'DESCARTADO',aprovado:avaliacao.aprovado===true,
   nota_geral:avaliacao.nota_geral??null,notas:avaliacao.juri?.notas||null,motivos:avaliacao.motivos||[],padrao_gerado_em:padrao?.geradoEm||null,
   commit:commit||null,oferta_publicada:oficial||null,em};
+ return {...d,assinatura:chaveValida(chave)?hmac(d,chave):null};
 }
-export function exigirAprovacao(decisao,videoBytes,{now=Date.now(),maxIdadeH=48}={}){
- if(!decisao||typeof decisao!=='object'||decisao.schema!==1)throw Error('publicacao_bloqueada:decisao_ausente');
+export function exigirAprovacao(decisao,videoBytes,{chave,now=Date.now(),maxIdadeH=48}={}){
+ if(!chaveValida(chave))throw Error('publicacao_bloqueada:chave_de_decisao_ausente');
+ if(!decisao||typeof decisao!=='object'||decisao.schema!==2)throw Error('publicacao_bloqueada:decisao_ausente');
+ const esperado=Buffer.from(hmac(decisao,chave)),dada=Buffer.from(String(decisao.assinatura||''));
+ if(dada.length!==esperado.length||!timingSafeEqual(dada,esperado))throw Error('publicacao_bloqueada:assinatura_invalida');
+ if(!Buffer.isBuffer(videoBytes)&&!(videoBytes instanceof Uint8Array))throw Error('publicacao_bloqueada:video_ausente');
  if(decisao.sha256_video!==sha256(videoBytes))throw Error('publicacao_bloqueada:video_diferente_do_avaliado');
  if(decisao.decisao!=='APROVADO'||decisao.aprovado!==true)throw Error('publicacao_bloqueada:criativo_reprovado');
  const t=Date.parse(decisao.em);if(!Number.isFinite(t)||now-t>maxIdadeH*3600000||t>now+300000)throw Error('publicacao_bloqueada:decisao_vencida');

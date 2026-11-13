@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { registrarDecisao } from "../scripts/criativos/avaliador.mjs";
 import { planShort, publishShort, recordPublication, cloudflareKv, TARGET_CHANNEL, localDay, shortTiming, beatTimes, wrapText } from "../scripts/channels/youtube-daily-short.mjs";
+
+// Laboratório de Criativos: upload real só com decisão APROVADO assinada para o arquivo exato.
+const CHAVE_TESTE = "c".repeat(40);
+const aprovado = (mp4) => ({ decisao: registrarDecisao({ videoBytes: mp4, sku: "ZEV-LCX-011", avaliacao: { aprovado: true, nota_geral: 9.7, juri: { notas: { gancho: 9.6, legibilidade: 9.6, prova: 9.7, oferta: 9.6, marca: 9.9 } }, motivos: [] }, chave: CHAVE_TESTE }), chave: CHAVE_TESTE });
 import { calendarEntry } from "../worker/acquisition-engine.mjs";
 
 test("daily plan follows the calendar, passes the F1 gate and is public with an idempotency marker", () => {
@@ -39,7 +44,7 @@ function youtubeMock({ existing = null, privacy = "public" } = {}) {
 
 test("uploads once as public and reports provider-locked privacy honestly", async () => {
   const plan = planShort("2026-10-11"), m = youtubeMock({ privacy: "private" });
-  const r = await publishShort(plan, Buffer.from("mp4"), { accessToken: "t", fetchImpl: m.fetchImpl, sleep: async () => {} });
+  const r = await publishShort(plan, Buffer.from("mp4"), { accessToken: "t", aprovacao: aprovado(Buffer.from("mp4")), fetchImpl: m.fetchImpl, sleep: async () => {} });
   assert.equal(r.video_id, "NEW456"); assert.equal(r.reused, false);
   assert.equal(r.url, "https://www.youtube.com/shorts/NEW456");
   assert.equal(r.visibility_note, "provider_locked_private_pending_api_audit");
@@ -47,13 +52,13 @@ test("uploads once as public and reports provider-locked privacy honestly", asyn
 });
 test("a retry with the same day reuses the existing video (no duplicate upload)", async () => {
   const plan = planShort("2026-10-11"), m = youtubeMock({ existing: plan.marker });
-  const r = await publishShort(plan, Buffer.from("mp4"), { accessToken: "t", fetchImpl: m.fetchImpl, sleep: async () => {} });
+  const r = await publishShort(plan, Buffer.from("mp4"), { accessToken: "t", aprovacao: aprovado(Buffer.from("mp4")), fetchImpl: m.fetchImpl, sleep: async () => {} });
   assert.equal(r.reused, true); assert.equal(r.video_id, "OLD123");
   assert.equal(m.calls.some(([u]) => u.includes("uploadType=resumable")), false);
 });
 test("wrong channel fails closed before any upload", async () => {
   const fetchImpl = async () => ({ ok: true, json: async () => ({ items: [{ id: "UCother" }] }) });
-  await assert.rejects(publishShort(planShort("2026-10-11"), Buffer.from("x"), { accessToken: "t", fetchImpl }), /youtube_channel_id_mismatch/);
+  await assert.rejects(publishShort(planShort("2026-10-11"), Buffer.from("x"), { accessToken: "t", aprovacao: aprovado(Buffer.from("x")), fetchImpl }), /youtube_channel_id_mismatch/);
 });
 test("publication is recorded as a masked post_published activity plus per-day outcome", async () => {
   const map = new Map(); const kv = { get: async k => map.get(k) ?? null, put: async (k, v) => { map.set(k, v); } };
@@ -161,4 +166,19 @@ test("publication window: never early, late only inside the same commercial day"
   // And it must not publish the previous day's slots after midnight either.
   assert.equal(publicationWindow({ day: "2026-10-12", slot: "calc", now: at("2026-10-13T03:44:00Z") }).action, "expired");
   assert.equal(publicationWindow({ day: "2026-10-12", slot: "calc", now: at("2026-10-13T02:45:00Z") }).action, "publish", "23:45 of the same day is still that day");
+});
+
+test("Laboratório de Criativos: publishShort BLOQUEIA antes de qualquer rede sem aprovação válida para o arquivo", async () => {
+  let rede = 0; const fetchImpl = async () => { rede++; return { ok: true, json: async () => ({}) }; };
+  const mp4 = Buffer.from("video-avaliado"), ok = aprovado(mp4);
+  const casos = [
+    [undefined, /chave_de_decisao_ausente/], [{ decisao: ok.decisao }, /chave_de_decisao_ausente/], [{ chave: CHAVE_TESTE }, /decisao_ausente/],
+    [{ ...ok, decisao: { ...ok.decisao, notas: { ...ok.decisao.notas, prova: 10 } } }, /assinatura_invalida/],
+    [{ ...ok, decisao: { ...ok.decisao, assinatura: null } }, /assinatura_invalida/],
+    [{ ...ok, chave: "x".repeat(40) }, /assinatura_invalida/]];
+  for (const [aprov, re] of casos) await assert.rejects(publishShort(planShort("2026-10-11"), mp4, { accessToken: "t", aprovacao: aprov, fetchImpl }), re);
+  await assert.rejects(publishShort(planShort("2026-10-11"), Buffer.from("video-trocado"), { accessToken: "t", aprovacao: ok, fetchImpl }), /video_diferente_do_avaliado/);
+  const rep = registrarDecisao({ videoBytes: mp4, sku: "ZEV-LCX-011", avaliacao: { aprovado: false, motivos: ["quadro_vazio"] }, chave: CHAVE_TESTE });
+  await assert.rejects(publishShort(planShort("2026-10-11"), mp4, { accessToken: "t", aprovacao: { decisao: rep, chave: CHAVE_TESTE }, fetchImpl }), /criativo_reprovado/);
+  assert.equal(rede, 0, "nenhuma chamada ao YouTube sem aprovação válida");
 });

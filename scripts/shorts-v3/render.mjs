@@ -8,7 +8,8 @@ import {dirname,join} from 'node:path';
 import MANIFEST from '../../data/musica-licencas.json' with {type:'json'};
 import {command,runAligner,tts,audioMetrics,rmsDb,mixGraph,normalizeTwoPass} from '../shorts-v2/render.mjs';
 import {CTA,alignedWords,shortTiming,licensedTrack,assertVoice,quality} from '../shorts-v2/core.mjs';
-import {avaliar,permitidosDe,precosOficiais,registrarDecisao} from '../criativos/avaliador.mjs';
+import {avaliar,permitidosDaProveniencia,precosOficiais,registrarDecisao} from '../criativos/avaliador.mjs';
+import {createHash} from 'node:crypto';
 import {ofertaPublicada} from '../criativos/afirmacoes.mjs';
 import {CRITERIOS,montarPadrao,validarPadrao} from '../criativos/padrao.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
@@ -19,8 +20,15 @@ export async function carregarSpec(path){
  return spec;
 }
 // Todo número mostrado precisa bater com a conta e com o que a planilha real calculou (proveniência versionada).
+// NC-R05: integridade da prova — proveniência e capturas precisam bater com o manifesto de hashes.
+export async function conferirManifesto(spec){
+ if(typeof spec.manifesto!=='string')throw Error('v3_manifesto_ausente');
+ const M=JSON.parse(await readFile(join(ROOT,spec.manifesto),'utf8')),req=[spec.proveniencia_numeros,...spec.provas.map(p=>p.captura).filter(p=>p.startsWith('assets/shorts-v3/'))];
+ for(const f of req){const h=M.arquivos?.[f];if(!h)throw Error('v3_manifesto_sem:'+f);const real=createHash('sha256').update(await readFile(join(ROOT,f))).digest('hex');if(real!==h)throw Error('v3_proveniencia_adulterada:'+f);}
+ return JSON.parse(await readFile(join(ROOT,spec.proveniencia_numeros),'utf8'));
+}
 export async function conferirNumeros(spec){
- const N=spec.numeros,P=JSON.parse(await readFile(join(ROOT,spec.proveniencia_numeros),'utf8')),E=P.entradas,R=P.resultados_calculados_pela_planilha,motivos=[];
+ const N=spec.numeros,P=await conferirManifesto(spec),E=P.entradas,R=P.resultados_calculados_pela_planilha,motivos=[];
  if(E['Preço atual']!==N.preco_venda)motivos.push('preco_venda_divergente');
  if(E['Custo direto unit.']+E['Outros custos var. unit.']!==N.custo_produto_frete)motivos.push('custo_divergente');
  if(Math.round(E['Preço atual']*E['Taxa pagamento %']*100)/100!==N.taxa_cartao||Math.round(E['Taxa pagamento %']*100)!==N.taxa_cartao_pct)motivos.push('taxa_divergente');
@@ -74,11 +82,11 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  // Quadros desenhados (as medidas do desenho NÃO são usadas na avaliação; quem mede é medir.py no vídeo).
  const desenho=JSON.parse(command('python3',['-I',join(ROOT,'scripts/shorts-v3/quadros.py'),ROOT,join(ROOT,specPath),base+'-quadros']));
  await writeFile(base+'-legendas.ass',legendasV3(words,spec.falas.map(f=>f.texto.split(/\s+/).filter(Boolean).length)));
- const XF=0.25,inputs=[],parts=[];
- cenas.forEach((c,i)=>{inputs.push('-loop','1','-framerate','30','-t',String((c.end-c.start)+XF+0.05),'-i',desenho.quadros[c.quadro]);
-  parts.push(`[${i}:v]scale=1080:1920,fps=30,format=yuv420p,setsar=1[s${i}]`);});
- let last='s0',acc=cenas[0].end-cenas[0].start;
- for(let i=1;i<cenas.length;i++){const out=i===cenas.length-1?'vx':'x'+i;parts.push(`[${last}][s${i}]xfade=transition=${cenas[i].quadro.startsWith('conta-')||['oferta','cta'].includes(cenas[i].quadro)?'fade':'slideleft'}:duration=${XF}:offset=${(acc-XF/2).toFixed(3)}[${out}]`);last=out;acc+=cenas[i].end-cenas[i].start;}
+ // Cortes secos entre quadros (sem transição deslizante/fundida): todo estado do vídeo é um quadro desenhado inteiro,
+ // dentro da área segura — a varredura completa do MP4 (medir.py) não encontra texto cortado ou em movimento.
+ const inputs=[],parts=[];
+ cenas.forEach((c,i)=>{inputs.push('-loop','1','-framerate','30','-t',String(c.end-c.start),'-i',desenho.quadros[c.quadro]);parts.push(`[${i}:v]scale=1080:1920,fps=30,format=yuv420p,setsar=1[s${i}]`);});
+ parts.push(cenas.map((_,i)=>`[s${i}]`).join('')+`concat=n=${cenas.length}:v=1:a=0[vx]`);const last='vx';
  const fontsdir=dirname(join(ROOT,'assets/fonts/Inter-ExtraBold.ttf'));
  parts.push(`[${last}]ass=${base}-legendas.ass:fontsdir=${fontsdir},trim=duration=${duration}[v]`);
  await writeFile(base+'-filter.txt',parts.join(';\n'));
@@ -91,22 +99,23 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  const metrics={musicBedLufs:audioMetrics(base+'-musica-reference.wav').lufs,ppm:words.length/voiceDuration*60,internalSilence,clipping:clipping||voice.peak>=0,voiceLufs:voice.lufs,duration,videoDuration,musicDetected:Number.isFinite(musicDb)&&musicDb>-70,duckingDb:referenceDb-musicDb,voiceMusicDb:voiceDb-musicDb,mixLufs:mix.lufs,truePeak:mix.peak,ctaSeconds:duration-firstCta,cta:CTA,voiceFixed:generated.voice===config.voz_fixa,videoFrames:Math.round(videoDuration*30)};
  const audio=quality(metrics).reasons.filter(r=>AUDIO_REASONS.has(r));
  if(Math.abs(videoDuration-duration)>0.15)audio.push('video_incomplete');
- // Laboratório de Criativos: MEDE o vídeo renderizado (um quadro por fala, OCR + correlação com as capturas reais),
+ // Laboratório de Criativos: MEDE o vídeo renderizado INTEIRO (todo estado visual distinto do MP4, OCR + correlação
+ // com as capturas reais); o júri de IA recebe um quadro por fala,
  // confere as afirmações e a oferta publicada, e o júri de IA dá as notas. Nada declarado pelo criativo vale como medida.
  const quadros=[],quadrosJuri=[];
  for(const c of cenas){const t=String(Math.min(c.end-0.05,c.start+Math.min(1.2,(c.end-c.start)*0.7))),p=`${base}-medir-${quadros.length}.png`,pj=`${base}-juri-${quadros.length}.png`;
   command('ffmpeg',['-y','-v','error','-ss',t,'-i',base+'.mp4','-frames:v','1',p]);command('ffmpeg',['-y','-v','error','-i',p,'-vf','scale=540:960',pj]);quadros.push(p);quadrosJuri.push(await readFile(pj));}
- await writeFile(base+'-medir.json',JSON.stringify({quadros,provas:spec.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura}))}));
+ await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:spec.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura}))}));
  const medicao=JSON.parse(command('python3',['-I',join(ROOT,'scripts/criativos/medir.py'),base+'-medir.json']));
  const O=spec.oferta,cat=precosOficiais()[spec.sku];
  let oficial=null;try{oficial=await oferta(spec.slug);}catch(e){note('OFERTA_PUBLICADA indisponivel '+String(e.message||e).slice(0,60));}
  const criativo={sku:spec.sku,falas:spec.falas.map(f=>f.texto),oferta:{nome:O.nome,preco:O.preco}};
  const pad=validarPadrao(padrao||montarPadrao({evidencia:[],geradoEm:'base'}));
- const avaliacao=await avaliarImpl({criativo,padrao:pad,quadrosPng:quadrosJuri,medicao,permitidos:permitidosDe(spec.numeros,cat?.[1]),oficial,key:geminiKey});
+ const avaliacao=await avaliarImpl({criativo,padrao:pad,quadrosPng:quadrosJuri,medicao,permitidos:permitidosDaProveniencia(await conferirManifesto(spec),cat?.[1]),oficial,key:geminiKey});
  if(audio.length){avaliacao.aprovado=false;avaliacao.decisao='DESCARTADO';avaliacao.motivos=[...audio.map(r=>'audio:'+r),...avaliacao.motivos];}
  const qc={audio:{ok:audio.length===0,reasons:audio},metrics,medicao,avaliacao,padrao:pad.geradoEm,criterios:CRITERIOS.map(c=>c.id),track,mode:preview?'preview':'production'};
  await writeFile(base+'-qc.json',JSON.stringify(qc,null,2));
- const decisao=registrarDecisao({videoBytes:await readFile(base+'.mp4'),sku:spec.sku,avaliacao,padrao:pad,commit,oficial});await writeFile(base+'-decisao.json',JSON.stringify(decisao,null,2));await writeFile(base+'-cenas.json',JSON.stringify(cenas,null,2));
+ const decisao=registrarDecisao({videoBytes:await readFile(base+'.mp4'),sku:spec.sku,avaliacao,padrao:pad,commit,oficial,chave:process.env.CRIATIVOS_DECISAO_KEY||null});await writeFile(base+'-decisao.json',JSON.stringify(decisao,null,2));await writeFile(base+'-cenas.json',JSON.stringify(cenas,null,2));
  note(`CRIATIVO_V3 ${spec.sku} decisao=${avaliacao.decisao} nota_geral=${avaliacao.nota_geral??'n/d'} notas=${avaliacao.juri?JSON.stringify(avaliacao.juri.notas):'n/d'} motivos=${avaliacao.motivos.join(',')||'-'}${avaliacao.erro?' erro='+avaliacao.erro:''}`);
  for(const p of avaliacao.juri?.problemas||[])note('PROBLEMA '+p);for(const p of avaliacao.juri?.melhorias||[])note('MELHORIA '+p);
  note(`AUDIO_V3 mixLufs=${mix.lufs} truePeak=${mix.peak} ppm=${metrics.ppm.toFixed(1)} duracao=${duration.toFixed(2)} ${audio.length?'falhas='+audio.join('+'):'ok'}`);

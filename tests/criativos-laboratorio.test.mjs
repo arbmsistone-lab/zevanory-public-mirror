@@ -2,11 +2,15 @@
 // medidas só do vídeo renderizado; afirmações conferidas contra o cálculo e a oferta publicada; decisão persistida e
 // exigida pelo gate de publicação. Sem rede: fetch falso. A calibração com OCR real fica em tests/media.
 import test from "node:test";
+import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { tmpdir } from "node:os";
+import { conferirManifesto, conferirNumeros } from "../scripts/shorts-v3/render.mjs";
 import assert from "node:assert/strict";
 import { desempenho, pesquisarTema, youtubeToken, confirmarShort, padroesDeMetadados } from "../scripts/criativos/pesquisa.mjs";
 import { CRITERIOS, NOTA_MINIMA, montarPadrao, validarPadrao } from "../scripts/criativos/padrao.mjs";
 import { valoresFalados, valoresNaTela, conferirAfirmacoes, ofertaPublicada } from "../scripts/criativos/afirmacoes.mjs";
-import { checagensObjetivas, precosOficiais, permitidosDe, lerJuri, decidir, avaliar, promptJuri, registrarDecisao, exigirAprovacao, cicloCriativo, MAX_TENTATIVAS } from "../scripts/criativos/avaliador.mjs";
+import { checagensObjetivas, precosOficiais, permitidosDe, permitidosDaProveniencia, lerJuri, decidir, avaliar, promptJuri, registrarDecisao, exigirAprovacao, cicloCriativo, MAX_TENTATIVAS } from "../scripts/criativos/avaliador.mjs";
 const NOW = Date.parse("2026-11-13T12:00:00Z");
 const ID = (n) => ("v" + n).padEnd(11, "x");
 const ev = (n, extra = {}) => ({ id: ID(n), sku: "ZEV-LCX-011", titulo: n % 2 ? "Sua loja vende e não sobra?" : "Por que não sobra R$ 100?", canal: "c", segundos: 30 + n, views: 10000 * (n + 1), likes: 500 * (n + 1), comments: 50, score: 100 - n, url: "u", confirmado_short: true, ...extra });
@@ -15,7 +19,7 @@ const NUM = { preco_venda: 180, custo_produto_frete: 132, taxa_cartao: 9, taxa_c
 const PERM = permitidosDe(NUM, 147);
 const FALAS = ["Sua loja vende, mas o dinheiro desaparece?", "Pegue sua última venda: um tênis de cento e oitenta reais.", "O produto e o frete custaram cento e trinta e dois.", "A taxa do cartão levou mais nove.", "Sobram trinta e nove reais antes das despesas fixas.", "E ela mostra o desconto máximo: dois vírgula dois por cento.", "Lucro e Caixa: cento e quarenta e sete reais, com arrependimento em sete dias corridos.", "Kit completo no link da descrição."];
 const TELAS = ["ZEVANORY LOJA LUCRO CAIXA Sua loja vende", "Recebeu R$ 180 Produto frete R$ 132 Taxa do cartão (5%) R$9 Margem antes das despesas fixas R$ 39", "Margem de contribuição 21,7%", "Preço mínimo p/ meta de 20% R$ 176 Desconto máximo 2,2%", "Lucro & Caixa R$ 147 pagamento único arrependimento em 7 dias"];
-const MED = { quadros: TELAS.map((texto) => ({ texto })), medidas: { alturaTextoMinPx: 24, foraAreaSegura: 0, quadrosVazios: 0, provaReal: true, origem: "medicao_independente_ocr" } };
+const MED = { quadros: TELAS.map((texto) => ({ texto })), medidas: { alturaTextoMinPx: 24, foraAreaSegura: 0, quadrosVazios: 0, provaReal: true, textoNaoReconhecido: 0, origem: "medicao_independente_ocr" } };
 const CRI = { sku: "ZEV-LCX-011", falas: FALAS, oferta: { nome: "Lucro & Caixa", preco: 147 } };
 const OFICIAL = { fonte: "https://vendas.zevanory.api.br/lucro-e-caixa", preco: 147, versao: "sha256:abc", lido_em: "2026-11-13T12:00:00Z" };
 const PADRAO = montarPadrao({ evidencia: EVID, geradoEm: "2026-11-13T12:00:00Z" });
@@ -79,6 +83,8 @@ test("objetivas (NC-02, adversarial): nada declarado pelo criativo vale como med
   assert.ok(m("alturaTextoMinPx", 12).includes("texto_pequeno_demais"));
   assert.ok(m("quadrosVazios", 1).includes("quadro_vazio"));
   assert.ok(m("foraAreaSegura", 2).includes("conteudo_fora_da_area_segura"));
+  assert.ok(m("textoNaoReconhecido", 1).includes("texto_nao_reconhecido"), "texto essencial não lido reprova");
+  assert.ok(m("textoNaoReconhecido", undefined).includes("texto_nao_reconhecido"), "ausência da medida reprova (falha fechada)");
   const semPreco = { ...MED, quadros: MED.quadros.map((q) => ({ texto: q.texto.replace("R$ 147", "") })) };
   assert.ok(checagensObjetivas({ criativo: CRI, medicao: semPreco, permitidos: PERM, oficial: OFICIAL }).includes("preco_oficial_ausente_no_video"));
   assert.ok(checagensObjetivas({ criativo: CRI, medicao: MED, permitidos: PERM, oficial: { ...OFICIAL, preco: 97 } }).includes("oferta_publicada_divergente"));
@@ -102,18 +108,46 @@ test("júri e decisão: notas estritas; aprova só com objetivas OK e TODAS >= 9
   assert.equal((await avaliar({ ...base, medicao: null, fetchImpl: gem(ALTO) })).decisao, "DESCARTADO", "notas altas não compensam falta de medição");
   assert.match(promptJuri(PADRAO), /metadados[\s\S]*não descrevem o visual/);
 });
-test("decisão persistida (NC-06): o gate de publicação exige APROVADO, mesmo vídeo (sha256), notas e prazo", () => {
-  const video = Buffer.from("video-real"), em = "2026-11-13T12:00:00Z";
-  const ok = registrarDecisao({ videoBytes: video, sku: "ZEV-LCX-011", avaliacao: { aprovado: true, nota_geral: 9.7, juri: lerJuri(ALTO), motivos: [] }, padrao: PADRAO, commit: "abc", oficial: OFICIAL, em });
-  assert.equal(exigirAprovacao(ok, video, { now: NOW }), true);
-  assert.throws(() => exigirAprovacao(ok, Buffer.from("outro"), { now: NOW }), /video_diferente/);
-  assert.throws(() => exigirAprovacao(null, video, { now: NOW }), /decisao_ausente/);
-  assert.throws(() => exigirAprovacao({ ...ok, decisao: "DESCARTADO", aprovado: false }, video, { now: NOW }), /reprovado/);
-  assert.throws(() => exigirAprovacao({ ...ok, decisao: "APROVADO", aprovado: "sim" }, video, { now: NOW }), /reprovado/);
-  assert.throws(() => exigirAprovacao(ok, video, { now: NOW + 49 * 3600000 }), /vencida/);
-  assert.throws(() => exigirAprovacao({ ...ok, notas: { ...ok.notas, prova: 9.4 } }, video, { now: NOW }), /notas_insuficientes/);
-  const rep = registrarDecisao({ videoBytes: video, sku: "ZEV-LCX-011", avaliacao: { aprovado: false, motivos: ["quadro_vazio"] }, padrao: PADRAO, em });
+test("decisão assinada (NC-R03): gate exige chave, assinatura HMAC, APROVADO, mesmo vídeo (sha256), notas e prazo", () => {
+  const video = Buffer.from("video-real"), em = "2026-11-13T12:00:00Z", chave = "k".repeat(40);
+  const reg = (av, c = chave) => registrarDecisao({ videoBytes: video, sku: "ZEV-LCX-011", avaliacao: av, padrao: PADRAO, commit: "abc", oficial: OFICIAL, chave: c, em });
+  const ok = reg({ aprovado: true, nota_geral: 9.7, juri: lerJuri(ALTO), motivos: [] });
+  assert.equal(ok.schema, 2); assert.match(ok.assinatura, /^hmac-sha256:[a-f0-9]{64}$/);
+  assert.equal(exigirAprovacao(ok, video, { chave, now: NOW }), true);
+  assert.throws(() => exigirAprovacao(ok, video, { now: NOW }), /chave_de_decisao_ausente/);
+  assert.throws(() => exigirAprovacao(ok, video, { chave: "x".repeat(40), now: NOW }), /assinatura_invalida/, "outra chave");
+  assert.throws(() => exigirAprovacao(reg({ aprovado: true, juri: lerJuri(ALTO) }, null), video, { chave, now: NOW }), /assinatura_invalida/, "registro sem assinatura");
+  assert.throws(() => exigirAprovacao({ ...ok, decisao: "APROVADO", aprovado: true, notas: { ...ok.notas, prova: 10 } }, video, { chave, now: NOW }), /assinatura_invalida/, "adulterar após assinar");
+  const falso = { ...reg({ aprovado: false, motivos: ["quadro_vazio"] }), decisao: "APROVADO", aprovado: true };
+  assert.throws(() => exigirAprovacao(falso, video, { chave, now: NOW }), /assinatura_invalida/, "reprovado forjado como aprovado");
+  assert.throws(() => exigirAprovacao(ok, Buffer.from("outro"), { chave, now: NOW }), /video_diferente/);
+  assert.throws(() => exigirAprovacao(ok, null, { chave, now: NOW }), /video_ausente/);
+  assert.throws(() => exigirAprovacao(null, video, { chave, now: NOW }), /decisao_ausente/);
+  assert.throws(() => exigirAprovacao(reg({ aprovado: false, motivos: ["quadro_vazio"] }), video, { chave, now: NOW }), /reprovado/);
+  assert.throws(() => exigirAprovacao(reg({ aprovado: "sim", juri: lerJuri(ALTO) }), video, { chave, now: NOW }), /reprovado/);
+  assert.throws(() => exigirAprovacao(ok, video, { chave, now: NOW + 49 * 3600000 }), /vencida/);
+  assert.throws(() => exigirAprovacao(reg({ aprovado: true, juri: lerJuri({ notas: { ...ALTO.notas, prova: 9.4 } }) }), video, { chave, now: NOW }), /notas_insuficientes/);
+  const rep = reg({ aprovado: false, motivos: ["quadro_vazio"] });
   assert.deepEqual([rep.decisao, rep.motivos], ["DESCARTADO", ["quadro_vazio"]]);
+});
+test("proveniência (NC-R05, adversarial): números permitidos só vêm da planilha íntegra; adulterar dados ou manifesto bloqueia", async () => {
+  const spec = JSON.parse(readFileSync("data/shorts-v3/lcx.json", "utf8"));
+  const P = await conferirManifesto(spec);
+  const perm = permitidosDaProveniencia(P, 147);
+  for (const v of [180, 132, 9, 39, 176, 147]) assert.ok(perm.reais.includes(v), "R$ " + v);
+  for (const v of [5, 21.7, 2.2, 20]) assert.ok(perm.pct.includes(v), v + "%");
+  assert.deepEqual(await conferirNumeros(spec), []);
+  assert.throws(() => permitidosDaProveniencia({ ...P, resultados_calculados_pela_planilha: { ...P.resultados_calculados_pela_planilha, Status: "ERRO" } }, 147), /proveniencia_invalida/);
+  assert.throws(() => permitidosDaProveniencia(null, 147), /proveniencia_invalida/);
+  assert.ok((await conferirNumeros({ ...spec, numeros: { ...spec.numeros, margem_antes_fixas: 60 } })).includes("margem_divergente"), "número do roteiro fora da planilha");
+  const d = mkdtempSync(join(tmpdir(), "prov-")), rel = (f) => relative(process.cwd(), join(d, f));
+  writeFileSync(join(d, "prov.json"), JSON.stringify({ ...P, entradas: { ...P.entradas, "Preço atual": 250 } }));
+  const M = JSON.parse(readFileSync(spec.manifesto, "utf8"));
+  writeFileSync(join(d, "man.json"), JSON.stringify({ arquivos: { ...M.arquivos, [rel("prov.json")]: M.arquivos[spec.proveniencia_numeros] } }));
+  await assert.rejects(() => conferirManifesto({ ...spec, manifesto: rel("man.json"), proveniencia_numeros: rel("prov.json") }), /v3_proveniencia_adulterada/, "planilha adulterada com hash antigo");
+  writeFileSync(join(d, "man2.json"), JSON.stringify({ arquivos: { [spec.proveniencia_numeros]: M.arquivos[spec.proveniencia_numeros] } }));
+  await assert.rejects(() => conferirManifesto({ ...spec, manifesto: rel("man2.json") }), /v3_manifesto_sem/, "captura fora do manifesto");
+  await assert.rejects(() => conferirManifesto({ ...spec, manifesto: undefined }), /v3_manifesto_ausente/);
 });
 test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BLOQUEADO com relatório", async () => {
   assert.equal(MAX_TENTATIVAS, 3);
