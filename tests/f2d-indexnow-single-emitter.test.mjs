@@ -61,9 +61,10 @@ test("barreira do Worker bloqueia TODOS os endpoints IndexNow, não só api.inde
   assert.match(blog, /fetchImpl=withoutDirectIndexNow\(fetchImpl\);/);
 });
 
-test("âncora authorized:false: o único workflow emissor bloqueia antes da rede", () => {
+test("âncora: só o workflow emissor único a consome; o lote continua proibido", () => {
   const anchor = JSON.parse(readTextNormalized(join(ROOT, "data/indexnow-continuity.json")));
-  assert.equal(anchor.authorized, false);
+  assert.equal(anchor.authorized, true);
+  assert.deepEqual([anchor.rows, anchor.pending], [[], []]);
   const submit = files.find((f) => f.rel === ".github/workflows/indexnow-submit.yml").text;
   assert.match(submit, /indexnow-publication\.mjs/);
 });
