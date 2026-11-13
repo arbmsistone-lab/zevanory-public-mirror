@@ -10,7 +10,7 @@ async function removed(m){for(const backlog of [false,true]){const f=fixture({ba
 test('Continuity: deleting a run after attempt or backlog blocks, never empty',()=>removed(mod));
 test('Continuity: deleting all runs or the approved anchor blocks',async()=>{for(const runs of [[],[{id:11,run_number:2,created_at:'2026-11-12T13:00:00Z'}]]){const f=fixture();f.runs=runs;await assert.rejects(()=>mod.readAttemptJournal(context,f.fetch,()=>{}));}});
 test('Continuity: deleted planner logs or missing checkpoint block after backlog',async()=>{for(const logs of [false,'missing-marker']){const f=fixture({backlog:true});f.logs=logs;await assert.rejects(()=>mod.readAttemptJournal(context,f.fetch,()=>{}));}});
-test('Continuity: restoring evidence recovers exact pending state and attempts',async()=>{const f=fixture({backlog:true});const runs=f.runs;f.runs=[];await assert.rejects(()=>mod.readAttemptJournal(context,f.fetch,()=>{}));f.runs=runs;const r=await mod.readAttemptJournal(context,f.fetch,()=>{});assert.deepEqual(r.pending,f.pending);assert.equal(r.rows.length,2);});
+test('Continuity: restoring evidence recovers exact pending state and attempts',async()=>{const f=fixture({backlog:true});const runs=f.runs;f.runs=[];await assert.rejects(()=>mod.readAttemptJournal(context,f.fetch,()=>{}));f.runs=runs;const r=await mod.readAttemptJournal(context,f.fetch,()=>{});assert.deepEqual(r.pending,f.pending);assert.equal(r.rows.length,1,'só o run posterior à âncora é lido; a âncora é checkpoint inclusivo');});
 async function initialized(m){assert.throws(()=>m.continuityAnchor({...continuity,authorized:false}));assert.deepEqual(m.continuityAnchor(continuity),continuity);}
 test('Continuity: explicit initialization is separate from missing history',()=>initialized(mod));
 test('Continuity mutant: missing run number accepted',()=>killedMutation(source,[["if(!seen.has(n))throw Error('continuity_gap');","if(false)throw Error('continuity_gap');"]],removed));
@@ -19,3 +19,18 @@ test('Continuity: âncora aprovada pelo proprietário é válida, sem inventar l
 async function noBypass(m){let calls=0;const safe=m.withoutDirectIndexNow(async()=>{calls++;return new Response('{}',{status:200});});const r=await safe('https://api.indexnow.org/indexnow',{method:'POST'});assert.equal(r.status,409);assert.equal(calls,0);await safe('https://example.test/status');assert.equal(calls,1);}
 test('Continuity: direct blog emitter cannot bypass journaled planner',()=>noBypass(direct));
 test('Continuity mutant: unjournaled direct post restored',()=>killedMutation(guard,[["if(isIndexNowEndpoint(input))","if(false)"]],noBypass));
+
+// NC-1035-01: a âncora aprovada é um checkpoint INCLUSIVO que o leitor consegue consumir mesmo quando o run-âncora foi
+// bloqueado no planejamento (sem INDEXNOW_PENDING_V1). Runs POSTERIORES continuam exigindo a evidência do planner.
+function blockedAnchorFixture(){const f=fixture({backlog:true});const inner=f.fetch;f.fetch=async url=>{if(url.endsWith('/jobs/100/logs'))return {status:200,text:async()=>'::warning title=INDEXNOW::journal_unreadable'};return inner(url);};return f;}
+async function anchorInclusive(m){
+ const f=blockedAnchorFixture();const r=await m.readAttemptJournal(context,f.fetch,()=>{}).catch(e=>assert.fail('âncora inclusiva não consumível: '+e.message));
+ assert.deepEqual(r.pending,f.pending,'estado vem do run posterior; âncora sem marcador não bloqueia');
+ // Âncora sozinha (o run atual é o primeiro depois dela): o estado é o aprovado no arquivo.
+ const only=await m.readAttemptJournal({...context,runId:11,runNumber:2},async url=>{if(url.includes('/runs?'))return {status:200,json:async()=>({workflow_runs:[{id:11,run_number:2,created_at:'2026-11-12T13:00:00Z'},{id:10,run_number:1,created_at:'2026-11-11T13:00:00Z'}]})};if(url.endsWith('/logs'))return {status:200,text:async()=>'sem marcador'};return {status:200,json:async()=>({jobs:[{id:100,name:'submit',status:'completed',started_at:'2026-11-11T13:00:00Z',steps:[{name:'Plan changed publications'}]}]})};},()=>{}).catch(e=>assert.fail('âncora sozinha não consumível: '+e.message));
+ assert.deepEqual(only,{rows:[],pending:[]});
+}
+test('Continuity: âncora bloqueada no planejamento é consumível (checkpoint inclusivo aprovado)',()=>anchorInclusive(mod));
+test('Continuity mutant: âncora volta a ser lida como run comum',()=>killedMutation(source,[["if(run.run_number===anchor.anchorRunNumber&&run.id!==runId)return finish();",""]],anchorInclusive));
+test('Continuity: run POSTERIOR à âncora sem marcador continua bloqueando',async()=>{const f=fixture({backlog:true});const inner=f.fetch;f.fetch=async url=>{if(url.endsWith('/jobs/110/logs'))return {status:200,text:async()=>'log sem marcador'};return inner(url);};await assert.rejects(()=>mod.readAttemptJournal(context,f.fetch,()=>{}),/journal_unreadable/);});
+test('Continuity: âncora com outro id (run substituído) continua bloqueando',async()=>{const f=fixture();f.runs=[{id:11,run_number:2,created_at:'2026-11-12T13:00:00Z'},{id:99,run_number:1,created_at:'2026-11-11T13:00:00Z'}];await assert.rejects(()=>mod.readAttemptJournal(context,f.fetch,()=>{}),/journal_unreadable/);});

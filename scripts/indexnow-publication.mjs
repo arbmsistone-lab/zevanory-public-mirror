@@ -71,6 +71,11 @@ export async function readAttemptJournal({repo,runId,runNumber,attempt,token,con
     if(run.run_number<anchor.anchorRunNumber)continue;
     if(seen.has(run.run_number)&&seen.get(run.run_number)!==run.id)throw Error('continuity_duplicate');
     seen.set(run.run_number,run.id);
+    // NC-1035-01: the approved anchor is an INCLUSIVE checkpoint. Its state (rows/pending) is the one written in
+    // data/indexnow-continuity.json and approved by the owner, so the anchor run's own jobs/logs are not read (a
+    // blocked anchor run never printed INDEXNOW_PENDING_V1). Its identity is still required (run number -> id), and
+    // every run AFTER it must carry its planner evidence as before.
+    if(run.run_number===anchor.anchorRunNumber&&run.id!==runId)return finish();
     if(run.id===runId&&attempt===1)continue;
     const attempts=run.id===runId?Array.from({length:attempt-1},(_,i)=>'/attempts/'+(i+1)+'/jobs?'):['/jobs?filter=all&'];
     for(const endpoint of attempts){

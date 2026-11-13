@@ -67,7 +67,7 @@ tests/f2-indexnow-publication.test.mjs 12
 tests/f2b-hotmart-secondary.test.mjs 12
 tests/f2b-indexnow-auth.test.mjs 12
 tests/f2c-hotmart-provider-recovery.test.mjs 11
-tests/f2c-indexnow-continuity.test.mjs 10
+tests/f2c-indexnow-continuity.test.mjs 14
 tests/f2d-hotmart-run-status.test.mjs 10
 tests/f2d-indexnow-single-emitter.test.mjs 5
 tests/f2e-hotmart-status-contract.test.mjs 7
