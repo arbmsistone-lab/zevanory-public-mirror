@@ -49,3 +49,29 @@ test("alinhador sem resultado em todas: falha explícita", () => {
   const r = run({});
   assert.match(r.failed || "", /alignment_failed/);
 });
+
+// NC-1036-01: a escolha usa TODOS os critérios de alignedWords, não só os tempos.
+test("1ª tentativa com contagem incompleta: segue para a próxima válida", () => {
+  const r = run({ default: [["Kit", 0, 0.4], ["completo", 0.4, 0.9]], fast: ok });
+  assert.match(r.stdout, /padrao_min_word_dur invalid[\s\S]*fast_mode ok/); assert.equal(r.json.fake_options.fast_mode, true);
+});
+test("1ª tentativa com palavra divergente: segue para a próxima válida", () => {
+  const r = run({ default: [["Kit", 0, 0.4], ["completa", 0.4, 0.9], ["agora", 0.9, 1.3]], nosup: ok });
+  assert.match(r.stdout, /padrao_min_word_dur invalid[\s\S]*sem_supressao_de_silencio ok/); assert.equal(r.json.fake_options.suppress_silence, false);
+});
+test("palavra com acento/pontuação/caixa diferente é a mesma palavra normalizada (igual ao core.mjs)", () => {
+  const r = run({ default: [[" KIT,", 0, 0.4], ["Complétó", 0.4, 0.9], ["agora!", 0.9, 1.3]] });
+  assert.match(r.stdout, /padrao_min_word_dur ok/);
+});
+test("palavra de tipo não-texto ou tempo não numérico: inválida, segue para a próxima", () => {
+  assert.match(run({ default: [[7, 0, 0.4], ["completo", 0.4, 0.9], ["agora", 0.9, 1.3]], fast: ok }).stdout, /padrao_min_word_dur invalid[\s\S]*fast_mode ok/);
+  assert.match(run({ default: [["Kit", "0", 0.4], ["completo", 0.4, 0.9], ["agora", 0.9, 1.3]], fast: ok }).stdout, /padrao_min_word_dur invalid[\s\S]*fast_mode ok/);
+  assert.match(run({ default: [["Kit", true, 0.4], ["completo", 0.4, 0.9], ["agora", 0.9, 1.3]], fast: ok }).stdout, /padrao_min_word_dur invalid[\s\S]*fast_mode ok/);
+});
+test("escolha do Python concorda com alignedWords do core.mjs", async () => {
+  const { alignedWords } = await import("../scripts/shorts-v2/core.mjs");
+  for (const sc of [{ default: [["Kit", 0, 0.4], ["completo", 0.4, 0.9]], fast: ok }, { default: [["Kit", 0, 0.4], ["completa", 0.4, 0.9], ["agora", 0.9, 1.3]], nosup: ok }, { default: instant, fast: ok }]) {
+    const r = run(sc);
+    assert.equal(alignedWords(r.json, "Kit completo agora", 2).length, 3);
+  }
+});
