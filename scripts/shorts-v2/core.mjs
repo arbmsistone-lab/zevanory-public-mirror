@@ -53,6 +53,19 @@ export function alignmentIssues(alignment,text,duration){
  });
  return {words,expected,issues};
 }
+// Tempo do vídeo a partir da fala REAL alinhada (nada é estimado): o cartão de CTA entra em duration-3.5 e precisa
+// coincidir com o início falado do CTA. Antes a cauda era fixa (voz + 1,0 s) e a voz Achird fala o CTA em ~1,9 s, então o
+// CTA começava ~0,1 s depois da janela (prévia real 13/11: cta_alignment_failed). Agora a cauda de silêncio após a voz
+// se ajusta para o cartão coincidir com o CTA falado, limitada a 0,5–2,0 s; fora disso, falha explícita com os tempos.
+export const CTA_CARD_SECONDS=3.5,TAIL_MIN=0.5,TAIL_MAX=2.0;
+export function shortTiming(voiceDuration,words){
+ const n=CTA.split(/\s+/).length,firstCta=words?.length>=n?words[words.length-n]?.start:undefined;
+ if(!Number.isFinite(voiceDuration)||voiceDuration<=0||!Number.isFinite(firstCta)||firstCta<0||firstCta>=voiceDuration)throw Error('cta_alignment_failed sem_cta');
+ const duration=firstCta+CTA_CARD_SECONDS,tail=duration-voiceDuration;
+ if(tail<TAIL_MIN-1e-9||tail>TAIL_MAX+1e-9)throw Error('cta_alignment_failed cta='+t2(firstCta)+' voz='+t2(voiceDuration)+' cauda='+t2(tail));
+ if(duration<25||duration>35)throw Error('v2_duration_failed');
+ return {duration,ctaStart:duration-CTA_CARD_SECONDS,firstCta,tail};
+}
 export function alignedWords(alignment,text,duration){const {words,expected,issues}=alignmentIssues(alignment,text,duration);if(issues.length){const n={};for(const x of issues)n[x.tipo]=(n[x.tipo]||0)+1;throw Error('alignment_invalid '+issues[0].texto+' ['+Object.entries(n).map(([k,v])=>k+'='+v).join(',')+'; palavras='+words.length+'/'+expected.length+'; duracao='+t2(duration)+']');}return words;}
 export function captions(words,{width=1080,height=1920}={}){const header=`[Script Info]\nPlayResX: ${width}\nPlayResY: ${height}\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Word,Inter ExtraBold,86,&H0000E5FF,&H00FFFFFF,&H00000000,&H99000000,-1,0,0,0,100,100,0,0,1,5,1,5,100,220,300,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
  const time=v=>{const cs=Math.round(v*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;};return header+words.map(w=>`Dialogue: 0,${time(w.start)},${time(w.end)},Word,,0,0,0,,{\\pos(500,1530)}${w.word.replace(/[{}\\\r\n]/g,'')}`).join('\n')+'\n';}
