@@ -37,6 +37,14 @@ export async function tts(text,voice,key,{model,fetchImpl=fetch,freeTierConfirme
 export function audioMetrics(file){const out=command('ffmpeg',['-hide_banner','-nostats','-i',file,'-vn','-af','ebur128=peak=true,silencedetect=n=-35dB:d=0.05','-f','null','-']);const lufs=Number([...out.matchAll(/I:\s+(-?[\d.]+) LUFS/g)].at(-1)?.[1]),peak=Number([...out.matchAll(/Peak:\s+(-?[\d.]+) dBFS/g)].at(-1)?.[1]);const starts=[...out.matchAll(/silence_start: ([\d.]+)/g)].map(m=>+m[1]),ends=[...out.matchAll(/silence_end: ([\d.]+)/g)].map(m=>+m[1]);return {lufs,peak,starts,ends};}
 function pcm(file){return command('ffmpeg',['-v','error','-i',file,'-f','f32le','-ac','1','-ar','24000','pipe:1'],{buffer:true});}
 export function rmsDb(bytes,windows){let sum=0,n=0;for(const w of windows){for(let i=Math.max(0,Math.ceil(w.start*24000));i<Math.min(bytes.length/4,Math.floor(w.end*24000));i++){const v=bytes.readFloatLE(i*4);sum+=v*v;n++;}}return n&&sum>0?10*Math.log10(sum/n):-Infinity;}
+// Loudnorm em duas passagens (padrão do FFmpeg para atingir o alvo integrado): a passagem única dinâmica no fim do
+// mixGraph fica abaixo de -14 LUFS em fala real com pausas (prévia real 13/11: audio_qc_failed:mix_loudness). 1ª passagem
+// mede o mix; 2ª aplica em modo linear com as medidas. Nada é aceito a mais: quality() continua exigindo -14±1 LUFS e TP<=-1.
+export function loudnormMeasured(out){const blocks=[...String(out||'').matchAll(/\{[^{}]*"input_i"[^{}]*\}/g)];if(!blocks.length)throw Error('loudnorm_measure_missing');const m=JSON.parse(blocks.at(-1)[0]);const v={};for(const k of ['input_i','input_tp','input_lra','input_thresh','target_offset']){const n=Number(m[k]);if(!Number.isFinite(n))throw Error('loudnorm_measure_invalid:'+k);v[k]=n;}return v;}
+export function loudnormSecondPass(v,{I=-14,TP=-1.5,LRA=7}={}){return `loudnorm=I=${I}:TP=${TP}:LRA=${LRA}:measured_I=${v.input_i}:measured_TP=${v.input_tp}:measured_LRA=${v.input_lra}:measured_thresh=${v.input_thresh}:offset=${v.target_offset}:linear=true:print_format=summary`;}
+export function normalizeTwoPass(input,output,{run=command,I=-14,TP=-1.5,LRA=7}={}){const measured=loudnormMeasured(run('ffmpeg',['-hide_banner','-nostats','-i',input,'-af',`loudnorm=I=${I}:TP=${TP}:LRA=${LRA}:print_format=json`,'-f','null','-']));run('ffmpeg',['-y','-hide_banner','-nostats','-i',input,'-af',loudnormSecondPass(measured,{I,TP,LRA}),'-ar','48000',output]);return measured;}
+// Motivo de QC com os números medidos (sem conteúdo de fala), para o log mostrar quanto faltou.
+export function qcFailureMessage(qc){const m=qc.metrics||{},f=x=>Number.isFinite(x)?x.toFixed(2):'NaN',extra={mix_loudness:`mixLufs=${f(m.mixLufs)} truePeak=${f(m.truePeak)}`,true_peak:`truePeak=${f(m.truePeak)}`,voice_loudness:`voiceLufs=${f(m.voiceLufs)}`,voice_speed:`ppm=${f(m.ppm)}`,voice_silence:`internalSilence=${f(m.internalSilence)}`,cta:`ctaSeconds=${f(m.ctaSeconds)}`};return 'audio_qc_failed:'+qc.reasons.join('+')+' ('+qc.reasons.map(r=>extra[r]).filter(Boolean).join('; ')+')';}
 export function mixGraph(duration){return `[0:a]apad=whole_dur=${duration},asplit=2[voice][side];[1:a]loudnorm=I=-23:TP=-4:LRA=7,afade=t=in:d=0.5,afade=t=out:st=${duration-1.5}:d=1.5,asplit=2[reference][bed];[bed][side]sidechaincompress=threshold=0.06:ratio=12:attack=10:release=250:makeup=1,asplit=2[ducked][stem];[voice][ducked]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=7[mix]`;}
 export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config:injectedConfig,align,synthesize=tts,note=(level,message)=>console.warn(message)}={}){
  if(plan.v2!==true)throw Error('v2_plan_required');
@@ -72,7 +80,8 @@ export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config
  if(!(firstCta>=duration-4&&firstCta<=duration-3))throw Error('cta_alignment_failed');
  let trackPath=fileURLToPath(new URL('../../'+track.arquivo,import.meta.url));
  if(library.buffers.has(track.arquivo)){trackPath=base+'-selected.ogg';await writeFile(trackPath,library.buffers.get(track.arquivo));}
- command('ffmpeg',['-y','-i',base+'-voz.wav','-i',trackPath,'-filter_complex',mixGraph(duration),'-map','[mix]','-t',String(duration),base+'-mix.wav','-map','[reference]','-t',String(duration),base+'-musica-reference.wav','-map','[stem]','-t',String(duration),base+'-musica-ducked.wav']);
+ command('ffmpeg',['-y','-i',base+'-voz.wav','-i',trackPath,'-filter_complex',mixGraph(duration),'-map','[mix]','-t',String(duration),base+'-mix-pass1.wav','-map','[reference]','-t',String(duration),base+'-musica-reference.wav','-map','[stem]','-t',String(duration),base+'-musica-ducked.wav']);
+ normalizeTwoPass(base+'-mix-pass1.wav',base+'-mix.wav');
  // Brand template + smooth push, with the baked-in logo masked for t < 2s.
  if(/[\[\]';:,\\]/.test(base))throw Error('unsafe_media_path');
  const font=fileURLToPath(new URL('../../assets/fonts/Inter-ExtraBold.ttf',import.meta.url));
@@ -113,6 +122,6 @@ export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config
  const metrics={musicBedLufs:audioMetrics(base+'-musica-reference.wav').lufs,ppm:words.length/voiceDuration*60,internalSilence,clipping:sourceClipping||voice.peak>=0,voiceLufs:voice.lufs,duration,musicDetected:Number.isFinite(musicDb)&&musicDb>-70,duckingDb:referenceDb-musicDb,voiceMusicDb:voiceDb-musicDb,mixLufs:mix.lufs,truePeak:mix.peak,...visual,ctaSeconds:duration-firstCta,cta:CTA,voiceFixed:generated.voice===config.voz_fixa};
  const qc={...quality(metrics),metrics,voice:config.voz_fixa,track,model:config.modelo,containsSyntheticMedia:true,mode:preview?'preview':'production'};
  await writeFile(base+'-qc.json',JSON.stringify(qc,null,2));await copyFile(trackPath,base+'-musica.'+track.arquivo.split('.').at(-1));await writeFile(base+'-licenca.json',JSON.stringify(track,null,2));
- if(!qc.ok)throw Error('audio_qc_failed:'+qc.reasons.join('+'));
+ if(!qc.ok)throw Error(qcFailureMessage(qc));
  return {file:base+'.mp4',duration,voice:'gemini:'+config.voz_fixa,audio:{ok:true,...metrics},qc,track,beats:{cta:ctaStart}};
 }
