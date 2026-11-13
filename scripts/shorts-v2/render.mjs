@@ -11,6 +11,9 @@ import {musicPublications,lastPublishedMusic} from './music-publications.mjs';
 import {visualMetrics,contactSheet} from './visual.mjs';
 import {STYLE,CTA,assertVoice,licensedTrack,alignedWords,captions,quality,musicHistory} from './core.mjs';
 export function command(cmd,args,{buffer=false}={}){const p=spawnSync(cmd,args,{encoding:buffer?null:'utf8',maxBuffer:128*1024*1024});if(p.status!==0)throw Error('media_tool_failed:'+cmd);return buffer?p.stdout:String(p.stdout||'')+String(p.stderr||'');}
+// NC-1037-01: diagnóstico do alinhador publicado ANTES de qualquer falha (status e saída separados).
+export const alignAttemptLines=out=>String(out||'').split(/\r?\n/).filter(l=>/^ALIGN_ATTEMPT [a-z_]+ (ok|invalid|none|erro)\b/.test(l)).map(l=>l.slice(0,200));
+export function runAligner(args,{spawn=spawnSync,log=console.log,env}={}){const p=spawn('python3',[fileURLToPath(new URL('./align.py',import.meta.url)),...args],{encoding:'utf8',maxBuffer:128*1024*1024,...(env?{env}:{})});for(const line of alignAttemptLines(String(p.stdout||'')+'\n'+String(p.stderr||'')))log(line);if(p.status!==0)throw Error('media_tool_failed:python3');}
 export function ttsRequest(text,voice,model){
  if(!['gemini-3.8-flash-tts','gemini-2.5-flash-preview-tts'].includes(model))throw Error('tts_model_unsupported');
  const modern=model==='gemini-3.8-flash-tts';
@@ -61,7 +64,7 @@ export async function renderV2(plan,base,{geminiKey,preview=false,stateKv,config
  const voiceDuration=pcmBytes.length/2/24000,duration=voiceDuration+1.0;
  if(duration<25||duration>35)throw Error('v2_duration_failed');
  command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af','highpass=f=80,deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100,loudnorm=I=-16:TP=-1.5:LRA=7','-c:a','pcm_s16le',base+'-voz.wav']);
- let alignment;if(align)alignment=await align(base+'-voz.wav',plan.speech);else{{const out=command('python3',[fileURLToPath(new URL('./align.py',import.meta.url)),base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);for(const line of out.split('\n'))if(/^ALIGN_ATTEMPT [a-z_]+ (ok|invalid|none|erro)\b/.test(line))console.log(line.slice(0,200));}alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
+ let alignment;if(align)alignment=await align(base+'-voz.wav',plan.speech);else{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
  const words=alignedWords(alignment,plan.speech,voiceDuration);
  await writeFile(base+'-legendas.ass',captions(words));
  const ctaStart=duration-3.5,firstCta=words.slice(-CTA.split(/\s+/).length)[0]?.start;

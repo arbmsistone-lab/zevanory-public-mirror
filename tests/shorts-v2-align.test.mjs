@@ -80,7 +80,7 @@ test("escolha do Python concorda com alignedWords do core.mjs", async () => {
 test("diagnóstico de cada tentativa inválida: tipo, índice e tempos, sem conteúdo de palavra", () => {
   const r = run({ default: instant, fast: [["Kit", 0, 0.4], ["completa", 0.4, 0.9], ["agora", 0.9, 1.3]], nosup: ok });
   assert.match(r.stdout, /ALIGN_ATTEMPT padrao_min_word_dur invalid duracao_zero@0:0\.50-0\.50/);
-  assert.match(r.stdout, /ALIGN_ATTEMPT fast_mode invalid palavra@1\n/);
+  assert.match(r.stdout.replace(/\r\n/g, "\n"), /ALIGN_ATTEMPT fast_mode invalid palavra@1\n/);
   assert.doesNotMatch(r.stdout, /completa|Kit|agora/i, "nenhuma palavra no log");
 });
 test("vad=True (configuração real) é tentada depois das três primeiras", () => {
@@ -95,4 +95,23 @@ test("refine do próprio alinhador sobre o resultado padrão é a última tentat
 test("opção não suportada pela versão instalada: registra erro e segue para a próxima", () => {
   const r = run({ raise: "default", fast: ok });
   assert.match(r.stdout, /ALIGN_ATTEMPT padrao_min_word_dur erro TypeError[\s\S]*fast_mode ok/);
+});
+
+// NC-1037-01: pelo caminho do render (runAligner), os diagnósticos saem no log mesmo quando o align.py falha.
+test("render: falha do alinhador publica as linhas ALIGN_ATTEMPT antes de lançar", async () => {
+  const { runAligner } = await import("../scripts/shorts-v2/render.mjs");
+  const d = mkdtempSync(join(tmpdir(), "align-r-")), audio = wav(d, 2), script = join(d, "r.txt"), out = join(d, "a.json");
+  writeFileSync(script, "Kit completo agora");
+  const logged = [];
+  const env = { ...process.env, PYTHONPATH: FAKE, FAKE_ALIGN_SCENARIO: JSON.stringify({}) };
+  assert.throws(() => runAligner([audio, script, out], { env, log: (l) => logged.push(l) }), /media_tool_failed:python3/);
+  assert.equal(logged.length, 5, "as cinco tentativas aparecem no log");
+  assert.ok(logged.every((l) => /^ALIGN_ATTEMPT [a-z_]+ none$/.test(l)));
+  const ok2 = []; const env2 = { ...env, FAKE_ALIGN_SCENARIO: JSON.stringify({ default: instant, fast: ok }) };
+  runAligner([audio, script, out], { env: env2, log: (l) => ok2.push(l) });
+  assert.deepEqual(ok2, ["ALIGN_ATTEMPT padrao_min_word_dur invalid duracao_zero@0:0.50-0.50", "ALIGN_ATTEMPT fast_mode ok"]);
+});
+test("alignAttemptLines aceita CRLF e descarta qualquer outra linha", async () => {
+  const { alignAttemptLines } = await import("../scripts/shorts-v2/render.mjs");
+  assert.deepEqual(alignAttemptLines("x\r\nALIGN_ATTEMPT vad ok\r\nTraceback palavra secreta\r\nALIGN_ATTEMPT refinado none"), ["ALIGN_ATTEMPT vad ok", "ALIGN_ATTEMPT refinado none"]);
 });
