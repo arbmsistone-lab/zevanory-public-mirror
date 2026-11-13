@@ -1,0 +1,49 @@
+name: Laboratório de Criativos (pesquisa + calibração do avaliador, sem publicação)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * 1"
+permissions:
+  contents: read
+concurrency:
+  group: criativos-laboratorio
+  cancel-in-progress: false
+jobs:
+  laboratorio:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Pesquisa os Shorts que mais performam e sintetiza o padrão nota 10 (dados reais do YouTube + IA)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: node scripts/criativos/rodar-pesquisa.mjs "$RUNNER_TEMP/laboratorio"
+      - name: Calibra o avaliador com os criativos de referência (v2 reprovado e v3 mockup)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          L="$RUNNER_TEMP/laboratorio"; C=docs/criativos/calibracao
+          for s in v2-reprovado v3-mockup; do
+            node scripts/criativos/rodar-avaliacao.mjs "$L/padrao-10.json" "$C/$s/criativo.json" "$L/avaliacao-$s.json" $(ls "$C/$s"/quadro-*.png | sort -V)
+          done
+          # Calibração mínima: o criativo reprovado por humano e GPT-6 NUNCA pode ser aprovado pelo avaliador.
+          node --input-type=module -e "import {readFileSync} from 'node:fs';const r=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/laboratorio/avaliacao-v2-reprovado.json','utf8'));if(r.aprovado){console.log('::error title=CALIBRACAO::avaliador aprovou o v2 reprovado');process.exit(1)}console.log('CALIBRACAO v2-reprovado descartado corretamente')"
+      - name: Guarda padrão, evidências e avaliações (artefato)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: criativos-laboratorio
+          path: ${{ runner.temp }}/laboratorio/
+          if-no-files-found: warn
+          retention-days: 90
