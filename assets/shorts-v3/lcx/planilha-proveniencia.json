@@ -1,0 +1,26 @@
+{
+ "planilha": "ZEVANORY_Lucro_e_Caixa_Planilha_v1.1.xlsx",
+ "sha256_planilha": "e4f1b6e0b2dd1de5201017835a6806ebe23a6a74fded7557831297bc4d0f0d8d",
+ "aba": "Produtos",
+ "linha": 5,
+ "entradas": {
+  "SKU": "TEN-01",
+  "Produto / serviço": "Tênis (venda online)",
+  "Custo direto unit.": 120,
+  "Outros custos var. unit.": 12,
+  "Preço atual": 180,
+  "Taxa pagamento %": 0.05,
+  "Tributos var. %": 0,
+  "Comissão %": 0
+ },
+ "resultados_calculados_pela_planilha": {
+  "Custo variável total/unit.": 141,
+  "Contribuição/unit.": 39,
+  "Margem contribuição %": 0.216666666666667,
+  "Preço mínimo p/ margem alvo": 176,
+  "Desconto máx. p/ margem alvo": 0.0222222222222223,
+  "Status": "OK"
+ },
+ "margem_alvo_config": 0.2,
+ "recalculo": "LibreOffice headless"
+}

@@ -5,36 +5,46 @@
 // Aprova só com as duas camadas OK e TODAS as notas >= nota mínima. IA indisponível ou resposta inválida = DESCARTA
 // (nunca aprova por falta de avaliação).
 import {readFileSync} from 'node:fs';
-import {CRITERIOS,NOTA_MINIMA,PROIBIDO,validarPadrao} from './padrao.mjs';
+import {CRITERIOS,NOTA_MINIMA,validarPadrao} from './padrao.mjs';
+import {conferirAfirmacoes} from './afirmacoes.mjs';
 export function precosOficiais(src=readFileSync(new URL('../../worker/sales-public-worker.mjs',import.meta.url),'utf8')){
  const m=/const PRICES=(\{[^;]*\});/.exec(src);if(!m)throw Error('avaliador_catalogo_ausente');
  const t=JSON.parse(m[1]);for(const [sku,v] of Object.entries(t))if(!/^ZEV-[A-Z0-9]+-\d{3}$/.test(sku)||!Array.isArray(v)||typeof v[0]!=='string'||!Number.isInteger(v[1]))throw Error('avaliador_catalogo_invalido');
  return t;
 }
-const brl=n=>'R$ '+String(n);
-// criativo: {sku, textos:[todas as frases que aparecem ou são faladas], oferta:{nome,preco}, medidas:{fonteMinPx,
-// quadroVazioSeg, foraAreaSegura, provaReal}}
-export function checagensObjetivas(criativo,precos=precosOficiais()){
- const motivos=[],oficial=precos[criativo?.sku];
- if(!oficial)return ['sku_fora_do_catalogo'];
- if(criativo.oferta?.nome!==oficial[0])motivos.push('nome_do_kit_divergente');
- if(criativo.oferta?.preco!==oficial[1])motivos.push('preco_divergente');
- const texto=(criativo.textos||[]).join('\n');
- for(const p of PROIBIDO)if(p.re.test(texto))motivos.push(p.motivo);
- for(const m of texto.matchAll(/R\$\s?(\d+(?:[.,]\d+)?)/g)){const v=Number(m[1].replace('.','').replace(',','.'));if(!Number.isFinite(v))motivos.push('valor_monetario_ilegivel');}
- if(!texto.includes(brl(oficial[1])))motivos.push('preco_oficial_ausente_no_video');
- const md=criativo.medidas||{};
- if(!(md.fonteMinPx>=32))motivos.push('texto_pequeno_demais');
- if(!(md.quadroVazioSeg===0))motivos.push('quadro_vazio');
+// NC-02/NC-03: nada declarado pelo criativo é aceito como medida. As medidas vêm de medir.py sobre o vídeo
+// renderizado (origem obrigatória) e as afirmações são conferidas contra o conjunto calculado e a oferta publicada.
+// criativo: {sku, falas:[texto falado], oferta:{nome,preco}}; medicao: saída de medir.py; permitidos: {reais,pct,outros};
+// oficial: ofertaPublicada() (página de vendas no ar, com versão).
+export const ALTURA_TEXTO_MIN_PX=18;
+export function permitidosDe(numeros,preco){
+ const n=numeros||{},pct=s=>Number(String(s).replace('%','').replace(',','.'));
+ return {reais:[n.preco_venda,n.custo_produto_frete,n.taxa_cartao,n.margem_antes_fixas,n.preco_minimo,preco].filter(Number.isFinite),
+  pct:[n.taxa_cartao_pct,pct(n.margem_pct),pct(n.desconto_maximo),n.meta_margem_pct].filter(Number.isFinite),outros:[7]};
+}
+export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=precosOficiais()){
+ const motivos=[],cat=precos[criativo?.sku];
+ if(!cat)return ['sku_fora_do_catalogo'];
+ if(criativo.oferta?.nome!==cat[0])motivos.push('nome_do_kit_divergente');
+ if(criativo.oferta?.preco!==cat[1])motivos.push('preco_divergente');
+ if(!oficial||!Number.isFinite(oficial.preco)||typeof oficial.versao!=='string')motivos.push('oferta_publicada_nao_conferida');
+ else if(oficial.preco!==cat[1])motivos.push('oferta_publicada_divergente');
+ const md=medicao?.medidas;
+ if(!md||md.origem!=='medicao_independente_ocr'||!Array.isArray(medicao.quadros)||!medicao.quadros.length)return [...motivos,'medicao_independente_ausente'];
+ const telas=medicao.quadros.map(q=>String(q.texto||''));
+ if(!telas.some(t=>new RegExp('R\\$\\s?'+cat[1]+'(?![\\d,])').test(t)))motivos.push('preco_oficial_ausente_no_video');
+ if(!(md.alturaTextoMinPx>=ALTURA_TEXTO_MIN_PX))motivos.push('texto_pequeno_demais');
+ if(md.quadrosVazios!==0)motivos.push('quadro_vazio');
  if(md.foraAreaSegura!==0)motivos.push('conteudo_fora_da_area_segura');
  if(md.provaReal!==true)motivos.push('sem_prova_real_do_produto');
+ motivos.push(...conferirAfirmacoes({falas:criativo.falas||[],telas,permitidos:permitidos||{reais:[],pct:[]}}));
  return motivos;
 }
 export function promptJuri(padrao){
  validarPadrao(padrao);
  const crit=CRITERIOS.map(c=>`- ${c.id}: ${c.pergunta}`).join('\n');
- const obs=padrao.observado.map(o=>`- (${o.criterio}) ${o.padrao}`).join('\n');
- return `Você é um diretor de criação exigente de YouTube Shorts focados em VENDA. As imagens são quadros, em ordem, de um Short vertical 1080x1920 (o áudio já foi aprovado). Dê nota de 0 a 10 (uma casa decimal) para cada critério. Nota 10 = padrão dos Shorts que mais performam; seja rigoroso: qualquer falha visível tira nota.\nCritérios:\n${crit}\nPadrões observados nos Shorts que mais performam (use como referência do nível 10):\n${obs}\nResponda só JSON: {"notas":{"gancho":n,"legibilidade":n,"prova":n,"oferta":n,"marca":n},"problemas":["..."],"melhorias":["..."]}`;
+ const obs=padrao.observado.length?padrao.observado.map(o=>`- ${o.padrao} (${o.evidencias.length} Shorts reais)`).join('\n'):'- (sem pesquisa disponível nesta execução)';
+ return `Você é um diretor de criação exigente de YouTube Shorts focados em VENDA. As imagens são quadros, em ordem, de um Short vertical 1080x1920 (o áudio já foi aprovado). Dê nota de 0 a 10 (uma casa decimal) para cada critério. Nota 10 = padrão dos Shorts que mais performam; seja rigoroso: qualquer falha visível tira nota.\nCritérios:\n${crit}\nFatos medidos nos metadados dos Shorts que mais performam (apenas contexto; não descrevem o visual):\n${obs}\nResponda só JSON: {"notas":{"gancho":n,"legibilidade":n,"prova":n,"oferta":n,"marca":n},"problemas":["..."],"melhorias":["..."]}`;
 }
 export function lerJuri(saida){
  if(!saida||typeof saida!=='object'||!saida.notas||typeof saida.notas!=='object')throw Error('juri_formato');
@@ -60,8 +70,8 @@ export async function gerarJSON({key,partes,fetchImpl=fetch,modelos=MODELOS}){
  }
  throw Error('ia_indisponivel');
 }
-export async function avaliar({criativo,padrao,quadrosPng,key,fetchImpl=fetch,precos}){
- const objetivas=checagensObjetivas(criativo,precos);
+export async function avaliar({criativo,padrao,quadrosPng,medicao,permitidos,oficial,key,fetchImpl=fetch,precos}){
+ const objetivas=checagensObjetivas({criativo,medicao,permitidos,oficial},precos);
  let juri=null,modelo=null,erro=null;
  try{const partes=[{text:promptJuri(padrao)},...quadrosPng.map(b=>({inline_data:{mime_type:'image/png',data:Buffer.from(b).toString('base64')}}))];
   const r=await gerarJSON({key,partes,fetchImpl});juri=lerJuri(r.saida);modelo=r.modelo;}catch(e){erro=String(e.message||e).slice(0,80);}
@@ -81,4 +91,21 @@ export async function cicloCriativo({gerar,avaliarCriativo,max=MAX_TENTATIVAS}){
  }
  const ultimo=historico.at(-1);
  return {estado:'BLOQUEADO',historico,relatorio:`Criativo bloqueado após ${max} tentativas. Última nota: ${ultimo?.nota_geral??'n/d'}. Motivos: ${(ultimo?.motivos||[]).join(', ')||'n/d'}.`};
+}
+// NC-06: decisão persistida e consumível pelo gate de publicação. A publicação só aceita um vídeo cujo sha256 bate
+// com uma decisão APROVADO recente; qualquer ausência, divergência ou formato inválido BLOQUEIA (fail-closed).
+import {createHash} from 'node:crypto';
+const sha256=b=>createHash('sha256').update(b).digest('hex');
+export function registrarDecisao({videoBytes,sku,avaliacao,padrao,commit,oficial,em=new Date().toISOString()}){
+ return {schema:1,sha256_video:sha256(videoBytes),sku,decisao:avaliacao.aprovado===true?'APROVADO':'DESCARTADO',aprovado:avaliacao.aprovado===true,
+  nota_geral:avaliacao.nota_geral??null,notas:avaliacao.juri?.notas||null,motivos:avaliacao.motivos||[],padrao_gerado_em:padrao?.geradoEm||null,
+  commit:commit||null,oferta_publicada:oficial||null,em};
+}
+export function exigirAprovacao(decisao,videoBytes,{now=Date.now(),maxIdadeH=48}={}){
+ if(!decisao||typeof decisao!=='object'||decisao.schema!==1)throw Error('publicacao_bloqueada:decisao_ausente');
+ if(decisao.sha256_video!==sha256(videoBytes))throw Error('publicacao_bloqueada:video_diferente_do_avaliado');
+ if(decisao.decisao!=='APROVADO'||decisao.aprovado!==true)throw Error('publicacao_bloqueada:criativo_reprovado');
+ const t=Date.parse(decisao.em);if(!Number.isFinite(t)||now-t>maxIdadeH*3600000||t>now+300000)throw Error('publicacao_bloqueada:decisao_vencida');
+ const n=decisao.notas;if(!n||CRITERIOS.some(c=>!(n[c.id]>=NOTA_MINIMA)))throw Error('publicacao_bloqueada:notas_insuficientes');
+ return true;
 }

@@ -30,7 +30,31 @@ export async function pesquisarTema({sku,consultas,token,now=Date.now(),fetchImp
  const rows=(j.items||[]).map(v=>({id:v.id,titulo:String(v.snippet?.title||'').slice(0,140),canal:String(v.snippet?.channelTitle||'').slice(0,80),publicado:v.snippet?.publishedAt,
   segundos:iso8601(v.contentDetails?.duration),views:+v.statistics?.viewCount||0,likes:+v.statistics?.likeCount||0,comments:+v.statistics?.commentCount||0,
   descricao:String(v.snippet?.description||'').slice(0,300),thumb:v.snippet?.thumbnails?.high?.url||v.snippet?.thumbnails?.default?.url||null}))
-  .filter(v=>Number.isFinite(v.segundos)&&v.segundos>0&&v.segundos<=180&&v.views>=1000&&Number.isFinite(Date.parse(v.publicado)));
+  .filter(v=>Number.isFinite(v.segundos)&&v.segundos>0&&v.segundos<=180&&v.views>=1000&&Number.isFinite(Date.parse(v.publicado))&&Date.parse(v.publicado)>=Date.parse(after)&&Date.parse(v.publicado)<=now);
  for(const v of rows)v.score=desempenho(v,now);
- return rows.sort((a,b)=>b.score-a.score).slice(0,12).map(v=>({sku,...v,url:'https://www.youtube.com/shorts/'+v.id}));
+ // NC-05: duração curta não prova que é Short. Confirma no próprio YouTube: /shorts/<id> responde 200 sem
+ // redirecionar para /watch. Não confirmado = fora da evidência.
+ const out=[];
+ for(const v of rows.sort((a,b)=>b.score-a.score)){if(out.length>=12)break;if(await confirmarShort(v.id,fetchImpl))out.push({sku,...v,confirmado_short:true,url:'https://www.youtube.com/shorts/'+v.id});}
+ return out;
+}
+export async function confirmarShort(id,fetchImpl=fetch){
+ if(!/^[A-Za-z0-9_-]{11}$/.test(id))return false;
+ try{const r=await fetchImpl('https://www.youtube.com/shorts/'+id,{method:'GET',redirect:'manual',headers:{'user-agent':'Mozilla/5.0','accept-language':'pt-BR'},signal:AbortSignal.timeout(15000)});return r.status===200;}catch{return false;}
+}
+// NC-01: dos metadados só se conclui o que eles mostram. Fatos calculados por CÓDIGO (nunca pela IA), cada um com
+// os vídeos que o sustentam. Nada sobre visual, ritmo de edição ou legibilidade: isso não está nos metadados.
+const mediana=a=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[Math.floor((s.length-1)/2)]:NaN;};
+export function padroesDeMetadados(evidencia){
+ if(!Array.isArray(evidencia)||evidencia.length<5)throw Error('pesquisa_evidencia_insuficiente');
+ const top=[...evidencia].sort((a,b)=>b.score-a.score).slice(0,Math.max(5,Math.ceil(evidencia.length/2)));
+ const fato=(id,padrao,valor,apoio)=>({criterio:'metadados',fato:id,padrao,valor,evidencias:apoio.map(v=>v.id).slice(0,12)});
+ const pergunta=top.filter(v=>/\?/.test(v.titulo)),numero=top.filter(v=>/\d|R\$/.test(v.titulo)),dur=mediana(top.map(v=>v.segundos)),pal=mediana(top.map(v=>v.titulo.split(/\s+/).filter(Boolean).length));
+ const eng=mediana(top.map(v=>(v.likes+3*v.comments)/Math.max(1,v.views)));
+ const out=[fato('duracao_mediana_s',`Duração mediana dos Shorts de melhor desempenho: ${dur} s.`,dur,top),
+  fato('palavras_titulo_mediana',`Título mediano com ${pal} palavras.`,pal,top),
+  fato('engajamento_mediano',`Engajamento mediano (curtidas + 3×comentários por visualização): ${(eng*100).toFixed(2)}%.`,Math.round(eng*10000)/10000,top)];
+ if(pergunta.length>=3)out.push(fato('titulo_pergunta_pct',`${Math.round(pergunta.length/top.length*100)}% dos títulos de melhor desempenho são perguntas.`,Math.round(pergunta.length/top.length*100),pergunta));
+ if(numero.length>=3)out.push(fato('titulo_numero_pct',`${Math.round(numero.length/top.length*100)}% dos títulos de melhor desempenho trazem número ou valor.`,Math.round(numero.length/top.length*100),numero));
+ return out;
 }

@@ -1,4 +1,4 @@
-name: Laboratório de Criativos (pesquisa + calibração do avaliador, sem publicação)
+name: Laboratório de Criativos (pesquisa + calibração real do avaliador, sem publicação)
 on:
   workflow_dispatch:
   schedule:
@@ -13,7 +13,7 @@ jobs:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,24 +21,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Pesquisa os Shorts que mais performam e sintetiza o padrão nota 10 (dados reais do YouTube + IA)
+      - name: Pesquisa os Shorts que mais performam (confirmados como Shorts) e calcula os fatos do padrão
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: node scripts/criativos/rodar-pesquisa.mjs "$RUNNER_TEMP/laboratorio"
-      - name: Calibra o avaliador com os criativos de referência (v2 reprovado e v3 mockup)
+      - name: Ferramentas de medição (OCR por, numpy, Pillow)
+        if: always()
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y tesseract-ocr tesseract-ocr-por fonts-inter
+          python3 -m pip install --user numpy==2.2.6 Pillow==12.0.0
+      - name: Calibra o avaliador com referência positiva e negativos (OCR real, oferta publicada, júri Gemini)
+        if: always()
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
-          L="$RUNNER_TEMP/laboratorio"; C=docs/criativos/calibracao
-          for s in v2-reprovado v3-mockup; do
-            node scripts/criativos/rodar-avaliacao.mjs "$L/padrao-10.json" "$C/$s/criativo.json" "$L/avaliacao-$s.json" $(ls "$C/$s"/quadro-*.png | sort -V)
-          done
-          # Calibração mínima: o criativo reprovado por humano e GPT-6 NUNCA pode ser aprovado pelo avaliador.
-          node --input-type=module -e "import {readFileSync} from 'node:fs';const r=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/laboratorio/avaliacao-v2-reprovado.json','utf8'));if(r.aprovado){console.log('::error title=CALIBRACAO::avaliador aprovou o v2 reprovado');process.exit(1)}console.log('CALIBRACAO v2-reprovado descartado corretamente')"
+          P="$RUNNER_TEMP/laboratorio/padrao-10.json"; [ -f "$P" ] || { echo "::warning title=CALIBRACAO::sem padrão pesquisado nesta execução; usa só a base fixa"; P=-; }
+          node scripts/criativos/rodar-calibracao.mjs "$P" "$RUNNER_TEMP/laboratorio/calibracao"
       - name: Guarda padrão, evidências e avaliações (artefato)
         if: always()
         uses: actions/upload-artifact@v4
