@@ -40,22 +40,40 @@ def number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
-def valid(result, duration, expected):
+def issue(result, duration, expected):
+    """Primeiro problema pelos critérios de alignedWords, ou None. Sem conteúdo de palavra (só tipo, índice e tempos)."""
     words = [w for s in (getattr(result, "segments", None) or []) for w in (getattr(s, "words", None) or [])]
     if not words or len(words) != len(expected):
-        return False
+        return "contagem:%d/%d" % (len(words), len(expected))
     for i, w in enumerate(words):
         text = getattr(w, "word", None)
-        if not isinstance(text, str) or normalized(text) != expected[i]:
-            return False
+        if not isinstance(text, str):
+            return "tipo_palavra@%d" % i
+        if normalized(text) != expected[i]:
+            return "palavra@%d" % i
         start, end = getattr(w, "start", None), getattr(w, "end", None)
-        if not (number(start) and number(end)):
-            return False
-        if not (start >= 0 and end > start and end <= duration):
-            return False
+        if not (number(start) and number(end)) or start < 0:
+            return "tempo@%d" % i
+        if not end > start:
+            return "duracao_zero@%d:%.2f-%.2f" % (i, start, end)
+        if end > duration:
+            return "apos_fim@%d:%.2f>%.2f" % (i, end, duration)
         if i and start < words[i - 1].end - 0.02:
-            return False
-    return True
+            return "sobreposicao@%d:%.2f<%.2f" % (i, start, words[i - 1].end)
+    return None
+
+
+def valid(result, duration, expected):
+    return issue(result, duration, expected) is None
+
+
+def attempts(model, audio, text, state):
+    """Configurações REAIS do stable-ts, em ordem. A última refina (model.refine) o resultado padrão: o próprio
+    alinhador reavalia os tempos no áudio; nada é calculado por nós."""
+    steps = [(name, (lambda o=options: model.align(audio, text, language="pt", **o))) for name, options in ATTEMPTS]
+    steps.append(("vad", lambda: model.align(audio, text, language="pt", min_word_dur=0.1, vad=True)))
+    steps.append(("refinado", lambda: model.refine(audio, state["first"], inplace=False) if state.get("first") is not None and hasattr(model, "refine") else None))
+    return steps
 
 
 def main(audio, script, out):
@@ -63,18 +81,24 @@ def main(audio, script, out):
     text = Path(script).read_text(encoding="utf-8")
     duration = audio_seconds(audio)
     expected = expected_words(text)
-    last = None
-    for name, options in ATTEMPTS:
-        result = model.align(audio, text, language="pt", **options)
+    last, state = None, {}
+    for name, run in attempts(model, audio, text, state):
+        try:
+            result = run()
+        except Exception as error:  # opção não suportada pela versão instalada: registra e segue
+            print("ALIGN_ATTEMPT " + name + " erro " + type(error).__name__, flush=True)
+            continue
         if result is None:
             print("ALIGN_ATTEMPT " + name + " none", flush=True)
             continue
+        state.setdefault("first", result)
         last = result
-        if valid(result, duration, expected):
+        problem = issue(result, duration, expected)
+        if problem is None:
             print("ALIGN_ATTEMPT " + name + " ok", flush=True)
             result.save_as_json(out)
             return
-        print("ALIGN_ATTEMPT " + name + " invalid", flush=True)
+        print("ALIGN_ATTEMPT " + name + " invalid " + problem, flush=True)
     if last is None:
         raise SystemExit("alignment_failed")
     last.save_as_json(out)  # o verificador reprova e informa o motivo
