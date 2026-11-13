@@ -27,3 +27,18 @@ test("mensagem de QC mantém o prefixo e traz os números medidos", () => {
   assert.equal(m, "audio_qc_failed:mix_loudness+true_peak (mixLufs=-15.31 truePeak=-0.80; truePeak=-0.80)");
   assert.match(m, /^audio_qc_failed/);
 });
+
+// NC-1039-01: tipo validado ANTES da coerção; inválido interrompe antes da 2ª passagem.
+test("medidas com tipo inválido (null, '', [], true, ['-17.32'], {}, 'abc', 'inf') falham antes da 2ª passagem", () => {
+  const block = (v) => '{"input_i" : ' + JSON.stringify(v) + ', "input_tp" : "-3.10", "input_lra" : "5.40", "input_thresh" : "-27.70", "target_offset" : "0.41"}';
+  for (const bad of [null, "", "  ", [], true, false, ["-17.32"], {}, "abc", "inf", "-inf", "nan", "1e999"]) {
+    let calls = 0;
+    const run = () => { calls++; return block(bad); };
+    assert.throws(() => normalizeTwoPass("in.wav", "out.wav", { run }), /loudnorm_measure_invalid:input_i|loudnorm_measure_missing/, JSON.stringify(bad));
+    assert.equal(calls, 1, "2ª passagem não executada para " + JSON.stringify(bad));
+  }
+});
+test("número JSON finito e string numérica são aceitos", () => {
+  const ok = (v) => loudnormMeasured('{"input_i" : ' + JSON.stringify(v) + ', "input_tp" : -3.1, "input_lra" : "5.4", "input_thresh" : "-27.7", "target_offset" : "+0.41"}');
+  assert.equal(ok(-17.32).input_i, -17.32); assert.equal(ok("-17.32").input_i, -17.32); assert.equal(ok(" -17 ").input_i, -17); assert.equal(ok("-17.32").target_offset, 0.41);
+});
