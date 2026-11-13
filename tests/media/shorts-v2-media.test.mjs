@@ -71,3 +71,15 @@ test('NC16 media: unreadable optional state still renders, uploads through actua
  }});
  assert.equal(out.publication.privacy_status,'public');assert.equal(uploads,1);assert.ok([...f.data.keys()].some(k=>k.startsWith('zpc:shorts:v2:musica:publicado:')));assert.ok([...f.data.values()].some(v=>v.includes('music_kv_state_unreadable_using_repository')));
 });
+
+// Duas passagens reais do FFmpeg: um mix bem abaixo do alvo chega a -14±1 LUFS com TP<=-1 (critério de quality()).
+test('V2: loudnorm em duas passagens atinge -14±1 LUFS e TP<=-1 em fala com pausas', async () => {
+ const dir=await mkdtemp(join(tmpdir(),'zev-v2-ln-'));
+ try{
+  renderer.command('ffmpeg',['-y','-f','lavfi','-i',"aevalsrc='0.05*sin(2*PI*220*t)*gt(mod(t,3),1.2)':s=24000:d=28",dir+'/quiet.wav']);
+  renderer.normalizeTwoPass(dir+'/quiet.wav',dir+'/norm.wav');
+  const m=renderer.audioMetrics(dir+'/norm.wav');
+  assert.ok(Math.abs(m.lufs+14)<=1,'LUFS integrado '+m.lufs);
+  assert.ok(m.peak<=-1,'true peak '+m.peak);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
