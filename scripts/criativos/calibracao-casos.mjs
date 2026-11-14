@@ -16,7 +16,8 @@ export const CASOS=Object.freeze([
  {nome:'negativo-numero-nao-calculado',esperado:['valor_nao_conferido:R$48'],mutar:s=>{s.numeros.margem_antes_fixas=48;}},
  {nome:'negativo-sem-planilha',esperado:['sem_prova_real_do_produto'],remover:'planilha'},
  {nome:'negativo-quadro-vazio',esperado:['quadro_vazio'],vazio:'venda'},
- {nome:'negativo-fora-da-area-segura',esperado:['conteudo_fora_da_area_segura'],pintar:['oferta',120,1640,'Oferta especial hoje',70,'255,255,255']},
+ // v3.6: abaixo de 1470 agora há rodapé real CLARO; o texto pintado é escuro para continuar visível (o branco sumia).
+ {nome:'negativo-fora-da-area-segura',esperado:['conteudo_fora_da_area_segura'],pintar:['oferta',120,1640,'Oferta especial hoje',70,'20,20,20']},
  {nome:'negativo-texto-miudo',esperado:['texto_pequeno_demais'],pintar:['gancho',120,1300,'condições e detalhes importantes',18,'255,255,255']},
  {nome:'negativo-baixo-contraste',esperado:['texto_nao_reconhecido'],pintar:['gancho',120,1300,'condições especiais importantes',40,'45,55,70']},
  // v3.4 A2: a célula real aparece, mas pequena demais para ler o valor no celular.

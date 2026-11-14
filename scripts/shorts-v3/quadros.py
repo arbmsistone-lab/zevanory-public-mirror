@@ -64,7 +64,8 @@ def celula(d, nome, y, largura=SAFE_R - 64):
     largura = round(largura * float(spec.get("escala_celulas", 1)))  # só a calibração muda (caso negativo de célula miúda)
     c = PROV["celulas"][nome]; x = (64 + SAFE_R - largura) // 2
     s_ = Image.open(CAP / Path(c["arquivo"]).name); alt = round(s_.height * largura / s_.width)
-    d.rounded_rectangle((x - 30, y, x + largura + 30, y + alt + 104), 30, fill=BG, outline=YEL, width=5)
+    # faixa escura de largura total (só bordas horizontais): a borda vertical cruzando a grade parecia textura de letra
+    d.rectangle((0, y, W, y + alt + 104), fill=BG); d.rectangle((0, y, W, y + 5), fill=YEL); d.rectangle((0, y + alt + 99, W, y + alt + 104), fill=YEL)
     fim = captura(d, Path(c["arquivo"]).name, x, y + 24, largura)
     d.text((x, fim + 6), f"Aba {c['aba']} · célula {c['celula']} (ampliada)", font(38), MUTED)
     return fim + 72
@@ -117,7 +118,7 @@ def q_conta(d, etapa):
             yy += h + gap
         return
     y = celula(d, "contribuicao", tela(d, "contribuicao", 350)) + 4
-    d.rounded_rectangle((64, y, SAFE_R, CB), 36, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
+    d.rectangle((0, y, W, CB), fill=(10, 60, 40)); d.rectangle((0, y, W, y + 6), fill=(40, 200, 120)); d.rectangle((0, CB - 6, W, CB), fill=(40, 200, 120))
     d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 30)), GREEN, anchor="mm")
     faixa_legenda(d)
 def q_planilha(d):

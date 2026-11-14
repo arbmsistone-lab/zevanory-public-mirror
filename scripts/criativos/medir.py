@@ -91,7 +91,12 @@ def tinta_sem_leitura(im, caixas, B=24):
     produto, após remover linhas longas (bordas de cartões). Cinco ou mais blocos vizinhos na mesma faixa = linha de texto."""
     g = np.asarray(im.convert("L"), dtype=np.int16)
     e = np.zeros(g.shape, bool); e[:, 1:] |= np.abs(np.diff(g, axis=1)) > 18; e[1:, :] |= np.abs(np.diff(g, axis=0)) > 18
-    for x, y, w, h in caixas: e[max(0, y - 10):y + h + 10, max(0, x - 16):x + w + 16] = False
+    for c in caixas:
+        x, y, w, h = c
+        if hasattr(c, "ok"):  # captura real: só os pixels iguais ao arquivo saem; a moldura em volta também
+            anel = np.zeros(e.shape, bool); anel[max(0, y - 10):y + h + 10, max(0, x - 16):x + w + 16] = True; anel[y:y + h, x:x + w] = False
+            e[anel] = False; sub = e[y:y + h, x:x + w]; sub[c.ok[:sub.shape[0], :sub.shape[1]]] = False
+        else: e[max(0, y - 10):y + h + 10, max(0, x - 16):x + w + 16] = False
     e[:TOP, :] = False; e[SAFE_B:, :] = False
     linhas = e.sum(1) > 300; e[linhas, :] = False; colunas = e.sum(0) > 300; e[:, colunas] = False
     H, W = e.shape; marc = np.zeros((H // B, W // B), bool)
@@ -132,6 +137,25 @@ def _sobrepoe(a, b):
     ax, ay, aw, ah = a; bx, by, bw, bh = b
     ix = max(0, min(ax + aw, bx + bw) - max(ax, bx)); iy = max(0, min(ay + ah, by + bh) - max(ay, by))
     return ix * iy > 0.5 * min(aw * ah, bw * bh)
+# Calibração v3.6 (negativo-fora-da-area-segura): uma captura real grande abaixo de y=1470 escondia da leitura o texto
+# PINTADO por cima dela, porque a caixa inteira da captura era excluída. Agora a região só esconde os pixels que SÃO da
+# captura (diferença mínima, com folga de ±2 px de alinhamento, abaixo de DIF_CAPTURA); o que for desenhado por cima
+# volta a ser lido, medido e cobrado (área segura, texto não reconhecido, números).
+DIF_CAPTURA = 40
+class _Regiao(tuple):
+    pass
+def _regiao(im, caixa, tm):
+    x, y, w, h = caixa; fr = np.asarray(im.convert("L").crop((x, y, x + w, y + h)), dtype=np.int16)
+    tp = np.asarray(tm.resize((fr.shape[1], fr.shape[0]), Image.LANCZOS), dtype=np.int16)
+    best = np.full(fr.shape, 255, dtype=np.int16)
+    for dy in range(-2, 3):
+        for dx in range(-2, 3): best = np.minimum(best, np.abs(fr - np.roll(np.roll(tp, dy, 0), dx, 1)))
+    r = _Regiao(caixa); r.ok = best < DIF_CAPTURA; return r
+def _da_captura(r, x, y, w, h):
+    """fração dos pixels da caixa (x,y,w,h) que pertencem à captura r (iguais ao arquivo real)"""
+    rx, ry, rw, rh = r; x0, y0, x1, y1 = max(x, rx), max(y, ry), min(x + w, rx + rw), min(y + h, ry + rh)
+    if x1 <= x0 or y1 <= y0: return 0.0
+    return float(r.ok[y0 - ry:y1 - ry, x0 - rx:x1 - rx].mean()) * ((x1 - x0) * (y1 - y0)) / max(1, w * h)
 achados = []
 for pv in cfg.get("provas", []):
     t, larg = (pv["captura"], pv["largura"]) if isinstance(pv, dict) else (pv, 876)
@@ -142,7 +166,7 @@ for pv in cfg.get("provas", []):
         for w in sorted({round(half * f) for f in (0.995, 1.0, 1.013)}):
             tt = tm.resize((w, max(1, round(tm.height * w / tm.width))), Image.LANCZOS)
             v, box = ncc_max(np.asarray(g), np.asarray(tt))
-            if v >= 0.8 and box: regioes[i].append(tuple(2 * c for c in box)); caixas.append((i, tuple(2 * c for c in box), v))
+            if v >= 0.8 and box: regioes[i].append(_regiao(frames[i], tuple(2 * c for c in box), tm)); caixas.append((i, tuple(2 * c for c in box), v))
             if v > best and box: best, onde = v, (i, tuple(2 * c for c in box))
     achados.append({"captura": t, "valor": valor, "best": best, "onde": onde, "caixas": caixas})
 # Ensaio real 43639031016: no MP4 cada quadro aparece em vários estados (a legenda muda); exigir só o melhor estado
@@ -173,7 +197,7 @@ for a in achados:
         legiveis.append({"captura": a["captura"], "valor": a["valor"], "altura_px": altura, "legivel": altura >= ALTURA_VALOR_MIN})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
-    dentro = lambda r: any(x - 8 <= r["x"] and r["x"] + r["w"] <= x + w + 8 and y - 8 <= r["y"] and r["y"] + r["h"] <= y + h + 8 for x, y, w, h in regioes[i])
+    dentro = lambda r: any(_da_captura(g, r["x"], r["y"], r["w"], r["h"]) >= 0.9 for g in regioes[i])
     rows = [r for r in rows if not dentro(r)]
     # NC-R05: texto que o OCR enxerga mas não consegue ler com confiança (>=3 caracteres alfanuméricos, conf < 60,
     # na área de conteúdo) é conteúdo ilegível: reprova, em vez de ser descartado em silêncio.
