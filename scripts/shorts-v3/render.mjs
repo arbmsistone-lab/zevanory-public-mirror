@@ -8,7 +8,10 @@ import {dirname,join,isAbsolute} from 'node:path';
 import MANIFEST from '../../data/musica-licencas.json' with {type:'json'};
 import {command,runAligner,tts,audioMetrics,rmsDb,mixGraph,normalizeTwoPass} from '../shorts-v2/render.mjs';
 import {STYLE} from '../shorts-v2/core.mjs';
-export const ESTILO_V3=STYLE+' Ritmo um pouco mais calmo que o normal, com uma pausa curta entre as frases.';
+// Prévia real 43601408721: o pedido de voz "mais calma" piorou o alinhamento (7 palavras instantâneas e grupo final
+// com 0 s). Volta ao estilo original; a velocidade é corrigida no áudio pronto (VOZ_ATEMPO), antes do alinhamento.
+export const ESTILO_V3=STYLE;
+export const VOZ_ATEMPO=0.95;
 import {CTA,alignedWords,shortTiming,licensedTrack,assertVoice,quality} from '../shorts-v2/core.mjs';
 import {avaliar,permitidosDaProveniencia,precosOficiais,registrarDecisao} from '../criativos/avaliador.mjs';
 import {createHash} from 'node:crypto';
@@ -84,7 +87,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  let clipping=false;for(let i=0;i+1<generated.pcm.length;i+=2)if(Math.abs(generated.pcm.readInt16LE(i))>=32760){clipping=true;break;}
  const voiceDuration=generated.pcm.length/2/24000;
  // Mesma cadeia do v2, mas o loudnorm da voz em DUAS passagens (prévia real: voice_loudness e ducking fora do alvo).
- command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af','highpass=f=80,deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100','-c:a','pcm_s16le',base+'-voz-tratada.wav']);
+ command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af',`highpass=f=80,atempo=${VOZ_ATEMPO},deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100`,'-c:a','pcm_s16le',base+'-voz-tratada.wav']);
  normalizeTwoPass(base+'-voz-tratada.wav',base+'-voz.wav',{I:-16,TP:-1.5,LRA:7});
  let alignment;if(align)alignment=await align(base+'-voz.wav',speech);else{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
  // Prévia real 43594272962 (voz mais calma): o modelo small deixou 5 palavras curtas instantâneas (início === fim).
