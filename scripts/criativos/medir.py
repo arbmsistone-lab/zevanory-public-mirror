@@ -70,7 +70,10 @@ def estados_do_video(mp4, pasta, limiar=0.8):
     manter, ultimo = [], None
     for i in range(n):
         if ultimo is None or np.abs(fr[i] - fr[ultimo]).mean() > limiar: manter.append(i); ultimo = i
-    os.makedirs(pasta, exist_ok=True); sel = "+".join(f"eq(n\\,{i})" for i in manter)
+    os.makedirs(pasta, exist_ok=True)
+    for f in os.listdir(pasta):  # estados de uma medição anterior na mesma pasta nunca entram nesta
+        if f.startswith("estado-"): os.remove(os.path.join(pasta, f))
+    sel = "+".join(f"eq(n\\,{i})" for i in manter)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", mp4, "-vf", f"select='{sel}'", "-vsync", "0", os.path.join(pasta, "estado-%04d.png")], check=True)
     arquivos = sorted(os.path.join(pasta, f) for f in os.listdir(pasta) if f.startswith("estado-"))
     if len(arquivos) != len(manter): raise SystemExit("medir_estados_incompletos")

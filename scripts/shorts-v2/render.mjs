@@ -14,16 +14,16 @@ export function command(cmd,args,{buffer=false}={}){const p=spawnSync(cmd,args,{
 // NC-1037-01: diagnóstico do alinhador publicado ANTES de qualquer falha (status e saída separados).
 export const alignAttemptLines=out=>String(out||'').split(/\r?\n/).filter(l=>/^ALIGN_ATTEMPT [a-z_]+ (ok|invalid|none|erro)\b|^ALIGN_ESCOLHA [a-z_]+ instantaneas=\d+$/.test(l)).map(l=>l.slice(0,200));
 export function runAligner(args,{spawn=spawnSync,log=console.log,env}={}){const p=spawn('python3',[fileURLToPath(new URL('./align.py',import.meta.url)),...args],{encoding:'utf8',maxBuffer:128*1024*1024,...(env?{env}:{})});for(const line of alignAttemptLines(String(p.stdout||'')+'\n'+String(p.stderr||'')))log(line);if(p.status!==0)throw Error('media_tool_failed:python3');}
-export function ttsRequest(text,voice,model){
+export function ttsRequest(text,voice,model,style=STYLE){
  if(!['gemini-3.8-flash-tts','gemini-2.5-flash-preview-tts'].includes(model))throw Error('tts_model_unsupported');
  const modern=model==='gemini-3.8-flash-tts';
  return {modern,url:modern?'https://generativelanguage.googleapis.com/v1beta/interactions':`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,body:modern
- ?{model,input:[{type:'user_input',content:[{type:'text',text,annotations:[{type:'speech_metadata',style:STYLE}]}]}],response_format:{type:'audio',mime_type:'audio/l16',sample_rate:24000},generation_config:{speech_config:[{voice}]}}
- :{contents:[{parts:[{text:STYLE+'\n\n'+text}]}],generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}}}};
+ ?{model,input:[{type:'user_input',content:[{type:'text',text,annotations:[{type:'speech_metadata',style}]}]}],response_format:{type:'audio',mime_type:'audio/l16',sample_rate:24000},generation_config:{speech_config:[{voice}]}}
+ :{contents:[{parts:[{text:style+'\n\n'+text}]}],generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}}}};
 }
-export async function tts(text,voice,key,{model,fetchImpl=fetch,freeTierConfirmed=false}={}){
+export async function tts(text,voice,key,{model,fetchImpl=fetch,freeTierConfirmed=false,style}={}){
  if(!key||!freeTierConfirmed)throw Error('free_tts_not_confirmed');
- const request=ttsRequest(text,voice,model);
+ const request=ttsRequest(text,voice,model,style||STYLE);
  const r=await fetchImpl(request.url,{method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},body:JSON.stringify(request.body),signal:AbortSignal.timeout(60000)}).catch(()=>{throw Error('free_tts_network_failed');});
  if(!r.ok)throw Error('free_tts_unavailable');
  const body=await r.json().catch(()=>{throw Error('tts_response_invalid');});
