@@ -67,23 +67,27 @@ export function decidir({objetivas,juri,nota_minima=NOTA_MINIMA}){
  const aprovado=objetivas.length===0&&abaixo.length===0;
  return {aprovado,decisao:aprovado?'APROVADO':'DESCARTADO',nota_geral:geral,motivos:[...objetivas,...abaixo.map(x=>'nota_abaixo:'+x)]};
 }
-const MODELOS=['gemini-3.8-flash','gemini-2.5-flash'];
-export async function gerarJSON({key,partes,fetchImpl=fetch,modelos=MODELOS}){
+// Ordem de preferência; modelo inexistente (404) é pulado e registrado no diagnóstico.
+const MODELOS=['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-2.5-flash'];
+export async function gerarJSON({key,partes,fetchImpl=fetch,modelos=MODELOS,esperar=ms=>new Promise(r=>setTimeout(r,ms)),esperaMs=35000}){
  if(!key)throw Error('ia_chave_ausente');
- for(const model of modelos){
+ const diag=[];// só modelo, HTTP e o status de erro do Google (ex.: RESOURCE_EXHAUSTED); nunca chave nem conteúdo
+ for(const model of modelos)for(let tentativa=0;tentativa<2;tentativa++){
+  if(tentativa)await esperar(esperaMs);// 429/503 do nível gratuito: espera e tenta 1 vez no mesmo modelo
   const r=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},
-   body:JSON.stringify({contents:[{role:'user',parts:partes}],generationConfig:{responseMimeType:'application/json',temperature:0.2}}),signal:AbortSignal.timeout(90000)}).catch(()=>null);
-  if(!r||r.status!==200)continue;
+   body:JSON.stringify({contents:[{role:'user',parts:partes}],generationConfig:{responseMimeType:'application/json',temperature:0.2}}),signal:AbortSignal.timeout(90000)}).catch(e=>({erroRede:String(e?.name||'erro')}));
+  if(r?.erroRede){diag.push(`${model}=rede_${r.erroRede}`);break;}
+  if(!r||r.status!==200){const j=await r?.json?.().catch(()=>null);diag.push(`${model}=${r?.status??'sem_resposta'}${/^[A-Z_]{3,40}$/.test(j?.error?.status||'')?'_'+j.error.status:''}`);if(r?.status===429||r?.status===503)continue;break;}
   const j=await r.json().catch(()=>null),txt=j?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('');
-  try{return {modelo:model,saida:JSON.parse(txt)};}catch{continue;}
+  try{return {modelo:model,saida:JSON.parse(txt)};}catch{diag.push(`${model}=json_invalido`);break;}
  }
- throw Error('ia_indisponivel');
+ throw Error('ia_indisponivel:'+diag.join(','));
 }
-export async function avaliar({criativo,padrao,quadrosPng,medicao,permitidos,oficial,key,fetchImpl=fetch,precos}){
+export async function avaliar({criativo,padrao,quadrosPng,medicao,permitidos,oficial,key,fetchImpl=fetch,precos,esperar}){
  const objetivas=checagensObjetivas({criativo,medicao,permitidos,oficial},precos);
  let juri=null,modelo=null,erro=null;
  try{const partes=[{text:promptJuri(padrao)},...quadrosPng.map(b=>({inline_data:{mime_type:'image/png',data:Buffer.from(b).toString('base64')}}))];
-  const r=await gerarJSON({key,partes,fetchImpl});juri=lerJuri(r.saida);modelo=r.modelo;}catch(e){erro=String(e.message||e).slice(0,80);}
+  const r=await gerarJSON({key,partes,fetchImpl,...(esperar?{esperar}:{})});juri=lerJuri(r.saida);modelo=r.modelo;}catch(e){erro=String(e.message||e).slice(0,200);}
  return {...decidir({objetivas,juri,nota_minima:padrao.nota_minima}),juri,modelo,erro};
 }
 // Ciclo autônomo: cria -> avalia -> (refaz com os problemas apontados) no máximo 3 vezes. Sem aprovação na 3ª

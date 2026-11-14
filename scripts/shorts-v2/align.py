@@ -7,6 +7,11 @@ critérios de alignmentIssues/alignedWords (scripts/shorts-v2/core.mjs): mesma c
 normalizadas do roteiro, palavra do tipo texto, tempos numéricos finitos, início >= 0, duração > 0, dentro do áudio e
 sem sobreposição maior que 20 ms (NC-1036-01). Se nenhuma passar, gravamos a última e o verificador reprova com o
 motivo exato.
+
+Prévia real v3 de 13/11/2026 (run 43533242090): "venda: um tênis" deu duracao_zero@11 em todas as 5 tentativas acima.
+O artigo curto logo após a pausa do ":" cai na borda do trecho de não-fala que o alinhador pula (nonspeech_skip),
+então acrescentamos, DEPOIS das cinco existentes, configurações reais que não pulam a não-fala e o modelo "small"
+(DTW de atenção mais fino; carregado só se as anteriores falharem, sem custo de API). Continua sem nenhum tempo nosso.
 """
 import json, math, sys, unicodedata, wave
 from pathlib import Path
@@ -73,6 +78,15 @@ def attempts(model, audio, text, state):
     steps = [(name, (lambda o=options: model.align(audio, text, language="pt", **o))) for name, options in ATTEMPTS]
     steps.append(("vad", lambda: model.align(audio, text, language="pt", min_word_dur=0.1, vad=True)))
     steps.append(("refinado", lambda: model.refine(audio, state["first"], inplace=False) if state.get("first") is not None and hasattr(model, "refine") else None))
+    steps.append(("sem_pulo_de_nao_fala", lambda: model.align(audio, text, language="pt", min_word_dur=0.1, nonspeech_skip=None)))
+    steps.append(("sem_pulo_sem_supressao", lambda: model.align(audio, text, language="pt", nonspeech_skip=None, suppress_silence=False)))
+
+    def small():
+        if "small" not in state:
+            state["small"] = stable_whisper.load_model("small", device="cpu")
+        return state["small"]
+    steps.append(("modelo_small", lambda: small().align(audio, text, language="pt", min_word_dur=0.1)))
+    steps.append(("modelo_small_sem_pulo", lambda: small().align(audio, text, language="pt", min_word_dur=0.1, nonspeech_skip=None)))
     return steps
 
 

@@ -14,9 +14,13 @@ class R:
             json.dump({"segments": [{"words": [{"word": w.word, "start": w.start, "end": w.end} for w in self.segments[0].words]}], "fake_options": self.options}, f)
 
 class M:
+    def __init__(self, name="base"): self.name = name
     def align(self, audio, text, language=None, **options):
         scenario = json.loads(os.environ["FAKE_ALIGN_SCENARIO"])
-        key = "vad" if options.get("vad") else "fast" if options.get("fast_mode") else "nosup" if options.get("suppress_silence") is False else "default"
+        noskip = "nonspeech_skip" in options and options["nonspeech_skip"] is None
+        key = "vad" if options.get("vad") else "fast" if options.get("fast_mode") else "noskip_nosup" if noskip and options.get("suppress_silence") is False else "noskip" if noskip else "nosup" if options.get("suppress_silence") is False else "default"
+        if self.name != "base": key = self.name + ":" + key
+        options = {**options, "model": self.name}
         if scenario.get("raise") == key: raise TypeError("opcao_nao_suportada")
         rows = scenario.get(key)
         if rows is None: return None
@@ -28,4 +32,6 @@ class M:
         if rows is None: return None
         return R([W(*r) for r in rows], {"refine_of": result.options})
 
-def load_model(name, device=None): return M()
+def load_model(name, device=None):
+    print("FAKE_LOAD " + name, flush=True)
+    return M(name)

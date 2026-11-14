@@ -92,6 +92,30 @@ test("refine do próprio alinhador sobre o resultado padrão é a última tentat
   assert.match(r.stdout, /ALIGN_ATTEMPT refinado ok/); assert.equal(r.json.fake_options.refine_of.min_word_dur, 0.1);
   assert.deepEqual(r.json.segments[0].words.map((w) => [w.start, w.end]), ok.map(([, s, e]) => [s, e]), "tempos do refine, sem ajuste nosso");
 });
+// Prévia real v3 (run 43533242090): duracao_zero@11 ("um" após a pausa) nas 5 tentativas antigas.
+test("palavra curta após pausa: sem pulo de não-fala (configuração real) resolve depois das cinco antigas", () => {
+  const r = run({ default: instant, fast: instant, nosup: instant, vad: instant, refine: instant, noskip: ok });
+  assert.match(r.stdout, /refinado invalid[\s\S]*ALIGN_ATTEMPT sem_pulo_de_nao_fala ok/);
+  assert.equal(r.json.fake_options.nonspeech_skip, null); assert.equal(r.json.fake_options.model, "base");
+  assert.doesNotMatch(r.stdout, /FAKE_LOAD small/, "modelo small só carrega se precisar");
+});
+test("sem pulo e sem supressão de silêncio é a tentativa seguinte", () => {
+  const r = run({ default: instant, noskip: instant, noskip_nosup: ok });
+  assert.match(r.stdout, /sem_pulo_de_nao_fala invalid[\s\S]*sem_pulo_sem_supressao ok/);
+  assert.equal(r.json.fake_options.suppress_silence, false); assert.equal(r.json.fake_options.nonspeech_skip, null);
+});
+test("modelo small (real, local, sem API) por último; tempos dele, sem ajuste nosso", () => {
+  const r = run({ default: instant, noskip: instant, noskip_nosup: instant, "small:default": instant, "small:noskip": ok });
+  assert.match(r.stdout, /FAKE_LOAD small/); assert.match(r.stdout, /modelo_small invalid duracao_zero@0[\s\S]*modelo_small_sem_pulo ok/);
+  assert.equal(r.json.fake_options.model, "small");
+  assert.deepEqual(r.json.segments[0].words.map((w) => [w.start, w.end]), ok.map(([, s, e]) => [s, e]));
+  assert.equal((r.stdout.match(/FAKE_LOAD small/g) || []).length, 1, "small carregado uma vez");
+});
+test("nenhuma das nove válida: grava a última e o verificador reprova", () => {
+  const all = { default: instant, fast: instant, nosup: instant, vad: instant, refine: instant, noskip: instant, noskip_nosup: instant, "small:default": instant, "small:noskip": instant };
+  const r = run(all);
+  assert.match(r.stdout, /modelo_small_sem_pulo invalid duracao_zero/); assert.equal(r.json.segments[0].words[0].end, 0.5);
+});
 test("opção não suportada pela versão instalada: registra erro e segue para a próxima", () => {
   const r = run({ raise: "default", fast: ok });
   assert.match(r.stdout, /ALIGN_ATTEMPT padrao_min_word_dur erro TypeError[\s\S]*fast_mode ok/);
@@ -105,7 +129,7 @@ test("render: falha do alinhador publica as linhas ALIGN_ATTEMPT antes de lança
   const logged = [];
   const env = { ...process.env, PYTHONPATH: FAKE, FAKE_ALIGN_SCENARIO: JSON.stringify({}) };
   assert.throws(() => runAligner([audio, script, out], { env, log: (l) => logged.push(l) }), /media_tool_failed:python3/);
-  assert.equal(logged.length, 5, "as cinco tentativas aparecem no log");
+  assert.equal(logged.length, 9, "as nove tentativas aparecem no log");
   assert.ok(logged.every((l) => /^ALIGN_ATTEMPT [a-z_]+ none$/.test(l)));
   const ok2 = []; const env2 = { ...env, FAKE_ALIGN_SCENARIO: JSON.stringify({ default: instant, fast: ok }) };
   runAligner([audio, script, out], { env: env2, log: (l) => ok2.push(l) });
