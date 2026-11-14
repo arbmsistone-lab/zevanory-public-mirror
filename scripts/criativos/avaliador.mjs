@@ -69,18 +69,22 @@ export function decidir({objetivas,juri,nota_minima=NOTA_MINIMA}){
 }
 // Ordem de preferência; modelo inexistente (404) é pulado e registrado no diagnóstico.
 const MODELOS=['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-2.5-flash'];
-export async function gerarJSON({key,partes,fetchImpl=fetch,modelos=MODELOS,esperar=ms=>new Promise(r=>setTimeout(r,ms)),esperaMs=35000}){
+// Laboratório real 43594274773 cancelado no limite de 30 min: cada um dos 10 casos voltava a testar os modelos que já
+// tinham falhado (404/403 ou 429 após a espera), gastando ~2 min por caso. Agora um modelo que falhou de forma
+// definitiva nesta execução é pulado nas chamadas seguintes (memória só do processo; nada persiste nem libera nada).
+export const modelosFora=new Set();
+export async function gerarJSON({key,partes,fetchImpl=fetch,modelos=MODELOS,esperar=ms=>new Promise(r=>setTimeout(r,ms)),esperaMs=35000,fora=modelosFora}){
  if(!key)throw Error('ia_chave_ausente');
  const diag=[];// só modelo, HTTP e o status de erro do Google (ex.: RESOURCE_EXHAUSTED); nunca chave nem conteúdo
- for(const model of modelos)for(let tentativa=0;tentativa<2;tentativa++){
+ for(const model of modelos){if(fora.has(model)){diag.push(`${model}=pulado`);continue;}for(let tentativa=0;tentativa<2;tentativa++){
   if(tentativa)await esperar(esperaMs);// 429/503 do nível gratuito: espera e tenta 1 vez no mesmo modelo
   const r=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},
    body:JSON.stringify({contents:[{role:'user',parts:partes}],generationConfig:{responseMimeType:'application/json',temperature:0.2}}),signal:AbortSignal.timeout(90000)}).catch(e=>({erroRede:String(e?.name||'erro')}));
   if(r?.erroRede){diag.push(`${model}=rede_${r.erroRede}`);break;}
-  if(!r||r.status!==200){const j=await r?.json?.().catch(()=>null);diag.push(`${model}=${r?.status??'sem_resposta'}${/^[A-Z_]{3,40}$/.test(j?.error?.status||'')?'_'+j.error.status:''}`);if(r?.status===429||r?.status===503)continue;break;}
+  if(!r||r.status!==200){const j=await r?.json?.().catch(()=>null);diag.push(`${model}=${r?.status??'sem_resposta'}${/^[A-Z_]{3,40}$/.test(j?.error?.status||'')?'_'+j.error.status:''}`);if((r?.status===429||r?.status===503)&&!tentativa)continue;if(r?.status!==503)fora.add(model);break;}
   const j=await r.json().catch(()=>null),txt=j?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('');
   try{return {modelo:model,saida:JSON.parse(txt)};}catch{diag.push(`${model}=json_invalido`);break;}
- }
+ }}
  throw Error('ia_indisponivel:'+diag.join(','));
 }
 export async function avaliar({criativo,padrao,quadrosPng,medicao,permitidos,oficial,key,fetchImpl=fetch,precos,esperar}){

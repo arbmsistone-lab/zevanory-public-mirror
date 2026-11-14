@@ -45,7 +45,7 @@ tests/conteudo-pronto-roteiros.test.mjs 9
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
-tests/criativos-laboratorio.test.mjs 10
+tests/criativos-laboratorio.test.mjs 11
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10
@@ -98,7 +98,7 @@ tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
 tests/meta-permission-check.test.mjs 44
 tests/meta-proof-post.test.mjs 31
-tests/meta-proof-round2.test.mjs 11
+tests/meta-proof-round2.test.mjs 12
 tests/meta-social-manual-only.test.mjs 3
 tests/multichannel-autonomy.test.mjs 18
 tests/nc015-cp-no-public-links.test.mjs 4
