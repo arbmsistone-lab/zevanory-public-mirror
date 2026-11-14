@@ -101,8 +101,10 @@ jobs:
       contents: read
       pull-requests: read
       issues: read
+      actions: read
     outputs:
       sha: ${{ steps.verifica.outputs.sha }}
+      modo: ${{ steps.verifica.outputs.modo }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -118,19 +120,21 @@ jobs:
         run: |
           node scripts/ci/autorizar-ensaio.mjs
           echo "sha=$SHA_ENSAIO" >> "$GITHUB_OUTPUT"
-          echo "Ensaio pedido para o SHA $SHA_ENSAIO (aguarda aprovacao do proprietario no environment ensaio-shorts)" >> "$GITHUB_STEP_SUMMARY"
-  # 2a camada: environment ensaio-shorts (revisor obrigatorio = proprietario). So depois da aprovacao humana o job
-  # roda; reverifica a autorizacao (corrida), faz checkout do SHA exato e so o passo de render recebe GEMINI_API_KEY.
+          echo "Ensaio pedido para o SHA $SHA_ENSAIO" >> "$GITHUB_STEP_SUMMARY"
+  # 2a camada: modo sha -> environment ensaio-shorts (revisor obrigatorio = proprietario, Review deployments);
+  # modo pr -> environment ensaio-shorts-pr (etiqueta ensaio-autorizado-pr do dono, 24 h, max 8/dia; so a chave
+  # gratuita do Gemini). Nos dois: reverifica (mesmo modo), checkout do SHA exato, segredo so no passo de render.
   ensaio:
     needs: autorizar-ensaio
     if: ${{ github.ref == 'refs/heads/gh-pages' && needs.autorizar-ensaio.outputs.sha != '' }}
-    environment: ensaio-shorts
+    environment: ${{ needs.autorizar-ensaio.outputs.modo == 'pr' && 'ensaio-shorts-pr' || 'ensaio-shorts' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: read
       issues: read
+      actions: read
     env:
       DRY_RUN: 'true'
       FREE_TIER_CONFIRMED: ${{ inputs.nivel_gratuito_confirmado }}
@@ -148,6 +152,7 @@ jobs:
       - name: Re-verify authorization after approval, before running any PR code
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MODO_ESPERADO: ${{ needs.autorizar-ensaio.outputs.modo }}
         run: node confiavel/scripts/ci/autorizar-ensaio.mjs
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
