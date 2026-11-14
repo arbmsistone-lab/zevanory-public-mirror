@@ -39,3 +39,24 @@ test('CAL R01 erro só entre duas amostras: amostragem por fala não vê; MP4 in
   assert.ok(inteiro.includes('valor_nao_conferido:R$97'),'MP4 inteiro pega o valor falso do flash: '+inteiro.join(','));
   assert.ok(inteiro.some(m=>/lucro|promessa|politica/.test(m)),'e a promessa de lucro: '+inteiro.join(','));
  }finally{rmSync(dir,{recursive:true,force:true});}});
+// Comando Mestre §5 (#1054): leitura INTEGRAL e EXATA do valor da célula; sem substring, sem "R$" faltando ou fora
+// da linha, sem confiança baixa no passe geral.
+test('CAL A2 ler_valor: só token idêntico ao valor da proveniência, com "R$" na mesma linha à esquerda',()=>{
+ const py=`import json,sys;sys.path.insert(0,sys.argv[1]);from valor_ocr import ler_valor;print(json.dumps([ler_valor(*c) for c in json.loads(sys.argv[2])]))`;
+ const T=(t,x,y,h=60,conf=95)=>({t,x,y,w:t.length*30,h,conf});
+ const casos=[
+  [[T('Margem',10,10),T('21,7%',300,200)],[],'21,7%'],          // 60
+  [[T('121,7%',300,200)],[],'21,7%'],                              // 0: substring
+  [[T('21,7',300,200)],[],'21,7%'],                                // 0: incompleto
+  [[T('21,/%',300,200)],[T('21,7%',300,200,58,0)],'21,7%'],        // 58: passe só de dígitos, exato
+  [[T('21,7%',300,200,60,40)],[],'21,7%'],                         // 0: confiança baixa no passe geral
+  [[T('R$',200,200),T('39,00',270,200)],[],'R$ 39,00'],            // 60
+  [[T('39,00',270,200)],[],'R$ 39,00'],                            // 0: sem R$
+  [[T('R$',200,40),T('39,00',270,200)],[],'R$ 39,00'],             // 0: R$ em outra linha
+  [[T('R$',20,200),T('39,00',470,200)],[],'R$ 39,00'],             // 0: R$ longe
+  [[T('39,00',200,200),T('R$',380,200)],[],'R$ 39,00'],            // 0: R$ à direita
+  [[T('R$',200,200),T('39,00',270,200)],[],'US$ 39,00'],           // 0: formato inesperado
+  [[],[],'']];                                                     // 0
+ const r=spawnSync('python3',['-E','-P','-c',py,join(ROOT,'scripts/criativos'),JSON.stringify(casos)],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);
+ assert.deepEqual(JSON.parse(r.stdout),[60,0,0,58,0,60,0,0,0,0,0,0]);
+});

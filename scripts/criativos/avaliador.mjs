@@ -46,6 +46,9 @@ export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=
  if(md.foraAreaSegura!==0)motivos.push('conteudo_fora_da_area_segura');
  if(md.provaReal!==true)motivos.push('sem_prova_real_do_produto');
  if(md.textoNaoReconhecido!==0)motivos.push('texto_nao_reconhecido');
+ // v3.4 A2: o valor de cada célula real precisa ser LIDO dentro da região da captura no vídeo (>= 56 px); medida
+ // ausente ou vazia (nenhum valor real comprovado) também reprova (falha fechada).
+ if(md.provaIlegivel!==0||!Array.isArray(md.provasLegiveis)||!md.provasLegiveis.length||md.provasLegiveis.some(p=>p?.legivel!==true))motivos.push('prova_ilegivel');
  motivos.push(...conferirAfirmacoes({falas:criativo.falas||[],telas,permitidos:permitidos||{reais:[],pct:[]}}));
  return motivos;
 }

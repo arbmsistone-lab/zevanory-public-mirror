@@ -4,19 +4,23 @@ declara: lê o texto de cada quadro com OCR (tesseract, por), calcula a menor al
 área segura do YouTube Shorts, detecta quadro vazio e procura as capturas reais do produto por correlação de imagem.
 Uso: python3 -I medir.py <entrada.json>   (entrada: {"quadros":[png...], "provas":[{"captura":png,"largura":px renderizados}...]})
 Saída (stdout): JSON {"quadros":[{texto, palavras, altura_min, fora}], "medidas":{...}}."""
-import json, subprocess, sys
+import json, os, subprocess, sys
+# O interpretador roda com -P (sem a pasta do script no path); o módulo irmão confiável é incluído explicitamente.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from valor_ocr import ler_valor
 import numpy as np
 from PIL import Image
 SAFE_R, SAFE_B, TOP = 940, 1470, 250
 cfg = json.load(open(sys.argv[1], encoding="utf-8"))
-def _tess(png, escala, psm="11"):
-    p = subprocess.run(["tesseract", "stdin", "stdout", "-l", "por", "--psm", psm, "tsv"], input=png, capture_output=True, check=True)
+def _tess(png, escala, psm="11", digitos=False):
+    extra = ["-c", "tessedit_char_whitelist=0123456789,.%R$"] if digitos else []
+    p = subprocess.run(["tesseract", "stdin", "stdout", "-l", "por", "--psm", psm, *extra, "tsv"], input=png, capture_output=True, check=True)
     rows = []
     for line in p.stdout.decode("utf-8", "replace").splitlines()[1:]:
         c = line.split("\t")
         if len(c) < 12 or not c[11].strip(): continue
         conf = float(c[10]); t = c[11].strip()
-        if conf < 0: continue
+        if conf < 0 and not digitos: continue
         x, y, w, h = (round(int(v) / escala) for v in c[6:10]); rows.append({"t": t, "x": x, "y": y, "w": w, "h": h, "conf": conf})
     return rows
 def sobrepoe(r, q):
@@ -110,9 +114,18 @@ for path in cfg["quadros"]:
     frames.append(im)
 # Capturas reais do produto: correlação por quadro; a região encontrada é PROVA (imagem do produto), e seu texto
 # miúdo não conta para a legibilidade do criativo (os números importantes precisam aparecer ampliados fora dela).
-regioes = {i: [] for i in range(len(frames))}; prova = []
+regioes = {i: [] for i in range(len(frames))}; prova = []; legiveis = []
+ALTURA_VALOR_MIN = 56  # v3.4 A2: altura mínima do valor DENTRO da captura, em 1080x1920
+norm = lambda x: "".join(ch for ch in x if ch.isalnum() or ch in ",.%")
+def valor_na_captura(im, box, valor):
+    """NC-V34-01/A2: OCR SÓ da região onde a captura real foi encontrada no quadro; procura o valor esperado da
+    proveniência (parte numérica) e mede a altura dele. Número desenhado fora da captura não conta."""
+    x, y, w, h = box; c = im.crop((x, y, x + w, y + h)).convert("L").resize((2 * w, 2 * h), Image.LANCZOS); import io; b = io.BytesIO(); c.save(b, "PNG")
+    png = b.getvalue()
+    return ler_valor([r for psm in ("6", "11") for r in _tess(png, 2, psm)], _tess(png, 2, "11", digitos=True), valor)
 for pv in cfg.get("provas", []):
     t, larg = (pv["captura"], pv["largura"]) if isinstance(pv, dict) else (pv, 876)
+    valor = pv.get("valor") if isinstance(pv, dict) else None; melhor_altura = 0
     tm = Image.open(t).convert("L"); best = 0.0; half = larg / 2
     for i, im in enumerate(frames):
         g = im.convert("L").resize((540, 960), Image.LANCZOS)
@@ -120,8 +133,11 @@ for pv in cfg.get("provas", []):
             tt = tm.resize((w, max(1, round(tm.height * w / tm.width))), Image.LANCZOS)
             v, box = ncc_max(np.asarray(g), np.asarray(tt))
             if v > best: best = v
-            if v >= 0.8 and box: regioes[i].append(tuple(2 * c for c in box))
+            if v >= 0.8 and box:
+                caixa = tuple(2 * c for c in box); regioes[i].append(caixa)
+                if valor: melhor_altura = max(melhor_altura, valor_na_captura(im, caixa, valor))
     prova.append({"captura": t, "correlacao": round(best, 3)})
+    if valor: legiveis.append({"captura": t, "valor": valor, "altura_px": melhor_altura, "legivel": melhor_altura >= ALTURA_VALOR_MIN})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
     dentro = lambda r: any(x - 8 <= r["x"] and r["x"] + r["w"] <= x + w + 8 and y - 8 <= r["y"] and r["y"] + r["h"] <= y + h + 8 for x, y, w, h in regioes[i])
@@ -142,5 +158,6 @@ for i, im in enumerate(frames):
     if len(conteudo) < 2: vazios += 1
     quadros.append({"texto": " ".join(r["t"] for r in palavras), "palavras": len(palavras), "altura_min": min(hs) if hs else None, "fora": f[:10], "nao_lidos": nao_lidos[:10], "tinta_sem_leitura": sem_leitura[:10]})
 medidas = {"alturaTextoMinPx": min(alturas) if alturas else 0, "foraAreaSegura": fora, "quadrosVazios": vazios, "textoNaoReconhecido": nao_reconhecido,
-           "provaReal": bool(prova) and all(p["correlacao"] >= 0.8 for p in prova), "provas": prova, "origem": "medicao_independente_ocr", "cobertura": cobertura}
+           "provaReal": bool(prova) and all(p["correlacao"] >= 0.8 for p in prova), "provas": prova,
+           "provasLegiveis": legiveis, "provaIlegivel": sum(1 for p in legiveis if not p["legivel"]), "origem": "medicao_independente_ocr", "cobertura": cobertura}
 print(json.dumps({"quadros": quadros, "medidas": medidas}, ensure_ascii=False))

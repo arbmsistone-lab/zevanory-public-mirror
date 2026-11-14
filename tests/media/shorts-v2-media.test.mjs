@@ -97,3 +97,21 @@ test('v3: atempo alonga a voz de verdade (PCM 2,000 s -> ~2,105 s) e duracaoAudi
   assert.ok(Math.abs(real-bruto/VOZ_ATEMPO)<0.03,`duração processada ${real} ≈ ${bruto/VOZ_ATEMPO}`);
   assert.ok(real-bruto>0.08,'o filtro realmente alonga o áudio');
  }finally{fs.rmSync(d,{recursive:true,force:true});}});
+// v3.4 B1 (ffmpeg real): 3 "falas" (tons) separadas por pausas reais; silencedetect acha as pausas, a partição em
+// amostras do WAV real soma exatamente o total e os trechos gravados têm a duração do corte.
+test('v3.4: pausas reais medidas no WAV, cortes no meio das pausas e trechos que somam o áudio inteiro',async()=>{
+ const {spawnSync}=await import('node:child_process');const fs=await import('node:fs');const os=await import('node:os');const path=await import('node:path');
+ const {depsFrases,duracaoAudio}=await import('../../scripts/shorts-v3/render.mjs');const {escolherFronteiras,particionar}=await import('../../scripts/shorts-v3/frases.mjs');
+ const d=fs.mkdtempSync(path.join(os.tmpdir(),'zev-frases-'));try{
+  const sr=48000,seg=[[2.0,1],[0.4,0],[1.2,1],[0.4,0],[2.4,1],[0.4,0]],pcm=[];
+  for(const [dur,som] of seg)for(let i=0;i<Math.round(dur*sr);i++)pcm.push(som?Math.round(9000*Math.sin(i/sr*2*Math.PI*200)):0);
+  const buf=Buffer.alloc(pcm.length*2);pcm.forEach((v,i)=>buf.writeInt16LE(v,i*2));fs.writeFileSync(path.join(d,'v.pcm'),buf);
+  const wav=path.join(d,'v.wav');assert.equal(spawnSync('ffmpeg',['-v','error','-y','-f','s16le','-ar',String(sr),'-ac','1','-i',path.join(d,'v.pcm'),'-c:a','pcm_s16le',wav]).status,0);
+  const deps=depsFrases(),dur=duracaoAudio(wav),sil=deps.silenciosDe(wav,dur);
+  const f=escolherFronteiras({silencios:sil,duracao:dur,falas:['Sua loja vende muito.','O caixa some.','Kit completo no link da descrição.']});
+  assert.equal(f.ok,true,f.motivo);assert.ok(Math.abs(f.cortes[0]-2.2)<0.05&&Math.abs(f.cortes[1]-3.8)<0.05,JSON.stringify(f.cortes));
+  const {amostras,sr:sr2}=deps.pcmDe(wav);assert.equal(sr2,sr);assert.equal(amostras.length,pcm.length);
+  const t=particionar(amostras.length,sr,f.cortes);let soma=0;
+  t.forEach((x,k)=>{const a=path.join(d,`t${k}.wav`);deps.gravarTrecho(amostras,x.a,x.b,sr,a);const dd=duracaoAudio(a);assert.ok(Math.abs(dd-(x.b-x.a)/sr)<0.002,`trecho ${k}`);soma+=dd;});
+  assert.ok(Math.abs(soma-dur)<0.005,`soma ${soma} = ${dur}`);
+ }finally{fs.rmSync(d,{recursive:true,force:true});}});

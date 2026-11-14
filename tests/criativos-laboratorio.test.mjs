@@ -20,7 +20,7 @@ const NUM = { preco_venda: 180, custo_produto_frete: 132, taxa_cartao: 9, taxa_c
 const PERM = permitidosDe(NUM, 147);
 const FALAS = ["Sua loja vende, mas o dinheiro desaparece?", "Pegue sua última venda: um tênis de cento e oitenta reais.", "O produto e o frete custaram cento e trinta e dois.", "A taxa do cartão levou mais nove.", "Sobram trinta e nove reais antes das despesas fixas.", "E ela mostra o desconto máximo: dois vírgula dois por cento.", "Lucro e Caixa: cento e quarenta e sete reais, com arrependimento em sete dias corridos.", "Kit completo no link da descrição."];
 const TELAS = ["ZEVANORY LOJA LUCRO CAIXA Sua loja vende", "Recebeu R$ 180 Produto frete R$ 132 Taxa do cartão (5%) R$9 Margem antes das despesas fixas R$ 39", "Margem de contribuição 21,7%", "Preço mínimo p/ meta de 20% R$ 176 Desconto máximo 2,2%", "Lucro & Caixa R$ 147 pagamento único arrependimento em 7 dias"];
-const MED = { quadros: TELAS.map((texto) => ({ texto })), medidas: { alturaTextoMinPx: 24, foraAreaSegura: 0, quadrosVazios: 0, provaReal: true, textoNaoReconhecido: 0, origem: "medicao_independente_ocr" } };
+const MED = { quadros: TELAS.map((texto) => ({ texto })), medidas: { alturaTextoMinPx: 24, foraAreaSegura: 0, quadrosVazios: 0, provaReal: true, textoNaoReconhecido: 0, provasLegiveis: [{ captura: "c.png", valor: "21,7%", altura_px: 70, legivel: true }], provaIlegivel: 0, origem: "medicao_independente_ocr" } };
 const CRI = { sku: "ZEV-LCX-011", falas: FALAS, oferta: { nome: "Lucro & Caixa", preco: 147 } };
 const OFICIAL = { fonte: "https://vendas.zevanory.api.br/lucro-e-caixa", preco: 147, versao: "sha256:abc", lido_em: "2026-11-13T12:00:00Z" };
 const PADRAO = montarPadrao({ evidencia: EVID, geradoEm: "2026-11-13T12:00:00Z" });
@@ -86,6 +86,10 @@ test("objetivas (NC-02, adversarial): nada declarado pelo criativo vale como med
   assert.ok(m("foraAreaSegura", 2).includes("conteudo_fora_da_area_segura"));
   assert.ok(m("textoNaoReconhecido", 1).includes("texto_nao_reconhecido"), "texto essencial não lido reprova");
   assert.ok(m("textoNaoReconhecido", undefined).includes("texto_nao_reconhecido"), "ausência da medida reprova (falha fechada)");
+  assert.ok(m("provaIlegivel", 1).includes("prova_ilegivel"), "valor da célula real não lido no vídeo reprova (v3.4 A2)");
+  assert.ok(m("provasLegiveis", undefined).includes("prova_ilegivel"), "sem a medida de legibilidade da prova: reprova");
+  assert.ok(m("provasLegiveis", []).includes("prova_ilegivel"), "nenhum valor real comprovado: reprova");
+  assert.ok(m("provasLegiveis", [{ valor: "2,2%", altura_px: 40, legivel: false }]).includes("prova_ilegivel"), "valor pequeno demais na captura: reprova");
   const semPreco = { ...MED, quadros: MED.quadros.map((q) => ({ texto: q.texto.replace("R$ 147", "") })) };
   assert.ok(checagensObjetivas({ criativo: CRI, medicao: semPreco, permitidos: PERM, oficial: OFICIAL }).includes("preco_oficial_ausente_no_video"));
   assert.ok(checagensObjetivas({ criativo: CRI, medicao: MED, permitidos: PERM, oficial: { ...OFICIAL, preco: 97 } }).includes("oferta_publicada_divergente"));
@@ -179,6 +183,20 @@ test("proveniência (NC-R05, adversarial): números permitidos só vêm da plani
   writeFileSync(join(d, "man2.json"), JSON.stringify({ arquivos: { [spec.proveniencia_numeros]: M.arquivos[spec.proveniencia_numeros] } }));
   await assert.rejects(() => conferirManifesto({ ...spec, manifesto: rel("man2.json") }), /v3_manifesto_sem/, "captura fora do manifesto");
   await assert.rejects(() => conferirManifesto({ ...spec, manifesto: undefined }), /v3_manifesto_ausente/);
+  // v3.4 cruzamento: cada célula exibida = célula registrada na proveniência = número da planilha formatado pt-BR.
+  const { conferirCelulas, formatarCelula } = await import("../scripts/shorts-v3/render.mjs");
+  assert.equal(formatarCelula("pct", 0.216666666666667), "21,7%"); assert.equal(formatarCelula("brl", 39), "R$ 39,00"); assert.equal(formatarCelula("x", 1), null);
+  conferirCelulas(spec, P);
+  for (const [i, k, v] of [[1, "celula", "J6"], [2, "celula", "K6"], [3, "captura", "assets/shorts-v3/lcx/outra.png"]]) {
+    const t = structuredClone(spec); t.provas[i][k] = v; assert.throws(() => conferirCelulas(t, P), /v3_celula_sem_proveniencia/, `${k}=${v}`);
+  }
+  const Pv = structuredClone(P); Pv.celulas.margem.valor_exibido = "21,6%";
+  assert.throws(() => conferirCelulas(spec, Pv), /v3_celula_sem_proveniencia/, "valor exibido diferente da planilha");
+  const { provasParaMedir } = await import("../scripts/shorts-v3/render.mjs");
+  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), ["R$ 180,00", "R$ 39,00", "21,7%", "2,2%", null], "valor esperado só vem da proveniência");
+  assert.ok(spec.provas.every((p) => p.valor === undefined), "o spec não guarda valor esperado");
+  const P2 = structuredClone(P); P2.resultados_calculados_pela_planilha["Margem contribuição %"] = 0.2;
+  assert.throws(() => conferirCelulas(spec, P2), /v3_celula_sem_proveniencia/, "planilha com outro resultado");
 });
 test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BLOQUEADO com relatório", async () => {
   assert.equal(MAX_TENTATIVAS, 3);
