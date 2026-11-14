@@ -26,7 +26,8 @@ export function validatePreparationWorkflow(text){
  if(!/on:\s*\n  workflow_dispatch:/.test(text)||/^  (schedule|push|pull_request|workflow_run):/m.test(text))throw Error('preparation_trigger_invalid');
  if(!text.includes('  amostras:')||!text.includes('  previa:')||!text.includes('FREE_TIER_CONFIRMED: ${{ inputs.nivel_gratuito_confirmado }}')||!text.includes("DRY_RUN: 'true'")||!text.includes("inputs.modo == 'amostras'")||!text.includes("inputs.modo == 'previa'"))throw Error('preparation_mode_invalid');
  if(/CLOUDFLARE|KV_NAMESPACE|YOUTUBE_|short-crosspost|youtube-daily-short\.mjs|contents: write|actions: write/.test(text))throw Error('preparation_publish_isolation');
- const refs=[...text.matchAll(/if:.*github\.ref == 'refs\/heads\/gh-pages'/g)];if(refs.length!==2)throw Error('preparation_ref_invalid');
+ // Todo job (amostras, previa e, no v3.4, autorizar-ensaio/ensaio) só roda a partir do gh-pages.
+ const jobs=(text.split(/\njobs:\n/)[1]||'').match(/^  [a-z][\w-]*:\n/gm)||[],refs=[...text.matchAll(/if:.*github\.ref == 'refs\/heads\/gh-pages'/g)];if(jobs.length<2||refs.length!==jobs.length)throw Error('preparation_ref_invalid');
  return true;
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){

@@ -169,7 +169,7 @@ tests/sales-worker-differential.test.mjs 6
 tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
 tests/short-crosspost.test.mjs 10
-tests/shorts-ensaio-isolamento.test.mjs 1
+tests/shorts-ensaio-isolamento.test.mjs 3
 tests/shorts-preparation.test.mjs 9
 tests/shorts-retomada-mutantes.test.mjs 47
 tests/shorts-retomada.test.mjs 15
