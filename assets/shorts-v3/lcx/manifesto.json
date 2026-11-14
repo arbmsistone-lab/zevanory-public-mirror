@@ -2,17 +2,24 @@
  "schema": 1,
  "nota": "Integridade da prova do produto (NC-R05): hashes da proveniência do cálculo (planilha real recalculada) e das capturas. O gerador e o avaliador recusam qualquer divergência.",
  "arquivos": {
-  "assets/shorts-v3/lcx/planilha-proveniencia.json": "4519a64f76fa7b063090dcf373d1b42fcaf0583c7065aad427c2c1bf4e2d209a",
-  "assets/shorts-v3/lcx/tela-preco.png": "76bff65a1736decf4287adeb52eecc011d1470e5575866b86c17cf77e18f17dd",
+  "assets/shorts-v3/lcx/planilha-proveniencia.json": "ee0e4b13a801476f179588431473fd0e697d5cf37db9785497e4decb3fe53cba",
+  "assets/shorts-v3/lcx/tela-preco.png": "d864da1be2390936ceb1bcfb4fd4096bc70e85b5ef63459a4518dbdc74d65437",
   "assets/shorts-v3/lcx/celula-preco.png": "943f36bdc7503b54f7be0feaceb5ddd2c5725af34108d1d51c18206cd7ef0d9f",
-  "assets/shorts-v3/lcx/tela-contribuicao.png": "2196fe704adcfdb5ae157a12bcf2b4efb937477eba80f99c0a44f364cce86812",
+  "assets/shorts-v3/lcx/tela-contribuicao.png": "bb7036ecfb4daebef15017fa5ab713420b7e340fa8b12687da97e72f90ff0a58",
   "assets/shorts-v3/lcx/celula-contribuicao.png": "b8bb63d1062936bc4b47e2fb61b0d9ff807892e897b9dbda1e6457899852b7ec",
-  "assets/shorts-v3/lcx/tela-margem.png": "e5f1adf898ce4dba1b09052465c066f2deefb4bf73fa6239db4974e7e3697eb6",
+  "assets/shorts-v3/lcx/tela-margem.png": "dd3f64f6ff352cfd131ee3379ca6b2d7c151bea9434ccb374b84116b74dd6101",
   "assets/shorts-v3/lcx/celula-margem.png": "ad31985b8da113b2fa72d48da546689ae8d8e54fdc02777bfc31a2e785d718ae",
-  "assets/shorts-v3/lcx/tela-desconto.png": "c065bee5f10d4010df763fe67875f59c35c8d42846fe43b1a12517382ba695c9",
+  "assets/shorts-v3/lcx/tela-desconto.png": "981f4d6f3432d6768faff12868277e64dd3261bc82ca8e5a3e836aab59fa3041",
   "assets/shorts-v3/lcx/celula-desconto.png": "11b954f51b2d10e63b21ad005e5ee4c7401ef59ced68211dd35106b97b85217f",
   "assets/shorts-v3/lcx/manual-topo.png": "efbe4e8db65e33ca09a91e2ef0b8b3398a287330d99d5b721bcde0ef6408780b",
+  "assets/shorts-v3/lcx/rodape-modulo.png": "1ad3fd39ba520819fb342c66a82811332e2f6df488ca0efea83141eaffefc0c4",
+  "assets/shorts-v3/lcx/rodape-capa.png": "c8d952b120ccf37c8e6450dc05836eeaf1fdd97bb004e563967e4c9d12ec7a71",
+  "assets/shorts-v3/lcx/tela-preco-resto.png": "1bbc0dafb2313858a8c61d531f78fc8910726daef539838de3383d38dac675e8",
   "assets/shorts-v3/lcx/celula-taxa.png": "6d22ad9eac76d225888b58c2e4b23dbb761a479da782e17dabe42f56f52cc796",
-  "assets/shorts-v3/lcx/tela-taxa.png": "2376c19b391e4ab020f542c2b26bb7d77f0d929d5f86ec95afe61bba16b17a58"
+  "assets/shorts-v3/lcx/tela-taxa.png": "562f7705e84db4e7fedeacfd51dc8d75337ec483d03189076b0889346667bd7a",
+  "assets/shorts-v3/lcx/tela-taxa-resto.png": "fa6d21b488c146bd688f051ebb82f04f430504523715d61a96fb8b7fd1ef5305",
+  "assets/shorts-v3/lcx/tela-contribuicao-resto.png": "3ecf5a912ae0e3afdfc540576783ad31d5b00a685e2f768f6090c52fe0194802",
+  "assets/shorts-v3/lcx/tela-margem-resto.png": "db87fe9bffba8296a13fa7aef37e5011a167b0d6f8786bcd35f9f6e6ff36bb69",
+  "assets/shorts-v3/lcx/tela-desconto-resto.png": "88304e27bd528bb6d69eee769946c50c01624b3b67a327ad106ded3c0f29ba80"
  }
 }

@@ -71,7 +71,7 @@
  "provas": [
   {
    "captura": "assets/shorts-v3/lcx/tela-preco.png",
-   "largura": 876
+   "largura": 1080
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-preco.png",
@@ -80,7 +80,7 @@
   },
   {
    "captura": "assets/shorts-v3/lcx/tela-contribuicao.png",
-   "largura": 876
+   "largura": 1080
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-contribuicao.png",
@@ -89,7 +89,7 @@
   },
   {
    "captura": "assets/shorts-v3/lcx/tela-margem.png",
-   "largura": 876
+   "largura": 1080
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-margem.png",
@@ -98,7 +98,7 @@
   },
   {
    "captura": "assets/shorts-v3/lcx/tela-desconto.png",
-   "largura": 876
+   "largura": 1080
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-desconto.png",
@@ -108,6 +108,14 @@
   {
    "captura": "assets/shorts-v3/lcx/manual-topo.png",
    "largura": 876
+  },
+  {
+   "captura": "assets/shorts-v3/lcx/rodape-modulo.png",
+   "largura": 1080
+  },
+  {
+   "captura": "assets/shorts-v3/lcx/rodape-capa.png",
+   "largura": 1080
   }
  ],
  "manifesto": "assets/shorts-v3/lcx/manifesto.json"

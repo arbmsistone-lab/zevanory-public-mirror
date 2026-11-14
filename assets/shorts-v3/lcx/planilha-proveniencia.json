@@ -30,9 +30,10 @@
    "celula": "E5",
    "cabecalho": "Preço atual",
    "valor_exibido": "R$ 180,00",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 250%, ~3 colunas a partir do cabeçalho (linha 3), da barra de fórmulas à barra de status, célula E5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, barra de fórmulas até a linha 6, célula E5 selecionada; resto: grade das linhas seguintes sem texto; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "brl",
-   "tela": "assets/shorts-v3/lcx/tela-preco.png"
+   "tela": "assets/shorts-v3/lcx/tela-preco.png",
+   "resto": "assets/shorts-v3/lcx/tela-preco-resto.png"
   },
   "taxa": {
    "arquivo": "assets/shorts-v3/lcx/celula-taxa.png",
@@ -40,9 +41,10 @@
    "celula": "F5",
    "cabecalho": "Taxa pagamento %",
    "valor_exibido": "5,0%",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 250%, ~3 colunas a partir do cabeçalho (linha 3), da barra de fórmulas à barra de status, célula F5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, barra de fórmulas até a linha 6, célula F5 selecionada; resto: grade das linhas seguintes sem texto; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "pct",
-   "tela": "assets/shorts-v3/lcx/tela-taxa.png"
+   "tela": "assets/shorts-v3/lcx/tela-taxa.png",
+   "resto": "assets/shorts-v3/lcx/tela-taxa-resto.png"
   },
   "contribuicao": {
    "arquivo": "assets/shorts-v3/lcx/celula-contribuicao.png",
@@ -50,9 +52,10 @@
    "celula": "J5",
    "cabecalho": "Contribuição/unit.",
    "valor_exibido": "R$ 39,00",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 250%, ~3 colunas a partir do cabeçalho (linha 3), da barra de fórmulas à barra de status, célula J5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, barra de fórmulas até a linha 6, célula J5 selecionada; resto: grade das linhas seguintes sem texto; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "brl",
-   "tela": "assets/shorts-v3/lcx/tela-contribuicao.png"
+   "tela": "assets/shorts-v3/lcx/tela-contribuicao.png",
+   "resto": "assets/shorts-v3/lcx/tela-contribuicao-resto.png"
   },
   "margem": {
    "arquivo": "assets/shorts-v3/lcx/celula-margem.png",
@@ -60,9 +63,10 @@
    "celula": "K5",
    "cabecalho": "Margem contribuição %",
    "valor_exibido": "21,7%",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 250%, ~3 colunas a partir do cabeçalho (linha 3), da barra de fórmulas à barra de status, célula K5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, barra de fórmulas até a linha 6, célula K5 selecionada; resto: grade das linhas seguintes sem texto; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "pct",
-   "tela": "assets/shorts-v3/lcx/tela-margem.png"
+   "tela": "assets/shorts-v3/lcx/tela-margem.png",
+   "resto": "assets/shorts-v3/lcx/tela-margem-resto.png"
   },
   "desconto": {
    "arquivo": "assets/shorts-v3/lcx/celula-desconto.png",
@@ -70,9 +74,10 @@
    "celula": "M5",
    "cabecalho": "Desconto máx. p/ margem alvo",
    "valor_exibido": "2,2%",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 250%, ~3 colunas a partir do cabeçalho (linha 3), da barra de fórmulas à barra de status, célula M5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, barra de fórmulas até a linha 6, célula M5 selecionada; resto: grade das linhas seguintes sem texto; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "pct",
-   "tela": "assets/shorts-v3/lcx/tela-desconto.png"
+   "tela": "assets/shorts-v3/lcx/tela-desconto.png",
+   "resto": "assets/shorts-v3/lcx/tela-desconto-resto.png"
   }
  },
  "manual_topo": {
@@ -84,5 +89,29 @@
    600,
    195
   ]
+ },
+ "rodapes": {
+  "rodape-capa": {
+   "arquivo": "assets/shorts-v3/lcx/rodape-capa.png",
+   "origem": "sales-public/assets/previews/manual-lucro-capa.3591045671.webp",
+   "recorte": [
+    40,
+    30,
+    600,
+    263
+   ],
+   "escala": "1080x450"
+  },
+  "rodape-modulo": {
+   "arquivo": "assets/shorts-v3/lcx/rodape-modulo.png",
+   "origem": "sales-public/assets/previews/manual-lucro-modulo-1.08827bb6a5.webp",
+   "recorte": [
+    30,
+    40,
+    590,
+    273
+   ],
+   "escala": "1080x450"
+  }
  }
 }

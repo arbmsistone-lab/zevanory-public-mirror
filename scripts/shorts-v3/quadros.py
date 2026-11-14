@@ -59,23 +59,33 @@ def captura(d, nome, x, y, largura):
     return y + s.height + 8
 PROV = json.loads((CAP / "planilha-proveniencia.json").read_text(encoding="utf-8"))
 def celula(d, nome, y, largura=SAFE_R - 64):
-    """v3.5: close-up REAL do LibreOffice Calc a 400% (célula selecionada, faixa das letras das colunas), recortado em
-    torno do valor e ampliado só por escala uniforme; origem verificável escrita FORA do recorte."""
+    """v3.6: close-up REAL do Calc a 400% num cartão escuro sobre as linhas vazias da tela; origem escrita no cartão,
+    FORA do recorte. Ampliado só por escala uniforme."""
     largura = round(largura * float(spec.get("escala_celulas", 1)))  # só a calibração muda (caso negativo de célula miúda)
     c = PROV["celulas"][nome]; x = (64 + SAFE_R - largura) // 2
-    fim = captura(d, Path(c["arquivo"]).name, x, y, largura)
-    d.text((64, fim + 12), f"Aba {c['aba']} · célula {c['celula']} (ampliada)", font(38), MUTED)
-    return fim + 56
+    s_ = Image.open(CAP / Path(c["arquivo"]).name); alt = round(s_.height * largura / s_.width)
+    d.rounded_rectangle((x - 30, y, x + largura + 30, y + alt + 104), 30, fill=BG, outline=YEL, width=5)
+    fim = captura(d, Path(c["arquivo"]).name, x, y + 24, largura)
+    d.text((x, fim + 6), f"Aba {c['aba']} · célula {c['celula']} (ampliada)", font(38), MUTED)
+    return fim + 72
 def tela(d, nome, y):
-    """v3.5: TELA REAL do LibreOffice Calc (barra de fórmulas, colunas, linhas, abas, barra de status) com a célula
-    selecionada; abaixo dela, uma seta amarela aponta do cabeçalho da coluna selecionada para o close-up."""
+    """v3.6 (júri real 9,1 — ensaio 43646726494): TELA REAL do Calc a 300% em LARGURA TOTAL (sangra 0–1080): da barra
+    de fórmulas à linha 6 (a prova) e, colada abaixo, a grade real das linhas seguintes até a borda de baixo (sem texto,
+    sob a interface do Shorts). Seta amarela do cabeçalho da coluna selecionada para o close-up."""
     c = PROV["celulas"][nome]; arq = CAP / Path(c["tela"]).name; s = Image.open(arq).convert("RGB")
-    larg = SAFE_R - 64; esc = larg / s.width
-    fim = captura(d, arq.name, 64, y, larg)
+    d.im.paste(s, (0, y)); med["provaReal"] = True; fim = y + s.height
+    resto = Image.open(CAP / Path(c["resto"]).name).convert("RGB")
+    d.im.paste(resto.crop((0, 0, resto.width, max(0, H - fim))), (W - resto.width, fim))
+    d.rectangle((0, fim, W - resto.width - 1, H), fill=(198, 198, 198))  # faixa do rótulo de linhas, sem os números
     px = s.load(); xs = next((v for v in ([i for i in range(s.width) if px[i, yy][:3] == (128, 0, 0)] for yy in range(0, 80)) if v), [])
-    cx = 64 + round((min(xs) + max(xs)) / 2 * esc) if xs else (64 + SAFE_R) // 2
-    seta(d, cx, fim + 2, fim + 40)
+    cx = round((min(xs) + max(xs)) / 2) if xs else (64 + SAFE_R) // 2
+    seta(d, min(cx, SAFE_R - 40), fim + 4, fim + 44)
     return fim + 48
+FAIXA_LEGENDA = (0, 1322, W, 1458)  # v3.6: faixa escura sob a legenda (y≈1390) quando ela passa sobre a planilha clara
+def faixa_legenda(d): d.rectangle(FAIXA_LEGENDA, fill=BG)
+def rodape(d, nome):
+    """v3.6: abaixo de y=1470 (interface do Shorts) não fica vazio: trecho REAL do material do kit, em largura total."""
+    d.im.paste(Image.open(CAP / nome).convert("RGB"), (0, SAFE_B)); med["provaReal"] = True
 def q_gancho(d):
     d.text((64, 290), "LOJA · " + O["nome"].upper(), font(42), BLUE)
     y = rich(d, 64, 350, spec["falas"][0]["texto"], font(112), hl=("dinheiro", "desaparece?"))
@@ -92,7 +102,7 @@ def q_gancho(d):
 def q_venda(d):
     d.text((64, 290), "PASSO 1 · EXEMPLO DE VENDA: TÊNIS", font(44), BLUE)
     y = rich(d, 64, 350, "Sua última venda.", font(84), hl=("última", "venda.")) + 26
-    celula(d, "preco", tela(d, "preco", y))
+    celula(d, "preco", tela(d, "preco", y)); faixa_legenda(d)
 def seta(d, x, y0, y1, cor=YEL):
     d.line((x, y0, x, y1 - 26), fill=cor, width=10); d.polygon([(x - 26, y1 - 30), (x + 26, y1 - 30), (x, y1)], fill=cor)
 def q_conta(d, etapa):
@@ -109,14 +119,15 @@ def q_conta(d, etapa):
     y = celula(d, "contribuicao", tela(d, "contribuicao", 350)) + 4
     d.rounded_rectangle((64, y, SAFE_R, CB), 36, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
     d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 30)), GREEN, anchor="mm")
+    faixa_legenda(d)
 def q_planilha(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
     y = rich(d, 64, 350, "A margem aparece na hora.", font(80), hl=("margem",)) + 26
-    celula(d, "margem", tela(d, "margem", y))
+    celula(d, "margem", tela(d, "margem", y)); faixa_legenda(d)
 def q_desconto(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
     y = rich(d, 64, 350, "O seu limite de desconto.", font(80), hl=("limite",)) + 26
-    celula(d, "desconto", tela(d, "desconto", y))
+    celula(d, "desconto", tela(d, "desconto", y)); faixa_legenda(d)
 MANUAL = "manual-topo.png"  # v3.5: topo REAL da capa do manual (recorte sem retoque), em largura total e legível
 def capa(d, y, largura=SAFE_R - 64):
     return captura(d, MANUAL, (64 + SAFE_R - largura) // 2, y, largura)
@@ -142,11 +153,14 @@ def q_oferta(d, fase):
     y = capa(d, y) + 24
     d.rounded_rectangle((64, y, SAFE_R, CB), 70, fill=BLUE)
     d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Link na descrição", font(min(76, CB - y - 30)), BG, anchor="mm")
+RODAPE = {"gancho": "rodape-capa.png", "conta-1": "rodape-capa.png", "conta-2": "rodape-capa.png",
+          "beneficio": "rodape-modulo.png", "oferta": "rodape-modulo.png", "cta": "rodape-modulo.png"}
 quadros = {"gancho": q_gancho, "venda": q_venda, "conta-1": lambda d: q_conta(d, 1), "conta-2": lambda d: q_conta(d, 2), "conta-3": lambda d: q_conta(d, 3),
            "planilha": q_planilha, "desconto": q_desconto, "beneficio": lambda d: q_oferta(d, 0), "oferta": lambda d: q_oferta(d, 1), "cta": lambda d: q_oferta(d, 2)}
 falas = spec["falas"]; out = {}
 for i, f in enumerate(falas):
     im, d = base((i + 1) / len(falas)); quadros[f["quadro"]](d)
+    if f["quadro"] in RODAPE: rodape(d, RODAPE[f["quadro"]])
     # quadro vazio = área de conteúdo sem desenho (variação de cor desprezível entre y=280 e 1470)
     box = im.crop((64, 280, SAFE_R, SAFE_B)).convert("L"); ext = box.getextrema()
     if ext[1] - ext[0] < 40: med["quadroVazio"] += 1

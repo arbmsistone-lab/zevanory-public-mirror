@@ -148,14 +148,28 @@ for pv in cfg.get("provas", []):
 # Ensaio real 43639031016: no MP4 cada quadro aparece em vários estados (a legenda muda); exigir só o melhor estado
 # deixava o valor ilegível num estado de transição. Agora vale QUALQUER casamento (≥ 0,8) da prova que não seja
 # disputado, no mesmo quadro e no mesmo lugar, por outra prova com correlação maior.
+# Ensaio 43646726494: close-ups de células selecionadas são quase iguais para o NCC (0,966 x 0,965); a captura certa
+# perdia a disputa pelo próprio lugar e o valor saía "ilegível". Desempate: entre duas provas COM valor que disputam
+# o mesmo lugar, vence a cujo valor da proveniência é lido ali (OCR estrito); só se nenhuma ou ambas lerem, vale a
+# correlação maior. Sem valor, vale a correlação.
+_lido = {}
+def _le(a, i, c):
+    k = (id(a), i, c)
+    if k not in _lido: _lido[k] = valor_na_captura(frames[i], c, a["valor"]) if a["valor"] else 0
+    return _lido[k]
+def _vence(a, i, c, v, b, w):
+    if a["valor"] and b["valor"]:
+        la, lb = _le(a, i, c) > 0, _le(b, i, c) > 0
+        if la != lb: return la
+    return v > w or (v == w and achados.index(a) < achados.index(b))
 def _valido(a, i, c, v):
-    return not any(b is not a and j == i and w > v and _sobrepoe(c, d) for b in achados for j, d, w in b["caixas"])
+    return all(_vence(a, i, c, v, b, w) for b in achados if b is not a for j, d, w in b["caixas"] if j == i and _sobrepoe(c, d))
 for a in achados:
     a["validos"] = [(i, c) for i, c, v in a["caixas"] if _valido(a, i, c, v)]
     ok = bool(a["validos"])
     prova.append({"captura": a["captura"], "correlacao": round(a["best"], 3), "quadro": a["validos"][0][0] if ok else None, "exclusiva": ok})
     if a["valor"]:
-        altura = max([valor_na_captura(frames[i], c, a["valor"]) for i, c in a["validos"]] or [0])
+        altura = max([_le(a, i, c) for i, c in a["validos"]] or [0])
         legiveis.append({"captura": a["captura"], "valor": a["valor"], "altura_px": altura, "legivel": altura >= ALTURA_VALOR_MIN})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
