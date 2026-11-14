@@ -193,7 +193,7 @@ test("proveniência (NC-R05, adversarial): números permitidos só vêm da plani
   const Pv = structuredClone(P); Pv.celulas.margem.valor_exibido = "21,6%";
   assert.throws(() => conferirCelulas(spec, Pv), /v3_celula_sem_proveniencia/, "valor exibido diferente da planilha");
   const { provasParaMedir } = await import("../scripts/shorts-v3/render.mjs");
-  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), ["R$ 180,00", "R$ 39,00", "21,7%", "2,2%", null], "valor esperado só vem da proveniência");
+  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), [null, "R$ 180,00", null, "R$ 39,00", null, "21,7%", null, "2,2%", null], "valor esperado só vem da proveniência");
   assert.ok(spec.provas.every((p) => p.valor === undefined), "o spec não guarda valor esperado");
   const P2 = structuredClone(P); P2.resultados_calculados_pela_planilha["Margem contribuição %"] = 0.2;
   assert.throws(() => conferirCelulas(spec, P2), /v3_celula_sem_proveniencia/, "planilha com outro resultado");
@@ -207,4 +207,25 @@ test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BL
   let n = 0;
   const bloq = await cicloCriativo({ gerar: async () => ({}), avaliarCriativo: async () => { n++; return { aprovado: false, decisao: "DESCARTADO", nota_geral: 9.1, motivos: ["nota_abaixo:oferta=9.1"] }; } });
   assert.deepEqual([bloq.estado, n], ["BLOQUEADO", 3]); assert.match(bloq.relatorio, /3 tentativas.*9\.1.*oferta=9\.1/);
+});
+test("v3.5 (júri real 8,5 — ensaio 43629467444): prova = tela real do Calc + close-up da MESMA célula; ambos com hash e proveniência", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const spec = JSON.parse(await readFile("data/shorts-v3/lcx.json", "utf8"));
+  const P = JSON.parse(await readFile("assets/shorts-v3/lcx/planilha-proveniencia.json", "utf8"));
+  const M = JSON.parse(await readFile("assets/shorts-v3/lcx/manifesto.json", "utf8"));
+  const comValor = spec.provas.filter((p) => p.celula !== undefined);
+  assert.equal(comValor.length, 4);
+  for (const p of comValor) {
+    const c = Object.values(P.celulas).find((x) => x.arquivo === p.captura);
+    assert.ok(c && c.celula === p.celula, p.captura);
+    const i = spec.provas.indexOf(p);
+    assert.equal(spec.provas[i - 1]?.captura, c.tela, "a tela real vem logo antes do close-up da mesma célula");
+    assert.equal(spec.provas[i - 1].celula, undefined, "a tela não carrega valor: a legibilidade é medida no close-up");
+    for (const f of [c.arquivo, c.tela]) assert.match(M.arquivos[f] || "", /^[0-9a-f]{64}$/, "hash no manifesto: " + f);
+    assert.match(c.render, /LibreOffice Calc .*Xvfb.*capturar_planilha\.py/);
+  }
+  assert.ok(spec.provas.some((p) => p.captura === P.manual_topo.arquivo), "manual: recorte real do topo da capa");
+  const q = readTextNormalized("scripts/shorts-v3/quadros.py");
+  assert.doesNotMatch(q, /1900 - hb/, "barras decorativas fixas removidas");
+  assert.match(q, /def tela\(/);
 });

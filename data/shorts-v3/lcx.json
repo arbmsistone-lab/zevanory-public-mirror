@@ -70,28 +70,44 @@
  "slug": "lucro-e-caixa",
  "provas": [
   {
+   "captura": "assets/shorts-v3/lcx/tela-preco.png",
+   "largura": 876
+  },
+  {
    "captura": "assets/shorts-v3/lcx/celula-preco.png",
-   "largura": 640,
+   "largura": 876,
    "celula": "E5"
   },
   {
+   "captura": "assets/shorts-v3/lcx/tela-contribuicao.png",
+   "largura": 876
+  },
+  {
    "captura": "assets/shorts-v3/lcx/celula-contribuicao.png",
-   "largura": 820,
+   "largura": 876,
    "celula": "J5"
   },
   {
+   "captura": "assets/shorts-v3/lcx/tela-margem.png",
+   "largura": 876
+  },
+  {
    "captura": "assets/shorts-v3/lcx/celula-margem.png",
-   "largura": 820,
+   "largura": 876,
    "celula": "K5"
   },
   {
+   "captura": "assets/shorts-v3/lcx/tela-desconto.png",
+   "largura": 876
+  },
+  {
    "captura": "assets/shorts-v3/lcx/celula-desconto.png",
-   "largura": 820,
+   "largura": 876,
    "celula": "M5"
   },
   {
-   "captura": "sales-public/assets/previews/manual-lucro-capa.3591045671.webp",
-   "largura": 300
+   "captura": "assets/shorts-v3/lcx/manual-topo.png",
+   "largura": 876
   }
  ],
  "manifesto": "assets/shorts-v3/lcx/manifesto.json"

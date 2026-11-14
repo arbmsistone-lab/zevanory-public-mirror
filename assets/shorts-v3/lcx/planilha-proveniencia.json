@@ -30,8 +30,9 @@
    "celula": "E5",
    "cabecalho": "Preço atual",
    "valor_exibido": "R$ 180,00",
-   "render": "LibreOffice headless pt-BR, área de impressão E3:E5, 300 dpi, recorte sem alteração de pixels",
-   "formato": "brl"
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 200%, da barra de fórmulas à barra de status, célula E5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "formato": "brl",
+   "tela": "assets/shorts-v3/lcx/tela-preco.png"
   },
   "taxa": {
    "arquivo": "assets/shorts-v3/lcx/celula-taxa.png",
@@ -39,8 +40,9 @@
    "celula": "F5",
    "cabecalho": "Taxa pagamento %",
    "valor_exibido": "5,0%",
-   "render": "LibreOffice headless pt-BR, área de impressão F3:F5, 300 dpi, recorte sem alteração de pixels",
-   "formato": "pct"
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 200%, da barra de fórmulas à barra de status, célula F5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "formato": "pct",
+   "tela": "assets/shorts-v3/lcx/tela-taxa.png"
   },
   "contribuicao": {
    "arquivo": "assets/shorts-v3/lcx/celula-contribuicao.png",
@@ -48,8 +50,9 @@
    "celula": "J5",
    "cabecalho": "Contribuição/unit.",
    "valor_exibido": "R$ 39,00",
-   "render": "LibreOffice headless pt-BR, área de impressão J3:J5, 300 dpi, recorte sem alteração de pixels",
-   "formato": "brl"
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 200%, da barra de fórmulas à barra de status, célula J5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "formato": "brl",
+   "tela": "assets/shorts-v3/lcx/tela-contribuicao.png"
   },
   "margem": {
    "arquivo": "assets/shorts-v3/lcx/celula-margem.png",
@@ -57,8 +60,9 @@
    "celula": "K5",
    "cabecalho": "Margem contribuição %",
    "valor_exibido": "21,7%",
-   "render": "LibreOffice headless pt-BR, área de impressão K3:K5, 300 dpi, recorte sem alteração de pixels",
-   "formato": "pct"
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 200%, da barra de fórmulas à barra de status, célula K5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "formato": "pct",
+   "tela": "assets/shorts-v3/lcx/tela-margem.png"
   },
   "desconto": {
    "arquivo": "assets/shorts-v3/lcx/celula-desconto.png",
@@ -66,8 +70,19 @@
    "celula": "M5",
    "cabecalho": "Desconto máx. p/ margem alvo",
    "valor_exibido": "2,2%",
-   "render": "LibreOffice headless pt-BR, área de impressão M3:M5, 300 dpi, recorte sem alteração de pixels",
-   "formato": "pct"
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 200%, da barra de fórmulas à barra de status, célula M5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "formato": "pct",
+   "tela": "assets/shorts-v3/lcx/tela-desconto.png"
   }
+ },
+ "manual_topo": {
+  "arquivo": "assets/shorts-v3/lcx/manual-topo.png",
+  "origem": "sales-public/assets/previews/manual-lucro-capa.3591045671.webp",
+  "recorte": [
+   40,
+   35,
+   600,
+   195
+  ]
  }
 }
