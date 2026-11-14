@@ -50,6 +50,7 @@ tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10
 tests/engine-dispatcher.test.mjs 4
+tests/ensaio-fases-confiaveis.test.mjs 2
 tests/experiments.test.mjs 5
 tests/f1-blog-kv.test.mjs 5
 tests/f1-bluesky-kv.test.mjs 11
