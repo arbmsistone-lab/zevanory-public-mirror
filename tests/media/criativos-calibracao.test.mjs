@@ -56,7 +56,12 @@ test('CAL A2 ler_valor: só token idêntico ao valor da proveniência, com "R$" 
   [[T('R$',20,200),T('39,00',470,200)],[],'R$ 39,00'],             // 0: R$ longe
   [[T('39,00',200,200),T('R$',380,200)],[],'R$ 39,00'],            // 0: R$ à direita
   [[T('R$',200,200),T('39,00',270,200)],[],'US$ 39,00'],           // 0: formato inesperado
-  [[],[],'']];                                                     // 0
+  [[],[],''],                                                      // 0
+  [[T('R$39,00',200,200)],[],'R$ 39,00'],                          // 60: colado, idêntico a R$ + número
+  [[T('R$39,001',200,200)],[],'R$ 39,00'],                         // 0: colado com sobra
+  [[T('R$39,00',200,200,60,40)],[],'R$ 39,00'],                    // 0: colado com confiança baixa
+  [[],[T('R$39,00',200,200,60,0)],'R$ 39,00'],                     // 0: colado só no passe de dígitos
+  [[T('R$21,7%',200,200)],[],'21,7%']];                            // 0: valor sem R$ não aceita colado
  const r=spawnSync('python3',['-E','-P','-c',py,join(ROOT,'scripts/criativos'),JSON.stringify(casos)],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);
- assert.deepEqual(JSON.parse(r.stdout),[60,0,0,58,0,60,0,0,0,0,0,0]);
+ assert.deepEqual(JSON.parse(r.stdout),[60,0,0,58,0,60,0,0,0,0,0,0,60,0,0,0,0]);
 });

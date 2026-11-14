@@ -3,7 +3,8 @@ Recebe os tokens do OCR feito SÓ dentro da região onde a captura foi encontrad
 proveniência (ex.: "R$ 39,00", "21,7%"). Aceita somente:
   - um token numérico IDÊNTICO à parte numérica (sem substring: "121,7%" não vale para "21,7%"); do passe geral com
     confiança >= 60, ou do passe só-de-dígitos (onde o tesseract não dá confiança útil) com igualdade exata;
-  - se o valor tem "R$", um token "R$" na MESMA linha, imediatamente à esquerda do número.
+  - se o valor tem "R$", um token "R$" na MESMA linha, imediatamente à esquerda do número; ou o token colado
+    IDÊNTICO a "R$" + número (ex.: "R$39,00"), do passe geral com confiança >= 60.
 Devolve a altura (px, 1080x1920) do número aceito, ou 0."""
 import re
 
@@ -32,4 +33,8 @@ def ler_valor(gerais, digitos, valor):
             if not rs:
                 continue
         ok.append(n["h"])
+    # Ensaios 43646726494/43652751629: no MP4 o OCR pode colar "R$39,00" num token só. Vale apenas o token IDÊNTICO a
+    # "R$" + número (sem substring, sem outro caractere), do passe geral com confiança >= 60.
+    if quer_rs:
+        ok += [r["h"] for r in todos if r["origem"] == "g" and r["conf"] >= 60 and r["t"].strip() == "R$" + partes[-1]]
     return max(ok) if ok else 0

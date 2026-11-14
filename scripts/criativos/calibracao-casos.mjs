@@ -16,8 +16,8 @@ export const CASOS=Object.freeze([
  {nome:'negativo-numero-nao-calculado',esperado:['valor_nao_conferido:R$48'],mutar:s=>{s.numeros.margem_antes_fixas=48;}},
  {nome:'negativo-sem-planilha',esperado:['sem_prova_real_do_produto'],remover:'planilha'},
  {nome:'negativo-quadro-vazio',esperado:['quadro_vazio'],vazio:'venda'},
- // v3.6: abaixo de 1470 agora há rodapé real CLARO; o texto pintado é escuro para continuar visível (o branco sumia).
- {nome:'negativo-fora-da-area-segura',esperado:['conteudo_fora_da_area_segura'],pintar:['oferta',120,1640,'Oferta especial hoje',70,'20,20,20']},
+ // o texto pintado é AMARELO: visível sobre fundo claro ou escuro (branco sumia num rodapé claro; escuro, no fundo escuro).
+ {nome:'negativo-fora-da-area-segura',esperado:['conteudo_fora_da_area_segura'],pintar:['oferta',120,1640,'Oferta especial hoje',70,'255,214,10']},
  {nome:'negativo-texto-miudo',esperado:['texto_pequeno_demais'],pintar:['gancho',120,1300,'condições e detalhes importantes',18,'255,255,255']},
  {nome:'negativo-baixo-contraste',esperado:['texto_nao_reconhecido'],pintar:['gancho',120,1300,'condições especiais importantes',40,'45,55,70']},
  // v3.4 A2: a célula real aparece, mas pequena demais para ler o valor no celular.
@@ -45,6 +45,6 @@ export function medirCaso(prep,dir){
 }
 // O júri vê o quadro como ele aparece no vídeo: com a legenda falada na faixa y 1280–1460 (mesmo estilo de
 // render.mjs/legendasV3: Inter ExtraBold 74, contorno escuro, 1ª palavra em destaque). O v2 já traz a dele.
-const LEGENDA="import sys;from PIL import Image,ImageDraw,ImageFont;im=Image.open(sys.argv[1]).convert('RGB');t=sys.argv[3].split();f=ImageFont.truetype(sys.argv[4],74);d=ImageDraw.Draw(im)\nif t:\n w=[d.textlength(x+' ',font=f) for x in t];x=470-sum(w)/2\n for i,p in enumerate(t):d.text((x,1390),p,font=f,fill=(255,214,10) if i==0 else (255,255,255),stroke_width=6,stroke_fill=(9,13,20),anchor='lm');x+=w[i]\nim.resize((540,960)).save(sys.argv[2])";
+const LEGENDA="import sys;from PIL import Image,ImageDraw,ImageFont;im=Image.open(sys.argv[1]).convert('RGB');t=sys.argv[3].split();f=ImageFont.truetype(sys.argv[4],74);d=ImageDraw.Draw(im)\nif t:\n w=[d.textlength(x+' ',font=f) for x in t];x=470-sum(w)/2\n for i,p in enumerate(t):d.text((x,1330),p,font=f,fill=(255,214,10) if i==0 else (255,255,255),stroke_width=6,stroke_fill=(9,13,20),anchor='lm');x+=w[i]\nim.resize((540,960)).save(sys.argv[2])";
 export function quadrosJuri(prep,dir){return prep.quadros.map((f,i)=>{const p=join(dir,`juri-${i}.png`),n=+(/quadro-(\d+)-/.exec(f)?.[1]||0),fala=prep.v2||!n?'':String(prep.criativo.falas[n-1]||'').split(/\s+/).slice(0,3).join(' ');
  py(['-c',LEGENDA,f,p,fala,FONTE]);return readFileSync(p);});}

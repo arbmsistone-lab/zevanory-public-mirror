@@ -193,7 +193,7 @@ test("proveniência (NC-R05, adversarial): números permitidos só vêm da plani
   const Pv = structuredClone(P); Pv.celulas.margem.valor_exibido = "21,6%";
   assert.throws(() => conferirCelulas(spec, Pv), /v3_celula_sem_proveniencia/, "valor exibido diferente da planilha");
   const { provasParaMedir } = await import("../scripts/shorts-v3/render.mjs");
-  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), [null, "R$ 180,00", null, "R$ 39,00", null, "21,7%", null, "2,2%", null, null, null], "valor esperado só vem da proveniência");
+  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), [null, "R$ 180,00", null, "R$ 39,00", null, "21,7%", null, "2,2%", null], "valor esperado só vem da proveniência");
   assert.ok(spec.provas.every((p) => p.valor === undefined), "o spec não guarda valor esperado");
   const P2 = structuredClone(P); P2.resultados_calculados_pela_planilha["Margem contribuição %"] = 0.2;
   assert.throws(() => conferirCelulas(spec, P2), /v3_celula_sem_proveniencia/, "planilha com outro resultado");
@@ -221,12 +221,12 @@ test("v3.5 (júri real 8,5 — ensaio 43629467444): prova = tela real do Calc + 
     const i = spec.provas.indexOf(p);
     assert.equal(spec.provas[i - 1]?.captura, c.tela, "a tela real vem logo antes do close-up da mesma célula");
     assert.equal(spec.provas[i - 1].celula, undefined, "a tela não carrega valor: a legibilidade é medida no close-up");
-    for (const f of [c.arquivo, c.tela, c.resto]) assert.match(M.arquivos[f] || "", /^[0-9a-f]{64}$/, "hash no manifesto: " + f);
+    for (const f of [c.arquivo, c.tela]) assert.match(M.arquivos[f] || "", /^[0-9a-f]{64}$/, "hash no manifesto: " + f);
     assert.match(c.render, /LibreOffice Calc .*Xvfb.*capturar_planilha\.py/);
   }
   assert.ok(spec.provas.some((p) => p.captura === P.manual_topo.arquivo), "manual: recorte real do topo da capa");
-  // v3.6: rodapés (abaixo de y=1470) são trechos reais do material, registrados como captura com hash
-  for (const r of Object.values(P.rodapes)) { assert.ok(spec.provas.some((p) => p.captura === r.arquivo && p.largura === 1080)); assert.match(M.arquivos[r.arquivo] || "", /^[0-9a-f]{64}$/); }
+  // v3.7: sem rodapé com texto abaixo de y=1470 (júri real 8,5: "texto miúdo na área da interface")
+  assert.equal(P.rodapes, undefined);
   const q = readTextNormalized("scripts/shorts-v3/quadros.py");
   assert.doesNotMatch(q, /1900 - hb/, "barras decorativas fixas removidas");
   assert.match(q, /def tela\(/);

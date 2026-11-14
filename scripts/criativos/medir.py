@@ -194,7 +194,9 @@ for a in achados:
     prova.append({"captura": a["captura"], "correlacao": round(a["best"], 3), "quadro": a["validos"][0][0] if ok else None, "exclusiva": ok})
     if a["valor"]:
         altura = max([_le(a, i, c) for i, c in a["validos"]] or [0])
-        legiveis.append({"captura": a["captura"], "valor": a["valor"], "altura_px": altura, "legivel": altura >= ALTURA_VALOR_MIN})
+        legiveis.append({"captura": a["captura"], "valor": a["valor"], "altura_px": altura, "legivel": altura >= ALTURA_VALOR_MIN,
+                         # diagnóstico: todos os casamentos (quadro, correlação, válido no lugar, altura lida)
+                         "tentativas": [[i, round(v, 3), (i, c) in a["validos"], _le(a, i, c)] for i, c, v in a["caixas"]][:12]})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
     dentro = lambda r: any(_da_captura(g, r["x"], r["y"], r["w"], r["h"]) >= 0.9 for g in regioes[i])

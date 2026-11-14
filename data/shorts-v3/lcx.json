@@ -23,7 +23,7 @@
    "quadro": "venda"
   },
   {
-   "texto": "O produto e o frete custaram cento e trinta e dois.",
+   "texto": "Com produto e frete, foram cento e trinta e dois.",
    "quadro": "conta-1"
   },
   {
@@ -108,14 +108,6 @@
   {
    "captura": "assets/shorts-v3/lcx/manual-topo.png",
    "largura": 876
-  },
-  {
-   "captura": "assets/shorts-v3/lcx/rodape-modulo.png",
-   "largura": 1080
-  },
-  {
-   "captura": "assets/shorts-v3/lcx/rodape-capa.png",
-   "largura": 1080
   }
  ],
  "manifesto": "assets/shorts-v3/lcx/manifesto.json"
