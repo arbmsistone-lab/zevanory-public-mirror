@@ -29,3 +29,14 @@ test('v3: legenda julgada pelo efeito visível — grupo de 3 palavras na tela >
  assert.deepEqual(gruposCurtosV3(curto,[3,3,1],1),['3:0.20']);
  assert.deepEqual(gruposCurtosV3(w([[0,.1],[.1,.1]]),[2],0.2),['0:0.20']);
 });
+// NC-1048-01: o arquivo de legendas GERADO não pode ter destaque invisível; palavra instantânea => grupo estável.
+test('v3: no .ass gerado todo evento dura >= 0,12 s e toda palavra aparece destacada; tempos do alinhador intactos',async()=>{const {legendasV3,DESTAQUE_MIN_S}=await import('../scripts/shorts-v3/render.mjs');
+ const ws=[['Sua',0,.2],['loja',.2,.2],['vende',.2,.9],['mas',1,1.3],['o',1.3,1.5],['caixa',1.5,2]].map(([word,start,end])=>({word,start,end}));
+ const ass=legendasV3(ws,[3,3]),sec=x=>{const [h,m,s]=x.split(':');return +h*3600+ +m*60+ +s;};
+ const ev=ass.split('\n').filter(l=>l.startsWith('Dialogue:')).map(l=>{const c=l.split(',');return {ini:sec(c[1]),fim:sec(c[2]),txt:l.split(',,0,0,0,,')[1]};});
+ for(const e of ev)assert.ok(e.fim-e.ini>=DESTAQUE_MIN_S-1e-9,'evento curto: '+JSON.stringify(e));
+ const g1=ev.filter(e=>/Sua/.test(e.txt));assert.equal(g1.length,1,'grupo com palavra instantânea vira 1 evento estável');
+ assert.equal(g1[0].ini,0);assert.equal(g1[0].fim,1);assert.match(g1[0].txt,/^\{\\pos\(470,1380\)\}\{\\c&H000AD6FF&\}Sua loja vende$/);
+ const g2=ev.filter(e=>/caixa/.test(e.txt));assert.equal(g2.length,3,'grupo sem instantânea mantém destaque palavra a palavra');
+ for(const w of ['mas','o','caixa'])assert.ok(g2.some(e=>e.txt.includes(`{\\c&H000AD6FF&}${w}{\\c&H00FFFFFF&}`)),w);
+ assert.deepEqual(ws.map(w=>[w.start,w.end]),[[0,.2],[.2,.2],[.2,.9],[1,1.3],[1.3,1.5],[1.5,2]]);});

@@ -47,6 +47,7 @@ export async function conferirNumeros(spec){
 // Grupos da legenda v3 (mesma divisão de legendasV3) que ficariam menos de `min` segundos na tela.
 export function gruposCurtosV3(words,porFala,fim,min=0.3){const g=[];let ini=0;for(const n of porFala){for(let a=ini;a<ini+n;a+=3)g.push(a);ini+=n;}
  return g.map((a,i)=>{const fimGrupo=i+1<g.length?words[g[i+1]].start:fim;return [a,fimGrupo-words[a].start];}).filter(([,d])=>!(d>=min)).map(([a,d])=>`${a}:${d.toFixed(2)}`);}
+export const DESTAQUE_MIN_S=0.12;
 export function legendasV3(words,porFala=[words.length]){
  const t=v=>{const cs=Math.round(v*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;};
  const clean=s=>String(s).trim().replace(/[{}\\\r\n]/g,'');
@@ -55,8 +56,16 @@ export function legendasV3(words,porFala=[words.length]){
  // Grupos nunca atravessam o fim de uma fala (frase): cada frase começa um grupo novo.
  for(const n of porFala){for(let g=ini;g<ini+n;g+=3)grupos.push([g,Math.min(g+3,ini+n)]);ini+=n;}
  if(ini!==words.length)throw Error('v3_legenda_contagem');
- for(const [a,b] of grupos){const grp=words.slice(a,b),g=a;for(let k=0;k<grp.length;k++){const w=grp[k],end=(grp[k+1]||words[b]||{start:w.end}).start;
-  ev.push(`Dialogue: 0,${t(w.start)},${t(Math.max(end,w.end))},G,,0,0,0,,{\\pos(470,1380)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+ for(const [a,b] of grupos){const grp=words.slice(a,b),fimGrupo=Math.max((words[b]||{start:grp.at(-1).end}).start,grp.at(-1).end);
+  const fins=grp.map((w,k)=>Math.max((grp[k+1]||words[b]||{start:w.end}).start,w.end));
+  // NC-1048-01: se o destaque de alguma palavra ficaria menos de DESTAQUE_MIN_S na tela (palavra instantânea do
+  // alinhador), o grupo inteiro aparece destacado de forma estável do início ao fim do grupo — nenhum tempo é inventado.
+  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1380)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
+  for(let k=0;k<grp.length;k++){const w=grp[k];
+  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1380)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+ // Garantia no arquivo gerado: nenhum evento de legenda com menos de DESTAQUE_MIN_S na tela.
+ const curto=ev.find(l=>{const c=l.split(','),x=v=>{const [h,m,q]=v.split(':');return +h*3600+ +m*60+ +q;};return x(c[2])-x(c[1])<DESTAQUE_MIN_S-0.015;});// folga de 1 centésimo do arredondamento do .ass
+ if(curto)throw Error('v3_legenda_evento_curto');
  return head+ev.join('\n')+'\n';
 }
 function pcmOf(file){return command('ffmpeg',['-v','error','-i',file,'-f','f32le','-ac','1','-ar','24000','pipe:1'],{buffer:true});}
