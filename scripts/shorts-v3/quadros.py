@@ -46,60 +46,82 @@ def rich(d, x, y, text, f, hl=(), color=TXT, lh=1.18, width=SAFE_R - 64):
         y += int(f.size * lh)
     return y
 N = spec["numeros"]; O = spec["oferta"]; brl = lambda v: "R$ " + f"{v:,}".replace(",", ".")
+# v3.1 (júri real 8,2 — run 43538539233): conteúdo ocupa toda a área útil acima da faixa da legenda falada, planilha
+# REAL em capturas grandes (LibreOffice pt-BR, 400 dpi), sem rótulos "ilustrativo", capa grande, textos longe da borda.
+# Faixa y 1280–1460 = legenda falada (render.mjs, \pos(470,1380)); abaixo de 1470 = interface do Shorts.
+CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1250
+def captura(d, nome, x, y, largura):
+    s = Image.open(CAP / nome).convert("RGB"); s = s.resize((largura, round(s.height * largura / s.width)), Image.LANCZOS)
+    d.rounded_rectangle((x - 8, y - 8, x + largura + 8, y + s.height + 8), 14, fill=(255, 255, 255)); d.im.paste(s, (x, y))
+    med["provaReal"] = True
+    return y + s.height + 8
 def q_gancho(d):
-    d.text((64, 300), "LOJA · " + O["nome"].upper(), font(40), BLUE)
-    y = rich(d, 64, 370, spec["falas"][0]["texto"], font(116), hl=("dinheiro", "desaparece?"))
-    y = rich(d, 64, y + 20, "Faça o teste com a sua última venda.", font(54), color=MUTED)
-    d.rounded_rectangle((64, y + 40, SAFE_R, y + 290), 36, fill=CARD)
-    d.text((110, y + 75), "Vendas do mês", font(44), MUTED); d.text((110, y + 135), "subindo", font(90), TXT)
-    d.text((560, y + 75), "Sobrou no caixa", font(44), MUTED); d.text((560, y + 135), "?", font(90), YEL)
+    d.text((64, 290), "LOJA · " + O["nome"].upper(), font(42), BLUE)
+    y = rich(d, 64, 350, spec["falas"][0]["texto"], font(112), hl=("dinheiro", "desaparece?"))
+    y = rich(d, 64, y + 10, "Faça o teste com a sua última venda.", font(54), color=MUTED)
+    top, meio = y + 40, (64 + SAFE_R) // 2
+    for x0, x1, rot, val, cor in ((64, meio - 14, "Vendas do mês", "↑", GREEN), (meio + 14, SAFE_R, "Sobrou no caixa", "?", YEL)):
+        d.rounded_rectangle((x0, top, x1, CB), 36, fill=CARD)
+        d.text((x0 + 36, top + 30), rot, font(44), MUTED)
+        d.text(((x0 + x1) // 2, (top + 80 + CB) // 2), val, font(min(170, CB - top - 110)), cor, anchor="mm")
 def q_venda(d):
-    d.text((64, 300), "PASSO 1", font(44), BLUE)
-    y = rich(d, 64, 370, "Pegue sua última venda.", font(108), hl=("última", "venda."))
-    r0 = y + 40; d.rounded_rectangle((150, r0, 850, r0 + 560), 24, fill=(245, 247, 250))
+    d.text((64, 290), "PASSO 1", font(46), BLUE)
+    y = rich(d, 64, 350, "Pegue sua última venda.", font(108), hl=("última", "venda."))
+    r0 = y + 40
+    d.rounded_rectangle((64, r0, SAFE_R, CB), 32, fill=(245, 247, 250))
+    d.text((120, r0 + 40), "EXEMPLO DE VENDA", font(42), (0, 120, 200))
     for k, (a, b) in enumerate([("Venda online", "Tênis"), ("Pagamento", "Cartão"), ("Data", "ontem")]):
-        yy = r0 + 70 + k * 110; d.text((200, yy), a, font(46), (90, 100, 120)); d.text((800, yy), b, font(46), (20, 28, 40), anchor="ra")
-    d.line((200, r0 + 420, 800, r0 + 420), fill=(200, 205, 215), width=3)
-    d.text((200, r0 + 450), "Total recebido", font(48), (20, 28, 40)); d.text((800, r0 + 450), brl(N["preco_venda"]), font(48), (0, 120, 200), anchor="ra")
-    d.text((150, r0 + 580), "comprovante ilustrativo · sem dados pessoais", font(34), MUTED)
+        yy = r0 + 120 + k * 92; d.text((120, yy), a, font(52), (90, 100, 120)); d.text((SAFE_R - 56, yy), b, font(52), (20, 28, 40), anchor="ra")
+    d.line((120, CB - 135, SAFE_R - 56, CB - 135), fill=(200, 205, 215), width=4)
+    d.text((120, CB - 100), "Total recebido", font(58), (20, 28, 40)); d.text((SAFE_R - 56, CB - 112), brl(N["preco_venda"]), font(80), (0, 120, 200), anchor="ra")
 def q_conta(d, etapa):
-    d.text((64, 300), "A CONTA DE VERDADE", font(44), BLUE)
+    d.text((64, 290), "A CONTA DE VERDADE", font(46), BLUE)
     rows = [("Recebeu", brl(N["preco_venda"]), TXT), ("Produto + frete", "− " + brl(N["custo_produto_frete"]), RED), (f"Taxa do cartão ({N['taxa_cartao_pct']}%)", "− " + brl(N["taxa_cartao"]), RED)]
-    yy = 380
-    for i, (a, b, c) in enumerate(rows[:min(len(rows), etapa + 1)]):
-        d.rounded_rectangle((64, yy, SAFE_R, yy + 190), 30, fill=CARD); d.text((104, yy + 30), a, font(46), MUTED); d.text((104, yy + 88), b, font(84), c); yy += 210
+    yy = 360
+    for i, (a, b, c) in enumerate(rows):
+        if i <= etapa:
+            d.rounded_rectangle((64, yy, SAFE_R, yy + 195), 32, fill=CARD); d.text((110, yy + 28), a, font(48), MUTED); d.text((110, yy + 88), b, font(90), c)
+        else:
+            d.rounded_rectangle((64, yy, SAFE_R, yy + 195), 32, outline=(45, 60, 85), width=4)
+        yy += 215
     if etapa >= 3:
-        d.rounded_rectangle((64, yy, SAFE_R, yy + 230), 30, fill=(10, 60, 40), outline=(40, 200, 120), width=4)
-        d.text((104, yy + 28), "Margem antes das despesas fixas", font(44), (150, 240, 190)); d.text((104, yy + 90), brl(N["margem_antes_fixas"]), font(110), GREEN)
+        d.rounded_rectangle((64, yy, SAFE_R, CB), 32, fill=(10, 60, 40), outline=(40, 200, 120), width=5)
+        d.text((110, yy + 28), "Margem antes das despesas fixas", font(48), (150, 240, 190)); d.text((110, CB - 30), brl(N["margem_antes_fixas"]), font(130), GREEN, anchor="ls")
+    else:
+        d.rounded_rectangle((64, yy, SAFE_R, CB), 32, outline=(45, 60, 85), width=4)
+        d.text(((64 + SAFE_R) // 2, (yy + CB) // 2), "sobra = ?", font(64), MUTED, anchor="mm")
 def q_planilha(d):
-    d.text((64, 300), "NA PLANILHA DO KIT", font(44), BLUE)
-    y0 = rich(d, 64, 360, "A margem aparece na hora.", font(80), hl=("margem",)) + 40
-    for k, seg in enumerate(["planilha-entradas.png", "planilha-resultados.png"]):
-        s = Image.open(ROOT / "assets/shorts-v3/lcx" / seg).convert("RGB"); s = s.resize((SAFE_R - 64, int(s.height * (SAFE_R - 64) / s.width)), Image.LANCZOS)
-        d.rounded_rectangle((60, y0 - 6, SAFE_R + 4, y0 + s.height + 6), 10, fill=(255, 255, 255)); d.im.paste(s, (64, y0)); y0 += s.height + 40
-    med["provaReal"] = True
-    d.text((64, y0 + 10), "captura real da planilha · exemplo ilustrativo", font(34), MUTED)
-    d.rounded_rectangle((64, y0 + 80, SAFE_R, y0 + 300), 36, fill=CARD, outline=BLUE, width=4)
-    d.text((104, y0 + 110), "Margem de contribuição", font(46), MUTED); d.text((104, y0 + 175), N["margem_pct"], font(100), TXT)
+    d.text((64, 290), "PLANILHA REAL DO KIT", font(46), BLUE)
+    y = rich(d, 64, 350, "A margem aparece na hora.", font(92), hl=("margem",)) + 30
+    y = captura(d, "planilha-resultados.png", 64, y, SAFE_R - 64) + 40
+    d.rounded_rectangle((64, y, SAFE_R, CB), 36, fill=CARD, outline=BLUE, width=5)
+    d.text((110, y + 30), "Margem de contribuição", font(50), MUTED); d.text((110, CB - 30), N["margem_pct"], font(min(150, CB - y - 110)), TXT, anchor="ls")
 def q_desconto(d):
-    d.text((64, 300), "NA PLANILHA DO KIT", font(44), BLUE)
-    y1 = rich(d, 64, 360, "O seu limite de desconto.", font(80), hl=("limite",)) + 40
-    for k, (a, b, c) in enumerate([(f"Preço mínimo p/ meta de {N['meta_margem_pct']}%", brl(N["preco_minimo"]), YEL), ("Desconto máximo", N["desconto_maximo"], RED)]):
-        yy = y1 + k * 320; d.rounded_rectangle((64, yy, SAFE_R, yy + 280), 36, fill=CARD)
-        d.text((104, yy + 35), a, font(46), MUTED); d.text((104, yy + 110), b, font(130), c)
-    med["provaReal"] = True
-    d.text((64, y1 + 640), "calculado pela planilha real do kit", font(34), MUTED)
+    d.text((64, 290), "PLANILHA REAL DO KIT", font(46), BLUE)
+    y = rich(d, 64, 350, "O seu limite de desconto.", font(92), hl=("limite",)) + 30
+    y = captura(d, "planilha-desconto.png", 64, y, SAFE_R - 64) + 40
+    meio = (64 + SAFE_R) // 2
+    for x0, x1, a, b, c in ((64, meio - 14, f"Preço mínimo p/ meta de {N['meta_margem_pct']}%", brl(N["preco_minimo"]), YEL), (meio + 14, SAFE_R, "Desconto máximo", N["desconto_maximo"], RED)):
+        d.rounded_rectangle((x0, y, x1, CB), 34, fill=CARD)
+        rich(d, x0 + 34, y + 26, a, font(42), color=MUTED, lh=1.12, width=x1 - x0 - 60)
+        d.text((x0 + 34, CB - 34), b, font(100), c, anchor="ls")
 def q_oferta(d, fase):
-    y = rich(d, 64, 300, O["beneficio"], font(84), hl=("margem",))
-    d.rounded_rectangle((64, y + 30, SAFE_R, y + 560), 40, fill=(14, 26, 44), outline=BLUE, width=5)
-    cv = Image.open(ROOT / O["capa"]).convert("RGB"); cv.thumbnail((210, 280)); d.im.paste(cv, (SAFE_R - 250, y + 70))
-    d.text((110, y + 70), O["nome"], font(80), TXT)
-    for k, t in enumerate(O["itens"]):
-        d.ellipse((110, y + 190 + k * 70, 136, y + 216 + k * 70), fill=GREEN); d.text((155, y + 180 + k * 70), t.split(" e ")[0].split(" semanal")[0], font(44), TXT)
-    if fase >= 1:
-        d.text((110, y + 420), brl(O["preco"]), font(100), YEL); d.text((470, y + 440), "pagamento único", font(38), MUTED); d.text((470, y + 485), "arrependimento em 7 dias", font(38), MUTED)
+    y = rich(d, 64, 290, O["beneficio"], font(88), hl=("margem",))
+    top, bot = y + 36, (1110 if fase >= 2 else CB)
+    d.rounded_rectangle((64, top, SAFE_R, bot), 40, fill=(14, 26, 44), outline=BLUE, width=5)
+    py = bot - 175
+    cv = Image.open(ROOT / O["capa"]).convert("RGB"); cv = cv.resize((300, round(cv.height * 300 / cv.width)), Image.LANCZOS)
+    d.im.paste(cv, (SAFE_R - 336, top + 30)); med["provaReal"] = True
+    d.text((104, top + 34), "Lucro &", font(80), TXT); d.text((104, top + 120), "Caixa", font(80), TXT)
+    if fase < 2:
+        for k, t in enumerate(O["itens"]):
+            yy = top + 240 + k * 66; d.ellipse((106, yy + 12, 132, yy + 38), fill=GREEN); d.text((150, yy), t.split(" e ")[0].split(" semanal")[0], font(44), TXT)
+    d.text((104, py), brl(O["preco"]), font(112), YEL)
+    if fase < 2:  # no quadro do CTA o preço fica sozinho (as condições já apareceram no quadro anterior)
+        for k, t in enumerate(("pagamento único", "arrependimento", "em 7 dias")):
+            d.text((520, py + 4 + k * 50), t, font(44), (205, 215, 232))
     if fase >= 2:
-        d.rounded_rectangle((64, y + 600, SAFE_R, y + 720), 60, fill=BLUE); d.text(((64 + SAFE_R) // 2, y + 660), "Link na descrição  ↓", font(62), BG, anchor="mm")
+        d.rounded_rectangle((64, 1130, SAFE_R, CB), 60, fill=BLUE); d.text(((64 + SAFE_R) // 2, 1190), "Link na descrição  ↓", font(62), BG, anchor="mm")
 quadros = {"gancho": q_gancho, "venda": q_venda, "conta-1": lambda d: q_conta(d, 1), "conta-2": lambda d: q_conta(d, 2), "conta-3": lambda d: q_conta(d, 3),
            "planilha": q_planilha, "desconto": q_desconto, "beneficio": lambda d: q_oferta(d, 0), "oferta": lambda d: q_oferta(d, 1), "cta": lambda d: q_oferta(d, 2)}
 falas = spec["falas"]; out = {}

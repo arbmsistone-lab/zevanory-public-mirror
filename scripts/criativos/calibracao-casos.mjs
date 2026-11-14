@@ -26,7 +26,7 @@ export function prepararCaso(caso,dir){
  mkdirSync(dir,{recursive:true});const s=spec();
  if(caso.v2){const d=join(ROOT,'docs/criativos/calibracao/v2-reprovado'),c=JSON.parse(readFileSync(join(d,'criativo.json'),'utf8'));
   const quadros=readdirSync(d).filter(f=>f.endsWith('.png')).sort().map(f=>{const t=join(dir,f);copyFileSync(join(d,f),t);return t;});
-  return {criativo:{sku:c.sku,falas:c.textos,oferta:{nome:'',preco:null}},quadros,provas:s.provas};}
+  return {criativo:{sku:c.sku,falas:c.textos,oferta:{nome:'',preco:null}},quadros,provas:s.provas,v2:true};}
  if(caso.mutar)caso.mutar(s);
  writeFileSync(join(dir,'spec.json'),JSON.stringify(s));
  const q=JSON.parse(py([join(ROOT,'scripts/shorts-v3/quadros.py'),ROOT,join(dir,'spec.json'),join(dir,'q')])).quadros;
@@ -39,4 +39,8 @@ export function medirCaso(prep,dir){
  writeFileSync(join(dir,'medir.json'),JSON.stringify({quadros:prep.quadros,provas:prep.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura}))}));
  return JSON.parse(py([join(ROOT,'scripts/criativos/medir.py'),join(dir,'medir.json')]));
 }
-export function quadrosJuri(prep,dir){return prep.quadros.map((f,i)=>{const p=join(dir,`juri-${i}.png`);py(['-c',"import sys;from PIL import Image;Image.open(sys.argv[1]).convert('RGB').resize((540,960)).save(sys.argv[2])",f,p]);return readFileSync(p);});}
+// O júri vê o quadro como ele aparece no vídeo: com a legenda falada na faixa y 1280–1460 (mesmo estilo de
+// render.mjs/legendasV3: Inter ExtraBold 74, contorno escuro, 1ª palavra em destaque). O v2 já traz a dele.
+const LEGENDA="import sys;from PIL import Image,ImageDraw,ImageFont;im=Image.open(sys.argv[1]).convert('RGB');t=sys.argv[3].split();f=ImageFont.truetype(sys.argv[4],74);d=ImageDraw.Draw(im)\nif t:\n w=[d.textlength(x+' ',font=f) for x in t];x=470-sum(w)/2\n for i,p in enumerate(t):d.text((x,1380),p,font=f,fill=(255,214,10) if i==0 else (255,255,255),stroke_width=6,stroke_fill=(9,13,20),anchor='lm');x+=w[i]\nim.resize((540,960)).save(sys.argv[2])";
+export function quadrosJuri(prep,dir){return prep.quadros.map((f,i)=>{const p=join(dir,`juri-${i}.png`),n=+(/quadro-(\d+)-/.exec(f)?.[1]||0),fala=prep.v2||!n?'':String(prep.criativo.falas[n-1]||'').split(/\s+/).slice(0,3).join(' ');
+ py(['-c',LEGENDA,f,p,fala,FONTE]);return readFileSync(p);});}
