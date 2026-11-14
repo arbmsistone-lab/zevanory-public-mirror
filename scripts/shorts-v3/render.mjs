@@ -131,9 +131,11 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  let alignment=null;
  if(align)alignment=await align(base+'-voz.wav',speech);
  else{
-  const porFrase=await alinharPorFrases({wav:base+'-voz.wav',falas:spec.falas.map(f=>f.texto),duracao:voiceDuration,base,note,deps:depsFrases()});
+  // o alinhamento inteiro é feito no máximo UMA vez: serve de guia de fronteiras (quando faltam pausas) e de reserva
+  const inteiro=async()=>{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);return JSON.parse(await readFile(base+'-alignment.json','utf8'));};
+  const porFrase=await alinharPorFrases({wav:base+'-voz.wav',falas:spec.falas.map(f=>f.texto),duracao:voiceDuration,base,note,deps:depsFrases(),inteiro});
   if(porFrase.ok)alignment=porFrase.alignment;
-  else{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
+  else alignment=porFrase.inteiro??await inteiro();
  }
  // Prévia real 43594272962 (voz mais calma): o modelo small deixou 5 palavras curtas instantâneas (início === fim).
  // A regra do v3 passa a ser pelo EFEITO VISÍVEL, não por contagem arbitrária: tempos exatamente do alinhador, no

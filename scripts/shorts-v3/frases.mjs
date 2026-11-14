@@ -89,6 +89,36 @@ export function escolherFronteiras({ silencios, duracao, falas }) {
   return { ok: true, cortes, esperados, escolhidas, pausas };
 }
 
+// Ensaio real 43637492214: nesta geração o TTS EMENDOU frases sem pausa (12 pausas medidas, só 3 depois de 15 s para 4
+// fronteiras) — pausa não é garantia de fronteira. Segunda via: o alinhamento do áudio INTEIRO (mesmo que tenha palavras
+// instantâneas no meio das frases) localiza onde cada fala termina e a seguinte começa; o corte cai na pausa medida
+// dentro dessa janela ou, sem pausa, no ponto de MENOR energia da janela. Nenhum tempo de palavra vem daqui: cada trecho
+// é realinhado só com o texto da sua fala e passa pelas mesmas validações (cobertura, contagem, ordem).
+export const JANELA_S = 0.3, PASSO_ENERGIA_S = 0.02;
+export function fronteirasPorAlinhamento({ palavras, falas, silencios, duracao, energia }) {
+  const tam = falas.map(f => f.split(/\s+/).filter(Boolean).length), total = tam.reduce((a, b) => a + b, 0);
+  if (!Array.isArray(palavras) || palavras.length !== total) return { ok: false, motivo: `inteiro_contagem:${palavras?.length ?? 0}/${total}` };
+  if (palavras.some(w => !Number.isFinite(w?.start) || !Number.isFinite(w?.end))) return { ok: false, motivo: 'inteiro_tempo_invalido' };
+  const cortes = []; let fimK = -1;
+  for (let k = 0; k < falas.length - 1; k++) {
+    fimK += tam[k]; const a = palavras[fimK].end, b = palavras[fimK + 1].start, ant = cortes.at(-1) ?? 0;
+    const lo = Math.max(Math.min(a, b) - JANELA_S, ant + TRECHO_MIN_S), hi = Math.min(Math.max(a, b) + JANELA_S, duracao - TRECHO_MIN_S);
+    if (!(hi > lo)) return { ok: false, motivo: `janela_vazia:${k + 1}` };
+    const pausas = silencios.filter(p => p.fim - p.ini >= SILENCIO_MIN_S && (p.ini + p.fim) / 2 >= lo && (p.ini + p.fim) / 2 <= hi);
+    let corte;
+    if (pausas.length) { const p = pausas.sort((x, y) => (y.fim - y.ini) - (x.fim - x.ini))[0]; corte = (p.ini + p.fim) / 2; }
+    else {
+      if (!energia) return { ok: false, motivo: `sem_pausa_nem_energia:${k + 1}` };
+      let melhor = Infinity;
+      for (let t = lo; t + PASSO_ENERGIA_S <= hi + 1e-9; t += PASSO_ENERGIA_S) { const e = energia(t, t + PASSO_ENERGIA_S); if (e < melhor) { melhor = e; corte = t + PASSO_ENERGIA_S / 2; } }
+    }
+    if (!(corte > ant)) return { ok: false, motivo: `corte_fora_de_ordem:${k + 1}` };
+    cortes.push(corte);
+  }
+  if (duracao - cortes.at(-1) < TRECHO_MIN_S) return { ok: false, motivo: `trecho_curto:${falas.length}` };
+  return { ok: true, cortes };
+}
+
 // Partição exata em amostras: [a0=0, a1, …, aN=total). Prova que soma = total e que não há lacuna nem sobreposição.
 export function particionar(totalAmostras, sr, cortes) {
   const idx = [0, ...cortes.map(c => Math.round(c * sr)), totalAmostras];
@@ -128,11 +158,22 @@ export function validarTrecho({ palavras, trecho, voz, final = false, energia = 
 // Orquestra: pausas -> fronteiras -> partição -> alinhamento por trecho -> eixo único -> validações.
 // deps: {silenciosDe(wav,dur), pcmDe(wav)->{amostras:Int16Array|Buffer, sr}, gravarTrecho(pcm, a, b, sr, arquivo),
 //        alinharTrecho(arquivo, texto) -> alignment JSON}
-export async function alinharPorFrases({ wav, falas, duracao, base, deps, note = () => {} }) {
-  const silencios = deps.silenciosDe(wav, duracao);
+export async function alinharPorFrases({ wav, falas, duracao, base, deps, note = () => {}, inteiro = null }) {
+  const silencios = deps.silenciosDe(wav, duracao), { amostras, sr } = deps.pcmDe(wav);
+  const energia = (a, b) => energiaDb(amostras, sr, a, b);
+  let cortes, alInteiro = null, via = 'pausas';
   const f = escolherFronteiras({ silencios, duracao, falas });
-  if (!f.ok) { note(`ALIGN_FRASES fallback ${f.motivo} pausas=${f.pausas || ''}`); return { ok: false, motivo: f.motivo }; }
-  const { amostras, sr } = deps.pcmDe(wav), trechos = particionar(amostras.length, sr, f.cortes);
+  if (f.ok) cortes = f.cortes;
+  else {
+    note(`ALIGN_FRASES pausas_insuficientes ${f.motivo} pausas=${f.pausas || ''}`);
+    if (!inteiro) { note('ALIGN_FRASES fallback ' + f.motivo); return { ok: false, motivo: f.motivo }; }
+    alInteiro = await inteiro(); via = 'alinhamento_inteiro';
+    const g = fronteirasPorAlinhamento({ palavras: alInteiro?.segments?.flatMap(x => x.words || []), falas, silencios, duracao, energia });
+    if (!g.ok) { note('ALIGN_FRASES fallback ' + g.motivo); return { ok: false, motivo: g.motivo, inteiro: alInteiro }; }
+    cortes = g.cortes;
+  }
+  const falha = motivo => { note('ALIGN_FRASES fallback ' + motivo); return { ok: false, motivo, inteiro: alInteiro }; };
+  const trechos = particionar(amostras.length, sr, cortes);
   const palavras = [];
   for (let k = 0; k < falas.length; k++) {
     const t = trechos[k], arq = `${base}-frase-${k + 1}.wav`; deps.gravarTrecho(amostras, t.a, t.b, sr, arq);
@@ -140,16 +181,16 @@ export async function alinharPorFrases({ wav, falas, duracao, base, deps, note =
     try {
       const al = await deps.alinharTrecho(arq, falas[k]), n = falas[k].split(/\s+/).filter(Boolean).length;
       local = alignedWords(al, falas[k], t.fim - t.inicio, { toleraDuracaoZero: k === falas.length - 1 ? 0 : Math.floor(n * 0.1) });
-    } catch (e) { const motivo = `frase_${k + 1}:${String(e.message || e).slice(0, 80)}`; note('ALIGN_FRASES fallback ' + motivo); return { ok: false, motivo }; }
+    } catch (e) { return falha(`frase_${k + 1}:${String(e.message || e).slice(0, 80)}`); }
     const globais = local.map(w => ({ ...w, start: w.start + t.inicio, end: w.end + t.inicio }));
-    const info = [], m = validarTrecho({ palavras: globais, trecho: t, voz: vozNoTrecho(silencios, t), final: k === falas.length - 1, energia: (a, b) => energiaDb(amostras, sr, a, b), info });
+    const info = [], m = validarTrecho({ palavras: globais, trecho: t, voz: vozNoTrecho(silencios, t), final: k === falas.length - 1, energia, info });
     if (info.length) note(`ALIGN_FRASES frase_${k + 1} ${info.join(' | ')}`);
-    if (m.length) { const motivo = `frase_${k + 1}:${m.join('+')}`; note('ALIGN_FRASES fallback ' + motivo); return { ok: false, motivo }; }
+    if (m.length) return falha(`frase_${k + 1}:${m.join('+')}`);
     palavras.push(...globais);
   }
   const esperado = falas.join(' ').split(/\s+/).filter(Boolean).length;
-  if (palavras.length !== esperado) { note('ALIGN_FRASES fallback contagem'); return { ok: false, motivo: 'contagem' }; }
-  for (let i = 1; i < palavras.length; i++) if (palavras[i].start < palavras[i - 1].end - 0.02) { note('ALIGN_FRASES fallback ordem'); return { ok: false, motivo: 'ordem' }; }
-  note(`ALIGN_FRASES ok trechos=${falas.length} cortes=${f.cortes.map(c => c.toFixed(2)).join(',')} pausas=${f.pausas}`);
-  return { ok: true, alignment: { segments: [{ words: palavras.map(w => ({ word: w.word, start: w.start, end: w.end })) }] }, cortes: f.cortes };
+  if (palavras.length !== esperado) return falha('contagem');
+  for (let i = 1; i < palavras.length; i++) if (palavras[i].start < palavras[i - 1].end - 0.02) return falha('ordem');
+  note(`ALIGN_FRASES ok via=${via} trechos=${falas.length} cortes=${cortes.map(c => c.toFixed(2)).join(',')} pausas=${f.pausas}`);
+  return { ok: true, alignment: { segments: [{ words: palavras.map(w => ({ word: w.word, start: w.start, end: w.end })) }] }, cortes, via, inteiro: alInteiro };
 }

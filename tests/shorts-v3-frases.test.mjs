@@ -1,7 +1,7 @@
 // v3.4 (NC-V34-02/03): alinhamento por frase com eixo único. B1–B6 sem ferramentas externas (a parte com ffmpeg real
 // está em tests/media/shorts-v2-media.test.mjs).
 import test from 'node:test';import assert from 'node:assert/strict';
-import {lerSilencios,escolherFronteiras,particionar,vozNoTrecho,validarTrecho,alinharPorFrases,energiaDb,CAUDA_DB} from '../scripts/shorts-v3/frases.mjs';
+import {lerSilencios,escolherFronteiras,particionar,vozNoTrecho,validarTrecho,alinharPorFrases,energiaDb,CAUDA_DB,fronteirasPorAlinhamento} from '../scripts/shorts-v3/frases.mjs';
 const FALAS=['Sua loja vende muito.','O caixa some.','Kit completo no link da descrição.'];
 // voz: fala 0–2,0 s | pausa 2,0–2,4 | fala 2,4–3,6 | pausa 3,6–4,0 | fala 4,0–6,4 | silêncio final 6,4–6,8
 const SIL=[{ini:2.0,fim:2.4},{ini:3.6,fim:4.0},{ini:6.4,fim:6.8}],DUR=6.8;
@@ -92,4 +92,32 @@ test('B8 (ensaios 43625938908/43635724926): sobra de 0,61 s no fim da pergunta s
  assert.match(validarTrecho({palavras,trecho:{inicio:0,fim:2.5},voz:{on:0,off:2.5},energia:(a,b)=>energiaDb(longa,sr,a,b)}).join(),/fim_da_fala_sem_palavra/);
  // fala final: a mesma regra, com o nome de motivo da fala final
  assert.match(validarTrecho({palavras,trecho:t,voz,final:true,energia:(a,b)=>energiaDb(semPalavra,sr,a,b)}).join(),/voz_final_ausente/);
+});
+test('B9 (ensaio 43637492214): TTS emenda frases sem pausa -> fronteiras guiadas pelo alinhamento inteiro + menor energia; realinha por trecho',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const falas=JSON.parse(await readFile(new URL('../data/shorts-v3/lcx.json',import.meta.url),'utf8')).falas.map(f=>f.texto);
+ const sr=1000,tam=falas.map(f=>f.split(/\s+/).length);
+ // linha do tempo real: 0,3 s de silêncio, cada palavra 0,3 s; entre falas, vale curto de 0,06 s (abaixo do mínimo de pausa)
+ let t=0.3;const inteiras=[],fronteiras=[],faixas=[];
+ falas.forEach((f,k)=>{const ini=t;for(const w of f.split(/\s+/)){inteiras.push({word:w,start:t,end:t+0.3});t+=0.3;}faixas.push([ini,t]);if(k<9){fronteiras.push(t+0.03);t+=0.06;}});
+ const dur=t+0.4,amostras=new Int16Array(Math.round(dur*sr));
+ for(const [a,b] of faixas)for(let i=Math.round(a*sr);i<Math.round(b*sr);i++)amostras[i]=8000*((i%7)-3)/3|0;
+ // só as 4 primeiras fronteiras têm pausa medida; o resto o TTS emendou
+ const silencios=[{ini:0,fim:0.3},...fronteiras.slice(0,4).map(c=>({ini:c-0.1,fim:c+0.1})),{ini:t,fim:dur}];
+ // alinhamento inteiro com instantâneas no meio das frases e as bordas um pouco deslocadas (±0,1 s)
+ const ruidoso=inteiras.map((w,i)=>i%11===5?{...w,end:w.start}:{...w,start:w.start+0.05,end:w.end-0.05});
+ const en=(a,b)=>energiaDb(amostras,sr,a,b);
+ const g=fronteirasPorAlinhamento({palavras:ruidoso,falas,silencios,duracao:dur,energia:en});
+ assert.equal(g.ok,true,g.motivo);g.cortes.forEach((c,k)=>assert.ok(Math.abs(c-fronteiras[k])<=0.04,`corte ${k+1}: ${c} ~ ${fronteiras[k]}`));
+ assert.match(fronteirasPorAlinhamento({palavras:ruidoso.slice(1),falas,silencios,duracao:dur,energia:en}).motivo,/inteiro_contagem/);
+ // orquestração: pausas insuficientes -> usa o inteiro UMA vez -> realinha cada trecho -> ok com via=alinhamento_inteiro
+ let chamadas=0;const notas=[];
+ const deps={silenciosDe:()=>silencios,pcmDe:()=>({amostras,sr}),gravarTrecho:()=>{},
+  alinharTrecho:async(arq,texto)=>{const k=+/frase-(\d+)/.exec(arq)[1]-1,ini=g.cortes[k-1]??0,base=inteiras.findIndex(w=>w===inteiras[tam.slice(0,k).reduce((a,b)=>a+b,0)]);
+   return {segments:[{words:inteiras.slice(base,base+tam[k]).map(w=>({word:w.word,start:w.start-ini,end:w.end-ini}))}]};}};
+ const r=await alinharPorFrases({wav:'x',falas,duracao:dur,base:'/tmp/b9',deps,note:m=>notas.push(m),inteiro:async()=>{chamadas++;return {segments:[{words:ruidoso}]};}});
+ assert.equal(r.ok,true,r.motivo);assert.equal(r.via,'alinhamento_inteiro');assert.equal(chamadas,1);
+ assert.equal(r.alignment.segments[0].words.length,inteiras.length);assert.ok(notas.some(n=>/pausas_insuficientes/.test(n)));
+ // sem o alinhamento inteiro disponível, falha fechada como antes
+ assert.equal((await alinharPorFrases({wav:'x',falas,duracao:dur,base:'/tmp/b9',deps})).ok,false);
 });
