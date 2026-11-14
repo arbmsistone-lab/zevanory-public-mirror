@@ -11,10 +11,19 @@ import {STYLE} from '../shorts-v2/core.mjs';
 import {writeFileSync,readFileSync} from 'node:fs';
 import {alinharPorFrases,lerSilencios,SILENCIO_DB,SILENCIO_MIN_S} from './frases.mjs';
 // Prévia real 43601408721: o pedido de voz "mais calma" piorou o alinhamento (7 palavras instantâneas e grupo final
-// com 0 s). Volta ao estilo original; a velocidade é corrigida no áudio pronto (VOZ_ATEMPO), antes do alinhamento.
+// com 0 s). Volta ao estilo original; a velocidade é corrigida no áudio pronto (atempoVoz), antes do alinhamento.
 export const ESTILO_V3=STYLE;
-export const VOZ_ATEMPO=0.95;
-export const FILTRO_VOZ_V3=`highpass=f=80,atempo=${VOZ_ATEMPO},deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100`;
+// Ensaio real 43625938908: com atempo FIXO 0,95 a voz saiu a 185,94 ppm (limite 185) — o TTS varia de ritmo a cada
+// geração (outra prévia: 188,3 sem atempo). O fator agora é MEDIDO por geração: converte a voz bruta, mede a duração
+// (ffprobe) e escolhe o atempo que leva o ritmo a PPM_ALVO sem passar de VOZ_DURACAO_MAX_S nem descer de ATEMPO_MIN.
+// Só desacelera (≤ 1). O critério do quality() (140–185 ppm) não muda; o resultado continua medido no WAV final.
+export const PPM_ALVO=176,VOZ_DURACAO_MAX_S=34.5,ATEMPO_MIN=0.85;
+export function atempoVoz(palavras,duracaoBruta){
+ if(!(palavras>0)||!(duracaoBruta>0))throw Error('v3_atempo_entrada_invalida');
+ const ppm=palavras/duracaoBruta*60;let a=Math.min(1,PPM_ALVO/ppm);a=Math.max(a,duracaoBruta/VOZ_DURACAO_MAX_S,ATEMPO_MIN);
+ return Math.round(Math.min(1,a)*10000)/10000;
+}
+export const filtroVozV3=a=>{if(!(a>=ATEMPO_MIN&&a<=1))throw Error('v3_atempo_fora_da_faixa');return `highpass=f=80,atempo=${a},deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100`;};
 export function duracaoAudio(arquivo,run=command){const d=Number(JSON.parse(run('ffprobe',['-v','error','-show_entries','format=duration','-of','json',arquivo])).format?.duration);if(!(d>0))throw Error('v3_duracao_voz_invalida');return d;}
 import {CTA,alignedWords,shortTiming,licensedTrack,assertVoice,quality} from '../shorts-v2/core.mjs';
 import {avaliar,permitidosDaProveniencia,precosOficiais,registrarDecisao} from '../criativos/avaliador.mjs';
@@ -109,7 +118,10 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  await writeFile(base+'.pcm',generated.pcm);await writeFile(base+'-roteiro.txt',speech);
  let clipping=false;for(let i=0;i+1<generated.pcm.length;i+=2)if(Math.abs(generated.pcm.readInt16LE(i))>=32760){clipping=true;break;}
  // Mesma cadeia do v2, mas o loudnorm da voz em DUAS passagens (prévia real: voice_loudness e ducking fora do alvo).
- command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af',FILTRO_VOZ_V3,'-c:a','pcm_s16le',base+'-voz-tratada.wav']);
+ command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-c:a','pcm_s16le',base+'-voz-bruta.wav']);
+ const nPalavras=speech.split(/\s+/).filter(Boolean).length,duracaoBruta=duracaoAudio(base+'-voz-bruta.wav'),atempo=atempoVoz(nPalavras,duracaoBruta);
+ note(`VOZ_V3 palavras=${nPalavras} duracaoBruta=${duracaoBruta.toFixed(2)} ppmBruto=${(nPalavras/duracaoBruta*60).toFixed(2)} atempo=${atempo}`);
+ command('ffmpeg',['-y','-i',base+'-voz-bruta.wav','-af',filtroVozV3(atempo),'-c:a','pcm_s16le',base+'-voz-tratada.wav']);
  normalizeTwoPass(base+'-voz-tratada.wav',base+'-voz.wav',{I:-16,TP:-1.5,LRA:7});
  // NC-1052-01: a duração vem do WAV EFETIVAMENTE processado (o atempo muda a duração); usada no alinhamento, nas
  // cenas, nas legendas, na composição e nas métricas.
@@ -127,7 +139,6 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  // A regra do v3 passa a ser pelo EFEITO VISÍVEL, não por contagem arbitrária: tempos exatamente do alinhador, no
  // máximo 10% das palavras instantâneas, e todo grupo de legenda (até 3 palavras, nunca atravessa frase) na tela por
  // pelo menos 0,30 s. Se algum grupo ficaria curto demais, reprova.
- const nPalavras=speech.split(/\s+/).filter(Boolean).length;
  const words=alignedWords(alignment,speech,voiceDuration,{toleraDuracaoZero:Math.floor(nPalavras*0.1)});
  const curtos=gruposCurtosV3(words,spec.falas.map(f=>f.texto.split(/\s+/).filter(Boolean).length),voiceDuration);
  if(curtos.length)throw Error('v3_legenda_grupo_curto:'+curtos.slice(0,3).join(','));
