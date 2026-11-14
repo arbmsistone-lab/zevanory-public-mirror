@@ -12,6 +12,18 @@
 import {alignedWords} from '../shorts-v2/core.mjs';
 
 export const SILENCIO_DB = -35, SILENCIO_MIN_S = 0.12, TRECHO_MIN_S = 0.6, COBERTURA_MAX_S = 0.6;
+// Ensaios reais 43625938908 (0,60 s) e 43635724926 (0,61 s): na fala 1, que termina em pergunta ("…desaparece?"), o
+// TTS alonga e deixa DECAIR o fim; o silencedetect (−35 dB) conta o decaimento como voz e a cobertura reprovava por
+// 0,01 s. Uma palavra perdida é fala com volume de fala; um decaimento é bem mais baixo. Por isso, quando a sobra
+// passa de COBERTURA_MAX_S, mede-se a ENERGIA da sobra (RMS) contra a da fala alinhada do mesmo trecho: só é aceita
+// como cauda se ficar ≥ CAUDA_DB abaixo e não passar de CAUDA_MAX_S. Os números vão para o log.
+export const CAUDA_DB = 10, CAUDA_MAX_S = 1.2;
+export function energiaDb(amostras, sr, ini, fim) {
+  const a = Math.max(0, Math.round(ini * sr)), b = Math.min(amostras.length, Math.round(fim * sr));
+  if (!(b > a)) return -Infinity;
+  let q = 0; for (let i = a; i < b; i++) q += amostras[i] * amostras[i];
+  return 10 * Math.log10(q / (b - a) / (32768 * 32768) + 1e-12);
+}
 
 // silencedetect -> [{ini, fim}] (segundos). Silêncio aberto no fim do áudio fecha na duração.
 export function lerSilencios(stderr, duracao) {
@@ -94,12 +106,21 @@ export function vozNoTrecho(silencios, t) {
 }
 
 // Valida um trecho já deslocado para o eixo global.
-export function validarTrecho({ palavras, trecho, voz, final = false }) {
+export function validarTrecho({ palavras, trecho, voz, final = false, energia = null, info = [] }) {
   const m = [];
   if (!palavras.length) return ['trecho_sem_palavras'];
   if (palavras.some(w => w.start < trecho.inicio - 1e-6 || w.end > trecho.fim + 1e-6)) m.push('palavra_fora_do_trecho');
-  if (palavras[0].start - voz.on > COBERTURA_MAX_S) m.push(`inicio_da_fala_sem_palavra:${(palavras[0].start - voz.on).toFixed(2)}`);
-  if (voz.off - palavras.at(-1).end > COBERTURA_MAX_S) m.push(`${final ? 'voz_final_ausente' : 'fim_da_fala_sem_palavra'}:${(voz.off - palavras.at(-1).end).toFixed(2)}`);
+  const fala = energia ? energia(palavras[0].start, palavras.at(-1).end) : null;
+  // sobra além do limite: só passa se for cauda (energia ≥ CAUDA_DB abaixo da fala alinhada) e curta
+  const cauda = (ini, fim) => {
+    if (!energia || fim - ini > CAUDA_MAX_S) return false;
+    const e = energia(ini, fim), ok = Number.isFinite(fala) && e <= fala - CAUDA_DB;
+    info.push(`sobra=${(fim - ini).toFixed(2)}s ${Number.isFinite(e) ? e.toFixed(1) : '-inf'}dB fala=${Number.isFinite(fala) ? fala.toFixed(1) : '-inf'}dB ${ok ? 'cauda' : 'voz'}`);
+    return ok;
+  };
+  const gIni = palavras[0].start - voz.on, gFim = voz.off - palavras.at(-1).end;
+  if (gIni > COBERTURA_MAX_S && !cauda(voz.on, palavras[0].start)) m.push(`inicio_da_fala_sem_palavra:${gIni.toFixed(2)}`);
+  if (gFim > COBERTURA_MAX_S && !cauda(palavras.at(-1).end, voz.off)) m.push(`${final ? 'voz_final_ausente' : 'fim_da_fala_sem_palavra'}:${gFim.toFixed(2)}`);
   if (final && palavras.some(w => !(w.end > w.start))) m.push('fala_final_com_palavra_instantanea');
   return m;
 }
@@ -121,7 +142,8 @@ export async function alinharPorFrases({ wav, falas, duracao, base, deps, note =
       local = alignedWords(al, falas[k], t.fim - t.inicio, { toleraDuracaoZero: k === falas.length - 1 ? 0 : Math.floor(n * 0.1) });
     } catch (e) { const motivo = `frase_${k + 1}:${String(e.message || e).slice(0, 80)}`; note('ALIGN_FRASES fallback ' + motivo); return { ok: false, motivo }; }
     const globais = local.map(w => ({ ...w, start: w.start + t.inicio, end: w.end + t.inicio }));
-    const m = validarTrecho({ palavras: globais, trecho: t, voz: vozNoTrecho(silencios, t), final: k === falas.length - 1 });
+    const info = [], m = validarTrecho({ palavras: globais, trecho: t, voz: vozNoTrecho(silencios, t), final: k === falas.length - 1, energia: (a, b) => energiaDb(amostras, sr, a, b), info });
+    if (info.length) note(`ALIGN_FRASES frase_${k + 1} ${info.join(' | ')}`);
     if (m.length) { const motivo = `frase_${k + 1}:${m.join('+')}`; note('ALIGN_FRASES fallback ' + motivo); return { ok: false, motivo }; }
     palavras.push(...globais);
   }

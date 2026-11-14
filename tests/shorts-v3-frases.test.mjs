@@ -1,7 +1,7 @@
 // v3.4 (NC-V34-02/03): alinhamento por frase com eixo único. B1–B6 sem ferramentas externas (a parte com ffmpeg real
 // está em tests/media/shorts-v2-media.test.mjs).
 import test from 'node:test';import assert from 'node:assert/strict';
-import {lerSilencios,escolherFronteiras,particionar,vozNoTrecho,validarTrecho,alinharPorFrases} from '../scripts/shorts-v3/frases.mjs';
+import {lerSilencios,escolherFronteiras,particionar,vozNoTrecho,validarTrecho,alinharPorFrases,energiaDb,CAUDA_DB} from '../scripts/shorts-v3/frases.mjs';
 const FALAS=['Sua loja vende muito.','O caixa some.','Kit completo no link da descrição.'];
 // voz: fala 0–2,0 s | pausa 2,0–2,4 | fala 2,4–3,6 | pausa 3,6–4,0 | fala 4,0–6,4 | silêncio final 6,4–6,8
 const SIL=[{ini:2.0,fim:2.4},{ini:3.6,fim:4.0},{ini:6.4,fim:6.8}],DUR=6.8;
@@ -77,4 +77,19 @@ test('B7 (ensaio 43624128303): pausas de dois-pontos DENTRO das falas mais longa
  const semUma=S.filter(s=>Math.abs((s.ini+s.fim)/2-reais[4])>1e-9);
  assert.equal(escolherFronteiras({silencios:semUma,duracao:DUR,falas}).ok,false);
  assert.match(escolherFronteiras({silencios:semUma,duracao:DUR,falas}).pausas,/^\d/,'diagnóstico das pausas medidas vai para o log');
+});
+test('B8 (ensaios 43625938908/43635724926): sobra de 0,61 s no fim da pergunta só passa se for CAUDA (energia baixa); fala perdida reprova',()=>{
+ const sr=16000,seg=(n,amp)=>Array.from({length:Math.round(n*sr)},(_,i)=>Math.round(amp*Math.sin(i/sr*2*Math.PI*180)));
+ // fala 0–1,0 s em volume de fala; depois 0,7 s de decaimento (−26 dB abaixo) ou de fala de verdade (palavra perdida)
+ const comCauda=Int16Array.from([...seg(1.0,9000),...seg(0.7,450)]),semPalavra=Int16Array.from([...seg(1.0,9000),...seg(0.7,8500)]);
+ const t={inicio:0,fim:1.7},voz={on:0,off:1.7},palavras=[{word:'Sua',start:0,end:0.4},{word:'desaparece?',start:0.45,end:1.0}];
+ assert.ok(energiaDb(comCauda,sr,1.0,1.7)<=energiaDb(comCauda,sr,0,1.0)-CAUDA_DB);
+ const info=[];assert.deepEqual(validarTrecho({palavras,trecho:t,voz,energia:(a,b)=>energiaDb(comCauda,sr,a,b),info}),[]);assert.match(info[0],/cauda/);
+ assert.match(validarTrecho({palavras,trecho:t,voz,energia:(a,b)=>energiaDb(semPalavra,sr,a,b)}).join(),/fim_da_fala_sem_palavra:0\.70/,'sobra com volume de fala = palavra perdida');
+ assert.match(validarTrecho({palavras,trecho:t,voz}).join(),/fim_da_fala_sem_palavra/,'sem medida de energia não há presunção de cauda');
+ // cauda longa demais (> CAUDA_MAX_S) reprova mesmo com energia baixa
+ const longa=Int16Array.from([...seg(1.0,9000),...seg(1.5,450)]);
+ assert.match(validarTrecho({palavras,trecho:{inicio:0,fim:2.5},voz:{on:0,off:2.5},energia:(a,b)=>energiaDb(longa,sr,a,b)}).join(),/fim_da_fala_sem_palavra/);
+ // fala final: a mesma regra, com o nome de motivo da fala final
+ assert.match(validarTrecho({palavras,trecho:t,voz,final:true,energia:(a,b)=>energiaDb(semPalavra,sr,a,b)}).join(),/voz_final_ausente/);
 });
