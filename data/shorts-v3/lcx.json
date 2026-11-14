@@ -70,6 +70,10 @@
  "slug": "lucro-e-caixa",
  "provas": [
   {
+   "captura": "assets/shorts-v3/lcx/planilha-entradas.png",
+   "largura": 876
+  },
+  {
    "captura": "assets/shorts-v3/lcx/planilha-resultados.png",
    "largura": 876
   },

@@ -28,6 +28,12 @@ def base(progress):
     g.ellipse((-300, 1100, 700, 2100), fill=(0, 70, 110)); g.ellipse((600, -200, 1500, 700), fill=(30, 40, 90))
     im = Image.blend(im, glow.filter(ImageFilter.GaussianBlur(160)), 0.55)
     m = mark.resize((84, 70)); im.paste(m, (64, 74), m.convert("L").point(lambda v: 255 if v > 70 else 0))
+    # v3.3 (júri real 9,1 — run 43600430291): a faixa abaixo de y=1470 (interface do Shorts) não fica preta e vazia:
+    # gráfico de barras decorativo da marca, sem texto (nada essencial; a medição de área segura continua valendo).
+    dd = D(im)
+    for k, (hb, cor) in enumerate(zip((150, 230, 190, 300, 260, 360), ((22, 52, 92), (26, 60, 104), (22, 52, 92), (26, 66, 112), (22, 56, 98), (30, 74, 124)))):
+        x0 = 84 + k * 156; dd.rounded_rectangle((x0, 1900 - hb, x0 + 110, 1900), 18, fill=cor)
+    dd.line((64, 1902, 1016, 1902), fill=(40, 70, 110), width=4)
     d = D(im); d.text((170, 84), "ZEVANORY", font(50), TXT)
     d.rounded_rectangle((64, 170, SAFE_R, 182), 6, fill=(35, 45, 62)); d.rounded_rectangle((64, 170, 64 + int((SAFE_R - 64) * progress), 182), 6, fill=BLUE)
     return im, d
@@ -91,12 +97,12 @@ def q_conta(d, etapa):
             d.text((110, y0), a, font(54), MUTED); d.text((110, y0 + 84), b, font(fv), c)
             yy += h + gap
         return
-    d.rounded_rectangle((64, 360, SAFE_R, 640), 30, fill=CARD)  # resumo compacto da conta
-    for k, (a, b, c) in enumerate(rows):
-        yy = 388 + k * 82; d.text((104, yy), a, font(48), MUTED); d.text((SAFE_R - 44, yy), b, font(56), c, anchor="ra")
-    d.rounded_rectangle((64, 670, SAFE_R, CB), 40, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
-    d.text((110, 710), "Sobram", font(66), (150, 240, 190))
-    d.text(((64 + SAFE_R) // 2, 960), brl(N["margem_antes_fixas"]), font(250), GREEN, anchor="mm")
+    # entradas REAIS da planilha (preço, custos e taxa da mesma linha TEN-01) no lugar do resumo desenhado
+    d.text((64, 350), "NA PLANILHA REAL DO KIT", font(40), MUTED)
+    y = captura(d, "planilha-entradas.png", 64, 410, SAFE_R - 64) + 30
+    d.rounded_rectangle((64, y, SAFE_R, CB), 40, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
+    d.text((110, y + 36), "Sobram", font(66), (150, 240, 190))
+    d.text(((64 + SAFE_R) // 2, (y + 120 + CB - 110) // 2), brl(N["margem_antes_fixas"]), font(230), GREEN, anchor="mm")
     d.text(((64 + SAFE_R) // 2, CB - 60), "antes das despesas fixas", font(52), (150, 240, 190), anchor="ms")
 def q_planilha(d):
     d.text((64, 290), "PLANILHA REAL DO KIT", font(46), BLUE)
