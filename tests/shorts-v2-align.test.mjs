@@ -116,6 +116,29 @@ test("nenhuma das nove válida: grava a última e o verificador reprova", () => 
   const r = run(all);
   assert.match(r.stdout, /modelo_small_sem_pulo invalid duracao_zero/); assert.equal(r.json.segments[0].words[0].end, 0.5);
 });
+// Prévia real 43538541704: base deixou 1 instantânea (@11), small outra (@54). Sem tentativa perfeita, grava a de MENOS
+// palavras instantâneas (só esse problema), sem alterar tempos; v3 aceita até 3, v2 reprova.
+test("nenhuma perfeita: grava a tentativa com menos palavras instantâneas e informa a escolha", () => {
+  const duas = [["Kit", 0.5, 0.5], ["completo", 0.9, 0.9], ["agora", 0.9, 1.3]];
+  const contagem = [["Kit", 0, 0.4], ["completo", 0.4, 0.9]];
+  const r = run({ default: duas, fast: contagem, nosup: instant });
+  assert.match(r.stdout, /ALIGN_ESCOLHA sem_supressao_de_silencio instantaneas=1/);
+  assert.equal(r.json.fake_options.suppress_silence, false);
+  assert.deepEqual(r.json.segments[0].words.map((w) => [w.start, w.end]), instant.map(([, s, e]) => [s, e]), "tempos do alinhador, sem ajuste");
+  const so_contagem = run({ default: contagem });
+  assert.doesNotMatch(so_contagem.stdout, /ALIGN_ESCOLHA/, "outro tipo de problema nunca é escolhido como 'melhor'");
+});
+test("core: v2 reprova palavra instantânea; v3 tolera até N exatas, nunca invertidas nem outro problema", async () => {
+  const { alignedWords } = await import("../scripts/shorts-v2/core.mjs");
+  const al = (rows) => ({ segments: [{ words: rows.map(([word, start, end]) => ({ word, start, end })) }] });
+  assert.throws(() => alignedWords(al(instant), "Kit completo agora", 2), /duracao_zero@0/);
+  assert.equal(alignedWords(al(instant), "Kit completo agora", 2, { toleraDuracaoZero: 3 }).length, 3);
+  const tres = [["Kit", 0.5, 0.5], ["completo", 0.9, 0.9], ["agora", 1.3, 1.3]];
+  assert.throws(() => alignedWords(al(tres), "Kit completo agora", 2, { toleraDuracaoZero: 2 }), /duracao_zero/, "acima do limite");
+  assert.throws(() => alignedWords(al([["Kit", 0.6, 0.5], ["completo", 0.6, 0.9], ["agora", 0.9, 1.3]]), "Kit completo agora", 2, { toleraDuracaoZero: 3 }), /duracao_zero/, "fim antes do início nunca é tolerado");
+  assert.throws(() => alignedWords(al([["Kit", 0.5, 0.5], ["completa", 0.5, 0.9], ["agora", 0.9, 1.3]]), "Kit completo agora", 2, { toleraDuracaoZero: 3 }), /palavra@1/);
+  assert.throws(() => alignedWords(al([["Kit", 0.5, 0.5], ["completo", 0.5, 0.9], ["agora", 0.9, 2.5]]), "Kit completo agora", 2, { toleraDuracaoZero: 3 }), /apos_fim/);
+});
 test("opção não suportada pela versão instalada: registra erro e segue para a próxima", () => {
   const r = run({ raise: "default", fast: ok });
   assert.match(r.stdout, /ALIGN_ATTEMPT padrao_min_word_dur erro TypeError[\s\S]*fast_mode ok/);
@@ -137,5 +160,5 @@ test("render: falha do alinhador publica as linhas ALIGN_ATTEMPT antes de lança
 });
 test("alignAttemptLines aceita CRLF e descarta qualquer outra linha", async () => {
   const { alignAttemptLines } = await import("../scripts/shorts-v2/render.mjs");
-  assert.deepEqual(alignAttemptLines("x\r\nALIGN_ATTEMPT vad ok\r\nTraceback palavra secreta\r\nALIGN_ATTEMPT refinado none"), ["ALIGN_ATTEMPT vad ok", "ALIGN_ATTEMPT refinado none"]);
+  assert.deepEqual(alignAttemptLines("x\r\nALIGN_ATTEMPT vad ok\r\nTraceback palavra secreta\r\nALIGN_ATTEMPT refinado none\r\nALIGN_ESCOLHA vad instantaneas=1"), ["ALIGN_ATTEMPT vad ok", "ALIGN_ATTEMPT refinado none", "ALIGN_ESCOLHA vad instantaneas=1"]);
 });

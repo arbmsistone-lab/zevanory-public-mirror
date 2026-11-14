@@ -12,6 +12,9 @@ Prévia real v3 de 13/11/2026 (run 43533242090): "venda: um tênis" deu duracao_
 O artigo curto logo após a pausa do ":" cai na borda do trecho de não-fala que o alinhador pula (nonspeech_skip),
 então acrescentamos, DEPOIS das cinco existentes, configurações reais que não pulam a não-fala e o modelo "small"
 (DTW de atenção mais fino; carregado só se as anteriores falharem, sem custo de API). Continua sem nenhum tempo nosso.
+Prévia real seguinte (run 43538541704): base deixou "um"@11 instantânea e small deixou "E"@54; nenhuma ficou perfeita.
+Se nenhuma tentativa passar, gravamos a que tiver SÓ palavras instantâneas (início == fim) e o menor número delas; o
+v3 (legenda por frase) aceita até 3 delas sem alterar tempos; o v2 continua reprovando qualquer uma.
 """
 import json, math, sys, unicodedata, wave
 from pathlib import Path
@@ -68,6 +71,22 @@ def issue(result, duration, expected):
     return None
 
 
+def instantaneas(result, duration, expected):
+    """Quantas palavras têm início == fim, se esse for o ÚNICO tipo de problema; senão None."""
+    words = [w for s in (getattr(result, "segments", None) or []) for w in (getattr(s, "words", None) or [])]
+    if not words or len(words) != len(expected):
+        return None
+    n = 0
+    for i, w in enumerate(words):
+        text, start, end = getattr(w, "word", None), getattr(w, "start", None), getattr(w, "end", None)
+        if not isinstance(text, str) or normalized(text) != expected[i] or not (number(start) and number(end)) or start < 0:
+            return None
+        if end > duration or (i and start < words[i - 1].end - 0.02) or end < start:
+            return None
+        n += end == start
+    return n
+
+
 def valid(result, duration, expected):
     return issue(result, duration, expected) is None
 
@@ -95,7 +114,7 @@ def main(audio, script, out):
     text = Path(script).read_text(encoding="utf-8")
     duration = audio_seconds(audio)
     expected = expected_words(text)
-    last, state = None, {}
+    last, state, best = None, {}, None
     for name, run in attempts(model, audio, text, state):
         try:
             result = run()
@@ -113,8 +132,15 @@ def main(audio, script, out):
             result.save_as_json(out)
             return
         print("ALIGN_ATTEMPT " + name + " invalid " + problem, flush=True)
+        n = instantaneas(result, duration, expected)
+        if n is not None and (best is None or n < best[0]):
+            best = (n, name, result)
     if last is None:
         raise SystemExit("alignment_failed")
+    if best is not None:
+        print("ALIGN_ESCOLHA %s instantaneas=%d" % (best[1], best[0]), flush=True)
+        best[2].save_as_json(out)
+        return
     last.save_as_json(out)  # o verificador reprova e informa o motivo
 
 
