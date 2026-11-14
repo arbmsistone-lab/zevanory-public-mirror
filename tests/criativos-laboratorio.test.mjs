@@ -183,6 +183,15 @@ test("proveniência (NC-R05, adversarial): números permitidos só vêm da plani
   writeFileSync(join(d, "man2.json"), JSON.stringify({ arquivos: { [spec.proveniencia_numeros]: M.arquivos[spec.proveniencia_numeros] } }));
   await assert.rejects(() => conferirManifesto({ ...spec, manifesto: rel("man2.json") }), /v3_manifesto_sem/, "captura fora do manifesto");
   await assert.rejects(() => conferirManifesto({ ...spec, manifesto: undefined }), /v3_manifesto_ausente/);
+  // v3.4 cruzamento: cada célula exibida = célula registrada na proveniência = número da planilha formatado pt-BR.
+  const { conferirCelulas, formatarCelula } = await import("../scripts/shorts-v3/render.mjs");
+  assert.equal(formatarCelula("pct", 0.216666666666667), "21,7%"); assert.equal(formatarCelula("brl", 39), "R$ 39,00"); assert.equal(formatarCelula("x", 1), null);
+  conferirCelulas(spec, P);
+  for (const [i, k, v] of [[2, "valor", "21,6%"], [1, "celula", "J6"], [0, "valor", "R$ 181,00"], [3, "captura", "assets/shorts-v3/lcx/outra.png"]]) {
+    const t = structuredClone(spec); t.provas[i][k] = v; assert.throws(() => conferirCelulas(t, P), /v3_celula_sem_proveniencia/, `${k}=${v}`);
+  }
+  const P2 = structuredClone(P); P2.resultados_calculados_pela_planilha["Margem contribuição %"] = 0.2;
+  assert.throws(() => conferirCelulas(spec, P2), /v3_celula_sem_proveniencia/, "planilha com outro resultado");
 });
 test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BLOQUEADO com relatório", async () => {
   assert.equal(MAX_TENTATIVAS, 3);

@@ -30,7 +30,8 @@
    "celula": "E5",
    "cabecalho": "Preço atual",
    "valor_exibido": "R$ 180,00",
-   "render": "LibreOffice headless pt-BR, área de impressão E3:E5, 300 dpi, recorte sem alteração de pixels"
+   "render": "LibreOffice headless pt-BR, área de impressão E3:E5, 300 dpi, recorte sem alteração de pixels",
+   "formato": "brl"
   },
   "taxa": {
    "arquivo": "assets/shorts-v3/lcx/celula-taxa.png",
@@ -38,7 +39,8 @@
    "celula": "F5",
    "cabecalho": "Taxa pagamento %",
    "valor_exibido": "5,0%",
-   "render": "LibreOffice headless pt-BR, área de impressão F3:F5, 300 dpi, recorte sem alteração de pixels"
+   "render": "LibreOffice headless pt-BR, área de impressão F3:F5, 300 dpi, recorte sem alteração de pixels",
+   "formato": "pct"
   },
   "contribuicao": {
    "arquivo": "assets/shorts-v3/lcx/celula-contribuicao.png",
@@ -46,7 +48,8 @@
    "celula": "J5",
    "cabecalho": "Contribuição/unit.",
    "valor_exibido": "R$ 39,00",
-   "render": "LibreOffice headless pt-BR, área de impressão J3:J5, 300 dpi, recorte sem alteração de pixels"
+   "render": "LibreOffice headless pt-BR, área de impressão J3:J5, 300 dpi, recorte sem alteração de pixels",
+   "formato": "brl"
   },
   "margem": {
    "arquivo": "assets/shorts-v3/lcx/celula-margem.png",
@@ -54,7 +57,8 @@
    "celula": "K5",
    "cabecalho": "Margem contribuição %",
    "valor_exibido": "21,7%",
-   "render": "LibreOffice headless pt-BR, área de impressão K3:K5, 300 dpi, recorte sem alteração de pixels"
+   "render": "LibreOffice headless pt-BR, área de impressão K3:K5, 300 dpi, recorte sem alteração de pixels",
+   "formato": "pct"
   },
   "desconto": {
    "arquivo": "assets/shorts-v3/lcx/celula-desconto.png",
@@ -62,7 +66,8 @@
    "celula": "M5",
    "cabecalho": "Desconto máx. p/ margem alvo",
    "valor_exibido": "2,2%",
-   "render": "LibreOffice headless pt-BR, área de impressão M3:M5, 300 dpi, recorte sem alteração de pixels"
+   "render": "LibreOffice headless pt-BR, área de impressão M3:M5, 300 dpi, recorte sem alteração de pixels",
+   "formato": "pct"
   }
  }
 }

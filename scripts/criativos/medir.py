@@ -4,7 +4,10 @@ declara: lê o texto de cada quadro com OCR (tesseract, por), calcula a menor al
 área segura do YouTube Shorts, detecta quadro vazio e procura as capturas reais do produto por correlação de imagem.
 Uso: python3 -I medir.py <entrada.json>   (entrada: {"quadros":[png...], "provas":[{"captura":png,"largura":px renderizados}...]})
 Saída (stdout): JSON {"quadros":[{texto, palavras, altura_min, fora}], "medidas":{...}}."""
-import json, subprocess, sys
+import json, os, subprocess, sys
+# O interpretador roda com -P (sem a pasta do script no path); o módulo irmão confiável é incluído explicitamente.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from valor_ocr import ler_valor
 import numpy as np
 from PIL import Image
 SAFE_R, SAFE_B, TOP = 940, 1470, 250
@@ -118,13 +121,8 @@ def valor_na_captura(im, box, valor):
     """NC-V34-01/A2: OCR SÓ da região onde a captura real foi encontrada no quadro; procura o valor esperado da
     proveniência (parte numérica) e mede a altura dele. Número desenhado fora da captura não conta."""
     x, y, w, h = box; c = im.crop((x, y, x + w, y + h)).convert("L").resize((2 * w, 2 * h), Image.LANCZOS); import io; b = io.BytesIO(); c.save(b, "PNG")
-    alvo = norm(valor.replace("R$", ""))
-    if not alvo: return 0
-    achados = [r for psm in ("6", "11") for r in _tess(b.getvalue(), 2, psm) if r["conf"] >= 60 and alvo in norm(r["t"])]
-    # Passe só de dígitos (a fonte Lato da planilha faz o "7" virar "/" no OCR geral). Com o alfabeto restrito o
-    # tesseract não informa confiança útil; por isso aqui só vale o token IDÊNTICO ao valor esperado.
-    achados += [r for r in _tess(b.getvalue(), 2, "11", digitos=True) if norm(r["t"]) == alvo]
-    return (max(r["h"] for r in achados) if achados else 0)
+    png = b.getvalue()
+    return ler_valor([r for psm in ("6", "11") for r in _tess(png, 2, psm)], _tess(png, 2, "11", digitos=True), valor)
 for pv in cfg.get("provas", []):
     t, larg = (pv["captura"], pv["largura"]) if isinstance(pv, dict) else (pv, 876)
     valor = pv.get("valor") if isinstance(pv, dict) else None; melhor_altura = 0

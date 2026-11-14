@@ -35,7 +35,16 @@ export async function conferirManifesto(spec){
  if(typeof spec.manifesto!=='string')throw Error('v3_manifesto_ausente');
  const M=JSON.parse(await readFile(noRepo(spec.manifesto),'utf8')),req=[spec.proveniencia_numeros,...spec.provas.map(p=>p.captura).filter(p=>p.startsWith('assets/shorts-v3/'))];
  for(const f of req){const h=M.arquivos?.[f];if(!h)throw Error('v3_manifesto_sem:'+f);const bruto=await readFile(noRepo(f)),real=createHash('sha256').update(/\.json$/.test(f)?Buffer.from(bruto.toString('utf8').replace(/\r\n/g,'\n')):bruto).digest('hex');if(real!==h)throw Error('v3_proveniencia_adulterada:'+f);}
- return JSON.parse(await readFile(noRepo(spec.proveniencia_numeros),'utf8'));
+ const P=JSON.parse(await readFile(noRepo(spec.proveniencia_numeros),'utf8'));conferirCelulas(spec,P);return P;
+}
+// v3.4 (cruzamento): cada prova com valor tem de ser uma célula registrada na proveniência (mesmo arquivo, mesma célula,
+// mesmo valor exibido) e o valor exibido tem de ser o número da planilha, formatado em pt-BR, pelo cabeçalho da coluna.
+export function formatarCelula(formato,v){if(!Number.isFinite(v)||!['pct','brl'].includes(formato))return null;return formato==='pct'?(Math.round(v*1000)/10).toFixed(1).replace('.',',')+'%':'R$ '+v.toFixed(2).replace('.',',');}
+export function conferirCelulas(spec,P){
+ for(const p of spec.provas.filter(x=>x.valor!==undefined)){
+  const c=Object.values(P.celulas||{}).find(x=>x?.arquivo===p.captura),num=c&&({...P.entradas,...P.resultados_calculados_pela_planilha})[c.cabecalho];
+  if(!c||c.celula!==p.celula||c.valor_exibido!==p.valor||c.aba!==P.aba||formatarCelula(c.formato,num)!==p.valor)throw Error('v3_celula_sem_proveniencia:'+p.captura);
+ }
 }
 export async function conferirNumeros(spec){
  const N=spec.numeros,P=await conferirManifesto(spec),E=P.entradas,R=P.resultados_calculados_pela_planilha,motivos=[];
