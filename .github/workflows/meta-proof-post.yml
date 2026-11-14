@@ -27,8 +27,10 @@ jobs:
       META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
       META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
       INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
-      META_PROOF_STATE_PATH: ${{ runner.temp }}/meta-proof-dec23/state.json
     steps:
+      # O contexto runner não existe no env do job (o GitHub recusa o dispatch com 422); o caminho vai pelo GITHUB_ENV.
+      - name: Define the reservation state path
+        run: echo "META_PROOF_STATE_PATH=$RUNNER_TEMP/meta-proof-dec23/state.json" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
