@@ -1,7 +1,7 @@
 // Shorts v3.4 — alinhamento POR FRASE com eixo de tempo único (proposta v3.4, NC-V34-02/03).
 // Prévias reais 43601408721 e 43608351238: alinhando os ~32 s de voz de uma vez, o stable-ts deixou 7–8 palavras
 // instantâneas e as últimas ("…link da descrição") em 0 s no fim do áudio. Aqui:
-//  1. as pausas são MEDIDAS no próprio WAV (silencedetect); exigem-se exatamente N−1 fronteiras entre as N falas;
+//  1. as pausas são MEDIDAS no próprio WAV (silencedetect); escolhem-se N−1 delas como fronteiras (atribuição ordenada);
 //  2. cada fronteira escolhida precisa cair perto do ponto esperado pelo roteiro (proporção de sílabas) — senão não
 //     há prova de que a pausa separa as falas certas, e o render volta ao alinhamento inteiro (falha fechada lá);
 //  3. o corte é feito em ÍNDICES DE AMOSTRA do mesmo PCM: os trechos são uma partição exata (sem perda, sem
@@ -27,25 +27,54 @@ export function lerSilencios(stderr, duracao) {
 
 const silabas = t => (String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').match(/[aeiouy]+/g) || []).length || 1;
 
-// Escolhe as N−1 fronteiras e prova que batem com o roteiro. Retorna {ok, cortes:[seg], esperados, motivo}.
+// Escolhe as N−1 fronteiras e prova que batem com o roteiro. Retorna {ok, cortes:[seg], esperados, motivo, pausas}.
+// Ensaio real 43624128303: o TTS pausa em dois-pontos/vírgulas DENTRO das falas ("venda:", "máximo:", "Caixa:") às
+// vezes mais do que entre falas; escolher "as N−1 pausas mais longas" trocou uma fronteira real por uma pausa interna
+// e deslocou todas as seguintes (fronteira_incompativel:5:17.94~14.68). Agora a escolha é uma ATRIBUIÇÃO ORDENADA
+// ótima (programação dinâmica): a fronteira k só pode usar uma pausa perto do ponto esperado, e o ponto esperado é
+// recalculado a partir da fronteira anterior escolhida (ritmo local, sem deriva acumulada). Custo = desvio
+// normalizado − bônus pela duração da pausa (fim de frase tende a ser a pausa mais longa da vizinhança).
+export const BONUS_PAUSA = 0.3, PAUSA_REF_S = 0.6, TOL_FRAC = 0.3, TOL_MIN_S = 0.8;
 export function escolherFronteiras({ silencios, duracao, falas }) {
   const n = falas.length;
   const internos = silencios.filter(s => s.ini > 0.05 && s.fim < duracao - 0.05 && s.fim - s.ini >= SILENCIO_MIN_S);
-  if (internos.length < n - 1) return { ok: false, motivo: `pausas_insuficientes:${internos.length}<${n - 1}` };
-  const escolhidas = [...internos].sort((a, b) => (b.fim - b.ini) - (a.fim - a.ini)).slice(0, n - 1).sort((a, b) => a.ini - b.ini);
-  // Fala útil = do fim do silêncio inicial ao início do silêncio final; o ponto esperado de cada fronteira segue a
-  // proporção de sílabas do roteiro. Tolerância: 30% da fala adjacente mais curta, no mínimo 0,8 s.
+  const pausas = internos.map(s => `${s.ini.toFixed(2)}-${s.fim.toFixed(2)}`).join(',');
+  if (internos.length < n - 1) return { ok: false, motivo: `pausas_insuficientes:${internos.length}<${n - 1}`, pausas };
   const ini0 = silencios.find(s => s.ini <= 0.05)?.fim ?? 0, fimU = silencios.find(s => s.fim >= duracao - 0.05)?.ini ?? duracao;
-  const sil = falas.map(silabas), total = sil.reduce((a, b) => a + b, 0), util = fimU - ini0;
-  const durEsp = sil.map(s => util * s / total); let acc = ini0; const esperados = [];
-  for (let k = 0; k < n - 1; k++) { acc += durEsp[k]; esperados.push(acc); }
+  const sil = falas.map(silabas), resto = sil.map((_, k) => sil.slice(k).reduce((a, b) => a + b, 0));
+  const meio = internos.map(s => (s.ini + s.fim) / 2), m = internos.length;
+  // esperado da fronteira k (fim da fala k) partindo de "de": a fala k ocupa a sua fração de sílabas do que resta.
+  const passo = (de, k) => { const d = (fimU - de) * sil[k] / resto[k]; return { esp: de + d, tol: Math.max(TOL_MIN_S, TOL_FRAC * d) }; };
+  const custo = (j, e) => Math.abs(meio[j] - e.esp) / e.tol - BONUS_PAUSA * Math.min(1, (internos[j].fim - internos[j].ini) / PAUSA_REF_S);
+  let dp = new Map([[-1, { c: 0, cad: [] }]]); const esperados = [];
   for (let k = 0; k < n - 1; k++) {
-    const meio = (escolhidas[k].ini + escolhidas[k].fim) / 2, tol = Math.max(0.8, 0.3 * Math.min(durEsp[k], durEsp[k + 1]));
-    if (Math.abs(meio - esperados[k]) > tol) return { ok: false, motivo: `fronteira_incompativel:${k + 1}:${meio.toFixed(2)}~${esperados[k].toFixed(2)}`, esperados };
+    const prox = new Map(); let melhorFalha = null;
+    for (const [i, st] of dp) {
+      const e = passo(i < 0 ? ini0 : meio[i], k); if (i < 0) esperados[k] = e.esp;
+      for (let j = i + 1; j <= m - (n - 1 - k); j++) {
+        const dev = Math.abs(meio[j] - e.esp);
+        if (dev > e.tol) { if (!melhorFalha || dev < melhorFalha.dev) melhorFalha = { dev, j, esp: e.esp }; continue; }
+        const c = st.c + custo(j, e);
+        if (!prox.has(j) || c < prox.get(j).c) prox.set(j, { c, cad: [...st.cad, j] });
+      }
+    }
+    if (!prox.size) {
+      const f = melhorFalha, onde = f ? `${meio[f.j].toFixed(2)}~${f.esp.toFixed(2)}` : 'sem_pausa';
+      return { ok: false, motivo: `fronteira_incompativel:${k + 1}:${onde}`, esperados, pausas };
+    }
+    dp = prox;
   }
-  const cortes = escolhidas.map(s => (s.ini + s.fim) / 2), limites = [0, ...cortes, duracao];
-  for (let k = 0; k < n; k++) if (limites[k + 1] - limites[k] < TRECHO_MIN_S) return { ok: false, motivo: `trecho_curto:${k + 1}` };
-  return { ok: true, cortes, esperados, escolhidas };
+  // A última fala (do último corte ao fim da voz) também precisa caber no ritmo: mesmo critério da transição.
+  let melhor = null;
+  for (const [i, st] of dp) {
+    const de = i < 0 ? ini0 : meio[i], dEsp = (fimU - ini0) * sil[n - 1] / resto[0], dReal = fimU - de;
+    if (Math.abs(dReal - dEsp) > Math.max(TOL_MIN_S, 0.5 * dEsp)) continue;
+    if (!melhor || st.c < melhor.c) melhor = st;
+  }
+  if (!melhor) return { ok: false, motivo: `fronteira_incompativel:${n}:fala_final_fora_do_ritmo`, esperados, pausas };
+  const escolhidas = melhor.cad.map(j => internos[j]), cortes = melhor.cad.map(j => meio[j]), limites = [0, ...cortes, duracao];
+  for (let k = 0; k < n; k++) if (limites[k + 1] - limites[k] < TRECHO_MIN_S) return { ok: false, motivo: `trecho_curto:${k + 1}`, pausas };
+  return { ok: true, cortes, esperados, escolhidas, pausas };
 }
 
 // Partição exata em amostras: [a0=0, a1, …, aN=total). Prova que soma = total e que não há lacuna nem sobreposição.
@@ -81,7 +110,7 @@ export function validarTrecho({ palavras, trecho, voz, final = false }) {
 export async function alinharPorFrases({ wav, falas, duracao, base, deps, note = () => {} }) {
   const silencios = deps.silenciosDe(wav, duracao);
   const f = escolherFronteiras({ silencios, duracao, falas });
-  if (!f.ok) { note('ALIGN_FRASES fallback ' + f.motivo); return { ok: false, motivo: f.motivo }; }
+  if (!f.ok) { note(`ALIGN_FRASES fallback ${f.motivo} pausas=${f.pausas || ''}`); return { ok: false, motivo: f.motivo }; }
   const { amostras, sr } = deps.pcmDe(wav), trechos = particionar(amostras.length, sr, f.cortes);
   const palavras = [];
   for (let k = 0; k < falas.length; k++) {
@@ -99,6 +128,6 @@ export async function alinharPorFrases({ wav, falas, duracao, base, deps, note =
   const esperado = falas.join(' ').split(/\s+/).filter(Boolean).length;
   if (palavras.length !== esperado) { note('ALIGN_FRASES fallback contagem'); return { ok: false, motivo: 'contagem' }; }
   for (let i = 1; i < palavras.length; i++) if (palavras[i].start < palavras[i - 1].end - 0.02) { note('ALIGN_FRASES fallback ordem'); return { ok: false, motivo: 'ordem' }; }
-  note(`ALIGN_FRASES ok trechos=${falas.length} cortes=${f.cortes.map(c => c.toFixed(2)).join(',')}`);
+  note(`ALIGN_FRASES ok trechos=${falas.length} cortes=${f.cortes.map(c => c.toFixed(2)).join(',')} pausas=${f.pausas}`);
   return { ok: true, alignment: { segments: [{ words: palavras.map(w => ({ word: w.word, start: w.start, end: w.end })) }] }, cortes: f.cortes };
 }

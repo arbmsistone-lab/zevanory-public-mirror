@@ -50,3 +50,31 @@ test('B6: o v2 não usa o alinhamento por frase',async()=>{
  assert.doesNotMatch(readTextNormalized('scripts/shorts-v2/render.mjs'),/frases\.mjs|alinharPorFrases/);
  assert.match(readTextNormalized('scripts/shorts-v3/render.mjs'),/alinharPorFrases\(/);
 });
+test('B7 (ensaio 43624128303): pausas de dois-pontos DENTRO das falas mais longas que as fronteiras reais não deslocam os cortes',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const falas=JSON.parse(await readFile(new URL('../data/shorts-v3/lcx.json',import.meta.url),'utf8')).falas.map(f=>f.texto);
+ assert.equal(falas.length,10);
+ const sil=t=>(t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').match(/[aeiouy]+/g)||[]).length;
+ // ritmo irregular por fala (TTS real varia ±25%), fronteiras reais curtas (0,22–0,40 s) e pausas internas longas
+ // (0,55–0,70 s) logo após os dois-pontos/vírgula de "venda:", "máximo:", "Caixa:" e "reais,".
+ const ritmo=[0.17,0.13,0.15,0.19,0.14,0.16,0.13,0.18,0.15,0.17],entre=[0.3,0.22,0.4,0.25,0.24,0.35,0.3,0.28,0.26];
+ const internas={1:['venda:',0.6],6:['máximo:',0.7],8:['Caixa:',0.55]};
+ let t=0.3;const S=[{ini:0,fim:0.3}],reais=[];
+ falas.forEach((f,k)=>{
+  const ws=f.split(/\s+/);
+  for(const w of ws){t+=sil(w)*ritmo[k];const i=internas[k];if(i&&w===i[0]){S.push({ini:t,fim:t+i[1]});t+=i[1];}
+   if(k===8&&w==='reais,'){S.push({ini:t,fim:t+0.5});t+=0.5;}}
+  if(k<9){S.push({ini:t,fim:t+entre[k]});reais.push(t+entre[k]/2);t+=entre[k];}
+ });
+ const DUR=t+0.4;S.push({ini:t,fim:DUR});
+ const f=escolherFronteiras({silencios:S,duracao:DUR,falas});
+ assert.equal(f.ok,true,f.motivo);
+ assert.deepEqual(f.cortes.map(c=>+c.toFixed(3)),reais.map(c=>+c.toFixed(3)));
+ // e o critério antigo ("as 9 pausas mais longas") de fato erraria neste áudio:
+ const internosS=S.filter(s=>s.ini>0.05&&s.fim<DUR-0.05),top=[...internosS].sort((a,b)=>(b.fim-b.ini)-(a.fim-a.ini)).slice(0,9);
+ assert.ok(top.some(s=>!reais.some(r=>Math.abs((s.ini+s.fim)/2-r)<1e-9)),'cenário precisa reproduzir a falha original');
+ // sem a pausa real de uma fronteira (falas coladas), não há atribuição honesta: volta ao alinhamento inteiro
+ const semUma=S.filter(s=>Math.abs((s.ini+s.fim)/2-reais[4])>1e-9);
+ assert.equal(escolherFronteiras({silencios:semUma,duracao:DUR,falas}).ok,false);
+ assert.match(escolherFronteiras({silencios:semUma,duracao:DUR,falas}).pausas,/^\d/,'diagnóstico das pausas medidas vai para o log');
+});
