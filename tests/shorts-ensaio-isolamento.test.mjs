@@ -126,7 +126,13 @@ test('workflow do modo PR: a chave só existe nos jobs voz/júri (código do gh-
  for(const n of conf){const j=job(n);
   assert.doesNotMatch(j,/\n\s+ref: \$\{\{|ensaio-fases\.mjs|scripts\/shorts-v3/,n+': nunca faz checkout nem executa código do PR');
   assert.match(j,/persist-credentials: false/);}
- for(const n of ['voz','juri'])assert.match(job(n),/environment: ensaio-shorts-pr\n/);
+ for(const n of ['voz','juri']){const j=job(n);assert.match(j,/environment: ensaio-shorts-pr\n/);
+  // reauditoria GPT-6: reverificação confiável logo antes da chave (revogação, HEAD novo ou expiração durante a espera)
+  const r=j.indexOf('node scripts/ci/autorizar-ensaio.mjs'),dl=j.indexOf('actions/download-artifact'),k=j.indexOf('secrets.GEMINI_API_KEY');
+  assert.ok(r>0&&r<dl&&dl<k,n+': reverifica antes de baixar dados e antes da chave');
+  const passo=j.slice(j.lastIndexOf('- name:',r),r);assert.match(passo,/SHA_ENSAIO: \$\{\{ needs\.autorizar\.outputs\.sha \}\}/);assert.match(passo,/MODO_ENSAIO: pr/);
+  const passoChave=j.slice(j.lastIndexOf('- name:',k));assert.doesNotMatch(passoChave.slice(0,passoChave.indexOf('run:')),/GITHUB_TOKEN/,n+': token não vai ao passo com a chave');
+  assert.match(j,/pull-requests: read\n      issues: read\n      actions: read/);}
  assert.doesNotMatch(job('autorizar'),/secrets\.|environment:/);assert.match(job('autorizar'),/MODO_ENSAIO: pr/);
  assert.match(job('voz'),/node scripts\/ci\/ensaio-voz\.mjs/);assert.match(job('juri'),/node scripts\/ci\/ensaio-juri\.mjs/);
  assert.match(job('render'),/\^\(GEMI\[N\]I\|YOU\[T\]UBE/,'guarda: nenhuma credencial (nem Gemini, nem token) na máquina do PR');

@@ -4,6 +4,7 @@ name: Shorts ensaio por PR (sem publicacao)
 # do PR. Jobs (cada um numa maquina nova):
 #   autorizar (gh-pages, sem segredo) -> pedido (codigo do PR, sem segredo) -> voz (gh-pages + chave)
 #   -> render (codigo do PR, sem segredo) -> juri (gh-pages + chave).
+# voz e juri REVERIFICAM a autorizacao (PR, SHA, etiqueta, validade, environment, limite) logo antes de usar a chave.
 # Entre jobs so passam DADOS (artefatos): pedido de voz (JSON), voz (PCM), quadros (PNG) e pedido do juri (JSON).
 on:
   workflow_dispatch:
@@ -91,6 +92,9 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
+      issues: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -98,6 +102,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Re-verify authorization right before using the key (same PR, SHA, label, validity, environment, limit)
+        env:
+          SHA_ENSAIO: ${{ needs.autorizar.outputs.sha }}
+          MODO_ENSAIO: pr
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci/autorizar-ensaio.mjs
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ensaio-pedido
@@ -167,6 +177,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      pull-requests: read
+      issues: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -174,6 +187,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Re-verify authorization right before using the key (same PR, SHA, label, validity, environment, limit)
+        env:
+          SHA_ENSAIO: ${{ needs.autorizar.outputs.sha }}
+          MODO_ENSAIO: pr
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci/autorizar-ensaio.mjs
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ensaio-juri
