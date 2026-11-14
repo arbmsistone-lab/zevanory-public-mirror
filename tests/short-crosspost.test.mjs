@@ -9,7 +9,7 @@ const ok = j => ({ ok: true, status: 200, json: async () => j });
 test("without connections every channel waits honestly and nothing is recorded as published", async () => {
   const kv = memKv();
   const fetchImpl = async url => url.includes("tiktok-access") ? ok({ connected: false }) : ok({});
-  const r = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env: { TIKTOK_CLIENT_SECRET: "secret-123456789" }, kv, fetchImpl, sleep: async () => {} });
+  const r = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env: { TIKTOK_CLIENT_SECRET: ["secret", "123456789"].join("-") }, kv, fetchImpl, sleep: async () => {}, metaProva: { teste_permissao_ok: null, prova_instagram_media_id: null, prova_facebook_post_id: null, aprovado_por: null, aprovado_em: null } });
   assert.equal(r.tiktok, "waiting:tiktok_not_connected");
   // DEC-23: sem prova aprovada registrada, IG/FB ficam bloqueados antes de olhar credenciais.
   assert.equal(r.instagram, "bloqueado:dec23_sem_prova");
@@ -113,9 +113,13 @@ test("pack produces the executor command ZEVANORY e-mails to the owner: 2 per da
   for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}-dica\\.mp4`)); assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 12:00`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 19:00`)); }
   assert.match(cmd, /A tua marca/); assert.match(cmd, /Conteúdo gerado por IA/); assert.match(cmd, /Nunca publique na hora/);
 });
-test("NC-01 DEC-23: com META_* presentes e o registro padrão (nulo), 0 chamadas à Graph API e nada no KV; com prova aprovada, publica", async () => {
+test("NC-01 DEC-23: com META_* presentes e registro sem prova, 0 chamadas à Graph API e nada no KV; com prova aprovada, publica", async () => {
   const { META_PROVA, metaLiberada } = await import("../scripts/channels/short-crosspost.mjs");
-  assert.equal(metaLiberada(), false); assert.equal(META_PROVA.teste_permissao_ok, null); assert.equal(META_PROVA.aprovado_por, null);
+  // Registro aprovado pelo proprietário em 14/11/2026 (prova run 43598913328, conferida por ele no IG e no FB).
+  assert.equal(metaLiberada(), true);
+  assert.deepEqual([META_PROVA.prova_instagram_media_id, META_PROVA.prova_facebook_post_id, META_PROVA.aprovado_por, META_PROVA.aprovado_em], ["18143811337714194", "61593970292684_122134496505465676", "proprietario", "2026-11-14"]);
+  const SEM_PROVA = { teste_permissao_ok: null, prova_instagram_media_id: null, prova_facebook_post_id: null, aprovado_por: null, aprovado_em: null };
+  assert.equal(metaLiberada(SEM_PROVA), false);
   const env = { META_ACCESS_TOKEN: "tok", INSTAGRAM_BUSINESS_ACCOUNT_ID: "17", META_PAGE_ID: "99" };
   const graph = [];
   const fetchImpl = async (url, o = {}) => {
@@ -132,7 +136,7 @@ test("NC-01 DEC-23: com META_* presentes e o registro padrão (nulo), 0 chamadas
     return u.includes("tiktok-access") ? ok({ connected: false }) : ok({});
   };
   const kv = memKv();
-  const r = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {} });
+  const r = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, metaProva: SEM_PROVA });
   assert.equal(r.instagram, "bloqueado:dec23_sem_prova"); assert.equal(r.facebook, "bloqueado:dec23_sem_prova");
   assert.deepEqual(graph, [], "nenhuma chamada a graph.facebook.com nem graph-video.facebook.com");
   assert.equal([...kv.m.keys()].some((k) => /instagram|facebook/.test(k)), false);
