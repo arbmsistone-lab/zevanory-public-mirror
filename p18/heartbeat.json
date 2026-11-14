@@ -1,19 +1,19 @@
 {
   "schema": "zevanory.p18.heartbeat.v1",
-  "last_success_at": "2026-11-14T05:28:09.427Z",
-  "run_id": "43561457998",
-  "run_started_at": "2026-11-14T05:25:42.584Z",
-  "last_probe_at": "2026-11-14T05:28:08.726Z",
+  "last_success_at": "2026-11-14T05:31:20.446Z",
+  "run_id": "43561850883",
+  "run_started_at": "2026-11-14T05:30:36.377Z",
+  "last_probe_at": "2026-11-14T05:31:19.488Z",
   "up": false,
   "open_incident": "p18-2026-11-14T05:26:25.703Z",
   "stale_after_min": 15,
   "event": "workflow_dispatch",
-  "window_id": "p18w-20261114T0525Z",
-  "start_window_id": "p18w-20261114T0525Z",
+  "window_id": "p18w-20261114T0530Z",
+  "start_window_id": "p18w-20261114T0530Z",
   "dispatch_source": "cloudflare-cron",
-  "dispatched_at": "2026-11-14T05:25:25.353Z",
-  "dispatch_to_start_s": 17,
+  "dispatched_at": "2026-11-14T05:30:25.750Z",
+  "dispatch_to_start_s": 11,
   "cf_first_proof_at": "2026-10-26T19:00:33.688Z",
   "perf_state": "CRITICO",
-  "open_perf_incident": null
+  "open_perf_incident": "p18perf-2026-11-14T05:31:19.488Z"
 }
