@@ -181,6 +181,7 @@ tests/shorts-v2-round4.test.mjs 32
 tests/shorts-v2-round5.test.mjs 16
 tests/shorts-v2-timing.test.mjs 5
 tests/shorts-v2.test.mjs 26
+tests/shorts-v3-duracao-voz.test.mjs 1
 tests/shorts-voice-samples.test.mjs 5
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2
