@@ -8,6 +8,8 @@ import {dirname,join,isAbsolute} from 'node:path';
 import MANIFEST from '../../data/musica-licencas.json' with {type:'json'};
 import {command,runAligner,tts,audioMetrics,rmsDb,mixGraph,normalizeTwoPass} from '../shorts-v2/render.mjs';
 import {STYLE} from '../shorts-v2/core.mjs';
+import {writeFileSync,readFileSync} from 'node:fs';
+import {alinharPorFrases,lerSilencios,SILENCIO_DB,SILENCIO_MIN_S} from './frases.mjs';
 // Prévia real 43601408721: o pedido de voz "mais calma" piorou o alinhamento (7 palavras instantâneas e grupo final
 // com 0 s). Volta ao estilo original; a velocidade é corrigida no áudio pronto (VOZ_ATEMPO), antes do alinhamento.
 export const ESTILO_V3=STYLE;
@@ -48,10 +50,18 @@ export async function conferirNumeros(spec){
  if(R.Status!=='OK'||P.margem_alvo_config*100!==N.meta_margem_pct)motivos.push('planilha_status_ou_meta');
  return motivos;
 }
-// Grupos de até 3 palavras; a palavra falada fica amarela. Posição na área segura (centro x=470, y=1380).
+// Grupos de até 3 palavras; a palavra falada fica amarela. Posição na área segura (centro x=470, y=1240; v3.4).
 // Grupos da legenda v3 (mesma divisão de legendasV3) que ficariam menos de `min` segundos na tela.
 export function gruposCurtosV3(words,porFala,fim,min=0.3){const g=[];let ini=0;for(const n of porFala){for(let a=ini;a<ini+n;a+=3)g.push(a);ini+=n;}
  return g.map((a,i)=>{const fimGrupo=i+1<g.length?words[g[i+1]].start:fim;return [a,fimGrupo-words[a].start];}).filter(([,d])=>!(d>=min)).map(([a,d])=>`${a}:${d.toFixed(2)}`);}
+// Dependências reais do alinhamento por frase (ffmpeg/ffprobe e o mesmo align.py do áudio inteiro).
+export function depsFrases(run=command){return {
+ silenciosDe:(wav,dur)=>lerSilencios(run('ffmpeg',['-hide_banner','-nostats','-i',wav,'-af',`silencedetect=noise=${SILENCIO_DB}dB:d=${SILENCIO_MIN_S}`,'-f','null','-']),dur),
+ pcmDe:wav=>{const sr=Number(JSON.parse(run('ffprobe',['-v','error','-select_streams','a:0','-show_entries','stream=sample_rate','-of','json',wav])).streams?.[0]?.sample_rate);if(!(sr>0))throw Error('v3_frases_sr');
+  const buf=command('ffmpeg',['-v','error','-i',wav,'-f','s16le','-ac','1','-ar',String(sr),'pipe:1'],{buffer:true}),ab=new ArrayBuffer(buf.length-buf.length%2);new Uint8Array(ab).set(buf.subarray(0,ab.byteLength));return {amostras:new Int16Array(ab),sr};},
+ gravarTrecho:(amostras,a,b,sr,arq)=>{const raw=Buffer.from(amostras.buffer,amostras.byteOffset+a*2,(b-a)*2);const tmp=arq+'.pcm';writeFileSync(tmp,raw);run('ffmpeg',['-y','-v','error','-f','s16le','-ar',String(sr),'-ac','1','-i',tmp,'-c:a','pcm_s16le',arq]);},
+ alinharTrecho:async(arq,texto)=>{writeFileSync(arq+'.txt',texto);runAligner([arq,arq+'.txt',arq+'.json']);return JSON.parse(readFileSync(arq+'.json','utf8'));}
+};}
 export const DESTAQUE_MIN_S=0.12;
 export function legendasV3(words,porFala=[words.length]){
  const t=v=>{const cs=Math.round(v*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;};
@@ -65,9 +75,9 @@ export function legendasV3(words,porFala=[words.length]){
   const fins=grp.map((w,k)=>Math.max((grp[k+1]||words[b]||{start:w.end}).start,w.end));
   // NC-1048-01: se o destaque de alguma palavra ficaria menos de DESTAQUE_MIN_S na tela (palavra instantânea do
   // alinhador), o grupo inteiro aparece destacado de forma estável do início ao fim do grupo — nenhum tempo é inventado.
-  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1380)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
+  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1240)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
   for(let k=0;k<grp.length;k++){const w=grp[k];
-  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1380)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1240)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
  // Garantia no arquivo gerado: nenhum evento de legenda com menos de DESTAQUE_MIN_S na tela.
  const curto=ev.find(l=>{const c=l.split(','),x=v=>{const [h,m,q]=v.split(':');return +h*3600+ +m*60+ +q;};return x(c[2])-x(c[1])<DESTAQUE_MIN_S-0.015;});// folga de 1 centésimo do arredondamento do .ass
  if(curto)throw Error('v3_legenda_evento_curto');
@@ -93,7 +103,15 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  // NC-1052-01: a duração vem do WAV EFETIVAMENTE processado (o atempo muda a duração); usada no alinhamento, nas
  // cenas, nas legendas, na composição e nas métricas.
  const voiceDuration=duracaoAudio(base+'-voz.wav');
- let alignment;if(align)alignment=await align(base+'-voz.wav',speech);else{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
+ // v3.4: alinhamento por frase (pausas medidas, cortes em amostras, eixo único); se não houver prova de que as pausas
+ // separam as falas certas, volta ao alinhamento do áudio inteiro, que segue as validações de sempre.
+ let alignment=null;
+ if(align)alignment=await align(base+'-voz.wav',speech);
+ else{
+  const porFrase=await alinharPorFrases({wav:base+'-voz.wav',falas:spec.falas.map(f=>f.texto),duracao:voiceDuration,base,note,deps:depsFrases()});
+  if(porFrase.ok)alignment=porFrase.alignment;
+  else{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
+ }
  // Prévia real 43594272962 (voz mais calma): o modelo small deixou 5 palavras curtas instantâneas (início === fim).
  // A regra do v3 passa a ser pelo EFEITO VISÍVEL, não por contagem arbitrária: tempos exatamente do alinhador, no
  // máximo 10% das palavras instantâneas, e todo grupo de legenda (até 3 palavras, nunca atravessa frase) na tela por
@@ -138,7 +156,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  const quadros=[],quadrosJuri=[];
  for(const c of cenas){const t=String(Math.min(c.end-0.05,c.start+Math.min(1.2,(c.end-c.start)*0.7))),p=`${base}-medir-${quadros.length}.png`,pj=`${base}-juri-${quadros.length}.png`;
   command('ffmpeg',['-y','-v','error','-ss',t,'-i',base+'.mp4','-frames:v','1',p]);command('ffmpeg',['-y','-v','error','-i',p,'-vf','scale=540:960',pj]);quadros.push(p);quadrosJuri.push(await readFile(pj));}
- await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:spec.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura}))}));
+ await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:spec.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura,...(p.valor?{valor:p.valor}:{})}))}));
  const medicao=JSON.parse(command('python3',['-E','-P',join(ROOT,'scripts/criativos/medir.py'),base+'-medir.json']));
  const O=spec.oferta,cat=precosOficiais()[spec.sku];
  let oficial=null;try{oficial=await oferta(spec.slug);}catch(e){note('OFERTA_PUBLICADA indisponivel '+String(e.message||e).slice(0,60));}

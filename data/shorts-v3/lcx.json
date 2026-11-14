@@ -70,16 +70,28 @@
  "slug": "lucro-e-caixa",
  "provas": [
   {
-   "captura": "assets/shorts-v3/lcx/planilha-entradas.png",
-   "largura": 876
+   "captura": "assets/shorts-v3/lcx/celula-preco.png",
+   "largura": 640,
+   "valor": "R$ 180,00",
+   "celula": "E5"
   },
   {
-   "captura": "assets/shorts-v3/lcx/planilha-resultados.png",
-   "largura": 876
+   "captura": "assets/shorts-v3/lcx/celula-contribuicao.png",
+   "largura": 820,
+   "valor": "R$ 39,00",
+   "celula": "J5"
   },
   {
-   "captura": "assets/shorts-v3/lcx/planilha-desconto.png",
-   "largura": 876
+   "captura": "assets/shorts-v3/lcx/celula-margem.png",
+   "largura": 820,
+   "valor": "21,7%",
+   "celula": "K5"
+  },
+  {
+   "captura": "assets/shorts-v3/lcx/celula-desconto.png",
+   "largura": 820,
+   "valor": "2,2%",
+   "celula": "M5"
   },
   {
    "captura": "sales-public/assets/previews/manual-lucro-capa.3591045671.webp",

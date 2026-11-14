@@ -31,7 +31,7 @@ def base(progress):
     # v3.3 (júri real 9,1 — run 43600430291): a faixa abaixo de y=1470 (interface do Shorts) não fica preta e vazia:
     # gráfico de barras decorativo da marca, sem texto (nada essencial; a medição de área segura continua valendo).
     dd = D(im)
-    for k, (hb, cor) in enumerate(zip((150, 230, 190, 300, 260, 360), ((22, 52, 92), (26, 60, 104), (22, 52, 92), (26, 66, 112), (22, 56, 98), (30, 74, 124)))):
+    for k, (hb, cor) in enumerate(zip((300, 420, 360, 480, 440, 560), ((22, 52, 92), (26, 60, 104), (22, 52, 92), (26, 66, 112), (22, 56, 98), (30, 74, 124)))):
         x0 = 84 + k * 156; dd.rounded_rectangle((x0, 1900 - hb, x0 + 110, 1900), 18, fill=cor)
     dd.line((64, 1902, 1016, 1902), fill=(40, 70, 110), width=4)
     d = D(im); d.text((170, 84), "ZEVANORY", font(50), TXT)
@@ -55,12 +55,21 @@ N = spec["numeros"]; O = spec["oferta"]; brl = lambda v: "R$ " + f"{v:,}".replac
 # v3.1 (júri real 8,2 — run 43538539233): conteúdo ocupa toda a área útil acima da faixa da legenda falada, planilha
 # REAL em capturas grandes (LibreOffice pt-BR, 400 dpi), sem rótulos "ilustrativo", capa grande, textos longe da borda.
 # Faixa y 1280–1460 = legenda falada (render.mjs, \pos(470,1380)); abaixo de 1470 = interface do Shorts.
-CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1250
+CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1150  # v3.4: legenda em y≈1240, conteúdo até 1150
 def captura(d, nome, x, y, largura):
     s = Image.open(CAP / nome).convert("RGB"); s = s.resize((largura, round(s.height * largura / s.width)), Image.LANCZOS)
     d.rounded_rectangle((x - 8, y - 8, x + largura + 8, y + s.height + 8), 14, fill=(255, 255, 255)); d.im.paste(s, (x, y))
     med["provaReal"] = True
     return y + s.height + 8
+PROV = json.loads((CAP / "planilha-proveniencia.json").read_text(encoding="utf-8"))
+def celula(d, nome, y, largura):
+    """v3.4 (NC-V34-01): UMA célula real da planilha, ampliada só por escala uniforme, com a origem verificável
+    (planilha, aba, célula) escrita FORA do recorte. Nenhum pixel do recorte é alterado."""
+    largura = round(largura * float(spec.get("escala_celulas", 1)))  # só a calibração muda (caso negativo de célula miúda)
+    c = PROV["celulas"][nome]; x = (64 + SAFE_R - largura) // 2
+    fim = captura(d, Path(c["arquivo"]).name, x, y, largura)
+    d.text((64, fim + 14), f"Planilha Lucro & Caixa · aba {c['aba']} · célula {c['celula']}", font(36), MUTED)
+    return fim + 62
 def q_gancho(d):
     d.text((64, 290), "LOJA · " + O["nome"].upper(), font(42), BLUE)
     y = rich(d, 64, 350, spec["falas"][0]["texto"], font(112), hl=("dinheiro", "desaparece?"))
@@ -75,15 +84,9 @@ def q_gancho(d):
         else:
             d.text((cx, cy), val, font(t), cor, anchor="mm")
 def q_venda(d):
-    d.text((64, 290), "PASSO 1", font(46), BLUE)
+    d.text((64, 290), "PASSO 1 · EXEMPLO DE VENDA: TÊNIS", font(44), BLUE)
     y = rich(d, 64, 350, "Pegue sua última venda.", font(108), hl=("última", "venda."))
-    r0 = y + 40
-    d.rounded_rectangle((64, r0, SAFE_R, CB), 32, fill=(245, 247, 250))
-    d.text((120, r0 + 40), "EXEMPLO DE VENDA", font(42), (0, 120, 200))
-    for k, (a, b) in enumerate([("Venda online", "Tênis"), ("Pagamento", "Cartão"), ("Data", "ontem")]):
-        yy = r0 + 120 + k * 92; d.text((120, yy), a, font(52), (90, 100, 120)); d.text((SAFE_R - 56, yy), b, font(52), (20, 28, 40), anchor="ra")
-    d.line((120, CB - 135, SAFE_R - 56, CB - 135), fill=(200, 205, 215), width=4)
-    d.text((120, CB - 100), "Total recebido", font(58), (20, 28, 40)); d.text((SAFE_R - 56, CB - 112), brl(N["preco_venda"]), font(80), (0, 120, 200), anchor="ra")
+    celula(d, "preco", y + 40, 640)
 def seta(d, x, y0, y1, cor=YEL):
     d.line((x, y0, x, y1 - 26), fill=cor, width=10); d.polygon([(x - 26, y1 - 30), (x + 26, y1 - 30), (x, y1)], fill=cor)
 def q_conta(d, etapa):
@@ -97,32 +100,17 @@ def q_conta(d, etapa):
             d.text((110, y0), a, font(54), MUTED); d.text((110, y0 + 84), b, font(fv), c)
             yy += h + gap
         return
-    # entradas REAIS da planilha (preço, custos e taxa da mesma linha TEN-01) no lugar do resumo desenhado
-    d.text((64, 350), "NA PLANILHA REAL DO KIT", font(40), MUTED)
-    y = captura(d, "planilha-entradas.png", 64, 410, SAFE_R - 64) + 30
-    d.rounded_rectangle((64, y, SAFE_R, CB), 40, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
-    d.text((110, y + 36), "Sobram", font(66), (150, 240, 190))
-    d.text(((64 + SAFE_R) // 2, (y + 120 + CB - 110) // 2), brl(N["margem_antes_fixas"]), font(230), GREEN, anchor="mm")
-    d.text(((64 + SAFE_R) // 2, CB - 60), "antes das despesas fixas", font(52), (150, 240, 190), anchor="ms")
+    y = celula(d, "contribuicao", 360, 820) + 10
+    d.rounded_rectangle((64, y, SAFE_R, CB), 36, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
+    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 40)), GREEN, anchor="mm")
 def q_planilha(d):
     d.text((64, 290), "PLANILHA REAL DO KIT", font(46), BLUE)
     y = rich(d, 64, 350, "A margem aparece na hora.", font(92), hl=("margem",)) + 30
-    y = captura(d, "planilha-resultados.png", 64, y, SAFE_R - 64)
-    xm = 64 + int((SAFE_R - 64) * 0.76)  # centro da coluna "Margem contribuição %" na captura
-    seta(d, xm, y + 6, y + 110); y += 120
-    d.rounded_rectangle((64, y, SAFE_R, CB), 36, fill=CARD, outline=YEL, width=6)
-    d.text((110, y + 30), "Margem de contribuição", font(50), MUTED); d.text((110, CB - 34), N["margem_pct"], font(min(170, CB - y - 110)), TXT, anchor="ls")
+    celula(d, "margem", y, 820)
 def q_desconto(d):
     d.text((64, 290), "PLANILHA REAL DO KIT", font(46), BLUE)
     y = rich(d, 64, 350, "O seu limite de desconto.", font(92), hl=("limite",)) + 30
-    y = captura(d, "planilha-desconto.png", 64, y, SAFE_R - 64)
-    meio = (64 + SAFE_R) // 2
-    for xc in ((64 + meio) // 2, (meio + SAFE_R) // 2): seta(d, xc, y + 6, y + 100)
-    y += 110
-    for x0, x1, a, b, c in ((64, meio - 14, f"Preço mínimo p/ meta de {N['meta_margem_pct']}%", brl(N["preco_minimo"]), YEL), (meio + 14, SAFE_R, "Desconto máximo", N["desconto_maximo"], RED)):
-        d.rounded_rectangle((x0, y, x1, CB), 34, fill=CARD, outline=c, width=5)
-        rich(d, x0 + 34, y + 26, a, font(42), color=MUTED, lh=1.12, width=x1 - x0 - 60)
-        d.text((x0 + 34, CB - 36), b, font(104), c, anchor="ls")
+    celula(d, "desconto", y, 820)
 def capa(d, x, y):
     cv = Image.open(ROOT / O["capa"]).convert("RGB"); cv = cv.resize((300, round(cv.height * 300 / cv.width)), Image.LANCZOS)
     d.im.paste(cv, (x, y)); med["provaReal"] = True
@@ -140,11 +128,11 @@ def q_oferta(d, fase):
     if fase == 1:  # oferta: preço e condições, grandes e separados
         d.text((64, 290), "KIT COMPLETO", font(46), BLUE)
         d.text((64, 350), "Lucro & Caixa", font(112), TXT)
-        d.rounded_rectangle((64, 520, SAFE_R, 840), 40, fill=(14, 26, 44), outline=YEL, width=6)
-        d.text(((64 + SAFE_R) // 2, 690), brl(O["preco"]), font(200), YEL, anchor="mm")
+        d.rounded_rectangle((64, 510, SAFE_R, 790), 40, fill=(14, 26, 44), outline=YEL, width=6)
+        d.text(((64 + SAFE_R) // 2, 650), brl(O["preco"]), font(170), YEL, anchor="mm")
         for k, t in enumerate(("Pagamento único", "Arrependimento em 7 dias")):
-            yy = 880 + k * 190; d.rounded_rectangle((64, yy, SAFE_R, yy + 160), 80, fill=CARD)
-            d.ellipse((104, yy + 52, 160, yy + 108), fill=GREEN); d.text((190, yy + 80), t, font(56), TXT, anchor="lm")
+            yy = 820 + k * 170; d.rounded_rectangle((64, yy, SAFE_R, yy + 150), 75, fill=CARD)
+            d.ellipse((104, yy + 47, 160, yy + 103), fill=GREEN); d.text((190, yy + 75), t, font(56), TXT, anchor="lm")
         return
     d.text((64, 290), "LUCRO & CAIXA", font(46), BLUE)  # CTA
     y = rich(d, 64, 350, "Kit completo no link da descrição.", font(100), hl=("link",)) + 40

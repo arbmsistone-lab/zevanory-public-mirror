@@ -36,7 +36,7 @@ test('v3: no .ass gerado todo evento dura >= 0,12 s e toda palavra aparece desta
  const ev=ass.split('\n').filter(l=>l.startsWith('Dialogue:')).map(l=>{const c=l.split(',');return {ini:sec(c[1]),fim:sec(c[2]),txt:l.split(',,0,0,0,,')[1]};});
  for(const e of ev)assert.ok(e.fim-e.ini>=DESTAQUE_MIN_S-1e-9,'evento curto: '+JSON.stringify(e));
  const g1=ev.filter(e=>/Sua/.test(e.txt));assert.equal(g1.length,1,'grupo com palavra instantânea vira 1 evento estável');
- assert.equal(g1[0].ini,0);assert.equal(g1[0].fim,1);assert.match(g1[0].txt,/^\{\\pos\(470,1380\)\}\{\\c&H000AD6FF&\}Sua loja vende$/);
+ assert.equal(g1[0].ini,0);assert.equal(g1[0].fim,1);assert.match(g1[0].txt,/^\{\\pos\(470,1240\)\}\{\\c&H000AD6FF&\}Sua loja vende$/);
  const g2=ev.filter(e=>/caixa/.test(e.txt));assert.equal(g2.length,3,'grupo sem instantânea mantém destaque palavra a palavra');
  for(const w of ['mas','o','caixa'])assert.ok(g2.some(e=>e.txt.includes(`{\\c&H000AD6FF&}${w}{\\c&H00FFFFFF&}`)),w);
  assert.deepEqual(ws.map(w=>[w.start,w.end]),[[0,.2],[.2,.2],[.2,.9],[1,1.3],[1.3,1.5],[1.5,2]]);});
