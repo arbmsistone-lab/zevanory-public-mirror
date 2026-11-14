@@ -123,21 +123,39 @@ def valor_na_captura(im, box, valor):
     x, y, w, h = box; c = im.crop((x, y, x + w, y + h)).convert("L").resize((2 * w, 2 * h), Image.LANCZOS); import io; b = io.BytesIO(); c.save(b, "PNG")
     png = b.getvalue()
     return ler_valor([r for psm in ("6", "11") for r in _tess(png, 2, psm)], _tess(png, 2, "11", digitos=True), valor)
+# v3.5 (calibração negativo-sem-planilha): capturas reais de colunas vizinhas da mesma planilha são parecidas
+# (tela 200% de J e de K; close-ups de células selecionadas). Sem o quadro de uma prova, a captura dela "casava" com
+# a de outra (0,93). Agora cada prova é localizada no SEU melhor ponto (quadro + caixa); se duas provas disputam o
+# mesmo ponto (sobreposição > 50%), só a de maior correlação fica com ele — a outra conta como NÃO encontrada.
+# O valor é lido só nesse ponto exclusivo.
+def _sobrepoe(a, b):
+    ax, ay, aw, ah = a; bx, by, bw, bh = b
+    ix = max(0, min(ax + aw, bx + bw) - max(ax, bx)); iy = max(0, min(ay + ah, by + bh) - max(ay, by))
+    return ix * iy > 0.5 * min(aw * ah, bw * bh)
+achados = []
 for pv in cfg.get("provas", []):
     t, larg = (pv["captura"], pv["largura"]) if isinstance(pv, dict) else (pv, 876)
-    valor = pv.get("valor") if isinstance(pv, dict) else None; melhor_altura = 0
-    tm = Image.open(t).convert("L"); best = 0.0; half = larg / 2
+    valor = pv.get("valor") if isinstance(pv, dict) else None
+    tm = Image.open(t).convert("L"); best, onde, caixas = 0.0, None, []; half = larg / 2
     for i, im in enumerate(frames):
         g = im.convert("L").resize((540, 960), Image.LANCZOS)
         for w in sorted({round(half * f) for f in (0.995, 1.0, 1.013)}):
             tt = tm.resize((w, max(1, round(tm.height * w / tm.width))), Image.LANCZOS)
             v, box = ncc_max(np.asarray(g), np.asarray(tt))
-            if v > best: best = v
-            if v >= 0.8 and box:
-                caixa = tuple(2 * c for c in box); regioes[i].append(caixa)
-                if valor: melhor_altura = max(melhor_altura, valor_na_captura(im, caixa, valor))
-    prova.append({"captura": t, "correlacao": round(best, 3)})
-    if valor: legiveis.append({"captura": t, "valor": valor, "altura_px": melhor_altura, "legivel": melhor_altura >= ALTURA_VALOR_MIN})
+            if v >= 0.8 and box: regioes[i].append(tuple(2 * c for c in box)); caixas.append((i, tuple(2 * c for c in box)))
+            if v > best and box: best, onde = v, (i, tuple(2 * c for c in box))
+    achados.append({"captura": t, "valor": valor, "best": best, "onde": onde, "caixas": caixas})
+for a in achados:
+    a["duplicada"] = any(b is not a and a["onde"] and b["onde"] and a["onde"][0] == b["onde"][0] and _sobrepoe(a["onde"][1], b["onde"][1])
+                         and (b["best"], -achados.index(b)) > (a["best"], -achados.index(a)) for b in achados)
+for a in achados:
+    ok = a["best"] >= 0.8 and not a["duplicada"]
+    prova.append({"captura": a["captura"], "correlacao": round(a["best"], 3), "quadro": a["onde"][0] if a["onde"] else None, "exclusiva": not a["duplicada"]})
+    if a["valor"]:
+        # só as escalas (0,995/1/1,013) que casaram no MESMO ponto exclusivo; nenhuma leitura em outro lugar conta
+        mesmas = [c for i, c in a["caixas"] if ok and i == a["onde"][0] and _sobrepoe(c, a["onde"][1])]
+        altura = max([valor_na_captura(frames[a["onde"][0]], c, a["valor"]) for c in mesmas] or [0])
+        legiveis.append({"captura": a["captura"], "valor": a["valor"], "altura_px": altura, "legivel": altura >= ALTURA_VALOR_MIN})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
     dentro = lambda r: any(x - 8 <= r["x"] and r["x"] + r["w"] <= x + w + 8 and y - 8 <= r["y"] and r["y"] + r["h"] <= y + h + 8 for x, y, w, h in regioes[i])
@@ -158,6 +176,6 @@ for i, im in enumerate(frames):
     if len(conteudo) < 2: vazios += 1
     quadros.append({"texto": " ".join(r["t"] for r in palavras), "palavras": len(palavras), "altura_min": min(hs) if hs else None, "fora": f[:10], "nao_lidos": nao_lidos[:10], "tinta_sem_leitura": sem_leitura[:10]})
 medidas = {"alturaTextoMinPx": min(alturas) if alturas else 0, "foraAreaSegura": fora, "quadrosVazios": vazios, "textoNaoReconhecido": nao_reconhecido,
-           "provaReal": bool(prova) and all(p["correlacao"] >= 0.8 for p in prova), "provas": prova,
+           "provaReal": bool(prova) and all(p["correlacao"] >= 0.8 and p["exclusiva"] for p in prova), "provas": prova,
            "provasLegiveis": legiveis, "provaIlegivel": sum(1 for p in legiveis if not p["legivel"]), "origem": "medicao_independente_ocr", "cobertura": cobertura}
 print(json.dumps({"quadros": quadros, "medidas": medidas}, ensure_ascii=False))

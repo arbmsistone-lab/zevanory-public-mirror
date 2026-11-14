@@ -64,7 +64,7 @@ def celula(d, nome, y, largura=SAFE_R - 64):
     largura = round(largura * float(spec.get("escala_celulas", 1)))  # só a calibração muda (caso negativo de célula miúda)
     c = PROV["celulas"][nome]; x = (64 + SAFE_R - largura) // 2
     fim = captura(d, Path(c["arquivo"]).name, x, y, largura)
-    d.text((64, fim + 12), f"Aba {c['aba']} · célula {c['celula']} · zoom 400%", font(38), MUTED)
+    d.text((64, fim + 12), f"Aba {c['aba']} · célula {c['celula']} (ampliada)", font(38), MUTED)
     return fim + 56
 def tela(d, nome, y):
     """v3.5: TELA REAL do LibreOffice Calc (barra de fórmulas, colunas, linhas, abas, barra de status) com a célula
@@ -91,7 +91,7 @@ def q_gancho(d):
             d.text((cx, cy), val, font(t), cor, anchor="mm")
 def q_venda(d):
     d.text((64, 290), "PASSO 1 · EXEMPLO DE VENDA: TÊNIS", font(44), BLUE)
-    y = rich(d, 64, 350, "Pegue sua última venda.", font(84), hl=("última", "venda.")) + 26
+    y = rich(d, 64, 350, "Sua última venda.", font(84), hl=("última", "venda.")) + 26
     celula(d, "preco", tela(d, "preco", y))
 def seta(d, x, y0, y1, cor=YEL):
     d.line((x, y0, x, y1 - 26), fill=cor, width=10); d.polygon([(x - 26, y1 - 30), (x + 26, y1 - 30), (x, y1)], fill=cor)
