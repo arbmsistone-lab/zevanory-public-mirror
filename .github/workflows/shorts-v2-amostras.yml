@@ -20,6 +20,10 @@ on:
         type: choice
         options: [oferta, dica, calc]
         default: oferta
+      sha_ensaio:
+        description: Ensaio pre-merge (v3.4) - HEAD exato de um PR aberto com owner-approved:<12hex>; vazio = previa normal
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -56,7 +60,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   previa:
-    if: ${{ github.ref == 'refs/heads/gh-pages' && inputs.modo == 'previa' }}
+    if: ${{ github.ref == 'refs/heads/gh-pages' && inputs.modo == 'previa' && inputs.sha_ensaio == '' }}
     environment: gh-pages-automacao
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -86,5 +90,90 @@ jobs:
         with:
           name: shorts-v2-preview
           path: ${{ runner.temp }}/shorts-preview/
+          if-no-files-found: error
+          retention-days: 7
+  # Ensaio pre-merge (NC-V34-04/05). 1a camada: autorizacao verificada com codigo do gh-pages, sem segredo.
+  autorizar-ensaio:
+    if: ${{ github.ref == 'refs/heads/gh-pages' && inputs.modo == 'previa' && inputs.sha_ensaio != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      sha: ${{ steps.verifica.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify the SHA is the authorized HEAD of an open PR (gh-pages code, no secrets)
+        id: verifica
+        env:
+          SHA_ENSAIO: ${{ inputs.sha_ensaio }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/autorizar-ensaio.mjs
+          echo "sha=$SHA_ENSAIO" >> "$GITHUB_OUTPUT"
+          echo "Ensaio pedido para o SHA $SHA_ENSAIO (aguarda aprovacao do proprietario no environment ensaio-shorts)" >> "$GITHUB_STEP_SUMMARY"
+  # 2a camada: environment ensaio-shorts (revisor obrigatorio = proprietario). So depois da aprovacao humana o job
+  # roda; reverifica a autorizacao (corrida), faz checkout do SHA exato e so o passo de render recebe GEMINI_API_KEY.
+  ensaio:
+    needs: autorizar-ensaio
+    if: ${{ github.ref == 'refs/heads/gh-pages' && needs.autorizar-ensaio.outputs.sha != '' }}
+    environment: ensaio-shorts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    env:
+      DRY_RUN: 'true'
+      FREE_TIER_CONFIRMED: ${{ inputs.nivel_gratuito_confirmado }}
+      PREVIEW_DAY: ${{ inputs.dia }}
+      PREVIEW_SLOT: ${{ inputs.slot }}
+      SHA_ENSAIO: ${{ needs.autorizar-ensaio.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: confiavel
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Re-verify authorization after approval, before running any PR code
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node confiavel/scripts/ci/autorizar-ensaio.mjs
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ needs.autorizar-ensaio.outputs.sha }}
+          path: ensaio
+      - name: Prove the checked-out code is exactly the authorized SHA and no publication credential is present
+        run: |
+          test "$(git -C ensaio rev-parse HEAD)" = "$SHA_ENSAIO" || { echo "::error::checkout diferente do SHA autorizado"; exit 1; }
+          if env | cut -d= -f1 | grep -Eq '^(YOU[T]UBE|ME[T]A|CLOUD[F]LARE|K[V]|HOT[M]ART|MERCADO[P]AGO)_|DECISAO_[K]EY'; then echo "::error::credencial de publicacao presente"; exit 1; fi
+          echo "ENSAIO_SHA=$SHA_ENSAIO" >> "$GITHUB_STEP_SUMMARY"
+      - name: Require explicit free preparation confirmation
+        working-directory: ensaio
+        run: node --input-type=module -e "import {assertPreparation} from './scripts/shorts-v2/preparation.mjs'; assertPreparation('previa',process.env.DRY_RUN,process.env.FREE_TIER_CONFIRMED)"
+      - name: Install local media and alignment tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-inter tesseract-ocr tesseract-ocr-por
+          python3 -m pip install --user stable-ts==2.19.1 Pillow==12.0.0 numpy==2.2.6
+      - name: Render the authorized SHA (preview only, never uploads)
+        working-directory: ensaio
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/shorts-v2/preparation.mjs "$RUNNER_TEMP/shorts-ensaio"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shorts-ensaio-${{ needs.autorizar-ensaio.outputs.sha }}
+          path: ${{ runner.temp }}/shorts-ensaio/
           if-no-files-found: error
           retention-days: 7
