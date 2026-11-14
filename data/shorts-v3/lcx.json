@@ -1,0 +1,86 @@
+{
+ "schema": 1,
+ "sku": "ZEV-LCX-011",
+ "nicho": "loja",
+ "oferta": {
+  "nome": "Lucro & Caixa",
+  "preco": 147,
+  "beneficio": "Descubra sua margem antes de dar desconto.",
+  "itens": [
+   "Planilha de caixa e margem",
+   "Manual + checklist semanal",
+   "Comandos de IA"
+  ],
+  "capa": "sales-public/assets/previews/manual-lucro-capa.3591045671.webp"
+ },
+ "falas": [
+  {
+   "texto": "Sua loja vende, mas o dinheiro desaparece?",
+   "quadro": "gancho"
+  },
+  {
+   "texto": "Pegue sua última venda: um tênis de cento e oitenta reais.",
+   "quadro": "venda"
+  },
+  {
+   "texto": "O produto e o frete custaram cento e trinta e dois.",
+   "quadro": "conta-1"
+  },
+  {
+   "texto": "A taxa do cartão levou mais nove.",
+   "quadro": "conta-2"
+  },
+  {
+   "texto": "Sobram trinta e nove reais antes das despesas fixas.",
+   "quadro": "conta-3"
+  },
+  {
+   "texto": "Na planilha do kit, a margem aparece na hora.",
+   "quadro": "planilha"
+  },
+  {
+   "texto": "E ela mostra o desconto máximo: dois vírgula dois por cento.",
+   "quadro": "desconto"
+  },
+  {
+   "texto": "Descubra sua margem antes de dar desconto.",
+   "quadro": "beneficio"
+  },
+  {
+   "texto": "Lucro e Caixa: cento e quarenta e sete reais, com arrependimento em sete dias corridos.",
+   "quadro": "oferta"
+  },
+  {
+   "texto": "Kit completo no link da descrição.",
+   "quadro": "cta"
+  }
+ ],
+ "numeros": {
+  "preco_venda": 180,
+  "custo_produto_frete": 132,
+  "taxa_cartao": 9,
+  "taxa_cartao_pct": 5,
+  "margem_antes_fixas": 39,
+  "margem_pct": "21,7%",
+  "preco_minimo": 176,
+  "desconto_maximo": "2,2%",
+  "meta_margem_pct": 20
+ },
+ "proveniencia_numeros": "assets/shorts-v3/lcx/planilha-proveniencia.json",
+ "slug": "lucro-e-caixa",
+ "provas": [
+  {
+   "captura": "assets/shorts-v3/lcx/planilha-entradas.png",
+   "largura": 876
+  },
+  {
+   "captura": "assets/shorts-v3/lcx/planilha-resultados.png",
+   "largura": 876
+  },
+  {
+   "captura": "sales-public/assets/previews/manual-lucro-capa.3591045671.webp",
+   "largura": 210
+  }
+ ],
+ "manifesto": "assets/shorts-v3/lcx/manifesto.json"
+}

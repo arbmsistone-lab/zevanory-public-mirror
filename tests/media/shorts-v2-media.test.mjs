@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import * as mod from '../../scripts/shorts-v2/core.mjs';
 import {recordMusicPublication} from '../../scripts/shorts-v2/music-publications.mjs';
 import {planSlot,publishShort,TARGET_CHANNEL} from '../../scripts/channels/youtube-daily-short.mjs';
+import {registrarDecisao} from '../../scripts/criativos/avaliador.mjs';
 import * as renderer from '../../scripts/shorts-v2/render.mjs';
 import {killedMutation} from '../helpers/f1-mutation.mjs';
 import {kvFixture} from '../helpers/shorts-curation-kv.mjs';
@@ -61,7 +62,8 @@ test('NC16 media: full MP4 renders with verified promoted KV audio',async()=>{co
 test('NC16 media: unreadable optional state still renders, uploads through actual publisher and records public receipt offline',async()=>{
  const f=await kvFixture();f.data.set(STATE_KEY,'{');let uploads=0;
  const out=await renderProof(renderer,{stateKv:f.kv,handoff:async(video,plan)=>{
-  const result=await publishShort(plan,await readFile(video.file),{accessToken:'synthetic',sleep:async()=>{},fetchImpl:async(url,options={})=>{
+  const mp4=await readFile(video.file),chave='m'.repeat(40),decisao=registrarDecisao({videoBytes:mp4,sku:'ZEV-IA-011',avaliacao:{aprovado:true,nota_geral:9.7,juri:{notas:{gancho:9.6,legibilidade:9.6,prova:9.7,oferta:9.6,marca:9.9}},motivos:[]},chave});
+  const result=await publishShort(plan,mp4,{accessToken:'synthetic',aprovacao:{decisao,chave},sleep:async()=>{},fetchImpl:async(url,options={})=>{
    if(url.includes('/channels?'))return Response.json({items:[{id:TARGET_CHANNEL}]});
    if(url.includes('uploadType=resumable'))return new Response('',{headers:{location:'https://upload.example.test/session'}});
    if(url==='https://upload.example.test/session'){uploads++;assert.ok(options.body.length>10000);return Response.json({id:'KVTEST123'});}

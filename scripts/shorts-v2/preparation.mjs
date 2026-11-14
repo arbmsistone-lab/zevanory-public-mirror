@@ -6,15 +6,19 @@ import {planSlot} from '../channels/youtube-daily-short.mjs';
 import {planV2,assertVoice} from './core.mjs';
 import {renderV2} from './render.mjs';
 import {sampleTts} from './voice-samples-mode.mjs';
+import {renderV3} from '../shorts-v3/render.mjs';
+import ATIVO_V3 from '../../data/shorts-v3/ativo.json' with {type:'json'};
 export function assertPreparation(mode,dryRun,freeTier){
  if(!['amostras','previa'].includes(mode)||dryRun!=='true'||freeTier!=='true')throw Error('preparation_requires_dry_run_and_free_tier_confirmation');
 }
-export async function preparePreview({day,slot,out,config,key},{render=renderV2}={}){
+export async function preparePreview({day,slot,out,config,key},{render=renderV2,renderNovo=renderV3}={}){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||new Date(day+'T12:00:00Z').toISOString().slice(0,10)!==day||!['dica','oferta','calc'].includes(slot))throw Error('preview_target_invalid');
  assertVoice(config,config?.voz_fixa,{preview:true});
  if(!key)throw Error('preview_credential_missing');
  const base=resolve(out,'short-preview');await mkdir(resolve(out),{recursive:true});
  const stateKv={get:async()=>null,put:async()=>{throw Error('preview_runtime_write_forbidden');}};
+ // Visual v3 (Laboratório de Criativos): o slot com especificação ativa usa o gerador v3, que mede e decide sozinho.
+ if(typeof ATIVO_V3?.[slot]==='string')return renderNovo(ATIVO_V3[slot],base,{preview:true,config,geminiKey:key,synthesize:sampleTts});
  const plan=planV2(planSlot(day,slot,{hotmartOpen:true}),{hotmartOpen:true});
  return render(plan,base,{preview:true,config,geminiKey:key,stateKv,synthesize:sampleTts});
 }

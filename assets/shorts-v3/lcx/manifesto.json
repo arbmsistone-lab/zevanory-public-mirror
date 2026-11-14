@@ -1,0 +1,9 @@
+{
+ "schema": 1,
+ "nota": "Integridade da prova do produto (NC-R05): hashes da proveniência do cálculo (planilha real recalculada) e das capturas. O gerador e o avaliador recusam qualquer divergência.",
+ "arquivos": {
+  "assets/shorts-v3/lcx/planilha-proveniencia.json": "a7079c87986b6dc29992408a6ff95fdbd6845ea227fed2c7755a514e2de07f29",
+  "assets/shorts-v3/lcx/planilha-entradas.png": "1b1f3156af084c122d8855205b2e912eafafec35cfa9b414d476f8de7e3128d0",
+  "assets/shorts-v3/lcx/planilha-resultados.png": "7ca2e864fa604e5d277f576f4ca5cd8bb52a035634e4af90ae52dfcd02ff7efd"
+ }
+}

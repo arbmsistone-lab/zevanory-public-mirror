@@ -291,7 +291,11 @@ export function cloudflareKv({ token, account, namespace, fetchImpl = fetch }) {
   };
 }
 
-export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+export async function publishShort(plan, mp4, { accessToken, aprovacao, fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+  // Laboratório de Criativos (NC-R03): nenhum upload sem decisão APROVADO assinada para ESTE arquivo exato. Antes de
+  // qualquer chamada de rede; ausência, alteração do vídeo, registro forjado ou reprovado = bloqueio.
+  const { exigirAprovacao } = await import("../criativos/avaliador.mjs");
+  exigirAprovacao(aprovacao?.decisao, mp4, { chave: aprovacao?.chave });
   const auth = { authorization: "Bearer " + accessToken };
   const chRes = await fetchImpl("https://www.googleapis.com/youtube/v3/channels?part=id,contentDetails&mine=true", { headers: auth });
   const ch = await chRes.json().catch(() => ({}));
@@ -458,7 +462,7 @@ if (isMain) {
       if (dry) continue;
       const kv = lockKv;
       if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
-      const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
+      const result = await publishShort(plan, await readFile(rendered.file), { accessToken, aprovacao: { decisao: rendered.decisao, chave: process.env.CRIATIVOS_DECISAO_KEY } });
       await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
       const {recordMusicPublication}=await import("../shorts-v2/music-publications.mjs");
       await recordMusicPublication(kv,plan,result,rendered.track);

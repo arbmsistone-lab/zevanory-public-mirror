@@ -17,6 +17,11 @@ on:
       - 'data/shorts-episodios-v2.json'
       - 'tests/shorts-v2.test.mjs'
       - 'tests/media/shorts-v2-media.test.mjs'
+      - 'tests/media/criativos-calibracao.test.mjs'
+      - 'scripts/criativos/**'
+      - 'scripts/shorts-v3/**'
+      - 'data/shorts-v3/**'
+      - 'assets/shorts-v3/**'
       - 'tests/shorts-v2-round2.test.mjs'
       - 'tests/shorts-v2-round3.test.mjs'
       - 'assets/fonts/Inter-ExtraBold.ttf'
@@ -38,11 +43,11 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install offline media tools
-        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core tesseract-ocr tesseract-ocr-por
       - name: Install caption measurement
         run: python3 -m pip install --user Pillow==12.0.0 numpy==2.2.6 ai-edge-litert==1.4.0
       - name: Test gates mutations and synthetic media (no credentials or TTS API)
-        run: node --test tests/shorts-v2.test.mjs tests/shorts-v2-round2.test.mjs tests/shorts-v2-round3.test.mjs tests/shorts-v2-round4.test.mjs tests/shorts-v2-round5.test.mjs tests/media/shorts-v2-media.test.mjs tests/media/shorts-v2-tempo.test.mjs
+        run: node --test tests/shorts-v2.test.mjs tests/shorts-v2-round2.test.mjs tests/shorts-v2-round3.test.mjs tests/shorts-v2-round4.test.mjs tests/shorts-v2-round5.test.mjs tests/media/shorts-v2-media.test.mjs tests/media/shorts-v2-tempo.test.mjs tests/media/criativos-calibracao.test.mjs
       - name: Verify locally measured owner profile with pinned vocal classifier
         run: |
           curl -fsSL --max-time 60 https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite -o "$RUNNER_TEMP/yamnet.tflite"
