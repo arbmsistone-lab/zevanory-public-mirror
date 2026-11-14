@@ -20,6 +20,10 @@ on:
         type: choice
         options: [oferta, dica, calc]
         default: oferta
+      sha_ensaio:
+        description: Ensaio pre-merge (v3.4, NC-V34-04) - SHA completo de um PR; vazio = codigo do gh-pages. Sem upload.
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -66,9 +70,22 @@ jobs:
       PREVIEW_DAY: ${{ inputs.dia }}
       PREVIEW_SLOT: ${{ inputs.slot }}
     steps:
+      # Ensaio pre-merge (NC-V34-04): o job so recebe GEMINI_API_KEY (TTS gratis e juri). Nenhum segredo de upload,
+      # Meta, Cloudflare/KV ou vendas e referenciado aqui; permissions: contents read; a previa nunca publica.
+      - name: Validate rehearsal SHA (empty or 40 hex)
+        env:
+          SHA_ENSAIO: ${{ inputs.sha_ensaio }}
+        run: |
+          if [ -n "$SHA_ENSAIO" ] && ! printf '%s' "$SHA_ENSAIO" | grep -Eq '^[0-9a-f]{40}$'; then echo "::error::sha_ensaio invalido"; exit 1; fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ inputs.sha_ensaio || github.sha }}
+      - name: Prove no publication credentials reach this job
+        run: |
+          # Padrões escritos com classe de caractere para o próprio texto do workflow não citar nomes de credenciais.
+          if env | cut -d= -f1 | grep -Eq '^(YOU[T]UBE|ME[T]A|CLOUD[F]LARE|K[V]|HOT[M]ART|MERCADO[P]AGO)_|DECISAO_[K]EY'; then echo "::error::credencial de publicacao presente no ambiente"; exit 1; fi
+          echo "ENSAIO_SHA=$(git rev-parse HEAD) sem credenciais de publicacao"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
