@@ -21,3 +21,11 @@ test('Preparation: slot com v3 ativo usa renderV3 em prévia, com a voz escolhid
     assert.equal(v2, 0); assert.equal(args.spec, 'data/shorts-v3/lcx.json'); assert.equal(args.o.preview, true); assert.equal(args.o.config.voz_fixa, 'Achird'); assert.ok(r.file.endsWith('short-preview.mp4'));
   } finally { await rm(out, { recursive: true, force: true }); }
 });
+test('v3: legenda julgada pelo efeito visível — grupo de 3 palavras na tela >= 0,30 s; instantâneas só dentro disso',async()=>{const {gruposCurtosV3}=await import('../scripts/shorts-v3/render.mjs');
+ const w=(a)=>a.map(([s,e])=>({start:s,end:e}));
+ const ok=w([[0,.2],[.2,.2],[.4,.6],[.9,1.1],[1.1,1.1],[1.1,1.3]]);// 2 frases de 3; instantâneas dentro de grupos de 0,9 s e 0,4 s
+ assert.deepEqual(gruposCurtosV3(ok,[3,3],1.5),[]);
+ const curto=w([[0,.2],[.2,.3],[.3,.4],[.5,.5],[.5,.5],[.5,.6],[.7,.9]]);// 2º grupo (3..5) dura só 0,2 s até o próximo
+ assert.deepEqual(gruposCurtosV3(curto,[3,3,1],1),['3:0.20']);
+ assert.deepEqual(gruposCurtosV3(w([[0,.1],[.1,.1]]),[2],0.2),['0:0.20']);
+});
