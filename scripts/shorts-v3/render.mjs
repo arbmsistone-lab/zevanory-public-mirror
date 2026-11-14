@@ -69,7 +69,8 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  const voiceDuration=generated.pcm.length/2/24000;
  command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af','highpass=f=80,deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100,loudnorm=I=-16:TP=-1.5:LRA=7','-c:a','pcm_s16le',base+'-voz.wav']);
  let alignment;if(align)alignment=await align(base+'-voz.wav',speech);else{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
- const words=alignedWords(alignment,speech,voiceDuration);
+ // Legenda do v3 é por frase: até 3 palavras instantâneas do alinhador (início === fim) são aceitas sem mexer nos tempos.
+ const words=alignedWords(alignment,speech,voiceDuration,{toleraDuracaoZero:3});
  const {duration,firstCta}=shortTiming(voiceDuration,words);
  // Início de cada fala = início real da 1ª palavra dela.
  let cursor=0;const cenas=spec.falas.map((f,i)=>{const n=f.texto.split(/\s+/).filter(Boolean).length,start=i===0?0:words[cursor].start;cursor+=n;return {quadro:f.quadro,start};});

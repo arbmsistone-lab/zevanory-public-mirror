@@ -12,7 +12,7 @@ import {visualMetrics,contactSheet} from './visual.mjs';
 import {STYLE,CTA,assertVoice,licensedTrack,alignedWords,captions,quality,musicHistory,shortTiming} from './core.mjs';
 export function command(cmd,args,{buffer=false}={}){const p=spawnSync(cmd,args,{encoding:buffer?null:'utf8',maxBuffer:128*1024*1024});if(p.status!==0)throw Error('media_tool_failed:'+cmd);return buffer?p.stdout:String(p.stdout||'')+String(p.stderr||'');}
 // NC-1037-01: diagnóstico do alinhador publicado ANTES de qualquer falha (status e saída separados).
-export const alignAttemptLines=out=>String(out||'').split(/\r?\n/).filter(l=>/^ALIGN_ATTEMPT [a-z_]+ (ok|invalid|none|erro)\b/.test(l)).map(l=>l.slice(0,200));
+export const alignAttemptLines=out=>String(out||'').split(/\r?\n/).filter(l=>/^ALIGN_ATTEMPT [a-z_]+ (ok|invalid|none|erro)\b|^ALIGN_ESCOLHA [a-z_]+ instantaneas=\d+$/.test(l)).map(l=>l.slice(0,200));
 export function runAligner(args,{spawn=spawnSync,log=console.log,env}={}){const p=spawn('python3',[fileURLToPath(new URL('./align.py',import.meta.url)),...args],{encoding:'utf8',maxBuffer:128*1024*1024,...(env?{env}:{})});for(const line of alignAttemptLines(String(p.stdout||'')+'\n'+String(p.stderr||'')))log(line);if(p.status!==0)throw Error('media_tool_failed:python3');}
 export function ttsRequest(text,voice,model){
  if(!['gemini-3.8-flash-tts','gemini-2.5-flash-preview-tts'].includes(model))throw Error('tts_model_unsupported');
