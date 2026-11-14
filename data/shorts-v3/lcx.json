@@ -72,25 +72,21 @@
   {
    "captura": "assets/shorts-v3/lcx/celula-preco.png",
    "largura": 640,
-   "valor": "R$ 180,00",
    "celula": "E5"
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-contribuicao.png",
    "largura": 820,
-   "valor": "R$ 39,00",
    "celula": "J5"
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-margem.png",
    "largura": 820,
-   "valor": "21,7%",
    "celula": "K5"
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-desconto.png",
    "largura": 820,
-   "valor": "2,2%",
    "celula": "M5"
   },
   {

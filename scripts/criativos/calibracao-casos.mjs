@@ -1,6 +1,7 @@
 // Casos HOMOLOGADOS de calibração do Laboratório de Criativos (NC-R04): a mesma lista roda no teste de mídia (OCR real,
 // parte determinística) e no workflow semanal (OCR real + oferta publicada + júri Gemini). Positivo: precisa ser
 // APROVADO (objetivas OK e todas as notas >= 9,5). Negativos: precisam ser DESCARTADOS com os motivos esperados.
+import {provasParaMedir} from '../shorts-v3/render.mjs';
 import {readFileSync,writeFileSync,readdirSync,copyFileSync,mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -19,7 +20,7 @@ export const CASOS=Object.freeze([
  {nome:'negativo-texto-miudo',esperado:['texto_pequeno_demais'],pintar:['gancho',120,1300,'condições e detalhes importantes',18,'255,255,255']},
  {nome:'negativo-baixo-contraste',esperado:['texto_nao_reconhecido'],pintar:['gancho',120,1300,'condições especiais importantes',40,'45,55,70']},
  // v3.4 A2: a célula real aparece, mas pequena demais para ler o valor no celular.
- {nome:'negativo-celula-ilegivel',esperado:['prova_ilegivel'],mutar:s=>{s.escala_celulas=0.4;for(const p of s.provas)if(p.valor)p.largura=Math.round(p.largura*0.4);}},
+ {nome:'negativo-celula-ilegivel',esperado:['prova_ilegivel'],mutar:s=>{s.escala_celulas=0.4;for(const p of s.provas)if(p.celula)p.largura=Math.round(p.largura*0.4);}},
  {nome:'negativo-v2-reprovado',esperado:['sem_prova_real_do_produto','preco_oficial_ausente_no_video','concordancia_genero','texto_artificial_ficticio'],v2:true}
 ]);
 const py=a=>{const r=spawnSync('python3',['-E','-P',...a],{encoding:'utf8',maxBuffer:64*1024*1024});if(r.status!==0)throw Error('calibracao_python:'+String(r.stderr).slice(-300));return r.stdout;};
@@ -38,7 +39,7 @@ export function prepararCaso(caso,dir){
  return {criativo:{sku:s.sku,falas:s.falas.map(f=>f.texto),oferta:{nome:s.oferta.nome,preco:s.oferta.preco}},quadros:Object.values(q).sort(),provas:s.provas};
 }
 export function medirCaso(prep,dir){
- writeFileSync(join(dir,'medir.json'),JSON.stringify({quadros:prep.quadros,provas:prep.provas.map(p=>({captura:join(ROOT,p.captura),largura:p.largura,...(p.valor?{valor:p.valor}:{})}))}));
+ writeFileSync(join(dir,'medir.json'),JSON.stringify({quadros:prep.quadros,provas:provasParaMedir({provas:prep.provas},JSON.parse(readFileSync(join(ROOT,spec().proveniencia_numeros),'utf8')))}));
  return JSON.parse(py([join(ROOT,'scripts/criativos/medir.py'),join(dir,'medir.json')]));
 }
 // O júri vê o quadro como ele aparece no vídeo: com a legenda falada na faixa y 1280–1460 (mesmo estilo de
