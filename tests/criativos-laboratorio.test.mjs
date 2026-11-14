@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { desempenho, pesquisarTema, youtubeToken, confirmarShort, padroesDeMetadados } from "../scripts/criativos/pesquisa.mjs";
 import { CRITERIOS, NOTA_MINIMA, montarPadrao, validarPadrao } from "../scripts/criativos/padrao.mjs";
 import { valoresFalados, valoresNaTela, conferirAfirmacoes, ofertaPublicada } from "../scripts/criativos/afirmacoes.mjs";
-import { checagensObjetivas, precosOficiais, permitidosDe, permitidosDaProveniencia, lerJuri, decidir, avaliar, promptJuri, registrarDecisao, exigirAprovacao, cicloCriativo, MAX_TENTATIVAS } from "../scripts/criativos/avaliador.mjs";
+import { gerarJSON, checagensObjetivas, precosOficiais, permitidosDe, permitidosDaProveniencia, lerJuri, decidir, avaliar, promptJuri, registrarDecisao, exigirAprovacao, cicloCriativo, MAX_TENTATIVAS } from "../scripts/criativos/avaliador.mjs";
 const NOW = Date.parse("2026-11-13T12:00:00Z");
 const ID = (n) => ("v" + n).padEnd(11, "x");
 const ev = (n, extra = {}) => ({ id: ID(n), sku: "ZEV-LCX-011", titulo: n % 2 ? "Sua loja vende e não sobra?" : "Por que não sobra R$ 100?", canal: "c", segundos: 30 + n, views: 10000 * (n + 1), likes: 500 * (n + 1), comments: 50, score: 100 - n, url: "u", confirmado_short: true, ...extra });
@@ -103,11 +103,24 @@ test("júri e decisão: notas estritas; aprova só com objetivas OK e TODAS >= 9
   assert.throws(() => lerJuri({ notas: { gancho: "10" } }), /juri_nota_invalida/);
   assert.equal(decidir({ objetivas: [], juri: lerJuri(ALTO) }).decisao, "APROVADO");
   assert.equal(decidir({ objetivas: [], juri: lerJuri({ notas: { ...ALTO.notas, oferta: 9.4 } }) }).decisao, "DESCARTADO");
-  const base = { criativo: CRI, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: MED, permitidos: PERM, oficial: OFICIAL, key: "k" };
+  const base = { criativo: CRI, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: MED, permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };
   assert.equal((await avaliar({ ...base, fetchImpl: gem(ALTO) })).decisao, "APROVADO");
   for (const f of [async () => ({ status: 503 }), gem({ notas: { gancho: 10 } }), gem("texto")]) assert.equal((await avaliar({ ...base, fetchImpl: f })).decisao, "DESCARTADO");
   assert.equal((await avaliar({ ...base, medicao: null, fetchImpl: gem(ALTO) })).decisao, "DESCARTADO", "notas altas não compensam falta de medição");
   assert.match(promptJuri(PADRAO), /metadados[\s\S]*não descrevem o visual/);
+});
+test("júri indisponível: diagnóstico sem segredo (modelo, HTTP, status Google); 404 pula modelo; 429 espera e tenta 1 vez", async () => {
+  const chamadas = [], esperas = [];
+  const resp = { "gemini-3.8-flash": [{ status: 404, error: "NOT_FOUND" }], "gemini-3.7-flash": [{ status: 429, error: "RESOURCE_EXHAUSTED" }, { status: 429, error: "RESOURCE_EXHAUSTED" }], "gemini-3.6-flash": [{ status: 403, error: "PERMISSION_DENIED" }], "gemini-2.5-flash": [{ status: 429, error: "RESOURCE_EXHAUSTED" }, { status: 200 }] };
+  const f = async (url, init) => { const m = url.match(/models\/([^:]+):/)[1]; chamadas.push(m); assert.equal(init.headers["x-goog-api-key"], "segredo"); const r = resp[m].shift();
+    return r.status === 200 ? { status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"ok":1}' }] } }] }) } : { status: r.status, json: async () => ({ error: { status: r.error, message: "segredo vazado?" } }) }; };
+  const r = await gerarJSON({ key: "segredo", partes: [], fetchImpl: f, esperar: async (ms) => esperas.push(ms) });
+  assert.deepEqual([r.modelo, r.saida], ["gemini-2.5-flash", { ok: 1 }]);
+  assert.deepEqual(chamadas, ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-flash"]);
+  assert.equal(esperas.length, 2);
+  const falha = await gerarJSON({ key: "segredo", partes: [], modelos: ["a", "b"], esperar: async () => {}, fetchImpl: async (u) => u.includes("/a:") ? { status: 404, json: async () => ({ error: { status: "NOT_FOUND" } }) } : Promise.reject(Object.assign(Error("x"), { name: "TimeoutError" })) }).catch((e) => e.message);
+  assert.equal(falha, "ia_indisponivel:a=404_NOT_FOUND,b=rede_TimeoutError");
+  assert.doesNotMatch(falha, /segredo/);
 });
 test("decisão assinada (NC-R03): gate exige chave, assinatura HMAC, APROVADO, mesmo vídeo (sha256), notas e prazo", () => {
   const video = Buffer.from("video-real"), em = "2026-11-13T12:00:00Z", chave = "k".repeat(40);
