@@ -44,6 +44,6 @@ export function medirCaso(prep,dir){
 }
 // O júri vê o quadro como ele aparece no vídeo: com a legenda falada na faixa y 1280–1460 (mesmo estilo de
 // render.mjs/legendasV3: Inter ExtraBold 74, contorno escuro, 1ª palavra em destaque). O v2 já traz a dele.
-const LEGENDA="import sys;from PIL import Image,ImageDraw,ImageFont;im=Image.open(sys.argv[1]).convert('RGB');t=sys.argv[3].split();f=ImageFont.truetype(sys.argv[4],74);d=ImageDraw.Draw(im)\nif t:\n w=[d.textlength(x+' ',font=f) for x in t];x=470-sum(w)/2\n for i,p in enumerate(t):d.text((x,1240),p,font=f,fill=(255,214,10) if i==0 else (255,255,255),stroke_width=6,stroke_fill=(9,13,20),anchor='lm');x+=w[i]\nim.resize((540,960)).save(sys.argv[2])";
+const LEGENDA="import sys;from PIL import Image,ImageDraw,ImageFont;im=Image.open(sys.argv[1]).convert('RGB');t=sys.argv[3].split();f=ImageFont.truetype(sys.argv[4],74);d=ImageDraw.Draw(im)\nif t:\n w=[d.textlength(x+' ',font=f) for x in t];x=470-sum(w)/2\n for i,p in enumerate(t):d.text((x,1390),p,font=f,fill=(255,214,10) if i==0 else (255,255,255),stroke_width=6,stroke_fill=(9,13,20),anchor='lm');x+=w[i]\nim.resize((540,960)).save(sys.argv[2])";
 export function quadrosJuri(prep,dir){return prep.quadros.map((f,i)=>{const p=join(dir,`juri-${i}.png`),n=+(/quadro-(\d+)-/.exec(f)?.[1]||0),fala=prep.v2||!n?'':String(prep.criativo.falas[n-1]||'').split(/\s+/).slice(0,3).join(' ');
  py(['-c',LEGENDA,f,p,fala,FONTE]);return readFileSync(p);});}

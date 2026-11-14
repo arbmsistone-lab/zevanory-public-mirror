@@ -70,7 +70,7 @@ export async function conferirNumeros(spec){
  if(R.Status!=='OK'||P.margem_alvo_config*100!==N.meta_margem_pct)motivos.push('planilha_status_ou_meta');
  return motivos;
 }
-// Grupos de até 3 palavras; a palavra falada fica amarela. Posição na área segura (centro x=470, y=1240; v3.4).
+// Grupos de até 3 palavras; a palavra falada fica amarela. Posição na área segura (centro x=470, y=1390; v3.5: conteúdo até 1300).
 // Grupos da legenda v3 (mesma divisão de legendasV3) que ficariam menos de `min` segundos na tela.
 export function gruposCurtosV3(words,porFala,fim,min=0.3){const g=[];let ini=0;for(const n of porFala){for(let a=ini;a<ini+n;a+=3)g.push(a);ini+=n;}
  return g.map((a,i)=>{const fimGrupo=i+1<g.length?words[g[i+1]].start:fim;return [a,fimGrupo-words[a].start];}).filter(([,d])=>!(d>=min)).map(([a,d])=>`${a}:${d.toFixed(2)}`);}
@@ -95,9 +95,9 @@ export function legendasV3(words,porFala=[words.length]){
   const fins=grp.map((w,k)=>Math.max((grp[k+1]||words[b]||{start:w.end}).start,w.end));
   // NC-1048-01: se o destaque de alguma palavra ficaria menos de DESTAQUE_MIN_S na tela (palavra instantânea do
   // alinhador), o grupo inteiro aparece destacado de forma estável do início ao fim do grupo — nenhum tempo é inventado.
-  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1240)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
+  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1390)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
   for(let k=0;k<grp.length;k++){const w=grp[k];
-  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1240)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1390)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
  // Garantia no arquivo gerado: nenhum evento de legenda com menos de DESTAQUE_MIN_S na tela.
  const curto=ev.find(l=>{const c=l.split(','),x=v=>{const [h,m,q]=v.split(':');return +h*3600+ +m*60+ +q;};return x(c[2])-x(c[1])<DESTAQUE_MIN_S-0.015;});// folga de 1 centésimo do arredondamento do .ass
  if(curto)throw Error('v3_legenda_evento_curto');
@@ -182,6 +182,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
   command('ffmpeg',['-y','-v','error','-ss',t,'-i',base+'.mp4','-frames:v','1',p]);command('ffmpeg',['-y','-v','error','-i',p,'-vf','scale=540:960',pj]);quadros.push(p);quadrosJuri.push(await readFile(pj));}
  await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:provasParaMedir(spec,await conferirManifesto(spec))}));
  const medicao=JSON.parse(command('python3',['-E','-P',join(ROOT,'scripts/criativos/medir.py'),base+'-medir.json']));
+ note('PROVAS_V3 '+JSON.stringify((medicao.medidas?.provasLegiveis||[]).map(p=>({c:String(p.captura).split('/').pop(),v:p.valor,h:p.altura_px})))+' correl='+JSON.stringify((medicao.medidas?.provas||[]).map(p=>[String(p.captura).split('/').pop(),p.correlacao,p.exclusiva])));
  const O=spec.oferta,cat=precosOficiais()[spec.sku];
  let oficial=null;try{oficial=await oferta(spec.slug);}catch(e){note('OFERTA_PUBLICADA indisponivel '+String(e.message||e).slice(0,60));}
  const criativo={sku:spec.sku,falas:spec.falas.map(f=>f.texto),oferta:{nome:O.nome,preco:O.preco}};

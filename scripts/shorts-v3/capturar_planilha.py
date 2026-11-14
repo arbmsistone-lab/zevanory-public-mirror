@@ -6,7 +6,7 @@ aberto numa tela virtual (Xvfb), a planilha ORIGINAL (sha256 conferido) recebe a
 LibreOffice (UNO), é recalculada, a célula é selecionada e a tela é fotografada (ImageMagick import). Duas capturas
 por célula, sem retoque de pixels — só recorte:
   tela-<nome>.png    contexto: barra de fórmulas com a fórmula real, letras das colunas, números das linhas, abas,
-                     barra de status (soma da seleção), zoom 200%;
+                     barra de status, zoom 250%, ~3 colunas em volta da célula;
   celula-<nome>.png  close-up: a mesma célula selecionada a 400% (faixa das letras das colunas + linha 5), recortada
                      em torno do valor para que ele fique legível no celular.
 Uso: xvfb + soffice escutando em 2002 (ver tests/media); python3 capturar_planilha.py ORIGINAL.xlsx PROVENIENCIA.json SAIDA/
@@ -16,10 +16,10 @@ import uno
 from com.sun.star.beans import PropertyValue
 from PIL import Image
 
-LARGURA_JANELA, ALTURA_CONTEXTO, ALTURA_PERTO = 1400, 470, 760
-SEL = (128, 0, 0)
+LARGURA_JANELA, ALTURA_CONTEXTO, ALTURA_PERTO = 1400, 480, 760
+SEL = (128, 0, 0)  # cor do cabeçalho da coluna/linha selecionada no Calc (tema padrão)
 # contexto: da barra de fórmulas (nome da célula + fórmula) até a barra de status, sem menus/ferramentas nem painel lateral
-CORTE_TELA = (0, 80, 1340, ALTURA_CONTEXTO)  # cor do cabeçalho da coluna/linha selecionada no Calc (tema padrão)
+CORTE_TELA = (0, 80, 900, ALTURA_CONTEXTO)  # v3.5: zoom 250% e ~3 colunas (júri: 'texto microscópico')
 
 def _p(n, v):
     p = PropertyValue(); p.Name = n; p.Value = v; return p
@@ -51,13 +51,16 @@ def main(original, prov_path, saida):
             ok = real.getString() == esperado if isinstance(esperado, str) else abs(real.getValue() - esperado) < 1e-9
             if not ok: raise SystemExit("recalculo_divergente:" + nome_res)
         ctrl = doc.CurrentController; ctrl.setActiveSheet(sh); win = ctrl.Frame.ContainerWindow; ctrl.ZoomType = 3
+        # aquecimento: a 1ª captura saía com a barra de status da aba anterior ("Sheet 1 of 13"); a tela precisa
+        # repintar a aba ativa e a seleção antes de fotografar
+        ctrl.select(sh.getCellRangeByName("A5")); win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_CONTEXTO, 15); time.sleep(4)
         out = {}
         for nome, c in prov["celulas"].items():
             cel = sh.getCellRangeByName(c["celula"]); col = cel.CellAddress.Column
             if sh.getCellByPosition(col, linha - 1).getString() != c["valor_exibido"]: raise SystemExit("valor_exibido_divergente:" + nome)
             ctrl.select(cel)
-            win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_CONTEXTO, 15); ctrl.ZoomValue = 200
-            ctrl.setFirstVisibleColumn(max(0, col - 1)); ctrl.setFirstVisibleRow(0); time.sleep(2.5)
+            win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_CONTEXTO, 15); ctrl.ZoomValue = 250
+            ctrl.setFirstVisibleColumn(max(0, col - 1)); ctrl.setFirstVisibleRow(2)  # a partir do cabeçalho (linha 3); time.sleep(2.5)
             tmp = os.path.join(saida, f".raw-{nome}.png"); subprocess.run(["import", "-window", "root", tmp], check=True)
             Image.open(tmp).convert("RGB").crop(CORTE_TELA).save(os.path.join(saida, f"tela-{nome}.png"))
             win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_PERTO, 15); ctrl.ZoomValue = 400

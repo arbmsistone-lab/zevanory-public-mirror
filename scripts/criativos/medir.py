@@ -142,19 +142,20 @@ for pv in cfg.get("provas", []):
         for w in sorted({round(half * f) for f in (0.995, 1.0, 1.013)}):
             tt = tm.resize((w, max(1, round(tm.height * w / tm.width))), Image.LANCZOS)
             v, box = ncc_max(np.asarray(g), np.asarray(tt))
-            if v >= 0.8 and box: regioes[i].append(tuple(2 * c for c in box)); caixas.append((i, tuple(2 * c for c in box)))
+            if v >= 0.8 and box: regioes[i].append(tuple(2 * c for c in box)); caixas.append((i, tuple(2 * c for c in box), v))
             if v > best and box: best, onde = v, (i, tuple(2 * c for c in box))
     achados.append({"captura": t, "valor": valor, "best": best, "onde": onde, "caixas": caixas})
+# Ensaio real 43639031016: no MP4 cada quadro aparece em vários estados (a legenda muda); exigir só o melhor estado
+# deixava o valor ilegível num estado de transição. Agora vale QUALQUER casamento (≥ 0,8) da prova que não seja
+# disputado, no mesmo quadro e no mesmo lugar, por outra prova com correlação maior.
+def _valido(a, i, c, v):
+    return not any(b is not a and j == i and w > v and _sobrepoe(c, d) for b in achados for j, d, w in b["caixas"])
 for a in achados:
-    a["duplicada"] = any(b is not a and a["onde"] and b["onde"] and a["onde"][0] == b["onde"][0] and _sobrepoe(a["onde"][1], b["onde"][1])
-                         and (b["best"], -achados.index(b)) > (a["best"], -achados.index(a)) for b in achados)
-for a in achados:
-    ok = a["best"] >= 0.8 and not a["duplicada"]
-    prova.append({"captura": a["captura"], "correlacao": round(a["best"], 3), "quadro": a["onde"][0] if a["onde"] else None, "exclusiva": not a["duplicada"]})
+    a["validos"] = [(i, c) for i, c, v in a["caixas"] if _valido(a, i, c, v)]
+    ok = bool(a["validos"])
+    prova.append({"captura": a["captura"], "correlacao": round(a["best"], 3), "quadro": a["validos"][0][0] if ok else None, "exclusiva": ok})
     if a["valor"]:
-        # só as escalas (0,995/1/1,013) que casaram no MESMO ponto exclusivo; nenhuma leitura em outro lugar conta
-        mesmas = [c for i, c in a["caixas"] if ok and i == a["onde"][0] and _sobrepoe(c, a["onde"][1])]
-        altura = max([valor_na_captura(frames[a["onde"][0]], c, a["valor"]) for c in mesmas] or [0])
+        altura = max([valor_na_captura(frames[i], c, a["valor"]) for i, c in a["validos"]] or [0])
         legiveis.append({"captura": a["captura"], "valor": a["valor"], "altura_px": altura, "legivel": altura >= ALTURA_VALOR_MIN})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
