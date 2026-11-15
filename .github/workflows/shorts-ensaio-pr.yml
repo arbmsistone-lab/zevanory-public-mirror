@@ -1,0 +1,209 @@
+name: Shorts ensaio por PR (sem publicacao)
+# Ordem do proprietario 14/11 18:10 + contra-auditoria GPT-6 do #1055: uma etiqueta ensaio-autorizado-pr do dono vale
+# 24 h para os HEADs do mesmo PR (max 8 execucoes/24 h), SEM a chave do Gemini em nenhuma maquina que execute codigo
+# do PR. Jobs (cada um numa maquina nova):
+#   autorizar (gh-pages, sem segredo) -> pedido (codigo do PR, sem segredo) -> voz (gh-pages + chave)
+#   -> render (codigo do PR, sem segredo) -> juri (gh-pages + chave).
+# voz e juri REVERIFICAM a autorizacao (PR, SHA, etiqueta, validade, environment, limite) logo antes de usar a chave.
+# Entre jobs so passam DADOS (artefatos): pedido de voz (JSON), voz (PCM), quadros (PNG) e pedido do juri (JSON).
+on:
+  workflow_dispatch:
+    inputs:
+      sha_ensaio:
+        description: HEAD exato de um PR aberto do dono com a etiqueta ensaio-autorizado-pr (24 h)
+        type: string
+        required: true
+      slot:
+        type: choice
+        options: [oferta, dica, calc]
+        default: oferta
+      nivel_gratuito_confirmado:
+        description: Confirmo nivel gratuito (TTS e juri Gemini)
+        type: boolean
+        default: false
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: shorts-ensaio-pr
+  cancel-in-progress: false
+jobs:
+  autorizar:
+    if: ${{ github.ref == 'refs/heads/gh-pages' && inputs.nivel_gratuito_confirmado }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: read
+    outputs:
+      sha: ${{ steps.verifica.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify PR authorization, environment and daily limit (gh-pages code, no secrets)
+        id: verifica
+        env:
+          SHA_ENSAIO: ${{ inputs.sha_ensaio }}
+          MODO_ENSAIO: pr
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/autorizar-ensaio.mjs
+          echo "sha=$SHA_ENSAIO" >> "$GITHUB_OUTPUT"
+  pedido:
+    needs: autorizar
+    if: ${{ github.ref == 'refs/heads/gh-pages' && needs.autorizar.outputs.sha != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      PREVIEW_SLOT: ${{ inputs.slot }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ needs.autorizar.outputs.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Build the voice request with the PR code (no secrets on this machine)
+        env:
+          SHA_ENSAIO: ${{ needs.autorizar.outputs.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SHA_ENSAIO" || { echo "::error::checkout diferente do SHA autorizado"; exit 1; }
+          node scripts/shorts-v3/ensaio-fases.mjs pedido "$RUNNER_TEMP/pedido"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ensaio-pedido
+          path: ${{ runner.temp }}/pedido/pedido-voz.json
+          if-no-files-found: error
+          retention-days: 1
+  voz:
+    needs: [autorizar, pedido]
+    if: ${{ github.ref == 'refs/heads/gh-pages' && needs.autorizar.outputs.sha != '' }}
+    environment: ensaio-shorts-pr
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Re-verify authorization right before using the key (same PR, SHA, label, validity, environment, limit)
+        env:
+          SHA_ENSAIO: ${{ needs.autorizar.outputs.sha }}
+          MODO_ENSAIO: pr
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci/autorizar-ensaio.mjs
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ensaio-pedido
+          path: ${{ runner.temp }}/pedido
+      - name: Generate the voice with gh-pages code (fixed voice and model, free tier)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FREE_TIER_CONFIRMED: ${{ inputs.nivel_gratuito_confirmado }}
+        run: node scripts/ci/ensaio-voz.mjs "$RUNNER_TEMP/pedido/pedido-voz.json" "$RUNNER_TEMP/voz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ensaio-voz
+          path: ${{ runner.temp }}/voz/
+          if-no-files-found: error
+          retention-days: 1
+  render:
+    needs: [autorizar, voz]
+    if: ${{ github.ref == 'refs/heads/gh-pages' && needs.autorizar.outputs.sha != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      DRY_RUN: 'true'
+      FREE_TIER_CONFIRMED: ${{ inputs.nivel_gratuito_confirmado }}
+      PREVIEW_SLOT: ${{ inputs.slot }}
+      SHA_ENSAIO: ${{ needs.autorizar.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ needs.autorizar.outputs.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Prove the checked-out code is the authorized SHA and no credential reaches this machine
+        run: |
+          test "$(git rev-parse HEAD)" = "$SHA_ENSAIO" || { echo "::error::checkout diferente do SHA autorizado"; exit 1; }
+          if env | cut -d= -f1 | grep -Eq '^(GEMI[N]I|YOU[T]UBE|ME[T]A|CLOUD[F]LARE|K[V]|HOT[M]ART|MERCADO[P]AGO)_|DECISAO_[K]EY|^GITHUB_TOKEN$|^GH_TOKEN$'; then echo "::error::credencial presente na maquina do codigo do PR"; exit 1; fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ensaio-voz
+          path: ${{ runner.temp }}/voz
+      - name: Install local media and alignment tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-inter tesseract-ocr tesseract-ocr-por
+          python3 -m pip install --user stable-ts==2.19.1 Pillow==12.0.0 numpy==2.2.6
+      - name: Render with the PR code using the generated voice (no secrets, never uploads)
+        run: node scripts/shorts-v3/ensaio-fases.mjs render "$RUNNER_TEMP/shorts-ensaio" "$RUNNER_TEMP/voz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ensaio-juri
+          path: ${{ runner.temp }}/shorts-ensaio/juri/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shorts-ensaio-${{ needs.autorizar.outputs.sha }}
+          path: ${{ runner.temp }}/shorts-ensaio/
+          if-no-files-found: error
+          retention-days: 7
+  juri:
+    needs: [autorizar, render]
+    if: ${{ github.ref == 'refs/heads/gh-pages' && needs.autorizar.outputs.sha != '' }}
+    environment: ensaio-shorts-pr
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Re-verify authorization right before using the key (same PR, SHA, label, validity, environment, limit)
+        env:
+          SHA_ENSAIO: ${{ needs.autorizar.outputs.sha }}
+          MODO_ENSAIO: pr
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci/autorizar-ensaio.mjs
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ensaio-juri
+          path: ${{ runner.temp }}/juri
+      - name: Real Gemini jury with gh-pages code on the rendered frames (data only)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/ci/ensaio-juri.mjs "$RUNNER_TEMP/juri"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ensaio-resultado-${{ needs.autorizar.outputs.sha }}
+          path: ${{ runner.temp }}/juri/resultado.json
+          if-no-files-found: error
+          retention-days: 7

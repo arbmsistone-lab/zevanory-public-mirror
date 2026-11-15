@@ -33,7 +33,7 @@ tests/central-retired-contact-script.test.mjs 5
 tests/certification-worker.test.mjs 3
 tests/circuits-adversarial.test.mjs 31
 tests/command-center-main.test.mjs 4
-tests/command-center-snapshot.test.mjs 10
+tests/command-center-snapshot.test.mjs 11
 tests/commercial-checkout-guard.test.mjs 6
 tests/commercial-metrics-projection.test.mjs 13
 tests/comprar-noindex.test.mjs 8
@@ -50,6 +50,7 @@ tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10
 tests/engine-dispatcher.test.mjs 4
+tests/ensaio-fases-confiaveis.test.mjs 2
 tests/experiments.test.mjs 5
 tests/f1-blog-kv.test.mjs 5
 tests/f1-bluesky-kv.test.mjs 11
@@ -169,6 +170,7 @@ tests/sales-worker-differential.test.mjs 6
 tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
 tests/short-crosspost.test.mjs 10
+tests/shorts-ensaio-isolamento.test.mjs 6
 tests/shorts-preparation.test.mjs 10
 tests/shorts-retomada-mutantes.test.mjs 47
 tests/shorts-retomada.test.mjs 15
