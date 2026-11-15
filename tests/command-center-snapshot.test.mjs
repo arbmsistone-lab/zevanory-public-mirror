@@ -96,3 +96,12 @@ test("F1: status de falha do Bluesky (bluesky:status:AAAAMMDD) vira entrada \"er
   const pubs = computePublications({ "2026-11-10": { bluesky: e } });
   assert.deepEqual([pubs.expected, pubs.published], [1, 0]);
 });
+test("publicações: dia fora da agenda do blog (seg/qua/sex) não conta como previsto; rejeitado/erro continuam contando", () => {
+  const p = computePublications({
+    "2026-11-13": { blog: { status: "publicado" }, bluesky: { status: "publicado" } },
+    "2026-11-14": { blog: { status: "fora_da_agenda" }, bluesky: { status: "publicado" } },
+    "2026-11-12": { blog: { status: "erro" } },
+  });
+  assert.deepEqual(p.perChannel.blog, { expected: 2, published: 1 }, "13/11 publicado + 12/11 erro; 14/11 fora da agenda não entra");
+  assert.equal(p.expected, 4); assert.equal(p.published, 3);
+});
