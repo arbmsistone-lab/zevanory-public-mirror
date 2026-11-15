@@ -209,10 +209,13 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   } catch {}
   // Clean breakdown (only days after the bot/datacenter filter went live): per page, per source and
   // per campaign, so the commercial diagnosis never mixes contaminated days with real visitors.
+  // GPT-6 (rodada 2, 15/11): falha de leitura NUNCA vira zero. leituraOk distingue "consulta vazia" (zeros reais)
+  // de "consulta falhou" (clean.oferta = null → o snapshot e o painel mostram "—").
+  let leituraOk = true;
   const cleanRows = await sql.query(`select page, metric, sum(n)::int as n from zevanory_funnel_daily
-      where day >= $1::date group by page, metric`, [CLEAN_SINCE]).catch(() => []);
+      where day >= $1::date group by page, metric`, [CLEAN_SINCE]).catch(() => { leituraOk = false; return []; });
   // oferta: totais exatos de chegada/clique somados ANTES do corte das 30 maiores origens (topN abaixo).
-  const clean = { since: CLEAN_SINCE, oferta: { hotmart_view: 0, hotmart_click: 0 }, diagnostico: Object.create(null), pages: Object.create(null), sources: Object.create(null), campaigns: Object.create(null), classes: Object.create(null), asn: Object.create(null) };
+  const clean = { since: CLEAN_SINCE, oferta: { leitura: "ok", hotmart_view: 0, hotmart_click: 0 }, diagnostico: Object.create(null), pages: Object.create(null), sources: Object.create(null), campaigns: Object.create(null), classes: Object.create(null), asn: Object.create(null) };
   for (const row of cleanRows || []) {
     const n = Number(row.n) || 0;
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
@@ -229,6 +232,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     const p = (clean.pages[row.page] = clean.pages[row.page] || Object.create(null));
     p[row.metric] = (p[row.metric] || 0) + n;
   }
+  if (!leituraOk || !Array.isArray(cleanRows)) clean.oferta = null;
   // Keep the stored summary bounded: visitor-controlled labels (utm) can be arbitrary.
   const topN = (obj, n, val = (v) => v) => Object.fromEntries(Object.entries(obj).sort((x, y) => val(y[1]) - val(x[1])).slice(0, n));
   clean.sources = topN(clean.sources, 30, (v) => v.views || 0);

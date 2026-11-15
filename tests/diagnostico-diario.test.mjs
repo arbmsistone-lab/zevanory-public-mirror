@@ -156,7 +156,8 @@ test("funil: resumo horário ganha views BR, hotmart_view e lead_submit por dia 
 });
 
 test("aviso público: hotmart_view separado de legacyMixedClicks numa linha curta; autonomia sem registro = não medido", async () => {
-  const store = new Map([["zpc-funnel:v1:summary", JSON.stringify({ generatedAt: "2026-10-13T12:00:00Z", products: {}, last7Days: {}, clean: { since: "2026-10-12", pages: { "lucro-e-caixa": { views: 9, checkout_intent: 1, hotmart_view: 6, subscribe_click: 0 } }, sources: { blog: { views: 9, checkout_intent: 1, hotmart_view: 6, subscribe_click: 2 } }, campaigns: {}, classes: {}, asn: {} } })]]);
+  // resumo no formato atual (clean.oferta com o total exato); resumo antigo sem ele dá "—" (tests/funil-clique-diagnostico.test.mjs)
+  const store = new Map([["zpc-funnel:v1:summary", JSON.stringify({ generatedAt: "2026-10-13T12:00:00Z", products: {}, last7Days: {}, clean: { since: "2026-10-12", oferta: { leitura: "ok", hotmart_view: 6, hotmart_click: 0 }, pages: { "lucro-e-caixa": { views: 9, checkout_intent: 1, hotmart_view: 6, subscribe_click: 0 } }, sources: { blog: { views: 9, checkout_intent: 1, hotmart_view: 6, subscribe_click: 2 } }, campaigns: {}, classes: {}, asn: {} } })]]);
   const realFetch = globalThis.fetch, realLog = console.log, logs = [];
   globalThis.fetch = async (u, o = {}) => {
     u = String(u);

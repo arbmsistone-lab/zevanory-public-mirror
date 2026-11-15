@@ -50,17 +50,22 @@ export const metric = (value, source, updatedAt, definition, integrity = "real")
 // GPT-6 (15/11): os dois indicadores da oferta com os rótulos combinados, e os testes de diagnóstico à parte,
 // no objeto que o painel lê (snapshot.funnel.oferta). Base: resumo limpo (desde o filtro de robôs).
 export const ROTULOS_OFERTA = Object.freeze({ hotmart_view: "Abriu a página da oferta", hotmart_click: "Clicou para ir ao checkout" });
+// Três estados (GPT-6, rodada 2): leitura ok e vazia → zeros; consulta falhou ou resumo ausente → "—" (missing) nos
+// três blocos; resumo antigo sem clean.oferta (sem totais exatos) → "—", nunca a soma parcial das 30 maiores origens.
+const contagem = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
+export function ofertaLegivel(cl) {
+  const o = cl?.oferta;
+  return !!o && o.leitura === "ok" && contagem(o.hotmart_view) != null && contagem(o.hotmart_click) != null;
+}
 export function funilOferta(funnel, funnelAt, integrity) {
-  const cl = funnel?.clean;
-  if (!cl) return { since: null, abriuOferta: metric(null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_view), clicouCheckout: metric(null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_click), diagnostico: { abriuOferta: 0, clicouCheckout: 0 } };
-  const soma = (k) => Object.values(cl.sources || {}).reduce((t, v) => t + (Number(v?.[k]) || 0), 0);
-  const total = (k) => (Number.isSafeInteger(cl.oferta?.[k]) && cl.oferta[k] >= 0 ? cl.oferta[k] : soma(k));
-  const diag = (k) => Object.values(cl.diagnostico || {}).reduce((t, v) => t + (Number(v?.[k]) || 0), 0);
-  const desde = cl.since ? " desde " + cl.since : "";
+  const cl = funnel?.clean, ok = ofertaLegivel(cl);
+  const desde = cl?.since ? " desde " + cl.since : "";
+  const motivo = !cl ? "; resumo do funil ausente" : !cl.oferta ? "; sem total exato (leitura falhou ou resumo antigo)" : ok ? "" : "; total ilegível";
+  const diag = (k) => { if (!ok) return null; let t = 0; for (const v of Object.values(cl.diagnostico || {})) { const n = contagem(v?.[k] ?? 0); if (n == null) return null; t += n; } return t; };
   return {
-    since: cl.since || null,
-    abriuOferta: metric(total("hotmart_view"), "Site", funnelAt, ROTULOS_OFERTA.hotmart_view + " (/hotmart/<produto>)" + desde + "; sem testes de diagnóstico", integrity),
-    clicouCheckout: metric(total("hotmart_click"), "Site", funnelAt, ROTULOS_OFERTA.hotmart_click + " (/hotmart/<produto>/ir)" + desde + "; sem testes de diagnóstico; a venda só conta com a confirmação da Hotmart", integrity),
+    since: cl?.since || null,
+    abriuOferta: metric(ok ? cl.oferta.hotmart_view : null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_view + " (/hotmart/<produto>)" + desde + "; sem testes de diagnóstico" + motivo, integrity),
+    clicouCheckout: metric(ok ? cl.oferta.hotmart_click : null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_click + " (/hotmart/<produto>/ir)" + desde + "; sem testes de diagnóstico; a venda só conta com a confirmação da Hotmart" + motivo, integrity),
     diagnostico: { abriuOferta: diag("hotmart_view"), clicouCheckout: diag("hotmart_click") },
   };
 }
@@ -622,9 +627,11 @@ export async function main() {
       // testes com utm_source=diagnostico ficam em "diagnostico", fora dos números comerciais.
       const hc = Object.values(sources).reduce((t, b) => t + (b.hotmartClick || 0), 0), of = snapshot.funnel.oferta;
       // mesmo total exato do painel (inclui origens fora do corte das 30 maiores)
-      const hvT = of.abriuOferta.value ?? hv, hcT = of.clicouCheckout.value ?? hc;
+      // sem total exato (leitura falhou / resumo antigo): "—", nunca a soma parcial das origens
+      const traco = (v) => (v == null ? "—" : v), hvT = traco(of.abriuOferta.value), hcT = traco(of.clicouCheckout.value);
+      void hv; void hc;
       console.log("::notice title=HOTMART_VIEW::" + JSON.stringify({ at: funnel.generatedAt || null, since: cl.since || null, hotmart_view: hvT, hotmart_click: hcT, legacyMixedClicks: lm }));
-      console.log("::notice title=FUNIL_ROTULOS::" + JSON.stringify({ rotulos: { hotmart_view: "abriu a página da oferta", hotmart_click: "clicou para ir ao checkout" }, diagnostico: cl.diagnostico || {} }));
+      console.log("::notice title=FUNIL_ROTULOS::" + JSON.stringify({ rotulos: { hotmart_view: "abriu a página da oferta", hotmart_click: "clicou para ir ao checkout" }, diagnostico: { abriuOferta: traco(of.diagnostico.abriuOferta), clicouCheckout: traco(of.diagnostico.clicouCheckout) } }));
       let text = JSON.stringify(diag);
       if (text.length > 3800) { delete diag.pages; text = JSON.stringify(diag); }
       console.log("::notice title=FUNNEL_DIAG::" + text);

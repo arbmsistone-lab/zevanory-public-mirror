@@ -65,19 +65,11 @@ test("resumo: diagnóstico separado (clean.diagnostico), fora das origens, pági
   assert.equal(DIAG_SOURCE, "diagnostico"); assert.ok(INTENT_METRICS.includes("hotmart_click"));
   assert.match(METRIC_DEFINITIONS.hotmart_view, /abriu a página da oferta/); assert.match(METRIC_DEFINITIONS.hotmart_click, /clicou para ir ao checkout/);
 });
-// GPT-6 (15/11, NO-GO 0825b3f5): o painel lê snapshot.funnel (KV zpc:command:v1:snapshot), não o log do Actions.
-// Este teste roda o resumo do worker → KV simulado → main() do snapshot e confere o objeto GRAVADO que o painel recebe.
-test("painel recebe: snapshot.funnel.oferta com os dois indicadores rotulados e o diagnóstico à parte (saída gravada no KV)", async () => {
-  // 31 origens: a de menor volume (fora do corte das 30 maiores) tem 1 clique, que precisa entrar no total
-  const rows = [{ page: "lucro-e-caixa", metric: "hotmart_view:src:youtube", n: 3 }, { page: "lucro-e-caixa", metric: "hotmart_click:src:youtube", n: 1 },
-    { page: "lucro-e-caixa", metric: "diag:hotmart_view", n: 1 }, { page: "lucro-e-caixa", metric: "diag:hotmart_click", n: 1 }, { page: "lucro-e-caixa", metric: "views", n: 7 }];
-  for (let i = 0; i < 30; i++) rows.push({ page: "lucro-e-caixa", metric: "src:camp" + i, n: 50 });
-  rows.push({ page: "lucro-e-caixa", metric: "src:rara", n: 1 }, { page: "lucro-e-caixa", metric: "hotmart_click:src:rara", n: 1 });
-  const resumo = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query: async (t) => (/group by page, metric/.test(t) ? rows : []) }) });
-  assert.equal(resumo.clean.sources.rara, undefined, "premissa: a origem rara saiu do corte");
-  assert.deepEqual(resumo.clean.oferta, { hotmart_view: 3, hotmart_click: 2 });
-  resumo.generatedAt = new Date().toISOString();
-  const store = new Map([["zpc-funnel:v1:summary", JSON.stringify(resumo)]]);
+// GPT-6 (15/11, NO-GO 0825b3f5 e rodada 2 em 22b43e32): o painel lê snapshot.funnel (KV zpc:command:v1:snapshot), não o
+// log do Actions, e falha de leitura nunca vira zero. Cada caso roda resumo do worker → KV simulado → main() do snapshot
+// e confere o objeto GRAVADO que o painel recebe e o aviso público HOTMART_VIEW / FUNIL_ROTULOS.
+async function snapshotGravado(resumo) {
+  const store = new Map(resumo ? [["zpc-funnel:v1:summary", JSON.stringify(resumo)]] : []);
   const realFetch = globalThis.fetch, realLog = console.log, logs = [];
   globalThis.fetch = async (u, o = {}) => {
     u = String(u); const res = (status, body) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
@@ -93,18 +85,55 @@ test("painel recebe: snapshot.funnel.oferta com os dois indicadores rotulados e 
   console.log = (...a) => { logs.push(a.join(" ")); };
   Object.assign(process.env, { CLOUDFLARE_API_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "a", KV_NAMESPACE_ID: "n" });
   try {
-    const { main, SNAPSHOT_KEY, ROTULOS_OFERTA } = await import("../scripts/audit/command-center-snapshot.mjs");
+    const { main, SNAPSHOT_KEY } = await import("../scripts/audit/command-center-snapshot.mjs");
     await main();
-    const of = JSON.parse(store.get(SNAPSHOT_KEY)).funnel.oferta;
-    assert.equal(ROTULOS_OFERTA.hotmart_view, "Abriu a página da oferta"); assert.equal(ROTULOS_OFERTA.hotmart_click, "Clicou para ir ao checkout");
-    assert.equal(of.abriuOferta.value, 3); assert.match(of.abriuOferta.definition, /^Abriu a página da oferta/); assert.equal(of.abriuOferta.integrity, "aggregated");
-    assert.equal(of.clicouCheckout.value, 2); assert.match(of.clicouCheckout.definition, /^Clicou para ir ao checkout/);
-    assert.deepEqual(of.diagnostico, { abriuOferta: 1, clicouCheckout: 1 }, "diagnóstico à parte, fora dos números comerciais");
-    assert.equal(of.since, resumo.clean.since);
-    const hv = logs.find((l) => l.includes("title=HOTMART_VIEW::")); assert.match(hv, /"hotmart_view":3,"hotmart_click":2/, "aviso público = mesmo total do painel");
-    // sem resumo do funil: nunca um número
-    store.delete("zpc-funnel:v1:summary"); store.delete(SNAPSHOT_KEY); await main();
-    const vazio = JSON.parse(store.get(SNAPSHOT_KEY)).funnel.oferta;
-    assert.equal(vazio.abriuOferta.value, null); assert.equal(vazio.abriuOferta.integrity, "missing"); assert.equal(vazio.clicouCheckout.integrity, "missing");
+    const aviso = (t) => { const l = logs.find((x) => x.includes("title=" + t + "::")); return l ? JSON.parse(l.slice(l.indexOf("::", l.indexOf("title=")) + 2)) : null; };
+    return { of: JSON.parse(store.get(SNAPSHOT_KEY)).funnel.oferta, hv: aviso("HOTMART_VIEW"), rot: aviso("FUNIL_ROTULOS") };
   } finally { globalThis.fetch = realFetch; console.log = realLog; }
+}
+const resumoDe = async (query) => { const r = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query }) }); r.generatedAt = new Date().toISOString(); return r; };
+const ausente = (of) => { assert.equal(of.abriuOferta.value, null); assert.equal(of.abriuOferta.integrity, "missing"); assert.equal(of.clicouCheckout.value, null); assert.equal(of.clicouCheckout.integrity, "missing"); assert.deepEqual(of.diagnostico, { abriuOferta: null, clicouCheckout: null }); };
+
+test("painel recebe: leitura ok → os dois indicadores rotulados (total exato, inclusive origem fora do top 30) e o diagnóstico à parte", async () => {
+  const rows = [{ page: "lucro-e-caixa", metric: "hotmart_view:src:youtube", n: 3 }, { page: "lucro-e-caixa", metric: "hotmart_click:src:youtube", n: 1 },
+    { page: "lucro-e-caixa", metric: "diag:hotmart_view", n: 1 }, { page: "lucro-e-caixa", metric: "diag:hotmart_click", n: 1 }, { page: "lucro-e-caixa", metric: "views", n: 7 }];
+  for (let i = 0; i < 30; i++) rows.push({ page: "lucro-e-caixa", metric: "src:camp" + i, n: 50 });
+  rows.push({ page: "lucro-e-caixa", metric: "src:rara", n: 1 }, { page: "lucro-e-caixa", metric: "hotmart_click:src:rara", n: 1 });
+  const resumo = await resumoDe(async (t) => (/group by page, metric/.test(t) ? rows : []));
+  assert.equal(resumo.clean.sources.rara, undefined, "premissa: a origem rara saiu do corte");
+  assert.deepEqual(resumo.clean.oferta, { leitura: "ok", hotmart_view: 3, hotmart_click: 2 });
+  const { of, hv, rot } = await snapshotGravado(resumo);
+  const { ROTULOS_OFERTA } = await import("../scripts/audit/command-center-snapshot.mjs");
+  assert.equal(ROTULOS_OFERTA.hotmart_view, "Abriu a página da oferta"); assert.equal(ROTULOS_OFERTA.hotmart_click, "Clicou para ir ao checkout");
+  assert.equal(of.abriuOferta.value, 3); assert.match(of.abriuOferta.definition, /^Abriu a página da oferta/); assert.equal(of.abriuOferta.integrity, "aggregated");
+  assert.equal(of.clicouCheckout.value, 2, "inclui o clique da origem fora do top 30"); assert.match(of.clicouCheckout.definition, /^Clicou para ir ao checkout/);
+  assert.deepEqual(of.diagnostico, { abriuOferta: 1, clicouCheckout: 1 }); assert.equal(of.since, resumo.clean.since);
+  assert.equal(hv.hotmart_view, 3); assert.equal(hv.hotmart_click, 2, "aviso público = mesmo total do painel");
+  assert.deepEqual(rot.diagnostico, { abriuOferta: 1, clicouCheckout: 1 });
+});
+test("painel recebe: consulta bem-sucedida e vazia → zero nos três blocos (dado real, não ausente)", async () => {
+  const { of, hv, rot } = await snapshotGravado(await resumoDe(async () => []));
+  assert.equal(of.abriuOferta.value, 0); assert.equal(of.abriuOferta.integrity, "aggregated");
+  assert.equal(of.clicouCheckout.value, 0); assert.equal(of.clicouCheckout.integrity, "aggregated");
+  assert.deepEqual(of.diagnostico, { abriuOferta: 0, clicouCheckout: 0 });
+  assert.equal(hv.hotmart_view, 0); assert.equal(hv.hotmart_click, 0); assert.deepEqual(rot.diagnostico, { abriuOferta: 0, clicouCheckout: 0 });
+});
+test("painel recebe: consulta dos contadores falhou → \"—\" nos três blocos e no aviso (nunca 0)", async () => {
+  const resumo = await resumoDe(async (t) => { if (/day >= \$1::date group by page, metric/.test(t)) throw new Error("db_down"); return []; });
+  assert.equal(resumo.clean.oferta, null, "o worker marca a falha");
+  const { of, hv, rot } = await snapshotGravado(resumo);
+  ausente(of); assert.match(of.abriuOferta.definition, /leitura falhou/);
+  assert.equal(hv.hotmart_view, "—"); assert.equal(hv.hotmart_click, "—"); assert.deepEqual(rot.diagnostico, { abriuOferta: "—", clicouCheckout: "—" });
+});
+test("painel recebe: resumo ausente → \"—\" nos três blocos", async () => {
+  const { of, hv } = await snapshotGravado(null);
+  ausente(of); assert.match(of.abriuOferta.definition, /resumo do funil ausente/); assert.equal(hv, null, "sem resumo, nenhum aviso com número");
+});
+test("painel recebe: resumo antigo sem totais exatos → \"—\", nunca a soma parcial das 30 maiores origens", async () => {
+  const antigo = { generatedAt: new Date().toISOString(), products: {}, last7Days: {}, clean: { since: "2026-10-12", pages: {}, campaigns: {}, classes: {}, asn: {}, diagnostico: { "lucro-e-caixa": { hotmart_view: 2 } }, sources: { youtube: { views: 9, hotmart_view: 4, hotmart_click: 1 } } } };
+  const { of, hv, rot } = await snapshotGravado(antigo);
+  ausente(of); assert.equal(hv.hotmart_view, "—"); assert.equal(hv.hotmart_click, "—"); assert.deepEqual(rot.diagnostico, { abriuOferta: "—", clicouCheckout: "—" });
+  // total ilegível (corrompido) também não vira número
+  const { of: of2 } = await snapshotGravado({ ...antigo, clean: { ...antigo.clean, oferta: { leitura: "ok", hotmart_view: -1, hotmart_click: 1.5 } } });
+  ausente(of2);
 });
