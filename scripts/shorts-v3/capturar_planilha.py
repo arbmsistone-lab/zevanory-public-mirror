@@ -23,7 +23,7 @@ SEL = (128, 0, 0)  # cor do cabeçalho da coluna/linha selecionada no Calc (tema
 # célula termina a pelo menos FOLGA_DIREITA px da borda (júri real: "corta o 2,2% na borda direita").
 # a partir das letras das colunas: a barra de fórmulas (fonte de interface, que não escala com o zoom) era "texto pequeno" para o júri
 CORTE_TELA = (0, 110, 1080, ALTURA_CONTEXTO); ZOOM_TELA = 300; ROTULO_LINHAS = 33; RODAPE_CALC = 62
-FOLGA_DIREITA = 80  # a coluna da célula termina a >= 80 px da borda: nada cortado colado ao valor
+FOLGA_DIREITA = 2  # v3.7: a tela termina na borda da coluna da célula (só colunas inteiras); basta caber
 
 def _p(n, v):
     p = PropertyValue(); p.Name = n; p.Value = v; return p
@@ -66,7 +66,7 @@ def main(original, prov_path, saida):
             win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_CONTEXTO, 15); ctrl.ZoomValue = ZOOM_TELA
             ctrl.setFirstVisibleColumn(max(0, col - 1)); ctrl.setFirstVisibleRow(2)  # a partir do cabeçalho (linha 3)
             ctrl.select(sh.getCellRangeByName("A1")); time.sleep(1); ctrl.select(cel)  # barra de status atualizada para ESTA célula
-            ctrl.setFirstVisibleColumn(max(0, col - 1)); ctrl.setFirstVisibleRow(2)  # a seleção rola a tela: fixa de novo; time.sleep(2.5)
+            ctrl.setFirstVisibleColumn(max(0, col - 1)); ctrl.setFirstVisibleRow(2); time.sleep(2.5)  # a seleção rola a tela: fixa de novo
             tmp = os.path.join(saida, f".raw-{nome}.png"); subprocess.run(["import", "-window", "root", tmp], check=True)
             tela = Image.open(tmp).convert("RGB")
             # v3.7 (júri real: "o recorte corta o 2,2% na borda direita"): a coluna da célula tem de caber inteira nos
@@ -77,7 +77,10 @@ def main(original, prov_path, saida):
                 if faixa_selecionada(tela, "x", 118, 30, LARGURA_JANELA - 60)[1] > CORTE_TELA[2] - FOLGA_DIREITA: raise SystemExit("coluna_nao_cabe:" + nome)
             _, y1t = faixa_selecionada(tela, "y", 10, 100, ALTURA_CONTEXTO - 80)  # fim da linha 5
             corte = y1t + 8  # v3.7: termina logo após a linha 5 (a linha 6 vazia só ocupava altura)
-            tela = tela.crop(CORTE_TELA); h = corte - CORTE_TELA[1]
+            # v3.7 (júri real 9,5/legibilidade 9,0: "cabeçalhos cortados na borda direita"): a tela termina na borda direita
+            # da coluna da célula — só colunas INTEIRAS (a anterior e a da célula); o quadro amplia por escala uniforme
+            x1c = faixa_selecionada(tela, "x", 118, 30, LARGURA_JANELA - 60)[1]
+            tela = tela.crop((CORTE_TELA[0], CORTE_TELA[1], min(CORTE_TELA[2], x1c + 2), CORTE_TELA[3])); h = corte - CORTE_TELA[1]
             tela.crop((0, 0, tela.width, h)).save(os.path.join(saida, f"tela-{nome}.png"))
 
             win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_PERTO, 15); ctrl.ZoomValue = 400

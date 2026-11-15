@@ -72,10 +72,11 @@ def celula(d, nome, y, largura=SAFE_R - 64):
 def tela(d, nome, y):
     """v3.7: TELA REAL do Calc a 300% em LARGURA TOTAL (0–1080), da barra de fórmulas à linha 6. (A v3.6 colava a grade
     vazia até a borda: júri real 8,5 — "grade cortada e vazia"; retirada.) Seta do cabeçalho da coluna ao close-up."""
-    c = PROV["celulas"][nome]; arq = CAP / Path(c["tela"]).name; s = Image.open(arq).convert("RGB")
+    c = PROV["celulas"][nome]; arq = CAP / Path(c["tela"]).name; s0 = Image.open(arq).convert("RGB")
+    esc = W / s0.width; s = s0.resize((W, round(s0.height * esc)), Image.LANCZOS)  # só colunas inteiras, ampliadas por igual
     d.im.paste(s, (0, y)); med["provaReal"] = True; fim = y + s.height
-    px = s.load(); xs = next((v for v in ([i for i in range(s.width) if px[i, yy][:3] == (128, 0, 0)] for yy in range(0, 60)) if v), [])
-    cx = round((min(xs) + max(xs)) / 2) if xs else (64 + SAFE_R) // 2
+    px = s0.load(); xs = next((v for v in ([i for i in range(s0.width) if px[i, yy][:3] == (128, 0, 0)] for yy in range(0, 60)) if v), [])
+    cx = round((min(xs) + max(xs)) / 2 * esc) if xs else (64 + SAFE_R) // 2
     seta(d, min(cx, SAFE_R - 40), fim + 4, fim + 44)
     return fim + 48
 # v3.7 (júri real 8,5 — ensaio 43652751629: rodapé com texto miúdo "ilegível e na área da interface"; antes, 9,1 —
@@ -101,7 +102,7 @@ def bloco_prova(nome, extra=0):
     """altura de tela + seta + cartão do close-up (mesmas contas de tela() e celula())"""
     c = PROV["celulas"][nome]; t = Image.open(CAP / Path(c["tela"]).name); s_ = Image.open(CAP / Path(c["arquivo"]).name)
     larg = round((SAFE_R - 64) * float(spec.get("escala_celulas", 1)))
-    return t.height + 48 + round(s_.height * larg / s_.width) + 86 + extra
+    return round(t.height * W / t.width) + 48 + round(s_.height * larg / s_.width) + 86 + extra
 def centro(y_min, altura, fim=CB):
     """v3.7 (júri oscilou entre "apertado" e "vazio"): o bloco fica centrado entre o título e o fim do conteúdo"""
     return y_min + max(0, (fim - y_min - altura) // 2)
@@ -141,7 +142,7 @@ def q_oferta(d, fase):
         y = rich(d, 64, 290, O["beneficio"], font(84), hl=("margem",)) + 30
         y = capa(d, y) + 30
         for k, t in enumerate(O["itens"]):
-            yy = y + k * 76; d.ellipse((70, yy + 14, 102, yy + 46), fill=GREEN); d.text((124, yy), t, font(50), TXT)
+            yy = y + k * 96; d.ellipse((70, yy + 18, 108, yy + 56), fill=GREEN); d.text((130, yy), t, font(60), TXT)
         return
     if fase == 1:  # oferta: preço e condições, grandes e separados
         d.text((64, 290), "KIT COMPLETO", font(46), BLUE)

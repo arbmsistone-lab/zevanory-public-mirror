@@ -30,7 +30,7 @@
    "celula": "E5",
    "cabecalho": "Preço atual",
    "valor_exibido": "R$ 180,00",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira com folga, célula E5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula E5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "brl",
    "tela": "assets/shorts-v3/lcx/tela-preco.png"
   },
@@ -40,7 +40,7 @@
    "celula": "F5",
    "cabecalho": "Taxa pagamento %",
    "valor_exibido": "5,0%",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira com folga, célula F5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula F5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "pct",
    "tela": "assets/shorts-v3/lcx/tela-taxa.png"
   },
@@ -50,7 +50,7 @@
    "celula": "J5",
    "cabecalho": "Contribuição/unit.",
    "valor_exibido": "R$ 39,00",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira com folga, célula J5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula J5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "brl",
    "tela": "assets/shorts-v3/lcx/tela-contribuicao.png"
   },
@@ -60,7 +60,7 @@
    "celula": "K5",
    "cabecalho": "Margem contribuição %",
    "valor_exibido": "21,7%",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira com folga, célula K5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula K5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "pct",
    "tela": "assets/shorts-v3/lcx/tela-margem.png"
   },
@@ -70,7 +70,7 @@
    "celula": "M5",
    "cabecalho": "Desconto máx. p/ margem alvo",
    "valor_exibido": "2,2%",
-   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, 1080 px, letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira com folga, célula M5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula M5 selecionada; arquivo: close-up a 400% da mesma célula selecionada",
    "formato": "pct",
    "tela": "assets/shorts-v3/lcx/tela-desconto.png"
   }
