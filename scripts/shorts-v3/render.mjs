@@ -72,8 +72,26 @@ export async function conferirNumeros(spec){
 }
 // Grupos de até 3 palavras; a palavra falada fica amarela. Posição na área segura (centro x=470, y=1330; v3.7: conteúdo até 1240).
 // Grupos da legenda v3 (mesma divisão de legendasV3) que ficariam menos de `min` segundos na tela.
-export function gruposCurtosV3(words,porFala,fim,min=0.3){const g=[];let ini=0;for(const n of porFala){for(let a=ini;a<ini+n;a+=3)g.push(a);ini+=n;}
- return g.map((a,i)=>{const fimGrupo=i+1<g.length?words[g[i+1]].start:fim;return [a,fimGrupo-words[a].start];}).filter(([,d])=>!(d>=min)).map(([a,d])=>`${a}:${d.toFixed(2)}`);}
+// Ensaio 43662682124: com a divisão fixa de 3 em 3, a sobra do fim de uma frase (1–2 palavras ditas depressa) ficou
+// 0,28 s na tela. Agora cada frase é dividida em grupos de 1 a 3 palavras pela divisão que MAXIMIZA o menor tempo de
+// tela (início do grupo -> início do próximo; o último vai até o início da frase seguinte ou o fim da voz), com os
+// tempos reais do alinhador; empate: menos grupos. Nenhum tempo é inventado e o mínimo de `min` não muda.
+export function gruposV3(words,porFala,fim){
+ const r=[];let ini=0;
+ for(const n of porFala){
+  const st=k=>k<ini+n?words[k].start:(words[ini+n]?words[ini+n].start:(Number.isFinite(fim)?fim:words[ini+n-1].end));
+  const dp=new Map([[ini+n,{min:Infinity,cortes:[]}]]);
+  for(let i=ini+n-1;i>=ini;i--){let best=null;
+   for(let k=3;k>=1;k--){const j=i+k;if(j>ini+n)continue;const prox=dp.get(j),m=Math.min(st(j)-st(i),prox.min);
+    if(!best||m>best.min+1e-9||(Math.abs(m-best.min)<=1e-9&&prox.cortes.length+1<best.cortes.length))best={min:m,cortes:[[i,j],...prox.cortes]};}
+   dp.set(i,best);}
+  r.push(...dp.get(ini).cortes);ini+=n;}
+ if(ini!==words.length)throw Error('v3_legenda_contagem');
+ return r;
+}
+// Grupos (a mesma divisão de legendasV3) que ficariam menos de `min` segundos na tela.
+export function gruposCurtosV3(words,porFala,fim,min=0.3){const g=gruposV3(words,porFala,fim);
+ return g.map(([a],i)=>{const fimGrupo=i+1<g.length?words[g[i+1][0]].start:fim;return [a,fimGrupo-words[a].start];}).filter(([,d])=>!(d>=min)).map(([a,d])=>`${a}:${d.toFixed(2)}`);}
 // Dependências reais do alinhamento por frase (ffmpeg/ffprobe e o mesmo align.py do áudio inteiro).
 export function depsFrases(run=command){return {
  silenciosDe:(wav,dur)=>lerSilencios(run('ffmpeg',['-hide_banner','-nostats','-i',wav,'-af',`silencedetect=noise=${SILENCIO_DB}dB:d=${SILENCIO_MIN_S}`,'-f','null','-']),dur),
@@ -83,14 +101,13 @@ export function depsFrases(run=command){return {
  alinharTrecho:async(arq,texto)=>{writeFileSync(arq+'.txt',texto);runAligner([arq,arq+'.txt',arq+'.json']);return JSON.parse(readFileSync(arq+'.json','utf8'));}
 };}
 export const DESTAQUE_MIN_S=0.12;
-export function legendasV3(words,porFala=[words.length]){
+export function legendasV3(words,porFala=[words.length],fim=undefined){
  const t=v=>{const cs=Math.round(v*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;};
  const clean=s=>String(s).trim().replace(/[{}\\\r\n]/g,'');
  const head=`[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: G,Inter ExtraBold,74,&H00FFFFFF,&H00FFFFFF,&H00140D09,&H99000000,-1,0,0,0,100,100,0,0,1,6,0,5,64,140,0,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
  const ev=[],grupos=[];let ini=0;
- // Grupos nunca atravessam o fim de uma fala (frase): cada frase começa um grupo novo.
- for(const n of porFala){for(let g=ini;g<ini+n;g+=3)grupos.push([g,Math.min(g+3,ini+n)]);ini+=n;}
- if(ini!==words.length)throw Error('v3_legenda_contagem');
+ // Grupos nunca atravessam o fim de uma fala (frase); a divisão é a de gruposV3 (a mesma da verificação de tempo).
+ grupos.push(...gruposV3(words,porFala,fim));
  for(const [a,b] of grupos){const grp=words.slice(a,b),fimGrupo=Math.max((words[b]||{start:grp.at(-1).end}).start,grp.at(-1).end);
   const fins=grp.map((w,k)=>Math.max((grp[k+1]||words[b]||{start:w.end}).start,w.end));
   // NC-1048-01: se o destaque de alguma palavra ficaria menos de DESTAQUE_MIN_S na tela (palavra instantânea do
@@ -156,7 +173,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  normalizeTwoPass(base+'-mix-pass1.wav',base+'-mix.wav');
  // Quadros desenhados (as medidas do desenho NÃO são usadas na avaliação; quem mede é medir.py no vídeo).
  const desenho=JSON.parse(command('python3',['-E','-P',join(ROOT,'scripts/shorts-v3/quadros.py'),ROOT,join(ROOT,specPath),base+'-quadros']));
- await writeFile(base+'-legendas.ass',legendasV3(words,spec.falas.map(f=>f.texto.split(/\s+/).filter(Boolean).length)));
+ await writeFile(base+'-legendas.ass',legendasV3(words,spec.falas.map(f=>f.texto.split(/\s+/).filter(Boolean).length),voiceDuration));
  // Cortes secos entre quadros (sem transição deslizante/fundida): todo estado do vídeo é um quadro desenhado inteiro,
  // dentro da área segura — a varredura completa do MP4 (medir.py) não encontra texto cortado ou em movimento.
  const inputs=[],parts=[];
