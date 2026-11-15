@@ -231,3 +231,23 @@ test("v3.5 (júri real 8,5 — ensaio 43629467444): prova = tela real do Calc + 
   assert.doesNotMatch(q, /1900 - hb/, "barras decorativas fixas removidas");
   assert.match(q, /def tela\(/);
 });
+test("GPT-6 #1054: o avaliador do código integrado reprova célula ilegível ou medição ausente MESMO com nota alta do júri", async () => {
+  const base = { criativo: CRI, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: MED, permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };
+  assert.equal((await avaliar({ ...base, fetchImpl: gem(ALTO) })).decisao, "APROVADO", "controle: tudo legível aprova");
+  const comLeg = (pl, extra = {}) => ({ ...MED, medidas: { ...MED.medidas, provasLegiveis: pl, ...extra } });
+  const ok = MED.medidas.provasLegiveis;
+  assert.ok(ok.every((p) => p.legivel === true && p.altura_px >= 56), "controle com alturas reais >= 56");
+  const casos = {
+    "célula abaixo de 56 px": comLeg(ok.map((p, i) => i === 0 ? { ...p, altura_px: 40, legivel: false } : p)),
+    "medição ausente": comLeg(undefined),
+    "lista vazia": comLeg([]),
+    "item sem 'legivel'": comLeg(ok.map((p, i) => i === 0 ? { captura: p.captura, valor: p.valor, altura_px: 90 } : p)),
+    "provaIlegivel informado": comLeg(ok, { provaIlegivel: 1 }),
+    "célula de 40 px marcada legível (o avaliador confere a altura por conta própria)": comLeg(ok.map((p, i) => i === 0 ? { ...p, altura_px: 40, legivel: true } : p)),
+    "altura ausente": comLeg(ok.map((p, i) => i === 0 ? { captura: p.captura, valor: p.valor, legivel: true } : p)),
+  };
+  for (const [nome, medicao] of Object.entries(casos)) {
+    const r = await avaliar({ ...base, medicao, fetchImpl: gem({ notas: { gancho: 10, legibilidade: 10, prova: 10, oferta: 10, marca: 10 }, problemas: [], melhorias: [] }) });
+    assert.equal(r.decisao, "DESCARTADO", nome); assert.ok(r.motivos.includes("prova_ilegivel"), nome);
+  }
+});

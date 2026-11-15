@@ -45,7 +45,7 @@ tests/conteudo-pronto-roteiros.test.mjs 9
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
-tests/criativos-laboratorio.test.mjs 12
+tests/criativos-laboratorio.test.mjs 13
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10
@@ -183,6 +183,7 @@ tests/shorts-v2-round4.test.mjs 32
 tests/shorts-v2-round5.test.mjs 16
 tests/shorts-v2-timing.test.mjs 5
 tests/shorts-v2.test.mjs 26
+tests/shorts-v3-cta.test.mjs 5
 tests/shorts-v3-duracao-voz.test.mjs 2
 tests/shorts-v3-ensaio-fases.test.mjs 2
 tests/shorts-v3-frases.test.mjs 10

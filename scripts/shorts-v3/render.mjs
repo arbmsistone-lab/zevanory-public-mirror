@@ -31,10 +31,16 @@ import {createHash} from 'node:crypto';
 import {ofertaPublicada} from '../criativos/afirmacoes.mjs';
 import {CRITERIOS,montarPadrao,validarPadrao} from '../criativos/padrao.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
+// CTA do v3 (GPT-6, 15/11): links na descrição de Shorts não são clicáveis no YouTube -> "link do perfil". O v2 mantém o seu.
+// A mesma frase vale na validação do roteiro, no tempo do cartão final e na checagem de qualidade (palavras FALADAS).
+export const CTA_V3='Kit Lucro e Caixa no link do perfil';  // 8 palavras (~2,7 s): cabe no cartão de 3,5 s com cauda >= 0,5 s
+const norm=t=>String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}\s]/gu,'').replace(/\s+/g,' ').trim();
+// CTA efetivamente falado: as últimas N palavras alinhadas, comparadas sem acento/pontuação com CTA_V3.
+export function ctaFalado(words){const n=CTA_V3.split(/\s+/).length;return norm((words||[]).slice(-n).map(w=>w.word).join(' '))===norm(CTA_V3)?CTA_V3:'cta_falado_divergente';}
 const AUDIO_REASONS=new Set(['voice_speed','voice_silence','clipping','voice_loudness','duration','music_absent','ducking','music_bed_loudness','voice_music_balance','mix_loudness','true_peak','cta','brand_voice']);
-export async function carregarSpec(path){
- const spec=JSON.parse(await readFile(join(ROOT,path),'utf8'));
- if(spec.schema!==1||!Array.isArray(spec.falas)||spec.falas.length<6||spec.falas.at(-1).texto!==CTA+'.'||!Array.isArray(spec.provas)||!spec.provas.length)throw Error('v3_spec_invalida');
+export async function carregarSpec(path){return validarSpecV3(JSON.parse(await readFile(join(ROOT,path),'utf8')));}
+export function validarSpecV3(spec){
+ if(spec?.schema!==1||!Array.isArray(spec.falas)||spec.falas.length<6||spec.falas.at(-1).texto!==CTA_V3+'.'||!Array.isArray(spec.provas)||!spec.provas.length)throw Error('v3_spec_invalida');
  return spec;
 }
 // Todo número mostrado precisa bater com a conta e com o que a planilha real calculou (proveniência versionada).
@@ -76,15 +82,27 @@ export async function conferirNumeros(spec){
 // 0,28 s na tela. Agora cada frase é dividida em grupos de 1 a 3 palavras pela divisão que MAXIMIZA o menor tempo de
 // tela (início do grupo -> início do próximo; o último vai até o início da frase seguinte ou o fim da voz), com os
 // tempos reais do alinhador; empate: menos grupos. Nenhum tempo é inventado e o mínimo de `min` não muda.
+// Nome do produto indivisível (prova de fluxo completo, 15/11): com o CTA "Kit Lucro e Caixa no link do perfil" a divisão
+// por tempo dava "Kit Lucro e | Caixa no link" e o avaliador reprovava (lucro_fora_do_nome_do_produto: "Lucro" na tela
+// sem "& Caixa"). Nenhum corte cai dentro de "[Kit] Lucro e/& Caixa"; o grupo pode ter 4 palavras só se for exatamente
+// "Kit Lucro e Caixa".
+const chave=w=>String(w?.word??'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\p{L}\p{N}&]/gu,'');
+export function nomesProdutoV3(words){
+ const s=[];for(let i=0;i+2<words.length;i++)if(chave(words[i])==='lucro'&&['e','&'].includes(chave(words[i+1]))&&chave(words[i+2])==='caixa')s.push([i>0&&chave(words[i-1])==='kit'?i-1:i,i+3]);
+ return s;
+}
 export function gruposV3(words,porFala,fim){
- const r=[];let ini=0;
+ const r=[];let ini=0;const nomes=nomesProdutoV3(words);
+ const corteProibido=j=>nomes.some(([a,b])=>a<j&&j<b),grupoNome=(i,j)=>nomes.some(([a,b])=>a===i&&b===j);
  for(const n of porFala){
   const st=k=>k<ini+n?words[k].start:(words[ini+n]?words[ini+n].start:(Number.isFinite(fim)?fim:words[ini+n-1].end));
   const dp=new Map([[ini+n,{min:Infinity,cortes:[]}]]);
   for(let i=ini+n-1;i>=ini;i--){let best=null;
-   for(let k=3;k>=1;k--){const j=i+k;if(j>ini+n)continue;const prox=dp.get(j),m=Math.min(st(j)-st(i),prox.min);
+   if(corteProibido(i)){dp.set(i,null);continue;}
+   for(let k=4;k>=1;k--){const j=i+k;if(j>ini+n||(k===4&&!grupoNome(i,j))||corteProibido(j))continue;const prox=dp.get(j);if(!prox)continue;const m=Math.min(st(j)-st(i),prox.min);
     if(!best||m>best.min+1e-9||(Math.abs(m-best.min)<=1e-9&&prox.cortes.length+1<best.cortes.length))best={min:m,cortes:[[i,j],...prox.cortes]};}
    dp.set(i,best);}
+  if(!dp.get(ini))throw Error('v3_legenda_nome_produto_dividido');
   r.push(...dp.get(ini).cortes);ini+=n;}
  if(ini!==words.length)throw Error('v3_legenda_contagem');
  return r;
@@ -161,7 +179,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  const words=alignedWords(alignment,speech,voiceDuration,{toleraDuracaoZero:Math.floor(nPalavras*0.1)});
  const curtos=gruposCurtosV3(words,spec.falas.map(f=>f.texto.split(/\s+/).filter(Boolean).length),voiceDuration);
  if(curtos.length)throw Error('v3_legenda_grupo_curto:'+curtos.slice(0,3).join(','));
- const {duration,firstCta}=shortTiming(voiceDuration,words);
+ const {duration,firstCta}=shortTiming(voiceDuration,words,CTA_V3);
  // Início de cada fala = início real da 1ª palavra dela.
  let cursor=0;const cenas=spec.falas.map((f,i)=>{const n=f.texto.split(/\s+/).filter(Boolean).length,start=i===0?0:words[cursor].start;cursor+=n;return {quadro:f.quadro,start};});
  cenas.forEach((c,i)=>{c.end=i+1<cenas.length?cenas[i+1].start:duration;});
@@ -188,8 +206,8 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  const musicDb=rmsDb(pcmOf(base+'-musica-ducked.wav'),windows),referenceDb=rmsDb(pcmOf(base+'-musica-reference.wav'),windows),voiceDb=rmsDb(pcmOf(base+'-voz.wav'),windows);
  let internalSilence=0;for(let i=0;i<voice.starts.length;i++)if(voice.starts[i]>.1&&voice.starts[i]<words.at(-1).end-.1)internalSilence=Math.max(internalSilence,(voice.ends[i]??voiceDuration)-voice.starts[i]);
  const probe=JSON.parse(command('ffprobe',['-v','error','-show_format','-show_streams','-of','json',base+'.mp4'])),videoDuration=Number(probe.format.duration);
- const metrics={musicBedLufs:audioMetrics(base+'-musica-reference.wav').lufs,ppm:words.length/voiceDuration*60,internalSilence,clipping:clipping||voice.peak>=0,voiceLufs:voice.lufs,duration,videoDuration,musicDetected:Number.isFinite(musicDb)&&musicDb>-70,duckingDb:referenceDb-musicDb,voiceMusicDb:voiceDb-musicDb,mixLufs:mix.lufs,truePeak:mix.peak,ctaSeconds:duration-firstCta,cta:CTA,voiceFixed:generated.voice===config.voz_fixa,videoFrames:Math.round(videoDuration*30)};
- const audio=quality(metrics).reasons.filter(r=>AUDIO_REASONS.has(r));
+ const metrics={musicBedLufs:audioMetrics(base+'-musica-reference.wav').lufs,ppm:words.length/voiceDuration*60,internalSilence,clipping:clipping||voice.peak>=0,voiceLufs:voice.lufs,duration,videoDuration,musicDetected:Number.isFinite(musicDb)&&musicDb>-70,duckingDb:referenceDb-musicDb,voiceMusicDb:voiceDb-musicDb,mixLufs:mix.lufs,truePeak:mix.peak,ctaSeconds:duration-firstCta,cta:ctaFalado(words),voiceFixed:generated.voice===config.voz_fixa,videoFrames:Math.round(videoDuration*30)};
+ const audio=quality(metrics,{cta:CTA_V3}).reasons.filter(r=>AUDIO_REASONS.has(r));
  if(Math.abs(videoDuration-duration)>0.15)audio.push('video_incomplete');
  // Laboratório de Criativos: MEDE o vídeo renderizado INTEIRO (todo estado visual distinto do MP4, OCR + correlação
  // com as capturas reais); o júri de IA recebe um quadro por fala,

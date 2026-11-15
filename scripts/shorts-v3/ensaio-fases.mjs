@@ -7,7 +7,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {renderV3} from './render.mjs';
+import {renderV3,carregarSpec} from './render.mjs';
 import {assertPreparation} from '../shorts-v2/preparation.mjs';
 import ATIVO_V3 from '../../data/shorts-v3/ativo.json' with {type:'json'};
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
@@ -15,7 +15,8 @@ const sha=t=>createHash('sha256').update(t).digest('hex');
 async function base(slot){
  if(typeof ATIVO_V3?.[slot]!=='string')throw Error('ensaio_slot_sem_v3');
  const config=JSON.parse(await readFile(join(ROOT,'data/shorts-padrao-v2.json'),'utf8'));
- const spec=JSON.parse(await readFile(join(ROOT,ATIVO_V3[slot]),'utf8'));
+ // GPT-6 (15/11): o roteiro é validado ANTES do pedido de voz — roteiro inválido nunca consome TTS
+ const spec=await carregarSpec(ATIVO_V3[slot]);
  return {config,spec,specPath:ATIVO_V3[slot],texto:spec.falas.map(f=>f.texto).join(' ')};
 }
 export async function pedido(out,slot){

@@ -156,7 +156,7 @@ def q_oferta(d, fase):
         return
     d.text((64, 290), "LUCRO & CAIXA", font(46), BLUE)  # CTA
     # CTA (GPT-6, 15/11): links na descrição de Shorts não são clicáveis no YouTube -> "link do perfil"
-    y = rich(d, 64, 350, "O kit está no link do perfil.", font(84), hl=("perfil.",)) + 24
+    y = rich(d, 64, 350, "Kit Lucro & Caixa no link do perfil.", font(84), hl=("perfil.",)) + 24
     d.text((64, y), "por " + brl(O["preco"]), font(96), YEL); y += 130
     y = capa(d, y) + 24
     d.rounded_rectangle((64, y, SAFE_R, CB), 70, fill=BLUE)
