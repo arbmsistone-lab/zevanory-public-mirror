@@ -1,5 +1,8 @@
 // v3.4 (NC-V34-02/03): alinhamento por frase com eixo único. B1–B6 sem ferramentas externas (a parte com ffmpeg real
 // está em tests/media/shorts-v2-media.test.mjs).
+import {readTextNormalized} from './helpers/text.mjs';
+import {mkdtempSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
+const TMP_B9=mkdtempSync(join(tmpdir(),'frases-b9-'));
 import test from 'node:test';import assert from 'node:assert/strict';
 import {lerSilencios,escolherFronteiras,particionar,vozNoTrecho,validarTrecho,alinharPorFrases,energiaDb,CAUDA_DB,fronteirasPorAlinhamento} from '../scripts/shorts-v3/frases.mjs';
 const FALAS=['Sua loja vende muito.','O caixa some.','Kit completo no link da descrição.'];
@@ -51,8 +54,7 @@ test('B6: o v2 não usa o alinhamento por frase',async()=>{
  assert.match(readTextNormalized('scripts/shorts-v3/render.mjs'),/alinharPorFrases\(/);
 });
 test('B7 (ensaio 43624128303): pausas de dois-pontos DENTRO das falas mais longas que as fronteiras reais não deslocam os cortes',async()=>{
- const {readFile}=await import('node:fs/promises');
- const falas=JSON.parse(await readFile(new URL('../data/shorts-v3/lcx.json',import.meta.url),'utf8')).falas.map(f=>f.texto);
+ const falas=JSON.parse(readTextNormalized('data/shorts-v3/lcx.json')).falas.map(f=>f.texto);
  assert.equal(falas.length,10);
  const sil=t=>(t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').match(/[aeiouy]+/g)||[]).length;
  // ritmo irregular por fala (TTS real varia ±25%), fronteiras reais curtas (0,22–0,40 s) e pausas internas longas
@@ -94,8 +96,7 @@ test('B8 (ensaios 43625938908/43635724926): sobra de 0,61 s no fim da pergunta s
  assert.match(validarTrecho({palavras,trecho:t,voz,final:true,energia:(a,b)=>energiaDb(semPalavra,sr,a,b)}).join(),/voz_final_ausente/);
 });
 test('B9 (ensaio 43637492214): TTS emenda frases sem pausa -> fronteiras guiadas pelo alinhamento inteiro + menor energia; realinha por trecho',async()=>{
- const {readFile}=await import('node:fs/promises');
- const falas=JSON.parse(await readFile(new URL('../data/shorts-v3/lcx.json',import.meta.url),'utf8')).falas.map(f=>f.texto);
+ const falas=JSON.parse(readTextNormalized('data/shorts-v3/lcx.json')).falas.map(f=>f.texto);
  const sr=1000,tam=falas.map(f=>f.split(/\s+/).length);
  // linha do tempo real: 0,3 s de silêncio, cada palavra 0,3 s; entre falas, vale curto de 0,06 s (abaixo do mínimo de pausa)
  let t=0.3;const inteiras=[],fronteiras=[],faixas=[];
@@ -115,9 +116,9 @@ test('B9 (ensaio 43637492214): TTS emenda frases sem pausa -> fronteiras guiadas
  const deps={silenciosDe:()=>silencios,pcmDe:()=>({amostras,sr}),gravarTrecho:()=>{},
   alinharTrecho:async(arq,texto)=>{const k=+/frase-(\d+)/.exec(arq)[1]-1,ini=g.cortes[k-1]??0,base=inteiras.findIndex(w=>w===inteiras[tam.slice(0,k).reduce((a,b)=>a+b,0)]);
    return {segments:[{words:inteiras.slice(base,base+tam[k]).map(w=>({word:w.word,start:w.start-ini,end:w.end-ini}))}]};}};
- const r=await alinharPorFrases({wav:'x',falas,duracao:dur,base:'/tmp/b9',deps,note:m=>notas.push(m),inteiro:async()=>{chamadas++;return {segments:[{words:ruidoso}]};}});
+ const r=await alinharPorFrases({wav:'x',falas,duracao:dur,base:join(TMP_B9,'b9'),deps,note:m=>notas.push(m),inteiro:async()=>{chamadas++;return {segments:[{words:ruidoso}]};}});
  assert.equal(r.ok,true,r.motivo);assert.equal(r.via,'alinhamento_inteiro');assert.equal(chamadas,1);
  assert.equal(r.alignment.segments[0].words.length,inteiras.length);assert.ok(notas.some(n=>/pausas_insuficientes/.test(n)));
  // sem o alinhamento inteiro disponível, falha fechada como antes
- assert.equal((await alinharPorFrases({wav:'x',falas,duracao:dur,base:'/tmp/b9',deps})).ok,false);
+ assert.equal((await alinharPorFrases({wav:'x',falas,duracao:dur,base:join(TMP_B9,'b9'),deps})).ok,false);
 });
