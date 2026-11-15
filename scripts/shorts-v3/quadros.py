@@ -51,7 +51,7 @@ N = spec["numeros"]; O = spec["oferta"]; brl = lambda v: "R$ " + f"{v:,}".replac
 # v3.1 (júri real 8,2 — run 43538539233): conteúdo ocupa toda a área útil acima da faixa da legenda falada, planilha
 # REAL em capturas grandes (LibreOffice pt-BR, 400 dpi), sem rótulos "ilustrativo", capa grande, textos longe da borda.
 # Faixa y 1280–1460 = legenda falada (render.mjs, \pos(470,1380)); abaixo de 1470 = interface do Shorts.
-CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1240  # v3.7 (júri: "subir as legendas"): legenda em y≈1330, conteúdo até 1240
+CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1150  # v3.7 (júri: legenda em y≈1330 com respiro): conteúdo até 1150
 def captura(d, nome, x, y, largura):
     s = Image.open(CAP / nome).convert("RGB"); s = s.resize((largura, round(s.height * largura / s.width)), Image.LANCZOS)
     d.rounded_rectangle((x - 8, y - 8, x + largura + 8, y + s.height + 8), 14, fill=(255, 255, 255)); d.im.paste(s, (x, y))
@@ -65,10 +65,10 @@ def celula(d, nome, y, largura=SAFE_R - 64):
     c = PROV["celulas"][nome]; x = (64 + SAFE_R - largura) // 2
     s_ = Image.open(CAP / Path(c["arquivo"]).name); alt = round(s_.height * largura / s_.width)
     # faixa escura de largura total (só bordas horizontais): a borda vertical cruzando a grade parecia textura de letra
-    d.rectangle((0, y, W, y + alt + 104), fill=BG); d.rectangle((0, y, W, y + 5), fill=YEL); d.rectangle((0, y + alt + 99, W, y + alt + 104), fill=YEL)
-    fim = captura(d, Path(c["arquivo"]).name, x, y + 24, largura)
-    d.text((x, fim + 6), f"Aba {c['aba']} · célula {c['celula']} (ampliada)", font(38), MUTED)
-    return fim + 72
+    d.rectangle((0, y, W, y + alt + 84), fill=BG); d.rectangle((0, y, W, y + 5), fill=YEL); d.rectangle((0, y + alt + 79, W, y + alt + 84), fill=YEL)
+    fim = captura(d, Path(c["arquivo"]).name, x, y + 18, largura)
+    d.text((x, fim + 2), f"Aba {c['aba']} · célula {c['celula']} (ampliada)", font(38), MUTED)
+    return fim + 60
 def tela(d, nome, y):
     """v3.7: TELA REAL do Calc a 300% em LARGURA TOTAL (0–1080), da barra de fórmulas à linha 6. (A v3.6 colava a grade
     vazia até a borda: júri real 8,5 — "grade cortada e vazia"; retirada.) Seta do cabeçalho da coluna ao close-up."""

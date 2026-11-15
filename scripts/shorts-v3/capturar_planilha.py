@@ -6,7 +6,7 @@ aberto numa tela virtual (Xvfb), a planilha ORIGINAL (sha256 conferido) recebe a
 LibreOffice (UNO), é recalculada, a célula é selecionada e a tela é fotografada (ImageMagick import). Duas capturas
 por célula, sem retoque de pixels — só recorte:
   tela-<nome>.png    contexto: barra de fórmulas com a fórmula real, letras das colunas, números das linhas, abas,
-                     barra de status, zoom 300%, 1080 px; + tela-<nome>-resto.png;
+                     barra de status, zoom 300%, 1080 px, até a linha 5;
   celula-<nome>.png  close-up: a mesma célula selecionada a 400% (faixa das letras das colunas + linha 5), recortada
                      em torno do valor para que ele fique legível no celular.
 Uso: Xvfb (tela 1400x1800) + soffice escutando em 2002, com LANG=pt_BR.UTF-8 (formato R$ e vírgula) (ver tests/media); python3 capturar_planilha.py ORIGINAL.xlsx PROVENIENCIA.json SAIDA/
@@ -19,11 +19,10 @@ from PIL import Image
 LARGURA_JANELA, ALTURA_CONTEXTO, ALTURA_PERTO = 1400, 1720, 760
 SEL = (128, 0, 0)  # cor do cabeçalho da coluna/linha selecionada no Calc (tema padrão)
 # contexto: da barra de fórmulas (nome da célula + fórmula) até a barra de status, sem menus/ferramentas nem painel lateral
-# v3.6 (júri real 9,1, ensaio 43646726494: "terço inferior vazio" e "cabeçalhos pequenos"): tela a 300%, 1080 de largura
-# (sangra a largura do Short) e alta o bastante para descer até a borda de baixo; dividida em DUAS imagens reais:
-# tela-<nome>.png (barra de fórmulas até a linha 6 — a prova, medida por NCC) e tela-<nome>-resto.png (só a grade
-# das linhas seguintes, sem texto — continuação real que fica sob a interface do Shorts).
+# v3.7: tela a 300%, 1080 de largura (sangra a largura do Short), da barra de fórmulas ao fim da linha 5; a coluna da
+# célula termina a pelo menos FOLGA_DIREITA px da borda (júri real: "corta o 2,2% na borda direita").
 CORTE_TELA = (0, 80, 1080, ALTURA_CONTEXTO); ZOOM_TELA = 300; ROTULO_LINHAS = 33; RODAPE_CALC = 62
+FOLGA_DIREITA = 80  # a coluna da célula termina a >= 80 px da borda: nada cortado colado ao valor
 
 def _p(n, v):
     p = PropertyValue(); p.Name = n; p.Value = v; return p
@@ -68,13 +67,18 @@ def main(original, prov_path, saida):
             ctrl.select(sh.getCellRangeByName("A1")); time.sleep(1); ctrl.select(cel)  # barra de status atualizada para ESTA célula
             ctrl.setFirstVisibleColumn(max(0, col - 1)); ctrl.setFirstVisibleRow(2)  # a seleção rola a tela: fixa de novo; time.sleep(2.5)
             tmp = os.path.join(saida, f".raw-{nome}.png"); subprocess.run(["import", "-window", "root", tmp], check=True)
-            tela = Image.open(tmp).convert("RGB"); _, y1t = faixa_selecionada(tela, "y", 10, 100, ALTURA_CONTEXTO - 80)  # linha 5
-            corte = y1t + (y1t - faixa_selecionada(tela, "y", 10, 100, ALTURA_CONTEXTO - 80)[0])  # + altura de 1 linha (linha 6)
+            tela = Image.open(tmp).convert("RGB")
+            # v3.7 (júri real: "o recorte corta o 2,2% na borda direita"): a coluna da célula tem de caber inteira nos
+            # 1080 px; se não couber começando uma coluna antes, a tela começa na própria coluna da célula
+            if faixa_selecionada(tela, "x", 118, 30, LARGURA_JANELA - 60)[1] > CORTE_TELA[2] - FOLGA_DIREITA:
+                ctrl.setFirstVisibleColumn(col); ctrl.setFirstVisibleRow(2); time.sleep(2.5)
+                subprocess.run(["import", "-window", "root", tmp], check=True); tela = Image.open(tmp).convert("RGB")
+                if faixa_selecionada(tela, "x", 118, 30, LARGURA_JANELA - 60)[1] > CORTE_TELA[2] - FOLGA_DIREITA: raise SystemExit("coluna_nao_cabe:" + nome)
+            _, y1t = faixa_selecionada(tela, "y", 10, 100, ALTURA_CONTEXTO - 80)  # fim da linha 5
+            corte = y1t + 8  # v3.7: termina logo após a linha 5 (a linha 6 vazia só ocupava altura)
             tela = tela.crop(CORTE_TELA); h = corte - CORTE_TELA[1]
             tela.crop((0, 0, tela.width, h)).save(os.path.join(saida, f"tela-{nome}.png"))
-            # continuação: só a GRADE das linhas seguintes (sem números de linha, abas nem barra de status) — nada de texto
-            # abaixo de y=1470, onde fica a interface do Shorts
-            tela.crop((ROTULO_LINHAS, h, tela.width, tela.height - RODAPE_CALC)).save(os.path.join(saida, f"tela-{nome}-resto.png"))
+
             win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_PERTO, 15); ctrl.ZoomValue = 400
             ctrl.setFirstVisibleColumn(col); ctrl.setFirstVisibleRow(linha - 1); time.sleep(2.5)
             subprocess.run(["import", "-window", "root", tmp], check=True); im = Image.open(tmp).convert("RGB")

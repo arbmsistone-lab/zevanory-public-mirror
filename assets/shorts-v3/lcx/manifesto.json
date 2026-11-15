@@ -2,17 +2,17 @@
  "schema": 1,
  "nota": "Integridade da prova do produto (NC-R05): hashes da proveniência do cálculo (planilha real recalculada) e das capturas. O gerador e o avaliador recusam qualquer divergência.",
  "arquivos": {
-  "assets/shorts-v3/lcx/planilha-proveniencia.json": "aa83567cf45efa473de64f74eb4cdffcabac600b8b70c2518c1e8a449e19cc1d",
-  "assets/shorts-v3/lcx/tela-preco.png": "d864da1be2390936ceb1bcfb4fd4096bc70e85b5ef63459a4518dbdc74d65437",
+  "assets/shorts-v3/lcx/planilha-proveniencia.json": "f898ac3bd9012131a0d343b35e9c9c4f6f6ecaacf83beb839e9b7e5290b9055b",
+  "assets/shorts-v3/lcx/tela-preco.png": "dc13220a4309ac3173dbd31886877c5ace31286b38055da840c1ec2822444250",
   "assets/shorts-v3/lcx/celula-preco.png": "943f36bdc7503b54f7be0feaceb5ddd2c5725af34108d1d51c18206cd7ef0d9f",
-  "assets/shorts-v3/lcx/tela-contribuicao.png": "bb7036ecfb4daebef15017fa5ab713420b7e340fa8b12687da97e72f90ff0a58",
+  "assets/shorts-v3/lcx/tela-contribuicao.png": "5b7788456523f873f004e9369940fb9ddde636cb3714c6426954a6baf7dce3c8",
   "assets/shorts-v3/lcx/celula-contribuicao.png": "b8bb63d1062936bc4b47e2fb61b0d9ff807892e897b9dbda1e6457899852b7ec",
-  "assets/shorts-v3/lcx/tela-margem.png": "dd3f64f6ff352cfd131ee3379ca6b2d7c151bea9434ccb374b84116b74dd6101",
+  "assets/shorts-v3/lcx/tela-margem.png": "4d3084023767ec6c0f4feac3130ce63252ae4c01f911f1ee2cb0470e96b3914d",
   "assets/shorts-v3/lcx/celula-margem.png": "ad31985b8da113b2fa72d48da546689ae8d8e54fdc02777bfc31a2e785d718ae",
-  "assets/shorts-v3/lcx/tela-desconto.png": "981f4d6f3432d6768faff12868277e64dd3261bc82ca8e5a3e836aab59fa3041",
+  "assets/shorts-v3/lcx/tela-desconto.png": "0183ca039921a73135ca5aeefb06faa58726b5ef3dcb135fbd089abe1250d695",
   "assets/shorts-v3/lcx/celula-desconto.png": "11b954f51b2d10e63b21ad005e5ee4c7401ef59ced68211dd35106b97b85217f",
   "assets/shorts-v3/lcx/manual-topo.png": "efbe4e8db65e33ca09a91e2ef0b8b3398a287330d99d5b721bcde0ef6408780b",
   "assets/shorts-v3/lcx/celula-taxa.png": "6d22ad9eac76d225888b58c2e4b23dbb761a479da782e17dabe42f56f52cc796",
-  "assets/shorts-v3/lcx/tela-taxa.png": "562f7705e84db4e7fedeacfd51dc8d75337ec483d03189076b0889346667bd7a"
+  "assets/shorts-v3/lcx/tela-taxa.png": "3c3b1f618bcc28c9c4ad23e9146a73c775f877159d289c5f8804c93558a2dbbd"
  }
 }
