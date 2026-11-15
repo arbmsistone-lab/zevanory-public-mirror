@@ -106,18 +106,36 @@ test("publicações: dia fora da agenda do blog (seg/qua/sex) não conta como pr
   assert.equal(p.expected, 4); assert.equal(p.published, 3);
 });
 
-// Diagnóstico 15/11/2026: as leituras de pay.hotmart.com no runner falham com "TypeError" desde 11/11 sem causa; a
-// causa de rede passa a ser registrada (só o código, nunca mensagem/URL), e o "unknown" do caminho de compra traz
-// destino e título públicos.
-test("diagnóstico de rede: causaRede extrai só o código do erro (undici), sem texto livre", async () => {
+// Diagnóstico 15/11/2026 (+ contra-auditoria GPT-6 do #1060): as leituras de pay.hotmart.com no runner falham com
+// "TypeError" desde 11/11 sem causa. Registra nome do erro + código de rede (nunca mensagem/URL com query) e, no
+// "unknown" do caminho de compra, host + caminho finais e título públicos. Testado pelos campos PRODUZIDOS pelos probes.
+test("diagnóstico de rede: causaRede preserva o nome (TimeoutError) e o código de rede, sem texto livre", async () => {
   const { causaRede } = await import("../scripts/audit/command-center-snapshot.mjs");
-  assert.equal(causaRede(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } })), "ECONNRESET");
-  assert.equal(causaRede(Object.assign(new TypeError("fetch failed"), { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } })), "UND_ERR_CONNECT_TIMEOUT");
-  assert.equal(causaRede(Object.assign(new TypeError("x"), { cause: { name: "ConnectTimeoutError" } })), "ConnectTimeoutError");
-  assert.equal(causaRede(Object.assign(new TypeError("x"), { cause: { code: "a b/c?token=1" } })), "abctoken1");
-  assert.equal(causaRede(new TypeError("sem causa")), null);
-  const { readTextNormalized } = await import("./helpers/text.mjs");
-  const src = readTextNormalized("scripts/audit/command-center-snapshot.mjs");
-  assert.match(src, /error: String\(e\?\.name \|\| "error"\), cause: causaRede\(e\)/);
-  assert.match(src, /state === "unknown" \? \{ finalPath:/);
+  assert.equal(causaRede(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } })), "TypeError:ECONNRESET");
+  assert.equal(causaRede(Object.assign(new TypeError("fetch failed"), { cause: { name: "ConnectTimeoutError", code: "UND_ERR_CONNECT_TIMEOUT" } })), "TypeError:UND_ERR_CONNECT_TIMEOUT");
+  assert.equal(causaRede(Object.assign(new TypeError("x"), { cause: { name: "ConnectTimeoutError" } })), "TypeError:ConnectTimeoutError");
+  assert.equal(causaRede(Object.assign(new TypeError("x"), { cause: { code: "a b/c?token=1" } })), "TypeError:abctoken1");
+  assert.equal(causaRede(new TypeError("sem causa")), "TypeError");
+  // timeout REAL de AbortSignal.timeout(): DOMException TimeoutError com code numérico 23 -> "TimeoutError"
+  // (o timer do AbortSignal.timeout não segura o processo: um setTimeout comum mantém o laço vivo até o abort)
+  const real = await new Promise((res) => { const s = AbortSignal.timeout(5); const vivo = setTimeout(() => {}, 1000); s.addEventListener("abort", () => { clearTimeout(vivo); res(s.reason); }); });
+  assert.equal(real?.name, "TimeoutError"); assert.equal(causaRede(real), "TimeoutError");
+});
+test("probes: campos efetivamente produzidos em redirecionamento, timeout e erro de rede (fetch simulado)", async () => {
+  const { probeBuyFlow, probeHotmart } = await import("../scripts/audit/command-center-snapshot.mjs");
+  const resp = (status, url, html) => ({ status, url, text: async () => html });
+  // caminho de compra: redirecionado para outro host com query/fragmento -> host e caminho gravados, query fora
+  const bf = await probeBuyFlow(async (u) => resp(200, "https://desafio.exemplo.net/cdn-cgi/challenge?token=SEGREDO#x", "<html><title>Just a moment...</title>body</html>"));
+  assert.equal(bf.length, 3);
+  assert.deepEqual({ ...bf[0], sku: undefined }, { sku: undefined, http: 200, state: "unknown", finalHost: "desafio.exemplo.net", finalPath: "/cdn-cgi/challenge", title: "Just a moment...", bytes: 48 });
+  assert.doesNotMatch(JSON.stringify(bf), /SEGREDO|token=|#x/);
+  // página certa (Hotmart): sem campos extras de diagnóstico
+  const ok = await probeBuyFlow(async () => resp(200, "https://vendas.zevanory.api.br/hotmart/lucro-e-caixa", '<a href="https://pay.hotmart.com/L1?off=a">Comprar</a>'));
+  assert.equal(ok[0].state, "foreign_checkout"); assert.equal(ok[0].finalHost, undefined);
+  // timeout real e erro de rede: 1 nova tentativa, causa gravada
+  const to = await probeBuyFlow(async () => { throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); });
+  assert.deepEqual(to[0], { sku: "ZEV-IA-011", http: 0, state: "error", cause: "TimeoutError", retried: true });
+  const hm = await probeHotmart(async () => { throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }); });
+  assert.ok(hm.length >= 5); assert.deepEqual(hm[0], { slug: hm[0].slug, http: 0, error: "TypeError", cause: "TypeError:ECONNRESET" });
+  assert.doesNotMatch(JSON.stringify(hm), /fetch failed/, "sem mensagem livre");
 });

@@ -224,17 +224,17 @@ export function classifyBuyPage(status, html) {
   if (/Ir para o pagamento seguro/i.test(t)) return "checkout";
   return "unknown";
 }
-async function probeBuyFlow() {
+export async function probeBuyFlow(fetchImpl = fetch) {
   const out = [];
   for (const sku of ["ZEV-IA-011", "ZEV-LCX-011", "ZEV-NGC-011"]) {
     // One retry on a network error/timeout, recorded as such (never hidden).
     let rec = null;
     for (let attempt = 1; attempt <= 2 && (!rec || rec.http === 0); attempt++) {
       try {
-        const r = await fetch("https://vendas.zevanory.api.br/comprar/" + sku, { signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36 zevanory-command-center" } });
+        const r = await fetchImpl("https://vendas.zevanory.api.br/comprar/" + sku, { signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36 zevanory-command-center" } });
         const html = await r.text(), state = classifyBuyPage(r.status, html);
         // "unknown" sem detalhe não diagnostica nada: guarda o destino final e o título (só texto público da página)
-        rec = { sku, http: r.status, state, ...(state === "unknown" ? { finalPath: new URL(r.url).pathname.slice(0, 40), title: ((html.match(/<title[^>]*>([^<]{0,80})/i) || [])[1] || "").trim(), bytes: html.length } : {}), ...(attempt > 1 ? { retried: true } : {}) };
+        rec = { sku, http: r.status, state, ...(state === "unknown" ? { finalHost: new URL(r.url).host.slice(0, 60), finalPath: new URL(r.url).pathname.slice(0, 40), title: ((html.match(/<title[^>]*>([^<]{0,80})/i) || [])[1] || "").trim(), bytes: html.length } : {}), ...(attempt > 1 ? { retried: true } : {}) };
       } catch (e) { rec = { sku, http: 0, state: "error", cause: causaRede(e), ...(attempt > 1 ? { retried: true } : {}) }; }
     }
     out.push(rec);
@@ -247,12 +247,20 @@ const HOTMART_CHECKOUTS = { "ia-na-pratica": "https://pay.hotmart.com/F107979716
 // Diagnóstico (15/11/2026): desde 11/11 todas as leituras de pay.hotmart.com no runner falham com "TypeError"
 // sem detalhe, enquanto a mesma oferta abre normalmente num navegador (conferido 15/11: checkout R$ 147 aberto).
 // Registra a causa real do erro de rede (código do undici: ECONNRESET, ENOTFOUND, UND_ERR_*...), sem dados sensíveis.
-export const causaRede = (e) => String(e?.cause?.code || e?.cause?.name || e?.code || "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40) || null;
-async function probeHotmart() {
+// Formato "Nome" ou "Nome:CODIGO" (ex.: "TimeoutError", "TypeError:ECONNRESET", "TypeError:ConnectTimeoutError"):
+// o nome do erro é sempre preservado (um timeout de AbortSignal é TimeoutError com code numérico 23, que não diz nada);
+// o código vem da causa de rede do undici (code textual ou nome). Nunca a mensagem livre.
+const limpa = (x) => String(x ?? "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40);
+export const causaRede = (e) => {
+  const nome = limpa(e?.name) || "Error";
+  const cod = limpa(typeof e?.cause?.code === "string" ? e.cause.code : e?.cause?.name) || limpa(typeof e?.code === "string" ? e.code : "");
+  return cod && cod !== nome ? nome + ":" + cod : nome;
+};
+export async function probeHotmart(fetchImpl = fetch) {
   const out = [];
   for (const [slug, url] of Object.entries(HOTMART_CHECKOUTS)) {
     try {
-      const r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "accept-language": "pt-BR" } });
+      const r = await fetchImpl(url, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "accept-language": "pt-BR" } });
       const html = await r.text();
       const title = (html.match(/<title[^>]*>([^<]{0,120})/i) || [])[1] || "";
       const blocked = HOTMART_CLOSED_RE.test(html) || /em an[aá]lise/i.test(html);
