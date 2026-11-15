@@ -232,8 +232,10 @@ async function probeBuyFlow() {
     for (let attempt = 1; attempt <= 2 && (!rec || rec.http === 0); attempt++) {
       try {
         const r = await fetch("https://vendas.zevanory.api.br/comprar/" + sku, { signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36 zevanory-command-center" } });
-        rec = { sku, http: r.status, state: classifyBuyPage(r.status, await r.text()), ...(attempt > 1 ? { retried: true } : {}) };
-      } catch { rec = { sku, http: 0, state: "error", ...(attempt > 1 ? { retried: true } : {}) }; }
+        const html = await r.text(), state = classifyBuyPage(r.status, html);
+        // "unknown" sem detalhe não diagnostica nada: guarda o destino final e o título (só texto público da página)
+        rec = { sku, http: r.status, state, ...(state === "unknown" ? { finalPath: new URL(r.url).pathname.slice(0, 40), title: ((html.match(/<title[^>]*>([^<]{0,80})/i) || [])[1] || "").trim(), bytes: html.length } : {}), ...(attempt > 1 ? { retried: true } : {}) };
+      } catch (e) { rec = { sku, http: 0, state: "error", cause: causaRede(e), ...(attempt > 1 ? { retried: true } : {}) }; }
     }
     out.push(rec);
   }
@@ -242,6 +244,10 @@ async function probeBuyFlow() {
 
 // Is each Hotmart checkout actually able to take a payment? (public URLs only)
 const HOTMART_CHECKOUTS = { "ia-na-pratica": "https://pay.hotmart.com/F107979716H?off=g9knd34r", "vendas-na-pratica": "https://pay.hotmart.com/Y107979937I?off=8mg88sdd", "lucro-e-caixa": "https://pay.hotmart.com/L107979973K?off=ksb5di36", "combo-ia-vendas": "https://pay.hotmart.com/H107979990T?off=b3ytmah4", "negocio-completo": "https://pay.hotmart.com/U107980005X?off=weo47apk", "conteudo-pronto": "https://pay.hotmart.com/X107980075B?off=4ydutio7" };
+// Diagnóstico (15/11/2026): desde 11/11 todas as leituras de pay.hotmart.com no runner falham com "TypeError"
+// sem detalhe, enquanto a mesma oferta abre normalmente num navegador (conferido 15/11: checkout R$ 147 aberto).
+// Registra a causa real do erro de rede (código do undici: ECONNRESET, ENOTFOUND, UND_ERR_*...), sem dados sensíveis.
+export const causaRede = (e) => String(e?.cause?.code || e?.cause?.name || e?.code || "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40) || null;
 async function probeHotmart() {
   const out = [];
   for (const [slug, url] of Object.entries(HOTMART_CHECKOUTS)) {
@@ -256,7 +262,7 @@ async function probeHotmart() {
       // Positive evidence of the offer itself (its product code in the page); the closed page has none.
       const code = new URL(url).pathname.slice(1);
       out.push({ slug, http: r.status, finalHost: fin.host, finalPath: fin.pathname.slice(0, 40), errorCode, title: title.trim().slice(0, 80), blockedText: blocked, offerMarker: !!code && html.includes(code), bytes: html.length });
-    } catch (e) { out.push({ slug, http: 0, error: String(e?.name || "error") }); }
+    } catch (e) { out.push({ slug, http: 0, error: String(e?.name || "error"), cause: causaRede(e) }); }
   }
   return out;
 }

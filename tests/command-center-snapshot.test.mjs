@@ -105,3 +105,19 @@ test("publicações: dia fora da agenda do blog (seg/qua/sex) não conta como pr
   assert.deepEqual(p.perChannel.blog, { expected: 2, published: 1 }, "13/11 publicado + 12/11 erro; 14/11 fora da agenda não entra");
   assert.equal(p.expected, 4); assert.equal(p.published, 3);
 });
+
+// Diagnóstico 15/11/2026: as leituras de pay.hotmart.com no runner falham com "TypeError" desde 11/11 sem causa; a
+// causa de rede passa a ser registrada (só o código, nunca mensagem/URL), e o "unknown" do caminho de compra traz
+// destino e título públicos.
+test("diagnóstico de rede: causaRede extrai só o código do erro (undici), sem texto livre", async () => {
+  const { causaRede } = await import("../scripts/audit/command-center-snapshot.mjs");
+  assert.equal(causaRede(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } })), "ECONNRESET");
+  assert.equal(causaRede(Object.assign(new TypeError("fetch failed"), { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } })), "UND_ERR_CONNECT_TIMEOUT");
+  assert.equal(causaRede(Object.assign(new TypeError("x"), { cause: { name: "ConnectTimeoutError" } })), "ConnectTimeoutError");
+  assert.equal(causaRede(Object.assign(new TypeError("x"), { cause: { code: "a b/c?token=1" } })), "abctoken1");
+  assert.equal(causaRede(new TypeError("sem causa")), null);
+  const { readTextNormalized } = await import("./helpers/text.mjs");
+  const src = readTextNormalized("scripts/audit/command-center-snapshot.mjs");
+  assert.match(src, /error: String\(e\?\.name \|\| "error"\), cause: causaRede\(e\)/);
+  assert.match(src, /state === "unknown" \? \{ finalPath:/);
+});
