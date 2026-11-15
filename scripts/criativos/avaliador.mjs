@@ -49,11 +49,14 @@ export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=
  motivos.push(...conferirAfirmacoes({falas:criativo.falas||[],telas,permitidos:permitidos||{reais:[],pct:[]}}));
  return motivos;
 }
+// Fato da plataforma (Ajuda do YouTube, support.google.com/youtube/answer/13748639): em Shorts, links externos na
+// descrição e nos comentários não são clicáveis; o link clicável fica no perfil do canal.
+export const FATO_LINK_SHORTS='Fato da plataforma: em YouTube Shorts, URLs externas na descrição e nos comentários NÃO são clicáveis; o destino clicável é o link no perfil do canal. Uma chamada para o "link do perfil" é a orientação correta.';
 export function promptJuri(padrao){
  validarPadrao(padrao);
  const crit=CRITERIOS.map(c=>`- ${c.id}: ${c.pergunta}`).join('\n');
  const obs=padrao.observado.length?padrao.observado.map(o=>`- ${o.padrao} (${o.evidencias.length} Shorts reais)`).join('\n'):'- (sem pesquisa disponível nesta execução)';
- return `Você é um diretor de criação exigente de YouTube Shorts focados em VENDA. As imagens são quadros, em ordem, de um Short vertical 1080x1920 (o áudio já foi aprovado). Dê nota de 0 a 10 (uma casa decimal) para cada critério. Nota 10 = padrão dos Shorts que mais performam; seja rigoroso: qualquer falha visível tira nota. Em vídeos verticais de 1080 × 1920, considere que a faixa abaixo de y=1470 e a região à direita de x=940 podem ser ocupadas por elementos da interface do YouTube Shorts. Avalie a composição, a legibilidade e o aproveitamento da área útil restante com o mesmo rigor. Espaços vazios injustificados dentro da área útil continuam sendo defeitos de composição.\nCritérios:\n${crit}\nFatos medidos nos metadados dos Shorts que mais performam (apenas contexto; não descrevem o visual):\n${obs}\nResponda só JSON: {"notas":{"gancho":n,"legibilidade":n,"prova":n,"oferta":n,"marca":n},"problemas":["..."],"melhorias":["..."]}`;
+ return `Você é um diretor de criação exigente de YouTube Shorts focados em VENDA. As imagens são quadros, em ordem, de um Short vertical 1080x1920 (o áudio já foi aprovado). Dê nota de 0 a 10 (uma casa decimal) para cada critério. Nota 10 = padrão dos Shorts que mais performam; seja rigoroso: qualquer falha visível tira nota. Em vídeos verticais de 1080 × 1920, considere que a faixa abaixo de y=1470 e a região à direita de x=940 podem ser ocupadas por elementos da interface do YouTube Shorts. Avalie a composição, a legibilidade e o aproveitamento da área útil restante com o mesmo rigor. Espaços vazios injustificados dentro da área útil continuam sendo defeitos de composição.\n${FATO_LINK_SHORTS}\nCritérios:\n${crit}\nFatos medidos nos metadados dos Shorts que mais performam (apenas contexto; não descrevem o visual):\n${obs}\nResponda só JSON: {"notas":{"gancho":n,"legibilidade":n,"prova":n,"oferta":n,"marca":n},"problemas":["..."],"melhorias":["..."]}`;
 }
 export function lerJuri(saida){
  if(!saida||typeof saida!=='object'||!saida.notas||typeof saida.notas!=='object')throw Error('juri_formato');

@@ -8,7 +8,12 @@ import {dirname,join,isAbsolute} from 'node:path';
 import MANIFEST from '../../data/musica-licencas.json' with {type:'json'};
 import {command,runAligner,tts,audioMetrics,rmsDb,mixGraph,normalizeTwoPass} from '../shorts-v2/render.mjs';
 import {STYLE} from '../shorts-v2/core.mjs';
-export const ESTILO_V3=STYLE+' Ritmo um pouco mais calmo que o normal, com uma pausa curta entre as frases.';
+// Prévia real 43601408721: o pedido de voz "mais calma" piorou o alinhamento (7 palavras instantâneas e grupo final
+// com 0 s). Volta ao estilo original; a velocidade é corrigida no áudio pronto (VOZ_ATEMPO), antes do alinhamento.
+export const ESTILO_V3=STYLE;
+export const VOZ_ATEMPO=0.95;
+export const FILTRO_VOZ_V3=`highpass=f=80,atempo=${VOZ_ATEMPO},deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100`;
+export function duracaoAudio(arquivo,run=command){const d=Number(JSON.parse(run('ffprobe',['-v','error','-show_entries','format=duration','-of','json',arquivo])).format?.duration);if(!(d>0))throw Error('v3_duracao_voz_invalida');return d;}
 import {CTA,alignedWords,shortTiming,licensedTrack,assertVoice,quality} from '../shorts-v2/core.mjs';
 import {avaliar,permitidosDaProveniencia,precosOficiais,registrarDecisao} from '../criativos/avaliador.mjs';
 import {createHash} from 'node:crypto';
@@ -44,6 +49,10 @@ export async function conferirNumeros(spec){
  return motivos;
 }
 // Grupos de até 3 palavras; a palavra falada fica amarela. Posição na área segura (centro x=470, y=1380).
+// Grupos da legenda v3 (mesma divisão de legendasV3) que ficariam menos de `min` segundos na tela.
+export function gruposCurtosV3(words,porFala,fim,min=0.3){const g=[];let ini=0;for(const n of porFala){for(let a=ini;a<ini+n;a+=3)g.push(a);ini+=n;}
+ return g.map((a,i)=>{const fimGrupo=i+1<g.length?words[g[i+1]].start:fim;return [a,fimGrupo-words[a].start];}).filter(([,d])=>!(d>=min)).map(([a,d])=>`${a}:${d.toFixed(2)}`);}
+export const DESTAQUE_MIN_S=0.12;
 export function legendasV3(words,porFala=[words.length]){
  const t=v=>{const cs=Math.round(v*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;};
  const clean=s=>String(s).trim().replace(/[{}\\\r\n]/g,'');
@@ -52,8 +61,16 @@ export function legendasV3(words,porFala=[words.length]){
  // Grupos nunca atravessam o fim de uma fala (frase): cada frase começa um grupo novo.
  for(const n of porFala){for(let g=ini;g<ini+n;g+=3)grupos.push([g,Math.min(g+3,ini+n)]);ini+=n;}
  if(ini!==words.length)throw Error('v3_legenda_contagem');
- for(const [a,b] of grupos){const grp=words.slice(a,b),g=a;for(let k=0;k<grp.length;k++){const w=grp[k],end=(grp[k+1]||words[b]||{start:w.end}).start;
-  ev.push(`Dialogue: 0,${t(w.start)},${t(Math.max(end,w.end))},G,,0,0,0,,{\\pos(470,1380)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+ for(const [a,b] of grupos){const grp=words.slice(a,b),fimGrupo=Math.max((words[b]||{start:grp.at(-1).end}).start,grp.at(-1).end);
+  const fins=grp.map((w,k)=>Math.max((grp[k+1]||words[b]||{start:w.end}).start,w.end));
+  // NC-1048-01: se o destaque de alguma palavra ficaria menos de DESTAQUE_MIN_S na tela (palavra instantânea do
+  // alinhador), o grupo inteiro aparece destacado de forma estável do início ao fim do grupo — nenhum tempo é inventado.
+  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1380)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
+  for(let k=0;k<grp.length;k++){const w=grp[k];
+  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1380)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+ // Garantia no arquivo gerado: nenhum evento de legenda com menos de DESTAQUE_MIN_S na tela.
+ const curto=ev.find(l=>{const c=l.split(','),x=v=>{const [h,m,q]=v.split(':');return +h*3600+ +m*60+ +q;};return x(c[2])-x(c[1])<DESTAQUE_MIN_S-0.015;});// folga de 1 centésimo do arredondamento do .ass
+ if(curto)throw Error('v3_legenda_evento_curto');
  return head+ev.join('\n')+'\n';
 }
 function pcmOf(file){return command('ffmpeg',['-v','error','-i',file,'-f','f32le','-ac','1','-ar','24000','pipe:1'],{buffer:true});}
@@ -70,13 +87,21 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  assertVoice(config,generated.voice,{preview,model:generated.model});
  await writeFile(base+'.pcm',generated.pcm);await writeFile(base+'-roteiro.txt',speech);
  let clipping=false;for(let i=0;i+1<generated.pcm.length;i+=2)if(Math.abs(generated.pcm.readInt16LE(i))>=32760){clipping=true;break;}
- const voiceDuration=generated.pcm.length/2/24000;
  // Mesma cadeia do v2, mas o loudnorm da voz em DUAS passagens (prévia real: voice_loudness e ducking fora do alvo).
- command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af','highpass=f=80,deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100','-c:a','pcm_s16le',base+'-voz-tratada.wav']);
+ command('ffmpeg',['-y','-f','s16le','-ar','24000','-ac','1','-i',base+'.pcm','-af',FILTRO_VOZ_V3,'-c:a','pcm_s16le',base+'-voz-tratada.wav']);
  normalizeTwoPass(base+'-voz-tratada.wav',base+'-voz.wav',{I:-16,TP:-1.5,LRA:7});
+ // NC-1052-01: a duração vem do WAV EFETIVAMENTE processado (o atempo muda a duração); usada no alinhamento, nas
+ // cenas, nas legendas, na composição e nas métricas.
+ const voiceDuration=duracaoAudio(base+'-voz.wav');
  let alignment;if(align)alignment=await align(base+'-voz.wav',speech);else{runAligner([base+'-voz.wav',base+'-roteiro.txt',base+'-alignment.json']);alignment=JSON.parse(await readFile(base+'-alignment.json','utf8'));}
- // Legenda do v3 é por frase: até 3 palavras instantâneas do alinhador (início === fim) são aceitas sem mexer nos tempos.
- const words=alignedWords(alignment,speech,voiceDuration,{toleraDuracaoZero:3});
+ // Prévia real 43594272962 (voz mais calma): o modelo small deixou 5 palavras curtas instantâneas (início === fim).
+ // A regra do v3 passa a ser pelo EFEITO VISÍVEL, não por contagem arbitrária: tempos exatamente do alinhador, no
+ // máximo 10% das palavras instantâneas, e todo grupo de legenda (até 3 palavras, nunca atravessa frase) na tela por
+ // pelo menos 0,30 s. Se algum grupo ficaria curto demais, reprova.
+ const nPalavras=speech.split(/\s+/).filter(Boolean).length;
+ const words=alignedWords(alignment,speech,voiceDuration,{toleraDuracaoZero:Math.floor(nPalavras*0.1)});
+ const curtos=gruposCurtosV3(words,spec.falas.map(f=>f.texto.split(/\s+/).filter(Boolean).length),voiceDuration);
+ if(curtos.length)throw Error('v3_legenda_grupo_curto:'+curtos.slice(0,3).join(','));
  const {duration,firstCta}=shortTiming(voiceDuration,words);
  // Início de cada fala = início real da 1ª palavra dela.
  let cursor=0;const cenas=spec.falas.map((f,i)=>{const n=f.texto.split(/\s+/).filter(Boolean).length,start=i===0?0:words[cursor].start;cursor+=n;return {quadro:f.quadro,start};});

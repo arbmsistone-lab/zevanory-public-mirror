@@ -85,3 +85,15 @@ test('V2: loudnorm em duas passagens atinge -14±1 LUFS e TP<=-1 em fala com pau
   assert.ok(m.peak<=-1,'true peak '+m.peak);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+// NC-1052-01 (ffmpeg/ffprobe reais): o filtro da voz v3 alonga o áudio; a duração certa é a medida no WAV processado.
+test('v3: atempo alonga a voz de verdade (PCM 2,000 s -> ~2,105 s) e duracaoAudio mede o WAV processado',async()=>{
+ const {spawnSync}=await import('node:child_process');const fs=await import('node:fs');const os=await import('node:os');const path=await import('node:path');
+ const {FILTRO_VOZ_V3,VOZ_ATEMPO,duracaoAudio}=await import('../../scripts/shorts-v3/render.mjs');
+ const d=fs.mkdtempSync(path.join(os.tmpdir(),'zev-dur-'));try{
+  const pcm=Buffer.alloc(24000*2*2);for(let i=0;i<48000;i++)pcm.writeInt16LE(Math.round(8000*Math.sin(i/24000*2*Math.PI*220)),i*2);
+  fs.writeFileSync(path.join(d,'v.pcm'),pcm);const bruto=pcm.length/2/24000;
+  const r=spawnSync('ffmpeg',['-v','error','-y','-f','s16le','-ar','24000','-ac','1','-i',path.join(d,'v.pcm'),'-af',FILTRO_VOZ_V3,'-c:a','pcm_s16le',path.join(d,'v.wav')],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);
+  const real=duracaoAudio(path.join(d,'v.wav'));
+  assert.ok(Math.abs(real-bruto/VOZ_ATEMPO)<0.03,`duração processada ${real} ≈ ${bruto/VOZ_ATEMPO}`);
+  assert.ok(real-bruto>0.08,'o filtro realmente alonga o áudio');
+ }finally{fs.rmSync(d,{recursive:true,force:true});}});

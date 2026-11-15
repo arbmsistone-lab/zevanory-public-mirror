@@ -104,6 +104,9 @@ export function computePublications(byDay = {}) {
     for (const ch of DAILY_PROOFS) {
       const e = entries[ch];
       if (!e) continue; // not yet due / not recorded: the matrix shows it, the rate ignores future slots
+      // O blog publica só em dias de agenda (seg/qua/sex, Plano Mestre). Um dia fora da agenda não é publicação devida:
+      // contá-lo como "previsto" fazia o painel mostrar 1/7 quando a agenda tinha 1/1 (14/11/2026).
+      if (e.status === "fora_da_agenda") continue;
       expected++;
       const done = e.status === "publicado";
       if (done) published++;
