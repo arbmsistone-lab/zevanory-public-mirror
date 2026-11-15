@@ -211,11 +211,12 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   // per campaign, so the commercial diagnosis never mixes contaminated days with real visitors.
   const cleanRows = await sql.query(`select page, metric, sum(n)::int as n from zevanory_funnel_daily
       where day >= $1::date group by page, metric`, [CLEAN_SINCE]).catch(() => []);
-  const clean = { since: CLEAN_SINCE, diagnostico: Object.create(null), pages: Object.create(null), sources: Object.create(null), campaigns: Object.create(null), classes: Object.create(null), asn: Object.create(null) };
+  // oferta: totais exatos de chegada/clique somados ANTES do corte das 30 maiores origens (topN abaixo).
+  const clean = { since: CLEAN_SINCE, oferta: { hotmart_view: 0, hotmart_click: 0 }, diagnostico: Object.create(null), pages: Object.create(null), sources: Object.create(null), campaigns: Object.create(null), classes: Object.create(null), asn: Object.create(null) };
   for (const row of cleanRows || []) {
     const n = Number(row.n) || 0;
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, hotmart_click: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + n; continue; }
+    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, hotmart_click: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + n; if (k === "hotmart_view" || k === "hotmart_click") clean.oferta[k] += n; continue; }
     const dg = /^diag:([a-z_]+)$/.exec(row.metric);
     if (dg) { const p = (clean.diagnostico[row.page] = clean.diagnostico[row.page] || Object.create(null)); p[dg[1]] = (p[dg[1]] || 0) + n; continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);

@@ -47,6 +47,24 @@ export const localDay = (t = Date.now()) => new Intl.DateTimeFormat("en-CA", { t
 const iso = (t) => new Date(t).toISOString();
 export const metric = (value, source, updatedAt, definition, integrity = "real") => ({ value, source, updatedAt: updatedAt || null, definition, integrity: value == null ? "missing" : integrity });
 
+// GPT-6 (15/11): os dois indicadores da oferta com os rótulos combinados, e os testes de diagnóstico à parte,
+// no objeto que o painel lê (snapshot.funnel.oferta). Base: resumo limpo (desde o filtro de robôs).
+export const ROTULOS_OFERTA = Object.freeze({ hotmart_view: "Abriu a página da oferta", hotmart_click: "Clicou para ir ao checkout" });
+export function funilOferta(funnel, funnelAt, integrity) {
+  const cl = funnel?.clean;
+  if (!cl) return { since: null, abriuOferta: metric(null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_view), clicouCheckout: metric(null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_click), diagnostico: { abriuOferta: 0, clicouCheckout: 0 } };
+  const soma = (k) => Object.values(cl.sources || {}).reduce((t, v) => t + (Number(v?.[k]) || 0), 0);
+  const total = (k) => (Number.isSafeInteger(cl.oferta?.[k]) && cl.oferta[k] >= 0 ? cl.oferta[k] : soma(k));
+  const diag = (k) => Object.values(cl.diagnostico || {}).reduce((t, v) => t + (Number(v?.[k]) || 0), 0);
+  const desde = cl.since ? " desde " + cl.since : "";
+  return {
+    since: cl.since || null,
+    abriuOferta: metric(total("hotmart_view"), "Site", funnelAt, ROTULOS_OFERTA.hotmart_view + " (/hotmart/<produto>)" + desde + "; sem testes de diagnóstico", integrity),
+    clicouCheckout: metric(total("hotmart_click"), "Site", funnelAt, ROTULOS_OFERTA.hotmart_click + " (/hotmart/<produto>/ir)" + desde + "; sem testes de diagnóstico; a venda só conta com a confirmação da Hotmart", integrity),
+    diagnostico: { abriuOferta: diag("hotmart_view"), clicouCheckout: diag("hotmart_click") },
+  };
+}
+
 export function nextRun(cron, now = Date.now()) {
   const d = new Date(now);
   for (let i = 0; i < 24 * 40; i++) {
@@ -516,6 +534,7 @@ export async function main() {
       sales30: fm.sales30,
       reversals30: fm.reversals30,
       conversions: fm.conversions,
+      oferta: funilOferta(funnel, funnelAt, funnelIntegrity),
       sources: funnel?.sources || {},
       topCampaigns: (funnel?.topCampaigns || []).slice(0, 8),
       pages: Object.entries(funnel?.pages || {}).sort((a, b) => (b[1].views || 0) - (a[1].views || 0)).slice(0, 10).map(([page, v]) => ({ page, views: v.views || 0, visitors: v.visitors || 0 })),
@@ -601,8 +620,10 @@ export async function main() {
       const hv = Object.values(sources).reduce((t, b) => t + (b.hotmartView || 0), 0), lm = Object.values(sources).reduce((t, b) => t + (b.legacyMixedClicks || 0), 0);
       // Rótulos (GPT-6, 15/11): hotmart_view = "abriu a página da oferta"; hotmart_click = "clicou para ir ao checkout";
       // testes com utm_source=diagnostico ficam em "diagnostico", fora dos números comerciais.
-      const hc = Object.values(sources).reduce((t, b) => t + (b.hotmartClick || 0), 0);
-      console.log("::notice title=HOTMART_VIEW::" + JSON.stringify({ at: funnel.generatedAt || null, since: cl.since || null, hotmart_view: hv, hotmart_click: hc, legacyMixedClicks: lm }));
+      const hc = Object.values(sources).reduce((t, b) => t + (b.hotmartClick || 0), 0), of = snapshot.funnel.oferta;
+      // mesmo total exato do painel (inclui origens fora do corte das 30 maiores)
+      const hvT = of.abriuOferta.value ?? hv, hcT = of.clicouCheckout.value ?? hc;
+      console.log("::notice title=HOTMART_VIEW::" + JSON.stringify({ at: funnel.generatedAt || null, since: cl.since || null, hotmart_view: hvT, hotmart_click: hcT, legacyMixedClicks: lm }));
       console.log("::notice title=FUNIL_ROTULOS::" + JSON.stringify({ rotulos: { hotmart_view: "abriu a página da oferta", hotmart_click: "clicou para ir ao checkout" }, diagnostico: cl.diagnostico || {} }));
       let text = JSON.stringify(diag);
       if (text.length > 3800) { delete diag.pages; text = JSON.stringify(diag); }
