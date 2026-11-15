@@ -71,42 +71,26 @@
  "provas": [
   {
    "captura": "assets/shorts-v3/lcx/coluna-preco.png",
-   "largura": 504
-  },
-  {
-   "captura": "assets/shorts-v3/lcx/celula-preco.png",
-   "largura": 800,
+   "largura": 876,
    "celula": "E5"
   },
   {
    "captura": "assets/shorts-v3/lcx/coluna-contribuicao.png",
-   "largura": 598
-  },
-  {
-   "captura": "assets/shorts-v3/lcx/celula-contribuicao.png",
-   "largura": 800,
+   "largura": 876,
    "celula": "J5"
   },
   {
    "captura": "assets/shorts-v3/lcx/coluna-margem.png",
-   "largura": 598
-  },
-  {
-   "captura": "assets/shorts-v3/lcx/celula-margem.png",
-   "largura": 800,
+   "largura": 876,
    "celula": "K5"
   },
   {
    "captura": "assets/shorts-v3/lcx/coluna-desconto.png",
-   "largura": 724
-  },
-  {
-   "captura": "assets/shorts-v3/lcx/celula-desconto.png",
-   "largura": 800,
+   "largura": 876,
    "celula": "M5"
   },
   {
-   "captura": "assets/shorts-v3/lcx/manual-topo.png",
+   "captura": "assets/shorts-v3/lcx/manual-titulo.png",
    "largura": 876
   }
  ],

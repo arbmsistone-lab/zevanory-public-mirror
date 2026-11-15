@@ -193,7 +193,7 @@ test("proveniência (NC-R05, adversarial): números permitidos só vêm da plani
   const Pv = structuredClone(P); Pv.celulas.margem.valor_exibido = "21,6%";
   assert.throws(() => conferirCelulas(spec, Pv), /v3_celula_sem_proveniencia/, "valor exibido diferente da planilha");
   const { provasParaMedir } = await import("../scripts/shorts-v3/render.mjs");
-  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), [null, "R$ 180,00", null, "R$ 39,00", null, "21,7%", null, "2,2%", null], "valor esperado só vem da proveniência");
+  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), ["R$ 180,00", "R$ 39,00", "21,7%", "2,2%", null], "valor esperado só vem da proveniência (v3.9: a coluna real carrega o valor; manual sem valor)");
   assert.ok(spec.provas.every((p) => p.valor === undefined), "o spec não guarda valor esperado");
   const P2 = structuredClone(P); P2.resultados_calculados_pela_planilha["Margem contribuição %"] = 0.2;
   assert.throws(() => conferirCelulas(spec, P2), /v3_celula_sem_proveniencia/, "planilha com outro resultado");
@@ -208,31 +208,40 @@ test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BL
   const bloq = await cicloCriativo({ gerar: async () => ({}), avaliarCriativo: async () => { n++; return { aprovado: false, decisao: "DESCARTADO", nota_geral: 9.1, motivos: ["nota_abaixo:oferta=9.1"] }; } });
   assert.deepEqual([bloq.estado, n], ["BLOQUEADO", 3]); assert.match(bloq.relatorio, /3 tentativas.*9\.1.*oferta=9\.1/);
 });
-test("v3.5 (júri real 8,5 — ensaio 43629467444): prova = tela real do Calc + close-up da MESMA célula; ambos com hash e proveniência", async () => {
+test("v3.9 (júri real 8,3, ensaio 43768114276; GPT-6): cada célula aparece UMA vez — a coluna real do Calc, ampliada, com cabeçalho e linhas; hash e proveniência", async () => {
   const { readFile } = await import("node:fs/promises");
   const spec = JSON.parse(await readFile("data/shorts-v3/lcx.json", "utf8"));
   const P = JSON.parse(await readFile("assets/shorts-v3/lcx/planilha-proveniencia.json", "utf8"));
   const M = JSON.parse(await readFile("assets/shorts-v3/lcx/manifesto.json", "utf8"));
+  const { celulaDaCaptura } = await import("../scripts/shorts-v3/render.mjs");
   const comValor = spec.provas.filter((p) => p.celula !== undefined);
   assert.equal(comValor.length, 4);
+  const vistas = new Set();
   for (const p of comValor) {
-    const c = Object.values(P.celulas).find((x) => x.arquivo === p.captura);
+    const c = celulaDaCaptura(P, p.captura);
     assert.ok(c && c.celula === p.celula, p.captura);
-    const i = spec.provas.indexOf(p);
-    assert.equal(spec.provas[i - 1]?.captura, c.coluna, "v3.8: a coluna real (400%, sem ampliação) vem logo antes do close-up da mesma célula");
-    assert.equal(spec.provas[i - 1].largura, (await import("node:fs")).readFileSync(c.coluna).readUInt32BE(16), "coluna desenhada na largura nativa (pixels exatos)");
-    assert.equal(spec.provas[i - 1].celula, undefined, "a tela não carrega valor: a legibilidade é medida no close-up");
+    assert.equal(p.captura, c.coluna, "v3.9: a prova exibida é a coluna real (cabeçalho + linhas), não o close-up");
+    assert.ok(!spec.provas.some((q) => q.captura === c.arquivo), "o close-up da mesma célula não aparece de novo (sem duplicidade)");
+    assert.equal(p.largura, 876, "ampliada até a largura útil");
+    assert.ok(!vistas.has(c.celula), "célula repetida"); vistas.add(c.celula);
     for (const f of [c.arquivo, c.coluna, c.tela]) assert.match(M.arquivos[f] || "", /^[0-9a-f]{64}$/, "hash no manifesto: " + f);
     assert.match(c.render, /LibreOffice Calc .*Xvfb.*capturar_planilha\.py/);
   }
-  assert.ok(spec.provas.some((p) => p.captura === P.manual_topo.arquivo), "manual: recorte real do topo da capa");
-  // v3.7: sem rodapé com texto abaixo de y=1470 (júri real 8,5: "texto miúdo na área da interface")
+  // manual: título REAL da 1ª página do manual do kit, só reduzido (nenhum pixel ampliado), com hash e origem
+  assert.ok(spec.provas.some((p) => p.captura === P.manual_titulo.arquivo), "manual: recorte real do título da 1ª página do manual");
+  assert.match(M.arquivos[P.manual_titulo.arquivo] || "", /^[0-9a-f]{64}$/);
+  assert.equal(P.manual_titulo.sha256_origem, "8515fb14d99b5fcf92c620247b50bfb93096d914ce9ca057b8a616c60074fcde");
+  const [x0, y0, x1, y1] = P.manual_titulo.recorte, png = (await import("node:fs")).readFileSync(P.manual_titulo.arquivo);
+  assert.ok(png.readUInt32BE(16) <= x1 - x0 && png.readUInt32BE(20) <= y1 - y0, "só redução");
   assert.equal(P.rodapes, undefined);
   const q = readTextNormalized("scripts/shorts-v3/quadros.py");
   assert.doesNotMatch(q, /1900 - hb/, "barras decorativas fixas removidas");
-  assert.match(q, /def coluna\(/);assert.match(q, /def feixe\(/);
-  // v3.8 (júri real 7,5, ensaio 43731076486: "faixa borrada escura exagerada"): sem desfoque na área inferior
+  assert.doesNotMatch(q, /def feixe\(|def celula\(/, "v3.9: sem feixe fino nem close-up duplicado");
+  assert.match(q, /CB = 1290/); assert.match(q, /def embaixo\(/);
   assert.doesNotMatch(q, /fundo_inferior|GaussianBlur\(38\)/);
+  // legenda logo abaixo do conteúdo, numa altura fixa acima da interface do Shorts
+  const { LEGENDA_Y } = await import("../scripts/shorts-v3/render.mjs");
+  assert.ok(LEGENDA_Y > 1290 && LEGENDA_Y + 40 < 1470, String(LEGENDA_Y));
 });
 test("GPT-6 #1054: o avaliador do código integrado reprova célula ilegível ou medição ausente MESMO com nota alta do júri", async () => {
   const base = { criativo: CRI, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: MED, permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };

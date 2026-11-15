@@ -94,7 +94,9 @@ def main(original, prov_path, saida):
             xc0, xc1 = faixa_selecionada(im, "x", 118, 30, LARGURA_JANELA - 60)
             _, yc1 = faixa_selecionada(im, "y", 10, 100, ALTURA_CONTEXTO - 80)
             if xc1 > CORTE_TELA[2] - FOLGA_DIREITA: raise SystemExit("coluna_400_nao_cabe:" + nome)
-            im.crop((0, CORTE_TELA[1], xc1 + 2, yc1 + 8)).save(os.path.join(saida, f"coluna-{nome}.png"))
+            # v3.9 (prévia: o OCR lia "21,/%" com o "%" colado na borda da seleção): como no close-up, a coluna termina
+            # 4 px ANTES da borda direita da seleção (antes: xc1 + 2) — só recorte
+            im.crop((0, CORTE_TELA[1], xc1 - 4, yc1 + 8)).save(os.path.join(saida, f"coluna-{nome}.png"))
 
             win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_PERTO, 15); ctrl.ZoomValue = 400
             ctrl.setFirstVisibleColumn(col); ctrl.setFirstVisibleRow(linha - 1); time.sleep(2.5)

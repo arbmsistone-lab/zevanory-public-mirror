@@ -2,7 +2,7 @@
  "schema": 1,
  "nota": "Integridade da prova do produto (NC-R05): hashes da proveniência do cálculo (planilha real recalculada) e das capturas. O gerador e o avaliador recusam qualquer divergência.",
  "arquivos": {
-  "assets/shorts-v3/lcx/planilha-proveniencia.json": "b2d65779219381d853322b88cfe9c4d4fd82553d6431ada5e88f38eca76b00b1",
+  "assets/shorts-v3/lcx/planilha-proveniencia.json": "70e31666665b4ae0d8430c8fc5ec117f8dc6c2eb42014363e4803d205a81e0a5",
   "assets/shorts-v3/lcx/tela-preco.png": "4b0efdac59a7f2c8e7ccccc41dbea68d89d4246e3e040682b27ac48eeabe35a3",
   "assets/shorts-v3/lcx/celula-preco.png": "216576a20ccd91f015aa2f57107b74739089ae5911fa7c3fafe7e403169356c7",
   "assets/shorts-v3/lcx/tela-contribuicao.png": "5ecd96c866d66f1ec04e4a4d999c2c3b1de5aabe3467c70b2ac0c122f5dab297",
@@ -14,10 +14,11 @@
   "assets/shorts-v3/lcx/manual-topo.png": "efbe4e8db65e33ca09a91e2ef0b8b3398a287330d99d5b721bcde0ef6408780b",
   "assets/shorts-v3/lcx/celula-taxa.png": "b8b64c10a5f45024519cae8a73c20e9fa296e3caeeeb7f8c24b669f8b14dbd04",
   "assets/shorts-v3/lcx/tela-taxa.png": "9beab60537bf4652b245da12865cd812504534e5f241065a5d0a5d3ed3766d46",
-  "assets/shorts-v3/lcx/coluna-preco.png": "8681c9d1cdd385815120ec2ac46e040a6f91cb392574383dc880610266931178",
-  "assets/shorts-v3/lcx/coluna-taxa.png": "62c308a5d7c6313289328d93a868bbb60b5e1950f0fdc03eb0021e4448cfb8ef",
-  "assets/shorts-v3/lcx/coluna-contribuicao.png": "859accbd3413d27fa9fcd09f9f20cb2d54c1ace66d8863671e209a0254b0f3c0",
-  "assets/shorts-v3/lcx/coluna-margem.png": "8cfc958e014b09538547132dbab065ae6aebdf472314e2836408be82b17e492d",
-  "assets/shorts-v3/lcx/coluna-desconto.png": "8c3aad5f954af52d1e1d4ad76c67cacef70b63bb49b02440e5eda71ea0c27cdc"
+  "assets/shorts-v3/lcx/coluna-preco.png": "c13eb6476e9f7c312318b0ac34d430aaa53d9c45fec0ee4f7118c89a30450116",
+  "assets/shorts-v3/lcx/coluna-taxa.png": "d4ece76c7b7519199ea9eedf516ad7991d4bdfd1d12dd27505e30f848f63d2fd",
+  "assets/shorts-v3/lcx/coluna-contribuicao.png": "0f8e166642c4c1ab09b194197766b31c4d68082171a4dd9422c69a55a8c7e549",
+  "assets/shorts-v3/lcx/coluna-margem.png": "b9d33c1f814f6d9058c63d1dd52022bb88e96b6f0627f271fda73cc6109b4e1b",
+  "assets/shorts-v3/lcx/coluna-desconto.png": "de7f77bfd726bac35287b6fc8e2e2dfebc1a2934f544de517a965f05e91e2161",
+  "assets/shorts-v3/lcx/manual-titulo.png": "2b34494d81500f9621db0d46a554446303d9cbae6691d90458cdde781f9ef7ae"
  }
 }

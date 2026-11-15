@@ -55,14 +55,17 @@ export async function conferirManifesto(spec){
 // v3.4 (cruzamento): cada prova com valor tem de ser uma célula registrada na proveniência (mesmo arquivo, mesma célula,
 // mesmo valor exibido) e o valor exibido tem de ser o número da planilha, formatado em pt-BR, pelo cabeçalho da coluna.
 export function formatarCelula(formato,v){if(!Number.isFinite(v)||!['pct','brl'].includes(formato))return null;return formato==='pct'?(Math.round(v*1000)/10).toFixed(1).replace('.',',')+'%':'R$ '+v.toFixed(2).replace('.',',');}
+// v3.9 (GPT-6: cada célula uma vez, ampliada, com cabeçalho): a prova exibida pode ser o close-up (arquivo) ou a coluna
+// real (coluna) da MESMA célula registrada; qualquer outra captura com "celula" é recusada.
+export const celulaDaCaptura=(P,captura)=>Object.values(P?.celulas||{}).find(x=>x&&(x.arquivo===captura||x.coluna===captura));
 export function conferirCelulas(spec,P){
  for(const p of spec.provas.filter(x=>x.celula!==undefined)){
-  const c=Object.values(P.celulas||{}).find(x=>x?.arquivo===p.captura),num=c&&({...P.entradas,...P.resultados_calculados_pela_planilha})[c.cabecalho];
+  const c=celulaDaCaptura(P,p.captura),num=c&&({...P.entradas,...P.resultados_calculados_pela_planilha})[c.cabecalho];
   if(!c||c.celula!==p.celula||c.aba!==P.aba||typeof c.valor_exibido!=='string'||formatarCelula(c.formato,num)!==c.valor_exibido)throw Error('v3_celula_sem_proveniencia:'+p.captura);
  }
 }
 // Provas para a medição: o valor esperado de cada célula vem SÓ da proveniência conferida (o spec não guarda valor).
-export function provasParaMedir(spec,P,raiz=ROOT){conferirCelulas(spec,P);return spec.provas.map(p=>{const c=p.celula!==undefined?Object.values(P.celulas).find(x=>x.arquivo===p.captura):null;return {captura:join(raiz,p.captura),largura:p.largura,...(c?{valor:c.valor_exibido}:{})};});}
+export function provasParaMedir(spec,P,raiz=ROOT){conferirCelulas(spec,P);return spec.provas.map(p=>{const c=p.celula!==undefined?celulaDaCaptura(P,p.captura):null;return {captura:join(raiz,p.captura),largura:p.largura,...(c?{valor:c.valor_exibido}:{})};});}
 export async function conferirNumeros(spec){
  const N=spec.numeros,P=await conferirManifesto(spec),E=P.entradas,R=P.resultados_calculados_pela_planilha,motivos=[];
  if(E['Preço atual']!==N.preco_venda)motivos.push('preco_venda_divergente');
@@ -127,6 +130,8 @@ export function depsFrases(run=command){return {
  gravarTrecho:(amostras,a,b,sr,arq)=>{const raw=Buffer.from(amostras.buffer,amostras.byteOffset+a*2,(b-a)*2);const tmp=arq+'.pcm';writeFileSync(tmp,raw);run('ffmpeg',['-y','-v','error','-f','s16le','-ar',String(sr),'-ac','1','-i',tmp,'-c:a','pcm_s16le',arq]);},
  alinharTrecho:async(arq,texto)=>{writeFileSync(arq+'.txt',texto);runAligner([arq,arq+'.txt',arq+'.json']);return JSON.parse(readFileSync(arq+'.json','utf8'));}
 };}
+// v3.9: a legenda fica logo abaixo do conteúdo (quadros.py CB=1290), sempre na mesma altura, acima da interface (1470)
+export const LEGENDA_Y=1350;
 export const DESTAQUE_MIN_S=0.12;
 export function legendasV3(words,porFala=[words.length],fim=undefined){
  const t=v=>{const cs=Math.round(v*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;};
@@ -139,9 +144,9 @@ export function legendasV3(words,porFala=[words.length],fim=undefined){
   const fins=grp.map((w,k)=>Math.max((grp[k+1]||words[b]||{start:w.end}).start,w.end));
   // NC-1048-01: se o destaque de alguma palavra ficaria menos de DESTAQUE_MIN_S na tela (palavra instantânea do
   // alinhador), o grupo inteiro aparece destacado de forma estável do início ao fim do grupo — nenhum tempo é inventado.
-  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1300)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
+  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,${LEGENDA_Y})}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
   for(let k=0;k<grp.length;k++){const w=grp[k];
-  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1300)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,${LEGENDA_Y})}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
  // Garantia no arquivo gerado: nenhum evento de legenda com menos de DESTAQUE_MIN_S na tela.
  const curto=ev.find(l=>{const c=l.split(','),x=v=>{const [h,m,q]=v.split(':');return +h*3600+ +m*60+ +q;};return x(c[2])-x(c[1])<DESTAQUE_MIN_S-0.015;});// folga de 1 centésimo do arredondamento do .ass
  if(curto)throw Error('v3_legenda_evento_curto');

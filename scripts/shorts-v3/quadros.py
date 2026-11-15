@@ -51,7 +51,10 @@ N = spec["numeros"]; O = spec["oferta"]; brl = lambda v: "R$ " + f"{v:,}".replac
 # v3.1 (júri real 8,2 — run 43538539233): conteúdo ocupa toda a área útil acima da faixa da legenda falada, planilha
 # REAL em capturas grandes (LibreOffice pt-BR, 400 dpi), sem rótulos "ilustrativo", capa grande, textos longe da borda.
 # Faixa y 1280–1460 = legenda falada (render.mjs, \pos(470,1380)); abaixo de 1470 = interface do Shorts.
-CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1180  # v3.7: legenda em y≈1300; conteúdo até 1180 (júri oscilou entre "apertado" com 1240 e "vazio" com 1150)
+# v3.9 (júri real 8,3, ensaio 43768114276: "conteúdo espremido na metade superior, área vazia entre y=1100 e 1470";
+# "legendas isoladas no vazio inferior"): o conteúdo desce até CB=1290 e a legenda falada fica LOGO ABAIXO dele, em
+# y=1350 (render.mjs, LEGENDA_Y), sempre no mesmo lugar (leitura estável nas transições); abaixo de 1470 = interface.
+CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1290
 def captura(d, nome, x, y, largura):
     s = Image.open(CAP / nome).convert("RGB"); s = s.resize((largura, round(s.height * largura / s.width)), Image.LANCZOS)
     d.rounded_rectangle((x - 8, y - 8, x + largura + 8, y + s.height + 8), 14, fill=(255, 255, 255)); d.im.paste(s, (x, y))
@@ -61,45 +64,30 @@ PROV = json.loads((CAP / "planilha-proveniencia.json").read_text(encoding="utf-8
 def largura_spec(arquivo):
     """largura desenhada = a declarada na spec (a mesma usada pela medição do vídeo)"""
     return next(int(p["largura"]) for p in spec["provas"] if Path(p["captura"]).name == Path(arquivo).name)
-def celula(d, nome, y, largura=None):
-    """v3.6: close-up REAL do Calc a 400% num cartão escuro; origem escrita no cartão, FORA do recorte. Ampliado só
-    por escala uniforme. v3.8: largura da spec (800)."""
-    c = PROV["celulas"][nome]
-    largura = round((largura or largura_spec(c["arquivo"])) * float(spec.get("escala_celulas", 1)))  # só a calibração muda (célula miúda)
-    x = (64 + SAFE_R - largura) // 2
-    s_ = Image.open(CAP / Path(c["arquivo"]).name); alt = round(s_.height * largura / s_.width)
-    # faixa escura de largura total (só bordas horizontais): a borda vertical cruzando a grade parecia textura de letra
-    d.rectangle((0, y, W, y + alt + 84), fill=BG); d.rectangle((0, y, W, y + 5), fill=YEL); d.rectangle((0, y + alt + 79, W, y + alt + 84), fill=YEL)
-    fim = captura(d, Path(c["arquivo"]).name, x, y + 18, largura)
-    d.text((x, fim + 4), f"Aba {c['aba']} · célula {c['celula']} ampliada", font(42), MUTED)
-    return fim + 64
-FEIXE = 56  # altura da ligação visual coluna -> ampliação
-def coluna(d, nome, y):
-    """v3.8 (contra-auditoria GPT-6 do ensaio 43731076486: cabeçalhos da tela geral ilegíveis em 540x960; júri:
-    "capturas com resolução inferior"): só a COLUNA da célula, capturada a 400% no Calc (letras e números das linhas
-    reais), colada SEM ampliação (pixels exatos) num cartão branco; abaixo, um feixe amarelo liga a célula selecionada
-    (linha 5, a última da captura) ao close-up — nada é desenhado sobre os pixels da captura."""
-    c = PROV["celulas"][nome]; s0 = Image.open(CAP / Path(c["coluna"]).name).convert("RGB")
-    larg = largura_spec(c["coluna"]); s = s0 if s0.width == larg else s0.resize((larg, round(s0.height * larg / s0.width)), Image.LANCZOS)
-    x = (64 + SAFE_R - s.width) // 2
-    d.rounded_rectangle((x - 10, y - 10, x + s.width + 10, y + s.height + 10), 16, fill=(255, 255, 255)); d.im.paste(s, (x, y))
-    med["provaReal"] = True; fim = y + s.height
-    px = s0.load(); xs = [i for i in range(s0.width) if px[i, 4][:3] == (128, 0, 0)]  # letra da coluna selecionada
-    e = s.width / s0.width; c0, c1 = (x + round(min(xs) * e), x + round((max(xs) + 1) * e)) if xs else (x, x + s.width)
-    return fim + 10, (c0, c1)
-def feixe(d, y0, cel, alvo, cor=YEL):
-    """trapézio translúcido + bordas: da célula (embaixo da captura) até o topo do close-up"""
-    (c0, c1), (a0, a1), y1 = cel, alvo, y0 + FEIXE
-    cam = Image.new("RGBA", d.im.size, (0, 0, 0, 0)); g = ImageDraw.Draw(cam)
-    g.polygon([(c0, y0), (c1, y0), (a1, y1), (a0, y1)], fill=cor + (96,))
-    d.im.paste(Image.alpha_composite(d.im.convert("RGBA"), cam).convert("RGB")); d.d = ImageDraw.Draw(d.im)
-    d.line((c0, y0, a0, y1), fill=cor, width=6); d.line((c1, y0, a1, y1), fill=cor, width=6)
+LARG_PROVA = SAFE_R - 64  # v3.9: a coluna real ocupa a largura útil (876)
 def prova(d, nome, y):
-    """coluna real -> feixe -> close-up da mesma célula; devolve o fim do bloco"""
-    fim, cel = coluna(d, nome, y)
-    larg = round(largura_spec(PROV["celulas"][nome]["arquivo"]) * float(spec.get("escala_celulas", 1))); x = (64 + SAFE_R - larg) // 2
-    feixe(d, fim, cel, (x, x + larg))
-    return celula(d, nome, fim + FEIXE)
+    """v3.9 (júri: "duplicidade da mesma célula sem contexto", "linhas de zoom finas amadoras"; GPT-6: "cada célula uma
+    vez, ampliada, com cabeçalhos e contexto"): só a COLUNA real do Calc a 400% — letra da coluna, cabeçalho, números das
+    linhas e a célula selecionada na linha 5 —, ampliada por escala uniforme até a largura útil, num cartão branco.
+    Nada é desenhado sobre os pixels da captura: o marcador amarelo fica FORA do cartão, à esquerda da linha da célula,
+    e a origem fica escrita abaixo. Devolve o fim do bloco."""
+    c = PROV["celulas"][nome]; arq = Path(c["coluna"]).name
+    s0 = Image.open(CAP / arq).convert("RGB"); larg = largura_spec(c["coluna"]); alt = round(s0.height * larg / s0.width)
+    x = (64 + SAFE_R - larg) // 2
+    fim = captura(d, arq, x, y, larg)
+    # linha da célula selecionada (a última da captura): o cabeçalho de linha vermelho-escuro do Calc marca a seleção
+    px = s0.load(); ys = [j for j in range(s0.height) if px[2, j][:3] == (128, 0, 0)]
+    e = alt / s0.height; l0, l1 = (y + round(min(ys) * e), y + round((max(ys) + 1) * e)) if ys else (y + alt - 60, y + alt)
+    m = (l0 + l1) // 2; d.polygon([(x - 50, m - 26), (x - 50, m + 26), (x - 16, m)], fill=YEL)
+    d.text((x, fim + 8), f"Aba {c['aba']} · célula {c['celula']} da planilha", font(42), MUTED)
+    return fim + 64
+def bloco_prova(nome, extra=0):
+    """altura do cartão da coluna + origem (mesmas contas de prova())"""
+    c = PROV["celulas"][nome]; k = Image.open(CAP / Path(c["coluna"]).name)
+    return round(k.height * largura_spec(c["coluna"]) / k.width) + 8 + 64 + extra
+def embaixo(y_min, altura, fim=CB):
+    """v3.9: o bloco termina em CB, logo acima da legenda que o explica; a folga fica entre o título e o bloco"""
+    return max(y_min, fim - altura)
 # v3.8 (contra-auditoria GPT-6 + júri real 7,5 de legibilidade, ensaio 43731076486: "faixa borrada escura exagerada"):
 # a área abaixo de y=1470 (interface do Shorts) fica com o MESMO fundo contínuo do quadro — sem desfoque, sem texto.
 def q_gancho(d):
@@ -115,18 +103,10 @@ def q_gancho(d):
             d.polygon([(cx, cy - t // 2), (cx - t // 2, cy), (cx - t // 6, cy), (cx - t // 6, cy + t // 2), (cx + t // 6, cy + t // 2), (cx + t // 6, cy), (cx + t // 2, cy)], fill=cor)
         else:
             d.text((cx, cy), val, font(t), cor, anchor="mm")
-def bloco_prova(nome, extra=0):
-    """altura de coluna + feixe + cartão do close-up (mesmas contas de coluna(), feixe() e celula())"""
-    c = PROV["celulas"][nome]; k = Image.open(CAP / Path(c["coluna"]).name); s_ = Image.open(CAP / Path(c["arquivo"]).name)
-    kl = largura_spec(c["coluna"]); larg = round(largura_spec(c["arquivo"]) * float(spec.get("escala_celulas", 1)))
-    return round(k.height * kl / k.width) + 10 + FEIXE + 18 + round(s_.height * larg / s_.width) + 8 + 64 + extra
-def centro(y_min, altura, fim=CB):
-    """v3.7 (júri oscilou entre "apertado" e "vazio"): o bloco fica centrado entre o título e o fim do conteúdo"""
-    return y_min + max(0, (fim - y_min - altura) // 2)
 def q_venda(d):
     d.text((64, 290), "PASSO 1 · EXEMPLO DE VENDA: TÊNIS", font(44), BLUE)
     y = rich(d, 64, 350, "Sua última venda.", font(84), hl=("última", "venda.")) + 26
-    prova(d, "preco", centro(y, bloco_prova("preco")))
+    prova(d, "preco", embaixo(y, bloco_prova("preco")))
 def seta(d, x, y0, y1, cor=YEL):
     d.line((x, y0, x, y1 - 26), fill=cor, width=10); d.polygon([(x - 26, y1 - 30), (x + 26, y1 - 30), (x, y1)], fill=cor)
 def q_conta(d, etapa):
@@ -140,43 +120,54 @@ def q_conta(d, etapa):
             d.text((110, y0), a, font(54), MUTED); d.text((110, y0 + 84), b, font(fv), c)
             yy += h + gap
         return
-    y = prova(d, "contribuicao", centro(356, bloco_prova("contribuicao", 4 + 136))) + 4
-    d.rectangle((0, y, W, CB), fill=(10, 60, 40)); d.rectangle((0, y, W, y + 6), fill=(40, 200, 120)); d.rectangle((0, CB - 6, W, CB), fill=(40, 200, 120))
-    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 30)), GREEN, anchor="mm")
+    faixa = 170; y = prova(d, "contribuicao", embaixo(356, bloco_prova("contribuicao", 10 + faixa))) + 10
+    d.rounded_rectangle((64, y, SAFE_R, CB), 34, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
+    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 40)), GREEN, anchor="mm")
 def q_planilha(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
-    y = rich(d, 64, 350, "A margem, na hora.", font(80), hl=("margem,",)) + 26
-    prova(d, "margem", centro(y, bloco_prova("margem")))
+    y = rich(d, 64, 350, "A margem, na hora.", font(80), hl=("margem,",)) + 14
+    y = rich(d, 64, y, "Quanto sobra de cada venda, em porcentagem.", font(56), color=MUTED) + 26
+    prova(d, "margem", embaixo(y, bloco_prova("margem")))
 def q_desconto(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
-    y = rich(d, 64, 350, "Limite de desconto.", font(80), hl=("limite",)) + 26
-    prova(d, "desconto", centro(y, bloco_prova("desconto")))
-MANUAL = "manual-topo.png"  # v3.5: topo REAL da capa do manual (recorte sem retoque), em largura total e legível
+    y = rich(d, 64, 350, "Limite de desconto.", font(80), hl=("limite",)) + 14
+    y = rich(d, 64, y, "Desconto maior que este derruba a margem abaixo da meta.", font(56), color=MUTED) + 26
+    prova(d, "desconto", embaixo(y, bloco_prova("desconto")))
+# v3.9 (júri: "mockup do kit pequeno, tipografia interna pouco legível"; GPT-6: 80% da largura, nome do kit legível no
+# celular): título REAL da 1ª página do manual do kit (docx sha256 8515fb14…, LibreOffice -> PDF -> 300 dpi), só recorte
+# e REDUÇÃO para 876 px (nenhum pixel ampliado); proveniência em planilha-proveniencia.json (manual_titulo).
+MANUAL = "manual-titulo.png"
+ALT_CAPA = round(Image.open(CAP / MANUAL).height * (SAFE_R - 64) / Image.open(CAP / MANUAL).width) + 16
 def capa(d, y, largura=SAFE_R - 64):
     return captura(d, MANUAL, (64 + SAFE_R - largura) // 2, y, largura)
 def q_oferta(d, fase):
     if fase == 0:  # benefício: o produto real (topo do manual) e o que vem nele
         y = rich(d, 64, 290, O["beneficio"], font(84), hl=("margem",)) + 30
-        y = capa(d, y) + 30
-        for k, t in enumerate(O["itens"]):
-            yy = y + k * 96; d.ellipse((70, yy + 18, 108, yy + 56), fill=GREEN); d.text((130, yy), t, font(60), TXT)
+        y = capa(d, y) + 40
+        n = len(O["itens"]); h = (CB - y - 20 * (n - 1)) // n
+        for k, t in enumerate(O["itens"]):  # cada item num cartão, ocupando a área até a legenda
+            yy = y + k * (h + 20); d.rounded_rectangle((64, yy, SAFE_R, yy + h), 40, fill=CARD)
+            d.ellipse((104, yy + h // 2 - 22, 148, yy + h // 2 + 22), fill=GREEN); d.text((180, yy + h // 2), t, font(56), TXT, anchor="lm")
         return
     if fase == 1:  # oferta: preço e condições, grandes e separados
         d.text((64, 290), "KIT COMPLETO", font(46), BLUE)
         d.text((64, 350), "Lucro & Caixa", font(112), TXT)
         d.rounded_rectangle((64, 510, SAFE_R, 790), 40, fill=(14, 26, 44), outline=YEL, width=6)
         d.text(((64 + SAFE_R) // 2, 650), brl(O["preco"]), font(170), YEL, anchor="mm")
+        h = (CB - 830 - 24) // 2  # v3.9: as duas condições ocupam a área até a legenda
         for k, t in enumerate(("Pagamento único", "Arrependimento em 7 dias")):
-            yy = 820 + k * 170; d.rounded_rectangle((64, yy, SAFE_R, yy + 150), 75, fill=CARD)
-            d.ellipse((104, yy + 47, 160, yy + 103), fill=GREEN); d.text((190, yy + 75), t, font(56), TXT, anchor="lm")
+            yy = 830 + k * (h + 24); d.rounded_rectangle((64, yy, SAFE_R, yy + h), 60, fill=CARD)
+            d.ellipse((104, yy + h // 2 - 28, 160, yy + h // 2 + 28), fill=GREEN); d.text((190, yy + h // 2), t, font(60), TXT, anchor="lm")
         return
     d.text((64, 290), "LUCRO & CAIXA", font(46), BLUE)  # CTA
     # CTA (GPT-6, 15/11): links na descrição de Shorts não são clicáveis no YouTube -> "link do perfil"
     y = rich(d, 64, 350, "Kit Lucro & Caixa no link do perfil.", font(84), hl=("perfil.",)) + 24
     d.text((64, y), "por " + brl(O["preco"]), font(96), YEL); y += 130
-    y = capa(d, y) + 24
-    d.rounded_rectangle((64, y, SAFE_R, CB), 70, fill=BLUE)
-    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Link no perfil", font(min(76, CB - y - 30)), BG, anchor="mm")
+    # v3.9: botão de altura fixa terminando em CB (logo acima da legenda); um botão alto demais o OCR da página inteira
+    # trata como imagem e não lê o texto (prévia v3.9: "Link no perfil" sem leitura). A capa fica centrada no espaço.
+    BOT = 190; capa(d, y + max(0, (CB - BOT - 24 - y - ALT_CAPA) // 2))
+    d.rounded_rectangle((64, CB - BOT, SAFE_R, CB), 70, fill=BLUE)
+    d.text(((64 + SAFE_R) // 2, CB - BOT // 2), "Link no perfil", font(76), BG, anchor="mm")
 quadros = {"gancho": q_gancho, "venda": q_venda, "conta-1": lambda d: q_conta(d, 1), "conta-2": lambda d: q_conta(d, 2), "conta-3": lambda d: q_conta(d, 3),
            "planilha": q_planilha, "desconto": q_desconto, "beneficio": lambda d: q_oferta(d, 0), "oferta": lambda d: q_oferta(d, 1), "cta": lambda d: q_oferta(d, 2)}
 falas = spec["falas"]; out = {}
