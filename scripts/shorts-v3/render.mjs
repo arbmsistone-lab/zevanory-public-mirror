@@ -26,7 +26,7 @@ export function atempoVoz(palavras,duracaoBruta){
 export const filtroVozV3=a=>{if(!(a>=ATEMPO_MIN&&a<=1))throw Error('v3_atempo_fora_da_faixa');return `highpass=f=80,atempo=${a},deesser=i=0.15:m=0.3:f=0.5,acompressor=threshold=0.25:ratio=2:attack=10:release=100`;};
 export function duracaoAudio(arquivo,run=command){const d=Number(JSON.parse(run('ffprobe',['-v','error','-show_entries','format=duration','-of','json',arquivo])).format?.duration);if(!(d>0))throw Error('v3_duracao_voz_invalida');return d;}
 import {CTA,alignedWords,shortTiming,licensedTrack,assertVoice,quality} from '../shorts-v2/core.mjs';
-import {avaliar,permitidosDaProveniencia,precosOficiais,registrarDecisao} from '../criativos/avaliador.mjs';
+import {avaliar,celulasExigidas,permitidosDaProveniencia,precosOficiais,registrarDecisao} from '../criativos/avaliador.mjs';
 import {createHash} from 'node:crypto';
 import {ofertaPublicada} from '../criativos/afirmacoes.mjs';
 import {CRITERIOS,montarPadrao,validarPadrao} from '../criativos/padrao.mjs';
@@ -215,13 +215,14 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  const quadros=[],quadrosJuri=[];
  for(const c of cenas){const t=String(Math.min(c.end-0.05,c.start+Math.min(1.2,(c.end-c.start)*0.7))),p=`${base}-medir-${quadros.length}.png`,pj=`${base}-juri-${quadros.length}.png`;
   command('ffmpeg',['-y','-v','error','-ss',t,'-i',base+'.mp4','-frames:v','1',p]);command('ffmpeg',['-y','-v','error','-i',p,'-vf','scale=540:960',pj]);quadros.push(p);quadrosJuri.push(await readFile(pj));}
- await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:provasParaMedir(spec,await conferirManifesto(spec))}));
+ const provasMedir=provasParaMedir(spec,await conferirManifesto(spec));
+ await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:provasMedir}));
  const medicao=JSON.parse(command('python3',['-E','-P',join(ROOT,'scripts/criativos/medir.py'),base+'-medir.json']));
  for(const [i,q] of (medicao.quadros||[]).entries())if(q.nao_lidos?.length||q.tinta_sem_leitura?.length||q.fora?.length)note(`TEXTO_V3 estado=${i} nao_lidos=${JSON.stringify(q.nao_lidos||[])} tinta=${JSON.stringify(q.tinta_sem_leitura||[])} fora=${JSON.stringify(q.fora||[])}`);
  note('PROVAS_V3 '+JSON.stringify((medicao.medidas?.provasLegiveis||[]).map(p=>({c:String(p.captura).split('/').pop(),v:p.valor,h:p.altura_px,t:p.tentativas})))+' correl='+JSON.stringify((medicao.medidas?.provas||[]).map(p=>[String(p.captura).split('/').pop(),p.correlacao,p.exclusiva])));
  const O=spec.oferta,cat=precosOficiais()[spec.sku];
  let oficial=null;try{oficial=await oferta(spec.slug);}catch(e){note('OFERTA_PUBLICADA indisponivel '+String(e.message||e).slice(0,60));}
- const criativo={sku:spec.sku,falas:spec.falas.map(f=>f.texto),oferta:{nome:O.nome,preco:O.preco}};
+ const criativo={sku:spec.sku,falas:spec.falas.map(f=>f.texto),oferta:{nome:O.nome,preco:O.preco},celulasExigidas:celulasExigidas(provasMedir)};
  const pad=validarPadrao(padrao||montarPadrao({evidencia:[],geradoEm:'base'}));
  const avaliacao=await avaliarImpl({criativo,padrao:pad,quadrosPng:quadrosJuri,medicao,permitidos:permitidosDaProveniencia(await conferirManifesto(spec),cat?.[1]),oficial,key:geminiKey});
  if(audio.length){avaliacao.aprovado=false;avaliacao.decisao='DESCARTADO';avaliacao.motivos=[...audio.map(r=>'audio:'+r),...avaliacao.motivos];}

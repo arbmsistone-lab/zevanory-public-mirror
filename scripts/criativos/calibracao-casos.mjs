@@ -2,6 +2,7 @@
 // parte determinística) e no workflow semanal (OCR real + oferta publicada + júri Gemini). Positivo: precisa ser
 // APROVADO (objetivas OK e todas as notas >= 9,5). Negativos: precisam ser DESCARTADOS com os motivos esperados.
 import {provasParaMedir} from '../shorts-v3/render.mjs';
+import {celulasExigidas} from './avaliador.mjs';
 import {readFileSync,writeFileSync,readdirSync,copyFileSync,mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -30,15 +31,17 @@ export function prepararCaso(caso,dir){
  mkdirSync(dir,{recursive:true});const s=spec();
  if(caso.v2){const d=join(ROOT,'docs/criativos/calibracao/v2-reprovado'),c=JSON.parse(readFileSync(join(d,'criativo.json'),'utf8'));
   const quadros=readdirSync(d).filter(f=>f.endsWith('.png')).sort().map(f=>{const t=join(dir,f);copyFileSync(join(d,f),t);return t;});
-  return {criativo:{sku:c.sku,falas:c.textos,oferta:{nome:'',preco:null}},quadros,provas:s.provas,v2:true};}
+  return {criativo:{sku:c.sku,falas:c.textos,oferta:{nome:'',preco:null},celulasExigidas:exigidas()},quadros,provas:s.provas,v2:true};}
  if(caso.mutar)caso.mutar(s);
  writeFileSync(join(dir,'spec.json'),JSON.stringify(s));
  const q=JSON.parse(py([join(ROOT,'scripts/shorts-v3/quadros.py'),ROOT,join(dir,'spec.json'),join(dir,'q')])).quadros;
  if(caso.remover)delete q[caso.remover];
  if(caso.vazio)py(['-c',"import sys;from PIL import Image;Image.new('RGB',(1080,1920),(9,13,20)).save(sys.argv[1])",q[caso.vazio]]);
  if(caso.pintar){const [qd,x,y,t,tam,cor]=caso.pintar;py(['-c',PINTAR,q[qd],FONTE,String(x),String(y),t,String(tam),cor]);}
- return {criativo:{sku:s.sku,falas:s.falas.map(f=>f.texto),oferta:{nome:s.oferta.nome,preco:s.oferta.preco}},quadros:Object.values(q).sort(),provas:s.provas};
+ return {criativo:{sku:s.sku,falas:s.falas.map(f=>f.texto),oferta:{nome:s.oferta.nome,preco:s.oferta.preco},celulasExigidas:exigidas()},quadros:Object.values(q).sort(),provas:s.provas};
 }
+// Células exigidas = as do roteiro OFICIAL (sem mutação) + manifesto, como no render: o caso não escolhe o que é cobrado.
+const exigidas=()=>{const o=spec();return celulasExigidas(provasParaMedir({provas:o.provas},JSON.parse(readFileSync(join(ROOT,o.proveniencia_numeros),'utf8'))));};
 export function medirCaso(prep,dir){
  writeFileSync(join(dir,'medir.json'),JSON.stringify({quadros:prep.quadros,provas:provasParaMedir({provas:prep.provas},JSON.parse(readFileSync(join(ROOT,spec().proveniencia_numeros),'utf8')))}));
  return JSON.parse(py([join(ROOT,'scripts/criativos/medir.py'),join(dir,'medir.json')]));

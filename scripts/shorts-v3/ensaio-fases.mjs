@@ -9,6 +9,7 @@ import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {renderV3,carregarSpec} from './render.mjs';
 import {assertPreparation} from '../shorts-v2/preparation.mjs';
+import {checagensObjetivas} from '../criativos/avaliador.mjs';
 import ATIVO_V3 from '../../data/shorts-v3/ativo.json' with {type:'json'};
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const sha=t=>createHash('sha256').update(t).digest('hex');
@@ -35,22 +36,43 @@ export function vozPronta({pcm,meta}){
  };
 }
 // Júri fora: grava os quadros e o pedido como dados; a decisão real vem do job do júri.
-export function juriFora(dir){
+export function juriFora(dir,capturar=()=>{}){
  return async({criativo,padrao,quadrosPng,medicao,permitidos,oficial})=>{
+  capturar({criativo,medicao,permitidos,oficial});
   await mkdir(dir,{recursive:true});const quadros=[];
   for(const [i,b] of quadrosPng.entries()){const n=`juri-${i}.png`;await writeFile(join(dir,n),b);quadros.push(n);}
   await writeFile(join(dir,'juri-pedido.json'),JSON.stringify({quadros,criativo,padrao,medicao,permitidos,oficial:oficial??null,audio:[]}));
   return {aprovado:false,decisao:'PENDENTE_JURI',nota_geral:null,motivos:['juri_em_job_separado'],juri:null,objetivas:null};
  };
 }
+// Contra-auditoria GPT-6 (15/11): o júri do ensaio roda com o avaliador do gh-pages, então as checagens objetivas
+// NOVAS do candidato (ex.: identidade das células exigidas) precisam rodar AQUI, com o código do PR, sem segredo, e
+// ficar vinculadas ao SHA-256 do MP4 e dos quadros enviados ao júri. Reprovação objetiva encerra o job ANTES do júri
+// (nenhuma chamada Gemini a mais). Aceite do ensaio = objetivas-candidato.json aprovado + júri APROVADO, mesmos quadros.
+export async function objetivasCandidato({r,entrada,dirJuri,commit=process.env.SHA_ENSAIO||null}){
+ const hash=async f=>{try{return sha(await readFile(f));}catch{return null;}};
+ const mp4=r?.file?{arquivo:r.file.split(/[\\/]/).pop(),sha256:await hash(r.file)}:null;
+ let pj=null;try{pj=JSON.parse(await readFile(join(dirJuri,'juri-pedido.json'),'utf8'));}catch{}
+ const quadros=[];for(const q of pj?.quadros||[])quadros.push({arquivo:q,sha256:await hash(join(dirJuri,q))});
+ const motivos_objetivos=entrada?checagensObjetivas(entrada):['entrada_do_avaliador_ausente'];
+ const motivos_audio=r?.qc?.audio?.reasons||[];
+ if(!mp4?.sha256)motivos_objetivos.push('mp4_ausente');
+ if(!quadros.length||quadros.some(q=>!q.sha256))motivos_objetivos.push('quadros_juri_ausentes');
+ const o={schema:1,commit,mp4,quadros_juri:quadros,motivos_objetivos,motivos_audio,aprovado_objetivo:motivos_objetivos.length===0&&motivos_audio.length===0};
+ const txt=JSON.stringify(o);await writeFile(join(dirJuri,'objetivas-candidato.json'),txt);await writeFile(join(dirJuri,'..','objetivas-candidato.json'),txt);
+ return o;
+}
 export async function render(out,vozDir,slot,{renderImpl=renderV3,note=m=>console.log(m)}={}){
  const {config,specPath}=await base(slot);
  const meta=JSON.parse(await readFile(join(vozDir,'meta.json'),'utf8')),pcm=await readFile(join(vozDir,'voz.pcm'));
- const dirJuri=join(out,'juri');await mkdir(out,{recursive:true});
- const r=await renderImpl(specPath,resolve(out,'short-preview'),{preview:true,config,geminiKey:'juri-em-job-separado',synthesize:vozPronta({pcm,meta}),avaliarImpl:juriFora(dirJuri),note});
+ const dirJuri=join(out,'juri');await mkdir(out,{recursive:true});let entrada=null;
+ const r=await renderImpl(specPath,resolve(out,'short-preview'),{preview:true,config,geminiKey:'juri-em-job-separado',synthesize:vozPronta({pcm,meta}),avaliarImpl:juriFora(dirJuri,e=>{entrada=e;}),note});
  // as falhas de áudio são medidas aqui (no MP4); vão junto para o júri decidir DESCARTADO se houver
  const arq=join(dirJuri,'juri-pedido.json'),p=JSON.parse(await readFile(arq,'utf8'));
  p.audio=r?.qc?.audio?.reasons||[];await writeFile(arq,JSON.stringify(p));
+ const o=await objetivasCandidato({r,entrada,dirJuri});
+ note('OBJETIVAS_CANDIDATO '+JSON.stringify(o));
+ if(!o.aprovado_objetivo)throw Error('ensaio_objetivas_reprovadas:'+[...o.motivos_objetivos,...o.motivos_audio].join('+').slice(0,90));
  return r;
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){

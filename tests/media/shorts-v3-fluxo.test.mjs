@@ -44,12 +44,12 @@ test('FLUXO v3 completo com roteiro real e voz simulada: CTA "link do perfil" si
   assert.equal(r.qc.metrics.cta,CTA_V3,'CTA conferido nas palavras alinhadas');
   // avaliador DESTE código: medição real + júri simulado alto -> APROVADO; objetivas reais vazias
   assert.deepEqual(r.avaliacao.motivos,[],JSON.stringify(r.avaliacao.motivos));assert.equal(r.avaliacao.decisao,'APROVADO');
-  const leg=medicaoReal.medidas.provasLegiveis;assert.equal(leg.length,4);assert.ok(leg.every(p=>p.legivel&&p.altura_px>=56),JSON.stringify(leg.map(p=>[p.valor,p.altura_px])));
+  const leg=medicaoReal.medidas.provasLegiveis;assert.equal(leg.length,4);assert.equal(entradaReal.criativo.celulasExigidas.length,4,'o render envia as 4 células exigidas pelo roteiro');assert.ok(leg.every(p=>p.legivel&&p.altura_px>=56),JSON.stringify(leg.map(p=>[p.valor,p.altura_px])));
   // a MESMA medição real, com uma célula adulterada para 40 px ou sem a lista: reprova mesmo com júri alto
-  for(const [nome,md] of [['célula a 40 px',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40,legivel:false}:p)}],['célula a 40 px marcada legível',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40}:p)}],['sem medição de células',{...medicaoReal.medidas,provasLegiveis:undefined}]]){
+  for(const [nome,md] of [['célula a 40 px',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40,legivel:false}:p)}],['célula a 40 px marcada legível',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40}:p)}],['sem medição de células',{...medicaoReal.medidas,provasLegiveis:undefined}],['3 das 4 células (uma retirada)',{...medicaoReal.medidas,provasLegiveis:leg.filter((_,i)=>i!==2)}],['duplicata no lugar de uma célula (contagem 4)',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===2?{...leg[1]}:p)}]]){
    // mesma entrada real do avaliador (quadros do MP4, permitidos, oferta), só a medida adulterada
    const reprovado=await avaliar({...entradaReal,medicao:{...entradaReal.medicao,medidas:md},fetchImpl:juriAlto,esperar:async()=>{}});
-   assert.equal(reprovado.decisao,'DESCARTADO',nome);assert.ok(reprovado.motivos.includes('prova_ilegivel'),nome);
+   assert.equal(reprovado.decisao,'DESCARTADO',nome);assert.ok(reprovado.motivos.includes('prova_ilegivel'),nome+': '+reprovado.motivos.join(','));
   }
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

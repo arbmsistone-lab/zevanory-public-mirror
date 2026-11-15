@@ -21,7 +21,7 @@ const PERM = permitidosDe(NUM, 147);
 const FALAS = ["Sua loja vende, mas o dinheiro desaparece?", "Pegue sua última venda: um tênis de cento e oitenta reais.", "O produto e o frete custaram cento e trinta e dois.", "A taxa do cartão levou mais nove.", "Sobram trinta e nove reais antes das despesas fixas.", "E ela mostra o desconto máximo: dois vírgula dois por cento.", "Lucro e Caixa: cento e quarenta e sete reais, com arrependimento em sete dias corridos.", "Kit completo no link da descrição."];
 const TELAS = ["ZEVANORY LOJA LUCRO CAIXA Sua loja vende", "Recebeu R$ 180 Produto frete R$ 132 Taxa do cartão (5%) R$9 Margem antes das despesas fixas R$ 39", "Margem de contribuição 21,7%", "Preço mínimo p/ meta de 20% R$ 176 Desconto máximo 2,2%", "Lucro & Caixa R$ 147 pagamento único arrependimento em 7 dias"];
 const MED = { quadros: TELAS.map((texto) => ({ texto })), medidas: { alturaTextoMinPx: 24, foraAreaSegura: 0, quadrosVazios: 0, provaReal: true, textoNaoReconhecido: 0, provasLegiveis: [{ captura: "c.png", valor: "21,7%", altura_px: 70, legivel: true }], provaIlegivel: 0, origem: "medicao_independente_ocr" } };
-const CRI = { sku: "ZEV-LCX-011", falas: FALAS, oferta: { nome: "Lucro & Caixa", preco: 147 } };
+const CRI = { sku: "ZEV-LCX-011", falas: FALAS, oferta: { nome: "Lucro & Caixa", preco: 147 }, celulasExigidas: [{ captura: "c.png", valor: "21,7%" }] };
 const OFICIAL = { fonte: "https://vendas.zevanory.api.br/lucro-e-caixa", preco: 147, versao: "sha256:abc", lido_em: "2026-11-13T12:00:00Z" };
 const PADRAO = montarPadrao({ evidencia: EVID, geradoEm: "2026-11-13T12:00:00Z" });
 const ALTO = { notas: { gancho: 9.8, legibilidade: 9.6, prova: 9.7, oferta: 9.6, marca: 9.9 }, problemas: [], melhorias: [] };
@@ -249,5 +249,32 @@ test("GPT-6 #1054: o avaliador do código integrado reprova célula ilegível ou
   for (const [nome, medicao] of Object.entries(casos)) {
     const r = await avaliar({ ...base, medicao, fetchImpl: gem({ notas: { gancho: 10, legibilidade: 10, prova: 10, oferta: 10, marca: 10 }, problemas: [], melhorias: [] }) });
     assert.equal(r.decisao, "DESCARTADO", nome); assert.ok(r.motivos.includes("prova_ilegivel"), nome);
+  }
+});
+
+test("avaliador confere a IDENTIDADE das células exigidas: faltando uma, duplicata no lugar de outra, sobra ou lista ausente reprovam mesmo com júri 10 (GPT-6, 15/11)", async () => {
+  const { celulasExigidas } = await import("../scripts/criativos/avaliador.mjs");
+  const C = [["celula-preco.png", "R$ 180"], ["celula-contribuicao.png", "R$ 39"], ["celula-margem.png", "21,7%"], ["celula-desconto.png", "2,2%"]];
+  const exig = celulasExigidas([{ captura: "/x/tela-preco.png", largura: 940 }, ...C.map(([c, valor]) => ({ captura: "/raiz/assets/" + c, largura: 876, valor }))]);
+  assert.deepEqual(exig, C.map(([captura, valor]) => ({ captura, valor })), "exigidas = capturas com valor (nome do arquivo + valor)");
+  const leg = C.map(([c, valor], i) => ({ captura: "/runner/tmp/assets/" + c, valor, altura_px: 74 + i, legivel: true }));
+  const cri = { ...CRI, celulasExigidas: exig };
+  const med = (pl) => ({ ...MED, medidas: { ...MED.medidas, provasLegiveis: pl } });
+  const base = { criativo: cri, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: med(leg), permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };
+  const DEZ = gem({ notas: { gancho: 10, legibilidade: 10, prova: 10, oferta: 10, marca: 10 }, problemas: [], melhorias: [] });
+  assert.equal((await avaliar({ ...base, fetchImpl: DEZ })).decisao, "APROVADO", "controle: as 4 exigidas, legíveis");
+  const casos = {
+    "3 de 4 (uma retirada)": [base.criativo, med(leg.filter((_, i) => i !== 2))],
+    "duplicata no lugar de uma (contagem 4)": [base.criativo, med(leg.map((p, i) => (i === 2 ? { ...leg[1] } : p)))],
+    "célula trocada por outra não exigida (contagem 4)": [base.criativo, med(leg.map((p, i) => (i === 2 ? { ...p, captura: "/t/celula-outra.png" } : p)))],
+    "valor trocado na célula certa": [base.criativo, med(leg.map((p, i) => (i === 2 ? { ...p, valor: "99,9%" } : p)))],
+    "sobra (5 com uma extra)": [base.criativo, med([...leg, { captura: "/t/celula-extra.png", valor: "1", altura_px: 90, legivel: true }])],
+    "criativo sem lista de exigidas": [{ ...cri, celulasExigidas: undefined }, med(leg)],
+    "lista de exigidas vazia": [{ ...cri, celulasExigidas: [] }, med(leg)],
+  };
+  for (const [nome, [criativo, medicao]] of Object.entries(casos)) {
+    const r = await avaliar({ ...base, criativo, medicao, fetchImpl: DEZ });
+    assert.equal(r.decisao, "DESCARTADO", nome);
+    assert.ok(r.motivos.some((m) => m === "celulas_exigidas_divergentes" || m === "celulas_exigidas_ausentes"), nome + ": " + r.motivos.join(","));
   }
 });
