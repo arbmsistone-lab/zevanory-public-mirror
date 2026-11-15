@@ -53,8 +53,11 @@ N = spec["numeros"]; O = spec["oferta"]; brl = lambda v: "R$ " + f"{v:,}".replac
 # Faixa y 1280–1460 = legenda falada (render.mjs, \pos(470,1380)); abaixo de 1470 = interface do Shorts.
 # v3.9 (júri real 8,3, ensaio 43768114276: "conteúdo espremido na metade superior, área vazia entre y=1100 e 1470";
 # "legendas isoladas no vazio inferior"): o conteúdo desce até CB=1290 e a legenda falada fica LOGO ABAIXO dele, em
-# y=1350 (render.mjs, LEGENDA_Y), sempre no mesmo lugar (leitura estável nas transições); abaixo de 1470 = interface.
-CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1290
+# y=1310 (render.mjs, LEGENDA_Y), sempre no mesmo lugar (leitura estável nas transições); abaixo de 1470 = interface.
+# v3.10 (ensaio real 43774298571, legibilidade 7,8: "legendas muito próximas do limite y=1470"; GPT-6: legenda mais
+# alta e junto ao conteúdo): o conteúdo termina em CB=1250 e a legenda fica em y=1310 (LEGENDA_Y), 120 px acima da
+# interface do Shorts.
+CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1250
 def captura(d, nome, x, y, largura):
     s = Image.open(CAP / nome).convert("RGB"); s = s.resize((largura, round(s.height * largura / s.width)), Image.LANCZOS)
     d.rounded_rectangle((x - 8, y - 8, x + largura + 8, y + s.height + 8), 14, fill=(255, 255, 255)); d.im.paste(s, (x, y))
