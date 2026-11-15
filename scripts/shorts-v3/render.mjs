@@ -91,6 +91,15 @@ export function nomesProdutoV3(words){
  const s=[];for(let i=0;i+2<words.length;i++)if(chave(words[i])==='lucro'&&['e','&'].includes(chave(words[i+1]))&&chave(words[i+2])==='caixa')s.push([i>0&&chave(words[i-1])==='kit'?i-1:i,i+3]);
  return s;
 }
+// Sincronia quadro a quadro (GPT-6, 15/11): cada cena tinha "-t (fim-início)" e o ffmpeg arredondava PARA CIMA o número
+// de quadros de cada uma; o erro acumulava (~0,5 quadro por cena) e o cartão do CTA entrava 3 quadros (0,1 s) depois da
+// 1ª palavra (MP4 de 32,7 s: troca em 29,30 s; fala em 29,20 s). Agora as fronteiras são quantizadas no ABSOLUTO:
+// a cena i vai do quadro round(início*30) ao round(fim*30) e o total é round(duração*30) — sem acúmulo.
+export const FPS_V3=30;
+export function quadrosPorCena(cenas,duration,fps=FPS_V3){
+ const f=t=>Math.round(t*fps),n=cenas.map((c,i)=>(i+1<cenas.length?f(cenas[i+1].start):f(duration))-f(i===0?0:c.start));
+ if(n.some(x=>!(x>0)))throw Error('v3_cena_sem_quadros');return n;
+}
 export function gruposV3(words,porFala,fim){
  const r=[];let ini=0;const nomes=nomesProdutoV3(words);
  const corteProibido=j=>nomes.some(([a,b])=>a<j&&j<b),grupoNome=(i,j)=>nomes.some(([a,b])=>a===i&&b===j);
@@ -195,7 +204,8 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
  // Cortes secos entre quadros (sem transição deslizante/fundida): todo estado do vídeo é um quadro desenhado inteiro,
  // dentro da área segura — a varredura completa do MP4 (medir.py) não encontra texto cortado ou em movimento.
  const inputs=[],parts=[];
- cenas.forEach((c,i)=>{inputs.push('-loop','1','-framerate','30','-t',String(c.end-c.start),'-i',desenho.quadros[c.quadro]);parts.push(`[${i}:v]scale=1080:1920,fps=30,format=yuv420p,setsar=1[s${i}]`);});
+ const nq=quadrosPorCena(cenas,duration);
+ cenas.forEach((c,i)=>{inputs.push('-loop','1','-framerate','30','-t',String((nq[i]+2)/30),'-i',desenho.quadros[c.quadro]);parts.push(`[${i}:v]scale=1080:1920,fps=30,format=yuv420p,setsar=1,trim=end_frame=${nq[i]}[s${i}]`);});
  parts.push(cenas.map((_,i)=>`[s${i}]`).join('')+`concat=n=${cenas.length}:v=1:a=0[vx]`);const last='vx';
  const fontsdir=dirname(join(ROOT,'assets/fonts/Inter-ExtraBold.ttf'));
  parts.push(`[${last}]ass=${base}-legendas.ass:fontsdir=${fontsdir},trim=duration=${duration}[v]`);

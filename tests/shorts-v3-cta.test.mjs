@@ -54,3 +54,15 @@ test('legenda nunca divide o nome do produto do CTA (o avaliador reprovaria "Luc
  const outro='Sua loja vende mas o dinheiro some'.split(' ').map((word,i)=>({word,start:i*.3,end:i*.3+.2}));
  assert.ok(gruposV3(outro,[7],2.4).every(([a,b])=>b-a<=3));
 });
+test('sincronia quadro a quadro: fronteiras das cenas quantizadas no absoluto (sem acúmulo); o cartão do CTA entra no quadro da 1ª palavra',async()=>{
+ const {quadrosPorCena}=await import('../scripts/shorts-v3/render.mjs');
+ // 10 cenas com inícios fora da grade de 1/30 s (como os tempos reais do alinhador)
+ const inicios=[0,2.81,6.26,9.30,11.33,15.13,18.31,21.91,24.81,29.13],dur=29.13+3.5,cenas=inicios.map(start=>({start}));
+ const n=quadrosPorCena(cenas,dur);let acc=0;
+ inicios.forEach((t,i)=>{assert.equal(acc,Math.round(t*30),'cena '+i+' começa no quadro da fala');acc+=n[i];});
+ assert.equal(acc,Math.round(dur*30),'total = duração');
+ // o método antigo (ceil por cena) atrasava a última cena
+ let velho=0;for(let i=0;i<inicios.length-1;i++)velho+=Math.ceil((inicios[i+1]-inicios[i])*30);assert.ok(velho>Math.round(29.13*30),'premissa: o acúmulo existia');
+ assert.throws(()=>quadrosPorCena([{start:0},{start:0.01}],1),/v3_cena_sem_quadros/);
+ const src=readTextNormalized('scripts/shorts-v3/render.mjs');assert.match(src,/trim=end_frame=\$\{nq\[i\]\}/);
+});
