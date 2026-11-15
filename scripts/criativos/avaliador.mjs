@@ -30,7 +30,7 @@ export function permitidosDaProveniencia(P,preco){
  return {reais:[E['Preço atual'],E['Custo direto unit.']+E['Outros custos var. unit.'],Math.round(E['Preço atual']*E['Taxa pagamento %']*100)/100,R['Contribuição/unit.'],R['Preço mínimo p/ margem alvo'],preco].filter(Number.isFinite),
   pct:[r1(E['Taxa pagamento %']),r1(R['Margem contribuição %']),r1(R['Desconto máx. p/ margem alvo']),r1(P.margem_alvo_config)].filter(Number.isFinite),outros:[7]};
 }
-export const ALTURA_VALOR_MIN=56;  // o mesmo de medir.py (ALTURA_VALOR_MIN)
+export const ALTURA_MIN_CELULA_PX=56;  // o mesmo de medir.py (ALTURA_VALOR_MIN)
 export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=precosOficiais()){
  const motivos=[],cat=precos[criativo?.sku];
  if(!cat)return ['sku_fora_do_catalogo'];
@@ -51,7 +51,7 @@ export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=
  // ausente ou vazia (nenhum valor real comprovado) também reprova (falha fechada).
  // Defesa em profundidade (prova de fluxo, 15/11): a altura medida também é conferida AQUI (não só a marca `legivel`
  // vinda do medir.py) — célula < 56 px reprova mesmo marcada como legível.
- if(md.provaIlegivel!==0||!Array.isArray(md.provasLegiveis)||!md.provasLegiveis.length||md.provasLegiveis.some(p=>p?.legivel!==true||!(Number(p?.altura_px)>=ALTURA_VALOR_MIN)))motivos.push('prova_ilegivel');
+ if(md.provaIlegivel!==0||!Array.isArray(md.provasLegiveis)||!md.provasLegiveis.length||md.provasLegiveis.some(p=>p?.legivel!==true||!(Number(p?.altura_px)>=ALTURA_MIN_CELULA_PX)))motivos.push('prova_ilegivel');
  motivos.push(...conferirAfirmacoes({falas:criativo.falas||[],telas,permitidos:permitidos||{reais:[],pct:[]}}));
  return motivos;
 }
