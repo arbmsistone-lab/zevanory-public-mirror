@@ -6,6 +6,7 @@ import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta, bannedPolicyHits } from "../w
 const memKv = () => { const m = new Map(); return { m, get: async k => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); }, putBinary: async (k, v) => { m.set(k, v); }, list: async () => ({ keys: [] }) }; };
 const ok = j => ({ ok: true, status: 200, json: async () => j });
 
+const RECORRENTE_OK = { autorizado: true, autorizado_por: "proprietario", autorizado_em: "2026-11-15", frase: "autorizo o crosspost recorrente dos Shorts para Instagram e Facebook" };
 test("without connections every channel waits honestly and nothing is recorded as published", async () => {
   const kv = memKv();
   const fetchImpl = async url => url.includes("tiktok-access") ? ok({ connected: false }) : ok({});
@@ -15,7 +16,7 @@ test("without connections every channel waits honestly and nothing is recorded a
   assert.equal(r.instagram, "bloqueado:dec23_sem_prova");
   assert.equal(r.facebook, "bloqueado:dec23_sem_prova");
   const prova = { teste_permissao_ok: true, prova_instagram_media_id: "1789", prova_facebook_video_id: "1234", aprovado_por: "proprietario", aprovado_em: "2026-11-11" };
-  const r2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env: {}, kv, fetchImpl, sleep: async () => {}, metaProva: prova });
+  const r2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env: {}, kv, fetchImpl, sleep: async () => {}, metaProva: prova, metaRecorrente: RECORRENTE_OK });
   assert.equal(r2.instagram, "waiting:meta_credentials");
   assert.equal(r2.facebook, "waiting:meta_credentials");
   assert.ok(kv.m.has("zpc:media:short:2026-10-12"));
@@ -146,7 +147,7 @@ test("NC-01 DEC-23: com META_* presentes e registro sem prova, 0 chamadas à Gra
     { teste_permissao_ok: true, prova_instagram_media_id: "1", prova_facebook_video_id: "2", aprovado_por: "proprietario", aprovado_em: "11/11/2026" }]) assert.equal(metaLiberada(bad), false, JSON.stringify(bad));
   const prova = { teste_permissao_ok: true, prova_instagram_media_id: "1789", prova_facebook_video_id: "1234", aprovado_por: "proprietario", aprovado_em: "2026-11-11" };
   const kv2 = memKv();
-  const ok2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv: kv2, fetchImpl, sleep: async () => {}, metaProva: prova });
+  const ok2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv: kv2, fetchImpl, sleep: async () => {}, metaProva: prova, metaRecorrente: RECORRENTE_OK });
   assert.equal(ok2.instagram, "published"); assert.equal(ok2.facebook, "published"); assert.ok(graph.length > 0);
 });
 
@@ -176,4 +177,34 @@ test("NC-02: o cross-post só roda com o Short do slot PÚBLICO no YouTube e o c
   const main = src.slice(src.indexOf("if (isMain)"));
   assert.ok(main.indexOf("youtubePublicoENaoCongelado") > 0 && main.indexOf("youtubePublicoENaoCongelado") < main.indexOf("await crosspost("));
   assert.ok(main.includes("if (!yt.ok) { console.log(`::notice title=SHORT_CROSSPOST::${slot}=skipped_youtube_nao_publico_ou_congelado (${yt.motivo})`); continue; }"));
+});
+
+// GPT-6 (#1051): prova DEC-23 ≠ autorização de recorrência. Com prova VÁLIDA, Short público, MP4 e credenciais META_*,
+// sem a autorização específica (padrão do repositório: desligada) há ZERO chamadas à Meta e nada no KV.
+test("recorrência IG/FB: prova válida + credenciais + MP4, sem autorização específica => 0 chamadas à Meta; com a autorização exata => publica", async () => {
+  const { META_RECORRENTE, metaRecorrenteAutorizada, FRASE_RECORRENTE_META, META_PROVA, metaLiberada } = await import("../scripts/channels/short-crosspost.mjs");
+  assert.equal(META_RECORRENTE.autorizado, false, "padrão do repositório: recorrência desligada");
+  assert.equal(metaRecorrenteAutorizada(), false);
+  assert.equal(FRASE_RECORRENTE_META, "autorizo o crosspost recorrente dos Shorts para Instagram e Facebook");
+  const prova = { teste_permissao_ok: true, prova_instagram_media_id: "18143811337714194", prova_facebook_post_id: "61593970292684_122134496505465676", aprovado_por: "proprietario", aprovado_em: "2026-11-14" };
+  assert.equal(metaLiberada(prova), true, "premissa: prova válida");
+  const env = { META_ACCESS_TOKEN: "t", INSTAGRAM_BUSINESS_ACCOUNT_ID: "17", META_PAGE_ID: "99" }, graph = [];
+  const fetchImpl = async (url) => { const u = String(url);
+    if (/graph(-video)?\.facebook\.com/.test(u)) { graph.push(u);
+      if (u.endsWith("/media")) return ok({ id: "c1" }); if (u.includes("/c1?fields=status_code")) return ok({ status_code: "FINISHED" });
+      if (u.endsWith("/media_publish")) return ok({ id: "ig9" }); if (u.includes("/ig9?fields=permalink")) return ok({ permalink: "https://www.instagram.com/reel/abc/" });
+      if (u.includes("/videos")) return ok({ id: "fb7" }); return ok({}); }
+    return u.includes("tiktok-access") ? ok({ connected: false }) : ok({}); };
+  for (const rec of [undefined, META_RECORRENTE, {}, { ...RECORRENTE_OK, autorizado: "true" }, { ...RECORRENTE_OK, autorizado_por: "claude" }, { ...RECORRENTE_OK, autorizado_em: "15/11/2026" }, { ...RECORRENTE_OK, frase: "ok" }, { ...RECORRENTE_OK, frase: null }]) {
+    const kv = memKv();
+    const r = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, metaProva: prova, ...(rec === undefined ? {} : { metaRecorrente: rec }) });
+    assert.equal(r.instagram, "bloqueado:recorrente_nao_autorizado", JSON.stringify(rec)); assert.equal(r.facebook, "bloqueado:recorrente_nao_autorizado");
+    assert.deepEqual(graph, [], "nenhuma chamada à Meta: " + JSON.stringify(rec));
+    assert.equal([...kv.m.keys()].some((k) => /instagram|facebook/.test(k)), false);
+  }
+  const kv = memKv();
+  const ok2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, metaProva: prova, metaRecorrente: RECORRENTE_OK });
+  assert.equal(ok2.instagram, "published"); assert.equal(ok2.facebook, "published"); assert.ok(graph.length > 0);
+  // o registro aprovado do repositório (DEC-23) sozinho não publica
+  assert.equal(metaLiberada(META_PROVA), true);
 });
