@@ -155,11 +155,12 @@ def q_oferta(d, fase):
             d.ellipse((104, yy + 47, 160, yy + 103), fill=GREEN); d.text((190, yy + 75), t, font(56), TXT, anchor="lm")
         return
     d.text((64, 290), "LUCRO & CAIXA", font(46), BLUE)  # CTA
-    y = rich(d, 64, 350, "Kit completo no link da descrição.", font(84), hl=("link",)) + 24
+    # CTA (GPT-6, 15/11): links na descrição de Shorts não são clicáveis no YouTube -> "link do perfil"
+    y = rich(d, 64, 350, "O kit está no link do perfil.", font(84), hl=("perfil.",)) + 24
     d.text((64, y), "por " + brl(O["preco"]), font(96), YEL); y += 130
     y = capa(d, y) + 24
     d.rounded_rectangle((64, y, SAFE_R, CB), 70, fill=BLUE)
-    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Link na descrição", font(min(76, CB - y - 30)), BG, anchor="mm")
+    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Link no perfil", font(min(76, CB - y - 30)), BG, anchor="mm")
 quadros = {"gancho": q_gancho, "venda": q_venda, "conta-1": lambda d: q_conta(d, 1), "conta-2": lambda d: q_conta(d, 2), "conta-3": lambda d: q_conta(d, 3),
            "planilha": q_planilha, "desconto": q_desconto, "beneficio": lambda d: q_oferta(d, 0), "oferta": lambda d: q_oferta(d, 1), "cta": lambda d: q_oferta(d, 2)}
 falas = spec["falas"]; out = {}
