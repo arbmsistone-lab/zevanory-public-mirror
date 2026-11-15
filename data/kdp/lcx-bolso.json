@@ -1,0 +1,31 @@
+{
+ "schema": "zevanory-kdp-bolso/v1",
+ "descricao": "E-book de bolso do kit Lucro & Caixa para o Amazon KDP (Plano Mestre, canal 14). Gerado SÓ a partir do manual real do kit (conferido por SHA-256); a ZEVANORY não publica no KDP (não há API): o proprietário sobe o EPUB e a capa pelo site do KDP. Preço, territórios e dados fiscais são decisão do proprietário.",
+ "sku": "ZEV-LCX-011",
+ "fonte": {
+  "arquivo": "ZEVANORY_Lucro_e_Caixa_Manual_v1.3.docx",
+  "sha256": "8515fb14d99b5fcf92c620247b50bfb93096d914ce9ca057b8a616c60074fcde"
+ },
+ "titulo": "Lucro & Caixa de Bolso",
+ "subtitulo": "Margem, preço e caixa em 6 lições práticas para pequenos negócios",
+ "autor": "ZEVANORY",
+ "idioma": "pt-BR",
+ "edicao": "1.0 (baseada no manual Lucro & Caixa v1.3)",
+ "modulos": ["01", "02", "03", "07", "09", "12"],
+ "omitir_secoes": ["Registro pessoal da atividade"],
+ "nota_de_uso": [
+  "Este livro reúne 6 lições do manual do kit Lucro & Caixa, da ZEVANORY, com os mesmos exemplos fictícios e exercícios.",
+  "Algumas lições citam a planilha do kit. Você pode fazer os mesmos passos em papel ou em qualquer planilha: o que importa é registrar a fonte de cada número e conferir antes de decidir.",
+  "Os exemplos são fictícios. Este material organiza decisões, exercícios e verificações; não garante renda, faturamento, margem ou resultado e não substitui orientação contábil, fiscal, jurídica ou financeira individualizada."
+ ],
+ "fechamento": [
+  "As seis lições deste livro são o começo da rotina: separar faturamento de caixa, cadastrar custos uma vez só, ler margem e markup na base certa, tratar a taxa da maquininha como custo, registrar o caixa pela data em que o dinheiro entra ou sai e planejar 30 dias com o que foi medido.",
+  "O kit completo Lucro & Caixa traz o manual com 18 módulos, a planilha com sete calculadoras integradas, o checklist semanal e comandos de IA para revisar os números. Ele está no site da ZEVANORY: vendas.zevanory.api.br/lucro-e-caixa."
+ ],
+ "kdp": {
+  "descricao": "Seu negócio vende, mas o dinheiro some? Este livro de bolso reúne 6 lições práticas do manual Lucro & Caixa, da ZEVANORY, para pequenos negócios: separar faturamento, lucro e caixa; cadastrar custos sem contar duas vezes; ler margem e markup na base certa; tratar a taxa da maquininha como custo; registrar o fluxo de caixa pela data real; e montar um plano de caixa de 30 dias. Cada lição traz explicação curta, exemplo fictício, passos em sequência, atividade prática e um critério para conferir antes de avançar. Não promete renda nem resultado: ajuda você a decidir com números conferidos.",
+  "palavras_chave": ["fluxo de caixa pequenas empresas", "margem de lucro", "precificação para MEI", "controle financeiro loja", "taxa de maquininha", "markup e margem", "planilha de caixa"],
+  "categorias_sugeridas": ["Negócios e Economia > Pequenas Empresas e Empreendedorismo", "Negócios e Economia > Contabilidade > Gestão Financeira"]
+ },
+ "capa": {"largura": 1600, "altura": 2560}
+}
