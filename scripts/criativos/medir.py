@@ -144,18 +144,30 @@ def _sobrepoe(a, b):
 DIF_CAPTURA = 40
 class _Regiao(tuple):
     pass
-def _regiao(im, caixa, tm):
-    x, y, w, h = caixa; fr = np.asarray(im.convert("L").crop((x, y, x + w, y + h)), dtype=np.int16)
+def _regiao(im, caixa, tm, largura=None):
+    # o modelo é redimensionado para o tamanho EXATO em que a captura foi desenhada (largura declarada na prova); a
+    # caixa da busca em meia resolução só dá a posição — o tamanho aproximado dela desalinhava o texto em alguns px
+    x, y, w, h = caixa; g = im.convert("L")
+    if largura:
+        w, h = largura, round(tm.height * largura / tm.width)
+        tp = np.asarray(tm.resize((w, h), Image.LANCZOS), dtype=np.int16)
+        # a busca em meia resolução erra a posição em até ~4 px: ajuste fino pela menor diferença média
+        x, y = min(((xx, yy) for yy in range(y - 4, y + 5) for xx in range(x - 4, x + 5)),
+                   key=lambda p: float(np.abs(np.asarray(g.crop((p[0], p[1], p[0] + w, p[1] + h)), dtype=np.int16) - tp).mean()))
+    fr = np.asarray(g.crop((x, y, x + w, y + h)), dtype=np.int16)
     tp = np.asarray(tm.resize((fr.shape[1], fr.shape[0]), Image.LANCZOS), dtype=np.int16)
     best = np.full(fr.shape, 255, dtype=np.int16)
     for dy in range(-2, 3):
         for dx in range(-2, 3): best = np.minimum(best, np.abs(fr - np.roll(np.roll(tp, dy, 0), dx, 1)))
-    r = _Regiao(caixa); r.ok = best < DIF_CAPTURA; return r
+    r = _Regiao((x, y, fr.shape[1], fr.shape[0])); r.ok = best < DIF_CAPTURA; return r
 def _da_captura(r, x, y, w, h):
-    """fração dos pixels da caixa (x,y,w,h) que pertencem à captura r (iguais ao arquivo real)"""
+    """a palavra (caixa x,y,w,h do OCR) é da captura r se >= 80% da caixa está dentro dela e, nessa parte, >= 90% dos
+    pixels são iguais ao arquivo real. (A caixa do OCR costuma passar alguns px da borda — ex.: "21,7%" na última linha
+    da tela; texto pintado POR CIMA de uma captura não passa, porque os pixels dele diferem do arquivo.)"""
     rx, ry, rw, rh = r; x0, y0, x1, y1 = max(x, rx), max(y, ry), min(x + w, rx + rw), min(y + h, ry + rh)
-    if x1 <= x0 or y1 <= y0: return 0.0
-    return float(r.ok[y0 - ry:y1 - ry, x0 - rx:x1 - rx].mean()) * ((x1 - x0) * (y1 - y0)) / max(1, w * h)
+    if x1 <= x0 or y1 <= y0: return False
+    dentro = (x1 - x0) * (y1 - y0) / max(1, w * h)
+    return dentro >= 0.8 and float(r.ok[y0 - ry:y1 - ry, x0 - rx:x1 - rx].mean()) >= 0.9
 achados = []
 for pv in cfg.get("provas", []):
     t, larg = (pv["captura"], pv["largura"]) if isinstance(pv, dict) else (pv, 876)
@@ -166,7 +178,7 @@ for pv in cfg.get("provas", []):
         for w in sorted({round(half * f) for f in (0.995, 1.0, 1.013)}):
             tt = tm.resize((w, max(1, round(tm.height * w / tm.width))), Image.LANCZOS)
             v, box = ncc_max(np.asarray(g), np.asarray(tt))
-            if v >= 0.8 and box: regioes[i].append(_regiao(frames[i], tuple(2 * c for c in box), tm)); caixas.append((i, tuple(2 * c for c in box), v))
+            if v >= 0.8 and box: regioes[i].append(_regiao(frames[i], tuple(2 * c for c in box), tm, larg if abs(2 * box[2] - larg) <= 0.02 * larg else None)); caixas.append((i, tuple(2 * c for c in box), v))
             if v > best and box: best, onde = v, (i, tuple(2 * c for c in box))
     achados.append({"captura": t, "valor": valor, "best": best, "onde": onde, "caixas": caixas})
 # Ensaio real 43639031016: no MP4 cada quadro aparece em vários estados (a legenda muda); exigir só o melhor estado
@@ -199,7 +211,7 @@ for a in achados:
                          "tentativas": [[i, round(v, 3), (i, c) in a["validos"], _le(a, i, c)] for i, c, v in a["caixas"]][:12]})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
-    dentro = lambda r: any(_da_captura(g, r["x"], r["y"], r["w"], r["h"]) >= 0.9 for g in regioes[i])
+    dentro = lambda r: any(_da_captura(g, r["x"], r["y"], r["w"], r["h"]) for g in regioes[i])
     rows = [r for r in rows if not dentro(r)]
     # NC-R05: texto que o OCR enxerga mas não consegue ler com confiança (>=3 caracteres alfanuméricos, conf < 60,
     # na área de conteúdo) é conteúdo ilegível: reprova, em vez de ser descartado em silêncio.

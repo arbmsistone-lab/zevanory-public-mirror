@@ -73,7 +73,8 @@ def tela(d, nome, y):
     """v3.7: TELA REAL do Calc a 300% em LARGURA TOTAL (0–1080), da barra de fórmulas à linha 6. (A v3.6 colava a grade
     vazia até a borda: júri real 8,5 — "grade cortada e vazia"; retirada.) Seta do cabeçalho da coluna ao close-up."""
     c = PROV["celulas"][nome]; arq = CAP / Path(c["tela"]).name; s0 = Image.open(arq).convert("RGB")
-    esc = W / s0.width; s = s0.resize((W, round(s0.height * esc)), Image.LANCZOS)  # só colunas inteiras, ampliadas por igual
+    # só colunas inteiras, ampliadas por igual até SAFE_R: o valor nunca passa de x=940 (botões laterais do Shorts)
+    esc = SAFE_R / s0.width; s = s0.resize((SAFE_R, round(s0.height * esc)), Image.LANCZOS)
     d.im.paste(s, (0, y)); med["provaReal"] = True; fim = y + s.height
     px = s0.load(); xs = next((v for v in ([i for i in range(s0.width) if px[i, yy][:3] == (128, 0, 0)] for yy in range(0, 60)) if v), [])
     cx = round((min(xs) + max(xs)) / 2 * esc) if xs else (64 + SAFE_R) // 2
@@ -102,7 +103,7 @@ def bloco_prova(nome, extra=0):
     """altura de tela + seta + cartão do close-up (mesmas contas de tela() e celula())"""
     c = PROV["celulas"][nome]; t = Image.open(CAP / Path(c["tela"]).name); s_ = Image.open(CAP / Path(c["arquivo"]).name)
     larg = round((SAFE_R - 64) * float(spec.get("escala_celulas", 1)))
-    return round(t.height * W / t.width) + 48 + round(s_.height * larg / s_.width) + 86 + extra
+    return round(t.height * SAFE_R / t.width) + 48 + round(s_.height * larg / s_.width) + 86 + extra
 def centro(y_min, altura, fim=CB):
     """v3.7 (júri oscilou entre "apertado" e "vazio"): o bloco fica centrado entre o título e o fim do conteúdo"""
     return y_min + max(0, (fim - y_min - altura) // 2)

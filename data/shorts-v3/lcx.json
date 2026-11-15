@@ -71,7 +71,7 @@
  "provas": [
   {
    "captura": "assets/shorts-v3/lcx/tela-preco.png",
-   "largura": 1080
+   "largura": 940
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-preco.png",
@@ -80,7 +80,7 @@
   },
   {
    "captura": "assets/shorts-v3/lcx/tela-contribuicao.png",
-   "largura": 1080
+   "largura": 940
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-contribuicao.png",
@@ -89,7 +89,7 @@
   },
   {
    "captura": "assets/shorts-v3/lcx/tela-margem.png",
-   "largura": 1080
+   "largura": 940
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-margem.png",
@@ -98,7 +98,7 @@
   },
   {
    "captura": "assets/shorts-v3/lcx/tela-desconto.png",
-   "largura": 1080
+   "largura": 940
   },
   {
    "captura": "assets/shorts-v3/lcx/celula-desconto.png",
