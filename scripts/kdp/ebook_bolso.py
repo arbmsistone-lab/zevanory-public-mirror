@@ -64,11 +64,11 @@ XHTML = ('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n<html xmlns="
          '<title>{t}</title><link rel="stylesheet" type="text/css" href="estilo.css"/></head>\n<body>\n{b}\n</body>\n</html>\n')
 CSS = ("body{font-family:serif;line-height:1.45;margin:0 4%;}h1{font-size:1.5em;margin:1.2em 0 .3em;}"
        "h2{font-size:1.15em;margin:1.1em 0 .3em;}p.sub{font-style:italic;margin-top:0;}p.passo{margin:.25em 0 .25em 1em;}"
-       "ul{margin:.3em 0 .3em 1.2em;}p.aviso{font-size:.9em;}.capa{text-align:center;margin:0;}"
+       "ul{margin:.3em 0 .3em 1.2em;}p.nota{margin:.4em 0 .6em 1em;padding:.3em .5em;border-left:3px solid #999;font-size:.95em;}p.aviso{font-size:.9em;}.capa{text-align:center;margin:0;}"
        ".capa img{max-width:100%;max-height:100%;}")
 
 
-def capitulo(m, i):
+def capitulo(m, i, nota=None):
     b = [f'<section epub:type="chapter" id="cap{i}"><h1>{e(m["numero"])} | {e(m["titulo"])}</h1>']
     if m["subtitulo"]:
         b.append(f'<p class="sub">{e(m["subtitulo"])}</p>')
@@ -80,8 +80,10 @@ def capitulo(m, i):
                 lista.append(f"<li>{e(t)}</li>"); continue
             if lista:
                 b.append("<ul>" + "".join(lista) + "</ul>"); lista = []
-            cls = ' class="passo"' if re.match(r"^\d+\.\s", t) else ""
-            b.append(f"<p{cls}>{e(t)}</p>")
+            passo = re.match(r"^\d+\.\s", t)
+            b.append(("<p class=\"passo\">" if passo else "<p>") + e(t) + "</p>")
+            if passo and nota and t.startswith("1."):  # instrução editorial logo após o 1º passo (texto do manual intacto)
+                b.append('<p class="nota"><b>Nota desta edição:</b> ' + e(nota) + "</p>"); nota = None
         if lista:
             b.append("<ul>" + "".join(lista) + "</ul>")
     b.append("</section>")
@@ -90,7 +92,14 @@ def capitulo(m, i):
 
 def texto_simples(cfg, chave, titulo, id_):
     aviso = ' class="aviso"'
-    ps = "".join("<p" + (aviso if "não garante" in t else "") + ">" + e(t) + "</p>" for t in cfg[chave])
+    link = cfg.get("link_kit", "")
+    def par(t):
+        x = e(t)
+        if link:
+            alvo = link.split("://", 1)[1]
+            x = x.replace(e(alvo), f'<a href="{e(link)}">{e(alvo)}</a>')
+        return "<p" + (aviso if "não garante" in t else "") + ">" + x + "</p>"
+    ps = "".join(par(t) for t in cfg[chave])
     return XHTML.format(t=e(titulo), b=f'<section epub:type="chapter" id="{id_}"><h1>{e(titulo)}</h1>{ps}</section>')
 
 
@@ -136,7 +145,7 @@ def main(raiz, cfg_path, docx_path, saida):
     ident = "urn:uuid:" + str(uuid.uuid5(uuid.NAMESPACE_URL, "zevanory-kdp:" + cfg["sku"] + ":" + cfg["fonte"]["sha256"]))
     paginas = [("capa.xhtml", "Capa", XHTML.format(t="Capa", b='<div class="capa"><img src="capa.jpg" alt="Capa: ' + e(cfg["titulo"]) + '"/></div>')),
                ("nota.xhtml", "Antes de começar", texto_simples(cfg, "nota_de_uso", "Antes de começar", "nota"))]
-    paginas += [(f"cap{i + 1:02d}.xhtml", f'{m["numero"]} | {m["titulo"]}', capitulo(m, i + 1)) for i, m in enumerate(sel)]
+    paginas += [(f"cap{i + 1:02d}.xhtml", f'{m["numero"]} | {m["titulo"]}', capitulo(m, i + 1, cfg.get("notas_edicao", {}).get(m["numero"]))) for i, m in enumerate(sel)]
     paginas.append(("fim.xhtml", "Próximos passos", texto_simples(cfg, "fechamento", "Próximos passos", "fim")))
     nav = XHTML.format(t="Sumário", b='<nav epub:type="toc" id="toc"><h1>Sumário</h1><ol>' + "".join(
         f'<li><a href="{a}">{e(t)}</a></li>' for a, t, _ in paginas[1:]) + "</ol></nav>")
@@ -167,6 +176,13 @@ def main(raiz, cfg_path, docx_path, saida):
             "arquivos": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (epub, capa_p)},
             "pendente_proprietario": ["conta KDP e dados fiscais", "preço e royalties", "territórios", "subir EPUB e capa no site do KDP"]}
     (saida / "kdp-metadados.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), "utf-8")
+    # pacote de envio (bytes preservados): a MESMA capa que está dentro do EPUB, conferida por hash
+    with zipfile.ZipFile(epub) as z:
+        if hashlib.sha256(z.read("OEBPS/capa.jpg")).hexdigest() != meta["arquivos"]["capa.jpg"]:
+            raise SystemExit("kdp_capa_divergente")
+    with zipfile.ZipFile(saida / "pacote-kdp.zip", "w", zipfile.ZIP_STORED) as z:
+        for p in (epub, capa_p, saida / "kdp-metadados.json"):
+            z.write(p, p.name)
     print(json.dumps({"epub": str(epub), "capa": str(capa_p), "modulos": meta["modulos"]}, ensure_ascii=False))
 
 

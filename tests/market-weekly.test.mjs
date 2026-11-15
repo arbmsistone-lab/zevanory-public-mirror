@@ -32,6 +32,11 @@ test("ML tendências: lê só GET /trends/MLB, token opcional, status honesto, n
   assert.equal((await lerTendencias({ fetchImpl: async () => { throw Object.assign(new Error("x"), { name: "TimeoutError" }); } })).status, "rede_TimeoutError");
   assert.equal((await lerTendencias({ fetchImpl: ok({ erro: 1 }) })).status, "formato_invalido");
   assert.equal((await lerTendencias({ fetchImpl: ok([]) })).status, "vazio");
+  // regressão (GPT-6): domínio parecido não passa; só o domínio oficial ou subdomínio com ponto
+  const { urlDoML } = await import("../scripts/intel/ml-tendencias.mjs");
+  for (const bom of ["https://lista.mercadolivre.com.br/racao", "https://mercadolivre.com.br/x", "https://www.mercadolibre.com/y"]) assert.ok(urlDoML(bom), bom);
+  for (const ruim of ["https://naomercadolivre.com.br/item", "https://mercadolivre.com.br.evil.com/x", "http://lista.mercadolivre.com.br/x", "https://user:pw@lista.mercadolivre.com.br/x", "https://lista.mercadolivre.com.br:8443/x", "javascript:alert(1)", "lista.mercadolivre.com.br/x", 42]) assert.equal(urlDoML(ruim), null, String(ruim));
+  const r2 = await lerTendencias({ fetchImpl: ok([{ keyword: "a", url: "https://naomercadolivre.com.br/item" }]) }); assert.equal(r2.palavras[0].url, null);
   assert.deepEqual(termosRamo("Loja de roupas"), ["roupa"]); assert.deepEqual(termosRamo("Pet shop"), ["pet"]);
   const guias = [{ slug: "ia-para-loja-de-roupas", name: "Loja de roupas" }, { slug: "ia-para-padaria", name: "Padaria" }, { slug: "ia-para-otica", name: "Ótica" }];
   const m = casarRamos(guias, [{ keyword: "roupas femininas" }, { keyword: "óculos de sol" }, { keyword: "padaria industrial forno" }]);

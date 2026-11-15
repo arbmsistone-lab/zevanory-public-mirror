@@ -11,8 +11,17 @@
  "autor": "ZEVANORY",
  "idioma": "pt-BR",
  "edicao": "1.0 (baseada no manual Lucro & Caixa v1.3)",
- "modulos": ["01", "02", "03", "07", "09", "12"],
- "omitir_secoes": ["Registro pessoal da atividade"],
+ "modulos": [
+  "01",
+  "02",
+  "03",
+  "07",
+  "09",
+  "12"
+ ],
+ "omitir_secoes": [
+  "Registro pessoal da atividade"
+ ],
  "nota_de_uso": [
   "Este livro reúne 6 lições do manual do kit Lucro & Caixa, da ZEVANORY, com os mesmos exemplos fictícios e exercícios.",
   "Algumas lições citam a planilha do kit. Você pode fazer os mesmos passos em papel ou em qualquer planilha: o que importa é registrar a fonte de cada número e conferir antes de decidir.",
@@ -24,8 +33,30 @@
  ],
  "kdp": {
   "descricao": "Seu negócio vende, mas o dinheiro some? Este livro de bolso reúne 6 lições práticas do manual Lucro & Caixa, da ZEVANORY, para pequenos negócios: separar faturamento, lucro e caixa; cadastrar custos sem contar duas vezes; ler margem e markup na base certa; tratar a taxa da maquininha como custo; registrar o fluxo de caixa pela data real; e montar um plano de caixa de 30 dias. Cada lição traz explicação curta, exemplo fictício, passos em sequência, atividade prática e um critério para conferir antes de avançar. Não promete renda nem resultado: ajuda você a decidir com números conferidos.",
-  "palavras_chave": ["fluxo de caixa pequenas empresas", "margem de lucro", "precificação para MEI", "controle financeiro loja", "taxa de maquininha", "markup e margem", "planilha de caixa"],
-  "categorias_sugeridas": ["Negócios e Economia > Pequenas Empresas e Empreendedorismo", "Negócios e Economia > Contabilidade > Gestão Financeira"]
+  "palavras_chave": [
+   "fluxo de caixa pequenas empresas",
+   "margem de lucro",
+   "precificação para MEI",
+   "controle financeiro loja",
+   "taxa de maquininha",
+   "markup e margem",
+   "planilha de caixa"
+  ],
+  "categorias_sugeridas": [
+   "Negócios e Economia > Pequenas Empresas e Empreendedorismo",
+   "Negócios e Economia > Contabilidade > Gestão Financeira"
+  ]
  },
- "capa": {"largura": 1600, "altura": 2560}
+ "capa": {
+  "largura": 1600,
+  "altura": 2560
+ },
+ "notas_edicao": {
+  "01": "Sem a planilha: use duas colunas no papel, “vendido” e “recebido”, com a data e a origem de cada valor.",
+  "03": "Sem a planilha: calcule à mão. Margem = (preço − custo) ÷ preço; markup = (preço − custo) ÷ custo.",
+  "07": "Sem a planilha: anote em papel o valor bruto, o percentual da taxa e o valor líquido de cada venda.",
+  "09": "Sem a planilha: faça uma tabela no papel com data, entrada, saída e saldo, separando previsto e realizado.",
+  "12": "Sem a planilha: liste no papel os 30 dias com três colunas, planejar, realizar e revisar."
+ },
+ "link_kit": "https://vendas.zevanory.api.br/lucro-e-caixa"
 }

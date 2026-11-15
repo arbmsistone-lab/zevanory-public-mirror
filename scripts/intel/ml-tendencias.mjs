@@ -10,6 +10,16 @@ const norm = (s) => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,
 export function termosRamo(nome) {
   return [...new Set(norm(nome).split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !GENERICAS.has(w)).map((w) => w.slice(0, w.length >= 9 ? 7 : 5)))];
 }
+// Só links do próprio ML: hostname exatamente igual a um domínio oficial ou subdomínio dele (com o ponto separador).
+// (Contra-auditoria GPT-6: o regex aceitava https://naomercadolivre.com.br/item.)
+export const DOMINIOS_ML = ["mercadolivre.com.br", "mercadolibre.com"];
+export function urlDoML(u) {
+  if (typeof u !== "string") return null;
+  let x; try { x = new URL(u); } catch { return null; }
+  if (x.protocol !== "https:" || x.username || x.password || x.port) return null;
+  const h = x.hostname.toLowerCase();
+  return DOMINIOS_ML.some((d) => h === d || h.endsWith("." + d)) ? x.href : null;
+}
 export async function lerTendencias({ token = "", fetchImpl = fetch, timeoutMs = 10000 } = {}) {
   const headers = { accept: "application/json" };
   if (token) headers.authorization = "Bearer " + token;
@@ -19,7 +29,7 @@ export async function lerTendencias({ token = "", fetchImpl = fetch, timeoutMs =
   if (!r || r.status !== 200) return { status: (r?.status === 401 || r?.status === 403) && !token ? "sem_token" : "http_" + (r?.status ?? "sem_resposta"), autenticado: !!token, palavras: [] };
   const j = await r.json().catch(() => null);
   if (!Array.isArray(j)) return { status: "formato_invalido", autenticado: !!token, palavras: [] };
-  const palavras = j.filter((x) => typeof x?.keyword === "string" && x.keyword.trim()).slice(0, 100).map((x) => ({ keyword: x.keyword.trim().slice(0, 80), url: typeof x.url === "string" && /^https:\/\/[a-z0-9.-]*mercadoli[bv]re\.com(\.br)?\//.test(x.url) ? x.url : null }));
+  const palavras = j.filter((x) => typeof x?.keyword === "string" && x.keyword.trim()).slice(0, 100).map((x) => ({ keyword: x.keyword.trim().slice(0, 80), url: urlDoML(x.url) }));
   return { status: palavras.length ? "ok" : "vazio", autenticado: !!token, palavras };
 }
 // Evidência por ramo: palavras do ML que contêm um termo do nome do ramo. Não altera o score.
