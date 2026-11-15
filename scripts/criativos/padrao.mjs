@@ -5,11 +5,13 @@
 //    (duração, títulos, engajamento), cada um com os vídeos que o sustentam (NC-01: nada de conclusão visual a
 //    partir de metadados; nada escrito pela IA). A validação recalcula os fatos a partir da evidência.
 import {padroesDeMetadados} from './pesquisa.mjs';
+// Contra-auditoria GPT-6 (15/11, ensaio 43731076486): a rubrica pedia "chamada clara para a descrição", mas em Shorts
+// URLs externas na descrição e nos comentários não são clicáveis; o destino clicável é o link no perfil do canal.
 export const CRITERIOS=Object.freeze([
  {id:'gancho',peso:0.25,pergunta:'Nos primeiros 2 s há uma dor concreta e específica do público, em poucas palavras, que gera curiosidade para continuar?'},
  {id:'legibilidade',peso:0.15,pergunta:'Todo texto é legível no celular, com hierarquia clara, sem quadro vazio, dentro da área segura (sem conteúdo essencial nos 450 px de baixo e 140 px à direita)?'},
  {id:'prova',peso:0.25,pergunta:'O vídeo mostra o produto real funcionando (páginas/planilha reais, números calculados de verdade), não só promessa?'},
- {id:'oferta',peso:0.20,pergunta:'O final apresenta primeiro o benefício, depois nome do kit, preço oficial, garantia e chamada clara para a descrição?'},
+ {id:'oferta',peso:0.20,pergunta:'O final apresenta primeiro o benefício, depois nome do kit, preço oficial, prazo aplicável (arrependimento/garantia) e chamada clara para o link clicável no perfil do canal?'},
  {id:'marca',peso:0.15,pergunta:'Visual consistente com a marca ZEVANORY (cores, tipografia, logo), profissional e sem aparência de modelo genérico?'}
 ]);
 export const NOTA_MINIMA=9.5;
