@@ -47,6 +47,29 @@ export const localDay = (t = Date.now()) => new Intl.DateTimeFormat("en-CA", { t
 const iso = (t) => new Date(t).toISOString();
 export const metric = (value, source, updatedAt, definition, integrity = "real") => ({ value, source, updatedAt: updatedAt || null, definition, integrity: value == null ? "missing" : integrity });
 
+// GPT-6 (15/11): os dois indicadores da oferta com os rótulos combinados, e os testes de diagnóstico à parte,
+// no objeto que o painel lê (snapshot.funnel.oferta). Base: resumo limpo (desde o filtro de robôs).
+export const ROTULOS_OFERTA = Object.freeze({ hotmart_view: "Abriu a página da oferta", hotmart_click: "Clicou para ir ao checkout" });
+// Três estados (GPT-6, rodada 2): leitura ok e vazia → zeros; consulta falhou ou resumo ausente → "—" (missing) nos
+// três blocos; resumo antigo sem clean.oferta (sem totais exatos) → "—", nunca a soma parcial das 30 maiores origens.
+const contagem = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
+export function ofertaLegivel(cl) {
+  const o = cl?.oferta;
+  return !!o && o.leitura === "ok" && contagem(o.hotmart_view) != null && contagem(o.hotmart_click) != null;
+}
+export function funilOferta(funnel, funnelAt, integrity) {
+  const cl = funnel?.clean, ok = ofertaLegivel(cl);
+  const desde = cl?.since ? " desde " + cl.since : "";
+  const motivo = !cl ? "; resumo do funil ausente" : !cl.oferta ? "; sem total exato (leitura falhou ou resumo antigo)" : ok ? "" : "; total ilegível";
+  const diag = (k) => { if (!ok) return null; let t = 0; for (const v of Object.values(cl.diagnostico || {})) { const n = contagem(v?.[k] ?? 0); if (n == null) return null; t += n; } return t; };
+  return {
+    since: cl?.since || null,
+    abriuOferta: metric(ok ? cl.oferta.hotmart_view : null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_view + " (/hotmart/<produto>)" + desde + "; sem testes de diagnóstico" + motivo, integrity),
+    clicouCheckout: metric(ok ? cl.oferta.hotmart_click : null, "Site", funnelAt, ROTULOS_OFERTA.hotmart_click + " (/hotmart/<produto>/ir)" + desde + "; sem testes de diagnóstico; a venda só conta com a confirmação da Hotmart" + motivo, integrity),
+    diagnostico: { abriuOferta: diag("hotmart_view"), clicouCheckout: diag("hotmart_click") },
+  };
+}
+
 export function nextRun(cron, now = Date.now()) {
   const d = new Date(now);
   for (let i = 0; i < 24 * 40; i++) {
@@ -516,6 +539,7 @@ export async function main() {
       sales30: fm.sales30,
       reversals30: fm.reversals30,
       conversions: fm.conversions,
+      oferta: funilOferta(funnel, funnelAt, funnelIntegrity),
       sources: funnel?.sources || {},
       topCampaigns: (funnel?.topCampaigns || []).slice(0, 8),
       pages: Object.entries(funnel?.pages || {}).sort((a, b) => (b[1].views || 0) - (a[1].views || 0)).slice(0, 10).map(([page, v]) => ({ page, views: v.views || 0, visitors: v.visitors || 0 })),
@@ -588,7 +612,7 @@ export async function main() {
       const OWN_SOURCES = /^(direto|google|bing|youtube|telegram|bluesky|instagram|facebook|tiktok|pinterest|hotmart|site|interno|outro|guia|ferramentas|blog|email|whatsapp|threads|linkedin)$/;
       const OWN_CAMPAIGNS = /^(calc|dica|oferta|conteudo|ia-para|ferramentas|guia|short|blog|nurture|material)[a-z0-9_-]*$/;
       const sources = {};
-      for (const [k, v] of Object.entries(cl.sources || {})) { const key = OWN_SOURCES.test(k) ? k : "outro"; const b = (sources[key] = sources[key] || { views: 0 }); b.views += v?.views || 0; b.legacyMixedClicks = (b.legacyMixedClicks || 0) + (v?.checkout_intent || 0) + (v?.subscribe_click || 0); b.hotmartView = (b.hotmartView || 0) + (v?.hotmart_view || 0); b.waitlistCtaViews = (b.waitlistCtaViews || 0) + (v?.waitlist_cta_view || 0); b.transactionalIntent = (b.transactionalIntent || 0) + (v?.own_checkout_started || 0); }
+      for (const [k, v] of Object.entries(cl.sources || {})) { const key = OWN_SOURCES.test(k) ? k : "outro"; const b = (sources[key] = sources[key] || { views: 0 }); b.views += v?.views || 0; b.legacyMixedClicks = (b.legacyMixedClicks || 0) + (v?.checkout_intent || 0) + (v?.subscribe_click || 0); b.hotmartView = (b.hotmartView || 0) + (v?.hotmart_view || 0); b.hotmartClick = (b.hotmartClick || 0) + (v?.hotmart_click || 0); b.waitlistCtaViews = (b.waitlistCtaViews || 0) + (v?.waitlist_cta_view || 0); b.transactionalIntent = (b.transactionalIntent || 0) + (v?.own_checkout_started || 0); }
       const campaigns = {};
       for (const [k, v] of Object.entries(cl.campaigns || {})) { const key = OWN_CAMPAIGNS.test(k) ? k : "outro"; campaigns[key] = (campaigns[key] || 0) + (Number(v) || 0); }
       const pages = Object.fromEntries(Object.entries(cl.pages || {}).sort((a, b) => (b[1]?.views || 0) - (a[1]?.views || 0)).slice(0, 15).map(([k, v]) => [k, { views: v?.views || 0, visitorPageDays: v?.visitors || 0, legacyMixedClicks: (v?.checkout_intent || 0) + (v?.subscribe_click || 0), hotmartView: v?.hotmart_view || 0 }]));
@@ -599,7 +623,15 @@ export async function main() {
       // Plano Mestre F1: hotmart_view (clique para a compra pela Hotmart) separado da série antiga misturada, numa linha
       // curta própria que nunca é truncada junto com o FUNNEL_DIAG (que pode perder "pages" acima de 3800 caracteres).
       const hv = Object.values(sources).reduce((t, b) => t + (b.hotmartView || 0), 0), lm = Object.values(sources).reduce((t, b) => t + (b.legacyMixedClicks || 0), 0);
-      console.log("::notice title=HOTMART_VIEW::" + JSON.stringify({ at: funnel.generatedAt || null, since: cl.since || null, hotmart_view: hv, legacyMixedClicks: lm }));
+      // Rótulos (GPT-6, 15/11): hotmart_view = "abriu a página da oferta"; hotmart_click = "clicou para ir ao checkout";
+      // testes com utm_source=diagnostico ficam em "diagnostico", fora dos números comerciais.
+      const hc = Object.values(sources).reduce((t, b) => t + (b.hotmartClick || 0), 0), of = snapshot.funnel.oferta;
+      // mesmo total exato do painel (inclui origens fora do corte das 30 maiores)
+      // sem total exato (leitura falhou / resumo antigo): "—", nunca a soma parcial das origens
+      const traco = (v) => (v == null ? "—" : v), hvT = traco(of.abriuOferta.value), hcT = traco(of.clicouCheckout.value);
+      void hv; void hc;
+      console.log("::notice title=HOTMART_VIEW::" + JSON.stringify({ at: funnel.generatedAt || null, since: cl.since || null, hotmart_view: hvT, hotmart_click: hcT, legacyMixedClicks: lm }));
+      console.log("::notice title=FUNIL_ROTULOS::" + JSON.stringify({ rotulos: { hotmart_view: "abriu a página da oferta", hotmart_click: "clicou para ir ao checkout" }, diagnostico: { abriuOferta: traco(of.diagnostico.abriuOferta), clicouCheckout: traco(of.diagnostico.clicouCheckout) } }));
       let text = JSON.stringify(diag);
       if (text.length > 3800) { delete diag.pages; text = JSON.stringify(diag); }
       console.log("::notice title=FUNNEL_DIAG::" + text);
