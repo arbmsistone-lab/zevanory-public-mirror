@@ -9,7 +9,7 @@ import {padroesDeMetadados} from './pesquisa.mjs';
 // URLs externas na descrição e nos comentários não são clicáveis; o destino clicável é o link no perfil do canal.
 export const CRITERIOS=Object.freeze([
  {id:'gancho',peso:0.25,pergunta:'Nos primeiros 2 s há uma dor concreta e específica do público, em poucas palavras, que gera curiosidade para continuar?'},
- {id:'legibilidade',peso:0.15,pergunta:'Todo texto é legível no celular, com hierarquia clara, sem quadro vazio, dentro da área segura (sem conteúdo essencial nos 450 px de baixo e 140 px à direita)?'},
+ {id:'legibilidade',peso:0.15,pergunta:'Avalie a legibilidade, a hierarquia e a distribuição do conteúdo dentro da área segura do projeto (acima de y=1470 e à esquerda de x=940). O fundo livre nas faixas reservadas à interface (abaixo de y=1470 e à direita de x=940) não reduz a nota. Espaços vazios que prejudiquem a composição dentro da área útil e conteúdo essencial que invada as faixas reservadas reduzem a nota.'},
  {id:'prova',peso:0.25,pergunta:'O vídeo mostra o produto real funcionando (páginas/planilha reais, números calculados de verdade), não só promessa?'},
  {id:'oferta',peso:0.20,pergunta:'O final apresenta primeiro o benefício, depois nome do kit, preço oficial, prazo aplicável (arrependimento/garantia) e chamada clara para o link clicável no perfil do canal?'},
  {id:'marca',peso:0.15,pergunta:'Visual consistente com a marca ZEVANORY (cores, tipografia, logo), profissional e sem aparência de modelo genérico?'}
