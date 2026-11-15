@@ -10,6 +10,8 @@ import {mkdtempSync,readFileSync,existsSync,rmSync} from 'node:fs';import {tmpdi
 import {renderV3,CTA_V3,carregarSpec} from '../../scripts/shorts-v3/render.mjs';
 import {avaliar} from '../../scripts/criativos/avaliador.mjs';
 import {CTA_CARD_SECONDS} from '../../scripts/shorts-v2/core.mjs';
+import {render as renderEnsaio} from '../../scripts/shorts-v3/ensaio-fases.mjs';
+import {createHash} from 'node:crypto';import {writeFileSync,mkdirSync} from 'node:fs';
 // Ritmo calibrado no ensaio real 43672792852 (voz Achird, 176 ppm após atempo): a última fala (6 palavras) ocupou ~2,2 s do
 // início ao fim do WAV (~0,30 s/palavra + ~0,3 s de silêncio final); pausas entre frases de 0,15–0,50 s. Total < 176 ppm,
 // então o atempo fica em 1 e os tempos do alinhador simulado valem no WAV processado.
@@ -45,11 +47,48 @@ test('FLUXO v3 completo com roteiro real e voz simulada: CTA "link do perfil" si
   // avaliador DESTE código: medição real + júri simulado alto -> APROVADO; objetivas reais vazias
   assert.deepEqual(r.avaliacao.motivos,[],JSON.stringify(r.avaliacao.motivos));assert.equal(r.avaliacao.decisao,'APROVADO');
   const leg=medicaoReal.medidas.provasLegiveis;assert.equal(leg.length,4);assert.equal(entradaReal.criativo.celulasExigidas.length,4,'o render envia as 4 células exigidas pelo roteiro');assert.ok(leg.every(p=>p.legivel&&p.altura_px>=56),JSON.stringify(leg.map(p=>[p.valor,p.altura_px])));
+  // GPT-6 (15/11): OCR EXATO dos quatro valores, cada um >= 56 px, e zero conteúdo essencial fora da área segura
+  assert.deepEqual(leg.map(p=>p.valor),['R$ 180,00','R$ 39,00','21,7%','2,2%']);
+  assert.equal(medicaoReal.medidas.foraAreaSegura,0,'nada essencial fora da área segura');assert.equal(medicaoReal.medidas.quadrosVazios,0);
+  // CTA na tela: "Link no perfil" no cartão final e o nome inteiro "Kit Lucro e Caixa" na legenda (OCR do MP4)
+  const telas=medicaoReal.quadros.map(q=>String(q.texto||'')).join('\n');
+  assert.match(telas,/Link no perfil/i,'botão do cartão final');assert.match(telas,/link do perfil/i,'título do cartão final');
+  // a legenda do .ass gerado tem o nome inteiro num grupo só (o OCR lê a palavra destacada fora de ordem)
+  const ass=readFileSync(join(dir,'short-legendas.ass'),'utf8').split('\n').filter(l=>l.startsWith('Dialogue:')).map(l=>l.split(',').slice(9).join(',').replace(/\{[^}]*\}/g,''));
+  assert.ok(ass.includes('Kit Lucro e Caixa'),'grupo de legenda: '+JSON.stringify(ass.slice(-4)));assert.match(telas,/Kit Lucro/);
   // a MESMA medição real, com uma célula adulterada para 40 px ou sem a lista: reprova mesmo com júri alto
-  for(const [nome,md] of [['célula a 40 px',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40,legivel:false}:p)}],['célula a 40 px marcada legível',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40}:p)}],['sem medição de células',{...medicaoReal.medidas,provasLegiveis:undefined}],['3 das 4 células (uma retirada)',{...medicaoReal.medidas,provasLegiveis:leg.filter((_,i)=>i!==2)}],['duplicata no lugar de uma célula (contagem 4)',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===2?{...leg[1]}:p)}]]){
+  for(const [nome,md] of [['célula a 40 px',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40,legivel:false}:p)}],['célula a 40 px marcada legível',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===1?{...p,altura_px:40}:p)}],['sem medição de células',{...medicaoReal.medidas,provasLegiveis:undefined}],['3 das 4 células (uma retirada)',{...medicaoReal.medidas,provasLegiveis:leg.filter((_,i)=>i!==2)}],['duplicata no lugar de uma célula (contagem 4)',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===2?{...leg[1]}:p)}],['valor trocado na célula certa',{...medicaoReal.medidas,provasLegiveis:leg.map((p,i)=>i===2?{...p,valor:'27,1%'}:p)}]]){
    // mesma entrada real do avaliador (quadros do MP4, permitidos, oferta), só a medida adulterada
    const reprovado=await avaliar({...entradaReal,medicao:{...entradaReal.medicao,medidas:md},fetchImpl:juriAlto,esperar:async()=>{}});
    assert.equal(reprovado.decisao,'DESCARTADO',nome);assert.ok(reprovado.motivos.includes('prova_ilegivel'),nome+': '+reprovado.motivos.join(','));
   }
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+// GPT-6 (15/11): caminho do ENSAIO PROTEGIDO com o render real (fase "render" do PR, sem chave): as objetivas do candidato
+// ficam vinculadas ao SHA-256 do MP4 e dos quadros entregues ao júri; reprovação objetiva encerra o job (o júri depende
+// do sucesso do render no workflow) e o manifesto de hashes continua gravado.
+test('ENSAIO protegido com render real: objetivas-candidato.json confere com o MP4 e os quadros; reprovação objetiva para antes do júri',{timeout:1500000},async()=>{
+ const spec=await carregarSpec('data/shorts-v3/lcx.json'),falas=spec.falas.map(f=>f.texto),{pcm,words}=vozSimulada(falas);
+ const config=JSON.parse(readFileSync('data/shorts-padrao-v2.json','utf8')),sha=b=>createHash('sha256').update(b).digest('hex');
+ const dir=mkdtempSync(join(tmpdir(),'v3-ensaio-'));
+ try{
+  const voz=join(dir,'voz');mkdirSync(voz);writeFileSync(join(voz,'voz.pcm'),pcm);
+  writeFileSync(join(voz,'meta.json'),JSON.stringify({voice:config.voz_fixa,model:config.modelo,texto_sha256:sha(falas.join(' '))}));
+  const comOferta=preco=>(specPath,base,o)=>renderV3(specPath,base,{...o,align:async()=>({segments:[{words}]}),oferta:async()=>({fonte:'https://vendas.zevanory.api.br/lucro-e-caixa',preco,versao:'sha256:simulada',lido_em:'2026-11-15T12:00:00Z'})});
+  const out=join(dir,'ok'),r=await renderEnsaio(out,voz,'oferta',{renderImpl:comOferta(147),note:()=>{}});
+  const o=JSON.parse(readFileSync(join(out,'juri','objetivas-candidato.json'),'utf8'));
+  assert.equal(o.aprovado_objetivo,true,JSON.stringify([o.motivos_objetivos,o.motivos_audio]));
+  assert.equal(o.mp4.sha256,sha(readFileSync(r.file)),'hash do MP4 entregue');
+  const pj=JSON.parse(readFileSync(join(out,'juri','juri-pedido.json'),'utf8'));
+  assert.deepEqual(o.quadros_juri.map(q=>q.arquivo),pj.quadros,'mesma ordem do pedido ao júri');
+  for(const q of o.quadros_juri)assert.equal(q.sha256,sha(readFileSync(join(out,'juri',q.arquivo))),q.arquivo);
+  assert.equal(pj.criativo.celulasExigidas.length,4);
+  // reprovação objetiva (oferta publicada divergente): o job do render falha -> o júri (needs: render) não roda
+  const ruim=join(dir,'ruim');
+  await assert.rejects(renderEnsaio(ruim,voz,'oferta',{renderImpl:comOferta(97),note:()=>{}}),/ensaio_objetivas_reprovadas/);
+  const o2=JSON.parse(readFileSync(join(ruim,'objetivas-candidato.json'),'utf8'));
+  assert.equal(o2.aprovado_objetivo,false);assert.ok(o2.motivos_objetivos.includes('oferta_publicada_divergente'),o2.motivos_objetivos.join(','));
+  assert.equal(o2.mp4.sha256,sha(readFileSync(join(ruim,'short-preview.mp4'))),'manifesto de hashes gravado mesmo na reprovação');
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

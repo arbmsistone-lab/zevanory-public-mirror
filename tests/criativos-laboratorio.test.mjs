@@ -219,9 +219,10 @@ test("v3.5 (júri real 8,5 — ensaio 43629467444): prova = tela real do Calc + 
     const c = Object.values(P.celulas).find((x) => x.arquivo === p.captura);
     assert.ok(c && c.celula === p.celula, p.captura);
     const i = spec.provas.indexOf(p);
-    assert.equal(spec.provas[i - 1]?.captura, c.tela, "a tela real vem logo antes do close-up da mesma célula");
+    assert.equal(spec.provas[i - 1]?.captura, c.coluna, "v3.8: a coluna real (400%, sem ampliação) vem logo antes do close-up da mesma célula");
+    assert.equal(spec.provas[i - 1].largura, (await import("node:fs")).readFileSync(c.coluna).readUInt32BE(16), "coluna desenhada na largura nativa (pixels exatos)");
     assert.equal(spec.provas[i - 1].celula, undefined, "a tela não carrega valor: a legibilidade é medida no close-up");
-    for (const f of [c.arquivo, c.tela]) assert.match(M.arquivos[f] || "", /^[0-9a-f]{64}$/, "hash no manifesto: " + f);
+    for (const f of [c.arquivo, c.coluna, c.tela]) assert.match(M.arquivos[f] || "", /^[0-9a-f]{64}$/, "hash no manifesto: " + f);
     assert.match(c.render, /LibreOffice Calc .*Xvfb.*capturar_planilha\.py/);
   }
   assert.ok(spec.provas.some((p) => p.captura === P.manual_topo.arquivo), "manual: recorte real do topo da capa");
@@ -229,7 +230,9 @@ test("v3.5 (júri real 8,5 — ensaio 43629467444): prova = tela real do Calc + 
   assert.equal(P.rodapes, undefined);
   const q = readTextNormalized("scripts/shorts-v3/quadros.py");
   assert.doesNotMatch(q, /1900 - hb/, "barras decorativas fixas removidas");
-  assert.match(q, /def tela\(/);
+  assert.match(q, /def coluna\(/);assert.match(q, /def feixe\(/);
+  // v3.8 (júri real 7,5, ensaio 43731076486: "faixa borrada escura exagerada"): sem desfoque na área inferior
+  assert.doesNotMatch(q, /fundo_inferior|GaussianBlur\(38\)/);
 });
 test("GPT-6 #1054: o avaliador do código integrado reprova célula ilegível ou medição ausente MESMO com nota alta do júri", async () => {
   const base = { criativo: CRI, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: MED, permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };

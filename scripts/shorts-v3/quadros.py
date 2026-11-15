@@ -58,34 +58,50 @@ def captura(d, nome, x, y, largura):
     med["provaReal"] = True
     return y + s.height + 8
 PROV = json.loads((CAP / "planilha-proveniencia.json").read_text(encoding="utf-8"))
-def celula(d, nome, y, largura=SAFE_R - 64):
-    """v3.6: close-up REAL do Calc a 400% num cartão escuro sobre as linhas vazias da tela; origem escrita no cartão,
-    FORA do recorte. Ampliado só por escala uniforme."""
-    largura = round(largura * float(spec.get("escala_celulas", 1)))  # só a calibração muda (caso negativo de célula miúda)
-    c = PROV["celulas"][nome]; x = (64 + SAFE_R - largura) // 2
+def largura_spec(arquivo):
+    """largura desenhada = a declarada na spec (a mesma usada pela medição do vídeo)"""
+    return next(int(p["largura"]) for p in spec["provas"] if Path(p["captura"]).name == Path(arquivo).name)
+def celula(d, nome, y, largura=None):
+    """v3.6: close-up REAL do Calc a 400% num cartão escuro; origem escrita no cartão, FORA do recorte. Ampliado só
+    por escala uniforme. v3.8: largura da spec (800)."""
+    c = PROV["celulas"][nome]
+    largura = round((largura or largura_spec(c["arquivo"])) * float(spec.get("escala_celulas", 1)))  # só a calibração muda (célula miúda)
+    x = (64 + SAFE_R - largura) // 2
     s_ = Image.open(CAP / Path(c["arquivo"]).name); alt = round(s_.height * largura / s_.width)
     # faixa escura de largura total (só bordas horizontais): a borda vertical cruzando a grade parecia textura de letra
     d.rectangle((0, y, W, y + alt + 84), fill=BG); d.rectangle((0, y, W, y + 5), fill=YEL); d.rectangle((0, y + alt + 79, W, y + alt + 84), fill=YEL)
     fim = captura(d, Path(c["arquivo"]).name, x, y + 18, largura)
-    d.text((x, fim + 2), f"Aba {c['aba']} · célula {c['celula']} (ampliada)", font(38), MUTED)
-    return fim + 60
-def tela(d, nome, y):
-    """v3.7: TELA REAL do Calc a 300% em LARGURA TOTAL (0–1080), da barra de fórmulas à linha 6. (A v3.6 colava a grade
-    vazia até a borda: júri real 8,5 — "grade cortada e vazia"; retirada.) Seta do cabeçalho da coluna ao close-up."""
-    c = PROV["celulas"][nome]; arq = CAP / Path(c["tela"]).name; s0 = Image.open(arq).convert("RGB")
-    # só colunas inteiras, ampliadas por igual até SAFE_R: o valor nunca passa de x=940 (botões laterais do Shorts)
-    esc = SAFE_R / s0.width; s = s0.resize((SAFE_R, round(s0.height * esc)), Image.LANCZOS)
-    d.im.paste(s, (0, y)); med["provaReal"] = True; fim = y + s.height
-    px = s0.load(); xs = next((v for v in ([i for i in range(s0.width) if px[i, yy][:3] == (128, 0, 0)] for yy in range(0, 60)) if v), [])
-    cx = round((min(xs) + max(xs)) / 2 * esc) if xs else (64 + SAFE_R) // 2
-    seta(d, min(cx, SAFE_R - 40), fim + 4, fim + 44)
-    return fim + 48
-# v3.7 (júri real 8,5 — ensaio 43652751629: rodapé com texto miúdo "ilegível e na área da interface"; antes, 9,1 —
-# "terço inferior vazio"): abaixo de y=1470 vai um DESFOQUE ESCURECIDO do próprio conteúdo do quadro (técnica comum
-# de preenchimento vertical) — sem nenhum texto legível, sem elemento decorativo novo, sem informação essencial.
-def fundo_inferior(im):
-    faixa = im.crop((0, 560, W, 560 + (H - SAFE_B))).filter(ImageFilter.GaussianBlur(38))
-    im.paste(Image.blend(faixa, Image.new("RGB", faixa.size, BG), 0.62), (0, SAFE_B))
+    d.text((x, fim + 4), f"Aba {c['aba']} · célula {c['celula']} ampliada", font(42), MUTED)
+    return fim + 64
+FEIXE = 56  # altura da ligação visual coluna -> ampliação
+def coluna(d, nome, y):
+    """v3.8 (contra-auditoria GPT-6 do ensaio 43731076486: cabeçalhos da tela geral ilegíveis em 540x960; júri:
+    "capturas com resolução inferior"): só a COLUNA da célula, capturada a 400% no Calc (letras e números das linhas
+    reais), colada SEM ampliação (pixels exatos) num cartão branco; abaixo, um feixe amarelo liga a célula selecionada
+    (linha 5, a última da captura) ao close-up — nada é desenhado sobre os pixels da captura."""
+    c = PROV["celulas"][nome]; s0 = Image.open(CAP / Path(c["coluna"]).name).convert("RGB")
+    larg = largura_spec(c["coluna"]); s = s0 if s0.width == larg else s0.resize((larg, round(s0.height * larg / s0.width)), Image.LANCZOS)
+    x = (64 + SAFE_R - s.width) // 2
+    d.rounded_rectangle((x - 10, y - 10, x + s.width + 10, y + s.height + 10), 16, fill=(255, 255, 255)); d.im.paste(s, (x, y))
+    med["provaReal"] = True; fim = y + s.height
+    px = s0.load(); xs = [i for i in range(s0.width) if px[i, 4][:3] == (128, 0, 0)]  # letra da coluna selecionada
+    e = s.width / s0.width; c0, c1 = (x + round(min(xs) * e), x + round((max(xs) + 1) * e)) if xs else (x, x + s.width)
+    return fim + 10, (c0, c1)
+def feixe(d, y0, cel, alvo, cor=YEL):
+    """trapézio translúcido + bordas: da célula (embaixo da captura) até o topo do close-up"""
+    (c0, c1), (a0, a1), y1 = cel, alvo, y0 + FEIXE
+    cam = Image.new("RGBA", d.im.size, (0, 0, 0, 0)); g = ImageDraw.Draw(cam)
+    g.polygon([(c0, y0), (c1, y0), (a1, y1), (a0, y1)], fill=cor + (96,))
+    d.im.paste(Image.alpha_composite(d.im.convert("RGBA"), cam).convert("RGB")); d.d = ImageDraw.Draw(d.im)
+    d.line((c0, y0, a0, y1), fill=cor, width=6); d.line((c1, y0, a1, y1), fill=cor, width=6)
+def prova(d, nome, y):
+    """coluna real -> feixe -> close-up da mesma célula; devolve o fim do bloco"""
+    fim, cel = coluna(d, nome, y)
+    larg = round(largura_spec(PROV["celulas"][nome]["arquivo"]) * float(spec.get("escala_celulas", 1))); x = (64 + SAFE_R - larg) // 2
+    feixe(d, fim, cel, (x, x + larg))
+    return celula(d, nome, fim + FEIXE)
+# v3.8 (contra-auditoria GPT-6 + júri real 7,5 de legibilidade, ensaio 43731076486: "faixa borrada escura exagerada"):
+# a área abaixo de y=1470 (interface do Shorts) fica com o MESMO fundo contínuo do quadro — sem desfoque, sem texto.
 def q_gancho(d):
     d.text((64, 290), "LOJA · " + O["nome"].upper(), font(42), BLUE)
     y = rich(d, 64, 350, spec["falas"][0]["texto"], font(112), hl=("dinheiro", "desaparece?"))
@@ -100,17 +116,17 @@ def q_gancho(d):
         else:
             d.text((cx, cy), val, font(t), cor, anchor="mm")
 def bloco_prova(nome, extra=0):
-    """altura de tela + seta + cartão do close-up (mesmas contas de tela() e celula())"""
-    c = PROV["celulas"][nome]; t = Image.open(CAP / Path(c["tela"]).name); s_ = Image.open(CAP / Path(c["arquivo"]).name)
-    larg = round((SAFE_R - 64) * float(spec.get("escala_celulas", 1)))
-    return round(t.height * SAFE_R / t.width) + 48 + round(s_.height * larg / s_.width) + 86 + extra
+    """altura de coluna + feixe + cartão do close-up (mesmas contas de coluna(), feixe() e celula())"""
+    c = PROV["celulas"][nome]; k = Image.open(CAP / Path(c["coluna"]).name); s_ = Image.open(CAP / Path(c["arquivo"]).name)
+    kl = largura_spec(c["coluna"]); larg = round(largura_spec(c["arquivo"]) * float(spec.get("escala_celulas", 1)))
+    return round(k.height * kl / k.width) + 10 + FEIXE + 18 + round(s_.height * larg / s_.width) + 8 + 64 + extra
 def centro(y_min, altura, fim=CB):
     """v3.7 (júri oscilou entre "apertado" e "vazio"): o bloco fica centrado entre o título e o fim do conteúdo"""
     return y_min + max(0, (fim - y_min - altura) // 2)
 def q_venda(d):
     d.text((64, 290), "PASSO 1 · EXEMPLO DE VENDA: TÊNIS", font(44), BLUE)
     y = rich(d, 64, 350, "Sua última venda.", font(84), hl=("última", "venda.")) + 26
-    celula(d, "preco", tela(d, "preco", centro(y, bloco_prova("preco"))))
+    prova(d, "preco", centro(y, bloco_prova("preco")))
 def seta(d, x, y0, y1, cor=YEL):
     d.line((x, y0, x, y1 - 26), fill=cor, width=10); d.polygon([(x - 26, y1 - 30), (x + 26, y1 - 30), (x, y1)], fill=cor)
 def q_conta(d, etapa):
@@ -124,17 +140,17 @@ def q_conta(d, etapa):
             d.text((110, y0), a, font(54), MUTED); d.text((110, y0 + 84), b, font(fv), c)
             yy += h + gap
         return
-    y = celula(d, "contribuicao", tela(d, "contribuicao", centro(350, bloco_prova("contribuicao", 4 + 170)))) + 4
+    y = prova(d, "contribuicao", centro(356, bloco_prova("contribuicao", 4 + 136))) + 4
     d.rectangle((0, y, W, CB), fill=(10, 60, 40)); d.rectangle((0, y, W, y + 6), fill=(40, 200, 120)); d.rectangle((0, CB - 6, W, CB), fill=(40, 200, 120))
     d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 30)), GREEN, anchor="mm")
 def q_planilha(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
-    y = rich(d, 64, 350, "A margem aparece na hora.", font(80), hl=("margem",)) + 26
-    celula(d, "margem", tela(d, "margem", centro(y, bloco_prova("margem"))))
+    y = rich(d, 64, 350, "A margem, na hora.", font(80), hl=("margem,",)) + 26
+    prova(d, "margem", centro(y, bloco_prova("margem")))
 def q_desconto(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
-    y = rich(d, 64, 350, "O seu limite de desconto.", font(80), hl=("limite",)) + 26
-    celula(d, "desconto", tela(d, "desconto", centro(y, bloco_prova("desconto"))))
+    y = rich(d, 64, 350, "Limite de desconto.", font(80), hl=("limite",)) + 26
+    prova(d, "desconto", centro(y, bloco_prova("desconto")))
 MANUAL = "manual-topo.png"  # v3.5: topo REAL da capa do manual (recorte sem retoque), em largura total e legível
 def capa(d, y, largura=SAFE_R - 64):
     return captura(d, MANUAL, (64 + SAFE_R - largura) // 2, y, largura)
@@ -166,7 +182,6 @@ quadros = {"gancho": q_gancho, "venda": q_venda, "conta-1": lambda d: q_conta(d,
 falas = spec["falas"]; out = {}
 for i, f in enumerate(falas):
     im, d = base((i + 1) / len(falas)); quadros[f["quadro"]](d)
-    fundo_inferior(im)
     # quadro vazio = área de conteúdo sem desenho (variação de cor desprezível entre y=280 e 1470)
     box = im.crop((64, 280, SAFE_R, SAFE_B)).convert("L"); ext = box.getextrema()
     if ext[1] - ext[0] < 40: med["quadroVazio"] += 1

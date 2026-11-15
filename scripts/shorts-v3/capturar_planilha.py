@@ -3,10 +3,11 @@
 Ensaio real 43629467444 (júri Gemini real, prova 6,8): "são exibidos apenas cards vetoriais isolados simulando células,
 sem mostrar a tela real da planilha (linhas, colunas, abas e software funcionando de verdade)". Aqui o próprio Calc é
 aberto numa tela virtual (Xvfb), a planilha ORIGINAL (sha256 conferido) recebe as entradas da proveniência pela API do
-LibreOffice (UNO), é recalculada, a célula é selecionada e a tela é fotografada (ImageMagick import). Duas capturas
+LibreOffice (UNO), é recalculada, a célula é selecionada e a tela é fotografada (ImageMagick import). Três capturas
 por célula, sem retoque de pixels — só recorte:
   tela-<nome>.png    contexto: barra de fórmulas com a fórmula real, letras das colunas, números das linhas, abas,
                      barra de status, zoom 300%, 1080 px, até a linha 5;
+  coluna-<nome>.png  v3.8: só a coluna da célula a 400% (letras + números das linhas reais), linhas 3 a 5;
   celula-<nome>.png  close-up: a mesma célula selecionada a 400% (faixa das letras das colunas + linha 5), recortada
                      em torno do valor para que ele fique legível no celular.
 Uso: Xvfb (tela 1400x1800) + soffice escutando em 2002, com LANG=pt_BR.UTF-8 (formato R$ e vírgula) (ver tests/media); python3 capturar_planilha.py ORIGINAL.xlsx PROVENIENCIA.json SAIDA/
@@ -82,6 +83,18 @@ def main(original, prov_path, saida):
             x1c = faixa_selecionada(tela, "x", 118, 30, LARGURA_JANELA - 60)[1]
             tela = tela.crop((CORTE_TELA[0], CORTE_TELA[1], min(CORTE_TELA[2], x1c + 2), CORTE_TELA[3])); h = corte - CORTE_TELA[1]
             tela.crop((0, 0, tela.width, h)).save(os.path.join(saida, f"tela-{nome}.png"))
+
+            # v3.8 (contra-auditoria GPT-6 do ensaio 43731076486: cabeçalhos da tela geral perdem leitura em 540x960;
+            # júri: "capturas com resolução inferior"): COLUNA da célula a 400% (zoom máximo do Calc), com as letras e
+            # os números das linhas reais, da linha 3 (cabeçalho) ao fim da linha 5 — usada no quadro SEM ampliação.
+            ctrl.ZoomValue = 400; ctrl.setFirstVisibleColumn(col); ctrl.setFirstVisibleRow(2); time.sleep(1)
+            ctrl.select(sh.getCellRangeByName("A1")); time.sleep(1); ctrl.select(cel)
+            ctrl.setFirstVisibleColumn(col); ctrl.setFirstVisibleRow(2); time.sleep(2.5)
+            subprocess.run(["import", "-window", "root", tmp], check=True); im = Image.open(tmp).convert("RGB")
+            xc0, xc1 = faixa_selecionada(im, "x", 118, 30, LARGURA_JANELA - 60)
+            _, yc1 = faixa_selecionada(im, "y", 10, 100, ALTURA_CONTEXTO - 80)
+            if xc1 > CORTE_TELA[2] - FOLGA_DIREITA: raise SystemExit("coluna_400_nao_cabe:" + nome)
+            im.crop((0, CORTE_TELA[1], xc1 + 2, yc1 + 8)).save(os.path.join(saida, f"coluna-{nome}.png"))
 
             win.setPosSize(0, 0, LARGURA_JANELA, ALTURA_PERTO, 15); ctrl.ZoomValue = 400
             ctrl.setFirstVisibleColumn(col); ctrl.setFirstVisibleRow(linha - 1); time.sleep(2.5)

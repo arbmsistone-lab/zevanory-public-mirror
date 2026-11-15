@@ -2,7 +2,7 @@
  "schema": 1,
  "nota": "Integridade da prova do produto (NC-R05): hashes da proveniência do cálculo (planilha real recalculada) e das capturas. O gerador e o avaliador recusam qualquer divergência.",
  "arquivos": {
-  "assets/shorts-v3/lcx/planilha-proveniencia.json": "bfc5e0cec140f7cfa98bf23f3dfb2c6305fb6e4c07ea8a105296a2779364b40f",
+  "assets/shorts-v3/lcx/planilha-proveniencia.json": "b2d65779219381d853322b88cfe9c4d4fd82553d6431ada5e88f38eca76b00b1",
   "assets/shorts-v3/lcx/tela-preco.png": "4b0efdac59a7f2c8e7ccccc41dbea68d89d4246e3e040682b27ac48eeabe35a3",
   "assets/shorts-v3/lcx/celula-preco.png": "216576a20ccd91f015aa2f57107b74739089ae5911fa7c3fafe7e403169356c7",
   "assets/shorts-v3/lcx/tela-contribuicao.png": "5ecd96c866d66f1ec04e4a4d999c2c3b1de5aabe3467c70b2ac0c122f5dab297",
@@ -13,6 +13,11 @@
   "assets/shorts-v3/lcx/celula-desconto.png": "7112cb12210ae0ff249168e41fa957f87b7c047c98dc9f62ea1a6ad1401ebf3a",
   "assets/shorts-v3/lcx/manual-topo.png": "efbe4e8db65e33ca09a91e2ef0b8b3398a287330d99d5b721bcde0ef6408780b",
   "assets/shorts-v3/lcx/celula-taxa.png": "b8b64c10a5f45024519cae8a73c20e9fa296e3caeeeb7f8c24b669f8b14dbd04",
-  "assets/shorts-v3/lcx/tela-taxa.png": "9beab60537bf4652b245da12865cd812504534e5f241065a5d0a5d3ed3766d46"
+  "assets/shorts-v3/lcx/tela-taxa.png": "9beab60537bf4652b245da12865cd812504534e5f241065a5d0a5d3ed3766d46",
+  "assets/shorts-v3/lcx/coluna-preco.png": "8681c9d1cdd385815120ec2ac46e040a6f91cb392574383dc880610266931178",
+  "assets/shorts-v3/lcx/coluna-taxa.png": "62c308a5d7c6313289328d93a868bbb60b5e1950f0fdc03eb0021e4448cfb8ef",
+  "assets/shorts-v3/lcx/coluna-contribuicao.png": "859accbd3413d27fa9fcd09f9f20cb2d54c1ace66d8863671e209a0254b0f3c0",
+  "assets/shorts-v3/lcx/coluna-margem.png": "8cfc958e014b09538547132dbab065ae6aebdf472314e2836408be82b17e492d",
+  "assets/shorts-v3/lcx/coluna-desconto.png": "8c3aad5f954af52d1e1d4ad76c67cacef70b63bb49b02440e5eda71ea0c27cdc"
  }
 }
