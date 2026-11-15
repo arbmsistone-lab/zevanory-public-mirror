@@ -257,6 +257,20 @@ export function hotmartPage(html,slug,checkout){
 // subscribers are unaffected (Hotmart postbacks and deliveries do not pass through these routes).
 const SALES_PAUSED_HTML=(name,slug)=>`<p>As vendas do ${name.replace(/&/g,"&amp;").replace(/</g,"&lt;")} estão pausadas no momento. Quem já comprou continua com acesso normalmente.</p><p><a class="button" href="/${slug}">Ver detalhes do produto</a></p><p><a class="button primary" href="${waitlistHref(name).replace(/&/g,"&amp;")}">Entrar na lista de espera</a></p>`;
 export const HOTMART_NAMES=Object.freeze({"ia-na-pratica":"IA na Prática","vendas-na-pratica":"Vendas na Prática","lucro-e-caixa":"Lucro & Caixa","combo-ia-vendas":"Combo IA + Vendas","negocio-completo":"Negócio Completo","conteudo-pronto":"Conteúdo Pronto"});
+export const clickHref=(slug,src)=>"/hotmart/"+slug+"/ir?utm_source="+encodeURIComponent(src||"direto");
+// Clique para o checkout: mede (sem bloquear) e redireciona à oferta Hotmart cadastrada do produto, com a origem
+// preservada. Falha de medição nunca impede o checkout; vendas pausadas mostram a mesma página de pausa.
+export async function handleHotmartClick(request,env,slug,ctx){
+  if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
+  const aberto=await purchaseOpen(env);  // mesmo interruptor da página da oferta (fail-closed)
+  if(!aberto)return infoPage(200,"Vendas pausadas",SALES_PAUSED_HTML(HOTMART_NAMES[slug]||"produto",slug));
+  const {src}=attribution(request,new URL(request.url));
+  try{countView(request,env,ctx,slug,"hotmart_click")}catch{}
+  const checkout=HOTMART_CHECKOUT[slug]+"&src="+src;
+  if(!/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(checkout))
+    return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/"+slug,"cache-control":"no-store"}))});
+  return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:checkout,"cache-control":"no-store","x-robots-tag":"noindex, nofollow"}))});
+}
 async function handleHotmart(request,env,slug,ctx){
   if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
   if(!(await purchaseOpen(env)))return infoPage(200,"Vendas pausadas",SALES_PAUSED_HTML(HOTMART_NAMES[slug]||"produto",slug));
@@ -270,7 +284,9 @@ async function handleHotmart(request,env,slug,ctx){
   const page=await env.ASSETS.fetch(new Request(new URL("/"+slug+".html",request.url),{method:"GET"}));
   if(page.status!==200)return page;
   const headers=applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex, follow"}));  // never cache a purchase link past a switch change
-  try{return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers})}
+  // Funil (GPT-6, 15/11): os botões passam pela rota própria de clique, que mede "clicou para ir ao checkout" e
+  // redireciona à oferta cadastrada; a origem do visitante segue no link para chegar à Hotmart.
+  try{return new Response(hotmartPage(await page.text(),slug,clickHref(slug,src)),{status:200,headers})}
   catch{return infoPage(503,"Oferta indisponível","<p>Os dados de pagamento e entrega estão sob revisão. Nenhum checkout foi aberto.</p>")}
 }
 
@@ -420,6 +436,8 @@ export default{async fetch(request,env,ctx){
     const target=/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(svc)?svc:SERVICE_WA;
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
   }
+  const hc=url.pathname.match(/^\/hotmart\/([a-z-]{3,40})\/ir\/?$/);
+  if(hc&&(request.method==="GET"||request.method==="HEAD")) return handleHotmartClick(request,env,hc[1],ctx);
   const hm=url.pathname.match(/^\/hotmart\/([a-z-]{3,40})\/?$/);
   if(hm&&(request.method==="GET"||request.method==="HEAD")) return handleHotmart(request,env,hm[1],ctx);
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.

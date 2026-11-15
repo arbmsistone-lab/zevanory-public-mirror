@@ -588,7 +588,7 @@ export async function main() {
       const OWN_SOURCES = /^(direto|google|bing|youtube|telegram|bluesky|instagram|facebook|tiktok|pinterest|hotmart|site|interno|outro|guia|ferramentas|blog|email|whatsapp|threads|linkedin)$/;
       const OWN_CAMPAIGNS = /^(calc|dica|oferta|conteudo|ia-para|ferramentas|guia|short|blog|nurture|material)[a-z0-9_-]*$/;
       const sources = {};
-      for (const [k, v] of Object.entries(cl.sources || {})) { const key = OWN_SOURCES.test(k) ? k : "outro"; const b = (sources[key] = sources[key] || { views: 0 }); b.views += v?.views || 0; b.legacyMixedClicks = (b.legacyMixedClicks || 0) + (v?.checkout_intent || 0) + (v?.subscribe_click || 0); b.hotmartView = (b.hotmartView || 0) + (v?.hotmart_view || 0); b.waitlistCtaViews = (b.waitlistCtaViews || 0) + (v?.waitlist_cta_view || 0); b.transactionalIntent = (b.transactionalIntent || 0) + (v?.own_checkout_started || 0); }
+      for (const [k, v] of Object.entries(cl.sources || {})) { const key = OWN_SOURCES.test(k) ? k : "outro"; const b = (sources[key] = sources[key] || { views: 0 }); b.views += v?.views || 0; b.legacyMixedClicks = (b.legacyMixedClicks || 0) + (v?.checkout_intent || 0) + (v?.subscribe_click || 0); b.hotmartView = (b.hotmartView || 0) + (v?.hotmart_view || 0); b.hotmartClick = (b.hotmartClick || 0) + (v?.hotmart_click || 0); b.waitlistCtaViews = (b.waitlistCtaViews || 0) + (v?.waitlist_cta_view || 0); b.transactionalIntent = (b.transactionalIntent || 0) + (v?.own_checkout_started || 0); }
       const campaigns = {};
       for (const [k, v] of Object.entries(cl.campaigns || {})) { const key = OWN_CAMPAIGNS.test(k) ? k : "outro"; campaigns[key] = (campaigns[key] || 0) + (Number(v) || 0); }
       const pages = Object.fromEntries(Object.entries(cl.pages || {}).sort((a, b) => (b[1]?.views || 0) - (a[1]?.views || 0)).slice(0, 15).map(([k, v]) => [k, { views: v?.views || 0, visitorPageDays: v?.visitors || 0, legacyMixedClicks: (v?.checkout_intent || 0) + (v?.subscribe_click || 0), hotmartView: v?.hotmart_view || 0 }]));
@@ -599,7 +599,11 @@ export async function main() {
       // Plano Mestre F1: hotmart_view (clique para a compra pela Hotmart) separado da série antiga misturada, numa linha
       // curta própria que nunca é truncada junto com o FUNNEL_DIAG (que pode perder "pages" acima de 3800 caracteres).
       const hv = Object.values(sources).reduce((t, b) => t + (b.hotmartView || 0), 0), lm = Object.values(sources).reduce((t, b) => t + (b.legacyMixedClicks || 0), 0);
-      console.log("::notice title=HOTMART_VIEW::" + JSON.stringify({ at: funnel.generatedAt || null, since: cl.since || null, hotmart_view: hv, legacyMixedClicks: lm }));
+      // Rótulos (GPT-6, 15/11): hotmart_view = "abriu a página da oferta"; hotmart_click = "clicou para ir ao checkout";
+      // testes com utm_source=diagnostico ficam em "diagnostico", fora dos números comerciais.
+      const hc = Object.values(sources).reduce((t, b) => t + (b.hotmartClick || 0), 0);
+      console.log("::notice title=HOTMART_VIEW::" + JSON.stringify({ at: funnel.generatedAt || null, since: cl.since || null, hotmart_view: hv, hotmart_click: hc, legacyMixedClicks: lm }));
+      console.log("::notice title=FUNIL_ROTULOS::" + JSON.stringify({ rotulos: { hotmart_view: "abriu a página da oferta", hotmart_click: "clicou para ir ao checkout" }, diagnostico: cl.diagnostico || {} }));
       let text = JSON.stringify(diag);
       if (text.length > 3800) { delete diag.pages; text = JSON.stringify(diag); }
       console.log("::notice title=FUNNEL_DIAG::" + text);

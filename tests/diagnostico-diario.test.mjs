@@ -176,7 +176,7 @@ test("aviso público: hotmart_view separado de legacyMixedClicks numa linha curt
   finally { globalThis.fetch = realFetch; console.log = realLog; }
   const hv = logs.find((l) => l.startsWith("::notice title=HOTMART_VIEW::"));
   assert.ok(hv, "linha própria do hotmart_view"); assert.ok(hv.length < 200, "linha curta: " + hv.length);
-  assert.deepEqual(JSON.parse(hv.slice("::notice title=HOTMART_VIEW::".length)), { at: "2026-10-13T12:00:00Z", since: "2026-10-12", hotmart_view: 6, legacyMixedClicks: 3 });
+  assert.deepEqual(JSON.parse(hv.slice("::notice title=HOTMART_VIEW::".length)), { at: "2026-10-13T12:00:00Z", since: "2026-10-12", hotmart_view: 6, hotmart_click: 0, legacyMixedClicks: 3 });
   const diag = JSON.parse(logs.find((l) => l.startsWith("::notice title=FUNNEL_DIAG::")).slice("::notice title=FUNNEL_DIAG::".length));
   assert.deepEqual([diag.sources.blog.legacyMixedClicks, diag.sources.blog.hotmartView], [3, 6]);
   assert.deepEqual([diag.pages["lucro-e-caixa"].legacyMixedClicks, diag.pages["lucro-e-caixa"].hotmartView], [1, 6]);

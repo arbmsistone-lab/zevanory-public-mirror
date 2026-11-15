@@ -19,6 +19,9 @@ const isTrackedPage = page => TRACKED_PAGES.has(page) || /^(ia-para|calculadora)
 // lead_submit: a free-material form accepted by the core (aggregate count + source label only, no lead identity).
 // It is NOT a confirmed e-mail (double opt-in) nor a qualified lead; reports must keep the three apart.
 export const METRIC_DEFINITIONS = Object.freeze({
+  hotmart_view: "abriu a página da oferta Hotmart (/hotmart/<produto>), ANTES de qualquer clique; não é clique nem checkout",
+  hotmart_click: "clicou para ir ao checkout da Hotmart (rota /hotmart/<produto>/ir, que redireciona à oferta cadastrada); a abertura do checkout é conferida no navegador e a venda depende da confirmação da Hotmart",
+  diagnostico: "acessos de teste com utm_source=diagnostico: gravados SÓ em contadores diag:<métrica>, fora de toda contagem comercial",
   lead_submit: "formulário do material gratuito aceito (contagem agregada por origem); não é e-mail confirmado nem lead qualificado; não deduplicado por pessoa",
   "last7Days.leads": "inscrições registradas na tabela de leads nos últimos 7 dias (pendentes e confirmadas)",
   leads_qualified: "evento lead_qualified da telemetria; não é alimentado pelo material gratuito",
@@ -30,7 +33,9 @@ export const METRIC_DEFINITIONS = Object.freeze({
   own_checkout_started: "sessão de pagamento do checkout próprio criada pelo servidor (vendas abertas), 1 por visitante+produto+provedor a cada janela fixa de 30 min",
   ownCheckout: "vendas do checkout próprio: pedido com 1º pagamento confirmado pelo provedor (financial_events payment_confirmed), dia do pagamento em America/Sao_Paulo; 1 por sessão de compra (failover entre provedores não duplica); certificação/sandbox fora; só em produção",
 });
-export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click", "lead_submit"]);
+export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "hotmart_click", "subscribe_click", "lead_submit"]);
+// Testes de medição (GPT-6, 15/11): origem "diagnostico" vai para contadores próprios desde a gravação, nunca soma ao comercial.
+export const DIAG_SOURCE = "diagnostico";
 // Funnel taxonomy v2 (AVAL Sol 23/10): signals deduplicated on the server with the same daily-rotating
 // visitor hash (no cookie, no IP stored), each in its own metric so waitlist interest never becomes
 // buying intent. Raw counters keep a "_raw" suffix and are never called unique.
@@ -107,6 +112,11 @@ export function isCountableView({ method, page, userAgent, purpose, asn = 0 }) {
 const bump = (sql, day, page, metric) => sql.query(
   `insert into zevanory_funnel_daily (day, page, metric, n) values ($1::date, $2, $3, 1)
      on conflict (day, page, metric) do update set n = zevanory_funnel_daily.n + 1`, [day, page, metric]);
+export async function recordDiagnostic(env, { sqlFactory, page, metric, now = Date.now() }) {
+  const sql = sqlFactory(env.DATABASE_URL);
+  await ensureFunnelSchema(sql);
+  await bump(sql, new Date(now).toISOString().slice(0, 10), page, `diag:${metric}`);
+}
 export async function recordPageView(env, { sqlFactory, page, ip, userAgent, metric = "views", src = "", camp = "", asn = 0, acceptLanguage = false, country = "", now = Date.now() }) {
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureFunnelSchema(sql);
@@ -158,7 +168,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const sources = Object.create(null), campaigns = Object.create(null);
   for (const row of traffic) {
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + (Number(row.n) || 0); continue; }
+    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, hotmart_click: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + (Number(row.n) || 0); continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c && !RESERVED_KEYS.has(c[1])) campaigns[c[1]] = (campaigns[c[1]] || 0) + (Number(row.n) || 0);
   }
@@ -201,11 +211,13 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   // per campaign, so the commercial diagnosis never mixes contaminated days with real visitors.
   const cleanRows = await sql.query(`select page, metric, sum(n)::int as n from zevanory_funnel_daily
       where day >= $1::date group by page, metric`, [CLEAN_SINCE]).catch(() => []);
-  const clean = { since: CLEAN_SINCE, pages: Object.create(null), sources: Object.create(null), campaigns: Object.create(null), classes: Object.create(null), asn: Object.create(null) };
+  const clean = { since: CLEAN_SINCE, diagnostico: Object.create(null), pages: Object.create(null), sources: Object.create(null), campaigns: Object.create(null), classes: Object.create(null), asn: Object.create(null) };
   for (const row of cleanRows || []) {
     const n = Number(row.n) || 0;
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + n; continue; }
+    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, hotmart_click: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + n; continue; }
+    const dg = /^diag:([a-z_]+)$/.exec(row.metric);
+    if (dg) { const p = (clean.diagnostico[row.page] = clean.diagnostico[row.page] || Object.create(null)); p[dg[1]] = (p[dg[1]] || 0) + n; continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c) { if (!RESERVED_KEYS.has(c[1])) clean.campaigns[c[1]] = (clean.campaigns[c[1]] || 0) + n; continue; }
     const k = /^cls:([a-z_]+)$/.exec(row.metric);
@@ -410,6 +422,12 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
   // dropped, never counted as a view: an older/newer caller must not inflate visits.
   const metric = body.metric == null || body.metric === "views" ? "views" : INTENT_METRICS.includes(body.metric) || SIGNAL_METRICS.includes(body.metric) ? body.metric : null;
   if (!metric) return new Response(null, { status: 204 });
+  if (label(body.src, 24) === DIAG_SOURCE) {
+    // teste de medição: só diag:<métrica>; nada de views, visitantes, origem, exposição ou sinal comercial
+    const d = recordDiagnostic(env, { sqlFactory, page, metric }).catch((e) => console.error("funnel_diag_failed", e instanceof Error ? e.message : String(e)));
+    if (ctx?.waitUntil) ctx.waitUntil(d); else await d;
+    return new Response(null, { status: 204 });
+  }
   if (SIGNAL_METRICS.includes(metric)) {
     const sig = recordSignal(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, metric, provider: body.provider, src: body.src }).catch((e) => console.error("funnel_signal_failed", e instanceof Error ? e.message : String(e)));
     if (ctx?.waitUntil) ctx.waitUntil(sig); else await sig;
