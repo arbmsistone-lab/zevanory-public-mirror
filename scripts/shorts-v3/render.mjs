@@ -112,9 +112,9 @@ export function legendasV3(words,porFala=[words.length],fim=undefined){
   const fins=grp.map((w,k)=>Math.max((grp[k+1]||words[b]||{start:w.end}).start,w.end));
   // NC-1048-01: se o destaque de alguma palavra ficaria menos de DESTAQUE_MIN_S na tela (palavra instantânea do
   // alinhador), o grupo inteiro aparece destacado de forma estável do início ao fim do grupo — nenhum tempo é inventado.
-  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1330)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
+  if(grp.some((w,k)=>fins[k]-w.start<DESTAQUE_MIN_S)){ev.push(`Dialogue: 0,${t(grp[0].start)},${t(fimGrupo)},G,,0,0,0,,{\\pos(470,1300)}{\\c&H000AD6FF&}`+grp.map(x=>clean(x.word)).join(' '));continue;}
   for(let k=0;k<grp.length;k++){const w=grp[k];
-  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1330)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
+  ev.push(`Dialogue: 0,${t(w.start)},${t(fins[k])},G,,0,0,0,,{\\pos(470,1300)}`+grp.map((x,i)=>i===k?`{\\c&H000AD6FF&}${clean(x.word)}{\\c&H00FFFFFF&}`:clean(x.word)).join(' '));}}
  // Garantia no arquivo gerado: nenhum evento de legenda com menos de DESTAQUE_MIN_S na tela.
  const curto=ev.find(l=>{const c=l.split(','),x=v=>{const [h,m,q]=v.split(':');return +h*3600+ +m*60+ +q;};return x(c[2])-x(c[1])<DESTAQUE_MIN_S-0.015;});// folga de 1 centésimo do arredondamento do .ass
  if(curto)throw Error('v3_legenda_evento_curto');
@@ -199,6 +199,7 @@ export async function renderV3(specPath,base,{geminiKey,config,preview=true,synt
   command('ffmpeg',['-y','-v','error','-ss',t,'-i',base+'.mp4','-frames:v','1',p]);command('ffmpeg',['-y','-v','error','-i',p,'-vf','scale=540:960',pj]);quadros.push(p);quadrosJuri.push(await readFile(pj));}
  await writeFile(base+'-medir.json',JSON.stringify({video:base+'.mp4',pasta_estados:base+'-estados',provas:provasParaMedir(spec,await conferirManifesto(spec))}));
  const medicao=JSON.parse(command('python3',['-E','-P',join(ROOT,'scripts/criativos/medir.py'),base+'-medir.json']));
+ for(const [i,q] of (medicao.quadros||[]).entries())if(q.nao_lidos?.length||q.tinta_sem_leitura?.length||q.fora?.length)note(`TEXTO_V3 estado=${i} nao_lidos=${JSON.stringify(q.nao_lidos||[])} tinta=${JSON.stringify(q.tinta_sem_leitura||[])} fora=${JSON.stringify(q.fora||[])}`);
  note('PROVAS_V3 '+JSON.stringify((medicao.medidas?.provasLegiveis||[]).map(p=>({c:String(p.captura).split('/').pop(),v:p.valor,h:p.altura_px,t:p.tentativas})))+' correl='+JSON.stringify((medicao.medidas?.provas||[]).map(p=>[String(p.captura).split('/').pop(),p.correlacao,p.exclusiva])));
  const O=spec.oferta,cat=precosOficiais()[spec.sku];
  let oficial=null;try{oficial=await oferta(spec.slug);}catch(e){note('OFERTA_PUBLICADA indisponivel '+String(e.message||e).slice(0,60));}

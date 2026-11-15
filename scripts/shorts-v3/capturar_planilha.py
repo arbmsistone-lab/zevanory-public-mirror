@@ -21,7 +21,8 @@ SEL = (128, 0, 0)  # cor do cabeçalho da coluna/linha selecionada no Calc (tema
 # contexto: da barra de fórmulas (nome da célula + fórmula) até a barra de status, sem menus/ferramentas nem painel lateral
 # v3.7: tela a 300%, 1080 de largura (sangra a largura do Short), da barra de fórmulas ao fim da linha 5; a coluna da
 # célula termina a pelo menos FOLGA_DIREITA px da borda (júri real: "corta o 2,2% na borda direita").
-CORTE_TELA = (0, 80, 1080, ALTURA_CONTEXTO); ZOOM_TELA = 300; ROTULO_LINHAS = 33; RODAPE_CALC = 62
+# a partir das letras das colunas: a barra de fórmulas (fonte de interface, que não escala com o zoom) era "texto pequeno" para o júri
+CORTE_TELA = (0, 110, 1080, ALTURA_CONTEXTO); ZOOM_TELA = 300; ROTULO_LINHAS = 33; RODAPE_CALC = 62
 FOLGA_DIREITA = 80  # a coluna da célula termina a >= 80 px da borda: nada cortado colado ao valor
 
 def _p(n, v):

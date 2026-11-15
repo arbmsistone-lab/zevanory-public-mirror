@@ -51,7 +51,7 @@ N = spec["numeros"]; O = spec["oferta"]; brl = lambda v: "R$ " + f"{v:,}".replac
 # v3.1 (júri real 8,2 — run 43538539233): conteúdo ocupa toda a área útil acima da faixa da legenda falada, planilha
 # REAL em capturas grandes (LibreOffice pt-BR, 400 dpi), sem rótulos "ilustrativo", capa grande, textos longe da borda.
 # Faixa y 1280–1460 = legenda falada (render.mjs, \pos(470,1380)); abaixo de 1470 = interface do Shorts.
-CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1150  # v3.7 (júri: legenda em y≈1330 com respiro): conteúdo até 1150
+CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1180  # v3.7: legenda em y≈1300; conteúdo até 1180 (júri oscilou entre "apertado" com 1240 e "vazio" com 1150)
 def captura(d, nome, x, y, largura):
     s = Image.open(CAP / nome).convert("RGB"); s = s.resize((largura, round(s.height * largura / s.width)), Image.LANCZOS)
     d.rounded_rectangle((x - 8, y - 8, x + largura + 8, y + s.height + 8), 14, fill=(255, 255, 255)); d.im.paste(s, (x, y))
@@ -74,7 +74,7 @@ def tela(d, nome, y):
     vazia até a borda: júri real 8,5 — "grade cortada e vazia"; retirada.) Seta do cabeçalho da coluna ao close-up."""
     c = PROV["celulas"][nome]; arq = CAP / Path(c["tela"]).name; s = Image.open(arq).convert("RGB")
     d.im.paste(s, (0, y)); med["provaReal"] = True; fim = y + s.height
-    px = s.load(); xs = next((v for v in ([i for i in range(s.width) if px[i, yy][:3] == (128, 0, 0)] for yy in range(0, 80)) if v), [])
+    px = s.load(); xs = next((v for v in ([i for i in range(s.width) if px[i, yy][:3] == (128, 0, 0)] for yy in range(0, 60)) if v), [])
     cx = round((min(xs) + max(xs)) / 2) if xs else (64 + SAFE_R) // 2
     seta(d, min(cx, SAFE_R - 40), fim + 4, fim + 44)
     return fim + 48
@@ -97,10 +97,18 @@ def q_gancho(d):
             d.polygon([(cx, cy - t // 2), (cx - t // 2, cy), (cx - t // 6, cy), (cx - t // 6, cy + t // 2), (cx + t // 6, cy + t // 2), (cx + t // 6, cy), (cx + t // 2, cy)], fill=cor)
         else:
             d.text((cx, cy), val, font(t), cor, anchor="mm")
+def bloco_prova(nome, extra=0):
+    """altura de tela + seta + cartão do close-up (mesmas contas de tela() e celula())"""
+    c = PROV["celulas"][nome]; t = Image.open(CAP / Path(c["tela"]).name); s_ = Image.open(CAP / Path(c["arquivo"]).name)
+    larg = round((SAFE_R - 64) * float(spec.get("escala_celulas", 1)))
+    return t.height + 48 + round(s_.height * larg / s_.width) + 86 + extra
+def centro(y_min, altura, fim=CB):
+    """v3.7 (júri oscilou entre "apertado" e "vazio"): o bloco fica centrado entre o título e o fim do conteúdo"""
+    return y_min + max(0, (fim - y_min - altura) // 2)
 def q_venda(d):
     d.text((64, 290), "PASSO 1 · EXEMPLO DE VENDA: TÊNIS", font(44), BLUE)
     y = rich(d, 64, 350, "Sua última venda.", font(84), hl=("última", "venda.")) + 26
-    celula(d, "preco", tela(d, "preco", y))
+    celula(d, "preco", tela(d, "preco", centro(y, bloco_prova("preco"))))
 def seta(d, x, y0, y1, cor=YEL):
     d.line((x, y0, x, y1 - 26), fill=cor, width=10); d.polygon([(x - 26, y1 - 30), (x + 26, y1 - 30), (x, y1)], fill=cor)
 def q_conta(d, etapa):
@@ -114,17 +122,17 @@ def q_conta(d, etapa):
             d.text((110, y0), a, font(54), MUTED); d.text((110, y0 + 84), b, font(fv), c)
             yy += h + gap
         return
-    y = celula(d, "contribuicao", tela(d, "contribuicao", 350)) + 4
+    y = celula(d, "contribuicao", tela(d, "contribuicao", centro(350, bloco_prova("contribuicao", 4 + 170)))) + 4
     d.rectangle((0, y, W, CB), fill=(10, 60, 40)); d.rectangle((0, y, W, y + 6), fill=(40, 200, 120)); d.rectangle((0, CB - 6, W, CB), fill=(40, 200, 120))
     d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 30)), GREEN, anchor="mm")
 def q_planilha(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
     y = rich(d, 64, 350, "A margem aparece na hora.", font(80), hl=("margem",)) + 26
-    celula(d, "margem", tela(d, "margem", y))
+    celula(d, "margem", tela(d, "margem", centro(y, bloco_prova("margem"))))
 def q_desconto(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
     y = rich(d, 64, 350, "O seu limite de desconto.", font(80), hl=("limite",)) + 26
-    celula(d, "desconto", tela(d, "desconto", y))
+    celula(d, "desconto", tela(d, "desconto", centro(y, bloco_prova("desconto"))))
 MANUAL = "manual-topo.png"  # v3.5: topo REAL da capa do manual (recorte sem retoque), em largura total e legível
 def capa(d, y, largura=SAFE_R - 64):
     return captura(d, MANUAL, (64 + SAFE_R - largura) // 2, y, largura)
