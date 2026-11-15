@@ -85,7 +85,8 @@ def main(original, prov_path, saida):
             x0, x1 = faixa_selecionada(im, "x", 118, 30, LARGURA_JANELA - 60)   # letra da coluna selecionada
             y0, y1 = faixa_selecionada(im, "y", 10, 100, ALTURA_PERTO - 60)    # número da linha selecionada
             topo = 110  # faixa das letras das colunas, logo acima da linha visível
-            corte = (max(x0, x1 - 560), topo, min(LARGURA_JANELA - 60, x1 + 2), y1 + 14)
+            # termina 4 px ANTES da borda da seleção: a borda colada ao valor virava ")" no OCR ("39,00)")
+            corte = (max(x0, x1 - 560), topo, min(LARGURA_JANELA - 60, x1 - 4), y1 + 14)
             im.crop(corte).save(os.path.join(saida, f"celula-{nome}.png")); os.remove(tmp)
             out[nome] = {"celula": c["celula"], "corte_perto": corte}
         print(json.dumps(out, ensure_ascii=False))
