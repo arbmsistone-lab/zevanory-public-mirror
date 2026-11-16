@@ -42,8 +42,9 @@ test('FLUXO v3 completo com roteiro real e voz simulada: CTA "link do perfil" si
   const n=CTA_V3.split(/\s+/).length,primeiraCta=words[words.length-n];
   assert.equal(words.slice(-n).map(w=>w.word).join(' ').replace(/\.$/,''),CTA_V3);
   assert.ok(Math.abs((r.duration-CTA_CARD_SECONDS)-primeiraCta.start*1)<0.15,`cartão ${r.duration-CTA_CARD_SECONDS} x fala ${primeiraCta.start}`);
-  // quadro a quadro no MP4: o botão azul "Link no perfil" (x 540, y 1100) aparece EXATAMENTE no quadro da 1ª palavra do CTA
-  const f0=Math.round(primeiraCta.start*30),raw=spawnSync('ffmpeg',['-v','error','-i',r.file,'-vf',`select='between(n\\,${f0-3}\\,${f0+3})',crop=2:2:540:1100`,'-vsync','0','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],{maxBuffer:1<<20});
+  // quadro a quadro no MP4: o botão azul "Link no perfil" aparece EXATAMENTE no quadro da 1ª palavra do CTA.
+  // v3.11: o botão tem altura fixa e termina em CB=1320 (y 1130–1320); o ponto (900, 1225) fica dentro dele, à direita do texto
+  const f0=Math.round(primeiraCta.start*30),raw=spawnSync('ffmpeg',['-v','error','-i',r.file,'-vf',`select='between(n\\,${f0-3}\\,${f0+3})',crop=2:2:900:1225`,'-vsync','0','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],{maxBuffer:1<<20});
   assert.equal(raw.status,0,String(raw.stderr));const azul=[...Array(7).keys()].map(k=>raw.stdout[k*12+2]>120&&raw.stdout[k*12]<90);
   assert.deepEqual(azul,[false,false,false,true,true,true,true],`cartão do CTA por quadro ${f0-3}..${f0+3}: ${azul}`);
   assert.deepEqual(r.qc.audio.reasons,[],'áudio sem falhas (inclui a checagem do CTA falado) '+JSON.stringify(r.qc.metrics));
