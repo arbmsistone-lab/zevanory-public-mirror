@@ -57,12 +57,30 @@ N = spec["numeros"]; O = spec["oferta"]; brl = lambda v: "R$ " + f"{v:,}".replac
 # v3.10 (ensaio real 43774298571, legibilidade 7,8: "legendas muito próximas do limite y=1470"; GPT-6: legenda mais
 # alta e junto ao conteúdo): o conteúdo termina em CB=1250 e a legenda fica em y=1310 (LEGENDA_Y), 120 px acima da
 # interface do Shorts.
-CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1250
-def captura(d, nome, x, y, largura):
+# v3.11 (ensaio real 43778290310, legibilidade 7,5: "vazio excessivo entre a base dos cartões e y=1470"; rubrica #1062
+# não penaliza a faixa da interface): o conteúdo vai até CB=1320 e a legenda fica em y=1380 (borda medida no vídeo).
+CAP = ROOT / "assets/shorts-v3/lcx"; CB = 1320
+BARRA = 64  # v3.11: barra de título do cartão (contexto: de onde vem a captura)
+def sombra(d, caixa, raio=22):
+    """v3.11 (júri: "recorte cru, sem acabamento"): sombra suave FORA da captura, sob o cartão"""
+    x0, y0, x1, y1 = caixa; cam = Image.new("RGBA", d.im.size, (0, 0, 0, 0))
+    ImageDraw.Draw(cam).rounded_rectangle((x0 + 6, y0 + 14, x1 + 6, y1 + 18), raio, fill=(0, 0, 0, 170))
+    cam = cam.filter(ImageFilter.GaussianBlur(18))
+    d.im.paste(Image.alpha_composite(d.im.convert("RGBA"), cam).convert("RGB")); d.d = ImageDraw.Draw(d.im)
+def captura(d, nome, x, y, largura, titulo=None):
+    """cartão com sombra e moldura em volta da captura real (pixels da captura intactos); com `titulo`, uma barra de
+    janela acima da captura diz de onde ela vem. Devolve o fim do cartão."""
     s = Image.open(CAP / nome).convert("RGB"); s = s.resize((largura, round(s.height * largura / s.width)), Image.LANCZOS)
-    d.rounded_rectangle((x - 8, y - 8, x + largura + 8, y + s.height + 8), 14, fill=(255, 255, 255)); d.im.paste(s, (x, y))
+    topo = y - 10 - (BARRA if titulo else 0); caixa = (x - 10, topo, x + largura + 10, y + s.height + 10)
+    sombra(d, caixa)
+    d.rounded_rectangle(caixa, 22, fill=(255, 255, 255), outline=(205, 214, 228), width=3)
+    if titulo:
+        d.rounded_rectangle((caixa[0], caixa[1], caixa[2], y - 4), 22, fill=(232, 238, 246)); d.rectangle((caixa[0], y - 24, caixa[2], y - 4), fill=(232, 238, 246))
+        # sem "bolinhas" de janela: o OCR do avaliador as lia como texto não reconhecido (prévia v3.11)
+        d.text((x + 14, topo + BARRA // 2 + 2), titulo, font(40), (40, 52, 72), anchor="lm")
+    d.im.paste(s, (x, y))
     med["provaReal"] = True
-    return y + s.height + 8
+    return y + s.height + 10
 PROV = json.loads((CAP / "planilha-proveniencia.json").read_text(encoding="utf-8"))
 def largura_spec(arquivo):
     """largura desenhada = a declarada na spec (a mesma usada pela medição do vídeo)"""
@@ -77,17 +95,16 @@ def prova(d, nome, y):
     c = PROV["celulas"][nome]; arq = Path(c["coluna"]).name
     s0 = Image.open(CAP / arq).convert("RGB"); larg = largura_spec(c["coluna"]); alt = round(s0.height * larg / s0.width)
     x = (64 + SAFE_R - larg) // 2
-    fim = captura(d, arq, x, y, larg)
-    # linha da célula selecionada (a última da captura): o cabeçalho de linha vermelho-escuro do Calc marca a seleção
-    px = s0.load(); ys = [j for j in range(s0.height) if px[2, j][:3] == (128, 0, 0)]
-    e = alt / s0.height; l0, l1 = (y + round(min(ys) * e), y + round((max(ys) + 1) * e)) if ys else (y + alt - 60, y + alt)
-    m = (l0 + l1) // 2; d.polygon([(x - 50, m - 26), (x - 50, m + 26), (x - 16, m)], fill=YEL)
-    d.text((x, fim + 8), f"Aba {c['aba']} · célula {c['celula']} da planilha", font(42), MUTED)
-    return fim + 64
+    # v3.11 (júri: "ícone amarelo de play vazando"; GPT-6): sem marcador — a seleção do próprio Calc indica a célula.
+    # Contexto (GPT-6: "relação entre cabeçalho, célula e valor"): barra com a planilha e a aba; embaixo, o que é a linha.
+    fim = captura(d, arq, x, y + BARRA, larg, titulo=f"Lucro & Caixa · aba {c['aba']}")
+    produto = PROV["entradas"]["Produto / serviço"].split(" (")[0]
+    d.text((x, fim + 14), f"Linha {PROV['linha']}: {produto} · célula {c['celula']}", font(44), MUTED)
+    return fim + 74
 def bloco_prova(nome, extra=0):
     """altura do cartão da coluna + origem (mesmas contas de prova())"""
     c = PROV["celulas"][nome]; k = Image.open(CAP / Path(c["coluna"]).name)
-    return round(k.height * largura_spec(c["coluna"]) / k.width) + 8 + 64 + extra
+    return BARRA + round(k.height * largura_spec(c["coluna"]) / k.width) + 10 + 74 + extra
 def embaixo(y_min, altura, fim=CB):
     """v3.9: o bloco termina em CB, logo acima da legenda que o explica; a folga fica entre o título e o bloco"""
     return max(y_min, fim - altura)

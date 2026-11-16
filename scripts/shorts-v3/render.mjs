@@ -131,7 +131,7 @@ export function depsFrases(run=command){return {
  alinharTrecho:async(arq,texto)=>{writeFileSync(arq+'.txt',texto);runAligner([arq,arq+'.txt',arq+'.json']);return JSON.parse(readFileSync(arq+'.json','utf8'));}
 };}
 // v3.9/v3.10: a legenda fica logo abaixo do conteúdo (quadros.py CB=1250), sempre na mesma altura, acima da interface (1470)
-export const LEGENDA_Y=1310;  // v3.10: 120 px acima da interface do Shorts (1470)
+export const LEGENDA_Y=1380;  // v3.11: logo abaixo do conteúdo (CB=1320); borda inferior medida no vídeo, acima de 1470
 export const DESTAQUE_MIN_S=0.12;
 export function legendasV3(words,porFala=[words.length],fim=undefined){
  const t=v=>{const cs=Math.round(v*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;};

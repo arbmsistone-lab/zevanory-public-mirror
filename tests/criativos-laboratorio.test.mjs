@@ -237,11 +237,11 @@ test("v3.9 (júri real 8,3, ensaio 43768114276; GPT-6): cada célula aparece UMA
   const q = readTextNormalized("scripts/shorts-v3/quadros.py");
   assert.doesNotMatch(q, /1900 - hb/, "barras decorativas fixas removidas");
   assert.doesNotMatch(q, /def feixe\(|def celula\(/, "v3.9: sem feixe fino nem close-up duplicado");
-  assert.match(q, /CB = 1250/); assert.match(q, /def embaixo\(/);
+  assert.match(q, /CB = 1320/); assert.doesNotMatch(q, /d\.polygon\(\[\(x - 50/, "v3.11: sem o triângulo amarelo fora da captura"); assert.match(q, /def embaixo\(/);
   assert.doesNotMatch(q, /fundo_inferior|GaussianBlur\(38\)/);
   // legenda logo abaixo do conteúdo, numa altura fixa acima da interface do Shorts
   const { LEGENDA_Y } = await import("../scripts/shorts-v3/render.mjs");
-  assert.ok(LEGENDA_Y > 1250 && LEGENDA_Y + 40 <= 1350 && LEGENDA_Y + 37 < 1470 - 100, String(LEGENDA_Y));
+  assert.ok(LEGENDA_Y > 1320 && LEGENDA_Y + 37 + 6 < 1470, String(LEGENDA_Y));
 });
 test("GPT-6 #1054: o avaliador do código integrado reprova célula ilegível ou medição ausente MESMO com nota alta do júri", async () => {
   const base = { criativo: CRI, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: MED, permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };
