@@ -51,6 +51,25 @@ jobs:
         run: python3 -m pip install --user Pillow==12.0.0 numpy==2.2.6
       - name: Full v3 flow without Gemini (synthetic voice, real render, real OCR, same-SHA evaluator)
         run: node --test tests/media/shorts-v3-fluxo.test.mjs
+  # Alinhamento com a voz REAL (GPT-6, 15/11, ensaio 43785769084): o áudio que reprovou no alinhamento fica como fixture
+  # (SHA-256 conferido) e passa pelo MESMO caminho do render do ensaio, com o MESMO alinhador (stable-ts 2.19.1, Whisper
+  # base/small, instalação igual à do shorts-ensaio-pr.yml). Sem credenciais, sem gerar voz, sem Gemini, sem vaga.
+  alinhamento-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install local media and alignment tools (same as the ensaio render job)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-inter tesseract-ocr tesseract-ocr-por
+          python3 -m pip install --user stable-ts==2.19.1 Pillow==12.0.0 numpy==2.2.6
+      - name: Real voice of ensaio 43785769084 through the ensaio render path
+        run: node --test tests/media/alinhamento-voz-real.test.mjs
   media:
     runs-on: ubuntu-latest
     timeout-minutes: 45
