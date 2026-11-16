@@ -24,6 +24,8 @@ test('voz real do ensaio 43785769084: alinha pelo caminho do ensaio, dentro dos 
   console.log('ALINHAMENTO_REAL '+JSON.stringify(log));
   assert.equal(erro,null,'render reprovou: '+String(erro?.message||'').slice(0,240)+' | '+log.join(' || ').slice(0,600));
   assert.ok(notas.some(n=>/^ALIGN_FRASES ok /.test(n)),'alinhamento por frase aceito');
+  // a frase 1 reprovou na cobertura com o 1º alinhamento; a correção registra QUAL configuração real foi escolhida
+  const escolha=notas.find(n=>/^ALIGN_FRASES frase_1 escolha=/.test(n));assert.ok(escolha,'configuração escolhida para a frase 1 registrada');console.log('ESCOLHA_FRASE_1 '+escolha);
   const o=JSON.parse(readFileSync(join(dir,'out','juri','objetivas-candidato.json'),'utf8'));
   assert.equal(o.aprovado_objetivo,true,JSON.stringify([o.motivos_objetivos,o.motivos_audio]));
   assert.ok(existsSync(join(dir,'out','short-preview.mp4')));

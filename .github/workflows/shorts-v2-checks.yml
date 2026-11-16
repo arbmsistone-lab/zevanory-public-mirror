@@ -19,6 +19,8 @@ on:
       - 'tests/media/shorts-v2-media.test.mjs'
       - 'tests/media/criativos-calibracao.test.mjs'
       - 'tests/media/shorts-v3-fluxo.test.mjs'
+      - 'tests/media/alinhamento-voz-real.test.mjs'
+      - 'tests/fixtures/voz-ensaio-43785769084/**'
       - 'scripts/criativos/**'
       - 'scripts/shorts-v3/**'
       - 'data/shorts-v3/**'

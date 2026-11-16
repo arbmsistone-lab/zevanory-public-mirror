@@ -109,11 +109,37 @@ def attempts(model, audio, text, state):
     return steps
 
 
-def main(audio, script, out):
+def todas(model, audio, text, duration, expected, out):
+    """Modo "todas" (GPT-6, 15/11, ensaio 43785769084): a frase cujo 1º alinhamento válido deixou fala sem palavra no
+    fim é realinhada com as DEMAIS configurações reais. Grava, na ordem das tentativas, todos os resultados que passam
+    nos critérios de palavras e tempos (ou cujo único problema são palavras instantâneas, que o verificador limita);
+    quem decide é a validação da frase (cobertura + cauda), sem nenhum tempo calculado por nós."""
+    state, candidatos = {}, []
+    for name, run in attempts(model, audio, text, state):
+        try:
+            result = run()
+        except Exception as error:
+            print("ALIGN_ATTEMPT " + name + " erro " + type(error).__name__, flush=True)
+            continue
+        if result is None:
+            continue
+        state.setdefault("first", result)
+        problem = issue(result, duration, expected)
+        if problem is None or instantaneas(result, duration, expected) is not None:
+            print("ALIGN_CANDIDATO " + name + " " + ("ok" if problem is None else problem), flush=True)
+            candidatos.append({"nome": name, "alignment": result.to_dict()})
+        else:
+            print("ALIGN_ATTEMPT " + name + " invalid " + problem, flush=True)
+    Path(out).write_text(json.dumps({"candidatos": candidatos}, ensure_ascii=False), encoding="utf-8")
+
+
+def main(audio, script, out, modo=None):
     model = stable_whisper.load_model("base", device="cpu")
     text = Path(script).read_text(encoding="utf-8")
     duration = audio_seconds(audio)
     expected = expected_words(text)
+    if modo == "todas":
+        return todas(model, audio, text, duration, expected, out)
     last, state, best = None, {}, None
     for name, run in attempts(model, audio, text, state):
         try:
@@ -145,4 +171,4 @@ def main(audio, script, out):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    main(*sys.argv[1:5])

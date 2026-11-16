@@ -128,7 +128,10 @@ export function depsFrases(run=command){return {
  pcmDe:wav=>{const sr=Number(JSON.parse(run('ffprobe',['-v','error','-select_streams','a:0','-show_entries','stream=sample_rate','-of','json',wav])).streams?.[0]?.sample_rate);if(!(sr>0))throw Error('v3_frases_sr');
   const buf=command('ffmpeg',['-v','error','-i',wav,'-f','s16le','-ac','1','-ar',String(sr),'pipe:1'],{buffer:true}),ab=new ArrayBuffer(buf.length-buf.length%2);new Uint8Array(ab).set(buf.subarray(0,ab.byteLength));return {amostras:new Int16Array(ab),sr};},
  gravarTrecho:(amostras,a,b,sr,arq)=>{const raw=Buffer.from(amostras.buffer,amostras.byteOffset+a*2,(b-a)*2);const tmp=arq+'.pcm';writeFileSync(tmp,raw);run('ffmpeg',['-y','-v','error','-f','s16le','-ar',String(sr),'-ac','1','-i',tmp,'-c:a','pcm_s16le',arq]);},
- alinharTrecho:async(arq,texto)=>{writeFileSync(arq+'.txt',texto);runAligner([arq,arq+'.txt',arq+'.json']);return JSON.parse(readFileSync(arq+'.json','utf8'));}
+ alinharTrecho:async(arq,texto)=>{writeFileSync(arq+'.txt',texto);runAligner([arq,arq+'.txt',arq+'.json']);return JSON.parse(readFileSync(arq+'.json','utf8'));},
+ // GPT-6 (ensaio 43785769084): todas as configurações reais do alinhador para UMA frase, na ordem; a frase escolhe a 1ª
+ // que passa nas duas verificações (palavras/tempos e cobertura/cauda)
+ alternativasTrecho:async(arq,texto)=>{writeFileSync(arq+'.txt',texto);runAligner([arq,arq+'.txt',arq+'.alt.json','todas']);return JSON.parse(readFileSync(arq+'.alt.json','utf8')).candidatos||[];}
 };}
 // v3.9/v3.10: a legenda fica logo abaixo do conteúdo (quadros.py CB=1250), sempre na mesma altura, acima da interface (1470)
 export const LEGENDA_Y=1380;  // v3.11: logo abaixo do conteúdo (CB=1320); borda inferior medida no vídeo, acima de 1470

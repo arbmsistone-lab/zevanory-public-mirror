@@ -122,3 +122,34 @@ test('B9 (ensaio 43637492214): TTS emenda frases sem pausa -> fronteiras guiadas
  // sem o alinhamento inteiro disponível, falha fechada como antes
  assert.equal((await alinharPorFrases({wav:'x',falas,duracao:dur,base:join(TMP_B9,'b9'),deps})).ok,false);
 });
+test('B10 (ensaio 43785769084): frase reprovada só pela cobertura do fim -> realinha ESSA frase com as alternativas reais; vale a 1ª que passa nas duas verificações',async()=>{
+ const sr=1000,amostras=new Int16Array(Math.round(DUR*sr)),notas=[];
+ const porFala={[FALAS[0]]:[['Sua',0,.4],['loja',.4,.8],['vende',.8,1.3],['muito.',1.3,1.95]],[FALAS[1]]:[['O',.25,.5],['caixa',.5,1.0],['some.',1.0,1.55]],
+  [FALAS[2]]:[['Kit',.25,.6],['completo',.6,1.1],['no',1.1,1.3],['link',1.3,1.7],['da',1.7,1.9],['descrição.',1.9,2.55]]};
+ const al=ws=>({segments:[{words:ws.map(([word,start,end])=>({word,start,end}))}]});
+ // 1º alinhamento da frase 2 termina a última palavra cedo demais: sobra de fala sem palavra no fim
+ const cedo=[['O',.25,.4],['caixa',.4,.55],['some.',.55,.6]];  // fim global 2,80; voz até 3,60 -> sobra 0,80 > 0,60
+ const primeiro={...porFala,[FALAS[1]]:cedo},chamadas=[];
+ const deps=alts=>({silenciosDe:()=>SIL,pcmDe:()=>({amostras,sr}),gravarTrecho:()=>{},alinharTrecho:async(arq,texto)=>al(primeiro[texto]),
+  alternativasTrecho:async(arq,texto)=>{chamadas.push(texto);return alts;}});
+ const boas=[{nome:'padrao_min_word_dur',alignment:al(cedo)},{nome:'vad',alignment:al([['O',.25,.5],['cofre',.5,1.0],['some.',1.0,1.55]])},{nome:'modelo_small',alignment:al(porFala[FALAS[1]])}];
+ const r=await alinharPorFrases({wav:'v.wav',falas:FALAS,duracao:DUR,base:'b',deps:deps(boas),note:m=>notas.push(m)});
+ assert.equal(r.ok,true,r.motivo);assert.deepEqual(chamadas,[FALAS[1]],'só a frase reprovada é realinhada');
+ assert.ok(notas.includes('ALIGN_FRASES frase_2 escolha=modelo_small'),notas.join(' | '));
+ assert.ok(!notas.some(n=>/alternativa=padrao_min_word_dur/.test(n)),'a configuração idêntica à que reprovou não é repetida');
+ const w=r.alignment.segments[0].words;assert.deepEqual([w[6].word,+w[6].end.toFixed(3)],['some.',3.75],'tempos do alinhador + início do trecho');
+});
+test('B11 (ensaio 43785769084): se TODAS as alternativas falham na cobertura ou nas palavras, a frase continua recusada (fallback, limites intactos)',async()=>{
+ const sr=1000,amostras=new Int16Array(Math.round(DUR*sr)),notas=[];
+ const al=ws=>({segments:[{words:ws.map(([word,start,end])=>({word,start,end}))}]});
+ const ok0=[['Sua',0,.4],['loja',.4,.8],['vende',.8,1.3],['muito.',1.3,1.95]],cedo=[['O',.25,.4],['caixa',.4,.55],['some.',.55,.6]];
+ const mapa={[FALAS[0]]:ok0,[FALAS[1]]:cedo,[FALAS[2]]:[['Kit',.25,.6],['completo',.6,1.1],['no',1.1,1.3],['link',1.3,1.7],['da',1.7,1.9],['descrição.',1.9,2.55]]};
+ const ruins=[{nome:'fast_mode',alignment:al([['O',.25,.45],['caixa',.45,.6],['some.',.6,.65]])},{nome:'modelo_small',alignment:al([['O',.25,.5],['cofre',.5,1.0],['some.',1.0,1.55]])}];
+ const deps={silenciosDe:()=>SIL,pcmDe:()=>({amostras,sr}),gravarTrecho:()=>{},alinharTrecho:async(arq,texto)=>al(mapa[texto]),alternativasTrecho:async()=>ruins};
+ const r=await alinharPorFrases({wav:'v.wav',falas:FALAS,duracao:DUR,base:'b',deps,note:m=>notas.push(m)});
+ assert.equal(r.ok,false);assert.match(r.motivo,/^frase_2:fim_da_fala_sem_palavra:[\d.]+\+alternativas_reprovadas:2$/,r.motivo);
+ assert.ok(notas.some(n=>/^ALIGN_FRASES fallback frase_2:/.test(n)));
+ // sem o modo de alternativas (deps antigas), o comportamento é o de antes
+ const {alternativasTrecho,...semAlt}=deps;const r2=await alinharPorFrases({wav:'v.wav',falas:FALAS,duracao:DUR,base:'b',deps:semAlt});
+ assert.equal(r2.ok,false);assert.match(r2.motivo,/^frase_2:fim_da_fala_sem_palavra:[\d.]+$/);
+});

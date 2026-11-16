@@ -177,15 +177,37 @@ export async function alinharPorFrases({ wav, falas, duracao, base, deps, note =
   const palavras = [];
   for (let k = 0; k < falas.length; k++) {
     const t = trechos[k], arq = `${base}-frase-${k + 1}.wav`; deps.gravarTrecho(amostras, t.a, t.b, sr, arq);
-    let local;
-    try {
-      const al = await deps.alinharTrecho(arq, falas[k]), n = falas[k].split(/\s+/).filter(Boolean).length;
-      local = alignedWords(al, falas[k], t.fim - t.inicio, { toleraDuracaoZero: k === falas.length - 1 ? 0 : Math.floor(n * 0.1) });
-    } catch (e) { return falha(`frase_${k + 1}:${String(e.message || e).slice(0, 80)}`); }
-    const globais = local.map(w => ({ ...w, start: w.start + t.inicio, end: w.end + t.inicio }));
-    const info = [], m = validarTrecho({ palavras: globais, trecho: t, voz: vozNoTrecho(silencios, t), final: k === falas.length - 1, energia, info });
-    if (info.length) note(`ALIGN_FRASES frase_${k + 1} ${info.join(' | ')}`);
-    if (m.length) return falha(`frase_${k + 1}:${m.join('+')}`);
+    const n = falas[k].split(/\s+/).filter(Boolean).length, final = k === falas.length - 1, voz = vozNoTrecho(silencios, t);
+    // as DUAS verificações de uma frase: palavras/tempos (alignedWords) e cobertura/cauda (validarTrecho)
+    const avaliarFrase = al => {
+      let local;
+      try { local = alignedWords(al, falas[k], t.fim - t.inicio, { toleraDuracaoZero: final ? 0 : Math.floor(n * 0.1) }); }
+      catch (e) { return { motivo: String(e.message || e).slice(0, 80) }; }
+      const globais = local.map(w => ({ ...w, start: w.start + t.inicio, end: w.end + t.inicio }));
+      const info = [], m = validarTrecho({ palavras: globais, trecho: t, voz, final, energia, info });
+      return m.length ? { motivo: m.join('+'), info } : { globais, info };
+    };
+    let primeiro;
+    try { primeiro = await deps.alinharTrecho(arq, falas[k]); } catch (e) { return falha(`frase_${k + 1}:${String(e.message || e).slice(0, 80)}`); }
+    const r = avaliarFrase(primeiro);
+    if (r.info?.length) note(`ALIGN_FRASES frase_${k + 1} ${r.info.join(' | ')}`);
+    let globais = r.globais;
+    if (!globais) {
+      // GPT-6 (ensaio 43785769084): antes de abandonar o caminho por frase, a MESMA frase é realinhada com as demais
+      // configurações reais do alinhador; vale a 1ª que passa nas duas verificações. Limites intactos.
+      const alts = deps.alternativasTrecho ? await deps.alternativasTrecho(arq, falas[k]) : [];
+      const visto = JSON.stringify((primeiro?.segments || []).flatMap(x => x.words || []).map(w => [w.word, w.start, w.end]));
+      let testadas = 0;
+      for (const c of alts) {
+        const assinatura = JSON.stringify((c?.alignment?.segments || []).flatMap(x => x.words || []).map(w => [w.word, w.start, w.end]));
+        if (assinatura === visto) continue;  // a mesma configuração que já reprovou não é repetida
+        testadas++;
+        const a = avaliarFrase(c.alignment);
+        if (a.info?.length) note(`ALIGN_FRASES frase_${k + 1} alternativa=${c.nome} ${a.info.join(' | ')}`);
+        if (a.globais) { note(`ALIGN_FRASES frase_${k + 1} escolha=${c.nome}`); globais = a.globais; break; }
+      }
+      if (!globais) return falha(`frase_${k + 1}:${r.motivo}${deps.alternativasTrecho ? `+alternativas_reprovadas:${testadas}` : ''}`);
+    }
     palavras.push(...globais);
   }
   const esperado = falas.join(' ').split(/\s+/).filter(Boolean).length;
