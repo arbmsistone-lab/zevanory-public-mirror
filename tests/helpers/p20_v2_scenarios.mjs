@@ -64,10 +64,14 @@ for (let part = 0; part < plan.parts; part++) {
   if (scenario === "escrita_concorrente" && part === partOf("z_conc")) {
     afterStats = async () => { await base.query("insert into z_conc(txt) values ('linha concorrente ç \"aspas\" R$ 9,90')"); };
   }
-  if ((scenario === "coluna_entre_validacao_e_exportacao" || scenario === "coluna_aba") && part === partOf("z_conc")) {
+  if (["coluna_entre_validacao_e_exportacao", "coluna_aba", "tipo_aba"].includes(scenario) && part === partOf("z_conc")) {
     info.part_alterada = part;
     if (scenario === "coluna_entre_validacao_e_exportacao") afterInventory = async () => { await base.query("alter table z_conc alter column txt type varchar(500)"); };
-    else {
+    else if (scenario === "tipo_aba") {
+      // O tipo muda depois da validação e VOLTA depois da exportação: nomes iguais, inventário relido igual ao do plano.
+      afterInventory = async () => { await base.query("alter table z_conc alter column txt type varchar(500)"); };
+      afterExport = async () => { await base.query("alter table z_conc alter column txt type text"); };
+    } else {
       afterInventory = async () => { await base.query("alter table z_conc add column coluna_aba text default 'aba'"); };
       afterExport = async () => { await base.query("alter table z_conc drop column coluna_aba"); };
     }
@@ -78,13 +82,12 @@ for (let part = 0; part < plan.parts; part++) {
   }
   reports.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId }));
 }
-let final = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId });
 if (scenario === "reenvio_plano_divergente") {
-  // A execução válida já fechou o dia. Reenvios tardios da parte 1, ambos de OUTRA execução:
+  // Todas as partes da execução A passaram; ANTES da consolidação, reenvios tardios da parte 1 de OUTRA execução:
   //   (1) esquema mudou e a chamada traz o plano antigo (plan_id agora divergente);
   //   (2) plan_id forjado (64 hex que não é o do plano).
-  // Nenhum dos dois pode gravar: o KV (relatórios e bundles) tem de continuar byte a byte igual.
-  info.final_antes = { ok: final.ok, failures: final.failures };
+  // Nenhum dos dois pode gravar: o KV (relatórios das partes e bundles) tem de continuar byte a byte igual.
+  info.partes_a_ok = reports.every((r) => r.ok);
   const antes = kvSnapshot();
   await base.query("alter table z_conc add column coluna_tardia text");
   const outra = randomBytes(16).toString("hex");
@@ -92,8 +95,41 @@ if (scenario === "reenvio_plano_divergente") {
   const r2 = await runDataBackup(env, { sqlFactory: () => sql, now, part: 1, parts: plan.parts, planId: "f".repeat(64), runId: outra });
   info.reenvio = { failures: [r1.failures, r2.failures], rejected: [Boolean(r1.rejected), Boolean(r2.rejected)] };
   info.kv_intacto = kvSnapshot() === antes;
-  // A consolidação da execução válida continua aprovando (os relatórios dela não foram tocados).
-  final = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId });
+}
+// A consolidação da execução A (no reenvio, aprova porque os relatórios dela não foram tocados).
+let final = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId });
+if (scenario === "dia_concluido_b_falha") {
+  // A concluiu e aprovou o dia. Uma execução B no MESMO dia (plano, partes, consolidação; e chamadas legadas v1) tem de
+  // ser rejeitada sem gravar: relatório principal, relatórios das partes, bundles e cópia do KV byte a byte iguais.
+  info.final_a = { ok: final.ok, auth: final.auth?.state ?? null };
+  const antes = kvSnapshot();
+  const runB = randomBytes(16).toString("hex");
+  const planB = await planBackup(env, { sqlFactory: () => sql, now });
+  const partsB = [];
+  for (let part = 0; part < plan.parts; part++) partsB.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runB }));
+  const finB = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runB });
+  const v1Part = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: 3 });
+  const v1Fin = await finalizeBackup(env, { parts: 3, now });
+  info.b = {
+    plan: planB.failures, parts: partsB.map((r) => r.failures), finalize: finB.failures, v1: [v1Part.failures, v1Fin.failures],
+    ok: [planB.ok, ...partsB.map((r) => r.ok), finB.ok, v1Part.ok, v1Fin.ok],
+  };
+  info.kv_intacto = kvSnapshot() === antes;
+}
+if (scenario === "reuso_esquema_mudou") {
+  // Dia D aprovado. Muda o TIPO de z_conc sem mudar o conteúdo em JSON (text -> varchar): a impressão digital do
+  // conteúdo é a mesma. No dia D+1, o conteúdo antigo NÃO pode ser reaproveitado (foi exportado sob outro esquema).
+  info.final_d = { ok: final.ok };
+  await base.query("alter table z_conc alter column txt type varchar(500)");
+  const now2 = now + 86400000;
+  const plan2 = await planBackup(env, { sqlFactory: () => sql, now: now2 });
+  const run2 = randomBytes(16).toString("hex");
+  const k = partOf("z_conc");
+  const r2 = [];
+  for (let part = 0; part < plan2.parts; part++) r2.push(await runDataBackup(env, { sqlFactory: () => sql, now: now2, part, parts: plan2.parts, planId: plan2.plan_id, runId: run2 }));
+  const fin2 = await finalizeBackup(env, { parts: plan2.parts, now: now2, planId: plan2.plan_id, runId: run2 });
+  info.d1 = { ok: fin2.ok, failures: fin2.failures, part_z_conc: k, transfer: r2[k].transfer, tables_in_part: Object.keys(r2[k].tables || {}).length,
+    outras_partes_reaproveitadas: r2.filter((_, i) => i !== k).every((r) => r.transfer && r.transfer.dumped === 0) };
 }
 writeFileSync(out, JSON.stringify(Object.fromEntries([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:")))));
 const conc = reports.flatMap((r) => Object.entries(r.tables || {})).find(([t]) => t === "z_conc");

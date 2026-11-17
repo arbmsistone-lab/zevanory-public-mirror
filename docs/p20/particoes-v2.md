@@ -31,6 +31,11 @@ O desenho está na pasta de intercâmbio do Drive. Este documento registra **o q
 - `run_id` (32 hex) identifica a execução do condutor, gerado a cada execução. Sem ele, a parte v2 é rejeitada.
 - A parte **relê o inventário e recalcula o plano**. Se o `plan_id` for diferente, ela falha com `inventory_changed` **antes de qualquer escrita**. Parte fora do plano dá `part_out_of_range`.
 - **Parte rejeitada não grava nada no KV, nem o próprio relatório.** A rejeição volta só na resposta HTTP. Um relatório válido de outra chamada fica intacto, byte a byte (contra-auditoria de 17/11, lacuna 1).
+- **Exportação ligada ao esquema** (segunda rodada, ponto 2):
+  - a exportação é **uma única instrução** que cita cada tabela da parte explicitamente (`exportStatement`);
+  - o PostgreSQL trava essas tabelas (AccessShareLock) na análise da instrução, **antes** da fotografia da execução (READ COMMITTED), e mantém a trava até o fim. Nenhuma alteração de esquema delas é confirmada durante a leitura;
+  - as colunas (nome, tipo e nulidade) são lidas do catálogo **na mesma instrução** e têm de ser iguais às do inventário validado. Se não forem, `export_schema_mismatch:<tabela>`.
+  - **Reaproveitamento incremental** só de conteúdo exportado sob o mesmo esquema (nome, tipo e nulidade), guardado junto da impressão digital.
 - **Esquema conferido depois da exportação** (lacuna 2). Entre a validação e a exportação há outra instrução, então a parte confere de novo **antes de gravar** o bundle ou o relatório:
   - **colunas do conteúdo:** cada linha exportada tem exatamente as colunas do inventário validado, na mesma ordem. Se não tiver, `export_columns_mismatch:<tabela>`. Isso pega coluna criada, removida ou renomeada, mesmo que a mudança seja desfeita logo depois;
   - **plano relido:** o plano é recalculado e tem de ser o mesmo. Se não for, `inventory_changed_during_export`. Isso pega também mudança de tipo ou de nulidade.
@@ -49,6 +54,7 @@ O desenho está na pasta de intercâmbio do Drive. Este documento registra **o q
 `POST /api/internal/backup/run?finalize=1&parts=N&plan_id=…`
 
 - Confere o HMAC do plano.
+- **Dia fechado** (segunda rodada, ponto 1). Um relatório principal do dia, v2, aprovado e com HMAC válido, é **imutável**. Plano, partes e consolidação posteriores do mesmo dia, v1 ou v2, são rejeitados com `day_already_complete`, sem gravar nada: relatório principal, relatórios das partes, bundles e cópia do KV ficam byte a byte iguais. A rota de plano responde 409 e o condutor encerra com aviso, sem erro. Um relatório com HMAC inválido não fecha o dia.
 - Exige o `run_id` desta execução em **todas** as partes. Um relatório de outra execução, que sobra no KV quando a parte desta foi rejeitada, dá `part_run_mismatch:<i>` e nunca supre a parte. O `run_id` de cada parte vai dentro de `parts_detail`, que é autenticado.
 - Confere que cada parte tem o mesmo `plan_id` e exatamente as tabelas atribuídas a ela, que nenhuma tabela aparece em duas partes e que a cobertura das elegíveis é total.
 - Qualquer divergência **reprova o dia inteiro**.
@@ -120,16 +126,19 @@ O teste roda no job `p20-restore-drill / tests`, com PostgreSQL 16 efêmero do s
   - chave estrangeira quebrada entre partes (`inconsistencia_entre_tabelas`);
   - **reenvio com plano divergente depois de uma parte válida:** as duas chamadas tardias, com o plano antigo depois de uma mudança de esquema e com um `plan_id` forjado, são rejeitadas, e o KV fica **byte a byte** igual;
   - **tipo de coluna muda entre a validação e a exportação:** a parte é rejeitada (`inventory_changed_during_export`), não grava, o dia não fecha e o arquivador recusa;
-  - **coluna criada depois da validação e removida depois da exportação** (o inventário relido volta ao do plano): rejeitada por `export_columns_mismatch`.
+  - **coluna criada depois da validação e removida depois da exportação** (o inventário relido volta ao do plano): rejeitada por `export_columns_mismatch`;
+  - **tipo alterado depois da validação e desfeito depois da exportação** (nomes iguais, inventário relido igual): rejeitado por `export_schema_mismatch`;
+  - **execução A conclui o dia e B falha no mesmo dia** (plano, partes, consolidação e chamadas v1): tudo rejeitado, o KV fica byte a byte igual, e a cópia de A continua arquivável, `completo`, e restaura igual à origem;
+  - **reaproveitamento com esquema diferente** (tipo mudou, JSON igual): no dia seguinte a tabela é exportada de novo, e as demais são reaproveitadas.
 - **Também:**
   - escrita concorrente entre a estatística e a exportação, contada no conteúdo copiado;
   - **legado v1 cifrado de 3 partes restaurado com a decifragem nova**, a prova da correção do defeito crítico, marcado `legado_nao_autenticado`.
-- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 25 de 25 KILLED.
+- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 29 de 29 KILLED.
 
 ## Riscos residuais (declarados)
 
 - **Parte 0 rejeitada no meio:** se a parte 0 for rejeitada depois de começar (inventário mudou durante a exportação), a cópia KV → Neon do dia (`zevanory_kv_backup`, um upsert idempotente) já terá sido gravada no Neon. Nada é gravado no KV e o dia não fecha.
-- **Tipo alterado e desfeito durante a exportação:** a conferência das colunas pega nome e ordem, não o tipo. Um `ALTER COLUMN TYPE` feito depois da validação e desfeito antes da reconferência, com os mesmos nomes de colunas, não é detectado na parte. O conteúdo exportado continua sendo o JSON lido do banco; a restauração o insere no esquema do destino.
+- **Novo backup no mesmo dia depois de um aprovado:** não acontece. Uma cópia mais recente no mesmo dia só vem no dia seguinte.
 
 - **Não há fotografia transacional global.** A consistência é por tabela. Relações quebradas são detectadas na restauração, não evitadas.
 - **Os arquivos históricos reais** (KV e Drive) não foram auditados: isso exige a chave de produção e a autorização do proprietário.

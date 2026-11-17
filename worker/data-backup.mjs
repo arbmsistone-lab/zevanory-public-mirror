@@ -126,7 +126,7 @@ export async function computePlan({ sql, env = {}, day, encryptionRequired = ENC
   const text = canonical(plan);
   const plan_id = rk.state === "present" ? await hmacHex(rk, text) : "sha256:" + (await sha256(text));
   // colsOf (fora do plano, só para a parte): nomes das colunas por tabela, na ordem do banco, para conferir o conteúdo exportado.
-  const colsOf = Object.fromEntries(inv.map((x) => [x.t, x.cols.map((c) => c[0])]));
+  const colsOf = Object.fromEntries(inv.map((x) => [x.t, x.cols]));
   return { ok: true, failures: [], plan, plan_id, auth: rk.state === "present" ? { state: "autenticado", alg: "HMAC-SHA256", kid: rk.kid } : { state: "nao_autenticado" }, rk, colsOf };
 }
 
@@ -135,6 +135,7 @@ export async function planBackup(env = {}, { sqlFactory, now = Date.now(), encry
   const day = new Date(now).toISOString().slice(0, 10);
   if (!env.DATABASE_URL || !sqlFactory) return { schema: PLAN_SCHEMA, ok: false, day, failures: ["database_unavailable"] };
   try {
+    if (await dayClosed(env, day)) return { schema: PLAN_SCHEMA, ok: false, day, day_complete: true, failures: ["day_already_complete"] };
     const p = await computePlan({ sql: sqlFactory(String(env.DATABASE_URL)), env, day, encryptionRequired });
     if (!p.ok) return { schema: PLAN_SCHEMA, ok: false, day, failures: p.failures };
     return { schema: PLAN_SCHEMA, ok: true, day, plan_id: p.plan_id, parts: p.plan.parts, eligible: p.plan.eligible.length, excluded: p.plan.excluded.length, auth: p.auth, failures: [] };
@@ -155,6 +156,32 @@ function reject(report) {
   return report;
 }
 
+// P20 v2: dia FECHADO. Um relatório consolidado v2 do dia, aprovado e com HMAC válido, é imutável: nenhuma parte nem
+// consolidação posterior do mesmo dia (v1 ou v2) grava nada. Assim uma execução B que falha nunca substitui a cópia de
+// uma execução A que passou (relatório principal, relatórios das partes, bundles e cópia do KV).
+export async function dayClosed(env, day) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  let r;
+  try { r = JSON.parse(String((await kv.get(REPORT_KEY)) || "null")); } catch { return false; }
+  if (!r || r.day !== day || r.contract !== CONTRACT_V2 || r.ok !== true || !r.auth || r.auth.state !== "autenticado") return false;
+  const rk = await loadReportKey(env.P20_BACKUP_KEY);
+  if (rk.state !== "present") return false;
+  const body = Object.fromEntries(AUTHENTICATED_FIELDS.map((k) => [k, r[k] === undefined ? null : r[k]]));
+  return (await hmacHex(rk, canonical(body))) === r.auth.hmac;
+}
+
+// Exportação ligada ao esquema (P20 v2): UMA instrução cita cada tabela da parte explicitamente. O PostgreSQL trava as
+// tabelas (AccessShareLock) na análise, ANTES da fotografia da execução (READ COMMITTED), e mantém a trava até o fim:
+// nenhuma alteração de esquema dessas tabelas é confirmada entre a leitura do catálogo e a leitura dos dados. As colunas
+// (nome, tipo, nulidade) vêm do catálogo NA MESMA instrução, então são as da própria leitura dos dados.
+export function exportStatement(names) {
+  if (!names.every(validIdent)) throw new Error("invalid_identifier");
+  return names.map((t, i) => `select $${i + 1}::text as t,
+         (select coalesce(json_agg(x), '[]'::json)::text from public."${t}" x) as j,
+         (select coalesce(json_agg(json_build_array(c.column_name, c.data_type, c.is_nullable) order by c.ordinal_position), '[]'::json)::text
+            from information_schema.columns c where c.table_schema = 'public' and c.table_name = $${i + 1}) as cols`).join("\nunion all\n");
+}
+
 export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1, encryptionRequired = ENCRYPTION_REQUIRED, planId = null, runId = null } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
@@ -172,6 +199,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   const encKeys = bk.state === "present" ? [bk] : [];
   const sql = sqlFactory(String(env.DATABASE_URL));
   const v2 = typeof planId === "string" && planId.length > 0;
+  if (await dayClosed(env, day)) { fail("day_already_complete"); return reject(report); }
   let myTables = null;
   let pl = null;
   try {
@@ -252,15 +280,17 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     for (const t of names) {
       const p = prev.tables && prev.tables[t];
       if (!fpOf[t] || !p || p.fp !== fpOf[t] || !prev.bundleKey) continue;
+      // v2: só reaproveita conteúdo exportado sob o MESMO esquema (colunas, tipos e nulidade) do plano autenticado de hoje.
+      if (v2 && p.cols !== canonical(pl.colsOf[t] || [])) continue;
       // Bundle anterior cifrado com outra chave (rotação) ou ilegível: exportação completa (nunca reaproveita sem prova).
       if (prevBundle === null) { try { const c = bundleCtxFromKey(prev.bundleKey); prevBundle = c ? JSON.parse((await openBundle(await kv.get(prev.bundleKey), c, encKeys)).text) || {} : {}; } catch { prevBundle = {}; } }
       const j = prevBundle[t];
       if (typeof j === "string" && (await sha256(j)) === p.sha) reused[t] = j;
     }
     const toDump = names.filter((t) => !(t in reused));
-    const fresh = toDump.length ? await sql.query(
+    const fresh = !toDump.length ? [] : v2 ? await sql.query(exportStatement(toDump), toDump) : await sql.query(
       `select t, (xpath('/row/j/text()', query_to_xml(format('select coalesce(json_agg(x), ''[]''::json)::text as j from public.%I x', t), false, true, '')))[1]::text as j
-         from unnest($1::text[]) as t`, [toDump]) : [];
+         from unnest($1::text[]) as t`, [toDump]);
     // P20 v2: o esquema pode mudar entre a validação do plano (acima) e a exportação. Duas conferências DEPOIS da
     // exportação e ANTES de qualquer escrita no KV:
     //  (a) cada linha exportada tem exatamente as colunas do inventário validado (pega coluna criada, removida ou
@@ -269,14 +299,18 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     // Divergência: a parte é rejeitada sem gravar (o dia não fecha: falta o relatório desta execução).
     if (v2) {
       for (const r of fresh || []) {
-        const want = (pl.colsOf[r.t] || []).join("\u0000");
+        // (0) colunas lidas NA MESMA instrução dos dados (tipo e nulidade inclusive) = as do inventário validado.
+        let seen;
+        try { seen = canonical(JSON.parse(String(r.cols ?? "null"))); } catch { seen = null; }
+        if (seen !== canonical(pl.colsOf[r.t] || [])) fail("export_schema_mismatch:" + r.t);
+        const want = (pl.colsOf[r.t] || []).map((c) => c[0]).join("\u0000");
         let rowsJ;
         try { rowsJ = JSON.parse(String(r.j ?? "[]")); } catch { rowsJ = null; }
         if (!Array.isArray(rowsJ) || rowsJ.some((o) => !o || typeof o !== "object" || Object.keys(o).join("\u0000") !== want)) { fail("export_columns_mismatch:" + r.t); }
       }
       const post = await computePlan({ sql, env, day, encryptionRequired });
       if (!post.ok || post.plan_id !== planId) fail("inventory_changed_during_export");
-      if (report.failures.some((f) => f === "inventory_changed_during_export" || f.startsWith("export_columns_mismatch:"))) return reject(report);
+      if (report.failures.some((f) => f === "inventory_changed_during_export" || f.startsWith("export_columns_mismatch:") || f.startsWith("export_schema_mismatch:"))) return reject(report);
     }
     const dumps = [...fresh, ...Object.entries(reused).map(([t, j]) => ({ t, j }))];
     const dumpBytes = fresh.reduce((s, r) => s + String(r.j ?? "").length, 0);
@@ -309,7 +343,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     if (v2) report.tables = Object.fromEntries(exported.map((e) => [e.table, { rows: e.rows, sha: e.sha }]));
     {
       const tablesFp = {};
-      for (const e of exported) if (fpOf[e.table]) tablesFp[e.table] = { fp: fpOf[e.table], sha: e.sha };
+      for (const e of exported) if (fpOf[e.table]) tablesFp[e.table] = { fp: fpOf[e.table], sha: e.sha, ...(v2 ? { cols: canonical(pl.colsOf[e.table] || []) } : {}) };
       report.fp = { bundleKey, tables: tablesFp };
     }
     report.transfer = { dumped: toDump.length, reused: Object.keys(reused).length, dumpBytes };
@@ -420,6 +454,8 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const v2 = typeof planId === "string" && planId.length > 0;
   const day = new Date(now).toISOString().slice(0, 10);
+  // Dia fechado: a consolidação de outra execução não grava (o relatório aprovado fica byte a byte igual).
+  if (await dayClosed(env, day)) return { schema: "zevanory-backup/v1", day, parts, ok: false, rejected: true, failures: ["day_already_complete"] };
   const got = [];
   for (let i = 0; i < parts; i++) { try { got.push(JSON.parse(String(await kv.get(`${REPORT_KEY}:part:${i}`) || "null"))); } catch { got.push(null); } }
   const failures = [];

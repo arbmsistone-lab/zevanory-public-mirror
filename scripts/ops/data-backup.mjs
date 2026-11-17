@@ -22,6 +22,8 @@ const askPlan = async () => {
 
 export function planDecision({ http, body }) {
   if (http === 404) return { mode: "v1" };
+  // Dia já concluído e aprovado (relatório v2 autenticado): nada a fazer; a cópia do dia é imutável.
+  if (http === 409 && body && body.day_complete === true && Array.isArray(body.failures) && body.failures.includes("day_already_complete")) return { mode: "done" };
   if (http === 200 && body && body.ok === true && /^[0-9a-f]{64}$/.test(String(body.plan_id || "")) && Number.isInteger(body.parts) && body.parts >= 1 && body.parts <= 6) {
     return { mode: "v2", planId: body.plan_id, parts: body.parts };
   }
@@ -33,6 +35,7 @@ async function main() {
   const plan = await askPlan();
   const d = planDecision(plan);
   console.log("::notice title=DATA_BACKUP_PLAN::" + JSON.stringify({ http: plan.http, mode: d.mode, parts: d.parts ?? null, eligible: plan.body?.eligible ?? null, excluded: plan.body?.excluded ?? null, auth: plan.body?.auth ?? null, failures: d.failures ?? [] }));
+  if (d.mode === "done") { console.log("::notice title=DATA_BACKUP_DIA_CONCLUIDO::o backup de hoje já foi concluído e aprovado; nenhuma escrita"); return; }
   if (d.mode === "fail") { console.log("::error title=DATA_BACKUP::plan_failed " + (d.failures || []).join(",").slice(0, 300)); process.exit(1); }
   if (d.mode === "v1") console.log("::warning title=DATA_BACKUP_LEGADO_V1::Worker sem a rota de plano: 3 partes fixas, sem plano autenticado");
   const parts = d.mode === "v2" ? d.parts : LEGACY_PARTS;

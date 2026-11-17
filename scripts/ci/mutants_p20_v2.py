@@ -77,6 +77,15 @@ M = {
                                                          ("py", "test_n12_tipo_de_coluna_muda_entre_validacao_e_exportacao")),
     "V25 sem conferir as colunas do conteúdo exportado": (W, "fail(\"export_columns_mismatch:\" + r.t); }", "}",
                                                           ("py", "test_n13_coluna_criada_e_desfeita_em_volta_da_exportacao")),
+    # Contra-auditoria GPT-6 17/11, segunda rodada (PR #1070 em 54823ea6).
+    "V26 parte grava em dia já concluído": (W, "  if (await dayClosed(env, day)) { fail(\"day_already_complete\"); return reject(report); }\n", "",
+                                            ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
+    "V27 consolidação grava em dia já concluído": (W, "  if (await dayClosed(env, day)) return { schema: \"zevanory-backup/v1\", day, parts, ok: false, rejected: true, failures: [\"day_already_complete\"] };\n", "",
+                                                   ("node", "consolidação v2 íntegra")),
+    "V28 tipos não conferidos na própria leitura": (W, "        if (seen !== canonical(pl.colsOf[r.t] || [])) fail(\"export_schema_mismatch:\" + r.t);\n", "",
+                                                    ("py", "test_n14_tipo_muda_e_volta_em_volta_da_exportacao")),
+    "V29 reaproveita conteúdo de outro esquema": (W, "      if (v2 && p.cols !== canonical(pl.colsOf[t] || [])) continue;\n", "",
+                                                  ("py", "test_n16_reaproveitamento_exige_o_mesmo_esquema")),
 }
 
 

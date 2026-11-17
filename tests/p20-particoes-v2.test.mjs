@@ -136,7 +136,7 @@ async function consolidate(mutate = () => {}) {
 }
 
 test("consolidação v2 íntegra: relatório autenticado inteiro (HMAC sobre os campos declarados)", async () => {
-  const { rep } = await consolidate();
+  const { rep, pl, kv } = await consolidate();
   assert.deepEqual(rep.failures, []);
   assert.equal(rep.ok, true);
   assert.equal(rep.auth.state, "autenticado");
@@ -146,6 +146,19 @@ test("consolidação v2 íntegra: relatório autenticado inteiro (HMAC sobre os 
   assert.deepEqual(rep.auth.fields, ["contract", "day", "plan_id", "plan", "parts", "parts_detail", "ok", "failures", "encryption"]);
   const body = Object.fromEntries(AUTHENTICATED_FIELDS.map((k) => [k, rep[k] === undefined ? null : rep[k]]));
   assert.equal(rep.auth.hmac, await hmacHex(await loadReportKey(KEY), canonical(body)));
+  // Dia FECHADO: com o relatório aprovado no KV, outra execução (consolidação, parte ou plano) é rejeitada sem gravar.
+  const antes = new Map(kv.m);
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://falso", P20_BACKUP_KEY: KEY };
+  const finB = await finalizeBackup(env, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id, runId: "2".repeat(32) });
+  assert.deepEqual(finB.failures, ["day_already_complete"]);
+  const partB = await runDataBackup(env, { sqlFactory: () => fakeSql(tables(40)), now: NOW, part: 0, parts: pl.plan.parts, planId: pl.plan_id, runId: "2".repeat(32) });
+  assert.deepEqual(partB.failures, ["day_already_complete"]);
+  const planB = await planBackup(env, { sqlFactory: () => fakeSql(tables(40)), now: NOW });
+  assert.equal(planB.day_complete, true);
+  assert.deepEqual([...kv.m.entries()], [...antes.entries()], "KV byte a byte igual");
+  // Relatório aprovado com HMAC adulterado NÃO fecha o dia (não é prova).
+  const forjado = JSON.parse(kv.m.get(REPORT_KEY)); forjado.auth.hmac = "0".repeat(64); kv.m.set(REPORT_KEY, JSON.stringify(forjado));
+  assert.notDeepEqual((await finalizeBackup(env, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id, runId: RUN })).failures, ["day_already_complete"]);
   const adulterado = { ...body, parts_detail: body.parts_detail.map((d, i) => (i === 0 ? { ...d, bundle_sha256: "c".repeat(64) } : d)) };
   assert.notEqual(rep.auth.hmac, await hmacHex(await loadReportKey(KEY), canonical(adulterado)));
 });
@@ -171,6 +184,8 @@ test("consolidação v2 reprova: tabela em duas partes, tabela faltando, plano a
 
 test("condutor: rota de plano ausente (404) = legado v1 sinalizado; plano válido = v2; resposta inválida = falha", () => {
   assert.deepEqual(planDecision({ http: 404, body: {} }), { mode: "v1" });
+  assert.deepEqual(planDecision({ http: 409, body: { ok: false, day_complete: true, failures: ["day_already_complete"] } }), { mode: "done" });
+  assert.equal(planDecision({ http: 409, body: { ok: false, failures: ["other"] } }).mode, "fail");
   assert.deepEqual(planDecision({ http: 200, body: { ok: true, plan_id: "a".repeat(64), parts: 4 } }), { mode: "v2", planId: "a".repeat(64), parts: 4 });
   assert.equal(planDecision({ http: 200, body: { ok: true, plan_id: "sha256:x", parts: 4 } }).mode, "fail");
   assert.equal(planDecision({ http: 200, body: { ok: true, plan_id: "a".repeat(64), parts: 7 } }).mode, "fail");

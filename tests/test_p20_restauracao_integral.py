@@ -362,12 +362,12 @@ class RestauracaoIntegral(unittest.TestCase):
     def test_n11_reenvio_com_plano_divergente_apos_parte_valida_nao_toca_o_kv(self):
         """Lacuna 1: uma parte rejeitada não pode sobrescrever o relatório válido da mesma parte no KV."""
         src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n11", 94, extra=[self.conc_table()], scenario="reenvio_plano_divergente")
-        self.assertTrue(w["final_antes"]["ok"], w)
+        self.assertTrue(w["partes_a_ok"], w)
         self.assertIn("inventory_changed", w["reenvio"]["failures"][0])
         self.assertIn("inventory_changed", w["reenvio"]["failures"][1])
         self.assertEqual(w["reenvio"]["rejected"], [True, True])
         self.assertTrue(w["kv_intacto"], "relatórios e bundles no KV têm de ficar byte a byte iguais")
-        self.assertTrue(w["ok"], w)  # a execução válida continua íntegra e consolidável
+        self.assertTrue(w["ok"], w)  # a execução A continua íntegra e consolida depois dos reenvios
         a = archive(kvfile, out)
         self.assertEqual(a.returncode, 0, a.stdout[-600:])
         with open(os.path.join(out, "manifest.json"), encoding="utf-8") as fh:
@@ -394,6 +394,46 @@ class RestauracaoIntegral(unittest.TestCase):
         """Lacuna 2, caso ABA: a coluna existe só durante a exportação; o inventário relido volta ao do plano. A
         conferência das colunas do conteúdo exportado rejeita a parte."""
         self._schema_between_validation_and_export("n13", "coluna_aba", "export_columns_mismatch:z_conc")
+
+
+    # ---- contra-auditoria GPT-6 de 17/11, segunda rodada (PR #1070, 54823ea6) ----
+    def test_n14_tipo_muda_e_volta_em_volta_da_exportacao(self):
+        """O tipo muda depois da validação e VOLTA depois da exportação (nomes iguais; inventário relido igual ao do
+        plano). As colunas lidas na MESMA instrução dos dados denunciam o tipo usado na leitura."""
+        self._schema_between_validation_and_export("n14", "tipo_aba", "export_schema_mismatch:z_conc")
+
+    def test_n15_dia_concluido_execucao_b_falha_sem_tocar_a(self):
+        """A conclui o dia; B (plano, partes, consolidação e chamadas legadas v1) no mesmo dia é rejeitada sem gravar.
+        O relatório de A fica byte a byte igual e a cópia de A continua arquivável e completa."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n15", 94, scenario="dia_concluido_b_falha")
+        self.assertEqual((w["final_a"]["ok"], w["final_a"]["auth"]), (True, "autenticado"), w)
+        b = w["b"]
+        self.assertEqual(b["plan"], ["day_already_complete"])
+        self.assertTrue(all(f == ["day_already_complete"] for f in b["parts"]), b["parts"])
+        self.assertEqual(b["finalize"], ["day_already_complete"])
+        self.assertEqual(b["v1"], [["day_already_complete"], ["day_already_complete"]])
+        self.assertFalse(any(b["ok"]), b["ok"])
+        self.assertTrue(w["kv_intacto"], "relatório principal, partes, bundles e cópia do KV têm de ficar byte a byte iguais")
+        a = archive(kvfile, out)
+        self.assertEqual(a.returncode, 0, a.stdout[-600:])
+        with open(os.path.join(out, "manifest.json"), encoding="utf-8") as fh:
+            man = json.load(fh)
+        self.assertEqual((man["auth_state"], man["complete"]), ("autenticado", True))
+        fresh(dst, owner=APP)
+        r = restore(out, dst, ddl)
+        self.assertEqual(r.returncode, 0, r.stdout[-800:])
+        self.assertEqual(notice(r, "RESTORE_NEW_DATABASE")["estado"], "completo")
+        self.assertEqual(compare(src, dst, elig), [])
+
+    def test_n16_reaproveitamento_exige_o_mesmo_esquema(self):
+        """Conteúdo exportado sob outro esquema (tipo mudou, JSON igual) não é reaproveitado no dia seguinte."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n16", 94, extra=[self.conc_table()], scenario="reuso_esquema_mudou")
+        self.assertTrue(w["final_d"]["ok"], w)
+        d1 = w["d1"]
+        self.assertTrue(d1["ok"], d1)
+        self.assertEqual(d1["transfer"]["dumped"], 1, d1)  # só z_conc, exportada de novo sob o esquema novo
+        self.assertEqual(d1["transfer"]["reused"], d1["tables_in_part"] - 1, d1)
+        self.assertTrue(d1["outras_partes_reaproveitadas"], d1)
 
 
 if __name__ == "__main__":

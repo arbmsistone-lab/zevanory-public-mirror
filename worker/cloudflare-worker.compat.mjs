@@ -585,7 +585,7 @@ const wrapped = {
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
       if (!verifyOperatorToken(normalized, request.headers.get("x-backup-token"))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const plan = await planBackup(normalized, { sqlFactory: whatsappProofDatabase });
-      return new Response(JSON.stringify(plan), { status: plan.ok ? 200 : 500, headers });
+      return new Response(JSON.stringify(plan), { status: plan.ok ? 200 : plan.day_complete ? 409 : 500, headers });
     }
 
     if (url.pathname === "/api/internal/backup/run") {
