@@ -153,3 +153,35 @@ test('B11 (ensaio 43785769084): se TODAS as alternativas falham na cobertura ou 
  const {alternativasTrecho,...semAlt}=deps;const r2=await alinharPorFrases({wav:'v.wav',falas:FALAS,duracao:DUR,base:'b',deps:semAlt});
  assert.equal(r2.ok,false);assert.match(r2.motivo,/^frase_2:fim_da_fala_sem_palavra:[\d.]+$/);
 });
+test('B12 (ensaio 43789727279): pausas aceitas mas uma frase não cobre a fala com NENHUMA configuração -> fronteiras recalculadas pelo alinhamento inteiro e realinhamento por frase; log com trecho, última palavra e cortes',async()=>{
+ // a TTS emendou "some." e "Kit" (sem pausa); o único respiro perto dali vem DEPOIS de "Kit" (4,2–4,4), dentro da
+ // tolerância do ponto esperado: o corte por pausas cai ali e o trecho da fala 2 leva "Kit" sem palavra que o cubra
+ const sil=[{ini:2.0,fim:2.4},{ini:4.2,fim:4.4},{ini:6.4,fim:6.8}];
+ const inteiras=[['Sua',0,.4],['loja',.4,.8],['vende',.8,1.3],['muito.',1.3,1.95],['O',2.45,2.8],['caixa',2.8,3.2],['some.',3.2,3.5],['Kit',3.52,4.15],['completo',4.4,4.9],['no',4.9,5.1],['link',5.1,5.5],['da',5.5,5.7],['descrição.',5.7,6.35]];
+ const sr=1000,amostras=new Int16Array(Math.round(DUR*sr));for(const [,a,b] of inteiras)amostras.fill(9000,Math.round(a*sr),Math.round(b*sr));
+ const notas=[],al=ws=>({segments:[{words:ws.map(([word,start,end])=>({word,start,end}))}]}),passadas=[];
+ const deps={silenciosDe:()=>sil,pcmDe:()=>({amostras,sr}),gravarTrecho:(a,x,y,s,arq)=>{if(/frase-1\./.test(arq))passadas.push([]);passadas.at(-1).push(x/sr);},
+  // alinhador por trecho: devolve as palavras REAIS da fala pedida, em tempo local (o trecho as contém)
+  alinharTrecho:async(arq,texto)=>{const k=+/frase-(\d+)/.exec(arq)[1]-1,ini=passadas.at(-1)[k],base=[0,4,7][k],n=texto.split(' ').length;
+   return al(inteiras.slice(base,base+n).map(([w,s,e])=>[w,s-ini,e-ini]));},
+  alternativasTrecho:async()=>[]};
+ const r=await alinharPorFrases({wav:'v.wav',falas:FALAS,duracao:DUR,base:'b',deps,note:m=>notas.push(m),inteiro:async()=>al(inteiras)});
+ assert.ok(notas.some(n=>/^ALIGN_FRASES tentativa via=pausas cortes=2\.20,4\.30$/.test(n)),notas.join(' | '));
+ assert.ok(notas.some(n=>/^ALIGN_FRASES frase_2 recusada trecho=2\.20-4\.30 ultima_palavra_fim=3\.50 fala_ate=4\.20 cortes=2\.20,4\.30$/.test(n)),notas.join(' | '));
+ assert.ok(notas.some(n=>/fronteiras_recalculadas de=2\.20,4\.30 para=2\.20,3\.5\d/.test(n)),notas.join(' | '));
+ assert.equal(r.ok,true,r.motivo+' | '+notas.join(' | '));assert.equal(r.via,'pausas+fronteiras_inteiro');assert.equal(passadas.length,2,'duas passadas');
+ const w=r.alignment.segments[0].words;assert.deepEqual(w.map(x=>x.word),inteiras.map(x=>x[0]));
+ assert.deepEqual([+w[6].end.toFixed(2),+w[7].start.toFixed(2)],[3.5,3.52],'tempos = alinhador do trecho + início do trecho');
+});
+test('B13: se o alinhamento inteiro leva aos MESMOS cortes (ou não serve de guia), não há segunda tentativa e a frase continua recusada',async()=>{
+ const sr=1000,amostras=new Int16Array(Math.round(DUR*sr)),notas=[],al=ws=>({segments:[{words:ws.map(([word,start,end])=>({word,start,end}))}]});
+ const mapa={[FALAS[0]]:[['Sua',0,.4],['loja',.4,.8],['vende',.8,1.3],['muito.',1.3,1.95]],[FALAS[1]]:[['O',.25,.4],['caixa',.4,.55],['some.',.55,.6]],[FALAS[2]]:[['Kit',.25,.6],['completo',.6,1.1],['no',1.1,1.3],['link',1.3,1.7],['da',1.7,1.9],['descrição.',1.9,2.55]]};
+ const chamadas=[];const deps={silenciosDe:()=>SIL,pcmDe:()=>({amostras,sr}),gravarTrecho:()=>{},alinharTrecho:async(arq,texto)=>{chamadas.push(texto);return al(mapa[texto]);},alternativasTrecho:async()=>[]};
+ const mesmos=[['Sua',0,.4],['loja',.4,.8],['vende',.8,1.3],['muito.',1.3,1.95],['O',2.45,2.6],['caixa',2.6,2.75],['some.',2.75,2.8],['Kit',4.05,4.4],['completo',4.4,4.9],['no',4.9,5.1],['link',5.1,5.5],['da',5.5,5.7],['descrição.',5.7,6.35]];
+ const r=await alinharPorFrases({wav:'v.wav',falas:FALAS,duracao:DUR,base:'b',deps,note:m=>notas.push(m),inteiro:async()=>al(mesmos)});
+ assert.equal(r.ok,false);assert.match(r.motivo,/^frase_2:fim_da_fala_sem_palavra:[\d.]+\+alternativas_reprovadas:0$/);
+ assert.ok(notas.some(n=>/fronteiras_recalculadas sem_mudanca mesmos_cortes/.test(n)),notas.join(' | '));
+ assert.equal(chamadas.filter(t=>t===FALAS[0]).length,1,'sem segunda passada');
+ // sem a função do alinhamento inteiro (reserva indisponível), comportamento anterior
+ const r2=await alinharPorFrases({wav:'v.wav',falas:FALAS,duracao:DUR,base:'b',deps,note:()=>{}});assert.equal(r2.ok,false);
+});

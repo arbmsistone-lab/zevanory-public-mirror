@@ -189,7 +189,7 @@ tests/shorts-v2.test.mjs 26
 tests/shorts-v3-cta.test.mjs 6
 tests/shorts-v3-duracao-voz.test.mjs 2
 tests/shorts-v3-ensaio-fases.test.mjs 3
-tests/shorts-v3-frases.test.mjs 12
+tests/shorts-v3-frases.test.mjs 14
 tests/shorts-voice-samples.test.mjs 5
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2
