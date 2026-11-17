@@ -87,6 +87,7 @@ tests/hotmart-paused.test.mjs 15
 tests/inbound-autonomy.test.mjs 6
 tests/instant-status-sales-coherence.test.mjs 3
 tests/internal-financial-audit.test.mjs 11
+tests/kdp-ebook-bolso.test.mjs 3
 tests/kit-deferred-192h-flag.test.mjs 6
 tests/kv-meter.test.mjs 5
 tests/kv-quota-issue.test.mjs 5
@@ -96,7 +97,7 @@ tests/lead-magnet.test.mjs 15
 tests/lead-submit-count.test.mjs 4
 tests/link-vencido-nao-reutilizado.test.mjs 5
 tests/live-runtime-status.test.mjs 5
-tests/market-weekly.test.mjs 2
+tests/market-weekly.test.mjs 4
 tests/mercadopago-preference-expiry.test.mjs 3
 tests/mercadopago-webhook-safety.test.mjs 5
 tests/mercadopago-webhook-signature.test.mjs 11
