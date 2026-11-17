@@ -358,6 +358,43 @@ class RestauracaoIntegral(unittest.TestCase):
         self.assertEqual(notice(rr, "RESTORE_NEW_DATABASE")["estado"], "legado_nao_autenticado")
         self.assertEqual(compare(src, dst, elig), [])
 
+    # ---- contra-auditoria GPT-6 de 17/11 (PR #1070, bd16101e): lacunas 1 e 2 ----
+    def test_n11_reenvio_com_plano_divergente_apos_parte_valida_nao_toca_o_kv(self):
+        """Lacuna 1: uma parte rejeitada não pode sobrescrever o relatório válido da mesma parte no KV."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n11", 94, extra=[self.conc_table()], scenario="reenvio_plano_divergente")
+        self.assertTrue(w["final_antes"]["ok"], w)
+        self.assertIn("inventory_changed", w["reenvio"]["failures"][0])
+        self.assertIn("inventory_changed", w["reenvio"]["failures"][1])
+        self.assertEqual(w["reenvio"]["rejected"], [True, True])
+        self.assertTrue(w["kv_intacto"], "relatórios e bundles no KV têm de ficar byte a byte iguais")
+        self.assertTrue(w["ok"], w)  # a execução válida continua íntegra e consolidável
+        a = archive(kvfile, out)
+        self.assertEqual(a.returncode, 0, a.stdout[-600:])
+        with open(os.path.join(out, "manifest.json"), encoding="utf-8") as fh:
+            self.assertTrue(json.load(fh)["complete"])
+
+    def _schema_between_validation_and_export(self, label, scenario, failure):
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain(label, 94, extra=[self.conc_table()], scenario=scenario)
+        k = w["part_alterada"]
+        self.assertTrue(any(f.startswith(failure) for f in w["part_failures"][k]), w["part_failures"][k])
+        self.assertTrue(w["part_rejected"][k])
+        self.assertFalse(w["part_wrote_bundle"][k], "a parte rejeitada não grava o bundle")
+        self.assertFalse(w["part_report_in_kv"][k], "a parte rejeitada não grava o relatório")
+        self.assertFalse(w["ok"], "o dia não pode ser declarado completo")
+        self.assertTrue(any(f.startswith("part_missing:") or f.startswith("part_run_mismatch:") for f in w["failures"]), w["failures"])
+        self.assertEqual(w["auth"], "autenticado")  # o relatório é autenticado, com ok = false
+        a = archive(kvfile, out)
+        self.assertNotEqual(a.returncode, 0, "o arquivador não pode arquivar um dia reprovado")
+
+    def test_n12_tipo_de_coluna_muda_entre_validacao_e_exportacao(self):
+        """Lacuna 2: o esquema muda DEPOIS da validação do plano e ANTES da exportação (tipo de coluna)."""
+        self._schema_between_validation_and_export("n12", "coluna_entre_validacao_e_exportacao", "inventory_changed_during_export")
+
+    def test_n13_coluna_criada_e_desfeita_em_volta_da_exportacao(self):
+        """Lacuna 2, caso ABA: a coluna existe só durante a exportação; o inventário relido volta ao do plano. A
+        conferência das colunas do conteúdo exportado rejeita a parte."""
+        self._schema_between_validation_and_export("n13", "coluna_aba", "export_columns_mismatch:z_conc")
+
 
 if __name__ == "__main__":
     unittest.main()

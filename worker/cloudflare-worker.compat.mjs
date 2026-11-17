@@ -598,9 +598,13 @@ const wrapped = {
       const rawPlan = String(url.searchParams.get("plan_id") || "");
       const planId = /^[0-9a-f]{64}$/.test(rawPlan) ? rawPlan : null;
       if (rawPlan && !planId) return new Response(JSON.stringify({ ok: false, failures: ["plan_id_malformed"] }), { status: 400, headers });
+      // run_id (32 hex) identifica a execução do condutor: a consolidação v2 só aceita partes desta execução.
+      const rawRun = String(url.searchParams.get("run_id") || "");
+      if (rawRun && !/^[0-9a-f]{32}$/.test(rawRun)) return new Response(JSON.stringify({ ok: false, failures: ["run_id_malformed"] }), { status: 400, headers });
+      const runId = rawRun || null;
       const report = url.searchParams.get("finalize") === "1"
-        ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase, planId })
-        : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts, planId });
+        ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase, planId, runId })
+        : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts, planId, runId });
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
 

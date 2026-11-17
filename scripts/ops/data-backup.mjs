@@ -5,6 +5,7 @@
 // ceil(eligible tables / 30), at most 6) and passes its plan_id to every part and to the finalize call; a part whose
 // re-read inventory does not match the plan fails without writing. A Worker without the plan route (404) still runs the
 // legacy v1 flow with 3 fixed parts, flagged as such.
+import { randomBytes } from "node:crypto";
 const base = process.env.BACKUP_URL || "https://zevanory.api.br/api/internal/backup/run";
 const planUrl = process.env.BACKUP_PLAN_URL || "https://zevanory.api.br/api/internal/backup/plan";
 const token = process.env.ZEVANORY_OPERATOR_TOKEN || "";
@@ -35,7 +36,9 @@ async function main() {
   if (d.mode === "fail") { console.log("::error title=DATA_BACKUP::plan_failed " + (d.failures || []).join(",").slice(0, 300)); process.exit(1); }
   if (d.mode === "v1") console.log("::warning title=DATA_BACKUP_LEGADO_V1::Worker sem a rota de plano: 3 partes fixas, sem plano autenticado");
   const parts = d.mode === "v2" ? d.parts : LEGACY_PARTS;
-  const extra = d.mode === "v2" ? `&plan_id=${d.planId}` : "";
+  // run_id: identifica ESTA execução; a consolidação v2 recusa relatório de parte de outra execução (part_run_mismatch).
+  const runId = randomBytes(16).toString("hex");
+  const extra = d.mode === "v2" ? `&plan_id=${d.planId}&run_id=${runId}` : "";
   for (let p = 0; p < parts; p++) {
     const { http, body } = await call(`part=${p}&parts=${parts}${extra}`);
     console.log(`::notice title=DATA_BACKUP_PART_${p}::` + JSON.stringify({ http, ok: body.ok, tables: body.neon?.tables, rows: body.neon?.rows, restored: body.restore?.neon?.ok, encryption: body.encryption?.state ?? null, failures: body.failures }));

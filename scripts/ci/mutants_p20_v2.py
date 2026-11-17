@@ -33,9 +33,9 @@ M = {
                                                          "const eligible = inv.map((x) => x.t);", ("node", "tabelas de credencial saem ANTES")),
     "V03 sem limite de capacidade": (W, "  if (parts > MAX_PARTS) return { ok: false, failures: [\"capacity_exceeded:\" + eligible.length], eligible: eligible.length };\n", "",
                                      ("node", "capacidade: 180")),
-    "V04 parte aceita plan_id diferente": (W, "      if (pl.plan_id !== planId) { fail(\"inventory_changed\"); return finishPart(kv, report, part); }\n", "",
+    "V04 parte aceita plan_id diferente": (W, "      if (pl.plan_id !== planId) { fail(\"inventory_changed\"); return reject(report); }\n", "",
                                            ("node", "parte com plan_id diferente")),
-    "V05 parte fora do plano aceita": (W, "      if (!Number.isInteger(part) || part < 0 || part >= pl.plan.parts) { fail(\"part_out_of_range\"); return finishPart(kv, report, part); }\n", "",
+    "V05 parte fora do plano aceita": (W, "      if (!Number.isInteger(part) || part < 0 || part >= pl.plan.parts) { fail(\"part_out_of_range\"); return reject(report); }\n", "",
                                        ("node", "parte fora do intervalo")),
     "V06 tabela em duas partes aceita": (W, "    for (const t of names) { if (seen.has(t)) failures.push(\"table_in_two_parts:\" + t); seen.set(t, i); }",
                                          "    for (const t of names) { seen.set(t, i); }", ("node", "consolidação v2 reprova")),
@@ -67,6 +67,16 @@ M = {
                                            ("py", "test_n9_chave_estrangeira_quebrada_entre_partes")),
     "V21 legado declarado completo": (RS, "\"estado\": \"completo\" if meta[\"contract\"] == 2 and meta[\"auth_state\"] == bpa.AUTH_OK else meta[\"auth_state\"]",
                                       "\"estado\": \"completo\"", ("py", "test_n10_legado_v1_cifrado_3_partes_restaura_com_decifragem")),
+    # Contra-auditoria GPT-6 17/11 (lacunas 1 e 2 do PR #1070 em bd16101e).
+    "V22 parte rejeitada grava o relatório (sobrescreve o válido)": (W, "      if (pl.plan_id !== planId) { fail(\"inventory_changed\"); return reject(report); }\n",
+                                                                     "      if (pl.plan_id !== planId) { fail(\"inventory_changed\"); return finishPart(kv, report, part); }\n",
+                                                                     ("node", "parte com plan_id diferente")),
+    "V23 consolidação aceita relatório de outra execução": (W, "    if (r.run_id !== runId) { failures.push(\"part_run_mismatch:\" + i); return; }\n", "",
+                                                             ("node", "consolidação v2 reprova")),
+    "V24 sem reconferir o plano depois da exportação": (W, "      if (!post.ok || post.plan_id !== planId) fail(\"inventory_changed_during_export\");\n", "",
+                                                         ("py", "test_n12_tipo_de_coluna_muda_entre_validacao_e_exportacao")),
+    "V25 sem conferir as colunas do conteúdo exportado": (W, "fail(\"export_columns_mismatch:\" + r.t); }", "}",
+                                                          ("py", "test_n13_coluna_criada_e_desfeita_em_volta_da_exportacao")),
 }
 
 

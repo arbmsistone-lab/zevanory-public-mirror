@@ -125,7 +125,9 @@ export async function computePlan({ sql, env = {}, day, encryptionRequired = ENC
   const plan = { schema: PLAN_SCHEMA, v: CONTRACT_V2, day, eligible, excluded, fingerprint, parts, per_part_max: MAX_DRILL_TABLES };
   const text = canonical(plan);
   const plan_id = rk.state === "present" ? await hmacHex(rk, text) : "sha256:" + (await sha256(text));
-  return { ok: true, failures: [], plan, plan_id, auth: rk.state === "present" ? { state: "autenticado", alg: "HMAC-SHA256", kid: rk.kid } : { state: "nao_autenticado" }, rk };
+  // colsOf (fora do plano, só para a parte): nomes das colunas por tabela, na ordem do banco, para conferir o conteúdo exportado.
+  const colsOf = Object.fromEntries(inv.map((x) => [x.t, x.cols.map((c) => c[0])]));
+  return { ok: true, failures: [], plan, plan_id, auth: rk.state === "present" ? { state: "autenticado", alg: "HMAC-SHA256", kid: rk.kid } : { state: "nao_autenticado" }, rk, colsOf };
 }
 
 // Resposta pública da rota de plano: só contagens, plan_id e o kid (nunca nomes de tabela ou dados).
@@ -141,7 +143,19 @@ export async function planBackup(env = {}, { sqlFactory, now = Date.now(), encry
   }
 }
 
-export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1, encryptionRequired = ENCRYPTION_REQUIRED, planId = null } = {}) {
+export const RUN_ID_RE = /^[0-9a-f]{32}$/;
+
+// P20 v2: parte REJEITADA não grava NADA no KV (nem o próprio relatório). O relatório válido que estiver lá (de outra
+// chamada) fica intacto; a rejeição volta só na resposta HTTP. A consolidação exige o run_id desta execução em TODAS as
+// partes, então uma parte rejeitada nesta execução nunca é suprida por um relatório antigo (part_run_mismatch).
+function reject(report) {
+  report.ok = false;
+  report.rejected = true;
+  report.finishedAt = new Date().toISOString();
+  return report;
+}
+
+export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1, encryptionRequired = ENCRYPTION_REQUIRED, planId = null, runId = null } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
   const report = { schema: "zevanory-backup/v1", day, part, parts, startedAt: new Date(now).toISOString(), ok: false, kv: {}, neon: {}, restore: {}, failures: [] };
@@ -159,15 +173,18 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   const sql = sqlFactory(String(env.DATABASE_URL));
   const v2 = typeof planId === "string" && planId.length > 0;
   let myTables = null;
+  let pl = null;
   try {
     // P20 v2: a parte RELÊ o inventário e recalcula o plano. Se o plan_id não for o recebido (esquema mudou, outro dia,
     // plano forjado), falha ANTES de qualquer escrita: nunca há cobertura parcial aceita.
     if (v2) {
-      const pl = await computePlan({ sql, env, day, encryptionRequired });
       report.contract = CONTRACT_V2;
-      if (!pl.ok) { pl.failures.forEach(fail); return finishPart(kv, report, part); }
-      if (pl.plan_id !== planId) { fail("inventory_changed"); return finishPart(kv, report, part); }
-      if (!Number.isInteger(part) || part < 0 || part >= pl.plan.parts) { fail("part_out_of_range"); return finishPart(kv, report, part); }
+      if (typeof runId !== "string" || !RUN_ID_RE.test(runId)) { fail("run_id_missing_or_malformed"); return reject(report); }
+      report.run_id = runId;
+      pl = await computePlan({ sql, env, day, encryptionRequired });
+      if (!pl.ok) { pl.failures.forEach(fail); return reject(report); }
+      if (pl.plan_id !== planId) { fail("inventory_changed"); return reject(report); }
+      if (!Number.isInteger(part) || part < 0 || part >= pl.plan.parts) { fail("part_out_of_range"); return reject(report); }
       report.parts = pl.plan.parts;
       report.plan_id = pl.plan_id;
       report.auth = pl.auth;
@@ -213,7 +230,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
       else if (n > MAX_TABLE_ROWS) { skipped.push({ table: t, rows: n, reason: "rows_over_cap" }); fail("not_backed_up:" + t); }
       else wanted.push({ table: t, rows: n });
     });
-    if (v2 && report.failures.includes("inventory_changed")) return finishPart(kv, report, part);
+    if (v2 && report.failures.includes("inventory_changed")) return reject(report);
     const drillSet = wanted.slice(0, MAX_DRILL_TABLES);
     for (const w of wanted.slice(MAX_DRILL_TABLES)) { skipped.push({ table: w.table, rows: w.rows, reason: "over_table_budget" }); fail("not_backed_up:" + w.table); }
     report.totalTables = stats.length;
@@ -244,6 +261,23 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     const fresh = toDump.length ? await sql.query(
       `select t, (xpath('/row/j/text()', query_to_xml(format('select coalesce(json_agg(x), ''[]''::json)::text as j from public.%I x', t), false, true, '')))[1]::text as j
          from unnest($1::text[]) as t`, [toDump]) : [];
+    // P20 v2: o esquema pode mudar entre a validação do plano (acima) e a exportação. Duas conferências DEPOIS da
+    // exportação e ANTES de qualquer escrita no KV:
+    //  (a) cada linha exportada tem exatamente as colunas do inventário validado (pega coluna criada, removida ou
+    //      renomeada no meio, mesmo que desfeita antes de (b));
+    //  (b) o plano é recalculado e tem de ser o mesmo (pega também mudança de tipo ou de nulidade).
+    // Divergência: a parte é rejeitada sem gravar (o dia não fecha: falta o relatório desta execução).
+    if (v2) {
+      for (const r of fresh || []) {
+        const want = (pl.colsOf[r.t] || []).join("\u0000");
+        let rowsJ;
+        try { rowsJ = JSON.parse(String(r.j ?? "[]")); } catch { rowsJ = null; }
+        if (!Array.isArray(rowsJ) || rowsJ.some((o) => !o || typeof o !== "object" || Object.keys(o).join("\u0000") !== want)) { fail("export_columns_mismatch:" + r.t); }
+      }
+      const post = await computePlan({ sql, env, day, encryptionRequired });
+      if (!post.ok || post.plan_id !== planId) fail("inventory_changed_during_export");
+      if (report.failures.some((f) => f === "inventory_changed_during_export" || f.startsWith("export_columns_mismatch:"))) return reject(report);
+    }
     const dumps = [...fresh, ...Object.entries(reused).map(([t, j]) => ({ t, j }))];
     const dumpBytes = fresh.reduce((s, r) => s + String(r.j ?? "").length, 0);
     // Ensaio de restauração (contestação T2 do Sol, Ordem 008): completo aos domingos (UTC) ou sem cópia anterior;
@@ -382,7 +416,7 @@ async function finishPart(kv, report, part) {
 // OK only when every part ran today, every part passed and no table was left out.
 // P20 diário D1 (PR 4): com sqlFactory, a reconciliação diária Neon × diário entra no relatório (campo diario). Em
 // DIARIO_FASE "sombra" a divergência é alerta (warnings); em "ativo", falha de P20. Sem env.DIARIO: "nao_configurado".
-export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED, sqlFactory = null, diarioFase = DIARIO_FASE, planId = null } = {}) {
+export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED, sqlFactory = null, diarioFase = DIARIO_FASE, planId = null, runId = null } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const v2 = typeof planId === "string" && planId.length > 0;
   const day = new Date(now).toISOString().slice(0, 10);
@@ -410,7 +444,7 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
   const efeito = efeitoNoRelatorio(report.diario);
   if (efeito.alerta) report.warnings.push(efeito.alerta);
   if (efeito.falha) failures.push(efeito.falha);
-  if (v2) await finalizeV2(env, { report, got, parts, planId, day, failures });
+  if (v2) await finalizeV2(env, { report, got, parts, planId, runId, day, failures });
   report.ok = failures.length === 0 && valid.length === parts && report.restore.neon.ok === report.restore.neon.tables && report.totalTables != null && report.neon.tables === report.totalTables - report.neon.excluded.length;
   if (v2) await sealReport(env, report);
   await kv.put(REPORT_KEY, JSON.stringify(report));
@@ -418,9 +452,11 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
 }
 
 // P20 v2: conferência da consolidação contra o plano autenticado. Qualquer divergência reprova o DIA inteiro.
-async function finalizeV2(env, { report, got, parts, planId, day, failures }) {
+async function finalizeV2(env, { report, got, parts, planId, runId, day, failures }) {
   report.contract = CONTRACT_V2;
   report.plan_id = planId;
+  if (typeof runId !== "string" || !RUN_ID_RE.test(runId)) { failures.push("run_id_missing_or_malformed"); return; }
+  report.run_id = runId;
   const p0 = got[0];
   const plan = p0 && p0.plan;
   if (!plan || plan.schema !== PLAN_SCHEMA || plan.day !== day || plan.parts !== parts || !Array.isArray(plan.eligible)) { failures.push("plan_missing_or_malformed"); return; }
@@ -435,12 +471,14 @@ async function finalizeV2(env, { report, got, parts, planId, day, failures }) {
   got.forEach((r, i) => {
     if (!r || r.day !== day) return; // já reprovado acima (part_missing)
     if (r.contract !== CONTRACT_V2 || r.plan_id !== planId || r.part !== i) { failures.push("part_plan_mismatch:" + i); return; }
+    // Relatório de OUTRA execução (parte desta execução rejeitada ou não chamada): nunca supre a parte.
+    if (r.run_id !== runId) { failures.push("part_run_mismatch:" + i); return; }
     const names = Object.keys(r.tables || {}).sort(byCodepoint);
     const want = [...assigned[i]].sort(byCodepoint);
     if (names.length !== want.length || names.some((t, k) => t !== want[k])) failures.push("part_tables_mismatch:" + i);
     for (const t of names) { if (seen.has(t)) failures.push("table_in_two_parts:" + t); seen.set(t, i); }
     if (names.length && !(r.bundle && typeof r.bundle.sha256 === "string" && /^[0-9a-f]{64}$/.test(r.bundle.sha256))) failures.push("part_bundle_hash_missing:" + i);
-    report.parts_detail.push({ part: i, bundle_key: r.bundle ? r.bundle.key : null, bundle_sha256: r.bundle ? r.bundle.sha256 : null, tables: r.tables || {} });
+    report.parts_detail.push({ part: i, run_id: r.run_id, bundle_key: r.bundle ? r.bundle.key : null, bundle_sha256: r.bundle ? r.bundle.sha256 : null, tables: r.tables || {} });
   });
   const missing = plan.eligible.filter((t) => !seen.has(t));
   if (missing.length) failures.push("coverage_incomplete:" + missing.length);

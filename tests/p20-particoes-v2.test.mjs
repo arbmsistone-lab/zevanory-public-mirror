@@ -9,6 +9,7 @@ import { planDecision } from "../scripts/ops/data-backup.mjs";
 
 const KEY = Buffer.alloc(32, 9).toString("base64");
 const DAY = "2026-11-17";
+const RUN = "1".repeat(32);
 const NOW = Date.parse(DAY + "T12:00:00Z");
 const tables = (n, prefix = "t") => Array.from({ length: n }, (_, i) => `${prefix}${String(i).padStart(3, "0")}`);
 const inventoryRows = (names) => names.map((t) => ({ t, cols: JSON.stringify([["id", "integer", "NO"], ["txt", "text", "YES"]]) }));
@@ -84,15 +85,22 @@ test("plan_id: HMAC do plano; muda com tabela nova, coluna alterada ou outro dia
   assert.match(legado.plan_id, /^sha256:/);
 });
 
-test("parte com plan_id diferente (inventário mudou) falha ANTES de qualquer escrita no banco ou no KV", async () => {
+test("parte com plan_id diferente (inventário mudou) é rejeitada sem NENHUMA escrita: o relatório válido no KV fica intacto", async () => {
   const sql = fakeSql(tables(40));
   const kv = memKv();
+  const valido = JSON.stringify({ contract: 2, day: DAY, part: 0, run_id: RUN, ok: true, failures: [] });
+  kv.m.set(REPORT_KEY + ":part:0", valido);
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://falso", P20_BACKUP_KEY: KEY };
-  const r = await runDataBackup(env, { sqlFactory: () => sql, now: NOW, part: 0, parts: 2, planId: "0".repeat(64) });
+  const r = await runDataBackup(env, { sqlFactory: () => sql, now: NOW, part: 0, parts: 2, planId: "0".repeat(64), runId: "2".repeat(32) });
   assert.equal(r.ok, false);
+  assert.equal(r.rejected, true);
   assert.deepEqual(r.failures, ["inventory_changed"]);
-  assert.ok(sql.seen.every((q) => /^\s*select/i.test(q)), "nenhuma instrução de escrita");
-  assert.deepEqual([...kv.m.keys()], [REPORT_KEY + ":part:0"], "só o relatório da parte");
+  assert.ok(sql.seen.every((q) => /^\s*select/i.test(q)), "nenhuma instrução de escrita no banco");
+  assert.deepEqual([...kv.m.keys()], [REPORT_KEY + ":part:0"], "nenhuma chave nova no KV");
+  assert.equal(kv.m.get(REPORT_KEY + ":part:0"), valido, "relatório válido byte a byte igual");
+  const semRun = await runDataBackup(env, { sqlFactory: () => sql, now: NOW, part: 0, parts: 2, planId: "0".repeat(64) });
+  assert.deepEqual(semRun.failures, ["run_id_missing_or_malformed"]);
+  assert.equal(kv.m.get(REPORT_KEY + ":part:0"), valido);
 });
 
 test("parte fora do intervalo do plano falha sem escrever", async () => {
@@ -101,9 +109,10 @@ test("parte fora do intervalo do plano falha sem escrever", async () => {
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://falso", P20_BACKUP_KEY: KEY };
   const p = await planBackup(env, { sqlFactory: () => sql, now: NOW });
   assert.equal(p.parts, 2);
-  const r = await runDataBackup(env, { sqlFactory: () => sql, now: NOW, part: 2, parts: 3, planId: p.plan_id });
+  const r = await runDataBackup(env, { sqlFactory: () => sql, now: NOW, part: 2, parts: 3, planId: p.plan_id, runId: RUN });
   assert.deepEqual(r.failures, ["part_out_of_range"]);
   assert.ok(sql.seen.every((q) => /^\s*select/i.test(q)));
+  assert.equal(kv.m.size, 0, "parte rejeitada não grava no KV");
 });
 
 // Consolidação: relatórios das partes gravados à mão (como o Worker grava), para provocar cada divergência.
@@ -114,7 +123,7 @@ async function consolidate(mutate = () => {}) {
   const pl = await computePlan({ sql, env, day: DAY });
   const asg = assignParts(pl.plan.eligible, pl.plan.parts);
   const parts = asg.map((names, i) => ({
-    schema: "zevanory-backup/v1", contract: 2, day: DAY, part: i, parts: pl.plan.parts, plan_id: pl.plan_id, ok: true, failures: [],
+    schema: "zevanory-backup/v1", contract: 2, day: DAY, part: i, parts: pl.plan.parts, plan_id: pl.plan_id, run_id: RUN, ok: true, failures: [],
     ...(i === 0 ? { plan: pl.plan, totalTables: 40, kv: {}, restore: { kv: null } } : {}),
     neon: { tables: names.length, rows: names.length, excluded: [], skipped: [] }, restore: { neon: { tables: names.length, ok: names.length, rows: names.length } },
     encryption: { state: "cifrado", kid: "k" }, bundle: { key: `zpc:backup:v1:neon:${DAY}:part:${i}`, sha256: "a".repeat(64) },
@@ -122,7 +131,7 @@ async function consolidate(mutate = () => {}) {
   }));
   mutate(parts, pl);
   parts.forEach((r, i) => kv.m.set(`${REPORT_KEY}:part:${i}`, JSON.stringify(r)));
-  const rep = await finalizeBackup(env, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id });
+  const rep = await finalizeBackup(env, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id, runId: RUN });
   return { rep, pl, kv };
 }
 
@@ -131,6 +140,8 @@ test("consolidação v2 íntegra: relatório autenticado inteiro (HMAC sobre os 
   assert.deepEqual(rep.failures, []);
   assert.equal(rep.ok, true);
   assert.equal(rep.auth.state, "autenticado");
+  // run_id de cada parte vai DENTRO do relatório autenticado (parts_detail).
+  assert.ok(rep.parts_detail.every((d) => d.run_id === RUN));
   // Lista explícita (não a constante do módulo): um campo retirado da autenticação derruba este teste.
   assert.deepEqual(rep.auth.fields, ["contract", "day", "plan_id", "plan", "parts", "parts_detail", "ok", "failures", "encryption"]);
   const body = Object.fromEntries(AUTHENTICATED_FIELDS.map((k) => [k, rep[k] === undefined ? null : rep[k]]));
@@ -152,6 +163,10 @@ test("consolidação v2 reprova: tabela em duas partes, tabela faltando, plano a
   assert.ok(outro.rep.failures.includes("part_plan_mismatch:1"));
   const semHash = await consolidate((ps) => { delete ps[0].bundle; });
   assert.ok(semHash.rep.failures.includes("part_bundle_hash_missing:0"));
+  // Parte desta execução rejeitada (sem gravar): o relatório que sobrou no KV é de OUTRA execução e não supre a parte.
+  const outraExec = await consolidate((ps) => { ps[1].run_id = "2".repeat(32); });
+  assert.ok(outraExec.rep.failures.includes("part_run_mismatch:1"));
+  assert.equal(outraExec.rep.ok, false);
 });
 
 test("condutor: rota de plano ausente (404) = legado v1 sinalizado; plano válido = v2; resposta inválida = falha", () => {

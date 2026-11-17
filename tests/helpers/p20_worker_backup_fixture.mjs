@@ -3,6 +3,7 @@
 // com um KV em memória. Assim o ensaio lê exatamente o formato que o Worker de produção grava.
 // Uso: PGHOST=... PGDATABASE=<banco-origem-sintetico> node tests/helpers/p20_worker_backup_fixture.mjs <saida.json> <agora-iso>
 // O "sql" do Worker é atendido pelo psql (parâmetros $n viram literais citados; saída CSV vira objetos).
+import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { runDataBackup, finalizeBackup, planBackup } from "../../worker/data-backup.mjs";
@@ -106,14 +107,15 @@ export async function buildFixtureV2({ now, env = process.env, kvSeed = {}, hook
   const wenv = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://fixture-local-only", ...(env.P20_BACKUP_KEY ? { P20_BACKUP_KEY: env.P20_BACKUP_KEY } : {}) };
   const legacy = env.P20_BACKUP_KEY ? {} : { encryptionRequired: false };
   const plan = await planBackup(wenv, { sqlFactory: () => sql, now, ...legacy });
+  const runId = randomBytes(16).toString("hex");
   const reports = [];
   if (plan.ok) {
     for (let part = 0; part < plan.parts; part++) {
       if (hooks.beforePart) await hooks.beforePart(part);
-      reports.push(await runDataBackup(wenv, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, ...legacy }));
+      reports.push(await runDataBackup(wenv, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId, ...legacy }));
     }
   }
-  const final = plan.ok ? await finalizeBackup(wenv, { parts: plan.parts, now, planId: plan.plan_id, ...legacy }) : null;
+  const final = plan.ok ? await finalizeBackup(wenv, { parts: plan.parts, now, planId: plan.plan_id, runId, ...legacy }) : null;
   return { kv: Object.fromEntries([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:"))), plan, reports, final };
 }
 
