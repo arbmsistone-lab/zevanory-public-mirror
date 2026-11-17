@@ -122,7 +122,7 @@ jobs:
           name: ensaio-voz
           path: ${{ runner.temp }}/voz/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7  # voz real guardada 7 dias: reproduzir falhas de alinhamento sem gerar voz nova (ensaio 43789727279 expirou)
   render:
     needs: [autorizar, voz]
     if: ${{ github.ref == 'refs/heads/gh-pages' && needs.autorizar.outputs.sha != '' }}
