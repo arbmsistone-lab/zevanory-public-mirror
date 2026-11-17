@@ -217,6 +217,9 @@ export function decideSiteRoute(mode, { status, headers = {}, body }, product, a
   const text = searchableText(body || "");
   if (mode === "globally-blocked") {
     if (links.length) return { verdict: FAIL, reason: "site_route_checkout_while_locked" };
+    // GPT-6 (#1068): com a venda fechada, o botão interno de compra já é reprovação (mesmo com o texto "pausadas");
+    // o salto não é consultado nesse modo, então a decisão não pode depender dele.
+    if (temBotaoIr) return { verdict: FAIL, reason: "site_route_ir_button_while_locked" };
     if (status === 200 && allow.site_paused_markers.some((m) => text.includes(norm(m)))) return { verdict: PASS, reason: "site_route_paused_as_expected" };
     // NC-1004-01 (DEC-04): a assinatura desativada responde 404 sem redirecionamento e sem checkout. Só vale para
     // produto de kind "subscription"; os kits continuam exigindo a página "vendas pausadas".

@@ -311,6 +311,11 @@ test("P18C.20: botão interno /hotmart/<slug>/ir — 302 para a oferta da lista 
   assert.match(decideSiteRoute("enabled", pagina, IA, allow, { ir: ir(302, "https://pay.hotmart.com/L107979973K?off=ksb5di36&src=diagnostico") }).reason, /wrong_product_for_page/, "[P18C.20] /ir para o produto errado");
   assert.match(decideSiteRoute("enabled", pagina, IA, allow, { ir: ir(302, "https://evil.example/F107979716H?off=g9knd34r") }).reason, /host_not_allowed/, "[P18C.20] /ir para host fora da lista");
   assert.equal(decideSiteRoute("globally-blocked", pagina, IA, allow, { ir: ir(302, IA_URL) }).verdict, FAIL, "[P18C.20] trava fechada com botão de compra continua reprovando");
+  // GPT-6 (#1068): página com "vendas pausadas" E o botão /ir, sem salto consultado (como no runLive com a trava fechada)
+  const pausadaComBotao = { status: 200, headers: {}, body: '<p>As vendas do IA na Prática estão pausadas no momento.</p><a href="/hotmart/ia-na-pratica/ir?utm_source=direto">Comprar</a>' };
+  assert.ok(allow.site_paused_markers.some((m) => /pausad/i.test(m)), "[P18C.20] o marcador de pausa da lista está no texto do caso");
+  assert.equal(decideSiteRoute("globally-blocked", pausadaComBotao, IA, allow).reason, "site_route_ir_button_while_locked", "[P18C.20] pausada + botão /ir com a trava fechada reprova");
+  assert.equal(decideSiteRoute("globally-blocked", { status: 200, headers: {}, body: '<p>As vendas do IA na Prática estão pausadas no momento.</p>' }, IA, allow).verdict, PASS, "[P18C.20] pausada sem botão continua passando");
 });
 test("P18C.21: runLive segue o /ir só com utm_source=diagnostico (fora das métricas comerciais) e só pelo host do site", async () => {
   const pedidos = [];
