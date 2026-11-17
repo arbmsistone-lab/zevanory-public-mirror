@@ -274,7 +274,30 @@ export function audioQuality(stderrEbur, silenceEnds, silenceStarts, voiceSecond
   if (maxGap > 1.6) reasons.push("dead_air_" + maxGap.toFixed(1));
   return { ok: reasons.length === 0, lufs, peak, maxGap: Math.round(maxGap * 10) / 10, reasons };
 }
-export async function renderShort(plan,base="/tmp/zevanory-daily-short",options={}){
+// Shorts v3.8 no publicador (preparação; não ativa publicação): o slot OFERTA usa o render v3 quando o roteiro ativo
+// (data/shorts-v3/ativo.json) é do MESMO produto do plano do dia. O v3 decide pelo Laboratório de Criativos (objetivas +
+// júri, decisão assinada para o arquivo exato) e fala "link do perfil" (links na descrição de Shorts não são clicáveis).
+// Publicar continua exigindo publicacao_aprovada=true em data/shorts-padrao-v2.json (decisão do proprietário) e a
+// decisão APROVADO assinada em publishShort(). Qualquer outro slot/produto segue no v2, sem mudança.
+export function roteiroV3Para(plan, ativo = JSON.parse(readFileSync(new URL("../../data/shorts-v3/ativo.json", import.meta.url), "utf8"))) {
+  if (plan?.slot !== "oferta" || typeof ativo?.oferta !== "string") return null;
+  const spec = JSON.parse(readFileSync(new URL("../../" + ativo.oferta, import.meta.url), "utf8"));
+  return spec?.sku && spec.sku === plan?.entry?.product?.sku ? { path: ativo.oferta, spec } : null;
+}
+export function planoV3(plan, spec) {
+  const falas = spec.falas.map(f => f.texto);
+  const description = [falas[0], "", "Link clicável no perfil do canal: Kit " + spec.oferta.nome + ".", "Página do kit: " + plan.link, "", "#Shorts #ZEVANORY #PequenosNegocios", "", plan.marker].join("\n");
+  return { ...plan, v3: true, speech: falas.join(" "), description };
+}
+export async function renderShort(plan,base="/tmp/zevanory-daily-short",options={},{v3=roteiroV3Para(plan),renderV3Impl=null}={}){
+  if (v3) {
+    const renderV3 = renderV3Impl || (await import("../shorts-v3/render.mjs")).renderV3;
+    const config = JSON.parse(readFileSync(new URL("../../data/shorts-padrao-v2.json", import.meta.url), "utf8"));
+    const r = await renderV3(v3.path, base, { geminiKey: options.geminiKey, config, preview: options.preview !== false });
+    const aprovado = r?.avaliacao?.decisao === "APROVADO" && r?.qc?.audio?.ok === true && r?.decisao?.decisao === "APROVADO";
+    // mesmo contrato do v2 para o laço do publicador: qc.score 100 + ok só com o criativo APROVADO (objetivas + júri + áudio)
+    return { ...r, v3: true, voice: "gemini:" + config.voz_fixa, track: r?.qc?.track, qc: { ...r?.qc, ok: aprovado, score: aprovado ? 100 : 0 } };
+  }
   const {renderV2}=await import("../shorts-v2/render.mjs");
   return renderV2(plan,base,options);
 }
@@ -450,26 +473,27 @@ if (isMain) {
       const {planV2WithHistory}=await import("../shorts-v2/core.mjs");
       const plan = await planV2WithHistory(planSlot(day, slot, { salesOpen, hotmartOpen }),{hotmartOpen,kv:lockKv,note});
       if(!plan)continue; // Planning is a skipped slot, never a QC failure of the ramp.
+      const v3 = roteiroV3Para(plan); const planoFinal = v3 ? planoV3(plan, v3.spec) : plan;
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected:" + String(plan.gate.reason || "").replace(/[^a-z0-9_:,]/gi, "_"));
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
       const usage = lockKv ? await getUsage(lockKv) : {};
       if(!allow(usage,"gemini_tts_calls",4))throw Error("zero_cost_guard_gemini_quota");
       // Reserve usage before synthesis, including failed attempts. No fallback voice.
       if(lockKv)await addUsage(lockKv,"gemini_tts_calls",1);
-      const rendered = await renderShort(plan, base, {geminiKey:process.env.GEMINI_API_KEY,stateKv:lockKv,preview:dry});
+      const rendered = await renderShort(planoFinal, base, {geminiKey:process.env.GEMINI_API_KEY,stateKv:lockKv,preview:dry}, {v3});
       note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, decisao: dec.motivo, dry_run: dry }));
-      if(rendered.qc?.score!==100||rendered.qc?.ok!==true)throw Error("v2_qc_gate_failed");
+      if(rendered.qc?.score!==100||rendered.qc?.ok!==true)throw Error(rendered.v3?"v3_criativo_nao_aprovado:"+String(rendered.avaliacao?.motivos?.join("+")||"").slice(0,80):"v2_qc_gate_failed");
       if (dry) continue;
       const kv = lockKv;
       if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
-      const result = await publishShort(plan, await readFile(rendered.file), { accessToken, aprovacao: { decisao: rendered.decisao, chave: process.env.CRIATIVOS_DECISAO_KEY } });
+      const result = await publishShort(planoFinal, await readFile(rendered.file), { accessToken, aprovacao: { decisao: rendered.decisao, chave: process.env.CRIATIVOS_DECISAO_KEY } });
       await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
       const {recordMusicPublication}=await import("../shorts-v2/music-publications.mjs");
-      await recordMusicPublication(kv,plan,result,rendered.track);
-      const activity = await recordPublication(kv, plan, result);
+      await recordMusicPublication(kv,planoFinal,result,rendered.track);
+      const activity = await recordPublication(kv, planoFinal, result);
       jaHoje[slot] = true;
       note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
-      const pos = avaliarPosUpload(result, plan.privacyStatus);
+      const pos = avaliarPosUpload(result, planoFinal.privacyStatus);
       if (pos.estado === "restricao") { const ep = await congelarCanal(kv, day, pos.motivos).catch(() => null); note("error", "SHORTS_STATUS congelado: " + pos.motivos.join(",") + " " + JSON.stringify(ep)); break; }
     } catch (e) {
       failed++;
