@@ -94,7 +94,7 @@ export async function avaliar({criativo,padrao,quadrosPng,medicao,permitidos,ofi
  const objetivas=checagensObjetivas({criativo,medicao,permitidos,oficial},precos);
  let juri=null,modelo=null,erro=null;
  try{const partes=[{text:promptJuri(padrao)},...quadrosPng.map(b=>({inline_data:{mime_type:'image/png',data:Buffer.from(b).toString('base64')}}))];
-  const r=await gerarJSON({key,partes,fetchImpl,...(esperar?{esperar}:{})});juri=lerJuri(r.saida);modelo=r.modelo;}catch(e){erro=String(e.message||e).slice(0,200);}
+  const r=await gerarJSON({key,partes,fetchImpl,...(esperar?{esperar}:{})});juri=lerJuri(r.saida);modelo=r.modelo;}catch(e){erro=String(e.message||e).slice(0,800);}// ensaio 44112362297: 200 cortava o 4º modelo do diagnóstico (só modelo, HTTP e status do Google; nunca chave nem conteúdo)
  return {...decidir({objetivas,juri,nota_minima:padrao.nota_minima}),juri,modelo,erro};
 }
 // Ciclo autônomo: cria -> avalia -> (refaz com os problemas apontados) no máximo 3 vezes. Sem aprovação na 3ª

@@ -190,3 +190,17 @@ test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BL
   const bloq = await cicloCriativo({ gerar: async () => ({}), avaliarCriativo: async () => { n++; return { aprovado: false, decisao: "DESCARTADO", nota_geral: 9.1, motivos: ["nota_abaixo:oferta=9.1"] }; } });
   assert.deepEqual([bloq.estado, n], ["BLOQUEADO", 3]); assert.match(bloq.relatorio, /3 tentativas.*9\.1.*oferta=9\.1/);
 });
+// Ensaio 44112362297 (17/11): o erro do júri era cortado em 200 caracteres e o resultado do 4º modelo sumia do log
+// ("gemini-2.5-flash="). Com os 4 modelos falhando (2 x 503 em dois deles, timeout e 429), o erro traz TODOS, sem a chave.
+test("júri indisponível: o diagnóstico em avaliar() traz os 4 modelos inteiros (não corta o último), sem a chave", async () => {
+  const { avaliar: av } = await import("../scripts/criativos/avaliador.mjs");
+  const f = async (url) => { const m = url.match(/models\/([^:]+):/)[1];
+    if (m === "gemini-3.6-flash") throw Object.assign(Error("x"), { name: "TimeoutError" });
+    const st = m === "gemini-2.5-flash" ? 429 : 503, s = st === 429 ? "RESOURCE_EXHAUSTED" : "UNAVAILABLE";
+    return { status: st, json: async () => ({ error: { status: s, message: "chave-secreta-xyz" } }) }; };
+  modelosFora.clear();  // o conjunto é global na execução; outro teste não pode decidir quais modelos são chamados aqui
+  const r = await av({ criativo: { sku: "X", falas: [], oferta: {}, celulasExigidas: [] }, padrao: validarPadrao(montarPadrao({ evidencia: [], geradoEm: "base" })), quadrosPng: [], medicao: { medidas: {} }, permitidos: [], oficial: null, key: "chave-secreta-xyz", fetchImpl: f, esperar: async () => {} }).catch((e) => ({ erro: "lancou:" + e.message }));
+  modelosFora.clear();
+  assert.match(String(r.erro), /gemini-3\.8-flash=503_UNAVAILABLE,gemini-3\.8-flash=503_UNAVAILABLE,gemini-3\.7-flash=503_UNAVAILABLE,gemini-3\.7-flash=503_UNAVAILABLE,gemini-3\.6-flash=rede_TimeoutError,gemini-2\.5-flash=429_RESOURCE_EXHAUSTED,gemini-2\.5-flash=429_RESOURCE_EXHAUSTED$/, String(r.erro));
+  assert.doesNotMatch(String(r.erro), /chave-secreta/);
+});
