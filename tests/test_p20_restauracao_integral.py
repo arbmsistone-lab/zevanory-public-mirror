@@ -471,6 +471,58 @@ class RestauracaoIntegral(unittest.TestCase):
         self.assertEqual(w["kv_alteradas_por_a"], [], "A sem posse não grava nada")
         self.assertTrue(w["b_part"]["ok"], w["b_part"])  # B, dona, termina a parte dela
 
+    # ---- contra-auditoria GPT-6 de 17/11, quarta rodada (PR #1070, c9847e12): recuperação, reserva e posse expirada ----
+    def _archivable_and_restorable(self, src, dst, ddl, elig, kvfile, out):
+        a = archive(kvfile, out)
+        self.assertEqual(a.returncode, 0, a.stdout[-600:])
+        with open(os.path.join(out, "manifest.json"), encoding="utf-8") as fh:
+            man = json.load(fh)
+        self.assertEqual((man["auth_state"], man["complete"]), ("autenticado", True))
+        fresh(dst, owner=APP)
+        r = restore(out, dst, ddl)
+        self.assertEqual(r.returncode, 0, r.stdout[-800:])
+        self.assertEqual(notice(r, "RESTORE_NEW_DATABASE")["estado"], "completo")
+        self.assertEqual(compare(src, dst, elig), [])
+
+    def test_n19_queda_entre_fechar_o_dia_e_publicar_reinicio_republica(self):
+        """A execução morre depois de fechar o dia no PostgreSQL e antes de publicar no KV. No reinício, o plano diz
+        "dia concluído" e a consolidação de verificação republica o relatório guardado; a cópia é arquivável e restaurável."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n19", 94, scenario="queda_entre_pg_e_kv")
+        self.assertEqual(code, 0, w)
+        self.assertTrue(w["partes_a_ok"], w)
+        q = w["apos_queda"]
+        self.assertEqual((q["linha"]["state"], q["linha"]["tem_relatorio"], q["relatorio_no_kv"]), ("complete", True, False), q)
+        self.assertEqual((w["plano_reinicio"]["day_complete"], w["plano_reinicio"]["plan_id_igual"]), (True, True), w)
+        self.assertEqual((w["reinicio"]["failures"], w["reinicio"]["publicacao"], w["reinicio"]["report_ok"]), (["day_already_complete"], "republicado", True))
+        self.assertEqual(w["segunda_verificacao"], "ja_publicado")
+        self.assertEqual((w["ok"], w["auth"]), (True, "autenticado"))
+        self._archivable_and_restorable(src, dst, ddl, elig, kvfile, out)
+
+    def test_n20_chamada_rejeitada_nao_reserva_o_dia(self):
+        """Chamadas autenticadas com plano inválido (forjado, parte fora do plano) chegam primeiro: são rejeitadas sem
+        reservar o dia, e a execução legítima conclui o dia em seguida."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n20", 94, scenario="chamada_rejeitada_nao_reserva")
+        self.assertEqual(code, 0, w)
+        self.assertEqual(w["rejeitadas"], [["inventory_changed"], ["part_out_of_range"]])
+        self.assertIsNone(w["linha_depois_das_rejeitadas"], "nenhuma posse reservada pelas chamadas rejeitadas")
+        self.assertTrue(w["partes_ok"] and w["ok"], w)
+        self._archivable_and_restorable(src, dst, ddl, elig, kvfile, out)
+
+    def test_n21_posse_expirada_execucao_antiga_nao_altera_a_nova(self):
+        """A posse de A expira com A pausada depois de obtê-la; B assume e conclui; A retomada não grava nada (cerca de
+        posse antes de cada gravação). A cópia de B fica intacta, arquivável e restaurável."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n21", 94, scenario="posse_expirada_execucao_antiga")
+        self.assertEqual(code, 0, w)
+        self.assertEqual((w["a0_ok"], w["a_gate"]), (True, "posse_obtida"), w)
+        self.assertTrue(all(w["b_partes_ok"]) and w["ok"], w)
+        self.assertEqual(w["dono_apos_b"], {"igual_b": True, "state": "complete"})
+        r = w["a_retomada"]
+        self.assertTrue(len(r["parte1"]) == 1 and r["parte1"][0].startswith("ownership_lost:"), r)
+        self.assertTrue(all(f == ["day_already_complete"] for f in r["resto"]), r)
+        self.assertEqual(r["finalize"], ["day_already_complete"])
+        self.assertEqual(w["kv_alteradas_por_a"], [], "a execução antiga não altera nenhum arquivo da nova")
+        self._archivable_and_restorable(src, dst, ddl, elig, kvfile, out)
+
 
 if __name__ == "__main__":
     unittest.main()

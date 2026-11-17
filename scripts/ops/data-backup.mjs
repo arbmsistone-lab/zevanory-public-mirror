@@ -23,11 +23,19 @@ const askPlan = async () => {
 export function planDecision({ http, body }) {
   if (http === 404) return { mode: "v1" };
   // Dia já concluído e aprovado (relatório v2 autenticado): nada a fazer; a cópia do dia é imutável.
-  if (http === 409 && body && body.day_complete === true && Array.isArray(body.failures) && body.failures.includes("day_already_complete")) return { mode: "done" };
+  if (http === 409 && body && body.day_complete === true && Array.isArray(body.failures) && body.failures.includes("day_already_complete")) {
+    const ok = /^[0-9a-f]{64}$/.test(String(body.plan_id || "")) && Number.isInteger(body.parts) && body.parts >= 1 && body.parts <= 6;
+    return ok ? { mode: "done", planId: body.plan_id, parts: body.parts } : { mode: "fail", failures: ["day_complete_without_report_plan"] };
+  }
   if (http === 200 && body && body.ok === true && /^[0-9a-f]{64}$/.test(String(body.plan_id || "")) && Number.isInteger(body.parts) && body.parts >= 1 && body.parts <= 6) {
     return { mode: "v2", planId: body.plan_id, parts: body.parts };
   }
   return { mode: "fail", failures: (body && body.failures) || ["plan_http_" + http] };
+}
+
+export function doneVerdict(body) {
+  const f = body && Array.isArray(body.failures) ? body.failures : [];
+  return { ok: f.length === 1 && f[0] === "day_already_complete" && ["ja_publicado", "republicado"].includes(body.publicacao) && body.report_ok === true };
 }
 
 async function main() {
@@ -35,7 +43,15 @@ async function main() {
   const plan = await askPlan();
   const d = planDecision(plan);
   console.log("::notice title=DATA_BACKUP_PLAN::" + JSON.stringify({ http: plan.http, mode: d.mode, parts: d.parts ?? null, eligible: plan.body?.eligible ?? null, excluded: plan.body?.excluded ?? null, auth: plan.body?.auth ?? null, failures: d.failures ?? [] }));
-  if (d.mode === "done") { console.log("::notice title=DATA_BACKUP_DIA_CONCLUIDO::o backup de hoje já foi concluído e aprovado; nenhuma escrita"); return; }
+  if (d.mode === "done") {
+    // Dia já concluído: a consolidação confere se o relatório aprovado está publicado no KV e, se uma queda o deixou só no
+    // banco, o republica (recuperação). Nada mais é gravado.
+    const { http, body } = await call(`finalize=1&parts=${d.parts}&plan_id=${d.planId}&run_id=${randomBytes(16).toString("hex")}`);
+    const v = doneVerdict(body);
+    console.log((v.ok ? "::notice" : "::error") + " title=DATA_BACKUP_DIA_CONCLUIDO::" + JSON.stringify({ http, publicacao: body?.publicacao ?? null, failures: body?.failures ?? null }));
+    if (!v.ok) process.exit(1);
+    return;
+  }
   if (d.mode === "fail") { console.log("::error title=DATA_BACKUP::plan_failed " + (d.failures || []).join(",").slice(0, 300)); process.exit(1); }
   if (d.mode === "v1") console.log("::warning title=DATA_BACKUP_LEGADO_V1::Worker sem a rota de plano: 3 partes fixas, sem plano autenticado");
   const parts = d.mode === "v2" ? d.parts : LEGACY_PARTS;

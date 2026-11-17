@@ -95,6 +95,18 @@ M = {
                                                       ("node", "consolidação v2 íntegra")),
     "V33 rota aceita chamada legada v1": (W, "  if (!rawPlan || !rawRun) return { ok: false, failure: \"v2_required:plan_id_and_run_id\" };\n", "",
                                           ("node", "condutor: rota de plano")),
+    # Contra-auditoria GPT-6 17/11, quarta rodada (PR #1070 em c9847e12): reserva, cerca e recuperação da publicação.
+    "V34 parte reserva o dia antes de validar o plano": (W, "  let myTables = null;\n  let kvw = kv;", "  if (v2) await claimDay(sql, day, runId);\n  let myTables = null;\n  let kvw = kv;",
+                                                         ("node", "parte com plan_id diferente")),
+    "V35 gravação sem cerca de posse": (W, "      kvw = fencedKv(kv, () => fence(sql, day, runId));", "      kvw = kv;",
+                                        ("py", "test_n21_posse_expirada_execucao_antiga_nao_altera_a_nova")),
+    "V36 relatório aprovado não guardado no fechamento": (W, "set state = 'complete', report = $3, updated_at", "set state = 'complete', updated_at",
+                                                          ("py", "test_n19_queda_entre_fechar_o_dia_e_publicar_reinicio_republica")),
+    "V37 dia concluído sem republicação": (W, "        const rp = await republish(env, dsql, day);", "        const rp = { state: \"ausente\" };",
+                                           ("py", "test_n19_queda_entre_fechar_o_dia_e_publicar_reinicio_republica")),
+    "V38 consolidação reserva o dia": (W, "      const t = await dsql.query(`update zevanory_backup_day set updated_at = now() where day = $1::date and run_id = $2 and state = 'running' returning run_id`, [day, owner]);",
+                                       "      const t = (await claimDay(dsql, day, owner)).owner ? [1] : [];",
+                                       ("node", "parte fora do intervalo")),
 }
 
 

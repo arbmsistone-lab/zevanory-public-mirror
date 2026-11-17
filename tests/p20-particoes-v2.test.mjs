@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { partsFor, assignParts, computePlan, runDataBackup, finalizeBackup, planBackup, backupRunParams, MAX_PARTS, REPORT_KEY, AUTHENTICATED_FIELDS } from "../worker/data-backup.mjs";
 import { loadReportKey, hmacHex, canonical } from "../worker/backup-crypto.mjs";
-import { planDecision } from "../scripts/ops/data-backup.mjs";
+import { planDecision, doneVerdict } from "../scripts/ops/data-backup.mjs";
 
 const KEY = Buffer.alloc(32, 9).toString("base64");
 const DAY = "2026-11-17";
@@ -33,14 +33,19 @@ function fakeSql(names, { colsOf = null, days = new Map(), stealOnComplete = fal
         if (r.state === "running" && r.run_id === run) return [{ run_id: run }];
         return [];
       }
-      if (/^\s*update zevanory_backup_day set state = 'complete'/.test(q)) {
-        const [day, run] = params; const r = days.get(day);
+      if (/^\s*update zevanory_backup_day set state = 'complete', report = \$3/.test(q)) {
+        const [day, run, text] = params; const r = days.get(day);
         if (stealOnComplete && r) { r.run_id = "9".repeat(32); } // outra execução tomou a posse entre a reivindicação e o fechamento
-        if (r && r.state === "running" && r.run_id === run) { r.state = "complete"; return [{ run_id: run }]; }
+        if (r && r.state === "running" && r.run_id === run) { r.state = "complete"; r.report = text; return [{ run_id: run }]; }
         return [];
       }
+      if (/^\s*update zevanory_backup_day set updated_at = now\(\) where day = \$1::date and run_id = \$2 and state = 'running'/.test(q)) {
+        const [day, run] = params; const r = days.get(day);
+        return r && r.state === "running" && r.run_id === run ? [{ run_id: run }] : [];
+      }
       if (/to_regclass\('public\.zevanory_backup_day'\)/.test(q)) return [{ e: days.size > 0 }];
-      if (/^\s*select state from zevanory_backup_day/.test(q)) { const r = days.get(params[0]); return r ? [{ state: r.state }] : []; }
+      if (/^\s*select report from zevanory_backup_day/.test(q)) { const r = days.get(params[0]); return r && r.state === "complete" ? [{ report: r.report ?? null }] : []; }
+      if (/^\s*select state(, report)? from zevanory_backup_day/.test(q)) { const r = days.get(params[0]); return r ? [{ state: r.state, report: r.report ?? null }] : []; }
       return [];
     },
   };
@@ -116,6 +121,7 @@ test("parte com plan_id diferente (inventário mudou) é rejeitada sem NENHUMA e
   assert.equal(r.rejected, true);
   assert.deepEqual(r.failures, ["inventory_changed"]);
   assert.deepEqual(writesOutsideLock(sql), [], "nenhuma escrita no banco além da posse do dia");
+  assert.equal(sql.days.size, 0, "chamada rejeitada pelo plano NÃO reserva o dia");
   assert.deepEqual([...kv.m.keys()], [REPORT_KEY + ":part:0"], "nenhuma chave nova no KV");
   assert.equal(kv.m.get(REPORT_KEY + ":part:0"), valido, "relatório válido byte a byte igual");
   const semRun = await runDataBackup(env, { sqlFactory: () => sql, now: NOW, part: 0, parts: 2, planId: "0".repeat(64) });
@@ -132,6 +138,12 @@ test("parte fora do intervalo do plano falha sem escrever", async () => {
   const r = await runDataBackup(env, { sqlFactory: () => sql, now: NOW, part: 2, parts: 3, planId: p.plan_id, runId: RUN });
   assert.deepEqual(r.failures, ["part_out_of_range"]);
   assert.deepEqual(writesOutsideLock(sql), []);
+  assert.equal(sql.days.size, 0, "parte fora do plano NÃO reserva o dia");
+  // Consolidação sem posse prévia (nenhuma parte válida desta execução): recusada e também NÃO reserva o dia.
+  const fin = await finalizeBackup(env, { parts: 2, now: NOW, planId: p.plan_id, runId: RUN, sqlFactory: () => sql });
+  assert.deepEqual(fin.failures, ["day_not_claimed"]);
+  assert.equal(sql.days.size, 0);
+  assert.equal(kv.m.size, 0);
   assert.equal(kv.m.size, 0, "parte rejeitada não grava no KV");
 });
 
@@ -193,6 +205,23 @@ test("consolidação v2 íntegra: relatório autenticado inteiro (HMAC sobre os 
   const finD = await finalizeBackup({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv2 }, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id, runId: RUN, sqlFactory: () => roubado });
   assert.deepEqual(finD.failures, ["day_owned_by_other_run"]);
   assert.equal(kv2.m.has(REPORT_KEY), false, "sem posse no fechamento, nada é publicado");
+  // Recuperação: o relatório aprovado está no banco junto com o fechamento. Queda antes da publicação no KV (chave
+  // ausente): a consolidação seguinte do dia REPUBLICA exatamente o texto guardado; já publicado: nada é gravado.
+  assert.equal(sql.days.get(DAY).report, kv.m.get(REPORT_KEY), "o banco guarda o mesmo texto publicado");
+  const kv3 = memKv(); for (const [k, v] of kv.m) if (k !== REPORT_KEY) kv3.m.set(k, v);
+  const rec = await finalizeBackup({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv3 }, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id, runId: "4".repeat(32), sqlFactory: mesmoBanco });
+  assert.deepEqual([rec.failures, rec.publicacao, rec.report_ok], [["day_already_complete"], "republicado", true]);
+  assert.equal(kv3.m.get(REPORT_KEY), kv.m.get(REPORT_KEY));
+  assert.ok(doneVerdict(rec).ok);
+  const again = await finalizeBackup({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv3 }, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id, runId: "4".repeat(32), sqlFactory: mesmoBanco });
+  assert.equal(again.publicacao, "ja_publicado");
+  // Relatório guardado adulterado (HMAC inválido): NÃO é republicado.
+  const adult = fakeSql(tables(40)); adult.days.set(DAY, { run_id: RUN, state: "complete", report: sql.days.get(DAY).report.replace('"ok":true', '"ok":true,"x":1').replace(/"hmac":"[0-9a-f]{64}"/, '"hmac":"' + "0".repeat(64) + '"') });
+  const kv4 = memKv();
+  const bad = await finalizeBackup({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv4 }, { parts: pl.plan.parts, now: NOW, planId: pl.plan_id, runId: "4".repeat(32), sqlFactory: () => adult });
+  assert.equal(bad.publicacao, "invalido");
+  assert.equal(kv4.m.has(REPORT_KEY), false);
+  assert.equal(doneVerdict(bad).ok, false);
   const adulterado = { ...body, parts_detail: body.parts_detail.map((d, i) => (i === 0 ? { ...d, bundle_sha256: "c".repeat(64) } : d)) };
   assert.notEqual(rep.auth.hmac, await hmacHex(await loadReportKey(KEY), canonical(adulterado)));
 });
@@ -218,7 +247,9 @@ test("consolidação v2 reprova: tabela em duas partes, tabela faltando, plano a
 
 test("condutor: rota de plano ausente (404) = legado v1 sinalizado; plano válido = v2; resposta inválida = falha", () => {
   assert.deepEqual(planDecision({ http: 404, body: {} }), { mode: "v1" });
-  assert.deepEqual(planDecision({ http: 409, body: { ok: false, day_complete: true, failures: ["day_already_complete"] } }), { mode: "done" });
+  assert.deepEqual(planDecision({ http: 409, body: { ok: false, day_complete: true, plan_id: "a".repeat(64), parts: 3, failures: ["day_already_complete"] } }), { mode: "done", planId: "a".repeat(64), parts: 3 });
+  assert.equal(planDecision({ http: 409, body: { ok: false, day_complete: true, failures: ["day_already_complete"] } }).mode, "fail");
+  assert.equal(doneVerdict({ failures: ["day_already_complete"], publicacao: "ausente", report_ok: null }).ok, false);
   assert.equal(planDecision({ http: 409, body: { ok: false, failures: ["other"] } }).mode, "fail");
   assert.deepEqual(planDecision({ http: 200, body: { ok: true, plan_id: "a".repeat(64), parts: 4 } }), { mode: "v2", planId: "a".repeat(64), parts: 4 });
   assert.equal(planDecision({ http: 200, body: { ok: true, plan_id: "sha256:x", parts: 4 } }).mode, "fail");

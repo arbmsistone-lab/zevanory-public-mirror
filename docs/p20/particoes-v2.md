@@ -55,10 +55,13 @@ O desenho está na pasta de intercâmbio do Drive. Este documento registra **o q
 
 - Confere o HMAC do plano.
 - **Posse do dia no PostgreSQL** (segunda e terceira rodadas). O KV não tem operação atômica, então a disputa é feita numa tabela própria, `zevanory_backup_day` (uma linha por dia: `run_id`, `state` `running`/`complete`, `updated_at`):
-  - toda parte e toda consolidação v2 **reivindicam a posse numa única instrução** (`insert … on conflict … do update … where … returning`) **antes de qualquer gravação no KV**. A verificação e a posse são a mesma instrução, então não existe a ordem "B passa pela verificação, A conclui, B grava";
+  - a parte v2 **valida o plano primeiro** (inventário, `plan_id`, intervalo da parte) e **só então reivindica a posse**, numa única instrução (`insert … on conflict … do update … where … returning`), **antes de qualquer gravação no KV**. Uma chamada rejeitada não reserva o dia. A verificação e a posse são a mesma instrução, então não existe a ordem "B passa pela verificação, A conclui, B grava";
+  - a consolidação **nunca reserva** o dia: só confirma a posse que uma parte válida desta execução já obteve. Sem ela, `day_not_claimed`;
+  - **cerca de posse:** imediatamente antes de **cada** gravação no KV (bundle, ensaio, cópia do KV, relatório da parte), a execução confirma e renova a posse numa instrução atômica. Se a posse expirou e outra execução assumiu, nada mais é gravado (`ownership_lost`): a execução antiga não altera os arquivos da nova;
   - só a execução dona grava: bundles, relatórios das partes, cópia do KV e relatório principal;
   - enquanto A é dona (`running`), outra execução é recusada com `day_owned_by_other_run`. A posse só passa adiante se a dona ficar **30 minutos** sem reivindicar (execução morta); uma parte do Worker dura segundos;
-  - a consolidação **aprovada** marca o dia `complete` na própria posse **antes** de publicar o relatório principal. Se a posse tiver sido perdida, ela não publica. Se a publicação no KV falhar, o dia volta a `running` desta execução;
+  - a consolidação **aprovada** marca o dia `complete` e **guarda o relatório aprovado no PostgreSQL na mesma instrução**, na própria posse, e só então publica no KV. Se a posse tiver sido perdida, ela não publica;
+  - **recuperação da publicação:** se a execução morrer entre o fechamento no PostgreSQL e a publicação no KV, o dia fica fechado com o relatório guardado. No reinício, a rota de plano responde 409 com o `plan_id` e as partes do relatório aprovado, e o condutor pede uma consolidação de verificação. Ela republica o relatório guardado (HMAC conferido); se o KV já o tiver, nada é gravado. Relatório guardado com HMAC inválido não é republicado e o condutor falha;
   - dia `complete` nunca é reivindicado de novo, nem pela própria execução: plano, partes e consolidação posteriores do mesmo dia são recusados com `day_already_complete`, sem gravar. A rota de plano responde 409 e o condutor encerra com aviso, sem erro;
   - `zevanory_backup_day` fica **fora do inventário do backup**, como `zevanory_kv_backup`: é o controle do próprio backup.
 - **Rota do Worker novo só v2** (`backupRunParams`): sem `plan_id` e `run_id`, ou com eles malformados, a rota responde 400 antes de tocar no banco ou no KV. O caminho v1 continua na biblioteca, para os testes e a prova de restauração de cópias legadas, mas não é alcançável pela rota.
@@ -137,12 +140,15 @@ O teste roda no job `p20-restore-drill / tests`, com PostgreSQL 16 efêmero do s
   - **tipo alterado depois da validação e desfeito depois da exportação** (nomes iguais, inventário relido igual): rejeitado por `export_schema_mismatch`;
   - **execução A conclui o dia e B falha no mesmo dia** (plano, partes e consolidação de B, e reenvio da própria A): tudo rejeitado, o KV fica byte a byte igual, e a cópia de A continua arquivável, `completo`, e restaura igual à origem;
   - **corrida, ordem da contra-auditoria:** B passa pela verificação e **pausa**; A conclui; B é retomada (parte e consolidação). Nenhuma chave de A muda, e A é arquivada, `completo`, e restaura igual à origem;
-  - **corrida, ordem inversa:** B obtém a posse e pausa; A tenta o dia inteiro e não grava nada; B termina.
+  - **corrida, ordem inversa:** B obtém a posse e pausa; A tenta o dia inteiro e não grava nada; B termina;
+  - **queda entre o PostgreSQL e o KV:** a consolidação morre depois de fechar o dia e antes de publicar. No reinício, o relatório é republicado, e a cópia é arquivável, `completo`, e restaura igual à origem;
+  - **chamada rejeitada não reserva:** chamadas autenticadas com plano forjado ou parte fora do plano chegam primeiro e não criam posse; a execução legítima conclui o dia;
+  - **posse expirada:** A obtém a posse e pausa, a posse expira, B assume e conclui. A retomada é recusada (`ownership_lost`, depois `day_already_complete`) e não altera nenhum arquivo de B, que é arquivável e restaurável.
   - **reaproveitamento com esquema diferente** (tipo mudou, JSON igual): no dia seguinte a tabela é exportada de novo, e as demais são reaproveitadas.
 - **Também:**
   - escrita concorrente entre a estatística e a exportação, contada no conteúdo copiado;
   - **legado v1 cifrado de 3 partes restaurado com a decifragem nova**, a prova da correção do defeito crítico, marcado `legado_nao_autenticado`.
-- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 33 de 33 KILLED.
+- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 38 de 38 KILLED.
 
 ## Riscos residuais (declarados)
 
@@ -150,6 +156,8 @@ O teste roda no job `p20-restore-drill / tests`, com PostgreSQL 16 efêmero do s
 - **Novo backup no mesmo dia depois de um aprovado:** não acontece. Uma cópia mais recente no mesmo dia só vem no dia seguinte.
 - **Execução que falhou no meio:** o dia fica com ela por até 30 minutos. Uma nova tentativa no mesmo dia, dentro desse prazo, é recusada (`day_owned_by_other_run`).
 - **Execução viva parada por mais de 30 minutos** entre duas chamadas perde a posse. Se voltar, é recusada e não publica.
+- **Cerca e gravação não são uma única operação:** entre confirmar a posse e gravar no KV há só a espera de uma gravação. Para a execução antiga gravar sobre a nova, ela teria de ficar parada mais de 30 minutos exatamente nesse ponto, dentro de uma única invocação do Worker.
+- **Neon durante uma corrida:** a cópia KV → Neon do dia (upsert idempotente) e o esquema isolado do ensaio são gravados no Neon por quem tem a posse. Uma execução antiga que perca a posse no meio pode ter tocado neles, mas não nos arquivos do KV que o arquivador lê.
 
 - **Não há fotografia transacional global.** A consistência é por tabela. Relações quebradas são detectadas na restauração, não evitadas.
 - **Os arquivos históricos reais** (KV e Drive) não foram auditados: isso exige a chave de produção e a autorização do proprietário.

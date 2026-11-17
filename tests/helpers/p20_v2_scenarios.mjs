@@ -115,6 +115,68 @@ if (scenario === "corrida_a_conclui_b_pausada" || scenario === "corrida_b_pausad
   }
   process.exit(0);
 }
+// ---- quarta rodada (contra-auditoria 17/11 sobre c9847e12): recuperação da publicação, reserva e posse expirada ----
+const dayRow = async () => {
+  const r = (await base.query("select run_id, state, (report is not null) as tem_relatorio from zevanory_backup_day where day = $1::date", [day]))[0];
+  return r ? { ...r, tem_relatorio: r.tem_relatorio === true || r.tem_relatorio === "t" } : null;
+};
+const aged = () => base.query("update zevanory_backup_day set updated_at = now() - interval '31 minutes' where day = $1::date", [day]);
+const finishArchive = (extra) => { writeFileSync(out, JSON.stringify(Object.fromEntries(snapAll()))); console.log(JSON.stringify({ scenario, parts: plan.parts, eligible: plan.eligible, ...extra })); process.exit(0); };
+if (scenario === "queda_entre_pg_e_kv") {
+  // A conclui as partes; na consolidação, a execução MORRE depois de fechar o dia no PostgreSQL e antes de publicar no
+  // KV (a gravação do relatório principal nunca retorna). O condutor é reiniciado: plano -> consolidação de verificação.
+  const runIdA = randomBytes(16).toString("hex");
+  const partsA = [];
+  for (let part = 0; part < plan.parts; part++) partsA.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runIdA }));
+  const deadKv = { ...kv, m: kv.m, get: kv.get.bind(kv), list: kv.list.bind(kv), delete: kv.delete.bind(kv),
+    put: (k, ...r) => (k === REPORT_KEY ? new Promise(() => {}) : kv.put(k, ...r)) };
+  finalizeBackup({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: deadKv }, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
+  for (let i = 0; i < 2000 && (await dayRow())?.state !== "complete"; i++) await new Promise((r) => setTimeout(r, 5));
+  const aposQueda = { linha: await dayRow(), relatorio_no_kv: kv.m.has(REPORT_KEY) };
+  // Reinício (o que o condutor faz): o plano diz "dia concluído" e devolve plan_id/partes; a consolidação de verificação
+  // de uma execução NOVA republica o relatório guardado no banco.
+  const plan2 = await planBackup(env, { sqlFactory: () => sql, now });
+  const fin2 = await finalizeBackup(env, { parts: plan2.parts, now, planId: plan2.plan_id, runId: randomBytes(16).toString("hex"), sqlFactory: () => sql });
+  const fin3 = await finalizeBackup(env, { parts: plan2.parts, now, planId: plan2.plan_id, runId: randomBytes(16).toString("hex"), sqlFactory: () => sql });
+  const rep = JSON.parse(kv.m.get(REPORT_KEY) || "null");
+  finishArchive({ partes_a_ok: partsA.every((r) => r.ok), apos_queda: aposQueda, plano_reinicio: { day_complete: plan2.day_complete, plan_id_igual: plan2.plan_id === plan.plan_id, parts: plan2.parts },
+    reinicio: { failures: fin2.failures, publicacao: fin2.publicacao, report_ok: fin2.report_ok }, segunda_verificacao: fin3.publicacao,
+    ok: rep ? rep.ok : null, auth: rep?.auth?.state ?? null });
+}
+if (scenario === "chamada_rejeitada_nao_reserva") {
+  // Uma chamada autenticada com plano inválido (forjado) chega PRIMEIRO; depois a execução legítima roda o dia inteiro.
+  const r0 = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: plan.parts, planId: "e".repeat(64), runId: randomBytes(16).toString("hex") });
+  const r1 = await runDataBackup(env, { sqlFactory: () => sql, now, part: plan.parts, parts: plan.parts + 1, planId: plan.plan_id, runId: randomBytes(16).toString("hex") });
+  const linhaDepois = await dayRow();
+  const runIdA = randomBytes(16).toString("hex");
+  const partsA = [];
+  for (let part = 0; part < plan.parts; part++) partsA.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runIdA }));
+  const fin = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
+  finishArchive({ rejeitadas: [r0.failures, r1.failures], linha_depois_das_rejeitadas: linhaDepois, partes_ok: partsA.every((r) => r.ok), ok: fin.ok, auth: fin.auth?.state ?? null, failures: fin.failures });
+}
+if (scenario === "posse_expirada_execucao_antiga") {
+  // A (antiga) faz a parte 0 e começa a parte 1: obtém a posse e PAUSA. A posse expira (31 min sem renovar). B (nova)
+  // assume, roda o dia inteiro e conclui. A é retomada (resto da parte 1, depois parte 2 e consolidação): nenhuma
+  // gravação de A pode alterar os arquivos de B.
+  const runIdA = randomBytes(16).toString("hex"), runIdB = randomBytes(16).toString("hex");
+  const a0 = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: plan.parts, planId: plan.plan_id, runId: runIdA });
+  const aSql = pausedSql();
+  const aP = runDataBackup(env, { sqlFactory: () => aSql, now, part: 1, parts: plan.parts, planId: plan.plan_id, runId: runIdA });
+  while (!aSql.wasHit()) await new Promise((r) => setTimeout(r, 5));
+  await aged();
+  const b = await runA(runIdB);
+  const depoisB = snapAll();
+  const linhaB = await dayRow();
+  aSql.release();
+  const a1 = await aP;
+  const aRest = [];
+  for (let part = 2; part < plan.parts; part++) aRest.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runIdA }));
+  const aFin = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
+  finishArchive({ a0_ok: a0.ok, a_gate: aSql.gateResult, b_partes_ok: b.parts.map((r) => r.ok), ok: b.final.ok, auth: b.final.auth?.state ?? null, failures: b.final.failures,
+    dono_apos_b: linhaB ? { igual_b: linhaB.run_id === runIdB, state: linhaB.state } : null,
+    a_retomada: { parte1: a1.failures, resto: aRest.map((r) => r.failures), finalize: aFin.failures },
+    kv_alteradas_por_a: diffKeys(depoisB, snapAll()) });
+}
 const reports = [];
 for (let part = 0; part < plan.parts; part++) {
   if (scenario === "esquema_alterado" && part === 1) await base.query("alter table z_conc add column coluna_nova text");
