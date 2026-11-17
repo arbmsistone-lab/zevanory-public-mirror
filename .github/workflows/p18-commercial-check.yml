@@ -52,12 +52,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Testes com fixtures (contagem exata 18, zero pulados)
+      - name: Testes com fixtures (contagem exata do manifesto, zero pulados)
         shell: bash
         run: |
           set -euo pipefail
           node --test tests/p18-commercial.test.mjs | tee /tmp/t.txt
-          for l in "# tests 18" "# pass 18" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
+          # contagem vem do manifesto da suíte (fonte única; #1068 quebrou com "18" fixo aqui e 20 no manifesto)
+          n=$(awk '$1=="tests/p18-commercial.test.mjs"{print $2}' tests/node-suite.manifest)
+          [[ "$n" =~ ^[1-9][0-9]*$ ]] || { echo "::error::tests/p18-commercial.test.mjs sem contagem válida no manifesto"; exit 1; }
+          for l in "# tests $n" "# pass $n" "# fail 0" "# skipped 0" "# todo 0" "# cancelled 0"; do grep -qx "$l" /tmp/t.txt || { echo "::error::esperado '$l'"; exit 1; }; done
       - name: Modo offline (sem rede)
         shell: bash
         run: |
