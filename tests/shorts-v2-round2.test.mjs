@@ -27,7 +27,7 @@ const config={voz_fixa:'Achird',modelo:'gemini-3.8-flash-tts',comparacao_aprovad
 async function wrongModel(m){assert.throws(()=>m.assertVoice(config,'Achird',{model:'gemini-2.5-flash-preview-tts'}),/brand_model_changed/);}
 test('NC05: model must match approved model',()=>wrongModel(core));
 test('NC05 mutant: a different model accepted',()=>killedMutation(coreSource,[["model!==config.modelo",'false']],wrongModel));
-test('NC05: 3.8 Interactions and 2.5 generateContent use distinct protocols without fallback',async()=>{for(const model of ['gemini-3.8-flash-tts','gemini-2.5-flash-preview-tts']){let count=0;const modern=model.includes('3.8');const out=await tts('frase única','Kore','synthetic',{model,freeTierConfirmed:true,fetchImpl:async(url,opts)=>{count++;const body=JSON.parse(opts.body);assert.equal(url.includes('/interactions'),modern);if(modern){assert.equal(body.model,model);assert.equal(body.generation_config.speech_config[0].voice,'Kore');}else assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName,'Kore');const data=Buffer.alloc(100).toString('base64');return {ok:true,json:async()=>modern?{steps:[{type:'model_output',content:[{type:'audio',data,mime_type:'audio/l16',sample_rate:24000}]}]}:{candidates:[{content:{parts:[{inlineData:{data,mimeType:'audio/L16;rate=24000'}}]}}]}};}});assert.equal(count,1);assert.equal(out.model,model);}let calls=0;await assert.rejects(()=>tts('t','Achird','synthetic',{model:config.modelo,freeTierConfirmed:true,fetchImpl:async()=>{calls++;return {ok:false};}}));assert.equal(calls,1);assert.throws(()=>ttsRequest('t','Achird','unknown'));});
+test('NC05: 3.8 Interactions and 2.5 generateContent use distinct protocols without fallback',async()=>{for(const model of ['gemini-3.8-flash-tts','gemini-2.5-flash-preview-tts']){let count=0;const modern=model.includes('3.8');const out=await tts('frase única','Kore','synthetic',{model,freeTierConfirmed:true,fetchImpl:async(url,opts)=>{count++;const body=JSON.parse(opts.body);assert.equal(url.includes('/interactions'),modern);if(modern){assert.equal(body.model,model);assert.equal(body.generation_config.speech_config[0].voice,'Kore');}else assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName,'Kore');const data=Buffer.alloc(100).toString('base64');return new Response(JSON.stringify(modern?{steps:[{type:'model_output',content:[{type:'audio',data,mime_type:'audio/l16',sample_rate:24000}]}]}:{candidates:[{content:{parts:[{inlineData:{data,mimeType:'audio/L16;rate=24000'}}]}}]}),{status:200});}});assert.equal(count,1);assert.equal(out.model,model);}let calls=0;await assert.rejects(()=>tts('t','Achird','synthetic',{model:config.modelo,freeTierConfirmed:true,fetchImpl:async()=>{calls++;return {ok:false};}}));assert.equal(calls,1);assert.throws(()=>ttsRequest('t','Achird','unknown'));});
 test('NC05: comparison is exactly 4 voices times 2 models; owner approved 3.8/Achird and free tier, publication still pending',async()=>{const c=JSON.parse(readTextNormalized(new URL('../data/shorts-padrao-v2.json',import.meta.url)));assert.equal(c.candidatas.length*c.modelos_comparacao.length,8);assert.equal(c.modelo,'gemini-3.8-flash-tts');assert.equal(c.voz_fixa,'Achird');assert.equal(c.comparacao_aprovada,true);assert.equal(c.nivel_gratuito_confirmado,true);assert.equal(c.publicacao_aprovada,false,'publicação só após o proprietário aprovar a prévia');});
 async function classification(m){for(const id of ['dica:rotina-diaria-farmacia','farmácia','diária'])assert.equal(m.themeFor({entry:{theme_id:id}}),'dicas');assert.equal(m.themeFor({entry:{theme_id:'ia:vendas'}}),'dicas');assert.equal(m.themeFor({entry:{theme_id:'farmacia',product:{sku:'ZEV-LCX-011'}}}),'financas');}
 test('NC06: exact SKU and word boundaries; ambiguous classifications use dicas',()=>classification(core));
@@ -39,5 +39,44 @@ test('v3: estilo (parâmetro style) vai para os dois protocolos; sem estilo, o v
  const m=ttsRequest('t','Achird','gemini-3.8-flash-tts',ESTILO_V3),l=ttsRequest('t','Achird','gemini-2.5-flash-preview-tts',ESTILO_V3);
  assert.equal(m.body.input[0].content[0].annotations[0].style,ESTILO_V3);assert.ok(l.body.contents[0].parts[0].text.startsWith(ESTILO_V3));
  assert.equal(ttsRequest('t','Achird','gemini-3.8-flash-tts').body.input[0].content[0].annotations[0].style,STYLE);
- let enviado;await tts('t','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,style:ESTILO_V3,fetchImpl:async(u,o)=>{enviado=JSON.parse(o.body);return {ok:true,json:async()=>({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16',sample_rate:24000}]}]})};}});
+ let enviado;await tts('t','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,style:ESTILO_V3,fetchImpl:async(u,o)=>{enviado=JSON.parse(o.body);return new Response(JSON.stringify(({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16',sample_rate:24000}]}]})),{status:200});}});
  assert.equal(enviado.input[0].content[0].annotations[0].style,ESTILO_V3);});
+// Ensaio 44111864755 (17/11): TTS sem resposta em 60 s -> erro único 'free_tts_network_failed' (sem separar timeout de
+// rede). Agora: prazo 120 s, UMA nova tentativa só para timeout/rede/5xx — inclusive durante a LEITURA do corpo de um
+// HTTP 200 (GPT-6, #1066) — e o erro final diz o tipo. JSON inválido, 4xx e 429 encerram na 1ª chamada.
+// Um teste por comportamento, para o log do CI mostrar cada prova pelo nome.
+const corpoOk=JSON.stringify({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16;rate=24000',sample_rate:24000}]}]});
+const okR=()=>new Response(corpoOk,{status:200});
+// HTTP 200 cujo corpo falha no meio da leitura (cabeçalhos chegaram, o áudio não) — mesmos erros do fetch real do Node:
+// leitura travada -> TimeoutError; socket derrubado -> TypeError com cause.code UND_ERR_SOCKET (conferido com servidor local).
+const corpoFalha=erro=>()=>new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('{"steps":['));},pull(c){c.error(erro());}}),{status:200});
+const errTimeout=()=>{const e=new Error('t');e.name='TimeoutError';return e;},errRede=()=>new TypeError('terminated',{cause:{code:'UND_ERR_SOCKET'}});
+const lancaTimeout=()=>{throw errTimeout();},lancaRede=()=>{throw new TypeError('fetch failed',{cause:{code:'ECONNRESET'}});};
+async function rodaTts(seq){let n=0;const esperas=[],notas=[];let erro=null,out=null;
+ try{out=await tts('frase','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,esperar:async ms=>{esperas.push(ms);},note:m=>notas.push(m),fetchImpl:async(u,o)=>{assert.ok(o.signal,'prazo por chamada');const s=seq[n++];if(!s)throw Error('chamada_a_mais');return s();}});}catch(e){erro=e.message;}
+ return {n,esperas,notas,erro,out};}
+test('TTS constantes: prazo 120 s, 2 tentativas, espera 5 s; o pior caso cabe no job de voz de 5 min',async()=>{
+ const R=await import('../scripts/shorts-v2/render.mjs');
+ assert.equal(R.TTS_TIMEOUT_MS,120000);assert.equal(R.TTS_TENTATIVAS,2);assert.equal(R.TTS_ESPERA_MS,5000);assert.ok(R.TTS_TIMEOUT_MS*R.TTS_TENTATIVAS+R.TTS_ESPERA_MS<5*60000);});
+test('TTS sucesso direto: 1 chamada, sem espera',async()=>{const r=await rodaTts([okR]);assert.equal(r.erro,null);assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);assert.equal(r.out.pcm.length,4800);});
+test('TTS timeout antes dos cabeçalhos: 1 nova tentativa; 2 timeouts -> free_tts_timeout com exatamente 2 chamadas',async()=>{
+ let r=await rodaTts([lancaTimeout,okR]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.deepEqual(r.esperas,[5000]);assert.match(r.notas[0],/TTS_TENTATIVA 1 falhou=free_tts_timeout/);
+ r=await rodaTts([lancaTimeout,lancaTimeout,okR]);assert.equal(r.erro,'free_tts_timeout');assert.equal(r.n,2);});
+test('TTS falha de rede antes dos cabeçalhos: 1 nova tentativa; 2 falhas -> free_tts_network_failed:ECONNRESET com 2 chamadas',async()=>{
+ let r=await rodaTts([lancaRede,okR]);assert.equal(r.erro,null);assert.equal(r.n,2);
+ r=await rodaTts([lancaRede,lancaRede,okR]);assert.equal(r.erro,'free_tts_network_failed:ECONNRESET');assert.equal(r.n,2);});
+test('TTS timeout DURANTE a leitura do corpo de um HTTP 200: 1 nova tentativa; 2 vezes -> free_tts_timeout com 2 chamadas',async()=>{
+ let r=await rodaTts([corpoFalha(errTimeout),okR]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.deepEqual(r.esperas,[5000]);assert.match(r.notas[0],/falhou=free_tts_timeout/);
+ r=await rodaTts([corpoFalha(errTimeout),corpoFalha(errTimeout),okR]);assert.equal(r.erro,'free_tts_timeout');assert.equal(r.n,2);});
+test('TTS queda de conexão DURANTE a leitura do corpo de um HTTP 200: 1 nova tentativa; 2 vezes -> free_tts_network_failed:UND_ERR_SOCKET com 2 chamadas',async()=>{
+ let r=await rodaTts([corpoFalha(errRede),okR]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.match(r.notas[0],/falhou=free_tts_network_failed:UND_ERR_SOCKET/);
+ r=await rodaTts([corpoFalha(errRede),corpoFalha(errRede),okR]);assert.equal(r.erro,'free_tts_network_failed:UND_ERR_SOCKET');assert.equal(r.n,2);});
+test('TTS HTTP 5xx: 1 nova tentativa; 503+502 -> free_tts_unavailable:502 com 2 chamadas',async()=>{
+ let r=await rodaTts([()=>new Response('x',{status:503}),okR]);assert.equal(r.erro,null);assert.equal(r.n,2);
+ r=await rodaTts([()=>new Response('x',{status:503}),()=>new Response('x',{status:502}),okR]);assert.equal(r.erro,'free_tts_unavailable:502');assert.equal(r.n,2);});
+test('TTS JSON inválido num HTTP 200: encerra na 1ª chamada com tts_response_invalid (sem nova tentativa)',async()=>{
+ const r=await rodaTts([()=>new Response('{"steps":[',{status:200}),okR]);assert.equal(r.erro,'tts_response_invalid');assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);});
+test('TTS HTTP 400: encerra na 1ª chamada com free_tts_unavailable:400 (sem nova tentativa)',async()=>{
+ const r=await rodaTts([()=>new Response('x',{status:400}),okR]);assert.equal(r.erro,'free_tts_unavailable:400');assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);});
+test('TTS HTTP 429 (cota): encerra na 1ª chamada com free_tts_unavailable:429 (sem nova tentativa)',async()=>{
+ const r=await rodaTts([()=>new Response('x',{status:429}),okR]);assert.equal(r.erro,'free_tts_unavailable:429');assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);});
