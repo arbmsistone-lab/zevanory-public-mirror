@@ -54,6 +54,8 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
+      # P20 v2: as partes do backup são envelopes AES-256-GCM do Worker; sem a(s) chave(s) a restauração recusa.
+      P20_BACKUP_KEYS: ${{ secrets.P20_BACKUP_KEYS }}
       PGHOST: localhost
       PGPORT: "5432"
       PGUSER: postgres
@@ -92,6 +94,7 @@ jobs:
     timeout-minutes: 20
     env:
       BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
+      P20_BACKUP_KEYS: ${{ secrets.P20_BACKUP_KEYS }}
       RESTORE_TARGET_DATABASE_URL: ${{ secrets.RESTORE_TARGET_DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4

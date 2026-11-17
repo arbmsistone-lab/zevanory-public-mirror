@@ -61,7 +61,9 @@ def make_fixture(src_db, out, key=None):
     env.pop("P20_BACKUP_KEY", None)
     if key:
         env["P20_BACKUP_KEY"] = key
-    r = subprocess.run(["node", "tests/helpers/p20_worker_backup_fixture.mjs", out, NOW], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
+    # P20 v2: o formato de produção é o do plano autenticado (partes dinâmicas). Sem chave, a fixture v2 roda em modo
+    # legado de cifragem (bundles em claro, plano "nao_autenticado"), como antes.
+    r = subprocess.run(["node", "tests/helpers/p20_worker_backup_fixture.mjs", out, NOW, "v2"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
     if r.returncode:
         raise AssertionError(r.stderr[-800:])
     rep = json.loads(r.stdout.strip().splitlines()[-1])
@@ -130,7 +132,7 @@ class T(unittest.TestCase):
         self.assertNotIn(SEGREDO, text)
         self.assertNotIn("ref-p20-1", text)
         self.assertEqual(rec["unclassified_tables"], ["zpc_records"], "só a tabela legada sintética fica sem classe")
-        self.assertEqual([p["copia_cifrada"] for p in rec["backup"]["parts"]], [False, False, False], "sem chave: legado em claro")
+        self.assertEqual([p["copia_cifrada"] for p in rec["backup"]["parts"]], [False] * self.worker["plan"]["parts"], "sem chave: legado em claro")
         self.assertTrue(any(s.startswith("copia_cifrada:") for s in rec["not_covered"]))
 
     def test_2_bundle_adulterado_reprova_e_nada_e_restaurado(self):
@@ -180,11 +182,13 @@ class T(unittest.TestCase):
 
     def test_6_copia_cifrada_pelo_worker_real_restaura_tudo_com_a_chave(self):
         self.assertEqual(self.enc_worker["encryption"]["state"], "cifrado")
-        self.assertEqual(self.enc_worker["encryption"]["parts_cifradas"], 3)
+        # P20 v2: partes dinâmicas (ceil(elegíveis / 30)); todas cifradas.
+        n = self.enc_worker["plan"]["parts"]
+        self.assertEqual(self.enc_worker["encryption"]["parts_cifradas"], n)
         with open(self.enc_fixture, encoding="utf-8") as f:
             kv = json.load(f)
         bundles = [v for k, v in kv.items() if k.startswith("zpc:backup:v1:neon:")]
-        self.assertEqual(len(bundles), 3)
+        self.assertEqual(len(bundles), n)
         for b in bundles:
             self.assertTrue(b.startswith('{"$enc":"zevanory-backup-enc/v1"'))
             self.assertNotIn("ref-p20-1", b)
@@ -195,7 +199,7 @@ class T(unittest.TestCase):
         self.assertEqual(rec["verdict"], "APROVADO")
         self.assertEqual(rec["restore"]["tables"], self.enc_worker["tables"])
         self.assertEqual(rec["backup"]["rows"], self.enc_worker["rows"])
-        self.assertEqual([p["copia_cifrada"] for p in rec["backup"]["parts"]], [True, True, True])
+        self.assertEqual([p["copia_cifrada"] for p in rec["backup"]["parts"]], [True] * n)
         self.assertTrue(rec["backup"]["copia_cifrada"])
         self.assertFalse(any(s.startswith("copia_cifrada:") for s in rec["not_covered"]))
         self.assertFalse(rec["scope_complete_9_1"], "outras lacunas da seção 9.1 continuam")

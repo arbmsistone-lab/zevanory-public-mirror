@@ -27,7 +27,10 @@ import { openBundleText } from "./backup-envelope.mjs";
 export const SCHEMA_RECORD = "zevanory.p20.restore-drill.v1";
 export const SCHEMA_INVENTORY = "zevanory.p20.inventario.v1";
 export const REPORT_KEY = "zpc:backup:v1:report";
-export const PARTS = 3;
+export const PARTS = 3; // legado v1 (3 partes fixas)
+// P20 v2 (docs/p20/particoes-v2.md): o número de partes vem do relatório consolidado (1 a MAX_PARTS).
+export const MAX_PARTS = 6;
+export const validPartCount = (n) => Number.isInteger(n) && n >= 1 && n <= MAX_PARTS;
 export const partReportKey = (p) => `${REPORT_KEY}:part:${p}`;
 export const bundleKeyFor = (day, p) => `zpc:backup:v1:neon:${day}:part:${p}`;
 export const VERDICTS = Object.freeze(["APROVADO", "REPROVADO", "NOT_AVAILABLE"]);
@@ -211,7 +214,7 @@ export function assessBackup(readings, { keyring = new Map() } = {}) {
   const c = parse(readings?.combined);
   if (!c.ok || !isObj(c.v)) { out.reason = "combined_report_unreadable"; return out; }
   const R = c.v;
-  if (R.schema !== "zevanory-backup/v1" || !isDay(R.day) || R.parts !== PARTS || typeof R.ok !== "boolean" || !isObj(R.neon) || !isInt(R.neon.tables) || !isInt(R.neon.rows) || !Array.isArray(R.neon.excluded)) {
+  if (R.schema !== "zevanory-backup/v1" || !isDay(R.day) || !validPartCount(R.parts) || typeof R.ok !== "boolean" || !isObj(R.neon) || !isInt(R.neon.tables) || !isInt(R.neon.rows) || !Array.isArray(R.neon.excluded)) {
     out.reason = "combined_report_malformed"; return out;
   }
   out.day = R.day;
@@ -219,9 +222,10 @@ export function assessBackup(readings, { keyring = new Map() } = {}) {
   if (out.excluded.length !== R.neon.excluded.length) fail("excluded_list_malformed");
   if (R.ok !== true) fail("combined_report_not_ok");
   if (Array.isArray(R.failures) && R.failures.length) fail("combined_report_failures:" + R.failures.length);
-  if (!Array.isArray(readings.parts) || readings.parts.length !== PARTS) { out.reason = "parts_unreadable"; return out; }
+  if (!Array.isArray(readings.parts) || readings.parts.length !== R.parts) { out.reason = "parts_unreadable"; return out; }
+  out.expected_parts = R.parts;
   const seen = new Set();
-  for (let p = 0; p < PARTS; p++) {
+  for (let p = 0; p < R.parts; p++) {
     const pr = parse(readings.parts[p]);
     if (!pr.ok || !isObj(pr.v)) { out.reason = "part_report_unreadable:" + p; return out; }
     const P = pr.v;
@@ -360,7 +364,7 @@ export function buildRecord({ mode, sourceRead, assessment, restore, startedAt, 
   else verdict = failures.length === 0 && restoreOk ? "APROVADO" : "REPROVADO";
   const restoredTables = restoreOk ? Object.keys(restore.tables || {}) : [];
   const cls = inventory ? byClass(a.datasets || [], restoredTables, inventory, rpo) : { classes: {}, unclassified: [] };
-  const allEncrypted = !!(a.readable && a.parts.length === PARTS && a.parts.every((p) => p.copia_cifrada === true));
+  const allEncrypted = !!(a.readable && validPartCount(a.expected_parts) && a.parts.length === a.expected_parts && a.parts.every((p) => p.copia_cifrada === true));
   const rec = {
     schema: SCHEMA_RECORD,
     label: verdict === "NOT_AVAILABLE" ? null : label, mode, verdict,
@@ -434,7 +438,7 @@ export function validateRecord(r) {
     return r;
   }
   const b = r.backup, i = r.integrity;
-  if (!isObj(b) || !isDay(b.day) || !Array.isArray(b.parts) || b.parts.length !== PARTS || !isInt(b.tables) || !isInt(b.rows)) throw new Error("bad_backup");
+  if (!isObj(b) || !isDay(b.day) || !Array.isArray(b.parts) || !validPartCount(b.parts.length) || !isInt(b.tables) || !isInt(b.rows)) throw new Error("bad_backup");
   // Registros antigos não têm copia_cifrada (ausente = false); retirar a lacuna exige todas as partes cifradas.
   if (!ccPending && !(b.copia_cifrada === true && b.parts.every((p) => isObj(p) && p.copia_cifrada === true))) throw new Error("copia_cifrada_unproven");
   // Lacuna da cópia KV -> Neon só some com a prova completa, num ensaio APROVADO, do mesmo dia da cópia, e cifrada

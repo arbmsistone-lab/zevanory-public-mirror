@@ -67,14 +67,19 @@ def pg_env_from_url(url):
 SQLSTATE = re.compile(r"ERROR:\s+([0-9A-Z]{5})\b")
 
 
-def psql(sql, env, timeout=600):
+def psql(sql, env, timeout=600, table=None):
     # VERBOSITY sqlstate: o servidor devolve só o código SQLSTATE, nunca a mensagem (que pode citar valores
     # de linha, ex.: chave duplicada). E mesmo assim só o código de 5 caracteres é repassado ao log.
     r = subprocess.run(["psql", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=sqlstate", "-X", "-qtA", "-f", "-"],
                        input="\\set VERBOSITY sqlstate\n" + sql.lstrip("\ufeff"), capture_output=True, text=True, timeout=timeout, env=env)
     if r.returncode != 0:
         m = SQLSTATE.search(r.stderr or "")
-        fail("psql_error sqlstate=" + (m.group(1) if m else "unknown"))
+        code = m.group(1) if m else "unknown"
+        # P20 v2: a cópia é consistente POR TABELA (não há fotografia global). Uma chave estrangeira violada na carga
+        # é relação quebrada entre instantes diferentes: reportada como tal, nunca "consertada" nem engolida.
+        if code == "23503" and table:
+            fail(f"inconsistencia_entre_tabelas {table} sqlstate=23503")
+        fail("psql_error sqlstate=" + code)
     return r.stdout
 
 
@@ -168,7 +173,7 @@ def row_hash_sql(source, cols=None):
     return f"(select md5(coalesce(string_agg(r, '|' order by r), '')) from (select row_to_json(x)::text r from ({proj}) x) a)"
 
 
-def restore_full(env, tables_json, manifest_tables):
+def restore_full(env, tables_json, manifest_tables, extra_ddl=()):
     if psql("select count(*) from information_schema.tables where table_schema='public';", env).strip() != "0":
         fail("target_not_empty")
     migrations = sorted(glob.glob(os.path.join(ROOT, "db", "migrations", "*.sql")))
@@ -178,6 +183,8 @@ def restore_full(env, tables_json, manifest_tables):
         psql(open(m, encoding="utf-8").read(), env)
     names, ddl = runtime_ddl()
     psql("\n".join(ddl + dynamic_ddl()), env)
+    for x in extra_ddl:
+        psql(x, env)
     present = set(psql("select table_name from information_schema.tables where table_schema='public';", env).split())
     # Tabelas do backup que nenhum código atual cria (legado): os dados são PRESERVADOS, sem inventar
     # esquema, como linhas jsonb num esquema separado, com contagem e hash conferidos.
@@ -214,7 +221,7 @@ def restore_full(env, tables_json, manifest_tables):
             fail(f"no_insertable_columns {t}")
         cl = ",".join(f'"{c}"' for c in cols)
         out = psql(f'insert into public."{t}" ({cl}) overriding system value select {cl} from {src};\n'
-                   f'select count(*) from public."{t}";\nselect {row_hash_sql(src, cl)} = {row_hash_sql(f"public.{chr(34)}{t}{chr(34)}", cl)};', env).split()
+                   f'select count(*) from public."{t}";\nselect {row_hash_sql(src, cl)} = {row_hash_sql(f"public.{chr(34)}{t}{chr(34)}", cl)};', env, table=t).split()
         count, same = int(out[-2]), out[-1] == "t"
         expected = manifest_tables[t]["rows"]
         if count != expected:
@@ -249,7 +256,10 @@ def worker_requirements():
 
 
 def load_archive(out_dir):
-    """Decifra e confere (fail-closed) usando a rotina oficial; devolve (tabelas_json, manifesto)."""
+    """Decifra e confere (fail-closed) usando a rotina oficial; devolve (tabelas_json, manifesto, info).
+    P20 v2: as partes cifradas pelo Worker (envelope AES-256-GCM, AAD do dia/parte) são decifradas SÓ em memória com
+    P20_BACKUP_KEYS; sem a chave a restauração recusa (nunca restaura conteúdo não verificado). Com relatório v2
+    embutido, o HMAC é conferido de novo e o conjunto de tabelas tem de ser exatamente o das elegíveis do plano."""
     passphrase = bpa.passphrase_or_fail()
     with open(os.path.join(out_dir, "manifest.json"), encoding="utf-8") as f:
         manifest = json.load(f)
@@ -265,12 +275,27 @@ def load_archive(out_dir):
         fail("plaintext_hash_mismatch")
     doc = json.loads(plaintext)
     raw = {int(p): v.encode("utf-8") for p, v in doc["parts"].items()}
-    if bpa.describe_bundles(raw) != manifest["tables"]:
+    for p, b in raw.items():
+        if bpa.sha256_hex(b) != (manifest.get("parts_sha256") or {}).get(str(p)):
+            fail(f"part_hash_mismatch part={p}")
+    ring = bpa.parse_keyring(os.environ.get("P20_BACKUP_KEYS"))
+    tables, info, plain = bpa.describe_parts(raw, doc.get("day"), ring)
+    if bpa.content_state(info) == bpa.ST_ENC_OPAQUE:
+        fail("restore_requires_backup_key")
+    if tables != manifest["tables"]:
         fail("table_manifest_mismatch")
+    meta = {"contract": 1, "auth_state": bpa.AUTH_LEGACY, "eligible": None}
+    if doc.get("report") is not None:
+        rep, st = bpa.verify_report_v2(doc["report"], doc.get("day"), ring)
+        exp = bpa.expected_parts_v2(rep)
+        declared = {t: {"part": p, "rows": v["rows"], "sha256": v["sha"]} for p, e in exp.items() for t, v in e["tables"].items()}
+        if tables != declared:
+            fail("table_report_mismatch")
+        meta = {"contract": 2, "auth_state": st, "eligible": sorted(rep["plan"]["eligible"])}
     tables_json = {}
-    for b in raw.values():
-        tables_json.update(json.loads(b))
-    return tables_json, manifest
+    for b in plain.values():
+        tables_json.update(b)
+    return tables_json, manifest, meta
 
 
 def main(argv=None):
@@ -278,8 +303,16 @@ def main(argv=None):
     ap.add_argument("mode", choices=["rehearse", "restore"])
     ap.add_argument("--out", required=True)
     ap.add_argument("--confirm", default="")
+    ap.add_argument("--extra-ddl", default="")
     a = ap.parse_args(argv)
-    tables_json, manifest = load_archive(a.out)
+    tables_json, manifest, meta = load_archive(a.out)
+    extra = []
+    if a.extra_ddl:
+        # Só no ensaio (CI): DDL de tabelas SINTÉTICAS da origem de teste (completam 121/180 tabelas). Nunca na restauração real.
+        if a.mode != "rehearse":
+            fail("extra_ddl_only_in_rehearse")
+        with open(a.extra_ddl, encoding="utf-8") as f:
+            extra = [f.read()]
     if a.mode == "rehearse":
         env = dict(os.environ)
     else:
@@ -289,8 +322,10 @@ def main(argv=None):
         if not url:
             fail("target_url_missing")
         env = pg_env_from_url(url)
-    report = restore_full(env, tables_json, manifest["tables"])
-    report.update({"mode": a.mode, "day": manifest["day"]})
+    report = restore_full(env, tables_json, manifest["tables"], extra_ddl=extra)
+    # "completo" só com contrato v2 autenticado, todas as elegíveis restauradas e conferidas (contagem + hash).
+    report.update({"mode": a.mode, "day": manifest["day"], "contract": meta["contract"], "auth_state": meta["auth_state"],
+                   "estado": "completo" if meta["contract"] == 2 and meta["auth_state"] == bpa.AUTH_OK else meta["auth_state"]})
     bpa.note("RESTORE_NEW_DATABASE", {k: v for k, v in report.items() if k != "tables"})
     print(json.dumps({"tables": {t: v["rows"] for t, v in report["tables"].items()}}, sort_keys=True))
     return 0

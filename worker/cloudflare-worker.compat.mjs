@@ -50,7 +50,7 @@ import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mj
 import { handleOwnerChat, runOwnerChatSentinel, runOwnerChatRetention, isOwnerChatPath } from "./owner-chat.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
-import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
+import { runDataBackup, finalizeBackup, planBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { hotmartKitsOpen } from "./sales-lock-content.mjs";
@@ -579,15 +579,28 @@ const wrapped = {
       return worker.fetch(internalRequest, normalized, ctx);
     }
 
+    if (url.pathname === "/api/internal/backup/plan") {
+      // P20 v2: plano do dia (só leitura): plan_id autenticado, número de partes e contagens. Nunca nomes ou dados.
+      const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+      if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
+      if (!verifyOperatorToken(normalized, request.headers.get("x-backup-token"))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      const plan = await planBackup(normalized, { sqlFactory: whatsappProofDatabase });
+      return new Response(JSON.stringify(plan), { status: plan.ok ? 200 : 500, headers });
+    }
+
     if (url.pathname === "/api/internal/backup/run") {
       // Runs the backup and restore drill; returns only counts and hashes (never data).
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
       if (!verifyOperatorToken(normalized, request.headers.get("x-backup-token"))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
+      // P20 v2: com plan_id (64 hex) a parte confere o plano autenticado; sem ele, o caminho legado v1 de antes.
+      const rawPlan = String(url.searchParams.get("plan_id") || "");
+      const planId = /^[0-9a-f]{64}$/.test(rawPlan) ? rawPlan : null;
+      if (rawPlan && !planId) return new Response(JSON.stringify({ ok: false, failures: ["plan_id_malformed"] }), { status: 400, headers });
       const report = url.searchParams.get("finalize") === "1"
-        ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase })
-        : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts });
+        ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase, planId })
+        : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts, planId });
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
 

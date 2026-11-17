@@ -19,7 +19,7 @@
 //   4. Report (no PII) at zpc:backup:v1:report.
 // P20 (seção 9.1): with the secret P20_BACKUP_KEY the Neon -> KV bundle is stored as an AES-256-GCM envelope
 // (worker/backup-crypto.mjs, docs/p20/cifragem-backup.md); the per-table SHA-256 manifest stays over the plaintext.
-import { ENCRYPTION_REQUIRED, ENC_FORMAT, ENC_ALG, loadBackupKey, sealBundle, openBundle, bundleCtxFromKey } from "./backup-crypto.mjs";
+import { ENCRYPTION_REQUIRED, ENC_FORMAT, ENC_ALG, loadBackupKey, sealBundle, openBundle, bundleCtxFromKey, loadReportKey, hmacHex, canonical } from "./backup-crypto.mjs";
 import { reconciliaDiario, efeitoNoRelatorio, DIARIO_FASE } from "./diario-reconcilia.mjs";
 export { ENCRYPTION_REQUIRED };
 export const REPORT_KEY = "zpc:backup:v1:report";
@@ -29,6 +29,10 @@ export const KV_PREFIXES = ["zpc:sales:", "zpc:cp:", "sales:open:v1"];
 export const MAX_TABLE_ROWS = 20000;
 export const MAX_DRILL_TABLES = 30; // per invocation: keeps a part under the free plan's 50 subrequests
 export const DEFAULT_PARTS = 3;
+// P20 v2 (docs/p20/particoes-v2.md): partes dinâmicas = ceil(elegíveis / 30), no máximo 6 (limite da rota).
+export const MAX_PARTS = 6;
+export const CONTRACT_V2 = 2;
+export const PLAN_SCHEMA = "zevanory-backup-plan/v2";
 // Credentials are not duplicated into another store: they can be re-issued, a copy only widens exposure.
 export const SENSITIVE = /credential|oauth|secret|token|password/i;
 export const DRILL_SAMPLE = 20;
@@ -82,7 +86,62 @@ async function listAll(kv, prefix) {
   return out;
 }
 
-export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1, encryptionRequired = ENCRYPTION_REQUIRED } = {}) {
+// ---------------------------------------------------------------------------------------------------------
+// P20 v2: plano do dia. Garantia: com parts = ceil(E/30) e atribuição circular sobre as ELEGÍVEIS (j % parts),
+// cada parte recebe floor(E/parts) ou ceil(E/parts) <= 30 tabelas (demonstração em docs/p20/particoes-v2.md).
+// As tabelas de credencial saem da lista ANTES da numeração, então a posição delas não afeta a distribuição.
+export function partsFor(eligibleCount) { return eligibleCount <= 0 ? 1 : Math.ceil(eligibleCount / MAX_DRILL_TABLES); }
+export function assignParts(eligible, parts) {
+  const out = Array.from({ length: parts }, () => []);
+  eligible.forEach((t, j) => out[j % parts].push(t));
+  return out;
+}
+const byCodepoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+// Inventário lido do PRÓPRIO banco: tabelas BASE do public (menos a tabela de backup do KV) com (coluna, tipo, nulidade).
+export async function readInventory(sql) {
+  const rows = await sql.query(
+    `select t.table_name as t,
+            coalesce((select json_agg(json_build_array(c.column_name, c.data_type, c.is_nullable) order by c.ordinal_position)::text
+                        from information_schema.columns c where c.table_schema = 'public' and c.table_name = t.table_name), '[]') as cols
+       from information_schema.tables t
+      where t.table_schema = 'public' and t.table_type = 'BASE TABLE' and t.table_name <> $1
+      order by t.table_name collate "C"`, [BACKUP_TABLE]);
+  return (rows || []).map((r) => ({ t: String(r.t), cols: typeof r.cols === "string" ? JSON.parse(r.cols) : (r.cols || []) })).sort((a, b) => byCodepoint(a.t, b.t));
+}
+
+// Plano autenticado. plan_id = HMAC-SHA256(K_rel, JSON canônico do plano). Sem chave (só fora da produção, com
+// cifragem opcional): plan_id = "sha256:" + SHA-256 do plano e auth "nao_autenticado" (nunca "completo" adiante).
+export async function computePlan({ sql, env = {}, day, encryptionRequired = ENCRYPTION_REQUIRED }) {
+  const rk = await loadReportKey(env.P20_BACKUP_KEY);
+  if (rk.state === "invalid") return { ok: false, failures: ["backup_key_invalid"] };
+  if (rk.state === "absent" && encryptionRequired) return { ok: false, failures: ["backup_key_absent_encryption_required"] };
+  const inv = await readInventory(sql);
+  const eligible = inv.filter((x) => !SENSITIVE.test(x.t)).map((x) => x.t);
+  const excluded = inv.filter((x) => SENSITIVE.test(x.t)).map((x) => x.t);
+  const fingerprint = await sha256(canonical(inv.filter((x) => !SENSITIVE.test(x.t)).map((x) => [x.t, x.cols])));
+  const parts = partsFor(eligible.length);
+  if (parts > MAX_PARTS) return { ok: false, failures: ["capacity_exceeded:" + eligible.length], eligible: eligible.length };
+  const plan = { schema: PLAN_SCHEMA, v: CONTRACT_V2, day, eligible, excluded, fingerprint, parts, per_part_max: MAX_DRILL_TABLES };
+  const text = canonical(plan);
+  const plan_id = rk.state === "present" ? await hmacHex(rk, text) : "sha256:" + (await sha256(text));
+  return { ok: true, failures: [], plan, plan_id, auth: rk.state === "present" ? { state: "autenticado", alg: "HMAC-SHA256", kid: rk.kid } : { state: "nao_autenticado" }, rk };
+}
+
+// Resposta pública da rota de plano: só contagens, plan_id e o kid (nunca nomes de tabela ou dados).
+export async function planBackup(env = {}, { sqlFactory, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED } = {}) {
+  const day = new Date(now).toISOString().slice(0, 10);
+  if (!env.DATABASE_URL || !sqlFactory) return { schema: PLAN_SCHEMA, ok: false, day, failures: ["database_unavailable"] };
+  try {
+    const p = await computePlan({ sql: sqlFactory(String(env.DATABASE_URL)), env, day, encryptionRequired });
+    if (!p.ok) return { schema: PLAN_SCHEMA, ok: false, day, failures: p.failures };
+    return { schema: PLAN_SCHEMA, ok: true, day, plan_id: p.plan_id, parts: p.plan.parts, eligible: p.plan.eligible.length, excluded: p.plan.excluded.length, auth: p.auth, failures: [] };
+  } catch (e) {
+    return { schema: PLAN_SCHEMA, ok: false, day, failures: ["error:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 200)] };
+  }
+}
+
+export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), part = 0, parts = 1, encryptionRequired = ENCRYPTION_REQUIRED, planId = null } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
   const report = { schema: "zevanory-backup/v1", day, part, parts, startedAt: new Date(now).toISOString(), ok: false, kv: {}, neon: {}, restore: {}, failures: [] };
@@ -98,7 +157,23 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   report.warnings = bk.state === "present" ? [] : ["backup_nao_cifrado"];
   const encKeys = bk.state === "present" ? [bk] : [];
   const sql = sqlFactory(String(env.DATABASE_URL));
+  const v2 = typeof planId === "string" && planId.length > 0;
+  let myTables = null;
   try {
+    // P20 v2: a parte RELÊ o inventário e recalcula o plano. Se o plan_id não for o recebido (esquema mudou, outro dia,
+    // plano forjado), falha ANTES de qualquer escrita: nunca há cobertura parcial aceita.
+    if (v2) {
+      const pl = await computePlan({ sql, env, day, encryptionRequired });
+      report.contract = CONTRACT_V2;
+      if (!pl.ok) { pl.failures.forEach(fail); return finishPart(kv, report, part); }
+      if (pl.plan_id !== planId) { fail("inventory_changed"); return finishPart(kv, report, part); }
+      if (!Number.isInteger(part) || part < 0 || part >= pl.plan.parts) { fail("part_out_of_range"); return finishPart(kv, report, part); }
+      report.parts = pl.plan.parts;
+      report.plan_id = pl.plan_id;
+      report.auth = pl.auth;
+      if (part === 0) report.plan = pl.plan;
+      myTables = assignParts(pl.plan.eligible, pl.plan.parts)[part];
+    }
     // 1. KV -> Neon (first part only)
     const kvPart = part === 0;
     const listed = new Map();
@@ -128,13 +203,17 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
          from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' and table_name <> $1 order by 1`, [BACKUP_TABLE]);
     const skipped = []; const wanted = [];
     const excluded = [];
+    // v2: a parte copia EXATAMENTE as tabelas que o plano autenticado atribuiu a ela; uma tabela do plano ausente agora
+    // no banco é mudança de inventário (falha). v1 (legado): índice entre TODAS as tabelas (inclui as de credencial).
+    if (v2) for (const t of myTables) if (!stats.some((s) => s.t === t)) fail("inventory_changed");
     stats.forEach(({ t, n }, i) => {
       if (SENSITIVE.test(t)) { if (part === 0) excluded.push({ table: t, rows: n, reason: "credenciais_nao_duplicadas" }); return; }
-      if (i % parts !== part) return;
+      if (v2 ? !myTables.includes(t) : i % parts !== part) return;
       if (!validIdent(t)) { skipped.push({ table: t, reason: "name" }); fail("not_backed_up:" + t); }
       else if (n > MAX_TABLE_ROWS) { skipped.push({ table: t, rows: n, reason: "rows_over_cap" }); fail("not_backed_up:" + t); }
       else wanted.push({ table: t, rows: n });
     });
+    if (v2 && report.failures.includes("inventory_changed")) return finishPart(kv, report, part);
     const drillSet = wanted.slice(0, MAX_DRILL_TABLES);
     for (const w of wanted.slice(MAX_DRILL_TABLES)) { skipped.push({ table: w.table, rows: w.rows, reason: "over_table_budget" }); fail("not_backed_up:" + w.table); }
     report.totalTables = stats.length;
@@ -178,12 +257,22 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     const bundle = {};
     for (const { t, j } of dumps) {
       const json = j ?? "[]";
-      exported.push({ table: t, rows: drillSet.find((w) => w.table === t).rows, sha: await sha256(json) });
+      // v2: as linhas do relatório são contadas NO CONTEÚDO COPIADO (não na estatística, que é outra instrução e pode
+      // divergir se houver escrita no meio). v1: estatística, como antes.
+      let rows = drillSet.find((w) => w.table === t).rows;
+      if (v2) { try { const a = JSON.parse(json); rows = Array.isArray(a) ? a.length : -1; } catch { rows = -1; } if (rows < 0) fail("neon_copy_not_array:" + t); }
+      exported.push({ table: t, rows, sha: await sha256(json) });
       bundle[t] = json;
     }
     const bundleKey = `zpc:backup:v1:neon:${day}:part:${part}`;
     const bctx = { day, part, bundleKey };
-    if (exported.length) await kv.put(bundleKey, bk.state === "present" ? await sealBundle(JSON.stringify(bundle), bctx, bk) : JSON.stringify(bundle), { expirationTtl: 8 * DAY });
+    if (exported.length) {
+      const stored = bk.state === "present" ? await sealBundle(JSON.stringify(bundle), bctx, bk) : JSON.stringify(bundle);
+      await kv.put(bundleKey, stored, { expirationTtl: 8 * DAY });
+      // v2: hash do VALOR GRAVADO (envelope), conferido pelo arquivador antes de arquivar a parte.
+      if (v2) report.bundle = { key: bundleKey, sha256: await sha256(stored) };
+    }
+    if (v2) report.tables = Object.fromEntries(exported.map((e) => [e.table, { rows: e.rows, sha: e.sha }]));
     {
       const tablesFp = {};
       for (const e of exported) if (fpOf[e.table]) tablesFp[e.table] = { fp: fpOf[e.table], sha: e.sha };
@@ -279,6 +368,11 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   } catch (e) {
     fail("error:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 200));
   }
+  return finishPart(kv, report, part);
+}
+
+async function finishPart(kv, report, part) {
+  report.ok = report.ok === true && report.failures.length === 0;
   report.finishedAt = new Date().toISOString();
   try { await kv.put(`${REPORT_KEY}:part:${part}`, JSON.stringify(report), { expirationTtl: 3 * DAY }); } catch { report.failures.push("report_write_failed"); report.ok = false; }
   return report;
@@ -288,8 +382,9 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
 // OK only when every part ran today, every part passed and no table was left out.
 // P20 diário D1 (PR 4): com sqlFactory, a reconciliação diária Neon × diário entra no relatório (campo diario). Em
 // DIARIO_FASE "sombra" a divergência é alerta (warnings); em "ativo", falha de P20. Sem env.DIARIO: "nao_configurado".
-export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED, sqlFactory = null, diarioFase = DIARIO_FASE } = {}) {
+export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Date.now(), encryptionRequired = ENCRYPTION_REQUIRED, sqlFactory = null, diarioFase = DIARIO_FASE, planId = null } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const v2 = typeof planId === "string" && planId.length > 0;
   const day = new Date(now).toISOString().slice(0, 10);
   const got = [];
   for (let i = 0; i < parts; i++) { try { got.push(JSON.parse(String(await kv.get(`${REPORT_KEY}:part:${i}`) || "null"))); } catch { got.push(null); } }
@@ -315,7 +410,48 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
   const efeito = efeitoNoRelatorio(report.diario);
   if (efeito.alerta) report.warnings.push(efeito.alerta);
   if (efeito.falha) failures.push(efeito.falha);
+  if (v2) await finalizeV2(env, { report, got, parts, planId, day, failures });
   report.ok = failures.length === 0 && valid.length === parts && report.restore.neon.ok === report.restore.neon.tables && report.totalTables != null && report.neon.tables === report.totalTables - report.neon.excluded.length;
+  if (v2) await sealReport(env, report);
   await kv.put(REPORT_KEY, JSON.stringify(report));
   return report;
+}
+
+// P20 v2: conferência da consolidação contra o plano autenticado. Qualquer divergência reprova o DIA inteiro.
+async function finalizeV2(env, { report, got, parts, planId, day, failures }) {
+  report.contract = CONTRACT_V2;
+  report.plan_id = planId;
+  const p0 = got[0];
+  const plan = p0 && p0.plan;
+  if (!plan || plan.schema !== PLAN_SCHEMA || plan.day !== day || plan.parts !== parts || !Array.isArray(plan.eligible)) { failures.push("plan_missing_or_malformed"); return; }
+  const rk = await loadReportKey(env.P20_BACKUP_KEY);
+  const text = canonical(plan);
+  const expectedId = rk.state === "present" ? await hmacHex(rk, text) : "sha256:" + (await sha256(text));
+  if (expectedId !== planId) { failures.push("plan_auth_failed"); return; }
+  report.plan = plan;
+  const assigned = assignParts(plan.eligible, parts);
+  const seen = new Map();
+  report.parts_detail = [];
+  got.forEach((r, i) => {
+    if (!r || r.day !== day) return; // já reprovado acima (part_missing)
+    if (r.contract !== CONTRACT_V2 || r.plan_id !== planId || r.part !== i) { failures.push("part_plan_mismatch:" + i); return; }
+    const names = Object.keys(r.tables || {}).sort(byCodepoint);
+    const want = [...assigned[i]].sort(byCodepoint);
+    if (names.length !== want.length || names.some((t, k) => t !== want[k])) failures.push("part_tables_mismatch:" + i);
+    for (const t of names) { if (seen.has(t)) failures.push("table_in_two_parts:" + t); seen.set(t, i); }
+    if (names.length && !(r.bundle && typeof r.bundle.sha256 === "string" && /^[0-9a-f]{64}$/.test(r.bundle.sha256))) failures.push("part_bundle_hash_missing:" + i);
+    report.parts_detail.push({ part: i, bundle_key: r.bundle ? r.bundle.key : null, bundle_sha256: r.bundle ? r.bundle.sha256 : null, tables: r.tables || {} });
+  });
+  const missing = plan.eligible.filter((t) => !seen.has(t));
+  if (missing.length) failures.push("coverage_incomplete:" + missing.length);
+  report.coverage = `${seen.size} de ${plan.eligible.length} tabelas elegíveis (credenciais fora por política: ${plan.excluded.length})`;
+}
+
+// Relatório v2 autenticado INTEIRO por HMAC(K_rel): plano, partes, hash de cada bundle, tabelas, exclusões e veredito.
+// Sem a chave: auth.state = "nao_autenticado" e nenhum consumidor pode declarar a cópia completa.
+export const AUTHENTICATED_FIELDS = Object.freeze(["contract", "day", "plan_id", "plan", "parts", "parts_detail", "ok", "failures", "encryption"]);
+async function sealReport(env, report) {
+  const rk = await loadReportKey(env.P20_BACKUP_KEY);
+  const body = Object.fromEntries(AUTHENTICATED_FIELDS.map((k) => [k, report[k] === undefined ? null : report[k]]));
+  report.auth = rk.state === "present" ? { state: "autenticado", alg: "HMAC-SHA256", kid: rk.kid, fields: [...AUTHENTICATED_FIELDS], hmac: await hmacHex(rk, canonical(body)) } : { state: "nao_autenticado" };
 }

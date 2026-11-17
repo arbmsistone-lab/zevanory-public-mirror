@@ -417,10 +417,11 @@
           "config-kv"
         ],
         "via": [
-          "scripts/audit/plan-probe.mjs"
+          "scripts/audit/plan-probe.mjs",
+          "scripts/ops/backup_preserve_archive.py"
         ],
         "scope": "no-credential",
-        "note": "testes com fetch falso"
+        "note": "testes com fetch falso; P20 v2: o arquivador real lê um KV EM ARQUIVO (--kv-fixture, gerado pelo Worker real no teste) e nunca a produção"
       },
       "plan-probe.yml": {
         "classes": [
@@ -935,10 +936,11 @@
           "config-kv"
         ],
         "invoked_by": [
-          "backup-preserve-archive.yml"
+          "backup-preserve-archive.yml",
+          "p20-restore-drill-tests.yml"
         ],
         "role": "writer",
-        "note": "preservação de backup no KV"
+        "note": "preservação de backup no KV; no teste oficial P20 v2 só com --kv-fixture (sem credencial, kv-extend recusado)"
       },
       "scripts/ops/router_routes.py": {
         "classes": [

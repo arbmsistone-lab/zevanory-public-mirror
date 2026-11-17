@@ -26,7 +26,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 import {
-  REPORT_KEY, PARTS, partReportKey, assessBackup, assertEphemeralTarget, buildRecord, validateRecord, validateInventory,
+  REPORT_KEY, PARTS, validPartCount, partReportKey, assessBackup, assertEphemeralTarget, buildRecord, validateRecord, validateInventory,
   assessKvCopy, KV_COPY_TABLE, KV_PREFIXES,
 } from "./restore-drill-lib.mjs";
 import { kvRestoreDrill } from "./kv-memory-replay.mjs";
@@ -70,7 +70,10 @@ export function kvReader({ mode, token, fixture, fetchImpl = fetch }) {
 export async function readBackup(get) {
   const combined = await get(REPORT_KEY);
   const parts = [];
-  for (let p = 0; p < PARTS; p++) parts.push(await get(partReportKey(p)));
+  // P20 v2: quantas partes o dia teve vem do relatório consolidado (1 a 6); ilegível = legado (3), e o assess reprova.
+  let n = PARTS;
+  try { const c = JSON.parse(String(combined)); if (validPartCount(c?.parts)) n = c.parts; } catch { n = PARTS; }
+  for (let p = 0; p < n; p++) parts.push(await get(partReportKey(p)));
   const bundles = {};
   for (const raw of parts) {
     let key = null;
