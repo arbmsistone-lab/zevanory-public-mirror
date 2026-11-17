@@ -141,8 +141,10 @@ def q_conta(d, etapa):
             yy += h + gap
         return
     faixa = 170; y = prova(d, "contribuicao", embaixo(356, bloco_prova("contribuicao", 10 + faixa))) + 10
-    d.rounded_rectangle((64, y, SAFE_R, CB), 34, fill=(10, 60, 40), outline=(40, 200, 120), width=6)
-    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 40)), GREEN, anchor="mm")
+    # Ensaio 44090145345: verde-claro (110 px) sobre verde-escuro com borda verde-viva -> o OCR perdia "Sobram" ou
+    # "R$ 39" conforme a legenda embaixo. Texto branco sobre fundo escuro (contraste máximo); o verde fica só na borda.
+    d.rounded_rectangle((64, y, SAFE_R, CB), 34, fill=(6, 40, 26), outline=GREEN, width=6)
+    d.text(((64 + SAFE_R) // 2, (y + CB) // 2), "Sobram " + brl(N["margem_antes_fixas"]), font(min(110, CB - y - 40)), TXT, anchor="mm")
 def q_planilha(d):
     d.text((64, 290), "PLANILHA REAL · LIBREOFFICE CALC", font(44), BLUE)
     y = rich(d, 64, 350, "A margem, na hora.", font(80), hl=("margem,",)) + 14
