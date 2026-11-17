@@ -1,8 +1,9 @@
 {
   "schema": "meta-crosspost-recorrente/v1",
   "descricao": "Autorização ESPECÍFICA do proprietário para o crosspost recorrente dos Shorts no Instagram e no Facebook. É uma decisão distinta da prova DEC-23 (meta-prova-dec23.json): a prova só retira a trava de permissão; publicar todo dia exige este registro, preenchido por PR com autorizado=true, autorizado_por=\"proprietario\", autorizado_em=AAAA-MM-DD e a frase exata. Qualquer campo nulo ou divergente mantém IG/FB bloqueados (status bloqueado:recorrente_nao_autorizado), sem nenhuma chamada à Meta.",
-  "autorizado": false,
-  "autorizado_por": null,
-  "autorizado_em": null,
-  "frase": null
+  "autorizado": true,
+  "autorizado_por": "proprietario",
+  "autorizado_em": "2026-11-17",
+  "frase": "autorizo o crosspost recorrente dos Shorts para Instagram e Facebook",
+  "registro": "Frase exata escrita pelo proprietário (Airton Renan Alves Moreira Bitu) no chat em 17/11/2026 08:58 (America/Sao_Paulo), junto com \"autorizo o merge do #1051\". Vale para o crosspost recorrente dos Shorts PÚBLICOS para Instagram e Facebook; continua exigindo a prova DEC-23 válida e as credenciais META_* do ambiente."
 }
