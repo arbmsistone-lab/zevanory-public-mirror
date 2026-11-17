@@ -59,7 +59,9 @@ const get = (path, e, init = {}) => worker.fetch(new Request("https://vendas.zev
 test("modo Hotmart: /hotmart/<produto> leva ao checkout da Hotmart dos 5 produtos", async () => {
   for (const slug of Object.keys(HOTMART_CHECKOUT)) {
     const body = await (await get("/hotmart/" + slug, env({ hotmart: true }))).text();
-    assert.match(body, /href="https:\/\/pay\.hotmart\.com\//, slug);
+    assert.match(body, new RegExp('href="/hotmart/' + slug + '/ir\\?utm_source='), slug);
+    const ir = await get("/hotmart/" + slug + "/ir", env({ hotmart: true }));
+    assert.equal(ir.status, 302, slug); assert.equal(ir.headers.get("location"), HOTMART_CHECKOUT[slug] + "&src=direto", slug);
     assert.doesNotMatch(body, /Vendas pausadas/, slug);
   }
 });

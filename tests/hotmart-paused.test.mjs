@@ -35,7 +35,10 @@ for (const state of ["closed", "throw"]) {
 test("sales open: Hotmart kits remain allowed by the owner switch but CP stays inaccessible", async () => {
   const r = await get("/hotmart/ia-na-pratica", env("open"));
   assert.equal(r.status, 200);
-  assert.match(await r.text(), /href="https:\/\/pay\.hotmart\.com\//);
+  // os botões passam pela rota de clique (funil); ela redireciona ao checkout da Hotmart
+  assert.match(await r.text(), /href="\/hotmart\/ia-na-pratica\/ir\?utm_source=/);
+  const ir = await get("/hotmart/ia-na-pratica/ir", env("open"));
+  assert.equal(ir.status, 302); assert.match(ir.headers.get("location"), /^https:\/\/pay\.hotmart\.com\//);
   const s = await get("/assinar/conteudo-pronto", env("open"));
   assert.equal(s.status, 404);
   assert.equal(s.headers.get("location"), null);
