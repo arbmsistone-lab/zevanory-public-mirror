@@ -22,5 +22,76 @@
   "Status": "OK"
  },
  "margem_alvo_config": 0.2,
- "recalculo": "LibreOffice headless"
+ "recalculo": "LibreOffice headless",
+ "celulas": {
+  "preco": {
+   "arquivo": "assets/shorts-v3/lcx/celula-preco.png",
+   "aba": "Produtos",
+   "celula": "E5",
+   "cabecalho": "Preço atual",
+   "valor_exibido": "R$ 180,00",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula E5 selecionada; arquivo: close-up a 400% da mesma célula selecionada; coluna (v3.8): só a coluna da célula a 400% (zoom máximo do Calc) com as letras e os números das linhas reais, linhas 3 a 5, mesma célula selecionada, recorte terminando 4 px antes da borda direita da seleção (v3.9), v3.9: é a prova exibida no quadro (a célula aparece uma vez só), ampliada por escala uniforme até 876 px de largura",
+   "formato": "brl",
+   "tela": "assets/shorts-v3/lcx/tela-preco.png",
+   "coluna": "assets/shorts-v3/lcx/coluna-preco.png"
+  },
+  "taxa": {
+   "arquivo": "assets/shorts-v3/lcx/celula-taxa.png",
+   "aba": "Produtos",
+   "celula": "F5",
+   "cabecalho": "Taxa pagamento %",
+   "valor_exibido": "5,0%",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula F5 selecionada; arquivo: close-up a 400% da mesma célula selecionada; coluna (v3.8): só a coluna da célula a 400% (zoom máximo do Calc) com as letras e os números das linhas reais, linhas 3 a 5, mesma célula selecionada, recorte terminando 4 px antes da borda direita da seleção (v3.9), v3.9: é a prova exibida no quadro (a célula aparece uma vez só), ampliada por escala uniforme até 876 px de largura",
+   "formato": "pct",
+   "tela": "assets/shorts-v3/lcx/tela-taxa.png",
+   "coluna": "assets/shorts-v3/lcx/coluna-taxa.png"
+  },
+  "contribuicao": {
+   "arquivo": "assets/shorts-v3/lcx/celula-contribuicao.png",
+   "aba": "Produtos",
+   "celula": "J5",
+   "cabecalho": "Contribuição/unit.",
+   "valor_exibido": "R$ 39,00",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula J5 selecionada; arquivo: close-up a 400% da mesma célula selecionada; coluna (v3.8): só a coluna da célula a 400% (zoom máximo do Calc) com as letras e os números das linhas reais, linhas 3 a 5, mesma célula selecionada, recorte terminando 4 px antes da borda direita da seleção (v3.9), v3.9: é a prova exibida no quadro (a célula aparece uma vez só), ampliada por escala uniforme até 876 px de largura",
+   "formato": "brl",
+   "tela": "assets/shorts-v3/lcx/tela-contribuicao.png",
+   "coluna": "assets/shorts-v3/lcx/coluna-contribuicao.png"
+  },
+  "margem": {
+   "arquivo": "assets/shorts-v3/lcx/celula-margem.png",
+   "aba": "Produtos",
+   "celula": "K5",
+   "cabecalho": "Margem contribuição %",
+   "valor_exibido": "21,7%",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula K5 selecionada; arquivo: close-up a 400% da mesma célula selecionada; coluna (v3.8): só a coluna da célula a 400% (zoom máximo do Calc) com as letras e os números das linhas reais, linhas 3 a 5, mesma célula selecionada, recorte terminando 4 px antes da borda direita da seleção (v3.9), v3.9: é a prova exibida no quadro (a célula aparece uma vez só), ampliada por escala uniforme até 876 px de largura",
+   "formato": "pct",
+   "tela": "assets/shorts-v3/lcx/tela-margem.png",
+   "coluna": "assets/shorts-v3/lcx/coluna-margem.png"
+  },
+  "desconto": {
+   "arquivo": "assets/shorts-v3/lcx/celula-desconto.png",
+   "aba": "Produtos",
+   "celula": "M5",
+   "cabecalho": "Desconto máx. p/ margem alvo",
+   "valor_exibido": "2,2%",
+   "render": "LibreOffice Calc 24.2 pt-BR na tela (Xvfb 1400x1800), planilha original com as entradas desta proveniência e recálculo; captura da janela por ImageMagick import, só recorte (scripts/shorts-v3/capturar_planilha.py). tela: zoom 300%, só colunas inteiras (a anterior e a da célula), letras das colunas até a linha 5 (sem a barra de fórmulas), coluna da célula inteira, célula M5 selecionada; arquivo: close-up a 400% da mesma célula selecionada; coluna (v3.8): só a coluna da célula a 400% (zoom máximo do Calc) com as letras e os números das linhas reais, linhas 3 a 5, mesma célula selecionada, recorte terminando 4 px antes da borda direita da seleção (v3.9), v3.9: é a prova exibida no quadro (a célula aparece uma vez só), ampliada por escala uniforme até 876 px de largura",
+   "formato": "pct",
+   "tela": "assets/shorts-v3/lcx/tela-desconto.png",
+   "coluna": "assets/shorts-v3/lcx/coluna-desconto.png"
+  }
+ },
+ "manual_titulo": {
+  "arquivo": "assets/shorts-v3/lcx/manual-titulo.png",
+  "origem": "ZEVANORY_Lucro_e_Caixa_Manual_v1.3.docx (manual do kit)",
+  "sha256_origem": "8515fb14d99b5fcf92c620247b50bfb93096d914ce9ca057b8a616c60074fcde",
+  "render": "LibreOffice headless docx -> PDF; pdftoppm 300 dpi, página 1 (2550x3300)",
+  "recorte": [
+   230,
+   220,
+   1560,
+   620
+  ],
+  "reducao": "LANCZOS 1330x400 -> 876x263 (só redução; nenhum pixel ampliado)",
+  "substitui": "assets/shorts-v3/lcx/manual-topo.png"
+ }
 }

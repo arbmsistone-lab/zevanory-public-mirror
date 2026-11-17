@@ -45,7 +45,7 @@ tests/conteudo-pronto-roteiros.test.mjs 9
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7
-tests/criativos-laboratorio.test.mjs 11
+tests/criativos-laboratorio.test.mjs 14
 tests/criativos-rubrica-area-segura.test.mjs 3
 tests/criativos-rubrica-perfil.test.mjs 3
 tests/data-backup.test.mjs 13
@@ -175,7 +175,7 @@ tests/sandbox_credential_isolation.test.mjs 2
 tests/sandbox_proof_v2.test.mjs 18
 tests/short-crosspost.test.mjs 11
 tests/shorts-ensaio-isolamento.test.mjs 6
-tests/shorts-preparation.test.mjs 9
+tests/shorts-preparation.test.mjs 10
 tests/shorts-retomada-mutantes.test.mjs 47
 tests/shorts-retomada.test.mjs 15
 tests/shorts-v2-align.test.mjs 22
@@ -187,7 +187,10 @@ tests/shorts-v2-round4.test.mjs 32
 tests/shorts-v2-round5.test.mjs 16
 tests/shorts-v2-timing.test.mjs 5
 tests/shorts-v2.test.mjs 26
-tests/shorts-v3-duracao-voz.test.mjs 1
+tests/shorts-v3-cta.test.mjs 6
+tests/shorts-v3-duracao-voz.test.mjs 2
+tests/shorts-v3-ensaio-fases.test.mjs 3
+tests/shorts-v3-frases.test.mjs 14
 tests/shorts-voice-samples.test.mjs 5
 tests/signed-audit-probe.test.mjs 2
 tests/site-chat-eval.test.mjs 2

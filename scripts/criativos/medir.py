@@ -4,19 +4,23 @@ declara: lê o texto de cada quadro com OCR (tesseract, por), calcula a menor al
 área segura do YouTube Shorts, detecta quadro vazio e procura as capturas reais do produto por correlação de imagem.
 Uso: python3 -I medir.py <entrada.json>   (entrada: {"quadros":[png...], "provas":[{"captura":png,"largura":px renderizados}...]})
 Saída (stdout): JSON {"quadros":[{texto, palavras, altura_min, fora}], "medidas":{...}}."""
-import json, subprocess, sys
+import json, os, subprocess, sys
+# O interpretador roda com -P (sem a pasta do script no path); o módulo irmão confiável é incluído explicitamente.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from valor_ocr import ler_valor
 import numpy as np
 from PIL import Image
 SAFE_R, SAFE_B, TOP = 940, 1470, 250
 cfg = json.load(open(sys.argv[1], encoding="utf-8"))
-def _tess(png, escala, psm="11"):
-    p = subprocess.run(["tesseract", "stdin", "stdout", "-l", "por", "--psm", psm, "tsv"], input=png, capture_output=True, check=True)
+def _tess(png, escala, psm="11", digitos=False):
+    extra = ["-c", "tessedit_char_whitelist=0123456789,.%R$"] if digitos else []
+    p = subprocess.run(["tesseract", "stdin", "stdout", "-l", "por", "--psm", psm, *extra, "tsv"], input=png, capture_output=True, check=True)
     rows = []
     for line in p.stdout.decode("utf-8", "replace").splitlines()[1:]:
         c = line.split("\t")
         if len(c) < 12 or not c[11].strip(): continue
         conf = float(c[10]); t = c[11].strip()
-        if conf < 0: continue
+        if conf < 0 and not digitos: continue
         x, y, w, h = (round(int(v) / escala) for v in c[6:10]); rows.append({"t": t, "x": x, "y": y, "w": w, "h": h, "conf": conf})
     return rows
 def sobrepoe(r, q):
@@ -87,7 +91,12 @@ def tinta_sem_leitura(im, caixas, B=24):
     produto, após remover linhas longas (bordas de cartões). Cinco ou mais blocos vizinhos na mesma faixa = linha de texto."""
     g = np.asarray(im.convert("L"), dtype=np.int16)
     e = np.zeros(g.shape, bool); e[:, 1:] |= np.abs(np.diff(g, axis=1)) > 18; e[1:, :] |= np.abs(np.diff(g, axis=0)) > 18
-    for x, y, w, h in caixas: e[max(0, y - 10):y + h + 10, max(0, x - 16):x + w + 16] = False
+    for c in caixas:
+        x, y, w, h = c
+        if hasattr(c, "ok"):  # captura real: só os pixels iguais ao arquivo saem; a moldura em volta também
+            anel = np.zeros(e.shape, bool); anel[max(0, y - 10):y + h + 10, max(0, x - 16):x + w + 16] = True; anel[y:y + h, x:x + w] = False
+            e[anel] = False; sub = e[y:y + h, x:x + w]; sub[c.ok[:sub.shape[0], :sub.shape[1]]] = False
+        else: e[max(0, y - 10):y + h + 10, max(0, x - 16):x + w + 16] = False
     e[:TOP, :] = False; e[SAFE_B:, :] = False
     linhas = e.sum(1) > 300; e[linhas, :] = False; colunas = e.sum(0) > 300; e[:, colunas] = False
     H, W = e.shape; marc = np.zeros((H // B, W // B), bool)
@@ -110,21 +119,99 @@ for path in cfg["quadros"]:
     frames.append(im)
 # Capturas reais do produto: correlação por quadro; a região encontrada é PROVA (imagem do produto), e seu texto
 # miúdo não conta para a legibilidade do criativo (os números importantes precisam aparecer ampliados fora dela).
-regioes = {i: [] for i in range(len(frames))}; prova = []
+regioes = {i: [] for i in range(len(frames))}; prova = []; legiveis = []
+ALTURA_VALOR_MIN = 56  # v3.4 A2: altura mínima do valor DENTRO da captura, em 1080x1920
+norm = lambda x: "".join(ch for ch in x if ch.isalnum() or ch in ",.%")
+def valor_na_captura(im, box, valor):
+    """NC-V34-01/A2: OCR SÓ da região onde a captura real foi encontrada no quadro; procura o valor esperado da
+    proveniência (parte numérica) e mede a altura dele. Número desenhado fora da captura não conta."""
+    x, y, w, h = box; c = im.crop((x, y, x + w, y + h)).convert("L").resize((2 * w, 2 * h), Image.LANCZOS); import io; b = io.BytesIO(); c.save(b, "PNG")
+    png = b.getvalue()
+    return ler_valor([r for psm in ("6", "11") for r in _tess(png, 2, psm)], _tess(png, 2, "11", digitos=True), valor)
+# v3.5 (calibração negativo-sem-planilha): capturas reais de colunas vizinhas da mesma planilha são parecidas
+# (tela 200% de J e de K; close-ups de células selecionadas). Sem o quadro de uma prova, a captura dela "casava" com
+# a de outra (0,93). Agora cada prova é localizada no SEU melhor ponto (quadro + caixa); se duas provas disputam o
+# mesmo ponto (sobreposição > 50%), só a de maior correlação fica com ele — a outra conta como NÃO encontrada.
+# O valor é lido só nesse ponto exclusivo.
+def _sobrepoe(a, b):
+    ax, ay, aw, ah = a; bx, by, bw, bh = b
+    ix = max(0, min(ax + aw, bx + bw) - max(ax, bx)); iy = max(0, min(ay + ah, by + bh) - max(ay, by))
+    return ix * iy > 0.5 * min(aw * ah, bw * bh)
+# Calibração v3.6 (negativo-fora-da-area-segura): uma captura real grande abaixo de y=1470 escondia da leitura o texto
+# PINTADO por cima dela, porque a caixa inteira da captura era excluída. Agora a região só esconde os pixels que SÃO da
+# captura (diferença mínima, com folga de ±2 px de alinhamento, abaixo de DIF_CAPTURA); o que for desenhado por cima
+# volta a ser lido, medido e cobrado (área segura, texto não reconhecido, números).
+DIF_CAPTURA = 40
+class _Regiao(tuple):
+    pass
+def _regiao(im, caixa, tm, largura=None):
+    # o modelo é redimensionado para o tamanho EXATO em que a captura foi desenhada (largura declarada na prova); a
+    # caixa da busca em meia resolução só dá a posição — o tamanho aproximado dela desalinhava o texto em alguns px
+    x, y, w, h = caixa; g = im.convert("L")
+    if largura:
+        w, h = largura, round(tm.height * largura / tm.width)
+        tp = np.asarray(tm.resize((w, h), Image.LANCZOS), dtype=np.int16)
+        # a busca em meia resolução erra a posição em até ~4 px: ajuste fino pela menor diferença média
+        x, y = min(((xx, yy) for yy in range(y - 4, y + 5) for xx in range(x - 4, x + 5)),
+                   key=lambda p: float(np.abs(np.asarray(g.crop((p[0], p[1], p[0] + w, p[1] + h)), dtype=np.int16) - tp).mean()))
+    fr = np.asarray(g.crop((x, y, x + w, y + h)), dtype=np.int16)
+    tp = np.asarray(tm.resize((fr.shape[1], fr.shape[0]), Image.LANCZOS), dtype=np.int16)
+    best = np.full(fr.shape, 255, dtype=np.int16)
+    for dy in range(-2, 3):
+        for dx in range(-2, 3): best = np.minimum(best, np.abs(fr - np.roll(np.roll(tp, dy, 0), dx, 1)))
+    r = _Regiao((x, y, fr.shape[1], fr.shape[0])); r.ok = best < DIF_CAPTURA; return r
+def _da_captura(r, x, y, w, h):
+    """a palavra (caixa x,y,w,h do OCR) é da captura r se >= 80% da caixa está dentro dela e, nessa parte, >= 90% dos
+    pixels são iguais ao arquivo real. (A caixa do OCR costuma passar alguns px da borda — ex.: "21,7%" na última linha
+    da tela; texto pintado POR CIMA de uma captura não passa, porque os pixels dele diferem do arquivo.)"""
+    rx, ry, rw, rh = r; x0, y0, x1, y1 = max(x, rx), max(y, ry), min(x + w, rx + rw), min(y + h, ry + rh)
+    if x1 <= x0 or y1 <= y0: return False
+    dentro = (x1 - x0) * (y1 - y0) / max(1, w * h)
+    return dentro >= 0.8 and float(r.ok[y0 - ry:y1 - ry, x0 - rx:x1 - rx].mean()) >= 0.9
+achados = []
 for pv in cfg.get("provas", []):
     t, larg = (pv["captura"], pv["largura"]) if isinstance(pv, dict) else (pv, 876)
-    tm = Image.open(t).convert("L"); best = 0.0; half = larg / 2
+    valor = pv.get("valor") if isinstance(pv, dict) else None
+    tm = Image.open(t).convert("L"); best, onde, caixas = 0.0, None, []; half = larg / 2
     for i, im in enumerate(frames):
         g = im.convert("L").resize((540, 960), Image.LANCZOS)
         for w in sorted({round(half * f) for f in (0.995, 1.0, 1.013)}):
             tt = tm.resize((w, max(1, round(tm.height * w / tm.width))), Image.LANCZOS)
             v, box = ncc_max(np.asarray(g), np.asarray(tt))
-            if v > best: best = v
-            if v >= 0.8 and box: regioes[i].append(tuple(2 * c for c in box))
-    prova.append({"captura": t, "correlacao": round(best, 3)})
+            if v >= 0.8 and box: regioes[i].append(_regiao(frames[i], tuple(2 * c for c in box), tm, larg if abs(2 * box[2] - larg) <= 0.02 * larg else None)); caixas.append((i, tuple(2 * c for c in box), v))
+            if v > best and box: best, onde = v, (i, tuple(2 * c for c in box))
+    achados.append({"captura": t, "valor": valor, "best": best, "onde": onde, "caixas": caixas})
+# Ensaio real 43639031016: no MP4 cada quadro aparece em vários estados (a legenda muda); exigir só o melhor estado
+# deixava o valor ilegível num estado de transição. Agora vale QUALQUER casamento (≥ 0,8) da prova que não seja
+# disputado, no mesmo quadro e no mesmo lugar, por outra prova com correlação maior.
+# Ensaio 43646726494: close-ups de células selecionadas são quase iguais para o NCC (0,966 x 0,965); a captura certa
+# perdia a disputa pelo próprio lugar e o valor saía "ilegível". Desempate: entre duas provas COM valor que disputam
+# o mesmo lugar, vence a cujo valor da proveniência é lido ali (OCR estrito); só se nenhuma ou ambas lerem, vale a
+# correlação maior. Sem valor, vale a correlação.
+_lido = {}
+def _le(a, i, c):
+    k = (id(a), i, c)
+    if k not in _lido: _lido[k] = valor_na_captura(frames[i], c, a["valor"]) if a["valor"] else 0
+    return _lido[k]
+def _vence(a, i, c, v, b, w):
+    if a["valor"] and b["valor"]:
+        la, lb = _le(a, i, c) > 0, _le(b, i, c) > 0
+        if la != lb: return la
+    return v > w or (v == w and achados.index(a) < achados.index(b))
+def _valido(a, i, c, v):
+    return all(_vence(a, i, c, v, b, w) for b in achados if b is not a for j, d, w in b["caixas"] if j == i and _sobrepoe(c, d))
+for a in achados:
+    a["validos"] = [(i, c) for i, c, v in a["caixas"] if _valido(a, i, c, v)]
+    ok = bool(a["validos"])
+    prova.append({"captura": a["captura"], "correlacao": round(a["best"], 3), "quadro": a["validos"][0][0] if ok else None, "exclusiva": ok})
+    if a["valor"]:
+        altura = max([_le(a, i, c) for i, c in a["validos"]] or [0])
+        legiveis.append({"captura": a["captura"], "valor": a["valor"], "altura_px": altura, "legivel": altura >= ALTURA_VALOR_MIN,
+                         # diagnóstico: todos os casamentos (quadro, correlação, válido no lugar, altura lida)
+                         "tentativas": [[i, round(v, 3), (i, c) in a["validos"], _le(a, i, c)] for i, c, v in a["caixas"]][:12]})
 for i, im in enumerate(frames):
     import io; buf = io.BytesIO(); im.save(buf, "PNG"); rows = ocr(buf.getvalue())
-    dentro = lambda r: any(x - 8 <= r["x"] and r["x"] + r["w"] <= x + w + 8 and y - 8 <= r["y"] and r["y"] + r["h"] <= y + h + 8 for x, y, w, h in regioes[i])
+    dentro = lambda r: any(_da_captura(g, r["x"], r["y"], r["w"], r["h"]) for g in regioes[i])
     rows = [r for r in rows if not dentro(r)]
     # NC-R05: texto que o OCR enxerga mas não consegue ler com confiança (>=3 caracteres alfanuméricos, conf < 60,
     # na área de conteúdo) é conteúdo ilegível: reprova, em vez de ser descartado em silêncio.
@@ -142,5 +229,6 @@ for i, im in enumerate(frames):
     if len(conteudo) < 2: vazios += 1
     quadros.append({"texto": " ".join(r["t"] for r in palavras), "palavras": len(palavras), "altura_min": min(hs) if hs else None, "fora": f[:10], "nao_lidos": nao_lidos[:10], "tinta_sem_leitura": sem_leitura[:10]})
 medidas = {"alturaTextoMinPx": min(alturas) if alturas else 0, "foraAreaSegura": fora, "quadrosVazios": vazios, "textoNaoReconhecido": nao_reconhecido,
-           "provaReal": bool(prova) and all(p["correlacao"] >= 0.8 for p in prova), "provas": prova, "origem": "medicao_independente_ocr", "cobertura": cobertura}
+           "provaReal": bool(prova) and all(p["correlacao"] >= 0.8 and p["exclusiva"] for p in prova), "provas": prova,
+           "provasLegiveis": legiveis, "provaIlegivel": sum(1 for p in legiveis if not p["legivel"]), "origem": "medicao_independente_ocr", "cobertura": cobertura}
 print(json.dumps({"quadros": quadros, "medidas": medidas}, ensure_ascii=False))

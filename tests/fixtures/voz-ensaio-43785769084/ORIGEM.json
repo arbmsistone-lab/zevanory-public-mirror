@@ -1,0 +1,8 @@
+{
+ "descricao": "Voz REAL do ensaio 43785769084 (#1054 em b4d5da6c), que reprovou no alinhamento (alignment_invalid: 11 de 94 palavras instantâneas; frase 1 com fim_da_fala_sem_palavra, sobra 0,68 s a -18,8 dB contra fala -14,6 dB). Artefato ensaio-voz baixado do GitHub pelo proprietário; usado só para reproduzir e testar o alinhamento, sem nova voz nem Gemini.",
+ "execucao": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/43785769084",
+ "artefato": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/43785769084/artifacts/14189944861",
+ "zip_sha256": "022fff36266a02c49e7014a05e9ef162dc7a5dee62df033f504eedc6a550ad47",
+ "voz_pcm_sha256": "c5b6288df36db8aaa421c2d80a8781d84ec8cb101008f3eaf8c600f8c2f28699",
+ "meta_json_sha256": "88ac571303ac083e4b24e0619c7d0728e5800a4a63c1a63a341c29b501ca1767"
+}

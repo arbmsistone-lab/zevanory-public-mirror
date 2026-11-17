@@ -20,8 +20,8 @@ const NUM = { preco_venda: 180, custo_produto_frete: 132, taxa_cartao: 9, taxa_c
 const PERM = permitidosDe(NUM, 147);
 const FALAS = ["Sua loja vende, mas o dinheiro desaparece?", "Pegue sua última venda: um tênis de cento e oitenta reais.", "O produto e o frete custaram cento e trinta e dois.", "A taxa do cartão levou mais nove.", "Sobram trinta e nove reais antes das despesas fixas.", "E ela mostra o desconto máximo: dois vírgula dois por cento.", "Lucro e Caixa: cento e quarenta e sete reais, com arrependimento em sete dias corridos.", "Kit completo no link da descrição."];
 const TELAS = ["ZEVANORY LOJA LUCRO CAIXA Sua loja vende", "Recebeu R$ 180 Produto frete R$ 132 Taxa do cartão (5%) R$9 Margem antes das despesas fixas R$ 39", "Margem de contribuição 21,7%", "Preço mínimo p/ meta de 20% R$ 176 Desconto máximo 2,2%", "Lucro & Caixa R$ 147 pagamento único arrependimento em 7 dias"];
-const MED = { quadros: TELAS.map((texto) => ({ texto })), medidas: { alturaTextoMinPx: 24, foraAreaSegura: 0, quadrosVazios: 0, provaReal: true, textoNaoReconhecido: 0, origem: "medicao_independente_ocr" } };
-const CRI = { sku: "ZEV-LCX-011", falas: FALAS, oferta: { nome: "Lucro & Caixa", preco: 147 } };
+const MED = { quadros: TELAS.map((texto) => ({ texto })), medidas: { alturaTextoMinPx: 24, foraAreaSegura: 0, quadrosVazios: 0, provaReal: true, textoNaoReconhecido: 0, provasLegiveis: [{ captura: "c.png", valor: "21,7%", altura_px: 70, legivel: true }], provaIlegivel: 0, origem: "medicao_independente_ocr" } };
+const CRI = { sku: "ZEV-LCX-011", falas: FALAS, oferta: { nome: "Lucro & Caixa", preco: 147 }, celulasExigidas: [{ captura: "c.png", valor: "21,7%" }] };
 const OFICIAL = { fonte: "https://vendas.zevanory.api.br/lucro-e-caixa", preco: 147, versao: "sha256:abc", lido_em: "2026-11-13T12:00:00Z" };
 const PADRAO = montarPadrao({ evidencia: EVID, geradoEm: "2026-11-13T12:00:00Z" });
 const ALTO = { notas: { gancho: 9.8, legibilidade: 9.6, prova: 9.7, oferta: 9.6, marca: 9.9 }, problemas: [], melhorias: [] };
@@ -86,6 +86,10 @@ test("objetivas (NC-02, adversarial): nada declarado pelo criativo vale como med
   assert.ok(m("foraAreaSegura", 2).includes("conteudo_fora_da_area_segura"));
   assert.ok(m("textoNaoReconhecido", 1).includes("texto_nao_reconhecido"), "texto essencial não lido reprova");
   assert.ok(m("textoNaoReconhecido", undefined).includes("texto_nao_reconhecido"), "ausência da medida reprova (falha fechada)");
+  assert.ok(m("provaIlegivel", 1).includes("prova_ilegivel"), "valor da célula real não lido no vídeo reprova (v3.4 A2)");
+  assert.ok(m("provasLegiveis", undefined).includes("prova_ilegivel"), "sem a medida de legibilidade da prova: reprova");
+  assert.ok(m("provasLegiveis", []).includes("prova_ilegivel"), "nenhum valor real comprovado: reprova");
+  assert.ok(m("provasLegiveis", [{ valor: "2,2%", altura_px: 40, legivel: false }]).includes("prova_ilegivel"), "valor pequeno demais na captura: reprova");
   const semPreco = { ...MED, quadros: MED.quadros.map((q) => ({ texto: q.texto.replace("R$ 147", "") })) };
   assert.ok(checagensObjetivas({ criativo: CRI, medicao: semPreco, permitidos: PERM, oficial: OFICIAL }).includes("preco_oficial_ausente_no_video"));
   assert.ok(checagensObjetivas({ criativo: CRI, medicao: MED, permitidos: PERM, oficial: { ...OFICIAL, preco: 97 } }).includes("oferta_publicada_divergente"));
@@ -179,6 +183,20 @@ test("proveniência (NC-R05, adversarial): números permitidos só vêm da plani
   writeFileSync(join(d, "man2.json"), JSON.stringify({ arquivos: { [spec.proveniencia_numeros]: M.arquivos[spec.proveniencia_numeros] } }));
   await assert.rejects(() => conferirManifesto({ ...spec, manifesto: rel("man2.json") }), /v3_manifesto_sem/, "captura fora do manifesto");
   await assert.rejects(() => conferirManifesto({ ...spec, manifesto: undefined }), /v3_manifesto_ausente/);
+  // v3.4 cruzamento: cada célula exibida = célula registrada na proveniência = número da planilha formatado pt-BR.
+  const { conferirCelulas, formatarCelula } = await import("../scripts/shorts-v3/render.mjs");
+  assert.equal(formatarCelula("pct", 0.216666666666667), "21,7%"); assert.equal(formatarCelula("brl", 39), "R$ 39,00"); assert.equal(formatarCelula("x", 1), null);
+  conferirCelulas(spec, P);
+  for (const [i, k, v] of [[1, "celula", "J6"], [2, "celula", "K6"], [3, "captura", "assets/shorts-v3/lcx/outra.png"]]) {
+    const t = structuredClone(spec); t.provas[i][k] = v; assert.throws(() => conferirCelulas(t, P), /v3_celula_sem_proveniencia/, `${k}=${v}`);
+  }
+  const Pv = structuredClone(P); Pv.celulas.margem.valor_exibido = "21,6%";
+  assert.throws(() => conferirCelulas(spec, Pv), /v3_celula_sem_proveniencia/, "valor exibido diferente da planilha");
+  const { provasParaMedir } = await import("../scripts/shorts-v3/render.mjs");
+  assert.deepEqual(provasParaMedir(spec, P, "/r").map((p) => p.valor ?? null), ["R$ 180,00", "R$ 39,00", "21,7%", "2,2%", null], "valor esperado só vem da proveniência (v3.9: a coluna real carrega o valor; manual sem valor)");
+  assert.ok(spec.provas.every((p) => p.valor === undefined), "o spec não guarda valor esperado");
+  const P2 = structuredClone(P); P2.resultados_calculados_pela_planilha["Margem contribuição %"] = 0.2;
+  assert.throws(() => conferirCelulas(spec, P2), /v3_celula_sem_proveniencia/, "planilha com outro resultado");
 });
 test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BLOQUEADO com relatório", async () => {
   assert.equal(MAX_TENTATIVAS, 3);
@@ -189,4 +207,86 @@ test("ciclo: refaz com o feedback, no máximo 3 tentativas; sem aprovação = BL
   let n = 0;
   const bloq = await cicloCriativo({ gerar: async () => ({}), avaliarCriativo: async () => { n++; return { aprovado: false, decisao: "DESCARTADO", nota_geral: 9.1, motivos: ["nota_abaixo:oferta=9.1"] }; } });
   assert.deepEqual([bloq.estado, n], ["BLOQUEADO", 3]); assert.match(bloq.relatorio, /3 tentativas.*9\.1.*oferta=9\.1/);
+});
+test("v3.9 (júri real 8,3, ensaio 43768114276; GPT-6): cada célula aparece UMA vez — a coluna real do Calc, ampliada, com cabeçalho e linhas; hash e proveniência", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const spec = JSON.parse(await readFile("data/shorts-v3/lcx.json", "utf8"));
+  const P = JSON.parse(await readFile("assets/shorts-v3/lcx/planilha-proveniencia.json", "utf8"));
+  const M = JSON.parse(await readFile("assets/shorts-v3/lcx/manifesto.json", "utf8"));
+  const { celulaDaCaptura } = await import("../scripts/shorts-v3/render.mjs");
+  const comValor = spec.provas.filter((p) => p.celula !== undefined);
+  assert.equal(comValor.length, 4);
+  const vistas = new Set();
+  for (const p of comValor) {
+    const c = celulaDaCaptura(P, p.captura);
+    assert.ok(c && c.celula === p.celula, p.captura);
+    assert.equal(p.captura, c.coluna, "v3.9: a prova exibida é a coluna real (cabeçalho + linhas), não o close-up");
+    assert.ok(!spec.provas.some((q) => q.captura === c.arquivo), "o close-up da mesma célula não aparece de novo (sem duplicidade)");
+    assert.equal(p.largura, 876, "ampliada até a largura útil");
+    assert.ok(!vistas.has(c.celula), "célula repetida"); vistas.add(c.celula);
+    for (const f of [c.arquivo, c.coluna, c.tela]) assert.match(M.arquivos[f] || "", /^[0-9a-f]{64}$/, "hash no manifesto: " + f);
+    assert.match(c.render, /LibreOffice Calc .*Xvfb.*capturar_planilha\.py/);
+  }
+  // manual: título REAL da 1ª página do manual do kit, só reduzido (nenhum pixel ampliado), com hash e origem
+  assert.ok(spec.provas.some((p) => p.captura === P.manual_titulo.arquivo), "manual: recorte real do título da 1ª página do manual");
+  assert.match(M.arquivos[P.manual_titulo.arquivo] || "", /^[0-9a-f]{64}$/);
+  assert.equal(P.manual_titulo.sha256_origem, "8515fb14d99b5fcf92c620247b50bfb93096d914ce9ca057b8a616c60074fcde");
+  const [x0, y0, x1, y1] = P.manual_titulo.recorte, png = (await import("node:fs")).readFileSync(P.manual_titulo.arquivo);
+  assert.ok(png.readUInt32BE(16) <= x1 - x0 && png.readUInt32BE(20) <= y1 - y0, "só redução");
+  assert.equal(P.rodapes, undefined);
+  const q = readTextNormalized("scripts/shorts-v3/quadros.py");
+  assert.doesNotMatch(q, /1900 - hb/, "barras decorativas fixas removidas");
+  assert.doesNotMatch(q, /def feixe\(|def celula\(/, "v3.9: sem feixe fino nem close-up duplicado");
+  assert.match(q, /CB = 1320/); assert.doesNotMatch(q, /d\.polygon\(\[\(x - 50/, "v3.11: sem o triângulo amarelo fora da captura"); assert.match(q, /def embaixo\(/);
+  assert.doesNotMatch(q, /fundo_inferior|GaussianBlur\(38\)/);
+  // legenda logo abaixo do conteúdo, numa altura fixa acima da interface do Shorts
+  const { LEGENDA_Y } = await import("../scripts/shorts-v3/render.mjs");
+  assert.ok(LEGENDA_Y > 1320 && LEGENDA_Y + 37 + 6 < 1470, String(LEGENDA_Y));
+});
+test("GPT-6 #1054: o avaliador do código integrado reprova célula ilegível ou medição ausente MESMO com nota alta do júri", async () => {
+  const base = { criativo: CRI, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: MED, permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };
+  assert.equal((await avaliar({ ...base, fetchImpl: gem(ALTO) })).decisao, "APROVADO", "controle: tudo legível aprova");
+  const comLeg = (pl, extra = {}) => ({ ...MED, medidas: { ...MED.medidas, provasLegiveis: pl, ...extra } });
+  const ok = MED.medidas.provasLegiveis;
+  assert.ok(ok.every((p) => p.legivel === true && p.altura_px >= 56), "controle com alturas reais >= 56");
+  const casos = {
+    "célula abaixo de 56 px": comLeg(ok.map((p, i) => i === 0 ? { ...p, altura_px: 40, legivel: false } : p)),
+    "medição ausente": comLeg(undefined),
+    "lista vazia": comLeg([]),
+    "item sem 'legivel'": comLeg(ok.map((p, i) => i === 0 ? { captura: p.captura, valor: p.valor, altura_px: 90 } : p)),
+    "provaIlegivel informado": comLeg(ok, { provaIlegivel: 1 }),
+    "célula de 40 px marcada legível (o avaliador confere a altura por conta própria)": comLeg(ok.map((p, i) => i === 0 ? { ...p, altura_px: 40, legivel: true } : p)),
+    "altura ausente": comLeg(ok.map((p, i) => i === 0 ? { captura: p.captura, valor: p.valor, legivel: true } : p)),
+  };
+  for (const [nome, medicao] of Object.entries(casos)) {
+    const r = await avaliar({ ...base, medicao, fetchImpl: gem({ notas: { gancho: 10, legibilidade: 10, prova: 10, oferta: 10, marca: 10 }, problemas: [], melhorias: [] }) });
+    assert.equal(r.decisao, "DESCARTADO", nome); assert.ok(r.motivos.includes("prova_ilegivel"), nome);
+  }
+});
+
+test("avaliador confere a IDENTIDADE das células exigidas: faltando uma, duplicata no lugar de outra, sobra ou lista ausente reprovam mesmo com júri 10 (GPT-6, 15/11)", async () => {
+  const { celulasExigidas } = await import("../scripts/criativos/avaliador.mjs");
+  const C = [["celula-preco.png", "R$ 180"], ["celula-contribuicao.png", "R$ 39"], ["celula-margem.png", "21,7%"], ["celula-desconto.png", "2,2%"]];
+  const exig = celulasExigidas([{ captura: "/x/tela-preco.png", largura: 940 }, ...C.map(([c, valor]) => ({ captura: "/raiz/assets/" + c, largura: 876, valor }))]);
+  assert.deepEqual(exig, C.map(([captura, valor]) => ({ captura, valor })), "exigidas = capturas com valor (nome do arquivo + valor)");
+  const leg = C.map(([c, valor], i) => ({ captura: "/runner/tmp/assets/" + c, valor, altura_px: 74 + i, legivel: true }));
+  const cri = { ...CRI, celulasExigidas: exig };
+  const med = (pl) => ({ ...MED, medidas: { ...MED.medidas, provasLegiveis: pl } });
+  const base = { criativo: cri, padrao: PADRAO, quadrosPng: [Buffer.from("p")], medicao: med(leg), permitidos: PERM, oficial: OFICIAL, key: "k", esperar: async () => {} };
+  const DEZ = gem({ notas: { gancho: 10, legibilidade: 10, prova: 10, oferta: 10, marca: 10 }, problemas: [], melhorias: [] });
+  assert.equal((await avaliar({ ...base, fetchImpl: DEZ })).decisao, "APROVADO", "controle: as 4 exigidas, legíveis");
+  const casos = {
+    "3 de 4 (uma retirada)": [base.criativo, med(leg.filter((_, i) => i !== 2))],
+    "duplicata no lugar de uma (contagem 4)": [base.criativo, med(leg.map((p, i) => (i === 2 ? { ...leg[1] } : p)))],
+    "célula trocada por outra não exigida (contagem 4)": [base.criativo, med(leg.map((p, i) => (i === 2 ? { ...p, captura: "/t/celula-outra.png" } : p)))],
+    "valor trocado na célula certa": [base.criativo, med(leg.map((p, i) => (i === 2 ? { ...p, valor: "99,9%" } : p)))],
+    "sobra (5 com uma extra)": [base.criativo, med([...leg, { captura: "/t/celula-extra.png", valor: "1", altura_px: 90, legivel: true }])],
+    "criativo sem lista de exigidas": [{ ...cri, celulasExigidas: undefined }, med(leg)],
+    "lista de exigidas vazia": [{ ...cri, celulasExigidas: [] }, med(leg)],
+  };
+  for (const [nome, [criativo, medicao]] of Object.entries(casos)) {
+    const r = await avaliar({ ...base, criativo, medicao, fetchImpl: DEZ });
+    assert.equal(r.decisao, "DESCARTADO", nome);
+    assert.ok(r.motivos.some((m) => m === "celulas_exigidas_divergentes" || m === "celulas_exigidas_ausentes"), nome + ": " + r.motivos.join(","));
+  }
 });

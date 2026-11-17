@@ -40,3 +40,19 @@ test('v3: no .ass gerado todo evento dura >= 0,12 s e toda palavra aparece desta
  const g2=ev.filter(e=>/caixa/.test(e.txt));assert.equal(g2.length,3,'grupo sem instantânea mantém destaque palavra a palavra');
  for(const w of ['mas','o','caixa'])assert.ok(g2.some(e=>e.txt.includes(`{\\c&H000AD6FF&}${w}{\\c&H00FFFFFF&}`)),w);
  assert.deepEqual(ws.map(w=>[w.start,w.end]),[[0,.2],[.2,.2],[.2,.9],[1,1.3],[1.3,1.5],[1.5,2]]);});
+test('v3 (ensaio 43662682124): grupos da legenda pela divisão que maximiza o menor tempo de tela, com tempos reais',async()=>{
+ const {gruposV3,gruposCurtosV3,legendasV3}=await import('../scripts/shorts-v3/render.mjs');
+ // 7 palavras numa frase; a divisão fixa 3+3+1 deixaria a última palavra 0,28 s; 3+2+2 / 2+2+3 dão >= 0,30 s
+ const t=[0,0.30,0.60,0.90,1.18,1.40,1.62],w=t.map((s,i)=>({word:'p'+i,start:s,end:s+0.2}));
+ const fixo=[[0,3],[3,6],[6,7]],dur=g=>g.map(([a],i)=>(i+1<g.length?w[g[i+1][0]].start:1.90)-w[a].start);
+ assert.ok(Math.min(...dur(fixo))<0.30,'a divisão antiga falharia');
+ const g=gruposV3(w,[7],1.90);
+ assert.ok(g.every(([a,b])=>b-a>=1&&b-a<=3),'1 a 3 palavras por grupo');assert.deepEqual(g.flatMap(([a,b])=>Array.from({length:b-a},(_,k)=>a+k)),[0,1,2,3,4,5,6],'cobre as palavras em ordem, sem pular');
+ assert.ok(Math.min(...dur(g))>=0.30,`menor tempo ${Math.min(...dur(g))}`);assert.deepEqual(gruposCurtosV3(w,[7],1.90),[]);
+ // grupos nunca atravessam frases
+ assert.ok(gruposV3(w,[4,3],1.90).every(([a,b])=>!(a<4&&b>4)));
+ // impossível: palavras rápidas demais -> continua reprovando (o mínimo não muda, nenhum tempo é inventado)
+ const r=[0,0.05,0.10,0.15].map((s,i)=>({word:'r'+i,start:s,end:s+0.04}));assert.notDeepEqual(gruposCurtosV3(r,[4],0.2),[]);
+ // a legenda gerada usa a MESMA divisão
+ const ass=legendasV3(w,[7],1.90).replace(/\{[^}]*\}/g,'');for(const [a,b] of g)assert.ok(ass.includes(w.slice(a,b).map(x=>x.word).join(' ')),'grupo no .ass: '+a);
+});
