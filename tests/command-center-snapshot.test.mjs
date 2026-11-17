@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { computeAutonomy, computePublications, forecastSales, nextRun, recommend, metric, AGENDA, BLUESKY_STATUS_PREFIX, blueskyStatusEntry } from "../scripts/audit/command-center-snapshot.mjs";
 import { BLUESKY_STATUS_PREFIX as ENGINE_BLUESKY_STATUS_PREFIX, blueskyStatusKey } from "../worker/acquisition-engine.mjs";
 
@@ -102,7 +103,7 @@ test("publicações: dia fora da agenda do blog (seg/qua/sex) não conta como pr
     "2026-11-14": { blog: { status: "fora_da_agenda" }, bluesky: { status: "publicado" } },
     "2026-11-12": { blog: { status: "erro" } },
   });
-  assert.deepEqual(p.perChannel.blog, { expected: 2, published: 1 }, "13/11 publicado + 12/11 erro; 14/11 fora da agenda não entra");
+  assert.deepEqual(p.perChannel.blog, { expected: 2, published: 1, falhas: [{ dia: "2026-11-12", status: "erro", code: null }] }, "13/11 publicado + 12/11 erro; 14/11 fora da agenda não entra");
   assert.equal(p.expected, 4); assert.equal(p.published, 3);
 });
 
@@ -138,4 +139,26 @@ test("probes: campos efetivamente produzidos em redirecionamento, timeout e erro
   const hm = await probeHotmart(async () => { throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }); });
   assert.ok(hm.length >= 5); assert.deepEqual(hm[0], { slug: hm[0].slug, http: 0, error: "TypeError", cause: "TypeError:ECONNRESET" });
   assert.doesNotMatch(JSON.stringify(hm), /fetch failed/, "sem mensagem livre");
+});
+
+// GPT-6 (17/11): o blog automático entrou no ar em 12/11 (#1020). Um registro anterior à ativação não é devido; uma falha
+// em dia devido depois da ativação continua no denominador e o motivo (code) chega ao objeto que o painel lê.
+test("publicações: dia anterior à ativação do blog não conta; falha devida depois da ativação conta e leva o code", async () => {
+  const { computePublications, ATIVACAO_CANAL } = await import("../scripts/audit/command-center-snapshot.mjs");
+  assert.equal(ATIVACAO_CANAL.blog, "2026-11-12");
+  const antes = { "2026-11-11": { blog: { status: "erro", code: "blog_generation_failed" } }, "2026-11-13": { blog: { status: "publicado" } }, "2026-11-16": { blog: { status: "publicado" } } };
+  const a = computePublications(antes);
+  assert.deepEqual([a.perChannel.blog.expected, a.perChannel.blog.published, a.perChannel.blog.falhas], [2, 2, []], "2/2 desde a ativação");
+  const depois = { ...antes, "2026-11-18": { blog: { status: "erro", code: "blog_quality_gate:similaridade" } }, "2026-11-17": { blog: { status: "fora_da_agenda" } } };
+  const b = computePublications(depois);
+  assert.deepEqual([b.perChannel.blog.expected, b.perChannel.blog.published], [3, 2], "falha devida fica no denominador");
+  assert.deepEqual(b.perChannel.blog.falhas, [{ dia: "2026-11-18", status: "erro", code: "blog_quality_gate:similaridade" }]);
+  assert.equal(b.pct, 66.7);
+  // canal sem data de ativação: sem mudança de regra
+  const c = computePublications({ "2026-11-01": { bluesky: { status: "erro", code: "bluesky_http_429" } } });
+  assert.deepEqual(c.perChannel.bluesky, { expected: 1, published: 0, falhas: [{ dia: "2026-11-01", status: "erro", code: "bluesky_http_429" }] });
+});
+test("snapshot: o code do blog (outcome do motor) é preservado na matriz por dia", () => {
+  const src = readTextNormalized("scripts/audit/command-center-snapshot.mjs");
+  assert.match(src, /entries\.blog = \{ status: blog\.status, url: blog\.url \|\| null, at: blog\.at \|\| null, code: blog\.code \|\| null \}/);
 });

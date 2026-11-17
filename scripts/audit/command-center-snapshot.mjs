@@ -119,22 +119,29 @@ export function computeAutonomy(runs = [], now = Date.now()) {
   };
 }
 
+// Data em que a publicação automática de cada canal entrou no ar (GPT-6, 17/11: o blog automático entrou na gh-pages em
+// 12/11 pelo #1020; o registro de 11/11 fazia o painel mostrar 2/3 quando o real desde a ativação era 2/2).
+// Dia ANTERIOR à ativação não é publicação devida.
+export const ATIVACAO_CANAL = Object.freeze({ blog: "2026-11-12" });
 // Publication completion (7 days): expected daily proofs vs published records in KV.
 export function computePublications(byDay = {}) {
   let expected = 0, published = 0;
   const perChannel = {};
-  for (const [, entries] of Object.entries(byDay)) {
+  for (const [day, entries] of Object.entries(byDay)) {
     for (const ch of DAILY_PROOFS) {
       const e = entries[ch];
       if (!e) continue; // not yet due / not recorded: the matrix shows it, the rate ignores future slots
+      if (ATIVACAO_CANAL[ch] && day < ATIVACAO_CANAL[ch]) continue;
       // O blog publica só em dias de agenda (seg/qua/sex, Plano Mestre). Um dia fora da agenda não é publicação devida:
       // contá-lo como "previsto" fazia o painel mostrar 1/7 quando a agenda tinha 1/1 (14/11/2026).
       if (e.status === "fora_da_agenda") continue;
       expected++;
       const done = e.status === "publicado";
       if (done) published++;
-      const p = (perChannel[ch] = perChannel[ch] || { expected: 0, published: 0 });
+      const p = (perChannel[ch] = perChannel[ch] || { expected: 0, published: 0, falhas: [] });
       p.expected++; if (done) p.published++;
+      // dia devido sem publicação: continua no denominador e leva o motivo (code) até o painel
+      else p.falhas.push({ dia: day, status: e.status || null, code: e.code || null });
     }
   }
   return { expected, published, pct: expected ? Math.round((1000 * published) / expected) / 10 : null, perChannel };
@@ -368,7 +375,7 @@ async function collectPublications(now) {
     }
     const state = await kvGet("zpc:acquisition:daily:" + day);
     const blog = (state?.outcomes || []).find((o) => o.channel === "blog");
-    if (blog) entries.blog = { status: blog.status, url: blog.url || null, at: blog.at || null };
+    if (blog) entries.blog = { status: blog.status, url: blog.url || null, at: blog.at || null, code: blog.code || null };
     // Reprovação do gate do Bluesky não grava a chave por canal: o status do dia (bluesky:status:AAAAMMDD) a torna visível.
     if (!entries.bluesky) { const st = blueskyStatusEntry(await kvGet(BLUESKY_STATUS_PREFIX + day.replaceAll("-", ""))); if (st) entries.bluesky = st; }
     byDay[day] = entries;
