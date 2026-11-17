@@ -142,7 +142,7 @@ test("probes: campos efetivamente produzidos em redirecionamento, timeout e erro
   assert.doesNotMatch(JSON.stringify(hm), /fetch failed/, "sem mensagem livre");
 });
 
-// GPT-6 (17/11): o blog automático entrou no ar em 12/11 (#1020) e o DEVIDO vem da agenda (seg/qua/sex, depois de 10:05
+// GPT-6 (17/11): o blog automático entrou no ar em 12/11 (#1020) e o DEVIDO vem da agenda (seg/qua/sex, depois de 10:50
 // em São Paulo), não do registro. Cron que falha antes de gravar = "sem_registro"; registro fora da agenda não conta.
 test("publicações do blog: agenda + horário decidem o devido; sem registro após o horário = falha; fora da agenda não conta", async () => {
   const { computePublications, ATIVACAO_CANAL, blogDevido } = await import("../scripts/audit/command-center-snapshot.mjs");
@@ -153,11 +153,13 @@ test("publicações do blog: agenda + horário decidem o devido; sem registro ap
   assert.deepEqual(computePublications(base, em("2026-11-17T12:00:00Z")).perChannel.blog, { expected: 2, published: 2, falhas: [] });
   // terça 17/11 com "erro": fora da agenda, não entra
   assert.deepEqual(computePublications({ ...base, "2026-11-17": { blog: { status: "erro", code: "x" } } }, em("2026-11-17T20:00:00Z")).perChannel.blog, { expected: 2, published: 2, falhas: [] });
-  // quarta 18/11 SEM registro: antes de 10:05 (São Paulo) ainda não é devido; depois, falha "sem_registro"
+  // quarta 18/11 SEM registro: antes de 10:50 (São Paulo) ainda não é devido; depois, falha "sem_registro"
   const com18 = { ...base, "2026-11-18": {} };
-  assert.deepEqual(computePublications(com18, em("2026-11-18T12:50:00Z")).perChannel.blog.expected, 2, "09:50 em São Paulo: ainda não devido");
-  const d = computePublications(com18, em("2026-11-18T13:10:00Z"));
-  assert.deepEqual(d.perChannel.blog, { expected: 3, published: 2, falhas: [{ dia: "2026-11-18", status: null, code: "sem_registro" }] }, "10:10: devido, sem registro");
+  // a aquisição tenta às 09:35 e às 10:35; só depois da 2ª tentativa + 15 min (10:50) a falta de registro é falha
+  for (const [utc, rot] of [["2026-11-18T12:50:00Z", "09:50"], ["2026-11-18T13:10:00Z", "10:10 (a 2ª tentativa ainda não rodou)"], ["2026-11-18T13:49:00Z", "10:49"]])
+    assert.equal(computePublications(com18, em(utc)).perChannel.blog.expected, 2, rot + ": ainda não devido");
+  const d = computePublications(com18, em("2026-11-18T13:50:00Z"));
+  assert.deepEqual(d.perChannel.blog, { expected: 3, published: 2, falhas: [{ dia: "2026-11-18", status: null, code: "sem_registro" }] }, "10:50: devido, sem registro");
   // quarta 18/11 com rejeição do gate, no formato que o motor emite
   const r = computePublications({ ...base, "2026-11-18": { blog: { status: "erro", code: "rejected:duplicado,fonte_ausente" } } }, em("2026-11-19T12:00:00Z"));
   assert.deepEqual(r.perChannel.blog.falhas, [{ dia: "2026-11-18", status: "erro", code: "rejected:duplicado,fonte_ausente" }]);

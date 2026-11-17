@@ -123,10 +123,11 @@ export function computeAutonomy(runs = [], now = Date.now()) {
 // 12/11 pelo #1020; o registro de 11/11 fazia o painel mostrar 2/3 quando o real desde a ativação era 2/2).
 export const ATIVACAO_CANAL = Object.freeze({ blog: "2026-11-12" });
 // Agenda do blog = a do motor (worker/blog-quality-gate.mjs BLOG_PUBLICATION_WEEKDAYS: seg/qua/sex, getUTCDay do dia
-// local) e o horário do cron de aquisição (09:35 São Paulo, minuto 35 do "5,35 * * * *"). O que é DEVIDO vem da agenda,
+// local) e o horário do cron de aquisição (09:35 e 10:35 em São Paulo, minuto 35 do "5,35 * * * *"). O que é DEVIDO vem da agenda,
 // não do registro: dia de agenda sem registro depois do horário entra como falha "sem_registro"; registro fora da agenda
-// (ex.: "erro" numa terça) não é publicação devida. A folga cobre a 2ª passada do cron (10:05).
-export const BLOG_AGENDA = Object.freeze({ diasSemana: [1, 3, 5], devidoApos: { h: 10, m: 5 } });
+// (ex.: "erro" numa terça) não é publicação devida. Prazo: a aquisição roda às 09:35 e repete às 10:35 (o disparo das
+// :05 verifica perfis, não publica); devido só depois da 2ª tentativa + 15 min de margem de execução = 10:50.
+export const BLOG_AGENDA = Object.freeze({ diasSemana: [1, 3, 5], devidoApos: { h: 10, m: 50 } });
 const diaSemana = (d) => new Date(d + "T12:00:00Z").getUTCDay();
 const minutosLocais = (t) => { const [h, m] = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t)).split(":").map(Number); return h * 60 + m; };
 export function blogDevido(day, { agora = Date.now() } = {}) {
