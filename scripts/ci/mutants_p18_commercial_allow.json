@@ -8,7 +8,13 @@
      "assertion_pattern": "[P18C.3]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
+     "assertion_pattern": "[P18C.20] /ir para host fora da lista",
+     "justification": "o destino do /ir passa por checkLinkShape; sem a checagem de host, o salto para evil.example deixa de reprovar (host_not_allowed)"
+    }
+   ]
   },
   "K02 oferta não conferida": {
    "primary": [
@@ -17,7 +23,13 @@
      "assertion_pattern": "[P18C.3]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
+     "assertion_pattern": "[P18C.20] /ir para oferta errada",
+     "justification": "o destino do /ir passa por checkLinkShape; sem conferir a oferta, o salto com off=errado1 deixa de reprovar (offer_mismatch)"
+    }
+   ]
   },
   "K03 parâmetro extra aceito": {
    "primary": [
@@ -35,7 +47,13 @@
      "assertion_pattern": "[P18C.4]"
     }
    ],
-   "secondary": []
+   "secondary": [
+    {
+     "test_pattern": "P18C.20: botão interno /hotmart/<slug>/ir",
+     "assertion_pattern": "[P18C.20] /ir para o produto errado",
+     "justification": "o destino do /ir passa por checkLinkShape com pageSlug; sem conferir o produto da página, o salto para o checkout do Lucro & Caixa na página do IA deixa de reprovar"
+    }
+   ]
   },
   "K05 HTTP 200 sem evidência vira aberto": {
    "primary": [
@@ -292,6 +310,11 @@
      "test_pattern": "live, modo Hotmart (trava completa fechada + canal Hotmart aberto)",
      "assertion_pattern": "[P18C.H3]",
      "justification": "sem conferir as rotas no live, a rota do kit com checkout e canal fechado deixa de gerar site_route_checkout_while_locked"
+    },
+    {
+     "test_pattern": "P18C.21: runLive segue o /ir",
+     "assertion_pattern": "[P18C.21] rotas /hotmart passam com o salto válido",
+     "justification": "a mutação tira a linha live:site_route do relatório (o /ir ainda é seguido); a asserção que exige as rotas /hotmart no relatório é a que falha"
     }
    ]
   },
