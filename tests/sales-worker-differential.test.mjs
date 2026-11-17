@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { NC017_SALES_WORKER_HUNKS, NC017_BASE_BLOB } from "./helpers/sales-worker-nc017-hunks.mjs";
 import { reverseHotmartMode, HOTMART_MODE_WORKER_BLOB, HOTMART_MODE_BASE_BLOB } from "./helpers/sales-worker-hotmart-mode-hunks.mjs";
+import { reverseFunilClique, FUNIL_CLIQUE_WORKER_BLOB, FUNIL_CLIQUE_BASE_BLOB } from "./helpers/sales-worker-funil-clique-hunks.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
@@ -32,7 +33,9 @@ const GH_PAGES_BLOB = "86c5337c33588b50012266698c9dd0d18300e237";
 // Modo Hotmart (roteiro v5.0, Nível 1): o Worker atual = Worker P03 + hunks do modo Hotmart. Os hunks são revertidos
 // primeiro (cada um exatamente uma vez) e o resultado tem de ser o blob P03 pinado abaixo; o comportamento do modo
 // Hotmart é provado em tests/sales-hotmart-mode.test.mjs.
-const HOTMART_MODE_SRC = readTextNormalized(join(ROOT, "worker/sales-public-worker.mjs"));
+// Funil (GPT-6, 15/11/2026): o Worker atual = Worker do modo Hotmart + hunks da rota de clique; revertidos primeiro.
+const FUNIL_CLIQUE_SRC = readTextNormalized(join(ROOT, "worker/sales-public-worker.mjs"));
+const HOTMART_MODE_SRC = reverseFunilClique(FUNIL_CLIQUE_SRC);
 const CANDIDATE_SRC = reverseHotmartMode(HOTMART_MODE_SRC);
 // P03 O2: /index.html (cópia física do catálogo) é servido como a página solucoes, para o interruptor de
 // vendas também reescrevê-lo. Fora da matriz deste teste (index.html é excluído das páginas); o hunk é
@@ -62,6 +65,8 @@ const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sh
 
 async function loadWorkers() {
   // NC-017 first: reverse its exact hunks to get the Worker at 81d637e (pinned), then #914's two hunks.
+  assert.equal(gitBlob(FUNIL_CLIQUE_SRC),FUNIL_CLIQUE_WORKER_BLOB,"funil-clique candidate blob hash pinned");
+  assert.equal(FUNIL_CLIQUE_BASE_BLOB,HOTMART_MODE_WORKER_BLOB,"funil-clique hunks start from the Hotmart-mode Worker");
   assert.equal(gitBlob(HOTMART_MODE_SRC),HOTMART_MODE_WORKER_BLOB,"Hotmart-mode candidate blob hash pinned");
   assert.equal(HOTMART_MODE_BASE_BLOB,P03_INDEX_ALIAS_WORKER_BLOB,"Hotmart-mode hunks start from the P03 Worker");
   assert.equal(gitBlob(CANDIDATE_SRC),P03_INDEX_ALIAS_WORKER_BLOB,"P03 exact candidate blob hash pinned");
