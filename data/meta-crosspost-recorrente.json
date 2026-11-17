@@ -1,0 +1,8 @@
+{
+  "schema": "meta-crosspost-recorrente/v1",
+  "descricao": "Autorização ESPECÍFICA do proprietário para o crosspost recorrente dos Shorts no Instagram e no Facebook. É uma decisão distinta da prova DEC-23 (meta-prova-dec23.json): a prova só retira a trava de permissão; publicar todo dia exige este registro, preenchido por PR com autorizado=true, autorizado_por=\"proprietario\", autorizado_em=AAAA-MM-DD e a frase exata. Qualquer campo nulo ou divergente mantém IG/FB bloqueados (status bloqueado:recorrente_nao_autorizado), sem nenhuma chamada à Meta.",
+  "autorizado": false,
+  "autorizado_por": null,
+  "autorizado_em": null,
+  "frase": null
+}

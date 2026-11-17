@@ -156,7 +156,7 @@ async function bateriaCrosspost(m) {
     return { ok: true, status: 200, json: async () => ({ connected: false }) };
   };
   const metaEnv = { META_ACCESS_TOKEN: "t", INSTAGRAM_BUSINESS_ACCOUNT_ID: "17", META_PAGE_ID: "99" };
-  const r2 = await m.crosspost({ day: "2026-10-12", slot: "oferta", mp4: Buffer.from("x"), env: metaEnv, kv, fetchImpl: gfetch, sleep: async () => {}, salesOpen: false, hotmartOpen: false });
+  const r2 = await m.crosspost({ day: "2026-10-12", slot: "oferta", mp4: Buffer.from("x"), env: metaEnv, kv, fetchImpl: gfetch, sleep: async () => {}, salesOpen: false, hotmartOpen: false, metaProva: { teste_permissao_ok: null, prova_instagram_media_id: null, prova_facebook_post_id: null, aprovado_por: null, aprovado_em: null } });
   assert.equal(r2.instagram, "bloqueado:dec23_sem_prova"); assert.equal(graph.length, 0);
   const prova = { teste_permissao_ok: true, prova_instagram_media_id: "1", prova_facebook_video_id: "2", aprovado_por: "proprietario", aprovado_em: "2026-11-11" };
   assert.equal(m.metaLiberada(prova), true);

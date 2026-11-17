@@ -16,6 +16,14 @@ import { getPublisherAccessToken } from "./publisher-access.mjs";
 const GRAPH = "https://graph.facebook.com/v21.0";
 // DEC-23: IG/FB só com prova aprovada registrada no repositório.
 export const META_PROVA = JSON.parse(String(readFileSync(new URL("../../data/meta-prova-dec23.json", import.meta.url), "utf8")).replace(/\r\n/g, "\n"));
+// Recorrência (contra-auditoria GPT-6 do #1051): a prova DEC-23 e a publicação recorrente são decisões distintas. Sem a
+// autorização específica registrada (desligada por padrão), IG/FB ficam bloqueados ANTES de qualquer chamada à Meta.
+export const FRASE_RECORRENTE_META = "autorizo o crosspost recorrente dos Shorts para Instagram e Facebook";
+export const META_RECORRENTE = JSON.parse(String(readFileSync(new URL("../../data/meta-crosspost-recorrente.json", import.meta.url), "utf8")).replace(/\r\n/g, "\n"));
+// Data da autorização: dia REAL do calendário (2026-02-30 e 2026-99-99 reprovam) e nunca depois de hoje em Brasília.
+export const hojeBrasilia = (agora = Date.now()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(agora));
+export const dataRealAte = (d, hoje) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d ?? "")); if (!m) return false; const t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return t.toISOString().slice(0, 10) === d && d <= hoje; };
+export const metaRecorrenteAutorizada = (r = META_RECORRENTE, { agora = Date.now() } = {}) => r?.autorizado === true && r?.autorizado_por === "proprietario" && dataRealAte(r?.autorizado_em, hojeBrasilia(agora)) && r?.frase === FRASE_RECORRENTE_META;
 export const metaLiberada = (r = META_PROVA) => r?.teste_permissao_ok === true && /^\d+$/.test(String(r?.prova_instagram_media_id ?? "")) && (r?.prova_facebook_post_id != null ? /^\d+_\d+$/.test(String(r.prova_facebook_post_id)) : /^\d+$/.test(String(r?.prova_facebook_video_id ?? ""))) && r?.aprovado_por === "proprietario" && /^\d{4}-\d{2}-\d{2}$/.test(String(r?.aprovado_em ?? ""));
 
 // NC-02: o cross-post só roda se o YouTube publicou o Short do slot como PÚBLICO (registro gravado por
@@ -123,7 +131,7 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
 // publicação (publishTelegramVideo) continua aqui, só não é chamado; nada é gravado no KV pelo canal desligado.
 export const OWNER_DISABLED_CHANNELS = Object.freeze(["telegram"]);
 export const CHANNEL_DISABLED_CODE = "canal_desligado_decisao_proprietario";
-export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, hotmartOpen, metaProva = META_PROVA }) {
+export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, hotmartOpen, metaProva = META_PROVA, metaRecorrente = META_RECORRENTE }) {
   const mode = typeof salesOpen === "boolean" ? { salesOpen, hotmartOpen: salesOpen ? false : hotmartOpen === true } : await channelPurchaseMode(kv);
   const open = mode.salesOpen === true;
   const planned = planSlot(day, slot, { salesOpen: open, hotmartOpen: mode.hotmartOpen === true });
@@ -163,6 +171,7 @@ export async function crosspost({ day, slot = "oferta", mp4, env = process.env, 
     ["facebook", metaToken && pageId, () => publishFacebookVideo(plan, mp4, { token: metaToken, pageId, fetchImpl })]]) {
     try {
       if (!metaLiberada(metaProva)) { report[ch] = "bloqueado:dec23_sem_prova"; continue; }
+      if (!metaRecorrenteAutorizada(metaRecorrente, { agora: now })) { report[ch] = "bloqueado:recorrente_nao_autorizado"; continue; }
       if (await done(ch)) { report[ch] = "already_published"; continue; }
       if (!ready) { report[ch] = "waiting:meta_credentials"; continue; }
       const r = await run(); await record(ch, r); report[ch] = "published";
