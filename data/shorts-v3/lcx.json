@@ -23,7 +23,7 @@
    "quadro": "venda"
   },
   {
-   "texto": "O produto e o frete custaram cento e trinta e dois.",
+   "texto": "Com produto e frete, foram cento e trinta e dois.",
    "quadro": "conta-1"
   },
   {
@@ -51,7 +51,7 @@
    "quadro": "oferta"
   },
   {
-   "texto": "Kit completo no link da descrição.",
+   "texto": "Kit Lucro e Caixa no link do perfil.",
    "quadro": "cta"
   }
  ],
@@ -70,20 +70,28 @@
  "slug": "lucro-e-caixa",
  "provas": [
   {
-   "captura": "assets/shorts-v3/lcx/planilha-entradas.png",
-   "largura": 876
+   "captura": "assets/shorts-v3/lcx/coluna-preco.png",
+   "largura": 876,
+   "celula": "E5"
   },
   {
-   "captura": "assets/shorts-v3/lcx/planilha-resultados.png",
-   "largura": 876
+   "captura": "assets/shorts-v3/lcx/coluna-contribuicao.png",
+   "largura": 876,
+   "celula": "J5"
   },
   {
-   "captura": "assets/shorts-v3/lcx/planilha-desconto.png",
-   "largura": 876
+   "captura": "assets/shorts-v3/lcx/coluna-margem.png",
+   "largura": 876,
+   "celula": "K5"
   },
   {
-   "captura": "sales-public/assets/previews/manual-lucro-capa.3591045671.webp",
-   "largura": 300
+   "captura": "assets/shorts-v3/lcx/coluna-desconto.png",
+   "largura": 876,
+   "celula": "M5"
+  },
+  {
+   "captura": "assets/shorts-v3/lcx/manual-titulo.png",
+   "largura": 876
   }
  ],
  "manifesto": "assets/shorts-v3/lcx/manifesto.json"

@@ -2,9 +2,23 @@
  "schema": 1,
  "nota": "Integridade da prova do produto (NC-R05): hashes da proveniência do cálculo (planilha real recalculada) e das capturas. O gerador e o avaliador recusam qualquer divergência.",
  "arquivos": {
-  "assets/shorts-v3/lcx/planilha-proveniencia.json": "a7079c87986b6dc29992408a6ff95fdbd6845ea227fed2c7755a514e2de07f29",
-  "assets/shorts-v3/lcx/planilha-entradas.png": "24db8d6fff9ba4e22868b2509f81514e85cabe29b5099be9e2ce0c866a1699ed",
-  "assets/shorts-v3/lcx/planilha-resultados.png": "043b749aa7336bdd37e5cf9a4ac8a5b0246640718ade6d7a3d7ba67cbb66dbcd",
-  "assets/shorts-v3/lcx/planilha-desconto.png": "0e6cc0bf1eae78cf9abb68ff822b2fd818a6ca41f97949d30918bac9a57cccc1"
+  "assets/shorts-v3/lcx/planilha-proveniencia.json": "70e31666665b4ae0d8430c8fc5ec117f8dc6c2eb42014363e4803d205a81e0a5",
+  "assets/shorts-v3/lcx/tela-preco.png": "4b0efdac59a7f2c8e7ccccc41dbea68d89d4246e3e040682b27ac48eeabe35a3",
+  "assets/shorts-v3/lcx/celula-preco.png": "216576a20ccd91f015aa2f57107b74739089ae5911fa7c3fafe7e403169356c7",
+  "assets/shorts-v3/lcx/tela-contribuicao.png": "5ecd96c866d66f1ec04e4a4d999c2c3b1de5aabe3467c70b2ac0c122f5dab297",
+  "assets/shorts-v3/lcx/celula-contribuicao.png": "2b861710e0e4426e5ff0c7870e4f4e355d4528eef7967dfe9a27e55c7dbe3a4a",
+  "assets/shorts-v3/lcx/tela-margem.png": "873c5fdf39c5def37ace616583a52b01b15de2a9fe999852b0f255b3338f3cfa",
+  "assets/shorts-v3/lcx/celula-margem.png": "7154b54690a69ec36ffe8a8a6bb9dc3421b092c8ec150906876e08dd7d85a69d",
+  "assets/shorts-v3/lcx/tela-desconto.png": "5edfdfc6232b9ce430c3a66854e671a0c6435fbdf6ed680e011ef67ac6a84f1d",
+  "assets/shorts-v3/lcx/celula-desconto.png": "7112cb12210ae0ff249168e41fa957f87b7c047c98dc9f62ea1a6ad1401ebf3a",
+  "assets/shorts-v3/lcx/manual-topo.png": "efbe4e8db65e33ca09a91e2ef0b8b3398a287330d99d5b721bcde0ef6408780b",
+  "assets/shorts-v3/lcx/celula-taxa.png": "b8b64c10a5f45024519cae8a73c20e9fa296e3caeeeb7f8c24b669f8b14dbd04",
+  "assets/shorts-v3/lcx/tela-taxa.png": "9beab60537bf4652b245da12865cd812504534e5f241065a5d0a5d3ed3766d46",
+  "assets/shorts-v3/lcx/coluna-preco.png": "c13eb6476e9f7c312318b0ac34d430aaa53d9c45fec0ee4f7118c89a30450116",
+  "assets/shorts-v3/lcx/coluna-taxa.png": "d4ece76c7b7519199ea9eedf516ad7991d4bdfd1d12dd27505e30f848f63d2fd",
+  "assets/shorts-v3/lcx/coluna-contribuicao.png": "0f8e166642c4c1ab09b194197766b31c4d68082171a4dd9422c69a55a8c7e549",
+  "assets/shorts-v3/lcx/coluna-margem.png": "b9d33c1f814f6d9058c63d1dd52022bb88e96b6f0627f271fda73cc6109b4e1b",
+  "assets/shorts-v3/lcx/coluna-desconto.png": "de7f77bfd726bac35287b6fc8e2e2dfebc1a2934f544de517a965f05e91e2161",
+  "assets/shorts-v3/lcx/manual-titulo.png": "2b34494d81500f9621db0d46a554446303d9cbae6691d90458cdde781f9ef7ae"
  }
 }

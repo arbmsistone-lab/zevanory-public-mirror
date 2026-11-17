@@ -1,0 +1,8 @@
+{
+ "descricao": "Voz REAL do ensaio 44090145345 (#1054 em cd7115e3, base 55e98abc). Alinhou (fronteiras recalculadas pelo alinhamento inteiro), mas o render reprovou nas objetivas: texto_nao_reconhecido na linha 'Sobram R$ 39' (conta-3). Artefato ensaio-voz baixado do GitHub no Chrome do proprietário com autorização dele (17/11); zip conferido com o digest SHA-256 publicado pelo GitHub. Usado só para testar o render com a mesma voz, sem nova voz nem Gemini.",
+ "execucao": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/44090145345",
+ "artefato": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/44090145345/artifacts/14331711051",
+ "zip_sha256": "7b1a4d91721fb8eda58c3859498a5638c7f13eec39cb1f41e1887946640dda50",
+ "voz_pcm_sha256": "044299dd90e372d93b40b65cd81a5efe8d3aace882e7e7c129a3de9b4945ccb0",
+ "meta_json_sha256": "85c814704e53661eed93074d21cccce41507604439ecae0524578f9576169af3"
+}

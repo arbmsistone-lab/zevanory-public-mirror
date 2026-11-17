@@ -30,6 +30,21 @@ export function permitidosDaProveniencia(P,preco){
  return {reais:[E['Preço atual'],E['Custo direto unit.']+E['Outros custos var. unit.'],Math.round(E['Preço atual']*E['Taxa pagamento %']*100)/100,R['Contribuição/unit.'],R['Preço mínimo p/ margem alvo'],preco].filter(Number.isFinite),
   pct:[r1(E['Taxa pagamento %']),r1(R['Margem contribuição %']),r1(R['Desconto máx. p/ margem alvo']),r1(P.margem_alvo_config)].filter(Number.isFinite),outros:[7]};
 }
+export const ALTURA_MIN_CELULA_PX=56;  // o mesmo de medir.py (ALTURA_VALOR_MIN)
+// Contra-auditoria GPT-6 (15/11, 55bf9edd): com 3 das 4 células medidas (uma retirada ou trocada por duplicata) a regra
+// passava. Agora o criativo traz as células EXIGIDAS pelo roteiro + manifesto (arquivo da captura + valor exibido) e a
+// medição precisa ter exatamente essas, uma de cada, todas legíveis (>= 56 px). Identidade = nome do arquivo + valor.
+const nomeArq=c=>String(c??'').split(/[\\/]/).pop();
+export function celulasExigidas(provasMedir){return (provasMedir||[]).filter(p=>p?.valor).map(p=>({captura:nomeArq(p.captura),valor:String(p.valor)}));}
+export function conferirCelulas(exigidas,medidas){
+ if(!Array.isArray(exigidas)||!exigidas.length||exigidas.some(e=>!e?.captura||!e?.valor))return ['celulas_exigidas_ausentes'];
+ const chave=p=>nomeArq(p?.captura)+'|'+String(p?.valor??''),req=exigidas.map(chave);
+ if(new Set(req).size!==req.length)return ['celulas_exigidas_ausentes'];
+ if(!Array.isArray(medidas))return ['prova_ilegivel','celulas_exigidas_sem_medicao'];
+ const vistas=medidas.map(chave),m=[];
+ if(medidas.length!==req.length||new Set(vistas).size!==vistas.length||req.some(k=>!vistas.includes(k))||vistas.some(k=>!req.includes(k)))m.push('prova_ilegivel','celulas_exigidas_divergentes');
+ return m;
+}
 export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=precosOficiais()){
  const motivos=[],cat=precos[criativo?.sku];
  if(!cat)return ['sku_fora_do_catalogo'];
@@ -46,6 +61,12 @@ export function checagensObjetivas({criativo,medicao,permitidos,oficial},precos=
  if(md.foraAreaSegura!==0)motivos.push('conteudo_fora_da_area_segura');
  if(md.provaReal!==true)motivos.push('sem_prova_real_do_produto');
  if(md.textoNaoReconhecido!==0)motivos.push('texto_nao_reconhecido');
+ // v3.4 A2: o valor de cada célula real precisa ser LIDO dentro da região da captura no vídeo (>= 56 px); medida
+ // ausente ou vazia (nenhum valor real comprovado) também reprova (falha fechada).
+ // Defesa em profundidade (prova de fluxo, 15/11): a altura medida também é conferida AQUI (não só a marca `legivel`
+ // vinda do medir.py) — célula < 56 px reprova mesmo marcada como legível.
+ if(md.provaIlegivel!==0||!Array.isArray(md.provasLegiveis)||!md.provasLegiveis.length||md.provasLegiveis.some(p=>p?.legivel!==true||!(Number(p?.altura_px)>=ALTURA_MIN_CELULA_PX)))motivos.push('prova_ilegivel');
+ for(const x of conferirCelulas(criativo.celulasExigidas,md.provasLegiveis))if(!motivos.includes(x))motivos.push(x);
  motivos.push(...conferirAfirmacoes({falas:criativo.falas||[],telas,permitidos:permitidos||{reais:[],pct:[]}}));
  return motivos;
 }
