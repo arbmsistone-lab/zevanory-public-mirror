@@ -184,8 +184,11 @@ test("NC-02: o cross-post só roda com o Short do slot PÚBLICO no YouTube e o c
 // sem a autorização específica (padrão do repositório: desligada) há ZERO chamadas à Meta e nenhum registro de IG/FB no KV.
 test("recorrência IG/FB: prova válida + credenciais + MP4, sem autorização específica => 0 chamadas à Meta; com a autorização exata => publica", async () => {
   const { META_RECORRENTE, metaRecorrenteAutorizada, FRASE_RECORRENTE_META, META_PROVA, metaLiberada } = await import("../scripts/channels/short-crosspost.mjs");
-  assert.equal(META_RECORRENTE.autorizado, false, "padrão do repositório: recorrência desligada");
-  assert.equal(metaRecorrenteAutorizada(), false);
+  // 17/11: o proprietário escreveu a frase exata no chat; o registro do repositório é a autorização dele, com data real
+  assert.deepEqual([META_RECORRENTE.autorizado, META_RECORRENTE.autorizado_por, META_RECORRENTE.autorizado_em, META_RECORRENTE.frase], [true, "proprietario", "2026-11-17", "autorizo o crosspost recorrente dos Shorts para Instagram e Facebook"]);
+  assert.equal(metaRecorrenteAutorizada(META_RECORRENTE, { agora: Date.parse("2026-11-17T12:00:00Z") }), true);
+  assert.equal(metaRecorrenteAutorizada(META_RECORRENTE, { agora: Date.parse("2026-11-16T12:00:00Z") }), false, "data futura não vale");
+  const DESLIGADO = { ...META_RECORRENTE, autorizado: false, autorizado_por: null, autorizado_em: null, frase: null };
   assert.equal(FRASE_RECORRENTE_META, "autorizo o crosspost recorrente dos Shorts para Instagram e Facebook");
   const prova = { teste_permissao_ok: true, prova_instagram_media_id: "18143811337714194", prova_facebook_post_id: "61593970292684_122134496505465676", aprovado_por: "proprietario", aprovado_em: "2026-11-14" };
   assert.equal(metaLiberada(prova), true, "premissa: prova válida");
@@ -196,7 +199,7 @@ test("recorrência IG/FB: prova válida + credenciais + MP4, sem autorização e
       if (u.endsWith("/media_publish")) return ok({ id: "ig9" }); if (u.includes("/ig9?fields=permalink")) return ok({ permalink: "https://www.instagram.com/reel/abc/" });
       if (u.includes("/videos")) return ok({ id: "fb7" }); return ok({}); }
     return u.includes("tiktok-access") ? ok({ connected: false }) : ok({}); };
-  for (const rec of [undefined, META_RECORRENTE, {}, { ...RECORRENTE_OK, autorizado: "true" }, { ...RECORRENTE_OK, autorizado_por: "claude" }, { ...RECORRENTE_OK, autorizado_em: "15/11/2026" }, { ...RECORRENTE_OK, autorizado_em: "2026-02-30" }, { ...RECORRENTE_OK, autorizado_em: "2026-99-99" }, { ...RECORRENTE_OK, autorizado_em: "2099-01-01" }, { ...RECORRENTE_OK, autorizado_em: "2026-11-16" }, { ...RECORRENTE_OK, frase: "ok" }, { ...RECORRENTE_OK, frase: null }]) {
+  for (const rec of [undefined, DESLIGADO, {}, { ...RECORRENTE_OK, autorizado: "true" }, { ...RECORRENTE_OK, autorizado_por: "claude" }, { ...RECORRENTE_OK, autorizado_em: "15/11/2026" }, { ...RECORRENTE_OK, autorizado_em: "2026-02-30" }, { ...RECORRENTE_OK, autorizado_em: "2026-99-99" }, { ...RECORRENTE_OK, autorizado_em: "2099-01-01" }, { ...RECORRENTE_OK, autorizado_em: "2026-11-16" }, { ...RECORRENTE_OK, frase: "ok" }, { ...RECORRENTE_OK, frase: null }]) {
     const kv = memKv();
     const r = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {}, now: AGORA, metaProva: prova, ...(rec === undefined ? {} : { metaRecorrente: rec }) });
     assert.equal(r.instagram, "bloqueado:recorrente_nao_autorizado", JSON.stringify(rec)); assert.equal(r.facebook, "bloqueado:recorrente_nao_autorizado");
