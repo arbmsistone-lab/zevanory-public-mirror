@@ -41,3 +41,23 @@ test('v3: estilo (parâmetro style) vai para os dois protocolos; sem estilo, o v
  assert.equal(ttsRequest('t','Achird','gemini-3.8-flash-tts').body.input[0].content[0].annotations[0].style,STYLE);
  let enviado;await tts('t','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,style:ESTILO_V3,fetchImpl:async(u,o)=>{enviado=JSON.parse(o.body);return {ok:true,json:async()=>({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16',sample_rate:24000}]}]})};}});
  assert.equal(enviado.input[0].content[0].annotations[0].style,ESTILO_V3);});
+// Ensaio 44111864755 (17/11): TTS sem resposta em 60 s -> erro único 'free_tts_network_failed' (sem separar timeout de
+// rede). Agora: prazo 120 s, UMA nova tentativa só para timeout/rede/5xx (nunca 4xx/429), e o erro final diz o tipo.
+test('TTS: timeout ou 5xx tenta de novo UMA vez; 429/4xx não repete; erro final diz o tipo (timeout, rede:<código>, HTTP)',async()=>{
+ const R=await import('../scripts/shorts-v2/render.mjs');
+ assert.equal(R.TTS_TIMEOUT_MS,120000);assert.equal(R.TTS_TENTATIVAS,2);assert.ok(R.TTS_TIMEOUT_MS*R.TTS_TENTATIVAS+R.TTS_ESPERA_MS<5*60000,'cabe no job de voz de 5 min');
+ const ok={ok:true,status:200,json:async()=>({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16;rate=24000',sample_rate:24000}]}]})};
+ const timeout=()=>{const e=new Error('t');e.name='TimeoutError';throw e;};
+ const rede=()=>{throw new TypeError('fetch failed',{cause:{code:'ECONNRESET'}});};
+ const roda=async seq=>{let n=0;const esperas=[],notas=[];let erro=null,out=null;
+  try{out=await tts('frase','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,esperar:async ms=>{esperas.push(ms);},note:m=>notas.push(m),fetchImpl:async(u,o)=>{assert.ok(o.signal,'prazo por chamada');const s=seq[n++];return typeof s==='function'?s():s;}});}catch(e){erro=e.message;}
+  return {n,esperas,notas,erro,out};};
+ let r=await roda([timeout,ok]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.deepEqual(r.esperas,[5000]);assert.match(r.notas[0],/TTS_TENTATIVA 1 falhou=free_tts_timeout/);assert.equal(r.out.pcm.length,4800);
+ r=await roda([timeout,timeout]);assert.equal(r.erro,'free_tts_timeout');assert.equal(r.n,2,'no máximo 2 chamadas');
+ r=await roda([rede,rede]);assert.equal(r.erro,'free_tts_network_failed:ECONNRESET');assert.equal(r.n,2);
+ r=await roda([{ok:false,status:503},ok]);assert.equal(r.erro,null);assert.equal(r.n,2);
+ r=await roda([{ok:false,status:503},{ok:false,status:502}]);assert.equal(r.erro,'free_tts_unavailable:502');
+ r=await roda([{ok:false,status:429},ok]);assert.equal(r.erro,'free_tts_unavailable:429');assert.equal(r.n,1,'cota (429) não repete');
+ r=await roda([{ok:false,status:400},ok]);assert.equal(r.erro,'free_tts_unavailable:400');assert.equal(r.n,1);
+ r=await roda([ok]);assert.equal(r.erro,null);assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);
+});
