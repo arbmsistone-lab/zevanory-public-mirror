@@ -593,11 +593,12 @@ const wrapped = {
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
       if (!verifyOperatorToken(normalized, request.headers.get("x-backup-token"))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
       // P20 v2 (docs/p20/particoes-v2.md): o Worker novo só aceita o contrato v2 (plan_id 64 hex + run_id 32 hex).
       // Chamada legada (sem eles) ou malformada é recusada SEM gravar: nunca sobrescreve a cópia de um dia concluído.
       const rp = backupRunParams(url.searchParams);
-      if (!rp.ok) return new Response(JSON.stringify({ ok: false, failures: [rp.failure] }), { status: 400, headers });
-      const { parts, planId, runId } = rp;
+      if (!rp.ok || rp.parts !== parts) return new Response(JSON.stringify({ ok: false, failures: [rp.failure || "parts_mismatch"] }), { status: 400, headers });
+      const { planId, runId } = rp;
       const report = url.searchParams.get("finalize") === "1"
         ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase, planId, runId })
         : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: rp.part, parts, planId, runId });
