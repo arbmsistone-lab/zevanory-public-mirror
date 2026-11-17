@@ -30,18 +30,22 @@ export const TTS_TIMEOUT_MS=120000,TTS_TENTATIVAS=2,TTS_ESPERA_MS=5000;
 export async function tts(text,voice,key,{model,fetchImpl=fetch,freeTierConfirmed=false,style,esperar=ms=>new Promise(r=>setTimeout(r,ms)),note=m=>console.log(m)}={}){
  if(!key||!freeTierConfirmed)throw Error('free_tts_not_confirmed');
  const request=ttsRequest(text,voice,model,style||STYLE);
- let r;
+ // GPT-6 (#1066): a tentativa inclui a LEITURA do corpo (o áudio chega no corpo; timeout ou queda de conexão durante a
+ // leitura de um HTTP 200 também repete). O parse do JSON fica fora: JSON inválido não repete (tts_response_invalid).
+ const tipoFalha=e=>e?.name==='TimeoutError'||e?.name==='AbortError'?'free_tts_timeout':'free_tts_network_failed:'+String(e?.cause?.code||e?.code||e?.name||'desconhecido').replace(/[^\w.-]/g,'').slice(0,40);
+ let r,texto;
  for(let t=1;;t++){
   let falha=null;
   try{r=await fetchImpl(request.url,{method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},body:JSON.stringify(request.body),signal:AbortSignal.timeout(TTS_TIMEOUT_MS)});}
-  catch(e){falha=e?.name==='TimeoutError'||e?.name==='AbortError'?'free_tts_timeout':'free_tts_network_failed:'+String(e?.cause?.code||e?.name||'desconhecido').replace(/[^\w.-]/g,'').slice(0,40);}
+  catch(e){falha=tipoFalha(e);}
   if(!falha&&!r.ok&&r.status>=500)falha='free_tts_unavailable:'+r.status;
+  if(!falha&&r.ok){try{texto=await r.text();}catch(e){falha=tipoFalha(e);}}
   if(!falha)break;
   if(t>=TTS_TENTATIVAS)throw Error(falha);
   note(`TTS_TENTATIVA ${t} falhou=${falha}; nova tentativa em ${TTS_ESPERA_MS/1000}s`);await esperar(TTS_ESPERA_MS);
  }
  if(!r.ok)throw Error('free_tts_unavailable:'+r.status);
- const body=await r.json().catch(()=>{throw Error('tts_response_invalid');});
+ let body;try{body=JSON.parse(texto);}catch{throw Error('tts_response_invalid');}
  const part=request.modern?(body.steps||[]).filter(x=>x.type==='model_output').flatMap(x=>x.content||[]).find(x=>x.type==='audio'&&x.data):body.candidates?.[0]?.content?.parts?.find(x=>x.inlineData?.data);
  const data=part?.data||part?.inlineData?.data,mime=part?.mime_type||part?.inlineData?.mimeType||'';
  if(!data||!/audio\/(l16|pcm)/i.test(mime))throw Error('tts_pcm_invalid');
