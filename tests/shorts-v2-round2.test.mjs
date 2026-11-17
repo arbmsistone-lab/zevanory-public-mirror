@@ -42,32 +42,41 @@ test('v3: estilo (parâmetro style) vai para os dois protocolos; sem estilo, o v
  let enviado;await tts('t','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,style:ESTILO_V3,fetchImpl:async(u,o)=>{enviado=JSON.parse(o.body);return new Response(JSON.stringify(({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16',sample_rate:24000}]}]})),{status:200});}});
  assert.equal(enviado.input[0].content[0].annotations[0].style,ESTILO_V3);});
 // Ensaio 44111864755 (17/11): TTS sem resposta em 60 s -> erro único 'free_tts_network_failed' (sem separar timeout de
-// rede). Agora: prazo 120 s, UMA nova tentativa só para timeout/rede/5xx (nunca 4xx/429), e o erro final diz o tipo.
-test('TTS: timeout ou 5xx tenta de novo UMA vez; 429/4xx não repete; erro final diz o tipo (timeout, rede:<código>, HTTP)',async()=>{
+// rede). Agora: prazo 120 s, UMA nova tentativa só para timeout/rede/5xx — inclusive durante a LEITURA do corpo de um
+// HTTP 200 (GPT-6, #1066) — e o erro final diz o tipo. JSON inválido, 4xx e 429 encerram na 1ª chamada.
+// Um teste por comportamento, para o log do CI mostrar cada prova pelo nome.
+const corpoOk=JSON.stringify({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16;rate=24000',sample_rate:24000}]}]});
+const okR=()=>new Response(corpoOk,{status:200});
+// HTTP 200 cujo corpo falha no meio da leitura (cabeçalhos chegaram, o áudio não) — mesmos erros do fetch real do Node:
+// leitura travada -> TimeoutError; socket derrubado -> TypeError com cause.code UND_ERR_SOCKET (conferido com servidor local).
+const corpoFalha=erro=>()=>new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('{"steps":['));},pull(c){c.error(erro());}}),{status:200});
+const errTimeout=()=>{const e=new Error('t');e.name='TimeoutError';return e;},errRede=()=>new TypeError('terminated',{cause:{code:'UND_ERR_SOCKET'}});
+const lancaTimeout=()=>{throw errTimeout();},lancaRede=()=>{throw new TypeError('fetch failed',{cause:{code:'ECONNRESET'}});};
+async function rodaTts(seq){let n=0;const esperas=[],notas=[];let erro=null,out=null;
+ try{out=await tts('frase','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,esperar:async ms=>{esperas.push(ms);},note:m=>notas.push(m),fetchImpl:async(u,o)=>{assert.ok(o.signal,'prazo por chamada');const s=seq[n++];if(!s)throw Error('chamada_a_mais');return s();}});}catch(e){erro=e.message;}
+ return {n,esperas,notas,erro,out};}
+test('TTS constantes: prazo 120 s, 2 tentativas, espera 5 s; o pior caso cabe no job de voz de 5 min',async()=>{
  const R=await import('../scripts/shorts-v2/render.mjs');
- assert.equal(R.TTS_TIMEOUT_MS,120000);assert.equal(R.TTS_TENTATIVAS,2);assert.ok(R.TTS_TIMEOUT_MS*R.TTS_TENTATIVAS+R.TTS_ESPERA_MS<5*60000,'cabe no job de voz de 5 min');
- const corpoOk=JSON.stringify({steps:[{type:'model_output',content:[{type:'audio',data:Buffer.alloc(4800).toString('base64'),mime_type:'audio/l16;rate=24000',sample_rate:24000}]}]});
- const okR=()=>new Response(corpoOk,{status:200}),ok=okR;
- // HTTP 200 cujo CORPO falha na leitura (cabeçalhos chegaram; o áudio não): timeout ou queda de conexão no meio
- const corpoFalha=erro=>()=>new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('{"steps":['));},pull(c){c.error(erro());}}),{status:200});
- const errTimeout=()=>{const e=new Error('t');e.name='TimeoutError';return e;},errRede=()=>new TypeError('terminated',{cause:{code:'UND_ERR_SOCKET'}});
- const timeout=()=>{const e=new Error('t');e.name='TimeoutError';throw e;};
- const rede=()=>{throw new TypeError('fetch failed',{cause:{code:'ECONNRESET'}});};
- const roda=async seq=>{let n=0;const esperas=[],notas=[];let erro=null,out=null;
-  try{out=await tts('frase','Achird','k',{model:'gemini-3.8-flash-tts',freeTierConfirmed:true,esperar:async ms=>{esperas.push(ms);},note:m=>notas.push(m),fetchImpl:async(u,o)=>{assert.ok(o.signal,'prazo por chamada');const s=seq[n++];return typeof s==='function'?s():s;}});}catch(e){erro=e.message;}
-  return {n,esperas,notas,erro,out};};
- let r=await roda([timeout,ok]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.deepEqual(r.esperas,[5000]);assert.match(r.notas[0],/TTS_TENTATIVA 1 falhou=free_tts_timeout/);assert.equal(r.out.pcm.length,4800);
- r=await roda([timeout,timeout]);assert.equal(r.erro,'free_tts_timeout');assert.equal(r.n,2,'no máximo 2 chamadas');
- r=await roda([rede,rede]);assert.equal(r.erro,'free_tts_network_failed:ECONNRESET');assert.equal(r.n,2);
- r=await roda([{ok:false,status:503},ok]);assert.equal(r.erro,null);assert.equal(r.n,2);
- r=await roda([{ok:false,status:503},{ok:false,status:502}]);assert.equal(r.erro,'free_tts_unavailable:502');
- r=await roda([{ok:false,status:429},ok]);assert.equal(r.erro,'free_tts_unavailable:429');assert.equal(r.n,1,'cota (429) não repete');
- r=await roda([{ok:false,status:400},ok]);assert.equal(r.erro,'free_tts_unavailable:400');assert.equal(r.n,1);
- r=await roda([ok]);assert.equal(r.erro,null);assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);
- // GPT-6 (#1066): falha DURANTE a leitura do corpo de um HTTP 200 conta como tentativa e repete; JSON inválido não repete
- r=await roda([corpoFalha(errTimeout),okR]);assert.equal(r.erro,null,'timeout na leitura do corpo repete');assert.equal(r.n,2);assert.match(r.notas[0],/falhou=free_tts_timeout/);
- r=await roda([corpoFalha(errTimeout),corpoFalha(errTimeout)]);assert.equal(r.erro,'free_tts_timeout');assert.equal(r.n,2);
- r=await roda([corpoFalha(errRede),okR]);assert.equal(r.erro,null,'queda de conexão na leitura repete');assert.equal(r.n,2);assert.match(r.notas[0],/falhou=free_tts_network_failed:UND_ERR_SOCKET/);
- r=await roda([corpoFalha(errRede),corpoFalha(errRede)]);assert.equal(r.erro,'free_tts_network_failed:UND_ERR_SOCKET');
- r=await roda([()=>new Response('{"steps":[',{status:200}),okR]);assert.equal(r.erro,'tts_response_invalid','JSON inválido não repete');assert.equal(r.n,1);
-});
+ assert.equal(R.TTS_TIMEOUT_MS,120000);assert.equal(R.TTS_TENTATIVAS,2);assert.equal(R.TTS_ESPERA_MS,5000);assert.ok(R.TTS_TIMEOUT_MS*R.TTS_TENTATIVAS+R.TTS_ESPERA_MS<5*60000);});
+test('TTS sucesso direto: 1 chamada, sem espera',async()=>{const r=await rodaTts([okR]);assert.equal(r.erro,null);assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);assert.equal(r.out.pcm.length,4800);});
+test('TTS timeout antes dos cabeçalhos: 1 nova tentativa; 2 timeouts -> free_tts_timeout com exatamente 2 chamadas',async()=>{
+ let r=await rodaTts([lancaTimeout,okR]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.deepEqual(r.esperas,[5000]);assert.match(r.notas[0],/TTS_TENTATIVA 1 falhou=free_tts_timeout/);
+ r=await rodaTts([lancaTimeout,lancaTimeout,okR]);assert.equal(r.erro,'free_tts_timeout');assert.equal(r.n,2);});
+test('TTS falha de rede antes dos cabeçalhos: 1 nova tentativa; 2 falhas -> free_tts_network_failed:ECONNRESET com 2 chamadas',async()=>{
+ let r=await rodaTts([lancaRede,okR]);assert.equal(r.erro,null);assert.equal(r.n,2);
+ r=await rodaTts([lancaRede,lancaRede,okR]);assert.equal(r.erro,'free_tts_network_failed:ECONNRESET');assert.equal(r.n,2);});
+test('TTS timeout DURANTE a leitura do corpo de um HTTP 200: 1 nova tentativa; 2 vezes -> free_tts_timeout com 2 chamadas',async()=>{
+ let r=await rodaTts([corpoFalha(errTimeout),okR]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.deepEqual(r.esperas,[5000]);assert.match(r.notas[0],/falhou=free_tts_timeout/);
+ r=await rodaTts([corpoFalha(errTimeout),corpoFalha(errTimeout),okR]);assert.equal(r.erro,'free_tts_timeout');assert.equal(r.n,2);});
+test('TTS queda de conexão DURANTE a leitura do corpo de um HTTP 200: 1 nova tentativa; 2 vezes -> free_tts_network_failed:UND_ERR_SOCKET com 2 chamadas',async()=>{
+ let r=await rodaTts([corpoFalha(errRede),okR]);assert.equal(r.erro,null);assert.equal(r.n,2);assert.match(r.notas[0],/falhou=free_tts_network_failed:UND_ERR_SOCKET/);
+ r=await rodaTts([corpoFalha(errRede),corpoFalha(errRede),okR]);assert.equal(r.erro,'free_tts_network_failed:UND_ERR_SOCKET');assert.equal(r.n,2);});
+test('TTS HTTP 5xx: 1 nova tentativa; 503+502 -> free_tts_unavailable:502 com 2 chamadas',async()=>{
+ let r=await rodaTts([()=>new Response('x',{status:503}),okR]);assert.equal(r.erro,null);assert.equal(r.n,2);
+ r=await rodaTts([()=>new Response('x',{status:503}),()=>new Response('x',{status:502}),okR]);assert.equal(r.erro,'free_tts_unavailable:502');assert.equal(r.n,2);});
+test('TTS JSON inválido num HTTP 200: encerra na 1ª chamada com tts_response_invalid (sem nova tentativa)',async()=>{
+ const r=await rodaTts([()=>new Response('{"steps":[',{status:200}),okR]);assert.equal(r.erro,'tts_response_invalid');assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);});
+test('TTS HTTP 400: encerra na 1ª chamada com free_tts_unavailable:400 (sem nova tentativa)',async()=>{
+ const r=await rodaTts([()=>new Response('x',{status:400}),okR]);assert.equal(r.erro,'free_tts_unavailable:400');assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);});
+test('TTS HTTP 429 (cota): encerra na 1ª chamada com free_tts_unavailable:429 (sem nova tentativa)',async()=>{
+ const r=await rodaTts([()=>new Response('x',{status:429}),okR]);assert.equal(r.erro,'free_tts_unavailable:429');assert.equal(r.n,1);assert.deepEqual(r.esperas,[]);});
