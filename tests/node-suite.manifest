@@ -125,7 +125,7 @@ tests/p13-posvenda-ensaio.test.mjs 14
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
-tests/p18-commercial.test.mjs 18
+tests/p18-commercial.test.mjs 20
 tests/p18-latency.test.mjs 12
 tests/p20-backup-encryption.test.mjs 11
 tests/p20-diario-d1.test.mjs 8
@@ -214,5 +214,6 @@ tests/whatsapp-config-absence.test.mjs 7
 tests/whatsapp-mutants-classifier.test.mjs 6
 tests/whatsapp-neon-store.test.mjs 6
 tests/whatsapp-retirement.test.mjs 17
+tests/workflow-contagens.test.mjs 2
 tests/youtube-daily-short.test.mjs 15
 tests/zees16-evidence-honesty.test.mjs 2

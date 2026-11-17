@@ -197,14 +197,29 @@ export function decideCheckout(mode, cls) {
 }
 
 // Rota do site (/hotmart/<slug>, /assinar/<slug>): fechada = "pausadas" sem checkout; aberta = checkout da lista.
-export function decideSiteRoute(mode, { status, headers = {}, body }, product, allow) {
+// Desde o #1061 (funil, 16/11) o botão "Comprar" é interno: /hotmart/<slug>/ir mede o clique e responde 302 para a
+// oferta cadastrada. Com a venda aberta, a página precisa ter ESSE botão e o salto (seguido com utm_source=diagnostico,
+// que só grava contadores diag:*, fora das métricas comerciais) precisa ir a um checkout da lista fechada.
+export const irPath = (slug) => "/hotmart/" + slug + "/ir";
+export function decideSiteRoute(mode, { status, headers = {}, body }, product, allow, { ir = null } = {}) {
   if (mode !== "globally-blocked" && mode !== "enabled") return { verdict: FAIL, reason: "release_unknown" };
   const loc = headers.location || null;
-  const links = extractPurchaseLinks(body || "", allow, { source: "live", slug: product.slug }).filter((l) => l.kind === "external_checkout").map((l) => l.href);
+  const all = extractPurchaseLinks(body || "", allow, { source: "live", slug: product.slug });
+  const links = all.filter((l) => l.kind === "external_checkout").map((l) => l.href);
   if (loc && /^https?:/i.test(loc)) links.push(loc);
+  const temBotaoIr = all.some((l) => l.kind === "internal_buy" && l.href.split("?")[0] === irPath(product.slug));
+  if (mode === "enabled" && temBotaoIr) {
+    if (!ir) return { verdict: FAIL, reason: "site_route_ir_not_followed" };
+    const irLoc = ir.headers?.location || null;
+    if (ir.status !== 302 || !irLoc) return { verdict: FAIL, reason: "site_route_ir_without_redirect:http_" + ir.status };
+    links.push(irLoc);
+  }
   const text = searchableText(body || "");
   if (mode === "globally-blocked") {
     if (links.length) return { verdict: FAIL, reason: "site_route_checkout_while_locked" };
+    // GPT-6 (#1068): com a venda fechada, o botão interno de compra já é reprovação (mesmo com o texto "pausadas");
+    // o salto não é consultado nesse modo, então a decisão não pode depender dele.
+    if (temBotaoIr) return { verdict: FAIL, reason: "site_route_ir_button_while_locked" };
     if (status === 200 && allow.site_paused_markers.some((m) => text.includes(norm(m)))) return { verdict: PASS, reason: "site_route_paused_as_expected" };
     // NC-1004-01 (DEC-04): a assinatura desativada responde 404 sem redirecionamento e sem checkout. Só vale para
     // produto de kind "subscription"; os kits continuam exigindo a página "vendas pausadas".
@@ -346,7 +361,10 @@ export async function runLive({ allow, fetchImpl = fetch, renderCheckout = null,
     const em = effectiveSalesMode(sm.mode, hc.open, p);
     const routeUrl = allow.site_origin + p.site_route;
     const route = await safeGetNoFollow(routeUrl, { fetchImpl, allowHosts: [siteHost] });
-    const rd = decideSiteRoute(em, route, p, allow);
+    let ir = null;
+    if (em === "enabled" && extractPurchaseLinks(route.body || "", allow, { slug: p.slug }).some((l) => l.kind === "internal_buy" && l.href.split("?")[0] === irPath(p.slug)))
+      ir = await safeGetNoFollow(allow.site_origin + irPath(p.slug) + "?utm_source=diagnostico", { fetchImpl, allowHosts: [siteHost] });
+    const rd = decideSiteRoute(em, route, p, allow, { ir });
     results.push({ link: routeUrl, source: "live:site_route", slug: p.slug, verdict: rd.verdict, reason: sm.mode ? rd.reason : sm.reason, http_status: route.status });
     const href = `https://${allow.checkout_hosts[0]}/${p.checkout_code}?off=${p.offer}`;
     const shape = checkLinkShape(href, allow, { pageSlug: p.slug });

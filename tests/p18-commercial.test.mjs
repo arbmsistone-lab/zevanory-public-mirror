@@ -296,3 +296,45 @@ test("relatório: nenhum link conferido nunca é PASS", () => {
   assert.equal(r.reason, "no_links_checked", "[P18C.16] motivo");
   assert.equal(buildReport("live", [{ verdict: PASS }, { verdict: FAIL }]).verdict, FAIL, "[P18C.16] um FAIL derruba");
 });
+
+// Desde o #1061 (16/11) o botão "Comprar" da página /hotmart/<slug> é interno (/hotmart/<slug>/ir, que mede o clique e
+// responde 302 para a oferta cadastrada). O monitor ficou vermelho desde 15/11 por procurar só link externo na página.
+// Agora: com a venda aberta e o botão /ir na página, o salto (seguido com utm_source=diagnostico) precisa ser 302 para
+// um checkout da lista fechada; sem salto, salto sem 302 ou destino fora da lista = FAIL.
+test("P18C.20: botão interno /hotmart/<slug>/ir — 302 para a oferta da lista passa; sem salto, sem 302 ou destino errado reprova", () => {
+  const pagina = { status: 200, headers: {}, body: '<a class="button" href="/hotmart/ia-na-pratica/ir?utm_source=direto">Comprar agora · R$ 97</a>' };
+  const ir = (status, location) => ({ status, headers: { location } });
+  assert.equal(decideSiteRoute("enabled", pagina, IA, allow, { ir: ir(302, IA_URL + "&src=diagnostico") }).verdict, PASS, "[P18C.20] /ir 302 para a oferta certa");
+  assert.equal(decideSiteRoute("enabled", pagina, IA, allow).reason, "site_route_ir_not_followed", "[P18C.20] botão /ir sem seguir o salto");
+  assert.equal(decideSiteRoute("enabled", pagina, IA, allow, { ir: ir(200, null) }).reason, "site_route_ir_without_redirect:http_200", "[P18C.20] /ir sem redirecionamento");
+  assert.equal(decideSiteRoute("enabled", pagina, IA, allow, { ir: ir(302, "https://pay.hotmart.com/F107979716H?off=errado1") }).reason, "site_route_link_offer_mismatch", "[P18C.20] /ir para oferta errada");
+  assert.match(decideSiteRoute("enabled", pagina, IA, allow, { ir: ir(302, "https://pay.hotmart.com/L107979973K?off=ksb5di36&src=diagnostico") }).reason, /wrong_product_for_page/, "[P18C.20] /ir para o produto errado");
+  assert.match(decideSiteRoute("enabled", pagina, IA, allow, { ir: ir(302, "https://evil.example/F107979716H?off=g9knd34r") }).reason, /host_not_allowed/, "[P18C.20] /ir para host fora da lista");
+  assert.equal(decideSiteRoute("globally-blocked", pagina, IA, allow, { ir: ir(302, IA_URL) }).verdict, FAIL, "[P18C.20] trava fechada com botão de compra continua reprovando");
+  // GPT-6 (#1068): página com "vendas pausadas" E o botão /ir, sem salto consultado (como no runLive com a trava fechada)
+  const pausadaComBotao = { status: 200, headers: {}, body: '<p>As vendas do IA na Prática estão pausadas no momento.</p><a href="/hotmart/ia-na-pratica/ir?utm_source=direto">Comprar</a>' };
+  assert.ok(allow.site_paused_markers.some((m) => /pausad/i.test(m)), "[P18C.20] o marcador de pausa da lista está no texto do caso");
+  assert.equal(decideSiteRoute("globally-blocked", pausadaComBotao, IA, allow).reason, "site_route_ir_button_while_locked", "[P18C.20] pausada + botão /ir com a trava fechada reprova");
+  assert.equal(decideSiteRoute("globally-blocked", { status: 200, headers: {}, body: '<p>As vendas do IA na Prática estão pausadas no momento.</p>' }, IA, allow).verdict, PASS, "[P18C.20] pausada sem botão continua passando");
+});
+test("P18C.21: runLive segue o /ir só com utm_source=diagnostico (fora das métricas comerciais) e só pelo host do site", async () => {
+  const pedidos = [];
+  const html = (slug) => `<a href="/hotmart/${slug}/ir?utm_source=direto">Comprar</a>`;
+  const fetchImpl = async (url, init) => {
+    pedidos.push(String(url)); const u = new URL(url);
+    const H = (o) => ({ get: (k) => o[k.toLowerCase()] ?? null });
+    if (u.pathname === "/api/release") return { status: 200, headers: H({}), text: async () => JSON.stringify({ sales_mode: "globally-blocked" }) };
+    if (u.pathname === "/api/sales/hotmart-status") return { status: 200, headers: H({}), text: async () => JSON.stringify({ open: true }) };
+    const m = u.pathname.match(/^\/hotmart\/([a-z-]+)\/ir$/);
+    if (m) { const p = allow.products.find((x) => x.slug === m[1]); return { status: 302, headers: H({ location: `https://pay.hotmart.com/${p.checkout_code}?off=${p.offer}&src=${u.searchParams.get("utm_source")}` }), text: async () => "" }; }
+    const r = u.pathname.match(/^\/hotmart\/([a-z-]+)$/);
+    if (r) return { status: 200, headers: H({}), text: async () => html(r[1]) };
+    return { status: 404, headers: H({}), text: async () => "" };
+  };
+  const rep = await runLive({ allow, fetchImpl, renderCheckout: async () => ({ status: 0, error: "nao_testado_aqui" }) });
+  const irs = pedidos.filter((x) => /\/ir(\?|$)/.test(x));
+  assert.ok(irs.length >= 1, "[P18C.21] /ir seguido");
+  for (const x of irs) { assert.equal(new URL(x).searchParams.get("utm_source"), "diagnostico", "[P18C.21] só origem diagnostico"); assert.equal(new URL(x).hostname, new URL(allow.site_origin).hostname, "[P18C.21] só o host do site"); }
+  const rotas = rep.results.filter((r) => r.source === "live:site_route" && /^\/hotmart\//.test(new URL(r.link).pathname));
+  assert.ok(rotas.length >= 1 && rotas.every((r) => r.verdict === PASS), "[P18C.21] rotas /hotmart passam com o salto válido: " + JSON.stringify(rotas.map((r) => [r.slug, r.reason])));
+});
