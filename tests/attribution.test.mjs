@@ -29,7 +29,7 @@ test("intent and source are stored as aggregate counters only and summarized per
   assert.doesNotMatch(JSON.stringify(calls), /198\.51\.100\.7/);
   const rows = [{ page: "ia-na-pratica", metric: "views", n: 10 }, { page: "ia-na-pratica", metric: "src:youtube", n: 6 }, { page: "ia-na-pratica", metric: "checkout_intent:src:youtube", n: 2 }, { page: "ia-na-pratica", metric: "camp:conteudo_20261012", n: 4 }];
   const s = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query: async t => (t.includes("group by page, metric") ? rows : []) }) });
-  assert.deepEqual(s.sources.youtube, { views: 6, checkout_intent: 2, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 });
+  assert.deepEqual(s.sources.youtube, { views: 6, checkout_intent: 2, hotmart_view: 0, hotmart_click: 0, subscribe_click: 0, lead_submit: 0 });
   assert.deepEqual(s.topCampaigns, [{ campaign: "conteudo_20261012", views: 4 }]);
   assert.equal(s.pages["ia-na-pratica"].views, 10);
 });
@@ -40,7 +40,11 @@ test("Hotmart-only kit variant preserves src attribution and never exposes CP", 
   const r=await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica?utm_source=telegram"),env,{waitUntil(){}});
   assert.equal(r.status,200);
   const html=await r.text();
-  assert.match(html,/pay\.hotmart\.com\/F107979716H\?off=g9knd34r&src=telegram/);
+  // os botões passam pela rota de clique (mede "clicou para ir ao checkout"), com a origem preservada até a Hotmart
+  assert.match(html,/href="\/hotmart\/ia-na-pratica\/ir\?utm_source=telegram"/);
+  assert.doesNotMatch(html,/href="https:\/\/pay\.hotmart/);
+  const ir=await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica/ir?utm_source=telegram"),env,{waitUntil(){}});
+  assert.equal(ir.status,302);assert.equal(ir.headers.get("location"),"https://pay.hotmart.com/F107979716H?off=g9knd34r&src=telegram");
   assert.doesNotMatch(html,/Mercado Pago|pedir-reembolso|entrega\/reenviar/);
   const cp=await worker.fetch(new Request("https://vendas.zevanory.api.br/assinar/conteudo-pronto?utm_source=telegram"),env,{waitUntil(){}});
   assert.equal(cp.status,404);
