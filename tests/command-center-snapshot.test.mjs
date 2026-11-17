@@ -102,9 +102,10 @@ test("publicações: dia fora da agenda do blog (seg/qua/sex) não conta como pr
     "2026-11-13": { blog: { status: "publicado" }, bluesky: { status: "publicado" } },
     "2026-11-14": { blog: { status: "fora_da_agenda" }, bluesky: { status: "publicado" } },
     "2026-11-12": { blog: { status: "erro" } },
-  });
-  assert.deepEqual(p.perChannel.blog, { expected: 2, published: 1, falhas: [{ dia: "2026-11-12", status: "erro", code: null }] }, "13/11 publicado + 12/11 erro; 14/11 fora da agenda não entra");
-  assert.equal(p.expected, 4); assert.equal(p.published, 3);
+  }, { agora: Date.parse("2026-11-17T15:00:00Z") });
+  // 17/11 (GPT-6): o devido do blog vem da agenda (seg/qua/sex). 12/11 é quinta: o "erro" desse dia não é publicação devida.
+  assert.deepEqual(p.perChannel.blog, { expected: 1, published: 1, falhas: [] }, "13/11 (sexta) publicado; 12/11 quinta e 14/11 sábado não entram");
+  assert.equal(p.expected, 3); assert.equal(p.published, 3);
 });
 
 // Diagnóstico 15/11/2026 (+ contra-auditoria GPT-6 do #1060): as leituras de pay.hotmart.com no runner falham com
@@ -141,21 +142,29 @@ test("probes: campos efetivamente produzidos em redirecionamento, timeout e erro
   assert.doesNotMatch(JSON.stringify(hm), /fetch failed/, "sem mensagem livre");
 });
 
-// GPT-6 (17/11): o blog automático entrou no ar em 12/11 (#1020). Um registro anterior à ativação não é devido; uma falha
-// em dia devido depois da ativação continua no denominador e o motivo (code) chega ao objeto que o painel lê.
-test("publicações: dia anterior à ativação do blog não conta; falha devida depois da ativação conta e leva o code", async () => {
-  const { computePublications, ATIVACAO_CANAL } = await import("../scripts/audit/command-center-snapshot.mjs");
+// GPT-6 (17/11): o blog automático entrou no ar em 12/11 (#1020) e o DEVIDO vem da agenda (seg/qua/sex, depois de 10:05
+// em São Paulo), não do registro. Cron que falha antes de gravar = "sem_registro"; registro fora da agenda não conta.
+test("publicações do blog: agenda + horário decidem o devido; sem registro após o horário = falha; fora da agenda não conta", async () => {
+  const { computePublications, ATIVACAO_CANAL, blogDevido } = await import("../scripts/audit/command-center-snapshot.mjs");
   assert.equal(ATIVACAO_CANAL.blog, "2026-11-12");
-  const antes = { "2026-11-11": { blog: { status: "erro", code: "blog_generation_failed" } }, "2026-11-13": { blog: { status: "publicado" } }, "2026-11-16": { blog: { status: "publicado" } } };
-  const a = computePublications(antes);
-  assert.deepEqual([a.perChannel.blog.expected, a.perChannel.blog.published, a.perChannel.blog.falhas], [2, 2, []], "2/2 desde a ativação");
-  const depois = { ...antes, "2026-11-18": { blog: { status: "erro", code: "blog_quality_gate:similaridade" } }, "2026-11-17": { blog: { status: "fora_da_agenda" } } };
-  const b = computePublications(depois);
-  assert.deepEqual([b.perChannel.blog.expected, b.perChannel.blog.published], [3, 2], "falha devida fica no denominador");
-  assert.deepEqual(b.perChannel.blog.falhas, [{ dia: "2026-11-18", status: "erro", code: "blog_quality_gate:similaridade" }]);
-  assert.equal(b.pct, 66.7);
-  // canal sem data de ativação: sem mudança de regra
-  const c = computePublications({ "2026-11-01": { bluesky: { status: "erro", code: "bluesky_http_429" } } });
+  const base = { "2026-11-11": { blog: { status: "erro", code: "blog_generation_failed" } }, "2026-11-13": { blog: { status: "publicado" } }, "2026-11-16": { blog: { status: "publicado" } } };
+  const em = (iso) => ({ agora: Date.parse(iso) });
+  // antes da ativação (11/11, quarta) não é devido: 2/2
+  assert.deepEqual(computePublications(base, em("2026-11-17T12:00:00Z")).perChannel.blog, { expected: 2, published: 2, falhas: [] });
+  // terça 17/11 com "erro": fora da agenda, não entra
+  assert.deepEqual(computePublications({ ...base, "2026-11-17": { blog: { status: "erro", code: "x" } } }, em("2026-11-17T20:00:00Z")).perChannel.blog, { expected: 2, published: 2, falhas: [] });
+  // quarta 18/11 SEM registro: antes de 10:05 (São Paulo) ainda não é devido; depois, falha "sem_registro"
+  const com18 = { ...base, "2026-11-18": {} };
+  assert.deepEqual(computePublications(com18, em("2026-11-18T12:50:00Z")).perChannel.blog.expected, 2, "09:50 em São Paulo: ainda não devido");
+  const d = computePublications(com18, em("2026-11-18T13:10:00Z"));
+  assert.deepEqual(d.perChannel.blog, { expected: 3, published: 2, falhas: [{ dia: "2026-11-18", status: null, code: "sem_registro" }] }, "10:10: devido, sem registro");
+  // quarta 18/11 com rejeição do gate, no formato que o motor emite
+  const r = computePublications({ ...base, "2026-11-18": { blog: { status: "erro", code: "rejected:duplicado,fonte_ausente" } } }, em("2026-11-19T12:00:00Z"));
+  assert.deepEqual(r.perChannel.blog.falhas, [{ dia: "2026-11-18", status: "erro", code: "rejected:duplicado,fonte_ausente" }]);
+  assert.equal(r.pct, 66.7);
+  assert.equal(blogDevido("2026-11-20", em("2026-11-19T12:00:00Z")), false, "dia futuro não é devido");
+  // canal sem agenda própria: regra inalterada (só registros, fora_da_agenda não conta)
+  const c = computePublications({ "2026-11-01": { bluesky: { status: "erro", code: "bluesky_http_429" } } }, em("2026-11-02T12:00:00Z"));
   assert.deepEqual(c.perChannel.bluesky, { expected: 1, published: 0, falhas: [{ dia: "2026-11-01", status: "erro", code: "bluesky_http_429" }] });
 });
 test("snapshot: o code do blog (outcome do motor) é preservado na matriz por dia", () => {

@@ -121,27 +121,40 @@ export function computeAutonomy(runs = [], now = Date.now()) {
 
 // Data em que a publicação automática de cada canal entrou no ar (GPT-6, 17/11: o blog automático entrou na gh-pages em
 // 12/11 pelo #1020; o registro de 11/11 fazia o painel mostrar 2/3 quando o real desde a ativação era 2/2).
-// Dia ANTERIOR à ativação não é publicação devida.
 export const ATIVACAO_CANAL = Object.freeze({ blog: "2026-11-12" });
+// Agenda do blog = a do motor (worker/blog-quality-gate.mjs BLOG_PUBLICATION_WEEKDAYS: seg/qua/sex, getUTCDay do dia
+// local) e o horário do cron de aquisição (09:35 São Paulo, minuto 35 do "5,35 * * * *"). O que é DEVIDO vem da agenda,
+// não do registro: dia de agenda sem registro depois do horário entra como falha "sem_registro"; registro fora da agenda
+// (ex.: "erro" numa terça) não é publicação devida. A folga cobre a 2ª passada do cron (10:05).
+export const BLOG_AGENDA = Object.freeze({ diasSemana: [1, 3, 5], devidoApos: { h: 10, m: 5 } });
+const diaSemana = (d) => new Date(d + "T12:00:00Z").getUTCDay();
+const minutosLocais = (t) => { const [h, m] = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t)).split(":").map(Number); return h * 60 + m; };
+export function blogDevido(day, { agora = Date.now() } = {}) {
+  if (day < ATIVACAO_CANAL.blog || !BLOG_AGENDA.diasSemana.includes(diaSemana(day))) return false;
+  const hoje = localDay(agora);
+  if (day < hoje) return true;
+  return day === hoje && minutosLocais(agora) >= BLOG_AGENDA.devidoApos.h * 60 + BLOG_AGENDA.devidoApos.m;
+}
 // Publication completion (7 days): expected daily proofs vs published records in KV.
-export function computePublications(byDay = {}) {
+export function computePublications(byDay = {}, { agora = Date.now() } = {}) {
   let expected = 0, published = 0;
   const perChannel = {};
+  const contar = (ch, day, e) => {
+    expected++;
+    const done = e?.status === "publicado";
+    if (done) published++;
+    const p = (perChannel[ch] = perChannel[ch] || { expected: 0, published: 0, falhas: [] });
+    p.expected++; if (done) p.published++;
+    // dia devido sem publicação: continua no denominador e leva o motivo (code) até o painel
+    else p.falhas.push({ dia: day, status: e?.status || null, code: e ? (e.code || null) : "sem_registro" });
+  };
   for (const [day, entries] of Object.entries(byDay)) {
     for (const ch of DAILY_PROOFS) {
-      const e = entries[ch];
+      const e = entries?.[ch];
+      if (ch === "blog") { if (blogDevido(day, { agora })) contar(ch, day, e); continue; }
       if (!e) continue; // not yet due / not recorded: the matrix shows it, the rate ignores future slots
-      if (ATIVACAO_CANAL[ch] && day < ATIVACAO_CANAL[ch]) continue;
-      // O blog publica só em dias de agenda (seg/qua/sex, Plano Mestre). Um dia fora da agenda não é publicação devida:
-      // contá-lo como "previsto" fazia o painel mostrar 1/7 quando a agenda tinha 1/1 (14/11/2026).
       if (e.status === "fora_da_agenda") continue;
-      expected++;
-      const done = e.status === "publicado";
-      if (done) published++;
-      const p = (perChannel[ch] = perChannel[ch] || { expected: 0, published: 0, falhas: [] });
-      p.expected++; if (done) p.published++;
-      // dia devido sem publicação: continua no denominador e leva o motivo (code) até o painel
-      else p.falhas.push({ dia: day, status: e.status || null, code: e.code || null });
+      contar(ch, day, e);
     }
   }
   return { expected, published, pct: expected ? Math.round((1000 * published) / expected) / 10 : null, perChannel };
@@ -500,7 +513,7 @@ export async function main() {
   const hotmartMode = salesOpen === false && hotmartOpen === true;
   if (hotmartLock.severity === "P0") console.log("::error title=P0_HOTMART_BYPASS::" + JSON.stringify({ accepting: hotmartLock.accepting, leaking: hotmartLock.leaking || hotmartLock.accepting, salesOpen, hotmartOpen }));
 
-  const publications = computePublications(pubs.byDay);
+  const publications = computePublications(pubs.byDay, { agora: now });
   // Real autonomy index (Plano Mestre v1.2, seção 6): publications completed without a command ÷ publications due, from the
   // action record (KV) and the versioned rules (data/regras-diagnostico.json). No source = null ("não medido").
   const autonomiaReal = autonomiaDaJanela(pubs.byDay, { hoje: localDay(now), horaHoje: localHour(now) });
