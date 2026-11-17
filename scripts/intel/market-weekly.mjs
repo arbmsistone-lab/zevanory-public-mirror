@@ -4,6 +4,7 @@
 // 25/15/15/15/15/10/5. Every score keeps its evidence (the real queries). Product ideas are
 // proposals with evidence, never launched automatically. Writes KV zpc:market:v1:weekly.
 import { readFileSync } from "node:fs";
+import { lerTendencias, casarRamos } from "./ml-tendencias.mjs";
 
 export const MARKET_KEY = "zpc:market:v1:weekly";
 const RE = {
@@ -71,15 +72,18 @@ export async function main() {
   const maxAi = Math.max(1, ...raw.map((x) => new Set([...x.data.ia, ...x.data.yt]).size));
   const ranking = raw.map((x) => scoreRamo(x.g, x.data, maxDemand, maxAi)).sort((a, b) => b.score - a.score);
   const totalSignals = ranking.reduce((a, r) => a + r.signals, 0);
+  // Mercado Livre (só leitura, evidência sem peso no score): status honesto quando a API recusar ou faltar token.
+  const ml = await lerTendencias({ token: process.env.MERCADOLIVRE_ACCESS_TOKEN || "" });
   const out = {
     schema: "zevanory-market/v1", generatedAt: new Date().toISOString(),
     method: "Sugestões reais de busca do Google e do YouTube (autocompletar, Brasil) para 6 consultas por ramo. Pesos 25/15/15/15/15/10/5: demanda, intenção de resolver, disposição a pagar, interesse em IA, aderência aos produtos, lacuna, risco.",
     integrity: totalSignals ? "real" : "missing", totalSignals, ranking, ideas: productIdeas(ranking),
+    mercadoLivre: { fonte: "api.mercadolibre.com/trends/MLB", status: ml.status, autenticado: ml.autenticado, palavras: ml.palavras.slice(0, 30), ramos: casarRamos(bank.guides, ml.palavras), uso: "evidência de demanda; sem peso no score; nada é anunciado no Mercado Livre" },
   };
   const { CLOUDFLARE_API_TOKEN: tk, CLOUDFLARE_ACCOUNT_ID: ac, KV_NAMESPACE_ID: ns } = process.env;
   const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ac}/storage/kv/namespaces/${ns}/values/${encodeURIComponent(MARKET_KEY)}`, { method: "PUT", headers: { authorization: "Bearer " + tk }, body: JSON.stringify(out) });
   if (!r.ok) throw new Error("kv_put_" + r.status);
-  console.log("::notice title=MARKET_WEEKLY::" + JSON.stringify({ totalSignals, top: ranking.slice(0, 8).map((x) => `${x.name}:${x.score}:${x.product}`), ideas: out.ideas.map((i) => i.title) }));
+  console.log("::notice title=MARKET_WEEKLY::" + JSON.stringify({ totalSignals, top: ranking.slice(0, 8).map((x) => `${x.name}:${x.score}:${x.product}`), ideas: out.ideas.map((i) => i.title), mercadoLivre: { status: ml.status, palavras: ml.palavras.length, ramos: out.mercadoLivre.ramos.length } }));
   if (!totalSignals) process.exit(1);
 }
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
