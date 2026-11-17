@@ -58,6 +58,63 @@ if (scenario === "fk_entre_partes" && !(partOf("z_fk_a_pai") >= 0 && partOf("z_f
   console.log(JSON.stringify({ scenario, fk_order_unsuitable: true, part_pai: partOf("z_fk_a_pai"), part_filho: partOf("z_fk_b_filho") }));
   process.exit(3);
 }
+// Corrida (contra-auditoria 17/11, terceira rodada): B é PAUSADA logo depois da sua verificação de posse do dia (a
+// instrução atômica em zevanory_backup_day); A roda; B é retomada. O sql de B tem o próprio gancho de pausa.
+const snapAll = () => new Map([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:")));
+const diffKeys = (a, b) => [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).sort();
+function pausedSql() {
+  let release; const gate = new Promise((r) => (release = r)); let hit = false;
+  const s = { async query(text, params) {
+    const r = await sql.query(text, params);
+    if (!hit && /insert into zevanory_backup_day/.test(String(text))) { hit = true; s.gateResult = (r || []).length === 1 ? "posse_obtida" : "posse_recusada"; await gate; }
+    return r;
+  } };
+  s.release = release; s.wasHit = () => hit;
+  return s;
+}
+const runA = async (rid) => {
+  const rs = [];
+  for (let part = 0; part < plan.parts; part++) rs.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: rid }));
+  return { parts: rs, final: await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: rid, sqlFactory: () => sql }) };
+};
+if (scenario === "corrida_a_conclui_b_pausada" || scenario === "corrida_b_pausada_com_posse") {
+  const runIdA = randomBytes(16).toString("hex"), runIdB = randomBytes(16).toString("hex");
+  const bSql = pausedSql();
+  const bPart = 1 % plan.parts;
+  let bPromise, a0 = null;
+  if (scenario === "corrida_a_conclui_b_pausada") {
+    // A começa (parte 0 obtém a posse); B entra, passa pela verificação e PAUSA; A conclui o dia; B é retomada.
+    a0 = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: plan.parts, planId: plan.plan_id, runId: runIdA });
+    bPromise = runDataBackup(env, { sqlFactory: () => bSql, now, part: bPart, parts: plan.parts, planId: plan.plan_id, runId: runIdB });
+    while (!bSql.wasHit()) await new Promise((r) => setTimeout(r, 5));
+    const rest = [];
+    for (let part = 1; part < plan.parts; part++) rest.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runIdA }));
+    const finA = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
+    const depoisA = snapAll();
+    bSql.release();
+    const b = await bPromise;
+    // B depois de retomada tenta também consolidar (a execução B inteira).
+    const finB = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdB, sqlFactory: () => sql });
+    const depoisB = snapAll();
+    writeFileSync(out, JSON.stringify(Object.fromEntries(depoisB)));
+    console.log(JSON.stringify({ scenario, parts: plan.parts, eligible: plan.eligible, ok: finA.ok, auth: finA.auth?.state ?? null, failures: finA.failures,
+      a_parts_ok: [a0, ...rest].map((r) => r.ok), b_gate: bSql.gateResult, b_part: { ok: b.ok, failures: b.failures, rejected: Boolean(b.rejected) },
+      b_finalize: { ok: finB.ok, failures: finB.failures }, kv_alteradas_por_b: diffKeys(depoisA, depoisB) }));
+  } else {
+    // B passa pela verificação PRIMEIRO (obtém a posse) e pausa; A tenta o dia inteiro; B é retomada e termina.
+    bPromise = runDataBackup(env, { sqlFactory: () => bSql, now, part: bPart, parts: plan.parts, planId: plan.plan_id, runId: runIdB });
+    while (!bSql.wasHit()) await new Promise((r) => setTimeout(r, 5));
+    const antesA = snapAll();
+    const a = await runA(runIdA);
+    const depoisA = snapAll();
+    bSql.release();
+    const b = await bPromise;
+    console.log(JSON.stringify({ scenario, parts: plan.parts, b_gate: bSql.gateResult,
+      a_parts: a.parts.map((r) => ({ ok: r.ok, failures: r.failures })), a_final: { ok: a.final.ok, failures: a.final.failures },
+      kv_alteradas_por_a: diffKeys(antesA, depoisA), b_part: { ok: b.ok, failures: b.failures } }));
+  }
+  process.exit(0);
+}
 const reports = [];
 for (let part = 0; part < plan.parts; part++) {
   if (scenario === "esquema_alterado" && part === 1) await base.query("alter table z_conc add column coluna_nova text");
@@ -97,7 +154,7 @@ if (scenario === "reenvio_plano_divergente") {
   info.kv_intacto = kvSnapshot() === antes;
 }
 // A consolidação da execução A (no reenvio, aprova porque os relatórios dela não foram tocados).
-let final = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId });
+let final = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId, sqlFactory: () => sql });
 if (scenario === "dia_concluido_b_falha") {
   // A concluiu e aprovou o dia. Uma execução B no MESMO dia (plano, partes, consolidação; e chamadas legadas v1) tem de
   // ser rejeitada sem gravar: relatório principal, relatórios das partes, bundles e cópia do KV byte a byte iguais.
@@ -107,12 +164,13 @@ if (scenario === "dia_concluido_b_falha") {
   const planB = await planBackup(env, { sqlFactory: () => sql, now });
   const partsB = [];
   for (let part = 0; part < plan.parts; part++) partsB.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runB }));
-  const finB = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runB });
-  const v1Part = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: 3 });
-  const v1Fin = await finalizeBackup(env, { parts: 3, now });
+  const finB = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runB, sqlFactory: () => sql });
+  // A PRÓPRIA execução A reenviando uma parte e a consolidação depois de concluir (repetição do condutor): também recusadas.
+  const aAgain = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: plan.parts, planId: plan.plan_id, runId });
+  const aFinAgain = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId, sqlFactory: () => sql });
   info.b = {
-    plan: planB.failures, parts: partsB.map((r) => r.failures), finalize: finB.failures, v1: [v1Part.failures, v1Fin.failures],
-    ok: [planB.ok, ...partsB.map((r) => r.ok), finB.ok, v1Part.ok, v1Fin.ok],
+    plan: planB.failures, parts: partsB.map((r) => r.failures), finalize: finB.failures, a_de_novo: [aAgain.failures, aFinAgain.failures],
+    ok: [planB.ok, ...partsB.map((r) => r.ok), finB.ok, aAgain.ok, aFinAgain.ok],
   };
   info.kv_intacto = kvSnapshot() === antes;
 }
@@ -127,7 +185,7 @@ if (scenario === "reuso_esquema_mudou") {
   const k = partOf("z_conc");
   const r2 = [];
   for (let part = 0; part < plan2.parts; part++) r2.push(await runDataBackup(env, { sqlFactory: () => sql, now: now2, part, parts: plan2.parts, planId: plan2.plan_id, runId: run2 }));
-  const fin2 = await finalizeBackup(env, { parts: plan2.parts, now: now2, planId: plan2.plan_id, runId: run2 });
+  const fin2 = await finalizeBackup(env, { parts: plan2.parts, now: now2, planId: plan2.plan_id, runId: run2, sqlFactory: () => sql });
   info.d1 = { ok: fin2.ok, failures: fin2.failures, part_z_conc: k, transfer: r2[k].transfer, tables_in_part: Object.keys(r2[k].tables || {}).length,
     outras_partes_reaproveitadas: r2.filter((_, i) => i !== k).every((r) => r.transfer && r.transfer.dumped === 0) };
 }

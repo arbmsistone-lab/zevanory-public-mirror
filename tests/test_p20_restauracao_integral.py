@@ -60,7 +60,7 @@ def fresh(name, owner=None):
 
 def eligible(db):
     names = sh(db, "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' "
-                   "and table_name <> 'zevanory_kv_backup' order by table_name collate \"C\";").split()
+                   "and table_name not in ('zevanory_kv_backup', 'zevanory_backup_day') order by table_name collate \"C\";").split()
     return [t for t in names if not SENSITIVE.search(t)]
 
 
@@ -363,8 +363,8 @@ class RestauracaoIntegral(unittest.TestCase):
         """Lacuna 1: uma parte rejeitada não pode sobrescrever o relatório válido da mesma parte no KV."""
         src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n11", 94, extra=[self.conc_table()], scenario="reenvio_plano_divergente")
         self.assertTrue(w["partes_a_ok"], w)
-        self.assertIn("inventory_changed", w["reenvio"]["failures"][0])
-        self.assertIn("inventory_changed", w["reenvio"]["failures"][1])
+        # Outra execução enquanto A é dona do dia: recusada pela posse (antes de reler o plano e de qualquer gravação).
+        self.assertEqual(w["reenvio"]["failures"], [["day_owned_by_other_run"], ["day_owned_by_other_run"]])
         self.assertEqual(w["reenvio"]["rejected"], [True, True])
         self.assertTrue(w["kv_intacto"], "relatórios e bundles no KV têm de ficar byte a byte iguais")
         self.assertTrue(w["ok"], w)  # a execução A continua íntegra e consolida depois dos reenvios
@@ -403,7 +403,7 @@ class RestauracaoIntegral(unittest.TestCase):
         self._schema_between_validation_and_export("n14", "tipo_aba", "export_schema_mismatch:z_conc")
 
     def test_n15_dia_concluido_execucao_b_falha_sem_tocar_a(self):
-        """A conclui o dia; B (plano, partes, consolidação e chamadas legadas v1) no mesmo dia é rejeitada sem gravar.
+        """A conclui o dia; B (plano, partes e consolidação) no mesmo dia é rejeitada sem gravar.
         O relatório de A fica byte a byte igual e a cópia de A continua arquivável e completa."""
         src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n15", 94, scenario="dia_concluido_b_falha")
         self.assertEqual((w["final_a"]["ok"], w["final_a"]["auth"]), (True, "autenticado"), w)
@@ -411,7 +411,7 @@ class RestauracaoIntegral(unittest.TestCase):
         self.assertEqual(b["plan"], ["day_already_complete"])
         self.assertTrue(all(f == ["day_already_complete"] for f in b["parts"]), b["parts"])
         self.assertEqual(b["finalize"], ["day_already_complete"])
-        self.assertEqual(b["v1"], [["day_already_complete"], ["day_already_complete"]])
+        self.assertEqual(b["a_de_novo"], [["day_already_complete"], ["day_already_complete"]])  # nem a própria A regrava
         self.assertFalse(any(b["ok"]), b["ok"])
         self.assertTrue(w["kv_intacto"], "relatório principal, partes, bundles e cópia do KV têm de ficar byte a byte iguais")
         a = archive(kvfile, out)
@@ -434,6 +434,42 @@ class RestauracaoIntegral(unittest.TestCase):
         self.assertEqual(d1["transfer"]["dumped"], 1, d1)  # só z_conc, exportada de novo sob o esquema novo
         self.assertEqual(d1["transfer"]["reused"], d1["tables_in_part"] - 1, d1)
         self.assertTrue(d1["outras_partes_reaproveitadas"], d1)
+
+    # ---- contra-auditoria GPT-6 de 17/11, terceira rodada (PR #1070, 8290a460): corrida entre execuções ----
+    def test_n17_corrida_b_pausada_depois_da_verificacao_a_conclui_e_fica_intacta(self):
+        """A ordem pedida: B passa pela verificação do dia e PAUSA; A conclui; B é retomada (parte e consolidação). Nada de
+        A muda; a cópia de A é arquivável, completa e restaura igual à origem."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n17", 94, scenario="corrida_a_conclui_b_pausada")
+        self.assertEqual(code, 0, w)
+        self.assertTrue(all(w["a_parts_ok"]) and w["ok"], w)
+        self.assertEqual(w["auth"], "autenticado")
+        # A verificação de B É a disputa da posse (uma instrução atômica): A já era dona, então B foi recusada ALI, antes da
+        # pausa. O motivo é lido depois de retomada, quando A já concluiu: day_already_complete.
+        self.assertEqual(w["b_gate"], "posse_recusada")
+        self.assertEqual((w["b_part"]["ok"], w["b_part"]["failures"], w["b_part"]["rejected"]), (False, ["day_already_complete"], True))
+        self.assertEqual(w["b_finalize"]["failures"], ["day_already_complete"])
+        self.assertEqual(w["kv_alteradas_por_b"], [], "B retomada não pode alterar nenhuma chave de A")
+        a = archive(kvfile, out)
+        self.assertEqual(a.returncode, 0, a.stdout[-600:])
+        with open(os.path.join(out, "manifest.json"), encoding="utf-8") as fh:
+            man = json.load(fh)
+        self.assertEqual((man["auth_state"], man["complete"]), ("autenticado", True))
+        fresh(dst, owner=APP)
+        r = restore(out, dst, ddl)
+        self.assertEqual(r.returncode, 0, r.stdout[-800:])
+        self.assertEqual(notice(r, "RESTORE_NEW_DATABASE")["estado"], "completo")
+        self.assertEqual(compare(src, dst, elig), [])
+
+    def test_n18_corrida_b_obtem_a_posse_e_pausa_a_nao_grava_nada(self):
+        """A ordem inversa: B passa pela verificação PRIMEIRO (fica dona) e pausa; A tenta o dia inteiro. Nenhuma parte
+        nem a consolidação de A grava (nunca há duas execuções gravando o mesmo dia)."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n18", 94, scenario="corrida_b_pausada_com_posse")
+        self.assertEqual(code, 0, w)
+        self.assertEqual(w["b_gate"], "posse_obtida")
+        self.assertTrue(all(p["failures"] == ["day_owned_by_other_run"] for p in w["a_parts"]), w["a_parts"])
+        self.assertEqual(w["a_final"]["failures"], ["day_owned_by_other_run"])
+        self.assertEqual(w["kv_alteradas_por_a"], [], "A sem posse não grava nada")
+        self.assertTrue(w["b_part"]["ok"], w["b_part"])  # B, dona, termina a parte dela
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mj
 import { handleOwnerChat, runOwnerChatSentinel, runOwnerChatRetention, isOwnerChatPath } from "./owner-chat.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
-import { runDataBackup, finalizeBackup, planBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
+import { runDataBackup, finalizeBackup, planBackup, backupRunParams, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { hotmartKitsOpen } from "./sales-lock-content.mjs";
@@ -593,18 +593,14 @@ const wrapped = {
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
       if (!verifyOperatorToken(normalized, request.headers.get("x-backup-token"))) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
-      const parts = Math.min(6, Math.max(1, Number(url.searchParams.get("parts") || 3) | 0));
-      // P20 v2: com plan_id (64 hex) a parte confere o plano autenticado; sem ele, o caminho legado v1 de antes.
-      const rawPlan = String(url.searchParams.get("plan_id") || "");
-      const planId = /^[0-9a-f]{64}$/.test(rawPlan) ? rawPlan : null;
-      if (rawPlan && !planId) return new Response(JSON.stringify({ ok: false, failures: ["plan_id_malformed"] }), { status: 400, headers });
-      // run_id (32 hex) identifica a execução do condutor: a consolidação v2 só aceita partes desta execução.
-      const rawRun = String(url.searchParams.get("run_id") || "");
-      if (rawRun && !/^[0-9a-f]{32}$/.test(rawRun)) return new Response(JSON.stringify({ ok: false, failures: ["run_id_malformed"] }), { status: 400, headers });
-      const runId = rawRun || null;
+      // P20 v2 (docs/p20/particoes-v2.md): o Worker novo só aceita o contrato v2 (plan_id 64 hex + run_id 32 hex).
+      // Chamada legada (sem eles) ou malformada é recusada SEM gravar: nunca sobrescreve a cópia de um dia concluído.
+      const rp = backupRunParams(url.searchParams);
+      if (!rp.ok) return new Response(JSON.stringify({ ok: false, failures: [rp.failure] }), { status: 400, headers });
+      const { parts, planId, runId } = rp;
       const report = url.searchParams.get("finalize") === "1"
         ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase, planId, runId })
-        : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts, planId, runId });
+        : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: rp.part, parts, planId, runId });
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
 

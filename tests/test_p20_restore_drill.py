@@ -177,7 +177,9 @@ class T(unittest.TestCase):
             inv = json.load(f)
         owned = {t for c in inv["classes"] for t in c["tables"]}
         real = set(sh(self.src, "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE'").split())
-        real -= {"zpc_records", "zevanory_kv_backup"}  # legado sintético; a cópia KV -> Neon tem classe própria (estado_comercial_kv)
+        # legado sintético; a cópia KV -> Neon tem classe própria (estado_comercial_kv); zevanory_backup_day é a posse do dia
+        # do PRÓPRIO backup (fora do inventário do backup, como zevanory_kv_backup: docs/p20/particoes-v2.md).
+        real -= {"zpc_records", "zevanory_kv_backup", "zevanory_backup_day"}
         self.assertEqual(sorted(real - owned), [], "tabela do esquema real sem classe no inventário 9.1")
 
     def test_6_copia_cifrada_pelo_worker_real_restaura_tudo_com_a_chave(self):

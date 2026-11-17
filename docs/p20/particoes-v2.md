@@ -54,7 +54,14 @@ O desenho está na pasta de intercâmbio do Drive. Este documento registra **o q
 `POST /api/internal/backup/run?finalize=1&parts=N&plan_id=…`
 
 - Confere o HMAC do plano.
-- **Dia fechado** (segunda rodada, ponto 1). Um relatório principal do dia, v2, aprovado e com HMAC válido, é **imutável**. Plano, partes e consolidação posteriores do mesmo dia, v1 ou v2, são rejeitados com `day_already_complete`, sem gravar nada: relatório principal, relatórios das partes, bundles e cópia do KV ficam byte a byte iguais. A rota de plano responde 409 e o condutor encerra com aviso, sem erro. Um relatório com HMAC inválido não fecha o dia.
+- **Posse do dia no PostgreSQL** (segunda e terceira rodadas). O KV não tem operação atômica, então a disputa é feita numa tabela própria, `zevanory_backup_day` (uma linha por dia: `run_id`, `state` `running`/`complete`, `updated_at`):
+  - toda parte e toda consolidação v2 **reivindicam a posse numa única instrução** (`insert … on conflict … do update … where … returning`) **antes de qualquer gravação no KV**. A verificação e a posse são a mesma instrução, então não existe a ordem "B passa pela verificação, A conclui, B grava";
+  - só a execução dona grava: bundles, relatórios das partes, cópia do KV e relatório principal;
+  - enquanto A é dona (`running`), outra execução é recusada com `day_owned_by_other_run`. A posse só passa adiante se a dona ficar **30 minutos** sem reivindicar (execução morta); uma parte do Worker dura segundos;
+  - a consolidação **aprovada** marca o dia `complete` na própria posse **antes** de publicar o relatório principal. Se a posse tiver sido perdida, ela não publica. Se a publicação no KV falhar, o dia volta a `running` desta execução;
+  - dia `complete` nunca é reivindicado de novo, nem pela própria execução: plano, partes e consolidação posteriores do mesmo dia são recusados com `day_already_complete`, sem gravar. A rota de plano responde 409 e o condutor encerra com aviso, sem erro;
+  - `zevanory_backup_day` fica **fora do inventário do backup**, como `zevanory_kv_backup`: é o controle do próprio backup.
+- **Rota do Worker novo só v2** (`backupRunParams`): sem `plan_id` e `run_id`, ou com eles malformados, a rota responde 400 antes de tocar no banco ou no KV. O caminho v1 continua na biblioteca, para os testes e a prova de restauração de cópias legadas, mas não é alcançável pela rota.
 - Exige o `run_id` desta execução em **todas** as partes. Um relatório de outra execução, que sobra no KV quando a parte desta foi rejeitada, dá `part_run_mismatch:<i>` e nunca supre a parte. O `run_id` de cada parte vai dentro de `parts_detail`, que é autenticado.
 - Confere que cada parte tem o mesmo `plan_id` e exatamente as tabelas atribuídas a ela, que nenhuma tabela aparece em duas partes e que a cobertura das elegíveis é total.
 - Qualquer divergência **reprova o dia inteiro**.
@@ -128,17 +135,21 @@ O teste roda no job `p20-restore-drill / tests`, com PostgreSQL 16 efêmero do s
   - **tipo de coluna muda entre a validação e a exportação:** a parte é rejeitada (`inventory_changed_during_export`), não grava, o dia não fecha e o arquivador recusa;
   - **coluna criada depois da validação e removida depois da exportação** (o inventário relido volta ao do plano): rejeitada por `export_columns_mismatch`;
   - **tipo alterado depois da validação e desfeito depois da exportação** (nomes iguais, inventário relido igual): rejeitado por `export_schema_mismatch`;
-  - **execução A conclui o dia e B falha no mesmo dia** (plano, partes, consolidação e chamadas v1): tudo rejeitado, o KV fica byte a byte igual, e a cópia de A continua arquivável, `completo`, e restaura igual à origem;
+  - **execução A conclui o dia e B falha no mesmo dia** (plano, partes e consolidação de B, e reenvio da própria A): tudo rejeitado, o KV fica byte a byte igual, e a cópia de A continua arquivável, `completo`, e restaura igual à origem;
+  - **corrida, ordem da contra-auditoria:** B passa pela verificação e **pausa**; A conclui; B é retomada (parte e consolidação). Nenhuma chave de A muda, e A é arquivada, `completo`, e restaura igual à origem;
+  - **corrida, ordem inversa:** B obtém a posse e pausa; A tenta o dia inteiro e não grava nada; B termina.
   - **reaproveitamento com esquema diferente** (tipo mudou, JSON igual): no dia seguinte a tabela é exportada de novo, e as demais são reaproveitadas.
 - **Também:**
   - escrita concorrente entre a estatística e a exportação, contada no conteúdo copiado;
   - **legado v1 cifrado de 3 partes restaurado com a decifragem nova**, a prova da correção do defeito crítico, marcado `legado_nao_autenticado`.
-- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 29 de 29 KILLED.
+- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 33 de 33 KILLED.
 
 ## Riscos residuais (declarados)
 
 - **Parte 0 rejeitada no meio:** se a parte 0 for rejeitada depois de começar (inventário mudou durante a exportação), a cópia KV → Neon do dia (`zevanory_kv_backup`, um upsert idempotente) já terá sido gravada no Neon. Nada é gravado no KV e o dia não fecha.
 - **Novo backup no mesmo dia depois de um aprovado:** não acontece. Uma cópia mais recente no mesmo dia só vem no dia seguinte.
+- **Execução que falhou no meio:** o dia fica com ela por até 30 minutos. Uma nova tentativa no mesmo dia, dentro desse prazo, é recusada (`day_owned_by_other_run`).
+- **Execução viva parada por mais de 30 minutos** entre duas chamadas perde a posse. Se voltar, é recusada e não publica.
 
 - **Não há fotografia transacional global.** A consistência é por tabela. Relações quebradas são detectadas na restauração, não evitadas.
 - **Os arquivos históricos reais** (KV e Drive) não foram auditados: isso exige a chave de produção e a autorização do proprietário.

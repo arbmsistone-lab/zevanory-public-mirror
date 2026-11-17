@@ -106,6 +106,9 @@ export async function buildFixtureV2({ now, env = process.env, kvSeed = {}, hook
   const sql = psqlSql(env);
   const wenv = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://fixture-local-only", ...(env.P20_BACKUP_KEY ? { P20_BACKUP_KEY: env.P20_BACKUP_KEY } : {}) };
   const legacy = env.P20_BACKUP_KEY ? {} : { encryptionRequired: false };
+  // A posse do dia vive no banco (zevanory_backup_day). A fixture simula um banco recém-preparado para o dia: zera a posse
+  // de execuções ANTERIORES da própria fixture sobre o mesmo banco (o ensaio gera a cópia clara e a cifrada do mesmo banco).
+  await sql.query("do $$ begin if to_regclass('public.zevanory_backup_day') is not null then delete from public.zevanory_backup_day; end if; end $$");
   const plan = await planBackup(wenv, { sqlFactory: () => sql, now, ...legacy });
   const runId = randomBytes(16).toString("hex");
   const reports = [];
@@ -115,7 +118,7 @@ export async function buildFixtureV2({ now, env = process.env, kvSeed = {}, hook
       reports.push(await runDataBackup(wenv, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId, ...legacy }));
     }
   }
-  const final = plan.ok ? await finalizeBackup(wenv, { parts: plan.parts, now, planId: plan.plan_id, runId, ...legacy }) : null;
+  const final = plan.ok ? await finalizeBackup(wenv, { parts: plan.parts, now, planId: plan.plan_id, runId, sqlFactory: () => sql, ...legacy }) : null;
   return { kv: Object.fromEntries([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:"))), plan, reports, final };
 }
 

@@ -105,8 +105,8 @@ export async function readInventory(sql) {
             coalesce((select json_agg(json_build_array(c.column_name, c.data_type, c.is_nullable) order by c.ordinal_position)::text
                         from information_schema.columns c where c.table_schema = 'public' and c.table_name = t.table_name), '[]') as cols
        from information_schema.tables t
-      where t.table_schema = 'public' and t.table_type = 'BASE TABLE' and t.table_name <> $1
-      order by t.table_name collate "C"`, [BACKUP_TABLE]);
+      where t.table_schema = 'public' and t.table_type = 'BASE TABLE' and t.table_name <> all($1::text[])
+      order by t.table_name collate "C"`, [[BACKUP_TABLE, DAY_TABLE]]);
   return (rows || []).map((r) => ({ t: String(r.t), cols: typeof r.cols === "string" ? JSON.parse(r.cols) : (r.cols || []) })).sort((a, b) => byCodepoint(a.t, b.t));
 }
 
@@ -135,8 +135,9 @@ export async function planBackup(env = {}, { sqlFactory, now = Date.now(), encry
   const day = new Date(now).toISOString().slice(0, 10);
   if (!env.DATABASE_URL || !sqlFactory) return { schema: PLAN_SCHEMA, ok: false, day, failures: ["database_unavailable"] };
   try {
-    if (await dayClosed(env, day)) return { schema: PLAN_SCHEMA, ok: false, day, day_complete: true, failures: ["day_already_complete"] };
-    const p = await computePlan({ sql: sqlFactory(String(env.DATABASE_URL)), env, day, encryptionRequired });
+    const psql = sqlFactory(String(env.DATABASE_URL));
+    if (await dayComplete(psql, day)) return { schema: PLAN_SCHEMA, ok: false, day, day_complete: true, failures: ["day_already_complete"] };
+    const p = await computePlan({ sql: psql, env, day, encryptionRequired });
     if (!p.ok) return { schema: PLAN_SCHEMA, ok: false, day, failures: p.failures };
     return { schema: PLAN_SCHEMA, ok: true, day, plan_id: p.plan_id, parts: p.plan.parts, eligible: p.plan.eligible.length, excluded: p.plan.excluded.length, auth: p.auth, failures: [] };
   } catch (e) {
@@ -145,6 +146,18 @@ export async function planBackup(env = {}, { sqlFactory, now = Date.now(), encry
 }
 
 export const RUN_ID_RE = /^[0-9a-f]{32}$/;
+
+// Parâmetros da rota /api/internal/backup/run do Worker novo: só o contrato v2. Sem plan_id e run_id (chamada legada v1)
+// ou malformados: recusa (400) antes de qualquer acesso ao banco ou ao KV.
+export function backupRunParams(q) {
+  const parts = Math.min(MAX_PARTS, Math.max(1, Number(q.get("parts") || 3) | 0));
+  const rawPlan = String(q.get("plan_id") || "");
+  const rawRun = String(q.get("run_id") || "");
+  if (rawPlan && !/^[0-9a-f]{64}$/.test(rawPlan)) return { ok: false, failure: "plan_id_malformed" };
+  if (rawRun && !RUN_ID_RE.test(rawRun)) return { ok: false, failure: "run_id_malformed" };
+  if (!rawPlan || !rawRun) return { ok: false, failure: "v2_required:plan_id_and_run_id" };
+  return { ok: true, parts, planId: rawPlan, runId: rawRun, part: Math.min(parts - 1, Math.max(0, Number(q.get("part") || 0) | 0)), finalize: q.get("finalize") === "1" };
+}
 
 // P20 v2: parte REJEITADA não grava NADA no KV (nem o próprio relatório). O relatório válido que estiver lá (de outra
 // chamada) fica intacto; a rejeição volta só na resposta HTTP. A consolidação exige o run_id desta execução em TODAS as
@@ -156,18 +169,36 @@ function reject(report) {
   return report;
 }
 
-// P20 v2: dia FECHADO. Um relatório consolidado v2 do dia, aprovado e com HMAC válido, é imutável: nenhuma parte nem
-// consolidação posterior do mesmo dia (v1 ou v2) grava nada. Assim uma execução B que falha nunca substitui a cópia de
-// uma execução A que passou (relatório principal, relatórios das partes, bundles e cópia do KV).
-export async function dayClosed(env, day) {
-  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
-  let r;
-  try { r = JSON.parse(String((await kv.get(REPORT_KEY)) || "null")); } catch { return false; }
-  if (!r || r.day !== day || r.contract !== CONTRACT_V2 || r.ok !== true || !r.auth || r.auth.state !== "autenticado") return false;
-  const rk = await loadReportKey(env.P20_BACKUP_KEY);
-  if (rk.state !== "present") return false;
-  const body = Object.fromEntries(AUTHENTICATED_FIELDS.map((k) => [k, r[k] === undefined ? null : r[k]]));
-  return (await hmacHex(rk, canonical(body))) === r.auth.hmac;
+// P20 v2: POSSE DO DIA no PostgreSQL (o KV não tem operação atômica). Uma linha por dia em zevanory_backup_day:
+//   - toda parte e toda consolidação, v1 ou v2, REIVINDICA a posse ATOMICAMENTE antes de qualquer gravação no KV;
+//   - só a execução dona grava (bundles, relatórios das partes, cópia do KV, relatório principal);
+//   - a consolidação aprovada marca o dia "complete" ANTES de publicar o relatório principal; dia "complete" nunca é
+//     reivindicado de novo: nenhuma execução posterior do mesmo dia grava nada (day_already_complete);
+//   - enquanto A é dona ("running"), B é recusada (day_owned_by_other_run); a posse só passa para outra execução se a
+//     dona ficar 30 minutos sem reivindicar (execução morta). Uma parte do Worker dura segundos.
+// Assim não existe a ordem "B passa pela verificação, A conclui, B grava": a verificação e a posse são a mesma instrução.
+export const DAY_TABLE = "zevanory_backup_day";
+export async function claimDay(sql, day, runId) {
+  await sql.query(`create table if not exists zevanory_backup_day (day date primary key, run_id text not null, state text not null check (state in ('running', 'complete')), updated_at timestamptz not null default now())`);
+  const won = await sql.query(
+    `insert into zevanory_backup_day (day, run_id, state) values ($1::date, $2, 'running')
+     on conflict (day) do update set run_id = excluded.run_id, updated_at = now()
+      where zevanory_backup_day.state = 'running'
+        and (zevanory_backup_day.run_id = excluded.run_id or zevanory_backup_day.updated_at < now() - interval '30 minutes')
+     returning run_id`, [day, runId]);
+  if ((won || []).length === 1) return { owner: true };
+  return { owner: false, reason: await dayRefusal(sql, day) };
+}
+async function dayRefusal(sql, day) {
+  const [r] = (await sql.query(`select state from zevanory_backup_day where day = $1::date`, [day])) || [];
+  return r && r.state === "complete" ? "day_already_complete" : "day_owned_by_other_run";
+}
+// Leitura só (rota de plano): o dia já está concluído? Não cria a tabela.
+export async function dayComplete(sql, day) {
+  const [e] = (await sql.query(`select to_regclass('public.zevanory_backup_day') is not null as e`)) || [];
+  if (!e || !(e.e === true || e.e === "t" || e.e === "true")) return false;
+  const [r] = (await sql.query(`select state from zevanory_backup_day where day = $1::date`, [day])) || [];
+  return Boolean(r && r.state === "complete");
 }
 
 // Exportação ligada ao esquema (P20 v2): UMA instrução cita cada tabela da parte explicitamente. O PostgreSQL trava as
@@ -199,7 +230,14 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   const encKeys = bk.state === "present" ? [bk] : [];
   const sql = sqlFactory(String(env.DATABASE_URL));
   const v2 = typeof planId === "string" && planId.length > 0;
-  if (await dayClosed(env, day)) { fail("day_already_complete"); return reject(report); }
+  if (v2 && (typeof runId !== "string" || !RUN_ID_RE.test(runId))) { report.contract = CONTRACT_V2; fail("run_id_missing_or_malformed"); return reject(report); }
+  // v2: posse do dia ANTES de qualquer gravação no KV. (O caminho v1 é só biblioteca/legado: a rota do Worker exige v2.)
+  if (v2) {
+    try {
+      const c = await claimDay(sql, day, runId);
+      if (!c.owner) { report.contract = CONTRACT_V2; fail(c.reason); return reject(report); }
+    } catch (e) { report.contract = CONTRACT_V2; fail("day_claim_failed:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120)); return reject(report); }
+  }
   let myTables = null;
   let pl = null;
   try {
@@ -207,7 +245,6 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     // plano forjado), falha ANTES de qualquer escrita: nunca há cobertura parcial aceita.
     if (v2) {
       report.contract = CONTRACT_V2;
-      if (typeof runId !== "string" || !RUN_ID_RE.test(runId)) { fail("run_id_missing_or_malformed"); return reject(report); }
       report.run_id = runId;
       pl = await computePlan({ sql, env, day, encryptionRequired });
       if (!pl.ok) { pl.failures.forEach(fail); return reject(report); }
@@ -245,7 +282,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     const stats = await sql.query(
       `select table_name as t,
               (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', table_name), false, true, '')))[1]::text::int as n
-         from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' and table_name <> $1 order by 1`, [BACKUP_TABLE]);
+         from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' and table_name <> all($1::text[]) order by 1`, [[BACKUP_TABLE, DAY_TABLE]]);
     const skipped = []; const wanted = [];
     const excluded = [];
     // v2: a parte copia EXATAMENTE as tabelas que o plano autenticado atribuiu a ela; uma tabela do plano ausente agora
@@ -454,8 +491,19 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const v2 = typeof planId === "string" && planId.length > 0;
   const day = new Date(now).toISOString().slice(0, 10);
-  // Dia fechado: a consolidação de outra execução não grava (o relatório aprovado fica byte a byte igual).
-  if (await dayClosed(env, day)) return { schema: "zevanory-backup/v1", day, parts, ok: false, rejected: true, failures: ["day_already_complete"] };
+  // Posse do dia: só a execução dona consolida e publica. Dia concluído ou de outra execução: nada é gravado.
+  const owner = runId;
+  const refuse = (f) => ({ schema: "zevanory-backup/v1", day, parts, ok: false, rejected: true, failures: [f] });
+  let dsql = null;
+  if (v2) {
+    if (typeof runId !== "string" || !RUN_ID_RE.test(runId)) return refuse("run_id_missing_or_malformed");
+    if (!env.DATABASE_URL || !sqlFactory) return refuse("database_unavailable");
+    dsql = sqlFactory(String(env.DATABASE_URL));
+    try {
+      const c = await claimDay(dsql, day, owner);
+      if (!c.owner) return refuse(c.reason);
+    } catch (e) { return refuse("day_claim_failed"); }
+  }
   const got = [];
   for (let i = 0; i < parts; i++) { try { got.push(JSON.parse(String(await kv.get(`${REPORT_KEY}:part:${i}`) || "null"))); } catch { got.push(null); } }
   const failures = [];
@@ -483,6 +531,17 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
   if (v2) await finalizeV2(env, { report, got, parts, planId, runId, day, failures });
   report.ok = failures.length === 0 && valid.length === parts && report.restore.neon.ok === report.restore.neon.tables && report.totalTables != null && report.neon.tables === report.totalTables - report.neon.excluded.length;
   if (v2) await sealReport(env, report);
+  // Aprovado: o dia vira "complete" (só se ESTA execução ainda for a dona) ANTES de publicar; depois disso nenhuma outra
+  // execução grava. Se a publicação falhar, o dia volta a "running" desta execução (nunca fica fechado sem relatório).
+  if (v2 && report.ok) {
+    const done = await dsql.query(`update zevanory_backup_day set state = 'complete', updated_at = now() where day = $1::date and run_id = $2 and state = 'running' returning run_id`, [day, owner]);
+    if ((done || []).length !== 1) return refuse(await dayRefusal(dsql, day));
+    try { await kv.put(REPORT_KEY, JSON.stringify(report)); } catch (e) {
+      await dsql.query(`update zevanory_backup_day set state = 'running', updated_at = now() where day = $1::date and run_id = $2 and state = 'complete'`, [day, owner]);
+      throw e;
+    }
+    return report;
+  }
   await kv.put(REPORT_KEY, JSON.stringify(report));
   return report;
 }

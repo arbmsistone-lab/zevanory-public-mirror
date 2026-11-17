@@ -78,14 +78,23 @@ M = {
     "V25 sem conferir as colunas do conteúdo exportado": (W, "fail(\"export_columns_mismatch:\" + r.t); }", "}",
                                                           ("py", "test_n13_coluna_criada_e_desfeita_em_volta_da_exportacao")),
     # Contra-auditoria GPT-6 17/11, segunda rodada (PR #1070 em 54823ea6).
-    "V26 parte grava em dia já concluído": (W, "  if (await dayClosed(env, day)) { fail(\"day_already_complete\"); return reject(report); }\n", "",
-                                            ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
-    "V27 consolidação grava em dia já concluído": (W, "  if (await dayClosed(env, day)) return { schema: \"zevanory-backup/v1\", day, parts, ok: false, rejected: true, failures: [\"day_already_complete\"] };\n", "",
-                                                   ("node", "consolidação v2 íntegra")),
+    "V26 parte grava sem a posse do dia": (W, "      if (!c.owner) { report.contract = CONTRACT_V2; fail(c.reason); return reject(report); }\n", "",
+                                          ("py", "test_n17_corrida_b_pausada_depois_da_verificacao_a_conclui_e_fica_intacta")),
+    "V27 consolidação publica sem a posse do dia": (W, "      if (!c.owner) return refuse(c.reason);\n", "",
+                                                    ("node", "consolidação v2 íntegra")),
     "V28 tipos não conferidos na própria leitura": (W, "        if (seen !== canonical(pl.colsOf[r.t] || [])) fail(\"export_schema_mismatch:\" + r.t);\n", "",
                                                     ("py", "test_n14_tipo_muda_e_volta_em_volta_da_exportacao")),
     "V29 reaproveita conteúdo de outro esquema": (W, "      if (v2 && p.cols !== canonical(pl.colsOf[t] || [])) continue;\n", "",
                                                   ("py", "test_n16_reaproveitamento_exige_o_mesmo_esquema")),
+    # Contra-auditoria GPT-6 17/11, terceira rodada (PR #1070 em 8290a460): corrida entre execuções.
+    "V30 posse tomada de execução viva": (W, "(zevanory_backup_day.run_id = excluded.run_id or zevanory_backup_day.updated_at < now() - interval '30 minutes')", "true",
+                                          ("py", "test_n18_corrida_b_obtem_a_posse_e_pausa_a_nao_grava_nada")),
+    "V31 dia concluído reivindicado de novo": (W, "      where zevanory_backup_day.state = 'running'\n        and (", "      where (",
+                                               ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
+    "V32 publica sem fechar o dia na própria posse": (W, "    if ((done || []).length !== 1) return refuse(await dayRefusal(dsql, day));\n", "",
+                                                      ("node", "consolidação v2 íntegra")),
+    "V33 rota aceita chamada legada v1": (W, "  if (!rawPlan || !rawRun) return { ok: false, failure: \"v2_required:plan_id_and_run_id\" };\n", "",
+                                          ("node", "condutor: rota de plano")),
 }
 
 

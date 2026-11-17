@@ -11,7 +11,7 @@ name: p20-restore-drill-tests
 # p20_diario_reconstruido (10 + 3 = 13 testes); (3) mutantes causais pelo classificador compartilhado (61 da cópia KV e cifragem + 24 do diário D1 = 85, todos KILLED).
 # P20 v2 (docs/p20/particoes-v2.md): (4) lógica do plano autenticado e das partes dinâmicas (9 testes node, somados aos 40
 # acima = 49); (5) TESTE OFICIAL de aceitação: restauração INTEGRAL em PostgreSQL isolado, cadeia real Worker -> arquivamento
-# -> restauração, com E = 88/94/121/180 e 16 contraprovas (20 testes); (6) 29 mutantes do v2, um por regra, todos KILLED.
+# -> restauração, com E = 88/94/121/180 e 18 contraprovas (22 testes); (6) 33 mutantes do v2, um por regra, todos KILLED.
 on:
   pull_request:
     branches: [gh-pages]
@@ -100,7 +100,7 @@ jobs:
           python -m unittest -v tests/test_p20_restore_drill.py 2>&1 | tee /tmp/py.txt
           grep -qE '^Ran 13 tests' /tmp/py.txt && grep -qx 'OK' /tmp/py.txt || { echo "::error::esperados 13 testes OK sem pulos"; exit 1; }
           if grep -q 'skipped' /tmp/py.txt; then echo "::error::teste pulado"; exit 1; fi
-      - name: P20 v2 — teste oficial de restauração integral (88/94/121/180 tabelas + 16 contraprovas, 20 testes, zero pulados)
+      - name: P20 v2 — teste oficial de restauração integral (88/94/121/180 tabelas + 18 contraprovas, 22 testes, zero pulados)
         shell: bash
         env:
           PGHOST: localhost
@@ -111,7 +111,7 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check -q cryptography==43.0.3
           python -E -m unittest -v tests/test_p20_restauracao_integral.py 2>&1 | tee /tmp/oficial.txt
-          grep -qE '^Ran 20 tests' /tmp/oficial.txt && grep -qx 'OK' /tmp/oficial.txt || { echo "::error::esperados 20 testes OK sem pulos"; exit 1; }
+          grep -qE '^Ran 22 tests' /tmp/oficial.txt && grep -qx 'OK' /tmp/oficial.txt || { echo "::error::esperados 22 testes OK sem pulos"; exit 1; }
           if grep -q 'skipped' /tmp/oficial.txt; then echo "::error::teste pulado"; exit 1; fi
       - name: P20 v2 — mutantes (um por regra nova, todos precisam morrer)
         shell: bash
@@ -124,7 +124,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p20_v2.py < /dev/null | tee /tmp/mutv2.txt
           echo "::notice title=P20_V2_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mutv2.txt)"
-          grep -qx "MUTANTS total=29 killed=29 survived=0 inconclusive=0" /tmp/mutv2.txt || { echo "::error::mutante do v2 sobreviveu ou ficou inconclusivo"; exit 1; }
+          grep -qx "MUTANTS total=33 killed=33 survived=0 inconclusive=0" /tmp/mutv2.txt || { echo "::error::mutante do v2 sobreviveu ou ficou inconclusivo"; exit 1; }
       - name: Mutantes causais (todos precisam morrer)
         shell: bash
         run: |
