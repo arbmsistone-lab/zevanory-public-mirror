@@ -73,7 +73,7 @@ const summary = async (kv, now = T0) => { await refreshSalesSummary(kv, { now })
 function envWith(kv, extra = {}) {
   return { HOTMART_HOTTOK: HOTTOK, HOTMART_SERVICE_PRODUCT_IDS: "8704905", ZEVANORY_PRIVATE_ARTIFACTS: kv, ...extra };
 }
-function postback(event, txn, { hottok = HOTTOK, product = { id: 7000001, name: "Lucro & Caixa" } } = {}) {
+function postback(event, txn, { hottok = HOTTOK, product = { id: 8704851, name: "Lucro & Caixa" } } = {}) {
   const body = { version: "2.0.0", event, data: {
     product, buyer: { email: "comprador@example.invalid", name: "Comprador Sintetico" },
     purchase: { transaction: txn, price: { value: 147 }, approved_date: T0, origin: { src: "ensaio" }, payment: { type: "PIX" } },
@@ -105,7 +105,11 @@ test("E1 aprovado → entrega registrada exatamente uma vez; reentrega e APPROVE
   assert.equal((await summary(kv))?.totals?.approved, 1, "[E1.6] uma venda, uma entrega registrada");
   assert.equal(activities(kv, "delivery_sent").length, 1, "[E1.7] uma única atividade de entrega");
   assert.equal(net.length, 0, "[E1.8] nenhum fetch: a ZEVANORY não envia e-mail de produto (DEC-06)");
-  assert.ok(![...kv.m.values(), ...[...kv.meta.values()].map((x) => JSON.stringify(x)), ...kv.m.keys()].some((v) => v.includes("comprador@") || v.includes("HP-SINT-0001")), "[E1.9] registro (valores, metadata e chaves) sem e-mail nem transação em claro");
+  // C1 (18/11): com o ID REAL do kit, a fila do pós-venda (F2 B, zpc:posvenda:hotmart:*) recebe o pedido: ela guarda o
+  // e-mail POR DESENHO (envio transacional, retenção de 35 dias). O registro (todo o resto) continua sem e-mail.
+  const registro = [...kv.m.entries()].filter(([k]) => !k.startsWith("zpc:posvenda:hotmart:"));
+  assert.ok(![...registro.map(([, v]) => v), ...[...kv.meta.entries()].filter(([k]) => !k.startsWith("zpc:posvenda:hotmart:")).map(([, x]) => JSON.stringify(x)), ...registro.map(([k]) => k)].some((v) => v.includes("comprador@") || v.includes("HP-SINT-0001")), "[E1.9] registro (valores, metadata e chaves) sem e-mail nem transação em claro");
+  assert.ok([...kv.m.keys()].every((k) => !k.includes("HP-SINT-0001")), "[E1.9b] nenhuma chave (nem do pós-venda) com a transação em claro");
 });
 
 test("E2 cancelamento, estorno e contestação: registrados uma vez, sem dupla contagem do estorno", async (t) => {
@@ -303,7 +307,7 @@ test("E11 onboarding com microvitória ≤ 24 h: flag desligada, base legal regi
 
 test("E12 roteamento dos 5 produtos: postback Hotmart não-CP vai ao registro digital (kits 192 h desligados)", async (t) => {
   noNetwork(t);
-  const kv = memKv(), env = envWith(kv, { KIT_DEFERRED_192H_ENABLED: "true", HOTMART_KIT_PRODUCT_IDS: "7000001" });
+  const kv = memKv(), env = envWith(kv, { KIT_DEFERRED_192H_ENABLED: "true", HOTMART_KIT_PRODUCT_IDS: "8704851" });
   const r = await routeHotmartNc011(postback("PURCHASE_APPROVED", "HP-SINT-0012"), env);
   assert.equal(r.status, 200, "[E12.1] rota oficial registra a venda digital");
   assert.equal((await r.json()).scope, "digital_product", "[E12.2] escopo digital, nunca o razão de 192 h (DEC-06)");
@@ -317,7 +321,7 @@ test("E12 roteamento dos 5 produtos: postback Hotmart não-CP vai ao registro di
 // E14 e E15 sorteiam com semente fixa. Falhas são injetadas antes e depois de cada gravação, seguidas de
 // reprocessamento (reentrega da Hotmart).
 const pdata = (txn, { price = 147, approved = T0, src = "ensaio" } = {}) => ({
-  product: { id: 7000001, name: "Lucro & Caixa" }, buyer: { email: "comprador@example.invalid" },
+  product: { id: 8704851, name: "Lucro & Caixa" }, buyer: { email: "comprador@example.invalid" },
   purchase: { transaction: txn, price: { value: price }, ...(approved ? { approved_date: approved } : {}), origin: { src }, payment: { type: "PIX" } },
   commissions: [{ source: "PRODUCER", value: Math.round(price * 90) / 100 }],
 });
@@ -548,7 +552,7 @@ async function budgetDay(N, { refundRate = 0.1, chargebackRate = 0.02, replayRat
   await refreshSalesSummary(kv, { now: D0 - HOURS + 15 * 60_000 });
   const ops = { get: 0, put: 0, list: 0, listPrefixes: new Set(), byKind: {} };
   const g = kv.get, pt = kv.put, ls = kv.list;
-  const cat = (k) => (k.startsWith(SALES_EVENT_PREFIX) ? "evento" : k.startsWith(SALES_BUCKET_PREFIX) ? "balde" : k === SALES_SUMMARY_KEY ? "total" : k.includes("activity") ? "atividade" : "outro");
+  const cat = (k) => (k.startsWith(SALES_EVENT_PREFIX) ? "evento" : k.startsWith(SALES_BUCKET_PREFIX) ? "balde" : k === SALES_SUMMARY_KEY ? "total" : k.includes("activity") ? "atividade" : k.startsWith("zpc:posvenda:hotmart:") ? "posvenda" : "outro");
   kv.get = (...a) => { ops.get++; return g(...a); };
   kv.put = (...a) => { ops.put++; const c = cat(a[0]); ops.byKind[c] = (ops.byKind[c] || 0) + 1; return pt(...a); };
   // A cota real recusa além de 1.000 list/dia: o KV falso também (e o teste termina rápido se uma mutação estourar).
@@ -576,7 +580,11 @@ test("E19 NC-989-02 orçamento de cota com 400 dias de histórico (256 baldes): 
     assert.ok(![...b.ops.listPrefixes].includes(SALES_EVENT_PREFIX), `[E19.2] N=${N}: o prefixo global de eventos nunca é listado`);
     assert.ok(!b.ops.cronFailures, `[E19.7] N=${N}: nenhum recomputo horário falhou`);
     assert.ok(b.ops.list <= 500, `[E19.3] N=${N}: list/dia ${b.ops.list} ≤ 500 (50% de 1.000)`);
-    assert.ok(b.ops.put <= 500, `[E19.4] N=${N}: gravações/dia ${b.ops.put} ≤ 500 (50% de 1.000)`);
+    // C1 (18/11): com o ID REAL do kit (antes um ID fictício que o pós-venda ignorava), o pós-venda secundário (F2 B)
+    // também grava. E19.4 mede o REGISTRO (como antes); E19.9 mede o total com o pós-venda contra a linha de alerta.
+    const posvenda = b.ops.byKind.posvenda || 0;
+    assert.ok(b.ops.put - posvenda <= 500, `[E19.4] N=${N}: gravações/dia do registro ${b.ops.put - posvenda} ≤ 500 (50% de 1.000)`);
+    assert.ok(b.ops.put <= 600, `[E19.9] N=${N}: gravações/dia com o pós-venda ${b.ops.put} ≤ 600 (abaixo da linha de alerta de 60% da cota)`);
     assert.ok(b.ops.get <= 50000, `[E19.5] N=${N}: leituras/dia ${b.ops.get} ≤ 50.000 (50% de 100.000)`);
     assert.deepEqual([b.s?.byDay?.[b.today]?.approved, b.s?.totals?.refunded, b.s?.totals?.chargeback], [N, b.nRefund, b.nCb], `[E19.6] N=${N}: o resumo está certo (vendas de hoje, estornos e contestações)`);
     assert.ok(b.s.totals.approved >= 400 * N && b.s.totals.approved <= 401 * N, `[E19.8] N=${N}: total retido entre 400 e 401 dias de vendas (o dia -400 expira ao longo do dia): ${b.s.totals.approved}`);

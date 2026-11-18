@@ -4,6 +4,10 @@ import {enqueueHotmartPostSaleSecondary} from "./hotmart-post-sale.mjs";
 import {recordHotmartSale} from "./sales-ledger.mjs";
 import {emitActivity} from "./activity-ledger.mjs";
 import {diarioSombra,eventoEntrega,eventoReembolso} from "./diario-sombra.mjs";
+// C1 (lista fechada, 18/11/2026): só os 5 kits da ZEVANORY entram no registro financeiro, na atividade, no diário e
+// no pós-venda. Fonte única: data/p18-commercial-allowlist.json (kind "kit"), a mesma do pós-venda e do P18.
+import ALLOW from "../data/p18-commercial-allowlist.json" with {type:"json"};
+export const KIT_PRODUCT_IDS=Object.freeze([...new Set(ALLOW.products.filter(p=>p.kind==="kit").map(p=>String(p.hotmart_product_id)))]);
 const ACTIVE=new Set(["PURCHASE_APPROVED","PURCHASE_COMPLETE"]);
 const STOP=new Set(["PURCHASE_REFUNDED","PURCHASE_CHARGEBACK","PURCHASE_CANCELED","PURCHASE_PROTEST","SUBSCRIPTION_CANCELLATION"]);
 const allowed=new Set([...ACTIVE,...STOP,"PURCHASE_EXPIRED","PURCHASE_DELAYED","PURCHASE_BILLET_PRINTED","PURCHASE_OUT_OF_SHOPPING_CART"]);
@@ -27,6 +31,13 @@ export async function handleDigitalHotmartNc012(request,env,{now=Date.now()}={})
  const cpIds=String(env.HOTMART_SERVICE_PRODUCT_IDS||cfg.HOTMART_SERVICE_PRODUCT_IDS||"8704905").split(",").map(x=>x.trim());
  if(cpIds.includes(productId)||String(data?.product?.name||"").trim()==="ZEVANORY Conteúdo Pronto")
   return json(403,{ok:false,error:"cp_event_misrouted"});
+ // C1: produto fora da lista fechada (ex.: Zevanory Gestão 8709787, ID desconhecido ou ausente) é ignorado ANTES de
+ // qualquer leitura ou gravação: nenhuma venda, atividade, diário ou pós-venda. 200 para a Hotmart não reenviar.
+ // Log fixo só com o ID numérico do produto (nunca comprador, transação ou corpo).
+ if(!KIT_PRODUCT_IDS.includes(productId)){
+  console.log(JSON.stringify({evt:"hotmart_produto_fora_da_lista",product_id:/^\d{1,12}$/.test(productId)?productId:"invalido",event}));
+  return json(200,{ok:true,ignored:true,scope:"produto_fora_da_lista"});
+ }
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return json(503,{ok:false,error:"sales_ledger_unavailable"});
  let result;try{result=await recordHotmartSale(kv,event,data,{now})}catch{return json(503,{ok:false,error:"sales_ledger_commit_failed"})}
