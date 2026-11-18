@@ -57,6 +57,7 @@ O desenho está na pasta de intercâmbio do Drive. Este documento registra **o q
 - **Posse do dia no PostgreSQL** (segunda e terceira rodadas). O KV não tem operação atômica, então a disputa é feita numa tabela própria, `zevanory_backup_day` (uma linha por dia: `run_id`, `state` `running`/`complete`, `updated_at`):
   - a parte v2 **valida o plano primeiro** (inventário, `plan_id`, intervalo da parte) e **só então reivindica a posse**, numa única instrução (`insert … on conflict … do update … where … returning`), **antes de qualquer gravação no KV**. Uma chamada rejeitada não reserva o dia. A verificação e a posse são a mesma instrução, então não existe a ordem "B passa pela verificação, A conclui, B grava";
   - a consolidação **nunca reserva** o dia: só confirma a posse que uma parte válida desta execução já obteve. Sem ela, `day_not_claimed`;
+  - **reserva da parte** (R5): depois da posse e antes de qualquer gravação, a parte se reserva numa instrução atômica (`parts_called`). **Cada parte roda no máximo uma vez por execução.** Uma segunda chamada da mesma parte na mesma execução é recusada (`part_already_called`) sem gravar nada. Assim nenhuma gravação tardia substitui um artefato que o relatório aprovado aponta: o bundle, a cópia do KV (parte 0) e o relatório da parte. Na tomada de posse por outra execução, a lista recomeça vazia;
   - **cerca de posse:** imediatamente antes de **cada** gravação no KV (bundle, ensaio, cópia do KV, relatório da parte), a execução confirma e renova a posse numa instrução atômica. Se a posse expirou e outra execução assumiu, nada mais é gravado (`ownership_lost`): a execução antiga não altera os arquivos da nova;
   - só a execução dona grava: bundles, relatórios das partes, cópia do KV e relatório principal;
   - enquanto A é dona (`running`), outra execução é recusada com `day_owned_by_other_run`. A posse só passa adiante se a dona ficar **30 minutos** sem reivindicar (execução morta); uma parte do Worker dura segundos;
@@ -151,12 +152,13 @@ O teste roda no job `p20-restore-drill / tests`, com PostgreSQL 16 efêmero do s
   - **chamada rejeitada não reserva:** chamadas autenticadas com plano forjado ou parte fora do plano chegam primeiro e não criam posse; a execução legítima conclui o dia;
   - **posse expirada:** A obtém a posse e pausa, a posse expira, B assume e conclui. A retomada é recusada (`ownership_lost`, depois `day_already_complete`) e não altera nenhum arquivo de B, que é arquivável e restaurável;
   - **consolidação reprovada pendente:** duas consolidações da mesma execução. A reprovada passa pela posse e fica com a gravação pendente; a válida fecha o dia e publica; a pendente termina. O relatório canônico continua o aprovado (igual ao do banco), a falha fica na chave separada, e a cópia é arquivável e restaurável;
-  - **tabela de controle ausente:** a consolidação responde `day_not_claimed` e não cria a tabela.
+  - **tabela de controle ausente:** a consolidação responde `day_not_claimed` e não cria a tabela;
+  - **parte duplicada pendente** (R5): A roda todas as partes; uma segunda chamada da parte 0, na mesma execução, começa com todas as gravações no KV retidas; A consolida e publica; as gravações são liberadas. A duplicata é recusada na reserva da parte, sem chegar a nenhuma gravação. Nenhuma chave muda, os hashes declarados batem com os bundles, e a cópia é arquivada e restaurada `completo`.
   - **reaproveitamento com esquema diferente** (tipo mudou, JSON igual): no dia seguinte a tabela é exportada de novo, e as demais são reaproveitadas.
 - **Também:**
   - escrita concorrente entre a estatística e a exportação, contada no conteúdo copiado;
   - **legado v1 cifrado de 3 partes restaurado com a decifragem nova**, a prova da correção do defeito crítico, marcado `legado_nao_autenticado`.
-- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 42 de 42 KILLED.
+- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 43 de 43 KILLED.
 
 ## Riscos residuais (declarados)
 

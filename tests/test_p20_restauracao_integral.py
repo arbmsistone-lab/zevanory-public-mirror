@@ -542,6 +542,20 @@ class RestauracaoIntegral(unittest.TestCase):
         self.assertTrue(w["falha_registrada_em_separado"], w)
         self._archivable_and_restorable(src, dst, ddl, elig, kvfile, out)
 
+    def test_n23_parte_duplicada_pendente_nao_altera_artefatos_do_dia_aprovado(self):
+        """R5: segunda chamada da mesma parte (mesma execução) com as gravações retidas; A consolida e publica; as
+        gravações são liberadas. A duplicata é recusada na reserva da parte, antes de qualquer gravação: nenhuma chave muda,
+        os hashes declarados no relatório aprovado batem com os bundles, e a cópia é arquivável e restaurável."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n23", 94, scenario="parte_duplicada_pendente")
+        self.assertEqual(code, 0, w)
+        self.assertTrue(w["partes_ok"] and w["ok"], w)
+        self.assertEqual(w["auth"], "autenticado")
+        self.assertEqual((w["duplicata"]["ok"], w["duplicata"]["failures"], w["duplicata"]["rejected"]), (False, ["part_already_called"], True))
+        self.assertEqual(w["gravacoes_pendentes"], [], "a duplicata não chegou a nenhuma gravação")
+        self.assertEqual(w["kv_alteradas_apos_liberar"], [])
+        self.assertTrue(w["hashes_iguais"], w)
+        self._archivable_and_restorable(src, dst, ddl, elig, kvfile, out)
+
 
 if __name__ == "__main__":
     unittest.main()

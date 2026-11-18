@@ -190,16 +190,33 @@ function reject(report) {
 // Assim não existe a ordem "B passa pela verificação, A conclui, B grava": a verificação e a posse são a mesma instrução.
 export const DAY_TABLE = "zevanory_backup_day";
 export async function claimDay(sql, day, runId) {
-  await sql.query(`create table if not exists zevanory_backup_day (day date primary key, run_id text not null, state text not null check (state in ('running', 'complete')), updated_at timestamptz not null default now(), report text)`);
+  await sql.query(`create table if not exists zevanory_backup_day (day date primary key, run_id text not null, state text not null check (state in ('running', 'complete')), updated_at timestamptz not null default now(), report text, parts_called integer[] not null default '{}')`);
   const won = await sql.query(
     `insert into zevanory_backup_day (day, run_id, state) values ($1::date, $2, 'running')
-     on conflict (day) do update set run_id = excluded.run_id, updated_at = now()
+     on conflict (day) do update set
+        parts_called = case when zevanory_backup_day.run_id = excluded.run_id then zevanory_backup_day.parts_called else '{}'::integer[] end,
+        run_id = excluded.run_id, updated_at = now()
       where zevanory_backup_day.state = 'running'
         and (zevanory_backup_day.run_id = excluded.run_id or zevanory_backup_day.updated_at < now() - interval '30 minutes')
      returning run_id`, [day, runId]);
   if ((won || []).length === 1) return { owner: true };
   return { owner: false, reason: await dayRefusal(sql, day) };
 }
+// Reserva da PARTE (R5): cada parte roda no máximo UMA vez por execução. A reserva é atômica e vem antes de qualquer
+// gravação; uma segunda chamada da mesma parte na mesma execução é recusada (part_already_called) sem gravar nada, então
+// nenhuma gravação tardia pode substituir o bundle, a cópia do KV ou o relatório da parte que a consolidação usou.
+// Na tomada de posse por outra execução (posse expirada), a lista de partes chamadas recomeça vazia.
+export async function reservePart(sql, day, runId, part) {
+  const r = await sql.query(
+    `update zevanory_backup_day set parts_called = array_append(parts_called, $3::integer), updated_at = now()
+      where day = $1::date and run_id = $2 and state = 'running' and not ($3::integer = any(parts_called))
+      returning run_id`, [day, runId, part]);
+  if ((r || []).length === 1) return { ok: true };
+  const [row] = (await sql.query(`select run_id, state, ($3::integer = any(parts_called)) as chamada from zevanory_backup_day where day = $1::date and run_id = $2`, [day, runId, part])) || [];
+  if (row && row.state === "running" && (row.chamada === true || row.chamada === "t")) return { ok: false, reason: "part_already_called" };
+  return { ok: false, reason: await dayRefusal(sql, day) };
+}
+
 // Cerca: imediatamente antes de CADA gravação no KV, a execução confirma (e renova) a posse numa instrução atômica. Se
 // a posse expirou e outra execução a tomou, nada mais é gravado: a execução antiga não altera os arquivos da nova.
 export class OwnershipLost extends Error {}
@@ -300,6 +317,9 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
       let c;
       try { c = await claimDay(sql, day, runId); } catch (e) { fail("day_claim_failed:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120)); return reject(report); }
       if (!c.owner) { fail(c.reason); return reject(report); }
+      let rv;
+      try { rv = await reservePart(sql, day, runId, part); } catch (e) { fail("part_reserve_failed"); return reject(report); }
+      if (!rv.ok) { fail(rv.reason); return reject(report); }
       kvw = fencedKv(kv, () => fence(sql, day, runId));
       owned = true;
       report.parts = pl.plan.parts;

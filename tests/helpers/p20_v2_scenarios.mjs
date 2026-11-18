@@ -15,7 +15,7 @@
 //   fk_entre_partes     depois que a parte de z_fk_a_pai foi copiada, entram um pai novo e um filho que aponta para ele (na
 //                       parte de z_fk_b_filho): a restauração tem de reportar inconsistencia_entre_tabelas.
 // Saída: o KV (só zpc:backup:v1:*) em <saida.json> e um resumo JSON (sem dados de linha) na última linha do stdout.
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { psqlSql, memoryKv, syntheticKvSeed } from "./p20_worker_backup_fixture.mjs";
 import { runDataBackup, finalizeBackup, planBackup, computePlan, assignParts, REPORT_KEY } from "../../worker/data-backup.mjs";
@@ -183,6 +183,33 @@ if (scenario === "consolidacao_reprovada_pendente") {
   const falha = JSON.parse(kv.m.get(REPORT_KEY + ":ultima_falha") || "null");
   finishArchive({ partes_ok: partsA.every((r) => r.ok), pendente_em: pend, f1: { ok: r1.ok, failures: r1.failures }, ok: f2.ok, auth: f2.auth?.state ?? null, failures: f2.failures,
     canonico_inalterado: canon === canonAntes, canonico_igual_ao_banco: canon === row.report, canonico_ok: JSON.parse(canon).ok, falha_registrada_em_separado: Boolean(falha && falha.ok === false) });
+}
+if (scenario === "parte_duplicada_pendente") {
+  // R5: a execução A roda todas as partes; uma SEGUNDA chamada da parte k (mesma execução) começa com TODAS as gravações
+  // no KV retidas (pendentes); A consolida, fecha o dia e publica; só então as gravações pendentes são liberadas. Os
+  // hashes dos bundles, a cópia do KV e os relatórios das partes têm de continuar os que o relatório aprovado aponta.
+  const runIdA = randomBytes(16).toString("hex");
+  const partsA = [];
+  for (let part = 0; part < plan.parts; part++) partsA.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runIdA }));
+  const k = 0; // a parte 0 também grava a cópia do KV: cobre o bundle, a cópia do KV, o ensaio e o relatório da parte
+  let release; const gate = new Promise((r) => (release = r)); const pend = [];
+  const holdKv = { ...kv, m: kv.m, get: kv.get.bind(kv), list: kv.list.bind(kv),
+    put: (key, ...r) => { pend.push("put " + key); return gate.then(() => kv.put(key, ...r)); },
+    delete: (key) => { pend.push("delete " + key); return gate.then(() => kv.delete(key)); } };
+  const dupP = runDataBackup({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: holdKv }, { sqlFactory: () => sql, now, part: k, parts: plan.parts, planId: plan.plan_id, runId: runIdA });
+  for (let i = 0; i < 400; i++) await new Promise((r) => setTimeout(r, 5)); // dá à duplicata todo o tempo para chegar às gravações
+  const fin = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
+  const aposConsolidar = snapAll();
+  release();
+  const dup = await dupP;
+  for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 2));
+  const aposLiberar = snapAll();
+  const rep = JSON.parse(kv.m.get(REPORT_KEY));
+  const hashes = await Promise.all(rep.parts_detail.map(async (d) => ({ part: d.part, declarado: d.bundle_sha256,
+    atual: createHash("sha256").update(String(kv.m.get(d.bundle_key))).digest("hex") })));
+  finishArchive({ partes_ok: partsA.every((r) => r.ok), ok: fin.ok, auth: fin.auth?.state ?? null, failures: fin.failures,
+    duplicata: { ok: dup.ok, failures: dup.failures, rejected: Boolean(dup.rejected) }, gravacoes_pendentes: pend,
+    kv_alteradas_apos_liberar: diffKeys(aposConsolidar, aposLiberar), hashes_iguais: hashes.every((h) => h.declarado === h.atual) });
 }
 if (scenario === "posse_expirada_execucao_antiga") {
   // A (antiga) faz a parte 0 e começa a parte 1: obtém a posse e PAUSA. A posse expira (31 min sem renovar). B (nova)

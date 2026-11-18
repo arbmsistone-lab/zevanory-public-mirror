@@ -116,6 +116,9 @@ M = {
                                                              ("py", "test_n20_chamada_rejeitada_nao_reserva_o_dia")),
     "V42 erro antes da posse grava o relatório da parte": (W, "    if (v2 && !owned) {", "    if (false) {",
                                                            ("node", "rota HTTP real")),
+    # Contra-auditoria GPT-6 18/11, R5 (PR #1070 em 7c62fb3d): parte duplicada da mesma execução.
+    "V43 parte chamada duas vezes na mesma execução": (W, "      if (!rv.ok) { fail(rv.reason); return reject(report); }\n", "",
+                                                       ("py", "test_n23_parte_duplicada_pendente_nao_altera_artefatos_do_dia_aprovado")),
 }
 
 

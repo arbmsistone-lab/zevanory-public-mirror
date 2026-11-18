@@ -30,7 +30,7 @@ function fakeSql(names, { colsOf = null, days = new Map(), stealOnComplete = fal
       if (/^create table if not exists zevanory_backup_day/.test(q)) return [];
       if (/^\s*insert into zevanory_backup_day/.test(q)) {
         const [day, run] = params; const r = days.get(day);
-        if (!r) { days.set(day, { run_id: run, state: "running" }); return [{ run_id: run }]; }
+        if (!r) { days.set(day, { run_id: run, state: "running", parts_called: [] }); return [{ run_id: run }]; }
         if (r.state === "running" && r.run_id === run) return [{ run_id: run }];
         return [];
       }
@@ -39,6 +39,15 @@ function fakeSql(names, { colsOf = null, days = new Map(), stealOnComplete = fal
         if (stealOnComplete && r) { r.run_id = "9".repeat(32); } // outra execução tomou a posse entre a reivindicação e o fechamento
         if (r && r.state === "running" && r.run_id === run) { r.state = "complete"; r.report = text; return [{ run_id: run }]; }
         return [];
+      }
+      if (/^\s*update zevanory_backup_day set parts_called = array_append/.test(q)) {
+        const [day, run, part] = params; const r = days.get(day);
+        if (r && r.state === "running" && r.run_id === run && !(r.parts_called ||= []).includes(part)) { r.parts_called.push(part); return [{ run_id: run }]; }
+        return [];
+      }
+      if (/^\s*select run_id, state, \(\$3::integer = any\(parts_called\)\) as chamada/.test(q)) {
+        const [day, run, part] = params; const r = days.get(day);
+        return r && r.run_id === run ? [{ run_id: r.run_id, state: r.state, chamada: (r.parts_called || []).includes(part) }] : [];
       }
       if (/^\s*update zevanory_backup_day set updated_at = now\(\) where day = \$1::date and run_id = \$2 and state = 'running'/.test(q)) {
         const [day, run] = params; const r = days.get(day);
