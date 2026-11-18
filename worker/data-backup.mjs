@@ -23,6 +23,8 @@ import { ENCRYPTION_REQUIRED, ENC_FORMAT, ENC_ALG, loadBackupKey, sealBundle, op
 import { reconciliaDiario, efeitoNoRelatorio, DIARIO_FASE } from "./diario-reconcilia.mjs";
 export { ENCRYPTION_REQUIRED };
 export const REPORT_KEY = "zpc:backup:v1:report";
+// Diagnóstico da última consolidação v2 REPROVADA. A chave canônica (REPORT_KEY) só recebe relatório aprovado.
+export const REPORT_FAIL_KEY = "zpc:backup:v1:report:ultima_falha";
 // Lead interest keys (personal data, erased on revocation) are deliberately NOT copied: a backup
 // would keep them after the erasure promised by the privacy policy (T3). They are not critical.
 export const KV_PREFIXES = ["zpc:sales:", "zpc:cp:", "sales:open:v1"];
@@ -151,14 +153,21 @@ export const RUN_ID_RE = /^[0-9a-f]{32}$/;
 
 // Parâmetros da rota /api/internal/backup/run do Worker novo: só o contrato v2. Sem plan_id e run_id (chamada legada v1)
 // ou malformados: recusa (400) antes de qualquer acesso ao banco ou ao KV.
+// Índices conferidos no valor ORIGINAL da requisição: nada é ajustado ("part=4&parts=4" é recusada, nunca vira part=3).
 export function backupRunParams(q) {
-  const parts = Math.min(MAX_PARTS, Math.max(1, Number(q.get("parts") || 3) | 0));
   const rawPlan = String(q.get("plan_id") || "");
   const rawRun = String(q.get("run_id") || "");
   if (rawPlan && !/^[0-9a-f]{64}$/.test(rawPlan)) return { ok: false, failure: "plan_id_malformed" };
   if (rawRun && !RUN_ID_RE.test(rawRun)) return { ok: false, failure: "run_id_malformed" };
   if (!rawPlan || !rawRun) return { ok: false, failure: "v2_required:plan_id_and_run_id" };
-  return { ok: true, parts, planId: rawPlan, runId: rawRun, part: Math.min(parts - 1, Math.max(0, Number(q.get("part") || 0) | 0)), finalize: q.get("finalize") === "1" };
+  const rawParts = String(q.get("parts") ?? "");
+  if (!/^[1-9][0-9]?$/.test(rawParts) || Number(rawParts) > MAX_PARTS) return { ok: false, failure: "parts_out_of_range" };
+  const parts = Number(rawParts);
+  const finalize = q.get("finalize") === "1";
+  if (finalize) return q.has("part") ? { ok: false, failure: "part_with_finalize" } : { ok: true, parts, planId: rawPlan, runId: rawRun, part: null, finalize };
+  const rawPart = String(q.get("part") ?? "");
+  if (!/^(0|[1-9][0-9]?)$/.test(rawPart) || Number(rawPart) >= parts) return { ok: false, failure: "part_out_of_range" };
+  return { ok: true, parts, planId: rawPlan, runId: rawRun, part: Number(rawPart), finalize };
 }
 
 // P20 v2: parte REJEITADA não grava NADA no KV (nem o próprio relatório). O relatório válido que estiver lá (de outra
@@ -227,10 +236,13 @@ async function dayRefusal(sql, day) {
   const [r] = (await sql.query(`select state from zevanory_backup_day where day = $1::date`, [day])) || [];
   return !r ? "day_not_claimed" : r.state === "complete" ? "day_already_complete" : "day_owned_by_other_run";
 }
+async function dayTableExists(sql) {
+  const [e] = (await sql.query(`select to_regclass('public.zevanory_backup_day') is not null as e`)) || [];
+  return Boolean(e && (e.e === true || e.e === "t" || e.e === "true"));
+}
 // Leitura só (rota de plano): o dia já está concluído? Não cria a tabela.
 export async function dayComplete(sql, day) {
-  const [e] = (await sql.query(`select to_regclass('public.zevanory_backup_day') is not null as e`)) || [];
-  if (!e || !(e.e === true || e.e === "t" || e.e === "true")) return null;
+  if (!(await dayTableExists(sql))) return null;
   const [r] = (await sql.query(`select state, report from zevanory_backup_day where day = $1::date`, [day])) || [];
   if (!r || r.state !== "complete") return null;
   let rep = null;
@@ -270,6 +282,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   if (v2 && (typeof runId !== "string" || !RUN_ID_RE.test(runId))) { report.contract = CONTRACT_V2; fail("run_id_missing_or_malformed"); return reject(report); }
   let myTables = null;
   let kvw = kv; // v2: KV com cerca de posse em toda gravação
+  let owned = false; // v2: posse do dia obtida por ESTA chamada
   let pl = null;
   try {
     // P20 v2: a parte RELÊ o inventário e recalcula o plano. Se o plan_id não for o recebido (esquema mudou, outro dia,
@@ -281,12 +294,14 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
       if (!pl.ok) { pl.failures.forEach(fail); return reject(report); }
       if (pl.plan_id !== planId) { fail("inventory_changed"); return reject(report); }
       if (!Number.isInteger(part) || part < 0 || part >= pl.plan.parts) { fail("part_out_of_range"); return reject(report); }
+      if (parts !== pl.plan.parts) { fail("parts_mismatch"); return reject(report); }
       // Posse do dia SÓ DEPOIS de o plano ser validado: uma chamada rejeitada não reserva o dia. Antes de qualquer
       // gravação no KV. (O caminho v1 é só biblioteca/legado: a rota do Worker exige v2.)
       let c;
       try { c = await claimDay(sql, day, runId); } catch (e) { fail("day_claim_failed:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120)); return reject(report); }
       if (!c.owner) { fail(c.reason); return reject(report); }
       kvw = fencedKv(kv, () => fence(sql, day, runId));
+      owned = true;
       report.parts = pl.plan.parts;
       report.plan_id = pl.plan_id;
       report.auth = pl.auth;
@@ -510,6 +525,9 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
   } catch (e) {
     // Posse perdida (expirou e outra execução assumiu): nada mais é gravado, nem o relatório da parte.
     if (e instanceof OwnershipLost) { fail("ownership_lost:" + e.message); return reject(report); }
+    // Erro ANTES de obter a posse (ex.: banco indisponível ao validar o plano): nada é gravado, nem o relatório da parte,
+    // que poderia sobrescrever o relatório válido da mesma parte de outra execução.
+    if (v2 && !owned) { fail("error:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 160)); return reject(report); }
     fail("error:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 200));
   }
   return finishPart(kvw, report, part);
@@ -540,6 +558,8 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
     dsql = sqlFactory(String(env.DATABASE_URL));
     // A consolidação NUNCA reserva o dia: exige que esta execução já seja a dona (obtida por uma parte com plano válido).
     try {
+      // Tabela de controle ainda inexistente (nenhuma parte reivindicou nada): o dia simplesmente não foi reivindicado.
+      if (!(await dayTableExists(dsql))) return refuse("day_not_claimed");
       const t = await dsql.query(`update zevanory_backup_day set updated_at = now() where day = $1::date and run_id = $2 and state = 'running' returning run_id`, [day, owner]);
       if ((t || []).length !== 1) {
         const why = await dayRefusal(dsql, day);
@@ -588,7 +608,14 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
     await kv.put(REPORT_KEY, text);
     return report;
   }
-  if (v2) { try { await fence(dsql, day, owner); } catch (e) { return refuse(e instanceof OwnershipLost ? e.message : "day_claim_failed"); } }
+  if (v2) {
+    // REPROVADA: nunca toca a chave canônica (REPORT_KEY só recebe o relatório aprovado, ou a cópia dele guardada no
+    // banco). O diagnóstico vai para REPORT_FAIL_KEY. Assim nenhuma ordem de eventos entre duas consolidações (mesmo
+    // run_id, escrita pendente) faz o KV voltar a ok=false depois de o dia ser aprovado.
+    try { await fence(dsql, day, owner); } catch (e) { return refuse(e instanceof OwnershipLost ? e.message : "day_claim_failed"); }
+    await kv.put(REPORT_FAIL_KEY, text, { expirationTtl: 8 * DAY });
+    return report;
+  }
   await kv.put(REPORT_KEY, text);
   return report;
 }

@@ -116,7 +116,9 @@ if (scenario === "corrida_a_conclui_b_pausada" || scenario === "corrida_b_pausad
   process.exit(0);
 }
 // ---- quarta rodada (contra-auditoria 17/11 sobre c9847e12): recuperação da publicação, reserva e posse expirada ----
+const tableExists = async () => { const [e] = await base.query("select to_regclass('public.zevanory_backup_day') is not null as e"); return e && (e.e === true || e.e === "t"); };
 const dayRow = async () => {
+  if (!(await tableExists())) return null;
   const r = (await base.query("select run_id, state, (report is not null) as tem_relatorio from zevanory_backup_day where day = $1::date", [day]))[0];
   return r ? { ...r, tem_relatorio: r.tem_relatorio === true || r.tem_relatorio === "t" } : null;
 };
@@ -144,6 +146,11 @@ if (scenario === "queda_entre_pg_e_kv") {
     ok: rep ? rep.ok : null, auth: rep?.auth?.state ?? null });
 }
 if (scenario === "chamada_rejeitada_nao_reserva") {
+  // Banco recém-criado: a tabela de controle ainda não existe. Uma consolidação antes de qualquer parte responde
+  // day_not_claimed (não day_claim_failed) e NÃO cria a tabela.
+  await base.query("drop table if exists zevanory_backup_day");
+  const fin0 = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: randomBytes(16).toString("hex"), sqlFactory: () => sql });
+  const tabelaAposFin0 = await tableExists();
   // Uma chamada autenticada com plano inválido (forjado) chega PRIMEIRO; depois a execução legítima roda o dia inteiro.
   const r0 = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: plan.parts, planId: "e".repeat(64), runId: randomBytes(16).toString("hex") });
   const r1 = await runDataBackup(env, { sqlFactory: () => sql, now, part: plan.parts, parts: plan.parts + 1, planId: plan.plan_id, runId: randomBytes(16).toString("hex") });
@@ -152,7 +159,30 @@ if (scenario === "chamada_rejeitada_nao_reserva") {
   const partsA = [];
   for (let part = 0; part < plan.parts; part++) partsA.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runIdA }));
   const fin = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
-  finishArchive({ rejeitadas: [r0.failures, r1.failures], linha_depois_das_rejeitadas: linhaDepois, partes_ok: partsA.every((r) => r.ok), ok: fin.ok, auth: fin.auth?.state ?? null, failures: fin.failures });
+  finishArchive({ consolidacao_sem_tabela: fin0.failures, tabela_apos_consolidacao: tabelaAposFin0, tabela_apos_rejeitadas: await tableExists() && linhaDepois !== null,
+    rejeitadas: [r0.failures, r1.failures], linha_depois_das_rejeitadas: linhaDepois, partes_ok: partsA.every((r) => r.ok), ok: fin.ok, auth: fin.auth?.state ?? null, failures: fin.failures });
+}
+if (scenario === "consolidacao_reprovada_pendente") {
+  // Duas consolidações da MESMA execução: a reprovada (pede uma parte a mais que o plano) passa pela confirmação de posse
+  // e fica com a gravação PENDENTE; a válida fecha o dia e publica; então a gravação pendente termina. O relatório
+  // canônico no KV tem de continuar o aprovado (igual ao guardado no banco).
+  const runIdA = randomBytes(16).toString("hex");
+  const partsA = [];
+  for (let part = 0; part < plan.parts; part++) partsA.push(await runDataBackup(env, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId: runIdA }));
+  let release; const gate = new Promise((r) => (release = r)); const pend = [];
+  const holdKv = { ...kv, m: kv.m, get: kv.get.bind(kv), list: kv.list.bind(kv), delete: kv.delete.bind(kv),
+    put: (k, ...r) => { pend.push(k); return gate.then(() => kv.put(k, ...r)); } };
+  const f1 = finalizeBackup({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: holdKv }, { parts: plan.parts + 1, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
+  for (let i = 0; i < 2000 && pend.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+  const f2 = await finalizeBackup(env, { parts: plan.parts, now, planId: plan.plan_id, runId: runIdA, sqlFactory: () => sql });
+  const canonAntes = kv.m.get(REPORT_KEY);
+  release();
+  const r1 = await f1;
+  const [row] = await base.query("select report from zevanory_backup_day where day = $1::date", [day]);
+  const canon = kv.m.get(REPORT_KEY);
+  const falha = JSON.parse(kv.m.get(REPORT_KEY + ":ultima_falha") || "null");
+  finishArchive({ partes_ok: partsA.every((r) => r.ok), pendente_em: pend, f1: { ok: r1.ok, failures: r1.failures }, ok: f2.ok, auth: f2.auth?.state ?? null, failures: f2.failures,
+    canonico_inalterado: canon === canonAntes, canonico_igual_ao_banco: canon === row.report, canonico_ok: JSON.parse(canon).ok, falha_registrada_em_separado: Boolean(falha && falha.ok === false) });
 }
 if (scenario === "posse_expirada_execucao_antiga") {
   // A (antiga) faz a parte 0 e começa a parte 1: obtém a posse e PAUSA. A posse expira (31 min sem renovar). B (nova)

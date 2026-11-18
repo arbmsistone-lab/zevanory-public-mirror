@@ -598,6 +598,7 @@ const wrapped = {
       // Chamada legada (sem eles) ou malformada é recusada SEM gravar: nunca sobrescreve a cópia de um dia concluído.
       const rp = backupRunParams(url.searchParams);
       if (!rp.ok || rp.parts !== parts) return new Response(JSON.stringify({ ok: false, failures: [rp.failure || "parts_mismatch"] }), { status: 400, headers });
+      // (o `parts` acima, ajustado a 1..6, só é usado para conferir que coincide com o valor original validado)
       const { planId, runId } = rp;
       const report = url.searchParams.get("finalize") === "1"
         ? await finalizeBackup(normalized, { parts, sqlFactory: whatsappProofDatabase, planId, runId })

@@ -64,7 +64,13 @@ O desenho está na pasta de intercâmbio do Drive. Este documento registra **o q
   - **recuperação da publicação:** se a execução morrer entre o fechamento no PostgreSQL e a publicação no KV, o dia fica fechado com o relatório guardado. No reinício, a rota de plano responde 409 com o `plan_id` e as partes do relatório aprovado, e o condutor pede uma consolidação de verificação. Ela republica o relatório guardado (HMAC conferido); se o KV já o tiver, nada é gravado. Relatório guardado com HMAC inválido não é republicado e o condutor falha;
   - dia `complete` nunca é reivindicado de novo, nem pela própria execução: plano, partes e consolidação posteriores do mesmo dia são recusados com `day_already_complete`, sem gravar. A rota de plano responde 409 e o condutor encerra com aviso, sem erro;
   - `zevanory_backup_day` fica **fora do inventário do backup**, como `zevanory_kv_backup`: é o controle do próprio backup.
-- **Rota do Worker novo só v2** (`backupRunParams`): sem `plan_id` e `run_id`, ou com eles malformados, a rota responde 400 antes de tocar no banco ou no KV. O caminho v1 continua na biblioteca, para os testes e a prova de restauração de cópias legadas, mas não é alcançável pela rota.
+- **Rota do Worker novo só v2** (`backupRunParams`): sem `plan_id` e `run_id`, ou com eles malformados, a rota responde 400 antes de tocar no banco ou no KV.
+  - **Índices conferidos no valor original, sem ajuste** (quinta rodada): `parts` tem de ser um inteiro de 1 a 6, e `part`, um inteiro de 0 a `parts - 1`; caso contrário a resposta é `parts_out_of_range` ou `part_out_of_range`. `part=4&parts=4` é recusada e nunca vira `part=3`. Uma consolidação com `part` é recusada (`part_with_finalize`).
+  - Na parte, o `parts` da requisição tem de ser igual ao do plano (`parts_mismatch`).
+  - Prova pela rota HTTP real (`tests/helpers/p20_route_probe.mjs`): 12 requisições inválidas recebem 400, sem nenhum acesso à rede do banco e sem ler nem gravar o backup no KV. Uma requisição de controle com índices válidos chega ao banco.
+- **Erro antes da posse não grava nada** (quinta rodada): se o banco falhar ao validar o plano, antes de a parte obter a posse, a parte é rejeitada sem gravar nem o próprio relatório.
+- **Consolidação reprovada nunca toca a chave canônica** (quinta rodada): `zpc:backup:v1:report` só recebe o relatório aprovado, ou a cópia dele guardada no banco. A consolidação v2 reprovada grava o diagnóstico em `zpc:backup:v1:report:ultima_falha`. Nenhuma ordem de eventos entre duas consolidações (mesmo `run_id`, gravação pendente) faz o KV voltar a `ok=false` depois do dia aprovado.
+- **Tabela de controle ausente:** a consolidação responde `day_not_claimed` e não cria a tabela. O caminho v1 continua na biblioteca, para os testes e a prova de restauração de cópias legadas, mas não é alcançável pela rota.
 - Exige o `run_id` desta execução em **todas** as partes. Um relatório de outra execução, que sobra no KV quando a parte desta foi rejeitada, dá `part_run_mismatch:<i>` e nunca supre a parte. O `run_id` de cada parte vai dentro de `parts_detail`, que é autenticado.
 - Confere que cada parte tem o mesmo `plan_id` e exatamente as tabelas atribuídas a ela, que nenhuma tabela aparece em duas partes e que a cobertura das elegíveis é total.
 - Qualquer divergência **reprova o dia inteiro**.
@@ -143,17 +149,20 @@ O teste roda no job `p20-restore-drill / tests`, com PostgreSQL 16 efêmero do s
   - **corrida, ordem inversa:** B obtém a posse e pausa; A tenta o dia inteiro e não grava nada; B termina;
   - **queda entre o PostgreSQL e o KV:** a consolidação morre depois de fechar o dia e antes de publicar. No reinício, o relatório é republicado, e a cópia é arquivável, `completo`, e restaura igual à origem;
   - **chamada rejeitada não reserva:** chamadas autenticadas com plano forjado ou parte fora do plano chegam primeiro e não criam posse; a execução legítima conclui o dia;
-  - **posse expirada:** A obtém a posse e pausa, a posse expira, B assume e conclui. A retomada é recusada (`ownership_lost`, depois `day_already_complete`) e não altera nenhum arquivo de B, que é arquivável e restaurável.
+  - **posse expirada:** A obtém a posse e pausa, a posse expira, B assume e conclui. A retomada é recusada (`ownership_lost`, depois `day_already_complete`) e não altera nenhum arquivo de B, que é arquivável e restaurável;
+  - **consolidação reprovada pendente:** duas consolidações da mesma execução. A reprovada passa pela posse e fica com a gravação pendente; a válida fecha o dia e publica; a pendente termina. O relatório canônico continua o aprovado (igual ao do banco), a falha fica na chave separada, e a cópia é arquivável e restaurável;
+  - **tabela de controle ausente:** a consolidação responde `day_not_claimed` e não cria a tabela.
   - **reaproveitamento com esquema diferente** (tipo mudou, JSON igual): no dia seguinte a tabela é exportada de novo, e as demais são reaproveitadas.
 - **Também:**
   - escrita concorrente entre a estatística e a exportação, contada no conteúdo copiado;
   - **legado v1 cifrado de 3 partes restaurado com a decifragem nova**, a prova da correção do defeito crítico, marcado `legado_nao_autenticado`.
-- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 38 de 38 KILLED.
+- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 42 de 42 KILLED.
 
 ## Riscos residuais (declarados)
 
 - **Parte 0 rejeitada no meio:** se a parte 0 for rejeitada depois de começar (inventário mudou durante a exportação), a cópia KV → Neon do dia (`zevanory_kv_backup`, um upsert idempotente) já terá sido gravada no Neon. Nada é gravado no KV e o dia não fecha.
 - **Novo backup no mesmo dia depois de um aprovado:** não acontece. Uma cópia mais recente no mesmo dia só vem no dia seguinte.
+- **Dia reprovado no painel:** com a consolidação reprovada fora da chave canônica, o painel (que lê `zpc:backup:v1:report`) mostra o último relatório aprovado e acusa a idade, não o motivo da falha. O motivo fica em `zpc:backup:v1:report:ultima_falha`.
 - **Execução que falhou no meio:** o dia fica com ela por até 30 minutos. Uma nova tentativa no mesmo dia, dentro desse prazo, é recusada (`day_owned_by_other_run`).
 - **Execução viva parada por mais de 30 minutos** entre duas chamadas perde a posse. Se voltar, é recusada e não publica.
 - **Cerca e gravação não são uma única operação:** entre confirmar a posse e gravar no KV há só a espera de uma gravação. Para a execução antiga gravar sobre a nova, ela teria de ficar parada mais de 30 minutos exatamente nesse ponto, dentro de uma única invocação do Worker.

@@ -504,6 +504,9 @@ class RestauracaoIntegral(unittest.TestCase):
         reservar o dia, e a execução legítima conclui o dia em seguida."""
         src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n20", 94, scenario="chamada_rejeitada_nao_reserva")
         self.assertEqual(code, 0, w)
+        self.assertEqual(w["consolidacao_sem_tabela"], ["day_not_claimed"])  # tabela de controle ausente: não é day_claim_failed
+        self.assertFalse(w["tabela_apos_consolidacao"], "a consolidação não cria a tabela de controle")
+        self.assertFalse(w["tabela_apos_rejeitadas"], "chamadas rejeitadas não criam posse")
         self.assertEqual(w["rejeitadas"], [["inventory_changed"], ["part_out_of_range"]])
         self.assertIsNone(w["linha_depois_das_rejeitadas"], "nenhuma posse reservada pelas chamadas rejeitadas")
         self.assertTrue(w["partes_ok"] and w["ok"], w)
@@ -522,6 +525,21 @@ class RestauracaoIntegral(unittest.TestCase):
         self.assertTrue(all(f == ["day_already_complete"] for f in r["resto"]), r)
         self.assertEqual(r["finalize"], ["day_already_complete"])
         self.assertEqual(w["kv_alteradas_por_a"], [], "a execução antiga não altera nenhum arquivo da nova")
+        self._archivable_and_restorable(src, dst, ddl, elig, kvfile, out)
+
+    # ---- contra-auditoria GPT-6 de 18/11, quinta rodada (PR #1070, 444e3df5) ----
+    def test_n22_consolidacao_reprovada_pendente_nao_substitui_o_relatorio_aprovado(self):
+        """Duas consolidações da mesma execução: a reprovada passa pela posse e fica com a gravação pendente; a válida
+        fecha o dia e publica; a pendente termina. O KV continua com o relatório aprovado (igual ao do banco), a falha fica
+        em chave separada, e a cópia é arquivável e restaurável."""
+        src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n22", 94, scenario="consolidacao_reprovada_pendente")
+        self.assertEqual(code, 0, w)
+        self.assertTrue(w["partes_ok"], w)
+        self.assertTrue(w["pendente_em"], "a consolidação reprovada chegou à gravação (pendente)")
+        self.assertFalse(w["f1"]["ok"], w["f1"])
+        self.assertEqual((w["ok"], w["auth"]), (True, "autenticado"), w)
+        self.assertTrue(w["canonico_inalterado"] and w["canonico_igual_ao_banco"] and w["canonico_ok"], w)
+        self.assertTrue(w["falha_registrada_em_separado"], w)
         self._archivable_and_restorable(src, dst, ddl, elig, kvfile, out)
 
 

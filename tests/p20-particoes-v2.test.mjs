@@ -3,6 +3,7 @@
 // A cadeia inteira (Worker -> arquivamento -> restauração em PostgreSQL) é provada em tests/test_p20_restauracao_integral.py.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { partsFor, assignParts, computePlan, runDataBackup, finalizeBackup, planBackup, backupRunParams, MAX_PARTS, REPORT_KEY, AUTHENTICATED_FIELDS } from "../worker/data-backup.mjs";
 import { loadReportKey, hmacHex, canonical } from "../worker/backup-crypto.mjs";
 import { planDecision, doneVerdict } from "../scripts/ops/data-backup.mjs";
@@ -263,4 +264,28 @@ test("condutor: rota de plano ausente (404) = legado v1 sinalizado; plano válid
   assert.deepEqual(backupRunParams(q("part=0&parts=3&plan_id=xyz&run_id=" + RUN)), { ok: false, failure: "plan_id_malformed" });
   assert.deepEqual(backupRunParams(q("part=0&parts=3&plan_id=" + "a".repeat(64) + "&run_id=zz")), { ok: false, failure: "run_id_malformed" });
   assert.deepEqual(backupRunParams(q("part=2&parts=4&plan_id=" + "a".repeat(64) + "&run_id=" + RUN)), { ok: true, parts: 4, planId: "a".repeat(64), runId: RUN, part: 2, finalize: false });
+});
+
+test("rota HTTP real: índice inválido é recusado no valor ORIGINAL, sem tocar no banco nem no KV (controle chega ao banco)", () => {
+  // Worker de produção real (worker/cloudflare-worker.compat.mjs) pela sonda tests/helpers/p20_route_probe.mjs.
+  const run = spawnSync(process.execPath, ["--import", "./tests/t4_sim/register.mjs", "tests/helpers/p20_route_probe.mjs"],
+    { cwd: new URL("..", import.meta.url).pathname, encoding: "utf8", timeout: 150000, env: { ...process.env, NODE_OPTIONS: "" } });
+  const line = String(run.stdout || "").split("\n").find((l) => l.startsWith("PROBE_RESULT "));
+  assert.ok(line, "sonda sem resultado: " + String(run.stderr || "").slice(-400));
+  const r = JSON.parse(line.slice("PROBE_RESULT ".length));
+  const esperado = ["part_out_of_range", "part_out_of_range", "part_out_of_range", "part_out_of_range", "part_out_of_range", "part_out_of_range",
+    "part_out_of_range", "parts_out_of_range", "parts_out_of_range", "parts_out_of_range", "part_with_finalize", "parts_out_of_range"];
+  assert.equal(r.rejeitadas.length, esperado.length);
+  r.rejeitadas.forEach((x, i) => {
+    assert.equal(x.status, 400, x.qs);
+    assert.deepEqual(x.failures, [esperado[i]], x.qs);
+    assert.equal(x.rede, 0, "nenhum acesso ao banco: " + x.qs);
+    assert.deepEqual(x.kv.filter((op) => /^(put|delete) /.test(op) || op.includes("zpc:backup")), [], "nenhuma gravação nem leitura do backup no KV: " + x.qs);
+  });
+  assert.equal(r.rejeitadas[0].qs.startsWith("part=4&parts=4&"), true);
+  // Controle: com índices válidos a MESMA sonda enxerga o acesso ao banco; o banco falha antes da posse e nada é gravado.
+  assert.ok(r.controle.rede >= 1, "o controle tem de chegar ao banco");
+  assert.deepEqual(r.controle.kv.filter((op) => /^(put|delete) /.test(op)), [], "erro antes da posse não grava nada");
+  assert.equal(r.kv_final_canonico, "{\"canonico\":true}");
+  assert.deepEqual(r.kv_chaves, ["zpc:backup:v1:report"]);
 });

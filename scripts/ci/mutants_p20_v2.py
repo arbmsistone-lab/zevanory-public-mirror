@@ -107,6 +107,15 @@ M = {
     "V38 consolidação reserva o dia": (W, "      const t = await dsql.query(`update zevanory_backup_day set updated_at = now() where day = $1::date and run_id = $2 and state = 'running' returning run_id`, [day, owner]);",
                                        "      const t = (await claimDay(dsql, day, owner)).owner ? [1] : [];",
                                        ("node", "parte fora do intervalo")),
+    # Contra-auditoria GPT-6 18/11, quinta rodada (PR #1070 em 444e3df5).
+    "V39 rota aceita parte fora do plano (ajuste do índice)": (W, "Number(rawPart) >= parts) return", "false) return",
+                                                              ("node", "rota HTTP real")),
+    "V40 consolidação reprovada grava a chave canônica": (W, "    await kv.put(REPORT_FAIL_KEY, text, { expirationTtl: 8 * DAY });", "    await kv.put(REPORT_KEY, text);",
+                                                         ("py", "test_n22_consolidacao_reprovada_pendente_nao_substitui_o_relatorio_aprovado")),
+    "V41 tabela de controle ausente vira day_claim_failed": (W, "      if (!(await dayTableExists(dsql))) return refuse(\"day_not_claimed\");\n", "",
+                                                             ("py", "test_n20_chamada_rejeitada_nao_reserva_o_dia")),
+    "V42 erro antes da posse grava o relatório da parte": (W, "    if (v2 && !owned) {", "    if (false) {",
+                                                           ("node", "rota HTTP real")),
 }
 
 
