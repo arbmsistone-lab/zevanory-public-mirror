@@ -33,7 +33,7 @@ tests/central-retired-contact-script.test.mjs 5
 tests/certification-worker.test.mjs 3
 tests/circuits-adversarial.test.mjs 31
 tests/command-center-main.test.mjs 4
-tests/command-center-snapshot.test.mjs 13
+tests/command-center-snapshot.test.mjs 15
 tests/commercial-checkout-guard.test.mjs 6
 tests/commercial-metrics-projection.test.mjs 13
 tests/comprar-noindex.test.mjs 8
