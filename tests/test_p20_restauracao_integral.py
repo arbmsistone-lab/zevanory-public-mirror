@@ -363,8 +363,9 @@ class RestauracaoIntegral(unittest.TestCase):
         """Lacuna 1: uma parte rejeitada não pode sobrescrever o relatório válido da mesma parte no KV."""
         src, dst, ddl, elig, kvfile, code, w, out = self.run_chain("n11", 94, extra=[self.conc_table()], scenario="reenvio_plano_divergente")
         self.assertTrue(w["partes_a_ok"], w)
-        # Outra execução enquanto A é dona do dia: recusada pela posse (antes de reler o plano e de qualquer gravação).
-        self.assertEqual(w["reenvio"]["failures"], [["day_owned_by_other_run"], ["day_owned_by_other_run"]])
+        # Outra execução com plano obsoleto (esquema mudou) ou forjado: recusada na validação do plano, ANTES de disputar a
+        # posse e de qualquer gravação (a chamada rejeitada não reserva o dia nem toca no KV).
+        self.assertEqual(w["reenvio"]["failures"], [["inventory_changed"], ["inventory_changed"]])
         self.assertEqual(w["reenvio"]["rejected"], [True, True])
         self.assertTrue(w["kv_intacto"], "relatórios e bundles no KV têm de ficar byte a byte iguais")
         self.assertTrue(w["ok"], w)  # a execução A continua íntegra e consolida depois dos reenvios

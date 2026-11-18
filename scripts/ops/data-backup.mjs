@@ -46,7 +46,10 @@ async function main() {
   if (d.mode === "done") {
     // Dia já concluído: a consolidação confere se o relatório aprovado está publicado no KV e, se uma queda o deixou só no
     // banco, o republica (recuperação). Nada mais é gravado.
-    const { http, body } = await call(`finalize=1&parts=${d.parts}&plan_id=${d.planId}&run_id=${randomBytes(16).toString("hex")}`);
+    // Mesma forma de chamada da consolidação normal (a lista de chamadas permitidas do R4 cobre exatamente esta linha).
+    const parts = d.parts;
+    const extra = `&plan_id=${d.planId}&run_id=${randomBytes(16).toString("hex")}`;
+    const { http, body } = await call(`finalize=1&parts=${parts}${extra}`);
     const v = doneVerdict(body);
     console.log((v.ok ? "::notice" : "::error") + " title=DATA_BACKUP_DIA_CONCLUIDO::" + JSON.stringify({ http, publicacao: body?.publicacao ?? null, failures: body?.failures ?? null }));
     if (!v.ok) process.exit(1);
