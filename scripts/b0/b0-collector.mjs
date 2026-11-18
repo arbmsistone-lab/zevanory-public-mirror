@@ -23,16 +23,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function probeUrl(url, { fetchImpl = fetch, retries = 1, pause = sleep, timeoutMs = 20000 } = {}) {
   // latency_ms = última tentativa (significado inalterado); attempts e elapsed_ms (todas as tentativas + pausa) entram
   // para o estado de desempenho do P18 não esconder uma 1ª tentativa lenta/falha atrás de uma nova tentativa rápida.
+  // P19 fase 1: tries = uma entrada por tentativa (n, started_at, ms, status ou error), para distinguir a 1ª tentativa,
+  // a nova tentativa e a duração total sem mudar latency_ms/attempts/elapsed_ms.
   let last = { url, status: 0, error: "not_attempted" };
   const start = Date.now();
+  const tries = [];
   for (let i = 0; i <= retries; i++) {
     const t0 = Date.now();
     try {
       const r = await fetchImpl(url, { method: "GET", redirect: "follow", headers: { "user-agent": UA, accept: "text/html,application/json;q=0.9,*/*;q=0.5", "cache-control": "no-cache" }, signal: AbortSignal.timeout(timeoutMs) });
-      const body = await r.text().catch(() => "");
-      last = { url, status: r.status, latency_ms: Date.now() - t0, body, attempts: i + 1, elapsed_ms: Date.now() - start };
+      // A leitura do corpo pode falhar DEPOIS dos cabeçalhos (corpo suspenso até o tempo limite). O comportamento
+      // histórico continua (corpo vazio, status e regra de nova tentativa iguais), mas a falha fica registrada em
+      // body_error, na tentativa e no resultado. Corpo vazio lido com sucesso NÃO é falha.
+      let bodyError = null;
+      const body = await r.text().catch((e) => { bodyError = String(e?.name || "error").slice(0, 40); return ""; });
+      tries.push({ n: i + 1, started_at: new Date(t0).toISOString(), ms: Date.now() - t0, status: r.status, ...(bodyError ? { body_error: bodyError } : {}) });
+      last = { url, status: r.status, latency_ms: Date.now() - t0, body, attempts: i + 1, elapsed_ms: Date.now() - start, tries: tries.slice(), ...(bodyError ? { body_error: bodyError } : {}) };
       if (r.status < 500) return last;
-    } catch (e) { last = { url, status: 0, latency_ms: Date.now() - t0, error: String(e?.name || "error").slice(0, 40), attempts: i + 1, elapsed_ms: Date.now() - start }; }
+    } catch (e) {
+      const error = String(e?.name || "error").slice(0, 40);
+      tries.push({ n: i + 1, started_at: new Date(t0).toISOString(), ms: Date.now() - t0, error });
+      last = { url, status: 0, latency_ms: Date.now() - t0, error, attempts: i + 1, elapsed_ms: Date.now() - start, tries: tries.slice() };
+    }
     if (i < retries) await pause(3000);
   }
   return last;

@@ -1,0 +1,93 @@
+name: p19-medicao-tests
+
+# P19 fase 1 (medição do /api/status, das leituras internas, do smoke pós-deploy e do P18). Só pull_request.
+#  tests: sem rede externa e sem segredo. Smoke com servidor local (leitura saudável, timeout controlado, passo REAL do
+#         deploy reprovando com a sonda identificada), Worker real com banco simulado (ok e travado), P18 com tentativas,
+#         controles e versão servida.
+#  linha-de-base-c1: SOMENTE LEITURA (os mesmos GET públicos do P18, nunca compra/checkout/POST), 3 sondagens com 30 s
+#         de intervalo contra a produção vigente (C1), ANTES de qualquer promoção. Informativo: não grava evidência,
+#         não alerta e não reprova o PR por lentidão da produção.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p19-medicao-tests.yml"
+      - "worker/diag-stages.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/reviews.mjs"
+      - "scripts/verify-production-surfaces.py"
+      - "scripts/b0/**"
+      - "tests/p19-medicao.test.mjs"
+      - "tests/helpers/p19_status_probe.mjs"
+      - "tests/test_p19_smoke_surfaces.py"
+      - "tests/p18-latency.test.mjs"
+      - "tests/b0-baseline.test.mjs"
+      - "docs/p19/**"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: p19-medicao / tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependências
+        run: python -m pip install --disable-pip-version-check -q pyyaml==6.0.2
+      - name: Node (medição, Worker real com banco simulado, P18)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/p19-medicao.test.mjs tests/p18-latency.test.mjs tests/b0-baseline.test.mjs | tee /tmp/node.txt
+          grep -qx "# fail 0" /tmp/node.txt
+          echo "P19_NODE=$(grep -E '^# (tests|pass)' /tmp/node.txt | tr '\n' ' ')"
+      - name: Exemplos (leitura saudável e /api/status travado)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for m in ok hang; do node --import ./tests/t4_sim/register.mjs tests/helpers/p19_status_probe.mjs "$m" | grep '^PROBE_RESULT ' | sed "s/^/P19_EXEMPLO_${m^^} /" | cut -c1-3000; done
+      - name: Smoke pós-deploy (servidor local, passo real do workflow)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_p19_smoke_surfaces -v 2>&1 | tee /tmp/py.txt
+          grep -q "^Ran 5 tests" /tmp/py.txt && grep -qx "OK" /tmp/py.txt
+
+  linha-de-base-c1:
+    name: p19-medicao / linha de base C1 (somente leitura)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 3 sondagens P18 (alvos + controles + versão servida)
+        shell: bash
+        run: |
+          set -uo pipefail
+          node --input-type=module -e '
+            import { runProbe } from "./scripts/b0/p18-monitor.mjs";
+            const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+            for (let i = 0; i < 3; i++) {
+              const p = await runProbe({ kind: "scheduled" });
+              const row = (t) => [t.id, t.status, t.elapsed_ms, (t.tries || []).map((x) => [x.started_at.slice(11, 23), x.ms, x.status ?? x.error, ...(x.body_error ? ["body:" + x.body_error] : [])])];
+              console.log("P19_LINHA_BASE " + JSON.stringify({ at: p.at, up: p.up, served: p.served, targets: p.targets.map(row), controls: p.controls.map((c) => [...row(c), c.deps]) }));
+              if (i < 2) await wait(30000);
+            }
+          ' || echo "::warning title=P19_LINHA_BASE::sondagem informativa não concluiu (não reprova o PR)"

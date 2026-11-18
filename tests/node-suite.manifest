@@ -16,7 +16,7 @@ tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
 tests/autonomy-inventory.test.mjs 8
-tests/b0-baseline.test.mjs 36
+tests/b0-baseline.test.mjs 37
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
 tests/blog-autopublicacao.test.mjs 10
@@ -128,6 +128,7 @@ tests/p13c-superficies-politica.test.mjs 7
 tests/p16-experiment-registry.test.mjs 30
 tests/p18-commercial.test.mjs 20
 tests/p18-latency.test.mjs 12
+tests/p19-medicao.test.mjs 12
 tests/p20-backup-encryption.test.mjs 11
 tests/p20-diario-d1.test.mjs 8
 tests/p20-diario-ensaio.test.mjs 9

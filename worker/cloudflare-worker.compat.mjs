@@ -65,6 +65,7 @@ import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlock
 import { fiscalProcessDefined } from "./fiscal-process.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
 import { productionEnvView } from "./production-pilot-guard.mjs";
+import { createDiag, DIAG_RID_HEADER, ridFrom } from "./diag-stages.mjs";
 
 async function loadWhatsappBrokerState(binding, env) {
   // Retired channel (Meta disabled the WABA on 2026-10-10): never call the broker.
@@ -662,10 +663,21 @@ const wrapped = {
     }
 
     if (url.pathname === "/api/status") {
-      const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
+      // P19 fase 1: medição por etapa (entrada e saída), sem mudar status, payload nem fail-closed.
+      // "operational_read" = handler2 do runtime recuperado, cuja única E/S é a leitura do PostgreSQL (executeVerifiedRead).
+      const diag = createDiag("/api/status", { rid: ridFrom(request) });
+      const innerHeaders = new Headers(request.headers);
+      innerHeaders.set(DIAG_RID_HEADER, diag.rid);
+      const innerRequest = new Request(request, { headers: innerHeaders });
+      const { response, body } = await diag.stage("operational_read", "db", () => fetchJsonThroughWorker(innerRequest, normalized, ctx));
+      diag.note({ stage: "operational_read", status: response.status, inner_request_id: typeof body?.request_id === "string" ? body.request_id.slice(0, 64) : null });
       if (!response.ok || !body) return response;
+      const kvSwitch = diag.begin("kv_sales_switch", "kv");
       const salesSwitch = await readSalesSwitch(normalized);
+      kvSwitch.end();
+      const kvProof = diag.begin("kv_financial_proof", "kv");
       const snapshot = await readFinancialProofSnapshot(normalized);
+      kvProof.end();
       const safeRelease = snapshot?.verified === true && salesSwitch.enabled === true && salesSwitch.authorized === true &&
         String(normalized.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
         String(normalized.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
@@ -680,7 +692,7 @@ const wrapped = {
         ? { state: safeRelease ? "open_authorized" : "open_authorized_proof_pending", authorized_by_owner: true, at: String(salesSwitch.at || ""), revision: salesSwitch.revision || null }
         : { state: salesSwitch.requested === true ? "requested_blocked" : "closed", authorized_by_owner: false, blocked: salesSwitch.blocked || null, revision: salesSwitch.revision || null };
       projected.continuity = buildContinuityPlan(projected, { minQuorum: 3 });
-      try {
+      await diag.stage("kv_proof_evidence", "kv", async () => { try {
         const raw = await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:financial-proof:last-isolated-run:v1");
         const evidence = JSON.parse(String(raw || "null"));
         if (evidence && typeof evidence.at === "string" && typeof evidence.ok === "boolean" && !Number.isNaN(Date.parse(evidence.at))) {
@@ -690,10 +702,12 @@ const wrapped = {
         if (inv && typeof inv.at === "string" && !Number.isNaN(Date.parse(inv.at)) && PROOF_INVALIDATION_REASONS.includes(inv.reason)) {
           projected.financial_proof = { ...(projected.financial_proof || {}), last_invalidation: { at: inv.at, reason: inv.reason } };
         }
-      } catch { /* Missing evidence is never a synthetic success. */ }
+      } catch { /* Missing evidence is never a synthetic success. */ } });
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
+      headers.set("server-timing", diag.serverTiming());
+      headers.set(DIAG_RID_HEADER, diag.rid);
       return new Response(JSON.stringify(projected), {
         status: response.status,
         statusText: response.statusText,

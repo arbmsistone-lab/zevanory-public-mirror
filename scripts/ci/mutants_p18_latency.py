@@ -79,7 +79,8 @@ M = {
     "L15_critical_precedence_lost": (LAT, 'const state = !probe.up ? "CRITICO" :', 'const state = false ? "CRITICO" :',
         {"primary": [P(CRIT, "CRIT-break")], "secondary": [
             S(DEDUP, "DEDUP-critical-suppresses", "sem o estado CRITICO na janela com queda, a supressão do aviso não se aplica")]}),
-    "L16_timeout_not_explicit": (MON, "timeoutMs: REQUEST_TIMEOUT_MS })", "timeoutMs: 4000 })",
+    # P19 fase 1: runProbe passou a ter duas chamadas (alvos e controles); a âncora fixa a dos ALVOS.
+    "L16_timeout_not_explicit": (MON, "Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS }))),", "Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: 4000 }))),",
         {"primary": [P(BUD, "BUD-monitor")]}),
     "L17_recovery_never_notified": (LAT, 'if (last && notified(events, last.incident_id, "degraded") && !notified(events, last.incident_id, "recovered")) return',
         "if (false) return", {"primary": [P(DEDUP, "DEDUP-recover"), P(E1, "E2E-recover-action")]}),
@@ -94,7 +95,8 @@ M = {
             S(E1, "E2E-two", "o orçamento de 150 ms injetado é ignorado e nada degrada"),
             S(E2, "E2E-fail-recorded", "nada degrada, então não há aviso nem falha de aviso")],
          "broad_reason": "o orçamento por rota é lido por toda classificação de janela"}),
-    "L20_elapsed_not_recorded": (COL, "body, attempts: i + 1, elapsed_ms: Date.now() - start };", "body };",
+    # P19 fase 1: a linha de sucesso ganhou tries/body_error; a mutação continua removendo attempts e elapsed_ms.
+    "L20_elapsed_not_recorded": (COL, "body, attempts: i + 1, elapsed_ms: Date.now() - start, tries: tries.slice(), ...(bodyError", "body, tries: tries.slice(), ...(bodyError",
         {"primary": [P(E1, "E2E-attempts")]}),
     "L21_budget_from_p50": (LAT, "Math.ceil((factor * p95) / step)", "Math.ceil((factor * p50) / step)",
         {"primary": [P(DER, "DERIVE-factor")]}),

@@ -6,6 +6,7 @@
 
 import { alertOwnerNow } from "./owner-alerts.mjs";
 import { CUSTOMER_RULE_7D } from "./politica-unica.mjs";
+import { createDiag, DIAG_RID_HEADER, ridFrom } from "./diag-stages.mjs";
 
 const CORE = "https://zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
@@ -47,10 +48,12 @@ export async function ensureReviewSchema(sql) {
 
 const mask = (text) => String(text || "").replace(/[^\s@<>()]+@[^\s@<>()]+/g, "***@***").replace(/\+?\d[\d\s().-]{7,}\d/g, "***").slice(0, 1000);
 
-export async function reviewSummary(sql) {
-  await ensureReviewSchema(sql);
-  const rows = await sql.query(`select offer_id, count(*)::int as n, round(avg(rating)::numeric, 1)::float as avg
-      from zevanory_reviews group by offer_id`, []);
+export async function reviewSummary(sql, diag = null) {
+  // P19 fase 1: com diag, o DDL idempotente e a consulta são medidos em separado (entrada e saída nos logs).
+  const step = (name, fn) => (diag ? diag.stage(name, "db", fn) : fn());
+  await step("pg_review_schema", () => ensureReviewSchema(sql));
+  const rows = await step("pg_review_summary", () => sql.query(`select offer_id, count(*)::int as n, round(avg(rating)::numeric, 1)::float as avg
+      from zevanory_reviews group by offer_id`, []));
   const out = {};
   for (const r of rows) if (Number(r.n) >= MIN_PUBLIC) out[r.offer_id] = { count: Number(r.n), average: Number(r.avg) };
   return out;
@@ -64,8 +67,9 @@ export async function handleReviews(request, env, { sqlFactory } = {}) {
 
   if (url.pathname === "/api/reviews/summary") {
     if (request.method !== "GET") return json(405, { ok: false });
-    try { return json(200, { ok: true, minimum: MIN_PUBLIC, products: await reviewSummary(sql) }, { "cache-control": "public, max-age=600" }); }
-    catch { return json(200, { ok: true, minimum: MIN_PUBLIC, products: {} }, { "cache-control": "no-store" }); }
+    const diag = createDiag("/api/reviews/summary", { rid: ridFrom(request) });
+    try { return json(200, { ok: true, minimum: MIN_PUBLIC, products: await reviewSummary(sql, diag) }, { "cache-control": "public, max-age=600", "server-timing": diag.serverTiming(), [DIAG_RID_HEADER]: diag.rid }); }
+    catch { return json(200, { ok: true, minimum: MIN_PUBLIC, products: {} }, { "cache-control": "no-store", "server-timing": diag.serverTiming(), [DIAG_RID_HEADER]: diag.rid }); }
   }
 
   const orderId = String(url.searchParams.get("o") || "").toLowerCase();

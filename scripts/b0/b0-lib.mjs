@@ -76,6 +76,19 @@ export const SALES_PAGES = Object.freeze([
   "https://vendas.zevanory.api.br/negocio-completo",
 ]);
 export const STATUS_URL = "https://zevanory.api.br/api/status";
+// P19 fase 1: controles de diagnóstico sondados JUNTO com os alvos, gravados à parte (probe.controls). NÃO entram em
+// up, incidentes, desempenho nem abertura comercial. deps = dependência conferida no código em 18/11/2026:
+//   /api/health        -> PostgreSQL (select 1 + information_schema/schema_migrations, healthProbe do runtime recuperado)
+//   /api/release       -> nenhuma E/S (variáveis do Worker; deployment.commit_sha = versão servida)
+//   edge /api/status   -> PostgreSQL + KV (mesmo handler do /api/status, pelo host edge)
+//   vendas /health     -> nenhuma E/S (Worker de vendas; release = versão servida das páginas)
+// As páginas vendas/ e vendas/solucoes (já alvos) também não chamam o Worker central.
+export const CONTROL_URLS = Object.freeze([
+  { url: "https://zevanory.api.br/api/health", deps: "postgres" },
+  { url: "https://zevanory.api.br/api/release", deps: "none" },
+  { url: "https://edge.zevanory.api.br/api/status", deps: "postgres+kv" },
+  { url: "https://vendas.zevanory.api.br/health", deps: "none" },
+]);
 export const SITEMAPS = Object.freeze(["https://zevanory.api.br/sitemap.xml", "https://vendas.zevanory.api.br/sitemap.xml"]);
 export const FORBIDDEN_PATH = /\/(comprar|checkout|api\/checkout|assinar|hotmart)(\/|$)/i;
 
@@ -284,6 +297,11 @@ export function validateProbe(p) {
   if (p.up !== p.targets.every((t) => t.ok)) throw new Error("probe_up_mismatch");
   if (!isObj(p.p22) || typeof p.p22.readable !== "boolean") throw new Error("bad_probe_p22");
   if (p.kind !== undefined && !PROBE_KINDS.includes(p.kind)) throw new Error("bad_probe_kind");
+  if (p.controls !== undefined) {
+    if (!Array.isArray(p.controls)) throw new Error("bad_probe_controls");
+    for (const t of p.controls) if (!isObj(t) || typeof t.id !== "string" || typeof t.ok !== "boolean" || !isInt(t.status)) throw new Error("bad_probe_control");
+  }
+  if (p.served !== undefined && (!isObj(p.served) || Object.values(p.served).some((v) => v !== null && !/^[0-9a-f]{40}$/.test(v)))) throw new Error("bad_probe_served");
   return p;
 }
 
