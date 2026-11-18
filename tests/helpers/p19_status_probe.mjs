@@ -8,6 +8,7 @@
 import http from "node:http";
 
 const MODE = process.argv[2] === "hang" ? "hang" : "ok";
+const RID = /^[0-9a-f]{12}$/.test(process.argv[3] || "") ? process.argv[3] : null;  // rid trazido pelo cliente (smoke)
 const HANG_MS = 1500;
 const realFetch = globalThis.fetch;
 let port = 0;
@@ -50,7 +51,7 @@ const env = {
   ZEVANORY_DEPLOYMENT_ENV: "production", SALE_GLOBALLY_ENABLED: "false", ZEVANORY_PRIVATE_ARTIFACTS: kv,
   DATABASE_URL: "postgresql://sim:sim@ep-p19-status-probe.sim.neon.tech/sim?sslmode=require",
 };
-const req = new Request("https://zevanory.api.br/api/status", { method: "GET", headers: { host: "zevanory.api.br", "user-agent": "p19-probe" } });
+const req = new Request("https://zevanory.api.br/api/status", { method: "GET", headers: { host: "zevanory.api.br", "user-agent": "p19-probe", ...(RID ? { "x-zevanory-diag": RID } : {}) } });
 const pending = production.fetch(req, env, { waitUntil() {} });
 const out = { mode: MODE };
 if (MODE === "hang") {

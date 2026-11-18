@@ -19,6 +19,12 @@ export function cleanDiagRid(value) {
   return DIAG_RID_RE.test(v) ? v : null;
 }
 
+// rid: o chamador pode trazer o seu (cabeçalho x-zevanory-diag, 12 hex) para que a ENTRADA da etapa seja
+// correlacionável mesmo sem resposta; inválido ou ausente = aleatório. É correlação, não autenticação.
+export function ridFrom(request) {
+  try { return cleanDiagRid(request?.headers?.get?.(DIAG_RID_HEADER)) || newDiagRid(); } catch { return newDiagRid(); }
+}
+
 export function createDiag(route, { rid = newDiagRid(), log = (line) => console.log(line), now = () => Date.now() } = {}) {
   const t0 = now();
   const groups = Object.create(null);

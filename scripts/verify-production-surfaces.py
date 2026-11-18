@@ -6,6 +6,7 @@
 # Nunca registra query string, cabeçalhos, corpo, credenciais ou dados de clientes.
 import datetime
 import json
+import secrets
 import socket
 import time
 import urllib.error
@@ -33,9 +34,12 @@ def error_class(e):
 def get(url, accept="application/json,text/html"):
     _seq[0]+=1
     seq,name=_seq[0],probe_name(url)
-    log(f"SURFACE_PROBE_START seq={seq} name={name} at={datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}")
+    # rid de correlação gerado AQUI e enviado no cabeçalho x-zevanory-diag: o Worker o usa nas linhas de entrada das
+    # etapas, então mesmo uma chamada SEM resposta é identificável nos logs por este valor (não por horário).
+    rid=secrets.token_hex(6)
+    log(f"SURFACE_PROBE_START seq={seq} name={name} rid={rid} at={datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}")
     t0=time.monotonic()
-    req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-PostDeploy-Smoke/1.0","Accept":accept,"Cache-Control":"no-cache"})
+    req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-PostDeploy-Smoke/1.0","Accept":accept,"Cache-Control":"no-cache","x-zevanory-diag":rid})
     # phase: headers = até os cabeçalhos; body = cabeçalhos recebidos, lendo o corpo. Com os cabeçalhos, a linha
     # SURFACE_PROBE_HEADERS já traz o rid (x-zevanory-diag) mesmo que o corpo depois trave.
     phase="headers"

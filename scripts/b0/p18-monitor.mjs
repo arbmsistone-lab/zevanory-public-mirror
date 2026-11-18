@@ -229,6 +229,10 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   // nova tentativa e total. Só diagnóstico: não muda decisão, alerta nem desempenho.
   for (const p of probes) log("::notice title=P18_PROBE_DIAG::" + JSON.stringify({ at: p.at, kind: p.kind, served: p.served ?? null,
     tries: Object.fromEntries([...p.targets, ...(p.controls || [])].map((t) => [t.id, (t.tries || []).map((x) => [x.started_at.slice(11, 23), x.ms, x.status ?? x.error, ...(x.body_error ? ["body:" + x.body_error] : [])])])) }));
+  // Fase 1 só mede: um 200 cujo corpo falhou continua contado como disponível (regra histórica). Isso NÃO quer dizer
+  // saudável; o aviso deixa a diferença explícita no próprio run, sem abrir incidente nem mudar decisão.
+  const bodyErr = probes.flatMap((p) => [...p.targets, ...(p.controls || [])].filter((t) => t.body_error).map((t) => `${p.at.slice(11, 19)} ${t.id}:${t.status}:${t.body_error}`));
+  if (bodyErr.length) log("::warning title=P18_BODY_ERROR_CONTADO_COMO_DISPONIVEL::" + JSON.stringify(bodyErr.slice(0, 20)));
 
   const pendingInc = d.action === "confirm" ? d.incident : d.action === "alert_retry" ? open : null;
   const alert = await handleAlert({ decision: d, cur, incident: pendingInc, env, fetchImpl, now, log });

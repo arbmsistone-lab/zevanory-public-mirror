@@ -41,11 +41,15 @@ def load_smoke():
     return mod
 
 
+RECEIVED = []
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
     def do_GET(self):
+        RECEIVED.append(self.headers.get("x-zevanory-diag"))
         if self.path.startswith("/slow"):
             time.sleep(3)
         if self.path.startswith("/bodyhang"):
@@ -104,7 +108,9 @@ class SmokeTest(unittest.TestCase):
                 code, headers, body = m.get(f"http://127.0.0.1:{port}/api/status?token=SEGREDO")
         out = buf.getvalue().splitlines()
         self.assertEqual(code, 200)
-        self.assertRegex(out[0], rf"^SURFACE_PROBE_START seq=\d+ name=127\.0\.0\.1:{port}/api/status at=\d{{4}}-")
+        self.assertRegex(out[0], rf"^SURFACE_PROBE_START seq=\d+ name=127\.0\.0\.1:{port}/api/status rid=[0-9a-f]{{12}} at=\d{{4}}-")
+        rid = re.search(r"rid=([0-9a-f]{12})", out[0]).group(1)
+        self.assertEqual(RECEIVED[-1], rid, "o rid registrado ANTES da chamada é o que vai no cabeçalho ao Worker")
         self.assertRegex(out[1], rf"^SURFACE_PROBE_HEADERS seq=\d+ name=127\.0\.0\.1:{port}/api/status status=200 ms=\d+ diag=0123456789ab$")
         self.assertRegex(out[2], rf"^SURFACE_PROBE_END seq=\d+ name=127\.0\.0\.1:{port}/api/status status=200 ms=\d+ diag=0123456789ab$")
         self.assertNotIn("SEGREDO", buf.getvalue(), "query string nunca é registrada")
@@ -122,7 +128,8 @@ class SmokeTest(unittest.TestCase):
         out = buf.getvalue().splitlines()
         self.assertLess(elapsed, 2.5)
         self.assertEqual(m.error_class(ctx.exception), "timeout", repr(ctx.exception))
-        self.assertTrue(out[0].startswith(f"SURFACE_PROBE_START seq=1 name=127.0.0.1:{port}/slow"))
+        self.assertRegex(out[0], rf"^SURFACE_PROBE_START seq=1 name=127\.0\.0\.1:{port}/slow rid=[0-9a-f]{{12}} ")
+        self.assertEqual(RECEIVED[-1], re.search(r"rid=([0-9a-f]{12})", out[0]).group(1), "sem resposta, o rid já foi enviado e registrado")
         self.assertRegex(out[1], rf"^SURFACE_PROBE_FAIL seq=1 name=127\.0\.0\.1:{port}/slow ms=\d+ phase=headers error_class=timeout diag=-$")
         self.assertRegex(out[2], rf"^::error title=SURFACE_PROBE_TIMEOUT::127\.0\.0\.1:{port}/slow falhou em \d+ ms \(timeout, fase headers; limite 1 s por leitura\)$")
         self.assertEqual(len(out), 3)

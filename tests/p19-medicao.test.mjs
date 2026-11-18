@@ -68,8 +68,8 @@ test("P19.4 reviews/summary: mesmo corpo e status; DDL e consulta medidos em sep
   } finally { console.log = real; }
 });
 
-function statusProbe(mode) {
-  const r = spawnSync(process.execPath, ["--import", "./tests/t4_sim/register.mjs", "tests/helpers/p19_status_probe.mjs", mode], { cwd: ROOT, encoding: "utf8", timeout: 90000 });
+function statusProbe(mode, rid = "") {
+  const r = spawnSync(process.execPath, ["--import", "./tests/t4_sim/register.mjs", "tests/helpers/p19_status_probe.mjs", mode, rid], { cwd: ROOT, encoding: "utf8", timeout: 90000 });
   const line = (r.stdout || "").split("\n").find((l) => l.startsWith("PROBE_RESULT "));
   assert.ok(line, "sonda sem resultado: " + (r.stderr || "").slice(-800));
   return JSON.parse(line.slice("PROBE_RESULT ".length));
@@ -194,4 +194,17 @@ test("P19.11 runProbe leva body_error ao alvo e às tentativas sem mudar up das 
   assert.equal(t.status, 200); assert.equal(t.ok, true, "página 200 continua ok (regra histórica da fase 1)");
   assert.equal(t.body_error, "AbortError"); assert.equal(t.tries[0].body_error, "AbortError");
   assert.equal(p.up, true);
+});
+
+test("P19.12 correlação DEFINITIVA sem resposta: o rid enviado pelo cliente (smoke) marca a entrada das etapas", () => {
+  const rid = "0a1b2c3d4e5f";
+  const hang = statusProbe("hang", rid);
+  assert.equal(hang.outcome, "no_response");
+  assert.deepEqual(hang.logs.map((l) => [l.rid, l.stage, l.phase]), [[rid, "operational_read", "start"], [rid, "pg_read", "start"]],
+    "a requisição travada é identificada pelo rid que o smoke registrou antes de chamar, não pelo horário");
+  const ok = statusProbe("ok", rid);
+  assert.equal(ok.diag_header, rid, "com resposta, o Worker devolve o mesmo rid");
+  assert.ok(ok.logs.every((l) => l.rid === rid));
+  const bad = statusProbe("ok", "nao-hex-123");
+  assert.match(bad.diag_header, /^[0-9a-f]{12}$/); assert.notEqual(bad.diag_header, "nao-hex-123", "rid inválido do cliente é trocado por aleatório");
 });

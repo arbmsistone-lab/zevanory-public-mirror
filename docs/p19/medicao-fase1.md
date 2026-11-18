@@ -75,15 +75,26 @@ Cada etapa grava uma linha `{"evt":"diag_stage","rid":<12 hex opaco>,"route":…
 
 ### Alcance da correlação entre o smoke e os logs do Worker
 
+**Correlação por identificador, inclusive sem resposta.**
+- O smoke gera um rid aleatório de 12 hex (`secrets.token_hex(6)`).
+- Ele o registra em `SURFACE_PROBE_START … rid=<rid>` **antes** da chamada e o envia no cabeçalho `x-zevanory-diag`.
+- O Worker usa esse rid (`ridFrom`, validado: 12 hex; inválido ou ausente vira aleatório) nas linhas `diag_stage` desde a **entrada**. No runtime recuperado, isso inclui `pg_read`.
+
 | Caso | Como chegar ao evento interno |
 |---|---|
-| Cabeçalhos recebidos (corpo lido ou travado) | O `diag=<rid>` das linhas `SURFACE_PROBE_HEADERS`/`FAIL` aponta direto para as linhas `diag_stage` com o mesmo `rid` |
-| **Sem cabeçalhos** (`phase=headers`) | O smoke **não recebe o rid**. O evento é recuperado pelas **etapas abertas** (`start` sem `end`) da mesma rota, na janela da sonda: de `SURFACE_PROBE_START at=…` até o tempo limite. Ferramenta: `openStages(linhas, {route, from, to})` em `worker/diag-stages.mjs`, demonstrada em P19.6 com o Worker real e o banco travado |
+| Com resposta (cabeçalhos recebidos) | `rid` do START = `diag` devolvido = `rid` das linhas `diag_stage` |
+| **Sem resposta** (`phase=headers`) | `rid` do START = `rid` das linhas `diag_stage … phase:"start"` sem `end`. Prova: P19.12, Worker real e banco travado, com o rid enviado pelo cliente |
 
-**Limitação explícita:**
-- No caso sem cabeçalhos, a correlação é por **rota e janela de tempo**, não por identificador. Com tráfego concorrente na mesma rota e janela, pode haver mais de um candidato.
-- A recuperação depende de os logs do Worker estarem ativos e de serem coletados. Depois de um rollback, a versão revertida para de emitir, mas o que já foi emitido continua onde a coleta operacional o guardou.
-- Este PR não comprova a retenção desses logs na conta.
+- **Identificação:** é por **identificador**, não por horário. Duas requisições simultâneas na mesma rota têm rids diferentes.
+- **`openStages()`:** continua como ferramenta auxiliar para tráfego sem rid (sondas externas). Nesse caso a correlação é só por janela e **não** vale como identificação definitiva.
+- **O rid é correlação, não autenticação.** Um cliente pode enviar qualquer valor de 12 hex. O smoke gera 48 bits aleatórios por leitura.
+- **Limitação que continua:** achar a linha exige os logs do Worker ativos e coletados. Depois de um rollback, o que já foi emitido fica onde a coleta operacional guardou. Este PR não comprova a retenção na conta.
+
+### Disponibilidade na fase 1: explícito
+- **Regra histórica mantida:** um **200 cujo corpo falhou** (`body_error`) continua **contado como disponível**, sem incidente nem alerta.
+- **Isso não significa saudável.** O run do P18 emite `::warning title=P18_BODY_ERROR_CONTADO_COMO_DISPONIVEL::[…]` com o alvo, o status e a classe.
+- **Prova:** teste "P19 fase 1: 200 com corpo interrompido…" em `tests/b0-baseline.test.mjs`. Nenhuma confirmação de queda, nenhuma issue e o aviso presente.
+- **Reclassificar** esse caso como indisponível é decisão da fase 2.
 
 ## 5. O que esta fase prova e o que segue aberto
 

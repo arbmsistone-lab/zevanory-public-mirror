@@ -6,7 +6,7 @@
 
 import { alertOwnerNow } from "./owner-alerts.mjs";
 import { CUSTOMER_RULE_7D } from "./politica-unica.mjs";
-import { createDiag, DIAG_RID_HEADER } from "./diag-stages.mjs";
+import { createDiag, DIAG_RID_HEADER, ridFrom } from "./diag-stages.mjs";
 
 const CORE = "https://zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
@@ -67,7 +67,7 @@ export async function handleReviews(request, env, { sqlFactory } = {}) {
 
   if (url.pathname === "/api/reviews/summary") {
     if (request.method !== "GET") return json(405, { ok: false });
-    const diag = createDiag("/api/reviews/summary");
+    const diag = createDiag("/api/reviews/summary", { rid: ridFrom(request) });
     try { return json(200, { ok: true, minimum: MIN_PUBLIC, products: await reviewSummary(sql, diag) }, { "cache-control": "public, max-age=600", "server-timing": diag.serverTiming(), [DIAG_RID_HEADER]: diag.rid }); }
     catch { return json(200, { ok: true, minimum: MIN_PUBLIC, products: {} }, { "cache-control": "no-store", "server-timing": diag.serverTiming(), [DIAG_RID_HEADER]: diag.rid }); }
   }

@@ -65,7 +65,7 @@ import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlock
 import { fiscalProcessDefined } from "./fiscal-process.mjs";
 import { verifyOperatorToken } from "./operator-credential.mjs";
 import { productionEnvView } from "./production-pilot-guard.mjs";
-import { createDiag, DIAG_RID_HEADER } from "./diag-stages.mjs";
+import { createDiag, DIAG_RID_HEADER, ridFrom } from "./diag-stages.mjs";
 
 async function loadWhatsappBrokerState(binding, env) {
   // Retired channel (Meta disabled the WABA on 2026-10-10): never call the broker.
@@ -665,7 +665,7 @@ const wrapped = {
     if (url.pathname === "/api/status") {
       // P19 fase 1: medição por etapa (entrada e saída), sem mudar status, payload nem fail-closed.
       // "operational_read" = handler2 do runtime recuperado, cuja única E/S é a leitura do PostgreSQL (executeVerifiedRead).
-      const diag = createDiag("/api/status");
+      const diag = createDiag("/api/status", { rid: ridFrom(request) });
       const innerHeaders = new Headers(request.headers);
       innerHeaders.set(DIAG_RID_HEADER, diag.rid);
       const innerRequest = new Request(request, { headers: innerHeaders });

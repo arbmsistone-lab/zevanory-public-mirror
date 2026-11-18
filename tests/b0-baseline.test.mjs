@@ -960,3 +960,26 @@ test("[CF-FIRST-PROOF] o monitor grava cf_first_proof_at no batimento só a part
     assert.equal(hb().cf_first_proof_at, T("16:10:20"), "CFFP-carried-forward");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("P19 fase 1: 200 com corpo interrompido continua contado como disponível, mas o run avisa explicitamente (sem incidente)", async () => {
+  const dir = tmp();
+  try {
+    const net = fakeNet({ ccMessage: CC, ctl: { down: false } });
+    const fetchImpl = async (url, init) => {
+      if (new URL(String(url)).pathname === "/ia-na-pratica") {
+        return new Response(new ReadableStream({ start(c) { c.error(Object.assign(new Error("x"), { name: "AbortError" })); } }), { status: 200 });
+      }
+      return net.fetchImpl(url, init);
+    };
+    let clock = Date.parse(T("11:02:40"));
+    const now = () => clock, sleep = async (ms) => { clock += ms; }, pause = async () => {};
+    const lines = [];
+    const r = await monitorMain({ env: clockEnv(dir, { GITHUB_RUN_ID: "901" }), fetchImpl, now, sleep, pause, log: (l) => lines.push(String(l)) });
+    assert.notEqual(r.action, "confirm", "regra histórica: nenhuma confirmação de queda");
+    assert.equal(r.incident, null);
+    assert.equal(net.issues.length, 0, "nenhum alerta aberto");
+    const w = lines.find((l) => l.startsWith("::warning title=P18_BODY_ERROR_CONTADO_COMO_DISPONIVEL::"));
+    assert.ok(w, "aviso explícito no run");
+    assert.match(w, /vendas\.zevanory\.api\.br\/ia-na-pratica:200:AbortError/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
