@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SCHEMA_PROBE, ALERT_TITLE, validateProbe, validateRun, decideIncident, SALES_PAGES, STATUS_URL } from "../scripts/b0/b0-lib.mjs";
+import { SCHEMA_PROBE, ALERT_TITLE, validateProbe, validateRun, decideIncident, SALES_PAGES, STATUS_URL, CONTROL_URLS } from "../scripts/b0/b0-lib.mjs";
 import {
   ROUTE_BUDGETS_MS, DEFAULT_BUDGET_MS, REQUEST_TIMEOUT_MS, assertBudgets, budgetFor, effectiveLatency, classifyTarget, initialPerf, stepPerf, foldPerf,
   decidePerfAlert, validatePerfEvent, SCHEMA_PERF, PERF_TITLE, deriveBudgets, replay, BUDGET_FLOOR_MS,
@@ -234,7 +234,10 @@ test("[E2E-PERF] monitor: 1 janela lenta não avisa; 2ª avisa UMA vez no canal 
     const hb = JSON.parse(readTextNormalized(join(dir, "p18", "heartbeat.json")));
     assert.equal(hb.perf_state, "SAUDAVEL", "E2E-heartbeat-perf"); assert.equal(hb.up, true, "E2E-heartbeat-up");
     const prod = n.calls.filter((c) => !c.url.startsWith("https://api.github.com/"));
-    assert.equal(prod.length, 6 * ALL.length, "E2E-no-extra-requests: 8 GETs por janela, igual a antes");
+    // P19 fase 1: 8 alvos + 4 controles de diagnóstico (CONTROL_URLS) por janela; nenhuma outra requisição.
+    assert.equal(prod.length, 6 * (ALL.length + CONTROL_URLS.length), "E2E-no-extra-requests: 12 GETs por janela (8 alvos + 4 controles)");
+    assert.deepEqual(probes[0].controls.map((c) => c.id), CONTROL_URLS.map((c) => targetId(c.url)), "E2E-controls-recorded");
+    assert.ok(probes.every((p) => p.targets.length === ALL.length), "E2E-controls-outside-targets: controles não entram em up nem desempenho");
     assert.ok(prod.every((c) => c.method === "GET" && !/comprar|checkout|pagamento/.test(c.url)), "só GET em páginas públicas e status");
     assert.ok(n.calls.every((c) => !/cloudflare/.test(c.url)), "nenhuma chamada à Cloudflare (sem KV)");
   } finally { rmSync(dir, { recursive: true, force: true }); }

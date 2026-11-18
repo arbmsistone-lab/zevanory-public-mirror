@@ -30,7 +30,7 @@ import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } fr
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  SALES_PAGES, STATUS_URL, SCHEMA_PROBE, CONFIRM_DELAY_MS, readP22, validateProbe, validateRun, validateIncident, parseJsonl,
+  SALES_PAGES, STATUS_URL, CONTROL_URLS, SCHEMA_PROBE, CONFIRM_DELAY_MS, readP22, validateProbe, validateRun, validateIncident, parseJsonl,
   decideIncident, finalizeIncident, openIncident, buildRunRecord, buildHeartbeat, findOpenAlert, alertBody, ALERT_TITLE,
   resolveDispatch, isDuplicateWindow, buildCfDispatch, PROBING_OUTCOMES, evaluateCfDispatch, firstProofAt,
 } from "./b0-lib.mjs";
@@ -52,9 +52,16 @@ export function runnerInfo(env = {}) {
 }
 export const probeIdOf = (env, seq) => `p18p-${envStr(env.GITHUB_RUN_ID) || "local"}-${envStr(env.GITHUB_RUN_ATTEMPT) || "1"}-${seq}`;
 
+const sha40 = (v) => { const s = String(v || "").trim().toLowerCase(); return /^[0-9a-f]{40}$/.test(s) ? s : null; };
+const triesOf = (r) => (Array.isArray(r.tries) ? { tries: r.tries.map((t) => ({ n: t.n, started_at: t.started_at, ms: t.ms, ...(Number.isInteger(t.status) ? { status: t.status } : {}), ...(t.error ? { error: t.error } : {}) })) } : {});
+
 export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), pause, kind = "scheduled" } = {}) {
   const urls = [...SALES_PAGES, STATUS_URL];
-  const res = await Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS })));
+  // P19 fase 1: controles na MESMA janela (concorrentes com os alvos), gravados à parte; não mudam up nem desempenho.
+  const [res, ctl] = await Promise.all([
+    Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS }))),
+    Promise.all(CONTROL_URLS.map((c) => probeUrl(c.url, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS }))),
+  ]);
   let p22 = { readable: false, reason: "status_unreachable" };
   const targets = res.map((r) => {
     let ok = r.status >= 200 && r.status < 400;
@@ -65,9 +72,15 @@ export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), paus
       p22 = ok ? readP22(body, now()) : { readable: false, reason: "status_http_" + r.status };
     }
     return { id: targetId(r.url), ok, status: Number.isInteger(r.status) ? r.status : 0, latency_ms: r.latency_ms ?? null,
-      ...(Number.isInteger(r.attempts) ? { attempts: r.attempts } : {}), ...(Number.isFinite(r.elapsed_ms) ? { elapsed_ms: r.elapsed_ms } : {}), ...(r.error ? { error: r.error } : {}) };
+      ...(Number.isInteger(r.attempts) ? { attempts: r.attempts } : {}), ...(Number.isFinite(r.elapsed_ms) ? { elapsed_ms: r.elapsed_ms } : {}), ...(r.error ? { error: r.error } : {}), ...triesOf(r) };
   });
-  return validateProbe({ schema: SCHEMA_PROBE, at: new Date(now()).toISOString(), kind, up: targets.every((t) => t.ok), targets, p22 });
+  const json = (r) => { try { return JSON.parse(r.body || ""); } catch { return null; } };
+  const controls = ctl.map((r, i) => ({ id: targetId(r.url), deps: CONTROL_URLS[i].deps, ok: r.status >= 200 && r.status < 400, status: Number.isInteger(r.status) ? r.status : 0, latency_ms: r.latency_ms ?? null,
+    ...(Number.isInteger(r.attempts) ? { attempts: r.attempts } : {}), ...(Number.isFinite(r.elapsed_ms) ? { elapsed_ms: r.elapsed_ms } : {}), ...(r.error ? { error: r.error } : {}), ...triesOf(r) }));
+  const rel = ctl.find((r) => r.url.endsWith("zevanory.api.br/api/release") && !r.url.includes("edge."));
+  const sales = ctl.find((r) => r.url === "https://vendas.zevanory.api.br/health");
+  const served = { central: sha40(json(rel || {})?.deployment?.commit_sha), sales: sha40(json(sales || {})?.release) };
+  return validateProbe({ schema: SCHEMA_PROBE, at: new Date(now()).toISOString(), kind, up: targets.every((t) => t.ok), targets, p22, controls, served });
 }
 
 // Linhas do mês corrente e do anterior (virada do mês), em ordem. Malformado derruba.
@@ -211,6 +224,10 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   }
   const cur = probes.at(-1);
   log("::notice title=P18_PROBE::" + JSON.stringify({ at: cur.at, up: cur.up, probes: probes.length, decision: d.action, down: cur.targets.filter((t) => !t.ok).map((t) => t.id + ":" + t.status), p22_valid: cur.p22.valid ?? null }));
+  // P19 fase 1: por tentativa (início e duração) de alvos e controles, e a versão servida, para separar 1ª tentativa,
+  // nova tentativa e total. Só diagnóstico: não muda decisão, alerta nem desempenho.
+  for (const p of probes) log("::notice title=P18_PROBE_DIAG::" + JSON.stringify({ at: p.at, kind: p.kind, served: p.served ?? null,
+    tries: Object.fromEntries([...p.targets, ...(p.controls || [])].map((t) => [t.id, (t.tries || []).map((x) => [x.started_at.slice(11, 23), x.ms, x.status ?? x.error])])) }));
 
   const pendingInc = d.action === "confirm" ? d.incident : d.action === "alert_retry" ? open : null;
   const alert = await handleAlert({ decision: d, cur, incident: pendingInc, env, fetchImpl, now, log });

@@ -9599,17 +9599,27 @@ function buildVerifiedReadRoutes(env = process.env) {
   return Object.freeze(routes2);
 }
 __name(buildVerifiedReadRoutes, "buildVerifiedReadRoutes");
-async function executeVerifiedRead({ env = process.env, connect, read } = {}) {
+async function executeVerifiedRead({ env = process.env, connect, read, diag = null } = {}) {
   if (typeof connect !== "function" || typeof read !== "function") throw new Error("read_fabric_invalid");
   const attempts = [];
+  // P19 fase 1: com diag (rid opaco de 12 hex + rota pública), cada rota de leitura registra ENTRADA e SAÍDA nos logs
+  // operacionais; uma leitura que trava deixa só a entrada. Sem diag, comportamento e saída idênticos aos de antes.
+  const diagLog = /* @__PURE__ */ __name((o) => {
+    if (!diag) return;
+    try { console.log(JSON.stringify({ evt: "diag_stage", rid: diag.rid, route: diag.route, stage: "pg_read", ...o })); } catch { }
+  }, "diagLog");
   for (const route of buildVerifiedReadRoutes(env)) {
+    const startedAt = Date.now();
+    diagLog({ phase: "start", read_route: route.id });
     try {
       const sql = connect(route.url);
       const result2 = await read(sql, route);
       attempts.push(Object.freeze({ route: route.id, status: "pass" }));
+      diagLog({ phase: "end", read_route: route.id, ok: true, ms: Date.now() - startedAt });
       return Object.freeze({ ok: true, route: route.id, canonical: route.canonical, result: result2, attempts: Object.freeze(attempts) });
     } catch (error) {
       attempts.push(Object.freeze({ route: route.id, status: "failed", reason: String(error?.message || "read_failed").slice(0, 200) }));
+      diagLog({ phase: "end", read_route: route.id, ok: false, ms: Date.now() - startedAt, error_class: String(error?.name || "Error").slice(0, 40) });
     }
   }
   return Object.freeze({ ok: false, reason: "no_verified_read_route_available", attempts: Object.freeze(attempts) });
@@ -9630,7 +9640,8 @@ async function handler2(req, res) {
     operationalLog(context, 405, "method_not_allowed");
     return res.end(JSON.stringify({ error: "method_not_allowed", request_id: context.requestId }));
   }
-  const readOutcome = await executeVerifiedRead({ env: process.env, connect: cs, read: /* @__PURE__ */ __name(async (sql) => {
+  const diagRid = String(req.headers?.["x-zevanory-diag"] || "").toLowerCase();
+  const readOutcome = await executeVerifiedRead({ env: process.env, connect: cs, diag: /^[0-9a-f]{12}$/.test(diagRid) ? { rid: diagRid, route: "/api/status" } : null, read: /* @__PURE__ */ __name(async (sql) => {
     const [telemetry, orders, financial, leads, actions, dueBuckets, riskBuckets, economics, last] = await Promise.all([
       sql.query("select event_name, count(*)::int as count from telemetry_events group by event_name"),
       sql.query("select status, count(*)::int as count from orders group by status"),

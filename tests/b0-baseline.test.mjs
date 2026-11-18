@@ -253,6 +253,9 @@ function fakeNet({ ccMessage, statusBody, pagesDown = false, ctl = null, ccNextM
       return res({}, 404);
     }
     if (u.pathname === "/sitemap.xml") return res(`<urlset><url><loc>https://${u.host}/solucoes</loc></url><url><loc>https://${u.host}/comprar/X</loc></url></urlset>`);
+    // P19 fase 1: controles de diagnóstico respondem fixo e não consomem o estado de queda das páginas.
+    if (u.pathname === "/api/health" || u.pathname === "/health") return res({ ok: true, live: true });
+    if (u.pathname === "/api/release") return res({ release_id: "r", deployment: { commit_sha: "c".repeat(40) } });
     if (u.pathname === "/api/status") return res(statusBody ?? { commercial_metrics_provenance: { state: "UNVERIFIED_FAIL_CLOSED", measured_at: null, commercial_release_allowed: false }, sales_authorization: { state: "closed" } });
     return res("<html>ok</html>", down() ? 503 : 200);
   };
