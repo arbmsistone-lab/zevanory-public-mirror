@@ -3,9 +3,10 @@
 // com um KV em memória. Assim o ensaio lê exatamente o formato que o Worker de produção grava.
 // Uso: PGHOST=... PGDATABASE=<banco-origem-sintetico> node tests/helpers/p20_worker_backup_fixture.mjs <saida.json> <agora-iso>
 // O "sql" do Worker é atendido pelo psql (parâmetros $n viram literais citados; saída CSV vira objetos).
+import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
-import { runDataBackup, finalizeBackup } from "../../worker/data-backup.mjs";
+import { runDataBackup, finalizeBackup, planBackup } from "../../worker/data-backup.mjs";
 
 const lit = (v) => {
   if (v === null || v === undefined) return "NULL";
@@ -97,10 +98,40 @@ export async function buildFixture({ now, env = process.env, kvSeed = {} }) {
   return { kv: Object.fromEntries([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:"))), reports, final };
 }
 
+// P20 v2: o mesmo caminho da produção com plano autenticado: plano (só leitura) -> partes com plan_id -> consolidação.
+// hooks.beforePart(p) (opcional) roda antes de cada parte: usado pelas contraprovas (esquema alterado no meio, escrita
+// concorrente). Devolve também o plano e os relatórios, para os testes conferirem.
+export async function buildFixtureV2({ now, env = process.env, kvSeed = {}, hooks = {} }) {
+  const kv = memoryKv(kvSeed);
+  const sql = psqlSql(env);
+  const wenv = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://fixture-local-only", ...(env.P20_BACKUP_KEY ? { P20_BACKUP_KEY: env.P20_BACKUP_KEY } : {}) };
+  const legacy = env.P20_BACKUP_KEY ? {} : { encryptionRequired: false };
+  // A posse do dia vive no banco (zevanory_backup_day). A fixture simula um banco recém-preparado para o dia: zera a posse
+  // de execuções ANTERIORES da própria fixture sobre o mesmo banco (o ensaio gera a cópia clara e a cifrada do mesmo banco).
+  await sql.query("do $$ begin if to_regclass('public.zevanory_backup_day') is not null then delete from public.zevanory_backup_day; end if; end $$");
+  const plan = await planBackup(wenv, { sqlFactory: () => sql, now, ...legacy });
+  const runId = randomBytes(16).toString("hex");
+  const reports = [];
+  if (plan.ok) {
+    for (let part = 0; part < plan.parts; part++) {
+      if (hooks.beforePart) await hooks.beforePart(part);
+      reports.push(await runDataBackup(wenv, { sqlFactory: () => sql, now, part, parts: plan.parts, planId: plan.plan_id, runId, ...legacy }));
+    }
+  }
+  const final = plan.ok ? await finalizeBackup(wenv, { parts: plan.parts, now, planId: plan.plan_id, runId, sqlFactory: () => sql, ...legacy }) : null;
+  return { kv: Object.fromEntries([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:"))), plan, reports, final };
+}
+
 const isMain = process.argv[1] && import.meta.url.endsWith("/p20_worker_backup_fixture.mjs") && process.argv[1].endsWith("p20_worker_backup_fixture.mjs");
 if (isMain) {
-  const [out, nowIso] = process.argv.slice(2);
-  const { kv, final } = await buildFixture({ now: Date.parse(nowIso), kvSeed: syntheticKvSeed(Date.parse(nowIso)) });
-  writeFileSync(out, JSON.stringify(kv));
-  console.log(JSON.stringify({ ok: final.ok, day: final.day, tables: final.neon.tables, rows: final.neon.rows, failures: final.failures, encryption: final.encryption, kv_keys: final.kv?.keys ?? null }));
+  const [out, nowIso, mode] = process.argv.slice(2);
+  if (mode === "v2") {
+    const { kv, plan, final } = await buildFixtureV2({ now: Date.parse(nowIso), kvSeed: syntheticKvSeed(Date.parse(nowIso)) });
+    writeFileSync(out, JSON.stringify(kv));
+    console.log(JSON.stringify({ ok: !!final?.ok, plan: { ok: plan.ok, parts: plan.parts ?? null, eligible: plan.eligible ?? null, failures: plan.failures }, day: final?.day ?? null, tables: final?.neon?.tables ?? null, rows: final?.neon?.rows ?? null, failures: final?.failures ?? plan.failures, auth: final?.auth?.state ?? null, encryption: final?.encryption ?? null, kv_keys: final?.kv?.keys ?? null }));
+  } else {
+    const { kv, final } = await buildFixture({ now: Date.parse(nowIso), kvSeed: syntheticKvSeed(Date.parse(nowIso)) });
+    writeFileSync(out, JSON.stringify(kv));
+    console.log(JSON.stringify({ ok: final.ok, day: final.day, tables: final.neon.tables, rows: final.neon.rows, failures: final.failures, encryption: final.encryption, kv_keys: final.kv?.keys ?? null }));
+  }
 }

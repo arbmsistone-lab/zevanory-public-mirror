@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Mutantes do P20 v2 (docs/p20/particoes-v2.md): UM mutante por regra nova, cada um com o teste que tem de morrer
+escrito ANTES de rodar. Cada mutante altera uma linha numa cópia da árvore em diretório temporário (o repositório nunca
+é alterado) e roda só o teste esperado:
+  - regras do Worker e do condutor: tests/p20-particoes-v2.test.mjs (node, sem rede, sem banco);
+  - regras do arquivador e do restaurador: o método do teste oficial tests/test_p20_restauracao_integral.py (PostgreSQL
+    descartável do job; sem PGHOST os mutantes Python ficam INCONCLUSIVE e o job falha).
+Veredito: KILLED = o teste esperado reprovou (nome do teste no resultado); SURVIVED = passou; INCONCLUSIVE = âncora
+ausente/duplicada, falha de outro teste ou tempo esgotado (repetido 1 vez). Exit 0 só com todos KILLED.
+Uso: python3 scripts/ci/mutants_p20_v2.py [raiz-do-repo]
+"""
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
+COPY = ["worker", "scripts/ops", "scripts/p20", "tests", "db", "docs/p20", "data"]
+NODE_T = "tests/p20-particoes-v2.test.mjs"
+PY_T = "tests.test_p20_restauracao_integral.RestauracaoIntegral."
+W, CR, DRV = "worker/data-backup.mjs", "worker/backup-crypto.mjs", "scripts/ops/data-backup.mjs"
+A, RS = "scripts/ops/backup_preserve_archive.py", "scripts/ops/restore_new_database.py"
+
+# (arquivo, trecho original, trecho mutado, ("node"|"py", teste que tem de reprovar))
+M = {
+    "V01 partes = ceil(E/31)": (W, "Math.ceil(eligibleCount / MAX_DRILL_TABLES)", "Math.ceil(eligibleCount / (MAX_DRILL_TABLES + 1))",
+                                ("node", "garantia de distribuição")),
+    "V02 credenciais numeradas junto com as elegíveis": (W, "const eligible = inv.filter((x) => !SENSITIVE.test(x.t)).map((x) => x.t);",
+                                                         "const eligible = inv.map((x) => x.t);", ("node", "tabelas de credencial saem ANTES")),
+    "V03 sem limite de capacidade": (W, "  if (parts > MAX_PARTS) return { ok: false, failures: [\"capacity_exceeded:\" + eligible.length], eligible: eligible.length };\n", "",
+                                     ("node", "capacidade: 180")),
+    "V04 parte aceita plan_id diferente": (W, "      if (pl.plan_id !== planId) { fail(\"inventory_changed\"); return reject(report); }\n", "",
+                                           ("node", "parte com plan_id diferente")),
+    "V05 parte fora do plano aceita": (W, "      if (!Number.isInteger(part) || part < 0 || part >= pl.plan.parts) { fail(\"part_out_of_range\"); return reject(report); }\n", "",
+                                       ("node", "parte fora do intervalo")),
+    "V06 tabela em duas partes aceita": (W, "    for (const t of names) { if (seen.has(t)) failures.push(\"table_in_two_parts:\" + t); seen.set(t, i); }",
+                                         "    for (const t of names) { seen.set(t, i); }", ("node", "consolidação v2 reprova")),
+    "V07 cobertura incompleta aceita": (W, "  if (missing.length) failures.push(\"coverage_incomplete:\" + missing.length);\n", "",
+                                        ("node", "consolidação v2 reprova")),
+    "V08 plano adulterado aceito": (W, "  if (expectedId !== planId) { failures.push(\"plan_auth_failed\"); return; }\n", "",
+                                    ("node", "consolidação v2 reprova")),
+    "V09 parte de outro plano aceita": (W, "if (r.contract !== CONTRACT_V2 || r.plan_id !== planId || r.part !== i)", "if (r.contract !== CONTRACT_V2 || r.part !== i)",
+                                        ("node", "consolidação v2 reprova")),
+    "V10 hash dos bundles fora do HMAC": (W, "\"parts\", \"parts_detail\", \"ok\"", "\"parts\", \"ok\"", ("node", "consolidação v2 íntegra")),
+    "V11 HKDF com outro contexto": (CR, "export const REPORT_HKDF_INFO = \"zevanory-backup-report-v2\";", "export const REPORT_HKDF_INFO = \"zevanory-backup-report\";",
+                                    ("py", "test_p2_94_tabelas_4_partes")),
+    "V12 condutor aceita 7 partes": (DRV, "Number.isInteger(body.parts) && body.parts >= 1 && body.parts <= 6) {\n    return { mode: \"v2\"", "Number.isInteger(body.parts) && body.parts >= 1 && body.parts <= 7) {\n    return { mode: \"v2\"", ("node", "condutor: rota de plano")),
+    "V13 linhas pela estatística, não pelo conteúdo": (W, "      if (v2) { try { const a = JSON.parse(json); rows = Array.isArray(a) ? a.length : -1; } catch { rows = -1; } if (rows < 0) fail(\"neon_copy_not_array:\" + t); }\n", "",
+                                                      ("py", "test_n2_escrita_concorrente_conta_no_conteudo")),
+    "V14 arquivador aceita parte ausente": (A, "        if with_bundle - set(keys):\n            fail(\"missing_part \" + \",\".join(str(p) for p in sorted(with_bundle - set(keys))))\n", "",
+                                            ("py", "test_n3_parte_ausente")),
+    "V15 arquivador aceita parte extra": (A, "        if set(keys) - with_bundle:\n            fail(\"extra_part \" + \",\".join(str(p) for p in sorted(set(keys) - with_bundle)))\n", "",
+                                          ("py", "test_n4_parte_extra")),
+    "V16 arquivador sem conferir o HMAC do relatório": (A, "    if not _h.compare_digest(hmac_hex(k, canonical(body)), str(auth.get(\"hmac\", \"\"))):\n        fail(\"report_hmac_invalid\")\n", "",
+                                                        ("py", "test_n5_relatorio_com_hmac_adulterado")),
+    "V17 arquivador sem conferir o hash do bundle": (A, "            if sha256_hex(raw[p]) != exp[p][\"sha256\"]:\n                fail(f\"part_hash_mismatch part={p}\")\n", "",
+                                                     ("py", "test_n6_bundle_movido_de_parte")),
+    "V18 restaurador sem a chave restaura mesmo assim": (RS, "    if bpa.content_state(info) == bpa.ST_ENC_OPAQUE:\n        fail(\"restore_requires_backup_key\")\n", "",
+                                                        ("py", "test_n8_sem_chave_no_arquivamento_nao_autenticado_e_restauracao_recusada")),
+    "V19 restaurador não decifra (defeito original)": (RS, "    tables, info, plain = bpa.describe_parts(raw, doc.get(\"day\"), ring)", "    tables, info, plain = bpa.describe_parts(raw, doc.get(\"day\"), {})",
+                                                       ("py", "test_n10_legado_v1_cifrado_3_partes_restaura_com_decifragem")),
+    "V20 FK quebrada vira erro genérico": (RS, "        if code == \"23503\" and table:\n            fail(f\"inconsistencia_entre_tabelas {table} sqlstate=23503\")\n", "",
+                                           ("py", "test_n9_chave_estrangeira_quebrada_entre_partes")),
+    "V21 legado declarado completo": (RS, "\"estado\": \"completo\" if meta[\"contract\"] == 2 and meta[\"auth_state\"] == bpa.AUTH_OK else meta[\"auth_state\"]",
+                                      "\"estado\": \"completo\"", ("py", "test_n10_legado_v1_cifrado_3_partes_restaura_com_decifragem")),
+    # Contra-auditoria GPT-6 17/11 (lacunas 1 e 2 do PR #1070 em bd16101e).
+    "V22 parte rejeitada grava o relatório (sobrescreve o válido)": (W, "      if (pl.plan_id !== planId) { fail(\"inventory_changed\"); return reject(report); }\n",
+                                                                     "      if (pl.plan_id !== planId) { fail(\"inventory_changed\"); return finishPart(kv, report, part); }\n",
+                                                                     ("node", "parte com plan_id diferente")),
+    "V23 consolidação aceita relatório de outra execução": (W, "    if (r.run_id !== runId) { failures.push(\"part_run_mismatch:\" + i); return; }\n", "",
+                                                             ("node", "consolidação v2 reprova")),
+    "V24 sem reconferir o plano depois da exportação": (W, "      if (!post.ok || post.plan_id !== planId) fail(\"inventory_changed_during_export\");\n", "",
+                                                         ("py", "test_n12_tipo_de_coluna_muda_entre_validacao_e_exportacao")),
+    "V25 sem conferir as colunas do conteúdo exportado": (W, "fail(\"export_columns_mismatch:\" + r.t); }", "}",
+                                                          ("py", "test_n13_coluna_criada_e_desfeita_em_volta_da_exportacao")),
+    # Contra-auditoria GPT-6 17/11, segunda rodada (PR #1070 em 54823ea6).
+    # V26: a camada inteira de posse da parte (checagem da posse E reserva da parte; a reserva também exige a posse).
+    "V26 parte grava sem a posse do dia": (W, ("      if (!c.owner) { fail(c.reason); return reject(report); }\n", "      if (!rv.ok) { fail(rv.reason); return reject(report); }\n"), ("", ""),
+                                          ("py", "test_n18_corrida_b_obtem_a_posse_e_pausa_a_nao_grava_nada")),
+    "V27 consolidação publica sem a posse do dia": (W, "      if ((t || []).length !== 1) {", "      if (false) {",
+                                                    ("node", "consolidação v2 íntegra")),
+    "V28 tipos não conferidos na própria leitura": (W, "        if (seen !== canonical(pl.colsOf[r.t] || [])) fail(\"export_schema_mismatch:\" + r.t);\n", "",
+                                                    ("py", "test_n14_tipo_muda_e_volta_em_volta_da_exportacao")),
+    "V29 reaproveita conteúdo de outro esquema": (W, "      if (v2 && p.cols !== canonical(pl.colsOf[t] || [])) continue;\n", "",
+                                                  ("py", "test_n16_reaproveitamento_exige_o_mesmo_esquema")),
+    # Contra-auditoria GPT-6 17/11, terceira rodada (PR #1070 em 8290a460): corrida entre execuções.
+    "V30 posse tomada de execução viva": (W, "(zevanory_backup_day.run_id = excluded.run_id or zevanory_backup_day.updated_at < now() - interval '30 minutes')", "true",
+                                          ("py", "test_n18_corrida_b_obtem_a_posse_e_pausa_a_nao_grava_nada")),
+    # V31: dia concluído reaberto (a reivindicação E a reserva da parte deixam de exigir state = 'running').
+    "V31 dia concluído reivindicado de novo": (W, ("      where zevanory_backup_day.state = 'running'\n        and (", "where day = $1::date and run_id = $2 and state = 'running' and not ($3::integer = any(parts_called))"),
+                                               ("      where (", "where day = $1::date and run_id = $2 and not ($3::integer = any(parts_called))"),
+                                               ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
+    "V32 publica sem fechar o dia na própria posse": (W, "    if ((done || []).length !== 1) return refuse(await dayRefusal(dsql, day));\n", "",
+                                                      ("node", "consolidação v2 íntegra")),
+    "V33 rota aceita chamada legada v1": (W, "  if (!rawPlan || !rawRun) return { ok: false, failure: \"v2_required:plan_id_and_run_id\" };\n", "",
+                                          ("node", "condutor: rota de plano")),
+    # Contra-auditoria GPT-6 17/11, quarta rodada (PR #1070 em c9847e12): reserva, cerca e recuperação da publicação.
+    "V34 parte reserva o dia antes de validar o plano": (W, "  let myTables = null;\n  let kvw = kv;", "  if (v2) await claimDay(sql, day, runId);\n  let myTables = null;\n  let kvw = kv;",
+                                                         ("node", "parte com plan_id diferente")),
+    "V35 gravação sem cerca de posse": (W, "      kvw = fencedKv(kv, () => fence(sql, day, runId));", "      kvw = kv;",
+                                        ("py", "test_n21_posse_expirada_execucao_antiga_nao_altera_a_nova")),
+    "V36 relatório aprovado não guardado no fechamento": (W, "set state = 'complete', report = $3, updated_at", "set state = 'complete', updated_at",
+                                                          ("py", "test_n19_queda_entre_fechar_o_dia_e_publicar_reinicio_republica")),
+    "V37 dia concluído sem republicação": (W, "        const rp = await republish(env, dsql, day);", "        const rp = { state: \"ausente\" };",
+                                           ("py", "test_n19_queda_entre_fechar_o_dia_e_publicar_reinicio_republica")),
+    "V38 consolidação reserva o dia": (W, "      const t = await dsql.query(`update zevanory_backup_day set updated_at = now() where day = $1::date and run_id = $2 and state = 'running' returning run_id`, [day, owner]);",
+                                       "      const t = (await claimDay(dsql, day, owner)).owner ? [1] : [];",
+                                       ("node", "parte fora do intervalo")),
+    # Contra-auditoria GPT-6 18/11, quinta rodada (PR #1070 em 444e3df5).
+    "V39 rota aceita parte fora do plano (ajuste do índice)": (W, "Number(rawPart) >= parts) return", "false) return",
+                                                              ("node", "rota HTTP real")),
+    "V40 consolidação reprovada grava a chave canônica": (W, "    await kv.put(REPORT_FAIL_KEY, text, { expirationTtl: 8 * DAY });", "    await kv.put(REPORT_KEY, text);",
+                                                         ("py", "test_n22_consolidacao_reprovada_pendente_nao_substitui_o_relatorio_aprovado")),
+    "V41 tabela de controle ausente vira day_claim_failed": (W, "      if (!(await dayTableExists(dsql))) return refuse(\"day_not_claimed\");\n", "",
+                                                             ("py", "test_n20_chamada_rejeitada_nao_reserva_o_dia")),
+    "V42 erro antes da posse grava o relatório da parte": (W, "    if (v2 && !owned) {", "    if (false) {",
+                                                           ("node", "rota HTTP real")),
+    # Contra-auditoria GPT-6 18/11, R5 (PR #1070 em 7c62fb3d): parte duplicada da mesma execução.
+    "V43 parte chamada duas vezes na mesma execução": (W, "      if (!rv.ok) { fail(rv.reason); return reject(report); }\n", "",
+                                                       ("py", "test_n23_parte_duplicada_pendente_nao_altera_artefatos_do_dia_aprovado")),
+    # Contra-auditoria GPT-6 18/11 (ordem de fechamento): só a condição state = 'running' da reivindicação. A reserva da
+    # parte ainda bloqueia o KV, mas a reivindicação mudaria dono, updated_at e partes chamadas do dia concluído.
+    "V44 reivindicação sem exigir dia em andamento": (W, "      where zevanory_backup_day.state = 'running'\n        and (", "      where (",
+                                                      ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
+}
+
+
+def build(tmp, mutation):
+    for rel in COPY:
+        src = Path(REPO, *rel.split("/"))
+        shutil.copytree(src, Path(tmp, *rel.split("/")), dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules"))
+    shutil.copyfile(Path(REPO, "package.json"), Path(tmp, "package.json")) if Path(REPO, "package.json").exists() else None
+    # Um mutante pode trocar VÁRIOS trechos do mesmo arquivo (tupla de trechos): usado quando a regra é uma camada inteira
+    # de proteção cujas checagens se cobrem umas às outras (remover só uma seria um mutante equivalente).
+    rel, old, new = mutation
+    olds, news = (old, new) if isinstance(old, tuple) else ((old,), (new,))
+    f = Path(tmp, *rel.split("/"))
+    text = f.read_text(encoding="utf-8")
+    for o, n in zip(olds, news):
+        if text.count(o) != 1:
+            return False
+        text = text.replace(o, n, 1)
+    f.write_text(text, encoding="utf-8")
+    return True
+
+
+def run(tmp, kind, test):
+    env = {**os.environ, "NODE_NO_WARNINGS": "1", "NO_COLOR": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+    if kind == "node":
+        cmd = ["node", "--test", "--test-reporter=tap", f"--test-name-pattern={re.escape(test)}", NODE_T]
+    else:
+        cmd = [sys.executable, "-E", "-m", "unittest", PY_T + test]
+    try:
+        r = subprocess.run(cmd, cwd=tmp, env=env, capture_output=True, text=True, timeout=1500)
+    except subprocess.TimeoutExpired:
+        return "INCONCLUSIVE", "timeout"
+    out = r.stdout + r.stderr
+    if kind == "node":
+        failed = re.findall(r"^not ok \d+ - (.*)$", out, re.M)
+        ran = re.search(r"^# tests (\d+)$", out, re.M)
+        if not ran or ran.group(1) == "0":
+            return "INCONCLUSIVE", "teste esperado não rodou"
+        if r.returncode == 0:
+            return "SURVIVED", "teste passou"
+        return ("KILLED", failed[0]) if failed and all(test in f for f in failed) else ("INCONCLUSIVE", "falhou outro teste: " + "; ".join(failed)[:200])
+    if re.search(r"^Ran 1 test", out, re.M) is None:
+        return "INCONCLUSIVE", "teste esperado não rodou: " + out[-300:]
+    if r.returncode == 0:
+        return "SURVIVED", "teste passou"
+    return ("KILLED", test) if re.search(r"^(FAIL|ERROR): " + re.escape(test), out, re.M) else ("INCONCLUSIVE", out[-300:])
+
+
+def main():
+    results = []
+    for name, (rel, old, new, (kind, test)) in M.items():
+        if kind == "py" and not os.environ.get("PGHOST"):
+            results.append((name, "INCONCLUSIVE", "PGHOST ausente"))
+            continue
+        verdict = reason = None
+        for _ in range(2):
+            with tempfile.TemporaryDirectory(prefix="p20mut_") as tmp:
+                if not build(tmp, (rel, old, new)):
+                    verdict, reason = "INCONCLUSIVE", "âncora ausente ou duplicada"
+                    break
+                verdict, reason = run(tmp, kind, test)
+            if verdict != "INCONCLUSIVE":
+                break
+        results.append((name, verdict, reason))
+        print(f"MUTANT {name} {verdict} ({reason[:160]})", flush=True)
+    k = sum(v == "KILLED" for _, v, _ in results)
+    s = sum(v == "SURVIVED" for _, v, _ in results)
+    i = sum(v == "INCONCLUSIVE" for _, v, _ in results)
+    print(f"MUTANTS total={len(results)} killed={k} survived={s} inconclusive={i}")
+    return 0 if k == len(results) else (1 if s else 3)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

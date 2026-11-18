@@ -106,3 +106,37 @@ export function bundleCtxFromKey(bundleKey) {
   const m = /^zpc:backup:v1:neon:(\d{4}-\d{2}-\d{2}):part:(\d+)$/.exec(String(bundleKey || ""));
   return m ? { day: m[1], part: Number(m[2]), bundleKey: String(bundleKey) } : null;
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// P20 v2 (docs/p20/particoes-v2.md): autenticação do PLANO e do RELATÓRIO do backup.
+// K_rel = HKDF-SHA256(ikm = os 32 bytes de P20_BACKUP_KEY, salt vazio, info "zevanory-backup-report-v2"), 32 bytes,
+// usada só como chave HMAC-SHA256. É separada da chave que cifra os dados e nunca é gravada (só o kid da chave-mãe).
+// Mesma derivação em scripts/ops/backup_preserve_archive.py (cryptography HKDF) e scripts/p20/backup-envelope.mjs.
+export const REPORT_HKDF_INFO = "zevanory-backup-report-v2";
+
+// JSON canônico: chaves em ordem, sem espaços. Só string/inteiro/booleano/null/lista/objeto (nada de float).
+// Igual a json.dumps(v, sort_keys=True, separators=(",", ":"), ensure_ascii=False) do Python para esses tipos.
+export function canonical(v) {
+  if (v === null || typeof v === "boolean" || typeof v === "string") return JSON.stringify(v);
+  if (typeof v === "number") { if (!Number.isSafeInteger(v)) throw err("canonical_number_not_integer"); return String(v); }
+  if (Array.isArray(v)) return "[" + v.map(canonical).join(",") + "]";
+  if (isObj(v)) return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}";
+  throw err("canonical_type_unsupported");
+}
+
+// { state: "absent" | "invalid" } | { state: "present", kid, hmacKey }. O texto do segredo nunca sai daqui.
+export async function loadReportKey(secret) {
+  if (secret == null || String(secret).trim() === "") return { state: "absent" };
+  let raw;
+  try { raw = b64decode(String(secret).trim()); } catch { return { state: "invalid" }; }
+  if (raw.length !== KEY_BYTES) return { state: "invalid" };
+  const ikm = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: te.encode(REPORT_HKDF_INFO) }, ikm, 256);
+  const hmacKey = await crypto.subtle.importKey("raw", bits, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return { state: "present", kid: await kidOf(raw), hmacKey };
+}
+
+export async function hmacHex(rk, text) {
+  if (!rk || rk.state !== "present") throw err("report_key_unavailable");
+  return hex(await crypto.subtle.sign("HMAC", rk.hmacKey, te.encode(String(text))));
+}

@@ -125,7 +125,7 @@
       "rto_objetivo_h": 24,
       "integridade": "Idem pedidos",
       "status": "PROPOSTA",
-      "tables": ["schema_migrations", "agent_approvals", "agent_control_state", "agent_jobs", "agent_memory", "agent_runs", "agent_tool_audit", "tenants", "tenant_memberships", "nuvemshop_connections", "nuvemshop_webhook_receipts", "whatsapp_evidence", "whatsapp_history", "whatsapp_observations", "whatsapp_stage_events", "kit_alarm_policy", "kit_owner_alert_outbox", "cp_alarm_jobs", "cp_alarm_outbox", "cp_campaign_reminder_outbox", "cp_outbox", "cp_owner_alert_outbox", "cp_regen_jobs", "cp_resend_outbox", "cp_work_events", "cp_work_jobs", "zevanory_whatsapp_broker_runtime"],
+      "tables": ["schema_migrations", "agent_approvals", "agent_control_state", "agent_jobs", "agent_memory", "agent_runs", "agent_tool_audit", "tenants", "tenant_memberships", "nuvemshop_connections", "nuvemshop_webhook_receipts", "whatsapp_evidence", "whatsapp_history", "whatsapp_observations", "whatsapp_stage_events", "kit_alarm_policy", "kit_owner_alert_outbox", "cp_alarm_jobs", "cp_alarm_outbox", "cp_campaign_reminder_outbox", "cp_outbox", "cp_owner_alert_outbox", "cp_regen_jobs", "cp_resend_outbox", "cp_work_events", "cp_work_jobs", "zevanory_whatsapp_broker_runtime", "zevanory_owner_chat_action_lock", "zevanory_owner_chat_ai_usage", "zevanory_owner_chat_messages", "zevanory_owner_chat_seq", "zevanory_posvenda_cota", "zevanory_vigia_state"],
       "notas_tabelas": {
         "zevanory_whatsapp_broker_runtime": "Legado/operacional: WhatsApp aposentado (disabled_permanent); preservada até decisão de retenção. Nenhuma regra de apagamento: continua no backup diário como as demais tabelas desta classe (docs/WHATSAPP_APOSENTADO.md)."
       }

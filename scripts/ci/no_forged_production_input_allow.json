@@ -3,7 +3,7 @@
   "allowed": [
     {
       "file": "scripts/ops/data-backup.mjs",
-      "line_pattern": "await call\\(`(?:part=\\$\\{p\\}&parts=\\$\\{PARTS\\}|finalize=1&parts=\\$\\{PARTS\\})`\\)",
+      "line_pattern": "await call\\(`(?:part=\\$\\{p\\}&parts=\\$\\{parts\\}\\$\\{extra\\}|finalize=1&parts=\\$\\{parts\\}\\$\\{extra\\})`\\)",
       "endpoint": "/api/internal/backup/run",
       "method": "POST",
       "identity": {
@@ -12,7 +12,7 @@
         "credential": "x-backup-token (ZEVANORY_OPERATOR_TOKEN, ZEVANORY-issued; R9 #912 transition falls back to CERTIFICATION_E2E_TOKEN)"
       },
       "purpose": "Daily backup of critical KV keys and public Neon tables into ZEVANORY-owned backup copies, plus an integrity drill, triggered by data-backup.yml.",
-      "least_privilege": "Endpoint accepts only POST with the backup token, returns counts and hashes only (never data), parts bounded to 1..6; no other route is reachable with this call.",
+      "least_privilege": "Endpoint accepts only POST with the backup token, returns counts and hashes only (never data), parts bounded to 1..6; with plan_id (P20 v2) each part re-reads the inventory and writes nothing if the authenticated plan differs; no other route is reachable with this call.",
       "effects": {
         "synthetic_financial_transaction": false,
         "opens_sales": false,
@@ -52,6 +52,89 @@
         "reference": ""
       },
       "notes": "Policy is in backup_policy (schema). Restore drill only in the isolated schema zevanory_restore_drill, dropped after comparison; retention deletes only own zevanory_kv_backup rows older than 14 days and only after today's copy is proven (manifest + integrity + drill), never the newest valid copy (planRetention). Residual: the Neon->KV bundles expire by KV TTL (8 days); if backups stop for 8 days those expire passively.",
+      "backup_policy": {
+        "allowed_operations": [
+          "export_to_own_copies_source_unmodified",
+          "manifest_and_hashes",
+          "restore_drill_isolated_schema:zevanory_restore_drill",
+          "delete_own_copies_older_than_14_days"
+        ],
+        "blocked_operations": [
+          "restore_over_operational_tables",
+          "delete_operational_data",
+          "modify_operational_data"
+        ],
+        "retention": {
+          "own_copies_only": true,
+          "max_age_days": 14,
+          "never_delete_last_valid_copy": true,
+          "proof_before_delete": [
+            "manifest",
+            "integrity",
+            "drill"
+          ]
+        },
+        "enforced_by": [
+          "worker/data-backup.mjs:40-50",
+          "worker/data-backup.mjs:223-234"
+        ],
+        "tests": [
+          "tests/data-backup.test.mjs::retention with only expired copies keeps the newest valid one",
+          "tests/data-backup.test.mjs::a corrupt newest copy blocks deletion of older ones"
+        ]
+      }
+    },
+    {
+      "file": "scripts/ops/data-backup.mjs",
+      "line_pattern": "const r = await fetch\\(planUrl, \\{ method: \"POST\"",
+      "endpoint": "/api/internal/backup/plan",
+      "method": "POST",
+      "identity": {
+        "principal": "ZEVANORY",
+        "impersonates": [],
+        "credential": "x-backup-token (ZEVANORY_OPERATOR_TOKEN, ZEVANORY-issued; R9 #912 transition falls back to CERTIFICATION_E2E_TOKEN)"
+      },
+      "purpose": "P20 v2: asks the Worker for the day's authenticated backup plan (plan_id, number of parts, counts) before running the parts of the daily backup triggered by data-backup.yml.",
+      "least_privilege": "Endpoint accepts only POST with the backup token; read-only (information_schema query); returns plan_id, part count, eligible/excluded counts and the key id only, never table names or data.",
+      "effects": {
+        "synthetic_financial_transaction": false,
+        "opens_sales": false,
+        "commercial_effect": false,
+        "triggers_webhook_or_checkout": false,
+        "changes_credentials_or_config": false
+      },
+      "data_scope": {
+        "alters_production_data": false,
+        "deletes_production_data": false,
+        "restores_into_production": false
+      },
+      "payload": {
+        "controlled": true,
+        "writes": false,
+        "idempotent": true,
+        "audit_trail": "workflow notice DATA_BACKUP_PLAN (counts, plan mode, auth state; no PII, no secrets)",
+        "secrets_in_audit": false
+      },
+      "handler_evidence": [
+        "worker/cloudflare-worker.compat.mjs:504-514",
+        "worker/data-backup.mjs:1-17",
+        "worker/data-backup.mjs:26",
+        "worker/data-backup.mjs:97",
+        "worker/data-backup.mjs:168",
+        "worker/data-backup.mjs:170-201",
+        "worker/data-backup.mjs:189",
+        "worker/data-backup.mjs:220",
+        "worker/data-backup.mjs:223-234",
+        "worker/data-backup.mjs:275"
+      ],
+      "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
+      "risk_acceptance": {
+        "status": "PENDING_OWNER",
+        "by": "",
+        "at": "",
+        "reference": ""
+      },
+      "notes": "Read-only planning call of P20 v2 (docs/p20/particoes-v2.md). The plan is recomputed and checked by every part, so a forged or stale plan_id makes the part fail without writing.",
       "backup_policy": {
         "allowed_operations": [
           "export_to_own_copies_source_unmodified",
