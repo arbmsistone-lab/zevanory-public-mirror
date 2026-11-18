@@ -281,7 +281,8 @@ for key in ("ZEVANORY_RELEASE_REF", "AGENT_AUTONOMY_MODE", "AGENT_AI_MAX_RUNS_PE
     if key in c["vars"]:
         runtime_config[key] = c["vars"].pop(key)
 # P20 diário D1 (docs/p20/diario-d1.md, seções "Binding e migração" e "Primeiro deploy com D1"): o Worker central só
-# recebe o binding DIARIO quando DIARIO_D1_MODO=certificar (input diario_d1 do dispatch, validado no job guard). Em
+# recebe o binding DIARIO quando DIARIO_D1_MODO=certificar ou manter (input diario_d1 do dispatch ou padrão versionado em
+# .github/diario-d1-modo.json, validado no job guard; manter só passa no deploy se o banco já estiver certificado). Em
 # qualquer outro valor, ausente inclusive (push, dry-run, outros workflows), o candidato sai SEM DIARIO, mesmo com os
 # segredos D1 cadastrados: nenhum deploy rotineiro liga o D1 sem querer (NO-GO do GPT-6, NC-P2b-DEP-02). O binding
 # aponta para o banco D1 de PRODUÇÃO criado pelo proprietário na conta 1b26415802588185a86c1d4d3ebf5bdb. Um binding
@@ -309,14 +310,14 @@ def _inject_diario_d1(cfg, wanted=DIARIO_D1_BINDING):
         return cfg
     d1.append(dict(wanted))
     return cfg
-DIARIO_D1_MODOS = ("off", "certificar", "rollback")
+DIARIO_D1_MODOS = ("off", "manter", "certificar", "rollback")
 def _apply_diario_d1(cfg, modo, wanted=DIARIO_D1_BINDING):
-    """certificar: injeta (com as recusas acima). off/rollback: tira QUALQUER binding DIARIO (o certificado também),
+    """certificar/manter: injeta (com as recusas acima). off/rollback: tira QUALQUER binding DIARIO (o certificado também),
     mantendo as recusas do banco de certificação. Valor desconhecido: recusa (nunca adivinha um modo)."""
     modo = modo or "off"
     if modo not in DIARIO_D1_MODOS:
         raise SystemExit("DIARIO_D1_MODO_INVALIDO " + modo)
-    if modo == "certificar":
+    if modo in ("certificar", "manter"):
         return _inject_diario_d1(cfg, wanted)
     d1 = cfg.get("d1_databases") or []
     for row in d1:
