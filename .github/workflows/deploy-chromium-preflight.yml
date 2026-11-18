@@ -1,0 +1,98 @@
+name: deploy-chromium-preflight
+
+# Correção do deploy de 18/11/2026 (run 44339134782): o ubuntu-latest passou a 26.04, o Playwright 1.55.0 não instala o
+# Chromium nesse sistema, o smoke pós-deploy (HSTS/CSP/Mercado Pago) falhou em silêncio e o rollback automático desfez
+# a publicação do #1071. Este check prova, sem segredo e sem tocar na produção:
+#  (1) estrutura: o job deploy está fixado em ubuntu-24.04; o passo do Chromium vem ANTES das migrações e do deploy; o
+#      smoke não silencia mais a instalação e usa o navegador pré-instalado;
+#  (2) no ubuntu-24.04 o script do deploy instala e ABRE o Chromium (CHROMIUM_PREFLIGHT=PASS);
+#  (3) no ubuntu-latest (26.04) o script reprova com erro VISÍVEL: pelo sistema e, forçando o sistema, pela instalação.
+# Só pull_request: o merge não dispara este workflow.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/deploy-chromium-preflight.yml"
+      - ".github/workflows/central-production-deploy.yml"
+      - "scripts/deploy/chromium-preflight.sh"
+      - "scripts/deploy/mercadopago-csp-smoke.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  estrutura:
+    name: deploy-chromium-preflight / estrutura
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Estrutura do job deploy
+        run: |
+          python3 - <<'PY'
+          import yaml, sys
+          d = yaml.safe_load(open(".github/workflows/central-production-deploy.yml"))
+          job = d["jobs"]["deploy"]; st = job["steps"]
+          names = [s.get("name", "") for s in st]
+          def idx(prefix):
+              hits = [i for i, n in enumerate(names) if n.startswith(prefix)]
+              assert len(hits) == 1, f"passo {prefix!r}: {hits}"
+              return hits[0]
+          pre = idx("Chromium do smoke pós-deploy")
+          checks = {
+              "runs-on fixado": job["runs-on"] == "ubuntu-24.04",
+              "Chromium antes das migrações D1": pre < idx("P20 diário D1 - migrações"),
+              "Chromium antes do deploy": pre < idx("Deploy repaired production worker"),
+              "Chromium chama o script": "scripts/deploy/chromium-preflight.sh" in st[pre]["run"],
+              "smoke sem instalação silenciosa": all(x not in st[idx("Verify live HSTS CSP")]["run"] for x in (">/dev/null", "playwright install")),
+              "smoke usa o navegador pré-instalado": "$PW_DIR/mercadopago-csp-smoke.mjs" in st[idx("Verify live HSTS CSP")]["run"],
+              "rollback só depois de publicar": "steps.deployworker.outcome == 'success'" in st[idx("Automatic rollback")]["if"],
+          }
+          for k, v in checks.items(): print(("PASS " if v else "FAIL ") + k)
+          sys.exit(0 if all(checks.values()) else 1)
+          PY
+  ubuntu-2404:
+    name: deploy-chromium-preflight / ubuntu-24.04 instala e abre
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Script do deploy instala e abre o Chromium
+        run: |
+          bash scripts/deploy/chromium-preflight.sh "$RUNNER_TEMP/pw" | tee /tmp/pre.out
+          grep -q '^CHROMIUM_PREFLIGHT=PASS ' /tmp/pre.out
+  ubuntu-latest-reprova-visivel:
+    name: deploy-chromium-preflight / ubuntu-latest reprova com erro visível
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sistema diferente de 24.04 reprova antes de instalar
+        run: |
+          . /etc/os-release; echo "SO=$ID $VERSION_ID"
+          if [ "$ID $VERSION_ID" = "ubuntu 24.04" ]; then echo "ubuntu-latest ainda é 24.04: caso não se aplica"; exit 0; fi
+          set +e; bash scripts/deploy/chromium-preflight.sh "$RUNNER_TEMP/pw1" > /tmp/so.out 2>&1; rc=$?; set -e
+          cat /tmp/so.out
+          [ "$rc" = 1 ] && grep -q '^::error title=CHROMIUM_PREFLIGHT_SO::' /tmp/so.out
+      - name: Forçando o sistema, a falha de instalação fica visível
+        run: |
+          . /etc/os-release
+          if [ "$ID $VERSION_ID" = "ubuntu 24.04" ]; then echo "ubuntu-latest ainda é 24.04: caso não se aplica"; exit 0; fi
+          set +e; CHROMIUM_PREFLIGHT_OS="$ID $VERSION_ID" bash scripts/deploy/chromium-preflight.sh "$RUNNER_TEMP/pw2" > /tmp/inst.out 2>&1; rc=$?; set -e
+          cat /tmp/inst.out
+          # Reprova com ::error do passo que falhou (instalação ou abertura), nunca em silêncio. Se um dia passar, avisa:
+          # o sistema novo passou a ser suportado e a fixação pode ser revista.
+          if [ "$rc" = 0 ]; then echo "::warning title=CHROMIUM_26_04_SUPORTADO::o Chromium instalou e abriu em $ID $VERSION_ID"; exit 0; fi
+          [ "$rc" = 1 ] && grep -qE '^::error title=CHROMIUM_PREFLIGHT_(NPM|INSTALL|ABRIR)::.+' /tmp/inst.out
