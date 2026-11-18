@@ -11,7 +11,7 @@ name: p20-restore-drill-tests
 # p20_diario_reconstruido (10 + 3 = 13 testes); (3) mutantes causais pelo classificador compartilhado (61 da cópia KV e cifragem + 24 do diário D1 = 85, todos KILLED).
 # P20 v2 (docs/p20/particoes-v2.md): (4) lógica do plano autenticado e das partes dinâmicas (9 testes node, somados aos 40
 # acima = 50); (5) TESTE OFICIAL de aceitação: restauração INTEGRAL em PostgreSQL isolado, cadeia real Worker -> arquivamento
-# -> restauração, com E = 88/94/121/180 e 23 contraprovas (27 testes); (6) 43 mutantes do v2, um por regra, todos KILLED.
+# -> restauração, com E = 88/94/121/180 e 23 contraprovas (27 testes); (6) 44 mutantes do v2, um por regra, todos KILLED.
 on:
   pull_request:
     branches: [gh-pages]
@@ -127,7 +127,7 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_p20_v2.py < /dev/null | tee /tmp/mutv2.txt
           echo "::notice title=P20_V2_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mutv2.txt)"
-          grep -qx "MUTANTS total=43 killed=43 survived=0 inconclusive=0" /tmp/mutv2.txt || { echo "::error::mutante do v2 sobreviveu ou ficou inconclusivo"; exit 1; }
+          grep -qx "MUTANTS total=44 killed=44 survived=0 inconclusive=0" /tmp/mutv2.txt || { echo "::error::mutante do v2 sobreviveu ou ficou inconclusivo"; exit 1; }
       - name: Mutantes causais (todos precisam morrer)
         shell: bash
         run: |

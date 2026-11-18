@@ -282,6 +282,9 @@ if (scenario === "dia_concluido_b_falha") {
   // O dia foi aprovado há mais de 30 minutos (caso real: B roda horas depois): a posse de A já seria "disputável" pela
   // regra de expiração. Um dia CONCLUÍDO nunca é disputado: B continua recusada sem gravar nada.
   await aged();
+  // Linha de controle COMPLETA no PostgreSQL (dono, estado, updated_at exato, partes chamadas e relatório guardado).
+  const fullRow = async () => JSON.stringify((await base.query("select run_id, state, updated_at::text as updated_at, parts_called::text as parts_called, md5(coalesce(report, '')) as report_md5 from zevanory_backup_day where day = $1::date", [day]))[0] || null);
+  const linhaAntes = await fullRow();
   const antes = kvSnapshot();
   const runB = randomBytes(16).toString("hex");
   const planB = await planBackup(env, { sqlFactory: () => sql, now });
@@ -296,6 +299,8 @@ if (scenario === "dia_concluido_b_falha") {
     ok: [planB.ok, ...partsB.map((r) => r.ok), finB.ok, aAgain.ok, aFinAgain.ok],
   };
   info.kv_intacto = kvSnapshot() === antes;
+  info.linha_pg_intacta = (await fullRow()) === linhaAntes;
+  info.linha_pg = JSON.parse(linhaAntes);
 }
 if (scenario === "reuso_esquema_mudou") {
   // Dia D aprovado. Muda o TIPO de z_conc sem mudar o conteúdo em JSON (text -> varchar): a impressão digital do

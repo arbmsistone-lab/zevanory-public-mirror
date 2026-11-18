@@ -122,6 +122,10 @@ M = {
     # Contra-auditoria GPT-6 18/11, R5 (PR #1070 em 7c62fb3d): parte duplicada da mesma execução.
     "V43 parte chamada duas vezes na mesma execução": (W, "      if (!rv.ok) { fail(rv.reason); return reject(report); }\n", "",
                                                        ("py", "test_n23_parte_duplicada_pendente_nao_altera_artefatos_do_dia_aprovado")),
+    # Contra-auditoria GPT-6 18/11 (ordem de fechamento): só a condição state = 'running' da reivindicação. A reserva da
+    # parte ainda bloqueia o KV, mas a reivindicação mudaria dono, updated_at e partes chamadas do dia concluído.
+    "V44 reivindicação sem exigir dia em andamento": (W, "      where zevanory_backup_day.state = 'running'\n        and (", "      where (",
+                                                      ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
 }
 
 

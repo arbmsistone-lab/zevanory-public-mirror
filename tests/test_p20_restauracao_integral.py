@@ -415,6 +415,9 @@ class RestauracaoIntegral(unittest.TestCase):
         self.assertEqual(b["a_de_novo"], [["day_already_complete"], ["day_already_complete"]])  # nem a própria A regrava
         self.assertFalse(any(b["ok"]), b["ok"])
         self.assertTrue(w["kv_intacto"], "relatório principal, partes, bundles e cópia do KV têm de ficar byte a byte iguais")
+        # A linha de controle no PostgreSQL também fica idêntica: dono, estado, updated_at, partes chamadas e relatório.
+        self.assertEqual(w["linha_pg"]["state"], "complete")
+        self.assertTrue(w["linha_pg_intacta"], "a linha de controle do dia concluído não pode mudar")
         a = archive(kvfile, out)
         self.assertEqual(a.returncode, 0, a.stdout[-600:])
         with open(os.path.join(out, "manifest.json"), encoding="utf-8") as fh:
