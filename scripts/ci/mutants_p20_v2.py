@@ -78,8 +78,9 @@ M = {
     "V25 sem conferir as colunas do conteúdo exportado": (W, "fail(\"export_columns_mismatch:\" + r.t); }", "}",
                                                           ("py", "test_n13_coluna_criada_e_desfeita_em_volta_da_exportacao")),
     # Contra-auditoria GPT-6 17/11, segunda rodada (PR #1070 em 54823ea6).
-    "V26 parte grava sem a posse do dia": (W, "      if (!c.owner) { fail(c.reason); return reject(report); }\n", "",
-                                          ("py", "test_n17_corrida_b_pausada_depois_da_verificacao_a_conclui_e_fica_intacta")),
+    # V26: a camada inteira de posse da parte (checagem da posse E reserva da parte; a reserva também exige a posse).
+    "V26 parte grava sem a posse do dia": (W, ("      if (!c.owner) { fail(c.reason); return reject(report); }\n", "      if (!rv.ok) { fail(rv.reason); return reject(report); }\n"), ("", ""),
+                                          ("py", "test_n18_corrida_b_obtem_a_posse_e_pausa_a_nao_grava_nada")),
     "V27 consolidação publica sem a posse do dia": (W, "      if ((t || []).length !== 1) {", "      if (false) {",
                                                     ("node", "consolidação v2 íntegra")),
     "V28 tipos não conferidos na própria leitura": (W, "        if (seen !== canonical(pl.colsOf[r.t] || [])) fail(\"export_schema_mismatch:\" + r.t);\n", "",
@@ -89,7 +90,9 @@ M = {
     # Contra-auditoria GPT-6 17/11, terceira rodada (PR #1070 em 8290a460): corrida entre execuções.
     "V30 posse tomada de execução viva": (W, "(zevanory_backup_day.run_id = excluded.run_id or zevanory_backup_day.updated_at < now() - interval '30 minutes')", "true",
                                           ("py", "test_n18_corrida_b_obtem_a_posse_e_pausa_a_nao_grava_nada")),
-    "V31 dia concluído reivindicado de novo": (W, "      where zevanory_backup_day.state = 'running'\n        and (", "      where (",
+    # V31: dia concluído reaberto (a reivindicação E a reserva da parte deixam de exigir state = 'running').
+    "V31 dia concluído reivindicado de novo": (W, ("      where zevanory_backup_day.state = 'running'\n        and (", "where day = $1::date and run_id = $2 and state = 'running' and not ($3::integer = any(parts_called))"),
+                                               ("      where (", "where day = $1::date and run_id = $2 and not ($3::integer = any(parts_called))"),
                                                ("py", "test_n15_dia_concluido_execucao_b_falha_sem_tocar_a")),
     "V32 publica sem fechar o dia na própria posse": (W, "    if ((done || []).length !== 1) return refuse(await dayRefusal(dsql, day));\n", "",
                                                       ("node", "consolidação v2 íntegra")),
@@ -127,12 +130,17 @@ def build(tmp, mutation):
         src = Path(REPO, *rel.split("/"))
         shutil.copytree(src, Path(tmp, *rel.split("/")), dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules"))
     shutil.copyfile(Path(REPO, "package.json"), Path(tmp, "package.json")) if Path(REPO, "package.json").exists() else None
+    # Um mutante pode trocar VÁRIOS trechos do mesmo arquivo (tupla de trechos): usado quando a regra é uma camada inteira
+    # de proteção cujas checagens se cobrem umas às outras (remover só uma seria um mutante equivalente).
     rel, old, new = mutation
+    olds, news = (old, new) if isinstance(old, tuple) else ((old,), (new,))
     f = Path(tmp, *rel.split("/"))
     text = f.read_text(encoding="utf-8")
-    if text.count(old) != 1:
-        return False
-    f.write_text(text.replace(old, new, 1), encoding="utf-8")
+    for o, n in zip(olds, news):
+        if text.count(o) != 1:
+            return False
+        text = text.replace(o, n, 1)
+    f.write_text(text, encoding="utf-8")
     return True
 
 

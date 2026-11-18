@@ -279,6 +279,9 @@ if (scenario === "dia_concluido_b_falha") {
   // A concluiu e aprovou o dia. Uma execução B no MESMO dia (plano, partes, consolidação; e chamadas legadas v1) tem de
   // ser rejeitada sem gravar: relatório principal, relatórios das partes, bundles e cópia do KV byte a byte iguais.
   info.final_a = { ok: final.ok, auth: final.auth?.state ?? null };
+  // O dia foi aprovado há mais de 30 minutos (caso real: B roda horas depois): a posse de A já seria "disputável" pela
+  // regra de expiração. Um dia CONCLUÍDO nunca é disputado: B continua recusada sem gravar nada.
+  await aged();
   const antes = kvSnapshot();
   const runB = randomBytes(16).toString("hex");
   const planB = await planBackup(env, { sqlFactory: () => sql, now });

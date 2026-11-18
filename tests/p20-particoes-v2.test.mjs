@@ -150,10 +150,12 @@ test("parte fora do intervalo do plano falha sem escrever", async () => {
   assert.deepEqual(r.failures, ["part_out_of_range"]);
   assert.deepEqual(writesOutsideLock(sql), []);
   assert.equal(sql.days.size, 0, "parte fora do plano NÃO reserva o dia");
-  // Consolidação sem posse prévia (nenhuma parte válida desta execução): recusada e também NÃO reserva o dia.
+  // Consolidação sem posse prévia (nenhuma parte válida desta execução): recusada e também NÃO reserva o dia. A tabela de
+  // controle EXISTE (há a linha de outro dia), então a recusa vem da confirmação de posse, não da tabela ausente.
+  sql.days.set("2026-11-16", { run_id: "5".repeat(32), state: "complete" });
   const fin = await finalizeBackup(env, { parts: 2, now: NOW, planId: p.plan_id, runId: RUN, sqlFactory: () => sql });
   assert.deepEqual(fin.failures, ["day_not_claimed"]);
-  assert.equal(sql.days.size, 0);
+  assert.deepEqual([...sql.days.keys()], ["2026-11-16"], "nenhuma posse criada para o dia");
   assert.equal(kv.m.size, 0);
   assert.equal(kv.m.size, 0, "parte rejeitada não grava no KV");
 });

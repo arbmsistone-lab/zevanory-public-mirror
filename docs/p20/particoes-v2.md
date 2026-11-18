@@ -158,7 +158,7 @@ O teste roda no job `p20-restore-drill / tests`, com PostgreSQL 16 efêmero do s
 - **Também:**
   - escrita concorrente entre a estatística e a exportação, contada no conteúdo copiado;
   - **legado v1 cifrado de 3 partes restaurado com a decifragem nova**, a prova da correção do defeito crítico, marcado `legado_nao_autenticado`.
-- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 43 de 43 KILLED.
+- **Mutantes:** `scripts/ci/mutants_p20_v2.py`, um por regra, 43 de 43 KILLED. As proteções da parte se sobrepõem: posse, reserva da parte e cerca. Remover só uma delas seria um mutante equivalente. Por isso V26 (posse da parte) e V31 (dia concluído reaberto) removem a camada inteira, com as duas checagens no mesmo mutante. O n15 cobre o dia concluído com a posse já velha o bastante para ser disputada, e o teste do V38 tem a tabela de controle existente, sem a linha do dia.
 
 ## Riscos residuais (declarados)
 
