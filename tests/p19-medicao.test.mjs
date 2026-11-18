@@ -3,9 +3,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createDiag, cleanDiagRid, DIAG_RID_HEADER } from "../worker/diag-stages.mjs";
+import { createDiag, cleanDiagRid, DIAG_RID_HEADER, openStages } from "../worker/diag-stages.mjs";
 import { handleReviews } from "../worker/reviews.mjs";
 import { probeUrl } from "../scripts/b0/b0-collector.mjs";
 import { runProbe, targetId } from "../scripts/b0/p18-monitor.mjs";
@@ -95,6 +96,12 @@ test("P19.6 /api/status com o banco TRAVADO: sem resposta, mas a entrada da leit
   assert.deepEqual(out.logs.map((l) => `${l.stage}:${l.phase}`), ["operational_read:start", "pg_read:start"]);
   assert.equal(out.logs[1].read_route, "canonical");
   assert.equal(out.logs[0].rid, out.logs[1].rid);
+  // Sem resposta, o smoke não recebe o rid: o evento interno é recuperado pelas etapas abertas da rota na janela.
+  assert.deepEqual(openStages(out.logs, { route: "/api/status" }), [
+    { rid: out.logs[0].rid, route: "/api/status", stage: "operational_read" },
+    { rid: out.logs[0].rid, route: "/api/status", stage: "pg_read", read_route: "canonical" },
+  ]);
+  assert.deepEqual(openStages(statusProbe("ok").logs, { route: "/api/status" }), [], "leitura completa não deixa etapa aberta");
 });
 
 test("P19.7 probeUrl: cada tentativa com início e duração; 1ª esgota o tempo, a nova responde", async () => {
@@ -137,4 +144,54 @@ test("P19.8 runProbe: controles na mesma janela, fora de up; versão servida lid
   assert.ok(calls.every((u) => !/comprar|checkout|pagamento/.test(u)));
   assert.throws(() => validateProbe({ ...p, served: { central: "nao-e-sha" } }), /bad_probe_served/);
   assert.throws(() => validateProbe({ ...p, controls: [{ id: 1 }] }), /bad_probe_control/);
+});
+
+async function withServer(handler, fn) {
+  const sockets = new Set();
+  const srv = http.createServer(handler);
+  srv.on("connection", (s) => { sockets.add(s); s.on("close", () => sockets.delete(s)); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  try { return await fn(`http://127.0.0.1:${srv.address().port}`); }
+  finally { for (const s of sockets) s.destroy(); await new Promise((r) => srv.close(r)); }
+}
+
+test("P19.9 servidor REAL envia 200 e suspende o corpo: a falha de leitura fica em body_error; status, tentativas e regra de nova tentativa iguais", async () => {
+  await withServer((req, res) => { res.writeHead(200, { "content-type": "application/json", "content-length": "100" }); res.write('{"partial":'); /* corpo nunca termina */ }, async (base) => {
+    const r = await probeUrl(base + "/api/status", { pause: async () => {}, timeoutMs: 300 });
+    assert.equal(r.status, 200, "status HTTP histórico preservado");
+    assert.equal(r.attempts, 1, "200 não gera nova tentativa (regra histórica)");
+    assert.equal(r.body, "", "corpo histórico: vazio");
+    assert.match(r.body_error, /^(TimeoutError|AbortError)$/);
+    assert.equal(r.tries.length, 1);
+    assert.equal(r.tries[0].status, 200);
+    assert.equal(r.tries[0].body_error, r.body_error);
+    assert.ok(r.tries[0].ms >= 250, "a duração inclui a espera pelo corpo");
+  });
+});
+
+test("P19.10 200 com corpo VAZIO lido com sucesso não é classificado como falha", async () => {
+  await withServer((req, res) => { res.writeHead(200, { "content-length": "0" }); res.end(); }, async (base) => {
+    const r = await probeUrl(base + "/", { pause: async () => {}, timeoutMs: 2000 });
+    assert.equal(r.status, 200);
+    assert.equal(r.body, "");
+    assert.equal(r.body_error, undefined);
+    assert.equal(r.tries[0].body_error, undefined);
+  });
+});
+
+test("P19.11 runProbe leva body_error ao alvo e às tentativas sem mudar up das páginas (regra histórica)", async () => {
+  const fetchImpl = async (url) => {
+    const u = new URL(String(url));
+    if (u.pathname === "/ia-na-pratica") {
+      const stream = new ReadableStream({ start(c) { c.error(Object.assign(new Error("x"), { name: "AbortError" })); } });
+      return new Response(stream, { status: 200 });
+    }
+    if (u.pathname === "/api/status") return new Response("{}");
+    return new Response("<html>ok</html>");
+  };
+  const p = await runProbe({ fetchImpl, pause: async () => {}, now: () => Date.parse("2026-11-18T18:00:00Z") });
+  const t = p.targets.find((x) => x.id === "vendas.zevanory.api.br/ia-na-pratica");
+  assert.equal(t.status, 200); assert.equal(t.ok, true, "página 200 continua ok (regra histórica da fase 1)");
+  assert.equal(t.body_error, "AbortError"); assert.equal(t.tries[0].body_error, "AbortError");
+  assert.equal(p.up, true);
 });

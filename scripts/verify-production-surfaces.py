@@ -36,20 +36,26 @@ def get(url, accept="application/json,text/html"):
     log(f"SURFACE_PROBE_START seq={seq} name={name} at={datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds')}")
     t0=time.monotonic()
     req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-PostDeploy-Smoke/1.0","Accept":accept,"Cache-Control":"no-cache"})
+    # phase: headers = até os cabeçalhos; body = cabeçalhos recebidos, lendo o corpo. Com os cabeçalhos, a linha
+    # SURFACE_PROBE_HEADERS já traz o rid (x-zevanory-diag) mesmo que o corpo depois trave.
+    phase="headers"
+    diag="-"
     try:
         with urllib.request.urlopen(req,timeout=TIMEOUT_S) as r:
+            low={k.lower():v for k,v in dict(r.headers).items()}
+            d=low.get("x-zevanory-diag","")
+            diag=d if len(d)==12 and all(c in "0123456789abcdef" for c in d) else "-"
+            log(f"SURFACE_PROBE_HEADERS seq={seq} name={name} status={r.status} ms={int((time.monotonic()-t0)*1000)} diag={diag}")
+            phase="body"
             out=(r.status,dict(r.headers),r.read().decode("utf-8","replace"))
     except Exception as e:
         ms=int((time.monotonic()-t0)*1000)
         cls=error_class(e)
-        log(f"SURFACE_PROBE_FAIL seq={seq} name={name} ms={ms} error_class={cls}")
+        log(f"SURFACE_PROBE_FAIL seq={seq} name={name} ms={ms} phase={phase} error_class={cls} diag={diag}")
         title="SURFACE_PROBE_TIMEOUT" if cls=="timeout" else "SURFACE_PROBE_ERROR"
-        log(f"::error title={title}::{name} falhou em {ms} ms ({cls}; limite {TIMEOUT_S} s por leitura)")
+        log(f"::error title={title}::{name} falhou em {ms} ms ({cls}, fase {phase}; limite {TIMEOUT_S} s por leitura)")
         raise
     ms=int((time.monotonic()-t0)*1000)
-    low={k.lower():v for k,v in out[1].items()}
-    diag=low.get("x-zevanory-diag","")
-    diag=diag if len(diag)==12 and all(c in "0123456789abcdef" for c in diag) else "-"
     log(f"SURFACE_PROBE_END seq={seq} name={name} status={out[0]} ms={ms} diag={diag}")
     return out
 

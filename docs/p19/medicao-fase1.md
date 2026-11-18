@@ -10,8 +10,11 @@ Diagnóstico: `P19-DIAGNOSTICO-API-STATUS-2026-11-18.md`. Critérios: contra-aud
 
 O smoke registra cada leitura em até três linhas:
 - **Antes da chamada:** `SURFACE_PROBE_START seq=N name=<host+caminho> at=<ISO>`.
-- **Depois da chamada, com resposta:** `SURFACE_PROBE_END seq=N name=… status=… ms=… diag=<rid|->`.
-- **Em falha:** `SURFACE_PROBE_FAIL seq=N name=… ms=… error_class=timeout|http_NNN|<Classe>` e `::error title=SURFACE_PROBE_TIMEOUT|SURFACE_PROBE_ERROR::<nome> falhou em N ms`. A exceção **original** é relançada.
+- **Cabeçalhos recebidos:** `SURFACE_PROBE_HEADERS seq=N name=… status=… ms=… diag=<rid|->`, registrado antes de ler o corpo.
+- **Corpo lido:** `SURFACE_PROBE_END seq=N name=… status=… ms=… diag=<rid|->`.
+- **Em falha:** `SURFACE_PROBE_FAIL seq=N name=… ms=… phase=headers|body error_class=timeout|http_NNN|<Classe> diag=<rid|->` e `::error title=SURFACE_PROBE_TIMEOUT|SURFACE_PROBE_ERROR::<nome> falhou em N ms (<classe>, fase <fase>; …)`. A exceção **original** é relançada.
+  - `phase=headers`: a resposta não chegou;
+  - `phase=body`: os cabeçalhos chegaram e o corpo travou. Nesse caso, o rid já foi registrado.
 
 **Regras mantidas:**
 - o nome nunca leva query string, cabeçalhos, corpo, credenciais nem dados de clientes;
@@ -49,6 +52,13 @@ Cada etapa grava uma linha `{"evt":"diag_stage","rid":<12 hex opaco>,"route":…
 | `vendas.zevanory.api.br/health` | nenhuma E/S. `release` = versão servida do Worker de vendas |
 
   As páginas `vendas/` e `vendas/solucoes`, que já são alvos, também não chamam o central.
+- **Falha ao ler o corpo** (cabeçalhos 200 e corpo suspenso até o tempo limite): fica em `body_error`, na tentativa e no alvo. O comportamento histórico da fase 1 não muda:
+  - o status continua o HTTP recebido;
+  - 200 não gera nova tentativa;
+  - a página 200 continua `ok`;
+  - o `/api/status` sem JSON continua não-ok, como antes.
+
+  Um 200 com corpo vazio **lido com sucesso** não é falha. Testado com servidor HTTP real (P19.9, P19.10, P19.11).
 - **Versão servida:** `probe.served = {central, sales}`, com SHA de 40 hex ou null.
 - **Nova anotação:** `::notice title=P18_PROBE_DIAG::` com as tentativas e a versão servida.
 - **Linha de base no C1:** o job `p19-medicao / linha de base C1` do PR faz 3 sondagens somente leitura contra a produção vigente, antes da promoção.
@@ -62,6 +72,18 @@ Cada etapa grava uma linha `{"evt":"diag_stage","rid":<12 hex opaco>,"route":…
 | Logs `diag_stage` do Worker | logs do Worker na Cloudflare | Dependem de os logs do Worker estarem ativos e retidos. A versão revertida deixa de emitir. **Não comprovado neste PR** |
 | `Server-Timing` e `x-zevanory-diag` | resposta HTTP | Só existem com resposta e enquanto a versão medida estiver ativa |
 | P18 (`tries`, `controls`, `served`) | ramo `evidence/b0-baseline` | **Sim.** É independente do Worker, porque roda no GitHub |
+
+### Alcance da correlação entre o smoke e os logs do Worker
+
+| Caso | Como chegar ao evento interno |
+|---|---|
+| Cabeçalhos recebidos (corpo lido ou travado) | O `diag=<rid>` das linhas `SURFACE_PROBE_HEADERS`/`FAIL` aponta direto para as linhas `diag_stage` com o mesmo `rid` |
+| **Sem cabeçalhos** (`phase=headers`) | O smoke **não recebe o rid**. O evento é recuperado pelas **etapas abertas** (`start` sem `end`) da mesma rota, na janela da sonda: de `SURFACE_PROBE_START at=…` até o tempo limite. Ferramenta: `openStages(linhas, {route, from, to})` em `worker/diag-stages.mjs`, demonstrada em P19.6 com o Worker real e o banco travado |
+
+**Limitação explícita:**
+- No caso sem cabeçalhos, a correlação é por **rota e janela de tempo**, não por identificador. Com tráfego concorrente na mesma rota e janela, pode haver mais de um candidato.
+- A recuperação depende de os logs do Worker estarem ativos e de serem coletados. Depois de um rollback, a versão revertida para de emitir, mas o que já foi emitido continua onde a coleta operacional o guardou.
+- Este PR não comprova a retenção desses logs na conta.
 
 ## 5. O que esta fase prova e o que segue aberto
 

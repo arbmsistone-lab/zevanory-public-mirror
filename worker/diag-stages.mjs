@@ -57,3 +57,19 @@ export function createDiag(route, { rid = newDiagRid(), log = (line) => console.
   }
   return { rid, route, stage, begin, note, serverTiming };
 }
+
+// Recuperação de uma tentativa SEM resposta (o cliente não recebeu cabeçalhos, logo nem o rid): nos logs do Worker,
+// as etapas com `start` e sem `end` dentro da janela da sonda do smoke (de SURFACE_PROBE_START até o tempo limite)
+// são o evento interno daquela tentativa. Entrada: linhas `diag_stage` já lidas (objetos), com `at` opcional (ms)
+// atribuído pelo coletor de logs. Saída: [{rid, route, stage, read_route?}] em ordem de entrada.
+export function openStages(lines, { route = null, from = -Infinity, to = Infinity } = {}) {
+  const open = new Map();
+  for (const l of lines) {
+    if (!l || l.evt !== DIAG_EVT || (route && l.route !== route)) continue;
+    if (Number.isFinite(l.at) && (l.at < from || l.at > to)) continue;
+    const key = `${l.rid}|${l.stage}|${l.read_route || ""}`;
+    if (l.phase === "start") open.set(key, { rid: l.rid, route: l.route, stage: l.stage, ...(l.read_route ? { read_route: l.read_route } : {}) });
+    else if (l.phase === "end") open.delete(key);
+  }
+  return [...open.values()];
+}

@@ -53,7 +53,8 @@ export function runnerInfo(env = {}) {
 export const probeIdOf = (env, seq) => `p18p-${envStr(env.GITHUB_RUN_ID) || "local"}-${envStr(env.GITHUB_RUN_ATTEMPT) || "1"}-${seq}`;
 
 const sha40 = (v) => { const s = String(v || "").trim().toLowerCase(); return /^[0-9a-f]{40}$/.test(s) ? s : null; };
-const triesOf = (r) => (Array.isArray(r.tries) ? { tries: r.tries.map((t) => ({ n: t.n, started_at: t.started_at, ms: t.ms, ...(Number.isInteger(t.status) ? { status: t.status } : {}), ...(t.error ? { error: t.error } : {}) })) } : {});
+const triesOf = (r) => ({ ...(Array.isArray(r.tries) ? { tries: r.tries.map((t) => ({ n: t.n, started_at: t.started_at, ms: t.ms, ...(Number.isInteger(t.status) ? { status: t.status } : {}), ...(t.error ? { error: t.error } : {}), ...(t.body_error ? { body_error: t.body_error } : {}) })) } : {}),
+  ...(r.body_error ? { body_error: r.body_error } : {}) });
 
 export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), pause, kind = "scheduled" } = {}) {
   const urls = [...SALES_PAGES, STATUS_URL];
@@ -227,7 +228,7 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   // P19 fase 1: por tentativa (início e duração) de alvos e controles, e a versão servida, para separar 1ª tentativa,
   // nova tentativa e total. Só diagnóstico: não muda decisão, alerta nem desempenho.
   for (const p of probes) log("::notice title=P18_PROBE_DIAG::" + JSON.stringify({ at: p.at, kind: p.kind, served: p.served ?? null,
-    tries: Object.fromEntries([...p.targets, ...(p.controls || [])].map((t) => [t.id, (t.tries || []).map((x) => [x.started_at.slice(11, 23), x.ms, x.status ?? x.error])])) }));
+    tries: Object.fromEntries([...p.targets, ...(p.controls || [])].map((t) => [t.id, (t.tries || []).map((x) => [x.started_at.slice(11, 23), x.ms, x.status ?? x.error, ...(x.body_error ? ["body:" + x.body_error] : [])])])) }));
 
   const pendingInc = d.action === "confirm" ? d.incident : d.action === "alert_retry" ? open : null;
   const alert = await handleAlert({ decision: d, cur, incident: pendingInc, env, fetchImpl, now, log });

@@ -48,6 +48,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/slow"):
             time.sleep(3)
+        if self.path.startswith("/bodyhang"):
+            # cabeçalhos 200 enviados, corpo suspenso (o caso que a contra-auditoria reproduziu no P18)
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("x-zevanory-diag", "abcdef012345")
+            self.send_header("content-length", "100")
+            self.end_headers()
+            try:
+                self.wfile.write(b'{"partial":')
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            time.sleep(3)
+            return
         body = b'{"ok":true}'
         self.send_response(200)
         self.send_header("content-type", "application/json")
@@ -91,7 +105,8 @@ class SmokeTest(unittest.TestCase):
         out = buf.getvalue().splitlines()
         self.assertEqual(code, 200)
         self.assertRegex(out[0], rf"^SURFACE_PROBE_START seq=\d+ name=127\.0\.0\.1:{port}/api/status at=\d{{4}}-")
-        self.assertRegex(out[1], rf"^SURFACE_PROBE_END seq=\d+ name=127\.0\.0\.1:{port}/api/status status=200 ms=\d+ diag=0123456789ab$")
+        self.assertRegex(out[1], rf"^SURFACE_PROBE_HEADERS seq=\d+ name=127\.0\.0\.1:{port}/api/status status=200 ms=\d+ diag=0123456789ab$")
+        self.assertRegex(out[2], rf"^SURFACE_PROBE_END seq=\d+ name=127\.0\.0\.1:{port}/api/status status=200 ms=\d+ diag=0123456789ab$")
         self.assertNotIn("SEGREDO", buf.getvalue(), "query string nunca é registrada")
 
     def test_s2_timeout_identifica_a_sonda_e_relanca_a_falha_original(self):
@@ -108,9 +123,23 @@ class SmokeTest(unittest.TestCase):
         self.assertLess(elapsed, 2.5)
         self.assertEqual(m.error_class(ctx.exception), "timeout", repr(ctx.exception))
         self.assertTrue(out[0].startswith(f"SURFACE_PROBE_START seq=1 name=127.0.0.1:{port}/slow"))
-        self.assertRegex(out[1], rf"^SURFACE_PROBE_FAIL seq=1 name=127\.0\.0\.1:{port}/slow ms=\d+ error_class=timeout$")
-        self.assertRegex(out[2], rf"^::error title=SURFACE_PROBE_TIMEOUT::127\.0\.0\.1:{port}/slow falhou em \d+ ms \(timeout; limite 1 s por leitura\)$")
+        self.assertRegex(out[1], rf"^SURFACE_PROBE_FAIL seq=1 name=127\.0\.0\.1:{port}/slow ms=\d+ phase=headers error_class=timeout diag=-$")
+        self.assertRegex(out[2], rf"^::error title=SURFACE_PROBE_TIMEOUT::127\.0\.0\.1:{port}/slow falhou em \d+ ms \(timeout, fase headers; limite 1 s por leitura\)$")
         self.assertEqual(len(out), 3)
+
+    def test_s5_corpo_suspenso_depois_dos_cabecalhos_registra_fase_e_rid(self):
+        m = load_smoke()
+        m.TIMEOUT_S = 1
+        with server() as port:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with self.assertRaises(Exception) as ctx:
+                    m.get(f"http://127.0.0.1:{port}/bodyhang")
+        out = buf.getvalue().splitlines()
+        self.assertEqual(m.error_class(ctx.exception), "timeout", repr(ctx.exception))
+        self.assertRegex(out[1], rf"^SURFACE_PROBE_HEADERS seq=1 name=127\.0\.0\.1:{port}/bodyhang status=200 ms=\d+ diag=abcdef012345$")
+        self.assertRegex(out[2], rf"^SURFACE_PROBE_FAIL seq=1 name=127\.0\.0\.1:{port}/bodyhang ms=\d+ phase=body error_class=timeout diag=abcdef012345$")
+        self.assertIn("fase body", out[3])
 
     def test_s3_passo_real_do_workflow_reprova_e_o_log_identifica_a_sonda(self):
         run, steps = step_run_text()
@@ -149,7 +178,7 @@ class SmokeTest(unittest.TestCase):
         out = p.stdout
         # O que o passo imprime vai para o log do job (imutável), antes de o passo de rollback rodar.
         self.assertIn("SURFACE_PROBE_START seq=1 name=zevanory.api.br/api/status", out)
-        self.assertRegex(out, r"SURFACE_PROBE_FAIL seq=1 name=zevanory\.api\.br/api/status ms=\d+ error_class=timeout")
+        self.assertRegex(out, r"SURFACE_PROBE_FAIL seq=1 name=zevanory\.api\.br/api/status ms=\d+ phase=headers error_class=timeout")
         self.assertRegex(out, r"::error title=SURFACE_PROBE_TIMEOUT::zevanory\.api\.br/api/status falhou em \d+ ms")
         self.assertIn("::error title=VERIFY_SURFACES::", out, "a anotação do próprio passo continua")
         self.assertLess(out.index("SURFACE_PROBE_START seq=1"), out.index("SURFACE_PROBE_FAIL seq=1"))
