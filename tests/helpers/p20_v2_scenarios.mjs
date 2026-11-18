@@ -62,11 +62,11 @@ if (scenario === "fk_entre_partes" && !(partOf("z_fk_a_pai") >= 0 && partOf("z_f
 // instrução atômica em zevanory_backup_day); A roda; B é retomada. O sql de B tem o próprio gancho de pausa.
 const snapAll = () => new Map([...kv.m.entries()].filter(([k]) => k.startsWith("zpc:backup:v1:")));
 const diffKeys = (a, b) => [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).sort();
-function pausedSql() {
+function pausedSql(after = /insert into zevanory_backup_day/) {
   let release; const gate = new Promise((r) => (release = r)); let hit = false;
   const s = { async query(text, params) {
     const r = await sql.query(text, params);
-    if (!hit && /insert into zevanory_backup_day/.test(String(text))) { hit = true; s.gateResult = (r || []).length === 1 ? "posse_obtida" : "posse_recusada"; await gate; }
+    if (!hit && after.test(String(text))) { hit = true; s.gateResult = (r || []).length === 1 ? "posse_obtida" : "posse_recusada"; await gate; }
     return r;
   } };
   s.release = release; s.wasHit = () => hit;
@@ -217,7 +217,8 @@ if (scenario === "posse_expirada_execucao_antiga") {
   // gravação de A pode alterar os arquivos de B.
   const runIdA = randomBytes(16).toString("hex"), runIdB = randomBytes(16).toString("hex");
   const a0 = await runDataBackup(env, { sqlFactory: () => sql, now, part: 0, parts: plan.parts, planId: plan.plan_id, runId: runIdA });
-  const aSql = pausedSql();
+  // Pausa DEPOIS da reserva da parte (posse e parte já obtidas): a única barreira restante é a cerca antes de cada gravação.
+  const aSql = pausedSql(/update zevanory_backup_day set parts_called = array_append/);
   const aP = runDataBackup(env, { sqlFactory: () => aSql, now, part: 1, parts: plan.parts, planId: plan.plan_id, runId: runIdA });
   while (!aSql.wasHit()) await new Promise((r) => setTimeout(r, 5));
   await aged();

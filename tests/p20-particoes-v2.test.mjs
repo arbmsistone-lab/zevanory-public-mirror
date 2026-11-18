@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { partsFor, assignParts, computePlan, runDataBackup, finalizeBackup, planBackup, backupRunParams, MAX_PARTS, REPORT_KEY, AUTHENTICATED_FIELDS } from "../worker/data-backup.mjs";
 import { loadReportKey, hmacHex, canonical } from "../worker/backup-crypto.mjs";
 import { planDecision, doneVerdict } from "../scripts/ops/data-backup.mjs";
@@ -278,7 +279,7 @@ test("condutor: rota de plano ausente (404) = legado v1 sinalizado; plano válid
 test("rota HTTP real: índice inválido é recusado no valor ORIGINAL, sem tocar no banco nem no KV (controle chega ao banco)", () => {
   // Worker de produção real (worker/cloudflare-worker.compat.mjs) pela sonda tests/helpers/p20_route_probe.mjs.
   const run = spawnSync(process.execPath, ["--import", "./tests/t4_sim/register.mjs", "tests/helpers/p20_route_probe.mjs"],
-    { cwd: new URL("..", import.meta.url).pathname, encoding: "utf8", timeout: 150000, env: { ...process.env, NODE_OPTIONS: "" } });
+    { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8", timeout: 150000, env: { ...process.env, NODE_OPTIONS: "" } });
   const line = String(run.stdout || "").split("\n").find((l) => l.startsWith("PROBE_RESULT "));
   assert.ok(line, "sonda sem resultado: " + String(run.stderr || "").slice(-400));
   const r = JSON.parse(line.slice("PROBE_RESULT ".length));
