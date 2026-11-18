@@ -132,3 +132,50 @@ test("C1 mutante: Gestão incluída na lista (kind ignorado)", async () => {
 test("C1 mutante: kit deixa de registrar (lista vazia)", async () => {
   await killedMutation(source, [["ALLOW.products.filter(p=>p.kind===\"kit\")", "ALLOW.products.filter(p=>p.kind===\"nenhum\")"]], kitsRegistram);
 });
+
+// Orçamento do PÓS-VENDA (decisão do titular de 18/11, opção B: registro ≤ 500/dia; pós-venda com orçamento separado
+// que inclui recuperação e envios). Contagem EXATA das gravações em zpc:posvenda:hotmart:* por venda de kit:
+//   entrega normal: 1 (pedido) | recuperação: +1 na entrega que falha (falha) e +2 na reentrega (pedido + limpeza da
+//   falha) | envios do ciclo d0/d1/d5: 3 por etapa = 9 por pedido | status: por execução do envio, não por venda.
+test("C1: orçamento do pós-venda medido por venda (entrega, recuperação e envios) é o declarado", async () => {
+  const pv = await import("../worker/hotmart-post-sale.mjs");
+  const BASE = "zpc:posvenda:hotmart:", DAY = 86400000;
+  function fx() {
+    const data = new Map(), writes = [], emails = []; let failure = null, clock = T;
+    data.set("sales:hotmart:v1", JSON.stringify({ channel: "hotmart", enabled: true, authorization: "LIBERAR VENDAS", by: "fixture", ref: "fixture/purchase", at: new Date(T - 1000).toISOString() }));
+    const kv = { get: async (k) => { if (k === failure) throw Error("ilegivel"); return data.get(k) ?? null; }, put: async (k, v) => { writes.push(k); data.set(k, v); },
+      list: async ({ prefix }) => ({ keys: [...data.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }) };
+    const fetchImpl = async (url, req = {}) => {
+      if (req.method === "POST") { const m = JSON.parse(req.body); const row = { ...m, id: "mail-" + (emails.length + 1), created_at: new Date(clock).toISOString() }; emails.push(row); return { status: 200, json: async () => ({ id: row.id }) }; }
+      if (String(url).endsWith("/usage")) return { status: 200, json: async () => ({ object: "usage", emails: { daily: { used: 0, limit: 100, resets_at: new Date(clock + DAY).toISOString() }, monthly: { used: emails.length, limit: 3000, resets_at: new Date(clock + 31 * DAY).toISOString() } } }) };
+      if (String(url).includes("/emails?")) return { status: 200, json: async () => ({ data: emails, has_more: false }) };
+      return { status: 200, json: async () => emails.find((x) => url.endsWith("/" + x.id)) };
+    };
+    return { writes, env: { ZEVANORY_PRIVATE_ARTIFACTS: kv, HOTMART_HOTTOK: TOKEN, RESEND_API_KEY: "synthetic" }, fetchImpl, fail: (k) => { failure = k; }, setNow: (n) => { clock = n; } };
+  }
+  const post = (s) => send(mod, s, body(8704733, "PURCHASE_APPROVED", "HP-ORC-1"));
+  const only = (w) => w.filter((k) => k.startsWith(BASE));
+  const kind = (k) => k.slice(BASE.length).split(":")[0];
+  const count = (w) => only(w).reduce((m, k) => ((m[kind(k)] = (m[kind(k)] || 0) + 1), m), {});
+  // 1) entrega normal
+  const a = fx(); await post(a);
+  assert.deepEqual(count(a.writes), { pedido: 1 }, "entrega normal: 1 gravação");
+  // 2) recuperação: a 1ª entrega falha no pós-venda (a venda continua registrada), a reentrega conclui
+  const r = fx();
+  const ref = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("HP-ORC-1")))].map((x) => x.toString(16).padStart(2, "0")).join("");
+  r.fail(BASE + "pedido:" + ref);
+  const old = console.error; console.error = () => {};
+  try { assert.equal((await post(r)).status, 200); } finally { console.error = old; }
+  assert.deepEqual(count(r.writes), { falha: 1 }, "entrega que falha: 1 gravação (marcador de falha)");
+  r.fail(null);
+  const n0 = r.writes.length; await post(r);
+  assert.deepEqual(count(r.writes.slice(n0)), { pedido: 1, falha: 1 }, "reentrega: 2 gravações (pedido + limpeza da falha)");
+  // 3) envios: ciclo completo d0/d1/d5 de UM pedido
+  const e = fx(); await post(e);
+  const e0 = e.writes.length;
+  for (const now of [T, T + DAY, T + 5 * DAY, T + 6 * DAY]) { e.setNow(now); await pv.runHotmartPostSale(e.env, { now, fetchImpl: e.fetchImpl }); }
+  const envios = count(e.writes.slice(e0));
+  assert.equal(envios["HP-ORC-1"], 9, "envios: 3 gravações por etapa × 3 etapas = 9 por pedido");
+  assert.ok((envios.status || 0) <= 4, "status: no máximo 1 por execução do envio (4 execuções)");
+  assert.deepEqual(Object.keys(envios).sort(), ["HP-ORC-1", "status"].filter((k) => envios[k]).sort());
+});

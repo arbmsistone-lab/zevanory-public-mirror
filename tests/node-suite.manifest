@@ -27,7 +27,7 @@ tests/bluesky-publisher.test.mjs 13
 tests/brand-email.test.mjs 2
 tests/brand-kit.test.mjs 9
 tests/brand-profiles.test.mjs 16
-tests/c1-hotmart-lista-fechada.test.mjs 13
+tests/c1-hotmart-lista-fechada.test.mjs 14
 tests/central-candidate-dryrun.test.mjs 4
 tests/central-modo-hotmart.test.mjs 8
 tests/central-retired-contact-script.test.mjs 5
