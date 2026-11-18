@@ -668,7 +668,8 @@ const wrapped = {
       const diag = createDiag("/api/status");
       const innerHeaders = new Headers(request.headers);
       innerHeaders.set(DIAG_RID_HEADER, diag.rid);
-      const { response, body } = await diag.stage("operational_read", "db", () => fetchJsonThroughWorker(new Request(request, { headers: innerHeaders }), normalized, ctx));
+      const innerRequest = new Request(request, { headers: innerHeaders });
+      const { response, body } = await diag.stage("operational_read", "db", () => fetchJsonThroughWorker(innerRequest, normalized, ctx));
       diag.note({ stage: "operational_read", status: response.status, inner_request_id: typeof body?.request_id === "string" ? body.request_id.slice(0, 64) : null });
       if (!response.ok || !body) return response;
       const kvSwitch = diag.begin("kv_sales_switch", "kv");
