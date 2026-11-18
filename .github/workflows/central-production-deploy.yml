@@ -252,7 +252,10 @@ jobs:
     permissions:
       contents: read
       actions: write
-    runs-on: ubuntu-latest
+    # Fixado em 24.04 (18/11/2026): no ubuntu-latest = 26.04 o Playwright 1.55.0 não instala o Chromium, o smoke
+    # pós-deploy falhou em silêncio e o rollback automático desfez a publicação do #1071. Não voltar a ubuntu-latest
+    # sem antes provar o smoke no novo sistema.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       # P21: com cutover=false os dois valores são exatamente os de antes; com true o legado fica vazio (sem queda).
@@ -369,6 +372,15 @@ jobs:
           echo "CLOUDFLARE_ACCOUNT_ID=$PUBLIC_OWNER_ACCOUNT_ID"
       - name: Zero-cost guard (owner rule, fail closed before any deploy)
         run: python3 scripts/zero_cost_guard.py
+      - name: Chromium do smoke pós-deploy - instalar e abrir ANTES da publicação
+        # O smoke de HSTS/CSP/Mercado Pago roda depois do deploy; se o navegador não instala ou não abre, ele falha e o
+        # rollback desfaz a publicação. Aqui a mesma versão é instalada e aberta antes de qualquer migração ou deploy:
+        # falha reprova o job sem tocar na produção, com o erro visível. Instala fora da árvore do repositório.
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          bash scripts/deploy/chromium-preflight.sh "$RUNNER_TEMP/pw"
+          echo "PW_DIR=$RUNNER_TEMP/pw" >> "$GITHUB_ENV"
       - name: Reconstruct exact production candidate
         if: steps.auth.outputs.available == 'true'
         env:
@@ -657,9 +669,10 @@ jobs:
           set -euo pipefail
           curl -fsSL -D /tmp/live-security-headers.txt -o /tmp/live-solutions.html https://zevanory.api.br/solucoes
           python3 scripts/verify-live-headers.py /tmp/live-security-headers.txt > /tmp/headers.log 2>&1 || { tail -5 /tmp/headers.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_HEADERS::/'; echo; exit 1; }
-          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
-          npx playwright install --with-deps chromium >/dev/null 2>&1
-          node scripts/deploy/mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
+          # Navegador já instalado e aberto no passo "Chromium do smoke pós-deploy" (antes da publicação).
+          [ -n "${PW_DIR:-}" ] && [ -d "$PW_DIR/node_modules/playwright" ] || { echo "::error title=VERIFY_MP_SMOKE::Chromium pré-instalado ausente (PW_DIR=${PW_DIR:-vazio})"; exit 1; }
+          cp scripts/deploy/mercadopago-csp-smoke.mjs "$PW_DIR/mercadopago-csp-smoke.mjs"
+          node "$PW_DIR/mercadopago-csp-smoke.mjs" > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
           cat /tmp/mpsmoke.log
       - name: P20 diário D1 - binding efetivo no Worker publicado (conferência)
         # NC-P2b-DEP-01/02: lê na Cloudflare a configuração EFETIVA da versão ativa (deployment a 100%, tag = este SHA,
