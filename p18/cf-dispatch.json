@@ -1,9 +1,9 @@
 {
   "schema": "zevanory.p18.cf-dispatch.v1",
-  "run_id": "44368622055",
-  "started_at": "2026-11-18T18:21:21.667Z",
-  "window_id": "p18w-20261118T1820Z",
-  "dispatched_at": "2026-11-18T18:20:25.221Z",
-  "dispatch_to_start_s": 56,
+  "run_id": "44369546795",
+  "started_at": "2026-11-18T18:25:35.192Z",
+  "window_id": "p18w-20261118T1825Z",
+  "dispatched_at": "2026-11-18T18:25:25.287Z",
+  "dispatch_to_start_s": 10,
   "duplicate": false
 }
