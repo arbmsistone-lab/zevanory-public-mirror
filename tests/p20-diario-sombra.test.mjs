@@ -232,7 +232,7 @@ const kvStore = () => { const m = new Map(); return { m, async get(k) { return m
 const HOTTOK = "hottok-test-0123456789abcdef";
 const hotmartReq = (event, txn = "HP17229876543210") => new Request("https://zevanory.api.br/api/webhooks/hotmart", {
   method: "POST", headers: { "x-hotmart-hottok": HOTTOK, "content-type": "application/json" },
-  body: JSON.stringify({ event, data: { purchase: { transaction: txn, price: { value: 97, currency_value: "BRL" } }, product: { id: "1111111", name: "IA na Prática" }, buyer: { email: "cliente@example.com", name: "Cliente Teste" } } }),
+  body: JSON.stringify({ event, data: { purchase: { transaction: txn, price: { value: 97, currency_value: "BRL" } }, product: { id: "8704733", name: "IA na Prática" }, buyer: { email: "cliente@example.com", name: "Cliente Teste" } } }),
 });
 
 test("DS7 Hotmart real: entrega e estorno gravados; resposta idêntica com, sem ou com diário quebrado", async () => {
