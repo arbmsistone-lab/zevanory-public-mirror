@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { readHotmartSwitch, resetHotmartSwitchCache, handleSalesControl, HOTMART_SALES_KEY, hotmartRecordProducts, hotmartProductOpen, HOTMART_PRODUCT_SLUGS } from "../worker/sales-control.mjs";
 import { hotmartKitsOpen, purchaseOpenFor } from "../worker/sales-lock-content.mjs";
 import { maybeAlertFirstOrder, retryFirstOrderAlert, brtDay, firstOrderAlertText, FIRST_ORDER_ALERT_PREFIX, MAX_ATTEMPTS } from "../worker/hotmart-first-order-alert.mjs";
@@ -195,6 +195,6 @@ test("D12.11 eventos concorrentes: 1 a 2 avisos, nunca zero; depois, nada mais (
 });
 
 test("D12.12 o cron horário chama a recuperação do aviso", () => {
-  const w = readFileSync(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url), "utf8");
+  const w = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
   assert.match(w, /if\(controller\?\.cron==="0 \* \* \* \*"\)await retryFirstOrderAlert\(normalized\)/);
 });
