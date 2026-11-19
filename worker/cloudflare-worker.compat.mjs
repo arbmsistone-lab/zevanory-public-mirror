@@ -54,6 +54,8 @@ import { runDataBackup, finalizeBackup, planBackup, backupRunParams, tokenOk as 
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { hotmartKitsOpen } from "./sales-lock-content.mjs";
+import { HOTMART_KIT_SLUGS } from "./sales-lock-content.mjs";
+const hotmartAllKitsListed=(st)=>st?.open===true&&Array.isArray(st.products)&&HOTMART_KIT_SLUGS.every((slug)=>st.products.includes(slug));
 import { refreshSalesSummary } from "./sales-ledger.mjs";
 import { dbEconomySkip } from "./db-economy.mjs";
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
@@ -146,7 +148,8 @@ const wrapped = {
         // Modo Hotmart: mesma leitura pública /api/sales/hotmart-status (sales:hotmart:v1; erro = fechado).
         hotmartOpen:async()=>{
           const st=await handleSalesControl(new Request("https://zevanory.api.br/api/sales/hotmart-status",{method:"GET"}),normalized,{sqlFactory:whatsappProofDatabase,worker,ctx});
-          return (await st?.json?.())?.open===true;
+          // D12: o chat trata o modo Hotmart como aberto só com os 5 kits liberados (liberação parcial = fechado).
+          return hotmartAllKitsListed(await st?.json?.());
         }
       });
       if(publicChat)return publicChat;
@@ -275,7 +278,8 @@ const wrapped = {
         // Modo Hotmart (5 kits pela Hotmart, interruptor completo fechado): /api/sales/hotmart-status, erro = fechado.
         hotmartOpen: async () => {
           const st = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/hotmart-status", { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
-          return (await st?.json?.())?.open === true;
+          // D12: o chat trata o modo Hotmart como aberto só com os 5 kits liberados (liberação parcial = fechado).
+          return hotmartAllKitsListed(await st?.json?.());
         }
       });
       return chat || new Response("not_found", { status: 404 });

@@ -37,6 +37,12 @@ function makeEnv({sales = "closed", checkout = "ok", limiter = "ok", core = true
       if (sales === "error500") return new Response("{}", {status: 500});
       return new Response(JSON.stringify({open: sales === "open"}), {status: 200});
     }
+    // D12: as rotas Hotmart dependem só do canal Hotmart por produto; "open" aqui libera os 5 kits.
+    if (u.endsWith("/api/sales/hotmart-status")) {
+      if (sales === "throw") throw new Error("down");
+      if (sales === "error500") return new Response("{}", {status: 500});
+      return new Response(JSON.stringify(sales === "open" ? {open: true, channel: "hotmart", products: ["combo-ia-vendas", "ia-na-pratica", "lucro-e-caixa", "negocio-completo", "vendas-na-pratica"]} : {open: false, channel: "hotmart", products: []}), {status: 200});
+    }
     if (u.includes("checkout.internal")) return checkout === "ok"
       ? new Response(JSON.stringify({checkout_url: MP_URL}), {status: 201})
       : new Response(JSON.stringify({error: "x"}), {status: 500});

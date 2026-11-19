@@ -32,14 +32,37 @@ for (const state of ["closed", "throw"]) {
   });
 }
 
-test("sales open: Hotmart kits remain allowed by the owner switch but CP stays inaccessible", async () => {
-  const r = await get("/hotmart/ia-na-pratica", env("open"));
+// D12 (19/11/2026): as rotas /hotmart dependem SÓ do interruptor Hotmart por produto; o interruptor completo
+// (checkout próprio) aberto não as abre.
+const envHotmart = (products, full = false) => ({
+  CORE: {fetch: async (u) => new Response(JSON.stringify(String(u).includes("/api/sales/hotmart-status") ? {open: products.length > 0, channel: "hotmart", products} : {open: full}), {status: 200})},
+  ASSETS: env("closed").ASSETS,
+});
+test("D12: interruptor completo aberto NÃO abre /hotmart (independência); só a lista do canal Hotmart abre", async () => {
+  for (const p of ["/hotmart/ia-na-pratica", "/hotmart/ia-na-pratica/ir"]) {
+    const r = await get(p, envHotmart([], true));
+    assert.equal(r.status, 200, p); assert.match(await r.text(), /Vendas pausadas/, p);
+  }
+});
+test("D12: só o kit liberado abre; os outros 4 seguem pausados, sem link pay.hotmart", async () => {
+  const e = envHotmart(["ia-na-pratica"]);
+  const ir = await get("/hotmart/ia-na-pratica/ir", e);
+  assert.equal(ir.status, 302); assert.match(ir.headers.get("location"), /^https:\/\/pay\.hotmart\.com\//);
+  for (const slug of Object.keys(HOTMART_CHECKOUT).filter((s) => s !== "ia-na-pratica")) {
+    for (const p of ["/hotmart/" + slug, "/hotmart/" + slug + "/ir"]) {
+      const r = await get(p, e); const body = await r.text();
+      assert.equal(r.status, 200, p); assert.match(body, /Vendas pausadas/, p); assert.doesNotMatch(body, /pay\.hotmart\.com/, p);
+    }
+  }
+});
+test("Hotmart channel with the kit listed: kit allowed, CP stays inaccessible", async () => {
+  const r = await get("/hotmart/ia-na-pratica", envHotmart(["ia-na-pratica"]));
   assert.equal(r.status, 200);
   // os botões passam pela rota de clique (funil); ela redireciona ao checkout da Hotmart
   assert.match(await r.text(), /href="\/hotmart\/ia-na-pratica\/ir\?utm_source=/);
-  const ir = await get("/hotmart/ia-na-pratica/ir", env("open"));
+  const ir = await get("/hotmart/ia-na-pratica/ir", envHotmart(["ia-na-pratica"]));
   assert.equal(ir.status, 302); assert.match(ir.headers.get("location"), /^https:\/\/pay\.hotmart\.com\//);
-  const s = await get("/assinar/conteudo-pronto", env("open"));
+  const s = await get("/assinar/conteudo-pronto", envHotmart(["ia-na-pratica"]));
   assert.equal(s.status, 404);
   assert.equal(s.headers.get("location"), null);
   assert.equal(s.headers.get("x-robots-tag"), "noindex, nofollow");

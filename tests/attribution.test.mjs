@@ -36,7 +36,7 @@ test("intent and source are stored as aggregate counters only and summarized per
 test("Hotmart-only kit variant preserves src attribution and never exposes CP", async () => {
   const asset = readTextNormalized(new URL("../sales-public/ia-na-pratica.html", import.meta.url));
   const calls=[];
-  const env={CORE:{fetch: async()=>Response.json({open:true})},ASSETS:{fetch:async()=>new Response(asset,{status:200})}};
+  const env={CORE:{fetch: async()=>Response.json({open:true,products:["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"]})},ASSETS:{fetch:async()=>new Response(asset,{status:200})}};
   const r=await worker.fetch(new Request("https://vendas.zevanory.api.br/hotmart/ia-na-pratica?utm_source=telegram"),env,{waitUntil(){}});
   assert.equal(r.status,200);
   const html=await r.text();

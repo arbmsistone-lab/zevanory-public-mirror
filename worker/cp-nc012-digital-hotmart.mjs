@@ -2,6 +2,7 @@ import {enqueueHotmartPostSaleSecondary} from "./hotmart-post-sale.mjs";
 // NC-012 digital-products Hotmart ingestion (NOT Conteudo Pronto).
 // Separate sales/activities ledger M3. Never writes the zpc:cp:* namespace.
 import {recordHotmartSale} from "./sales-ledger.mjs";
+import {maybeAlertFirstOrder} from "./hotmart-first-order-alert.mjs";
 import {emitActivity} from "./activity-ledger.mjs";
 import {diarioSombra,eventoEntrega,eventoReembolso} from "./diario-sombra.mjs";
 // C1 (lista fechada, 18/11/2026): só os 5 kits da ZEVANORY entram no registro financeiro, na atividade, no diário e
@@ -56,5 +57,7 @@ export async function handleDigitalHotmartNc012(request,env,{now=Date.now()}={})
  if(ACTIVE.has(event))diarioSombra(env,null,()=>eventoEntrega({provider:"hotmart",transaction:txn,channel:"store",status:"hotmart_approved"}));
  if(STOP.has(event))diarioSombra(env,null,()=>eventoReembolso({provider:"hotmart",transaction:txn,stage:"hotmart_"+event.toLowerCase()}));
  await enqueueHotmartPostSaleSecondary(request,env,body,{now});
+ // D12: aviso único do 1º pedido elegível do dia (BRT) ao proprietário; melhor esforço, nunca muda a resposta.
+ await maybeAlertFirstOrder(env,{event,productId,recorded:result?.recorded===true,now}).catch(()=>null);
  return json(200,{ok:true,scope:"digital_product",duplicate:result?.reason==="duplicate"});
 }

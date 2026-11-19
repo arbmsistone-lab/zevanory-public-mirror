@@ -142,7 +142,9 @@ export function readHotmartChannel(status, bodyText) {
   if (status !== 200) return { open: false, reason: "hotmart_channel_http_" + status };
   let j;
   try { j = JSON.parse(bodyText); } catch { return { open: false, reason: "hotmart_channel_not_json" }; }
-  return isObj(j) && j.open === true ? { open: true, reason: "hotmart_channel_open" } : { open: false, reason: "hotmart_channel_closed" };
+  // D12: o canal abre POR PRODUTO; a lista `products` diz quais kits são julgados abertos (sem lista = nenhum).
+  const products = isObj(j) && Array.isArray(j.products) ? j.products.filter((x) => typeof x === "string") : [];
+  return isObj(j) && j.open === true ? { open: true, reason: "hotmart_channel_open", products } : { open: false, reason: "hotmart_channel_closed", products: [] };
 }
 // Expectativa efetiva por produto: no modo Hotmart só os kits são julgados como abertos; assinatura e serviço
 // (Conteúdo Pronto) seguem a trava completa.
@@ -358,7 +360,7 @@ export async function runLive({ allow, fetchImpl = fetch, renderCheckout = null,
   }
   const results = [];
   for (const p of allow.products) {
-    const em = effectiveSalesMode(sm.mode, hc.open, p);
+    const em = effectiveSalesMode(sm.mode, hc.open === true && (hc.products || []).includes(p.slug), p);
     const routeUrl = allow.site_origin + p.site_route;
     const route = await safeGetNoFollow(routeUrl, { fetchImpl, allowHosts: [siteHost] });
     let ir = null;

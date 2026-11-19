@@ -1,7 +1,7 @@
 import { readFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { CONTACT_HTML, CONTACT_TEXT_OR, LEGAL_IDENTITY } from "./politica-unica.mjs";
-import { FISCAL_PROCESS, fiscalProcessDefined } from "./fiscal-process.mjs";
+import { FISCAL_PROCESS, fiscalProcessDefined } from "./fiscal-process.mjs"; import HOTMART_ALLOW from "../data/p18-commercial-allowlist.json" with { type: "json" }; // D12
 // Sales switch + customer self-service delivery recovery.
 // Deploy note (2026-10-07): first production rollout was rolled back by the CSP smoke (inline footer style on the sales site, fixed in #460).
 //
@@ -161,7 +161,7 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
   if (path === "/api/sales/hotmart-status") {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
     const hs = await readHotmartSwitch(env);
-    return json(200, { open: hs.open === true, channel: "hotmart", revision: hs.revision || null });
+    return json(200, { open: hs.open === true, channel: "hotmart", revision: hs.revision || null, products: hs.open === true ? hs.products : [] });
   }
   if (path === "/entrega/reenviar") {
     return request.method === "GET" || request.method === "HEAD" ? html(200, RESEND_PAGE) : json(405, { error: "method_not_allowed" });
@@ -195,15 +195,33 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
 // checkout próprio, o funil, o blog nem nenhum outro consumidor de sales:open:v1 (que continua fechado).
 // Falha fechada: KV ausente, JSON inválido, canal diferente ou registro incompleto = fechado.
 export const HOTMART_SALES_KEY = "sales:hotmart:v1";
+// D12 (19/11/2026, VC-H): o modo Hotmart abre POR PRODUTO. O registro tem de listar em `products` os slugs liberados,
+// todos entre os 5 kits da lista fechada (data/p18-commercial-allowlist.json, kind "kit"), sem repetição. Registro sem
+// lista, lista vazia, slug desconhecido ou repetido = FECHADO para todos (falha fechada). Nada aqui depende do
+// interruptor completo sales:open:v1 (checkout próprio): cada um tem a sua chave e a sua leitura.
+export const HOTMART_PRODUCT_SLUGS = Object.freeze(HOTMART_ALLOW.products.filter((p) => p.kind === "kit").map((p) => String(p.slug)));
+export function hotmartRecordProducts(record) {
+  const list = record?.products;
+  if (!Array.isArray(list) || list.length === 0 || list.length > HOTMART_PRODUCT_SLUGS.length) return null;
+  if (!list.every((s) => typeof s === "string" && HOTMART_PRODUCT_SLUGS.includes(s))) return null;
+  if (new Set(list).size !== list.length) return null;
+  return Object.freeze([...list].sort());
+}
+// Produto liberado no modo Hotmart (leitura de readHotmartSwitch ou de /api/sales/hotmart-status).
+export function hotmartProductOpen(sw, slug) {
+  return sw?.open === true && Array.isArray(sw.products) && sw.products.includes(String(slug ?? ""));
+}
 let hotmartCached = { at: 0, value: null };
 export async function readHotmartSwitch(env, now = Date.now()) {
   if (now >= hotmartCached.at && now - hotmartCached.at < CACHE_MS && hotmartCached.value) return hotmartCached.value;
-  let value = { open: false, revision: "" };
+  let value = { open: false, revision: "", products: [] };
   try {
     const raw = await env?.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(HOTMART_SALES_KEY, { cacheTtl: KV_EDGE_TTL_S });
     const parsed = raw ? JSON.parse(raw) : null;
     const revision = String(parsed?.at || "").slice(0, 40);
-    value = { open: parsed?.channel === "hotmart" && validOwnerAuthorization(parsed, now), revision };
+    const products = hotmartRecordProducts(parsed);
+    const open = parsed?.channel === "hotmart" && validOwnerAuthorization(parsed, now) && products !== null;
+    value = { open, revision, products: open ? products : [] };
   } catch {}
   hotmartCached = { at: now, value };
   return value;

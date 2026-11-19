@@ -258,17 +258,17 @@ test("live, modo Hotmart (trava completa fechada + canal Hotmart aberto): kits a
     return [200, null, `<a href="${href.replace(/&/g, "&amp;")}">Comprar</a>`];
   };
   const ck = (state) => (u) => { const p = allow.products.find((x) => u.includes(x.checkout_code)); return [200, null, productFixture(p.slug, p.kind === "kit" ? state : "hotmart-closed-049.html")]; };
-  const f = liveFake({ site: kitSite, checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true,"channel":"hotmart"}'] });
+  const f = liveFake({ site: kitSite, checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true,"channel":"hotmart","products":["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"]}'] });
   const r = await runLive({ allow, fetchImpl: f });
   assert.equal(r.hotmart_channel, true, "[P18C.H1] canal Hotmart lido");
   assert.equal(r.verdict, PASS, "[P18C.H1] coerente: " + JSON.stringify(r.results.filter((x) => x.verdict === FAIL)));
   assert.ok(f.calls.every((c) => c.method === "GET"), "[P18C.H1] só GET");
   // Plataforma ainda fechada (ex.: verificação da conta pendente): o site vende e a Hotmart recusa = FAIL real.
-  const g = liveFake({ site: kitSite, checkout: ck("hotmart-closed-049.html"), hotmart: [200, '{"open":true}'] });
+  const g = liveFake({ site: kitSite, checkout: ck("hotmart-closed-049.html"), hotmart: [200, '{"open":true,"products":["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"]}'] });
   const r2 = await runLive({ allow, fetchImpl: g });
   assert.deepEqual([...new Set(r2.results.filter((x) => x.verdict === FAIL).map((x) => x.reason))], ["hotmart_closed_while_enabled"], "[P18C.H2] checkout fechado com o canal aberto");
   // Canal ilegível ou fechado: volta às expectativas da trava fechada (rota com checkout = FAIL).
-  for (const hm of [[500, '{"open":true}'], [200, '{"open":"true"}'], [200, "<html>"], [200, '{"open":false}']]) {
+  for (const hm of [[500, '{"open":true,"products":["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"]}'], [200, '{"open":"true"}'], [200, "<html>"], [200, '{"open":false}']]) {
     const h = liveFake({ site: kitSite, checkout: ck("hotmart-closed-049.html"), hotmart: hm });
     const r3 = await runLive({ allow, fetchImpl: h });
     assert.equal(r3.hotmart_channel, false, "[P18C.H3] fail-closed " + hm.join(" "));
@@ -276,11 +276,11 @@ test("live, modo Hotmart (trava completa fechada + canal Hotmart aberto): kits a
   }
   // Assinatura nunca abre pelo canal Hotmart.
   const cp = allow.products.find((x) => x.kind === "subscription");
-  const i = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [302, `https://pay.hotmart.com/${cp.checkout_code}?off=${cp.offer}`, ""] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true}'] });
+  const i = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [302, `https://pay.hotmart.com/${cp.checkout_code}?off=${cp.offer}`, ""] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true,"products":["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"]}'] });
   const r4 = await runLive({ allow, fetchImpl: i });
   assert.deepEqual(r4.results.filter((x) => x.verdict === FAIL).map((x) => [x.slug, x.reason]), [[cp.slug, "site_route_checkout_while_locked"]], "[P18C.H4] Conteúdo Pronto segue a trava completa");
   // NC-1004-01: assinatura desativada responde 404 (DEC-04) = PASS; a exceção nunca alcança os kits.
-  const j = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [404, null, "<html>Página indisponível</html>"] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true}'] });
+  const j = liveFake({ site: (u) => (u.endsWith(cp.site_route) ? [404, null, "<html>Página indisponível</html>"] : kitSite(u)), checkout: ck("hotmart-open-ok.html"), hotmart: [200, '{"open":true,"products":["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"]}'] });
   const r5 = await runLive({ allow, fetchImpl: j });
   assert.equal(r5.verdict, PASS, "[P18C.H5] Conteúdo Pronto 404 sem checkout: " + JSON.stringify(r5.results.filter((x) => x.verdict === FAIL)));
   assert.equal(r5.results.find((x) => x.slug === cp.slug && x.source === "live:site_route").reason, "site_route_subscription_retired_404", "[P18C.H5] motivo");
@@ -324,7 +324,7 @@ test("P18C.21: runLive segue o /ir só com utm_source=diagnostico (fora das mét
     pedidos.push(String(url)); const u = new URL(url);
     const H = (o) => ({ get: (k) => o[k.toLowerCase()] ?? null });
     if (u.pathname === "/api/release") return { status: 200, headers: H({}), text: async () => JSON.stringify({ sales_mode: "globally-blocked" }) };
-    if (u.pathname === "/api/sales/hotmart-status") return { status: 200, headers: H({}), text: async () => JSON.stringify({ open: true }) };
+    if (u.pathname === "/api/sales/hotmart-status") return { status: 200, headers: H({}), text: async () => JSON.stringify({ open: true, products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"] }) };
     const m = u.pathname.match(/^\/hotmart\/([a-z-]+)\/ir$/);
     if (m) { const p = allow.products.find((x) => x.slug === m[1]); return { status: 302, headers: H({ location: `https://pay.hotmart.com/${p.checkout_code}?off=${p.offer}&src=${u.searchParams.get("utm_source")}` }), text: async () => "" }; }
     const r = u.pathname.match(/^\/hotmart\/([a-z-]+)$/);

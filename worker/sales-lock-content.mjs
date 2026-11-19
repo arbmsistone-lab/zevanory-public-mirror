@@ -4,7 +4,7 @@
 // Reaproveita hasCheckoutCta (caminhos/hosts de checkout de data/politica-unica.json) e acrescenta /comprar sem
 // barra final, preço em reais e as chamadas de compra explícitas.
 import { hasCheckoutCta } from "./politica-unica.mjs";
-import { readSalesSwitch, readHotmartSwitch } from "./sales-control.mjs";
+import { readSalesSwitch, readHotmartSwitch, hotmartProductOpen } from "./sales-control.mjs";
 
 const PRICE_RE = /R\$\s*\d/i;
 const COMPRAR_RE = /\/comprar(?![\p{L}\p{N}-])/u;
@@ -56,14 +56,18 @@ export function hotmartKit(skuOrSlug) {
 // Caminho de compra pela Hotmart no site de vendas (o site redireciona ao checkout da Hotmart com o src da origem).
 export const hotmartPurchasePath = (skuOrSlug) => { const k = hotmartKit(skuOrSlug); return k ? "/hotmart/" + k.slug : null; };
 // Fail-closed: exceção, KV ausente, canal diferente ou registro incompleto => fechado.
+// D12 (19/11/2026): os publicadores automáticos (blog, motor de aquisição, Shorts, chat, nutrição de leads) tratam o
+// modo Hotmart como aberto SÓ quando os 5 kits estão liberados. Com liberação parcial (ex.: VC-H com 1 kit), a
+// divulgação automática continua fechada (lista de espera) e só a página e a rota de compra do produto liberado abrem.
 export async function hotmartKitsOpen(env) {
-  try { return (await readHotmartSwitch(env))?.open === true; } catch { return false; }
+  try { const sw = await readHotmartSwitch(env); return HOTMART_KIT_SLUGS.every((slug) => hotmartProductOpen(sw, slug)); } catch { return false; }
 }
-// Compra aberta para um produto: interruptor completo aberto OU (modo Hotmart aberto E o produto é um dos 5 kits).
+// Compra aberta para um produto: interruptor completo aberto OU (modo Hotmart com ESTE kit liberado).
 export async function purchaseOpenFor(env, skuOrSlug) {
   if (await contentSalesOpen(env)) return true;
-  if (!hotmartKit(skuOrSlug)) return false;
-  return hotmartKitsOpen(env);
+  const kit = hotmartKit(skuOrSlug);
+  if (!kit) return false;
+  try { return hotmartProductOpen(await readHotmartSwitch(env), kit.slug); } catch { return false; }
 }
 // Leitura única por execução para os publicadores: {full, hotmart}. hotmart só vale com o completo fechado.
 export async function readPurchaseMode(env) {

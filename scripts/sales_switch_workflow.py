@@ -15,6 +15,21 @@ REPO = "arbmsistone-lab/zevanory-public-mirror"
 CF_ACCOUNT = "1b26415802588185a86c1d4d3ebf5bdb"
 KEY = "sales:open:v1"
 HOTMART_KEY = "sales:hotmart:v1"  # roteiro v5.0 Nível 1: abre só a compra pela Hotmart
+# D12 (19/11/2026): o modo Hotmart abre POR PRODUTO. Fonte única dos 5 kits: data/p18-commercial-allowlist.json.
+HOTMART_KIT_SLUGS = tuple(
+    p["slug"] for p in json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "p18-commercial-allowlist.json"), encoding="utf-8"))["products"]
+    if p.get("kind") == "kit"
+)
+
+
+def hotmart_products(raw):
+    """Lista de slugs liberados: não vazia, sem repetição, só kits da lista fechada; senão None (recusa)."""
+    items = [x.strip() for x in str(raw or "").split(",")]
+    if not items or any(not x for x in items) or len(items) > len(HOTMART_KIT_SLUGS):
+        return None
+    if len(set(items)) != len(items) or any(x not in HOTMART_KIT_SLUGS for x in items):
+        return None
+    return sorted(items)
 EMERGENCY_CLOSE_NAMESPACE = "728a45738e4047f29bcb89934fd533c1"  # F7 verified production KV
 PREFLIGHT = "zpc-sales-preflight:v1"
 ROOT = "https://zevanory.api.br"
@@ -182,6 +197,10 @@ def main():
         ref = os.environ.get("ORDER_REF", "")
         if confirm != "LIBERAR VENDAS" or not validate_ref(ref):
             raise RuntimeError("OWNER_ORDER_CONFIRMATION_INVALID")
+        products = hotmart_products(os.environ.get("HOTMART_PRODUCTS", ""))
+        if products is None:
+            raise RuntimeError("HOTMART_PRODUCTS_INVALID")
+        annotate("OPEN_HOTMART_PRODUCTS", ",".join(products))
         if args.dry_run:
             annotate("OPEN_HOTMART_DRY_RUN", "PASS_NO_KV_WRITE_NO_NETWORK")
             return
@@ -197,11 +216,14 @@ def main():
             raise RuntimeError("HOTMART_NOT_CONFIRMED_CLOSED_BEFORE_OPEN")
         token, ns = cf_binding()
         record = {"enabled": True, "authorization": "LIBERAR VENDAS", "channel": "hotmart",
-                  "by": "owner", "at": ISO(), "ref": ref}
+                  "by": "owner", "at": ISO(), "ref": ref, "products": products}
         kv_write(token, ns, record, key=HOTMART_KEY)
         try:
             if not await_status(True, public_hotmart_open):
                 raise RuntimeError("OPEN_HOTMART_NOT_OBSERVED_WITHIN_60_SECONDS")
+            # D12: a lista pública tem de ser EXATAMENTE a liberada; senão, reverte.
+            if sorted(public_hotmart_open().get("products") or []) != products:
+                raise RuntimeError("OPEN_HOTMART_PRODUCTS_MISMATCH")
             # NC-1003-01: depois de abrir, o interruptor completo continua fechado; senão, reverte.
             if public_sales_open().get("open") is not False:
                 raise RuntimeError("FULL_SWITCH_OPEN_AFTER_HOTMART")

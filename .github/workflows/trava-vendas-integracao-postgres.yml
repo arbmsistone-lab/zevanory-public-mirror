@@ -20,6 +20,8 @@ on:
       - "data/p23/fiscal-process.json"
       # NC-F1-A3-02 (#1020): lista curada de fontes lida pelo gate do blog (worker/blog-quality-gate.mjs).
       - "data/fontes-permitidas.json"
+      # D12 (19/11/2026): lista fechada dos kits lida por worker/sales-control.mjs (modo Hotmart por produto).
+      - "data/p18-commercial-allowlist.json"
       - "tests/integration/**"
       - "tests/t4_sim/**"
       - "tests/trava-vendas-gate-paths.test.mjs"

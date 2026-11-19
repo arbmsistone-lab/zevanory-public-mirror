@@ -2,7 +2,7 @@ import {restrictedQuota,reserveRestrictedQuota} from "./hotmart-post-sale-quota.
 import {containsForbiddenCreativeText} from "./creative-autonomy.mjs";
 import PRODUCTS from '../data/products.json' with {type:'json'};
 import ALLOW from '../data/p18-commercial-allowlist.json' with {type:'json'};
-import {validOwnerAuthorization} from './sales-control.mjs';
+import {validOwnerAuthorization,hotmartRecordProducts} from './sales-control.mjs';
 const DAY=86400000,BASE='zpc:posvenda:hotmart:',ORDER=BASE+'pedido:',STOP=BASE+'cancelado:',OPT=BASE+'optout:';
 export const HOTMART_POSTSALE_OPTOUT='/pos-venda/hotmart/descadastrar';
 export const STEPS=Object.freeze([{id:'d0',days:0},{id:'d1',days:1},{id:'d5',days:5}]);
@@ -72,7 +72,7 @@ export async function recordHotmartPostSale(request,env,body,{now=Date.now()}={}
 }
 async function salesAllowed(kv,now){
  const sw=await read(kv,'sales:hotmart:v1',v=>object(v)&&v.channel==='hotmart'&&typeof v.enabled==='boolean');
- return sw!==null&&validOwnerAuthorization(sw,now);
+ return sw!==null&&validOwnerAuthorization(sw,now)&&hotmartRecordProducts(sw)!==null;
 }
 async function providerGet(env,fetchImpl,path){const r=await fetchImpl('https://api.resend.com'+path,{headers:{authorization:'Bearer '+env.RESEND_API_KEY},signal:AbortSignal.timeout(10000)});if(r.status!==200){const e=Error('provider_read_failed');e.status=r.status;throw e;}return r.json();}
 // Quota is independent of the sent-email history. Official GET /usage counts

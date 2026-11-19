@@ -38,7 +38,7 @@ const CAPTURED = captureConsole();
 const SECRETS_SEEN = new Set([HOTTOK, SECRET]);
 
 const fresh = () => { resetSalesSwitchCache(); resetHotmartSwitchCache(); };
-const ownerRecord = (extra = {}) => JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner-test", at: new Date(Date.now() - MIN).toISOString(), ref: "teste/abandono-hotmart", channel: "hotmart", ...extra });
+const ownerRecord = (extra = {}) => JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner-test", at: new Date(Date.now() - MIN).toISOString(), ref: "teste/abandono-hotmart", channel: "hotmart", products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"], ...extra });
 function makeEnv({ d1 = createAbandonoD1(), kv = memKv(), open = true, extra = {} } = {}) {
   if (open) kv.m.set("sales:hotmart:v1", ownerRecord());
   return { HOTMART_HOTTOK: HOTTOK, LEAD_PRIVACY_SECRET: SECRET, RESEND_API_KEY: "test-resend-" + "r".repeat(4), ZEVANORY_PRIVATE_ARTIFACTS: kv, DIARIO: d1, ...extra };

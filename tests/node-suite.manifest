@@ -49,6 +49,7 @@ tests/creative-offer-containment.test.mjs 7
 tests/criativos-laboratorio.test.mjs 14
 tests/criativos-rubrica-area-segura.test.mjs 3
 tests/criativos-rubrica-perfil.test.mjs 3
+tests/d12-hotmart-por-produto.test.mjs 7
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10
@@ -84,7 +85,7 @@ tests/funil-clique-diagnostico.test.mjs 9
 tests/funnel-counting.test.mjs 22
 tests/funnel.test.mjs 7
 tests/hotmart-pages.test.mjs 2
-tests/hotmart-paused.test.mjs 15
+tests/hotmart-paused.test.mjs 17
 tests/inbound-autonomy.test.mjs 6
 tests/instant-status-sales-coherence.test.mjs 3
 tests/internal-financial-audit.test.mjs 11
