@@ -13,7 +13,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cli, privateFingerprint, privateValueCheck, redactLine, redactTail, buildHistory, historySummary, HISTORY_VERSION_FIELDS, HISTORY_DEPLOYMENT_FIELDS, evaluateReadback, namesFromSecretList, namesFromSettings, planRemoval, verifyRemoval, proveTarget,
-  CONFIRMATION_PHRASE, REMOVAL_ALLOWLIST, loadDebt, snapshot, canonicalJson, inventoryDigest, checkBinding, loadMatrix,
+  CONFIRMATION_PHRASE, REMOVAL_ALLOWLIST, loadDebt, snapshot, settingsFieldPrints, settingsDivergence, settingsDivergenceLine, SETTINGS_FIELDS_LIMIT, canonicalJson, inventoryDigest, checkBinding, loadMatrix,
   evaluatePreflight, stepCheck, evaluatePostcheck, diffConfig, liveDigest, validateEntries, INVENTORY_SCHEMA, TARGET } from "../scripts/ci/production-secret-names.mjs";
 
 const VALUE = "VALOR-SINTETICO-QUE-NUNCA-PODE-APARECER-0123456789";
@@ -614,4 +614,78 @@ test("N18 Sol 222/223: D0 público recalculável sem chave; valores só comparad
   assert.equal(docLine, canonicalJson(doc), "[N18.5] o documento exportado já está na forma canônica");
   assert.ok(rb.out.includes("SECTION_D0=metadados auditáveis independentemente (D0)") && rb.out.includes("SECTION_PRIVATE=valores verificados internamente pelo workflow (não auditados pelo SOL)"), "[N18.6] os dois compromissos rotulados no relatório");
   assert.match(READBACK_WF, /SECTION_D0\|SECTION_PRIVATE/, "[N18.6] e no resumo do job");
+});
+
+test("N19 I4 diagnóstico de script_settings_changed: caminhos e tipos dos campos divergentes, nunca valores; o bloqueio continua", () => {
+  const [A, B] = REMOVAL_ALLOWLIST;
+  const SEGREDO = "sk_live_VALOR-QUE-NUNCA-PODE-APARECER-ABCDEF";
+  const rest = () => ({ compatibility_date: "2026-09-04", compatibility_flags: ["nodejs_compat"], logpush: false, usage_model: "standard",
+    observability: { enabled: true, logs: { enabled: true, invocation_logs: true } }, tail_consumers: [], tags: [] });
+  const withRest = (st, mut = (r) => r) => { const r = mut(rest()) || rest(); Object.assign(st.s.result, r); return st; };
+  const plan = makePlan(withRest(S0()));
+  assert.ok(plan.settings_fields && plan.settings_fields.fields["observability.logs.invocation_logs"].k === "boolean", "[N19.1] o plano guarda o mapa caminho->tipo (privado, em RUNNER_TEMP)");
+  const post = (mut) => withRest(state({ removed: [A], chain: [V1, V0] }), mut);
+  const step = (st) => stepCheck({ plan, phase: "post", name: A, deleted: [], expectedVersion: V0, snap: snapOf(st) });
+  assert.equal(step(post()).ok, true, "[N19.2] settings iguais: passo passa e não há diagnóstico");
+  assert.equal(step(post()).settingsDiff, null, "[N19.2] sem divergência, sem linha de diagnóstico");
+  // Metadado normalizado pela plataforma (vazio -> null): ainda reprova; o diagnóstico mostra caminho e tipos.
+  const norm = step(post((r) => { r.tail_consumers = null; r.tags = null; return r; }));
+  assert.ok(!norm.ok && norm.errors.includes("script_settings_changed"), "[N19.3] normalização de metadado continua reprovando (sem allowlist)");
+  assert.deepEqual(norm.settingsDiff.kindChanged, ["tags:array>null", "tail_consumers:array>null"], "[N19.3] categoria visível: tipo mudou de array vazio para null");
+  // Alteração real de configuração: reprova e aponta o caminho, sem o valor.
+  const real = step(post((r) => { r.compatibility_date = "2099-01-01"; r.observability.logs.invocation_logs = false; return r; }));
+  assert.ok(!real.ok, "[N19.4] alteração real reprova");
+  assert.deepEqual(real.settingsDiff.changed, ["compatibility_date:string", "observability.logs.invocation_logs:boolean"], "[N19.4] caminhos aninhados exatos");
+  // Campo adicionado e removido.
+  const addrm = step(post((r) => { delete r.logpush; r.placement = { mode: "smart" }; return r; }));
+  assert.deepEqual([addrm.ok, addrm.settingsDiff.added, addrm.settingsDiff.removed], [false, ["placement.mode:string"], ["logpush:boolean"]], "[N19.5] adicionado e removido no topo reprovam e aparecem");
+  // Campos sensíveis: valor secreto e chave com texto arbitrário nunca aparecem; chave vira <chave>.
+  const sens = runCli(["step", "--phase", "post", "--plan", "@p", "--name", A, "--expected-version", V0, ...ST],
+    { p: plan, ...post((r) => { r.tags = [SEGREDO]; r.observability[SEGREDO + "/x y"] = SEGREDO; return r; }) });
+  assert.equal(sens.code, 1, "[N19.6] CLI reprova");
+  assert.match(sens.out, /^SETTINGS_DIVERGENCE changed=- kind_changed=- added=observability\.<chave-desconhecida>:string,tags\[0\]:string removed=tags:array truncated=false unlocated=false /m, "[N19.6] só caminhos e tipos; chave fora do esquema vira <chave-desconhecida>");
+  assert.ok(!sens.out.includes(SEGREDO) && !sens.out.includes("sk_live") && !/[0-9a-f]{64}/.test(sens.out.replace(/sha256:[0-9a-f]{64}/g, "")), "[N19.6] nenhum valor, chave crua ou impressão privada no log");
+  // Contra-auditoria c1144695 (1): chave desconhecida em formato de identificador válido também nunca sai literal.
+  const TOKEN_KEY = "sk_live_TOKEN_SINTETICO_I4";
+  const tokKey = (r) => { r.observability[TOKEN_KEY] = "x"; r[TOKEN_KEY] = 1; r.tail_consumers = [{ service: "s", [TOKEN_KEY]: true }]; return r; };
+  const tokStep = runCli(["step", "--phase", "post", "--plan", "@p", "--name", A, "--expected-version", V0, ...ST], { p: plan, ...post(tokKey) });
+  const tokVerify = runCli(["verify", "--plan", "@p", ...ST], { p: plan, ...withRest(state({ removed: [A, B], chain: [V2, V1, V0] }), tokKey) });
+  for (const [label, r] of [["step", tokStep], ["verify", tokVerify]]) {
+    assert.equal(r.code, 1, `[N19.11] ${label} reprova`);
+    assert.ok(!r.out.includes(TOKEN_KEY) && !r.out.includes("TOKEN_SINTETICO") && !/<chave:/.test(r.out) && !/[0-9a-f]{64}/.test(r.out.replace(/sha256:[0-9a-f]{64}/g, "")), `[N19.11] ${label}: chave com formato de identificador fora do esquema nunca sai literal, nem sua impressão`);
+    assert.match(r.out, /^SETTINGS_DIVERGENCE .*added=<chave-desconhecida>:number,observability\.<chave-desconhecida>:string,tail_consumers\[0\]\.<chave-desconhecida>:boolean,tail_consumers\[0\]\.service:string /m, `[N19.11] ${label}: posição conhecida literal; chave desconhecida redigida em qualquer posição`);
+  }
+  // Contra-auditoria c1144695 (2): troca de chave redigida com o mesmo valor ainda aparece (identidade privada preservada).
+  const before2 = makePlan(withRest(S0(), (r) => { r.observability["x-chave-a"] = "mesmo"; return r; }));
+  const swap = (r) => { r.observability["x-chave-b"] = "mesmo"; return r; };
+  const swStep = stepCheck({ plan: before2, phase: "post", name: A, deleted: [], expectedVersion: V0, snap: snapOf(post(swap)) });
+  const swVerify = verifyRemoval({ plan: before2, snap: snapOf(withRest(state({ removed: [A, B], chain: [V2, V1, V0] }), swap)) });
+  for (const [label, r] of [["step", swStep], ["verify", swVerify]]) {
+    assert.ok(!r.ok && r.errors.includes("script_settings_changed"), `[N19.12] ${label}: troca de chave redigida reprova`);
+    assert.deepEqual([r.settingsDiff.removed, r.settingsDiff.added, r.settingsDiff.unlocated], [["observability.<chave-desconhecida>:string"], ["observability.<chave-desconhecida>:string"], false], `[N19.12] ${label}: a divergência é localizada (sai uma, entra outra), sem revelar as chaves`);
+  }
+  // Diferença que o mapa não localiza (aqui: além do limite de campos) é declarada explicitamente, e continua reprovando.
+  const wide = (n) => Object.fromEntries([...Array(SETTINGS_FIELDS_LIMIT + 5).keys()].map((i) => ["k" + String(i).padStart(4, "0"), i === SETTINGS_FIELDS_LIMIT + 4 ? n : 0]));
+  const planWide = makePlan(withRest(S0(), (r) => { r.limits = { cpu_ms: 1 }; r.zz = wide(0); return r; }));
+  const wideStep = stepCheck({ plan: planWide, phase: "post", name: A, deleted: [], expectedVersion: V0, snap: snapOf(post((r) => { r.limits = { cpu_ms: 1 }; r.zz = wide(1); return r; })) });
+  assert.ok(!wideStep.ok && wideStep.errors.includes("script_settings_changed"), "[N19.13] diferença fora do mapa reprova");
+  assert.deepEqual([wideStep.settingsDiff.unlocated, wideStep.settingsDiff.truncated], [true, true], "[N19.13] sem caminho localizado: unlocated=true (com truncated=true), nunca silêncio");
+  assert.match(settingsDivergenceLine(wideStep.settingsDiff), / truncated=true unlocated=true /, "[N19.13] a linha declara a falta de localização");
+  assert.match(sens.out, /^STEP_ERROR script_settings_changed$/m, "[N19.6] o erro original continua");
+  // Respostas incompletas.
+  const oldPlan = { ...plan }; delete oldPlan.settings_fields;
+  const legacy = stepCheck({ plan: oldPlan, phase: "post", name: A, deleted: [], expectedVersion: V0, snap: snapOf(post((r) => { r.logpush = true; return r; })) });
+  assert.deepEqual([legacy.ok, legacy.settingsDiff], [false, { available: false, reason: "plan_without_settings_fields" }], "[N19.7] plano antigo sem mapa: reprova e diz que o diagnóstico está indisponível");
+  assert.match(settingsDivergenceLine(settingsDivergence(plan.settings_fields, null)), /^SETTINGS_DIVERGENCE available=false reason=settings_unreadable /, "[N19.7] leitura sem settings: indisponível, nunca PASS");
+  assert.throws(() => settingsFieldPrints({ success: false, result: {} }), /settings_not_success/, "[N19.7] resposta sem sucesso falha fechado");
+  assert.throws(() => settingsFieldPrints({ success: true, result: { logpush: true } }), /settings_without_bindings/, "[N19.7] resposta sem bindings falha fechado");
+  const big = { success: true, result: { bindings: [], many: Object.fromEntries([...Array(SETTINGS_FIELDS_LIMIT + 10).keys()].map((i) => ["f" + i, i])) } };
+  const bp = settingsFieldPrints(big);
+  assert.deepEqual([Object.keys(bp.fields).length, bp.truncated], [SETTINGS_FIELDS_LIMIT, true], "[N19.8] mapa limitado e marcado truncated");
+  // Bindings ficam fora do mapa (já cobertos por diffConfig); mudança de valor de var continua reprovando por lá.
+  assert.ok(Object.keys(plan.settings_fields.fields).every((p) => !p.startsWith("bindings")), "[N19.9] bindings fora do diagnóstico de settings");
+  const v = verifyRemoval({ plan, snap: snapOf(withRest(state({ removed: [A, B], chain: [V2, V1, V0] }), (r) => { r.usage_model = "unbound"; return r; })) });
+  assert.deepEqual([v.ok, v.errors.includes("script_settings_changed"), v.settingsDiff.changed], [false, true, ["usage_model:string"]], "[N19.10] verify final: reprova e diagnostica");
+  const vcli = runCli(["verify", "--plan", "@p", ...ST], { p: plan, ...withRest(state({ removed: [A, B], chain: [V2, V1, V0] }), (r) => { r.usage_model = "unbound"; return r; }) });
+  assert.ok(vcli.code === 1 && /^SETTINGS_DIVERGENCE changed=usage_model:string /m.test(vcli.out) && !vcli.out.includes("unbound"), "[N19.10] CLI verify imprime o caminho, não o valor");
 });
