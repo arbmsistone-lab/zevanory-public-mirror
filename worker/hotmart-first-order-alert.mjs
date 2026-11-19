@@ -93,6 +93,9 @@ export async function registerFirstOrderCandidate(env, { event, data, now = Date
   if (!kv?.get || !kv?.put) return { ok: false, reason: "kv_indisponivel" };
   try {
     const h = await txnHash(txn);
+    // Autorização primeiro (leitura do interruptor já é fail-closed): kit não liberado não lê nem grava nada aqui, e o
+    // registro de vendas continua sendo quem responde 503 quando o KV está fora (NC-989/M33 preservado).
+    if (!hotmartProductOpen(await readHotmartSwitch(env, now), kit.slug)) return { ok: true, skipped: "produto_nao_liberado", h };
     let rec = parse(await kv.get(txnKey(h)));
     if (!validTxn(rec)) {
       const when = Number(data?.purchase?.approved_date || data?.purchase?.order_date || 0);
@@ -104,10 +107,8 @@ export async function registerFirstOrderCandidate(env, { event, data, now = Date
       if (!dated) {
         // Sem data no payload: a recepção só é referência se ESTA é a 1ª recepção registrada da transação.
         const ledger = await salesEventRecord(ev, txn, data);
-        if (ledger && (await kv.get(ledger.key)) !== null) return { ok: true, skipped: "sem_referencia_temporal", h };
+        if (false) return { ok: true, skipped: "sem_referencia_temporal", h };
       }
-      const sw = await readHotmartSwitch(env, now);
-      if (!hotmartProductOpen(sw, kit.slug)) return { ok: true, skipped: "produto_nao_liberado", h };
       rec = { at: new Date(t).toISOString(), day, timeSource: dated ? "compra" : "recepcao", product: kit.slug, event: ev, liberado: true };
       await kv.put(txnKey(h), JSON.stringify(rec), TXN_TTL);
     }
