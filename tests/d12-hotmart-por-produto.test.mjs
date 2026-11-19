@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readHotmartSwitch, resetHotmartSwitchCache, handleSalesControl, HOTMART_SALES_KEY, hotmartRecordProducts, hotmartProductOpen, HOTMART_PRODUCT_SLUGS } from "../worker/sales-control.mjs";
 import { hotmartKitsOpen, purchaseOpenFor } from "../worker/sales-lock-content.mjs";
-import { maybeAlertFirstOrder, brtDay, firstOrderAlertText, FIRST_ORDER_ALERT_PREFIX } from "../worker/hotmart-first-order-alert.mjs";
+import { maybeAlertFirstOrder, brtDay, firstOrderAlertText, FIRST_ORDER_ALERT_PREFIX, MAX_ATTEMPTS } from "../worker/hotmart-first-order-alert.mjs";
 import { handleDigitalHotmartNc012 } from "../worker/cp-nc012-digital-hotmart.mjs";
 
 // D12 (19/11/2026, VC-H): modo Hotmart POR PRODUTO e aviso único do 1º pedido elegível do dia (BRT).
@@ -93,7 +93,7 @@ test("D12.6 texto sem dado pessoal; falha do Telegram ou segredo ausente nunca l
   assert.deepEqual([semSegredo.alerted, semSegredo.reason], [false, "telegram_nao_configurado"]);
   resetHotmartSwitchCache();
   const falha = await maybeAlertFirstOrder(alertEnv(), { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: T, fetchImpl: async () => { throw new Error("rede"); } });
-  assert.deepEqual([falha.alerted, falha.reason], [false, "erro"]);
+  assert.deepEqual([falha.alerted, falha.reason], [false, "telegram_incerto"]);
   resetHotmartSwitchCache();
 });
 
@@ -113,4 +113,43 @@ test("D12.7 webhook Hotmart real: 1º evento novo avisa, repetição não; a res
     assert.equal(calls.length, 1, "[D12.7] um único aviso");
     assert.doesNotMatch(JSON.stringify(calls), /example\.invalid|HP-D12/, "[D12.7] aviso sem comprador nem transação");
   } finally { globalThis.fetch = realFetch; resetHotmartSwitchCache(); }
+});
+
+// Contra-auditoria GPT-6 (f57e8cf8): só o envio CONFIRMADO suprime o dia; falha, timeout e segredo ausente não.
+const seq = (...outcomes) => { const calls = []; return { calls, fetchImpl: async (url, init) => { calls.push(JSON.parse(init.body)); const o = outcomes[Math.min(calls.length - 1, outcomes.length - 1)]; if (o === "timeout") throw new DOMException("timeout", "TimeoutError"); return new Response("{}", { status: o }); } }; };
+const ev = (env, t, n) => maybeAlertFirstOrder(env, { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: T + n * 60000, fetchImpl: t.fetchImpl });
+const markOf = (env) => JSON.parse(env.ZEVANORY_PRIVATE_ARTIFACTS.m.get(FIRST_ORDER_ALERT_PREFIX + "2026-11-20"));
+
+test("D12.8 recuperação: 503 → próximo evento envia; timeout incerto → próximo evento reenvia; segredo ausente não grava", async () => {
+  resetHotmartSwitchCache();
+  const e1 = alertEnv(), t1 = seq(503, 200);
+  assert.deepEqual([(await ev(e1, t1, 0)).reason, markOf(e1).status], ["telegram_503", "falhou"], "[D12.8] 1ª tentativa falha");
+  assert.deepEqual([(await ev(e1, t1, 1)).alerted, markOf(e1).status, t1.calls.length], [true, "enviado", 2], "[D12.8] evento seguinte recupera");
+  assert.deepEqual([(await ev(e1, t1, 2)).reason, t1.calls.length], ["ja_avisado_hoje", 2], "[D12.8] depois do envio confirmado, nada");
+  const e2 = alertEnv(), t2 = seq("timeout", 200);
+  assert.deepEqual([(await ev(e2, t2, 0)).reason, markOf(e2).status], ["telegram_incerto", "incerto"], "[D12.8] timeout = incerto");
+  assert.deepEqual([(await ev(e2, t2, 1)).alerted, t2.calls.length], [true, 2], "[D12.8] incerto não suprime (duplicata aceita)");
+  const e3 = envWith(record()), t3 = seq(200);
+  assert.equal((await ev(e3, t3, 0)).reason, "telegram_nao_configurado");
+  assert.equal(e3.ZEVANORY_PRIVATE_ARTIFACTS.m.has(FIRST_ORDER_ALERT_PREFIX + "2026-11-20"), false, "[D12.8] sem segredo, sem marca");
+  e3.TELEGRAM_ALERT = alertEnv().TELEGRAM_ALERT;
+  assert.equal((await ev(e3, t3, 1)).alerted, true, "[D12.8] segredo configurado depois ainda avisa no mesmo dia");
+  const e4 = alertEnv(), t4 = seq(500);
+  for (let i = 0; i < MAX_ATTEMPTS; i++) await ev(e4, t4, i);
+  assert.deepEqual([(await ev(e4, t4, 9)).reason, t4.calls.length], ["tentativas_esgotadas", MAX_ATTEMPTS], "[D12.8] limite diário de tentativas");
+  const e5 = alertEnv(), t5 = seq(200);
+  e5.ZEVANORY_PRIVATE_ARTIFACTS.m.set(FIRST_ORDER_ALERT_PREFIX + "2026-11-20", JSON.stringify({ status: "tentando", attempts: 1 }));
+  assert.equal((await ev(e5, t5, 0)).alerted, true, "[D12.8] 'tentando' (gravação final perdida) não suprime");
+  resetHotmartSwitchCache();
+});
+
+test("D12.9 eventos concorrentes: pelo menos 1 e no máximo 2 avisos (KV sem compare-and-set; nunca zero)", async () => {
+  resetHotmartSwitchCache();
+  const env = alertEnv(), t = seq(200);
+  const rs = await Promise.all([ev(env, t, 0), ev(env, t, 0)]);
+  assert.ok(t.calls.length >= 1 && t.calls.length <= 2, "[D12.9] envios=" + t.calls.length);
+  assert.ok(rs.some((r) => r.alerted), "[D12.9] ao menos um confirmado");
+  assert.equal(markOf(env).status, "enviado");
+  assert.equal((await ev(env, t, 1)).reason, "ja_avisado_hoje");
+  resetHotmartSwitchCache();
 });

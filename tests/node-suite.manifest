@@ -49,7 +49,7 @@ tests/creative-offer-containment.test.mjs 7
 tests/criativos-laboratorio.test.mjs 14
 tests/criativos-rubrica-area-segura.test.mjs 3
 tests/criativos-rubrica-perfil.test.mjs 3
-tests/d12-hotmart-por-produto.test.mjs 7
+tests/d12-hotmart-por-produto.test.mjs 9
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10
@@ -66,7 +66,7 @@ tests/f1b-receipt-origin.test.mjs 7
 tests/f1b-shorts-corruption.test.mjs 4
 tests/f1c-blog-origin-integration.test.mjs 5
 tests/f1d-report-absent-evidence.test.mjs 6
-tests/f2-hotmart-post-sale.test.mjs 30
+tests/f2-hotmart-post-sale.test.mjs 32
 tests/f2-hotmart-restricted.test.mjs 16
 tests/f2-hotmart-test-route.test.mjs 11
 tests/f2-indexnow-publication.test.mjs 12

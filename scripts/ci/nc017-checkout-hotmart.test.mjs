@@ -8,17 +8,22 @@ import central from "../../worker/cloudflare-worker.compat.mjs";
 const read=slug=>readFileSync(new URL("../../sales-public/"+slug+".html",import.meta.url),"utf8");
 const ctx={waitUntil(){}};
 const req=(path,method="GET")=>new Request("https://vendas.zevanory.api.br"+path,{method,headers:{"user-agent":"Mozilla/5.0 Chrome/137"}});
-const env=(status)=>({MP_PHASE1_CHECKOUT_ENABLED:"true",CORE:{fetch:async input=>{
+// D12 (19/11/2026): a rota /comprar -> /hotmart depende SÓ do interruptor Hotmart por produto (/api/sales/hotmart-status
+// com a lista `products`), nunca do checkout próprio (/api/sales/status). `own` = checkout próprio; `hotmart` = corpo do
+// hotmart-status (null = fechado). O fake recusa qualquer outra chamada (nenhuma ponte para o checkout próprio).
+const HM_OPEN_IA={open:true,channel:"hotmart",products:["ia-na-pratica"]};
+const env=(own,hotmart=null)=>({MP_PHASE1_CHECKOUT_ENABLED:"true",CORE:{fetch:async input=>{
  const url=typeof input==="string"?input:input.url;
+ if(url==="https://zevanory.api.br/api/sales/hotmart-status")return Response.json(hotmart??{open:false,channel:"hotmart",products:[]});
  assert.equal(url,"https://zevanory.api.br/api/sales/status","no own checkout bridge");
- return Response.json({open:status==="open"});
+ return Response.json({open:own==="open"});
 }},ASSETS:{fetch:async request=>new Response(read(new URL(request.url).pathname.replace(/^\//,"").replace(/\.html$/,"")),{status:200})}});
 
 test("DEC05: code lock cannot be enabled by an env override or open owner switch",async()=>{
  assert.equal(MP_PHASE1_CHECKOUT_ENABLED,false);
  assert.equal(isMpPhase1CheckoutEnabled(),false);
  for(const mode of ["closed","open"]){
-  const r=await sales.fetch(req("/comprar/ZEV-IA-011","POST"),env(mode),ctx);
+  const r=await sales.fetch(req("/comprar/ZEV-IA-011","POST"),env(mode,mode==="open"?HM_OPEN_IA:null),ctx);
   assert.equal(r.status,503,mode);
   assert.equal(r.headers.get("location"),null);
   assert.match(String(r.headers.get("cache-control")),/no-store/);
@@ -28,13 +33,22 @@ test("DEC05: code lock cannot be enabled by an env override or open owner switch
  assert.match(await paused.text(),/Vendas abrem em breve/);
 });
 
-test("DEC05: GET/HEAD of own buy route only reaches gated Hotmart variant",async()=>{
+test("DEC05: GET/HEAD of own buy route only reaches gated Hotmart variant, per product (D12)",async()=>{
  for(const method of ["GET","HEAD"]){
-  const r=await sales.fetch(req("/comprar/ZEV-IA-011",method),env("open"),ctx);
-  assert.equal(r.status,302);
+  // Produto autorizado na lista do interruptor Hotmart: redireciona para a variante Hotmart.
+  const r=await sales.fetch(req("/comprar/ZEV-IA-011",method),env("closed",HM_OPEN_IA),ctx);
+  assert.equal(r.status,302,method+" autorizado");
   assert.equal(r.headers.get("location"),"/hotmart/ia-na-pratica");
   assert.match(String(r.headers.get("cache-control")),/no-store/);
   assert.equal(r.headers.get("x-robots-tag"),"noindex, nofollow");
+  const closed=async(path,e,why)=>{const x=await sales.fetch(req(path,method),e,ctx);assert.equal(x.status,200,method+" "+why);assert.equal(x.headers.get("location"),null,method+" "+why);};
+  // Produto fora da lista: não redireciona.
+  await closed("/comprar/ZEV-VEN-011",env("closed",HM_OPEN_IA),"fora da lista");
+  // Registro legado/incompleto (open sem `products`) ou lista vazia: fechado.
+  await closed("/comprar/ZEV-IA-011",env("closed",{open:true,channel:"hotmart"}),"legado sem products");
+  await closed("/comprar/ZEV-IA-011",env("closed",{open:true,channel:"hotmart",products:[]}),"lista vazia");
+  // Checkout próprio aberto NÃO reabre a rota Hotmart.
+  await closed("/comprar/ZEV-IA-011",env("open",null),"checkout próprio aberto, Hotmart fechado");
  }
 });
 

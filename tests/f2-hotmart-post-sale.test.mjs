@@ -44,3 +44,23 @@ test('F2 B mutant: daily quota ignored',async()=>{const scenario=async m=>{const
 test('F2 B mutant: sales lock ignored',async()=>{const scenario=async m=>{const s=fixture();await enqueue(s,m);s.data.delete('sales:hotmart:v1');await run(s,m);assert.equal(s.posts.length,0);};await scenario(mod);await killedMutation(source,[["return sw!==null&&validOwnerAuthorization(sw,now)&&hotmartRecordProducts(sw)!==null;","return true;"]],scenario);});
 test('F2 B: financial sale survives a queue failure; authenticated replay finishes without duplicate sale',async()=>{const s=fixture();const send=()=>handleDigitalHotmartNc012(new Request('https://zevanory.api.br/api/webhooks/hotmart',{method:'POST',headers:{'x-hotmart-hottok':token},body:JSON.stringify(s.body)}),s.env,{now:T});const ref=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s.body.data.purchase.transaction)))].map(x=>x.toString(16).padStart(2,'0')).join('');s.fail(BASE+'pedido:'+ref);assert.equal((await send()).status,200);assert.ok([...s.data.keys()].some(k=>k.startsWith('zpc-activity:v1:event:')));const financial=[...s.data.keys()].filter(k=>k.startsWith('zpc:sales:v1:ev:'));assert.equal(financial.length,1);s.fail(null);assert.equal((await send()).status,200);assert.equal([...s.data.keys()].filter(k=>k.startsWith('zpc:sales:v1:ev:')).length,1);await run(s);assert.equal(s.posts.length,1);});
 test('F2 B: legacy approval with missing customer fields remains a recorded sale and a private pending notice',async()=>{const s=fixture(),body=structuredClone(s.body);delete body.data.buyer;delete body.data.purchase.approved_date;assert.equal((await enqueue(s,mod,body)).pending,true);assert.equal(s.writes.some(w=>w.k.startsWith(BASE+'pendente:')),true);await run(s);assert.equal(s.posts.length,0);});
+// D12 (contra-auditoria GPT-6 de f57e8cf8), efeito esperado registrado ANTES de decidir o gate:
+// o gate do pós-venda é o interruptor Hotmart do site VALIDAMENTE aberto (com lista `products` válida, qualquer kit),
+// não o produto do pedido. Assim (1) a pausa operacional do 1º pedido (Ativar vendas desligado na Hotmart, sem tocar
+// no KV) e a retirada do kit da lista NÃO interrompem o pós-venda de pedido já aceito; (2) o fechamento total
+// (zevanory-close-sales) ADIA os envios, sem apagar o pedido, que sai na reabertura dentro dos 35 dias; (3) reembolso e
+// chargeback são registrados mesmo com tudo fechado. Se o pós-venda deve sobreviver ao fechamento total é decisão
+// separada, do titular (comportamento anterior ao D12 mantido).
+const swRecord=(products,enabled=true)=>JSON.stringify(enabled?{channel:'hotmart',products,enabled:true,authorization:'LIBERAR VENDAS',by:'fixture',ref:'fixture/purchase',at:new Date(T-1000).toISOString()}:{channel:'hotmart',enabled:false,by:'owner-close',at:new Date(T-500).toISOString()});
+test('D12 pós-venda: pausa por produto preserva as 3 etapas do pedido já aceito',async()=>{const s=fixture();assert.equal((await enqueue(s)).queued,true);s.data.set('sales:hotmart:v1',swRecord(['vendas-na-pratica']));for(const now of [T,T+DAY,T+5*DAY])assert.equal((await run(s,mod,now)).ok,true);assert.equal(s.posts.length,3);});
+test('D12 pós-venda: fechamento total adia sem perder; reembolso durante o fechamento cancela; registro sem lista = fechado',async()=>{
+ const s=fixture();await enqueue(s);s.data.set('sales:hotmart:v1',swRecord(null,false));
+ assert.equal((await run(s)).code,'sales_closed');assert.equal(s.posts.length,0);
+ assert.ok([...s.data.keys()].some(k=>k.startsWith(BASE+'pedido:')),'pedido preservado');
+ s.data.set('sales:hotmart:v1',swRecord(['ia-na-pratica']));await run(s,mod,T+3600000);assert.equal(s.posts.length,1,'reabertura envia a etapa adiada');
+ const r=fixture();await enqueue(r);r.data.set('sales:hotmart:v1',swRecord(null,false));
+ assert.equal((await enqueue(r,mod,{...r.body,event:'PURCHASE_REFUNDED'})).canceled,true);
+ r.data.set('sales:hotmart:v1',swRecord(['ia-na-pratica']));await run(r,mod,T+3600000);assert.equal(r.posts.length,0,'reembolso registrado no fechamento vale na reabertura');
+ const l=fixture();await enqueue(l);const legacy=JSON.parse(l.data.get('sales:hotmart:v1'));delete legacy.products;l.data.set('sales:hotmart:v1',JSON.stringify(legacy));
+ assert.equal((await run(l)).code,'sales_closed');assert.equal(l.posts.length,0);
+});
