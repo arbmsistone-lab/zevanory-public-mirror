@@ -198,3 +198,49 @@ test("D12.12 o cron horário chama a recuperação do aviso", () => {
   const w = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
   assert.match(w, /if\(controller\?\.cron==="0 \* \* \* \*"\)await retryFirstOrderAlert\(normalized\)/);
 });
+
+// Reauditoria GPT-6 (51514939): gravação de <dia>:pedido falha + Telegram 503 + postback repetido (duplicata).
+// O cron reconstrói o MESMO pedido a partir do registro de vendas e avisa, sem depender de uma 2ª compra.
+const metaKv = (failSuffix) => { const m = new Map(), meta = new Map(), last = new Map(); return { m, rejected: [],
+  async get(k) { return m.has(k) ? m.get(k) : null; },
+  async put(k, v, o) { if (failSuffix && k.endsWith(failSuffix)) throw new Error("KV PUT failed: 500"); const t = Date.now(); if (last.has(k) && t - last.get(k) < 1000) { this.rejected.push(k); throw new Error("429"); } last.set(k, t); m.set(k, String(v)); meta.set(k, o?.metadata ?? null); },
+  async delete(k) { m.delete(k); meta.delete(k); },
+  async list({ prefix = "", limit = 1000, cursor } = {}) { const all = [...m.keys()].filter((k) => k.startsWith(prefix)).sort(); const start = Number(cursor || 0), page = all.slice(start, start + limit), end = start + page.length; return { keys: page.map((name) => ({ name, metadata: meta.get(name) ?? null })), list_complete: end >= all.length, ...(end < all.length ? { cursor: String(end) } : {}) }; } }; };
+
+test("D12.13 falha ao gravar o pedido + 503 + postback repetido: o cron recupera o MESMO pedido pelo registro de vendas", async () => {
+  const hottok = "hottok-ficticio-d12-000000000000";
+  const kv = metaKv(":pedido"); kv.m.set(HOTMART_SALES_KEY, JSON.stringify(record()));
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, HOTMART_HOTTOK: hottok, TELEGRAM_ALERT: "1234567:" + "a".repeat(30) + "|-100123456" };
+  const calls = []; const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { if (String(url).startsWith("https://api.telegram.org/")) { calls.push(JSON.parse(init.body)); return new Response("{}", { status: 503 }); } throw new Error("rede bloqueada no teste"); };
+  try {
+    const body = { version: "2.0.0", event: "PURCHASE_APPROVED", data: { product: { id: 8704733, name: "ZEVANORY IA na Prática" }, buyer: { email: "comprador@example.invalid", first_name: "Teste" }, purchase: { transaction: "HP-D12-013", price: { value: 97 }, approved_date: T, payment: { type: "PIX" } }, commissions: [{ source: "PRODUCER", value: 85 }] } };
+    const send = () => handleDigitalHotmartNc012(new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "x-hotmart-hottok": hottok }, body: JSON.stringify(body) }), env, { now: T });
+    resetHotmartSwitchCache();
+    assert.equal((await send()).status, 200, "[D12.13] webhook responde 200");
+    assert.deepEqual([calls.length, kv.m.has(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:pedido"), kv.m.has(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:enviado")], [1, false, false], "[D12.13] 503 e pedido NÃO gravado");
+    resetHotmartSwitchCache();
+    assert.equal((await (await send()).json()).duplicate, true, "[D12.13] postback repetido = duplicata");
+    assert.equal(calls.length, 1, "[D12.13] a duplicata não tenta de novo");
+    const tc = seq(200); resetHotmartSwitchCache();
+    const r = await retryFirstOrderAlert(env, { now: T + 47 * 60000, fetchImpl: tc.fetchImpl, sleepImpl: noSleep });
+    assert.deepEqual(r.results, [{ day: "2026-11-20", alerted: true, reason: null }], "[D12.13] cron recupera sem 2ª compra");
+    assert.match(tc.calls[0].text, /IA na Prática \(pedido aprovado\) às 10:00 BRT/, "[D12.13] é o mesmo pedido (hora do payload)");
+    resetHotmartSwitchCache();
+    assert.deepEqual([(await retryFirstOrderAlert(env, { now: T + 107 * 60000, fetchImpl: tc.fetchImpl, sleepImpl: noSleep })).results, tc.calls.length], [[], 1], "[D12.13] e para (enviado confirmado)");
+    assert.doesNotMatch(JSON.stringify([calls, tc.calls]), /example\.invalid|HP-D12/, "[D12.13] sem dado pessoal");
+    // Contraprovas: kit não liberado no interruptor ou evento de outro dia BRT não geram aviso pelo registro.
+    const kv2 = metaKv(":pedido"); for (const [k, v] of kv.m) if (k.startsWith("zpc:sales:v1:ev:")) await kv2.put(k, v, { metadata: JSON.parse(v) });
+    kv2.m.set(HOTMART_SALES_KEY, JSON.stringify(record({ products: ["vendas-na-pratica"] })));
+    const t2 = seq(200); resetHotmartSwitchCache();
+    assert.deepEqual([(await retryFirstOrderAlert({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv2 }, { now: T + 60 * 60000, fetchImpl: t2.fetchImpl, sleepImpl: noSleep })).results, t2.calls.length], [[], 0], "[D12.13] kit fora da lista");
+    kv2.m.set(HOTMART_SALES_KEY, JSON.stringify(record()));
+    resetHotmartSwitchCache();
+    assert.deepEqual([(await retryFirstOrderAlert({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv2 }, { now: T + 3 * 86400000, fetchImpl: t2.fetchImpl, sleepImpl: noSleep })).results, t2.calls.length], [[], 0], "[D12.13] pedido de outro dia");
+    // Evento não elegível (cancelado/reembolsado) no registro não gera aviso.
+    const kv3 = metaKv(); kv3.m.set(HOTMART_SALES_KEY, JSON.stringify(record()));
+    for (const ev of ["PURCHASE_CANCELED", "PURCHASE_REFUNDED"]) await kv3.put("zpc:sales:v1:ev:00:" + "0".repeat(32) + ":x:" + ev.toLowerCase() + ":" + "0".repeat(16), "{}", { metadata: { event: ev, facts: { at: new Date(T).toISOString(), productId: "8704733" } } });
+    const t3 = seq(200); resetHotmartSwitchCache();
+    assert.deepEqual([(await retryFirstOrderAlert({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv3 }, { now: T + 60 * 60000, fetchImpl: t3.fetchImpl, sleepImpl: noSleep })).results, t3.calls.length], [[], 0], "[D12.13] evento não elegível");
+  } finally { globalThis.fetch = realFetch; resetHotmartSwitchCache(); }
+});

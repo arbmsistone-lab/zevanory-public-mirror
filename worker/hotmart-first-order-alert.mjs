@@ -11,12 +11,17 @@
 //   <dia>:tentativa:<id>  uma chave NOVA por tentativa, gravada antes do envio (conta tentativas por listagem);
 //   <dia>:enviado         gravada uma vez, só depois do 2xx do Telegram. Só ela suprime novos avisos.
 // Recuperação sem depender de outro pedido: o cron horário (retryFirstOrderAlert) reenvia o aviso de um <dia>:pedido
-// sem <dia>:enviado (hoje e ontem BRT), até MAX_ATTEMPTS tentativas no dia. Falha HTTP, timeout (resultado incerto)
+// sem <dia>:enviado (hoje e ontem BRT), até MAX_ATTEMPTS tentativas no dia. Se o próprio <dia>:pedido não foi gravado
+// (falha do KV no webhook; o postback repetido é duplicata e não volta aqui), o cron reconstrói o 1º pedido a partir do
+// registro de vendas imutável (zpc:sales:v1:ev:*, metadados sem dado pessoal, data do PAYLOAD convertida para o dia
+// BRT), desde que o kit esteja liberado no interruptor no momento do cron. Custo sem pendência: 1 leitura do
+// interruptor; com o interruptor aberto e sem aviso no dia, + 1 listagem por 1.000 eventos do registro (máx. 3 páginas). Falha HTTP, timeout (resultado incerto)
 // e segredo ausente ficam pendentes. Preferimos aviso duplicado a nenhum aviso: eventos simultâneos, um timeout que
 // na verdade entregou, ou a gravação de <dia>:enviado perdida podem repetir o aviso; o limite de tentativas é
 // aproximado (listagem eventualmente consistente). O alerta NÃO impõe o teto na Hotmart: quem pausa é o titular.
 import { parseTelegramAlert, TELEGRAM_API } from "./atendimento.mjs";
 import { readHotmartSwitch, hotmartProductOpen } from "./sales-control.mjs";
+import { SALES_EVENT_PREFIX } from "./sales-ledger.mjs";
 import ALLOW from "../data/p18-commercial-allowlist.json" with { type: "json" };
 
 export const FIRST_ORDER_ALERT_PREFIX = "zpc:hotmart:alerta-primeiro-pedido:v1:";
@@ -100,16 +105,44 @@ export async function maybeAlertFirstOrder(env, { event, productId, recorded, no
   }
 }
 
+// 1º pedido elegível do dia BRT segundo o registro de vendas (fonte de verdade gravada antes do aviso).
+const LEDGER_PAGES = 3;
+async function orderFromLedger(kv, day, sw) {
+  let best = null, cursor;
+  for (let page = 0; page < LEDGER_PAGES; page++) {
+    const r = await kv.list({ prefix: SALES_EVENT_PREFIX, cursor, limit: 1000 });
+    for (const key of r?.keys || []) {
+      const m = key?.metadata, ev = String(m?.event || "").toUpperCase(), at = m?.facts?.at;
+      if (!FIRST_ORDER_EVENTS[ev] || typeof at !== "string") continue;
+      const t = Date.parse(at), kit = KITS.find((x) => String(x.hotmart_product_id) === String(m.facts.productId || ""));
+      if (!kit || !Number.isFinite(t) || brtDay(t) !== day || !hotmartProductOpen(sw, kit.slug)) continue;
+      if (!best || t < Date.parse(best.at)) best = { at: new Date(t).toISOString(), product: kit.slug, event: ev, source: "registro_de_vendas" };
+    }
+    if (r?.list_complete !== false || !r?.cursor) break;
+    cursor = r.cursor;
+  }
+  return best;
+}
+
 // Cron horário: recupera o aviso do 1º pedido de hoje ou de ontem (BRT) ainda não confirmado, sem novo pedido.
 export async function retryFirstOrderAlert(env, { now = Date.now(), fetchImpl = fetch, sleepImpl = sleep } = {}) {
   const out = [];
   try {
     const kv = kvOf(env), cfg = parseTelegramAlert(env?.TELEGRAM_ALERT);
     if (!kv || !cfg) return { ok: true, results: out, reason: !kv ? "kv_indisponivel" : "telegram_nao_configurado" };
+    let sw;
     for (const day of [brtDay(now), brtDay(now - 86400000)]) {
+      const k = keys(day);
       let order = null;
-      try { order = JSON.parse((await kv.get(keys(day).order)) ?? "null"); } catch { order = null; }
-      if (!order?.product || !KITS.some((x) => x.slug === order.product)) continue;
+      try { order = JSON.parse((await kv.get(k.order)) ?? "null"); } catch { order = null; }
+      if (!order?.product || !KITS.some((x) => x.slug === order.product)) {
+        if ((await kv.get(k.sent)) !== null) continue;
+        sw ??= await readHotmartSwitch(env, now);
+        if (!sw?.open) continue;
+        order = await orderFromLedger(kv, day, sw);
+        if (!order) continue;
+        await kv.put(k.order, JSON.stringify(order), TTL).catch(() => null);
+      }
       out.push({ day, ...(await attemptSend(kv, cfg, day, order, now, fetchImpl, sleepImpl)) });
     }
     return { ok: true, results: out };
