@@ -27,7 +27,7 @@ const nowIso = () => new Date(Date.now() - 60_000).toISOString();
 const owner = (extra = {}) => JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner-test", at: nowIso(), ref: "teste/central-hotmart", ...extra });
 function store(state = "hotmart", extra = {}) {
   const m = new Map(Object.entries(extra));
-  if (state === "hotmart") m.set(HOTMART, owner({ channel: "hotmart" }));
+  if (state === "hotmart") m.set(HOTMART, owner({ channel: "hotmart", products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"] }));
   if (state === "full") { m.set(SALES, owner()); m.set(PREFLIGHT, JSON.stringify({ ok: true, at: nowIso() })); }
   return { m, async get(k) { if (state === "throw" && k === HOTMART) throw new Error("kv_down"); return m.get(k) ?? null; }, async put(k, v) { m.set(k, String(v)); }, async delete(k) { m.delete(k); } };
 }

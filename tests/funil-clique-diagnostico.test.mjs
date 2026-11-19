@@ -15,7 +15,7 @@ function ambiente(db, { aberto = true, falhaMedicao = false } = {}) {
   return { DATABASE_URL: "x", RESEND_API_KEY: "s", ASSETS: { fetch: async () => new Response(asset, { status: 200 }) },
     CORE: { fetch: async (u, init) => { const url = String(u?.url || u);
       if (/funnel\.internal\/hit/.test(url)) { if (falhaMedicao) throw new Error("core_fora"); return handleFunnel(new Request(url, init), { DATABASE_URL: "x", RESEND_API_KEY: "s" }, { sqlFactory: db.factory }); }
-      return Response.json({ open: aberto }); } } };
+      return Response.json(/hotmart-status/.test(url) ? { open: aberto, products: aberto ? ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"] : [] } : { open: aberto }); } } };
 }
 const ctx = () => { const p = []; return { p, waitUntil: (x) => p.push(x), done: () => Promise.all(p) }; };
 const req = (path) => new Request("https://vendas.zevanory.api.br" + path, { headers: { "user-agent": UA, "accept-language": "pt-BR", "cf-connecting-ip": "198.51.100.9" } });

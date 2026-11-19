@@ -126,14 +126,22 @@ export function openSalesHtml(html,slug,{subscriptions=true}={}){
 export function resetPageSwitchCache(){}  // kept for callers; there is no page-level cache any more
 // Modo Hotmart (roteiro v5.0, Nível 1): canal próprio, lido em /api/sales/hotmart-status (chave sales:hotmart:v1).
 // Abre só a compra pela Hotmart dos 5 produtos; o Conteúdo Pronto e o checkout próprio seguem o interruptor completo.
-async function hotmartOpen(env){
-  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/hotmart-status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}
+// D12 (19/11/2026, VC-H): o modo Hotmart abre POR PRODUTO (lista `products` do status). As rotas /hotmart/<kit> e
+// /hotmart/<kit>/ir dependem SÓ desse interruptor, nunca do checkout próprio (sales:open:v1): cada canal tem a sua chave.
+// Leitura indisponível, status não-200, JSON inválido ou lista ausente = fechado.
+async function hotmartStatus(env){
+  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/hotmart-status");if(!st.ok)return null;const v=await st.json();return v?.open===true&&Array.isArray(v.products)?v:null}catch{return null}
 }
-async function purchaseOpen(env){return (await salesOpen(env))||(await hotmartOpen(env))}
+const HOTMART_KIT_PAGES=["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo"];
+async function hotmartOpenFor(env,slug){const v=await hotmartStatus(env);return v!==null&&v.products.includes(slug)}
+async function hotmartAllOpen(env){const v=await hotmartStatus(env);return v!==null&&HOTMART_KIT_PAGES.every(s=>v.products.includes(s))}
+async function purchaseOpen(env,slug){return hotmartOpenFor(env,slug)}
 // Estado da página dependente do interruptor: {open, subs}. subs=false no modo Hotmart (assinatura fechada).
+// Modo Hotmart: a página de um kit abre só com ESSE kit liberado; o catálogo (/solucoes) só com os 5 liberados.
 async function salesOpenForPages(env,page){
   if(await salesOpen(env))return {open:true,subs:true};
-  if(page!=="conteudo-pronto"&&await hotmartOpen(env))return {open:true,subs:false};
+  if(page==="solucoes"&&await hotmartAllOpen(env))return {open:true,subs:false};
+  if(HOTMART_KIT_PAGES.includes(page)&&await hotmartOpenFor(env,page))return {open:true,subs:false};
   return {open:false,subs:false};
 }
 export const SWITCH_DEPENDENT_CACHE_CONTROL="no-store, no-transform";
@@ -149,7 +157,7 @@ async function handleBuy(request,env,sku,ctx){
   // fail-closed Hotmart variant. POST never creates an own-checkout transaction.
   if(!isMpPhase1CheckoutEnabled()){
     if(request.method!=="GET"&&request.method!=="HEAD")return infoPage(503,"Checkout próprio indisponível","<p>Na primeira fase, os guias e kits usam somente a Hotmart.</p>");
-    if(!(await purchaseOpen(env)))return infoPage(200,"Vendas abrem em breve",`<p>O ${PRICES[sku][0]} ainda não está à venda. Para dúvidas, escreva para ${CONTACT_HTML}.</p>`);
+    if(!(await purchaseOpen(env,slug)))return infoPage(200,"Vendas abrem em breve",`<p>O ${PRICES[sku][0]} ainda não está à venda. Para dúvidas, escreva para ${CONTACT_HTML}.</p>`);
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/hotmart/"+slug,"cache-control":"no-store"}))});
   }
   if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
@@ -262,7 +270,7 @@ export const clickHref=(slug,src)=>"/hotmart/"+slug+"/ir?utm_source="+encodeURIC
 // preservada. Falha de medição nunca impede o checkout; vendas pausadas mostram a mesma página de pausa.
 export async function handleHotmartClick(request,env,slug,ctx){
   if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
-  const aberto=await purchaseOpen(env);  // mesmo interruptor da página da oferta (fail-closed)
+  const aberto=await purchaseOpen(env,slug);  // mesmo interruptor da página da oferta, por produto (fail-closed)
   if(!aberto)return infoPage(200,"Vendas pausadas",SALES_PAUSED_HTML(HOTMART_NAMES[slug]||"produto",slug));
   const {src}=attribution(request,new URL(request.url));
   try{countView(request,env,ctx,slug,"hotmart_click")}catch{}
@@ -273,7 +281,7 @@ export async function handleHotmartClick(request,env,slug,ctx){
 }
 async function handleHotmart(request,env,slug,ctx){
   if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
-  if(!(await purchaseOpen(env)))return infoPage(200,"Vendas pausadas",SALES_PAUSED_HTML(HOTMART_NAMES[slug]||"produto",slug));
+  if(!(await purchaseOpen(env,slug)))return infoPage(200,"Vendas pausadas",SALES_PAUSED_HTML(HOTMART_NAMES[slug]||"produto",slug));
   const {src}=attribution(request,new URL(request.url));
   countView(request,env,ctx,slug,"hotmart_view");
   // Hotmart reports sales per "src", so the origin survives up to the actual sale.

@@ -32,7 +32,7 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
         self.assertIn("PASS_NO_KV_WRITE_NO_NETWORK", out.stdout)
     def test_open_hotmart_dry_run_needs_only_owner_phrase_and_reference(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith(("MERCADOPAGO_", "ZEVANORY_LAUNCH"))}
-        env.update({"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123", "CLOUDFLARE_API_TOKEN":""})
+        env.update({"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123", "CLOUDFLARE_API_TOKEN":"", "HOTMART_PRODUCTS":"ia-na-pratica"})
         out = subprocess.run([sys.executable, str(SCRIPT), "open-hotmart", "--dry-run"], env=env, text=True, capture_output=True)
         self.assertEqual(out.returncode, 0, out.stdout+out.stderr)
         self.assertIn("OPEN_HOTMART_DRY_RUN=PASS_NO_KV_WRITE_NO_NETWORK", out.stdout)
@@ -45,8 +45,8 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
     def test_open_hotmart_writes_only_the_hotmart_key_with_channel(self):
         writes = []
         env = {"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123",
-               "GITHUB_EVENT_NAME":"workflow_dispatch", "GITHUB_REF":"refs/heads/gh-pages"}
-        states = iter([{"open": False}, {"open": True}])
+               "GITHUB_EVENT_NAME":"workflow_dispatch", "GITHUB_REF":"refs/heads/gh-pages", "HOTMART_PRODUCTS":"ia-na-pratica"}
+        states = iter([{"open": False}, {"open": True, "products": ["ia-na-pratica"]}, {"open": True, "products": ["ia-na-pratica"]}])
         with patch.dict(os.environ, env), patch.object(sys, "argv", ["x", "open-hotmart"]), \
              patch.object(mod, "cf_binding", return_value=("t", "n")), \
              patch.object(mod, "production_sha_and_deploy", return_value=("a" * 40, 1)) as canon, \
@@ -61,10 +61,12 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
         self.assertEqual(full.call_count, 2)  # fechado antes e depois da abertura
         self.assertEqual(writes[0][1]["channel"], "hotmart")
         self.assertEqual(writes[0][1]["authorization"], "LIBERAR VENDAS")
-    def _open_hotmart(self, canon, full_states, hotmart_states=({"open": False}, {"open": True})):
+        self.assertEqual(writes[0][1]["products"], ["ia-na-pratica"])  # D12: só o kit liberado
+    def _open_hotmart(self, canon, full_states, hotmart_states=({"open": False}, {"open": True, "products": ["ia-na-pratica"]}, {"open": True, "products": ["ia-na-pratica"]}), products="ia-na-pratica"):
         writes = []
         env = {"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123",
-               "GITHUB_EVENT_NAME":"workflow_dispatch", "GITHUB_REF":"refs/heads/gh-pages"}
+               "GITHUB_EVENT_NAME":"workflow_dispatch", "GITHUB_REF":"refs/heads/gh-pages", "HOTMART_PRODUCTS":"ia-na-pratica"}
+        env["HOTMART_PRODUCTS"] = products
         full = iter(full_states); hot = iter(hotmart_states)
         with patch.dict(os.environ, env), patch.object(sys, "argv", ["x", "open-hotmart"]), \
              patch.object(mod, "cf_binding", return_value=("t", "n")), \
@@ -87,6 +89,23 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
             self.assertEqual(writes, [])
         err, writes = self._open_hotmart(ok, [])  # StopIteration simula leitura indisponível
         self.assertIsNotNone(err); self.assertEqual(writes, [])
+    def test_d12_open_hotmart_refuses_invalid_product_list_before_any_write(self):
+        ok = lambda: ("a" * 40, 1)
+        for products in ("", "conteudo-pronto", "ia-na-pratica,ia-na-pratica", "ia-na-pratica,,lucro-e-caixa", "nao-existe"):
+            err, writes = self._open_hotmart(ok, [{"open": False}], products=products)
+            self.assertRegex(str(err), "HOTMART_PRODUCTS_INVALID", products)
+            self.assertEqual(writes, [], products)
+    def test_d12_open_hotmart_rolls_back_if_public_list_differs(self):
+        err, writes = self._open_hotmart(lambda: ("a" * 40, 1), [{"open": False}, {"open": False}],
+                                         hotmart_states=({"open": False}, {"open": True, "products": ["ia-na-pratica"]}, {"open": True, "products": ["combo-ia-vendas", "ia-na-pratica"]}))
+        self.assertRegex(str(err), "OPEN_HOTMART_PRODUCTS_MISMATCH")
+        self.assertIs(writes[-1][1]["enabled"], False)
+    def test_d12_dry_run_without_products_is_refused(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("MERCADOPAGO_", "ZEVANORY_LAUNCH", "HOTMART_PRODUCTS"))}
+        env.update({"CONFIRM":"LIBERAR VENDAS", "ORDER_REF":"https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/123"})
+        out = subprocess.run([sys.executable, str(SCRIPT), "open-hotmart", "--dry-run"], env=env, text=True, capture_output=True)
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("HOTMART_PRODUCTS_INVALID", out.stdout)
     def test_open_hotmart_requires_canonical_sha_and_central_deploy(self):
         def no_deploy():
             raise RuntimeError("CENTRAL_DEPLOY_NOT_SUCCESS_ON_CANONICAL_SHA")

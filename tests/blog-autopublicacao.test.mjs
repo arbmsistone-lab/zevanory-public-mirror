@@ -103,7 +103,7 @@ test("modo Hotmart: CTA /hotmart/<kit do artigo> com UTM; outro kit e checkout p
   assert.match(blogCtaUrl(good, { full: true, hotmart: true }), /\/material-gratuito\?/);
   // Ponta a ponta com o interruptor Hotmart real (autorização do dono no KV falso).
   fresh();
-  const x = fake({ "sales:hotmart:v1": JSON.stringify({ enabled: true, channel: "hotmart", authorization: "LIBERAR VENDAS", by: "owner-test", at: new Date(Date.now() - 60_000).toISOString(), ref: "teste/blog" }) });
+  const x = fake({ "sales:hotmart:v1": JSON.stringify({ enabled: true, channel: "hotmart", products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"], authorization: "LIBERAR VENDAS", by: "owner-test", at: new Date(Date.now() - 60_000).toISOString(), ref: "teste/blog" }) });
   const out = await ensureDailyBlog(x.env, at(MON), x.fetchImpl);
   fresh();
   assert.equal(out.reason, "published");

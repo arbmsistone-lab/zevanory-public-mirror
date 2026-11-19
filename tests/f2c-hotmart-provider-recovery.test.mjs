@@ -4,7 +4,7 @@ import * as mod from '../worker/hotmart-post-sale.mjs';
 import {killedMutation} from './helpers/f1-mutation.mjs';
 const source=new URL('../worker/hotmart-post-sale.mjs',import.meta.url),T=Date.parse('2026-11-11T15:00:00Z'),DAY=86400000,BASE='zpc:posvenda:hotmart:';
 function fixture(){
- const data=new Map([['sales:hotmart:v1',JSON.stringify({enabled:true,channel:'hotmart',authorization:'LIBERAR VENDAS',by:'fixture',ref:'fixture/sale',at:new Date(T-1000).toISOString()})]]),posts=[],reads=[],history=[];
+ const data=new Map([['sales:hotmart:v1',JSON.stringify({enabled:true,channel:'hotmart', products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"],authorization:'LIBERAR VENDAS',by:'fixture',ref:'fixture/sale',at:new Date(T-1000).toISOString()})]]),posts=[],reads=[],history=[];
  const s={data,posts,reads,history,used:0,monthly:0,limit:100,monthlyLimit:3000,bad:null,unknown:false,clock:T};
  const kv={get:async k=>data.get(k)??null,put:async(k,v)=>data.set(k,v),list:async({prefix})=>({keys:[...data.keys()].filter(k=>k.startsWith(prefix)).map(name=>({name})),list_complete:true})};
  s.env={ZEVANORY_PRIVATE_ARTIFACTS:kv,HOTMART_HOTTOK:'synthetic-hottok-only',RESEND_API_KEY:'synthetic-resend-only'};

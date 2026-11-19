@@ -4,7 +4,7 @@ import * as mod from '../worker/hotmart-post-sale.mjs';
 import {killedMutation} from './helpers/f1-mutation.mjs';
 const source=new URL('../worker/hotmart-post-sale.mjs',import.meta.url),T=Date.parse('2026-11-11T15:00:00Z'),HOUR=3600000,DAY=24*HOUR,KEY='zpc:posvenda:hotmart:status:v1';
 function fixture(){
- const data=new Map([['sales:hotmart:v1',JSON.stringify({enabled:true,channel:'hotmart',authorization:'LIBERAR VENDAS',by:'fixture',ref:'fixture/sale',at:new Date(T-1000).toISOString()})]]),writes=[],posts=[];
+ const data=new Map([['sales:hotmart:v1',JSON.stringify({enabled:true,channel:'hotmart', products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"],authorization:'LIBERAR VENDAS',by:'fixture',ref:'fixture/sale',at:new Date(T-1000).toISOString()})]]),writes=[],posts=[];
  const s={data,writes,posts,now:T,mode:'fail',failRead:false,failWrite:false};
  s.kv={get:async k=>{if(k===KEY&&s.failRead)throw Error('private data must not be logged');return data.get(k)??null;},put:async(k,v,o)=>{if(k===KEY&&s.failWrite)throw Error('write unavailable');data.set(k,v);writes.push({k,v,o});},list:async({prefix})=>({keys:[...data.keys()].filter(k=>k.startsWith(prefix)).map(name=>({name})),list_complete:true})};
  s.env={ZEVANORY_PRIVATE_ARTIFACTS:s.kv,HOTMART_HOTTOK:'synthetic-hottok-status',RESEND_API_KEY:'synthetic-resend-status'};

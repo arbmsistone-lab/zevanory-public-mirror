@@ -38,7 +38,7 @@ function kvWith(state) {
     m.set(PREFLIGHT, JSON.stringify({ ok: true, at: new Date(Date.now() - 4 * 3600_000).toISOString() }));
   }
   // Modo Hotmart (sales:hotmart:v1, registro do dono com channel "hotmart"); o interruptor completo segue fechado.
-  const hotmartRecord = (extra = {}) => JSON.stringify({ enabled: true, channel: "hotmart", authorization: "LIBERAR VENDAS", by: "owner-test", at: nowIso, ref: "teste/hotmart-mode", ...extra });
+  const hotmartRecord = (extra = {}) => JSON.stringify({ enabled: true, channel: "hotmart", products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"], authorization: "LIBERAR VENDAS", by: "owner-test", at: nowIso, ref: "teste/hotmart-mode", ...extra });
   if (state === "hotmart" || state === "hotmart_paused" || state === "hotmart_throw") m.set(HOTMART, hotmartRecord());
   if (state === "hotmart_paused") m.set(PAUSE, "1");
   if (state === "hotmart_wrong_channel") m.set(HOTMART, hotmartRecord({ channel: "mercadopago" }));

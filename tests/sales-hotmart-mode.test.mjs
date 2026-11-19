@@ -6,7 +6,7 @@ import { readHotmartSwitch, resetHotmartSwitchCache, readSalesSwitch, resetSales
 import worker, { HOTMART_CHECKOUT, openSalesHtml } from "../worker/sales-public-worker.mjs";
 
 // Roteiro v5.0, Nível 1 Hotmart-only: a frase do proprietário abre SOMENTE a compra pela Hotmart.
-const AUTH = (extra = {}) => ({ enabled: true, authorization: "LIBERAR VENDAS", channel: "hotmart", by: "owner", at: new Date().toISOString(), ref: "https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/1" , ...extra });
+const AUTH = (extra = {}) => ({ enabled: true, authorization: "LIBERAR VENDAS", channel: "hotmart", products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"], by: "owner", at: new Date().toISOString(), ref: "https://github.com/arbmsistone-lab/zevanory-public-mirror/issues/1" , ...extra });
 const kv = (map = {}) => ({ async get(k) { return map[k] ?? null; } });
 const status = async (env) => (await handleSalesControl(new Request("https://zevanory.api.br/api/sales/hotmart-status"), env)).json();
 
@@ -51,7 +51,7 @@ test("canal Hotmart falha fechado: ausente, inválido, canal errado, registro in
 const ctx = { waitUntil() {} };
 const page = (p) => { try { return readTextNormalized(fileURLToPath(new URL("../sales-public" + p, import.meta.url))); } catch { return null; } };
 const env = ({ full = false, hotmart = false } = {}) => ({
-  CORE: { fetch: async (u) => new Response(JSON.stringify({ open: String(u).includes("/api/sales/hotmart-status") ? hotmart : full }), { status: 200 }) },
+  CORE: { fetch: async (u) => new Response(JSON.stringify(String(u).includes("/api/sales/hotmart-status") ? { open: hotmart, products: hotmart ? ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"] : [] } : { open: full }), { status: 200 }) },
   ASSETS: { fetch: async (req) => { const p = new URL(req.url).pathname; const h = page(p); return h === null ? new Response("nf", { status: 404 }) : new Response(h, { status: 200, headers: { "content-type": "text/html" } }); } },
 });
 const get = (path, e, init = {}) => worker.fetch(new Request("https://vendas.zevanory.api.br" + path, { headers: { "user-agent": "Mozilla/5.0" }, ...init }), e, ctx);

@@ -12,7 +12,7 @@ function fixture(mode='none'){
  const data=new Map(),writes=[],errors=[];let lists=0,reads=0,provider=0,activityBeforePost=true,failed=mode;
  const body={event:'PURCHASE_APPROVED',version:'2.0.0',data:{buyer:{email:'customer@example.test',name:'Ana Pessoa'},product:{id:8704733},purchase:{transaction:'HP-SYNTH-SECONDARY',approved_date:T,price:{value:97}}}};
  const ref=hash(body.data.purchase.transaction);if(mode==='corrupt')data.set(prefix+'cancelado:'+ref,'{');
- data.set('sales:hotmart:v1',JSON.stringify({enabled:true,channel:'hotmart',authorization:'LIBERAR VENDAS',at:new Date(T-1000).toISOString(),by:'fixture',ref:'fixture/sale'}));
+ data.set('sales:hotmart:v1',JSON.stringify({enabled:true,channel:'hotmart', products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"],authorization:'LIBERAR VENDAS',at:new Date(T-1000).toISOString(),by:'fixture',ref:'fixture/sale'}));
  const kv={get:async k=>{reads++;if(k.startsWith(prefix)){activityBeforePost&&=writes.some(w=>w.k.startsWith('zpc-activity:v1:event:'));if(failed==='get'||failed==='all')throw Error('private read');}return data.get(k)??null;},put:async(k,v,opts)=>{if(failed==='all'&&k.startsWith(prefix))throw Error('private write');writes.push({k,v,opts});data.set(k,v);},list:async({prefix=''})=>{lists++;return {keys:[...data.keys()].filter(k=>k.startsWith(prefix)).map(name=>({name})),list_complete:true};}};
  const env={HOTMART_HOTTOK:token,RESEND_API_KEY:'synthetic-resend',ZEVANORY_PRIVATE_ARTIFACTS:kv};
  const request=()=>new Request('https://zevanory.api.br/api/webhooks/hotmart',{method:'POST',headers:{'x-hotmart-hottok':token},body:JSON.stringify(body)});

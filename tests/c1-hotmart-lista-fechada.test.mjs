@@ -142,7 +142,7 @@ test("C1: orçamento do pós-venda medido por venda (entrega, recuperação e en
   const BASE = "zpc:posvenda:hotmart:", DAY = 86400000;
   function fx() {
     const data = new Map(), writes = [], emails = []; let failure = null, clock = T;
-    data.set("sales:hotmart:v1", JSON.stringify({ channel: "hotmart", enabled: true, authorization: "LIBERAR VENDAS", by: "fixture", ref: "fixture/purchase", at: new Date(T - 1000).toISOString() }));
+    data.set("sales:hotmart:v1", JSON.stringify({ channel: "hotmart", products: ["combo-ia-vendas","ia-na-pratica","lucro-e-caixa","negocio-completo","vendas-na-pratica"], enabled: true, authorization: "LIBERAR VENDAS", by: "fixture", ref: "fixture/purchase", at: new Date(T - 1000).toISOString() }));
     const kv = { get: async (k) => { if (k === failure) throw Error("ilegivel"); return data.get(k) ?? null; }, put: async (k, v) => { writes.push(k); data.set(k, v); },
       list: async ({ prefix }) => ({ keys: [...data.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }) };
     const fetchImpl = async (url, req = {}) => {

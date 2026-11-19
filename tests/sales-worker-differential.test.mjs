@@ -22,6 +22,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { NC017_SALES_WORKER_HUNKS, NC017_BASE_BLOB } from "./helpers/sales-worker-nc017-hunks.mjs";
 import { reverseHotmartMode, HOTMART_MODE_WORKER_BLOB, HOTMART_MODE_BASE_BLOB } from "./helpers/sales-worker-hotmart-mode-hunks.mjs";
 import { reverseFunilClique, FUNIL_CLIQUE_WORKER_BLOB, FUNIL_CLIQUE_BASE_BLOB } from "./helpers/sales-worker-funil-clique-hunks.mjs";
+import { reverseD12, D12_PREVIOUS_WORKER_BLOB } from "./helpers/sales-worker-d12-hunks.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
@@ -34,7 +35,9 @@ const GH_PAGES_BLOB = "86c5337c33588b50012266698c9dd0d18300e237";
 // primeiro (cada um exatamente uma vez) e o resultado tem de ser o blob P03 pinado abaixo; o comportamento do modo
 // Hotmart é provado em tests/sales-hotmart-mode.test.mjs.
 // Funil (GPT-6, 15/11/2026): o Worker atual = Worker do modo Hotmart + hunks da rota de clique; revertidos primeiro.
-const FUNIL_CLIQUE_SRC = readTextNormalized(join(ROOT, "worker/sales-public-worker.mjs"));
+// D12 (19/11/2026): o Worker atual = Worker do funil + hunks do interruptor por produto; revertidos primeiro.
+const D12_SRC = readTextNormalized(join(ROOT, "worker/sales-public-worker.mjs"));
+const FUNIL_CLIQUE_SRC = reverseD12(D12_SRC);
 const HOTMART_MODE_SRC = reverseFunilClique(FUNIL_CLIQUE_SRC);
 const CANDIDATE_SRC = reverseHotmartMode(HOTMART_MODE_SRC);
 // P03 O2: /index.html (cópia física do catálogo) é servido como a página solucoes, para o interruptor de
@@ -65,6 +68,7 @@ const gitBlob = (s) => { const b = Buffer.from(s, "utf8"); return createHash("sh
 
 async function loadWorkers() {
   // NC-017 first: reverse its exact hunks to get the Worker at 81d637e (pinned), then #914's two hunks.
+  assert.equal(gitBlob(FUNIL_CLIQUE_SRC),D12_PREVIOUS_WORKER_BLOB,"D12 reverse-applied file is the gh-pages Worker");
   assert.equal(gitBlob(FUNIL_CLIQUE_SRC),FUNIL_CLIQUE_WORKER_BLOB,"funil-clique candidate blob hash pinned");
   assert.equal(FUNIL_CLIQUE_BASE_BLOB,HOTMART_MODE_WORKER_BLOB,"funil-clique hunks start from the Hotmart-mode Worker");
   assert.equal(gitBlob(HOTMART_MODE_SRC),HOTMART_MODE_WORKER_BLOB,"Hotmart-mode candidate blob hash pinned");
@@ -101,7 +105,11 @@ const ASSETS = { fetch: async (req) => {
   if (!p || !existsSync(f) || statSync(f).isDirectory()) return new Response("Not found", { status: 404 });
   return new Response(readFileSync(f), { status: 200, headers: { "content-type": TYPES[p.split(".").pop()] || "application/octet-stream" } });
 } };
-const envFor = (open) => ({ ASSETS, CORE: { fetch: async (u) => String(u?.url || u).endsWith("/api/sales/status") ? new Response(JSON.stringify({ open }), { status: 200 }) : new Response("{}", { status: 200 }) } });
+// D12: "aberto" nesta matriz = interruptor completo E canal Hotmart com os 5 kits (as rotas /hotmart passaram a ler só o canal).
+const envFor = (open) => ({ ASSETS, CORE: { fetch: async (u) => { const p = String(u?.url || u);
+  if (p.endsWith("/api/sales/status")) return new Response(JSON.stringify({ open }), { status: 200 });
+  if (p.endsWith("/api/sales/hotmart-status")) return new Response(JSON.stringify(open ? { open: true, channel: "hotmart", products: ["combo-ia-vendas", "ia-na-pratica", "lucro-e-caixa", "negocio-completo", "vendas-na-pratica"] } : { open: false }), { status: 200 });
+  return new Response("{}", { status: 200 }); } } });
 const ctx = { waitUntil() {} };
 
 function matrix() {
