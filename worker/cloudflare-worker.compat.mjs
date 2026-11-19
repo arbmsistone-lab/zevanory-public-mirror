@@ -1,3 +1,4 @@
+import { retryFirstOrderAlert } from "./hotmart-first-order-alert.mjs";
 import {runHotmartPostSale,handleHotmartPostSaleOptOut,HOTMART_POSTSALE_OPTOUT} from "./hotmart-post-sale.mjs";
 import { HOTMART_TEST_PATH, handleHotmartTestWebhook } from "./hotmart-test-webhook.mjs";
 import { comDiario } from "./diario-sombra.mjs";
@@ -882,6 +883,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   const salesSwitchState = await readSalesSwitch(normalized);
   const salesOpen = applySalesSwitch(salesSwitchState);
   if(controller?.cron==="0 * * * *")await runHotmartPostSale(normalized,{cron:controller.cron,sqlFactory:whatsappProofDatabase}).then(out=>console.info("hotmart_post_sale_run",JSON.stringify(out))).catch(()=>console.error("hotmart_post_sale_failed"));
+  // D12: recuperação horária do aviso do 1º pedido do dia (BRT) não confirmado; ~2 leituras KV quando não há pendência.
+  if(controller?.cron==="0 * * * *")await retryFirstOrderAlert(normalized).then(out=>console.info("hotmart_first_order_alert_retry",JSON.stringify({ok:out.ok,n:out.results.length,reasons:out.results.map(r=>r.reason)}))).catch(()=>console.error("hotmart_first_order_alert_retry_failed"));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
   tasks.push(recordLaunchEpoch(normalized, salesSwitchState)
     .then(() => refreshFinancialProofSnapshot(normalized, { sqlFactory: whatsappProofDatabase }))
