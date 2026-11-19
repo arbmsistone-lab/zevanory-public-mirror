@@ -107,7 +107,7 @@ export async function registerFirstOrderCandidate(env, { event, data, now = Date
       if (!dated) {
         // Sem data no payload: a recepção só é referência se ESTA é a 1ª recepção registrada da transação.
         const ledger = await salesEventRecord(ev, txn, data);
-        if (false) return { ok: true, skipped: "sem_referencia_temporal", h };
+        if (ledger && (await kv.get(ledger.key)) !== null) return { ok: true, skipped: "sem_referencia_temporal", h };
       }
       rec = { at: new Date(t).toISOString(), day, timeSource: dated ? "compra" : "recepcao", product: kit.slug, event: ev, liberado: true };
       await kv.put(txnKey(h), JSON.stringify(rec), TXN_TTL);
