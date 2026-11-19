@@ -249,14 +249,26 @@ export function scriptSettingsHash(data) {
   const { bindings, ...rest } = data.result;
   return privateFingerprint(canonicalJson(rest));
 }
-// I4 (diagnóstico de script_settings_changed): mapa caminho -> {k: tipo JSON, h: impressão privada} das folhas dos settings
-// (fora bindings). Só diagnostica: a reprovação continua sendo a igualdade estrita de scriptSettingsHash. O caminho usa só
-// chaves no formato de identificador e índices de array; chave fora desse formato vira "<chave>" (nunca o texto dela).
-// Nada daqui é impresso além do caminho e do tipo JSON (string/number/boolean/null/array/object): nunca valor nem impressão.
-const SETTINGS_PATH_SEGMENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+// I4 (diagnóstico de script_settings_changed): mapa caminho privado -> {k: tipo JSON, h: impressão privada} das folhas dos
+// settings (fora bindings). Só diagnostica: a reprovação continua sendo a igualdade estrita de scriptSettingsHash.
+// Contra-auditoria c1144695: só chaves do ESQUEMA CONHECIDO, na POSIÇÃO conhecida, viram texto literal no caminho. Qualquer
+// outra chave é dado privado: no mapa vira "<chave:HMAC>" (identidade preservada só na comparação, dentro do run); no log
+// vira "<chave-desconhecida>". Nada daqui é impresso além do caminho saneado e do tipo JSON: nunca valor nem impressão.
+// Esquema: objeto = chaves conhecidas naquela posição; "[]" = esquema dos itens de array; true = folha sem chaves conhecidas.
+const LOGS_SCHEMA = { enabled: true, invocation_logs: true, head_sampling_rate: true, persist: true, destinations: true };
+export const SETTINGS_SCHEMA = {
+  compatibility_date: true, compatibility_flags: true, logpush: true, usage_model: true, tags: true,
+  limits: { cpu_ms: true, subrequests: true },
+  observability: { enabled: true, head_sampling_rate: true, logs: LOGS_SCHEMA, traces: LOGS_SCHEMA },
+  placement: { mode: true, region: true, hostname: true, host: true, target: true, status: true, last_analyzed_at: true },
+  tail_consumers: { "[]": { service: true, environment: true, namespace: true } },
+};
 export const SETTINGS_FIELDS_LIMIT = 256;
 const SETTINGS_DEPTH_LIMIT = 6;
+const UNKNOWN_KEY = "<chave-desconhecida>";
+const PRIVATE_KEY_SEG = /<chave:[0-9a-f]{64}>/g;
 const jsonKind = (v) => (Array.isArray(v) ? "array" : v === null ? "null" : typeof v);
+const schemaChild = (schema, key) => (schema && typeof schema === "object" && Object.hasOwn(schema, key) && key !== "[]" ? schema[key] : undefined);
 export function settingsFieldPrints(data) {
   bindingsOf(data);
   const { bindings, ...rest } = data.result;
@@ -264,37 +276,43 @@ export function settingsFieldPrints(data) {
   let truncated = false;
   const put = (path, v) => {
     if (Object.keys(fields).length >= SETTINGS_FIELDS_LIMIT) { truncated = true; return; }
-    if (Object.hasOwn(fields, path)) { fields[path] = { k: "colisao", h: privateFingerprint(fields[path].h + "|" + canonicalJson(v)) }; return; }
     fields[path] = { k: jsonKind(v), h: privateFingerprint(canonicalJson(v)) };
   };
-  const walk = (v, path, depth) => {
+  const walk = (v, path, schema, depth) => {
     const k = jsonKind(v);
     const keys = k === "object" ? Object.keys(v).sort(cmp) : k === "array" ? v.map((_, i) => i) : [];
     if (!keys.length || depth >= SETTINGS_DEPTH_LIMIT) { put(path, v); return; }
     for (const key of keys) {
-      const seg = k === "array" ? `[${key}]` : (SETTINGS_PATH_SEGMENT.test(key) ? (path ? "." : "") + key : (path ? "." : "") + "<chave>");
-      walk(v[key], path + seg, depth + 1);
+      if (k === "array") { walk(v[key], `${path}[${key}]`, schema && typeof schema === "object" ? schema["[]"] : undefined, depth + 1); continue; }
+      const child = schemaChild(schema, key);
+      const seg = child !== undefined ? key : `<chave:${privateFingerprint("settings-key|" + key)}>`;
+      walk(v[key], path ? `${path}.${seg}` : seg, child, depth + 1);
     }
   };
-  for (const key of Object.keys(rest).sort(cmp)) walk(rest[key], SETTINGS_PATH_SEGMENT.test(key) ? key : "<chave>", 1);
+  walk(rest, "", SETTINGS_SCHEMA, 0);
   return { fields, truncated };
 }
-// Compara dois mapas de settingsFieldPrints. Saída: só caminhos e tipos JSON. Sem mapa de um dos lados: "indisponível".
+const publicPath = (p) => p.replace(PRIVATE_KEY_SEG, UNKNOWN_KEY);
+// Compara dois mapas de settingsFieldPrints pelos caminhos PRIVADOS; a saída só tem caminhos saneados e tipos JSON.
+// Sem mapa de um dos lados: "indisponível". Impressão total diferente sem nenhum caminho localizado: unlocated=true.
 export function settingsDivergence(before, after) {
   if (!before || !after || typeof before.fields !== "object" || typeof after.fields !== "object") return { available: false, reason: !before ? "plan_without_settings_fields" : "settings_unreadable" };
   const b = before.fields, a = after.fields;
-  const removed = Object.keys(b).filter((p) => !Object.hasOwn(a, p)).sort(cmp).map((p) => `${p}:${b[p].k}`);
-  const added = Object.keys(a).filter((p) => !Object.hasOwn(b, p)).sort(cmp).map((p) => `${p}:${a[p].k}`);
-  const common = Object.keys(a).filter((p) => Object.hasOwn(b, p)).sort(cmp);
-  const kindChanged = common.filter((p) => a[p].k !== b[p].k).map((p) => `${p}:${b[p].k}>${a[p].k}`);
-  const changed = common.filter((p) => a[p].k === b[p].k && a[p].h !== b[p].h).map((p) => `${p}:${a[p].k}`);
-  return { available: true, changed, kindChanged, added, removed, truncated: Boolean(before.truncated || after.truncated) };
+  const pub = (p, k) => `${publicPath(p)}:${k}`;
+  const removed = Object.keys(b).filter((p) => !Object.hasOwn(a, p)).map((p) => pub(p, b[p].k)).sort(cmp);
+  const added = Object.keys(a).filter((p) => !Object.hasOwn(b, p)).map((p) => pub(p, a[p].k)).sort(cmp);
+  const common = Object.keys(a).filter((p) => Object.hasOwn(b, p));
+  const kindChanged = common.filter((p) => a[p].k !== b[p].k).map((p) => `${publicPath(p)}:${b[p].k}>${a[p].k}`).sort(cmp);
+  const changed = common.filter((p) => a[p].k === b[p].k && a[p].h !== b[p].h).map((p) => pub(p, a[p].k)).sort(cmp);
+  const truncated = Boolean(before.truncated || after.truncated);
+  const unlocated = !removed.length && !added.length && !kindChanged.length && !changed.length;
+  return { available: true, changed, kindChanged, added, removed, truncated, unlocated };
 }
 const DIVERGENCE_LIST_LIMIT = 40;
 const capList = (xs) => (xs.length > DIVERGENCE_LIST_LIMIT ? [...xs.slice(0, DIVERGENCE_LIST_LIMIT), `+${xs.length - DIVERGENCE_LIST_LIMIT}`] : xs).join(",") || "-";
 export function settingsDivergenceLine(d) {
   if (!d.available) return `SETTINGS_DIVERGENCE available=false reason=${d.reason} (só caminhos e tipos; nunca valores)`;
-  return `SETTINGS_DIVERGENCE changed=${capList(d.changed)} kind_changed=${capList(d.kindChanged)} added=${capList(d.added)} removed=${capList(d.removed)} truncated=${d.truncated} (só caminhos e tipos; nunca valores)`;
+  return `SETTINGS_DIVERGENCE changed=${capList(d.changed)} kind_changed=${capList(d.kindChanged)} added=${capList(d.added)} removed=${capList(d.removed)} truncated=${d.truncated} unlocated=${d.unlocated} (só caminhos e tipos; nunca valores)`;
 }
 export function diffConfig(before, after, allowedRemoved) {
   const allowed = new Set(allowedRemoved);

@@ -643,8 +643,34 @@ test("N19 I4 diagnóstico de script_settings_changed: caminhos e tipos dos campo
   const sens = runCli(["step", "--phase", "post", "--plan", "@p", "--name", A, "--expected-version", V0, ...ST],
     { p: plan, ...post((r) => { r.tags = [SEGREDO]; r.observability[SEGREDO + "/x y"] = SEGREDO; return r; }) });
   assert.equal(sens.code, 1, "[N19.6] CLI reprova");
-  assert.match(sens.out, /^SETTINGS_DIVERGENCE changed=- kind_changed=- added=observability\.<chave>:string,tags\[0\]:string removed=tags:array truncated=false /m, "[N19.6] só caminhos e tipos; chave fora do formato vira <chave>");
+  assert.match(sens.out, /^SETTINGS_DIVERGENCE changed=- kind_changed=- added=observability\.<chave-desconhecida>:string,tags\[0\]:string removed=tags:array truncated=false unlocated=false /m, "[N19.6] só caminhos e tipos; chave fora do esquema vira <chave-desconhecida>");
   assert.ok(!sens.out.includes(SEGREDO) && !sens.out.includes("sk_live") && !/[0-9a-f]{64}/.test(sens.out.replace(/sha256:[0-9a-f]{64}/g, "")), "[N19.6] nenhum valor, chave crua ou impressão privada no log");
+  // Contra-auditoria c1144695 (1): chave desconhecida em formato de identificador válido também nunca sai literal.
+  const TOKEN_KEY = "sk_live_TOKEN_SINTETICO_I4";
+  const tokKey = (r) => { r.observability[TOKEN_KEY] = "x"; r[TOKEN_KEY] = 1; r.tail_consumers = [{ service: "s", [TOKEN_KEY]: true }]; return r; };
+  const tokStep = runCli(["step", "--phase", "post", "--plan", "@p", "--name", A, "--expected-version", V0, ...ST], { p: plan, ...post(tokKey) });
+  const tokVerify = runCli(["verify", "--plan", "@p", ...ST], { p: plan, ...withRest(state({ removed: [A, B], chain: [V2, V1, V0] }), tokKey) });
+  for (const [label, r] of [["step", tokStep], ["verify", tokVerify]]) {
+    assert.equal(r.code, 1, `[N19.11] ${label} reprova`);
+    assert.ok(!r.out.includes(TOKEN_KEY) && !r.out.includes("TOKEN_SINTETICO") && !/<chave:/.test(r.out) && !/[0-9a-f]{64}/.test(r.out.replace(/sha256:[0-9a-f]{64}/g, "")), `[N19.11] ${label}: chave com formato de identificador fora do esquema nunca sai literal, nem sua impressão`);
+    assert.match(r.out, /^SETTINGS_DIVERGENCE .*added=<chave-desconhecida>:number,observability\.<chave-desconhecida>:string,tail_consumers\[0\]\.<chave-desconhecida>:boolean,tail_consumers\[0\]\.service:string /m, `[N19.11] ${label}: posição conhecida literal; chave desconhecida redigida em qualquer posição`);
+  }
+  // Contra-auditoria c1144695 (2): troca de chave redigida com o mesmo valor ainda aparece (identidade privada preservada).
+  const before2 = makePlan(withRest(S0(), (r) => { r.observability["x-chave-a"] = "mesmo"; return r; }));
+  const swap = (r) => { r.observability["x-chave-b"] = "mesmo"; return r; };
+  const swStep = stepCheck({ plan: before2, phase: "post", name: A, deleted: [], expectedVersion: V0, snap: snapOf(post(swap)) });
+  const swVerify = verifyRemoval({ plan: before2, snap: snapOf(withRest(state({ removed: [A, B], chain: [V2, V1, V0] }), swap)) });
+  for (const [label, r] of [["step", swStep], ["verify", swVerify]]) {
+    assert.ok(!r.ok && r.errors.includes("script_settings_changed"), `[N19.12] ${label}: troca de chave redigida reprova`);
+    assert.deepEqual([r.settingsDiff.removed, r.settingsDiff.added, r.settingsDiff.unlocated], [["observability.<chave-desconhecida>:string"], ["observability.<chave-desconhecida>:string"], false], `[N19.12] ${label}: a divergência é localizada (sai uma, entra outra), sem revelar as chaves`);
+  }
+  // Diferença que o mapa não localiza (aqui: além do limite de campos) é declarada explicitamente, e continua reprovando.
+  const wide = (n) => Object.fromEntries([...Array(SETTINGS_FIELDS_LIMIT + 5).keys()].map((i) => ["k" + String(i).padStart(4, "0"), i === SETTINGS_FIELDS_LIMIT + 4 ? n : 0]));
+  const planWide = makePlan(withRest(S0(), (r) => { r.limits = { cpu_ms: 1 }; r.zz = wide(0); return r; }));
+  const wideStep = stepCheck({ plan: planWide, phase: "post", name: A, deleted: [], expectedVersion: V0, snap: snapOf(post((r) => { r.limits = { cpu_ms: 1 }; r.zz = wide(1); return r; })) });
+  assert.ok(!wideStep.ok && wideStep.errors.includes("script_settings_changed"), "[N19.13] diferença fora do mapa reprova");
+  assert.deepEqual([wideStep.settingsDiff.unlocated, wideStep.settingsDiff.truncated], [true, true], "[N19.13] sem caminho localizado: unlocated=true (com truncated=true), nunca silêncio");
+  assert.match(settingsDivergenceLine(wideStep.settingsDiff), / truncated=true unlocated=true /, "[N19.13] a linha declara a falta de localização");
   assert.match(sens.out, /^STEP_ERROR script_settings_changed$/m, "[N19.6] o erro original continua");
   // Respostas incompletas.
   const oldPlan = { ...plan }; delete oldPlan.settings_fields;
