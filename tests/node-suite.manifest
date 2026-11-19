@@ -148,7 +148,7 @@ tests/production-activity-sync.test.mjs 3
 tests/production-order-lookup.test.mjs 7
 tests/production-payment-credential-isolation.test.mjs 7
 tests/production-pilot-removal.test.mjs 7
-tests/production-secret-names.test.mjs 18
+tests/production-secret-names.test.mjs 19
 tests/production-staging-health.test.mjs 3
 tests/public-html-internal-markers.test.mjs 2
 tests/public-surface-router.test.mjs 3

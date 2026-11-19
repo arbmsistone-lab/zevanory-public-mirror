@@ -249,6 +249,53 @@ export function scriptSettingsHash(data) {
   const { bindings, ...rest } = data.result;
   return privateFingerprint(canonicalJson(rest));
 }
+// I4 (diagnóstico de script_settings_changed): mapa caminho -> {k: tipo JSON, h: impressão privada} das folhas dos settings
+// (fora bindings). Só diagnostica: a reprovação continua sendo a igualdade estrita de scriptSettingsHash. O caminho usa só
+// chaves no formato de identificador e índices de array; chave fora desse formato vira "<chave>" (nunca o texto dela).
+// Nada daqui é impresso além do caminho e do tipo JSON (string/number/boolean/null/array/object): nunca valor nem impressão.
+const SETTINGS_PATH_SEGMENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+export const SETTINGS_FIELDS_LIMIT = 256;
+const SETTINGS_DEPTH_LIMIT = 6;
+const jsonKind = (v) => (Array.isArray(v) ? "array" : v === null ? "null" : typeof v);
+export function settingsFieldPrints(data) {
+  bindingsOf(data);
+  const { bindings, ...rest } = data.result;
+  const fields = {};
+  let truncated = false;
+  const put = (path, v) => {
+    if (Object.keys(fields).length >= SETTINGS_FIELDS_LIMIT) { truncated = true; return; }
+    if (Object.hasOwn(fields, path)) { fields[path] = { k: "colisao", h: privateFingerprint(fields[path].h + "|" + canonicalJson(v)) }; return; }
+    fields[path] = { k: jsonKind(v), h: privateFingerprint(canonicalJson(v)) };
+  };
+  const walk = (v, path, depth) => {
+    const k = jsonKind(v);
+    const keys = k === "object" ? Object.keys(v).sort(cmp) : k === "array" ? v.map((_, i) => i) : [];
+    if (!keys.length || depth >= SETTINGS_DEPTH_LIMIT) { put(path, v); return; }
+    for (const key of keys) {
+      const seg = k === "array" ? `[${key}]` : (SETTINGS_PATH_SEGMENT.test(key) ? (path ? "." : "") + key : (path ? "." : "") + "<chave>");
+      walk(v[key], path + seg, depth + 1);
+    }
+  };
+  for (const key of Object.keys(rest).sort(cmp)) walk(rest[key], SETTINGS_PATH_SEGMENT.test(key) ? key : "<chave>", 1);
+  return { fields, truncated };
+}
+// Compara dois mapas de settingsFieldPrints. Saída: só caminhos e tipos JSON. Sem mapa de um dos lados: "indisponível".
+export function settingsDivergence(before, after) {
+  if (!before || !after || typeof before.fields !== "object" || typeof after.fields !== "object") return { available: false, reason: !before ? "plan_without_settings_fields" : "settings_unreadable" };
+  const b = before.fields, a = after.fields;
+  const removed = Object.keys(b).filter((p) => !Object.hasOwn(a, p)).sort(cmp).map((p) => `${p}:${b[p].k}`);
+  const added = Object.keys(a).filter((p) => !Object.hasOwn(b, p)).sort(cmp).map((p) => `${p}:${a[p].k}`);
+  const common = Object.keys(a).filter((p) => Object.hasOwn(b, p)).sort(cmp);
+  const kindChanged = common.filter((p) => a[p].k !== b[p].k).map((p) => `${p}:${b[p].k}>${a[p].k}`);
+  const changed = common.filter((p) => a[p].k === b[p].k && a[p].h !== b[p].h).map((p) => `${p}:${a[p].k}`);
+  return { available: true, changed, kindChanged, added, removed, truncated: Boolean(before.truncated || after.truncated) };
+}
+const DIVERGENCE_LIST_LIMIT = 40;
+const capList = (xs) => (xs.length > DIVERGENCE_LIST_LIMIT ? [...xs.slice(0, DIVERGENCE_LIST_LIMIT), `+${xs.length - DIVERGENCE_LIST_LIMIT}`] : xs).join(",") || "-";
+export function settingsDivergenceLine(d) {
+  if (!d.available) return `SETTINGS_DIVERGENCE available=false reason=${d.reason} (só caminhos e tipos; nunca valores)`;
+  return `SETTINGS_DIVERGENCE changed=${capList(d.changed)} kind_changed=${capList(d.kindChanged)} added=${capList(d.added)} removed=${capList(d.removed)} truncated=${d.truncated} (só caminhos e tipos; nunca valores)`;
+}
 export function diffConfig(before, after, allowedRemoved) {
   const allowed = new Set(allowedRemoved);
   const removed = Object.keys(before).filter((n) => !Object.hasOwn(after, n)).sort(cmp);
@@ -332,7 +379,7 @@ export function snapshot({ secretList, settings, deployments, version, release }
   const commit = releaseInfo(release).commit_sha;
   const doc = inventoryDocument({ entries, commitSha: commit, code: detail ? detail.code : null, toDelete, kept });
   return { secretEntries, bindingNames, entries, effective, detail, preview, commit, doc, digest: inventoryDigest(doc),
-    settingsHash: settings ? scriptSettingsHash(settings) : null };
+    settingsHash: settings ? scriptSettingsHash(settings) : null, settingsFields: settings ? settingsFieldPrints(settings) : null };
 }
 
 // Sol 221 (2): o que falta para o inventário valer como D0/V0 (fonte ausente, divergente ou incompleta).
@@ -430,7 +477,8 @@ export function verifyRemoval({ plan, snap }) {
   }
   if (snap.settingsHash !== plan.settings_hash) errors.push("script_settings_changed");
   if (liveDigest(snap, plan) !== plan.chain[plan.chain.length - 1].digest) errors.push(`state_digest_mismatch:${plan.chain[plan.chain.length - 1].state}`);
-  return { ok: stillPresent.length === 0 && lostKept.length === 0 && added.length === 0 && typeChanged.length === 0 && errors.length === 0, stillPresent, lostKept, added, typeChanged, errors };
+  const settingsDiff = snap.settingsHash !== plan.settings_hash ? settingsDivergence(plan.settings_fields, snap.settingsFields) : null;
+  return { ok: stillPresent.length === 0 && lostKept.length === 0 && added.length === 0 && typeChanged.length === 0 && errors.length === 0, stillPresent, lostKept, added, typeChanged, errors, ...(settingsDiff ? { settingsDiff } : {}) };
 }
 
 // C4 + A1/A2/A3 + Sol 191 por passo. O passo k (1-based) apaga toDelete[k-1] e exige deleted = toDelete[0..k-1).
@@ -448,6 +496,7 @@ export function stepCheck({ plan, phase, name, deleted = [], expectedVersion, sn
   const errors = [];
   if (c.stillPresent.length || c.lost.length || c.added.length || c.typeChanged.length) errors.push("inventory_not_expected");
   const live = liveDigest(snap, plan);
+  let settingsDiff = null;
   if (live !== target.digest) errors.push(`state_digest_mismatch:${target.state}`);
   if (!snap.effective || !snap.detail) errors.push("effective_version_unreadable");
   else {
@@ -464,8 +513,9 @@ export function stepCheck({ plan, phase, name, deleted = [], expectedVersion, sn
     }
   }
   if (snap.commit !== plan.commit_sha) errors.push("CONCURRENT_CHANGE:deployed_commit_changed");
+  if (snap.settingsHash !== plan.settings_hash) settingsDiff = settingsDivergence(plan.settings_fields, snap.settingsFields);
   const ok = errors.length === 0;
-  return { ok, error: ok ? null : errors[0], errors, c, state: target.state, from: plan.chain[deleted.length].state, live };
+  return { ok, error: ok ? null : errors[0], errors, c, state: target.state, from: plan.chain[deleted.length].state, live, settingsDiff };
 }
 
 // C4: estado efetivo depois de uma falha (nunca recria nada).
@@ -696,7 +746,7 @@ export function cli(argv, log = console.log) {
       const chain = stateChain(snap.doc, p.toDelete);
       if (chain[0].digest !== snap.digest) { log("::error title=CLEANUP_REFUSED::S0 recalculado difere do digest aprovado"); return 1; }
       for (const s of chain) log(`STATE_DIGEST ${s.state}=${s.digest} removed=${s.removed.join(",") || "-"}`);
-      writeFileSync(out, JSON.stringify({ schema: INVENTORY_SCHEMA, toDelete: p.toDelete, kept: p.kept, digest: snap.digest, chain, document: snap.doc, version: snap.effective.id, commit_sha: snap.commit, entries: snap.entries, code: snap.detail.code, config: snap.detail.config, settings_hash: snap.settingsHash }));
+      writeFileSync(out, JSON.stringify({ schema: INVENTORY_SCHEMA, toDelete: p.toDelete, kept: p.kept, digest: snap.digest, chain, document: snap.doc, version: snap.effective.id, commit_sha: snap.commit, entries: snap.entries, code: snap.detail.code, config: snap.detail.config, settings_hash: snap.settingsHash, settings_fields: snap.settingsFields }));
       log(`CLEANUP_PLAN=OK delete=${p.toDelete.length} keep=${p.kept.length} absent=${p.absent.length} version=${snap.effective.id} commit=${snap.commit ?? "indisponível"}`);
       return 0;
     }
@@ -724,6 +774,7 @@ export function cli(argv, log = console.log) {
         for (const t of r.c.typeChanged) log(`STEP_TYPE_CHANGED ${t}`);
       }
       for (const e of r.errors) log(`${e.startsWith("CONCURRENT_CHANGE") ? "::error title=CONCURRENT_CHANGE::" : "STEP_ERROR "}${e}`);
+      if (r.settingsDiff) log(settingsDivergenceLine(r.settingsDiff));
       if (snap.detail) {
         const vc = privateValueCheck(plan.config, snap.detail.config, phase === "post" ? [...list(arg(argv, "--deleted")), name] : list(arg(argv, "--deleted")));
         log(`CONFIG_VALUES_UNCHANGED=${vc.unchanged} n=${vc.n} changed=${vc.changed} SCRIPT_SETTINGS_UNCHANGED=${snap.settingsHash === plan.settings_hash} (${PRIVATE_LABEL})`);
@@ -763,6 +814,7 @@ export function cli(argv, log = console.log) {
       for (const n of v.added) log(`::error title=ADDED_SINCE_PLAN::${n}`);
       for (const t of v.typeChanged) log(`::error title=KEPT_TYPE_CHANGED::${t}`);
       for (const e of v.errors) log(`::error title=CLEANUP_POSTPROOF::${e}`);
+      if (v.settingsDiff) log(settingsDivergenceLine(v.settingsDiff));
       const live = readSnap(argv);
       if (live.detail) {
         const vc = privateValueCheck(plan.config, live.detail.config, plan.toDelete);
