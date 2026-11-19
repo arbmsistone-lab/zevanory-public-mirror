@@ -49,7 +49,7 @@ tests/creative-offer-containment.test.mjs 7
 tests/criativos-laboratorio.test.mjs 14
 tests/criativos-rubrica-area-segura.test.mjs 3
 tests/criativos-rubrica-perfil.test.mjs 3
-tests/d12-hotmart-por-produto.test.mjs 13
+tests/d12-hotmart-por-produto.test.mjs 14
 tests/data-backup.test.mjs 13
 tests/db-economy.test.mjs 5
 tests/diagnostico-diario.test.mjs 10

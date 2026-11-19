@@ -21,7 +21,7 @@
 //   <dia>:tentativa:<id>   chave NOVA por tentativa de envio (conta tentativas por listagem; limite aproximado).
 //   <dia>:enviado          gravada uma vez, só depois do 2xx do Telegram. Só ela suprime novos avisos.
 // Estado final: antes de enviar, o estado da transação é conciliado pelo registro de vendas (todos os eventos da mesma
-// transação, qualquer ordem de chegada). Revertido (reembolso, chargeback, cancelamento, protesto, expiração) nunca é
+// transação, qualquer ordem de chegada). Sem evento da transação no registro de vendas, NADA é anunciado (pendente). Revertido (reembolso, chargeback, cancelamento, protesto, expiração) nunca é
 // anunciado como aprovado: o aviso diz "pedido revertido". O pedido CONTA no teto do dia mesmo revertido (a reversão não
 // devolve a vaga do piloto); o aviso existe para o titular pausar a Hotmart.
 // Só gravam pedidos de kit liberado na recepção e de hoje/ontem BRT (dia do pedido); os demais não gravam nada.
@@ -127,7 +127,8 @@ async function txnState(kv, h) {
   const outcomes = new Set(ks.map((k) => String(k.name).split(":")[6]).filter(Boolean));
   for (const [o, label] of Object.entries(REVERTED_OUTCOMES)) if (outcomes.has(o)) return { kind: `pedido revertido: ${label}`, reverted: true };
   if (outcomes.has("approved")) return { kind: "pedido aprovado", reverted: false };
-  return null; // ainda sem evento no registro de vendas (o registro do candidato vem antes): usa o evento do candidato
+  if (outcomes.has("billet_printed")) return { kind: FIRST_ORDER_EVENTS.PURCHASE_BILLET_PRINTED, reverted: false };
+  return null; // venda ainda não comprovada no registro de vendas (o candidato é gravado antes): nada é anunciado
 }
 
 // 1º pedido elegível (kit liberado na recepção) do dia BRT, pela chave do dia.
@@ -169,7 +170,10 @@ async function alertDay(env, kv, cfg, day, now, fetchImpl, sleepImpl) {
   if (!best) return { alerted: false, reason: complete ? "sem_pedido" : "registro_do_pedido_ausente" };
   const kit = KITS.find((x) => x.slug === best.rec.product);
   const st = await txnState(kv, best.h);
-  const text = firstOrderAlertText({ name: kit?.name || best.rec.product, kind: st?.kind || FIRST_ORDER_EVENTS[best.rec.event], now: Date.parse(best.rec.at), timeSource: best.rec.timeSource });
+  // Só anuncia o que o registro de vendas comprova; sem evento gravado (ex.: o registro falhou e a Hotmart vai reentregar)
+  // o aviso fica pendente, e o cron ou a reentrega avisam depois com o estado correto.
+  if (!st) return { alerted: false, reason: "aguardando_registro_de_vendas" };
+  const text = firstOrderAlertText({ name: kit?.name || best.rec.product, kind: st.kind, now: Date.parse(best.rec.at), timeSource: best.rec.timeSource });
   return attemptSend(kv, cfg, day, text, now, fetchImpl, sleepImpl);
 }
 

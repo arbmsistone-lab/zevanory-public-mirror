@@ -247,3 +247,27 @@ test("D12.13 texto sem dado pessoal; avisos só para hoje/ontem BRT", async () =
   assert.equal(brtDay(Date.parse("2026-11-20T03:30:00Z")), "2026-11-20");
   assert.equal((await maybeAlertFirstOrder(hookEnv(), { day: "2026-11-10", now: T })).reason, "dia_antigo");
 });
+
+test("D12.14 aprovação só depois de comprovada no registro de vendas: candidato gravado + registro de vendas falha => nada; a reentrega grava a venda e avisa", async () => {
+  const env = hookEnv(), kv = env.ZEVANORY_PRIVATE_ARTIFACTS, tg = telegram(503, 200);
+  await withFetch(tg, async () => {
+    kv.fail((k) => k.startsWith(SALES_EVENT_PREFIX));
+    assert.equal((await hook(env, payload())).status, 503, "[D12.14] registro de vendas falhou => 503");
+    assert.equal(kv.m.get(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:candidato"), await txnHash("HP-D12-001"), "[D12.14] candidato já gravado");
+    assert.equal(tg.calls.length, 0, "[D12.14] nenhum aviso no 503");
+  });
+  const early = telegram(200);
+  assert.deepEqual((await cron(env, early, T + 30 * 60000)).results, [{ day: "2026-11-20", alerted: false, reason: "aguardando_registro_de_vendas" }], "[D12.14] cron não anuncia venda não comprovada");
+  assert.equal(early.calls.length, 0);
+  await withFetch(tg, async () => {
+    assert.equal((await hook(env, payload(), T + 40 * 60000)).status, 200, "[D12.14] reentrega grava a venda");
+    assert.equal(tg.calls.length, 1, "[D12.14] reentrega tenta avisar (503)");
+  });
+  const ok = telegram(200);
+  assert.equal((await cron(env, ok, T + H)).results[0].alerted, true);
+  assert.match(ok.calls[0].text, /\(pedido aprovado\) às 10:00 BRT/, "[D12.14] aviso correto depois de comprovado");
+  // PIX gerado (BILLET_PRINTED) comprovado no registro: anuncia "pedido criado", nunca "aprovado".
+  const e2 = hookEnv(), t2 = telegram(200);
+  await withFetch(t2, async () => { await hook(e2, payload({ event: "PURCHASE_BILLET_PRINTED" })); });
+  assert.match(t2.calls[0].text, /pedido criado, aguardando pagamento/);
+});
