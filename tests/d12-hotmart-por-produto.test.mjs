@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { readHotmartSwitch, resetHotmartSwitchCache, handleSalesControl, HOTMART_SALES_KEY, hotmartRecordProducts, hotmartProductOpen, HOTMART_PRODUCT_SLUGS } from "../worker/sales-control.mjs";
 import { hotmartKitsOpen, purchaseOpenFor } from "../worker/sales-lock-content.mjs";
-import { maybeAlertFirstOrder, retryFirstOrderAlert, brtDay, firstOrderAlertText, FIRST_ORDER_ALERT_PREFIX, MAX_ATTEMPTS } from "../worker/hotmart-first-order-alert.mjs";
+import { maybeAlertFirstOrder, retryFirstOrderAlert, registerFirstOrderCandidate, txnHash, brtDay, firstOrderAlertText, FIRST_ORDER_ALERT_PREFIX, MAX_ATTEMPTS } from "../worker/hotmart-first-order-alert.mjs";
 import { handleDigitalHotmartNc012 } from "../worker/cp-nc012-digital-hotmart.mjs";
+import { salesEventRecord, SALES_EVENT_PREFIX } from "../worker/sales-ledger.mjs";
 
 // D12 (19/11/2026, VC-H): modo Hotmart POR PRODUTO e aviso único do 1º pedido elegível do dia (BRT).
 const ALL = ["combo-ia-vendas", "ia-na-pratica", "lucro-e-caixa", "negocio-completo", "vendas-na-pratica"];
@@ -52,195 +53,197 @@ test("D12.3 publicadores automáticos só com os 5 kits; compra por produto; Con
   resetHotmartSwitchCache();
 });
 
-// Aviso do 1º pedido elegível do dia.
+// Aviso do 1º pedido elegível do dia (rodada 4: ordem GPT-6 sobre e7fc388a). Tudo pelo webhook REAL.
+// KV de teste: guarda metadados, pagina a listagem (1.000 por página, cursor) e é ESTRITO nas chaves do aviso: recusa (429)
+// regravar a mesma chave em menos de 1 s de relógio real (limite do Workers KV). `fail(pred, n)` injeta n falhas de put.
 const T = Date.parse("2026-11-20T13:00:00Z"); // 10:00 BRT
-const tg = () => { const calls = []; return { calls, fetchImpl: async (url, init) => { calls.push({ url: String(url), body: JSON.parse(init.body) }); return new Response("{}", { status: 200 }); } }; };
-const alertEnv = (rec = record()) => envWith(rec, { TELEGRAM_ALERT: "1234567:" + "a".repeat(30) + "|-100123456" });
+const HOTTOK = "hottok-ficticio-d12-000000000000";
+const SECRET = "1234567:" + "a".repeat(30) + "|-100123456";
+const testKv = () => { const m = new Map(), meta = new Map(), last = new Map(); let failPred = null, failLeft = 0; return { m, meta, rejected: [],
+  fail(pred, n = 1) { failPred = pred; failLeft = n; },
+  async get(k) { return m.has(k) ? m.get(k) : null; },
+  async put(k, v, o) { if (failPred && failLeft > 0 && failPred(k)) { failLeft--; throw new Error("KV PUT failed: 500"); } if (k.startsWith(FIRST_ORDER_ALERT_PREFIX)) { const t = Date.now(); if (last.has(k) && t - last.get(k) < 1000) { this.rejected.push(k); throw new Error("429 KV PUT failed: Too Many Requests"); } last.set(k, t); } m.set(k, String(v)); meta.set(k, o?.metadata ?? null); },
+  async delete(k) { m.delete(k); meta.delete(k); },
+  async list({ prefix = "", limit = 1000, cursor } = {}) { const all = [...m.keys()].filter((k) => k.startsWith(prefix)).sort(); const start = Number(cursor || 0), page = all.slice(start, start + limit), end = start + page.length; return { keys: page.map((name) => ({ name, metadata: meta.get(name) ?? null })), list_complete: end >= all.length, ...(end < all.length ? { cursor: String(end) } : {}) }; } }; };
+const hookEnv = ({ secret = true, products = ["ia-na-pratica"] } = {}) => { const kv = testKv(); kv.m.set(HOTMART_SALES_KEY, JSON.stringify(record({ products }))); return { ZEVANORY_PRIVATE_ARTIFACTS: kv, HOTMART_HOTTOK: HOTTOK, RESEND_API_KEY: "", ...(secret ? { TELEGRAM_ALERT: SECRET } : {}) }; };
+// Telegram simulado (fetch global, usado pelo webhook) com roteiro de respostas; outra rede é bloqueada.
+const telegram = (...outcomes) => { const calls = []; const fetchImpl = async (url, init) => { if (!String(url).startsWith("https://api.telegram.org/")) throw new Error("rede bloqueada no teste"); calls.push(JSON.parse(init.body)); const o = outcomes[Math.min(calls.length - 1, outcomes.length - 1)]; if (o === "timeout") throw new DOMException("timeout", "TimeoutError"); return new Response("{}", { status: o }); }; return { calls, fetchImpl }; };
+const withFetch = async (tg, fn) => { const real = globalThis.fetch; globalThis.fetch = tg.fetchImpl; try { return await fn(); } finally { globalThis.fetch = real; resetHotmartSwitchCache(); } };
+const payload = ({ txn = "HP-D12-001", event = "PURCHASE_APPROVED", productId = 8704733, at = T, dated = true } = {}) => ({ version: "2.0.0", event, data: { product: { id: productId, name: "ZEVANORY kit" }, buyer: { email: "comprador@example.invalid", first_name: "Teste" }, purchase: { transaction: txn, price: { value: 97 }, ...(dated ? { approved_date: at } : {}), payment: { type: "PIX" } }, commissions: [{ source: "PRODUCER", value: 85 }] } });
+const hook = async (env, body, now = T) => { resetHotmartSwitchCache(); const r = await handleDigitalHotmartNc012(new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "x-hotmart-hottok": HOTTOK }, body: JSON.stringify(body) }), env, { now }); return { status: r.status, body: await r.json() }; };
+const cron = async (env, tg, now) => { resetHotmartSwitchCache(); return retryFirstOrderAlert(env, { now, fetchImpl: tg.fetchImpl, sleepImpl: async () => {} }); };
+const H = 3600000;
+const noPii = (tg) => assert.doesNotMatch(JSON.stringify(tg.calls), /example\.invalid|HP-D12|Teste/, "sem dado pessoal no aviso");
 
-test("D12.4 aviso único no 1º pedido elegível do dia; duplicata, 2º pedido e produto não liberado não avisam", async () => {
-  const env = alertEnv(), t = tg();
-  resetHotmartSwitchCache();
-  const a = await maybeAlertFirstOrder(env, { event: "PURCHASE_BILLET_PRINTED", productId: "8704733", recorded: true, now: T, fetchImpl: t.fetchImpl });
-  assert.deepEqual([a.alerted, t.calls.length], [true, 1], "[D12.4] PIX/boleto pendente avisa");
-  const b = await maybeAlertFirstOrder(env, { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: T + 600000, fetchImpl: t.fetchImpl });
-  assert.deepEqual([b.alerted, b.reason, t.calls.length], [false, "ja_avisado_hoje", 1], "[D12.4] 2º evento do mesmo dia");
-  const env2 = alertEnv(), t2 = tg();
-  resetHotmartSwitchCache();
-  assert.equal((await maybeAlertFirstOrder(env2, { event: "PURCHASE_APPROVED", productId: "8704733", recorded: false, now: T, fetchImpl: t2.fetchImpl })).reason, "duplicata", "[D12.4] duplicata");
-  assert.equal((await maybeAlertFirstOrder(env2, { event: "PURCHASE_APPROVED", productId: "8704826", recorded: true, now: T, fetchImpl: t2.fetchImpl })).reason, "produto_nao_liberado", "[D12.4] kit não liberado");
-  assert.equal((await maybeAlertFirstOrder(env2, { event: "PURCHASE_REFUNDED", productId: "8704733", recorded: true, now: T, fetchImpl: t2.fetchImpl })).reason, "evento_nao_elegivel", "[D12.4] reembolso");
-  assert.equal((await maybeAlertFirstOrder(env2, { event: "PURCHASE_APPROVED", productId: "8709787", recorded: true, now: T, fetchImpl: t2.fetchImpl })).reason, "produto_fora_da_lista", "[D12.4] fora da lista");
-  assert.equal(t2.calls.length, 0, "[D12.4] nenhum envio");
-  resetHotmartSwitchCache();
+test("D12.4 2xx rápido: um aviso; postback repetido, COMPLETE, 2º pedido e cron não reenviam; nenhuma regravação de chave", () => {
+  const env = hookEnv(), tg = telegram(200);
+  return withFetch(tg, async () => {
+    assert.equal((await hook(env, payload())).status, 200);
+    assert.equal(tg.calls.length, 1, "[D12.4] aviso");
+    assert.match(tg.calls[0].text, /1º pedido do dia do IA na Prática \(pedido aprovado\) às 10:00 BRT\./);
+    assert.equal((await hook(env, payload())).body.duplicate, true);
+    await hook(env, payload({ event: "PURCHASE_COMPLETE" }), T + 1000);
+    await hook(env, payload({ txn: "HP-D12-002", at: T + 600000 }), T + 600000);
+    assert.deepEqual((await cron(env, tg, T + H)).results, [], "[D12.4] cron sem pendência");
+    assert.equal(tg.calls.length, 1, "[D12.4] nada mais no dia");
+    assert.deepEqual(env.ZEVANORY_PRIVATE_ARTIFACTS.rejected, [], "[D12.4] nenhuma escrita recusada (1/s por chave)");
+    noPii(tg);
+  });
 });
 
-test("D12.5 o dia é o de Brasília: 23:30 BRT e 00:30 BRT do dia seguinte são dois dias", async () => {
-  assert.equal(brtDay(Date.parse("2026-11-20T02:30:00Z")), "2026-11-19", "[D12.5] 23:30 BRT");
-  assert.equal(brtDay(Date.parse("2026-11-20T03:30:00Z")), "2026-11-20", "[D12.5] 00:30 BRT");
-  const env = alertEnv(), t = tg();
-  resetHotmartSwitchCache();
-  assert.equal((await maybeAlertFirstOrder(env, { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: Date.parse("2026-11-20T02:30:00Z"), fetchImpl: t.fetchImpl })).alerted, true);
-  assert.equal((await maybeAlertFirstOrder(env, { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: Date.parse("2026-11-20T03:30:00Z"), fetchImpl: t.fetchImpl })).alerted, true, "[D12.5] novo dia BRT avisa de novo");
-  assert.deepEqual([...env.ZEVANORY_PRIVATE_ARTIFACTS.m.keys()].filter((k) => k.endsWith(":enviado")).sort(), [FIRST_ORDER_ALERT_PREFIX + "2026-11-19:enviado", FIRST_ORDER_ALERT_PREFIX + "2026-11-20:enviado"]);
-  resetHotmartSwitchCache();
+test("D12.5 aceite: falha ao gravar a pendência + Telegram 503 + reenvio do postback; o cron recupera o MESMO pedido", () => {
+  const env = hookEnv(), kv = env.ZEVANORY_PRIVATE_ARTIFACTS, tg = telegram(503);
+  return withFetch(tg, async () => {
+    // (a) falha no registro durável do candidato => 503 ANTES do registro de vendas; nada gravado, nenhum envio.
+    kv.fail((k) => k.includes(":txn:"));
+    assert.equal((await hook(env, payload())).status, 503, "[D12.5] 503 para a Hotmart reenviar");
+    assert.equal([...kv.m.keys()].some((k) => k.startsWith(SALES_EVENT_PREFIX)), false, "[D12.5] venda ainda não gravada");
+    // (b) reentrega: a chave do dia falha depois do txn => 503 de novo; (c) reentrega: repara a chave do dia, Telegram 503.
+    kv.fail((k) => k.endsWith(":candidato"));
+    assert.equal((await hook(env, payload(), T + 60000)).status, 503);
+    assert.equal((await hook(env, payload(), T + 120000)).status, 200, "[D12.5] reentrega conclui");
+    assert.equal((await hook(env, payload(), T + 180000)).body.duplicate, true, "[D12.5] reenvio idempotente");
+    assert.equal(tg.calls.length, 2, "[D12.5] duas tentativas no webhook, ambas 503");
+    const h = await txnHash("HP-D12-001");
+    assert.ok(kv.m.get(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:candidato") === h && !kv.m.has(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:enviado"), "[D12.5] pendente");
+    // Sem outra compra: o cron envia o aviso do mesmo pedido (hora do payload), e depois para.
+    const ok = telegram(200);
+    assert.deepEqual((await cron(env, ok, T + H)).results, [{ day: "2026-11-20", alerted: true, reason: null }]);
+    assert.match(ok.calls[0].text, /IA na Prática \(pedido aprovado\) às 10:00 BRT\./, "[D12.5] mesmo pedido");
+    assert.deepEqual([(await cron(env, ok, T + 2 * H)).results, ok.calls.length], [[], 1]);
+    assert.deepEqual(kv.rejected, []); noPii(ok);
+    assert.equal(h, (await salesEventRecord("PURCHASE_APPROVED", "HP-D12-001", payload().data)).h, "[D12.5] mesmo hash de transação do registro de vendas");
+  });
 });
 
-test("D12.6 texto sem dado pessoal; falha do Telegram ou segredo ausente nunca lança", async () => {
-  const txt = firstOrderAlertText({ name: "IA na Prática", kind: "pedido aprovado", now: T });
-  assert.match(txt, /1º pedido do dia do IA na Prática .* 10:00 BRT/);
-  assert.doesNotMatch(txt, /@|HF-|R\$|\d{6,}/, "[D12.6] sem e-mail, transação, valor ou ID");
-  resetHotmartSwitchCache();
-  const semSegredo = await maybeAlertFirstOrder(envWith(record()), { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: T, fetchImpl: async () => { throw new Error("não deveria chamar"); } });
-  assert.deepEqual([semSegredo.alerted, semSegredo.reason], [false, "telegram_nao_configurado"]);
-  resetHotmartSwitchCache();
-  const falha = await maybeAlertFirstOrder(alertEnv(), { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: T, fetchImpl: async () => { throw new Error("rede"); } });
-  assert.deepEqual([falha.alerted, falha.reason], [false, "telegram_incerto"]);
-  resetHotmartSwitchCache();
+test("D12.6 estado final: aprovação + reembolso/chargeback/cancelamento (qualquer ordem) nunca é anunciada como aprovada; a vaga do teto não volta", async () => {
+  for (const rev of ["PURCHASE_REFUNDED", "PURCHASE_CHARGEBACK", "PURCHASE_CANCELED"]) for (const order of ["aprovacao_primeiro", "reversao_primeiro"]) {
+    const env = hookEnv(), tg = telegram(503, 200);
+    await withFetch(tg, async () => {
+      const seqEv = order === "aprovacao_primeiro" ? ["PURCHASE_APPROVED", rev] : [rev, "PURCHASE_APPROVED"];
+      for (const [i, e] of seqEv.entries()) assert.equal((await hook(env, payload({ event: e }), T + i * 60000)).status, 200, rev + " " + order);
+      await cron(env, tg, T + H);
+      const last = tg.calls[tg.calls.length - 1].text;
+      assert.match(last, /pedido revertido/, `[D12.6] ${rev} ${order}`);
+      assert.doesNotMatch(last, /pedido aprovado/, `[D12.6] ${rev} ${order}`);
+      assert.match(last, /conta no teto do dia/);
+      const n = tg.calls.length;
+      await hook(env, payload({ txn: "HP-D12-009", at: T + 2 * H }), T + 2 * H);
+      await cron(env, tg, T + 3 * H);
+      assert.equal(tg.calls.length, n, "[D12.6] a reversão não devolve a vaga: 2º pedido do dia não avisa");
+    });
+  }
+  // PIX gerado e expirado: revertido (expirado).
+  const env = hookEnv(), tg = telegram(503, 200);
+  await withFetch(tg, async () => {
+    await hook(env, payload({ event: "PURCHASE_BILLET_PRINTED", dated: false }), T);
+    await hook(env, payload({ event: "PURCHASE_EXPIRED", dated: false }), T + H);
+    await cron(env, tg, T + 2 * H);
+    assert.match(tg.calls.at(-1).text, /pedido revertido: expirado/);
+  });
 });
 
-test("D12.7 webhook Hotmart real: 1º evento novo avisa, repetição não; a resposta do webhook não muda", async () => {
-  const hottok = "hottok-ficticio-d12-000000000000";
-  const env = { ...alertEnv(), HOTMART_HOTTOK: hottok };
-  const calls = []; const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url, init) => { if (String(url).startsWith("https://api.telegram.org/")) { calls.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); } throw new Error("rede bloqueada no teste"); };
-  try {
-    const body = { version: "2.0.0", event: "PURCHASE_APPROVED", data: { product: { id: 8704733, name: "ZEVANORY IA na Prática" }, buyer: { email: "comprador@example.invalid", first_name: "Teste" }, purchase: { transaction: "HP-D12-001", price: { value: 97 }, approved_date: T - 1000, payment: { type: "PIX" } }, commissions: [{ source: "PRODUCER", value: 85 }] } };
-    const send = () => handleDigitalHotmartNc012(new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "x-hotmart-hottok": hottok }, body: JSON.stringify(body) }), env, { now: T });
-    resetHotmartSwitchCache();
-    const r1 = await send(); const j1 = await r1.json();
-    resetHotmartSwitchCache();
-    const r2 = await send(); const j2 = await r2.json();
-    assert.deepEqual([r1.status, j1.ok, r2.status, j2.duplicate], [200, true, 200, true], "[D12.7] respostas");
-    assert.equal(calls.length, 1, "[D12.7] um único aviso");
-    assert.doesNotMatch(JSON.stringify(calls), /example\.invalid|HP-D12/, "[D12.7] aviso sem comprador nem transação");
-  } finally { globalThis.fetch = realFetch; resetHotmartSwitchCache(); }
+test("D12.7 busca pelo índice do dia: 3.000 eventos históricos no registro e 3.000 pedidos de dias anteriores não escondem o pedido", async () => {
+  const env = hookEnv(), kv = env.ZEVANORY_PRIVATE_ARTIFACTS, tg = telegram(503);
+  for (let i = 0; i < 3000; i++) {
+    const key = SALES_EVENT_PREFIX + "00:" + String(i).padStart(32, "0") + ":approved:purchase_approved:" + "0".repeat(16);
+    kv.m.set(key, "{}"); kv.meta.set(key, { event: "PURCHASE_APPROVED", facts: { at: new Date(T - 86400000 * (2 + (i % 300))).toISOString(), productId: "8704733" } });
+    const d = new Date(T - 86400000 * (2 + (i % 400))).toISOString().slice(0, 10), hh = String(i).padStart(32, "a");
+    kv.m.set(FIRST_ORDER_ALERT_PREFIX + d + ":candidato", hh);
+    kv.m.set(FIRST_ORDER_ALERT_PREFIX + "txn:" + hh, JSON.stringify({ at: d + "T13:00:00.000Z", day: d, timeSource: "compra", product: "ia-na-pratica", event: "PURCHASE_APPROVED", liberado: true }));
+  }
+  await withFetch(tg, async () => { assert.equal((await hook(env, payload({ txn: "HP-D12-ZZZ" }))).status, 200); });
+  const hz = await txnHash("HP-D12-ZZZ"), ledger = [...kv.m.keys()].filter((k) => k.startsWith(SALES_EVENT_PREFIX)).sort();
+  assert.ok(ledger.findIndex((k) => k.includes(":" + hz + ":")) >= 3000, "[D12.7] o evento atual está além da 3ª página do registro de vendas");
+  const ok = telegram(200);
+  assert.deepEqual((await cron(env, ok, T + H)).results.map((r) => [r.day, r.alerted]), [["2026-11-20", true]], "[D12.7] encontrado além de 3 páginas de histórico");
+  // Pedidos seguintes do mesmo dia não gravam nada (cota de gravações NC-989-02): só o 1º reivindica o dia.
+  const env2 = hookEnv(), kv2 = env2.ZEVANORY_PRIVATE_ARTIFACTS;
+  await withFetch(telegram(503), async () => { for (let i = 0; i < 20; i++) await hook(env2, payload({ txn: "HP-D12-N" + i, at: T + i * 60000 }), T + i * 60000); });
+  assert.equal([...kv2.m.keys()].filter((k) => k.startsWith(FIRST_ORDER_ALERT_PREFIX + "txn:")).length, 1, "[D12.7] 20 pedidos no dia => 1 registro de candidato");
+  assert.equal(kv2.m.get(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:candidato"), await txnHash("HP-D12-N0"));
 });
 
-// Reauditoria GPT-6 (9c9f5f32): o Workers KV aceita 1 escrita por segundo por chave. O KV estrito abaixo RECUSA
-// (429) qualquer regravação da mesma chave em menos de 1 s de relógio real; os testes rodam em milissegundos, então
-// qualquer regravação no fluxo é detectada. Só "<dia>:enviado" (após 2xx) suprime; o cron recupera sem novo pedido.
-const strictKv = () => { const kv = memKv(); const last = new Map(); const put = kv.put.bind(kv); kv.rejected = []; kv.put = async (k, v, o) => { const t = Date.now(); if (last.has(k) && t - last.get(k) < 1000) { kv.rejected.push(k); throw new Error("429 KV PUT failed: Too Many Requests"); } last.set(k, t); return put(k, v, o); }; return kv; };
-const strictEnv = (secret = true) => { const kv = strictKv(); kv.m.set(HOTMART_SALES_KEY, JSON.stringify(record())); return { ZEVANORY_PRIVATE_ARTIFACTS: kv, ...(secret ? { TELEGRAM_ALERT: "1234567:" + "a".repeat(30) + "|-100123456" } : {}) }; };
-const seq = (...outcomes) => { const calls = []; return { calls, fetchImpl: async (url, init) => { calls.push(JSON.parse(init.body)); const o = outcomes[Math.min(calls.length - 1, outcomes.length - 1)]; if (o === "timeout") throw new DOMException("timeout", "TimeoutError"); return new Response("{}", { status: o }); } }; };
-const noSleep = async () => {};
-const ev = (env, t, min = 0, event = "PURCHASE_APPROVED") => maybeAlertFirstOrder(env, { event, productId: "8704733", recorded: true, now: T + min * 60000, fetchImpl: t.fetchImpl, sleepImpl: noSleep });
-const cron = (env, t, min) => retryFirstOrderAlert(env, { now: T + min * 60000, fetchImpl: t.fetchImpl, sleepImpl: noSleep });
-const has = (env, suffix, day = "2026-11-20") => env.ZEVANORY_PRIVATE_ARTIFACTS.m.has(FIRST_ORDER_ALERT_PREFIX + day + suffix);
-
-test("D12.8 2xx rápido: suprime em sequência imediata, sem regravar chave nenhuma (limite de 1 escrita/s do KV)", async () => {
+test("D12.8 evento sem data: hora de recepção registrada (origem explícita); virada BRT e reentrega não deslocam o pedido", async () => {
+  const env = hookEnv(), kv = env.ZEVANORY_PRIVATE_ARTIFACTS, tg = telegram(503);
+  const late = Date.parse("2026-11-21T02:50:00Z"); // 23:50 BRT do dia 20
+  await withFetch(tg, async () => {
+    assert.equal((await hook(env, payload({ dated: false }), late)).status, 200);
+    assert.equal((await hook(env, payload({ dated: false }), late + 20 * 60000)).status, 200, "reentrega 00:10 BRT do dia 21");
+  });
+  const h = await txnHash("HP-D12-001"), rec = JSON.parse(kv.m.get(FIRST_ORDER_ALERT_PREFIX + "txn:" + h));
+  assert.deepEqual([rec.day, rec.timeSource, rec.at], ["2026-11-20", "recepcao", new Date(late).toISOString()], "[D12.8] 1ª recepção registrada, não a reentrega");
+  assert.equal(kv.m.has(FIRST_ORDER_ALERT_PREFIX + "2026-11-21:candidato"), false, "[D12.8] nada no dia 21");
+  const ok = telegram(200);
+  const r = await cron(env, ok, late + H); // 00:50 BRT do dia 21: recupera o de ontem
+  assert.deepEqual(r.results.map((x) => [x.day, x.alerted]), [["2026-11-20", true]]);
+  assert.match(ok.calls[0].text, /às 23:50 BRT \(hora de recepção do aviso da Hotmart; o payload veio sem data\)/);
+  // Evento sem data JÁ no registro de vendas, sem registro do candidato (anterior ao D12/expirado): pendência, nunca "hoje".
+  const env2 = hookEnv(), kv2 = env2.ZEVANORY_PRIVATE_ARTIFACTS;
+  await withFetch(telegram(503), async () => { await hook(env2, payload({ txn: "HP-D12-OLD", dated: false }), T - 10 * 86400000); });
+  for (const k of [...kv2.m.keys()]) if (k.startsWith(FIRST_ORDER_ALERT_PREFIX)) kv2.m.delete(k);
   resetHotmartSwitchCache();
-  const env = strictEnv(), t = seq(200);
-  assert.deepEqual([(await ev(env, t, 0)).alerted, has(env, ":enviado")], [true, true], "[D12.8] confirmado");
-  assert.deepEqual([(await ev(env, t, 0)).reason, (await ev(env, t, 0, "PURCHASE_COMPLETE")).reason, t.calls.length], ["ja_avisado_hoje", "ja_avisado_hoje", 1], "[D12.8] nada mais no dia");
-  assert.deepEqual((await cron(env, t, 60)).results.map((r) => r.reason), ["ja_avisado_hoje"], "[D12.8] cron não reenvia");
-  assert.deepEqual([env.ZEVANORY_PRIVATE_ARTIFACTS.rejected, t.calls.length], [[], 1], "[D12.8] nenhuma escrita recusada");
-  resetHotmartSwitchCache();
+  assert.deepEqual(await registerFirstOrderCandidate(env2, { event: "PURCHASE_APPROVED", data: payload({ txn: "HP-D12-OLD", dated: false }).data, now: T }), { ok: true, skipped: "sem_referencia_temporal", h: await txnHash("HP-D12-OLD") });
+  await withFetch(telegram(200), async () => { assert.equal((await hook(env2, payload({ txn: "HP-D12-OLD", dated: false }), T)).status, 200); });
+  assert.equal([...kv2.m.keys()].some((k) => k.endsWith(":candidato") || k.includes(":txn:")), false, "[D12.8] reentrega antiga não vira pedido de hoje");
+  // Evento COM data antiga reentregue: não grava candidato e não avisa (dia antigo).
+  const env3 = hookEnv(), tg3 = telegram(200);
+  await withFetch(tg3, async () => { await hook(env3, payload({ txn: "HP-D12-OLD2", at: T - 5 * 86400000 }), T); });
+  assert.deepEqual([tg3.calls.length, (await cron(env3, tg3, T + H)).results], [0, []], "[D12.8] evento datado antigo não avisa hoje");
+  assert.equal([...env3.ZEVANORY_PRIVATE_ARTIFACTS.m.keys()].some((k) => k.startsWith(FIRST_ORDER_ALERT_PREFIX)), false, "[D12.8] e não grava nada (cota)");
 });
 
-test("D12.9 1º pedido se recupera SEM outro pedido: 503, timeout e segredo ausente ficam pendentes e o cron avisa", async () => {
-  resetHotmartSwitchCache();
-  const a = strictEnv(), ta = seq(503, 200);
-  assert.equal((await ev(a, ta, 0)).reason, "telegram_503");
-  assert.deepEqual([has(a, ":pedido"), has(a, ":enviado")], [true, false], "[D12.9] pendente");
-  assert.deepEqual((await cron(a, ta, 47)).results, [{ day: "2026-11-20", alerted: true, reason: null }], "[D12.9] cron recupera o 503");
-  assert.deepEqual([(await cron(a, ta, 107)).results[0].reason, ta.calls.length], ["ja_avisado_hoje", 2], "[D12.9] e para");
-  assert.match(ta.calls[1].text, /1º pedido do dia do .* 10:00 BRT/, "[D12.9] hora do pedido, não do reenvio");
-  const b = strictEnv(), tb = seq("timeout", 200);
-  assert.equal((await ev(b, tb, 0)).reason, "telegram_incerto");
-  assert.equal((await cron(b, tb, 60)).results[0].alerted, true, "[D12.9] timeout incerto: reenvio (duplicata aceita)");
-  const c = strictEnv(false), tc = seq(200);
-  assert.equal((await ev(c, tc, 0)).reason, "telegram_nao_configurado");
-  assert.deepEqual([has(c, ":pedido"), has(c, ":enviado"), tc.calls.length], [true, false, 0], "[D12.9] sem segredo: pendente, sem envio");
-  c.TELEGRAM_ALERT = "1234567:" + "a".repeat(30) + "|-100123456";
-  assert.equal((await cron(c, tc, 60)).results[0].alerted, true, "[D12.9] segredo configurado depois: cron avisa");
-  const d = strictEnv(), td = seq(503, 200), late = Date.parse("2026-11-21T02:50:00Z"); // 23:50 BRT do dia 20
-  assert.equal((await maybeAlertFirstOrder(d, { event: "PURCHASE_APPROVED", productId: "8704733", recorded: true, now: late, fetchImpl: td.fetchImpl, sleepImpl: noSleep })).reason, "telegram_503");
-  const r = await retryFirstOrderAlert(d, { now: Date.parse("2026-11-21T03:00:00Z"), fetchImpl: td.fetchImpl, sleepImpl: noSleep }); // 00:00 BRT do dia 21
-  assert.deepEqual(r.results.map((x) => [x.day, x.alerted]), [["2026-11-20", true]], "[D12.9] virada do dia BRT: cron recupera o de ontem");
-  for (const e of [a, b, c, d]) assert.deepEqual(e.ZEVANORY_PRIVATE_ARTIFACTS.rejected, [], "[D12.9] nenhuma escrita recusada");
-  resetHotmartSwitchCache();
+test("D12.9 timeout incerto, segredo ausente, limite de tentativas e confirmação não gravada", async () => {
+  const a = hookEnv(), ta = telegram("timeout");
+  await withFetch(ta, async () => { await hook(a, payload()); });
+  const oka = telegram(200);
+  assert.equal((await cron(a, oka, T + H)).results[0].alerted, true, "[D12.9] incerto => reenvio (duplicata aceita)");
+  const b = hookEnv({ secret: false }), tb = telegram(200);
+  await withFetch(tb, async () => { await hook(b, payload()); });
+  assert.equal(tb.calls.length, 0);
+  b.TELEGRAM_ALERT = SECRET;
+  assert.equal((await cron(b, tb, T + H)).results[0].alerted, true, "[D12.9] segredo configurado depois: cron avisa");
+  const c = hookEnv(), tc = telegram(500);
+  await withFetch(tc, async () => { await hook(c, payload()); });
+  for (let i = 1; i <= MAX_ATTEMPTS + 2; i++) await cron(c, tc, T + i * H);
+  assert.equal(tc.calls.length, MAX_ATTEMPTS, "[D12.9] no máximo MAX_ATTEMPTS envios no dia (em série)");
+  const d = hookEnv(), kv = d.ZEVANORY_PRIVATE_ARTIFACTS, td = telegram(200);
+  kv.fail((k) => k.endsWith(":enviado"), 2);
+  await withFetch(td, async () => { await hook(d, payload()); });
+  assert.equal((await cron(d, td, T + H)).results[0].alerted, true, "[D12.9] confirmação perdida => duplicata (preferida ao silêncio)");
+  assert.deepEqual([a, b, c, d].flatMap((e) => e.ZEVANORY_PRIVATE_ARTIFACTS.rejected), []);
 });
 
-test("D12.10 limite de tentativas, confirmação não gravada e cron sem pedido", async () => {
-  resetHotmartSwitchCache();
-  const e = strictEnv(), t = seq(500);
-  await ev(e, t, 0);
-  for (let h = 1; h <= MAX_ATTEMPTS + 2; h++) await cron(e, t, h * 60);
-  assert.equal(t.calls.length, MAX_ATTEMPTS, "[D12.10] no máximo MAX_ATTEMPTS envios no dia (em série)");
-  assert.equal((await cron(e, t, 600)).results[0].reason, "tentativas_esgotadas");
-  const f = strictEnv(), tf = seq(200), kv = f.ZEVANORY_PRIVATE_ARTIFACTS, put = kv.put;
-  kv.put = async (k, v, o) => { if (k.endsWith(":enviado")) throw new Error("KV indisponível"); return put(k, v, o); };
-  assert.deepEqual(await ev(f, tf, 0), { alerted: true, reason: "confirmacao_nao_gravada" }, "[D12.10] aviso saiu, confirmação perdida");
-  kv.put = put;
-  assert.equal((await cron(f, tf, 60)).results[0].alerted, true, "[D12.10] confirmação perdida => duplicata (preferida ao silêncio)");
-  const o = alertEnv(), to = seq(503, 503, 200);
-  await ev(o, to, 0); await ev(o, to, 30, "PURCHASE_COMPLETE");
-  assert.deepEqual(JSON.parse(o.ZEVANORY_PRIVATE_ARTIFACTS.m.get(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:pedido")), { at: new Date(T).toISOString(), product: "ia-na-pratica", event: "PURCHASE_APPROVED" }, "[D12.10] o registro do 1º pedido nunca é regravado");
-  assert.equal((await cron(o, to, 60)).results[0].alerted, true);
-  assert.match(to.calls[2].text, /\(pedido aprovado\) às 10:00 BRT/, "[D12.10] o aviso recuperado é o do 1º pedido");
-  const g = strictEnv(), tg2 = seq(200);
-  assert.deepEqual([(await cron(g, tg2, 60)).results, tg2.calls.length], [[], 0], "[D12.10] sem pedido no dia, o cron não envia nada");
-  resetHotmartSwitchCache();
+test("D12.10 concorrência: dois pedidos simultâneos => 1 a 2 avisos, nunca zero; depois nada", async () => {
+  const env = hookEnv(), tg = telegram(200);
+  await withFetch(tg, async () => { await Promise.all([hook(env, payload({ txn: "HP-D12-A" })), hook(env, payload({ txn: "HP-D12-B" }))]); });
+  assert.ok(tg.calls.length >= 1 && tg.calls.length <= 2, "[D12.10] envios=" + tg.calls.length);
+  assert.deepEqual((await cron(env, tg, T + H)).results, []);
 });
 
-test("D12.11 eventos concorrentes: 1 a 2 avisos, nunca zero; depois, nada mais (nem pelo cron)", async () => {
-  resetHotmartSwitchCache();
-  const env = strictEnv(), t = seq(200);
-  const rs = await Promise.all([ev(env, t, 0), ev(env, t, 0)]);
-  assert.ok(t.calls.length >= 1 && t.calls.length <= 2, "[D12.11] envios=" + t.calls.length);
-  assert.ok(rs.some((r) => r.alerted), "[D12.11] ao menos um confirmado");
-  assert.equal((await ev(env, t, 1)).reason, "ja_avisado_hoje");
-  assert.equal((await cron(env, t, 60)).results[0].reason, "ja_avisado_hoje");
-  resetHotmartSwitchCache();
+test("D12.11 oferta autorizada: kit não liberado na recepção não avisa; retirado da lista depois do pedido ainda avisa", async () => {
+  const a = hookEnv({ products: ["vendas-na-pratica"] }), ta = telegram(200);
+  await withFetch(ta, async () => { await hook(a, payload()); });
+  assert.deepEqual([ta.calls.length, (await cron(a, ta, T + H)).results], [0, []], "[D12.11] não liberado");
+  const b = hookEnv(), tb = telegram(503);
+  await withFetch(tb, async () => { await hook(b, payload()); });
+  b.ZEVANORY_PRIVATE_ARTIFACTS.m.set(HOTMART_SALES_KEY, JSON.stringify(record({ products: ["vendas-na-pratica"] })));
+  const ok = telegram(200);
+  assert.equal((await cron(b, ok, T + H)).results[0].alerted, true, "[D12.11] autorização é a da recepção do pedido");
 });
 
 test("D12.12 o cron horário chama a recuperação do aviso", () => {
   const w = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
   assert.match(w, /if\(controller\?\.cron==="0 \* \* \* \*"\)await retryFirstOrderAlert\(normalized\)/);
+  const h = readTextNormalized(new URL("../worker/cp-nc012-digital-hotmart.mjs", import.meta.url));
+  assert.ok(h.indexOf("registerFirstOrderCandidate(env") < h.indexOf("recordHotmartSale(kv"), "registro do candidato antes do registro de vendas");
 });
 
-// Reauditoria GPT-6 (51514939): gravação de <dia>:pedido falha + Telegram 503 + postback repetido (duplicata).
-// O cron reconstrói o MESMO pedido a partir do registro de vendas e avisa, sem depender de uma 2ª compra.
-const metaKv = (failSuffix) => { const m = new Map(), meta = new Map(), last = new Map(); return { m, rejected: [],
-  async get(k) { return m.has(k) ? m.get(k) : null; },
-  async put(k, v, o) { if (failSuffix && k.endsWith(failSuffix)) throw new Error("KV PUT failed: 500"); const t = Date.now(); if (last.has(k) && t - last.get(k) < 1000) { this.rejected.push(k); throw new Error("429"); } last.set(k, t); m.set(k, String(v)); meta.set(k, o?.metadata ?? null); },
-  async delete(k) { m.delete(k); meta.delete(k); },
-  async list({ prefix = "", limit = 1000, cursor } = {}) { const all = [...m.keys()].filter((k) => k.startsWith(prefix)).sort(); const start = Number(cursor || 0), page = all.slice(start, start + limit), end = start + page.length; return { keys: page.map((name) => ({ name, metadata: meta.get(name) ?? null })), list_complete: end >= all.length, ...(end < all.length ? { cursor: String(end) } : {}) }; } }; };
-
-test("D12.13 falha ao gravar o pedido + 503 + postback repetido: o cron recupera o MESMO pedido pelo registro de vendas", async () => {
-  const hottok = "hottok-ficticio-d12-000000000000";
-  const kv = metaKv(":pedido"); kv.m.set(HOTMART_SALES_KEY, JSON.stringify(record()));
-  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, HOTMART_HOTTOK: hottok, TELEGRAM_ALERT: "1234567:" + "a".repeat(30) + "|-100123456" };
-  const calls = []; const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url, init) => { if (String(url).startsWith("https://api.telegram.org/")) { calls.push(JSON.parse(init.body)); return new Response("{}", { status: 503 }); } throw new Error("rede bloqueada no teste"); };
-  try {
-    const body = { version: "2.0.0", event: "PURCHASE_APPROVED", data: { product: { id: 8704733, name: "ZEVANORY IA na Prática" }, buyer: { email: "comprador@example.invalid", first_name: "Teste" }, purchase: { transaction: "HP-D12-013", price: { value: 97 }, approved_date: T, payment: { type: "PIX" } }, commissions: [{ source: "PRODUCER", value: 85 }] } };
-    const send = () => handleDigitalHotmartNc012(new Request("https://zevanory.api.br/api/webhooks/hotmart", { method: "POST", headers: { "x-hotmart-hottok": hottok }, body: JSON.stringify(body) }), env, { now: T });
-    resetHotmartSwitchCache();
-    assert.equal((await send()).status, 200, "[D12.13] webhook responde 200");
-    assert.deepEqual([calls.length, kv.m.has(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:pedido"), kv.m.has(FIRST_ORDER_ALERT_PREFIX + "2026-11-20:enviado")], [1, false, false], "[D12.13] 503 e pedido NÃO gravado");
-    resetHotmartSwitchCache();
-    assert.equal((await (await send()).json()).duplicate, true, "[D12.13] postback repetido = duplicata");
-    assert.equal(calls.length, 1, "[D12.13] a duplicata não tenta de novo");
-    const tc = seq(200); resetHotmartSwitchCache();
-    const r = await retryFirstOrderAlert(env, { now: T + 47 * 60000, fetchImpl: tc.fetchImpl, sleepImpl: noSleep });
-    assert.deepEqual(r.results, [{ day: "2026-11-20", alerted: true, reason: null }], "[D12.13] cron recupera sem 2ª compra");
-    assert.match(tc.calls[0].text, /IA na Prática \(pedido aprovado\) às 10:00 BRT/, "[D12.13] é o mesmo pedido (hora do payload)");
-    resetHotmartSwitchCache();
-    assert.deepEqual([(await retryFirstOrderAlert(env, { now: T + 107 * 60000, fetchImpl: tc.fetchImpl, sleepImpl: noSleep })).results, tc.calls.length], [[], 1], "[D12.13] e para (enviado confirmado)");
-    assert.doesNotMatch(JSON.stringify([calls, tc.calls]), /example\.invalid|HP-D12/, "[D12.13] sem dado pessoal");
-    // Contraprovas: kit não liberado no interruptor ou evento de outro dia BRT não geram aviso pelo registro.
-    const kv2 = metaKv(":pedido"); for (const [k, v] of kv.m) if (k.startsWith("zpc:sales:v1:ev:")) await kv2.put(k, v, { metadata: JSON.parse(v) });
-    kv2.m.set(HOTMART_SALES_KEY, JSON.stringify(record({ products: ["vendas-na-pratica"] })));
-    const t2 = seq(200); resetHotmartSwitchCache();
-    assert.deepEqual([(await retryFirstOrderAlert({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv2 }, { now: T + 60 * 60000, fetchImpl: t2.fetchImpl, sleepImpl: noSleep })).results, t2.calls.length], [[], 0], "[D12.13] kit fora da lista");
-    kv2.m.set(HOTMART_SALES_KEY, JSON.stringify(record()));
-    resetHotmartSwitchCache();
-    assert.deepEqual([(await retryFirstOrderAlert({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv2 }, { now: T + 3 * 86400000, fetchImpl: t2.fetchImpl, sleepImpl: noSleep })).results, t2.calls.length], [[], 0], "[D12.13] pedido de outro dia");
-    // Evento não elegível (cancelado/reembolsado) no registro não gera aviso.
-    const kv3 = metaKv(); kv3.m.set(HOTMART_SALES_KEY, JSON.stringify(record()));
-    for (const ev of ["PURCHASE_CANCELED", "PURCHASE_REFUNDED"]) await kv3.put("zpc:sales:v1:ev:00:" + "0".repeat(32) + ":x:" + ev.toLowerCase() + ":" + "0".repeat(16), "{}", { metadata: { event: ev, facts: { at: new Date(T).toISOString(), productId: "8704733" } } });
-    const t3 = seq(200); resetHotmartSwitchCache();
-    assert.deepEqual([(await retryFirstOrderAlert({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv3 }, { now: T + 60 * 60000, fetchImpl: t3.fetchImpl, sleepImpl: noSleep })).results, t3.calls.length], [[], 0], "[D12.13] evento não elegível");
-  } finally { globalThis.fetch = realFetch; resetHotmartSwitchCache(); }
+test("D12.13 texto sem dado pessoal; avisos só para hoje/ontem BRT", async () => {
+  const txt = firstOrderAlertText({ name: "IA na Prática", kind: "pedido aprovado", now: T });
+  assert.match(txt, /1º pedido do dia do IA na Prática .* 10:00 BRT/);
+  assert.doesNotMatch(txt, /@|HP-|R\$|\d{6,}/);
+  assert.equal(brtDay(Date.parse("2026-11-20T02:30:00Z")), "2026-11-19");
+  assert.equal(brtDay(Date.parse("2026-11-20T03:30:00Z")), "2026-11-20");
+  assert.equal((await maybeAlertFirstOrder(hookEnv(), { day: "2026-11-10", now: T })).reason, "dia_antigo");
 });
