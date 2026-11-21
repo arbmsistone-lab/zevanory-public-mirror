@@ -136,6 +136,68 @@ test("probes: campos efetivamente produzidos em redirecionamento, timeout e erro
   const to = await probeBuyFlow(async () => { throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); });
   assert.deepEqual(to[0], { sku: "ZEV-IA-011", http: 0, state: "error", cause: "TimeoutError", retried: true });
   const hm = await probeHotmart(async () => { throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }); });
-  assert.ok(hm.length >= 5); assert.deepEqual(hm[0], { slug: hm[0].slug, http: 0, error: "TypeError", cause: "TypeError:ECONNRESET" });
+  assert.ok(hm.length >= 5); assert.deepEqual(hm[0], { slug: hm[0].slug, http: 0, error: "TypeError", cause: "TypeError:ECONNRESET", etapa: "rede" });
   assert.doesNotMatch(JSON.stringify(hm), /fetch failed/, "sem mensagem livre");
+});
+
+test("sonda Hotmart (21/11): rede, corpo, destino ausente/inválido e 049 válido ficam em etapas distintas", async () => {
+  const { probeHotmart } = await import("../scripts/audit/command-center-snapshot.mjs");
+  const { classifyHotmartProbe } = await import("../scripts/audit/funnel-counting.mjs");
+  const resp = (status, url, html) => ({ status, url, text: async () => html });
+  // 1) erro de rede: etapa "rede", http 0, causa sem mensagem livre -> "error"
+  const rede = await probeHotmart(async () => { throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } }); });
+  assert.equal(rede[0].etapa, "rede"); assert.equal(rede[0].cause, "TypeError:ENOTFOUND"); assert.equal(classifyHotmartProbe(rede[0]), "error");
+  // 2) resposta com URL final vazia (antes: ERR_INVALID_URL gravado como falha de rede): etapa "destino", inconclusivo,
+  //    mesmo com texto de encerramento no corpo
+  const vazia = await probeHotmart(async () => resp(200, "", "vendas deste produto estão temporariamente encerradas"));
+  assert.equal(vazia[0].etapa, "destino"); assert.equal(vazia[0].destino, "ausente"); assert.equal(vazia[0].http, 200);
+  assert.equal(classifyHotmartProbe(vazia[0]), "inconclusive"); assert.equal(vazia[0].error, undefined);
+  const invalida = await probeHotmart(async () => resp(200, "não é url", ""));
+  assert.equal(invalida[0].destino, "invalido"); assert.equal(classifyHotmartProbe(invalida[0]), "inconclusive");
+  // 3) corpo ilegível: etapa "corpo", inconclusivo
+  const corpo = await probeHotmart(async () => ({ status: 200, url: "https://pay.hotmart.com/error?errorMessage=049", text: async () => { throw new TypeError("terminated"); } }));
+  assert.equal(corpo[0].etapa, "corpo"); assert.equal(classifyHotmartProbe(corpo[0]), "inconclusive");
+  // a marca de inconclusivo prevalece sobre qualquer sinal de fechamento que acompanhe a leitura
+  assert.equal(classifyHotmartProbe({ ...corpo[0], finalHost: "pay.hotmart.com", finalPath: "/error", errorCode: "049", blockedText: true }), "inconclusive");
+  // 4) 049 válido (200 + /error?errorMessage=049): etapa "ok", fechado
+  const f049 = await probeHotmart(async () => resp(200, "https://pay.hotmart.com/error?errorMessage=049&checkoutLoadId=x", "<title>Hotmart</title>Agradecemos o interesse, mas as vendas deste produto estão temporariamente encerradas."));
+  assert.equal(f049[0].etapa, "ok"); assert.equal(f049[0].errorCode, "049"); assert.equal(classifyHotmartProbe(f049[0]), "closed");
+  assert.doesNotMatch(JSON.stringify(f049), /checkoutLoadId/, "sem query no destino gravado");
+  // 5) 403/429/5xx com 049 na URL: inconclusivo (HTTP antes do 049)
+  for (const s of [403, 429, 500, 503]) {
+    const x = await probeHotmart(async () => resp(s, "https://pay.hotmart.com/error?errorMessage=049", "temporariamente encerradas"));
+    assert.equal(classifyHotmartProbe(x[0]), "inconclusive", "http " + s);
+  }
+  // 6) checkout aberto com a oferta: aceitando
+  const ab = await probeHotmart(async (u) => resp(200, u, "<html>" + new URL(u).pathname.slice(1) + "</html>"));
+  assert.equal(classifyHotmartProbe(ab[0]), "accepting");
+});
+
+test("sonda Hotmart PR3 r2: 049 de outro domínio e 051 da Hotmart NÃO são fechamento; só 049 em pay.hotmart.com", async () => {
+  const { probeHotmart } = await import("../scripts/audit/command-center-snapshot.mjs");
+  const { classifyHotmartProbe } = await import("../scripts/audit/funnel-counting.mjs");
+  const resp = (status, url, html) => ({ status, url, text: async () => html });
+  const fecha = "Agradecemos o interesse, mas as vendas deste produto estão temporariamente encerradas.";
+  // casos reproduzidos pelo GPT-6
+  const outroDominio = await probeHotmart(async () => resp(200, "https://pay.hotmart.com.evil.example/error?errorMessage=049", fecha));
+  assert.equal(outroDominio[0].finalHost, "pay.hotmart.com.evil.example"); assert.equal(classifyHotmartProbe(outroDominio[0]), "inconclusive");
+  const outroHost = await probeHotmart(async () => resp(200, "https://checkout.exemplo.com/error?errorMessage=049", fecha));
+  assert.equal(classifyHotmartProbe(outroHost[0]), "inconclusive");
+  const e051 = await probeHotmart(async () => resp(200, "https://pay.hotmart.com/error?errorMessage=051", "<title>Hotmart</title>Ops"));
+  assert.equal(e051[0].errorCode, "051"); assert.equal(classifyHotmartProbe(e051[0]), "inconclusive");
+  const semCodigo = await probeHotmart(async () => resp(200, "https://pay.hotmart.com/error", fecha));
+  assert.equal(classifyHotmartProbe(semCodigo[0]), "inconclusive", "página de erro sem 049 explícito");
+  // texto genérico de indisponibilidade no host oficial, fora da página de erro: não fecha nem aceita
+  const generico = await probeHotmart(async (u) => resp(200, u, "<html>" + new URL(u).pathname.slice(1) + " indisponível</html>"));
+  assert.equal(classifyHotmartProbe(generico[0]), "inconclusive");
+  // evidência específica: 049 no host oficial
+  const ok049 = await probeHotmart(async () => resp(200, "https://pay.hotmart.com/error?errorMessage=049", fecha));
+  assert.equal(classifyHotmartProbe(ok049[0]), "closed");
+  const maiusc = await probeHotmart(async () => resp(200, "https://PAY.HOTMART.COM/error?errorMessage=049", fecha));
+  assert.equal(classifyHotmartProbe(maiusc[0]), "closed", "host normalizado pelo URL");
+  // sinais contraditórios no host oficial (código de erro fora da página /error, mesmo com a oferta): inconclusivo
+  assert.equal(classifyHotmartProbe({ http: 200, finalHost: "pay.hotmart.com", finalPath: "/F107979716H", errorCode: "049", offerMarker: true }), "inconclusive");
+  // aceitando também exige o host oficial
+  const aceitaFora = await probeHotmart(async (u) => resp(200, "https://espelho.exemplo.com" + new URL(u).pathname, "<html>" + new URL(u).pathname.slice(1) + "</html>"));
+  assert.equal(classifyHotmartProbe(aceitaFora[0]), "inconclusive");
 });
