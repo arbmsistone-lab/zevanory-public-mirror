@@ -1,0 +1,50 @@
+// ZEVANORY | ZEES-16: prova do "ZEVANORY central production deploy" para a release EXATA (22/11/2026).
+// Por quê: o reconciliador monta o mapa de workflows a partir de UMA página de /actions/runs?head_sha=<sha>&per_page=100.
+// O SHA da release acumula milhares de execuções (horárias), e o deploy daquela release some da primeira página; P12 e
+// P15 ficavam PARTIAL mesmo com o deploy bem-sucedido. Aqui o deploy é buscado pelo ARQUIVO do workflow e pelo SHA
+// exato. Regras (falha fechada; os demais requisitos de P12/P15 e o critério 16/16 não mudam):
+//  - só execuções com head_sha === release, path === ".github/workflows/central-production-deploy.yml",
+//    head_branch === "gh-pages", evento push ou workflow_dispatch e status completed;
+//  - vale a execução concluída MAIS RECENTE desse SHA (a mesma semântica do mapa geral): se o último deploy do SHA
+//    falhou, o requisito continua não comprovado, mesmo havendo sucesso anterior;
+//  - erro de rede/API: nada é acrescentado (o requisito segue como estava).
+export const DEPLOY_WORKFLOW_NAME = "ZEVANORY central production deploy";
+export const DEPLOY_WORKFLOW_FILE = "central-production-deploy.yml";
+const SHA = /^[0-9a-f]{40}$/;
+
+export function pickExactDeployRun(runs, sha) {
+  if (!SHA.test(sha || "")) return null;
+  const elegiveis = (Array.isArray(runs) ? runs : []).filter((run) =>
+    run && run.head_sha === sha &&
+    String(run.path || "") === ".github/workflows/" + DEPLOY_WORKFLOW_FILE &&
+    run.head_branch === "gh-pages" &&
+    (run.event === "push" || run.event === "workflow_dispatch") &&
+    run.status === "completed");
+  elegiveis.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+  return elegiveis[0] || null;
+}
+
+export async function findExactDeployRun({ jf, repo, sha }) {
+  if (!SHA.test(sha || "")) return null;
+  const url = "https://api.github.com/repos/" + repo + "/actions/workflows/" + encodeURIComponent(DEPLOY_WORKFLOW_FILE) +
+    "/runs?head_sha=" + sha + "&per_page=100";
+  try {
+    const doc = await jf(url);
+    return pickExactDeployRun(doc && doc.workflow_runs, sha);
+  } catch {
+    return null;
+  }
+}
+
+// Aplica ao mapa de workflows (nome -> execução) só quando a execução exata é mais recente que a já presente
+// ou quando o nome está ausente. Nunca rebaixa uma execução mais nova que já esteja no mapa.
+export function mergeDeployRun(workflows, run) {
+  if (!run) return false;
+  const atual = workflows.get(DEPLOY_WORKFLOW_NAME);
+  const t = (r) => new Date(r.updated_at || r.created_at).getTime();
+  if (!atual || t(run) > t(atual)) {
+    workflows.set(DEPLOY_WORKFLOW_NAME, { ...run, exact_release_bound: true, lookup: "workflow-file+head_sha" });
+    return true;
+  }
+  return false;
+}
