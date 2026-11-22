@@ -148,7 +148,12 @@
         "docs/governanca/merge-autonomo.md",
         "tests/governanca/**",
         "scripts/ci/runtime_ddl_gate.py",
-        "scripts/ops/restore_new_database.py"
+        "scripts/ops/restore_new_database.py",
+        "ops/executor.json",
+        ".github/workflows/session-guard.yml",
+        ".github/workflows/session-guard-selftest.yml",
+        "scripts/ci/session_guard.py",
+        "tests/ci/test_session_guard.py"
       ]
     }
   },
