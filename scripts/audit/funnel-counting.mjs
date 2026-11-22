@@ -255,11 +255,20 @@ export function evaluateBuyFlow(records, salesOpen, hotmartOpen) {
 // signal) — able to take a payment; "inconclusive" = 200 without either signal (never counted as closed,
 // never raised as P0 without evidence); "error" = no answer.
 export const HOTMART_CLOSED_RE = /temporariamente encerrad|vendas deste produto est[aã]o|indispon[ií]vel|n[aã]o est[aá] dispon[ií]vel|unavailable|not available/i;
+export const HOTMART_CHECKOUT_HOST = "pay.hotmart.com";
 export function classifyHotmartProbe(p) {
   if (!p || !(p.http > 0)) return "error";
-  if (/^\/error/i.test(String(p.finalPath || "")) || p.errorCode || p.blockedText) return "closed";
-  if (p.http === 200) return p.offerMarker ? "accepting" : "inconclusive";
-  return "error";
+  // 21/11/2026 (PR3 r2, contra-auditoria GPT-6): só há conclusão com DESTINO OFICIAL verificável. Inconclusivo quando:
+  // a leitura veio marcada (destino ausente/inválido, corpo ilegível); o HTTP não é 200 (403/429/5xx com 049 não
+  // comprovam fechamento); o host final não é pay.hotmart.com (um "049" de outro domínio não é da Hotmart).
+  if (p.inconclusive === true) return "inconclusive";
+  if (p.http !== 200) return "inconclusive";
+  if (String(p.finalHost || "").toLowerCase() !== HOTMART_CHECKOUT_HOST) return "inconclusive";
+  // Fechamento exige a evidência ESPECÍFICA: página de erro oficial com errorMessage=049 ("vendas temporariamente
+  // encerradas"). Outros códigos (ex.: 051) e texto genérico de indisponibilidade sem 049 = inconclusivo.
+  if (/^\/error/i.test(String(p.finalPath || ""))) return p.errorCode === "049" ? "closed" : "inconclusive";
+  if (p.errorCode) return "inconclusive";
+  return p.offerMarker && !p.blockedText ? "accepting" : "inconclusive";
 }
 export function hotmartLockState(probes, salesOpen, hotmartOpen) {
   const list = (probes || []).map((p) => ({ slug: p.slug, state: classifyHotmartProbe(p), errorCode: p.errorCode || null }));

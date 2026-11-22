@@ -23,7 +23,7 @@ permissions:
   contents: read
 jobs:
   security:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # fixado 22/11/2026: ubuntu-latest = 26.04 quebra Playwright/Chromium e semgrep (py3.14)
     timeout-minutes: 15
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:

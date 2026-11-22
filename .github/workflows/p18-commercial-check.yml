@@ -81,7 +81,7 @@ jobs:
   live:
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages' }}
     name: p18-commercial / live (somente GET)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # fixado 22/11/2026: ubuntu-latest = 26.04 quebra Playwright/Chromium e semgrep (py3.14)
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
