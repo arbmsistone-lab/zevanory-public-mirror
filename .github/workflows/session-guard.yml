@@ -25,11 +25,26 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Checkout da base (código confiável)
+      - name: Checkout da base atual (código confiável)
+        # r3 (22/11/2026, 1ª execução no #1079): pull_request.base.sha fica congelado na base da última sincronização do
+        # PR (no #1079 era 6c43535d, anterior ao próprio guard, e o script não existia). github.sha em
+        # pull_request_target é o topo ATUAL da branch base, o mesmo commit de onde vem este arquivo de workflow.
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.sha }}
+      - name: Conferir o commit carregado (git rev-parse HEAD == github.sha)
+        env:
+          EXPECTED_BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          loaded="$(git rev-parse HEAD)"
+          echo "LOADED_BASE_SHA=$loaded EXPECTED_BASE_SHA=$EXPECTED_BASE_SHA"
+          if [ "$loaded" != "$EXPECTED_BASE_SHA" ]; then
+            echo "::error title=SESSION_GUARD_BASE::commit carregado $loaded diferente de github.sha $EXPECTED_BASE_SHA"
+            exit 1
+          fi
+          echo "LOADED_BASE_SHA=$loaded" >> "$GITHUB_ENV"
       - name: Coletar PR (antes), commits e PR (depois) como dado
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,13 +60,14 @@ jobs:
           gh api "repos/$REPO/pulls/$PR" > /tmp/sg/pr-after.json
       - name: Avaliar sessão declarada contra a lista da BASE, na mesma revisão do evento (FAIL-CLOSED)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -uo pipefail
           python3 -I scripts/ci/session_guard.py --executor ops/executor.json --commits /tmp/sg/commits.json \
             --pr-before /tmp/sg/pr-before.json --pr-after /tmp/sg/pr-after.json \
-            --event-head-sha "$EVENT_HEAD_SHA" --base-sha "$BASE_SHA" > /tmp/sg/result.json
+            --event-head-sha "$EVENT_HEAD_SHA" --base-sha "$LOADED_BASE_SHA" --event-base-sha "$EVENT_BASE_SHA" \
+            --repo . > /tmp/sg/result.json
           rc=$?
           cat /tmp/sg/result.json
           {

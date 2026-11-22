@@ -1,7 +1,8 @@
-"""Testes do scripts/ci/session_guard.py (22/11/2026, r2). Rodar: python3 -I tests/ci/test_session_guard.py"""
+"""Testes do scripts/ci/session_guard.py (22/11/2026, r3). Rodar: python3 -I tests/ci/test_session_guard.py"""
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ B = 'session_01BEoZWaBFoF9w15T3McDGya'
 X = 'session_0XXforeignXXsession00'
 H1, H2, H3 = '1' * 40, '2' * 40, '3' * 40
 OUTRO = 'a' * 40
+HEAD_RAIZ = subprocess.run(['git', '-C', str(RAIZ), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
 
 def pr_json(head, n, corpo=''):
@@ -37,7 +39,8 @@ def rodar(lista, commits, corpo='', evento=None, antes=None, depois=None, execut
             with open(p[k], 'w', encoding='utf-8') as f:
                 json.dump(v, f)
         args = [sys.executable, '-I', str(SCRIPT), '--executor', p['ex.json'], '--commits', p['cm.json'],
-                '--pr-before', p['a.json'], '--pr-after', p['b.json'], '--event-head-sha', evento]
+                '--pr-before', p['a.json'], '--pr-after', p['b.json'], '--event-head-sha', evento,
+                '--repo', str(RAIZ), '--base-sha', HEAD_RAIZ]
         r = subprocess.run(args, capture_output=True, text=True, timeout=30)
         return r.returncode, json.loads(r.stdout)
 
@@ -123,7 +126,18 @@ class WorkflowDaBase(unittest.TestCase):
         y = (RAIZ / '.github' / 'workflows' / 'session-guard.yml').read_text(encoding='utf-8')
         self.assertIn('pull_request_target:', y)
         self.assertNotIn('\n  pull_request:', y)
-        self.assertIn('ref: ${{ github.event.pull_request.base.sha }}', y)
+        # r3: topo atual da base (github.sha), nunca o base.sha congelado do evento nem o head do PR
+        self.assertIn('ref: ${{ github.sha }}', y)
+        self.assertNotIn('ref: ${{ github.event.pull_request.base.sha }}', y)
+        self.assertNotIn('ref: ${{ github.event.pull_request.head', y)
+        self.assertIn('loaded="$(git rev-parse HEAD)"', y)
+        self.assertIn('if [ "$loaded" != "$EXPECTED_BASE_SHA" ]; then', y)
+        bloco = y.split('if [ "$loaded" != "$EXPECTED_BASE_SHA" ]; then')[1].split('fi')[0]
+        self.assertIn('exit 1', bloco)
+        self.assertIn('echo "LOADED_BASE_SHA=$loaded" >> "$GITHUB_ENV"', y)
+        self.assertIn('EXPECTED_BASE_SHA: ${{ github.sha }}', y)
+        self.assertIn('--base-sha "$LOADED_BASE_SHA"', y)
+        self.assertIn('EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}', y)
         self.assertNotIn('head.ref', y)
         self.assertIn('--executor ops/executor.json', y)
         self.assertIn('persist-credentials: false', y)
@@ -150,6 +164,80 @@ class WorkflowDaBase(unittest.TestCase):
         for c in ('ops/executor.json', '.github/workflows/session-guard.yml', 'scripts/ci/session_guard.py',
                   'tests/ci/test_session_guard.py', '.github/workflows/session-guard-selftest.yml'):
             self.assertIn(c, g)
+
+
+
+def git(repo, *args):
+    env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
+    return subprocess.run(['git', '-C', repo, *args], capture_output=True, text=True, check=True, env=env).stdout.strip()
+
+
+class RegressaoBaseCongelada(unittest.TestCase):
+    """Caso real do #1079 (22/11/2026): pull_request.base.sha do evento era anterior à introdução do guard."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.repo = os.path.join(self.tmp, 'repo')
+        os.makedirs(self.repo)
+        git(self.repo, 'init', '-q')
+        with open(os.path.join(self.repo, 'README'), 'w') as f:
+            f.write('base antiga, sem guard\n')
+        git(self.repo, 'add', '-A'); git(self.repo, 'commit', '-q', '-m', 'A')
+        self.base_antiga = git(self.repo, 'rev-parse', 'HEAD')
+        os.makedirs(os.path.join(self.repo, 'scripts', 'ci')); os.makedirs(os.path.join(self.repo, 'ops'))
+        shutil.copy(SCRIPT, os.path.join(self.repo, 'scripts', 'ci', 'session_guard.py'))
+        with open(os.path.join(self.repo, 'ops', 'executor.json'), 'w') as f:
+            json.dump({'authorized_claude_sessions': [A]}, f)
+        git(self.repo, 'add', '-A'); git(self.repo, 'commit', '-q', '-m', 'B: guard')
+        self.base_atual = git(self.repo, 'rev-parse', 'HEAD')
+        for n, v in (('a.json', pr_json(H1, 1, A)), ('b.json', pr_json(H1, 1, A)),
+                     ('c.json', [[{'sha': H1, 'commit': {'message': 'x ' + A}}]])):
+            with open(os.path.join(self.tmp, n), 'w') as f:
+                json.dump(v, f)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def rodar(self, base_sha):
+        args = [sys.executable, '-I', os.path.join(self.repo, 'scripts', 'ci', 'session_guard.py'),
+                '--executor', 'ops/executor.json', '--commits', os.path.join(self.tmp, 'c.json'),
+                '--pr-before', os.path.join(self.tmp, 'a.json'), '--pr-after', os.path.join(self.tmp, 'b.json'),
+                '--event-head-sha', H1, '--base-sha', base_sha, '--event-base-sha', self.base_antiga, '--repo', '.']
+        r = subprocess.run(args, capture_output=True, text=True, timeout=30, cwd=self.repo)
+        return r.returncode, json.loads(r.stdout)
+
+    def test_base_do_evento_anterior_ao_guard_passa_com_base_atual(self):
+        rc, r = self.rodar(self.base_atual)
+        self.assertEqual((rc, r['verdict'], r['base_sha'], r['event_base_sha']),
+                         (0, 'PASS', self.base_atual, self.base_antiga))
+        self.assertEqual(r['base_sha_expected'], self.base_atual)
+
+    def test_base_sha_informado_diferente_do_carregado_reprova(self):
+        rc, r = self.rodar(self.base_antiga)  # informar o base.sha congelado com o checkout no topo atual
+        self.assertEqual((rc, r['reason'], r['carregado']), (1, 'BASE_SHA_MISMATCH', self.base_atual))
+        # o relatório registra o commit EFETIVAMENTE carregado, não o valor informado
+        self.assertEqual((r['base_sha'], r['base_sha_expected']), (self.base_atual, self.base_antiga))
+
+    def test_checkout_na_base_antiga_nao_tem_o_guard(self):
+        # documenta a falha original: no commit antigo o script não existe (por isso o workflow não usa base.sha)
+        git(self.repo, 'checkout', '-q', self.base_antiga)
+        self.assertFalse(os.path.exists(os.path.join(self.repo, 'scripts', 'ci', 'session_guard.py')))
+
+    def test_diretorio_sem_git_reprova_como_entrada_invalida(self):
+        semgit = os.path.join(self.tmp, 'semgit')
+        os.makedirs(semgit)
+        args = [sys.executable, '-I', os.path.join(self.repo, 'scripts', 'ci', 'session_guard.py'),
+                '--executor', 'ops/executor.json', '--commits', os.path.join(self.tmp, 'c.json'),
+                '--pr-before', os.path.join(self.tmp, 'a.json'), '--pr-after', os.path.join(self.tmp, 'b.json'),
+                '--event-head-sha', H1, '--base-sha', self.base_atual, '--repo', semgit]
+        r = subprocess.run(args, capture_output=True, text=True, timeout=30, cwd=self.repo,
+                           env=dict(os.environ, GIT_CEILING_DIRECTORIES=self.tmp))
+        out = json.loads(r.stdout)
+        self.assertEqual((r.returncode, out['verdict'], out['reason'], out['base_sha']), (1, 'FAIL', 'INPUT_ERROR', ''))
+
+    def test_base_sha_invalido_reprova(self):
+        rc, r = self.rodar('nao-e-sha')
+        self.assertEqual((rc, r['reason']), (1, 'BASE_SHA_MISMATCH'))
 
 
 if __name__ == '__main__':

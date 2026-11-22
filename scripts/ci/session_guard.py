@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""ZEVANORY | session-guard (22/11/2026, r2). Roda SOMENTE código da base, via pull_request_target.
+"""ZEVANORY | session-guard (22/11/2026, r3). Roda SOMENTE código da base, via pull_request_target.
+
+Base carregada (r3, após a 1ª execução no #1079): o workflow faz checkout de github.sha (topo atual da branch base,
+o mesmo commit de onde vem o arquivo do workflow), nunca de pull_request.base.sha, que fica congelado na base da
+última sincronização do PR e pode ser anterior ao próprio guard. Este script confere com `git rev-parse HEAD` que o
+commit carregado é exatamente o --base-sha informado e grava esse mesmo valor em base_sha; divergência reprova
+(BASE_SHA_MISMATCH). O base.sha do evento é só registrado (event_base_sha).
 
 Lê como DADO os commits e o corpo do PR (coletados pela API) e decide se toda sessão Claude declarada consta em
 ops/executor.json DA BASE. O PR não altera a lista nem esta decisão: workflow, script e lista vêm da base.
@@ -15,6 +21,7 @@ Só biblioteca padrão. Saída: JSON em stdout. Código: 0 PASS, 1 FAIL.
 import argparse
 import json
 import re
+import subprocess
 import sys
 
 SESSAO = re.compile(r'session_[A-Za-z0-9]{8,}')
@@ -98,6 +105,18 @@ def avaliar(permitidas, msgs, corpo):
     return {'verdict': 'PASS', 'reason': 'DECLARED_SESSIONS_AUTHORISED_BY_BASE', 'declared': declaradas}
 
 
+def commit_carregado(repo):
+    """SHA do commit efetivamente em disco (checkout da base). Erro de git -> ValueError (falha fechada)."""
+    try:
+        out = subprocess.run(['git', '-C', repo, 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise ValueError('git rev-parse indisponível: %s' % e)
+    sha = out.stdout.strip()
+    if out.returncode != 0 or not SHA.match(sha):
+        raise ValueError('git rev-parse HEAD falhou')
+    return sha
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--executor', required=True, help='ops/executor.json do checkout da BASE')
@@ -105,22 +124,30 @@ def main(argv=None):
     ap.add_argument('--pr-before', required=True, help='GET pulls/N antes da lista de commits')
     ap.add_argument('--pr-after', required=True, help='GET pulls/N depois da lista de commits')
     ap.add_argument('--event-head-sha', required=True)
-    ap.add_argument('--base-sha', default='')
+    ap.add_argument('--base-sha', required=True, help='github.sha: commit da base que deve estar carregado')
+    ap.add_argument('--event-base-sha', default='', help='pull_request.base.sha do evento (só registro)')
+    ap.add_argument('--repo', default='.', help='diretório do checkout da base')
     a = ap.parse_args(argv)
     r = {}
+    carregado = ''
     try:
-        permitidas = carregar_lista(a.executor)
-        lista = commits(a.commits)
-        antes, depois = pr(a.pr_before), pr(a.pr_after)
-        problema = mesma_revisao(a.event_head_sha, antes, depois, lista)
-        if problema:
-            r = {'verdict': 'FAIL', **problema}
+        carregado = commit_carregado(a.repo)
+        if not SHA.match(a.base_sha or '') or carregado != a.base_sha:
+            r = {'verdict': 'FAIL', 'reason': 'BASE_SHA_MISMATCH', 'esperado': a.base_sha, 'carregado': carregado}
         else:
-            r = avaliar(permitidas, [m for _, m in lista], depois['body'])
-            r['revision_checked'] = {'head': depois['head'], 'commits': len(lista), 'body_stable': True}
+            permitidas = carregar_lista(a.executor)
+            lista = commits(a.commits)
+            antes, depois = pr(a.pr_before), pr(a.pr_after)
+            problema = mesma_revisao(a.event_head_sha, antes, depois, lista)
+            if problema:
+                r = {'verdict': 'FAIL', **problema}
+            else:
+                r = avaliar(permitidas, [m for _, m in lista], depois['body'])
+                r['revision_checked'] = {'head': depois['head'], 'commits': len(lista), 'body_stable': True}
     except (OSError, ValueError, json.JSONDecodeError, AttributeError) as e:
         r = {'verdict': 'FAIL', 'reason': 'INPUT_ERROR', 'detail': str(e)[:200]}
-    r.update({'schema': 'zevanory.session-guard.v2', 'list_source': 'base', 'base_sha': a.base_sha,
+    r.update({'schema': 'zevanory.session-guard.v3', 'list_source': 'base', 'base_sha': carregado,
+              'base_sha_expected': a.base_sha, 'event_base_sha': a.event_base_sha,
               'event_head_sha': a.event_head_sha})
     print(json.dumps(r, ensure_ascii=False, sort_keys=True))
     return 0 if r['verdict'] == 'PASS' else 1
