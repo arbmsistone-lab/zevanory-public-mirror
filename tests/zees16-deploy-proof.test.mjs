@@ -1,8 +1,9 @@
-// Testes da prova exata do central production deploy no ZEES-16 (22/11/2026, r2).
+// Testes da prova exata do central production deploy no ZEES-16 (22/11/2026, r3).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pickExactDeployRun, fetchExactDeployRuns, applyDeployProof, isValidDeployRun, DEPLOY_WORKFLOW_NAME } from "../scripts/zees16_deploy_proof.mjs";
+import { pickExactDeployRun, fetchExactDeployRuns, applyDeployProof, isValidDeployRun, DEPLOY_WORKFLOW_NAME,
+  deployJobState, fetchRunAttemptJobs, requireDeployJob, proveExactDeploy } from "../scripts/zees16_deploy_proof.mjs";
 import { evaluatePolicy } from "../worker/evidence-control-plane.mjs";
 
 const SHA = "6c43535d1407333c1d3ad5871c20d416e36e9011";
@@ -124,12 +125,84 @@ test("16/16 continua exigido: com P12/P15 provados, faltando outros pilares o to
   assert.match(wf, /requires exact 16\/16/);
 });
 
-test("o reconciliador passa toda evidência de deploy pela validação antes de avaliar a política", () => {
+test("o reconciliador passa toda evidência de deploy pela validação e pelo job deploy antes de avaliar a política", () => {
   const src = readFileSync(new URL("../scripts/reconcile_zees16_control.mjs", import.meta.url), "utf8");
-  assert.match(src, /import \{ fetchExactDeployRuns, applyDeployProof \} from "\.\/zees16_deploy_proof\.mjs";/);
-  const iApply = src.indexOf("applyDeployProof(workflows, await fetchExactDeployRuns({jf,repo,sha}), sha);");
+  assert.match(src, /import \{ proveExactDeploy \} from "\.\/zees16_deploy_proof\.mjs";/);
+  const iApply = src.indexOf("await proveExactDeploy({jf,repo,sha,workflows});");
   const iEval = src.indexOf("evaluatePolicy({signals,workflows,releaseSha:sha,observedAt})");
   assert.ok(iApply > 0 && iEval > iApply);
-  // nenhuma escrita posterior da chave do deploy no mapa
   assert.equal(src.slice(iApply + 10).includes('workflows.set("ZEVANORY central production deploy"'), false);
+});
+
+// r3: job `deploy` da tentativa usada como evidência (referência real: run 44594956355, tentativa 1)
+const JOBS_44594956355 = [
+  { name: "p21_token / interruptor zevanory", status: "completed", conclusion: "success", run_attempt: 1 },
+  { name: "guard", status: "completed", conclusion: "success", run_attempt: 1 },
+  { name: "deploy", status: "completed", conclusion: "success", run_attempt: 1 }];
+const comDeploy = (jobs, over = {}) => { const m = provasProprias(); applyDeployProof(m, [deploy({ run_attempt: 1, ...over })], SHA); requireDeployJob(m, jobs); return m; };
+
+test("referência 44594956355: job deploy success na tentativa 1 → P12/P15 PROVADO", () => {
+  const m = comDeploy(JOBS_44594956355);
+  assert.equal(m.get(DEPLOY_WORKFLOW_NAME).deploy_job, "success");
+  assert.equal(estado(m, "P12").state, "PROVADO");
+  assert.equal(estado(m, "P15").state, "PROVADO");
+});
+
+test("workflow verde com job deploy PULADO não prova P12/P15", () => {
+  const jobs = JOBS_44594956355.map((j) => j.name === "deploy" ? { ...j, conclusion: "skipped" } : j);
+  const m = comDeploy(jobs);
+  assert.equal(m.get(DEPLOY_WORKFLOW_NAME).conclusion, "deploy_job_skipped");
+  assert.equal(m.get(DEPLOY_WORKFLOW_NAME).id, 44594956355);
+  assert.deepEqual(estado(m, "P12").blockers, ["workflow:ZEVANORY central production deploy"]);
+  assert.deepEqual(estado(m, "P15").blockers, ["workflow:ZEVANORY central production deploy"]);
+});
+
+test("job deploy ausente, falho, em andamento, de outra tentativa ou jobs ilegíveis: não prova", () => {
+  const casos = [
+    [JOBS_44594956355.filter((j) => j.name !== "deploy"), {}, "missing"],
+    [JOBS_44594956355.map((j) => j.name === "deploy" ? { ...j, conclusion: "failure" } : j), {}, "failure"],
+    [JOBS_44594956355.map((j) => j.name === "deploy" ? { ...j, status: "in_progress", conclusion: null } : j), {}, "in_progress"],
+    [JOBS_44594956355, { run_attempt: 2 }, "missing"],
+    [null, {}, "unverified"],
+    [[{ name: "deploy-preview", status: "completed", conclusion: "success", run_attempt: 1 }], {}, "missing"]];
+  for (const [jobs, over, esperado] of casos) {
+    const m = comDeploy(jobs, over);
+    assert.equal(m.get(DEPLOY_WORKFLOW_NAME).deploy_job, esperado, esperado);
+    assert.notEqual(estado(m, "P15").state, "PROVADO", esperado);
+  }
+  assert.equal(deployJobState(JOBS_44594956355, null), "unverified");
+});
+
+test("deploy success no job não salva execução com conclusão de workflow falha", () => {
+  const m = comDeploy(JOBS_44594956355, { conclusion: "failure" });
+  assert.equal(m.get(DEPLOY_WORKFLOW_NAME).conclusion, "failure");
+  const m0 = provasProprias(); applyDeployProof(m0, [deploy({ run_attempt: 1, conclusion: "failure" })], SHA);
+  assert.equal(requireDeployJob(m0, JOBS_44594956355), false);
+  assert.notEqual(estado(m, "P12").state, "PROVADO");
+});
+
+test("proveExactDeploy: consulta pelo arquivo + jobs da MESMA tentativa; jobs indisponíveis = não prova", async () => {
+  const urls = [];
+  const jf = async (u) => { urls.push(u);
+    if (u.includes("/actions/workflows/")) return { workflow_runs: [deploy({ run_attempt: 1 })] };
+    if (u.includes("/attempts/1/jobs")) return { jobs: JOBS_44594956355 };
+    throw new Error("url inesperada " + u); };
+  const m = provasProprias();
+  assert.equal(await proveExactDeploy({ jf, repo: REPO, sha: SHA, workflows: m }), true);
+  assert.match(urls[1], /\/actions\/runs\/44594956355\/attempts\/1\/jobs\?per_page=100$/);
+  assert.equal(estado(m, "P12").state, "PROVADO");
+  const m2 = provasProprias();
+  const jf2 = async (u) => { if (u.includes("/actions/workflows/")) return { workflow_runs: [deploy({ run_attempt: 1 })] }; throw new Error("502"); };
+  assert.equal(await proveExactDeploy({ jf: jf2, repo: REPO, sha: SHA, workflows: m2 }), false);
+  assert.equal(m2.get(DEPLOY_WORKFLOW_NAME).conclusion, "deploy_job_unverified");
+  assert.notEqual(estado(m2, "P12").state, "PROVADO");
+  assert.equal(await fetchRunAttemptJobs({ jf: async () => ({ message: "x" }), repo: REPO, run: deploy() }), null);
+  const visto = [];
+  await fetchRunAttemptJobs({ jf: async (u) => { visto.push(u); return { jobs: [] }; }, repo: REPO, run: deploy({ run_attempt: 2 }) });
+  assert.match(visto[0], /\/actions\/runs\/44594956355\/attempts\/2\/jobs\?per_page=100$/);
+});
+
+test("16/16 continua exigido com o job deploy verificado", () => {
+  const s = evaluatePolicy({ signals: sinais, workflows: comDeploy(JOBS_44594956355), releaseSha: SHA });
+  assert.ok(s.counts.proven < 16);
 });
