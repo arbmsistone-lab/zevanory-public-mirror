@@ -1,10 +1,9 @@
 {
   "schema": "zevanory-executor/v1",
-  "rule": "Owner decision 13/10/2026, updated 03/11/2026 12:54 BRT (owner: 'VERIFIQUE VOCE MESMO E ALTERE O QUE FOR NECESSARIO'): governance of 03/11/2026 09:01 — Claude orchestrates/audits and executes only when GPT-6 declares INVIAVEL; GPT-6 executes and counter-audits; the owner authorises. session_01BEoZWaBFoF9w15T3McDGya = previous Claude account (legacy, kept so open PRs #946-#963 stay verifiable); session_013qEayJV2BctKApuM3NnNgu = current Claude account. Pull requests carrying any other Claude session are flagged by .github/workflows/t1-publisher-guard.yml (session-guard). The check is advisory until the owner makes it required in branch protection. Update 22/11/2026: session_013qEayFZTG5Zi79mySND3Q7 = Claude session that prepared PRs #1079-#1083 (same account, new session); added only by owner merge of the governance PR. From then on the list is read from the PR BASE by .github/workflows/session-guard.yml (pull_request_target).",
+  "rule": "Owner decision 13/10/2026, updated 03/11/2026 12:54 BRT (owner: 'VERIFIQUE VOCE MESMO E ALTERE O QUE FOR NECESSARIO'): governance of 03/11/2026 09:01 — Claude orchestrates/audits and executes only when GPT-6 declares INVIAVEL; GPT-6 executes and counter-audits; the owner authorises. session_01BEoZWaBFoF9w15T3McDGya = previous Claude account (legacy, kept so open PRs #946-#963 stay verifiable); session_013qEayJV2BctKApuM3NnNgu = current Claude account. Pull requests carrying any other Claude session are flagged by .github/workflows/t1-publisher-guard.yml (session-guard). The check is advisory until the owner makes it required in branch protection.",
   "authorized_claude_sessions": [
     "session_01BEoZWaBFoF9w15T3McDGya",
-    "session_013qEayJV2BctKApuM3NnNgu",
-    "session_013qEayFZTG5Zi79mySND3Q7"
+    "session_013qEayJV2BctKApuM3NnNgu"
   ],
   "auditor": "GPT-6/Sol executes and counter-audits; Claude audits GPT-6 execution (roles invert only on declared INVIAVEL PARA GPT-6). PASS / FAIL / NAO COMPROVADO"
 }
