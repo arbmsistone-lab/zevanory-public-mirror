@@ -1,0 +1,26 @@
+name: sonda-hotmart-diagnostico (read-only)
+# 22/11/2026: no runner (Node 22) as leituras de pay.hotmart.com falham com ERR_INVALID_URL. Este job só lê:
+# roda a sonda do PR e registra status/Location do 1º salto (sem query além de errorMessage). Sem segredos.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/sonda-hotmart-diagnostico.yml"
+      - "scripts/audit/sonda-hotmart-diagnostico.mjs"
+      - "scripts/audit/command-center-snapshot.mjs"
+      - "scripts/audit/funnel-counting.mjs"
+permissions:
+  contents: read
+jobs:
+  sonda:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sonda Hotmart + diagnóstico de redirecionamento (somente GET)
+        run: node scripts/audit/sonda-hotmart-diagnostico.mjs
