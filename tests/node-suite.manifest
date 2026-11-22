@@ -220,4 +220,5 @@ tests/whatsapp-neon-store.test.mjs 6
 tests/whatsapp-retirement.test.mjs 17
 tests/workflow-contagens.test.mjs 2
 tests/youtube-daily-short.test.mjs 15
+tests/zees16-deploy-proof.test.mjs 9
 tests/zees16-evidence-honesty.test.mjs 2
