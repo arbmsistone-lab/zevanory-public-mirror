@@ -1,0 +1,29 @@
+name: session-guard-selftest
+
+# INFORMATIVO: roda a versão do PR (pull_request), portanto não é evidência de controle. O controle é o job
+# session-guard / declared-session (pull_request_target, código da base).
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/ci/session_guard.py"
+      - "tests/ci/test_session_guard.py"
+      - "ops/executor.json"
+      - "ops/owner-reserved-paths.json"
+      - ".github/workflows/session-guard.yml"
+      - ".github/workflows/session-guard-selftest.yml"
+      - ".github/workflows/t1-publisher-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Testes do session-guard
+        run: python3 -I tests/ci/test_session_guard.py

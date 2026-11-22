@@ -102,40 +102,8 @@ jobs:
           fi
           echo "EXTERNAL_REPOSITORY_PUBLISHERS=0"
 
-  session-guard:
-    # WHAT THIS CHECK CAN AND CANNOT DO (audit T1 v2):
-    #  - It reads session identifiers DECLARED in commit messages and in the PR body. A declaration
-    #    is text, not authentication: anyone with push access can write any identifier.
-    #  - It FAILS when no identifier is declared (identity not established) and when any declared
-    #    identifier is not in ops/executor.json (foreign session). It never passes on absence.
-    #  - It cannot prove who produced the code. Every agent pushes with the owner's GitHub identity,
-    #    so GitHub actor/author fields do not distinguish owner from agents either.
-    #  - The decisive control is outside this check: only the owner merges (pull-request review),
-    #    and making this check required is a branch-protection decision of the owner.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Declared executor session must be present and authorised
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          BODY: ${{ github.event.pull_request.body }}
-        run: |
-          set -euo pipefail
-          allowed="$(jq -r '.authorized_claude_sessions[]' ops/executor.json)"
-          sessions="$( { gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/commits" --paginate --jq '.[].commit.message'; printf '%s' "$BODY"; } | grep -oE 'session_[A-Za-z0-9]{8,}' | sort -u || true)"
-          if [ -z "$sessions" ]; then
-            echo "::error title=EXECUTOR_IDENTITY_NOT_ESTABLISHED::no executor session declared in commits or PR body; absence is never treated as authorised"
-            exit 1
-          fi
-          bad=""
-          for s in $sessions; do grep -qx "$s" <<<"$allowed" || bad="$bad $s"; done
-          if [ -n "$bad" ]; then
-            echo "::error title=UNAUTHORISED_EXECUTOR_SESSION::declared session(s):$bad"
-            exit 1
-          fi
-          echo "::notice title=EXECUTOR_SESSION_DECLARED::authorised declaration only (not authentication): $sessions"
+  # session-guard: movido em 22/11/2026 para .github/workflows/session-guard.yml (pull_request_target, lista e
+  # decisão da BASE). Aqui ele rodava em pull_request com o executor.json do próprio PR.
 
   credential-scope:
     environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)

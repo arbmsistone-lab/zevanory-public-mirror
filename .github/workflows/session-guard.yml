@@ -1,0 +1,61 @@
+name: session-guard
+
+# 22/11/2026 (pedido do titular): substitui o job session-guard do T1 publisher guard, que rodava em pull_request com a
+# definição, o script e o ops/executor.json DO PRÓPRIO PR (um PR podia se autoautorizar ou apagar a regra).
+# pull_request_target roda ESTE arquivo da branch padrão e o checkout é da BASE do PR: a lista de sessões, o script
+# e a decisão vêm de código confiável. Commits e corpo do PR são lidos via API só como DADO. NUNCA fazer checkout do
+# head do PR nem executar nada dele aqui. Sem segredos; token só leitura. Declaração de sessão é texto, não autenticação:
+# o controle decisivo continua sendo a revisão e o merge do titular. Arquivo reservado (ops/owner-reserved-paths.json).
+on:
+  pull_request_target:
+    branches: [gh-pages]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: session-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: session-guard / declared-session
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout da base (código confiável)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Coletar commits e corpo do PR como dado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sg
+          gh api --paginate --slurp "repos/$REPO/pulls/$PR/commits?per_page=100" > /tmp/sg/commits.json
+          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > /tmp/sg/body.txt
+      - name: Avaliar sessão declarada contra a lista da BASE (FAIL-CLOSED)
+        env:
+          EXPECTED: ${{ github.event.pull_request.commits }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+          python3 -I scripts/ci/session_guard.py --executor ops/executor.json --commits /tmp/sg/commits.json \
+            --body /tmp/sg/body.txt --expected-commits "$EXPECTED" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" > /tmp/sg/result.json
+          rc=$?
+          cat /tmp/sg/result.json
+          {
+            echo "## session-guard (lista e decisão da base) — rc=$rc"
+            echo '```json'; cat /tmp/sg/result.json; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=SESSION_GUARD::sessão ausente, fora de ops/executor.json da base ou entrada inválida (ver resumo)."
+          fi
+          exit "$rc"
