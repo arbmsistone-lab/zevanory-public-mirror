@@ -30,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.base.sha }}
-      - name: Coletar commits e corpo do PR como dado
+      - name: Coletar PR (antes), commits e PR (depois) como dado
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -38,24 +38,27 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/sg
+          # Duas leituras do PR em volta da lista de commits: o script reprova se o head, a contagem ou o corpo mudarem
+          # entre elas, se o head não for o do evento ou se o último commit da lista não for esse head.
+          gh api "repos/$REPO/pulls/$PR" > /tmp/sg/pr-before.json
           gh api --paginate --slurp "repos/$REPO/pulls/$PR/commits?per_page=100" > /tmp/sg/commits.json
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > /tmp/sg/body.txt
-      - name: Avaliar sessão declarada contra a lista da BASE (FAIL-CLOSED)
+          gh api "repos/$REPO/pulls/$PR" > /tmp/sg/pr-after.json
+      - name: Avaliar sessão declarada contra a lista da BASE, na mesma revisão do evento (FAIL-CLOSED)
         env:
-          EXPECTED: ${{ github.event.pull_request.commits }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -uo pipefail
           python3 -I scripts/ci/session_guard.py --executor ops/executor.json --commits /tmp/sg/commits.json \
-            --body /tmp/sg/body.txt --expected-commits "$EXPECTED" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" > /tmp/sg/result.json
+            --pr-before /tmp/sg/pr-before.json --pr-after /tmp/sg/pr-after.json \
+            --event-head-sha "$EVENT_HEAD_SHA" --base-sha "$BASE_SHA" > /tmp/sg/result.json
           rc=$?
           cat /tmp/sg/result.json
           {
-            echo "## session-guard (lista e decisão da base) — rc=$rc"
+            echo "## session-guard (lista e decisão da base, mesma revisão) — rc=$rc"
             echo '```json'; cat /tmp/sg/result.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$rc" -ne 0 ]; then
-            echo "::error title=SESSION_GUARD::sessão ausente, fora de ops/executor.json da base ou entrada inválida (ver resumo)."
+            echo "::error title=SESSION_GUARD::revisão inconsistente, sessão ausente/fora de ops/executor.json da base ou entrada inválida (ver resumo)."
           fi
           exit "$rc"
