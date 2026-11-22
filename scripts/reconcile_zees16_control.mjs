@@ -1,5 +1,5 @@
 import { evaluatePolicy } from "../worker/evidence-control-plane.mjs";
-import { fetchExactDeployRuns, applyDeployProof } from "./zees16_deploy_proof.mjs";
+import { proveExactDeploy } from "./zees16_deploy_proof.mjs";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 
@@ -186,8 +186,9 @@ for(const spec of exactWorkflowProofs){
 }
 // 22/11/2026: o deploy da release exata é buscado pelo arquivo do workflow e pelo SHA (a listagem geral por head_sha
 // tem uma página só e perde o deploy quando o SHA acumula execuções). Toda evidência de deploy, inclusive a da listagem
-// geral, passa pela mesma validação; a inválida é removida. Ver scripts/zees16_deploy_proof.mjs.
-applyDeployProof(workflows, await fetchExactDeployRuns({jf,repo,sha}), sha);
+// geral, passa pela mesma validação; a inválida é removida. Só conta se o job `deploy` da tentativa usada terminou
+// com success (workflow verde com deploy pulado não prova). Ver scripts/zees16_deploy_proof.mjs.
+await proveExactDeploy({jf,repo,sha,workflows});
 const currentHead=branchDoc?.commit?.sha||null;
 const packRun=(branchRuns.workflow_runs||[]).find(run=>
   run.name==="ZEA-10 external evidence pack" &&
