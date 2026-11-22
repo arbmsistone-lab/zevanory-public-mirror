@@ -282,18 +282,27 @@ export const causaRede = (e) => {
 export async function probeHotmart(fetchImpl = fetch) {
   const out = [];
   for (const [slug, url] of Object.entries(HOTMART_CHECKOUTS)) {
+    // Etapas separadas (21/11/2026): antes, `new URL(r.url)` com URL final vazia lançava ERR_INVALID_URL dentro do
+    // mesmo try do fetch e era gravado igual a uma falha de rede. Agora: rede | corpo | destino | ok.
+    let r;
     try {
-      const r = await fetchImpl(url, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "accept-language": "pt-BR" } });
-      const html = await r.text();
+      r = await fetchImpl(url, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "accept-language": "pt-BR" } });
+    } catch (e) { out.push({ slug, http: 0, error: String(e?.name || "error"), cause: causaRede(e), etapa: "rede" }); continue; }
+    let html;
+    try { html = await r.text(); } catch (e) { out.push({ slug, http: Number(r?.status) || 0, etapa: "corpo", inconclusive: true, cause: causaRede(e) }); continue; }
+    let fin = null;
+    try { fin = r.url ? new URL(r.url) : null; } catch { fin = null; }
+    // Resposta sem destino verificável: nunca vira "fechado" nem "aceitando", mesmo com texto de encerramento no corpo.
+    if (!fin) { out.push({ slug, http: Number(r.status) || 0, etapa: "destino", destino: r.url ? "invalido" : "ausente", inconclusive: true, bytes: html.length }); continue; }
+    {
       const title = (html.match(/<title[^>]*>([^<]{0,120})/i) || [])[1] || "";
       const blocked = HOTMART_CLOSED_RE.test(html) || /em an[aá]lise/i.test(html);
-      const fin = new URL(r.url);
       // Hotmart's closed offer redirects to /error?errorMessage=<code> (049 = sales temporarily closed).
       const errorCode = /^\/error/i.test(fin.pathname) ? String(fin.searchParams.get("errorMessage") || "error").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 12) : null;
       // Positive evidence of the offer itself (its product code in the page); the closed page has none.
       const code = new URL(url).pathname.slice(1);
-      out.push({ slug, http: r.status, finalHost: fin.host, finalPath: fin.pathname.slice(0, 40), errorCode, title: title.trim().slice(0, 80), blockedText: blocked, offerMarker: !!code && html.includes(code), bytes: html.length });
-    } catch (e) { out.push({ slug, http: 0, error: String(e?.name || "error"), cause: causaRede(e) }); }
+      out.push({ slug, http: r.status, finalHost: fin.host, finalPath: fin.pathname.slice(0, 40), errorCode, title: title.trim().slice(0, 80), blockedText: blocked, offerMarker: !!code && html.includes(code), bytes: html.length, etapa: "ok" });
+    }
   }
   return out;
 }
