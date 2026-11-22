@@ -94,13 +94,43 @@ jobs:
             python3 -m pip install --disable-pip-version-check --quiet "pip-audit==2.10.1"
             python3 -m pip_audit -r "$f" --vulnerability-service pypi --format json --progress-spinner off -o p07-pip-audit-pypi.json
             python3 -m pip_audit -r "$f" --vulnerability-service osv  --format json --progress-spinner off -o p07-pip-audit-osv.json
-            python3 - <<'PY'
-          import json
+            python3 - "$f" <<'PY'
+          # Cobertura exata (22/11/2026): cada dependência DECLARADA tem de aparecer como auditada nas DUAS bases, com o
+          # mesmo nome (PEP 503) e a mesma versão, sem skip_reason. Ausente, ignorada ou divergente reprova; vuln reprova.
+          import json,re,sys
+          norm=lambda n: re.sub(r"[-_.]+","-",n).lower()
+          declared={}
+          for line in open(sys.argv[1],encoding="utf-8"):
+              line=line.split("#",1)[0].strip()
+              if not line: continue
+              m=re.fullmatch(r"([A-Za-z0-9_.-]+)==([0-9][A-Za-z0-9_.!+-]*)",line)
+              if not m: raise SystemExit("P07_SCA_PY: linha fora do formato nome==versão: "+line)
+              k=norm(m.group(1))
+              if k in declared: raise SystemExit("P07_SCA_PY: dependência declarada duas vezes: "+k)
+              declared[k]=m.group(2)
+          if not declared: raise SystemExit("P07_SCA_PY: manifesto sem dependências declaradas")
+          coverage={}
           for s in ("pypi","osv"):
               d=json.load(open(f"p07-pip-audit-{s}.json"))
-              v=[(x["name"],x["version"],[y["id"] for y in x.get("vulns",[])]) for x in d["dependencies"] if x.get("vulns")]
-              print(f"P07_SCA_PY_{s.upper()}", json.dumps([(x["name"],x["version"]) for x in d["dependencies"]]), "VULNS", v)
-              assert not v, v
+              deps=d.get("dependencies")
+              if not isinstance(deps,list): raise SystemExit(f"P07_SCA_PY_{s.upper()}: relatório sem dependencies")
+              audited={}; skipped={}
+              for x in deps:
+                  k=norm(str(x.get("name","")))
+                  if x.get("skip_reason") or "vulns" not in x or "version" not in x: skipped[k]=x.get("skip_reason") or "sem versão/vulns"
+                  else: audited.setdefault(k,set()).add(x["version"])
+              problems=[]
+              for k,ver in sorted(declared.items()):
+                  if k in skipped: problems.append(f"{k}=={ver}: ignorada ({skipped[k]})")
+                  elif k not in audited: problems.append(f"{k}=={ver}: ausente")
+                  elif audited[k]!={ver}: problems.append(f"{k}=={ver}: divergente {sorted(audited[k])}")
+              vulns=[(x["name"],x["version"],[y["id"] for y in x.get("vulns",[])]) for x in deps if x.get("vulns")]
+              print(f"P07_SCA_PY_{s.upper()}", json.dumps([(x.get("name"),x.get("version")) for x in deps]), "VULNS", vulns, "PROBLEMAS", problems)
+              if problems: raise SystemExit(f"P07_SCA_PY_{s.upper()}: cobertura incompleta: "+"; ".join(problems))
+              if vulns: raise SystemExit(f"P07_SCA_PY_{s.upper()}: vulnerabilidades: {vulns}")
+              coverage[s]={k:sorted(audited[k])[0] for k in declared}
+          json.dump({"declared":declared,"audited":coverage,"verdict":"PASS"},open("p07-sca-py-coverage.json","w"),indent=2,sort_keys=True)
+          print("P07_SCA_PY_COVERAGE", json.dumps(declared, sort_keys=True), "PYPI+OSV=EXATA")
           print("P07_SCA_PY=PASS")
           PY
             echo "ok" > p07-sca-py.ok
@@ -108,6 +138,11 @@ jobs:
 
       - name: SCA applicability and pinning
         shell: bash
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CANDIDATE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -137,6 +172,8 @@ jobs:
           head=subprocess.check_output(["git","-C",str(root),"rev-parse","HEAD"],text=True).strip()
           if head!=os.environ["EXPECTED_SHA"]: raise SystemExit("target HEAD != EXPECTED_SHA")
           python_sca=[]
+          cov=json.load(open("p07-sca-py-coverage.json")) if py_ci_ok else None
+          if py_ci_ok and cov.get("verdict")!="PASS": raise SystemExit("python coverage not PASS")
           for m in py_ci_ok:
             res={}
             for s in ("pypi","osv"):
@@ -144,10 +181,11 @@ jobs:
               res[s]={"tool":"pip-audit==2.10.1","dependencies":[{"name":x["name"],"version":x["version"],"vulns":[v["id"] for v in x.get("vulns",[])]} for x in d["dependencies"]]}
               if any(x["vulns"] for x in res[s]["dependencies"]): raise SystemExit("vulnerable dependency in "+m)
             blob=subprocess.check_output(["git","-C",str(root),"rev-parse",f"HEAD:{m}"],text=True).strip()
-            python_sca.append({"manifest":m,"git_blob":blob,"sha256":hashlib.sha256((root/m).read_bytes()).hexdigest(),"results":res,"verdict":"PASS"})
+            python_sca.append({"manifest":m,"git_blob":blob,"sha256":hashlib.sha256((root/m).read_bytes()).hexdigest(),"declared":cov["declared"],"audited_exact":cov["audited"],"results":res,"verdict":"PASS"})
           ecosystem="PYTHON_CI_PIP_AUDITED" if python_sca else "NOT_APPLICABLE_NO_PACKAGE_MANAGER"
-          json.dump({"release_sha":os.environ["EXPECTED_SHA"],"examined_commit":head,"manifests":manifests,"package_ecosystem":ecosystem,"python_sca":python_sca,"ci_action_refs":sorted(set(refs)),"verdict":"PASS"},open("p07-sca.json","w"),indent=2)
-          print("P07_SCA_REPORT", json.dumps({"ecosystem":ecosystem,"examined_commit":head,"python_sca":[{"manifest":x["manifest"],"sha256":x["sha256"],"deps":x["results"]["pypi"]["dependencies"]} for x in python_sca]}))
+          provenance={"workflow_ref":os.environ.get("WORKFLOW_REF",""),"workflow_sha":os.environ.get("WORKFLOW_SHA",""),"candidate_head_sha":os.environ.get("CANDIDATE_HEAD_SHA",""),"examined_commit":head,"run":os.environ.get("RUN_URL","")}
+          json.dump({"release_sha":os.environ["EXPECTED_SHA"],"examined_commit":head,"provenance":provenance,"manifests":manifests,"package_ecosystem":ecosystem,"python_sca":python_sca,"ci_action_refs":sorted(set(refs)),"verdict":"PASS"},open("p07-sca.json","w"),indent=2)
+          print("P07_SCA_REPORT", json.dumps({"ecosystem":ecosystem,"workflow_sha":provenance["workflow_sha"],"candidate_head_sha":provenance["candidate_head_sha"],"examined_commit":head,"python_sca":[{"manifest":x["manifest"],"sha256":x["sha256"],"deps":x["results"]["pypi"]["dependencies"]} for x in python_sca]}))
           print("SCA=PASS")
           PY
 
@@ -236,6 +274,7 @@ jobs:
             p07-sca.json
             p07-pip-audit-pypi.json
             p07-pip-audit-osv.json
+            p07-sca-py-coverage.json
             p07-dast.json
             p07-security-proof.json
           if-no-files-found: error
