@@ -1,7 +1,7 @@
 // Testes da prova exata do central production deploy no ZEES-16 (22/11/2026, r3).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { pickExactDeployRun, fetchExactDeployRuns, applyDeployProof, isValidDeployRun, DEPLOY_WORKFLOW_NAME,
   deployJobState, fetchRunAttemptJobs, requireDeployJob, proveExactDeploy } from "../scripts/zees16_deploy_proof.mjs";
 import { evaluatePolicy } from "../worker/evidence-control-plane.mjs";
@@ -121,12 +121,12 @@ test("16/16 continua exigido: com P12/P15 provados, faltando outros pilares o to
   const s = evaluatePolicy({ signals: sinais, workflows: m, releaseSha: SHA });
   assert.ok(s.counts.proven < 16);
   assert.equal(s.counts.proven + s.counts.partial + s.counts.blocked, 16);
-  const wf = readFileSync(new URL("../.github/workflows/zees16-control-reconciler.yml", import.meta.url), "utf8");
+  const wf = readTextNormalized(new URL("../.github/workflows/zees16-control-reconciler.yml", import.meta.url));
   assert.match(wf, /requires exact 16\/16/);
 });
 
 test("o reconciliador passa toda evidência de deploy pela validação e pelo job deploy antes de avaliar a política", () => {
-  const src = readFileSync(new URL("../scripts/reconcile_zees16_control.mjs", import.meta.url), "utf8");
+  const src = readTextNormalized(new URL("../scripts/reconcile_zees16_control.mjs", import.meta.url));
   assert.match(src, /import \{ proveExactDeploy \} from "\.\/zees16_deploy_proof\.mjs";/);
   const iApply = src.indexOf("await proveExactDeploy({jf,repo,sha,workflows});");
   const iEval = src.indexOf("evaluatePolicy({signals,workflows,releaseSha:sha,observedAt})");
