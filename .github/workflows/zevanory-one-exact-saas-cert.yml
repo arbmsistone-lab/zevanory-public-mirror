@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   certify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # fixado 22/11/2026: ubuntu-latest = 26.04 quebra Playwright/Chromium e semgrep (py3.14)
     timeout-minutes: 15
     env:
       EXPECTED_RUNTIME_SHA: 37e695127af02c9a32c601db0353a3708fc45d82

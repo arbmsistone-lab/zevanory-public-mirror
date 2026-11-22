@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   measure:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # fixado 22/11/2026: ubuntu-latest = 26.04 quebra Playwright/Chromium e semgrep (py3.14)
     timeout-minutes: 25
     strategy:
       fail-fast: false
