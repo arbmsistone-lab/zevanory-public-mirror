@@ -79,6 +79,33 @@ jobs:
           print("SAST=PASS")
           PY
 
+      - name: SCA Python das dependências de CI declaradas (allowlist exata)
+        # 22/11/2026: tests/ci/requirements-guard.txt (PyYAML, só CI, #1077) é o único manifesto Python aceito, e só
+        # com auditoria de vulnerabilidades no próprio job (PyPI e OSV). Qualquer vulnerabilidade, versão sem "==" ou
+        # outro manifesto continua reprovando no passo seguinte.
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=target/tests/ci/requirements-guard.txt
+          if [ -f "$f" ]; then
+            if grep -vE '^\s*(#|$)' "$f" | grep -vqE '^[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9_.!+-]*$'; then
+              echo "::error title=P07_SCA_PY::dependência sem pin exato em $f"; exit 1
+            fi
+            python3 -m pip install --disable-pip-version-check --quiet "pip-audit==2.10.1"
+            python3 -m pip_audit -r "$f" --vulnerability-service pypi --format json --progress-spinner off -o p07-pip-audit-pypi.json
+            python3 -m pip_audit -r "$f" --vulnerability-service osv  --format json --progress-spinner off -o p07-pip-audit-osv.json
+            python3 - <<'PY'
+          import json
+          for s in ("pypi","osv"):
+              d=json.load(open(f"p07-pip-audit-{s}.json"))
+              v=[(x["name"],x["version"],[y["id"] for y in x.get("vulns",[])]) for x in d["dependencies"] if x.get("vulns")]
+              print(f"P07_SCA_PY_{s.upper()}", json.dumps([(x["name"],x["version"]) for x in d["dependencies"]]), "VULNS", v)
+              assert not v, v
+          print("P07_SCA_PY=PASS")
+          PY
+            echo "ok" > p07-sca-py.ok
+          fi
+
       - name: SCA applicability and pinning
         shell: bash
         run: |
@@ -93,15 +120,34 @@ jobs:
             r"(^|/)go\.mod$",r"(^|/)Cargo\.lock$",r"(^|/)composer\.lock$",r"(^|/)Gemfile\.lock$"
           ]
           manifests=[p for p in files if any(re.search(rx,p,re.I) for rx in patterns)]
-          if manifests: raise SystemExit("unexpected dependency manifests require ecosystem SCA: "+",".join(manifests))
+          # Única exceção: o manifesto Python de CI auditado no passo anterior (marcador p07-sca-py.ok).
+          py_ci_ok=[p for p in manifests if p=="tests/ci/requirements-guard.txt" and pathlib.Path("p07-sca-py.ok").exists()]
+          rest=[p for p in manifests if p not in py_ci_ok]
+          if rest: raise SystemExit("unexpected dependency manifests require ecosystem SCA: "+",".join(rest))
           refs=[]
           for p in files:
               if p.startswith(".github/workflows/") and p.endswith((".yml",".yaml")):
                   t=(root/p).read_text("utf-8","ignore")
                   refs += re.findall(r"\buses:\s*([^\s#]+)",t)
-          unpinned=[x for x in refs if "@" not in x]
+          # Workflow/ação local ("./...") é fixado pelo próprio SHA da release: não leva "@" (22/11/2026).
+          unpinned=[x for x in refs if "@" not in x and not x.startswith("./")]
           if unpinned: raise SystemExit("unversioned action refs: "+",".join(unpinned))
-          json.dump({"release_sha":os.environ["EXPECTED_SHA"],"manifests":manifests,"package_ecosystem":"NOT_APPLICABLE_NO_PACKAGE_MANAGER","ci_action_refs":sorted(set(refs)),"verdict":"PASS"},open("p07-sca.json","w"),indent=2)
+          # 22/11/2026: o relatório registra o que foi de fato auditado, preso ao SHA examinado (git ls-tree do target).
+          import hashlib
+          head=subprocess.check_output(["git","-C",str(root),"rev-parse","HEAD"],text=True).strip()
+          if head!=os.environ["EXPECTED_SHA"]: raise SystemExit("target HEAD != EXPECTED_SHA")
+          python_sca=[]
+          for m in py_ci_ok:
+            res={}
+            for s in ("pypi","osv"):
+              d=json.load(open(f"p07-pip-audit-{s}.json"))
+              res[s]={"tool":"pip-audit==2.10.1","dependencies":[{"name":x["name"],"version":x["version"],"vulns":[v["id"] for v in x.get("vulns",[])]} for x in d["dependencies"]]}
+              if any(x["vulns"] for x in res[s]["dependencies"]): raise SystemExit("vulnerable dependency in "+m)
+            blob=subprocess.check_output(["git","-C",str(root),"rev-parse",f"HEAD:{m}"],text=True).strip()
+            python_sca.append({"manifest":m,"git_blob":blob,"sha256":hashlib.sha256((root/m).read_bytes()).hexdigest(),"results":res,"verdict":"PASS"})
+          ecosystem="PYTHON_CI_PIP_AUDITED" if python_sca else "NOT_APPLICABLE_NO_PACKAGE_MANAGER"
+          json.dump({"release_sha":os.environ["EXPECTED_SHA"],"examined_commit":head,"manifests":manifests,"package_ecosystem":ecosystem,"python_sca":python_sca,"ci_action_refs":sorted(set(refs)),"verdict":"PASS"},open("p07-sca.json","w"),indent=2)
+          print("P07_SCA_REPORT", json.dumps({"ecosystem":ecosystem,"examined_commit":head,"python_sca":[{"manifest":x["manifest"],"sha256":x["sha256"],"deps":x["results"]["pypi"]["dependencies"]} for x in python_sca]}))
           print("SCA=PASS")
           PY
 
@@ -188,6 +234,8 @@ jobs:
           path: |
             semgrep.json
             p07-sca.json
+            p07-pip-audit-pypi.json
+            p07-pip-audit-osv.json
             p07-dast.json
             p07-security-proof.json
           if-no-files-found: error
