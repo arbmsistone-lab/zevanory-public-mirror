@@ -34,7 +34,7 @@ tests/central-retired-contact-script.test.mjs 5
 tests/certification-worker.test.mjs 3
 tests/circuits-adversarial.test.mjs 31
 tests/command-center-main.test.mjs 4
-tests/command-center-snapshot.test.mjs 13
+tests/command-center-snapshot.test.mjs 15
 tests/commercial-checkout-guard.test.mjs 6
 tests/commercial-metrics-projection.test.mjs 13
 tests/comprar-noindex.test.mjs 8
@@ -220,4 +220,5 @@ tests/whatsapp-neon-store.test.mjs 6
 tests/whatsapp-retirement.test.mjs 17
 tests/workflow-contagens.test.mjs 2
 tests/youtube-daily-short.test.mjs 15
+tests/zees16-deploy-proof.test.mjs 17
 tests/zees16-evidence-honesty.test.mjs 2

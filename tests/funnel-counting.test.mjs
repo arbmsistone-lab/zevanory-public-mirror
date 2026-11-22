@@ -115,23 +115,23 @@ test("visitantes: legado vira visitor-page-days; visitor-days com cobertura parc
 });
 
 test("Hotmart: erro 049 = encerrada; oferta só 'aceitando' com prova positiva; P0 com vendas fechadas", () => {
-  const closed049 = { slug: "ia-na-pratica", http: 200, finalPath: "/error", errorCode: "049", offerMarker: false };
+  const closed049 = { slug: "ia-na-pratica", http: 200, finalHost: "pay.hotmart.com", finalPath: "/error", errorCode: "049", offerMarker: false };
   assert.equal(classifyHotmartProbe(closed049), "closed", "[FU10.1]");
-  assert.equal(classifyHotmartProbe({ http: 200, blockedText: true }), "closed", "[FU10.2]");
-  assert.equal(classifyHotmartProbe({ http: 200, finalPath: "/F107979716H", offerMarker: true }), "accepting", "[FU10.3]");
-  assert.equal(classifyHotmartProbe({ http: 200, finalPath: "/F107979716H", offerMarker: false }), "inconclusive", "[FU10.4]");
+  assert.equal(classifyHotmartProbe({ http: 200, blockedText: true }), "inconclusive", "[FU10.2] PR3 r2: texto genérico sem destino oficial e sem 049 não comprova fechamento");
+  assert.equal(classifyHotmartProbe({ http: 200, finalHost: "pay.hotmart.com", finalPath: "/F107979716H", offerMarker: true }), "accepting", "[FU10.3]");
+  assert.equal(classifyHotmartProbe({ http: 200, finalHost: "pay.hotmart.com", finalPath: "/F107979716H", offerMarker: false }), "inconclusive", "[FU10.4]");
   assert.equal(classifyHotmartProbe({ http: 0 }), "error", "[FU10.5]");
   const six = ["a", "b", "c", "d", "e", "f"].map((slug) => ({ ...closed049, slug }));
   const lock = hotmartLockState(six, false);
   assert.equal(lock.state, "closed", "[FU10.6]"); assert.equal(lock.severity, null, "[FU10.7]");
   assert.match(hotmartModeText(lock), /0\/6 ofertas aceitando pagamento, 6\/6 encerradas \(erro 049\)/, "[FU10.8]");
-  const bypass = hotmartLockState([...six.slice(1), { slug: "a", http: 200, finalPath: "/X", offerMarker: true }], false);
+  const bypass = hotmartLockState([...six.slice(1), { slug: "a", http: 200, finalHost: "pay.hotmart.com", finalPath: "/X", offerMarker: true }], false);
   assert.equal(bypass.state, "p0_bypass", "[FU10.9]"); assert.equal(bypass.severity, "P0", "[FU10.10]");
   assert.equal(hotmartLockState([...six.slice(1), { slug: "a", http: 0 }], false).state, "unverified", "[FU10.11] sem resposta não é fechado");
   assert.equal(hotmartLockState(six, true).state, "closed_while_open", "[FU10.12]");
   const inv = (h, salesOpen) => evaluateInventory({ processes: [{ id: "hotmart-checkout", eligible: true, state: "autonomous", evidence: { type: "hotmart" } }] }, { hotmart: h, salesOpen }, now).processes[0];
   assert.equal(inv(six, false).proven, true, "[FU10.13]");
-  const p0 = inv(bypass.offers.map((o) => ({ slug: o.slug, http: 200, finalPath: o.state === "accepting" ? "/X" : "/error", errorCode: o.state === "accepting" ? null : "049", offerMarker: o.state === "accepting" })), false);
+  const p0 = inv(bypass.offers.map((o) => ({ slug: o.slug, http: 200, finalHost: "pay.hotmart.com", finalPath: o.state === "accepting" ? "/X" : "/error", errorCode: o.state === "accepting" ? null : "049", offerMarker: o.state === "accepting" })), false);
   assert.equal(p0.proven, false, "[FU10.14]"); assert.equal(p0.failed, true, "[FU10.15]"); assert.match(p0.how, /^P0/, "[FU10.16]");
 });
 
@@ -315,8 +315,8 @@ test("calendário único: Hotmart (dia UTC) na borda da janela torna o total PAR
 });
 
 test("modo Hotmart: 5 kits aceitando com o interruptor completo fechado é o normal; Conteúdo Pronto aceitando é P0", async () => {
-  const accept = (slug) => ({ slug, http: 200, finalPath: "/X", offerMarker: true });
-  const shut = (slug) => ({ slug, http: 200, finalPath: "/error", errorCode: "049", offerMarker: false });
+  const accept = (slug) => ({ slug, http: 200, finalHost: "pay.hotmart.com", finalPath: "/X", offerMarker: true });
+  const shut = (slug) => ({ slug, http: 200, finalHost: "pay.hotmart.com", finalPath: "/error", errorCode: "049", offerMarker: false });
   const KITS = ["ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo"];
   const normal = [...KITS.map(accept), shut("conteudo-pronto")];
   const leakProbes = [...KITS.map(accept), accept("conteudo-pronto")];
