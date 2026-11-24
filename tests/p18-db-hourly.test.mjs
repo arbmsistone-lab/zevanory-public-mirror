@@ -66,7 +66,8 @@ function harness(startHms, day = "2026-11-25") {
     clock = startedAt + 300000;  // próxima janela
     return r;
   };
-  return { dir, ctl, n, run, done: () => rmSync(dir, { recursive: true, force: true }) };
+  const skip = () => { clock += 300000; };  // janela perdida (nenhuma execução)
+  return { dir, ctl, n, run, skip, done: () => rmSync(dir, { recursive: true, force: true }) };
 }
 const probesOf = (dir, month = "2026-11") => {
   const f = join(dir, "p18", `probes-${month}.jsonl`);
@@ -182,4 +183,81 @@ test("[DBH-6] desempenho do /api/status: 2 leituras horárias lentas seguidas de
   const rec = foldPerf([...hour(10, 9000), ...hour(11, 9000), ...hour(12, 100), ...hour(13, 100)]);
   assert.notEqual(rec.view.state, "DEGRADADO", "2 leituras horárias rápidas recuperam");
   assert.equal(foldPerf([...hour(10, 9000), ...hour(11, 100)]).incident, null, "uma lenta isolada não degrada");
+});
+
+// ---- Contraprovas pedidas pelo GPT-6 (24/11, 19:31) ---------------------------------------------------------
+test("[DBH-7] banco e página fora ao mesmo tempo: a volta de um nunca fecha o alerta do outro", async () => {
+  const issueOpen = (h) => h.n.issues.length === 1 && h.n.issues[0].state === "open";
+  // (a) os dois caem juntos na janela do banco; a página volta antes: alerta segue aberto até o banco voltar.
+  let h = harness("11:02:00");
+  try {
+    h.ctl.dbDown = true; h.ctl.pageDown = "vendas.zevanory.api.br/ia-na-pratica";
+    assert.equal((await h.run()).action, "confirm");
+    h.ctl.pageDown = null;
+    for (let i = 0; i < 11; i += 1) assert.equal((await h.run()).action, "hold_db_unprobed", "a-página voltou, banco não lido");
+    assert.ok(issueOpen(h), "a-aberto"); assert.equal(h.n.comments.length, 0, "a-sem recuperação falsa");
+    assert.equal((await h.run()).action, "update", "a-12:00 banco ainda fora");
+    h.ctl.dbDown = false;
+    for (let i = 0; i < 11; i += 1) await h.run();
+    assert.equal((await h.run()).action, "recover", "a-13:00 banco bom"); assert.equal(h.n.issues[0].state, "closed");
+  } finally { h.done(); }
+  // (b) os dois fora; o banco volta antes e a página não: o alerta segue aberto até a página voltar.
+  h = harness("11:02:00");
+  try {
+    h.ctl.dbDown = true; h.ctl.pageDown = "vendas.zevanory.api.br/ia-na-pratica";
+    assert.equal((await h.run()).action, "confirm");
+    h.ctl.dbDown = false;
+    for (let i = 0; i < 11; i += 1) assert.equal((await h.run()).action, "update", "b-página ainda fora");
+    assert.equal((await h.run()).action, "update", "b-12:00 banco bom, página fora: não fecha"); assert.ok(issueOpen(h));
+    h.ctl.pageDown = null;
+    assert.equal((await h.run()).action, "recover", "b-página voltou e o banco foi lido bom às 12:00"); assert.equal(h.n.issues[0].state, "closed");
+  } finally { h.done(); }
+  // (c) o alerta nasce da PÁGINA (janela sem banco); o banco cai na hora seguinte; a página volta numa janela sem banco:
+  //     o alerta NÃO pode fechar, porque a última leitura do banco falhou.
+  h = harness("10:57:00");
+  try {
+    h.ctl.pageDown = "vendas.zevanory.api.br/ia-na-pratica";
+    assert.equal((await h.run()).action, "confirm", "c-10:55 página fora");
+    h.ctl.dbDown = true;
+    assert.equal((await h.run()).action, "update", "c-11:00 página e banco fora");
+    h.ctl.pageDown = null;
+    for (let i = 0; i < 11; i += 1) assert.equal((await h.run()).action, "hold_db_unprobed", "c-página voltou, última leitura do banco falhou");
+    assert.ok(issueOpen(h), "c-aberto"); assert.equal(h.n.comments.length, 0, "c-sem recuperação falsa");
+    h.ctl.dbDown = false;
+    assert.equal((await h.run()).action, "recover", "c-12:00 banco bom"); assert.equal(h.n.issues[0].state, "closed");
+  } finally { h.done(); }
+});
+
+test("[DBH-8] janela do minuto 0 perdida: a 1ª janela após 65 min lê o banco, sem duplicar nem aumentar as leituras", async () => {
+  const h = harness("00:02:00");
+  const missed = new Set(["03:00", "07:00", "08:00", "15:00", "15:05", "15:10"]);
+  try {
+    for (let i = 0; i < 288; i += 1) {
+      const hhmm = new Date(at("00:00:00") + i * 300000).toISOString().slice(11, 16);
+      if (missed.has(hhmm)) h.skip(); else await h.run();
+    }
+    const all = probesOf(h.dir), db = all.filter((p) => p.db_probed);
+    const ts = db.map((p) => Date.parse(p.at));
+    const gaps = ts.slice(1).map((t, i) => (t - ts[i]) / 60000);
+    // Regra exata: nenhuma execução que pulou o banco estava a mais de 65 min da última leitura (o atraso além disso
+    // só existe quando nenhuma execução aconteceu, como às 15:00-15:10).
+    let last = null;
+    for (const p of all) {
+      const t = Date.parse(p.at);
+      if (!p.db_probed) assert.ok(last !== null && t - last <= 65 * 60000, "pulou o banco com " + ((t - last) / 60000) + " min em " + p.at);
+      else last = t;
+    }
+    assert.ok(db.some((p) => p.at.slice(11, 16) === "15:17"), "15h: 1ª execução depois das 3 janelas perdidas lê o banco");
+    // Realinhamento depois do fallback pode aproximar duas leituras (ex.: 08:22 e 09:02), mas nunca 2 na mesma hora.
+    assert.ok(Math.min(...gaps) >= 30, "nunca duas leituras próximas: " + Math.min(...gaps));
+    const perHour = {}; for (const p of db) perHour[p.at.slice(0, 13)] = (perHour[p.at.slice(0, 13)] || 0) + 1;
+    assert.ok(Object.values(perHour).every((v) => v === 1), "no máximo 1 leitura por hora: " + JSON.stringify(perHour));
+    assert.ok(db.length <= 24, "não aumenta as leituras do dia: " + db.length);
+    assert.ok(db.length >= 23, "fallback cobre as horas perdidas: " + db.length);
+    const at0 = (hhmm) => db.some((p) => p.at.slice(11, 16) === hhmm);
+    assert.ok(!at0("03:02") && db.some((p) => p.at.slice(11, 13) === "03"), "03h: lido por fallback");
+    assert.ok(db.some((p) => p.at.slice(11, 13) === "15"), "15h: três janelas perdidas, lido por fallback");
+    assert.equal(h.n.calls.filter(isDbCall).length, db.length * 3, "3 rotas por leitura, nenhuma duplicada");
+    assert.equal(probesOf(h.dir).length, 288 - missed.size, "uma sondagem por janela executada");
+  } finally { h.done(); }
 });

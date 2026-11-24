@@ -233,11 +233,12 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
     d = decideIncident({ seq: [...hist, ...probes], open });
   }
   const cur = probes.at(-1);
-  // Incidente aberto por falha do banco não "recupera" numa janela que não leu o banco: mantém aberto até a próxima
-  // leitura horária do banco passar (nenhum alerta novo, nenhuma issue fechada, nenhuma linha de incidente).
-  if (d.action === "recover" && cur.db_probed === false && open && (open.down_targets || []).some((t) => DB_TARGET_IDS.some((id) => String(t).startsWith(id + ":")))) {
-    d = { action: "hold_db_unprobed" };
-  }
+  // Numa janela que não leu o banco, o alerta só fecha se a ÚLTIMA leitura do banco foi boa. Assim a volta da página
+  // não fecha um alerta cujo banco segue fora (mesmo que o incidente tenha nascido da página), e a volta do banco já
+  // lida na hora não atrasa o fechamento. Mantido = nenhum alerta novo, nenhuma issue fechada, nenhuma linha.
+  const lastDb = [...hist, ...probes].filter((p) => p.db_probed !== false).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1);
+  const lastDbBad = !!lastDb && lastDb.targets.some((t) => DB_TARGET_IDS.includes(t.id) && !t.ok);
+  if (d.action === "recover" && cur.db_probed === false && open && lastDbBad) d = { action: "hold_db_unprobed" };
   log("::notice title=P18_PROBE::" + JSON.stringify({ at: cur.at, up: cur.up, probes: probes.length, decision: d.action, down: cur.targets.filter((t) => !t.ok).map((t) => t.id + ":" + t.status), p22_valid: cur.p22.valid ?? null }));
   // P19 fase 1: por tentativa (início e duração) de alvos e controles, e a versão servida, para separar 1ª tentativa,
   // nova tentativa e total. Só diagnóstico: não muda decisão, alerta nem desempenho.
