@@ -33,6 +33,7 @@ import {
   SALES_PAGES, STATUS_URL, CONTROL_URLS, SCHEMA_PROBE, CONFIRM_DELAY_MS, readP22, validateProbe, validateRun, validateIncident, parseJsonl,
   decideIncident, finalizeIncident, openIncident, buildRunRecord, buildHeartbeat, findOpenAlert, alertBody, ALERT_TITLE,
   resolveDispatch, isDuplicateWindow, buildCfDispatch, PROBING_OUTCOMES, evaluateCfDispatch, firstProofAt,
+  isDbDependent, DB_PROBE_SKIPPED, DB_TARGET_IDS, lastDbProbeAt, shouldProbeDb, parseWindowId, windowStartMs,
 } from "./b0-lib.mjs";
 import { probeUrl } from "./b0-collector.mjs";
 import {
@@ -56,14 +57,17 @@ const sha40 = (v) => { const s = String(v || "").trim().toLowerCase(); return /^
 const triesOf = (r) => ({ ...(Array.isArray(r.tries) ? { tries: r.tries.map((t) => ({ n: t.n, started_at: t.started_at, ms: t.ms, ...(Number.isInteger(t.status) ? { status: t.status } : {}), ...(t.error ? { error: t.error } : {}), ...(t.body_error ? { body_error: t.body_error } : {}) })) } : {}),
   ...(r.body_error ? { body_error: r.body_error } : {}) });
 
-export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), pause, kind = "scheduled" } = {}) {
-  const urls = [...SALES_PAGES, STATUS_URL];
+// dbProbe=false (P0 24/11): nenhuma rota que toca o PostgreSQL é chamada (alvo /api/status e controles com deps
+// postgres ficam de fora); a sondagem grava db_probed:false e p22 { readable:false, reason: DB_PROBE_SKIPPED }.
+export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), pause, kind = "scheduled", dbProbe = true } = {}) {
+  const urls = dbProbe ? [...SALES_PAGES, STATUS_URL] : [...SALES_PAGES];
+  const controlsUsed = CONTROL_URLS.filter((c) => dbProbe || !isDbDependent(c.deps));
   // P19 fase 1: controles na MESMA janela (concorrentes com os alvos), gravados à parte; não mudam up nem desempenho.
   const [res, ctl] = await Promise.all([
     Promise.all(urls.map((u) => probeUrl(u, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS }))),
-    Promise.all(CONTROL_URLS.map((c) => probeUrl(c.url, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS }))),
+    Promise.all(controlsUsed.map((c) => probeUrl(c.url, { fetchImpl, pause, retries: 1, timeoutMs: REQUEST_TIMEOUT_MS }))),
   ]);
-  let p22 = { readable: false, reason: "status_unreachable" };
+  let p22 = dbProbe ? { readable: false, reason: "status_unreachable" } : { readable: false, reason: DB_PROBE_SKIPPED };
   const targets = res.map((r) => {
     let ok = r.status >= 200 && r.status < 400;
     if (r.url === STATUS_URL) {
@@ -76,12 +80,12 @@ export async function runProbe({ fetchImpl = fetch, now = () => Date.now(), paus
       ...(Number.isInteger(r.attempts) ? { attempts: r.attempts } : {}), ...(Number.isFinite(r.elapsed_ms) ? { elapsed_ms: r.elapsed_ms } : {}), ...(r.error ? { error: r.error } : {}), ...triesOf(r) };
   });
   const json = (r) => { try { return JSON.parse(r.body || ""); } catch { return null; } };
-  const controls = ctl.map((r, i) => ({ id: targetId(r.url), deps: CONTROL_URLS[i].deps, ok: r.status >= 200 && r.status < 400, status: Number.isInteger(r.status) ? r.status : 0, latency_ms: r.latency_ms ?? null,
+  const controls = ctl.map((r, i) => ({ id: targetId(r.url), deps: controlsUsed[i].deps, ok: r.status >= 200 && r.status < 400, status: Number.isInteger(r.status) ? r.status : 0, latency_ms: r.latency_ms ?? null,
     ...(Number.isInteger(r.attempts) ? { attempts: r.attempts } : {}), ...(Number.isFinite(r.elapsed_ms) ? { elapsed_ms: r.elapsed_ms } : {}), ...(r.error ? { error: r.error } : {}), ...triesOf(r) }));
   const rel = ctl.find((r) => r.url.endsWith("zevanory.api.br/api/release") && !r.url.includes("edge."));
   const sales = ctl.find((r) => r.url === "https://vendas.zevanory.api.br/health");
   const served = { central: sha40(json(rel || {})?.deployment?.commit_sha), sales: sha40(json(sales || {})?.release) };
-  return validateProbe({ schema: SCHEMA_PROBE, at: new Date(now()).toISOString(), kind, up: targets.every((t) => t.ok), targets, p22, controls, served });
+  return validateProbe({ schema: SCHEMA_PROBE, at: new Date(now()).toISOString(), kind, up: targets.every((t) => t.ok), targets, p22, controls, served, db_probed: dbProbe });
 }
 
 // Linhas do mês corrente e do anterior (virada do mês), em ordem. Malformado derruba.
@@ -212,18 +216,28 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
     return { cur: null, probes: [], decision: { action: "skip" }, action: "skip", incident: null, run: dup };
   }
 
-  const probes = [await runProbe({ fetchImpl, now, pause, kind: "scheduled" })];
+  // Banco só na janela do minuto 0 (ou se a última leitura do banco passou de DB_PROBE_MAX_AGE_MIN). A confirmação
+  // usa a MESMA decisão: falha de página fora da janela não acorda o banco.
+  const windowMs = run.window_id ? parseWindowId(run.window_id) : windowStartMs(startedMs);
+  const dbProbe = shouldProbeDb({ windowMs, lastDbAt: lastDbProbeAt(hist), nowMs: startedMs });
+  log("::notice title=P18_DB_PROBE::" + JSON.stringify({ db_probe: dbProbe, window_ms: windowMs, last_db_probe_at: lastDbProbeAt(hist) }));
+  const probes = [await runProbe({ fetchImpl, now, pause, kind: "scheduled", dbProbe })];
   appendLine(dir, "probes", probes[0].at, { ...probes[0], run_id: run.run_id, event: run.event, probe_id: probeIdOf(env, 0), runner });
   let d = decideIncident({ seq: [...hist, ...probes], open });
   if (d.action === "pending") {
     // 1ª falha: confirmação dentro desta execução, sem esperar o próximo cron.
     await sleep(CONFIRM_DELAY_MS);
-    const p2 = await runProbe({ fetchImpl, now, pause, kind: "confirm" });
+    const p2 = await runProbe({ fetchImpl, now, pause, kind: "confirm", dbProbe });
     appendLine(dir, "probes", p2.at, { ...p2, run_id: run.run_id, event: run.event, probe_id: probeIdOf(env, 1), runner });
     probes.push(p2);
     d = decideIncident({ seq: [...hist, ...probes], open });
   }
   const cur = probes.at(-1);
+  // Incidente aberto por falha do banco não "recupera" numa janela que não leu o banco: mantém aberto até a próxima
+  // leitura horária do banco passar (nenhum alerta novo, nenhuma issue fechada, nenhuma linha de incidente).
+  if (d.action === "recover" && cur.db_probed === false && open && (open.down_targets || []).some((t) => DB_TARGET_IDS.some((id) => String(t).startsWith(id + ":")))) {
+    d = { action: "hold_db_unprobed" };
+  }
   log("::notice title=P18_PROBE::" + JSON.stringify({ at: cur.at, up: cur.up, probes: probes.length, decision: d.action, down: cur.targets.filter((t) => !t.ok).map((t) => t.id + ":" + t.status), p22_valid: cur.p22.valid ?? null }));
   // P19 fase 1: por tentativa (início e duração) de alvos e controles, e a versão servida, para separar 1ª tentativa,
   // nova tentativa e total. Só diagnóstico: não muda decisão, alerta nem desempenho.
@@ -235,7 +249,8 @@ export async function main({ env = process.env, fetchImpl = fetch, now = () => D
   if (bodyErr.length) log("::warning title=P18_BODY_ERROR_CONTADO_COMO_DISPONIVEL::" + JSON.stringify(bodyErr.slice(0, 20)));
 
   const pendingInc = d.action === "confirm" ? d.incident : d.action === "alert_retry" ? open : null;
-  const alert = await handleAlert({ decision: d, cur, incident: pendingInc, env, fetchImpl, now, log });
+  const alert = d.action === "hold_db_unprobed" ? { action: d.action, emitted_at: null, issue: null, error: null }
+    : await handleAlert({ decision: d, cur, incident: pendingInc, env, fetchImpl, now, log });
   let incident = null;
   if (d.action === "confirm") incident = finalizeIncident(d.incident, { alertEmittedAt: alert.emitted_at, alertIssue: alert.issue, alertError: alert.error });
   else if (d.action === "alert_retry" && alert.emitted_at) incident = finalizeIncident(open, { alertEmittedAt: alert.emitted_at, alertIssue: alert.issue });

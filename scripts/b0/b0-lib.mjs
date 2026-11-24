@@ -89,6 +89,28 @@ export const CONTROL_URLS = Object.freeze([
   { url: "https://edge.zevanory.api.br/api/status", deps: "postgres+kv" },
   { url: "https://vendas.zevanory.api.br/health", deps: "none" },
 ]);
+// P0 24/11/2026: o Neon do Free suspende o banco após 5 min ocioso e tem 100 CU-h/mês por projeto. Sondar
+// /api/status e /api/health a cada 5 min manteve o banco acordado ~77% do mês e esgotou a cota. Agora só a janela
+// do minuto 0 de cada hora (que coincide com o cron horário do Worker, que já acorda o banco) sonda as rotas que
+// tocam o PostgreSQL; as demais janelas sondam só páginas de venda e controles sem E/S. Se a janela do minuto 0 se
+// perder, a 1ª janela depois de DB_PROBE_MAX_AGE_MIN sonda o banco (nunca mais de ~1 vez por hora, nunca em cascata:
+// banco fora NÃO aumenta a frequência). Sondagem sem banco grava db_probed:false e p22 com DB_PROBE_SKIPPED.
+export const DB_PROBE_MAX_AGE_MIN = 65;
+export const DB_PROBES_PER_DAY = 24;
+export const DB_PROBE_SKIPPED = "db_probe_skipped";
+export const isDbDependent = (deps) => /postgres/.test(String(deps || ""));
+export const DB_TARGET_IDS = Object.freeze(["zevanory.api.br/api/status"]);  // alvos (não controles) que tocam o banco
+export function lastDbProbeAt(probes) {
+  // Linhas antigas (sem db_probed) sondavam o banco em toda execução.
+  const p = [...(probes || [])].filter((x) => x && x.db_probed !== false).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1);
+  return p ? p.at : null;
+}
+export function shouldProbeDb({ windowMs, lastDbAt, nowMs }) {
+  if (!Number.isFinite(windowMs) || !Number.isFinite(nowMs)) return true;  // entrada estranha: sonda (fail-safe para o alerta)
+  if (new Date(windowMs).getUTCMinutes() === 0) return true;
+  const last = Date.parse(lastDbAt || "");
+  return !Number.isFinite(last) || nowMs - last > DB_PROBE_MAX_AGE_MIN * 60000;
+}
 export const SITEMAPS = Object.freeze(["https://zevanory.api.br/sitemap.xml", "https://vendas.zevanory.api.br/sitemap.xml"]);
 export const FORBIDDEN_PATH = /\/(comprar|checkout|api\/checkout|assinar|hotmart)(\/|$)/i;
 
@@ -301,6 +323,9 @@ export function validateProbe(p) {
     if (!Array.isArray(p.controls)) throw new Error("bad_probe_controls");
     for (const t of p.controls) if (!isObj(t) || typeof t.id !== "string" || typeof t.ok !== "boolean" || !isInt(t.status)) throw new Error("bad_probe_control");
   }
+  if (p.db_probed !== undefined && typeof p.db_probed !== "boolean") throw new Error("bad_probe_db_probed");
+  if (p.db_probed === false && (p.p22.readable !== false || p.p22.reason !== DB_PROBE_SKIPPED || p.targets.some((t) => DB_TARGET_IDS.includes(t.id))
+    || (p.controls || []).some((t) => ["zevanory.api.br/api/health", "edge.zevanory.api.br/api/status"].includes(t.id)))) throw new Error("probe_db_skip_mismatch");
   if (p.served !== undefined && (!isObj(p.served) || Object.values(p.served).some((v) => v !== null && !/^[0-9a-f]{40}$/.test(v)))) throw new Error("bad_probe_served");
   return p;
 }
@@ -636,15 +661,19 @@ export function aggregateProbes(probes, day) {
   const p18 = { probes: ps.length, expected, coverage, up, down: ps.length - up, availability: ps.length ? Math.round(up / ps.length * 10000) / 10000 : 0, max_gap_min: Math.round(g.max_gap_s / 6) / 10 };
   const reasons = {};
   let valid = 0, invalid = 0, unreadable = 0, violations = 0;
-  for (const p of ps) {
+  // P22 só conta as sondagens que leram o /api/status (desde 24/11, 1 por hora); a expectativa acompanha.
+  const psDb = ps.filter((p) => p.db_probed !== false);
+  const expected22 = ps.some((p) => p.db_probed === false) ? DB_PROBES_PER_DAY : expected;
+  const coverage22 = Math.round(Math.min(psDb.length, expected22) / expected22 * 1000) / 1000;
+  for (const p of psDb) {
     const r = p.p22;
     if (!r.readable) { unreadable += 1; continue; }
     if (r.valid) valid += 1; else invalid += 1;
     if (r.fail_safe_ok === false) violations += 1;
     if (r.last_invalidation_reason) reasons[r.last_invalidation_reason] = (reasons[r.last_invalidation_reason] || 0) + 1;
   }
-  const p22 = { readings: ps.length, expected, coverage, valid, invalid, unreadable, fail_safe_violations: violations, valid_ratio: ps.length ? Math.round(valid / ps.length * 10000) / 10000 : 0, invalidation_reasons: reasons };
-  return { p18, p22, enough: coverage >= MIN_PROBE_COVERAGE };
+  const p22 = { readings: psDb.length, expected: expected22, coverage: coverage22, valid, invalid, unreadable, fail_safe_violations: violations, valid_ratio: psDb.length ? Math.round(valid / psDb.length * 10000) / 10000 : 0, invalidation_reasons: reasons };
+  return { p18, p22, enough: coverage >= MIN_PROBE_COVERAGE, enough22: coverage22 >= MIN_PROBE_COVERAGE };
 }
 
 // ---------------------------------------------------------------------------------------------------------

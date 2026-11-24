@@ -207,7 +207,7 @@ export async function collect({ env = process.env, fetchImpl = fetch, now = new 
   // Seção 9 auditada: latências dos incidentes, atraso do agendador e veredito MET/NOT_MET/NOT_PROVEN do dia.
   F.P18.alert_latency = ag.enough ? measured("p18-external-monitor: incidentes, execuções e sondagens (ramo de evidência)", aggregateLatency({ probes, runs, incidents, day }))
     : na("p18-external-monitor", `coverage_insufficient ${ag.p18.probes}/${ag.p18.expected}`);
-  F.P22.financial_proof_freshness = ag.enough ? measured("GET /api/status em cada sondagem P18", ag.p22) : na("GET /api/status via P18", `coverage_insufficient ${ag.p22.readings}/${ag.p22.expected}`);
+  F.P22.financial_proof_freshness = ag.enough && ag.enough22 !== false ? measured("GET /api/status nas sondagens P18 que leem o banco (1 por hora desde 24/11)", ag.p22) : na("GET /api/status via P18", `coverage_insufficient ${ag.p22.readings}/${ag.p22.expected}`);
 
   // P20: último run concluído do data-backup no dia D (sucesso OU falha: ambos são medição).
   try {

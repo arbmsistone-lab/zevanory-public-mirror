@@ -7,6 +7,9 @@ name: P18 external monitor (read-only)
 # Grava no ramo evidence/b0-baseline: p18/probes-*.jsonl, p18/incidents-*.jsonl (1ª falha observada, confirmação,
 # emissão do alerta, recuperação, latências), p18/runs-*.jsonl (atraso do agendador) e p18/heartbeat.json (lido pelo
 # vigia p18-monitor-watchdog). Alerta: issue do GitHub aberta na confirmação, fechada na 1ª sondagem boa.
+# P0 24/11/2026 (cota de 100 CU-h/mês do Neon esgotada): rotas que tocam o PostgreSQL (/api/status, /api/health e
+# edge /api/status) só na janela do minuto 0 de cada hora (DB_PROBE_* em scripts/b0/b0-lib.mjs); páginas e
+# controles sem E/S seguem a cada 5 min. Incidente do banco só fecha numa leitura horária boa.
 #
 # AVAL Sol 253/254: o agendador do GitHub está estrangulado neste repositório (o monitor não rodou desde a ativação).
 # Gatilho principal = cron EXISTENTE do Worker de controle (Cloudflare), que pede workflow_dispatch a cada 5 min com
