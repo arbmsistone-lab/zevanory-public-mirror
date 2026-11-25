@@ -234,10 +234,14 @@ test("[E2E-PERF] monitor: 1 janela lenta não avisa; 2ª avisa UMA vez no canal 
     const hb = JSON.parse(readTextNormalized(join(dir, "p18", "heartbeat.json")));
     assert.equal(hb.perf_state, "SAUDAVEL", "E2E-heartbeat-perf"); assert.equal(hb.up, true, "E2E-heartbeat-up");
     const prod = n.calls.filter((c) => !c.url.startsWith("https://api.github.com/"));
-    // P19 fase 1: 8 alvos + 4 controles de diagnóstico (CONTROL_URLS) por janela; nenhuma outra requisição.
-    assert.equal(prod.length, 6 * (ALL.length + CONTROL_URLS.length), "E2E-no-extra-requests: 12 GETs por janela (8 alvos + 4 controles)");
+    // P19 fase 1: 8 alvos + 4 controles por janela que lê o banco; P0 24/11: as demais janelas da hora não chamam as
+    // 3 rotas que tocam o PostgreSQL (/api/status alvo; /api/health e edge /api/status controles). Nenhuma outra requisição.
+    const dbFree = CONTROL_URLS.filter((c) => !/postgres/.test(c.deps)).length;
+    assert.deepEqual(probes.map((p) => p.db_probed), [true, false, false, false, false, false], "E2E-db-hourly: só a 1ª janela (10:00) lê o banco");
+    assert.equal(prod.length, (ALL.length + CONTROL_URLS.length) + 5 * (ALL.length - 1 + dbFree), "E2E-no-extra-requests: 12 GETs na janela do banco, 9 nas demais");
     assert.deepEqual(probes[0].controls.map((c) => c.id), CONTROL_URLS.map((c) => targetId(c.url)), "E2E-controls-recorded");
-    assert.ok(probes.every((p) => p.targets.length === ALL.length), "E2E-controls-outside-targets: controles não entram em up nem desempenho");
+    assert.ok(probes.every((p) => p.targets.length === (p.db_probed ? ALL.length : ALL.length - 1)), "E2E-controls-outside-targets: controles não entram em up nem desempenho");
+    assert.ok(!prod.slice(12).some((c) => /\/api\/(status|health)(\?|$)/.test(new URL(c.url).pathname + (new URL(c.url).search ? "?" : ""))), "E2E-db-free: fora da janela, nenhuma rota do banco");
     assert.ok(prod.every((c) => c.method === "GET" && !/comprar|checkout|pagamento/.test(c.url)), "só GET em páginas públicas e status");
     assert.ok(n.calls.every((c) => !/cloudflare/.test(c.url)), "nenhuma chamada à Cloudflare (sem KV)");
   } finally { rmSync(dir, { recursive: true, force: true }); }

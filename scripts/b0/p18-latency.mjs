@@ -19,7 +19,7 @@
 // Nenhuma chamada à Cloudflare: o estado é refeito a partir do histórico de sondagens no ramo de evidência (sem KV).
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { windowStartMs, DISPATCH_WINDOW_MIN } from "./b0-lib.mjs";
+import { windowStartMs, DISPATCH_WINDOW_MIN, DB_TARGET_IDS } from "./b0-lib.mjs";
 
 export const SCHEMA_PERF = "zevanory.p18.perf.v1";
 export const PERF_STATES = Object.freeze(["SAUDAVEL", "DEGRADADO", "CRITICO", "RECUPERADO"]);
@@ -109,7 +109,9 @@ export function stepPerf(st, probe, budgets = ROUTE_BUDGETS_MS) {
     }
     routes[t.id] = r;
   }
-  for (const id of Object.keys(routes)) if (!seen.has(id)) { routes[id].slow = 0; routes[id].fast = 0; }  // rota ausente = sem dado
+  // Rota ausente = sem dado. Exceção (P0 24/11): rota do banco fora da janela horária (db_probed:false) não zera os
+  // contadores, senão o /api/status (sondado 1x por hora) nunca degradaria nem recuperaria.
+  for (const id of Object.keys(routes)) if (!seen.has(id) && !(probe.db_probed === false && DB_TARGET_IDS.includes(id))) { routes[id].slow = 0; routes[id].fast = 0; }
   const degraded = Object.keys(routes).filter((id) => routes[id].state === "DEGRADADO").sort();
   let incident = st.incident, lastIncident = st.last_incident, event = null;
   const worst = (inc) => {
