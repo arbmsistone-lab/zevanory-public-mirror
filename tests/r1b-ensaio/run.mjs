@@ -1,5 +1,5 @@
 // ENSAIO R1-B (autorizado pelo proprietário em 25/11/2026, 17:50 BRT). Laboratório isolado:
-// - banco: SOMENTE o branch Neon descartável `r1b-ensaio` (papel `ensaio_lab`, que só existe nesse branch);
+// - banco: SOMENTE o branch Neon descartável `r1b-ensaio` (senha do papel redefinida SÓ nesse branch; o main não muda);
 // - código: handlers REAIS do Worker (worker/cloudflare-worker.compat.mjs), carregados em Node;
 // - rede: TODA chamada externa é interceptada e simulada (Resend, Hotmart, IA, Telegram, Bluesky, Cloudflare...);
 //   só o tráfego HTTP do driver Neon para o host do branch passa. Nada real é enviado, publicado ou cobrado;
@@ -19,7 +19,7 @@ const finish = (code) => { out.finished_at = new Date().toISOString(); writeFile
 let dbHost = "", dbUser = "";
 try { const u = new URL(URL_DB); dbHost = u.hostname; dbUser = decodeURIComponent(u.username); } catch {}
 out.guard = { host_sha256: dbHost ? sha(dbHost) : null, expected_host_sha256: EXPECTED_HOST ? sha(EXPECTED_HOST) : null, user: dbUser || null, pooled: dbHost.includes("-pooler") };
-if (!dbHost || dbHost.replace("-pooler", "") !== EXPECTED_HOST || FORBIDDEN_HOSTS.some((h) => dbHost.startsWith(h)) || dbUser !== "ensaio_lab") {
+if (!dbHost || dbHost.replace("-pooler", "") !== EXPECTED_HOST || FORBIDDEN_HOSTS.some((h) => dbHost.startsWith(h)) || dbUser !== "neondb_owner") {
   out.guard.ok = false; out.guard.reason = "isolation_guard_failed"; finish(2);
 }
 out.guard.ok = true;
@@ -29,15 +29,20 @@ const branchHost = dbHost;
 const realFetch = globalThis.fetch;
 const sent = []; // chamadas externas simuladas (nunca saem)
 let neonCalls = 0;
+const mailbox = []; // e-mails "enviados" ao Resend simulado (nunca saem)
 function fakeExternal(url, init) {
   const host = url.hostname;
   const method = (init?.method || "GET").toUpperCase();
   sent.push({ host, path: url.pathname.slice(0, 60), method });
   if (host === "api.resend.com") {
-    if (method === "POST") return Response.json({ id: "ensaio-mail-" + sent.length });
-    if (url.pathname.endsWith("/usage")) return Response.json({ object: "usage", emails: { daily: { used: 0, limit: 100 }, monthly: { used: 0, limit: 3000 } } });
-    if (url.pathname.includes("/emails/receiving/") || url.pathname.includes("/received")) return Response.json({ id: "ensaio-em-1", from: "Cliente Ensaio <cliente@example.test>", to: ["suporte@zevanory.api.br"], subject: "Ensaio: não recebi o acesso", text: "mensagem sintética do ensaio", html: null, attachments: [] });
-    return Response.json({ data: [], has_more: false });
+    const p = url.pathname;
+    if (method === "POST" && p === "/emails") { let b = {}; try { b = JSON.parse(init.body); } catch {} const row = { ...b, id: "ensaio-mail-" + (mailbox.length + 1), object: "email", created_at: new Date().toISOString(), last_event: "delivered" }; mailbox.push(row); return Response.json({ id: row.id }); }
+    if (p.endsWith("/usage")) return Response.json({ object: "usage", emails: { daily: { used: mailbox.length, limit: 100, resets_at: new Date(Date.now() + 86400000).toISOString() }, monthly: { used: mailbox.length, limit: 3000, resets_at: new Date(Date.now() + 31 * 86400000).toISOString() } } });
+    if (p.includes("/receiving/")) return Response.json({ object: "email", id: p.split("/").pop(), from: "Cliente Ensaio <cliente@example.test>", to: ["suporte@zevanory.api.br"], subject: "Ensaio: não recebi o acesso", text: "mensagem sintética do ensaio", html: null, attachments: [], created_at: new Date().toISOString(), message_id: "<ensaio@example.test>", headers: {} });
+    if (p === "/emails" && method === "GET") return Response.json({ object: "list", data: mailbox, has_more: false });
+    const hit = mailbox.find((x) => p.endsWith("/" + x.id));
+    if (hit) return Response.json(hit);
+    return Response.json({ object: "list", data: [], has_more: false });
   }
   return new Response(JSON.stringify({ ensaio: "blocked" }), { status: 503, headers: { "content-type": "application/json" } });
 }
@@ -77,7 +82,8 @@ const env = {
   ZEVANORY_PRIVATE_ARTIFACTS: kv,
   ZEVANORY_ADMIN_USERNAME: ADMIN_USER, ZEVANORY_ADMIN_PASSWORD: ADMIN_PASS,
   HOTMART_HOTTOK: HOTTOK,
-  RESEND_WEBHOOK_SECRET: RESEND_SECRET, RESEND_API_KEY: "ensaio-resend-sintetico",
+  RESEND_WEBHOOK_SECRET: RESEND_SECRET, RESEND_API_KEY: "ensaio-resend-sintetico", RESEND_RECEIVING_API_KEY: "ensaio-resend-leitura-sintetico",
+  SUPPORT_FORWARD_TO: "dono-ensaio@example.test",
   LEAD_PRIVACY_SECRET: randomBytes(24).toString("hex"),
   PUBLIC_BASE_URL: "https://zevanory.api.br",
   AI: { async run() { return { response: "Resposta sintética do ensaio R1-B." }; } },
@@ -112,7 +118,7 @@ const call = (path, init = {}) => worker.fetch(new Request(ORIGIN + path, init),
 await step("T00", "isolamento", async () => {
   const r = (await sql.query("select current_user u, current_database() d, current_setting('neon.timeline_id', true) tl"))[0];
   const tables = Number((await sql.query("select count(*)::int n from information_schema.tables where table_schema='public'"))[0].n);
-  return { pass: r.u === "ensaio_lab" && tables >= 100, current_user: r.u, database: r.d, timeline: r.tl, public_tables: tables };
+  return { pass: r.u === "neondb_owner" && tables >= 100, current_user: r.u, database: r.d, timeline: r.tl, public_tables: tables };
 });
 const before = {};
 for (const t of ["zevanory_owner_chat_messages", "zevanory_support_inbound", "zevanory_atendimento_outbox", "orders", "zevanory_funnel_daily", "agent_runs"]) { try { before[t] = await count(t); } catch (e) { before[t] = "erro"; } }
@@ -163,7 +169,8 @@ await step("T07", "suporte-entrada-e-fila", async () => {
   const r = await call("/api/webhooks/resend", { method: "POST", headers: { "content-type": "application/json", "svix-id": msgId, "svix-timestamp": String(ts), "svix-signature": "v1," + sig }, body });
   const n1 = await count("zevanory_support_inbound");
   const row = (await sql.query("select state from zevanory_support_inbound where email_id = $1", [id]))[0];
-  return { pass: bad.status >= 400 && r.status < 300 && n1 - n0 === 1 && !!row, assinatura_invalida: bad.status, status: r.status, gravadas: n1 - n0, estado: row?.state || null };
+  let rj = {}; try { rj = await r.clone().json(); } catch {}
+  return { pass: bad.status >= 400 && r.status < 300 && n1 - n0 === 1 && !!row, assinatura_invalida: bad.status, status: r.status, resposta: rj, gravadas: n1 - n0, estado: row?.state || null, emails_simulados: mailbox.length };
 });
 await step("T08", "hotmart-webhook-sintetico", async () => {
   const txn = "HP-ENSAIO-R1B-" + randomBytes(4).toString("hex").toUpperCase();
@@ -189,7 +196,8 @@ await step("T09", "cron-horario-posvenda-1o-pedido", async () => {
   const first = logs.filter((l) => l.includes("hotmart_first_order_alert_retry")).at(-1) || "";
   const dbErr = logs.filter((l) => /\[db\]|neon|database_unavailable|ECONN|fetch failed/i.test(l)).slice(0, 5);
   const d0 = sent.filter((x) => x.host === "api.resend.com" && x.method === "POST").length;
-  return { pass: cota && /"ok":true/.test(run) && first.length > 0 && dbErr.length === 0, excecao: thrown, posvenda_cota_existe: cota, posvenda: run.slice(0, 200), primeiro_pedido: first.slice(0, 160), emails_simulados_resend: d0, erros_de_banco: dbErr };
+  const suporte = logs.filter((l) => l.includes("support_outbox")).at(-1) || "";
+  return { pass: cota && /"ok":true/.test(run) && first.length > 0 && dbErr.length === 0, suporte_dreno: suporte.slice(0, 220), excecao: thrown, posvenda_cota_existe: cota, posvenda: run.slice(0, 200), primeiro_pedido: first.slice(0, 160), emails_simulados_resend: d0, erros_de_banco: dbErr };
 });
 for (const [id, expr, h, m] of [["T10", "5,35 * * * *", 13, 5], ["T11", "5,35 * * * *", 22, 35], ["T12", "15,45 * * * *", 13, 15]]) {
   await step(id, "cron " + expr + " @" + String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + "Z", async () => {
