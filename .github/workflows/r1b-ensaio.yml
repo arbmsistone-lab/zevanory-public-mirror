@@ -46,6 +46,8 @@ jobs:
           print("::notice title=R1B_GUARD::" + json.dumps(d["guard"]))
           for t in d["tests"]:
               print(f"::notice title=R1B_{t['id']}::{'PASS' if t['pass'] else 'FAIL'} {t['area']} {t['ms']}ms neon={t['neon_http_calls']}")
+              det = {k: v for k, v in t.items() if k not in ("id", "area", "pass", "ms", "neon_http_calls")}
+              print(f"R1B_DETAIL {t['id']} " + json.dumps(det, ensure_ascii=False)[:3000])
           print("::notice title=R1B_NETWORK::" + json.dumps(d["network"]))
           print("::notice title=R1B_COUNTS::" + json.dumps({"antes": d.get("counts_before"), "depois": d.get("counts_after")}))
           PY
