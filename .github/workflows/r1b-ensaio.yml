@@ -1,0 +1,59 @@
+name: r1b-ensaio
+
+# ENSAIO R1-B (autorização do proprietário, 25/11/2026 17:50 BRT). Laboratório isolado: handlers REAIS do Worker
+# contra o branch Neon DESCARTÁVEL `r1b-ensaio` (papel `ensaio_lab`, que só existe nesse branch). Toda rede externa
+# é simulada dentro do processo (nada é enviado, publicado ou cobrado); só o driver Neon fala com o host do branch.
+# Só pull_request deste branch de laboratório; nunca dispara no merge (o PR não será mesclado). Sem deploy, sem
+# credencial de produção: o único segredo é a conexão do branch de ensaio, no ambiente `r1b-ensaio`.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/r1b-ensaio.yml"
+      - "tests/r1b-ensaio/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r1b-ensaio
+  cancel-in-progress: false
+
+jobs:
+  ensaio:
+    if: github.head_ref == 'r1b-ensaio-lab'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: r1b-ensaio
+    env:
+      R1B_ENSAIO_EXPECTED_HOST: ep-fancy-wind-b6s67jfc.c-2.sa-east-1.aws.neon.tech
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Ensaio funcional (handlers reais; rede externa simulada)
+        env:
+          R1B_ENSAIO_DATABASE_URL: ${{ secrets.R1B_ENSAIO_DATABASE_URL }}
+        run: |
+          set -o pipefail
+          node --import ./tests/t4_sim/register.mjs tests/r1b-ensaio/run.mjs 2>&1 | grep -E '^R1B_' || true
+          test -f r1b-ensaio-result.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("r1b-ensaio-result.json"))
+          print("::notice title=R1B_GUARD::" + json.dumps(d["guard"]))
+          for t in d["tests"]:
+              print(f"::notice title=R1B_{t['id']}::{'PASS' if t['pass'] else 'FAIL'} {t['area']} {t['ms']}ms neon={t['neon_http_calls']}")
+          print("::notice title=R1B_NETWORK::" + json.dumps(d["network"]))
+          print("::notice title=R1B_COUNTS::" + json.dumps({"antes": d.get("counts_before"), "depois": d.get("counts_after")}))
+          PY
+      - name: Evidência (JSON sem segredos)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1b-ensaio-result
+          path: r1b-ensaio-result.json
+          if-no-files-found: warn
+          retention-days: 90
