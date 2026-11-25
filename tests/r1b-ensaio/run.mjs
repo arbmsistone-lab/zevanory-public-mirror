@@ -60,7 +60,7 @@ globalThis.fetch = async (input, init = {}) => {
 
 const { default: worker } = await import("../../worker/cloudflare-worker.compat.mjs");
 const { whatsappProofDatabase } = await import("../../worker/cloudflare-worker.recovered.mjs");
-const { runDataBackup } = await import("../../worker/data-backup.mjs");
+const { runDataBackup, planBackup, finalizeBackup } = await import("../../worker/data-backup.mjs");
 const sql = whatsappProofDatabase(URL_DB);
 
 // ---------- Ambiente sintético ----------
@@ -194,7 +194,7 @@ await step("T09", "cron-horario-posvenda-1o-pedido", async () => {
   const cota = await exists("zevanory_posvenda_cota");
   const run = logs.filter((l) => l.includes("hotmart_post_sale_run")).at(-1) || "";
   const first = logs.filter((l) => l.includes("hotmart_first_order_alert_retry")).at(-1) || "";
-  const dbErr = logs.filter((l) => /\[db\]|neon|database_unavailable|ECONN|fetch failed/i.test(l)).slice(0, 5);
+  const dbErr = logs.filter((l) => /^error /.test(l) && /\[db\]|neon|database|sql|ECONN|fetch failed|relation .* does not exist|permission denied|must be owner/i.test(l)).slice(0, 5);
   const d0 = sent.filter((x) => x.host === "api.resend.com" && x.method === "POST").length;
   const suporte = logs.filter((l) => l.includes("support_outbox")).at(-1) || "";
   return { pass: cota && /"ok":true/.test(run) && first.length > 0 && dbErr.length === 0, suporte_dreno: suporte.slice(0, 220), excecao: thrown, posvenda_cota_existe: cota, posvenda: run.slice(0, 200), primeiro_pedido: first.slice(0, 160), emails_simulados_resend: d0, erros_de_banco: dbErr };
@@ -202,17 +202,28 @@ await step("T09", "cron-horario-posvenda-1o-pedido", async () => {
 for (const [id, expr, h, m] of [["T10", "5,35 * * * *", 13, 5], ["T11", "5,35 * * * *", 22, 35], ["T12", "15,45 * * * *", 13, 15]]) {
   await step(id, "cron " + expr + " @" + String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + "Z", async () => {
     const thrown = await cron(expr, hourly(h, m));
-    const dbErr = logs.filter((l) => /\[db\]|neon_|database_unavailable|ECONN|fetch failed|relation .* does not exist|permission denied/i.test(l)).slice(0, 5);
+    const dbErr = logs.filter((l) => /^error /.test(l) && /\[db\]|neon|database|sql|ECONN|fetch failed|relation .* does not exist|permission denied|must be owner/i.test(l)).slice(0, 5);
+    const provedor = logs.filter((l) => /^error /.test(l) && !dbErr.includes(l)).slice(0, 5);
     const publicacoes = sent.filter((x) => /bsky|telegram|youtube|facebook|instagram|indexnow|bing/.test(x.host)).length;
     // Exceções esperadas aqui são de PROVEDOR simulado (ex.: prova financeira sem Mercado Pago), não de banco.
     const banco = !thrown || !/db|database|neon|sql|relation|permission/i.test(thrown);
-    return { pass: banco && dbErr.length === 0, excecao: thrown, erros_de_banco: dbErr, tentativas_de_publicacao_bloqueadas: publicacoes };
+    return { pass: banco && dbErr.length === 0, excecao: thrown, erros_de_banco: dbErr, falhas_de_provedor_simulado: provedor, tentativas_de_publicacao_bloqueadas: publicacoes };
   });
 }
-await step("T13", "backup-diario", async () => {
+await step("T13", "backup-diario (contrato v2: plano, 3 partes, consolidação)", async () => {
   const key = randomBytes(32).toString("base64");
-  const rep = await runDataBackup({ ...env, P20_BACKUP_KEY: key }, { sqlFactory: whatsappProofDatabase, now: Date.now() });
-  return { pass: rep.ok === true, ok: rep.ok, failures: rep.failures, encryption: rep.encryption?.state, tabelas: rep.neon?.tables ? Object.keys(rep.neon.tables).length : (rep.neon?.tableCount ?? null), linhas: rep.neon?.rows ?? null, excluidas: rep.neon?.excluded ?? null };
+  const benv = { ...env, P20_BACKUP_KEY: key };
+  const plan = await planBackup(benv, { sqlFactory: whatsappProofDatabase });
+  if (!plan.ok) return { pass: false, plano: plan };
+  const runId = randomBytes(16).toString("hex");
+  const partes = [];
+  for (let part = 0; part < plan.parts; part++) {
+    const r = await runDataBackup(benv, { sqlFactory: whatsappProofDatabase, part, parts: plan.parts, planId: plan.plan_id, runId });
+    partes.push({ part, ok: r.ok, failures: (r.failures || []).slice(0, 5) });
+  }
+  const fin = await finalizeBackup(benv, { parts: plan.parts, sqlFactory: whatsappProofDatabase, planId: plan.plan_id, runId });
+  const neon = fin.neon || {};
+  return { pass: partes.every((x) => x.ok) && fin.ok === true, plano: { parts: plan.parts, elegiveis: plan.eligible, excluidas: plan.excluded }, partes, consolidado_ok: fin.ok, falhas: (fin.failures || []).slice(0, 8), tabelas: neon.tables && typeof neon.tables === "object" ? Object.keys(neon.tables).length : (neon.tableCount ?? null), linhas: neon.rows ?? neon.totalRows ?? null, excluidas_nomes: neon.excluded ?? null, restore_drill: fin.restore ? { ok: fin.restore.ok, keys: Object.keys(fin.restore).slice(0, 8) } : null, cifragem: fin.encryption?.state ?? null };
 });
 out.counts_after = {};
 for (const t of Object.keys(before)) { try { out.counts_after[t] = await count(t); } catch { out.counts_after[t] = "erro"; } }
