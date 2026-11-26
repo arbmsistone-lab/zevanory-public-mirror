@@ -130,3 +130,12 @@ test("chat público do site não é injetado nas páginas /admin/ (tela de PIN),
   const pub = await injectInstitutionalChat(new Request("https://zevanory.api.br/solucoes"), env, html());
   assert.match(await pub.text(), /site-chat\.js/);
 });
+
+test("E3: página do chat tem 'Sair' (logout com CSRF) e, em qualquer 401, apaga a conversa do DOM e volta à tela de PIN", () => {
+  const s = chat.OWNER_CHAT_PAGE; const js = s.slice(s.indexOf("<script>") + 8, s.lastIndexOf("</script>"));
+  assert.match(s, /<button id="sair" type="button" class="sair">Sair<\/button>/);
+  assert.match(js, /fetch\('\/api\/admin\/owner-chat\/logout',\{method:'POST',headers:H\}\)/);
+  assert.match(js, /function fim\(\)\{if\(ended\)return;ended=true;clearInterval\(iv\);log\.replaceChildren\(\);nodes\.clear\(\);q\.value='';location\.replace\('\/admin\/proprietario'\);\}/);
+  for (const path of ["feed", "message", "action"]) assert.match(js, new RegExp("fetch\\('/api/admin/owner-chat/" + path + "[^;]*;if\\(r\\.status===401\\)return fim\\(\\);"), path);
+  assert.doesNotThrow(() => new Function(js));
+});
