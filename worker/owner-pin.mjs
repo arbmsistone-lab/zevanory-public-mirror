@@ -99,8 +99,8 @@ export async function handlePinLogout(request, env = {}) {
 }
 
 export const PIN_PAGE_HEADERS = Object.freeze({
-  "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-frame-options": "DENY",
-  "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
+  "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors https://controle.zevanory.api.br",
   "referrer-policy": "no-referrer", "x-robots-tag": "noindex, nofollow",
 });
 

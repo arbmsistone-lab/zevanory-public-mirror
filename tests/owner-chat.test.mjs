@@ -50,7 +50,7 @@ test("rotas de fora não são capturadas; /admin/proprietario redireciona para a
   const r = await h.call(req("/admin/proprietario"));
   assert.equal(r.status, 302); assert.equal(r.headers.get("location"), "/api/admin/owner-chat/app");
   const p = await h.call(req("/api/admin/owner-chat/app"));
-  assert.equal(p.status, 200); assert.match(p.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.equal(p.status, 200); assert.match(p.headers.get("content-security-policy"), /frame-ancestors https:\/\/controle\.zevanory\.api\.br(;|$)/);
   assert.match(p.headers.get("x-robots-tag"), /noindex/); assert.match(await p.text(), /Chat do Proprietário/);
 });
 

@@ -317,7 +317,7 @@ export async function handleOwnerChat(request, env = {}, { isAdminAuthorized, sq
   if (url.pathname === OWNER_CHAT_PATHS.page) return new Response(null, { status: 302, headers: { location: OWNER_CHAT_PATHS.app, "cache-control": "no-store" } });
   if (url.pathname === OWNER_CHAT_PATHS.app) {
     if (request.method !== "GET") return new Response(null, { status: 405 });
-    return new Response(OWNER_CHAT_PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'", "referrer-policy": "no-referrer", "x-robots-tag": "noindex, nofollow" } });
+    return new Response(OWNER_CHAT_PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors https://controle.zevanory.api.br", "referrer-policy": "no-referrer", "x-robots-tag": "noindex, nofollow" } });
   }
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.get || !sqlFactory || !env.DATABASE_URL) return json({ error: "owner_chat_unavailable" }, 503);

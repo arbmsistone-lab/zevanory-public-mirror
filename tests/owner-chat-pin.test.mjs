@@ -39,8 +39,11 @@ test("PIN ligado: página sem sessão mostra o formulário de PIN (200, CSP, noi
   const page = await get(h, "/admin/proprietario");
   assert.equal(page.status, 200);
   assert.match(await page.text(), /PIN de 6 dígitos/);
-  assert.match(page.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.match(page.headers.get("content-security-policy"), /frame-ancestors https:\/\/controle\.zevanory\.api\.br(;|$)/);
   assert.equal(page.headers.get("x-robots-tag"), "noindex, nofollow");
+  // Só o painel (controle.zevanory.api.br) pode enquadrar o chat; nenhuma outra origem.
+  assert.equal(page.headers.get("x-frame-options"), null);
+  assert.equal((page.headers.get("content-security-policy").match(/frame-ancestors ([^;]*)/) || [])[1], "https://controle.zevanory.api.br");
   const api = await get(h, "/api/admin/owner-chat/feed");
   assert.equal(api.status, 401);
   assert.equal(api.headers.get("www-authenticate"), null);
@@ -116,4 +119,14 @@ test("mensagem enviada com sessão de PIN exige CSRF como antes (403 sem x-owner
 test("pinConfigured: só exatamente 6 dígitos", () => {
   assert.equal(pin.pinConfigured({ OWNER_CHAT_PIN: "000000" }), true);
   for (const v of [undefined, "", "12345", "1234567", "12345a", 123456]) assert.equal(pin.pinConfigured({ OWNER_CHAT_PIN: v }), v === 123456);
+});
+
+test("chat público do site não é injetado nas páginas /admin/ (tela de PIN), mas continua nas páginas públicas", async () => {
+  const { injectInstitutionalChat } = await import("../worker/r120-chat-institutional.mjs");
+  const env = { SITE_CHAT_ENABLED: "true" };
+  const html = () => new Response("<html><head></head><body>x</body></html>", { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": "default-src 'none'" } });
+  const admin = await injectInstitutionalChat(new Request("https://zevanory.api.br/admin/proprietario"), env, html());
+  assert.doesNotMatch(await admin.text(), /site-chat\.js/);
+  const pub = await injectInstitutionalChat(new Request("https://zevanory.api.br/solucoes"), env, html());
+  assert.match(await pub.text(), /site-chat\.js/);
 });
